@@ -21,6 +21,8 @@ export type ReadableAssistantMessageStream =
     result(): Promise<AssistantMessage>;
   };
 
+// Writable stream primitive for provider adapters. Consumers should depend on
+// ReadableAssistantMessageStream so push/end/error stay implementation details.
 export class AssistantMessageStream
   implements ReadableAssistantMessageStream
 {
@@ -39,6 +41,8 @@ export class AssistantMessageStream
       this.rejectResult = reject;
     });
 
+    // Avoid unhandled rejection noise when callers only consume events and do
+    // not await result().
     this.resultPromise.catch(() => {});
   }
 

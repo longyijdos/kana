@@ -15,6 +15,7 @@ export class MockModelProvider implements ModelProvider<MockModelOptions> {
   ): AssistantMessageStream {
     const stream = new AssistantMessageStream();
 
+    // Match real providers: stream() returns before events start arriving.
     queueMicrotask(() => {
       const message: AssistantMessage = {
         role: "assistant",
@@ -36,6 +37,7 @@ export class MockModelProvider implements ModelProvider<MockModelOptions> {
 
       stream.push({
         type: "start",
+        // Snapshots must not share the mutable message object used below.
         snapshot: structuredClone(message),
       });
 

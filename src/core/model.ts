@@ -17,6 +17,8 @@ export type ModelOptions = {
 export interface ModelProvider<
   TOptions extends ModelOptions = ModelOptions,
 > {
+  // Providers implement the streaming path only. Non-streaming generation is
+  // derived from the stream result helper below.
   stream(
     context: ModelContext,
     options?: TOptions,
@@ -36,5 +38,6 @@ export function generate<TOptions extends ModelOptions>(
   context: ModelContext,
   options?: TOptions,
 ): Promise<AssistantMessage> {
+  // Keep one behavioral path: generate is just stream collection.
   return stream(provider, context, options).result();
 }

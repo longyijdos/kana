@@ -5,11 +5,15 @@ export type UserMessage = {
   content: string;
 };
 
+// Assistant content is ordered. Stream event contentIndex values refer to
+// positions in this array.
 export type AssistantMessage = {
   role: "assistant";
   content: AssistantContent[];
 };
 
+// content is the provider-facing text sent back to the model. result keeps the
+// original structured value for the agent runtime.
 export type ToolResultMessage = {
   role: "tool";
   toolCallId: string;
@@ -35,6 +39,7 @@ export type ToolCallContent = {
   type: "tool_call";
   id: string;
   name: string;
+  // Parsed arguments when possible. rawArgs keeps the original streamed JSON.
   args: unknown;
   rawArgs?: string;
 };

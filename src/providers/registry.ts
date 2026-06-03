@@ -1,5 +1,7 @@
 import type { ModelOptions, ModelProvider } from "../core/model";
 
+// Pure provider registry. Built-in providers are loaded by providers/index.ts,
+// which keeps this module usable for isolated tests or custom runtimes.
 export class ProviderRegistry {
   private readonly providers = new Map<string, ModelProvider>();
 

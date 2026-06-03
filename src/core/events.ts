@@ -2,6 +2,8 @@ import type { AssistantMessage, ToolCallContent } from "./messages";
 
 export type StopReason = "stop" | "length" | "toolUse" | "aborted" | "error";
 
+// delta is the increment parsed from the current provider stream chunk.
+// snapshot is the assistant message after applying that increment.
 export type AssistantMessageEvent =
   | {
       type: "start";
@@ -49,6 +51,7 @@ export type AssistantMessageEvent =
   | {
       type: "toolcall_delta";
       contentIndex: number;
+      // For tool calls this is the raw function arguments delta.
       delta: string;
       snapshot: AssistantMessage;
     }
