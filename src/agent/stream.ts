@@ -1,14 +1,15 @@
-import type { AgentEvent } from "./events";
 import type { Message } from "../core/messages";
 import { EventStream, type ReadableEventStream } from "../utils/event-stream";
+import type { AgentEvent } from "./events";
 
 export type AgentDoneEvent = Extract<AgentEvent, { type: "agent_end" }>;
 export type AgentStreamEvent = Exclude<AgentEvent, AgentDoneEvent>;
 
-export type ReadableAgentEventStream = ReadableEventStream<AgentEvent, Message[]>;
+export type ReadableAgentEventStream = ReadableEventStream<
+  AgentEvent,
+  Message[]
+>;
 
-// Writable stream primitive for agent runs. Agent implementations own writes;
-// consumers only iterate events and await the final message batch.
 export class AgentEventStream implements ReadableAgentEventStream {
   private readonly stream = new EventStream<AgentEvent, Message[]>(
     "Cannot push to a closed agent event stream.",

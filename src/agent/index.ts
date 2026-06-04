@@ -1,7 +1,12 @@
-export type { AgentConfig, AgentRunInput } from "./agent";
+export {
+  Agent,
+  type AgentEventListener,
+  type AgentConfig,
+  type AgentPromptInput,
+  type AgentState,
+} from "./agent";
 export type { AgentEvent } from "./events";
 export {
-  agentLoop,
   runAgentLoop,
   type AgentContext,
   type AgentEventSink,

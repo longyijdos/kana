@@ -4,13 +4,10 @@ import type {
   Message,
   ToolCallContent,
   ToolResultMessage,
-  UserMessage,
 } from "../core/messages";
 import type { Tool, ToolResult } from "../tools/tool";
 import { validateToolArguments } from "../tools/validation";
-import type { AgentRunInput } from "./agent";
 import type { AgentEvent } from "./events";
-import { AgentEventStream } from "./stream";
 
 export type AgentContext = {
   system?: string;
@@ -37,40 +34,17 @@ type ExecutedToolCall = {
   isError: boolean;
 };
 
-export function agentLoop(
-  input: AgentRunInput | Message[],
-  context: AgentContext,
-  config: AgentLoopConfig,
-): AgentEventStream {
-  const stream = new AgentEventStream();
-
-  void runAgentLoop(input, context, config, (event) => {
-    if (event.type === "agent_end") {
-      stream.end(event);
-      return;
-    }
-
-    stream.push(event);
-  }).catch((error) => {
-    stream.error(error);
-  });
-
-  return stream;
-}
-
 export async function runAgentLoop(
-  input: AgentRunInput | Message[],
   context: AgentContext,
   config: AgentLoopConfig,
   emit: AgentEventSink,
 ): Promise<Message[]> {
-  const promptMessages = toPromptMessages(input);
   const currentContext: AgentContext = {
     system: context.system,
-    messages: [...context.messages, ...promptMessages],
+    messages: [...context.messages],
     tools: context.tools ? [...context.tools] : undefined,
   };
-  const newMessages: Message[] = [...promptMessages];
+  const newMessages: Message[] = [];
   const maxTurns = config.maxTurns ?? 8;
 
   await emit({ type: "agent_start" });
@@ -324,20 +298,6 @@ async function executeToolCall(
       isError: true,
     };
   }
-}
-
-function toPromptMessages(input: AgentRunInput | Message[]): Message[] {
-  if (Array.isArray(input)) {
-    return input.map((message) => structuredClone(message));
-  }
-
-  const content = typeof input === "string" ? input : input.message;
-  const message: UserMessage = {
-    role: "user",
-    content,
-  };
-
-  return [message];
 }
 
 function getToolCalls(message: AssistantMessage): ToolCallContent[] {

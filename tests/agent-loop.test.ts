@@ -75,9 +75,13 @@ describe("runAgentLoop", () => {
     const events: AgentEvent[] = [];
 
     const messages = await runAgentLoop(
-      "add the numbers",
       {
-        messages: [],
+        messages: [
+          {
+            role: "user",
+            content: "add the numbers",
+          },
+        ],
         tools: [addTool],
       },
       {
@@ -90,12 +94,11 @@ describe("runAgentLoop", () => {
     );
 
     expect(messages.map((message) => message.role)).toEqual([
-      "user",
       "assistant",
       "tool",
       "assistant",
     ]);
-    expect(messages[2]).toMatchObject({
+    expect(messages[1]).toMatchObject({
       role: "tool",
       toolCallId: "call_1",
       toolName: "add",
@@ -130,9 +133,13 @@ describe("runAgentLoop", () => {
     });
 
     const messages = await runAgentLoop(
-      "add the numbers",
       {
-        messages: [],
+        messages: [
+          {
+            role: "user",
+            content: "add the numbers",
+          },
+        ],
         tools: [addTool],
       },
       {
@@ -142,7 +149,7 @@ describe("runAgentLoop", () => {
       () => {},
     );
 
-    const toolResult = messages[2];
+    const toolResult = messages[1];
 
     expect(toolResult).toMatchObject({
       role: "tool",
