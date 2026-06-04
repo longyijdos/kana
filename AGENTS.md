@@ -23,4 +23,4 @@ This project is a personal TypeScript/Bun agent runtime.
 - `src/core` contains provider-facing protocol types and stream primitives.
 - `src/tools` contains tool descriptions and executable tool types.
 - `src/providers` contains provider adapters and the `getModel` factory.
-- `src/main.ts` is a manual smoke-test CLI, not the public library API.
+- `./kana` is the local CLI entrypoint and starts the React/Ink TUI.
