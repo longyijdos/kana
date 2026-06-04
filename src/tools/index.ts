@@ -5,6 +5,12 @@ export {
   type ReadToolResult,
 } from "./read";
 export {
+  createEditTool,
+  editParameters,
+  type EditToolOptions,
+  type EditToolResult,
+} from "./edit";
+export {
   createWriteTool,
   writeParameters,
   type WriteToolOptions,
