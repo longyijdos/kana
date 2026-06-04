@@ -54,6 +54,46 @@ class ScriptedToolModel implements Model {
   }
 }
 
+class AbortedModel implements Model {
+  readonly metadata: ModelMetadata = {
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+  };
+
+  stream(_context: ModelContext): AssistantEventStream {
+    const stream = new AssistantEventStream();
+
+    queueMicrotask(() => {
+      stream.error({
+        type: "error",
+        reason: "aborted",
+        error: new Error("aborted"),
+        snapshot: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "partial",
+            },
+          ],
+        },
+      });
+    });
+
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 const addParameters = Type.Object({
   a: Type.Number(),
   b: Type.Number(),
@@ -164,6 +204,35 @@ describe("runAgentLoop", () => {
     expect(toolResult.content).toContain("Validation failed");
     expect(toolResult.result).toMatchObject({
       error: expect.stringContaining('Validation failed for tool "add"'),
+    });
+  });
+
+  test("records aborted assistant turns on the final message", async () => {
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "hi",
+          },
+        ],
+      },
+      {
+        model: new AbortedModel(),
+      },
+      () => {},
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      role: "assistant",
+      stopReason: "aborted",
+      content: [
+        {
+          type: "text",
+          text: "partial",
+        },
+      ],
     });
   });
 });

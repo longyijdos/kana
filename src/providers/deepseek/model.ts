@@ -70,7 +70,7 @@ export class DeepSeekModel extends BaseModel {
       }
 
       const request = buildDeepSeekRequest(context, this.config);
-      const requestSignal = createRequestSignal(this.config);
+      const requestSignal = createRequestSignal(this.config, context.signal);
 
       try {
         const response = await fetchWithRetries(
@@ -116,7 +116,7 @@ export class DeepSeekModel extends BaseModel {
       stream.error({
         type: "error",
         reason:
-          isAbortError(error) || this.config.signal?.aborted
+          isAbortError(error) || context.signal?.aborted
             ? "aborted"
             : "error",
         error,

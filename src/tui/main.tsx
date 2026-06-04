@@ -3,6 +3,7 @@ import { Box, render, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import type { Agent, AgentEvent } from "../agent";
 import type { AssistantMessageEvent } from "../core/events";
+import type { AssistantStopReason } from "../core/messages";
 import { createDemoAgent, DEFAULT_DEMO_PROMPT } from "../demo/agent";
 
 type LogLine = {
@@ -84,7 +85,6 @@ function App({ agent }: { agent: Agent }) {
       }
 
       await stream.result();
-      setStatus("Idle");
     } catch (error) {
       setStatus("Error");
       appendLine(
@@ -141,7 +141,7 @@ function handleAgentEvent(
       setStatus("Agent started");
       break;
     case "agent_end":
-      setStatus("Agent finished");
+      setStatus(statusForStopReason(lastAssistantStopReason(event.messages)));
       break;
     case "turn_start":
       appendLine(nextId, setLines, "muted", `turn ${event.turn} started`);
@@ -161,7 +161,13 @@ function handleAgentEvent(
       handleAssistantEvent(event.assistantMessageEvent, nextId, setLines);
       break;
     case "message_end":
-      appendLine(nextId, setLines, "muted", "assistant message ended");
+      setStatus(statusForStopReason(event.message.stopReason));
+      appendLine(
+        nextId,
+        setLines,
+        toneForStopReason(event.message.stopReason),
+        `assistant message ended: ${event.message.stopReason ?? "unknown"}`,
+      );
       break;
     case "tool_execution_start":
       appendLine(
@@ -187,6 +193,53 @@ function handleAgentEvent(
         `tool end ${event.toolName} error=${event.isError} ${JSON.stringify(event.result)}`,
       );
       break;
+  }
+}
+
+function lastAssistantStopReason(
+  messages: Extract<AgentEvent, { type: "agent_end" }>["messages"],
+): AssistantStopReason | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message?.role === "assistant") {
+      return message.stopReason;
+    }
+  }
+
+  return undefined;
+}
+
+function statusForStopReason(reason: AssistantStopReason | undefined): string {
+  switch (reason) {
+    case "stop":
+      return "Done";
+    case "toolUse":
+      return "Tool requested";
+    case "length":
+      return "Length limit";
+    case "aborted":
+      return "Aborted";
+    case "error":
+      return "Error";
+    case undefined:
+      return "Unknown stop";
+  }
+}
+
+function toneForStopReason(
+  reason: AssistantStopReason | undefined,
+): LogLine["tone"] {
+  switch (reason) {
+    case "aborted":
+    case "error":
+      return "error";
+    case "toolUse":
+      return "tool";
+    case "stop":
+    case "length":
+    case undefined:
+      return "muted";
   }
 }
 

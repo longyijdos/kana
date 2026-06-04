@@ -1,5 +1,12 @@
 export type Message = UserMessage | AssistantMessage | ToolResultMessage;
 
+export type AssistantStopReason =
+  | "stop"
+  | "length"
+  | "toolUse"
+  | "aborted"
+  | "error";
+
 export type UserMessage = {
   role: "user";
   content: string;
@@ -9,6 +16,7 @@ export type UserMessage = {
 // positions in this array.
 export type AssistantMessage = {
   role: "assistant";
+  stopReason?: AssistantStopReason;
   content: AssistantContent[];
 };
 

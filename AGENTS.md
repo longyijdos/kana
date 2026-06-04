@@ -17,6 +17,8 @@ This project is a personal TypeScript/Bun agent runtime.
   the current event. Do not emit shared mutable message objects as snapshots.
 - Use TypeBox schemas for tool parameters so provider adapters can pass JSON
   Schema-compatible tool descriptions through directly.
+- Use Conventional Commit prefixes for commit messages, such as `feat:`,
+  `fix:`, `refactor:`, `test:`, `docs:`, and `chore:`.
 
 ## Current Architecture
 

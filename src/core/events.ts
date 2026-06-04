@@ -1,6 +1,10 @@
-import type { AssistantMessage, ToolCallContent } from "./messages";
+import type {
+  AssistantMessage,
+  AssistantStopReason,
+  ToolCallContent,
+} from "./messages";
 
-export type StopReason = "stop" | "length" | "toolUse" | "aborted" | "error";
+export type StopReason = AssistantStopReason;
 
 // delta is the increment parsed from the current provider stream chunk.
 // snapshot is the assistant message after applying that increment.

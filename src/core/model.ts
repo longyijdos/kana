@@ -9,7 +9,6 @@ export type ModelConfig = {
   baseUrl?: string;
   temperature?: number;
   maxTokens?: number;
-  signal?: AbortSignal;
   headers?: Record<string, string>;
   timeoutMs?: number;
   maxRetries?: number;

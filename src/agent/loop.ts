@@ -112,6 +112,7 @@ async function streamAssistantResponse(
     system: context.system,
     messages: context.messages,
     tools: context.tools,
+    signal: config.signal,
   });
   let addedAssistantMessage = false;
   let currentMessage: AssistantMessage = {
@@ -150,7 +151,10 @@ async function streamAssistantResponse(
         break;
 
       case "done":
-        currentMessage = event.message;
+        currentMessage = {
+          ...event.message,
+          stopReason: event.reason,
+        };
         replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
         await emit({
           type: "message_end",
@@ -162,12 +166,14 @@ async function streamAssistantResponse(
         };
 
       case "error":
-        currentMessage =
-          event.snapshot ??
-          ({
-            role: "assistant",
-            content: [],
-          } satisfies AssistantMessage);
+        currentMessage = {
+          ...(event.snapshot ??
+            ({
+              role: "assistant",
+              content: [],
+            } satisfies AssistantMessage)),
+          stopReason: event.reason,
+        };
         replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
         if (!addedAssistantMessage) {
           await emit({

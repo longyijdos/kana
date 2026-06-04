@@ -30,9 +30,7 @@ export class MockModel extends BaseModel {
     super();
   }
 
-  stream(
-    _context: ModelContext,
-  ): AssistantEventStream {
+  stream(context: ModelContext): AssistantEventStream {
     const stream = new AssistantEventStream();
 
     // Match real providers: stream() returns before events start arriving.
@@ -42,11 +40,13 @@ export class MockModel extends BaseModel {
         content: [],
       };
 
-      if (this.config.signal?.aborted) {
+      const signal = context.signal;
+
+      if (signal?.aborted) {
         stream.error({
           type: "error",
           reason: "aborted",
-          error: this.config.signal.reason,
+          error: signal.reason,
           snapshot: structuredClone(message),
         });
         return;

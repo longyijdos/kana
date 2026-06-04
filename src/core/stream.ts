@@ -35,7 +35,18 @@ export class AssistantEventStream implements ReadableAssistantEventStream {
   }
 
   end(event: AssistantDoneEvent): void {
-    this.stream.end(event, event.message);
+    const message: AssistantMessage = {
+      ...event.message,
+      stopReason: event.reason,
+    };
+
+    this.stream.end(
+      {
+        ...event,
+        message,
+      },
+      message,
+    );
   }
 
   error(event: AssistantErrorEvent): void {

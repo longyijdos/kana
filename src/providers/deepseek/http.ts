@@ -43,13 +43,16 @@ export async function fetchWithRetries(
   }
 }
 
-export function createRequestSignal(config: DeepSeekModelConfig): {
+export function createRequestSignal(
+  config: DeepSeekModelConfig,
+  signal?: AbortSignal,
+): {
   signal?: AbortSignal;
   dispose(): void;
 } {
   if (!config.timeoutMs) {
     return {
-      signal: config.signal,
+      signal,
       dispose() {},
     };
   }
@@ -59,20 +62,20 @@ export function createRequestSignal(config: DeepSeekModelConfig): {
     controller.abort(new Error(`DeepSeek request timed out after ${config.timeoutMs}ms.`));
   }, config.timeoutMs);
   const abort = (): void => {
-    controller.abort(config.signal?.reason);
+    controller.abort(signal?.reason);
   };
 
-  if (config.signal?.aborted) {
+  if (signal?.aborted) {
     abort();
   } else {
-    config.signal?.addEventListener("abort", abort, { once: true });
+    signal?.addEventListener("abort", abort, { once: true });
   }
 
   return {
     signal: controller.signal,
     dispose() {
       clearTimeout(timeout);
-      config.signal?.removeEventListener("abort", abort);
+      signal?.removeEventListener("abort", abort);
     },
   };
 }

@@ -22,7 +22,12 @@ class TextModel implements Model {
   constructor(private readonly response = "hello") {}
 
   stream(context: ModelContext): AssistantEventStream {
-    this.contexts.push(structuredClone(context));
+    this.contexts.push({
+      system: context.system,
+      messages: structuredClone(context.messages),
+      tools: context.tools,
+      signal: context.signal,
+    });
 
     const stream = new AssistantEventStream();
 
@@ -74,6 +79,74 @@ class TextModel implements Model {
   }
 }
 
+class AbortAwareModel implements Model {
+  readonly metadata: ModelMetadata = {
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+  };
+
+  stream(context: ModelContext): AssistantEventStream {
+    const stream = new AssistantEventStream();
+
+    queueMicrotask(() => {
+      const message: AssistantMessage = {
+        role: "assistant",
+        content: [],
+      };
+
+      const abort = (): void => {
+        stream.error({
+          type: "error",
+          reason: "aborted",
+          error: context.signal?.reason ?? new Error("aborted"),
+          snapshot: structuredClone(message),
+        });
+      };
+
+      stream.push({
+        type: "start",
+        snapshot: structuredClone(message),
+      });
+
+      message.content.push({
+        type: "text",
+        text: "partial",
+      });
+
+      stream.push({
+        type: "text_start",
+        contentIndex: 0,
+        snapshot: structuredClone(message),
+      });
+      stream.push({
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "partial",
+        snapshot: structuredClone(message),
+      });
+
+      if (context.signal?.aborted) {
+        abort();
+        return;
+      }
+
+      context.signal?.addEventListener("abort", abort, { once: true });
+    });
+
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 describe("Agent", () => {
   test("runs prompts and appends loop messages once", async () => {
     const model = new TextModel("hello");
@@ -97,6 +170,10 @@ describe("Agent", () => {
       "user",
       "assistant",
     ]);
+    expect(agent.state.messages[1]).toMatchObject({
+      role: "assistant",
+      stopReason: "stop",
+    });
     expect(streamingRoles).toEqual(["assistant", "assistant", "assistant"]);
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
@@ -124,6 +201,10 @@ describe("Agent", () => {
       "assistant",
     ]);
     expect(agent.state.messages.slice(1)).toEqual(messages);
+    expect(messages[0]).toMatchObject({
+      role: "assistant",
+      stopReason: "stop",
+    });
     expect(events.at(0)).toMatchObject({
       type: "agent_start",
     });
@@ -132,4 +213,34 @@ describe("Agent", () => {
     });
   });
 
+  test("passes abort signal to the running model", async () => {
+    const agent = new Agent({
+      model: new AbortAwareModel(),
+    });
+    const stream = agent.stream("hi");
+    const events: AgentEvent[] = [];
+
+    for await (const event of stream) {
+      events.push(event);
+
+      if (event.type === "message_update") {
+        agent.abort();
+      }
+    }
+
+    const messages = await stream.result();
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      role: "assistant",
+      stopReason: "aborted",
+    });
+    expect(agent.state.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      stopReason: "aborted",
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: "agent_end",
+    });
+  });
 });
