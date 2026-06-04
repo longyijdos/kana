@@ -1,7 +1,7 @@
 import type { ModelContext } from "../../core/context";
 import type {
-  AgentMessage,
   AssistantContent,
+  Message,
   ToolCallContent,
 } from "../../core/messages";
 import type { ToolSpec } from "../../tools/tool";
@@ -68,7 +68,7 @@ export function buildDeepSeekRequest(
 function toDeepSeekMessages(context: ModelContext): DeepSeekMessage[] {
   const messages: DeepSeekMessage[] = [];
 
-  // Keep system outside AgentMessage for now, but send it as a normal
+  // Keep system outside Message for now, but send it as a normal
   // DeepSeek/OpenAI-compatible system message.
   if (context.system) {
     messages.push({
@@ -84,7 +84,7 @@ function toDeepSeekMessages(context: ModelContext): DeepSeekMessage[] {
   return messages;
 }
 
-function toDeepSeekMessage(message: AgentMessage): DeepSeekMessage {
+function toDeepSeekMessage(message: Message): DeepSeekMessage {
   switch (message.role) {
     case "user":
       return {

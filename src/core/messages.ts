@@ -1,4 +1,4 @@
-export type AgentMessage = UserMessage | AssistantMessage | ToolResultMessage;
+export type Message = UserMessage | AssistantMessage | ToolResultMessage;
 
 export type UserMessage = {
   role: "user";
