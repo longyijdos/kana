@@ -1,6 +1,6 @@
 import type { ModelContext } from "./context";
 import type { AssistantMessage } from "./messages";
-import type { ReadableAssistantMessageStream } from "./stream";
+import type { ReadableAssistantEventStream } from "./stream";
 
 export type ModelConfig = {
   provider: string;
@@ -32,7 +32,7 @@ export type ModelMetadata = {
 export interface Model {
   readonly metadata: ModelMetadata;
 
-  stream(context: ModelContext): ReadableAssistantMessageStream;
+  stream(context: ModelContext): ReadableAssistantEventStream;
 
   generate(context: ModelContext): Promise<AssistantMessage>;
 }
@@ -40,7 +40,7 @@ export interface Model {
 export abstract class BaseModel implements Model {
   abstract readonly metadata: ModelMetadata;
 
-  abstract stream(context: ModelContext): ReadableAssistantMessageStream;
+  abstract stream(context: ModelContext): ReadableAssistantEventStream;
 
   generate(context: ModelContext): Promise<AssistantMessage> {
     // Keep one behavioral path: generate is just stream collection.

@@ -1,7 +1,7 @@
 import type { ModelContext } from "../../core/context";
 import { BaseModel } from "../../core/model";
 import type { AssistantMessage } from "../../core/messages";
-import { AssistantMessageStream } from "../../core/stream";
+import { AssistantEventStream } from "../../core/stream";
 import {
   createRequestSignal,
   fetchWithRetries,
@@ -29,8 +29,8 @@ export class DeepSeekModel extends BaseModel {
     this.metadata = getDeepSeekModelMetadata(config.model);
   }
 
-  stream(context: ModelContext): AssistantMessageStream {
-    const stream = new AssistantMessageStream();
+  stream(context: ModelContext): AssistantEventStream {
+    const stream = new AssistantEventStream();
 
     // The model contract is synchronous: return the stream immediately and let
     // the request lifecycle write events into it asynchronously.
@@ -40,7 +40,7 @@ export class DeepSeekModel extends BaseModel {
   }
 
   private async run(
-    stream: AssistantMessageStream,
+    stream: AssistantEventStream,
     context: ModelContext,
   ): Promise<void> {
     const message: AssistantMessage = {

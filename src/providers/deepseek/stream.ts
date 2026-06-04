@@ -1,5 +1,5 @@
 import type { AssistantMessage, ToolCallContent } from "../../core/messages";
-import { AssistantMessageStream } from "../../core/stream";
+import { AssistantEventStream } from "../../core/stream";
 import type {
   DeepSeekChatCompletionChunk,
   DeepSeekFinishReason,
@@ -60,7 +60,7 @@ export async function readDeepSeekStream(
 }
 
 export function applyDeepSeekChunk(
-  stream: AssistantMessageStream,
+  stream: AssistantEventStream,
   message: AssistantMessage,
   state: DeepSeekStreamState,
   chunk: DeepSeekChatCompletionChunk,
@@ -94,7 +94,7 @@ export function applyDeepSeekChunk(
 }
 
 export function finishOpenContent(
-  stream: AssistantMessageStream,
+  stream: AssistantEventStream,
   message: AssistantMessage,
   state: DeepSeekStreamState,
 ): void {
@@ -131,7 +131,7 @@ export function finishOpenContent(
 }
 
 export function finishToolCalls(
-  stream: AssistantMessageStream,
+  stream: AssistantEventStream,
   message: AssistantMessage,
   state: DeepSeekStreamState,
 ): void {
@@ -189,7 +189,7 @@ function parseSseData(part: string): string | undefined {
 }
 
 function applyThinkingDelta(
-  stream: AssistantMessageStream,
+  stream: AssistantEventStream,
   message: AssistantMessage,
   state: DeepSeekStreamState,
   delta: string,
@@ -227,7 +227,7 @@ function applyThinkingDelta(
 }
 
 function applyTextDelta(
-  stream: AssistantMessageStream,
+  stream: AssistantEventStream,
   message: AssistantMessage,
   state: DeepSeekStreamState,
   delta: string,
@@ -268,7 +268,7 @@ function applyTextDelta(
 }
 
 function applyToolCallDelta(
-  stream: AssistantMessageStream,
+  stream: AssistantEventStream,
   message: AssistantMessage,
   state: DeepSeekStreamState,
   delta: DeepSeekToolCallDelta,
@@ -357,7 +357,7 @@ function findOpenContentIndex(
 }
 
 function finishContentOfType(
-  stream: AssistantMessageStream,
+  stream: AssistantEventStream,
   message: AssistantMessage,
   state: DeepSeekStreamState,
   type: "thinking" | "text",

@@ -5,7 +5,7 @@ import {
   type ModelConfig,
 } from "../core/model";
 import type { AssistantMessage, TextContent } from "../core/messages";
-import { AssistantMessageStream } from "../core/stream";
+import { AssistantEventStream } from "../core/stream";
 
 export type MockModelConfig = ModelConfig & {
   provider: "mock";
@@ -32,8 +32,8 @@ export class MockModel extends BaseModel {
 
   stream(
     _context: ModelContext,
-  ): AssistantMessageStream {
-    const stream = new AssistantMessageStream();
+  ): AssistantEventStream {
+    const stream = new AssistantEventStream();
 
     // Match real providers: stream() returns before events start arriving.
     queueMicrotask(() => {
