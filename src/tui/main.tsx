@@ -4,7 +4,7 @@ import TextInput from "ink-text-input";
 import type { Agent, AgentEvent } from "../agent";
 import type { AssistantMessageEvent } from "../core/events";
 import type { AssistantStopReason } from "../core/messages";
-import { createDemoAgent, DEFAULT_DEMO_PROMPT } from "../demo/agent";
+import { createKanaAgent, DEFAULT_KANA_PROMPT } from "../kana/agent";
 
 type LogLine = {
   id: number;
@@ -27,7 +27,7 @@ export function startTui(options: StartTuiOptions = {}): void {
 
   // Ctrl+C is handled by App so a running request can be aborted before the
   // TUI exits.
-  render(<App agent={createDemoAgent(apiKey)} />, {
+  render(<App agent={createKanaAgent(apiKey)} />, {
     exitOnCtrlC: false,
   });
 }
@@ -46,7 +46,7 @@ function App({ agent }: { agent: Agent }) {
     {
       id: 1,
       tone: "muted",
-      text: `Try: ${DEFAULT_DEMO_PROMPT.replace(/\n/g, " ")}`,
+      text: `Try: ${DEFAULT_KANA_PROMPT.replace(/\n/g, " ")}`,
     },
   ]);
   const nextId = useRef(2);

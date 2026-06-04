@@ -1,0 +1,34 @@
+import { Agent } from "../agent";
+import { getModel } from "../providers";
+import { createReadTool } from "../tools";
+
+export const DEFAULT_KANA_PROMPT =
+  "Read package.json and summarize the project scripts.";
+
+export function createKanaAgent(apiKey: string): Agent {
+  const model = getModel({
+    provider: "deepseek",
+    model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
+    apiKey,
+    thinking: true,
+    reasoningEffort: "high",
+    maxTokens: 1024,
+    timeoutMs: 60_000,
+    maxRetries: 1,
+  });
+
+  return new Agent({
+    model,
+    system: [
+      "You are a concise coding assistant working inside the current workspace.",
+      "Use tools when you need to inspect local files.",
+      "Do not claim to have read a file unless you used the read tool or the content was provided directly.",
+    ].join(" "),
+    tools: [
+      createReadTool({
+        root: process.cwd(),
+      }),
+    ],
+    maxTurns: 6,
+  });
+}
