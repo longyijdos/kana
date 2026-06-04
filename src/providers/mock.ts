@@ -1,17 +1,37 @@
 import type { ModelContext } from "../core/context";
-import type { ModelOptions, ModelProvider } from "../core/model";
+import {
+  BaseModel,
+  type ModelMetadata,
+  type ModelConfig,
+} from "../core/model";
 import type { AssistantMessage, TextContent } from "../core/messages";
 import { AssistantMessageStream } from "../core/stream";
-import { registerProvider } from "./registry";
 
-export type MockModelOptions = ModelOptions & {
+export type MockModelConfig = ModelConfig & {
+  provider: "mock";
   response?: string;
 };
 
-export class MockModelProvider implements ModelProvider<MockModelOptions> {
+export const MOCK_MODEL_METADATA = {
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
+  contextWindow: 128_000,
+  maxOutputTokens: 16_000,
+} as const satisfies ModelMetadata;
+
+export class MockModel extends BaseModel {
+  readonly metadata = MOCK_MODEL_METADATA;
+
+  constructor(private readonly config: MockModelConfig) {
+    super();
+  }
+
   stream(
     _context: ModelContext,
-    options: MockModelOptions = {},
   ): AssistantMessageStream {
     const stream = new AssistantMessageStream();
 
@@ -22,17 +42,17 @@ export class MockModelProvider implements ModelProvider<MockModelOptions> {
         content: [],
       };
 
-      if (options.signal?.aborted) {
+      if (this.config.signal?.aborted) {
         stream.error({
           type: "error",
           reason: "aborted",
-          error: options.signal.reason,
+          error: this.config.signal.reason,
           snapshot: structuredClone(message),
         });
         return;
       }
 
-      const response = options.response ?? "Hello from mock.";
+      const response = this.config.response ?? "Hello from mock.";
       const contentIndex = 0;
 
       stream.push({
@@ -82,7 +102,3 @@ export class MockModelProvider implements ModelProvider<MockModelOptions> {
     return stream;
   }
 }
-
-export const mockProvider = new MockModelProvider();
-
-registerProvider("mock", mockProvider);

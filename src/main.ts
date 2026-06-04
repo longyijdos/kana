@@ -1,7 +1,5 @@
 import type { ModelContext } from "./core/context";
-import { stream } from "./core/model";
-import { getProvider } from "./providers/index";
-import type { DeepSeekModelOptions } from "./providers/deepseek";
+import { getModel } from "./providers/index";
 
 // Manual smoke-test CLI for checking provider streaming end to end.
 const prompt = Bun.argv.slice(2).join(" ") || "用一句话介绍你自己。";
@@ -23,18 +21,19 @@ const context: ModelContext = {
   ],
 };
 
-const provider = getProvider<DeepSeekModelOptions>("deepseek");
+const model = getModel({
+  provider: "deepseek",
+  model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
+  apiKey,
+  thinking: true,
+  reasoningEffort: "high",
+  maxTokens: 512,
+  timeoutMs: 60_000,
+  maxRetries: 1,
+});
 
 try {
-  const events = stream(provider, context, {
-    apiKey,
-    model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
-    thinking: true,
-    reasoningEffort: "high",
-    maxTokens: 128,
-    timeoutMs: 60_000,
-    maxRetries: 1,
-  });
+  const events = model.stream(context);
 
   console.log(`Prompt: ${prompt}`);
 
@@ -56,7 +55,7 @@ try {
         process.stdout.write(event.delta);
         break;
       case "text_end":
-        process.stdout.write("\n[\/answer]\n");
+        process.stdout.write("\n[/answer]\n");
         break;
       case "toolcall_start":
         process.stdout.write(`\n[toolcall:${event.contentIndex}]\n`);
