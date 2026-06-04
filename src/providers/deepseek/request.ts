@@ -42,7 +42,8 @@ export function buildDeepSeekRequest(
     };
   }
 
-  if (config.reasoningEffort !== undefined) {
+  // DeepSeek rejects reasoning_effort when thinking is explicitly disabled.
+  if (config.reasoningEffort !== undefined && config.thinking !== false) {
     request.reasoning_effort = config.reasoningEffort;
   }
 
