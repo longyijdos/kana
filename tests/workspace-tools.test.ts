@@ -9,6 +9,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
+import { createBashTool } from "../src/tools/bash";
 import { createEditTool } from "../src/tools/edit";
 import { createReadTool } from "../src/tools/read";
 import { createWriteTool } from "../src/tools/write";
@@ -318,6 +319,126 @@ describe("workspace tools", () => {
         createToolContext(),
       ),
     ).rejects.toThrow("Path is outside the workspace");
+  });
+
+  test("bash runs an allowlisted command inside the workspace", async () => {
+    const root = await createTempRoot();
+    await writeFile(path.join(root, "notes.txt"), "hello\n");
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "cat notes.txt",
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      command: "cat notes.txt",
+      cwd: ".",
+      exitCode: 0,
+      stdout: "hello\n",
+      stderr: "",
+      timedOut: false,
+    });
+    expect(result.isError).toBe(false);
+  });
+
+  test("bash runs from a workspace subdirectory", async () => {
+    const root = await createTempRoot();
+    await mkdir(path.join(root, "src"), { recursive: true });
+    await writeFile(path.join(root, "src", "notes.txt"), "hello\n");
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "cat notes.txt",
+        cwd: "src",
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      cwd: "src",
+      stdout: "hello\n",
+    });
+  });
+
+  test("bash rejects shell control operators", async () => {
+    const root = await createTempRoot();
+    const bash = createBashTool({ root });
+
+    await expect(
+      bash.execute(
+        {
+          command: "cat notes.txt; rm notes.txt",
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Shell control operators are not allowed");
+  });
+
+  test("bash rejects non-allowlisted commands", async () => {
+    const root = await createTempRoot();
+    const bash = createBashTool({ root });
+
+    await expect(
+      bash.execute(
+        {
+          command: "rm notes.txt",
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Command is not allowlisted: rm");
+  });
+
+  test("bash rejects unsafe git subcommands", async () => {
+    const root = await createTempRoot();
+    const bash = createBashTool({ root });
+
+    await expect(
+      bash.execute(
+        {
+          command: "git reset --hard",
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Command is not allowlisted: git reset");
+  });
+
+  test("bash rejects cwd outside the workspace", async () => {
+    const root = await createTempRoot();
+    const outside = await createTempRoot();
+    const bash = createBashTool({ root });
+
+    await expect(
+      bash.execute(
+        {
+          command: "pwd",
+          cwd: outside,
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Working directory is outside the workspace");
+  });
+
+  test("bash reports timeouts", async () => {
+    const root = await createTempRoot();
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "find .",
+        timeoutMs: 1,
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: null,
+      timedOut: true,
+    });
+    expect(result.isError).toBe(true);
   });
 });
 

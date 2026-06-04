@@ -1,6 +1,11 @@
 import { Agent } from "../agent";
 import { getModel } from "../providers";
-import { createEditTool, createReadTool, createWriteTool } from "../tools";
+import {
+  createBashTool,
+  createEditTool,
+  createReadTool,
+  createWriteTool,
+} from "../tools";
 
 export const DEFAULT_KANA_PROMPT =
   "Read package.json and summarize the project scripts.";
@@ -24,6 +29,7 @@ export function createKanaAgent(apiKey: string): Agent {
       "Use tools when you need to inspect local files.",
       "Use write only to create new files; it fails when the path already exists.",
       "Use edit to modify existing files by exact text replacement.",
+      "Use bash only for allowlisted, non-destructive commands and project checks.",
       "Do not claim to have read a file unless you used the read tool or the content was provided directly.",
     ].join(" "),
     tools: [
@@ -34,6 +40,9 @@ export function createKanaAgent(apiKey: string): Agent {
         root: process.cwd(),
       }),
       createEditTool({
+        root: process.cwd(),
+      }),
+      createBashTool({
         root: process.cwd(),
       }),
     ],

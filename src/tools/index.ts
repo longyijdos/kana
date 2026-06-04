@@ -5,6 +5,12 @@ export {
   type ReadToolResult,
 } from "./read";
 export {
+  createBashTool,
+  bashParameters,
+  type BashToolOptions,
+  type BashToolResult,
+} from "./bash";
+export {
   createEditTool,
   editParameters,
   type EditToolOptions,
