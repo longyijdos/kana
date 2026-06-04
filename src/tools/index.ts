@@ -4,6 +4,12 @@ export {
   type ReadToolOptions,
   type ReadToolResult,
 } from "./read";
+export {
+  createWriteTool,
+  writeParameters,
+  type WriteToolOptions,
+  type WriteToolResult,
+} from "./write";
 export type {
   Tool,
   ToolContext,

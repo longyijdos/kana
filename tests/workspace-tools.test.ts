@@ -1,8 +1,16 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 import { createReadTool } from "../src/tools/read";
+import { createWriteTool } from "../src/tools/write";
 import type { ToolResult } from "../src/tools/tool";
 
 const tempRoots: string[] = [];
@@ -95,6 +103,96 @@ describe("workspace tools", () => {
       read.execute(
         {
           path: "secret-link.txt",
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Path is outside the workspace");
+  });
+
+  test("write creates a new workspace file", async () => {
+    const root = await createTempRoot();
+    const write = createWriteTool({ root });
+    const result = await write.execute(
+      {
+        path: "notes.txt",
+        content: "hello\n",
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toEqual({
+      path: "notes.txt",
+      bytesWritten: 6,
+    });
+    expect(result.content).toContain("wrote: notes.txt");
+    expect(await readFile(path.join(root, "notes.txt"), "utf8")).toBe("hello\n");
+  });
+
+  test("write creates missing parent directories", async () => {
+    const root = await createTempRoot();
+    const write = createWriteTool({ root });
+    const result = await write.execute(
+      {
+        path: "src/generated/file.ts",
+        content: "export const value = 1;\n",
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      path: path.join("src", "generated", "file.ts"),
+    });
+    expect(await readFile(path.join(root, "src", "generated", "file.ts"), "utf8"))
+      .toBe("export const value = 1;\n");
+  });
+
+  test("write rejects existing paths", async () => {
+    const root = await createTempRoot();
+    await writeFile(path.join(root, "notes.txt"), "existing");
+    const write = createWriteTool({ root });
+
+    await expect(
+      write.execute(
+        {
+          path: "notes.txt",
+          content: "new",
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Path already exists");
+
+    expect(await readFile(path.join(root, "notes.txt"), "utf8")).toBe("existing");
+  });
+
+  test("write rejects paths outside the workspace", async () => {
+    const root = await createTempRoot();
+    const outside = await createTempRoot();
+    const write = createWriteTool({ root });
+
+    await expect(
+      write.execute(
+        {
+          path: path.join(outside, "created.txt"),
+          content: "secret",
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Path is outside the workspace");
+  });
+
+  test("write rejects paths under symlinked directories outside the workspace", async () => {
+    const root = await createTempRoot();
+    const outside = await createTempRoot();
+    await symlink(outside, path.join(root, "outside-link"));
+    const write = createWriteTool({ root });
+
+    await expect(
+      write.execute(
+        {
+          path: path.join("outside-link", "created.txt"),
+          content: "secret",
         },
         createToolContext(),
       ),
