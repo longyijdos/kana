@@ -39,7 +39,7 @@ export function StatusLine({
       <Text color="green">{cwd}</Text>
       <Text color="gray">{SEPARATOR}</Text>
       <Text color={isRunning ? "yellow" : "white"}>
-        {isRunning ? "Ctrl+C abort" : "Ctrl+C exit"}
+        {isRunning ? "Esc abort" : "Ctrl+C exit"}
       </Text>
     </Box>
   );

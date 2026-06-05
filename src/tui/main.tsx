@@ -3,8 +3,8 @@ import { Box, render, useApp, useInput } from "ink";
 import type { Agent } from "../agent";
 import { createKanaAgent } from "../kana/agent";
 import { handleAgentEvent } from "./event-handlers";
-import { PromptInput } from "./prompt-input";
-import { StatusLine } from "./status-line";
+import { PromptArea } from "./prompt/area";
+import type { PromptSubmit } from "./prompt/commands";
 import { appendLine, Transcript } from "./transcript";
 import type { LogLine, RunStatus } from "./types";
 
@@ -21,11 +21,7 @@ export function startTui(options: StartTuiOptions = {}): void {
     );
   }
 
-  // Ctrl+C is handled by App so a running request can be aborted before the
-  // TUI exits.
-  render(<App agent={createKanaAgent(apiKey)} />, {
-    exitOnCtrlC: false,
-  });
+  render(<App agent={createKanaAgent(apiKey)} />);
 }
 
 function App({ agent }: { agent: Agent }) {
@@ -51,24 +47,38 @@ function App({ agent }: { agent: Agent }) {
   const nextId = useRef(2);
 
   useInput((input, key) => {
-    if (!(key.ctrl && input === "c")) {
+    if (!key.escape || !isRunning) {
       return;
     }
 
-    if (isRunning) {
-      agent.abort();
-      setStatus((current) => ({
-        ...current,
-        phase: "aborted",
-        activeTool: undefined,
-      }));
-      return;
-    }
-
-    exit();
+    agent.abort();
+    setStatus((current) => ({
+      ...current,
+      phase: "aborted",
+      activeTool: undefined,
+    }));
   });
 
-  async function handleSubmit(value: string): Promise<void> {
+  function handlePromptSubmit(submit: PromptSubmit): void {
+    switch (submit.type) {
+      case "message":
+        void handleMessageSubmit(submit.content);
+        break;
+      case "command":
+        handleCommandSubmit(submit);
+        break;
+    }
+  }
+
+  function handleCommandSubmit(submit: Extract<PromptSubmit, { type: "command" }>): void {
+    switch (submit.name) {
+      case "quit":
+        exit();
+        break;
+    }
+  }
+
+  async function handleMessageSubmit(value: string): Promise<void> {
     const prompt = value.trim();
 
     if (!prompt || isRunning) {
@@ -112,19 +122,13 @@ function App({ agent }: { agent: Agent }) {
     <Box flexDirection="column">
       <Transcript lines={lines} />
 
-      <PromptInput
+      <PromptArea
         value={input}
-        isRunning={isRunning}
-        onChange={setInput}
-        onSubmit={(value) => {
-          void handleSubmit(value);
-        }}
-      />
-
-      <StatusLine
         status={status}
         model={process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro"}
         isRunning={isRunning}
+        onChange={setInput}
+        onSubmit={handlePromptSubmit}
       />
     </Box>
   );

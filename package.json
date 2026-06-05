@@ -15,7 +15,6 @@
     "@sinclair/typebox": "^0.34.49",
     "commander": "^15.0.0",
     "ink": "^7.0.5",
-    "ink-text-input": "^6.0.0",
     "react": "^19.2.7",
     "react-devtools-core": "^7.0.1",
     "string-width": "^8.2.1"
