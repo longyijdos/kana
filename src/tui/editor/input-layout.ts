@@ -1,4 +1,5 @@
-import stringWidth from "string-width";
+import { firstGrapheme } from "./state";
+import { visibleWidth } from "../render/width";
 
 export type InputLayoutLine = {
   text: string;
@@ -56,17 +57,16 @@ export function createInputLayout({
   const visibleLines = wrappedLines
     .slice(startLine, startLine + layoutMaxLines)
     .map(({ glyphs, ...line }) => line);
-  const cursor = {
-    line: cursorLine - startLine,
-    column: Math.min(
-      cursorColumn(wrappedLines[cursorLine] ?? wrappedLines[0], cursorOffset),
-      layoutColumns,
-    ),
-  };
 
   return {
     lines: visibleLines.length > 0 ? visibleLines : [createLine(0)],
-    cursor,
+    cursor: {
+      line: cursorLine - startLine,
+      column: Math.min(
+        cursorColumn(wrappedLines[cursorLine] ?? wrappedLines[0], cursorOffset),
+        layoutColumns,
+      ),
+    },
     isTruncatedStart: startLine > 0,
   };
 }
@@ -146,56 +146,19 @@ function cursorColumn(line: WrappedLine | undefined, cursorOffset: number): numb
 }
 
 function graphemeGlyphs(value: string): Glyph[] {
-  return graphemeSegments(value).map((segment) => ({
-    text: segment.segment,
-    startOffset: segment.index,
-    endOffset: segment.index + segment.segment.length,
-    width: stringWidth(segment.segment),
-  }));
-}
+  const glyphs: Glyph[] = [];
+  let offset = 0;
 
-function graphemeSegments(value: string): Array<{ segment: string; index: number }> {
-  const segmenter = getSegmenter();
-
-  if (segmenter) {
-    return Array.from(segmenter.segment(value), (segment) => ({
-      segment: segment.segment,
-      index: segment.index,
-    }));
+  while (offset < value.length) {
+    const text = firstGrapheme(value.slice(offset)) ?? value[offset] ?? "";
+    glyphs.push({
+      text,
+      startOffset: offset,
+      endOffset: offset + text.length,
+      width: visibleWidth(text),
+    });
+    offset += text.length;
   }
 
-  let index = 0;
-
-  return Array.from(value, (segment) => {
-    const current = {
-      segment,
-      index,
-    };
-    index += segment.length;
-
-    return current;
-  });
-}
-
-function getSegmenter():
-  | {
-      segment(value: string): Iterable<{ segment: string; index: number }>;
-    }
-  | undefined {
-  const Segmenter = (
-    Intl as typeof Intl & {
-      Segmenter?: new (
-        locale: string,
-        options: { granularity: "grapheme" },
-      ) => {
-        segment(value: string): Iterable<{ segment: string; index: number }>;
-      };
-    }
-  ).Segmenter;
-
-  return Segmenter
-    ? new Segmenter("en", {
-        granularity: "grapheme",
-      })
-    : undefined;
+  return glyphs;
 }

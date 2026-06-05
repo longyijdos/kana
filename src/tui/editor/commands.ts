@@ -1,4 +1,4 @@
-export type PromptCommandName = "quit";
+export type PromptCommandName = "quit" | "clear";
 
 export type PromptCommand = {
   name: PromptCommandName;
@@ -28,6 +28,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
     name: "quit",
     description: "Exit Kana.",
   },
+  {
+    name: "clear",
+    description: "Clear the transcript.",
+  },
 ];
 
 export function getCommandState(value: string): CommandState {
@@ -40,9 +44,8 @@ export function getCommandState(value: string): CommandState {
     };
   }
 
-  const body = value.slice(1);
   const commandTokenEnd = findCommandTokenEnd(value);
-  const query = body.trimStart().split(/\s+/, 1)[0] ?? "";
+  const query = value.slice(1, commandTokenEnd);
 
   return {
     isCommandMode: true,
@@ -58,17 +61,6 @@ export function completeCommand(command: PromptCommand): string {
   return `/${command.name} `;
 }
 
-export function getCommandSpan(value: string): { start: number; end: number } | undefined {
-  if (!value.startsWith("/")) {
-    return undefined;
-  }
-
-  return {
-    start: 0,
-    end: findCommandTokenEnd(value),
-  };
-}
-
 export function createCommandSubmit(
   value: string,
   selectedCommand: PromptCommand | undefined,
@@ -82,9 +74,9 @@ export function createCommandSubmit(
     };
   }
 
-  const rawName = state.query;
-  const exactCommand = PROMPT_COMMANDS.find((command) => command.name === rawName);
-  const command = exactCommand ?? selectedCommand;
+  const command =
+    PROMPT_COMMANDS.find((candidate) => candidate.name === state.query) ??
+    selectedCommand;
 
   if (!command) {
     return undefined;
@@ -105,7 +97,7 @@ export function createCommandSubmit(
 }
 
 function findCommandTokenEnd(value: string): number {
-  const match = /^\S+/.exec(value);
+  const match = /^\/\S*/.exec(value);
 
   return match ? match[0].length : value.length;
 }

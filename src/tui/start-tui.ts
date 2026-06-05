@@ -1,7 +1,6 @@
-import React from "react";
-import { render } from "ink";
 import { createKanaAgent } from "../kana/agent";
-import { App } from "./app";
+import { KanaTuiApp } from "./app/app";
+import { ProcessTerminal } from "./runtime/terminal";
 
 export type StartTuiOptions = {
   apiKey?: string;
@@ -16,7 +15,8 @@ export function startTui(options: StartTuiOptions = {}): void {
     );
   }
 
-  render(<App agent={createKanaAgent(apiKey)} />, {
-    alternateScreen: true,
-  });
+  const model = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+  const app = new KanaTuiApp(createKanaAgent(apiKey), new ProcessTerminal(), model);
+
+  app.start();
 }

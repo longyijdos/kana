@@ -4,13 +4,13 @@ import {
   createCommandSubmit,
   getCommandState,
   PROMPT_COMMANDS,
-} from "../src/tui/prompt/commands";
-import { createInputLayout } from "../src/tui/prompt/input-layout";
-import { applyPromptEditorAction } from "../src/tui/prompt/use-prompt-editor";
+} from "../src/tui/editor/commands";
+import { createInputLayout } from "../src/tui/editor/input-layout";
+import { applyEditorAction } from "../src/tui/editor/state";
 
 describe("prompt editor", () => {
   test("inserts text at the cursor", () => {
-    const moved = applyPromptEditorAction(
+    const moved = applyEditorAction(
       {
         value: "helo",
         cursorOffset: 4,
@@ -21,7 +21,7 @@ describe("prompt editor", () => {
     );
 
     expect(
-      applyPromptEditorAction(moved, {
+      applyEditorAction(moved, {
         type: "insert",
         text: "l",
       }),
@@ -33,7 +33,7 @@ describe("prompt editor", () => {
 
   test("moves over grapheme clusters", () => {
     const value = "a👨‍👩‍👧‍👦b";
-    const moved = applyPromptEditorAction(
+    const moved = applyEditorAction(
       {
         value,
         cursorOffset: value.length,
@@ -46,7 +46,7 @@ describe("prompt editor", () => {
     expect(moved.cursorOffset).toBe(value.length - 1);
 
     expect(
-      applyPromptEditorAction(moved, {
+      applyEditorAction(moved, {
         type: "moveLeft",
       }).cursorOffset,
     ).toBe(1);
@@ -56,7 +56,7 @@ describe("prompt editor", () => {
     const value = "a👨‍👩‍👧‍👦b";
 
     expect(
-      applyPromptEditorAction(
+      applyEditorAction(
         {
           value,
           cursorOffset: value.length - 1,
@@ -182,6 +182,9 @@ describe("prompt commands", () => {
       suggestions: [
         {
           name: "quit",
+        },
+        {
+          name: "clear",
         },
       ],
     });
