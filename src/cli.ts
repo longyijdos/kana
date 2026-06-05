@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { startTui } from "./tui/main";
+import { startTui } from "./tui";
 
 export function createCli(): Command {
   const program = new Command();

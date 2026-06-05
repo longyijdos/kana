@@ -1,30 +1,13 @@
 import React, { useRef, useState } from "react";
-import { Box, render, useApp, useInput } from "ink";
+import { Box, useApp, useInput } from "ink";
 import type { Agent } from "../agent";
-import { createKanaAgent } from "../kana/agent";
-import { handleAgentEvent } from "./event-handlers";
-import { PromptArea } from "./prompt/area";
+import { runAgentPrompt } from "./agent-runner";
+import { PromptArea } from "./prompt/prompt-area";
 import type { PromptSubmit } from "./prompt/commands";
-import { appendLine, Transcript } from "./transcript";
+import { TranscriptView } from "./transcript/transcript-view";
 import type { LogLine, RunStatus } from "./types";
 
-export type StartTuiOptions = {
-  apiKey?: string;
-};
-
-export function startTui(options: StartTuiOptions = {}): void {
-  const apiKey = options.apiKey ?? process.env.DEEPSEEK_API_KEY;
-
-  if (!apiKey) {
-    throw new Error(
-      "Missing DEEPSEEK_API_KEY. Run with: DEEPSEEK_API_KEY=... ./kana",
-    );
-  }
-
-  render(<App agent={createKanaAgent(apiKey)} />);
-}
-
-function App({ agent }: { agent: Agent }) {
+export function App({ agent }: { agent: Agent }) {
   const { exit } = useApp();
   const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
@@ -91,28 +74,15 @@ function App({ agent }: { agent: Agent }) {
       phase: "starting",
       maxTurns: agent.state.maxTurns,
     });
-    appendLine(nextId, setLines, "user", `> ${prompt}`);
 
     try {
-      const stream = agent.stream(prompt);
-
-      for await (const event of stream) {
-        handleAgentEvent(event, nextId, setLines, setStatus);
-      }
-
-      await stream.result();
-    } catch (error) {
-      setStatus((current) => ({
-        ...current,
-        phase: "error",
-        activeTool: undefined,
-      }));
-      appendLine(
+      await runAgentPrompt({
+        agent,
+        prompt,
         nextId,
         setLines,
-        "error",
-        error instanceof Error ? error.message : String(error),
-      );
+        setStatus,
+      });
     } finally {
       setIsRunning(false);
     }
@@ -120,7 +90,7 @@ function App({ agent }: { agent: Agent }) {
 
   return (
     <Box flexDirection="column">
-      <Transcript lines={lines} />
+      <TranscriptView lines={lines} />
 
       <PromptArea
         value={input}

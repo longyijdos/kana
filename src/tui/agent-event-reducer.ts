@@ -2,7 +2,7 @@ import React from "react";
 import type { AgentEvent } from "../agent";
 import type { AssistantMessageEvent } from "../core/events";
 import type { AssistantStopReason } from "../core/messages";
-import { appendLine, appendToLastLine } from "./transcript";
+import { appendLine, appendToLastLine } from "./transcript/transcript-state";
 import type { LogLine, RunStatus } from "./types";
 
 export function handleAgentEvent(

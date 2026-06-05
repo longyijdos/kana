@@ -1,8 +1,8 @@
 import React from "react";
 import type { RunStatus } from "../types";
-import { StatusLine } from "../status-line";
+import { StatusLine } from "../status/status-line";
 import { CommandPalette } from "./command-palette";
-import { PromptInput } from "./input";
+import { PromptInput } from "./prompt-input";
 import type { PromptSubmit } from "./commands";
 import { usePromptEditor } from "./use-prompt-editor";
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { RunStatus } from "./types";
+import type { RunStatus } from "../types";
 
 const SEPARATOR = " · ";
 
