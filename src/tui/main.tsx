@@ -1,16 +1,12 @@
 import React, { useRef, useState } from "react";
-import { Box, render, Text, useApp, useInput } from "ink";
-import TextInput from "ink-text-input";
-import type { Agent, AgentEvent } from "../agent";
-import type { AssistantMessageEvent } from "../core/events";
-import type { AssistantStopReason } from "../core/messages";
-import { createKanaAgent, DEFAULT_KANA_PROMPT } from "../kana/agent";
-
-type LogLine = {
-  id: number;
-  tone: "muted" | "user" | "assistant" | "thinking" | "tool" | "error";
-  text: string;
-};
+import { Box, render, useApp, useInput } from "ink";
+import type { Agent } from "../agent";
+import { createKanaAgent } from "../kana/agent";
+import { handleAgentEvent } from "./event-handlers";
+import { PromptInput } from "./prompt-input";
+import { StatusLine } from "./status-line";
+import { appendLine, Transcript } from "./transcript";
+import type { LogLine, RunStatus } from "./types";
 
 export type StartTuiOptions = {
   apiKey?: string;
@@ -36,17 +32,20 @@ function App({ agent }: { agent: Agent }) {
   const { exit } = useApp();
   const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [status, setStatus] = useState("Idle");
+  const [status, setStatus] = useState<RunStatus>({
+    phase: "idle",
+    maxTurns: agent.state.maxTurns,
+  });
   const [lines, setLines] = useState<LogLine[]>([
     {
       id: 0,
       tone: "muted",
-      text: "Kana TUI. Type a prompt and press Enter. Ctrl+C exits, or aborts a running request.",
+      text: "Kana TUI. Type a prompt and press Enter.",
     },
     {
       id: 1,
       tone: "muted",
-      text: `Try: ${DEFAULT_KANA_PROMPT.replace(/\n/g, " ")}`,
+      text: "Try: Read package.json and summarize the project scripts.",
     },
   ]);
   const nextId = useRef(2);
@@ -58,7 +57,11 @@ function App({ agent }: { agent: Agent }) {
 
     if (isRunning) {
       agent.abort();
-      appendLine(nextId, setLines, "muted", "Abort requested.");
+      setStatus((current) => ({
+        ...current,
+        phase: "aborted",
+        activeTool: undefined,
+      }));
       return;
     }
 
@@ -74,7 +77,10 @@ function App({ agent }: { agent: Agent }) {
 
     setInput("");
     setIsRunning(true);
-    setStatus("Running");
+    setStatus({
+      phase: "starting",
+      maxTurns: agent.state.maxTurns,
+    });
     appendLine(nextId, setLines, "user", `> ${prompt}`);
 
     try {
@@ -86,7 +92,11 @@ function App({ agent }: { agent: Agent }) {
 
       await stream.result();
     } catch (error) {
-      setStatus("Error");
+      setStatus((current) => ({
+        ...current,
+        phase: "error",
+        activeTool: undefined,
+      }));
       appendLine(
         nextId,
         setLines,
@@ -100,236 +110,22 @@ function App({ agent }: { agent: Agent }) {
 
   return (
     <Box flexDirection="column">
-      <Box marginBottom={1}>
-        <Text bold>Kana</Text>
-        <Text color="gray">  {status}</Text>
-      </Box>
+      <Transcript lines={lines} />
 
-      <Box flexDirection="column" marginBottom={1}>
-        {lines.slice(-30).map((line) => (
-          <Text key={line.id} color={colorForTone(line.tone)}>
-            {line.text}
-          </Text>
-        ))}
-      </Box>
+      <PromptInput
+        value={input}
+        isRunning={isRunning}
+        onChange={setInput}
+        onSubmit={(value) => {
+          void handleSubmit(value);
+        }}
+      />
 
-      <Box>
-        <Text color={isRunning ? "gray" : "green"}>
-          {isRunning ? "running" : "prompt"}{" "}
-        </Text>
-        <TextInput
-          value={input}
-          onChange={setInput}
-          onSubmit={(value) => {
-            void handleSubmit(value);
-          }}
-          placeholder="Ask the agent..."
-        />
-      </Box>
+      <StatusLine
+        status={status}
+        model={process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro"}
+        isRunning={isRunning}
+      />
     </Box>
   );
-}
-
-function handleAgentEvent(
-  event: AgentEvent,
-  nextId: React.MutableRefObject<number>,
-  setLines: React.Dispatch<React.SetStateAction<LogLine[]>>,
-  setStatus: React.Dispatch<React.SetStateAction<string>>,
-): void {
-  switch (event.type) {
-    case "agent_start":
-      setStatus("Agent started");
-      break;
-    case "agent_end":
-      setStatus(statusForStopReason(lastAssistantStopReason(event.messages)));
-      break;
-    case "turn_start":
-      appendLine(nextId, setLines, "muted", `turn ${event.turn} started`);
-      break;
-    case "turn_end":
-      appendLine(
-        nextId,
-        setLines,
-        "muted",
-        `turn ${event.turn} ended, tool results: ${event.toolResults.length}`,
-      );
-      break;
-    case "message_start":
-      appendLine(nextId, setLines, "assistant", "assistant:");
-      break;
-    case "message_update":
-      handleAssistantEvent(event.assistantMessageEvent, nextId, setLines);
-      break;
-    case "message_end":
-      setStatus(statusForStopReason(event.message.stopReason));
-      appendLine(
-        nextId,
-        setLines,
-        toneForStopReason(event.message.stopReason),
-        `assistant message ended: ${event.message.stopReason ?? "unknown"}`,
-      );
-      break;
-    case "tool_execution_start":
-      appendLine(
-        nextId,
-        setLines,
-        "tool",
-        `tool start ${event.toolName} ${JSON.stringify(event.args)}`,
-      );
-      break;
-    case "tool_execution_update":
-      appendLine(
-        nextId,
-        setLines,
-        "tool",
-        `tool update ${event.toolName} ${JSON.stringify(event.partialResult)}`,
-      );
-      break;
-    case "tool_execution_end":
-      appendLine(
-        nextId,
-        setLines,
-        event.isError ? "error" : "tool",
-        `tool end ${event.toolName} error=${event.isError} ${JSON.stringify(event.result)}`,
-      );
-      break;
-  }
-}
-
-function lastAssistantStopReason(
-  messages: Extract<AgentEvent, { type: "agent_end" }>["messages"],
-): AssistantStopReason | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-
-    if (message?.role === "assistant") {
-      return message.stopReason;
-    }
-  }
-
-  return undefined;
-}
-
-function statusForStopReason(reason: AssistantStopReason | undefined): string {
-  switch (reason) {
-    case "stop":
-      return "Done";
-    case "toolUse":
-      return "Tool requested";
-    case "length":
-      return "Length limit";
-    case "aborted":
-      return "Aborted";
-    case "error":
-      return "Error";
-    case undefined:
-      return "Unknown stop";
-  }
-}
-
-function toneForStopReason(
-  reason: AssistantStopReason | undefined,
-): LogLine["tone"] {
-  switch (reason) {
-    case "aborted":
-    case "error":
-      return "error";
-    case "toolUse":
-      return "tool";
-    case "stop":
-    case "length":
-    case undefined:
-      return "muted";
-  }
-}
-
-function handleAssistantEvent(
-  event: AssistantMessageEvent,
-  nextId: React.MutableRefObject<number>,
-  setLines: React.Dispatch<React.SetStateAction<LogLine[]>>,
-): void {
-  switch (event.type) {
-    case "thinking_start":
-      appendLine(nextId, setLines, "thinking", "thinking: ");
-      break;
-    case "thinking_delta":
-      appendToLastLine(setLines, "thinking", event.delta);
-      break;
-    case "text_start":
-      appendLine(nextId, setLines, "assistant", "answer: ");
-      break;
-    case "text_delta":
-      appendToLastLine(setLines, "assistant", event.delta);
-      break;
-    case "toolcall_start":
-      appendLine(nextId, setLines, "tool", `tool call ${event.contentIndex}: `);
-      break;
-    case "toolcall_delta":
-      appendToLastLine(setLines, "tool", event.delta);
-      break;
-    case "toolcall_end":
-      appendLine(nextId, setLines, "tool", `tool call ended: ${event.toolCall.name}`);
-      break;
-    case "thinking_end":
-    case "text_end":
-    case "start":
-    case "done":
-    case "error":
-      break;
-  }
-}
-
-function appendLine(
-  nextId: React.MutableRefObject<number>,
-  setLines: React.Dispatch<React.SetStateAction<LogLine[]>>,
-  tone: LogLine["tone"],
-  text: string,
-): void {
-  setLines((current) => [
-    ...current,
-    {
-      id: nextId.current++,
-      tone,
-      text,
-    },
-  ]);
-}
-
-function appendToLastLine(
-  setLines: React.Dispatch<React.SetStateAction<LogLine[]>>,
-  tone: LogLine["tone"],
-  delta: string,
-): void {
-  setLines((current) => {
-    const last = current.at(-1);
-
-    if (!last || last.tone !== tone) {
-      return current;
-    }
-
-    return [
-      ...current.slice(0, -1),
-      {
-        ...last,
-        text: last.text + delta,
-      },
-    ];
-  });
-}
-
-function colorForTone(tone: LogLine["tone"]) {
-  switch (tone) {
-    case "user":
-      return "cyan";
-    case "assistant":
-      return "green";
-    case "thinking":
-      return "gray";
-    case "tool":
-      return "yellow";
-    case "error":
-      return "red";
-    case "muted":
-      return "gray";
-  }
 }

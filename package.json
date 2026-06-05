@@ -17,7 +17,8 @@
     "ink": "^7.0.5",
     "ink-text-input": "^6.0.0",
     "react": "^19.2.7",
-    "react-devtools-core": "^7.0.1"
+    "react-devtools-core": "^7.0.1",
+    "string-width": "^8.2.1"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",

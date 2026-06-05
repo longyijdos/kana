@@ -7,9 +7,6 @@ import {
   createWriteTool,
 } from "../tools";
 
-export const DEFAULT_KANA_PROMPT =
-  "Read package.json and summarize the project scripts.";
-
 export function createKanaAgent(apiKey: string): Agent {
   const model = getModel({
     provider: "deepseek",
