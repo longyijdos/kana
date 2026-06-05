@@ -44,14 +44,12 @@ export type PromptEditorAction =
 
 export type PromptEditorConfig = {
   value: string;
-  isActive: boolean;
   onChange(value: string): void;
   onSubmit(submit: PromptSubmit): void;
 };
 
 export function usePromptEditor({
   value,
-  isActive,
   onChange,
   onSubmit,
 }: PromptEditorConfig): PromptEditorState {
@@ -74,104 +72,99 @@ export function usePromptEditor({
     );
   }, [commandState.suggestions.length]);
 
-  useInput(
-    (input, key) => {
-      if (key.ctrl || key.meta) {
-        return;
+  useInput((input, key) => {
+    if (key.ctrl || key.meta) {
+      return;
+    }
+
+    if (key.return) {
+      const submit = createCommandSubmit(value, selectedCommand);
+
+      if (submit) {
+        onSubmit(submit);
       }
 
-      if (key.return) {
-        const submit = createCommandSubmit(value, selectedCommand);
+      return;
+    }
 
-        if (submit) {
-          onSubmit(submit);
-        }
-
-        return;
-      }
-
-      if (key.leftArrow) {
-        applyAction({
-          type: "moveLeft",
-        });
-        return;
-      }
-
-      if (key.rightArrow) {
-        applyAction({
-          type: "moveRight",
-        });
-        return;
-      }
-
-      if (key.home) {
-        applyAction({
-          type: "moveStart",
-        });
-        return;
-      }
-
-      if (key.end) {
-        applyAction({
-          type: "moveEnd",
-        });
-        return;
-      }
-
-      if (key.backspace) {
-        applyAction({
-          type: "deleteBefore",
-        });
-        return;
-      }
-
-      if (key.delete) {
-        applyAction({
-          type: "deleteAfter",
-        });
-        return;
-      }
-
-      if (key.upArrow || key.downArrow) {
-        if (commandState.isCommandMode && commandState.suggestions.length > 0) {
-          setSelectedCommandIndex((current) =>
-            key.upArrow
-              ? wrapIndex(current - 1, commandState.suggestions.length)
-              : wrapIndex(current + 1, commandState.suggestions.length),
-          );
-        }
-
-        return;
-      }
-
-      if (key.tab) {
-        if (commandState.isCommandMode && selectedCommand) {
-          const completed = completeCommand(selectedCommand);
-
-          onChange(completed);
-          setCursorOffset(completed.length);
-        }
-
-        return;
-      }
-
-      if (key.pageUp || key.pageDown) {
-        return;
-      }
-
-      if (!input) {
-        return;
-      }
-
+    if (key.leftArrow) {
       applyAction({
-        type: "insert",
-        text: input,
+        type: "moveLeft",
       });
-    },
-    {
-      isActive,
-    },
-  );
+      return;
+    }
+
+    if (key.rightArrow) {
+      applyAction({
+        type: "moveRight",
+      });
+      return;
+    }
+
+    if (key.home) {
+      applyAction({
+        type: "moveStart",
+      });
+      return;
+    }
+
+    if (key.end) {
+      applyAction({
+        type: "moveEnd",
+      });
+      return;
+    }
+
+    if (key.backspace) {
+      applyAction({
+        type: "deleteBefore",
+      });
+      return;
+    }
+
+    if (key.delete) {
+      applyAction({
+        type: "deleteAfter",
+      });
+      return;
+    }
+
+    if (key.upArrow || key.downArrow) {
+      if (commandState.isCommandMode && commandState.suggestions.length > 0) {
+        setSelectedCommandIndex((current) =>
+          key.upArrow
+            ? wrapIndex(current - 1, commandState.suggestions.length)
+            : wrapIndex(current + 1, commandState.suggestions.length),
+        );
+      }
+
+      return;
+    }
+
+    if (key.tab) {
+      if (commandState.isCommandMode && selectedCommand) {
+        const completed = completeCommand(selectedCommand);
+
+        onChange(completed);
+        setCursorOffset(completed.length);
+      }
+
+      return;
+    }
+
+    if (key.pageUp || key.pageDown) {
+      return;
+    }
+
+    if (!input) {
+      return;
+    }
+
+    applyAction({
+      type: "insert",
+      text: input,
+    });
+  });
 
   return {
     value,

@@ -16,5 +16,7 @@ export function startTui(options: StartTuiOptions = {}): void {
     );
   }
 
-  render(<App agent={createKanaAgent(apiKey)} />);
+  render(<App agent={createKanaAgent(apiKey)} />, {
+    alternateScreen: true,
+  });
 }

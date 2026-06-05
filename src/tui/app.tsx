@@ -1,14 +1,15 @@
 import React, { useRef, useState } from "react";
-import { Box, useApp, useInput } from "ink";
+import { Box, useApp, useInput, useWindowSize } from "ink";
 import type { Agent } from "../agent";
 import { runAgentPrompt } from "./agent-runner";
-import { PromptArea } from "./prompt/prompt-area";
+import { PromptComposer } from "./prompt/composer";
 import type { PromptSubmit } from "./prompt/commands";
 import { TranscriptView } from "./transcript/transcript-view";
 import type { LogLine, RunStatus } from "./types";
 
 export function App({ agent }: { agent: Agent }) {
   const { exit } = useApp();
+  const { columns, rows } = useWindowSize();
   const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<RunStatus>({
@@ -89,10 +90,12 @@ export function App({ agent }: { agent: Agent }) {
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={rows} overflow="hidden" width={columns}>
       <TranscriptView lines={lines} />
 
-      <PromptArea
+      <PromptComposer
+        columns={columns}
+        rows={rows}
         value={input}
         status={status}
         model={process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro"}

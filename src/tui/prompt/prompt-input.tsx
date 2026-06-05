@@ -1,68 +1,192 @@
-import React, { useRef } from "react";
-import { Box, Text, useBoxMetrics, useCursor } from "ink";
-import stringWidth from "string-width";
-import type { DOMElement } from "ink";
+import React from "react";
+import { Box, Text } from "ink";
 import { getCommandSpan } from "./commands";
+import type { InputLayout, InputLayoutLine } from "./input-layout";
 
-const INPUT_OFFSET_X = 4;
-const INPUT_OFFSET_Y = 1;
+const PROMPT = "> ";
+const CONTINUATION_PROMPT = "  ";
+const PLACEHOLDER = "Ask the agent...";
 
 export function PromptInput({
-  value,
+  columns,
   cursorOffset,
-  isRunning,
+  layout,
+  value,
 }: {
-  value: string;
+  columns: number;
   cursorOffset: number;
-  isRunning: boolean;
+  layout: InputLayout;
+  value: string;
 }) {
-  const inputBoxRef = useRef<DOMElement>(null);
-  const { left, top, hasMeasured } = useBoxMetrics(inputBoxRef);
-  const { setCursorPosition } = useCursor();
-  const textBeforeCursor = value.slice(0, cursorOffset);
   const commandSpan = getCommandSpan(value);
-
-  setCursorPosition(
-    hasMeasured
-      ? {
-          x: left + INPUT_OFFSET_X + stringWidth(textBeforeCursor),
-          y: top + INPUT_OFFSET_Y,
-        }
-      : undefined,
-  );
 
   return (
     <Box
-      ref={inputBoxRef}
       borderStyle="single"
       borderColor="gray"
+      flexDirection="column"
+      height={layout.lines.length + 2}
       paddingX={1}
+      width={columns}
     >
-      <Text color={isRunning ? "gray" : "yellow"}>{"> "}</Text>
-      {value ? (
-        <PromptInputText value={value} commandSpan={commandSpan} />
-      ) : (
-        <Text color="gray">Ask the agent...</Text>
-      )}
+      {layout.lines.map((line, index) => (
+        <Text key={`${line.startOffset}:${index}`} wrap="truncate-end">
+          <Text color="yellow">
+            {index === 0 ? PROMPT : CONTINUATION_PROMPT}
+          </Text>
+          {value ? (
+            <PromptInputText
+              cursorOffset={cursorOffset}
+              line={line}
+              commandSpan={commandSpan}
+            />
+          ) : index === 0 ? (
+            <PromptPlaceholder />
+          ) : null}
+        </Text>
+      ))}
     </Box>
   );
 }
 
 function PromptInputText({
-  value,
+  cursorOffset,
+  line,
   commandSpan,
 }: {
-  value: string;
+  cursorOffset: number;
+  line: InputLayoutLine;
   commandSpan: { start: number; end: number } | undefined;
 }) {
+  if (cursorOffset < line.startOffset || cursorOffset > line.endOffset) {
+    return <PromptInputRange commandSpan={commandSpan} line={line} />;
+  }
+
+  const relativeOffset = cursorOffset - line.startOffset;
+  const textAfterCursor = line.text.slice(relativeOffset);
+  const cursorText = firstGrapheme(textAfterCursor) ?? " ";
+  const cursorEndOffset =
+    cursorText === " " && textAfterCursor.length === 0
+      ? cursorOffset
+      : cursorOffset + cursorText.length;
+
+  return (
+    <Text>
+      <PromptInputRange
+        commandSpan={commandSpan}
+        line={{
+          ...line,
+          text: line.text.slice(0, relativeOffset),
+          endOffset: cursorOffset,
+        }}
+      />
+      <PromptInputRange
+        commandSpan={commandSpan}
+        inverse
+        line={{
+          text: cursorText,
+          startOffset: cursorOffset,
+          endOffset: cursorEndOffset,
+          width: 1,
+        }}
+      />
+      <PromptInputRange
+        commandSpan={commandSpan}
+        line={{
+          ...line,
+          text: line.text.slice(relativeOffset + cursorText.length),
+          startOffset: cursorEndOffset,
+        }}
+      />
+    </Text>
+  );
+}
+
+function PromptPlaceholder() {
+  return (
+    <Text>
+      <Text inverse color="gray"> </Text>
+      <Text color="gray">{PLACEHOLDER}</Text>
+    </Text>
+  );
+}
+
+function PromptInputRange({
+  commandSpan,
+  inverse = false,
+  line,
+}: {
+  commandSpan: { start: number; end: number } | undefined;
+  inverse?: boolean;
+  line: InputLayoutLine;
+}) {
+  if (!line.text) {
+    return null;
+  }
+
   if (!commandSpan) {
-    return <Text color="white">{value}</Text>;
+    return (
+      <Text color="white" inverse={inverse}>
+        {line.text}
+      </Text>
+    );
+  }
+
+  const start = Math.max(commandSpan.start, line.startOffset);
+  const end = Math.min(commandSpan.end, line.endOffset);
+
+  if (start >= end) {
+    return (
+      <Text color="white" inverse={inverse}>
+        {line.text}
+      </Text>
+    );
   }
 
   return (
     <Text>
-      <Text color="yellow">{value.slice(commandSpan.start, commandSpan.end)}</Text>
-      <Text color="white">{value.slice(commandSpan.end)}</Text>
+      <Text color="white" inverse={inverse}>
+        {line.text.slice(0, start - line.startOffset)}
+      </Text>
+      <Text color="yellow" inverse={inverse}>
+        {line.text.slice(start - line.startOffset, end - line.startOffset)}
+      </Text>
+      <Text color="white" inverse={inverse}>
+        {line.text.slice(end - line.startOffset)}
+      </Text>
     </Text>
   );
+}
+
+function firstGrapheme(value: string): string | undefined {
+  const segmenter = getSegmenter();
+
+  if (segmenter) {
+    return segmenter.segment(value)[Symbol.iterator]().next().value?.segment;
+  }
+
+  return Array.from(value)[0];
+}
+
+function getSegmenter():
+  | {
+      segment(value: string): Iterable<{ segment: string }>;
+    }
+  | undefined {
+  const Segmenter = (
+    Intl as typeof Intl & {
+      Segmenter?: new (
+        locale: string,
+        options: { granularity: "grapheme" },
+      ) => {
+        segment(value: string): Iterable<{ segment: string }>;
+      };
+    }
+  ).Segmenter;
+
+  return Segmenter
+    ? new Segmenter("en", {
+        granularity: "grapheme",
+      })
+    : undefined;
 }

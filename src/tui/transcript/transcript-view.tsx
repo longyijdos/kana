@@ -6,7 +6,14 @@ export const VISIBLE_LINE_LIMIT = 32;
 
 export function TranscriptView({ lines }: { lines: LogLine[] }) {
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box
+      flexDirection="column"
+      flexGrow={1}
+      flexShrink={1}
+      justifyContent="flex-end"
+      marginBottom={1}
+      overflowY="hidden"
+    >
       {lines.slice(-VISIBLE_LINE_LIMIT).map((line) => (
         <Text key={line.id} color={colorForTone(line.tone)}>
           {line.text}

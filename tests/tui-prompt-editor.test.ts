@@ -5,6 +5,7 @@ import {
   getCommandState,
   PROMPT_COMMANDS,
 } from "../src/tui/prompt/commands";
+import { createInputLayout } from "../src/tui/prompt/input-layout";
 import { applyPromptEditorAction } from "../src/tui/prompt/use-prompt-editor";
 
 describe("prompt editor", () => {
@@ -67,6 +68,107 @@ describe("prompt editor", () => {
     ).toEqual({
       value: "ab",
       cursorOffset: 1,
+    });
+  });
+});
+
+describe("prompt input layout", () => {
+  test("uses one line by default", () => {
+    expect(
+      createInputLayout({
+        value: "hello",
+        cursorOffset: 5,
+        columns: 10,
+        maxLines: 3,
+      }),
+    ).toMatchObject({
+      lines: [
+        {
+          text: "hello",
+        },
+      ],
+      cursor: {
+        line: 0,
+        column: 5,
+      },
+      isTruncatedStart: false,
+    });
+  });
+
+  test("wraps up to the maximum and truncates earlier lines", () => {
+    expect(
+      createInputLayout({
+        value: "abcdefghijkl",
+        cursorOffset: 12,
+        columns: 3,
+        maxLines: 3,
+      }),
+    ).toMatchObject({
+      lines: [
+        {
+          text: "def",
+        },
+        {
+          text: "ghi",
+        },
+        {
+          text: "jkl",
+        },
+      ],
+      cursor: {
+        line: 2,
+        column: 3,
+      },
+      isTruncatedStart: true,
+    });
+  });
+
+  test("keeps the cursor visible when it moves inside wrapped text", () => {
+    expect(
+      createInputLayout({
+        value: "abcdefghijkl",
+        cursorOffset: 4,
+        columns: 3,
+        maxLines: 2,
+      }),
+    ).toMatchObject({
+      lines: [
+        {
+          text: "abc",
+        },
+        {
+          text: "def",
+        },
+      ],
+      cursor: {
+        line: 1,
+        column: 1,
+      },
+      isTruncatedStart: false,
+    });
+  });
+
+  test("accounts for wide characters", () => {
+    expect(
+      createInputLayout({
+        value: "你好a",
+        cursorOffset: 3,
+        columns: 4,
+        maxLines: 3,
+      }),
+    ).toMatchObject({
+      lines: [
+        {
+          text: "你好",
+        },
+        {
+          text: "a",
+        },
+      ],
+      cursor: {
+        line: 1,
+        column: 1,
+      },
     });
   });
 });
