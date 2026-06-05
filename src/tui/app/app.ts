@@ -8,9 +8,15 @@ import {
   ToolCallBlock,
   Transcript,
 } from "../components";
-import { Container } from "../runtime/component";
+import type { Component } from "../runtime/component";
 import { Editor } from "../editor/editor";
-import { isCtrlC, isEscape } from "../runtime/keys";
+import {
+  getMouseWheelDelta,
+  isCtrlC,
+  isEscape,
+  isPageDown,
+  isPageUp,
+} from "../runtime/keys";
 import type { ProcessTerminal } from "../runtime/terminal";
 import { Tui } from "../runtime/tui";
 
@@ -25,12 +31,14 @@ type RunPhase =
   | "error"
   | "length";
 
+const MOUSE_WHEEL_LINES = 3;
+
 export class KanaTuiApp {
   private readonly tui: Tui;
-  private readonly root = new Container();
   private readonly transcript = new Transcript();
   private readonly status: StatusLine;
   private readonly editor = new Editor();
+  private readonly layout: KanaTuiLayout;
   private readonly pendingTools = new Map<string, ToolCallBlock>();
   private running = false;
   private streamingAssistant?: AssistantMessageBlock;
@@ -43,6 +51,12 @@ export class KanaTuiApp {
   ) {
     this.tui = new Tui(terminal);
     this.status = new StatusLine(model);
+    this.layout = new KanaTuiLayout(
+      terminal,
+      this.transcript,
+      this.status,
+      this.editor,
+    );
   }
 
   start(): void {
@@ -52,15 +66,15 @@ export class KanaTuiApp {
       }),
     );
     this.transcript.addChild(
-      new TextBlock("Use /clear to reset the screen or /quit to exit.", {
-        color: "gray",
-      }),
+      new TextBlock(
+        "Use PageUp/PageDown for history, /clear to reset, or /quit to exit.",
+        {
+          color: "gray",
+        },
+      ),
     );
 
-    this.root.addChild(this.transcript);
-    this.root.addChild(this.status);
-    this.root.addChild(this.editor);
-    this.tui.addChild(this.root);
+    this.tui.addChild(this.layout);
     this.tui.setFocus(this.editor);
     this.tui.addInputListener((data) => this.handleGlobalInput(data));
     this.editor.onSubmit = (submit) => {
@@ -96,6 +110,18 @@ export class KanaTuiApp {
       return { consume: true };
     }
 
+    if (isPageUp(data) || isPageDown(data)) {
+      this.scrollTranscriptPage(isPageUp(data) ? 1 : -1);
+      return { consume: true };
+    }
+
+    const wheelDelta = getMouseWheelDelta(data);
+
+    if (wheelDelta !== 0) {
+      this.scrollTranscriptLines(wheelDelta * MOUSE_WHEEL_LINES);
+      return { consume: true };
+    }
+
     return undefined;
   }
 
@@ -113,6 +139,7 @@ export class KanaTuiApp {
       case "clear":
         this.transcript.clear();
         this.editor.clear();
+        this.refreshHistoryStatus();
         this.tui.requestRender(true);
         break;
     }
@@ -127,6 +154,8 @@ export class KanaTuiApp {
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
+    this.transcript.scrollToBottom();
+    this.refreshHistoryStatus();
     this.transcript.addChild(new TextBlock(prompt, { color: "cyan", prefix: "> " }));
     this.running = true;
     this.streamingAssistant = undefined;
@@ -281,8 +310,77 @@ export class KanaTuiApp {
       turn: this.turn,
       maxTurns: this.agent.state.maxTurns,
       running: this.running,
+      historyOffset: this.transcript.getScrollOffset(),
       ...extra,
     });
+  }
+
+  private scrollTranscriptPage(direction: 1 | -1): void {
+    const width = Math.max(this.tui.terminal.columns, 1);
+    const viewportHeight = this.layout.getTranscriptHeight(width);
+
+    if (viewportHeight <= 0) {
+      return;
+    }
+
+    const pageSize = Math.max(1, viewportHeight - 1);
+
+    this.transcript.scrollBy(direction * pageSize, width, viewportHeight);
+    this.refreshHistoryStatus();
+  }
+
+  private scrollTranscriptLines(lines: number): void {
+    const width = Math.max(this.tui.terminal.columns, 1);
+    const viewportHeight = this.layout.getTranscriptHeight(width);
+
+    if (viewportHeight <= 0) {
+      return;
+    }
+
+    this.transcript.scrollBy(lines, width, viewportHeight);
+    this.refreshHistoryStatus();
+  }
+
+  private refreshHistoryStatus(): void {
+    this.status.update({
+      historyOffset: this.transcript.getScrollOffset(),
+    });
+  }
+}
+
+class KanaTuiLayout implements Component {
+  constructor(
+    private readonly terminal: ProcessTerminal,
+    private readonly transcript: Transcript,
+    private readonly status: StatusLine,
+    private readonly editor: Editor,
+  ) {}
+
+  getTranscriptHeight(width: number): number {
+    const statusHeight = this.status.render(width).length;
+    const editorHeight = this.editor.render(width).length;
+
+    return Math.max(0, this.terminal.rows - statusHeight - editorHeight);
+  }
+
+  render(width: number): string[] {
+    const initialStatusLines = this.status.render(width);
+    const editorLines = this.editor.render(width);
+    const transcriptHeight = Math.max(
+      0,
+      this.terminal.rows - initialStatusLines.length - editorLines.length,
+    );
+    const transcriptLines = this.transcript.renderViewport(width, transcriptHeight);
+
+    this.status.update({
+      historyOffset: this.transcript.getScrollOffset(),
+    });
+
+    return [
+      ...transcriptLines,
+      ...this.status.render(width),
+      ...editorLines,
+    ];
   }
 }
 

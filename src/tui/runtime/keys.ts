@@ -46,6 +46,38 @@ export function isEnd(data: string): boolean {
   return data === "\x1b[F" || data === "\x1b[4~";
 }
 
+export function isPageUp(data: string): boolean {
+  return data === "\x1b[5~";
+}
+
+export function isPageDown(data: string): boolean {
+  return data === "\x1b[6~";
+}
+
+export function getMouseWheelDelta(data: string): number {
+  const sgrMousePattern = /\x1b\[<(\d+);\d+;\d+([Mm])/g;
+  let delta = 0;
+
+  for (const match of data.matchAll(sgrMousePattern)) {
+    const button = Number(match[1]);
+    const eventType = match[2];
+
+    if (eventType !== "M" || !Number.isFinite(button) || (button & 64) === 0) {
+      continue;
+    }
+
+    const wheelButton = button & 3;
+
+    if (wheelButton === 0) {
+      delta += 1;
+    } else if (wheelButton === 1) {
+      delta -= 1;
+    }
+  }
+
+  return delta;
+}
+
 export function isPrintable(data: string): boolean {
   if (!data) {
     return false;

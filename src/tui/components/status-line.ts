@@ -7,6 +7,7 @@ export type StatusLineState = {
   turn?: number;
   maxTurns?: number;
   activeTool?: string;
+  historyOffset?: number;
   running: boolean;
 };
 
@@ -38,6 +39,9 @@ export class StatusLine implements Component {
       turn,
       this.state.activeTool
         ? color(`tool ${this.state.activeTool}`, "yellow")
+        : undefined,
+      this.state.historyOffset
+        ? color(`history ${this.state.historyOffset} lines up`, "yellow")
         : undefined,
       color(formatCwd(process.cwd()), "green"),
       dim(this.state.running ? "Esc abort" : "Ctrl+C exit"),
@@ -72,4 +76,3 @@ function formatCwd(cwd: string): string {
 
   return cwd;
 }
-

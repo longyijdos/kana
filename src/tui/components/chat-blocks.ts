@@ -101,8 +101,9 @@ export class ToolCallBlock implements Component {
 
 export class Transcript implements Component {
   readonly children: Component[] = [];
-
-  constructor(private readonly maxRenderedLines = 400) {}
+  private scrollOffset = 0;
+  private lastRenderWidth = 0;
+  private lastRenderedLineCount = 0;
 
   addChild(component: Component): void {
     this.children.push(component);
@@ -110,16 +111,92 @@ export class Transcript implements Component {
 
   clear(): void {
     this.children.length = 0;
+    this.scrollOffset = 0;
+    this.lastRenderWidth = 0;
+    this.lastRenderedLineCount = 0;
+  }
+
+  getScrollOffset(): number {
+    return this.scrollOffset;
+  }
+
+  scrollBy(lines: number, width: number, viewportHeight: number): boolean {
+    const before = this.scrollOffset;
+    const totalLines = this.renderAll(width).length;
+
+    this.scrollOffset += lines;
+    this.clampScrollOffset(totalLines, viewportHeight);
+
+    return this.scrollOffset !== before;
+  }
+
+  scrollToBottom(): boolean {
+    if (this.scrollOffset === 0) {
+      return false;
+    }
+
+    this.scrollOffset = 0;
+    return true;
   }
 
   render(width: number): string[] {
+    const lines = this.renderAll(width);
+
+    this.rememberRenderedLines(width, lines.length);
+
+    return lines;
+  }
+
+  renderViewport(width: number, viewportHeight: number): string[] {
+    const height = Math.max(0, Math.floor(viewportHeight));
+
+    if (height === 0) {
+      return [];
+    }
+
+    const lines = this.renderAll(width);
+
+    this.preserveScrolledPosition(width, lines.length);
+    this.clampScrollOffset(lines.length, height);
+    this.rememberRenderedLines(width, lines.length);
+
+    const end = Math.max(0, lines.length - this.scrollOffset);
+    const start = Math.max(0, end - height);
+
+    return lines.slice(start, end);
+  }
+
+  private renderAll(width: number): string[] {
     const lines: string[] = [];
 
     for (const child of this.children) {
       lines.push(...child.render(width));
     }
 
-    return lines.slice(-this.maxRenderedLines);
+    return lines;
+  }
+
+  private preserveScrolledPosition(width: number, totalLines: number): void {
+    if (
+      this.scrollOffset > 0 &&
+      this.lastRenderWidth === width &&
+      this.lastRenderedLineCount > 0 &&
+      totalLines > this.lastRenderedLineCount
+    ) {
+      this.scrollOffset += totalLines - this.lastRenderedLineCount;
+    }
+  }
+
+  private clampScrollOffset(totalLines: number, viewportHeight: number): void {
+    const height = Math.max(0, Math.floor(viewportHeight));
+    const maxOffset = Math.max(0, totalLines - height);
+
+    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxOffset));
+  }
+
+  private rememberRenderedLines(width: number, totalLines: number): void {
+    this.lastRenderWidth = width;
+    this.lastRenderedLineCount = totalLines;
   }
 }
 
@@ -212,4 +289,3 @@ function getNumberProperty(value: unknown, key: string): number | undefined {
 
   return typeof property === "number" ? property : undefined;
 }
-
