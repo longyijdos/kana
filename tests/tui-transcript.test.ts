@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Transcript } from "../src/tui/components";
+import { AssistantMessageBlock, Transcript } from "../src/tui/components";
 import type { Component } from "../src/tui/runtime/component";
 
 class LinesBlock implements Component {
@@ -11,6 +11,22 @@ class LinesBlock implements Component {
 }
 
 describe("tui transcript", () => {
+  test("renders assistant messages without leading blank lines", () => {
+    const block = new AssistantMessageBlock();
+
+    block.update({
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "hello",
+        },
+      ],
+    });
+
+    expect(block.render(80)[0]).toContain("hello");
+  });
+
   test("renders the latest viewport by default", () => {
     const transcript = new Transcript();
 

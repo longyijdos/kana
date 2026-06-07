@@ -15,7 +15,7 @@ export class AssistantMessageBlock implements Component {
   }
 
   render(width: number): string[] {
-    const lines: string[] = [""];
+    const lines: string[] = [];
     let renderedContent = false;
 
     for (const content of this.message.content) {
@@ -23,7 +23,6 @@ export class AssistantMessageBlock implements Component {
         lines.push(
           ...new TextBlock(content.text.trim(), {
             color: "green",
-            prefix: "assistant: ",
           }).render(width),
         );
         renderedContent = true;

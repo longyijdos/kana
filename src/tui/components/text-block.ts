@@ -26,8 +26,8 @@ export class TextBlock implements Component {
       lines.push("");
     }
 
-    for (const line of wrapPlainText(this.text, contentWidth)) {
-      const styled = style(`${prefix}${line}`, this.options);
+    for (const [index, line] of wrapPlainText(this.text, contentWidth).entries()) {
+      const styled = style(`${index === 0 ? prefix : ""}${line}`, this.options);
       lines.push(truncateToWidth(styled, width, ""));
     }
 
@@ -62,4 +62,3 @@ function style(
 
   return next;
 }
-

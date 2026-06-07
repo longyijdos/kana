@@ -396,8 +396,8 @@ class KanaTuiLayout implements Component {
 
     return [
       ...transcriptLines,
-      ...this.status.render(width),
       ...editorLines,
+      ...this.status.render(width),
     ];
   }
 }
