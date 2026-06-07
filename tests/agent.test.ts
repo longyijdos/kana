@@ -8,6 +8,8 @@ import { AssistantEventStream } from "../src/core/stream";
 
 class TextModel implements Model {
   readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "text",
     cost: {
       input: 0,
       output: 0,
@@ -81,6 +83,8 @@ class TextModel implements Model {
 
 class AbortAwareModel implements Model {
   readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "abort-aware",
     cost: {
       input: 0,
       output: 0,
@@ -211,6 +215,22 @@ describe("Agent", () => {
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
     });
+  });
+
+  test("returns state snapshots without exposing mutable message history", async () => {
+    const agent = new Agent({
+      model: new TextModel("hello"),
+    });
+
+    await agent.prompt("hi");
+
+    const state = agent.state;
+    state.messages.length = 0;
+
+    expect(agent.state.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
   });
 
   test("passes abort signal to the running model", async () => {

@@ -13,6 +13,8 @@ export type MockModelConfig = ModelConfig & {
 };
 
 export const MOCK_MODEL_METADATA = {
+  provider: "mock",
+  model: "mock",
   cost: {
     input: 0,
     output: 0,

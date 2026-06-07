@@ -15,8 +15,7 @@ export function startTui(options: StartTuiOptions = {}): void {
     );
   }
 
-  const model = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
-  const app = new KanaTuiApp(createKanaAgent(apiKey), new ProcessTerminal(), model);
+  const app = new KanaTuiApp(createKanaAgent(apiKey), new ProcessTerminal());
 
   app.start();
 }

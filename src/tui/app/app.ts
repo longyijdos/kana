@@ -1,4 +1,5 @@
 import type { Agent, AgentEvent } from "../../agent";
+import type { ModelMetadata } from "../../core/model";
 import type { AssistantMessage, ToolCallContent } from "../../core/messages";
 import {
   AssistantMessageBlock,
@@ -47,10 +48,9 @@ export class KanaTuiApp {
   constructor(
     private readonly agent: Agent,
     terminal: ProcessTerminal,
-    model: string,
   ) {
     this.tui = new Tui(terminal);
-    this.status = new StatusLine(model);
+    this.status = new StatusLine(formatModelName(agent.state.model.metadata));
     this.layout = new KanaTuiLayout(
       terminal,
       this.transcript,
@@ -360,6 +360,10 @@ export class KanaTuiApp {
       historyOffset: this.transcript.getScrollOffset(),
     });
   }
+}
+
+function formatModelName(metadata: ModelMetadata): string {
+  return `${metadata.provider}/${metadata.model}`;
 }
 
 class KanaTuiLayout implements Component {

@@ -10,6 +10,8 @@ import type { Tool } from "../src/tools/tool";
 
 class ScriptedToolModel implements Model {
   readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "scripted-tool",
     cost: {
       input: 0,
       output: 0,
@@ -56,6 +58,8 @@ class ScriptedToolModel implements Model {
 
 class AbortedModel implements Model {
   readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "aborted",
     cost: {
       input: 0,
       output: 0,

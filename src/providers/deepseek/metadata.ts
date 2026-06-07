@@ -6,6 +6,8 @@ export type DeepSeekModelMetadata = ModelMetadata;
 
 export const DEEPSEEK_MODELS = {
   "deepseek-v4-flash": {
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
     cost: {
       input: 0.14,
       output: 0.28,
@@ -16,6 +18,8 @@ export const DEEPSEEK_MODELS = {
     maxOutputTokens: 384_000,
   },
   "deepseek-v4-pro": {
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
     cost: {
       input: 0.435,
       output: 0.87,

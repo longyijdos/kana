@@ -64,7 +64,20 @@ export class Agent {
   }
 
   get state(): AgentState {
-    return this.stateData;
+    return {
+      model: this.stateData.model,
+      system: this.stateData.system,
+      maxTurns: this.stateData.maxTurns,
+      tools: this.stateData.tools.slice(),
+      messages: structuredClone(this.stateData.messages),
+      isRunning: this.stateData.isRunning,
+      streamingMessage:
+        this.stateData.streamingMessage === undefined
+          ? undefined
+          : structuredClone(this.stateData.streamingMessage),
+      pendingToolCalls: new Set(this.stateData.pendingToolCalls),
+      error: this.stateData.error,
+    };
   }
 
   get signal(): AbortSignal | undefined {
@@ -147,7 +160,7 @@ export class Agent {
   private createContextSnapshot(): AgentContext {
     return {
       system: this.stateData.system,
-      messages: this.stateData.messages.slice(),
+      messages: structuredClone(this.stateData.messages),
       tools: this.stateData.tools.slice(),
     };
   }

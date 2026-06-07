@@ -22,6 +22,8 @@ export type ModelCost = {
 };
 
 export type ModelMetadata = {
+  provider: string;
+  model: string;
   cost: ModelCost;
   contextWindow: number;
   // Provider hard limit for one completion, distinct from request maxTokens.
