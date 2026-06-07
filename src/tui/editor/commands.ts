@@ -13,6 +13,7 @@ export type PromptSubmit =
   | {
       type: "command";
       name: PromptCommandName;
+      arguments: string;
       raw: string;
     };
 
@@ -82,16 +83,10 @@ export function createCommandSubmit(
     return undefined;
   }
 
-  if (hasCommandArguments(value)) {
-    return {
-      type: "message",
-      content: value,
-    };
-  }
-
   return {
     type: "command",
     name: command.name,
+    arguments: getCommandArguments(value),
     raw: value,
   };
 }
@@ -102,6 +97,6 @@ function findCommandTokenEnd(value: string): number {
   return match ? match[0].length : value.length;
 }
 
-function hasCommandArguments(value: string): boolean {
-  return value.slice(findCommandTokenEnd(value)).trim().length > 0;
+function getCommandArguments(value: string): string {
+  return value.slice(findCommandTokenEnd(value)).trim();
 }

@@ -79,7 +79,7 @@ export class KanaTuiApp {
     this.tui.addInputListener((data) => this.handleGlobalInput(data));
     this.editor.onSubmit = (submit) => {
       if (submit.type === "command") {
-        this.handleCommand(submit.name);
+        this.handleCommand(submit);
         return;
       }
 
@@ -130,13 +130,27 @@ export class KanaTuiApp {
     this.updateStatus("aborted");
   }
 
-  private handleCommand(name: "quit" | "clear"): void {
-    switch (name) {
+  private handleCommand(command: {
+    name: "quit" | "clear";
+    arguments: string;
+    raw: string;
+  }): void {
+    switch (command.name) {
       case "quit":
+        if (command.arguments) {
+          void this.submitPrompt(command.raw);
+          return;
+        }
+
         this.stop();
         process.exit(0);
         break;
       case "clear":
+        if (command.arguments) {
+          void this.submitPrompt(command.raw);
+          return;
+        }
+
         this.transcript.clear();
         this.editor.clear();
         this.refreshHistoryStatus();

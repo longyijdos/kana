@@ -207,23 +207,28 @@ describe("prompt commands", () => {
     expect(createCommandSubmit("/", PROMPT_COMMANDS[0])).toEqual({
       type: "command",
       name: "quit",
+      arguments: "",
       raw: "/",
     });
     expect(createCommandSubmit("/quit", undefined)).toEqual({
       type: "command",
       name: "quit",
+      arguments: "",
       raw: "/quit",
     });
   });
 
-  test("submits command input with trailing text as a message", () => {
+  test("submits command input with arguments", () => {
     expect(createCommandSubmit("/quit later", undefined)).toEqual({
-      type: "message",
-      content: "/quit later",
+      type: "command",
+      name: "quit",
+      arguments: "later",
+      raw: "/quit later",
     });
     expect(createCommandSubmit("/quit ", undefined)).toEqual({
       type: "command",
       name: "quit",
+      arguments: "",
       raw: "/quit ",
     });
   });
