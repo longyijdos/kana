@@ -89,7 +89,16 @@ export async function runAgentLoop(
       config,
       emit,
     );
-    newMessages.push(assistantTurn.message);
+    const assistantHistoryMessage = assistantMessageForHistory(
+      assistantTurn.message,
+    );
+
+    if (assistantHistoryMessage) {
+      replaceLastAssistantMessage(currentContext, assistantHistoryMessage);
+      newMessages.push(assistantHistoryMessage);
+    } else {
+      removeLastAssistantMessage(currentContext);
+    }
 
     if (assistantTurn.isError || config.signal?.aborted) {
       endReason = config.signal?.aborted
@@ -98,7 +107,7 @@ export async function runAgentLoop(
       await emit({
         type: "turn_end",
         turn,
-        message: assistantTurn.message,
+        message: assistantHistoryMessage ?? assistantTurn.message,
         toolResults: [],
       });
       break;
@@ -384,6 +393,29 @@ function getToolCalls(message: AssistantMessage): ToolCallContent[] {
   return message.content.filter((content) => content.type === "tool_call");
 }
 
+function assistantMessageForHistory(
+  message: AssistantMessage,
+): AssistantMessage | undefined {
+  if (message.stopReason !== "aborted") {
+    return message;
+  }
+
+  const content = message.content.filter((item) => item.type !== "tool_call");
+
+  if (content.length === message.content.length) {
+    return message;
+  }
+
+  if (content.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...message,
+    content,
+  };
+}
+
 function endReasonForAssistantTurn(turn: AssistantTurnResult): AgentEndReason {
   switch (turn.message.stopReason) {
     case "length":
@@ -409,6 +441,12 @@ function replaceLastAssistantMessage(
   }
 
   context.messages.push(message);
+}
+
+function removeLastAssistantMessage(context: AgentContext): void {
+  if (context.messages[context.messages.length - 1]?.role === "assistant") {
+    context.messages.pop();
+  }
 }
 
 function replaceOrAppendAssistantMessage(

@@ -101,6 +101,67 @@ class AbortedModel implements Model {
   }
 }
 
+class AbortedToolCallModel implements Model {
+  readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "aborted-tool-call",
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+  };
+
+  stream(_context: ModelContext): AssistantEventStream {
+    const stream = new AssistantEventStream();
+
+    queueMicrotask(() => {
+      const message: AssistantMessage = {
+        role: "assistant",
+        content: [],
+      };
+
+      stream.push({
+        type: "start",
+        snapshot: structuredClone(message),
+      });
+
+      message.content.push({
+        type: "tool_call",
+        id: "call_1",
+        name: "edit",
+        args: {
+          path: "foo.ts",
+          oldText: "before",
+          newText: "after",
+        },
+        rawArgs: '{"path":"foo.ts"',
+      });
+
+      stream.push({
+        type: "toolcall_start",
+        contentIndex: 0,
+        snapshot: structuredClone(message),
+      });
+      stream.error({
+        type: "error",
+        reason: "aborted",
+        error: new Error("aborted"),
+        snapshot: structuredClone(message),
+      });
+    });
+
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 class LengthTruncatedToolModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
@@ -465,6 +526,35 @@ describe("runAgentLoop", () => {
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
       reason: "aborted",
+    });
+  });
+
+  test("does not persist aborted partial tool calls without tool results", async () => {
+    const events: AgentEvent[] = [];
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "edit the file",
+          },
+        ],
+        tools: [addTool],
+      },
+      {
+        model: new AbortedToolCallModel(),
+      },
+      (event) => {
+        events.push(structuredClone(event));
+      },
+    );
+
+    expect(messages).toEqual([]);
+    expect(events.some((event) => event.type === "message_update")).toBe(true);
+    expect(events.at(-1)).toMatchObject({
+      type: "agent_end",
+      reason: "aborted",
+      messages: [],
     });
   });
 });
