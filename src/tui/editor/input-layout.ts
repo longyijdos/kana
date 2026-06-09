@@ -26,6 +26,13 @@ export type CreateInputLayoutOptions = {
   maxLines: number;
 };
 
+export type MoveInputCursorVerticallyOptions = {
+  value: string;
+  cursorOffset: number;
+  columns: number;
+  direction: -1 | 1;
+};
+
 type WrappedLine = InputLayoutLine & {
   glyphs: Glyph[];
 };
@@ -69,6 +76,26 @@ export function createInputLayout({
     },
     isTruncatedStart: startLine > 0,
   };
+}
+
+export function moveInputCursorVertically({
+  value,
+  cursorOffset,
+  columns,
+  direction,
+}: MoveInputCursorVerticallyOptions): number | undefined {
+  const layoutColumns = Math.max(columns, 1);
+  const wrappedLines = wrapInputValue(value, layoutColumns);
+  const cursorLine = findCursorLine(wrappedLines, cursorOffset);
+  const targetLine = cursorLine + direction;
+
+  if (targetLine < 0 || targetLine >= wrappedLines.length) {
+    return undefined;
+  }
+
+  const targetColumn = cursorColumn(wrappedLines[cursorLine], cursorOffset);
+
+  return cursorOffsetForColumn(wrappedLines[targetLine], targetColumn);
 }
 
 function wrapInputValue(value: string, columns: number): WrappedLine[] {
@@ -129,6 +156,20 @@ function findCursorLine(lines: WrappedLine[], cursorOffset: number): number {
   }
 
   return Math.max(lines.length - 1, 0);
+}
+
+function cursorOffsetForColumn(line: WrappedLine, targetColumn: number): number {
+  let column = 0;
+
+  for (const glyph of line.glyphs) {
+    if (column >= targetColumn || column + glyph.width > targetColumn) {
+      return glyph.startOffset;
+    }
+
+    column += glyph.width;
+  }
+
+  return line.endOffset;
 }
 
 function cursorColumn(line: WrappedLine | undefined, cursorOffset: number): number {

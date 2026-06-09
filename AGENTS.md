@@ -1,28 +1,14 @@
 # AGENTS.md
 
-This project is a personal TypeScript/Bun agent runtime.
-
-## Development Guidelines
-
-- Prefer small, explicit changes that follow the current module boundaries.
-- Add comments for non-obvious design decisions, protocol semantics, stream
-  ordering, provider-specific mappings, and mutable state boundaries.
-- Do not add comments that only restate the code.
-- Use `getModel(config)` to create configured model instances.
-  Model instances hold model/network/generation config and receive the full
-  context when invoked.
-- Maintain one model execution path: model instances implement streaming, and
-  non-streaming generation is derived from the stream result.
-- Treat `snapshot` in assistant events as the assistant message after applying
-  the current event. Do not emit shared mutable message objects as snapshots.
-- Use TypeBox schemas for tool parameters so provider adapters can pass JSON
-  Schema-compatible tool descriptions through directly.
-- Use Conventional Commit prefixes for commit messages, such as `feat:`,
-  `fix:`, `refactor:`, `test:`, `docs:`, and `chore:`.
-
-## Current Architecture
-
-- `src/core` contains provider-facing protocol types and stream primitives.
-- `src/tools` contains tool descriptions and executable tool types.
-- `src/providers` contains provider adapters and the `getModel` factory.
-- `./kana` is the local CLI entrypoint and starts the React/Ink TUI.
+* Choose a change scope that matches the task.
+* Keep changes focused and avoid unnecessary churn.
+* For larger features or refactors, keep the implementation cohesive and explain the reasoning when the scope is significant.
+* Add comments for non-obvious logic, design decisions, protocol semantics, ordering requirements, provider-specific behavior, and mutable state boundaries.
+* Do not add comments that only restate the code.
+* Add or update tests for behavior changes.
+* Add regression tests for bug fixes when practical.
+* Do not blindly follow the user's requested implementation.
+* The user is a developer who is still learning. If a requested change is unclear, brittle, overly complex, hard to maintain, or likely to create technical debt, explain the concern before implementing it.
+* When pushing back on a request, describe the tradeoff and suggest a cleaner alternative.
+* Prefer the simplest maintainable solution that satisfies the underlying goal.
+* Use Conventional Commit prefixes for commit messages, such as `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, and `chore:`.

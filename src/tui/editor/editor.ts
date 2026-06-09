@@ -11,7 +11,11 @@ import {
   applyEditorAction,
   type EditorTextState,
 } from "./state";
-import { createInputLayout, type InputLayoutLine } from "./input-layout";
+import {
+  createInputLayout,
+  moveInputCursorVertically,
+  type InputLayoutLine,
+} from "./input-layout";
 import {
   isBackspace,
   isDelete,
@@ -42,6 +46,7 @@ export class Editor implements Component {
   private lastCommandQuery = "";
   private pasteBuffer = "";
   private isPasting = false;
+  private inputColumns = 80;
 
   onSubmit?: (submit: PromptSubmit) => void;
 
@@ -82,6 +87,7 @@ export class Editor implements Component {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
     const inputColumns = Math.max(1, contentWidth - PROMPT.length);
+    this.inputColumns = inputColumns;
     const layout = createInputLayout({
       value: this.state.value,
       cursorOffset: this.state.cursorOffset,
@@ -168,7 +174,11 @@ export class Editor implements Component {
         return;
       }
 
-      this.navigateHistory(isUp(data) ? 1 : -1);
+      const direction = isUp(data) ? -1 : 1;
+
+      if (!this.moveVertically(direction) && !this.moveToBoundary(direction)) {
+        this.navigateHistory(direction === -1 ? 1 : -1);
+      }
       return;
     }
 
@@ -248,6 +258,43 @@ export class Editor implements Component {
   private applyAction(action: Parameters<typeof applyEditorAction>[1]): void {
     this.state = applyEditorAction(this.state, action);
     this.syncCommandSelection();
+  }
+
+  private moveVertically(direction: -1 | 1): boolean {
+    const cursorOffset = moveInputCursorVertically({
+      value: this.state.value,
+      cursorOffset: this.state.cursorOffset,
+      columns: this.inputColumns,
+      direction,
+    });
+
+    if (cursorOffset === undefined) {
+      return false;
+    }
+
+    this.state = {
+      ...this.state,
+      cursorOffset,
+    };
+    this.syncCommandSelection();
+
+    return true;
+  }
+
+  private moveToBoundary(direction: -1 | 1): boolean {
+    const cursorOffset = direction === -1 ? 0 : this.state.value.length;
+
+    if (this.state.cursorOffset === cursorOffset) {
+      return false;
+    }
+
+    this.state = {
+      ...this.state,
+      cursorOffset,
+    };
+    this.syncCommandSelection();
+
+    return true;
   }
 
   private navigateHistory(direction: 1 | -1): void {

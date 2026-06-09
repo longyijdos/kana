@@ -6,7 +6,10 @@ import {
   PROMPT_COMMANDS,
 } from "../src/tui/editor/commands";
 import { Editor } from "../src/tui/editor/editor";
-import { createInputLayout } from "../src/tui/editor/input-layout";
+import {
+  createInputLayout,
+  moveInputCursorVertically,
+} from "../src/tui/editor/input-layout";
 import { applyEditorAction } from "../src/tui/editor/state";
 import { CURSOR_MARKER } from "../src/tui/runtime/cursor";
 import { stripAnsi, visibleWidth } from "../src/tui/render/width";
@@ -125,6 +128,139 @@ describe("prompt editor", () => {
       expect(plain.endsWith("+") || plain.endsWith("|")).toBe(true);
     }
   });
+
+  test("moves up within multiline input before switching history", () => {
+    const editor = new Editor();
+
+    editor.addToHistory("previous");
+    editor.setText("abc\ndef");
+    editor.render(20);
+    editor.handleInput("\x1b[A");
+    editor.handleInput("X");
+
+    expect(editor.getText()).toBe("abcX\ndef");
+  });
+
+  test("moves down within multiline input before switching history", () => {
+    const editor = new Editor();
+
+    editor.addToHistory("previous");
+    editor.setText("abc\ndef");
+    editor.render(20);
+    editor.handleInput("\x1b[H");
+    editor.handleInput("\x1b[B");
+    editor.handleInput("X");
+
+    expect(editor.getText()).toBe("abc\nXdef");
+  });
+
+  test("moves to the input start before switching history upward", () => {
+    const editor = new Editor();
+
+    editor.addToHistory("previous");
+    editor.setText("abc\ndef");
+    editor.render(20);
+    editor.handleInput("\x1b[A");
+
+    expect(editor.getText()).toBe("abc\ndef");
+
+    editor.handleInput("\x1b[A");
+
+    expect(editor.getText()).toBe("abc\ndef");
+
+    editor.handleInput("X");
+
+    expect(editor.getText()).toBe("Xabc\ndef");
+  });
+
+  test("switches history only beyond the input start", () => {
+    const editor = new Editor();
+
+    editor.addToHistory("previous");
+    editor.setText("abc\ndef");
+    editor.render(20);
+    editor.handleInput("\x1b[A");
+    editor.handleInput("\x1b[A");
+    editor.handleInput("\x1b[A");
+
+    expect(editor.getText()).toBe("previous");
+
+    editor.handleInput("\x1b[B");
+
+    expect(editor.getText()).toBe("");
+  });
+
+  test("moves to the input end before switching history downward", () => {
+    const editor = new Editor();
+
+    editor.addToHistory("previous");
+    editor.setText("abc\ndef");
+    editor.render(20);
+    editor.handleInput("\x1b[H");
+    editor.handleInput("\x1b[B");
+    editor.handleInput("\x1b[B");
+    editor.handleInput("X");
+
+    expect(editor.getText()).toBe("abc\ndefX");
+  });
+
+  test("switches history only beyond the input end", () => {
+    const editor = new Editor();
+
+    editor.addToHistory("previous");
+    editor.setText("current");
+    editor.render(20);
+    editor.handleInput("\x1b[A");
+    editor.handleInput("\x1b[A");
+
+    expect(editor.getText()).toBe("previous");
+
+    editor.handleInput("\x1b[H");
+    editor.handleInput("\x1b[B");
+
+    expect(editor.getText()).toBe("previous");
+
+    editor.handleInput("\x1b[B");
+
+    expect(editor.getText()).toBe("");
+  });
+
+  test("moves vertically through soft-wrapped input", () => {
+    const editor = new Editor();
+
+    editor.setText("abcdef");
+    editor.render(9);
+    editor.handleInput("\x1b[H");
+    editor.handleInput("\x1b[B");
+    editor.handleInput("X");
+
+    expect(editor.getText()).toBe("abcXdef");
+  });
+
+  test("keeps a soft-wrap boundary cursor on the next line", () => {
+    const editor = new Editor();
+
+    editor.setText("abcdef");
+    editor.render(9);
+    editor.handleInput("\x1b[A");
+
+    const cursorLine = editor.render(9).findIndex((line) => line.includes(CURSOR_MARKER));
+
+    expect(cursorLine).toBe(2);
+  });
+
+  test("moves left from a soft-wrap line start before the previous character", () => {
+    const editor = new Editor();
+
+    editor.setText("abcdef");
+    editor.render(9);
+    editor.handleInput("\x1b[H");
+    editor.handleInput("\x1b[B");
+    editor.handleInput("\x1b[D");
+    editor.handleInput("X");
+
+    expect(editor.getText()).toBe("abXcdef");
+  });
 });
 
 describe("prompt input layout", () => {
@@ -227,6 +363,27 @@ describe("prompt input layout", () => {
     });
   });
 
+  test("keeps the cursor on the only line when text exactly fills it", () => {
+    expect(
+      createInputLayout({
+        value: "abc",
+        cursorOffset: 3,
+        columns: 3,
+        maxLines: 3,
+      }),
+    ).toMatchObject({
+      lines: [
+        {
+          text: "abc",
+        },
+      ],
+      cursor: {
+        line: 0,
+        column: 3,
+      },
+    });
+  });
+
   test("treats CRLF and CR as line breaks", () => {
     expect(
       createInputLayout({
@@ -252,6 +409,46 @@ describe("prompt input layout", () => {
         column: 0,
       },
     });
+  });
+
+  test("moves the cursor vertically between wrapped input lines", () => {
+    expect(
+      moveInputCursorVertically({
+        value: "abc\ndef",
+        cursorOffset: 7,
+        columns: 10,
+        direction: -1,
+      }),
+    ).toBe(3);
+
+    expect(
+      moveInputCursorVertically({
+        value: "abcdef",
+        cursorOffset: 0,
+        columns: 3,
+        direction: 1,
+      }),
+    ).toBe(3);
+  });
+
+  test("does not move vertically beyond input boundaries", () => {
+    expect(
+      moveInputCursorVertically({
+        value: "abc",
+        cursorOffset: 0,
+        columns: 10,
+        direction: -1,
+      }),
+    ).toBeUndefined();
+
+    expect(
+      moveInputCursorVertically({
+        value: "abc",
+        cursorOffset: 3,
+        columns: 10,
+        direction: 1,
+      }),
+    ).toBeUndefined();
   });
 
   test("accounts for wide characters", () => {
