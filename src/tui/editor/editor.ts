@@ -9,7 +9,6 @@ import type { Component } from "../runtime/component";
 import { CURSOR_MARKER } from "../runtime/cursor";
 import {
   applyEditorAction,
-  firstGrapheme,
   type EditorTextState,
 } from "./state";
 import { createInputLayout, type InputLayoutLine } from "./input-layout";
@@ -26,7 +25,6 @@ import {
   isTab,
   isUp,
 } from "../runtime/keys";
-import { renderCursorText } from "../components/text-block";
 import { padRightAnsi, truncateToWidth } from "../render/width";
 
 const MAX_INPUT_LINES = 5;
@@ -52,9 +50,11 @@ export class Editor implements Component {
   }
 
   setText(value: string): void {
+    const normalized = normalizeLineEndings(value);
+
     this.state = {
-      value,
-      cursorOffset: value.length,
+      value: normalized,
+      cursorOffset: normalized.length,
     };
     this.historyIndex = -1;
     this.syncCommandSelection();
@@ -92,7 +92,7 @@ export class Editor implements Component {
 
     for (const [index, line] of layout.lines.entries()) {
       const prompt = index === 0 ? PROMPT : CONTINUATION_PROMPT;
-      const input = this.renderLine(line);
+      const input = this.renderLine(line, index === layout.cursor.line);
       const content = `${color(prompt, "yellow")}${input}`;
 
       lines.push(`| ${padRightAnsi(content, contentWidth)} |`);
@@ -187,9 +187,13 @@ export class Editor implements Component {
     }
   }
 
-  private renderLine(line: InputLayoutLine): string {
+  private renderLine(line: InputLayoutLine, showCursor: boolean): string {
+    if (!showCursor) {
+      return line.text;
+    }
+
     if (!this.state.value) {
-      return renderCursorText(CURSOR_MARKER, " ", dim("Ask the agent..."));
+      return `${CURSOR_MARKER}${dim("Ask the agent...")}`;
     }
 
     if (
@@ -202,11 +206,8 @@ export class Editor implements Component {
     const relativeOffset = this.state.cursorOffset - line.startOffset;
     const beforeCursor = line.text.slice(0, relativeOffset);
     const afterCursor = line.text.slice(relativeOffset);
-    const cursorText = firstGrapheme(afterCursor) ?? " ";
-    const restAfterCursor =
-      cursorText === " " && !afterCursor ? "" : afterCursor.slice(cursorText.length);
 
-    return renderCursorText(`${beforeCursor}${CURSOR_MARKER}`, cursorText, restAfterCursor);
+    return `${beforeCursor}${CURSOR_MARKER}${afterCursor}`;
   }
 
   private renderCommandPalette(width: number): string[] {
@@ -231,9 +232,15 @@ export class Editor implements Component {
   }
 
   private applyText(text: string): void {
+    const normalized = normalizeLineEndings(text);
+
+    if (!normalized) {
+      return;
+    }
+
     this.applyAction({
       type: "insert",
-      text,
+      text: normalized,
     });
     this.historyIndex = -1;
   }
@@ -306,4 +313,8 @@ export class Editor implements Component {
 
 function wrapIndex(index: number, length: number): number {
   return ((index % length) + length) % length;
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }

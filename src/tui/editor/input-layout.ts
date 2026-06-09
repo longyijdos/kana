@@ -81,7 +81,7 @@ function wrapInputValue(value: string, columns: number): WrappedLine[] {
   for (const glyph of graphemeGlyphs(value)) {
     let current = lines.at(-1) ?? createLine(glyph.startOffset);
 
-    if (glyph.text === "\n") {
+    if (isLineBreak(glyph.text)) {
       current.endOffset = glyph.startOffset;
       lines.push(createLine(glyph.endOffset));
       continue;
@@ -111,12 +111,18 @@ function createLine(offset: number): WrappedLine {
   };
 }
 
+function isLineBreak(value: string): boolean {
+  return value === "\n" || value === "\r" || value === "\r\n";
+}
+
 function findCursorLine(lines: WrappedLine[], cursorOffset: number): number {
   for (const [index, line] of lines.entries()) {
     if (index > 0 && cursorOffset === line.startOffset) {
       return index;
     }
+  }
 
+  for (const [index, line] of lines.entries()) {
     if (cursorOffset >= line.startOffset && cursorOffset <= line.endOffset) {
       return index;
     }

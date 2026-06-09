@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Component } from "../src/tui/runtime/component";
+import { CURSOR_MARKER } from "../src/tui/runtime/cursor";
 import type { Terminal } from "../src/tui/runtime/terminal";
 import { Tui } from "../src/tui/runtime/tui";
 
@@ -130,5 +131,18 @@ describe("tui main-screen renderer", () => {
 
     expect(terminal.stopped).toBe(true);
     expect(output).toBe("\x1b[2J\x1b[H\x1b[3JGoodbye from Kana.\r\n");
+  });
+
+  test("positions and shows the hardware cursor", async () => {
+    const terminal = new FakeTerminal();
+    const tui = new Tui(terminal);
+
+    tui.addChild(new MutableLines([`ab${CURSOR_MARKER}cd`]));
+    tui.start();
+    await Promise.resolve();
+
+    const output = terminal.writes.join("");
+
+    expect(output).toContain("\x1b[3G\x1b[?25h");
   });
 });
