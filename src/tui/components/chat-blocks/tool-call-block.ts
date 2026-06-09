@@ -2,6 +2,7 @@ import type { ToolCallContent } from "../../../core/messages";
 import { color } from "../../render/ansi";
 import { truncateToWidth } from "../../render/width";
 import type { Component } from "../../runtime/component";
+import { tuiTheme } from "../../theme";
 import { TextBlock } from "./text-block";
 import {
   formatToolOutput,
@@ -40,10 +41,10 @@ export class ToolCallBlock implements Component {
   render(width: number): string[] {
     const state = this.currentState();
     const titleColor = this.isError
-      ? "red"
+      ? tuiTheme.error
       : state === "done"
-        ? "green"
-        : "yellow";
+        ? tuiTheme.toolSuccess
+        : tuiTheme.toolActive;
     const lines = [
       "",
       color(formatToolTitle(this.toolCall, state, this.result), titleColor),
@@ -55,7 +56,13 @@ export class ToolCallBlock implements Component {
     );
 
     if (typeof output === "string" && output) {
-      lines.push(...renderOutput(output, width, this.isError ? "red" : "gray"));
+      lines.push(
+        ...renderOutput(
+          output,
+          width,
+          this.isError ? tuiTheme.error : tuiTheme.toolOutput,
+        ),
+      );
     } else if (Array.isArray(output)) {
       lines.push(...output);
     }
@@ -75,7 +82,7 @@ export class ToolCallBlock implements Component {
 function renderOutput(
   output: string,
   width: number,
-  outputColor: "red" | "gray",
+  outputColor: Parameters<typeof color>[1],
 ): string[] {
   return new TextBlock(output, {
     color: outputColor,

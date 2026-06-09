@@ -2,6 +2,7 @@ import type { ToolCallContent } from "../../core/messages";
 import { color, dim } from "../render/ansi";
 import { truncateToWidth } from "../render/width";
 import type { Component } from "../runtime/component";
+import { tuiTheme } from "../theme";
 import { formatToolApprovalTitle } from "./chat-blocks/tool-renderers";
 import {
   getNumberProperty,
@@ -29,7 +30,7 @@ export class ToolApproval implements Component {
   render(width: number): string[] {
     const lines = [
       "",
-      color(formatToolApprovalTitle(this.toolCall), "yellow"),
+      color(formatToolApprovalTitle(this.toolCall), tuiTheme.toolActive),
       dim(formatToolDetail(this.toolCall)),
       this.renderOption("yes", "Yes, run it"),
       this.renderOption("no", "No, abort"),
@@ -53,7 +54,7 @@ export class ToolApproval implements Component {
     const prefix = value === this.selected ? "> " : "  ";
     const line = `${prefix}${label}`;
 
-    return value === this.selected ? color(line, "yellow") : line;
+    return value === this.selected ? color(line, tuiTheme.toolActive) : line;
   }
 }
 

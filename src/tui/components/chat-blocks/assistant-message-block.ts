@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "../../../core/messages";
 import { dim } from "../../render/ansi";
 import type { Component } from "../../runtime/component";
+import { tuiTheme } from "../../theme";
 import { TextBlock } from "./text-block";
 
 export class AssistantMessageBlock implements Component {
@@ -26,7 +27,7 @@ export class AssistantMessageBlock implements Component {
       if (content.type === "text" && content.text.trim()) {
         lines.push(
           ...new TextBlock(content.text.trim(), {
-            color: "green",
+            color: tuiTheme.assistant,
           }).render(width),
         );
         renderedContent = true;

@@ -1,6 +1,7 @@
 import { color, dim } from "../render/ansi";
 import type { Component } from "../runtime/component";
 import { truncateToWidth } from "../render/width";
+import { tuiTheme } from "../theme";
 
 export type StatusLineState = {
   phase: string;
@@ -25,12 +26,12 @@ export class StatusLine implements Component {
 
   render(width: number): string[] {
     const parts = [
-      color(this.model, "cyan"),
+      color(this.model, tuiTheme.model),
       phaseText(this.state.phase),
       this.state.activeTool
-        ? color(`tool ${this.state.activeTool}`, "yellow")
+        ? color(`tool ${this.state.activeTool}`, tuiTheme.toolActive)
         : undefined,
-      color(formatCwd(process.cwd()), "green"),
+      color(formatCwd(process.cwd()), tuiTheme.cwd),
       dim(this.state.running ? "Esc abort" : "Ctrl+C exit"),
     ].filter((part): part is string => Boolean(part));
 
@@ -43,14 +44,14 @@ function phaseText(phase: string): string {
     case "error":
     case "aborted":
     case "length":
-      return color(phase, "red");
+      return color(phase, tuiTheme.error);
     case "starting":
     case "thinking":
     case "responding":
     case "tool":
-      return color(phase, "yellow");
+      return color(phase, tuiTheme.toolActive);
     default:
-      return color(phase, "white");
+      return color(phase, tuiTheme.statusIdle);
   }
 }
 

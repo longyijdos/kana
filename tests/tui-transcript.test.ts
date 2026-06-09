@@ -28,6 +28,42 @@ describe("tui transcript", () => {
     expect(block.render(80)[0]).toContain("hello");
   });
 
+  test("uses distinct colors for assistant text and completed tool calls", () => {
+    const assistant = new AssistantMessageBlock();
+    assistant.update({
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "hello",
+        },
+      ],
+    });
+
+    const tool = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "read",
+      args: {
+        path: "AGENTS.md",
+      },
+    });
+    tool.updateResult(
+      {
+        path: "AGENTS.md",
+        content: "content",
+        startLine: 1,
+        endLine: 1,
+        totalLines: 1,
+        truncated: false,
+      },
+      false,
+    );
+
+    expect(assistant.render(80)[0]).toContain("\x1b[37m");
+    expect(tool.render(80)[1]).toContain("\x1b[32m");
+  });
+
   test("does not render assistant stop reasons as transcript content", () => {
     const block = new AssistantMessageBlock();
 

@@ -1,4 +1,5 @@
 import { color, dim } from "../../render/ansi";
+import { tuiTheme } from "../../theme";
 import {
   completeCommand,
   createCommandSubmit,
@@ -99,7 +100,7 @@ export class Editor implements Component {
     for (const [index, line] of layout.lines.entries()) {
       const prompt = index === 0 ? PROMPT : CONTINUATION_PROMPT;
       const input = this.renderLine(line, index === layout.cursor.line);
-      const content = `${color(prompt, "yellow")}${input}`;
+      const content = `${color(prompt, tuiTheme.prompt)}${input}`;
 
       lines.push(`| ${padRightAnsi(content, contentWidth)} |`);
     }
@@ -199,7 +200,7 @@ export class Editor implements Component {
 
   private renderLine(line: InputLayoutLine, showCursor: boolean): string {
     if (!showCursor) {
-      return line.text;
+      return this.renderCommandInputSegment(line.text, line.startOffset);
     }
 
     if (!this.state.value) {
@@ -217,7 +218,31 @@ export class Editor implements Component {
     const beforeCursor = line.text.slice(0, relativeOffset);
     const afterCursor = line.text.slice(relativeOffset);
 
-    return `${beforeCursor}${CURSOR_MARKER}${afterCursor}`;
+    return [
+      this.renderCommandInputSegment(beforeCursor, line.startOffset),
+      CURSOR_MARKER,
+      this.renderCommandInputSegment(afterCursor, this.state.cursorOffset),
+    ].join("");
+  }
+
+  private renderCommandInputSegment(text: string, absoluteStart: number): string {
+    const commandEnd = commandTokenEnd(this.state.value);
+
+    if (commandEnd === undefined || !text) {
+      return text;
+    }
+
+    const absoluteEnd = absoluteStart + text.length;
+
+    if (absoluteStart >= commandEnd || absoluteEnd <= 0) {
+      return text;
+    }
+
+    const highlightEnd = Math.min(text.length, commandEnd - absoluteStart);
+    const command = text.slice(0, highlightEnd);
+    const after = text.slice(highlightEnd);
+
+    return `${color(command, tuiTheme.command)}${after}`;
   }
 
   private renderCommandPalette(width: number): string[] {
@@ -228,7 +253,7 @@ export class Editor implements Component {
     }
 
     if (commandState.suggestions.length === 0) {
-      return [color("No matching commands", "red")];
+      return [color("No matching commands", tuiTheme.error)];
     }
 
     return commandState.suggestions.map((command, index) => {
@@ -236,7 +261,7 @@ export class Editor implements Component {
       const line = `${prefix}/${command.name.padEnd(8)} ${command.description}`;
 
       return index === this.selectedCommandIndex
-        ? color(truncateToWidth(line, width, ""), "yellow")
+        ? color(truncateToWidth(line, width, ""), tuiTheme.commandSelected)
         : truncateToWidth(line, width, "");
     });
   }
@@ -364,4 +389,13 @@ function wrapIndex(index: number, length: number): number {
 
 function normalizeLineEndings(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function commandTokenEnd(value: string): number | undefined {
+  if (!value.startsWith("/")) {
+    return undefined;
+  }
+
+  const match = /^\/\S*/.exec(value);
+  return match?.[0].length;
 }

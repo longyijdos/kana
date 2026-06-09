@@ -22,6 +22,7 @@ import {
   isEscape,
 } from "../runtime/keys";
 import type { ProcessTerminal } from "../runtime/terminal";
+import { tuiTheme } from "../theme";
 import { Tui } from "../runtime/tui";
 
 type RunPhase =
@@ -62,14 +63,14 @@ export class KanaTuiApp {
   start(): void {
     this.transcript.addChild(
       new TextBlock("Kana TUI. Type a prompt and press Enter.", {
-        color: "gray",
+        color: tuiTheme.muted,
       }),
     );
     this.transcript.addChild(
       new TextBlock(
         "Use terminal scrollback for history, /clear to reset, or /quit to exit.",
         {
-          color: "gray",
+          color: tuiTheme.muted,
         },
       ),
     );
@@ -157,7 +158,9 @@ export class KanaTuiApp {
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
-    this.transcript.addChild(new TextBlock(prompt, { color: "cyan", prefix: "> " }));
+    this.transcript.addChild(
+      new TextBlock(prompt, { color: tuiTheme.user, prefix: "> " }),
+    );
     this.running = true;
     this.streamingAssistant = undefined;
     this.pendingTools.clear();
@@ -174,7 +177,7 @@ export class KanaTuiApp {
     } catch (error) {
       this.transcript.addChild(
         new TextBlock(error instanceof Error ? error.message : String(error), {
-          color: "red",
+          color: tuiTheme.error,
           paddingTop: 1,
         }),
       );

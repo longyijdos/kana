@@ -91,6 +91,16 @@ describe("prompt editor", () => {
     expect(cursorMarkers).toBe(1);
   });
 
+  test("highlights completed slash command token separately from arguments", () => {
+    const editor = new Editor();
+
+    editor.setText("/quit later");
+    const rendered = editor.render(40).join("\n");
+
+    expect(stripAnsi(rendered)).toContain("/quit later");
+    expect(rendered).toContain("\x1b[35m/quit\x1b[0m later");
+  });
+
   test("keeps multiline CJK editor rows inside the frame", () => {
     const editor = new Editor();
 
