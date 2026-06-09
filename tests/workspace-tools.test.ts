@@ -215,10 +215,12 @@ describe("workspace tools", () => {
     );
 
     expectToolResult(result);
-    expect(result.result).toEqual({
+    expect(result.result).toMatchObject({
       path: "notes.txt",
       replacements: 1,
       bytesWritten: 11,
+      oldText: "world",
+      newText: "kana",
     });
     expect(result.content).toContain("edited: notes.txt");
     expect(await readFile(path.join(root, "notes.txt"), "utf8")).toBe("hello kana\n");

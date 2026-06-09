@@ -25,6 +25,8 @@ export type EditToolResult = {
   path: string;
   replacements: number;
   bytesWritten: number;
+  oldText: string;
+  newText: string;
 };
 
 export type EditToolOptions = {
@@ -76,6 +78,8 @@ export function createEditTool(options: EditToolOptions = {}): Tool<
         path: filePath.relativePath,
         replacements: appliedReplacements,
         bytesWritten: Buffer.byteLength(nextContent, "utf8"),
+        oldText: args.oldText,
+        newText: args.newText,
       };
 
       return {
