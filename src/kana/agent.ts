@@ -14,7 +14,7 @@ export function createKanaAgent(apiKey: string): Agent {
     apiKey,
     thinking: true,
     reasoningEffort: "high",
-    maxTokens: 1024,
+    maxTokens: 8192,
     timeoutMs: 60_000,
     maxRetries: 1,
   });

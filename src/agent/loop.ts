@@ -74,7 +74,10 @@ export async function runAgentLoop(
       break;
     }
 
-    const toolCalls = getToolCalls(assistantTurn.message);
+    const toolCalls =
+      assistantTurn.message.stopReason === "toolUse"
+        ? getToolCalls(assistantTurn.message)
+        : [];
     const toolResults = await executeToolCalls(
       currentContext,
       toolCalls,

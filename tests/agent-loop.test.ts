@@ -101,6 +101,46 @@ class AbortedModel implements Model {
   }
 }
 
+class LengthTruncatedToolModel implements Model {
+  readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "length-truncated-tool",
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+  };
+  readonly contexts: ModelContext[] = [];
+
+  stream(context: ModelContext): AssistantEventStream {
+    this.contexts.push({
+      system: context.system,
+      messages: structuredClone(context.messages),
+      tools: context.tools?.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      })),
+    });
+
+    const stream = new AssistantEventStream();
+
+    queueMicrotask(() => {
+      streamLengthTruncatedToolCallMessage(stream);
+    });
+
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 const addParameters = Type.Object({
   a: Type.Number(),
   b: Type.Number(),
@@ -242,6 +282,39 @@ describe("runAgentLoop", () => {
     });
   });
 
+  test("does not execute tool calls from length-truncated assistant turns", async () => {
+    const model = new LengthTruncatedToolModel();
+    const events: AgentEvent[] = [];
+
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "write a long file",
+          },
+        ],
+        tools: [addTool],
+      },
+      {
+        model,
+      },
+      (event) => {
+        events.push(structuredClone(event));
+      },
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      role: "assistant",
+      stopReason: "length",
+    });
+    expect(
+      events.some((event) => event.type === "tool_execution_start"),
+    ).toBe(false);
+    expect(model.contexts).toHaveLength(1);
+  });
+
   test("records aborted assistant turns on the final message", async () => {
     const messages = await runAgentLoop(
       {
@@ -310,6 +383,45 @@ function streamToolCallMessage(
   stream.end({
     type: "done",
     reason: "toolUse",
+    message: structuredClone(message),
+  });
+}
+
+function streamLengthTruncatedToolCallMessage(
+  stream: AssistantEventStream,
+): void {
+  const message: AssistantMessage = {
+    role: "assistant",
+    content: [],
+  };
+
+  stream.push({
+    type: "start",
+    snapshot: structuredClone(message),
+  });
+
+  message.content.push({
+    type: "tool_call",
+    id: "call_1",
+    name: "add",
+    args: undefined,
+    rawArgs: '{"a":',
+  });
+
+  stream.push({
+    type: "toolcall_start",
+    contentIndex: 0,
+    snapshot: structuredClone(message),
+  });
+  stream.push({
+    type: "toolcall_delta",
+    contentIndex: 0,
+    delta: '{"a":',
+    snapshot: structuredClone(message),
+  });
+  stream.end({
+    type: "done",
+    reason: "length",
     message: structuredClone(message),
   });
 }
