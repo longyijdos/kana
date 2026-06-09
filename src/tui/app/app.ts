@@ -195,7 +195,7 @@ export class KanaTuiApp {
         this.updateStatus("starting");
         break;
       case "agent_end":
-        this.updateStatus("done", {
+        this.updateStatus(phaseForAgentEndReason(event.reason), {
           activeTool: undefined,
         });
         break;
@@ -410,6 +410,21 @@ function phaseForStopReason(reason: AssistantMessage["stopReason"]): RunPhase {
       return "tool";
     case "stop":
     case undefined:
+      return "done";
+  }
+}
+
+function phaseForAgentEndReason(
+  reason: Extract<AgentEvent, { type: "agent_end" }>["reason"],
+): RunPhase {
+  switch (reason) {
+    case "aborted":
+      return "aborted";
+    case "error":
+      return "error";
+    case "length":
+      return "length";
+    case "stop":
       return "done";
   }
 }

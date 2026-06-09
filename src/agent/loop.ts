@@ -8,6 +8,7 @@ import type {
 import type { Tool, ToolResult } from "../tools/tool";
 import { validateToolArguments } from "../tools/validation";
 import type { AgentEvent } from "./events";
+import type { AgentEndReason } from "./events";
 
 export type AgentContext = {
   system?: string;
@@ -71,11 +72,13 @@ export async function runAgentLoop(
   const newMessages: Message[] = [];
   const maxTurns = config.maxTurns ?? 8;
   const hasTurnLimit = maxTurns !== -1;
+  let endReason: AgentEndReason = "stop";
 
   await emit({ type: "agent_start" });
 
   for (let turn = 1; !hasTurnLimit || turn <= maxTurns; turn += 1) {
     if (config.signal?.aborted) {
+      endReason = "aborted";
       break;
     }
 
@@ -89,6 +92,9 @@ export async function runAgentLoop(
     newMessages.push(assistantTurn.message);
 
     if (assistantTurn.isError || config.signal?.aborted) {
+      endReason = config.signal?.aborted
+        ? "aborted"
+        : endReasonForAssistantTurn(assistantTurn);
       await emit({
         type: "turn_end",
         turn,
@@ -122,11 +128,14 @@ export async function runAgentLoop(
     });
 
     if (toolCalls.length === 0 || executedToolCalls.abortRun) {
+      endReason = executedToolCalls.abortRun
+        ? "aborted"
+        : endReasonForAssistantTurn(assistantTurn);
       break;
     }
   }
 
-  await emit({ type: "agent_end", messages: newMessages });
+  await emit({ type: "agent_end", reason: endReason, messages: newMessages });
 
   return newMessages;
 }
@@ -373,6 +382,21 @@ async function executeToolCall(
 
 function getToolCalls(message: AssistantMessage): ToolCallContent[] {
   return message.content.filter((content) => content.type === "tool_call");
+}
+
+function endReasonForAssistantTurn(turn: AssistantTurnResult): AgentEndReason {
+  switch (turn.message.stopReason) {
+    case "length":
+      return "length";
+    case "aborted":
+      return "aborted";
+    case "error":
+      return "error";
+    case "stop":
+    case "toolUse":
+    case undefined:
+      return turn.isError ? "error" : "stop";
+  }
 }
 
 function replaceLastAssistantMessage(

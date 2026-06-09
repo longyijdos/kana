@@ -261,6 +261,7 @@ describe("Agent", () => {
     });
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
+      reason: "aborted",
     });
   });
 });

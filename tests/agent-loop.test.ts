@@ -211,6 +211,7 @@ describe("runAgentLoop", () => {
     ).toBe(true);
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
+      reason: "stop",
     });
   });
 
@@ -362,6 +363,7 @@ describe("runAgentLoop", () => {
     ).toBe(false);
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
+      reason: "aborted",
     });
   });
 
@@ -424,9 +426,14 @@ describe("runAgentLoop", () => {
       events.some((event) => event.type === "tool_execution_start"),
     ).toBe(false);
     expect(model.contexts).toHaveLength(1);
+    expect(events.at(-1)).toMatchObject({
+      type: "agent_end",
+      reason: "length",
+    });
   });
 
   test("records aborted assistant turns on the final message", async () => {
+    const events: AgentEvent[] = [];
     const messages = await runAgentLoop(
       {
         messages: [
@@ -439,7 +446,9 @@ describe("runAgentLoop", () => {
       {
         model: new AbortedModel(),
       },
-      () => {},
+      (event) => {
+        events.push(structuredClone(event));
+      },
     );
 
     expect(messages).toHaveLength(1);
@@ -452,6 +461,10 @@ describe("runAgentLoop", () => {
           text: "partial",
         },
       ],
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: "agent_end",
+      reason: "aborted",
     });
   });
 });

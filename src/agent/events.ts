@@ -1,9 +1,12 @@
 import type { AssistantMessageEvent } from "../core/events";
 import type {
   AssistantMessage,
+  AssistantStopReason,
   Message,
   ToolResultMessage,
 } from "../core/messages";
+
+export type AgentEndReason = Exclude<AssistantStopReason, "toolUse">;
 
 export type AgentEvent =
   | {
@@ -11,6 +14,7 @@ export type AgentEvent =
     }
   | {
       type: "agent_end";
+      reason: AgentEndReason;
       messages: Message[];
     }
   | {
