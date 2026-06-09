@@ -11,9 +11,14 @@ export class AssistantMessageBlock implements Component {
     role: "assistant",
     content: [],
   };
+  private thinkingVisible = false;
 
   update(message: AssistantMessage): void {
     this.message = message;
+  }
+
+  showThinking(value: boolean): void {
+    this.thinkingVisible = value;
   }
 
   render(width: number): string[] {
@@ -29,10 +34,10 @@ export class AssistantMessageBlock implements Component {
         );
         renderedContent = true;
       }
+    }
 
-      if (content.type === "thinking" && !renderedContent) {
-        lines.push(dim("thinking..."));
-      }
+    if (this.thinkingVisible && !renderedContent) {
+      lines.push(dim("thinking..."));
     }
 
     return lines;

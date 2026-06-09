@@ -194,7 +194,7 @@ export class KanaTuiApp {
         this.handleAssistantStart(event.message);
         break;
       case "message_update":
-        this.handleAssistantUpdate(event.message);
+        this.handleAssistantUpdate(event);
         break;
       case "message_end":
         this.handleAssistantEnd(event.message);
@@ -227,17 +227,21 @@ export class KanaTuiApp {
     this.updateStatus("thinking");
   }
 
-  private handleAssistantUpdate(message: AssistantMessage): void {
+  private handleAssistantUpdate(
+    event: Extract<AgentEvent, { type: "message_update" }>,
+  ): void {
     if (!this.streamingAssistant) {
-      this.handleAssistantStart(message);
+      this.handleAssistantStart(event.message);
     }
 
-    this.streamingAssistant?.update(message);
-    this.createOrUpdateToolCalls(message);
-    this.updateStatus(phaseForAssistantMessage(message));
+    this.streamingAssistant?.update(event.message);
+    this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
+    this.createOrUpdateToolCalls(event.message);
+    this.updateStatus(phaseForAssistantMessage(event.message));
   }
 
   private handleAssistantEnd(message: AssistantMessage): void {
+    this.streamingAssistant?.showThinking(false);
     this.streamingAssistant?.update(message);
     this.streamingAssistant = undefined;
     this.updateStatus(phaseForStopReason(message.stopReason));
@@ -312,6 +316,18 @@ function phaseForAssistantMessage(message: AssistantMessage): RunPhase {
   }
 
   return "thinking";
+}
+
+function isThinkingVisible(
+  eventType: Extract<AgentEvent, { type: "message_update" }>["assistantMessageEvent"]["type"],
+): boolean {
+  switch (eventType) {
+    case "thinking_start":
+    case "thinking_delta":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function phaseForStopReason(reason: AssistantMessage["stopReason"]): RunPhase {

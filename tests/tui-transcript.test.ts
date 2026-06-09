@@ -40,6 +40,27 @@ describe("tui transcript", () => {
     expect(block.render(80)).toEqual([]);
   });
 
+  test("clears the thinking placeholder when thinking is no longer active", () => {
+    const block = new AssistantMessageBlock();
+
+    block.update({
+      role: "assistant",
+      content: [
+        {
+          type: "thinking",
+          text: "internal reasoning",
+        },
+      ],
+    });
+    block.showThinking(true);
+
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking...");
+
+    block.showThinking(false);
+
+    expect(block.render(80)).toEqual([]);
+  });
+
   test("renders read tool output as a concise file excerpt", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
