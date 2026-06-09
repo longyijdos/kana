@@ -27,43 +27,29 @@ describe("tui transcript", () => {
     expect(block.render(80)[0]).toContain("hello");
   });
 
-  test("renders the latest viewport by default", () => {
+  test("renders every transcript line for terminal scrollback", () => {
     const transcript = new Transcript();
 
     transcript.addChild(new LinesBlock(["1", "2", "3", "4", "5"]));
 
-    expect(transcript.renderViewport(80, 3)).toEqual(["3", "4", "5"]);
+    expect(transcript.render(80)).toEqual(["1", "2", "3", "4", "5"]);
   });
 
-  test("scrolls through history and clamps to available content", () => {
+  test("appends new child output in render order", () => {
     const transcript = new Transcript();
 
-    transcript.addChild(new LinesBlock(["1", "2", "3", "4", "5"]));
+    transcript.addChild(new LinesBlock(["1", "2"]));
+    transcript.addChild(new LinesBlock(["3"]));
 
-    expect(transcript.scrollBy(2, 80, 3)).toBe(true);
-    expect(transcript.renderViewport(80, 3)).toEqual(["1", "2", "3"]);
-
-    expect(transcript.scrollBy(10, 80, 3)).toBe(false);
-    expect(transcript.renderViewport(80, 3)).toEqual(["1", "2", "3"]);
-
-    expect(transcript.scrollBy(-1, 80, 3)).toBe(true);
-    expect(transcript.renderViewport(80, 3)).toEqual(["2", "3", "4"]);
-
-    expect(transcript.scrollToBottom()).toBe(true);
-    expect(transcript.renderViewport(80, 3)).toEqual(["3", "4", "5"]);
+    expect(transcript.render(80)).toEqual(["1", "2", "3"]);
   });
 
-  test("keeps the viewed history stable when new lines append", () => {
-    const block = new LinesBlock(["1", "2", "3", "4", "5"]);
+  test("clear removes transcript children", () => {
     const transcript = new Transcript();
 
-    transcript.addChild(block);
-    transcript.renderViewport(80, 3);
-    transcript.scrollBy(2, 80, 3);
-    expect(transcript.renderViewport(80, 3)).toEqual(["1", "2", "3"]);
+    transcript.addChild(new LinesBlock(["1", "2"]));
+    transcript.clear();
 
-    block.lines.push("6", "7");
-
-    expect(transcript.renderViewport(80, 3)).toEqual(["1", "2", "3"]);
+    expect(transcript.render(80)).toEqual([]);
   });
 });

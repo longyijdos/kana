@@ -28,7 +28,7 @@ export class ProcessTerminal implements Terminal {
     process.stdin.on("data", this.handleInput);
     process.stdout.on("resize", this.handleResize);
 
-    this.write("\x1b[?1049h\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[?25l\x1b[2J\x1b[H");
+    this.write("\x1b[?2004h\x1b[?25l");
   }
 
   stop(): void {
@@ -42,7 +42,7 @@ export class ProcessTerminal implements Terminal {
     process.stdin.setRawMode(this.wasRaw);
     process.stdin.pause();
 
-    this.write("\x1b[?25h\x1b[?1006l\x1b[?1000l\x1b[?2004l\x1b[?1049l");
+    this.write("\x1b[?25h\x1b[?2004l");
     this.inputHandler = undefined;
     this.resizeHandler = undefined;
   }
