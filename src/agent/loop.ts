@@ -19,9 +19,27 @@ export type AgentLoopConfig = {
   model: Model;
   maxTurns?: number;
   signal?: AbortSignal;
+  beforeToolExecution?: BeforeToolExecutionHook;
 };
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
+
+export type BeforeToolExecutionResult =
+  | {
+      type: "continue";
+    }
+  | {
+      type: "cancel";
+      abortRun?: boolean;
+      message?: string;
+    };
+
+export type BeforeToolExecutionHook = (request: {
+  toolCall: ToolCallContent;
+  tool: Tool;
+  args: unknown;
+  signal?: AbortSignal;
+}) => Promise<BeforeToolExecutionResult> | BeforeToolExecutionResult;
 
 type AssistantTurnResult = {
   message: AssistantMessage;
@@ -32,6 +50,12 @@ type ExecutedToolCall = {
   toolCall: ToolCallContent;
   result: ToolResult;
   isError: boolean;
+  abortRun?: boolean;
+};
+
+type ExecutedToolCalls = {
+  toolResults: ToolResultMessage[];
+  abortRun: boolean;
 };
 
 export async function runAgentLoop(
@@ -78,14 +102,14 @@ export async function runAgentLoop(
       assistantTurn.message.stopReason === "toolUse"
         ? getToolCalls(assistantTurn.message)
         : [];
-    const toolResults = await executeToolCalls(
+    const executedToolCalls = await executeToolCalls(
       currentContext,
       toolCalls,
       config,
       emit,
     );
 
-    for (const toolResult of toolResults) {
+    for (const toolResult of executedToolCalls.toolResults) {
       currentContext.messages.push(toolResult);
       newMessages.push(toolResult);
     }
@@ -94,10 +118,10 @@ export async function runAgentLoop(
       type: "turn_end",
       turn,
       message: assistantTurn.message,
-      toolResults,
+      toolResults: executedToolCalls.toolResults,
     });
 
-    if (toolCalls.length === 0) {
+    if (toolCalls.length === 0 || executedToolCalls.abortRun) {
       break;
     }
   }
@@ -222,8 +246,9 @@ async function executeToolCalls(
   toolCalls: ToolCallContent[],
   config: AgentLoopConfig,
   emit: AgentEventSink,
-): Promise<ToolResultMessage[]> {
+): Promise<ExecutedToolCalls> {
   const toolResults: ToolResultMessage[] = [];
+  let abortRun = false;
 
   for (const toolCall of toolCalls) {
     if (config.signal?.aborted) {
@@ -234,9 +259,17 @@ async function executeToolCalls(
     const toolResultMessage = createToolResultMessage(executed);
 
     toolResults.push(toolResultMessage);
+
+    if (executed.abortRun) {
+      abortRun = true;
+      break;
+    }
   }
 
-  return toolResults;
+  return {
+    toolResults,
+    abortRun,
+  };
 }
 
 async function executeToolCall(
@@ -245,13 +278,6 @@ async function executeToolCall(
   config: AgentLoopConfig,
   emit: AgentEventSink,
 ): Promise<ExecutedToolCall> {
-  await emit({
-    type: "tool_execution_start",
-    toolCallId: toolCall.id,
-    toolName: toolCall.name,
-    args: toolCall.args,
-  });
-
   const tool = context.tools?.find((candidate) => candidate.name === toolCall.name);
 
   if (!tool) {
@@ -268,6 +294,41 @@ async function executeToolCall(
 
   try {
     const args = validateToolArguments(tool, toolCall.args);
+    const beforeResult = await runBeforeToolExecution(toolCall, tool, args, config);
+
+    if (beforeResult.type === "cancel") {
+      const result = createCanceledToolResult(beforeResult.message);
+
+      await emitToolExecutionEnd(toolCall, result, true, emit);
+
+      return {
+        toolCall,
+        result,
+        isError: true,
+        abortRun: beforeResult.abortRun ?? true,
+      };
+    }
+
+    if (config.signal?.aborted) {
+      const result = createErrorToolResult("Aborted before tool execution");
+
+      await emitToolExecutionEnd(toolCall, result, true, emit);
+
+      return {
+        toolCall,
+        result,
+        isError: true,
+        abortRun: true,
+      };
+    }
+
+    await emit({
+      type: "tool_execution_start",
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      args,
+    });
+
     const updateEvents: Array<Promise<void>> = [];
     const executed = await tool.execute(args, {
       toolCallId: toolCall.id,
@@ -368,6 +429,37 @@ function createErrorToolResult(message: string): ToolResult {
     },
     isError: true,
   };
+}
+
+function createCanceledToolResult(message = "Tool call canceled before execution."): ToolResult {
+  return {
+    content: message,
+    result: {
+      error: message,
+      canceled: true,
+    },
+    isError: true,
+  };
+}
+
+async function runBeforeToolExecution(
+  toolCall: ToolCallContent,
+  tool: Tool,
+  args: unknown,
+  config: AgentLoopConfig,
+): Promise<BeforeToolExecutionResult> {
+  if (!config.beforeToolExecution) {
+    return {
+      type: "continue",
+    };
+  }
+
+  return config.beforeToolExecution({
+    toolCall,
+    tool,
+    args,
+    signal: config.signal,
+  });
 }
 
 function createToolResultMessage(executed: ExecutedToolCall): ToolResultMessage {

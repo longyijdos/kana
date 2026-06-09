@@ -15,7 +15,10 @@ export function startTui(options: StartTuiOptions = {}): void {
     );
   }
 
-  const app = new KanaTuiApp(createKanaAgent(apiKey), new ProcessTerminal());
+  const app = new KanaTuiApp(
+    (agentOptions) => createKanaAgent(apiKey, agentOptions),
+    new ProcessTerminal(),
+  );
 
   app.start();
 }

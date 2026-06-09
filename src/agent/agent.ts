@@ -5,6 +5,7 @@ import {
   runAgentLoop,
   type AgentContext,
   type AgentLoopConfig,
+  type BeforeToolExecutionHook,
 } from "./loop";
 import type { AgentEvent } from "./events";
 import { AgentEventStream } from "./stream";
@@ -19,6 +20,7 @@ export type AgentConfig = {
   // Prevent accidental infinite tool loops while keeping the first version
   // free of custom stop hooks. Use -1 to run without a turn limit.
   maxTurns?: number;
+  beforeToolExecution?: BeforeToolExecutionHook;
 };
 
 export type AgentState = {
@@ -58,9 +60,11 @@ export class Agent {
   private readonly listeners = new Set<AgentEventListener>();
   private activeRun?: ActiveRun;
   private readonly stateData: WritableAgentState;
+  private readonly beforeToolExecution?: BeforeToolExecutionHook;
 
   constructor(options: AgentConfig) {
     this.stateData = createWritableAgentState(options);
+    this.beforeToolExecution = options.beforeToolExecution;
   }
 
   get state(): AgentState {
@@ -170,6 +174,7 @@ export class Agent {
       model: this.stateData.model,
       maxTurns: this.stateData.maxTurns,
       signal,
+      beforeToolExecution: this.beforeToolExecution,
     };
   }
 

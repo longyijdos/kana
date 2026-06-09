@@ -11,6 +11,8 @@ export {
   type AgentContext,
   type AgentEventSink,
   type AgentLoopConfig,
+  type BeforeToolExecutionHook,
+  type BeforeToolExecutionResult,
 } from "./loop";
 export {
   AgentEventStream,

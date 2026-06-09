@@ -254,6 +254,117 @@ describe("runAgentLoop", () => {
     });
   });
 
+  test("runs the before-tool hook before executing a tool call", async () => {
+    const beforeCalls: unknown[] = [];
+    let executed = false;
+
+    const tool = {
+      ...addTool,
+      execute: ({ a, b }) => {
+        executed = true;
+
+        return {
+          content: String(a + b),
+          result: a + b,
+        };
+      },
+    } satisfies Tool<typeof addParameters, number>;
+
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "add the numbers",
+          },
+        ],
+        tools: [tool],
+      },
+      {
+        model: new ScriptedToolModel(),
+        maxTurns: 2,
+        beforeToolExecution: ({ args }) => {
+          beforeCalls.push(args);
+
+          return {
+            type: "continue",
+          };
+        },
+      },
+      () => {},
+    );
+
+    expect(beforeCalls).toEqual([{ a: 2, b: 3 }]);
+    expect(executed).toBe(true);
+    expect(messages[1]).toMatchObject({
+      role: "tool",
+      content: "5",
+      isError: false,
+    });
+  });
+
+  test("cancels a tool call without executing it or continuing the loop", async () => {
+    const model = new ScriptedToolModel();
+    const events: AgentEvent[] = [];
+    let executed = false;
+
+    const tool = {
+      ...addTool,
+      execute: () => {
+        executed = true;
+
+        return {
+          content: "unexpected",
+          result: "unexpected",
+        };
+      },
+    } satisfies Tool<typeof addParameters, string>;
+
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "add the numbers",
+          },
+        ],
+        tools: [tool],
+      },
+      {
+        model,
+        maxTurns: 3,
+        beforeToolExecution: () => ({
+          type: "cancel",
+          abortRun: true,
+          message: "Tool call rejected by user.",
+        }),
+      },
+      (event) => {
+        events.push(structuredClone(event));
+      },
+    );
+
+    expect(executed).toBe(false);
+    expect(model.contexts).toHaveLength(1);
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({
+      role: "tool",
+      toolCallId: "call_1",
+      toolName: "add",
+      content: "Tool call rejected by user.",
+      isError: true,
+      result: {
+        canceled: true,
+      },
+    });
+    expect(
+      events.some((event) => event.type === "tool_execution_start"),
+    ).toBe(false);
+    expect(events.at(-1)).toMatchObject({
+      type: "agent_end",
+    });
+  });
+
   test("runs without a turn limit when maxTurns is -1", async () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 }, 10);
 

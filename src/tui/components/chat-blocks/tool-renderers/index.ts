@@ -70,6 +70,12 @@ export function formatToolOutput(
   return JSON.stringify(result, null, 2);
 }
 
+export function formatToolApprovalTitle(toolCall: ToolCallContent): string {
+  const target = toolTarget(toolCall);
+
+  return `Allow agent to ${formatToolAction(toolCall, target)}?`;
+}
+
 function formatErrorOutput(result: object): string {
   const error = getStringProperty(result, "error");
 

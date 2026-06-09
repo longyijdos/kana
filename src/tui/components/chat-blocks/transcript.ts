@@ -7,6 +7,14 @@ export class Transcript implements Component {
     this.children.push(component);
   }
 
+  removeChild(component: Component): void {
+    const index = this.children.indexOf(component);
+
+    if (index >= 0) {
+      this.children.splice(index, 1);
+    }
+  }
+
   clear(): void {
     this.children.length = 0;
   }

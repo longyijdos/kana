@@ -1,4 +1,9 @@
-import type { Agent, AgentEvent } from "../../agent";
+import type {
+  Agent,
+  AgentEvent,
+  BeforeToolExecutionHook,
+  BeforeToolExecutionResult,
+} from "../../agent";
 import type { ModelMetadata } from "../../core/model";
 import type { AssistantMessage, ToolCallContent } from "../../core/messages";
 import {
@@ -7,6 +12,8 @@ import {
   StatusLine,
   type StatusLineState,
   TextBlock,
+  ToolApproval,
+  type ToolApprovalDecision as ToolApprovalSelection,
   ToolCallBlock,
   Transcript,
 } from "../components";
@@ -34,15 +41,22 @@ export class KanaTuiApp {
   private readonly status: StatusLine;
   private readonly editor = new Editor();
   private readonly pendingTools = new Map<string, ToolCallBlock>();
+  private readonly agent: Agent;
   private running = false;
   private streamingAssistant?: AssistantMessageBlock;
 
   constructor(
-    private readonly agent: Agent,
+    createAgent: (options: {
+      beforeToolExecution: BeforeToolExecutionHook;
+    }) => Agent,
     terminal: ProcessTerminal,
   ) {
     this.tui = new Tui(terminal);
-    this.status = new StatusLine(formatModelName(agent.state.model.metadata));
+    this.agent = createAgent({
+      beforeToolExecution: ({ toolCall, signal }) =>
+        this.showToolApprovalPrompt(toolCall, signal),
+    });
+    this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
   }
 
   start(): void {
@@ -287,6 +301,60 @@ export class KanaTuiApp {
     block.markExecutionStarted();
     this.updateStatus("tool", {
       activeTool: toolName,
+    });
+  }
+
+  private showToolApprovalPrompt(
+    toolCall: ToolCallContent,
+    signal: AbortSignal | undefined,
+  ): Promise<BeforeToolExecutionResult> {
+    return new Promise((resolve) => {
+      let approval: ToolApproval | undefined;
+      let settled = false;
+
+      const finish = (decision: ToolApprovalSelection): void => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        signal?.removeEventListener("abort", handleAbort);
+
+        if (approval) {
+          this.transcript.removeChild(approval);
+          approval = undefined;
+        }
+
+        this.tui.setFocus(this.editor);
+        this.tui.requestRender();
+        resolve(
+          decision === "yes"
+            ? { type: "continue" }
+            : {
+                type: "cancel",
+                abortRun: true,
+                message: "Tool call rejected by user.",
+              },
+        );
+      };
+
+      const handleAbort = (): void => {
+        finish("no");
+      };
+
+      if (signal?.aborted) {
+        handleAbort();
+        return;
+      }
+
+      approval = new ToolApproval(toolCall, finish);
+      this.transcript.addChild(approval);
+      this.tui.setFocus(approval);
+      signal?.addEventListener("abort", handleAbort, { once: true });
+      this.updateStatus("tool", {
+        activeTool: toolCall.name,
+      });
+      this.tui.requestRender();
     });
   }
 

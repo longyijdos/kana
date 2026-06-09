@@ -1,4 +1,4 @@
-import { Agent } from "../agent";
+import { Agent, type AgentConfig } from "../agent";
 import { getModel } from "../providers";
 import {
   createBashTool,
@@ -7,7 +7,12 @@ import {
   createWriteTool,
 } from "../tools";
 
-export function createKanaAgent(apiKey: string): Agent {
+type KanaAgentOptions = Pick<AgentConfig, "beforeToolExecution">;
+
+export function createKanaAgent(
+  apiKey: string,
+  options: KanaAgentOptions = {},
+): Agent {
   const model = getModel({
     provider: "deepseek",
     model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
@@ -44,5 +49,6 @@ export function createKanaAgent(apiKey: string): Agent {
       }),
     ],
     maxTurns: -1,
+    beforeToolExecution: options.beforeToolExecution,
   });
 }
