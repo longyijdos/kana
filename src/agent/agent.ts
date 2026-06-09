@@ -17,7 +17,7 @@ export type AgentConfig = {
   messages?: Message[];
   tools?: Tool[];
   // Prevent accidental infinite tool loops while keeping the first version
-  // free of custom stop hooks.
+  // free of custom stop hooks. Use -1 to run without a turn limit.
   maxTurns?: number;
 };
 

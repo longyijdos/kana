@@ -46,10 +46,11 @@ export async function runAgentLoop(
   };
   const newMessages: Message[] = [];
   const maxTurns = config.maxTurns ?? 8;
+  const hasTurnLimit = maxTurns !== -1;
 
   await emit({ type: "agent_start" });
 
-  for (let turn = 1; turn <= maxTurns; turn += 1) {
+  for (let turn = 1; !hasTurnLimit || turn <= maxTurns; turn += 1) {
     if (config.signal?.aborted) {
       break;
     }

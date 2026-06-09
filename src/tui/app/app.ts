@@ -36,7 +36,6 @@ export class KanaTuiApp {
   private readonly pendingTools = new Map<string, ToolCallBlock>();
   private running = false;
   private streamingAssistant?: AssistantMessageBlock;
-  private turn?: number;
 
   constructor(
     private readonly agent: Agent,
@@ -187,11 +186,9 @@ export class KanaTuiApp {
         });
         break;
       case "turn_start":
-        this.turn = event.turn;
         this.updateStatus("thinking");
         break;
       case "turn_end":
-        this.turn = event.turn;
         break;
       case "message_start":
         this.handleAssistantStart(event.message);
@@ -295,8 +292,6 @@ export class KanaTuiApp {
   ): void {
     this.status.update({
       phase,
-      turn: this.turn,
-      maxTurns: this.agent.state.maxTurns,
       running: this.running,
       ...extra,
     });

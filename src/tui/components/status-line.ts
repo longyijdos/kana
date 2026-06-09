@@ -4,8 +4,6 @@ import { truncateToWidth } from "../render/width";
 
 export type StatusLineState = {
   phase: string;
-  turn?: number;
-  maxTurns?: number;
   activeTool?: string;
   running: boolean;
 };
@@ -26,16 +24,9 @@ export class StatusLine implements Component {
   }
 
   render(width: number): string[] {
-    const turn =
-      this.state.turn === undefined
-        ? undefined
-        : `turn ${this.state.turn}${
-            this.state.maxTurns ? `/${this.state.maxTurns}` : ""
-          }`;
     const parts = [
       color(this.model, "cyan"),
       phaseText(this.state.phase),
-      turn,
       this.state.activeTool
         ? color(`tool ${this.state.activeTool}`, "yellow")
         : undefined,

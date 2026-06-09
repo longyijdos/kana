@@ -23,7 +23,10 @@ class ScriptedToolModel implements Model {
   };
   readonly contexts: ModelContext[] = [];
 
-  constructor(private readonly toolArgs: unknown = { a: "2", b: 3 }) {}
+  constructor(
+    private readonly toolArgs: unknown = { a: "2", b: 3 },
+    private readonly toolTurnCount = 1,
+  ) {}
 
   stream(context: ModelContext): AssistantEventStream {
     this.contexts.push({
@@ -40,7 +43,7 @@ class ScriptedToolModel implements Model {
     const callIndex = this.contexts.length;
 
     queueMicrotask(() => {
-      if (callIndex === 1) {
+      if (callIndex <= this.toolTurnCount) {
         streamToolCallMessage(stream, this.toolArgs);
         return;
       }
@@ -208,6 +211,34 @@ describe("runAgentLoop", () => {
     expect(toolResult.content).toContain("Validation failed");
     expect(toolResult.result).toMatchObject({
       error: expect.stringContaining('Validation failed for tool "add"'),
+    });
+  });
+
+  test("runs without a turn limit when maxTurns is -1", async () => {
+    const model = new ScriptedToolModel({ a: 2, b: 3 }, 10);
+
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "keep using tools",
+          },
+        ],
+        tools: [addTool],
+      },
+      {
+        model,
+        maxTurns: -1,
+      },
+      () => {},
+    );
+
+    expect(model.contexts).toHaveLength(11);
+    expect(messages).toHaveLength(21);
+    expect(messages.at(-1)).toMatchObject({
+      role: "assistant",
+      stopReason: "stop",
     });
   });
 

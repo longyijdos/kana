@@ -43,6 +43,6 @@ export function createKanaAgent(apiKey: string): Agent {
         root: process.cwd(),
       }),
     ],
-    maxTurns: 6,
+    maxTurns: -1,
   });
 }
