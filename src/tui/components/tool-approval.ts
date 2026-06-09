@@ -19,7 +19,7 @@ import {
 export type ToolApprovalDecision = "yes" | "no";
 
 export class ToolApproval implements Component {
-  private selected: ToolApprovalDecision = "no";
+  private selected: ToolApprovalDecision = "yes";
 
   constructor(
     private readonly toolCall: ToolCallContent,

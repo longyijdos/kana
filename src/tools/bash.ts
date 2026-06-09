@@ -7,38 +7,13 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_CHARS = 20_000;
 
-const SAFE_COMMANDS = new Set([
-  "pwd",
-  "ls",
-  "find",
-  "rg",
-  "cat",
-  "sed",
-  "head",
-  "tail",
-  "wc",
-]);
-
-const SAFE_BUN_COMMANDS = new Set([
-  "test",
-  "run typecheck",
-  "run build:cli",
-]);
-
-const SAFE_GIT_COMMANDS = new Set([
-  "status",
-  "diff",
-  "log",
-  "show",
-]);
-
 export const bashParameters = Type.Object({
   command: Type.String({
-    description: "Safe command to execute inside the workspace.",
+    description: "Command to execute.",
   }),
   cwd: Type.Optional(
     Type.String({
-      description: "Working directory, relative to the workspace root or absolute within it.",
+      description: "Working directory, relative to the workspace root or absolute.",
     }),
   ),
   timeoutMs: Type.Optional(
@@ -74,7 +49,7 @@ export function createBashTool(options: BashToolOptions = {}): Tool<
   return {
     name: "bash",
     description:
-      "Run an allowlisted, non-destructive command inside the workspace. Destructive, network, install, shell-control, and git history-changing commands are rejected.",
+      "Run a shell command. Commands execute with the requested working directory, timeout, and output truncation.",
     parameters: bashParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {
@@ -83,10 +58,11 @@ export function createBashTool(options: BashToolOptions = {}): Tool<
 
       const command = args.command.trim();
 
-      validateSafeCommand(command);
+      if (!command) {
+        throw new Error("Command is required.");
+      }
 
-      const rootPath = await realpath(root);
-      const cwd = await resolveWorkspaceDirectory(rootPath, args.cwd ?? ".");
+      const cwd = await resolveDirectory(root, args.cwd ?? ".");
       const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const result = await runCommand(command, cwd.absolutePath, timeoutMs, context.signal);
       const stdout = truncateOutput(result.stdout);
@@ -111,69 +87,19 @@ export function createBashTool(options: BashToolOptions = {}): Tool<
   };
 }
 
-function validateSafeCommand(command: string): void {
-  if (!command) {
-    throw new Error("Command is required.");
-  }
-
-  if (containsShellControl(command)) {
-    throw new Error("Shell control operators are not allowed in bash commands.");
-  }
-
-  const parts = command.split(/\s+/);
-  const executable = parts[0];
-
-  if (!executable || executable.includes("/") || executable.startsWith(".")) {
-    throw new Error(`Command is not allowlisted: ${executable ?? command}`);
-  }
-
-  if (executable === "git") {
-    validateSubcommand("git", parts.slice(1), SAFE_GIT_COMMANDS);
-    return;
-  }
-
-  if (executable === "bun") {
-    validateSubcommand("bun", parts.slice(1), SAFE_BUN_COMMANDS);
-    return;
-  }
-
-  if (!SAFE_COMMANDS.has(executable)) {
-    throw new Error(`Command is not allowlisted: ${executable}`);
-  }
-}
-
-function validateSubcommand(
-  executable: string,
-  args: string[],
-  allowedSubcommands: ReadonlySet<string>,
-): void {
-  const subcommand = args.filter((arg) => !arg.startsWith("-")).slice(0, 2).join(" ");
-
-  if (!subcommand || !allowedSubcommands.has(subcommand)) {
-    throw new Error(`Command is not allowlisted: ${executable} ${subcommand}`);
-  }
-}
-
-function containsShellControl(command: string): boolean {
-  return /[;&|`$<>()[\]{}*?~!\\\n\r]/.test(command);
-}
-
-async function resolveWorkspaceDirectory(
-  rootPath: string,
+async function resolveDirectory(
+  root: string,
   inputPath: string,
 ): Promise<{ absolutePath: string; relativePath: string }> {
   if (!inputPath || inputPath.includes("\0")) {
     throw new Error("Invalid working directory.");
   }
 
+  const rootPath = await realpath(root);
   const requestedPath = path.isAbsolute(inputPath)
     ? path.resolve(inputPath)
     : path.resolve(rootPath, inputPath);
   const absolutePath = await realpath(requestedPath);
-
-  if (!isInsideDirectory(rootPath, absolutePath)) {
-    throw new Error(`Working directory is outside the workspace: ${inputPath}`);
-  }
 
   return {
     absolutePath,
@@ -242,15 +168,6 @@ function truncateOutput(content: string): { content: string; truncated: boolean 
     content: content.slice(0, MAX_OUTPUT_CHARS),
     truncated: true,
   };
-}
-
-function isInsideDirectory(parent: string, child: string): boolean {
-  const relativePath = path.relative(parent, child);
-
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 function formatBashContent(result: BashToolResult): string {

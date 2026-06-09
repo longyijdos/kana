@@ -5,7 +5,7 @@ import type { Tool } from "./tool";
 
 export const writeParameters = Type.Object({
   path: Type.String({
-    description: "New file path to create, relative to the workspace root or absolute within it.",
+    description: "New file path to create, relative to the workspace root or absolute.",
   }),
   content: Type.String({
     description: "Complete file content to write.",
@@ -30,7 +30,7 @@ export function createWriteTool(options: WriteToolOptions = {}): Tool<
   return {
     name: "write",
     description:
-      "Create a new text file inside the workspace. Fails if the path already exists; use edit for existing files.",
+      "Create a new text file. Fails if the path already exists; use edit for existing files.",
     parameters: writeParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {
@@ -70,25 +70,23 @@ async function resolveNewWorkspaceFile(
     ? path.resolve(inputPath)
     : path.resolve(rootPath, inputPath);
 
-  if (!isInsideDirectory(rootPath, absolutePath)) {
-    throw new Error(`Path is outside the workspace: ${inputPath}`);
-  }
-
   if (await pathExists(absolutePath)) {
     throw new Error(`Path already exists: ${inputPath}`);
   }
-
-  const parentPath = await findExistingParent(path.dirname(absolutePath));
-  const parentRealPath = await realpath(parentPath);
-
-  if (!isInsideDirectory(rootPath, parentRealPath)) {
-    throw new Error(`Path is outside the workspace: ${inputPath}`);
-  }
+  const canonicalPath = await canonicalizeNewPath(absolutePath);
 
   return {
     absolutePath,
-    relativePath: path.relative(rootPath, absolutePath) || ".",
+    relativePath: path.relative(rootPath, canonicalPath) || ".",
   };
+}
+
+async function canonicalizeNewPath(absolutePath: string): Promise<string> {
+  const parentPath = await findExistingParent(path.dirname(absolutePath));
+  const parentRealPath = await realpath(parentPath);
+  const relativePath = path.relative(parentPath, absolutePath);
+
+  return path.join(parentRealPath, relativePath);
 }
 
 async function findExistingParent(startPath: string): Promise<string> {
@@ -121,15 +119,6 @@ async function pathExists(inputPath: string): Promise<boolean> {
 
     throw error;
   }
-}
-
-function isInsideDirectory(parent: string, child: string): boolean {
-  const relativePath = path.relative(parent, child);
-
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 function formatWriteContent(result: WriteToolResult): string {

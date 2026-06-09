@@ -76,39 +76,45 @@ describe("workspace tools", () => {
     });
   });
 
-  test("read rejects paths outside the workspace", async () => {
+  test("read accepts paths outside the workspace", async () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();
     const outsideFile = path.join(outside, "secret.txt");
     await writeFile(outsideFile, "secret");
     const read = createReadTool({ root });
+    const result = await read.execute(
+      {
+        path: outsideFile,
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      read.execute(
-        {
-          path: outsideFile,
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Path is outside the workspace");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      path: path.relative(root, outsideFile),
+      content: "secret",
+    });
   });
 
-  test("read rejects symlinks that resolve outside the workspace", async () => {
+  test("read accepts symlinks that resolve outside the workspace", async () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();
     const outsideFile = path.join(outside, "secret.txt");
     await writeFile(outsideFile, "secret");
     await symlink(outsideFile, path.join(root, "secret-link.txt"));
     const read = createReadTool({ root });
+    const result = await read.execute(
+      {
+        path: "secret-link.txt",
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      read.execute(
-        {
-          path: "secret-link.txt",
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Path is outside the workspace");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      path: path.relative(root, outsideFile),
+      content: "secret",
+    });
   });
 
   test("write creates a new workspace file", async () => {
@@ -168,37 +174,41 @@ describe("workspace tools", () => {
     expect(await readFile(path.join(root, "notes.txt"), "utf8")).toBe("existing");
   });
 
-  test("write rejects paths outside the workspace", async () => {
+  test("write creates paths outside the workspace", async () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();
+    const filePath = path.join(outside, "created.txt");
     const write = createWriteTool({ root });
+    const result = await write.execute(
+      {
+        path: filePath,
+        content: "secret",
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      write.execute(
-        {
-          path: path.join(outside, "created.txt"),
-          content: "secret",
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Path is outside the workspace");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      path: path.relative(root, filePath),
+    });
+    expect(await readFile(filePath, "utf8")).toBe("secret");
   });
 
-  test("write rejects paths under symlinked directories outside the workspace", async () => {
+  test("write creates paths under symlinked directories outside the workspace", async () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();
     await symlink(outside, path.join(root, "outside-link"));
     const write = createWriteTool({ root });
+    const result = await write.execute(
+      {
+        path: path.join("outside-link", "created.txt"),
+        content: "secret",
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      write.execute(
-        {
-          path: path.join("outside-link", "created.txt"),
-          content: "secret",
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Path is outside the workspace");
+    expectToolResult(result);
+    expect(await readFile(path.join(outside, "created.txt"), "utf8")).toBe("secret");
   });
 
   test("edit replaces a unique text match in an existing file", async () => {
@@ -284,46 +294,54 @@ describe("workspace tools", () => {
     expect(await readFile(path.join(root, "notes.txt"), "utf8")).toBe("y = 1\ny = 2\n");
   });
 
-  test("edit rejects paths outside the workspace", async () => {
+  test("edit accepts paths outside the workspace", async () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();
     const outsideFile = path.join(outside, "secret.txt");
     await writeFile(outsideFile, "secret");
     const edit = createEditTool({ root });
+    const result = await edit.execute(
+      {
+        path: outsideFile,
+        oldText: "secret",
+        newText: "public",
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      edit.execute(
-        {
-          path: outsideFile,
-          oldText: "secret",
-          newText: "public",
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Path is outside the workspace");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      path: path.relative(root, outsideFile),
+      replacements: 1,
+    });
+    expect(await readFile(outsideFile, "utf8")).toBe("public");
   });
 
-  test("edit rejects symlinks that resolve outside the workspace", async () => {
+  test("edit accepts symlinks that resolve outside the workspace", async () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();
     const outsideFile = path.join(outside, "secret.txt");
     await writeFile(outsideFile, "secret");
     await symlink(outsideFile, path.join(root, "secret-link.txt"));
     const edit = createEditTool({ root });
+    const result = await edit.execute(
+      {
+        path: "secret-link.txt",
+        oldText: "secret",
+        newText: "public",
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      edit.execute(
-        {
-          path: "secret-link.txt",
-          oldText: "secret",
-          newText: "public",
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Path is outside the workspace");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      path: path.relative(root, outsideFile),
+      replacements: 1,
+    });
+    expect(await readFile(outsideFile, "utf8")).toBe("public");
   });
 
-  test("bash runs an allowlisted command inside the workspace", async () => {
+  test("bash runs a command inside the workspace", async () => {
     const root = await createTempRoot();
     await writeFile(path.join(root, "notes.txt"), "hello\n");
     const bash = createBashTool({ root });
@@ -366,62 +384,77 @@ describe("workspace tools", () => {
     });
   });
 
-  test("bash rejects shell control operators", async () => {
+  test("bash allows shell control operators", async () => {
     const root = await createTempRoot();
+    await writeFile(path.join(root, "notes.txt"), "hello\n");
     const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "cat notes.txt; printf done",
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      bash.execute(
-        {
-          command: "cat notes.txt; rm notes.txt",
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Shell control operators are not allowed");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: 0,
+      stdout: "hello\ndone",
+    });
   });
 
-  test("bash rejects non-allowlisted commands", async () => {
+  test("bash allows arbitrary commands", async () => {
     const root = await createTempRoot();
+    const filePath = path.join(root, "notes.txt");
+    await writeFile(filePath, "hello\n");
     const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "rm notes.txt",
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      bash.execute(
-        {
-          command: "rm notes.txt",
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Command is not allowlisted: rm");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: 0,
+    });
+    await expect(readFile(filePath, "utf8")).rejects.toThrow();
   });
 
-  test("bash rejects unsafe git subcommands", async () => {
+  test("bash allows git history-changing commands", async () => {
     const root = await createTempRoot();
     const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "git reset --hard",
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      bash.execute(
-        {
-          command: "git reset --hard",
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Command is not allowlisted: git reset");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      command: "git reset --hard",
+    });
   });
 
-  test("bash rejects cwd outside the workspace", async () => {
+  test("bash accepts cwd outside the workspace", async () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();
+    await writeFile(path.join(outside, "notes.txt"), "outside\n");
     const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "cat notes.txt",
+        cwd: outside,
+      },
+      createToolContext(),
+    );
 
-    await expect(
-      bash.execute(
-        {
-          command: "pwd",
-          cwd: outside,
-        },
-        createToolContext(),
-      ),
-    ).rejects.toThrow("Working directory is outside the workspace");
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      cwd: path.relative(root, outside),
+      stdout: "outside\n",
+    });
   });
 
   test("bash reports timeouts", async () => {

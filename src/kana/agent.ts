@@ -31,7 +31,7 @@ export function createKanaAgent(
       "Use tools when you need to inspect local files.",
       "Use write only to create new files; it fails when the path already exists.",
       "Use edit to modify existing files by exact text replacement.",
-      "Use bash only for allowlisted, non-destructive commands and project checks.",
+      "Use bash when a shell command is the right way to inspect or change local state.",
       "Do not claim to have read a file unless you used the read tool or the content was provided directly.",
     ].join(" "),
     tools: [

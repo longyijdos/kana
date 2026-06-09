@@ -8,7 +8,7 @@ const MAX_READ_LIMIT = 2000;
 
 export const readParameters = Type.Object({
   path: Type.String({
-    description: "File path to read, relative to the workspace root or absolute within it.",
+    description: "File path to read, relative to the workspace root or absolute.",
   }),
   offset: Type.Optional(
     Type.Integer({
@@ -47,7 +47,7 @@ export function createReadTool(options: ReadToolOptions = {}): Tool<
   return {
     name: "read",
     description:
-      "Read a text file inside the workspace. Use offset and limit to inspect large files in chunks.",
+      "Read a text file. Use offset and limit to inspect large files in chunks.",
     parameters: readParameters,
     execute: async (args) => {
       const filePath = await resolveWorkspaceFile(root, args.path);
@@ -92,11 +92,6 @@ async function resolveWorkspaceFile(
     ? path.resolve(inputPath)
     : path.resolve(rootPath, inputPath);
   const absolutePath = await realpath(requestedPath);
-
-  if (!isInsideDirectory(rootPath, absolutePath)) {
-    throw new Error(`Path is outside the workspace: ${inputPath}`);
-  }
-
   const fileStat = await stat(absolutePath);
 
   if (!fileStat.isFile()) {
@@ -107,15 +102,6 @@ async function resolveWorkspaceFile(
     absolutePath,
     relativePath: path.relative(rootPath, absolutePath) || ".",
   };
-}
-
-function isInsideDirectory(parent: string, child: string): boolean {
-  const relativePath = path.relative(parent, child);
-
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 function splitLines(content: string): string[] {

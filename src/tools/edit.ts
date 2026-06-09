@@ -5,7 +5,7 @@ import type { Tool } from "./tool";
 
 export const editParameters = Type.Object({
   path: Type.String({
-    description: "Existing file path to edit, relative to the workspace root or absolute within it.",
+    description: "Existing file path to edit, relative to the workspace root or absolute.",
   }),
   oldText: Type.String({
     minLength: 1,
@@ -103,11 +103,6 @@ async function resolveWorkspaceFile(
     ? path.resolve(inputPath)
     : path.resolve(rootPath, inputPath);
   const absolutePath = await realpath(requestedPath);
-
-  if (!isInsideDirectory(rootPath, absolutePath)) {
-    throw new Error(`Path is outside the workspace: ${inputPath}`);
-  }
-
   const fileStat = await stat(absolutePath);
 
   if (!fileStat.isFile()) {
@@ -138,15 +133,6 @@ function countOccurrences(content: string, search: string): number {
     count += 1;
     index = nextIndex + search.length;
   }
-}
-
-function isInsideDirectory(parent: string, child: string): boolean {
-  const relativePath = path.relative(parent, child);
-
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 function formatEditContent(result: EditToolResult): string {
