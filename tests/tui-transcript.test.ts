@@ -114,10 +114,23 @@ describe("tui transcript", () => {
       false,
     );
 
-    const lines = block.render(80).map(stripAnsi);
+    const rendered = block.render(80);
+    const lines = rendered.map(stripAnsi);
+    const trimmedLines = lines.map((line) => line.trimEnd());
 
-    expect(lines).toContain("- old line");
-    expect(lines).toContain("+ new line");
+    expect(trimmedLines).toContain("- old line");
+    expect(trimmedLines).toContain("+ new line");
+    expect(rendered.some((line) => line.includes("\x1b[48;2;70;24;24"))).toBe(
+      true,
+    );
+    expect(rendered.some((line) => line.includes("\x1b[48;2;18;70;38"))).toBe(
+      true,
+    );
+    expect(
+      rendered
+        .filter((line) => stripAnsi(line).startsWith("- ") || stripAnsi(line).startsWith("+ "))
+        .every((line) => line.includes("\x1b[K")),
+    ).toBe(true);
   });
 
   test("renders every transcript line for terminal scrollback", () => {

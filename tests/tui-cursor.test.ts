@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Editor } from "../src/tui/editor/editor";
+import { Editor } from "../src/tui/components/editor";
 import { visibleWidth } from "../src/tui/render/width";
 import { CURSOR_MARKER } from "../src/tui/runtime/cursor";
 import { extractCursorPosition } from "../src/tui/runtime/tui";

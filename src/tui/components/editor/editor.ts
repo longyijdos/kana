@@ -1,12 +1,12 @@
-import { color, dim } from "../render/ansi";
+import { color, dim } from "../../render/ansi";
 import {
   completeCommand,
   createCommandSubmit,
   getCommandState,
   type PromptSubmit,
 } from "./commands";
-import type { Component } from "../runtime/component";
-import { CURSOR_MARKER } from "../runtime/cursor";
+import type { Component } from "../../runtime/component";
+import { CURSOR_MARKER } from "../../runtime/cursor";
 import {
   applyEditorAction,
   type EditorTextState,
@@ -28,8 +28,8 @@ import {
   isRight,
   isTab,
   isUp,
-} from "../runtime/keys";
-import { padRightAnsi, truncateToWidth } from "../render/width";
+} from "../../runtime/keys";
+import { padRightAnsi, truncateToWidth } from "../../render/width";
 
 const MAX_INPUT_LINES = 5;
 const PROMPT = "> ";

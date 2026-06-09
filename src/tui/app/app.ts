@@ -3,13 +3,13 @@ import type { ModelMetadata } from "../../core/model";
 import type { AssistantMessage, ToolCallContent } from "../../core/messages";
 import {
   AssistantMessageBlock,
+  Editor,
   StatusLine,
   type StatusLineState,
   TextBlock,
   ToolCallBlock,
   Transcript,
 } from "../components";
-import { Editor } from "../editor/editor";
 import {
   isCtrlC,
   isEscape,

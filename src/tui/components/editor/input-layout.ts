@@ -1,5 +1,5 @@
 import { firstGrapheme } from "./state";
-import { visibleWidth } from "../render/width";
+import { visibleWidth } from "../../render/width";
 
 export type InputLayoutLine = {
   text: string;

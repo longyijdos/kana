@@ -1,6 +1,6 @@
-import { color, dim, inverse } from "../render/ansi";
-import type { Component } from "../runtime/component";
-import { truncateToWidth, visibleWidth, wrapPlainText } from "../render/width";
+import { color, dim } from "../../render/ansi";
+import type { Component } from "../../runtime/component";
+import { truncateToWidth, visibleWidth, wrapPlainText } from "../../render/width";
 
 export class TextBlock implements Component {
   constructor(
@@ -33,14 +33,6 @@ export class TextBlock implements Component {
 
     return lines.length ? lines : [""];
   }
-}
-
-export function renderCursorText(
-  beforeCursor: string,
-  cursorText: string,
-  afterCursor: string,
-): string {
-  return `${beforeCursor}${inverse(cursorText)}${afterCursor}`;
 }
 
 function style(

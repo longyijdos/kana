@@ -4,13 +4,13 @@ import {
   createCommandSubmit,
   getCommandState,
   PROMPT_COMMANDS,
-} from "../src/tui/editor/commands";
-import { Editor } from "../src/tui/editor/editor";
+} from "../src/tui/components/editor/commands";
+import { Editor } from "../src/tui/components/editor";
 import {
   createInputLayout,
   moveInputCursorVertically,
-} from "../src/tui/editor/input-layout";
-import { applyEditorAction } from "../src/tui/editor/state";
+} from "../src/tui/components/editor/input-layout";
+import { applyEditorAction } from "../src/tui/components/editor/state";
 import { CURSOR_MARKER } from "../src/tui/runtime/cursor";
 import { stripAnsi, visibleWidth } from "../src/tui/render/width";
 
