@@ -13,6 +13,7 @@ export const bashParameters = Type.Object({
   }),
   cwd: Type.Optional(
     Type.String({
+      default: ".",
       description: "Working directory, relative to the workspace root or absolute.",
     }),
   ),
@@ -20,6 +21,7 @@ export const bashParameters = Type.Object({
     Type.Integer({
       minimum: 1,
       maximum: MAX_TIMEOUT_MS,
+      default: DEFAULT_TIMEOUT_MS,
       description: "Command timeout in milliseconds.",
     }),
   ),

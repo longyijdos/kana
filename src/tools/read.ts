@@ -13,6 +13,7 @@ export const readParameters = Type.Object({
   offset: Type.Optional(
     Type.Integer({
       minimum: 1,
+      default: 1,
       description: "1-based line number to start reading from.",
     }),
   ),
@@ -20,6 +21,7 @@ export const readParameters = Type.Object({
     Type.Integer({
       minimum: 1,
       maximum: MAX_READ_LIMIT,
+      default: DEFAULT_READ_LIMIT,
       description: "Maximum number of lines to read.",
     }),
   ),

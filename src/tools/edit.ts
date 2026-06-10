@@ -16,6 +16,7 @@ export const editParameters = Type.Object({
   }),
   replaceAll: Type.Optional(
     Type.Boolean({
+      default: false,
       description: "Replace every occurrence. Defaults to false, which requires exactly one match.",
     }),
   ),
