@@ -268,8 +268,16 @@ async function executeToolCalls(
   const toolResults: ToolResultMessage[] = [];
   let abortRun = false;
 
-  for (const toolCall of toolCalls) {
+  for (let index = 0; index < toolCalls.length; index += 1) {
+    const toolCall = toolCalls[index];
+
     if (config.signal?.aborted) {
+      appendCanceledToolResults(
+        toolResults,
+        toolCalls.slice(index),
+        "Tool call canceled because the run was aborted.",
+      );
+      abortRun = true;
       break;
     }
 
@@ -279,6 +287,11 @@ async function executeToolCalls(
     toolResults.push(toolResultMessage);
 
     if (executed.abortRun) {
+      appendCanceledToolResults(
+        toolResults,
+        toolCalls.slice(index + 1),
+        "Tool call canceled because the run was aborted.",
+      );
       abortRun = true;
       break;
     }
@@ -288,6 +301,22 @@ async function executeToolCalls(
     toolResults,
     abortRun,
   };
+}
+
+function appendCanceledToolResults(
+  toolResults: ToolResultMessage[],
+  toolCalls: ToolCallContent[],
+  message: string,
+): void {
+  for (const toolCall of toolCalls) {
+    toolResults.push(
+      createToolResultMessage({
+        toolCall,
+        result: createCanceledToolResult(message),
+        isError: true,
+      }),
+    );
+  }
 }
 
 async function executeToolCall(

@@ -59,6 +59,35 @@ class ScriptedToolModel implements Model {
   }
 }
 
+class MultiToolCallModel implements Model {
+  readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "multi-tool-call",
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+  };
+
+  stream(_context: ModelContext): AssistantEventStream {
+    const stream = new AssistantEventStream();
+
+    queueMicrotask(() => {
+      streamMultipleToolCallMessage(stream);
+    });
+
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 class AbortedModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
@@ -428,6 +457,73 @@ describe("runAgentLoop", () => {
     });
   });
 
+  test("adds canceled results for remaining tool calls when aborting a run", async () => {
+    const beforeToolCallIds: string[] = [];
+    let executeCount = 0;
+
+    const tool = {
+      ...addTool,
+      execute: ({ a, b }) => {
+        executeCount += 1;
+
+        return {
+          content: String(a + b),
+          result: a + b,
+        };
+      },
+    } satisfies Tool<typeof addParameters, number>;
+
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "add both numbers",
+          },
+        ],
+        tools: [tool],
+      },
+      {
+        model: new MultiToolCallModel(),
+        maxTurns: 2,
+        beforeToolExecution: ({ toolCall }) => {
+          beforeToolCallIds.push(toolCall.id);
+
+          return {
+            type: "cancel",
+            abortRun: true,
+            message: "Tool call rejected by user.",
+          };
+        },
+      },
+      () => {},
+    );
+
+    expect(executeCount).toBe(0);
+    expect(beforeToolCallIds).toEqual(["call_1"]);
+    expect(messages).toHaveLength(3);
+    expect(messages[1]).toMatchObject({
+      role: "tool",
+      toolCallId: "call_1",
+      toolName: "add",
+      content: "Tool call rejected by user.",
+      isError: true,
+      result: {
+        canceled: true,
+      },
+    });
+    expect(messages[2]).toMatchObject({
+      role: "tool",
+      toolCallId: "call_2",
+      toolName: "add",
+      content: "Tool call canceled because the run was aborted.",
+      isError: true,
+      result: {
+        canceled: true,
+      },
+    });
+  });
+
   test("runs without a turn limit when maxTurns is -1", async () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 }, 10);
 
@@ -594,6 +690,57 @@ function streamToolCallMessage(
     toolCall,
     snapshot: structuredClone(message),
   });
+  stream.end({
+    type: "done",
+    reason: "toolUse",
+    message: structuredClone(message),
+  });
+}
+
+function streamMultipleToolCallMessage(stream: AssistantEventStream): void {
+  const message: AssistantMessage = {
+    role: "assistant",
+    content: [],
+  };
+
+  stream.push({
+    type: "start",
+    snapshot: structuredClone(message),
+  });
+
+  const toolCalls = [
+    {
+      type: "tool_call",
+      id: "call_1",
+      name: "add",
+      args: { a: 1, b: 2 },
+      rawArgs: '{"a":1,"b":2}',
+    },
+    {
+      type: "tool_call",
+      id: "call_2",
+      name: "add",
+      args: { a: 3, b: 4 },
+      rawArgs: '{"a":3,"b":4}',
+    },
+  ] as const;
+
+  for (const [index, toolCall] of toolCalls.entries()) {
+    message.content.push(toolCall);
+
+    stream.push({
+      type: "toolcall_start",
+      contentIndex: index,
+      snapshot: structuredClone(message),
+    });
+    stream.push({
+      type: "toolcall_end",
+      contentIndex: index,
+      toolCall,
+      snapshot: structuredClone(message),
+    });
+  }
+
   stream.end({
     type: "done",
     reason: "toolUse",
