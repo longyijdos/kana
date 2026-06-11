@@ -27,10 +27,16 @@ export type KanaConfig = {
 export type KanaConfigPaths = {
   home: string;
   configPath: string;
+  agentsPath: string;
 };
 
 export type InstallKanaConfigOptions = {
   force?: boolean;
+};
+
+export type InstallKanaConfigResult = {
+  configPath: string;
+  status: "created" | "exists" | "reinstalled";
 };
 
 export const DEFAULT_KANA_CONFIG: KanaConfig = {
@@ -57,6 +63,7 @@ export function getKanaConfigPaths(
   return {
     home,
     configPath: path.join(home, "config.toml"),
+    agentsPath: path.join(home, "AGENTS.md"),
   };
 }
 
@@ -76,13 +83,13 @@ export function loadKanaConfig(
 export function installKanaConfig(
   env: NodeJS.ProcessEnv = process.env,
   options: InstallKanaConfigOptions = {},
-): { configPath: string; created: boolean } {
+): InstallKanaConfigResult {
   const { home, configPath } = getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
 
   const exists = existsSync(configPath);
   if (exists && !options.force) {
-    return { configPath, created: false };
+    return { configPath, status: "exists" };
   }
 
   writeFileSync(configPath, serializeKanaConfig(DEFAULT_KANA_CONFIG), {
@@ -90,7 +97,10 @@ export function installKanaConfig(
     mode: 0o600,
   });
 
-  return { configPath, created: !exists };
+  return {
+    configPath,
+    status: exists ? "reinstalled" : "created",
+  };
 }
 
 function serializeKanaConfig(config: KanaConfig): string {

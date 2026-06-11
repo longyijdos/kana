@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -30,6 +31,7 @@ describe("Kana config", () => {
     expect(getKanaConfigPaths({ HOME: "/home/kana" })).toEqual({
       home: "/home/kana/.kana",
       configPath: "/home/kana/.kana/config.toml",
+      agentsPath: "/home/kana/.kana/AGENTS.md",
     });
   });
 
@@ -38,16 +40,17 @@ describe("Kana config", () => {
     const firstInstall = installKanaConfig(env);
     const installed = readFileSync(firstInstall.configPath, "utf8");
 
-    expect(firstInstall.created).toBe(true);
+    expect(firstInstall.status).toBe("created");
     expect(installed).toContain('api_key_env = "DEEPSEEK_API_KEY"');
     expect(installed).not.toContain("api_key =");
+    expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
 
     writeFileSync(firstInstall.configPath, "custom = true\n");
     const secondInstall = installKanaConfig(env);
 
     expect(secondInstall).toEqual({
       configPath: firstInstall.configPath,
-      created: false,
+      status: "exists",
     });
     expect(readFileSync(firstInstall.configPath, "utf8")).toBe("custom = true\n");
   });
@@ -61,7 +64,7 @@ describe("Kana config", () => {
 
     expect(result).toEqual({
       configPath,
-      created: false,
+      status: "reinstalled",
     });
     expect(readFileSync(configPath, "utf8")).toContain(
       'api_key_env = "DEEPSEEK_API_KEY"',
@@ -133,6 +136,31 @@ describe("Kana config", () => {
     }
   });
 
+  test("uses ~/.kana/AGENTS.md as the system prompt when it exists", () => {
+    const env = createTempEnv();
+    const paths = getKanaConfigPaths(env);
+    const previousKanaHome = process.env.KANA_HOME;
+    const previousKey = process.env.KANA_DEEPSEEK_KEY;
+    process.env.KANA_HOME = paths.home;
+    process.env.KANA_DEEPSEEK_KEY = "secret";
+    writeFileSync(paths.agentsPath, "Custom system prompt.\n");
+
+    try {
+      const agent = createKanaAgent({
+        ...DEFAULT_KANA_CONFIG,
+        model: {
+          ...DEFAULT_KANA_CONFIG.model,
+          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+        },
+      });
+
+      expect(agent.state.system).toBe("Custom system prompt.\n");
+    } finally {
+      restoreEnv("KANA_HOME", previousKanaHome);
+      restoreEnv("KANA_DEEPSEEK_KEY", previousKey);
+    }
+  });
+
   test("fails agent creation when the configured API key is missing", () => {
     const previous = process.env.KANA_DEEPSEEK_KEY;
     delete process.env.KANA_DEEPSEEK_KEY;
@@ -179,4 +207,8 @@ function restoreEnv(name: string, value: string | undefined): void {
   }
 
   process.env[name] = value;
+}
+
+function fileExists(filePath: string): boolean {
+  return existsSync(filePath);
 }

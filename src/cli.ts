@@ -29,9 +29,9 @@ export function createCli(): Command {
         force: options.force,
       });
       console.log(
-        result.created
+        result.status === "created"
           ? `Created config: ${result.configPath}`
-          : options.force
+          : result.status === "reinstalled"
             ? `Reinstalled config: ${result.configPath}`
           : `Config already exists: ${result.configPath}`,
       );

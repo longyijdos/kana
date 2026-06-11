@@ -7,6 +7,7 @@ import {
   createWriteTool,
 } from "@/tools";
 import { getKanaConfigPaths, type KanaConfig } from "./config";
+import { loadKanaSystemPrompt } from "./prompt";
 
 type KanaAgentOptions = Pick<AgentConfig, "beforeToolExecution">;
 
@@ -35,14 +36,7 @@ export function createKanaAgent(
 
   return new Agent({
     model,
-    system: [
-      "You are a concise coding assistant working inside the current workspace.",
-      "Use tools when you need to inspect local files.",
-      "Use write only to create new files; it fails when the path already exists.",
-      "Use edit to modify existing files by exact text replacement.",
-      "Use bash when a shell command is the right way to inspect or change local state.",
-      "Do not claim to have read a file unless you used the read tool or the content was provided directly.",
-    ].join(" "),
+    system: loadKanaSystemPrompt(),
     tools: [
       createReadTool({
         root: process.cwd(),
