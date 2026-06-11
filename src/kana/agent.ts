@@ -6,22 +6,31 @@ import {
   createReadTool,
   createWriteTool,
 } from "@/tools";
+import { getKanaConfigPaths, type KanaConfig } from "./config";
 
 type KanaAgentOptions = Pick<AgentConfig, "beforeToolExecution">;
 
 export function createKanaAgent(
-  apiKey: string,
+  config: KanaConfig,
   options: KanaAgentOptions = {},
 ): Agent {
+  const apiKey = process.env[config.model.apiKeyEnv];
+
+  if (!apiKey) {
+    throw new Error(
+      `Missing ${config.model.apiKeyEnv}. Set it in your environment or update ${getKanaConfigPaths().configPath}.`,
+    );
+  }
+
   const model = getModel({
-    provider: "deepseek",
-    model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
+    provider: config.model.provider,
+    model: config.model.name,
     apiKey,
-    thinking: true,
-    reasoningEffort: "high",
-    maxTokens: 8192,
-    timeoutMs: 60_000,
-    maxRetries: 1,
+    thinking: config.model.thinking,
+    reasoningEffort: config.model.reasoningEffort,
+    maxTokens: config.model.maxTokens,
+    timeoutMs: config.model.timeoutMs,
+    maxRetries: config.model.maxRetries,
   });
 
   return new Agent({
@@ -48,7 +57,7 @@ export function createKanaAgent(
         root: process.cwd(),
       }),
     ],
-    maxTurns: -1,
+    maxTurns: config.agent.maxTurns,
     beforeToolExecution: options.beforeToolExecution,
   });
 }

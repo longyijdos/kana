@@ -1,0 +1,182 @@
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, test } from "bun:test";
+import {
+  DEFAULT_KANA_CONFIG,
+  createKanaAgent,
+  getKanaConfigPaths,
+  installKanaConfig,
+  loadKanaConfig,
+} from "@/kana";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const tempDir of tempDirs.splice(0)) {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+describe("Kana config", () => {
+  test("uses ~/.kana/config.toml by default", () => {
+    expect(getKanaConfigPaths({ HOME: "/home/kana" })).toEqual({
+      home: "/home/kana/.kana",
+      configPath: "/home/kana/.kana/config.toml",
+    });
+  });
+
+  test("installs the default config without overwriting existing files", () => {
+    const env = createTempEnv();
+    const firstInstall = installKanaConfig(env);
+    const installed = readFileSync(firstInstall.configPath, "utf8");
+
+    expect(firstInstall.created).toBe(true);
+    expect(installed).toContain('api_key_env = "DEEPSEEK_API_KEY"');
+    expect(installed).not.toContain("api_key =");
+
+    writeFileSync(firstInstall.configPath, "custom = true\n");
+    const secondInstall = installKanaConfig(env);
+
+    expect(secondInstall).toEqual({
+      configPath: firstInstall.configPath,
+      created: false,
+    });
+    expect(readFileSync(firstInstall.configPath, "utf8")).toBe("custom = true\n");
+  });
+
+  test("force installs the default config over an existing file", () => {
+    const env = createTempEnv();
+    const { configPath } = installKanaConfig(env);
+    writeFileSync(configPath, "custom = true\n");
+
+    const result = installKanaConfig(env, { force: true });
+
+    expect(result).toEqual({
+      configPath,
+      created: false,
+    });
+    expect(readFileSync(configPath, "utf8")).toContain(
+      'api_key_env = "DEEPSEEK_API_KEY"',
+    );
+  });
+
+  test("loads defaults when config.toml is missing", () => {
+    expect(loadKanaConfig(createTempEnv())).toEqual(DEFAULT_KANA_CONFIG);
+  });
+
+  test("merges TOML config with defaults", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(
+      path.join(home, "config.toml"),
+      [
+        "[model]",
+        'name = "deepseek-v4-flash"',
+        'api_key_env = "KANA_DEEPSEEK_KEY"',
+        "max_tokens = 4096",
+        "",
+        "[agent]",
+        "max_turns = 4",
+        "",
+      ].join("\n"),
+    );
+
+    expect(loadKanaConfig(env)).toEqual({
+      ...DEFAULT_KANA_CONFIG,
+      model: {
+        ...DEFAULT_KANA_CONFIG.model,
+        name: "deepseek-v4-flash",
+        apiKeyEnv: "KANA_DEEPSEEK_KEY",
+        maxTokens: 4096,
+      },
+      agent: {
+        maxTurns: 4,
+      },
+    });
+  });
+
+  test("loads the configured API key environment variable name", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(
+      path.join(home, "config.toml"),
+      '[model]\napi_key_env = "KANA_DEEPSEEK_KEY"\n',
+    );
+
+    expect(loadKanaConfig(env).model.apiKeyEnv).toBe("KANA_DEEPSEEK_KEY");
+  });
+
+  test("creates agents by reading the configured API key environment variable", () => {
+    const previous = process.env.KANA_DEEPSEEK_KEY;
+    process.env.KANA_DEEPSEEK_KEY = "secret";
+
+    try {
+      expect(() =>
+        createKanaAgent({
+          ...DEFAULT_KANA_CONFIG,
+          model: {
+            ...DEFAULT_KANA_CONFIG.model,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          },
+        }),
+      ).not.toThrow();
+    } finally {
+      restoreEnv("KANA_DEEPSEEK_KEY", previous);
+    }
+  });
+
+  test("fails agent creation when the configured API key is missing", () => {
+    const previous = process.env.KANA_DEEPSEEK_KEY;
+    delete process.env.KANA_DEEPSEEK_KEY;
+
+    try {
+      expect(() =>
+        createKanaAgent({
+          ...DEFAULT_KANA_CONFIG,
+          model: {
+            ...DEFAULT_KANA_CONFIG.model,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          },
+        }),
+      ).toThrow("Missing KANA_DEEPSEEK_KEY");
+    } finally {
+      restoreEnv("KANA_DEEPSEEK_KEY", previous);
+    }
+  });
+
+  test("rejects unsupported providers", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[model]\nprovider = "mock"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("Unsupported model.provider: mock");
+  });
+});
+
+function createTempEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const home = mkdtempSync(path.join(tmpdir(), "kana-config-"));
+  tempDirs.push(home);
+  mkdirSync(path.join(home, ".kana"), { recursive: true });
+
+  return {
+    HOME: home,
+    ...extra,
+  };
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}

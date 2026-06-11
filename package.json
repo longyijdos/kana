@@ -6,6 +6,7 @@
   },
   "scripts": {
     "build:cli": "bun build --compile --outfile=kana src/cli.ts",
+    "install:bin": "./scripts/install.sh",
     "start": "bun run build:cli && ./kana",
     "tui": "bun run start",
     "test": "bun test",

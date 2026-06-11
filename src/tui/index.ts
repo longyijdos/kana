@@ -1,1 +1,1 @@
-export { startTui, type StartTuiOptions } from "./start-tui";
+export { startTui } from "./start-tui";
