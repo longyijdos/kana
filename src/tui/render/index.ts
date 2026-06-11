@@ -3,6 +3,7 @@ export {
   bold,
   color,
   dim,
+  foregroundRgb,
   italic,
   strikethrough,
   type BackgroundColor,

@@ -2,6 +2,7 @@ import {
   bold,
   color,
   dim,
+  foregroundRgb,
   graphemeSegments,
   italic,
   splitLines,
@@ -10,12 +11,17 @@ import {
   visibleWidth,
   type Color,
 } from "../../render";
+import {
+  highlightCodeSync,
+  type HighlightedCodeLine,
+} from "../../utils/syntax-highlighter";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 
 type InlineStyle = {
   bold?: boolean;
   code?: boolean;
+  color?: string;
   italic?: boolean;
   strike?: boolean;
 };
@@ -41,23 +47,28 @@ export class MarkdownBlock implements Component {
 
   render(width: number): string[] {
     const lines: string[] = [];
-    let codeBlock: string[] | undefined;
+    let codeBlock: { language?: string; lines: string[] } | undefined;
 
     for (const rawLine of splitLines(this.text)) {
       const fence = rawLine.match(/^\s*```([\w-]+)?\s*$/);
 
       if (fence) {
         if (codeBlock) {
-          lines.push(...this.renderCodeBlock(codeBlock, width));
+          lines.push(
+            ...this.renderCodeBlock(codeBlock.lines, width, codeBlock.language),
+          );
           codeBlock = undefined;
         } else {
-          codeBlock = [];
+          codeBlock = {
+            language: fence[1],
+            lines: [],
+          };
         }
         continue;
       }
 
       if (codeBlock) {
-        codeBlock.push(rawLine);
+        codeBlock.lines.push(rawLine);
         continue;
       }
 
@@ -65,7 +76,9 @@ export class MarkdownBlock implements Component {
     }
 
     if (codeBlock) {
-      lines.push(...this.renderCodeBlock(codeBlock, width));
+      lines.push(
+        ...this.renderCodeBlock(codeBlock.lines, width, codeBlock.language),
+      );
     }
 
     return lines.length ? lines : [""];
@@ -165,11 +178,20 @@ export class MarkdownBlock implements Component {
     });
   }
 
-  private renderCodeBlock(codeLines: string[], width: number): string[] {
+  private renderCodeBlock(
+    codeLines: string[],
+    width: number,
+    language: string | undefined,
+  ): string[] {
     const rendered: string[] = [];
     const prefix = "    ";
     const contentWidth = Math.max(1, width - visibleWidth(prefix));
     const lines = codeLines.length ? codeLines : [""];
+    const highlighted = highlightCodeSync(lines.join("\n"), language);
+
+    if (highlighted) {
+      return this.renderHighlightedCodeBlock(highlighted, width);
+    }
 
     for (const line of lines) {
       const wrapped = wrapPlainLine(line.replace(/\t/g, "   "), contentWidth);
@@ -182,6 +204,38 @@ export class MarkdownBlock implements Component {
             width,
             "",
           ),
+        );
+      }
+    }
+
+    return rendered;
+  }
+
+  private renderHighlightedCodeBlock(
+    codeLines: HighlightedCodeLine[],
+    width: number,
+  ): string[] {
+    const rendered: string[] = [];
+    const prefix = "    ";
+    const contentWidth = Math.max(1, width - visibleWidth(prefix));
+
+    for (const line of codeLines.length ? codeLines : [[]]) {
+      const spans = line.length
+        ? line.map((token) => {
+            const style = token.color ? { color: token.color } : undefined;
+
+            return {
+              text: token.text.replace(/\t/g, "   "),
+              style,
+            };
+          })
+        : [{ text: "" }];
+      const wrapped = wrapSpans(spans, contentWidth, contentWidth);
+
+      for (const [index, wrappedLine] of wrapped.entries()) {
+        const codePrefix = index === 0 ? prefix : " ".repeat(visibleWidth(prefix));
+        rendered.push(
+          truncateToWidth(`${codePrefix}${styleSpans(wrappedLine, {})}`, width, ""),
         );
       }
     }
@@ -382,6 +436,8 @@ function styleSpans(
 
       if (span.style?.code) {
         text = color(text, tuiTheme.markdownInlineCode);
+      } else if (span.style?.color) {
+        text = colorHex(text, span.style.color);
       } else if (options.defaultColor) {
         text = color(text, options.defaultColor);
       }
@@ -443,15 +499,31 @@ function sameStyle(left: InlineStyle | undefined, right: InlineStyle | undefined
   return (
     Boolean(left?.bold) === Boolean(right?.bold) &&
     Boolean(left?.code) === Boolean(right?.code) &&
+    left?.color === right?.color &&
     Boolean(left?.italic) === Boolean(right?.italic) &&
     Boolean(left?.strike) === Boolean(right?.strike)
   );
 }
 
 function styleOrUndefined(style: InlineStyle): InlineStyle | undefined {
-  return style.bold || style.code || style.italic || style.strike
+  return style.bold || style.code || style.color || style.italic || style.strike
     ? { ...style }
     : undefined;
+}
+
+function colorHex(text: string, value: string): string {
+  const match = value.match(/^#?([0-9a-f]{6})(?:[0-9a-f]{2})?$/i);
+
+  if (!match) {
+    return text;
+  }
+
+  const hex = match[1] ?? "";
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+
+  return foregroundRgb(text, red, green, blue);
 }
 
 function wrapPlainLine(value: string, width: number): string[] {

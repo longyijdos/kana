@@ -15,6 +15,7 @@
   "dependencies": {
     "@sinclair/typebox": "^0.34.49",
     "commander": "^15.0.0",
+    "shiki": "^4.2.0",
     "string-width": "^8.2.1"
   },
   "devDependencies": {

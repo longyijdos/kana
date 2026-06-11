@@ -37,6 +37,15 @@ export function color(text: string, value: Color): string {
   return `\x1b[${COLOR_CODES[value]}m${text}${RESET}`;
 }
 
+export function foregroundRgb(
+  text: string,
+  red: number,
+  green: number,
+  blue: number,
+): string {
+  return `\x1b[38;2;${clampRgb(red)};${clampRgb(green)};${clampRgb(blue)}m${text}${RESET}`;
+}
+
 export function background(text: string, value: BackgroundColor): string {
   return `\x1b[${BACKGROUND_CODES[value]}m${text}${ERASE_TO_END_OF_LINE}${RESET}`;
 }
@@ -55,4 +64,8 @@ export function strikethrough(text: string): string {
 
 export function dim(text: string): string {
   return `\x1b[2m${text}${RESET}`;
+}
+
+function clampRgb(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
 }

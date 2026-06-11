@@ -13,6 +13,7 @@ import {
   type RunPhase,
 } from "./status-phase";
 import { ToolCallBlocks } from "./tool-call-blocks";
+import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import {
   AssistantMessageBlock,
   Editor,
@@ -56,6 +57,11 @@ export class KanaTuiApp {
   }
 
   start(): void {
+    void preloadSyntaxHighlighter().then(
+      () => this.tui.requestRender(),
+      () => undefined,
+    );
+
     this.transcript.addChild(
       new TextBlock("Kana TUI. Type a prompt and press Enter.", {
         color: tuiTheme.muted,

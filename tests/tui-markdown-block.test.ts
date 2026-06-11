@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MarkdownBlock } from "../src/tui/components";
+import { preloadSyntaxHighlighter } from "../src/tui/utils/syntax-highlighter";
 import { stripAnsi, visibleWidth } from "../src/tui/render";
 
 describe("tui markdown block", () => {
@@ -22,6 +23,15 @@ describe("tui markdown block", () => {
     const lines = new MarkdownBlock("```ts\nconst value = 1").render(80).map(stripAnsi);
 
     expect(lines).toEqual(["    const value = 1"]);
+  });
+
+  test("renders fenced code blocks with shiki highlighting after preload", async () => {
+    await preloadSyntaxHighlighter();
+
+    const rendered = new MarkdownBlock("```ts\nconst value = 1\n```").render(80);
+
+    expect(stripAnsi(rendered[0] ?? "")).toBe("    const value = 1");
+    expect(rendered[0]).toContain("\x1b[38;2;");
   });
 
   test("renders inline code and bold without changing visible text", () => {
