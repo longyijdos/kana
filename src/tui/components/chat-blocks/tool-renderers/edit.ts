@@ -1,4 +1,5 @@
 import { background, dim, type BackgroundColor } from "../../../render/ansi";
+import { splitLines } from "../../../render/lines";
 import {
   getNumberProperty,
   getStringProperty,
@@ -30,7 +31,7 @@ function formatDiffLines(
   marker: "-" | "+",
   lineBackground: BackgroundColor,
 ): string[] {
-  const lines = value.split("\n");
+  const lines = splitLines(value);
 
   if (lines.at(-1) === "") {
     lines.pop();

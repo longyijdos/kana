@@ -1,4 +1,5 @@
 import stringWidth from "string-width";
+import { splitLines } from "./lines";
 import { stripCursorMarker } from "../runtime/cursor";
 
 const ANSI_PATTERN =
@@ -54,7 +55,7 @@ export function wrapPlainText(value: string, width: number): string[] {
   const columns = Math.max(width, 1);
   const lines: string[] = [];
 
-  for (const rawLine of value.replace(/\t/g, "   ").split("\n")) {
+  for (const rawLine of splitLines(value.replace(/\t/g, "   "))) {
     if (!rawLine) {
       lines.push("");
       continue;

@@ -1,4 +1,5 @@
 import type { ToolCallContent } from "../../../../core/messages";
+import { splitLines } from "../../../render/lines";
 
 export const TOOL_OUTPUT_LINE_LIMIT = 8;
 
@@ -20,7 +21,7 @@ export function toolTarget(toolCall: ToolCallContent, result?: unknown): string 
 }
 
 export function tail(value: string, limit: number): string {
-  const lines = value.trimEnd().split("\n");
+  const lines = splitLines(value.trimEnd());
   const visible = lines.slice(-limit);
   const hidden = lines.length - visible.length;
 

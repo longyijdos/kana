@@ -1,5 +1,6 @@
 import type { ToolCallContent } from "../../core/messages";
 import { color, dim } from "../render/ansi";
+import { splitLines } from "../render/lines";
 import { truncateToWidth } from "../render/width";
 import type { Component } from "../runtime/component";
 import { tuiTheme } from "../theme";
@@ -30,8 +31,10 @@ export class ToolApproval implements Component {
   render(width: number): string[] {
     const lines = [
       "",
-      color(formatToolApprovalTitle(this.toolCall), tuiTheme.toolActive),
-      dim(formatToolDetail(this.toolCall)),
+      ...renderTextLines(formatToolApprovalTitle(this.toolCall), (line) =>
+        color(line, tuiTheme.toolActive),
+      ),
+      ...renderTextLines(formatToolDetail(this.toolCall), dim),
       this.renderOption("yes", "Yes, run it"),
       this.renderOption("no", "No, abort"),
     ];
@@ -56,6 +59,13 @@ export class ToolApproval implements Component {
 
     return value === this.selected ? color(line, tuiTheme.toolActive) : line;
   }
+}
+
+function renderTextLines(
+  value: string,
+  style: (line: string) => string,
+): string[] {
+  return splitLines(value).map((line) => style(line));
 }
 
 function formatToolDetail(toolCall: ToolCallContent): string {

@@ -169,6 +169,29 @@ describe("tui transcript", () => {
     ).toBe(true);
   });
 
+  test("renders failed multiline bash command titles as separate logical lines", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command:
+          'git commit -m "feat: add something\n\nCo-authored-by: Name <email@example.com>"',
+      },
+    });
+
+    block.updateResult({ error: "Tool call rejected by user." }, true);
+
+    const lines = block.render(120).map(stripAnsi);
+
+    expect(lines.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(
+      true,
+    );
+    expect(lines).toContain('Failed to run git commit -m "feat: add something');
+    expect(lines).toContain('Co-authored-by: Name <email@example.com>"');
+    expect(lines).toContain("Tool call rejected by user.");
+  });
+
   test("renders every transcript line for terminal scrollback", () => {
     const transcript = new Transcript();
 

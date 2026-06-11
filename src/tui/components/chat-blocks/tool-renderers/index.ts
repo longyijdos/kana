@@ -71,9 +71,18 @@ export function formatToolOutput(
 }
 
 export function formatToolApprovalTitle(toolCall: ToolCallContent): string {
-  const target = toolTarget(toolCall);
-
-  return `Allow agent to ${formatToolAction(toolCall, target)}?`;
+  switch (toolCall.name) {
+    case "read":
+      return "Allow agent to read file?";
+    case "write":
+      return "Allow agent to create file?";
+    case "edit":
+      return "Allow agent to edit file?";
+    case "bash":
+      return "Allow agent to run bash?";
+    default:
+      return `Allow agent to use ${toolCall.name}?`;
+  }
 }
 
 function formatErrorOutput(result: object): string {

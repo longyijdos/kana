@@ -18,7 +18,7 @@ describe("tool approval", () => {
 
     const rendered = approval.render(80).map(stripAnsi);
 
-    expect(rendered).toContain("Allow agent to run bun test?");
+    expect(rendered).toContain("Allow agent to run bash?");
     expect(rendered).toContain("bun test");
     expect(rendered).toContain("> Yes, run it");
     expect(rendered).toContain("  No, abort");
@@ -44,5 +44,29 @@ describe("tool approval", () => {
     approval.handleInput("\r");
 
     expect(decision).toBe("no");
+  });
+
+  test("renders multiline bash commands as separate logical lines", () => {
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "bash",
+        args: {
+          command:
+            'git commit -m "feat: add something\n\nCo-authored-by: Name <email@example.com>"',
+        },
+      },
+      () => {},
+    );
+
+    const rendered = approval.render(120).map(stripAnsi);
+
+    expect(rendered.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(
+      true,
+    );
+    expect(rendered).toContain("Allow agent to run bash?");
+    expect(rendered).toContain('git commit -m "feat: add something');
+    expect(rendered).toContain('Co-authored-by: Name <email@example.com>"');
   });
 });

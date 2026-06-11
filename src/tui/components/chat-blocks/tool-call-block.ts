@@ -1,5 +1,6 @@
 import type { ToolCallContent } from "../../../core/messages";
 import { color } from "../../render/ansi";
+import { splitLines } from "../../render/lines";
 import { truncateToWidth } from "../../render/width";
 import type { Component } from "../../runtime/component";
 import { tuiTheme } from "../../theme";
@@ -47,7 +48,7 @@ export class ToolCallBlock implements Component {
         : tuiTheme.toolActive;
     const lines = [
       "",
-      color(formatToolTitle(this.toolCall, state, this.result), titleColor),
+      ...renderTitle(formatToolTitle(this.toolCall, state, this.result), titleColor),
     ];
     const output = formatToolOutput(
       this.toolCall,
@@ -77,6 +78,13 @@ export class ToolCallBlock implements Component {
 
     return this.executionStarted ? "running" : "preparing";
   }
+}
+
+function renderTitle(
+  title: string,
+  titleColor: Parameters<typeof color>[1],
+): string[] {
+  return splitLines(title).map((line) => color(line, titleColor));
 }
 
 function renderOutput(
