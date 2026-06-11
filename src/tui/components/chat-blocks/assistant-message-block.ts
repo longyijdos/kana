@@ -2,7 +2,7 @@ import type { AssistantMessage } from "@/core";
 import { dim } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
-import { TextBlock } from "./text-block";
+import { MarkdownBlock } from "./markdown-block";
 
 export class AssistantMessageBlock implements Component {
   private message: AssistantMessage = {
@@ -26,9 +26,7 @@ export class AssistantMessageBlock implements Component {
     for (const content of this.message.content) {
       if (content.type === "text" && content.text.trim()) {
         lines.push(
-          ...new TextBlock(content.text.trim(), {
-            color: tuiTheme.assistant,
-          }).render(width),
+          ...new MarkdownBlock(content.text.trim()).render(width),
         );
         renderedContent = true;
       }

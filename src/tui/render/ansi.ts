@@ -45,6 +45,14 @@ export function bold(text: string): string {
   return `\x1b[1m${text}${RESET}`;
 }
 
+export function italic(text: string): string {
+  return `\x1b[3m${text}${RESET}`;
+}
+
+export function strikethrough(text: string): string {
+  return `\x1b[9m${text}${RESET}`;
+}
+
 export function dim(text: string): string {
   return `\x1b[2m${text}${RESET}`;
 }

@@ -3,6 +3,8 @@ export {
   bold,
   color,
   dim,
+  italic,
+  strikethrough,
   type BackgroundColor,
   type Color,
   RESET,
