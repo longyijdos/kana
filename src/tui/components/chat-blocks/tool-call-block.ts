@@ -1,15 +1,15 @@
-import type { ToolCallContent } from "../../../core/messages";
-import { color } from "../../render/ansi";
-import { splitLines } from "../../render/lines";
-import { truncateToWidth } from "../../render/width";
-import type { Component } from "../../runtime/component";
+import type { ToolCallContent } from "@/core";
+import { color } from "../../render";
+import { mapLines } from "../../render";
+import { truncateToWidth } from "../../render";
+import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import { TextBlock } from "./text-block";
 import {
   formatToolOutput,
   formatToolTitle,
   type ToolState,
-} from "./tool-renderers";
+} from "../../tools";
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
@@ -48,7 +48,9 @@ export class ToolCallBlock implements Component {
         : tuiTheme.toolActive;
     const lines = [
       "",
-      ...renderTitle(formatToolTitle(this.toolCall, state, this.result), titleColor),
+      ...mapLines(formatToolTitle(this.toolCall, state, this.result), (line) =>
+        color(line, titleColor),
+      ),
     ];
     const output = formatToolOutput(
       this.toolCall,
@@ -58,11 +60,9 @@ export class ToolCallBlock implements Component {
 
     if (typeof output === "string" && output) {
       lines.push(
-        ...renderOutput(
-          output,
-          width,
-          this.isError ? tuiTheme.error : tuiTheme.toolOutput,
-        ),
+        ...new TextBlock(output, {
+          color: this.isError ? tuiTheme.error : tuiTheme.toolOutput,
+        }).render(width),
       );
     } else if (Array.isArray(output)) {
       lines.push(...output);
@@ -78,21 +78,4 @@ export class ToolCallBlock implements Component {
 
     return this.executionStarted ? "running" : "preparing";
   }
-}
-
-function renderTitle(
-  title: string,
-  titleColor: Parameters<typeof color>[1],
-): string[] {
-  return splitLines(title).map((line) => color(line, titleColor));
-}
-
-function renderOutput(
-  output: string,
-  width: number,
-  outputColor: Parameters<typeof color>[1],
-): string[] {
-  return new TextBlock(output, {
-    color: outputColor,
-  }).render(width);
 }

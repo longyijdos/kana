@@ -1,6 +1,6 @@
-import type { AssistantMessage } from "../../../core/messages";
-import { dim } from "../../render/ansi";
-import type { Component } from "../../runtime/component";
+import type { AssistantMessage } from "@/core";
+import { dim } from "../../render";
+import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import { TextBlock } from "./text-block";
 

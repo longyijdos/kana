@@ -1,22 +1,17 @@
-import type { ToolCallContent } from "../../core/messages";
-import { color, dim } from "../render/ansi";
-import { splitLines } from "../render/lines";
-import { truncateToWidth } from "../render/width";
-import type { Component } from "../runtime/component";
+import type { ToolCallContent } from "@/core";
+import { color, dim } from "../render";
+import { mapLines } from "../render";
+import { truncateToWidth } from "../render";
+import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
-import { formatToolApprovalTitle } from "./chat-blocks/tool-renderers";
-import {
-  getNumberProperty,
-  getStringProperty,
-  toolTarget,
-} from "./chat-blocks/tool-renderers/shared";
+import { formatToolApproval } from "../tools";
 import {
   isDown,
   isEnter,
   isLeft,
   isRight,
   isUp,
-} from "../runtime/keys";
+} from "../runtime";
 
 export type ToolApprovalDecision = "yes" | "no";
 
@@ -29,12 +24,13 @@ export class ToolApproval implements Component {
   ) {}
 
   render(width: number): string[] {
+    const text = formatToolApproval(this.toolCall);
     const lines = [
       "",
-      ...renderTextLines(formatToolApprovalTitle(this.toolCall), (line) =>
+      ...mapLines(text.title, (line) =>
         color(line, tuiTheme.toolActive),
       ),
-      ...renderTextLines(formatToolDetail(this.toolCall), dim),
+      ...mapLines(text.detail, dim),
       this.renderOption("yes", "Yes, run it"),
       this.renderOption("no", "No, abort"),
     ];
@@ -59,65 +55,4 @@ export class ToolApproval implements Component {
 
     return value === this.selected ? color(line, tuiTheme.toolActive) : line;
   }
-}
-
-function renderTextLines(
-  value: string,
-  style: (line: string) => string,
-): string[] {
-  return splitLines(value).map((line) => style(line));
-}
-
-function formatToolDetail(toolCall: ToolCallContent): string {
-  const target = toolTarget(toolCall);
-  const summary = formatToolSummary(toolCall);
-
-  return summary ? `${target} - ${summary}` : target;
-}
-
-function formatToolSummary(toolCall: ToolCallContent): string {
-  switch (toolCall.name) {
-    case "read": {
-      const startLine = getNumberProperty(toolCall.args, "startLine");
-      const endLine = getNumberProperty(toolCall.args, "endLine");
-
-      return startLine !== undefined || endLine !== undefined
-        ? `lines ${startLine ?? "start"}-${endLine ?? "end"}`
-        : "";
-    }
-
-    case "write": {
-      const content = getStringProperty(toolCall.args, "content");
-
-      return content ? summarizeText(content) : "";
-    }
-
-    case "edit": {
-      const oldText = getStringProperty(toolCall.args, "oldText");
-
-      return oldText ? `replace ${summarizeText(oldText)}` : "";
-    }
-
-    case "bash": {
-      const cwd = getStringProperty(toolCall.args, "cwd");
-
-      return cwd ? `cwd ${cwd}` : "";
-    }
-  }
-
-  if (toolCall.args === undefined) {
-    return "";
-  }
-
-  try {
-    return JSON.stringify(toolCall.args);
-  } catch {
-    return String(toolCall.args);
-  }
-}
-
-function summarizeText(value: string): string {
-  const normalized = value.trim().replace(/\s+/g, " ");
-
-  return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
 }

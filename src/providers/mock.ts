@@ -1,11 +1,12 @@
-import type { ModelContext } from "../core/context";
 import {
+  AssistantEventStream,
   BaseModel,
-  type ModelMetadata,
+  type AssistantMessage,
   type ModelConfig,
-} from "../core/model";
-import type { AssistantMessage, TextContent } from "../core/messages";
-import { AssistantEventStream } from "../core/stream";
+  type ModelContext,
+  type ModelMetadata,
+  type TextContent,
+} from "@/core";
 
 export type MockModelConfig = ModelConfig & {
   provider: "mock";

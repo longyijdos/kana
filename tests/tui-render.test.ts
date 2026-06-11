@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { Component } from "../src/tui/runtime/component";
-import { CURSOR_MARKER } from "../src/tui/runtime/cursor";
-import type { Terminal } from "../src/tui/runtime/terminal";
-import { Tui } from "../src/tui/runtime/tui";
+import type { Component } from "../src/tui/runtime";
+import { CURSOR_MARKER } from "../src/tui/runtime";
+import type { Terminal } from "../src/tui/runtime";
+import { Tui } from "../src/tui/runtime";
 
 class FakeTerminal implements Terminal {
   writes: string[] = [];

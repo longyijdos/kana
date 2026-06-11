@@ -3,9 +3,16 @@ import type {
   AgentEvent,
   BeforeToolExecutionHook,
   BeforeToolExecutionResult,
-} from "../../agent";
-import type { ModelMetadata } from "../../core/model";
-import type { AssistantMessage, ToolCallContent } from "../../core/messages";
+} from "@/agent";
+import type { AssistantMessage, ModelMetadata, ToolCallContent } from "@/core";
+import {
+  isThinkingVisible,
+  phaseForAgentEndReason,
+  phaseForAssistantMessage,
+  phaseForStopReason,
+  type RunPhase,
+} from "./status-phase";
+import { ToolCallBlocks } from "./tool-call-blocks";
 import {
   AssistantMessageBlock,
   Editor,
@@ -14,34 +21,22 @@ import {
   TextBlock,
   ToolApproval,
   type ToolApprovalDecision as ToolApprovalSelection,
-  ToolCallBlock,
   Transcript,
 } from "../components";
 import {
   isCtrlC,
   isEscape,
-} from "../runtime/keys";
-import type { ProcessTerminal } from "../runtime/terminal";
+} from "../runtime";
+import type { ProcessTerminal } from "../runtime";
 import { tuiTheme } from "../theme";
-import { Tui } from "../runtime/tui";
-
-type RunPhase =
-  | "idle"
-  | "starting"
-  | "thinking"
-  | "responding"
-  | "tool"
-  | "done"
-  | "aborted"
-  | "error"
-  | "length";
+import { Tui } from "../runtime";
 
 export class KanaTuiApp {
   private readonly tui: Tui;
   private readonly transcript = new Transcript();
+  private readonly toolCallBlocks = new ToolCallBlocks(this.transcript);
   private readonly status: StatusLine;
   private readonly editor = new Editor();
-  private readonly pendingTools = new Map<string, ToolCallBlock>();
   private readonly agent: Agent;
   private running = false;
   private streamingAssistant?: AssistantMessageBlock;
@@ -163,7 +158,7 @@ export class KanaTuiApp {
     );
     this.running = true;
     this.streamingAssistant = undefined;
-    this.pendingTools.clear();
+    this.toolCallBlocks.clear();
     this.updateStatus("starting");
 
     try {
@@ -220,14 +215,20 @@ export class KanaTuiApp {
         this.handleToolStart(event.toolCallId, event.toolName, event.args);
         break;
       case "tool_execution_update":
-        this.pendingTools.get(event.toolCallId)?.updatePartialResult(event.partialResult);
+        this.toolCallBlocks.updatePartialResult(
+          event.toolCallId,
+          event.partialResult,
+        );
         this.updateStatus("tool", {
           activeTool: event.toolName,
         });
         break;
       case "tool_execution_end":
-        this.pendingTools.get(event.toolCallId)?.updateResult(event.result, event.isError);
-        this.pendingTools.delete(event.toolCallId);
+        this.toolCallBlocks.updateResult(
+          event.toolCallId,
+          event.result,
+          event.isError,
+        );
         this.updateStatus(event.isError ? "error" : "tool", {
           activeTool: undefined,
         });
@@ -253,7 +254,7 @@ export class KanaTuiApp {
 
     this.streamingAssistant?.update(event.message);
     this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
-    this.createOrUpdateToolCalls(event.message);
+    this.toolCallBlocks.createOrUpdateFromMessage(event.message);
     this.updateStatus(phaseForAssistantMessage(event.message));
   }
 
@@ -264,44 +265,12 @@ export class KanaTuiApp {
     this.updateStatus(phaseForStopReason(message.stopReason));
   }
 
-  private createOrUpdateToolCalls(message: AssistantMessage): void {
-    for (const content of message.content) {
-      if (content.type !== "tool_call") {
-        continue;
-      }
-
-      let block = this.pendingTools.get(content.id);
-
-      if (!block) {
-        block = new ToolCallBlock(content);
-        this.pendingTools.set(content.id, block);
-        this.transcript.addChild(block);
-      } else {
-        block.updateArgs(content.args);
-      }
-    }
-  }
-
   private handleToolStart(
     toolCallId: string,
     toolName: string,
     args: unknown,
   ): void {
-    let block = this.pendingTools.get(toolCallId);
-
-    if (!block) {
-      const toolCall: ToolCallContent = {
-        type: "tool_call",
-        id: toolCallId,
-        name: toolName,
-        args,
-      };
-      block = new ToolCallBlock(toolCall);
-      this.pendingTools.set(toolCallId, block);
-      this.transcript.addChild(block);
-    }
-
-    block.markExecutionStarted();
+    this.toolCallBlocks.markStarted(toolCallId, toolName, args);
     this.updateStatus("tool", {
       activeTool: toolName,
     });
@@ -375,59 +344,4 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
-}
-
-function phaseForAssistantMessage(message: AssistantMessage): RunPhase {
-  if (message.content.some((content) => content.type === "tool_call")) {
-    return "tool";
-  }
-
-  if (message.content.some((content) => content.type === "text" && content.text)) {
-    return "responding";
-  }
-
-  return "thinking";
-}
-
-function isThinkingVisible(
-  eventType: Extract<AgentEvent, { type: "message_update" }>["assistantMessageEvent"]["type"],
-): boolean {
-  switch (eventType) {
-    case "thinking_start":
-    case "thinking_delta":
-      return true;
-    default:
-      return false;
-  }
-}
-
-function phaseForStopReason(reason: AssistantMessage["stopReason"]): RunPhase {
-  switch (reason) {
-    case "length":
-      return "length";
-    case "aborted":
-      return "aborted";
-    case "error":
-      return "error";
-    case "toolUse":
-      return "tool";
-    case "stop":
-    case undefined:
-      return "done";
-  }
-}
-
-function phaseForAgentEndReason(
-  reason: Extract<AgentEvent, { type: "agent_end" }>["reason"],
-): RunPhase {
-  switch (reason) {
-    case "aborted":
-      return "aborted";
-    case "error":
-      return "error";
-    case "length":
-      return "length";
-    case "stop":
-      return "done";
-  }
 }

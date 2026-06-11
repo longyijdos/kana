@@ -2,7 +2,7 @@ import type { Static, TSchema } from "@sinclair/typebox";
 import { TypeCompiler, type TypeCheck } from "@sinclair/typebox/compiler";
 import { Value } from "@sinclair/typebox/value";
 import type { ValueError } from "@sinclair/typebox/errors";
-import type { ToolCallContent } from "../core/messages";
+import type { ToolCallContent } from "@/core";
 import type { Tool } from "./tool";
 
 const validatorCache = new WeakMap<object, TypeCheck<TSchema>>();

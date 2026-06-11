@@ -1,7 +1,8 @@
-import { readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { Tool } from "./tool";
+import { resolveExistingWorkspaceFile } from "./workspace-path";
 
 export const editParameters = Type.Object({
   path: Type.String({
@@ -50,7 +51,7 @@ export function createEditTool(options: EditToolOptions = {}): Tool<
         throw new Error("Edit aborted.");
       }
 
-      const filePath = await resolveWorkspaceFile(root, args.path);
+      const filePath = await resolveExistingWorkspaceFile(root, args.path);
       const content = await readFile(filePath.absolutePath, "utf8");
       const replacements = countOccurrences(content, args.oldText);
 
@@ -88,31 +89,6 @@ export function createEditTool(options: EditToolOptions = {}): Tool<
         result,
       };
     },
-  };
-}
-
-async function resolveWorkspaceFile(
-  root: string,
-  inputPath: string,
-): Promise<{ absolutePath: string; relativePath: string }> {
-  if (!inputPath || inputPath.includes("\0")) {
-    throw new Error("Invalid file path.");
-  }
-
-  const rootPath = await realpath(root);
-  const requestedPath = path.isAbsolute(inputPath)
-    ? path.resolve(inputPath)
-    : path.resolve(rootPath, inputPath);
-  const absolutePath = await realpath(requestedPath);
-  const fileStat = await stat(absolutePath);
-
-  if (!fileStat.isFile()) {
-    throw new Error(`Path is not a file: ${inputPath}`);
-  }
-
-  return {
-    absolutePath,
-    relativePath: path.relative(rootPath, absolutePath) || ".",
   };
 }
 

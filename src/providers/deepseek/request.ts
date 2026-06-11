@@ -1,10 +1,10 @@
-import type { ModelContext } from "../../core/context";
 import type {
   AssistantContent,
   Message,
+  ModelContext,
   ToolCallContent,
-} from "../../core/messages";
-import type { ToolSpec } from "../../tools/tool";
+} from "@/core";
+import type { ToolSpec } from "@/tools";
 import type {
   DeepSeekMessage,
   DeepSeekModelConfig,

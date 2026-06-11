@@ -1,7 +1,7 @@
-import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { Tool } from "./tool";
+import { resolveWorkspaceDirectory } from "./workspace-path";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
@@ -64,7 +64,7 @@ export function createBashTool(options: BashToolOptions = {}): Tool<
         throw new Error("Command is required.");
       }
 
-      const cwd = await resolveDirectory(root, args.cwd ?? ".");
+      const cwd = await resolveWorkspaceDirectory(root, args.cwd ?? ".");
       const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const result = await runCommand(command, cwd.absolutePath, timeoutMs, context.signal);
       const stdout = truncateOutput(result.stdout);
@@ -86,26 +86,6 @@ export function createBashTool(options: BashToolOptions = {}): Tool<
         isError: result.exitCode !== 0 || result.timedOut,
       };
     },
-  };
-}
-
-async function resolveDirectory(
-  root: string,
-  inputPath: string,
-): Promise<{ absolutePath: string; relativePath: string }> {
-  if (!inputPath || inputPath.includes("\0")) {
-    throw new Error("Invalid working directory.");
-  }
-
-  const rootPath = await realpath(root);
-  const requestedPath = path.isAbsolute(inputPath)
-    ? path.resolve(inputPath)
-    : path.resolve(rootPath, inputPath);
-  const absolutePath = await realpath(requestedPath);
-
-  return {
-    absolutePath,
-    relativePath: path.relative(rootPath, absolutePath) || ".",
   };
 }
 

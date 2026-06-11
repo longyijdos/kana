@@ -1,6 +1,6 @@
-import { color, dim } from "../render/ansi";
-import type { Component } from "../runtime/component";
-import { truncateToWidth } from "../render/width";
+import { color, dim } from "../render";
+import type { Component } from "../runtime";
+import { truncateToWidth } from "../render";
 import { tuiTheme } from "../theme";
 
 export type StatusLineState = {

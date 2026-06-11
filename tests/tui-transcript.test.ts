@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AssistantMessageBlock, ToolCallBlock, Transcript } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render/width";
-import type { Component } from "../src/tui/runtime/component";
+import { stripAnsi } from "../src/tui/render";
+import type { Component } from "../src/tui/runtime";
 
 class LinesBlock implements Component {
   constructor(readonly lines: string[]) {}

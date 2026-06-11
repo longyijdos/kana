@@ -1,4 +1,4 @@
-import type { Color } from "./render/ansi";
+import type { Color } from "./render";
 
 export const tuiTheme = {
   assistant: "white",

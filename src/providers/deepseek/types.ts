@@ -1,5 +1,4 @@
-import type { ModelConfig } from "../../core/model";
-import type { ToolCallContent } from "../../core/messages";
+import type { ModelConfig, ToolCallContent } from "@/core";
 
 export type DeepSeekReasoningEffort = "high" | "max";
 

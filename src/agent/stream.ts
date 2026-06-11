@@ -1,5 +1,5 @@
-import type { Message } from "../core/messages";
-import { EventStream, type ReadableEventStream } from "../utils/event-stream";
+import type { Message } from "@/core";
+import { EventStream, type ReadableEventStream } from "@/utils";
 import type { AgentEvent } from "./events";
 
 export type AgentDoneEvent = Extract<AgentEvent, { type: "agent_end" }>;

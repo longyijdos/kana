@@ -1,7 +1,7 @@
 import { Container, type Component } from "./component";
 import { CURSOR_MARKER } from "./cursor";
 import type { Terminal } from "./terminal";
-import { truncateToWidth, visibleWidth } from "../render/width";
+import { truncateToWidth, visibleWidth } from "../render";
 
 type InputListenerResult = { consume?: boolean; data?: string } | undefined;
 type InputListener = (data: string) => InputListenerResult;

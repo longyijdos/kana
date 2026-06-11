@@ -1,4 +1,4 @@
-import type { Component } from "../../runtime/component";
+import type { Component } from "../../runtime";
 
 export class Transcript implements Component {
   readonly children: Component[] = [];

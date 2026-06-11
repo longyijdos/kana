@@ -1,12 +1,11 @@
-import type { Model } from "../core/model";
 import type {
   AssistantMessage,
   Message,
+  Model,
   ToolCallContent,
   ToolResultMessage,
-} from "../core/messages";
-import type { Tool, ToolResult } from "../tools/tool";
-import { validateToolArguments } from "../tools/validation";
+} from "@/core";
+import { validateToolArguments, type Tool, type ToolResult } from "@/tools";
 import type { AgentEvent } from "./events";
 import type { AgentEndReason } from "./events";
 

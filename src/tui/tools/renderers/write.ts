@@ -1,10 +1,11 @@
-import type { ToolCallContent } from "../../../../core/messages";
+import type { ToolCallContent } from "@/core";
 import {
   getNumberProperty,
   getStringProperty,
-  tail,
-  TOOL_OUTPUT_LINE_LIMIT,
-} from "./shared";
+} from "../properties";
+import { tailLines } from "../../render";
+
+const TOOL_OUTPUT_LINE_LIMIT = 8;
 
 export function formatWriteOutput(
   toolCall: ToolCallContent,
@@ -15,7 +16,7 @@ export function formatWriteOutput(
 
   return [
     bytesWritten === undefined ? undefined : `${bytesWritten} bytes`,
-    content ? tail(content, TOOL_OUTPUT_LINE_LIMIT) : undefined,
+    content ? tailLines(content, TOOL_OUTPUT_LINE_LIMIT) : undefined,
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n");

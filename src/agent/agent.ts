@@ -1,6 +1,5 @@
-import type { Model } from "../core/model";
-import type { AssistantMessage, Message, UserMessage } from "../core/messages";
-import type { Tool } from "../tools/tool";
+import type { AssistantMessage, Message, Model, UserMessage } from "@/core";
+import type { Tool } from "@/tools";
 import {
   runAgentLoop,
   type AgentContext,

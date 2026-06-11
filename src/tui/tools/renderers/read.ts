@@ -1,9 +1,10 @@
 import {
   getNumberProperty,
   getStringProperty,
-  tail,
-  TOOL_OUTPUT_LINE_LIMIT,
-} from "./shared";
+} from "../properties";
+import { tailLines } from "../../render";
+
+const TOOL_OUTPUT_LINE_LIMIT = 8;
 
 export function formatReadOutput(result: object): string {
   const path = getStringProperty(result, "path");
@@ -16,7 +17,7 @@ export function formatReadOutput(result: object): string {
       ? `${path}:${startLine}-${endLine} of ${totalLines}`
       : path;
 
-  return [header, content ? tail(content, TOOL_OUTPUT_LINE_LIMIT) : undefined]
+  return [header, content ? tailLines(content, TOOL_OUTPUT_LINE_LIMIT) : undefined]
     .filter((line): line is string => Boolean(line))
     .join("\n");
 }

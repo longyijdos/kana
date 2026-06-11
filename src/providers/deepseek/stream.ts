@@ -1,5 +1,8 @@
-import type { AssistantMessage, ToolCallContent } from "../../core/messages";
-import { AssistantEventStream } from "../../core/stream";
+import {
+  AssistantEventStream,
+  type AssistantMessage,
+  type ToolCallContent,
+} from "@/core";
 import type {
   DeepSeekChatCompletionChunk,
   DeepSeekFinishReason,

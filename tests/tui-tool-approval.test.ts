@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ToolApproval } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render/width";
+import { stripAnsi } from "../src/tui/render";
 
 describe("tool approval", () => {
   test("renders yes as the default selection", () => {

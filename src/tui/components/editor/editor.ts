@@ -1,4 +1,4 @@
-import { color, dim } from "../../render/ansi";
+import { color, dim } from "../../render";
 import { tuiTheme } from "../../theme";
 import {
   completeCommand,
@@ -6,8 +6,8 @@ import {
   getCommandState,
   type PromptSubmit,
 } from "./commands";
-import type { Component } from "../../runtime/component";
-import { CURSOR_MARKER } from "../../runtime/cursor";
+import type { Component } from "../../runtime";
+import { CURSOR_MARKER } from "../../runtime";
 import {
   applyEditorAction,
   type EditorTextState,
@@ -29,8 +29,9 @@ import {
   isRight,
   isTab,
   isUp,
-} from "../../runtime/keys";
-import { padRightAnsi, truncateToWidth } from "../../render/width";
+} from "../../runtime";
+import { padRightAnsi, truncateToWidth } from "../../render";
+import { normalizeLineEndings } from "../../render";
 
 const MAX_INPUT_LINES = 5;
 const PROMPT = "> ";
@@ -385,10 +386,6 @@ export class Editor implements Component {
 
 function wrapIndex(index: number, length: number): number {
   return ((index % length) + length) % length;
-}
-
-function normalizeLineEndings(value: string): string {
-  return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
 function commandTokenEnd(value: string): number | undefined {

@@ -1,6 +1,6 @@
-import { color, dim } from "../../render/ansi";
-import type { Component } from "../../runtime/component";
-import { truncateToWidth, visibleWidth, wrapPlainText } from "../../render/width";
+import { color, dim } from "../../render";
+import type { Component } from "../../runtime";
+import { truncateToWidth, visibleWidth, wrapPlainText } from "../../render";
 
 export class TextBlock implements Component {
   constructor(

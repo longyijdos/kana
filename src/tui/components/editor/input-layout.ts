@@ -1,5 +1,6 @@
-import { firstGrapheme } from "./state";
-import { visibleWidth } from "../../render/width";
+import { firstGrapheme } from "../../render";
+import { isLineBreak } from "../../render";
+import { visibleWidth } from "../../render";
 
 export type InputLayoutLine = {
   text: string;
@@ -136,10 +137,6 @@ function createLine(offset: number): WrappedLine {
     width: 0,
     glyphs: [],
   };
-}
-
-function isLineBreak(value: string): boolean {
-  return value === "\n" || value === "\r" || value === "\r\n";
 }
 
 function findCursorLine(lines: WrappedLine[], cursorOffset: number): number {

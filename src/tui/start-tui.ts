@@ -1,6 +1,6 @@
-import { createKanaAgent } from "../kana/agent";
+import { createKanaAgent } from "@/kana";
 import { KanaTuiApp } from "./app/app";
-import { ProcessTerminal } from "./runtime/terminal";
+import { ProcessTerminal } from "./runtime";
 
 export type StartTuiOptions = {
   apiKey?: string;

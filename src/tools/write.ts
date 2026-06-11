@@ -1,7 +1,8 @@
-import { lstat, mkdir, realpath, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { Tool } from "./tool";
+import { resolveNewWorkspaceFile } from "./workspace-path";
 
 export const writeParameters = Type.Object({
   path: Type.String({
@@ -55,70 +56,6 @@ export function createWriteTool(options: WriteToolOptions = {}): Tool<
       };
     },
   };
-}
-
-async function resolveNewWorkspaceFile(
-  root: string,
-  inputPath: string,
-): Promise<{ absolutePath: string; relativePath: string }> {
-  if (!inputPath || inputPath.includes("\0")) {
-    throw new Error("Invalid file path.");
-  }
-
-  const rootPath = await realpath(root);
-  const absolutePath = path.isAbsolute(inputPath)
-    ? path.resolve(inputPath)
-    : path.resolve(rootPath, inputPath);
-
-  if (await pathExists(absolutePath)) {
-    throw new Error(`Path already exists: ${inputPath}`);
-  }
-  const canonicalPath = await canonicalizeNewPath(absolutePath);
-
-  return {
-    absolutePath,
-    relativePath: path.relative(rootPath, canonicalPath) || ".",
-  };
-}
-
-async function canonicalizeNewPath(absolutePath: string): Promise<string> {
-  const parentPath = await findExistingParent(path.dirname(absolutePath));
-  const parentRealPath = await realpath(parentPath);
-  const relativePath = path.relative(parentPath, absolutePath);
-
-  return path.join(parentRealPath, relativePath);
-}
-
-async function findExistingParent(startPath: string): Promise<string> {
-  let currentPath = startPath;
-
-  for (;;) {
-    if (await pathExists(currentPath)) {
-      return currentPath;
-    }
-
-    const parentPath = path.dirname(currentPath);
-
-    if (parentPath === currentPath) {
-      throw new Error(`No existing parent directory found for: ${startPath}`);
-    }
-
-    currentPath = parentPath;
-  }
-}
-
-async function pathExists(inputPath: string): Promise<boolean> {
-  try {
-    await lstat(inputPath);
-
-    return true;
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error) {
-      return error.code !== "ENOENT";
-    }
-
-    throw error;
-  }
 }
 
 function formatWriteContent(result: WriteToolResult): string {

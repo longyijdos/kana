@@ -11,8 +11,8 @@ import {
   moveInputCursorVertically,
 } from "../src/tui/components/editor/input-layout";
 import { applyEditorAction } from "../src/tui/components/editor/state";
-import { CURSOR_MARKER } from "../src/tui/runtime/cursor";
-import { stripAnsi, visibleWidth } from "../src/tui/render/width";
+import { CURSOR_MARKER } from "../src/tui/runtime";
+import { stripAnsi, visibleWidth } from "../src/tui/render";
 
 describe("prompt editor", () => {
   test("inserts text at the cursor", () => {

@@ -1,11 +1,11 @@
-import { Agent, type AgentConfig } from "../agent";
-import { getModel } from "../providers";
+import { Agent, type AgentConfig } from "@/agent";
+import { getModel } from "@/providers";
 import {
   createBashTool,
   createEditTool,
   createReadTool,
   createWriteTool,
-} from "../tools";
+} from "@/tools";
 
 type KanaAgentOptions = Pick<AgentConfig, "beforeToolExecution">;
 

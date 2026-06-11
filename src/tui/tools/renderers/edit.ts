@@ -1,9 +1,9 @@
-import { background, dim, type BackgroundColor } from "../../../render/ansi";
-import { splitLines } from "../../../render/lines";
+import { background, dim, type BackgroundColor } from "../../render";
+import { splitLines } from "../../render";
 import {
   getNumberProperty,
   getStringProperty,
-} from "./shared";
+} from "../properties";
 
 export function formatEditOutput(result: object): string[] {
   const oldText = getStringProperty(result, "oldText");

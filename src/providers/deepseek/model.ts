@@ -1,7 +1,9 @@
-import type { ModelContext } from "../../core/context";
-import { BaseModel } from "../../core/model";
-import type { AssistantMessage } from "../../core/messages";
-import { AssistantEventStream } from "../../core/stream";
+import {
+  AssistantEventStream,
+  BaseModel,
+  type AssistantMessage,
+  type ModelContext,
+} from "@/core";
 import {
   createRequestSignal,
   fetchWithRetries,

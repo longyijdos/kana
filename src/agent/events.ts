@@ -1,10 +1,10 @@
-import type { AssistantMessageEvent } from "../core/events";
 import type {
+  AssistantMessageEvent,
   AssistantMessage,
   AssistantStopReason,
   Message,
   ToolResultMessage,
-} from "../core/messages";
+} from "@/core";
 
 export type AgentEndReason = Exclude<AssistantStopReason, "toolUse">;
 
