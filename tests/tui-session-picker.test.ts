@@ -10,6 +10,7 @@ const sessions: KanaSessionMetadata[] = [
   {
     id: "alpha-session",
     createdAt: "2026-06-12T00:00:00.000Z",
+    title: "Explain lazy sessions",
     cwd: "/repo",
     path: "/sessions/a.jsonl",
     model: {
@@ -20,6 +21,7 @@ const sessions: KanaSessionMetadata[] = [
   {
     id: "bravo-session",
     createdAt: "2026-06-13T00:00:00.000Z",
+    title: "Add fork prompt titles",
     cwd: "/repo",
     path: "/sessions/b.jsonl",
   },
@@ -35,8 +37,8 @@ describe("session picker", () => {
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "",
       "Sessions",
-      `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  deepseek/deepseek-v4-pro`,
-      `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  unknown model`,
+      `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  Explain lazy sessions  deepseek/deepseek-v4-pro`,
+      `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  Add fork prompt titles  unknown model`,
     ]);
 
     picker.handleInput("\x1b[B");

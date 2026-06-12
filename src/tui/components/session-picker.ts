@@ -91,11 +91,12 @@ export class SessionPicker implements Component {
 
 function formatSession(session: KanaSessionMetadata): string {
   const created = formatLocalTimestamp(session.createdAt);
+  const title = session.title || "Untitled session";
   const model = session.model
     ? `${session.model.provider}/${session.model.model}`
     : "unknown model";
 
-  return `${created}  ${shortId(session.id)}  ${model}`;
+  return `${created}  ${shortId(session.id)}  ${title}  ${model}`;
 }
 
 function formatLocalTimestamp(timestamp: string): string {

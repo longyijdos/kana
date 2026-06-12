@@ -81,12 +81,14 @@ describe("Kana session store", () => {
       type: "session",
       version: 1,
       id: "session-1",
+      title: "hi",
       cwd,
       model: {
         provider: "deepseek",
         model: "deepseek-v4-pro",
       },
     });
+    expect(session.title).toBe("hi");
     expect(firstEntry).toMatchObject({
       type: "message",
       parentId: null,
@@ -151,8 +153,31 @@ describe("Kana session store", () => {
     expect(header).toMatchObject({
       type: "session",
       id: "fork",
+      title: "branch from here",
       parentSessionPath: "/tmp/source.jsonl",
     });
+  });
+
+  test("uses an explicit session title when provided", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({
+      cwd,
+      env,
+      id: "titled",
+      title: "Compare parser approaches",
+    });
+
+    appendKanaSessionMessages(session, [
+      {
+        role: "user",
+        content: "this prompt should not replace the explicit title",
+      },
+    ]);
+
+    const loaded = loadKanaSession("titled", { env, cwd });
+
+    expect(loaded.metadata.title).toBe("Compare parser approaches");
   });
 });
 

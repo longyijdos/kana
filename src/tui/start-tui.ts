@@ -17,8 +17,9 @@ export type StartTuiOptions = {
 
 export function startTui(options: StartTuiOptions = {}): void {
   const config = loadKanaConfig();
-  const createSession = (parentSessionPath?: string) =>
+  const createSession = (parentSessionPath?: string, title?: string) =>
     createKanaSession({
+      title,
       model: {
         provider: config.model.provider,
         model: config.model.name,
@@ -77,7 +78,7 @@ export function startTui(options: StartTuiOptions = {}): void {
           id: session.metadata.id,
         };
       },
-      forkSession: (messages) => {
+      forkSession: (messages, prompt) => {
         session ??= {
           metadata: createSession(),
           messages: [],
@@ -85,7 +86,7 @@ export function startTui(options: StartTuiOptions = {}): void {
         const source = session;
 
         session = {
-          metadata: createSession(source.metadata.path),
+          metadata: createSession(source.metadata.path, prompt),
           messages,
         };
         resumeSessionId = undefined;
@@ -95,7 +96,13 @@ export function startTui(options: StartTuiOptions = {}): void {
           id: session.metadata.id,
         };
       },
-      listSessions: () => listKanaSessions({ cwd: process.cwd() }),
+      listSessions: () => {
+        const currentSessionId = session?.metadata.id;
+
+        return listKanaSessions({ cwd: process.cwd() }).filter(
+          (candidate) => candidate.id !== currentSessionId,
+        );
+      },
       loadSession: (sessionId) => {
         session = loadKanaSession(sessionId, { cwd: process.cwd() });
         resumeSessionId = session.metadata.id;

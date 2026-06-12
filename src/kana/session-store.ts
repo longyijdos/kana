@@ -12,12 +12,15 @@ import type { Message, ModelMetadata } from "@/core";
 import { getKanaConfigPaths } from "./config";
 
 const SESSION_VERSION = 1;
+const DEFAULT_SESSION_TITLE = "Untitled session";
+const MAX_SESSION_TITLE_LENGTH = 80;
 
 export type KanaSessionModelMetadata = Pick<ModelMetadata, "provider" | "model">;
 
 export type KanaSessionMetadata = {
   id: string;
   createdAt: string;
+  title: string;
   cwd: string;
   path: string;
   model?: KanaSessionModelMetadata;
@@ -29,6 +32,7 @@ export type KanaSessionHeader = {
   version: typeof SESSION_VERSION;
   id: string;
   createdAt: string;
+  title: string;
   cwd: string;
   model?: KanaSessionModelMetadata;
   parentSessionPath?: string;
@@ -48,6 +52,7 @@ export type CreateKanaSessionOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   id?: string;
+  title?: string;
   model?: KanaSessionModelMetadata;
   parentSessionPath?: string;
 };
@@ -79,6 +84,7 @@ export function createKanaSession(
     version: SESSION_VERSION,
     id,
     createdAt,
+    title: options.title === undefined ? "" : normalizeSessionTitle(options.title),
     cwd,
     model: options.model,
     parentSessionPath: options.parentSessionPath,
@@ -145,7 +151,12 @@ export function appendKanaSessionMessages(
   const timestamp = options.timestamp ?? new Date().toISOString();
   const sessionExists = existsSync(session.path);
   let parentId = sessionExists ? loadKanaSessionLeafId(session.path) : null;
-  let content = sessionExists ? "" : `${JSON.stringify(metadataToHeader(session))}\n`;
+  let content = "";
+
+  if (!sessionExists) {
+    session.title = normalizeSessionTitle(session.title, messages);
+    content = `${JSON.stringify(metadataToHeader(session))}\n`;
+  }
 
   for (const message of messages) {
     const entry: KanaSessionMessageEntry = {
@@ -236,6 +247,7 @@ function headerToMetadata(
   return {
     id: header.id,
     createdAt: header.createdAt,
+    title: header.title,
     cwd: header.cwd,
     path: filePath,
     model: header.model,
@@ -249,10 +261,32 @@ function metadataToHeader(metadata: KanaSessionMetadata): KanaSessionHeader {
     version: SESSION_VERSION,
     id: metadata.id,
     createdAt: metadata.createdAt,
+    title: metadata.title,
     cwd: metadata.cwd,
     model: metadata.model,
     parentSessionPath: metadata.parentSessionPath,
   };
+}
+
+function normalizeSessionTitle(title: string | undefined, messages: Message[] = []): string {
+  const normalizedTitle = title?.replace(/\s+/g, " ").trim();
+  const normalized = normalizedTitle || normalizePromptTitle(findFirstPrompt(messages));
+
+  if (!normalized) {
+    return DEFAULT_SESSION_TITLE;
+  }
+
+  return normalized.length > MAX_SESSION_TITLE_LENGTH
+    ? normalized.slice(0, MAX_SESSION_TITLE_LENGTH)
+    : normalized;
+}
+
+function findFirstPrompt(messages: Message[]): string | undefined {
+  return messages.find((message) => message.role === "user")?.content;
+}
+
+function normalizePromptTitle(prompt: string | undefined): string {
+  return (prompt ?? "").replace(/\s+/g, " ").trim();
 }
 
 function readSessionLines(filePath: string): string[] {
@@ -279,6 +313,7 @@ function parseHeader(line: string, filePath: string): KanaSessionHeader {
     parsed.version !== SESSION_VERSION ||
     typeof parsed.id !== "string" ||
     typeof parsed.createdAt !== "string" ||
+    typeof parsed.title !== "string" ||
     typeof parsed.cwd !== "string"
   ) {
     throw new Error(`Invalid Kana session header: ${filePath}`);

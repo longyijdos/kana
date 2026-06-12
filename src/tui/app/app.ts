@@ -46,7 +46,7 @@ export type KanaTuiAppOptions = {
   initialMessages?: Message[];
   getResumeSessionId: () => string | undefined;
   createNewSession: () => { id: string };
-  forkSession: (messages: Message[]) => { id: string };
+  forkSession: (messages: Message[], prompt: string) => { id: string };
   listSessions: () => KanaSessionMetadata[];
   loadSession: (sessionId: string) => KanaTuiLoadedSession;
   startInResumePicker?: boolean;
@@ -252,7 +252,7 @@ export class KanaTuiApp {
       return;
     }
 
-    this.sessionId = this.options.forkSession(this.agent.state.messages).id;
+    this.sessionId = this.options.forkSession(this.agent.state.messages, prompt).id;
     this.closeResumePicker();
     this.editor.clear();
     this.transcript.addChild(
