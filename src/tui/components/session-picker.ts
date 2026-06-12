@@ -90,12 +90,34 @@ export class SessionPicker implements Component {
 }
 
 function formatSession(session: KanaSessionMetadata): string {
-  const created = session.createdAt.replace("T", " ").slice(0, 19);
+  const created = formatLocalTimestamp(session.createdAt);
   const model = session.model
     ? `${session.model.provider}/${session.model.model}`
     : "unknown model";
 
   return `${created}  ${shortId(session.id)}  ${model}`;
+}
+
+function formatLocalTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return timestamp.replace("T", " ").slice(0, 19);
+  }
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join("-") + ` ${[
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join(":")}`;
+}
+
+function pad(value: number): string {
+  return value.toString().padStart(2, "0");
 }
 
 function shortId(id: string): string {

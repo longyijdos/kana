@@ -35,8 +35,8 @@ describe("session picker", () => {
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "",
       "Sessions",
-      "> 2026-06-12 00:00:00  alpha-se  deepseek/deepseek-v4-pro",
-      "  2026-06-13 00:00:00  bravo-se  unknown model",
+      `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  deepseek/deepseek-v4-pro`,
+      `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  unknown model`,
     ]);
 
     picker.handleInput("\x1b[B");
@@ -65,3 +65,21 @@ describe("session picker", () => {
     ]);
   });
 });
+
+function localTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join("-") + ` ${[
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join(":")}`;
+}
+
+function pad(value: number): string {
+  return value.toString().padStart(2, "0");
+}
