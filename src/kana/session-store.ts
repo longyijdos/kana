@@ -4,7 +4,6 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -62,12 +61,6 @@ export type AppendKanaSessionMessagesOptions = {
   timestamp?: string;
 };
 
-export type ForkKanaSessionOptions = {
-  env?: NodeJS.ProcessEnv;
-  id?: string;
-  model?: KanaSessionModelMetadata;
-};
-
 export type LoadKanaSessionResult = {
   metadata: KanaSessionMetadata;
   messages: Message[];
@@ -91,31 +84,7 @@ export function createKanaSession(
     parentSessionPath: options.parentSessionPath,
   };
 
-  mkdirSync(sessionDir, { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(header)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-
   return headerToMetadata(header, filePath);
-}
-
-export function forkKanaSession(
-  source: KanaSessionMetadata,
-  messages: Message[],
-  options: ForkKanaSessionOptions = {},
-): KanaSessionMetadata {
-  const session = createKanaSession({
-    cwd: source.cwd,
-    env: options.env,
-    id: options.id,
-    model: options.model ?? source.model,
-    parentSessionPath: source.path,
-  });
-
-  appendKanaSessionMessages(session, messages);
-
-  return session;
 }
 
 export function loadKanaSession(
@@ -174,8 +143,9 @@ export function appendKanaSessionMessages(
   }
 
   const timestamp = options.timestamp ?? new Date().toISOString();
-  let parentId = loadKanaSessionLeafId(session.path);
-  let content = "";
+  const sessionExists = existsSync(session.path);
+  let parentId = sessionExists ? loadKanaSessionLeafId(session.path) : null;
+  let content = sessionExists ? "" : `${JSON.stringify(metadataToHeader(session))}\n`;
 
   for (const message of messages) {
     const entry: KanaSessionMessageEntry = {
@@ -190,7 +160,11 @@ export function appendKanaSessionMessages(
     parentId = entry.id;
   }
 
-  appendFileSync(session.path, content, "utf8");
+  mkdirSync(path.dirname(session.path), { recursive: true });
+  appendFileSync(session.path, content, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }
 
 function findKanaSession(
@@ -266,6 +240,18 @@ function headerToMetadata(
     path: filePath,
     model: header.model,
     parentSessionPath: header.parentSessionPath,
+  };
+}
+
+function metadataToHeader(metadata: KanaSessionMetadata): KanaSessionHeader {
+  return {
+    type: "session",
+    version: SESSION_VERSION,
+    id: metadata.id,
+    createdAt: metadata.createdAt,
+    cwd: metadata.cwd,
+    model: metadata.model,
+    parentSessionPath: metadata.parentSessionPath,
   };
 }
 

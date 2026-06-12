@@ -39,7 +39,7 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   },
   {
     name: "fork",
-    description: "Fork the current session.",
+    description: "Fork the current session and send a prompt.",
   },
   {
     name: "resume",

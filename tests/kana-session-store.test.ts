@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,7 +12,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   appendKanaSessionMessages,
   createKanaSession,
-  forkKanaSession,
   getKanaConfigPaths,
   listKanaSessions,
   loadKanaSession,
@@ -27,7 +27,16 @@ afterEach(() => {
 });
 
 describe("Kana session store", () => {
-  test("creates JSONL sessions and reloads appended messages by id", () => {
+  test("creates session metadata without writing a JSONL file", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "empty-session" });
+
+    expect(existsSync(session.path)).toBe(false);
+    expect(listKanaSessions({ env, cwd })).toEqual([]);
+  });
+
+  test("creates JSONL sessions on first append and reloads messages by id", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({
@@ -102,6 +111,9 @@ describe("Kana session store", () => {
     const first = createKanaSession({ cwd, env, id: "first" });
     const second = createKanaSession({ cwd, env, id: "second" });
 
+    appendKanaSessionMessages(first, [{ role: "user", content: "first" }]);
+    appendKanaSessionMessages(second, [{ role: "user", content: "second" }]);
+
     expect(new Set(listKanaSessions({ env, cwd }).map((session) => session.id))).toEqual(
       new Set([first.id, second.id]),
     );
@@ -111,34 +123,35 @@ describe("Kana session store", () => {
     expect(getKanaConfigPaths(env).sessionsPath).toContain(".kana/sessions");
   });
 
-  test("forks sessions by copying history and recording the parent path", () => {
+  test("records parent session paths when a session is first appended", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
-    const source = createKanaSession({ cwd, env, id: "source" });
     const messages: Message[] = [
       {
         role: "user",
-        content: "keep this history",
+        content: "branch from here",
       },
     ];
-
-    appendKanaSessionMessages(source, messages);
-
-    const fork = forkKanaSession(source, messages, {
+    const fork = createKanaSession({
+      cwd,
       env,
       id: "fork",
+      parentSessionPath: "/tmp/source.jsonl",
     });
+
+    appendKanaSessionMessages(fork, messages);
+
     const loaded = loadKanaSession("fork", { env, cwd });
     const header = JSON.parse(
       readFileSync(fork.path, "utf8").split("\n")[0] ?? "{}",
     ) as Record<string, unknown>;
 
-    expect(fork.parentSessionPath).toBe(source.path);
+    expect(fork.parentSessionPath).toBe("/tmp/source.jsonl");
     expect(loaded.messages).toEqual(messages);
     expect(header).toMatchObject({
       type: "session",
       id: "fork",
-      parentSessionPath: source.path,
+      parentSessionPath: "/tmp/source.jsonl",
     });
   });
 });

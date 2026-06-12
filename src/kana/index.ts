@@ -21,13 +21,11 @@ export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
   appendKanaSessionMessages,
   createKanaSession,
-  forkKanaSession,
   listKanaSessions,
   loadKanaSession,
   type AppendKanaSessionMessagesOptions,
   type CreateKanaSessionOptions,
   type FindKanaSessionOptions,
-  type ForkKanaSessionOptions,
   type KanaSessionEntry,
   type KanaSessionHeader,
   type KanaSessionMessageEntry,

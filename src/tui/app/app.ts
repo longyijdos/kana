@@ -44,6 +44,7 @@ export type KanaTuiLoadedSession = {
 export type KanaTuiAppOptions = {
   sessionId?: string;
   initialMessages?: Message[];
+  getResumeSessionId: () => string | undefined;
   createNewSession: () => { id: string };
   forkSession: (messages: Message[]) => { id: string };
   listSessions: () => KanaSessionMetadata[];
@@ -109,10 +110,12 @@ export class KanaTuiApp {
   }
 
   stop(): void {
+    const resumeSessionId = this.options.getResumeSessionId();
+
     this.tui.stop(
-      this.sessionId
-        ? `Resume this session with: kana resume ${this.sessionId}`
-        : "No session selected.",
+      resumeSessionId
+        ? `Resume this session with: kana resume ${resumeSessionId}`
+        : "No saved session.",
     );
   }
 
@@ -141,7 +144,7 @@ export class KanaTuiApp {
     );
     this.transcript.addChild(
       new TextBlock(
-        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, /fork to branch, /resume to switch, or /quit to exit.",
+        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, /fork <prompt> to branch, /resume to switch, or /quit to exit.",
         {
           color: tuiTheme.muted,
         },
@@ -207,12 +210,12 @@ export class KanaTuiApp {
         this.startNewSession();
         break;
       case "fork":
-        if (command.arguments) {
-          void this.submitPrompt(command.raw);
+        if (!command.arguments) {
+          this.showError(new Error("Usage: /fork <prompt>"));
           return;
         }
 
-        this.forkSession();
+        void this.forkSession(command.arguments);
         break;
       case "resume":
         if (command.arguments) {
@@ -244,7 +247,7 @@ export class KanaTuiApp {
     this.tui.requestRender(true);
   }
 
-  private forkSession(): void {
+  private async forkSession(prompt: string): Promise<void> {
     if (this.running) {
       return;
     }
@@ -262,6 +265,7 @@ export class KanaTuiApp {
       activeTool: undefined,
     });
     this.tui.requestRender();
+    await this.submitPrompt(prompt);
   }
 
   private openResumePicker(): void {
