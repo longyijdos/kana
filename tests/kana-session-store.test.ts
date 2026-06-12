@@ -11,6 +11,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   appendKanaSessionMessages,
   createKanaSession,
+  forkKanaSession,
   getKanaConfigPaths,
   listKanaSessions,
   loadKanaSession,
@@ -108,6 +109,37 @@ describe("Kana session store", () => {
       new Set([first.id, second.id]),
     );
     expect(getKanaConfigPaths(env).sessionsPath).toContain(".kana/sessions");
+  });
+
+  test("forks sessions by copying history and recording the parent path", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const source = createKanaSession({ cwd, env, id: "source" });
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: "keep this history",
+      },
+    ];
+
+    appendKanaSessionMessages(source, messages);
+
+    const fork = forkKanaSession(source, messages, {
+      env,
+      id: "fork",
+    });
+    const loaded = loadKanaSession("fork", { env, cwd });
+    const header = JSON.parse(
+      readFileSync(fork.path, "utf8").split("\n")[0] ?? "{}",
+    ) as Record<string, unknown>;
+
+    expect(fork.parentSessionPath).toBe(source.path);
+    expect(loaded.messages).toEqual(messages);
+    expect(header).toMatchObject({
+      type: "session",
+      id: "fork",
+      parentSessionPath: source.path,
+    });
   });
 });
 

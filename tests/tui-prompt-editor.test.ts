@@ -502,6 +502,9 @@ describe("prompt commands", () => {
         {
           name: "new",
         },
+        {
+          name: "fork",
+        },
       ],
     });
   });
@@ -537,6 +540,12 @@ describe("prompt commands", () => {
       name: "new",
       arguments: "",
       raw: "/new",
+    });
+    expect(createCommandSubmit("/fork", undefined)).toEqual({
+      type: "command",
+      name: "fork",
+      arguments: "",
+      raw: "/fork",
     });
   });
 

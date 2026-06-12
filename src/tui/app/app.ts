@@ -37,6 +37,7 @@ export type KanaTuiAppOptions = {
   sessionId: string;
   initialMessages?: Message[];
   createNewSession: () => { id: string };
+  forkSession: (messages: Message[]) => { id: string };
 };
 
 export class KanaTuiApp {
@@ -114,7 +115,7 @@ export class KanaTuiApp {
     );
     this.transcript.addChild(
       new TextBlock(
-        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, or /quit to exit.",
+        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, /fork to branch, or /quit to exit.",
         {
           color: tuiTheme.muted,
         },
@@ -147,7 +148,7 @@ export class KanaTuiApp {
   }
 
   private handleCommand(command: {
-    name: "quit" | "clear" | "new";
+    name: "quit" | "clear" | "new" | "fork";
     arguments: string;
     raw: string;
   }): void {
@@ -179,6 +180,14 @@ export class KanaTuiApp {
 
         this.startNewSession();
         break;
+      case "fork":
+        if (command.arguments) {
+          void this.submitPrompt(command.raw);
+          return;
+        }
+
+        this.forkSession();
+        break;
     }
   }
 
@@ -198,6 +207,25 @@ export class KanaTuiApp {
       activeTool: undefined,
     });
     this.tui.requestRender(true);
+  }
+
+  private forkSession(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.sessionId = this.options.forkSession(this.agent.state.messages).id;
+    this.editor.clear();
+    this.transcript.addChild(
+      new TextBlock(`Forked session ${this.sessionId}.`, {
+        color: tuiTheme.muted,
+        paddingTop: 1,
+      }),
+    );
+    this.updateStatus("idle", {
+      activeTool: undefined,
+    });
+    this.tui.requestRender();
   }
 
   private async submitPrompt(value: string): Promise<void> {

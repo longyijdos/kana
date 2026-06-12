@@ -22,6 +22,7 @@ export type KanaSessionMetadata = {
   cwd: string;
   path: string;
   model?: KanaSessionModelMetadata;
+  parentSessionPath?: string;
 };
 
 export type KanaSessionHeader = {
@@ -31,6 +32,7 @@ export type KanaSessionHeader = {
   createdAt: string;
   cwd: string;
   model?: KanaSessionModelMetadata;
+  parentSessionPath?: string;
 };
 
 export type KanaSessionMessageEntry = {
@@ -48,6 +50,7 @@ export type CreateKanaSessionOptions = {
   env?: NodeJS.ProcessEnv;
   id?: string;
   model?: KanaSessionModelMetadata;
+  parentSessionPath?: string;
 };
 
 export type FindKanaSessionOptions = {
@@ -57,6 +60,12 @@ export type FindKanaSessionOptions = {
 
 export type AppendKanaSessionMessagesOptions = {
   timestamp?: string;
+};
+
+export type ForkKanaSessionOptions = {
+  env?: NodeJS.ProcessEnv;
+  id?: string;
+  model?: KanaSessionModelMetadata;
 };
 
 export type LoadKanaSessionResult = {
@@ -79,6 +88,7 @@ export function createKanaSession(
     createdAt,
     cwd,
     model: options.model,
+    parentSessionPath: options.parentSessionPath,
   };
 
   mkdirSync(sessionDir, { recursive: true });
@@ -88,6 +98,24 @@ export function createKanaSession(
   });
 
   return headerToMetadata(header, filePath);
+}
+
+export function forkKanaSession(
+  source: KanaSessionMetadata,
+  messages: Message[],
+  options: ForkKanaSessionOptions = {},
+): KanaSessionMetadata {
+  const session = createKanaSession({
+    cwd: source.cwd,
+    env: options.env,
+    id: options.id,
+    model: options.model ?? source.model,
+    parentSessionPath: source.path,
+  });
+
+  appendKanaSessionMessages(session, messages);
+
+  return session;
 }
 
 export function loadKanaSession(
@@ -237,6 +265,7 @@ function headerToMetadata(
     cwd: header.cwd,
     path: filePath,
     model: header.model,
+    parentSessionPath: header.parentSessionPath,
   };
 }
 
@@ -271,6 +300,12 @@ function parseHeader(line: string, filePath: string): KanaSessionHeader {
 
   if (parsed.model !== undefined && !isSessionModelMetadata(parsed.model)) {
     throw new Error(`Invalid Kana session model metadata: ${filePath}`);
+  }
+  if (
+    parsed.parentSessionPath !== undefined &&
+    typeof parsed.parentSessionPath !== "string"
+  ) {
+    throw new Error(`Invalid Kana session parent path: ${filePath}`);
   }
 
   return parsed as KanaSessionHeader;

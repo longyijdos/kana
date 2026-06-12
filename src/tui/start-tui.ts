@@ -2,6 +2,7 @@ import {
   appendKanaSessionMessages,
   createKanaAgent,
   createKanaSession,
+  forkKanaSession,
   loadKanaConfig,
   loadKanaSession,
 } from "@/kana";
@@ -45,6 +46,15 @@ export function startTui(options: StartTuiOptions = {}): void {
         session = {
           metadata: createSession(),
           messages: [],
+        };
+        return {
+          id: session.metadata.id,
+        };
+      },
+      forkSession: (messages) => {
+        session = {
+          metadata: forkKanaSession(session.metadata, messages),
+          messages,
         };
         return {
           id: session.metadata.id,
