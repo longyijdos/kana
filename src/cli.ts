@@ -14,10 +14,13 @@ export function createCli(): Command {
     });
 
   program
-    .command("chat", { isDefault: false })
-    .description("Start the interactive agent TUI")
-    .action(() => {
-      startTui();
+    .command("resume")
+    .description("Resume a saved agent session")
+    .argument("<sessionId>", "Session id to resume")
+    .action((sessionId: string) => {
+      startTui({
+        resumeSessionId: sessionId,
+      });
     });
 
   program

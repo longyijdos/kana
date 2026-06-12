@@ -35,7 +35,7 @@ export class Tui extends Container {
     this.requestRender(true);
   }
 
-  stop(): void {
+  stop(message = GOODBYE_MESSAGE): void {
     this.stopped = true;
 
     if (this.renderTimer) {
@@ -44,7 +44,7 @@ export class Tui extends Container {
     }
 
     this.terminal.stop();
-    this.terminal.write(`\x1b[2J\x1b[H\x1b[3J${GOODBYE_MESSAGE}\r\n`);
+    this.terminal.write(`\x1b[2J\x1b[H\x1b[3J${message}\r\n`);
   }
 
   setFocus(component: Component | undefined): void {

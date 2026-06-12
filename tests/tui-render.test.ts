@@ -133,6 +133,23 @@ describe("tui main-screen renderer", () => {
     expect(output).toBe("\x1b[2J\x1b[H\x1b[3JGoodbye from Kana.\r\n");
   });
 
+  test("stop can write a custom exit message", async () => {
+    const terminal = new FakeTerminal();
+    const tui = new Tui(terminal);
+
+    tui.start();
+    await Promise.resolve();
+
+    const writesBeforeStop = terminal.writes.length;
+    tui.stop("Resume this session with: kana resume session-1");
+
+    const output = terminal.writes.slice(writesBeforeStop).join("");
+
+    expect(output).toBe(
+      "\x1b[2J\x1b[H\x1b[3JResume this session with: kana resume session-1\r\n",
+    );
+  });
+
   test("positions and shows the hardware cursor", async () => {
     const terminal = new FakeTerminal();
     const tui = new Tui(terminal);

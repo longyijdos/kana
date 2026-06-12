@@ -34,6 +34,7 @@ describe("Kana config", () => {
       home: "/home/kana/.kana",
       configPath: "/home/kana/.kana/config.toml",
       agentsPath: "/home/kana/.kana/AGENTS.md",
+      sessionsPath: "/home/kana/.kana/sessions",
     });
   });
 

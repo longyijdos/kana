@@ -217,6 +217,34 @@ describe("Agent", () => {
     });
   });
 
+  test("commits prompt and loop messages after agent_end updates state", async () => {
+    const commits: Array<{
+      messages: string[];
+      stateMessages: string[];
+      eventMessages: string[];
+    }> = [];
+    const agent = new Agent({
+      model: new TextModel("committed"),
+      onRunCommitted: ({ messages, state, event }) => {
+        commits.push({
+          messages: messages.map((message) => message.role),
+          stateMessages: state.messages.map((message) => message.role),
+          eventMessages: event.messages.map((message) => message.role),
+        });
+      },
+    });
+
+    await agent.prompt("hi");
+
+    expect(commits).toEqual([
+      {
+        messages: ["user", "assistant"],
+        stateMessages: ["user", "assistant"],
+        eventMessages: ["assistant"],
+      },
+    ]);
+  });
+
   test("returns state snapshots without exposing mutable message history", async () => {
     const agent = new Agent({
       model: new TextModel("hello"),

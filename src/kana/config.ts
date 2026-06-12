@@ -28,6 +28,7 @@ export type KanaConfigPaths = {
   home: string;
   configPath: string;
   agentsPath: string;
+  sessionsPath: string;
 };
 
 export type InstallKanaConfigOptions = {
@@ -64,6 +65,7 @@ export function getKanaConfigPaths(
     home,
     configPath: path.join(home, "config.toml"),
     agentsPath: path.join(home, "AGENTS.md"),
+    sessionsPath: path.join(home, "sessions"),
   };
 }
 

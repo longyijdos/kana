@@ -32,6 +32,10 @@ import type { ProcessTerminal } from "../runtime";
 import { tuiTheme } from "../theme";
 import { Tui } from "../runtime";
 
+export type KanaTuiAppOptions = {
+  sessionId: string;
+};
+
 export class KanaTuiApp {
   private readonly tui: Tui;
   private readonly transcript = new Transcript();
@@ -47,6 +51,7 @@ export class KanaTuiApp {
       beforeToolExecution: BeforeToolExecutionHook;
     }) => Agent,
     terminal: ProcessTerminal,
+    private readonly options: KanaTuiAppOptions,
   ) {
     this.tui = new Tui(terminal);
     this.agent = createAgent({
@@ -95,7 +100,7 @@ export class KanaTuiApp {
   }
 
   stop(): void {
-    this.tui.stop();
+    this.tui.stop(`Resume this session with: kana resume ${this.options.sessionId}`);
   }
 
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {

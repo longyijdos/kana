@@ -20,6 +20,7 @@ export type AgentConfig = {
   // free of custom stop hooks. Use -1 to run without a turn limit.
   maxTurns?: number;
   beforeToolExecution?: BeforeToolExecutionHook;
+  onRunCommitted?: AgentRunCommittedHook;
 };
 
 export type AgentState = {
@@ -49,6 +50,12 @@ export type AgentEventListener = (
   signal: AbortSignal,
 ) => Promise<void> | void;
 
+export type AgentRunCommittedHook = (commit: {
+  messages: Message[];
+  state: AgentState;
+  event: Extract<AgentEvent, { type: "agent_end" }>;
+}) => Promise<void> | void;
+
 type ActiveRun = {
   promise: Promise<void>;
   resolve(): void;
@@ -60,10 +67,12 @@ export class Agent {
   private activeRun?: ActiveRun;
   private readonly stateData: WritableAgentState;
   private readonly beforeToolExecution?: BeforeToolExecutionHook;
+  private readonly onRunCommitted?: AgentRunCommittedHook;
 
   constructor(options: AgentConfig) {
     this.stateData = createWritableAgentState(options);
     this.beforeToolExecution = options.beforeToolExecution;
+    this.onRunCommitted = options.onRunCommitted;
   }
 
   get state(): AgentState {
@@ -129,11 +138,17 @@ export class Agent {
         },
       ),
     )
-      .then(() => {
+      .then(async () => {
         if (!doneEvent) {
           stream.error(new Error("Agent loop finished without agent_end."));
           return;
         }
+
+        await this.onRunCommitted?.({
+          messages: structuredClone([...promptMessages, ...doneEvent.messages]),
+          state: this.state,
+          event: structuredClone(doneEvent),
+        });
 
         stream.end(doneEvent);
       })

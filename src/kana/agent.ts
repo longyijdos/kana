@@ -9,7 +9,10 @@ import {
 import { getKanaConfigPaths, type KanaConfig } from "./config";
 import { buildKanaSystemPrompt } from "./prompt";
 
-type KanaAgentOptions = Pick<AgentConfig, "beforeToolExecution">;
+type KanaAgentOptions = Pick<
+  AgentConfig,
+  "beforeToolExecution" | "messages" | "onRunCommitted"
+>;
 
 export function createKanaAgent(
   config: KanaConfig,
@@ -54,5 +57,7 @@ export function createKanaAgent(
     ],
     maxTurns: config.agent.maxTurns,
     beforeToolExecution: options.beforeToolExecution,
+    messages: options.messages,
+    onRunCommitted: options.onRunCommitted,
   });
 }

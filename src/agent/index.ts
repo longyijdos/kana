@@ -3,6 +3,7 @@ export {
   type AgentEventListener,
   type AgentConfig,
   type AgentPromptInput,
+  type AgentRunCommittedHook,
   type AgentState,
 } from "./agent";
 export type { AgentEvent } from "./events";
