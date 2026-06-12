@@ -12,7 +12,9 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   DEFAULT_KANA_CONFIG,
+  buildKanaSystemPrompt,
   createKanaAgent,
+  formatKanaEnvironmentContext,
   getKanaConfigPaths,
   installKanaConfig,
   loadKanaConfig,
@@ -136,6 +138,51 @@ describe("Kana config", () => {
     }
   });
 
+  test("formats environment context for the system prompt", () => {
+    expect(
+      formatKanaEnvironmentContext({
+        cwd: "/repo",
+        platform: "darwin",
+        currentDate: "2026-06-12",
+        timezone: "Asia/Shanghai",
+      }),
+    ).toBe(
+      [
+        "<environment_context>",
+        "  <cwd>/repo</cwd>",
+        "  <platform>darwin</platform>",
+        "  <current_date>2026-06-12</current_date>",
+        "  <timezone>Asia/Shanghai</timezone>",
+        "</environment_context>",
+      ].join("\n"),
+    );
+  });
+
+  test("builds the system prompt with environment context", () => {
+    const env = createTempEnv();
+    const previousKanaHome = process.env.KANA_HOME;
+    process.env.KANA_HOME = getKanaConfigPaths(env).home;
+
+    try {
+      const prompt = buildKanaSystemPrompt({
+        cwd: "/repo",
+        now: new Date("2026-06-11T16:30:00.000Z"),
+        platform: "darwin",
+        timezone: "Asia/Shanghai",
+      });
+
+      expect(prompt).toContain(
+        "You are a concise coding assistant working inside the current workspace.",
+      );
+      expect(prompt).toContain("<cwd>/repo</cwd>");
+      expect(prompt).toContain("<platform>darwin</platform>");
+      expect(prompt).toContain("<current_date>2026-06-12</current_date>");
+      expect(prompt).toContain("<timezone>Asia/Shanghai</timezone>");
+    } finally {
+      restoreEnv("KANA_HOME", previousKanaHome);
+    }
+  });
+
   test("uses ~/.kana/AGENTS.md as the system prompt when it exists", () => {
     const env = createTempEnv();
     const paths = getKanaConfigPaths(env);
@@ -154,7 +201,10 @@ describe("Kana config", () => {
         },
       });
 
-      expect(agent.state.system).toBe("Custom system prompt.\n");
+      expect(agent.state.system).toContain("Custom system prompt.\n\n");
+      expect(agent.state.system).toContain("<environment_context>");
+      expect(agent.state.system).toContain(`<cwd>${process.cwd()}</cwd>`);
+      expect(agent.state.system).toContain(`<platform>${process.platform}</platform>`);
     } finally {
       restoreEnv("KANA_HOME", previousKanaHome);
       restoreEnv("KANA_DEEPSEEK_KEY", previousKey);

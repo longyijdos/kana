@@ -1,6 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import { getKanaConfigPaths } from "./config";
+import {
+  collectKanaEnvironmentContext,
+  formatKanaEnvironmentContext,
+  type CollectKanaEnvironmentContextOptions,
+} from "./context";
 
 const DEFAULT_SYSTEM_PROMPT = [
   "You are a concise coding assistant working inside the current workspace.",
@@ -19,4 +24,15 @@ export function loadKanaSystemPrompt(): string {
   }
 
   return readFileSync(agentsPath, "utf8");
+}
+
+export function buildKanaSystemPrompt(
+  options: CollectKanaEnvironmentContextOptions = {},
+): string {
+  const systemPrompt = loadKanaSystemPrompt().trimEnd();
+  const environmentContext = formatKanaEnvironmentContext(
+    collectKanaEnvironmentContext(options),
+  );
+
+  return `${systemPrompt}\n\n${environmentContext}`;
 }

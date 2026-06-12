@@ -7,7 +7,7 @@ import {
   createWriteTool,
 } from "@/tools";
 import { getKanaConfigPaths, type KanaConfig } from "./config";
-import { loadKanaSystemPrompt } from "./prompt";
+import { buildKanaSystemPrompt } from "./prompt";
 
 type KanaAgentOptions = Pick<AgentConfig, "beforeToolExecution">;
 
@@ -15,6 +15,7 @@ export function createKanaAgent(
   config: KanaConfig,
   options: KanaAgentOptions = {},
 ): Agent {
+  const cwd = process.cwd();
   const apiKey = process.env[config.model.apiKeyEnv];
 
   if (!apiKey) {
@@ -36,19 +37,19 @@ export function createKanaAgent(
 
   return new Agent({
     model,
-    system: loadKanaSystemPrompt(),
+    system: buildKanaSystemPrompt({ cwd }),
     tools: [
       createReadTool({
-        root: process.cwd(),
+        root: cwd,
       }),
       createWriteTool({
-        root: process.cwd(),
+        root: cwd,
       }),
       createEditTool({
-        root: process.cwd(),
+        root: cwd,
       }),
       createBashTool({
-        root: process.cwd(),
+        root: cwd,
       }),
     ],
     maxTurns: config.agent.maxTurns,

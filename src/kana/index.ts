@@ -1,5 +1,11 @@
 export { createKanaAgent } from "./agent";
 export {
+  collectKanaEnvironmentContext,
+  formatKanaEnvironmentContext,
+  type CollectKanaEnvironmentContextOptions,
+  type KanaEnvironmentContext,
+} from "./context";
+export {
   DEFAULT_KANA_CONFIG,
   getKanaConfigPaths,
   installKanaConfig,
@@ -11,4 +17,4 @@ export {
   type KanaConfigPaths,
   type KanaModelConfig,
 } from "./config";
-export { loadKanaSystemPrompt } from "./prompt";
+export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
