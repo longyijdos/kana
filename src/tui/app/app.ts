@@ -1,39 +1,25 @@
 import type {
   Agent,
-  AgentEvent,
   BeforeToolExecutionHook,
   BeforeToolExecutionResult,
 } from "@/agent";
-import {
-  addTrustedBashCommand,
-  getBashCommand,
-  shouldRequestToolApproval,
-  type KanaSessionMetadata,
-  type KanaToolApprovalConfig,
-  type KanaToolApprovals,
+import type {
+  KanaSessionMetadata,
+  KanaToolApprovalConfig,
+  KanaToolApprovals,
 } from "@/kana";
-import type { AssistantMessage, Message, ModelMetadata, ToolCallContent } from "@/core";
+import type { Message, ModelMetadata, ToolCallContent } from "@/core";
 import { addHistoryMessagesToTranscript } from "./history";
-import {
-  isThinkingVisible,
-  phaseForAgentEndReason,
-  phaseForAssistantMessage,
-  phaseForStopReason,
-  type RunPhase,
-} from "./status-phase";
-import { ToolCallBlocks } from "./tool-call-blocks";
+import { AgentEventRenderer } from "./agent-event-renderer";
+import { SessionOverlayController } from "./session-overlay-controller";
+import type { RunPhase } from "./status-phase";
+import { ToolApprovalController } from "./tool-approval-controller";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import {
-  AssistantMessageBlock,
-  DeleteSessionConfirmation,
   Editor,
-  SessionPicker,
-  type SessionPickerDecision,
   StatusLine,
   type StatusLineState,
   TextBlock,
-  ToolApproval,
-  type ToolApprovalDecision as ToolApprovalSelection,
   Transcript,
 } from "../components";
 import {
@@ -69,16 +55,14 @@ export type KanaTuiAppOptions = {
 export class KanaTuiApp {
   private readonly tui: Tui;
   private readonly transcript = new Transcript();
-  private readonly toolCallBlocks = new ToolCallBlocks(this.transcript);
   private readonly status: StatusLine;
   private readonly editor = new Editor();
+  private readonly agentEvents: AgentEventRenderer;
+  private readonly sessionOverlay: SessionOverlayController;
   private agent: Agent;
   private sessionId?: string;
   private running = false;
-  private streamingAssistant?: AssistantMessageBlock;
-  private activePicker?: SessionPicker;
-  private activeDeleteConfirmation?: DeleteSessionConfirmation;
-  private toolApprovals: KanaToolApprovals;
+  private readonly toolApproval: ToolApprovalController;
 
   constructor(
     private readonly createAgent: (options: {
@@ -88,8 +72,34 @@ export class KanaTuiApp {
     private readonly options: KanaTuiAppOptions,
   ) {
     this.sessionId = options.sessionId;
-    this.toolApprovals = options.toolApproval.approvals;
     this.tui = new Tui(terminal);
+    this.agentEvents = new AgentEventRenderer({
+      transcript: this.transcript,
+      tui: this.tui,
+      updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+    });
+    this.sessionOverlay = new SessionOverlayController({
+      editor: this.editor,
+      transcript: this.transcript,
+      tui: this.tui,
+      listSessions: this.options.listSessions,
+      deleteSession: this.options.deleteSession,
+      hasCurrentSession: () => this.sessionId !== undefined,
+      onResume: (sessionId) => this.resumeSession(sessionId),
+      onStop: () => this.stop(),
+      updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+    });
+    this.toolApproval = new ToolApprovalController({
+      ...options.toolApproval,
+      transcript: this.transcript,
+      editor: this.editor,
+      tui: this.tui,
+      onPromptShown: (toolName) => {
+        this.updateStatus("tool", {
+          activeTool: toolName,
+        });
+      },
+    });
     this.agent = this.createAgentForCurrentSession();
     this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
   }
@@ -266,8 +276,7 @@ export class KanaTuiApp {
     this.sessionId = this.options.createNewSession().id;
     this.closeSessionOverlay();
     this.agent.reset();
-    this.streamingAssistant = undefined;
-    this.toolCallBlocks.clear();
+    this.agentEvents.resetRun();
     this.transcript.clear();
     this.editor.clear();
     this.initializeTranscript([]);
@@ -303,43 +312,7 @@ export class KanaTuiApp {
       return;
     }
 
-    const picker = new SessionPicker(
-      this.options.listSessions(),
-      (decision) => this.finishResumePicker(decision),
-    );
-
-    this.closeSessionOverlay();
-    this.editor.clear();
-    this.activePicker = picker;
-    this.tui.insertChildAfter(this.editor, picker);
-    this.tui.setFocus(picker);
-    this.tui.requestRender(true);
-  }
-
-  private finishResumePicker(decision: SessionPickerDecision): void {
-    this.closeSessionOverlay();
-
-    if (decision.type === "cancel") {
-      if (!this.sessionId) {
-        this.stop();
-        return;
-      }
-
-      this.tui.setFocus(this.editor);
-      this.tui.requestRender(true);
-      return;
-    }
-
-    this.resumeSession(decision.session.id);
-  }
-
-  private closeResumePicker(): void {
-    if (!this.activePicker) {
-      return;
-    }
-
-    this.tui.removeChild(this.activePicker);
-    this.activePicker = undefined;
+    this.sessionOverlay.openResume();
   }
 
   private openDeletePicker(): void {
@@ -347,82 +320,11 @@ export class KanaTuiApp {
       return;
     }
 
-    const picker = new SessionPicker(
-      this.options.listSessions(),
-      (decision) => this.finishDeletePicker(decision),
-    );
-
-    this.closeSessionOverlay();
-    this.editor.clear();
-    this.activePicker = picker;
-    this.tui.insertChildAfter(this.editor, picker);
-    this.tui.setFocus(picker);
-    this.tui.requestRender(true);
-  }
-
-  private finishDeletePicker(decision: SessionPickerDecision): void {
-    this.closeResumePicker();
-
-    if (decision.type === "cancel") {
-      this.tui.setFocus(this.editor);
-      this.tui.requestRender(true);
-      return;
-    }
-
-    const confirmation = new DeleteSessionConfirmation(decision.session, (confirmed) => {
-      this.finishDeleteConfirmation(decision.session, confirmed);
-    });
-
-    this.activeDeleteConfirmation = confirmation;
-    this.tui.insertChildAfter(this.editor, confirmation);
-    this.tui.setFocus(confirmation);
-    this.tui.requestRender(true);
-  }
-
-  private finishDeleteConfirmation(
-    session: KanaSessionMetadata,
-    confirmed: boolean,
-  ): void {
-    this.closeDeleteConfirmation();
-
-    if (!confirmed) {
-      this.tui.setFocus(this.editor);
-      this.tui.requestRender(true);
-      return;
-    }
-
-    const deleted = this.options.deleteSession(session.id);
-
-    this.transcript.addChild(
-      new TextBlock(
-        deleted
-          ? `Deleted session ${session.title || session.id}.`
-          : `Session not found: ${session.id}`,
-        {
-          color: deleted ? tuiTheme.muted : tuiTheme.error,
-          paddingTop: 1,
-        },
-      ),
-    );
-    this.updateStatus(deleted ? "idle" : "error", {
-      activeTool: undefined,
-    });
-    this.tui.setFocus(this.editor);
-    this.tui.requestRender(true);
-  }
-
-  private closeDeleteConfirmation(): void {
-    if (!this.activeDeleteConfirmation) {
-      return;
-    }
-
-    this.tui.removeChild(this.activeDeleteConfirmation);
-    this.activeDeleteConfirmation = undefined;
+    this.sessionOverlay.openDelete();
   }
 
   private closeSessionOverlay(): void {
-    this.closeResumePicker();
-    this.closeDeleteConfirmation();
+    this.sessionOverlay.close();
   }
 
   private resumeSession(sessionId: string): void {
@@ -446,8 +348,7 @@ export class KanaTuiApp {
     this.sessionId = session.id;
     this.agent.abort();
     this.agent = this.createAgentForCurrentSession();
-    this.streamingAssistant = undefined;
-    this.toolCallBlocks.clear();
+    this.agentEvents.resetRun();
     this.transcript.clear();
     this.editor.clear();
     this.initializeTranscript(session.messages);
@@ -481,15 +382,14 @@ export class KanaTuiApp {
       new TextBlock(prompt, { color: tuiTheme.user, prefix: "> " }),
     );
     this.running = true;
-    this.streamingAssistant = undefined;
-    this.toolCallBlocks.clear();
+    this.agentEvents.resetRun();
     this.updateStatus("starting");
 
     try {
       const stream = this.agent.stream(prompt);
 
       for await (const event of stream) {
-        this.handleAgentEvent(event);
+        this.agentEvents.handle(event);
       }
 
       await stream.result();
@@ -505,165 +405,11 @@ export class KanaTuiApp {
     }
   }
 
-  private handleAgentEvent(event: AgentEvent): void {
-    switch (event.type) {
-      case "agent_start":
-        this.updateStatus("starting");
-        break;
-      case "agent_end":
-        this.updateStatus(phaseForAgentEndReason(event.reason), {
-          activeTool: undefined,
-        });
-        break;
-      case "turn_start":
-        this.updateStatus("thinking");
-        break;
-      case "turn_end":
-        break;
-      case "message_start":
-        this.handleAssistantStart(event.message);
-        break;
-      case "message_update":
-        this.handleAssistantUpdate(event);
-        break;
-      case "message_end":
-        this.handleAssistantEnd(event.message);
-        break;
-      case "tool_execution_start":
-        this.handleToolStart(event.toolCallId, event.toolName, event.args);
-        break;
-      case "tool_execution_update":
-        this.toolCallBlocks.updatePartialResult(
-          event.toolCallId,
-          event.partialResult,
-        );
-        this.updateStatus("tool", {
-          activeTool: event.toolName,
-        });
-        break;
-      case "tool_execution_end":
-        this.toolCallBlocks.updateResult(
-          event.toolCallId,
-          event.result,
-          event.isError,
-        );
-        this.updateStatus(event.isError ? "error" : "tool", {
-          activeTool: undefined,
-        });
-        break;
-    }
-
-    this.tui.requestRender();
-  }
-
-  private handleAssistantStart(message: AssistantMessage): void {
-    this.streamingAssistant = new AssistantMessageBlock();
-    this.streamingAssistant.update(message);
-    this.transcript.addChild(this.streamingAssistant);
-    this.updateStatus("thinking");
-  }
-
-  private handleAssistantUpdate(
-    event: Extract<AgentEvent, { type: "message_update" }>,
-  ): void {
-    if (!this.streamingAssistant) {
-      this.handleAssistantStart(event.message);
-    }
-
-    this.streamingAssistant?.update(event.message);
-    this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
-    this.toolCallBlocks.createOrUpdateFromMessage(event.message);
-    this.updateStatus(phaseForAssistantMessage(event.message));
-  }
-
-  private handleAssistantEnd(message: AssistantMessage): void {
-    this.streamingAssistant?.showThinking(false);
-    this.streamingAssistant?.update(message);
-    this.streamingAssistant = undefined;
-    this.updateStatus(phaseForStopReason(message.stopReason));
-  }
-
-  private handleToolStart(
-    toolCallId: string,
-    toolName: string,
-    args: unknown,
-  ): void {
-    this.toolCallBlocks.markStarted(toolCallId, toolName, args);
-    this.updateStatus("tool", {
-      activeTool: toolName,
-    });
-  }
-
   private showToolApprovalPrompt(
     toolCall: ToolCallContent,
     signal: AbortSignal | undefined,
   ): Promise<BeforeToolExecutionResult> {
-    if (
-      !shouldRequestToolApproval(
-        this.options.toolApproval.config,
-        this.toolApprovals,
-        toolCall,
-      )
-    ) {
-      return Promise.resolve({ type: "continue" });
-    }
-
-    return new Promise((resolve) => {
-      let approval: ToolApproval | undefined;
-      let settled = false;
-      const bashCommand = getBashCommand(toolCall);
-
-      const finish = (decision: ToolApprovalSelection): void => {
-        if (settled) {
-          return;
-        }
-
-        settled = true;
-        signal?.removeEventListener("abort", handleAbort);
-
-        if (approval) {
-          this.transcript.removeChild(approval);
-          approval = undefined;
-        }
-
-        this.tui.setFocus(this.editor);
-        this.tui.requestRender();
-
-        if (decision === "always" && bashCommand !== undefined) {
-          this.toolApprovals = addTrustedBashCommand(bashCommand);
-        }
-
-        resolve(
-          decision === "yes" || decision === "always"
-            ? { type: "continue" }
-            : {
-                type: "cancel",
-                abortRun: true,
-                message: "Tool call rejected by user.",
-              },
-        );
-      };
-
-      const handleAbort = (): void => {
-        finish("no");
-      };
-
-      if (signal?.aborted) {
-        handleAbort();
-        return;
-      }
-
-      approval = new ToolApproval(toolCall, finish, {
-        allowAlways: bashCommand !== undefined,
-      });
-      this.transcript.addChild(approval);
-      this.tui.setFocus(approval);
-      signal?.addEventListener("abort", handleAbort, { once: true });
-      this.updateStatus("tool", {
-        activeTool: toolCall.name,
-      });
-      this.tui.requestRender();
-    });
+    return this.toolApproval.request(toolCall, signal);
   }
 
   private updateStatus(
