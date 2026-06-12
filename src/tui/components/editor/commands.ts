@@ -1,4 +1,4 @@
-export type PromptCommandName = "quit" | "clear";
+export type PromptCommandName = "quit" | "clear" | "new";
 
 export type PromptCommand = {
   name: PromptCommandName;
@@ -32,6 +32,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "clear",
     description: "Clear the transcript.",
+  },
+  {
+    name: "new",
+    description: "Start a new session.",
   },
 ];
 

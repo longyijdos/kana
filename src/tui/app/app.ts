@@ -4,7 +4,8 @@ import type {
   BeforeToolExecutionHook,
   BeforeToolExecutionResult,
 } from "@/agent";
-import type { AssistantMessage, ModelMetadata, ToolCallContent } from "@/core";
+import type { AssistantMessage, Message, ModelMetadata, ToolCallContent } from "@/core";
+import { addHistoryMessagesToTranscript } from "./history";
 import {
   isThinkingVisible,
   phaseForAgentEndReason,
@@ -34,6 +35,8 @@ import { Tui } from "../runtime";
 
 export type KanaTuiAppOptions = {
   sessionId: string;
+  initialMessages?: Message[];
+  createNewSession: () => { id: string };
 };
 
 export class KanaTuiApp {
@@ -43,6 +46,7 @@ export class KanaTuiApp {
   private readonly status: StatusLine;
   private readonly editor = new Editor();
   private readonly agent: Agent;
+  private sessionId: string;
   private running = false;
   private streamingAssistant?: AssistantMessageBlock;
 
@@ -53,6 +57,7 @@ export class KanaTuiApp {
     terminal: ProcessTerminal,
     private readonly options: KanaTuiAppOptions,
   ) {
+    this.sessionId = options.sessionId;
     this.tui = new Tui(terminal);
     this.agent = createAgent({
       beforeToolExecution: ({ toolCall, signal }) =>
@@ -67,19 +72,7 @@ export class KanaTuiApp {
       () => undefined,
     );
 
-    this.transcript.addChild(
-      new TextBlock("Kana TUI. Type a prompt and press Enter.", {
-        color: tuiTheme.muted,
-      }),
-    );
-    this.transcript.addChild(
-      new TextBlock(
-        "Use terminal scrollback for history, /clear to reset, or /quit to exit.",
-        {
-          color: tuiTheme.muted,
-        },
-      ),
-    );
+    this.initializeTranscript(this.options.initialMessages ?? []);
 
     this.tui.addChild(this.transcript);
     this.tui.addChild(this.editor);
@@ -100,7 +93,33 @@ export class KanaTuiApp {
   }
 
   stop(): void {
-    this.tui.stop(`Resume this session with: kana resume ${this.options.sessionId}`);
+    this.tui.stop(`Resume this session with: kana resume ${this.sessionId}`);
+  }
+
+  private initializeTranscript(initialMessages: Message[]): void {
+    if (initialMessages.length > 0) {
+      this.transcript.addChild(
+        new TextBlock(`Resumed session ${this.sessionId}.`, {
+          color: tuiTheme.muted,
+        }),
+      );
+      addHistoryMessagesToTranscript(this.transcript, initialMessages);
+      return;
+    }
+
+    this.transcript.addChild(
+      new TextBlock("Kana TUI. Type a prompt and press Enter.", {
+        color: tuiTheme.muted,
+      }),
+    );
+    this.transcript.addChild(
+      new TextBlock(
+        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, or /quit to exit.",
+        {
+          color: tuiTheme.muted,
+        },
+      ),
+    );
   }
 
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {
@@ -128,7 +147,7 @@ export class KanaTuiApp {
   }
 
   private handleCommand(command: {
-    name: "quit" | "clear";
+    name: "quit" | "clear" | "new";
     arguments: string;
     raw: string;
   }): void {
@@ -152,7 +171,33 @@ export class KanaTuiApp {
         this.editor.clear();
         this.tui.requestRender(true);
         break;
+      case "new":
+        if (command.arguments) {
+          void this.submitPrompt(command.raw);
+          return;
+        }
+
+        this.startNewSession();
+        break;
     }
+  }
+
+  private startNewSession(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.sessionId = this.options.createNewSession().id;
+    this.agent.reset();
+    this.streamingAssistant = undefined;
+    this.toolCallBlocks.clear();
+    this.transcript.clear();
+    this.editor.clear();
+    this.initializeTranscript([]);
+    this.updateStatus("idle", {
+      activeTool: undefined,
+    });
+    this.tui.requestRender(true);
   }
 
   private async submitPrompt(value: string): Promise<void> {

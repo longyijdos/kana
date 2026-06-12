@@ -14,15 +14,17 @@ export type StartTuiOptions = {
 
 export function startTui(options: StartTuiOptions = {}): void {
   const config = loadKanaConfig();
-  const session = options.resumeSessionId
+  const createSession = () =>
+    createKanaSession({
+      model: {
+        provider: config.model.provider,
+        model: config.model.name,
+      },
+    });
+  let session = options.resumeSessionId
     ? loadKanaSession(options.resumeSessionId)
     : {
-        metadata: createKanaSession({
-          model: {
-            provider: config.model.provider,
-            model: config.model.name,
-          },
-        }),
+        metadata: createSession(),
         messages: [],
       };
 
@@ -38,6 +40,16 @@ export function startTui(options: StartTuiOptions = {}): void {
     new ProcessTerminal(),
     {
       sessionId: session.metadata.id,
+      initialMessages: session.messages,
+      createNewSession: () => {
+        session = {
+          metadata: createSession(),
+          messages: [],
+        };
+        return {
+          id: session.metadata.id,
+        };
+      },
     },
   );
 
