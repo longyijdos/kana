@@ -12,6 +12,7 @@ import { KanaTuiApp } from "./app/app";
 import { ProcessTerminal } from "./runtime";
 
 export type StartTuiOptions = {
+  initialPrompt?: string;
   resumeSessionId?: string;
   showResumePicker?: boolean;
 };
@@ -65,6 +66,7 @@ export function startTui(options: StartTuiOptions = {}): void {
     {
       sessionId: session?.metadata.id,
       initialMessages: session?.messages,
+      initialPrompt: options.initialPrompt,
       getResumeSessionId: () => resumeSessionId,
       startInResumePicker: options.showResumePicker,
       createNewSession: () => {

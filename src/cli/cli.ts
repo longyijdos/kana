@@ -1,16 +1,36 @@
 import { Command } from "commander";
-import { installKanaConfig } from "./kana";
-import { startTui } from "./tui";
+import type { InstallKanaConfigResult } from "@/kana";
+import type { StartTuiOptions } from "@/tui";
 
-export function createCli(): Command {
+export type CreateCliOptions = {
+  installKanaConfig: (
+    env: NodeJS.ProcessEnv,
+    options: { force?: boolean },
+  ) => InstallKanaConfigResult;
+  log?: (message: string) => void;
+  startTui: (options?: StartTuiOptions) => void;
+};
+
+export function createCli(options: CreateCliOptions): Command {
+  const installConfig = options.installKanaConfig;
+  const log = options.log ?? console.log;
+  const runTui = options.startTui;
   const program = new Command();
 
   program
     .name("kana")
     .description("Personal TypeScript/Bun agent runtime")
     .version("0.0.0")
-    .action(() => {
-      startTui();
+    .argument("[prompt...]", "Prompt to send after opening the TUI")
+    .action((promptParts: string[] = []) => {
+      const prompt = promptParts.join(" ").trim();
+
+      if (prompt) {
+        runTui({ initialPrompt: prompt });
+        return;
+      }
+
+      runTui();
     });
 
   program
@@ -18,7 +38,7 @@ export function createCli(): Command {
     .description("Resume a saved agent session")
     .argument("[sessionId]", "Session id to resume")
     .action((sessionId: string | undefined) => {
-      startTui({
+      runTui({
         resumeSessionId: sessionId,
         showResumePicker: sessionId === undefined,
       });
@@ -29,30 +49,29 @@ export function createCli(): Command {
     .description("Create the default Kana config under ~/.kana")
     .option("--force", "Overwrite the existing Kana config")
     .action((options: { force?: boolean }) => {
-      const result = installKanaConfig(process.env, {
+      const result = installConfig(process.env, {
         force: options.force,
       });
-      console.log(
+      log(
         result.status === "created"
           ? `Created config: ${result.configPath}`
           : result.status === "reinstalled"
             ? `Reinstalled config: ${result.configPath}`
-          : `Config already exists: ${result.configPath}`,
+            : `Config already exists: ${result.configPath}`,
       );
     });
 
   return program;
 }
 
-export async function runCli(argv = process.argv): Promise<void> {
+export async function runCli(
+  argv: string[],
+  options: CreateCliOptions,
+): Promise<void> {
   try {
-    await createCli().parseAsync(argv);
+    await createCli(options).parseAsync(argv);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
-}
-
-if (import.meta.main) {
-  await runCli();
 }

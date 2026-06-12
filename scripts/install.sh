@@ -19,7 +19,7 @@ main() {
 }
 
 is_project_root() {
-  [[ -f "package.json" && -f "src/cli.ts" && -f "bun.lock" ]]
+  [[ -f "package.json" && -f "src/main.ts" && -f "bun.lock" ]]
 }
 
 install_from_source() {
@@ -30,7 +30,7 @@ install_from_source() {
 
   local tmp_bin="$tmp_dir/$bin_name"
   echo "Building Kana from source..."
-  bun build --compile --outfile="$tmp_bin" src/cli.ts
+  bun build --compile --outfile="$tmp_bin" src/main.ts
 
   install -m 0755 "$tmp_bin" "$target"
   echo "Installed Kana to $target"

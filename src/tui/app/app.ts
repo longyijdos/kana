@@ -45,6 +45,7 @@ export type KanaTuiLoadedSession = {
 export type KanaTuiAppOptions = {
   sessionId?: string;
   initialMessages?: Message[];
+  initialPrompt?: string;
   getResumeSessionId: () => string | undefined;
   createNewSession: () => { id: string };
   forkSession: (messages: Message[], prompt: string) => { id: string };
@@ -109,6 +110,11 @@ export class KanaTuiApp {
 
     if (this.options.startInResumePicker) {
       this.openResumePicker();
+      return;
+    }
+
+    if (this.options.initialPrompt) {
+      void this.submitPrompt(this.options.initialPrompt);
     }
   }
 
