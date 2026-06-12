@@ -72,6 +72,24 @@ describe("tui main-screen renderer", () => {
     expect(output).not.toContain("\x1b[2J");
   });
 
+  test("can insert a child after an existing child", async () => {
+    const terminal = new FakeTerminal();
+    const tui = new Tui(terminal);
+    const first = new MutableLines(["first"]);
+    const second = new MutableLines(["second"]);
+    const inserted = new MutableLines(["inserted"]);
+
+    tui.addChild(first);
+    tui.addChild(second);
+    tui.insertChildAfter(first, inserted);
+    tui.start();
+    await Promise.resolve();
+
+    const output = terminal.writes.join("");
+
+    expect(output).toContain("first\x1b[0m\r\ninserted\x1b[0m\r\nsecond\x1b[0m");
+  });
+
   test("forced render clears the current screen", async () => {
     const terminal = new FakeTerminal();
     const tui = new Tui(terminal);

@@ -3,6 +3,7 @@ import {
   createKanaAgent,
   createKanaSession,
   forkKanaSession,
+  listKanaSessions,
   loadKanaConfig,
   loadKanaSession,
 } from "@/kana";
@@ -11,6 +12,7 @@ import { ProcessTerminal } from "./runtime";
 
 export type StartTuiOptions = {
   resumeSessionId?: string;
+  showResumePicker?: boolean;
 };
 
 export function startTui(options: StartTuiOptions = {}): void {
@@ -22,26 +24,33 @@ export function startTui(options: StartTuiOptions = {}): void {
         model: config.model.name,
       },
     });
-  let session = options.resumeSessionId
-    ? loadKanaSession(options.resumeSessionId)
-    : {
-        metadata: createSession(),
-        messages: [],
-      };
+  let session = options.showResumePicker
+    ? undefined
+    : options.resumeSessionId
+      ? loadKanaSession(options.resumeSessionId)
+      : {
+          metadata: createSession(),
+          messages: [],
+        };
 
   const app = new KanaTuiApp(
     (agentOptions) =>
       createKanaAgent(config, {
         ...agentOptions,
-        messages: session.messages,
+        messages: session?.messages,
         onRunCommitted: ({ messages }) => {
+          session ??= {
+            metadata: createSession(),
+            messages: [],
+          };
           appendKanaSessionMessages(session.metadata, messages);
         },
       }),
     new ProcessTerminal(),
     {
-      sessionId: session.metadata.id,
-      initialMessages: session.messages,
+      sessionId: session?.metadata.id,
+      initialMessages: session?.messages,
+      startInResumePicker: options.showResumePicker,
       createNewSession: () => {
         session = {
           metadata: createSession(),
@@ -52,12 +61,25 @@ export function startTui(options: StartTuiOptions = {}): void {
         };
       },
       forkSession: (messages) => {
+        session ??= {
+          metadata: createSession(),
+          messages: [],
+        };
         session = {
           metadata: forkKanaSession(session.metadata, messages),
           messages,
         };
         return {
           id: session.metadata.id,
+        };
+      },
+      listSessions: () => listKanaSessions({ cwd: process.cwd() }),
+      loadSession: (sessionId) => {
+        session = loadKanaSession(sessionId, { cwd: process.cwd() });
+
+        return {
+          id: session.metadata.id,
+          messages: session.messages,
         };
       },
     },

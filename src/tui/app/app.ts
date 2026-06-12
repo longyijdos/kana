@@ -4,6 +4,7 @@ import type {
   BeforeToolExecutionHook,
   BeforeToolExecutionResult,
 } from "@/agent";
+import type { KanaSessionMetadata } from "@/kana";
 import type { AssistantMessage, Message, ModelMetadata, ToolCallContent } from "@/core";
 import { addHistoryMessagesToTranscript } from "./history";
 import {
@@ -18,6 +19,8 @@ import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import {
   AssistantMessageBlock,
   Editor,
+  SessionPicker,
+  type SessionPickerDecision,
   StatusLine,
   type StatusLineState,
   TextBlock,
@@ -33,11 +36,19 @@ import type { ProcessTerminal } from "../runtime";
 import { tuiTheme } from "../theme";
 import { Tui } from "../runtime";
 
+export type KanaTuiLoadedSession = {
+  id: string;
+  messages: Message[];
+};
+
 export type KanaTuiAppOptions = {
-  sessionId: string;
+  sessionId?: string;
   initialMessages?: Message[];
   createNewSession: () => { id: string };
   forkSession: (messages: Message[]) => { id: string };
+  listSessions: () => KanaSessionMetadata[];
+  loadSession: (sessionId: string) => KanaTuiLoadedSession;
+  startInResumePicker?: boolean;
 };
 
 export class KanaTuiApp {
@@ -46,13 +57,14 @@ export class KanaTuiApp {
   private readonly toolCallBlocks = new ToolCallBlocks(this.transcript);
   private readonly status: StatusLine;
   private readonly editor = new Editor();
-  private readonly agent: Agent;
-  private sessionId: string;
+  private agent: Agent;
+  private sessionId?: string;
   private running = false;
   private streamingAssistant?: AssistantMessageBlock;
+  private activePicker?: SessionPicker;
 
   constructor(
-    createAgent: (options: {
+    private readonly createAgent: (options: {
       beforeToolExecution: BeforeToolExecutionHook;
     }) => Agent,
     terminal: ProcessTerminal,
@@ -60,10 +72,7 @@ export class KanaTuiApp {
   ) {
     this.sessionId = options.sessionId;
     this.tui = new Tui(terminal);
-    this.agent = createAgent({
-      beforeToolExecution: ({ toolCall, signal }) =>
-        this.showToolApprovalPrompt(toolCall, signal),
-    });
+    this.agent = this.createAgentForCurrentSession();
     this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
   }
 
@@ -73,7 +82,9 @@ export class KanaTuiApp {
       () => undefined,
     );
 
-    this.initializeTranscript(this.options.initialMessages ?? []);
+    if (!this.options.startInResumePicker) {
+      this.initializeTranscript(this.options.initialMessages ?? []);
+    }
 
     this.tui.addChild(this.transcript);
     this.tui.addChild(this.editor);
@@ -91,16 +102,31 @@ export class KanaTuiApp {
 
     this.updateStatus("idle");
     this.tui.start();
+
+    if (this.options.startInResumePicker) {
+      this.openResumePicker();
+    }
   }
 
   stop(): void {
-    this.tui.stop(`Resume this session with: kana resume ${this.sessionId}`);
+    this.tui.stop(
+      this.sessionId
+        ? `Resume this session with: kana resume ${this.sessionId}`
+        : "No session selected.",
+    );
+  }
+
+  private createAgentForCurrentSession(): Agent {
+    return this.createAgent({
+      beforeToolExecution: ({ toolCall, signal }) =>
+        this.showToolApprovalPrompt(toolCall, signal),
+    });
   }
 
   private initializeTranscript(initialMessages: Message[]): void {
     if (initialMessages.length > 0) {
       this.transcript.addChild(
-        new TextBlock(`Resumed session ${this.sessionId}.`, {
+        new TextBlock(`Resumed session ${this.sessionId ?? ""}.`, {
           color: tuiTheme.muted,
         }),
       );
@@ -115,7 +141,7 @@ export class KanaTuiApp {
     );
     this.transcript.addChild(
       new TextBlock(
-        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, /fork to branch, or /quit to exit.",
+        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, /fork to branch, /resume to switch, or /quit to exit.",
         {
           color: tuiTheme.muted,
         },
@@ -148,7 +174,7 @@ export class KanaTuiApp {
   }
 
   private handleCommand(command: {
-    name: "quit" | "clear" | "new" | "fork";
+    name: "quit" | "clear" | "new" | "fork" | "resume";
     arguments: string;
     raw: string;
   }): void {
@@ -188,6 +214,14 @@ export class KanaTuiApp {
 
         this.forkSession();
         break;
+      case "resume":
+        if (command.arguments) {
+          this.resumeSession(command.arguments);
+          return;
+        }
+
+        this.openResumePicker();
+        break;
     }
   }
 
@@ -197,6 +231,7 @@ export class KanaTuiApp {
     }
 
     this.sessionId = this.options.createNewSession().id;
+    this.closeResumePicker();
     this.agent.reset();
     this.streamingAssistant = undefined;
     this.toolCallBlocks.clear();
@@ -215,6 +250,7 @@ export class KanaTuiApp {
     }
 
     this.sessionId = this.options.forkSession(this.agent.state.messages).id;
+    this.closeResumePicker();
     this.editor.clear();
     this.transcript.addChild(
       new TextBlock(`Forked session ${this.sessionId}.`, {
@@ -226,6 +262,92 @@ export class KanaTuiApp {
       activeTool: undefined,
     });
     this.tui.requestRender();
+  }
+
+  private openResumePicker(): void {
+    if (this.running) {
+      return;
+    }
+
+    const picker = new SessionPicker(
+      this.options.listSessions(),
+      (decision) => this.finishResumePicker(decision),
+    );
+
+    this.closeResumePicker();
+    this.activePicker = picker;
+    this.tui.insertChildAfter(this.editor, picker);
+    this.tui.setFocus(picker);
+    this.tui.requestRender(true);
+  }
+
+  private finishResumePicker(decision: SessionPickerDecision): void {
+    this.closeResumePicker();
+
+    if (decision.type === "cancel") {
+      if (!this.sessionId) {
+        this.stop();
+        return;
+      }
+
+      this.tui.setFocus(this.editor);
+      this.tui.requestRender(true);
+      return;
+    }
+
+    this.resumeSession(decision.session.id);
+  }
+
+  private closeResumePicker(): void {
+    if (!this.activePicker) {
+      return;
+    }
+
+    this.tui.removeChild(this.activePicker);
+    this.activePicker = undefined;
+  }
+
+  private resumeSession(sessionId: string): void {
+    if (this.running) {
+      return;
+    }
+
+    let session: KanaTuiLoadedSession;
+
+    try {
+      session = this.options.loadSession(sessionId);
+    } catch (error) {
+      this.showError(error);
+      this.closeResumePicker();
+      this.tui.setFocus(this.editor);
+      this.tui.requestRender(true);
+      return;
+    }
+
+    this.closeResumePicker();
+    this.sessionId = session.id;
+    this.agent.abort();
+    this.agent = this.createAgentForCurrentSession();
+    this.streamingAssistant = undefined;
+    this.toolCallBlocks.clear();
+    this.transcript.clear();
+    this.editor.clear();
+    this.initializeTranscript(session.messages);
+    this.updateStatus("idle", {
+      activeTool: undefined,
+    });
+    this.tui.setFocus(this.editor);
+    this.tui.requestRender(true);
+  }
+
+  private showError(error: unknown): void {
+    this.transcript.addChild(
+      new TextBlock(error instanceof Error ? error.message : String(error), {
+        color: tuiTheme.error,
+        paddingTop: 1,
+      }),
+    );
+    this.updateStatus("error");
   }
 
   private async submitPrompt(value: string): Promise<void> {
@@ -254,13 +376,7 @@ export class KanaTuiApp {
 
       await stream.result();
     } catch (error) {
-      this.transcript.addChild(
-        new TextBlock(error instanceof Error ? error.message : String(error), {
-          color: tuiTheme.error,
-          paddingTop: 1,
-        }),
-      );
-      this.updateStatus("error");
+      this.showError(error);
     } finally {
       this.running = false;
       this.status.update({

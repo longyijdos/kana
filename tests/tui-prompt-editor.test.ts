@@ -505,6 +505,9 @@ describe("prompt commands", () => {
         {
           name: "fork",
         },
+        {
+          name: "resume",
+        },
       ],
     });
   });
@@ -546,6 +549,12 @@ describe("prompt commands", () => {
       name: "fork",
       arguments: "",
       raw: "/fork",
+    });
+    expect(createCommandSubmit("/resume", undefined)).toEqual({
+      type: "command",
+      name: "resume",
+      arguments: "",
+      raw: "/resume",
     });
   });
 

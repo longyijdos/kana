@@ -16,10 +16,11 @@ export function createCli(): Command {
   program
     .command("resume")
     .description("Resume a saved agent session")
-    .argument("<sessionId>", "Session id to resume")
-    .action((sessionId: string) => {
+    .argument("[sessionId]", "Session id to resume")
+    .action((sessionId: string | undefined) => {
       startTui({
         resumeSessionId: sessionId,
+        showResumePicker: sessionId === undefined,
       });
     });
 

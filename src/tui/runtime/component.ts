@@ -11,6 +11,17 @@ export class Container implements Component {
     this.children.push(component);
   }
 
+  insertChildAfter(anchor: Component, component: Component): void {
+    const index = this.children.indexOf(anchor);
+
+    if (index < 0) {
+      this.addChild(component);
+      return;
+    }
+
+    this.children.splice(index + 1, 0, component);
+  }
+
   removeChild(component: Component): void {
     const index = this.children.indexOf(component);
 
