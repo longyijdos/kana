@@ -35,6 +35,7 @@ describe("Kana config", () => {
       configPath: "/home/kana/.kana/config.toml",
       agentsPath: "/home/kana/.kana/AGENTS.md",
       sessionsPath: "/home/kana/.kana/sessions",
+      approvalsPath: "/home/kana/.kana/approvals.json",
     });
   });
 
@@ -45,6 +46,7 @@ describe("Kana config", () => {
 
     expect(firstInstall.status).toBe("created");
     expect(installed).toContain('api_key_env = "DEEPSEEK_API_KEY"');
+    expect(installed).toContain('mode = "unless_trusted"');
     expect(installed).not.toContain("api_key =");
     expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
 
@@ -92,6 +94,9 @@ describe("Kana config", () => {
         "[agent]",
         "max_turns = 4",
         "",
+        "[approval]",
+        'mode = "unless_trusted"',
+        "",
       ].join("\n"),
     );
 
@@ -105,6 +110,9 @@ describe("Kana config", () => {
       },
       agent: {
         maxTurns: 4,
+      },
+      approval: {
+        mode: "unless_trusted",
       },
     });
   });

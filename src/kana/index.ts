@@ -7,6 +7,7 @@ export {
 } from "./context";
 export {
   DEFAULT_KANA_CONFIG,
+  KANA_TOOL_APPROVAL_MODES,
   getKanaConfigPaths,
   installKanaConfig,
   loadKanaConfig,
@@ -16,6 +17,8 @@ export {
   type KanaConfig,
   type KanaConfigPaths,
   type KanaModelConfig,
+  type KanaToolApprovalConfig,
+  type KanaToolApprovalMode,
 } from "./config";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
@@ -34,3 +37,13 @@ export {
   type KanaSessionModelMetadata,
   type LoadKanaSessionResult,
 } from "./session-store";
+export {
+  DEFAULT_KANA_TOOL_APPROVALS,
+  addTrustedBashCommand,
+  getBashCommand,
+  isBashToolCall,
+  loadKanaToolApprovals,
+  saveKanaToolApprovals,
+  shouldRequestToolApproval,
+  type KanaToolApprovals,
+} from "./tool-approval";

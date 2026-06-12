@@ -4,7 +4,14 @@ import type {
   BeforeToolExecutionHook,
   BeforeToolExecutionResult,
 } from "@/agent";
-import type { KanaSessionMetadata } from "@/kana";
+import {
+  addTrustedBashCommand,
+  getBashCommand,
+  shouldRequestToolApproval,
+  type KanaSessionMetadata,
+  type KanaToolApprovalConfig,
+  type KanaToolApprovals,
+} from "@/kana";
 import type { AssistantMessage, Message, ModelMetadata, ToolCallContent } from "@/core";
 import { addHistoryMessagesToTranscript } from "./history";
 import {
@@ -53,6 +60,10 @@ export type KanaTuiAppOptions = {
   loadSession: (sessionId: string) => KanaTuiLoadedSession;
   deleteSession: (sessionId: string) => boolean;
   startInResumePicker?: boolean;
+  toolApproval: {
+    config: KanaToolApprovalConfig;
+    approvals: KanaToolApprovals;
+  };
 };
 
 export class KanaTuiApp {
@@ -67,6 +78,7 @@ export class KanaTuiApp {
   private streamingAssistant?: AssistantMessageBlock;
   private activePicker?: SessionPicker;
   private activeDeleteConfirmation?: DeleteSessionConfirmation;
+  private toolApprovals: KanaToolApprovals;
 
   constructor(
     private readonly createAgent: (options: {
@@ -76,6 +88,7 @@ export class KanaTuiApp {
     private readonly options: KanaTuiAppOptions,
   ) {
     this.sessionId = options.sessionId;
+    this.toolApprovals = options.toolApproval.approvals;
     this.tui = new Tui(terminal);
     this.agent = this.createAgentForCurrentSession();
     this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
@@ -585,9 +598,20 @@ export class KanaTuiApp {
     toolCall: ToolCallContent,
     signal: AbortSignal | undefined,
   ): Promise<BeforeToolExecutionResult> {
+    if (
+      !shouldRequestToolApproval(
+        this.options.toolApproval.config,
+        this.toolApprovals,
+        toolCall,
+      )
+    ) {
+      return Promise.resolve({ type: "continue" });
+    }
+
     return new Promise((resolve) => {
       let approval: ToolApproval | undefined;
       let settled = false;
+      const bashCommand = getBashCommand(toolCall);
 
       const finish = (decision: ToolApprovalSelection): void => {
         if (settled) {
@@ -604,8 +628,13 @@ export class KanaTuiApp {
 
         this.tui.setFocus(this.editor);
         this.tui.requestRender();
+
+        if (decision === "always" && bashCommand !== undefined) {
+          this.toolApprovals = addTrustedBashCommand(bashCommand);
+        }
+
         resolve(
-          decision === "yes"
+          decision === "yes" || decision === "always"
             ? { type: "continue" }
             : {
                 type: "cancel",
@@ -624,7 +653,9 @@ export class KanaTuiApp {
         return;
       }
 
-      approval = new ToolApproval(toolCall, finish);
+      approval = new ToolApproval(toolCall, finish, {
+        allowAlways: bashCommand !== undefined,
+      });
       this.transcript.addChild(approval);
       this.tui.setFocus(approval);
       signal?.addEventListener("abort", handleAbort, { once: true });

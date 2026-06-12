@@ -19,9 +19,22 @@ export type KanaAgentConfig = {
   maxTurns: number;
 };
 
+export const KANA_TOOL_APPROVAL_MODES = [
+  "always",
+  "unless_trusted",
+  "never",
+] as const;
+
+export type KanaToolApprovalMode = (typeof KANA_TOOL_APPROVAL_MODES)[number];
+
+export type KanaToolApprovalConfig = {
+  mode: KanaToolApprovalMode;
+};
+
 export type KanaConfig = {
   model: KanaModelConfig;
   agent: KanaAgentConfig;
+  approval: KanaToolApprovalConfig;
 };
 
 export type KanaConfigPaths = {
@@ -29,6 +42,7 @@ export type KanaConfigPaths = {
   configPath: string;
   agentsPath: string;
   sessionsPath: string;
+  approvalsPath: string;
 };
 
 export type InstallKanaConfigOptions = {
@@ -54,6 +68,9 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   agent: {
     maxTurns: -1,
   },
+  approval: {
+    mode: "unless_trusted",
+  },
 };
 
 export function getKanaConfigPaths(
@@ -66,6 +83,7 @@ export function getKanaConfigPaths(
     configPath: path.join(home, "config.toml"),
     agentsPath: path.join(home, "AGENTS.md"),
     sessionsPath: path.join(home, "sessions"),
+    approvalsPath: path.join(home, "approvals.json"),
   };
 }
 
@@ -120,6 +138,9 @@ function serializeKanaConfig(config: KanaConfig): string {
     "[agent]",
     `max_turns = ${config.agent.maxTurns}`,
     "",
+    "[approval]",
+    `mode = "${config.approval.mode}"`,
+    "",
   ].join("\n");
 }
 
@@ -127,6 +148,8 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const raw = asRecord(rawConfig, "config");
   const model = raw.model === undefined ? {} : asRecord(raw.model, "model");
   const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
+  const approval =
+    raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
 
   return {
     model: {
@@ -168,6 +191,9 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         defaults.agent.maxTurns,
         "agent.max_turns",
       ),
+    },
+    approval: {
+      mode: readToolApprovalMode(approval.mode, defaults.approval.mode),
     },
   };
 }
@@ -240,4 +266,19 @@ function readReasoningEffort(
   }
 
   return effort;
+}
+
+function readToolApprovalMode(
+  value: unknown,
+  fallback: KanaToolApprovalMode,
+): KanaToolApprovalMode {
+  const mode = readString(value, fallback, "approval.mode");
+
+  if (!(KANA_TOOL_APPROVAL_MODES as readonly string[]).includes(mode)) {
+    throw new Error(
+      `approval.mode must be one of: ${KANA_TOOL_APPROVAL_MODES.join(", ")}.`,
+    );
+  }
+
+  return mode as KanaToolApprovalMode;
 }

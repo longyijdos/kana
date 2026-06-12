@@ -5,6 +5,7 @@ import {
   deleteKanaSession,
   listKanaSessions,
   loadKanaConfig,
+  loadKanaToolApprovals,
   loadKanaSession,
 } from "@/kana";
 import type { Message } from "@/core";
@@ -19,6 +20,7 @@ export type StartTuiOptions = {
 
 export function startTui(options: StartTuiOptions = {}): void {
   const config = loadKanaConfig();
+  const toolApprovals = loadKanaToolApprovals();
   const createSession = (parentSessionPath?: string, title?: string) =>
     createKanaSession({
       title,
@@ -118,6 +120,10 @@ export function startTui(options: StartTuiOptions = {}): void {
       },
       deleteSession: (sessionId) =>
         deleteKanaSession(sessionId, { cwd: process.cwd() }),
+      toolApproval: {
+        config: config.approval,
+        approvals: toolApprovals,
+      },
     },
   );
 

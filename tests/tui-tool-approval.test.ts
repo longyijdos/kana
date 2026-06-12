@@ -3,7 +3,7 @@ import { ToolApproval } from "../src/tui/components";
 import { stripAnsi } from "../src/tui/render";
 
 describe("tool approval", () => {
-  test("renders yes as the default selection", () => {
+  test("renders allow once as the default selection", () => {
     const approval = new ToolApproval(
       {
         type: "tool_call",
@@ -20,8 +20,31 @@ describe("tool approval", () => {
 
     expect(rendered).toContain("Allow agent to run bash?");
     expect(rendered).toContain("bun test");
-    expect(rendered).toContain("> Yes, run it");
-    expect(rendered).toContain("  No, abort");
+    expect(rendered).toContain("> Allow once");
+    expect(rendered).toContain("  Deny");
+  });
+
+  test("renders the always allow option when enabled", () => {
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "bash",
+        args: {
+          command: "bun test",
+        },
+      },
+      () => {},
+      {
+        allowAlways: true,
+      },
+    );
+
+    const rendered = approval.render(80).map(stripAnsi);
+
+    expect(rendered).toContain("> Allow once");
+    expect(rendered).toContain("  Always allow this command");
+    expect(rendered).toContain("  Deny");
   });
 
   test("selects no with an arrow key and submits it with enter", () => {
