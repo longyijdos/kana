@@ -5,6 +5,12 @@ export {
   ToolCallBlock,
   Transcript,
 } from "./chat-blocks";
+export {
+  ChoicePrompt,
+  type ChoicePromptOption,
+  type ChoicePromptOptions,
+} from "./choice-prompt";
+export { DeleteSessionConfirmation } from "./delete-session-confirmation";
 export { Editor } from "./editor";
 export {
   SessionPicker,

@@ -18,6 +18,7 @@ import { ToolCallBlocks } from "./tool-call-blocks";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import {
   AssistantMessageBlock,
+  DeleteSessionConfirmation,
   Editor,
   SessionPicker,
   type SessionPickerDecision,
@@ -30,11 +31,9 @@ import {
 } from "../components";
 import {
   isCtrlC,
-  isEnter,
   isEscape,
 } from "../runtime";
-import { color, dim, truncateToWidth } from "../render";
-import type { Component, ProcessTerminal } from "../runtime";
+import type { ProcessTerminal } from "../runtime";
 import { tuiTheme } from "../theme";
 import { Tui } from "../runtime";
 
@@ -291,6 +290,7 @@ export class KanaTuiApp {
     );
 
     this.closeSessionOverlay();
+    this.editor.clear();
     this.activePicker = picker;
     this.tui.insertChildAfter(this.editor, picker);
     this.tui.setFocus(picker);
@@ -334,6 +334,7 @@ export class KanaTuiApp {
     );
 
     this.closeSessionOverlay();
+    this.editor.clear();
     this.activePicker = picker;
     this.tui.insertChildAfter(this.editor, picker);
     this.tui.setFocus(picker);
@@ -642,34 +643,4 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
-}
-
-class DeleteSessionConfirmation implements Component {
-  constructor(
-    private readonly session: KanaSessionMetadata,
-    private readonly finish: (confirmed: boolean) => void,
-  ) {}
-
-  handleInput(data: string): void {
-    if (isEscape(data)) {
-      this.finish(false);
-      return;
-    }
-
-    if (isEnter(data)) {
-      this.finish(true);
-    }
-  }
-
-  render(width: number): string[] {
-    const title = this.session.title || this.session.id;
-    const lines = [
-      "",
-      color("Delete session?", tuiTheme.error),
-      dim(`${title}  ${this.session.id}`),
-      dim("Press Enter to delete, Esc to cancel."),
-    ];
-
-    return lines.map((line) => truncateToWidth(line, width, ""));
-  }
 }
