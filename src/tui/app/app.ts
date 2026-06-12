@@ -30,9 +30,11 @@ import {
 } from "../components";
 import {
   isCtrlC,
+  isEnter,
   isEscape,
 } from "../runtime";
-import type { ProcessTerminal } from "../runtime";
+import { color, dim, truncateToWidth } from "../render";
+import type { Component, ProcessTerminal } from "../runtime";
 import { tuiTheme } from "../theme";
 import { Tui } from "../runtime";
 
@@ -49,6 +51,7 @@ export type KanaTuiAppOptions = {
   forkSession: (messages: Message[], prompt: string) => { id: string };
   listSessions: () => KanaSessionMetadata[];
   loadSession: (sessionId: string) => KanaTuiLoadedSession;
+  deleteSession: (sessionId: string) => boolean;
   startInResumePicker?: boolean;
 };
 
@@ -63,6 +66,7 @@ export class KanaTuiApp {
   private running = false;
   private streamingAssistant?: AssistantMessageBlock;
   private activePicker?: SessionPicker;
+  private activeDeleteConfirmation?: DeleteSessionConfirmation;
 
   constructor(
     private readonly createAgent: (options: {
@@ -144,7 +148,7 @@ export class KanaTuiApp {
     );
     this.transcript.addChild(
       new TextBlock(
-        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, /fork <prompt> to branch, /resume to switch, or /quit to exit.",
+        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, /fork <prompt> to branch, /resume to switch, /delete to remove saved sessions, or /quit to exit.",
         {
           color: tuiTheme.muted,
         },
@@ -177,7 +181,7 @@ export class KanaTuiApp {
   }
 
   private handleCommand(command: {
-    name: "quit" | "clear" | "new" | "fork" | "resume";
+    name: "quit" | "clear" | "new" | "fork" | "resume" | "delete";
     arguments: string;
     raw: string;
   }): void {
@@ -225,6 +229,14 @@ export class KanaTuiApp {
 
         this.openResumePicker();
         break;
+      case "delete":
+        if (command.arguments) {
+          this.showError(new Error("Usage: /delete"));
+          return;
+        }
+
+        this.openDeletePicker();
+        break;
     }
   }
 
@@ -234,7 +246,7 @@ export class KanaTuiApp {
     }
 
     this.sessionId = this.options.createNewSession().id;
-    this.closeResumePicker();
+    this.closeSessionOverlay();
     this.agent.reset();
     this.streamingAssistant = undefined;
     this.toolCallBlocks.clear();
@@ -253,7 +265,7 @@ export class KanaTuiApp {
     }
 
     this.sessionId = this.options.forkSession(this.agent.state.messages, prompt).id;
-    this.closeResumePicker();
+    this.closeSessionOverlay();
     this.editor.clear();
     this.transcript.addChild(
       new TextBlock(`Forked session ${this.sessionId}.`, {
@@ -278,7 +290,7 @@ export class KanaTuiApp {
       (decision) => this.finishResumePicker(decision),
     );
 
-    this.closeResumePicker();
+    this.closeSessionOverlay();
     this.activePicker = picker;
     this.tui.insertChildAfter(this.editor, picker);
     this.tui.setFocus(picker);
@@ -286,7 +298,7 @@ export class KanaTuiApp {
   }
 
   private finishResumePicker(decision: SessionPickerDecision): void {
-    this.closeResumePicker();
+    this.closeSessionOverlay();
 
     if (decision.type === "cancel") {
       if (!this.sessionId) {
@@ -311,6 +323,88 @@ export class KanaTuiApp {
     this.activePicker = undefined;
   }
 
+  private openDeletePicker(): void {
+    if (this.running) {
+      return;
+    }
+
+    const picker = new SessionPicker(
+      this.options.listSessions(),
+      (decision) => this.finishDeletePicker(decision),
+    );
+
+    this.closeSessionOverlay();
+    this.activePicker = picker;
+    this.tui.insertChildAfter(this.editor, picker);
+    this.tui.setFocus(picker);
+    this.tui.requestRender(true);
+  }
+
+  private finishDeletePicker(decision: SessionPickerDecision): void {
+    this.closeResumePicker();
+
+    if (decision.type === "cancel") {
+      this.tui.setFocus(this.editor);
+      this.tui.requestRender(true);
+      return;
+    }
+
+    const confirmation = new DeleteSessionConfirmation(decision.session, (confirmed) => {
+      this.finishDeleteConfirmation(decision.session, confirmed);
+    });
+
+    this.activeDeleteConfirmation = confirmation;
+    this.tui.insertChildAfter(this.editor, confirmation);
+    this.tui.setFocus(confirmation);
+    this.tui.requestRender(true);
+  }
+
+  private finishDeleteConfirmation(
+    session: KanaSessionMetadata,
+    confirmed: boolean,
+  ): void {
+    this.closeDeleteConfirmation();
+
+    if (!confirmed) {
+      this.tui.setFocus(this.editor);
+      this.tui.requestRender(true);
+      return;
+    }
+
+    const deleted = this.options.deleteSession(session.id);
+
+    this.transcript.addChild(
+      new TextBlock(
+        deleted
+          ? `Deleted session ${session.title || session.id}.`
+          : `Session not found: ${session.id}`,
+        {
+          color: deleted ? tuiTheme.muted : tuiTheme.error,
+          paddingTop: 1,
+        },
+      ),
+    );
+    this.updateStatus(deleted ? "idle" : "error", {
+      activeTool: undefined,
+    });
+    this.tui.setFocus(this.editor);
+    this.tui.requestRender(true);
+  }
+
+  private closeDeleteConfirmation(): void {
+    if (!this.activeDeleteConfirmation) {
+      return;
+    }
+
+    this.tui.removeChild(this.activeDeleteConfirmation);
+    this.activeDeleteConfirmation = undefined;
+  }
+
+  private closeSessionOverlay(): void {
+    this.closeResumePicker();
+    this.closeDeleteConfirmation();
+  }
+
   private resumeSession(sessionId: string): void {
     if (this.running) {
       return;
@@ -322,13 +416,13 @@ export class KanaTuiApp {
       session = this.options.loadSession(sessionId);
     } catch (error) {
       this.showError(error);
-      this.closeResumePicker();
+      this.closeSessionOverlay();
       this.tui.setFocus(this.editor);
       this.tui.requestRender(true);
       return;
     }
 
-    this.closeResumePicker();
+    this.closeSessionOverlay();
     this.sessionId = session.id;
     this.agent.abort();
     this.agent = this.createAgentForCurrentSession();
@@ -548,4 +642,34 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
+}
+
+class DeleteSessionConfirmation implements Component {
+  constructor(
+    private readonly session: KanaSessionMetadata,
+    private readonly finish: (confirmed: boolean) => void,
+  ) {}
+
+  handleInput(data: string): void {
+    if (isEscape(data)) {
+      this.finish(false);
+      return;
+    }
+
+    if (isEnter(data)) {
+      this.finish(true);
+    }
+  }
+
+  render(width: number): string[] {
+    const title = this.session.title || this.session.id;
+    const lines = [
+      "",
+      color("Delete session?", tuiTheme.error),
+      dim(`${title}  ${this.session.id}`),
+      dim("Press Enter to delete, Esc to cancel."),
+    ];
+
+    return lines.map((line) => truncateToWidth(line, width, ""));
+  }
 }

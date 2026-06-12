@@ -1,4 +1,10 @@
-export type PromptCommandName = "quit" | "clear" | "new" | "fork" | "resume";
+export type PromptCommandName =
+  | "quit"
+  | "clear"
+  | "new"
+  | "fork"
+  | "resume"
+  | "delete";
 
 export type PromptCommand = {
   name: PromptCommandName;
@@ -44,6 +50,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "resume",
     description: "Switch to a saved session.",
+  },
+  {
+    name: "delete",
+    description: "Delete a saved session.",
   },
 ];
 

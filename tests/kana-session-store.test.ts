@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   appendKanaSessionMessages,
   createKanaSession,
+  deleteKanaSession,
   getKanaConfigPaths,
   listKanaSessions,
   loadKanaSession,
@@ -178,6 +179,22 @@ describe("Kana session store", () => {
     const loaded = loadKanaSession("titled", { env, cwd });
 
     expect(loaded.metadata.title).toBe("Compare parser approaches");
+  });
+
+  test("deletes sessions by id", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "delete-me" });
+
+    appendKanaSessionMessages(session, [{ role: "user", content: "remove this" }]);
+
+    expect(deleteKanaSession("missing", { env, cwd })).toBe(false);
+    expect(deleteKanaSession("delete-me", { env, cwd })).toBe(true);
+    expect(existsSync(session.path)).toBe(false);
+    expect(listKanaSessions({ env, cwd })).toEqual([]);
+    expect(() => loadKanaSession("delete-me", { env, cwd })).toThrow(
+      "Kana session not found: delete-me",
+    );
   });
 });
 

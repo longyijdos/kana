@@ -21,6 +21,7 @@ export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
   appendKanaSessionMessages,
   createKanaSession,
+  deleteKanaSession,
   listKanaSessions,
   loadKanaSession,
   type AppendKanaSessionMessagesOptions,

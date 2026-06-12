@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
 } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -137,6 +138,20 @@ export function listKanaSessions(
   return sessions.sort(
     (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
   );
+}
+
+export function deleteKanaSession(
+  sessionId: string,
+  options: FindKanaSessionOptions = {},
+): boolean {
+  const metadata = findKanaSession(sessionId, options);
+
+  if (!metadata) {
+    return false;
+  }
+
+  rmSync(metadata.path, { force: true });
+  return true;
 }
 
 export function appendKanaSessionMessages(

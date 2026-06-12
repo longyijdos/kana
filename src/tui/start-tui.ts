@@ -2,6 +2,7 @@ import {
   appendKanaSessionMessages,
   createKanaAgent,
   createKanaSession,
+  deleteKanaSession,
   listKanaSessions,
   loadKanaConfig,
   loadKanaSession,
@@ -113,6 +114,8 @@ export function startTui(options: StartTuiOptions = {}): void {
           messages: session.messages,
         };
       },
+      deleteSession: (sessionId) =>
+        deleteKanaSession(sessionId, { cwd: process.cwd() }),
     },
   );
 

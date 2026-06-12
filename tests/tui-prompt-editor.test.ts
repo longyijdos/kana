@@ -508,6 +508,9 @@ describe("prompt commands", () => {
         {
           name: "resume",
         },
+        {
+          name: "delete",
+        },
       ],
     });
   });
@@ -555,6 +558,12 @@ describe("prompt commands", () => {
       name: "resume",
       arguments: "",
       raw: "/resume",
+    });
+    expect(createCommandSubmit("/delete", undefined)).toEqual({
+      type: "command",
+      name: "delete",
+      arguments: "",
+      raw: "/delete",
     });
   });
 
