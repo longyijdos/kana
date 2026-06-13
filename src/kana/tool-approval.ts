@@ -2,20 +2,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import type { ToolCallContent } from "@/core";
 import { getKanaConfigPaths, type KanaToolApprovalConfig } from "./config";
-
-export type KanaToolApprovals = {
-  version: 1;
-  bash: {
-    commands: string[];
-  };
-};
-
-export const DEFAULT_KANA_TOOL_APPROVALS: KanaToolApprovals = {
-  version: 1,
-  bash: {
-    commands: [],
-  },
-};
+export {
+  DEFAULT_KANA_TOOL_APPROVALS,
+  type KanaToolApprovals,
+} from "./tool-approval-defaults";
+import {
+  DEFAULT_KANA_TOOL_APPROVALS,
+  type KanaToolApprovals,
+} from "./tool-approval-defaults";
 
 export function shouldRequestToolApproval(
   config: KanaToolApprovalConfig,
@@ -56,14 +50,15 @@ export function addTrustedBashCommand(
 
   const approvals = loadKanaToolApprovals(env);
 
-  if (approvals.bash.commands.includes(normalized)) {
+  if (approvals.bash.exactCommands.includes(normalized)) {
     return approvals;
   }
 
   const nextApprovals: KanaToolApprovals = {
     ...approvals,
     bash: {
-      commands: [...approvals.bash.commands, normalized],
+      ...approvals.bash,
+      exactCommands: [...approvals.bash.exactCommands, normalized],
     },
   };
 
@@ -111,7 +106,8 @@ function isTrustedToolCall(
 
   return (
     command !== undefined &&
-    approvals.bash.commands.includes(normalizeBashCommand(command))
+    (approvals.bash.exactCommands.includes(normalizeBashCommand(command)) ||
+      isTrustedReadOnlyBashCommand(approvals, command))
   );
 }
 
@@ -129,24 +125,69 @@ function normalizeBashCommand(command: string): string {
   return command.trim();
 }
 
+function isTrustedReadOnlyBashCommand(
+  approvals: KanaToolApprovals,
+  command: string,
+): boolean {
+  const executable = readSimpleBashExecutable(command);
+
+  return (
+    executable !== undefined &&
+    approvals.bash.readOnlyCommands.includes(executable)
+  );
+}
+
+function readSimpleBashExecutable(command: string): string | undefined {
+  const normalized = normalizeBashCommand(command);
+
+  // This whitelist is intentionally limited to a single simple command. Bash
+  // composition can turn an otherwise read-only executable into a write.
+  if (!normalized || /[;&|<>()`$\\\n\r]/.test(normalized)) {
+    return undefined;
+  }
+
+  const executable = normalized.match(/^\S+/)?.[0];
+
+  if (executable === undefined || executable.includes("/")) {
+    return undefined;
+  }
+
+  return executable;
+}
+
 function readKanaToolApprovals(rawApprovals: unknown): KanaToolApprovals {
   const raw = asRecord(rawApprovals, "approvals");
   const bash = raw.bash === undefined ? {} : asRecord(raw.bash, "approvals.bash");
 
-  if (raw.version !== 1) {
-    throw new Error("approvals.version must be 1.");
+  if (raw.version !== 2) {
+    throw new Error("approvals.version must be 2.");
   }
 
   return {
-    version: 1,
+    version: 2,
     bash: {
-      commands: readStringArray(
-        bash.commands,
-        DEFAULT_KANA_TOOL_APPROVALS.bash.commands,
-        "approvals.bash.commands",
+      exactCommands: readStringArray(
+        bash.exactCommands,
+        DEFAULT_KANA_TOOL_APPROVALS.bash.exactCommands,
+        "approvals.bash.exactCommands",
+      ),
+      readOnlyCommands: readStringArray(
+        bash.readOnlyCommands,
+        DEFAULT_KANA_TOOL_APPROVALS.bash.readOnlyCommands,
+        "approvals.bash.readOnlyCommands",
+      ).map((command) =>
+        readBashExecutableName(command, "approvals.bash.readOnlyCommands"),
       ),
     },
   };
+}
+
+function readBashExecutableName(value: string, name: string): string {
+  if (/\s/.test(value) || value.includes("/")) {
+    throw new Error(`${name} entries must be executable names.`);
+  }
+
+  return value;
 }
 
 function asRecord(value: unknown, name: string): Record<string, unknown> {

@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { DeepSeekReasoningEffort } from "@/providers/deepseek";
+import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval-defaults";
 
 export type KanaModelConfig = {
   provider: "deepseek";
@@ -51,7 +52,9 @@ export type InstallKanaConfigOptions = {
 
 export type InstallKanaConfigResult = {
   configPath: string;
-  status: "created" | "exists" | "reinstalled";
+  configStatus: "created" | "exists" | "reinstalled";
+  approvalsPath: string;
+  approvalsStatus: "created" | "exists" | "reinstalled";
 };
 
 export const DEFAULT_KANA_CONFIG: KanaConfig = {
@@ -104,22 +107,45 @@ export function installKanaConfig(
   env: NodeJS.ProcessEnv = process.env,
   options: InstallKanaConfigOptions = {},
 ): InstallKanaConfigResult {
-  const { home, configPath } = getKanaConfigPaths(env);
+  const { home, configPath, approvalsPath } = getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
 
-  const exists = existsSync(configPath);
-  if (exists && !options.force) {
-    return { configPath, status: "exists" };
+  const configExists = existsSync(configPath);
+  const approvalsExists = existsSync(approvalsPath);
+
+  if (!configExists || options.force) {
+    writeFileSync(configPath, serializeKanaConfig(DEFAULT_KANA_CONFIG), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
   }
 
-  writeFileSync(configPath, serializeKanaConfig(DEFAULT_KANA_CONFIG), {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  if (!approvalsExists || options.force) {
+    writeFileSync(
+      approvalsPath,
+      `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`,
+      {
+        encoding: "utf8",
+        mode: 0o600,
+      },
+    );
+  }
 
   return {
     configPath,
-    status: exists ? "reinstalled" : "created",
+    configStatus:
+      configExists && !options.force
+        ? "exists"
+        : configExists
+          ? "reinstalled"
+          : "created",
+    approvalsPath,
+    approvalsStatus:
+      approvalsExists && !options.force
+        ? "exists"
+        : approvalsExists
+          ? "reinstalled"
+          : "created",
   };
 }
 

@@ -11,6 +11,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  DEFAULT_KANA_TOOL_APPROVALS,
   DEFAULT_KANA_CONFIG,
   buildKanaSystemPrompt,
   createKanaAgent,
@@ -43,36 +44,53 @@ describe("Kana config", () => {
     const env = createTempEnv();
     const firstInstall = installKanaConfig(env);
     const installed = readFileSync(firstInstall.configPath, "utf8");
+    const installedApprovals = JSON.parse(
+      readFileSync(firstInstall.approvalsPath, "utf8"),
+    );
 
-    expect(firstInstall.status).toBe("created");
+    expect(firstInstall.configStatus).toBe("created");
+    expect(firstInstall.approvalsStatus).toBe("created");
     expect(installed).toContain('api_key_env = "DEEPSEEK_API_KEY"');
     expect(installed).toContain('mode = "unless_trusted"');
     expect(installed).not.toContain("api_key =");
+    expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
 
     writeFileSync(firstInstall.configPath, "custom = true\n");
+    writeFileSync(firstInstall.approvalsPath, '{"custom":true}\n');
     const secondInstall = installKanaConfig(env);
 
     expect(secondInstall).toEqual({
       configPath: firstInstall.configPath,
-      status: "exists",
+      configStatus: "exists",
+      approvalsPath: firstInstall.approvalsPath,
+      approvalsStatus: "exists",
     });
     expect(readFileSync(firstInstall.configPath, "utf8")).toBe("custom = true\n");
+    expect(readFileSync(firstInstall.approvalsPath, "utf8")).toBe(
+      '{"custom":true}\n',
+    );
   });
 
-  test("force installs the default config over an existing file", () => {
+  test("force installs the default config and approvals over existing files", () => {
     const env = createTempEnv();
-    const { configPath } = installKanaConfig(env);
+    const { configPath, approvalsPath } = installKanaConfig(env);
     writeFileSync(configPath, "custom = true\n");
+    writeFileSync(approvalsPath, '{"custom":true}\n');
 
     const result = installKanaConfig(env, { force: true });
 
     expect(result).toEqual({
       configPath,
-      status: "reinstalled",
+      configStatus: "reinstalled",
+      approvalsPath,
+      approvalsStatus: "reinstalled",
     });
     expect(readFileSync(configPath, "utf8")).toContain(
       'api_key_env = "DEEPSEEK_API_KEY"',
+    );
+    expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual(
+      DEFAULT_KANA_TOOL_APPROVALS,
     );
   });
 

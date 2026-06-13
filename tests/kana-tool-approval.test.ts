@@ -1,8 +1,10 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -31,14 +33,14 @@ describe("Kana tool approval", () => {
     expect(
       shouldRequestToolApproval(
         { mode: "always" },
-        approvals("git status"),
+        approvals({ exactCommands: ["git status"] }),
         toolCall("read", { path: "package.json" }),
       ),
     ).toBe(true);
     expect(
       shouldRequestToolApproval(
         { mode: "always" },
-        approvals("git status"),
+        approvals({ exactCommands: ["git status"] }),
         toolCall("bash", { command: "git status" }),
       ),
     ).toBe(true);
@@ -54,8 +56,8 @@ describe("Kana tool approval", () => {
     ).toBe(false);
   });
 
-  test("unless trusted mode skips read and persisted bash commands", () => {
-    const trusted = approvals("git status");
+  test("unless trusted mode skips read and exact bash commands", () => {
+    const trusted = approvals({ exactCommands: ["git status"] });
 
     expect(
       shouldRequestToolApproval(
@@ -87,6 +89,65 @@ describe("Kana tool approval", () => {
     ).toBe(true);
   });
 
+  test("unless trusted mode skips simple configured read-only bash commands", () => {
+    const trusted = approvals({ readOnlyCommands: ["ls", "grep", "rg"] });
+
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("bash", { command: "ls -la src" }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("bash", { command: 'rg -n "approval mode" src' }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("bash", { command: "grep -R 'approval' src" }),
+      ),
+    ).toBe(false);
+  });
+
+  test("unless trusted mode requests approval for composed read-only bash commands", () => {
+    const trusted = approvals({ readOnlyCommands: ["rg"] });
+
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("bash", { command: "rg approval src > matches.txt" }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("bash", { command: "rg approval src; rm notes.txt" }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("bash", { command: "rg $(rm notes.txt) src" }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("bash", { command: "./rg approval src" }),
+      ),
+    ).toBe(true);
+  });
+
   test("loads default approvals when the approvals file is missing", () => {
     const env = createTempEnv();
 
@@ -104,23 +165,85 @@ describe("Kana tool approval", () => {
     const approvalsPath = getKanaConfigPaths(env).approvalsPath;
 
     expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual({
-      version: 1,
+      version: 2,
       bash: {
-        commands: ["git status", "rg approval src"],
+        exactCommands: ["git status", "rg approval src"],
+        readOnlyCommands: DEFAULT_KANA_TOOL_APPROVALS.bash.readOnlyCommands,
       },
     });
-    expect(loadKanaToolApprovals(env).bash.commands).toEqual([
+    expect(loadKanaToolApprovals(env).bash.exactCommands).toEqual([
       "git status",
       "rg approval src",
     ]);
   });
+
+  test("preserves manually configured read-only bash commands when adding exact commands", () => {
+    const env = createTempEnv();
+
+    saveApprovals(
+      {
+        version: 2,
+        bash: {
+          exactCommands: [],
+          readOnlyCommands: ["ls", "rg"],
+        },
+      },
+      env,
+    );
+    addTrustedBashCommand("git status", env);
+
+    expect(loadKanaToolApprovals(env)).toEqual({
+      version: 2,
+      bash: {
+        exactCommands: ["git status"],
+        readOnlyCommands: ["ls", "rg"],
+      },
+    });
+  });
+
+  test("rejects read-only bash command entries with arguments or paths", () => {
+    const env = createTempEnv();
+
+    saveApprovals(
+      {
+        version: 2,
+        bash: {
+          exactCommands: [],
+          readOnlyCommands: ["rg src"],
+        },
+      },
+      env,
+    );
+
+    expect(() => loadKanaToolApprovals(env)).toThrow(
+      "approvals.bash.readOnlyCommands entries must be executable names.",
+    );
+
+    saveApprovals(
+      {
+        version: 2,
+        bash: {
+          exactCommands: [],
+          readOnlyCommands: ["./rg"],
+        },
+      },
+      env,
+    );
+
+    expect(() => loadKanaToolApprovals(env)).toThrow(
+      "approvals.bash.readOnlyCommands entries must be executable names.",
+    );
+  });
 });
 
-function approvals(...commands: string[]): KanaToolApprovals {
+function approvals(
+  bash: Partial<KanaToolApprovals["bash"]> = {},
+): KanaToolApprovals {
   return {
-    version: 1,
+    version: 2,
     bash: {
-      commands,
+      exactCommands: bash.exactCommands ?? [],
+      readOnlyCommands: bash.readOnlyCommands ?? [],
     },
   };
 }
@@ -142,4 +265,15 @@ function createTempEnv(): NodeJS.ProcessEnv {
     HOME: home,
     KANA_HOME: path.join(home, ".kana"),
   };
+}
+
+function saveApprovals(
+  approvals: KanaToolApprovals,
+  env: NodeJS.ProcessEnv,
+): void {
+  const approvalsPath = getKanaConfigPaths(env).approvalsPath;
+  const approvalsDir = path.dirname(approvalsPath);
+
+  mkdirSync(approvalsDir, { recursive: true });
+  writeFileSync(approvalsPath, `${JSON.stringify(approvals, null, 2)}\n`);
 }

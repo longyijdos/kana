@@ -47,6 +47,27 @@ describe("CLI", () => {
       },
     ]);
   });
+
+  test("reports installed config and approvals", async () => {
+    const logs: string[] = [];
+
+    await parse(["node", "kana", "install"], {
+      installKanaConfig: () => ({
+        configPath: "/tmp/config.toml",
+        configStatus: "created",
+        approvalsPath: "/tmp/approvals.json",
+        approvalsStatus: "exists",
+      }),
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+
+    expect(logs).toEqual([
+      "Created config: /tmp/config.toml",
+      "Approvals already exists: /tmp/approvals.json",
+    ]);
+  });
 });
 
 async function parse(
@@ -55,8 +76,10 @@ async function parse(
 ): Promise<void> {
   const defaults: CreateCliOptions = {
     installKanaConfig: () => ({
-      status: "created",
       configPath: "/tmp/config.toml",
+      configStatus: "created",
+      approvalsPath: "/tmp/approvals.json",
+      approvalsStatus: "created",
     }),
     log: () => {},
     startTui: () => {},

@@ -46,22 +46,44 @@ export function createCli(options: CreateCliOptions): Command {
 
   program
     .command("install")
-    .description("Create the default Kana config under ~/.kana")
-    .option("--force", "Overwrite the existing Kana config")
+    .description("Create the default Kana files under ~/.kana")
+    .option("--force", "Overwrite the existing Kana files")
     .action((options: { force?: boolean }) => {
       const result = installConfig(process.env, {
         force: options.force,
       });
       log(
-        result.status === "created"
-          ? `Created config: ${result.configPath}`
-          : result.status === "reinstalled"
-            ? `Reinstalled config: ${result.configPath}`
-            : `Config already exists: ${result.configPath}`,
+        formatInstallMessage("config", result.configPath, result.configStatus),
+      );
+      log(
+        formatInstallMessage(
+          "approvals",
+          result.approvalsPath,
+          result.approvalsStatus,
+        ),
       );
     });
 
   return program;
+}
+
+function formatInstallMessage(
+  name: string,
+  filePath: string,
+  status: "created" | "exists" | "reinstalled",
+): string {
+  switch (status) {
+    case "created":
+      return `Created ${name}: ${filePath}`;
+    case "reinstalled":
+      return `Reinstalled ${name}: ${filePath}`;
+    case "exists":
+      return `${capitalize(name)} already exists: ${filePath}`;
+  }
+}
+
+function capitalize(value: string): string {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
 export async function runCli(
