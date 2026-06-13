@@ -4,6 +4,7 @@ export {
   TextBlock,
   ToolCallBlock,
   Transcript,
+  WelcomeBlock,
 } from "./chat-blocks";
 export {
   ChoicePrompt,

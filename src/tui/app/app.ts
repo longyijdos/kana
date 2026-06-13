@@ -21,6 +21,7 @@ import {
   type StatusLineState,
   TextBlock,
   Transcript,
+  WelcomeBlock,
 } from "../components";
 import {
   isCtrlC,
@@ -29,6 +30,11 @@ import {
 import type { ProcessTerminal } from "../runtime";
 import { tuiTheme } from "../theme";
 import { Tui } from "../runtime";
+import { WELCOME_LOGO_LINES } from "./welcome-logo";
+import {
+  PROMPT_COMMANDS,
+  type PromptCommandName,
+} from "../components/editor/commands";
 
 export type KanaTuiLoadedSession = {
   id: string;
@@ -170,17 +176,10 @@ export class KanaTuiApp {
     }
 
     this.transcript.addChild(
-      new TextBlock("Kana TUI. Type a prompt and press Enter.", {
-        color: tuiTheme.muted,
+      new WelcomeBlock({
+        logoLines: WELCOME_LOGO_LINES,
+        recentSessions: this.options.listSessions(),
       }),
-    );
-    this.transcript.addChild(
-      new TextBlock(
-        "Use terminal scrollback for history, /clear to clear display, /new to start fresh, /fork <prompt> to branch, /resume to switch, /delete to remove saved sessions, or /quit to exit.",
-        {
-          color: tuiTheme.muted,
-        },
-      ),
     );
   }
 
@@ -209,7 +208,7 @@ export class KanaTuiApp {
   }
 
   private handleCommand(command: {
-    name: "quit" | "clear" | "new" | "fork" | "resume" | "delete";
+    name: PromptCommandName;
     arguments: string;
     raw: string;
   }): void {
@@ -222,6 +221,14 @@ export class KanaTuiApp {
 
         this.stop();
         process.exit(0);
+        break;
+      case "help":
+        if (command.arguments) {
+          this.showError(new Error("Usage: /help"));
+          return;
+        }
+
+        this.showHelp();
         break;
       case "clear":
         if (command.arguments) {
@@ -266,6 +273,28 @@ export class KanaTuiApp {
         this.openDeletePicker();
         break;
     }
+  }
+
+  private showHelp(): void {
+    const lines = [
+      "Slash commands",
+      "",
+      ...PROMPT_COMMANDS.map(
+        (command) => `/${command.name.padEnd(8)} ${command.description}`,
+      ),
+    ];
+
+    this.editor.clear();
+    this.transcript.addChild(
+      new TextBlock(lines.join("\n"), {
+        color: tuiTheme.muted,
+        paddingTop: 1,
+      }),
+    );
+    this.updateStatus("idle", {
+      activeTool: undefined,
+    });
+    this.tui.requestRender();
   }
 
   private startNewSession(): void {

@@ -1,4 +1,5 @@
 import stringWidth from "string-width";
+import { RESET } from "./ansi";
 import { splitLines } from "./lines";
 import { stripCursorMarker } from "../runtime/cursor";
 
@@ -31,13 +32,29 @@ export function truncateToWidth(
     return value;
   }
 
-  const plain = stripAnsi(value);
   const suffixWidth = visibleWidth(suffix);
   const available = Math.max(0, width - suffixWidth);
   let result = "";
   let currentWidth = 0;
+  let index = 0;
+  let usedAnsi = false;
 
-  for (const segment of graphemes(plain)) {
+  while (index < value.length) {
+    const ansi = readAnsi(value, index);
+
+    if (ansi) {
+      result += ansi.sequence;
+      index = ansi.end;
+      usedAnsi = true;
+      continue;
+    }
+
+    const [segment] = graphemes(value.slice(index));
+
+    if (!segment) {
+      break;
+    }
+
     const segmentWidth = visibleWidth(segment);
 
     if (currentWidth + segmentWidth > available) {
@@ -46,9 +63,10 @@ export function truncateToWidth(
 
     result += segment;
     currentWidth += segmentWidth;
+    index += segment.length;
   }
 
-  return `${result}${suffix}`;
+  return usedAnsi ? `${result}${suffix}${RESET}` : `${result}${suffix}`;
 }
 
 export function wrapPlainText(value: string, width: number): string[] {
@@ -103,4 +121,21 @@ function graphemes(value: string): string[] {
     new Segmenter("en", { granularity: "grapheme" }).segment(value),
     (segment) => segment.segment,
   );
+}
+
+function readAnsi(
+  value: string,
+  index: number,
+): { sequence: string; end: number } | undefined {
+  ANSI_PATTERN.lastIndex = index;
+  const match = ANSI_PATTERN.exec(value);
+
+  if (!match || match.index !== index) {
+    return undefined;
+  }
+
+  return {
+    sequence: match[0],
+    end: index + match[0].length,
+  };
 }

@@ -1,5 +1,6 @@
 export type PromptCommandName =
   | "quit"
+  | "help"
   | "clear"
   | "new"
   | "fork"
@@ -34,6 +35,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "quit",
     description: "Exit Kana.",
+  },
+  {
+    name: "help",
+    description: "Show slash commands.",
   },
   {
     name: "clear",

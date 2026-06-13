@@ -497,6 +497,9 @@ describe("prompt commands", () => {
           name: "quit",
         },
         {
+          name: "help",
+        },
+        {
           name: "clear",
         },
         {
@@ -540,6 +543,12 @@ describe("prompt commands", () => {
       name: "quit",
       arguments: "",
       raw: "/quit",
+    });
+    expect(createCommandSubmit("/help", undefined)).toEqual({
+      type: "command",
+      name: "help",
+      arguments: "",
+      raw: "/help",
     });
     expect(createCommandSubmit("/new", undefined)).toEqual({
       type: "command",

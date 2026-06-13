@@ -11,5 +11,6 @@
 * The user is a developer who is still learning. If a requested change is unclear, brittle, overly complex, hard to maintain, or likely to create technical debt, explain the concern before implementing it.
 * When pushing back on a request, describe the tradeoff and suggest a cleaner alternative.
 * Prefer the simplest maintainable solution that satisfies the underlying goal.
+* When adding or changing user-visible features, consider whether the welcome panel `Highlights` should be updated; keep it focused on meaningful user-facing changes, not internal refactors.
 * For imports under `src`, use relative imports within the same top-level `src` directory. Use the `@/` alias only when importing across top-level `src` directories, such as from `tui` to `core` or `agent`, and prefer the target module's barrel export such as `@/core` or `@/tools` over deep alias imports like `@/core/messages` or `@/tools/tool`.
 * Use Conventional Commit prefixes for commit messages, such as `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, and `chore:`.
