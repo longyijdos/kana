@@ -9,6 +9,7 @@ import type {
   KanaToolApprovals,
 } from "@/kana";
 import type { Message, ModelMetadata, ToolCallContent } from "@/core";
+import { createBashTool, type ToolResult } from "@/tools";
 import { addHistoryMessagesToTranscript } from "./history";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { SessionOverlayController } from "./session-overlay-controller";
@@ -20,6 +21,7 @@ import {
   StatusLine,
   type StatusLineState,
   TextBlock,
+  ToolCallBlock,
   Transcript,
   WelcomeBlock,
 } from "../components";
@@ -69,6 +71,8 @@ export class KanaTuiApp {
   private sessionId?: string;
   private running = false;
   private readonly toolApproval: ToolApprovalController;
+  private localShellAbortController?: AbortController;
+  private localShellRunId = 0;
 
   constructor(
     private readonly createAgent: (options: {
@@ -128,6 +132,11 @@ export class KanaTuiApp {
     this.editor.onSubmit = (submit) => {
       if (submit.type === "command") {
         this.handleCommand(submit);
+        return;
+      }
+
+      if (submit.type === "shell") {
+        void this.submitShellCommand(submit.command, submit.raw);
         return;
       }
 
@@ -203,6 +212,12 @@ export class KanaTuiApp {
   }
 
   private abort(): void {
+    if (this.localShellAbortController) {
+      this.localShellAbortController.abort();
+      this.updateStatus("aborted");
+      return;
+    }
+
     this.agent.abort();
     this.updateStatus("aborted");
   }
@@ -282,6 +297,10 @@ export class KanaTuiApp {
       ...PROMPT_COMMANDS.map(
         (command) => `/${command.name.padEnd(8)} ${command.description}`,
       ),
+      "",
+      "Shell shortcuts",
+      "",
+      "!<command> Run a local bash command.",
     ];
 
     this.editor.clear();
@@ -434,6 +453,92 @@ export class KanaTuiApp {
     }
   }
 
+  private async submitShellCommand(command: string, raw: string): Promise<void> {
+    const shellCommand = command.trim();
+
+    if (!shellCommand || this.running) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    const tool = createBashTool({ root: process.cwd() });
+    const toolCall: ToolCallContent = {
+      type: "tool_call",
+      id: `local_shell_${++this.localShellRunId}`,
+      name: "bash",
+      args: {
+        command: shellCommand,
+      },
+    };
+    const block = new ToolCallBlock(toolCall);
+
+    this.editor.addToHistory(raw.trim());
+    this.editor.clear();
+    this.transcript.addChild(block);
+    this.running = true;
+    this.localShellAbortController = abortController;
+    this.updateStatus("tool", {
+      activeTool: "bash",
+    });
+    this.tui.requestRender();
+
+    try {
+      const approval = await this.showToolApprovalPrompt(
+        toolCall,
+        abortController.signal,
+      );
+
+      if (approval.type === "cancel") {
+        block.updateResult(
+          {
+            error: approval.message ?? "Command canceled before execution.",
+            canceled: true,
+          },
+          true,
+        );
+        this.updateStatus("aborted");
+        return;
+      }
+
+      block.markExecutionStarted();
+      this.tui.requestRender();
+
+      const executed = await tool.execute(
+        {
+          command: shellCommand,
+        },
+        {
+          toolCallId: toolCall.id,
+          signal: abortController.signal,
+          update: (partialResult) => {
+            block.updatePartialResult(partialResult);
+            this.tui.requestRender();
+          },
+        },
+      );
+      const result = normalizeLocalToolResult(executed);
+
+      block.updateResult(result.result, result.isError ?? false);
+      this.updateStatus(result.isError ? "error" : "done");
+    } catch (error) {
+      block.updateResult(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        true,
+      );
+      this.updateStatus(abortController.signal.aborted ? "aborted" : "error");
+    } finally {
+      this.running = false;
+      this.localShellAbortController = undefined;
+      this.status.update({
+        running: false,
+        activeTool: undefined,
+      });
+      this.tui.requestRender();
+    }
+  }
+
   private showToolApprovalPrompt(
     toolCall: ToolCallContent,
     signal: AbortSignal | undefined,
@@ -455,4 +560,25 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
+}
+
+function normalizeLocalToolResult(value: unknown): ToolResult {
+  if (isToolResult(value)) {
+    return value;
+  }
+
+  return {
+    content: String(value),
+    result: value,
+  };
+}
+
+function isToolResult(value: unknown): value is ToolResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "content" in value &&
+    typeof value.content === "string" &&
+    "result" in value
+  );
 }

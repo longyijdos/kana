@@ -591,6 +591,20 @@ describe("prompt commands", () => {
     });
   });
 
+  test("creates shell submissions from bang-prefixed input", () => {
+    expect(createCommandSubmit("!pwd", undefined)).toEqual({
+      type: "shell",
+      command: "pwd",
+      raw: "!pwd",
+    });
+    expect(createCommandSubmit("!  git status  ", undefined)).toEqual({
+      type: "shell",
+      command: "git status",
+      raw: "!  git status  ",
+    });
+    expect(createCommandSubmit("!", undefined)).toBeUndefined();
+  });
+
   test("hides the palette after command token whitespace", () => {
     expect(getCommandState("/quit ")).toMatchObject({
       isCommandMode: true,

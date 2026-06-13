@@ -18,6 +18,11 @@ export type PromptSubmit =
       content: string;
     }
   | {
+      type: "shell";
+      command: string;
+      raw: string;
+    }
+  | {
       type: "command";
       name: PromptCommandName;
       arguments: string;
@@ -93,6 +98,18 @@ export function createCommandSubmit(
   value: string,
   selectedCommand: PromptCommand | undefined,
 ): PromptSubmit | undefined {
+  if (value.startsWith("!")) {
+    const command = value.slice(1).trim();
+
+    return command
+      ? {
+          type: "shell",
+          command,
+          raw: value,
+        }
+      : undefined;
+  }
+
   const state = getCommandState(value);
 
   if (!state.isCommandMode) {

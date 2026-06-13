@@ -35,8 +35,8 @@ describe("tui welcome block", () => {
     expect(stripAnsi(lines.join("\n"))).toContain("Welcome back, tester");
     expect(stripAnsi(lines.join("\n"))).toContain("Recent activity");
     expect(stripAnsi(lines.join("\n"))).toContain("Highlights");
+    expect(stripAnsi(lines.join("\n"))).toContain("!bash quick commands");
     expect(stripAnsi(lines.join("\n"))).toContain("Trusted tool approvals");
-    expect(stripAnsi(lines.join("\n"))).toContain("Prompt startup from CLI");
     expect(stripAnsi(lines.join("\n"))).toContain("Session titles and delete");
     expect(stripAnsi(lines.join("\n"))).toContain("Wire recent sessions");
     expect(stripAnsi(lines.join("\n"))).toContain("Trim welcome panel");
