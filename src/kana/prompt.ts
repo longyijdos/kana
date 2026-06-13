@@ -6,6 +6,7 @@ import {
   formatKanaEnvironmentContext,
   type CollectKanaEnvironmentContextOptions,
 } from "./context";
+import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
 
 const DEFAULT_SYSTEM_PROMPT = [
   "You are a concise coding assistant working inside the current workspace.",
@@ -27,12 +28,15 @@ export function loadKanaSystemPrompt(): string {
 }
 
 export function buildKanaSystemPrompt(
-  options: CollectKanaEnvironmentContextOptions = {},
+  options: CollectKanaEnvironmentContextOptions & { skills?: KanaSkill[] } = {},
 ): string {
   const systemPrompt = loadKanaSystemPrompt().trimEnd();
   const environmentContext = formatKanaEnvironmentContext(
     collectKanaEnvironmentContext(options),
   );
+  const skillsPrompt = formatKanaSkillsForPrompt(options.skills ?? []);
 
-  return `${systemPrompt}\n\n${environmentContext}`;
+  return [systemPrompt, environmentContext, skillsPrompt]
+    .filter(Boolean)
+    .join("\n\n");
 }

@@ -8,6 +8,7 @@ import {
 } from "@/tools";
 import { getKanaConfigPaths, type KanaConfig } from "./config";
 import { buildKanaSystemPrompt } from "./prompt";
+import { loadKanaSkills } from "./skills";
 
 type KanaAgentOptions = Pick<
   AgentConfig,
@@ -20,6 +21,7 @@ export function createKanaAgent(
 ): Agent {
   const cwd = process.cwd();
   const apiKey = process.env[config.model.apiKeyEnv];
+  const { skills } = loadKanaSkills({ cwd });
 
   if (!apiKey) {
     throw new Error(
@@ -40,7 +42,7 @@ export function createKanaAgent(
 
   return new Agent({
     model,
-    system: buildKanaSystemPrompt({ cwd }),
+    system: buildKanaSystemPrompt({ cwd, skills }),
     tools: [
       createReadTool({
         root: cwd,

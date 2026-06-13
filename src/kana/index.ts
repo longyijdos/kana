@@ -22,6 +22,15 @@ export {
 } from "./config";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
+  formatKanaSkillsForPrompt,
+  loadKanaSkills,
+  loadKanaSkillsFromDir,
+  type KanaSkill,
+  type KanaSkillDiagnostic,
+  type LoadKanaSkillsOptions,
+  type LoadKanaSkillsResult,
+} from "./skills";
+export {
   appendKanaSessionMessages,
   createKanaSession,
   deleteKanaSession,
