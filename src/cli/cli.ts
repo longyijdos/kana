@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import type { InstallKanaConfigResult } from "@/kana";
+import type { InstallKanaConfigResult, InstallKanaSkillsResult } from "@/kana";
 import type { StartTuiOptions } from "@/tui";
 
 export type CreateCliOptions = {
@@ -7,12 +7,17 @@ export type CreateCliOptions = {
     env: NodeJS.ProcessEnv,
     options: { force?: boolean },
   ) => InstallKanaConfigResult;
+  installKanaSkills: (
+    env: NodeJS.ProcessEnv,
+    options: { force?: boolean },
+  ) => Promise<InstallKanaSkillsResult>;
   log?: (message: string) => void;
   startTui: (options?: StartTuiOptions) => void;
 };
 
 export function createCli(options: CreateCliOptions): Command {
   const installConfig = options.installKanaConfig;
+  const installSkills = options.installKanaSkills;
   const log = options.log ?? console.log;
   const runTui = options.startTui;
   const program = new Command();
@@ -48,7 +53,8 @@ export function createCli(options: CreateCliOptions): Command {
     .command("install")
     .description("Create the default Kana files under ~/.kana")
     .option("--force", "Overwrite the existing Kana files")
-    .action((options: { force?: boolean }) => {
+    .option("--skills", "Install or update Kana skills from the default repository")
+    .action(async (options: { force?: boolean; skills?: boolean }) => {
       const result = installConfig(process.env, {
         force: options.force,
       });
@@ -62,9 +68,27 @@ export function createCli(options: CreateCliOptions): Command {
           result.approvalsStatus,
         ),
       );
+
+      if (options.skills) {
+        const skillsResult = await installSkills(process.env, {
+          force: options.force,
+        });
+        log(formatInstallSkillsMessage(skillsResult));
+      }
     });
 
   return program;
+}
+
+function formatInstallSkillsMessage(result: InstallKanaSkillsResult): string {
+  switch (result.status) {
+    case "cloned":
+      return `Installed skills: ${result.skillsPath}`;
+    case "updated":
+      return `Updated skills: ${result.skillsPath}`;
+    case "reinstalled":
+      return `Reinstalled skills: ${result.skillsPath}`;
+  }
 }
 
 function formatInstallMessage(

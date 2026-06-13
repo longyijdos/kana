@@ -1,8 +1,9 @@
 import { runCli } from "@/cli";
-import { installKanaConfig } from "@/kana";
+import { installKanaConfig, installKanaSkills } from "@/kana";
 import { startTui } from "@/tui";
 
 await runCli(process.argv, {
   installKanaConfig,
+  installKanaSkills,
   startTui,
 });

@@ -68,6 +68,31 @@ describe("CLI", () => {
       "Approvals already exists: /tmp/approvals.json",
     ]);
   });
+
+  test("installs skills when requested", async () => {
+    const logs: string[] = [];
+    const calls: Array<{ force?: boolean }> = [];
+
+    await parse(["node", "kana", "install", "--skills", "--force"], {
+      installKanaSkills: async (_env, options) => {
+        calls.push(options);
+        return {
+          skillsPath: "/tmp/.kana/skills/kana-skills",
+          status: "reinstalled",
+        };
+      },
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+
+    expect(calls).toEqual([{ force: true }]);
+    expect(logs).toEqual([
+      "Created config: /tmp/config.toml",
+      "Created approvals: /tmp/approvals.json",
+      "Reinstalled skills: /tmp/.kana/skills/kana-skills",
+    ]);
+  });
 });
 
 async function parse(
@@ -80,6 +105,10 @@ async function parse(
       configStatus: "created",
       approvalsPath: "/tmp/approvals.json",
       approvalsStatus: "created",
+    }),
+    installKanaSkills: async () => ({
+      skillsPath: "/tmp/.kana/skills/kana-skills",
+      status: "cloned",
     }),
     log: () => {},
     startTui: () => {},
