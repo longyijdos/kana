@@ -191,6 +191,43 @@ class AbortedToolCallModel implements Model {
   }
 }
 
+class EmptyErrorModel implements Model {
+  readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "empty-error",
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+  };
+
+  stream(_context: ModelContext): AssistantEventStream {
+    const stream = new AssistantEventStream();
+
+    queueMicrotask(() => {
+      stream.error({
+        type: "error",
+        reason: "error",
+        error: new Error("provider rejected the request"),
+        snapshot: {
+          role: "assistant",
+          content: [],
+        },
+      });
+    });
+
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 class LengthTruncatedToolModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
@@ -622,6 +659,33 @@ describe("runAgentLoop", () => {
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
       reason: "aborted",
+    });
+  });
+
+  test("does not persist empty provider error messages", async () => {
+    const events: AgentEvent[] = [];
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "hi",
+          },
+        ],
+      },
+      {
+        model: new EmptyErrorModel(),
+      },
+      (event) => {
+        events.push(structuredClone(event));
+      },
+    );
+
+    expect(messages).toEqual([]);
+    expect(events.at(-1)).toMatchObject({
+      type: "agent_end",
+      reason: "error",
+      messages: [],
     });
   });
 
