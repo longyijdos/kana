@@ -1,5 +1,11 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -21,6 +27,8 @@ export type InstallKanaSkillsOptions = {
 export type InstallKanaSkillsResult = {
   skillsPath: string;
   status: "cloned" | "updated" | "reinstalled";
+  skillsConfigPath: string;
+  skillsConfigStatus: "created" | "exists" | "reinstalled";
 };
 
 type GitRunner = (args: string[], options?: { cwd?: string }) => Promise<void>;
@@ -33,38 +41,59 @@ export async function installKanaSkills(
   const repositoryName =
     options.repositoryName ?? DEFAULT_KANA_SKILLS_REPOSITORY_NAME;
   const { home } = getKanaConfigPaths(env);
-  const skillsPath = path.join(home, "skills", repositoryName);
+  const skillsRoot = path.join(home, "skills");
+  const skillsPath = path.join(skillsRoot, repositoryName);
   const runGit = options.runGit ?? runGitCommand;
+  let status: InstallKanaSkillsResult["status"];
 
   if (!existsSync(skillsPath)) {
     mkdirSync(path.dirname(skillsPath), { recursive: true });
     await runGit(["clone", repositoryUrl, skillsPath]);
-    return {
-      skillsPath,
-      status: "cloned",
-    };
-  }
-
-  if (options.force) {
+    status = "cloned";
+  } else if (options.force) {
     rmSync(skillsPath, { recursive: true, force: true });
     mkdirSync(path.dirname(skillsPath), { recursive: true });
     await runGit(["clone", repositoryUrl, skillsPath]);
-    return {
-      skillsPath,
-      status: "reinstalled",
-    };
-  }
-
-  if (!isDirectory(path.join(skillsPath, ".git"))) {
+    status = "reinstalled";
+  } else if (!isDirectory(path.join(skillsPath, ".git"))) {
     throw new Error(
       `Cannot update skills because ${skillsPath} is not a git repository. Re-run with --force to replace it.`,
     );
+  } else {
+    await runGit(["pull", "--ff-only"], { cwd: skillsPath });
+    status = "updated";
   }
 
-  await runGit(["pull", "--ff-only"], { cwd: skillsPath });
   return {
     skillsPath,
-    status: "updated",
+    status,
+    ...installKanaSkillsConfig(skillsRoot, options.force),
+  };
+}
+
+function installKanaSkillsConfig(
+  skillsRoot: string,
+  force: boolean | undefined,
+): Pick<InstallKanaSkillsResult, "skillsConfigPath" | "skillsConfigStatus"> {
+  const skillsConfigPath = path.join(skillsRoot, "skills.toml");
+  const exists = existsSync(skillsConfigPath);
+
+  if (!exists || force) {
+    mkdirSync(skillsRoot, { recursive: true });
+    writeFileSync(
+      skillsConfigPath,
+      ["[model_invocation]", "enabled = []", ""].join("\n"),
+      {
+        encoding: "utf8",
+        mode: 0o600,
+      },
+    );
+  }
+
+  return {
+    skillsConfigPath,
+    skillsConfigStatus:
+      exists && !force ? "exists" : exists ? "reinstalled" : "created",
   };
 }
 

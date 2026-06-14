@@ -32,6 +32,7 @@ export {
   formatKanaSkillsForPrompt,
   loadKanaSkills,
   loadKanaSkillsFromDir,
+  type FormatKanaSkillsForPromptOptions,
   type KanaSkill,
   type KanaSkillDiagnostic,
   type LoadKanaSkillsOptions,

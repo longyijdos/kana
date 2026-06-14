@@ -14,6 +14,7 @@ import {
   buildKanaSystemPrompt,
   createKanaAgent,
   formatKanaSkillsForPrompt,
+  getKanaConfigPaths,
   loadKanaSkills,
   loadKanaSkillsFromDir,
 } from "@/kana";
@@ -50,7 +51,6 @@ describe("Kana skills", () => {
         description: "Helps with a test workflow.",
         filePath: path.join(root, "valid-skill", "SKILL.md"),
         baseDir: path.join(root, "valid-skill"),
-        disableModelInvocation: false,
       },
     ]);
   });
@@ -148,6 +148,68 @@ describe("Kana skills", () => {
     ]);
   });
 
+  test("ignores markdown files that are not named SKILL.md", () => {
+    const root = createTempDir();
+    writeSkill(
+      path.join(root, "review.md"),
+      [
+        "---",
+        "name: review",
+        "description: Should not load.",
+        "---",
+        "This is not a skill file.",
+        "",
+      ].join("\n"),
+    );
+    writeSkill(
+      path.join(root, "valid", "SKILL.md"),
+      [
+        "---",
+        "name: valid",
+        "description: Should load.",
+        "---",
+        "Use valid.",
+        "",
+      ].join("\n"),
+    );
+
+    const { skills, diagnostics } = loadKanaSkillsFromDir(root);
+
+    expect(diagnostics).toEqual([]);
+    expect(skills.map((skill) => skill.name)).toEqual(["valid"]);
+  });
+
+  test("rejects configured markdown files that are not SKILL.md", () => {
+    const root = createTempDir();
+    const skillPath = path.join(root, "review.md");
+    writeSkill(
+      skillPath,
+      [
+        "---",
+        "name: review",
+        "description: Should not load.",
+        "---",
+        "This is not a skill file.",
+        "",
+      ].join("\n"),
+    );
+
+    const { skills, diagnostics } = loadKanaSkills({
+      includeDefaults: false,
+      skillPaths: [skillPath],
+    });
+
+    expect(skills).toEqual([]);
+    expect(diagnostics).toEqual([
+      {
+        type: "warning",
+        code: "read_failed",
+        message: "skill path is not a directory or SKILL.md file",
+        path: skillPath,
+      },
+    ]);
+  });
+
   test("keeps the first skill when names collide", () => {
     const root = createTempDir();
     writeSkill(
@@ -190,29 +252,117 @@ describe("Kana skills", () => {
     });
   });
 
-  test("formats visible skills for the system prompt", () => {
-    const prompt = formatKanaSkillsForPrompt([
-      {
-        name: "visible-skill",
-        description: 'Handles <xml> & "quotes".',
-        filePath: "/tmp/visible-skill/SKILL.md",
-        baseDir: "/tmp/visible-skill",
-        disableModelInvocation: false,
-      },
-      {
-        name: "manual-skill",
-        description: "Only for slash command use.",
-        filePath: "/tmp/manual-skill/SKILL.md",
-        baseDir: "/tmp/manual-skill",
-        disableModelInvocation: true,
-      },
+  test("prefers project skills over global skills with the same name", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const { home } = getKanaConfigPaths(env);
+    writeSkill(
+      path.join(home, "skills", "same-name", "SKILL.md"),
+      [
+        "---",
+        "name: same-name",
+        "description: Global skill.",
+        "---",
+        "Use global.",
+        "",
+      ].join("\n"),
+    );
+    writeSkill(
+      path.join(cwd, ".kana", "skills", "same-name", "SKILL.md"),
+      [
+        "---",
+        "name: same-name",
+        "description: Project skill.",
+        "---",
+        "Use project.",
+        "",
+      ].join("\n"),
+    );
+
+    const { skills, diagnostics } = loadKanaSkills({ cwd, env });
+
+    expect(skills.map((skill) => skill.filePath)).toEqual([
+      path.join(cwd, ".kana", "skills", "same-name", "SKILL.md"),
     ]);
+    expect(diagnostics).toContainEqual({
+      type: "collision",
+      code: "name_collision",
+      message: 'skill name "same-name" already loaded',
+      path: path.join(home, "skills", "same-name", "SKILL.md"),
+      winnerPath: path.join(cwd, ".kana", "skills", "same-name", "SKILL.md"),
+    });
+  });
+
+  test("formats allowlisted global skills for the system prompt", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeSkillConfig(home, [
+      "[model_invocation]",
+      'enabled = ["visible-skill"]',
+      "",
+    ].join("\n"));
+
+    const prompt = formatKanaSkillsForPrompt(
+      [
+        {
+          name: "visible-skill",
+          description: 'Handles <xml> & "quotes".',
+          filePath: path.join(home, "skills", "visible-skill", "SKILL.md"),
+          baseDir: path.join(home, "skills", "visible-skill"),
+        },
+        {
+          name: "hidden-skill",
+          description: "Not allowlisted.",
+          filePath: path.join(home, "skills", "hidden-skill", "SKILL.md"),
+          baseDir: path.join(home, "skills", "hidden-skill"),
+        },
+      ],
+      { env },
+    );
 
     expect(prompt).toContain("<available_skills>");
     expect(prompt).toContain("<name>visible-skill</name>");
     expect(prompt).toContain("Handles &lt;xml&gt; &amp; &quot;quotes&quot;.");
-    expect(prompt).toContain("<location>/tmp/visible-skill/SKILL.md</location>");
-    expect(prompt).not.toContain("manual-skill");
+    expect(prompt).toContain(
+      `<location>${path.join(home, "skills", "visible-skill", "SKILL.md")}</location>`,
+    );
+    expect(prompt).not.toContain("hidden-skill");
+  });
+
+  test("hides global skills when the allowlist is missing", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    const prompt = formatKanaSkillsForPrompt(
+      [
+        {
+          name: "global-skill",
+          description: "Global skill.",
+          filePath: path.join(home, "skills", "global-skill", "SKILL.md"),
+          baseDir: path.join(home, "skills", "global-skill"),
+        },
+      ],
+      { env },
+    );
+
+    expect(prompt).toBe("");
+  });
+
+  test("does not require project skills to be allowlisted", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const prompt = formatKanaSkillsForPrompt(
+      [
+        {
+          name: "project-skill",
+          description: "Project-local skill.",
+          filePath: path.join(cwd, ".kana", "skills", "project-skill", "SKILL.md"),
+          baseDir: path.join(cwd, ".kana", "skills", "project-skill"),
+        },
+      ],
+      { env },
+    );
+
+    expect(prompt).toContain("<name>project-skill</name>");
   });
 
   test("builds the system prompt with available skills", () => {
@@ -224,7 +374,6 @@ describe("Kana skills", () => {
           description: "Use for tests.",
           filePath: "/repo/.kana/skills/test-skill/SKILL.md",
           baseDir: "/repo/.kana/skills/test-skill",
-          disableModelInvocation: false,
         },
       ],
     });
@@ -282,7 +431,7 @@ describe("Kana skills", () => {
     }
   });
 
-  test("loads multiline descriptions and disable-model-invocation metadata", () => {
+  test("loads multiline descriptions", () => {
     const root = createTempDir();
     writeSkill(
       path.join(root, "manual-skill", "SKILL.md"),
@@ -292,7 +441,6 @@ describe("Kana skills", () => {
         "description: |",
         "  First line.",
         "  Second line.",
-        "disable-model-invocation: true",
         "---",
         "Use manually.",
         "",
@@ -302,14 +450,26 @@ describe("Kana skills", () => {
     const { skills } = loadKanaSkillsFromDir(root);
 
     expect(skills[0]?.description).toBe("First line.\nSecond line.");
-    expect(skills[0]?.disableModelInvocation).toBe(true);
   });
 });
+
+function createTempEnv(): NodeJS.ProcessEnv {
+  return {
+    KANA_HOME: path.join(createTempDir(), ".kana"),
+  };
+}
 
 function createTempDir(): string {
   const tempDir = mkdtempSync(path.join(tmpdir(), "kana-skills-"));
   tempDirs.push(tempDir);
   return tempDir;
+}
+
+function writeSkillConfig(home: string, content: string): void {
+  const filePath = path.join(home, "skills", "skills.toml");
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, content);
+  expect(readFileSync(filePath, "utf8")).toBe(content);
 }
 
 function writeSkill(filePath: string, content: string): void {

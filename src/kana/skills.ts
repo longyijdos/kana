@@ -18,7 +18,6 @@ export type KanaSkill = {
   description: string;
   filePath: string;
   baseDir: string;
-  disableModelInvocation: boolean;
 };
 
 export type KanaSkillDiagnostic =
@@ -51,7 +50,10 @@ export type LoadKanaSkillsResult = {
 type SkillFrontmatter = {
   name?: string;
   description?: string;
-  "disable-model-invocation"?: boolean;
+};
+
+export type FormatKanaSkillsForPromptOptions = {
+  env?: NodeJS.ProcessEnv;
 };
 
 export function loadKanaSkills(
@@ -104,11 +106,14 @@ export function loadKanaSkills(
 }
 
 export function loadKanaSkillsFromDir(dir: string): LoadKanaSkillsResult {
-  return loadSkillsFromDir(dir, true, new Set<string>());
+  return loadSkillsFromDir(dir, new Set<string>());
 }
 
-export function formatKanaSkillsForPrompt(skills: KanaSkill[]): string {
-  const visibleSkills = skills.filter((skill) => !skill.disableModelInvocation);
+export function formatKanaSkillsForPrompt(
+  skills: KanaSkill[],
+  options: FormatKanaSkillsForPromptOptions = {},
+): string {
+  const visibleSkills = selectSkillsForPrompt(skills, options);
 
   if (visibleSkills.length === 0) {
     return "";
@@ -138,10 +143,65 @@ function defaultSkillPaths(
   const { home } = getKanaConfigPaths(env);
 
   return [
-    path.join(home, "skills"),
     path.join(cwd, ".kana", "skills"),
     path.join(cwd, ".agents", "skills"),
+    path.join(home, "skills"),
   ];
+}
+
+function selectSkillsForPrompt(
+  skills: KanaSkill[],
+  options: FormatKanaSkillsForPromptOptions,
+): KanaSkill[] {
+  const { home } = getKanaConfigPaths(options.env);
+  const globalSkillsDir = path.join(home, "skills");
+  const enabledGlobalSkills = loadEnabledGlobalSkillNames(globalSkillsDir);
+
+  return skills.filter((skill) => {
+    if (!isPathInside(skill.filePath, globalSkillsDir)) {
+      return true;
+    }
+
+    return enabledGlobalSkills.has(skill.name);
+  });
+}
+
+function loadEnabledGlobalSkillNames(globalSkillsDir: string): Set<string> {
+  const configPath = path.join(globalSkillsDir, "skills.toml");
+
+  if (!existsSync(configPath)) {
+    return new Set();
+  }
+
+  const parsed = Bun.TOML.parse(readFileSync(configPath, "utf8")) as unknown;
+  const raw = asRecord(parsed, "skills config");
+  const modelInvocation =
+    raw.model_invocation === undefined
+      ? {}
+      : asRecord(raw.model_invocation, "model_invocation");
+  const enabled = modelInvocation.enabled;
+
+  if (enabled === undefined) {
+    return new Set();
+  }
+
+  if (!Array.isArray(enabled)) {
+    throw new Error(
+      "Invalid skills.toml: model_invocation.enabled must be an array",
+    );
+  }
+
+  return new Set(
+    enabled.map((value, index) => {
+      if (typeof value !== "string") {
+        throw new Error(
+          `Invalid skills.toml: model_invocation.enabled[${index}] must be a string`,
+        );
+      }
+
+      return value;
+    }),
+  );
 }
 
 function loadSkillsFromPath(skillPath: string): LoadKanaSkillsResult {
@@ -156,10 +216,10 @@ function loadSkillsFromPath(skillPath: string): LoadKanaSkillsResult {
     const stats = statSync(skillPath);
 
     if (stats.isDirectory()) {
-      return loadSkillsFromDir(skillPath, true, new Set<string>());
+      return loadSkillsFromDir(skillPath, new Set<string>());
     }
 
-    if (stats.isFile() && skillPath.endsWith(".md")) {
+    if (stats.isFile() && path.basename(skillPath) === "SKILL.md") {
       return loadSkillFromFile(skillPath);
     }
   } catch (error) {
@@ -182,7 +242,7 @@ function loadSkillsFromPath(skillPath: string): LoadKanaSkillsResult {
       {
         type: "warning",
         code: "read_failed",
-        message: "skill path is not a directory or markdown file",
+        message: "skill path is not a directory or SKILL.md file",
         path: skillPath,
       },
     ],
@@ -191,7 +251,6 @@ function loadSkillsFromPath(skillPath: string): LoadKanaSkillsResult {
 
 function loadSkillsFromDir(
   dir: string,
-  includeRootFiles: boolean,
   visitedDirs: Set<string>,
 ): LoadKanaSkillsResult {
   const realDir = canonicalizePath(dir);
@@ -250,23 +309,10 @@ function loadSkillsFromDir(
     const fullPath = path.join(dir, entry.name);
 
     if (isDirectory(fullPath, entry)) {
-      const result = loadSkillsFromDir(fullPath, false, visitedDirs);
+      const result = loadSkillsFromDir(fullPath, visitedDirs);
       skills.push(...result.skills);
       diagnostics.push(...result.diagnostics);
-      continue;
     }
-
-    if (
-      !includeRootFiles ||
-      !entry.name.endsWith(".md") ||
-      !isFile(fullPath, entry)
-    ) {
-      continue;
-    }
-
-    const result = loadSkillFromFile(fullPath);
-    skills.push(...result.skills);
-    diagnostics.push(...result.diagnostics);
   }
 
   return {
@@ -357,8 +403,6 @@ function loadSkillFromFile(filePath: string): LoadKanaSkillsResult {
         description,
         filePath,
         baseDir,
-        disableModelInvocation:
-          frontmatter["disable-model-invocation"] === true,
       },
     ],
     diagnostics,
@@ -444,11 +488,6 @@ function setFrontmatterValue(
     case "name":
     case "description":
       if (typeof value === "string") {
-        frontmatter[key] = value;
-      }
-      break;
-    case "disable-model-invocation":
-      if (typeof value === "boolean") {
         frontmatter[key] = value;
       }
       break;
@@ -543,6 +582,22 @@ function canonicalizePath(filePath: string): string {
   } catch {
     return path.resolve(filePath);
   }
+}
+
+function isPathInside(candidatePath: string, dir: string): boolean {
+  const relative = path.relative(path.resolve(dir), path.resolve(candidatePath));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+function asRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid skills.toml: ${label} must be a table`);
+  }
+
+  return value as Record<string, unknown>;
 }
 
 function escapeXml(value: string): string {

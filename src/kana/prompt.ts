@@ -72,7 +72,9 @@ export function buildKanaSystemPrompt(
   const environmentContext = formatKanaEnvironmentContext(
     collectKanaEnvironmentContext(options),
   );
-  const skillsPrompt = formatKanaSkillsForPrompt(options.skills ?? []);
+  const skillsPrompt = formatKanaSkillsForPrompt(options.skills ?? [], {
+    env: options.env,
+  });
 
   return [systemPrompt, environmentContext, skillsPrompt]
     .filter(Boolean)

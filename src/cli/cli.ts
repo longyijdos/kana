@@ -74,6 +74,13 @@ export function createCli(options: CreateCliOptions): Command {
           force: options.force,
         });
         log(formatInstallSkillsMessage(skillsResult));
+        log(
+          formatInstallMessage(
+            "skills config",
+            skillsResult.skillsConfigPath,
+            skillsResult.skillsConfigStatus,
+          ),
+        );
       }
     });
 

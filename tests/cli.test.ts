@@ -79,6 +79,8 @@ describe("CLI", () => {
         return {
           skillsPath: "/tmp/.kana/skills/kana-skills",
           status: "reinstalled",
+          skillsConfigPath: "/tmp/.kana/skills/skills.toml",
+          skillsConfigStatus: "reinstalled",
         };
       },
       log: (message) => {
@@ -91,6 +93,7 @@ describe("CLI", () => {
       "Created config: /tmp/config.toml",
       "Created approvals: /tmp/approvals.json",
       "Reinstalled skills: /tmp/.kana/skills/kana-skills",
+      "Reinstalled skills config: /tmp/.kana/skills/skills.toml",
     ]);
   });
 });
@@ -109,6 +112,8 @@ async function parse(
     installKanaSkills: async () => ({
       skillsPath: "/tmp/.kana/skills/kana-skills",
       status: "cloned",
+      skillsConfigPath: "/tmp/.kana/skills/skills.toml",
+      skillsConfigStatus: "created",
     }),
     log: () => {},
     startTui: () => {},
