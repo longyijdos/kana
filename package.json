@@ -5,6 +5,7 @@
     "kana": "./kana"
   },
   "scripts": {
+    "bench:tui-render": "bun scripts/bench-tui-render.ts",
     "build:cli": "bun build --compile --outfile=kana src/main.ts",
     "install:bin": "./scripts/install.sh",
     "start": "bun run build:cli && ./kana",
