@@ -22,6 +22,27 @@ export {
 } from "./config";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
+  DEFAULT_KANA_SKILLS_REPOSITORY,
+  DEFAULT_KANA_SKILLS_REPOSITORY_NAME,
+  installKanaSkills,
+  type InstallKanaSkillsOptions,
+  type InstallKanaSkillsResult,
+} from "./skill-install";
+export {
+  formatKanaSkillsForPrompt,
+  loadKanaSkillActivations,
+  loadKanaSkills,
+  loadKanaSkillsFromDir,
+  saveEnabledGlobalSkillNames,
+  type FormatKanaSkillsForPromptOptions,
+  type KanaSkill,
+  type KanaSkillActivation,
+  type KanaSkillDiagnostic,
+  type LoadKanaSkillActivationsResult,
+  type LoadKanaSkillsOptions,
+  type LoadKanaSkillsResult,
+} from "./skills";
+export {
   appendKanaSessionMessages,
   createKanaSession,
   deleteKanaSession,

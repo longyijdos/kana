@@ -1,4 +1,5 @@
 import {
+  chmod,
   mkdtemp,
   mkdir,
   readFile,
@@ -362,6 +363,34 @@ describe("workspace tools", () => {
       timedOut: false,
     });
     expect(result.isError).toBe(false);
+  });
+
+  test("bash can run commands through a configured shell", async () => {
+    const root = await createTempRoot();
+    const shellPath = path.join(root, "custom-shell");
+    await writeFile(
+      shellPath,
+      [
+        "#!/usr/bin/env bash",
+        "export KANA_CUSTOM_SHELL=from-custom-shell",
+        'exec bash "$@"',
+        "",
+      ].join("\n"),
+    );
+    await chmod(shellPath, 0o755);
+    const bash = createBashTool({ root, shell: shellPath });
+    const result = await bash.execute(
+      {
+        command: "printf %s \"$KANA_CUSTOM_SHELL\"",
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: 0,
+      stdout: "from-custom-shell",
+    });
   });
 
   test("bash runs from a workspace subdirectory", async () => {

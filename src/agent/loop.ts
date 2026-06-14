@@ -424,6 +424,10 @@ function getToolCalls(message: AssistantMessage): ToolCallContent[] {
 function assistantMessageForHistory(
   message: AssistantMessage,
 ): AssistantMessage | undefined {
+  if (message.stopReason === "error" && message.content.length === 0) {
+    return undefined;
+  }
+
   if (message.stopReason !== "aborted") {
     return message;
   }

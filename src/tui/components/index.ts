@@ -17,5 +17,10 @@ export {
   SessionPicker,
   type SessionPickerDecision,
 } from "./session-picker";
+export {
+  SkillManager,
+  type SkillManagerDecision,
+  type SkillManagerItem,
+} from "./skill-manager";
 export { StatusLine, type StatusLineState } from "./status-line";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";

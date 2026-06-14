@@ -40,6 +40,7 @@ export type BashToolResult = {
 
 export type BashToolOptions = {
   root?: string;
+  shell?: string;
 };
 
 export function createBashTool(options: BashToolOptions = {}): Tool<
@@ -47,11 +48,12 @@ export function createBashTool(options: BashToolOptions = {}): Tool<
   BashToolResult
 > {
   const root = path.resolve(options.root ?? process.cwd());
+  const shell = resolveShell(options.shell);
 
   return {
     name: "bash",
     description:
-      "Run a shell command. Commands execute with the requested working directory, timeout, and output truncation.",
+      "Run a shell command. Commands execute with the user's shell, requested working directory, timeout, and output truncation.",
     parameters: bashParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {
@@ -66,7 +68,13 @@ export function createBashTool(options: BashToolOptions = {}): Tool<
 
       const cwd = await resolveWorkspaceDirectory(root, args.cwd ?? ".");
       const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      const result = await runCommand(command, cwd.absolutePath, timeoutMs, context.signal);
+      const result = await runCommand(
+        command,
+        cwd.absolutePath,
+        timeoutMs,
+        shell,
+        context.signal,
+      );
       const stdout = truncateOutput(result.stdout);
       const stderr = truncateOutput(result.stderr);
       const toolResult: BashToolResult = {
@@ -93,6 +101,7 @@ async function runCommand(
   command: string,
   cwd: string,
   timeoutMs: number,
+  shell: string,
   signal?: AbortSignal,
 ): Promise<{
   exitCode: number | null;
@@ -105,7 +114,7 @@ async function runCommand(
   const combinedSignal = AbortSignal.any(signals);
 
   try {
-    const proc = Bun.spawn(["bash", "-lc", command], {
+    const proc = Bun.spawn([shell, "-lc", command], {
       cwd,
       stdout: "pipe",
       stderr: "pipe",
@@ -136,6 +145,12 @@ async function runCommand(
 
     throw error;
   }
+}
+
+function resolveShell(shell: string | undefined): string {
+  const value = shell ?? process.env.SHELL;
+
+  return value && value.trim() ? value : "bash";
 }
 
 function truncateOutput(content: string): { content: string; truncated: boolean } {

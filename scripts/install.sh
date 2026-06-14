@@ -24,6 +24,7 @@ is_project_root() {
 
 install_from_source() {
   require_command bun
+  require_command git
 
   tmp_dir="$(mktemp -d)"
   trap cleanup EXIT
@@ -35,7 +36,7 @@ install_from_source() {
   install -m 0755 "$tmp_bin" "$target"
   echo "Installed Kana to $target"
 
-  "$target" install --force
+  "$target" install --force --skills
 }
 
 install_from_release() {

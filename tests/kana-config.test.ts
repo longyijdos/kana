@@ -228,7 +228,9 @@ describe("Kana config", () => {
         },
       });
 
-      expect(agent.state.system).toContain("Custom system prompt.\n\n");
+      expect(agent.state.system).toContain(
+        `<agents_instructions scope="global" path="${paths.agentsPath}">\nCustom system prompt.\n</agents_instructions>`,
+      );
       expect(agent.state.system).toContain("<environment_context>");
       expect(agent.state.system).toContain(`<cwd>${process.cwd()}</cwd>`);
       expect(agent.state.system).toContain(`<platform>${process.platform}</platform>`);
@@ -236,6 +238,56 @@ describe("Kana config", () => {
       restoreEnv("KANA_HOME", previousKanaHome);
       restoreEnv("KANA_DEEPSEEK_KEY", previousKey);
     }
+  });
+
+  test("combines global and project AGENTS.md instructions", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const paths = getKanaConfigPaths(env);
+    const projectAgentsPath = path.join(cwd, "AGENTS.md");
+    writeFileSync(paths.agentsPath, "Global instructions.\n");
+    writeFileSync(projectAgentsPath, "Project instructions.\n");
+
+    const prompt = buildKanaSystemPrompt({
+      cwd,
+      env,
+      now: new Date("2026-06-11T16:30:00.000Z"),
+      platform: "darwin",
+      timezone: "Asia/Shanghai",
+    });
+
+    expect(prompt).toContain(
+      `<agents_instructions scope="global" path="${paths.agentsPath}">\nGlobal instructions.\n</agents_instructions>`,
+    );
+    expect(prompt).toContain(
+      `<agents_instructions scope="project" path="${projectAgentsPath}">\nProject instructions.\n</agents_instructions>`,
+    );
+    expect(prompt.indexOf("Global instructions.")).toBeLessThan(
+      prompt.indexOf("Project instructions."),
+    );
+    expect(prompt).toContain("<environment_context>");
+  });
+
+  test("uses project AGENTS.md with the default prompt when global instructions are missing", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const projectAgentsPath = path.join(cwd, "AGENTS.md");
+    writeFileSync(projectAgentsPath, "Project-only instructions.\n");
+
+    const prompt = buildKanaSystemPrompt({
+      cwd,
+      env,
+      now: new Date("2026-06-11T16:30:00.000Z"),
+      platform: "darwin",
+      timezone: "Asia/Shanghai",
+    });
+
+    expect(prompt).toContain(
+      "You are a concise coding assistant working inside the current workspace.",
+    );
+    expect(prompt).toContain(
+      `<agents_instructions scope="project" path="${projectAgentsPath}">\nProject-only instructions.\n</agents_instructions>`,
+    );
   });
 
   test("fails agent creation when the configured API key is missing", () => {
@@ -275,6 +327,12 @@ function createTempEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     HOME: home,
     ...extra,
   };
+}
+
+function createTempDir(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "kana-config-"));
+  tempDirs.push(dir);
+  return dir;
 }
 
 function restoreEnv(name: string, value: string | undefined): void {
