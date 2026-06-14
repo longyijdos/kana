@@ -97,6 +97,37 @@ describe("tui transcript", () => {
     expect(block.render(80)).toEqual([]);
   });
 
+  test("invalidates assistant message cache when content changes", () => {
+    const block = new AssistantMessageBlock();
+
+    block.update({
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "before",
+        },
+      ],
+    });
+
+    expect(stripAnsi(block.render(80).join("\n"))).toContain("before");
+
+    block.update({
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "after",
+        },
+      ],
+    });
+
+    const rendered = stripAnsi(block.render(80).join("\n"));
+
+    expect(rendered).toContain("after");
+    expect(rendered).not.toContain("before");
+  });
+
   test("renders read tool output as a concise file excerpt", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
@@ -127,6 +158,29 @@ describe("tui transcript", () => {
     expect(lines[1]).toBe("Read AGENTS.md");
     expect(lines).toContain("... 2 more lines");
     expect(lines).toContain("line 10");
+  });
+
+  test("invalidates tool call cache when partial and final results change", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "bun test",
+      },
+    });
+
+    block.markExecutionStarted();
+    block.updatePartialResult("running");
+
+    expect(stripAnsi(block.render(80).join("\n"))).toContain("running");
+
+    block.updateResult("done", false);
+
+    const rendered = stripAnsi(block.render(80).join("\n"));
+
+    expect(rendered).toContain("done");
+    expect(rendered).not.toContain("running");
   });
 
   test("renders edit tool results as red and green diff lines", () => {
