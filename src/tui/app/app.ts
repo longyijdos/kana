@@ -5,6 +5,7 @@ import type {
 } from "@/agent";
 import type {
   KanaSessionMetadata,
+  LoadKanaSkillActivationsResult,
   KanaToolApprovalConfig,
   KanaToolApprovals,
 } from "@/kana";
@@ -13,6 +14,7 @@ import { createBashTool, type ToolResult } from "@/tools";
 import { addHistoryMessagesToTranscript } from "./history";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { SessionOverlayController } from "./session-overlay-controller";
+import { SkillManagerController } from "./skill-manager-controller";
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
@@ -53,6 +55,8 @@ export type KanaTuiAppOptions = {
   listSessions: () => KanaSessionMetadata[];
   loadSession: (sessionId: string) => KanaTuiLoadedSession;
   deleteSession: (sessionId: string) => boolean;
+  loadSkills: () => LoadKanaSkillActivationsResult;
+  saveEnabledGlobalSkills: (names: string[]) => void;
   startInResumePicker?: boolean;
   toolApproval: {
     config: KanaToolApprovalConfig;
@@ -67,6 +71,7 @@ export class KanaTuiApp {
   private readonly editor = new Editor();
   private readonly agentEvents: AgentEventRenderer;
   private readonly sessionOverlay: SessionOverlayController;
+  private readonly skillManager: SkillManagerController;
   private agent: Agent;
   private sessionId?: string;
   private running = false;
@@ -77,6 +82,7 @@ export class KanaTuiApp {
   constructor(
     private readonly createAgent: (options: {
       beforeToolExecution: BeforeToolExecutionHook;
+      messages?: Message[];
     }) => Agent,
     terminal: ProcessTerminal,
     private readonly options: KanaTuiAppOptions,
@@ -97,6 +103,15 @@ export class KanaTuiApp {
       hasCurrentSession: () => this.sessionId !== undefined,
       onResume: (sessionId) => this.resumeSession(sessionId),
       onStop: () => this.stop(),
+      updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+    });
+    this.skillManager = new SkillManagerController({
+      editor: this.editor,
+      transcript: this.transcript,
+      tui: this.tui,
+      loadSkills: this.options.loadSkills,
+      saveEnabledGlobalSkills: this.options.saveEnabledGlobalSkills,
+      onSkillsChanged: () => this.refreshAgentSystemPrompt(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
     this.toolApproval = new ToolApprovalController({
@@ -166,10 +181,11 @@ export class KanaTuiApp {
     );
   }
 
-  private createAgentForCurrentSession(): Agent {
+  private createAgentForCurrentSession(messages?: Message[]): Agent {
     return this.createAgent({
       beforeToolExecution: ({ toolCall, signal }) =>
         this.showToolApprovalPrompt(toolCall, signal),
+      messages,
     });
   }
 
@@ -287,6 +303,14 @@ export class KanaTuiApp {
 
         this.openDeletePicker();
         break;
+      case "skills":
+        if (command.arguments) {
+          this.showError(new Error("Usage: /skills"));
+          return;
+        }
+
+        this.openSkillManager();
+        break;
     }
   }
 
@@ -360,6 +384,7 @@ export class KanaTuiApp {
       return;
     }
 
+    this.skillManager.close();
     this.sessionOverlay.openResume();
   }
 
@@ -368,11 +393,26 @@ export class KanaTuiApp {
       return;
     }
 
+    this.skillManager.close();
     this.sessionOverlay.openDelete();
   }
 
   private closeSessionOverlay(): void {
     this.sessionOverlay.close();
+  }
+
+  private refreshAgentSystemPrompt(): void {
+    this.agent.abort();
+    this.agent = this.createAgentForCurrentSession(this.agent.state.messages);
+  }
+
+  private openSkillManager(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.closeSessionOverlay();
+    this.skillManager.open();
   }
 
   private resumeSession(sessionId: string): void {

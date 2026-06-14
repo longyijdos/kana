@@ -15,8 +15,10 @@ import {
   createKanaAgent,
   formatKanaSkillsForPrompt,
   getKanaConfigPaths,
+  loadKanaSkillActivations,
   loadKanaSkills,
   loadKanaSkillsFromDir,
+  saveEnabledGlobalSkillNames,
 } from "@/kana";
 
 const tempDirs: string[] = [];
@@ -363,6 +365,89 @@ describe("Kana skills", () => {
     );
 
     expect(prompt).toContain("<name>project-skill</name>");
+  });
+
+  test("loads skill activation state for current effective skills", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const { home } = getKanaConfigPaths(env);
+    writeSkillConfig(home, [
+      "[model_invocation]",
+      'enabled = ["enabled-global"]',
+      "",
+    ].join("\n"));
+    writeSkill(
+      path.join(cwd, ".kana", "skills", "project-skill", "SKILL.md"),
+      [
+        "---",
+        "name: project-skill",
+        "description: Project skill.",
+        "---",
+        "Use project.",
+        "",
+      ].join("\n"),
+    );
+    writeSkill(
+      path.join(home, "skills", "enabled-global", "SKILL.md"),
+      [
+        "---",
+        "name: enabled-global",
+        "description: Enabled global.",
+        "---",
+        "Use global.",
+        "",
+      ].join("\n"),
+    );
+    writeSkill(
+      path.join(home, "skills", "disabled-global", "SKILL.md"),
+      [
+        "---",
+        "name: disabled-global",
+        "description: Disabled global.",
+        "---",
+        "Use global.",
+        "",
+      ].join("\n"),
+    );
+
+    const { skills } = loadKanaSkillActivations({ cwd, env });
+
+    expect(skills.map(({ name, scope, enabled, mutable }) => ({
+      name,
+      scope,
+      enabled,
+      mutable,
+    }))).toEqual([
+      {
+        name: "project-skill",
+        scope: "project",
+        enabled: true,
+        mutable: false,
+      },
+      {
+        name: "disabled-global",
+        scope: "global",
+        enabled: false,
+        mutable: true,
+      },
+      {
+        name: "enabled-global",
+        scope: "global",
+        enabled: true,
+        mutable: true,
+      },
+    ]);
+  });
+
+  test("saves enabled global skill names", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+
+    saveEnabledGlobalSkillNames(["second", "first"], { env });
+
+    expect(readFileSync(path.join(home, "skills", "skills.toml"), "utf8")).toBe(
+      ["[model_invocation]", 'enabled = ["second", "first"]', ""].join("\n"),
+    );
   });
 
   test("builds the system prompt with available skills", () => {

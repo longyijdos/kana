@@ -1,10 +1,12 @@
 import {
   type Dirent,
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import path from "node:path";
 
@@ -44,6 +46,17 @@ export type LoadKanaSkillsOptions = {
 
 export type LoadKanaSkillsResult = {
   skills: KanaSkill[];
+  diagnostics: KanaSkillDiagnostic[];
+};
+
+export type KanaSkillActivation = KanaSkill & {
+  scope: "project" | "global";
+  enabled: boolean;
+  mutable: boolean;
+};
+
+export type LoadKanaSkillActivationsResult = {
+  skills: KanaSkillActivation[];
   diagnostics: KanaSkillDiagnostic[];
 };
 
@@ -107,6 +120,44 @@ export function loadKanaSkills(
 
 export function loadKanaSkillsFromDir(dir: string): LoadKanaSkillsResult {
   return loadSkillsFromDir(dir, new Set<string>());
+}
+
+export function loadKanaSkillActivations(
+  options: LoadKanaSkillsOptions = {},
+): LoadKanaSkillActivationsResult {
+  const { skills, diagnostics } = loadKanaSkills(options);
+  const { home } = getKanaConfigPaths(options.env);
+  const globalSkillsDir = path.join(home, "skills");
+  const enabledGlobalSkills = loadEnabledGlobalSkillNames(globalSkillsDir);
+
+  return {
+    skills: skills.map((skill) => {
+      const global = isPathInside(skill.filePath, globalSkillsDir);
+
+      return {
+        ...skill,
+        scope: global ? "global" : "project",
+        enabled: global ? enabledGlobalSkills.has(skill.name) : true,
+        mutable: global,
+      };
+    }),
+    diagnostics,
+  };
+}
+
+export function saveEnabledGlobalSkillNames(
+  names: Iterable<string>,
+  options: Pick<LoadKanaSkillsOptions, "env"> = {},
+): void {
+  const { home } = getKanaConfigPaths(options.env);
+  const globalSkillsDir = path.join(home, "skills");
+  const configPath = path.join(globalSkillsDir, "skills.toml");
+
+  mkdirSync(globalSkillsDir, { recursive: true });
+  writeFileSync(configPath, serializeSkillsConfig([...names]), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }
 
 export function formatKanaSkillsForPrompt(
@@ -202,6 +253,12 @@ function loadEnabledGlobalSkillNames(globalSkillsDir: string): Set<string> {
       return value;
     }),
   );
+}
+
+function serializeSkillsConfig(enabledNames: string[]): string {
+  const enabled = enabledNames.map((name) => JSON.stringify(name)).join(", ");
+
+  return ["[model_invocation]", `enabled = [${enabled}]`, ""].join("\n");
 }
 
 function loadSkillsFromPath(skillPath: string): LoadKanaSkillsResult {

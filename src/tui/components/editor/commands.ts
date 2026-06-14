@@ -5,7 +5,8 @@ export type PromptCommandName =
   | "new"
   | "fork"
   | "resume"
-  | "delete";
+  | "delete"
+  | "skills";
 
 export type PromptCommand = {
   name: PromptCommandName;
@@ -64,6 +65,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "delete",
     description: "Delete a saved session.",
+  },
+  {
+    name: "skills",
+    description: "Manage active skills.",
   },
 ];
 

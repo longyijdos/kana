@@ -5,8 +5,10 @@ import {
   deleteKanaSession,
   listKanaSessions,
   loadKanaConfig,
+  loadKanaSkillActivations,
   loadKanaToolApprovals,
   loadKanaSession,
+  saveEnabledGlobalSkillNames,
 } from "@/kana";
 import type { Message } from "@/core";
 import { KanaTuiApp } from "./app/app";
@@ -45,7 +47,7 @@ export function startTui(options: StartTuiOptions = {}): void {
     (agentOptions) =>
       createKanaAgent(config, {
         ...agentOptions,
-        messages: session?.messages,
+        messages: agentOptions.messages ?? session?.messages,
         onRunCommitted: ({ messages }) => {
           session ??= {
             metadata: createSession(),
@@ -120,6 +122,8 @@ export function startTui(options: StartTuiOptions = {}): void {
       },
       deleteSession: (sessionId) =>
         deleteKanaSession(sessionId, { cwd: process.cwd() }),
+      loadSkills: () => loadKanaSkillActivations({ cwd: process.cwd() }),
+      saveEnabledGlobalSkills: (names) => saveEnabledGlobalSkillNames(names),
       toolApproval: {
         config: config.approval,
         approvals: toolApprovals,

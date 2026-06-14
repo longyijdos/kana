@@ -514,6 +514,9 @@ describe("prompt commands", () => {
         {
           name: "delete",
         },
+        {
+          name: "skills",
+        },
       ],
     });
   });

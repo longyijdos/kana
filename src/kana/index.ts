@@ -30,11 +30,15 @@ export {
 } from "./skill-install";
 export {
   formatKanaSkillsForPrompt,
+  loadKanaSkillActivations,
   loadKanaSkills,
   loadKanaSkillsFromDir,
+  saveEnabledGlobalSkillNames,
   type FormatKanaSkillsForPromptOptions,
   type KanaSkill,
+  type KanaSkillActivation,
   type KanaSkillDiagnostic,
+  type LoadKanaSkillActivationsResult,
   type LoadKanaSkillsOptions,
   type LoadKanaSkillsResult,
 } from "./skills";
