@@ -36,6 +36,10 @@ type MarkdownBlockOptions = {
 };
 
 export class MarkdownBlock implements Component {
+  private cachedWidth?: number;
+  private cachedText?: string;
+  private cachedLines?: string[];
+
   constructor(
     private text: string,
     private readonly options: MarkdownBlockOptions = {},
@@ -43,9 +47,24 @@ export class MarkdownBlock implements Component {
 
   setText(text: string): void {
     this.text = text;
+    this.invalidate();
+  }
+
+  invalidate(): void {
+    this.cachedWidth = undefined;
+    this.cachedText = undefined;
+    this.cachedLines = undefined;
   }
 
   render(width: number): string[] {
+    if (
+      this.cachedLines &&
+      this.cachedWidth === width &&
+      this.cachedText === this.text
+    ) {
+      return this.cachedLines;
+    }
+
     const lines: string[] = [];
     let codeBlock: { language?: string; lines: string[] } | undefined;
 
@@ -81,7 +100,13 @@ export class MarkdownBlock implements Component {
       );
     }
 
-    return lines.length ? lines : [""];
+    const rendered = lines.length ? lines : [""];
+
+    this.cachedWidth = width;
+    this.cachedText = this.text;
+    this.cachedLines = rendered;
+
+    return rendered;
   }
 
   private renderMarkdownLine(line: string, width: number): string[] {

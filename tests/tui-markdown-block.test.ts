@@ -11,6 +11,16 @@ describe("tui markdown block", () => {
     expect(rendered[0]).toContain("\x1b[1m");
   });
 
+  test("invalidates cached output when text changes", () => {
+    const block = new MarkdownBlock("before", { color: "white" });
+
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("before");
+
+    block.setText("after");
+
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("after");
+  });
+
   test("renders unordered list continuations with stable indentation", () => {
     const lines = new MarkdownBlock("- abcdef", { color: "white" })
       .render(5)

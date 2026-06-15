@@ -3,6 +3,9 @@ import type { Component } from "../../runtime";
 import { truncateToWidth, visibleWidth, wrapPlainText } from "../../render";
 
 export class TextBlock implements Component {
+  private cachedWidth?: number;
+  private cachedLines?: string[];
+
   constructor(
     private text: string,
     private readonly options: {
@@ -15,9 +18,19 @@ export class TextBlock implements Component {
 
   setText(text: string): void {
     this.text = text;
+    this.invalidate();
+  }
+
+  invalidate(): void {
+    this.cachedWidth = undefined;
+    this.cachedLines = undefined;
   }
 
   render(width: number): string[] {
+    if (this.cachedLines && this.cachedWidth === width) {
+      return this.cachedLines;
+    }
+
     const lines: string[] = [];
     const prefix = this.options.prefix ?? "";
     const contentWidth = Math.max(1, width - visibleWidth(prefix));
@@ -31,7 +44,12 @@ export class TextBlock implements Component {
       lines.push(truncateToWidth(styled, width, ""));
     }
 
-    return lines.length ? lines : [""];
+    const rendered = lines.length ? lines : [""];
+
+    this.cachedWidth = width;
+    this.cachedLines = rendered;
+
+    return rendered;
   }
 }
 

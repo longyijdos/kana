@@ -23,4 +23,14 @@ describe("tui text block", () => {
       "def",
     ]);
   });
+
+  test("invalidates cached output when text changes", () => {
+    const block = new TextBlock("before");
+
+    expect(block.render(20)).toEqual(["before"]);
+
+    block.setText("after");
+
+    expect(block.render(20)).toEqual(["after"]);
+  });
 });
