@@ -174,11 +174,11 @@ export class KanaTuiApp {
   stop(): void {
     const resumeSessionId = this.options.getResumeSessionId();
 
-    this.tui.stop(
-      resumeSessionId
-        ? `Resume this session with: kana resume ${resumeSessionId}`
-        : "No saved session.",
-    );
+    resumeSessionId
+      ? this.tui.stop(
+          `Resume this session with: kana resume ${resumeSessionId}`,
+        )
+      : this.tui.stop();
   }
 
   private createAgentForCurrentSession(messages?: Message[]): Agent {
