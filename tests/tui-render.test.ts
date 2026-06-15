@@ -180,4 +180,29 @@ describe("tui main-screen renderer", () => {
 
     expect(output).toContain("\x1b[3G\x1b[?25h");
   });
+
+  test("keeps the hardware cursor hidden until the final position during repaint", async () => {
+    const terminal = new FakeTerminal();
+    const tui = new Tui(terminal);
+    const lines = new MutableLines([`>${CURSOR_MARKER}`, "status"]);
+
+    tui.addChild(lines);
+    tui.start();
+    await Promise.resolve();
+
+    const writesBeforeRepaint = terminal.writes.length;
+    lines.lines[0] = `> a${CURSOR_MARKER}`;
+    tui.requestRender();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const output = terminal.writes.slice(writesBeforeRepaint).join("");
+    const cursorShowIndex = output.indexOf("\x1b[?25h");
+    const syncEndIndex = output.indexOf("\x1b[?2026l");
+
+    expect(output).toContain("\x1b[?2026h\x1b[?25l");
+    expect(output).toContain("status\x1b[0m");
+    expect(output).toContain("\x1b[1A\x1b[4G\x1b[?25h\x1b[?2026l");
+    expect(cursorShowIndex).toBeGreaterThan(-1);
+    expect(syncEndIndex).toBeGreaterThan(cursorShowIndex);
+  });
 });

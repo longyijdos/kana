@@ -165,22 +165,31 @@ export class Tui extends Container {
     clear: boolean,
   ): void {
     const viewportTop = viewportTopFor(lines.length, height);
-    let buffer = "\x1b[?2026h";
+    let buffer = "\x1b[?2026h\x1b[?25l";
 
     if (clear) {
       buffer += "\x1b[2J\x1b[H\x1b[3J";
     }
 
     buffer += lines.join("\r\n");
-    buffer += "\x1b[?2026l";
+
+    this.previousViewportTop = viewportTop;
+
+    const positioned = this.appendHardwareCursorPosition(
+      buffer,
+      cursor,
+      Math.max(0, lines.length - 1),
+      width,
+      height,
+    );
+
+    buffer = `${positioned.buffer}\x1b[?2026l`;
 
     this.terminal.write(buffer);
-    this.hardwareCursorRow = Math.max(0, lines.length - 1);
-    this.previousViewportTop = viewportTop;
+    this.hardwareCursorRow = positioned.row;
     this.previousLines = lines;
     this.previousWidth = width;
     this.previousHeight = height;
-    this.positionHardwareCursor(cursor, width, height);
   }
 
   private renderChangedLines(
@@ -202,7 +211,7 @@ export class Tui extends Container {
       return;
     }
 
-    let buffer = "\x1b[?2026h";
+    let buffer = "\x1b[?2026h\x1b[?25l";
     const rowDelta = moveTarget - this.hardwareCursorRow;
 
     if (rowDelta > 0) {
@@ -221,15 +230,23 @@ export class Tui extends Container {
       buffer += `\x1b[2K${lines[index]}`;
     }
 
-    buffer += "\x1b[?2026l";
+    this.previousViewportTop = viewportTopFor(lines.length, height);
+
+    const positioned = this.appendHardwareCursorPosition(
+      buffer,
+      cursor,
+      Math.max(0, lines.length - 1),
+      width,
+      height,
+    );
+
+    buffer = `${positioned.buffer}\x1b[?2026l`;
     this.terminal.write(buffer);
 
-    this.hardwareCursorRow = Math.max(0, lines.length - 1);
-    this.previousViewportTop = viewportTopFor(lines.length, height);
+    this.hardwareCursorRow = positioned.row;
     this.previousLines = lines;
     this.previousWidth = width;
     this.previousHeight = height;
-    this.positionHardwareCursor(cursor, width, height);
   }
 
   private positionHardwareCursor(
@@ -261,6 +278,38 @@ export class Tui extends Container {
     buffer += `\x1b[${Math.min(cursor.column, width - 1) + 1}G\x1b[?25h`;
     this.terminal.write(buffer);
     this.hardwareCursorRow = cursor.row;
+  }
+
+  private appendHardwareCursorPosition(
+    buffer: string,
+    cursor: { row: number; column: number } | undefined,
+    currentRow: number,
+    width: number,
+    height: number,
+  ): { buffer: string; row: number } {
+    if (!cursor) {
+      return { buffer, row: currentRow };
+    }
+
+    const viewportBottom = this.previousViewportTop + height - 1;
+
+    if (cursor.row < this.previousViewportTop || cursor.row > viewportBottom) {
+      return { buffer, row: currentRow };
+    }
+
+    const rowDelta = cursor.row - currentRow;
+
+    if (rowDelta > 0) {
+      buffer += `\x1b[${rowDelta}B`;
+    } else if (rowDelta < 0) {
+      buffer += `\x1b[${-rowDelta}A`;
+    }
+
+    // Keep the cursor hidden while repainting, then reveal it at its final
+    // position before releasing synchronized output.
+    buffer += `\x1b[${Math.min(cursor.column, width - 1) + 1}G\x1b[?25h`;
+
+    return { buffer, row: cursor.row };
   }
 
 }
