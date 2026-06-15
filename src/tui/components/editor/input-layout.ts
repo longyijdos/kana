@@ -1,4 +1,4 @@
-import { firstGrapheme } from "../../render";
+import { graphemeSegments } from "../../render";
 import { isLineBreak } from "../../render";
 import { visibleWidth } from "../../render";
 
@@ -226,19 +226,10 @@ function cursorColumn(line: WrappedLine | undefined, cursorOffset: number): numb
 }
 
 function graphemeGlyphs(value: string): Glyph[] {
-  const glyphs: Glyph[] = [];
-  let offset = 0;
-
-  while (offset < value.length) {
-    const text = firstGrapheme(value.slice(offset)) ?? value[offset] ?? "";
-    glyphs.push({
-      text,
-      startOffset: offset,
-      endOffset: offset + text.length,
-      width: visibleWidth(text),
-    });
-    offset += text.length;
-  }
-
-  return glyphs;
+  return graphemeSegments(value).map(({ segment, index }) => ({
+    text: segment,
+    startOffset: index,
+    endOffset: index + segment.length,
+    width: visibleWidth(segment),
+  }));
 }

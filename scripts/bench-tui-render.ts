@@ -2,6 +2,7 @@ import { Tui } from "../src/tui/runtime/tui";
 import type { Terminal } from "../src/tui/runtime/terminal";
 import {
   AssistantMessageBlock,
+  Editor,
   TextBlock,
   Transcript,
 } from "../src/tui/components";
@@ -29,11 +30,17 @@ const MARKDOWN = [
 ].join("\n");
 
 function main(): void {
-  const pairCounts = [50, 100, 200, 400];
-
   console.log("TUI render benchmark");
   console.log("Each pair is one user TextBlock plus one assistant MarkdownBlock.");
   console.log("");
+  runTranscriptBenchmark();
+  console.log("");
+  runEditorBenchmark();
+}
+
+function runTranscriptBenchmark(): void {
+  const pairCounts = [50, 100, 200, 400];
+
   console.log("pairs  lines  cold transcript  hot transcript  hot renderNow");
 
   for (const pairCount of pairCounts) {
@@ -53,6 +60,47 @@ function main(): void {
       ].join("  "),
     );
   }
+}
+
+function runEditorBenchmark(): void {
+  const sizes = [1_000, 5_000, 10_000];
+
+  console.log("Editor typing benchmark");
+  console.log("Input is multiline text with the cursor at the end.");
+  console.log("");
+  console.log("chars  lines  iters  render only  handleInput only  type + render");
+
+  for (const size of sizes) {
+    const input = createEditorInput(size);
+    const lineCount = input.split("\n").length;
+    const iterations = editorBenchmarkIterations(size);
+    const renderOnly = measureEditorRender(input, iterations);
+    const handleInputOnly = measureEditorHandleInput(input, iterations);
+    const typeAndRender = measureEditorTypeAndRender(input, iterations);
+
+    console.log(
+      [
+        size.toString().padStart(5),
+        lineCount.toString().padStart(5),
+        iterations.toString().padStart(5),
+        formatMs(renderOnly).padStart(11),
+        formatMs(handleInputOnly).padStart(16),
+        formatMs(typeAndRender).padStart(13),
+      ].join("  "),
+    );
+  }
+}
+
+function editorBenchmarkIterations(size: number): number {
+  if (size >= 10_000) {
+    return 5;
+  }
+
+  if (size >= 5_000) {
+    return 10;
+  }
+
+  return 50;
 }
 
 function createTranscript(pairCount: number): Transcript {
@@ -94,6 +142,49 @@ function measureHotRenderNow(transcript: Transcript, iterations: number): number
   renderNow();
 
   return measure(() => renderNow(), iterations);
+}
+
+function measureEditorRender(input: string, iterations: number): number {
+  const editor = createEditor(input);
+
+  return measure(() => editor.render(100), iterations);
+}
+
+function measureEditorHandleInput(input: string, iterations: number): number {
+  const editor = createEditor(input);
+
+  return measure(() => editor.handleInput("x"), iterations);
+}
+
+function measureEditorTypeAndRender(input: string, iterations: number): number {
+  const editor = createEditor(input);
+
+  return measure(() => {
+    editor.handleInput("x");
+    editor.render(100);
+  }, iterations);
+}
+
+function createEditor(input: string): Editor {
+  const editor = new Editor();
+
+  editor.setText(input);
+  editor.render(100);
+
+  return editor;
+}
+
+function createEditorInput(targetChars: number): string {
+  const line = "abcdefghijklmnopqrstuvwxyz0123456789".repeat(2);
+  const lines: string[] = [];
+  let length = 0;
+
+  while (length < targetChars) {
+    lines.push(line);
+    length += line.length + 1;
+  }
+
+  return lines.join("\n").slice(0, targetChars);
 }
 
 function measure(callback: () => unknown, iterations: number): number {
