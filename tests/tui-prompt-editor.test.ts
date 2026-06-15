@@ -14,6 +14,10 @@ import { applyEditorAction } from "../src/tui/components/editor/state";
 import { CURSOR_MARKER } from "../src/tui/runtime";
 import { stripAnsi, visibleWidth } from "../src/tui/render";
 
+function cursorLine(lines: string[]): number {
+  return lines.findIndex((line) => line.includes(CURSOR_MARKER));
+}
+
 describe("prompt editor", () => {
   test("inserts text at the cursor", () => {
     const moved = applyEditorAction(
@@ -151,6 +155,52 @@ describe("prompt editor", () => {
     expect(editor.getText()).toBe("abcX\ndef");
   });
 
+  test("moves up through three visible lines before the input boundary", () => {
+    const editor = new Editor();
+
+    editor.setText("one\ntwo\nthree");
+    editor.render(20);
+
+    editor.handleInput("\x1b[A");
+    expect(cursorLine(editor.render(20))).toBe(2);
+
+    editor.handleInput("\x1b[A");
+    expect(cursorLine(editor.render(20))).toBe(1);
+
+    editor.handleInput("\x1b[A");
+    expect(cursorLine(editor.render(20))).toBe(1);
+  });
+
+  test("moves up within the visible input window before scrolling it", () => {
+    const editor = new Editor();
+
+    editor.setText("one\ntwo\nthree\nfour\nfive\nsix");
+    const initial = editor.render(20).map(stripAnsi);
+
+    expect(initial.some((line) => line.includes("one"))).toBe(false);
+    expect(initial.some((line) => line.includes("six"))).toBe(true);
+    expect(cursorLine(editor.render(20))).toBe(5);
+
+    editor.handleInput("\x1b[A");
+
+    const afterFirstUp = editor.render(20).map(stripAnsi);
+
+    expect(cursorLine(editor.render(20))).toBe(4);
+    expect(afterFirstUp.some((line) => line.includes("one"))).toBe(false);
+    expect(afterFirstUp.some((line) => line.includes("six"))).toBe(true);
+
+    editor.handleInput("\x1b[A");
+    editor.handleInput("\x1b[A");
+    editor.handleInput("\x1b[A");
+    editor.handleInput("\x1b[A");
+
+    const afterScroll = editor.render(20).map(stripAnsi);
+
+    expect(cursorLine(editor.render(20))).toBe(1);
+    expect(afterScroll.some((line) => line.includes("one"))).toBe(true);
+    expect(afterScroll.some((line) => line.includes("six"))).toBe(false);
+  });
+
   test("moves down within multiline input before switching history", () => {
     const editor = new Editor();
 
@@ -162,6 +212,56 @@ describe("prompt editor", () => {
     editor.handleInput("X");
 
     expect(editor.getText()).toBe("abc\nXdef");
+  });
+
+  test("moves down through three visible lines before the input boundary", () => {
+    const editor = new Editor();
+
+    editor.setText("one\ntwo\nthree");
+    editor.render(20);
+    editor.handleInput("\x1b[H");
+
+    editor.handleInput("\x1b[B");
+    expect(cursorLine(editor.render(20))).toBe(2);
+
+    editor.handleInput("\x1b[B");
+    expect(cursorLine(editor.render(20))).toBe(3);
+
+    editor.handleInput("\x1b[B");
+    expect(cursorLine(editor.render(20))).toBe(3);
+  });
+
+  test("moves down within the visible input window before scrolling it", () => {
+    const editor = new Editor();
+
+    editor.setText("one\ntwo\nthree\nfour\nfive\nsix");
+    editor.render(20);
+    editor.handleInput("\x1b[H");
+
+    const initial = editor.render(20).map(stripAnsi);
+
+    expect(initial.some((line) => line.includes("one"))).toBe(true);
+    expect(initial.some((line) => line.includes("six"))).toBe(false);
+    expect(cursorLine(editor.render(20))).toBe(1);
+
+    editor.handleInput("\x1b[B");
+
+    const afterFirstDown = editor.render(20).map(stripAnsi);
+
+    expect(cursorLine(editor.render(20))).toBe(2);
+    expect(afterFirstDown.some((line) => line.includes("one"))).toBe(true);
+    expect(afterFirstDown.some((line) => line.includes("six"))).toBe(false);
+
+    editor.handleInput("\x1b[B");
+    editor.handleInput("\x1b[B");
+    editor.handleInput("\x1b[B");
+    editor.handleInput("\x1b[B");
+
+    const afterScroll = editor.render(20).map(stripAnsi);
+
+    expect(cursorLine(editor.render(20))).toBe(5);
+    expect(afterScroll.some((line) => line.includes("one"))).toBe(false);
+    expect(afterScroll.some((line) => line.includes("six"))).toBe(true);
   });
 
   test("moves to the input start before switching history upward", () => {

@@ -14,6 +14,7 @@ import {
 } from "./state";
 import {
   createInputLayout,
+  findInputCursorLine,
   moveInputCursorVertically,
   type InputLayoutLine,
 } from "./input-layout";
@@ -49,6 +50,7 @@ export class Editor implements Component {
   private pasteBuffer = "";
   private isPasting = false;
   private inputColumns = 80;
+  private inputViewportStartLine: number | undefined;
 
   onSubmit?: (submit: PromptSubmit) => void;
 
@@ -63,6 +65,7 @@ export class Editor implements Component {
       value: normalized,
       cursorOffset: normalized.length,
     };
+    this.inputViewportStartLine = undefined;
     this.historyIndex = -1;
     this.syncCommandSelection();
   }
@@ -95,7 +98,9 @@ export class Editor implements Component {
       cursorOffset: this.state.cursorOffset,
       columns: inputColumns,
       maxLines: MAX_INPUT_LINES,
+      preferredStartLine: this.inputViewportStartLine,
     });
+    this.inputViewportStartLine = layout.startLine;
     const lines = [`+${"-".repeat(frameWidth - 2)}+`];
 
     for (const [index, line] of layout.lines.entries()) {
@@ -287,6 +292,13 @@ export class Editor implements Component {
   }
 
   private moveVertically(direction: -1 | 1): boolean {
+    const currentLayout = createInputLayout({
+      value: this.state.value,
+      cursorOffset: this.state.cursorOffset,
+      columns: this.inputColumns,
+      maxLines: MAX_INPUT_LINES,
+      preferredStartLine: this.inputViewportStartLine,
+    });
     const cursorOffset = moveInputCursorVertically({
       value: this.state.value,
       cursorOffset: this.state.cursorOffset,
@@ -298,6 +310,7 @@ export class Editor implements Component {
       return false;
     }
 
+    this.inputViewportStartLine = currentLayout.startLine;
     this.state = {
       ...this.state,
       cursorOffset,
@@ -318,6 +331,19 @@ export class Editor implements Component {
       ...this.state,
       cursorOffset,
     };
+    this.inputViewportStartLine =
+      direction === -1
+        ? 0
+        : Math.max(
+            0,
+            findInputCursorLine({
+              value: this.state.value,
+              cursorOffset,
+              columns: this.inputColumns,
+            }) -
+              MAX_INPUT_LINES +
+              1,
+          );
     this.syncCommandSelection();
 
     return true;

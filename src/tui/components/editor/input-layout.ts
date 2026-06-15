@@ -18,6 +18,7 @@ export type InputLayout = {
   lines: InputLayoutLine[];
   cursor: InputLayoutCursor;
   isTruncatedStart: boolean;
+  startLine: number;
 };
 
 export type CreateInputLayoutOptions = {
@@ -25,6 +26,7 @@ export type CreateInputLayoutOptions = {
   cursorOffset: number;
   columns: number;
   maxLines: number;
+  preferredStartLine?: number;
 };
 
 export type MoveInputCursorVerticallyOptions = {
@@ -50,17 +52,17 @@ export function createInputLayout({
   cursorOffset,
   columns,
   maxLines,
+  preferredStartLine,
 }: CreateInputLayoutOptions): InputLayout {
   const layoutColumns = Math.max(columns, 1);
   const layoutMaxLines = Math.max(maxLines, 1);
   const wrappedLines = wrapInputValue(value, layoutColumns);
   const cursorLine = findCursorLine(wrappedLines, cursorOffset);
-  const startLine = Math.max(
-    0,
-    Math.min(
-      cursorLine - layoutMaxLines + 1,
-      wrappedLines.length - layoutMaxLines,
-    ),
+  const startLine = resolveStartLine(
+    wrappedLines.length,
+    cursorLine,
+    layoutMaxLines,
+    preferredStartLine,
   );
   const visibleLines = wrappedLines
     .slice(startLine, startLine + layoutMaxLines)
@@ -76,6 +78,7 @@ export function createInputLayout({
       ),
     },
     isTruncatedStart: startLine > 0,
+    startLine,
   };
 }
 
@@ -97,6 +100,39 @@ export function moveInputCursorVertically({
   const targetColumn = cursorColumn(wrappedLines[cursorLine], cursorOffset);
 
   return cursorOffsetForColumn(wrappedLines[targetLine], targetColumn);
+}
+
+export function findInputCursorLine({
+  value,
+  cursorOffset,
+  columns,
+}: {
+  value: string;
+  cursorOffset: number;
+  columns: number;
+}): number {
+  return findCursorLine(wrapInputValue(value, Math.max(columns, 1)), cursorOffset);
+}
+
+function resolveStartLine(
+  lineCount: number,
+  cursorLine: number,
+  maxLines: number,
+  preferredStartLine: number | undefined,
+): number {
+  const maxStartLine = Math.max(0, lineCount - maxLines);
+
+  if (preferredStartLine === undefined) {
+    return Math.max(0, Math.min(cursorLine - maxLines + 1, maxStartLine));
+  }
+
+  return Math.max(
+    0,
+    Math.min(
+      Math.max(preferredStartLine, cursorLine - maxLines + 1),
+      Math.min(cursorLine, maxStartLine),
+    ),
+  );
 }
 
 function wrapInputValue(value: string, columns: number): WrappedLine[] {
