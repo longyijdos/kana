@@ -1,5 +1,12 @@
-import type { AssistantMessage, Message, Model, ToolCallContent, ToolResultMessage } from "@/core";
-import { type Tool, type ToolResult, validateToolArguments } from "@/tools";
+import type {
+  AssistantMessage,
+  AssistantMessageEvent,
+  Message,
+  Model,
+  ToolCallContent,
+  ToolResultMessage,
+} from "@/core";
+import { normalizeToolResult, type Tool, type ToolResult, validateToolArguments } from "@/tools";
 import type { AgentEndReason, AgentEvent } from "./events";
 
 export type AgentContext = {
@@ -147,10 +154,7 @@ async function streamAssistantResponse(
         currentMessage = event.snapshot;
         context.messages.push(currentMessage);
         addedAssistantMessage = true;
-        await emit({
-          type: "message_start",
-          message: structuredClone(currentMessage),
-        });
+        await emitMessageStart(currentMessage, emit);
         break;
 
       case "text_start":
@@ -164,11 +168,7 @@ async function streamAssistantResponse(
       case "toolcall_end":
         currentMessage = event.snapshot;
         replaceLastAssistantMessage(context, currentMessage);
-        await emit({
-          type: "message_update",
-          message: structuredClone(currentMessage),
-          assistantMessageEvent: event,
-        });
+        await emitMessageUpdate(currentMessage, event, emit);
         break;
 
       case "done":
@@ -177,10 +177,7 @@ async function streamAssistantResponse(
           stopReason: event.reason,
         };
         replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
-        await emit({
-          type: "message_end",
-          message: structuredClone(currentMessage),
-        });
+        await emitMessageEnd(currentMessage, emit);
         return {
           message: currentMessage,
           isError: false,
@@ -197,15 +194,9 @@ async function streamAssistantResponse(
         };
         replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
         if (!addedAssistantMessage) {
-          await emit({
-            type: "message_start",
-            message: structuredClone(currentMessage),
-          });
+          await emitMessageStart(currentMessage, emit);
         }
-        await emit({
-          type: "message_end",
-          message: structuredClone(currentMessage),
-        });
+        await emitMessageEnd(currentMessage, emit);
         return {
           message: currentMessage,
           isError: true,
@@ -223,15 +214,38 @@ async function streamAssistantResponse(
   }
 
   replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
-  await emit({
-    type: "message_end",
-    message: structuredClone(currentMessage),
-  });
+  await emitMessageEnd(currentMessage, emit);
 
   return {
     message: currentMessage,
     isError: false,
   };
+}
+
+async function emitMessageStart(message: AssistantMessage, emit: AgentEventSink): Promise<void> {
+  await emit({
+    type: "message_start",
+    message: structuredClone(message),
+  });
+}
+
+async function emitMessageUpdate(
+  message: AssistantMessage,
+  assistantMessageEvent: AssistantMessageEvent,
+  emit: AgentEventSink,
+): Promise<void> {
+  await emit({
+    type: "message_update",
+    message: structuredClone(message),
+    assistantMessageEvent,
+  });
+}
+
+async function emitMessageEnd(message: AssistantMessage, emit: AgentEventSink): Promise<void> {
+  await emit({
+    type: "message_end",
+    message: structuredClone(message),
+  });
 }
 
 async function executeToolCalls(
@@ -465,27 +479,6 @@ function replaceOrAppendAssistantMessage(
   context.messages.push(message);
 }
 
-function normalizeToolResult(value: unknown): ToolResult {
-  if (isToolResult(value)) {
-    return value;
-  }
-
-  return {
-    content: stringifyToolContent(value),
-    result: value,
-  };
-}
-
-function isToolResult(value: unknown): value is ToolResult {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "content" in value &&
-    typeof value.content === "string" &&
-    "result" in value
-  );
-}
-
 function createErrorToolResult(message: string): ToolResult {
   return {
     content: `Tool call failed: ${message}`,
@@ -551,14 +544,6 @@ async function emitToolExecutionEnd(
     result: result.result,
     isError,
   });
-}
-
-function stringifyToolContent(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return JSON.stringify(value);
 }
 
 function formatError(error: unknown): string {

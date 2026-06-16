@@ -7,6 +7,7 @@ import {
   collectKanaEnvironmentContext,
   formatKanaEnvironmentContext,
 } from "./context";
+import { escapeXml } from "./format";
 import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
 
 const DEFAULT_SYSTEM_PROMPT = [
@@ -82,13 +83,4 @@ function formatAgentsInstructions(
     content.trimEnd(),
     "</agents_instructions>",
   ].join("\n");
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }

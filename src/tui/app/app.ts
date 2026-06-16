@@ -6,13 +6,11 @@ import type {
   KanaToolApprovals,
   LoadKanaSkillActivationsResult,
 } from "@/kana";
-import { createBashTool, type ToolResult } from "@/tools";
 import {
   Editor,
   StatusLine,
   type StatusLineState,
   TextBlock,
-  ToolCallBlock,
   Transcript,
   WelcomeBlock,
 } from "../components";
@@ -23,6 +21,7 @@ import { tuiTheme } from "../theme";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { addHistoryMessagesToTranscript } from "./history";
+import { LocalShellController } from "./local-shell-controller";
 import { SessionOverlayController } from "./session-overlay-controller";
 import { SkillManagerController } from "./skill-manager-controller";
 import type { RunPhase } from "./status-phase";
@@ -65,8 +64,7 @@ export class KanaTuiApp {
   private sessionId?: string;
   private running = false;
   private readonly toolApproval: ToolApprovalController;
-  private localShellAbortController?: AbortController;
-  private localShellRunId = 0;
+  private readonly localShell: LocalShellController;
 
   constructor(
     private readonly createAgent: (options: {
@@ -113,6 +111,22 @@ export class KanaTuiApp {
           activeTool: toolName,
         });
       },
+    });
+    this.localShell = new LocalShellController({
+      editor: this.editor,
+      transcript: this.transcript,
+      tui: this.tui,
+      requestApproval: (toolCall, signal) => this.showToolApprovalPrompt(toolCall, signal),
+      setRunning: (running) => {
+        this.running = running;
+      },
+      clearRunStatus: () => {
+        this.status.update({
+          running: false,
+          activeTool: undefined,
+        });
+      },
+      updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
     this.agent = this.createAgentForCurrentSession();
     this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
@@ -214,9 +228,7 @@ export class KanaTuiApp {
   }
 
   private abort(): void {
-    if (this.localShellAbortController) {
-      this.localShellAbortController.abort();
-      this.updateStatus("aborted");
+    if (this.localShell.abort()) {
       return;
     }
 
@@ -482,80 +494,7 @@ export class KanaTuiApp {
       return;
     }
 
-    const abortController = new AbortController();
-    const tool = createBashTool({ root: process.cwd() });
-    const toolCall: ToolCallContent = {
-      type: "tool_call",
-      id: `local_shell_${++this.localShellRunId}`,
-      name: "bash",
-      args: {
-        command: shellCommand,
-      },
-    };
-    const block = new ToolCallBlock(toolCall);
-
-    this.editor.addToHistory(raw.trim());
-    this.editor.clear();
-    this.transcript.addChild(block);
-    this.running = true;
-    this.localShellAbortController = abortController;
-    this.updateStatus("tool", {
-      activeTool: "bash",
-    });
-    this.tui.requestRender();
-
-    try {
-      const approval = await this.showToolApprovalPrompt(toolCall, abortController.signal);
-
-      if (approval.type === "cancel") {
-        block.updateResult(
-          {
-            error: approval.message ?? "Command canceled before execution.",
-            canceled: true,
-          },
-          true,
-        );
-        this.updateStatus("aborted");
-        return;
-      }
-
-      block.markExecutionStarted();
-      this.tui.requestRender();
-
-      const executed = await tool.execute(
-        {
-          command: shellCommand,
-        },
-        {
-          toolCallId: toolCall.id,
-          signal: abortController.signal,
-          update: (partialResult) => {
-            block.updatePartialResult(partialResult);
-            this.tui.requestRender();
-          },
-        },
-      );
-      const result = normalizeLocalToolResult(executed);
-
-      block.updateResult(result.result, result.isError ?? false);
-      this.updateStatus(result.isError ? "error" : "done");
-    } catch (error) {
-      block.updateResult(
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-        true,
-      );
-      this.updateStatus(abortController.signal.aborted ? "aborted" : "error");
-    } finally {
-      this.running = false;
-      this.localShellAbortController = undefined;
-      this.status.update({
-        running: false,
-        activeTool: undefined,
-      });
-      this.tui.requestRender();
-    }
+    await this.localShell.submit(shellCommand, raw);
   }
 
   private showToolApprovalPrompt(
@@ -576,25 +515,4 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
-}
-
-function normalizeLocalToolResult(value: unknown): ToolResult {
-  if (isToolResult(value)) {
-    return value;
-  }
-
-  return {
-    content: String(value),
-    result: value,
-  };
-}
-
-function isToolResult(value: unknown): value is ToolResult {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "content" in value &&
-    typeof value.content === "string" &&
-    "result" in value
-  );
 }
