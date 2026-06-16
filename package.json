@@ -7,6 +7,7 @@
   "scripts": {
     "bench:tui-render": "bun scripts/bench-tui-render.ts",
     "build:cli": "bun build --compile --outfile=kana src/main.ts",
+    "build:release": "bun build --compile --target=bun-darwin-arm64 --outfile=dist/kana-darwin-arm64 src/main.ts && bun build --compile --target=bun-darwin-x64 --outfile=dist/kana-darwin-x64 src/main.ts && bun build --compile --target=bun-linux-arm64 --outfile=dist/kana-linux-arm64 src/main.ts && bun build --compile --target=bun-linux-x64-baseline --outfile=dist/kana-linux-x64 src/main.ts",
     "check": "biome check --error-on-warnings . && bun run typecheck && bun test",
     "check:write": "biome check --write --error-on-warnings . && bun run typecheck && bun test",
     "format": "biome format --write .",

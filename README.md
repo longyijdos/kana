@@ -25,17 +25,16 @@
 ## 5 秒上手
 
 ```bash
-git clone https://github.com/longyijdos/kana.git && cd kana
-bun install && bun run build:cli
+curl -fsSL https://raw.githubusercontent.com/longyijdos/kana/main/scripts/install.sh | bash
 export DEEPSEEK_API_KEY="sk-..."
-./kana install --skills && ./kana
+kana
 ```
 
-或者装到全局：
+或者从源码构建：
 
 ```bash
-bun run install:bin
-kana "帮我重构这个模块"
+git clone https://github.com/longyijdos/kana.git && cd kana
+bun install && ./scripts/install.sh
 ```
 
 ## 内置工具
