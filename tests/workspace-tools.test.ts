@@ -1,12 +1,4 @@
-import {
-  chmod,
-  mkdtemp,
-  mkdir,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -27,10 +19,7 @@ describe("workspace tools", () => {
 
   test("read returns a line range from a workspace file", async () => {
     const root = await createTempRoot();
-    await writeFile(
-      path.join(root, "notes.txt"),
-      ["one", "two", "three", "four"].join("\n"),
-    );
+    await writeFile(path.join(root, "notes.txt"), ["one", "two", "three", "four"].join("\n"));
     const read = createReadTool({ root });
     const result = await read.execute(
       {
@@ -153,8 +142,9 @@ describe("workspace tools", () => {
     expect(result.result).toMatchObject({
       path: path.join("src", "generated", "file.ts"),
     });
-    expect(await readFile(path.join(root, "src", "generated", "file.ts"), "utf8"))
-      .toBe("export const value = 1;\n");
+    expect(await readFile(path.join(root, "src", "generated", "file.ts"), "utf8")).toBe(
+      "export const value = 1;\n",
+    );
   });
 
   test("write rejects existing paths", async () => {
@@ -381,7 +371,7 @@ describe("workspace tools", () => {
     const bash = createBashTool({ root, shell: shellPath });
     const result = await bash.execute(
       {
-        command: "printf %s \"$KANA_CUSTOM_SHELL\"",
+        command: 'printf %s "$KANA_CUSTOM_SHELL"',
       },
       createToolContext(),
     );

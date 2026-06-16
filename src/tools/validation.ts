@@ -47,10 +47,7 @@ export function validateToolCall<T extends TSchema>(
   return validateToolArguments(tool, toolCall.args);
 }
 
-export function validateToolArguments<T extends TSchema>(
-  tool: Tool<T>,
-  args: unknown,
-): Static<T> {
+export function validateToolArguments<T extends TSchema>(tool: Tool<T>, args: unknown): Static<T> {
   const converted = Value.Convert(tool.parameters, structuredClone(args));
   const validator = getValidator(tool.parameters);
 

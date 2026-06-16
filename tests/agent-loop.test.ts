@@ -307,11 +307,7 @@ describe("runAgentLoop", () => {
       },
     );
 
-    expect(messages.map((message) => message.role)).toEqual([
-      "assistant",
-      "tool",
-      "assistant",
-    ]);
+    expect(messages.map((message) => message.role)).toEqual(["assistant", "tool", "assistant"]);
     expect(messages[1]).toMatchObject({
       role: "tool",
       toolCallId: "call_1",
@@ -325,15 +321,10 @@ describe("runAgentLoop", () => {
       role: "tool",
       content: "5",
     });
-    expect(events.some((event) => event.type === "tool_execution_start")).toBe(
-      true,
-    );
+    expect(events.some((event) => event.type === "tool_execution_start")).toBe(true);
     expect(
       events
-        .filter(
-          (event) =>
-            event.type === "message_start" || event.type === "message_end",
-        )
+        .filter((event) => event.type === "message_start" || event.type === "message_end")
         .every((event) => event.message.role === "assistant"),
     ).toBe(true);
     expect(events.at(-1)).toMatchObject({
@@ -485,9 +476,7 @@ describe("runAgentLoop", () => {
         canceled: true,
       },
     });
-    expect(
-      events.some((event) => event.type === "tool_execution_start"),
-    ).toBe(false);
+    expect(events.some((event) => event.type === "tool_execution_start")).toBe(false);
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
       reason: "aborted",
@@ -616,9 +605,7 @@ describe("runAgentLoop", () => {
       role: "assistant",
       stopReason: "length",
     });
-    expect(
-      events.some((event) => event.type === "tool_execution_start"),
-    ).toBe(false);
+    expect(events.some((event) => event.type === "tool_execution_start")).toBe(false);
     expect(model.contexts).toHaveLength(1);
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
@@ -719,10 +706,7 @@ describe("runAgentLoop", () => {
   });
 });
 
-function streamToolCallMessage(
-  stream: AssistantEventStream,
-  args: unknown,
-): void {
+function streamToolCallMessage(stream: AssistantEventStream, args: unknown): void {
   const message: AssistantMessage = {
     role: "assistant",
     content: [],
@@ -812,9 +796,7 @@ function streamMultipleToolCallMessage(stream: AssistantEventStream): void {
   });
 }
 
-function streamLengthTruncatedToolCallMessage(
-  stream: AssistantEventStream,
-): void {
+function streamLengthTruncatedToolCallMessage(stream: AssistantEventStream): void {
   const message: AssistantMessage = {
     role: "assistant",
     content: [],
@@ -851,10 +833,7 @@ function streamLengthTruncatedToolCallMessage(
   });
 }
 
-function streamTextMessage(
-  stream: AssistantEventStream,
-  text: string,
-): void {
+function streamTextMessage(stream: AssistantEventStream, text: string): void {
   const message: AssistantMessage = {
     role: "assistant",
     content: [],

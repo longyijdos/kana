@@ -49,9 +49,7 @@ describe("skill manager", () => {
     const rendered = manager.render(80).map(stripAnsi);
 
     expect(rendered).toContain("  First line. Second line.");
-    expect(rendered.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(
-      true,
-    );
+    expect(rendered.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
   });
 
   test("truncates long descriptions with an ellipsis", () => {
@@ -114,9 +112,7 @@ describe("skill manager", () => {
         enabled: true,
       },
     ]);
-    expect(manager.render(80).map(stripAnsi)).toContain(
-      "> [x] global-skill  global",
-    );
+    expect(manager.render(80).map(stripAnsi)).toContain("> [x] global-skill  global");
   });
 
   test("closes with escape", () => {

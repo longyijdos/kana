@@ -6,10 +6,7 @@ export {
   DEFAULT_KANA_TOOL_APPROVALS,
   type KanaToolApprovals,
 } from "./tool-approval-defaults";
-import {
-  DEFAULT_KANA_TOOL_APPROVALS,
-  type KanaToolApprovals,
-} from "./tool-approval-defaults";
+import { DEFAULT_KANA_TOOL_APPROVALS, type KanaToolApprovals } from "./tool-approval-defaults";
 
 export function shouldRequestToolApproval(
   config: KanaToolApprovalConfig,
@@ -67,9 +64,7 @@ export function addTrustedBashCommand(
   return nextApprovals;
 }
 
-export function loadKanaToolApprovals(
-  env: NodeJS.ProcessEnv = process.env,
-): KanaToolApprovals {
+export function loadKanaToolApprovals(env: NodeJS.ProcessEnv = process.env): KanaToolApprovals {
   const { approvalsPath } = getKanaConfigPaths(env);
 
   if (!existsSync(approvalsPath)) {
@@ -94,10 +89,7 @@ export function saveKanaToolApprovals(
   });
 }
 
-function isTrustedToolCall(
-  approvals: KanaToolApprovals,
-  toolCall: ToolCallContent,
-): boolean {
+function isTrustedToolCall(approvals: KanaToolApprovals, toolCall: ToolCallContent): boolean {
   if (toolCall.name === "read") {
     return true;
   }
@@ -125,16 +117,10 @@ function normalizeBashCommand(command: string): string {
   return command.trim();
 }
 
-function isTrustedReadOnlyBashCommand(
-  approvals: KanaToolApprovals,
-  command: string,
-): boolean {
+function isTrustedReadOnlyBashCommand(approvals: KanaToolApprovals, command: string): boolean {
   const executable = readSimpleBashExecutable(command);
 
-  return (
-    executable !== undefined &&
-    approvals.bash.readOnlyCommands.includes(executable)
-  );
+  return executable !== undefined && approvals.bash.readOnlyCommands.includes(executable);
 }
 
 function readSimpleBashExecutable(command: string): string | undefined {
@@ -175,9 +161,7 @@ function readKanaToolApprovals(rawApprovals: unknown): KanaToolApprovals {
         bash.readOnlyCommands,
         DEFAULT_KANA_TOOL_APPROVALS.bash.readOnlyCommands,
         "approvals.bash.readOnlyCommands",
-      ).map((command) =>
-        readBashExecutableName(command, "approvals.bash.readOnlyCommands"),
-      ),
+      ).map((command) => readBashExecutableName(command, "approvals.bash.readOnlyCommands")),
     },
   };
 }
@@ -198,11 +182,7 @@ function asRecord(value: unknown, name: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function readStringArray(
-  value: unknown,
-  fallback: string[],
-  name: string,
-): string[] {
+function readStringArray(value: unknown, fallback: string[], name: string): string[] {
   if (value === undefined) {
     return fallback.slice();
   }

@@ -1,16 +1,6 @@
-import type {
-  AssistantContent,
-  Message,
-  ModelContext,
-  ToolCallContent,
-} from "@/core";
+import type { AssistantContent, Message, ModelContext, ToolCallContent } from "@/core";
 import type { ToolSpec } from "@/tools";
-import type {
-  DeepSeekMessage,
-  DeepSeekModelConfig,
-  DeepSeekTool,
-  DeepSeekToolCall,
-} from "./types";
+import type { DeepSeekMessage, DeepSeekModelConfig, DeepSeekTool, DeepSeekToolCall } from "./types";
 
 export function buildDeepSeekRequest(
   context: ModelContext,
@@ -102,9 +92,7 @@ function toDeepSeekMessage(message: Message): DeepSeekMessage {
   }
 }
 
-function toDeepSeekAssistantMessage(
-  content: AssistantContent[],
-): DeepSeekMessage {
+function toDeepSeekAssistantMessage(content: AssistantContent[]): DeepSeekMessage {
   // DeepSeek stores visible text and reasoning content on separate fields, but
   // our assistant message keeps both as ordered content blocks.
   const text = content
@@ -115,9 +103,7 @@ function toDeepSeekAssistantMessage(
     .filter((block) => block.type === "thinking")
     .map((block) => block.text)
     .join("");
-  const toolCalls = content
-    .filter((block) => block.type === "tool_call")
-    .map(toDeepSeekToolCall);
+  const toolCalls = content.filter((block) => block.type === "tool_call").map(toDeepSeekToolCall);
 
   return {
     role: "assistant",
@@ -138,10 +124,7 @@ function toDeepSeekToolCall(content: ToolCallContent): DeepSeekToolCall {
   };
 }
 
-function toDeepSeekTools(
-  tools: ToolSpec[],
-  strict: boolean,
-): DeepSeekTool[] {
+function toDeepSeekTools(tools: ToolSpec[], strict: boolean): DeepSeekTool[] {
   return tools.map((tool) => ({
     type: "function",
     function: {

@@ -170,10 +170,7 @@ describe("Agent", () => {
     expect(agent.state.isRunning).toBe(false);
     expect(agent.state.streamingMessage).toBeUndefined();
     expect(agent.state.pendingToolCalls.size).toBe(0);
-    expect(agent.state.messages.map((message) => message.role)).toEqual([
-      "user",
-      "assistant",
-    ]);
+    expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
     expect(agent.state.messages[1]).toMatchObject({
       role: "assistant",
       stopReason: "stop",
@@ -197,13 +194,8 @@ describe("Agent", () => {
 
     const messages = await stream.result();
 
-    expect(messages.map((message) => message.role)).toEqual([
-      "assistant",
-    ]);
-    expect(agent.state.messages.map((message) => message.role)).toEqual([
-      "user",
-      "assistant",
-    ]);
+    expect(messages.map((message) => message.role)).toEqual(["assistant"]);
+    expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
     expect(agent.state.messages.slice(1)).toEqual(messages);
     expect(messages[0]).toMatchObject({
       role: "assistant",
@@ -255,10 +247,7 @@ describe("Agent", () => {
     const state = agent.state;
     state.messages.length = 0;
 
-    expect(agent.state.messages.map((message) => message.role)).toEqual([
-      "user",
-      "assistant",
-    ]);
+    expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
   });
 
   test("passes abort signal to the running model", async () => {

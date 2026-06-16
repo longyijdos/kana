@@ -1,12 +1,5 @@
-import type {
-  KanaSkillActivation,
-  LoadKanaSkillActivationsResult,
-} from "@/kana";
-import {
-  SkillManager,
-  TextBlock,
-  type SkillManagerDecision,
-} from "../components";
+import type { KanaSkillActivation, LoadKanaSkillActivationsResult } from "@/kana";
+import { SkillManager, TextBlock, type SkillManagerDecision } from "../components";
 import type { Editor, Transcript } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";

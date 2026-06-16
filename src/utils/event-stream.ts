@@ -2,9 +2,7 @@ export type ReadableEventStream<TEvent, TResult> = AsyncIterable<TEvent> & {
   result(): Promise<TResult>;
 };
 
-export class EventStream<TEvent, TResult>
-  implements ReadableEventStream<TEvent, TResult>
-{
+export class EventStream<TEvent, TResult> implements ReadableEventStream<TEvent, TResult> {
   private queue: TEvent[] = [];
   private readers: Array<(result: IteratorResult<TEvent>) => void> = [];
   private closed = false;

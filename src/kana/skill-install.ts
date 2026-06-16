@@ -1,11 +1,5 @@
 import { execFile } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -13,8 +7,7 @@ import { getKanaConfigPaths } from "./config";
 
 const execFileAsync = promisify(execFile);
 
-export const DEFAULT_KANA_SKILLS_REPOSITORY =
-  "https://github.com/longyijdos/kana-skills.git";
+export const DEFAULT_KANA_SKILLS_REPOSITORY = "https://github.com/longyijdos/kana-skills.git";
 export const DEFAULT_KANA_SKILLS_REPOSITORY_NAME = "kana-skills";
 
 export type InstallKanaSkillsOptions = {
@@ -38,8 +31,7 @@ export async function installKanaSkills(
   options: InstallKanaSkillsOptions = {},
 ): Promise<InstallKanaSkillsResult> {
   const repositoryUrl = options.repositoryUrl ?? DEFAULT_KANA_SKILLS_REPOSITORY;
-  const repositoryName =
-    options.repositoryName ?? DEFAULT_KANA_SKILLS_REPOSITORY_NAME;
+  const repositoryName = options.repositoryName ?? DEFAULT_KANA_SKILLS_REPOSITORY_NAME;
   const { home } = getKanaConfigPaths(env);
   const skillsRoot = path.join(home, "skills");
   const skillsPath = path.join(skillsRoot, repositoryName);
@@ -80,27 +72,19 @@ function installKanaSkillsConfig(
 
   if (!exists || force) {
     mkdirSync(skillsRoot, { recursive: true });
-    writeFileSync(
-      skillsConfigPath,
-      ["[model_invocation]", "enabled = []", ""].join("\n"),
-      {
-        encoding: "utf8",
-        mode: 0o600,
-      },
-    );
+    writeFileSync(skillsConfigPath, ["[model_invocation]", "enabled = []", ""].join("\n"), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
   }
 
   return {
     skillsConfigPath,
-    skillsConfigStatus:
-      exists && !force ? "exists" : exists ? "reinstalled" : "created",
+    skillsConfigStatus: exists && !force ? "exists" : exists ? "reinstalled" : "created",
   };
 }
 
-async function runGitCommand(
-  args: string[],
-  options: { cwd?: string } = {},
-): Promise<void> {
+async function runGitCommand(args: string[], options: { cwd?: string } = {}): Promise<void> {
   try {
     await execFileAsync("git", args, {
       cwd: options.cwd,

@@ -36,9 +36,7 @@ export function isThinkingVisible(
   }
 }
 
-export function phaseForStopReason(
-  reason: AssistantMessage["stopReason"],
-): RunPhase {
+export function phaseForStopReason(reason: AssistantMessage["stopReason"]): RunPhase {
   switch (reason) {
     case "length":
       return "length";

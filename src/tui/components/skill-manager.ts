@@ -1,11 +1,6 @@
 import { color, dim, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnter,
-  isEscape,
-  isUp,
-} from "../runtime";
+import { isDown, isEnter, isEscape, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
 
 export type SkillManagerItem = {
@@ -56,10 +51,7 @@ export class SkillManager implements Component {
   }
 
   render(width: number): string[] {
-    const lines = [
-      "",
-      color("Skills", tuiTheme.muted),
-    ];
+    const lines = ["", color("Skills", tuiTheme.muted)];
 
     if (this.skills.length === 0) {
       lines.push(dim("No skills found for this workspace."));
@@ -80,13 +72,7 @@ export class SkillManager implements Component {
       lines.push(truncateToWidth(rendered, width, ""));
 
       if (selected && skill.description.trim()) {
-        lines.push(
-          truncateToWidth(
-            dim(`  ${formatDescription(skill.description)}`),
-            width,
-            "...",
-          ),
-        );
+        lines.push(truncateToWidth(dim(`  ${formatDescription(skill.description)}`), width, "..."));
       }
     }
 
@@ -113,8 +99,7 @@ export class SkillManager implements Component {
       return;
     }
 
-    this.selectedIndex =
-      (this.selectedIndex + delta + this.skills.length) % this.skills.length;
+    this.selectedIndex = (this.selectedIndex + delta + this.skills.length) % this.skills.length;
   }
 }
 

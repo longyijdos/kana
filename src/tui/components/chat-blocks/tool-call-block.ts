@@ -5,11 +5,7 @@ import { truncateToWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import { TextBlock } from "./text-block";
-import {
-  formatToolOutput,
-  formatToolTitle,
-  type ToolState,
-} from "../../tools";
+import { formatToolOutput, formatToolTitle, type ToolState } from "../../tools";
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
@@ -75,11 +71,7 @@ export class ToolCallBlock implements Component {
         color(line, titleColor),
       ),
     ];
-    const output = formatToolOutput(
-      this.toolCall,
-      this.result ?? this.partialResult,
-      this.isError,
-    );
+    const output = formatToolOutput(this.toolCall, this.result ?? this.partialResult, this.isError);
 
     if (typeof output === "string" && output) {
       lines.push(

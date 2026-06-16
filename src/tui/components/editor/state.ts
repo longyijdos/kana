@@ -29,19 +29,13 @@ export type EditorAction =
       type: "deleteAfter";
     };
 
-export function applyEditorAction(
-  state: EditorTextState,
-  action: EditorAction,
-): EditorTextState {
+export function applyEditorAction(state: EditorTextState, action: EditorAction): EditorTextState {
   const cursorOffset = clampToBoundary(state.value, state.cursorOffset);
 
   switch (action.type) {
     case "insert":
       return {
-        value:
-          state.value.slice(0, cursorOffset) +
-          action.text +
-          state.value.slice(cursorOffset),
+        value: state.value.slice(0, cursorOffset) + action.text + state.value.slice(cursorOffset),
         cursorOffset: cursorOffset + action.text.length,
       };
     case "moveLeft":

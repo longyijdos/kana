@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -145,9 +139,10 @@ describe("Kana session store", () => {
     appendKanaSessionMessages(fork, messages);
 
     const loaded = loadKanaSession("fork", { env, cwd });
-    const header = JSON.parse(
-      readFileSync(fork.path, "utf8").split("\n")[0] ?? "{}",
-    ) as Record<string, unknown>;
+    const header = JSON.parse(readFileSync(fork.path, "utf8").split("\n")[0] ?? "{}") as Record<
+      string,
+      unknown
+    >;
 
     expect(fork.parentSessionPath).toBe("/tmp/source.jsonl");
     expect(loaded.messages).toEqual(messages);

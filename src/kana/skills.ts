@@ -69,9 +69,7 @@ export type FormatKanaSkillsForPromptOptions = {
   env?: NodeJS.ProcessEnv;
 };
 
-export function loadKanaSkills(
-  options: LoadKanaSkillsOptions = {},
-): LoadKanaSkillsResult {
+export function loadKanaSkills(options: LoadKanaSkillsOptions = {}): LoadKanaSkillsResult {
   const cwd = options.cwd ?? process.cwd();
   const includeDefaults = options.includeDefaults ?? true;
   const configuredPaths = options.skillPaths ?? [];
@@ -187,10 +185,7 @@ export function formatKanaSkillsForPrompt(
   ].join("\n");
 }
 
-function defaultSkillPaths(
-  cwd: string,
-  env: NodeJS.ProcessEnv | undefined,
-): string[] {
+function defaultSkillPaths(cwd: string, env: NodeJS.ProcessEnv | undefined): string[] {
   const { home } = getKanaConfigPaths(env);
 
   return [
@@ -227,9 +222,7 @@ function loadEnabledGlobalSkillNames(globalSkillsDir: string): Set<string> {
   const parsed = Bun.TOML.parse(readFileSync(configPath, "utf8")) as unknown;
   const raw = asRecord(parsed, "skills config");
   const modelInvocation =
-    raw.model_invocation === undefined
-      ? {}
-      : asRecord(raw.model_invocation, "model_invocation");
+    raw.model_invocation === undefined ? {} : asRecord(raw.model_invocation, "model_invocation");
   const enabled = modelInvocation.enabled;
 
   if (enabled === undefined) {
@@ -237,17 +230,13 @@ function loadEnabledGlobalSkillNames(globalSkillsDir: string): Set<string> {
   }
 
   if (!Array.isArray(enabled)) {
-    throw new Error(
-      "Invalid skills.toml: model_invocation.enabled must be an array",
-    );
+    throw new Error("Invalid skills.toml: model_invocation.enabled must be an array");
   }
 
   return new Set(
     enabled.map((value, index) => {
       if (typeof value !== "string") {
-        throw new Error(
-          `Invalid skills.toml: model_invocation.enabled[${index}] must be a string`,
-        );
+        throw new Error(`Invalid skills.toml: model_invocation.enabled[${index}] must be a string`);
       }
 
       return value;
@@ -306,10 +295,7 @@ function loadSkillsFromPath(skillPath: string): LoadKanaSkillsResult {
   };
 }
 
-function loadSkillsFromDir(
-  dir: string,
-  visitedDirs: Set<string>,
-): LoadKanaSkillsResult {
+function loadSkillsFromDir(dir: string, visitedDirs: Set<string>): LoadKanaSkillsResult {
   const realDir = canonicalizePath(dir);
 
   if (visitedDirs.has(realDir)) {
@@ -356,9 +342,7 @@ function loadSkillsFromDir(
   const skills: KanaSkill[] = [];
   const diagnostics: KanaSkillDiagnostic[] = [];
 
-  for (const entry of entries.sort((left, right) =>
-    left.name.localeCompare(right.name),
-  )) {
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (entry.name.startsWith(".") || entry.name === "node_modules") {
       continue;
     }
@@ -416,9 +400,7 @@ function loadSkillFromFile(filePath: string): LoadKanaSkillsResult {
   const diagnostics: KanaSkillDiagnostic[] = [];
   const frontmatter = parsed.frontmatter;
   const description =
-    typeof frontmatter.description === "string"
-      ? frontmatter.description
-      : undefined;
+    typeof frontmatter.description === "string" ? frontmatter.description : undefined;
 
   for (const error of validateDescription(description)) {
     diagnostics.push({
@@ -434,8 +416,7 @@ function loadSkillFromFile(filePath: string): LoadKanaSkillsResult {
     path.basename(filePath) === "SKILL.md"
       ? path.basename(baseDir)
       : path.basename(filePath, path.extname(filePath));
-  const name =
-    typeof frontmatter.name === "string" ? frontmatter.name : fallbackName;
+  const name = typeof frontmatter.name === "string" ? frontmatter.name : fallbackName;
 
   for (const error of validateName(name)) {
     diagnostics.push({
@@ -466,9 +447,9 @@ function loadSkillFromFile(filePath: string): LoadKanaSkillsResult {
   };
 }
 
-function parseFrontmatter(content: string):
-  | { ok: true; frontmatter: SkillFrontmatter }
-  | { ok: false; error: string } {
+function parseFrontmatter(
+  content: string,
+): { ok: true; frontmatter: SkillFrontmatter } | { ok: false; error: string } {
   const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
   if (!normalized.startsWith("---\n")) {
@@ -490,9 +471,9 @@ function parseFrontmatter(content: string):
   return parseMetadataBlock(normalized.slice(4, endIndex));
 }
 
-function parseMetadataBlock(content: string):
-  | { ok: true; frontmatter: SkillFrontmatter }
-  | { ok: false; error: string } {
+function parseMetadataBlock(
+  content: string,
+): { ok: true; frontmatter: SkillFrontmatter } | { ok: false; error: string } {
   const frontmatter: SkillFrontmatter = {};
   const lines = content.split("\n");
 
@@ -562,7 +543,7 @@ function parseScalar(value: string): string | boolean {
 
   const quoted = /^"(.*)"$/.exec(value) ?? /^'(.*)'$/.exec(value);
 
-  return quoted ? quoted[1] ?? "" : value;
+  return quoted ? (quoted[1] ?? "") : value;
 }
 
 function validateName(name: string): string[] {
@@ -593,9 +574,7 @@ function validateDescription(description: string | undefined): string[] {
   }
 
   if (description.length > MAX_DESCRIPTION_LENGTH) {
-    return [
-      `description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${description.length})`,
-    ];
+    return [`description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${description.length})`];
   }
 
   return [];
@@ -643,10 +622,7 @@ function canonicalizePath(filePath: string): string {
 
 function isPathInside(candidatePath: string, dir: string): boolean {
   const relative = path.relative(path.resolve(dir), path.resolve(candidatePath));
-  return (
-    relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
-  );
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {

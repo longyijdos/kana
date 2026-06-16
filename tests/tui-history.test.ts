@@ -41,7 +41,7 @@ describe("tui history transcript", () => {
         content: "file contents",
         result: {
           path: "package.json",
-          content: "{\n  \"private\": true\n}",
+          content: '{\n  "private": true\n}',
           startLine: 1,
           endLine: 3,
           totalLines: 3,

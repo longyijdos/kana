@@ -1,12 +1,6 @@
 import { color, dim, mapLines, truncateToWidth, type Color } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnter,
-  isLeft,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isDown, isEnter, isLeft, isRight, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
 
 export type ChoicePromptOption<T extends string> = {
@@ -39,9 +33,7 @@ export class ChoicePrompt<T extends string> implements Component {
       "",
       ...mapLines(this.options.title, (line) => color(line, accentColor)),
       ...(this.options.detail ? mapLines(this.options.detail, dim) : []),
-      ...this.options.options.map((option, index) =>
-        this.renderOption(option, index, accentColor),
-      ),
+      ...this.options.options.map((option, index) => this.renderOption(option, index, accentColor)),
     ];
 
     return lines.map((line) => truncateToWidth(line, width, ""));
@@ -73,15 +65,10 @@ export class ChoicePrompt<T extends string> implements Component {
     }
 
     this.selectedIndex =
-      (this.selectedIndex + delta + this.options.options.length) %
-      this.options.options.length;
+      (this.selectedIndex + delta + this.options.options.length) % this.options.options.length;
   }
 
-  private renderOption(
-    option: ChoicePromptOption<T>,
-    index: number,
-    accentColor: Color,
-  ): string {
+  private renderOption(option: ChoicePromptOption<T>, index: number, accentColor: Color): string {
     const selected = index === this.selectedIndex;
     const line = `${selected ? "> " : "  "}${option.label}`;
 

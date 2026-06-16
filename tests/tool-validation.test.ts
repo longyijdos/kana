@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "@sinclair/typebox";
 import type { Tool } from "../src/tools/tool";
-import {
-  validateToolArguments,
-  validateToolCall,
-} from "../src/tools/validation";
+import { validateToolArguments, validateToolCall } from "../src/tools/validation";
 
 const addParameters = Type.Object({
   a: Type.Number(),
@@ -69,8 +66,6 @@ describe("tool validation", () => {
     expect(() => validateToolArguments(addTool, { a: 1 })).toThrow(
       'Validation failed for tool "add":',
     );
-    expect(() => validateToolArguments(addTool, { a: 1 })).toThrow(
-      "b: Expected required property",
-    );
+    expect(() => validateToolArguments(addTool, { a: 1 })).toThrow("b: Expected required property");
   });
 });

@@ -1,7 +1,4 @@
-import {
-  getNumberProperty,
-  getStringProperty,
-} from "../properties";
+import { getNumberProperty, getStringProperty } from "../properties";
 import { tailLines } from "../../render";
 
 const TOOL_OUTPUT_LINE_LIMIT = 8;

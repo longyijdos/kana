@@ -1,10 +1,7 @@
 import { background, dim, type Color } from "../../render";
 import { splitLines } from "../../render";
 import { tuiTheme } from "../../theme";
-import {
-  getNumberProperty,
-  getStringProperty,
-} from "../properties";
+import { getNumberProperty, getStringProperty } from "../properties";
 
 export function formatEditOutput(result: object): string[] {
   const oldText = getStringProperty(result, "oldText");
@@ -27,11 +24,7 @@ export function formatEditOutput(result: object): string[] {
   return lines;
 }
 
-function formatDiffLines(
-  value: string,
-  marker: "-" | "+",
-  lineBackground: Color,
-): string[] {
+function formatDiffLines(value: string, marker: "-" | "+", lineBackground: Color): string[] {
   const lines = splitLines(value);
 
   if (lines.at(-1) === "") {

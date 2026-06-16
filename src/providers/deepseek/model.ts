@@ -1,15 +1,5 @@
-import {
-  AssistantEventStream,
-  BaseModel,
-  type AssistantMessage,
-  type ModelContext,
-} from "@/core";
-import {
-  createRequestSignal,
-  fetchWithRetries,
-  isAbortError,
-  joinUrl,
-} from "./http";
+import { AssistantEventStream, BaseModel, type AssistantMessage, type ModelContext } from "@/core";
+import { createRequestSignal, fetchWithRetries, isAbortError, joinUrl } from "./http";
 import { getDeepSeekModelMetadata } from "./metadata";
 import { buildDeepSeekRequest } from "./request";
 import {
@@ -41,10 +31,7 @@ export class DeepSeekModel extends BaseModel {
     return stream;
   }
 
-  private async run(
-    stream: AssistantEventStream,
-    context: ModelContext,
-  ): Promise<void> {
+  private async run(stream: AssistantEventStream, context: ModelContext): Promise<void> {
     const message: AssistantMessage = {
       role: "assistant",
       content: [],
@@ -117,10 +104,7 @@ export class DeepSeekModel extends BaseModel {
     } catch (error) {
       stream.error({
         type: "error",
-        reason:
-          isAbortError(error) || context.signal?.aborted
-            ? "aborted"
-            : "error",
+        reason: isAbortError(error) || context.signal?.aborted ? "aborted" : "error",
         error,
         snapshot: structuredClone(message),
       });

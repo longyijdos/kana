@@ -89,9 +89,7 @@ export function getCommandState(value: string): CommandState {
     isCommandMode: true,
     showPalette: commandTokenEnd === value.length,
     query,
-    suggestions: PROMPT_COMMANDS.filter((command) =>
-      command.name.startsWith(query),
-    ),
+    suggestions: PROMPT_COMMANDS.filter((command) => command.name.startsWith(query)),
   };
 }
 
@@ -125,8 +123,7 @@ export function createCommandSubmit(
   }
 
   const command =
-    PROMPT_COMMANDS.find((candidate) => candidate.name === state.query) ??
-    selectedCommand;
+    PROMPT_COMMANDS.find((candidate) => candidate.name === state.query) ?? selectedCommand;
 
   if (!command) {
     return undefined;

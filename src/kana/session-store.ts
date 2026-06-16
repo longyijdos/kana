@@ -1,11 +1,4 @@
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -72,9 +65,7 @@ export type LoadKanaSessionResult = {
   messages: Message[];
 };
 
-export function createKanaSession(
-  options: CreateKanaSessionOptions = {},
-): KanaSessionMetadata {
+export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaSessionMetadata {
   const id = options.id ?? createSessionId();
   const createdAt = new Date().toISOString();
   const cwd = options.cwd ?? process.cwd();
@@ -107,9 +98,7 @@ export function loadKanaSession(
   return loadKanaSessionFile(metadata.path);
 }
 
-export function listKanaSessions(
-  options: FindKanaSessionOptions = {},
-): KanaSessionMetadata[] {
+export function listKanaSessions(options: FindKanaSessionOptions = {}): KanaSessionMetadata[] {
   const sessionsPath = getKanaConfigPaths(options.env).sessionsPath;
   const sessionDirs = options.cwd
     ? [getKanaSessionDir(options.cwd, options.env)]
@@ -135,9 +124,7 @@ export function listKanaSessions(
     }
   }
 
-  return sessions.sort(
-    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
-  );
+  return sessions.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 }
 
 export function deleteKanaSession(
@@ -232,15 +219,15 @@ function loadKanaSessionLeafId(filePath: string): string | null {
   return leafId;
 }
 
-function getKanaSessionDir(
-  cwd: string,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+function getKanaSessionDir(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
   return path.join(getKanaConfigPaths(env).sessionsPath, encodeCwd(cwd));
 }
 
 function encodeCwd(cwd: string): string {
-  return `--${path.resolve(cwd).replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+  return `--${path
+    .resolve(cwd)
+    .replace(/^[/\\]/, "")
+    .replace(/[/\\:]/g, "-")}--`;
 }
 
 function createSessionId(): string {
@@ -255,10 +242,7 @@ function safeTimestamp(timestamp: string): string {
   return timestamp.replace(/[:.]/g, "-");
 }
 
-function headerToMetadata(
-  header: KanaSessionHeader,
-  filePath: string,
-): KanaSessionMetadata {
+function headerToMetadata(header: KanaSessionHeader, filePath: string): KanaSessionMetadata {
   return {
     id: header.id,
     createdAt: header.createdAt,
@@ -337,10 +321,7 @@ function parseHeader(line: string, filePath: string): KanaSessionHeader {
   if (parsed.model !== undefined && !isSessionModelMetadata(parsed.model)) {
     throw new Error(`Invalid Kana session model metadata: ${filePath}`);
   }
-  if (
-    parsed.parentSessionPath !== undefined &&
-    typeof parsed.parentSessionPath !== "string"
-  ) {
+  if (parsed.parentSessionPath !== undefined && typeof parsed.parentSessionPath !== "string") {
     throw new Error(`Invalid Kana session parent path: ${filePath}`);
   }
 

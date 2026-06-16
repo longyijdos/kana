@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -236,9 +229,7 @@ describe("Kana tool approval", () => {
   });
 });
 
-function approvals(
-  bash: Partial<KanaToolApprovals["bash"]> = {},
-): KanaToolApprovals {
+function approvals(bash: Partial<KanaToolApprovals["bash"]> = {}): KanaToolApprovals {
   return {
     version: 2,
     bash: {
@@ -267,10 +258,7 @@ function createTempEnv(): NodeJS.ProcessEnv {
   };
 }
 
-function saveApprovals(
-  approvals: KanaToolApprovals,
-  env: NodeJS.ProcessEnv,
-): void {
+function saveApprovals(approvals: KanaToolApprovals, env: NodeJS.ProcessEnv): void {
   const approvalsPath = getKanaConfigPaths(env).approvalsPath;
   const approvalsDir = path.dirname(approvalsPath);
 

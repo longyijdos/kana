@@ -10,10 +10,7 @@ import {
   visibleWidth,
   type Color,
 } from "../../render";
-import {
-  highlightCodeSync,
-  type HighlightedCodeLine,
-} from "../../utils/syntax-highlighter";
+import { highlightCodeSync, type HighlightedCodeLine } from "../../utils/syntax-highlighter";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 
@@ -56,11 +53,7 @@ export class MarkdownBlock implements Component {
   }
 
   render(width: number): string[] {
-    if (
-      this.cachedLines &&
-      this.cachedWidth === width &&
-      this.cachedText === this.text
-    ) {
+    if (this.cachedLines && this.cachedWidth === width && this.cachedText === this.text) {
       return this.cachedLines;
     }
 
@@ -72,9 +65,7 @@ export class MarkdownBlock implements Component {
 
       if (fence) {
         if (codeBlock) {
-          lines.push(
-            ...this.renderCodeBlock(codeBlock.lines, width, codeBlock.language),
-          );
+          lines.push(...this.renderCodeBlock(codeBlock.lines, width, codeBlock.language));
           codeBlock = undefined;
         } else {
           codeBlock = {
@@ -94,9 +85,7 @@ export class MarkdownBlock implements Component {
     }
 
     if (codeBlock) {
-      lines.push(
-        ...this.renderCodeBlock(codeBlock.lines, width, codeBlock.language),
-      );
+      lines.push(...this.renderCodeBlock(codeBlock.lines, width, codeBlock.language));
     }
 
     const rendered = lines.length ? lines : [""];
@@ -123,12 +112,7 @@ export class MarkdownBlock implements Component {
 
     const thematicBreak = line.match(/^\s*([-*_])(?:\s*\1){2,}\s*$/);
     if (thematicBreak) {
-      return [
-        color(
-          "-".repeat(Math.min(Math.max(1, width), 40)),
-          tuiTheme.markdownRule,
-        ),
-      ];
+      return [color("-".repeat(Math.min(Math.max(1, width), 40)), tuiTheme.markdownRule)];
     }
 
     const tableSeparator = line.match(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/);
@@ -235,10 +219,7 @@ export class MarkdownBlock implements Component {
     return rendered;
   }
 
-  private renderHighlightedCodeBlock(
-    codeLines: HighlightedCodeLine[],
-    width: number,
-  ): string[] {
+  private renderHighlightedCodeBlock(codeLines: HighlightedCodeLine[], width: number): string[] {
     const rendered: string[] = [];
     const prefix = "    ";
     const contentWidth = Math.max(1, width - visibleWidth(prefix));
@@ -258,9 +239,7 @@ export class MarkdownBlock implements Component {
 
       for (const [index, wrappedLine] of wrapped.entries()) {
         const codePrefix = index === 0 ? prefix : " ".repeat(visibleWidth(prefix));
-        rendered.push(
-          truncateToWidth(`${codePrefix}${styleSpans(wrappedLine, {})}`, width, ""),
-        );
+        rendered.push(truncateToWidth(`${codePrefix}${styleSpans(wrappedLine, {})}`, width, ""));
       }
     }
 
@@ -377,10 +356,7 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
     }
 
     const marker = value[index];
-    if (
-      (marker === "*" || marker === "_") &&
-      value[index + 1] !== marker
-    ) {
+    if ((marker === "*" || marker === "_") && value[index + 1] !== marker) {
       const end = value.indexOf(marker, index + 1);
 
       if (end > index + 1 && value[end + 1] !== marker) {
@@ -405,11 +381,7 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
   return spans;
 }
 
-function wrapSpans(
-  spans: InlineSpan[],
-  firstWidth: number,
-  restWidth: number,
-): InlineSpan[][] {
+function wrapSpans(spans: InlineSpan[], firstWidth: number, restWidth: number): InlineSpan[][] {
   const lines: InlineSpan[][] = [];
   let current: InlineSpan[] = [];
   let currentWidth = 0;

@@ -98,10 +98,7 @@ describe("CLI", () => {
   });
 });
 
-async function parse(
-  argv: string[],
-  options: Partial<CreateCliOptions>,
-): Promise<void> {
+async function parse(argv: string[], options: Partial<CreateCliOptions>): Promise<void> {
   const defaults: CreateCliOptions = {
     installKanaConfig: () => ({
       configPath: "/tmp/config.toml",

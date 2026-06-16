@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -44,9 +37,7 @@ describe("Kana config", () => {
     const env = createTempEnv();
     const firstInstall = installKanaConfig(env);
     const installed = readFileSync(firstInstall.configPath, "utf8");
-    const installedApprovals = JSON.parse(
-      readFileSync(firstInstall.approvalsPath, "utf8"),
-    );
+    const installedApprovals = JSON.parse(readFileSync(firstInstall.approvalsPath, "utf8"));
 
     expect(firstInstall.configStatus).toBe("created");
     expect(firstInstall.approvalsStatus).toBe("created");
@@ -67,9 +58,7 @@ describe("Kana config", () => {
       approvalsStatus: "exists",
     });
     expect(readFileSync(firstInstall.configPath, "utf8")).toBe("custom = true\n");
-    expect(readFileSync(firstInstall.approvalsPath, "utf8")).toBe(
-      '{"custom":true}\n',
-    );
+    expect(readFileSync(firstInstall.approvalsPath, "utf8")).toBe('{"custom":true}\n');
   });
 
   test("force installs the default config and approvals over existing files", () => {
@@ -86,12 +75,8 @@ describe("Kana config", () => {
       approvalsPath,
       approvalsStatus: "reinstalled",
     });
-    expect(readFileSync(configPath, "utf8")).toContain(
-      'api_key_env = "DEEPSEEK_API_KEY"',
-    );
-    expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual(
-      DEFAULT_KANA_TOOL_APPROVALS,
-    );
+    expect(readFileSync(configPath, "utf8")).toContain('api_key_env = "DEEPSEEK_API_KEY"');
+    expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
   });
 
   test("loads defaults when config.toml is missing", () => {
@@ -138,10 +123,7 @@ describe("Kana config", () => {
   test("loads the configured API key environment variable name", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-    writeFileSync(
-      path.join(home, "config.toml"),
-      '[model]\napi_key_env = "KANA_DEEPSEEK_KEY"\n',
-    );
+    writeFileSync(path.join(home, "config.toml"), '[model]\napi_key_env = "KANA_DEEPSEEK_KEY"\n');
 
     expect(loadKanaConfig(env).model.apiKeyEnv).toBe("KANA_DEEPSEEK_KEY");
   });

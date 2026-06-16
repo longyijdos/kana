@@ -10,10 +10,7 @@ export function isLineBreak(value: string): boolean {
   return value === "\n" || value === "\r" || value === "\r\n";
 }
 
-export function mapLines(
-  value: string,
-  transform: (line: string) => string,
-): string[] {
+export function mapLines(value: string, transform: (line: string) => string): string[] {
   return splitLines(value).map((line) => transform(line));
 }
 
@@ -22,7 +19,5 @@ export function tailLines(value: string, limit: number): string {
   const visible = lines.slice(-limit);
   const hidden = lines.length - visible.length;
 
-  return hidden > 0
-    ? `... ${hidden} more lines\n${visible.join("\n")}`
-    : visible.join("\n");
+  return hidden > 0 ? `... ${hidden} more lines\n${visible.join("\n")}` : visible.join("\n");
 }

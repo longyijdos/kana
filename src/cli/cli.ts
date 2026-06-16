@@ -58,16 +58,8 @@ export function createCli(options: CreateCliOptions): Command {
       const result = installConfig(process.env, {
         force: options.force,
       });
-      log(
-        formatInstallMessage("config", result.configPath, result.configStatus),
-      );
-      log(
-        formatInstallMessage(
-          "approvals",
-          result.approvalsPath,
-          result.approvalsStatus,
-        ),
-      );
+      log(formatInstallMessage("config", result.configPath, result.configStatus));
+      log(formatInstallMessage("approvals", result.approvalsPath, result.approvalsStatus));
 
       if (options.skills) {
         const skillsResult = await installSkills(process.env, {
@@ -117,10 +109,7 @@ function capitalize(value: string): string {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
-export async function runCli(
-  argv: string[],
-  options: CreateCliOptions,
-): Promise<void> {
+export async function runCli(argv: string[], options: CreateCliOptions): Promise<void> {
   try {
     await createCli(options).parseAsync(argv);
   } catch (error) {

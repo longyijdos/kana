@@ -1,11 +1,6 @@
 import { Tui } from "../src/tui/runtime/tui";
 import type { Terminal } from "../src/tui/runtime/terminal";
-import {
-  AssistantMessageBlock,
-  Editor,
-  TextBlock,
-  Transcript,
-} from "../src/tui/components";
+import { AssistantMessageBlock, Editor, TextBlock, Transcript } from "../src/tui/components";
 
 class BenchmarkTerminal implements Terminal {
   columns = 100;

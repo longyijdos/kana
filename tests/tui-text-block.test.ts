@@ -10,18 +10,11 @@ describe("tui text block", () => {
   });
 
   test("treats CRLF and CR as line breaks", () => {
-    expect(new TextBlock("hello\r\nworld\ragain").render(20)).toEqual([
-      "hello",
-      "world",
-      "again",
-    ]);
+    expect(new TextBlock("hello\r\nworld\ragain").render(20)).toEqual(["hello", "world", "again"]);
   });
 
   test("does not repeat the prefix on wrapped lines", () => {
-    expect(new TextBlock("abcdef", { prefix: "> " }).render(5)).toEqual([
-      "> abc",
-      "def",
-    ]);
+    expect(new TextBlock("abcdef", { prefix: "> " }).render(5)).toEqual(["> abc", "def"]);
   });
 
   test("invalidates cached output when text changes", () => {

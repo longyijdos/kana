@@ -2,9 +2,7 @@ export function firstGrapheme(value: string): string | undefined {
   return graphemeSegments(value)[0]?.segment;
 }
 
-export function graphemeSegments(
-  value: string,
-): Array<{ segment: string; index: number }> {
+export function graphemeSegments(value: string): Array<{ segment: string; index: number }> {
   const Segmenter = (
     Intl as typeof Intl & {
       Segmenter?: new (

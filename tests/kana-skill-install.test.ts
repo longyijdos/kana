@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -82,10 +75,9 @@ describe("Kana skill installation", () => {
     mkdirSync(skillsPath, { recursive: true });
     writeFileSync(path.join(skillsPath, "SKILL.md"), "local skill");
 
-    await expect(installKanaSkills(env, { runGit: createFakeGit([]) })).rejects
-      .toThrow(
-        `Cannot update skills because ${skillsPath} is not a git repository. Re-run with --force to replace it.`,
-      );
+    await expect(installKanaSkills(env, { runGit: createFakeGit([]) })).rejects.toThrow(
+      `Cannot update skills because ${skillsPath} is not a git repository. Re-run with --force to replace it.`,
+    );
     expect(existsSync(skillsConfigPath)).toBe(false);
   });
 
@@ -137,11 +129,7 @@ describe("Kana skill installation", () => {
     );
     expect(calls).toEqual([
       {
-        args: [
-          "clone",
-          "https://github.com/longyijdos/kana-skills.git",
-          skillsPath,
-        ],
+        args: ["clone", "https://github.com/longyijdos/kana-skills.git", skillsPath],
         cwd: undefined,
       },
     ]);

@@ -43,10 +43,7 @@ export async function resolveNewWorkspaceFile(
 
   return {
     absolutePath,
-    relativePath: relativeWorkspacePath(
-      rootPath,
-      await canonicalizeNewPath(absolutePath),
-    ),
+    relativePath: relativeWorkspacePath(rootPath, await canonicalizeNewPath(absolutePath)),
   };
 }
 
@@ -69,9 +66,7 @@ function isValidInputPath(inputPath: string): boolean {
 }
 
 function resolveInputPath(rootPath: string, inputPath: string): string {
-  return path.isAbsolute(inputPath)
-    ? path.resolve(inputPath)
-    : path.resolve(rootPath, inputPath);
+  return path.isAbsolute(inputPath) ? path.resolve(inputPath) : path.resolve(rootPath, inputPath);
 }
 
 async function canonicalizeNewPath(absolutePath: string): Promise<string> {

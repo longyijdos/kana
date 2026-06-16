@@ -36,9 +36,7 @@ export function color(text: string, value: Color): string {
 }
 
 export function background(text: string, value: Color): string {
-  const code = typeof value === "string"
-    ? COLOR_CODES[value] + 10
-    : rgbCode("48", value);
+  const code = typeof value === "string" ? COLOR_CODES[value] + 10 : rgbCode("48", value);
 
   return `\x1b[${code}m${text}${ERASE_TO_END_OF_LINE}${RESET}`;
 }

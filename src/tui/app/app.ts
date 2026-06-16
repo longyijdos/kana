@@ -1,8 +1,4 @@
-import type {
-  Agent,
-  BeforeToolExecutionHook,
-  BeforeToolExecutionResult,
-} from "@/agent";
+import type { Agent, BeforeToolExecutionHook, BeforeToolExecutionResult } from "@/agent";
 import type {
   KanaSessionMetadata,
   LoadKanaSkillActivationsResult,
@@ -27,18 +23,12 @@ import {
   Transcript,
   WelcomeBlock,
 } from "../components";
-import {
-  isCtrlC,
-  isEscape,
-} from "../runtime";
+import { isCtrlC, isEscape } from "../runtime";
 import type { ProcessTerminal } from "../runtime";
 import { tuiTheme } from "../theme";
 import { Tui } from "../runtime";
 import { WELCOME_LOGO_LINES } from "./welcome-logo";
-import {
-  PROMPT_COMMANDS,
-  type PromptCommandName,
-} from "../components/editor/commands";
+import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
 
 export type KanaTuiLoadedSession = {
   id: string;
@@ -175,16 +165,13 @@ export class KanaTuiApp {
     const resumeSessionId = this.options.getResumeSessionId();
 
     resumeSessionId
-      ? this.tui.stop(
-          `Resume this session with: kana resume ${resumeSessionId}`,
-        )
+      ? this.tui.stop(`Resume this session with: kana resume ${resumeSessionId}`)
       : this.tui.stop();
   }
 
   private createAgentForCurrentSession(messages?: Message[]): Agent {
     return this.createAgent({
-      beforeToolExecution: ({ toolCall, signal }) =>
-        this.showToolApprovalPrompt(toolCall, signal),
+      beforeToolExecution: ({ toolCall, signal }) => this.showToolApprovalPrompt(toolCall, signal),
       messages,
     });
   }
@@ -318,9 +305,7 @@ export class KanaTuiApp {
     const lines = [
       "Slash commands",
       "",
-      ...PROMPT_COMMANDS.map(
-        (command) => `/${command.name.padEnd(8)} ${command.description}`,
-      ),
+      ...PROMPT_COMMANDS.map((command) => `/${command.name.padEnd(8)} ${command.description}`),
       "",
       "Shell shortcuts",
       "",
@@ -466,9 +451,7 @@ export class KanaTuiApp {
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
-    this.transcript.addChild(
-      new TextBlock(prompt, { color: tuiTheme.user, prefix: "> " }),
-    );
+    this.transcript.addChild(new TextBlock(prompt, { color: tuiTheme.user, prefix: "> " }));
     this.running = true;
     this.agentEvents.resetRun();
     this.updateStatus("starting");
@@ -523,10 +506,7 @@ export class KanaTuiApp {
     this.tui.requestRender();
 
     try {
-      const approval = await this.showToolApprovalPrompt(
-        toolCall,
-        abortController.signal,
-      );
+      const approval = await this.showToolApprovalPrompt(toolCall, abortController.signal);
 
       if (approval.type === "cancel") {
         block.updateResult(
@@ -586,10 +566,7 @@ export class KanaTuiApp {
     return this.toolApproval.request(toolCall, signal);
   }
 
-  private updateStatus(
-    phase: RunPhase,
-    extra: Partial<StatusLineState> = {},
-  ): void {
+  private updateStatus(phase: RunPhase, extra: Partial<StatusLineState> = {}): void {
     this.status.update({
       phase,
       running: this.running,

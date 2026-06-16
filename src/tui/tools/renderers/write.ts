@@ -1,16 +1,10 @@
 import type { ToolCallContent } from "@/core";
-import {
-  getNumberProperty,
-  getStringProperty,
-} from "../properties";
+import { getNumberProperty, getStringProperty } from "../properties";
 import { tailLines } from "../../render";
 
 const TOOL_OUTPUT_LINE_LIMIT = 8;
 
-export function formatWriteOutput(
-  toolCall: ToolCallContent,
-  result: object,
-): string {
+export function formatWriteOutput(toolCall: ToolCallContent, result: object): string {
   const content = getStringProperty(toolCall.args, "content");
   const bytesWritten = getNumberProperty(result, "bytesWritten");
 

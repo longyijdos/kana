@@ -311,7 +311,6 @@ export class Tui extends Container {
 
     return { buffer, row: cursor.row };
   }
-
 }
 
 export function extractCursorPosition(
@@ -326,9 +325,7 @@ export function extractCursorPosition(
     }
 
     const beforeMarker = line.slice(0, markerIndex);
-    lines[row] =
-      line.slice(0, markerIndex) +
-      line.slice(markerIndex + CURSOR_MARKER.length);
+    lines[row] = line.slice(0, markerIndex) + line.slice(markerIndex + CURSOR_MARKER.length);
 
     return {
       row,
@@ -340,16 +337,12 @@ export function extractCursorPosition(
 }
 
 function normalizeLine(line: string, width: number): string {
-  const truncated =
-    visibleWidth(line) > width ? truncateToWidth(line, width, "") : line;
+  const truncated = visibleWidth(line) > width ? truncateToWidth(line, width, "") : line;
 
   return `${truncated}\x1b[0m`;
 }
 
-function findChangedRange(
-  previousLines: string[],
-  lines: string[],
-): { first: number } | undefined {
+function findChangedRange(previousLines: string[], lines: string[]): { first: number } | undefined {
   const maxLines = Math.max(previousLines.length, lines.length);
   let first = -1;
 

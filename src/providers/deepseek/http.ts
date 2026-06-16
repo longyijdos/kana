@@ -24,17 +24,9 @@ export async function fetchWithRetries(
       }
 
       const body = await response.text().catch(() => "");
-      throw new DeepSeekHttpError(
-        response.status,
-        response.statusText,
-        body,
-      );
+      throw new DeepSeekHttpError(response.status, response.statusText, body);
     } catch (error) {
-      if (
-        isAbortError(error) ||
-        !isRetryableError(error) ||
-        attempt >= maxRetries
-      ) {
+      if (isAbortError(error) || !isRetryableError(error) || attempt >= maxRetries) {
         throw error;
       }
     }
@@ -85,9 +77,7 @@ export function joinUrl(baseUrl: string, path: string): string {
 }
 
 export function isAbortError(error: unknown): boolean {
-  return (
-    error instanceof DOMException && error.name === "AbortError"
-  );
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function shouldRetryStatus(status: number): boolean {

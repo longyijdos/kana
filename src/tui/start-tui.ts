@@ -120,8 +120,7 @@ export function startTui(options: StartTuiOptions = {}): void {
           messages: session.messages,
         };
       },
-      deleteSession: (sessionId) =>
-        deleteKanaSession(sessionId, { cwd: process.cwd() }),
+      deleteSession: (sessionId) => deleteKanaSession(sessionId, { cwd: process.cwd() }),
       loadSkills: () => loadKanaSkillActivations({ cwd: process.cwd() }),
       saveEnabledGlobalSkills: (names) => saveEnabledGlobalSkillNames(names),
       toolApproval: {

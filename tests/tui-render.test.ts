@@ -163,9 +163,7 @@ describe("tui main-screen renderer", () => {
 
     const output = terminal.writes.slice(writesBeforeStop).join("");
 
-    expect(output).toBe(
-      "\x1b[2J\x1b[H\x1b[3JResume this session with: kana resume session-1\r\n",
-    );
+    expect(output).toBe("\x1b[2J\x1b[H\x1b[3JResume this session with: kana resume session-1\r\n");
   });
 
   test("positions and shows the hardware cursor", async () => {

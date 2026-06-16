@@ -22,10 +22,9 @@ export type WriteToolOptions = {
   root?: string;
 };
 
-export function createWriteTool(options: WriteToolOptions = {}): Tool<
-  typeof writeParameters,
-  WriteToolResult
-> {
+export function createWriteTool(
+  options: WriteToolOptions = {},
+): Tool<typeof writeParameters, WriteToolResult> {
   const root = path.resolve(options.root ?? process.cwd());
 
   return {
@@ -59,8 +58,5 @@ export function createWriteTool(options: WriteToolOptions = {}): Tool<
 }
 
 function formatWriteContent(result: WriteToolResult): string {
-  return [
-    `wrote: ${result.path}`,
-    `bytes: ${result.bytesWritten}`,
-  ].join("\n");
+  return [`wrote: ${result.path}`, `bytes: ${result.bytesWritten}`].join("\n");
 }

@@ -214,12 +214,8 @@ describe("tui transcript", () => {
 
     expect(trimmedLines).toContain("- old line");
     expect(trimmedLines).toContain("+ new line");
-    expect(rendered.some((line) => line.includes("\x1b[48;2;70;24;24"))).toBe(
-      true,
-    );
-    expect(rendered.some((line) => line.includes("\x1b[48;2;18;70;38"))).toBe(
-      true,
-    );
+    expect(rendered.some((line) => line.includes("\x1b[48;2;70;24;24"))).toBe(true);
+    expect(rendered.some((line) => line.includes("\x1b[48;2;18;70;38"))).toBe(true);
     expect(
       rendered
         .filter((line) => stripAnsi(line).startsWith("- ") || stripAnsi(line).startsWith("+ "))
@@ -233,8 +229,7 @@ describe("tui transcript", () => {
       id: "call_1",
       name: "bash",
       args: {
-        command:
-          'git commit -m "feat: add something\n\nCo-authored-by: Name <email@example.com>"',
+        command: 'git commit -m "feat: add something\n\nCo-authored-by: Name <email@example.com>"',
       },
     });
 
@@ -242,9 +237,7 @@ describe("tui transcript", () => {
 
     const lines = block.render(120).map(stripAnsi);
 
-    expect(lines.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(
-      true,
-    );
+    expect(lines.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
     expect(lines).toContain('Failed to run git commit -m "feat: add something');
     expect(lines).toContain('Co-authored-by: Name <email@example.com>"');
     expect(lines).toContain("Tool call rejected by user.");

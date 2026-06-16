@@ -20,11 +20,7 @@ export type KanaAgentConfig = {
   maxTurns: number;
 };
 
-export const KANA_TOOL_APPROVAL_MODES = [
-  "always",
-  "unless_trusted",
-  "never",
-] as const;
+export const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;
 
 export type KanaToolApprovalMode = (typeof KANA_TOOL_APPROVAL_MODES)[number];
 
@@ -76,9 +72,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   },
 };
 
-export function getKanaConfigPaths(
-  env: NodeJS.ProcessEnv = process.env,
-): KanaConfigPaths {
+export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaConfigPaths {
   const home = env.KANA_HOME ?? path.join(env.HOME ?? homedir(), ".kana");
 
   return {
@@ -90,9 +84,7 @@ export function getKanaConfigPaths(
   };
 }
 
-export function loadKanaConfig(
-  env: NodeJS.ProcessEnv = process.env,
-): KanaConfig {
+export function loadKanaConfig(env: NodeJS.ProcessEnv = process.env): KanaConfig {
   const { configPath } = getKanaConfigPaths(env);
 
   if (!existsSync(configPath)) {
@@ -121,31 +113,19 @@ export function installKanaConfig(
   }
 
   if (!approvalsExists || options.force) {
-    writeFileSync(
-      approvalsPath,
-      `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`,
-      {
-        encoding: "utf8",
-        mode: 0o600,
-      },
-    );
+    writeFileSync(approvalsPath, `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
   }
 
   return {
     configPath,
     configStatus:
-      configExists && !options.force
-        ? "exists"
-        : configExists
-          ? "reinstalled"
-          : "created",
+      configExists && !options.force ? "exists" : configExists ? "reinstalled" : "created",
     approvalsPath,
     approvalsStatus:
-      approvalsExists && !options.force
-        ? "exists"
-        : approvalsExists
-          ? "reinstalled"
-          : "created",
+      approvalsExists && !options.force ? "exists" : approvalsExists ? "reinstalled" : "created",
   };
 }
 
@@ -174,49 +154,21 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const raw = asRecord(rawConfig, "config");
   const model = raw.model === undefined ? {} : asRecord(raw.model, "model");
   const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
-  const approval =
-    raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
+  const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
 
   return {
     model: {
       provider: readDeepSeekProvider(model.provider, defaults.model.provider),
       name: readString(model.name, defaults.model.name, "model.name"),
-      apiKeyEnv: readString(
-        model.api_key_env,
-        defaults.model.apiKeyEnv,
-        "model.api_key_env",
-      ),
-      thinking: readBoolean(
-        model.thinking,
-        defaults.model.thinking,
-        "model.thinking",
-      ),
-      reasoningEffort: readReasoningEffort(
-        model.reasoning_effort,
-        defaults.model.reasoningEffort,
-      ),
-      maxTokens: readNumber(
-        model.max_tokens,
-        defaults.model.maxTokens,
-        "model.max_tokens",
-      ),
-      timeoutMs: readNumber(
-        model.timeout_ms,
-        defaults.model.timeoutMs,
-        "model.timeout_ms",
-      ),
-      maxRetries: readNumber(
-        model.max_retries,
-        defaults.model.maxRetries,
-        "model.max_retries",
-      ),
+      apiKeyEnv: readString(model.api_key_env, defaults.model.apiKeyEnv, "model.api_key_env"),
+      thinking: readBoolean(model.thinking, defaults.model.thinking, "model.thinking"),
+      reasoningEffort: readReasoningEffort(model.reasoning_effort, defaults.model.reasoningEffort),
+      maxTokens: readNumber(model.max_tokens, defaults.model.maxTokens, "model.max_tokens"),
+      timeoutMs: readNumber(model.timeout_ms, defaults.model.timeoutMs, "model.timeout_ms"),
+      maxRetries: readNumber(model.max_retries, defaults.model.maxRetries, "model.max_retries"),
     },
     agent: {
-      maxTurns: readNumber(
-        agent.max_turns,
-        defaults.agent.maxTurns,
-        "agent.max_turns",
-      ),
+      maxTurns: readNumber(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
     },
     approval: {
       mode: readToolApprovalMode(approval.mode, defaults.approval.mode),
@@ -268,10 +220,7 @@ function readNumber(value: unknown, fallback: number, name: string): number {
   return value;
 }
 
-function readDeepSeekProvider(
-  value: unknown,
-  fallback: "deepseek",
-): "deepseek" {
+function readDeepSeekProvider(value: unknown, fallback: "deepseek"): "deepseek" {
   const provider = readString(value, fallback, "model.provider");
 
   if (provider !== "deepseek") {
@@ -301,9 +250,7 @@ function readToolApprovalMode(
   const mode = readString(value, fallback, "approval.mode");
 
   if (!(KANA_TOOL_APPROVAL_MODES as readonly string[]).includes(mode)) {
-    throw new Error(
-      `approval.mode must be one of: ${KANA_TOOL_APPROVAL_MODES.join(", ")}.`,
-    );
+    throw new Error(`approval.mode must be one of: ${KANA_TOOL_APPROVAL_MODES.join(", ")}.`);
   }
 
   return mode as KanaToolApprovalMode;

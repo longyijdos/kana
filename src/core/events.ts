@@ -1,8 +1,4 @@
-import type {
-  AssistantMessage,
-  AssistantStopReason,
-  ToolCallContent,
-} from "./messages";
+import type { AssistantMessage, AssistantStopReason, ToolCallContent } from "./messages";
 
 export type StopReason = AssistantStopReason;
 

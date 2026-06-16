@@ -23,15 +23,12 @@ export type LoadKanaSystemPromptOptions = {
   env?: NodeJS.ProcessEnv;
 };
 
-export type BuildKanaSystemPromptOptions =
-  CollectKanaEnvironmentContextOptions & {
-    env?: NodeJS.ProcessEnv;
-    skills?: KanaSkill[];
-  };
+export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions & {
+  env?: NodeJS.ProcessEnv;
+  skills?: KanaSkill[];
+};
 
-export function loadKanaSystemPrompt(
-  options: LoadKanaSystemPromptOptions = {},
-): string {
+export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}): string {
   const cwd = options.cwd ?? process.cwd();
   const { agentsPath } = getKanaConfigPaths(options.env);
   const projectAgentsPath = path.join(cwd, "AGENTS.md");
@@ -62,23 +59,17 @@ export function loadKanaSystemPrompt(
   return instructionBlocks.join("\n\n");
 }
 
-export function buildKanaSystemPrompt(
-  options: BuildKanaSystemPromptOptions = {},
-): string {
+export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}): string {
   const systemPrompt = loadKanaSystemPrompt({
     cwd: options.cwd,
     env: options.env,
   }).trimEnd();
-  const environmentContext = formatKanaEnvironmentContext(
-    collectKanaEnvironmentContext(options),
-  );
+  const environmentContext = formatKanaEnvironmentContext(collectKanaEnvironmentContext(options));
   const skillsPrompt = formatKanaSkillsForPrompt(options.skills ?? [], {
     env: options.env,
   });
 
-  return [systemPrompt, environmentContext, skillsPrompt]
-    .filter(Boolean)
-    .join("\n\n");
+  return [systemPrompt, environmentContext, skillsPrompt].filter(Boolean).join("\n\n");
 }
 
 function formatAgentsInstructions(

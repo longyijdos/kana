@@ -19,11 +19,7 @@ export function padRightAnsi(value: string, width: number): string {
   return value + " ".repeat(Math.max(0, width - visibleWidth(value)));
 }
 
-export function truncateToWidth(
-  value: string,
-  width: number,
-  suffix = "...",
-): string {
+export function truncateToWidth(value: string, width: number, suffix = "..."): string {
   if (width <= 0) {
     return "";
   }
@@ -123,10 +119,7 @@ function graphemes(value: string): string[] {
   );
 }
 
-function readAnsi(
-  value: string,
-  index: number,
-): { sequence: string; end: number } | undefined {
+function readAnsi(value: string, index: number): { sequence: string; end: number } | undefined {
   ANSI_PATTERN.lastIndex = index;
   const match = ANSI_PATTERN.exec(value);
 

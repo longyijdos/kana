@@ -88,10 +88,7 @@ describe("prompt editor", () => {
     editor.setText("abcd");
     editor.handleInput("\x1b[D");
 
-    const cursorMarkers = editor
-      .render(9)
-      .join("")
-      .split(CURSOR_MARKER).length - 1;
+    const cursorMarkers = editor.render(9).join("").split(CURSOR_MARKER).length - 1;
 
     expect(cursorMarkers).toBe(1);
   });

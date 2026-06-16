@@ -23,9 +23,7 @@ describe("tui markdown block", () => {
   });
 
   test("renders unordered list continuations with stable indentation", () => {
-    const lines = new MarkdownBlock("- abcdef", { color: "white" })
-      .render(5)
-      .map(stripAnsi);
+    const lines = new MarkdownBlock("- abcdef", { color: "white" }).render(5).map(stripAnsi);
 
     expect(lines).toEqual(["- abc", "  def"]);
   });
@@ -56,16 +54,11 @@ describe("tui markdown block", () => {
   });
 
   test("renders combined and nested emphasis", () => {
-    const rendered = new MarkdownBlock(
-      "这是***粗斜体***，还有：**前面粗体*里面斜体*后面粗体**",
-      {
-        color: "white",
-      },
-    ).render(120);
+    const rendered = new MarkdownBlock("这是***粗斜体***，还有：**前面粗体*里面斜体*后面粗体**", {
+      color: "white",
+    }).render(120);
 
-    expect(stripAnsi(rendered[0] ?? "")).toBe(
-      "这是粗斜体，还有：前面粗体里面斜体后面粗体",
-    );
+    expect(stripAnsi(rendered[0] ?? "")).toBe("这是粗斜体，还有：前面粗体里面斜体后面粗体");
     expect(rendered[0]).toContain("\x1b[1m");
     expect(rendered[0]).toContain("\x1b[3m");
   });
@@ -99,12 +92,7 @@ describe("tui markdown block", () => {
 
   test("renders indented headings, nested quotes, task lists, and rules", () => {
     const rendered = new MarkdownBlock(
-      [
-        "    ## 标题",
-        "    > > 嵌套引用",
-        "    - [x] 已完成任务",
-        "    ---",
-      ].join("\n"),
+      ["    ## 标题", "    > > 嵌套引用", "    - [x] 已完成任务", "    ---"].join("\n"),
       { color: "white" },
     ).render(80);
     const plain = rendered.map(stripAnsi);

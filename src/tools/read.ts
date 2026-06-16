@@ -41,16 +41,14 @@ export type ReadToolOptions = {
   root?: string;
 };
 
-export function createReadTool(options: ReadToolOptions = {}): Tool<
-  typeof readParameters,
-  ReadToolResult
-> {
+export function createReadTool(
+  options: ReadToolOptions = {},
+): Tool<typeof readParameters, ReadToolResult> {
   const root = path.resolve(options.root ?? process.cwd());
 
   return {
     name: "read",
-    description:
-      "Read a text file. Use offset and limit to inspect large files in chunks.",
+    description: "Read a text file. Use offset and limit to inspect large files in chunks.",
     parameters: readParameters,
     execute: async (args) => {
       const filePath = await resolveExistingWorkspaceFile(root, args.path);
@@ -61,9 +59,7 @@ export function createReadTool(options: ReadToolOptions = {}): Tool<
       const startIndex = Math.max(offset - 1, 0);
       const selectedLines = lines.slice(startIndex, startIndex + limit);
       const startLine = offset;
-      const endLine = selectedLines.length
-        ? startLine + selectedLines.length - 1
-        : startLine - 1;
+      const endLine = selectedLines.length ? startLine + selectedLines.length - 1 : startLine - 1;
       const selectedContent = selectedLines.join("\n");
       const result: ReadToolResult = {
         path: filePath.relativePath,

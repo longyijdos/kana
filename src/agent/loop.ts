@@ -1,10 +1,4 @@
-import type {
-  AssistantMessage,
-  Message,
-  Model,
-  ToolCallContent,
-  ToolResultMessage,
-} from "@/core";
+import type { AssistantMessage, Message, Model, ToolCallContent, ToolResultMessage } from "@/core";
 import { validateToolArguments, type Tool, type ToolResult } from "@/tools";
 import type { AgentEvent } from "./events";
 import type { AgentEndReason } from "./events";
@@ -83,14 +77,8 @@ export async function runAgentLoop(
 
     await emit({ type: "turn_start", turn });
 
-    const assistantTurn = await streamAssistantResponse(
-      currentContext,
-      config,
-      emit,
-    );
-    const assistantHistoryMessage = assistantMessageForHistory(
-      assistantTurn.message,
-    );
+    const assistantTurn = await streamAssistantResponse(currentContext, config, emit);
+    const assistantHistoryMessage = assistantMessageForHistory(assistantTurn.message);
 
     if (assistantHistoryMessage) {
       replaceLastAssistantMessage(currentContext, assistantHistoryMessage);
@@ -100,9 +88,7 @@ export async function runAgentLoop(
     }
 
     if (assistantTurn.isError || config.signal?.aborted) {
-      endReason = config.signal?.aborted
-        ? "aborted"
-        : endReasonForAssistantTurn(assistantTurn);
+      endReason = config.signal?.aborted ? "aborted" : endReasonForAssistantTurn(assistantTurn);
       await emit({
         type: "turn_end",
         turn,
@@ -113,15 +99,8 @@ export async function runAgentLoop(
     }
 
     const toolCalls =
-      assistantTurn.message.stopReason === "toolUse"
-        ? getToolCalls(assistantTurn.message)
-        : [];
-    const executedToolCalls = await executeToolCalls(
-      currentContext,
-      toolCalls,
-      config,
-      emit,
-    );
+      assistantTurn.message.stopReason === "toolUse" ? getToolCalls(assistantTurn.message) : [];
+    const executedToolCalls = await executeToolCalls(currentContext, toolCalls, config, emit);
 
     for (const toolResult of executedToolCalls.toolResults) {
       currentContext.messages.push(toolResult);
@@ -136,9 +115,7 @@ export async function runAgentLoop(
     });
 
     if (toolCalls.length === 0 || executedToolCalls.abortRun) {
-      endReason = executedToolCalls.abortRun
-        ? "aborted"
-        : endReasonForAssistantTurn(assistantTurn);
+      endReason = executedToolCalls.abortRun ? "aborted" : endReasonForAssistantTurn(assistantTurn);
       break;
     }
   }
@@ -421,9 +398,7 @@ function getToolCalls(message: AssistantMessage): ToolCallContent[] {
   return message.content.filter((content) => content.type === "tool_call");
 }
 
-function assistantMessageForHistory(
-  message: AssistantMessage,
-): AssistantMessage | undefined {
+function assistantMessageForHistory(message: AssistantMessage): AssistantMessage | undefined {
   if (message.stopReason === "error" && message.content.length === 0) {
     return undefined;
   }
@@ -463,10 +438,7 @@ function endReasonForAssistantTurn(turn: AssistantTurnResult): AgentEndReason {
   }
 }
 
-function replaceLastAssistantMessage(
-  context: AgentContext,
-  message: AssistantMessage,
-): void {
+function replaceLastAssistantMessage(context: AgentContext, message: AssistantMessage): void {
   if (context.messages[context.messages.length - 1]?.role === "assistant") {
     context.messages[context.messages.length - 1] = message;
     return;

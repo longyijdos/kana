@@ -35,10 +35,9 @@ export type EditToolOptions = {
   root?: string;
 };
 
-export function createEditTool(options: EditToolOptions = {}): Tool<
-  typeof editParameters,
-  EditToolResult
-> {
+export function createEditTool(
+  options: EditToolOptions = {},
+): Tool<typeof editParameters, EditToolResult> {
   const root = path.resolve(options.root ?? process.cwd());
 
   return {

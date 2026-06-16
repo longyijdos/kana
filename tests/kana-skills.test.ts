@@ -1,10 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -61,9 +55,7 @@ describe("Kana skills", () => {
     const root = createTempDir();
     writeSkill(
       path.join(root, "missing-description", "SKILL.md"),
-      ["---", "name: missing-description", "---", "No metadata.", ""].join(
-        "\n",
-      ),
+      ["---", "name: missing-description", "---", "No metadata.", ""].join("\n"),
     );
 
     const { skills, diagnostics } = loadKanaSkillsFromDir(root);
@@ -83,14 +75,9 @@ describe("Kana skills", () => {
     const root = createTempDir();
     writeSkill(
       path.join(root, "bad-name", "SKILL.md"),
-      [
-        "---",
-        "name: Bad_Name",
-        "description: Still useful.",
-        "---",
-        "Use this skill.",
-        "",
-      ].join("\n"),
+      ["---", "name: Bad_Name", "description: Still useful.", "---", "Use this skill.", ""].join(
+        "\n",
+      ),
     );
 
     const { skills, diagnostics } = loadKanaSkillsFromDir(root);
@@ -110,44 +97,24 @@ describe("Kana skills", () => {
     const root = createTempDir();
     writeSkill(
       path.join(root, "nested", "child-skill", "SKILL.md"),
-      [
-        "---",
-        "name: child-skill",
-        "description: Child skill.",
-        "---",
-        "Use child.",
-        "",
-      ].join("\n"),
+      ["---", "name: child-skill", "description: Child skill.", "---", "Use child.", ""].join("\n"),
     );
     writeSkill(
       path.join(root, "root-preferred", "SKILL.md"),
-      [
-        "---",
-        "name: root-preferred",
-        "description: Root skill.",
-        "---",
-        "Use root.",
-        "",
-      ].join("\n"),
+      ["---", "name: root-preferred", "description: Root skill.", "---", "Use root.", ""].join(
+        "\n",
+      ),
     );
     writeSkill(
       path.join(root, "root-preferred", "ignored", "SKILL.md"),
-      [
-        "---",
-        "name: ignored",
-        "description: Ignored skill.",
-        "---",
-        "Should not load.",
-        "",
-      ].join("\n"),
+      ["---", "name: ignored", "description: Ignored skill.", "---", "Should not load.", ""].join(
+        "\n",
+      ),
     );
 
     const { skills } = loadKanaSkillsFromDir(root);
 
-    expect(skills.map((skill) => skill.name)).toEqual([
-      "child-skill",
-      "root-preferred",
-    ]);
+    expect(skills.map((skill) => skill.name)).toEqual(["child-skill", "root-preferred"]);
   });
 
   test("ignores markdown files that are not named SKILL.md", () => {
@@ -165,14 +132,7 @@ describe("Kana skills", () => {
     );
     writeSkill(
       path.join(root, "valid", "SKILL.md"),
-      [
-        "---",
-        "name: valid",
-        "description: Should load.",
-        "---",
-        "Use valid.",
-        "",
-      ].join("\n"),
+      ["---", "name: valid", "description: Should load.", "---", "Use valid.", ""].join("\n"),
     );
 
     const { skills, diagnostics } = loadKanaSkillsFromDir(root);
@@ -216,25 +176,11 @@ describe("Kana skills", () => {
     const root = createTempDir();
     writeSkill(
       path.join(root, "first", "SKILL.md"),
-      [
-        "---",
-        "name: same-name",
-        "description: First skill.",
-        "---",
-        "Use first.",
-        "",
-      ].join("\n"),
+      ["---", "name: same-name", "description: First skill.", "---", "Use first.", ""].join("\n"),
     );
     writeSkill(
       path.join(root, "second", "SKILL.md"),
-      [
-        "---",
-        "name: same-name",
-        "description: Second skill.",
-        "---",
-        "Use second.",
-        "",
-      ].join("\n"),
+      ["---", "name: same-name", "description: Second skill.", "---", "Use second.", ""].join("\n"),
     );
 
     const { skills, diagnostics } = loadKanaSkills({
@@ -242,9 +188,7 @@ describe("Kana skills", () => {
       skillPaths: [root],
     });
 
-    expect(skills.map((skill) => skill.filePath)).toEqual([
-      path.join(root, "first", "SKILL.md"),
-    ]);
+    expect(skills.map((skill) => skill.filePath)).toEqual([path.join(root, "first", "SKILL.md")]);
     expect(diagnostics).toContainEqual({
       type: "collision",
       code: "name_collision",
@@ -260,25 +204,13 @@ describe("Kana skills", () => {
     const { home } = getKanaConfigPaths(env);
     writeSkill(
       path.join(home, "skills", "same-name", "SKILL.md"),
-      [
-        "---",
-        "name: same-name",
-        "description: Global skill.",
-        "---",
-        "Use global.",
-        "",
-      ].join("\n"),
+      ["---", "name: same-name", "description: Global skill.", "---", "Use global.", ""].join("\n"),
     );
     writeSkill(
       path.join(cwd, ".kana", "skills", "same-name", "SKILL.md"),
-      [
-        "---",
-        "name: same-name",
-        "description: Project skill.",
-        "---",
-        "Use project.",
-        "",
-      ].join("\n"),
+      ["---", "name: same-name", "description: Project skill.", "---", "Use project.", ""].join(
+        "\n",
+      ),
     );
 
     const { skills, diagnostics } = loadKanaSkills({ cwd, env });
@@ -298,11 +230,7 @@ describe("Kana skills", () => {
   test("formats allowlisted global skills for the system prompt", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-    writeSkillConfig(home, [
-      "[model_invocation]",
-      'enabled = ["visible-skill"]',
-      "",
-    ].join("\n"));
+    writeSkillConfig(home, ["[model_invocation]", 'enabled = ["visible-skill"]', ""].join("\n"));
 
     const prompt = formatKanaSkillsForPrompt(
       [
@@ -371,21 +299,12 @@ describe("Kana skills", () => {
     const env = createTempEnv();
     const cwd = createTempDir();
     const { home } = getKanaConfigPaths(env);
-    writeSkillConfig(home, [
-      "[model_invocation]",
-      'enabled = ["enabled-global"]',
-      "",
-    ].join("\n"));
+    writeSkillConfig(home, ["[model_invocation]", 'enabled = ["enabled-global"]', ""].join("\n"));
     writeSkill(
       path.join(cwd, ".kana", "skills", "project-skill", "SKILL.md"),
-      [
-        "---",
-        "name: project-skill",
-        "description: Project skill.",
-        "---",
-        "Use project.",
-        "",
-      ].join("\n"),
+      ["---", "name: project-skill", "description: Project skill.", "---", "Use project.", ""].join(
+        "\n",
+      ),
     );
     writeSkill(
       path.join(home, "skills", "enabled-global", "SKILL.md"),
@@ -412,12 +331,14 @@ describe("Kana skills", () => {
 
     const { skills } = loadKanaSkillActivations({ cwd, env });
 
-    expect(skills.map(({ name, scope, enabled, mutable }) => ({
-      name,
-      scope,
-      enabled,
-      mutable,
-    }))).toEqual([
+    expect(
+      skills.map(({ name, scope, enabled, mutable }) => ({
+        name,
+        scope,
+        enabled,
+        mutable,
+      })),
+    ).toEqual([
       {
         name: "project-skill",
         scope: "project",

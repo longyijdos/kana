@@ -45,10 +45,7 @@ type WritableAgentState = Omit<
   error?: unknown;
 };
 
-export type AgentEventListener = (
-  event: AgentEvent,
-  signal: AbortSignal,
-) => Promise<void> | void;
+export type AgentEventListener = (event: AgentEvent, signal: AbortSignal) => Promise<void> | void;
 
 export type AgentRunCommittedHook = (commit: {
   messages: Message[];
@@ -123,20 +120,16 @@ export class Agent {
     this.stateData.messages = [...this.stateData.messages, ...promptMessages];
 
     void this.runWithLifecycle((signal) =>
-      runAgentLoop(
-        this.createContextSnapshot(),
-        this.createLoopConfig(signal),
-        async (event) => {
-          await this.processEvent(event);
+      runAgentLoop(this.createContextSnapshot(), this.createLoopConfig(signal), async (event) => {
+        await this.processEvent(event);
 
-          if (event.type === "agent_end") {
-            doneEvent = event;
-            return;
-          }
+        if (event.type === "agent_end") {
+          doneEvent = event;
+          return;
+        }
 
-          stream.push(event);
-        },
-      ),
+        stream.push(event);
+      }),
     )
       .then(async () => {
         if (!doneEvent) {
@@ -269,10 +262,7 @@ export class Agent {
       }
 
       case "agent_end":
-        this.stateData.messages = [
-          ...this.stateData.messages,
-          ...event.messages,
-        ];
+        this.stateData.messages = [...this.stateData.messages, ...event.messages];
         this.stateData.streamingMessage = undefined;
         break;
     }

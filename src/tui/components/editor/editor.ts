@@ -8,10 +8,7 @@ import {
 } from "./commands";
 import type { Component } from "../../runtime";
 import { CURSOR_MARKER } from "../../runtime";
-import {
-  applyEditorAction,
-  type EditorTextState,
-} from "./state";
+import { applyEditorAction, type EditorTextState } from "./state";
 import {
   createInputLayout,
   findInputCursorLine,
@@ -213,10 +210,7 @@ export class Editor implements Component {
       return `${CURSOR_MARKER}${dim("Ask the agent...")}`;
     }
 
-    if (
-      this.state.cursorOffset < line.startOffset ||
-      this.state.cursorOffset > line.endOffset
-    ) {
+    if (this.state.cursorOffset < line.startOffset || this.state.cursorOffset > line.endOffset) {
       return line.text;
     }
 

@@ -22,10 +22,9 @@ export type ToolResult<TResult = unknown> = {
   isError?: boolean;
 };
 
-export type Tool<T extends TSchema = TSchema, TResult = unknown> =
-  ToolSpec<T> & {
-    execute(
-      args: Static<T>,
-      context: ToolContext,
-    ): Promise<ToolResult<TResult> | TResult> | ToolResult<TResult> | TResult;
-  };
+export type Tool<T extends TSchema = TSchema, TResult = unknown> = ToolSpec<T> & {
+  execute(
+    args: Static<T>,
+    context: ToolContext,
+  ): Promise<ToolResult<TResult> | TResult> | ToolResult<TResult> | TResult;
+};

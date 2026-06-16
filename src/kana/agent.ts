@@ -1,24 +1,13 @@
 import { Agent, type AgentConfig } from "@/agent";
 import { getModel } from "@/providers";
-import {
-  createBashTool,
-  createEditTool,
-  createReadTool,
-  createWriteTool,
-} from "@/tools";
+import { createBashTool, createEditTool, createReadTool, createWriteTool } from "@/tools";
 import { getKanaConfigPaths, type KanaConfig } from "./config";
 import { buildKanaSystemPrompt } from "./prompt";
 import { loadKanaSkills } from "./skills";
 
-type KanaAgentOptions = Pick<
-  AgentConfig,
-  "beforeToolExecution" | "messages" | "onRunCommitted"
->;
+type KanaAgentOptions = Pick<AgentConfig, "beforeToolExecution" | "messages" | "onRunCommitted">;
 
-export function createKanaAgent(
-  config: KanaConfig,
-  options: KanaAgentOptions = {},
-): Agent {
+export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
   const cwd = process.cwd();
   const apiKey = process.env[config.model.apiKeyEnv];
   const { skills } = loadKanaSkills({ cwd });

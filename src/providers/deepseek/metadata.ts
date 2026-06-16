@@ -32,8 +32,7 @@ export const DEEPSEEK_MODELS = {
 } as const satisfies Record<string, DeepSeekModelMetadata>;
 
 export function getDeepSeekModelMetadata(model: string): DeepSeekModelMetadata {
-  const metadata =
-    DEEPSEEK_MODELS[model as keyof typeof DEEPSEEK_MODELS];
+  const metadata = DEEPSEEK_MODELS[model as keyof typeof DEEPSEEK_MODELS];
 
   if (!metadata) {
     throw new Error(`Unsupported DeepSeek model: ${model}`);

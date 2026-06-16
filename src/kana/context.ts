@@ -25,9 +25,7 @@ export function collectKanaEnvironmentContext(
   };
 }
 
-export function formatKanaEnvironmentContext(
-  context: KanaEnvironmentContext,
-): string {
+export function formatKanaEnvironmentContext(context: KanaEnvironmentContext): string {
   return [
     "<environment_context>",
     `  <cwd>${context.cwd}</cwd>`,
@@ -57,10 +55,7 @@ function formatDateInTimezone(date: Date, timezone: string): string {
   return `${year}-${month}-${day}`;
 }
 
-function getDatePart(
-  parts: Intl.DateTimeFormatPart[],
-  type: Intl.DateTimeFormatPartTypes,
-): string {
+function getDatePart(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
   const part = parts.find((candidate) => candidate.type === type);
 
   if (!part) {

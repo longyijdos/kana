@@ -85,9 +85,7 @@ describe("tool approval", () => {
 
     const rendered = approval.render(120).map(stripAnsi);
 
-    expect(rendered.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(
-      true,
-    );
+    expect(rendered.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
     expect(rendered).toContain("Allow agent to run bash?");
     expect(rendered).toContain('git commit -m "feat: add something');
     expect(rendered).toContain('Co-authored-by: Name <email@example.com>"');
