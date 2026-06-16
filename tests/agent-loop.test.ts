@@ -333,6 +333,58 @@ describe("runAgentLoop", () => {
     });
   });
 
+  test("emits assistant and tool execution events in turn order", async () => {
+    const events: AgentEvent[] = [];
+
+    await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "add the numbers",
+          },
+        ],
+        tools: [addTool],
+      },
+      {
+        model: new ScriptedToolModel(),
+        maxTurns: 3,
+      },
+      (event) => {
+        events.push(structuredClone(event));
+      },
+    );
+
+    expect(formatEventSequence(events)).toEqual([
+      "agent_start",
+      "turn_start",
+      "message_start",
+      "message_update:toolcall_start",
+      "message_update:toolcall_end",
+      "message_end",
+      "tool_execution_start",
+      "tool_execution_end",
+      "turn_end",
+      "turn_start",
+      "message_start",
+      "message_update:text_start",
+      "message_update:text_delta",
+      "message_update:text_end",
+      "message_end",
+      "turn_end",
+      "agent_end",
+    ]);
+    expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
+      type: "tool_execution_start",
+      toolCallId: "call_1",
+      toolName: "add",
+      args: {
+        a: 2,
+        b: 3,
+      },
+    });
+  });
+
   test("turns invalid tool arguments into error tool results", async () => {
     const model = new ScriptedToolModel({
       a: 1,
@@ -705,6 +757,14 @@ describe("runAgentLoop", () => {
     });
   });
 });
+
+function formatEventSequence(events: AgentEvent[]): string[] {
+  return events.map((event) =>
+    event.type === "message_update"
+      ? `message_update:${event.assistantMessageEvent.type}`
+      : event.type,
+  );
+}
 
 function streamToolCallMessage(stream: AssistantEventStream, args: unknown): void {
   const message: AssistantMessage = {
