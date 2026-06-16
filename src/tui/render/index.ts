@@ -3,10 +3,8 @@ export {
   bold,
   color,
   dim,
-  foregroundRgb,
   italic,
   strikethrough,
-  type BackgroundColor,
   type Color,
   RESET,
 } from "./ansi";

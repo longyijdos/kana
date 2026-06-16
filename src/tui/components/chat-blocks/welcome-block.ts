@@ -1,7 +1,8 @@
 import os from "node:os";
 import type { KanaSessionMetadata } from "@/kana";
-import { foregroundRgb, padRightAnsi, truncateToWidth, visibleWidth } from "../../render";
+import { color, padRightAnsi, truncateToWidth, visibleWidth } from "../../render";
 import type { Component } from "../../runtime";
+import { tuiTheme } from "../../theme";
 
 type WelcomeBlockOptions = {
   logoLines: readonly string[];
@@ -10,10 +11,6 @@ type WelcomeBlockOptions = {
   paddingTop?: number;
 };
 
-const BORDER_COLOR = [196, 125, 92] as const;
-const TITLE_COLOR = [212, 132, 94] as const;
-const MUTED_COLOR = [145, 145, 145] as const;
-const TEXT_COLOR = [238, 238, 238] as const;
 const PANEL_MIN_WIDTH = 68;
 const PANEL_MAX_WIDTH = 74;
 const LEFT_WIDTH = 34;
@@ -129,19 +126,19 @@ export class WelcomeBlock implements Component {
 }
 
 function border(value: string): string {
-  return foregroundRgb(value, ...BORDER_COLOR);
+  return color(value, tuiTheme.welcomeBorder);
 }
 
 function title(value: string): string {
-  return foregroundRgb(value, ...TITLE_COLOR);
+  return color(value, tuiTheme.welcomeTitle);
 }
 
 function muted(value: string): string {
-  return foregroundRgb(value, ...MUTED_COLOR);
+  return color(value, tuiTheme.welcomeMuted);
 }
 
 function text(value: string): string {
-  return foregroundRgb(value, ...TEXT_COLOR);
+  return color(value, tuiTheme.welcomeText);
 }
 
 function formatSessionTitle(session: KanaSessionMetadata): string {

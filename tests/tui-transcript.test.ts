@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { AssistantMessageBlock, ToolCallBlock, Transcript } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
 import type { Component } from "../src/tui/runtime";
+import { tuiTheme } from "../src/tui/theme";
 
 class LinesBlock implements Component {
   constructor(readonly lines: string[]) {}
@@ -60,8 +61,11 @@ describe("tui transcript", () => {
       false,
     );
 
-    expect(assistant.render(80)[0]).toContain("\x1b[37m");
-    expect(tool.render(80)[1]).toContain("\x1b[32m");
+    const assistantLine = assistant.render(80)[0] ?? "";
+    const toolTitle = tool.render(80)[1] ?? "";
+
+    expect(assistantLine).toContain(color("hello", tuiTheme.markdownText));
+    expect(toolTitle).toContain(color(stripAnsi(toolTitle), tuiTheme.toolSuccess));
   });
 
   test("does not render assistant stop reasons as transcript content", () => {

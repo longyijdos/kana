@@ -2,7 +2,6 @@ import {
   bold,
   color,
   dim,
-  foregroundRgb,
   graphemeSegments,
   italic,
   splitLines,
@@ -548,7 +547,7 @@ function colorHex(text: string, value: string): string {
   const green = Number.parseInt(hex.slice(2, 4), 16);
   const blue = Number.parseInt(hex.slice(4, 6), 16);
 
-  return foregroundRgb(text, red, green, blue);
+  return color(text, [red, green, blue]);
 }
 
 function wrapPlainLine(value: string, width: number): string[] {

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { MarkdownBlock } from "../src/tui/components";
 import { preloadSyntaxHighlighter } from "../src/tui/utils/syntax-highlighter";
-import { stripAnsi, visibleWidth } from "../src/tui/render";
+import { color, stripAnsi, visibleWidth } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("tui markdown block", () => {
   test("renders headings with bold styling", () => {
@@ -51,7 +52,7 @@ describe("tui markdown block", () => {
 
     expect(stripAnsi(rendered[0] ?? "")).toBe("Use bun test for checks.");
     expect(rendered[0]).toContain("\x1b[1m");
-    expect(rendered[0]).toContain("\x1b[33m");
+    expect(rendered[0]).toContain(color("bun test", tuiTheme.markdownInlineCode));
   });
 
   test("renders combined and nested emphasis", () => {

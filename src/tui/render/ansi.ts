@@ -1,4 +1,4 @@
-export type Color =
+export type AnsiColor =
   | "black"
   | "red"
   | "green"
@@ -9,11 +9,10 @@ export type Color =
   | "white"
   | "gray";
 
-export type BackgroundColor =
-  | "diffDelete"
-  | "diffInsert";
+export type RgbColor = readonly [red: number, green: number, blue: number];
+export type Color = AnsiColor | RgbColor;
 
-const COLOR_CODES: Record<Color, number> = {
+const COLOR_CODES: Record<AnsiColor, number> = {
   black: 30,
   red: 31,
   green: 32,
@@ -25,29 +24,23 @@ const COLOR_CODES: Record<Color, number> = {
   gray: 90,
 };
 
-const BACKGROUND_CODES: Record<BackgroundColor, string> = {
-  diffDelete: "48;2;70;24;24",
-  diffInsert: "48;2;18;70;38",
-};
-
 export const RESET = "\x1b[0m";
 const ERASE_TO_END_OF_LINE = "\x1b[K";
 
 export function color(text: string, value: Color): string {
+  if (typeof value !== "string") {
+    return `\x1b[${rgbCode("38", value)}m${text}${RESET}`;
+  }
+
   return `\x1b[${COLOR_CODES[value]}m${text}${RESET}`;
 }
 
-export function foregroundRgb(
-  text: string,
-  red: number,
-  green: number,
-  blue: number,
-): string {
-  return `\x1b[38;2;${clampRgb(red)};${clampRgb(green)};${clampRgb(blue)}m${text}${RESET}`;
-}
+export function background(text: string, value: Color): string {
+  const code = typeof value === "string"
+    ? COLOR_CODES[value] + 10
+    : rgbCode("48", value);
 
-export function background(text: string, value: BackgroundColor): string {
-  return `\x1b[${BACKGROUND_CODES[value]}m${text}${ERASE_TO_END_OF_LINE}${RESET}`;
+  return `\x1b[${code}m${text}${ERASE_TO_END_OF_LINE}${RESET}`;
 }
 
 export function bold(text: string): string {
@@ -68,4 +61,9 @@ export function dim(text: string): string {
 
 function clampRgb(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function rgbCode(prefix: "38" | "48", value: RgbColor): string {
+  const [red, green, blue] = value;
+  return `${prefix};2;${clampRgb(red)};${clampRgb(green)};${clampRgb(blue)}`;
 }

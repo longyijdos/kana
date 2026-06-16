@@ -12,7 +12,8 @@ import {
 } from "../src/tui/components/editor/input-layout";
 import { applyEditorAction } from "../src/tui/components/editor/state";
 import { CURSOR_MARKER } from "../src/tui/runtime";
-import { stripAnsi, visibleWidth } from "../src/tui/render";
+import { color, stripAnsi, visibleWidth } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 function cursorLine(lines: string[]): number {
   return lines.findIndex((line) => line.includes(CURSOR_MARKER));
@@ -102,7 +103,7 @@ describe("prompt editor", () => {
     const rendered = editor.render(40).join("\n");
 
     expect(stripAnsi(rendered)).toContain("/quit later");
-    expect(rendered).toContain("\x1b[35m/quit\x1b[0m later");
+    expect(rendered).toContain(`${color("/quit", tuiTheme.command)} later`);
   });
 
   test("keeps multiline CJK editor rows inside the frame", () => {
