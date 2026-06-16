@@ -7,7 +7,8 @@
   "scripts": {
     "bench:tui-render": "bun scripts/bench-tui-render.ts",
     "build:cli": "bun build --compile --outfile=kana src/main.ts",
-    "check": "biome check --write --error-on-warnings . && bun run typecheck && bun test",
+    "check": "biome check --error-on-warnings . && bun run typecheck && bun test",
+    "check:write": "biome check --write --error-on-warnings . && bun run typecheck && bun test",
     "format": "biome format --write .",
     "install:bin": "./scripts/install.sh",
     "lint": "biome lint --error-on-warnings .",
