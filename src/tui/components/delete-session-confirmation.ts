@@ -1,6 +1,6 @@
 import type { KanaSessionMetadata } from "@/kana";
-import { isEscape } from "../runtime";
 import type { Component } from "../runtime";
+import { isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ChoicePrompt } from "./choice-prompt";
 

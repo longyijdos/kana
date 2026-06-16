@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Editor } from "../src/tui/components/editor";
 import { visibleWidth } from "../src/tui/render";
-import { CURSOR_MARKER } from "../src/tui/runtime";
-import { extractCursorPosition } from "../src/tui/runtime";
+import { CURSOR_MARKER, extractCursorPosition } from "../src/tui/runtime";
 
 describe("tui cursor positioning", () => {
   test("cursor marker has no visible width", () => {

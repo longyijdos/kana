@@ -1,6 +1,4 @@
-import { graphemeSegments } from "../../render";
-import { isLineBreak } from "../../render";
-import { visibleWidth } from "../../render";
+import { graphemeSegments, isLineBreak, visibleWidth } from "../../render";
 
 export type InputLayoutLine = {
   text: string;

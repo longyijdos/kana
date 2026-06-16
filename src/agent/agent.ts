@@ -1,12 +1,12 @@
 import type { AssistantMessage, Message, Model, UserMessage } from "@/core";
 import type { Tool } from "@/tools";
+import type { AgentEvent } from "./events";
 import {
-  runAgentLoop,
   type AgentContext,
   type AgentLoopConfig,
   type BeforeToolExecutionHook,
+  runAgentLoop,
 } from "./loop";
-import type { AgentEvent } from "./events";
 import { AgentEventStream } from "./stream";
 
 export type AgentPromptInput = string | UserMessage | UserMessage[];

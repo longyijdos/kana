@@ -2,10 +2,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import type { ToolCallContent } from "@/core";
 import { getKanaConfigPaths, type KanaToolApprovalConfig } from "./config";
+
 export {
   DEFAULT_KANA_TOOL_APPROVALS,
   type KanaToolApprovals,
 } from "./tool-approval-defaults";
+
 import { DEFAULT_KANA_TOOL_APPROVALS, type KanaToolApprovals } from "./tool-approval-defaults";
 
 export function shouldRequestToolApproval(

@@ -1,8 +1,8 @@
+import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-
-import { afterEach, describe, expect, test } from "bun:test";
+import type { Message } from "@/core";
 import {
   appendKanaSessionMessages,
   createKanaSession,
@@ -11,7 +11,6 @@ import {
   listKanaSessions,
   loadKanaSession,
 } from "@/kana";
-import type { Message } from "@/core";
 
 const tempDirs: string[] = [];
 

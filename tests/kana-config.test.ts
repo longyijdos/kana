@@ -1,13 +1,12 @@
+import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-
-import { afterEach, describe, expect, test } from "bun:test";
 import {
-  DEFAULT_KANA_TOOL_APPROVALS,
-  DEFAULT_KANA_CONFIG,
   buildKanaSystemPrompt,
   createKanaAgent,
+  DEFAULT_KANA_CONFIG,
+  DEFAULT_KANA_TOOL_APPROVALS,
   formatKanaEnvironmentContext,
   getKanaConfigPaths,
   installKanaConfig,

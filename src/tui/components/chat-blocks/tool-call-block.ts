@@ -1,11 +1,9 @@
 import type { ToolCallContent } from "@/core";
-import { color } from "../../render";
-import { mapLines } from "../../render";
-import { truncateToWidth } from "../../render";
+import { color, mapLines, truncateToWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
-import { TextBlock } from "./text-block";
 import { formatToolOutput, formatToolTitle, type ToolState } from "../../tools";
+import { TextBlock } from "./text-block";
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;

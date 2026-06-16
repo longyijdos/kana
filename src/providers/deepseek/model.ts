@@ -1,4 +1,4 @@
-import { AssistantEventStream, BaseModel, type AssistantMessage, type ModelContext } from "@/core";
+import { AssistantEventStream, type AssistantMessage, BaseModel, type ModelContext } from "@/core";
 import { createRequestSignal, fetchWithRetries, isAbortError, joinUrl } from "./http";
 import { getDeepSeekModelMetadata } from "./metadata";
 import { buildDeepSeekRequest } from "./request";

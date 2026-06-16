@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Type } from "@sinclair/typebox";
 import type { AgentEvent } from "../src/agent/events";
 import { runAgentLoop } from "../src/agent/loop";
-import type { Model, ModelMetadata } from "../src/core/model";
 import type { ModelContext } from "../src/core/context";
 import type { AssistantMessage } from "../src/core/messages";
+import type { Model, ModelMetadata } from "../src/core/model";
 import { AssistantEventStream } from "../src/core/stream";
 import type { Tool } from "../src/tools/tool";
 

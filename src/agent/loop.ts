@@ -1,7 +1,6 @@
 import type { AssistantMessage, Message, Model, ToolCallContent, ToolResultMessage } from "@/core";
-import { validateToolArguments, type Tool, type ToolResult } from "@/tools";
-import type { AgentEvent } from "./events";
-import type { AgentEndReason } from "./events";
+import { type Tool, type ToolResult, validateToolArguments } from "@/tools";
+import type { AgentEndReason, AgentEvent } from "./events";
 
 export type AgentContext = {
   system?: string;

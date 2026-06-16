@@ -1,10 +1,9 @@
 import type { KanaSkillActivation, LoadKanaSkillActivationsResult } from "@/kana";
-import { SkillManager, TextBlock, type SkillManagerDecision } from "../components";
-import type { Editor, Transcript } from "../components";
+import type { Editor, StatusLineState, Transcript } from "../components";
+import { SkillManager, type SkillManagerDecision, TextBlock } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { RunPhase } from "./status-phase";
-import type { StatusLineState } from "../components";
 
 export type SkillManagerControllerOptions = {
   editor: Editor;

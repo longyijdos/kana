@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 
 import type { Message, ModelMetadata } from "@/core";
 import { getKanaConfigPaths } from "./config";

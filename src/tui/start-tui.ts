@@ -1,3 +1,4 @@
+import type { Message } from "@/core";
 import {
   appendKanaSessionMessages,
   createKanaAgent,
@@ -5,12 +6,11 @@ import {
   deleteKanaSession,
   listKanaSessions,
   loadKanaConfig,
+  loadKanaSession,
   loadKanaSkillActivations,
   loadKanaToolApprovals,
-  loadKanaSession,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
-import type { Message } from "@/core";
 import { KanaTuiApp } from "./app/app";
 import { ProcessTerminal } from "./runtime";
 

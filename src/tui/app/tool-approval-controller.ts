@@ -3,15 +3,15 @@ import type { ToolCallContent } from "@/core";
 import {
   addTrustedBashCommand,
   getBashCommand,
-  shouldRequestToolApproval,
   type KanaToolApprovalConfig,
   type KanaToolApprovals,
+  shouldRequestToolApproval,
 } from "@/kana";
 import {
   type Editor,
   ToolApproval,
-  type Transcript,
   type ToolApprovalDecision,
+  type Transcript,
 } from "../components";
 import type { Tui } from "../runtime";
 

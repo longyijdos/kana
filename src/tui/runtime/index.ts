@@ -1,4 +1,4 @@
-export { Container, type Component } from "./component";
+export { type Component, Container } from "./component";
 export { CURSOR_MARKER, stripCursorMarker } from "./cursor";
 export {
   isBackspace,

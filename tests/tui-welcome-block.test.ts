@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { KanaSessionMetadata } from "../src/kana";
 import { WELCOME_LOGO_LINES } from "../src/tui/app/welcome-logo";
 import { WelcomeBlock } from "../src/tui/components";
 import { stripAnsi, visibleWidth } from "../src/tui/render";
-import type { KanaSessionMetadata } from "../src/kana";
 
 const LOGO = ["\x1b[48;2;0;120;0m    \x1b[0m"];
 const SESSIONS: KanaSessionMetadata[] = [

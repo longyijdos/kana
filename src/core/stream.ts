@@ -1,6 +1,6 @@
+import { EventStream, type ReadableEventStream } from "@/utils";
 import type { AssistantMessageEvent } from "./events";
 import type { AssistantMessage } from "./messages";
-import { EventStream, type ReadableEventStream } from "@/utils";
 
 export type AssistantDoneEvent = Extract<AssistantMessageEvent, { type: "done" }>;
 

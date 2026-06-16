@@ -1,6 +1,5 @@
-import { color, dim } from "../../render";
+import { color, dim, truncateToWidth, visibleWidth, wrapPlainText } from "../../render";
 import type { Component } from "../../runtime";
-import { truncateToWidth, visibleWidth, wrapPlainText } from "../../render";
 
 export class TextBlock implements Component {
   private cachedWidth?: number;

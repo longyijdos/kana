@@ -1,7 +1,7 @@
 import stringWidth from "string-width";
+import { stripCursorMarker } from "../runtime/cursor";
 import { RESET } from "./ansi";
 import { splitLines } from "./lines";
-import { stripCursorMarker } from "../runtime/cursor";
 
 const ANSI_PATTERN =
   // Covers the SGR sequences emitted by this TUI and common OSC/CSI output.

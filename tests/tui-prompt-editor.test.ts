@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { Editor } from "../src/tui/components/editor";
 import {
   completeCommand,
   createCommandSubmit,
   getCommandState,
   PROMPT_COMMANDS,
 } from "../src/tui/components/editor/commands";
-import { Editor } from "../src/tui/components/editor";
 import {
   createInputLayout,
   moveInputCursorVertically,
 } from "../src/tui/components/editor/input-layout";
 import { applyEditorAction } from "../src/tui/components/editor/state";
-import { CURSOR_MARKER } from "../src/tui/runtime";
 import { color, stripAnsi, visibleWidth } from "../src/tui/render";
+import { CURSOR_MARKER } from "../src/tui/runtime";
 import { tuiTheme } from "../src/tui/theme";
 
 function cursorLine(lines: string[]): number {

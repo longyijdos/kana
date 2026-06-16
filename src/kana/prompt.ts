@@ -3,9 +3,9 @@ import path from "node:path";
 
 import { getKanaConfigPaths } from "./config";
 import {
+  type CollectKanaEnvironmentContextOptions,
   collectKanaEnvironmentContext,
   formatKanaEnvironmentContext,
-  type CollectKanaEnvironmentContextOptions,
 } from "./context";
 import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createCli, type CreateCliOptions } from "../src/cli";
+import { type CreateCliOptions, createCli } from "../src/cli";
 import type { StartTuiOptions } from "../src/tui";
 
 describe("CLI", () => {

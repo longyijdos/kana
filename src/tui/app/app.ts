@@ -1,19 +1,12 @@
 import type { Agent, BeforeToolExecutionHook, BeforeToolExecutionResult } from "@/agent";
+import type { Message, ModelMetadata, ToolCallContent } from "@/core";
 import type {
   KanaSessionMetadata,
-  LoadKanaSkillActivationsResult,
   KanaToolApprovalConfig,
   KanaToolApprovals,
+  LoadKanaSkillActivationsResult,
 } from "@/kana";
-import type { Message, ModelMetadata, ToolCallContent } from "@/core";
 import { createBashTool, type ToolResult } from "@/tools";
-import { addHistoryMessagesToTranscript } from "./history";
-import { AgentEventRenderer } from "./agent-event-renderer";
-import { SessionOverlayController } from "./session-overlay-controller";
-import { SkillManagerController } from "./skill-manager-controller";
-import type { RunPhase } from "./status-phase";
-import { ToolApprovalController } from "./tool-approval-controller";
-import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import {
   Editor,
   StatusLine,
@@ -23,12 +16,18 @@ import {
   Transcript,
   WelcomeBlock,
 } from "../components";
-import { isCtrlC, isEscape } from "../runtime";
-import type { ProcessTerminal } from "../runtime";
-import { tuiTheme } from "../theme";
-import { Tui } from "../runtime";
-import { WELCOME_LOGO_LINES } from "./welcome-logo";
 import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
+import type { ProcessTerminal } from "../runtime";
+import { isCtrlC, isEscape, Tui } from "../runtime";
+import { tuiTheme } from "../theme";
+import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
+import { AgentEventRenderer } from "./agent-event-renderer";
+import { addHistoryMessagesToTranscript } from "./history";
+import { SessionOverlayController } from "./session-overlay-controller";
+import { SkillManagerController } from "./skill-manager-controller";
+import type { RunPhase } from "./status-phase";
+import { ToolApprovalController } from "./tool-approval-controller";
+import { WELCOME_LOGO_LINES } from "./welcome-logo";
 
 export type KanaTuiLoadedSession = {
   id: string;

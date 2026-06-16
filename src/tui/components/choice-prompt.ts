@@ -1,4 +1,4 @@
-import { color, dim, mapLines, truncateToWidth, type Color } from "../render";
+import { type Color, color, dim, mapLines, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import { isDown, isEnter, isLeft, isRight, isUp } from "../runtime";
 import { tuiTheme } from "../theme";

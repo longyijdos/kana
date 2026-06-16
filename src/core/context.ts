@@ -1,5 +1,5 @@
-import type { Message } from "./messages";
 import type { ToolSpec } from "@/tools";
+import type { Message } from "./messages";
 
 // Provider-facing invocation context. Model/network settings live in
 // ModelConfig; signal is per-run execution state so callers can cancel an

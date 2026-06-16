@@ -1,5 +1,6 @@
 import {
   bold,
+  type Color,
   color,
   dim,
   graphemeSegments,
@@ -8,11 +9,10 @@ import {
   strikethrough,
   truncateToWidth,
   visibleWidth,
-  type Color,
 } from "../../render";
-import { highlightCodeSync, type HighlightedCodeLine } from "../../utils/syntax-highlighter";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
+import { type HighlightedCodeLine, highlightCodeSync } from "../../utils/syntax-highlighter";
 
 type InlineStyle = {
   bold?: boolean;

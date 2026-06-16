@@ -1,21 +1,7 @@
-import { color, dim } from "../../render";
-import { tuiTheme } from "../../theme";
-import {
-  completeCommand,
-  createCommandSubmit,
-  getCommandState,
-  type PromptSubmit,
-} from "./commands";
+import { color, dim, normalizeLineEndings, padRightAnsi, truncateToWidth } from "../../render";
 import type { Component } from "../../runtime";
-import { CURSOR_MARKER } from "../../runtime";
-import { applyEditorAction, type EditorTextState } from "./state";
 import {
-  createInputLayout,
-  findInputCursorLine,
-  moveInputCursorVertically,
-  type InputLayoutLine,
-} from "./input-layout";
-import {
+  CURSOR_MARKER,
   isBackspace,
   isDelete,
   isDown,
@@ -28,8 +14,20 @@ import {
   isTab,
   isUp,
 } from "../../runtime";
-import { padRightAnsi, truncateToWidth } from "../../render";
-import { normalizeLineEndings } from "../../render";
+import { tuiTheme } from "../../theme";
+import {
+  completeCommand,
+  createCommandSubmit,
+  getCommandState,
+  type PromptSubmit,
+} from "./commands";
+import {
+  createInputLayout,
+  findInputCursorLine,
+  type InputLayoutLine,
+  moveInputCursorVertically,
+} from "./input-layout";
+import { applyEditorAction, type EditorTextState } from "./state";
 
 const MAX_INPUT_LINES = 5;
 const PROMPT = "> ";

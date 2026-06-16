@@ -3,10 +3,10 @@ import {
   DeleteSessionConfirmation,
   type Editor,
   SessionPicker,
-  TextBlock,
-  type Transcript,
   type SessionPickerDecision,
   type StatusLineState,
+  TextBlock,
+  type Transcript,
 } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";

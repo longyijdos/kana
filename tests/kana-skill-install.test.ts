@@ -1,8 +1,7 @@
+import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-
-import { afterEach, describe, expect, test } from "bun:test";
 import { installKanaSkills } from "@/kana";
 
 const tempDirs: string[] = [];

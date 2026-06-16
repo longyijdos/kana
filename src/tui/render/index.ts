@@ -1,12 +1,12 @@
 export {
   background,
   bold,
+  type Color,
   color,
   dim,
   italic,
-  strikethrough,
-  type Color,
   RESET,
+  strikethrough,
 } from "./ansi";
 export { firstGrapheme, graphemeSegments } from "./graphemes";
 export {

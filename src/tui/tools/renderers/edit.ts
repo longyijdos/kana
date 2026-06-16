@@ -1,5 +1,4 @@
-import { background, dim, type Color } from "../../render";
-import { splitLines } from "../../render";
+import { background, type Color, dim, splitLines } from "../../render";
 import { tuiTheme } from "../../theme";
 import { getNumberProperty, getStringProperty } from "../properties";
 

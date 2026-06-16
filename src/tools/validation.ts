@@ -1,7 +1,7 @@
 import type { Static, TSchema } from "@sinclair/typebox";
-import { TypeCompiler, type TypeCheck } from "@sinclair/typebox/compiler";
-import { Value } from "@sinclair/typebox/value";
+import { type TypeCheck, TypeCompiler } from "@sinclair/typebox/compiler";
 import type { ValueError } from "@sinclair/typebox/errors";
+import { Value } from "@sinclair/typebox/value";
 import type { ToolCallContent } from "@/core";
 import type { Tool } from "./tool";
 

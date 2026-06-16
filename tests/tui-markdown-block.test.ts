@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { MarkdownBlock } from "../src/tui/components";
-import { preloadSyntaxHighlighter } from "../src/tui/utils/syntax-highlighter";
 import { color, stripAnsi, visibleWidth } from "../src/tui/render";
 import { tuiTheme } from "../src/tui/theme";
+import { preloadSyntaxHighlighter } from "../src/tui/utils/syntax-highlighter";
 
 describe("tui markdown block", () => {
   test("renders headings with bold styling", () => {

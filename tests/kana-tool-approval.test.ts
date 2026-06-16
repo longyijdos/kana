@@ -1,17 +1,16 @@
+import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-
-import { afterEach, describe, expect, test } from "bun:test";
+import type { ToolCallContent } from "@/core";
 import {
-  DEFAULT_KANA_TOOL_APPROVALS,
   addTrustedBashCommand,
+  DEFAULT_KANA_TOOL_APPROVALS,
   getKanaConfigPaths,
+  type KanaToolApprovals,
   loadKanaToolApprovals,
   shouldRequestToolApproval,
-  type KanaToolApprovals,
 } from "@/kana";
-import type { ToolCallContent } from "@/core";
 
 const tempDirs: string[] = [];
 

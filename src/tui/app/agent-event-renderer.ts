@@ -1,6 +1,6 @@
 import type { AgentEvent } from "@/agent";
 import type { AssistantMessage } from "@/core";
-import { AssistantMessageBlock, type Transcript, type StatusLineState } from "../components";
+import { AssistantMessageBlock, type StatusLineState, type Transcript } from "../components";
 import type { Tui } from "../runtime";
 import {
   isThinkingVisible,

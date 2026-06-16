@@ -1,7 +1,7 @@
 import {
   AssistantEventStream,
-  BaseModel,
   type AssistantMessage,
+  BaseModel,
   type ModelConfig,
   type ModelContext,
   type ModelMetadata,

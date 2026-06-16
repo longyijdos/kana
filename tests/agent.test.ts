@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Agent } from "../src/agent";
 import type { AgentEvent } from "../src/agent/events";
-import type { Model, ModelMetadata } from "../src/core/model";
 import type { ModelContext } from "../src/core/context";
 import type { AssistantMessage } from "../src/core/messages";
+import type { Model, ModelMetadata } from "../src/core/model";
 import { AssistantEventStream } from "../src/core/stream";
 
 class TextModel implements Model {

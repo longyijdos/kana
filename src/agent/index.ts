@@ -1,19 +1,19 @@
 export {
   Agent,
-  type AgentEventListener,
   type AgentConfig,
+  type AgentEventListener,
   type AgentPromptInput,
   type AgentRunCommittedHook,
   type AgentState,
 } from "./agent";
 export type { AgentEvent } from "./events";
 export {
-  runAgentLoop,
   type AgentContext,
   type AgentEventSink,
   type AgentLoopConfig,
   type BeforeToolExecutionHook,
   type BeforeToolExecutionResult,
+  runAgentLoop,
 } from "./loop";
 export {
   AgentEventStream,
