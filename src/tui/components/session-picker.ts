@@ -1,12 +1,7 @@
 import type { KanaSessionMetadata } from "@/kana";
 import { color, dim, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnter,
-  isEscape,
-  isUp,
-} from "../runtime";
+import { isDown, isEnter, isEscape, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
 
 export type SessionPickerDecision =
@@ -55,10 +50,7 @@ export class SessionPicker implements Component {
   }
 
   render(width: number): string[] {
-    const lines = [
-      "",
-      color("Sessions", tuiTheme.muted),
-    ];
+    const lines = ["", color("Sessions", tuiTheme.muted)];
 
     if (this.sessions.length === 0) {
       lines.push(dim("No saved sessions for this workspace."));
@@ -69,9 +61,7 @@ export class SessionPicker implements Component {
       const marker = index === this.selectedIndex ? "> " : "  ";
       const label = `${marker}${formatSession(session)}`;
       const rendered =
-        index === this.selectedIndex
-          ? color(label, tuiTheme.user)
-          : color(label, tuiTheme.muted);
+        index === this.selectedIndex ? color(label, tuiTheme.user) : color(label, tuiTheme.muted);
 
       lines.push(truncateToWidth(rendered, width, ""));
     }
@@ -84,8 +74,7 @@ export class SessionPicker implements Component {
       return;
     }
 
-    this.selectedIndex =
-      (this.selectedIndex + delta + this.sessions.length) % this.sessions.length;
+    this.selectedIndex = (this.selectedIndex + delta + this.sessions.length) % this.sessions.length;
   }
 }
 
@@ -106,11 +95,7 @@ function formatLocalTimestamp(timestamp: string): string {
     return timestamp.replace("T", " ").slice(0, 19);
   }
 
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-  ].join("-") + ` ${[
+  return `${[date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join("-")} ${[
     pad(date.getHours()),
     pad(date.getMinutes()),
     pad(date.getSeconds()),

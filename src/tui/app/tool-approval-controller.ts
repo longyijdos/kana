@@ -8,9 +8,9 @@ import {
   type KanaToolApprovals,
 } from "@/kana";
 import {
-  Editor,
+  type Editor,
   ToolApproval,
-  Transcript,
+  type Transcript,
   type ToolApprovalDecision,
 } from "../components";
 import type { Tui } from "../runtime";
@@ -35,13 +35,7 @@ export class ToolApprovalController {
     toolCall: ToolCallContent,
     signal: AbortSignal | undefined,
   ): Promise<BeforeToolExecutionResult> {
-    if (
-      !shouldRequestToolApproval(
-        this.options.config,
-        this.approvals,
-        toolCall,
-      )
-    ) {
+    if (!shouldRequestToolApproval(this.options.config, this.approvals, toolCall)) {
       return Promise.resolve({ type: "continue" });
     }
 

@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaSessionMetadata } from "@/kana";
-import {
-  SessionPicker,
-  type SessionPickerDecision,
-} from "../src/tui/components";
+import { SessionPicker, type SessionPickerDecision } from "../src/tui/components";
 import { stripAnsi } from "../src/tui/render";
 
 const sessions: KanaSessionMetadata[] = [
@@ -71,11 +68,7 @@ describe("session picker", () => {
 function localTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
 
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-  ].join("-") + ` ${[
+  return `${[date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join("-")} ${[
     pad(date.getHours()),
     pad(date.getMinutes()),
     pad(date.getSeconds()),

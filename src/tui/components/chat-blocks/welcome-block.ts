@@ -49,15 +49,7 @@ export class WelcomeBlock implements Component {
       const right = padRightAnsi(rightLines[index] ?? "", rightWidth);
 
       lines.push(
-        [
-          border("|"),
-          left,
-          " ".repeat(COLUMN_GAP),
-          border("|"),
-          " ",
-          right,
-          border("|"),
-        ].join(""),
+        [border("|"), left, " ".repeat(COLUMN_GAP), border("|"), " ", right, border("|")].join(""),
       );
     }
 
@@ -117,11 +109,11 @@ export class WelcomeBlock implements Component {
     const left = "-".repeat(2);
     const right = "-".repeat(Math.max(0, width - left.length - labelWidth - 2));
 
-    return `${border("+" + left)}${label}${border(right + "+")}`;
+    return `${border(`+${left}`)}${label}${border(`${right}+`)}`;
   }
 
   private bottomBorder(width: number): string {
-    return border("+" + "-".repeat(width - 2) + "+");
+    return border(`+${"-".repeat(width - 2)}+`);
   }
 }
 

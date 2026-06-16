@@ -1,7 +1,6 @@
 import type { AssistantMessage } from "@/core";
 import { dim } from "../../render";
 import type { Component } from "../../runtime";
-import { tuiTheme } from "../../theme";
 import { MarkdownBlock } from "./markdown-block";
 
 export class AssistantMessageBlock implements Component {

@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+if [ "${SKIP_PRECOMMIT:-}" = "1" ]; then
+  echo "Skipping pre-commit checks because SKIP_PRECOMMIT=1"
+  exit 0
+fi
+
+echo "Running checks..."
+bun run check
+
+echo "Pre-commit checks passed."

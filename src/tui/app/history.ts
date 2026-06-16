@@ -1,16 +1,8 @@
 import type { AssistantMessage, Message, ToolCallContent } from "@/core";
-import {
-  AssistantMessageBlock,
-  TextBlock,
-  ToolCallBlock,
-  Transcript,
-} from "../components";
+import { AssistantMessageBlock, TextBlock, ToolCallBlock, type Transcript } from "../components";
 import { tuiTheme } from "../theme";
 
-export function addHistoryMessagesToTranscript(
-  transcript: Transcript,
-  messages: Message[],
-): void {
+export function addHistoryMessagesToTranscript(transcript: Transcript, messages: Message[]): void {
   const toolCalls = new Map<string, ToolCallContent>();
 
   for (const message of messages) {

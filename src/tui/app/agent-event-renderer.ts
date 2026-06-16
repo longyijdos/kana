@@ -1,10 +1,6 @@
 import type { AgentEvent } from "@/agent";
 import type { AssistantMessage } from "@/core";
-import {
-  AssistantMessageBlock,
-  Transcript,
-  type StatusLineState,
-} from "../components";
+import { AssistantMessageBlock, type Transcript, type StatusLineState } from "../components";
 import type { Tui } from "../runtime";
 import {
   isThinkingVisible,
@@ -62,20 +58,13 @@ export class AgentEventRenderer {
         this.handleToolStart(event.toolCallId, event.toolName, event.args);
         break;
       case "tool_execution_update":
-        this.toolCallBlocks.updatePartialResult(
-          event.toolCallId,
-          event.partialResult,
-        );
+        this.toolCallBlocks.updatePartialResult(event.toolCallId, event.partialResult);
         this.options.updateStatus("tool", {
           activeTool: event.toolName,
         });
         break;
       case "tool_execution_end":
-        this.toolCallBlocks.updateResult(
-          event.toolCallId,
-          event.result,
-          event.isError,
-        );
+        this.toolCallBlocks.updateResult(event.toolCallId, event.result, event.isError);
         this.options.updateStatus(event.isError ? "error" : "tool", {
           activeTool: undefined,
         });
@@ -92,17 +81,13 @@ export class AgentEventRenderer {
     this.options.updateStatus("thinking");
   }
 
-  private handleAssistantUpdate(
-    event: Extract<AgentEvent, { type: "message_update" }>,
-  ): void {
+  private handleAssistantUpdate(event: Extract<AgentEvent, { type: "message_update" }>): void {
     if (!this.streamingAssistant) {
       this.handleAssistantStart(event.message);
     }
 
     this.streamingAssistant?.update(event.message);
-    this.streamingAssistant?.showThinking(
-      isThinkingVisible(event.assistantMessageEvent.type),
-    );
+    this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
     this.toolCallBlocks.createOrUpdateFromMessage(event.message);
     this.options.updateStatus(phaseForAssistantMessage(event.message));
   }
@@ -114,11 +99,7 @@ export class AgentEventRenderer {
     this.options.updateStatus(phaseForStopReason(message.stopReason));
   }
 
-  private handleToolStart(
-    toolCallId: string,
-    toolName: string,
-    args: unknown,
-  ): void {
+  private handleToolStart(toolCallId: string, toolName: string, args: unknown): void {
     this.toolCallBlocks.markStarted(toolCallId, toolName, args);
     this.options.updateStatus("tool", {
       activeTool: toolName,

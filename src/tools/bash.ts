@@ -43,10 +43,9 @@ export type BashToolOptions = {
   shell?: string;
 };
 
-export function createBashTool(options: BashToolOptions = {}): Tool<
-  typeof bashParameters,
-  BashToolResult
-> {
+export function createBashTool(
+  options: BashToolOptions = {},
+): Tool<typeof bashParameters, BashToolResult> {
   const root = path.resolve(options.root ?? process.cwd());
   const shell = resolveShell(options.shell);
 
@@ -68,13 +67,7 @@ export function createBashTool(options: BashToolOptions = {}): Tool<
 
       const cwd = await resolveWorkspaceDirectory(root, args.cwd ?? ".");
       const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      const result = await runCommand(
-        command,
-        cwd.absolutePath,
-        timeoutMs,
-        shell,
-        context.signal,
-      );
+      const result = await runCommand(command, cwd.absolutePath, timeoutMs, shell, context.signal);
       const stdout = truncateOutput(result.stdout);
       const stderr = truncateOutput(result.stderr);
       const toolResult: BashToolResult = {
@@ -150,7 +143,7 @@ async function runCommand(
 function resolveShell(shell: string | undefined): string {
   const value = shell ?? process.env.SHELL;
 
-  return value && value.trim() ? value : "bash";
+  return value?.trim() ? value : "bash";
 }
 
 function truncateOutput(content: string): { content: string; truncated: boolean } {

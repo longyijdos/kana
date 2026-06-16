@@ -1,10 +1,10 @@
 import type { KanaSessionMetadata } from "@/kana";
 import {
   DeleteSessionConfirmation,
-  Editor,
+  type Editor,
   SessionPicker,
   TextBlock,
-  Transcript,
+  type Transcript,
   type SessionPickerDecision,
   type StatusLineState,
 } from "../components";
@@ -84,12 +84,9 @@ export class SessionOverlayController {
       return;
     }
 
-    const confirmation = new DeleteSessionConfirmation(
-      decision.session,
-      (confirmed) => {
-        this.finishDeleteConfirmation(decision.session, confirmed);
-      },
-    );
+    const confirmation = new DeleteSessionConfirmation(decision.session, (confirmed) => {
+      this.finishDeleteConfirmation(decision.session, confirmed);
+    });
 
     this.activeDeleteConfirmation = confirmation;
     this.options.tui.insertChildAfter(this.options.editor, confirmation);
@@ -97,10 +94,7 @@ export class SessionOverlayController {
     this.options.tui.requestRender(true);
   }
 
-  private finishDeleteConfirmation(
-    session: KanaSessionMetadata,
-    confirmed: boolean,
-  ): void {
+  private finishDeleteConfirmation(session: KanaSessionMetadata, confirmed: boolean): void {
     this.closeDeleteConfirmation();
 
     if (!confirmed) {

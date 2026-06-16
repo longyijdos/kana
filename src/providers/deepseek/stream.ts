@@ -1,8 +1,4 @@
-import {
-  AssistantEventStream,
-  type AssistantMessage,
-  type ToolCallContent,
-} from "@/core";
+import type { AssistantEventStream, AssistantMessage, ToolCallContent } from "@/core";
 import type {
   DeepSeekChatCompletionChunk,
   DeepSeekFinishReason,
@@ -300,8 +296,7 @@ function applyToolCallDelta(
   }
 
   if (delta.function?.arguments) {
-    toolCall.toolCall.rawArgs =
-      (toolCall.toolCall.rawArgs ?? "") + delta.function.arguments;
+    toolCall.toolCall.rawArgs = (toolCall.toolCall.rawArgs ?? "") + delta.function.arguments;
 
     stream.push({
       type: "toolcall_delta",
@@ -312,13 +307,8 @@ function applyToolCallDelta(
   }
 }
 
-function getPendingToolCall(
-  message: AssistantMessage,
-  toolCallIndex: number,
-): PendingToolCall {
-  const existing = message.content.filter(
-    (content) => content.type === "tool_call",
-  )[toolCallIndex];
+function getPendingToolCall(message: AssistantMessage, toolCallIndex: number): PendingToolCall {
+  const existing = message.content.filter((content) => content.type === "tool_call")[toolCallIndex];
 
   if (existing?.type === "tool_call") {
     const contentIndex = message.content.indexOf(existing);

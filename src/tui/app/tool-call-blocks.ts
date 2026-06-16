@@ -1,5 +1,5 @@
 import type { AssistantMessage, ToolCallContent } from "@/core";
-import { ToolCallBlock, Transcript } from "../components";
+import { ToolCallBlock, type Transcript } from "../components";
 
 export class ToolCallBlocks {
   private readonly pendingTools = new Map<string, ToolCallBlock>();
@@ -43,11 +43,7 @@ export class ToolCallBlocks {
     this.pendingTools.delete(toolCallId);
   }
 
-  private getOrCreate(
-    toolCallId: string,
-    toolName: string,
-    args: unknown,
-  ): ToolCallBlock {
+  private getOrCreate(toolCallId: string, toolName: string, args: unknown): ToolCallBlock {
     let block = this.pendingTools.get(toolCallId);
 
     if (!block) {
