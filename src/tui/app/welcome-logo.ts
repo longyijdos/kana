@@ -1,13 +1,13 @@
 const RESET = "\x1b[0m";
 const PIXEL = "  ";
 
-const COLORS = {
+export const LOGO_COLORS = {
   l: "48;2;88;184;73",
   h: "48;2;158;220;91",
   s: "48;2;82;167;66",
 } as const;
 
-const CILANTRO_PIXELS = [
+export const LOGO_PIXELS = [
   "......h....",
   ".....hlh...",
   "...h..s....",
@@ -17,11 +17,11 @@ const CILANTRO_PIXELS = [
   "....s......",
 ] as const;
 
-export const WELCOME_LOGO_LINES = CILANTRO_PIXELS.map(renderPixelRow);
+export const WELCOME_LOGO_LINES = LOGO_PIXELS.map(renderPixelRow);
 
 function renderPixelRow(row: string): string {
   let line = "";
-  let currentColor: keyof typeof COLORS | undefined;
+  let currentColor: keyof typeof LOGO_COLORS | undefined;
 
   for (const pixel of row) {
     if (pixel === ".") {
@@ -34,10 +34,10 @@ function renderPixelRow(row: string): string {
       continue;
     }
 
-    const color = pixel as keyof typeof COLORS;
+    const color = pixel as keyof typeof LOGO_COLORS;
 
     if (currentColor !== color) {
-      line += `\x1b[${COLORS[color]}m`;
+      line += `\x1b[${LOGO_COLORS[color]}m`;
       currentColor = color;
     }
 
