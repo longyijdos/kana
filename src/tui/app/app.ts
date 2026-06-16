@@ -6,7 +6,7 @@ import type {
   KanaToolApprovals,
   LoadKanaSkillActivationsResult,
 } from "@/kana";
-import { createBashTool, type ToolResult } from "@/tools";
+import { createBashTool, normalizeToolResult } from "@/tools";
 import {
   Editor,
   StatusLine,
@@ -535,7 +535,7 @@ export class KanaTuiApp {
           },
         },
       );
-      const result = normalizeLocalToolResult(executed);
+      const result = normalizeToolResult(executed);
 
       block.updateResult(result.result, result.isError ?? false);
       this.updateStatus(result.isError ? "error" : "done");
@@ -576,25 +576,4 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
-}
-
-function normalizeLocalToolResult(value: unknown): ToolResult {
-  if (isToolResult(value)) {
-    return value;
-  }
-
-  return {
-    content: String(value),
-    result: value,
-  };
-}
-
-function isToolResult(value: unknown): value is ToolResult {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "content" in value &&
-    typeof value.content === "string" &&
-    "result" in value
-  );
 }

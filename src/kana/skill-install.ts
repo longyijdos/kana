@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { getKanaConfigPaths } from "./config";
+import { formatError } from "./format";
 
 const execFileAsync = promisify(execFile);
 
@@ -101,12 +102,4 @@ function isDirectory(filePath: string): boolean {
   } catch {
     return false;
   }
-}
-
-function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
 }

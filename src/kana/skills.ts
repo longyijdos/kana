@@ -11,6 +11,7 @@ import {
 import path from "node:path";
 
 import { getKanaConfigPaths } from "./config";
+import { escapeXml, formatError } from "./format";
 
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
@@ -631,17 +632,4 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
   }
 
   return value as Record<string, unknown>;
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

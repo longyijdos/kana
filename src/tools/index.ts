@@ -16,6 +16,10 @@ export {
   type ReadToolResult,
   readParameters,
 } from "./read";
+export {
+  isToolResult,
+  normalizeToolResult,
+} from "./result";
 export type {
   Tool,
   ToolContext,
