@@ -35,7 +35,7 @@ Validation:
 
 ## Step 2: Split `src/kana/skills.ts`
 
-Status: pending
+Status: completed
 
 Proposed shape:
 
