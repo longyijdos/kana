@@ -62,6 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - uses: actions/download-artifact@v4
@@ -69,8 +70,12 @@ jobs:
           path: dist
           merge-multiple: true
       - run: |
+          echo "Publishing assets for $RELEASE_TAG to $GH_REPO"
+          ls -lh dist/
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release exists, uploading assets..."
             gh release upload "$RELEASE_TAG" dist/* --clobber
           else
+            echo "Creating new release..."
             gh release create "$RELEASE_TAG" dist/* --title "$RELEASE_TAG" --generate-notes
           fi
