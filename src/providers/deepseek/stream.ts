@@ -102,30 +102,7 @@ export function finishOpenContent(
       continue;
     }
 
-    const content = message.content[contentIndex];
-
-    switch (content.type) {
-      case "thinking":
-        stream.push({
-          type: "thinking_end",
-          contentIndex,
-          content: content.text,
-          snapshot: structuredClone(message),
-        });
-        state.endedContentIndexes.add(contentIndex);
-        break;
-      case "text":
-        stream.push({
-          type: "text_end",
-          contentIndex,
-          content: content.text,
-          snapshot: structuredClone(message),
-        });
-        state.endedContentIndexes.add(contentIndex);
-        break;
-      case "tool_call":
-        break;
-    }
+    finishContentAtIndex(stream, message, state, contentIndex);
   }
 }
 
@@ -366,26 +343,39 @@ function finishContentOfType(
       continue;
     }
 
-    switch (content.type) {
-      case "thinking":
-        stream.push({
-          type: "thinking_end",
-          contentIndex,
-          content: content.text,
-          snapshot: structuredClone(message),
-        });
-        break;
-      case "text":
-        stream.push({
-          type: "text_end",
-          contentIndex,
-          content: content.text,
-          snapshot: structuredClone(message),
-        });
-        break;
-    }
+    finishContentAtIndex(stream, message, state, contentIndex);
+  }
+}
 
-    state.endedContentIndexes.add(contentIndex);
+function finishContentAtIndex(
+  stream: AssistantEventStream,
+  message: AssistantMessage,
+  state: DeepSeekStreamState,
+  contentIndex: number,
+): void {
+  const content = message.content[contentIndex];
+
+  switch (content.type) {
+    case "thinking":
+      stream.push({
+        type: "thinking_end",
+        contentIndex,
+        content: content.text,
+        snapshot: structuredClone(message),
+      });
+      state.endedContentIndexes.add(contentIndex);
+      break;
+    case "text":
+      stream.push({
+        type: "text_end",
+        contentIndex,
+        content: content.text,
+        snapshot: structuredClone(message),
+      });
+      state.endedContentIndexes.add(contentIndex);
+      break;
+    case "tool_call":
+      break;
   }
 }
 
