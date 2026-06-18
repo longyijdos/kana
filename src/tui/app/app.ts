@@ -1,5 +1,6 @@
 import type { Agent, BeforeToolExecutionHook, BeforeToolExecutionResult } from "@/agent";
 import {
+  addModelUsage,
   calculateContextUsedPercent,
   calculateUsageCostCny,
   findLatestAssistantUsage,
@@ -71,6 +72,7 @@ export class KanaTuiApp {
   private agent: Agent;
   private sessionId?: string;
   private running = false;
+  private totalUsage?: ModelUsage;
   private totalCostCny = 0;
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
@@ -187,10 +189,11 @@ export class KanaTuiApp {
   stop(): void {
     const resumeSessionId = this.options.getResumeSessionId();
     const exitLines = [
-      this.totalCostCny > 0
-        ? `Total API cost this run: ${formatCny(this.totalCostCny)}`
+      this.totalUsage
+        ? formatExitLine("Token usage", formatModelUsage(this.totalUsage))
         : undefined,
-      resumeSessionId ? `Resume this session with: kana resume ${resumeSessionId}` : undefined,
+      this.totalCostCny > 0 ? formatExitLine("API cost", formatCny(this.totalCostCny)) : undefined,
+      resumeSessionId ? formatExitLine("Resume", `kana resume ${resumeSessionId}`) : undefined,
     ].filter((line): line is string => Boolean(line));
 
     exitLines.length > 0 ? this.tui.stop(exitLines.join("\r\n")) : this.tui.stop();
@@ -538,6 +541,7 @@ export class KanaTuiApp {
 
     const metadata = this.agent.state.model.metadata;
 
+    this.totalUsage = addModelUsage(this.totalUsage, usage);
     this.totalCostCny += calculateUsageCostCny(usage, metadata.cost);
     this.updateContextUsage(usage);
   }
@@ -562,4 +566,32 @@ function formatModelName(metadata: ModelMetadata): string {
 
 function formatCny(amount: number): string {
   return `¥${amount.toFixed(4)}`;
+}
+
+function formatExitLine(label: string, value: string): string {
+  return `${`${label}:`.padEnd(13)}${value}`;
+}
+
+function formatModelUsage(usage: ModelUsage): string {
+  const cachedTokens = usage.promptCacheHitTokens ?? 0;
+  const inputTokens = usage.promptCacheMissTokens ?? Math.max(0, usage.promptTokens - cachedTokens);
+  const totalTokens = inputTokens + usage.completionTokens;
+
+  return [
+    `total=${formatInteger(totalTokens)}`,
+    `input=${formatInteger(inputTokens)}`,
+    cachedTokens > 0 ? `(+ ${formatInteger(cachedTokens)} cached)` : undefined,
+    `output=${formatInteger(usage.completionTokens)}`,
+    usage.reasoningTokens === undefined
+      ? undefined
+      : `(reasoning ${formatInteger(usage.reasoningTokens)})`,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" ");
+}
+
+function formatInteger(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(value);
 }

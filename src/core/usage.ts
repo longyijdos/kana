@@ -14,6 +14,23 @@ export function calculateUsageCostCny(usage: ModelUsage, cost: ModelCost): numbe
   );
 }
 
+export function addModelUsage(current: ModelUsage | undefined, next: ModelUsage): ModelUsage {
+  return {
+    promptTokens: (current?.promptTokens ?? 0) + next.promptTokens,
+    completionTokens: (current?.completionTokens ?? 0) + next.completionTokens,
+    totalTokens: (current?.totalTokens ?? 0) + next.totalTokens,
+    promptCacheHitTokens: addOptionalUsageTokens(
+      current?.promptCacheHitTokens,
+      next.promptCacheHitTokens,
+    ),
+    promptCacheMissTokens: addOptionalUsageTokens(
+      current?.promptCacheMissTokens,
+      next.promptCacheMissTokens,
+    ),
+    reasoningTokens: addOptionalUsageTokens(current?.reasoningTokens, next.reasoningTokens),
+  };
+}
+
 export function calculateContextUsedPercent(
   usage: ModelUsage | undefined,
   contextWindow: number,
@@ -35,6 +52,17 @@ export function findLatestAssistantUsage(messages: Message[]): ModelUsage | unde
   }
 
   return undefined;
+}
+
+function addOptionalUsageTokens(
+  current: number | undefined,
+  next: number | undefined,
+): number | undefined {
+  if (current === undefined && next === undefined) {
+    return undefined;
+  }
+
+  return (current ?? 0) + (next ?? 0);
 }
 
 function splitPromptTokensByCache(usage: ModelUsage): {
