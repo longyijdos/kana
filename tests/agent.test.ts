@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Agent } from "../src/agent";
 import type { AgentEvent } from "../src/agent/events";
 import type { ModelContext } from "../src/core/context";
-import type { AssistantMessage } from "../src/core/messages";
-import type { Model, ModelMetadata } from "../src/core/model";
+import type { AssistantMessage, Message } from "../src/core/messages";
+import type { Model, ModelMetadata, ModelUsage } from "../src/core/model";
 import { AssistantEventStream } from "../src/core/stream";
 
 class TextModel implements Model {
@@ -21,7 +21,10 @@ class TextModel implements Model {
   };
   readonly contexts: ModelContext[] = [];
 
-  constructor(private readonly response = "hello") {}
+  constructor(
+    private readonly response = "hello",
+    private readonly usage?: ModelUsage,
+  ) {}
 
   stream(context: ModelContext): AssistantEventStream {
     this.contexts.push({
@@ -70,6 +73,7 @@ class TextModel implements Model {
         type: "done",
         reason: "stop",
         message: structuredClone(message),
+        usage: this.usage,
       });
     });
 
@@ -206,6 +210,35 @@ describe("Agent", () => {
     });
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
+    });
+  });
+
+  test("keeps model usage on committed assistant messages", async () => {
+    const usage: ModelUsage = {
+      promptTokens: 100,
+      completionTokens: 20,
+      totalTokens: 120,
+      promptCacheHitTokens: 90,
+      promptCacheMissTokens: 10,
+      reasoningTokens: 5,
+    };
+    const commits: Message[][] = [];
+    const agent = new Agent({
+      model: new TextModel("metered", usage),
+      onRunCommitted: ({ messages }) => {
+        commits.push(messages);
+      },
+    });
+
+    await agent.prompt("hi");
+
+    expect(agent.state.messages[1]).toMatchObject({
+      role: "assistant",
+      usage,
+    });
+    expect(commits[0]?.[1]).toMatchObject({
+      role: "assistant",
+      usage,
     });
   });
 

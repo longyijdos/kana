@@ -50,6 +50,14 @@ describe("Kana session store", () => {
       {
         role: "assistant",
         stopReason: "stop",
+        usage: {
+          promptTokens: 100,
+          completionTokens: 20,
+          totalTokens: 120,
+          promptCacheHitTokens: 90,
+          promptCacheMissTokens: 10,
+          reasoningTokens: 5,
+        },
         content: [
           {
             type: "text",
@@ -97,6 +105,14 @@ describe("Kana session store", () => {
       timestamp: "2026-06-12T00:00:00.000Z",
       message: {
         role: "assistant",
+        usage: {
+          promptTokens: 100,
+          completionTokens: 20,
+          totalTokens: 120,
+          promptCacheHitTokens: 90,
+          promptCacheMissTokens: 10,
+          reasoningTokens: 5,
+        },
       },
     });
   });
