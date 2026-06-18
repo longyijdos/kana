@@ -29,7 +29,7 @@ export class StatusLine implements Component {
       color(this.model, tuiTheme.model),
       this.state.contextUsedPercent === undefined
         ? undefined
-        : dim(`Context ${this.state.contextUsedPercent}% used`),
+        : color(`Context ${this.state.contextUsedPercent}% used`, tuiTheme.contextUsage),
       phaseText(this.state.phase),
       this.state.activeTool
         ? color(`tool ${this.state.activeTool}`, tuiTheme.toolActive)

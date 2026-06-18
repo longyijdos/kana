@@ -15,6 +15,7 @@ export const tuiTheme = {
   commandSelected: [213, 176, 245],
   muted: [139, 148, 158],
   model: [126, 166, 255],
+  contextUsage: [105, 208, 196],
   cwd: [139, 148, 158],
   toolActive: [229, 181, 103],
   toolSuccess: [137, 209, 133],
