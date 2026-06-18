@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import type { InstallKanaConfigResult, InstallKanaSkillsResult } from "@/kana";
 import type { StartTuiOptions } from "@/tui";
+import { KANA_VERSION } from "../version";
 
 export type CreateCliOptions = {
   installKanaConfig: (
@@ -25,7 +26,7 @@ export function createCli(options: CreateCliOptions): Command {
   program
     .name("kana")
     .description("Personal TypeScript/Bun agent runtime")
-    .version("0.0.0")
+    .version(KANA_VERSION)
     .argument("[prompt...]", "Prompt to send after opening the TUI")
     .action((promptParts: string[] = []) => {
       const prompt = promptParts.join(" ").trim();

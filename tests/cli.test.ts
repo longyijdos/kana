@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { type CreateCliOptions, createCli } from "../src/cli";
 import type { StartTuiOptions } from "../src/tui";
+import { KANA_VERSION } from "../src/version";
 
 describe("CLI", () => {
+  test("uses the shared application version", () => {
+    expect(createCli(defaultCliOptions()).version()).toBe(KANA_VERSION);
+  });
+
   test("starts the TUI without an initial prompt by default", async () => {
     const calls: Array<StartTuiOptions | undefined> = [];
 
@@ -99,7 +104,14 @@ describe("CLI", () => {
 });
 
 async function parse(argv: string[], options: Partial<CreateCliOptions>): Promise<void> {
-  const defaults: CreateCliOptions = {
+  await createCli({
+    ...defaultCliOptions(),
+    ...options,
+  }).parseAsync(argv);
+}
+
+function defaultCliOptions(): CreateCliOptions {
+  return {
     installKanaConfig: () => ({
       configPath: "/tmp/config.toml",
       configStatus: "created",
@@ -115,9 +127,4 @@ async function parse(argv: string[], options: Partial<CreateCliOptions>): Promis
     log: () => {},
     startTui: () => {},
   };
-
-  await createCli({
-    ...defaults,
-    ...options,
-  }).parseAsync(argv);
 }

@@ -1,5 +1,6 @@
 import os from "node:os";
 import type { KanaSessionMetadata } from "@/kana";
+import { KANA_VERSION } from "../../../version";
 import { color, padRightAnsi, truncateToWidth, visibleWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
@@ -104,7 +105,7 @@ export class WelcomeBlock implements Component {
   }
 
   private topBorder(width: number): string {
-    const label = ` ${title("Kana")} ${muted("v0.0.0")} `;
+    const label = ` ${title("Kana")} ${muted(`v${KANA_VERSION}`)} `;
     const labelWidth = visibleWidth(label);
     const left = "-".repeat(2);
     const right = "-".repeat(Math.max(0, width - left.length - labelWidth - 2));

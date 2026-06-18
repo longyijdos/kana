@@ -3,6 +3,7 @@ import type { KanaSessionMetadata } from "../src/kana";
 import { WELCOME_LOGO_LINES } from "../src/tui/app/welcome-logo";
 import { WelcomeBlock } from "../src/tui/components";
 import { stripAnsi, visibleWidth } from "../src/tui/render";
+import { KANA_VERSION } from "../src/version";
 
 const LOGO = ["\x1b[48;2;0;120;0m    \x1b[0m"];
 const SESSIONS: KanaSessionMetadata[] = [
@@ -30,7 +31,7 @@ describe("tui welcome block", () => {
       username: "tester",
     }).render(80);
 
-    expect(stripAnsi(lines[0] ?? "")).toContain("Kana v0.0.0");
+    expect(stripAnsi(lines[0] ?? "")).toContain(`Kana v${KANA_VERSION}`);
     expect(lines.every((line) => visibleWidth(line) === 74)).toBe(true);
     expect(stripAnsi(lines.join("\n"))).toContain("Welcome back, tester");
     expect(stripAnsi(lines.join("\n"))).toContain("Recent activity");
