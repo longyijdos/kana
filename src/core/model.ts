@@ -15,10 +15,20 @@ export type ModelConfig = {
 };
 
 export type ModelCost = {
+  // Prices are denominated in CNY per 1M tokens.
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite: number;
+};
+
+export type ModelUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  promptCacheHitTokens?: number;
+  promptCacheMissTokens?: number;
+  reasoningTokens?: number;
 };
 
 export type ModelMetadata = {
