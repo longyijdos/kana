@@ -1,5 +1,13 @@
 import type { Agent, BeforeToolExecutionHook, BeforeToolExecutionResult } from "@/agent";
-import type { Message, ModelMetadata, ToolCallContent } from "@/core";
+import {
+  calculateContextUsedPercent,
+  calculateUsageCostCny,
+  findLatestAssistantUsage,
+  type Message,
+  type ModelMetadata,
+  type ModelUsage,
+  type ToolCallContent,
+} from "@/core";
 import type {
   KanaSessionMetadata,
   KanaToolApprovalConfig,
@@ -63,6 +71,7 @@ export class KanaTuiApp {
   private agent: Agent;
   private sessionId?: string;
   private running = false;
+  private totalCostCny = 0;
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
 
@@ -130,6 +139,7 @@ export class KanaTuiApp {
     });
     this.agent = this.createAgentForCurrentSession();
     this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
+    this.updateContextUsageFromMessages(options.initialMessages ?? []);
   }
 
   start(): void {
@@ -176,10 +186,14 @@ export class KanaTuiApp {
 
   stop(): void {
     const resumeSessionId = this.options.getResumeSessionId();
+    const exitLines = [
+      this.totalCostCny > 0
+        ? `Total API cost this run: ${formatCny(this.totalCostCny)}`
+        : undefined,
+      resumeSessionId ? `Resume this session with: kana resume ${resumeSessionId}` : undefined,
+    ].filter((line): line is string => Boolean(line));
 
-    resumeSessionId
-      ? this.tui.stop(`Resume this session with: kana resume ${resumeSessionId}`)
-      : this.tui.stop();
+    exitLines.length > 0 ? this.tui.stop(exitLines.join("\r\n")) : this.tui.stop();
   }
 
   private createAgentForCurrentSession(messages?: Message[]): Agent {
@@ -348,6 +362,7 @@ export class KanaTuiApp {
     this.transcript.clear();
     this.editor.clear();
     this.initializeTranscript([]);
+    this.updateContextUsageFromMessages([]);
     this.updateStatus("idle", {
       activeTool: undefined,
     });
@@ -436,6 +451,7 @@ export class KanaTuiApp {
     this.transcript.clear();
     this.editor.clear();
     this.initializeTranscript(session.messages);
+    this.updateContextUsageFromMessages(session.messages);
     this.updateStatus("idle", {
       activeTool: undefined,
     });
@@ -472,6 +488,9 @@ export class KanaTuiApp {
 
       for await (const event of stream) {
         this.agentEvents.handle(event);
+        if (event.type === "message_end") {
+          this.recordUsage(event.message.usage);
+        }
       }
 
       await stream.result();
@@ -511,8 +530,36 @@ export class KanaTuiApp {
       ...extra,
     });
   }
+
+  private recordUsage(usage: ModelUsage | undefined): void {
+    if (!usage) {
+      return;
+    }
+
+    const metadata = this.agent.state.model.metadata;
+
+    this.totalCostCny += calculateUsageCostCny(usage, metadata.cost);
+    this.updateContextUsage(usage);
+  }
+
+  private updateContextUsageFromMessages(messages: Message[]): void {
+    this.updateContextUsage(findLatestAssistantUsage(messages));
+  }
+
+  private updateContextUsage(usage: ModelUsage | undefined): void {
+    this.status.update({
+      contextUsedPercent: calculateContextUsedPercent(
+        usage,
+        this.agent.state.model.metadata.contextWindow,
+      ),
+    });
+  }
 }
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
+}
+
+function formatCny(amount: number): string {
+  return `¥${amount.toFixed(4)}`;
 }

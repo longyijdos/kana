@@ -120,6 +120,40 @@ describe("DeepSeek stream parsing", () => {
       },
     ]);
   });
+
+  test("captures usage from the stream chunk", () => {
+    const stream = new AssistantEventStream();
+    const message: AssistantMessage = {
+      role: "assistant",
+      content: [],
+    };
+    const state: DeepSeekStreamState = {
+      endedContentIndexes: new Set<number>(),
+    };
+
+    applyDeepSeekChunk(stream, message, state, {
+      choices: [],
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_tokens: 120,
+        prompt_cache_hit_tokens: 90,
+        prompt_cache_miss_tokens: 10,
+        completion_tokens_details: {
+          reasoning_tokens: 5,
+        },
+      },
+    });
+
+    expect(state.usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 20,
+      totalTokens: 120,
+      promptCacheHitTokens: 90,
+      promptCacheMissTokens: 10,
+      reasoningTokens: 5,
+    });
+  });
 });
 
 async function collectEventTypes(stream: AssistantEventStream): Promise<string[]> {

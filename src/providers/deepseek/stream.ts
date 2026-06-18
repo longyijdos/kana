@@ -4,6 +4,7 @@ import type {
   DeepSeekFinishReason,
   DeepSeekStreamState,
   DeepSeekToolCallDelta,
+  DeepSeekUsage,
   PendingToolCall,
 } from "./types";
 
@@ -64,6 +65,10 @@ export function applyDeepSeekChunk(
   state: DeepSeekStreamState,
   chunk: DeepSeekChatCompletionChunk,
 ): void {
+  if (chunk.usage) {
+    state.usage = toModelUsage(chunk.usage);
+  }
+
   for (const choice of chunk.choices ?? []) {
     const delta = choice.delta;
 
@@ -90,6 +95,17 @@ export function applyDeepSeekChunk(
       }
     }
   }
+}
+
+function toModelUsage(usage: DeepSeekUsage): DeepSeekStreamState["usage"] {
+  return {
+    promptTokens: usage.prompt_tokens,
+    completionTokens: usage.completion_tokens,
+    totalTokens: usage.total_tokens,
+    promptCacheHitTokens: usage.prompt_cache_hit_tokens,
+    promptCacheMissTokens: usage.prompt_cache_miss_tokens,
+    reasoningTokens: usage.completion_tokens_details?.reasoning_tokens,
+  };
 }
 
 export function finishOpenContent(

@@ -1,4 +1,4 @@
-import type { ModelConfig, ToolCallContent } from "@/core";
+import type { ModelConfig, ModelUsage, ToolCallContent } from "@/core";
 
 export type DeepSeekReasoningEffort = "high" | "max";
 
@@ -78,6 +78,18 @@ export type DeepSeekChatCompletionChunk = {
     };
     finish_reason?: DeepSeekFinishReason | null;
   }>;
+  usage?: DeepSeekUsage | null;
+};
+
+export type DeepSeekUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+  };
 };
 
 export type DeepSeekFinishReason =
@@ -106,4 +118,5 @@ export type PendingToolCall = {
 export type DeepSeekStreamState = {
   finishReason?: DeepSeekFinishReason;
   endedContentIndexes: Set<number>;
+  usage?: ModelUsage;
 };

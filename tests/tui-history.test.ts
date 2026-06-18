@@ -57,7 +57,7 @@ describe("tui history transcript", () => {
 
     expect(lines).toContain("> show package");
     expect(lines).toContain("I'll inspect it.");
-    expect(lines).not.toContain("thinking...");
+    expect(lines).not.toContain("thinking (Esc to abort)");
     expect(lines).toContain("Read package.json");
     expect(lines).toContain("{");
     expect(lines).toContain('  "private": true');

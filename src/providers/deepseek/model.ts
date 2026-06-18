@@ -97,6 +97,7 @@ export class DeepSeekModel extends BaseModel {
           type: "done",
           reason: getDoneReason(state.finishReason),
           message: structuredClone(message),
+          usage: state.usage,
         });
       } finally {
         requestSignal.dispose();

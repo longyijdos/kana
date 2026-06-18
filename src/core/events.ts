@@ -1,4 +1,5 @@
 import type { AssistantMessage, AssistantStopReason, ToolCallContent } from "./messages";
+import type { ModelUsage } from "./model";
 
 export type StopReason = AssistantStopReason;
 
@@ -65,6 +66,7 @@ export type AssistantMessageEvent =
       type: "done";
       reason: Extract<StopReason, "stop" | "length" | "toolUse">;
       message: AssistantMessage;
+      usage?: ModelUsage;
     }
   | {
       type: "error";

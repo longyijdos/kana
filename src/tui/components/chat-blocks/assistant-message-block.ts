@@ -51,7 +51,7 @@ export class AssistantMessageBlock implements Component {
     }
 
     if (this.thinkingVisible && this.textBlocks.length === 0) {
-      lines.push(dim("thinking..."));
+      lines.push(dim("thinking (Esc to abort)"));
     }
 
     this.cachedWidth = width;

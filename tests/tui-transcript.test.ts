@@ -94,7 +94,7 @@ describe("tui transcript", () => {
     });
     block.showThinking(true);
 
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking...");
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking (Esc to abort)");
 
     block.showThinking(false);
 
@@ -143,7 +143,7 @@ describe("tui transcript", () => {
     });
 
     block.markExecutionStarted();
-    expect(stripAnsi(block.render(80)[1] ?? "")).toBe("Reading AGENTS.md...");
+    expect(stripAnsi(block.render(80)[1] ?? "")).toBe("Reading AGENTS.md... (Esc to abort)");
 
     block.updateResult(
       {

@@ -1,3 +1,5 @@
+import type { ModelUsage } from "./model";
+
 export type Message = UserMessage | AssistantMessage | ToolResultMessage;
 
 export type AssistantStopReason = "stop" | "length" | "toolUse" | "aborted" | "error";
@@ -12,6 +14,7 @@ export type UserMessage = {
 export type AssistantMessage = {
   role: "assistant";
   stopReason?: AssistantStopReason;
+  usage?: ModelUsage;
   content: AssistantContent[];
 };
 
