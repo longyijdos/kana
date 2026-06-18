@@ -63,6 +63,64 @@ describe("session picker", () => {
       },
     ]);
   });
+
+  test("renders only the visible session window", () => {
+    const manySessions: KanaSessionMetadata[] = Array.from({ length: 5 }, (_, index) => ({
+      id: `session-${index + 1}`,
+      createdAt: `2026-06-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+      title: `Session ${index + 1}`,
+      cwd: "/repo",
+      path: `/sessions/${index + 1}.jsonl`,
+    }));
+    const picker = new SessionPicker(manySessions, () => {}, 3);
+
+    expect(picker.render(100).map(stripAnsi)).toEqual([
+      "",
+      "Sessions",
+      `> ${localTimestamp(manySessions[0].createdAt)}  session-  Session 1  unknown model`,
+      `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  unknown model`,
+      `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  unknown model`,
+      "... 2 more sessions",
+    ]);
+
+    picker.handleInput("\x1b[B");
+    picker.handleInput("\x1b[B");
+    picker.handleInput("\x1b[B");
+
+    expect(picker.render(100).map(stripAnsi)).toEqual([
+      "",
+      "Sessions",
+      "... 1 earlier sessions",
+      `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  unknown model`,
+      `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  unknown model`,
+      `> ${localTimestamp(manySessions[3].createdAt)}  session-  Session 4  unknown model`,
+      "... 1 more sessions",
+    ]);
+  });
+
+  test("does not wrap selection at list boundaries", () => {
+    const decisions: SessionPickerDecision[] = [];
+    const picker = new SessionPicker(sessions, (decision) => {
+      decisions.push(decision);
+    });
+
+    picker.handleInput("\x1b[A");
+    picker.handleInput("\r");
+
+    expect(decisions.at(-1)).toEqual({
+      type: "select",
+      session: sessions[0],
+    });
+
+    picker.handleInput("\x1b[B");
+    picker.handleInput("\x1b[B");
+    picker.handleInput("\r");
+
+    expect(decisions.at(-1)).toEqual({
+      type: "select",
+      session: sessions[1],
+    });
+  });
 });
 
 function localTimestamp(timestamp: string): string {

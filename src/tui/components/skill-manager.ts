@@ -2,6 +2,9 @@ import { color, dim, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import { isDown, isEnter, isEscape, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
+import { ListViewport } from "../utils/list-viewport";
+
+const SKILL_MANAGER_VISIBLE_LIMIT = 10;
 
 export type SkillManagerItem = {
   name: string;
@@ -22,12 +25,15 @@ export type SkillManagerDecision =
     };
 
 export class SkillManager implements Component {
-  private selectedIndex = 0;
+  private readonly viewport: ListViewport;
 
   constructor(
     private readonly skills: SkillManagerItem[],
     private readonly finish: (decision: SkillManagerDecision) => void,
-  ) {}
+    visibleLimit = SKILL_MANAGER_VISIBLE_LIMIT,
+  ) {
+    this.viewport = new ListViewport(visibleLimit);
+  }
 
   handleInput(data: string): void {
     if (isEscape(data)) {
@@ -58,8 +64,15 @@ export class SkillManager implements Component {
       return lines;
     }
 
-    for (const [index, skill] of this.skills.entries()) {
-      const selected = index === this.selectedIndex;
+    const viewport = this.viewport.window(this.skills.length);
+
+    if (viewport.hiddenBefore > 0) {
+      lines.push(dim(`... ${viewport.hiddenBefore} earlier skills`));
+    }
+
+    for (let index = viewport.start; index < viewport.end; index += 1) {
+      const skill = this.skills[index];
+      const selected = index === this.viewport.selectedIndex;
       const marker = selected ? "> " : "  ";
       const checkbox = skill.enabled ? "[x]" : "[ ]";
       const scope = skill.mutable ? "global" : "project";
@@ -76,11 +89,15 @@ export class SkillManager implements Component {
       }
     }
 
+    if (viewport.hiddenAfter > 0) {
+      lines.push(dim(`... ${viewport.hiddenAfter} more skills`));
+    }
+
     return lines;
   }
 
   private toggleSelected(): void {
-    const skill = this.skills[this.selectedIndex];
+    const skill = this.skills[this.viewport.selectedIndex];
 
     if (!skill?.mutable) {
       return;
@@ -95,11 +112,7 @@ export class SkillManager implements Component {
   }
 
   private move(delta: number): void {
-    if (this.skills.length === 0) {
-      return;
-    }
-
-    this.selectedIndex = (this.selectedIndex + delta + this.skills.length) % this.skills.length;
+    this.viewport.move(delta, this.skills.length);
   }
 }
 

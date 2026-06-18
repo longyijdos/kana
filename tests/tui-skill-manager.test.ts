@@ -115,6 +115,69 @@ describe("skill manager", () => {
     expect(manager.render(80).map(stripAnsi)).toContain("> [x] global-skill  global");
   });
 
+  test("renders only the visible skill window", () => {
+    const skills = Array.from({ length: 5 }, (_, index) => ({
+      name: `skill-${index + 1}`,
+      description: `Skill ${index + 1}.`,
+      scope: "global" as const,
+      enabled: false,
+      mutable: true,
+    }));
+    const manager = new SkillManager(skills, () => {}, 3);
+
+    expect(manager.render(80).map(stripAnsi)).toEqual([
+      "",
+      "Skills",
+      "> [ ] skill-1  global",
+      "  Skill 1.",
+      "  [ ] skill-2  global",
+      "  [ ] skill-3  global",
+      "... 2 more skills",
+    ]);
+
+    manager.handleInput("\x1b[B");
+    manager.handleInput("\x1b[B");
+    manager.handleInput("\x1b[B");
+
+    expect(manager.render(80).map(stripAnsi)).toEqual([
+      "",
+      "Skills",
+      "... 1 earlier skills",
+      "  [ ] skill-2  global",
+      "  [ ] skill-3  global",
+      "> [ ] skill-4  global",
+      "  Skill 4.",
+      "... 1 more skills",
+    ]);
+  });
+
+  test("does not wrap selection at list boundaries", () => {
+    const skills = [
+      {
+        name: "first-skill",
+        description: "",
+        scope: "global" as const,
+        enabled: false,
+        mutable: true,
+      },
+      {
+        name: "second-skill",
+        description: "",
+        scope: "global" as const,
+        enabled: false,
+        mutable: true,
+      },
+    ];
+    const manager = new SkillManager(skills, () => {});
+
+    manager.handleInput("\x1b[A");
+    expect(manager.render(80).map(stripAnsi)).toContain("> [ ] first-skill  global");
+
+    manager.handleInput("\x1b[B");
+    manager.handleInput("\x1b[B");
+    expect(manager.render(80).map(stripAnsi)).toContain("> [ ] second-skill  global");
+  });
+
   test("closes with escape", () => {
     let decision: SkillManagerDecision | undefined;
     const manager = new SkillManager([], (nextDecision) => {

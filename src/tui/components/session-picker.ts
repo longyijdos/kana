@@ -3,6 +3,9 @@ import { color, dim, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import { isDown, isEnter, isEscape, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
+import { ListViewport } from "../utils/list-viewport";
+
+const SESSION_PICKER_VISIBLE_LIMIT = 10;
 
 export type SessionPickerDecision =
   | {
@@ -14,12 +17,15 @@ export type SessionPickerDecision =
     };
 
 export class SessionPicker implements Component {
-  private selectedIndex = 0;
+  private readonly viewport: ListViewport;
 
   constructor(
     private readonly sessions: KanaSessionMetadata[],
     private readonly finish: (decision: SessionPickerDecision) => void,
-  ) {}
+    visibleLimit = SESSION_PICKER_VISIBLE_LIMIT,
+  ) {
+    this.viewport = new ListViewport(visibleLimit);
+  }
 
   handleInput(data: string): void {
     if (isEscape(data)) {
@@ -28,7 +34,7 @@ export class SessionPicker implements Component {
     }
 
     if (isEnter(data)) {
-      const session = this.sessions[this.selectedIndex];
+      const session = this.sessions[this.viewport.selectedIndex];
 
       if (session) {
         this.finish({
@@ -57,24 +63,33 @@ export class SessionPicker implements Component {
       return lines;
     }
 
-    for (const [index, session] of this.sessions.entries()) {
-      const marker = index === this.selectedIndex ? "> " : "  ";
+    const viewport = this.viewport.window(this.sessions.length);
+
+    if (viewport.hiddenBefore > 0) {
+      lines.push(dim(`... ${viewport.hiddenBefore} earlier sessions`));
+    }
+
+    for (let index = viewport.start; index < viewport.end; index += 1) {
+      const session = this.sessions[index];
+      const marker = index === this.viewport.selectedIndex ? "> " : "  ";
       const label = `${marker}${formatSession(session)}`;
       const rendered =
-        index === this.selectedIndex ? color(label, tuiTheme.user) : color(label, tuiTheme.muted);
+        index === this.viewport.selectedIndex
+          ? color(label, tuiTheme.user)
+          : color(label, tuiTheme.muted);
 
       lines.push(truncateToWidth(rendered, width, ""));
+    }
+
+    if (viewport.hiddenAfter > 0) {
+      lines.push(dim(`... ${viewport.hiddenAfter} more sessions`));
     }
 
     return lines;
   }
 
   private move(delta: number): void {
-    if (this.sessions.length === 0) {
-      return;
-    }
-
-    this.selectedIndex = (this.selectedIndex + delta + this.sessions.length) % this.sessions.length;
+    this.viewport.move(delta, this.sessions.length);
   }
 }
 
