@@ -26,7 +26,7 @@ export function formatToolTitle(
   }
 
   if (state === "running") {
-    return `${capitalize(text.runningActivity)}...`;
+    return `${capitalize(text.runningActivity)}... (Esc to abort)`;
   }
 
   if (state === "failed") {

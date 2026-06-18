@@ -18,7 +18,7 @@ describe("status line", () => {
     expect(rendered).not.toContain("Ctrl+C exit");
   });
 
-  test("keeps the abort hint while running", () => {
+  test("does not render shortcut hints while running", () => {
     const status = new StatusLine("deepseek/deepseek-v4-pro");
 
     status.update({
@@ -28,6 +28,6 @@ describe("status line", () => {
 
     const rendered = stripAnsi(status.render(120)[0] ?? "");
 
-    expect(rendered).toContain("Esc abort");
+    expect(rendered).not.toContain("Esc abort");
   });
 });

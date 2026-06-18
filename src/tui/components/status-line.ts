@@ -35,7 +35,6 @@ export class StatusLine implements Component {
         ? color(`tool ${this.state.activeTool}`, tuiTheme.toolActive)
         : undefined,
       color(formatCwd(process.cwd()), tuiTheme.cwd),
-      this.state.running ? dim("Esc abort") : undefined,
     ].filter((part): part is string => Boolean(part));
 
     return [truncateToWidth(parts.join(dim(" | ")), width, "")];
