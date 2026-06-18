@@ -78,7 +78,7 @@ export type DeepSeekChatCompletionChunk = {
     };
     finish_reason?: DeepSeekFinishReason | null;
   }>;
-  usage?: DeepSeekUsage;
+  usage?: DeepSeekUsage | null;
 };
 
 export type DeepSeekUsage = {

@@ -12,6 +12,9 @@ export function buildDeepSeekRequest(
     model: config.model,
     messages: toDeepSeekMessages(context),
     stream: true,
+    stream_options: {
+      include_usage: true,
+    },
   };
 
   if (config.temperature !== undefined) {
