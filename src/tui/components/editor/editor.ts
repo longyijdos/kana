@@ -1,4 +1,4 @@
-import { color, dim, normalizeLineEndings, padRightAnsi, truncateToWidth } from "../../render";
+import { color, normalizeLineEndings, padRightAnsi, truncateToWidth } from "../../render";
 import type { Component } from "../../runtime";
 import {
   CURSOR_MARKER,
@@ -205,7 +205,7 @@ export class Editor implements Component {
     }
 
     if (!this.state.value) {
-      return `${CURSOR_MARKER}${dim("Ask the agent...")}`;
+      return CURSOR_MARKER;
     }
 
     if (this.state.cursorOffset < line.startOffset || this.state.cursorOffset > line.endOffset) {
