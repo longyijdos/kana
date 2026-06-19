@@ -22,7 +22,7 @@ export class Transcript implements Component {
 
   render(width: number): string[] {
     const lines: string[] = [];
-    const hintedTool = this.latestInspectableTool();
+    const hintedTool = this.latestExpandableTool();
 
     for (const child of this.children) {
       if (child instanceof ToolCallBlock) {
@@ -35,11 +35,17 @@ export class Transcript implements Component {
     return lines;
   }
 
-  private latestInspectableTool(): ToolCallBlock | undefined {
+  private latestExpandableTool(): ToolCallBlock | undefined {
+    const latestTool = this.latestTool();
+
+    return latestTool?.hasExpandableOutput() ? latestTool : undefined;
+  }
+
+  private latestTool(): ToolCallBlock | undefined {
     for (let index = this.children.length - 1; index >= 0; index -= 1) {
       const child = this.children[index];
 
-      if (child instanceof ToolCallBlock && child.hasExpandableOutput()) {
+      if (child instanceof ToolCallBlock) {
         return child;
       }
     }

@@ -407,6 +407,52 @@ describe("tui transcript", () => {
     expect(lines).toContain("Ran second (Ctrl+O to expand)");
   });
 
+  test("does not move the output hint back when the latest tool is not expandable", () => {
+    const transcript = new Transcript();
+    const first = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "first",
+      },
+    });
+    const second = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_2",
+      name: "bash",
+      args: {
+        command: "second",
+      },
+    });
+
+    first.updateResult(
+      {
+        command: "first",
+        exitCode: 0,
+        stdout: Array.from({ length: 10 }, (_, index) => `first line ${index + 1}`).join("\n"),
+      },
+      false,
+    );
+    second.updateResult(
+      {
+        command: "second",
+        exitCode: 0,
+        stdout: "short output",
+      },
+      false,
+    );
+    transcript.addChild(first);
+    transcript.addChild(second);
+
+    const lines = transcript.render(100).map(stripAnsi);
+
+    expect(lines).toContain("Ran first");
+    expect(lines).not.toContain("Ran first (Ctrl+O to expand)");
+    expect(lines).toContain("Ran second");
+    expect(lines).not.toContain("Ran second (Ctrl+O to expand)");
+  });
+
   test("does not show the output hint when the latest tool output is already visible", () => {
     const transcript = new Transcript();
     const block = new ToolCallBlock({

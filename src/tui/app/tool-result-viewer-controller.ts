@@ -66,15 +66,21 @@ export class ToolResultViewerController {
   }
 
   private findLatestToolResultView(): ToolResultView | undefined {
+    const latestTool = this.findLatestTool();
+
+    if (!latestTool?.hasExpandableOutput()) {
+      return undefined;
+    }
+
+    return latestTool.getResultView();
+  }
+
+  private findLatestTool(): ToolCallBlock | undefined {
     for (let index = this.options.transcript.children.length - 1; index >= 0; index -= 1) {
       const child: Component = this.options.transcript.children[index];
 
       if (child instanceof ToolCallBlock) {
-        const view = child.getResultView();
-
-        if (view) {
-          return view;
-        }
+        return child;
       }
     }
 
