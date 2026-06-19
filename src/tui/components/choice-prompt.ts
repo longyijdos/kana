@@ -1,4 +1,4 @@
-import { type Color, color, dim, mapLines, truncateToWidth } from "../render";
+import { type Color, color, dim, mapLines, truncateToWidth, wrapPlainText } from "../render";
 import type { Component } from "../runtime";
 import { isDown, isEnter, isLeft, isRight, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -32,7 +32,7 @@ export class ChoicePrompt<T extends string> implements Component {
     const lines = [
       "",
       ...mapLines(this.options.title, (line) => color(line, accentColor)),
-      ...(this.options.detail ? mapLines(this.options.detail, dim) : []),
+      ...(this.options.detail ? wrapPlainText(this.options.detail, width).map(dim) : []),
       ...this.options.options.map((option, index) => this.renderOption(option, index, accentColor)),
     ];
 

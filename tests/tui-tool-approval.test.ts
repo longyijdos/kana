@@ -47,6 +47,26 @@ describe("tool approval", () => {
     expect(rendered).toContain("  Deny");
   });
 
+  test("wraps long bash command details for review", () => {
+    const command = "bun test tests/tui-tool-approval.test.ts --timeout 30000 --rerun-each 2";
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "bash",
+        args: {
+          command,
+        },
+      },
+      () => {},
+    );
+
+    const rendered = approval.render(28).map(stripAnsi);
+
+    expect(rendered.join("")).toContain(command);
+    expect(rendered.join("")).toContain("--rerun-each 2");
+  });
+
   test("selects no with an arrow key and submits it with enter", () => {
     let decision: string | undefined;
     const approval = new ToolApproval(

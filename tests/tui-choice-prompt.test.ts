@@ -24,6 +24,31 @@ describe("choice prompt", () => {
     ]);
   });
 
+  test("wraps detail text instead of truncating it", () => {
+    const prompt = new ChoicePrompt({
+      title: "Run command?",
+      detail: "bash -lc 'printf hello && printf world'",
+      options: [
+        { value: "yes", label: "Allow once" },
+        { value: "no", label: "Deny" },
+      ],
+      defaultValue: "yes",
+      onSelect: () => {},
+    });
+
+    const rendered = prompt.render(16).map(stripAnsi);
+
+    expect(rendered).toEqual([
+      "",
+      "Run command?",
+      "bash -lc 'printf",
+      " hello && printf",
+      " world'",
+      "> Allow once",
+      "  Deny",
+    ]);
+  });
+
   test("selects with arrow keys and submits with enter", () => {
     let selected: string | undefined;
     const prompt = new ChoicePrompt({
