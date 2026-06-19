@@ -59,9 +59,15 @@ export class ToolResultViewerController {
       return;
     }
 
+    const restoreEditorFocus = this.options.tui.getFocus() === this.activeViewer;
+
     this.activeViewer = undefined;
     this.options.layout.showTranscript();
-    this.options.tui.setFocus(this.options.editor);
+
+    if (restoreEditorFocus) {
+      this.options.tui.setFocus(this.options.editor);
+    }
+
     this.options.tui.requestRender(true);
   }
 

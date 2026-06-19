@@ -58,6 +58,38 @@ describe("tool result viewer controller", () => {
       "Tool output: Ran second",
     );
   });
+
+  test("does not steal focus back from a newer prompt when closing", () => {
+    const transcript = new Transcript();
+    transcript.addChild(createBashBlock("first", longOutput("first")));
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({
+      transcript,
+      editor,
+      status: new StatusLine("test-model"),
+    });
+    const tui = createTuiStub();
+    const controller = new ToolResultViewerController({
+      editor,
+      layout,
+      transcript,
+      tui,
+    });
+    const prompt = new LinesComponent(["approval prompt"]);
+
+    expect(controller.openLatest()).toBe(true);
+    tui.setFocus(prompt);
+
+    controller.close();
+
+    expect(tui.getFocus()).toBe(prompt);
+    expect(
+      layout
+        .render(80)
+        .map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""))
+        .some((line) => line.includes("Ran first")),
+    ).toBe(true);
+  });
 });
 
 function createBashBlock(command: string, stdout: string): ToolCallBlock {
@@ -87,8 +119,13 @@ function longOutput(prefix: string): string {
 }
 
 function createTuiStub(): Tui {
+  let focusedComponent: Component | undefined;
+
   return {
     requestRender: () => {},
-    setFocus: () => {},
+    getFocus: () => focusedComponent,
+    setFocus: (component: Component | undefined) => {
+      focusedComponent = component;
+    },
   } as unknown as Tui;
 }

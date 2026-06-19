@@ -51,6 +51,10 @@ export class Tui extends Container {
     this.focusedComponent = component;
   }
 
+  getFocus(): Component | undefined {
+    return this.focusedComponent;
+  }
+
   addInputListener(listener: InputListener): () => void {
     this.inputListeners.add(listener);
 
