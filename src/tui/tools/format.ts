@@ -1,10 +1,10 @@
 import type { ToolCallContent } from "@/core";
 import { capitalize, summarizeText } from "../render";
 import { getNumberProperty, getStringProperty } from "./properties";
-import { formatBashOutput } from "./renderers/bash";
+import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
-import { formatReadOutput } from "./renderers/read";
-import { formatWriteOutput } from "./renderers/write";
+import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
+import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 
 export type ToolState = "preparing" | "running" | "done" | "failed";
 export type ToolOutputDetail = "compact" | "full";
@@ -18,23 +18,27 @@ export function formatToolTitle(
   toolCall: ToolCallContent,
   state: ToolState,
   result: unknown,
+  options: { showOutputHint?: boolean } = {},
 ): string {
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target);
+  const outputHint = options.showOutputHint ? "Ctrl+O to expand" : undefined;
 
   if (state === "preparing") {
     return `Preparing ${toolCall.name}...`;
   }
 
   if (state === "running") {
-    return `${capitalize(text.runningActivity)}... (Esc to abort)`;
+    return `${capitalize(text.runningActivity)}... (${["Esc to abort", outputHint]
+      .filter((hint): hint is string => Boolean(hint))
+      .join(", ")})`;
   }
 
   if (state === "failed") {
-    return `Failed to ${text.action}`;
+    return appendTitleHint(`Failed to ${text.action}`, outputHint);
   }
 
-  return text.doneTitle;
+  return appendTitleHint(text.doneTitle, outputHint);
 }
 
 export function formatToolApproval(toolCall: ToolCallContent): ToolApprovalText {
@@ -50,6 +54,9 @@ export function formatToolOutput(
   isError: boolean,
   detail: ToolOutputDetail = "compact",
 ): string | string[] {
+  // FIXME: Sanitize terminal control sequences from tool output before rendering.
+  // Bash results can contain clear-screen escapes such as ESC[3J/ESC[2J, which
+  // corrupt resumed transcripts when replayed into the TUI.
   if (!result || typeof result !== "object") {
     return result === undefined ? "" : String(result);
   }
@@ -70,6 +77,27 @@ export function formatToolOutput(
   }
 
   return JSON.stringify(result, null, 2);
+}
+
+export function hasExpandableToolOutput(
+  toolCall: ToolCallContent,
+  result: unknown,
+  isError: boolean,
+): boolean {
+  if (isError || !result || typeof result !== "object") {
+    return false;
+  }
+
+  switch (toolCall.name) {
+    case "read":
+      return hasExpandableReadOutput(result);
+    case "write":
+      return hasExpandableWriteOutput(toolCall);
+    case "bash":
+      return hasExpandableBashOutput(result);
+  }
+
+  return false;
 }
 
 function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
@@ -145,6 +173,10 @@ function formatErrorOutput(result: object): string {
   const error = getStringProperty(result, "error");
 
   return error ?? JSON.stringify(result, null, 2);
+}
+
+function appendTitleHint(title: string, hint: string | undefined): string {
+  return hint ? `${title} (${hint})` : title;
 }
 
 function toolText(

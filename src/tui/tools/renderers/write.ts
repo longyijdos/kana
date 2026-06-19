@@ -1,5 +1,5 @@
 import type { ToolCallContent } from "@/core";
-import { tailLines } from "../../render";
+import { splitLines, tailLines } from "../../render";
 import type { ToolOutputDetail } from "../format";
 import { getNumberProperty, getStringProperty } from "../properties";
 
@@ -23,4 +23,10 @@ export function formatWriteOutput(
 
 function formatOutputText(value: string, detail: ToolOutputDetail): string {
   return detail === "full" ? value.trimEnd() : tailLines(value, TOOL_OUTPUT_LINE_LIMIT);
+}
+
+export function hasExpandableWriteOutput(toolCall: ToolCallContent): boolean {
+  const content = getStringProperty(toolCall.args, "content");
+
+  return content !== undefined && splitLines(content.trimEnd()).length > TOOL_OUTPUT_LINE_LIMIT;
 }

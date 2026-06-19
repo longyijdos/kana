@@ -5,6 +5,7 @@ import { tuiTheme } from "../../theme";
 import {
   formatToolOutput,
   formatToolTitle,
+  hasExpandableToolOutput,
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
@@ -25,6 +26,7 @@ export class ToolCallBlock implements Component {
   private cachedWidth?: number;
   private cachedVersion?: number;
   private cachedLines?: string[];
+  private outputHintVisible = false;
 
   constructor(private readonly toolCall: ToolCallContent) {}
 
@@ -58,6 +60,15 @@ export class ToolCallBlock implements Component {
     this.cachedLines = undefined;
   }
 
+  setOutputHintVisible(visible: boolean): void {
+    if (this.outputHintVisible === visible) {
+      return;
+    }
+
+    this.outputHintVisible = visible;
+    this.invalidate();
+  }
+
   render(width: number): string[] {
     if (
       this.cachedLines &&
@@ -75,8 +86,11 @@ export class ToolCallBlock implements Component {
         : tuiTheme.toolActive;
     const lines = [
       "",
-      ...mapLines(formatToolTitle(this.toolCall, state, this.result), (line) =>
-        color(line, titleColor),
+      ...mapLines(
+        formatToolTitle(this.toolCall, state, this.result, {
+          showOutputHint: this.outputHintVisible,
+        }),
+        (line) => color(line, titleColor),
       ),
     ];
     lines.push(...this.renderOutput(width, "compact"));
@@ -99,6 +113,14 @@ export class ToolCallBlock implements Component {
       title: formatToolTitle(this.toolCall, this.currentState(), this.result),
       render: (width) => this.renderOutput(width, "full"),
     };
+  }
+
+  hasExpandableOutput(): boolean {
+    if (!this.hasInspectableOutput()) {
+      return false;
+    }
+
+    return hasExpandableToolOutput(this.toolCall, this.result ?? this.partialResult, this.isError);
   }
 
   private currentState(): ToolState {

@@ -1,4 +1,4 @@
-import { tailLines } from "../../render";
+import { splitLines, tailLines } from "../../render";
 import type { ToolOutputDetail } from "../format";
 import { getNumberProperty, getStringProperty } from "../properties";
 
@@ -22,4 +22,10 @@ export function formatReadOutput(result: object, detail: ToolOutputDetail = "com
 
 function formatOutputText(value: string, detail: ToolOutputDetail): string {
   return detail === "full" ? value.trimEnd() : tailLines(value, TOOL_OUTPUT_LINE_LIMIT);
+}
+
+export function hasExpandableReadOutput(result: object): boolean {
+  const content = getStringProperty(result, "content");
+
+  return content !== undefined && splitLines(content.trimEnd()).length > TOOL_OUTPUT_LINE_LIMIT;
 }

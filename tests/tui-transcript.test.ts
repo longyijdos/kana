@@ -261,7 +261,10 @@ describe("tui transcript", () => {
     block.markExecutionStarted();
     block.updatePartialResult("running");
 
-    expect(stripAnsi(block.render(80).join("\n"))).toContain("running");
+    const partialRendered = stripAnsi(block.render(80).join("\n"));
+
+    expect(partialRendered).toContain("Running bun test... (Esc to abort)");
+    expect(partialRendered).toContain("running");
 
     block.updateResult("done", false);
 
@@ -351,5 +354,77 @@ describe("tui transcript", () => {
     transcript.clear();
 
     expect(transcript.render(80)).toEqual([]);
+  });
+
+  test("shows the output hint only on the latest inspectable tool", () => {
+    const transcript = new Transcript();
+    const first = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "first",
+      },
+    });
+    const second = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_2",
+      name: "bash",
+      args: {
+        command: "second",
+      },
+    });
+
+    first.updateResult(
+      {
+        command: "first",
+        exitCode: 0,
+        stdout: Array.from({ length: 10 }, (_, index) => `first line ${index + 1}`).join("\n"),
+      },
+      false,
+    );
+    second.updateResult(
+      {
+        command: "second",
+        exitCode: 0,
+        stdout: Array.from({ length: 10 }, (_, index) => `second line ${index + 1}`).join("\n"),
+      },
+      false,
+    );
+    transcript.addChild(first);
+    transcript.addChild(second);
+
+    const lines = transcript.render(100).map(stripAnsi);
+
+    expect(lines).toContain("Ran first");
+    expect(lines).not.toContain("Ran first (Ctrl+O to expand)");
+    expect(lines).toContain("Ran second (Ctrl+O to expand)");
+  });
+
+  test("does not show the output hint when the latest tool output is already visible", () => {
+    const transcript = new Transcript();
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "short",
+      },
+    });
+
+    block.updateResult(
+      {
+        command: "short",
+        exitCode: 0,
+        stdout: "short output",
+      },
+      false,
+    );
+    transcript.addChild(block);
+
+    const lines = transcript.render(100).map(stripAnsi);
+
+    expect(lines).toContain("Ran short");
+    expect(lines).not.toContain("Ran short (Ctrl+O to expand)");
   });
 });
