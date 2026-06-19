@@ -125,11 +125,19 @@ export class KanaTuiApp {
       onSkillsChanged: () => this.refreshAgentSystemPrompt(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
+    this.toolResultViewer = new ToolResultViewerController({
+      editor: this.editor,
+      layout: this.layout,
+      transcript: this.transcript,
+      tui: this.tui,
+      focusAfterClose: () => this.toolApproval.activePrompt,
+    });
     this.toolApproval = new ToolApprovalController({
       ...options.toolApproval,
       editor: this.editor,
       layout: this.layout,
       tui: this.tui,
+      shouldPreserveFocus: () => this.toolResultViewer.active,
       onPromptShown: (toolName) => {
         this.updateStatus("tool", {
           activeTool: toolName,
@@ -150,12 +158,6 @@ export class KanaTuiApp {
         });
       },
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
-    });
-    this.toolResultViewer = new ToolResultViewerController({
-      editor: this.editor,
-      layout: this.layout,
-      transcript: this.transcript,
-      tui: this.tui,
     });
     this.updateContextUsageFromMessages(options.initialMessages ?? []);
   }

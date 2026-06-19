@@ -90,6 +90,32 @@ describe("tool result viewer controller", () => {
         .some((line) => line.includes("Ran first")),
     ).toBe(true);
   });
+
+  test("focuses a waiting prompt after closing the active viewer", () => {
+    const transcript = new Transcript();
+    transcript.addChild(createBashBlock("first", longOutput("first")));
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({
+      transcript,
+      editor,
+      status: new StatusLine("test-model"),
+    });
+    const prompt = new LinesComponent(["approval prompt"]);
+    const tui = createTuiStub();
+    const controller = new ToolResultViewerController({
+      editor,
+      layout,
+      transcript,
+      tui,
+      focusAfterClose: () => prompt,
+    });
+
+    expect(controller.openLatest()).toBe(true);
+
+    controller.close();
+
+    expect(tui.getFocus()).toBe(prompt);
+  });
 });
 
 function createBashBlock(command: string, stdout: string): ToolCallBlock {

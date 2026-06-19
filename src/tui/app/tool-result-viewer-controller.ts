@@ -13,6 +13,7 @@ export type ToolResultViewerControllerOptions = {
   layout: AppLayout;
   transcript: Transcript;
   tui: Tui;
+  focusAfterClose?: () => Component | undefined;
 };
 
 export class ToolResultViewerController {
@@ -65,7 +66,7 @@ export class ToolResultViewerController {
     this.options.layout.showTranscript();
 
     if (restoreEditorFocus) {
-      this.options.tui.setFocus(this.options.editor);
+      this.options.tui.setFocus(this.options.focusAfterClose?.() ?? this.options.editor);
     }
 
     this.options.tui.requestRender(true);
