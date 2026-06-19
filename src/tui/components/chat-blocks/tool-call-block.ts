@@ -90,7 +90,7 @@ export class ToolCallBlock implements Component {
         formatToolTitle(this.toolCall, state, this.result, {
           showOutputHint: this.outputHintVisible,
         }),
-        (line) => color(line, titleColor),
+        (line) => colorTitleWithShortcutHint(line, titleColor),
       ),
     ];
     lines.push(...this.renderOutput(width, "compact"));
@@ -151,4 +151,17 @@ export class ToolCallBlock implements Component {
 
     return Array.isArray(output) ? output : [];
   }
+}
+
+function colorTitleWithShortcutHint(line: string, titleColor: Parameters<typeof color>[1]): string {
+  const match =
+    /^(.*?)( \((?:Esc to abort|Ctrl\+O to expand)(?:, (?:Esc to abort|Ctrl\+O to expand))*\))$/.exec(
+      line,
+    );
+
+  if (!match) {
+    return color(line, titleColor);
+  }
+
+  return `${color(match[1], titleColor)}${color(match[2], tuiTheme.shortcutHint)}`;
 }

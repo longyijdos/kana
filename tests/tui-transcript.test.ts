@@ -99,7 +99,10 @@ describe("tui transcript", () => {
     });
     block.showThinking(true);
 
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking (Esc to abort)");
+    const thinkingLine = block.render(80)[0] ?? "";
+
+    expect(stripAnsi(thinkingLine)).toBe("thinking (Esc to abort)");
+    expect(thinkingLine).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
     block.showThinking(false);
 
@@ -148,7 +151,10 @@ describe("tui transcript", () => {
     });
 
     block.markExecutionStarted();
-    expect(stripAnsi(block.render(80)[1] ?? "")).toBe("Reading AGENTS.md... (Esc to abort)");
+    const runningTitle = block.render(80)[1] ?? "";
+
+    expect(stripAnsi(runningTitle)).toBe("Reading AGENTS.md... (Esc to abort)");
+    expect(runningTitle).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
     block.updateResult(
       {
