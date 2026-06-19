@@ -3,6 +3,7 @@ export { CURSOR_MARKER, stripCursorMarker } from "./cursor";
 export {
   isBackspace,
   isCtrlC,
+  isCtrlO,
   isDelete,
   isDown,
   isEnd,

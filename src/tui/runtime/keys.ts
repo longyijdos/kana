@@ -2,6 +2,10 @@ export function isCtrlC(data: string): boolean {
   return data === "\x03";
 }
 
+export function isCtrlO(data: string): boolean {
+  return data === "\x0f";
+}
+
 export function isEscape(data: string): boolean {
   return data === "\x1b";
 }

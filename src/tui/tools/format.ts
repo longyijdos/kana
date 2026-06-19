@@ -1,12 +1,13 @@
 import type { ToolCallContent } from "@/core";
-import { capitalize, summarizeText } from "../render";
+import { capitalize, stripTerminalControlSequences, summarizeText } from "../render";
 import { getNumberProperty, getStringProperty } from "./properties";
-import { formatBashOutput } from "./renderers/bash";
+import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
-import { formatReadOutput } from "./renderers/read";
-import { formatWriteOutput } from "./renderers/write";
+import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
+import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 
 export type ToolState = "preparing" | "running" | "done" | "failed";
+export type ToolOutputDetail = "compact" | "full";
 
 type ToolApprovalText = {
   title: string;
@@ -17,23 +18,27 @@ export function formatToolTitle(
   toolCall: ToolCallContent,
   state: ToolState,
   result: unknown,
+  options: { showOutputHint?: boolean } = {},
 ): string {
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target);
+  const outputHint = options.showOutputHint ? "Ctrl+O to expand" : undefined;
 
   if (state === "preparing") {
     return `Preparing ${toolCall.name}...`;
   }
 
   if (state === "running") {
-    return `${capitalize(text.runningActivity)}... (Esc to abort)`;
+    return `${capitalize(text.runningActivity)}... (${["Esc to abort", outputHint]
+      .filter((hint): hint is string => Boolean(hint))
+      .join(", ")})`;
   }
 
   if (state === "failed") {
-    return `Failed to ${text.action}`;
+    return appendTitleHint(`Failed to ${text.action}`, outputHint);
   }
 
-  return text.doneTitle;
+  return appendTitleHint(text.doneTitle, outputHint);
 }
 
 export function formatToolApproval(toolCall: ToolCallContent): ToolApprovalText {
@@ -47,27 +52,53 @@ export function formatToolOutput(
   toolCall: ToolCallContent,
   result: unknown,
   isError: boolean,
+  detail: ToolOutputDetail = "compact",
 ): string | string[] {
-  if (!result || typeof result !== "object") {
-    return result === undefined ? "" : String(result);
+  const sanitizedResult = sanitizeToolOutput(result);
+
+  if (!sanitizedResult || typeof sanitizedResult !== "object") {
+    return sanitizedResult === undefined ? "" : String(sanitizedResult);
   }
 
   if (isError) {
-    return formatErrorOutput(result);
+    return formatErrorOutput(sanitizedResult);
+  }
+
+  const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
+
+  switch (toolCall.name) {
+    case "read":
+      return formatReadOutput(sanitizedResult, detail);
+    case "write":
+      return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail);
+    case "edit":
+      return formatEditOutput(sanitizedResult);
+    case "bash":
+      return formatBashOutput(sanitizedResult, detail);
+  }
+
+  return JSON.stringify(sanitizedResult, null, 2);
+}
+
+export function hasExpandableToolOutput(
+  toolCall: ToolCallContent,
+  result: unknown,
+  isError: boolean,
+): boolean {
+  if (isError || !result || typeof result !== "object") {
+    return false;
   }
 
   switch (toolCall.name) {
     case "read":
-      return formatReadOutput(result);
+      return hasExpandableReadOutput(result);
     case "write":
-      return formatWriteOutput(toolCall, result);
-    case "edit":
-      return formatEditOutput(result);
+      return hasExpandableWriteOutput(toolCall);
     case "bash":
-      return formatBashOutput(result);
+      return hasExpandableBashOutput(result);
   }
 
-  return JSON.stringify(result, null, 2);
+  return false;
 }
 
 function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
@@ -143,6 +174,35 @@ function formatErrorOutput(result: object): string {
   const error = getStringProperty(result, "error");
 
   return error ?? JSON.stringify(result, null, 2);
+}
+
+function appendTitleHint(title: string, hint: string | undefined): string {
+  return hint ? `${title} (${hint})` : title;
+}
+
+function sanitizeToolCallOutput(toolCall: ToolCallContent): ToolCallContent {
+  return {
+    ...toolCall,
+    args: sanitizeToolOutput(toolCall.args),
+  };
+}
+
+function sanitizeToolOutput(value: unknown): unknown {
+  if (typeof value === "string") {
+    return stripTerminalControlSequences(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(sanitizeToolOutput);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, sanitizeToolOutput(entry)]),
+  );
 }
 
 function toolText(

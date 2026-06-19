@@ -6,6 +6,7 @@ import { splitLines } from "./lines";
 const ANSI_PATTERN =
   // Covers the SGR sequences emitted by this TUI and common OSC/CSI output.
   /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
+const UNSAFE_CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 
 export function visibleWidth(value: string): number {
   return stringWidth(stripAnsi(value));
@@ -13,6 +14,10 @@ export function visibleWidth(value: string): number {
 
 export function stripAnsi(value: string): string {
   return stripCursorMarker(value).replace(ANSI_PATTERN, "");
+}
+
+export function stripTerminalControlSequences(value: string): string {
+  return stripAnsi(value).replace(UNSAFE_CONTROL_PATTERN, "");
 }
 
 export function padRightAnsi(value: string, width: number): string {

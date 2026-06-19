@@ -1,9 +1,20 @@
 import type { ToolCallContent } from "@/core";
-import { color, mapLines, truncateToWidth } from "../../render";
+import { color, truncateToWidth, wrapPlainText } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
-import { formatToolOutput, formatToolTitle, type ToolState } from "../../tools";
+import {
+  formatToolOutput,
+  formatToolTitle,
+  hasExpandableToolOutput,
+  type ToolOutputDetail,
+  type ToolState,
+} from "../../tools";
 import { TextBlock } from "./text-block";
+
+export type ToolResultView = {
+  title: string;
+  render: (width: number) => string[];
+};
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
@@ -15,6 +26,7 @@ export class ToolCallBlock implements Component {
   private cachedWidth?: number;
   private cachedVersion?: number;
   private cachedLines?: string[];
+  private outputHintVisible = false;
 
   constructor(private readonly toolCall: ToolCallContent) {}
 
@@ -48,6 +60,15 @@ export class ToolCallBlock implements Component {
     this.cachedLines = undefined;
   }
 
+  setOutputHintVisible(visible: boolean): void {
+    if (this.outputHintVisible === visible) {
+      return;
+    }
+
+    this.outputHintVisible = visible;
+    this.invalidate();
+  }
+
   render(width: number): string[] {
     if (
       this.cachedLines &&
@@ -63,23 +84,8 @@ export class ToolCallBlock implements Component {
       : state === "done"
         ? tuiTheme.toolSuccess
         : tuiTheme.toolActive;
-    const lines = [
-      "",
-      ...mapLines(formatToolTitle(this.toolCall, state, this.result), (line) =>
-        color(line, titleColor),
-      ),
-    ];
-    const output = formatToolOutput(this.toolCall, this.result ?? this.partialResult, this.isError);
-
-    if (typeof output === "string" && output) {
-      lines.push(
-        ...new TextBlock(output, {
-          color: this.isError ? tuiTheme.error : tuiTheme.toolOutput,
-        }).render(width),
-      );
-    } else if (Array.isArray(output)) {
-      lines.push(...output);
-    }
+    const lines = ["", ...this.renderTitle(width, titleColor)];
+    lines.push(...this.renderOutput(width, "compact"));
 
     const rendered = lines.map((line) => truncateToWidth(line, width, ""));
 
@@ -90,6 +96,25 @@ export class ToolCallBlock implements Component {
     return rendered;
   }
 
+  getResultView(): ToolResultView | undefined {
+    if (!this.hasInspectableOutput()) {
+      return undefined;
+    }
+
+    return {
+      title: formatToolTitle(this.toolCall, this.currentState(), this.result),
+      render: (width) => this.renderOutput(width, "full"),
+    };
+  }
+
+  hasExpandableOutput(): boolean {
+    if (!this.hasInspectableOutput()) {
+      return false;
+    }
+
+    return hasExpandableToolOutput(this.toolCall, this.result ?? this.partialResult, this.isError);
+  }
+
   private currentState(): ToolState {
     if (this.hasResult) {
       return this.isError ? "failed" : "done";
@@ -97,4 +122,46 @@ export class ToolCallBlock implements Component {
 
     return this.executionStarted ? "running" : "preparing";
   }
+
+  private hasInspectableOutput(): boolean {
+    return this.hasResult || this.partialResult !== undefined;
+  }
+
+  private renderOutput(width: number, detail: ToolOutputDetail): string[] {
+    const output = formatToolOutput(
+      this.toolCall,
+      this.result ?? this.partialResult,
+      this.isError,
+      detail,
+    );
+
+    if (typeof output === "string" && output) {
+      return new TextBlock(output, {
+        color: this.isError ? tuiTheme.error : tuiTheme.toolOutput,
+      }).render(width);
+    }
+
+    return Array.isArray(output) ? output : [];
+  }
+
+  private renderTitle(width: number, titleColor: Parameters<typeof color>[1]): string[] {
+    const title = formatToolTitle(this.toolCall, this.currentState(), this.result, {
+      showOutputHint: this.outputHintVisible,
+    });
+
+    return wrapPlainText(title, width).map((line) => colorTitleWithShortcutHint(line, titleColor));
+  }
+}
+
+function colorTitleWithShortcutHint(line: string, titleColor: Parameters<typeof color>[1]): string {
+  const match =
+    /^(.*?)( \((?:Esc to abort|Ctrl\+O to expand)(?:, (?:Esc to abort|Ctrl\+O to expand))*\))$/.exec(
+      line,
+    );
+
+  if (!match) {
+    return color(line, titleColor);
+  }
+
+  return `${color(match[1], titleColor)}${color(match[2], tuiTheme.shortcutHint)}`;
 }

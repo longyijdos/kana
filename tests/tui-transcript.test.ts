@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { AssistantMessageBlock, ToolCallBlock, Transcript } from "../src/tui/components";
-import { color, stripAnsi } from "../src/tui/render";
+import {
+  AssistantMessageBlock,
+  ToolCallBlock,
+  ToolResultViewer,
+  Transcript,
+} from "../src/tui/components";
+import { color, stripAnsi, visibleWidth } from "../src/tui/render";
 import type { Component } from "../src/tui/runtime";
 import { tuiTheme } from "../src/tui/theme";
 
@@ -94,7 +99,10 @@ describe("tui transcript", () => {
     });
     block.showThinking(true);
 
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking (Esc to abort)");
+    const thinkingLine = block.render(80)[0] ?? "";
+
+    expect(stripAnsi(thinkingLine)).toBe("thinking (Esc to abort)");
+    expect(thinkingLine).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
     block.showThinking(false);
 
@@ -143,7 +151,10 @@ describe("tui transcript", () => {
     });
 
     block.markExecutionStarted();
-    expect(stripAnsi(block.render(80)[1] ?? "")).toBe("Reading AGENTS.md... (Esc to abort)");
+    const runningTitle = block.render(80)[1] ?? "";
+
+    expect(stripAnsi(runningTitle)).toBe("Reading AGENTS.md... (Esc to abort)");
+    expect(runningTitle).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
     block.updateResult(
       {
@@ -164,6 +175,85 @@ describe("tui transcript", () => {
     expect(lines).toContain("line 10");
   });
 
+  test("provides full tool output for the result viewer", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "read",
+      args: {
+        path: "AGENTS.md",
+      },
+    });
+
+    block.updateResult(
+      {
+        path: "AGENTS.md",
+        content: Array.from({ length: 10 }, (_, index) => `line ${index + 1}`).join("\n"),
+        startLine: 1,
+        endLine: 10,
+        totalLines: 10,
+      },
+      false,
+    );
+
+    const compactLines = block.render(80).map(stripAnsi);
+    const fullLines = block.getResultView()?.render(80).map(stripAnsi) ?? [];
+
+    expect(compactLines).toContain("... 2 more lines");
+    expect(fullLines).not.toContain("... 2 more lines");
+    expect(fullLines).toContain("line 1");
+    expect(fullLines).toContain("line 10");
+  });
+
+  test("tool result viewer scrolls full output and closes with escape", () => {
+    const decisions: string[] = [];
+    const viewer = new ToolResultViewer(
+      {
+        title: "Read AGENTS.md",
+        render: () => Array.from({ length: 5 }, (_, index) => `line ${index + 1}`),
+      },
+      {
+        onClose: () => {
+          decisions.push("close");
+        },
+        visibleLimit: 3,
+      },
+    );
+
+    expect(
+      viewer
+        .render(80)
+        .map(stripAnsi)
+        .some((line) => line.includes("line 1")),
+    ).toBe(true);
+    expect(
+      viewer
+        .render(80)
+        .map(stripAnsi)
+        .some((line) => line.includes("line 5")),
+    ).toBe(false);
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 1-3 of 5");
+
+    viewer.handleInput("\x1b[B");
+
+    const oneLineDown = viewer.render(80).map(stripAnsi);
+
+    expect(oneLineDown).toContain("Lines 2-4 of 5");
+    expect(oneLineDown).toContain("... 1 lines above");
+
+    viewer.handleInput(" ");
+
+    const scrolled = viewer.render(80).map(stripAnsi);
+
+    expect(scrolled).toContain("Lines 3-5 of 5");
+    expect(scrolled).toContain("... 2 lines above");
+    expect(scrolled.some((line) => line.includes("line 5"))).toBe(true);
+
+    viewer.handleInput("\x1b");
+
+    expect(decisions).toEqual(["close"]);
+  });
+
   test("invalidates tool call cache when partial and final results change", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
@@ -177,7 +267,10 @@ describe("tui transcript", () => {
     block.markExecutionStarted();
     block.updatePartialResult("running");
 
-    expect(stripAnsi(block.render(80).join("\n"))).toContain("running");
+    const partialRendered = stripAnsi(block.render(80).join("\n"));
+
+    expect(partialRendered).toContain("Running bun test... (Esc to abort)");
+    expect(partialRendered).toContain("running");
 
     block.updateResult("done", false);
 
@@ -185,6 +278,38 @@ describe("tui transcript", () => {
 
     expect(rendered).toContain("done");
     expect(rendered).not.toContain("running");
+  });
+
+  test("sanitizes terminal control sequences from tool output", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "printf unsafe",
+      },
+    });
+
+    block.updateResult(
+      {
+        command: "printf unsafe",
+        exitCode: 0,
+        stdout: "before \x1b[31mred\x1b[0m\x1b[2J\x1b[3J after\rhidden\u0007",
+      },
+      false,
+    );
+
+    const compact = block.render(80).join("\n");
+    const full = block.getResultView()?.render(80).join("\n") ?? "";
+
+    expect(compact).not.toContain("\x1b[31m");
+    expect(compact).not.toContain("\x1b[2J");
+    expect(compact).not.toContain("\x1b[3J");
+    expect(compact).not.toContain("\r");
+    expect(compact).not.toContain("\u0007");
+    expect(stripAnsi(compact)).toContain("before red afterhidden");
+    expect(full).not.toContain("\x1b[2J");
+    expect(full).not.toContain("\x1b[3J");
   });
 
   test("renders edit tool results as red and green diff lines", () => {
@@ -243,6 +368,39 @@ describe("tui transcript", () => {
     expect(lines).toContain("Tool call rejected by user.");
   });
 
+  test("wraps long running and completed tool titles instead of truncating them", () => {
+    const command = `printf ${Array.from({ length: 8 }, (_, index) => `segment-${index}`).join("-")}`;
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command,
+      },
+    });
+
+    block.markExecutionStarted();
+
+    const runningLines = block.render(32).map(stripAnsi);
+
+    expect(runningLines.join("")).toContain(`Running ${command}... (Esc to abort)`);
+    expect(runningLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
+
+    block.updateResult(
+      {
+        command,
+        exitCode: 0,
+        stdout: "",
+      },
+      false,
+    );
+
+    const completedLines = block.render(32).map(stripAnsi);
+
+    expect(completedLines.join("")).toContain(`Ran ${command}`);
+    expect(completedLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
+  });
+
   test("renders every transcript line for terminal scrollback", () => {
     const transcript = new Transcript();
 
@@ -267,5 +425,123 @@ describe("tui transcript", () => {
     transcript.clear();
 
     expect(transcript.render(80)).toEqual([]);
+  });
+
+  test("shows the output hint only on the latest inspectable tool", () => {
+    const transcript = new Transcript();
+    const first = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "first",
+      },
+    });
+    const second = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_2",
+      name: "bash",
+      args: {
+        command: "second",
+      },
+    });
+
+    first.updateResult(
+      {
+        command: "first",
+        exitCode: 0,
+        stdout: Array.from({ length: 10 }, (_, index) => `first line ${index + 1}`).join("\n"),
+      },
+      false,
+    );
+    second.updateResult(
+      {
+        command: "second",
+        exitCode: 0,
+        stdout: Array.from({ length: 10 }, (_, index) => `second line ${index + 1}`).join("\n"),
+      },
+      false,
+    );
+    transcript.addChild(first);
+    transcript.addChild(second);
+
+    const lines = transcript.render(100).map(stripAnsi);
+
+    expect(lines).toContain("Ran first");
+    expect(lines).not.toContain("Ran first (Ctrl+O to expand)");
+    expect(lines).toContain("Ran second (Ctrl+O to expand)");
+  });
+
+  test("moves the output hint back when newer tools are not expandable", () => {
+    const transcript = new Transcript();
+    const first = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "first",
+      },
+    });
+    const second = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_2",
+      name: "bash",
+      args: {
+        command: "second",
+      },
+    });
+
+    first.updateResult(
+      {
+        command: "first",
+        exitCode: 0,
+        stdout: Array.from({ length: 10 }, (_, index) => `first line ${index + 1}`).join("\n"),
+      },
+      false,
+    );
+    second.updateResult(
+      {
+        command: "second",
+        exitCode: 0,
+        stdout: "short output",
+      },
+      false,
+    );
+    transcript.addChild(first);
+    transcript.addChild(second);
+
+    const lines = transcript.render(100).map(stripAnsi);
+
+    expect(lines).not.toContain("Ran first");
+    expect(lines).toContain("Ran first (Ctrl+O to expand)");
+    expect(lines).toContain("Ran second");
+    expect(lines).not.toContain("Ran second (Ctrl+O to expand)");
+  });
+
+  test("does not show the output hint when the latest tool output is already visible", () => {
+    const transcript = new Transcript();
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "short",
+      },
+    });
+
+    block.updateResult(
+      {
+        command: "short",
+        exitCode: 0,
+        stdout: "short output",
+      },
+      false,
+    );
+    transcript.addChild(block);
+
+    const lines = transcript.render(100).map(stripAnsi);
+
+    expect(lines).toContain("Ran short");
+    expect(lines).not.toContain("Ran short (Ctrl+O to expand)");
   });
 });

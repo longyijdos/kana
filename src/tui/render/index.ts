@@ -20,6 +20,7 @@ export { capitalize, summarizeText } from "./text";
 export {
   padRightAnsi,
   stripAnsi,
+  stripTerminalControlSequences,
   truncateToWidth,
   visibleWidth,
   wrapPlainText,

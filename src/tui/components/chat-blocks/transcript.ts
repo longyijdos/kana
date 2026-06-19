@@ -1,4 +1,5 @@
 import type { Component } from "../../runtime";
+import { ToolCallBlock } from "./tool-call-block";
 
 export class Transcript implements Component {
   readonly children: Component[] = [];
@@ -21,11 +22,28 @@ export class Transcript implements Component {
 
   render(width: number): string[] {
     const lines: string[] = [];
+    const hintedTool = this.latestExpandableTool();
 
     for (const child of this.children) {
+      if (child instanceof ToolCallBlock) {
+        child.setOutputHintVisible(child === hintedTool);
+      }
+
       lines.push(...child.render(width));
     }
 
     return lines;
+  }
+
+  private latestExpandableTool(): ToolCallBlock | undefined {
+    for (let index = this.children.length - 1; index >= 0; index -= 1) {
+      const child = this.children[index];
+
+      if (child instanceof ToolCallBlock && child.hasExpandableOutput()) {
+        return child;
+      }
+    }
+
+    return undefined;
   }
 }

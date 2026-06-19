@@ -22,6 +22,45 @@ export class ListViewport {
     this.ensureSelectedVisible(length);
   }
 
+  moveTo(index: number, length: number): void {
+    if (length === 0) {
+      this.selectedIndex = 0;
+      this.start = 0;
+      return;
+    }
+
+    this.selectedIndex = clamp(index, 0, length - 1);
+    this.ensureSelectedVisible(length);
+  }
+
+  page(delta: number, length: number): void {
+    if (length === 0) {
+      this.selectedIndex = 0;
+      this.start = 0;
+      return;
+    }
+
+    const visibleLimit = Math.max(1, this.visibleLimit);
+    const maxStart = Math.max(0, length - visibleLimit);
+
+    this.start = clamp(this.start + delta * visibleLimit, 0, maxStart);
+    this.selectedIndex = this.start;
+  }
+
+  scroll(delta: number, length: number): void {
+    if (length === 0) {
+      this.selectedIndex = 0;
+      this.start = 0;
+      return;
+    }
+
+    const visibleLimit = Math.max(1, this.visibleLimit);
+    const maxStart = Math.max(0, length - visibleLimit);
+
+    this.start = clamp(this.start + delta, 0, maxStart);
+    this.selectedIndex = this.start;
+  }
+
   window(length: number): ListViewportWindow {
     this.clamp(length);
 

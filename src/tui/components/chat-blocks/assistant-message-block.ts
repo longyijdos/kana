@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@/core";
-import { dim } from "../../render";
+import { color, dim } from "../../render";
 import type { Component } from "../../runtime";
+import { tuiTheme } from "../../theme";
 import { MarkdownBlock } from "./markdown-block";
 
 export class AssistantMessageBlock implements Component {
@@ -51,7 +52,7 @@ export class AssistantMessageBlock implements Component {
     }
 
     if (this.thinkingVisible && this.textBlocks.length === 0) {
-      lines.push(dim("thinking (Esc to abort)"));
+      lines.push(`${dim("thinking")}${color(" (Esc to abort)", tuiTheme.shortcutHint)}`);
     }
 
     this.cachedWidth = width;

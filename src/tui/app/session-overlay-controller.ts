@@ -10,10 +10,12 @@ import {
 } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
+import type { AppLayout } from "./app-layout";
 import type { RunPhase } from "./status-phase";
 
 export type SessionOverlayControllerOptions = {
   editor: Editor;
+  layout: AppLayout;
   transcript: Transcript;
   tui: Tui;
   listSessions: () => KanaSessionMetadata[];
@@ -55,7 +57,7 @@ export class SessionOverlayController {
     this.close();
     this.options.editor.clear();
     this.activePicker = picker;
-    this.options.tui.insertChildAfter(this.options.editor, picker);
+    this.options.layout.showOverlay(picker);
     this.options.tui.setFocus(picker);
     this.options.tui.requestRender(true);
   }
@@ -89,7 +91,7 @@ export class SessionOverlayController {
     });
 
     this.activeDeleteConfirmation = confirmation;
-    this.options.tui.insertChildAfter(this.options.editor, confirmation);
+    this.options.layout.showOverlay(confirmation);
     this.options.tui.setFocus(confirmation);
     this.options.tui.requestRender(true);
   }
@@ -126,7 +128,7 @@ export class SessionOverlayController {
       return;
     }
 
-    this.options.tui.removeChild(this.activePicker);
+    this.options.layout.clearOverlay(this.activePicker);
     this.activePicker = undefined;
   }
 
@@ -135,7 +137,7 @@ export class SessionOverlayController {
       return;
     }
 
-    this.options.tui.removeChild(this.activeDeleteConfirmation);
+    this.options.layout.clearOverlay(this.activeDeleteConfirmation);
     this.activeDeleteConfirmation = undefined;
   }
 

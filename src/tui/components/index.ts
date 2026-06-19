@@ -3,6 +3,7 @@ export {
   MarkdownBlock,
   TextBlock,
   ToolCallBlock,
+  type ToolResultView,
   Transcript,
   WelcomeBlock,
 } from "./chat-blocks";
@@ -24,3 +25,4 @@ export {
 } from "./skill-manager";
 export { StatusLine, type StatusLineState } from "./status-line";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";
+export { ToolResultViewer } from "./tool-result-viewer";

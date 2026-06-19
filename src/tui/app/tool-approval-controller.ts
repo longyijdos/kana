@@ -7,20 +7,17 @@ import {
   type KanaToolApprovals,
   shouldRequestToolApproval,
 } from "@/kana";
-import {
-  type Editor,
-  ToolApproval,
-  type ToolApprovalDecision,
-  type Transcript,
-} from "../components";
-import type { Tui } from "../runtime";
+import { type Editor, ToolApproval, type ToolApprovalDecision } from "../components";
+import type { Component, Tui } from "../runtime";
+import type { AppLayout } from "./app-layout";
 
 export type ToolApprovalControllerOptions = {
   config: KanaToolApprovalConfig;
   approvals: KanaToolApprovals;
-  transcript: Transcript;
   editor: Editor;
+  layout: AppLayout;
   tui: Tui;
+  shouldPreserveFocus?: () => boolean;
   onPromptShown: (toolName: string) => void;
 };
 
@@ -30,6 +27,12 @@ export class ToolApprovalController {
   constructor(private readonly options: ToolApprovalControllerOptions) {
     this.approvals = options.approvals;
   }
+
+  get activePrompt(): Component | undefined {
+    return this.activeApproval;
+  }
+
+  private activeApproval?: ToolApproval;
 
   request(
     toolCall: ToolCallContent,
@@ -51,13 +54,19 @@ export class ToolApprovalController {
 
         settled = true;
         signal?.removeEventListener("abort", handleAbort);
+        const finishedApproval = approval;
 
-        if (approval) {
-          this.options.transcript.removeChild(approval);
+        if (finishedApproval) {
+          this.options.layout.clearInlinePrompt(finishedApproval);
+          if (this.activeApproval === finishedApproval) {
+            this.activeApproval = undefined;
+          }
           approval = undefined;
         }
 
-        this.options.tui.setFocus(this.options.editor);
+        if (this.options.tui.getFocus() === finishedApproval) {
+          this.options.tui.setFocus(this.options.editor);
+        }
         this.options.tui.requestRender();
 
         if (decision === "always" && bashCommand !== undefined) {
@@ -87,8 +96,11 @@ export class ToolApprovalController {
       approval = new ToolApproval(toolCall, finish, {
         allowAlways: bashCommand !== undefined,
       });
-      this.options.transcript.addChild(approval);
-      this.options.tui.setFocus(approval);
+      this.activeApproval = approval;
+      this.options.layout.showInlinePrompt(approval);
+      if (!this.options.shouldPreserveFocus?.()) {
+        this.options.tui.setFocus(approval);
+      }
       signal?.addEventListener("abort", handleAbort, { once: true });
       this.options.onPromptShown(toolCall.name);
       this.options.tui.requestRender();
