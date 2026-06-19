@@ -5,7 +5,7 @@ import {
   ToolResultViewer,
   Transcript,
 } from "../src/tui/components";
-import { color, stripAnsi } from "../src/tui/render";
+import { color, stripAnsi, visibleWidth } from "../src/tui/render";
 import type { Component } from "../src/tui/runtime";
 import { tuiTheme } from "../src/tui/theme";
 
@@ -334,6 +334,39 @@ describe("tui transcript", () => {
     expect(lines).toContain('Failed to run git commit -m "feat: add something');
     expect(lines).toContain('Co-authored-by: Name <email@example.com>"');
     expect(lines).toContain("Tool call rejected by user.");
+  });
+
+  test("wraps long running and completed tool titles instead of truncating them", () => {
+    const command = `printf ${Array.from({ length: 8 }, (_, index) => `segment-${index}`).join("-")}`;
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command,
+      },
+    });
+
+    block.markExecutionStarted();
+
+    const runningLines = block.render(32).map(stripAnsi);
+
+    expect(runningLines.join("")).toContain(`Running ${command}... (Esc to abort)`);
+    expect(runningLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
+
+    block.updateResult(
+      {
+        command,
+        exitCode: 0,
+        stdout: "",
+      },
+      false,
+    );
+
+    const completedLines = block.render(32).map(stripAnsi);
+
+    expect(completedLines.join("")).toContain(`Ran ${command}`);
+    expect(completedLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
   });
 
   test("renders every transcript line for terminal scrollback", () => {

@@ -1,5 +1,5 @@
 import type { ToolCallContent } from "@/core";
-import { color, mapLines, truncateToWidth } from "../../render";
+import { color, truncateToWidth, wrapPlainText } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import {
@@ -84,15 +84,7 @@ export class ToolCallBlock implements Component {
       : state === "done"
         ? tuiTheme.toolSuccess
         : tuiTheme.toolActive;
-    const lines = [
-      "",
-      ...mapLines(
-        formatToolTitle(this.toolCall, state, this.result, {
-          showOutputHint: this.outputHintVisible,
-        }),
-        (line) => colorTitleWithShortcutHint(line, titleColor),
-      ),
-    ];
+    const lines = ["", ...this.renderTitle(width, titleColor)];
     lines.push(...this.renderOutput(width, "compact"));
 
     const rendered = lines.map((line) => truncateToWidth(line, width, ""));
@@ -150,6 +142,14 @@ export class ToolCallBlock implements Component {
     }
 
     return Array.isArray(output) ? output : [];
+  }
+
+  private renderTitle(width: number, titleColor: Parameters<typeof color>[1]): string[] {
+    const title = formatToolTitle(this.toolCall, this.currentState(), this.result, {
+      showOutputHint: this.outputHintVisible,
+    });
+
+    return wrapPlainText(title, width).map((line) => colorTitleWithShortcutHint(line, titleColor));
   }
 }
 
