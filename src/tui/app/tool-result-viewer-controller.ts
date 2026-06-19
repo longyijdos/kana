@@ -6,9 +6,11 @@ import {
   type Transcript,
 } from "../components";
 import type { Component, Tui } from "../runtime";
+import type { AppLayout } from "./app-layout";
 
 export type ToolResultViewerControllerOptions = {
   editor: Editor;
+  layout: AppLayout;
   transcript: Transcript;
   tui: Tui;
 };
@@ -45,7 +47,7 @@ export class ToolResultViewerController {
     });
 
     this.activeViewer = viewer;
-    this.options.tui.insertChildAfter(this.options.editor, viewer);
+    this.options.layout.showMain(viewer);
     this.options.tui.setFocus(viewer);
     this.options.tui.requestRender(true);
 
@@ -57,8 +59,8 @@ export class ToolResultViewerController {
       return;
     }
 
-    this.options.tui.removeChild(this.activeViewer);
     this.activeViewer = undefined;
+    this.options.layout.showTranscript();
     this.options.tui.setFocus(this.options.editor);
     this.options.tui.requestRender(true);
   }

@@ -3,10 +3,12 @@ import type { Editor, StatusLineState, Transcript } from "../components";
 import { SkillManager, type SkillManagerDecision, TextBlock } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
+import type { AppLayout } from "./app-layout";
 import type { RunPhase } from "./status-phase";
 
 export type SkillManagerControllerOptions = {
   editor: Editor;
+  layout: AppLayout;
   transcript: Transcript;
   tui: Tui;
   loadSkills: () => LoadKanaSkillActivationsResult;
@@ -40,7 +42,7 @@ export class SkillManagerController {
     });
 
     this.activeManager = manager;
-    this.options.tui.insertChildAfter(this.options.editor, manager);
+    this.options.layout.showOverlay(manager);
     this.options.tui.setFocus(manager);
     this.options.tui.requestRender(true);
   }
@@ -50,7 +52,7 @@ export class SkillManagerController {
       return;
     }
 
-    this.options.tui.removeChild(this.activeManager);
+    this.options.layout.clearOverlay(this.activeManager);
     this.activeManager = undefined;
   }
 

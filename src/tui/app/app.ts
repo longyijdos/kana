@@ -29,6 +29,7 @@ import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
+import { AppLayout } from "./app-layout";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
 import { SessionOverlayController } from "./session-overlay-controller";
@@ -67,6 +68,7 @@ export class KanaTuiApp {
   private readonly transcript = new Transcript();
   private readonly status: StatusLine;
   private readonly editor = new Editor();
+  private readonly layout: AppLayout;
   private readonly agentEvents: AgentEventRenderer;
   private readonly sessionOverlay: SessionOverlayController;
   private readonly skillManager: SkillManagerController;
@@ -89,6 +91,13 @@ export class KanaTuiApp {
   ) {
     this.sessionId = options.sessionId;
     this.tui = new Tui(terminal);
+    this.agent = this.createAgentForCurrentSession();
+    this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
+    this.layout = new AppLayout({
+      transcript: this.transcript,
+      editor: this.editor,
+      status: this.status,
+    });
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
       tui: this.tui,
@@ -96,6 +105,7 @@ export class KanaTuiApp {
     });
     this.sessionOverlay = new SessionOverlayController({
       editor: this.editor,
+      layout: this.layout,
       transcript: this.transcript,
       tui: this.tui,
       listSessions: this.options.listSessions,
@@ -107,6 +117,7 @@ export class KanaTuiApp {
     });
     this.skillManager = new SkillManagerController({
       editor: this.editor,
+      layout: this.layout,
       transcript: this.transcript,
       tui: this.tui,
       loadSkills: this.options.loadSkills,
@@ -116,8 +127,8 @@ export class KanaTuiApp {
     });
     this.toolApproval = new ToolApprovalController({
       ...options.toolApproval,
-      transcript: this.transcript,
       editor: this.editor,
+      layout: this.layout,
       tui: this.tui,
       onPromptShown: (toolName) => {
         this.updateStatus("tool", {
@@ -142,11 +153,10 @@ export class KanaTuiApp {
     });
     this.toolResultViewer = new ToolResultViewerController({
       editor: this.editor,
+      layout: this.layout,
       transcript: this.transcript,
       tui: this.tui,
     });
-    this.agent = this.createAgentForCurrentSession();
-    this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
     this.updateContextUsageFromMessages(options.initialMessages ?? []);
   }
 
@@ -160,9 +170,7 @@ export class KanaTuiApp {
       this.initializeTranscript(this.options.initialMessages ?? []);
     }
 
-    this.tui.addChild(this.transcript);
-    this.tui.addChild(this.editor);
-    this.tui.addChild(this.status);
+    this.tui.addChild(this.layout);
     this.tui.setFocus(this.editor);
     this.tui.addInputListener((data) => this.handleGlobalInput(data));
     this.editor.onSubmit = (submit) => {

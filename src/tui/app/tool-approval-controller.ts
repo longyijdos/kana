@@ -7,19 +7,15 @@ import {
   type KanaToolApprovals,
   shouldRequestToolApproval,
 } from "@/kana";
-import {
-  type Editor,
-  ToolApproval,
-  type ToolApprovalDecision,
-  type Transcript,
-} from "../components";
+import { type Editor, ToolApproval, type ToolApprovalDecision } from "../components";
 import type { Tui } from "../runtime";
+import type { AppLayout } from "./app-layout";
 
 export type ToolApprovalControllerOptions = {
   config: KanaToolApprovalConfig;
   approvals: KanaToolApprovals;
-  transcript: Transcript;
   editor: Editor;
+  layout: AppLayout;
   tui: Tui;
   onPromptShown: (toolName: string) => void;
 };
@@ -53,7 +49,7 @@ export class ToolApprovalController {
         signal?.removeEventListener("abort", handleAbort);
 
         if (approval) {
-          this.options.transcript.removeChild(approval);
+          this.options.layout.clearInlinePrompt(approval);
           approval = undefined;
         }
 
@@ -87,7 +83,7 @@ export class ToolApprovalController {
       approval = new ToolApproval(toolCall, finish, {
         allowAlways: bashCommand !== undefined,
       });
-      this.options.transcript.addChild(approval);
+      this.options.layout.showInlinePrompt(approval);
       this.options.tui.setFocus(approval);
       signal?.addEventListener("abort", handleAbort, { once: true });
       this.options.onPromptShown(toolCall.name);
