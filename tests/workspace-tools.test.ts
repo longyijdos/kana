@@ -355,6 +355,103 @@ describe("workspace tools", () => {
     expect(result.isError).toBe(false);
   });
 
+  test("bash streams stdout before the command completes", async () => {
+    const root = await createTempRoot();
+    const updates: unknown[] = [];
+    const bash = createBashTool({ root });
+    let completed = false;
+    const execution = Promise.resolve(
+      bash.execute(
+        {
+          command: "printf start; sleep 1; printf end",
+        },
+        createToolContext(updates),
+      ),
+    ).finally(() => {
+      completed = true;
+    });
+
+    await waitForCondition(() => updates.length > 0);
+
+    expect(completed).toBe(false);
+    expect(updates[0]).toMatchObject({
+      command: "printf start; sleep 1; printf end",
+      cwd: ".",
+      stdout: "start",
+      stderr: "",
+    });
+    expect(updates[0]).not.toHaveProperty("exitCode");
+
+    const result = await execution;
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: 0,
+      stdout: "startend",
+    });
+  });
+
+  test("bash streams stderr output", async () => {
+    const root = await createTempRoot();
+    const updates: unknown[] = [];
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "printf problem >&2",
+      },
+      createToolContext(updates),
+    );
+
+    expectToolResult(result);
+    expect(updates.length).toBeGreaterThan(0);
+    expect(updates.at(-1)).toMatchObject({
+      stderr: "problem",
+    });
+  });
+
+  test("bash runs commands with stdin disconnected", async () => {
+    const root = await createTempRoot();
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: 'if read -t 1 value; then printf "read:%s" "$value"; else printf no-stdin; fi',
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: 0,
+      stdout: "no-stdin",
+    });
+  });
+
+  test("bash makes sudo non-interactive by default", async () => {
+    const root = await createTempRoot();
+    const sudoPath = path.join(root, "sudo");
+    await writeFile(
+      sudoPath,
+      ["#!/usr/bin/env bash", 'printf "%s\\n" "$@" > sudo-args.txt', "printf fake-sudo", ""].join(
+        "\n",
+      ),
+    );
+    await chmod(sudoPath, 0o755);
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: `PATH=${shellQuote(root)}:$PATH sudo id`,
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: 0,
+      stdout: "fake-sudo",
+    });
+    expect(await readFile(path.join(root, "sudo-args.txt"), "utf8")).toBe("-n\nid\n");
+  });
+
   test("bash can run commands through a configured shell", async () => {
     const root = await createTempRoot();
     const shellPath = path.join(root, "custom-shell");
@@ -503,10 +600,12 @@ async function createTempRoot(): Promise<string> {
   return root;
 }
 
-function createToolContext() {
+function createToolContext(updates: unknown[] = []) {
   return {
     toolCallId: "call_1",
-    update() {},
+    update(partialResult: unknown) {
+      updates.push(partialResult);
+    },
   };
 }
 
@@ -514,4 +613,22 @@ function expectToolResult<T>(value: unknown): asserts value is ToolResult<T> {
   expect(value).toBeObject();
   expect(value).toHaveProperty("content");
   expect(value).toHaveProperty("result");
+}
+
+async function waitForCondition(condition: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (condition()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error("Timed out waiting for condition.");
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
