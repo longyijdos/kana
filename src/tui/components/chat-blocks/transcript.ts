@@ -36,16 +36,10 @@ export class Transcript implements Component {
   }
 
   private latestExpandableTool(): ToolCallBlock | undefined {
-    const latestTool = this.latestTool();
-
-    return latestTool?.hasExpandableOutput() ? latestTool : undefined;
-  }
-
-  private latestTool(): ToolCallBlock | undefined {
     for (let index = this.children.length - 1; index >= 0; index -= 1) {
       const child = this.children[index];
 
-      if (child instanceof ToolCallBlock) {
+      if (child instanceof ToolCallBlock && child.hasExpandableOutput()) {
         return child;
       }
     }

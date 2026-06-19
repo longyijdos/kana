@@ -72,20 +72,14 @@ export class ToolResultViewerController {
   }
 
   private findLatestToolResultView(): ToolResultView | undefined {
-    const latestTool = this.findLatestTool();
-
-    if (!latestTool?.hasExpandableOutput()) {
-      return undefined;
-    }
-
-    return latestTool.getResultView();
+    return this.findLatestExpandableTool()?.getResultView();
   }
 
-  private findLatestTool(): ToolCallBlock | undefined {
+  private findLatestExpandableTool(): ToolCallBlock | undefined {
     for (let index = this.options.transcript.children.length - 1; index >= 0; index -= 1) {
       const child: Component = this.options.transcript.children[index];
 
-      if (child instanceof ToolCallBlock) {
+      if (child instanceof ToolCallBlock && child.hasExpandableOutput()) {
         return child;
       }
     }

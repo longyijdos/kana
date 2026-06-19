@@ -472,7 +472,7 @@ describe("tui transcript", () => {
     expect(lines).toContain("Ran second (Ctrl+O to expand)");
   });
 
-  test("does not move the output hint back when the latest tool is not expandable", () => {
+  test("moves the output hint back when newer tools are not expandable", () => {
     const transcript = new Transcript();
     const first = new ToolCallBlock({
       type: "tool_call",
@@ -512,8 +512,8 @@ describe("tui transcript", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).toContain("Ran first");
-    expect(lines).not.toContain("Ran first (Ctrl+O to expand)");
+    expect(lines).not.toContain("Ran first");
+    expect(lines).toContain("Ran first (Ctrl+O to expand)");
     expect(lines).toContain("Ran second");
     expect(lines).not.toContain("Ran second (Ctrl+O to expand)");
   });

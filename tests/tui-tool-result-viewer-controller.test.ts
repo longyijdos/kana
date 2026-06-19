@@ -13,7 +13,7 @@ class LinesComponent implements Component {
 }
 
 describe("tool result viewer controller", () => {
-  test("does not open an earlier expandable tool when the latest tool is not expandable", () => {
+  test("opens the latest expandable tool when newer tools are not expandable", () => {
     const transcript = new Transcript();
     transcript.addChild(createBashBlock("first", longOutput("first")));
     transcript.addChild(createBashBlock("second", "short output"));
@@ -30,9 +30,9 @@ describe("tool result viewer controller", () => {
       tui: createTuiStub(),
     });
 
-    expect(controller.openLatest()).toBe(false);
+    expect(controller.openLatest()).toBe(true);
     expect(layout.render(80).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""))).toContain(
-      "Ran first",
+      "Tool output: Ran first",
     );
   });
 
