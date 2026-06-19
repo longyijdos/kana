@@ -280,6 +280,38 @@ describe("tui transcript", () => {
     expect(rendered).not.toContain("running");
   });
 
+  test("sanitizes terminal control sequences from tool output", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "printf unsafe",
+      },
+    });
+
+    block.updateResult(
+      {
+        command: "printf unsafe",
+        exitCode: 0,
+        stdout: "before \x1b[31mred\x1b[0m\x1b[2J\x1b[3J after\rhidden\u0007",
+      },
+      false,
+    );
+
+    const compact = block.render(80).join("\n");
+    const full = block.getResultView()?.render(80).join("\n") ?? "";
+
+    expect(compact).not.toContain("\x1b[31m");
+    expect(compact).not.toContain("\x1b[2J");
+    expect(compact).not.toContain("\x1b[3J");
+    expect(compact).not.toContain("\r");
+    expect(compact).not.toContain("\u0007");
+    expect(stripAnsi(compact)).toContain("before red afterhidden");
+    expect(full).not.toContain("\x1b[2J");
+    expect(full).not.toContain("\x1b[3J");
+  });
+
   test("renders edit tool results as red and green diff lines", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

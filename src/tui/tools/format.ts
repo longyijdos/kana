@@ -1,5 +1,5 @@
 import type { ToolCallContent } from "@/core";
-import { capitalize, summarizeText } from "../render";
+import { capitalize, stripTerminalControlSequences, summarizeText } from "../render";
 import { getNumberProperty, getStringProperty } from "./properties";
 import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
@@ -54,29 +54,30 @@ export function formatToolOutput(
   isError: boolean,
   detail: ToolOutputDetail = "compact",
 ): string | string[] {
-  // FIXME: Sanitize terminal control sequences from tool output before rendering.
-  // Bash results can contain clear-screen escapes such as ESC[3J/ESC[2J, which
-  // corrupt resumed transcripts when replayed into the TUI.
-  if (!result || typeof result !== "object") {
-    return result === undefined ? "" : String(result);
+  const sanitizedResult = sanitizeToolOutput(result);
+
+  if (!sanitizedResult || typeof sanitizedResult !== "object") {
+    return sanitizedResult === undefined ? "" : String(sanitizedResult);
   }
 
   if (isError) {
-    return formatErrorOutput(result);
+    return formatErrorOutput(sanitizedResult);
   }
+
+  const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
 
   switch (toolCall.name) {
     case "read":
-      return formatReadOutput(result, detail);
+      return formatReadOutput(sanitizedResult, detail);
     case "write":
-      return formatWriteOutput(toolCall, result, detail);
+      return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail);
     case "edit":
-      return formatEditOutput(result);
+      return formatEditOutput(sanitizedResult);
     case "bash":
-      return formatBashOutput(result, detail);
+      return formatBashOutput(sanitizedResult, detail);
   }
 
-  return JSON.stringify(result, null, 2);
+  return JSON.stringify(sanitizedResult, null, 2);
 }
 
 export function hasExpandableToolOutput(
@@ -177,6 +178,31 @@ function formatErrorOutput(result: object): string {
 
 function appendTitleHint(title: string, hint: string | undefined): string {
   return hint ? `${title} (${hint})` : title;
+}
+
+function sanitizeToolCallOutput(toolCall: ToolCallContent): ToolCallContent {
+  return {
+    ...toolCall,
+    args: sanitizeToolOutput(toolCall.args),
+  };
+}
+
+function sanitizeToolOutput(value: unknown): unknown {
+  if (typeof value === "string") {
+    return stripTerminalControlSequences(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(sanitizeToolOutput);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, sanitizeToolOutput(entry)]),
+  );
 }
 
 function toolText(
