@@ -1,5 +1,3 @@
-import type { BeforeToolExecutionResult } from "@/agent";
-import type { ToolCallContent } from "@/core";
 import { createBashTool, normalizeToolResult } from "@/tools";
 import { type Editor, type StatusLineState, ToolCallBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
@@ -9,10 +7,6 @@ export type LocalShellControllerOptions = {
   editor: Editor;
   transcript: Transcript;
   tui: Tui;
-  requestApproval: (
-    toolCall: ToolCallContent,
-    signal: AbortSignal | undefined,
-  ) => Promise<BeforeToolExecutionResult>;
   setRunning: (running: boolean) => void;
   clearRunStatus: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
@@ -43,14 +37,14 @@ export class LocalShellController {
 
     const abortController = new AbortController();
     const tool = createBashTool({ root: process.cwd() });
-    const toolCall: ToolCallContent = {
+    const toolCall = {
       type: "tool_call",
       id: `local_shell_${++this.runId}`,
       name: "bash",
       args: {
         command: shellCommand,
       },
-    };
+    } as const;
     const block = new ToolCallBlock(toolCall);
 
     this.options.editor.addToHistory(raw.trim());
@@ -64,20 +58,6 @@ export class LocalShellController {
     this.options.tui.requestRender();
 
     try {
-      const approval = await this.options.requestApproval(toolCall, abortController.signal);
-
-      if (approval.type === "cancel") {
-        block.updateResult(
-          {
-            error: approval.message ?? "Command canceled before execution.",
-            canceled: true,
-          },
-          true,
-        );
-        this.options.updateStatus("aborted");
-        return;
-      }
-
       block.markExecutionStarted();
       this.options.tui.requestRender();
 

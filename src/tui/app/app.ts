@@ -127,7 +127,6 @@ export class KanaTuiApp {
       editor: this.editor,
       transcript: this.transcript,
       tui: this.tui,
-      requestApproval: (toolCall, signal) => this.showToolApprovalPrompt(toolCall, signal),
       setRunning: (running) => {
         this.running = running;
       },
