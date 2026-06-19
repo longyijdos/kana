@@ -123,10 +123,14 @@ export function createCommandSubmit(
   }
 
   const command =
-    PROMPT_COMMANDS.find((candidate) => candidate.name === state.query) ?? selectedCommand;
+    PROMPT_COMMANDS.find((candidate) => candidate.name === state.query) ??
+    (state.suggestions.length > 0 ? selectedCommand : undefined);
 
   if (!command) {
-    return undefined;
+    return {
+      type: "message",
+      content: value,
+    };
   }
 
   return {

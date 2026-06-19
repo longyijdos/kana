@@ -692,6 +692,17 @@ describe("prompt commands", () => {
     });
   });
 
+  test("submits unmatched slash-prefixed input as a message", () => {
+    expect(createCommandSubmit("/tmp 会在什么时候自动删除呢", undefined)).toEqual({
+      type: "message",
+      content: "/tmp 会在什么时候自动删除呢",
+    });
+    expect(createCommandSubmit("/tmp", PROMPT_COMMANDS[0])).toEqual({
+      type: "message",
+      content: "/tmp",
+    });
+  });
+
   test("creates shell submissions from bang-prefixed input", () => {
     expect(createCommandSubmit("!pwd", undefined)).toEqual({
       type: "shell",
