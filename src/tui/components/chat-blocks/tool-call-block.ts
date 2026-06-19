@@ -2,8 +2,18 @@ import type { ToolCallContent } from "@/core";
 import { color, mapLines, truncateToWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
-import { formatToolOutput, formatToolTitle, type ToolState } from "../../tools";
+import {
+  formatToolOutput,
+  formatToolTitle,
+  type ToolOutputDetail,
+  type ToolState,
+} from "../../tools";
 import { TextBlock } from "./text-block";
+
+export type ToolResultView = {
+  title: string;
+  render: (width: number) => string[];
+};
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
@@ -69,17 +79,7 @@ export class ToolCallBlock implements Component {
         color(line, titleColor),
       ),
     ];
-    const output = formatToolOutput(this.toolCall, this.result ?? this.partialResult, this.isError);
-
-    if (typeof output === "string" && output) {
-      lines.push(
-        ...new TextBlock(output, {
-          color: this.isError ? tuiTheme.error : tuiTheme.toolOutput,
-        }).render(width),
-      );
-    } else if (Array.isArray(output)) {
-      lines.push(...output);
-    }
+    lines.push(...this.renderOutput(width, "compact"));
 
     const rendered = lines.map((line) => truncateToWidth(line, width, ""));
 
@@ -90,11 +90,43 @@ export class ToolCallBlock implements Component {
     return rendered;
   }
 
+  getResultView(): ToolResultView | undefined {
+    if (!this.hasInspectableOutput()) {
+      return undefined;
+    }
+
+    return {
+      title: formatToolTitle(this.toolCall, this.currentState(), this.result),
+      render: (width) => this.renderOutput(width, "full"),
+    };
+  }
+
   private currentState(): ToolState {
     if (this.hasResult) {
       return this.isError ? "failed" : "done";
     }
 
     return this.executionStarted ? "running" : "preparing";
+  }
+
+  private hasInspectableOutput(): boolean {
+    return this.hasResult || this.partialResult !== undefined;
+  }
+
+  private renderOutput(width: number, detail: ToolOutputDetail): string[] {
+    const output = formatToolOutput(
+      this.toolCall,
+      this.result ?? this.partialResult,
+      this.isError,
+      detail,
+    );
+
+    if (typeof output === "string" && output) {
+      return new TextBlock(output, {
+        color: this.isError ? tuiTheme.error : tuiTheme.toolOutput,
+      }).render(width);
+    }
+
+    return Array.isArray(output) ? output : [];
   }
 }

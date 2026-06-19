@@ -25,7 +25,7 @@ import {
 } from "../components";
 import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
 import type { ProcessTerminal } from "../runtime";
-import { isCtrlC, isEscape, Tui } from "../runtime";
+import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
@@ -35,6 +35,7 @@ import { SessionOverlayController } from "./session-overlay-controller";
 import { SkillManagerController } from "./skill-manager-controller";
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
+import { ToolResultViewerController } from "./tool-result-viewer-controller";
 import { WELCOME_LOGO_LINES } from "./welcome-logo";
 
 export type KanaTuiLoadedSession = {
@@ -76,6 +77,7 @@ export class KanaTuiApp {
   private totalCostCny = 0;
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
+  private readonly toolResultViewer: ToolResultViewerController;
 
   constructor(
     private readonly createAgent: (options: {
@@ -137,6 +139,11 @@ export class KanaTuiApp {
         });
       },
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+    });
+    this.toolResultViewer = new ToolResultViewerController({
+      editor: this.editor,
+      transcript: this.transcript,
+      tui: this.tui,
     });
     this.agent = this.createAgentForCurrentSession();
     this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
@@ -225,6 +232,15 @@ export class KanaTuiApp {
   }
 
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {
+    if (isCtrlO(data)) {
+      return this.toolResultViewer.toggleLatest() ? { consume: true } : undefined;
+    }
+
+    if (isEscape(data) && this.toolResultViewer.active) {
+      this.toolResultViewer.close();
+      return { consume: true };
+    }
+
     if (isCtrlC(data)) {
       if (this.running) {
         this.abort();
@@ -281,6 +297,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.toolResultViewer.close();
         this.transcript.clear();
         this.editor.clear();
         this.tui.requestRender(true);
@@ -359,6 +376,7 @@ export class KanaTuiApp {
 
     this.sessionId = this.options.createNewSession().id;
     this.closeSessionOverlay();
+    this.toolResultViewer.close();
     this.agent.reset();
     this.agentEvents.resetRun();
     this.transcript.clear();
@@ -378,6 +396,7 @@ export class KanaTuiApp {
 
     this.sessionId = this.options.forkSession(this.agent.state.messages, prompt).id;
     this.closeSessionOverlay();
+    this.toolResultViewer.close();
     this.editor.clear();
     this.transcript.addChild(
       new TextBlock(`Forked session ${this.sessionId}.`, {
@@ -398,6 +417,7 @@ export class KanaTuiApp {
     }
 
     this.skillManager.close();
+    this.toolResultViewer.close();
     this.sessionOverlay.openResume();
   }
 
@@ -407,6 +427,7 @@ export class KanaTuiApp {
     }
 
     this.skillManager.close();
+    this.toolResultViewer.close();
     this.sessionOverlay.openDelete();
   }
 
@@ -425,6 +446,7 @@ export class KanaTuiApp {
     }
 
     this.closeSessionOverlay();
+    this.toolResultViewer.close();
     this.skillManager.open();
   }
 
@@ -446,6 +468,7 @@ export class KanaTuiApp {
     }
 
     this.closeSessionOverlay();
+    this.toolResultViewer.close();
     this.sessionId = session.id;
     this.agent.abort();
     this.agent = this.createAgentForCurrentSession();

@@ -7,6 +7,7 @@ import { formatReadOutput } from "./renderers/read";
 import { formatWriteOutput } from "./renderers/write";
 
 export type ToolState = "preparing" | "running" | "done" | "failed";
+export type ToolOutputDetail = "compact" | "full";
 
 type ToolApprovalText = {
   title: string;
@@ -47,6 +48,7 @@ export function formatToolOutput(
   toolCall: ToolCallContent,
   result: unknown,
   isError: boolean,
+  detail: ToolOutputDetail = "compact",
 ): string | string[] {
   if (!result || typeof result !== "object") {
     return result === undefined ? "" : String(result);
@@ -58,13 +60,13 @@ export function formatToolOutput(
 
   switch (toolCall.name) {
     case "read":
-      return formatReadOutput(result);
+      return formatReadOutput(result, detail);
     case "write":
-      return formatWriteOutput(toolCall, result);
+      return formatWriteOutput(toolCall, result, detail);
     case "edit":
       return formatEditOutput(result);
     case "bash":
-      return formatBashOutput(result);
+      return formatBashOutput(result, detail);
   }
 
   return JSON.stringify(result, null, 2);
