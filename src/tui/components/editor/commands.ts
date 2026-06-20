@@ -73,7 +73,7 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   },
   {
     name: "memory",
-    description: "Compact saved memory.",
+    description: "View or compact saved memory.",
   },
 ];
 

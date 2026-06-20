@@ -31,6 +31,7 @@ import { tuiTheme } from "../theme";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
+import { COMMAND_MESSAGES } from "./command-messages";
 import { ContentViewerController } from "./content-viewer-controller";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
@@ -334,7 +335,7 @@ export class KanaTuiApp {
         break;
       case "help":
         if (command.arguments) {
-          this.showError(new Error("Usage: /help"));
+          this.showError(new Error(COMMAND_MESSAGES.helpUsage));
           return;
         }
 
@@ -361,7 +362,7 @@ export class KanaTuiApp {
         break;
       case "fork":
         if (!command.arguments) {
-          this.showError(new Error("Usage: /fork <prompt>"));
+          this.showError(new Error(COMMAND_MESSAGES.forkUsage));
           return;
         }
 
@@ -377,7 +378,7 @@ export class KanaTuiApp {
         break;
       case "delete":
         if (command.arguments) {
-          this.showError(new Error("Usage: /delete"));
+          this.showError(new Error(COMMAND_MESSAGES.deleteUsage));
           return;
         }
 
@@ -385,7 +386,7 @@ export class KanaTuiApp {
         break;
       case "skills":
         if (command.arguments) {
-          this.showError(new Error("Usage: /skills"));
+          this.showError(new Error(COMMAND_MESSAGES.skillsUsage));
           return;
         }
 
@@ -410,7 +411,7 @@ export class KanaTuiApp {
       const target =
         requestedTarget === "user" || requestedTarget === "workspace" ? requestedTarget : undefined;
       if (requestedTarget && !target) {
-        this.showError(new Error("Usage: /memory show [user|workspace]"));
+        this.showError(new Error(COMMAND_MESSAGES.memoryUsage));
         return;
       }
 
@@ -418,7 +419,7 @@ export class KanaTuiApp {
       return;
     }
 
-    this.showError(new Error("Usage: /memory <compact|show>"));
+    this.showError(new Error(COMMAND_MESSAGES.memoryUsage));
   }
 
   private openMemoryViewer(target: "user" | "workspace" | undefined): void {
@@ -438,13 +439,13 @@ export class KanaTuiApp {
 
   private showHelp(): void {
     const lines = [
-      "Slash commands",
+      COMMAND_MESSAGES.helpTitle,
       "",
       ...PROMPT_COMMANDS.map((command) => `/${command.name.padEnd(8)} ${command.description}`),
       "",
-      "Shell shortcuts",
+      COMMAND_MESSAGES.shellShortcutsTitle,
       "",
-      "!<command> Run a local bash command.",
+      COMMAND_MESSAGES.shellShortcut,
     ];
 
     this.editor.clear();
