@@ -111,6 +111,25 @@ describe("memory consolidation agent", () => {
     }
   });
 
+  test("tells full consolidation agents about configured daily retention", () => {
+    const env = createTempEnv();
+    const agent = createMemoryConsolidationAgent(
+      {
+        ...DEFAULT_KANA_CONFIG,
+        memory: {
+          ...DEFAULT_KANA_CONFIG.memory,
+          dailyRetentionDays: 14,
+        },
+      },
+      { scope: "global", mode: "full", env },
+    );
+
+    expect(agent.state.system).toContain("retains daily records for 14 calendar days");
+    expect(agent.state.system).toContain(
+      "prunes older records after this run completes successfully",
+    );
+  });
+
   test("formats incremental input from only current memory and new entries", () => {
     const env = createTempEnv();
     saveKanaMemory("global", "Current memory", { env });

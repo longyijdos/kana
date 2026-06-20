@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -61,6 +62,10 @@ export type KanaMemoryPathOptions = {
 export type KanaDailyMemoryRangeOptions = Omit<KanaMemoryPathOptions, "now"> & {
   startDate?: string;
   endDate?: string;
+};
+
+export type PruneKanaDailyMemoryOptions = KanaMemoryPathOptions & {
+  retentionDays: number;
 };
 
 export function getKanaMemoryPaths(
@@ -207,6 +212,33 @@ export function searchKanaDailyMemory(
         ]
       : [];
   });
+}
+
+/**
+ * Removes dated daily-memory files outside the configured retention window.
+ * Callers must only invoke this after a successful full consolidation so the
+ * expired records have had an opportunity to contribute to durable memory.
+ */
+export function pruneKanaDailyMemory(
+  scope: KanaMemoryScope,
+  options: PruneKanaDailyMemoryOptions,
+): string[] {
+  if (!Number.isInteger(options.retentionDays) || options.retentionDays <= 0) {
+    throw new Error("retentionDays must be a positive integer.");
+  }
+
+  const now = options.now ?? new Date();
+  const earliestRetained = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  earliestRetained.setDate(earliestRetained.getDate() - options.retentionDays + 1);
+  const cutoffDate = formatMemoryDate(earliestRetained);
+  const { dailyDirectory } = getKanaMemoryPaths(scope, options);
+  const expiredDates = listDailyMemoryDates(scope, options).filter((date) => date < cutoffDate);
+
+  for (const date of expiredDates) {
+    unlinkSync(path.join(dailyDirectory, `${date}.md`));
+  }
+
+  return expiredDates;
 }
 
 function formatKanaMemoryEntry(entry: KanaMemoryEntry): string {

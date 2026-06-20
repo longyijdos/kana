@@ -4,6 +4,7 @@ import type { KanaMemoryScope } from "./storage";
 export function buildMemoryConsolidationPrompt(
   scope: KanaMemoryScope,
   mode: MemoryConsolidationMode,
+  dailyRetentionDays?: number,
 ): string {
   const memoryPurpose =
     scope === "global"
@@ -13,6 +14,10 @@ export function buildMemoryConsolidationPrompt(
     mode === "full"
       ? "Use read_memory and the daily-memory tools to inspect relevant context before changing memory."
       : "Only use the supplied current memory and new entries; do not infer unprovided history.";
+  const retentionInstructions =
+    mode === "full" && dailyRetentionDays !== undefined
+      ? `Daily memory is temporary staging data. The host retains daily records for ${dailyRetentionDays} calendar days and prunes older records after this run completes successfully. Review relevant available daily records and preserve durable facts before they expire. Do not assume unavailable older records exist or can be recovered.`
+      : undefined;
 
   return [
     memoryPurpose,
@@ -24,5 +29,8 @@ export function buildMemoryConsolidationPrompt(
     "Use read_memory to inspect the current working copy. Use edit_memory for narrow changes and replace_memory for a genuine rewrite. Changes remain pending until this run completes successfully. If no change is useful, do not call a write tool.",
     "If a write is rejected because the memory is too long, compress it and retry. Preserve the most important and most recent information first.",
     sourceInstructions,
-  ].join(" ");
+    retentionInstructions,
+  ]
+    .filter((instruction): instruction is string => instruction !== undefined)
+    .join(" ");
 }

@@ -9,6 +9,7 @@ import {
   getKanaMemoryPaths,
   listKanaDailyMemory,
   loadKanaMemory,
+  pruneKanaDailyMemory,
   readKanaDailyMemory,
   saveKanaMemory,
   searchKanaDailyMemory,
@@ -143,6 +144,25 @@ describe("Kana memory storage", () => {
         matchCount: 1,
         snippets: ["Sessions append after each run."],
       },
+    ]);
+  });
+
+  test("prunes daily memory outside the retention window", () => {
+    const env = createTempEnv();
+    appendKanaMemory({ scope: "global", content: "Expired", env, now: new Date(2026, 5, 17) });
+    appendKanaMemory({ scope: "global", content: "Retained", env, now: new Date(2026, 5, 18) });
+    appendKanaMemory({ scope: "global", content: "Today", env, now: new Date(2026, 5, 20) });
+
+    expect(
+      pruneKanaDailyMemory("global", {
+        env,
+        retentionDays: 3,
+        now: new Date(2026, 5, 20),
+      }),
+    ).toEqual(["2026-06-17"]);
+    expect(listKanaDailyMemory("global", { env })).toEqual([
+      { date: "2026-06-18", entryCount: 1 },
+      { date: "2026-06-20", entryCount: 1 },
     ]);
   });
 

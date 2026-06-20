@@ -8,13 +8,19 @@ import {
   type MemoryConsolidationMode,
   type MemoryConsolidationTransaction,
 } from "./consolidation-tools";
-import { type KanaMemoryEntry, type KanaMemoryScope, loadKanaMemory } from "./storage";
+import {
+  type KanaMemoryEntry,
+  type KanaMemoryScope,
+  loadKanaMemory,
+  pruneKanaDailyMemory,
+} from "./storage";
 
 export type CreateMemoryConsolidationAgentOptions = {
   scope: KanaMemoryScope;
   mode: MemoryConsolidationMode;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  now?: Date;
 };
 
 export type MemoryConsolidationOutcome = "updated" | "unchanged" | "aborted" | "length";
@@ -35,7 +41,11 @@ export function createMemoryConsolidationAgent(
 
   return new Agent({
     model: createKanaModel(config),
-    system: buildMemoryConsolidationPrompt(options.scope, options.mode),
+    system: buildMemoryConsolidationPrompt(
+      options.scope,
+      options.mode,
+      config.memory.dailyRetentionDays,
+    ),
     tools: createMemoryConsolidationTools(options, options.mode, memory),
     maxTurns: config.agent.maxTurns,
   });
@@ -108,6 +118,18 @@ export async function runMemoryConsolidation(
   }
   if (finalMessage.stopReason === "stop" && memory.hasChanges) {
     memory.commit();
+  }
+
+  if (finalMessage.stopReason === "stop" && options.mode === "full") {
+    const retentionDays = config.memory.dailyRetentionDays;
+    if (retentionDays !== undefined) {
+      pruneKanaDailyMemory(options.scope, {
+        cwd: options.cwd,
+        env: options.env,
+        now: options.now,
+        retentionDays,
+      });
+    }
   }
 
   return {

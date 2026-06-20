@@ -49,6 +49,7 @@ describe("Kana config", () => {
     expect(installed).toContain("[memory]");
     expect(installed).toContain("enabled = true");
     expect(installed).toContain("max_chars = 6000");
+    expect(installed).toContain("# daily_retention_days = 30");
     expect(installed).not.toContain("api_key =");
     expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
@@ -114,6 +115,7 @@ describe("Kana config", () => {
         "[memory]",
         "enabled = false",
         "max_chars = 8000",
+        "daily_retention_days = 14",
         "",
       ].join("\n"),
     );
@@ -140,6 +142,7 @@ describe("Kana config", () => {
       memory: {
         enabled: false,
         maxChars: 8000,
+        dailyRetentionDays: 14,
       },
     });
   });
@@ -158,6 +161,16 @@ describe("Kana config", () => {
     writeFileSync(path.join(home, "config.toml"), "[memory]\nmax_chars = 0\n");
 
     expect(() => loadKanaConfig(env)).toThrow("memory.max_chars must be a positive integer.");
+  });
+
+  test("rejects non-positive memory.daily_retention_days", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), "[memory]\ndaily_retention_days = 0\n");
+
+    expect(() => loadKanaConfig(env)).toThrow(
+      "memory.daily_retention_days must be a positive integer.",
+    );
   });
 
   test("loads the configured API key environment variable name", () => {

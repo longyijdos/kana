@@ -50,6 +50,8 @@ export {
   type MemoryConsolidationResult,
   type MemoryConsolidationScheduler,
   type MemoryConsolidationTransaction,
+  type PruneKanaDailyMemoryOptions,
+  pruneKanaDailyMemory,
   type RunFullMemoryConsolidationOptions,
   type RunMemoryConsolidationOptions,
   readKanaDailyMemory,

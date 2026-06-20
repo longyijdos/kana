@@ -48,6 +48,7 @@ export type KanaNotificationConfig = {
 export type KanaMemoryConfig = {
   enabled: boolean;
   maxChars: number;
+  dailyRetentionDays?: number;
 };
 
 export type KanaConfig = {
@@ -103,6 +104,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   memory: {
     enabled: true,
     maxChars: 6000,
+    dailyRetentionDays: undefined,
   },
 };
 
@@ -190,6 +192,9 @@ function serializeKanaConfig(config: KanaConfig): string {
     "[memory]",
     `enabled = ${config.memory.enabled}`,
     `max_chars = ${config.memory.maxChars}`,
+    ...(config.memory.dailyRetentionDays === undefined
+      ? ["# daily_retention_days = 30"]
+      : [`daily_retention_days = ${config.memory.dailyRetentionDays}`]),
     "",
   ].join("\n");
 }
@@ -236,6 +241,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
     memory: {
       enabled: readBoolean(memory.enabled, defaults.memory.enabled, "memory.enabled"),
       maxChars: readPositiveInteger(memory.max_chars, defaults.memory.maxChars, "memory.max_chars"),
+      dailyRetentionDays: readOptionalPositiveInteger(
+        memory.daily_retention_days,
+        defaults.memory.dailyRetentionDays,
+        "memory.daily_retention_days",
+      ),
     },
   };
 }
@@ -292,6 +302,22 @@ function readPositiveInteger(value: unknown, fallback: number, name: string): nu
   }
 
   return number;
+}
+
+function readOptionalPositiveInteger(
+  value: unknown,
+  fallback: number | undefined,
+  name: string,
+): number | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+
+  return value;
 }
 
 function readDeepSeekProvider(value: unknown, fallback: "deepseek"): "deepseek" {
