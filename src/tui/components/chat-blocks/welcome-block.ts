@@ -95,9 +95,9 @@ export class WelcomeBlock implements Component {
       muted("  ... /resume for more"),
       "",
       title("Highlights"),
-      text("  Agent skill discovery"),
       text("  TUI skill manager"),
       text("  Project AGENTS instructions"),
+      text("  Terminal notifications"),
       muted("  ... /help for more"),
     ];
 
