@@ -29,12 +29,18 @@ export {
   appendKanaMemory,
   getKanaMemoryPaths,
   KANA_MEMORY_SCOPES,
+  type KanaDailyMemoryDay,
+  type KanaDailyMemoryRangeOptions,
+  type KanaDailyMemorySearchDay,
   type KanaMemoryEntry,
   type KanaMemoryPathOptions,
   type KanaMemoryPaths,
   type KanaMemoryScope,
+  listKanaDailyMemory,
   loadKanaMemory,
+  readKanaDailyMemory,
   saveKanaMemory,
+  searchKanaDailyMemory,
 } from "./memory";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {

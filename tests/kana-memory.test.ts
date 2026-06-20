@@ -7,8 +7,11 @@ import {
   appendKanaMemory,
   createKanaSession,
   getKanaMemoryPaths,
+  listKanaDailyMemory,
   loadKanaMemory,
+  readKanaDailyMemory,
   saveKanaMemory,
+  searchKanaDailyMemory,
 } from "@/kana";
 
 const tempDirs: string[] = [];
@@ -108,9 +111,50 @@ describe("Kana memory storage", () => {
     );
   });
 
+  test("lists, reads, and searches daily memory by date without paths", () => {
+    const env = createTempEnv();
+    const firstDay = new Date(2026, 5, 19, 9, 0);
+    const secondDay = new Date(2026, 5, 20, 9, 0);
+    appendKanaMemory({ scope: "global", content: "Use Chinese.", env, now: firstDay });
+    appendKanaMemory({
+      scope: "global",
+      content: "Sessions append after each run.",
+      env,
+      now: secondDay,
+    });
+    appendKanaMemory({
+      scope: "global",
+      content: "Run tests before committing.",
+      env,
+      now: secondDay,
+    });
+
+    expect(listKanaDailyMemory("global", { env })).toEqual([
+      { date: "2026-06-19", entryCount: 1 },
+      { date: "2026-06-20", entryCount: 2 },
+    ]);
+    expect(
+      readKanaDailyMemory("global", "2026-06-20", { env }).map((entry) => entry.content),
+    ).toEqual(["Sessions append after each run.", "Run tests before committing."]);
+    expect(searchKanaDailyMemory("global", "session", { env })).toEqual([
+      {
+        date: "2026-06-20",
+        entryCount: 2,
+        matchCount: 1,
+        snippets: ["Sessions append after each run."],
+      },
+    ]);
+  });
+
   test("rejects empty memory content", () => {
     expect(() => appendKanaMemory({ content: "  ", env: createTempEnv() })).toThrow(
       "Memory content must not be empty.",
+    );
+  });
+
+  test("rejects invalid daily memory dates", () => {
+    expect(() => readKanaDailyMemory("global", "2026-02-31", { env: createTempEnv() })).toThrow(
+      "date must be a valid YYYY-MM-DD date.",
     );
   });
 });
