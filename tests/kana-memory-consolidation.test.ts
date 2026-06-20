@@ -86,8 +86,8 @@ describe("memory consolidation agent", () => {
 
   test("creates an isolated agent without main-agent tools", () => {
     const env = createTempEnv();
-    const previous = process.env.KANA_DEEPSEEK_KEY;
-    process.env.KANA_DEEPSEEK_KEY = "secret";
+    const previous = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = "secret";
 
     try {
       const agent = createMemoryConsolidationAgent(DEFAULT_KANA_CONFIG, {
@@ -104,30 +104,41 @@ describe("memory consolidation agent", () => {
       expect(agent.state.system).toContain("most important and most recent information");
     } finally {
       if (previous === undefined) {
-        delete process.env.KANA_DEEPSEEK_KEY;
+        delete process.env.DEEPSEEK_API_KEY;
       } else {
-        process.env.KANA_DEEPSEEK_KEY = previous;
+        process.env.DEEPSEEK_API_KEY = previous;
       }
     }
   });
 
   test("tells full consolidation agents about configured daily retention", () => {
     const env = createTempEnv();
-    const agent = createMemoryConsolidationAgent(
-      {
-        ...DEFAULT_KANA_CONFIG,
-        memory: {
-          ...DEFAULT_KANA_CONFIG.memory,
-          dailyRetentionDays: 14,
-        },
-      },
-      { scope: "global", mode: "full", env },
-    );
+    const previous = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = "secret";
 
-    expect(agent.state.system).toContain("retains daily records for 14 calendar days");
-    expect(agent.state.system).toContain(
-      "prunes older records after this run completes successfully",
-    );
+    try {
+      const agent = createMemoryConsolidationAgent(
+        {
+          ...DEFAULT_KANA_CONFIG,
+          memory: {
+            ...DEFAULT_KANA_CONFIG.memory,
+            dailyRetentionDays: 14,
+          },
+        },
+        { scope: "global", mode: "full", env },
+      );
+
+      expect(agent.state.system).toContain("retains daily records for 14 calendar days");
+      expect(agent.state.system).toContain(
+        "prunes older records after this run completes successfully",
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.DEEPSEEK_API_KEY;
+      } else {
+        process.env.DEEPSEEK_API_KEY = previous;
+      }
+    }
   });
 
   test("formats incremental input from only current memory and new entries", () => {
