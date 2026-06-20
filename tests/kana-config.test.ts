@@ -268,13 +268,24 @@ describe("Kana config", () => {
     );
   });
 
+  test("guides remember usage when memory is enabled", () => {
+    const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env: createTempEnv() });
+
+    expect(prompt).toContain("<remember_tool_guidance>");
+    expect(prompt).toContain("Default to project scope.");
+    expect(prompt).toContain("Do not record secrets");
+  });
+
   test("does not inject memory when memory is disabled", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
     writeFileSync(path.join(home, "config.toml"), "[memory]\nenabled = false\n");
     saveKanaMemory("global", "This must not be injected.", { env });
 
-    expect(buildKanaSystemPrompt({ cwd: createTempDir(), env })).not.toContain("<memory>");
+    const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env });
+
+    expect(prompt).not.toContain("<memory>");
+    expect(prompt).not.toContain("<remember_tool_guidance>");
   });
 
   test("uses ~/.kana/AGENTS.md as the system prompt when it exists", () => {

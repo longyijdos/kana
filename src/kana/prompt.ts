@@ -20,6 +20,14 @@ const DEFAULT_SYSTEM_PROMPT = [
   "Do not claim to have read a file unless you used the read tool or the content was provided directly.",
 ].join(" ");
 
+const REMEMBER_TOOL_GUIDANCE = [
+  "<remember_tool_guidance>",
+  "Use remember only for durable preferences, confirmed decisions, long-lived project context, or unfinished work that future conversations need.",
+  "Default to project scope. Use global scope only for information that applies across projects.",
+  "Do not record secrets, personal sensitive information, transient execution details, or facts that can be read directly from the workspace.",
+  "</remember_tool_guidance>",
+].join("\n");
+
 export type LoadKanaSystemPromptOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -54,7 +62,8 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
 }
 
 export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}): string {
-  const memoryPrompt = formatKanaMemoryForPrompt(options);
+  const memoryEnabled = loadKanaConfig(options.env).memory.enabled;
+  const memoryPrompt = memoryEnabled ? formatKanaMemoryForPrompt(options) : undefined;
   const systemPrompt = loadKanaSystemPrompt({
     cwd: options.cwd,
     env: options.env,
@@ -64,16 +73,18 @@ export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}
     env: options.env,
   });
 
-  return [memoryPrompt, systemPrompt, environmentContext, skillsPrompt]
+  return [
+    memoryPrompt,
+    memoryEnabled ? REMEMBER_TOOL_GUIDANCE : undefined,
+    systemPrompt,
+    environmentContext,
+    skillsPrompt,
+  ]
     .filter(Boolean)
     .join("\n\n");
 }
 
 function formatKanaMemoryForPrompt(options: BuildKanaSystemPromptOptions): string | undefined {
-  if (!loadKanaConfig(options.env).memory.enabled) {
-    return undefined;
-  }
-
   const globalMemory = loadKanaMemory("global", options).trim();
   const projectMemory = loadKanaMemory("project", options).trim();
   const memoryBlocks = [

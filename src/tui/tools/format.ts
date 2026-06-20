@@ -75,6 +75,8 @@ export function formatToolOutput(
       return formatEditOutput(sanitizedResult);
     case "bash":
       return formatBashOutput(sanitizedResult, detail);
+    case "remember":
+      return "";
   }
 
   return JSON.stringify(sanitizedResult, null, 2);
@@ -102,6 +104,12 @@ export function hasExpandableToolOutput(
 }
 
 function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
+  if (toolCall.name === "remember") {
+    return (
+      getStringProperty(result, "scope") ?? getStringProperty(toolCall.args, "scope") ?? "project"
+    );
+  }
+
   const path = getStringProperty(toolCall.args, "path");
   const resultPath = getStringProperty(result, "path");
   const command = getStringProperty(toolCall.args, "command");
@@ -242,6 +250,13 @@ function toolText(
         approvalTitle: "Allow agent to run bash?",
         doneTitle: `Ran ${target}`,
         runningActivity: `running ${target}`,
+      };
+    case "remember":
+      return {
+        action: "save memory",
+        approvalTitle: "Allow agent to save memory?",
+        doneTitle: `Saved ${target} memory`,
+        runningActivity: `saving ${target} memory`,
       };
     default:
       return {

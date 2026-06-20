@@ -73,6 +73,29 @@ describe("tui transcript", () => {
     expect(toolTitle).toContain(color(stripAnsi(toolTitle), tuiTheme.toolSuccess));
   });
 
+  test("renders a completed remember call as one visible line", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_remember",
+      name: "remember",
+      args: {
+        content: "Use Chinese by default.",
+      },
+    });
+    block.updateResult(
+      {
+        id: "mem_123",
+        createdAt: "2026-06-20T14:32:00.000Z",
+        scope: "global",
+      },
+      false,
+    );
+
+    const rendered = block.render(80).map(stripAnsi).filter(Boolean);
+
+    expect(rendered).toEqual(["Saved global memory"]);
+  });
+
   test("does not render assistant stop reasons as transcript content", () => {
     const block = new AssistantMessageBlock();
 
