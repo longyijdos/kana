@@ -123,15 +123,7 @@ export function saveKanaMemory(
   options: Omit<KanaMemoryPathOptions, "now"> = {},
 ): void {
   const { memoryPath } = getKanaMemoryPaths(scope, options);
-  const normalized = content.trim();
-  const maxChars = loadKanaConfig(options.env).memory.maxChars;
-  const characterCount = countCharacters(normalized);
-
-  if (characterCount > maxChars) {
-    throw new Error(
-      `Memory content exceeds memory.max_chars: ${characterCount} / ${maxChars} characters. Compress it before saving.`,
-    );
-  }
+  const normalized = assertKanaMemoryContentSize(content, options);
 
   mkdirSync(path.dirname(memoryPath), { recursive: true });
   const temporaryPath = `${memoryPath}.${randomUUID()}.tmp`;
@@ -142,34 +134,21 @@ export function saveKanaMemory(
   renameSync(temporaryPath, memoryPath);
 }
 
-export function editKanaMemory(
-  scope: KanaMemoryScope,
-  oldText: string,
-  newText: string,
-  replaceAll = false,
+export function assertKanaMemoryContentSize(
+  content: string,
   options: Omit<KanaMemoryPathOptions, "now"> = {},
-): number {
-  if (!oldText) {
-    throw new Error("oldText must not be empty.");
-  }
+): string {
+  const normalized = content.trim();
+  const maxChars = loadKanaConfig(options.env).memory.maxChars;
+  const characterCount = countCharacters(normalized);
 
-  const current = loadKanaMemory(scope, options);
-  const matches = current.split(oldText).length - 1;
-  if (matches === 0) {
-    throw new Error("oldText was not found in memory.");
-  }
-  if (!replaceAll && matches > 1) {
+  if (characterCount > maxChars) {
     throw new Error(
-      `oldText appears ${matches} times in memory; provide more specific text or set replaceAll.`,
+      `Memory content exceeds memory.max_chars: ${characterCount} / ${maxChars} characters. Compress it before saving.`,
     );
   }
 
-  saveKanaMemory(
-    scope,
-    replaceAll ? current.split(oldText).join(newText) : current.replace(oldText, newText),
-    options,
-  );
-  return replaceAll ? matches : 1;
+  return normalized;
 }
 
 export function listKanaDailyMemory(

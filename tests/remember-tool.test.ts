@@ -35,6 +35,9 @@ describe("remember tool", () => {
       content: "Memory recorded in project scope.",
       result: {
         scope: "project",
+        content: "The project uses Bun.",
+        title: "Package manager",
+        reason: "Confirmed in package.json.",
       },
     });
     expect(output.content).not.toContain(".kana");
@@ -60,6 +63,7 @@ describe("remember tool", () => {
       content: "Memory recorded in global scope.",
       result: {
         scope: "global",
+        content: "Use Chinese by default.",
       },
     });
     expect(readFileSync(getKanaMemoryPaths("global", { env }).dailyPath, "utf8")).toContain(

@@ -1,6 +1,6 @@
 import { Type } from "@sinclair/typebox";
 
-import { appendKanaMemory, type KanaMemoryScope } from "@/kana";
+import { appendKanaMemory, type KanaMemoryEntry } from "@/kana";
 import type { Tool } from "./tool";
 
 export const rememberParameters = Type.Object({
@@ -29,11 +29,7 @@ export const rememberParameters = Type.Object({
   ),
 });
 
-export type RememberToolResult = {
-  id: string;
-  createdAt: string;
-  scope: KanaMemoryScope;
-};
+export type RememberToolResult = KanaMemoryEntry;
 
 export type RememberToolOptions = {
   cwd?: string;
@@ -60,15 +56,9 @@ export function createRememberTool(
         cwd: options.cwd,
         env: options.env,
       });
-      const result: RememberToolResult = {
-        id: entry.id,
-        createdAt: entry.createdAt,
-        scope: entry.scope,
-      };
-
       return {
         content: `Memory recorded in ${entry.scope} scope.`,
-        result,
+        result: entry satisfies RememberToolResult,
       };
     },
   };

@@ -4,7 +4,9 @@ import { createKanaModel } from "../model";
 import { buildMemoryConsolidationPrompt } from "./consolidation-prompt";
 import {
   createMemoryConsolidationTools,
+  createMemoryConsolidationTransaction,
   type MemoryConsolidationMode,
+  type MemoryConsolidationTransaction,
 } from "./consolidation-tools";
 import { type KanaMemoryEntry, type KanaMemoryScope, loadKanaMemory } from "./storage";
 
@@ -18,6 +20,7 @@ export type CreateMemoryConsolidationAgentOptions = {
 export function createMemoryConsolidationAgent(
   config: KanaConfig,
   options: CreateMemoryConsolidationAgentOptions,
+  memory: MemoryConsolidationTransaction = createMemoryConsolidationTransaction(options),
 ): Agent {
   if (!config.memory.enabled) {
     throw new Error("Memory is disabled.");
@@ -26,7 +29,7 @@ export function createMemoryConsolidationAgent(
   return new Agent({
     model: createKanaModel(config),
     system: buildMemoryConsolidationPrompt(options.scope, options.mode),
-    tools: createMemoryConsolidationTools(options, options.mode),
+    tools: createMemoryConsolidationTools(options, options.mode, memory),
     maxTurns: config.agent.maxTurns,
   });
 }
@@ -50,7 +53,14 @@ export async function runMemoryConsolidation(
   config: KanaConfig,
   options: CreateMemoryConsolidationAgentOptions & { input: string },
 ): Promise<AgentState> {
-  const agent = createMemoryConsolidationAgent(config, options);
+  const memory = createMemoryConsolidationTransaction(options);
+  const agent = createMemoryConsolidationAgent(config, options, memory);
   await agent.prompt(options.input);
+
+  const finalMessage = agent.state.messages.at(-1);
+  if (finalMessage?.role === "assistant" && finalMessage.stopReason === "stop") {
+    memory.commit();
+  }
+
   return agent.state;
 }

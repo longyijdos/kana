@@ -3,6 +3,7 @@ import {
   appendKanaSessionMessages,
   createKanaAgent,
   createKanaSession,
+  createMemoryConsolidationScheduler,
   deleteKanaSession,
   listKanaSessions,
   loadKanaConfig,
@@ -23,6 +24,9 @@ export type StartTuiOptions = {
 export function startTui(options: StartTuiOptions = {}): void {
   const config = loadKanaConfig();
   const toolApprovals = loadKanaToolApprovals();
+  const memoryConsolidation = config.memory.enabled
+    ? createMemoryConsolidationScheduler(config)
+    : undefined;
   const createSession = (parentSessionPath?: string, title?: string) =>
     createKanaSession({
       title,
@@ -64,6 +68,10 @@ export function startTui(options: StartTuiOptions = {}): void {
           if (messagesToPersist.length > 0) {
             resumeSessionId = session.metadata.id;
           }
+
+          // Keep consolidation off the completed conversation's critical path;
+          // the scheduler serializes each scope's read-modify-write jobs.
+          void memoryConsolidation?.schedule(messages).catch(() => undefined);
         },
       }),
     new ProcessTerminal(config.notification),
