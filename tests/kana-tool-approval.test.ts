@@ -33,6 +33,13 @@ describe("Kana tool approval", () => {
       shouldRequestToolApproval(
         { mode: "always" },
         approvals({ exactCommands: ["git status"] }),
+        toolCall("remember", { content: "Use Chinese by default." }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "always" },
+        approvals({ exactCommands: ["git status"] }),
         toolCall("bash", { command: "git status" }),
       ),
     ).toBe(true);

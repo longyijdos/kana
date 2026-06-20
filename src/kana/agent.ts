@@ -1,6 +1,12 @@
 import { Agent, type AgentConfig } from "@/agent";
 import { getModel } from "@/providers";
-import { createBashTool, createEditTool, createReadTool, createWriteTool } from "@/tools";
+import {
+  createBashTool,
+  createEditTool,
+  createReadTool,
+  createRememberTool,
+  createWriteTool,
+} from "@/tools";
 import { getKanaConfigPaths, type KanaConfig } from "./config";
 import { buildKanaSystemPrompt } from "./prompt";
 import { loadKanaSkills } from "./skills";
@@ -45,6 +51,13 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       createBashTool({
         root: cwd,
       }),
+      ...(config.memory.enabled
+        ? [
+            createRememberTool({
+              cwd,
+            }),
+          ]
+        : []),
     ],
     maxTurns: config.agent.maxTurns,
     beforeToolExecution: options.beforeToolExecution,

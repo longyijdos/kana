@@ -175,15 +175,27 @@ describe("Kana config", () => {
     process.env.KANA_DEEPSEEK_KEY = "secret";
 
     try {
-      expect(() =>
-        createKanaAgent({
-          ...DEFAULT_KANA_CONFIG,
-          model: {
-            ...DEFAULT_KANA_CONFIG.model,
-            apiKeyEnv: "KANA_DEEPSEEK_KEY",
-          },
-        }),
-      ).not.toThrow();
+      const enabled = createKanaAgent({
+        ...DEFAULT_KANA_CONFIG,
+        model: {
+          ...DEFAULT_KANA_CONFIG.model,
+          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+        },
+      });
+      const disabled = createKanaAgent({
+        ...DEFAULT_KANA_CONFIG,
+        model: {
+          ...DEFAULT_KANA_CONFIG.model,
+          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+        },
+        memory: {
+          ...DEFAULT_KANA_CONFIG.memory,
+          enabled: false,
+        },
+      });
+
+      expect(enabled.state.tools.map((tool) => tool.name)).toContain("remember");
+      expect(disabled.state.tools.map((tool) => tool.name)).not.toContain("remember");
     } finally {
       restoreEnv("KANA_DEEPSEEK_KEY", previous);
     }
