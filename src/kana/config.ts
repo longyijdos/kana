@@ -66,6 +66,7 @@ export type KanaConfigPaths = {
   memoryDirectory: string;
   sessionsPath: string;
   approvalsPath: string;
+  skillsConfigPath: string;
 };
 
 export type InstallKanaConfigOptions = {
@@ -77,6 +78,8 @@ export type InstallKanaConfigResult = {
   configStatus: "created" | "exists" | "reinstalled";
   approvalsPath: string;
   approvalsStatus: "created" | "exists" | "reinstalled";
+  skillsConfigPath: string;
+  skillsConfigStatus: "created" | "exists" | "reinstalled";
 };
 
 export const DEFAULT_KANA_CONFIG: KanaConfig = {
@@ -118,6 +121,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
     memoryDirectory: path.join(home, "memory"),
     sessionsPath: path.join(home, "sessions"),
     approvalsPath: path.join(home, "approvals.json"),
+    skillsConfigPath: path.join(home, "skills", "skills.toml"),
   };
 }
 
@@ -136,11 +140,12 @@ export function installKanaConfig(
   env: NodeJS.ProcessEnv = process.env,
   options: InstallKanaConfigOptions = {},
 ): InstallKanaConfigResult {
-  const { home, configPath, approvalsPath } = getKanaConfigPaths(env);
+  const { home, configPath, approvalsPath, skillsConfigPath } = getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
 
   const configExists = existsSync(configPath);
   const approvalsExists = existsSync(approvalsPath);
+  const skillsConfigExists = existsSync(skillsConfigPath);
 
   if (!configExists || options.force) {
     writeFileSync(configPath, serializeKanaConfig(DEFAULT_KANA_CONFIG), {
@@ -156,6 +161,14 @@ export function installKanaConfig(
     });
   }
 
+  if (!skillsConfigExists || options.force) {
+    mkdirSync(path.dirname(skillsConfigPath), { recursive: true });
+    writeFileSync(skillsConfigPath, ["[model_invocation]", "enabled = []", ""].join("\n"), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  }
+
   return {
     configPath,
     configStatus:
@@ -163,6 +176,13 @@ export function installKanaConfig(
     approvalsPath,
     approvalsStatus:
       approvalsExists && !options.force ? "exists" : approvalsExists ? "reinstalled" : "created",
+    skillsConfigPath,
+    skillsConfigStatus:
+      skillsConfigExists && !options.force
+        ? "exists"
+        : skillsConfigExists
+          ? "reinstalled"
+          : "created",
   };
 }
 

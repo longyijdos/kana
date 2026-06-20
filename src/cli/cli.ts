@@ -61,19 +61,15 @@ export function createCli(options: CreateCliOptions): Command {
       });
       log(formatInstallMessage("config", result.configPath, result.configStatus));
       log(formatInstallMessage("approvals", result.approvalsPath, result.approvalsStatus));
+      log(
+        formatInstallMessage("skills config", result.skillsConfigPath, result.skillsConfigStatus),
+      );
 
       if (options.skills) {
         const skillsResult = await installSkills(process.env, {
           force: options.force,
         });
         log(formatInstallSkillsMessage(skillsResult));
-        log(
-          formatInstallMessage(
-            "skills config",
-            skillsResult.skillsConfigPath,
-            skillsResult.skillsConfigStatus,
-          ),
-        );
       }
     });
 

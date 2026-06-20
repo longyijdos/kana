@@ -31,6 +31,7 @@ describe("Kana config", () => {
       memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
       approvalsPath: "/home/kana/.kana/approvals.json",
+      skillsConfigPath: "/home/kana/.kana/skills/skills.toml",
     });
   });
 
@@ -39,9 +40,11 @@ describe("Kana config", () => {
     const firstInstall = installKanaConfig(env);
     const installed = readFileSync(firstInstall.configPath, "utf8");
     const installedApprovals = JSON.parse(readFileSync(firstInstall.approvalsPath, "utf8"));
+    const installedSkillsConfig = readFileSync(firstInstall.skillsConfigPath, "utf8");
 
     expect(firstInstall.configStatus).toBe("created");
     expect(firstInstall.approvalsStatus).toBe("created");
+    expect(firstInstall.skillsConfigStatus).toBe("created");
     expect(installed).toContain('api_key_env = "DEEPSEEK_API_KEY"');
     expect(installed).toContain('mode = "unless_trusted"');
     expect(installed).toContain("[notification]");
@@ -52,10 +55,12 @@ describe("Kana config", () => {
     expect(installed).toContain("# daily_retention_days = 30");
     expect(installed).not.toContain("api_key =");
     expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
+    expect(installedSkillsConfig).toBe(["[model_invocation]", "enabled = []", ""].join("\n"));
     expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
 
     writeFileSync(firstInstall.configPath, "custom = true\n");
     writeFileSync(firstInstall.approvalsPath, '{"custom":true}\n');
+    writeFileSync(firstInstall.skillsConfigPath, "custom = true\n");
     const secondInstall = installKanaConfig(env);
 
     expect(secondInstall).toEqual({
@@ -63,16 +68,20 @@ describe("Kana config", () => {
       configStatus: "exists",
       approvalsPath: firstInstall.approvalsPath,
       approvalsStatus: "exists",
+      skillsConfigPath: firstInstall.skillsConfigPath,
+      skillsConfigStatus: "exists",
     });
     expect(readFileSync(firstInstall.configPath, "utf8")).toBe("custom = true\n");
     expect(readFileSync(firstInstall.approvalsPath, "utf8")).toBe('{"custom":true}\n');
+    expect(readFileSync(firstInstall.skillsConfigPath, "utf8")).toBe("custom = true\n");
   });
 
-  test("force installs the default config and approvals over existing files", () => {
+  test("force installs the default config, approvals, and skills config over existing files", () => {
     const env = createTempEnv();
-    const { configPath, approvalsPath } = installKanaConfig(env);
+    const { configPath, approvalsPath, skillsConfigPath } = installKanaConfig(env);
     writeFileSync(configPath, "custom = true\n");
     writeFileSync(approvalsPath, '{"custom":true}\n');
+    writeFileSync(skillsConfigPath, "custom = true\n");
 
     const result = installKanaConfig(env, { force: true });
 
@@ -81,9 +90,14 @@ describe("Kana config", () => {
       configStatus: "reinstalled",
       approvalsPath,
       approvalsStatus: "reinstalled",
+      skillsConfigPath,
+      skillsConfigStatus: "reinstalled",
     });
     expect(readFileSync(configPath, "utf8")).toContain('api_key_env = "DEEPSEEK_API_KEY"');
     expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
+    expect(readFileSync(skillsConfigPath, "utf8")).toBe(
+      ["[model_invocation]", "enabled = []", ""].join("\n"),
+    );
   });
 
   test("loads defaults when config.toml is missing", () => {

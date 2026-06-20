@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { installKanaSkills } from "@/kana";
@@ -24,13 +24,7 @@ describe("Kana skill installation", () => {
     expect(result).toEqual({
       skillsPath: path.join(env.KANA_HOME, "skills", "kana-skills"),
       status: "cloned",
-      skillsConfigPath: path.join(env.KANA_HOME, "skills", "skills.toml"),
-      skillsConfigStatus: "created",
     });
-    expect(existsSync(path.join(env.KANA_HOME, "skills"))).toBe(true);
-    expect(readFileSync(result.skillsConfigPath, "utf8")).toBe(
-      ["[model_invocation]", "enabled = []", ""].join("\n"),
-    );
     expect(calls).toEqual([
       {
         args: [
@@ -56,8 +50,6 @@ describe("Kana skill installation", () => {
     expect(result).toEqual({
       skillsPath,
       status: "updated",
-      skillsConfigPath: path.join(env.KANA_HOME, "skills", "skills.toml"),
-      skillsConfigStatus: "created",
     });
     expect(calls).toEqual([
       {
@@ -70,46 +62,18 @@ describe("Kana skill installation", () => {
   test("requires force before replacing a non-git skills directory", async () => {
     const env = createTempEnv();
     const skillsPath = path.join(env.KANA_HOME, "skills", "kana-skills");
-    const skillsConfigPath = path.join(env.KANA_HOME, "skills", "skills.toml");
     mkdirSync(skillsPath, { recursive: true });
     writeFileSync(path.join(skillsPath, "SKILL.md"), "local skill");
 
     await expect(installKanaSkills(env, { runGit: createFakeGit([]) })).rejects.toThrow(
       `Cannot update skills because ${skillsPath} is not a git repository. Re-run with --force to replace it.`,
     );
-    expect(existsSync(skillsConfigPath)).toBe(false);
-  });
-
-  test("keeps an existing skills config without force", async () => {
-    const env = createTempEnv();
-    const skillsPath = path.join(env.KANA_HOME, "skills", "kana-skills");
-    const skillsConfigPath = path.join(env.KANA_HOME, "skills", "skills.toml");
-    mkdirSync(path.join(skillsPath, ".git"), { recursive: true });
-    writeFileSync(
-      skillsConfigPath,
-      ["[model_invocation]", 'enabled = ["existing"]', ""].join("\n"),
-    );
-
-    const result = await installKanaSkills(env, {
-      runGit: createFakeGit([]),
-    });
-
-    expect(result.skillsConfigPath).toBe(skillsConfigPath);
-    expect(result.skillsConfigStatus).toBe("exists");
-    expect(readFileSync(skillsConfigPath, "utf8")).toBe(
-      ["[model_invocation]", 'enabled = ["existing"]', ""].join("\n"),
-    );
   });
 
   test("force reinstalls an existing skills checkout", async () => {
     const env = createTempEnv();
     const skillsPath = path.join(env.KANA_HOME, "skills", "kana-skills");
-    const skillsConfigPath = path.join(env.KANA_HOME, "skills", "skills.toml");
     mkdirSync(skillsPath, { recursive: true });
-    writeFileSync(
-      skillsConfigPath,
-      ["[model_invocation]", 'enabled = ["existing"]', ""].join("\n"),
-    );
     const calls: GitCall[] = [];
 
     const result = await installKanaSkills(env, {
@@ -120,12 +84,7 @@ describe("Kana skill installation", () => {
     expect(result).toEqual({
       skillsPath,
       status: "reinstalled",
-      skillsConfigPath,
-      skillsConfigStatus: "reinstalled",
     });
-    expect(readFileSync(skillsConfigPath, "utf8")).toBe(
-      ["[model_invocation]", "enabled = []", ""].join("\n"),
-    );
     expect(calls).toEqual([
       {
         args: ["clone", "https://github.com/longyijdos/kana-skills.git", skillsPath],

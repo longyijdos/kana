@@ -62,6 +62,8 @@ describe("CLI", () => {
         configStatus: "created",
         approvalsPath: "/tmp/approvals.json",
         approvalsStatus: "exists",
+        skillsConfigPath: "/tmp/skills.toml",
+        skillsConfigStatus: "created",
       }),
       log: (message) => {
         logs.push(message);
@@ -71,6 +73,7 @@ describe("CLI", () => {
     expect(logs).toEqual([
       "Created config: /tmp/config.toml",
       "Approvals already exists: /tmp/approvals.json",
+      "Created skills config: /tmp/skills.toml",
     ]);
   });
 
@@ -84,8 +87,6 @@ describe("CLI", () => {
         return {
           skillsPath: "/tmp/.kana/skills/kana-skills",
           status: "reinstalled",
-          skillsConfigPath: "/tmp/.kana/skills/skills.toml",
-          skillsConfigStatus: "reinstalled",
         };
       },
       log: (message) => {
@@ -97,8 +98,8 @@ describe("CLI", () => {
     expect(logs).toEqual([
       "Created config: /tmp/config.toml",
       "Created approvals: /tmp/approvals.json",
+      "Created skills config: /tmp/skills.toml",
       "Reinstalled skills: /tmp/.kana/skills/kana-skills",
-      "Reinstalled skills config: /tmp/.kana/skills/skills.toml",
     ]);
   });
 });
@@ -117,12 +118,12 @@ function defaultCliOptions(): CreateCliOptions {
       configStatus: "created",
       approvalsPath: "/tmp/approvals.json",
       approvalsStatus: "created",
+      skillsConfigPath: "/tmp/skills.toml",
+      skillsConfigStatus: "created",
     }),
     installKanaSkills: async () => ({
       skillsPath: "/tmp/.kana/skills/kana-skills",
       status: "cloned",
-      skillsConfigPath: "/tmp/.kana/skills/skills.toml",
-      skillsConfigStatus: "created",
     }),
     log: () => {},
     startTui: () => {},

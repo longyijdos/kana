@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -21,8 +21,6 @@ export type InstallKanaSkillsOptions = {
 export type InstallKanaSkillsResult = {
   skillsPath: string;
   status: "cloned" | "updated" | "reinstalled";
-  skillsConfigPath: string;
-  skillsConfigStatus: "created" | "exists" | "reinstalled";
 };
 
 type GitRunner = (args: string[], options?: { cwd?: string }) => Promise<void>;
@@ -60,28 +58,6 @@ export async function installKanaSkills(
   return {
     skillsPath,
     status,
-    ...installKanaSkillsConfig(skillsRoot, options.force),
-  };
-}
-
-function installKanaSkillsConfig(
-  skillsRoot: string,
-  force: boolean | undefined,
-): Pick<InstallKanaSkillsResult, "skillsConfigPath" | "skillsConfigStatus"> {
-  const skillsConfigPath = path.join(skillsRoot, "skills.toml");
-  const exists = existsSync(skillsConfigPath);
-
-  if (!exists || force) {
-    mkdirSync(skillsRoot, { recursive: true });
-    writeFileSync(skillsConfigPath, ["[model_invocation]", "enabled = []", ""].join("\n"), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-  }
-
-  return {
-    skillsConfigPath,
-    skillsConfigStatus: exists && !force ? "exists" : exists ? "reinstalled" : "created",
   };
 }
 

@@ -43,7 +43,7 @@ install_from_source() {
   echo "Installed Kana to $target"
   warn_if_install_dir_not_on_path
 
-  "$target" install --skills
+  "$target" install
 }
 
 install_from_release() {
@@ -88,7 +88,7 @@ EOF
   echo "Installed Kana to $target"
   warn_if_install_dir_not_on_path
 
-  "$target" install --skills
+  "$target" install
 }
 
 usage() {
