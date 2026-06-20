@@ -10,6 +10,7 @@ export {
   type KanaAgentConfig,
   type KanaConfig,
   type KanaConfigPaths,
+  type KanaMemoryConfig,
   type KanaModelConfig,
   type KanaNotificationBackend,
   type KanaNotificationConfig,
@@ -23,6 +24,18 @@ export {
   formatKanaEnvironmentContext,
   type KanaEnvironmentContext,
 } from "./context";
+export {
+  type AppendKanaMemoryOptions,
+  appendKanaMemory,
+  getKanaMemoryPaths,
+  KANA_MEMORY_SCOPES,
+  type KanaMemoryEntry,
+  type KanaMemoryPathOptions,
+  type KanaMemoryPaths,
+  type KanaMemoryScope,
+  loadKanaMemory,
+  saveKanaMemory,
+} from "./memory";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
   type AppendKanaSessionMessagesOptions,

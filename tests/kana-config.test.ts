@@ -27,6 +27,9 @@ describe("Kana config", () => {
       home: "/home/kana/.kana",
       configPath: "/home/kana/.kana/config.toml",
       agentsPath: "/home/kana/.kana/AGENTS.md",
+      memoryPath: "/home/kana/.kana/memory.md",
+      memoryDailyPath: "/home/kana/.kana/memory",
+      projectsPath: "/home/kana/.kana/projects",
       sessionsPath: "/home/kana/.kana/sessions",
       approvalsPath: "/home/kana/.kana/approvals.json",
     });
@@ -44,6 +47,9 @@ describe("Kana config", () => {
     expect(installed).toContain('mode = "unless_trusted"');
     expect(installed).toContain("[notification]");
     expect(installed).toContain('backend = "auto"');
+    expect(installed).toContain("[memory]");
+    expect(installed).toContain("enabled = true");
+    expect(installed).toContain("max_chars = 6000");
     expect(installed).not.toContain("api_key =");
     expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
@@ -106,6 +112,10 @@ describe("Kana config", () => {
         "on_agent_completed = false",
         "on_approval_required = true",
         "",
+        "[memory]",
+        "enabled = false",
+        "max_chars = 8000",
+        "",
       ].join("\n"),
     );
 
@@ -128,7 +138,27 @@ describe("Kana config", () => {
         onAgentCompleted: false,
         onApprovalRequired: true,
       },
+      memory: {
+        enabled: false,
+        maxChars: 8000,
+      },
     });
+  });
+
+  test("rejects non-boolean memory.enabled", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[memory]\nenabled = "yes"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("memory.enabled must be a boolean.");
+  });
+
+  test("rejects non-positive memory.max_chars", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), "[memory]\nmax_chars = 0\n");
+
+    expect(() => loadKanaConfig(env)).toThrow("memory.max_chars must be a positive integer.");
   });
 
   test("loads the configured API key environment variable name", () => {

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import type { Message, ModelMetadata } from "@/core";
 import { getKanaConfigPaths } from "./config";
+import { encodeKanaWorkspacePath } from "./workspace-path";
 
 const SESSION_VERSION = 1;
 const DEFAULT_SESSION_TITLE = "Untitled session";
@@ -220,14 +221,7 @@ function loadKanaSessionLeafId(filePath: string): string | null {
 }
 
 function getKanaSessionDir(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
-  return path.join(getKanaConfigPaths(env).sessionsPath, encodeCwd(cwd));
-}
-
-function encodeCwd(cwd: string): string {
-  return `--${path
-    .resolve(cwd)
-    .replace(/^[/\\]/, "")
-    .replace(/[/\\:]/g, "-")}--`;
+  return path.join(getKanaConfigPaths(env).sessionsPath, encodeKanaWorkspacePath(cwd));
 }
 
 function createSessionId(): string {
