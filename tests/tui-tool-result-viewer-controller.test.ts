@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../src/tui/app/app-layout";
-import { ToolResultViewerController } from "../src/tui/app/tool-result-viewer-controller";
+import { ContentViewerController } from "../src/tui/app/content-viewer-controller";
 import { type Editor, StatusLine, ToolCallBlock, Transcript } from "../src/tui/components";
 import type { Component, Tui } from "../src/tui/runtime";
 
@@ -23,7 +23,7 @@ describe("tool result viewer controller", () => {
       editor: new LinesComponent(["editor"]),
       status: new StatusLine("test-model"),
     });
-    const controller = new ToolResultViewerController({
+    const controller = new ContentViewerController({
       editor: new LinesComponent(["editor"]) as unknown as Editor,
       layout,
       transcript,
@@ -32,7 +32,7 @@ describe("tool result viewer controller", () => {
 
     expect(controller.openLatest()).toBe(true);
     expect(layout.render(80).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""))).toContain(
-      "Tool output: Ran first",
+      "Ran first",
     );
   });
 
@@ -46,7 +46,7 @@ describe("tool result viewer controller", () => {
       editor: new LinesComponent(["editor"]),
       status: new StatusLine("test-model"),
     });
-    const controller = new ToolResultViewerController({
+    const controller = new ContentViewerController({
       editor: new LinesComponent(["editor"]) as unknown as Editor,
       layout,
       transcript,
@@ -55,7 +55,7 @@ describe("tool result viewer controller", () => {
 
     expect(controller.openLatest()).toBe(true);
     expect(layout.render(80).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""))).toContain(
-      "Tool output: Ran second",
+      "Ran second",
     );
   });
 
@@ -69,7 +69,7 @@ describe("tool result viewer controller", () => {
       status: new StatusLine("test-model"),
     });
     const tui = createTuiStub();
-    const controller = new ToolResultViewerController({
+    const controller = new ContentViewerController({
       editor,
       layout,
       transcript,
@@ -102,7 +102,7 @@ describe("tool result viewer controller", () => {
     });
     const prompt = new LinesComponent(["approval prompt"]);
     const tui = createTuiStub();
-    const controller = new ToolResultViewerController({
+    const controller = new ContentViewerController({
       editor,
       layout,
       transcript,

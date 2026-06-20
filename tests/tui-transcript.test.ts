@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   AssistantMessageBlock,
+  ContentViewer,
   ToolCallBlock,
-  ToolResultViewer,
   Transcript,
 } from "../src/tui/components";
 import { color, stripAnsi, visibleWidth } from "../src/tui/render";
@@ -230,7 +230,7 @@ describe("tui transcript", () => {
 
   test("tool result viewer scrolls full output and closes with escape", () => {
     const decisions: string[] = [];
-    const viewer = new ToolResultViewer(
+    const viewer = new ContentViewer(
       {
         title: "Read AGENTS.md",
         render: () => Array.from({ length: 5 }, (_, index) => `line ${index + 1}`),

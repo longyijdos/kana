@@ -3,7 +3,6 @@ export {
   MarkdownBlock,
   TextBlock,
   ToolCallBlock,
-  type ToolResultView,
   Transcript,
   WelcomeBlock,
 } from "./chat-blocks";
@@ -12,6 +11,7 @@ export {
   type ChoicePromptOption,
   type ChoicePromptOptions,
 } from "./choice-prompt";
+export { type ContentView, ContentViewer } from "./content-viewer";
 export { DeleteSessionConfirmation } from "./delete-session-confirmation";
 export { Editor } from "./editor";
 export {
@@ -25,4 +25,3 @@ export {
 } from "./skill-manager";
 export { StatusLine, type StatusLineState } from "./status-line";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";
-export { ToolResultViewer } from "./tool-result-viewer";

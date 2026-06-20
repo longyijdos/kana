@@ -7,6 +7,7 @@ import {
   deleteKanaSession,
   listKanaSessions,
   loadKanaConfig,
+  loadKanaMemory,
   loadKanaSession,
   loadKanaSkillActivations,
   loadKanaToolApprovals,
@@ -167,6 +168,8 @@ export function startTui(options: StartTuiOptions = {}): void {
           }),
         );
       },
+      loadMemory: (target) =>
+        loadKanaMemory(target === "user" ? "global" : "project", { cwd: process.cwd() }),
     },
   );
 

@@ -1,14 +1,14 @@
 import {
+  type ContentView,
+  ContentViewer,
   type Editor,
   ToolCallBlock,
-  type ToolResultView,
-  ToolResultViewer,
   type Transcript,
 } from "../components";
 import type { Component, Tui } from "../runtime";
 import type { AppLayout } from "./app-layout";
 
-export type ToolResultViewerControllerOptions = {
+export type ContentViewerControllerOptions = {
   editor: Editor;
   layout: AppLayout;
   transcript: Transcript;
@@ -16,10 +16,10 @@ export type ToolResultViewerControllerOptions = {
   focusAfterClose?: () => Component | undefined;
 };
 
-export class ToolResultViewerController {
-  private activeViewer?: ToolResultViewer;
+export class ContentViewerController {
+  private activeViewer?: ContentViewer;
 
-  constructor(private readonly options: ToolResultViewerControllerOptions) {}
+  constructor(private readonly options: ContentViewerControllerOptions) {}
 
   get active(): boolean {
     return this.activeViewer !== undefined;
@@ -41,9 +41,14 @@ export class ToolResultViewerController {
       return false;
     }
 
+    this.open(view);
+    return true;
+  }
+
+  open(view: ContentView): void {
     this.close();
 
-    const viewer = new ToolResultViewer(view, {
+    const viewer = new ContentViewer(view, {
       onClose: () => this.close(),
     });
 
@@ -51,8 +56,6 @@ export class ToolResultViewerController {
     this.options.layout.showMain(viewer);
     this.options.tui.setFocus(viewer);
     this.options.tui.requestRender(true);
-
-    return true;
   }
 
   close(): void {
@@ -72,7 +75,7 @@ export class ToolResultViewerController {
     this.options.tui.requestRender(true);
   }
 
-  private findLatestToolResultView(): ToolResultView | undefined {
+  private findLatestToolResultView(): ContentView | undefined {
     return this.findLatestExpandableTool()?.getResultView();
   }
 

@@ -31,6 +31,7 @@ import { tuiTheme } from "../theme";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
+import { ContentViewerController } from "./content-viewer-controller";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
 import {
@@ -43,7 +44,6 @@ import { SessionOverlayController } from "./session-overlay-controller";
 import { SkillManagerController } from "./skill-manager-controller";
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
-import { ToolResultViewerController } from "./tool-result-viewer-controller";
 import { WELCOME_LOGO_LINES } from "./welcome-logo";
 
 export type KanaTuiLoadedSession = {
@@ -74,6 +74,7 @@ export type KanaTuiAppOptions = {
     userRequest: string | undefined,
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
+  loadMemory: (target: "user" | "workspace") => string;
 };
 
 export class KanaTuiApp {
@@ -92,7 +93,7 @@ export class KanaTuiApp {
   private totalCostCny = 0;
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
-  private readonly toolResultViewer: ToolResultViewerController;
+  private readonly contentViewer: ContentViewerController;
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
 
@@ -141,7 +142,7 @@ export class KanaTuiApp {
       onSkillsChanged: () => this.refreshAgentSystemPrompt(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
-    this.toolResultViewer = new ToolResultViewerController({
+    this.contentViewer = new ContentViewerController({
       editor: this.editor,
       layout: this.layout,
       transcript: this.transcript,
@@ -153,7 +154,7 @@ export class KanaTuiApp {
       editor: this.editor,
       layout: this.layout,
       tui: this.tui,
-      shouldPreserveFocus: () => this.toolResultViewer.active,
+      shouldPreserveFocus: () => this.contentViewer.active,
       onPromptShown: (toolName) => {
         this.updateStatus("tool", {
           activeTool: toolName,
@@ -273,11 +274,11 @@ export class KanaTuiApp {
 
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {
     if (isCtrlO(data)) {
-      return this.toolResultViewer.toggleLatest() ? { consume: true } : undefined;
+      return this.contentViewer.toggleLatest() ? { consume: true } : undefined;
     }
 
-    if (isEscape(data) && this.toolResultViewer.active) {
-      this.toolResultViewer.close();
+    if (isEscape(data) && this.contentViewer.active) {
+      this.contentViewer.close();
       return { consume: true };
     }
 
@@ -345,7 +346,7 @@ export class KanaTuiApp {
           return;
         }
 
-        this.toolResultViewer.close();
+        this.contentViewer.close();
         this.transcript.clear();
         this.editor.clear();
         this.tui.requestRender(true);
@@ -399,12 +400,40 @@ export class KanaTuiApp {
   private handleMemoryCommand(argumentsText: string): void {
     const [subcommand, ...argumentsParts] = argumentsText.trim().split(/\s+/).filter(Boolean);
 
-    if (subcommand !== "compact") {
-      this.showError(new Error("Usage: /memory compact [user|workspace] [request]"));
+    if (subcommand === "compact") {
+      void this.memoryCompact.compact(argumentsParts.join(" "));
       return;
     }
 
-    void this.memoryCompact.compact(argumentsParts.join(" "));
+    if (subcommand === "show") {
+      const requestedTarget = argumentsParts[0];
+      const target =
+        requestedTarget === "user" || requestedTarget === "workspace" ? requestedTarget : undefined;
+      if (requestedTarget && !target) {
+        this.showError(new Error("Usage: /memory show [user|workspace]"));
+        return;
+      }
+
+      this.openMemoryViewer(target);
+      return;
+    }
+
+    this.showError(new Error("Usage: /memory <compact|show>"));
+  }
+
+  private openMemoryViewer(target: "user" | "workspace" | undefined): void {
+    const memoryTargets = target ? [target] : (["user", "workspace"] as const);
+    const content = memoryTargets.flatMap((memoryTarget, index) => [
+      ...(index > 0 ? [""] : []),
+      `# ${memoryTarget === "user" ? "User" : "Workspace"} memory`,
+      "",
+      this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
+    ]);
+
+    this.contentViewer.open({
+      title: "Memory",
+      render: () => content,
+    });
   }
 
   private showHelp(): void {
@@ -438,7 +467,7 @@ export class KanaTuiApp {
 
     this.sessionId = this.options.createNewSession().id;
     this.closeSessionOverlay();
-    this.toolResultViewer.close();
+    this.contentViewer.close();
     this.agent = this.createAgentForCurrentSession();
     this.agentEvents.resetRun();
     this.transcript.clear();
@@ -458,7 +487,7 @@ export class KanaTuiApp {
 
     this.sessionId = this.options.forkSession(this.agent.state.messages, prompt).id;
     this.closeSessionOverlay();
-    this.toolResultViewer.close();
+    this.contentViewer.close();
     this.editor.clear();
     this.transcript.addChild(
       new TextBlock(`Forked session ${this.sessionId}.`, {
@@ -479,7 +508,7 @@ export class KanaTuiApp {
     }
 
     this.skillManager.close();
-    this.toolResultViewer.close();
+    this.contentViewer.close();
     this.sessionOverlay.openResume();
   }
 
@@ -489,7 +518,7 @@ export class KanaTuiApp {
     }
 
     this.skillManager.close();
-    this.toolResultViewer.close();
+    this.contentViewer.close();
     this.sessionOverlay.openDelete();
   }
 
@@ -508,7 +537,7 @@ export class KanaTuiApp {
     }
 
     this.closeSessionOverlay();
-    this.toolResultViewer.close();
+    this.contentViewer.close();
     this.skillManager.open();
   }
 
@@ -530,7 +559,7 @@ export class KanaTuiApp {
     }
 
     this.closeSessionOverlay();
-    this.toolResultViewer.close();
+    this.contentViewer.close();
     this.sessionId = session.id;
     this.agent.abort();
     this.agent = this.createAgentForCurrentSession();
