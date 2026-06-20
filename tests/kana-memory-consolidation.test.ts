@@ -3,14 +3,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { appendKanaMemory, DEFAULT_KANA_CONFIG, loadKanaMemory, saveKanaMemory } from "@/kana";
 import {
-  appendKanaMemory,
   createMemoryConsolidationAgent,
-  DEFAULT_KANA_CONFIG,
   formatIncrementalMemoryConsolidationInput,
-  loadKanaMemory,
-  saveKanaMemory,
-} from "@/kana";
+} from "../src/kana/memory";
 import { createMemoryConsolidationTools } from "../src/kana/memory/consolidation-tools";
 
 const tempDirs: string[] = [];

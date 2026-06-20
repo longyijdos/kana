@@ -1,5 +1,5 @@
-import type { KanaMemoryScope } from "../memory";
 import type { MemoryConsolidationMode } from "./consolidation-tools";
+import type { KanaMemoryScope } from "./storage";
 
 export function buildMemoryConsolidationPrompt(
   scope: KanaMemoryScope,

@@ -1,12 +1,12 @@
 import { Agent, type AgentState } from "@/agent";
 import type { KanaConfig } from "../config";
-import { type KanaMemoryEntry, type KanaMemoryScope, loadKanaMemory } from "../memory";
 import { createKanaModel } from "../model";
 import { buildMemoryConsolidationPrompt } from "./consolidation-prompt";
 import {
   createMemoryConsolidationTools,
   type MemoryConsolidationMode,
 } from "./consolidation-tools";
+import { type KanaMemoryEntry, type KanaMemoryScope, loadKanaMemory } from "./storage";
 
 export type CreateMemoryConsolidationAgentOptions = {
   scope: KanaMemoryScope;

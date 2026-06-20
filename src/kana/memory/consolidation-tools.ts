@@ -1,5 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
-
+import type { Tool } from "@/tools";
 import {
   editKanaMemory,
   type KanaMemoryScope,
@@ -7,8 +7,7 @@ import {
   readKanaDailyMemory,
   saveKanaMemory,
   searchKanaDailyMemory,
-} from "@/kana";
-import type { Tool } from "@/tools";
+} from "./storage";
 
 export type MemoryConsolidationMode = "incremental" | "full";
 
