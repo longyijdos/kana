@@ -28,8 +28,9 @@ class FakeTerminal implements Terminal {
 describe("local shell controller", () => {
   test("runs user shell commands without requesting tool approval", async () => {
     const transcript = new Transcript();
+    const editor = new Editor();
     const controller = new LocalShellController({
-      editor: new Editor(),
+      editor,
       transcript,
       tui: new Tui(new FakeTerminal()),
       setRunning() {},
@@ -37,12 +38,16 @@ describe("local shell controller", () => {
       updateStatus() {},
     });
 
-    await controller.submit("printf local-shell", "!printf local-shell");
+    await controller.submit("printf local-shell");
 
     const lines = transcript.render(100).map(stripAnsi);
 
     expect(lines).toContain("Ran printf local-shell");
     expect(lines.join("\n")).toContain("stdout:\nlocal-shell");
     expect(lines).not.toContain("Allow agent to run bash?");
+
+    editor.render(80);
+    editor.handleInput("\x1b[A");
+    expect(editor.getText()).toBe("");
   });
 });

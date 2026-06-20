@@ -213,7 +213,7 @@ export class KanaTuiApp {
       }
 
       if (submit.type === "shell") {
-        void this.submitShellCommand(submit.command, submit.raw);
+        void this.submitShellCommand(submit.command);
         return;
       }
 
@@ -623,14 +623,14 @@ export class KanaTuiApp {
     }
   }
 
-  private async submitShellCommand(command: string, raw: string): Promise<void> {
+  private async submitShellCommand(command: string): Promise<void> {
     const shellCommand = command.trim();
 
     if (!shellCommand || this.running) {
       return;
     }
 
-    await this.localShell.submit(shellCommand, raw);
+    await this.localShell.submit(shellCommand);
   }
 
   private showToolApprovalPrompt(

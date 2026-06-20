@@ -48,7 +48,6 @@ export class MemoryCompactController {
     const { target, userRequest } = parseMemoryCompactArguments(argumentsText);
     const abortController = new AbortController();
     this.abortController = abortController;
-    this.options.editor.addToHistory(`/memory ${argumentsText}`.trim());
     this.options.editor.clear();
     this.options.transcript.addChild(
       new TextBlock(`Compacting ${formatTarget(target)} memory…`, {
