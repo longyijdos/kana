@@ -28,9 +28,7 @@ describe("Kana config", () => {
       home: "/home/kana/.kana",
       configPath: "/home/kana/.kana/config.toml",
       agentsPath: "/home/kana/.kana/AGENTS.md",
-      memoryPath: "/home/kana/.kana/memory.md",
-      memoryDailyPath: "/home/kana/.kana/memory",
-      projectsPath: "/home/kana/.kana/projects",
+      memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
       approvalsPath: "/home/kana/.kana/approvals.json",
     });

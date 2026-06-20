@@ -70,15 +70,17 @@ export function getKanaMemoryPaths(
   const configPaths = getKanaConfigPaths(options.env);
 
   if (scope === "global") {
+    const memoryDirectory = path.join(configPaths.memoryDirectory, "global");
     return {
-      memoryPath: configPaths.memoryPath,
-      dailyPath: path.join(configPaths.memoryDailyPath, `${formatMemoryDate(options.now)}.md`),
-      dailyDirectory: configPaths.memoryDailyPath,
+      memoryPath: path.join(memoryDirectory, "memory.md"),
+      dailyPath: path.join(memoryDirectory, "daily", `${formatMemoryDate(options.now)}.md`),
+      dailyDirectory: path.join(memoryDirectory, "daily"),
     };
   }
 
   const projectPath = path.join(
-    configPaths.projectsPath,
+    configPaths.memoryDirectory,
+    "projects",
     encodeKanaWorkspacePath(options.cwd ?? process.cwd()),
   );
   const dailyDirectory = path.join(projectPath, "daily");
