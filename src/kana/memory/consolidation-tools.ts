@@ -20,6 +20,7 @@ export type MemoryConsolidationToolOptions = {
 
 export type MemoryConsolidationTransaction = {
   readonly content: string;
+  readonly hasChanges: boolean;
   edit(oldText: string, newText: string, replaceAll: boolean): number;
   replace(content: string): void;
   commit(): void;
@@ -54,6 +55,9 @@ export function createMemoryConsolidationTransaction(
   return {
     get content() {
       return content;
+    },
+    get hasChanges() {
+      return changed;
     },
     edit(oldText, newText, replaceAll) {
       if (!oldText) {

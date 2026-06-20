@@ -10,9 +10,11 @@ import {
   loadKanaSession,
   loadKanaSkillActivations,
   loadKanaToolApprovals,
+  runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
 import { KanaTuiApp } from "./app/app";
+import type { MemoryCompactSummary } from "./app/memory-compact-controller";
 import { ProcessTerminal } from "./runtime";
 
 export type StartTuiOptions = {
@@ -136,6 +138,35 @@ export function startTui(options: StartTuiOptions = {}): void {
         approvals: toolApprovals,
       },
       notification: config.notification,
+      compactMemory: async (target, userRequest, signal) => {
+        const scopes: Array<"global" | "project"> =
+          target === "user"
+            ? ["global"]
+            : target === "workspace"
+              ? ["project"]
+              : ["global", "project"];
+
+        return Promise.all(
+          scopes.map(async (scope): Promise<MemoryCompactSummary> => {
+            const targetName = scope === "global" ? "user" : "workspace";
+            try {
+              const result = await runFullMemoryConsolidation(config, {
+                scope,
+                cwd: process.cwd(),
+                userRequest,
+                signal,
+              });
+              return { target: targetName, outcome: result.outcome };
+            } catch (error) {
+              return {
+                target: targetName,
+                outcome: "error",
+                error: error instanceof Error ? error.message : String(error),
+              };
+            }
+          }),
+        );
+      },
     },
   );
 

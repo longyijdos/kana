@@ -17,6 +17,13 @@ export type CreateMemoryConsolidationAgentOptions = {
   env?: NodeJS.ProcessEnv;
 };
 
+export type MemoryConsolidationOutcome = "updated" | "unchanged" | "aborted" | "length";
+
+export type MemoryConsolidationResult = {
+  state: AgentState;
+  outcome: MemoryConsolidationOutcome;
+};
+
 export function createMemoryConsolidationAgent(
   config: KanaConfig,
   options: CreateMemoryConsolidationAgentOptions,
@@ -40,7 +47,7 @@ export function formatIncrementalMemoryConsolidationInput(
   options: Pick<CreateMemoryConsolidationAgentOptions, "cwd" | "env"> = {},
 ): string {
   return [
-    `<current_memory scope="${scope}">`,
+    "<current_memory>",
     loadKanaMemory(scope, options).trim(),
     "</current_memory>",
     "<new_daily_entries>",
@@ -49,18 +56,80 @@ export function formatIncrementalMemoryConsolidationInput(
   ].join("\n");
 }
 
+export function formatFullMemoryConsolidationInput(userRequest?: string): string {
+  const request = userRequest?.trim();
+
+  return [
+    "<compaction_request>",
+    "Review the current memory and available daily entries. Update memory only when it improves future reference.",
+    "</compaction_request>",
+    request ? `<user_request>\n${request}\n</user_request>` : undefined,
+  ]
+    .filter((block): block is string => block !== undefined)
+    .join("\n");
+}
+
+export type RunMemoryConsolidationOptions = CreateMemoryConsolidationAgentOptions & {
+  input: string;
+  signal?: AbortSignal;
+};
+
+export type RunFullMemoryConsolidationOptions = Omit<
+  CreateMemoryConsolidationAgentOptions,
+  "mode"
+> & {
+  userRequest?: string;
+  signal?: AbortSignal;
+};
+
 export async function runMemoryConsolidation(
   config: KanaConfig,
-  options: CreateMemoryConsolidationAgentOptions & { input: string },
-): Promise<AgentState> {
+  options: RunMemoryConsolidationOptions,
+): Promise<MemoryConsolidationResult> {
   const memory = createMemoryConsolidationTransaction(options);
   const agent = createMemoryConsolidationAgent(config, options, memory);
-  await agent.prompt(options.input);
+  const abort = () => agent.abort();
+
+  if (options.signal?.aborted) {
+    return { state: agent.state, outcome: "aborted" };
+  } else {
+    options.signal?.addEventListener("abort", abort, { once: true });
+  }
+
+  try {
+    await agent.prompt(options.input);
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
+  }
 
   const finalMessage = agent.state.messages.at(-1);
-  if (finalMessage?.role === "assistant" && finalMessage.stopReason === "stop") {
+  if (finalMessage?.role !== "assistant") {
+    throw new Error("Memory consolidation finished without an assistant message.");
+  }
+  if (finalMessage.stopReason === "stop" && memory.hasChanges) {
     memory.commit();
   }
 
-  return agent.state;
+  return {
+    state: agent.state,
+    outcome:
+      finalMessage.stopReason === "stop"
+        ? memory.hasChanges
+          ? "updated"
+          : "unchanged"
+        : finalMessage.stopReason === "length"
+          ? "length"
+          : "aborted",
+  };
+}
+
+export function runFullMemoryConsolidation(
+  config: KanaConfig,
+  options: RunFullMemoryConsolidationOptions,
+): Promise<MemoryConsolidationResult> {
+  return runMemoryConsolidation(config, {
+    ...options,
+    mode: "full",
+    input: formatFullMemoryConsolidationInput(options.userRequest),
+  });
 }

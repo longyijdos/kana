@@ -1,7 +1,13 @@
 export {
   type CreateMemoryConsolidationAgentOptions,
   createMemoryConsolidationAgent,
+  formatFullMemoryConsolidationInput,
   formatIncrementalMemoryConsolidationInput,
+  type MemoryConsolidationOutcome,
+  type MemoryConsolidationResult,
+  type RunFullMemoryConsolidationOptions,
+  type RunMemoryConsolidationOptions,
+  runFullMemoryConsolidation,
   runMemoryConsolidation,
 } from "./consolidation-agent";
 export {

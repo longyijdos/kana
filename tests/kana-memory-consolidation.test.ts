@@ -7,6 +7,7 @@ import { appendKanaMemory, DEFAULT_KANA_CONFIG, loadKanaMemory, saveKanaMemory }
 import {
   createMemoryConsolidationAgent,
   createMemoryConsolidationTransaction,
+  formatFullMemoryConsolidationInput,
   formatIncrementalMemoryConsolidationInput,
 } from "../src/kana/memory";
 import { createMemoryConsolidationTools } from "../src/kana/memory/consolidation-tools";
@@ -120,6 +121,14 @@ describe("memory consolidation agent", () => {
     expect(input).toContain("Current memory");
     expect(input).toContain('"id":"mem_new"');
     expect(input).not.toContain(".kana");
+  });
+
+  test("formats an optional user request for full consolidation", () => {
+    const input = formatFullMemoryConsolidationInput("Prioritize current architecture decisions.");
+
+    expect(input).toContain("<compaction_request>");
+    expect(input).toContain("<user_request>");
+    expect(input).toContain("Prioritize current architecture decisions.");
   });
 });
 

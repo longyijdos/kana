@@ -33,6 +33,11 @@ import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
+import {
+  MemoryCompactController,
+  type MemoryCompactSummary,
+  type MemoryCompactTarget,
+} from "./memory-compact-controller";
 import { NotificationController } from "./notification-controller";
 import { SessionOverlayController } from "./session-overlay-controller";
 import { SkillManagerController } from "./skill-manager-controller";
@@ -64,6 +69,11 @@ export type KanaTuiAppOptions = {
     approvals: KanaToolApprovals;
   };
   notification: KanaNotificationConfig;
+  compactMemory: (
+    target: MemoryCompactTarget,
+    userRequest: string | undefined,
+    signal: AbortSignal,
+  ) => Promise<MemoryCompactSummary[]>;
 };
 
 export class KanaTuiApp {
@@ -84,6 +94,7 @@ export class KanaTuiApp {
   private readonly localShell: LocalShellController;
   private readonly toolResultViewer: ToolResultViewerController;
   private readonly notifications: NotificationController;
+  private readonly memoryCompact: MemoryCompactController;
 
   constructor(
     private readonly createAgent: (options: {
@@ -162,6 +173,19 @@ export class KanaTuiApp {
           running: false,
           activeTool: undefined,
         });
+      },
+      updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+    });
+    this.memoryCompact = new MemoryCompactController({
+      editor: this.editor,
+      transcript: this.transcript,
+      tui: this.tui,
+      compactMemory: this.options.compactMemory,
+      setRunning: (running) => {
+        this.running = running;
+      },
+      clearRunStatus: () => {
+        this.status.update({ running: false, activeTool: undefined });
       },
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
@@ -280,6 +304,10 @@ export class KanaTuiApp {
       return;
     }
 
+    if (this.memoryCompact.abort()) {
+      return;
+    }
+
     this.agent.abort();
     this.updateStatus("aborted");
   }
@@ -289,6 +317,10 @@ export class KanaTuiApp {
     arguments: string;
     raw: string;
   }): void {
+    if (this.running && command.name !== "quit") {
+      return;
+    }
+
     switch (command.name) {
       case "quit":
         if (command.arguments) {
@@ -358,7 +390,21 @@ export class KanaTuiApp {
 
         this.openSkillManager();
         break;
+      case "memory":
+        this.handleMemoryCommand(command.arguments);
+        break;
     }
+  }
+
+  private handleMemoryCommand(argumentsText: string): void {
+    const [subcommand, ...argumentsParts] = argumentsText.trim().split(/\s+/).filter(Boolean);
+
+    if (subcommand !== "compact") {
+      this.showError(new Error("Usage: /memory compact [user|workspace] [request]"));
+      return;
+    }
+
+    void this.memoryCompact.compact(argumentsParts.join(" "));
   }
 
   private showHelp(): void {
@@ -393,7 +439,7 @@ export class KanaTuiApp {
     this.sessionId = this.options.createNewSession().id;
     this.closeSessionOverlay();
     this.toolResultViewer.close();
-    this.agent.reset();
+    this.agent = this.createAgentForCurrentSession();
     this.agentEvents.resetRun();
     this.transcript.clear();
     this.editor.clear();
