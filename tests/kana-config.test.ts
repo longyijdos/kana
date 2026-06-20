@@ -42,6 +42,8 @@ describe("Kana config", () => {
     expect(firstInstall.approvalsStatus).toBe("created");
     expect(installed).toContain('api_key_env = "DEEPSEEK_API_KEY"');
     expect(installed).toContain('mode = "unless_trusted"');
+    expect(installed).toContain("[notification]");
+    expect(installed).toContain('backend = "auto"');
     expect(installed).not.toContain("api_key =");
     expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
@@ -99,6 +101,11 @@ describe("Kana config", () => {
         "[approval]",
         'mode = "unless_trusted"',
         "",
+        "[notification]",
+        'backend = "bell"',
+        "on_agent_completed = false",
+        "on_approval_required = true",
+        "",
       ].join("\n"),
     );
 
@@ -115,6 +122,11 @@ describe("Kana config", () => {
       },
       approval: {
         mode: "unless_trusted",
+      },
+      notification: {
+        backend: "bell",
+        onAgentCompleted: false,
+        onApprovalRequired: true,
       },
     });
   });
@@ -296,6 +308,16 @@ describe("Kana config", () => {
     writeFileSync(path.join(home, "config.toml"), '[model]\nprovider = "mock"\n');
 
     expect(() => loadKanaConfig(env)).toThrow("Unsupported model.provider: mock");
+  });
+
+  test("rejects unsupported notification backends", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[notification]\nbackend = "toast"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow(
+      "notification.backend must be one of: auto, off, bell, osc9, osc777, kitty.",
+    );
   });
 });
 
