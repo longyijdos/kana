@@ -10,6 +10,7 @@ import {
   type ToolCallContent,
 } from "@/core";
 import type {
+  KanaNotificationConfig,
   KanaSessionMetadata,
   KanaToolApprovalConfig,
   KanaToolApprovals,
@@ -24,7 +25,7 @@ import {
   WelcomeBlock,
 } from "../components";
 import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
-import type { ProcessTerminal } from "../runtime";
+import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
@@ -32,6 +33,7 @@ import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
+import { NotificationController } from "./notification-controller";
 import { SessionOverlayController } from "./session-overlay-controller";
 import { SkillManagerController } from "./skill-manager-controller";
 import type { RunPhase } from "./status-phase";
@@ -61,6 +63,7 @@ export type KanaTuiAppOptions = {
     config: KanaToolApprovalConfig;
     approvals: KanaToolApprovals;
   };
+  notification: KanaNotificationConfig;
 };
 
 export class KanaTuiApp {
@@ -80,17 +83,19 @@ export class KanaTuiApp {
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
   private readonly toolResultViewer: ToolResultViewerController;
+  private readonly notifications: NotificationController;
 
   constructor(
     private readonly createAgent: (options: {
       beforeToolExecution: BeforeToolExecutionHook;
       messages?: Message[];
     }) => Agent,
-    terminal: ProcessTerminal,
+    terminal: Terminal,
     private readonly options: KanaTuiAppOptions,
   ) {
     this.sessionId = options.sessionId;
     this.tui = new Tui(terminal);
+    this.notifications = new NotificationController(options.notification, terminal);
     this.agent = this.createAgentForCurrentSession();
     this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
     this.layout = new AppLayout({
@@ -142,6 +147,7 @@ export class KanaTuiApp {
         this.updateStatus("tool", {
           activeTool: toolName,
         });
+        this.notifications.approvalRequired(toolName);
       },
     });
     this.localShell = new LocalShellController({
@@ -523,6 +529,7 @@ export class KanaTuiApp {
 
       for await (const event of stream) {
         this.agentEvents.handle(event);
+        this.notifications.handleAgentEvent(event);
         if (event.type === "message_end") {
           this.recordUsage(event.message.usage);
         }

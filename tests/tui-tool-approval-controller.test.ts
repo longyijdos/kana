@@ -22,6 +22,7 @@ describe("tool approval controller", () => {
     });
     const tui = createTuiStub();
     const viewer = new LinesComponent(["tool result viewer"]);
+    const shownTools: string[] = [];
     const controller = new ToolApprovalController({
       config: { mode: "always" },
       approvals: {
@@ -35,7 +36,9 @@ describe("tool approval controller", () => {
       layout,
       tui,
       shouldPreserveFocus: () => true,
-      onPromptShown: () => {},
+      onPromptShown: (toolName) => {
+        shownTools.push(toolName);
+      },
     });
 
     tui.setFocus(viewer);
@@ -53,6 +56,7 @@ describe("tool approval controller", () => {
 
     expect(tui.getFocus()).toBe(viewer);
     expect(controller.activePrompt).toBeDefined();
+    expect(shownTools).toEqual(["bash"]);
     expect(layout.render(80).join("\n")).toContain("Allow agent to run bash?");
 
     controller.activePrompt?.handleInput?.("\r");

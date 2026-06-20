@@ -127,6 +127,7 @@ export function startTui(options: StartTuiOptions = {}): void {
         config: config.approval,
         approvals: toolApprovals,
       },
+      notification: config.notification,
     },
   );
 
