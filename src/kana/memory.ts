@@ -143,6 +143,36 @@ export function saveKanaMemory(
   renameSync(temporaryPath, memoryPath);
 }
 
+export function editKanaMemory(
+  scope: KanaMemoryScope,
+  oldText: string,
+  newText: string,
+  replaceAll = false,
+  options: Omit<KanaMemoryPathOptions, "now"> = {},
+): number {
+  if (!oldText) {
+    throw new Error("oldText must not be empty.");
+  }
+
+  const current = loadKanaMemory(scope, options);
+  const matches = current.split(oldText).length - 1;
+  if (matches === 0) {
+    throw new Error("oldText was not found in memory.");
+  }
+  if (!replaceAll && matches > 1) {
+    throw new Error(
+      `oldText appears ${matches} times in memory; provide more specific text or set replaceAll.`,
+    );
+  }
+
+  saveKanaMemory(
+    scope,
+    replaceAll ? current.split(oldText).join(newText) : current.replace(oldText, newText),
+    options,
+  );
+  return replaceAll ? matches : 1;
+}
+
 export function listKanaDailyMemory(
   scope: KanaMemoryScope,
   options: KanaDailyMemoryRangeOptions = {},

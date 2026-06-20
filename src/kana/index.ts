@@ -27,6 +27,7 @@ export {
 export {
   type AppendKanaMemoryOptions,
   appendKanaMemory,
+  editKanaMemory,
   getKanaMemoryPaths,
   KANA_MEMORY_SCOPES,
   type KanaDailyMemoryDay,
@@ -42,6 +43,12 @@ export {
   saveKanaMemory,
   searchKanaDailyMemory,
 } from "./memory";
+export {
+  type CreateMemoryConsolidationAgentOptions,
+  createMemoryConsolidationAgent,
+  formatIncrementalMemoryConsolidationInput,
+  runMemoryConsolidation,
+} from "./memory/consolidation-agent";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
   type AppendKanaSessionMessagesOptions,
