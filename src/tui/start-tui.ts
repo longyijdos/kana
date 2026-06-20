@@ -3,15 +3,19 @@ import {
   appendKanaSessionMessages,
   createKanaAgent,
   createKanaSession,
+  createMemoryConsolidationScheduler,
   deleteKanaSession,
   listKanaSessions,
   loadKanaConfig,
+  loadKanaMemory,
   loadKanaSession,
   loadKanaSkillActivations,
   loadKanaToolApprovals,
+  runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
 import { KanaTuiApp } from "./app/app";
+import type { MemoryCompactSummary } from "./app/memory-compact-controller";
 import { ProcessTerminal } from "./runtime";
 
 export type StartTuiOptions = {
@@ -23,6 +27,9 @@ export type StartTuiOptions = {
 export function startTui(options: StartTuiOptions = {}): void {
   const config = loadKanaConfig();
   const toolApprovals = loadKanaToolApprovals();
+  const memoryConsolidation = config.memory.enabled
+    ? createMemoryConsolidationScheduler(config)
+    : undefined;
   const createSession = (parentSessionPath?: string, title?: string) =>
     createKanaSession({
       title,
@@ -64,6 +71,10 @@ export function startTui(options: StartTuiOptions = {}): void {
           if (messagesToPersist.length > 0) {
             resumeSessionId = session.metadata.id;
           }
+
+          // Keep consolidation off the completed conversation's critical path;
+          // the scheduler serializes each scope's read-modify-write jobs.
+          void memoryConsolidation?.schedule(messages).catch(() => undefined);
         },
       }),
     new ProcessTerminal(config.notification),
@@ -128,6 +139,37 @@ export function startTui(options: StartTuiOptions = {}): void {
         approvals: toolApprovals,
       },
       notification: config.notification,
+      compactMemory: async (target, userRequest, signal) => {
+        const scopes: Array<"global" | "project"> =
+          target === "user"
+            ? ["global"]
+            : target === "workspace"
+              ? ["project"]
+              : ["global", "project"];
+
+        return Promise.all(
+          scopes.map(async (scope): Promise<MemoryCompactSummary> => {
+            const targetName = scope === "global" ? "user" : "workspace";
+            try {
+              const result = await runFullMemoryConsolidation(config, {
+                scope,
+                cwd: process.cwd(),
+                userRequest,
+                signal,
+              });
+              return { target: targetName, outcome: result.outcome };
+            } catch (error) {
+              return {
+                target: targetName,
+                outcome: "error",
+                error: error instanceof Error ? error.message : String(error),
+              };
+            }
+          }),
+        );
+      },
+      loadMemory: (target) =>
+        loadKanaMemory(target === "user" ? "global" : "project", { cwd: process.cwd() }),
     },
   );
 

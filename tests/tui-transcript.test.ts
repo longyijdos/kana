@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   AssistantMessageBlock,
+  ContentViewer,
   ToolCallBlock,
-  ToolResultViewer,
   Transcript,
 } from "../src/tui/components";
 import { color, stripAnsi, visibleWidth } from "../src/tui/render";
@@ -71,6 +71,29 @@ describe("tui transcript", () => {
 
     expect(assistantLine).toContain(color("hello", tuiTheme.markdownText));
     expect(toolTitle).toContain(color(stripAnsi(toolTitle), tuiTheme.toolSuccess));
+  });
+
+  test("renders a completed remember call as one visible line", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_remember",
+      name: "remember",
+      args: {
+        content: "Use Chinese by default.",
+      },
+    });
+    block.updateResult(
+      {
+        id: "mem_123",
+        createdAt: "2026-06-20T14:32:00.000Z",
+        scope: "global",
+      },
+      false,
+    );
+
+    const rendered = block.render(80).map(stripAnsi).filter(Boolean);
+
+    expect(rendered).toEqual(["Saved global memory"]);
   });
 
   test("does not render assistant stop reasons as transcript content", () => {
@@ -207,7 +230,7 @@ describe("tui transcript", () => {
 
   test("tool result viewer scrolls full output and closes with escape", () => {
     const decisions: string[] = [];
-    const viewer = new ToolResultViewer(
+    const viewer = new ContentViewer(
       {
         title: "Read AGENTS.md",
         render: () => Array.from({ length: 5 }, (_, index) => `line ${index + 1}`),

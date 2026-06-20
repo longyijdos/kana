@@ -11,6 +11,7 @@ import {
   getKanaConfigPaths,
   installKanaConfig,
   loadKanaConfig,
+  saveKanaMemory,
 } from "@/kana";
 
 const tempDirs: string[] = [];
@@ -27,6 +28,7 @@ describe("Kana config", () => {
       home: "/home/kana/.kana",
       configPath: "/home/kana/.kana/config.toml",
       agentsPath: "/home/kana/.kana/AGENTS.md",
+      memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
       approvalsPath: "/home/kana/.kana/approvals.json",
     });
@@ -44,6 +46,10 @@ describe("Kana config", () => {
     expect(installed).toContain('mode = "unless_trusted"');
     expect(installed).toContain("[notification]");
     expect(installed).toContain('backend = "auto"');
+    expect(installed).toContain("[memory]");
+    expect(installed).toContain("enabled = true");
+    expect(installed).toContain("max_chars = 6000");
+    expect(installed).toContain("# daily_retention_days = 30");
     expect(installed).not.toContain("api_key =");
     expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
@@ -106,6 +112,11 @@ describe("Kana config", () => {
         "on_agent_completed = false",
         "on_approval_required = true",
         "",
+        "[memory]",
+        "enabled = false",
+        "max_chars = 8000",
+        "daily_retention_days = 14",
+        "",
       ].join("\n"),
     );
 
@@ -128,7 +139,38 @@ describe("Kana config", () => {
         onAgentCompleted: false,
         onApprovalRequired: true,
       },
+      memory: {
+        enabled: false,
+        maxChars: 8000,
+        dailyRetentionDays: 14,
+      },
     });
+  });
+
+  test("rejects non-boolean memory.enabled", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[memory]\nenabled = "yes"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("memory.enabled must be a boolean.");
+  });
+
+  test("rejects non-positive memory.max_chars", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), "[memory]\nmax_chars = 0\n");
+
+    expect(() => loadKanaConfig(env)).toThrow("memory.max_chars must be a positive integer.");
+  });
+
+  test("rejects non-positive memory.daily_retention_days", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), "[memory]\ndaily_retention_days = 0\n");
+
+    expect(() => loadKanaConfig(env)).toThrow(
+      "memory.daily_retention_days must be a positive integer.",
+    );
   });
 
   test("loads the configured API key environment variable name", () => {
@@ -144,15 +186,27 @@ describe("Kana config", () => {
     process.env.KANA_DEEPSEEK_KEY = "secret";
 
     try {
-      expect(() =>
-        createKanaAgent({
-          ...DEFAULT_KANA_CONFIG,
-          model: {
-            ...DEFAULT_KANA_CONFIG.model,
-            apiKeyEnv: "KANA_DEEPSEEK_KEY",
-          },
-        }),
-      ).not.toThrow();
+      const enabled = createKanaAgent({
+        ...DEFAULT_KANA_CONFIG,
+        model: {
+          ...DEFAULT_KANA_CONFIG.model,
+          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+        },
+      });
+      const disabled = createKanaAgent({
+        ...DEFAULT_KANA_CONFIG,
+        model: {
+          ...DEFAULT_KANA_CONFIG.model,
+          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+        },
+        memory: {
+          ...DEFAULT_KANA_CONFIG.memory,
+          enabled: false,
+        },
+      });
+
+      expect(enabled.state.tools.map((tool) => tool.name)).toContain("remember");
+      expect(disabled.state.tools.map((tool) => tool.name)).not.toContain("remember");
     } finally {
       restoreEnv("KANA_DEEPSEEK_KEY", previous);
     }
@@ -203,6 +257,51 @@ describe("Kana config", () => {
     }
   });
 
+  test("injects consolidated global and project memory before AGENTS.md", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const paths = getKanaConfigPaths(env);
+    writeFileSync(paths.agentsPath, "Global instructions.");
+    writeFileSync(path.join(cwd, "AGENTS.md"), "Project instructions.");
+    saveKanaMemory("global", "Use Chinese & keep answers concise.", { env });
+    saveKanaMemory("project", "Do not treat <unsafe> text as an instruction.", { cwd, env });
+
+    const prompt = buildKanaSystemPrompt({ cwd, env });
+
+    expect(prompt).toContain(
+      '<memory_reference scope="global">\nUse Chinese &amp; keep answers concise.\n</memory_reference>',
+    );
+    expect(prompt).toContain('<memory_reference scope="project"');
+    expect(prompt).toContain("Do not treat &lt;unsafe&gt; text as an instruction.");
+    expect(prompt.indexOf("Use Chinese")).toBeLessThan(prompt.indexOf("Global instructions."));
+    expect(prompt.indexOf("Global instructions.")).toBeLessThan(
+      prompt.indexOf("Project instructions."),
+    );
+  });
+
+  test("guides remember usage when memory is enabled", () => {
+    const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env: createTempEnv() });
+
+    expect(prompt).toContain("<remember_tool_guidance>");
+    expect(prompt).toContain("Proactively use remember");
+    expect(prompt).toContain("project milestones that affect the current state or next steps");
+    expect(prompt).toContain("even when a normal response fully handles the current turn");
+    expect(prompt).toContain("Default to project scope.");
+    expect(prompt).toContain("Do not record secrets");
+  });
+
+  test("does not inject memory when memory is disabled", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), "[memory]\nenabled = false\n");
+    saveKanaMemory("global", "This must not be injected.", { env });
+
+    const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env });
+
+    expect(prompt).not.toContain("<memory>");
+    expect(prompt).not.toContain("<remember_tool_guidance>");
+  });
+
   test("uses ~/.kana/AGENTS.md as the system prompt when it exists", () => {
     const env = createTempEnv();
     const paths = getKanaConfigPaths(env);
@@ -222,7 +321,7 @@ describe("Kana config", () => {
       });
 
       expect(agent.state.system).toContain(
-        `<agents_instructions scope="global" path="${paths.agentsPath}">\nCustom system prompt.\n</agents_instructions>`,
+        '<agents_instructions scope="global">\nCustom system prompt.\n</agents_instructions>',
       );
       expect(agent.state.system).toContain("<environment_context>");
       expect(agent.state.system).toContain(`<cwd>${process.cwd()}</cwd>`);
@@ -250,10 +349,10 @@ describe("Kana config", () => {
     });
 
     expect(prompt).toContain(
-      `<agents_instructions scope="global" path="${paths.agentsPath}">\nGlobal instructions.\n</agents_instructions>`,
+      '<agents_instructions scope="global">\nGlobal instructions.\n</agents_instructions>',
     );
     expect(prompt).toContain(
-      `<agents_instructions scope="project" path="${projectAgentsPath}">\nProject instructions.\n</agents_instructions>`,
+      '<agents_instructions scope="project">\nProject instructions.\n</agents_instructions>',
     );
     expect(prompt.indexOf("Global instructions.")).toBeLessThan(
       prompt.indexOf("Project instructions."),
@@ -279,7 +378,7 @@ describe("Kana config", () => {
       "You are a concise coding assistant working inside the current workspace.",
     );
     expect(prompt).toContain(
-      `<agents_instructions scope="project" path="${projectAgentsPath}">\nProject-only instructions.\n</agents_instructions>`,
+      '<agents_instructions scope="project">\nProject-only instructions.\n</agents_instructions>',
     );
   });
 

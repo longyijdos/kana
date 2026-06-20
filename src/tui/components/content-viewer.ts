@@ -3,22 +3,26 @@ import type { Component } from "../runtime";
 import { isDown, isEnd, isEscape, isHome, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport } from "../utils/list-viewport";
-import type { ToolResultView } from "./chat-blocks/tool-call-block";
 
 const TOOL_RESULT_VIEWER_VISIBLE_LIMIT = 18;
 
-export type ToolResultViewerOptions = {
+export type ContentView = {
+  title: string;
+  render: (width: number) => string[];
+};
+
+export type ContentViewerOptions = {
   onClose: () => void;
   visibleLimit?: number;
 };
 
-export class ToolResultViewer implements Component {
+export class ContentViewer implements Component {
   private readonly viewport: ListViewport;
   private contentLength = 0;
 
   constructor(
-    private readonly view: ToolResultView,
-    private readonly options: ToolResultViewerOptions,
+    private readonly view: ContentView,
+    private readonly options: ContentViewerOptions,
   ) {
     this.viewport = new ListViewport(options.visibleLimit ?? TOOL_RESULT_VIEWER_VISIBLE_LIMIT);
   }
@@ -64,7 +68,7 @@ export class ToolResultViewer implements Component {
     const content = this.view.render(contentWidth);
     this.contentLength = content.length;
     const window = this.viewport.window(content.length);
-    const lines = ["", color(`Tool output: ${this.view.title}`, tuiTheme.toolActive)];
+    const lines = ["", color(this.view.title, tuiTheme.toolActive)];
 
     if (content.length === 0) {
       lines.push(dim("No output yet."));

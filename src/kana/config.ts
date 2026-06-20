@@ -45,17 +45,25 @@ export type KanaNotificationConfig = {
   onApprovalRequired: boolean;
 };
 
+export type KanaMemoryConfig = {
+  enabled: boolean;
+  maxChars: number;
+  dailyRetentionDays?: number;
+};
+
 export type KanaConfig = {
   model: KanaModelConfig;
   agent: KanaAgentConfig;
   approval: KanaToolApprovalConfig;
   notification: KanaNotificationConfig;
+  memory: KanaMemoryConfig;
 };
 
 export type KanaConfigPaths = {
   home: string;
   configPath: string;
   agentsPath: string;
+  memoryDirectory: string;
   sessionsPath: string;
   approvalsPath: string;
 };
@@ -93,6 +101,11 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     onAgentCompleted: true,
     onApprovalRequired: true,
   },
+  memory: {
+    enabled: true,
+    maxChars: 6000,
+    dailyRetentionDays: undefined,
+  },
 };
 
 export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaConfigPaths {
@@ -102,6 +115,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
     home,
     configPath: path.join(home, "config.toml"),
     agentsPath: path.join(home, "AGENTS.md"),
+    memoryDirectory: path.join(home, "memory"),
     sessionsPath: path.join(home, "sessions"),
     approvalsPath: path.join(home, "approvals.json"),
   };
@@ -175,6 +189,13 @@ function serializeKanaConfig(config: KanaConfig): string {
     `on_agent_completed = ${config.notification.onAgentCompleted}`,
     `on_approval_required = ${config.notification.onApprovalRequired}`,
     "",
+    "[memory]",
+    `enabled = ${config.memory.enabled}`,
+    `max_chars = ${config.memory.maxChars}`,
+    ...(config.memory.dailyRetentionDays === undefined
+      ? ["# daily_retention_days = 30"]
+      : [`daily_retention_days = ${config.memory.dailyRetentionDays}`]),
+    "",
   ].join("\n");
 }
 
@@ -185,6 +206,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
   const notification =
     raw.notification === undefined ? {} : asRecord(raw.notification, "notification");
+  const memory = raw.memory === undefined ? {} : asRecord(raw.memory, "memory");
 
   return {
     model: {
@@ -214,6 +236,15 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         notification.on_approval_required,
         defaults.notification.onApprovalRequired,
         "notification.on_approval_required",
+      ),
+    },
+    memory: {
+      enabled: readBoolean(memory.enabled, defaults.memory.enabled, "memory.enabled"),
+      maxChars: readPositiveInteger(memory.max_chars, defaults.memory.maxChars, "memory.max_chars"),
+      dailyRetentionDays: readOptionalPositiveInteger(
+        memory.daily_retention_days,
+        defaults.memory.dailyRetentionDays,
+        "memory.daily_retention_days",
       ),
     },
   };
@@ -258,6 +289,32 @@ function readNumber(value: unknown, fallback: number, name: string): number {
 
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`${name} must be a finite number.`);
+  }
+
+  return value;
+}
+
+function readPositiveInteger(value: unknown, fallback: number, name: string): number {
+  const number = readNumber(value, fallback, name);
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+
+  return number;
+}
+
+function readOptionalPositiveInteger(
+  value: unknown,
+  fallback: number | undefined,
+  name: string,
+): number | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
   }
 
   return value;

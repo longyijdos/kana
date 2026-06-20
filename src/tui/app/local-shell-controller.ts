@@ -28,7 +28,7 @@ export class LocalShellController {
     return true;
   }
 
-  async submit(command: string, raw: string): Promise<void> {
+  async submit(command: string): Promise<void> {
     const shellCommand = command.trim();
 
     if (!shellCommand) {
@@ -47,7 +47,6 @@ export class LocalShellController {
     } as const;
     const block = new ToolCallBlock(toolCall);
 
-    this.options.editor.addToHistory(raw.trim());
     this.options.editor.clear();
     this.options.transcript.addChild(block);
     this.abortController = abortController;

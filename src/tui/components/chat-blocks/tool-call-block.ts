@@ -9,12 +9,8 @@ import {
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
+import type { ContentView } from "../content-viewer";
 import { TextBlock } from "./text-block";
-
-export type ToolResultView = {
-  title: string;
-  render: (width: number) => string[];
-};
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
@@ -96,7 +92,7 @@ export class ToolCallBlock implements Component {
     return rendered;
   }
 
-  getResultView(): ToolResultView | undefined {
+  getResultView(): ContentView | undefined {
     if (!this.hasInspectableOutput()) {
       return undefined;
     }

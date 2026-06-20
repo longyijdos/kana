@@ -15,6 +15,10 @@ export function shouldRequestToolApproval(
   approvals: KanaToolApprovals,
   toolCall: ToolCallContent,
 ): boolean {
+  if (toolCall.name === "remember") {
+    return false;
+  }
+
   switch (config.mode) {
     case "always":
       return true;

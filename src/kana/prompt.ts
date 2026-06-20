@@ -1,13 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { getKanaConfigPaths } from "./config";
+import { getKanaConfigPaths, loadKanaConfig } from "./config";
 import {
   type CollectKanaEnvironmentContextOptions,
   collectKanaEnvironmentContext,
   formatKanaEnvironmentContext,
 } from "./context";
 import { escapeXml } from "./format";
+import { loadKanaMemory } from "./memory";
 import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
 
 const DEFAULT_SYSTEM_PROMPT = [
@@ -18,6 +19,15 @@ const DEFAULT_SYSTEM_PROMPT = [
   "Use bash when a shell command is the right way to inspect or change local state.",
   "Do not claim to have read a file unless you used the read tool or the content was provided directly.",
 ].join(" ");
+
+const REMEMBER_TOOL_GUIDANCE = [
+  "<remember_tool_guidance>",
+  "Proactively use remember when the user explicitly shares non-sensitive information likely to help future conversations, including enduring preferences, working style, recurring constraints, relevant background, confirmed decisions, project milestones that affect the current state or next steps, and unfinished work.",
+  "Record qualifying information even when a normal response fully handles the current turn.",
+  "Default to project scope. Use global scope only for information that applies across projects.",
+  "Do not record secrets, sensitive personal information, short-lived progress updates with no future impact, or facts that can be read directly from the workspace.",
+  "</remember_tool_guidance>",
+].join("\n");
 
 export type LoadKanaSystemPromptOptions = {
   cwd?: string;
@@ -36,11 +46,7 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
   const instructionBlocks: string[] = [DEFAULT_SYSTEM_PROMPT];
 
   if (existsSync(agentsPath)) {
-    instructionBlocks[0] = formatAgentsInstructions(
-      "global",
-      agentsPath,
-      readFileSync(agentsPath, "utf8"),
-    );
+    instructionBlocks[0] = formatAgentsInstructions("global", readFileSync(agentsPath, "utf8"));
   }
 
   // Project instructions are appended after global instructions so local
@@ -48,11 +54,7 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
   if (path.resolve(projectAgentsPath) !== path.resolve(agentsPath)) {
     if (existsSync(projectAgentsPath)) {
       instructionBlocks.push(
-        formatAgentsInstructions(
-          "project",
-          projectAgentsPath,
-          readFileSync(projectAgentsPath, "utf8"),
-        ),
+        formatAgentsInstructions("project", readFileSync(projectAgentsPath, "utf8")),
       );
     }
   }
@@ -61,6 +63,8 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
 }
 
 export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}): string {
+  const memoryEnabled = loadKanaConfig(options.env).memory.enabled;
+  const memoryPrompt = memoryEnabled ? formatKanaMemoryForPrompt(options) : undefined;
   const systemPrompt = loadKanaSystemPrompt({
     cwd: options.cwd,
     env: options.env,
@@ -70,17 +74,42 @@ export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}
     env: options.env,
   });
 
-  return [systemPrompt, environmentContext, skillsPrompt].filter(Boolean).join("\n\n");
+  return [
+    memoryPrompt,
+    memoryEnabled ? REMEMBER_TOOL_GUIDANCE : undefined,
+    systemPrompt,
+    environmentContext,
+    skillsPrompt,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
-function formatAgentsInstructions(
-  scope: "global" | "project",
-  filePath: string,
-  content: string,
-): string {
+function formatKanaMemoryForPrompt(options: BuildKanaSystemPromptOptions): string | undefined {
+  const globalMemory = loadKanaMemory("global", options).trim();
+  const projectMemory = loadKanaMemory("project", options).trim();
+  const memoryBlocks = [
+    globalMemory ? formatMemoryBlock("global", globalMemory) : undefined,
+    projectMemory ? formatMemoryBlock("project", projectMemory) : undefined,
+  ].filter((block): block is string => block !== undefined);
+
+  if (memoryBlocks.length === 0) {
+    return undefined;
+  }
+
+  return ["<memory>", ...memoryBlocks, "</memory>"].join("\n");
+}
+
+function formatAgentsInstructions(scope: "global" | "project", content: string): string {
   return [
-    `<agents_instructions scope="${scope}" path="${escapeXml(filePath)}">`,
+    `<agents_instructions scope="${scope}">`,
     content.trimEnd(),
     "</agents_instructions>",
   ].join("\n");
+}
+
+function formatMemoryBlock(scope: "global" | "project", content: string): string {
+  return [`<memory_reference scope="${scope}">`, escapeXml(content), "</memory_reference>"].join(
+    "\n",
+  );
 }

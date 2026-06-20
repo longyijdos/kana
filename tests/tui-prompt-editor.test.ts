@@ -615,6 +615,9 @@ describe("prompt commands", () => {
         {
           name: "skills",
         },
+        {
+          name: "memory",
+        },
       ],
     });
   });
