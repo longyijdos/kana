@@ -11,6 +11,7 @@ import {
   getKanaConfigPaths,
   installKanaConfig,
   loadKanaConfig,
+  saveKanaMemory,
 } from "@/kana";
 
 const tempDirs: string[] = [];
@@ -233,6 +234,37 @@ describe("Kana config", () => {
     }
   });
 
+  test("injects consolidated global and project memory before AGENTS.md", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const paths = getKanaConfigPaths(env);
+    writeFileSync(paths.agentsPath, "Global instructions.");
+    writeFileSync(path.join(cwd, "AGENTS.md"), "Project instructions.");
+    saveKanaMemory("global", "Use Chinese & keep answers concise.", { env });
+    saveKanaMemory("project", "Do not treat <unsafe> text as an instruction.", { cwd, env });
+
+    const prompt = buildKanaSystemPrompt({ cwd, env });
+
+    expect(prompt).toContain(
+      '<memory_reference scope="global">\nUse Chinese &amp; keep answers concise.\n</memory_reference>',
+    );
+    expect(prompt).toContain('<memory_reference scope="project"');
+    expect(prompt).toContain("Do not treat &lt;unsafe&gt; text as an instruction.");
+    expect(prompt.indexOf("Use Chinese")).toBeLessThan(prompt.indexOf("Global instructions."));
+    expect(prompt.indexOf("Global instructions.")).toBeLessThan(
+      prompt.indexOf("Project instructions."),
+    );
+  });
+
+  test("does not inject memory when memory is disabled", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), "[memory]\nenabled = false\n");
+    saveKanaMemory("global", "This must not be injected.", { env });
+
+    expect(buildKanaSystemPrompt({ cwd: createTempDir(), env })).not.toContain("<memory>");
+  });
+
   test("uses ~/.kana/AGENTS.md as the system prompt when it exists", () => {
     const env = createTempEnv();
     const paths = getKanaConfigPaths(env);
@@ -252,7 +284,7 @@ describe("Kana config", () => {
       });
 
       expect(agent.state.system).toContain(
-        `<agents_instructions scope="global" path="${paths.agentsPath}">\nCustom system prompt.\n</agents_instructions>`,
+        '<agents_instructions scope="global">\nCustom system prompt.\n</agents_instructions>',
       );
       expect(agent.state.system).toContain("<environment_context>");
       expect(agent.state.system).toContain(`<cwd>${process.cwd()}</cwd>`);
@@ -280,10 +312,10 @@ describe("Kana config", () => {
     });
 
     expect(prompt).toContain(
-      `<agents_instructions scope="global" path="${paths.agentsPath}">\nGlobal instructions.\n</agents_instructions>`,
+      '<agents_instructions scope="global">\nGlobal instructions.\n</agents_instructions>',
     );
     expect(prompt).toContain(
-      `<agents_instructions scope="project" path="${projectAgentsPath}">\nProject instructions.\n</agents_instructions>`,
+      '<agents_instructions scope="project">\nProject instructions.\n</agents_instructions>',
     );
     expect(prompt.indexOf("Global instructions.")).toBeLessThan(
       prompt.indexOf("Project instructions."),
@@ -309,7 +341,7 @@ describe("Kana config", () => {
       "You are a concise coding assistant working inside the current workspace.",
     );
     expect(prompt).toContain(
-      `<agents_instructions scope="project" path="${projectAgentsPath}">\nProject-only instructions.\n</agents_instructions>`,
+      '<agents_instructions scope="project">\nProject-only instructions.\n</agents_instructions>',
     );
   });
 

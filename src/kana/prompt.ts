@@ -1,13 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { getKanaConfigPaths } from "./config";
+import { getKanaConfigPaths, loadKanaConfig } from "./config";
 import {
   type CollectKanaEnvironmentContextOptions,
   collectKanaEnvironmentContext,
   formatKanaEnvironmentContext,
 } from "./context";
 import { escapeXml } from "./format";
+import { loadKanaMemory } from "./memory";
 import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
 
 const DEFAULT_SYSTEM_PROMPT = [
@@ -36,11 +37,7 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
   const instructionBlocks: string[] = [DEFAULT_SYSTEM_PROMPT];
 
   if (existsSync(agentsPath)) {
-    instructionBlocks[0] = formatAgentsInstructions(
-      "global",
-      agentsPath,
-      readFileSync(agentsPath, "utf8"),
-    );
+    instructionBlocks[0] = formatAgentsInstructions("global", readFileSync(agentsPath, "utf8"));
   }
 
   // Project instructions are appended after global instructions so local
@@ -48,11 +45,7 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
   if (path.resolve(projectAgentsPath) !== path.resolve(agentsPath)) {
     if (existsSync(projectAgentsPath)) {
       instructionBlocks.push(
-        formatAgentsInstructions(
-          "project",
-          projectAgentsPath,
-          readFileSync(projectAgentsPath, "utf8"),
-        ),
+        formatAgentsInstructions("project", readFileSync(projectAgentsPath, "utf8")),
       );
     }
   }
@@ -61,6 +54,7 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
 }
 
 export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}): string {
+  const memoryPrompt = formatKanaMemoryForPrompt(options);
   const systemPrompt = loadKanaSystemPrompt({
     cwd: options.cwd,
     env: options.env,
@@ -70,17 +64,40 @@ export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}
     env: options.env,
   });
 
-  return [systemPrompt, environmentContext, skillsPrompt].filter(Boolean).join("\n\n");
+  return [memoryPrompt, systemPrompt, environmentContext, skillsPrompt]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
-function formatAgentsInstructions(
-  scope: "global" | "project",
-  filePath: string,
-  content: string,
-): string {
+function formatKanaMemoryForPrompt(options: BuildKanaSystemPromptOptions): string | undefined {
+  if (!loadKanaConfig(options.env).memory.enabled) {
+    return undefined;
+  }
+
+  const globalMemory = loadKanaMemory("global", options).trim();
+  const projectMemory = loadKanaMemory("project", options).trim();
+  const memoryBlocks = [
+    globalMemory ? formatMemoryBlock("global", globalMemory) : undefined,
+    projectMemory ? formatMemoryBlock("project", projectMemory) : undefined,
+  ].filter((block): block is string => block !== undefined);
+
+  if (memoryBlocks.length === 0) {
+    return undefined;
+  }
+
+  return ["<memory>", ...memoryBlocks, "</memory>"].join("\n");
+}
+
+function formatAgentsInstructions(scope: "global" | "project", content: string): string {
   return [
-    `<agents_instructions scope="${scope}" path="${escapeXml(filePath)}">`,
+    `<agents_instructions scope="${scope}">`,
     content.trimEnd(),
     "</agents_instructions>",
   ].join("\n");
+}
+
+function formatMemoryBlock(scope: "global" | "project", content: string): string {
+  return [`<memory_reference scope="${scope}">`, escapeXml(content), "</memory_reference>"].join(
+    "\n",
+  );
 }
