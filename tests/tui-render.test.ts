@@ -72,6 +72,28 @@ describe("tui main-screen renderer", () => {
     expect(output).not.toContain("\x1b[2J");
   });
 
+  test("reuses unchanged normalized lines at the same terminal width", async () => {
+    const terminal = new FakeTerminal();
+    const tui = new Tui(terminal);
+    const lines = new MutableLines(["中文内容", "unchanged"]);
+
+    tui.addChild(lines);
+    tui.start();
+    await Promise.resolve();
+
+    const renderNow = (tui as unknown as { renderNow(): void }).renderNow.bind(tui);
+    renderNow();
+
+    expect((tui as unknown as { previousRenderedLines: string[] }).previousRenderedLines).toEqual([
+      "中文内容",
+      "unchanged",
+    ]);
+    expect((tui as unknown as { previousLines: string[] }).previousLines).toEqual([
+      "中文内容\x1b[0m",
+      "unchanged\x1b[0m",
+    ]);
+  });
+
   test("can insert a child after an existing child", async () => {
     const terminal = new FakeTerminal();
     const tui = new Tui(terminal);

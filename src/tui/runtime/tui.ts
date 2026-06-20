@@ -13,6 +13,7 @@ export class Tui extends Container {
   // Main-screen rendering can only move within the visible terminal viewport.
   // These rows are logical positions in the rendered line buffer.
   private previousLines: string[] = [];
+  private previousRenderedLines: string[] = [];
   private previousWidth = 0;
   private previousHeight = 0;
   private previousViewportTop = 0;
@@ -120,12 +121,19 @@ export class Tui extends Container {
     const height = Math.max(this.terminal.rows, 1);
     const rendered = this.render(width);
     const cursor = extractCursorPosition(rendered);
-    const lines = rendered.map((line) => normalizeLine(line, width));
+    const lines = rendered.map((line, index) =>
+      // Cached transcript components return the same strings between keystrokes.
+      // Reuse their normalized form to avoid recalculating CJK display widths.
+      this.previousWidth === width && this.previousRenderedLines[index] === line
+        ? this.previousLines[index]!
+        : normalizeLine(line, width),
+    );
     const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
     const heightChanged = this.previousHeight !== 0 && this.previousHeight !== height;
     const forceFullRender = this.forceFullRender;
 
     this.forceFullRender = false;
+    this.previousRenderedLines = rendered;
 
     if (this.previousLines.length === 0) {
       this.fullRender(lines, cursor, width, height, forceFullRender);

@@ -1,7 +1,11 @@
+import type { Message } from "../src/core";
+import { loadKanaSession } from "../src/kana";
+import { addHistoryMessagesToTranscript } from "../src/tui/app/history";
 import { AssistantMessageBlock, Editor, TextBlock, Transcript } from "../src/tui/components";
 import type { TerminalNotification } from "../src/tui/runtime/notifications";
 import type { Terminal } from "../src/tui/runtime/terminal";
 import { Tui } from "../src/tui/runtime/tui";
+import { tuiTheme } from "../src/tui/theme";
 
 class BenchmarkTerminal implements Terminal {
   columns = 100;
@@ -19,6 +23,7 @@ class BenchmarkTerminal implements Terminal {
 const MARKDOWN = [
   "# Heading",
   "Some **bold** text with `code` and a link [docs](https://example.com).",
+  "中文内容用于覆盖宽字符显示宽度计算。",
   "",
   "```ts",
   "const value = 1;",
@@ -27,13 +32,33 @@ const MARKDOWN = [
   "",
 ].join("\n");
 
-function main(): void {
+export function main(args: string[] = process.argv.slice(2)): void {
+  const sessionId = parseSessionId(args);
+
   console.log("TUI render benchmark");
-  console.log("Each pair is one user TextBlock plus one assistant MarkdownBlock.");
+  console.log("Each pair is one user TextBlock plus one mixed ASCII/CJK assistant MarkdownBlock.");
   console.log("");
   runTranscriptBenchmark();
+
+  if (sessionId) {
+    console.log("");
+    runSessionReplayBenchmark(sessionId);
+  }
+
   console.log("");
   runEditorBenchmark();
+}
+
+export function parseSessionId(args: string[]): string | undefined {
+  if (args.length === 0) {
+    return undefined;
+  }
+
+  if (args[0] !== "--session" || !args[1] || args.length !== 2) {
+    throw new Error("Usage: bun run bench:tui-render -- --session <session-id>");
+  }
+
+  return args[1];
 }
 
 function runTranscriptBenchmark(): void {
@@ -58,6 +83,29 @@ function runTranscriptBenchmark(): void {
       ].join("  "),
     );
   }
+}
+
+function runSessionReplayBenchmark(sessionId: string): void {
+  const session = loadKanaSession(sessionId);
+  const transcript = createSessionTranscript(sessionId, session.messages);
+  const lineCount = transcript.render(100).length;
+  const coldReplay = measure(
+    () => createSessionTranscript(sessionId, session.messages).render(100),
+    5,
+  );
+  const hotTranscript = measure(() => transcript.render(100), 20);
+  const hotRenderNow = measureHotRenderNow(transcript, 20);
+
+  console.log(`Session replay benchmark: ${session.metadata.id}`);
+  console.log(`messages: ${session.messages.length}  lines: ${lineCount}`);
+  console.log("cold replay  hot transcript  hot renderNow");
+  console.log(
+    [
+      formatMs(coldReplay).padStart(11),
+      formatMs(hotTranscript).padStart(14),
+      formatMs(hotRenderNow).padStart(13),
+    ].join("  "),
+  );
 }
 
 function runEditorBenchmark(): void {
@@ -106,7 +154,7 @@ function createTranscript(pairCount: number): Transcript {
 
   for (let index = 0; index < pairCount; index += 1) {
     transcript.addChild(
-      new TextBlock(`user ${index}: ${"hello ".repeat(20)}`, {
+      new TextBlock(`用户 ${index}: ${"hello 世界 ".repeat(12)}`, {
         prefix: "> ",
       }),
     );
@@ -123,6 +171,20 @@ function createTranscript(pairCount: number): Transcript {
     });
     transcript.addChild(assistant);
   }
+
+  return transcript;
+}
+
+export function createSessionTranscript(sessionId: string, messages: Message[]): Transcript {
+  const transcript = new Transcript();
+
+  // Match the restored-session UI so benchmark results include its real blocks.
+  transcript.addChild(
+    new TextBlock(`Resumed session ${sessionId}.`, {
+      color: tuiTheme.muted,
+    }),
+  );
+  addHistoryMessagesToTranscript(transcript, messages);
 
   return transcript;
 }
@@ -173,7 +235,7 @@ function createEditor(input: string): Editor {
 }
 
 function createEditorInput(targetChars: number): string {
-  const line = "abcdefghijklmnopqrstuvwxyz0123456789".repeat(2);
+  const line = "abcdefghijklmnopqrstuvwxyz0123456789 中文输入".repeat(2);
   const lines: string[] = [];
   let length = 0;
 
@@ -199,4 +261,6 @@ function formatMs(value: number): string {
   return `${value.toFixed(2)}ms`;
 }
 
-main();
+if (import.meta.main) {
+  main();
+}
