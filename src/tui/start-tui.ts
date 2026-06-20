@@ -66,7 +66,7 @@ export function startTui(options: StartTuiOptions = {}): void {
           }
         },
       }),
-    new ProcessTerminal(),
+    new ProcessTerminal(config.notification),
     {
       sessionId: session?.metadata.id,
       initialMessages: session?.messages,
@@ -127,6 +127,7 @@ export function startTui(options: StartTuiOptions = {}): void {
         config: config.approval,
         approvals: toolApprovals,
       },
+      notification: config.notification,
     },
   );
 

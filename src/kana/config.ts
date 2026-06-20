@@ -28,10 +28,28 @@ export type KanaToolApprovalConfig = {
   mode: KanaToolApprovalMode;
 };
 
+export const KANA_NOTIFICATION_BACKENDS = [
+  "auto",
+  "off",
+  "bell",
+  "osc9",
+  "osc777",
+  "kitty",
+] as const;
+
+export type KanaNotificationBackend = (typeof KANA_NOTIFICATION_BACKENDS)[number];
+
+export type KanaNotificationConfig = {
+  backend: KanaNotificationBackend;
+  onAgentCompleted: boolean;
+  onApprovalRequired: boolean;
+};
+
 export type KanaConfig = {
   model: KanaModelConfig;
   agent: KanaAgentConfig;
   approval: KanaToolApprovalConfig;
+  notification: KanaNotificationConfig;
 };
 
 export type KanaConfigPaths = {
@@ -69,6 +87,11 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   },
   approval: {
     mode: "unless_trusted",
+  },
+  notification: {
+    backend: "auto",
+    onAgentCompleted: true,
+    onApprovalRequired: true,
   },
 };
 
@@ -147,6 +170,11 @@ function serializeKanaConfig(config: KanaConfig): string {
     "[approval]",
     `mode = "${config.approval.mode}"`,
     "",
+    "[notification]",
+    `backend = "${config.notification.backend}"`,
+    `on_agent_completed = ${config.notification.onAgentCompleted}`,
+    `on_approval_required = ${config.notification.onApprovalRequired}`,
+    "",
   ].join("\n");
 }
 
@@ -155,6 +183,8 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const model = raw.model === undefined ? {} : asRecord(raw.model, "model");
   const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
   const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
+  const notification =
+    raw.notification === undefined ? {} : asRecord(raw.notification, "notification");
 
   return {
     model: {
@@ -172,6 +202,19 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
     },
     approval: {
       mode: readToolApprovalMode(approval.mode, defaults.approval.mode),
+    },
+    notification: {
+      backend: readNotificationBackend(notification.backend, defaults.notification.backend),
+      onAgentCompleted: readBoolean(
+        notification.on_agent_completed,
+        defaults.notification.onAgentCompleted,
+        "notification.on_agent_completed",
+      ),
+      onApprovalRequired: readBoolean(
+        notification.on_approval_required,
+        defaults.notification.onApprovalRequired,
+        "notification.on_approval_required",
+      ),
     },
   };
 }
@@ -254,4 +297,19 @@ function readToolApprovalMode(
   }
 
   return mode as KanaToolApprovalMode;
+}
+
+function readNotificationBackend(
+  value: unknown,
+  fallback: KanaNotificationBackend,
+): KanaNotificationBackend {
+  const backend = readString(value, fallback, "notification.backend");
+
+  if (!(KANA_NOTIFICATION_BACKENDS as readonly string[]).includes(backend)) {
+    throw new Error(
+      `notification.backend must be one of: ${KANA_NOTIFICATION_BACKENDS.join(", ")}.`,
+    );
+  }
+
+  return backend as KanaNotificationBackend;
 }

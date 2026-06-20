@@ -16,5 +16,11 @@ export {
   isTab,
   isUp,
 } from "./keys";
+export {
+  encodeTerminalNotification,
+  resolveNotificationBackend,
+  sanitizeTerminalNotificationText,
+  type TerminalNotification,
+} from "./notifications";
 export { ProcessTerminal, type Terminal } from "./terminal";
 export { extractCursorPosition, Tui } from "./tui";

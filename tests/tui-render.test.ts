@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Component, Terminal } from "../src/tui/runtime";
-import { CURSOR_MARKER, Tui } from "../src/tui/runtime";
+import { CURSOR_MARKER, type TerminalNotification, Tui } from "../src/tui/runtime";
 
 class FakeTerminal implements Terminal {
   writes: string[] = [];
@@ -23,6 +23,8 @@ class FakeTerminal implements Terminal {
   write(data: string): void {
     this.writes.push(data);
   }
+
+  notify(_notification: TerminalNotification): void {}
 }
 
 class MutableLines implements Component {

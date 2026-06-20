@@ -1,4 +1,5 @@
 import { AssistantMessageBlock, Editor, TextBlock, Transcript } from "../src/tui/components";
+import type { TerminalNotification } from "../src/tui/runtime/notifications";
 import type { Terminal } from "../src/tui/runtime/terminal";
 import { Tui } from "../src/tui/runtime/tui";
 
@@ -11,6 +12,8 @@ class BenchmarkTerminal implements Terminal {
   stop(): void {}
 
   write(): void {}
+
+  notify(_notification: TerminalNotification): void {}
 }
 
 const MARKDOWN = [
