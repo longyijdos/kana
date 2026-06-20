@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { LocalShellController } from "../src/tui/app/local-shell-controller";
 import { Editor, Transcript } from "../src/tui/components";
 import { stripAnsi } from "../src/tui/render";
-import { type Terminal, Tui } from "../src/tui/runtime";
+import { type Terminal, type TerminalNotification, Tui } from "../src/tui/runtime";
 
 class FakeTerminal implements Terminal {
   writes: string[] = [];
@@ -21,6 +21,8 @@ class FakeTerminal implements Terminal {
   write(data: string): void {
     this.writes.push(data);
   }
+
+  notify(_notification: TerminalNotification): void {}
 }
 
 describe("local shell controller", () => {

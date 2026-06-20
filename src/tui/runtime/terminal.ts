@@ -1,7 +1,16 @@
+import type { KanaNotificationConfig } from "@/kana";
+
+import {
+  encodeTerminalNotification,
+  resolveNotificationBackend,
+  type TerminalNotification,
+} from "./notifications";
+
 export interface Terminal {
   start(onInput: (data: string) => void, onResize: () => void): void;
   stop(): void;
   write(data: string): void;
+  notify(notification: TerminalNotification): void;
   readonly columns: number;
   readonly rows: number;
 }
@@ -11,6 +20,15 @@ export class ProcessTerminal implements Terminal {
   private resizeHandler?: () => void;
   private wasRaw = false;
   private stopped = true;
+  private notificationId = 0;
+  private readonly notificationBackend: ReturnType<typeof resolveNotificationBackend>;
+
+  constructor(
+    notificationConfig: Pick<KanaNotificationConfig, "backend"> = { backend: "auto" },
+    env: NodeJS.ProcessEnv = process.env,
+  ) {
+    this.notificationBackend = resolveNotificationBackend(notificationConfig.backend, env);
+  }
 
   start(onInput: (data: string) => void, onResize: () => void): void {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -49,6 +67,18 @@ export class ProcessTerminal implements Terminal {
 
   write(data: string): void {
     process.stdout.write(data);
+  }
+
+  notify(notification: TerminalNotification): void {
+    const output = encodeTerminalNotification(
+      notification,
+      this.notificationBackend,
+      ++this.notificationId,
+    );
+
+    if (output !== undefined) {
+      this.write(output);
+    }
   }
 
   get columns(): number {
