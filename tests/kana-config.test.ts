@@ -283,6 +283,9 @@ describe("Kana config", () => {
     const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env: createTempEnv() });
 
     expect(prompt).toContain("<remember_tool_guidance>");
+    expect(prompt).toContain("Proactively use remember");
+    expect(prompt).toContain("project milestones that affect the current state or next steps");
+    expect(prompt).toContain("even when a normal response fully handles the current turn");
     expect(prompt).toContain("Default to project scope.");
     expect(prompt).toContain("Do not record secrets");
   });

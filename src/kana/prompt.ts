@@ -22,9 +22,10 @@ const DEFAULT_SYSTEM_PROMPT = [
 
 const REMEMBER_TOOL_GUIDANCE = [
   "<remember_tool_guidance>",
-  "Use remember only for durable preferences, confirmed decisions, long-lived project context, or unfinished work that future conversations need.",
+  "Proactively use remember when the user explicitly shares non-sensitive information likely to help future conversations, including enduring preferences, working style, recurring constraints, relevant background, confirmed decisions, project milestones that affect the current state or next steps, and unfinished work.",
+  "Record qualifying information even when a normal response fully handles the current turn.",
   "Default to project scope. Use global scope only for information that applies across projects.",
-  "Do not record secrets, personal sensitive information, transient execution details, or facts that can be read directly from the workspace.",
+  "Do not record secrets, sensitive personal information, short-lived progress updates with no future impact, or facts that can be read directly from the workspace.",
   "</remember_tool_guidance>",
 ].join("\n");
 

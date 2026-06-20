@@ -41,7 +41,8 @@ export function createRememberTool(
 ): Tool<typeof rememberParameters, RememberToolResult> {
   return {
     name: "remember",
-    description: "Save durable context for future conversations.",
+    description:
+      "Proactively save non-sensitive durable user preferences, project decisions, meaningful milestones, and unfinished work for future conversations.",
     parameters: rememberParameters,
     execute: (args, context) => {
       if (context.signal?.aborted) {

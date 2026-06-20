@@ -16,6 +16,11 @@ afterEach(() => {
 });
 
 describe("remember tool", () => {
+  test("describes proactive durable-memory use", () => {
+    expect(createRememberTool().description).toContain("Proactively save non-sensitive durable");
+    expect(createRememberTool().description).toContain("meaningful milestones");
+  });
+
   test("records a project memory without exposing its file path", async () => {
     const env = createTempEnv();
     const cwd = path.join(tempDirs[0], "workspace");
