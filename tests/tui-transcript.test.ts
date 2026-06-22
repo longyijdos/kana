@@ -371,6 +371,30 @@ describe("tui transcript", () => {
     ).toBe(true);
   });
 
+  test("marks oversized edit diff lines as truncated", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "edit",
+      args: {
+        path: "src/app.ts",
+      },
+    });
+
+    block.updateResult(
+      {
+        path: "src/app.ts",
+        replacements: 1,
+        oldText: "abcdefghijk",
+        newText: "abcdefghijk",
+      },
+      false,
+    );
+
+    expect(block.render(8).map(stripAnsi)).toContain("- abc...");
+    expect(block.render(8).map(stripAnsi)).toContain("+ abc...");
+  });
+
   test("renders failed multiline bash command titles as separate logical lines", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

@@ -83,7 +83,7 @@ export class ContentViewer implements Component {
 
     for (let index = window.start; index < window.end; index += 1) {
       for (const line of mapLines(content[index] ?? "", (part) => part)) {
-        lines.push(truncateToWidth(`  ${line}`, width, ""));
+        lines.push(truncateToWidth(`  ${line}`, width));
       }
     }
 
