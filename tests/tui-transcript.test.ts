@@ -164,7 +164,7 @@ describe("tui transcript", () => {
     expect(rendered).not.toContain("before");
   });
 
-  test("renders read tool output as a concise file excerpt", () => {
+  test("renders read tool output as file metadata only", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
@@ -197,11 +197,11 @@ describe("tui transcript", () => {
 
     expect(lines[1]).toBe("◆ Read");
     expect(lines[2]).toBe("  └ AGENTS.md");
-    expect(lines).toContain("... 2 more lines");
-    expect(lines).toContain("line 10");
+    expect(lines).toContain("AGENTS.md:1-10 of 10");
+    expect(lines).not.toContain("line 10");
   });
 
-  test("provides full tool output for the result viewer", () => {
+  test("does not provide read content in the result viewer", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
@@ -222,13 +222,7 @@ describe("tui transcript", () => {
       false,
     );
 
-    const compactLines = block.render(80).map(stripAnsi);
-    const fullLines = block.getResultView()?.render(80).map(stripAnsi) ?? [];
-
-    expect(compactLines).toContain("... 2 more lines");
-    expect(fullLines).not.toContain("... 2 more lines");
-    expect(fullLines).toContain("line 1");
-    expect(fullLines).toContain("line 10");
+    expect(block.getResultView()).toBeUndefined();
   });
 
   test("tool result viewer scrolls full output and closes with escape", () => {
@@ -374,7 +368,7 @@ describe("tui transcript", () => {
     ).toBe(true);
   });
 
-  test("highlights read, write, and edit source content using the target path", async () => {
+  test("highlights write and edit source content using the target path", async () => {
     await preloadSyntaxHighlighter();
 
     const read = new ToolCallBlock({
@@ -412,7 +406,9 @@ describe("tui transcript", () => {
       false,
     );
 
-    for (const block of [read, write, edit]) {
+    expect(read.render(80).map(stripAnsi)).not.toContain("const value = 1;");
+
+    for (const block of [write, edit]) {
       expect(block.render(80).join("\n")).toContain("\x1b[38;2;");
     }
 

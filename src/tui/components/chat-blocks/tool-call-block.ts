@@ -10,10 +10,7 @@ import {
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
-import { highlightCodeSync, inferCodeLanguage } from "../../utils/syntax-highlighter";
 import type { ContentView } from "../content-viewer";
-import { styleSpans, wrapSpans } from "./markdown-inline";
-import { TextBlock } from "./text-block";
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
@@ -96,7 +93,7 @@ export class ToolCallBlock implements Component {
   }
 
   getResultView(): ContentView | undefined {
-    if (!this.hasInspectableOutput()) {
+    if (!this.hasInspectableOutput() || this.toolCall.name === "read") {
       return undefined;
     }
 
@@ -132,52 +129,9 @@ export class ToolCallBlock implements Component {
       this.result ?? this.partialResult,
       this.isError,
       detail,
+      width,
     );
-
-    if (typeof output === "string" && output) {
-      const highlighted = this.renderHighlightedFileOutput(output, width);
-      if (highlighted) {
-        return highlighted;
-      }
-
-      return new TextBlock(output, {
-        color: this.isError ? tuiTheme.error : tuiTheme.toolOutput,
-      }).render(width);
-    }
-
-    return Array.isArray(output) ? output : [];
-  }
-
-  private renderHighlightedFileOutput(output: string, width: number): string[] | undefined {
-    if (this.toolCall.name !== "read" && this.toolCall.name !== "write") {
-      return undefined;
-    }
-
-    const path =
-      typeof this.toolCall.args === "object" && this.toolCall.args
-        ? (this.toolCall.args as { path?: unknown }).path
-        : undefined;
-    const language = inferCodeLanguage(typeof path === "string" ? path : undefined);
-    const highlighted = highlightCodeSync(output.substring(output.indexOf("\n") + 1), language);
-
-    if (!language || !highlighted || !output.includes("\n")) {
-      return undefined;
-    }
-
-    const header = output.slice(0, output.indexOf("\n"));
-    const lines = new TextBlock(header, { color: tuiTheme.toolOutput }).render(width);
-
-    for (const codeLine of highlighted) {
-      const spans = codeLine.map((token) => ({
-        text: token.text.replace(/\t/g, "   "),
-        style: token.color ? { color: token.color } : undefined,
-      }));
-      for (const wrapped of wrapSpans(spans, width, width)) {
-        lines.push(styleSpans(wrapped, { defaultColor: tuiTheme.toolOutput }));
-      }
-    }
-
-    return lines;
+    return output;
   }
 
   private renderTitle(width: number, titleColor: Parameters<typeof color>[1]): string[] {

@@ -1,5 +1,12 @@
 import type { ToolCallContent } from "@/core";
-import { capitalize, stripTerminalControlSequences, summarizeText } from "../render";
+import {
+  capitalize,
+  color,
+  stripTerminalControlSequences,
+  summarizeText,
+  wrapPlainText,
+} from "../render";
+import { tuiTheme } from "../theme";
 import { getNumberProperty, getStringProperty } from "./properties";
 import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
@@ -73,33 +80,42 @@ export function formatToolOutput(
   result: unknown,
   isError: boolean,
   detail: ToolOutputDetail = "compact",
-): string | string[] {
+  width: number,
+): string[] {
   const sanitizedResult = sanitizeToolOutput(result);
 
   if (!sanitizedResult || typeof sanitizedResult !== "object") {
-    return sanitizedResult === undefined ? "" : String(sanitizedResult);
+    return renderText(
+      sanitizedResult === undefined ? "" : String(sanitizedResult),
+      width,
+      tuiTheme.toolOutput,
+    );
   }
 
   if (isError) {
-    return formatErrorOutput(sanitizedResult);
+    return renderText(formatErrorOutput(sanitizedResult), width, tuiTheme.error);
   }
 
   const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
 
   switch (toolCall.name) {
     case "read":
-      return formatReadOutput(sanitizedResult, detail);
+      return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "write":
-      return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail);
+      return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail, width);
     case "edit":
       return formatEditOutput(sanitizedResult);
     case "bash":
-      return formatBashOutput(sanitizedResult, detail);
+      return renderText(formatBashOutput(sanitizedResult, detail), width, tuiTheme.toolOutput);
     case "remember":
-      return "";
+      return [];
   }
 
-  return JSON.stringify(sanitizedResult, null, 2);
+  return renderText(JSON.stringify(sanitizedResult, null, 2), width, tuiTheme.toolOutput);
+}
+
+function renderText(text: string, width: number, textColor: Parameters<typeof color>[1]): string[] {
+  return text ? wrapPlainText(text, width).map((line) => color(line, textColor)) : [];
 }
 
 export function hasExpandableToolOutput(
@@ -113,7 +129,7 @@ export function hasExpandableToolOutput(
 
   switch (toolCall.name) {
     case "read":
-      return hasExpandableReadOutput(result);
+      return hasExpandableReadOutput();
     case "write":
       return hasExpandableWriteOutput(toolCall);
     case "bash":
