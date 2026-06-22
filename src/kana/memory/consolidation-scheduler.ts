@@ -40,6 +40,10 @@ export function createMemoryConsolidationScheduler(
   return {
     schedule(messages) {
       const entriesByScope = collectRememberedEntries(messages);
+      if (entriesByScope.size === 0) {
+        return Promise.resolve();
+      }
+
       logger.info("memory_consolidation.scheduled", {
         scopeCount: entriesByScope.size,
         entryCount: [...entriesByScope.values()].reduce(

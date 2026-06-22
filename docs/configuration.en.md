@@ -116,6 +116,8 @@ export DEEPSEEK_API_KEY='sk-...'
 
 When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns`, `max_tokens`, `timeout_ms`, and `max_retries` are currently validated only as finite numbers; the two `memory` quantity fields additionally require positive integers.
 
+Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; DeepSeek HTTP failures additionally retain status code and status text, never the response body.
+
 The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
 
 ## API key and project instructions

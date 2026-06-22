@@ -50,5 +50,6 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     messages: options.messages,
     onRunCommitted: options.onRunCommitted,
     logger: options.logger,
+    loggerMetadata: { agentKind: "conversation" },
   });
 }

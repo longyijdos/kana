@@ -116,6 +116,8 @@ export DEEPSEEK_API_KEY='sk-...'
 
 `daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns`、`max_tokens`、`timeout_ms` 和 `max_retries` 当前只校验为有限数字；其中 `memory` 的两个数量字段额外要求正整数。
 
+默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；DeepSeek HTTP 失败额外记录状态码和状态文本，但不保存响应体。
+
 配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
 
 ## API key 与项目指令

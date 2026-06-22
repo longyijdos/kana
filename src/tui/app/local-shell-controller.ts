@@ -59,7 +59,7 @@ export class LocalShellController {
       activeTool: "bash",
     });
     this.options.tui.requestRender();
-    logger.info("local_shell.started");
+    logger.debug("local_shell.started");
 
     try {
       block.markExecutionStarted();
@@ -82,7 +82,11 @@ export class LocalShellController {
 
       block.updateResult(result.result, result.isError ?? false);
       this.options.updateStatus(result.isError ? "error" : "done");
-      logger.info("local_shell.ended", { isError: result.isError ?? false });
+      if (result.isError) {
+        logger.warn("local_shell.failed");
+      } else {
+        logger.debug("local_shell.ended");
+      }
     } catch (error) {
       block.updateResult(
         {

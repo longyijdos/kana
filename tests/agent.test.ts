@@ -165,7 +165,11 @@ describe("Agent", () => {
       warn: (event, metadata) => records.push({ event, metadata }),
       error: (event, metadata) => records.push({ event, metadata }),
     };
-    const agent = new Agent({ model: new TextModel("secret answer"), logger });
+    const agent = new Agent({
+      model: new TextModel("secret answer"),
+      logger,
+      loggerMetadata: { agentKind: "conversation" },
+    });
 
     await agent.prompt("secret prompt");
 
@@ -176,6 +180,10 @@ describe("Agent", () => {
       "agent.turn_ended",
       "agent.ended",
     ]);
+    expect(records[0]).toEqual({
+      event: "agent.run_started",
+      metadata: { agentKind: "conversation", promptMessageCount: 1 },
+    });
     expect(JSON.stringify(records)).not.toContain("secret");
   });
 

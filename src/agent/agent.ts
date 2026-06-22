@@ -1,5 +1,5 @@
 import type { AssistantMessage, Message, Model, UserMessage } from "@/core";
-import { createNoopLogger, type Logger } from "@/logging";
+import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 import type { Tool } from "@/tools";
 import type { AgentEvent } from "./events";
 import {
@@ -23,6 +23,7 @@ export type AgentConfig = {
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
   logger?: Logger;
+  loggerMetadata?: LogMetadata;
 };
 
 export type AgentState = {
@@ -68,12 +69,14 @@ export class Agent {
   private readonly beforeToolExecution?: BeforeToolExecutionHook;
   private readonly onRunCommitted?: AgentRunCommittedHook;
   private readonly logger: Logger;
+  private readonly loggerMetadata?: LogMetadata;
 
   constructor(options: AgentConfig) {
     this.stateData = createWritableAgentState(options);
     this.beforeToolExecution = options.beforeToolExecution;
     this.onRunCommitted = options.onRunCommitted;
     this.logger = options.logger ?? createNoopLogger();
+    this.loggerMetadata = options.loggerMetadata;
   }
 
   get state(): AgentState {
@@ -122,7 +125,7 @@ export class Agent {
     // loop result only contains messages produced by the agent runtime.
     const promptMessages = toPromptMessages(input);
     this.stateData.messages = [...this.stateData.messages, ...promptMessages];
-    this.logger.info("agent.run_started", { promptMessageCount: promptMessages.length });
+    this.log("info", "agent.run_started", { promptMessageCount: promptMessages.length });
 
     void this.runWithLifecycle((signal) =>
       runAgentLoop(this.createContextSnapshot(), this.createLoopConfig(signal), async (event) => {
@@ -151,7 +154,7 @@ export class Agent {
         stream.end(doneEvent);
       })
       .catch((error) => {
-        this.logger.error("agent.run_failed", { error });
+        this.log("error", "agent.run_failed", { error });
         stream.error(error);
       });
 
@@ -246,29 +249,32 @@ export class Agent {
   private logEvent(event: AgentEvent): void {
     switch (event.type) {
       case "agent_start":
-        this.logger.info("agent.started");
+        this.log("debug", "agent.started");
         break;
       case "turn_start":
-        this.logger.info("agent.turn_started", { turn: event.turn });
+        this.log("debug", "agent.turn_started", { turn: event.turn });
         break;
       case "turn_end":
-        this.logger.info("agent.turn_ended", {
+        this.log("debug", "agent.turn_ended", {
           turn: event.turn,
           stopReason: event.message.stopReason,
           toolResultCount: event.toolResults.length,
         });
         break;
       case "tool_execution_start":
-        this.logger.info("tool.execution_started", { toolName: event.toolName });
+        this.log("debug", "tool.execution_started", { toolName: event.toolName });
         break;
       case "tool_execution_end":
-        this.logger.info("tool.execution_ended", {
+        if (event.isError) {
+          this.log("warn", "tool.execution_failed", { toolName: event.toolName });
+          break;
+        }
+        this.log("debug", "tool.execution_ended", {
           toolName: event.toolName,
-          isError: event.isError,
         });
         break;
       case "agent_end":
-        this.logger.info("agent.ended", {
+        this.log("info", "agent.ended", {
           reason: event.reason,
           committedMessageCount: event.messages.length,
         });
@@ -279,6 +285,22 @@ export class Agent {
       case "tool_execution_update":
         break;
     }
+  }
+
+  private log(
+    level: "debug" | "info" | "warn" | "error",
+    event: string,
+    metadata?: LogMetadata,
+  ): void {
+    const mergedMetadata = {
+      ...this.loggerMetadata,
+      ...metadata,
+    };
+
+    this.logger[level](
+      event,
+      Object.keys(mergedMetadata).length === 0 ? undefined : mergedMetadata,
+    );
   }
 
   private reduceEvent(event: AgentEvent): void {

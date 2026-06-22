@@ -22,8 +22,8 @@ describe("session logger", () => {
       now: () => new Date("2026-06-22T12:00:00.000Z"),
     });
 
-    logger.debug("agent.turn_started");
-    logger.info("agent.turn_started", { turn: 1 });
+    logger.debug("agent.turn_started", { turn: 1 });
+    logger.info("agent.run_started", { promptMessageCount: 1 });
     logger.error("agent.failed", { error: new Error("unexpected") });
 
     const records = readLogRecords(logPath);
@@ -31,9 +31,9 @@ describe("session logger", () => {
       {
         timestamp: "2026-06-22T12:00:00.000Z",
         level: "info",
-        event: "agent.turn_started",
+        event: "agent.run_started",
         sessionId: "session-1",
-        metadata: { turn: 1 },
+        metadata: { promptMessageCount: 1 },
       },
       expect.objectContaining({
         level: "error",

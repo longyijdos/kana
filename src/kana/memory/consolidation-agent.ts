@@ -51,6 +51,11 @@ export function createMemoryConsolidationAgent(
     tools: createMemoryConsolidationTools(options, options.mode, memory),
     maxTurns: config.agent.maxTurns,
     logger: options.logger,
+    loggerMetadata: {
+      agentKind: "memory_consolidation",
+      memoryScope: options.scope,
+      memoryMode: options.mode,
+    },
   });
 }
 

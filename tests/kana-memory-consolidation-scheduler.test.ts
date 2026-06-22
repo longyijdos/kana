@@ -1,9 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolResultMessage } from "@/core";
 import { DEFAULT_KANA_CONFIG } from "@/kana";
+import type { Logger } from "@/logging";
 import { createMemoryConsolidationScheduler } from "../src/kana/memory";
 
 describe("memory consolidation scheduler", () => {
+  test("does not log or schedule when no successful remember entries exist", async () => {
+    const events: string[] = [];
+    const logger: Logger = {
+      debug: (event) => events.push(event),
+      info: (event) => events.push(event),
+      warn: (event) => events.push(event),
+      error: (event) => events.push(event),
+    };
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, { logger });
+
+    await scheduler.schedule([
+      { role: "tool", toolCallId: "call_read", toolName: "read", content: "", isError: false },
+    ]);
+
+    expect(events).toEqual([]);
+  });
+
   test("groups successful remember entries by scope", async () => {
     const calls: Array<{ scope: string; entries: string[] }> = [];
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
