@@ -64,12 +64,13 @@ content delta
   → text_start (first) → text_delta*
 tool_calls delta
   → end all open thinking/text
+  → on the first higher index, end all preceding tool calls
   → toolcall_start (first) → toolcall_delta*
 finish_reason = tool_calls
-  → parse rawArgs → toolcall_end
+  → parse and end the final unfinished tool call
 ```
 
-Tool deltas use the provider `index` to address the Nth tool block in the current message. IDs, function names, and arguments may concatenate across chunks; missing arguments become `{}`, while non-JSON arguments remain raw strings. Starting visible text or a tool call closes an open block of a different kind, keeping event order and the `content` array consistent.
+Tool deltas use the provider `index` to address the Nth tool block in the current message. DeepSeek does not provide a per-call completion marker; its indexes arrive in order, so the first higher index ends every preceding call. Stream completion then ends only the final unfinished call. IDs, function names, and arguments may concatenate across chunks; missing arguments become `{}`, while non-JSON arguments remain raw strings. Starting visible text or a tool call closes an open block of a different kind, keeping event order and the `content` array consistent.
 
 Finish reasons map as `stop → stop`, `length → length`, and `tool_calls → toolUse`. `content_filter` and `insufficient_system_resource` are errors. Usage in stream chunks maps to generic fields including prompt cache hit/miss and reasoning tokens.
 

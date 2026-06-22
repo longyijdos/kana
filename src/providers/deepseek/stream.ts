@@ -138,15 +138,7 @@ export function finishToolCalls(
       continue;
     }
 
-    content.args = parseToolArguments(content.rawArgs ?? "");
-
-    stream.push({
-      type: "toolcall_end",
-      contentIndex,
-      toolCall: structuredClone(content),
-      snapshot: structuredClone(message),
-    });
-    state.endedContentIndexes.add(contentIndex);
+    finishToolCall(stream, message, state, contentIndex, content);
   }
 }
 
@@ -281,6 +273,10 @@ function applyToolCallDelta(
   }
 
   if (toolCall.isNew) {
+    // DeepSeek does not send a per-call completion marker. Its tool-call indexes
+    // arrive in order, so the first chunk for a later call proves that every
+    // preceding call has received its complete argument stream.
+    finishToolCallsBeforeIndex(stream, message, state, delta.index ?? 0);
     stream.push({
       type: "toolcall_start",
       contentIndex: toolCall.contentIndex,
@@ -298,6 +294,51 @@ function applyToolCallDelta(
       snapshot: structuredClone(message),
     });
   }
+}
+
+function finishToolCallsBeforeIndex(
+  stream: AssistantEventStream,
+  message: AssistantMessage,
+  state: DeepSeekStreamState,
+  toolCallIndex: number,
+): void {
+  let currentToolCallIndex = 0;
+
+  for (let contentIndex = 0; contentIndex < message.content.length; contentIndex += 1) {
+    const content = message.content[contentIndex];
+
+    if (content.type !== "tool_call") {
+      continue;
+    }
+
+    if (currentToolCallIndex >= toolCallIndex) {
+      return;
+    }
+
+    if (!state.endedContentIndexes.has(contentIndex)) {
+      finishToolCall(stream, message, state, contentIndex, content);
+    }
+
+    currentToolCallIndex += 1;
+  }
+}
+
+function finishToolCall(
+  stream: AssistantEventStream,
+  message: AssistantMessage,
+  state: DeepSeekStreamState,
+  contentIndex: number,
+  toolCall: ToolCallContent,
+): void {
+  toolCall.args = parseToolArguments(toolCall.rawArgs ?? "");
+
+  stream.push({
+    type: "toolcall_end",
+    contentIndex,
+    toolCall: structuredClone(toolCall),
+    snapshot: structuredClone(message),
+  });
+  state.endedContentIndexes.add(contentIndex);
 }
 
 function getPendingToolCall(message: AssistantMessage, toolCallIndex: number): PendingToolCall {

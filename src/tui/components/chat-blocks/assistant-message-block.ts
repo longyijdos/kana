@@ -2,13 +2,20 @@ import type { AssistantMessage } from "@/core";
 import { color, dim } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
+import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import { MarkdownBlock } from "./markdown-block";
 
 export class AssistantMessageBlock implements Component {
   private thinkingVisible = false;
   private textBlocks: MarkdownBlock[] = [];
+  private readonly thinkingTimer: ElapsedTimer;
   private cachedWidth?: number;
   private cachedLines?: string[];
+  private cachedThinkingElapsedSeconds?: number;
+
+  constructor(now: Clock = Date.now) {
+    this.thinkingTimer = new ElapsedTimer(now);
+  }
 
   update(message: AssistantMessage): void {
     this.textBlocks = [];
@@ -28,12 +35,22 @@ export class AssistantMessageBlock implements Component {
     }
 
     this.thinkingVisible = value;
+    if (value) {
+      this.thinkingTimer.start();
+    } else {
+      this.thinkingTimer.stop();
+    }
     this.invalidate();
+  }
+
+  isThinking(): boolean {
+    return this.thinkingVisible;
   }
 
   invalidate(): void {
     this.cachedWidth = undefined;
     this.cachedLines = undefined;
+    this.cachedThinkingElapsedSeconds = undefined;
 
     for (const block of this.textBlocks) {
       block.invalidate();
@@ -41,7 +58,15 @@ export class AssistantMessageBlock implements Component {
   }
 
   render(width: number): string[] {
-    if (this.cachedLines && this.cachedWidth === width) {
+    const thinkingElapsedSeconds = this.thinkingVisible
+      ? this.thinkingTimer.elapsedSeconds()
+      : undefined;
+
+    if (
+      this.cachedLines &&
+      this.cachedWidth === width &&
+      this.cachedThinkingElapsedSeconds === thinkingElapsedSeconds
+    ) {
       return this.cachedLines;
     }
 
@@ -52,11 +77,15 @@ export class AssistantMessageBlock implements Component {
     }
 
     if (this.thinkingVisible && this.textBlocks.length === 0) {
-      lines.push(`${dim("thinking")}${color(" (Esc to abort)", tuiTheme.shortcutHint)}`);
+      lines.push(
+        `${dim(`thinking (${thinkingElapsedSeconds}s)`)}` +
+          color(" (Esc to abort)", tuiTheme.shortcutHint),
+      );
     }
 
     this.cachedWidth = width;
     this.cachedLines = lines;
+    this.cachedThinkingElapsedSeconds = thinkingElapsedSeconds;
 
     return lines;
   }

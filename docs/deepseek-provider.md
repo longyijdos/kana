@@ -64,12 +64,13 @@ content delta
   → text_start（首次）→ text_delta*
 tool_calls delta
   → 结束所有未结束 thinking/text
+  → 新 index 首次出现时，结束此前所有 tool call
   → toolcall_start（首次）→ toolcall_delta*
 finish_reason = tool_calls
-  → 解析 rawArgs → toolcall_end
+  → 解析并结束最后仍未结束的 tool call
 ```
 
-工具 delta 由 provider 的 `index` 对应当前消息中的第 N 个工具块。ID、函数名和参数都可跨多个 chunk 拼接；无参数时最终参数为 `{}`，非 JSON 参数保留为原始字符串。可见文本或工具调用开始时会关闭前一个不同类型的开放内容块，保证 `content` 数组和事件顺序一致。
+工具 delta 由 provider 的 `index` 对应当前消息中的第 N 个工具块。DeepSeek 不提供每个工具调用的完成标记；其 index 按序流出，因此首次收到更高 index 时，会推断并结束所有此前的调用。流结束时再结束最后尚未完成的调用。ID、函数名和参数都可跨多个 chunk 拼接；无参数时最终参数为 `{}`，非 JSON 参数保留为原始字符串。可见文本或工具调用开始时会关闭前一个不同类型的开放内容块，保证 `content` 数组和事件顺序一致。
 
 结束原因映射为：`stop → stop`、`length → length`、`tool_calls → toolUse`。`content_filter` 与 `insufficient_system_resource` 被视为错误。流中携带的 usage 转为通用字段，包括 prompt cache hit/miss 和 reasoning token。
 

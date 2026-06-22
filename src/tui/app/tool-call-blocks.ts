@@ -7,7 +7,18 @@ export class ToolCallBlocks {
   constructor(private readonly transcript: Transcript) {}
 
   clear(): void {
+    this.stopTimers();
     this.pendingTools.clear();
+  }
+
+  hasActiveTimers(): boolean {
+    return [...this.pendingTools.values()].some((block) => block.hasActiveTimer());
+  }
+
+  stopTimers(): void {
+    for (const block of this.pendingTools.values()) {
+      block.stopTimer();
+    }
   }
 
   createOrUpdateFromMessage(message: AssistantMessage): void {
@@ -32,6 +43,10 @@ export class ToolCallBlocks {
     const block = this.getOrCreate(toolCallId, toolName, args);
 
     block.markExecutionStarted();
+  }
+
+  freezePreparation(toolCallId: string): void {
+    this.pendingTools.get(toolCallId)?.freezePreparation();
   }
 
   updatePartialResult(toolCallId: string, result: unknown): void {

@@ -43,8 +43,8 @@ ProcessTerminal
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
-| `message_start` / `message_update` / `message_end` | 创建、更新、完成助手 Markdown 块；thinking 仅在流式 thinking 事件时显示。 |
-| `tool_execution_start` | 创建或标记工具块为运行中。 |
+| `message_start` / `message_update` / `message_end` | 创建、更新、完成助手 Markdown 块；thinking 在流式 thinking 事件期间显示当前耗时。工具调用解析期间显示 preparing 耗时，并在该调用结束时冻结。 |
+| `tool_execution_start` | 创建或标记工具块为运行中，并从零开始显示 running 耗时。 |
 | `tool_execution_update` | 更新 bash 等工具的部分输出。 |
 | `tool_execution_end` | 写入结构化结果并标记成功/失败。 |
 | `agent_end` | 更新状态阶段，清除活动工具。 |

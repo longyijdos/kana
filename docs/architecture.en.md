@@ -64,7 +64,7 @@ Providers first produce `AssistantMessageEvent` values. An event contains both a
 
 1. Buffers SSE frames split by network chunks.
 2. Writes reasoning, visible text, and tool-argument deltas into one ordered assistant message.
-3. Parses JSON arguments when a tool call completes while retaining the raw argument string.
+3. Infers individual DeepSeek tool-call completion from ordered indexes: a first higher index parses and ends preceding calls, while stream completion ends the final call; raw argument strings are retained.
 4. Maps finish reasons and token usage.
 
 A request can be cancelled by the Agent and is also limited by `timeoutMs`. HTTP 408, 429, and 5xx responses use exponential-backoff retries up to `maxRetries`. Model metadata also supplies the context window, output maximum, and CNY pricing; the TUI uses it to calculate context occupancy and process-lifetime accumulated cost.

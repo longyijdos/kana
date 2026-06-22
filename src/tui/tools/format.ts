@@ -49,14 +49,23 @@ export function formatToolTranscriptTitle(
   toolCall: ToolCallContent,
   state: ToolState,
   result: unknown,
+  elapsedSeconds?: number,
 ): ToolTranscriptTitle {
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target);
   const action = text.action.replace(` ${target}`, "");
   const runningActivity = capitalize(text.runningActivity.replace(` ${target}`, ""));
 
-  if (state === "preparing") return { activity: `Preparing ${toolCall.name}` };
-  if (state === "running") return { activity: runningActivity, hint: "Esc to abort", target };
+  if (state === "preparing") {
+    return { activity: `Preparing ${toolCall.name} (${elapsedSeconds ?? 0}s)` };
+  }
+  if (state === "running") {
+    return {
+      activity: `${runningActivity} (${elapsedSeconds ?? 0}s)`,
+      hint: "Esc to abort",
+      target,
+    };
+  }
   if (state === "failed") return { activity: `Failed to ${action}`, target };
 
   return { activity: text.doneTitle.replace(` ${target}`, ""), target };

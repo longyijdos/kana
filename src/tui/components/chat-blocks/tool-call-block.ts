@@ -10,6 +10,7 @@ import {
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
+import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import type { ContentView } from "../content-viewer";
 
 export class ToolCallBlock implements Component {
@@ -18,12 +19,20 @@ export class ToolCallBlock implements Component {
   private partialResult?: unknown;
   private hasResult = false;
   private isError = false;
+  private readonly phaseTimer: ElapsedTimer;
   private renderVersion = 0;
   private cachedWidth?: number;
   private cachedVersion?: number;
+  private cachedElapsedSeconds?: number;
   private cachedLines?: string[];
 
-  constructor(private readonly toolCall: ToolCallContent) {}
+  constructor(
+    private readonly toolCall: ToolCallContent,
+    now: Clock = Date.now,
+  ) {
+    this.phaseTimer = new ElapsedTimer(now);
+    this.phaseTimer.start();
+  }
 
   updateArgs(args: unknown): void {
     this.toolCall.args = args;
@@ -32,6 +41,16 @@ export class ToolCallBlock implements Component {
 
   markExecutionStarted(): void {
     this.executionStarted = true;
+    this.phaseTimer.start();
+    this.invalidate();
+  }
+
+  freezePreparation(): void {
+    if (this.executionStarted || this.hasResult) {
+      return;
+    }
+
+    this.phaseTimer.stop();
     this.invalidate();
   }
 
@@ -45,32 +64,46 @@ export class ToolCallBlock implements Component {
     this.hasResult = true;
     this.isError = isError;
     this.partialResult = undefined;
+    this.phaseTimer.stop();
     this.invalidate();
+  }
+
+  stopTimer(): void {
+    this.phaseTimer.stop();
+  }
+
+  hasActiveTimer(): boolean {
+    return this.phaseTimer.active;
   }
 
   invalidate(): void {
     this.renderVersion += 1;
     this.cachedWidth = undefined;
     this.cachedVersion = undefined;
+    this.cachedElapsedSeconds = undefined;
     this.cachedLines = undefined;
   }
 
   render(width: number): string[] {
+    const state = this.currentState();
+    const elapsedSeconds =
+      state === "preparing" || state === "running" ? this.phaseTimer.elapsedSeconds() : undefined;
+
     if (
       this.cachedLines &&
       this.cachedWidth === width &&
-      this.cachedVersion === this.renderVersion
+      this.cachedVersion === this.renderVersion &&
+      this.cachedElapsedSeconds === elapsedSeconds
     ) {
       return this.cachedLines;
     }
 
-    const state = this.currentState();
     const titleColor = this.isError
       ? tuiTheme.error
       : state === "done"
         ? tuiTheme.toolSuccess
         : tuiTheme.toolActive;
-    const lines = ["", ...this.renderTitle(width, titleColor)];
+    const lines = ["", ...this.renderTitle(width, titleColor, elapsedSeconds)];
     lines.push(...this.renderOutput(width, "compact"));
     lines.push("");
 
@@ -78,6 +111,7 @@ export class ToolCallBlock implements Component {
 
     this.cachedWidth = width;
     this.cachedVersion = this.renderVersion;
+    this.cachedElapsedSeconds = elapsedSeconds;
     this.cachedLines = rendered;
 
     return rendered;
@@ -125,8 +159,17 @@ export class ToolCallBlock implements Component {
     return output;
   }
 
-  private renderTitle(width: number, titleColor: Parameters<typeof color>[1]): string[] {
-    const title = formatToolTranscriptTitle(this.toolCall, this.currentState(), this.result);
+  private renderTitle(
+    width: number,
+    titleColor: Parameters<typeof color>[1],
+    elapsedSeconds: number | undefined,
+  ): string[] {
+    const title = formatToolTranscriptTitle(
+      this.toolCall,
+      this.currentState(),
+      this.result,
+      elapsedSeconds,
+    );
     const lines = [colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor)];
     const prefix = "  └ ";
     const continuationPrefix = " ".repeat(visibleWidth(prefix));

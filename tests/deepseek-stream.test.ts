@@ -154,6 +154,72 @@ describe("DeepSeek stream parsing", () => {
       reasoningTokens: 5,
     });
   });
+
+  test("ends each ordered tool call when the next one starts", async () => {
+    const stream = new AssistantEventStream();
+    const eventsPromise = collectEvents(stream);
+    const message: AssistantMessage = {
+      role: "assistant",
+      content: [],
+    };
+    const state: DeepSeekStreamState = {
+      endedContentIndexes: new Set<number>(),
+    };
+
+    applyDeepSeekChunk(stream, message, state, {
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_1",
+                function: { name: "write", arguments: '{"path":"one"}' },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    applyDeepSeekChunk(stream, message, state, {
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 1,
+                id: "call_2",
+                function: { name: "write", arguments: '{"path":"two"}' },
+              },
+            ],
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+    });
+    finishToolCalls(stream, message, state);
+    stream.end({
+      type: "done",
+      reason: getDoneReason(state.finishReason),
+      message: structuredClone(message),
+    });
+
+    const events = await eventsPromise;
+
+    expect(events.map((event) => event.type)).toEqual([
+      "toolcall_start",
+      "toolcall_delta",
+      "toolcall_end",
+      "toolcall_start",
+      "toolcall_delta",
+      "toolcall_end",
+      "done",
+    ]);
+    expect(events[2]).toMatchObject({
+      type: "toolcall_end",
+      toolCall: { id: "call_1", args: { path: "one" } },
+    });
+  });
 });
 
 async function collectEventTypes(stream: AssistantEventStream): Promise<string[]> {
@@ -161,6 +227,16 @@ async function collectEventTypes(stream: AssistantEventStream): Promise<string[]
 
   for await (const event of stream) {
     events.push(event.type);
+  }
+
+  return events;
+}
+
+async function collectEvents(stream: AssistantEventStream) {
+  const events = [];
+
+  for await (const event of stream) {
+    events.push(event);
   }
 
   return events;

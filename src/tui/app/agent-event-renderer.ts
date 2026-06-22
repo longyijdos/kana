@@ -20,12 +20,15 @@ export type AgentEventRendererOptions = {
 export class AgentEventRenderer {
   private readonly toolCallBlocks: ToolCallBlocks;
   private streamingAssistant?: AssistantMessageBlock;
+  private activityTimer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly options: AgentEventRendererOptions) {
     this.toolCallBlocks = new ToolCallBlocks(options.transcript);
   }
 
   resetRun(): void {
+    this.stopActivityTimer();
+    this.streamingAssistant?.showThinking(false);
     this.streamingAssistant = undefined;
     this.toolCallBlocks.clear();
   }
@@ -36,6 +39,7 @@ export class AgentEventRenderer {
         this.options.updateStatus("starting");
         break;
       case "agent_end":
+        this.stopActiveTimers();
         this.options.updateStatus(phaseForAgentEndReason(event.reason), {
           activeTool: undefined,
         });
@@ -71,6 +75,7 @@ export class AgentEventRenderer {
         break;
     }
 
+    this.updateActivityTimer();
     this.options.tui.requestRender();
   }
 
@@ -89,6 +94,9 @@ export class AgentEventRenderer {
     this.streamingAssistant?.update(event.message);
     this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
     this.toolCallBlocks.createOrUpdateFromMessage(event.message);
+    if (event.assistantMessageEvent.type === "toolcall_end") {
+      this.toolCallBlocks.freezePreparation(event.assistantMessageEvent.toolCall.id);
+    }
     this.options.updateStatus(phaseForAssistantMessage(event.message));
   }
 
@@ -97,6 +105,30 @@ export class AgentEventRenderer {
     this.streamingAssistant?.update(message);
     this.streamingAssistant = undefined;
     this.options.updateStatus(phaseForStopReason(message.stopReason));
+  }
+
+  private updateActivityTimer(): void {
+    const hasActiveActivity =
+      this.streamingAssistant?.isThinking() === true || this.toolCallBlocks.hasActiveTimers();
+
+    if (hasActiveActivity && !this.activityTimer) {
+      this.activityTimer = setInterval(() => this.options.tui.requestRender(), 1_000);
+    } else if (!hasActiveActivity) {
+      this.stopActivityTimer();
+    }
+  }
+
+  private stopActiveTimers(): void {
+    this.streamingAssistant?.showThinking(false);
+    this.toolCallBlocks.stopTimers();
+    this.stopActivityTimer();
+  }
+
+  private stopActivityTimer(): void {
+    if (this.activityTimer) {
+      clearInterval(this.activityTimer);
+      this.activityTimer = undefined;
+    }
   }
 
   private handleToolStart(toolCallId: string, toolName: string, args: unknown): void {

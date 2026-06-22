@@ -43,8 +43,8 @@ Rendering helpers strip ANSI/control sequences for width calculation and use `st
 
 | Agent event | TUI behavior |
 | --- | --- |
-| `message_start` / `message_update` / `message_end` | Create, update, and complete assistant Markdown blocks; thinking is visible only during streamed thinking events. |
-| `tool_execution_start` | Create or mark a tool block running. |
+| `message_start` / `message_update` / `message_end` | Create, update, and complete assistant Markdown blocks; thinking shows its current elapsed time while streamed thinking is active. Tool calls show preparing elapsed time while parsing, then freeze it when that call ends. |
+| `tool_execution_start` | Create or mark a tool block running and start its running elapsed time at zero. |
 | `tool_execution_update` | Update partial output for bash and similar tools. |
 | `tool_execution_end` | Store structured results and mark success/failure. |
 | `agent_end` | Update status phase and clear the active tool. |

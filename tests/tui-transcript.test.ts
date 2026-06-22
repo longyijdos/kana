@@ -125,7 +125,7 @@ describe("tui transcript", () => {
 
     const thinkingLine = block.render(80)[0] ?? "";
 
-    expect(stripAnsi(thinkingLine)).toBe("thinking (Esc to abort)");
+    expect(stripAnsi(thinkingLine)).toBe("thinking (0s) (Esc to abort)");
     expect(thinkingLine).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
     block.showThinking(false);
@@ -177,7 +177,7 @@ describe("tui transcript", () => {
     block.markExecutionStarted();
     const runningTitle = block.render(80)[1] ?? "";
 
-    expect(stripAnsi(runningTitle)).toBe("◆ Reading (Esc to abort)");
+    expect(stripAnsi(runningTitle)).toBe("◆ Reading (0s) (Esc to abort)");
     expect(runningTitle).toContain("\x1b[1m");
     expect(runningTitle).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
@@ -297,7 +297,7 @@ describe("tui transcript", () => {
 
     const partialRendered = stripAnsi(block.render(80).join("\n"));
 
-    expect(partialRendered).toContain("◆ Running (Esc to abort)");
+    expect(partialRendered).toContain("◆ Running (0s) (Esc to abort)");
     expect(partialRendered).toContain("running");
 
     block.updateResult("done", false);
@@ -490,7 +490,7 @@ describe("tui transcript", () => {
 
     const runningLines = block.render(32).map(stripAnsi);
 
-    expect(runningLines).toContain("◆ Running (Esc to abort)");
+    expect(runningLines).toContain("◆ Running (0s) (Esc to abort)");
     expect(runningLines.join("\n")).toContain("  └ printf segment-0");
     expect(runningLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
 
