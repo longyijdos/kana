@@ -82,6 +82,7 @@ export class ToolCallBlock implements Component {
         : tuiTheme.toolActive;
     const lines = ["", ...this.renderTitle(width, titleColor)];
     lines.push(...this.renderOutput(width, "compact"));
+    lines.push("");
 
     const rendered = lines.map((line) => truncateToWidth(line, width));
 
@@ -142,11 +143,13 @@ export class ToolCallBlock implements Component {
     const prefix = "  └ ";
     const continuationPrefix = " ".repeat(visibleWidth(prefix));
 
-    for (const [index, line] of wrapPlainText(
-      title.target,
-      Math.max(1, width - visibleWidth(prefix)),
-    ).entries()) {
-      lines.push(`${index === 0 ? prefix : continuationPrefix}${line}`);
+    if (title.target) {
+      for (const [index, line] of wrapPlainText(
+        title.target,
+        Math.max(1, width - visibleWidth(prefix)),
+      ).entries()) {
+        lines.push(`${index === 0 ? prefix : continuationPrefix}${line}`);
+      }
     }
 
     return lines;

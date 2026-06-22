@@ -15,7 +15,7 @@ import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 
 export type ToolState = "preparing" | "running" | "done" | "failed";
 export type ToolOutputDetail = "compact" | "full";
-export type ToolTranscriptTitle = { activity: string; hint?: string; target: string };
+export type ToolTranscriptTitle = { activity: string; hint?: string; target?: string };
 
 type ToolApprovalText = {
   title: string;
@@ -61,7 +61,7 @@ export function formatToolTranscriptTitle(
   const action = text.action.replace(` ${target}`, "");
   const runningActivity = capitalize(text.runningActivity.replace(` ${target}`, ""));
 
-  if (state === "preparing") return { activity: `Preparing ${toolCall.name}`, target };
+  if (state === "preparing") return { activity: `Preparing ${toolCall.name}` };
   if (state === "running") return { activity: runningActivity, hint: "Esc to abort", target };
   if (state === "failed") return { activity: `Failed to ${action}`, hint, target };
 

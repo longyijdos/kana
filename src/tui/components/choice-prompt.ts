@@ -30,7 +30,7 @@ export class ChoicePrompt<T extends string> implements Component {
   render(width: number): string[] {
     const accentColor = this.options.accentColor ?? tuiTheme.toolActive;
     const lines = [
-      "",
+      dim("─".repeat(Math.max(width, 1))),
       ...mapLines(this.options.title, (line) => color(line, accentColor)),
       ...(this.options.detail ? wrapPlainText(this.options.detail, width).map(dim) : []),
       ...this.options.options.map((option, index) => this.renderOption(option, index, accentColor)),
