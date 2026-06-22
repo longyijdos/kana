@@ -1,6 +1,6 @@
 import { color, dim, mapLines, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import { isDown, isEnd, isEscape, isHome, isUp } from "../runtime";
+import { isDown, isEnd, isEscape, isHome, isLeft, isRight, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport } from "../utils/list-viewport";
 
@@ -43,12 +43,12 @@ export class ContentViewer implements Component {
       return;
     }
 
-    if (isPageUp(data)) {
+    if (isPageUp(data) || isLeft(data)) {
       this.viewport.page(-1, this.contentLength);
       return;
     }
 
-    if (isPageDown(data) || isSpace(data)) {
+    if (isPageDown(data) || isRight(data)) {
       this.viewport.page(1, this.contentLength);
       return;
     }
@@ -91,7 +91,7 @@ export class ContentViewer implements Component {
       lines.push(dim(`... ${window.hiddenAfter} lines below`));
     }
 
-    lines.push(dim("Esc close  Up/Down scroll  Space page down"));
+    lines.push(dim("Esc close  Up/Down scroll  Left/Right page"));
 
     return lines;
   }
@@ -103,8 +103,4 @@ function isPageUp(data: string): boolean {
 
 function isPageDown(data: string): boolean {
   return data === "\x1b[6~";
-}
-
-function isSpace(data: string): boolean {
-  return data === " ";
 }

@@ -225,7 +225,7 @@ describe("tui transcript", () => {
     expect(block.getResultView()).toBeUndefined();
   });
 
-  test("tool result viewer scrolls full output and closes with escape", () => {
+  test("tool result viewer scrolls and pages with arrow keys", () => {
     const decisions: string[] = [];
     const viewer = new ContentViewer(
       {
@@ -263,11 +263,19 @@ describe("tui transcript", () => {
 
     viewer.handleInput(" ");
 
-    const scrolled = viewer.render(80).map(stripAnsi);
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 2-4 of 5");
 
-    expect(scrolled).toContain("Lines 3-5 of 5");
-    expect(scrolled).toContain("... 2 lines above");
-    expect(scrolled.some((line) => line.includes("line 5"))).toBe(true);
+    viewer.handleInput("\x1b[C");
+
+    const pagedDown = viewer.render(80).map(stripAnsi);
+
+    expect(pagedDown).toContain("Lines 3-5 of 5");
+    expect(pagedDown).toContain("... 2 lines above");
+    expect(pagedDown.some((line) => line.includes("line 5"))).toBe(true);
+
+    viewer.handleInput("\x1b[D");
+
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 1-3 of 5");
 
     viewer.handleInput("\x1b");
 
