@@ -89,6 +89,35 @@ export function highlightCodeSync(
   }
 }
 
+export function inferCodeLanguage(filePath: string | undefined): string | undefined {
+  const extension = filePath?.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+
+  switch (extension) {
+    case "bash":
+    case "sh":
+    case "zsh":
+      return "bash";
+    case "css":
+    case "html":
+    case "json":
+    case "jsx":
+    case "md":
+    case "py":
+    case "tsx":
+    case "typescript":
+    case "yaml":
+      return extension;
+    case "js":
+      return "javascript";
+    case "ts":
+      return "typescript";
+    case "yml":
+      return "yaml";
+    default:
+      return undefined;
+  }
+}
+
 function normalizeLanguage(language: string): BundledLanguage | undefined {
   const normalized = language.toLowerCase().trim();
 

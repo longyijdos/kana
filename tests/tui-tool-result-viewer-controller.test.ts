@@ -87,7 +87,7 @@ describe("tool result viewer controller", () => {
       layout
         .render(80)
         .map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""))
-        .some((line) => line.includes("Ran first")),
+        .some((line) => line.includes("◆ Ran")),
     ).toBe(true);
   });
 

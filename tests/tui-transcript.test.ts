@@ -8,6 +8,7 @@ import {
 import { color, stripAnsi, visibleWidth } from "../src/tui/render";
 import type { Component } from "../src/tui/runtime";
 import { tuiTheme } from "../src/tui/theme";
+import { preloadSyntaxHighlighter } from "../src/tui/utils/syntax-highlighter";
 
 class LinesBlock implements Component {
   constructor(readonly lines: string[]) {}
@@ -93,7 +94,7 @@ describe("tui transcript", () => {
 
     const rendered = block.render(80).map(stripAnsi).filter(Boolean);
 
-    expect(rendered).toEqual(["Saved global memory"]);
+    expect(rendered).toEqual(["◆ Saved memory", "  └ global"]);
   });
 
   test("does not render assistant stop reasons as transcript content", () => {
@@ -176,7 +177,8 @@ describe("tui transcript", () => {
     block.markExecutionStarted();
     const runningTitle = block.render(80)[1] ?? "";
 
-    expect(stripAnsi(runningTitle)).toBe("Reading AGENTS.md... (Esc to abort)");
+    expect(stripAnsi(runningTitle)).toBe("◆ Reading (Esc to abort)");
+    expect(runningTitle).toContain("\x1b[1m");
     expect(runningTitle).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
     block.updateResult(
@@ -193,7 +195,8 @@ describe("tui transcript", () => {
 
     const lines = block.render(80).map(stripAnsi);
 
-    expect(lines[1]).toBe("Read AGENTS.md");
+    expect(lines[1]).toBe("◆ Read");
+    expect(lines[2]).toBe("  └ AGENTS.md");
     expect(lines).toContain("... 2 more lines");
     expect(lines).toContain("line 10");
   });
@@ -292,7 +295,7 @@ describe("tui transcript", () => {
 
     const partialRendered = stripAnsi(block.render(80).join("\n"));
 
-    expect(partialRendered).toContain("Running bun test... (Esc to abort)");
+    expect(partialRendered).toContain("◆ Running (Esc to abort)");
     expect(partialRendered).toContain("running");
 
     block.updateResult("done", false);
@@ -371,6 +374,49 @@ describe("tui transcript", () => {
     ).toBe(true);
   });
 
+  test("highlights read, write, and edit source content using the target path", async () => {
+    await preloadSyntaxHighlighter();
+
+    const read = new ToolCallBlock({
+      type: "tool_call",
+      id: "read_1",
+      name: "read",
+      args: { path: "src/app.ts" },
+    });
+    read.updateResult(
+      { path: "src/app.ts", content: "const value = 1;", startLine: 1, endLine: 1, totalLines: 1 },
+      false,
+    );
+
+    const write = new ToolCallBlock({
+      type: "tool_call",
+      id: "write_1",
+      name: "write",
+      args: { path: "src/app.ts", content: "const value = 1;" },
+    });
+    write.updateResult({ path: "src/app.ts", bytesWritten: 16 }, false);
+
+    const edit = new ToolCallBlock({
+      type: "tool_call",
+      id: "edit_1",
+      name: "edit",
+      args: { path: "src/app.ts" },
+    });
+    edit.updateResult(
+      {
+        path: "src/app.ts",
+        replacements: 1,
+        oldText: "const old = 1;",
+        newText: "const next = 1;",
+      },
+      false,
+    );
+
+    for (const block of [read, write, edit]) {
+      expect(block.render(80).join("\n")).toContain("\x1b[38;2;");
+    }
+  });
+
   test("marks oversized edit diff lines as truncated", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
@@ -410,8 +456,11 @@ describe("tui transcript", () => {
     const lines = block.render(120).map(stripAnsi);
 
     expect(lines.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
-    expect(lines).toContain('Failed to run git commit -m "feat: add something');
-    expect(lines).toContain('Co-authored-by: Name <email@example.com>"');
+    expect(lines).toContain("◆ Failed to run");
+    expect(lines).toContain('  └ git commit -m "feat: add something');
+    expect(lines.some((line) => line.includes('Co-authored-by: Name <email@example.com>"'))).toBe(
+      true,
+    );
     expect(lines).toContain("Tool call rejected by user.");
   });
 
@@ -430,7 +479,8 @@ describe("tui transcript", () => {
 
     const runningLines = block.render(32).map(stripAnsi);
 
-    expect(runningLines.join("")).toContain(`Running ${command}... (Esc to abort)`);
+    expect(runningLines).toContain("◆ Running (Esc to abort)");
+    expect(runningLines.join("\n")).toContain("  └ printf segment-0");
     expect(runningLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
 
     block.updateResult(
@@ -444,7 +494,8 @@ describe("tui transcript", () => {
 
     const completedLines = block.render(32).map(stripAnsi);
 
-    expect(completedLines.join("")).toContain(`Ran ${command}`);
+    expect(completedLines).toContain("◆ Ran");
+    expect(completedLines.join("\n")).toContain("  └ printf segment-0");
     expect(completedLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
   });
 
@@ -514,9 +565,10 @@ describe("tui transcript", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).toContain("Ran first");
-    expect(lines).not.toContain("Ran first (Ctrl+O to expand)");
-    expect(lines).toContain("Ran second (Ctrl+O to expand)");
+    expect(lines).toContain("◆ Ran");
+    expect(lines).toContain("  └ first");
+    expect(lines).toContain("◆ Ran (Ctrl+O to expand)");
+    expect(lines).toContain("  └ second");
   });
 
   test("moves the output hint back when newer tools are not expandable", () => {
@@ -559,10 +611,10 @@ describe("tui transcript", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).not.toContain("Ran first");
-    expect(lines).toContain("Ran first (Ctrl+O to expand)");
-    expect(lines).toContain("Ran second");
-    expect(lines).not.toContain("Ran second (Ctrl+O to expand)");
+    expect(lines).toContain("◆ Ran (Ctrl+O to expand)");
+    expect(lines).toContain("  └ first");
+    expect(lines).toContain("◆ Ran");
+    expect(lines).toContain("  └ second");
   });
 
   test("does not show the output hint when the latest tool output is already visible", () => {
@@ -588,7 +640,8 @@ describe("tui transcript", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).toContain("Ran short");
-    expect(lines).not.toContain("Ran short (Ctrl+O to expand)");
+    expect(lines).toContain("◆ Ran");
+    expect(lines).toContain("  └ short");
+    expect(lines).not.toContain("◆ Ran (Ctrl+O to expand)");
   });
 });

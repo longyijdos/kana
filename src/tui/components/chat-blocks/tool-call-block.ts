@@ -1,15 +1,18 @@
 import type { ToolCallContent } from "@/core";
-import { color, truncateToWidth, wrapPlainText } from "../../render";
+import { bold, color, truncateToWidth, visibleWidth, wrapPlainText } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import {
   formatToolOutput,
   formatToolTitle,
+  formatToolTranscriptTitle,
   hasExpandableToolOutput,
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
+import { highlightCodeSync, inferCodeLanguage } from "../../utils/syntax-highlighter";
 import type { ContentView } from "../content-viewer";
+import { styleSpans, wrapSpans } from "./markdown-inline";
 import { TextBlock } from "./text-block";
 
 export class ToolCallBlock implements Component {
@@ -132,6 +135,11 @@ export class ToolCallBlock implements Component {
     );
 
     if (typeof output === "string" && output) {
+      const highlighted = this.renderHighlightedFileOutput(output, width);
+      if (highlighted) {
+        return highlighted;
+      }
+
       return new TextBlock(output, {
         color: this.isError ? tuiTheme.error : tuiTheme.toolOutput,
       }).render(width);
@@ -140,24 +148,61 @@ export class ToolCallBlock implements Component {
     return Array.isArray(output) ? output : [];
   }
 
+  private renderHighlightedFileOutput(output: string, width: number): string[] | undefined {
+    if (this.toolCall.name !== "read" && this.toolCall.name !== "write") {
+      return undefined;
+    }
+
+    const path =
+      typeof this.toolCall.args === "object" && this.toolCall.args
+        ? (this.toolCall.args as { path?: unknown }).path
+        : undefined;
+    const language = inferCodeLanguage(typeof path === "string" ? path : undefined);
+    const highlighted = highlightCodeSync(output.substring(output.indexOf("\n") + 1), language);
+
+    if (!language || !highlighted || !output.includes("\n")) {
+      return undefined;
+    }
+
+    const header = output.slice(0, output.indexOf("\n"));
+    const lines = new TextBlock(header, { color: tuiTheme.toolOutput }).render(width);
+
+    for (const codeLine of highlighted) {
+      const spans = codeLine.map((token) => ({
+        text: token.text.replace(/\t/g, "   "),
+        style: token.color ? { color: token.color } : undefined,
+      }));
+      for (const wrapped of wrapSpans(spans, width, width)) {
+        lines.push(styleSpans(wrapped, { defaultColor: tuiTheme.toolOutput }));
+      }
+    }
+
+    return lines;
+  }
+
   private renderTitle(width: number, titleColor: Parameters<typeof color>[1]): string[] {
-    const title = formatToolTitle(this.toolCall, this.currentState(), this.result, {
+    const title = formatToolTranscriptTitle(this.toolCall, this.currentState(), this.result, {
       showOutputHint: this.outputHintVisible,
     });
+    const lines = [colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor)];
+    const prefix = "  └ ";
+    const continuationPrefix = " ".repeat(visibleWidth(prefix));
 
-    return wrapPlainText(title, width).map((line) => colorTitleWithShortcutHint(line, titleColor));
+    for (const [index, line] of wrapPlainText(
+      title.target,
+      Math.max(1, width - visibleWidth(prefix)),
+    ).entries()) {
+      lines.push(`${index === 0 ? prefix : continuationPrefix}${line}`);
+    }
+
+    return lines;
   }
 }
 
-function colorTitleWithShortcutHint(line: string, titleColor: Parameters<typeof color>[1]): string {
-  const match =
-    /^(.*?)( \((?:Esc to abort|Ctrl\+O to expand)(?:, (?:Esc to abort|Ctrl\+O to expand))*\))$/.exec(
-      line,
-    );
-
-  if (!match) {
-    return color(line, titleColor);
-  }
-
-  return `${color(match[1], titleColor)}${color(match[2], tuiTheme.shortcutHint)}`;
+function colorTitleWithShortcutHint(
+  activity: string,
+  hint: string | undefined,
+  titleColor: Parameters<typeof color>[1],
+): string {
+  return `${bold(color(activity, titleColor))}${hint ? color(` (${hint})`, tuiTheme.shortcutHint) : ""}`;
 }

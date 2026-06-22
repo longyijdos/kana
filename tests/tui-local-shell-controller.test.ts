@@ -42,7 +42,8 @@ describe("local shell controller", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).toContain("Ran printf local-shell");
+    expect(lines).toContain("◆ Ran");
+    expect(lines).toContain("  └ printf local-shell");
     expect(lines.join("\n")).toContain("stdout:\nlocal-shell");
     expect(lines).not.toContain("Allow agent to run bash?");
 
