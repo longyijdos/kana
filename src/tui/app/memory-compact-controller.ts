@@ -1,3 +1,4 @@
+import { createNoopLogger, type Logger } from "@/logging";
 import { type Editor, type StatusLineState, TextBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -23,6 +24,7 @@ export type MemoryCompactControllerOptions = {
     userRequest: string | undefined,
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
+  logger?: Logger;
 };
 
 export class MemoryCompactController {
@@ -37,6 +39,7 @@ export class MemoryCompactController {
 
     this.abortController.abort();
     this.options.updateStatus("aborted");
+    (this.options.logger ?? createNoopLogger()).info("memory_compact.abort_requested");
     return true;
   }
 
@@ -46,6 +49,7 @@ export class MemoryCompactController {
     }
 
     const { target, userRequest } = parseMemoryCompactArguments(argumentsText);
+    const logger = this.options.logger ?? createNoopLogger();
     const abortController = new AbortController();
     this.abortController = abortController;
     this.options.editor.clear();
@@ -58,6 +62,7 @@ export class MemoryCompactController {
     this.options.setRunning(true);
     this.options.updateStatus("tool", { activeTool: "memory" });
     this.options.tui.requestRender();
+    logger.info("memory_compact.started", { target });
 
     try {
       const summaries = await this.options.compactMemory(
@@ -75,6 +80,10 @@ export class MemoryCompactController {
       this.options.updateStatus(
         summaries.some((summary) => summary.outcome === "error") ? "error" : "done",
       );
+      logger.info("memory_compact.ended", {
+        target,
+        outcomes: summaries.map((summary) => summary.outcome),
+      });
     } catch (error) {
       this.options.transcript.addChild(
         new TextBlock(error instanceof Error ? error.message : String(error), {
@@ -82,6 +91,7 @@ export class MemoryCompactController {
         }),
       );
       this.options.updateStatus(abortController.signal.aborted ? "aborted" : "error");
+      logger.error("memory_compact.failed", { target, error });
     } finally {
       if (this.abortController === abortController) {
         this.abortController = undefined;

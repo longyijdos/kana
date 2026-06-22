@@ -1,3 +1,4 @@
+import { createNoopLogger, type Logger } from "@/logging";
 import { createBashTool, normalizeToolResult } from "@/tools";
 import { type Editor, type StatusLineState, ToolCallBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
@@ -10,6 +11,7 @@ export type LocalShellControllerOptions = {
   setRunning: (running: boolean) => void;
   clearRunStatus: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
+  logger?: Logger;
 };
 
 export class LocalShellController {
@@ -25,11 +27,13 @@ export class LocalShellController {
 
     this.abortController.abort();
     this.options.updateStatus("aborted");
+    (this.options.logger ?? createNoopLogger()).info("local_shell.abort_requested");
     return true;
   }
 
   async submit(command: string): Promise<void> {
     const shellCommand = command.trim();
+    const logger = this.options.logger ?? createNoopLogger();
 
     if (!shellCommand) {
       return;
@@ -55,6 +59,7 @@ export class LocalShellController {
       activeTool: "bash",
     });
     this.options.tui.requestRender();
+    logger.info("local_shell.started");
 
     try {
       block.markExecutionStarted();
@@ -77,6 +82,7 @@ export class LocalShellController {
 
       block.updateResult(result.result, result.isError ?? false);
       this.options.updateStatus(result.isError ? "error" : "done");
+      logger.info("local_shell.ended", { isError: result.isError ?? false });
     } catch (error) {
       block.updateResult(
         {
@@ -85,6 +91,10 @@ export class LocalShellController {
         true,
       );
       this.options.updateStatus(abortController.signal.aborted ? "aborted" : "error");
+      logger.error("local_shell.failed", {
+        aborted: abortController.signal.aborted,
+        error,
+      });
     } finally {
       if (this.abortController === abortController) {
         this.abortController = undefined;

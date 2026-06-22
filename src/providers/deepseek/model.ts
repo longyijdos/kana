@@ -41,6 +41,10 @@ export class DeepSeekModel extends BaseModel {
     };
 
     try {
+      this.config.logger?.info("provider.request_started", {
+        provider: "deepseek",
+        model: this.config.model,
+      });
       const apiKey = this.config.apiKey ?? process.env.DEEPSEEK_API_KEY;
 
       if (!apiKey) {
@@ -76,6 +80,7 @@ export class DeepSeekModel extends BaseModel {
             signal: requestSignal.signal,
           },
           this.config.maxRetries ?? 0,
+          (details) => this.config.logger?.warn("provider.retrying", details),
         );
 
         stream.push({
@@ -99,10 +104,19 @@ export class DeepSeekModel extends BaseModel {
           message: structuredClone(message),
           usage: state.usage,
         });
+        this.config.logger?.info("provider.request_ended", {
+          provider: "deepseek",
+          stopReason: getDoneReason(state.finishReason),
+        });
       } finally {
         requestSignal.dispose();
       }
     } catch (error) {
+      this.config.logger?.error("provider.request_failed", {
+        provider: "deepseek",
+        errorName: error instanceof Error ? error.name : typeof error,
+        aborted: isAbortError(error) || context.signal?.aborted === true,
+      });
       stream.error({
         type: "error",
         reason: isAbortError(error) || context.signal?.aborted ? "aborted" : "error",

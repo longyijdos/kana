@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
+import { LOG_LEVELS, type LogLevel } from "@/logging";
 import type { DeepSeekReasoningEffort } from "@/providers/deepseek";
 import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval-defaults";
 
@@ -51,12 +52,21 @@ export type KanaMemoryConfig = {
   dailyRetentionDays?: number;
 };
 
+export const KANA_LOG_LEVELS = LOG_LEVELS;
+
+export type KanaLogLevel = LogLevel;
+
+export type KanaLoggingConfig = {
+  level: KanaLogLevel;
+};
+
 export type KanaConfig = {
   model: KanaModelConfig;
   agent: KanaAgentConfig;
   approval: KanaToolApprovalConfig;
   notification: KanaNotificationConfig;
   memory: KanaMemoryConfig;
+  logging: KanaLoggingConfig;
 };
 
 export type KanaConfigPaths = {
@@ -65,6 +75,7 @@ export type KanaConfigPaths = {
   agentsPath: string;
   memoryDirectory: string;
   sessionsPath: string;
+  logsPath: string;
   approvalsPath: string;
   skillsConfigPath: string;
 };
@@ -109,6 +120,9 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     maxChars: 6000,
     dailyRetentionDays: undefined,
   },
+  logging: {
+    level: "info",
+  },
 };
 
 export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaConfigPaths {
@@ -120,6 +134,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
     agentsPath: path.join(home, "AGENTS.md"),
     memoryDirectory: path.join(home, "memory"),
     sessionsPath: path.join(home, "sessions"),
+    logsPath: path.join(home, "logs"),
     approvalsPath: path.join(home, "approvals.json"),
     skillsConfigPath: path.join(home, "skills", "skills.toml"),
   };
@@ -216,6 +231,9 @@ function serializeKanaConfig(config: KanaConfig): string {
       ? ["# daily_retention_days = 30"]
       : [`daily_retention_days = ${config.memory.dailyRetentionDays}`]),
     "",
+    "[logging]",
+    `level = "${config.logging.level}"`,
+    "",
   ].join("\n");
 }
 
@@ -227,6 +245,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const notification =
     raw.notification === undefined ? {} : asRecord(raw.notification, "notification");
   const memory = raw.memory === undefined ? {} : asRecord(raw.memory, "memory");
+  const logging = raw.logging === undefined ? {} : asRecord(raw.logging, "logging");
 
   return {
     model: {
@@ -266,6 +285,9 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         defaults.memory.dailyRetentionDays,
         "memory.daily_retention_days",
       ),
+    },
+    logging: {
+      level: readLogLevel(logging.level, defaults.logging.level),
     },
   };
 }
@@ -389,4 +411,14 @@ function readNotificationBackend(
   }
 
   return backend as KanaNotificationBackend;
+}
+
+function readLogLevel(value: unknown, fallback: KanaLogLevel): KanaLogLevel {
+  const level = readString(value, fallback, "logging.level");
+
+  if (!(KANA_LOG_LEVELS as readonly string[]).includes(level)) {
+    throw new Error(`logging.level must be one of: ${KANA_LOG_LEVELS.join(", ")}.`);
+  }
+
+  return level as KanaLogLevel;
 }

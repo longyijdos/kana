@@ -5,6 +5,7 @@ import type { ModelContext } from "../src/core/context";
 import type { AssistantMessage, Message } from "../src/core/messages";
 import type { Model, ModelMetadata, ModelUsage } from "../src/core/model";
 import { AssistantEventStream } from "../src/core/stream";
+import type { Logger } from "../src/logging";
 
 class TextModel implements Model {
   readonly metadata: ModelMetadata = {
@@ -156,6 +157,28 @@ class AbortAwareModel implements Model {
 }
 
 describe("Agent", () => {
+  test("writes lifecycle events without logging message content", async () => {
+    const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
+    const logger: Logger = {
+      debug: (event, metadata) => records.push({ event, metadata }),
+      info: (event, metadata) => records.push({ event, metadata }),
+      warn: (event, metadata) => records.push({ event, metadata }),
+      error: (event, metadata) => records.push({ event, metadata }),
+    };
+    const agent = new Agent({ model: new TextModel("secret answer"), logger });
+
+    await agent.prompt("secret prompt");
+
+    expect(records.map((record) => record.event)).toEqual([
+      "agent.run_started",
+      "agent.started",
+      "agent.turn_started",
+      "agent.turn_ended",
+      "agent.ended",
+    ]);
+    expect(JSON.stringify(records)).not.toContain("secret");
+  });
+
   test("runs prompts and appends loop messages once", async () => {
     const model = new TextModel("hello");
     const agent = new Agent({ model });

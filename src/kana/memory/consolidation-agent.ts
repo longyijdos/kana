@@ -1,4 +1,5 @@
 import { Agent, type AgentState } from "@/agent";
+import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaConfig } from "../config";
 import { createKanaModel } from "../model";
 import { buildMemoryConsolidationPrompt } from "./consolidation-prompt";
@@ -21,6 +22,7 @@ export type CreateMemoryConsolidationAgentOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   now?: Date;
+  logger?: Logger;
 };
 
 export type MemoryConsolidationOutcome = "updated" | "unchanged" | "aborted" | "length";
@@ -40,7 +42,7 @@ export function createMemoryConsolidationAgent(
   }
 
   return new Agent({
-    model: createKanaModel(config),
+    model: createKanaModel(config, options.logger),
     system: buildMemoryConsolidationPrompt(
       options.scope,
       options.mode,
@@ -48,6 +50,7 @@ export function createMemoryConsolidationAgent(
     ),
     tools: createMemoryConsolidationTools(options, options.mode, memory),
     maxTurns: config.agent.maxTurns,
+    logger: options.logger,
   });
 }
 
@@ -96,6 +99,8 @@ export async function runMemoryConsolidation(
   config: KanaConfig,
   options: RunMemoryConsolidationOptions,
 ): Promise<MemoryConsolidationResult> {
+  const logger = options.logger ?? createNoopLogger();
+  logger.info("memory_consolidation.started", { scope: options.scope, mode: options.mode });
   const memory = createMemoryConsolidationTransaction(options);
   const agent = createMemoryConsolidationAgent(config, options, memory);
   const abort = () => agent.abort();
@@ -132,16 +137,19 @@ export async function runMemoryConsolidation(
     }
   }
 
+  const outcome =
+    finalMessage.stopReason === "stop"
+      ? memory.hasChanges
+        ? "updated"
+        : "unchanged"
+      : finalMessage.stopReason === "length"
+        ? "length"
+        : "aborted";
+  logger.info("memory_consolidation.ended", { scope: options.scope, mode: options.mode, outcome });
+
   return {
     state: agent.state,
-    outcome:
-      finalMessage.stopReason === "stop"
-        ? memory.hasChanges
-          ? "updated"
-          : "unchanged"
-        : finalMessage.stopReason === "length"
-          ? "length"
-          : "aborted",
+    outcome,
   };
 }
 

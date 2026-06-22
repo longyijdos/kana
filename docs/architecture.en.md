@@ -9,6 +9,7 @@ src/main.ts
   └─ cli                 Command parsing; starts, resumes, and installs Kana
       └─ tui             Terminal interaction, rendering, and user approval
           └─ kana        Product composition: config, prompts, sessions, memory, Skills
+              ├─ logging  Session-scoped JSONL diagnostics
               ├─ agent   Model/tool loop and event protocol translation
               ├─ tools   File, shell, and remember tools
               ├─ core    Shared message, model, stream, and usage contracts
@@ -92,11 +93,14 @@ Kana state is located under `KANA_HOME`, or `~/.kana` when it is unset:
 | Configuration | `config.toml` | `kana install` or direct user edits |
 | Approval allowlist | `approvals.json` | The user selects “always allow” for a bash command |
 | Sessions | `sessions/<workspace>/*.jsonl` | Appended after each successfully committed Agent run |
+| Runtime logs | `logs/<workspace>/<session-id>.jsonl` | Safe lifecycle events from the TUI, Agent, provider, tools, and memory tasks |
 | Durable memory | `memory/global|projects/<workspace>/memory.md` | Atomically replaced after successful memory consolidation |
 | Daily memory | `daily/YYYY-MM-DD.md` in the corresponding directory | Appended after `remember` succeeds |
 | Global Skills config | `skills/skills.toml` | The TUI changes global Skill activation |
 
 Workspace directory names are encoded from resolved absolute paths and shared by sessions and project memory. A session file is JSONL: the first line is a versioned session header, followed by message entries with parent IDs. Creating a session does not write a file; the header is written with the first batch of appended messages, and the first user prompt supplies its title.
+
+Runtime logs use the same workspace encoding and the Kana session ID as their file boundary. Resuming a session appends to its existing log, while creating, forking, or switching to another session changes files. Records are leveled JSONL, defaulting to `info`; `logging.level` adjusts the threshold or disables file logging with `off`. The TUI composition layer explicitly passes a logger to the Agent and provider, while `core` remains independent of logging and filesystem APIs. Logs contain only safe lifecycle metadata, never prompts, model text, complete tool input/output, request headers, or API keys; write failures are ignored and output never passes through the terminal, so logging cannot pollute the TUI.
 
 Memory has global and project scopes. `remember` first appends a structured record to that day's staging file; after conversation commit, a scheduler starts one incremental consolidation Agent per scope, serializing read-modify-write jobs within each scope. The consolidation Agent uses the same model but only memory tools, and commits its in-memory changes only when the assistant ends normally with `stop`. `/memory compact` starts full consolidation and can prune expired daily memory after success according to `daily_retention_days`.
 

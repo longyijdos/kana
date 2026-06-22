@@ -11,12 +11,15 @@ import { createKanaModel } from "./model";
 import { buildKanaSystemPrompt } from "./prompt";
 import { loadKanaSkills } from "./skills";
 
-type KanaAgentOptions = Pick<AgentConfig, "beforeToolExecution" | "messages" | "onRunCommitted">;
+type KanaAgentOptions = Pick<
+  AgentConfig,
+  "beforeToolExecution" | "messages" | "onRunCommitted" | "logger"
+>;
 
 export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
   const cwd = process.cwd();
   const { skills } = loadKanaSkills({ cwd });
-  const model = createKanaModel(config);
+  const model = createKanaModel(config, options.logger);
 
   return new Agent({
     model,
@@ -46,5 +49,6 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     beforeToolExecution: options.beforeToolExecution,
     messages: options.messages,
     onRunCommitted: options.onRunCommitted,
+    logger: options.logger,
   });
 }

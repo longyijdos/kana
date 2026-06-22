@@ -38,7 +38,7 @@ describe("tui welcome block", () => {
     expect(stripAnsi(lines.join("\n"))).toContain("Highlights");
     expect(stripAnsi(lines.join("\n"))).toContain("Tool result viewer");
     expect(stripAnsi(lines.join("\n"))).toContain("Persistent agent memory");
-    expect(stripAnsi(lines.join("\n"))).toContain("Terminal notifications");
+    expect(stripAnsi(lines.join("\n"))).toContain("Session runtime logs");
     expect(stripAnsi(lines.join("\n"))).toContain("... /help for more");
     expect(stripAnsi(lines.join("\n"))).toContain("Wire recent sessions");
     expect(stripAnsi(lines.join("\n"))).toContain("Trim welcome panel");
