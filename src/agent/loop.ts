@@ -261,10 +261,11 @@ async function executeToolCalls(
     const toolCall = toolCalls[index];
 
     if (config.signal?.aborted) {
-      appendCanceledToolResults(
+      await appendCanceledToolResults(
         toolResults,
         toolCalls.slice(index),
         "Tool call canceled because the run was aborted.",
+        emit,
       );
       abortRun = true;
       break;
@@ -276,10 +277,11 @@ async function executeToolCalls(
     toolResults.push(toolResultMessage);
 
     if (executed.abortRun) {
-      appendCanceledToolResults(
+      await appendCanceledToolResults(
         toolResults,
         toolCalls.slice(index + 1),
         "Tool call canceled because the run was aborted.",
+        emit,
       );
       abortRun = true;
       break;
@@ -292,19 +294,23 @@ async function executeToolCalls(
   };
 }
 
-function appendCanceledToolResults(
+async function appendCanceledToolResults(
   toolResults: ToolResultMessage[],
   toolCalls: ToolCallContent[],
   message: string,
-): void {
+  emit: AgentEventSink,
+): Promise<void> {
   for (const toolCall of toolCalls) {
+    const result = createCanceledToolResult(message);
+
     toolResults.push(
       createToolResultMessage({
         toolCall,
-        result: createCanceledToolResult(message),
+        result,
         isError: true,
       }),
     );
+    await emitToolExecutionEnd(toolCall, result, true, emit);
   }
 }
 

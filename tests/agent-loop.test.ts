@@ -537,6 +537,7 @@ describe("runAgentLoop", () => {
 
   test("adds canceled results for remaining tool calls when aborting a run", async () => {
     const beforeToolCallIds: string[] = [];
+    const events: AgentEvent[] = [];
     let executeCount = 0;
 
     const tool = {
@@ -574,7 +575,9 @@ describe("runAgentLoop", () => {
           };
         },
       },
-      () => {},
+      (event) => {
+        events.push(structuredClone(event));
+      },
     );
 
     expect(executeCount).toBe(0);
@@ -595,6 +598,16 @@ describe("runAgentLoop", () => {
       toolCallId: "call_2",
       toolName: "add",
       content: "Tool call canceled because the run was aborted.",
+      isError: true,
+      result: {
+        canceled: true,
+      },
+    });
+    expect(
+      events.find((event) => event.type === "tool_execution_end" && event.toolCallId === "call_2"),
+    ).toMatchObject({
+      type: "tool_execution_end",
+      toolCallId: "call_2",
       isError: true,
       result: {
         canceled: true,
