@@ -451,6 +451,7 @@ export class KanaTuiApp {
       COMMAND_MESSAGES.shellShortcutsTitle,
       "",
       COMMAND_MESSAGES.shellShortcut,
+      COMMAND_MESSAGES.toolShortcut,
     ];
 
     this.editor.clear();

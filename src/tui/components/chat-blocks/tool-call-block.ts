@@ -22,7 +22,6 @@ export class ToolCallBlock implements Component {
   private cachedWidth?: number;
   private cachedVersion?: number;
   private cachedLines?: string[];
-  private outputHintVisible = false;
 
   constructor(private readonly toolCall: ToolCallContent) {}
 
@@ -54,15 +53,6 @@ export class ToolCallBlock implements Component {
     this.cachedWidth = undefined;
     this.cachedVersion = undefined;
     this.cachedLines = undefined;
-  }
-
-  setOutputHintVisible(visible: boolean): void {
-    if (this.outputHintVisible === visible) {
-      return;
-    }
-
-    this.outputHintVisible = visible;
-    this.invalidate();
   }
 
   render(width: number): string[] {
@@ -136,9 +126,7 @@ export class ToolCallBlock implements Component {
   }
 
   private renderTitle(width: number, titleColor: Parameters<typeof color>[1]): string[] {
-    const title = formatToolTranscriptTitle(this.toolCall, this.currentState(), this.result, {
-      showOutputHint: this.outputHintVisible,
-    });
+    const title = formatToolTranscriptTitle(this.toolCall, this.currentState(), this.result);
     const lines = [colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor)];
     const prefix = "  └ ";
     const continuationPrefix = " ".repeat(visibleWidth(prefix));

@@ -26,46 +26,40 @@ export function formatToolTitle(
   toolCall: ToolCallContent,
   state: ToolState,
   result: unknown,
-  options: { showOutputHint?: boolean } = {},
 ): string {
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target);
-  const outputHint = options.showOutputHint ? "Ctrl+O to expand" : undefined;
 
   if (state === "preparing") {
     return `Preparing ${toolCall.name}...`;
   }
 
   if (state === "running") {
-    return `${capitalize(text.runningActivity)}... (${["Esc to abort", outputHint]
-      .filter((hint): hint is string => Boolean(hint))
-      .join(", ")})`;
+    return `${capitalize(text.runningActivity)}... (Esc to abort)`;
   }
 
   if (state === "failed") {
-    return appendTitleHint(`Failed to ${text.action}`, outputHint);
+    return `Failed to ${text.action}`;
   }
 
-  return appendTitleHint(text.doneTitle, outputHint);
+  return text.doneTitle;
 }
 
 export function formatToolTranscriptTitle(
   toolCall: ToolCallContent,
   state: ToolState,
   result: unknown,
-  options: { showOutputHint?: boolean } = {},
 ): ToolTranscriptTitle {
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target);
-  const hint = options.showOutputHint ? "Ctrl+O to expand" : undefined;
   const action = text.action.replace(` ${target}`, "");
   const runningActivity = capitalize(text.runningActivity.replace(` ${target}`, ""));
 
   if (state === "preparing") return { activity: `Preparing ${toolCall.name}` };
   if (state === "running") return { activity: runningActivity, hint: "Esc to abort", target };
-  if (state === "failed") return { activity: `Failed to ${action}`, hint, target };
+  if (state === "failed") return { activity: `Failed to ${action}`, target };
 
-  return { activity: text.doneTitle.replace(` ${target}`, ""), hint, target };
+  return { activity: text.doneTitle.replace(` ${target}`, ""), target };
 }
 
 export function formatToolApproval(toolCall: ToolCallContent): ToolApprovalText {
@@ -218,10 +212,6 @@ function formatErrorOutput(result: object): string {
   const error = getStringProperty(result, "error");
 
   return error ?? JSON.stringify(result, null, 2);
-}
-
-function appendTitleHint(title: string, hint: string | undefined): string {
-  return hint ? `${title} (${hint})` : title;
 }
 
 function sanitizeToolCallOutput(toolCall: ToolCallContent): ToolCallContent {

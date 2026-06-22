@@ -528,7 +528,7 @@ describe("tui transcript", () => {
     expect(transcript.render(80)).toEqual([]);
   });
 
-  test("shows the output hint only on the latest inspectable tool", () => {
+  test("does not render output shortcut hints in tool titles", () => {
     const transcript = new Transcript();
     const first = new ToolCallBlock({
       type: "tool_call",
@@ -570,81 +570,7 @@ describe("tui transcript", () => {
 
     expect(lines).toContain("◆ Ran");
     expect(lines).toContain("  └ first");
-    expect(lines).toContain("◆ Ran (Ctrl+O to expand)");
     expect(lines).toContain("  └ second");
-  });
-
-  test("moves the output hint back when newer tools are not expandable", () => {
-    const transcript = new Transcript();
-    const first = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_1",
-      name: "bash",
-      args: {
-        command: "first",
-      },
-    });
-    const second = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_2",
-      name: "bash",
-      args: {
-        command: "second",
-      },
-    });
-
-    first.updateResult(
-      {
-        command: "first",
-        exitCode: 0,
-        stdout: Array.from({ length: 10 }, (_, index) => `first line ${index + 1}`).join("\n"),
-      },
-      false,
-    );
-    second.updateResult(
-      {
-        command: "second",
-        exitCode: 0,
-        stdout: "short output",
-      },
-      false,
-    );
-    transcript.addChild(first);
-    transcript.addChild(second);
-
-    const lines = transcript.render(100).map(stripAnsi);
-
-    expect(lines).toContain("◆ Ran (Ctrl+O to expand)");
-    expect(lines).toContain("  └ first");
-    expect(lines).toContain("◆ Ran");
-    expect(lines).toContain("  └ second");
-  });
-
-  test("does not show the output hint when the latest tool output is already visible", () => {
-    const transcript = new Transcript();
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_1",
-      name: "bash",
-      args: {
-        command: "short",
-      },
-    });
-
-    block.updateResult(
-      {
-        command: "short",
-        exitCode: 0,
-        stdout: "short output",
-      },
-      false,
-    );
-    transcript.addChild(block);
-
-    const lines = transcript.render(100).map(stripAnsi);
-
-    expect(lines).toContain("◆ Ran");
-    expect(lines).toContain("  └ short");
-    expect(lines).not.toContain("◆ Ran (Ctrl+O to expand)");
+    expect(lines.join("\n")).not.toContain("Ctrl+O");
   });
 });
