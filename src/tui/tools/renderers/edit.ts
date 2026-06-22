@@ -1,4 +1,4 @@
-import { background, type Color, dim, splitLines } from "../../render";
+import { background, type Color, dim, renderHighlightedLine, splitLines } from "../../render";
 import { tuiTheme } from "../../theme";
 import { highlightCodeSync, inferCodeLanguage } from "../../utils/syntax-highlighter";
 import { getNumberProperty, getStringProperty } from "../properties";
@@ -44,20 +44,11 @@ function formatDiffLines(
     return sourceLines.map((line) => background(`${marker} ${line}`, lineBackground));
   }
 
-  return highlighted.map(
-    (tokens) =>
-      `${background(`${marker} `, lineBackground)}${tokens
-        .map((token) => background(colorToken(token.text, token.color), lineBackground))
-        .join("")}`,
+  return highlighted.map((tokens) =>
+    renderHighlightedLine(tokens, {
+      prefix: `${marker} `,
+      background: lineBackground,
+      clearToEnd: true,
+    }),
   );
-}
-
-function colorToken(text: string, tokenColor: string | undefined): string {
-  const hex = tokenColor?.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
-
-  if (!hex) {
-    return text;
-  }
-
-  return `\x1b[38;2;${parseInt(hex[1]!, 16)};${parseInt(hex[2]!, 16)};${parseInt(hex[3]!, 16)}m${text}\x1b[0m`;
 }

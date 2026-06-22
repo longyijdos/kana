@@ -4,8 +4,10 @@ export {
   type Color,
   color,
   dim,
+  type HighlightedLineToken,
   italic,
   RESET,
+  renderHighlightedLine,
   strikethrough,
 } from "./ansi";
 export { firstGrapheme, graphemeSegments } from "./graphemes";

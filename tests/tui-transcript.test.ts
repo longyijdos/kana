@@ -415,6 +415,13 @@ describe("tui transcript", () => {
     for (const block of [read, write, edit]) {
       expect(block.render(80).join("\n")).toContain("\x1b[38;2;");
     }
+
+    expect(
+      edit
+        .render(80)
+        .filter((line) => stripAnsi(line).startsWith("- ") || stripAnsi(line).startsWith("+ "))
+        .every((line) => line.endsWith("\x1b[K\x1b[0m")),
+    ).toBe(true);
   });
 
   test("marks oversized edit diff lines as truncated", () => {
