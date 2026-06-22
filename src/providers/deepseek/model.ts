@@ -1,5 +1,11 @@
 import { AssistantEventStream, type AssistantMessage, BaseModel, type ModelContext } from "@/core";
-import { createRequestSignal, fetchWithRetries, isAbortError, joinUrl } from "./http";
+import {
+  createRequestSignal,
+  DeepSeekHttpError,
+  fetchWithRetries,
+  isAbortError,
+  joinUrl,
+} from "./http";
 import { getDeepSeekModelMetadata } from "./metadata";
 import { buildDeepSeekRequest } from "./request";
 import {
@@ -41,6 +47,10 @@ export class DeepSeekModel extends BaseModel {
     };
 
     try {
+      this.config.logger?.debug("provider.request_started", {
+        provider: "deepseek",
+        model: this.config.model,
+      });
       const apiKey = this.config.apiKey ?? process.env.DEEPSEEK_API_KEY;
 
       if (!apiKey) {
@@ -76,6 +86,7 @@ export class DeepSeekModel extends BaseModel {
             signal: requestSignal.signal,
           },
           this.config.maxRetries ?? 0,
+          (details) => this.config.logger?.warn("provider.retrying", details),
         );
 
         stream.push({
@@ -99,10 +110,18 @@ export class DeepSeekModel extends BaseModel {
           message: structuredClone(message),
           usage: state.usage,
         });
+        this.config.logger?.debug("provider.request_ended", {
+          provider: "deepseek",
+          stopReason: getDoneReason(state.finishReason),
+        });
       } finally {
         requestSignal.dispose();
       }
     } catch (error) {
+      this.config.logger?.error("provider.request_failed", {
+        provider: "deepseek",
+        ...formatProviderFailure(error, context.signal),
+      });
       stream.error({
         type: "error",
         reason: isAbortError(error) || context.signal?.aborted ? "aborted" : "error",
@@ -111,4 +130,27 @@ export class DeepSeekModel extends BaseModel {
       });
     }
   }
+}
+
+function formatProviderFailure(error: unknown, signal?: AbortSignal): Record<string, unknown> {
+  const aborted = isAbortError(error) || signal?.aborted === true;
+
+  if (error instanceof DeepSeekHttpError) {
+    return {
+      errorName: error.name,
+      aborted,
+      status: error.status,
+      statusText: error.statusText,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      errorName: error.name,
+      aborted,
+      ...(aborted ? {} : { message: error.message }),
+    };
+  }
+
+  return { errorName: typeof error, aborted };
 }

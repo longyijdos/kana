@@ -5,11 +5,14 @@ export {
   type InstallKanaConfigOptions,
   type InstallKanaConfigResult,
   installKanaConfig,
+  KANA_LOG_LEVELS,
   KANA_NOTIFICATION_BACKENDS,
   KANA_TOOL_APPROVAL_MODES,
   type KanaAgentConfig,
   type KanaConfig,
   type KanaConfigPaths,
+  type KanaLoggingConfig,
+  type KanaLogLevel,
   type KanaMemoryConfig,
   type KanaModelConfig,
   type KanaNotificationBackend,
@@ -60,6 +63,7 @@ export {
   saveKanaMemory,
   searchKanaDailyMemory,
 } from "./memory";
+export { getKanaSessionLogPath, type KanaLogPathOptions } from "./path";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
   type AppendKanaSessionMessagesOptions,

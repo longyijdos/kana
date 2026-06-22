@@ -1,4 +1,5 @@
 import type { Message } from "@/core";
+import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaConfig } from "../config";
 import {
   formatIncrementalMemoryConsolidationInput,
@@ -14,12 +15,14 @@ export type CreateMemoryConsolidationSchedulerOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   runIncremental?: (scope: KanaMemoryScope, entries: KanaMemoryEntry[]) => Promise<void>;
+  logger?: Logger;
 };
 
 export function createMemoryConsolidationScheduler(
   config: KanaConfig,
   options: CreateMemoryConsolidationSchedulerOptions = {},
 ): MemoryConsolidationScheduler {
+  const logger = options.logger ?? createNoopLogger();
   const queuedRuns = new Map<KanaMemoryScope, Promise<void>>();
   const runIncremental =
     options.runIncremental ??
@@ -30,12 +33,24 @@ export function createMemoryConsolidationScheduler(
         cwd: options.cwd,
         env: options.env,
         input: formatIncrementalMemoryConsolidationInput(scope, entries, options),
+        logger,
       });
     });
 
   return {
     schedule(messages) {
       const entriesByScope = collectRememberedEntries(messages);
+      if (entriesByScope.size === 0) {
+        return Promise.resolve();
+      }
+
+      logger.info("memory_consolidation.scheduled", {
+        scopeCount: entriesByScope.size,
+        entryCount: [...entriesByScope.values()].reduce(
+          (count, entries) => count + entries.length,
+          0,
+        ),
+      });
       const jobs = [...entriesByScope].map(([scope, entries]) => {
         const previousRun = queuedRuns.get(scope) ?? Promise.resolve();
         const run = previousRun.catch(() => undefined).then(() => runIncremental(scope, entries));

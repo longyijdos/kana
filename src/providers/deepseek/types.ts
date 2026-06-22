@@ -1,4 +1,5 @@
 import type { ModelConfig, ModelUsage, ToolCallContent } from "@/core";
+import type { Logger } from "@/logging";
 
 export type DeepSeekReasoningEffort = "high" | "max";
 
@@ -30,6 +31,7 @@ export type DeepSeekModelConfig = ModelConfig & {
   responseFormat?: DeepSeekResponseFormat;
   userId?: string;
   strictTools?: boolean;
+  logger?: Logger;
 };
 
 export type DeepSeekMessage =

@@ -13,6 +13,16 @@ cwd: /Users/alice/project
 
 因此同一解析后路径的会话和 project 记忆会放到相应的同名目录；不同路径相互隔离。
 
+## 运行时日志
+
+运行时日志使用同一工作区编码，路径为：
+
+```text
+<KANA_HOME>/logs/<encoded-workspace>/<session-id>.jsonl
+```
+
+每行是一个分级 JSON 记录，包含时间、级别、稳定事件名、session ID 和安全的元数据。session 是日志文件边界：恢复同一 session 会追加原文件，`/new`、`/fork` 或恢复另一 session 会写入新文件。日志不是会话历史，不保存 prompt、助手文本、完整工具参数或输出；其配置和级别见[配置与安装](configuration.md)。
+
 ## 会话
 
 会话文件位于：

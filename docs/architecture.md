@@ -9,6 +9,7 @@ src/main.ts
   └─ cli                 命令解析；启动、恢复会话和安装本地文件
       └─ tui             终端交互、渲染和用户审批
           └─ kana        产品装配：配置、提示词、会话、记忆、Skills
+              ├─ logging  会话级 JSONL 诊断日志
               ├─ agent   模型—工具循环和事件协议转换
               ├─ tools   文件、Shell 与 remember 工具
               ├─ core    消息、模型、流和用量的共享协议
@@ -92,11 +93,14 @@ src/main.ts
 | 配置 | `config.toml` | `kana install` 或用户编辑 |
 | 审批白名单 | `approvals.json` | 用户选择某条 bash 命令“始终允许” |
 | 会话 | `sessions/<workspace>/*.jsonl` | 每个 Agent 运行成功提交后追加 |
+| 运行时日志 | `logs/<workspace>/<session-id>.jsonl` | TUI、Agent、provider、工具和记忆任务的安全生命周期事件 |
 | 长期记忆 | `memory/global|projects/<workspace>/memory.md` | 记忆压缩成功后原子替换 |
 | 每日记忆 | 对应目录的 `daily/YYYY-MM-DD.md` | `remember` 成功时追加 |
 | 全局 Skills 配置 | `skills/skills.toml` | TUI 修改全局 Skill 开关时 |
 
 工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。会话文件是 JSONL：首行是版本化的 session header，之后每行是带父 ID 的消息条目。创建会话本身不落盘；第一批消息追加时才写 header，并用首条用户消息生成标题。
+
+运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 TUI 装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
 
 记忆分 global 和 project 两个 scope。`remember` 先向当天的暂存文件追加结构化条目；对话提交后，调度器按 scope 串行启动一次增量压缩 Agent。压缩 Agent 使用相同的模型，但只有记忆读写工具；它在助手以正常 `stop` 结束时才提交内存中的修改。`/memory compact` 发起全量压缩，可在成功后按 `daily_retention_days` 清理过期每日记忆。
 

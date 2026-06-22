@@ -14,6 +14,7 @@ export async function fetchWithRetries(
   url: string,
   init: RequestInit,
   maxRetries: number,
+  onRetry?: (details: { attempt: number; delayMs: number; status?: number }) => void,
 ): Promise<Response> {
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -29,9 +30,15 @@ export async function fetchWithRetries(
       if (isAbortError(error) || !isRetryableError(error) || attempt >= maxRetries) {
         throw error;
       }
-    }
 
-    await sleep(retryDelayMs(attempt), init.signal);
+      const delayMs = retryDelayMs(attempt);
+      onRetry?.({
+        attempt: attempt + 1,
+        delayMs,
+        ...(error instanceof DeepSeekHttpError ? { status: error.status } : {}),
+      });
+      await sleep(delayMs, init.signal);
+    }
   }
 }
 

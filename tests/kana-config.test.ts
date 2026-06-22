@@ -30,6 +30,7 @@ describe("Kana config", () => {
       agentsPath: "/home/kana/.kana/AGENTS.md",
       memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
+      logsPath: "/home/kana/.kana/logs",
       approvalsPath: "/home/kana/.kana/approvals.json",
       skillsConfigPath: "/home/kana/.kana/skills/skills.toml",
     });
@@ -53,6 +54,8 @@ describe("Kana config", () => {
     expect(installed).toContain("enabled = true");
     expect(installed).toContain("max_chars = 6000");
     expect(installed).toContain("# daily_retention_days = 30");
+    expect(installed).toContain("[logging]");
+    expect(installed).toContain('level = "info"');
     expect(installed).not.toContain("api_key =");
     expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(installedSkillsConfig).toBe(["[model_invocation]", "enabled = []", ""].join("\n"));
@@ -131,6 +134,9 @@ describe("Kana config", () => {
         "max_chars = 8000",
         "daily_retention_days = 14",
         "",
+        "[logging]",
+        'level = "debug"',
+        "",
       ].join("\n"),
     );
 
@@ -158,7 +164,20 @@ describe("Kana config", () => {
         maxChars: 8000,
         dailyRetentionDays: 14,
       },
+      logging: {
+        level: "debug",
+      },
     });
+  });
+
+  test("rejects unknown logging.level", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[logging]\nlevel = "verbose"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow(
+      "logging.level must be one of: debug, info, warn, error, off.",
+    );
   });
 
   test("rejects non-boolean memory.enabled", () => {

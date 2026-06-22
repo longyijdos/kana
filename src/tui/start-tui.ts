@@ -5,6 +5,7 @@ import {
   createKanaSession,
   createMemoryConsolidationScheduler,
   deleteKanaSession,
+  getKanaSessionLogPath,
   listKanaSessions,
   loadKanaConfig,
   loadKanaMemory,
@@ -14,6 +15,7 @@ import {
   runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
+import { createLoggerRouter, createNoopLogger, createSessionLogger } from "@/logging";
 import { KanaTuiApp } from "./app/app";
 import type { MemoryCompactSummary } from "./app/memory-compact-controller";
 import { ProcessTerminal } from "./runtime";
@@ -26,9 +28,10 @@ export type StartTuiOptions = {
 
 export function startTui(options: StartTuiOptions = {}): void {
   const config = loadKanaConfig();
+  const logRouter = createLoggerRouter();
   const toolApprovals = loadKanaToolApprovals();
   const memoryConsolidation = config.memory.enabled
-    ? createMemoryConsolidationScheduler(config)
+    ? createMemoryConsolidationScheduler(config, { logger: logRouter.logger })
     : undefined;
   const createSession = (parentSessionPath?: string, title?: string) =>
     createKanaSession({
@@ -47,6 +50,21 @@ export function startTui(options: StartTuiOptions = {}): void {
           metadata: createSession(),
           messages: [],
         };
+  const activateSessionLogger = (nextSession: typeof session): void => {
+    logRouter.setLogger(
+      nextSession
+        ? createSessionLogger({
+            path: getKanaSessionLogPath(nextSession.metadata.id, { cwd: nextSession.metadata.cwd }),
+            sessionId: nextSession.metadata.id,
+            level: config.logging.level,
+          })
+        : createNoopLogger(),
+    );
+  };
+  activateSessionLogger(session);
+  if (session) {
+    logRouter.logger.info("session.started", { resumed: options.resumeSessionId !== undefined });
+  }
   let resumeSessionId = options.resumeSessionId ? session?.metadata.id : undefined;
   let pendingForkMessages: Message[] | undefined;
 
@@ -54,17 +72,24 @@ export function startTui(options: StartTuiOptions = {}): void {
     (agentOptions) =>
       createKanaAgent(config, {
         ...agentOptions,
+        logger: logRouter.logger,
         messages: agentOptions.messages ?? session?.messages,
         onRunCommitted: ({ messages }) => {
           session ??= {
             metadata: createSession(),
             messages: [],
           };
+          activateSessionLogger(session);
           const messagesToPersist = pendingForkMessages
             ? [...pendingForkMessages, ...messages]
             : messages;
 
-          appendKanaSessionMessages(session.metadata, messagesToPersist);
+          try {
+            appendKanaSessionMessages(session.metadata, messagesToPersist);
+          } catch (error) {
+            logRouter.logger.error("session.append_failed", { error });
+            throw error;
+          }
           session.messages = [...session.messages, ...messages];
           pendingForkMessages = undefined;
 
@@ -74,7 +99,9 @@ export function startTui(options: StartTuiOptions = {}): void {
 
           // Keep consolidation off the completed conversation's critical path;
           // the scheduler serializes each scope's read-modify-write jobs.
-          void memoryConsolidation?.schedule(messages).catch(() => undefined);
+          void memoryConsolidation?.schedule(messages).catch((error) => {
+            logRouter.logger.error("memory_consolidation.failed", { error });
+          });
         },
       }),
     new ProcessTerminal(config.notification),
@@ -89,6 +116,8 @@ export function startTui(options: StartTuiOptions = {}): void {
           metadata: createSession(),
           messages: [],
         };
+        activateSessionLogger(session);
+        logRouter.logger.info("session.created");
         resumeSessionId = undefined;
         pendingForkMessages = undefined;
 
@@ -107,6 +136,8 @@ export function startTui(options: StartTuiOptions = {}): void {
           metadata: createSession(source.metadata.path, prompt),
           messages,
         };
+        activateSessionLogger(session);
+        logRouter.logger.info("session.forked", { sourceSessionId: source.metadata.id });
         resumeSessionId = undefined;
         pendingForkMessages = messages;
 
@@ -123,6 +154,8 @@ export function startTui(options: StartTuiOptions = {}): void {
       },
       loadSession: (sessionId) => {
         session = loadKanaSession(sessionId, { cwd: process.cwd() });
+        activateSessionLogger(session);
+        logRouter.logger.info("session.resumed");
         resumeSessionId = session.metadata.id;
         pendingForkMessages = undefined;
 
@@ -139,6 +172,7 @@ export function startTui(options: StartTuiOptions = {}): void {
         approvals: toolApprovals,
       },
       notification: config.notification,
+      logger: logRouter.logger,
       compactMemory: async (target, userRequest, signal) => {
         const scopes: Array<"global" | "project"> =
           target === "user"
@@ -156,6 +190,7 @@ export function startTui(options: StartTuiOptions = {}): void {
                 cwd: process.cwd(),
                 userRequest,
                 signal,
+                logger: logRouter.logger,
               });
               return { target: targetName, outcome: result.outcome };
             } catch (error) {

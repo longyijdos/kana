@@ -13,6 +13,16 @@ cwd: /Users/alice/project
 
 Consequently sessions and project memory for the same resolved path use matching directories, while different paths are isolated.
 
+## Runtime logs
+
+Runtime logs use the same workspace encoding and live at:
+
+```text
+<KANA_HOME>/logs/<encoded-workspace>/<session-id>.jsonl
+```
+
+Each line is a leveled JSON record with a timestamp, stable event name, session ID, and safe metadata. A session is the log-file boundary: resuming it appends to the existing file, while `/new`, `/fork`, or resuming another session writes to a new file. Logs are not conversation history and do not retain prompts, assistant text, complete tool arguments, or output; see [Configuration and installation](configuration.en.md) for configuration and levels.
+
 ## Sessions
 
 Session files are located at:

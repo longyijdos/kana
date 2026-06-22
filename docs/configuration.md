@@ -35,6 +35,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── approvals.json          # bash 信任规则
 ├── AGENTS.md               # 可选：全局系统指令，不由 install 创建
 ├── sessions/               # 按工作区分组的 JSONL 会话
+├── logs/                   # 按工作区和会话分组的运行时 JSONL 日志
 ├── memory/                 # global 与 project 的记忆
 └── skills/
     ├── skills.toml         # 全局 Skill 的启用列表
@@ -75,6 +76,9 @@ on_approval_required = true
 enabled = true
 max_chars = 6000
 # daily_retention_days = 30
+
+[logging]
+level = "info"
 ```
 
 ### `[model]`
@@ -108,10 +112,13 @@ export DEEPSEEK_API_KEY='sk-...'
 | `memory.enabled` | 布尔值 | `true` | 是否注册 `remember`，并把记忆注入系统提示词。 |
 | `memory.max_chars` | 正整数 | `6000` | 合并后长期记忆的 Unicode 字符数上限。 |
 | `memory.daily_retention_days` | 可选正整数 | 未设置 | 全量记忆压缩成功后保留每日暂存记录的天数。 |
+| `logging.level` | `debug`、`info`、`warn`、`error`、`off` | `info` | 运行时 JSONL 日志的最低记录级别；`off` 完全关闭文件日志。 |
 
-`daily_retention_days` 注释掉或省略时不会清理每日记忆。`max_turns`、`max_tokens`、`timeout_ms` 和 `max_retries` 当前只校验为有限数字；其中 `memory` 的两个数量字段额外要求正整数。
+`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns`、`max_tokens`、`timeout_ms` 和 `max_retries` 当前只校验为有限数字；其中 `memory` 的两个数量字段额外要求正整数。
 
-配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式和通知后端会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
+默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；DeepSeek HTTP 失败额外记录状态码和状态文本，但不保存响应体。
+
+配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
 
 ## API key 与项目指令
 

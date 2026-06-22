@@ -1,8 +1,9 @@
 import type { Model } from "@/core";
+import type { Logger } from "@/logging";
 import { getModel } from "@/providers";
 import { getKanaConfigPaths, type KanaConfig } from "./config";
 
-export function createKanaModel(config: KanaConfig): Model {
+export function createKanaModel(config: KanaConfig, logger?: Logger): Model {
   const apiKey = process.env[config.model.apiKeyEnv];
 
   if (!apiKey) {
@@ -20,5 +21,6 @@ export function createKanaModel(config: KanaConfig): Model {
     maxTokens: config.model.maxTokens,
     timeoutMs: config.model.timeoutMs,
     maxRetries: config.model.maxRetries,
+    logger,
   });
 }

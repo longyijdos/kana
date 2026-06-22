@@ -4,7 +4,7 @@ import path from "node:path";
 
 import type { Message, ModelMetadata } from "@/core";
 import { getKanaConfigPaths } from "./config";
-import { encodeKanaWorkspacePath } from "./workspace-path";
+import { encodeKanaWorkspacePath } from "./path";
 
 const SESSION_VERSION = 1;
 const DEFAULT_SESSION_TITLE = "Untitled session";

@@ -1,4 +1,5 @@
 import type { AssistantMessage, Message, Model, UserMessage } from "@/core";
+import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 import type { Tool } from "@/tools";
 import type { AgentEvent } from "./events";
 import {
@@ -21,6 +22,8 @@ export type AgentConfig = {
   maxTurns?: number;
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
+  logger?: Logger;
+  loggerMetadata?: LogMetadata;
 };
 
 export type AgentState = {
@@ -65,11 +68,15 @@ export class Agent {
   private readonly stateData: WritableAgentState;
   private readonly beforeToolExecution?: BeforeToolExecutionHook;
   private readonly onRunCommitted?: AgentRunCommittedHook;
+  private readonly logger: Logger;
+  private readonly loggerMetadata?: LogMetadata;
 
   constructor(options: AgentConfig) {
     this.stateData = createWritableAgentState(options);
     this.beforeToolExecution = options.beforeToolExecution;
     this.onRunCommitted = options.onRunCommitted;
+    this.logger = options.logger ?? createNoopLogger();
+    this.loggerMetadata = options.loggerMetadata;
   }
 
   get state(): AgentState {
@@ -118,6 +125,7 @@ export class Agent {
     // loop result only contains messages produced by the agent runtime.
     const promptMessages = toPromptMessages(input);
     this.stateData.messages = [...this.stateData.messages, ...promptMessages];
+    this.log("info", "agent.run_started", { promptMessageCount: promptMessages.length });
 
     void this.runWithLifecycle((signal) =>
       runAgentLoop(this.createContextSnapshot(), this.createLoopConfig(signal), async (event) => {
@@ -146,6 +154,7 @@ export class Agent {
         stream.end(doneEvent);
       })
       .catch((error) => {
+        this.log("error", "agent.run_failed", { error });
         stream.error(error);
       });
 
@@ -224,6 +233,7 @@ export class Agent {
 
   private async processEvent(event: AgentEvent): Promise<void> {
     this.reduceEvent(event);
+    this.logEvent(event);
 
     const signal = this.activeRun?.abortController.signal;
 
@@ -234,6 +244,63 @@ export class Agent {
     for (const listener of this.listeners) {
       await listener(event, signal);
     }
+  }
+
+  private logEvent(event: AgentEvent): void {
+    switch (event.type) {
+      case "agent_start":
+        this.log("debug", "agent.started");
+        break;
+      case "turn_start":
+        this.log("debug", "agent.turn_started", { turn: event.turn });
+        break;
+      case "turn_end":
+        this.log("debug", "agent.turn_ended", {
+          turn: event.turn,
+          stopReason: event.message.stopReason,
+          toolResultCount: event.toolResults.length,
+        });
+        break;
+      case "tool_execution_start":
+        this.log("debug", "tool.execution_started", { toolName: event.toolName });
+        break;
+      case "tool_execution_end":
+        if (event.isError) {
+          this.log("warn", "tool.execution_failed", { toolName: event.toolName });
+          break;
+        }
+        this.log("debug", "tool.execution_ended", {
+          toolName: event.toolName,
+        });
+        break;
+      case "agent_end":
+        this.log("info", "agent.ended", {
+          reason: event.reason,
+          committedMessageCount: event.messages.length,
+        });
+        break;
+      case "message_start":
+      case "message_update":
+      case "message_end":
+      case "tool_execution_update":
+        break;
+    }
+  }
+
+  private log(
+    level: "debug" | "info" | "warn" | "error",
+    event: string,
+    metadata?: LogMetadata,
+  ): void {
+    const mergedMetadata = {
+      ...this.loggerMetadata,
+      ...metadata,
+    };
+
+    this.logger[level](
+      event,
+      Object.keys(mergedMetadata).length === 0 ? undefined : mergedMetadata,
+    );
   }
 
   private reduceEvent(event: AgentEvent): void {

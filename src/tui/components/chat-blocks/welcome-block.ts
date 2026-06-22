@@ -95,9 +95,9 @@ export class WelcomeBlock implements Component {
       muted("  ... /resume for more"),
       "",
       title("Highlights"),
-      text("  Terminal notifications"),
       text("  Tool result viewer"),
       text("  Persistent agent memory"),
+      text("  Session runtime logs"),
       muted("  ... /help for more"),
     ];
 
