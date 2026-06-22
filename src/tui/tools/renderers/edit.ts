@@ -1,8 +1,10 @@
-import { background, type Color, dim, splitLines } from "../../render";
+import { background, type Color, dim, renderHighlightedLine, splitLines } from "../../render";
 import { tuiTheme } from "../../theme";
+import { highlightCodeSync, inferCodeLanguage } from "../../utils/syntax-highlighter";
 import { getNumberProperty, getStringProperty } from "../properties";
 
 export function formatEditOutput(result: object): string[] {
+  const path = getStringProperty(result, "path");
   const oldText = getStringProperty(result, "oldText");
   const newText = getStringProperty(result, "newText");
   const replacements = getNumberProperty(result, "replacements");
@@ -13,24 +15,40 @@ export function formatEditOutput(result: object): string[] {
   }
 
   if (oldText !== undefined) {
-    lines.push(...formatDiffLines(oldText, "-", tuiTheme.diffDeleteBackground));
+    lines.push(...formatDiffLines(oldText, "-", tuiTheme.diffDeleteBackground, path));
   }
 
   if (newText !== undefined) {
-    lines.push(...formatDiffLines(newText, "+", tuiTheme.diffInsertBackground));
+    lines.push(...formatDiffLines(newText, "+", tuiTheme.diffInsertBackground, path));
   }
 
   return lines;
 }
 
-function formatDiffLines(value: string, marker: "-" | "+", lineBackground: Color): string[] {
+function formatDiffLines(
+  value: string,
+  marker: "-" | "+",
+  lineBackground: Color,
+  path: string | undefined,
+): string[] {
   const lines = splitLines(value);
 
   if (lines.at(-1) === "") {
     lines.pop();
   }
 
-  return (lines.length ? lines : [""]).map((line) =>
-    background(`${marker} ${line}`, lineBackground),
+  const sourceLines = lines.length ? lines : [""];
+  const highlighted = highlightCodeSync(sourceLines.join("\n"), inferCodeLanguage(path));
+
+  if (!highlighted) {
+    return sourceLines.map((line) => background(`${marker} ${line}`, lineBackground));
+  }
+
+  return highlighted.map((tokens) =>
+    renderHighlightedLine(tokens, {
+      prefix: `${marker} `,
+      background: lineBackground,
+      clearToEnd: true,
+    }),
   );
 }

@@ -1,5 +1,12 @@
 import type { ToolCallContent } from "@/core";
-import { capitalize, stripTerminalControlSequences, summarizeText } from "../render";
+import {
+  capitalize,
+  color,
+  stripTerminalControlSequences,
+  summarizeText,
+  wrapPlainText,
+} from "../render";
+import { tuiTheme } from "../theme";
 import { getNumberProperty, getStringProperty } from "./properties";
 import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
@@ -8,6 +15,7 @@ import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 
 export type ToolState = "preparing" | "running" | "done" | "failed";
 export type ToolOutputDetail = "compact" | "full";
+export type ToolTranscriptTitle = { activity: string; hint?: string; target?: string };
 
 type ToolApprovalText = {
   title: string;
@@ -18,27 +26,40 @@ export function formatToolTitle(
   toolCall: ToolCallContent,
   state: ToolState,
   result: unknown,
-  options: { showOutputHint?: boolean } = {},
 ): string {
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target);
-  const outputHint = options.showOutputHint ? "Ctrl+O to expand" : undefined;
 
   if (state === "preparing") {
     return `Preparing ${toolCall.name}...`;
   }
 
   if (state === "running") {
-    return `${capitalize(text.runningActivity)}... (${["Esc to abort", outputHint]
-      .filter((hint): hint is string => Boolean(hint))
-      .join(", ")})`;
+    return `${capitalize(text.runningActivity)}... (Esc to abort)`;
   }
 
   if (state === "failed") {
-    return appendTitleHint(`Failed to ${text.action}`, outputHint);
+    return `Failed to ${text.action}`;
   }
 
-  return appendTitleHint(text.doneTitle, outputHint);
+  return text.doneTitle;
+}
+
+export function formatToolTranscriptTitle(
+  toolCall: ToolCallContent,
+  state: ToolState,
+  result: unknown,
+): ToolTranscriptTitle {
+  const target = toolTarget(toolCall, result);
+  const text = toolText(toolCall.name, target);
+  const action = text.action.replace(` ${target}`, "");
+  const runningActivity = capitalize(text.runningActivity.replace(` ${target}`, ""));
+
+  if (state === "preparing") return { activity: `Preparing ${toolCall.name}` };
+  if (state === "running") return { activity: runningActivity, hint: "Esc to abort", target };
+  if (state === "failed") return { activity: `Failed to ${action}`, target };
+
+  return { activity: text.doneTitle.replace(` ${target}`, ""), target };
 }
 
 export function formatToolApproval(toolCall: ToolCallContent): ToolApprovalText {
@@ -53,33 +74,42 @@ export function formatToolOutput(
   result: unknown,
   isError: boolean,
   detail: ToolOutputDetail = "compact",
-): string | string[] {
+  width: number,
+): string[] {
   const sanitizedResult = sanitizeToolOutput(result);
 
   if (!sanitizedResult || typeof sanitizedResult !== "object") {
-    return sanitizedResult === undefined ? "" : String(sanitizedResult);
+    return renderText(
+      sanitizedResult === undefined ? "" : String(sanitizedResult),
+      width,
+      tuiTheme.toolOutput,
+    );
   }
 
   if (isError) {
-    return formatErrorOutput(sanitizedResult);
+    return renderText(formatErrorOutput(sanitizedResult), width, tuiTheme.error);
   }
 
   const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
 
   switch (toolCall.name) {
     case "read":
-      return formatReadOutput(sanitizedResult, detail);
+      return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "write":
-      return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail);
+      return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail, width);
     case "edit":
       return formatEditOutput(sanitizedResult);
     case "bash":
-      return formatBashOutput(sanitizedResult, detail);
+      return renderText(formatBashOutput(sanitizedResult, detail), width, tuiTheme.toolOutput);
     case "remember":
-      return "";
+      return [];
   }
 
-  return JSON.stringify(sanitizedResult, null, 2);
+  return renderText(JSON.stringify(sanitizedResult, null, 2), width, tuiTheme.toolOutput);
+}
+
+function renderText(text: string, width: number, textColor: Parameters<typeof color>[1]): string[] {
+  return text ? wrapPlainText(text, width).map((line) => color(line, textColor)) : [];
 }
 
 export function hasExpandableToolOutput(
@@ -93,7 +123,7 @@ export function hasExpandableToolOutput(
 
   switch (toolCall.name) {
     case "read":
-      return hasExpandableReadOutput(result);
+      return hasExpandableReadOutput();
     case "write":
       return hasExpandableWriteOutput(toolCall);
     case "bash":
@@ -182,10 +212,6 @@ function formatErrorOutput(result: object): string {
   const error = getStringProperty(result, "error");
 
   return error ?? JSON.stringify(result, null, 2);
-}
-
-function appendTitleHint(title: string, hint: string | undefined): string {
-  return hint ? `${title} (${hint})` : title;
 }
 
 function sanitizeToolCallOutput(toolCall: ToolCallContent): ToolCallContent {

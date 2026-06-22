@@ -11,6 +11,7 @@ export type AnsiColor =
 
 export type RgbColor = readonly [red: number, green: number, blue: number];
 export type Color = AnsiColor | RgbColor;
+export type HighlightedLineToken = { text: string; color?: string };
 
 const COLOR_CODES: Record<AnsiColor, number> = {
   black: 30,
@@ -36,9 +37,58 @@ export function color(text: string, value: Color): string {
 }
 
 export function background(text: string, value: Color): string {
-  const code = typeof value === "string" ? COLOR_CODES[value] + 10 : rgbCode("48", value);
+  return renderHighlightedLine([{ text }], {
+    background: value,
+    clearToEnd: true,
+  });
+}
 
-  return `\x1b[${code}m${text}${ERASE_TO_END_OF_LINE}${RESET}`;
+export function renderHighlightedLine(
+  tokens: HighlightedLineToken[],
+  options: { background?: Color; clearToEnd?: boolean; prefix?: string } = {},
+): string {
+  let rendered = options.background ? `\x1b[${backgroundCode(options.background)}m` : "";
+  let foregroundActive = false;
+
+  rendered += options.prefix ?? "";
+
+  for (const token of tokens) {
+    const code = foregroundCode(token.color);
+
+    if (code) {
+      rendered += `\x1b[${code}m`;
+      foregroundActive = true;
+    } else if (foregroundActive) {
+      rendered += "\x1b[39m";
+      foregroundActive = false;
+    }
+
+    rendered += token.text;
+  }
+
+  if (options.clearToEnd) {
+    rendered += ERASE_TO_END_OF_LINE;
+  }
+
+  return options.background || foregroundActive ? `${rendered}${RESET}` : rendered;
+}
+
+function backgroundCode(value: Color): string {
+  return typeof value === "string" ? String(COLOR_CODES[value] + 10) : rgbCode("48", value);
+}
+
+function foregroundCode(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const hex = value.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
+
+  if (hex) {
+    return `38;2;${parseInt(hex[1]!, 16)};${parseInt(hex[2]!, 16)};${parseInt(hex[3]!, 16)}`;
+  }
+
+  return COLOR_CODES[value as AnsiColor]?.toString();
 }
 
 export function bold(text: string): string {

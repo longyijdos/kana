@@ -6,6 +6,7 @@ export const COMMAND_MESSAGES = {
   helpTitle: "Slash commands",
   shellShortcutsTitle: "Shell shortcuts",
   shellShortcut: "!<command> Run a local bash command.",
+  toolShortcut: "Ctrl+O Open the latest expandable tool output.",
   memoryUsage: [
     "Memory commands:",
     "  /memory show [user|workspace]",

@@ -8,6 +8,7 @@ import {
 import { color, stripAnsi, visibleWidth } from "../src/tui/render";
 import type { Component } from "../src/tui/runtime";
 import { tuiTheme } from "../src/tui/theme";
+import { preloadSyntaxHighlighter } from "../src/tui/utils/syntax-highlighter";
 
 class LinesBlock implements Component {
   constructor(readonly lines: string[]) {}
@@ -93,7 +94,7 @@ describe("tui transcript", () => {
 
     const rendered = block.render(80).map(stripAnsi).filter(Boolean);
 
-    expect(rendered).toEqual(["Saved global memory"]);
+    expect(rendered).toEqual(["◆ Saved memory", "  └ global"]);
   });
 
   test("does not render assistant stop reasons as transcript content", () => {
@@ -163,7 +164,7 @@ describe("tui transcript", () => {
     expect(rendered).not.toContain("before");
   });
 
-  test("renders read tool output as a concise file excerpt", () => {
+  test("renders read tool output as file metadata only", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
@@ -176,7 +177,8 @@ describe("tui transcript", () => {
     block.markExecutionStarted();
     const runningTitle = block.render(80)[1] ?? "";
 
-    expect(stripAnsi(runningTitle)).toBe("Reading AGENTS.md... (Esc to abort)");
+    expect(stripAnsi(runningTitle)).toBe("◆ Reading (Esc to abort)");
+    expect(runningTitle).toContain("\x1b[1m");
     expect(runningTitle).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
     block.updateResult(
@@ -193,12 +195,13 @@ describe("tui transcript", () => {
 
     const lines = block.render(80).map(stripAnsi);
 
-    expect(lines[1]).toBe("Read AGENTS.md");
-    expect(lines).toContain("... 2 more lines");
-    expect(lines).toContain("line 10");
+    expect(lines[1]).toBe("◆ Read");
+    expect(lines[2]).toBe("  └ AGENTS.md");
+    expect(lines).toContain("AGENTS.md:1-10 of 10");
+    expect(lines).not.toContain("line 10");
   });
 
-  test("provides full tool output for the result viewer", () => {
+  test("does not provide read content in the result viewer", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
@@ -219,16 +222,10 @@ describe("tui transcript", () => {
       false,
     );
 
-    const compactLines = block.render(80).map(stripAnsi);
-    const fullLines = block.getResultView()?.render(80).map(stripAnsi) ?? [];
-
-    expect(compactLines).toContain("... 2 more lines");
-    expect(fullLines).not.toContain("... 2 more lines");
-    expect(fullLines).toContain("line 1");
-    expect(fullLines).toContain("line 10");
+    expect(block.getResultView()).toBeUndefined();
   });
 
-  test("tool result viewer scrolls full output and closes with escape", () => {
+  test("tool result viewer scrolls and pages with arrow keys", () => {
     const decisions: string[] = [];
     const viewer = new ContentViewer(
       {
@@ -266,11 +263,19 @@ describe("tui transcript", () => {
 
     viewer.handleInput(" ");
 
-    const scrolled = viewer.render(80).map(stripAnsi);
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 2-4 of 5");
 
-    expect(scrolled).toContain("Lines 3-5 of 5");
-    expect(scrolled).toContain("... 2 lines above");
-    expect(scrolled.some((line) => line.includes("line 5"))).toBe(true);
+    viewer.handleInput("\x1b[C");
+
+    const pagedDown = viewer.render(80).map(stripAnsi);
+
+    expect(pagedDown).toContain("Lines 3-5 of 5");
+    expect(pagedDown).toContain("... 2 lines above");
+    expect(pagedDown.some((line) => line.includes("line 5"))).toBe(true);
+
+    viewer.handleInput("\x1b[D");
+
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 1-3 of 5");
 
     viewer.handleInput("\x1b");
 
@@ -292,7 +297,7 @@ describe("tui transcript", () => {
 
     const partialRendered = stripAnsi(block.render(80).join("\n"));
 
-    expect(partialRendered).toContain("Running bun test... (Esc to abort)");
+    expect(partialRendered).toContain("◆ Running (Esc to abort)");
     expect(partialRendered).toContain("running");
 
     block.updateResult("done", false);
@@ -371,6 +376,82 @@ describe("tui transcript", () => {
     ).toBe(true);
   });
 
+  test("highlights write and edit source content using the target path", async () => {
+    await preloadSyntaxHighlighter();
+
+    const read = new ToolCallBlock({
+      type: "tool_call",
+      id: "read_1",
+      name: "read",
+      args: { path: "src/app.ts" },
+    });
+    read.updateResult(
+      { path: "src/app.ts", content: "const value = 1;", startLine: 1, endLine: 1, totalLines: 1 },
+      false,
+    );
+
+    const write = new ToolCallBlock({
+      type: "tool_call",
+      id: "write_1",
+      name: "write",
+      args: { path: "src/app.ts", content: "const value = 1;" },
+    });
+    write.updateResult({ path: "src/app.ts", bytesWritten: 16 }, false);
+
+    const edit = new ToolCallBlock({
+      type: "tool_call",
+      id: "edit_1",
+      name: "edit",
+      args: { path: "src/app.ts" },
+    });
+    edit.updateResult(
+      {
+        path: "src/app.ts",
+        replacements: 1,
+        oldText: "const old = 1;",
+        newText: "const next = 1;",
+      },
+      false,
+    );
+
+    expect(read.render(80).map(stripAnsi)).not.toContain("const value = 1;");
+
+    for (const block of [write, edit]) {
+      expect(block.render(80).join("\n")).toContain("\x1b[38;2;");
+    }
+
+    expect(
+      edit
+        .render(80)
+        .filter((line) => stripAnsi(line).startsWith("- ") || stripAnsi(line).startsWith("+ "))
+        .every((line) => line.endsWith("\x1b[K\x1b[0m")),
+    ).toBe(true);
+  });
+
+  test("marks oversized edit diff lines as truncated", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "edit",
+      args: {
+        path: "src/app.ts",
+      },
+    });
+
+    block.updateResult(
+      {
+        path: "src/app.ts",
+        replacements: 1,
+        oldText: "abcdefghijk",
+        newText: "abcdefghijk",
+      },
+      false,
+    );
+
+    expect(block.render(8).map(stripAnsi)).toContain("- abc...");
+    expect(block.render(8).map(stripAnsi)).toContain("+ abc...");
+  });
+
   test("renders failed multiline bash command titles as separate logical lines", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
@@ -386,8 +467,11 @@ describe("tui transcript", () => {
     const lines = block.render(120).map(stripAnsi);
 
     expect(lines.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
-    expect(lines).toContain('Failed to run git commit -m "feat: add something');
-    expect(lines).toContain('Co-authored-by: Name <email@example.com>"');
+    expect(lines).toContain("◆ Failed to run");
+    expect(lines).toContain('  └ git commit -m "feat: add something');
+    expect(lines.some((line) => line.includes('Co-authored-by: Name <email@example.com>"'))).toBe(
+      true,
+    );
     expect(lines).toContain("Tool call rejected by user.");
   });
 
@@ -406,7 +490,8 @@ describe("tui transcript", () => {
 
     const runningLines = block.render(32).map(stripAnsi);
 
-    expect(runningLines.join("")).toContain(`Running ${command}... (Esc to abort)`);
+    expect(runningLines).toContain("◆ Running (Esc to abort)");
+    expect(runningLines.join("\n")).toContain("  └ printf segment-0");
     expect(runningLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
 
     block.updateResult(
@@ -420,7 +505,8 @@ describe("tui transcript", () => {
 
     const completedLines = block.render(32).map(stripAnsi);
 
-    expect(completedLines.join("")).toContain(`Ran ${command}`);
+    expect(completedLines).toContain("◆ Ran");
+    expect(completedLines.join("\n")).toContain("  └ printf segment-0");
     expect(completedLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
   });
 
@@ -450,7 +536,7 @@ describe("tui transcript", () => {
     expect(transcript.render(80)).toEqual([]);
   });
 
-  test("shows the output hint only on the latest inspectable tool", () => {
+  test("does not render output shortcut hints in tool titles", () => {
     const transcript = new Transcript();
     const first = new ToolCallBlock({
       type: "tool_call",
@@ -490,81 +576,9 @@ describe("tui transcript", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).toContain("Ran first");
-    expect(lines).not.toContain("Ran first (Ctrl+O to expand)");
-    expect(lines).toContain("Ran second (Ctrl+O to expand)");
-  });
-
-  test("moves the output hint back when newer tools are not expandable", () => {
-    const transcript = new Transcript();
-    const first = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_1",
-      name: "bash",
-      args: {
-        command: "first",
-      },
-    });
-    const second = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_2",
-      name: "bash",
-      args: {
-        command: "second",
-      },
-    });
-
-    first.updateResult(
-      {
-        command: "first",
-        exitCode: 0,
-        stdout: Array.from({ length: 10 }, (_, index) => `first line ${index + 1}`).join("\n"),
-      },
-      false,
-    );
-    second.updateResult(
-      {
-        command: "second",
-        exitCode: 0,
-        stdout: "short output",
-      },
-      false,
-    );
-    transcript.addChild(first);
-    transcript.addChild(second);
-
-    const lines = transcript.render(100).map(stripAnsi);
-
-    expect(lines).not.toContain("Ran first");
-    expect(lines).toContain("Ran first (Ctrl+O to expand)");
-    expect(lines).toContain("Ran second");
-    expect(lines).not.toContain("Ran second (Ctrl+O to expand)");
-  });
-
-  test("does not show the output hint when the latest tool output is already visible", () => {
-    const transcript = new Transcript();
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_1",
-      name: "bash",
-      args: {
-        command: "short",
-      },
-    });
-
-    block.updateResult(
-      {
-        command: "short",
-        exitCode: 0,
-        stdout: "short output",
-      },
-      false,
-    );
-    transcript.addChild(block);
-
-    const lines = transcript.render(100).map(stripAnsi);
-
-    expect(lines).toContain("Ran short");
-    expect(lines).not.toContain("Ran short (Ctrl+O to expand)");
+    expect(lines).toContain("◆ Ran");
+    expect(lines).toContain("  └ first");
+    expect(lines).toContain("  └ second");
+    expect(lines.join("\n")).not.toContain("Ctrl+O");
   });
 });

@@ -1,16 +1,16 @@
 import type { ToolCallContent } from "@/core";
-import { color, truncateToWidth, wrapPlainText } from "../../render";
+import { bold, color, truncateToWidth, visibleWidth, wrapPlainText } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import {
   formatToolOutput,
   formatToolTitle,
+  formatToolTranscriptTitle,
   hasExpandableToolOutput,
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
 import type { ContentView } from "../content-viewer";
-import { TextBlock } from "./text-block";
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
@@ -22,7 +22,6 @@ export class ToolCallBlock implements Component {
   private cachedWidth?: number;
   private cachedVersion?: number;
   private cachedLines?: string[];
-  private outputHintVisible = false;
 
   constructor(private readonly toolCall: ToolCallContent) {}
 
@@ -56,15 +55,6 @@ export class ToolCallBlock implements Component {
     this.cachedLines = undefined;
   }
 
-  setOutputHintVisible(visible: boolean): void {
-    if (this.outputHintVisible === visible) {
-      return;
-    }
-
-    this.outputHintVisible = visible;
-    this.invalidate();
-  }
-
   render(width: number): string[] {
     if (
       this.cachedLines &&
@@ -82,8 +72,9 @@ export class ToolCallBlock implements Component {
         : tuiTheme.toolActive;
     const lines = ["", ...this.renderTitle(width, titleColor)];
     lines.push(...this.renderOutput(width, "compact"));
+    lines.push("");
 
-    const rendered = lines.map((line) => truncateToWidth(line, width, ""));
+    const rendered = lines.map((line) => truncateToWidth(line, width));
 
     this.cachedWidth = width;
     this.cachedVersion = this.renderVersion;
@@ -93,7 +84,7 @@ export class ToolCallBlock implements Component {
   }
 
   getResultView(): ContentView | undefined {
-    if (!this.hasInspectableOutput()) {
+    if (!this.hasInspectableOutput() || this.toolCall.name === "read") {
       return undefined;
     }
 
@@ -129,35 +120,34 @@ export class ToolCallBlock implements Component {
       this.result ?? this.partialResult,
       this.isError,
       detail,
+      width,
     );
-
-    if (typeof output === "string" && output) {
-      return new TextBlock(output, {
-        color: this.isError ? tuiTheme.error : tuiTheme.toolOutput,
-      }).render(width);
-    }
-
-    return Array.isArray(output) ? output : [];
+    return output;
   }
 
   private renderTitle(width: number, titleColor: Parameters<typeof color>[1]): string[] {
-    const title = formatToolTitle(this.toolCall, this.currentState(), this.result, {
-      showOutputHint: this.outputHintVisible,
-    });
+    const title = formatToolTranscriptTitle(this.toolCall, this.currentState(), this.result);
+    const lines = [colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor)];
+    const prefix = "  └ ";
+    const continuationPrefix = " ".repeat(visibleWidth(prefix));
 
-    return wrapPlainText(title, width).map((line) => colorTitleWithShortcutHint(line, titleColor));
+    if (title.target) {
+      for (const [index, line] of wrapPlainText(
+        title.target,
+        Math.max(1, width - visibleWidth(prefix)),
+      ).entries()) {
+        lines.push(`${index === 0 ? prefix : continuationPrefix}${line}`);
+      }
+    }
+
+    return lines;
   }
 }
 
-function colorTitleWithShortcutHint(line: string, titleColor: Parameters<typeof color>[1]): string {
-  const match =
-    /^(.*?)( \((?:Esc to abort|Ctrl\+O to expand)(?:, (?:Esc to abort|Ctrl\+O to expand))*\))$/.exec(
-      line,
-    );
-
-  if (!match) {
-    return color(line, titleColor);
-  }
-
-  return `${color(match[1], titleColor)}${color(match[2], tuiTheme.shortcutHint)}`;
+function colorTitleWithShortcutHint(
+  activity: string,
+  hint: string | undefined,
+  titleColor: Parameters<typeof color>[1],
+): string {
+  return `${bold(color(activity, titleColor))}${hint ? color(` (${hint})`, tuiTheme.shortcutHint) : ""}`;
 }

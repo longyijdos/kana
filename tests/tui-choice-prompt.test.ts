@@ -16,7 +16,7 @@ describe("choice prompt", () => {
     });
 
     expect(prompt.render(80).map(stripAnsi)).toEqual([
-      "",
+      "─".repeat(80),
       "Delete session?",
       "Example session",
       "> No, keep it",
@@ -39,7 +39,7 @@ describe("choice prompt", () => {
     const rendered = prompt.render(16).map(stripAnsi);
 
     expect(rendered).toEqual([
-      "",
+      "─".repeat(16),
       "Run command?",
       "bash -lc 'printf",
       " hello && printf",

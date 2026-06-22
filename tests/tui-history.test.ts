@@ -58,9 +58,10 @@ describe("tui history transcript", () => {
     expect(lines).toContain("> show package");
     expect(lines).toContain("I'll inspect it.");
     expect(lines).not.toContain("thinking (Esc to abort)");
-    expect(lines).toContain("Read package.json");
-    expect(lines).toContain("{");
-    expect(lines).toContain('  "private": true');
+    expect(lines).toContain("◆ Read");
+    expect(lines).toContain("  └ package.json");
+    expect(lines).toContain("package.json:1-3 of 3");
+    expect(lines).not.toContain('  "private": true');
   });
 
   test("renders tool results even when the original tool call is missing", () => {
@@ -81,7 +82,8 @@ describe("tui history transcript", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).toContain("Failed to run bash");
+    expect(lines).toContain("◆ Failed to run");
+    expect(lines).toContain("  └ bash");
     expect(lines).toContain("no call");
   });
 });

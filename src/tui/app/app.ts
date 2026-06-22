@@ -18,6 +18,7 @@ import type {
 } from "@/kana";
 import {
   Editor,
+  MarkdownBlock,
   StatusLine,
   type StatusLineState,
   TextBlock,
@@ -424,16 +425,20 @@ export class KanaTuiApp {
 
   private openMemoryViewer(target: "user" | "workspace" | undefined): void {
     const memoryTargets = target ? [target] : (["user", "workspace"] as const);
-    const content = memoryTargets.flatMap((memoryTarget, index) => [
-      ...(index > 0 ? [""] : []),
-      `# ${memoryTarget === "user" ? "User" : "Workspace"} memory`,
-      "",
-      this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
-    ]);
+    const markdown = new MarkdownBlock(
+      memoryTargets
+        .flatMap((memoryTarget, index) => [
+          ...(index > 0 ? [""] : []),
+          `# ${memoryTarget === "user" ? "User" : "Workspace"} memory`,
+          "",
+          this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
+        ])
+        .join("\n"),
+    );
 
     this.contentViewer.open({
       title: "Memory",
-      render: () => content,
+      render: (contentWidth) => markdown.render(contentWidth),
     });
   }
 
@@ -446,6 +451,7 @@ export class KanaTuiApp {
       COMMAND_MESSAGES.shellShortcutsTitle,
       "",
       COMMAND_MESSAGES.shellShortcut,
+      COMMAND_MESSAGES.toolShortcut,
     ];
 
     this.editor.clear();
