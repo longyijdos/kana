@@ -353,6 +353,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.showHelp();
         break;
       case "clear":
@@ -372,6 +373,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.startNewSession();
         break;
       case "fork":
@@ -380,6 +382,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         void this.forkSession(command.arguments);
         break;
       case "resume":
@@ -388,6 +391,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.openResumePicker();
         break;
       case "delete":
@@ -396,6 +400,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.openDeletePicker();
         break;
       case "skills":
@@ -404,6 +409,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.openSkillManager();
         break;
       case "memory":
@@ -419,6 +425,7 @@ export class KanaTuiApp {
     const [subcommand, ...argumentsParts] = argumentsText.trim().split(/\s+/).filter(Boolean);
 
     if (subcommand === "compact") {
+      this.editor.clear();
       void this.memoryCompact.compact(argumentsParts.join(" "));
       return;
     }
@@ -432,6 +439,7 @@ export class KanaTuiApp {
         return;
       }
 
+      this.editor.clear();
       this.openMemoryViewer(target);
       return;
     }
@@ -465,6 +473,7 @@ export class KanaTuiApp {
       return;
     }
     const summary = this.options.loadUsage(scope);
+    this.editor.clear();
     this.transcript.addChild(new UsageSummaryBlock(summary));
     this.updateStatus("idle", { activeTool: undefined });
     this.tui.requestRender();
