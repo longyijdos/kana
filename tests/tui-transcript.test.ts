@@ -117,7 +117,7 @@ describe("tui transcript", () => {
 
     const rendered = block.render(80).map(stripAnsi).filter(Boolean);
 
-    expect(rendered).toEqual(["◆ Scheduled wake", "  └ in 30 minutes"]);
+    expect(rendered).toEqual(["◆ Scheduled wake", "  └ in 30 minutes", "    Check the task."]);
   });
 
   test("does not render assistant stop reasons as transcript content", () => {

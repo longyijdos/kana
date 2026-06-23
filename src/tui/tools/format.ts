@@ -152,9 +152,11 @@ function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
 
   if (toolCall.name === "schedule_wake") {
     const afterMinutes = getNumberProperty(toolCall.args, "afterMinutes");
+    const message = getStringProperty(toolCall.args, "message");
 
     if (afterMinutes !== undefined) {
-      return `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
+      const delay = `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
+      return message ? `${delay}\n${message}` : delay;
     }
   }
 
