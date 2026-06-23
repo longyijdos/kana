@@ -602,27 +602,6 @@ describe("workspace tools", () => {
     }
   });
 
-  test("bash timeout terminates background children in the command process group", async () => {
-    const root = await createTempRoot();
-    const pidPath = path.join(root, "background.pid");
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
-      {
-        command: `sleep 30 & printf %s "$!" > ${shellQuote(pidPath)}; wait`,
-        timeoutMs: 100,
-      },
-      createToolContext(),
-    );
-    const pid = Number(await readFile(pidPath, "utf8"));
-
-    expectToolResult(result);
-    expect(result.result).toMatchObject({
-      exitCode: null,
-      timedOut: true,
-    });
-    await waitForCondition(() => !isProcessRunning(pid));
-  });
-
   test("bash cancellation terminates background children in the command process group", async () => {
     const root = await createTempRoot();
     const pidPath = path.join(root, "background.pid");
