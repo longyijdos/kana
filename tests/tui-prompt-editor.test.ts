@@ -117,7 +117,7 @@ describe("prompt editor", () => {
         "> /quit     Exit Kana.",
         "  /help     Show slash commands.",
         "  /clear    Clear the transcript.",
-        "... 6 more commands",
+        "... 7 more commands",
       ]),
     );
 
@@ -140,7 +140,7 @@ describe("prompt editor", () => {
     expect(submissions).toEqual([
       {
         type: "command",
-        name: "memory",
+        name: "usage",
         arguments: "",
         raw: "/",
       },
@@ -673,6 +673,9 @@ describe("prompt commands", () => {
         },
         {
           name: "memory",
+        },
+        {
+          name: "usage",
         },
       ],
     });

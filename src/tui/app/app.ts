@@ -14,6 +14,8 @@ import type {
   KanaSessionMetadata,
   KanaToolApprovalConfig,
   KanaToolApprovals,
+  KanaUsageScope,
+  KanaUsageSummary,
   LoadKanaSkillActivationsResult,
 } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
@@ -79,6 +81,7 @@ export type KanaTuiAppOptions = {
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
   loadMemory: (target: "user" | "workspace") => string;
+  loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
 };
 
 export class KanaTuiApp {
@@ -405,6 +408,9 @@ export class KanaTuiApp {
       case "memory":
         this.handleMemoryCommand(command.arguments);
         break;
+      case "usage":
+        this.showUsage(command.arguments);
+        break;
     }
   }
 
@@ -449,6 +455,31 @@ export class KanaTuiApp {
       title: "Memory",
       render: (contentWidth) => markdown.render(contentWidth),
     });
+  }
+
+  private showUsage(argumentsText: string): void {
+    const scope = argumentsText.trim() || "session";
+    if (scope !== "session" && scope !== "project" && scope !== "global") {
+      this.showError(new Error(COMMAND_MESSAGES.usageUsage));
+      return;
+    }
+    const summary = this.options.loadUsage(scope);
+    const usage = summary.usage;
+    this.transcript.addChild(
+      new TextBlock(
+        [
+          `Usage (${scope})`,
+          `Cost: ${formatCny(summary.costCny)}`,
+          `Runs: ${summary.runCount} (main ${summary.mainRunCount}, memory ${summary.memoryRunCount})`,
+          usage
+            ? `Tokens: ${formatInteger(usage.totalTokens)} total, ${formatInteger(usage.promptTokens)} input, ${formatInteger(usage.completionTokens)} output`
+            : "Tokens: 0",
+        ].join("\n"),
+        { color: tuiTheme.muted, paddingTop: 1 },
+      ),
+    );
+    this.updateStatus("idle", { activeTool: undefined });
+    this.tui.requestRender();
   }
 
   private showHelp(): void {

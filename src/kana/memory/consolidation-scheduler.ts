@@ -3,6 +3,7 @@ import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaConfig } from "../config";
 import {
   formatIncrementalMemoryConsolidationInput,
+  type MemoryConsolidationResult,
   runMemoryConsolidation,
 } from "./consolidation-agent";
 import type { KanaMemoryEntry, KanaMemoryScope } from "./storage";
@@ -15,6 +16,7 @@ export type ScheduleMemoryConsolidationOptions = {
   // A background run must retain the logger for the session that scheduled it.
   // The active TUI session can change before the queued work actually starts.
   logger?: Logger;
+  onCompleted?: (scope: KanaMemoryScope, result: MemoryConsolidationResult) => void;
 };
 
 export type MemoryConsolidationQueue = {
@@ -29,7 +31,7 @@ export type CreateMemoryConsolidationSchedulerOptions = {
     scope: KanaMemoryScope,
     entries: KanaMemoryEntry[],
     logger: Logger,
-  ) => Promise<void>;
+  ) => Promise<MemoryConsolidationResult | undefined>;
   logger?: Logger;
 };
 
@@ -66,7 +68,7 @@ export function createMemoryConsolidationScheduler(
   const runIncremental =
     options.runIncremental ??
     (async (scope: KanaMemoryScope, entries: KanaMemoryEntry[], logger: Logger) => {
-      await runMemoryConsolidation(config, {
+      return runMemoryConsolidation(config, {
         scope,
         mode: "incremental",
         cwd: options.cwd,
@@ -92,7 +94,10 @@ export function createMemoryConsolidationScheduler(
         ),
       });
       const jobs = [...entriesByScope].map(([scope, entries]) => {
-        return queue.enqueue(scope, () => runIncremental(scope, entries, logger));
+        return queue.enqueue(scope, async () => {
+          const result = await runIncremental(scope, entries, logger);
+          if (result) scheduleOptions.onCompleted?.(scope, result);
+        });
       });
 
       return Promise.all(jobs).then(() => undefined);
