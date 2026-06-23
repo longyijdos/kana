@@ -97,6 +97,29 @@ describe("tui transcript", () => {
     expect(rendered).toEqual(["◆ Saved memory", "  └ global"]);
   });
 
+  test("renders a completed scheduled wake as a compact semantic tool block", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_wake",
+      name: "schedule_wake",
+      args: {
+        afterMinutes: 30,
+        message: "Check the task.",
+      },
+    });
+    block.updateResult(
+      {
+        id: "wake_123",
+        dueAt: "2026-06-24T08:30:00.000Z",
+      },
+      false,
+    );
+
+    const rendered = block.render(80).map(stripAnsi).filter(Boolean);
+
+    expect(rendered).toEqual(["◆ Scheduled wake", "  └ in 30 minutes"]);
+  });
+
   test("does not render assistant stop reasons as transcript content", () => {
     const block = new AssistantMessageBlock();
 

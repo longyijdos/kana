@@ -86,4 +86,20 @@ describe("tui history transcript", () => {
     expect(lines).toContain("  └ bash");
     expect(lines).toContain("no call");
   });
+
+  test("renders restored scheduled input consistently with a live wake", () => {
+    const transcript = new Transcript();
+
+    addHistoryMessagesToTranscript(transcript, [
+      {
+        role: "user",
+        source: "scheduled",
+        content: "[Scheduled wake event]\nCheck the long-running task.",
+      },
+    ]);
+
+    expect(transcript.render(100).map(stripAnsi)).toContain(
+      "Scheduled wake: Check the long-running task.",
+    );
+  });
 });

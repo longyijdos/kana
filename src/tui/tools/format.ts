@@ -111,6 +111,7 @@ export function formatToolOutput(
     case "bash":
       return renderText(formatBashOutput(sanitizedResult, detail), width, tuiTheme.toolOutput);
     case "remember":
+    case "schedule_wake":
       return [];
   }
 
@@ -147,6 +148,14 @@ function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
     return (
       getStringProperty(result, "scope") ?? getStringProperty(toolCall.args, "scope") ?? "project"
     );
+  }
+
+  if (toolCall.name === "schedule_wake") {
+    const afterMinutes = getNumberProperty(toolCall.args, "afterMinutes");
+
+    if (afterMinutes !== undefined) {
+      return `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
+    }
   }
 
   const path = getStringProperty(toolCall.args, "path");
@@ -292,6 +301,13 @@ function toolText(
         approvalTitle: "Allow agent to save memory?",
         doneTitle: `Saved ${target} memory`,
         runningActivity: `saving ${target} memory`,
+      };
+    case "schedule_wake":
+      return {
+        action: "schedule wake",
+        approvalTitle: "Allow agent to schedule a wake?",
+        doneTitle: `Scheduled wake ${target}`,
+        runningActivity: `scheduling wake ${target}`,
       };
     default:
       return {
