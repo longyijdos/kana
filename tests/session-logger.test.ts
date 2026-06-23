@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createSessionLogger } from "@/logging";
+import { createSessionLogger, createSessionLogManager } from "@/logging";
 
 const tempDirs: string[] = [];
 
@@ -90,6 +90,25 @@ describe("session logger", () => {
     expect(readLogRecords(logPath).map((record) => (record as { event: string }).event)).toEqual([
       "session.started",
       "session.resumed",
+    ]);
+  });
+
+  test("binds independent loggers to each requested session", () => {
+    const logDirectory = createTempDir();
+    const manager = createSessionLogManager({ level: "info" });
+    const firstPath = path.join(logDirectory, "first.jsonl");
+    const secondPath = path.join(logDirectory, "second.jsonl");
+
+    const firstLogger = manager.forSession({ path: firstPath, sessionId: "first" });
+    const secondLogger = manager.forSession({ path: secondPath, sessionId: "second" });
+    firstLogger.info("memory_consolidation.ended");
+    secondLogger.info("session.resumed");
+
+    expect(readLogRecords(firstPath)).toEqual([
+      expect.objectContaining({ event: "memory_consolidation.ended", sessionId: "first" }),
+    ]);
+    expect(readLogRecords(secondPath)).toEqual([
+      expect.objectContaining({ event: "session.resumed", sessionId: "second" }),
     ]);
   });
 

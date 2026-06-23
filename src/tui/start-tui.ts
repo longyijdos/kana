@@ -3,6 +3,7 @@ import {
   appendKanaSessionMessages,
   createKanaAgent,
   createKanaSession,
+  createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
   deleteKanaSession,
   getKanaSessionLogPath,
@@ -15,7 +16,7 @@ import {
   runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
-import { createLoggerRouter, createNoopLogger, createSessionLogger } from "@/logging";
+import { createNoopLogger, createSessionLogManager } from "@/logging";
 import { KanaTuiApp } from "./app/app";
 import type { MemoryCompactSummary } from "./app/memory-compact-controller";
 import { ProcessTerminal } from "./runtime";
@@ -28,10 +29,11 @@ export type StartTuiOptions = {
 
 export function startTui(options: StartTuiOptions = {}): void {
   const config = loadKanaConfig();
-  const logRouter = createLoggerRouter();
+  const logManager = createSessionLogManager({ level: config.logging.level });
   const toolApprovals = loadKanaToolApprovals();
+  const memoryConsolidationQueue = createMemoryConsolidationQueue();
   const memoryConsolidation = config.memory.enabled
-    ? createMemoryConsolidationScheduler(config, { logger: logRouter.logger })
+    ? createMemoryConsolidationScheduler(config, { queue: memoryConsolidationQueue })
     : undefined;
   const createSession = (parentSessionPath?: string, title?: string) =>
     createKanaSession({
@@ -50,36 +52,37 @@ export function startTui(options: StartTuiOptions = {}): void {
           metadata: createSession(),
           messages: [],
         };
+  let sessionLogger = createNoopLogger();
   const activateSessionLogger = (nextSession: typeof session): void => {
-    logRouter.setLogger(
-      nextSession
-        ? createSessionLogger({
-            path: getKanaSessionLogPath(nextSession.metadata.id, { cwd: nextSession.metadata.cwd }),
-            sessionId: nextSession.metadata.id,
-            level: config.logging.level,
-          })
-        : createNoopLogger(),
-    );
+    sessionLogger = nextSession
+      ? logManager.forSession({
+          path: getKanaSessionLogPath(nextSession.metadata.id, { cwd: nextSession.metadata.cwd }),
+          sessionId: nextSession.metadata.id,
+        })
+      : createNoopLogger();
   };
   activateSessionLogger(session);
   if (session) {
-    logRouter.logger.info("session.started", { resumed: options.resumeSessionId !== undefined });
+    sessionLogger.info("session.started", { resumed: options.resumeSessionId !== undefined });
   }
   let resumeSessionId = options.resumeSessionId ? session?.metadata.id : undefined;
   let pendingForkMessages: Message[] | undefined;
 
   const app = new KanaTuiApp(
-    (agentOptions) =>
-      createKanaAgent(config, {
+    (agentOptions) => {
+      // Each Agent retains this concrete logger for its full lifetime. It must
+      // never resolve the active session again after an asynchronous run starts.
+      const agentLogger = sessionLogger;
+
+      return createKanaAgent(config, {
         ...agentOptions,
-        logger: logRouter.logger,
+        logger: agentLogger,
         messages: agentOptions.messages ?? session?.messages,
         onRunCommitted: ({ messages }) => {
           session ??= {
             metadata: createSession(),
             messages: [],
           };
-          activateSessionLogger(session);
           const messagesToPersist = pendingForkMessages
             ? [...pendingForkMessages, ...messages]
             : messages;
@@ -87,7 +90,7 @@ export function startTui(options: StartTuiOptions = {}): void {
           try {
             appendKanaSessionMessages(session.metadata, messagesToPersist);
           } catch (error) {
-            logRouter.logger.error("session.append_failed", { error });
+            agentLogger.error("session.append_failed", { error });
             throw error;
           }
           session.messages = [...session.messages, ...messages];
@@ -98,12 +101,14 @@ export function startTui(options: StartTuiOptions = {}): void {
           }
 
           // Keep consolidation off the completed conversation's critical path;
-          // the scheduler serializes each scope's read-modify-write jobs.
-          void memoryConsolidation?.schedule(messages).catch((error) => {
-            logRouter.logger.error("memory_consolidation.failed", { error });
+          // the shared queue serializes each scope's read-modify-write jobs.
+          const memoryLogger = agentLogger;
+          void memoryConsolidation?.schedule(messages, { logger: memoryLogger }).catch((error) => {
+            memoryLogger.error("memory_consolidation.failed", { error });
           });
         },
-      }),
+      });
+    },
     new ProcessTerminal(config.notification),
     {
       sessionId: session?.metadata.id,
@@ -117,7 +122,7 @@ export function startTui(options: StartTuiOptions = {}): void {
           messages: [],
         };
         activateSessionLogger(session);
-        logRouter.logger.info("session.created");
+        sessionLogger.info("session.created");
         resumeSessionId = undefined;
         pendingForkMessages = undefined;
 
@@ -137,7 +142,7 @@ export function startTui(options: StartTuiOptions = {}): void {
           messages,
         };
         activateSessionLogger(session);
-        logRouter.logger.info("session.forked", { sourceSessionId: source.metadata.id });
+        sessionLogger.info("session.forked", { sourceSessionId: source.metadata.id });
         resumeSessionId = undefined;
         pendingForkMessages = messages;
 
@@ -155,7 +160,7 @@ export function startTui(options: StartTuiOptions = {}): void {
       loadSession: (sessionId) => {
         session = loadKanaSession(sessionId, { cwd: process.cwd() });
         activateSessionLogger(session);
-        logRouter.logger.info("session.resumed");
+        sessionLogger.info("session.resumed");
         resumeSessionId = session.metadata.id;
         pendingForkMessages = undefined;
 
@@ -172,8 +177,9 @@ export function startTui(options: StartTuiOptions = {}): void {
         approvals: toolApprovals,
       },
       notification: config.notification,
-      logger: logRouter.logger,
+      getLogger: () => sessionLogger,
       compactMemory: async (target, userRequest, signal) => {
+        const memoryLogger = sessionLogger;
         const scopes: Array<"global" | "project"> =
           target === "user"
             ? ["global"]
@@ -185,13 +191,15 @@ export function startTui(options: StartTuiOptions = {}): void {
           scopes.map(async (scope): Promise<MemoryCompactSummary> => {
             const targetName = scope === "global" ? "user" : "workspace";
             try {
-              const result = await runFullMemoryConsolidation(config, {
-                scope,
-                cwd: process.cwd(),
-                userRequest,
-                signal,
-                logger: logRouter.logger,
-              });
+              const result = await memoryConsolidationQueue.enqueue(scope, () =>
+                runFullMemoryConsolidation(config, {
+                  scope,
+                  cwd: process.cwd(),
+                  userRequest,
+                  signal,
+                  logger: memoryLogger,
+                }),
+              );
               return { target: targetName, outcome: result.outcome };
             } catch (error) {
               return {

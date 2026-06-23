@@ -24,7 +24,7 @@ export type MemoryCompactControllerOptions = {
     userRequest: string | undefined,
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
-  logger?: Logger;
+  getLogger?: () => Logger;
 };
 
 export class MemoryCompactController {
@@ -39,7 +39,7 @@ export class MemoryCompactController {
 
     this.abortController.abort();
     this.options.updateStatus("aborted");
-    (this.options.logger ?? createNoopLogger()).info("memory_compact.abort_requested");
+    (this.options.getLogger ?? createNoopLogger)().info("memory_compact.abort_requested");
     return true;
   }
 
@@ -49,7 +49,7 @@ export class MemoryCompactController {
     }
 
     const { target, userRequest } = parseMemoryCompactArguments(argumentsText);
-    const logger = this.options.logger ?? createNoopLogger();
+    const logger = (this.options.getLogger ?? createNoopLogger)();
     const abortController = new AbortController();
     this.abortController = abortController;
     this.options.editor.clear();

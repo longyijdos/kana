@@ -8,25 +8,64 @@ import {
 import type { KanaMemoryEntry, KanaMemoryScope } from "./storage";
 
 export type MemoryConsolidationScheduler = {
-  schedule(messages: Message[]): Promise<void>;
+  schedule(messages: Message[], options?: ScheduleMemoryConsolidationOptions): Promise<void>;
+};
+
+export type ScheduleMemoryConsolidationOptions = {
+  // A background run must retain the logger for the session that scheduled it.
+  // The active TUI session can change before the queued work actually starts.
+  logger?: Logger;
+};
+
+export type MemoryConsolidationQueue = {
+  enqueue<T>(scope: KanaMemoryScope, operation: () => Promise<T>): Promise<T>;
 };
 
 export type CreateMemoryConsolidationSchedulerOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  runIncremental?: (scope: KanaMemoryScope, entries: KanaMemoryEntry[]) => Promise<void>;
+  queue?: MemoryConsolidationQueue;
+  runIncremental?: (
+    scope: KanaMemoryScope,
+    entries: KanaMemoryEntry[],
+    logger: Logger,
+  ) => Promise<void>;
   logger?: Logger;
 };
+
+export function createMemoryConsolidationQueue(): MemoryConsolidationQueue {
+  const tails = new Map<KanaMemoryScope, Promise<void>>();
+
+  return {
+    enqueue(scope, operation) {
+      const previous = tails.get(scope) ?? Promise.resolve();
+      const result = previous.catch(() => undefined).then(operation);
+      const tail = result.then(
+        () => undefined,
+        () => undefined,
+      );
+
+      tails.set(scope, tail);
+      void tail.finally(() => {
+        if (tails.get(scope) === tail) {
+          tails.delete(scope);
+        }
+      });
+
+      return result;
+    },
+  };
+}
 
 export function createMemoryConsolidationScheduler(
   config: KanaConfig,
   options: CreateMemoryConsolidationSchedulerOptions = {},
 ): MemoryConsolidationScheduler {
-  const logger = options.logger ?? createNoopLogger();
-  const queuedRuns = new Map<KanaMemoryScope, Promise<void>>();
+  const defaultLogger = options.logger ?? createNoopLogger();
+  const queue = options.queue ?? createMemoryConsolidationQueue();
   const runIncremental =
     options.runIncremental ??
-    (async (scope: KanaMemoryScope, entries: KanaMemoryEntry[]) => {
+    (async (scope: KanaMemoryScope, entries: KanaMemoryEntry[], logger: Logger) => {
       await runMemoryConsolidation(config, {
         scope,
         mode: "incremental",
@@ -38,12 +77,13 @@ export function createMemoryConsolidationScheduler(
     });
 
   return {
-    schedule(messages) {
+    schedule(messages, scheduleOptions = {}) {
       const entriesByScope = collectRememberedEntries(messages);
       if (entriesByScope.size === 0) {
         return Promise.resolve();
       }
 
+      const logger = scheduleOptions.logger ?? defaultLogger;
       logger.info("memory_consolidation.scheduled", {
         scopeCount: entriesByScope.size,
         entryCount: [...entriesByScope.values()].reduce(
@@ -52,11 +92,7 @@ export function createMemoryConsolidationScheduler(
         ),
       });
       const jobs = [...entriesByScope].map(([scope, entries]) => {
-        const previousRun = queuedRuns.get(scope) ?? Promise.resolve();
-        const run = previousRun.catch(() => undefined).then(() => runIncremental(scope, entries));
-
-        queuedRuns.set(scope, run);
-        return run;
+        return queue.enqueue(scope, () => runIncremental(scope, entries, logger));
       });
 
       return Promise.all(jobs).then(() => undefined);

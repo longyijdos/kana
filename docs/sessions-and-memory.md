@@ -86,7 +86,7 @@ reason: "可选原因"
 
 ## 记忆合并
 
-一次对话成功提交后，调度器从本轮 `remember` 的成功工具结果中按 scope 收集条目。每个 scope 的任务独立，但同一 scope 的任务通过 promise 队列串行运行，避免并发的读—改—写覆盖。
+一次对话成功提交后，调度器从本轮 `remember` 的成功工具结果中按 scope 收集条目。每个 scope 的任务独立，但增量合并和手动全量合并会共享同一 scope 的 promise 队列串行运行，避免并发的读—改—写覆盖。
 
 ```text
 remember 成功

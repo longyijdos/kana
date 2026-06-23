@@ -11,7 +11,7 @@ export type LocalShellControllerOptions = {
   setRunning: (running: boolean) => void;
   clearRunStatus: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
-  logger?: Logger;
+  getLogger?: () => Logger;
 };
 
 export class LocalShellController {
@@ -27,13 +27,13 @@ export class LocalShellController {
 
     this.abortController.abort();
     this.options.updateStatus("aborted");
-    (this.options.logger ?? createNoopLogger()).info("local_shell.abort_requested");
+    (this.options.getLogger ?? createNoopLogger)().info("local_shell.abort_requested");
     return true;
   }
 
   async submit(command: string): Promise<void> {
     const shellCommand = command.trim();
-    const logger = this.options.logger ?? createNoopLogger();
+    const logger = (this.options.getLogger ?? createNoopLogger)();
 
     if (!shellCommand) {
       return;

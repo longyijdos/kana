@@ -86,7 +86,7 @@ The host generates metadata and quotes field values as JSON strings. The date is
 
 ## Memory consolidation
 
-After a conversation is successfully committed, a scheduler collects successful `remember` tool results from that run by scope. Jobs for different scopes are independent, but jobs in the same scope run through a promise queue, avoiding concurrent read-modify-write overwrites.
+After a conversation is successfully committed, a scheduler collects successful `remember` tool results from that run by scope. Jobs for different scopes are independent, but incremental and manual full-compaction jobs in the same scope share one promise queue, avoiding concurrent read-modify-write overwrites.
 
 ```text
 successful remember

@@ -12,8 +12,11 @@ export {
 } from "./consolidation-agent";
 export {
   type CreateMemoryConsolidationSchedulerOptions,
+  createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
+  type MemoryConsolidationQueue,
   type MemoryConsolidationScheduler,
+  type ScheduleMemoryConsolidationOptions,
 } from "./consolidation-scheduler";
 export {
   createMemoryConsolidationTransaction,

@@ -29,6 +29,14 @@ export type CreateSessionLoggerOptions = {
   now?: () => Date;
 };
 
+export type SessionLogTarget = Pick<CreateSessionLoggerOptions, "path" | "sessionId">;
+
+export type SessionLogManager = {
+  forSession(target: SessionLogTarget): Logger;
+};
+
+export type CreateSessionLogManagerOptions = Pick<CreateSessionLoggerOptions, "level" | "now">;
+
 const LOG_LEVEL_PRIORITY: Record<ActiveLogLevel, number> = {
   debug: 10,
   info: 20,
@@ -43,29 +51,16 @@ export function createNoopLogger(): Logger {
   return NOOP_LOGGER;
 }
 
-export function createLoggerRouter(initialLogger: Logger = NOOP_LOGGER): {
-  logger: Logger;
-  setLogger(logger: Logger): void;
-} {
-  let currentLogger = initialLogger;
-
+export function createSessionLogManager(
+  options: CreateSessionLogManagerOptions,
+): SessionLogManager {
   return {
-    logger: {
-      debug(event, metadata) {
-        currentLogger.debug(event, metadata);
-      },
-      info(event, metadata) {
-        currentLogger.info(event, metadata);
-      },
-      warn(event, metadata) {
-        currentLogger.warn(event, metadata);
-      },
-      error(event, metadata) {
-        currentLogger.error(event, metadata);
-      },
-    },
-    setLogger(logger) {
-      currentLogger = logger;
+    forSession(target) {
+      return createSessionLogger({
+        ...target,
+        level: options.level,
+        now: options.now,
+      });
     },
   };
 }
