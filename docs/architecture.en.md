@@ -113,7 +113,7 @@ Tools use TypeBox schemas. Calls first run `Value.Convert`, then validation; onl
 - `read` reads text files with line pagination.
 - `write` creates only files that do not already exist.
 - `edit` performs exact string replacement in an existing file; multiple matches require explicit `replaceAll`.
-- `bash` uses the user's shell, defaults to a 30-second timeout with a 120-second maximum, retains at most 20,000 characters per output stream, and emits throttled progress updates. It overrides `sudo` with non-interactive mode to prevent it from competing for TUI input.
+- `bash` uses the user's shell, defaults to a 30-second timeout with a 120-second maximum, retains at most 20,000 characters per output stream, and emits throttled progress updates. Each command has a separate process group; cancellation and timeout terminate the whole group, and the tool briefly drains output after the top-level shell exits before returning so background children cannot stall a tool call. It overrides `sudo` with non-interactive mode to prevent it from competing for TUI input.
 - `remember` appends non-sensitive durable information to daily memory and never requires approval.
 
 Approval modes are `always`, `unless_trusted`, and `never`. In the default mode, `read` passes automatically; allowlisted simple read-only bash executable names and exact bash commands pass automatically; other tools show a TUI choice prompt. A user can add only the individual bash command to the exact allowlist. The read-only command check intentionally rejects shell composition characters, path-form executables, and newlines so a seemingly read-only compound command is not treated as safe.

@@ -7,6 +7,10 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;
+// A background child can inherit stdout/stderr after its shell exits. Give a
+// normally exiting shell a brief chance to drain its final output, then stop
+// reading so that child cannot keep the tool call open indefinitely.
+const OUTPUT_DRAIN_TIMEOUT_MS = 50;
 // Keep sudo from prompting on the TUI's raw terminal. It exits immediately
 // when credentials are required instead of competing with the editor for input.
 const NON_INTERACTIVE_COMMAND_PREFIX = 'sudo() { command sudo -n "$@"; }\n';
@@ -130,12 +134,12 @@ async function runCommand(
   timedOut: boolean;
 }> {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const signals = signal ? [signal, timeoutSignal] : [timeoutSignal];
-  const combinedSignal = AbortSignal.any(signals);
   const output: BashOutputSnapshot = {
     stdout: "",
     stderr: "",
   };
+  const outputController = new AbortController();
+  let removeAbortListeners: (() => void) | undefined;
 
   try {
     const proc = Bun.spawn([shell, "-lc", `${NON_INTERACTIVE_COMMAND_PREFIX}${command}`], {
@@ -143,14 +147,57 @@ async function runCommand(
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
-      signal: combinedSignal,
+      // On POSIX, this makes the shell the leader of a separate process group
+      // so cancellation can also terminate background children it started.
+      detached: true,
     });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      readOutputStream(proc.stdout, "stdout", output, onOutput),
-      readOutputStream(proc.stderr, "stderr", output, onOutput),
-      proc.exited,
-    ]);
+    const terminate = () => terminateCommandProcessTree(proc);
+    const abortSignals = [timeoutSignal, signal].filter(
+      (candidate): candidate is AbortSignal => candidate !== undefined,
+    );
+
+    for (const abortSignal of abortSignals) {
+      abortSignal.addEventListener("abort", terminate, { once: true });
+
+      if (abortSignal.aborted) {
+        terminate();
+      }
+    }
+    removeAbortListeners = () => {
+      for (const abortSignal of abortSignals) {
+        abortSignal.removeEventListener("abort", terminate);
+      }
+    };
+
+    const stdoutPromise = readOutputStream(
+      proc.stdout,
+      "stdout",
+      output,
+      onOutput,
+      outputController.signal,
+    );
+    const stderrPromise = readOutputStream(
+      proc.stderr,
+      "stderr",
+      output,
+      onOutput,
+      outputController.signal,
+    );
+    const outputPromise = Promise.all([stdoutPromise, stderrPromise]);
+    const exitCode = await proc.exited;
+
+    await Promise.race([outputPromise, delay(OUTPUT_DRAIN_TIMEOUT_MS)]);
+    outputController.abort();
+    const [stdout, stderr] = await outputPromise;
+
+    removeAbortListeners();
+    removeAbortListeners = undefined;
+
     const timedOut = timeoutSignal.aborted;
+
+    if (!timedOut && signal?.aborted) {
+      throw new Error("Command aborted.");
+    }
 
     return {
       exitCode: timedOut ? null : exitCode,
@@ -159,6 +206,8 @@ async function runCommand(
       timedOut,
     };
   } catch (error) {
+    removeAbortListeners?.();
+
     if (timeoutSignal.aborted) {
       return {
         exitCode: null,
@@ -166,6 +215,10 @@ async function runCommand(
         stderr: output.stderr || `Command timed out after ${timeoutMs}ms.`,
         timedOut: true,
       };
+    }
+
+    if (signal?.aborted) {
+      throw new Error("Command aborted.");
     }
 
     throw error;
@@ -177,9 +230,15 @@ async function readOutputStream(
   name: keyof BashOutputSnapshot,
   output: BashOutputSnapshot,
   onOutput: ((output: BashOutputSnapshot) => void) | undefined,
+  signal: AbortSignal,
 ): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
+  const cancelReader = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+
+  signal.addEventListener("abort", cancelReader, { once: true });
 
   try {
     while (true) {
@@ -214,8 +273,23 @@ async function readOutputStream(
 
     return output[name];
   } finally {
+    signal.removeEventListener("abort", cancelReader);
     reader.releaseLock();
   }
+}
+
+function terminateCommandProcessTree(proc: ReturnType<typeof Bun.spawn>): void {
+  try {
+    process.kill(-proc.pid, "SIGKILL");
+  } catch {
+    // The shell may have exited between cancellation and this call. Killing
+    // the direct child is still useful when it remains alive.
+    proc.kill("SIGKILL");
+  }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function resolveShell(shell: string | undefined): string {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -573,6 +574,78 @@ describe("workspace tools", () => {
     });
   });
 
+  test("bash returns after its shell exits when a background child keeps output pipes open", async () => {
+    const root = await createTempRoot();
+    const bash = createBashTool({ root });
+    const startedAt = performance.now();
+    const result = await bash.execute(
+      {
+        command: 'sleep 30 & printf %s "$!"',
+        timeoutMs: 2_000,
+      },
+      createToolContext(),
+    );
+    expectToolResult(result);
+    const pid = Number(result.result.stdout);
+
+    try {
+      expect(result.result).toMatchObject({
+        exitCode: 0,
+        timedOut: false,
+      });
+      expect(pid).toBeInteger();
+      expect(performance.now() - startedAt).toBeLessThan(1_000);
+    } finally {
+      if (Number.isInteger(pid)) {
+        process.kill(pid, "SIGKILL");
+      }
+    }
+  });
+
+  test("bash timeout terminates background children in the command process group", async () => {
+    const root = await createTempRoot();
+    const pidPath = path.join(root, "background.pid");
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: `sleep 30 & printf %s "$!" > ${shellQuote(pidPath)}; wait`,
+        timeoutMs: 100,
+      },
+      createToolContext(),
+    );
+    const pid = Number(await readFile(pidPath, "utf8"));
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: null,
+      timedOut: true,
+    });
+    await waitForCondition(() => !isProcessRunning(pid));
+  });
+
+  test("bash cancellation terminates background children in the command process group", async () => {
+    const root = await createTempRoot();
+    const pidPath = path.join(root, "background.pid");
+    const bash = createBashTool({ root });
+    const controller = new AbortController();
+    const execution = bash.execute(
+      {
+        command: `sleep 30 & printf %s "$!" > ${shellQuote(pidPath)}; wait`,
+      },
+      {
+        ...createToolContext(),
+        signal: controller.signal,
+      },
+    );
+
+    await waitForCondition(() => existsSync(pidPath));
+    controller.abort();
+
+    await expect(execution).rejects.toThrow("Command aborted.");
+    const pid = Number(await readFile(pidPath, "utf8"));
+    await waitForCondition(() => !isProcessRunning(pid));
+  });
+
   test("bash reports timeouts", async () => {
     const root = await createTempRoot();
     const bash = createBashTool({ root });
@@ -627,6 +700,15 @@ async function waitForCondition(condition: () => boolean, timeoutMs = 1_000): Pr
   }
 
   throw new Error("Timed out waiting for condition.");
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function shellQuote(value: string): string {
