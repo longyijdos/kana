@@ -62,7 +62,7 @@ Global input runs before the focused component:
 | `Ctrl+O` | Open/close the newest expandable tool output. |
 | `!<command>` | Run local bash directly without Agent or approval, displayed in the same tool block style. |
 
-The editor supports multiline input, five visible lines, history capped at 100 entries, arrow navigation, Home/End/Delete, bracketed paste, and slash completion. Editing, movement, and deletion work on grapheme boundaries. Up/down move inside soft/explicit lines first, then enter history at the boundary. A leading `/` opens the command palette; unknown slash input is sent as a normal model message.
+The editor supports multiline input, five visible lines, history capped at 100 entries, arrow navigation, Home/End/Delete, bracketed paste, and slash completion. Editing, movement, and deletion work on grapheme boundaries. Up/down move inside soft/explicit lines first, then enter history at the boundary. A leading `/` opens the command palette; it shows up to 10 commands, scrolls with the selection, and stops at either boundary; unknown slash input is sent as a normal model message.
 
 | Slash command | Behavior |
 | --- | --- |

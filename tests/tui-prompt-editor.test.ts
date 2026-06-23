@@ -103,6 +103,62 @@ describe("prompt editor", () => {
     expect(rendered).toContain(`${color("/quit", tuiTheme.command)} later`);
   });
 
+  test("paginates slash commands and stops selection at the list boundaries", () => {
+    const editor = new Editor(3);
+    const submissions: unknown[] = [];
+    editor.onSubmit = (submit) => {
+      submissions.push(submit);
+    };
+
+    editor.setText("/");
+
+    expect(editor.render(80).map(stripAnsi)).toEqual(
+      expect.arrayContaining([
+        "> /quit     Exit Kana.",
+        "  /help     Show slash commands.",
+        "  /clear    Clear the transcript.",
+        "... 6 more commands",
+      ]),
+    );
+
+    for (let index = 0; index < 8; index += 1) {
+      editor.handleInput("\x1b[B");
+    }
+
+    expect(editor.render(80).map(stripAnsi)).toEqual(
+      expect.arrayContaining([
+        "... 6 earlier commands",
+        "  /delete   Delete a saved session.",
+        "  /skills   Manage active skills.",
+        "> /memory   View or compact saved memory.",
+      ]),
+    );
+
+    editor.handleInput("\x1b[B");
+    editor.handleInput("\r");
+
+    expect(submissions).toEqual([
+      {
+        type: "command",
+        name: "memory",
+        arguments: "",
+        raw: "/",
+      },
+    ]);
+
+    for (let index = 0; index < 9; index += 1) {
+      editor.handleInput("\x1b[A");
+    }
+    editor.handleInput("\r");
+
+    expect(submissions.at(-1)).toEqual({
+      type: "command",
+      name: "quit",
+      arguments: "",
+      raw: "/",
+    });
+  });
+
   test("keeps multiline CJK editor rows inside the frame", () => {
     const editor = new Editor();
 

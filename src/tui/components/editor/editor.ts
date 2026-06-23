@@ -1,4 +1,4 @@
-import { color, normalizeLineEndings, padRightAnsi, truncateToWidth } from "../../render";
+import { color, dim, normalizeLineEndings, padRightAnsi, truncateToWidth } from "../../render";
 import type { Component } from "../../runtime";
 import {
   CURSOR_MARKER,
@@ -15,6 +15,7 @@ import {
   isUp,
 } from "../../runtime";
 import { tuiTheme } from "../../theme";
+import { ListViewport } from "../../utils/list-viewport";
 import {
   completeCommand,
   createCommandSubmit,
@@ -30,6 +31,7 @@ import {
 import { applyEditorAction, type EditorTextState } from "./state";
 
 const MAX_INPUT_LINES = 5;
+const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
 const PROMPT = "> ";
 const CONTINUATION_PROMPT = "  ";
 
@@ -40,7 +42,7 @@ export class Editor implements Component {
   };
   private history: string[] = [];
   private historyIndex = -1;
-  private selectedCommandIndex = 0;
+  private readonly commandViewport: ListViewport;
   private lastCommandQuery = "";
   private pasteBuffer = "";
   private isPasting = false;
@@ -48,6 +50,10 @@ export class Editor implements Component {
   private inputViewportStartLine: number | undefined;
 
   onSubmit?: (submit: PromptSubmit) => void;
+
+  constructor(commandPaletteVisibleLimit = COMMAND_PALETTE_VISIBLE_LIMIT) {
+    this.commandViewport = new ListViewport(commandPaletteVisibleLimit);
+  }
 
   getText(): string {
     return this.state.value;
@@ -126,7 +132,7 @@ export class Editor implements Component {
       const commandState = getCommandState(this.state.value);
       const submit = createCommandSubmit(
         this.state.value,
-        commandState.suggestions[this.selectedCommandIndex],
+        commandState.suggestions[this.commandViewport.selectedIndex],
       );
 
       if (submit) {
@@ -169,10 +175,7 @@ export class Editor implements Component {
       const commandState = getCommandState(this.state.value);
 
       if (commandState.showPalette && commandState.suggestions.length > 0) {
-        this.selectedCommandIndex = wrapIndex(
-          this.selectedCommandIndex + (isUp(data) ? -1 : 1),
-          commandState.suggestions.length,
-        );
+        this.commandViewport.move(isUp(data) ? -1 : 1, commandState.suggestions.length);
         return;
       }
 
@@ -186,7 +189,7 @@ export class Editor implements Component {
 
     if (isTab(data)) {
       const commandState = getCommandState(this.state.value);
-      const command = commandState.suggestions[this.selectedCommandIndex];
+      const command = commandState.suggestions[this.commandViewport.selectedIndex];
 
       if (commandState.showPalette && command) {
         this.setText(completeCommand(command));
@@ -254,14 +257,30 @@ export class Editor implements Component {
       return [color("No matching commands", tuiTheme.error)];
     }
 
-    return commandState.suggestions.map((command, index) => {
-      const prefix = index === this.selectedCommandIndex ? "> " : "  ";
+    const viewport = this.commandViewport.window(commandState.suggestions.length);
+    const lines: string[] = [];
+
+    if (viewport.hiddenBefore > 0) {
+      lines.push(dim(`... ${viewport.hiddenBefore} earlier commands`));
+    }
+
+    for (let index = viewport.start; index < viewport.end; index += 1) {
+      const command = commandState.suggestions[index];
+      const prefix = index === this.commandViewport.selectedIndex ? "> " : "  ";
       const line = `${prefix}/${command.name.padEnd(8)} ${command.description}`;
 
-      return index === this.selectedCommandIndex
-        ? color(truncateToWidth(line, width, ""), tuiTheme.commandSelected)
-        : truncateToWidth(line, width, "");
-    });
+      lines.push(
+        index === this.commandViewport.selectedIndex
+          ? color(truncateToWidth(line, width, ""), tuiTheme.commandSelected)
+          : truncateToWidth(line, width, ""),
+      );
+    }
+
+    if (viewport.hiddenAfter > 0) {
+      lines.push(dim(`... ${viewport.hiddenAfter} more commands`));
+    }
+
+    return lines;
   }
 
   private applyText(text: string): void {
@@ -361,13 +380,14 @@ export class Editor implements Component {
     const commandState = getCommandState(this.state.value);
 
     if (commandState.query !== this.lastCommandQuery) {
-      this.selectedCommandIndex = 0;
+      this.commandViewport.moveTo(0, commandState.suggestions.length);
       this.lastCommandQuery = commandState.query;
+      return;
     }
 
-    this.selectedCommandIndex = Math.min(
-      this.selectedCommandIndex,
-      Math.max(commandState.suggestions.length - 1, 0),
+    this.commandViewport.moveTo(
+      this.commandViewport.selectedIndex,
+      commandState.suggestions.length,
     );
   }
 
@@ -400,10 +420,6 @@ export class Editor implements Component {
 
     return pasted;
   }
-}
-
-function wrapIndex(index: number, length: number): number {
-  return ((index % length) + length) % length;
 }
 
 function commandTokenEnd(value: string): number | undefined {
