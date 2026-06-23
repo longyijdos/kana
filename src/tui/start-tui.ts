@@ -3,6 +3,7 @@ import {
   appendKanaSessionMessages,
   createKanaAgent,
   createKanaSession,
+  createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
   deleteKanaSession,
   getKanaSessionLogPath,
@@ -30,8 +31,9 @@ export function startTui(options: StartTuiOptions = {}): void {
   const config = loadKanaConfig();
   const logRouter = createLoggerRouter();
   const toolApprovals = loadKanaToolApprovals();
+  const memoryConsolidationQueue = createMemoryConsolidationQueue();
   const memoryConsolidation = config.memory.enabled
-    ? createMemoryConsolidationScheduler(config, { logger: logRouter.logger })
+    ? createMemoryConsolidationScheduler(config, { queue: memoryConsolidationQueue })
     : undefined;
   const createSession = (parentSessionPath?: string, title?: string) =>
     createKanaSession({
@@ -50,16 +52,16 @@ export function startTui(options: StartTuiOptions = {}): void {
           metadata: createSession(),
           messages: [],
         };
+  let sessionLogger = createNoopLogger();
   const activateSessionLogger = (nextSession: typeof session): void => {
-    logRouter.setLogger(
-      nextSession
-        ? createSessionLogger({
-            path: getKanaSessionLogPath(nextSession.metadata.id, { cwd: nextSession.metadata.cwd }),
-            sessionId: nextSession.metadata.id,
-            level: config.logging.level,
-          })
-        : createNoopLogger(),
-    );
+    sessionLogger = nextSession
+      ? createSessionLogger({
+          path: getKanaSessionLogPath(nextSession.metadata.id, { cwd: nextSession.metadata.cwd }),
+          sessionId: nextSession.metadata.id,
+          level: config.logging.level,
+        })
+      : createNoopLogger();
+    logRouter.setLogger(sessionLogger);
   };
   activateSessionLogger(session);
   if (session) {
@@ -98,9 +100,10 @@ export function startTui(options: StartTuiOptions = {}): void {
           }
 
           // Keep consolidation off the completed conversation's critical path;
-          // the scheduler serializes each scope's read-modify-write jobs.
-          void memoryConsolidation?.schedule(messages).catch((error) => {
-            logRouter.logger.error("memory_consolidation.failed", { error });
+          // the shared queue serializes each scope's read-modify-write jobs.
+          const memoryLogger = sessionLogger;
+          void memoryConsolidation?.schedule(messages, { logger: memoryLogger }).catch((error) => {
+            memoryLogger.error("memory_consolidation.failed", { error });
           });
         },
       }),
@@ -174,6 +177,7 @@ export function startTui(options: StartTuiOptions = {}): void {
       notification: config.notification,
       logger: logRouter.logger,
       compactMemory: async (target, userRequest, signal) => {
+        const memoryLogger = sessionLogger;
         const scopes: Array<"global" | "project"> =
           target === "user"
             ? ["global"]
@@ -185,13 +189,15 @@ export function startTui(options: StartTuiOptions = {}): void {
           scopes.map(async (scope): Promise<MemoryCompactSummary> => {
             const targetName = scope === "global" ? "user" : "workspace";
             try {
-              const result = await runFullMemoryConsolidation(config, {
-                scope,
-                cwd: process.cwd(),
-                userRequest,
-                signal,
-                logger: logRouter.logger,
-              });
+              const result = await memoryConsolidationQueue.enqueue(scope, () =>
+                runFullMemoryConsolidation(config, {
+                  scope,
+                  cwd: process.cwd(),
+                  userRequest,
+                  signal,
+                  logger: memoryLogger,
+                }),
+              );
               return { target: targetName, outcome: result.outcome };
             } catch (error) {
               return {

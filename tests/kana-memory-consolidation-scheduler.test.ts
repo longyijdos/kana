@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { ToolResultMessage } from "@/core";
 import { DEFAULT_KANA_CONFIG } from "@/kana";
 import type { Logger } from "@/logging";
-import { createMemoryConsolidationScheduler } from "../src/kana/memory";
+import {
+  createMemoryConsolidationQueue,
+  createMemoryConsolidationScheduler,
+} from "../src/kana/memory";
 
 describe("memory consolidation scheduler", () => {
   test("does not log or schedule when no successful remember entries exist", async () => {
@@ -69,7 +72,65 @@ describe("memory consolidation scheduler", () => {
     await Promise.all([first, second]);
     expect(started).toEqual(["mem_first", "mem_second"]);
   });
+
+  test("retains the logger supplied when work is scheduled", async () => {
+    const scheduledEvents: string[] = [];
+    const runEvents: string[] = [];
+    const scheduledLogger = createLogger(scheduledEvents);
+    const laterLogger = createLogger([]);
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+      logger: laterLogger,
+      runIncremental: async (_scope, _entries, logger) => {
+        logger.info("memory_consolidation.run");
+        runEvents.push(logger === scheduledLogger ? "scheduled" : "other");
+      },
+    });
+
+    await scheduler.schedule([rememberResult("project", "mem_project")], {
+      logger: scheduledLogger,
+    });
+
+    expect(scheduledEvents).toEqual(["memory_consolidation.scheduled", "memory_consolidation.run"]);
+    expect(runEvents).toEqual(["scheduled"]);
+  });
+
+  test("shares a queue between incremental and full consolidation work", async () => {
+    const queue = createMemoryConsolidationQueue();
+    const started: string[] = [];
+    let releaseIncremental!: () => void;
+    const incrementalBlocked = new Promise<void>((resolve) => {
+      releaseIncremental = resolve;
+    });
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+      queue,
+      runIncremental: async () => {
+        started.push("incremental");
+        await incrementalBlocked;
+      },
+    });
+
+    const incremental = scheduler.schedule([rememberResult("project", "mem_project")]);
+    const full = queue.enqueue("project", async () => {
+      started.push("full");
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(started).toEqual(["incremental"]);
+
+    releaseIncremental();
+    await Promise.all([incremental, full]);
+    expect(started).toEqual(["incremental", "full"]);
+  });
 });
+
+function createLogger(events: string[]): Logger {
+  return {
+    debug: (event) => events.push(event),
+    info: (event) => events.push(event),
+    warn: (event) => events.push(event),
+    error: (event) => events.push(event),
+  };
+}
 
 function rememberResult(scope: "global" | "project", id: string): ToolResultMessage {
   return {

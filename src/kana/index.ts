@@ -34,6 +34,7 @@ export {
   type CreateMemoryConsolidationAgentOptions,
   type CreateMemoryConsolidationSchedulerOptions,
   createMemoryConsolidationAgent,
+  createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
   createMemoryConsolidationTransaction,
   formatFullMemoryConsolidationInput,
@@ -50,6 +51,7 @@ export {
   listKanaDailyMemory,
   loadKanaMemory,
   type MemoryConsolidationOutcome,
+  type MemoryConsolidationQueue,
   type MemoryConsolidationResult,
   type MemoryConsolidationScheduler,
   type MemoryConsolidationTransaction,
@@ -60,6 +62,7 @@ export {
   readKanaDailyMemory,
   runFullMemoryConsolidation,
   runMemoryConsolidation,
+  type ScheduleMemoryConsolidationOptions,
   saveKanaMemory,
   searchKanaDailyMemory,
 } from "./memory";
