@@ -72,7 +72,7 @@ export type KanaTuiAppOptions = {
     approvals: KanaToolApprovals;
   };
   notification: KanaNotificationConfig;
-  logger?: Logger;
+  getLogger?: () => Logger;
   compactMemory: (
     target: MemoryCompactTarget,
     userRequest: string | undefined,
@@ -100,7 +100,7 @@ export class KanaTuiApp {
   private readonly contentViewer: ContentViewerController;
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
-  private readonly logger: Logger;
+  private readonly getLogger: () => Logger;
 
   constructor(
     private readonly createAgent: (options: {
@@ -111,7 +111,7 @@ export class KanaTuiApp {
     private readonly options: KanaTuiAppOptions,
   ) {
     this.sessionId = options.sessionId;
-    this.logger = options.logger ?? createNoopLogger();
+    this.getLogger = options.getLogger ?? createNoopLogger;
     this.tui = new Tui(terminal);
     this.notifications = new NotificationController(options.notification, terminal);
     this.agent = this.createAgentForCurrentSession();
@@ -182,7 +182,7 @@ export class KanaTuiApp {
         });
       },
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
-      logger: this.logger,
+      getLogger: this.getLogger,
     });
     this.memoryCompact = new MemoryCompactController({
       editor: this.editor,
@@ -196,13 +196,13 @@ export class KanaTuiApp {
         this.status.update({ running: false, activeTool: undefined });
       },
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
-      logger: this.logger,
+      getLogger: this.getLogger,
     });
     this.updateContextUsageFromMessages(options.initialMessages ?? []);
   }
 
   start(): void {
-    this.logger.info("tui.started", { resumed: this.sessionId !== undefined });
+    this.getLogger().info("tui.started", { resumed: this.sessionId !== undefined });
     void preloadSyntaxHighlighter().then(
       () => this.tui.requestRender(),
       () => undefined,
@@ -243,7 +243,7 @@ export class KanaTuiApp {
   }
 
   stop(): void {
-    this.logger.info("tui.stopped");
+    this.getLogger().info("tui.stopped");
     const resumeSessionId = this.options.getResumeSessionId();
     const exitLines = [
       this.totalUsage
@@ -311,7 +311,7 @@ export class KanaTuiApp {
   }
 
   private abort(): void {
-    this.logger.info("tui.abort_requested");
+    this.getLogger().info("tui.abort_requested");
     if (this.localShell.abort()) {
       return;
     }
@@ -502,6 +502,7 @@ export class KanaTuiApp {
     }
 
     this.sessionId = this.options.forkSession(this.agent.state.messages, prompt).id;
+    this.agent = this.createAgentForCurrentSession(this.agent.state.messages);
     this.closeSessionOverlay();
     this.contentViewer.close();
     this.editor.clear();
