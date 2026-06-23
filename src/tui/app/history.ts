@@ -10,8 +10,8 @@ export function addHistoryMessagesToTranscript(transcript: Transcript, messages:
       case "user":
         transcript.addChild(
           new TextBlock(message.content, {
-            color: tuiTheme.user,
-            prefix: "> ",
+            color: message.source === "scheduled" ? tuiTheme.muted : tuiTheme.user,
+            prefix: message.source === "scheduled" ? "" : "> ",
           }),
         );
         break;

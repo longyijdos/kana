@@ -15,7 +15,7 @@ export function shouldRequestToolApproval(
   approvals: KanaToolApprovals,
   toolCall: ToolCallContent,
 ): boolean {
-  if (toolCall.name === "remember") {
+  if (toolCall.name === "remember" || toolCall.name === "schedule_wake") {
     return false;
   }
 

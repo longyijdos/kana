@@ -40,6 +40,13 @@ describe("Kana tool approval", () => {
       shouldRequestToolApproval(
         { mode: "always" },
         approvals({ exactCommands: ["git status"] }),
+        toolCall("schedule_wake", { afterMinutes: 30, message: "Check the task." }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "always" },
+        approvals({ exactCommands: ["git status"] }),
         toolCall("bash", { command: "git status" }),
       ),
     ).toBe(true);

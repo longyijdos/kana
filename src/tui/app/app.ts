@@ -17,7 +17,10 @@ import type {
   KanaUsageScope,
   KanaUsageSummary,
   LoadKanaSkillActivationsResult,
+  WakeEvent,
+  WakeScheduler,
 } from "@/kana";
+import { createWakeScheduler } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
 import {
   Editor,
@@ -75,6 +78,7 @@ export type KanaTuiAppOptions = {
     approvals: KanaToolApprovals;
   };
   notification: KanaNotificationConfig;
+  wakeScheduler?: WakeScheduler;
   getLogger?: () => Logger;
   compactMemory: (
     target: MemoryCompactTarget,
@@ -105,17 +109,23 @@ export class KanaTuiApp {
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
   private readonly getLogger: () => Logger;
+  private readonly wakeScheduler: WakeScheduler;
+  private readonly unsubscribeWakeEvents: () => void;
+  private readonly pendingWakeEvents: WakeEvent[] = [];
+  private drainingWakeEvents = false;
 
   constructor(
     private readonly createAgent: (options: {
       beforeToolExecution: BeforeToolExecutionHook;
       messages?: Message[];
+      sessionId?: string;
     }) => Agent,
     terminal: Terminal,
     private readonly options: KanaTuiAppOptions,
   ) {
     this.sessionId = options.sessionId;
     this.getLogger = options.getLogger ?? createNoopLogger;
+    this.wakeScheduler = options.wakeScheduler ?? createWakeScheduler();
     this.tui = new Tui(terminal);
     this.notifications = new NotificationController(options.notification, terminal);
     this.agent = this.createAgentForCurrentSession();
@@ -202,6 +212,9 @@ export class KanaTuiApp {
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       getLogger: this.getLogger,
     });
+    this.unsubscribeWakeEvents = this.wakeScheduler.subscribe((event) =>
+      this.queueWakeEvent(event),
+    );
     this.updateContextUsageFromMessages(options.initialMessages ?? []);
   }
 
@@ -248,6 +261,8 @@ export class KanaTuiApp {
 
   stop(): void {
     this.getLogger().info("tui.stopped");
+    this.unsubscribeWakeEvents();
+    this.wakeScheduler.dispose();
     const resumeSessionId = this.options.getResumeSessionId();
     const exitLines = [
       this.totalUsage
@@ -264,6 +279,7 @@ export class KanaTuiApp {
     return this.createAgent({
       beforeToolExecution: ({ toolCall, signal }) => this.showToolApprovalPrompt(toolCall, signal),
       messages,
+      sessionId: this.sessionId,
     });
   }
 
@@ -509,6 +525,7 @@ export class KanaTuiApp {
       return;
     }
 
+    this.cancelCurrentSessionWakeEvents();
     this.sessionId = this.options.createNewSession().id;
     this.closeSessionOverlay();
     this.contentViewer.close();
@@ -529,6 +546,7 @@ export class KanaTuiApp {
       return;
     }
 
+    this.cancelCurrentSessionWakeEvents();
     this.sessionId = this.options.forkSession(this.agent.state.messages, prompt).id;
     this.agent = this.createAgentForCurrentSession(this.agent.state.messages);
     this.closeSessionOverlay();
@@ -605,6 +623,7 @@ export class KanaTuiApp {
 
     this.closeSessionOverlay();
     this.contentViewer.close();
+    this.cancelCurrentSessionWakeEvents();
     this.sessionId = session.id;
     this.agent.abort();
     this.agent = this.createAgentForCurrentSession();
@@ -639,13 +658,38 @@ export class KanaTuiApp {
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
-    this.transcript.addChild(new TextBlock(prompt, { color: tuiTheme.user, prefix: "> " }));
+    await this.submitAgentInput({ role: "user", content: prompt }, "user");
+  }
+
+  private async submitScheduledWake(event: WakeEvent): Promise<void> {
+    await this.submitAgentInput(
+      {
+        role: "user",
+        content: ["[Scheduled wake event]", event.message].join("\n"),
+        source: "scheduled",
+      },
+      "scheduled",
+      event.message,
+    );
+  }
+
+  private async submitAgentInput(
+    input: Extract<Message, { role: "user" }>,
+    source: "user" | "scheduled",
+    displayContent = input.content,
+  ): Promise<void> {
+    this.transcript.addChild(
+      new TextBlock(source === "user" ? displayContent : `Scheduled wake: ${displayContent}`, {
+        color: source === "user" ? tuiTheme.user : tuiTheme.muted,
+        prefix: source === "user" ? "> " : "",
+      }),
+    );
     this.running = true;
     this.agentEvents.resetRun();
     this.updateStatus("starting");
 
     try {
-      const stream = this.agent.stream(prompt);
+      const stream = this.agent.stream(input);
 
       for await (const event of stream) {
         this.agentEvents.handle(event);
@@ -665,6 +709,55 @@ export class KanaTuiApp {
         activeTool: undefined,
       });
       this.tui.requestRender();
+      void this.drainWakeEvents();
+    }
+  }
+
+  private queueWakeEvent(event: WakeEvent): void {
+    if (event.sessionId !== this.sessionId) {
+      return;
+    }
+
+    this.pendingWakeEvents.push(event);
+    void this.drainWakeEvents();
+  }
+
+  private async drainWakeEvents(): Promise<void> {
+    if (this.drainingWakeEvents || this.running) {
+      return;
+    }
+
+    this.drainingWakeEvents = true;
+    try {
+      while (!this.running) {
+        const event = this.pendingWakeEvents.shift();
+        if (!event) {
+          return;
+        }
+
+        // A session change cancels its timers, but this second guard covers an
+        // event already queued by the scheduler before that cancellation.
+        if (event.sessionId !== this.sessionId) {
+          continue;
+        }
+
+        await this.submitScheduledWake(event);
+      }
+    } finally {
+      this.drainingWakeEvents = false;
+    }
+  }
+
+  private cancelCurrentSessionWakeEvents(): void {
+    if (!this.sessionId) {
+      return;
+    }
+
+    this.wakeScheduler.cancelSession(this.sessionId);
+    for (let index = this.pendingWakeEvents.length - 1; index >= 0; index -= 1) {
+      if (this.pendingWakeEvents[index]?.sessionId === this.sessionId) {
+        this.pendingWakeEvents.splice(index, 1);
+      }
     }
   }
 
