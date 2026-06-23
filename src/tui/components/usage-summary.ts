@@ -18,14 +18,14 @@ export class UsageSummaryBlock implements Component {
 
     return [
       color(`Usage · ${this.summary.scope}`, tuiTheme.welcomeTitle),
-      `${color("Cost", tuiTheme.muted).padEnd(12)}${color(formatCny(this.summary.costCny), tuiTheme.prompt)}`,
+      `${color("Cost", tuiTheme.usageMuted).padEnd(12)}${color(formatCny(this.summary.costCny), tuiTheme.usageCost)}`,
       "",
       color("Tokens", tuiTheme.markdownHeading),
-      line("Input", input, tuiTheme.model),
-      line("Cached", cached, tuiTheme.contextUsage),
-      line("Output", output, tuiTheme.toolSuccess),
+      line("Input", input, tuiTheme.usageInput),
+      line("Cached", cached, tuiTheme.usageCache),
+      line("Output", output, tuiTheme.usageOutput),
       usage?.reasoningTokens
-        ? line("Reasoning", usage.reasoningTokens, tuiTheme.shortcutHint)
+        ? line("Reasoning", usage.reasoningTokens, tuiTheme.usageReasoning)
         : undefined,
       "",
       color("Runs", tuiTheme.markdownHeading),
@@ -33,26 +33,26 @@ export class UsageSummaryBlock implements Component {
         "Main",
         this.summary.agents.main.runCount,
         this.summary.agents.main.costCny,
-        tuiTheme.model,
+        tuiTheme.usageInput,
       ),
       runLine(
         "Memory auto",
         this.summary.agents.memoryAutomatic.runCount,
         this.summary.agents.memoryAutomatic.costCny,
-        tuiTheme.contextUsage,
+        tuiTheme.usageCache,
       ),
       runLine(
         "Memory manual",
         this.summary.agents.memoryManual.runCount,
         this.summary.agents.memoryManual.costCny,
-        tuiTheme.shortcutHint,
+        tuiTheme.usageReasoning,
       ),
       "",
-      `${color("Completed", tuiTheme.toolSuccess)} ${this.summary.outcomes.stop}  ${color("Output limit", tuiTheme.prompt)} ${this.summary.outcomes.length}  ${color("Aborted", tuiTheme.toolActive)} ${this.summary.outcomes.aborted}  ${color("Failed", tuiTheme.error)} ${this.summary.outcomes.error}`,
+      `${color("Completed", tuiTheme.usageOutput)} ${this.summary.outcomes.stop}  ${color("Output limit", tuiTheme.usageWarning)} ${this.summary.outcomes.length}  ${color("Aborted", tuiTheme.usageWarning)} ${this.summary.outcomes.aborted}  ${color("Failed", tuiTheme.error)} ${this.summary.outcomes.error}`,
       ...this.summary.models.map((model) =>
         color(
           `${model.provider}/${model.model}  ${model.runCount} runs  ${formatCny(model.costCny)}`,
-          tuiTheme.muted,
+          tuiTheme.usageMuted,
         ),
       ),
     ]
