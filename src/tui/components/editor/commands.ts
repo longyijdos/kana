@@ -7,7 +7,8 @@ export type PromptCommandName =
   | "resume"
   | "delete"
   | "skills"
-  | "memory";
+  | "memory"
+  | "usage";
 
 export type PromptCommand = {
   name: PromptCommandName;
@@ -74,6 +75,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "memory",
     description: "View or compact saved memory.",
+  },
+  {
+    name: "usage",
+    description: "Show session, project, or global API usage.",
   },
 ];
 

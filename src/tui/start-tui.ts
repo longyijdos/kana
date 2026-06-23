@@ -13,6 +13,8 @@ import {
   loadKanaSession,
   loadKanaSkillActivations,
   loadKanaToolApprovals,
+  loadKanaUsageSummary,
+  recordKanaAgentRunAccounting,
   runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
@@ -78,7 +80,7 @@ export function startTui(options: StartTuiOptions = {}): void {
         ...agentOptions,
         logger: agentLogger,
         messages: agentOptions.messages ?? session?.messages,
-        onRunCommitted: ({ messages }) => {
+        onRunCommitted: ({ messages, state, event }) => {
           session ??= {
             metadata: createSession(),
             messages: [],
@@ -100,12 +102,36 @@ export function startTui(options: StartTuiOptions = {}): void {
             resumeSessionId = session.metadata.id;
           }
 
+          recordKanaAgentRunAccounting({
+            sessionId: session.metadata.id,
+            cwd: session.metadata.cwd,
+            agentKind: "main",
+            outcome: event.reason,
+            messages,
+            model: state.model.metadata,
+          });
+
           // Keep consolidation off the completed conversation's critical path;
           // the shared queue serializes each scope's read-modify-write jobs.
           const memoryLogger = agentLogger;
-          void memoryConsolidation?.schedule(messages, { logger: memoryLogger }).catch((error) => {
-            memoryLogger.error("memory_consolidation.failed", { error });
-          });
+          const accountingSession = { id: session.metadata.id, cwd: session.metadata.cwd };
+          void memoryConsolidation
+            ?.schedule(messages, {
+              logger: memoryLogger,
+              onCompleted: (scope, result) =>
+                recordKanaAgentRunAccounting({
+                  sessionId: accountingSession.id,
+                  cwd: accountingSession.cwd,
+                  agentKind: "memory_consolidation",
+                  outcome: result.outcome,
+                  messages: result.state.messages,
+                  model: result.state.model.metadata,
+                  memory: { scope, mode: "incremental", origin: "automatic" },
+                }),
+            })
+            .catch((error) => {
+              memoryLogger.error("memory_consolidation.failed", { error });
+            });
         },
       });
     },
@@ -200,6 +226,17 @@ export function startTui(options: StartTuiOptions = {}): void {
                   logger: memoryLogger,
                 }),
               );
+              if (session) {
+                recordKanaAgentRunAccounting({
+                  sessionId: session.metadata.id,
+                  cwd: session.metadata.cwd,
+                  agentKind: "memory_consolidation",
+                  outcome: result.outcome,
+                  messages: result.state.messages,
+                  model: result.state.model.metadata,
+                  memory: { scope, mode: "full", origin: "manual" },
+                });
+              }
               return { target: targetName, outcome: result.outcome };
             } catch (error) {
               return {
@@ -213,6 +250,12 @@ export function startTui(options: StartTuiOptions = {}): void {
       },
       loadMemory: (target) =>
         loadKanaMemory(target === "user" ? "global" : "project", { cwd: process.cwd() }),
+      loadUsage: (scope) =>
+        loadKanaUsageSummary({
+          scope,
+          sessionId: scope === "session" ? session?.metadata.id : undefined,
+          cwd: process.cwd(),
+        }),
     },
   );
 

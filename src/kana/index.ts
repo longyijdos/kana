@@ -1,3 +1,15 @@
+export {
+  appendKanaRunAccounting,
+  getKanaAccountingPath,
+  KANA_ACCOUNTING_VERSION,
+  type KanaAccountingAgentKind,
+  type KanaAccountingOutcome,
+  type KanaRunAccountingRecord,
+  type KanaUsageScope,
+  type KanaUsageSummary,
+  loadKanaUsageSummary,
+  recordKanaAgentRunAccounting,
+} from "./accounting";
 export { createKanaAgent } from "./agent";
 export {
   DEFAULT_KANA_CONFIG,

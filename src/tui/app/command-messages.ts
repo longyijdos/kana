@@ -3,6 +3,7 @@ export const COMMAND_MESSAGES = {
   forkUsage: "Usage: /fork <prompt>",
   deleteUsage: "Usage: /delete",
   skillsUsage: "Usage: /skills",
+  usageUsage: "Usage: /usage [session|project|global]",
   helpTitle: "Slash commands",
   shellShortcutsTitle: "Shell shortcuts",
   shellShortcut: "!<command> Run a local bash command.",

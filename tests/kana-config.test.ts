@@ -31,6 +31,7 @@ describe("Kana config", () => {
       memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
       logsPath: "/home/kana/.kana/logs",
+      accountingPath: "/home/kana/.kana/accounting",
       approvalsPath: "/home/kana/.kana/approvals.json",
       skillsConfigPath: "/home/kana/.kana/skills/skills.toml",
     });

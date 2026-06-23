@@ -14,6 +14,8 @@ import type {
   KanaSessionMetadata,
   KanaToolApprovalConfig,
   KanaToolApprovals,
+  KanaUsageScope,
+  KanaUsageSummary,
   LoadKanaSkillActivationsResult,
 } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
@@ -24,6 +26,7 @@ import {
   type StatusLineState,
   TextBlock,
   Transcript,
+  UsageSummaryBlock,
   WelcomeBlock,
 } from "../components";
 import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
@@ -79,6 +82,7 @@ export type KanaTuiAppOptions = {
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
   loadMemory: (target: "user" | "workspace") => string;
+  loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
 };
 
 export class KanaTuiApp {
@@ -349,6 +353,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.showHelp();
         break;
       case "clear":
@@ -368,6 +373,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.startNewSession();
         break;
       case "fork":
@@ -376,6 +382,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         void this.forkSession(command.arguments);
         break;
       case "resume":
@@ -384,6 +391,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.openResumePicker();
         break;
       case "delete":
@@ -392,6 +400,7 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.openDeletePicker();
         break;
       case "skills":
@@ -400,10 +409,14 @@ export class KanaTuiApp {
           return;
         }
 
+        this.editor.clear();
         this.openSkillManager();
         break;
       case "memory":
         this.handleMemoryCommand(command.arguments);
+        break;
+      case "usage":
+        this.showUsage(command.arguments);
         break;
     }
   }
@@ -412,6 +425,7 @@ export class KanaTuiApp {
     const [subcommand, ...argumentsParts] = argumentsText.trim().split(/\s+/).filter(Boolean);
 
     if (subcommand === "compact") {
+      this.editor.clear();
       void this.memoryCompact.compact(argumentsParts.join(" "));
       return;
     }
@@ -425,6 +439,7 @@ export class KanaTuiApp {
         return;
       }
 
+      this.editor.clear();
       this.openMemoryViewer(target);
       return;
     }
@@ -449,6 +464,19 @@ export class KanaTuiApp {
       title: "Memory",
       render: (contentWidth) => markdown.render(contentWidth),
     });
+  }
+
+  private showUsage(argumentsText: string): void {
+    const scope = argumentsText.trim() || "session";
+    if (scope !== "session" && scope !== "project" && scope !== "global") {
+      this.showError(new Error(COMMAND_MESSAGES.usageUsage));
+      return;
+    }
+    const summary = this.options.loadUsage(scope);
+    this.editor.clear();
+    this.transcript.addChild(new UsageSummaryBlock(summary));
+    this.updateStatus("idle", { activeTool: undefined });
+    this.tui.requestRender();
   }
 
   private showHelp(): void {
