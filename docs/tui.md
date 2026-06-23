@@ -39,7 +39,7 @@ ProcessTerminal
 
 ## App 与 Agent 事件
 
-`KanaTuiApp` 维护当前 Agent、session ID、运行标志、累计模型用量和成本。提交 prompt 时，它把用户文本加入 transcript，消费 `AgentEventStream`，然后由 `AgentEventRenderer` 完成可视映射。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；运行中的 Agent 会使它排队，当前回合结束后再投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
+`KanaTuiApp` 维护当前 Agent、session ID、运行标志、累计模型用量和成本。提交 prompt 时，它把用户文本加入 transcript，消费 `AgentEventStream`，然后由 `AgentEventRenderer` 完成可视映射。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell 或记忆压缩都会使它排队，操作完成后再投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |

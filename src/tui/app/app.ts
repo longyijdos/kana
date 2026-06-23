@@ -189,12 +189,7 @@ export class KanaTuiApp {
       setRunning: (running) => {
         this.running = running;
       },
-      clearRunStatus: () => {
-        this.status.update({
-          running: false,
-          activeTool: undefined,
-        });
-      },
+      clearRunStatus: () => this.clearAuxiliaryRunStatus(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       getLogger: this.getLogger,
     });
@@ -206,9 +201,7 @@ export class KanaTuiApp {
       setRunning: (running) => {
         this.running = running;
       },
-      clearRunStatus: () => {
-        this.status.update({ running: false, activeTool: undefined });
-      },
+      clearRunStatus: () => this.clearAuxiliaryRunStatus(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       getLogger: this.getLogger,
     });
@@ -769,6 +762,14 @@ export class KanaTuiApp {
     }
 
     await this.localShell.submit(shellCommand);
+  }
+
+  private clearAuxiliaryRunStatus(): void {
+    this.status.update({
+      running: false,
+      activeTool: undefined,
+    });
+    void this.drainWakeEvents();
   }
 
   private showToolApprovalPrompt(

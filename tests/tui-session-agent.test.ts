@@ -97,6 +97,55 @@ describe("session-scoped agents", () => {
     calls[1]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
     wakeScheduler.dispose();
   });
+
+  test("drains a wake queued during an auxiliary run when it becomes idle", async () => {
+    const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
+    const app = new KanaTuiApp(
+      () =>
+        ({
+          state: {
+            messages: [],
+            model: {
+              metadata: {
+                provider: "test",
+                model: "test-model",
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1,
+                maxOutputTokens: 1,
+              },
+            },
+          },
+          stream(input: unknown) {
+            const stream = new AgentEventStream();
+            calls.push({ input, stream });
+            return stream;
+          },
+        }) as never,
+      createTerminal(),
+      { ...createOptions(), sessionId: "session-a" },
+    );
+    const internal = app as unknown as {
+      running: boolean;
+      queueWakeEvent(event: { id: string; sessionId: string; dueAt: Date; message: string }): void;
+      clearAuxiliaryRunStatus(): void;
+    };
+
+    internal.running = true;
+    internal.queueWakeEvent({
+      id: "wake-1",
+      sessionId: "session-a",
+      dueAt: new Date(),
+      message: "Check the task.",
+    });
+
+    expect(calls).toHaveLength(0);
+    internal.running = false;
+    internal.clearAuxiliaryRunStatus();
+    await waitFor(() => calls.length === 1);
+
+    expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
+    calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+  });
 });
 
 async function waitFor(predicate: () => boolean): Promise<void> {
