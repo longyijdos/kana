@@ -76,6 +76,7 @@ export type KanaConfigPaths = {
   memoryDirectory: string;
   sessionsPath: string;
   logsPath: string;
+  accountingPath: string;
   approvalsPath: string;
   skillsConfigPath: string;
 };
@@ -135,6 +136,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
     memoryDirectory: path.join(home, "memory"),
     sessionsPath: path.join(home, "sessions"),
     logsPath: path.join(home, "logs"),
+    accountingPath: path.join(home, "accounting"),
     approvalsPath: path.join(home, "approvals.json"),
     skillsConfigPath: path.join(home, "skills", "skills.toml"),
   };
