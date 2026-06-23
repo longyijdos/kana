@@ -49,4 +49,15 @@ export type KanaUsageSummary = {
   costCny: number;
   usage?: ModelUsage;
   outcomes: Record<KanaAccountingOutcome, number>;
+  agents: Record<
+    "main" | "memoryAutomatic" | "memoryManual",
+    { runCount: number; costCny: number; usage?: ModelUsage }
+  >;
+  models: Array<{
+    provider: string;
+    model: string;
+    runCount: number;
+    costCny: number;
+    usage?: ModelUsage;
+  }>;
 };

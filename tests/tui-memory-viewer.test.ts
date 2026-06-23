@@ -43,6 +43,12 @@ describe("memory viewer", () => {
           memoryRunCount: 0,
           costCny: 0,
           outcomes: { stop: 0, length: 0, aborted: 0, error: 0, updated: 0, unchanged: 0 },
+          agents: {
+            main: { runCount: 0, costCny: 0 },
+            memoryAutomatic: { runCount: 0, costCny: 0 },
+            memoryManual: { runCount: 0, costCny: 0 },
+          },
+          models: [],
         }),
       },
     );

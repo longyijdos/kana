@@ -35,12 +35,36 @@ function summarize(
   let costCny = 0;
   let mainRunCount = 0;
   let memoryRunCount = 0;
+  const agents = {
+    main: { runCount: 0, costCny: 0, usage: undefined as ModelUsage | undefined },
+    memoryAutomatic: { runCount: 0, costCny: 0, usage: undefined as ModelUsage | undefined },
+    memoryManual: { runCount: 0, costCny: 0, usage: undefined as ModelUsage | undefined },
+  };
+  const models = new Map<
+    string,
+    { provider: string; model: string; runCount: number; costCny: number; usage?: ModelUsage }
+  >();
   for (const record of records) {
     usage = record.usage ? addModelUsage(usage, record.usage) : usage;
     costCny += record.costCny;
     outcomes[record.outcome] += 1;
     if (record.agentKind === "main") mainRunCount += 1;
     else memoryRunCount += 1;
+    const agent =
+      record.agentKind === "main"
+        ? agents.main
+        : record.memoryOrigin === "manual"
+          ? agents.memoryManual
+          : agents.memoryAutomatic;
+    agent.runCount += 1;
+    agent.costCny += record.costCny;
+    agent.usage = record.usage ? addModelUsage(agent.usage, record.usage) : agent.usage;
+    const key = `${record.model.provider}/${record.model.model}`;
+    const model = models.get(key) ?? { ...record.model, runCount: 0, costCny: 0 };
+    model.runCount += 1;
+    model.costCny += record.costCny;
+    model.usage = record.usage ? addModelUsage(model.usage, record.usage) : model.usage;
+    models.set(key, model);
   }
   return {
     scope,
@@ -50,6 +74,8 @@ function summarize(
     costCny,
     usage,
     outcomes,
+    agents,
+    models: [...models.values()].sort((left, right) => right.costCny - left.costCny),
   };
 }
 
