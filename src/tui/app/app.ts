@@ -26,6 +26,7 @@ import {
   type StatusLineState,
   TextBlock,
   Transcript,
+  UsageSummaryBlock,
   WelcomeBlock,
 } from "../components";
 import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
@@ -464,9 +465,7 @@ export class KanaTuiApp {
       return;
     }
     const summary = this.options.loadUsage(scope);
-    this.transcript.addChild(
-      new TextBlock(formatUsageSummary(summary), { color: tuiTheme.muted, paddingTop: 1 }),
-    );
+    this.transcript.addChild(new UsageSummaryBlock(summary));
     this.updateStatus("idle", { activeTool: undefined });
     this.tui.requestRender();
   }
@@ -717,40 +716,6 @@ function formatModelName(metadata: ModelMetadata): string {
 
 function formatCny(amount: number): string {
   return `¥${amount.toFixed(4)}`;
-}
-
-function formatUsageSummary(summary: KanaUsageSummary): string {
-  const usage = summary.usage;
-  const cache = usage?.promptCacheHitTokens ?? 0;
-  const input = usage?.promptCacheMissTokens ?? Math.max(0, (usage?.promptTokens ?? 0) - cache);
-  const total = Math.max(1, input + cache + (usage?.completionTokens ?? 0));
-  const bar = (value: number) =>
-    `${"█".repeat(Math.round((value / total) * 16))}${"░".repeat(16 - Math.round((value / total) * 16))}`;
-  return [
-    `Usage · ${summary.scope}`,
-    `Cost          ${formatCny(summary.costCny)}`,
-    "",
-    "Tokens",
-    `Input     ${formatInteger(input).padStart(10)}  ${bar(input)}`,
-    `Cached    ${formatInteger(cache).padStart(10)}  ${bar(cache)}`,
-    `Output    ${formatInteger(usage?.completionTokens ?? 0).padStart(10)}  ${bar(usage?.completionTokens ?? 0)}`,
-    usage?.reasoningTokens
-      ? `Reasoning ${formatInteger(usage.reasoningTokens).padStart(7)}`
-      : undefined,
-    "",
-    "Runs",
-    `Main             ${summary.agents.main.runCount}  ${formatCny(summary.agents.main.costCny)}`,
-    `Memory automatic ${summary.agents.memoryAutomatic.runCount}  ${formatCny(summary.agents.memoryAutomatic.costCny)}`,
-    `Memory manual    ${summary.agents.memoryManual.runCount}  ${formatCny(summary.agents.memoryManual.costCny)}`,
-    "",
-    `Completed ${summary.outcomes.stop}  ·  Output limit reached ${summary.outcomes.length}  ·  Aborted ${summary.outcomes.aborted}`,
-    ...summary.models.map(
-      (model) =>
-        `${model.provider}/${model.model}  ${model.runCount} runs  ${formatCny(model.costCny)}`,
-    ),
-  ]
-    .filter((line): line is string => line !== undefined)
-    .join("\n");
 }
 
 function formatExitLine(label: string, value: string): string {

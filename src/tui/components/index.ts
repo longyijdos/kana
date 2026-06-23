@@ -25,3 +25,4 @@ export {
 } from "./skill-manager";
 export { StatusLine, type StatusLineState } from "./status-line";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";
+export { UsageSummaryBlock } from "./usage-summary";
