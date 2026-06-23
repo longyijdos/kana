@@ -1,12 +1,5 @@
+import type { Message } from "@/core";
 import {
-  addModelUsage,
-  calculateUsageCostCny,
-  type Message,
-  type ModelMetadata,
-  type ModelUsage,
-} from "@/core";
-import {
-  appendKanaRunAccounting,
   appendKanaSessionMessages,
   createKanaAgent,
   createKanaSession,
@@ -21,6 +14,7 @@ import {
   loadKanaSkillActivations,
   loadKanaToolApprovals,
   loadKanaUsageSummary,
+  recordKanaAgentRunAccounting,
   runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
@@ -108,14 +102,14 @@ export function startTui(options: StartTuiOptions = {}): void {
             resumeSessionId = session.metadata.id;
           }
 
-          appendUsageRecord(
-            session.metadata.id,
-            session.metadata.cwd,
-            "main",
-            event.reason,
+          recordKanaAgentRunAccounting({
+            sessionId: session.metadata.id,
+            cwd: session.metadata.cwd,
+            agentKind: "main",
+            outcome: event.reason,
             messages,
-            state.model.metadata,
-          );
+            model: state.model.metadata,
+          });
 
           // Keep consolidation off the completed conversation's critical path;
           // the shared queue serializes each scope's read-modify-write jobs.
@@ -125,15 +119,15 @@ export function startTui(options: StartTuiOptions = {}): void {
             ?.schedule(messages, {
               logger: memoryLogger,
               onCompleted: (scope, result) =>
-                appendUsageRecord(
-                  accountingSession.id,
-                  accountingSession.cwd,
-                  "memory_consolidation",
-                  result.outcome,
-                  result.state.messages,
-                  result.state.model.metadata,
-                  { scope, mode: "incremental", origin: "automatic" },
-                ),
+                recordKanaAgentRunAccounting({
+                  sessionId: accountingSession.id,
+                  cwd: accountingSession.cwd,
+                  agentKind: "memory_consolidation",
+                  outcome: result.outcome,
+                  messages: result.state.messages,
+                  model: result.state.model.metadata,
+                  memory: { scope, mode: "incremental", origin: "automatic" },
+                }),
             })
             .catch((error) => {
               memoryLogger.error("memory_consolidation.failed", { error });
@@ -233,15 +227,15 @@ export function startTui(options: StartTuiOptions = {}): void {
                 }),
               );
               if (session) {
-                appendUsageRecord(
-                  session.metadata.id,
-                  session.metadata.cwd,
-                  "memory_consolidation",
-                  result.outcome,
-                  result.state.messages,
-                  result.state.model.metadata,
-                  { scope, mode: "full", origin: "manual" },
-                );
+                recordKanaAgentRunAccounting({
+                  sessionId: session.metadata.id,
+                  cwd: session.metadata.cwd,
+                  agentKind: "memory_consolidation",
+                  outcome: result.outcome,
+                  messages: result.state.messages,
+                  model: result.state.model.metadata,
+                  memory: { scope, mode: "full", origin: "manual" },
+                });
               }
               return { target: targetName, outcome: result.outcome };
             } catch (error) {
@@ -266,44 +260,4 @@ export function startTui(options: StartTuiOptions = {}): void {
   );
 
   app.start();
-}
-
-function appendUsageRecord(
-  sessionId: string,
-  cwd: string,
-  agentKind: "main" | "memory_consolidation",
-  outcome: "stop" | "length" | "aborted" | "error" | "updated" | "unchanged",
-  messages: Message[],
-  model: ModelMetadata,
-  memory?: {
-    scope: "global" | "project";
-    mode: "incremental" | "full";
-    origin: "automatic" | "manual";
-  },
-): void {
-  const usage = sumUsage(messages);
-  appendKanaRunAccounting(
-    {
-      sessionId,
-      agentKind,
-      outcome,
-      model: { provider: model.provider, model: model.model },
-      pricing: model.cost,
-      usage,
-      costCny: usage ? calculateUsageCostCny(usage, model.cost) : 0,
-      assistantMessageCount: messages.filter((message) => message.role === "assistant").length,
-      ...(memory
-        ? { memoryScope: memory.scope, memoryMode: memory.mode, memoryOrigin: memory.origin }
-        : {}),
-    },
-    { cwd },
-  );
-}
-
-function sumUsage(messages: Message[]): ModelUsage | undefined {
-  return messages.reduce<ModelUsage | undefined>(
-    (total, message) =>
-      message.role === "assistant" && message.usage ? addModelUsage(total, message.usage) : total,
-    undefined,
-  );
 }

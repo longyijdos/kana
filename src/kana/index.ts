@@ -8,6 +8,7 @@ export {
   type KanaUsageScope,
   type KanaUsageSummary,
   loadKanaUsageSummary,
+  recordKanaAgentRunAccounting,
 } from "./accounting";
 export { createKanaAgent } from "./agent";
 export {

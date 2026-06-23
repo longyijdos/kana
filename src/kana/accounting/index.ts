@@ -1,4 +1,5 @@
 export { loadKanaUsageSummary } from "./aggregate";
+export { recordKanaAgentRunAccounting } from "./recorder";
 export { appendKanaRunAccounting, getKanaAccountingPath, readKanaRunAccounting } from "./storage";
 export {
   type AppendKanaRunAccountingOptions,
