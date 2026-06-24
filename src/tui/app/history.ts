@@ -9,9 +9,9 @@ export function addHistoryMessagesToTranscript(transcript: Transcript, messages:
     switch (message.role) {
       case "user":
         transcript.addChild(
-          new TextBlock(message.content, {
-            color: tuiTheme.user,
-            prefix: "> ",
+          new TextBlock(formatUserMessage(message), {
+            color: message.source === "scheduled" ? tuiTheme.muted : tuiTheme.user,
+            prefix: message.source === "scheduled" ? "" : "> ",
           }),
         );
         break;
@@ -25,6 +25,15 @@ export function addHistoryMessagesToTranscript(transcript: Transcript, messages:
         break;
     }
   }
+}
+
+function formatUserMessage(message: Extract<Message, { role: "user" }>): string {
+  if (message.source !== "scheduled") {
+    return message.content;
+  }
+
+  const content = message.content.replace(/^\[Scheduled wake event\]\n?/, "");
+  return `Scheduled wake: ${content}`;
 }
 
 function addAssistantMessage(

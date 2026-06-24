@@ -127,3 +127,10 @@ export {
   saveKanaToolApprovals,
   shouldRequestToolApproval,
 } from "./tool-approval";
+export {
+  type CreateWakeSchedulerOptions,
+  createWakeScheduler,
+  type ScheduleWakeOptions,
+  type WakeEvent,
+  type WakeScheduler,
+} from "./wake-scheduler";

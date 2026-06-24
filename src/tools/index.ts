@@ -26,6 +26,12 @@ export {
   isToolResult,
   normalizeToolResult,
 } from "./result";
+export {
+  createScheduleWakeTool,
+  type ScheduleWakeToolOptions,
+  type ScheduleWakeToolResult,
+  scheduleWakeParameters,
+} from "./schedule-wake";
 export type {
   Tool,
   ToolContext,

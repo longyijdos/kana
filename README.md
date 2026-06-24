@@ -45,6 +45,7 @@ bun install && ./scripts/install.sh
 | 📖 `read` | 读文件，支持分页 |
 | ✏️ `edit` | 精确替换文件里的指定文本 |
 | 📝 `write` | 创建新文件 |
+| ⏰ `schedule_wake` | 进程内定时唤起 Agent |
 
 每次执行危险操作（比如 `rm -rf`），需要先确认——除非你把它加了白名单。
 

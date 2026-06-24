@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { AgentEventStream } from "../src/agent";
+import { createWakeScheduler } from "../src/kana";
 import { KanaTuiApp } from "../src/tui/app/app";
 import type { Terminal } from "../src/tui/runtime";
 
@@ -36,7 +38,126 @@ describe("session-scoped agents", () => {
 
     expect(createdMessages).toEqual([[], [{ role: "user", content: "original" }]]);
   });
+
+  test("queues due wake events until the active agent run ends", async () => {
+    const timers = new Map<number | ReturnType<typeof setTimeout>, () => void>();
+    const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
+    const wakeScheduler = createWakeScheduler({
+      setTimeout: (callback) => {
+        timers.set(1, callback);
+        return 1;
+      },
+      clearTimeout: (timer) => timers.delete(timer),
+    });
+    const app = new KanaTuiApp(
+      () =>
+        ({
+          state: {
+            messages: [],
+            model: {
+              metadata: {
+                provider: "test",
+                model: "test-model",
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1,
+                maxOutputTokens: 1,
+              },
+            },
+          },
+          stream(input: unknown) {
+            const stream = new AgentEventStream();
+            calls.push({ input, stream });
+            return stream;
+          },
+        }) as never,
+      createTerminal(),
+      { ...createOptions(), sessionId: "session-a", wakeScheduler },
+    );
+    const internal = app as unknown as { submitPrompt(value: string): Promise<void> };
+
+    const prompt = internal.submitPrompt("Start the task.");
+    expect(calls).toHaveLength(1);
+    wakeScheduler.schedule({
+      sessionId: "session-a",
+      afterMinutes: 30,
+      message: "Check the task.",
+    });
+    timers.get(1)?.();
+
+    expect(calls).toHaveLength(1);
+    calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+    await prompt;
+    await waitFor(() => calls.length === 2);
+
+    expect(calls[1]?.input).toEqual({
+      role: "user",
+      content: "[Scheduled wake event]\nCheck the task.",
+      source: "scheduled",
+    });
+    calls[1]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+    wakeScheduler.dispose();
+  });
+
+  test("drains a wake queued during an auxiliary run when it becomes idle", async () => {
+    const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
+    const app = new KanaTuiApp(
+      () =>
+        ({
+          state: {
+            messages: [],
+            model: {
+              metadata: {
+                provider: "test",
+                model: "test-model",
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1,
+                maxOutputTokens: 1,
+              },
+            },
+          },
+          stream(input: unknown) {
+            const stream = new AgentEventStream();
+            calls.push({ input, stream });
+            return stream;
+          },
+        }) as never,
+      createTerminal(),
+      { ...createOptions(), sessionId: "session-a" },
+    );
+    const internal = app as unknown as {
+      running: boolean;
+      queueWakeEvent(event: { id: string; sessionId: string; dueAt: Date; message: string }): void;
+      clearAuxiliaryRunStatus(): void;
+    };
+
+    internal.running = true;
+    internal.queueWakeEvent({
+      id: "wake-1",
+      sessionId: "session-a",
+      dueAt: new Date(),
+      message: "Check the task.",
+    });
+
+    expect(calls).toHaveLength(0);
+    internal.running = false;
+    internal.clearAuxiliaryRunStatus();
+    await waitFor(() => calls.length === 1);
+
+    expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
+    calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+  });
 });
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await Promise.resolve();
+  }
+
+  throw new Error("Condition was not met.");
+}
 
 function createOptions() {
   return {

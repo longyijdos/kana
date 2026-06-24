@@ -5,6 +5,7 @@ import {
   createKanaSession,
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
+  createWakeScheduler,
   deleteKanaSession,
   getKanaSessionLogPath,
   listKanaSessions,
@@ -34,6 +35,7 @@ export function startTui(options: StartTuiOptions = {}): void {
   const logManager = createSessionLogManager({ level: config.logging.level });
   const toolApprovals = loadKanaToolApprovals();
   const memoryConsolidationQueue = createMemoryConsolidationQueue();
+  const wakeScheduler = createWakeScheduler();
   const memoryConsolidation = config.memory.enabled
     ? createMemoryConsolidationScheduler(config, { queue: memoryConsolidationQueue })
     : undefined;
@@ -79,6 +81,8 @@ export function startTui(options: StartTuiOptions = {}): void {
       return createKanaAgent(config, {
         ...agentOptions,
         logger: agentLogger,
+        wakeScheduler,
+        sessionId: agentOptions.sessionId,
         messages: agentOptions.messages ?? session?.messages,
         onRunCommitted: ({ messages, state, event }) => {
           session ??= {
@@ -203,6 +207,7 @@ export function startTui(options: StartTuiOptions = {}): void {
         approvals: toolApprovals,
       },
       notification: config.notification,
+      wakeScheduler,
       getLogger: () => sessionLogger,
       compactMemory: async (target, userRequest, signal) => {
         const memoryLogger = sessionLogger;

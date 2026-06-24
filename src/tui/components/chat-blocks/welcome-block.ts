@@ -97,7 +97,7 @@ export class WelcomeBlock implements Component {
       title("Highlights"),
       text("  Tool result viewer"),
       text("  Persistent agent memory"),
-      text("  Session runtime logs"),
+      text("  Scheduled agent wake-ups"),
       muted("  ... /help for more"),
     ];
 

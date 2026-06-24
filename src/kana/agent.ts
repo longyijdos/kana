@@ -4,17 +4,22 @@ import {
   createEditTool,
   createReadTool,
   createRememberTool,
+  createScheduleWakeTool,
   createWriteTool,
 } from "@/tools";
 import type { KanaConfig } from "./config";
 import { createKanaModel } from "./model";
 import { buildKanaSystemPrompt } from "./prompt";
 import { loadKanaSkills } from "./skills";
+import type { WakeScheduler } from "./wake-scheduler";
 
 type KanaAgentOptions = Pick<
   AgentConfig,
   "beforeToolExecution" | "messages" | "onRunCommitted" | "logger"
->;
+> & {
+  wakeScheduler?: WakeScheduler;
+  sessionId?: string;
+};
 
 export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
   const cwd = process.cwd();
@@ -41,6 +46,14 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
         ? [
             createRememberTool({
               cwd,
+            }),
+          ]
+        : []),
+      ...(options.wakeScheduler && options.sessionId
+        ? [
+            createScheduleWakeTool({
+              scheduler: options.wakeScheduler,
+              sessionId: options.sessionId,
             }),
           ]
         : []),

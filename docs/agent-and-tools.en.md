@@ -8,7 +8,7 @@ Agent history uses only three `Message` types:
 
 | Role | Main fields | Purpose |
 | --- | --- | --- |
-| `user` | `content: string` | User input. |
+| `user` | `content: string`, optional `source` | User input; `source: "scheduled"` marks an internal input delivered by an in-process timer. |
 | `assistant` | Ordered `content`, optional `stopReason` and `usage` | Model output and the tool calls it proposes. |
 | `tool` | `toolCallId`, `toolName`, `content`, `result`, `isError` | Associates one tool result back to the model. |
 
@@ -113,10 +113,13 @@ type ToolContext = {
 | `edit` | `path`, non-empty `oldText`, `newText`, optional `replaceAll` | Performs exact replacement in an existing UTF-8 file. One match is required by default. Returns replacement count, byte count, and before/after text. |
 | `bash` | `command`, optional `cwd`, optional `timeoutMs` (1–120000; default 30000) | Runs through the user's shell in login-command mode and returns exit code, stdout, stderr, timeout, and truncation state. |
 | `remember` | `content`, optional `scope`, `title`, `reason` | Records durable information in daily memory and returns the host-created memory entry. Registered only when memory is enabled. |
+| `schedule_wake` | `afterMinutes` (1–1440), `message`, optional `key` | Schedules one later Agent input in the current Kana process. A new event with the same session and key replaces the old one; events are lost when Kana exits. |
 
 `bash` always disconnects stdin and defines `sudo` as `sudo -n`, preventing password prompts from taking over TUI input. It emits partial stdout/stderr roughly every 100ms while running and retains at most 20,000 JavaScript characters per stream in the final result. Each command runs in a separate process group; cancellation and timeout terminate the whole group so background children cannot remain running or keep output streams open. Once the top-level shell exits, the tool briefly drains output and returns, so background work does not block the tool result. A timeout records a `null` exit code and marks the result as an error.
 
 `read`, `write`, `edit`, and `bash` resolve relative paths against the tool `root` (Kana's startup directory) and accept absolute paths. They are not workspace sandboxes: relative paths may escape the root, symlinks may resolve outside it, and `bash.cwd` may also be outside. Treat approval as interactive confirmation, not filesystem isolation.
+
+`schedule_wake` does not write to disk or restore undelivered events. If the Agent is running when an event becomes due, the TUI queues it and starts a new turn after the current run finishes; creating, forking, or resuming another session cancels the prior session's undelivered events. It does not require tool approval.
 
 ## Constraints for custom tools
 

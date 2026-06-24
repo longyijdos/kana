@@ -39,7 +39,7 @@ Rendering helpers strip ANSI/control sequences for width calculation and use `st
 
 ## App and Agent events
 
-`KanaTuiApp` owns the active Agent, session ID, running flag, accumulated model usage, and cost. On prompt submission it adds user text to the transcript, consumes `AgentEventStream`, and delegates visible mapping to `AgentEventRenderer`:
+`KanaTuiApp` owns the active Agent, session ID, running flag, accumulated model usage, and cost. On prompt submission it adds user text to the transcript, consumes `AgentEventStream`, and delegates visible mapping to `AgentEventRenderer`. A due `schedule_wake` event is shown as `Scheduled wake: …` rather than typed user input; a running Agent, local shell, or memory compaction queues it until that operation completes. Its successful result is a compact tool block that shows the delay and reminder text:
 
 | Agent event | TUI behavior |
 | --- | --- |

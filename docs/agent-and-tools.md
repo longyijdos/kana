@@ -8,7 +8,7 @@ Agent 历史只使用三种 `Message`：
 
 | 角色 | 主要字段 | 用途 |
 | --- | --- | --- |
-| `user` | `content: string` | 用户输入。 |
+| `user` | `content: string`，可选 `source` | 用户输入；`source: "scheduled"` 表示由进程内定时器投递的内部输入。 |
 | `assistant` | 有序 `content`、可选 `stopReason` 与 `usage` | 保存模型输出和它提出的工具调用。 |
 | `tool` | `toolCallId`、`toolName`、`content`、`result`、`isError` | 将某一个工具调用的结果关联回模型。 |
 
@@ -113,10 +113,13 @@ type ToolContext = {
 | `edit` | `path`、非空 `oldText`、`newText`、可选 `replaceAll` | 对既有 UTF-8 文件做精确替换。默认要求恰好一次匹配；返回替换数、写入字节数及前后文本。 |
 | `bash` | `command`，可选 `cwd`、`timeoutMs`（1–120000，默认 30000） | 用用户 shell 的 login command 模式执行，返回退出码、stdout、stderr、超时和截断状态。 |
 | `remember` | `content`，可选 `scope`、`title`、`reason` | 向每日记忆记录持久信息，返回宿主生成的记忆条目。仅在记忆启用时注册。 |
+| `schedule_wake` | `afterMinutes`（1–1440）、`message`，可选 `key` | 在当前 Kana 进程中安排一次后续 Agent 输入。相同 session 和 key 的新事件会替换旧事件；Kana 退出后事件丢失。 |
 
 `bash` 的 stdin 始终断开；它把 `sudo` 定义为 `sudo -n`，避免密码提示占用 TUI。stdout/stderr 在运行期间约每 100ms 发送部分更新，最终每个流最多保留 20,000 个 JavaScript 字符。每次命令在独立进程组中运行；取消或超时会终止整组，避免后台子进程残留或继续占用输出流。顶层 shell 已退出时，工具会在短暂排空输出后返回，因此后台任务不会阻塞工具结果。超时的退出码记为 `null`，并将结果标为错误。
 
 `read`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd` 也可在外部。请将审批理解为交互确认，而不是文件系统隔离。
+
+`schedule_wake` 不写入磁盘，也不恢复未触发的事件。到期时若 Agent 正在运行，TUI 将事件排队，等当前运行结束后再开始新的回合；新建、分叉或恢复其他会话会取消旧会话尚未触发的事件。它不需要工具审批。
 
 ## 自定义工具的约束
 
