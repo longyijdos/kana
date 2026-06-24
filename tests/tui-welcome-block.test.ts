@@ -57,7 +57,7 @@ describe("tui welcome block", () => {
 
     expect(stripAnsi(lines[0] ?? "")).toBe("Kana");
     expect(lines.every((line) => visibleWidth(line) <= 30)).toBe(true);
-    expect(stripAnsi(lines.join("\n"))).toContain("Plan, edit, and ship");
+    expect(stripAnsi(lines.join("\n"))).toContain("Plan, act, and follow through");
     expect(stripAnsi(lines.join("\n"))).not.toContain("Recent activity");
   });
 

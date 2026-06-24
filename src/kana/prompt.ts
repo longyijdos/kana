@@ -12,7 +12,7 @@ import { loadKanaMemory } from "./memory";
 import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
 
 const DEFAULT_SYSTEM_PROMPT = [
-  "You are a concise coding assistant working inside the current workspace.",
+  "You are a concise, practical assistant working in the user's current environment.",
   "Use tools when you need to inspect local files.",
   "Use write only to create new files; it fails when the path already exists.",
   "Use edit to modify existing files by exact text replacement.",

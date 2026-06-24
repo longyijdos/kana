@@ -280,7 +280,7 @@ describe("Kana config", () => {
       });
 
       expect(prompt).toContain(
-        "You are a concise coding assistant working inside the current workspace.",
+        "You are a concise, practical assistant working in the user's current environment.",
       );
       expect(prompt).toContain("<cwd>/repo</cwd>");
       expect(prompt).toContain("<platform>darwin</platform>");
@@ -409,7 +409,7 @@ describe("Kana config", () => {
     });
 
     expect(prompt).toContain(
-      "You are a concise coding assistant working inside the current workspace.",
+      "You are a concise, practical assistant working in the user's current environment.",
     );
     expect(prompt).toContain(
       '<agents_instructions scope="project">\nProject-only instructions.\n</agents_instructions>',

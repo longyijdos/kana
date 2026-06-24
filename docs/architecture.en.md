@@ -1,6 +1,6 @@
 # Kana Architecture Overview
 
-Kana is a terminal coding agent running on Bun. It keeps model calls, tool execution, and local persistence in one process, and presents the streaming workflow through a custom TUI. This document describes the implemented runtime boundaries and module relationships so contributors can trace a request from the entry point to its concrete responsibilities.
+Kana is a general-purpose terminal agent running on Bun. It keeps model calls, tool execution, and local persistence in one process, and presents the streaming workflow through a custom TUI. This document describes the implemented runtime boundaries and module relationships so contributors can trace a request from the entry point to its concrete responsibilities.
 
 ## Layers and dependency direction
 

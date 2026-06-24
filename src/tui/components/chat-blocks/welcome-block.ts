@@ -63,7 +63,7 @@ export class WelcomeBlock implements Component {
     return [
       title("Kana"),
       ...this.options.logoLines.filter((line) => visibleWidth(line) <= width),
-      truncateToWidth(text("Plan, edit, and ship from here."), width, ""),
+      truncateToWidth(text("Plan, act, and follow through from here."), width, ""),
     ];
   }
 
