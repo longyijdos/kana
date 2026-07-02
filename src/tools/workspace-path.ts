@@ -6,6 +6,10 @@ export type WorkspacePath = {
   relativePath: string;
 };
 
+export type ResolveNewWorkspaceFileOptions = {
+  overwrite?: boolean;
+};
+
 export async function resolveExistingWorkspaceFile(
   root: string,
   inputPath: string,
@@ -29,6 +33,7 @@ export async function resolveExistingWorkspaceFile(
 export async function resolveNewWorkspaceFile(
   root: string,
   inputPath: string,
+  options: ResolveNewWorkspaceFileOptions = {},
 ): Promise<WorkspacePath> {
   if (!isValidInputPath(inputPath)) {
     throw new Error("Invalid file path.");
@@ -37,14 +42,55 @@ export async function resolveNewWorkspaceFile(
   const rootPath = await realpath(root);
   const absolutePath = resolveInputPath(rootPath, inputPath);
 
-  if (await pathExists(absolutePath)) {
+  if (!options.overwrite && (await pathExists(absolutePath))) {
     throw new Error(`Path already exists: ${inputPath}`);
+  }
+
+  const existingPath = options.overwrite
+    ? await resolveExistingFileForOverwrite(rootPath, absolutePath, inputPath)
+    : undefined;
+
+  if (existingPath) {
+    return existingPath;
   }
 
   return {
     absolutePath,
     relativePath: relativeWorkspacePath(rootPath, await canonicalizeNewPath(absolutePath)),
   };
+}
+
+async function resolveExistingFileForOverwrite(
+  rootPath: string,
+  absolutePath: string,
+  inputPath: string,
+): Promise<WorkspacePath | undefined> {
+  try {
+    await lstat(absolutePath);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+
+    throw error;
+  }
+
+  try {
+    const realPath = await realpath(absolutePath);
+    const fileStat = await stat(realPath);
+
+    if (!fileStat.isFile()) {
+      throw new Error(`Path is not a file: ${inputPath}`);
+    }
+
+    return workspacePath(rootPath, realPath);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      throw new Error(`Path is not a file: ${inputPath}`);
+    }
+
+    throw error;
+  }
 }
 
 export async function resolveWorkspaceDirectory(

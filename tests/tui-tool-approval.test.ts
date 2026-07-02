@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ToolApproval } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("tool approval", () => {
   test("renders allow once as the default selection", () => {
@@ -45,6 +46,30 @@ describe("tool approval", () => {
     expect(rendered).toContain("> Allow once");
     expect(rendered).toContain("  Always allow this command");
     expect(rendered).toContain("  Deny");
+  });
+
+  test("distinguishes write overwrite approvals from new file writes", () => {
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "write",
+        args: {
+          path: "notes.txt",
+          content: "replacement",
+          overwrite: true,
+        },
+      },
+      () => {},
+    );
+
+    const rendered = approval.render(80).map(stripAnsi);
+    const rawRendered = approval.render(80).join("\n");
+
+    expect(rendered).toContain("Allow agent to create file? [OVERWRITE]");
+    expect(rendered.join("\n")).toContain("notes.txt - replacement");
+    expect(rendered.join("\n")).not.toContain("replacement - [OVERWRITE]");
+    expect(rawRendered).toContain(color("[OVERWRITE]", tuiTheme.error));
   });
 
   test("wraps long bash command details for review", () => {

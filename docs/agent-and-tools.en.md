@@ -109,7 +109,7 @@ type ToolContext = {
 | Tool | Parameters | Behavior and result |
 | --- | --- | --- |
 | `read` | `path`, optional 1-based `offset`, optional `limit` (1–2000; default 200) | Reads UTF-8 text and returns the line range, total lines, and `truncated`. |
-| `write` | `path`, complete `content` | Recursively creates parent directories and exclusively creates a new file; it fails if the target exists. Returns UTF-8 byte count. |
+| `write` | `path`, complete `content`, optional `overwrite` | Recursively creates parent directories and exclusively creates a new file by default; `overwrite: true` replaces an existing file. Returns UTF-8 byte count. |
 | `edit` | `path`, non-empty `oldText`, `newText`, optional `replaceAll` | Performs exact replacement in an existing UTF-8 file. One match is required by default. Returns replacement count, byte count, and before/after text. |
 | `bash` | `command`, optional `cwd`, optional `timeoutMs` (1–120000; default 30000) | Runs through the user's shell in login-command mode and returns exit code, stdout, stderr, timeout, and truncation state. |
 | `remember` | `content`, optional `scope`, `title`, `reason` | Records durable information in daily memory and returns the host-created memory entry. Registered only when memory is enabled. |

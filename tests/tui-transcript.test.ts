@@ -305,6 +305,35 @@ describe("tui transcript", () => {
     expect(decisions).toEqual(["close"]);
   });
 
+  test("distinguishes write overwrite transcript titles from new file writes", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "write",
+      args: {
+        path: "notes.txt",
+        content: "replacement",
+        overwrite: true,
+      },
+    });
+
+    block.markExecutionStarted();
+    const runningRendered = block.render(80);
+    const runningLines = runningRendered.map(stripAnsi);
+
+    expect(runningLines[1]).toBe("◆ Creating (0s) [OVERWRITE] (Esc to abort)");
+    expect(runningLines[2]).toBe("  └ notes.txt");
+    expect(runningRendered[1]).toContain(color("[OVERWRITE]", tuiTheme.error));
+
+    block.updateResult({ path: "notes.txt", bytesWritten: 11 }, false);
+    const doneRendered = block.render(80);
+    const doneLines = doneRendered.map(stripAnsi);
+
+    expect(doneLines[1]).toBe("◆ Created [OVERWRITE]");
+    expect(doneLines[2]).toBe("  └ notes.txt");
+    expect(doneRendered[1]).toContain(color("[OVERWRITE]", tuiTheme.error));
+  });
+
   test("invalidates tool call cache when partial and final results change", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

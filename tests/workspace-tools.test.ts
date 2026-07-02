@@ -166,6 +166,44 @@ describe("workspace tools", () => {
     expect(await readFile(path.join(root, "notes.txt"), "utf8")).toBe("existing");
   });
 
+  test("write overwrites existing files when requested", async () => {
+    const root = await createTempRoot();
+    await writeFile(path.join(root, "notes.txt"), "existing");
+    const write = createWriteTool({ root });
+    const result = await write.execute(
+      {
+        path: "notes.txt",
+        content: "replacement\n",
+        overwrite: true,
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toEqual({
+      path: "notes.txt",
+      bytesWritten: 12,
+    });
+    expect(await readFile(path.join(root, "notes.txt"), "utf8")).toBe("replacement\n");
+  });
+
+  test("write rejects existing directories even when overwrite is requested", async () => {
+    const root = await createTempRoot();
+    await mkdir(path.join(root, "notes"));
+    const write = createWriteTool({ root });
+
+    await expect(
+      write.execute(
+        {
+          path: "notes",
+          content: "new",
+          overwrite: true,
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Path is not a file");
+  });
+
   test("write creates paths outside the workspace", async () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();

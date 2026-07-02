@@ -11,6 +11,13 @@ export const writeParameters = Type.Object({
   content: Type.String({
     description: "Complete file content to write.",
   }),
+  overwrite: Type.Optional(
+    Type.Boolean({
+      default: false,
+      description:
+        "Overwrite the target file if it already exists. Defaults to false, which creates only new files.",
+    }),
+  ),
 });
 
 export type WriteToolResult = {
@@ -30,18 +37,19 @@ export function createWriteTool(
   return {
     name: "write",
     description:
-      "Create a new text file. Fails if the path already exists; use edit for existing files.",
+      "Write a complete text file. Creates new files by default; set overwrite to true to replace an existing file.",
     parameters: writeParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Write aborted.");
       }
 
-      const filePath = await resolveNewWorkspaceFile(root, args.path);
+      const overwrite = args.overwrite ?? false;
+      const filePath = await resolveNewWorkspaceFile(root, args.path, { overwrite });
       await mkdir(path.dirname(filePath.absolutePath), { recursive: true });
       await writeFile(filePath.absolutePath, args.content, {
         encoding: "utf8",
-        flag: "wx",
+        flag: overwrite ? "w" : "wx",
       });
 
       const result: WriteToolResult = {

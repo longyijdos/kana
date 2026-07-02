@@ -7,6 +7,7 @@ import {
   formatToolTitle,
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
+  highlightOverwriteMarker,
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
@@ -192,5 +193,7 @@ function colorTitleWithShortcutHint(
   hint: string | undefined,
   titleColor: Parameters<typeof color>[1],
 ): string {
-  return `${bold(color(activity, titleColor))}${hint ? color(` (${hint})`, tuiTheme.shortcutHint) : ""}`;
+  return highlightOverwriteMarker(
+    `${bold(color(activity, titleColor))}${hint ? color(` (${hint})`, tuiTheme.shortcutHint) : ""}`,
+  );
 }

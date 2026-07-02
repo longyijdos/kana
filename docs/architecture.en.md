@@ -111,7 +111,7 @@ Skills are discovered recursively from project `.kana/skills`, project `.agents/
 Tools use TypeBox schemas. Calls first run `Value.Convert`, then validation; only validated arguments reach a tool. Tool results separate provider-facing text in `content` from the structured `result` used by the Agent and TUI, so the presentation layer does not parse provider text.
 
 - `read` reads text files with line pagination.
-- `write` creates only files that do not already exist.
+- `write` creates only files that do not already exist by default, and can replace existing files with explicit `overwrite`.
 - `edit` performs exact string replacement in an existing file; multiple matches require explicit `replaceAll`.
 - `bash` uses the user's shell, defaults to a 30-second timeout with a 120-second maximum, retains at most 20,000 characters per output stream, and emits throttled progress updates. Each command has a separate process group; cancellation and timeout terminate the whole group, and the tool briefly drains output after the top-level shell exits before returning so background children cannot stall a tool call. It overrides `sudo` with non-interactive mode to prevent it from competing for TUI input.
 - `remember` appends non-sensitive durable information to daily memory and never requires approval.

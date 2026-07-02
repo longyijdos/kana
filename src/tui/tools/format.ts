@@ -7,7 +7,7 @@ import {
   wrapPlainText,
 } from "../render";
 import { tuiTheme } from "../theme";
-import { getNumberProperty, getStringProperty } from "./properties";
+import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
 import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
 import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
@@ -22,20 +22,26 @@ type ToolApprovalText = {
   detail: string;
 };
 
+const overwriteMarker = "[OVERWRITE]";
+
+export function highlightOverwriteMarker(text: string): string {
+  return text.replaceAll(overwriteMarker, color(overwriteMarker, tuiTheme.error));
+}
+
 export function formatToolTitle(
   toolCall: ToolCallContent,
   state: ToolState,
   result: unknown,
 ): string {
   const target = toolTarget(toolCall, result);
-  const text = toolText(toolCall.name, target);
+  const text = toolText(toolCall.name, target, toolCall.args);
 
   if (state === "preparing") {
     return `Preparing ${toolCall.name}...`;
   }
 
   if (state === "running") {
-    return `${capitalize(text.runningActivity)}... (Esc to abort)`;
+    return `${formatStatusActivity(capitalize(text.runningActivity), "...")} (Esc to abort)`;
   }
 
   if (state === "failed") {
@@ -52,7 +58,7 @@ export function formatToolTranscriptTitle(
   elapsedSeconds?: number,
 ): ToolTranscriptTitle {
   const target = toolTarget(toolCall, result);
-  const text = toolText(toolCall.name, target);
+  const text = toolText(toolCall.name, target, toolCall.args);
   const action = text.action.replace(` ${target}`, "");
   const runningActivity = capitalize(text.runningActivity.replace(` ${target}`, ""));
 
@@ -61,7 +67,7 @@ export function formatToolTranscriptTitle(
   }
   if (state === "running") {
     return {
-      activity: `${runningActivity} (${elapsedSeconds ?? 0}s)`,
+      activity: formatStatusActivity(runningActivity, ` (${elapsedSeconds ?? 0}s)`),
       hint: "Esc to abort",
       target,
     };
@@ -177,7 +183,7 @@ function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
 }
 
 function formatToolApprovalTitle(toolCall: ToolCallContent): string {
-  return toolText(toolCall.name, toolCall.name).approvalTitle;
+  return toolText(toolCall.name, toolCall.name, toolCall.args).approvalTitle;
 }
 
 function formatToolDetail(toolCall: ToolCallContent): string {
@@ -200,7 +206,6 @@ function formatToolSummary(toolCall: ToolCallContent): string {
 
     case "write": {
       const content = getStringProperty(toolCall.args, "content");
-
       return content ? summarizeText(content) : "";
     }
 
@@ -262,6 +267,7 @@ function sanitizeToolOutput(value: unknown): unknown {
 function toolText(
   toolName: string,
   target: string,
+  args?: unknown,
 ): {
   action: string;
   approvalTitle: string;
@@ -278,10 +284,10 @@ function toolText(
       };
     case "write":
       return {
-        action: `create ${target}`,
-        approvalTitle: "Allow agent to create file?",
-        doneTitle: `Created ${target}`,
-        runningActivity: `creating ${target}`,
+        action: withOverwriteMarker(`create ${target}`, args),
+        approvalTitle: withOverwriteMarker("Allow agent to create file?", args),
+        doneTitle: withOverwriteMarker(`Created ${target}`, args),
+        runningActivity: withOverwriteMarker(`creating ${target}`, args),
       };
     case "edit":
       return {
@@ -319,4 +325,16 @@ function toolText(
         runningActivity: `using ${toolName}`,
       };
   }
+}
+
+function withOverwriteMarker(text: string, args: unknown): string {
+  return getBooleanProperty(args, "overwrite") ? `${text} ${overwriteMarker}` : text;
+}
+
+function formatStatusActivity(activity: string, suffix: string): string {
+  if (!activity.endsWith(` ${overwriteMarker}`)) {
+    return `${activity}${suffix}`;
+  }
+
+  return `${activity.slice(0, -overwriteMarker.length - 1)}${suffix} ${overwriteMarker}`;
 }

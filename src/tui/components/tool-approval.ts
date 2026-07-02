@@ -1,7 +1,7 @@
 import type { ToolCallContent } from "@/core";
 import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
-import { formatToolApproval } from "../tools";
+import { formatToolApproval, highlightOverwriteMarker } from "../tools";
 import { ChoicePrompt } from "./choice-prompt";
 
 export type ToolApprovalDecision = "yes" | "always" | "no";
@@ -26,6 +26,7 @@ export class ToolApproval implements Component {
       options: createOptions(options),
       defaultValue: "yes",
       accentColor: tuiTheme.toolActive,
+      highlight: highlightOverwriteMarker,
       onSelect: onDecision,
     });
   }

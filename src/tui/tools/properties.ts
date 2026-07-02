@@ -17,3 +17,13 @@ export function getNumberProperty(value: unknown, key: string): number | undefin
 
   return typeof property === "number" ? property : undefined;
 }
+
+export function getBooleanProperty(value: unknown, key: string): boolean | undefined {
+  if (!value || typeof value !== "object" || !(key in value)) {
+    return undefined;
+  }
+
+  const property = value[key as keyof typeof value];
+
+  return typeof property === "boolean" ? property : undefined;
+}
