@@ -224,6 +224,67 @@ describe("tui transcript", () => {
     expect(lines).not.toContain("line 10");
   });
 
+  test("renders list tool output as directory metadata", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_list",
+      name: "list",
+      args: {
+        path: ".",
+      },
+    });
+
+    block.updateResult(
+      {
+        path: ".",
+        entries: [
+          { name: "AGENTS.md", path: "AGENTS.md", type: "file", size: 100 },
+          { name: "src", path: "src", type: "directory", size: 128 },
+        ],
+        totalEntries: 2,
+        truncated: false,
+      },
+      false,
+    );
+
+    const lines = block.render(80).map(stripAnsi);
+
+    expect(lines[1]).toBe("◆ Listed");
+    expect(lines[2]).toBe("  └ .");
+    expect(lines).toContain(".: 2 of 2 entries");
+    expect(lines.join("\n")).not.toContain('"entries"');
+  });
+
+  test("renders glob tool output as match metadata", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_glob",
+      name: "glob",
+      args: {
+        pattern: "**/*.ts",
+      },
+    });
+
+    block.updateResult(
+      {
+        cwd: ".",
+        pattern: "**/*.ts",
+        type: "file",
+        matches: [{ path: "src/main.ts", type: "file", size: 100 }],
+        totalMatches: 2,
+        truncated: true,
+      },
+      false,
+    );
+
+    const lines = block.render(80).map(stripAnsi);
+
+    expect(lines[1]).toBe("◆ Matched");
+    expect(lines[2]).toBe("  └ **/*.ts");
+    expect(lines).toContain("**/*.ts: 1 of 2 matches (truncated)");
+    expect(lines.join("\n")).not.toContain('"matches"');
+  });
+
   test("does not provide read content in the result viewer", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

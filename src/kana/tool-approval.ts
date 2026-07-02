@@ -96,7 +96,7 @@ export function saveKanaToolApprovals(
 }
 
 function isTrustedToolCall(approvals: KanaToolApprovals, toolCall: ToolCallContent): boolean {
-  if (toolCall.name === "read") {
+  if (toolCall.name === "read" || toolCall.name === "list" || toolCall.name === "glob") {
     return true;
   }
 

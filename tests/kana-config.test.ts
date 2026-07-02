@@ -336,7 +336,7 @@ describe("Kana config", () => {
     expect(prompt).not.toContain("<remember_tool_guidance>");
   });
 
-  test("uses ~/.kana/AGENTS.md as the system prompt when it exists", () => {
+  test("appends ~/.kana/AGENTS.md after the default system prompt", () => {
     const env = createTempEnv();
     const paths = getKanaConfigPaths(env);
     const previousKanaHome = process.env.KANA_HOME;
@@ -353,13 +353,22 @@ describe("Kana config", () => {
           apiKeyEnv: "KANA_DEEPSEEK_KEY",
         },
       });
+      const system = agent.state.system ?? "";
 
-      expect(agent.state.system).toContain(
+      expect(system).toContain(
+        "You are a concise, practical assistant working in the user's current environment.",
+      );
+      expect(system).toContain(
         '<agents_instructions scope="global">\nCustom system prompt.\n</agents_instructions>',
       );
-      expect(agent.state.system).toContain("<environment_context>");
-      expect(agent.state.system).toContain(`<cwd>${process.cwd()}</cwd>`);
-      expect(agent.state.system).toContain(`<platform>${process.platform}</platform>`);
+      expect(
+        system.indexOf(
+          "You are a concise, practical assistant working in the user's current environment.",
+        ),
+      ).toBeLessThan(system.indexOf("Custom system prompt."));
+      expect(system).toContain("<environment_context>");
+      expect(system).toContain(`<cwd>${process.cwd()}</cwd>`);
+      expect(system).toContain(`<platform>${process.platform}</platform>`);
     } finally {
       restoreEnv("KANA_HOME", previousKanaHome);
       restoreEnv("KANA_DEEPSEEK_KEY", previousKey);
@@ -388,6 +397,11 @@ describe("Kana config", () => {
     expect(prompt).toContain(
       '<agents_instructions scope="project">\nProject instructions.\n</agents_instructions>',
     );
+    expect(
+      prompt.indexOf(
+        "You are a concise, practical assistant working in the user's current environment.",
+      ),
+    ).toBeLessThan(prompt.indexOf("Global instructions."));
     expect(prompt.indexOf("Global instructions.")).toBeLessThan(
       prompt.indexOf("Project instructions."),
     );

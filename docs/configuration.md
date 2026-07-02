@@ -124,7 +124,7 @@ export DEEPSEEK_API_KEY='sk-...'
 
 `api_key_env` 只告诉 Kana 从哪里读取 key，不会加载 `.env` 文件，也不会把 key 持久化到 `config.toml`。如需不同 key，可在启动 Kana 的 shell 中设置对应变量，或改用另一环境变量名。
 
-全局 `AGENTS.md` 位于 `<KANA_HOME>/AGENTS.md`。项目根目录的 `AGENTS.md` 也会被读取；二者同时存在时，全局内容先注入、项目内容后注入。项目文件因此拥有更具体的后置位置。详见[架构总览](architecture.md)中的提示词装配说明。
+全局 `AGENTS.md` 位于 `<KANA_HOME>/AGENTS.md`。内置默认助手指令始终注入；全局文件存在时追加到默认指令后。项目根目录的 `AGENTS.md` 也会被读取，并追加在全局内容后，因此拥有更具体的后置位置。详见[架构总览](architecture.md)中的提示词装配说明。
 
 ## 审批文件：`approvals.json`
 
@@ -146,8 +146,8 @@ export DEEPSEEK_API_KEY='sk-...'
 
 | 模式 | 行为 |
 | --- | --- |
-| `always` | 除 `remember` 外，每个工具调用都请求审批。 |
-| `unless_trusted` | `read`、精确受信 bash 命令和受信简单只读 bash 命令跳过审批；其余调用请求审批。 |
+| `always` | 除 `remember` 和 `schedule_wake` 外，每个工具调用都请求审批。 |
+| `unless_trusted` | `read`、`list`、`glob`、精确受信 bash 命令和受信简单只读 bash 命令跳过审批；其余调用请求审批。 |
 | `never` | 所有调用都跳过审批，包括写入和 Shell。 |
 
 ## 全局 Skills 配置：`skills/skills.toml`

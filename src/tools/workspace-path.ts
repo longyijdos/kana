@@ -30,6 +30,26 @@ export async function resolveExistingWorkspaceFile(
   return workspacePath(rootPath, absolutePath);
 }
 
+export async function resolveExistingWorkspaceDirectory(
+  root: string,
+  inputPath: string,
+): Promise<WorkspacePath> {
+  if (!isValidInputPath(inputPath)) {
+    throw new Error("Invalid directory path.");
+  }
+
+  const rootPath = await realpath(root);
+  const requestedPath = resolveInputPath(rootPath, inputPath);
+  const absolutePath = await realpath(requestedPath);
+  const pathStat = await stat(absolutePath);
+
+  if (!pathStat.isDirectory()) {
+    throw new Error(`Path is not a directory: ${inputPath}`);
+  }
+
+  return workspacePath(rootPath, absolutePath);
+}
+
 export async function resolveNewWorkspaceFile(
   root: string,
   inputPath: string,

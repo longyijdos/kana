@@ -93,7 +93,7 @@ While running, slash commands other than `/quit` are ignored to prevent re-entry
 
 The configured notification backend selects output. `auto` probes Kitty, iTerm, then VTE, then uses bell; explicit `off` emits nothing. Notification text removes control characters and collapses whitespace; OSC 777 additionally replaces semicolons. Normal Agent completion and approval-required notifications are separately configurable.
 
-Assistant messages and the memory viewer use lightweight Markdown rendering: headings, lists, quotes, fenced code, some inline styles, table rows, link/image text, and limited HTML normalization. Shiki highlighting preloads in the background; code is plain text until it is ready. Tool blocks display highlighted write/edit diffs and tail bash output; write approvals and tool blocks distinguish new-file writes from overwrites; long output opens in the scrollable viewer.
+Assistant messages and the memory viewer use lightweight Markdown rendering: headings, lists, quotes, fenced code, some inline styles, table rows, link/image text, and limited HTML normalization. Shiki highlighting preloads in the background; code is plain text until it is ready. Tool blocks display list/glob/read summaries, highlighted write/edit diffs, and tail bash output; write approvals and tool blocks distinguish new-file writes from overwrites; long output opens in the scrollable viewer.
 
 ## Rendering-change constraints
 

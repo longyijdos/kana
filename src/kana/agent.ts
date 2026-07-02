@@ -2,6 +2,8 @@ import { Agent, type AgentConfig } from "@/agent";
 import {
   createBashTool,
   createEditTool,
+  createGlobTool,
+  createListTool,
   createReadTool,
   createRememberTool,
   createScheduleWakeTool,
@@ -30,6 +32,12 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     model,
     system: buildKanaSystemPrompt({ cwd, skills }),
     tools: [
+      createListTool({
+        root: cwd,
+      }),
+      createGlobTool({
+        root: cwd,
+      }),
       createReadTool({
         root: cwd,
       }),

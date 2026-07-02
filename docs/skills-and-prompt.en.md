@@ -53,13 +53,14 @@ When the file is absent or `enabled` is missing, no global Skills enter the mode
 ```text
 Available global/project durable memory (when enabled and non-empty)
 Durable-memory guidance for remember (when memory is enabled)
-Global AGENTS.md or default assistant instructions
+Default assistant instructions
+Global AGENTS.md (when present)
 Project AGENTS.md (when present)
 Environment context
 Visible Skills catalogue
 ```
 
-Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. When the global file exists it replaces the built-in default assistant instructions, then the project file is appended. When the two resolved paths are the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
+Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults, then the project file is appended. When the two AGENTS paths resolve to the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
 
 The environment block uses XML-like tags and contains the current directory, `process.platform`, a locally time-zone-formatted `YYYY-MM-DD` date, and the time-zone name:
 

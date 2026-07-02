@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { createBashTool } from "../src/tools/bash";
 import { createEditTool } from "../src/tools/edit";
+import { createGlobTool } from "../src/tools/glob";
+import { createListTool } from "../src/tools/list";
 import { createReadTool } from "../src/tools/read";
 import type { ToolResult } from "../src/tools/tool";
 import { createWriteTool } from "../src/tools/write";
@@ -106,6 +108,131 @@ describe("workspace tools", () => {
       path: path.relative(root, outsideFile),
       content: "secret",
     });
+  });
+
+  test("list returns sorted direct directory entries", async () => {
+    const root = await createTempRoot();
+    await mkdir(path.join(root, "src"));
+    await writeFile(path.join(root, ".env"), "SECRET=value\n");
+    await writeFile(path.join(root, "notes.txt"), "hello\n");
+    const list = createListTool({ root });
+    const result = await list.execute(
+      {
+        path: ".",
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      path: ".",
+      totalEntries: 3,
+      truncated: false,
+    });
+    expect(result.result.entries).toEqual([
+      expect.objectContaining({ name: ".env", path: ".env", type: "file" }),
+      expect.objectContaining({ name: "notes.txt", path: "notes.txt", type: "file" }),
+      expect.objectContaining({ name: "src", path: "src", type: "directory" }),
+    ]);
+    expect(result.content).toContain("entries: 3 of 3");
+  });
+
+  test("list can exclude hidden entries and truncate output", async () => {
+    const root = await createTempRoot();
+    await writeFile(path.join(root, ".hidden"), "secret\n");
+    await writeFile(path.join(root, "a.txt"), "a\n");
+    await writeFile(path.join(root, "b.txt"), "b\n");
+    const list = createListTool({ root });
+    const result = await list.execute(
+      {
+        path: ".",
+        includeHidden: false,
+        limit: 1,
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      totalEntries: 2,
+      truncated: true,
+    });
+    expect(result.result.entries).toEqual([
+      expect.objectContaining({ name: "a.txt", path: "a.txt", type: "file" }),
+    ]);
+  });
+
+  test("glob finds sorted files with hidden and depth filtering", async () => {
+    const root = await createTempRoot();
+    await mkdir(path.join(root, "src", "nested"), { recursive: true });
+    await mkdir(path.join(root, ".hidden"), { recursive: true });
+    await writeFile(path.join(root, "src", "main.ts"), "export {}\n");
+    await writeFile(path.join(root, "src", "nested", "deep.ts"), "export {}\n");
+    await writeFile(path.join(root, ".hidden", "secret.ts"), "export {}\n");
+    const glob = createGlobTool({ root });
+    const result = await glob.execute(
+      {
+        pattern: "**/*.ts",
+        maxDepth: 2,
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      cwd: ".",
+      pattern: "**/*.ts",
+      type: "file",
+      totalMatches: 1,
+      truncated: false,
+    });
+    expect(result.result.matches).toEqual([
+      expect.objectContaining({ path: path.join("src", "main.ts"), type: "file" }),
+    ]);
+    expect(result.content).toContain("matches: 1 of 1");
+  });
+
+  test("glob can match directories and include hidden paths", async () => {
+    const root = await createTempRoot();
+    await mkdir(path.join(root, ".config"));
+    await mkdir(path.join(root, "src"));
+    const glob = createGlobTool({ root });
+    const result = await glob.execute(
+      {
+        pattern: "*",
+        type: "directory",
+        includeHidden: true,
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result.matches).toEqual([
+      expect.objectContaining({ path: ".config", type: "directory" }),
+      expect.objectContaining({ path: "src", type: "directory" }),
+    ]);
+  });
+
+  test("glob rejects absolute and parent-directory patterns", async () => {
+    const root = await createTempRoot();
+    const glob = createGlobTool({ root });
+
+    await expect(
+      glob.execute(
+        {
+          pattern: "/tmp/**/*",
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Invalid glob pattern.");
+    await expect(
+      glob.execute(
+        {
+          pattern: "../**/*",
+        },
+        createToolContext(),
+      ),
+    ).rejects.toThrow("Invalid glob pattern.");
   });
 
   test("write creates a new workspace file", async () => {

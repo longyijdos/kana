@@ -13,7 +13,7 @@ import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
 
 const DEFAULT_SYSTEM_PROMPT = [
   "You are a concise, practical assistant working in the user's current environment.",
-  "Use tools when you need to inspect local files.",
+  "Use list and glob for file discovery, and read for file contents.",
   "Use write to create complete files, and set overwrite only when intentionally replacing the whole file.",
   "Use edit to modify existing files by exact text replacement.",
   "Use bash when a shell command is the right way to inspect or change local state.",
@@ -46,11 +46,12 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
   const instructionBlocks: string[] = [DEFAULT_SYSTEM_PROMPT];
 
   if (existsSync(agentsPath)) {
-    instructionBlocks[0] = formatAgentsInstructions("global", readFileSync(agentsPath, "utf8"));
+    instructionBlocks.push(formatAgentsInstructions("global", readFileSync(agentsPath, "utf8")));
   }
 
-  // Project instructions are appended after global instructions so local
-  // repository conventions have the more specific, later position.
+  // AGENTS.md files refine the built-in operating rules. Project instructions
+  // are appended after global instructions so local repository conventions have
+  // the more specific, later position.
   if (path.resolve(projectAgentsPath) !== path.resolve(agentsPath)) {
     if (existsSync(projectAgentsPath)) {
       instructionBlocks.push(

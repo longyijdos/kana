@@ -62,7 +62,7 @@ describe("Kana tool approval", () => {
     ).toBe(false);
   });
 
-  test("unless trusted mode skips read and exact bash commands", () => {
+  test("unless trusted mode skips read-only tools and exact bash commands", () => {
     const trusted = approvals({ exactCommands: ["git status"] });
 
     expect(
@@ -70,6 +70,20 @@ describe("Kana tool approval", () => {
         { mode: "unless_trusted" },
         trusted,
         toolCall("read", { path: "package.json" }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("list", { path: "." }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
+        toolCall("glob", { pattern: "**/*.ts" }),
       ),
     ).toBe(false);
     expect(

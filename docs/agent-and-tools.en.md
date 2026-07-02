@@ -108,6 +108,8 @@ type ToolContext = {
 
 | Tool | Parameters | Behavior and result |
 | --- | --- | --- |
+| `list` | Optional `path` (default `.`), `includeHidden` (default `true`), `limit` (1–2000; default 200) | Lists one directory level and returns stably sorted names, paths, types, sizes, total count, and `truncated`. |
+| `glob` | `pattern`, optional `cwd` (default `.`), `type`, `maxDepth`, `includeHidden` (default `false`), `limit` (1–2000; default 200) | Finds paths with a relative glob pattern and returns stably sorted matches, total count, and `truncated`. The pattern cannot be absolute or contain a `..` path segment. |
 | `read` | `path`, optional 1-based `offset`, optional `limit` (1–2000; default 200) | Reads UTF-8 text and returns the line range, total lines, and `truncated`. |
 | `write` | `path`, complete `content`, optional `overwrite` | Recursively creates parent directories and exclusively creates a new file by default; `overwrite: true` replaces an existing file. Returns UTF-8 byte count. |
 | `edit` | `path`, non-empty `oldText`, `newText`, optional `replaceAll` | Performs exact replacement in an existing UTF-8 file. One match is required by default. Returns replacement count, byte count, and before/after text. |
@@ -117,7 +119,7 @@ type ToolContext = {
 
 `bash` always disconnects stdin and defines `sudo` as `sudo -n`, preventing password prompts from taking over TUI input. It emits partial stdout/stderr roughly every 100ms while running and retains at most 20,000 JavaScript characters per stream in the final result. Each command runs in a separate process group; cancellation and timeout terminate the whole group so background children cannot remain running or keep output streams open. Once the top-level shell exits, the tool briefly drains output and returns, so background work does not block the tool result. A timeout records a `null` exit code and marks the result as an error.
 
-`read`, `write`, `edit`, and `bash` resolve relative paths against the tool `root` (Kana's startup directory) and accept absolute paths. They are not workspace sandboxes: relative paths may escape the root, symlinks may resolve outside it, and `bash.cwd` may also be outside. Treat approval as interactive confirmation, not filesystem isolation.
+`list`, `glob`, `read`, `write`, `edit`, and `bash` resolve relative paths against the tool `root` (Kana's startup directory) and accept absolute paths. They are not workspace sandboxes: relative paths may escape the root, symlinks may resolve outside it, and `bash.cwd` and `glob.cwd` may also be outside. Treat approval as interactive confirmation, not filesystem isolation.
 
 `schedule_wake` does not write to disk or restore undelivered events. If the Agent is running when an event becomes due, the TUI queues it and starts a new turn after the current run finishes; creating, forking, or resuming another session cancels the prior session's undelivered events. It does not require tool approval.
 

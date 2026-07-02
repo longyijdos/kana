@@ -10,6 +10,8 @@ import { tuiTheme } from "../theme";
 import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
 import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
+import { formatGlobOutput, hasExpandableGlobOutput } from "./renderers/glob";
+import { formatListOutput, hasExpandableListOutput } from "./renderers/list";
 import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
 import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 
@@ -108,6 +110,10 @@ export function formatToolOutput(
   const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
 
   switch (toolCall.name) {
+    case "list":
+      return renderText(formatListOutput(sanitizedResult), width, tuiTheme.toolOutput);
+    case "glob":
+      return renderText(formatGlobOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "read":
       return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "write":
@@ -138,6 +144,10 @@ export function hasExpandableToolOutput(
   }
 
   switch (toolCall.name) {
+    case "list":
+      return hasExpandableListOutput();
+    case "glob":
+      return hasExpandableGlobOutput();
     case "read":
       return hasExpandableReadOutput();
     case "write":
@@ -164,6 +174,12 @@ function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
       const delay = `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
       return message ? `${delay}\n${message}` : delay;
     }
+  }
+
+  if (toolCall.name === "glob") {
+    return (
+      getStringProperty(result, "pattern") ?? getStringProperty(toolCall.args, "pattern") ?? "glob"
+    );
   }
 
   const path = getStringProperty(toolCall.args, "path");
@@ -195,6 +211,22 @@ function formatToolDetail(toolCall: ToolCallContent): string {
 
 function formatToolSummary(toolCall: ToolCallContent): string {
   switch (toolCall.name) {
+    case "list": {
+      const includeHidden = getBooleanProperty(toolCall.args, "includeHidden");
+
+      return includeHidden === false ? "excluding hidden entries" : "";
+    }
+
+    case "glob": {
+      const cwd = getStringProperty(toolCall.args, "cwd");
+      const type = getStringProperty(toolCall.args, "type");
+      const parts = [cwd ? `cwd ${cwd}` : undefined, type ? `type ${type}` : undefined].filter(
+        (part): part is string => part !== undefined,
+      );
+
+      return parts.join(", ");
+    }
+
     case "read": {
       const startLine = getNumberProperty(toolCall.args, "startLine");
       const endLine = getNumberProperty(toolCall.args, "endLine");
@@ -275,6 +307,20 @@ function toolText(
   runningActivity: string;
 } {
   switch (toolName) {
+    case "list":
+      return {
+        action: `list ${target}`,
+        approvalTitle: "Allow agent to list directory?",
+        doneTitle: `Listed ${target}`,
+        runningActivity: `listing ${target}`,
+      };
+    case "glob":
+      return {
+        action: `match ${target}`,
+        approvalTitle: "Allow agent to find paths?",
+        doneTitle: `Matched ${target}`,
+        runningActivity: `matching ${target}`,
+      };
     case "read":
       return {
         action: `read ${target}`,

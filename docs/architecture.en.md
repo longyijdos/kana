@@ -72,15 +72,16 @@ A request can be cancelled by the Agent and is also limited by `timeoutMs`. HTTP
 
 ## Kana product composition
 
-`createKanaAgent` is the runtime composition point. It uses the current directory as the workspace, loads visible Skills, builds the system prompt, and registers `read`, `write`, `edit`, `bash`, and—when memory is enabled—`remember`.
+`createKanaAgent` is the runtime composition point. It uses the current directory as the workspace, loads visible Skills, builds the system prompt, and registers `list`, `glob`, `read`, `write`, `edit`, `bash`, and optional tools.
 
 The system prompt consists of the following sections; the later project-level instructions take precedence:
 
 1. Global/project long-term memory references and `remember` guidance.
-2. Global instructions from `~/.kana/AGENTS.md`, if present.
-3. Project instructions from `<cwd>/AGENTS.md`, if present and distinct from the global file.
-4. The current directory, platform, date, and time zone.
-5. Names, descriptions, and `SKILL.md` paths for enabled Skills.
+2. Built-in default assistant instructions.
+3. Global instructions from `~/.kana/AGENTS.md`, if present.
+4. Project instructions from `<cwd>/AGENTS.md`, if present and distinct from the global file.
+5. The current directory, platform, date, and time zone.
+6. Names, descriptions, and `SKILL.md` paths for enabled Skills.
 
 `loadKanaConfig` reads `config.toml` and merges every field with defaults. Invalid types or enum values raise an error instead of being silently ignored. Default configuration, approval data, and Skill activation data are created in user-only-readable/writable files.
 
@@ -110,15 +111,16 @@ Skills are discovered recursively from project `.kana/skills`, project `.agents/
 
 Tools use TypeBox schemas. Calls first run `Value.Convert`, then validation; only validated arguments reach a tool. Tool results separate provider-facing text in `content` from the structured `result` used by the Agent and TUI, so the presentation layer does not parse provider text.
 
+- `list` lists one directory level, and `glob` finds paths with a relative pattern; both provide controlled file discovery.
 - `read` reads text files with line pagination.
 - `write` creates only files that do not already exist by default, and can replace existing files with explicit `overwrite`.
 - `edit` performs exact string replacement in an existing file; multiple matches require explicit `replaceAll`.
 - `bash` uses the user's shell, defaults to a 30-second timeout with a 120-second maximum, retains at most 20,000 characters per output stream, and emits throttled progress updates. Each command has a separate process group; cancellation and timeout terminate the whole group, and the tool briefly drains output after the top-level shell exits before returning so background children cannot stall a tool call. It overrides `sudo` with non-interactive mode to prevent it from competing for TUI input.
 - `remember` appends non-sensitive durable information to daily memory and never requires approval.
 
-Approval modes are `always`, `unless_trusted`, and `never`. In the default mode, `read` passes automatically; allowlisted simple read-only bash executable names and exact bash commands pass automatically; other tools show a TUI choice prompt. A user can add only the individual bash command to the exact allowlist. The read-only command check intentionally rejects shell composition characters, path-form executables, and newlines so a seemingly read-only compound command is not treated as safe.
+Approval modes are `always`, `unless_trusted`, and `never`. In the default mode, `list`, `glob`, and `read` pass automatically; allowlisted simple read-only bash executable names and exact bash commands pass automatically; other tools show a TUI choice prompt. A user can add only the individual bash command to the exact allowlist. The read-only command check intentionally rejects shell composition characters, path-form executables, and newlines so a seemingly read-only compound command is not treated as safe.
 
-“Workspace tools” are not a sandbox: file paths and bash `cwd` can be absolute or leave the workspace via relative paths. File reads resolve symlinks, and writes inspect the real path of the nearest existing parent; these mechanisms provide normalized display paths and symlink handling, not access confinement. Approval is a visible user-authorization layer, not OS-level isolation.
+“Workspace tools” are not a sandbox: file paths, `bash.cwd`, and `glob.cwd` can be absolute or leave the workspace via relative paths. File reads resolve symlinks, and writes inspect the real path of the nearest existing parent; these mechanisms provide normalized display paths and symlink handling, not access confinement. Approval is a visible user-authorization layer, not OS-level isolation.
 
 ## TUI architecture
 

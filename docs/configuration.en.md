@@ -124,7 +124,7 @@ The configuration root and each present section must be a TOML table. Strings ca
 
 `api_key_env` only tells Kana where to read the key. Kana does not load `.env` files and does not persist the key in `config.toml`. To use a different key, set the selected variable in the shell that starts Kana or choose another environment-variable name.
 
-The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. A project-root `AGENTS.md` is also read; when both exist, global content is injected first and project content afterward. The project file therefore occupies the more specific, later position. See the prompt-composition section of the [architecture overview](architecture.en.md).
+The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults. A project-root `AGENTS.md` is also read and appended after global content, so it occupies the more specific, later position. See the prompt-composition section of the [architecture overview](architecture.en.md).
 
 ## Approval file: `approvals.json`
 
@@ -146,8 +146,8 @@ Approval modes behave as follows:
 
 | Mode | Behavior |
 | --- | --- |
-| `always` | Requests approval for every tool call except `remember`. |
-| `unless_trusted` | Skips approval for `read`, exact trusted bash commands, and trusted simple read-only bash commands; asks for everything else. |
+| `always` | Requests approval for every tool call except `remember` and `schedule_wake`. |
+| `unless_trusted` | Skips approval for `read`, `list`, `glob`, exact trusted bash commands, and trusted simple read-only bash commands; asks for everything else. |
 | `never` | Skips approval for all calls, including writes and shell commands. |
 
 ## Global Skills configuration: `skills/skills.toml`
