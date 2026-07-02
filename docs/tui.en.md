@@ -22,7 +22,7 @@ The minimum `Component` interface is `render(width): string[]`, with optional `h
 
 ## Terminal lifecycle and rendering
 
-`ProcessTerminal.start()` requires TTY stdin/stdout, enables raw mode, bracketed paste, and a hidden cursor, then registers input and resize. Stopping restores the prior raw state, pauses stdin, shows the cursor, and disables bracketed paste. TUI shutdown clears the screen and scrollback, then prints exit information including accumulated tokens, API cost, and a resume command when available.
+`ProcessTerminal.start()` requires TTY stdin/stdout, enables raw mode, bracketed paste, enhanced keyboard reporting, and a hidden cursor, then registers input and resize. Enhanced keyboard reporting lets supporting terminals distinguish `Shift+Enter` from `Enter`. Stopping restores the prior raw state, pauses stdin, shows the cursor, pops enhanced keyboard reporting, and disables bracketed paste. TUI shutdown clears the screen and scrollback, then prints exit information including accumulated tokens, API cost, and a resume command when available.
 
 Normal `Tui.requestRender()` calls are coalesced into an approximately 16ms timer. Each render:
 
@@ -62,7 +62,7 @@ Global input runs before the focused component:
 | `Ctrl+O` | Open/close the newest expandable tool output. |
 | `!<command>` | Run local bash directly without Agent or approval, displayed in the same tool block style. |
 
-The editor supports multiline input, five visible lines, history capped at 100 entries, arrow navigation, Home/End/Delete, bracketed paste, and slash completion. Editing, movement, and deletion work on grapheme boundaries. Up/down move inside soft/explicit lines first, then enter history at the boundary. A leading `/` opens the command palette; it shows up to 10 commands, scrolls with the selection, and stops at either boundary; unknown slash input is sent as a normal model message.
+The editor supports multiline input, five visible lines, history capped at 100 entries, arrow navigation, Home/End/Delete, bracketed paste, and slash completion. `Enter` submits the current input; in terminals that support enhanced keyboard reporting, `Shift+Enter` inserts an explicit newline. Editing, movement, and deletion work on grapheme boundaries. Up/down move inside soft/explicit lines first, then enter history at the boundary. A leading `/` opens the command palette; it shows up to 10 commands, scrolls with the selection, and stops at either boundary; unknown slash input is sent as a normal model message.
 
 | Slash command | Behavior |
 | --- | --- |

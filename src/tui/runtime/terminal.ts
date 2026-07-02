@@ -6,6 +6,11 @@ import {
   type TerminalNotification,
 } from "./notifications";
 
+// Matches crossterm's DISAMBIGUATE_ESCAPE_CODES | REPORT_EVENT_TYPES |
+// REPORT_ALTERNATE_KEYS so terminals can report Shift+Enter separately.
+const ENABLE_KEYBOARD_ENHANCEMENT = "\x1b[>7u";
+const POP_KEYBOARD_ENHANCEMENT = "\x1b[<1u";
+
 export interface Terminal {
   start(onInput: (data: string) => void, onResize: () => void): void;
   stop(): void;
@@ -46,7 +51,7 @@ export class ProcessTerminal implements Terminal {
     process.stdin.on("data", this.handleInput);
     process.stdout.on("resize", this.handleResize);
 
-    this.write("\x1b[?2004h\x1b[?25l");
+    this.write(`\x1b[?2004h${ENABLE_KEYBOARD_ENHANCEMENT}\x1b[?25l`);
   }
 
   stop(): void {
@@ -60,7 +65,7 @@ export class ProcessTerminal implements Terminal {
     process.stdin.setRawMode(this.wasRaw);
     process.stdin.pause();
 
-    this.write("\x1b[?25h\x1b[?2004l");
+    this.write(`\x1b[?25h${POP_KEYBOARD_ENHANCEMENT}\x1b[?2004l`);
     this.inputHandler = undefined;
     this.resizeHandler = undefined;
   }

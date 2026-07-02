@@ -22,7 +22,7 @@ ProcessTerminal
 
 ## 终端生命周期与渲染
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste 和隐藏光标，注册输入与 resize。停止时恢复先前 raw 状态、暂停 stdin、显示光标并关闭 bracketed paste。TUI 结束会清屏和 scrollback，然后打印退出信息；退出信息包括累计 token、API 成本和可恢复会话命令（若有）。
+`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。停止时恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报并关闭 bracketed paste。TUI 结束会清屏和 scrollback，然后打印退出信息；退出信息包括累计 token、API 成本和可恢复会话命令（若有）。
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
@@ -62,7 +62,7 @@ ProcessTerminal
 | `Ctrl+O` | 打开/关闭最近一项可展开的工具输出。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
-编辑器支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、方向键导航、Home/End/Delete、bracketed paste 和 slash 补全。编辑、移动和删除按 grapheme 边界进行。上/下先在软换行/显式换行中移动，到边界才进入历史。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入作为普通模型消息发送。
+编辑器支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、方向键导航、Home/End/Delete、bracketed paste 和 slash 补全。`Enter` 提交当前输入；在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。编辑、移动和删除按 grapheme 边界进行。上/下先在软换行/显式换行中移动，到边界才进入历史。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入作为普通模型消息发送。
 
 | Slash 命令 | 行为 |
 | --- | --- |

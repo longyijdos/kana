@@ -197,6 +197,30 @@ describe("prompt editor", () => {
     }
   });
 
+  test("inserts newline with Shift+Enter before submitting with Enter", () => {
+    const editor = new Editor();
+    const submissions: unknown[] = [];
+    editor.onSubmit = (submit) => {
+      submissions.push(submit);
+    };
+
+    editor.handleInput("hello");
+    editor.handleInput("\x1b[13;2u");
+    editor.handleInput("world");
+
+    expect(editor.getText()).toBe("hello\nworld");
+    expect(submissions).toEqual([]);
+
+    editor.handleInput("\r");
+
+    expect(submissions).toEqual([
+      {
+        type: "message",
+        content: "hello\nworld",
+      },
+    ]);
+  });
+
   test("moves up within multiline input before switching history", () => {
     const editor = new Editor();
 

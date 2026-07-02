@@ -11,6 +11,7 @@ import {
   isLeft,
   isPrintable,
   isRight,
+  isShiftEnter,
   isTab,
   isUp,
 } from "../../runtime";
@@ -125,6 +126,11 @@ export class Editor implements Component {
       if (paste) {
         this.applyText(paste);
       }
+      return;
+    }
+
+    if (isShiftEnter(data)) {
+      this.applyText("\n");
       return;
     }
 
