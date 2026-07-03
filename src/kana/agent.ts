@@ -3,6 +3,7 @@ import {
   createBashTool,
   createEditTool,
   createGlobTool,
+  createGrepTool,
   createListTool,
   createReadTool,
   createRememberTool,
@@ -36,6 +37,9 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
         root: cwd,
       }),
       createGlobTool({
+        root: cwd,
+      }),
+      createGrepTool({
         root: cwd,
       }),
       createReadTool({

@@ -147,7 +147,7 @@ Approval modes behave as follows:
 | Mode | Behavior |
 | --- | --- |
 | `always` | Requests approval for every tool call except `remember` and `schedule_wake`. |
-| `unless_trusted` | Skips approval for `read`, `list`, `glob`, exact trusted bash commands, and trusted simple read-only bash commands; asks for everything else. |
+| `unless_trusted` | Skips approval for `read`, `list`, `glob`, `grep`, exact trusted bash commands, and trusted simple read-only bash commands; asks for everything else. |
 | `never` | Skips approval for all calls, including writes and shell commands. |
 
 ## Global Skills configuration: `skills/skills.toml`

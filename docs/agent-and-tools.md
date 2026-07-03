@@ -110,6 +110,7 @@ type ToolContext = {
 | --- | --- | --- |
 | `list` | 可选 `path`（默认 `.`）、`includeHidden`（默认 `true`）、`limit`（1–2000，默认 200） | 列出目录的一层子项，返回稳定排序的名称、路径、类型、大小、总数和 `truncated`。 |
 | `glob` | `pattern`，可选 `cwd`（默认 `.`）、`type`、`maxDepth`、`includeHidden`（默认 `false`）、`limit`（1–2000，默认 200） | 用相对 glob pattern 查找路径，返回稳定排序的匹配项、总数和 `truncated`。pattern 不能是绝对路径，也不能包含 `..` 路径段。 |
+| `grep` | `pattern`，可选 `path`（默认 `.`）、`include`、`literal`、`caseSensitive`、`includeHidden`、`limit`（1–2000，默认 100） | 用 JavaScript 正则或字面量搜索文本内容，返回匹配行、行列位置、搜索文件数和 `truncated`。目录搜索时 `include` 必须是相对 glob pattern。 |
 | `read` | `path`，可选 `offset`（从 1 开始）、`limit`（1–2000，默认 200） | 读取 UTF-8 文本，返回行区间、总行数和 `truncated`。 |
 | `write` | `path`、完整 `content`、可选 `overwrite` | 递归创建父目录，并默认以排他创建方式写入新文件；`overwrite: true` 会替换既有文件。返回 UTF-8 字节数。 |
 | `edit` | `path`、非空 `oldText`、`newText`、可选 `replaceAll` | 对既有 UTF-8 文件做精确替换。默认要求恰好一次匹配；返回替换数、写入字节数及前后文本。 |
@@ -119,7 +120,7 @@ type ToolContext = {
 
 `bash` 的 stdin 始终断开；它把 `sudo` 定义为 `sudo -n`，避免密码提示占用 TUI。stdout/stderr 在运行期间约每 100ms 发送部分更新，最终每个流最多保留 20,000 个 JavaScript 字符。每次命令在独立进程组中运行；取消或超时会终止整组，避免后台子进程残留或继续占用输出流。顶层 shell 已退出时，工具会在短暂排空输出后返回，因此后台任务不会阻塞工具结果。超时的退出码记为 `null`，并将结果标为错误。
 
-`list`、`glob`、`read`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd` 和 `glob.cwd` 也可在外部。请将审批理解为交互确认，而不是文件系统隔离。
+`list`、`glob`、`grep`、`read`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd`、`glob.cwd` 和 `grep.path` 也可在外部。请将审批理解为交互确认，而不是文件系统隔离。
 
 `schedule_wake` 不写入磁盘，也不恢复未触发的事件。到期时若 Agent 正在运行，TUI 将事件排队，等当前运行结束后再开始新的回合；新建、分叉或恢复其他会话会取消旧会话尚未触发的事件。它不需要工具审批。
 

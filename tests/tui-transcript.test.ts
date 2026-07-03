@@ -285,6 +285,46 @@ describe("tui transcript", () => {
     expect(lines.join("\n")).not.toContain('"matches"');
   });
 
+  test("renders grep tool output as match metadata", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_grep",
+      name: "grep",
+      args: {
+        pattern: "autocompact|\\.compact\\b",
+        path: "src/query.ts",
+      },
+    });
+
+    block.updateResult(
+      {
+        path: "src/query.ts",
+        pattern: "autocompact|\\.compact\\b",
+        literal: false,
+        caseSensitive: true,
+        include: undefined,
+        matches: [
+          {
+            path: "src/query.ts",
+            line: 1,
+            column: 7,
+            text: "const autocompact = true;",
+          },
+        ],
+        filesSearched: 1,
+        truncated: false,
+      },
+      false,
+    );
+
+    const lines = block.render(80).map(stripAnsi);
+
+    expect(lines[1]).toBe("◆ Searched");
+    expect(lines[2]).toBe("  └ autocompact|\\.compact\\b");
+    expect(lines).toContain("src/query.ts: 1 matches in 1 files for autocompact|\\.compact\\b");
+    expect(lines.join("\n")).not.toContain('"matches"');
+  });
+
   test("does not provide read content in the result viewer", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

@@ -11,6 +11,7 @@ import { getBooleanProperty, getNumberProperty, getStringProperty } from "./prop
 import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
 import { formatGlobOutput, hasExpandableGlobOutput } from "./renderers/glob";
+import { formatGrepOutput, hasExpandableGrepOutput } from "./renderers/grep";
 import { formatListOutput, hasExpandableListOutput } from "./renderers/list";
 import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
 import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
@@ -114,6 +115,8 @@ export function formatToolOutput(
       return renderText(formatListOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "glob":
       return renderText(formatGlobOutput(sanitizedResult), width, tuiTheme.toolOutput);
+    case "grep":
+      return renderText(formatGrepOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "read":
       return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "write":
@@ -148,6 +151,8 @@ export function hasExpandableToolOutput(
       return hasExpandableListOutput();
     case "glob":
       return hasExpandableGlobOutput();
+    case "grep":
+      return hasExpandableGrepOutput();
     case "read":
       return hasExpandableReadOutput();
     case "write":
@@ -179,6 +184,12 @@ function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
   if (toolCall.name === "glob") {
     return (
       getStringProperty(result, "pattern") ?? getStringProperty(toolCall.args, "pattern") ?? "glob"
+    );
+  }
+
+  if (toolCall.name === "grep") {
+    return (
+      getStringProperty(result, "pattern") ?? getStringProperty(toolCall.args, "pattern") ?? "grep"
     );
   }
 
@@ -223,6 +234,19 @@ function formatToolSummary(toolCall: ToolCallContent): string {
       const parts = [cwd ? `cwd ${cwd}` : undefined, type ? `type ${type}` : undefined].filter(
         (part): part is string => part !== undefined,
       );
+
+      return parts.join(", ");
+    }
+
+    case "grep": {
+      const path = getStringProperty(toolCall.args, "path");
+      const include = getStringProperty(toolCall.args, "include");
+      const literal = getBooleanProperty(toolCall.args, "literal");
+      const parts = [
+        path ? `path ${path}` : undefined,
+        include ? `include ${include}` : undefined,
+        literal ? "literal" : undefined,
+      ].filter((part): part is string => part !== undefined);
 
       return parts.join(", ");
     }
@@ -320,6 +344,13 @@ function toolText(
         approvalTitle: "Allow agent to find paths?",
         doneTitle: `Matched ${target}`,
         runningActivity: `matching ${target}`,
+      };
+    case "grep":
+      return {
+        action: `search ${target}`,
+        approvalTitle: "Allow agent to search files?",
+        doneTitle: `Searched ${target}`,
+        runningActivity: `searching ${target}`,
       };
     case "read":
       return {

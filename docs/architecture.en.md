@@ -72,7 +72,7 @@ A request can be cancelled by the Agent and is also limited by `timeoutMs`. HTTP
 
 ## Kana product composition
 
-`createKanaAgent` is the runtime composition point. It uses the current directory as the workspace, loads visible Skills, builds the system prompt, and registers `list`, `glob`, `read`, `write`, `edit`, `bash`, and optional tools.
+`createKanaAgent` is the runtime composition point. It uses the current directory as the workspace, loads visible Skills, builds the system prompt, and registers `list`, `glob`, `grep`, `read`, `write`, `edit`, `bash`, and optional tools.
 
 The system prompt consists of the following sections; the later project-level instructions take precedence:
 
@@ -111,16 +111,16 @@ Skills are discovered recursively from project `.kana/skills`, project `.agents/
 
 Tools use TypeBox schemas. Calls first run `Value.Convert`, then validation; only validated arguments reach a tool. Tool results separate provider-facing text in `content` from the structured `result` used by the Agent and TUI, so the presentation layer does not parse provider text.
 
-- `list` lists one directory level, and `glob` finds paths with a relative pattern; both provide controlled file discovery.
+- `list` lists one directory level, `glob` finds paths with a relative pattern, and `grep` searches text content; all three provide controlled read-only exploration.
 - `read` reads text files with line pagination.
 - `write` creates only files that do not already exist by default, and can replace existing files with explicit `overwrite`.
 - `edit` performs exact string replacement in an existing file; multiple matches require explicit `replaceAll`.
 - `bash` uses the user's shell, defaults to a 30-second timeout with a 120-second maximum, retains at most 20,000 characters per output stream, and emits throttled progress updates. Each command has a separate process group; cancellation and timeout terminate the whole group, and the tool briefly drains output after the top-level shell exits before returning so background children cannot stall a tool call. It overrides `sudo` with non-interactive mode to prevent it from competing for TUI input.
 - `remember` appends non-sensitive durable information to daily memory and never requires approval.
 
-Approval modes are `always`, `unless_trusted`, and `never`. In the default mode, `list`, `glob`, and `read` pass automatically; allowlisted simple read-only bash executable names and exact bash commands pass automatically; other tools show a TUI choice prompt. A user can add only the individual bash command to the exact allowlist. The read-only command check intentionally rejects shell composition characters, path-form executables, and newlines so a seemingly read-only compound command is not treated as safe.
+Approval modes are `always`, `unless_trusted`, and `never`. In the default mode, `list`, `glob`, `grep`, and `read` pass automatically; allowlisted simple read-only bash executable names and exact bash commands pass automatically; other tools show a TUI choice prompt. A user can add only the individual bash command to the exact allowlist. The read-only command check intentionally rejects shell composition characters, path-form executables, and newlines so a seemingly read-only compound command is not treated as safe.
 
-“Workspace tools” are not a sandbox: file paths, `bash.cwd`, and `glob.cwd` can be absolute or leave the workspace via relative paths. File reads resolve symlinks, and writes inspect the real path of the nearest existing parent; these mechanisms provide normalized display paths and symlink handling, not access confinement. Approval is a visible user-authorization layer, not OS-level isolation.
+“Workspace tools” are not a sandbox: file paths, `bash.cwd`, `glob.cwd`, and `grep.path` can be absolute or leave the workspace via relative paths. File reads resolve symlinks, and writes inspect the real path of the nearest existing parent; these mechanisms provide normalized display paths and symlink handling, not access confinement. Approval is a visible user-authorization layer, not OS-level isolation.
 
 ## TUI architecture
 

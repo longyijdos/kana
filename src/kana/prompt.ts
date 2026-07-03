@@ -13,7 +13,7 @@ import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
 
 const DEFAULT_SYSTEM_PROMPT = [
   "You are a concise, practical assistant working in the user's current environment.",
-  "Use list and glob for file discovery, and read for file contents.",
+  "Use list and glob for file discovery, grep for content search, and read for file contents.",
   "Use write to create complete files, and set overwrite only when intentionally replacing the whole file.",
   "Use edit to modify existing files by exact text replacement.",
   "Use bash when a shell command is the right way to inspect or change local state.",

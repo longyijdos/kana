@@ -90,6 +90,13 @@ describe("Kana tool approval", () => {
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
+        toolCall("grep", { pattern: "approval", path: "src" }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
         toolCall("bash", { command: " git status " }),
       ),
     ).toBe(false);

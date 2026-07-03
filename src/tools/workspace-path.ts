@@ -6,6 +6,10 @@ export type WorkspacePath = {
   relativePath: string;
 };
 
+export type ExistingWorkspacePath = WorkspacePath & {
+  type: "file" | "directory";
+};
+
 export type ResolveNewWorkspaceFileOptions = {
   overwrite?: boolean;
 };
@@ -28,6 +32,36 @@ export async function resolveExistingWorkspaceFile(
   }
 
   return workspacePath(rootPath, absolutePath);
+}
+
+export async function resolveExistingWorkspacePath(
+  root: string,
+  inputPath: string,
+): Promise<ExistingWorkspacePath> {
+  if (!isValidInputPath(inputPath)) {
+    throw new Error("Invalid path.");
+  }
+
+  const rootPath = await realpath(root);
+  const requestedPath = resolveInputPath(rootPath, inputPath);
+  const absolutePath = await realpath(requestedPath);
+  const pathStat = await stat(absolutePath);
+
+  if (pathStat.isFile()) {
+    return {
+      ...workspacePath(rootPath, absolutePath),
+      type: "file",
+    };
+  }
+
+  if (pathStat.isDirectory()) {
+    return {
+      ...workspacePath(rootPath, absolutePath),
+      type: "directory",
+    };
+  }
+
+  throw new Error(`Path is not a file or directory: ${inputPath}`);
 }
 
 export async function resolveExistingWorkspaceDirectory(

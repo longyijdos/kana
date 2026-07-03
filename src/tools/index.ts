@@ -18,6 +18,13 @@ export {
   globParameters,
 } from "./glob";
 export {
+  createGrepTool,
+  type GrepToolMatch,
+  type GrepToolOptions,
+  type GrepToolResult,
+  grepParameters,
+} from "./grep";
+export {
   createListTool,
   type ListToolEntry,
   type ListToolOptions,
