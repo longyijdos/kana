@@ -12,6 +12,12 @@ type ModifiedKey = {
   eventType?: number;
 };
 
+type CursorKey = {
+  direction: "up" | "down" | "right" | "left";
+  modifierBits: number;
+  eventType?: number;
+};
+
 export function isCtrlC(data: string): boolean {
   const key = parseModifiedKey(data);
 
@@ -62,19 +68,19 @@ export function isTab(data: string): boolean {
 }
 
 export function isUp(data: string): boolean {
-  return data === "\x1b[A";
+  return isCursorKey(data, "up");
 }
 
 export function isDown(data: string): boolean {
-  return data === "\x1b[B";
+  return isCursorKey(data, "down");
 }
 
 export function isRight(data: string): boolean {
-  return data === "\x1b[C";
+  return isCursorKey(data, "right");
 }
 
 export function isLeft(data: string): boolean {
-  return data === "\x1b[D";
+  return isCursorKey(data, "left");
 }
 
 export function isHome(data: string): boolean {
@@ -126,12 +132,65 @@ function parseModifiedKey(data: string): ModifiedKey | undefined {
   return undefined;
 }
 
+function parseCursorKey(data: string): CursorKey | undefined {
+  // Enhanced keyboard mode reports cursor key repeat/release events as
+  // CSI 1 ; modifiers : event-type A/B/C/D.
+  const cursorKey = /^\x1b\[(?:(\d+);(\d+)(?::(\d+))?)?([ABCD])$/.exec(data);
+
+  if (!cursorKey) {
+    return undefined;
+  }
+
+  const direction = cursorDirection(cursorKey[4]);
+
+  if (!direction) {
+    return undefined;
+  }
+
+  return {
+    direction,
+    modifierBits: Number(cursorKey[2] ?? "1") - 1,
+    eventType: cursorKey[3] === undefined ? undefined : Number(cursorKey[3]),
+  };
+}
+
+function cursorDirection(finalByte: string | undefined): CursorKey["direction"] | undefined {
+  switch (finalByte) {
+    case "A":
+      return "up";
+    case "B":
+      return "down";
+    case "C":
+      return "right";
+    case "D":
+      return "left";
+    default:
+      return undefined;
+  }
+}
+
 function isPress(key: ModifiedKey | undefined): boolean {
   return key !== undefined && (key.eventType === undefined || key.eventType === 1);
 }
 
+function isPressOrRepeat(key: CursorKey | undefined): boolean {
+  return (
+    key !== undefined && (key.eventType === undefined || key.eventType === 1 || key.eventType === 2)
+  );
+}
+
 function isUnmodifiedKey(key: ModifiedKey | undefined, code: number): boolean {
   return key?.code === code && isPress(key) && (key.modifierBits & ~MODIFIER_LOCKS) === 0;
+}
+
+function isCursorKey(data: string, direction: CursorKey["direction"]): boolean {
+  const key = parseCursorKey(data);
+
+  return (
+    key?.direction === direction &&
+    isPressOrRepeat(key) &&
+    (key.modifierBits & ~MODIFIER_LOCKS) === 0
+  );
 }
 
 function isCtrlModifiedCode(

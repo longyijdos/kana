@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { isCtrlC, isCtrlO, isEnter, isEscape, isShiftEnter } from "../src/tui/runtime";
+import {
+  isCtrlC,
+  isCtrlO,
+  isDown,
+  isEnter,
+  isEscape,
+  isLeft,
+  isRight,
+  isShiftEnter,
+  isUp,
+} from "../src/tui/runtime";
 
 describe("tui key parsing", () => {
   test("recognizes Shift+Enter in enhanced keyboard formats", () => {
@@ -30,9 +40,30 @@ describe("tui key parsing", () => {
     expect(isCtrlO("\x1b[111;5u")).toBe(true);
   });
 
+  test("recognizes cursor key press and repeat events in enhanced keyboard formats", () => {
+    expect(isUp("\x1b[A")).toBe(true);
+    expect(isDown("\x1b[B")).toBe(true);
+    expect(isRight("\x1b[C")).toBe(true);
+    expect(isLeft("\x1b[D")).toBe(true);
+
+    expect(isUp("\x1b[1;1:1A")).toBe(true);
+    expect(isDown("\x1b[1;1:1B")).toBe(true);
+    expect(isRight("\x1b[1;1:1C")).toBe(true);
+    expect(isLeft("\x1b[1;1:1D")).toBe(true);
+
+    expect(isUp("\x1b[1;1:2A")).toBe(true);
+    expect(isDown("\x1b[1;1:2B")).toBe(true);
+    expect(isRight("\x1b[1;1:2C")).toBe(true);
+    expect(isLeft("\x1b[1;1:2D")).toBe(true);
+  });
+
   test("ignores release events for enhanced key sequences", () => {
     expect(isShiftEnter("\x1b[13;2:3u")).toBe(false);
     expect(isEnter("\x1b[13;1:3u")).toBe(false);
     expect(isCtrlC("\x1b[99;5:3u")).toBe(false);
+    expect(isUp("\x1b[1;1:3A")).toBe(false);
+    expect(isDown("\x1b[1;1:3B")).toBe(false);
+    expect(isRight("\x1b[1;1:3C")).toBe(false);
+    expect(isLeft("\x1b[1;1:3D")).toBe(false);
   });
 });
