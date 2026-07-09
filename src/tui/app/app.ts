@@ -30,6 +30,7 @@ import {
   TextBlock,
   Transcript,
   UsageSummaryBlock,
+  UserMessageBlock,
   WelcomeBlock,
 } from "../components";
 import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
@@ -672,10 +673,9 @@ export class KanaTuiApp {
     displayContent = input.content,
   ): Promise<void> {
     this.transcript.addChild(
-      new TextBlock(source === "user" ? displayContent : `Scheduled wake: ${displayContent}`, {
-        color: source === "user" ? tuiTheme.user : tuiTheme.muted,
-        prefix: source === "user" ? "> " : "",
-      }),
+      source === "user"
+        ? new UserMessageBlock(displayContent)
+        : new TextBlock(`Scheduled wake: ${displayContent}`, { color: tuiTheme.muted }),
     );
     this.running = true;
     this.agentEvents.resetRun();

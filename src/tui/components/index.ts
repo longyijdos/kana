@@ -4,6 +4,7 @@ export {
   TextBlock,
   ToolCallBlock,
   Transcript,
+  UserMessageBlock,
   WelcomeBlock,
 } from "./chat-blocks";
 export {

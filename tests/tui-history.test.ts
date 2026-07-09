@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { Message } from "@/core";
 import { addHistoryMessagesToTranscript } from "../src/tui/app/history";
 import { Transcript } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("tui history transcript", () => {
   test("renders restored user, assistant, and tool messages", () => {
@@ -62,6 +63,29 @@ describe("tui history transcript", () => {
     expect(lines).toContain("  └ package.json");
     expect(lines).toContain("package.json:1-3 of 3");
     expect(lines).not.toContain('  "private": true');
+  });
+
+  test("uses distinct colors for user input and Markdown headings", () => {
+    const transcript = new Transcript();
+
+    addHistoryMessagesToTranscript(transcript, [
+      {
+        role: "user",
+        content: "Question",
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "# Answer" }],
+      },
+    ]);
+
+    const rendered = transcript.render(100);
+    const userLine = rendered.find((line) => stripAnsi(line) === "> Question") ?? "";
+    const headingLine = rendered.find((line) => stripAnsi(line) === "Answer") ?? "";
+
+    expect(tuiTheme.user).not.toEqual(tuiTheme.markdownHeading);
+    expect(userLine).toContain(`\x1b[48;2;${tuiTheme.userMessageBackground.join(";")}m`);
+    expect(headingLine).toContain(color("Answer", tuiTheme.markdownHeading));
   });
 
   test("renders tool results even when the original tool call is missing", () => {

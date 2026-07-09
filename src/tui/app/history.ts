@@ -1,5 +1,11 @@
 import type { AssistantMessage, Message, ToolCallContent } from "@/core";
-import { AssistantMessageBlock, TextBlock, ToolCallBlock, type Transcript } from "../components";
+import {
+  AssistantMessageBlock,
+  TextBlock,
+  ToolCallBlock,
+  type Transcript,
+  UserMessageBlock,
+} from "../components";
 import { tuiTheme } from "../theme";
 
 export function addHistoryMessagesToTranscript(transcript: Transcript, messages: Message[]): void {
@@ -9,10 +15,9 @@ export function addHistoryMessagesToTranscript(transcript: Transcript, messages:
     switch (message.role) {
       case "user":
         transcript.addChild(
-          new TextBlock(formatUserMessage(message), {
-            color: message.source === "scheduled" ? tuiTheme.muted : tuiTheme.user,
-            prefix: message.source === "scheduled" ? "" : "> ",
-          }),
+          message.source === "scheduled"
+            ? new TextBlock(formatUserMessage(message), { color: tuiTheme.muted })
+            : new UserMessageBlock(formatUserMessage(message)),
         );
         break;
 

@@ -11,7 +11,7 @@ export type AnsiColor =
 
 export type RgbColor = readonly [red: number, green: number, blue: number];
 export type Color = AnsiColor | RgbColor;
-export type HighlightedLineToken = { text: string; color?: string };
+export type HighlightedLineToken = { text: string; color?: Color | string };
 
 const COLOR_CODES: Record<AnsiColor, number> = {
   black: 30,
@@ -77,9 +77,13 @@ function backgroundCode(value: Color): string {
   return typeof value === "string" ? String(COLOR_CODES[value] + 10) : rgbCode("48", value);
 }
 
-function foregroundCode(value: string | undefined): string | undefined {
+function foregroundCode(value: Color | string | undefined): string | undefined {
   if (!value) {
     return undefined;
+  }
+
+  if (typeof value !== "string") {
+    return rgbCode("38", value);
   }
 
   const hex = value.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
