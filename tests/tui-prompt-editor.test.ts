@@ -11,7 +11,7 @@ import {
   moveInputCursorVertically,
 } from "../src/tui/components/editor/input-layout";
 import { applyEditorAction } from "../src/tui/components/editor/state";
-import { color, stripAnsi, visibleWidth } from "../src/tui/render";
+import { stripAnsi, visibleWidth } from "../src/tui/render";
 import { CURSOR_MARKER } from "../src/tui/runtime";
 import { tuiTheme } from "../src/tui/theme";
 
@@ -98,9 +98,11 @@ describe("prompt editor", () => {
 
     editor.setText("/quit later");
     const rendered = editor.render(40).join("\n");
+    const command = `\x1b[38;2;${tuiTheme.command.join(";")}m`;
+    const text = `\x1b[38;2;${tuiTheme.userMessageText.join(";")}m`;
 
     expect(stripAnsi(rendered)).toContain("/quit later");
-    expect(rendered).toContain(`${color("/quit", tuiTheme.command)} later`);
+    expect(rendered).toContain(`${command}/quit${text} later`);
   });
 
   test("paginates slash commands and stops selection at the list boundaries", () => {
@@ -159,7 +161,24 @@ describe("prompt editor", () => {
     });
   });
 
-  test("keeps multiline CJK editor rows inside the frame", () => {
+  test("renders message-style background rows around the input", () => {
+    const editor = new Editor();
+
+    editor.setText("hello");
+    const rendered = editor.render(20);
+    const background = `\x1b[48;2;${tuiTheme.userMessageBackground.join(";")}m`;
+    const accent = `\x1b[38;2;${tuiTheme.user.join(";")}m`;
+    const text = `\x1b[38;2;${tuiTheme.userMessageText.join(";")}m`;
+
+    expect(rendered.map(stripAnsi)).toEqual(["", "", "> hello", ""]);
+    expect(rendered[0]).toBe("");
+    expect(
+      rendered.slice(1).every((line) => line.includes(background) && line.includes("\x1b[K")),
+    ).toBe(true);
+    expect(rendered[2]).toContain(`${accent}> ${text}hello`);
+  });
+
+  test("keeps multiline CJK editor rows inside the background block", () => {
     const editor = new Editor();
 
     editor.setText(
@@ -170,12 +189,12 @@ describe("prompt editor", () => {
     );
     editor.handleInput("\x1b[D");
 
-    for (const line of editor.render(40)) {
-      const plain = stripAnsi(line);
+    const [, ...backgroundLines] = editor.render(40);
 
+    for (const line of backgroundLines) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(40);
-      expect(plain.startsWith("+") || plain.startsWith("|")).toBe(true);
-      expect(plain.endsWith("+") || plain.endsWith("|")).toBe(true);
+      expect(line).toContain(`\x1b[48;2;${tuiTheme.userMessageBackground.join(";")}m`);
+      expect(line).toContain("\x1b[K");
     }
   });
 
@@ -186,15 +205,23 @@ describe("prompt editor", () => {
 
     expect(editor.getText()).toBe("a\nb\nc");
 
-    for (const line of editor.render(20)) {
+    const rendered = editor.render(20);
+
+    for (const line of rendered) {
       const plain = stripAnsi(line);
 
       expect(plain).not.toContain("\r");
       expect(plain).not.toContain("\n");
-      expect(visibleWidth(line)).toBe(20);
-      expect(plain.startsWith("+") || plain.startsWith("|")).toBe(true);
-      expect(plain.endsWith("+") || plain.endsWith("|")).toBe(true);
+      expect(visibleWidth(line)).toBeLessThanOrEqual(20);
     }
+
+    expect(rendered[0]).toBe("");
+    expect(
+      rendered
+        .slice(1)
+        .every((line) => line.includes(`\x1b[48;2;${tuiTheme.userMessageBackground.join(";")}m`)),
+    ).toBe(true);
+    expect(rendered.map(stripAnsi)).toEqual(["", "", "> a", "  b", "  c", ""]);
   });
 
   test("inserts newline with Shift+Enter before submitting with Enter", () => {
@@ -240,13 +267,13 @@ describe("prompt editor", () => {
     editor.render(20);
 
     editor.handleInput("\x1b[A");
+    expect(cursorLine(editor.render(20))).toBe(3);
+
+    editor.handleInput("\x1b[A");
     expect(cursorLine(editor.render(20))).toBe(2);
 
     editor.handleInput("\x1b[A");
-    expect(cursorLine(editor.render(20))).toBe(1);
-
-    editor.handleInput("\x1b[A");
-    expect(cursorLine(editor.render(20))).toBe(1);
+    expect(cursorLine(editor.render(20))).toBe(2);
   });
 
   test("moves up within the visible input window before scrolling it", () => {
@@ -257,13 +284,13 @@ describe("prompt editor", () => {
 
     expect(initial.some((line) => line.includes("one"))).toBe(false);
     expect(initial.some((line) => line.includes("six"))).toBe(true);
-    expect(cursorLine(editor.render(20))).toBe(5);
+    expect(cursorLine(editor.render(20))).toBe(6);
 
     editor.handleInput("\x1b[A");
 
     const afterFirstUp = editor.render(20).map(stripAnsi);
 
-    expect(cursorLine(editor.render(20))).toBe(4);
+    expect(cursorLine(editor.render(20))).toBe(5);
     expect(afterFirstUp.some((line) => line.includes("one"))).toBe(false);
     expect(afterFirstUp.some((line) => line.includes("six"))).toBe(true);
 
@@ -274,7 +301,7 @@ describe("prompt editor", () => {
 
     const afterScroll = editor.render(20).map(stripAnsi);
 
-    expect(cursorLine(editor.render(20))).toBe(1);
+    expect(cursorLine(editor.render(20))).toBe(2);
     expect(afterScroll.some((line) => line.includes("one"))).toBe(true);
     expect(afterScroll.some((line) => line.includes("six"))).toBe(false);
   });
@@ -300,13 +327,13 @@ describe("prompt editor", () => {
     editor.handleInput("\x1b[H");
 
     editor.handleInput("\x1b[B");
-    expect(cursorLine(editor.render(20))).toBe(2);
-
-    editor.handleInput("\x1b[B");
     expect(cursorLine(editor.render(20))).toBe(3);
 
     editor.handleInput("\x1b[B");
-    expect(cursorLine(editor.render(20))).toBe(3);
+    expect(cursorLine(editor.render(20))).toBe(4);
+
+    editor.handleInput("\x1b[B");
+    expect(cursorLine(editor.render(20))).toBe(4);
   });
 
   test("moves down within the visible input window before scrolling it", () => {
@@ -320,13 +347,13 @@ describe("prompt editor", () => {
 
     expect(initial.some((line) => line.includes("one"))).toBe(true);
     expect(initial.some((line) => line.includes("six"))).toBe(false);
-    expect(cursorLine(editor.render(20))).toBe(1);
+    expect(cursorLine(editor.render(20))).toBe(2);
 
     editor.handleInput("\x1b[B");
 
     const afterFirstDown = editor.render(20).map(stripAnsi);
 
-    expect(cursorLine(editor.render(20))).toBe(2);
+    expect(cursorLine(editor.render(20))).toBe(3);
     expect(afterFirstDown.some((line) => line.includes("one"))).toBe(true);
     expect(afterFirstDown.some((line) => line.includes("six"))).toBe(false);
 
@@ -337,7 +364,7 @@ describe("prompt editor", () => {
 
     const afterScroll = editor.render(20).map(stripAnsi);
 
-    expect(cursorLine(editor.render(20))).toBe(5);
+    expect(cursorLine(editor.render(20))).toBe(6);
     expect(afterScroll.some((line) => line.includes("one"))).toBe(false);
     expect(afterScroll.some((line) => line.includes("six"))).toBe(true);
   });
@@ -417,7 +444,7 @@ describe("prompt editor", () => {
     const editor = new Editor();
 
     editor.setText("abcdef");
-    editor.render(9);
+    editor.render(6);
     editor.handleInput("\x1b[H");
     editor.handleInput("\x1b[B");
     editor.handleInput("X");
@@ -429,19 +456,19 @@ describe("prompt editor", () => {
     const editor = new Editor();
 
     editor.setText("abcdef");
-    editor.render(9);
+    editor.render(6);
     editor.handleInput("\x1b[A");
 
-    const cursorLine = editor.render(9).findIndex((line) => line.includes(CURSOR_MARKER));
+    const cursorLine = editor.render(6).findIndex((line) => line.includes(CURSOR_MARKER));
 
-    expect(cursorLine).toBe(2);
+    expect(cursorLine).toBe(3);
   });
 
   test("moves left from a soft-wrap line start before the previous character", () => {
     const editor = new Editor();
 
     editor.setText("abcdef");
-    editor.render(9);
+    editor.render(6);
     editor.handleInput("\x1b[H");
     editor.handleInput("\x1b[B");
     editor.handleInput("\x1b[D");
