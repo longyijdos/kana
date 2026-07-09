@@ -239,9 +239,43 @@ function parseQuote(line: string): { level: number; content: string } | undefine
 }
 
 function normalizeHtmlLine(value: string): string {
-  return value
+  const normalized = value
     .replace(/<kbd>(.*?)<\/kbd>/gi, "[$1]")
     .replace(/<summary>(.*?)<\/summary>/gi, "$1")
-    .replace(/<\/?(?:details|summary)[^>]*>/gi, "")
-    .replace(/<[^>]+>/g, "");
+    .replace(/<\/?(?:details|summary)[^>]*>/gi, "");
+
+  return stripHtmlTags(normalized);
+}
+
+const HTML_TAG_PATTERN = /<\/?([a-z][a-z0-9-]*)(?:\s+[^<>]*?)?\s*\/?>/gi;
+const HTML_CLOSING_TAG_PATTERN = /<\/([a-z][a-z0-9-]*)\s*>/gi;
+const HTML_VOID_TAGS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+function stripHtmlTags(value: string): string {
+  const pairedTagNames = new Set(
+    Array.from(value.matchAll(HTML_CLOSING_TAG_PATTERN), (match) => (match[1] ?? "").toLowerCase()),
+  );
+
+  // A lone <name> is common programming syntax. Treat it as HTML only when a
+  // matching closing tag exists, or when it is a standard void element.
+  return value.replace(HTML_TAG_PATTERN, (tag, name: string) => {
+    const normalizedName = name.toLowerCase();
+
+    return pairedTagNames.has(normalizedName) || HTML_VOID_TAGS.has(normalizedName) ? "" : tag;
+  });
 }

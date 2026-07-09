@@ -112,6 +112,7 @@ describe("tui markdown block", () => {
         "[链接](https://example.com)",
         "![占位图](https://example.com/image.png)",
         "<kbd>Ctrl</kbd> + <kbd>C</kbd>",
+        "<span>inline HTML</span><br>next",
       ].join("\n"),
       { color: "white" },
     ).render(120);
@@ -123,6 +124,17 @@ describe("tui markdown block", () => {
       "链接 (https://example.com)",
       "[image: 占位图] https://example.com/image.png",
       "[Ctrl] + [C]",
+      "inline HTMLnext",
+    ]);
+  });
+
+  test("preserves angle-bracketed programming type syntax", () => {
+    const rendered = new MarkdownBlock(
+      "Use vector<int>, vector<unsigned int>, and map<string, vector<int>>.",
+    ).render(120);
+
+    expect(rendered.map(stripAnsi)).toEqual([
+      "Use vector<int>, vector<unsigned int>, and map<string, vector<int>>.",
     ]);
   });
 
