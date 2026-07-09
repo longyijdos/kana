@@ -28,6 +28,7 @@ import { ListViewport } from "../../utils/list-viewport";
 import {
   completeCommand,
   createCommandSubmit,
+  createRandomPromptPlaceholder,
   getCommandState,
   type PromptSubmit,
 } from "./commands";
@@ -57,6 +58,8 @@ export class Editor implements Component {
   private isPasting = false;
   private inputColumns = 80;
   private inputViewportStartLine: number | undefined;
+  // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
+  private placeholder = createRandomPromptPlaceholder();
 
   onSubmit?: (submit: PromptSubmit) => void;
 
@@ -147,6 +150,7 @@ export class Editor implements Component {
     }
 
     if (isEnter(data)) {
+      this.placeholder = createRandomPromptPlaceholder(Math.random, this.placeholder);
       const commandState = getCommandState(this.state.value);
       const submit = createCommandSubmit(
         this.state.value,
@@ -226,7 +230,10 @@ export class Editor implements Component {
     }
 
     if (!this.state.value) {
-      return [{ text: CURSOR_MARKER, color: tuiTheme.userMessageText }];
+      return [
+        { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
+        { text: this.placeholder, color: tuiTheme.muted },
+      ];
     }
 
     if (this.state.cursorOffset < line.startOffset || this.state.cursorOffset > line.endOffset) {

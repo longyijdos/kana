@@ -3,6 +3,7 @@ import { Editor } from "../src/tui/components/editor";
 import {
   completeCommand,
   createCommandSubmit,
+  createRandomPromptPlaceholder,
   getCommandState,
   PROMPT_COMMANDS,
 } from "../src/tui/components/editor/commands";
@@ -91,6 +92,24 @@ describe("prompt editor", () => {
     const cursorMarkers = editor.render(9).join("").split(CURSOR_MARKER).length - 1;
 
     expect(cursorMarkers).toBe(1);
+  });
+
+  test("shows a stable help entry placeholder while empty and changes it after Enter", () => {
+    const editor = new Editor();
+    const firstRender = editor.render(80);
+    const inputLine = firstRender.find((line) => line.includes(CURSOR_MARKER));
+
+    expect(inputLine).toBeDefined();
+    expect(stripAnsi(inputLine ?? "")).toMatch(/^> Try \/\w+ — .+$/);
+    expect(editor.render(80)).toEqual(firstRender);
+
+    editor.handleInput("\r");
+
+    expect(editor.render(80)).not.toEqual(firstRender);
+
+    editor.setText("hello");
+
+    expect(stripAnsi(editor.render(80).join("\n"))).not.toContain("Try /");
   });
 
   test("highlights completed slash command token separately from arguments", () => {
@@ -692,6 +711,16 @@ describe("prompt input layout", () => {
 });
 
 describe("prompt commands", () => {
+  test("creates prompt placeholders from help command entries", () => {
+    expect(createRandomPromptPlaceholder(() => 0)).toBe("Try /quit — Exit Kana.");
+    expect(createRandomPromptPlaceholder(() => 0.999)).toBe(
+      "Try /usage — Show session, project, or global API usage.",
+    );
+    expect(createRandomPromptPlaceholder(() => 0, "Try /quit — Exit Kana.")).toBe(
+      "Try /help — Show slash commands.",
+    );
+  });
+
   test("lists commands after slash", () => {
     expect(getCommandState("/")).toMatchObject({
       isCommandMode: true,

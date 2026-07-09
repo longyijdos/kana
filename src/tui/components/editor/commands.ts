@@ -107,6 +107,18 @@ export function completeCommand(command: PromptCommand): string {
   return `/${command.name} `;
 }
 
+export function createRandomPromptPlaceholder(random = Math.random, previous?: string): string {
+  const placeholders = PROMPT_COMMANDS.map(
+    (command) => `Try /${command.name} — ${command.description}`,
+  );
+  const candidates =
+    placeholders.length > 1
+      ? placeholders.filter((placeholder) => placeholder !== previous)
+      : placeholders;
+
+  return candidates[Math.floor(random() * candidates.length)] ?? placeholders[0] ?? "";
+}
+
 export function createCommandSubmit(
   value: string,
   selectedCommand: PromptCommand | undefined,
