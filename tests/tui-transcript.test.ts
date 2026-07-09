@@ -187,6 +187,30 @@ describe("tui transcript", () => {
     expect(rendered).not.toContain("before");
   });
 
+  test("finalizes a streaming table tail when the assistant message ends", () => {
+    const block = new AssistantMessageBlock();
+    const message = {
+      role: "assistant" as const,
+      content: [
+        {
+          type: "text" as const,
+          text: ["| Key | Value |", "| --- | --- |", "| a | b |", "| growing-value | partial"].join(
+            "\n",
+          ),
+        },
+      ],
+    };
+
+    block.update(message, { complete: false });
+    const streamingSeparator = block.render(40).map(stripAnsi)[1] ?? "";
+
+    block.update(message, { complete: true });
+    const completeSeparator = block.render(40).map(stripAnsi)[1] ?? "";
+
+    expect(visibleWidth(streamingSeparator)).toBe(14);
+    expect(visibleWidth(completeSeparator)).toBeGreaterThan(14);
+  });
+
   test("renders read tool output as file metadata only", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

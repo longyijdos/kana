@@ -81,7 +81,7 @@ export class AgentEventRenderer {
 
   private handleAssistantStart(message: AssistantMessage): void {
     this.streamingAssistant = new AssistantMessageBlock();
-    this.streamingAssistant.update(message);
+    this.streamingAssistant.update(message, { complete: false });
     this.options.transcript.addChild(this.streamingAssistant);
     this.options.updateStatus("thinking");
   }
@@ -91,7 +91,7 @@ export class AgentEventRenderer {
       this.handleAssistantStart(event.message);
     }
 
-    this.streamingAssistant?.update(event.message);
+    this.streamingAssistant?.update(event.message, { complete: false });
     this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
     this.toolCallBlocks.createOrUpdateFromMessage(event.message);
     if (event.assistantMessageEvent.type === "toolcall_end") {
@@ -102,7 +102,7 @@ export class AgentEventRenderer {
 
   private handleAssistantEnd(message: AssistantMessage): void {
     this.streamingAssistant?.showThinking(false);
-    this.streamingAssistant?.update(message);
+    this.streamingAssistant?.update(message, { complete: true });
     this.streamingAssistant = undefined;
     this.options.updateStatus(phaseForStopReason(message.stopReason));
   }

@@ -160,7 +160,7 @@ export function wrapPlainLine(value: string, width: number): string[] {
   return lines;
 }
 
-function parseInline(value: string): InlineSpan[] {
+export function parseInline(value: string): InlineSpan[] {
   return parseInlineWithStyle(normalizeInlineMarkdown(value), {});
 }
 

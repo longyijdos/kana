@@ -119,13 +119,113 @@ describe("tui markdown block", () => {
     const plain = rendered.map(stripAnsi);
 
     expect(plain).toEqual([
-      "语言  类型",
-      "Rust  系统级",
+      " 语言    类型",
+      "━━━━━━  ━━━━━━━━",
+      " Rust    系统级",
       "链接 (https://example.com)",
       "[image: 占位图] https://example.com/image.png",
       "[Ctrl] + [C]",
       "inline HTMLnext",
     ]);
+  });
+
+  test("aligns complete tables and supports rows without outer pipes", () => {
+    const rendered = new MarkdownBlock(
+      ["Name | Score | State", ":--- | ---: | :---:", "A | 7 | ok", "Long | 42 | done"].join("\n"),
+    )
+      .render(80)
+      .map(stripAnsi);
+
+    expect(rendered[1]).toContain("━");
+    expect(rendered[3]).toContain("─");
+    expect(rendered[0]?.indexOf("Name")).toBe(rendered[4]?.indexOf("Long"));
+    expect((rendered[0]?.indexOf("Score") ?? 0) + "Score".length).toBe(
+      (rendered[2]?.indexOf("7") ?? 0) + 1,
+    );
+    expect(rendered[2]?.indexOf("ok")).toBeGreaterThan(rendered[0]?.indexOf("State") ?? 0);
+  });
+
+  test("preserves empty cells and pipes inside escapes or inline code", () => {
+    const raw = new MarkdownBlock(
+      [
+        "| Key | Value | Empty |",
+        "| --- | --- | --- |",
+        "| escaped | a\\|b | |",
+        "| code | `x|y` | ok |",
+      ].join("\n"),
+    ).render(80);
+    const rendered = raw.map(stripAnsi);
+
+    expect(rendered).toContainEqual(expect.stringContaining("a|b"));
+    expect(rendered).toContainEqual(expect.stringContaining("x|y"));
+    expect(rendered).toContainEqual(expect.stringContaining("ok"));
+    expect(raw).toContainEqual(expect.stringContaining(color("x|y", tuiTheme.markdownInlineCode)));
+  });
+
+  test("wraps wide table cells within the terminal width", () => {
+    const rendered = new MarkdownBlock(
+      [
+        "| Name | Description |",
+        "| --- | --- |",
+        "| Kana | A long description that must wrap inside its column |",
+      ].join("\n"),
+    ).render(20);
+
+    expect(rendered.every((line) => visibleWidth(line) <= 20)).toBe(true);
+    expect(rendered.map(stripAnsi).join("").replaceAll(/\s/g, "")).toContain(
+      "Alongdescriptionthatmustwrapinsideitscolumn",
+    );
+  });
+
+  test("falls back to key-value records when minimum columns do not fit", () => {
+    const rendered = new MarkdownBlock(
+      ["| Name | Status |", "| --- | --- |", "| Alice | Active |", "| Bob | Pending |"].join("\n"),
+    )
+      .render(10)
+      .map(stripAnsi);
+
+    expect(rendered).toEqual([
+      " Name",
+      "  Alice",
+      " Status",
+      "  Active",
+      "──────────",
+      " Name",
+      "  Bob",
+      " Status",
+      "  Pending",
+    ]);
+  });
+
+  test("keeps the streaming tail row visible without using it for column widths", () => {
+    const text = [
+      "| Key | Value |",
+      "| --- | --- |",
+      "| a | b |",
+      "| growing-value | partial",
+    ].join("\n");
+    const streaming = new MarkdownBlock(text, {
+      complete: false,
+      trailingLineComplete: false,
+    })
+      .render(40)
+      .map(stripAnsi);
+    const complete = new MarkdownBlock(text).render(40).map(stripAnsi);
+
+    expect(streaming).toContainEqual(expect.stringContaining("gro"));
+    expect(visibleWidth(streaming[1] ?? "")).toBe(14);
+    expect(visibleWidth(complete[1] ?? "")).toBeGreaterThan(14);
+  });
+
+  test("keeps an incomplete table delimiter as plain text while streaming", () => {
+    const rendered = new MarkdownBlock("| Name | Status |\n| --- |", {
+      complete: false,
+      trailingLineComplete: false,
+    })
+      .render(80)
+      .map(stripAnsi);
+
+    expect(rendered).toEqual(["| Name | Status |", "| --- |"]);
   });
 
   test("preserves angle-bracketed programming type syntax", () => {

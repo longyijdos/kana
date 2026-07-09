@@ -5,6 +5,10 @@ import { tuiTheme } from "../../theme";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import { MarkdownBlock } from "./markdown-block";
 
+type AssistantMessageBlockUpdateOptions = {
+  complete?: boolean;
+};
+
 export class AssistantMessageBlock implements Component {
   private thinkingVisible = false;
   private textBlocks: MarkdownBlock[] = [];
@@ -17,12 +21,21 @@ export class AssistantMessageBlock implements Component {
     this.thinkingTimer = new ElapsedTimer(now);
   }
 
-  update(message: AssistantMessage): void {
+  update(message: AssistantMessage, options: AssistantMessageBlockUpdateOptions = {}): void {
     this.textBlocks = [];
+    const messageComplete = options.complete ?? true;
 
-    for (const content of message.content) {
+    for (const [index, content] of message.content.entries()) {
       if (content.type === "text" && content.text.trim()) {
-        this.textBlocks.push(new MarkdownBlock(content.text.trim()));
+        // Ordered content before the live tail is immutable even while the
+        // overall assistant message continues with a tool call or another block.
+        const blockComplete = messageComplete || index < message.content.length - 1;
+        this.textBlocks.push(
+          new MarkdownBlock(content.text.trim(), {
+            complete: blockComplete,
+            trailingLineComplete: blockComplete || /(?:\r\n|\r|\n)\s*$/.test(content.text),
+          }),
+        );
       }
     }
 

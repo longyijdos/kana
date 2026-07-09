@@ -3,9 +3,12 @@ import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import { type HighlightedCodeLine, highlightCodeSync } from "../../utils/syntax-highlighter";
 import { renderWrappedInline, styleSpans, wrapPlainLine, wrapSpans } from "./markdown-inline";
+import { parseMarkdownTable, renderMarkdownTable } from "./markdown-table";
 
 type MarkdownBlockOptions = {
   color?: Color;
+  complete?: boolean;
+  trailingLineComplete?: boolean;
 };
 
 export class MarkdownBlock implements Component {
@@ -37,7 +40,14 @@ export class MarkdownBlock implements Component {
     const lines: string[] = [];
     let codeBlock: { language?: string; lines: string[] } | undefined;
 
-    for (const rawLine of splitLines(this.text)) {
+    const sourceLines = splitLines(this.text);
+    const lastLineComplete =
+      this.options.complete !== false ||
+      this.options.trailingLineComplete === true ||
+      /(?:\r\n|\r|\n)$/.test(this.text);
+
+    for (let index = 0; index < sourceLines.length; index += 1) {
+      const rawLine = sourceLines[index] ?? "";
       const fence = rawLine.match(/^\s*```([\w-]+)?\s*$/);
 
       if (fence) {
@@ -55,6 +65,17 @@ export class MarkdownBlock implements Component {
 
       if (codeBlock) {
         codeBlock.lines.push(rawLine);
+        continue;
+      }
+
+      const table = parseMarkdownTable(sourceLines, index, lastLineComplete);
+      if (table) {
+        lines.push(
+          ...renderMarkdownTable(table.table, width, {
+            color: this.options.color,
+          }),
+        );
+        index = table.nextLine - 1;
         continue;
       }
 
@@ -90,23 +111,6 @@ export class MarkdownBlock implements Component {
     const thematicBreak = line.match(/^\s*([-*_])(?:\s*\1){2,}\s*$/);
     if (thematicBreak) {
       return [color("-".repeat(Math.min(Math.max(1, width), 40)), tuiTheme.markdownRule)];
-    }
-
-    const tableSeparator = line.match(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/);
-    if (tableSeparator) {
-      return [];
-    }
-
-    const tableRow = line.match(/^\s*\|(.+)\|\s*$/);
-    if (tableRow) {
-      const cells = (tableRow[1] ?? "")
-        .split("|")
-        .map((cell) => cell.trim())
-        .filter(Boolean);
-
-      return renderWrappedInline(cells.join("  "), width, {
-        defaultColor: this.options.color ?? tuiTheme.markdownTable,
-      });
     }
 
     const quote = parseQuote(line);
