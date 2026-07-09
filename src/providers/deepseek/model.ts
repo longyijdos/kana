@@ -88,15 +88,20 @@ export class DeepSeekModel extends BaseModel {
           this.config.maxRetries ?? 0,
           (details) => this.config.logger?.warn("provider.retrying", details),
         );
+        requestSignal.refresh();
 
         stream.push({
           type: "start",
           snapshot: structuredClone(message),
         });
 
-        await readDeepSeekStream(response, (chunk) => {
-          applyDeepSeekChunk(stream, message, state, chunk);
-        });
+        await readDeepSeekStream(
+          response,
+          (chunk) => {
+            applyDeepSeekChunk(stream, message, state, chunk);
+          },
+          requestSignal.refresh,
+        );
 
         finishOpenContent(stream, message, state);
 

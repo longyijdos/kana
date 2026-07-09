@@ -91,7 +91,7 @@ level = "info"
 | `thinking` | Boolean | `true` | Explicitly enables DeepSeek thinking in requests. |
 | `reasoning_effort` | `high` or `max` | `high` | DeepSeek reasoning effort; it is not sent when `thinking = false`. |
 | `max_tokens` | Finite number | `8192` | Per-request output-token limit; it cannot exceed the selected model's hard limit. |
-| `timeout_ms` | Finite number | `60000` | Timeout in milliseconds for one DeepSeek HTTP request. |
+| `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
 
 Before startup, set the environment variable named by `api_key_env`. The default configuration uses:

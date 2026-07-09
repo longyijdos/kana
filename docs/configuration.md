@@ -91,7 +91,7 @@ level = "info"
 | `thinking` | 布尔值 | `true` | 是否在 DeepSeek 请求中显式启用 thinking。 |
 | `reasoning_effort` | `high` 或 `max` | `high` | DeepSeek 推理强度；`thinking = false` 时不会发送该字段。 |
 | `max_tokens` | 有限数字 | `8192` | 单个请求的输出 token 上限；不能超过所选模型的硬上限。 |
-| `timeout_ms` | 有限数字 | `60000` | 单个 DeepSeek HTTP 请求的超时毫秒数。 |
+| `timeout_ms` | 有限数字 | `60000` | 等待 DeepSeek 响应头或相邻响应数据的无活动超时毫秒数。 |
 | `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
 
 启动前必须在环境中设置 `api_key_env` 指定的变量。例如默认配置使用：

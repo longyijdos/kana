@@ -6,10 +6,39 @@ import {
   finishOpenContent,
   finishToolCalls,
   getDoneReason,
+  readDeepSeekStream,
 } from "../src/providers/deepseek/stream";
 import type { DeepSeekStreamState } from "../src/providers/deepseek/types";
 
 describe("DeepSeek stream parsing", () => {
+  test("reports raw stream activity for heartbeats and data frames", async () => {
+    const encoder = new TextEncoder();
+    let activityCount = 0;
+    const chunks: unknown[] = [];
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(": heartbeat\n\n"));
+          controller.enqueue(
+            encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n\n'),
+          );
+          controller.close();
+        },
+      }),
+    );
+
+    await readDeepSeekStream(
+      response,
+      (chunk) => chunks.push(chunk),
+      () => {
+        activityCount += 1;
+      },
+    );
+
+    expect(activityCount).toBe(2);
+    expect(chunks).toHaveLength(1);
+  });
+
   test("emits thinking, text, and tool call events in content order", async () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEventTypes(stream);

@@ -68,7 +68,7 @@ Providers first produce `AssistantMessageEvent` values. An event contains both a
 3. Infers individual DeepSeek tool-call completion from ordered indexes: a first higher index parses and ends preceding calls, while stream completion ends the final call; raw argument strings are retained.
 4. Maps finish reasons and token usage.
 
-A request can be cancelled by the Agent and is also limited by `timeoutMs`. HTTP 408, 429, and 5xx responses use exponential-backoff retries up to `maxRetries`. Model metadata also supplies the context window, output maximum, and CNY pricing; the TUI uses it to calculate context occupancy and process-lifetime accumulated cost.
+A request can be cancelled by the Agent and is also subject to the `timeoutMs` inactivity timeout, which restarts on response headers or response data. HTTP 408, 429, and 5xx responses use exponential-backoff retries up to `maxRetries`. Model metadata also supplies the context window, output maximum, and CNY pricing; the TUI uses it to calculate context occupancy and process-lifetime accumulated cost.
 
 ## Kana product composition
 

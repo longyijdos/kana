@@ -11,6 +11,7 @@ import type {
 export async function readDeepSeekStream(
   response: Response,
   onChunk: (chunk: DeepSeekChatCompletionChunk) => void,
+  onActivity?: () => void,
 ): Promise<void> {
   if (!response.body) {
     throw new Error("DeepSeek API response does not contain a body.");
@@ -29,6 +30,9 @@ export async function readDeepSeekStream(
       break;
     }
 
+    // Count raw bytes as activity so SSE heartbeats and partial frames keep a
+    // healthy connection alive even when they do not produce a model chunk.
+    onActivity?.();
     buffer += decoder.decode(value, { stream: true });
     const parts = buffer.split(/\r?\n\r?\n/);
     buffer = parts.pop() ?? "";

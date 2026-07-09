@@ -47,22 +47,37 @@ export function createRequestSignal(
   signal?: AbortSignal,
 ): {
   signal?: AbortSignal;
+  refresh(): void;
   dispose(): void;
 } {
   if (!config.timeoutMs) {
     return {
       signal,
+      refresh() {},
       dispose() {},
     };
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort(new Error(`DeepSeek request timed out after ${config.timeoutMs}ms.`));
-  }, config.timeoutMs);
+  let timeout: ReturnType<typeof setTimeout>;
+  const refresh = (): void => {
+    clearTimeout(timeout);
+
+    if (controller.signal.aborted) {
+      return;
+    }
+
+    // timeoutMs is an inactivity limit. Long reasoning streams may legitimately
+    // exceed it as long as the provider continues sending response bytes.
+    timeout = setTimeout(() => {
+      controller.abort(new Error(`DeepSeek request timed out after ${config.timeoutMs}ms.`));
+    }, config.timeoutMs);
+  };
   const abort = (): void => {
     controller.abort(signal?.reason);
   };
+
+  refresh();
 
   if (signal?.aborted) {
     abort();
@@ -72,6 +87,7 @@ export function createRequestSignal(
 
   return {
     signal: controller.signal,
+    refresh,
     dispose() {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", abort);

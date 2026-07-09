@@ -48,7 +48,7 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 
 模型优先使用构造配置里的 `apiKey`，否则读取 `DEEPSEEK_API_KEY`。Kana 产品层通常先从 `config.toml` 指定的环境变量读 key 并传入配置；直接使用 `DeepSeekModel` 时则适用该回退。请求带有 `Authorization: Bearer <key>`、`content-type: application/json` 和 `accept: text/event-stream`，并可合并自定义 headers。
 
-`createRequestSignal` 将 Agent 的取消信号和可选 `timeoutMs` 合并。超时会中止请求，结束时清理定时器和事件监听器。HTTP 408、429 和所有 5xx 响应可重试；其他 HTTP 错误不重试。非 HTTP 异常也会被视为可重试，除非已中止。退避为 1s、2s、4s、8s（之后保持 8s），最多执行 `maxRetries` 次重试。
+`createRequestSignal` 将 Agent 的取消信号和可选 `timeoutMs` 合并。`timeoutMs` 是无活动超时：等待响应头时受其限制，收到响应头或任意响应字节后重新计时。因此持续输出的长 reasoning 流可以超过该时长，但连接停止传输达到该时长时仍会中止。结束时会清理定时器和事件监听器。HTTP 408、429 和所有 5xx 响应可重试；其他 HTTP 错误不重试。非 HTTP 异常也会被视为可重试，除非已中止。退避为 1s、2s、4s、8s（之后保持 8s），最多执行 `maxRetries` 次重试。
 
 任何抛出错误最终都会产生 provider `error` 事件：DOM `AbortError` 或上层 signal 已中止映射为 `aborted`，其余映射为 `error`。事件带有截至失败时已累积的助手消息快照，因此 Agent 能保留可用的部分文本。
 
