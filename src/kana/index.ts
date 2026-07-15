@@ -104,6 +104,15 @@ export {
   installKanaSkills,
 } from "./skill-install";
 export {
+  KANA_SKILL_SYNC_TARGETS,
+  type KanaSkillSyncTarget,
+  type SyncKanaSkillResult,
+  type SyncKanaSkillStatus,
+  type SyncKanaSkillsOptions,
+  type SyncKanaSkillsResult,
+  syncKanaSkills,
+} from "./skill-sync";
+export {
   type FormatKanaSkillsForPromptOptions,
   formatKanaSkillsForPrompt,
   type KanaSkill,

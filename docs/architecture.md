@@ -28,6 +28,7 @@ src/main.ts
 - `kana [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
 - `kana resume [sessionId]`：按 ID 恢复会话，或打开会话选择器。
 - `kana install [--force] [--skills]`：创建默认配置、审批文件和 Skills 配置；`--skills` 额外克隆或更新默认 Skills 仓库。
+- `kana skills sync <target>`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；当前内置 `codex` 目标，也可传自定义目录。
 
 启动 TUI 时，`startTui` 会加载配置和审批白名单，创建当前会话，并构造 `KanaTuiApp`。它把会话读写、Skills 开关、记忆压缩和 Agent 工厂以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 等存储细节。
 

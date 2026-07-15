@@ -1,5 +1,9 @@
 import { Command } from "commander";
-import type { InstallKanaConfigResult, InstallKanaSkillsResult } from "@/kana";
+import type {
+  InstallKanaConfigResult,
+  InstallKanaSkillsResult,
+  SyncKanaSkillsResult,
+} from "@/kana";
 import type { StartTuiOptions } from "@/tui";
 import { KANA_VERSION } from "../version";
 
@@ -12,6 +16,10 @@ export type CreateCliOptions = {
     env: NodeJS.ProcessEnv,
     options: { force?: boolean },
   ) => Promise<InstallKanaSkillsResult>;
+  syncKanaSkills: (
+    env: NodeJS.ProcessEnv,
+    options: { force?: boolean; targetAgent?: string; targetDir?: string },
+  ) => SyncKanaSkillsResult;
   log?: (message: string) => void;
   startTui: (options?: StartTuiOptions) => void;
 };
@@ -21,6 +29,7 @@ export function createCli(options: CreateCliOptions): Command {
   const installSkills = options.installKanaSkills;
   const log = options.log ?? console.log;
   const runTui = options.startTui;
+  const syncSkills = options.syncKanaSkills;
   const program = new Command();
 
   program
@@ -73,6 +82,29 @@ export function createCli(options: CreateCliOptions): Command {
       }
     });
 
+  const skillsCommand = program.command("skills").description("Manage Kana skills");
+
+  skillsCommand
+    .command("sync")
+    .description("Copy installed Kana skills to another agent's skills directory")
+    .argument("[target]", "Target agent preset, such as codex")
+    .option("--target-dir <path>", "Copy to a custom skills directory")
+    .option("--force", "Replace existing target skill directories")
+    .action(
+      (
+        targetAgent: string | undefined,
+        commandOptions: { force?: boolean; targetDir?: string },
+      ) => {
+        const result = syncSkills(process.env, {
+          force: commandOptions.force,
+          targetAgent,
+          targetDir: commandOptions.targetDir,
+        });
+
+        log(formatSyncKanaSkillsMessage(result));
+      },
+    );
+
   return program;
 }
 
@@ -85,6 +117,28 @@ function formatInstallSkillsMessage(result: InstallKanaSkillsResult): string {
     case "reinstalled":
       return `Reinstalled skills: ${result.skillsPath}`;
   }
+}
+
+function formatSyncKanaSkillsMessage(result: SyncKanaSkillsResult): string {
+  const counts = result.skills.reduce(
+    (summary, skill) => {
+      summary[skill.status] += 1;
+      return summary;
+    },
+    {
+      copied: 0,
+      exists: 0,
+      replaced: 0,
+    },
+  );
+  const parts = [
+    `copied ${counts.copied}`,
+    `replaced ${counts.replaced}`,
+    `skipped ${counts.exists}`,
+  ];
+  const targetLabel = result.targetName === "custom" ? "custom target" : result.targetName;
+
+  return `Synced skills to ${targetLabel}: ${result.targetPath} (${parts.join(", ")})`;
 }
 
 function formatInstallMessage(

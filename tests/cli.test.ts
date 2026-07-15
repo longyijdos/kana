@@ -102,6 +102,64 @@ describe("CLI", () => {
       "Reinstalled skills: /tmp/.kana/skills/kana-skills",
     ]);
   });
+
+  test("syncs skills to an agent preset", async () => {
+    const logs: string[] = [];
+    const calls: Array<{ force?: boolean; targetAgent?: string; targetDir?: string }> = [];
+
+    await parse(["node", "kana", "skills", "sync", "codex", "--force"], {
+      syncKanaSkills: (_env, options) => {
+        calls.push(options);
+        return {
+          sourcePath: "/tmp/.kana/skills/kana-skills",
+          targetName: "codex",
+          targetPath: "/tmp/.codex/skills",
+          skills: [
+            {
+              name: "web-search",
+              sourcePath: "/tmp/.kana/skills/kana-skills/web-search",
+              status: "replaced",
+              targetPath: "/tmp/.codex/skills/web-search",
+            },
+            {
+              name: "web-fetch",
+              sourcePath: "/tmp/.kana/skills/kana-skills/web-fetch",
+              status: "copied",
+              targetPath: "/tmp/.codex/skills/web-fetch",
+            },
+          ],
+        };
+      },
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+
+    expect(calls).toEqual([{ force: true, targetAgent: "codex", targetDir: undefined }]);
+    expect(logs).toEqual([
+      "Synced skills to codex: /tmp/.codex/skills (copied 1, replaced 1, skipped 0)",
+    ]);
+  });
+
+  test("syncs skills to a custom target directory", async () => {
+    const calls: Array<{ force?: boolean; targetAgent?: string; targetDir?: string }> = [];
+
+    await parse(["node", "kana", "skills", "sync", "--target-dir", "/tmp/agent/skills"], {
+      syncKanaSkills: (_env, options) => {
+        calls.push(options);
+        return {
+          sourcePath: "/tmp/.kana/skills/kana-skills",
+          targetName: "custom",
+          targetPath: "/tmp/agent/skills",
+          skills: [],
+        };
+      },
+    });
+
+    expect(calls).toEqual([
+      { force: undefined, targetAgent: undefined, targetDir: "/tmp/agent/skills" },
+    ]);
+  });
 });
 
 async function parse(argv: string[], options: Partial<CreateCliOptions>): Promise<void> {
@@ -124,6 +182,12 @@ function defaultCliOptions(): CreateCliOptions {
     installKanaSkills: async () => ({
       skillsPath: "/tmp/.kana/skills/kana-skills",
       status: "cloned",
+    }),
+    syncKanaSkills: () => ({
+      sourcePath: "/tmp/.kana/skills/kana-skills",
+      targetName: "codex",
+      targetPath: "/tmp/.codex/skills",
+      skills: [],
     }),
     log: () => {},
     startTui: () => {},

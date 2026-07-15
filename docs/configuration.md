@@ -14,6 +14,15 @@ kana install --skills
 # 覆盖现有 config.toml、approvals.json 和 skills.toml，必要时重新克隆 Skills
 kana install --force --skills
 
+# 将已安装的 Kana Skills 复制到 Codex 的全局 Skills 目录
+kana skills sync codex
+
+# 复制到自定义 agent 的 Skills 目录；已有同名 Skill 默认跳过
+kana skills sync --target-dir ~/.other-agent/skills
+
+# 替换目标目录中已有的同名 Skill
+kana skills sync codex --force
+
 # 启动 TUI；参数会作为第一条提示词
 kana 修复测试失败
 
@@ -24,6 +33,8 @@ kana resume [session-id]
 `kana install` 不会覆盖已经存在的文件。`--force` 会将 `config.toml`、`approvals.json` 和 `skills/skills.toml` 恢复为默认内容；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。它**不会**创建 `~/.kana/AGENTS.md`，全局指令文件需要用户自行创建。
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。已有目录不是 Git 仓库时，普通更新会报错，必须使用 `--force` 才会替换它；已有 Git 仓库则执行 `git pull --ff-only`。
+
+`kana skills sync` 不会重新 clone 仓库；它读取 `<KANA_HOME>/skills/kana-skills`，把其中每个顶层、包含 `SKILL.md` 的 Skill 目录复制到目标 agent 的 Skills 根目录。`codex` 预设写入 `${CODEX_HOME:-$HOME/.codex}/skills`。若目标中已存在同名目录，默认跳过；传 `--force` 会先删除该目录再复制。若默认 Skills 仓库尚未安装，请先运行 `kana install --skills`。
 
 ## 根目录与文件布局
 

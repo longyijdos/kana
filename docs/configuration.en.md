@@ -14,6 +14,15 @@ kana install --skills
 # Overwrite config.toml, approvals.json, and skills.toml; reclone Skills when requested
 kana install --force --skills
 
+# Copy installed Kana Skills to Codex's global Skills directory
+kana skills sync codex
+
+# Copy to a custom agent Skills directory; existing matching Skills are skipped by default
+kana skills sync --target-dir ~/.other-agent/skills
+
+# Replace matching Skills that already exist in the target directory
+kana skills sync codex --force
+
 # Start the TUI; arguments become the first prompt
 kana fix the failing tests
 
@@ -24,6 +33,8 @@ kana resume [session-id]
 `kana install` does not overwrite existing files. `--force` restores `config.toml`, `approvals.json`, and `skills/skills.toml` to their defaults; when combined with `--skills`, it also deletes and reclones the default Skills directory. It does **not** create `~/.kana/AGENTS.md`; users create global instructions themselves.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. If the existing directory is not a Git repository, a regular update fails and `--force` is required to replace it. An existing Git repository is updated with `git pull --ff-only`.
+
+`kana skills sync` does not clone the repository again. It reads `<KANA_HOME>/skills/kana-skills` and copies every top-level Skill directory containing `SKILL.md` into the target agent's Skills root. The `codex` preset writes to `${CODEX_HOME:-$HOME/.codex}/skills`. When the target already contains a matching directory, the command skips it by default; `--force` deletes that directory first, then copies the Skill again. If the default Skills repository is not installed yet, run `kana install --skills` first.
 
 ## Root directory and file layout
 

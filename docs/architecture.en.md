@@ -28,6 +28,7 @@ This layering also indicates where new code belongs: new providers go in `provid
 - `kana [prompt...]`: starts the TUI; if arguments are supplied, sends the prompt after startup.
 - `kana resume [sessionId]`: restores a session by ID or opens the session picker.
 - `kana install [--force] [--skills]`: creates the default config, approval file, and Skills config; `--skills` additionally clones or updates the default Skills repository.
+- `kana skills sync <target>`: copies installed Kana Skills into another agent's Skills directory; the built-in target is currently `codex`, and a custom directory can also be supplied.
 
 When the TUI starts, `startTui` loads the config and approval allowlist, creates the current session, and constructs `KanaTuiApp`. It injects session I/O, Skill activation, memory compaction, and the Agent factory into the app as callbacks. The app therefore coordinates user flows without knowing JSONL, TOML, or other storage details.
 
