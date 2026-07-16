@@ -11,7 +11,6 @@ export const tuiTheme = {
   markdownInlineCode: [229, 181, 103],
   user: [126, 166, 255],
   userMessageText: [222, 226, 230],
-  userMessageBackground: [46, 50, 62],
   shortcutHint: [192, 153, 224],
   command: [192, 153, 224],
   commandSelected: [213, 176, 245],

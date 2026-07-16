@@ -3,6 +3,7 @@ import {
   dim,
   type HighlightedLineToken,
   normalizeLineEndings,
+  padRightAnsi,
   renderHighlightedLine,
   truncateToWidth,
   visibleWidth,
@@ -43,7 +44,6 @@ import { applyEditorAction, type EditorTextState } from "./state";
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
 const PROMPT = "> ";
-const RIGHT_MARGIN = 1;
 
 export class Editor implements Component {
   private state: EditorTextState = {
@@ -102,11 +102,9 @@ export class Editor implements Component {
   }
 
   render(width: number): string[] {
-    const safeWidth = Math.max(1, width);
-    const prompt = safeWidth >= visibleWidth(PROMPT) + 2 ? PROMPT : "";
-    const promptWidth = visibleWidth(prompt);
-    const rightMargin = safeWidth > promptWidth + 1 ? RIGHT_MARGIN : 0;
-    const inputColumns = Math.max(1, safeWidth - promptWidth - rightMargin);
+    const frameWidth = Math.max(width, 8);
+    const contentWidth = Math.max(1, frameWidth - 4);
+    const inputColumns = Math.max(1, contentWidth - visibleWidth(PROMPT));
     this.inputColumns = inputColumns;
     const layout = createInputLayout({
       value: this.state.value,
@@ -116,20 +114,21 @@ export class Editor implements Component {
       preferredStartLine: this.inputViewportStartLine,
     });
     this.inputViewportStartLine = layout.startLine;
-    const lines = ["", this.renderBackgroundRow([])];
+    const lines = ["", `+${"-".repeat(frameWidth - 2)}+`];
 
     for (const [index, line] of layout.lines.entries()) {
-      const linePrompt = index === 0 ? prompt : " ".repeat(promptWidth);
+      const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));
       const tokens: HighlightedLineToken[] = [
         ...(linePrompt ? [{ text: linePrompt, color: tuiTheme.user }] : []),
         ...this.renderLine(line, index === layout.cursor.line),
       ];
+      const content = renderHighlightedLine(tokens);
 
-      lines.push(this.renderBackgroundRow(tokens));
+      lines.push(`| ${padRightAnsi(content, contentWidth)} |`);
     }
 
-    lines.push(this.renderBackgroundRow([]));
-    lines.push(...this.renderCommandPalette(safeWidth));
+    lines.push(`+${"-".repeat(frameWidth - 2)}+`);
+    lines.push(...this.renderCommandPalette(frameWidth));
 
     return lines.map((line) => truncateToWidth(line, width, ""));
   }
@@ -272,13 +271,6 @@ export class Editor implements Component {
       ...(command ? [{ text: command, color: tuiTheme.command }] : []),
       ...(after ? [{ text: after, color: tuiTheme.userMessageText }] : []),
     ];
-  }
-
-  private renderBackgroundRow(tokens: HighlightedLineToken[]): string {
-    return renderHighlightedLine(tokens, {
-      background: tuiTheme.userMessageBackground,
-      clearToEnd: true,
-    });
   }
 
   private renderCommandPalette(width: number): string[] {

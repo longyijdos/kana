@@ -100,7 +100,7 @@ describe("prompt editor", () => {
     const inputLine = firstRender.find((line) => line.includes(CURSOR_MARKER));
 
     expect(inputLine).toBeDefined();
-    expect(stripAnsi(inputLine ?? "")).toMatch(/^> Try \/\w+ — .+$/);
+    expect(stripAnsi(inputLine ?? "")).toMatch(/^\| > Try \/\w+ — .+\s+\|$/);
     expect(editor.render(80)).toEqual(firstRender);
 
     editor.handleInput("\r");
@@ -180,24 +180,26 @@ describe("prompt editor", () => {
     });
   });
 
-  test("renders message-style background rows around the input", () => {
+  test("renders input inside an ASCII frame without background color", () => {
     const editor = new Editor();
 
     editor.setText("hello");
     const rendered = editor.render(20);
-    const background = `\x1b[48;2;${tuiTheme.userMessageBackground.join(";")}m`;
     const accent = `\x1b[38;2;${tuiTheme.user.join(";")}m`;
     const text = `\x1b[38;2;${tuiTheme.userMessageText.join(";")}m`;
 
-    expect(rendered.map(stripAnsi)).toEqual(["", "", "> hello", ""]);
-    expect(rendered[0]).toBe("");
-    expect(
-      rendered.slice(1).every((line) => line.includes(background) && line.includes("\x1b[K")),
-    ).toBe(true);
+    expect(rendered.map(stripAnsi)).toEqual([
+      "",
+      "+------------------+",
+      "| > hello          |",
+      "+------------------+",
+    ]);
+    expect(rendered.join("\n")).not.toContain("\x1b[48;");
+    expect(rendered.join("\n")).not.toContain("\x1b[K");
     expect(rendered[2]).toContain(`${accent}> ${text}hello`);
   });
 
-  test("keeps multiline CJK editor rows inside the background block", () => {
+  test("keeps multiline CJK editor rows inside the ASCII frame", () => {
     const editor = new Editor();
 
     editor.setText(
@@ -208,13 +210,16 @@ describe("prompt editor", () => {
     );
     editor.handleInput("\x1b[D");
 
-    const [, ...backgroundLines] = editor.render(40);
+    const rendered = editor.render(40);
 
-    for (const line of backgroundLines) {
+    for (const line of rendered) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(40);
-      expect(line).toContain(`\x1b[48;2;${tuiTheme.userMessageBackground.join(";")}m`);
-      expect(line).toContain("\x1b[K");
     }
+    expect(rendered.map(stripAnsi).at(0)).toBe("");
+    expect(rendered.map(stripAnsi).at(1)).toBe(`+${"-".repeat(38)}+`);
+    expect(rendered.map(stripAnsi).at(-1)).toBe(`+${"-".repeat(38)}+`);
+    expect(rendered.join("\n")).not.toContain("\x1b[48;");
+    expect(rendered.join("\n")).not.toContain("\x1b[K");
   });
 
   test("normalizes pasted CRLF line endings before rendering", () => {
@@ -234,13 +239,15 @@ describe("prompt editor", () => {
       expect(visibleWidth(line)).toBeLessThanOrEqual(20);
     }
 
-    expect(rendered[0]).toBe("");
-    expect(
-      rendered
-        .slice(1)
-        .every((line) => line.includes(`\x1b[48;2;${tuiTheme.userMessageBackground.join(";")}m`)),
-    ).toBe(true);
-    expect(rendered.map(stripAnsi)).toEqual(["", "", "> a", "  b", "  c", ""]);
+    expect(rendered.join("\n")).not.toContain("\x1b[48;");
+    expect(rendered.map(stripAnsi)).toEqual([
+      "",
+      "+------------------+",
+      "| > a              |",
+      "|   b              |",
+      "|   c              |",
+      "+------------------+",
+    ]);
   });
 
   test("inserts newline with Shift+Enter before submitting with Enter", () => {
@@ -463,7 +470,7 @@ describe("prompt editor", () => {
     const editor = new Editor();
 
     editor.setText("abcdef");
-    editor.render(6);
+    editor.render(9);
     editor.handleInput("\x1b[H");
     editor.handleInput("\x1b[B");
     editor.handleInput("X");
@@ -475,10 +482,10 @@ describe("prompt editor", () => {
     const editor = new Editor();
 
     editor.setText("abcdef");
-    editor.render(6);
+    editor.render(9);
     editor.handleInput("\x1b[A");
 
-    const cursorLine = editor.render(6).findIndex((line) => line.includes(CURSOR_MARKER));
+    const cursorLine = editor.render(9).findIndex((line) => line.includes(CURSOR_MARKER));
 
     expect(cursorLine).toBe(3);
   });
@@ -487,7 +494,7 @@ describe("prompt editor", () => {
     const editor = new Editor();
 
     editor.setText("abcdef");
-    editor.render(6);
+    editor.render(9);
     editor.handleInput("\x1b[H");
     editor.handleInput("\x1b[B");
     editor.handleInput("\x1b[D");

@@ -56,7 +56,9 @@ describe("tui history transcript", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).toContain("> show package");
+    expect(lines).toContain(
+      "| > show package                                                                                   |",
+    );
     expect(lines).toContain("I'll inspect it.");
     expect(lines).not.toContain("thinking (Esc to abort)");
     expect(lines).toContain("◆ Read");
@@ -80,11 +82,12 @@ describe("tui history transcript", () => {
     ]);
 
     const rendered = transcript.render(100);
-    const userLine = rendered.find((line) => stripAnsi(line) === "> Question") ?? "";
+    const userLine = rendered.find((line) => stripAnsi(line).includes("> Question")) ?? "";
     const headingLine = rendered.find((line) => stripAnsi(line) === "Answer") ?? "";
 
     expect(tuiTheme.user).not.toEqual(tuiTheme.markdownHeading);
-    expect(userLine).toContain(`\x1b[48;2;${tuiTheme.userMessageBackground.join(";")}m`);
+    expect(userLine).toContain(`\x1b[38;2;${tuiTheme.user.join(";")}m> `);
+    expect(userLine).not.toContain("\x1b[48;");
     expect(headingLine).toContain(color("Answer", tuiTheme.markdownHeading));
   });
 
