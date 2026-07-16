@@ -7,6 +7,7 @@ type TableAlignment = "left" | "center" | "right";
 type MarkdownTableRow = {
   cells: string[];
   pending: boolean;
+  previewCells: string[];
 };
 
 export type MarkdownTable = {
@@ -85,6 +86,7 @@ export function parseMarkdownTable(
       break;
     }
 
+    const previewCells = [...parsed.cells];
     const cells = [...parsed.cells];
     while (cells.length < header.cells.length) {
       cells.push("");
@@ -93,6 +95,7 @@ export function parseMarkdownTable(
     rows.push({
       cells,
       pending: nextLine === lines.length - 1 && !lastLineComplete,
+      previewCells,
     });
     nextLine += 1;
   }
@@ -117,14 +120,12 @@ export function renderMarkdownTable(
   const rows = table.rows.map((row) => ({
     cells: row.cells.map(createCell),
     pending: row.pending,
+    preview: createPreviewCell(row.previewCells),
   }));
+  const committedRows = rows.filter((row) => !row.pending);
+  const pendingRows = rows.filter((row) => row.pending);
   const naturalWidths = header.map((cell) => Math.max(MIN_COLUMN_WIDTH, cell.width));
-  for (const row of rows) {
-    // The growing tail stays visible but must not make the committed grid jump
-    // horizontally on every streamed token.
-    if (row.pending) {
-      continue;
-    }
+  for (const row of committedRows) {
     for (let column = 0; column < naturalWidths.length; column += 1) {
       naturalWidths[column] = Math.max(
         naturalWidths[column] ?? MIN_COLUMN_WIDTH,
@@ -136,7 +137,10 @@ export function renderMarkdownTable(
   const columnWidths = fitColumnWidths(naturalWidths, contentBudget);
 
   if (!columnWidths) {
-    return renderTableRecords(header, rows, safeWidth, options);
+    return [
+      ...renderTableRecords(header, committedRows, safeWidth, options),
+      ...pendingRows.flatMap((row) => renderPendingRow(row.preview, safeWidth, options)),
+    ];
   }
 
   const lines = [
@@ -147,16 +151,18 @@ export function renderMarkdownTable(
     renderSeparator(columnWidths, HEADER_SEPARATOR),
   ];
 
-  for (const [index, row] of rows.entries()) {
+  for (const [index, row] of committedRows.entries()) {
     lines.push(
       ...renderGridRow(row.cells, columnWidths, table.alignments, {
         color: options.color ?? tuiTheme.markdownTable,
       }),
     );
-    if (index + 1 < rows.length) {
+    if (index + 1 < committedRows.length) {
       lines.push(renderSeparator(columnWidths, BODY_SEPARATOR));
     }
   }
+
+  lines.push(...pendingRows.flatMap((row) => renderPendingRow(row.preview, safeWidth, options)));
 
   return lines;
 }
@@ -225,7 +231,7 @@ function splitTableRow(value: string): { cells: string[]; hasPipe: boolean } | u
 
 function parseDelimiterCell(value: string): TableAlignment | undefined {
   const delimiter = value.trim();
-  if (!/^:?-{3,}:?$/.test(delimiter)) {
+  if (!/^:?-+:?$/.test(delimiter)) {
     return undefined;
   }
 
@@ -239,8 +245,23 @@ function parseDelimiterCell(value: string): TableAlignment | undefined {
 }
 
 function createCell(value: string): TableCell {
-  const spans = parseInline(value);
+  return createCellFromSpans(parseInline(value));
+}
 
+function createPreviewCell(values: string[]): TableCell {
+  const spans: InlineSpan[] = [];
+
+  for (const [index, value] of values.entries()) {
+    if (index > 0) {
+      spans.push({ text: " | " });
+    }
+    spans.push(...parseInline(value));
+  }
+
+  return createCellFromSpans(spans);
+}
+
+function createCellFromSpans(spans: InlineSpan[]): TableCell {
   return {
     spans,
     width: spans.reduce((sum, span) => sum + visibleWidth(span.text), 0),
@@ -377,6 +398,24 @@ function renderTableRecords(
   }
 
   return rendered;
+}
+
+function renderPendingRow(
+  preview: TableCell,
+  width: number,
+  options: RenderTableOptions,
+): string[] {
+  const wrapped = wrapSpans(preview.spans, width, width);
+
+  return wrapped.map((line) =>
+    truncateToWidth(
+      styleSpans(line, {
+        defaultColor: options.color ?? tuiTheme.markdownTable,
+      }),
+      width,
+      "",
+    ),
+  );
 }
 
 function renderRecordCell(

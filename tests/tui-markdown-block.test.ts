@@ -145,6 +145,19 @@ describe("tui markdown block", () => {
     expect(rendered[2]?.indexOf("ok")).toBeGreaterThan(rendered[0]?.indexOf("State") ?? 0);
   });
 
+  test("accepts compact delimiter cells with one or more hyphens", () => {
+    const rendered = new MarkdownBlock(
+      ["| Type | Count |", "| - | :--: |", "| DFS | 6 |", "| Tree | 7 |"].join("\n"),
+    )
+      .render(80)
+      .map(stripAnsi);
+
+    expect(rendered[1]).toContain("━");
+    expect(rendered).not.toContain("| - | :--: |");
+    expect(rendered.join("\n")).toContain("DFS");
+    expect(rendered.join("\n")).toContain("Tree");
+  });
+
   test("preserves empty cells and pipes inside escapes or inline code", () => {
     const raw = new MarkdownBlock(
       [
@@ -212,9 +225,10 @@ describe("tui markdown block", () => {
       .map(stripAnsi);
     const complete = new MarkdownBlock(text).render(40).map(stripAnsi);
 
-    expect(streaming).toContainEqual(expect.stringContaining("gro"));
+    expect(streaming).toContain("growing-value | partial");
     expect(visibleWidth(streaming[1] ?? "")).toBe(14);
     expect(visibleWidth(complete[1] ?? "")).toBeGreaterThan(14);
+    expect(streaming.length).toBeLessThanOrEqual(complete.length);
   });
 
   test("keeps an incomplete table delimiter as plain text while streaming", () => {
