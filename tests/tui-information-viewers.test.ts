@@ -19,7 +19,19 @@ describe("information viewers", () => {
     expect(
       rendered.some((line) => line.includes("/help") && line.includes("Show slash commands")),
     ).toBe(true);
+    expect(
+      rendered.some(
+        (line) => line.includes("/fork <prompt>") && line.includes("Fork the current session"),
+      ),
+    ).toBe(true);
     expect(rendered).not.toContain("test/test-model");
+
+    internal.tui.getFocus()?.handleInput?.("\x1b[F");
+    const scrolled = internal.layout.render(80, 24).map(stripAnsi);
+
+    expect(
+      scrolled.some((line) => line.includes("Ctrl+O") && line.includes("expandable tool output")),
+    ).toBe(true);
   });
 
   test("rejects usage arguments from the editor", () => {

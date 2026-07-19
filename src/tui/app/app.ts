@@ -32,14 +32,22 @@ import {
   UserMessageBlock,
   WelcomeBlock,
 } from "../components";
-import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
+import {
+  formatPromptCommandHelpLine,
+  formatPromptCommandUsage,
+  formatPromptShortcutHelpLine,
+  PROMPT_COMMANDS,
+  PROMPT_HELP_TITLE,
+  PROMPT_SHORTCUTS,
+  PROMPT_SHORTCUTS_TITLE,
+  type PromptCommandName,
+} from "../components/editor/commands";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
-import { COMMAND_MESSAGES } from "./command-messages";
 import { ContentViewerController } from "./content-viewer-controller";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
@@ -372,7 +380,7 @@ export class KanaTuiApp {
         break;
       case "help":
         if (command.arguments) {
-          this.showError(new Error(COMMAND_MESSAGES.helpUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -400,7 +408,7 @@ export class KanaTuiApp {
         break;
       case "fork":
         if (!command.arguments) {
-          this.showError(new Error(COMMAND_MESSAGES.forkUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -418,7 +426,7 @@ export class KanaTuiApp {
         break;
       case "delete":
         if (command.arguments) {
-          this.showError(new Error(COMMAND_MESSAGES.deleteUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -427,7 +435,7 @@ export class KanaTuiApp {
         break;
       case "skills":
         if (command.arguments) {
-          this.showError(new Error(COMMAND_MESSAGES.skillsUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -436,7 +444,7 @@ export class KanaTuiApp {
         break;
       case "memory":
         if (command.arguments.trim()) {
-          this.showError(new Error(COMMAND_MESSAGES.memoryUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -444,7 +452,7 @@ export class KanaTuiApp {
         break;
       case "usage":
         if (command.arguments.trim()) {
-          this.showError(new Error(COMMAND_MESSAGES.usageUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -487,19 +495,18 @@ export class KanaTuiApp {
   private showHelp(): void {
     const help = new TextBlock(
       [
-        ...PROMPT_COMMANDS.map((command) => `/${command.name.padEnd(8)} ${command.description}`),
+        ...PROMPT_COMMANDS.map(formatPromptCommandHelpLine),
         "",
-        COMMAND_MESSAGES.shellShortcutsTitle,
+        PROMPT_SHORTCUTS_TITLE,
         "",
-        COMMAND_MESSAGES.shellShortcut,
-        COMMAND_MESSAGES.toolShortcut,
+        ...PROMPT_SHORTCUTS.map(formatPromptShortcutHelpLine),
       ].join("\n"),
       { color: tuiTheme.muted },
     );
 
     this.editor.clear();
     this.contentViewer.open({
-      title: COMMAND_MESSAGES.helpTitle,
+      title: PROMPT_HELP_TITLE,
       render: (contentWidth) => help.render(contentWidth),
     });
     this.updateStatus("idle", {

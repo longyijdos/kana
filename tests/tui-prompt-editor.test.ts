@@ -4,6 +4,7 @@ import {
   completeCommand,
   createCommandSubmit,
   createRandomPromptPlaceholder,
+  formatPromptCommandHelpLine,
   getCommandState,
   PROMPT_COMMANDS,
 } from "../src/tui/components/editor/commands";
@@ -100,7 +101,7 @@ describe("prompt editor", () => {
     const inputLine = firstRender.find((line) => line.includes(CURSOR_MARKER));
 
     expect(inputLine).toBeDefined();
-    expect(stripAnsi(inputLine ?? "")).toMatch(/^\| > Try \/\w+ — .+\s+\|$/);
+    expect(stripAnsi(inputLine ?? "")).toMatch(/^\| > Try .+ — .+\s+\|$/);
     expect(editor.render(80)).toEqual(firstRender);
 
     editor.handleInput("\r");
@@ -109,7 +110,7 @@ describe("prompt editor", () => {
 
     editor.setText("hello");
 
-    expect(stripAnsi(editor.render(80).join("\n"))).not.toContain("Try /");
+    expect(stripAnsi(editor.render(80).join("\n"))).not.toContain("Try ");
   });
 
   test("highlights completed slash command token separately from arguments", () => {
@@ -135,9 +136,9 @@ describe("prompt editor", () => {
 
     expect(editor.render(80).map(stripAnsi)).toEqual(
       expect.arrayContaining([
-        "> /quit     Exit Kana.",
-        "  /help     Show slash commands.",
-        "  /clear    Clear the transcript.",
+        `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[0])}`,
+        `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[1])}`,
+        `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[2])}`,
         "... 7 more commands",
       ]),
     );
@@ -149,9 +150,9 @@ describe("prompt editor", () => {
     expect(editor.render(80).map(stripAnsi)).toEqual(
       expect.arrayContaining([
         "... 6 earlier commands",
-        "  /delete   Delete a saved session.",
-        "  /skills   Manage active skills.",
-        "> /memory   View or compact saved memory.",
+        `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[6])}`,
+        `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[7])}`,
+        `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[8])}`,
       ]),
     );
 
@@ -733,11 +734,17 @@ describe("prompt input layout", () => {
 describe("prompt commands", () => {
   test("creates prompt placeholders from help command entries", () => {
     expect(createRandomPromptPlaceholder(() => 0)).toBe("Try /quit — Exit Kana.");
-    expect(createRandomPromptPlaceholder(() => 0.999)).toBe(
+    expect(createRandomPromptPlaceholder(() => 0.8)).toBe(
       "Try /usage — Show session, project, or global API usage.",
+    );
+    expect(createRandomPromptPlaceholder(() => 0.999)).toBe(
+      "Try Ctrl+O — Open the latest expandable tool output.",
     );
     expect(createRandomPromptPlaceholder(() => 0, "Try /quit — Exit Kana.")).toBe(
       "Try /help — Show slash commands.",
+    );
+    expect(createRandomPromptPlaceholder(() => 0.4)).toBe(
+      "Try /fork <prompt> — Fork the current session and send a prompt.",
     );
   });
 
@@ -866,6 +873,14 @@ describe("prompt commands", () => {
   });
 
   test("creates shell submissions from bang-prefixed input", () => {
+    expect(createCommandSubmit("!", undefined)).toEqual({
+      type: "message",
+      content: "!",
+    });
+    expect(createCommandSubmit("!   ", undefined)).toEqual({
+      type: "message",
+      content: "!   ",
+    });
     expect(createCommandSubmit("!pwd", undefined)).toEqual({
       type: "shell",
       command: "pwd",
@@ -876,7 +891,6 @@ describe("prompt commands", () => {
       command: "git status",
       raw: "!  git status  ",
     });
-    expect(createCommandSubmit("!", undefined)).toBeUndefined();
   });
 
   test("hides the palette after command token whitespace", () => {

@@ -12,6 +12,12 @@ export type PromptCommandName =
 
 export type PromptCommand = {
   name: PromptCommandName;
+  argumentSyntax?: string;
+  description: string;
+};
+
+export type PromptShortcut = {
+  input: string;
   description: string;
 };
 
@@ -58,10 +64,12 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   },
   {
     name: "fork",
+    argumentSyntax: "<prompt>",
     description: "Fork the current session and send a prompt.",
   },
   {
     name: "resume",
+    argumentSyntax: "[id]",
     description: "Switch to a saved session.",
   },
   {
@@ -81,6 +89,48 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
     description: "Show session, project, or global API usage.",
   },
 ];
+
+export const PROMPT_HELP_TITLE = "Slash commands";
+export const PROMPT_SHORTCUTS_TITLE = "Shell shortcuts";
+export const PROMPT_SHORTCUTS: PromptShortcut[] = [
+  {
+    input: "!<command>",
+    description: "Run a local bash command.",
+  },
+  {
+    input: "Ctrl+O",
+    description: "Open the latest expandable tool output.",
+  },
+];
+
+const PROMPT_COMMAND_SYNTAX_WIDTH = Math.max(
+  ...PROMPT_COMMANDS.map((command) => formatPromptCommandSyntax(command).length),
+);
+const PROMPT_SHORTCUT_INPUT_WIDTH = Math.max(
+  ...PROMPT_SHORTCUTS.map((shortcut) => shortcut.input.length),
+);
+
+export function formatPromptCommandSyntax(command: PromptCommand): string {
+  return `/${command.name}${command.argumentSyntax ? ` ${command.argumentSyntax}` : ""}`;
+}
+
+export function formatPromptCommandHelpLine(command: PromptCommand): string {
+  return `${formatPromptCommandSyntax(command).padEnd(PROMPT_COMMAND_SYNTAX_WIDTH)} ${command.description}`;
+}
+
+export function formatPromptCommandUsage(name: PromptCommandName): string {
+  const command = PROMPT_COMMANDS.find((candidate) => candidate.name === name);
+
+  if (!command) {
+    throw new Error(`Unknown prompt command: ${name}`);
+  }
+
+  return `Usage: ${formatPromptCommandSyntax(command)}`;
+}
+
+export function formatPromptShortcutHelpLine(shortcut: PromptShortcut): string {
+  return `${shortcut.input.padEnd(PROMPT_SHORTCUT_INPUT_WIDTH)} ${shortcut.description}`;
+}
 
 export function getCommandState(value: string): CommandState {
   if (!value.startsWith("/")) {
@@ -108,9 +158,12 @@ export function completeCommand(command: PromptCommand): string {
 }
 
 export function createRandomPromptPlaceholder(random = Math.random, previous?: string): string {
-  const placeholders = PROMPT_COMMANDS.map(
-    (command) => `Try /${command.name} — ${command.description}`,
-  );
+  const placeholders = [
+    ...PROMPT_COMMANDS.map(
+      (command) => `Try ${formatPromptCommandSyntax(command)} — ${command.description}`,
+    ),
+    ...PROMPT_SHORTCUTS.map((shortcut) => `Try ${shortcut.input} — ${shortcut.description}`),
+  ];
   const candidates =
     placeholders.length > 1
       ? placeholders.filter((placeholder) => placeholder !== previous)
@@ -132,7 +185,10 @@ export function createCommandSubmit(
           command,
           raw: value,
         }
-      : undefined;
+      : {
+          type: "message",
+          content: value,
+        };
   }
 
   const state = getCommandState(value);

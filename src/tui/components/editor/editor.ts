@@ -31,6 +31,7 @@ import {
   completeCommand,
   createCommandSubmit,
   createRandomPromptPlaceholder,
+  formatPromptCommandHelpLine,
   getCommandState,
   type PromptSubmit,
 } from "./commands";
@@ -340,7 +341,7 @@ export class Editor implements Component {
     for (let index = viewport.start; index < viewport.end; index += 1) {
       const command = commandState.suggestions[index];
       const prefix = index === this.commandViewport.selectedIndex ? "> " : "  ";
-      const line = `${prefix}/${command.name.padEnd(8)} ${command.description}`;
+      const line = `${prefix}${formatPromptCommandHelpLine(command)}`;
 
       lines.push(
         index === this.commandViewport.selectedIndex
