@@ -85,7 +85,7 @@ export class ToolCallBlock implements Component {
     this.cachedLines = undefined;
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const state = this.currentState();
     const elapsedSeconds =
       state === "preparing" || state === "running" ? this.phaseTimer.elapsedSeconds() : undefined;

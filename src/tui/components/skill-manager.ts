@@ -56,7 +56,7 @@ export class SkillManager implements Component {
     }
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const lines = ["", color("Skills", tuiTheme.muted)];
 
     if (this.skills.length === 0) {

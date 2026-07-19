@@ -3,9 +3,12 @@ import { AppLayout } from "../src/tui/app/app-layout";
 import type { Component } from "../src/tui/runtime";
 
 class LinesComponent implements Component {
+  lastAvailableHeight?: number;
+
   constructor(private readonly lines: string[]) {}
 
-  render(): string[] {
+  render(_width: number, availableHeight?: number): string[] {
+    this.lastAvailableHeight = availableHeight;
     return this.lines;
   }
 }
@@ -38,5 +41,24 @@ describe("tui app layout", () => {
     layout.showTranscript();
 
     expect(layout.render(80)).toEqual(["transcript", "editor", "status"]);
+  });
+
+  test("passes the available height hint to every active component", () => {
+    const transcript = new LinesComponent(["transcript"]);
+    const editor = new LinesComponent(["editor"]);
+    const status = new LinesComponent(["status"]);
+    const prompt = new LinesComponent(["prompt"]);
+    const overlay = new LinesComponent(["overlay"]);
+    const layout = new AppLayout({ transcript, editor, status });
+
+    layout.showInlinePrompt(prompt);
+    layout.showOverlay(overlay);
+    layout.render(80, 16);
+
+    expect(
+      [transcript, prompt, editor, overlay, status].map(
+        (component) => component.lastAvailableHeight,
+      ),
+    ).toEqual([16, 16, 16, 16, 16]);
   });
 });

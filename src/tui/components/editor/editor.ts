@@ -101,7 +101,7 @@ export class Editor implements Component {
     }
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
     const inputColumns = Math.max(1, contentWidth - visibleWidth(PROMPT));

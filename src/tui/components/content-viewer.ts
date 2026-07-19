@@ -63,7 +63,7 @@ export class ContentViewer implements Component {
     }
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const contentWidth = Math.max(1, width - 2);
     const content = this.view.render(contentWidth);
     this.contentLength = content.length;

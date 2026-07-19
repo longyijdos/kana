@@ -55,7 +55,7 @@ export class SessionPicker implements Component {
     }
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const lines = ["", color("Sessions", tuiTheme.muted)];
 
     if (this.sessions.length === 0) {

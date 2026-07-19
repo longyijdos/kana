@@ -119,7 +119,7 @@ export class Tui extends Container {
 
     const width = Math.max(this.terminal.columns, 1);
     const height = Math.max(this.terminal.rows, 1);
-    const rendered = this.render(width);
+    const rendered = this.render(width, height);
     const cursor = extractCursorPosition(rendered);
     const lines = rendered.map((line, index) =>
       // Cached transcript components return the same strings between keystrokes.

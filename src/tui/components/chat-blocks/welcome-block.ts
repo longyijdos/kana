@@ -20,7 +20,7 @@ const COLUMN_GAP = 3;
 export class WelcomeBlock implements Component {
   constructor(private readonly options: WelcomeBlockOptions) {}
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const lines: string[] = [];
 
     for (let index = 0; index < (this.options.paddingTop ?? 0); index += 1) {

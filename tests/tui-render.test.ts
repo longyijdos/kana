@@ -35,7 +35,30 @@ class MutableLines implements Component {
   }
 }
 
+class RenderSizeProbe implements Component {
+  lastRender?: { width: number; availableHeight?: number };
+
+  render(width: number, availableHeight?: number): string[] {
+    this.lastRender = { width, availableHeight };
+    return ["probe"];
+  }
+}
+
 describe("tui main-screen renderer", () => {
+  test("passes terminal dimensions to components as render hints", async () => {
+    const terminal = new FakeTerminal();
+    terminal.columns = 72;
+    terminal.rows = 16;
+    const tui = new Tui(terminal);
+    const probe = new RenderSizeProbe();
+
+    tui.addChild(probe);
+    tui.start();
+    await Promise.resolve();
+
+    expect(probe.lastRender).toEqual({ width: 72, availableHeight: 16 });
+  });
+
   test("initial render clears scrollback and writes content without alternate screen", async () => {
     const terminal = new FakeTerminal();
     const tui = new Tui(terminal);

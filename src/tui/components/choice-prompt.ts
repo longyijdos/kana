@@ -28,7 +28,7 @@ export class ChoicePrompt<T extends string> implements Component {
     );
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const accentColor = this.options.accentColor ?? tuiTheme.toolActive;
     const highlight = this.options.highlight ?? ((line: string) => line);
     const lines = [

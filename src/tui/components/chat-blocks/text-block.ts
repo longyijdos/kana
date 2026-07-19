@@ -25,7 +25,7 @@ export class TextBlock implements Component {
     this.cachedLines = undefined;
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     if (this.cachedLines && this.cachedWidth === width) {
       return this.cachedLines;
     }

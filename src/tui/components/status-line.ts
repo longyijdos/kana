@@ -24,7 +24,7 @@ export class StatusLine implements Component {
     };
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const parts = [
       color(this.model, tuiTheme.model),
       this.state.contextUsedPercent === undefined

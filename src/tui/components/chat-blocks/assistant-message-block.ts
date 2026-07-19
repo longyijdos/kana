@@ -70,7 +70,7 @@ export class AssistantMessageBlock implements Component {
     }
   }
 
-  render(width: number): string[] {
+  render(width: number, availableHeight?: number): string[] {
     const thinkingElapsedSeconds = this.thinkingVisible
       ? this.thinkingTimer.elapsedSeconds()
       : undefined;
@@ -86,7 +86,7 @@ export class AssistantMessageBlock implements Component {
     const lines: string[] = [];
 
     for (const block of this.textBlocks) {
-      lines.push(...block.render(width));
+      lines.push(...block.render(width, availableHeight));
     }
 
     if (this.thinkingVisible && this.textBlocks.length === 0) {

@@ -43,20 +43,20 @@ export class AppLayout implements Component {
     }
   }
 
-  render(width: number): string[] {
-    const lines = [...this.main.render(width)];
+  render(width: number, availableHeight?: number): string[] {
+    const lines = [...this.main.render(width, availableHeight)];
 
     if (this.inlinePrompt) {
-      lines.push(...this.inlinePrompt.render(width));
+      lines.push(...this.inlinePrompt.render(width, availableHeight));
     }
 
-    lines.push(...this.options.editor.render(width));
+    lines.push(...this.options.editor.render(width, availableHeight));
 
     if (this.overlay) {
-      lines.push(...this.overlay.render(width));
+      lines.push(...this.overlay.render(width, availableHeight));
     }
 
-    lines.push(...this.options.status.render(width));
+    lines.push(...this.options.status.render(width, availableHeight));
 
     return lines;
   }

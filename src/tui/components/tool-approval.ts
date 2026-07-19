@@ -31,8 +31,8 @@ export class ToolApproval implements Component {
     });
   }
 
-  render(width: number): string[] {
-    return this.prompt.render(width);
+  render(width: number, availableHeight?: number): string[] {
+    return this.prompt.render(width, availableHeight);
   }
 
   handleInput(data: string): void {

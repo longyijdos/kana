@@ -10,7 +10,7 @@ export class UserMessageBlock implements Component {
 
   constructor(private readonly text: string) {}
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     if (this.cachedLines && this.cachedWidth === width) {
       return this.cachedLines;
     }
