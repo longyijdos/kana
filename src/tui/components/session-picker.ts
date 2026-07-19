@@ -6,7 +6,7 @@ import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
 const SESSION_PICKER_VISIBLE_LIMIT = 10;
-const SESSION_PICKER_RESERVED_ROWS = 4;
+const SESSION_PICKER_RESERVED_ROWS = 3;
 
 export type SessionPickerDecision =
   | {
@@ -59,7 +59,7 @@ export class SessionPicker implements Component {
   }
 
   render(width: number, availableHeight?: number): string[] {
-    const lines = ["", color("Sessions", tuiTheme.muted)];
+    const lines = [color("Sessions", tuiTheme.muted)];
 
     if (this.sessions.length === 0) {
       lines.push(dim("No saved sessions for this workspace."));

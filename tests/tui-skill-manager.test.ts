@@ -120,7 +120,6 @@ describe("skill manager", () => {
     const manager = new SkillManager(skills, () => {}, 3);
 
     expect(manager.render(80).map(stripAnsi)).toEqual([
-      "",
       "Skills",
       "> [ ] skill-1  global",
       "  Skill 1.",
@@ -134,7 +133,6 @@ describe("skill manager", () => {
     manager.handleInput("\x1b[B");
 
     expect(manager.render(80).map(stripAnsi)).toEqual([
-      "",
       "Skills",
       "... 1 earlier skills",
       "  [ ] skill-2  global",
@@ -151,8 +149,9 @@ describe("skill manager", () => {
 
     expect(rendered).toContain("> [ ] skill-1  global");
     expect(rendered).toContain("  [ ] skill-2  global");
-    expect(rendered).not.toContain("  [ ] skill-3  global");
-    expect(rendered).toContain("... 3 more skills");
+    expect(rendered).toContain("  [ ] skill-3  global");
+    expect(rendered).not.toContain("  [ ] skill-4  global");
+    expect(rendered).toContain("... 2 more skills");
   });
 
   test("does not wrap selection at list boundaries", () => {

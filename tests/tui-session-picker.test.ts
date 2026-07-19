@@ -32,7 +32,6 @@ describe("session picker", () => {
     });
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
-      "",
       "Sessions",
       `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  Explain lazy sessions  deepseek/deepseek-v4-pro`,
       `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  Add fork prompt titles  unknown model`,
@@ -69,7 +68,6 @@ describe("session picker", () => {
     const picker = new SessionPicker(manySessions, () => {}, 3);
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
-      "",
       "Sessions",
       `> ${localTimestamp(manySessions[0].createdAt)}  session-  Session 1  unknown model`,
       `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  unknown model`,
@@ -82,7 +80,6 @@ describe("session picker", () => {
     picker.handleInput("\x1b[B");
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
-      "",
       "Sessions",
       "... 1 earlier sessions",
       `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  unknown model`,
@@ -98,8 +95,9 @@ describe("session picker", () => {
 
     expect(rendered.some((line) => line.includes("Session 1"))).toBe(true);
     expect(rendered.some((line) => line.includes("Session 2"))).toBe(true);
-    expect(rendered.some((line) => line.includes("Session 3"))).toBe(false);
-    expect(rendered).toContain("... 3 more sessions");
+    expect(rendered.some((line) => line.includes("Session 3"))).toBe(true);
+    expect(rendered.some((line) => line.includes("Session 4"))).toBe(false);
+    expect(rendered).toContain("... 2 more sessions");
   });
 
   test("keeps the selected session visible when available height shrinks", () => {
@@ -113,7 +111,8 @@ describe("session picker", () => {
     const rendered = picker.render(100, 5).map(stripAnsi);
 
     expect(rendered.some((line) => line.includes(">") && line.includes("Session 4"))).toBe(true);
-    expect(rendered.some((line) => line.includes("Session 3"))).toBe(false);
+    expect(rendered.some((line) => line.includes("Session 3"))).toBe(true);
+    expect(rendered.some((line) => line.includes("Session 2"))).toBe(false);
   });
 
   test("does not wrap selection at list boundaries", () => {

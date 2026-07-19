@@ -442,11 +442,12 @@ describe("tui transcript", () => {
     );
     const rendered = viewer.render(80, 8).map(stripAnsi);
 
-    expect(rendered).toContain("Lines 1-2 of 5");
+    expect(rendered).toContain("Lines 1-3 of 5");
     expect(rendered).toContain("  line 1");
     expect(rendered).toContain("  line 2");
-    expect(rendered).not.toContain("  line 3");
-    expect(rendered).toContain("... 3 lines below");
+    expect(rendered).toContain("  line 3");
+    expect(rendered).not.toContain("  line 4");
+    expect(rendered).toContain("... 2 lines below");
   });
 
   test("tool result viewer renders a multiline title as one truncated line", () => {
@@ -459,12 +460,12 @@ describe("tui transcript", () => {
     );
 
     const rendered = viewer.render(32, 10);
-    const title = stripAnsi(rendered[1] ?? "");
+    const title = stripAnsi(rendered[0] ?? "");
 
     expect(title.startsWith("Ran printf table | 01")).toBe(true);
     expect(title.endsWith("...")).toBe(true);
     expect(title).not.toContain("\n");
-    expect(visibleWidth(rendered[1] ?? "")).toBeLessThanOrEqual(32);
+    expect(visibleWidth(rendered[0] ?? "")).toBeLessThanOrEqual(32);
   });
 
   test("distinguishes write overwrite transcript titles from new file writes", () => {

@@ -15,7 +15,7 @@ import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
 const TOOL_RESULT_VIEWER_VISIBLE_LIMIT = 18;
-const TOOL_RESULT_VIEWER_RESERVED_ROWS = 6;
+const TOOL_RESULT_VIEWER_RESERVED_ROWS = 5;
 
 export type ContentView = {
   title: string;
@@ -95,7 +95,7 @@ export class ContentViewer implements Component {
       color(summarizeText(this.view.title), tuiTheme.toolActive),
       width,
     );
-    const lines = ["", title];
+    const lines = [title];
 
     if (content.length === 0) {
       lines.push(dim("No output yet."));
