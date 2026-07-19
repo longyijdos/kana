@@ -25,7 +25,6 @@ import { createNoopLogger, type Logger } from "@/logging";
 import {
   Editor,
   MarkdownBlock,
-  StatusLine,
   type StatusLineState,
   TextBlock,
   Transcript,
@@ -93,8 +92,7 @@ export type KanaTuiAppOptions = {
 export class KanaTuiApp {
   private readonly tui: Tui;
   private readonly transcript = new Transcript();
-  private readonly status: StatusLine;
-  private readonly editor = new Editor();
+  private readonly editor: Editor;
   private readonly layout: AppLayout;
   private readonly agentEvents: AgentEventRenderer;
   private readonly sessionOverlay: SessionOverlayController;
@@ -130,11 +128,12 @@ export class KanaTuiApp {
     this.tui = new Tui(terminal);
     this.notifications = new NotificationController(options.notification, terminal);
     this.agent = this.createAgentForCurrentSession();
-    this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
+    this.editor = new Editor({
+      model: formatModelName(this.agent.state.model.metadata),
+    });
     this.layout = new AppLayout({
       transcript: this.transcript,
       editor: this.editor,
-      status: this.status,
     });
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
@@ -697,7 +696,7 @@ export class KanaTuiApp {
       this.showError(error);
     } finally {
       this.running = false;
-      this.status.update({
+      this.editor.updateStatus({
         running: false,
         activeTool: undefined,
       });
@@ -765,7 +764,7 @@ export class KanaTuiApp {
   }
 
   private clearAuxiliaryRunStatus(): void {
-    this.status.update({
+    this.editor.updateStatus({
       running: false,
       activeTool: undefined,
     });
@@ -780,7 +779,7 @@ export class KanaTuiApp {
   }
 
   private updateStatus(phase: RunPhase, extra: Partial<StatusLineState> = {}): void {
-    this.status.update({
+    this.editor.updateStatus({
       phase,
       running: this.running,
       ...extra,
@@ -804,7 +803,7 @@ export class KanaTuiApp {
   }
 
   private updateContextUsage(usage: ModelUsage | undefined): void {
-    this.status.update({
+    this.editor.updateStatus({
       contextUsedPercent: calculateContextUsedPercent(
         usage,
         this.agent.state.model.metadata.contextWindow,

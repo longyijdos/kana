@@ -3,7 +3,6 @@ import type { Component } from "../runtime";
 export type AppLayoutOptions = {
   transcript: Component;
   editor: Component;
-  status: Component;
 };
 
 export class AppLayout implements Component {
@@ -50,13 +49,11 @@ export class AppLayout implements Component {
       lines.push(...this.inlinePrompt.render(width, availableHeight));
     }
 
-    lines.push(...this.options.editor.render(width, availableHeight));
-
     if (this.overlay) {
       lines.push(...this.overlay.render(width, availableHeight));
     }
 
-    lines.push(...this.options.status.render(width, availableHeight));
+    lines.push(...this.options.editor.render(width, availableHeight));
 
     return lines;
   }
@@ -64,9 +61,8 @@ export class AppLayout implements Component {
   invalidate(): void {
     invalidateComponent(this.main);
     invalidateComponent(this.inlinePrompt);
-    invalidateComponent(this.options.editor);
     invalidateComponent(this.overlay);
-    invalidateComponent(this.options.status);
+    invalidateComponent(this.options.editor);
   }
 }
 

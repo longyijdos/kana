@@ -125,7 +125,7 @@ describe("prompt editor", () => {
   });
 
   test("paginates slash commands and stops selection at the list boundaries", () => {
-    const editor = new Editor(3);
+    const editor = new Editor({ commandPaletteVisibleLimit: 3 });
     const submissions: unknown[] = [];
     editor.onSubmit = (submit) => {
       submissions.push(submit);
@@ -188,7 +188,7 @@ describe("prompt editor", () => {
     const accent = `\x1b[38;2;${tuiTheme.user.join(";")}m`;
     const text = `\x1b[38;2;${tuiTheme.userMessageText.join(";")}m`;
 
-    expect(rendered.map(stripAnsi)).toEqual([
+    expect(rendered.slice(0, -1).map(stripAnsi)).toEqual([
       "",
       "+------------------+",
       "| > hello          |",
@@ -217,7 +217,7 @@ describe("prompt editor", () => {
     }
     expect(rendered.map(stripAnsi).at(0)).toBe("");
     expect(rendered.map(stripAnsi).at(1)).toBe(`+${"-".repeat(38)}+`);
-    expect(rendered.map(stripAnsi).at(-1)).toBe(`+${"-".repeat(38)}+`);
+    expect(rendered.map(stripAnsi).at(-2)).toBe(`+${"-".repeat(38)}+`);
     expect(rendered.join("\n")).not.toContain("\x1b[48;");
     expect(rendered.join("\n")).not.toContain("\x1b[K");
   });
@@ -240,7 +240,7 @@ describe("prompt editor", () => {
     }
 
     expect(rendered.join("\n")).not.toContain("\x1b[48;");
-    expect(rendered.map(stripAnsi)).toEqual([
+    expect(rendered.slice(0, -1).map(stripAnsi)).toEqual([
       "",
       "+------------------+",
       "| > a              |",

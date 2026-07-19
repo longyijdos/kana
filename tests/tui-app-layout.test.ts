@@ -14,14 +14,12 @@ class LinesComponent implements Component {
 }
 
 describe("tui app layout", () => {
-  test("renders main content, inline prompt, overlay, editor, and status in app order", () => {
+  test("renders main content, inline prompt, overlay, and the fused editor in app order", () => {
     const transcript = new LinesComponent(["transcript"]);
-    const editor = new LinesComponent(["editor"]);
-    const status = new LinesComponent(["status"]);
+    const editor = new LinesComponent(["editor", "status"]);
     const layout = new AppLayout({
       transcript,
       editor,
-      status,
     });
 
     expect(layout.render(80)).toEqual(["transcript", "editor", "status"]);
@@ -34,7 +32,7 @@ describe("tui app layout", () => {
     layout.showInlinePrompt(prompt);
     layout.showOverlay(overlay);
 
-    expect(layout.render(80)).toEqual(["tool viewer", "prompt", "editor", "overlay", "status"]);
+    expect(layout.render(80)).toEqual(["tool viewer", "prompt", "overlay", "editor", "status"]);
 
     layout.clearInlinePrompt(prompt);
     layout.clearOverlay(overlay);
@@ -45,20 +43,17 @@ describe("tui app layout", () => {
 
   test("passes the available height hint to every active component", () => {
     const transcript = new LinesComponent(["transcript"]);
-    const editor = new LinesComponent(["editor"]);
-    const status = new LinesComponent(["status"]);
+    const editor = new LinesComponent(["editor", "status"]);
     const prompt = new LinesComponent(["prompt"]);
     const overlay = new LinesComponent(["overlay"]);
-    const layout = new AppLayout({ transcript, editor, status });
+    const layout = new AppLayout({ transcript, editor });
 
     layout.showInlinePrompt(prompt);
     layout.showOverlay(overlay);
     layout.render(80, 16);
 
     expect(
-      [transcript, prompt, editor, overlay, status].map(
-        (component) => component.lastAvailableHeight,
-      ),
-    ).toEqual([16, 16, 16, 16, 16]);
+      [transcript, prompt, overlay, editor].map((component) => component.lastAvailableHeight),
+    ).toEqual([16, 16, 16, 16]);
   });
 });

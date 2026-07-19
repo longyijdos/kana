@@ -40,10 +40,16 @@ import {
   moveInputCursorVertically,
 } from "./input-layout";
 import { applyEditorAction, type EditorTextState } from "./state";
+import { renderStatusLine, type StatusLineState } from "./status-line";
 
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
 const PROMPT = "> ";
+
+export type EditorOptions = {
+  model?: string;
+  commandPaletteVisibleLimit?: number;
+};
 
 export class Editor implements Component {
   private state: EditorTextState = {
@@ -58,13 +64,19 @@ export class Editor implements Component {
   private isPasting = false;
   private inputColumns = 80;
   private inputViewportStartLine: number | undefined;
+  private statusState: StatusLineState = {
+    phase: "idle",
+    running: false,
+  };
   // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
   private placeholder = createRandomPromptPlaceholder();
 
   onSubmit?: (submit: PromptSubmit) => void;
 
-  constructor(commandPaletteVisibleLimit = COMMAND_PALETTE_VISIBLE_LIMIT) {
-    this.commandViewport = new ListViewport(commandPaletteVisibleLimit);
+  constructor(private readonly options: EditorOptions = {}) {
+    this.commandViewport = new ListViewport(
+      options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT,
+    );
   }
 
   getText(): string {
@@ -101,6 +113,13 @@ export class Editor implements Component {
     }
   }
 
+  updateStatus(state: Partial<StatusLineState>): void {
+    this.statusState = {
+      ...this.statusState,
+      ...state,
+    };
+  }
+
   render(width: number, _availableHeight?: number): string[] {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
@@ -129,6 +148,10 @@ export class Editor implements Component {
 
     lines.push(`+${"-".repeat(frameWidth - 2)}+`);
     lines.push(...this.renderCommandPalette(frameWidth));
+
+    if (!getCommandState(this.state.value).showPalette) {
+      lines.push(renderStatusLine(width, this.options.model, this.statusState));
+    }
 
     return lines.map((line) => truncateToWidth(line, width, ""));
   }

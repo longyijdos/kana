@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../src/tui/app/app-layout";
 import { ContentViewerController } from "../src/tui/app/content-viewer-controller";
-import { type Editor, StatusLine, ToolCallBlock, Transcript } from "../src/tui/components";
+import { type Editor, ToolCallBlock, Transcript } from "../src/tui/components";
 import type { Component, Tui } from "../src/tui/runtime";
 
 class LinesComponent implements Component {
@@ -21,7 +21,6 @@ describe("tool result viewer controller", () => {
     const layout = new AppLayout({
       transcript,
       editor: new LinesComponent(["editor"]),
-      status: new StatusLine("test-model"),
     });
     const controller = new ContentViewerController({
       editor: new LinesComponent(["editor"]) as unknown as Editor,
@@ -44,7 +43,6 @@ describe("tool result viewer controller", () => {
     const layout = new AppLayout({
       transcript,
       editor: new LinesComponent(["editor"]),
-      status: new StatusLine("test-model"),
     });
     const controller = new ContentViewerController({
       editor: new LinesComponent(["editor"]) as unknown as Editor,
@@ -66,7 +64,6 @@ describe("tool result viewer controller", () => {
     const layout = new AppLayout({
       transcript,
       editor,
-      status: new StatusLine("test-model"),
     });
     const tui = createTuiStub();
     const controller = new ContentViewerController({
@@ -98,7 +95,6 @@ describe("tool result viewer controller", () => {
     const layout = new AppLayout({
       transcript,
       editor,
-      status: new StatusLine("test-model"),
     });
     const prompt = new LinesComponent(["approval prompt"]);
     const tui = createTuiStub();

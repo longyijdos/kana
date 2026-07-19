@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../src/tui/app/app-layout";
 import { ToolApprovalController } from "../src/tui/app/tool-approval-controller";
-import { type Editor, StatusLine } from "../src/tui/components";
+import type { Editor } from "../src/tui/components";
 import type { Component, Tui } from "../src/tui/runtime";
 
 class LinesComponent implements Component {
@@ -18,7 +18,6 @@ describe("tool approval controller", () => {
     const layout = new AppLayout({
       transcript: new LinesComponent(["transcript"]),
       editor,
-      status: new StatusLine("test-model"),
     });
     const tui = createTuiStub();
     const viewer = new LinesComponent(["tool result viewer"]);
