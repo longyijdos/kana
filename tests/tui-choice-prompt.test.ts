@@ -16,7 +16,6 @@ describe("choice prompt", () => {
     });
 
     expect(prompt.render(80).map(stripAnsi)).toEqual([
-      "─".repeat(80),
       "Delete session?",
       "Example session",
       "> No, keep it",
@@ -39,7 +38,6 @@ describe("choice prompt", () => {
     const rendered = prompt.render(16).map(stripAnsi);
 
     expect(rendered).toEqual([
-      "─".repeat(16),
       "Run command?",
       "bash -lc 'printf",
       " hello && printf",
@@ -65,8 +63,8 @@ describe("choice prompt", () => {
 
     expect(firstPage.length).toBeLessThanOrEqual(10);
     expect(firstPage).toContain("detail line 1");
-    expect(firstPage).not.toContain("detail line 4");
-    expect(firstPage).toContain("... 7 detail lines below");
+    expect(firstPage).not.toContain("detail line 5");
+    expect(firstPage).toContain("... 6 detail lines below");
     expect(firstPage).toContain("> Allow once");
     expect(firstPage).toContain("  Deny");
 
@@ -75,7 +73,7 @@ describe("choice prompt", () => {
     const secondPage = prompt.render(40, 10).map(stripAnsi);
 
     expect(secondPage.length).toBeLessThanOrEqual(10);
-    expect(secondPage).toContain("detail line 4");
+    expect(secondPage).toContain("detail line 5");
     expect(secondPage).not.toContain("detail line 1");
     expect(secondPage).toContain("> Allow once");
   });

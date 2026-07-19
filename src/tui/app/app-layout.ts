@@ -1,3 +1,4 @@
+import { dim } from "../render";
 import type { Component } from "../runtime";
 
 const BOTTOM_HEIGHT_TIERS = [
@@ -39,17 +40,19 @@ export class AppLayout implements Component {
 
   render(width: number, availableHeight?: number): string[] {
     const bottomHeight = resolveBottomHeight(availableHeight);
+    const bottomContentHeight = Math.max(0, bottomHeight - 1);
     const mainHeight =
       availableHeight === undefined || !Number.isFinite(availableHeight)
         ? undefined
         : Math.max(0, Math.floor(availableHeight) - bottomHeight);
-    const bottomLines = this.bottom.render(width, bottomHeight);
+    const bottomLines = this.bottom.render(width, bottomContentHeight);
 
-    // Layout owns padding so swapping bottom components cannot move the main boundary.
+    // Layout owns the divider and padding so swapping bottom components cannot move the boundary.
     return [
       ...this.main.render(width, mainHeight),
+      dim("─".repeat(Math.max(1, width))),
       ...bottomLines,
-      ...Array.from({ length: Math.max(0, bottomHeight - bottomLines.length) }, () => ""),
+      ...Array.from({ length: Math.max(0, bottomContentHeight - bottomLines.length) }, () => ""),
     ];
   }
 
@@ -73,7 +76,7 @@ function resolveBottomHeight(availableHeight: number | undefined): number {
     ({ minimumTerminalHeight }) => terminalHeight >= minimumTerminalHeight,
   );
 
-  // Seven rows keep approval context and choices visible; smaller terminals
-  // receive all available rows because no complete bottom layout can fit.
+  // Below the smallest tier, reserve the terminal for bottom and let the
+  // active component choose its compact rendering strategy.
   return tier?.bottomHeight ?? terminalHeight;
 }

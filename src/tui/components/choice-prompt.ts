@@ -42,13 +42,8 @@ export class ChoicePrompt<T extends string> implements Component {
       this.renderOption(option, index, accentColor),
     );
     const lines = [
-      dim("─".repeat(Math.max(width, 1))),
       ...titleLines,
-      ...this.renderDetail(
-        detailLines,
-        availableHeight,
-        1 + titleLines.length + optionLines.length,
-      ),
+      ...this.renderDetail(detailLines, availableHeight, titleLines.length + optionLines.length),
       ...optionLines,
     ];
 

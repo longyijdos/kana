@@ -129,7 +129,7 @@ export class Editor implements Component {
     const commandState = getCommandState(this.state.value);
     const showStatus =
       !commandState.showPalette && (availableHeight === undefined || availableHeight >= 5);
-    const inputReservedRows = 3 + (showStatus ? 1 : 0) + (commandState.showPalette ? 3 : 0);
+    const inputReservedRows = 2 + (showStatus ? 1 : 0) + (commandState.showPalette ? 3 : 0);
     const maximumInputLines = visibleLimitForHeight(
       MAX_INPUT_LINES,
       availableHeight,
@@ -145,7 +145,7 @@ export class Editor implements Component {
       preferredStartLine: this.inputViewportStartLine,
     });
     this.inputViewportStartLine = layout.startLine;
-    const lines = ["", `+${"-".repeat(frameWidth - 2)}+`];
+    const lines = [`+${"-".repeat(frameWidth - 2)}+`];
 
     for (const [index, line] of layout.lines.entries()) {
       const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));

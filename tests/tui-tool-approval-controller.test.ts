@@ -3,7 +3,10 @@ import { AppLayout } from "../src/tui/app/app-layout";
 import { ContentViewerController } from "../src/tui/app/content-viewer-controller";
 import { ToolApprovalController } from "../src/tui/app/tool-approval-controller";
 import { type Editor, Transcript } from "../src/tui/components";
+import { stripAnsi } from "../src/tui/render";
 import type { Component, Tui } from "../src/tui/runtime";
+
+const DIVIDER = "─".repeat(80);
 
 class LinesComponent implements Component {
   constructor(private readonly lines: string[]) {}
@@ -49,7 +52,7 @@ describe("tool approval controller", () => {
 
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });
-    expect(layout.render(80).slice(0, 2)).toEqual(["transcript", "editor"]);
+    expect(layout.render(80).map(stripAnsi).slice(0, 3)).toEqual(["transcript", DIVIDER, "editor"]);
     expect(tui.getFocus()).toBe(editor);
   });
 
@@ -109,7 +112,7 @@ describe("tool approval controller", () => {
 
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });
-    expect(layout.render(80).slice(0, 2)).toEqual(["transcript", "editor"]);
+    expect(layout.render(80).map(stripAnsi).slice(0, 3)).toEqual(["transcript", DIVIDER, "editor"]);
   });
 });
 

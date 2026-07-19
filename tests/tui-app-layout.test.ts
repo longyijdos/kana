@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../src/tui/app/app-layout";
+import { stripAnsi } from "../src/tui/render";
 import type { Component } from "../src/tui/runtime";
+
+const DIVIDER = "─".repeat(80);
 
 class LinesComponent implements Component {
   lastAvailableHeight?: number;
@@ -22,11 +25,12 @@ describe("tui app layout", () => {
       bottom: editor,
     });
 
-    expect(layout.render(80)).toEqual([
+    expect(layout.render(80).map(stripAnsi)).toEqual([
       "transcript",
+      DIVIDER,
       "editor",
       "status",
-      ...Array.from({ length: 13 }, () => ""),
+      ...Array.from({ length: 12 }, () => ""),
     ]);
 
     const viewerMain = new LinesComponent(["viewer main"]);
@@ -35,10 +39,11 @@ describe("tui app layout", () => {
     layout.showMain(viewerMain);
     layout.showBottom(viewer);
 
-    expect(layout.render(80)).toEqual([
+    expect(layout.render(80).map(stripAnsi)).toEqual([
       "viewer main",
+      DIVIDER,
       "tool viewer",
-      ...Array.from({ length: 14 }, () => ""),
+      ...Array.from({ length: 13 }, () => ""),
     ]);
     expect(layout.isMain(viewerMain)).toBe(true);
     expect(layout.isMain(main)).toBe(false);
@@ -48,11 +53,12 @@ describe("tui app layout", () => {
     layout.showMain(main);
     layout.showBottom(editor);
 
-    expect(layout.render(80)).toEqual([
+    expect(layout.render(80).map(stripAnsi)).toEqual([
       "transcript",
+      DIVIDER,
       "editor",
       "status",
-      ...Array.from({ length: 13 }, () => ""),
+      ...Array.from({ length: 12 }, () => ""),
     ]);
   });
 
@@ -66,7 +72,7 @@ describe("tui app layout", () => {
     const rendered = layout.render(80, 24);
 
     expect(main.lastAvailableHeight).toBe(12);
-    expect(viewer.lastAvailableHeight).toBe(12);
+    expect(viewer.lastAvailableHeight).toBe(11);
     expect(editor.lastAvailableHeight).toBeUndefined();
     expect(rendered).toHaveLength(13);
   });
@@ -90,7 +96,8 @@ describe("tui app layout", () => {
     const rendered = layout.render(80, terminalHeight);
 
     expect(main.lastAvailableHeight).toBe(terminalHeight - bottomHeight);
-    expect(bottom.lastAvailableHeight).toBe(bottomHeight);
+    expect(bottom.lastAvailableHeight).toBe(Math.max(0, bottomHeight - 1));
+    expect(rendered.map(stripAnsi)).toContain(DIVIDER);
     expect(rendered).toHaveLength(bottomHeight + 1);
   });
 });

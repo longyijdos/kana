@@ -139,7 +139,7 @@ ProcessTerminal（raw mode、输入、resize、通知）
          └─ ContentViewer
 ```
 
-`Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。底部组件将可交互内容控制在该预算内，layout 为较短输出补空行，从而稳定 main 与 bottom 的边界。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记并将硬件光标移动到对应的可见宽度位置。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
+`Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。Layout 固定绘制底部区域首行作为 main/bottom 分隔线，将剩余预算传给底部组件，并为较短输出补空行，从而稳定两者的边界。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记并将硬件光标移动到对应的可见宽度位置。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
 TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、审批和内容查看视图都会作为唯一底部组件替换编辑器。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 

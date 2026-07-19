@@ -205,14 +205,13 @@ describe("prompt editor", () => {
     const text = `\x1b[38;2;${tuiTheme.userMessageText.join(";")}m`;
 
     expect(rendered.slice(0, -1).map(stripAnsi)).toEqual([
-      "",
       "+------------------+",
       "| > hello          |",
       "+------------------+",
     ]);
     expect(rendered.join("\n")).not.toContain("\x1b[48;");
     expect(rendered.join("\n")).not.toContain("\x1b[K");
-    expect(rendered[2]).toContain(`${accent}> ${text}hello`);
+    expect(rendered[1]).toContain(`${accent}> ${text}hello`);
   });
 
   test("keeps multiline CJK editor rows inside the ASCII frame", () => {
@@ -231,8 +230,7 @@ describe("prompt editor", () => {
     for (const line of rendered) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(40);
     }
-    expect(rendered.map(stripAnsi).at(0)).toBe("");
-    expect(rendered.map(stripAnsi).at(1)).toBe(`+${"-".repeat(38)}+`);
+    expect(rendered.map(stripAnsi).at(0)).toBe(`+${"-".repeat(38)}+`);
     expect(rendered.map(stripAnsi).at(-2)).toBe(`+${"-".repeat(38)}+`);
     expect(rendered.join("\n")).not.toContain("\x1b[48;");
     expect(rendered.join("\n")).not.toContain("\x1b[K");
@@ -257,7 +255,6 @@ describe("prompt editor", () => {
 
     expect(rendered.join("\n")).not.toContain("\x1b[48;");
     expect(rendered.slice(0, -1).map(stripAnsi)).toEqual([
-      "",
       "+------------------+",
       "| > a              |",
       "|   b              |",
@@ -309,13 +306,13 @@ describe("prompt editor", () => {
     editor.render(20);
 
     editor.handleInput("\x1b[A");
-    expect(cursorLine(editor.render(20))).toBe(3);
-
-    editor.handleInput("\x1b[A");
     expect(cursorLine(editor.render(20))).toBe(2);
 
     editor.handleInput("\x1b[A");
-    expect(cursorLine(editor.render(20))).toBe(2);
+    expect(cursorLine(editor.render(20))).toBe(1);
+
+    editor.handleInput("\x1b[A");
+    expect(cursorLine(editor.render(20))).toBe(1);
   });
 
   test("moves up within the visible input window before scrolling it", () => {
@@ -326,13 +323,13 @@ describe("prompt editor", () => {
 
     expect(initial.some((line) => line.includes("one"))).toBe(false);
     expect(initial.some((line) => line.includes("six"))).toBe(true);
-    expect(cursorLine(editor.render(20))).toBe(6);
+    expect(cursorLine(editor.render(20))).toBe(5);
 
     editor.handleInput("\x1b[A");
 
     const afterFirstUp = editor.render(20).map(stripAnsi);
 
-    expect(cursorLine(editor.render(20))).toBe(5);
+    expect(cursorLine(editor.render(20))).toBe(4);
     expect(afterFirstUp.some((line) => line.includes("one"))).toBe(false);
     expect(afterFirstUp.some((line) => line.includes("six"))).toBe(true);
 
@@ -343,7 +340,7 @@ describe("prompt editor", () => {
 
     const afterScroll = editor.render(20).map(stripAnsi);
 
-    expect(cursorLine(editor.render(20))).toBe(2);
+    expect(cursorLine(editor.render(20))).toBe(1);
     expect(afterScroll.some((line) => line.includes("one"))).toBe(true);
     expect(afterScroll.some((line) => line.includes("six"))).toBe(false);
   });
@@ -369,13 +366,13 @@ describe("prompt editor", () => {
     editor.handleInput("\x1b[H");
 
     editor.handleInput("\x1b[B");
+    expect(cursorLine(editor.render(20))).toBe(2);
+
+    editor.handleInput("\x1b[B");
     expect(cursorLine(editor.render(20))).toBe(3);
 
     editor.handleInput("\x1b[B");
-    expect(cursorLine(editor.render(20))).toBe(4);
-
-    editor.handleInput("\x1b[B");
-    expect(cursorLine(editor.render(20))).toBe(4);
+    expect(cursorLine(editor.render(20))).toBe(3);
   });
 
   test("moves down within the visible input window before scrolling it", () => {
@@ -389,13 +386,13 @@ describe("prompt editor", () => {
 
     expect(initial.some((line) => line.includes("one"))).toBe(true);
     expect(initial.some((line) => line.includes("six"))).toBe(false);
-    expect(cursorLine(editor.render(20))).toBe(2);
+    expect(cursorLine(editor.render(20))).toBe(1);
 
     editor.handleInput("\x1b[B");
 
     const afterFirstDown = editor.render(20).map(stripAnsi);
 
-    expect(cursorLine(editor.render(20))).toBe(3);
+    expect(cursorLine(editor.render(20))).toBe(2);
     expect(afterFirstDown.some((line) => line.includes("one"))).toBe(true);
     expect(afterFirstDown.some((line) => line.includes("six"))).toBe(false);
 
@@ -406,7 +403,7 @@ describe("prompt editor", () => {
 
     const afterScroll = editor.render(20).map(stripAnsi);
 
-    expect(cursorLine(editor.render(20))).toBe(6);
+    expect(cursorLine(editor.render(20))).toBe(5);
     expect(afterScroll.some((line) => line.includes("one"))).toBe(false);
     expect(afterScroll.some((line) => line.includes("six"))).toBe(true);
   });
@@ -503,7 +500,7 @@ describe("prompt editor", () => {
 
     const cursorLine = editor.render(9).findIndex((line) => line.includes(CURSOR_MARKER));
 
-    expect(cursorLine).toBe(3);
+    expect(cursorLine).toBe(2);
   });
 
   test("moves left from a soft-wrap line start before the previous character", () => {
