@@ -67,7 +67,7 @@ The editor uses the same ASCII frame, light-gray text, and blue `> ` prefix as u
 
 | Slash command | Behavior |
 | --- | --- |
-| `/help` | Print commands and shortcuts. |
+| `/help` | Open commands and shortcuts in a read-only bottom view. |
 | `/clear` | Clear transcript and editor without deleting the session. |
 | `/new` | Create an empty session and rebuild the Agent. |
 | `/fork <prompt>` | Create a fork from current Agent history, then send the prompt. |
@@ -75,6 +75,7 @@ The editor uses the same ASCII frame, light-gray text, and blue `> ` prefix as u
 | `/delete` | Select and confirm session deletion. |
 | `/skills` | Manage global Skill activation and rebuild the Agent system prompt. |
 | `/memory …` | View or compact memory; see [Sessions and memory](sessions-and-memory.en.md). |
+| `/usage [session\|project\|global]` | Open API usage for the selected scope in a read-only bottom view. |
 | `/quit` | Exit without arguments; with arguments it is a normal prompt. |
 
 ## Controllers and focus
@@ -84,7 +85,7 @@ Separate controllers keep `KanaTuiApp` from owning every interaction state machi
 - `ToolApprovalController` implements the Agent `beforeToolExecution` hook. Its choice prompt replaces the editor when the editor is visible. If another bottom view is active, the approval remains pending and the configured approval notification still fires; closing that view reveals the prompt. Denial aborts the run, while always allow adds only an exact bash command to the allowlist.
 - `SessionOverlayController` replaces the editor with the resume list or delete confirmation. New, resumed, and deleted sessions update transcript and focus.
 - `SkillManagerController` replaces the editor with the global Skill list. On save it aborts the prior Agent and constructs a new one with the same history, refreshing its prompt.
-- `ContentViewerController` replaces the bottom component with scrollable tool output while the transcript remains rendered. Closing it restores a waiting approval prompt first, otherwise the editor.
+- `ContentViewerController` replaces the bottom component with scrollable read-only content, including help, usage, memory, and tool output, while the transcript remains rendered. Closing it restores a waiting approval prompt first, otherwise the editor.
 - `LocalShellController` reuses bash Tool presentation but never requests approval.
 - `MemoryCompactController` runs cancellable full memory consolidation and writes a summary into transcript.
 

@@ -67,7 +67,7 @@ ProcessTerminal
 
 | Slash 命令 | 行为 |
 | --- | --- |
-| `/help` | 输出命令和快捷方式。 |
+| `/help` | 在底部只读视图中打开命令和快捷方式。 |
 | `/clear` | 清空 transcript 与编辑器，不删除会话。 |
 | `/new` | 新建空会话并重建 Agent。 |
 | `/fork <prompt>` | 从当前 Agent 历史创建分叉会话后发送 prompt。 |
@@ -75,6 +75,7 @@ ProcessTerminal
 | `/delete` | 选择并确认删除会话。 |
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
 | `/memory …` | 查看或压缩记忆；具体语义见[会话与记忆](sessions-and-memory.md)。 |
+| `/usage [session\|project\|global]` | 在底部只读视图中打开对应范围的 API 用量。 |
 | `/quit` | 无参数时退出；带参数时作为普通 prompt。 |
 
 ## 控制器与焦点
@@ -84,7 +85,7 @@ ProcessTerminal
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
 - `SessionOverlayController` 用恢复列表或删除确认替换编辑器。新 session、恢复和删除都会更新 transcript 和焦点。
 - `SkillManagerController` 用 global Skill 列表替换编辑器，保存后中止旧 Agent 并用原消息历史创建新 Agent，从而刷新提示词。
-- `ContentViewerController` 用可滚动的工具输出替换底部组件，transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。
+- `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具输出；transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 

@@ -17,7 +17,6 @@ export class UsageSummaryBlock implements Component {
       `${label.padEnd(9)}${formatInteger(value).padStart(10)}  ${color(bar(value, total, barWidth), tone)}`;
 
     return [
-      color(`Usage · ${this.summary.scope}`, tuiTheme.welcomeTitle),
       `${color("Cost", tuiTheme.usageMuted).padEnd(12)}${color(formatCny(this.summary.costCny), tuiTheme.usageCost)}`,
       "",
       color("Tokens", tuiTheme.markdownHeading),

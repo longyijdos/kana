@@ -362,7 +362,6 @@ export class KanaTuiApp {
           return;
         }
 
-        this.editor.clear();
         this.showHelp();
         break;
       case "clear":
@@ -482,34 +481,36 @@ export class KanaTuiApp {
       return;
     }
     const summary = this.options.loadUsage(scope);
+    const usage = new UsageSummaryBlock(summary);
     this.editor.clear();
-    this.transcript.addChild(new UsageSummaryBlock(summary));
+    this.contentViewer.open({
+      title: `Usage · ${summary.scope}`,
+      render: (contentWidth) => usage.render(contentWidth),
+    });
     this.updateStatus("idle", { activeTool: undefined });
-    this.tui.requestRender();
   }
 
   private showHelp(): void {
-    const lines = [
-      COMMAND_MESSAGES.helpTitle,
-      "",
-      ...PROMPT_COMMANDS.map((command) => `/${command.name.padEnd(8)} ${command.description}`),
-      "",
-      COMMAND_MESSAGES.shellShortcutsTitle,
-      "",
-      COMMAND_MESSAGES.shellShortcut,
-      COMMAND_MESSAGES.toolShortcut,
-    ];
+    const help = new TextBlock(
+      [
+        ...PROMPT_COMMANDS.map((command) => `/${command.name.padEnd(8)} ${command.description}`),
+        "",
+        COMMAND_MESSAGES.shellShortcutsTitle,
+        "",
+        COMMAND_MESSAGES.shellShortcut,
+        COMMAND_MESSAGES.toolShortcut,
+      ].join("\n"),
+      { color: tuiTheme.muted },
+    );
 
     this.editor.clear();
-    this.transcript.addChild(
-      new TextBlock(lines.join("\n"), {
-        color: tuiTheme.muted,
-      }),
-    );
+    this.contentViewer.open({
+      title: COMMAND_MESSAGES.helpTitle,
+      render: (contentWidth) => help.render(contentWidth),
+    });
     this.updateStatus("idle", {
       activeTool: undefined,
     });
-    this.tui.requestRender();
   }
 
   private startNewSession(): void {
