@@ -449,6 +449,24 @@ describe("tui transcript", () => {
     expect(rendered).toContain("... 3 lines below");
   });
 
+  test("tool result viewer renders a multiline title as one truncated line", () => {
+    const viewer = new ContentViewer(
+      {
+        title: "Ran printf table\n| 01 | macOS version | usable |\n| 02 | Shell | zsh |",
+        render: () => ["output"],
+      },
+      { onClose: () => {} },
+    );
+
+    const rendered = viewer.render(32, 10);
+    const title = stripAnsi(rendered[1] ?? "");
+
+    expect(title.startsWith("Ran printf table | 01")).toBe(true);
+    expect(title.endsWith("...")).toBe(true);
+    expect(title).not.toContain("\n");
+    expect(visibleWidth(rendered[1] ?? "")).toBeLessThanOrEqual(32);
+  });
+
   test("distinguishes write overwrite transcript titles from new file writes", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

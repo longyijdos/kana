@@ -1,4 +1,4 @@
-import { color, dim, mapLines, truncateToWidth } from "../render";
+import { color, dim, mapLines, summarizeText, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import {
   isDown,
@@ -91,7 +91,11 @@ export class ContentViewer implements Component {
       content.length,
     );
     const window = this.viewport.window(content.length);
-    const lines = ["", color(this.view.title, tuiTheme.toolActive)];
+    const title = truncateToWidth(
+      color(summarizeText(this.view.title), tuiTheme.toolActive),
+      width,
+    );
+    const lines = ["", title];
 
     if (content.length === 0) {
       lines.push(dim("No output yet."));
