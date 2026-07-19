@@ -10,31 +10,25 @@ describe("tui user message block", () => {
     const text = `\x1b[38;2;${tuiTheme.userMessageText.join(";")}m`;
 
     expect(rendered.map(stripAnsi)).toEqual([
-      "",
       "+------------------+",
       "| > hello          |",
       "|   world          |",
       "+------------------+",
-      "",
     ]);
-    expect(rendered[0]).toBe("");
-    expect(rendered.at(-1)).toBe("");
     expect(rendered.join("\n")).not.toContain("\x1b[48;");
     expect(rendered.join("\n")).not.toContain("\x1b[K");
-    expect(rendered[2]).toContain(`${accent}> ${text}hello`);
+    expect(rendered[1]).toContain(`${accent}> ${text}hello`);
   });
 
   test("wraps content inside the prefix and frame", () => {
     const rendered = new UserMessageBlock("abcdef").render(8);
 
     expect(rendered.map(stripAnsi)).toEqual([
-      "",
       "+------+",
       "| > ab |",
       "|   cd |",
       "|   ef |",
       "+------+",
-      "",
     ]);
     expect(rendered.every((line) => visibleWidth(line) <= 8)).toBe(true);
   });

@@ -504,7 +504,6 @@ export class KanaTuiApp {
     this.transcript.addChild(
       new TextBlock(lines.join("\n"), {
         color: tuiTheme.muted,
-        paddingTop: 1,
       }),
     );
     this.updateStatus("idle", {
@@ -548,7 +547,6 @@ export class KanaTuiApp {
     this.transcript.addChild(
       new TextBlock(`Forked session ${this.sessionId}.`, {
         color: tuiTheme.muted,
-        paddingTop: 1,
       }),
     );
     this.updateStatus("idle", {
@@ -636,7 +634,6 @@ export class KanaTuiApp {
     this.transcript.addChild(
       new TextBlock(error instanceof Error ? error.message : String(error), {
         color: tuiTheme.error,
-        paddingTop: 1,
       }),
     );
     this.updateStatus("error");

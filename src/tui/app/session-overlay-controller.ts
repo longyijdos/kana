@@ -119,7 +119,6 @@ export class SessionOverlayController {
           : `Session not found: ${session.id}`,
         {
           color: deleted ? tuiTheme.muted : tuiTheme.error,
-          paddingTop: 1,
         },
       ),
     );

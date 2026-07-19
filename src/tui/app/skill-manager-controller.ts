@@ -88,7 +88,6 @@ export class SkillManagerController {
     this.options.transcript.addChild(
       new TextBlock(error instanceof Error ? error.message : String(error), {
         color: tuiTheme.error,
-        paddingTop: 1,
       }),
     );
     this.options.updateStatus("error", {

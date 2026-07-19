@@ -104,9 +104,8 @@ export class ToolCallBlock implements Component {
       : state === "done"
         ? tuiTheme.toolSuccess
         : tuiTheme.toolActive;
-    const lines = ["", ...this.renderTitle(width, titleColor, elapsedSeconds)];
+    const lines = this.renderTitle(width, titleColor, elapsedSeconds);
     lines.push(...this.renderOutput(width, "compact"));
-    lines.push("");
 
     const rendered = lines.map((line) => truncateToWidth(line, width));
 

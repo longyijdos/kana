@@ -56,7 +56,6 @@ export class MemoryCompactController {
     this.options.transcript.addChild(
       new TextBlock(`Compacting ${formatTarget(target)} memory…`, {
         color: tuiTheme.muted,
-        paddingTop: 1,
       }),
     );
     this.options.setRunning(true);

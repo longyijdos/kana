@@ -20,7 +20,6 @@ export class UserMessageBlock implements Component {
     const prefixWidth = visibleWidth(PREFIX);
     const messageLines = wrapPlainText(this.text, Math.max(1, contentWidth - prefixWidth));
     const lines = [
-      "",
       `+${"-".repeat(frameWidth - 2)}+`,
       ...messageLines.map((line, index) =>
         this.renderRow(
@@ -35,7 +34,6 @@ export class UserMessageBlock implements Component {
         ),
       ),
       `+${"-".repeat(frameWidth - 2)}+`,
-      "",
     ];
 
     this.cachedWidth = width;

@@ -10,7 +10,6 @@ export class TextBlock implements Component {
     private readonly options: {
       color?: Parameters<typeof color>[1];
       dim?: boolean;
-      paddingTop?: number;
       prefix?: string;
     } = {},
   ) {}
@@ -33,10 +32,6 @@ export class TextBlock implements Component {
     const lines: string[] = [];
     const prefix = this.options.prefix ?? "";
     const contentWidth = Math.max(1, width - visibleWidth(prefix));
-
-    for (let index = 0; index < (this.options.paddingTop ?? 0); index += 1) {
-      lines.push("");
-    }
 
     for (const [index, line] of wrapPlainText(this.text, contentWidth).entries()) {
       const styled = style(`${index === 0 ? prefix : ""}${line}`, this.options);
