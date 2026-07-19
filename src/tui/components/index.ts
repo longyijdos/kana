@@ -24,5 +24,6 @@ export {
   type SkillManagerDecision,
   type SkillManagerItem,
 } from "./skill-manager";
+export { TextPrompt, type TextPromptOptions } from "./text-prompt";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";
 export { UsageSummaryBlock } from "./usage-summary";

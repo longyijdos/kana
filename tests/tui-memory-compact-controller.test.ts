@@ -19,6 +19,7 @@ class FakeTerminal implements Terminal {
 describe("memory compact controller", () => {
   test("does not add memory commands to editor history", async () => {
     const editor = new Editor();
+    const compactCalls: Array<{ scope: string; request: string | undefined }> = [];
     const controller = new MemoryCompactController({
       editor,
       transcript: new Transcript(),
@@ -26,11 +27,15 @@ describe("memory compact controller", () => {
       setRunning() {},
       clearRunStatus() {},
       updateStatus() {},
-      compactMemory: async () => [{ target: "workspace", outcome: "unchanged" }],
+      compactMemory: async (scope, request) => {
+        compactCalls.push({ scope, request });
+        return [{ target: "project", outcome: "unchanged" }];
+      },
     });
 
-    await controller.compact("workspace 记录已完成的工作");
+    await controller.compact("project", "记录已完成的工作");
 
+    expect(compactCalls).toEqual([{ scope: "project", request: "记录已完成的工作" }]);
     editor.render(80);
     editor.handleInput("\x1b[A");
     expect(editor.getText()).toBe("");

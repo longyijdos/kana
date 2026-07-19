@@ -105,7 +105,7 @@ remember 成功
 
 ## 全量压缩与保留
 
-`/memory compact [user|workspace] [request]` 可运行全量合并：省略 target 时同时处理 global 与 project。它向模型提供当前长期记忆和可选用户请求，并额外开放以下只读工具：
+在 `/memory` 中选择 Compact 可运行全量合并。随后选择 Project、Global 或 Both，并可在独立输入框中填写额外要求。合并 Agent 会收到当前长期记忆和这段可选请求，并额外开放以下只读工具：
 
 - `list_daily_memory`：按可选日期范围列出每日文件及条目数。
 - `read_daily_memory`：读取指定日期的所有条目。
@@ -117,14 +117,9 @@ remember 成功
 
 | 命令 | 行为 |
 | --- | --- |
-| `/memory show` | 在查看器中显示 user 和 workspace 长期记忆。 |
-| `/memory show user` | 只显示 global 记忆。 |
-| `/memory show workspace` | 只显示当前 project 记忆。 |
-| `/memory compact [request]` | 合并两个 scope，可附加压缩要求。 |
-| `/memory compact user [request]` | 只合并 global scope。 |
-| `/memory compact workspace [request]` | 只合并当前 project scope。 |
+| `/memory` | 在底部依次选择 Show/Compact 和 Project/Global/Both；Compact 还会打开可为空的 request 输入。 |
 
-压缩任务可由 `Esc` 或 `Ctrl+C` 中止。完成提示会分别报告每个 target 的 `updated`、`unchanged`、`aborted`、`length` 或 `error` 结果。
+`/memory` 不接受 editor 参数。选择流程中的 `Esc` 会返回上一步，request 输入支持 `Shift+Enter` 换行；压缩任务启动后可由 `Esc` 或 `Ctrl+C` 中止。完成提示会分别报告每个 scope 的 `updated`、`unchanged`、`aborted`、`length` 或 `error` 结果。
 
 ## 维护约束
 

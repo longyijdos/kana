@@ -69,7 +69,7 @@ kana install --skills
 ## 会话、记忆与 Skills
 
 - 会话持久化在本地，可用 `/resume` 恢复，或用 `/fork <任务>` 从当前对话分叉。
-- Agent 可通过 `remember` 保存长期信息；使用 `/memory show` 查看，或用 `/memory compact` 整理。
+- Agent 可通过 `remember` 保存长期信息；使用 `/memory` 选择查看或整理。
 - 项目根目录的 `AGENTS.md` 会自动注入每次对话；`~/.kana/AGENTS.md` 可提供全局指令。
 - 使用 `/skills` 管理已安装的全局 Skills；项目内 `.kana/skills` 和 `.agents/skills` 会自动启用。
 - `/usage` 可查看当前会话、项目或全局的 token 用量与费用。
@@ -86,7 +86,7 @@ kana install --skills
 | 新建、恢复、分叉会话 | `/new`、`/resume`、`/fork <任务>` |
 | 删除会话 | `/delete` |
 | 管理 Skills | `/skills` |
-| 查看或整理记忆 | `/memory show`、`/memory compact` |
+| 查看或整理记忆 | `/memory` |
 | 查看用量与费用 | `/usage` |
 | 清空当前显示 | `/clear` |
 | 退出 | `/quit` |

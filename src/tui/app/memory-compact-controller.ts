@@ -4,10 +4,10 @@ import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { RunPhase } from "./status-phase";
 
-export type MemoryCompactTarget = "all" | "user" | "workspace";
+export type MemoryScope = "global" | "project" | "both";
 
 export type MemoryCompactSummary = {
-  target: Exclude<MemoryCompactTarget, "all">;
+  target: Exclude<MemoryScope, "both">;
   outcome: "updated" | "unchanged" | "aborted" | "length" | "error";
   error?: string;
 };
@@ -20,7 +20,7 @@ export type MemoryCompactControllerOptions = {
   clearRunStatus: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
   compactMemory: (
-    target: MemoryCompactTarget,
+    target: MemoryScope,
     userRequest: string | undefined,
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
@@ -43,12 +43,11 @@ export class MemoryCompactController {
     return true;
   }
 
-  async compact(argumentsText: string): Promise<void> {
+  async compact(target: MemoryScope, userRequest?: string): Promise<void> {
     if (this.abortController) {
       return;
     }
 
-    const { target, userRequest } = parseMemoryCompactArguments(argumentsText);
     const logger = (this.options.getLogger ?? createNoopLogger)();
     const abortController = new AbortController();
     this.abortController = abortController;
@@ -102,21 +101,8 @@ export class MemoryCompactController {
   }
 }
 
-function parseMemoryCompactArguments(argumentsText: string): {
-  target: MemoryCompactTarget;
-  userRequest?: string;
-} {
-  const [first, ...rest] = argumentsText.trim().split(/\s+/).filter(Boolean);
-
-  if (first === "user" || first === "workspace") {
-    return { target: first, userRequest: rest.join(" ") || undefined };
-  }
-
-  return { target: "all", userRequest: argumentsText.trim() || undefined };
-}
-
-function formatTarget(target: MemoryCompactTarget): string {
-  return target === "all" ? "user and workspace" : target;
+function formatTarget(target: MemoryScope): string {
+  return target === "both" ? "global and project" : target;
 }
 
 function formatSummaries(summaries: MemoryCompactSummary[]): string {

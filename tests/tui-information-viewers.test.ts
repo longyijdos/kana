@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../src/tui/app/app";
 import { stripAnsi } from "../src/tui/render";
-import type { Terminal } from "../src/tui/runtime";
+import type { Component, Terminal } from "../src/tui/runtime";
 
 describe("information viewers", () => {
   test("opens help in the bottom viewer without adding transcript content", () => {
@@ -22,7 +22,7 @@ describe("information viewers", () => {
     expect(rendered).not.toContain("test/test-model");
   });
 
-  test("opens scoped usage in the bottom viewer without adding transcript content", () => {
+  test("rejects usage arguments from the editor", () => {
     const loadedScopes: KanaUsageScope[] = [];
     const app = createApp((scope) => {
       loadedScopes.push(scope);
@@ -32,21 +32,103 @@ describe("information viewers", () => {
 
     internal.handleCommand({ name: "usage", arguments: "global", raw: "/usage global" });
 
+    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
+
+    expect(loadedScopes).toEqual([]);
+    expect(internal.transcript.children).toHaveLength(1);
+    expect(internal.contentViewer.active).toBe(false);
+    expect(internal.slashCommandOptions.active).toBe(false);
+    expect(rendered).toContain("Usage: /usage");
+  });
+
+  test("selects a usage scope from the bottom prompt", () => {
+    const loadedScopes: KanaUsageScope[] = [];
+    const app = createApp((scope) => {
+      loadedScopes.push(scope);
+      return createUsageSummary(scope);
+    });
+    const internal = app as unknown as AppInternals;
+
+    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
+
+    const prompt = internal.layout.render(80, 24).map(stripAnsi);
+
+    expect(internal.transcript.children).toHaveLength(0);
+    expect(internal.slashCommandOptions.active).toBe(true);
+    expect(internal.contentViewer.active).toBe(false);
+    expect(prompt).toContain("Usage scope");
+    expect(prompt).toContain("> Session");
+    expect(prompt).toContain("  Project");
+    expect(prompt).toContain("  Global");
+
+    internal.tui.getFocus()?.handleInput?.("\x1b[B");
+    internal.tui.getFocus()?.handleInput?.("\r");
+
+    const viewer = internal.layout.render(80, 24).map(stripAnsi);
+
+    expect(loadedScopes).toEqual(["project"]);
+    expect(internal.slashCommandOptions.active).toBe(false);
+    expect(internal.contentViewer.active).toBe(true);
+    expect(viewer).toContain("Usage · project");
+  });
+
+  test("cancels the usage scope prompt with escape", () => {
+    const app = createApp();
+    const internal = app as unknown as AppInternals;
+
+    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
+    internal.tui.getFocus()?.handleInput?.("\x1b");
+
     const rendered = internal.layout.render(80, 24).map(stripAnsi);
 
-    expect(loadedScopes).toEqual(["global"]);
+    expect(internal.slashCommandOptions.active).toBe(false);
+    expect(rendered.some((line) => line.includes("test/test-model"))).toBe(true);
+  });
+
+  test("opens memory actions in the bottom prompt", () => {
+    const app = createApp();
+    const internal = app as unknown as AppInternals;
+
+    internal.handleCommand({ name: "memory", arguments: "", raw: "/memory" });
+
+    const rendered = internal.layout.render(80, 24).map(stripAnsi);
+
     expect(internal.transcript.children).toHaveLength(0);
-    expect(internal.contentViewer.active).toBe(true);
-    expect(rendered.filter((line) => line.includes("Usage · global"))).toHaveLength(1);
-    expect(rendered.some((line) => line.includes("Cost") && line.includes("¥1.2500"))).toBe(true);
-    expect(rendered).not.toContain("test/test-model");
+    expect(internal.slashCommandOptions.active).toBe(true);
+    expect(rendered).toContain("Memory action");
+    expect(rendered).toContain("> Show");
+    expect(rendered).toContain("  Compact");
+  });
+
+  test("rejects memory arguments from the editor", () => {
+    const app = createApp();
+    const internal = app as unknown as AppInternals;
+
+    internal.handleCommand({
+      name: "memory",
+      arguments: "show project",
+      raw: "/memory show project",
+    });
+
+    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
+
+    expect(internal.transcript.children).toHaveLength(1);
+    expect(internal.contentViewer.active).toBe(false);
+    expect(internal.slashCommandOptions.active).toBe(false);
+    expect(rendered).toContain("Usage: /memory");
   });
 });
 
 type AppInternals = {
-  handleCommand: (command: { name: "help" | "usage"; arguments: string; raw: string }) => void;
+  handleCommand: (command: {
+    name: "help" | "memory" | "usage";
+    arguments: string;
+    raw: string;
+  }) => void;
   transcript: { children: unknown[] };
   contentViewer: { active: boolean };
+  slashCommandOptions: { active: boolean };
+  tui: { getFocus: () => Component | undefined };
   layout: { render: (width: number, availableHeight?: number) => string[] };
 };
 

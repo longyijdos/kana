@@ -25,6 +25,7 @@ import {
   isUp,
 } from "../../runtime";
 import { tuiTheme } from "../../theme";
+import { BracketedPasteBuffer } from "../../utils/bracketed-paste";
 import { ListViewport, visibleLimitForHeight } from "../../utils/list-viewport";
 import {
   completeCommand,
@@ -61,8 +62,7 @@ export class Editor implements Component {
   private readonly commandViewport: ListViewport;
   private readonly maximumVisibleCommands: number;
   private lastCommandQuery = "";
-  private pasteBuffer = "";
-  private isPasting = false;
+  private readonly bracketedPaste = new BracketedPasteBuffer();
   private inputColumns = 80;
   private inputVisibleLines = MAX_INPUT_LINES;
   private inputViewportStartLine: number | undefined;
@@ -173,11 +173,14 @@ export class Editor implements Component {
   }
 
   handleInput(data: string): void {
-    const paste = this.consumePaste(data);
+    const paste = this.bracketedPaste.consume(data);
 
     if (paste !== undefined) {
-      if (paste) {
-        this.applyText(paste);
+      if (paste.text) {
+        this.applyText(paste.text);
+      }
+      if (paste.remaining) {
+        queueMicrotask(() => this.handleInput(paste.remaining));
       }
       return;
     }
@@ -459,36 +462,6 @@ export class Editor implements Component {
       this.commandViewport.selectedIndex,
       commandState.suggestions.length,
     );
-  }
-
-  private consumePaste(data: string): string | undefined {
-    if (data.includes("\x1b[200~")) {
-      this.isPasting = true;
-      this.pasteBuffer = "";
-      data = data.replace("\x1b[200~", "");
-    }
-
-    if (!this.isPasting) {
-      return undefined;
-    }
-
-    this.pasteBuffer += data;
-    const endIndex = this.pasteBuffer.indexOf("\x1b[201~");
-
-    if (endIndex === -1) {
-      return "";
-    }
-
-    const pasted = this.pasteBuffer.slice(0, endIndex);
-    const remaining = this.pasteBuffer.slice(endIndex + "\x1b[201~".length);
-    this.isPasting = false;
-    this.pasteBuffer = "";
-
-    if (remaining) {
-      queueMicrotask(() => this.handleInput(remaining));
-    }
-
-    return pasted;
   }
 }
 

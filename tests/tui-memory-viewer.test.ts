@@ -54,10 +54,10 @@ describe("memory viewer", () => {
     );
 
     const internal = app as unknown as {
-      openMemoryViewer: (target: "user" | "workspace" | undefined) => void;
+      openMemoryViewer: (target: "global" | "project" | "both") => void;
       layout: { render: (width: number) => string[] };
     };
-    internal.openMemoryViewer("user");
+    internal.openMemoryViewer("global");
 
     const rendered = internal.layout.render(20);
     const renderedMemory = rendered
@@ -68,7 +68,9 @@ describe("memory viewer", () => {
 
     expect(renderedMemory).toContain(longMemory);
     expect(
-      rendered.some((line) => stripAnsi(line).includes("User memory") && line.includes("\x1b[1m")),
+      rendered.some(
+        (line) => stripAnsi(line).includes("Global memory") && line.includes("\x1b[1m"),
+      ),
     ).toBe(true);
   });
 });

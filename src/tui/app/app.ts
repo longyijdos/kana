@@ -46,11 +46,12 @@ import { LocalShellController } from "./local-shell-controller";
 import {
   MemoryCompactController,
   type MemoryCompactSummary,
-  type MemoryCompactTarget,
+  type MemoryScope,
 } from "./memory-compact-controller";
 import { NotificationController } from "./notification-controller";
 import { SessionOverlayController } from "./session-overlay-controller";
 import { SkillManagerController } from "./skill-manager-controller";
+import { SlashCommandOptionsController } from "./slash-command-options-controller";
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
 import { WELCOME_LOGO_LINES } from "./welcome-logo";
@@ -81,11 +82,11 @@ export type KanaTuiAppOptions = {
   wakeScheduler?: WakeScheduler;
   getLogger?: () => Logger;
   compactMemory: (
-    target: MemoryCompactTarget,
+    target: MemoryScope,
     userRequest: string | undefined,
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
-  loadMemory: (target: "user" | "workspace") => string;
+  loadMemory: (target: Exclude<MemoryScope, "both">) => string;
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
 };
 
@@ -105,6 +106,7 @@ export class KanaTuiApp {
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
   private readonly contentViewer: ContentViewerController;
+  private readonly slashCommandOptions: SlashCommandOptionsController;
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
   private readonly getLogger: () => Logger;
@@ -168,6 +170,18 @@ export class KanaTuiApp {
       layout: this.layout,
       transcript: this.transcript,
       tui: this.tui,
+      restoreBottom: (focus) => this.restoreBottom(focus),
+    });
+    this.slashCommandOptions = new SlashCommandOptionsController({
+      editor: this.editor,
+      layout: this.layout,
+      tui: this.tui,
+      onUsageScope: (scope) => this.showUsage(scope),
+      onMemoryShow: (scope) => this.openMemoryViewer(scope),
+      onMemoryCompact: (scope, request) => {
+        this.restoreBottom(true);
+        void this.memoryCompact.compact(scope, request);
+      },
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.toolApproval = new ToolApprovalController({
@@ -421,47 +435,32 @@ export class KanaTuiApp {
         this.openSkillManager();
         break;
       case "memory":
-        this.handleMemoryCommand(command.arguments);
+        if (command.arguments.trim()) {
+          this.showError(new Error(COMMAND_MESSAGES.memoryUsage));
+          return;
+        }
+
+        this.slashCommandOptions.openMemory();
         break;
       case "usage":
-        this.showUsage(command.arguments);
+        if (command.arguments.trim()) {
+          this.showError(new Error(COMMAND_MESSAGES.usageUsage));
+          return;
+        }
+
+        this.slashCommandOptions.openUsage();
         break;
     }
   }
 
-  private handleMemoryCommand(argumentsText: string): void {
-    const [subcommand, ...argumentsParts] = argumentsText.trim().split(/\s+/).filter(Boolean);
-
-    if (subcommand === "compact") {
-      this.editor.clear();
-      void this.memoryCompact.compact(argumentsParts.join(" "));
-      return;
-    }
-
-    if (subcommand === "show") {
-      const requestedTarget = argumentsParts[0];
-      const target =
-        requestedTarget === "user" || requestedTarget === "workspace" ? requestedTarget : undefined;
-      if (requestedTarget && !target) {
-        this.showError(new Error(COMMAND_MESSAGES.memoryUsage));
-        return;
-      }
-
-      this.editor.clear();
-      this.openMemoryViewer(target);
-      return;
-    }
-
-    this.showError(new Error(COMMAND_MESSAGES.memoryUsage));
-  }
-
-  private openMemoryViewer(target: "user" | "workspace" | undefined): void {
-    const memoryTargets = target ? [target] : (["user", "workspace"] as const);
+  private openMemoryViewer(target: MemoryScope): void {
+    const memoryTargets =
+      target === "both" ? (["global", "project"] as const) : ([target] as const);
     const markdown = new MarkdownBlock(
       memoryTargets
         .flatMap((memoryTarget, index) => [
           ...(index > 0 ? [""] : []),
-          `# ${memoryTarget === "user" ? "User" : "Workspace"} memory`,
+          `# ${memoryTarget === "global" ? "Global" : "Project"} memory`,
           "",
           this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
         ])
@@ -474,12 +473,7 @@ export class KanaTuiApp {
     });
   }
 
-  private showUsage(argumentsText: string): void {
-    const scope = argumentsText.trim() || "session";
-    if (scope !== "session" && scope !== "project" && scope !== "global") {
-      this.showError(new Error(COMMAND_MESSAGES.usageUsage));
-      return;
-    }
+  private showUsage(scope: KanaUsageScope): void {
     const summary = this.options.loadUsage(scope);
     const usage = new UsageSummaryBlock(summary);
     this.editor.clear();

@@ -1,6 +1,6 @@
 import { type Color, color, dim, mapLines, truncateToWidth, wrapPlainText } from "../render";
 import type { Component } from "../runtime";
-import { isDown, isEnter, isLeft, isPageDown, isPageUp, isRight, isUp } from "../runtime";
+import { isDown, isEnter, isEscape, isLeft, isPageDown, isPageUp, isRight, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -17,6 +17,7 @@ export type ChoicePromptOptions<T extends string> = {
   accentColor?: Color;
   highlight?: (line: string) => string;
   onSelect: (value: T) => void;
+  onCancel?: () => void;
 };
 
 export class ChoicePrompt<T extends string> implements Component {
@@ -51,6 +52,11 @@ export class ChoicePrompt<T extends string> implements Component {
   }
 
   handleInput(data: string): void {
+    if (isEscape(data) && this.options.onCancel) {
+      this.options.onCancel();
+      return;
+    }
+
     if (isPageUp(data)) {
       this.detailViewport.page(-1, this.detailLength);
       return;

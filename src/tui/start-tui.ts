@@ -212,15 +212,10 @@ export function startTui(options: StartTuiOptions = {}): void {
       compactMemory: async (target, userRequest, signal) => {
         const memoryLogger = sessionLogger;
         const scopes: Array<"global" | "project"> =
-          target === "user"
-            ? ["global"]
-            : target === "workspace"
-              ? ["project"]
-              : ["global", "project"];
+          target === "both" ? ["global", "project"] : [target];
 
         return Promise.all(
           scopes.map(async (scope): Promise<MemoryCompactSummary> => {
-            const targetName = scope === "global" ? "user" : "workspace";
             try {
               const result = await memoryConsolidationQueue.enqueue(scope, () =>
                 runFullMemoryConsolidation(config, {
@@ -242,10 +237,10 @@ export function startTui(options: StartTuiOptions = {}): void {
                   memory: { scope, mode: "full", origin: "manual" },
                 });
               }
-              return { target: targetName, outcome: result.outcome };
+              return { target: scope, outcome: result.outcome };
             } catch (error) {
               return {
-                target: targetName,
+                target: scope,
                 outcome: "error",
                 error: error instanceof Error ? error.message : String(error),
               };
@@ -253,8 +248,7 @@ export function startTui(options: StartTuiOptions = {}): void {
           }),
         );
       },
-      loadMemory: (target) =>
-        loadKanaMemory(target === "user" ? "global" : "project", { cwd: process.cwd() }),
+      loadMemory: (target) => loadKanaMemory(target, { cwd: process.cwd() }),
       loadUsage: (scope) =>
         loadKanaUsageSummary({
           scope,
