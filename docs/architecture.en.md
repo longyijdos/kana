@@ -132,14 +132,14 @@ ProcessTerminal (raw mode, input, resize, notifications)
   → Tui (focus, 16ms batching, differential redraw, hardware cursor)
     → AppLayout
       ├─ Main (currently Transcript; terminal scrollback)
-      └─ Bottom (exactly one)
+      └─ Bottom (exactly one; tiered height)
          ├─ Editor (input and status line)
          ├─ ToolApproval
          ├─ Session / Skills view
          └─ ContentViewer
 ```
 
-`Tui` uses a component's `render(width, availableHeight?): string[]` as its minimal rendering protocol. The available height is advisory rather than a hard output limit, allowing each component to select an appropriate rendering strategy. It caches the previous output and redraws only changed lines while terminal dimensions are stable; it falls back to full rendering if changed content has scrolled out of view, content shrinks, or terminal dimensions change. The editor places an internal cursor marker in logical lines; `Tui` removes it before terminal output and moves the hardware cursor to the matching visible-width column. The rendering layer uses graphemes and `string-width` for CJK, emoji, ANSI color, and line wrapping.
+`Tui` uses a component's `render(width, availableHeight?): string[]` as its minimal rendering protocol. `AppLayout` converts terminal height into a 15-, 12-, 9-, or 7-row bottom budget; terminals shorter than 7 rows use all available rows. It passes the remainder to main. Bottom components keep their interactive content within that budget; the layout pads shorter output to stabilize the main/bottom boundary. Transcript deliberately ignores the remaining-height hint and renders complete history for terminal scrollback. `Tui` caches the previous output and redraws only changed lines while terminal dimensions are stable; it falls back to full rendering if changed content has scrolled out of view, content shrinks, or terminal dimensions change. The editor places an internal cursor marker in logical lines; `Tui` removes it before terminal output and moves the hardware cursor to the matching visible-width column. The rendering layer uses graphemes and `string-width` for CJK, emoji, ANSI color, and line wrapping.
 
 The main controllers handle tool approval, session selection/deletion, global Skill activation, local `!` shell commands, memory compaction, and long tool-output viewing. Session, Skill, approval, and content views replace the editor as the single bottom component. An approval that arrives while another bottom view is active remains pending and sends its configured notification instead of preempting the current view. `Ctrl+C`/`Esc` first cancel the active Agent, local shell, or memory task; `Ctrl+C` exits when idle. `Ctrl+O` opens the most recent expandable tool output.
 

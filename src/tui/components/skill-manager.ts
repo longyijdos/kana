@@ -2,9 +2,10 @@ import { color, dim, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import { isDown, isEnter, isEscape, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
-import { ListViewport } from "../utils/list-viewport";
+import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
 const SKILL_MANAGER_VISIBLE_LIMIT = 10;
+const SKILL_MANAGER_RESERVED_ROWS = 5;
 
 export type SkillManagerItem = {
   name: string;
@@ -26,13 +27,15 @@ export type SkillManagerDecision =
 
 export class SkillManager implements Component {
   private readonly viewport: ListViewport;
+  private readonly maximumVisibleSkills: number;
 
   constructor(
     private readonly skills: SkillManagerItem[],
     private readonly finish: (decision: SkillManagerDecision) => void,
     visibleLimit = SKILL_MANAGER_VISIBLE_LIMIT,
   ) {
-    this.viewport = new ListViewport(visibleLimit);
+    this.maximumVisibleSkills = visibleLimit;
+    this.viewport = new ListViewport(this.maximumVisibleSkills);
   }
 
   handleInput(data: string): void {
@@ -56,7 +59,7 @@ export class SkillManager implements Component {
     }
   }
 
-  render(width: number, _availableHeight?: number): string[] {
+  render(width: number, availableHeight?: number): string[] {
     const lines = ["", color("Skills", tuiTheme.muted)];
 
     if (this.skills.length === 0) {
@@ -64,6 +67,14 @@ export class SkillManager implements Component {
       return lines;
     }
 
+    this.viewport.setVisibleLimit(
+      visibleLimitForHeight(
+        this.maximumVisibleSkills,
+        availableHeight,
+        SKILL_MANAGER_RESERVED_ROWS,
+      ),
+      this.skills.length,
+    );
     const viewport = this.viewport.window(this.skills.length);
 
     if (viewport.hiddenBefore > 0) {

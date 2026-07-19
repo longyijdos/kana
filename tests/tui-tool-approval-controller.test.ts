@@ -49,7 +49,7 @@ describe("tool approval controller", () => {
 
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });
-    expect(layout.render(80)).toEqual(["transcript", "editor"]);
+    expect(layout.render(80).slice(0, 2)).toEqual(["transcript", "editor"]);
     expect(tui.getFocus()).toBe(editor);
   });
 
@@ -109,7 +109,7 @@ describe("tool approval controller", () => {
 
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });
-    expect(layout.render(80)).toEqual(["transcript", "editor"]);
+    expect(layout.render(80).slice(0, 2)).toEqual(["transcript", "editor"]);
   });
 });
 

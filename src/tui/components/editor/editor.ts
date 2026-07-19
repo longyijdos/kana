@@ -25,7 +25,7 @@ import {
   isUp,
 } from "../../runtime";
 import { tuiTheme } from "../../theme";
-import { ListViewport } from "../../utils/list-viewport";
+import { ListViewport, visibleLimitForHeight } from "../../utils/list-viewport";
 import {
   completeCommand,
   createCommandSubmit,
@@ -59,10 +59,12 @@ export class Editor implements Component {
   private history: string[] = [];
   private historyIndex = -1;
   private readonly commandViewport: ListViewport;
+  private readonly maximumVisibleCommands: number;
   private lastCommandQuery = "";
   private pasteBuffer = "";
   private isPasting = false;
   private inputColumns = 80;
+  private inputVisibleLines = MAX_INPUT_LINES;
   private inputViewportStartLine: number | undefined;
   private statusState: StatusLineState = {
     phase: "idle",
@@ -74,9 +76,9 @@ export class Editor implements Component {
   onSubmit?: (submit: PromptSubmit) => void;
 
   constructor(private readonly options: EditorOptions = {}) {
-    this.commandViewport = new ListViewport(
-      options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT,
-    );
+    this.maximumVisibleCommands =
+      options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT;
+    this.commandViewport = new ListViewport(this.maximumVisibleCommands);
   }
 
   getText(): string {
@@ -120,16 +122,26 @@ export class Editor implements Component {
     };
   }
 
-  render(width: number, _availableHeight?: number): string[] {
+  render(width: number, availableHeight?: number): string[] {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
     const inputColumns = Math.max(1, contentWidth - visibleWidth(PROMPT));
+    const commandState = getCommandState(this.state.value);
+    const showStatus =
+      !commandState.showPalette && (availableHeight === undefined || availableHeight >= 5);
+    const inputReservedRows = 3 + (showStatus ? 1 : 0) + (commandState.showPalette ? 3 : 0);
+    const maximumInputLines = visibleLimitForHeight(
+      MAX_INPUT_LINES,
+      availableHeight,
+      inputReservedRows,
+    );
     this.inputColumns = inputColumns;
+    this.inputVisibleLines = maximumInputLines;
     const layout = createInputLayout({
       value: this.state.value,
       cursorOffset: this.state.cursorOffset,
       columns: inputColumns,
-      maxLines: MAX_INPUT_LINES,
+      maxLines: maximumInputLines,
       preferredStartLine: this.inputViewportStartLine,
     });
     this.inputViewportStartLine = layout.startLine;
@@ -147,9 +159,13 @@ export class Editor implements Component {
     }
 
     lines.push(`+${"-".repeat(frameWidth - 2)}+`);
-    lines.push(...this.renderCommandPalette(frameWidth));
+    const commandPaletteHeight =
+      availableHeight === undefined
+        ? undefined
+        : Math.max(1, Math.floor(availableHeight) - lines.length);
+    lines.push(...this.renderCommandPalette(frameWidth, commandPaletteHeight));
 
-    if (!getCommandState(this.state.value).showPalette) {
+    if (showStatus) {
       lines.push(renderStatusLine(width, this.options.model, this.statusState));
     }
 
@@ -296,7 +312,7 @@ export class Editor implements Component {
     ];
   }
 
-  private renderCommandPalette(width: number): string[] {
+  private renderCommandPalette(width: number, availableHeight?: number): string[] {
     const commandState = getCommandState(this.state.value);
 
     if (!commandState.showPalette) {
@@ -307,6 +323,10 @@ export class Editor implements Component {
       return [color("No matching commands", tuiTheme.error)];
     }
 
+    this.commandViewport.setVisibleLimit(
+      visibleLimitForHeight(this.maximumVisibleCommands, availableHeight, 2),
+      commandState.suggestions.length,
+    );
     const viewport = this.commandViewport.window(commandState.suggestions.length);
     const lines: string[] = [];
 
@@ -357,7 +377,7 @@ export class Editor implements Component {
       value: this.state.value,
       cursorOffset: this.state.cursorOffset,
       columns: this.inputColumns,
-      maxLines: MAX_INPUT_LINES,
+      maxLines: this.inputVisibleLines,
       preferredStartLine: this.inputViewportStartLine,
     });
     const cursorOffset = moveInputCursorVertically({
@@ -402,7 +422,7 @@ export class Editor implements Component {
               cursorOffset,
               columns: this.inputColumns,
             }) -
-              MAX_INPUT_LINES +
+              this.inputVisibleLines +
               1,
           );
     this.syncCommandSelection();

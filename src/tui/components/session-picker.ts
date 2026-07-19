@@ -3,9 +3,10 @@ import { color, dim, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import { isDown, isEnter, isEscape, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
-import { ListViewport } from "../utils/list-viewport";
+import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
 const SESSION_PICKER_VISIBLE_LIMIT = 10;
+const SESSION_PICKER_RESERVED_ROWS = 4;
 
 export type SessionPickerDecision =
   | {
@@ -18,13 +19,15 @@ export type SessionPickerDecision =
 
 export class SessionPicker implements Component {
   private readonly viewport: ListViewport;
+  private readonly maximumVisibleSessions: number;
 
   constructor(
     private readonly sessions: KanaSessionMetadata[],
     private readonly finish: (decision: SessionPickerDecision) => void,
     visibleLimit = SESSION_PICKER_VISIBLE_LIMIT,
   ) {
-    this.viewport = new ListViewport(visibleLimit);
+    this.maximumVisibleSessions = visibleLimit;
+    this.viewport = new ListViewport(this.maximumVisibleSessions);
   }
 
   handleInput(data: string): void {
@@ -55,7 +58,7 @@ export class SessionPicker implements Component {
     }
   }
 
-  render(width: number, _availableHeight?: number): string[] {
+  render(width: number, availableHeight?: number): string[] {
     const lines = ["", color("Sessions", tuiTheme.muted)];
 
     if (this.sessions.length === 0) {
@@ -63,6 +66,14 @@ export class SessionPicker implements Component {
       return lines;
     }
 
+    this.viewport.setVisibleLimit(
+      visibleLimitForHeight(
+        this.maximumVisibleSessions,
+        availableHeight,
+        SESSION_PICKER_RESERVED_ROWS,
+      ),
+      this.sessions.length,
+    );
     const viewport = this.viewport.window(this.sessions.length);
 
     if (viewport.hiddenBefore > 0) {

@@ -180,6 +180,22 @@ describe("prompt editor", () => {
     });
   });
 
+  test("fits input and slash command rendering within the available height", () => {
+    const editor = new Editor({
+      model: "deepseek/deepseek-chat",
+    });
+
+    editor.setText(Array.from({ length: 10 }, (_, index) => `line ${index + 1}`).join("\n"));
+    expect(editor.render(40, 15).length).toBeLessThanOrEqual(15);
+
+    editor.setText("/");
+    const palette = editor.render(40, 15).map(stripAnsi);
+
+    expect(palette.length).toBeLessThanOrEqual(15);
+    expect(palette.some((line) => line.includes("/help"))).toBe(true);
+    expect(palette.some((line) => line.includes("deepseek/deepseek-chat"))).toBe(false);
+  });
+
   test("renders input inside an ASCII frame without background color", () => {
     const editor = new Editor();
 

@@ -12,14 +12,14 @@ ProcessTerminal
       render(width, availableHeight?) → 差量 ANSI 重绘
         → AppLayout
           main（当前为 transcript）
-          严格一个底部组件
+          严格一个底部组件（高度档位）
             包含状态栏的 editor
             或 tool approval
             或 session / skills 视图
             或 content viewer
 ```
 
-`Component` 的最小接口是 `render(width, availableHeight?): string[]`，可选 `handleInput` 和 `invalidate`。高度是建议值：组件可根据它调整渲染策略，但不必将输出限制在该行数内。`Container` 按子组件顺序拼接行。`AppLayout` 渲染一个 main 区域，然后只渲染一个底部组件。`KanaTuiApp` 目前将 transcript 作为 main 传入，控制器则替换底部组件并更新焦点。组件本身主要处理呈现和局部键盘输入。
+`Component` 的最小接口是 `render(width, availableHeight?): string[]`，可选 `handleInput` 和 `invalidate`。该协议不会裁剪输出，但组件可根据高度选择渲染策略。`AppLayout` 为唯一底部组件保留分档区域：终端高度不小于 30 行时使用 15 行，24–29 行使用 12 行，18–23 行使用 9 行，7–17 行使用 7 行；终端不足 7 行时将全部可用高度分给 bottom。剩余高度传给 main。底部组件将该值作为行预算；输出不足时由 layout 补空行，因此切换底部组件不会带动 main 内容。列表视图会缩小项目窗口并保持选中项可见，编辑器会缩小输入和命令窗口，较长的选择提示详情可用 `PageUp`/`PageDown` 翻页。`KanaTuiApp` 目前将 transcript 作为 main 传入；Transcript 仍刻意渲染完整历史，交由终端 scrollback 保留。组件本身主要处理呈现和局部键盘输入。
 
 ## 终端生命周期与渲染
 

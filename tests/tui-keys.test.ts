@@ -6,6 +6,8 @@ import {
   isEnter,
   isEscape,
   isLeft,
+  isPageDown,
+  isPageUp,
   isRight,
   isShiftEnter,
   isUp,
@@ -38,6 +40,11 @@ describe("tui key parsing", () => {
     expect(isCtrlO("\x0f")).toBe(true);
     expect(isCtrlO("\x1b[15;5u")).toBe(true);
     expect(isCtrlO("\x1b[111;5u")).toBe(true);
+  });
+
+  test("recognizes page navigation keys", () => {
+    expect(isPageUp("\x1b[5~")).toBe(true);
+    expect(isPageDown("\x1b[6~")).toBe(true);
   });
 
   test("recognizes cursor key press and repeat events in enhanced keyboard formats", () => {

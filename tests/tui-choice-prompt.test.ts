@@ -49,6 +49,37 @@ describe("choice prompt", () => {
     ]);
   });
 
+  test("pages long detail within the available height while keeping options visible", () => {
+    const prompt = new ChoicePrompt({
+      title: "Run command?",
+      detail: Array.from({ length: 10 }, (_, index) => `detail line ${index + 1}`).join("\n"),
+      options: [
+        { value: "yes", label: "Allow once" },
+        { value: "no", label: "Deny" },
+      ],
+      defaultValue: "yes",
+      onSelect: () => {},
+    });
+
+    const firstPage = prompt.render(40, 10).map(stripAnsi);
+
+    expect(firstPage.length).toBeLessThanOrEqual(10);
+    expect(firstPage).toContain("detail line 1");
+    expect(firstPage).not.toContain("detail line 4");
+    expect(firstPage).toContain("... 7 detail lines below");
+    expect(firstPage).toContain("> Allow once");
+    expect(firstPage).toContain("  Deny");
+
+    prompt.handleInput("\x1b[6~");
+
+    const secondPage = prompt.render(40, 10).map(stripAnsi);
+
+    expect(secondPage.length).toBeLessThanOrEqual(10);
+    expect(secondPage).toContain("detail line 4");
+    expect(secondPage).not.toContain("detail line 1");
+    expect(secondPage).toContain("> Allow once");
+  });
+
   test("selects with arrow keys and submits with enter", () => {
     let selected: string | undefined;
     const prompt = new ChoicePrompt({

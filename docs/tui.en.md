@@ -12,14 +12,14 @@ ProcessTerminal
       render(width, availableHeight?) → differential ANSI repaint
         → AppLayout
           main (currently transcript)
-          exactly one bottom component
+          exactly one bottom component (height tier)
             editor with status line
             or tool approval
             or session / skills view
             or content viewer
 ```
 
-The minimum `Component` interface is `render(width, availableHeight?): string[]`, with optional `handleInput` and `invalidate`. The height is advisory: components may adapt their rendering strategy to it but are not required to limit output to that many rows. `Container` joins child lines in order. `AppLayout` renders one main region followed by exactly one bottom component. `KanaTuiApp` currently supplies the transcript as main, while controllers replace the bottom component and update focus. Components mostly own presentation and local keyboard input.
+The minimum `Component` interface is `render(width, availableHeight?): string[]`, with optional `handleInput` and `invalidate`. The protocol does not clip output, but components may use the height to select a rendering strategy. `AppLayout` reserves a tiered region for exactly one bottom component: 15 rows at terminal heights of 30 or more, 12 at 24-29, 9 at 18-23, and 7 at 7-17; terminals shorter than 7 rows assign all available rows to bottom. It passes the remainder to main. Bottom components treat that value as their row budget; the layout pads shorter output with blank rows so switching bottom components does not move main content. List views shrink their item window while keeping the selection visible, the editor reduces its input and command windows, and long choice-prompt details use `PageUp`/`PageDown` paging. `KanaTuiApp` currently supplies the transcript as main; Transcript intentionally renders its complete history for terminal scrollback. Components mostly own presentation and local keyboard input.
 
 ## Terminal lifecycle and rendering
 

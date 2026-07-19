@@ -22,7 +22,12 @@ describe("tui app layout", () => {
       bottom: editor,
     });
 
-    expect(layout.render(80)).toEqual(["transcript", "editor", "status"]);
+    expect(layout.render(80)).toEqual([
+      "transcript",
+      "editor",
+      "status",
+      ...Array.from({ length: 13 }, () => ""),
+    ]);
 
     const viewerMain = new LinesComponent(["viewer main"]);
     const viewer = new LinesComponent(["tool viewer"]);
@@ -30,7 +35,11 @@ describe("tui app layout", () => {
     layout.showMain(viewerMain);
     layout.showBottom(viewer);
 
-    expect(layout.render(80)).toEqual(["viewer main", "tool viewer"]);
+    expect(layout.render(80)).toEqual([
+      "viewer main",
+      "tool viewer",
+      ...Array.from({ length: 14 }, () => ""),
+    ]);
     expect(layout.isMain(viewerMain)).toBe(true);
     expect(layout.isMain(main)).toBe(false);
     expect(layout.isBottom(viewer)).toBe(true);
@@ -39,20 +48,49 @@ describe("tui app layout", () => {
     layout.showMain(main);
     layout.showBottom(editor);
 
-    expect(layout.render(80)).toEqual(["transcript", "editor", "status"]);
+    expect(layout.render(80)).toEqual([
+      "transcript",
+      "editor",
+      "status",
+      ...Array.from({ length: 13 }, () => ""),
+    ]);
   });
 
-  test("passes the available height hint to main and the active bottom", () => {
+  test("selects a bottom height tier and passes the remainder to main", () => {
     const main = new LinesComponent(["transcript"]);
     const editor = new LinesComponent(["editor", "status"]);
     const viewer = new LinesComponent(["tool viewer"]);
     const layout = new AppLayout({ main, bottom: editor });
 
     layout.showBottom(viewer);
-    layout.render(80, 16);
+    const rendered = layout.render(80, 24);
 
-    expect(main.lastAvailableHeight).toBe(16);
-    expect(viewer.lastAvailableHeight).toBe(16);
+    expect(main.lastAvailableHeight).toBe(12);
+    expect(viewer.lastAvailableHeight).toBe(12);
     expect(editor.lastAvailableHeight).toBeUndefined();
+    expect(rendered).toHaveLength(13);
+  });
+
+  test.each([
+    [30, 15],
+    [29, 12],
+    [24, 12],
+    [23, 9],
+    [18, 9],
+    [17, 7],
+    [14, 7],
+    [13, 7],
+    [8, 7],
+    [6, 6],
+  ])("uses a %i-row terminal with a %i-row bottom tier", (terminalHeight, bottomHeight) => {
+    const main = new LinesComponent(["transcript"]);
+    const bottom = new LinesComponent(["bottom"]);
+    const layout = new AppLayout({ main, bottom });
+
+    const rendered = layout.render(80, terminalHeight);
+
+    expect(main.lastAvailableHeight).toBe(terminalHeight - bottomHeight);
+    expect(bottom.lastAvailableHeight).toBe(bottomHeight);
+    expect(rendered).toHaveLength(bottomHeight + 1);
   });
 });

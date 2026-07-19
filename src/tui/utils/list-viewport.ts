@@ -8,8 +8,16 @@ export type ListViewportWindow = {
 export class ListViewport {
   selectedIndex = 0;
   start = 0;
+  private visibleLimit: number;
 
-  constructor(readonly visibleLimit: number) {}
+  constructor(visibleLimit: number) {
+    this.visibleLimit = normalizeVisibleLimit(visibleLimit);
+  }
+
+  setVisibleLimit(visibleLimit: number, length: number): void {
+    this.visibleLimit = normalizeVisibleLimit(visibleLimit);
+    this.ensureSelectedVisible(length);
+  }
 
   move(delta: number, length: number): void {
     if (length === 0) {
@@ -109,4 +117,26 @@ export class ListViewport {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+export function visibleLimitForHeight(
+  maximum: number,
+  availableHeight: number | undefined,
+  reservedRows: number,
+): number {
+  const normalizedMaximum = normalizeVisibleLimit(maximum);
+
+  if (availableHeight === undefined || !Number.isFinite(availableHeight)) {
+    return normalizedMaximum;
+  }
+
+  // Height is advisory, so retain one interactive row even when fixed chrome exceeds it.
+  return Math.max(
+    1,
+    Math.min(normalizedMaximum, Math.floor(availableHeight) - Math.max(0, reservedRows)),
+  );
+}
+
+function normalizeVisibleLimit(value: number): number {
+  return Math.max(1, Math.floor(value));
 }

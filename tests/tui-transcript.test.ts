@@ -430,6 +430,25 @@ describe("tui transcript", () => {
     expect(decisions).toEqual(["close"]);
   });
 
+  test("tool result viewer shrinks its window for a short available height", () => {
+    const viewer = new ContentViewer(
+      {
+        title: "Command output",
+        render: () => [Array.from({ length: 5 }, (_, index) => `line ${index + 1}`).join("\n")],
+      },
+      {
+        onClose: () => {},
+      },
+    );
+    const rendered = viewer.render(80, 8).map(stripAnsi);
+
+    expect(rendered).toContain("Lines 1-2 of 5");
+    expect(rendered).toContain("  line 1");
+    expect(rendered).toContain("  line 2");
+    expect(rendered).not.toContain("  line 3");
+    expect(rendered).toContain("... 3 lines below");
+  });
+
   test("distinguishes write overwrite transcript titles from new file writes", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

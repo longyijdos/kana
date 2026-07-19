@@ -1,10 +1,21 @@
 import { color, dim, mapLines, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import { isDown, isEnd, isEscape, isHome, isLeft, isRight, isUp } from "../runtime";
+import {
+  isDown,
+  isEnd,
+  isEscape,
+  isHome,
+  isLeft,
+  isPageDown,
+  isPageUp,
+  isRight,
+  isUp,
+} from "../runtime";
 import { tuiTheme } from "../theme";
-import { ListViewport } from "../utils/list-viewport";
+import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
 const TOOL_RESULT_VIEWER_VISIBLE_LIMIT = 18;
+const TOOL_RESULT_VIEWER_RESERVED_ROWS = 6;
 
 export type ContentView = {
   title: string;
@@ -18,13 +29,15 @@ export type ContentViewerOptions = {
 
 export class ContentViewer implements Component {
   private readonly viewport: ListViewport;
+  private readonly maximumVisibleLines: number;
   private contentLength = 0;
 
   constructor(
     private readonly view: ContentView,
     private readonly options: ContentViewerOptions,
   ) {
-    this.viewport = new ListViewport(options.visibleLimit ?? TOOL_RESULT_VIEWER_VISIBLE_LIMIT);
+    this.maximumVisibleLines = options.visibleLimit ?? TOOL_RESULT_VIEWER_VISIBLE_LIMIT;
+    this.viewport = new ListViewport(this.maximumVisibleLines);
   }
 
   handleInput(data: string): void {
@@ -63,10 +76,20 @@ export class ContentViewer implements Component {
     }
   }
 
-  render(width: number, _availableHeight?: number): string[] {
+  render(width: number, availableHeight?: number): string[] {
     const contentWidth = Math.max(1, width - 2);
-    const content = this.view.render(contentWidth);
+    const content = this.view
+      .render(contentWidth)
+      .flatMap((line) => mapLines(line, (part) => part));
     this.contentLength = content.length;
+    this.viewport.setVisibleLimit(
+      visibleLimitForHeight(
+        this.maximumVisibleLines,
+        availableHeight,
+        TOOL_RESULT_VIEWER_RESERVED_ROWS,
+      ),
+      content.length,
+    );
     const window = this.viewport.window(content.length);
     const lines = ["", color(this.view.title, tuiTheme.toolActive)];
 
@@ -82,9 +105,7 @@ export class ContentViewer implements Component {
     }
 
     for (let index = window.start; index < window.end; index += 1) {
-      for (const line of mapLines(content[index] ?? "", (part) => part)) {
-        lines.push(truncateToWidth(`  ${line}`, width));
-      }
+      lines.push(truncateToWidth(`  ${content[index] ?? ""}`, width));
     }
 
     if (window.hiddenAfter > 0) {
@@ -95,12 +116,4 @@ export class ContentViewer implements Component {
 
     return lines;
   }
-}
-
-function isPageUp(data: string): boolean {
-  return data === "\x1b[5~";
-}
-
-function isPageDown(data: string): boolean {
-  return data === "\x1b[6~";
 }

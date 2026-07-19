@@ -116,13 +116,7 @@ describe("skill manager", () => {
   });
 
   test("renders only the visible skill window", () => {
-    const skills = Array.from({ length: 5 }, (_, index) => ({
-      name: `skill-${index + 1}`,
-      description: `Skill ${index + 1}.`,
-      scope: "global" as const,
-      enabled: false,
-      mutable: true,
-    }));
+    const skills = createSkills(5);
     const manager = new SkillManager(skills, () => {}, 3);
 
     expect(manager.render(80).map(stripAnsi)).toEqual([
@@ -149,6 +143,16 @@ describe("skill manager", () => {
       "  Skill 4.",
       "... 1 more skills",
     ]);
+  });
+
+  test("shrinks the skill window for a short available height", () => {
+    const manager = new SkillManager(createSkills(5), () => {});
+    const rendered = manager.render(80, 7).map(stripAnsi);
+
+    expect(rendered).toContain("> [ ] skill-1  global");
+    expect(rendered).toContain("  [ ] skill-2  global");
+    expect(rendered).not.toContain("  [ ] skill-3  global");
+    expect(rendered).toContain("... 3 more skills");
   });
 
   test("does not wrap selection at list boundaries", () => {
@@ -189,3 +193,13 @@ describe("skill manager", () => {
     expect(decision).toEqual({ type: "close" });
   });
 });
+
+function createSkills(length: number) {
+  return Array.from({ length }, (_, index) => ({
+    name: `skill-${index + 1}`,
+    description: `Skill ${index + 1}.`,
+    scope: "global" as const,
+    enabled: false,
+    mutable: true,
+  }));
+}
