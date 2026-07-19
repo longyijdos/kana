@@ -131,16 +131,17 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 ProcessTerminal（raw mode、输入、resize、通知）
   → Tui（焦点、16ms 合帧、差量重绘、硬件光标）
     → AppLayout
-      ├─ Transcript / ContentViewer
-      ├─ ToolApproval 内联提示
-      ├─ Editor
-      ├─ Session / Skills 覆盖层
-      └─ StatusLine
+      ├─ Main（当前为 Transcript；使用终端 scrollback）
+      └─ 底部（严格一个组件）
+         ├─ Editor（输入区和状态栏）
+         ├─ ToolApproval
+         ├─ Session / Skills 视图
+         └─ ContentViewer
 ```
 
-`Tui` 以组件的 `render(width): string[]` 作为最小渲染协议。它缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记并将硬件光标移动到对应的可见宽度位置。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
+`Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。可用高度是渲染建议，而非硬性输出上限，各组件可据此选择自身的渲染策略。它缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记并将硬件光标移动到对应的可见宽度位置。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
-TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
+TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、审批和内容查看视图都会作为唯一底部组件替换编辑器。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 
 ## 扩展时的检查点
 

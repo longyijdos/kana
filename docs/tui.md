@@ -9,16 +9,17 @@ ProcessTerminal
   raw stdin、resize、终端通知、stdout
     → Tui
       输入监听器 → 当前焦点组件
-      render(width) → 差量 ANSI 重绘
+      render(width, availableHeight?) → 差量 ANSI 重绘
         → AppLayout
-          transcript / content viewer
-          inline tool approval
-          editor
-          session or skills overlay
-          status line
+          main（当前为 transcript）
+          严格一个底部组件
+            包含状态栏的 editor
+            或 tool approval
+            或 session / skills 视图
+            或 content viewer
 ```
 
-`Component` 的最小接口是 `render(width): string[]`，可选 `handleInput` 和 `invalidate`。`Container` 按子组件顺序拼接行。`AppLayout` 固定先后关系：主内容、内联提示、编辑器、覆盖层、状态栏。控制器修改 layout 与焦点，组件本身主要处理呈现和局部键盘输入。
+`Component` 的最小接口是 `render(width, availableHeight?): string[]`，可选 `handleInput` 和 `invalidate`。高度是建议值：组件可根据它调整渲染策略，但不必将输出限制在该行数内。`Container` 按子组件顺序拼接行。`AppLayout` 渲染一个 main 区域，然后只渲染一个底部组件。`KanaTuiApp` 目前将 transcript 作为 main 传入，控制器则替换底部组件并更新焦点。组件本身主要处理呈现和局部键盘输入。
 
 ## 终端生命周期与渲染
 
@@ -26,7 +27,7 @@ ProcessTerminal
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
-1. 调用根组件的 `render(width)`；
+1. 调用根组件的 `render(width, height)`；
 2. 取出编辑器插入的内部光标标记；
 3. 根据 ANSI 以及 Unicode 可见宽度规范化行；
 4. 在尺寸未变、内容只增加或改动可见时只重绘变化行；
@@ -49,7 +50,7 @@ ProcessTerminal
 | `tool_execution_end` | 写入结构化结果并标记成功/失败。 |
 | `agent_end` | 更新状态阶段，清除活动工具。 |
 
-状态栏显示 provider/model、最近助手消息的 context 使用率、运行阶段、活动工具和 cwd。每条完成助手消息的 usage 会累加到进程总用量和按模型元数据计算的 CNY 成本。
+编辑器内部包含状态栏，它显示 provider/model、最近助手消息的 context 使用率、运行阶段、活动工具和 cwd。打开 slash 命令面板时会隐藏状态栏；其他底部组件替换编辑器时，输入区和状态栏会一起隐藏。每条完成助手消息的 usage 会累加到进程总用量和按模型元数据计算的 CNY 成本。
 
 ## 输入与快捷方式
 
@@ -80,14 +81,14 @@ ProcessTerminal
 
 独立 controller 保持 `KanaTuiApp` 不必承载每个交互状态机：
 
-- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。它将选择框作为内联提示；用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
-- `SessionOverlayController` 管理恢复列表和删除确认。新 session、恢复和删除都会更新 transcript/焦点。
-- `SkillManagerController` 只修改 global Skill 的列表，保存后中止旧 Agent 并用原消息历史创建新 Agent，从而刷新提示词。
-- `ContentViewerController` 用可滚动全屏主内容替换 transcript；关闭时优先恢复仍在等待的审批提示焦点。
+- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
+- `SessionOverlayController` 用恢复列表或删除确认替换编辑器。新 session、恢复和删除都会更新 transcript 和焦点。
+- `SkillManagerController` 用 global Skill 列表替换编辑器，保存后中止旧 Agent 并用原消息历史创建新 Agent，从而刷新提示词。
+- `ContentViewerController` 用可滚动的工具输出替换底部组件，transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 
-运行期间，除 `/quit` 外的 slash 命令被忽略，防止重入。打开 overlay 或查看器时会切换焦点；关闭后通常回到 editor。
+运行期间，除 `/quit` 外的 slash 命令被忽略，防止重入。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
 
 ## 通知与 Markdown
 
@@ -98,7 +99,7 @@ ProcessTerminal
 ## 修改渲染时的约束
 
 - 不要直接向 stdout 写组件内容；经 `Tui.requestRender` 让差量渲染维护缓存和光标。
-- 新 overlay 必须明确打开/关闭时的焦点恢复。
+- 新底部视图必须明确打开/关闭时的焦点恢复。
 - 新工具展示应净化控制序列，并处理部分结果与最终结果。
 - 宽度逻辑必须以可见宽度和 grapheme 为单位，不能直接使用 `string.length`。
 - 改变主屏重绘或终端序列时，更新 `tui-render`、cursor 和 width 测试，避免破坏 scrollback 或 IME 光标。

@@ -14,46 +14,45 @@ class LinesComponent implements Component {
 }
 
 describe("tui app layout", () => {
-  test("renders main content, inline prompt, overlay, and the fused editor in app order", () => {
-    const transcript = new LinesComponent(["transcript"]);
+  test("renders the main region with exactly one bottom component", () => {
+    const main = new LinesComponent(["transcript"]);
     const editor = new LinesComponent(["editor", "status"]);
     const layout = new AppLayout({
-      transcript,
-      editor,
+      main,
+      bottom: editor,
     });
 
     expect(layout.render(80)).toEqual(["transcript", "editor", "status"]);
 
-    const toolViewer = new LinesComponent(["tool viewer"]);
-    const prompt = new LinesComponent(["prompt"]);
-    const overlay = new LinesComponent(["overlay"]);
+    const viewerMain = new LinesComponent(["viewer main"]);
+    const viewer = new LinesComponent(["tool viewer"]);
 
-    layout.showMain(toolViewer);
-    layout.showInlinePrompt(prompt);
-    layout.showOverlay(overlay);
+    layout.showMain(viewerMain);
+    layout.showBottom(viewer);
 
-    expect(layout.render(80)).toEqual(["tool viewer", "prompt", "overlay", "editor", "status"]);
+    expect(layout.render(80)).toEqual(["viewer main", "tool viewer"]);
+    expect(layout.isMain(viewerMain)).toBe(true);
+    expect(layout.isMain(main)).toBe(false);
+    expect(layout.isBottom(viewer)).toBe(true);
+    expect(layout.isBottom(editor)).toBe(false);
 
-    layout.clearInlinePrompt(prompt);
-    layout.clearOverlay(overlay);
-    layout.showTranscript();
+    layout.showMain(main);
+    layout.showBottom(editor);
 
     expect(layout.render(80)).toEqual(["transcript", "editor", "status"]);
   });
 
-  test("passes the available height hint to every active component", () => {
-    const transcript = new LinesComponent(["transcript"]);
+  test("passes the available height hint to main and the active bottom", () => {
+    const main = new LinesComponent(["transcript"]);
     const editor = new LinesComponent(["editor", "status"]);
-    const prompt = new LinesComponent(["prompt"]);
-    const overlay = new LinesComponent(["overlay"]);
-    const layout = new AppLayout({ transcript, editor });
+    const viewer = new LinesComponent(["tool viewer"]);
+    const layout = new AppLayout({ main, bottom: editor });
 
-    layout.showInlinePrompt(prompt);
-    layout.showOverlay(overlay);
+    layout.showBottom(viewer);
     layout.render(80, 16);
 
-    expect(
-      [transcript, prompt, overlay, editor].map((component) => component.lastAvailableHeight),
-    ).toEqual([16, 16, 16, 16]);
+    expect(main.lastAvailableHeight).toBe(16);
+    expect(viewer.lastAvailableHeight).toBe(16);
+    expect(editor.lastAvailableHeight).toBeUndefined();
   });
 });

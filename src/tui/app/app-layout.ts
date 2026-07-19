@@ -1,68 +1,45 @@
 import type { Component } from "../runtime";
 
 export type AppLayoutOptions = {
-  transcript: Component;
-  editor: Component;
+  main: Component;
+  bottom: Component;
 };
 
 export class AppLayout implements Component {
   private main: Component;
-  private inlinePrompt?: Component;
-  private overlay?: Component;
+  private bottom: Component;
 
-  constructor(private readonly options: AppLayoutOptions) {
-    this.main = options.transcript;
+  constructor(options: AppLayoutOptions) {
+    this.main = options.main;
+    this.bottom = options.bottom;
   }
 
   showMain(component: Component): void {
     this.main = component;
   }
 
-  showTranscript(): void {
-    this.main = this.options.transcript;
+  isMain(component: Component): boolean {
+    return this.main === component;
   }
 
-  showInlinePrompt(component: Component): void {
-    this.inlinePrompt = component;
+  showBottom(component: Component): void {
+    this.bottom = component;
   }
 
-  clearInlinePrompt(component?: Component): void {
-    if (!component || this.inlinePrompt === component) {
-      this.inlinePrompt = undefined;
-    }
-  }
-
-  showOverlay(component: Component): void {
-    this.overlay = component;
-  }
-
-  clearOverlay(component?: Component): void {
-    if (!component || this.overlay === component) {
-      this.overlay = undefined;
-    }
+  isBottom(component: Component): boolean {
+    return this.bottom === component;
   }
 
   render(width: number, availableHeight?: number): string[] {
-    const lines = [...this.main.render(width, availableHeight)];
-
-    if (this.inlinePrompt) {
-      lines.push(...this.inlinePrompt.render(width, availableHeight));
-    }
-
-    if (this.overlay) {
-      lines.push(...this.overlay.render(width, availableHeight));
-    }
-
-    lines.push(...this.options.editor.render(width, availableHeight));
-
-    return lines;
+    return [
+      ...this.main.render(width, availableHeight),
+      ...this.bottom.render(width, availableHeight),
+    ];
   }
 
   invalidate(): void {
     invalidateComponent(this.main);
-    invalidateComponent(this.inlinePrompt);
-    invalidateComponent(this.overlay);
-    invalidateComponent(this.options.editor);
+    invalidateComponent(this.bottom);
   }
 }
 

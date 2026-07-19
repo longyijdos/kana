@@ -15,6 +15,7 @@ export type SkillManagerControllerOptions = {
   saveEnabledGlobalSkills: (names: string[]) => void;
   onSkillsChanged: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
+  restoreBottom: (focus: boolean) => void;
 };
 
 export class SkillManagerController {
@@ -33,7 +34,7 @@ export class SkillManagerController {
       this.skills = result.skills;
     } catch (error) {
       this.showError(error);
-      this.focusEditor();
+      this.options.restoreBottom(true);
       return;
     }
 
@@ -42,7 +43,7 @@ export class SkillManagerController {
     });
 
     this.activeManager = manager;
-    this.options.layout.showOverlay(manager);
+    this.options.layout.showBottom(manager);
     this.options.tui.setFocus(manager);
     this.options.tui.requestRender(true);
   }
@@ -52,14 +53,18 @@ export class SkillManagerController {
       return;
     }
 
-    this.options.layout.clearOverlay(this.activeManager);
+    const wasVisible = this.options.layout.isBottom(this.activeManager);
+    const restoreFocus = this.options.tui.getFocus() === this.activeManager;
     this.activeManager = undefined;
+
+    if (wasVisible) {
+      this.options.restoreBottom(restoreFocus);
+    }
   }
 
   private finish(decision: SkillManagerDecision): void {
     if (decision.type === "close") {
       this.close();
-      this.focusEditor();
       return;
     }
 
@@ -89,10 +94,5 @@ export class SkillManagerController {
     this.options.updateStatus("error", {
       activeTool: undefined,
     });
-  }
-
-  private focusEditor(): void {
-    this.options.tui.setFocus(this.options.editor);
-    this.options.tui.requestRender(true);
   }
 }

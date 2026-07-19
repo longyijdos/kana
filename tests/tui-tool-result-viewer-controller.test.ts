@@ -17,16 +17,18 @@ describe("tool result viewer controller", () => {
     const transcript = new Transcript();
     transcript.addChild(createBashBlock("first", longOutput("first")));
     transcript.addChild(createBashBlock("second", "short output"));
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const tui = createTuiStub();
 
     const layout = new AppLayout({
-      transcript,
-      editor: new LinesComponent(["editor"]),
+      main: transcript,
+      bottom: editor,
     });
     const controller = new ContentViewerController({
-      editor: new LinesComponent(["editor"]) as unknown as Editor,
       layout,
       transcript,
-      tui: createTuiStub(),
+      tui,
+      restoreBottom: createBottomRestorer(layout, tui, editor),
     });
 
     expect(controller.openLatest()).toBe(true);
@@ -39,16 +41,18 @@ describe("tool result viewer controller", () => {
     const transcript = new Transcript();
     transcript.addChild(createBashBlock("first", "short output"));
     transcript.addChild(createBashBlock("second", longOutput("second")));
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const tui = createTuiStub();
 
     const layout = new AppLayout({
-      transcript,
-      editor: new LinesComponent(["editor"]),
+      main: transcript,
+      bottom: editor,
     });
     const controller = new ContentViewerController({
-      editor: new LinesComponent(["editor"]) as unknown as Editor,
       layout,
       transcript,
-      tui: createTuiStub(),
+      tui,
+      restoreBottom: createBottomRestorer(layout, tui, editor),
     });
 
     expect(controller.openLatest()).toBe(true);
@@ -62,30 +66,26 @@ describe("tool result viewer controller", () => {
     transcript.addChild(createBashBlock("first", longOutput("first")));
     const editor = new LinesComponent(["editor"]) as unknown as Editor;
     const layout = new AppLayout({
-      transcript,
-      editor,
+      main: transcript,
+      bottom: editor,
     });
     const tui = createTuiStub();
     const controller = new ContentViewerController({
-      editor,
       layout,
       transcript,
       tui,
+      restoreBottom: createBottomRestorer(layout, tui, editor),
     });
     const prompt = new LinesComponent(["approval prompt"]);
 
     expect(controller.openLatest()).toBe(true);
+    layout.showBottom(prompt);
     tui.setFocus(prompt);
 
     controller.close();
 
     expect(tui.getFocus()).toBe(prompt);
-    expect(
-      layout
-        .render(80)
-        .map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""))
-        .some((line) => line.includes("◆ Ran")),
-    ).toBe(true);
+    expect(layout.render(80)).toContain("approval prompt");
   });
 
   test("focuses a waiting prompt after closing the active viewer", () => {
@@ -93,17 +93,16 @@ describe("tool result viewer controller", () => {
     transcript.addChild(createBashBlock("first", longOutput("first")));
     const editor = new LinesComponent(["editor"]) as unknown as Editor;
     const layout = new AppLayout({
-      transcript,
-      editor,
+      main: transcript,
+      bottom: editor,
     });
     const prompt = new LinesComponent(["approval prompt"]);
     const tui = createTuiStub();
     const controller = new ContentViewerController({
-      editor,
       layout,
       transcript,
       tui,
-      focusAfterClose: () => prompt,
+      restoreBottom: createBottomRestorer(layout, tui, prompt),
     });
 
     expect(controller.openLatest()).toBe(true);
@@ -111,6 +110,7 @@ describe("tool result viewer controller", () => {
     controller.close();
 
     expect(tui.getFocus()).toBe(prompt);
+    expect(layout.render(80)).toContain("approval prompt");
   });
 });
 
@@ -150,4 +150,17 @@ function createTuiStub(): Tui {
       focusedComponent = component;
     },
   } as unknown as Tui;
+}
+
+function createBottomRestorer(
+  layout: AppLayout,
+  tui: Tui,
+  bottom: Component,
+): (focus: boolean) => void {
+  return (focus) => {
+    layout.showBottom(bottom);
+    if (focus) {
+      tui.setFocus(bottom);
+    }
+  };
 }

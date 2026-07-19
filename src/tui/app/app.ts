@@ -132,8 +132,8 @@ export class KanaTuiApp {
       model: formatModelName(this.agent.state.model.metadata),
     });
     this.layout = new AppLayout({
-      transcript: this.transcript,
-      editor: this.editor,
+      main: this.transcript,
+      bottom: this.editor,
     });
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
@@ -151,6 +151,7 @@ export class KanaTuiApp {
       onResume: (sessionId) => this.resumeSession(sessionId),
       onStop: () => this.stop(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.skillManager = new SkillManagerController({
       editor: this.editor,
@@ -161,21 +162,20 @@ export class KanaTuiApp {
       saveEnabledGlobalSkills: this.options.saveEnabledGlobalSkills,
       onSkillsChanged: () => this.refreshAgentSystemPrompt(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.contentViewer = new ContentViewerController({
-      editor: this.editor,
       layout: this.layout,
       transcript: this.transcript,
       tui: this.tui,
-      focusAfterClose: () => this.toolApproval.activePrompt,
+      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.toolApproval = new ToolApprovalController({
       ...options.toolApproval,
       editor: this.editor,
       layout: this.layout,
       tui: this.tui,
-      shouldPreserveFocus: () => this.contentViewer.active,
-      onPromptShown: (toolName) => {
+      onApprovalRequired: (toolName) => {
         this.updateStatus("tool", {
           activeTool: toolName,
         });
@@ -776,6 +776,16 @@ export class KanaTuiApp {
     signal: AbortSignal | undefined,
   ): Promise<BeforeToolExecutionResult> {
     return this.toolApproval.request(toolCall, signal);
+  }
+
+  private restoreBottom(focus: boolean): void {
+    const bottom = this.toolApproval.activePrompt ?? this.editor;
+
+    this.layout.showBottom(bottom);
+    if (focus) {
+      this.tui.setFocus(bottom);
+    }
+    this.tui.requestRender(true);
   }
 
   private updateStatus(phase: RunPhase, extra: Partial<StatusLineState> = {}): void {

@@ -131,16 +131,17 @@ Approval modes are `always`, `unless_trusted`, and `never`. In the default mode,
 ProcessTerminal (raw mode, input, resize, notifications)
   → Tui (focus, 16ms batching, differential redraw, hardware cursor)
     → AppLayout
-      ├─ Transcript / ContentViewer
-      ├─ inline ToolApproval prompt
-      ├─ Editor
-      ├─ Session / Skills overlays
-      └─ StatusLine
+      ├─ Main (currently Transcript; terminal scrollback)
+      └─ Bottom (exactly one)
+         ├─ Editor (input and status line)
+         ├─ ToolApproval
+         ├─ Session / Skills view
+         └─ ContentViewer
 ```
 
-`Tui` uses a component's `render(width): string[]` as its minimal rendering protocol. It caches the previous output and redraws only changed lines while terminal dimensions are stable; it falls back to full rendering if changed content has scrolled out of view, content shrinks, or terminal dimensions change. The editor places an internal cursor marker in logical lines; `Tui` removes it before terminal output and moves the hardware cursor to the matching visible-width column. The rendering layer uses graphemes and `string-width` for CJK, emoji, ANSI color, and line wrapping.
+`Tui` uses a component's `render(width, availableHeight?): string[]` as its minimal rendering protocol. The available height is advisory rather than a hard output limit, allowing each component to select an appropriate rendering strategy. It caches the previous output and redraws only changed lines while terminal dimensions are stable; it falls back to full rendering if changed content has scrolled out of view, content shrinks, or terminal dimensions change. The editor places an internal cursor marker in logical lines; `Tui` removes it before terminal output and moves the hardware cursor to the matching visible-width column. The rendering layer uses graphemes and `string-width` for CJK, emoji, ANSI color, and line wrapping.
 
-The main controllers handle tool approval, session selection/deletion, global Skill activation, local `!` shell commands, memory compaction, and long tool-output viewing. `Ctrl+C`/`Esc` first cancel the active Agent, local shell, or memory task; `Ctrl+C` exits when idle. `Ctrl+O` opens the most recent expandable tool output.
+The main controllers handle tool approval, session selection/deletion, global Skill activation, local `!` shell commands, memory compaction, and long tool-output viewing. Session, Skill, approval, and content views replace the editor as the single bottom component. An approval that arrives while another bottom view is active remains pending and sends its configured notification instead of preempting the current view. `Ctrl+C`/`Esc` first cancel the active Agent, local shell, or memory task; `Ctrl+C` exits when idle. `Ctrl+O` opens the most recent expandable tool output.
 
 ## Extension checkpoints
 

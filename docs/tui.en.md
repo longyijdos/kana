@@ -9,16 +9,17 @@ ProcessTerminal
   raw stdin, resize, terminal notifications, stdout
     → Tui
       input listeners → focused component
-      render(width) → differential ANSI repaint
+      render(width, availableHeight?) → differential ANSI repaint
         → AppLayout
-          transcript / content viewer
-          inline tool approval
-          editor
-          session or skills overlay
-          status line
+          main (currently transcript)
+          exactly one bottom component
+            editor with status line
+            or tool approval
+            or session / skills view
+            or content viewer
 ```
 
-The minimum `Component` interface is `render(width): string[]`, with optional `handleInput` and `invalidate`. `Container` joins child lines in order. `AppLayout` fixes the order: main content, inline prompt, editor, overlay, status line. Controllers change layout and focus; components mostly own presentation and local keyboard input.
+The minimum `Component` interface is `render(width, availableHeight?): string[]`, with optional `handleInput` and `invalidate`. The height is advisory: components may adapt their rendering strategy to it but are not required to limit output to that many rows. `Container` joins child lines in order. `AppLayout` renders one main region followed by exactly one bottom component. `KanaTuiApp` currently supplies the transcript as main, while controllers replace the bottom component and update focus. Components mostly own presentation and local keyboard input.
 
 ## Terminal lifecycle and rendering
 
@@ -26,7 +27,7 @@ The minimum `Component` interface is `render(width): string[]`, with optional `h
 
 Normal `Tui.requestRender()` calls are coalesced into an approximately 16ms timer. Each render:
 
-1. Calls the root component's `render(width)`.
+1. Calls the root component's `render(width, height)`.
 2. Extracts the editor's internal cursor marker.
 3. Normalizes lines using ANSI and Unicode visible width.
 4. Repaints only changed lines when dimensions are stable and changes remain visible.
@@ -49,7 +50,7 @@ Rendering helpers strip ANSI/control sequences for width calculation and use `st
 | `tool_execution_end` | Store structured results and mark success/failure. |
 | `agent_end` | Update status phase and clear the active tool. |
 
-The status line shows provider/model, context percentage from the latest assistant message, run phase, active tool, and cwd. Each completed assistant usage accumulates into process totals and CNY cost using model metadata.
+The editor owns the status line, which shows provider/model, context percentage from the latest assistant message, run phase, active tool, and cwd. The status line is hidden while the slash-command palette is open. Replacing the editor with another bottom component hides both editor input and status. Each completed assistant usage accumulates into process totals and CNY cost using model metadata.
 
 ## Input and shortcuts
 
@@ -80,14 +81,14 @@ The editor uses the same ASCII frame, light-gray text, and blue `> ` prefix as u
 
 Separate controllers keep `KanaTuiApp` from owning every interaction state machine:
 
-- `ToolApprovalController` implements the Agent `beforeToolExecution` hook. It shows an inline choice prompt; denial aborts the run, while always allow adds only an exact bash command to the allowlist.
-- `SessionOverlayController` manages the resume list and delete confirmation. New, resumed, and deleted sessions update transcript and focus.
-- `SkillManagerController` changes only the global Skill list. On save it aborts the prior Agent and constructs a new one with the same history, refreshing its prompt.
-- `ContentViewerController` replaces transcript with scrollable main content and restores a waiting approval prompt's focus first when closed.
+- `ToolApprovalController` implements the Agent `beforeToolExecution` hook. Its choice prompt replaces the editor when the editor is visible. If another bottom view is active, the approval remains pending and the configured approval notification still fires; closing that view reveals the prompt. Denial aborts the run, while always allow adds only an exact bash command to the allowlist.
+- `SessionOverlayController` replaces the editor with the resume list or delete confirmation. New, resumed, and deleted sessions update transcript and focus.
+- `SkillManagerController` replaces the editor with the global Skill list. On save it aborts the prior Agent and constructs a new one with the same history, refreshing its prompt.
+- `ContentViewerController` replaces the bottom component with scrollable tool output while the transcript remains rendered. Closing it restores a waiting approval prompt first, otherwise the editor.
 - `LocalShellController` reuses bash Tool presentation but never requests approval.
 - `MemoryCompactController` runs cancellable full memory consolidation and writes a summary into transcript.
 
-While running, slash commands other than `/quit` are ignored to prevent re-entry. Opening overlays or viewers changes focus; closing normally returns it to the editor.
+While running, slash commands other than `/quit` are ignored to prevent re-entry. Opening a bottom view changes focus; closing restores a waiting approval prompt first and otherwise returns to the editor. Bottom views do not preempt one another when an approval arrives.
 
 ## Notifications and Markdown
 
@@ -98,7 +99,7 @@ Assistant messages and the memory viewer use lightweight Markdown rendering: hea
 ## Rendering-change constraints
 
 - Do not write component content directly to stdout; use `Tui.requestRender` so differential rendering maintains cache and cursor state.
-- A new overlay must explicitly define focus restoration on open and close.
+- A new bottom view must explicitly define focus restoration on open and close.
 - New tool views must sanitize control sequences and handle partial as well as final results.
 - Width logic must use visible width and graphemes, never direct `string.length`.
 - Changes to main-screen repainting or terminal sequences require updates to render, cursor, and width tests to avoid breaking scrollback or IME cursor placement.
