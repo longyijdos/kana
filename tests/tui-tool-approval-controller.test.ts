@@ -114,6 +114,49 @@ describe("tool approval controller", () => {
     await expect(result).resolves.toEqual({ type: "continue" });
     expect(layout.render(80).map(stripAnsi).slice(0, 3)).toEqual(["transcript", DIVIDER, "editor"]);
   });
+
+  test("resolves MCP provenance for the approval component", async () => {
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({
+      main: new LinesComponent(["transcript"]),
+      bottom: editor,
+    });
+    const tui = createTuiStub();
+    const controller = new ToolApprovalController({
+      config: { mode: "unless_trusted" },
+      approvals: {
+        version: 2,
+        bash: { exactCommands: [], readOnlyCommands: [] },
+      },
+      editor,
+      layout,
+      tui,
+      resolveToolSource: (toolName) =>
+        toolName === "github_create_issue"
+          ? { kind: "mcp", serverId: "github", remoteToolName: "create_issue" }
+          : undefined,
+      onApprovalRequired: () => {},
+    });
+
+    const result = controller.request(
+      {
+        type: "tool_call",
+        id: "call_2",
+        name: "github_create_issue",
+        args: { title: "Bug" },
+      },
+      undefined,
+    );
+    const rendered = layout.render(80).map(stripAnsi).join("\n");
+
+    expect(rendered).toContain("Allow MCP tool?");
+    expect(rendered).toContain("Server: github");
+    expect(rendered).toContain("Tool: create_issue");
+    expect(rendered).toContain('"title": "Bug"');
+
+    controller.activePrompt?.handleInput?.("\r");
+    await expect(result).resolves.toEqual({ type: "continue" });
+  });
 });
 
 function createToolCall() {

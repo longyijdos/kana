@@ -25,6 +25,7 @@ import {
 import { createNoopLogger, createSessionLogManager } from "@/logging";
 import { KanaTuiApp } from "./app/app";
 import type { MemoryCompactSummary } from "./app/memory-compact-controller";
+import { formatMcpLifecycleStatus, McpBootstrapStatus } from "./mcp-lifecycle-status";
 import { registerTuiProcessSignals } from "./process-lifecycle";
 import { ProcessTerminal } from "./runtime";
 
@@ -79,16 +80,32 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   const enabledMcpServerCount = Object.values(mcpConfig.mcpServers).filter(
     (server) => server.enabled,
   ).length;
+  const terminal = new ProcessTerminal(config.notification);
+  const mcpBootstrapStatus = new McpBootstrapStatus(terminal, process.stdout.isTTY === true);
+  let app: KanaTuiApp | undefined;
   const mcpManager = createKanaMcpManager(mcpConfig, {
     reservedToolNames: KANA_BUILT_IN_TOOL_NAMES,
     getLogger: () => sessionLogger,
+    onProgress: (event) => {
+      if (app) {
+        const status = formatMcpLifecycleStatus(event);
+        if (status !== undefined) {
+          app.showShutdownStatus(status);
+        }
+        return;
+      }
+
+      mcpBootstrapStatus.update(event);
+    },
   });
-  let app: KanaTuiApp | undefined;
   let shutdownRequested = false;
   let removeProcessSignals = (): void => {};
   const closeMcpManager = async (): Promise<void> => {
     removeProcessSignals();
     await mcpManager.close();
+    if (!app) {
+      mcpBootstrapStatus.clear();
+    }
   };
 
   removeProcessSignals = registerTuiProcessSignals((signal) => {
@@ -106,7 +123,13 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     void closeMcpManager();
   });
 
-  const mcpTools = await startWithCleanup(() => mcpManager.start(), closeMcpManager);
+  const mcpTools = await (async () => {
+    try {
+      return await startWithCleanup(() => mcpManager.start(), closeMcpManager);
+    } finally {
+      mcpBootstrapStatus.clear();
+    }
+  })();
 
   if (enabledMcpServerCount > 0) {
     sessionLogger.info("mcp.started", {
@@ -119,6 +142,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
 
   if (shutdownRequested) {
     await closeMcpManager();
+    mcpBootstrapStatus.clear();
     return;
   }
 
@@ -191,7 +215,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         },
       });
     },
-    new ProcessTerminal(config.notification),
+    terminal,
     {
       sessionId: session?.metadata.id,
       initialMessages: session?.messages,
@@ -257,6 +281,11 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       toolApproval: {
         config: config.approval,
         approvals: toolApprovals,
+        resolveToolSource: (toolName) => {
+          const source = mcpManager.getToolSource(toolName);
+
+          return source === undefined ? undefined : { kind: "mcp", ...source };
+        },
       },
       notification: config.notification,
       wakeScheduler,

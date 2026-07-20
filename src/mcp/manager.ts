@@ -1,10 +1,12 @@
 import type { McpImplementation, McpServerCapabilities, McpTool } from "./protocol";
 import { type AdaptedMcpTool, createMcpToolAdapter, type McpToolCaller } from "./tool-adapter";
-import type { McpToolResultLimits } from "./tool-result";
+import type { McpToolResultLimits, McpToolSource } from "./tool-result";
 
 export type McpManagerState = "idle" | "starting" | "ready" | "closing" | "closed";
 export type McpServerStatus = "idle" | "starting" | "ready" | "failed" | "closed";
 export type McpManagerErrorPhase = "start" | "close";
+export type McpManagerOperation = "start" | "close";
+export type McpManagerProgressOutcome = "ready" | "failed" | "closed";
 
 // The manager depends on capabilities rather than McpClient so a future
 // lifecycle implementation can be registered without inheriting initialize.
@@ -31,10 +33,19 @@ export type McpManagerErrorEvent = {
   error: Error;
 };
 
+export type McpManagerProgressEvent = {
+  operation: McpManagerOperation;
+  completedServerCount: number;
+  totalServerCount: number;
+  serverId?: string;
+  outcome?: McpManagerProgressOutcome;
+};
+
 export type McpManagerOptions = {
   servers: readonly McpServerRegistration[];
   reservedToolNames?: Iterable<string>;
   onError?(event: McpManagerErrorEvent): void;
+  onProgress?(event: McpManagerProgressEvent): void;
 };
 
 export type McpServerDiagnostic = {
@@ -114,7 +125,9 @@ export class McpManager {
   private readonly records: McpServerRecord[];
   private readonly reservedToolNames: Set<string>;
   private readonly onError?: (event: McpManagerErrorEvent) => void;
+  private readonly onProgress?: (event: McpManagerProgressEvent) => void;
   private toolsData: AdaptedMcpTool[] = [];
+  private toolSourcesData = new Map<string, McpToolSource>();
   private startPromise?: Promise<AdaptedMcpTool[]>;
   private closePromise?: Promise<void>;
 
@@ -122,6 +135,7 @@ export class McpManager {
     validateRegistrations(options.servers);
     this.reservedToolNames = new Set(options.reservedToolNames ?? []);
     this.onError = options.onError;
+    this.onProgress = options.onProgress;
     validateToolNames(this.reservedToolNames, "reserved tool");
     // Registrations are caller-owned configuration. Snapshot their mutable
     // collections so startup behavior cannot change after construction.
@@ -159,6 +173,11 @@ export class McpManager {
     }));
   }
 
+  getToolSource(toolName: string): McpToolSource | undefined {
+    const source = this.toolSourcesData.get(toolName);
+    return source === undefined ? undefined : { ...source };
+  }
+
   start(): Promise<AdaptedMcpTool[]> {
     if (this.stateData !== "idle") {
       return Promise.reject(new Error("MCP manager can only be started once."));
@@ -179,7 +198,25 @@ export class McpManager {
   }
 
   private async startInternal(): Promise<AdaptedMcpTool[]> {
-    await Promise.all(this.records.map((record) => this.startServer(record)));
+    let completedServerCount = 0;
+    this.reportProgress({
+      operation: "start",
+      completedServerCount,
+      totalServerCount: this.records.length,
+    });
+    await Promise.all(
+      this.records.map(async (record) => {
+        await this.startServer(record);
+        completedServerCount += 1;
+        this.reportProgress({
+          operation: "start",
+          completedServerCount,
+          totalServerCount: this.records.length,
+          serverId: record.registration.id,
+          outcome: record.status === "ready" ? "ready" : "failed",
+        });
+      }),
+    );
 
     const requiredFailures = this.records
       .filter((record) => record.registration.required && record.error)
@@ -254,6 +291,7 @@ export class McpManager {
 
   private collectTools(): AdaptedMcpTool[] {
     const sources = new Map<string, McpToolNameSource>();
+    const toolSources = new Map<string, McpToolSource>();
     for (const toolName of this.reservedToolNames) {
       sources.set(toolName, { kind: "reserved", toolName });
     }
@@ -276,10 +314,15 @@ export class McpManager {
         }
 
         sources.set(adapted.tool.name, source);
+        toolSources.set(adapted.tool.name, {
+          serverId: source.serverId,
+          remoteToolName: source.remoteToolName,
+        });
         tools.push(adapted.tool);
       }
     }
 
+    this.toolSourcesData = toolSources;
     return tools;
   }
 
@@ -298,6 +341,7 @@ export class McpManager {
     this.stateData = "closing";
     await this.closeClients();
     this.toolsData = [];
+    this.toolSourcesData.clear();
     this.stateData = "closed";
   }
 
@@ -305,29 +349,50 @@ export class McpManager {
     this.stateData = "closing";
     await this.closeClients();
     this.toolsData = [];
+    this.toolSourcesData.clear();
     this.stateData = "closed";
   }
 
   private async closeClients(): Promise<void> {
+    const records = this.records
+      .slice()
+      .reverse()
+      .filter((record) => record.client !== undefined && !record.clientClosed);
+    let completedServerCount = 0;
+    this.reportProgress({
+      operation: "close",
+      completedServerCount,
+      totalServerCount: records.length,
+    });
     // Reverse registration order mirrors resource acquisition while still
     // attempting every close if one server fails during shutdown.
-    for (let index = this.records.length - 1; index >= 0; index -= 1) {
-      await this.closeClient(this.records[index]!);
+    for (const record of records) {
+      const closed = await this.closeClient(record);
+      completedServerCount += 1;
+      this.reportProgress({
+        operation: "close",
+        completedServerCount,
+        totalServerCount: records.length,
+        serverId: record.registration.id,
+        outcome: closed ? "closed" : "failed",
+      });
     }
   }
 
-  private async closeClient(record: McpServerRecord): Promise<void> {
+  private async closeClient(record: McpServerRecord): Promise<boolean> {
     if (!record.client || record.clientClosed) {
       if (record.status === "idle" || record.status === "starting") {
         record.status = "closed";
       }
-      return;
+      return true;
     }
 
     try {
       await record.client.close();
+      return true;
     } catch (error) {
       this.reportError(record.registration.id, "close", asError(error));
+      return false;
     } finally {
       record.clientClosed = true;
       if (record.status !== "failed") {
@@ -341,6 +406,14 @@ export class McpManager {
       this.onError?.({ serverId, phase, error });
     } catch {
       // Diagnostics must not change server lifecycle or cleanup behavior.
+    }
+  }
+
+  private reportProgress(event: McpManagerProgressEvent): void {
+    try {
+      this.onProgress?.(event);
+    } catch {
+      // Presentation callbacks cannot change protocol lifecycle or cleanup.
     }
   }
 }

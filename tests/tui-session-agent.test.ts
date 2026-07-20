@@ -11,7 +11,9 @@ describe("session-scoped agents", () => {
     const idle = new Promise<void>((resolve) => {
       releaseIdle = resolve;
     });
-    const app = new KanaTuiApp(
+    let shutdownRender = "";
+    let app!: KanaTuiApp;
+    app = new KanaTuiApp(
       () =>
         ({
           state: {
@@ -41,6 +43,12 @@ describe("session-scoped agents", () => {
       {
         ...createOptions(),
         onStop: async () => {
+          app.showShutdownStatus("Closing MCP servers... 0/1");
+          shutdownRender = (
+            app as unknown as { layout: { render(width: number): string[] } }
+          ).layout
+            .render(80)
+            .join("\n");
           events.push("host.stop");
         },
       },
@@ -50,13 +58,19 @@ describe("session-scoped agents", () => {
     const secondStop = app.stop();
 
     expect(secondStop).toBe(firstStop);
-    expect(events).toEqual(["agent.abort", "terminal.stop", "agent.waitForIdle"]);
+    expect(events).toEqual(["agent.abort", "agent.waitForIdle"]);
+    expect(
+      (app as unknown as { layout: { render(width: number): string[] } }).layout
+        .render(80)
+        .join("\n"),
+    ).toContain("Shutting down Kana...");
 
     releaseIdle();
     await firstStop;
     await app.waitForStop();
 
-    expect(events).toEqual(["agent.abort", "terminal.stop", "agent.waitForIdle", "host.stop"]);
+    expect(shutdownRender).toContain("Closing MCP servers... 0/1");
+    expect(events).toEqual(["agent.abort", "agent.waitForIdle", "host.stop", "terminal.stop"]);
   });
 
   test("recreates the agent after forking so the new session owns later run state", async () => {

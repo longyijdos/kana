@@ -172,7 +172,7 @@ MCP server 不写入 `config.toml`，而是使用 Claude Code 风格的独立 `<
 
 stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并 `env`。不会继承其他进程环境变量。环境变量名必须符合常规格式，值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
 
-可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续启动；`required: true` 的服务器失败会阻止 TUI 启动。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认。退出、空闲时按 `Ctrl+C` 或收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先取消活动 Agent 调用，再关闭所有 MCP server。
+可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续启动；`required: true` 的服务器失败会阻止 TUI 启动。连接期间，TUI 启动前的单行状态会显示已完成/总服务器数及最近一个服务器的结果。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲时按 `Ctrl+C` 或收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先取消活动 Agent 调用，再在 TUI 底部显示逐服务器关闭进度；所有 MCP server 关闭后才恢复终端并打印退出信息。
 
 服务器配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。`env` 当前按 JSON 字面值处理，包含 token 时会以明文保存在 `mcp.json`；不要提交或分享该文件，并使用最小权限凭据。`kana install` 以 `0600` 创建文件，但 `kana install --force` 也会把它重置为空配置。协议版本由代码维护，不提供任意字符串配置。
 

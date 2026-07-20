@@ -45,6 +45,7 @@ import {
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
+import type { ToolApprovalSource } from "../tools";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
@@ -85,6 +86,7 @@ export type KanaTuiAppOptions = {
   toolApproval: {
     config: KanaToolApprovalConfig;
     approvals: KanaToolApprovals;
+    resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
   };
   notification: KanaNotificationConfig;
   wakeScheduler?: WakeScheduler;
@@ -103,6 +105,7 @@ export class KanaTuiApp {
   private readonly tui: Tui;
   private readonly transcript = new Transcript();
   private readonly editor: Editor;
+  private readonly shutdownStatus = new TextBlock("", { color: tuiTheme.muted });
   private readonly layout: AppLayout;
   private readonly agentEvents: AgentEventRenderer;
   private readonly sessionOverlay: SessionOverlayController;
@@ -299,6 +302,17 @@ export class KanaTuiApp {
     return this.stoppedPromise;
   }
 
+  showShutdownStatus(status: string): void {
+    if (!this.stopping) {
+      return;
+    }
+
+    this.shutdownStatus.setText(status);
+    this.layout.showBottom(this.shutdownStatus);
+    this.tui.setFocus(undefined);
+    this.tui.requestRender(true);
+  }
+
   private async stopInternal(): Promise<void> {
     this.getLogger().info("tui.stopped");
     const activeAgent = this.agent;
@@ -308,6 +322,7 @@ export class KanaTuiApp {
     this.unsubscribeWakeEvents();
     this.wakeScheduler.dispose();
     this.pendingWakeEvents.length = 0;
+    this.showShutdownStatus("Shutting down Kana...");
     const resumeSessionId = this.options.getResumeSessionId();
     const exitLines = [
       this.totalUsage
@@ -317,18 +332,22 @@ export class KanaTuiApp {
       resumeSessionId ? formatExitLine("Resume", `kana resume ${resumeSessionId}`) : undefined,
     ].filter((line): line is string => Boolean(line));
 
-    exitLines.length > 0 ? this.tui.stop(exitLines.join("\r\n")) : this.tui.stop();
-
     // An MCP tools/call must observe Agent cancellation before its transport is
     // closed. Otherwise shutdown can turn a normal abort into an unrelated
     // connection error and leave the server uncertain about cancellation.
-    await activeAgent.waitForIdle();
+    try {
+      await activeAgent.waitForIdle();
+    } catch (error) {
+      this.getLogger().error("tui.agent_shutdown_failed", { error });
+    }
 
     try {
       await this.options.onStop?.();
     } catch (error) {
       this.getLogger().error("tui.shutdown_failed", { error });
     }
+
+    exitLines.length > 0 ? this.tui.stop(exitLines.join("\r\n")) : this.tui.stop();
   }
 
   private createAgentForCurrentSession(messages?: Message[]): Agent {

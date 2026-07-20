@@ -25,6 +25,12 @@ type ToolApprovalText = {
   detail: string;
 };
 
+export type ToolApprovalSource = {
+  kind: "mcp";
+  serverId: string;
+  remoteToolName: string;
+};
+
 const overwriteMarker = "[OVERWRITE]";
 
 export function highlightOverwriteMarker(text: string): string {
@@ -80,7 +86,14 @@ export function formatToolTranscriptTitle(
   return { activity: text.doneTitle.replace(` ${target}`, ""), target };
 }
 
-export function formatToolApproval(toolCall: ToolCallContent): ToolApprovalText {
+export function formatToolApproval(
+  toolCall: ToolCallContent,
+  source?: ToolApprovalSource,
+): ToolApprovalText {
+  if (source?.kind === "mcp") {
+    return formatMcpToolApproval(toolCall, source);
+  }
+
   return {
     title: formatToolApprovalTitle(toolCall),
     detail: formatToolDetail(toolCall),
@@ -211,6 +224,34 @@ function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
 
 function formatToolApprovalTitle(toolCall: ToolCallContent): string {
   return toolText(toolCall.name, toolCall.name, toolCall.args).approvalTitle;
+}
+
+function formatMcpToolApproval(
+  toolCall: ToolCallContent,
+  source: ToolApprovalSource,
+): ToolApprovalText {
+  const args = sanitizeToolOutput(toolCall.args ?? {});
+  let formattedArgs: string;
+
+  try {
+    formattedArgs = JSON.stringify(args, null, 2);
+  } catch {
+    formattedArgs = String(args);
+  }
+
+  return {
+    title: "Allow MCP tool?",
+    detail: [
+      `Server: ${sanitizeApprovalLabel(source.serverId)}`,
+      `Tool: ${sanitizeApprovalLabel(source.remoteToolName)}`,
+      "Arguments:",
+      formattedArgs,
+    ].join("\n"),
+  };
+}
+
+function sanitizeApprovalLabel(value: string): string {
+  return stripTerminalControlSequences(value).replace(/[\r\n]+/g, " ");
 }
 
 function formatToolDetail(toolCall: ToolCallContent): string {

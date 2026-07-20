@@ -36,6 +36,11 @@ describe("MCP manager", () => {
     const tools = await manager.start();
 
     expect(tools.map((tool) => tool.name)).toEqual(["alpha_keep", "beta_second"]);
+    expect(manager.getToolSource("alpha_keep")).toEqual({
+      serverId: "alpha",
+      remoteToolName: "keep",
+    });
+    expect(manager.getToolSource("list")).toBeUndefined();
     expect(manager.state).toBe("ready");
     expect(manager.diagnostics).toEqual([
       {
@@ -241,6 +246,44 @@ describe("MCP manager", () => {
       "closed",
       "closed",
     ]);
+  });
+
+  test("reports bounded startup and shutdown progress", async () => {
+    const progress: Array<{
+      operation: string;
+      completedServerCount: number;
+      totalServerCount: number;
+      serverId?: string;
+      outcome?: string;
+    }> = [];
+    const client = createFakeClient({ name: "filesystem", tools: [createTool("read_file")] });
+    const manager = new McpManager({
+      servers: [{ id: "filesystem", createClient: () => client }],
+      onProgress: (event) => progress.push(event),
+    });
+
+    await manager.start();
+    await manager.close();
+
+    expect(progress).toEqual([
+      { operation: "start", completedServerCount: 0, totalServerCount: 1 },
+      {
+        operation: "start",
+        completedServerCount: 1,
+        totalServerCount: 1,
+        serverId: "filesystem",
+        outcome: "ready",
+      },
+      { operation: "close", completedServerCount: 0, totalServerCount: 1 },
+      {
+        operation: "close",
+        completedServerCount: 1,
+        totalServerCount: 1,
+        serverId: "filesystem",
+        outcome: "closed",
+      },
+    ]);
+    expect(manager.getToolSource("filesystem_read_file")).toBeUndefined();
   });
 
   test("waits for in-flight startup before closing", async () => {

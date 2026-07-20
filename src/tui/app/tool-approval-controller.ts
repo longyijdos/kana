@@ -9,6 +9,7 @@ import {
 } from "@/kana";
 import { type Editor, ToolApproval, type ToolApprovalDecision } from "../components";
 import type { Component, Tui } from "../runtime";
+import type { ToolApprovalSource } from "../tools";
 import type { AppLayout } from "./app-layout";
 
 export type ToolApprovalControllerOptions = {
@@ -17,6 +18,7 @@ export type ToolApprovalControllerOptions = {
   editor: Editor;
   layout: AppLayout;
   tui: Tui;
+  resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
   onApprovalRequired: (toolName: string) => void;
 };
 
@@ -45,6 +47,7 @@ export class ToolApprovalController {
       let approval: ToolApproval | undefined;
       let settled = false;
       const bashCommand = getBashCommand(toolCall);
+      const source = this.options.resolveToolSource?.(toolCall.name);
 
       const finish = (decision: ToolApprovalDecision): void => {
         if (settled) {
@@ -96,6 +99,7 @@ export class ToolApprovalController {
 
       approval = new ToolApproval(toolCall, finish, {
         allowAlways: bashCommand !== undefined,
+        ...(source === undefined ? {} : { source }),
       });
       this.activeApproval = approval;
       // Keep another bottom view in place; the approval notification announces this pending prompt.

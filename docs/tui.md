@@ -17,13 +17,14 @@ ProcessTerminal
             或 tool approval
             或 session / skills / slash command 提示
             或 content viewer
+            或 shutdown status
 ```
 
 `Component` 的最小接口是 `render(width, availableHeight?): string[]`，可选 `handleInput` 和 `invalidate`。该协议不会裁剪输出，但组件可根据高度选择渲染策略。`AppLayout` 为唯一底部组件保留分档区域：终端高度不小于 30 行时使用 15 行，24–29 行使用 12 行，18–23 行使用 9 行，7–17 行使用 7 行；终端不足 7 行时将全部可用高度分给 bottom。剩余高度传给 main。底部区域首行由 layout 统一绘制 main/bottom 分隔线，其余高度传给底部组件；所有底部组件的内容都直接跟在分隔线后。组件输出不足时由 layout 补空行，因此切换底部组件不会带动 main 内容。列表视图会缩小项目窗口并保持选中项可见，编辑器会缩小输入和命令窗口，较长的选择提示详情可用 `PageUp`/`PageDown` 翻页。普通 bottom 标题统一使用 `bottomTitle`，当前选项使用 `user`；工具审批和危险确认分别用 `toolActive` 与 `error` 覆盖标题颜色。`KanaTuiApp` 目前将 transcript 作为 main 传入；Transcript 仍刻意渲染完整历史，交由终端 scrollback 保留。组件本身主要处理呈现和局部键盘输入。
 
 ## 终端生命周期与渲染
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。停止时恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报并关闭 bracketed paste。TUI 结束会清屏和 scrollback，然后打印退出信息；退出信息包括累计 token、API 成本和可恢复会话命令（若有）。`KanaTuiApp.stop()` 是幂等异步边界：先中止并等待活动 Agent，再调用产品层清理 MCP manager。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；首个进程信号会移除 Kana 的监听器，使第二个信号仍可按系统默认行为强制终止。
+`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。完整 TUI 创建前，MCP bootstrap presenter 在一个临时终端行内刷新服务器启动进度；首次 TUI 全量渲染会清除该行。停止时恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报并关闭 bracketed paste。`KanaTuiApp.stop()` 是幂等异步边界：先切换到底部 shutdown status，中止并等待活动 Agent，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一底部组件。完成清理后才停止终端、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；首个进程信号会移除 Kana 的监听器，使第二个信号仍可按系统默认行为强制终止。
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
@@ -82,7 +83,7 @@ ProcessTerminal
 
 独立 controller 保持 `KanaTuiApp` 不必承载每个交互状态机：
 
-- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
+- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
 - `SessionOverlayController` 用恢复列表或删除确认替换编辑器。新 session、恢复和删除都会更新 transcript 和焦点。
 - `SkillManagerController` 用 global Skill 列表替换编辑器，保存后中止旧 Agent 并用原消息历史创建新 Agent，从而刷新提示词。
 - `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。

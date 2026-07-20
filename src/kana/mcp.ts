@@ -3,6 +3,7 @@ import {
   McpClient,
   type McpImplementation,
   McpManager,
+  type McpManagerProgressEvent,
   type McpServerRegistration,
   StdioTransport,
 } from "@/mcp";
@@ -30,6 +31,7 @@ export type CreateKanaMcpManagerOptions = {
   reservedToolNames?: Iterable<string>;
   getLogger?: () => Logger;
   clientInfo?: McpImplementation;
+  onProgress?(event: McpManagerProgressEvent): void;
 };
 
 export function createKanaMcpManager(
@@ -52,6 +54,7 @@ export function createKanaMcpManager(
   return new McpManager({
     servers,
     reservedToolNames: options.reservedToolNames,
+    ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
     onError: ({ serverId, phase, error }) => {
       getLogger().warn(phase === "start" ? "mcp.server_start_failed" : "mcp.server_close_failed", {
         serverId,
