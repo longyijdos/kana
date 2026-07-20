@@ -1,34 +1,46 @@
-import type { Static, TSchema } from "@sinclair/typebox";
-import { type TypeCheck, TypeCompiler } from "@sinclair/typebox/compiler";
-import type { ValueError } from "@sinclair/typebox/errors";
-import { Value } from "@sinclair/typebox/value";
+import type { Static, TSchema } from "typebox";
+import { Compile } from "typebox/compile";
+import type { TLocalizedValidationError } from "typebox/error";
+import { Value } from "typebox/value";
 import type { ToolCallContent } from "@/core";
+import { coerceJsonSchemaValue, hasTypeBoxMetadata } from "./json-schema-coercion";
 import type { Tool } from "./tool";
 
-const validatorCache = new WeakMap<object, TypeCheck<TSchema>>();
+const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
 
-function getValidator(schema: TSchema): TypeCheck<TSchema> {
+function getValidator(schema: TSchema): ReturnType<typeof Compile> {
   const cached = validatorCache.get(schema);
   if (cached) {
     return cached;
   }
 
-  // This project only accepts TypeBox schemas for tools, so compilation errors
-  // should surface directly instead of being hidden behind JSON Schema fallbacks.
-  const validator = TypeCompiler.Compile(schema);
+  const validator = Compile(schema);
   validatorCache.set(schema, validator);
 
   return validator;
 }
 
-function formatValidationPath(error: ValueError): string {
-  const path = error.path.replace(/^\//, "").replace(/\//g, ".");
+function formatValidationPath(error: TLocalizedValidationError): string {
+  if (error.keyword === "required") {
+    const requiredProperty = error.params.requiredProperties[0];
+    if (requiredProperty) {
+      const basePath = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
+      return basePath ? `${basePath}.${requiredProperty}` : requiredProperty;
+    }
+  }
+
+  const path = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
   return path || "root";
 }
 
-function formatValidationErrors(errors: Iterable<ValueError>): string {
-  const formatted = [...errors]
-    .map((error) => `  - ${formatValidationPath(error)}: ${error.message}`)
+function formatValidationMessage(error: TLocalizedValidationError): string {
+  // Preserve the existing model-facing wording across the TypeBox migration.
+  return error.keyword === "required" ? "Expected required property" : error.message;
+}
+
+function formatValidationErrors(errors: TLocalizedValidationError[]): string {
+  const formatted = errors
+    .map((error) => `  - ${formatValidationPath(error)}: ${formatValidationMessage(error)}`)
     .join("\n");
 
   return formatted || "Unknown validation error";
@@ -48,11 +60,16 @@ export function validateToolCall<T extends TSchema>(
 }
 
 export function validateToolArguments<T extends TSchema>(tool: Tool<T>, args: unknown): Static<T> {
-  const converted = Value.Convert(tool.parameters, structuredClone(args));
+  let converted = Value.Convert(tool.parameters, structuredClone(args));
+
+  if (!hasTypeBoxMetadata(tool.parameters)) {
+    converted = coerceJsonSchemaValue(converted, tool.parameters);
+  }
+
   const validator = getValidator(tool.parameters);
 
   if (validator.Check(converted)) {
-    return converted;
+    return converted as Static<T>;
   }
 
   const errors = formatValidationErrors(validator.Errors(converted));

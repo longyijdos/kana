@@ -1,5 +1,5 @@
 import path from "node:path";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { Tool } from "./tool";
 import { resolveWorkspaceDirectory } from "./workspace-path";
 

@@ -42,7 +42,7 @@ Provided optional configuration maps to DeepSeek fields:
 | `responseFormat` | `response_format` |
 | `userId` | `user_id` |
 
-When `thinking` is explicitly `false`, `reasoning_effort` is omitted because DeepSeek rejects the combination. When context has tools, each TypeBox schema passes through as function `parameters` and default `tool_choice` is `auto`; `strictTools` adds `strict: true` to every function. Without context tools, `toolChoice` is sent only when explicitly configured.
+When `thinking` is explicitly `false`, `reasoning_effort` is omitted because DeepSeek rejects the combination. When context has tools, each tool's JSON Schema passes through as function `parameters` and default `tool_choice` is `auto`; `strictTools` adds `strict: true` to every function. Without context tools, `toolChoice` is sent only when explicitly configured.
 
 ## Authentication, cancellation, timeout, and retries
 

@@ -56,13 +56,13 @@ src/main.ts
 
 `Agent` 是有状态的单次运行控制器。它拒绝并发运行；`stream()` 会先把用户输入加入内部历史，再创建 `AbortController`，并在 `agent_end` 时才把本次生成的助手消息和工具结果提交到状态。`state` 的返回值会深拷贝可变数据，调用方不能修改运行中的内部历史。
 
-`runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才顺序执行工具调用。每个调用都经过 TypeBox 校验和可选的 `beforeToolExecution` 钩子。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果并回传模型；拒绝或中止会终止本次运行。
+`runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才顺序执行工具调用。每个调用都经过 TypeBox 1.x 校验和可选的 `beforeToolExecution` 钩子；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果并回传模型；拒绝或中止会终止本次运行。
 
 ## 模型与供应商适配
 
 `core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。`providers/index.ts` 是集中式工厂；当前产品配置只允许 DeepSeek，`MockModel` 用于测试。
 
-`DeepSeekModel` 将通用消息、系统提示词和 TypeBox 工具 schema 转换为 DeepSeek 的 OpenAI 兼容请求格式，向 `/chat/completions` 发送 SSE 请求。流解析器会：
+`DeepSeekModel` 将通用消息、系统提示词和工具 JSON Schema 转换为 DeepSeek 的 OpenAI 兼容请求格式，向 `/chat/completions` 发送 SSE 请求。流解析器会：
 
 1. 缓冲被网络分片切开的 SSE 帧；
 2. 将 reasoning、可见文本和工具参数增量写入同一有序助手消息；
@@ -110,7 +110,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 ## 工具、审批与安全边界
 
-工具使用 TypeBox schema；调用前先执行 `Value.Convert` 再校验，校验后的参数才交给工具。工具结果分为给模型的文本 `content` 和给 Agent/TUI 的结构化 `result`，避免展示层解析供应商文本。
+工具优先使用 TypeBox 1.x schema；调用前先执行参数转换和编译校验，校验后的参数才交给工具。TypeBox schema 经 JSON 序列化后会丢失运行时元数据，Kana 会为这种普通 JSON Schema 补充兼容的基础类型转换，再使用同一 TypeBox 编译器校验。工具结果分为给模型的文本 `content` 和给 Agent/TUI 的结构化 `result`，避免展示层解析供应商文本。
 
 - `list` 列出目录的一层子项，`glob` 用相对 pattern 查找路径，`grep` 搜索文本内容；三者用于受控只读探索。
 - `read` 读取文本文件，支持按行分页。
