@@ -1,6 +1,5 @@
-import type { McpManagerProgressEvent } from "@/mcp";
-import { stripTerminalControlSequences, truncateToWidth } from "./render";
-import type { Terminal } from "./runtime";
+import type { McpManagerProgressEvent, McpServerDiagnostic } from "@/mcp";
+import { stripTerminalControlSequences } from "./render";
 
 export function formatMcpLifecycleStatus(event: McpManagerProgressEvent): string | undefined {
   if (event.totalServerCount === 0) {
@@ -17,38 +16,26 @@ export function formatMcpLifecycleStatus(event: McpManagerProgressEvent): string
   return `${action} MCP servers... ${progress}${server}`;
 }
 
-// MCP startup precedes the full TUI, so this presenter owns only one temporary
-// terminal line. The first full TUI render clears it before normal interaction.
-export class McpBootstrapStatus {
-  private visible = false;
-
-  constructor(
-    private readonly terminal: Pick<Terminal, "columns" | "write">,
-    private readonly enabled = true,
-  ) {}
-
-  update(event: McpManagerProgressEvent): void {
-    if (!this.enabled) {
-      return;
+export function formatMcpStartupWarnings(diagnostics: readonly McpServerDiagnostic[]): string[] {
+  return diagnostics.flatMap((diagnostic) => {
+    if (diagnostic.status !== "failed") {
+      return [];
     }
 
-    const status = formatMcpLifecycleStatus(event);
-    if (status === undefined) {
-      return;
-    }
+    const serverId = sanitizeLabel(diagnostic.id);
+    const message = sanitizeLabel(diagnostic.error?.message ?? "Unknown startup error.");
+    return [`MCP server ${serverId} failed to start: ${message}`];
+  });
+}
 
-    this.visible = true;
-    this.terminal.write(`\r\x1b[2K${truncateToWidth(status, Math.max(1, this.terminal.columns))}`);
-  }
+export function formatMcpStartupSummary(
+  diagnostics: readonly McpServerDiagnostic[],
+  toolCount: number,
+): string {
+  const readyServerCount = diagnostics.filter((diagnostic) => diagnostic.status === "ready").length;
+  const toolLabel = toolCount === 1 ? "tool" : "tools";
 
-  clear(): void {
-    if (!this.visible) {
-      return;
-    }
-
-    this.visible = false;
-    this.terminal.write("\r\x1b[2K");
-  }
+  return `MCP startup complete: ${readyServerCount}/${diagnostics.length} servers ready · ${toolCount} ${toolLabel}`;
 }
 
 function sanitizeLabel(value: string): string {

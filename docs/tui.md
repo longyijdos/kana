@@ -17,14 +17,13 @@ ProcessTerminal
             或 tool approval
             或 session / skills / slash command 提示
             或 content viewer
-            或 shutdown status
 ```
 
 `Component` 的最小接口是 `render(width, availableHeight?): string[]`，可选 `handleInput` 和 `invalidate`。该协议不会裁剪输出，但组件可根据高度选择渲染策略。`AppLayout` 为唯一底部组件保留分档区域：终端高度不小于 30 行时使用 15 行，24–29 行使用 12 行，18–23 行使用 9 行，7–17 行使用 7 行；终端不足 7 行时将全部可用高度分给 bottom。剩余高度传给 main。底部区域首行由 layout 统一绘制 main/bottom 分隔线，其余高度传给底部组件；所有底部组件的内容都直接跟在分隔线后。组件输出不足时由 layout 补空行，因此切换底部组件不会带动 main 内容。列表视图会缩小项目窗口并保持选中项可见，编辑器会缩小输入和命令窗口，较长的选择提示详情可用 `PageUp`/`PageDown` 翻页。普通 bottom 标题统一使用 `bottomTitle`，当前选项使用 `user`；工具审批和危险确认分别用 `toolActive` 与 `error` 覆盖标题颜色。`KanaTuiApp` 目前将 transcript 作为 main 传入；Transcript 仍刻意渲染完整历史，交由终端 scrollback 保留。组件本身主要处理呈现和局部键盘输入。
 
 ## 终端生命周期与渲染
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。完整 TUI 创建前，MCP bootstrap presenter 在一个临时终端行内刷新服务器启动进度；首次 TUI 全量渲染会清除该行。停止时恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报并关闭 bracketed paste。`KanaTuiApp.stop()` 是幂等异步边界：先切换到底部 shutdown status，中止并等待活动 Agent，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一底部组件。完成清理后才停止终端、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；首个进程信号会移除 Kana 的监听器，使第二个信号仍可按系统默认行为强制终止。
+`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再用发现的工具重建 Agent 并恢复 editor。可选服务器失败会在摘要后留下错误色警告；必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，中止并等待活动 Agent，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
@@ -33,7 +32,7 @@ ProcessTerminal
 3. 根据 ANSI 以及 Unicode 可见宽度规范化行；
 4. 在尺寸未变、内容只增加或改动可见时只重绘变化行；
 5. 在宽高变化、行数减少、改动已滚出视口或请求强制刷新时全量清屏重绘；
-6. 在同步输出模式下最后移动并显示硬件光标。
+6. 在同步输出模式下，仅为当前焦点组件移动并显示硬件光标；没有焦点时将光标留在布局末尾并保持隐藏。
 
 它维护已渲染行和可视 viewport 的缓存，避免反复计算未变 transcript 的 CJK 宽度。TUI 使用主屏，不进入 `?1049` alternate screen；这让 transcript 留在用户的终端 scrollback 中。
 
@@ -59,7 +58,7 @@ ProcessTerminal
 
 | 输入 | 行为 |
 | --- | --- |
-| `Ctrl+C` | 正在运行时中止本地 Shell、记忆压缩或 Agent；空闲时退出进程。 |
+| `Ctrl+C` | 正在运行时中止本地 Shell、记忆压缩或 Agent；空闲或加载外部工具时开始优雅退出；关闭等待期间再次按下会强制退出。 |
 | `Esc` | 先关闭内容查看器；运行时中止当前工作。 |
 | `Ctrl+O` | 打开/关闭最近一项可展开的工具输出。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |

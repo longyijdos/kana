@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { AgentEventStream } from "../src/agent";
-import { createWakeScheduler } from "../src/kana";
+import { createWakeScheduler, type KanaSessionMetadata } from "../src/kana";
 import { KanaTuiApp } from "../src/tui/app/app";
+import { stripAnsi } from "../src/tui/render";
 import type { Terminal } from "../src/tui/runtime";
 
 describe("session-scoped agents", () => {
@@ -64,6 +65,11 @@ describe("session-scoped agents", () => {
         .render(80)
         .join("\n"),
     ).toContain("Shutting down Kana...");
+    expect(
+      (app as unknown as { layout: { render(width: number): string[] } }).layout
+        .render(80)
+        .join("\n"),
+    ).toContain("test-model");
 
     releaseIdle();
     await firstStop;
@@ -71,6 +77,158 @@ describe("session-scoped agents", () => {
 
     expect(shutdownRender).toContain("Closing MCP servers... 0/1");
     expect(events).toEqual(["agent.abort", "agent.waitForIdle", "host.stop", "terminal.stop"]);
+  });
+
+  test("loads external tools inside the visible session before enabling the editor", async () => {
+    let resolveLoad!: (result: { status: string; warnings: string[] }) => void;
+    const loadResult = new Promise<{ status: string; warnings: string[] }>((resolve) => {
+      resolveLoad = resolve;
+    });
+    let reportProgress!: (status: string) => void;
+    let toolsLoaded = false;
+    const agentToolStates: boolean[] = [];
+    const app = new KanaTuiApp(
+      () => {
+        agentToolStates.push(toolsLoaded);
+        return createAgentStub();
+      },
+      createTerminal(),
+      {
+        ...createOptions(),
+        loadExternalTools: (onProgress) => {
+          reportProgress = onProgress;
+          return loadResult;
+        },
+      },
+    );
+    const internal = app as unknown as {
+      transcript: { render(width: number): string[] };
+      layout: { render(width: number): string[] };
+      editor: unknown;
+      tui: { getFocus(): unknown };
+    };
+
+    app.start();
+
+    expect(renderTranscript(internal.transcript)).toContain("Kana v");
+    expect(renderTranscript(internal.transcript)).toContain("Starting external tools...");
+    expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain("test-model");
+    expect(internal.tui.getFocus()).toBeUndefined();
+    expect(agentToolStates).toEqual([false]);
+
+    reportProgress("Starting MCP servers... 0/1");
+    expect(renderTranscript(internal.transcript)).toContain("Starting MCP servers... 0/1");
+
+    toolsLoaded = true;
+    resolveLoad({
+      status: "MCP startup complete: 1/2 servers ready · 3 tools",
+      warnings: ["MCP server optional failed to start: unavailable"],
+    });
+    await waitFor(() => agentToolStates.length === 2);
+
+    const transcript = renderTranscript(internal.transcript);
+    expect(agentToolStates).toEqual([false, true]);
+    expect(transcript).not.toContain("Starting MCP servers...");
+    expect(transcript).toContain("MCP startup complete: 1/2 servers ready · 3 tools");
+    expect(transcript).toContain("MCP server optional failed to start: unavailable");
+    expect(internal.tui.getFocus()).toBe(internal.editor);
+  });
+
+  test("keeps the visible session disabled when required external tools fail", async () => {
+    const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
+      ...createOptions(),
+      loadExternalTools: async () => {
+        throw new Error("Required MCP servers failed to start: filesystem.");
+      },
+    });
+    const internal = app as unknown as {
+      transcript: { render(width: number): string[] };
+      tui: { getFocus(): unknown };
+    };
+
+    app.start();
+    await waitFor(() =>
+      renderTranscript(internal.transcript).includes("Failed to load external tools"),
+    );
+
+    expect(renderTranscript(internal.transcript)).toContain(
+      "Required MCP servers failed to start: filesystem.",
+    );
+    expect(renderTranscript(internal.transcript)).toContain("Press Ctrl+C to exit.");
+    expect(internal.tui.getFocus()).toBeUndefined();
+  });
+
+  test("defers external-tool loading until a resume-picker session is selected", async () => {
+    const session: KanaSessionMetadata = {
+      id: "session-a",
+      createdAt: "2026-07-20T00:00:00.000Z",
+      title: "Existing session",
+      cwd: "/repo",
+      path: "/sessions/session-a.jsonl",
+    };
+    let loadCount = 0;
+    const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
+      ...createOptions(),
+      startInResumePicker: true,
+      listSessions: () => [session],
+      loadSession: () => ({ id: session.id, messages: [] }),
+      loadExternalTools: async () => {
+        loadCount += 1;
+        return {};
+      },
+    });
+    const internal = app as unknown as {
+      tui: { getFocus(): { handleInput?(data: string): void } | undefined };
+    };
+
+    app.start();
+
+    expect(loadCount).toBe(0);
+    internal.tui.getFocus()?.handleInput?.("\r");
+    await waitFor(() => loadCount === 1);
+
+    expect(loadCount).toBe(1);
+  });
+
+  test("uses the second Ctrl+C to force stop while graceful MCP shutdown is pending", async () => {
+    let handleInput!: (data: string) => void;
+    let releaseShutdown!: () => void;
+    const shutdown = new Promise<void>((resolve) => {
+      releaseShutdown = resolve;
+    });
+    let forceStopCount = 0;
+    const terminal = {
+      ...createTerminal(),
+      start: (onInput: (data: string) => void) => {
+        handleInput = onInput;
+      },
+    };
+    const app = new KanaTuiApp(() => createAgentStub(), terminal, {
+      ...createOptions(),
+      loadExternalTools: () => new Promise(() => {}),
+      onStop: () => shutdown,
+      onForceStop: () => {
+        forceStopCount += 1;
+      },
+    });
+    const internal = app as unknown as {
+      layout: { render(width: number): string[] };
+    };
+
+    app.start();
+    handleInput("\x03");
+    await Promise.resolve();
+
+    expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain(
+      "Press Ctrl+C again to force quit.",
+    );
+    expect(forceStopCount).toBe(0);
+
+    handleInput("\x03");
+    expect(forceStopCount).toBe(1);
+
+    releaseShutdown();
+    await app.waitForStop();
   });
 
   test("recreates the agent after forking so the new session owns later run state", async () => {
@@ -267,4 +425,27 @@ function createTerminal(): Terminal {
     write: () => {},
     notify: () => {},
   };
+}
+
+function createAgentStub() {
+  return {
+    state: {
+      messages: [],
+      model: {
+        metadata: {
+          provider: "test",
+          model: "test-model",
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 1,
+          maxOutputTokens: 1,
+        },
+      },
+    },
+    abort() {},
+    async waitForIdle() {},
+  } as never;
+}
+
+function renderTranscript(transcript: { render(width: number): string[] }): string {
+  return stripAnsi(transcript.render(80).join("\n"));
 }

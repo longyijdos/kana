@@ -120,7 +120,11 @@ export class Tui extends Container {
     const width = Math.max(this.terminal.columns, 1);
     const height = Math.max(this.terminal.rows, 1);
     const rendered = this.render(width, height);
-    const cursor = extractCursorPosition(rendered);
+    const extractedCursor = extractCursorPosition(rendered);
+    // A visible but disabled editor still emits its layout marker. Only a
+    // focused component may own the hardware cursor; otherwise forced exit
+    // would leave the shell prompt inside the editor instead of after it.
+    const cursor = this.focusedComponent === undefined ? undefined : extractedCursor;
     const lines = rendered.map((line, index) =>
       // Cached transcript components return the same strings between keystrokes.
       // Reuse their normalized form to avoid recalculating CJK display widths.

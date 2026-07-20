@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { formatMcpLifecycleStatus, McpBootstrapStatus } from "../src/tui/mcp-lifecycle-status";
+import {
+  formatMcpLifecycleStatus,
+  formatMcpStartupSummary,
+  formatMcpStartupWarnings,
+} from "../src/tui/mcp-lifecycle-status";
 
 describe("MCP lifecycle status", () => {
   test("formats startup and shutdown progress with the latest server outcome", () => {
@@ -33,32 +37,51 @@ describe("MCP lifecycle status", () => {
     ).toBeUndefined();
   });
 
-  test("owns and clears one bootstrap terminal line", () => {
-    const writes: string[] = [];
-    const status = new McpBootstrapStatus({
-      columns: 80,
-      write: (value) => writes.push(value),
-    });
+  test("formats failed-server diagnostics as safe persistent warnings", () => {
+    expect(
+      formatMcpStartupWarnings([
+        {
+          id: "filesystem\nspoofed",
+          required: false,
+          status: "failed",
+          discoveredToolCount: 0,
+          toolCount: 0,
+          error: { name: "Error", message: "process\nexited" },
+        },
+        {
+          id: "github",
+          required: false,
+          status: "ready",
+          discoveredToolCount: 2,
+          toolCount: 2,
+        },
+      ]),
+    ).toEqual(["MCP server filesystem spoofed failed to start: process exited"]);
+  });
 
-    status.update({
-      operation: "start",
-      completedServerCount: 0,
-      totalServerCount: 1,
-    });
-    status.update({
-      operation: "start",
-      completedServerCount: 1,
-      totalServerCount: 1,
-      serverId: "filesystem\nspoofed",
-      outcome: "ready",
-    });
-    status.clear();
-    status.clear();
+  test("summarizes the final ready-server and tool counts", () => {
+    const diagnostics = [
+      {
+        id: "filesystem",
+        required: false,
+        status: "ready" as const,
+        discoveredToolCount: 2,
+        toolCount: 2,
+      },
+      {
+        id: "optional",
+        required: false,
+        status: "failed" as const,
+        discoveredToolCount: 0,
+        toolCount: 0,
+      },
+    ];
 
-    expect(writes).toEqual([
-      "\r\x1b[2KStarting MCP servers... 0/1",
-      "\r\x1b[2KStarting MCP servers... 1/1 · filesystem spoofed ready",
-      "\r\x1b[2K",
-    ]);
+    expect(formatMcpStartupSummary(diagnostics, 2)).toBe(
+      "MCP startup complete: 1/2 servers ready · 2 tools",
+    );
+    expect(formatMcpStartupSummary(diagnostics.slice(0, 1), 1)).toBe(
+      "MCP startup complete: 1/1 servers ready · 1 tool",
+    );
   });
 });

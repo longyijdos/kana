@@ -70,6 +70,11 @@ export type KanaTuiLoadedSession = {
   messages: Message[];
 };
 
+export type KanaTuiExternalToolsLoadResult = {
+  status?: string;
+  warnings?: readonly string[];
+};
+
 export type KanaTuiAppOptions = {
   sessionId?: string;
   initialMessages?: Message[];
@@ -98,7 +103,11 @@ export type KanaTuiAppOptions = {
   ) => Promise<MemoryCompactSummary[]>;
   loadMemory: (target: Exclude<MemoryScope, "both">) => string;
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
+  loadExternalTools?: (
+    onProgress: (status: string) => void,
+  ) => Promise<KanaTuiExternalToolsLoadResult>;
   onStop?: () => Promise<void> | void;
+  onForceStop?: () => void;
 };
 
 export class KanaTuiApp {
@@ -126,6 +135,10 @@ export class KanaTuiApp {
   private readonly unsubscribeWakeEvents: () => void;
   private readonly pendingWakeEvents: WakeEvent[] = [];
   private drainingWakeEvents = false;
+  private externalToolsLoaded: boolean;
+  private loadingExternalTools = false;
+  private externalToolsLoadPromise?: Promise<boolean>;
+  private externalToolsLoadingBlock?: TextBlock;
   private stopping = false;
   private stopPromise?: Promise<void>;
   private resolveStopped!: () => void;
@@ -143,6 +156,7 @@ export class KanaTuiApp {
     private readonly options: KanaTuiAppOptions,
   ) {
     this.sessionId = options.sessionId;
+    this.externalToolsLoaded = options.loadExternalTools === undefined;
     this.getLogger = options.getLogger ?? createNoopLogger;
     this.wakeScheduler = options.wakeScheduler ?? createWakeScheduler();
     this.tui = new Tui(terminal);
@@ -281,9 +295,7 @@ export class KanaTuiApp {
       return;
     }
 
-    if (this.options.initialPrompt) {
-      void this.submitPrompt(this.options.initialPrompt);
-    }
+    void this.activateCurrentSession(this.options.initialPrompt);
   }
 
   stop(): Promise<void> {
@@ -307,8 +319,14 @@ export class KanaTuiApp {
       return;
     }
 
-    this.shutdownStatus.setText(status);
-    this.layout.showBottom(this.shutdownStatus);
+    this.shutdownStatus.setText(
+      this.options.onForceStop === undefined
+        ? status
+        : `${status}\nPress Ctrl+C again to force quit.`,
+    );
+    if (!this.transcript.children.includes(this.shutdownStatus)) {
+      this.transcript.addChild(this.shutdownStatus);
+    }
     this.tui.setFocus(undefined);
     this.tui.requestRender(true);
   }
@@ -377,7 +395,107 @@ export class KanaTuiApp {
     );
   }
 
+  private async activateCurrentSession(initialPrompt?: string): Promise<void> {
+    const ready = await this.loadExternalTools();
+
+    if (ready && initialPrompt && !this.stopping) {
+      await this.submitPrompt(initialPrompt);
+    }
+  }
+
+  private loadExternalTools(): Promise<boolean> {
+    if (this.externalToolsLoaded || this.options.loadExternalTools === undefined) {
+      return Promise.resolve(true);
+    }
+    if (this.externalToolsLoadPromise) {
+      return this.externalToolsLoadPromise;
+    }
+
+    this.loadingExternalTools = true;
+    const loadingBlock = new TextBlock("Starting external tools...", {
+      color: tuiTheme.muted,
+    });
+    this.externalToolsLoadingBlock = loadingBlock;
+    this.transcript.addChild(loadingBlock);
+    this.updateStatus("starting");
+    this.tui.setFocus(undefined);
+    this.tui.requestRender(true);
+
+    this.externalToolsLoadPromise = this.options
+      .loadExternalTools((status) => {
+        if (this.stopping || this.externalToolsLoadingBlock !== loadingBlock) {
+          return;
+        }
+
+        loadingBlock.setText(status);
+        this.tui.requestRender();
+      })
+      .then((result) => {
+        if (this.stopping) {
+          return false;
+        }
+
+        this.externalToolsLoaded = true;
+        this.loadingExternalTools = false;
+        this.externalToolsLoadingBlock = undefined;
+        if (result.status === undefined) {
+          this.transcript.removeChild(loadingBlock);
+        } else {
+          loadingBlock.setText(result.status);
+        }
+        for (const warning of result.warnings ?? []) {
+          this.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
+        }
+
+        // No run can start while the editor is unfocused, so replacing this
+        // temporary Agent cannot race provider or tool execution state.
+        const messages = this.agent.state.messages;
+        this.agent.abort();
+        this.agent = this.createAgentForCurrentSession(messages);
+        this.agentEvents.resetRun();
+        this.updateContextUsageFromMessages(messages);
+        this.updateStatus("idle", { activeTool: undefined });
+        this.tui.setFocus(this.editor);
+        this.tui.requestRender(true);
+        void this.drainWakeEvents();
+        return true;
+      })
+      .catch((error) => {
+        if (!this.stopping) {
+          this.loadingExternalTools = false;
+          this.externalToolsLoadingBlock = undefined;
+          this.transcript.removeChild(loadingBlock);
+          this.transcript.addChild(
+            new TextBlock(
+              `Failed to load external tools: ${error instanceof Error ? error.message : String(error)}\nPress Ctrl+C to exit.`,
+              { color: tuiTheme.error },
+            ),
+          );
+          this.updateStatus("error", { activeTool: undefined });
+          this.tui.requestRender(true);
+        }
+        return false;
+      });
+
+    return this.externalToolsLoadPromise;
+  }
+
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {
+    if (this.stopping) {
+      if (isCtrlC(data)) {
+        this.getLogger().warn("tui.force_stop_requested");
+        this.options.onForceStop?.();
+      }
+      return { consume: true };
+    }
+
+    if (this.loadingExternalTools) {
+      if (isCtrlC(data)) {
+        void this.stop();
+      }
+      return { consume: true };
+    }
+
     if (isCtrlO(data)) {
       return this.contentViewer.toggleLatest() ? { consume: true } : undefined;
     }
@@ -689,6 +807,7 @@ export class KanaTuiApp {
     });
     this.tui.setFocus(this.editor);
     this.tui.requestRender(true);
+    void this.activateCurrentSession();
   }
 
   private showError(error: unknown): void {
@@ -729,7 +848,7 @@ export class KanaTuiApp {
     source: "user" | "scheduled",
     displayContent = input.content,
   ): Promise<void> {
-    if (this.stopping) {
+    if (this.stopping || this.loadingExternalTools) {
       return;
     }
 
@@ -777,13 +896,13 @@ export class KanaTuiApp {
   }
 
   private async drainWakeEvents(): Promise<void> {
-    if (this.stopping || this.drainingWakeEvents || this.running) {
+    if (this.stopping || this.loadingExternalTools || this.drainingWakeEvents || this.running) {
       return;
     }
 
     this.drainingWakeEvents = true;
     try {
-      while (!this.stopping && !this.running) {
+      while (!this.stopping && !this.loadingExternalTools && !this.running) {
         const event = this.pendingWakeEvents.shift();
         if (!event) {
           return;
@@ -818,7 +937,7 @@ export class KanaTuiApp {
   private async submitShellCommand(command: string): Promise<void> {
     const shellCommand = command.trim();
 
-    if (!shellCommand || this.running) {
+    if (!shellCommand || this.running || this.loadingExternalTools) {
       return;
     }
 
