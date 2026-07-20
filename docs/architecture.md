@@ -96,7 +96,7 @@ stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受�
 
 `McpManager` 只依赖结构化的 `McpManagedClient`，不创建具体协议 client 或 transport。它并行启动服务器，但按注册顺序稳定聚合工具；include/exclude 使用远端原名筛选。单个可选服务器连接、发现或 schema 适配失败时只记录诊断并关闭该服务器，必需服务器失败则关闭全部连接并终止启动。每个服务器的工具集以原子方式适配；远端重名会使该服务器失败，清洗或截断后的别名冲突以及与本地保留工具冲突会使整个聚合失败，不做隐式覆盖或顺序后缀。关闭操作幂等并按注册逆序清理所有 client。
 
-当前 manager 固定使用启动时发现的工具列表，不处理 `notifications/tools/list_changed`。这一层仍未读取 Kana 配置，也未把远端工具注册给 Agent；后续由 `kana` 产品装配层创建 client registration、传入内置工具名并注入主 Agent。memory consolidation Agent 不应获得这些外部工具。
+当前 manager 固定使用启动时发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层已能解析独立 `mcp.json` 中的 `mcpServers`，并由 `type` 判别配置创建 stdio registration；省略 `type` 时默认使用 stdio。该工厂为每个服务器构造 `StdioTransport` 和稳定版 `McpClient`，只继承少量基础环境变量，再合并服务器显式配置的 `env`，同时把 stderr、client error 和 manager error 转发给 Kana logger。TUI 尚未启动 manager 或把远端工具注册给 Agent；后续产品装配会传入内置工具名并只向主 Agent 注入。memory consolidation Agent 不应获得这些外部工具。
 
 ## Kana 产品装配
 

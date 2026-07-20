@@ -130,12 +130,20 @@ async function handleMessage(message: RpcMessage): Promise<void> {
       );
     }
 
+    const structuredContent =
+      scenario === "inspect-environment"
+        ? {
+            cwd: process.cwd(),
+            argv: process.argv.slice(2),
+            env: selectEnvironment(["HOME", "PATH", "ALLOWED_SECRET", "BLOCKED_SECRET"]),
+          }
+        : (asRecord(args) ?? {});
     await writeMessage({
       jsonrpc: "2.0",
       id: message.id,
       result: {
         content: [{ type: "text", text: JSON.stringify(args ?? {}) }],
-        structuredContent: asRecord(args) ?? {},
+        structuredContent,
         isError: false,
       },
     });
@@ -190,4 +198,13 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function selectEnvironment(names: string[]): Record<string, string> {
+  return Object.fromEntries(
+    names.flatMap((name) => {
+      const value = process.env[name];
+      return value === undefined ? [] : [[name, value]];
+    }),
+  );
 }

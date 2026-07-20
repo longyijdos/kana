@@ -72,6 +72,7 @@ export type KanaConfig = {
 export type KanaConfigPaths = {
   home: string;
   configPath: string;
+  mcpConfigPath: string;
   agentsPath: string;
   memoryDirectory: string;
   sessionsPath: string;
@@ -88,6 +89,8 @@ export type InstallKanaConfigOptions = {
 export type InstallKanaConfigResult = {
   configPath: string;
   configStatus: "created" | "exists" | "reinstalled";
+  mcpConfigPath: string;
+  mcpConfigStatus: "created" | "exists" | "reinstalled";
   approvalsPath: string;
   approvalsStatus: "created" | "exists" | "reinstalled";
   skillsConfigPath: string;
@@ -132,6 +135,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
   return {
     home,
     configPath: path.join(home, "config.toml"),
+    mcpConfigPath: path.join(home, "mcp.json"),
     agentsPath: path.join(home, "AGENTS.md"),
     memoryDirectory: path.join(home, "memory"),
     sessionsPath: path.join(home, "sessions"),
@@ -157,15 +161,24 @@ export function installKanaConfig(
   env: NodeJS.ProcessEnv = process.env,
   options: InstallKanaConfigOptions = {},
 ): InstallKanaConfigResult {
-  const { home, configPath, approvalsPath, skillsConfigPath } = getKanaConfigPaths(env);
+  const { home, configPath, mcpConfigPath, approvalsPath, skillsConfigPath } =
+    getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
 
   const configExists = existsSync(configPath);
+  const mcpConfigExists = existsSync(mcpConfigPath);
   const approvalsExists = existsSync(approvalsPath);
   const skillsConfigExists = existsSync(skillsConfigPath);
 
   if (!configExists || options.force) {
     writeFileSync(configPath, serializeKanaConfig(DEFAULT_KANA_CONFIG), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  }
+
+  if (!mcpConfigExists || options.force) {
+    writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });
@@ -190,6 +203,9 @@ export function installKanaConfig(
     configPath,
     configStatus:
       configExists && !options.force ? "exists" : configExists ? "reinstalled" : "created",
+    mcpConfigPath,
+    mcpConfigStatus:
+      mcpConfigExists && !options.force ? "exists" : mcpConfigExists ? "reinstalled" : "created",
     approvalsPath,
     approvalsStatus:
       approvalsExists && !options.force ? "exists" : approvalsExists ? "reinstalled" : "created",

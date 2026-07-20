@@ -53,13 +53,15 @@ describe("CLI", () => {
     ]);
   });
 
-  test("reports installed config and approvals", async () => {
+  test("reports every installed config file", async () => {
     const logs: string[] = [];
 
     await parse(["node", "kana", "install"], {
       installKanaConfig: () => ({
         configPath: "/tmp/config.toml",
         configStatus: "created",
+        mcpConfigPath: "/tmp/mcp.json",
+        mcpConfigStatus: "created",
         approvalsPath: "/tmp/approvals.json",
         approvalsStatus: "exists",
         skillsConfigPath: "/tmp/skills.toml",
@@ -72,6 +74,7 @@ describe("CLI", () => {
 
     expect(logs).toEqual([
       "Created config: /tmp/config.toml",
+      "Created MCP config: /tmp/mcp.json",
       "Approvals already exists: /tmp/approvals.json",
       "Created skills config: /tmp/skills.toml",
     ]);
@@ -97,6 +100,7 @@ describe("CLI", () => {
     expect(calls).toEqual([{ force: true }]);
     expect(logs).toEqual([
       "Created config: /tmp/config.toml",
+      "Created MCP config: /tmp/mcp.json",
       "Created approvals: /tmp/approvals.json",
       "Created skills config: /tmp/skills.toml",
       "Reinstalled skills: /tmp/.kana/skills/kana-skills",
@@ -174,6 +178,8 @@ function defaultCliOptions(): CreateCliOptions {
     installKanaConfig: () => ({
       configPath: "/tmp/config.toml",
       configStatus: "created",
+      mcpConfigPath: "/tmp/mcp.json",
+      mcpConfigStatus: "created",
       approvalsPath: "/tmp/approvals.json",
       approvalsStatus: "created",
       skillsConfigPath: "/tmp/skills.toml",

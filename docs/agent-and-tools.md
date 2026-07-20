@@ -106,7 +106,7 @@ type ToolContext = {
 
 ## MCP 工具管理与适配
 
-MCP 工具尚未接入 Kana 产品配置，但 `src/mcp` 已能管理多个服务器，并把发现的远端工具转换为上述通用 `Tool`。`McpManager` 只要求 client 实现 `connect/listTools/callTool/close`，工具适配器只要求 `McpToolCaller`；因此稳定版 stdio client 和后续无状态、Streamable HTTP 或 SSE client 可以共用管理与工具边界。
+Kana 已能解析独立 `mcp.json` 中的 `mcpServers` 并创建 stdio manager，但 TUI 尚未启动它或把远端工具注入 Agent。`src/mcp` 已能管理多个服务器，并把发现的远端工具转换为上述通用 `Tool`。`McpManager` 只要求 client 实现 `connect/listTools/callTool/close`，工具适配器只要求 `McpToolCaller`；因此稳定版 stdio client 和后续无状态、Streamable HTTP 或 SSE client 可以共用管理与工具边界。
 
 Manager 并行启动服务器，并按配置顺序聚合初始工具列表。include/exclude 按远端原名筛选；可选服务器失败只禁用该服务器，必需服务器失败会终止整体启动。远端普通 JSON Schema 会在工具注册前由 TypeBox 编译器预编译，单个服务器的所有工具以原子方式适配，不留下静默的部分工具集。模型看到的名字是由 server ID 和远端工具名组成的可读别名，例如 `github_create_issue`；名称符合当前 provider 的字符集要求且不超过 64 字符，内部调用仍使用原始 MCP 工具名。Manager 显式拒绝远端重名、清洗或截断后的重名以及本地工具冲突，不静默覆盖或按加载顺序追加后缀。
 

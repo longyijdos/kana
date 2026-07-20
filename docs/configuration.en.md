@@ -30,7 +30,7 @@ kana fix the failing tests
 kana resume [session-id]
 ```
 
-`kana install` does not overwrite existing files. `--force` restores `config.toml`, `approvals.json`, and `skills/skills.toml` to their defaults; when combined with `--skills`, it also deletes and reclones the default Skills directory. It does **not** create `~/.kana/AGENTS.md`; users create global instructions themselves.
+`kana install` does not overwrite existing files. `--force` restores `config.toml`, `mcp.json`, `approvals.json`, and `skills/skills.toml` to their defaults; when combined with `--skills`, it also deletes and reclones the default Skills directory. It does **not** create `~/.kana/AGENTS.md`; users create global instructions themselves.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. If the existing directory is not a Git repository, a regular update fails and `--force` is required to replace it. An existing Git repository is updated with `git pull --ff-only`.
 
@@ -43,6 +43,7 @@ Kana uses `KANA_HOME` as its root. When unset, it uses `$HOME/.kana`; when `HOME
 ```text
 ${KANA_HOME:-$HOME/.kana}/
 ├── config.toml             # Runtime configuration covered here
+├── mcp.json                # Separate MCP server configuration
 ├── approvals.json          # bash trust rules
 ├── AGENTS.md               # Optional global system instructions; not created by install
 ├── sessions/               # Workspace-grouped JSONL sessions
@@ -130,6 +131,48 @@ When `daily_retention_days` is commented out or omitted, daily memory is not pru
 Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; DeepSeek HTTP failures additionally retain status code and status text, never the response body.
 
 The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
+
+## `mcp.json`
+
+MCP servers are not stored in `config.toml`; they use a separate Claude Code-style `<KANA_HOME>/mcp.json`. A missing file or omitted `mcpServers` is equivalent to no servers. The current code parses this file and can use Kana's stdio manager factory to create stable `2025-11-25` clients. The TUI does not yet call that factory or inject its tools into an Agent, so server entries do not start subprocesses at this milestone. Product-lifecycle integration will follow in a later MCP commit.
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/projects"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxx"
+      }
+    }
+  }
+}
+```
+
+Omitting `type` defaults to `stdio`. Kana also accepts these optional extensions:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `type` | `stdio` | Only `stdio` is accepted today; later HTTP/SSE configurations extend the same discriminated union. |
+| `enabled` | `true` | Whether to create a registration for this server. |
+| `command` | Required | Absolute executable path or a name resolved through `PATH`. It is launched directly as an argument array, never through a shell. |
+| `args` | `[]` | Arguments passed to the executable. |
+| `cwd` | Kana's current working directory | Child-process working directory; relative paths resolve from the directory where Kana runs. |
+| `env` | `{}` | String key/value pairs explicitly added to the child environment. Configured values override matching baseline variables. |
+| `required` | `false` | Whether a startup failure prevents the whole MCP manager from becoming ready. |
+| `startupTimeoutMs` | `10000` | Timeout for the MCP initialization handshake after starting the stdio process. |
+| `requestTimeoutMs` | `60000` | Default timeout for ordinary MCP requests. |
+| `includeTools` | Unset | Allowlist matched against original remote tool names. An empty array exposes no tools. |
+| `excludeTools` | Unset | Denylist matched against original remote names; exclusion wins when a name appears in both lists. |
+
+The stdio child inherits only defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges `env`. No other process environment variables are inherited. Environment names must use conventional syntax and values must be strings. Unknown fields, non-positive timeouts, and duplicate or empty tool names fail configuration loading.
+
+Server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. `env` currently uses literal JSON values, so tokens are stored in plaintext inside `mcp.json`; do not commit or share this file, and use least-privilege credentials. `kana install` creates it with mode `0600`, but `kana install --force` also resets it to an empty configuration. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
 
 ## API key and project instructions
 

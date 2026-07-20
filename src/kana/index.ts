@@ -39,6 +39,17 @@ export {
   formatKanaEnvironmentContext,
   type KanaEnvironmentContext,
 } from "./context";
+export { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./mcp";
+export {
+  DEFAULT_KANA_MCP_CONFIG,
+  KANA_MCP_SERVER_TYPES,
+  type KanaMcpConfig,
+  type KanaMcpServerConfig,
+  type KanaMcpServerType,
+  type KanaMcpStdioServerConfig,
+  loadKanaMcpConfig,
+  parseKanaMcpConfig,
+} from "./mcp-config";
 export {
   type AppendKanaMemoryOptions,
   appendKanaMemory,

@@ -69,6 +69,7 @@ export function createCli(options: CreateCliOptions): Command {
         force: options.force,
       });
       log(formatInstallMessage("config", result.configPath, result.configStatus));
+      log(formatInstallMessage("MCP config", result.mcpConfigPath, result.mcpConfigStatus));
       log(formatInstallMessage("approvals", result.approvalsPath, result.approvalsStatus));
       log(
         formatInstallMessage("skills config", result.skillsConfigPath, result.skillsConfigStatus),

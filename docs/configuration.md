@@ -30,7 +30,7 @@ kana 修复测试失败
 kana resume [session-id]
 ```
 
-`kana install` 不会覆盖已经存在的文件。`--force` 会将 `config.toml`、`approvals.json` 和 `skills/skills.toml` 恢复为默认内容；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。它**不会**创建 `~/.kana/AGENTS.md`，全局指令文件需要用户自行创建。
+`kana install` 不会覆盖已经存在的文件。`--force` 会将 `config.toml`、`mcp.json`、`approvals.json` 和 `skills/skills.toml` 恢复为默认内容；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。它**不会**创建 `~/.kana/AGENTS.md`，全局指令文件需要用户自行创建。
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。已有目录不是 Git 仓库时，普通更新会报错，必须使用 `--force` 才会替换它；已有 Git 仓库则执行 `git pull --ff-only`。
 
@@ -43,6 +43,7 @@ Kana 使用 `KANA_HOME` 指定根目录；未设置时使用 `$HOME/.kana`，若
 ```text
 ${KANA_HOME:-$HOME/.kana}/
 ├── config.toml             # 本文的运行配置
+├── mcp.json                # 独立的 MCP server 配置
 ├── approvals.json          # bash 信任规则
 ├── AGENTS.md               # 可选：全局系统指令，不由 install 创建
 ├── sessions/               # 按工作区分组的 JSONL 会话
@@ -130,6 +131,48 @@ export DEEPSEEK_API_KEY='sk-...'
 默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；DeepSeek HTTP 失败额外记录状态码和状态文本，但不保存响应体。
 
 配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
+
+## `mcp.json`
+
+MCP server 不写入 `config.toml`，而是使用 Claude Code 风格的独立 `<KANA_HOME>/mcp.json`。文件不存在或省略 `mcpServers` 时等价于没有服务器。当前代码已解析该文件，并可通过 Kana 的 stdio manager 工厂创建稳定版 `2025-11-25` client；TUI 尚未调用该工厂或把工具注入 Agent，因此这个阶段写入服务器配置不会启动子进程。产品生命周期接入会在后续 MCP 提交中完成。
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/projects"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxx"
+      }
+    }
+  }
+}
+```
+
+省略 `type` 时默认为 `stdio`。Kana 还接受以下可选扩展：
+
+| 键 | 默认值 | 含义 |
+| --- | --- | --- |
+| `type` | `stdio` | 当前只接受 `stdio`；后续 HTTP/SSE 配置会扩展同一判别联合。 |
+| `enabled` | `true` | 是否为该服务器创建 registration。 |
+| `command` | 必填 | 可执行文件的绝对路径或通过 `PATH` 查找的名称。直接以参数数组启动，不经过 shell。 |
+| `args` | `[]` | 传给可执行文件的参数数组。 |
+| `cwd` | Kana 当前工作目录 | 子进程工作目录；相对路径由运行 Kana 的当前目录解析。 |
+| `env` | `{}` | 显式加入子进程环境的字符串键值。配置值覆盖同名基础环境变量。 |
+| `required` | `false` | 启动失败是否阻止 MCP manager 整体就绪。 |
+| `startupTimeoutMs` | `10000` | stdio 进程启动后完成 MCP 初始化握手的超时。 |
+| `requestTimeoutMs` | `60000` | 普通 MCP 请求的默认超时。 |
+| `includeTools` | 未设置 | 按远端原名选择允许暴露的工具。空数组表示不暴露任何工具。 |
+| `excludeTools` | 未设置 | 按远端原名排除工具；同时出现在 include/exclude 时以排除为准。 |
+
+stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并 `env`。不会继承其他进程环境变量。环境变量名必须符合常规格式，值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
+
+服务器配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。`env` 当前按 JSON 字面值处理，包含 token 时会以明文保存在 `mcp.json`；不要提交或分享该文件，并使用最小权限凭据。`kana install` 以 `0600` 创建文件，但 `kana install --force` 也会把它重置为空配置。协议版本由代码维护，不提供任意字符串配置。
 
 ## API key 与项目指令
 
