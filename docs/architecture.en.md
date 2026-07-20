@@ -77,10 +77,13 @@ A request can be cancelled by the Agent and is also subject to the `timeoutMs` i
 `src/mcp` implements MCP with the following dependency direction, keeping remote-tool logic out of the Agent loop and provider adapters:
 
 ```text
-McpClient (2025-11-25 lifecycle, capabilities, tools/list, tools/call)
-  → McpConnection (request IDs, out-of-order responses, timeouts, cancellation, progress, ping)
-    → McpTransport (bidirectional JSON-RPC message boundary)
-      → StdioTransport (subprocess, line-delimited UTF-8 framing, stderr, shutdown order)
+McpManager (multi-server lifecycle, filtering, conflicts, diagnostics)
+  ├→ McpToolAdapter → Tool
+  └→ McpManagedClient
+      → McpClient (2025-11-25 lifecycle, capabilities, tools/list, tools/call)
+        → McpConnection (request IDs, out-of-order responses, timeouts, cancellation, progress, ping)
+          → McpTransport (bidirectional JSON-RPC message boundary)
+            → StdioTransport (subprocess, line-delimited UTF-8 framing, stderr, shutdown order)
 ```
 
 `McpConnection` does not initialize sessions or know about version-specific features such as tools. A future stateless protocol client can therefore reuse it without inheriting the `2025-11-25` handshake. `StdioTransport` only delivers messages and never negotiates versions or capabilities. Streamable HTTP and legacy SSE will implement the same transport boundary independently instead of reusing stdio process state.
@@ -89,9 +92,11 @@ The current foundation client strictly follows the published `2025-11-25` lifecy
 
 The stdio transport launches an argument array directly without a shell. stdout accepts only one JSON-RPC message per line and enforces a byte limit. Protocol pollution, invalid UTF-8 or JSON, non-zero exits, and incomplete messages close the connection and reject pending requests. stderr remains separate from the protocol and is forwarded through a protected diagnostic callback. Graceful shutdown closes stdin, waits for the process, sends SIGTERM, and sends SIGKILL after a second timeout.
 
-`McpToolAdapter` depends only on the structural `McpToolCaller` interface, not on the stable client or stdio. At discovery time it precompiles the remote `inputSchema`, generates a readable model alias of at most 64 characters from the server ID and remote tool name, and maps MCP progress to `ToolContext.update`. Alias collisions are rejected explicitly by the product manager rather than silently overwritten or resolved with load-order suffixes. Result adaptation bounds content items, text, structured data, and metadata. Text and embedded text resources may enter model context; resource links become descriptions; images, audio, and blobs retain only MIME and estimated byte counts, never persisted base64. JSON-RPC errors and MCP `isError` results retain distinct structured error semantics.
+`McpToolAdapter` depends only on the structural `McpToolCaller` interface, not on the stable client or stdio. At discovery time it precompiles the remote `inputSchema`, generates a readable model alias of at most 64 characters from the server ID and remote tool name, and maps MCP progress to `ToolContext.update`. Result adaptation bounds content items, text, structured data, and metadata. Text and embedded text resources may enter model context; resource links become descriptions; images, audio, and blobs retain only MIME and estimated byte counts, never persisted base64. JSON-RPC errors and MCP `isError` results retain distinct structured error semantics.
 
-This layer does not yet read Kana configuration or register remote tools with an Agent. A manager in the `kana` composition layer will provide that product integration later; the memory consolidation Agent must not receive these external tools.
+`McpManager` depends only on the structural `McpManagedClient` interface and does not create a concrete protocol client or transport. It starts servers concurrently but aggregates tools stably in registration order; include/exclude filters match original remote names. A connection, discovery, or schema-adaptation failure from an optional server records diagnostics and closes only that server, while a required-server failure closes every connection and aborts startup. Each server's tools are adapted atomically. Duplicate remote names fail that server; post-sanitization or truncation alias collisions and conflicts with reserved local tools fail the entire aggregation instead of being silently overwritten or assigned order-dependent suffixes. Shutdown is idempotent and closes clients in reverse registration order.
+
+The manager currently freezes the tool list discovered at startup and does not process `notifications/tools/list_changed`. This layer still does not read Kana configuration or register remote tools with an Agent. The later `kana` product-composition layer will create client registrations, reserve built-in tool names, and inject the resulting tools into the main Agent. The memory consolidation Agent must not receive these external tools.
 
 ## Kana product composition
 

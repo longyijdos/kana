@@ -77,10 +77,13 @@ src/main.ts
 `src/mcp` 按以下依赖方向实现 MCP，不把远端工具逻辑放进 Agent loop 或供应商适配器：
 
 ```text
-McpClient（2025-11-25 lifecycle、capabilities、tools/list、tools/call）
-  → McpConnection（请求 ID、乱序响应、超时、取消、进度、ping）
-    → McpTransport（双向 JSON-RPC 消息边界）
-      → StdioTransport（子进程、逐行 UTF-8 framing、stderr、关闭顺序）
+McpManager（多服务器生命周期、筛选、冲突、诊断）
+  ├→ McpToolAdapter → Tool
+  └→ McpManagedClient
+      → McpClient（2025-11-25 lifecycle、capabilities、tools/list、tools/call）
+        → McpConnection（请求 ID、乱序响应、超时、取消、进度、ping）
+          → McpTransport（双向 JSON-RPC 消息边界）
+            → StdioTransport（子进程、逐行 UTF-8 framing、stderr、关闭顺序）
 ```
 
 `McpConnection` 不执行初始化，也不知道 tools 等版本特性；因此后续无状态协议客户端可以复用它，而不继承 `2025-11-25` 的握手。`StdioTransport` 只传递消息，不协商版本或能力；Streamable HTTP 和旧 SSE 将作为独立 transport 实现同一边界，不复用 stdio 的进程状态。
@@ -89,9 +92,11 @@ McpClient（2025-11-25 lifecycle、capabilities、tools/list、tools/call）
 
 stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受一行一个 JSON-RPC 消息，并设置最大字节数；协议污染、无效 UTF-8/JSON、非零退出和未完成消息都会关闭连接并拒绝 pending 请求。stderr 与协议分离，通过受保护的诊断回调交给上层。正常关闭依次关闭 stdin、等待进程、发送 SIGTERM，并在再次超时后发送 SIGKILL。
 
-`McpToolAdapter` 只依赖结构化的 `McpToolCaller`，不绑定稳定版 client 或 stdio。它在工具发现时预编译远端 `inputSchema`，使用 server ID 和远端工具名生成最长 64 字符的可读模型别名，并把 MCP 进度映射到 `ToolContext.update`。别名冲突由产品 manager 显式拒绝，不使用隐式覆盖或加载顺序后缀。结果适配器限制内容项、文本、结构化数据和元数据大小；text 与嵌入文本资源可进入模型上下文，resource link 只转为描述，image、audio 和 blob 只保留 MIME 与估算字节数，不持久化 base64。JSON-RPC error 与 MCP `isError` 保持不同的结构化错误语义。
+`McpToolAdapter` 只依赖结构化的 `McpToolCaller`，不绑定稳定版 client 或 stdio。它在工具发现时预编译远端 `inputSchema`，使用 server ID 和远端工具名生成最长 64 字符的可读模型别名，并把 MCP 进度映射到 `ToolContext.update`。结果适配器限制内容项、文本、结构化数据和元数据大小；text 与嵌入文本资源可进入模型上下文，resource link 只转为描述，image、audio 和 blob 只保留 MIME 与估算字节数，不持久化 base64。JSON-RPC error 与 MCP `isError` 保持不同的结构化错误语义。
 
-这一层目前尚未读取 Kana 配置，也未把远端工具注册给 Agent。后续产品接入由 `kana` 层的 manager 完成；memory consolidation Agent 不应获得这些外部工具。
+`McpManager` 只依赖结构化的 `McpManagedClient`，不创建具体协议 client 或 transport。它并行启动服务器，但按注册顺序稳定聚合工具；include/exclude 使用远端原名筛选。单个可选服务器连接、发现或 schema 适配失败时只记录诊断并关闭该服务器，必需服务器失败则关闭全部连接并终止启动。每个服务器的工具集以原子方式适配；远端重名会使该服务器失败，清洗或截断后的别名冲突以及与本地保留工具冲突会使整个聚合失败，不做隐式覆盖或顺序后缀。关闭操作幂等并按注册逆序清理所有 client。
+
+当前 manager 固定使用启动时发现的工具列表，不处理 `notifications/tools/list_changed`。这一层仍未读取 Kana 配置，也未把远端工具注册给 Agent；后续由 `kana` 产品装配层创建 client registration、传入内置工具名并注入主 Agent。memory consolidation Agent 不应获得这些外部工具。
 
 ## Kana 产品装配
 

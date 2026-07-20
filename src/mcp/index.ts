@@ -18,6 +18,21 @@ export {
   McpResponseError,
 } from "./errors";
 export {
+  type McpManagedClient,
+  McpManager,
+  type McpManagerErrorEvent,
+  type McpManagerErrorPhase,
+  type McpManagerOptions,
+  McpManagerStartError,
+  type McpManagerState,
+  type McpServerDiagnostic,
+  type McpServerRegistration,
+  type McpServerStartFailure,
+  type McpServerStatus,
+  McpToolNameConflictError,
+  type McpToolNameSource,
+} from "./manager";
+export {
   isJsonObject,
   isJsonRpcErrorResponse,
   isJsonRpcId,
