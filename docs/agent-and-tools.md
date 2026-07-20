@@ -108,7 +108,7 @@ type ToolContext = {
 
 MCP 工具尚未接入 Kana 产品配置，但 `src/mcp` 已能把发现的远端工具转换为上述通用 `Tool`。适配器不依赖具体协议版本或 transport，只要求调用方实现 `McpToolCaller`；因此稳定版 stdio client 和后续无状态/HTTP client 可以共用同一工具边界。
 
-远端普通 JSON Schema 会在工具注册前由 TypeBox 编译器预编译，调用时继续走 Agent 的统一参数转换和校验。模型看到的名字不是远端原名，而是由 server ID、可读 slug 和身份 hash 组成的稳定别名；名称符合当前 provider 的字符集要求且不超过 64 字符，内部调用仍使用原始 MCP 工具名。这样同名服务器工具、清洗后同名和本地工具冲突都可由产品 manager 稳定检测，而不依赖加载顺序。
+远端普通 JSON Schema 会在工具注册前由 TypeBox 编译器预编译，调用时继续走 Agent 的统一参数转换和校验。模型看到的名字是由 server ID 和远端工具名组成的可读别名，例如 `github_create_issue`；名称符合当前 provider 的字符集要求且不超过 64 字符，内部调用仍使用原始 MCP 工具名。产品 manager 必须显式拒绝远端重名、清洗或截断后的重名以及本地工具冲突，不能静默覆盖或按加载顺序追加后缀。
 
 MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 JSON 和元数据分别限长；text 与嵌入文本资源转换成模型文本，resource link 只描述 URI/MIME 而不自动读取，image、audio 和 blob 丢弃 base64 后只记录 MIME 与估算字节数，未知内容类型只记录类型名。`structuredContent` 在限制内保留结构，超限时只保留截断预览。远端进度通过 `context.update` 发出；MCP `isError` 作为工具执行错误返回，JSON-RPC error 则保存 code/message 等协议错误信息。
 

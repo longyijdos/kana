@@ -11,9 +11,10 @@ import {
 import { validateToolArguments } from "../src/tools";
 
 describe("MCP tool adapter", () => {
-  test("creates deterministic provider-safe aliases", () => {
+  test("creates readable provider-safe aliases", () => {
     const alias = createMcpToolAlias("GitHub Server", "admin.tools/create issue");
 
+    expect(alias).toBe("github_server_admin_tools_create_issue");
     expect(alias).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     expect(alias).toBe(createMcpToolAlias("GitHub Server", "admin.tools/create issue"));
     expect(alias).not.toBe(createMcpToolAlias("another-server", "admin.tools/create issue"));
@@ -60,7 +61,7 @@ describe("MCP tool adapter", () => {
       update: (partial) => updates.push(partial),
     });
 
-    expect(tool.name).toStartWith("mcp_github_create_issue_");
+    expect(tool.name).toBe("github_create_issue");
     expect(tool.description).toContain("MCP server: github; remote tool: create.issue.");
     expect(calls).toEqual([
       { name: "create.issue", args: { count: 2 }, signal: controller.signal },
