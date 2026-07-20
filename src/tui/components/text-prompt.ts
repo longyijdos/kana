@@ -80,7 +80,7 @@ export class TextPrompt implements Component {
     });
     this.inputViewportStartLine = layout.startLine;
     const lines = [
-      color(summarizeText(this.options.title), tuiTheme.toolActive),
+      color(summarizeText(this.options.title), tuiTheme.bottomTitle),
       `+${"-".repeat(frameWidth - 2)}+`,
     ];
 

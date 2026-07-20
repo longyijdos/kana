@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { TextPrompt } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
 import { CURSOR_MARKER, stripCursorMarker } from "../src/tui/runtime";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("text prompt", () => {
   test("renders a title and editable input without a status line", () => {
@@ -16,6 +17,7 @@ describe("text prompt", () => {
     const visible = rendered.map((line) => stripAnsi(stripCursorMarker(line)));
 
     expect(visible[0]).toBe("Compaction request (optional)");
+    expect(rendered[0]).toBe(color("Compaction request (optional)", tuiTheme.bottomTitle));
     expect(visible.some((line) => line.includes("> No additional request"))).toBe(true);
     expect(rendered.filter((line) => line.includes(CURSOR_MARKER))).toHaveLength(1);
     expect(visible.some((line) => line.includes("idle"))).toBe(false);

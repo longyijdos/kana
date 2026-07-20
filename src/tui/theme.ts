@@ -14,6 +14,7 @@ export const tuiTheme = {
   shortcutHint: [192, 153, 224],
   command: [192, 153, 224],
   commandSelected: [213, 176, 245],
+  bottomTitle: [105, 208, 196],
   muted: [139, 148, 158],
   model: [126, 166, 255],
   contextUsage: [105, 208, 196],

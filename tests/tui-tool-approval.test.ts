@@ -17,12 +17,17 @@ describe("tool approval", () => {
       () => {},
     );
 
-    const rendered = approval.render(80).map(stripAnsi);
+    const rawRendered = approval.render(80);
+    const rendered = rawRendered.map(stripAnsi);
 
     expect(rendered).toContain("Allow agent to run bash?");
     expect(rendered).toContain("bun test");
     expect(rendered).toContain("> Allow once");
     expect(rendered).toContain("  Deny");
+    expect(rawRendered[0]).toBe(color("Allow agent to run bash?", tuiTheme.toolActive));
+    expect(rawRendered.find((line) => line.includes("Allow once"))).toBe(
+      color("> Allow once", tuiTheme.user),
+    );
   });
 
   test("renders the always allow option when enabled", () => {

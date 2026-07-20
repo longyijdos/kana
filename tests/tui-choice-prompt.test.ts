@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ChoicePrompt } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("choice prompt", () => {
   test("renders the default selection", () => {
@@ -15,12 +16,16 @@ describe("choice prompt", () => {
       onSelect: () => {},
     });
 
-    expect(prompt.render(80).map(stripAnsi)).toEqual([
+    const rendered = prompt.render(80);
+
+    expect(rendered.map(stripAnsi)).toEqual([
       "Delete session?",
       "Example session",
       "> No, keep it",
       "  Yes, delete",
     ]);
+    expect(rendered[0]).toBe(color("Delete session?", tuiTheme.bottomTitle));
+    expect(rendered[2]).toBe(color("> No, keep it", tuiTheme.user));
   });
 
   test("wraps detail text instead of truncating it", () => {

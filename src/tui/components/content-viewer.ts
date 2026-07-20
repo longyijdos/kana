@@ -92,7 +92,7 @@ export class ContentViewer implements Component {
     );
     const window = this.viewport.window(content.length);
     const title = truncateToWidth(
-      color(summarizeText(this.view.title), tuiTheme.toolActive),
+      color(summarizeText(this.view.title), tuiTheme.bottomTitle),
       width,
     );
     const lines = [title];

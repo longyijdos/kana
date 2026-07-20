@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaSessionMetadata } from "@/kana";
-import { SessionPicker, type SessionPickerDecision } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import {
+  DeleteSessionConfirmation,
+  SessionPicker,
+  type SessionPickerDecision,
+} from "../src/tui/components";
+import { color, stripAnsi } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 const sessions: KanaSessionMetadata[] = [
   {
@@ -31,11 +36,14 @@ describe("session picker", () => {
       decisions.push(decision);
     });
 
-    expect(picker.render(100).map(stripAnsi)).toEqual([
+    const rendered = picker.render(100);
+
+    expect(rendered.map(stripAnsi)).toEqual([
       "Sessions",
       `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  Explain lazy sessions  deepseek/deepseek-v4-pro`,
       `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  Add fork prompt titles  unknown model`,
     ]);
+    expect(rendered[0]).toBe(color("Sessions", tuiTheme.bottomTitle));
 
     picker.handleInput("\x1b[B");
     picker.handleInput("\r");
@@ -46,6 +54,16 @@ describe("session picker", () => {
         session: sessions[1],
       },
     ]);
+  });
+
+  test("uses danger only for the delete confirmation title", () => {
+    const confirmation = new DeleteSessionConfirmation(sessions[0], () => {});
+    const rendered = confirmation.render(100);
+
+    expect(rendered[0]).toBe(color("Delete session?", tuiTheme.error));
+    expect(rendered.find((line) => line.includes("No, keep it"))).toBe(
+      color("> No, keep it", tuiTheme.user),
+    );
   });
 
   test("cancels with escape", () => {

@@ -25,7 +25,7 @@ export class ToolApproval implements Component {
       detail: text.detail,
       options: createOptions(options),
       defaultValue: "yes",
-      accentColor: tuiTheme.toolActive,
+      titleColor: tuiTheme.toolActive,
       highlight: highlightOverwriteMarker,
       onSelect: onDecision,
     });

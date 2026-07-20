@@ -59,7 +59,7 @@ export class SessionPicker implements Component {
   }
 
   render(width: number, availableHeight?: number): string[] {
-    const lines = [color("Sessions", tuiTheme.muted)];
+    const lines = [color("Sessions", tuiTheme.bottomTitle)];
 
     if (this.sessions.length === 0) {
       lines.push(dim("No saved sessions for this workspace."));

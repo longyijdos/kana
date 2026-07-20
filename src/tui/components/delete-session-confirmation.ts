@@ -21,7 +21,7 @@ export class DeleteSessionConfirmation implements Component {
         { value: "yes", label: "Yes, delete" },
       ],
       defaultValue: "no",
-      accentColor: tuiTheme.error,
+      titleColor: tuiTheme.error,
       onSelect: (decision) => finish(decision === "yes"),
     });
   }

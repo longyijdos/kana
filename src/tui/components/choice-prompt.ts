@@ -14,7 +14,8 @@ export type ChoicePromptOptions<T extends string> = {
   detail?: string;
   options: ChoicePromptOption<T>[];
   defaultValue: T;
-  accentColor?: Color;
+  titleColor?: Color;
+  selectionColor?: Color;
   highlight?: (line: string) => string;
   onSelect: (value: T) => void;
   onCancel?: () => void;
@@ -33,14 +34,15 @@ export class ChoicePrompt<T extends string> implements Component {
   }
 
   render(width: number, availableHeight?: number): string[] {
-    const accentColor = this.options.accentColor ?? tuiTheme.toolActive;
+    const titleColor = this.options.titleColor ?? tuiTheme.bottomTitle;
+    const selectionColor = this.options.selectionColor ?? tuiTheme.user;
     const highlight = this.options.highlight ?? ((line: string) => line);
-    const titleLines = mapLines(this.options.title, (line) => highlight(color(line, accentColor)));
+    const titleLines = mapLines(this.options.title, (line) => highlight(color(line, titleColor)));
     const detailLines = this.options.detail
       ? wrapPlainText(this.options.detail, width).map((line) => highlight(dim(line)))
       : [];
     const optionLines = this.options.options.map((option, index) =>
-      this.renderOption(option, index, accentColor),
+      this.renderOption(option, index, selectionColor),
     );
     const lines = [
       ...titleLines,
@@ -95,11 +97,15 @@ export class ChoicePrompt<T extends string> implements Component {
       (this.selectedIndex + delta + this.options.options.length) % this.options.options.length;
   }
 
-  private renderOption(option: ChoicePromptOption<T>, index: number, accentColor: Color): string {
+  private renderOption(
+    option: ChoicePromptOption<T>,
+    index: number,
+    selectionColor: Color,
+  ): string {
     const selected = index === this.selectedIndex;
     const line = `${selected ? "> " : "  "}${option.label}`;
 
-    return selected ? color(line, accentColor) : line;
+    return selected ? color(line, selectionColor) : line;
   }
 
   private renderDetail(

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SkillManager, type SkillManagerDecision } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("skill manager", () => {
   test("renders global and project skills as checkboxes", () => {
@@ -24,12 +25,14 @@ describe("skill manager", () => {
       () => {},
     );
 
-    const rendered = manager.render(80).map(stripAnsi);
+    const rawRendered = manager.render(80);
+    const rendered = rawRendered.map(stripAnsi);
 
     expect(rendered).toContain("Skills");
     expect(rendered).toContain("> [x] project-skill  project locked");
     expect(rendered).toContain("  Project-local skill.");
     expect(rendered).toContain("  [ ] global-skill  global");
+    expect(rawRendered[0]).toBe(color("Skills", tuiTheme.bottomTitle));
   });
 
   test("renders multiline descriptions as a single logical line", () => {

@@ -60,7 +60,7 @@ export class SkillManager implements Component {
   }
 
   render(width: number, availableHeight?: number): string[] {
-    const lines = [color("Skills", tuiTheme.muted)];
+    const lines = [color("Skills", tuiTheme.bottomTitle)];
 
     if (this.skills.length === 0) {
       lines.push(dim("No skills found for this workspace."));

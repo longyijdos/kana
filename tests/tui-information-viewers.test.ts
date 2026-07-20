@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../src/tui/app/app";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
 import type { Component, Terminal } from "../src/tui/runtime";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("information viewers", () => {
   test("opens help in the bottom viewer without adding transcript content", () => {
@@ -11,11 +12,13 @@ describe("information viewers", () => {
 
     internal.handleCommand({ name: "help", arguments: "", raw: "/help" });
 
-    const rendered = internal.layout.render(80, 24).map(stripAnsi);
+    const rawRendered = internal.layout.render(80, 24);
+    const rendered = rawRendered.map(stripAnsi);
 
     expect(internal.transcript.children).toHaveLength(0);
     expect(internal.contentViewer.active).toBe(true);
     expect(rendered).toContain("Slash commands");
+    expect(rawRendered).toContain(color("Slash commands", tuiTheme.bottomTitle));
     expect(
       rendered.some((line) => line.includes("/help") && line.includes("Show slash commands")),
     ).toBe(true);
