@@ -42,7 +42,7 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 | `responseFormat` | `response_format` |
 | `userId` | `user_id` |
 
-当 `thinking` 显式为 `false` 时，不发送 `reasoning_effort`，因为 DeepSeek 拒绝这一组合。若上下文有工具，则每个 TypeBox schema 作为 function `parameters` 透传，默认 `tool_choice` 为 `auto`；`strictTools` 会给每个 function 加上 `strict: true`。上下文没有工具时，只有显式配置的 `toolChoice` 才会被发送。
+当 `thinking` 显式为 `false` 时，不发送 `reasoning_effort`，因为 DeepSeek 拒绝这一组合。若上下文有工具，则每个工具的 JSON Schema 作为 function `parameters` 透传，默认 `tool_choice` 为 `auto`；`strictTools` 会给每个 function 加上 `strict: true`。上下文没有工具时，只有显式配置的 `toolChoice` 才会被发送。
 
 ## 认证、取消、超时与重试
 

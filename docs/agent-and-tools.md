@@ -79,7 +79,7 @@ Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时�
 每个调用按以下顺序处理：
 
 1. 按名称查找工具；找不到时生成错误工具结果。
-2. 对原始参数深拷贝后执行 `TypeBox Value.Convert`，再使用编译缓存的 schema 校验。
+2. 深拷贝原始参数；TypeBox schema 先执行 `Value.Convert`，序列化后缺少 TypeBox 元数据的普通 JSON Schema 则补充兼容的基础类型转换，再使用编译缓存的 schema 校验。
 3. 调用可选的 `beforeToolExecution` 钩子。Kana TUI 在此显示审批界面。
 4. 检查中止信号，发出 `tool_execution_start`，执行工具。
 5. 工具可调用 `context.update(partialResult)`；运行时会发出对应更新事件，并在结束前等待这些事件的监听器完成。
@@ -126,7 +126,7 @@ type ToolContext = {
 
 ## 自定义工具的约束
 
-- 始终使用 TypeBox schema；运行时没有 JSON Schema 回退路径。
+- 在 TypeScript 中优先使用 TypeBox 1.x schema，以保留静态参数类型。运行时也接受 TypeBox schema 经 JSON 序列化后的普通 JSON Schema；这类 schema 会补充兼容的基础类型转换，再由 TypeBox 编译器校验。
 - 返回可序列化的结构化 `result`，并提供简短、对模型有用的 `content`。
 - 对可长时间运行的工具检查 `context.signal`，并用 `context.update` 提供进度。
 - 让失败抛出有操作意义的 `Error`；循环会将其安全转换为模型可见的工具结果。

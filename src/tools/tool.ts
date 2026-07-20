@@ -1,4 +1,4 @@
-import type { Static, TSchema } from "@sinclair/typebox";
+import type { Static, TSchema } from "typebox";
 
 export type ToolSpec<T extends TSchema = TSchema> = {
   name: string;

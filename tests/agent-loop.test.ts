@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentEvent } from "../src/agent/events";
 import { runAgentLoop } from "../src/agent/loop";
 import type { ModelContext } from "../src/core/context";

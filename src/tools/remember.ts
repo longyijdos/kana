@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 import { appendKanaMemory, type KanaMemoryEntry } from "@/kana";
 import type { Tool } from "./tool";

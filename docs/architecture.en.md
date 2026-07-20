@@ -56,13 +56,13 @@ Providers first produce `AssistantMessageEvent` values. An event contains both a
 
 `Agent` is the stateful controller for one run. It rejects concurrent runs; `stream()` first appends user input to its internal history, then creates an `AbortController`, and commits this run's generated assistant messages and tool results to state only on `agent_end`. The `state` getter deep-clones mutable data, so callers cannot alter its in-flight history.
 
-`runAgentLoop` defaults to at most eight turns, while Kana's default config sets it to `-1`, meaning no turn limit. Each turn first streams an assistant message; tool calls run sequentially only when the stop reason is `toolUse`. Every call goes through TypeBox validation and the optional `beforeToolExecution` hook. Rejection, cancellation, missing tools, validation errors, and tool exceptions become tool results sent back to the model; rejection or cancellation terminates the run.
+`runAgentLoop` defaults to at most eight turns, while Kana's default config sets it to `-1`, meaning no turn limit. Each turn first streams an assistant message; tool calls run sequentially only when the stop reason is `toolUse`. Every call goes through TypeBox 1.x validation and the optional `beforeToolExecution` hook; plain schemas that lost TypeBox metadata during JSON serialization can be validated by the same compiler. Rejection, cancellation, missing tools, validation errors, and tool exceptions become tool results sent back to the model; rejection or cancellation terminates the run.
 
 ## Model and provider adapters
 
 `core/model.ts` defines `Model`: a provider only needs to provide metadata and `stream(context)`; the base class implements `generate()` by collecting a stream. `providers/index.ts` is the centralized factory. The product config currently permits only DeepSeek, while `MockModel` exists for tests.
 
-`DeepSeekModel` converts the generic messages, system prompt, and TypeBox tool schemas into DeepSeek's OpenAI-compatible request format and sends an SSE request to `/chat/completions`. The stream parser:
+`DeepSeekModel` converts the generic messages, system prompt, and tool JSON Schemas into DeepSeek's OpenAI-compatible request format and sends an SSE request to `/chat/completions`. The stream parser:
 
 1. Buffers SSE frames split by network chunks.
 2. Writes reasoning, visible text, and tool-argument deltas into one ordered assistant message.
@@ -110,7 +110,7 @@ Skills are discovered recursively from project `.kana/skills`, project `.agents/
 
 ## Tools, approval, and safety boundaries
 
-Tools use TypeBox schemas. Calls first run `Value.Convert`, then validation; only validated arguments reach a tool. Tool results separate provider-facing text in `content` from the structured `result` used by the Agent and TUI, so the presentation layer does not parse provider text.
+Tools preferentially use TypeBox 1.x schemas. Calls first convert and compile-validate arguments; only validated values reach a tool. TypeBox metadata is lost during JSON serialization, so Kana adds compatible primitive coercion for those plain JSON Schemas before validating them with the same TypeBox compiler. Tool results separate provider-facing text in `content` from the structured `result` used by the Agent and TUI, so the presentation layer does not parse provider text.
 
 - `list` lists one directory level, `glob` finds paths with a relative pattern, and `grep` searches text content; all three provide controlled read-only exploration.
 - `read` reads text files with line pagination.

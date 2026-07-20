@@ -79,7 +79,7 @@ While running, `Agent.state` exposes its model, system prompt, tools, history, `
 Every tool call is processed in this order:
 
 1. Find the tool by name; missing tools produce an error tool result.
-2. Deep-clone raw arguments, run `TypeBox Value.Convert`, then validate using the cached compiled schema.
+2. Deep-clone raw arguments. TypeBox schemas run through `Value.Convert`; plain JSON Schemas that lost TypeBox metadata during serialization receive compatible primitive coercion before validation with the cached compiled schema.
 3. Invoke the optional `beforeToolExecution` hook. Kana's TUI shows its approval UI here.
 4. Check the abort signal, emit `tool_execution_start`, and execute the tool.
 5. A tool may call `context.update(partialResult)`; the runtime emits matching update events and waits for their listeners before finishing.
@@ -126,7 +126,7 @@ type ToolContext = {
 
 ## Constraints for custom tools
 
-- Always use a TypeBox schema; the runtime has no JSON Schema fallback.
+- Prefer TypeBox 1.x schemas in TypeScript so tool arguments retain static types. The runtime also accepts plain JSON Schema produced by serializing a TypeBox schema; it applies compatible primitive coercion before validating with the TypeBox compiler.
 - Return a serializable structured `result` with concise, model-useful `content`.
 - Check `context.signal` in long-running work and use `context.update` for progress.
 - Throw actionable `Error` values for failures; the loop safely converts them into model-visible results.
