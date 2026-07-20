@@ -34,17 +34,18 @@ const EDIT_PARAMETERS = Type.Object({
 const REPLACE_PARAMETERS = Type.Object({
   content: Type.String({ description: "Complete replacement memory." }),
 });
-const DATE_RANGE_PARAMETERS = Type.Object({
+const DATE_RANGE_PROPERTIES = {
   startDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
   endDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
-});
+};
+const DATE_RANGE_PARAMETERS = Type.Object(DATE_RANGE_PROPERTIES);
 const READ_DAILY_PARAMETERS = Type.Object({
   date: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
 });
-const SEARCH_PARAMETERS = Type.Intersect([
-  DATE_RANGE_PARAMETERS,
-  Type.Object({ query: Type.String({ minLength: 1 }) }),
-]);
+const SEARCH_PARAMETERS = Type.Object({
+  ...DATE_RANGE_PROPERTIES,
+  query: Type.String({ minLength: 1 }),
+});
 
 export function createMemoryConsolidationTransaction(
   options: MemoryConsolidationToolOptions,

@@ -48,6 +48,19 @@ describe("memory consolidation agent", () => {
     ]);
   });
 
+  test("uses object-rooted parameter schemas for full consolidation tools", () => {
+    const env = createTempEnv();
+    const tools = createMemoryConsolidationTools(
+      { scope: "global", env },
+      "full",
+      createMemoryConsolidationTransaction({ scope: "global", env }),
+    );
+
+    for (const tool of tools) {
+      expect(tool.parameters).toMatchObject({ type: "object" });
+    }
+  });
+
   test("buffers edits until the transaction commits and preserves no file paths in results", async () => {
     const env = createTempEnv();
     saveKanaMemory("global", "Global note", { env });
