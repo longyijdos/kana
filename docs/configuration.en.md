@@ -42,6 +42,7 @@ Kana uses `KANA_HOME` as its root. When unset, it uses `$HOME/.kana`; when `HOME
 
 ```text
 ${KANA_HOME:-$HOME/.kana}/
+├── .env                    # Optional environment variables loaded at startup
 ├── config.toml             # Runtime configuration covered here
 ├── approvals.json          # bash trust rules
 ├── AGENTS.md               # Optional global system instructions; not created by install
@@ -133,7 +134,13 @@ The configuration root and each present section must be a TOML table. Strings ca
 
 ## API key and project instructions
 
-`api_key_env` only tells Kana where to read the key. Kana does not load `.env` files and does not persist the key in `config.toml`. To use a different key, set the selected variable in the shell that starts Kana or choose another environment-variable name.
+`api_key_env` only tells Kana where to read the key; it does not persist the key in `config.toml`. Before parsing its startup command, Kana reads `<KANA_HOME>/.env` when that file exists. Values from this file override matching variables inherited from the launching shell as well as matching values Bun automatically loaded from the current workspace's `.env`. The default key can therefore be stored as:
+
+```dotenv
+DEEPSEEK_API_KEY=sk-...
+```
+
+The `.env` path is resolved from `KANA_HOME` before the file is loaded; when `KANA_HOME` is unset, the path is `$HOME/.kana/.env`.
 
 The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults. A project-root `AGENTS.md` is also read and appended after global content, so it occupies the more specific, later position. See the prompt-composition section of the [architecture overview](architecture.en.md).
 

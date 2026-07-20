@@ -42,6 +42,7 @@ Kana 使用 `KANA_HOME` 指定根目录；未设置时使用 `$HOME/.kana`，若
 
 ```text
 ${KANA_HOME:-$HOME/.kana}/
+├── .env                    # 可选：启动时加载的环境变量
 ├── config.toml             # 本文的运行配置
 ├── approvals.json          # bash 信任规则
 ├── AGENTS.md               # 可选：全局系统指令，不由 install 创建
@@ -133,7 +134,13 @@ export DEEPSEEK_API_KEY='sk-...'
 
 ## API key 与项目指令
 
-`api_key_env` 只告诉 Kana 从哪里读取 key，不会加载 `.env` 文件，也不会把 key 持久化到 `config.toml`。如需不同 key，可在启动 Kana 的 shell 中设置对应变量，或改用另一环境变量名。
+`api_key_env` 只告诉 Kana 从哪里读取 key，不会把 key 持久化到 `config.toml`。Kana 在解析启动命令前会读取 `<KANA_HOME>/.env`；文件不存在时直接跳过。其中的值会覆盖启动 shell 继承的同名变量，也会覆盖 Bun 从当前工作目录 `.env` 自动加载的同名变量。因此可以把默认 key 写为：
+
+```dotenv
+DEEPSEEK_API_KEY=sk-...
+```
+
+`.env` 路径使用加载前的 `KANA_HOME` 确定；未设置时为 `$HOME/.kana/.env`。
 
 全局 `AGENTS.md` 位于 `<KANA_HOME>/AGENTS.md`。内置默认助手指令始终注入；全局文件存在时追加到默认指令后。项目根目录的 `AGENTS.md` 也会被读取，并追加在全局内容后，因此拥有更具体的后置位置。详见[架构总览](architecture.md)中的提示词装配说明。
 
