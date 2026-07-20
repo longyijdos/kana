@@ -60,6 +60,7 @@ export type {
   ToolSpec,
 } from "./tool";
 export {
+  precompileToolParameters,
   validateToolArguments,
   validateToolCall,
 } from "./validation";

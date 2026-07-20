@@ -89,7 +89,9 @@ McpClient（2025-11-25 lifecycle、capabilities、tools/list、tools/call）
 
 stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受一行一个 JSON-RPC 消息，并设置最大字节数；协议污染、无效 UTF-8/JSON、非零退出和未完成消息都会关闭连接并拒绝 pending 请求。stderr 与协议分离，通过受保护的诊断回调交给上层。正常关闭依次关闭 stdin、等待进程、发送 SIGTERM，并在再次超时后发送 SIGKILL。
 
-这一层目前尚未读取 Kana 配置，也未把远端工具注册给 Agent。后续产品接入由 `kana` 层的 manager 和 tool adapter 完成；memory consolidation Agent 不应获得这些外部工具。
+`McpToolAdapter` 只依赖结构化的 `McpToolCaller`，不绑定稳定版 client 或 stdio。它在工具发现时预编译远端 `inputSchema`，使用 server ID、远端工具名和身份 hash 生成最长 64 字符的稳定模型别名，并把 MCP 进度映射到 `ToolContext.update`。结果适配器限制内容项、文本、结构化数据和元数据大小；text 与嵌入文本资源可进入模型上下文，resource link 只转为描述，image、audio 和 blob 只保留 MIME 与估算字节数，不持久化 base64。JSON-RPC error 与 MCP `isError` 保持不同的结构化错误语义。
+
+这一层目前尚未读取 Kana 配置，也未把远端工具注册给 Agent。后续产品接入由 `kana` 层的 manager 完成；memory consolidation Agent 不应获得这些外部工具。
 
 ## Kana 产品装配
 

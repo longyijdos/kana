@@ -89,7 +89,9 @@ The current foundation client strictly follows the published `2025-11-25` lifecy
 
 The stdio transport launches an argument array directly without a shell. stdout accepts only one JSON-RPC message per line and enforces a byte limit. Protocol pollution, invalid UTF-8 or JSON, non-zero exits, and incomplete messages close the connection and reject pending requests. stderr remains separate from the protocol and is forwarded through a protected diagnostic callback. Graceful shutdown closes stdin, waits for the process, sends SIGTERM, and sends SIGKILL after a second timeout.
 
-This layer does not yet read Kana configuration or register remote tools with an Agent. A manager and tool adapter in the `kana` composition layer will provide that product integration later; the memory consolidation Agent must not receive these external tools.
+`McpToolAdapter` depends only on the structural `McpToolCaller` interface, not on the stable client or stdio. At discovery time it precompiles the remote `inputSchema`, generates a stable model alias of at most 64 characters from the server ID, remote tool name, and an identity hash, and maps MCP progress to `ToolContext.update`. Result adaptation bounds content items, text, structured data, and metadata. Text and embedded text resources may enter model context; resource links become descriptions; images, audio, and blobs retain only MIME and estimated byte counts, never persisted base64. JSON-RPC errors and MCP `isError` results retain distinct structured error semantics.
+
+This layer does not yet read Kana configuration or register remote tools with an Agent. A manager in the `kana` composition layer will provide that product integration later; the memory consolidation Agent must not receive these external tools.
 
 ## Kana product composition
 

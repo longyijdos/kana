@@ -39,10 +39,10 @@ export class McpRequestCancelledError extends McpClientError {
 export class McpResponseError extends McpClientError {
   constructor(
     public readonly code: number,
-    message: string,
+    public readonly responseMessage: string,
     public readonly data?: unknown,
   ) {
-    super(`MCP error ${code}: ${message}`);
+    super(`MCP error ${code}: ${responseMessage}`);
     this.name = "McpResponseError";
   }
 }

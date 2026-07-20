@@ -52,6 +52,26 @@ export {
   type StdioTransportOptions,
 } from "./stdio-transport";
 export {
+  type AdaptedMcpTool,
+  createMcpToolAdapter,
+  type McpToolAdapterOptions,
+  type McpToolCaller,
+  type McpToolCallOptions,
+  type McpToolProgressResult,
+  McpToolSchemaError,
+} from "./tool-adapter";
+export { createMcpToolAlias } from "./tool-name";
+export {
+  DEFAULT_MCP_TOOL_RESULT_LIMITS,
+  type McpNormalizedContent,
+  type McpNormalizedToolResult,
+  type McpToolResultLimits,
+  type McpToolSource,
+  normalizeMcpResponseError,
+  normalizeMcpToolResult,
+  resolveMcpToolResultLimits,
+} from "./tool-result";
+export {
   type McpTransport,
   type McpTransportClose,
   McpTransportError,

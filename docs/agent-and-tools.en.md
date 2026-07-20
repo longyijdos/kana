@@ -104,6 +104,14 @@ type ToolContext = {
 };
 ```
 
+## MCP tool adaptation
+
+MCP tools are not yet connected to Kana product configuration, but `src/mcp` can already convert discovered remote tools into the generic `Tool` above. The adapter does not depend on a concrete protocol version or transport; it only requires an `McpToolCaller`. The stable stdio client and future stateless or HTTP clients can therefore share the same tool boundary.
+
+A remote plain JSON Schema is precompiled with the TypeBox compiler before registration, then follows the Agent's normal argument conversion and validation path at call time. The model sees a stable alias rather than the remote name. The alias combines the server ID, a readable slug, and an identity hash, follows the current provider's character requirements, and stays within 64 characters; internal calls continue to use the original MCP tool name. This lets the product manager detect remote duplicates, post-sanitization collisions, and local-tool conflicts deterministically rather than by load order.
+
+MCP results are never persisted verbatim. The adapter separately bounds content items, text, structured JSON, and metadata. Text and embedded text resources become model text; resource links describe URI and MIME without being fetched; image, audio, and blob blocks discard base64 and retain only MIME and estimated byte counts; unknown content retains only its type name. `structuredContent` remains structured within the limit and becomes a truncated preview when oversized. Remote progress is emitted through `context.update`; MCP `isError` becomes a tool execution error, while a JSON-RPC error preserves protocol code and message details.
+
 ## Built-in tools
 
 | Tool | Parameters | Behavior and result |
