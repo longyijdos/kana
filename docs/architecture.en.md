@@ -10,6 +10,7 @@ src/main.ts
       └─ tui             Terminal interaction, rendering, and user approval
           └─ kana        Product composition: config, prompts, sessions, memory, Skills
               ├─ logging  Session-scoped JSONL diagnostics
+              ├─ mcp      MCP JSON-RPC connections, protocol clients, and transports
               ├─ agent   Model/tool loop and event protocol translation
               ├─ tools   File, shell, and remember tools
               ├─ core    Shared message, model, stream, and usage contracts
@@ -17,7 +18,7 @@ src/main.ts
                   └─ deepseek  DeepSeek requests, SSE parsing, and streaming adapter
 ```
 
-`core` is the innermost protocol package: it has no dependency on product configuration or the TUI. `agent` depends only on `core` and `tools`, so it can run without a terminal UI. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` consumes those higher-level capabilities but does not implement model protocols or persistence formats directly.
+`core` is the innermost protocol package: it has no dependency on product configuration or the TUI. `agent` depends only on `core` and `tools`, so it can run without a terminal UI. `mcp` is likewise independent from Kana product composition and the Agent loop; it provides reusable MCP wire, connection, and transport capabilities. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` consumes those higher-level capabilities but does not implement model protocols or persistence formats directly.
 
 This layering also indicates where new code belongs: new providers go in `providers`, reusable execution capabilities in `tools`, loop control in `agent`, Kana defaults and local state in `kana`, and interaction presentation in `tui`.
 
@@ -70,6 +71,25 @@ Providers first produce `AssistantMessageEvent` values. An event contains both a
 4. Maps finish reasons and token usage.
 
 A request can be cancelled by the Agent and is also subject to the `timeoutMs` inactivity timeout, which restarts on response headers or response data. HTTP 408, 429, and 5xx responses use exponential-backoff retries up to `maxRetries`. Model metadata also supplies the context window, output maximum, and CNY pricing; the TUI uses it to calculate context occupancy and process-lifetime accumulated cost.
+
+## MCP protocol foundation
+
+`src/mcp` implements MCP with the following dependency direction, keeping remote-tool logic out of the Agent loop and provider adapters:
+
+```text
+McpClient (2025-11-25 lifecycle, capabilities, tools/list, tools/call)
+  → McpConnection (request IDs, out-of-order responses, timeouts, cancellation, progress, ping)
+    → McpTransport (bidirectional JSON-RPC message boundary)
+      → StdioTransport (subprocess, line-delimited UTF-8 framing, stderr, shutdown order)
+```
+
+`McpConnection` does not initialize sessions or know about version-specific features such as tools. A future stateless protocol client can therefore reuse it without inheriting the `2025-11-25` handshake. `StdioTransport` only delivers messages and never negotiates versions or capabilities. Streamable HTTP and legacy SSE will implement the same transport boundary independently instead of reusing stdio process state.
+
+The current foundation client strictly follows the published `2025-11-25` lifecycle: `initialize` is the first request, and the client sends `notifications/initialized` after negotiating that same version. It paginates `tools/list` and invokes `tools/call` only when the server declares the tools capability. Every request has a fixed maximum timeout. Normal requests send `notifications/cancelled` after timing out or when aborted through an `AbortSignal`, while `initialize`, which the specification forbids clients from cancelling, does not. Progress tokens are unique among active requests and increasing updates are delivered through caller callbacks.
+
+The stdio transport launches an argument array directly without a shell. stdout accepts only one JSON-RPC message per line and enforces a byte limit. Protocol pollution, invalid UTF-8 or JSON, non-zero exits, and incomplete messages close the connection and reject pending requests. stderr remains separate from the protocol and is forwarded through a protected diagnostic callback. Graceful shutdown closes stdin, waits for the process, sends SIGTERM, and sends SIGKILL after a second timeout.
+
+This layer does not yet read Kana configuration or register remote tools with an Agent. A manager and tool adapter in the `kana` composition layer will provide that product integration later; the memory consolidation Agent must not receive these external tools.
 
 ## Kana product composition
 

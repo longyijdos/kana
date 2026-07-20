@@ -10,6 +10,7 @@ src/main.ts
       └─ tui             终端交互、渲染和用户审批
           └─ kana        产品装配：配置、提示词、会话、记忆、Skills
               ├─ logging  会话级 JSONL 诊断日志
+              ├─ mcp      MCP JSON-RPC 连接、协议客户端与传输
               ├─ agent   模型—工具循环和事件协议转换
               ├─ tools   文件、Shell 与 remember 工具
               ├─ core    消息、模型、流和用量的共享协议
@@ -17,7 +18,7 @@ src/main.ts
                   └─ deepseek  DeepSeek 请求、SSE 解析和流式适配
 ```
 
-`core` 是最内层的协议包：不依赖产品配置或 TUI。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 依赖这些上层能力，但不直接实现模型协议或持久化格式。
+`core` 是最内层的协议包：不依赖产品配置或 TUI。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`mcp` 同样不依赖 Kana 产品装配或 Agent loop；它提供可复用的 MCP wire、连接和传输能力。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 依赖这些上层能力，但不直接实现模型协议或持久化格式。
 
 这种分层也说明了新增代码应放在哪里：新增供应商放 `providers`，可复用的执行能力放 `tools`，循环控制放 `agent`，Kana 的默认策略和本地状态放 `kana`，交互呈现放 `tui`。
 
@@ -70,6 +71,25 @@ src/main.ts
 4. 映射结束原因和 token 用量。
 
 请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口、最大输出和 CNY 计价；TUI 用它计算上下文占用和本次进程累计成本。
+
+## MCP 协议基础
+
+`src/mcp` 按以下依赖方向实现 MCP，不把远端工具逻辑放进 Agent loop 或供应商适配器：
+
+```text
+McpClient（2025-11-25 lifecycle、capabilities、tools/list、tools/call）
+  → McpConnection（请求 ID、乱序响应、超时、取消、进度、ping）
+    → McpTransport（双向 JSON-RPC 消息边界）
+      → StdioTransport（子进程、逐行 UTF-8 framing、stderr、关闭顺序）
+```
+
+`McpConnection` 不执行初始化，也不知道 tools 等版本特性；因此后续无状态协议客户端可以复用它，而不继承 `2025-11-25` 的握手。`StdioTransport` 只传递消息，不协商版本或能力；Streamable HTTP 和旧 SSE 将作为独立 transport 实现同一边界，不复用 stdio 的进程状态。
+
+当前基础客户端严格执行已发布的 `2025-11-25` lifecycle：`initialize` 是首个请求，成功协商同一版本后发送 `notifications/initialized`。它只在服务器声明 tools capability 后分页执行 `tools/list` 和调用 `tools/call`。所有请求具有固定上限的超时；普通请求超时或被 `AbortSignal` 中止时发送 `notifications/cancelled`，但规范禁止取消的 `initialize` 不发送该通知。进度 token 在活跃请求内唯一，递增更新由调用方回调接收。
+
+stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受一行一个 JSON-RPC 消息，并设置最大字节数；协议污染、无效 UTF-8/JSON、非零退出和未完成消息都会关闭连接并拒绝 pending 请求。stderr 与协议分离，通过受保护的诊断回调交给上层。正常关闭依次关闭 stdin、等待进程、发送 SIGTERM，并在再次超时后发送 SIGKILL。
+
+这一层目前尚未读取 Kana 配置，也未把远端工具注册给 Agent。后续产品接入由 `kana` 层的 manager 和 tool adapter 完成；memory consolidation Agent 不应获得这些外部工具。
 
 ## Kana 产品装配
 
