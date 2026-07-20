@@ -1,5 +1,7 @@
 export interface Component {
-  render(width: number): string[];
+  // availableHeight is an advisory layout hint. Components may render beyond it
+  // when preserving content is more important than fitting the current viewport.
+  render(width: number, availableHeight?: number): string[];
   handleInput?(data: string): void;
   invalidate?(): void;
 }
@@ -40,11 +42,11 @@ export class Container implements Component {
     }
   }
 
-  render(width: number): string[] {
+  render(width: number, availableHeight?: number): string[] {
     const lines: string[] = [];
 
     for (const child of this.children) {
-      lines.push(...child.render(width));
+      lines.push(...child.render(width, availableHeight));
     }
 
     return lines;

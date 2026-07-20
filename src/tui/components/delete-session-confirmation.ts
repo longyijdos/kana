@@ -21,7 +21,7 @@ export class DeleteSessionConfirmation implements Component {
         { value: "yes", label: "Yes, delete" },
       ],
       defaultValue: "no",
-      accentColor: tuiTheme.error,
+      titleColor: tuiTheme.error,
       onSelect: (decision) => finish(decision === "yes"),
     });
   }
@@ -35,7 +35,7 @@ export class DeleteSessionConfirmation implements Component {
     this.prompt.handleInput(data);
   }
 
-  render(width: number): string[] {
-    return this.prompt.render(width);
+  render(width: number, availableHeight?: number): string[] {
+    return this.prompt.render(width, availableHeight);
   }
 }

@@ -19,11 +19,23 @@ export class Transcript implements Component {
     this.children.length = 0;
   }
 
-  render(width: number): string[] {
+  render(width: number, availableHeight?: number): string[] {
     const lines: string[] = [];
+    let hasRenderedChild = false;
 
     for (const child of this.children) {
-      lines.push(...child.render(width));
+      const childLines = child.render(width, availableHeight);
+
+      if (childLines.length === 0) {
+        continue;
+      }
+
+      if (hasRenderedChild) {
+        lines.push("");
+      }
+
+      lines.push(...childLines);
+      hasRenderedChild = true;
     }
 
     return lines;

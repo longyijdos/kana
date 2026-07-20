@@ -1,75 +1,82 @@
+import { dim } from "../render";
 import type { Component } from "../runtime";
 
+const BOTTOM_HEIGHT_TIERS = [
+  { minimumTerminalHeight: 30, bottomHeight: 15 },
+  { minimumTerminalHeight: 24, bottomHeight: 12 },
+  { minimumTerminalHeight: 18, bottomHeight: 9 },
+  { minimumTerminalHeight: 7, bottomHeight: 7 },
+] as const;
+
 export type AppLayoutOptions = {
-  transcript: Component;
-  editor: Component;
-  status: Component;
+  main: Component;
+  bottom: Component;
 };
 
 export class AppLayout implements Component {
   private main: Component;
-  private inlinePrompt?: Component;
-  private overlay?: Component;
+  private bottom: Component;
 
-  constructor(private readonly options: AppLayoutOptions) {
-    this.main = options.transcript;
+  constructor(options: AppLayoutOptions) {
+    this.main = options.main;
+    this.bottom = options.bottom;
   }
 
   showMain(component: Component): void {
     this.main = component;
   }
 
-  showTranscript(): void {
-    this.main = this.options.transcript;
+  isMain(component: Component): boolean {
+    return this.main === component;
   }
 
-  showInlinePrompt(component: Component): void {
-    this.inlinePrompt = component;
+  showBottom(component: Component): void {
+    this.bottom = component;
   }
 
-  clearInlinePrompt(component?: Component): void {
-    if (!component || this.inlinePrompt === component) {
-      this.inlinePrompt = undefined;
-    }
+  isBottom(component: Component): boolean {
+    return this.bottom === component;
   }
 
-  showOverlay(component: Component): void {
-    this.overlay = component;
-  }
+  render(width: number, availableHeight?: number): string[] {
+    const bottomHeight = resolveBottomHeight(availableHeight);
+    const bottomContentHeight = Math.max(0, bottomHeight - 1);
+    const mainHeight =
+      availableHeight === undefined || !Number.isFinite(availableHeight)
+        ? undefined
+        : Math.max(0, Math.floor(availableHeight) - bottomHeight);
+    const bottomLines = this.bottom.render(width, bottomContentHeight);
 
-  clearOverlay(component?: Component): void {
-    if (!component || this.overlay === component) {
-      this.overlay = undefined;
-    }
-  }
-
-  render(width: number): string[] {
-    const lines = [...this.main.render(width)];
-
-    if (this.inlinePrompt) {
-      lines.push(...this.inlinePrompt.render(width));
-    }
-
-    lines.push(...this.options.editor.render(width));
-
-    if (this.overlay) {
-      lines.push(...this.overlay.render(width));
-    }
-
-    lines.push(...this.options.status.render(width));
-
-    return lines;
+    // Layout owns the divider and padding so swapping bottom components cannot move the boundary.
+    return [
+      ...this.main.render(width, mainHeight),
+      dim("─".repeat(Math.max(1, width))),
+      ...bottomLines,
+      ...Array.from({ length: Math.max(0, bottomContentHeight - bottomLines.length) }, () => ""),
+    ];
   }
 
   invalidate(): void {
     invalidateComponent(this.main);
-    invalidateComponent(this.inlinePrompt);
-    invalidateComponent(this.options.editor);
-    invalidateComponent(this.overlay);
-    invalidateComponent(this.options.status);
+    invalidateComponent(this.bottom);
   }
 }
 
 function invalidateComponent(component: Component | undefined): void {
   component?.invalidate?.();
+}
+
+function resolveBottomHeight(availableHeight: number | undefined): number {
+  if (availableHeight === undefined || !Number.isFinite(availableHeight)) {
+    return BOTTOM_HEIGHT_TIERS[0].bottomHeight;
+  }
+
+  const terminalHeight = Math.max(1, Math.floor(availableHeight));
+  const tier = BOTTOM_HEIGHT_TIERS.find(
+    ({ minimumTerminalHeight }) => terminalHeight >= minimumTerminalHeight,
+  );
+
+  // Below the smallest tier, reserve the terminal for bottom and let the
+  // active component choose its compact rendering strategy.
+  return tier?.bottomHeight ?? terminalHeight;
 }

@@ -25,14 +25,14 @@ export class ToolApproval implements Component {
       detail: text.detail,
       options: createOptions(options),
       defaultValue: "yes",
-      accentColor: tuiTheme.toolActive,
+      titleColor: tuiTheme.toolActive,
       highlight: highlightOverwriteMarker,
       onSelect: onDecision,
     });
   }
 
-  render(width: number): string[] {
-    return this.prompt.render(width);
+  render(width: number, availableHeight?: number): string[] {
+    return this.prompt.render(width, availableHeight);
   }
 
   handleInput(data: string): void {

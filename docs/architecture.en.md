@@ -104,7 +104,7 @@ Workspace directory names are encoded from resolved absolute paths and shared by
 
 Runtime logs use the same workspace encoding and the Kana session ID as their file boundary. Resuming a session appends to its existing log, while creating, forking, or switching to another session changes files. A session log manager returns a logger permanently bound to a selected session; each Agent and background task captures that concrete logger when it starts, so later lifecycle records remain attached to their originating session. Records are leveled JSONL, defaulting to `info`; `logging.level` adjusts the threshold or disables file logging with `off`. The TUI composition layer explicitly passes a logger to the Agent and provider, while `core` remains independent of logging and filesystem APIs. Logs contain only safe lifecycle metadata, never prompts, model text, complete tool input/output, request headers, or API keys; write failures are ignored and output never passes through the terminal, so logging cannot pollute the TUI.
 
-Memory has global and project scopes. `remember` first appends a structured record to that day's staging file; after conversation commit, a scheduler starts one incremental consolidation Agent per scope. Incremental and manual full consolidation share one queue per scope, serializing all read-modify-write jobs for that scope. The consolidation Agent uses the same model but only memory tools, and commits its in-memory changes only when the assistant ends normally with `stop`. `/memory compact` starts full consolidation and can prune expired daily memory after success according to `daily_retention_days`.
+Memory has global and project scopes. `remember` first appends a structured record to that day's staging file; after conversation commit, a scheduler starts one incremental consolidation Agent per scope. Incremental and manual full consolidation share one queue per scope, serializing all read-modify-write jobs for that scope. The consolidation Agent uses the same model but only memory tools, and commits its in-memory changes only when the assistant ends normally with `stop`. Choosing Compact in the `/memory` flow starts full consolidation and can prune expired daily memory after success according to `daily_retention_days`.
 
 Skills are discovered recursively from project `.kana/skills`, project `.agents/skills`, and global `~/.kana/skills`. Each `SKILL.md` registers its `name` and `description` frontmatter; the first discovered name wins and a collision emits a diagnostic. Project Skills are always enabled; global Skills are controlled by the list in `skills.toml`.
 
@@ -131,16 +131,17 @@ Approval modes are `always`, `unless_trusted`, and `never`. In the default mode,
 ProcessTerminal (raw mode, input, resize, notifications)
   → Tui (focus, 16ms batching, differential redraw, hardware cursor)
     → AppLayout
-      ├─ Transcript / ContentViewer
-      ├─ inline ToolApproval prompt
-      ├─ Editor
-      ├─ Session / Skills overlays
-      └─ StatusLine
+      ├─ Main (currently Transcript; terminal scrollback)
+      └─ Bottom (exactly one; tiered height)
+         ├─ Editor (input and status line)
+         ├─ ToolApproval
+         ├─ Session / Skills view
+         └─ ContentViewer
 ```
 
-`Tui` uses a component's `render(width): string[]` as its minimal rendering protocol. It caches the previous output and redraws only changed lines while terminal dimensions are stable; it falls back to full rendering if changed content has scrolled out of view, content shrinks, or terminal dimensions change. The editor places an internal cursor marker in logical lines; `Tui` removes it before terminal output and moves the hardware cursor to the matching visible-width column. The rendering layer uses graphemes and `string-width` for CJK, emoji, ANSI color, and line wrapping.
+`Tui` uses a component's `render(width, availableHeight?): string[]` as its minimal rendering protocol. `AppLayout` converts terminal height into a 15-, 12-, 9-, or 7-row bottom budget; terminals shorter than 7 rows use all available rows. It passes the remainder to main. The layout renders the first bottom row as the main/bottom divider, passes the remaining budget to the bottom component, and pads shorter output to stabilize the boundary. Transcript deliberately ignores the remaining-height hint and renders complete history for terminal scrollback. It inserts one blank row between child blocks that render output, while blocks own only their internal spacing. `Tui` caches the previous output and redraws only changed lines while terminal dimensions are stable; it falls back to full rendering if changed content has scrolled out of view, content shrinks, or terminal dimensions change. The editor places an internal cursor marker in logical lines; `Tui` removes it before terminal output and moves the hardware cursor to the matching visible-width column. The rendering layer uses graphemes and `string-width` for CJK, emoji, ANSI color, and line wrapping.
 
-The main controllers handle tool approval, session selection/deletion, global Skill activation, local `!` shell commands, memory compaction, and long tool-output viewing. `Ctrl+C`/`Esc` first cancel the active Agent, local shell, or memory task; `Ctrl+C` exits when idle. `Ctrl+O` opens the most recent expandable tool output.
+The main controllers handle tool approval, session selection/deletion, global Skill activation, local `!` shell commands, memory compaction, and long tool-output viewing. Session, Skill, approval, and content views replace the editor as the single bottom component. An approval that arrives while another bottom view is active remains pending and sends its configured notification instead of preempting the current view. `Ctrl+C`/`Esc` first cancel the active Agent, local shell, or memory task; `Ctrl+C` exits when idle. `Ctrl+O` opens the most recent expandable tool output.
 
 ## Extension checkpoints
 

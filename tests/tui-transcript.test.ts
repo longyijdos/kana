@@ -68,7 +68,7 @@ describe("tui transcript", () => {
     );
 
     const assistantLine = assistant.render(80)[0] ?? "";
-    const toolTitle = tool.render(80)[1] ?? "";
+    const toolTitle = tool.render(80)[0] ?? "";
 
     expect(assistantLine).toContain(color("hello", tuiTheme.markdownText));
     expect(toolTitle).toContain(color(stripAnsi(toolTitle), tuiTheme.toolSuccess));
@@ -222,7 +222,7 @@ describe("tui transcript", () => {
     });
 
     block.markExecutionStarted();
-    const runningTitle = block.render(80)[1] ?? "";
+    const runningTitle = block.render(80)[0] ?? "";
 
     expect(stripAnsi(runningTitle)).toBe("◆ Reading (0s) (Esc to abort)");
     expect(runningTitle).toContain("\x1b[1m");
@@ -242,8 +242,8 @@ describe("tui transcript", () => {
 
     const lines = block.render(80).map(stripAnsi);
 
-    expect(lines[1]).toBe("◆ Read");
-    expect(lines[2]).toBe("  └ AGENTS.md");
+    expect(lines[0]).toBe("◆ Read");
+    expect(lines[1]).toBe("  └ AGENTS.md");
     expect(lines).toContain("AGENTS.md:1-10 of 10");
     expect(lines).not.toContain("line 10");
   });
@@ -273,8 +273,8 @@ describe("tui transcript", () => {
 
     const lines = block.render(80).map(stripAnsi);
 
-    expect(lines[1]).toBe("◆ Listed");
-    expect(lines[2]).toBe("  └ .");
+    expect(lines[0]).toBe("◆ Listed");
+    expect(lines[1]).toBe("  └ .");
     expect(lines).toContain(".: 2 of 2 entries");
     expect(lines.join("\n")).not.toContain('"entries"');
   });
@@ -303,8 +303,8 @@ describe("tui transcript", () => {
 
     const lines = block.render(80).map(stripAnsi);
 
-    expect(lines[1]).toBe("◆ Matched");
-    expect(lines[2]).toBe("  └ **/*.ts");
+    expect(lines[0]).toBe("◆ Matched");
+    expect(lines[1]).toBe("  └ **/*.ts");
     expect(lines).toContain("**/*.ts: 1 of 2 matches (truncated)");
     expect(lines.join("\n")).not.toContain('"matches"');
   });
@@ -343,8 +343,8 @@ describe("tui transcript", () => {
 
     const lines = block.render(80).map(stripAnsi);
 
-    expect(lines[1]).toBe("◆ Searched");
-    expect(lines[2]).toBe("  └ autocompact|\\.compact\\b");
+    expect(lines[0]).toBe("◆ Searched");
+    expect(lines[1]).toBe("  └ autocompact|\\.compact\\b");
     expect(lines).toContain("src/query.ts: 1 matches in 1 files for autocompact|\\.compact\\b");
     expect(lines.join("\n")).not.toContain('"matches"');
   });
@@ -430,6 +430,44 @@ describe("tui transcript", () => {
     expect(decisions).toEqual(["close"]);
   });
 
+  test("tool result viewer shrinks its window for a short available height", () => {
+    const viewer = new ContentViewer(
+      {
+        title: "Command output",
+        render: () => [Array.from({ length: 5 }, (_, index) => `line ${index + 1}`).join("\n")],
+      },
+      {
+        onClose: () => {},
+      },
+    );
+    const rendered = viewer.render(80, 8).map(stripAnsi);
+
+    expect(rendered).toContain("Lines 1-3 of 5");
+    expect(rendered).toContain("  line 1");
+    expect(rendered).toContain("  line 2");
+    expect(rendered).toContain("  line 3");
+    expect(rendered).not.toContain("  line 4");
+    expect(rendered).toContain("... 2 lines below");
+  });
+
+  test("tool result viewer renders a multiline title as one truncated line", () => {
+    const viewer = new ContentViewer(
+      {
+        title: "Ran printf table\n| 01 | macOS version | usable |\n| 02 | Shell | zsh |",
+        render: () => ["output"],
+      },
+      { onClose: () => {} },
+    );
+
+    const rendered = viewer.render(32, 10);
+    const title = stripAnsi(rendered[0] ?? "");
+
+    expect(title.startsWith("Ran printf table | 01")).toBe(true);
+    expect(title.endsWith("...")).toBe(true);
+    expect(title).not.toContain("\n");
+    expect(visibleWidth(rendered[0] ?? "")).toBeLessThanOrEqual(32);
+  });
+
   test("distinguishes write overwrite transcript titles from new file writes", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
@@ -446,17 +484,17 @@ describe("tui transcript", () => {
     const runningRendered = block.render(80);
     const runningLines = runningRendered.map(stripAnsi);
 
-    expect(runningLines[1]).toBe("◆ Creating (0s) [OVERWRITE] (Esc to abort)");
-    expect(runningLines[2]).toBe("  └ notes.txt");
-    expect(runningRendered[1]).toContain(color("[OVERWRITE]", tuiTheme.error));
+    expect(runningLines[0]).toBe("◆ Creating (0s) [OVERWRITE] (Esc to abort)");
+    expect(runningLines[1]).toBe("  └ notes.txt");
+    expect(runningRendered[0]).toContain(color("[OVERWRITE]", tuiTheme.error));
 
     block.updateResult({ path: "notes.txt", bytesWritten: 11 }, false);
     const doneRendered = block.render(80);
     const doneLines = doneRendered.map(stripAnsi);
 
-    expect(doneLines[1]).toBe("◆ Created [OVERWRITE]");
-    expect(doneLines[2]).toBe("  └ notes.txt");
-    expect(doneRendered[1]).toContain(color("[OVERWRITE]", tuiTheme.error));
+    expect(doneLines[0]).toBe("◆ Created [OVERWRITE]");
+    expect(doneLines[1]).toBe("  └ notes.txt");
+    expect(doneRendered[0]).toContain(color("[OVERWRITE]", tuiTheme.error));
   });
 
   test("invalidates tool call cache when partial and final results change", () => {
@@ -701,7 +739,19 @@ describe("tui transcript", () => {
     transcript.addChild(new LinesBlock(["1", "2"]));
     transcript.addChild(new LinesBlock(["3"]));
 
-    expect(transcript.render(80)).toEqual(["1", "2", "3"]);
+    expect(transcript.render(80)).toEqual(["1", "2", "", "3"]);
+  });
+
+  test("separates only children that render output", () => {
+    const transcript = new Transcript();
+
+    transcript.addChild(new LinesBlock([]));
+    transcript.addChild(new LinesBlock(["1"]));
+    transcript.addChild(new LinesBlock([]));
+    transcript.addChild(new LinesBlock(["2"]));
+    transcript.addChild(new LinesBlock([]));
+
+    expect(transcript.render(80)).toEqual(["1", "", "2"]);
   });
 
   test("clear removes transcript children", () => {

@@ -17,8 +17,7 @@ export type ToolApprovalControllerOptions = {
   editor: Editor;
   layout: AppLayout;
   tui: Tui;
-  shouldPreserveFocus?: () => boolean;
-  onPromptShown: (toolName: string) => void;
+  onApprovalRequired: (toolName: string) => void;
 };
 
 export class ToolApprovalController {
@@ -57,7 +56,9 @@ export class ToolApprovalController {
         const finishedApproval = approval;
 
         if (finishedApproval) {
-          this.options.layout.clearInlinePrompt(finishedApproval);
+          if (this.options.layout.isBottom(finishedApproval)) {
+            this.options.layout.showBottom(this.options.editor);
+          }
           if (this.activeApproval === finishedApproval) {
             this.activeApproval = undefined;
           }
@@ -97,12 +98,13 @@ export class ToolApprovalController {
         allowAlways: bashCommand !== undefined,
       });
       this.activeApproval = approval;
-      this.options.layout.showInlinePrompt(approval);
-      if (!this.options.shouldPreserveFocus?.()) {
+      // Keep another bottom view in place; the approval notification announces this pending prompt.
+      if (this.options.layout.isBottom(this.options.editor)) {
+        this.options.layout.showBottom(approval);
         this.options.tui.setFocus(approval);
       }
       signal?.addEventListener("abort", handleAbort, { once: true });
-      this.options.onPromptShown(toolCall.name);
+      this.options.onApprovalRequired(toolCall.name);
       this.options.tui.requestRender();
     });
   }

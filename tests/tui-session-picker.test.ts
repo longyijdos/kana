@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaSessionMetadata } from "@/kana";
-import { SessionPicker, type SessionPickerDecision } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import {
+  DeleteSessionConfirmation,
+  SessionPicker,
+  type SessionPickerDecision,
+} from "../src/tui/components";
+import { color, stripAnsi } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 const sessions: KanaSessionMetadata[] = [
   {
@@ -31,12 +36,14 @@ describe("session picker", () => {
       decisions.push(decision);
     });
 
-    expect(picker.render(100).map(stripAnsi)).toEqual([
-      "",
+    const rendered = picker.render(100);
+
+    expect(rendered.map(stripAnsi)).toEqual([
       "Sessions",
       `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  Explain lazy sessions  deepseek/deepseek-v4-pro`,
       `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  Add fork prompt titles  unknown model`,
     ]);
+    expect(rendered[0]).toBe(color("Sessions", tuiTheme.bottomTitle));
 
     picker.handleInput("\x1b[B");
     picker.handleInput("\r");
@@ -47,6 +54,16 @@ describe("session picker", () => {
         session: sessions[1],
       },
     ]);
+  });
+
+  test("uses danger only for the delete confirmation title", () => {
+    const confirmation = new DeleteSessionConfirmation(sessions[0], () => {});
+    const rendered = confirmation.render(100);
+
+    expect(rendered[0]).toBe(color("Delete session?", tuiTheme.error));
+    expect(rendered.find((line) => line.includes("No, keep it"))).toBe(
+      color("> No, keep it", tuiTheme.user),
+    );
   });
 
   test("cancels with escape", () => {
@@ -65,17 +82,10 @@ describe("session picker", () => {
   });
 
   test("renders only the visible session window", () => {
-    const manySessions: KanaSessionMetadata[] = Array.from({ length: 5 }, (_, index) => ({
-      id: `session-${index + 1}`,
-      createdAt: `2026-06-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
-      title: `Session ${index + 1}`,
-      cwd: "/repo",
-      path: `/sessions/${index + 1}.jsonl`,
-    }));
+    const manySessions = createSessions(5);
     const picker = new SessionPicker(manySessions, () => {}, 3);
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
-      "",
       "Sessions",
       `> ${localTimestamp(manySessions[0].createdAt)}  session-  Session 1  unknown model`,
       `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  unknown model`,
@@ -88,7 +98,6 @@ describe("session picker", () => {
     picker.handleInput("\x1b[B");
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
-      "",
       "Sessions",
       "... 1 earlier sessions",
       `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  unknown model`,
@@ -96,6 +105,32 @@ describe("session picker", () => {
       `> ${localTimestamp(manySessions[3].createdAt)}  session-  Session 4  unknown model`,
       "... 1 more sessions",
     ]);
+  });
+
+  test("shrinks the session window for a short available height", () => {
+    const picker = new SessionPicker(createSessions(5), () => {});
+    const rendered = picker.render(100, 6).map(stripAnsi);
+
+    expect(rendered.some((line) => line.includes("Session 1"))).toBe(true);
+    expect(rendered.some((line) => line.includes("Session 2"))).toBe(true);
+    expect(rendered.some((line) => line.includes("Session 3"))).toBe(true);
+    expect(rendered.some((line) => line.includes("Session 4"))).toBe(false);
+    expect(rendered).toContain("... 2 more sessions");
+  });
+
+  test("keeps the selected session visible when available height shrinks", () => {
+    const picker = new SessionPicker(createSessions(5), () => {});
+
+    picker.render(100, 20);
+    picker.handleInput("\x1b[B");
+    picker.handleInput("\x1b[B");
+    picker.handleInput("\x1b[B");
+
+    const rendered = picker.render(100, 5).map(stripAnsi);
+
+    expect(rendered.some((line) => line.includes(">") && line.includes("Session 4"))).toBe(true);
+    expect(rendered.some((line) => line.includes("Session 3"))).toBe(true);
+    expect(rendered.some((line) => line.includes("Session 2"))).toBe(false);
   });
 
   test("does not wrap selection at list boundaries", () => {
@@ -135,4 +170,14 @@ function localTimestamp(timestamp: string): string {
 
 function pad(value: number): string {
   return value.toString().padStart(2, "0");
+}
+
+function createSessions(length: number): KanaSessionMetadata[] {
+  return Array.from({ length }, (_, index) => ({
+    id: `session-${index + 1}`,
+    createdAt: `2026-06-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+    title: `Session ${index + 1}`,
+    cwd: "/repo",
+    path: `/sessions/${index + 1}.jsonl`,
+  }));
 }

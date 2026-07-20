@@ -32,7 +32,7 @@ export class MarkdownBlock implements Component {
     this.cachedLines = undefined;
   }
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     if (this.cachedLines && this.cachedWidth === width && this.cachedText === this.text) {
       return this.cachedLines;
     }

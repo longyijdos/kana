@@ -25,7 +25,6 @@ import { createNoopLogger, type Logger } from "@/logging";
 import {
   Editor,
   MarkdownBlock,
-  StatusLine,
   type StatusLineState,
   TextBlock,
   Transcript,
@@ -33,25 +32,34 @@ import {
   UserMessageBlock,
   WelcomeBlock,
 } from "../components";
-import { PROMPT_COMMANDS, type PromptCommandName } from "../components/editor/commands";
+import {
+  formatPromptCommandHelpLine,
+  formatPromptCommandUsage,
+  formatPromptShortcutHelpLine,
+  PROMPT_COMMANDS,
+  PROMPT_HELP_TITLE,
+  PROMPT_SHORTCUTS,
+  PROMPT_SHORTCUTS_TITLE,
+  type PromptCommandName,
+} from "../components/editor/commands";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
-import { COMMAND_MESSAGES } from "./command-messages";
 import { ContentViewerController } from "./content-viewer-controller";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
 import {
   MemoryCompactController,
   type MemoryCompactSummary,
-  type MemoryCompactTarget,
+  type MemoryScope,
 } from "./memory-compact-controller";
 import { NotificationController } from "./notification-controller";
 import { SessionOverlayController } from "./session-overlay-controller";
 import { SkillManagerController } from "./skill-manager-controller";
+import { SlashCommandOptionsController } from "./slash-command-options-controller";
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
 import { WELCOME_LOGO_LINES } from "./welcome-logo";
@@ -82,19 +90,18 @@ export type KanaTuiAppOptions = {
   wakeScheduler?: WakeScheduler;
   getLogger?: () => Logger;
   compactMemory: (
-    target: MemoryCompactTarget,
+    target: MemoryScope,
     userRequest: string | undefined,
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
-  loadMemory: (target: "user" | "workspace") => string;
+  loadMemory: (target: Exclude<MemoryScope, "both">) => string;
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
 };
 
 export class KanaTuiApp {
   private readonly tui: Tui;
   private readonly transcript = new Transcript();
-  private readonly status: StatusLine;
-  private readonly editor = new Editor();
+  private readonly editor: Editor;
   private readonly layout: AppLayout;
   private readonly agentEvents: AgentEventRenderer;
   private readonly sessionOverlay: SessionOverlayController;
@@ -107,6 +114,7 @@ export class KanaTuiApp {
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
   private readonly contentViewer: ContentViewerController;
+  private readonly slashCommandOptions: SlashCommandOptionsController;
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
   private readonly getLogger: () => Logger;
@@ -130,11 +138,12 @@ export class KanaTuiApp {
     this.tui = new Tui(terminal);
     this.notifications = new NotificationController(options.notification, terminal);
     this.agent = this.createAgentForCurrentSession();
-    this.status = new StatusLine(formatModelName(this.agent.state.model.metadata));
+    this.editor = new Editor({
+      model: formatModelName(this.agent.state.model.metadata),
+    });
     this.layout = new AppLayout({
-      transcript: this.transcript,
-      editor: this.editor,
-      status: this.status,
+      main: this.transcript,
+      bottom: this.editor,
     });
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
@@ -152,6 +161,7 @@ export class KanaTuiApp {
       onResume: (sessionId) => this.resumeSession(sessionId),
       onStop: () => this.stop(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.skillManager = new SkillManagerController({
       editor: this.editor,
@@ -162,21 +172,32 @@ export class KanaTuiApp {
       saveEnabledGlobalSkills: this.options.saveEnabledGlobalSkills,
       onSkillsChanged: () => this.refreshAgentSystemPrompt(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.contentViewer = new ContentViewerController({
-      editor: this.editor,
       layout: this.layout,
       transcript: this.transcript,
       tui: this.tui,
-      focusAfterClose: () => this.toolApproval.activePrompt,
+      restoreBottom: (focus) => this.restoreBottom(focus),
+    });
+    this.slashCommandOptions = new SlashCommandOptionsController({
+      editor: this.editor,
+      layout: this.layout,
+      tui: this.tui,
+      onUsageScope: (scope) => this.showUsage(scope),
+      onMemoryShow: (scope) => this.openMemoryViewer(scope),
+      onMemoryCompact: (scope, request) => {
+        this.restoreBottom(true);
+        void this.memoryCompact.compact(scope, request);
+      },
+      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.toolApproval = new ToolApprovalController({
       ...options.toolApproval,
       editor: this.editor,
       layout: this.layout,
       tui: this.tui,
-      shouldPreserveFocus: () => this.contentViewer.active,
-      onPromptShown: (toolName) => {
+      onApprovalRequired: (toolName) => {
         this.updateStatus("tool", {
           activeTool: toolName,
         });
@@ -359,11 +380,10 @@ export class KanaTuiApp {
         break;
       case "help":
         if (command.arguments) {
-          this.showError(new Error(COMMAND_MESSAGES.helpUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
-        this.editor.clear();
         this.showHelp();
         break;
       case "clear":
@@ -388,7 +408,7 @@ export class KanaTuiApp {
         break;
       case "fork":
         if (!command.arguments) {
-          this.showError(new Error(COMMAND_MESSAGES.forkUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -406,7 +426,7 @@ export class KanaTuiApp {
         break;
       case "delete":
         if (command.arguments) {
-          this.showError(new Error(COMMAND_MESSAGES.deleteUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -415,7 +435,7 @@ export class KanaTuiApp {
         break;
       case "skills":
         if (command.arguments) {
-          this.showError(new Error(COMMAND_MESSAGES.skillsUsage));
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
           return;
         }
 
@@ -423,47 +443,32 @@ export class KanaTuiApp {
         this.openSkillManager();
         break;
       case "memory":
-        this.handleMemoryCommand(command.arguments);
+        if (command.arguments.trim()) {
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
+          return;
+        }
+
+        this.slashCommandOptions.openMemory();
         break;
       case "usage":
-        this.showUsage(command.arguments);
+        if (command.arguments.trim()) {
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
+          return;
+        }
+
+        this.slashCommandOptions.openUsage();
         break;
     }
   }
 
-  private handleMemoryCommand(argumentsText: string): void {
-    const [subcommand, ...argumentsParts] = argumentsText.trim().split(/\s+/).filter(Boolean);
-
-    if (subcommand === "compact") {
-      this.editor.clear();
-      void this.memoryCompact.compact(argumentsParts.join(" "));
-      return;
-    }
-
-    if (subcommand === "show") {
-      const requestedTarget = argumentsParts[0];
-      const target =
-        requestedTarget === "user" || requestedTarget === "workspace" ? requestedTarget : undefined;
-      if (requestedTarget && !target) {
-        this.showError(new Error(COMMAND_MESSAGES.memoryUsage));
-        return;
-      }
-
-      this.editor.clear();
-      this.openMemoryViewer(target);
-      return;
-    }
-
-    this.showError(new Error(COMMAND_MESSAGES.memoryUsage));
-  }
-
-  private openMemoryViewer(target: "user" | "workspace" | undefined): void {
-    const memoryTargets = target ? [target] : (["user", "workspace"] as const);
+  private openMemoryViewer(target: MemoryScope): void {
+    const memoryTargets =
+      target === "both" ? (["global", "project"] as const) : ([target] as const);
     const markdown = new MarkdownBlock(
       memoryTargets
         .flatMap((memoryTarget, index) => [
           ...(index > 0 ? [""] : []),
-          `# ${memoryTarget === "user" ? "User" : "Workspace"} memory`,
+          `# ${memoryTarget === "global" ? "Global" : "Project"} memory`,
           "",
           this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
         ])
@@ -476,42 +481,37 @@ export class KanaTuiApp {
     });
   }
 
-  private showUsage(argumentsText: string): void {
-    const scope = argumentsText.trim() || "session";
-    if (scope !== "session" && scope !== "project" && scope !== "global") {
-      this.showError(new Error(COMMAND_MESSAGES.usageUsage));
-      return;
-    }
+  private showUsage(scope: KanaUsageScope): void {
     const summary = this.options.loadUsage(scope);
+    const usage = new UsageSummaryBlock(summary);
     this.editor.clear();
-    this.transcript.addChild(new UsageSummaryBlock(summary));
+    this.contentViewer.open({
+      title: `Usage · ${summary.scope}`,
+      render: (contentWidth) => usage.render(contentWidth),
+    });
     this.updateStatus("idle", { activeTool: undefined });
-    this.tui.requestRender();
   }
 
   private showHelp(): void {
-    const lines = [
-      COMMAND_MESSAGES.helpTitle,
-      "",
-      ...PROMPT_COMMANDS.map((command) => `/${command.name.padEnd(8)} ${command.description}`),
-      "",
-      COMMAND_MESSAGES.shellShortcutsTitle,
-      "",
-      COMMAND_MESSAGES.shellShortcut,
-      COMMAND_MESSAGES.toolShortcut,
-    ];
+    const help = new TextBlock(
+      [
+        ...PROMPT_COMMANDS.map(formatPromptCommandHelpLine),
+        "",
+        PROMPT_SHORTCUTS_TITLE,
+        "",
+        ...PROMPT_SHORTCUTS.map(formatPromptShortcutHelpLine),
+      ].join("\n"),
+      { color: tuiTheme.muted },
+    );
 
     this.editor.clear();
-    this.transcript.addChild(
-      new TextBlock(lines.join("\n"), {
-        color: tuiTheme.muted,
-        paddingTop: 1,
-      }),
-    );
+    this.contentViewer.open({
+      title: PROMPT_HELP_TITLE,
+      render: (contentWidth) => help.render(contentWidth),
+    });
     this.updateStatus("idle", {
       activeTool: undefined,
     });
-    this.tui.requestRender();
   }
 
   private startNewSession(): void {
@@ -549,7 +549,6 @@ export class KanaTuiApp {
     this.transcript.addChild(
       new TextBlock(`Forked session ${this.sessionId}.`, {
         color: tuiTheme.muted,
-        paddingTop: 1,
       }),
     );
     this.updateStatus("idle", {
@@ -637,7 +636,6 @@ export class KanaTuiApp {
     this.transcript.addChild(
       new TextBlock(error instanceof Error ? error.message : String(error), {
         color: tuiTheme.error,
-        paddingTop: 1,
       }),
     );
     this.updateStatus("error");
@@ -697,7 +695,7 @@ export class KanaTuiApp {
       this.showError(error);
     } finally {
       this.running = false;
-      this.status.update({
+      this.editor.updateStatus({
         running: false,
         activeTool: undefined,
       });
@@ -765,7 +763,7 @@ export class KanaTuiApp {
   }
 
   private clearAuxiliaryRunStatus(): void {
-    this.status.update({
+    this.editor.updateStatus({
       running: false,
       activeTool: undefined,
     });
@@ -779,8 +777,18 @@ export class KanaTuiApp {
     return this.toolApproval.request(toolCall, signal);
   }
 
+  private restoreBottom(focus: boolean): void {
+    const bottom = this.toolApproval.activePrompt ?? this.editor;
+
+    this.layout.showBottom(bottom);
+    if (focus) {
+      this.tui.setFocus(bottom);
+    }
+    this.tui.requestRender(true);
+  }
+
   private updateStatus(phase: RunPhase, extra: Partial<StatusLineState> = {}): void {
-    this.status.update({
+    this.editor.updateStatus({
       phase,
       running: this.running,
       ...extra,
@@ -804,7 +812,7 @@ export class KanaTuiApp {
   }
 
   private updateContextUsage(usage: ModelUsage | undefined): void {
-    this.status.update({
+    this.editor.updateStatus({
       contextUsedPercent: calculateContextUsedPercent(
         usage,
         this.agent.state.model.metadata.contextWindow,

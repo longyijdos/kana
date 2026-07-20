@@ -14,7 +14,7 @@ export {
 } from "./choice-prompt";
 export { type ContentView, ContentViewer } from "./content-viewer";
 export { DeleteSessionConfirmation } from "./delete-session-confirmation";
-export { Editor } from "./editor";
+export { Editor, type EditorOptions, type StatusLineState } from "./editor";
 export {
   SessionPicker,
   type SessionPickerDecision,
@@ -24,6 +24,6 @@ export {
   type SkillManagerDecision,
   type SkillManagerItem,
 } from "./skill-manager";
-export { StatusLine, type StatusLineState } from "./status-line";
+export { TextPrompt, type TextPromptOptions } from "./text-prompt";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";
 export { UsageSummaryBlock } from "./usage-summary";

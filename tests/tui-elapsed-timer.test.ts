@@ -43,13 +43,13 @@ describe("tui elapsed timer", () => {
     now = 2_000;
     block.freezePreparation();
     now = 5_000;
-    expect(stripAnsi(block.render(80)[1] ?? "")).toBe("◆ Preparing bash (2s)");
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Preparing bash (2s)");
 
     block.markExecutionStarted();
     now = 7_000;
-    expect(stripAnsi(block.render(80)[1] ?? "")).toBe("◆ Running (2s) (Esc to abort)");
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Running (2s) (Esc to abort)");
 
     block.updateResult({ command: "pwd", exitCode: 0, stdout: "/tmp" }, false);
-    expect(stripAnsi(block.render(80)[1] ?? "")).toBe("◆ Ran");
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Ran");
   });
 });

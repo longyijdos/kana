@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ChoicePrompt } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("choice prompt", () => {
   test("renders the default selection", () => {
@@ -15,13 +16,16 @@ describe("choice prompt", () => {
       onSelect: () => {},
     });
 
-    expect(prompt.render(80).map(stripAnsi)).toEqual([
-      "─".repeat(80),
+    const rendered = prompt.render(80);
+
+    expect(rendered.map(stripAnsi)).toEqual([
       "Delete session?",
       "Example session",
       "> No, keep it",
       "  Yes, delete",
     ]);
+    expect(rendered[0]).toBe(color("Delete session?", tuiTheme.bottomTitle));
+    expect(rendered[2]).toBe(color("> No, keep it", tuiTheme.user));
   });
 
   test("wraps detail text instead of truncating it", () => {
@@ -39,7 +43,6 @@ describe("choice prompt", () => {
     const rendered = prompt.render(16).map(stripAnsi);
 
     expect(rendered).toEqual([
-      "─".repeat(16),
       "Run command?",
       "bash -lc 'printf",
       " hello && printf",
@@ -47,6 +50,37 @@ describe("choice prompt", () => {
       "> Allow once",
       "  Deny",
     ]);
+  });
+
+  test("pages long detail within the available height while keeping options visible", () => {
+    const prompt = new ChoicePrompt({
+      title: "Run command?",
+      detail: Array.from({ length: 10 }, (_, index) => `detail line ${index + 1}`).join("\n"),
+      options: [
+        { value: "yes", label: "Allow once" },
+        { value: "no", label: "Deny" },
+      ],
+      defaultValue: "yes",
+      onSelect: () => {},
+    });
+
+    const firstPage = prompt.render(40, 10).map(stripAnsi);
+
+    expect(firstPage.length).toBeLessThanOrEqual(10);
+    expect(firstPage).toContain("detail line 1");
+    expect(firstPage).not.toContain("detail line 5");
+    expect(firstPage).toContain("... 6 detail lines below");
+    expect(firstPage).toContain("> Allow once");
+    expect(firstPage).toContain("  Deny");
+
+    prompt.handleInput("\x1b[6~");
+
+    const secondPage = prompt.render(40, 10).map(stripAnsi);
+
+    expect(secondPage.length).toBeLessThanOrEqual(10);
+    expect(secondPage).toContain("detail line 5");
+    expect(secondPage).not.toContain("detail line 1");
+    expect(secondPage).toContain("> Allow once");
   });
 
   test("selects with arrow keys and submits with enter", () => {
@@ -67,5 +101,25 @@ describe("choice prompt", () => {
     prompt.handleInput("\r");
 
     expect(selected).toBe("yes");
+  });
+
+  test("cancels with escape when a cancel handler is provided", () => {
+    let cancelled = false;
+    const prompt = new ChoicePrompt({
+      title: "Usage scope",
+      options: [
+        { value: "session", label: "Session" },
+        { value: "project", label: "Project" },
+      ],
+      defaultValue: "session",
+      onSelect: () => {},
+      onCancel: () => {
+        cancelled = true;
+      },
+    });
+
+    prompt.handleInput("\x1b");
+
+    expect(cancelled).toBe(true);
   });
 });

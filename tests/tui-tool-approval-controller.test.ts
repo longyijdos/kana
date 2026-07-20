@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../src/tui/app/app-layout";
+import { ContentViewerController } from "../src/tui/app/content-viewer-controller";
 import { ToolApprovalController } from "../src/tui/app/tool-approval-controller";
-import { type Editor, StatusLine } from "../src/tui/components";
+import { type Editor, Transcript } from "../src/tui/components";
+import { stripAnsi } from "../src/tui/render";
 import type { Component, Tui } from "../src/tui/runtime";
+
+const DIVIDER = "─".repeat(80);
 
 class LinesComponent implements Component {
   constructor(private readonly lines: string[]) {}
@@ -13,15 +17,13 @@ class LinesComponent implements Component {
 }
 
 describe("tool approval controller", () => {
-  test("shows approval without stealing focus when the current view should keep it", async () => {
+  test("replaces the editor while approval is active and restores it after a decision", async () => {
     const editor = new LinesComponent(["editor"]) as unknown as Editor;
     const layout = new AppLayout({
-      transcript: new LinesComponent(["transcript"]),
-      editor,
-      status: new StatusLine("test-model"),
+      main: new LinesComponent(["transcript"]),
+      bottom: editor,
     });
     const tui = createTuiStub();
-    const viewer = new LinesComponent(["tool result viewer"]);
     const shownTools: string[] = [];
     const controller = new ToolApprovalController({
       config: { mode: "always" },
@@ -35,35 +37,95 @@ describe("tool approval controller", () => {
       editor,
       layout,
       tui,
-      shouldPreserveFocus: () => true,
-      onPromptShown: (toolName) => {
+      onApprovalRequired: (toolName) => {
         shownTools.push(toolName);
       },
     });
 
-    tui.setFocus(viewer);
-    const result = controller.request(
-      {
-        type: "tool_call",
-        id: "call_1",
-        name: "bash",
-        args: {
-          command: "rm notes.txt",
-        },
-      },
-      undefined,
-    );
+    const result = controller.request(createToolCall(), undefined);
 
-    expect(tui.getFocus()).toBe(viewer);
+    expect(tui.getFocus()).toBe(controller.activePrompt);
     expect(controller.activePrompt).toBeDefined();
     expect(shownTools).toEqual(["bash"]);
+    expect(layout.render(80).join("\n")).toContain("Allow agent to run bash?");
+    expect(layout.render(80)).not.toContain("editor");
+
+    controller.activePrompt?.handleInput?.("\r");
+    await expect(result).resolves.toEqual({ type: "continue" });
+    expect(layout.render(80).map(stripAnsi).slice(0, 3)).toEqual(["transcript", DIVIDER, "editor"]);
+    expect(tui.getFocus()).toBe(editor);
+  });
+
+  test("keeps approval pending while another bottom component is active", async () => {
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({
+      main: new LinesComponent(["transcript"]),
+      bottom: editor,
+    });
+    const tui = createTuiStub();
+    const shownTools: string[] = [];
+    const controller = new ToolApprovalController({
+      config: { mode: "always" },
+      approvals: {
+        version: 2,
+        bash: {
+          exactCommands: [],
+          readOnlyCommands: [],
+        },
+      },
+      editor,
+      layout,
+      tui,
+      onApprovalRequired: (toolName) => {
+        shownTools.push(toolName);
+      },
+    });
+    const viewer = new ContentViewerController({
+      layout,
+      transcript: new Transcript(),
+      tui,
+      restoreBottom: (focus) => {
+        const bottom = controller.activePrompt ?? editor;
+
+        layout.showBottom(bottom);
+        if (focus) {
+          tui.setFocus(bottom);
+        }
+      },
+    });
+
+    viewer.open({
+      title: "Tool result",
+      render: () => ["tool result viewer"],
+    });
+    const result = controller.request(createToolCall(), undefined);
+
+    expect(controller.activePrompt).toBeDefined();
+    expect(shownTools).toEqual(["bash"]);
+    expect(layout.render(80).join("\n")).toContain("tool result viewer");
+    expect(layout.render(80).join("\n")).not.toContain("Allow agent to run bash?");
+
+    viewer.close();
+
+    expect(tui.getFocus()).toBe(controller.activePrompt);
     expect(layout.render(80).join("\n")).toContain("Allow agent to run bash?");
 
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });
-    expect(tui.getFocus()).toBe(viewer);
+    expect(layout.render(80).map(stripAnsi).slice(0, 3)).toEqual(["transcript", DIVIDER, "editor"]);
   });
 });
+
+function createToolCall() {
+  return {
+    type: "tool_call" as const,
+    id: "call_1",
+    name: "bash",
+    args: {
+      command: "rm notes.txt",
+    },
+  };
+}
 
 function createTuiStub(): Tui {
   let focusedComponent: Component | undefined;

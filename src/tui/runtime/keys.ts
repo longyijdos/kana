@@ -91,6 +91,14 @@ export function isEnd(data: string): boolean {
   return data === "\x1b[F" || data === "\x1b[4~";
 }
 
+export function isPageUp(data: string): boolean {
+  return data === "\x1b[5~";
+}
+
+export function isPageDown(data: string): boolean {
+  return data === "\x1b[6~";
+}
+
 export function isPrintable(data: string): boolean {
   if (!data) {
     return false;

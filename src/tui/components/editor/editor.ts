@@ -25,11 +25,13 @@ import {
   isUp,
 } from "../../runtime";
 import { tuiTheme } from "../../theme";
-import { ListViewport } from "../../utils/list-viewport";
+import { BracketedPasteBuffer } from "../../utils/bracketed-paste";
+import { ListViewport, visibleLimitForHeight } from "../../utils/list-viewport";
 import {
   completeCommand,
   createCommandSubmit,
   createRandomPromptPlaceholder,
+  formatPromptCommandHelpLine,
   getCommandState,
   type PromptSubmit,
 } from "./commands";
@@ -40,10 +42,16 @@ import {
   moveInputCursorVertically,
 } from "./input-layout";
 import { applyEditorAction, type EditorTextState } from "./state";
+import { renderStatusLine, type StatusLineState } from "./status-line";
 
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
 const PROMPT = "> ";
+
+export type EditorOptions = {
+  model?: string;
+  commandPaletteVisibleLimit?: number;
+};
 
 export class Editor implements Component {
   private state: EditorTextState = {
@@ -53,18 +61,25 @@ export class Editor implements Component {
   private history: string[] = [];
   private historyIndex = -1;
   private readonly commandViewport: ListViewport;
+  private readonly maximumVisibleCommands: number;
   private lastCommandQuery = "";
-  private pasteBuffer = "";
-  private isPasting = false;
+  private readonly bracketedPaste = new BracketedPasteBuffer();
   private inputColumns = 80;
+  private inputVisibleLines = MAX_INPUT_LINES;
   private inputViewportStartLine: number | undefined;
+  private statusState: StatusLineState = {
+    phase: "idle",
+    running: false,
+  };
   // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
   private placeholder = createRandomPromptPlaceholder();
 
   onSubmit?: (submit: PromptSubmit) => void;
 
-  constructor(commandPaletteVisibleLimit = COMMAND_PALETTE_VISIBLE_LIMIT) {
-    this.commandViewport = new ListViewport(commandPaletteVisibleLimit);
+  constructor(private readonly options: EditorOptions = {}) {
+    this.maximumVisibleCommands =
+      options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT;
+    this.commandViewport = new ListViewport(this.maximumVisibleCommands);
   }
 
   getText(): string {
@@ -101,20 +116,37 @@ export class Editor implements Component {
     }
   }
 
-  render(width: number): string[] {
+  updateStatus(state: Partial<StatusLineState>): void {
+    this.statusState = {
+      ...this.statusState,
+      ...state,
+    };
+  }
+
+  render(width: number, availableHeight?: number): string[] {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
     const inputColumns = Math.max(1, contentWidth - visibleWidth(PROMPT));
+    const commandState = getCommandState(this.state.value);
+    const showStatus =
+      !commandState.showPalette && (availableHeight === undefined || availableHeight >= 5);
+    const inputReservedRows = 2 + (showStatus ? 1 : 0) + (commandState.showPalette ? 3 : 0);
+    const maximumInputLines = visibleLimitForHeight(
+      MAX_INPUT_LINES,
+      availableHeight,
+      inputReservedRows,
+    );
     this.inputColumns = inputColumns;
+    this.inputVisibleLines = maximumInputLines;
     const layout = createInputLayout({
       value: this.state.value,
       cursorOffset: this.state.cursorOffset,
       columns: inputColumns,
-      maxLines: MAX_INPUT_LINES,
+      maxLines: maximumInputLines,
       preferredStartLine: this.inputViewportStartLine,
     });
     this.inputViewportStartLine = layout.startLine;
-    const lines = ["", `+${"-".repeat(frameWidth - 2)}+`];
+    const lines = [`+${"-".repeat(frameWidth - 2)}+`];
 
     for (const [index, line] of layout.lines.entries()) {
       const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));
@@ -128,17 +160,28 @@ export class Editor implements Component {
     }
 
     lines.push(`+${"-".repeat(frameWidth - 2)}+`);
-    lines.push(...this.renderCommandPalette(frameWidth));
+    const commandPaletteHeight =
+      availableHeight === undefined
+        ? undefined
+        : Math.max(1, Math.floor(availableHeight) - lines.length);
+    lines.push(...this.renderCommandPalette(frameWidth, commandPaletteHeight));
+
+    if (showStatus) {
+      lines.push(renderStatusLine(width, this.options.model, this.statusState));
+    }
 
     return lines.map((line) => truncateToWidth(line, width, ""));
   }
 
   handleInput(data: string): void {
-    const paste = this.consumePaste(data);
+    const paste = this.bracketedPaste.consume(data);
 
     if (paste !== undefined) {
-      if (paste) {
-        this.applyText(paste);
+      if (paste.text) {
+        this.applyText(paste.text);
+      }
+      if (paste.remaining) {
+        queueMicrotask(() => this.handleInput(paste.remaining));
       }
       return;
     }
@@ -273,7 +316,7 @@ export class Editor implements Component {
     ];
   }
 
-  private renderCommandPalette(width: number): string[] {
+  private renderCommandPalette(width: number, availableHeight?: number): string[] {
     const commandState = getCommandState(this.state.value);
 
     if (!commandState.showPalette) {
@@ -284,6 +327,10 @@ export class Editor implements Component {
       return [color("No matching commands", tuiTheme.error)];
     }
 
+    this.commandViewport.setVisibleLimit(
+      visibleLimitForHeight(this.maximumVisibleCommands, availableHeight, 2),
+      commandState.suggestions.length,
+    );
     const viewport = this.commandViewport.window(commandState.suggestions.length);
     const lines: string[] = [];
 
@@ -294,7 +341,7 @@ export class Editor implements Component {
     for (let index = viewport.start; index < viewport.end; index += 1) {
       const command = commandState.suggestions[index];
       const prefix = index === this.commandViewport.selectedIndex ? "> " : "  ";
-      const line = `${prefix}/${command.name.padEnd(8)} ${command.description}`;
+      const line = `${prefix}${formatPromptCommandHelpLine(command)}`;
 
       lines.push(
         index === this.commandViewport.selectedIndex
@@ -334,7 +381,7 @@ export class Editor implements Component {
       value: this.state.value,
       cursorOffset: this.state.cursorOffset,
       columns: this.inputColumns,
-      maxLines: MAX_INPUT_LINES,
+      maxLines: this.inputVisibleLines,
       preferredStartLine: this.inputViewportStartLine,
     });
     const cursorOffset = moveInputCursorVertically({
@@ -379,7 +426,7 @@ export class Editor implements Component {
               cursorOffset,
               columns: this.inputColumns,
             }) -
-              MAX_INPUT_LINES +
+              this.inputVisibleLines +
               1,
           );
     this.syncCommandSelection();
@@ -416,36 +463,6 @@ export class Editor implements Component {
       this.commandViewport.selectedIndex,
       commandState.suggestions.length,
     );
-  }
-
-  private consumePaste(data: string): string | undefined {
-    if (data.includes("\x1b[200~")) {
-      this.isPasting = true;
-      this.pasteBuffer = "";
-      data = data.replace("\x1b[200~", "");
-    }
-
-    if (!this.isPasting) {
-      return undefined;
-    }
-
-    this.pasteBuffer += data;
-    const endIndex = this.pasteBuffer.indexOf("\x1b[201~");
-
-    if (endIndex === -1) {
-      return "";
-    }
-
-    const pasted = this.pasteBuffer.slice(0, endIndex);
-    const remaining = this.pasteBuffer.slice(endIndex + "\x1b[201~".length);
-    this.isPasting = false;
-    this.pasteBuffer = "";
-
-    if (remaining) {
-      queueMicrotask(() => this.handleInput(remaining));
-    }
-
-    return pasted;
   }
 }
 

@@ -9,16 +9,17 @@ ProcessTerminal
   raw stdin、resize、终端通知、stdout
     → Tui
       输入监听器 → 当前焦点组件
-      render(width) → 差量 ANSI 重绘
+      render(width, availableHeight?) → 差量 ANSI 重绘
         → AppLayout
-          transcript / content viewer
-          inline tool approval
-          editor
-          session or skills overlay
-          status line
+          main（当前为 transcript）
+          严格一个底部组件（高度档位）
+            包含状态栏的 editor
+            或 tool approval
+            或 session / skills / slash command 提示
+            或 content viewer
 ```
 
-`Component` 的最小接口是 `render(width): string[]`，可选 `handleInput` 和 `invalidate`。`Container` 按子组件顺序拼接行。`AppLayout` 固定先后关系：主内容、内联提示、编辑器、覆盖层、状态栏。控制器修改 layout 与焦点，组件本身主要处理呈现和局部键盘输入。
+`Component` 的最小接口是 `render(width, availableHeight?): string[]`，可选 `handleInput` 和 `invalidate`。该协议不会裁剪输出，但组件可根据高度选择渲染策略。`AppLayout` 为唯一底部组件保留分档区域：终端高度不小于 30 行时使用 15 行，24–29 行使用 12 行，18–23 行使用 9 行，7–17 行使用 7 行；终端不足 7 行时将全部可用高度分给 bottom。剩余高度传给 main。底部区域首行由 layout 统一绘制 main/bottom 分隔线，其余高度传给底部组件；所有底部组件的内容都直接跟在分隔线后。组件输出不足时由 layout 补空行，因此切换底部组件不会带动 main 内容。列表视图会缩小项目窗口并保持选中项可见，编辑器会缩小输入和命令窗口，较长的选择提示详情可用 `PageUp`/`PageDown` 翻页。普通 bottom 标题统一使用 `bottomTitle`，当前选项使用 `user`；工具审批和危险确认分别用 `toolActive` 与 `error` 覆盖标题颜色。`KanaTuiApp` 目前将 transcript 作为 main 传入；Transcript 仍刻意渲染完整历史，交由终端 scrollback 保留。组件本身主要处理呈现和局部键盘输入。
 
 ## 终端生命周期与渲染
 
@@ -26,7 +27,7 @@ ProcessTerminal
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
-1. 调用根组件的 `render(width)`；
+1. 调用根组件的 `render(width, height)`；
 2. 取出编辑器插入的内部光标标记；
 3. 根据 ANSI 以及 Unicode 可见宽度规范化行；
 4. 在尺寸未变、内容只增加或改动可见时只重绘变化行；
@@ -39,7 +40,7 @@ ProcessTerminal
 
 ## App 与 Agent 事件
 
-`KanaTuiApp` 维护当前 Agent、session ID、运行标志、累计模型用量和成本。提交 prompt 时，它把用户文本加入 transcript，消费 `AgentEventStream`，然后由 `AgentEventRenderer` 完成可视映射。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐，块外上下各有一个普通空行。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell 或记忆压缩都会使它排队，操作完成后再投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
+`KanaTuiApp` 维护当前 Agent、session ID、运行标志、累计模型用量和成本。提交 prompt 时，它把用户文本加入 transcript，消费 `AgentEventStream`，然后由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell 或记忆压缩都会使它排队，操作完成后再投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
@@ -49,7 +50,7 @@ ProcessTerminal
 | `tool_execution_end` | 写入结构化结果并标记成功/失败。 |
 | `agent_end` | 更新状态阶段，清除活动工具。 |
 
-状态栏显示 provider/model、最近助手消息的 context 使用率、运行阶段、活动工具和 cwd。每条完成助手消息的 usage 会累加到进程总用量和按模型元数据计算的 CNY 成本。
+编辑器内部包含状态栏，它显示 provider/model、最近助手消息的 context 使用率、运行阶段、活动工具和 cwd。打开 slash 命令面板时会隐藏状态栏；其他底部组件替换编辑器时，输入区和状态栏会一起隐藏。每条完成助手消息的 usage 会累加到进程总用量和按模型元数据计算的 CNY 成本。
 
 ## 输入与快捷方式
 
@@ -62,43 +63,45 @@ ProcessTerminal
 | `Ctrl+O` | 打开/关闭最近一项可展开的工具输出。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
-编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体上方保留一个普通空行，底部不额外留空行。输入为空时，它会从 `/help` 的 slash 命令中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。它支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、方向键导航、Home/End/Delete、bracketed paste 和 slash 补全。`Enter` 提交当前输入；在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。编辑、移动和删除按 grapheme 边界进行。上/下先在软换行/显式换行中移动，到边界才进入历史。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入作为普通模型消息发送。
+编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后，底部不额外留空行。输入为空时，它会从 `/help` 的 slash 命令和稳定的全局快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。命令面板、placeholder、`/help` 和 usage 错误共同读取同一份命令语法与描述。编辑器支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、方向键导航、Home/End/Delete、bracketed paste 和 slash 补全。`Enter` 提交当前输入；在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。编辑、移动和删除按 grapheme 边界进行。上/下先在软换行/显式换行中移动，到边界才进入历史。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入和没有 shell 命令的单独 `!` 作为普通模型消息发送。
 
 | Slash 命令 | 行为 |
 | --- | --- |
-| `/help` | 输出命令和快捷方式。 |
+| `/help` | 在底部只读视图中打开命令和快捷方式。 |
 | `/clear` | 清空 transcript 与编辑器，不删除会话。 |
 | `/new` | 新建空会话并重建 Agent。 |
 | `/fork <prompt>` | 从当前 Agent 历史创建分叉会话后发送 prompt。 |
 | `/resume [id]` | 恢复指定会话或打开选择器。 |
 | `/delete` | 选择并确认删除会话。 |
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
-| `/memory …` | 查看或压缩记忆；具体语义见[会话与记忆](sessions-and-memory.md)。 |
+| `/memory` | 在底部选择操作和 scope；具体语义见[会话与记忆](sessions-and-memory.md)。 |
+| `/usage` | 在底部选择统计范围，再打开对应的 API 用量。 |
 | `/quit` | 无参数时退出；带参数时作为普通 prompt。 |
 
 ## 控制器与焦点
 
 独立 controller 保持 `KanaTuiApp` 不必承载每个交互状态机：
 
-- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。它将选择框作为内联提示；用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
-- `SessionOverlayController` 管理恢复列表和删除确认。新 session、恢复和删除都会更新 transcript/焦点。
-- `SkillManagerController` 只修改 global Skill 的列表，保存后中止旧 Agent 并用原消息历史创建新 Agent，从而刷新提示词。
-- `ContentViewerController` 用可滚动全屏主内容替换 transcript；关闭时优先恢复仍在等待的审批提示焦点。
+- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
+- `SessionOverlayController` 用恢复列表或删除确认替换编辑器。新 session、恢复和删除都会更新 transcript 和焦点。
+- `SkillManagerController` 用 global Skill 列表替换编辑器，保存后中止旧 Agent 并用原消息历史创建新 Agent，从而刷新提示词。
+- `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
+- `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具输出；transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 
-运行期间，除 `/quit` 外的 slash 命令被忽略，防止重入。打开 overlay 或查看器时会切换焦点；关闭后通常回到 editor。
+运行期间，除 `/quit` 外的 slash 命令被忽略，防止重入。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
 
 ## 通知与 Markdown
 
 通知后端由配置选择。`auto` 依次探测 Kitty、iTerm 和 VTE，最后使用 bell；显式 `off` 不写任何通知。通知文本会移除控制字符、折叠空白，OSC 777 字段额外替换分号。正常 Agent 完成和需要审批可分别配置通知。
 
-助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 显示尾部输出；write 审批和工具块会区分新建与覆盖；长输出可在查看器中滚动。
+助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 显示尾部输出；write 审批和工具块会区分新建与覆盖；长输出可在查看器中滚动，查看器会将多行标题折叠并截断为一行。
 
 ## 修改渲染时的约束
 
 - 不要直接向 stdout 写组件内容；经 `Tui.requestRender` 让差量渲染维护缓存和光标。
-- 新 overlay 必须明确打开/关闭时的焦点恢复。
+- 新底部视图必须明确打开/关闭时的焦点恢复。
 - 新工具展示应净化控制序列，并处理部分结果与最终结果。
 - 宽度逻辑必须以可见宽度和 grapheme 为单位，不能直接使用 `string.length`。
 - 改变主屏重绘或终端序列时，更新 `tui-render`、cursor 和 width 测试，避免破坏 scrollback 或 IME 光标。

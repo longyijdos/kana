@@ -105,7 +105,7 @@ Every edit/replace first affects an in-memory transaction and checks the size li
 
 ## Full compaction and retention
 
-`/memory compact [user|workspace] [request]` runs full consolidation; omitting the target processes global and project memory. It gives the model current durable memory and an optional user request, and additionally exposes these read-only tools:
+Choose Compact under `/memory` to run full consolidation. Then choose Project, Global, or Both and optionally enter additional instructions in the separate input. The consolidation Agent receives current durable memory and this optional request, and additionally exposes these read-only tools:
 
 - `list_daily_memory`: list daily files and entry counts in an optional date range.
 - `read_daily_memory`: read every entry for a given date.
@@ -117,14 +117,9 @@ The full Agent can still modify durable memory only through its memory transacti
 
 | Command | Behavior |
 | --- | --- |
-| `/memory show` | Open user and workspace durable memory in the viewer. |
-| `/memory show user` | Show global memory only. |
-| `/memory show workspace` | Show current project memory only. |
-| `/memory compact [request]` | Compact both scopes, with an optional request. |
-| `/memory compact user [request]` | Compact global memory only. |
-| `/memory compact workspace [request]` | Compact current project memory only. |
+| `/memory` | Choose Show/Compact and then Project/Global/Both in the bottom view; Compact also opens an optional request input. |
 
-Compaction can be cancelled with `Esc` or `Ctrl+C`. Completion reports `updated`, `unchanged`, `aborted`, `length`, or `error` separately for each target.
+`/memory` accepts no editor arguments. `Esc` moves back one step in the selection flow, and the request input accepts `Shift+Enter` for a newline. After compaction starts, `Esc` or `Ctrl+C` aborts it. Completion reports `updated`, `unchanged`, `aborted`, `length`, or `error` separately for each scope.
 
 ## Maintenance constraints
 

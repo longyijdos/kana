@@ -24,6 +24,7 @@ export type SessionOverlayControllerOptions = {
   onResume: (sessionId: string) => void;
   onStop: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
+  restoreBottom: (focus: boolean) => void;
 };
 
 export class SessionOverlayController {
@@ -49,15 +50,23 @@ export class SessionOverlayController {
   }
 
   close(): void {
+    const activeBottom = this.activeDeleteConfirmation ?? this.activePicker;
+    const wasVisible = activeBottom ? this.options.layout.isBottom(activeBottom) : false;
+    const restoreFocus = activeBottom ? this.options.tui.getFocus() === activeBottom : false;
+
     this.closeResumePicker();
     this.closeDeleteConfirmation();
+
+    if (wasVisible) {
+      this.options.restoreBottom(restoreFocus);
+    }
   }
 
   private openPicker(picker: SessionPicker): void {
     this.close();
     this.options.editor.clear();
     this.activePicker = picker;
-    this.options.layout.showOverlay(picker);
+    this.options.layout.showBottom(picker);
     this.options.tui.setFocus(picker);
     this.options.tui.requestRender(true);
   }
@@ -71,7 +80,6 @@ export class SessionOverlayController {
         return;
       }
 
-      this.focusEditor();
       return;
     }
 
@@ -79,28 +87,26 @@ export class SessionOverlayController {
   }
 
   private finishDeletePicker(decision: SessionPickerDecision): void {
-    this.closeResumePicker();
-
     if (decision.type === "cancel") {
-      this.focusEditor();
+      this.close();
       return;
     }
+
+    this.closeResumePicker();
 
     const confirmation = new DeleteSessionConfirmation(decision.session, (confirmed) => {
       this.finishDeleteConfirmation(decision.session, confirmed);
     });
 
     this.activeDeleteConfirmation = confirmation;
-    this.options.layout.showOverlay(confirmation);
+    this.options.layout.showBottom(confirmation);
     this.options.tui.setFocus(confirmation);
     this.options.tui.requestRender(true);
   }
 
   private finishDeleteConfirmation(session: KanaSessionMetadata, confirmed: boolean): void {
-    this.closeDeleteConfirmation();
-
     if (!confirmed) {
-      this.focusEditor();
+      this.close();
       return;
     }
 
@@ -113,14 +119,13 @@ export class SessionOverlayController {
           : `Session not found: ${session.id}`,
         {
           color: deleted ? tuiTheme.muted : tuiTheme.error,
-          paddingTop: 1,
         },
       ),
     );
     this.options.updateStatus(deleted ? "idle" : "error", {
       activeTool: undefined,
     });
-    this.focusEditor();
+    this.close();
   }
 
   private closeResumePicker(): void {
@@ -128,7 +133,6 @@ export class SessionOverlayController {
       return;
     }
 
-    this.options.layout.clearOverlay(this.activePicker);
     this.activePicker = undefined;
   }
 
@@ -137,12 +141,6 @@ export class SessionOverlayController {
       return;
     }
 
-    this.options.layout.clearOverlay(this.activeDeleteConfirmation);
     this.activeDeleteConfirmation = undefined;
-  }
-
-  private focusEditor(): void {
-    this.options.tui.setFocus(this.options.editor);
-    this.options.tui.requestRender(true);
   }
 }

@@ -11,6 +11,8 @@ export {
   isEscape,
   isHome,
   isLeft,
+  isPageDown,
+  isPageUp,
   isPrintable,
   isRight,
   isShiftEnter,

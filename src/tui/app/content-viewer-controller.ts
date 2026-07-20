@@ -1,19 +1,12 @@
-import {
-  type ContentView,
-  ContentViewer,
-  type Editor,
-  ToolCallBlock,
-  type Transcript,
-} from "../components";
+import { type ContentView, ContentViewer, ToolCallBlock, type Transcript } from "../components";
 import type { Component, Tui } from "../runtime";
 import type { AppLayout } from "./app-layout";
 
 export type ContentViewerControllerOptions = {
-  editor: Editor;
   layout: AppLayout;
   transcript: Transcript;
   tui: Tui;
-  focusAfterClose?: () => Component | undefined;
+  restoreBottom: (focus: boolean) => void;
 };
 
 export class ContentViewerController {
@@ -53,7 +46,7 @@ export class ContentViewerController {
     });
 
     this.activeViewer = viewer;
-    this.options.layout.showMain(viewer);
+    this.options.layout.showBottom(viewer);
     this.options.tui.setFocus(viewer);
     this.options.tui.requestRender(true);
   }
@@ -63,13 +56,16 @@ export class ContentViewerController {
       return;
     }
 
-    const restoreEditorFocus = this.options.tui.getFocus() === this.activeViewer;
+    const viewer = this.activeViewer;
+    const wasVisible = this.options.layout.isBottom(viewer);
+    const restoreFocus = this.options.tui.getFocus() === viewer;
 
     this.activeViewer = undefined;
-    this.options.layout.showTranscript();
 
-    if (restoreEditorFocus) {
-      this.options.tui.setFocus(this.options.focusAfterClose?.() ?? this.options.editor);
+    // A viewer that was already replaced must not overwrite the newer bottom view.
+    if (wasVisible) {
+      this.options.restoreBottom(restoreFocus);
+      return;
     }
 
     this.options.tui.requestRender(true);

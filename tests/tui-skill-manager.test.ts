@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SkillManager, type SkillManagerDecision } from "../src/tui/components";
-import { stripAnsi } from "../src/tui/render";
+import { color, stripAnsi } from "../src/tui/render";
+import { tuiTheme } from "../src/tui/theme";
 
 describe("skill manager", () => {
   test("renders global and project skills as checkboxes", () => {
@@ -24,12 +25,14 @@ describe("skill manager", () => {
       () => {},
     );
 
-    const rendered = manager.render(80).map(stripAnsi);
+    const rawRendered = manager.render(80);
+    const rendered = rawRendered.map(stripAnsi);
 
     expect(rendered).toContain("Skills");
     expect(rendered).toContain("> [x] project-skill  project locked");
     expect(rendered).toContain("  Project-local skill.");
     expect(rendered).toContain("  [ ] global-skill  global");
+    expect(rawRendered[0]).toBe(color("Skills", tuiTheme.bottomTitle));
   });
 
   test("renders multiline descriptions as a single logical line", () => {
@@ -116,17 +119,10 @@ describe("skill manager", () => {
   });
 
   test("renders only the visible skill window", () => {
-    const skills = Array.from({ length: 5 }, (_, index) => ({
-      name: `skill-${index + 1}`,
-      description: `Skill ${index + 1}.`,
-      scope: "global" as const,
-      enabled: false,
-      mutable: true,
-    }));
+    const skills = createSkills(5);
     const manager = new SkillManager(skills, () => {}, 3);
 
     expect(manager.render(80).map(stripAnsi)).toEqual([
-      "",
       "Skills",
       "> [ ] skill-1  global",
       "  Skill 1.",
@@ -140,7 +136,6 @@ describe("skill manager", () => {
     manager.handleInput("\x1b[B");
 
     expect(manager.render(80).map(stripAnsi)).toEqual([
-      "",
       "Skills",
       "... 1 earlier skills",
       "  [ ] skill-2  global",
@@ -149,6 +144,17 @@ describe("skill manager", () => {
       "  Skill 4.",
       "... 1 more skills",
     ]);
+  });
+
+  test("shrinks the skill window for a short available height", () => {
+    const manager = new SkillManager(createSkills(5), () => {});
+    const rendered = manager.render(80, 7).map(stripAnsi);
+
+    expect(rendered).toContain("> [ ] skill-1  global");
+    expect(rendered).toContain("  [ ] skill-2  global");
+    expect(rendered).toContain("  [ ] skill-3  global");
+    expect(rendered).not.toContain("  [ ] skill-4  global");
+    expect(rendered).toContain("... 2 more skills");
   });
 
   test("does not wrap selection at list boundaries", () => {
@@ -189,3 +195,13 @@ describe("skill manager", () => {
     expect(decision).toEqual({ type: "close" });
   });
 });
+
+function createSkills(length: number) {
+  return Array.from({ length }, (_, index) => ({
+    name: `skill-${index + 1}`,
+    description: `Skill ${index + 1}.`,
+    scope: "global" as const,
+    enabled: false,
+    mutable: true,
+  }));
+}

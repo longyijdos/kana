@@ -9,7 +9,6 @@ type WelcomeBlockOptions = {
   logoLines: readonly string[];
   recentSessions?: readonly KanaSessionMetadata[];
   username?: string;
-  paddingTop?: number;
 };
 
 const PANEL_MIN_WIDTH = 68;
@@ -20,20 +19,12 @@ const COLUMN_GAP = 3;
 export class WelcomeBlock implements Component {
   constructor(private readonly options: WelcomeBlockOptions) {}
 
-  render(width: number): string[] {
-    const lines: string[] = [];
-
-    for (let index = 0; index < (this.options.paddingTop ?? 0); index += 1) {
-      lines.push("");
-    }
-
+  render(width: number, _availableHeight?: number): string[] {
     if (width < PANEL_MIN_WIDTH) {
-      lines.push(...this.renderCompact(width));
-      return lines;
+      return this.renderCompact(width);
     }
 
-    lines.push(...this.renderPanel(width));
-    return lines;
+    return this.renderPanel(width);
   }
 
   private renderPanel(width: number): string[] {

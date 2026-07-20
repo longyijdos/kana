@@ -6,7 +6,7 @@ import { tuiTheme } from "../theme";
 export class UsageSummaryBlock implements Component {
   constructor(private readonly summary: KanaUsageSummary) {}
 
-  render(width: number): string[] {
+  render(width: number, _availableHeight?: number): string[] {
     const usage = this.summary.usage;
     const cached = usage?.promptCacheHitTokens ?? 0;
     const input = usage?.promptCacheMissTokens ?? Math.max(0, (usage?.promptTokens ?? 0) - cached);
@@ -17,7 +17,6 @@ export class UsageSummaryBlock implements Component {
       `${label.padEnd(9)}${formatInteger(value).padStart(10)}  ${color(bar(value, total, barWidth), tone)}`;
 
     return [
-      color(`Usage · ${this.summary.scope}`, tuiTheme.welcomeTitle),
       `${color("Cost", tuiTheme.usageMuted).padEnd(12)}${color(formatCny(this.summary.costCny), tuiTheme.usageCost)}`,
       "",
       color("Tokens", tuiTheme.markdownHeading),
