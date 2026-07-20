@@ -134,7 +134,7 @@ The configuration root and each present section must be a TOML table. Strings ca
 
 ## `mcp.json`
 
-MCP servers are not stored in `config.toml`; they use a separate Claude Code-style `<KANA_HOME>/mcp.json`. A missing file or omitted `mcpServers` is equivalent to no servers. The current code parses this file and can use Kana's stdio manager factory to create stable `2025-11-25` clients. The TUI does not yet call that factory or inject its tools into an Agent, so server entries do not start subprocesses at this milestone. Product-lifecycle integration will follow in a later MCP commit.
+MCP servers are not stored in `config.toml`; they use a separate Claude Code-style `<KANA_HOME>/mcp.json`. A missing file or omitted `mcpServers` is equivalent to no servers. TUI startup connects every enabled server, uses stable `2025-11-25` clients to discover the initial tool list, and injects the remote tools into every created or recreated main Agent. Memory-consolidation Agents never receive MCP tools. The tool list is currently fixed for the lifetime of the Kana process; runtime `notifications/tools/list_changed` events are not processed.
 
 ```json
 {
@@ -171,6 +171,8 @@ Omitting `type` defaults to `stdio`. Kana also accepts these optional extensions
 | `excludeTools` | Unset | Denylist matched against original remote names; exclusion wins when a name appears in both lists. |
 
 The stdio child inherits only defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges `env`. No other process environment variables are inherited. Environment names must use conventional syntax and values must be strings. Unknown fields, non-positive timeouts, and duplicate or empty tool names fail configuration loading.
+
+When an optional server fails to start, Kana records diagnostics, closes that server, and continues startup. A failed server with `required: true` prevents the TUI from starting. Remote tools retain the unknown-tool approval policy, so every call requires confirmation in `unless_trusted` mode. On quit, idle `Ctrl+C`, or `SIGHUP`, `SIGINT`, and `SIGTERM`, Kana cancels an active Agent call before closing every MCP server.
 
 Server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. `env` currently uses literal JSON values, so tokens are stored in plaintext inside `mcp.json`; do not commit or share this file, and use least-privilege credentials. `kana install` creates it with mode `0600`, but `kana install --force` also resets it to an empty configuration. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
 

@@ -2,14 +2,17 @@ import type { Message } from "@/core";
 import {
   appendKanaSessionMessages,
   createKanaAgent,
+  createKanaMcpManager,
   createKanaSession,
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
   createWakeScheduler,
   deleteKanaSession,
   getKanaSessionLogPath,
+  KANA_BUILT_IN_TOOL_NAMES,
   listKanaSessions,
   loadKanaConfig,
+  loadKanaMcpConfig,
   loadKanaMemory,
   loadKanaSession,
   loadKanaSkillActivations,
@@ -22,6 +25,7 @@ import {
 import { createNoopLogger, createSessionLogManager } from "@/logging";
 import { KanaTuiApp } from "./app/app";
 import type { MemoryCompactSummary } from "./app/memory-compact-controller";
+import { registerTuiProcessSignals } from "./process-lifecycle";
 import { ProcessTerminal } from "./runtime";
 
 export type StartTuiOptions = {
@@ -30,7 +34,7 @@ export type StartTuiOptions = {
   showResumePicker?: boolean;
 };
 
-export function startTui(options: StartTuiOptions = {}): void {
+export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   const config = loadKanaConfig();
   const logManager = createSessionLogManager({ level: config.logging.level });
   const toolApprovals = loadKanaToolApprovals();
@@ -71,8 +75,55 @@ export function startTui(options: StartTuiOptions = {}): void {
   }
   let resumeSessionId = options.resumeSessionId ? session?.metadata.id : undefined;
   let pendingForkMessages: Message[] | undefined;
+  const mcpConfig = loadKanaMcpConfig();
+  const enabledMcpServerCount = Object.values(mcpConfig.mcpServers).filter(
+    (server) => server.enabled,
+  ).length;
+  const mcpManager = createKanaMcpManager(mcpConfig, {
+    reservedToolNames: KANA_BUILT_IN_TOOL_NAMES,
+    getLogger: () => sessionLogger,
+  });
+  let app: KanaTuiApp | undefined;
+  let shutdownRequested = false;
+  let removeProcessSignals = (): void => {};
+  const closeMcpManager = async (): Promise<void> => {
+    removeProcessSignals();
+    await mcpManager.close();
+  };
 
-  const app = new KanaTuiApp(
+  removeProcessSignals = registerTuiProcessSignals((signal) => {
+    shutdownRequested = true;
+    sessionLogger.info("tui.signal_received", { signal });
+
+    if (app) {
+      void app.stop();
+      return;
+    }
+
+    // A signal may arrive while MCP startup is still in flight. McpManager
+    // serializes close behind start, so this also covers partially connected
+    // servers without racing a second cleanup path.
+    void closeMcpManager();
+  });
+
+  const mcpTools = await startWithCleanup(() => mcpManager.start(), closeMcpManager);
+
+  if (enabledMcpServerCount > 0) {
+    sessionLogger.info("mcp.started", {
+      configuredServerCount: enabledMcpServerCount,
+      readyServerCount: mcpManager.diagnostics.filter((diagnostic) => diagnostic.status === "ready")
+        .length,
+      toolCount: mcpTools.length,
+    });
+  }
+
+  if (shutdownRequested) {
+    await closeMcpManager();
+    return;
+  }
+
+  app = await createTuiAppWithCleanup(
+    closeMcpManager,
     (agentOptions) => {
       // Each Agent retains this concrete logger for its full lifetime. It must
       // never resolve the active session again after an asynchronous run starts.
@@ -80,6 +131,7 @@ export function startTui(options: StartTuiOptions = {}): void {
 
       return createKanaAgent(config, {
         ...agentOptions,
+        additionalTools: mcpTools,
         logger: agentLogger,
         wakeScheduler,
         sessionId: agentOptions.sessionId,
@@ -255,8 +307,39 @@ export function startTui(options: StartTuiOptions = {}): void {
           sessionId: scope === "session" ? session?.metadata.id : undefined,
           cwd: process.cwd(),
         }),
+      onStop: closeMcpManager,
     },
   );
 
-  app.start();
+  try {
+    app.start();
+  } catch (error) {
+    await app.stop();
+    throw error;
+  }
+  await app.waitForStop();
+}
+
+async function startWithCleanup<T>(
+  start: () => Promise<T>,
+  cleanup: () => Promise<void>,
+): Promise<T> {
+  try {
+    return await start();
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+
+async function createTuiAppWithCleanup(
+  cleanup: () => Promise<void>,
+  ...args: ConstructorParameters<typeof KanaTuiApp>
+): Promise<KanaTuiApp> {
+  try {
+    return new KanaTuiApp(...args);
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
 }

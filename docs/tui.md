@@ -23,7 +23,7 @@ ProcessTerminal
 
 ## 终端生命周期与渲染
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。停止时恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报并关闭 bracketed paste。TUI 结束会清屏和 scrollback，然后打印退出信息；退出信息包括累计 token、API 成本和可恢复会话命令（若有）。
+`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。停止时恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报并关闭 bracketed paste。TUI 结束会清屏和 scrollback，然后打印退出信息；退出信息包括累计 token、API 成本和可恢复会话命令（若有）。`KanaTuiApp.stop()` 是幂等异步边界：先中止并等待活动 Agent，再调用产品层清理 MCP manager。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；首个进程信号会移除 Kana 的监听器，使第二个信号仍可按系统默认行为强制终止。
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 

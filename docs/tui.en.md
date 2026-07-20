@@ -23,7 +23,7 @@ The minimum `Component` interface is `render(width, availableHeight?): string[]`
 
 ## Terminal lifecycle and rendering
 
-`ProcessTerminal.start()` requires TTY stdin/stdout, enables raw mode, bracketed paste, enhanced keyboard reporting, and a hidden cursor, then registers input and resize. Enhanced keyboard reporting lets supporting terminals distinguish `Shift+Enter` from `Enter`. Stopping restores the prior raw state, pauses stdin, shows the cursor, pops enhanced keyboard reporting, and disables bracketed paste. TUI shutdown clears the screen and scrollback, then prints exit information including accumulated tokens, API cost, and a resume command when available.
+`ProcessTerminal.start()` requires TTY stdin/stdout, enables raw mode, bracketed paste, enhanced keyboard reporting, and a hidden cursor, then registers input and resize. Enhanced keyboard reporting lets supporting terminals distinguish `Shift+Enter` from `Enter`. Stopping restores the prior raw state, pauses stdin, shows the cursor, pops enhanced keyboard reporting, and disables bracketed paste. TUI shutdown clears the screen and scrollback, then prints exit information including accumulated tokens, API cost, and a resume command when available. `KanaTuiApp.stop()` is an idempotent asynchronous boundary: it aborts and awaits the active Agent before calling product cleanup for the MCP manager. Idle exit and `SIGHUP`, `SIGINT`, and `SIGTERM` all use this path. The first process signal removes Kana's listeners so a second signal retains its default force-termination behavior.
 
 Normal `Tui.requestRender()` calls are coalesced into an approximately 16ms timer. Each render:
 

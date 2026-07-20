@@ -5,6 +5,60 @@ import { KanaTuiApp } from "../src/tui/app/app";
 import type { Terminal } from "../src/tui/runtime";
 
 describe("session-scoped agents", () => {
+  test("cancels the active Agent before running host shutdown once", async () => {
+    const events: string[] = [];
+    let releaseIdle!: () => void;
+    const idle = new Promise<void>((resolve) => {
+      releaseIdle = resolve;
+    });
+    const app = new KanaTuiApp(
+      () =>
+        ({
+          state: {
+            messages: [],
+            model: {
+              metadata: {
+                provider: "test",
+                model: "test-model",
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1,
+                maxOutputTokens: 1,
+              },
+            },
+          },
+          abort() {
+            events.push("agent.abort");
+          },
+          async waitForIdle() {
+            events.push("agent.waitForIdle");
+            await idle;
+          },
+        }) as never,
+      {
+        ...createTerminal(),
+        stop: () => events.push("terminal.stop"),
+      },
+      {
+        ...createOptions(),
+        onStop: async () => {
+          events.push("host.stop");
+        },
+      },
+    );
+
+    const firstStop = app.stop();
+    const secondStop = app.stop();
+
+    expect(secondStop).toBe(firstStop);
+    expect(events).toEqual(["agent.abort", "terminal.stop", "agent.waitForIdle"]);
+
+    releaseIdle();
+    await firstStop;
+    await app.waitForStop();
+
+    expect(events).toEqual(["agent.abort", "terminal.stop", "agent.waitForIdle", "host.stop"]);
+  });
+
   test("recreates the agent after forking so the new session owns later run state", async () => {
     const createdMessages: unknown[][] = [];
     const app = new KanaTuiApp(

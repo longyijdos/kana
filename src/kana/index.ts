@@ -10,7 +10,11 @@ export {
   loadKanaUsageSummary,
   recordKanaAgentRunAccounting,
 } from "./accounting";
-export { createKanaAgent } from "./agent";
+export {
+  createKanaAgent,
+  KANA_BUILT_IN_TOOL_NAMES,
+  type KanaAgentOptions,
+} from "./agent";
 export {
   DEFAULT_KANA_CONFIG,
   getKanaConfigPaths,

@@ -96,6 +96,7 @@ export type KanaTuiAppOptions = {
   ) => Promise<MemoryCompactSummary[]>;
   loadMemory: (target: Exclude<MemoryScope, "both">) => string;
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
+  onStop?: () => Promise<void> | void;
 };
 
 export class KanaTuiApp {
@@ -122,6 +123,12 @@ export class KanaTuiApp {
   private readonly unsubscribeWakeEvents: () => void;
   private readonly pendingWakeEvents: WakeEvent[] = [];
   private drainingWakeEvents = false;
+  private stopping = false;
+  private stopPromise?: Promise<void>;
+  private resolveStopped!: () => void;
+  private readonly stoppedPromise = new Promise<void>((resolve) => {
+    this.resolveStopped = resolve;
+  });
 
   constructor(
     private readonly createAgent: (options: {
@@ -159,7 +166,9 @@ export class KanaTuiApp {
       deleteSession: this.options.deleteSession,
       hasCurrentSession: () => this.sessionId !== undefined,
       onResume: (sessionId) => this.resumeSession(sessionId),
-      onStop: () => this.stop(),
+      onStop: () => {
+        void this.stop();
+      },
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
@@ -274,10 +283,31 @@ export class KanaTuiApp {
     }
   }
 
-  stop(): void {
+  stop(): Promise<void> {
+    if (this.stopping) {
+      return this.stopPromise ?? this.stoppedPromise;
+    }
+
+    this.stopping = true;
+    this.stopPromise = this.stopInternal().finally(() => {
+      this.resolveStopped();
+    });
+    return this.stopPromise;
+  }
+
+  waitForStop(): Promise<void> {
+    return this.stoppedPromise;
+  }
+
+  private async stopInternal(): Promise<void> {
     this.getLogger().info("tui.stopped");
+    const activeAgent = this.agent;
+    activeAgent.abort();
+    this.localShell.abort();
+    this.memoryCompact.abort();
     this.unsubscribeWakeEvents();
     this.wakeScheduler.dispose();
+    this.pendingWakeEvents.length = 0;
     const resumeSessionId = this.options.getResumeSessionId();
     const exitLines = [
       this.totalUsage
@@ -288,6 +318,17 @@ export class KanaTuiApp {
     ].filter((line): line is string => Boolean(line));
 
     exitLines.length > 0 ? this.tui.stop(exitLines.join("\r\n")) : this.tui.stop();
+
+    // An MCP tools/call must observe Agent cancellation before its transport is
+    // closed. Otherwise shutdown can turn a normal abort into an unrelated
+    // connection error and leave the server uncertain about cancellation.
+    await activeAgent.waitForIdle();
+
+    try {
+      await this.options.onStop?.();
+    } catch (error) {
+      this.getLogger().error("tui.shutdown_failed", { error });
+    }
   }
 
   private createAgentForCurrentSession(messages?: Message[]): Agent {
@@ -333,8 +374,8 @@ export class KanaTuiApp {
         return { consume: true };
       }
 
-      this.stop();
-      process.exit(0);
+      void this.stop();
+      return { consume: true };
     }
 
     if (isEscape(data) && this.running) {
@@ -375,8 +416,7 @@ export class KanaTuiApp {
           return;
         }
 
-        this.stop();
-        process.exit(0);
+        void this.stop();
         break;
       case "help":
         if (command.arguments) {
@@ -670,6 +710,10 @@ export class KanaTuiApp {
     source: "user" | "scheduled",
     displayContent = input.content,
   ): Promise<void> {
+    if (this.stopping) {
+      return;
+    }
+
     this.transcript.addChild(
       source === "user"
         ? new UserMessageBlock(displayContent)
@@ -705,7 +749,7 @@ export class KanaTuiApp {
   }
 
   private queueWakeEvent(event: WakeEvent): void {
-    if (event.sessionId !== this.sessionId) {
+    if (this.stopping || event.sessionId !== this.sessionId) {
       return;
     }
 
@@ -714,13 +758,13 @@ export class KanaTuiApp {
   }
 
   private async drainWakeEvents(): Promise<void> {
-    if (this.drainingWakeEvents || this.running) {
+    if (this.stopping || this.drainingWakeEvents || this.running) {
       return;
     }
 
     this.drainingWakeEvents = true;
     try {
-      while (!this.running) {
+      while (!this.stopping && !this.running) {
         const event = this.pendingWakeEvents.shift();
         if (!event) {
           return;

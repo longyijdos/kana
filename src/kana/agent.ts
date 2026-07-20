@@ -9,6 +9,7 @@ import {
   createRememberTool,
   createScheduleWakeTool,
   createWriteTool,
+  type Tool,
 } from "@/tools";
 import type { KanaConfig } from "./config";
 import { createKanaModel } from "./model";
@@ -16,10 +17,27 @@ import { buildKanaSystemPrompt } from "./prompt";
 import { loadKanaSkills } from "./skills";
 import type { WakeScheduler } from "./wake-scheduler";
 
-type KanaAgentOptions = Pick<
+// Reserve the complete built-in namespace, including tools that are enabled
+// only for particular configurations or session states. MCP discovery happens
+// before those states can change, so reserving only the first Agent's tools
+// could let a later session recreation introduce a collision.
+export const KANA_BUILT_IN_TOOL_NAMES = [
+  "list",
+  "glob",
+  "grep",
+  "read",
+  "write",
+  "edit",
+  "bash",
+  "remember",
+  "schedule_wake",
+] as const;
+
+export type KanaAgentOptions = Pick<
   AgentConfig,
   "beforeToolExecution" | "messages" | "onRunCommitted" | "logger"
 > & {
+  additionalTools?: readonly Tool[];
   wakeScheduler?: WakeScheduler;
   sessionId?: string;
 };
@@ -28,48 +46,51 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
   const cwd = process.cwd();
   const { skills } = loadKanaSkills({ cwd });
   const model = createKanaModel(config, options.logger);
+  const tools: Tool[] = [
+    createListTool({
+      root: cwd,
+    }),
+    createGlobTool({
+      root: cwd,
+    }),
+    createGrepTool({
+      root: cwd,
+    }),
+    createReadTool({
+      root: cwd,
+    }),
+    createWriteTool({
+      root: cwd,
+    }),
+    createEditTool({
+      root: cwd,
+    }),
+    createBashTool({
+      root: cwd,
+    }),
+    ...(config.memory.enabled
+      ? [
+          createRememberTool({
+            cwd,
+          }),
+        ]
+      : []),
+    ...(options.wakeScheduler && options.sessionId
+      ? [
+          createScheduleWakeTool({
+            scheduler: options.wakeScheduler,
+            sessionId: options.sessionId,
+          }),
+        ]
+      : []),
+    ...(options.additionalTools ?? []),
+  ];
+  assertUniqueToolNames(tools);
 
   return new Agent({
     model,
     system: buildKanaSystemPrompt({ cwd, skills }),
-    tools: [
-      createListTool({
-        root: cwd,
-      }),
-      createGlobTool({
-        root: cwd,
-      }),
-      createGrepTool({
-        root: cwd,
-      }),
-      createReadTool({
-        root: cwd,
-      }),
-      createWriteTool({
-        root: cwd,
-      }),
-      createEditTool({
-        root: cwd,
-      }),
-      createBashTool({
-        root: cwd,
-      }),
-      ...(config.memory.enabled
-        ? [
-            createRememberTool({
-              cwd,
-            }),
-          ]
-        : []),
-      ...(options.wakeScheduler && options.sessionId
-        ? [
-            createScheduleWakeTool({
-              scheduler: options.wakeScheduler,
-              sessionId: options.sessionId,
-            }),
-          ]
-        : []),
-    ],
+    tools,
     maxTurns: config.agent.maxTurns,
     beforeToolExecution: options.beforeToolExecution,
     messages: options.messages,
@@ -77,4 +98,15 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     logger: options.logger,
     loggerMetadata: { agentKind: "conversation" },
   });
+}
+
+function assertUniqueToolNames(tools: readonly Tool[]): void {
+  const names = new Set<string>();
+
+  for (const tool of tools) {
+    if (names.has(tool.name)) {
+      throw new Error(`Duplicate Kana Agent tool name: ${tool.name}.`);
+    }
+    names.add(tool.name);
+  }
 }

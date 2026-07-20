@@ -31,7 +31,7 @@ src/main.ts
 - `kana install [--force] [--skills]`：创建默认配置、审批文件和 Skills 配置；`--skills` 额外克隆或更新默认 Skills 仓库。
 - `kana skills sync <target>`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；当前内置 `codex` 目标，也可传自定义目录。
 
-启动 TUI 时，`startTui` 会加载配置和审批白名单，创建当前会话，并构造 `KanaTuiApp`。它把会话读写、Skills 开关、记忆压缩和 Agent 工厂以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 等存储细节。
+启动 TUI 时，`startTui` 会加载运行配置、独立 MCP 配置和审批白名单，创建当前会话，连接 MCP server 并发现初始工具，然后构造 `KanaTuiApp`。它把会话读写、Skills 开关、记忆压缩和携带 MCP 工具的 Agent 工厂以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 
 ## 一次对话如何执行
 
@@ -96,11 +96,11 @@ stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受�
 
 `McpManager` 只依赖结构化的 `McpManagedClient`，不创建具体协议 client 或 transport。它并行启动服务器，但按注册顺序稳定聚合工具；include/exclude 使用远端原名筛选。单个可选服务器连接、发现或 schema 适配失败时只记录诊断并关闭该服务器，必需服务器失败则关闭全部连接并终止启动。每个服务器的工具集以原子方式适配；远端重名会使该服务器失败，清洗或截断后的别名冲突以及与本地保留工具冲突会使整个聚合失败，不做隐式覆盖或顺序后缀。关闭操作幂等并按注册逆序清理所有 client。
 
-当前 manager 固定使用启动时发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层已能解析独立 `mcp.json` 中的 `mcpServers`，并由 `type` 判别配置创建 stdio registration；省略 `type` 时默认使用 stdio。该工厂为每个服务器构造 `StdioTransport` 和稳定版 `McpClient`，只继承少量基础环境变量，再合并服务器显式配置的 `env`，同时把 stderr、client error 和 manager error 转发给 Kana logger。TUI 尚未启动 manager 或把远端工具注册给 Agent；后续产品装配会传入内置工具名并只向主 Agent 注入。memory consolidation Agent 不应获得这些外部工具。
+当前 manager 固定使用启动时发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析独立 `mcp.json` 中的 `mcpServers`，并由 `type` 判别配置创建 stdio registration；省略 `type` 时默认使用 stdio。该工厂为每个服务器构造 `StdioTransport` 和稳定版 `McpClient`，只继承少量基础环境变量，再合并服务器显式配置的 `env`，同时把 stderr、client error 和 manager error 转发给当前 session logger。TUI 在构造 App 前启动 manager，预留完整内置工具命名空间，并把发现的工具注入每次重建的主 Agent；memory consolidation Agent 不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
 
 ## Kana 产品装配
 
-`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建系统提示词，并注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash` 与可选工具。
+`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建系统提示词，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash` 与可选内置工具，并在校验名称唯一后追加产品层传入的 `additionalTools`。
 
 系统提示词由以下部分组成，后面的项目级指令优先级更高：
 

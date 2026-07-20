@@ -88,7 +88,7 @@ export class WelcomeBlock implements Component {
       title("Highlights"),
       text("  Tool result viewer"),
       text("  Persistent agent memory"),
-      text("  Scheduled agent wake-ups"),
+      text("  MCP server tools"),
       muted("  ... /help for more"),
     ];
 

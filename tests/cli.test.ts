@@ -53,6 +53,35 @@ describe("CLI", () => {
     ]);
   });
 
+  test("waits for asynchronous TUI shutdown", async () => {
+    const events: string[] = [];
+    let release!: () => void;
+    const stopped = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let parsingFinished = false;
+    const parsing = parse(["node", "kana"], {
+      startTui: async () => {
+        events.push("started");
+        await stopped;
+        events.push("stopped");
+      },
+    }).then(() => {
+      parsingFinished = true;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(events).toEqual(["started"]);
+    expect(parsingFinished).toBe(false);
+
+    release();
+    await parsing;
+
+    expect(events).toEqual(["started", "stopped"]);
+    expect(parsingFinished).toBe(true);
+  });
+
   test("reports every installed config file", async () => {
     const logs: string[] = [];
 
