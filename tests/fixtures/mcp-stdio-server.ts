@@ -135,7 +135,15 @@ async function handleMessage(message: RpcMessage): Promise<void> {
         ? {
             cwd: process.cwd(),
             argv: process.argv.slice(2),
-            env: selectEnvironment(["HOME", "PATH", "ALLOWED_SECRET", "BLOCKED_SECRET"]),
+            env: selectEnvironment([
+              "HOME",
+              "PATH",
+              "ALLOWED_SECRET",
+              "BLOCKED_SECRET",
+              "SUBSTITUTED_VAR",
+              "UNRESOLVED_VAR",
+              "MULTI_SUB_VAR",
+            ]),
           }
         : (asRecord(args) ?? {});
     await writeMessage({

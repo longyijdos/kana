@@ -187,7 +187,7 @@ Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type"
 | `command` | Required for stdio | Absolute executable path or a name resolved through `PATH`. It is launched directly as an argument array, never through a shell. |
 | `args` | stdio: `[]` | Arguments passed to the stdio executable. |
 | `cwd` | stdio: Kana's current working directory | Child-process working directory; relative paths resolve from the directory where Kana runs. |
-| `env` | stdio: `{}` | String key/value pairs explicitly added to the child environment. Configured values override matching baseline variables. |
+| `env` | stdio: `{}` | String key/value pairs explicitly added to the child environment. `${VAR_NAME}` placeholders in values are expanded from the current process environment; unresolvable names expand to an empty string. Configured values override matching baseline variables. |
 | `url` | Required for HTTP | Single Streamable HTTP endpoint; it must be an absolute `http`/`https` URL without credentials or a fragment. |
 | `proxy` | HTTP: Unset | An absolute `http`/`https` URL routes only this server through that proxy; `false` ignores process-wide proxies and forces direct connections. URLs cannot contain credentials or fragments. |
 | `headers` | HTTP: `{}` | String headers sent with every HTTP request; transport-owned content, session, protocol, and SSE headers cannot be overridden. |

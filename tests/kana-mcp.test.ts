@@ -84,6 +84,43 @@ describe("Kana MCP composition", () => {
     });
   });
 
+  test("resolves \x24{VAR} placeholders in configured env values", async () => {
+    const manager = createManager(
+      {
+        fixture: createServerConfig({
+          args: [fixturePath],
+          env: {
+            KANA_TEST_MCP_SCENARIO: "inspect-environment",
+            SUBSTITUTED_VAR: "\x24{PARENT_VAR}",
+            UNRESOLVED_VAR: "\x24{MISSING_VAR}",
+            MULTI_SUB_VAR: "prefix_\x24{PARENT_VAR}_suffix",
+          },
+          includeTools: ["echo"],
+        }),
+      },
+      {
+        HOME: "/safe-home",
+        PATH: process.env.PATH,
+        PARENT_VAR: "resolved-value",
+      },
+    );
+
+    const tools = await manager.start();
+    const result = normalizeToolResult(
+      await tools[0]!.execute({ text: "hello" }, { toolCallId: "call-1", update() {} }),
+    );
+
+    expect(result.result).toMatchObject({
+      structuredContent: {
+        env: {
+          SUBSTITUTED_VAR: "resolved-value",
+          UNRESOLVED_VAR: "",
+          MULTI_SUB_VAR: "prefix_resolved-value_suffix",
+        },
+      },
+    });
+  });
+
   test("uses configured request timeouts", async () => {
     const manager = createManager(
       {

@@ -187,7 +187,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `command` | stdio 必填 | 可执行文件的绝对路径或通过 `PATH` 查找的名称。直接以参数数组启动，不经过 shell。 |
 | `args` | stdio: `[]` | 传给 stdio 可执行文件的参数数组。 |
 | `cwd` | stdio: Kana 当前工作目录 | 子进程工作目录；相对路径由运行 Kana 的当前目录解析。 |
-| `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。配置值覆盖同名基础环境变量。 |
+| `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。配置值中的 `${VAR_NAME}` 会替换为当前进程的同名环境变量值，未找到时替换为空字符串。配置值覆盖同名基础环境变量。 |
 | `url` | HTTP 必填 | Streamable HTTP 单端点 URL；必须为绝对 `http`/`https` URL，不能包含 credentials 或 fragment。 |
 | `proxy` | HTTP: 未设置 | 绝对 `http`/`https` 代理 URL 表示仅该 server 使用指定代理；`false` 表示忽略进程级代理并强制直连。URL 不能包含 credentials 或 fragment。 |
 | `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |

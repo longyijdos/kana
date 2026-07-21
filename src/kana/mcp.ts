@@ -239,9 +239,16 @@ function createChildEnvironment(
     }
   }
 
+  const resolved: Record<string, string> = {};
+  for (const [key, value] of Object.entries(configured)) {
+    resolved[key] = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, varName) => {
+      return env[varName] ?? "";
+    });
+  }
+
   return {
     ...Object.fromEntries(entries),
-    ...configured,
+    ...resolved,
   };
 }
 
