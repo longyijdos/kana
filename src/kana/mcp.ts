@@ -14,6 +14,7 @@ import {
 } from "@/mcp";
 import type { OAuthFetch, OAuthTokenStore } from "@/oauth";
 import { KANA_VERSION } from "../version";
+import { createHttpProxyFetch } from "./http-proxy";
 import type { KanaMcpConfig, KanaMcpServerConfig, KanaMcpStdioServerConfig } from "./mcp-config";
 import { createKanaMcpOAuthAuthorizer } from "./mcp-oauth";
 import { openKanaOAuthAuthorizationUrl } from "./oauth-browser";
@@ -188,11 +189,23 @@ function createTransport(
                   }),
             },
           );
+    const transportFetch =
+      authorizer?.fetch ??
+      (config.proxy === undefined
+        ? undefined
+        : createHttpProxyFetch(config.proxy, context.oauthFetch ?? globalThis.fetch));
+    if (config.proxy !== undefined) {
+      try {
+        context.getLogger().debug("mcp.http_proxy_enabled", { serverId });
+      } catch {
+        // Diagnostic logging cannot prevent a configured server from starting.
+      }
+    }
     return {
       transport: new StreamableHttpTransport({
         url: config.url,
         headers: config.headers,
-        ...(authorizer === undefined ? {} : { fetch: authorizer.fetch }),
+        ...(transportFetch === undefined ? {} : { fetch: transportFetch }),
       }),
       ...(authorizer === undefined ? {} : { authorizer }),
     };

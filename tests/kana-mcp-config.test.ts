@@ -79,6 +79,7 @@ describe("Kana MCP config", () => {
           remote: {
             type: "http",
             url: "https://example.com/mcp?workspace=kana",
+            proxy: "http://127.0.0.1:7890",
             headers: {
               Authorization: "Bearer test-token",
               "X-Tenant": "kana",
@@ -95,6 +96,7 @@ describe("Kana MCP config", () => {
         remote: {
           type: "http",
           url: "https://example.com/mcp?workspace=kana",
+          proxy: "http://127.0.0.1:7890",
           headers: {
             Authorization: "Bearer test-token",
             "X-Tenant": "kana",
@@ -319,6 +321,45 @@ describe("Kana MCP config", () => {
         },
       }),
     ).toThrow("mcpServers.remote.headers cannot set Authorization when OAuth is configured.");
+  });
+
+  test("rejects invalid Streamable HTTP proxy URLs", () => {
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: { type: "http", url: "https://example.com/mcp", proxy: "not-a-url" },
+        },
+      }),
+    ).toThrow("mcpServers.remote.proxy must be an absolute HTTP proxy URL.");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: { type: "http", url: "https://example.com/mcp", proxy: "socks5://proxy" },
+        },
+      }),
+    ).toThrow("mcpServers.remote.proxy must use http or https.");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: {
+            type: "http",
+            url: "https://example.com/mcp",
+            proxy: "http://user:password@proxy.example.com",
+          },
+        },
+      }),
+    ).toThrow("mcpServers.remote.proxy cannot contain credentials.");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: {
+            type: "http",
+            url: "https://example.com/mcp",
+            proxy: "http://proxy.example.com#secret",
+          },
+        },
+      }),
+    ).toThrow("mcpServers.remote.proxy cannot contain a fragment.");
   });
 
   test("rejects invalid timeouts and tool filters", () => {

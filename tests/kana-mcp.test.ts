@@ -11,6 +11,7 @@ import {
 } from "@/kana";
 import type { Logger, LogMetadata } from "@/logging";
 import { type JsonRpcMessage, type McpManager, McpRequestTimeoutError } from "@/mcp";
+import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
 import { normalizeToolResult } from "@/tools";
 
 const fixturePath = path.resolve("tests/fixtures/mcp-stdio-server.ts");
@@ -176,6 +177,169 @@ describe("Kana MCP composition", () => {
     expect(tools.map((tool) => tool.name)).toEqual(["remote_echo"]);
     expect(result.result).toMatchObject({ structuredContent: { transport: "http" } });
     expect(authorizations).toContain("Bearer remote-token");
+  });
+
+  test("routes MCP and OAuth HTTP requests through the configured server proxy", async () => {
+    const resource = "https://api.example.com/mcp";
+    const issuer = "https://auth.example.com";
+    const proxy = "http://127.0.0.1:7890";
+    const requests: Array<{ url: string; proxy?: unknown; authorization: string | null }> = [];
+    const logs: Array<{ level: string; event: string; metadata?: LogMetadata }> = [];
+    let storedToken: OAuthStoredToken | undefined = {
+      accessToken: "expired-token",
+      tokenType: "Bearer",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() - 60_000,
+      scopes: ["read"],
+      issuer,
+      clientId: "kana-client",
+      resource,
+    };
+    const tokenStore: OAuthTokenStore = {
+      async load() {
+        return storedToken === undefined ? undefined : { ...storedToken };
+      },
+      async save(_key, token) {
+        storedToken = { ...token };
+      },
+      async delete() {
+        storedToken = undefined;
+      },
+    };
+    const fetch: OAuthFetch = async (input, init) => {
+      const request = new Request(input, init);
+      requests.push({
+        url: request.url,
+        proxy: (init as (RequestInit & { proxy?: unknown }) | undefined)?.proxy,
+        authorization: request.headers.get("Authorization"),
+      });
+
+      if (request.url === "https://api.example.com/.well-known/oauth-protected-resource/mcp") {
+        return Response.json({
+          resource,
+          authorization_servers: [issuer],
+          scopes_supported: ["read"],
+          bearer_methods_supported: ["header"],
+        });
+      }
+      if (request.url === "https://auth.example.com/.well-known/oauth-authorization-server") {
+        return Response.json({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          response_types_supported: ["code"],
+          grant_types_supported: ["authorization_code", "refresh_token"],
+          code_challenge_methods_supported: ["S256"],
+          token_endpoint_auth_methods_supported: ["none"],
+        });
+      }
+      if (request.url === `${issuer}/token`) {
+        return Response.json({
+          access_token: "refreshed-token",
+          token_type: "Bearer",
+          refresh_token: "next-refresh-token",
+          expires_in: 3_600,
+          scope: "read",
+        });
+      }
+      if (request.url !== resource) {
+        throw new Error(`Unexpected proxied MCP request: ${request.method} ${request.url}`);
+      }
+      if (request.method === "GET") {
+        return new Response(null, { status: 405 });
+      }
+
+      const message = (await request.json()) as JsonRpcMessage;
+      if ("method" in message && message.method === "notifications/initialized") {
+        return new Response(null, { status: 202 });
+      }
+      if (!("method" in message) || !("id" in message)) {
+        return new Response(null, { status: 202 });
+      }
+      if (message.method === "initialize") {
+        return jsonResponse({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            protocolVersion: "2025-11-25",
+            capabilities: { tools: {} },
+            serverInfo: { name: "proxied-server", version: "1.0.0" },
+          },
+        });
+      }
+      if (message.method === "tools/list") {
+        return jsonResponse({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            tools: [
+              {
+                name: "echo",
+                inputSchema: { type: "object", additionalProperties: false },
+              },
+            ],
+          },
+        });
+      }
+      if (message.method === "tools/call") {
+        return jsonResponse({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { content: [{ type: "text", text: "proxied" }] },
+        });
+      }
+      return new Response(null, { status: 202 });
+    };
+    const logger = createCapturingLogger(logs);
+    const manager = createKanaMcpManager(
+      {
+        mcpServers: {
+          remote: createHttpServerConfig({
+            url: resource,
+            proxy,
+            auth: {
+              type: "oauth2",
+              clientId: "kana-client",
+              scopes: ["read"],
+              authorizationParameters: {},
+              callbackTimeoutMs: 300_000,
+            },
+          }),
+        },
+      },
+      {
+        enabledServerIds: ["remote"],
+        clientInfo: { name: "kana-test", version: "1.0.0" },
+        oauthFetch: fetch,
+        oauthTokenStore: tokenStore,
+        getLogger: () => logger,
+      },
+    );
+    managers.add(manager);
+
+    const tools = await manager.start();
+    await tools[0]!.execute({}, { toolCallId: "call-proxy", update() {} });
+
+    expect(requests.length).toBeGreaterThan(4);
+    expect(requests.every((request) => request.proxy === proxy)).toBe(true);
+    expect(requests.map((request) => request.url)).toEqual(
+      expect.arrayContaining([
+        "https://api.example.com/.well-known/oauth-protected-resource/mcp",
+        "https://auth.example.com/.well-known/oauth-authorization-server",
+        "https://auth.example.com/token",
+        resource,
+      ]),
+    );
+    expect(
+      requests.some(
+        (request) => request.url === resource && request.authorization === "Bearer refreshed-token",
+      ),
+    ).toBe(true);
+    expect(logs).toContainEqual({
+      level: "debug",
+      event: "mcp.http_proxy_enabled",
+      metadata: { serverId: "remote" },
+    });
   });
 
   test("creates clients only for selected server IDs", async () => {

@@ -36,6 +36,7 @@ export type KanaMcpOAuth2Config = {
 export type KanaMcpHttpServerConfig = KanaMcpCommonServerConfig & {
   type: "http";
   url: string;
+  proxy?: string;
   headers: Record<string, string>;
   auth?: KanaMcpOAuth2Config;
 };
@@ -68,6 +69,7 @@ const STDIO_SERVER_KEYS = new Set([
 const HTTP_SERVER_KEYS = new Set([
   "type",
   "url",
+  "proxy",
   "headers",
   "auth",
   "required",
@@ -159,6 +161,7 @@ function parseStdioServer(name: string, server: Record<string, unknown>): KanaMc
 function parseHttpServer(name: string, server: Record<string, unknown>): KanaMcpHttpServerConfig {
   assertKnownKeys(server, HTTP_SERVER_KEYS, name);
   const url = readHttpUrl(server.url, `${name}.url`);
+  const proxy = readOptionalHttpProxyUrl(server.proxy, `${name}.proxy`);
   const headers = readHttpHeaders(server.headers, `${name}.headers`);
   const auth = readOptionalOAuth2Config(server.auth, `${name}.auth`);
   if (auth !== undefined && new URL(url).protocol !== "https:") {
@@ -171,6 +174,7 @@ function parseHttpServer(name: string, server: Record<string, unknown>): KanaMcp
   return {
     type: "http",
     url,
+    ...(proxy === undefined ? {} : { proxy }),
     headers,
     ...(auth === undefined ? {} : { auth }),
     ...parseCommonServerConfig(name, server),
@@ -273,6 +277,31 @@ function readHttpUrl(value: unknown, name: string): string {
     url = new URL(raw);
   } catch (error) {
     throw new Error(`${name} must be an absolute HTTP URL.`, { cause: error });
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${name} must use http or https.`);
+  }
+  if (url.username || url.password) {
+    throw new Error(`${name} cannot contain credentials.`);
+  }
+  if (url.hash) {
+    throw new Error(`${name} cannot contain a fragment.`);
+  }
+  return raw;
+}
+
+function readOptionalHttpProxyUrl(value: unknown, name: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const raw = readRequiredNonBlankString(value, name);
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${name} must be an absolute HTTP proxy URL.`);
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {

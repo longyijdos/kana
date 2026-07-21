@@ -1,6 +1,7 @@
 import { createNoopLogger, type Logger } from "@/logging";
 import { McpOAuthHttpAuthorizer, type McpOAuthHttpDiagnosticEvent } from "@/mcp";
 import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
+import { createHttpProxyFetch } from "./http-proxy";
 import {
   type KanaMcpHttpServerConfig,
   type KanaMcpOAuth2Config,
@@ -46,6 +47,11 @@ export function createKanaMcpOAuthAuthorizer(
   config: KanaMcpOAuthServerConfig,
   options: CreateKanaMcpOAuthAuthorizerOptions,
 ): McpOAuthHttpAuthorizer {
+  const fetch =
+    config.proxy === undefined
+      ? options.fetch
+      : createHttpProxyFetch(config.proxy, options.fetch ?? globalThis.fetch);
+
   return new McpOAuthHttpAuthorizer({
     resource: config.url,
     storageKey: createKanaMcpOAuthStorageKey(serverId),
@@ -56,7 +62,7 @@ export function createKanaMcpOAuthAuthorizer(
     ...(config.auth.scopes === undefined ? {} : { scopes: config.auth.scopes }),
     additionalAuthorizationParameters: config.auth.authorizationParameters,
     callbackTimeoutMs: config.auth.callbackTimeoutMs,
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(fetch === undefined ? {} : { fetch }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     onDiagnostic: createDiagnosticHandler(serverId, options),
   });
