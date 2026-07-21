@@ -49,7 +49,6 @@ describe("Kana MCP config", () => {
       mcpServers: {
         filesystem: {
           type: "stdio",
-          enabled: true,
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/projects"],
           env: {},
@@ -59,7 +58,6 @@ describe("Kana MCP config", () => {
         },
         github: {
           type: "stdio",
-          enabled: true,
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-github"],
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_xxxx" },
@@ -116,6 +114,13 @@ describe("Kana MCP config", () => {
         },
       }),
     ).toThrow("mcpServers.typo contains unknown field arguments.");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          legacy: { command: "mcp-server", enabled: true },
+        },
+      }),
+    ).toThrow("mcpServers.legacy contains unknown field enabled.");
   });
 
   test("rejects invalid environment values", () => {

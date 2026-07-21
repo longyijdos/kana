@@ -11,7 +11,7 @@ kana install
 # Also install or update the default global Skills repository
 kana install --skills
 
-# Overwrite config.toml, approvals.json, and skills.toml; reclone Skills when requested
+# Overwrite installed config/state files; reclone Skills when requested
 kana install --force --skills
 
 # Copy installed Kana Skills to Codex's global Skills directory
@@ -30,7 +30,7 @@ kana fix the failing tests
 kana resume [session-id]
 ```
 
-`kana install` does not overwrite existing files. `--force` restores `config.toml`, `mcp.json`, `approvals.json`, and `skills/skills.toml` to their defaults; when combined with `--skills`, it also deletes and reclones the default Skills directory. It does **not** create `~/.kana/AGENTS.md`; users create global instructions themselves.
+`kana install` does not overwrite existing files. `--force` restores `config.toml`, `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` to their defaults; when combined with `--skills`, it also deletes and reclones the default Skills directory. It does **not** create `~/.kana/AGENTS.md`; users create global instructions themselves.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. If the existing directory is not a Git repository, a regular update fails and `--force` is required to replace it. An existing Git repository is updated with `git pull --ff-only`.
 
@@ -43,7 +43,8 @@ Kana uses `KANA_HOME` as its root. When unset, it uses `$HOME/.kana`; when `HOME
 ```text
 ${KANA_HOME:-$HOME/.kana}/
 ├── config.toml             # Runtime configuration covered here
-├── mcp.json                # Separate MCP server configuration
+├── mcp.json                # MCP server definitions
+├── mcp-enabled.json        # Enabled MCP server IDs
 ├── approvals.json          # bash trust rules
 ├── AGENTS.md               # Optional global system instructions; not created by install
 ├── sessions/               # Workspace-grouped JSONL sessions
@@ -132,9 +133,9 @@ Default `info` retains only session, TUI, Agent-run, and memory-task summaries; 
 
 The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
 
-## `mcp.json`
+## `mcp.json` and `mcp-enabled.json`
 
-MCP servers are not stored in `config.toml`; they use a separate Claude Code-style `<KANA_HOME>/mcp.json`. A missing file or omitted `mcpServers` is equivalent to no servers. Only after the current session is visible does the TUI connect every enabled server, use stable `2025-11-25` clients to discover the initial tool list, and inject the remote tools into a rebuilt main Agent. `kana resume` without an ID shows the session picker first and begins connecting only after selection. Memory-consolidation Agents never receive MCP tools. The tool list is currently fixed for the lifetime of the Kana process; runtime `notifications/tools/list_changed` events are not processed.
+MCP servers are not stored in `config.toml`. Claude Code-style definitions live in `<KANA_HOME>/mcp.json`, while `<KANA_HOME>/mcp-enabled.json` is the sole source of activation state. A missing definitions file or omitted `mcpServers` means that no servers are configured; a missing activation file or omitted `enabledServers` means that none are enabled. Only configured IDs listed in `enabledServers` are started, and stale unknown IDs are ignored. After the current session is visible, the TUI connects the selected servers, uses stable `2025-11-25` clients to discover their tools, and injects the remote tools into a rebuilt main Agent. `kana resume` without an ID shows the session picker first and begins connecting only after selection. Memory-consolidation Agents never receive MCP tools. Each discovered tool list remains fixed until an explicit `/mcp` reload or process exit; runtime `notifications/tools/list_changed` events are not processed.
 
 ```json
 {
@@ -154,12 +155,21 @@ MCP servers are not stored in `config.toml`; they use a separate Claude Code-sty
 }
 ```
 
+Activation is stored separately so `/mcp` can manage it without rewriting server commands, arguments, formatting, or plaintext environment values:
+
+```json
+{
+  "enabledServers": ["filesystem", "github"]
+}
+```
+
+Server IDs must be non-empty and unique. Unknown fields, invalid values, and duplicate IDs fail activation-state loading. `/mcp` lists every configured server with its transport and full command line (`command` followed by `args`), but deliberately omits environment values. `Enter` toggles an in-memory draft; `Esc` applies and closes it. If the draft changed, Kana writes the complete configured selection to `mcp-enabled.json` once, thereby dropping stale unknown IDs, then performs one reload. An unchanged draft neither writes nor reloads. A persistence failure leaves the manager open so it can be retried.
+
 Omitting `type` defaults to `stdio`. Kana also accepts these optional extensions:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `type` | `stdio` | Only `stdio` is accepted today; later HTTP/SSE configurations extend the same discriminated union. |
-| `enabled` | `true` | Whether to create a registration for this server. |
 | `command` | Required | Absolute executable path or a name resolved through `PATH`. It is launched directly as an argument array, never through a shell. |
 | `args` | `[]` | Arguments passed to the executable. |
 | `cwd` | Kana's current working directory | Child-process working directory; relative paths resolve from the directory where Kana runs. |
@@ -172,9 +182,9 @@ Omitting `type` defaults to `stdio`. Kana also accepts these optional extensions
 
 The stdio child inherits only defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges `env`. No other process environment variables are inherited. Environment names must use conventional syntax and values must be strings. Unknown fields, non-positive timeouts, and duplicate or empty tool names fail configuration loading.
 
-When an optional server fails to start, Kana records diagnostics, closes that server, and continues startup, leaving a persistent warning after the final summary. A failed server with `required: true` leaves the current session in an error state without enabling the editor. While connecting, a transcript block after the welcome panel or resumed history shows completed/total server counts and the latest server outcome. Once the manager is ready, that block remains as an `MCP startup complete` summary with ready-server and available-tool counts. Remote tools retain the unknown-tool approval policy, so every call requires confirmation in `unless_trusted` mode; the approval prompt shows the server ID, original remote tool name, and complete formatted arguments, with allow-once and deny choices only. On quit, idle or loading `Ctrl+C`, or `SIGHUP`, `SIGINT`, and `SIGTERM`, Kana begins graceful shutdown and shows per-server close progress at the end of the transcript without replacing bottom. It restores the terminal and prints exit information only after every MCP server closes. Pressing `Ctrl+C` again while graceful shutdown is pending forces immediate termination.
+When an optional server fails to start, Kana records diagnostics, closes that server, and continues, leaving a persistent warning after the final summary. A failed required server during initial loading leaves the current session in an error state without enabling the editor. During an explicit reload, however, any configuration or required-server failure clears the closed manager's tools, rebuilds the Agent without them, reports the error in the transcript, and restores the editor so `/mcp` can be opened again. Connecting and reloading append progress blocks after the transcript, followed by startup/reload summaries with ready-server and available-tool counts; selecting no servers produces an `MCP disabled` reload summary. Remote tools retain the unknown-tool approval policy, so every call requires confirmation in `unless_trusted` mode; the approval prompt shows the server ID, original remote tool name, and complete formatted arguments, with allow-once and deny choices only. On quit, idle or loading `Ctrl+C`, or `SIGHUP`, `SIGINT`, and `SIGTERM`, Kana begins graceful shutdown and shows per-server close progress at the end of the transcript without replacing bottom. It restores the terminal and prints exit information only after every MCP server closes. Pressing `Ctrl+C` again while graceful shutdown is pending forces immediate termination.
 
-Server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. `env` currently uses literal JSON values, so tokens are stored in plaintext inside `mcp.json`; do not commit or share this file, and use least-privilege credentials. `kana install` creates it with mode `0600`, but `kana install --force` also resets it to an empty configuration. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
+Server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. `env` currently uses literal JSON values, so tokens are stored in plaintext inside `mcp.json`; do not commit or share this file, and use least-privilege credentials. `kana install` creates both MCP files with mode `0600`, but `kana install --force` also resets the definitions and activation state to empty defaults. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
 
 ## API key and project instructions
 

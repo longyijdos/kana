@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   formatMcpLifecycleStatus,
+  formatMcpReloadSummary,
   formatMcpStartupSummary,
   formatMcpStartupWarnings,
 } from "../src/tui/mcp-lifecycle-status";
@@ -83,5 +84,9 @@ describe("MCP lifecycle status", () => {
     expect(formatMcpStartupSummary(diagnostics.slice(0, 1), 1)).toBe(
       "MCP startup complete: 1/1 servers ready · 1 tool",
     );
+    expect(formatMcpReloadSummary(diagnostics.slice(0, 1), 1)).toBe(
+      "MCP reload complete: 1/1 servers ready · 1 tool",
+    );
+    expect(formatMcpReloadSummary([], 0)).toBe("MCP disabled: no servers enabled.");
   });
 });

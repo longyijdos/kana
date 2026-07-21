@@ -27,6 +27,7 @@ const BASE_ENVIRONMENT_NAMES = [
 const MAX_LOGGED_STDERR_CHARS = 16_000;
 
 export type CreateKanaMcpManagerOptions = {
+  enabledServerIds: Iterable<string>;
   env?: NodeJS.ProcessEnv;
   reservedToolNames?: Iterable<string>;
   getLogger?: () => Logger;
@@ -36,13 +37,14 @@ export type CreateKanaMcpManagerOptions = {
 
 export function createKanaMcpManager(
   config: KanaMcpConfig,
-  options: CreateKanaMcpManagerOptions = {},
+  options: CreateKanaMcpManagerOptions,
 ): McpManager {
   const env = { ...(options.env ?? process.env) };
   const clientInfo = { ...(options.clientInfo ?? DEFAULT_CLIENT_INFO) };
   const getLogger = options.getLogger ?? createNoopLogger;
+  const enabledServerIds = new Set(options.enabledServerIds);
   const servers = Object.entries(config.mcpServers)
-    .filter(([, server]) => server.enabled)
+    .filter(([serverId]) => enabledServerIds.has(serverId))
     .map(([serverId, server]) =>
       createStdioRegistration(serverId, copyStdioConfig(server), {
         env,

@@ -11,7 +11,7 @@ kana install
 # 同时安装或更新默认的全局 Skills 仓库
 kana install --skills
 
-# 覆盖现有 config.toml、approvals.json 和 skills.toml，必要时重新克隆 Skills
+# 覆盖已安装的配置与状态文件，必要时重新克隆 Skills
 kana install --force --skills
 
 # 将已安装的 Kana Skills 复制到 Codex 的全局 Skills 目录
@@ -30,7 +30,7 @@ kana 修复测试失败
 kana resume [session-id]
 ```
 
-`kana install` 不会覆盖已经存在的文件。`--force` 会将 `config.toml`、`mcp.json`、`approvals.json` 和 `skills/skills.toml` 恢复为默认内容；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。它**不会**创建 `~/.kana/AGENTS.md`，全局指令文件需要用户自行创建。
+`kana install` 不会覆盖已经存在的文件。`--force` 会将 `config.toml`、`mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 恢复为默认内容；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。它**不会**创建 `~/.kana/AGENTS.md`，全局指令文件需要用户自行创建。
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。已有目录不是 Git 仓库时，普通更新会报错，必须使用 `--force` 才会替换它；已有 Git 仓库则执行 `git pull --ff-only`。
 
@@ -43,7 +43,8 @@ Kana 使用 `KANA_HOME` 指定根目录；未设置时使用 `$HOME/.kana`，若
 ```text
 ${KANA_HOME:-$HOME/.kana}/
 ├── config.toml             # 本文的运行配置
-├── mcp.json                # 独立的 MCP server 配置
+├── mcp.json                # MCP server 定义
+├── mcp-enabled.json        # 已启用的 MCP server ID
 ├── approvals.json          # bash 信任规则
 ├── AGENTS.md               # 可选：全局系统指令，不由 install 创建
 ├── sessions/               # 按工作区分组的 JSONL 会话
@@ -132,9 +133,9 @@ export DEEPSEEK_API_KEY='sk-...'
 
 配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
 
-## `mcp.json`
+## `mcp.json` 与 `mcp-enabled.json`
 
-MCP server 不写入 `config.toml`，而是使用 Claude Code 风格的独立 `<KANA_HOME>/mcp.json`。文件不存在或省略 `mcpServers` 时等价于没有服务器。当前会话显示后，TUI 才会连接所有启用的服务器，使用稳定版 `2025-11-25` client 获取初始工具列表，再把远端工具注入重建后的主 Agent；不带 ID 的 `kana resume` 会先显示会话选择器，选中会话后才开始连接。记忆压缩 Agent 不会获得 MCP 工具。当前工具列表固定到本次 Kana 进程结束，不处理运行中的 `notifications/tools/list_changed`。
+MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA_HOME>/mcp.json`，`<KANA_HOME>/mcp-enabled.json` 则是启用状态的唯一来源。定义文件不存在或省略 `mcpServers` 时等价于未配置服务器；启用文件不存在或省略 `enabledServers` 时等价于未启用任何服务器。Kana 只启动同时存在于定义和 `enabledServers` 中的 ID，过期的未知 ID 会被忽略。当前会话显示后，TUI 才会连接选中的服务器，使用稳定版 `2025-11-25` client 获取工具列表，再把远端工具注入重建后的主 Agent；不带 ID 的 `kana resume` 会先显示会话选择器，选中会话后才开始连接。记忆压缩 Agent 不会获得 MCP 工具。每次发现的工具列表会固定到显式执行下一次 `/mcp` reload 或本次进程结束，不处理运行中的 `notifications/tools/list_changed`。
 
 ```json
 {
@@ -154,12 +155,21 @@ MCP server 不写入 `config.toml`，而是使用 Claude Code 风格的独立 `<
 }
 ```
 
+启用状态单独保存，因此 `/mcp` 管理开关时无需重写服务器命令、参数、格式或包含明文环境变量的定义文件：
+
+```json
+{
+  "enabledServers": ["filesystem", "github"]
+}
+```
+
+Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都会导致启用状态加载失败。`/mcp` 会列出所有已配置 server 的 transport 和完整命令行（`command` 后拼接 `args`），但刻意不显示环境变量。`Enter` 只切换内存中的草稿，`Esc` 一次性应用并关闭；草稿有变化时，Kana 会把完整的已配置选中项写入 `mcp-enabled.json` 一次（同时丢弃过期的未知 ID），再执行一次 reload。草稿未变化时既不写文件也不 reload；持久化失败时管理界面保持打开，方便重试。
+
 省略 `type` 时默认为 `stdio`。Kana 还接受以下可选扩展：
 
 | 键 | 默认值 | 含义 |
 | --- | --- | --- |
 | `type` | `stdio` | 当前只接受 `stdio`；后续 HTTP/SSE 配置会扩展同一判别联合。 |
-| `enabled` | `true` | 是否为该服务器创建 registration。 |
 | `command` | 必填 | 可执行文件的绝对路径或通过 `PATH` 查找的名称。直接以参数数组启动，不经过 shell。 |
 | `args` | `[]` | 传给可执行文件的参数数组。 |
 | `cwd` | Kana 当前工作目录 | 子进程工作目录；相对路径由运行 Kana 的当前目录解析。 |
@@ -172,9 +182,9 @@ MCP server 不写入 `config.toml`，而是使用 Claude Code 风格的独立 `<
 
 stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并 `env`。不会继承其他进程环境变量。环境变量名必须符合常规格式，值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
 
-可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续启动，并在最终摘要后留下失败警告。`required: true` 的服务器失败会让当前会话停留在错误状态，不启用 editor。连接期间，welcome 或恢复的历史之后会显示一个加载块，更新已完成/总服务器数及最近一个服务器的结果；manager 就绪后该块会保留为 `MCP startup complete` 摘要，显示 ready server 和可用工具数量。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲或加载时按 `Ctrl+C`，以及收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先进入优雅关闭，并在 transcript 末尾显示逐服务器关闭进度而不替换 bottom；所有 MCP server 关闭后才恢复终端并打印退出信息。优雅关闭等待期间再次按 `Ctrl+C` 会立即强制退出。
+可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续，并在最终摘要后留下失败警告。初次加载时，必需服务器失败会让当前会话停留在错误状态，不启用 editor；但显式 reload 中遇到配置或必需服务器失败时，会清空已关闭 manager 的工具、用无 MCP 工具的状态重建 Agent、把错误写入 transcript，并恢复 editor，以便再次打开 `/mcp`。连接和 reload 都会在 transcript 末尾追加进度块，最终保留含 ready server 与可用工具数量的启动/reload 摘要；未选择任何服务器时，reload 摘要会显示 `MCP disabled`。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲或加载时按 `Ctrl+C`，以及收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先进入优雅关闭，并在 transcript 末尾显示逐服务器关闭进度而不替换 bottom；所有 MCP server 关闭后才恢复终端并打印退出信息。优雅关闭等待期间再次按 `Ctrl+C` 会立即强制退出。
 
-服务器配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。`env` 当前按 JSON 字面值处理，包含 token 时会以明文保存在 `mcp.json`；不要提交或分享该文件，并使用最小权限凭据。`kana install` 以 `0600` 创建文件，但 `kana install --force` 也会把它重置为空配置。协议版本由代码维护，不提供任意字符串配置。
+服务器配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。`env` 当前按 JSON 字面值处理，包含 token 时会以明文保存在 `mcp.json`；不要提交或分享该文件，并使用最小权限凭据。`kana install` 会以 `0600` 创建两个 MCP 文件，但 `kana install --force` 也会把服务器定义和启用状态重置为空默认值。协议版本由代码维护，不提供任意字符串配置。
 
 ## API key 与项目指令
 

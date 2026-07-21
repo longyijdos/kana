@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -28,6 +36,7 @@ describe("Kana config", () => {
       home: "/home/kana/.kana",
       configPath: "/home/kana/.kana/config.toml",
       mcpConfigPath: "/home/kana/.kana/mcp.json",
+      mcpEnabledPath: "/home/kana/.kana/mcp-enabled.json",
       agentsPath: "/home/kana/.kana/AGENTS.md",
       memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
@@ -43,11 +52,13 @@ describe("Kana config", () => {
     const firstInstall = installKanaConfig(env);
     const installed = readFileSync(firstInstall.configPath, "utf8");
     const installedMcpConfig = JSON.parse(readFileSync(firstInstall.mcpConfigPath, "utf8"));
+    const installedMcpEnabled = JSON.parse(readFileSync(firstInstall.mcpEnabledPath, "utf8"));
     const installedApprovals = JSON.parse(readFileSync(firstInstall.approvalsPath, "utf8"));
     const installedSkillsConfig = readFileSync(firstInstall.skillsConfigPath, "utf8");
 
     expect(firstInstall.configStatus).toBe("created");
     expect(firstInstall.mcpConfigStatus).toBe("created");
+    expect(firstInstall.mcpEnabledStatus).toBe("created");
     expect(firstInstall.approvalsStatus).toBe("created");
     expect(firstInstall.skillsConfigStatus).toBe("created");
     expect(installed).toContain('api_key_env = "DEEPSEEK_API_KEY"');
@@ -62,12 +73,15 @@ describe("Kana config", () => {
     expect(installed).toContain('level = "info"');
     expect(installed).not.toContain("api_key =");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
+    expect(installedMcpEnabled).toEqual({ enabledServers: [] });
+    expect(statSync(firstInstall.mcpEnabledPath).mode & 0o777).toBe(0o600);
     expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(installedSkillsConfig).toBe(["[model_invocation]", "enabled = []", ""].join("\n"));
     expect(fileExists(getKanaConfigPaths(env).agentsPath)).toBe(false);
 
     writeFileSync(firstInstall.configPath, "custom = true\n");
     writeFileSync(firstInstall.mcpConfigPath, '{"custom":true}\n');
+    writeFileSync(firstInstall.mcpEnabledPath, '{"enabledServers":["custom"]}\n');
     writeFileSync(firstInstall.approvalsPath, '{"custom":true}\n');
     writeFileSync(firstInstall.skillsConfigPath, "custom = true\n");
     const secondInstall = installKanaConfig(env);
@@ -77,6 +91,8 @@ describe("Kana config", () => {
       configStatus: "exists",
       mcpConfigPath: firstInstall.mcpConfigPath,
       mcpConfigStatus: "exists",
+      mcpEnabledPath: firstInstall.mcpEnabledPath,
+      mcpEnabledStatus: "exists",
       approvalsPath: firstInstall.approvalsPath,
       approvalsStatus: "exists",
       skillsConfigPath: firstInstall.skillsConfigPath,
@@ -84,15 +100,20 @@ describe("Kana config", () => {
     });
     expect(readFileSync(firstInstall.configPath, "utf8")).toBe("custom = true\n");
     expect(readFileSync(firstInstall.mcpConfigPath, "utf8")).toBe('{"custom":true}\n');
+    expect(readFileSync(firstInstall.mcpEnabledPath, "utf8")).toBe(
+      '{"enabledServers":["custom"]}\n',
+    );
     expect(readFileSync(firstInstall.approvalsPath, "utf8")).toBe('{"custom":true}\n');
     expect(readFileSync(firstInstall.skillsConfigPath, "utf8")).toBe("custom = true\n");
   });
 
   test("force installs all default config files over existing files", () => {
     const env = createTempEnv();
-    const { configPath, mcpConfigPath, approvalsPath, skillsConfigPath } = installKanaConfig(env);
+    const { configPath, mcpConfigPath, mcpEnabledPath, approvalsPath, skillsConfigPath } =
+      installKanaConfig(env);
     writeFileSync(configPath, "custom = true\n");
     writeFileSync(mcpConfigPath, '{"custom":true}\n');
+    writeFileSync(mcpEnabledPath, '{"enabledServers":["custom"]}\n');
     writeFileSync(approvalsPath, '{"custom":true}\n');
     writeFileSync(skillsConfigPath, "custom = true\n");
 
@@ -103,6 +124,8 @@ describe("Kana config", () => {
       configStatus: "reinstalled",
       mcpConfigPath,
       mcpConfigStatus: "reinstalled",
+      mcpEnabledPath,
+      mcpEnabledStatus: "reinstalled",
       approvalsPath,
       approvalsStatus: "reinstalled",
       skillsConfigPath,
@@ -110,6 +133,7 @@ describe("Kana config", () => {
     });
     expect(readFileSync(configPath, "utf8")).toContain('api_key_env = "DEEPSEEK_API_KEY"');
     expect(JSON.parse(readFileSync(mcpConfigPath, "utf8"))).toEqual({ mcpServers: {} });
+    expect(JSON.parse(readFileSync(mcpEnabledPath, "utf8"))).toEqual({ enabledServers: [] });
     expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(readFileSync(skillsConfigPath, "utf8")).toBe(
       ["[model_invocation]", "enabled = []", ""].join("\n"),

@@ -32,10 +32,29 @@ export function formatMcpStartupSummary(
   diagnostics: readonly McpServerDiagnostic[],
   toolCount: number,
 ): string {
+  return formatMcpSummary("startup", diagnostics, toolCount);
+}
+
+export function formatMcpReloadSummary(
+  diagnostics: readonly McpServerDiagnostic[],
+  toolCount: number,
+): string {
+  if (diagnostics.length === 0) {
+    return "MCP disabled: no servers enabled.";
+  }
+
+  return formatMcpSummary("reload", diagnostics, toolCount);
+}
+
+function formatMcpSummary(
+  operation: "startup" | "reload",
+  diagnostics: readonly McpServerDiagnostic[],
+  toolCount: number,
+): string {
   const readyServerCount = diagnostics.filter((diagnostic) => diagnostic.status === "ready").length;
   const toolLabel = toolCount === 1 ? "tool" : "tools";
 
-  return `MCP startup complete: ${readyServerCount}/${diagnostics.length} servers ready · ${toolCount} ${toolLabel}`;
+  return `MCP ${operation} complete: ${readyServerCount}/${diagnostics.length} servers ready · ${toolCount} ${toolLabel}`;
 }
 
 function sanitizeLabel(value: string): string {

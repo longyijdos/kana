@@ -31,7 +31,7 @@ src/main.ts
 - `kana install [--force] [--skills]`：创建默认配置、审批文件和 Skills 配置；`--skills` 额外克隆或更新默认 Skills 仓库。
 - `kana skills sync <target>`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；当前内置 `codex` 目标，也可传自定义目录。
 
-启动 TUI 时，`startTui` 会加载运行配置、独立 MCP 配置和审批白名单，并先用尚未启动的 MCP manager 构造 `KanaTuiApp`。当前会话确定并完成首次 TUI 渲染后，App 才通过注入的外部工具加载回调连接 MCP server、发现初始工具并重建主 Agent；`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。会话读写、Skills 开关、记忆压缩、外部工具加载和 Agent 工厂都以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
+启动 TUI 时，`startTui` 会加载运行配置和审批白名单，并以空闲的 `KanaMcpRuntime` 构造 `KanaTuiApp`。当前会话确定并完成首次 TUI 渲染后，App 才调用注入的外部工具加载回调；此时 runtime 才读取 MCP 定义与启用状态文件、连接选中的 server、发现工具，再由 App 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。会话读写、Skills 与 MCP 开关、记忆压缩、外部工具 start/reload 和 Agent 工厂都以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 
 ## 一次对话如何执行
 
@@ -96,7 +96,9 @@ stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受�
 
 `McpManager` 只依赖结构化的 `McpManagedClient`，不创建具体协议 client 或 transport。它并行启动服务器，但按注册顺序稳定聚合工具；include/exclude 使用远端原名筛选。单个可选服务器连接、发现或 schema 适配失败时只记录诊断并关闭该服务器，必需服务器失败则关闭全部连接并终止启动。每个服务器的工具集以原子方式适配；远端重名会使该服务器失败，清洗或截断后的别名冲突以及与本地保留工具冲突会使整个聚合失败，不做隐式覆盖或顺序后缀。关闭操作幂等并按注册逆序清理所有 client。
 
-当前 manager 固定使用首次发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析独立 `mcp.json` 中的 `mcpServers`，并由 `type` 判别配置创建 stdio registration；省略 `type` 时默认使用 stdio。该工厂为每个服务器构造 `StdioTransport` 和稳定版 `McpClient`，只继承少量基础环境变量，再合并服务器显式配置的 `env`，同时把 stderr、client error 和 manager error 转发给当前 session logger。产品层先以空的外部工具集创建临时主 Agent；会话显示后启动 manager，再用发现的工具重建 Agent。加载期间 App 禁止提交输入，因而临时 Agent 不会开始运行；memory consolidation Agent 始终不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
+Manager 会固定使用本次发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析 `mcp.json` 中的服务器定义，读取独立 `mcp-enabled.json` 中选中的 ID，并且只为两者交集创建 registration；这个启用边界与协议和 transport 无关。工厂根据 `type` 判别配置创建 stdio registration，省略 `type` 时默认使用 stdio；它为每个选中的服务器构造 `StdioTransport` 和稳定版 `McpClient`，只继承少量基础环境变量，再合并服务器显式配置的 `env`，同时把 stderr、client error 和 manager error 转发给当前 session logger。产品层先以空的外部工具集创建临时主 Agent；会话显示后启动 manager，再用发现的工具重建 Agent。加载期间 App 禁止提交输入，因而临时 Agent 不会开始运行；memory consolidation Agent 始终不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
+
+`KanaMcpRuntime` 在产品边界持有可替换的 manager，`McpManager` 本身仍刻意保持一次性。runtime 串行执行 `start`、`reload` 和 `close`，并为底层进度标记所属的 runtime 操作。reload 会先关闭当前 manager，再重新读取服务器定义与启用状态，最后创建全新的 manager；这样不会重叠启动 server 进程，TUI 也不需要了解 transport 或协议生命周期。配置解析或启动失败后，不会残留已关闭 manager 的工具和来源映射；修正文件后仍可通过后续 `/mcp` reload 恢复。一旦请求关闭，队列中尚未开始的生命周期任务不会再创建 manager。
 
 ## Kana 产品装配
 
@@ -120,6 +122,8 @@ stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受�
 | 数据 | 位置与格式 | 写入时机 |
 | --- | --- | --- |
 | 配置 | `config.toml` | `kana install` 或用户编辑 |
+| MCP server 定义 | `mcp.json` | `kana install` 或用户编辑 |
+| MCP 启用状态 | `mcp-enabled.json` | `kana install` 或启用状态变更 |
 | 审批白名单 | `approvals.json` | 用户选择某条 bash 命令“始终允许” |
 | 会话 | `sessions/<workspace>/*.jsonl` | 每个 Agent 运行成功提交后追加 |
 | 运行时日志 | `logs/<workspace>/<session-id>.jsonl` | TUI、Agent、provider、工具和记忆任务的安全生命周期事件 |
@@ -162,13 +166,13 @@ ProcessTerminal（raw mode、输入、resize、通知）
       └─ 底部（严格一个组件；分档高度）
          ├─ Editor（输入区和状态栏）
          ├─ ToolApproval
-         ├─ Session / Skills 视图
+         ├─ Session / Skills / MCP 视图
          └─ ContentViewer
 ```
 
 `Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。Layout 固定绘制底部区域首行作为 main/bottom 分隔线，将剩余预算传给底部组件，并为较短输出补空行，从而稳定两者的边界。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史，并在有输出的子 Block 之间统一插入一行空白；Block 仅管理内容内部留白。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记；存在焦点组件时才将硬件光标移动到对应的可见宽度位置，没有焦点时则隐藏光标并留在布局末尾。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
-TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、审批和内容查看视图都会作为唯一底部组件替换编辑器。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
+TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、审批和内容查看视图都会作为唯一底部组件替换编辑器。MCP controller 会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择并请求 App reload；组件接收 server ID、transport、command 和参数以显示完整命令行，但不会接收环境变量。该视图打开或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 
 ## 扩展时的检查点
 

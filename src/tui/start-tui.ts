@@ -2,7 +2,7 @@ import type { Message } from "@/core";
 import {
   appendKanaSessionMessages,
   createKanaAgent,
-  createKanaMcpManager,
+  createKanaMcpRuntime,
   createKanaSession,
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
@@ -12,7 +12,7 @@ import {
   KANA_BUILT_IN_TOOL_NAMES,
   listKanaSessions,
   loadKanaConfig,
-  loadKanaMcpConfig,
+  loadKanaMcpServerActivations,
   loadKanaMemory,
   loadKanaSession,
   loadKanaSkillActivations,
@@ -21,6 +21,7 @@ import {
   recordKanaAgentRunAccounting,
   runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
+  saveKanaMcpActivationState,
 } from "@/kana";
 import { createNoopLogger, createSessionLogManager } from "@/logging";
 import type { Tool } from "@/tools";
@@ -28,6 +29,7 @@ import { KanaTuiApp } from "./app/app";
 import type { MemoryCompactSummary } from "./app/memory-compact-controller";
 import {
   formatMcpLifecycleStatus,
+  formatMcpReloadSummary,
   formatMcpStartupSummary,
   formatMcpStartupWarnings,
 } from "./mcp-lifecycle-status";
@@ -81,15 +83,11 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   }
   let resumeSessionId = options.resumeSessionId ? session?.metadata.id : undefined;
   let pendingForkMessages: Message[] | undefined;
-  const mcpConfig = loadKanaMcpConfig();
-  const enabledMcpServerCount = Object.values(mcpConfig.mcpServers).filter(
-    (server) => server.enabled,
-  ).length;
   const terminal = new ProcessTerminal(config.notification);
   let mcpTools: Tool[] = [];
-  let updateMcpStartupStatus: ((status: string) => void) | undefined;
+  let updateMcpLifecycleStatus: ((status: string) => void) | undefined;
   let app: KanaTuiApp | undefined;
-  const mcpManager = createKanaMcpManager(mcpConfig, {
+  const mcpRuntime = createKanaMcpRuntime({
     reservedToolNames: KANA_BUILT_IN_TOOL_NAMES,
     getLogger: () => sessionLogger,
     onProgress: (event) => {
@@ -98,42 +96,57 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         return;
       }
 
-      if (event.operation === "start") {
-        updateMcpStartupStatus?.(status);
+      if (event.runtimeOperation !== "close") {
+        updateMcpLifecycleStatus?.(status);
       } else {
         app?.showShutdownStatus(status);
       }
     },
   });
   let removeProcessSignals = (): void => {};
-  const closeMcpManager = async (): Promise<void> => {
+  const closeMcpRuntime = async (): Promise<void> => {
     removeProcessSignals();
-    await mcpManager.close();
+    await mcpRuntime.close();
   };
-  const loadMcpTools = async (
+  const runMcpRuntimeOperation = async (
+    operation: "start" | "reload",
     onProgress: (status: string) => void,
-  ): Promise<{ status: string; warnings: string[] }> => {
-    updateMcpStartupStatus = onProgress;
+  ): Promise<{ status?: string; warnings: string[] }> => {
+    updateMcpLifecycleStatus = onProgress;
     try {
-      mcpTools = await mcpManager.start();
-      sessionLogger.info("mcp.started", {
-        configuredServerCount: enabledMcpServerCount,
-        readyServerCount: mcpManager.diagnostics.filter(
-          (diagnostic) => diagnostic.status === "ready",
-        ).length,
+      const snapshot = await (operation === "start" ? mcpRuntime.start() : mcpRuntime.reload());
+      mcpTools = snapshot.tools;
+      sessionLogger.info(operation === "start" ? "mcp.started" : "mcp.reloaded", {
+        configuredServerCount: snapshot.selectedServerIds.length,
+        readyServerCount: snapshot.diagnostics.filter((diagnostic) => diagnostic.status === "ready")
+          .length,
         toolCount: mcpTools.length,
       });
       return {
-        status: formatMcpStartupSummary(mcpManager.diagnostics, mcpTools.length),
-        warnings: formatMcpStartupWarnings(mcpManager.diagnostics),
+        ...(snapshot.selectedServerIds.length === 0 && operation === "start"
+          ? {}
+          : {
+              status:
+                operation === "start"
+                  ? formatMcpStartupSummary(snapshot.diagnostics, mcpTools.length)
+                  : formatMcpReloadSummary(snapshot.diagnostics, mcpTools.length),
+            }),
+        warnings: formatMcpStartupWarnings(snapshot.diagnostics),
       };
+    } catch (error) {
+      mcpTools = mcpRuntime.tools;
+      throw error;
     } finally {
-      updateMcpStartupStatus = undefined;
+      updateMcpLifecycleStatus = undefined;
     }
   };
+  const loadMcpTools = (onProgress: (status: string) => void) =>
+    runMcpRuntimeOperation("start", onProgress);
+  const reloadMcpTools = (onProgress: (status: string) => void) =>
+    runMcpRuntimeOperation("reload", onProgress);
 
   app = await createTuiAppWithCleanup(
-    closeMcpManager,
+    closeMcpRuntime,
     (agentOptions) => {
       // Each Agent retains this concrete logger for its full lifetime. It must
       // never resolve the active session again after an asynchronous run starts.
@@ -268,7 +281,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         config: config.approval,
         approvals: toolApprovals,
         resolveToolSource: (toolName) => {
-          const source = mcpManager.getToolSource(toolName);
+          const source = mcpRuntime.getToolSource(toolName);
 
           return source === undefined ? undefined : { kind: "mcp", ...source };
         },
@@ -322,8 +335,14 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
           sessionId: scope === "session" ? session?.metadata.id : undefined,
           cwd: process.cwd(),
         }),
-      ...(enabledMcpServerCount === 0 ? {} : { loadExternalTools: loadMcpTools }),
-      onStop: closeMcpManager,
+      loadExternalTools: loadMcpTools,
+      mcpManagement: {
+        loadServers: () => loadKanaMcpServerActivations(),
+        saveEnabledServerIds: (serverIds) =>
+          saveKanaMcpActivationState({ enabledServers: serverIds }),
+        reloadExternalTools: reloadMcpTools,
+      },
+      onStop: closeMcpRuntime,
       onForceStop: () => {
         removeProcessSignals();
         terminal.stop();

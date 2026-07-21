@@ -95,17 +95,22 @@ describe("Kana MCP composition", () => {
     ).rejects.toBeInstanceOf(McpRequestTimeoutError);
   });
 
-  test("does not create clients for an empty config or disabled server", async () => {
-    const disabledAll = createKanaMcpManager({ mcpServers: {} });
-    const disabledServer = createManager({
-      broken: createServerConfig({ enabled: false, command: "/does/not/exist" }),
-    });
+  test("creates clients only for selected server IDs", async () => {
+    const disabledAll = createKanaMcpManager({ mcpServers: {} }, { enabledServerIds: ["unknown"] });
+    const unselectedServer = createManager(
+      {
+        broken: createServerConfig({ command: "/does/not/exist" }),
+      },
+      {},
+      undefined,
+      ["unknown"],
+    );
     managers.add(disabledAll);
 
     await expect(disabledAll.start()).resolves.toEqual([]);
-    await expect(disabledServer.start()).resolves.toEqual([]);
+    await expect(unselectedServer.start()).resolves.toEqual([]);
     expect(disabledAll.diagnostics).toEqual([]);
-    expect(disabledServer.diagnostics).toEqual([]);
+    expect(unselectedServer.diagnostics).toEqual([]);
   });
 
   test("reports optional stdio startup failures through the current logger", async () => {
@@ -118,7 +123,7 @@ describe("Kana MCP composition", () => {
           missing: createServerConfig({ command: "/does/not/exist" }),
         },
       },
-      { getLogger: () => logger },
+      { enabledServerIds: ["missing"], getLogger: () => logger },
     );
     managers.add(manager);
     logger = createCapturingLogger(secondLogs);
@@ -134,9 +139,11 @@ function createManager(
   servers: Record<string, KanaMcpStdioServerConfig>,
   env: NodeJS.ProcessEnv = {},
   logger?: Logger,
+  enabledServerIds: Iterable<string> = Object.keys(servers),
 ): McpManager {
   const config: KanaMcpConfig = { mcpServers: servers };
   const manager = createKanaMcpManager(config, {
+    enabledServerIds,
     env,
     ...(logger === undefined ? {} : { getLogger: () => logger }),
     clientInfo: { name: "kana-test", version: "1.0.0" },
@@ -149,7 +156,6 @@ function createServerConfig(
   overrides: Partial<KanaMcpStdioServerConfig> = {},
 ): KanaMcpStdioServerConfig {
   return {
-    enabled: true,
     type: "stdio",
     command: process.execPath,
     args: [fixturePath],

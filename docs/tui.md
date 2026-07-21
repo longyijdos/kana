@@ -15,7 +15,7 @@ ProcessTerminal
           严格一个底部组件（高度档位）
             包含状态栏的 editor
             或 tool approval
-            或 session / skills / slash command 提示
+            或 session / skills / MCP / slash command 提示
             或 content viewer
 ```
 
@@ -23,7 +23,7 @@ ProcessTerminal
 
 ## 终端生命周期与渲染
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再用发现的工具重建 Agent 并恢复 editor。可选服务器失败会在摘要后留下错误色警告；必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，中止并等待活动 Agent，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
+`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再用发现的工具重建 Agent 并恢复 editor。可选服务器失败会在摘要后留下错误色警告；初次加载时必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿也会在 transcript 中显示同样的进度；但 reload 失败时会用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，中止并等待活动 Agent，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
@@ -40,7 +40,7 @@ ProcessTerminal
 
 ## App 与 Agent 事件
 
-`KanaTuiApp` 维护当前 Agent、session ID、运行标志、累计模型用量和成本。提交 prompt 时，它把用户文本加入 transcript，消费 `AgentEventStream`，然后由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell 或记忆压缩都会使它排队，操作完成后再投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
+`KanaTuiApp` 维护当前 Agent、session ID、运行标志、累计模型用量和成本。提交 prompt 时，它把用户文本加入 transcript，消费 `AgentEventStream`，然后由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使它排队，状态结束后再投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
@@ -74,6 +74,7 @@ ProcessTerminal
 | `/resume [id]` | 恢复指定会话或打开选择器。 |
 | `/delete` | 选择并确认删除会话。 |
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
+| `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
 | `/memory` | 在底部选择操作和 scope；具体语义见[会话与记忆](sessions-and-memory.md)。 |
 | `/usage` | 在底部选择统计范围，再打开对应的 API 用量。 |
 | `/quit` | 无参数时退出；带参数时作为普通 prompt。 |
@@ -85,6 +86,7 @@ ProcessTerminal
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
 - `SessionOverlayController` 用恢复列表或删除确认替换编辑器。新 session、恢复和删除都会更新 transcript 和焦点。
 - `SkillManagerController` 用 global Skill 列表替换编辑器，保存后中止旧 Agent 并用原消息历史创建新 Agent，从而刷新提示词。
+- `McpServerManagerController` 用已配置 MCP server 的 checkbox 替换 editor。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次并触发一次完整 runtime reload，未变化则直接关闭。持久化失败时视图保持打开。组件显示 server ID、transport 和完整命令行（`command` 加 `args`），但不会接收环境变量。
 - `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
 - `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具输出；transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。

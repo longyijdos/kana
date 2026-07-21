@@ -7,7 +7,6 @@ export type KanaMcpServerType = (typeof KANA_MCP_SERVER_TYPES)[number];
 
 export type KanaMcpStdioServerConfig = {
   type: "stdio";
-  enabled: boolean;
   command: string;
   args: string[];
   cwd?: string;
@@ -34,7 +33,6 @@ export const DEFAULT_KANA_MCP_CONFIG: KanaMcpConfig = {
 const ROOT_KEYS = new Set(["mcpServers"]);
 const STDIO_SERVER_KEYS = new Set([
   "type",
-  "enabled",
   "command",
   "args",
   "cwd",
@@ -92,7 +90,6 @@ function parseStdioServer(serverId: string, value: unknown): KanaMcpStdioServerC
 
   return {
     type: "stdio",
-    enabled: readBoolean(server.enabled, true, `${name}.enabled`),
     command: readRequiredNonBlankString(server.command, `${name}.command`),
     args: readStringArray(server.args, [], `${name}.args`),
     ...(cwd === undefined ? {} : { cwd }),

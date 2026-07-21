@@ -10,6 +10,7 @@ import {
   type ToolCallContent,
 } from "@/core";
 import type {
+  KanaMcpServerActivation,
   KanaNotificationConfig,
   KanaSessionMetadata,
   KanaToolApprovalConfig,
@@ -52,6 +53,7 @@ import { AppLayout } from "./app-layout";
 import { ContentViewerController } from "./content-viewer-controller";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
+import { McpServerManagerController } from "./mcp-server-manager-controller";
 import {
   MemoryCompactController,
   type MemoryCompactSummary,
@@ -106,6 +108,13 @@ export type KanaTuiAppOptions = {
   loadExternalTools?: (
     onProgress: (status: string) => void,
   ) => Promise<KanaTuiExternalToolsLoadResult>;
+  mcpManagement?: {
+    loadServers: () => KanaMcpServerActivation[];
+    saveEnabledServerIds: (serverIds: string[]) => void;
+    reloadExternalTools: (
+      onProgress: (status: string) => void,
+    ) => Promise<KanaTuiExternalToolsLoadResult>;
+  };
   onStop?: () => Promise<void> | void;
   onForceStop?: () => void;
 };
@@ -119,6 +128,7 @@ export class KanaTuiApp {
   private readonly agentEvents: AgentEventRenderer;
   private readonly sessionOverlay: SessionOverlayController;
   private readonly skillManager: SkillManagerController;
+  private readonly mcpServerManager?: McpServerManagerController;
   private agent: Agent;
   private sessionId?: string;
   private running = false;
@@ -200,6 +210,25 @@ export class KanaTuiApp {
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
+    if (this.options.mcpManagement) {
+      this.mcpServerManager = new McpServerManagerController({
+        editor: this.editor,
+        layout: this.layout,
+        transcript: this.transcript,
+        tui: this.tui,
+        loadServers: this.options.mcpManagement.loadServers,
+        saveEnabledServerIds: this.options.mcpManagement.saveEnabledServerIds,
+        onClose: (changed) => {
+          if (changed) {
+            void this.reloadExternalTools();
+          } else {
+            void this.drainWakeEvents();
+          }
+        },
+        updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+        restoreBottom: (focus) => this.restoreBottom(focus),
+      });
+    }
     this.contentViewer = new ContentViewerController({
       layout: this.layout,
       transcript: this.transcript,
@@ -447,13 +476,7 @@ export class KanaTuiApp {
           this.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
         }
 
-        // No run can start while the editor is unfocused, so replacing this
-        // temporary Agent cannot race provider or tool execution state.
-        const messages = this.agent.state.messages;
-        this.agent.abort();
-        this.agent = this.createAgentForCurrentSession(messages);
-        this.agentEvents.resetRun();
-        this.updateContextUsageFromMessages(messages);
+        this.recreateAgentForExternalTools();
         this.updateStatus("idle", { activeTool: undefined });
         this.tui.setFocus(this.editor);
         this.tui.requestRender(true);
@@ -478,6 +501,86 @@ export class KanaTuiApp {
       });
 
     return this.externalToolsLoadPromise;
+  }
+
+  private async reloadExternalTools(): Promise<void> {
+    const management = this.options.mcpManagement;
+    if (!management || this.stopping || this.loadingExternalTools) {
+      return;
+    }
+
+    this.loadingExternalTools = true;
+    const loadingBlock = new TextBlock("Reloading MCP servers...", {
+      color: tuiTheme.muted,
+    });
+    this.externalToolsLoadingBlock = loadingBlock;
+    this.transcript.addChild(loadingBlock);
+    this.updateStatus("starting", { activeTool: undefined });
+    this.tui.setFocus(undefined);
+    this.tui.requestRender(true);
+
+    try {
+      const result = await management.reloadExternalTools((status) => {
+        if (this.stopping || this.externalToolsLoadingBlock !== loadingBlock) {
+          return;
+        }
+
+        loadingBlock.setText(status);
+        this.tui.requestRender();
+      });
+      if (this.stopping) {
+        return;
+      }
+
+      this.externalToolsLoadingBlock = undefined;
+      if (result.status === undefined) {
+        this.transcript.removeChild(loadingBlock);
+      } else {
+        loadingBlock.setText(result.status);
+      }
+      for (const warning of result.warnings ?? []) {
+        this.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
+      }
+
+      this.recreateAgentForExternalTools();
+      this.updateStatus("idle", { activeTool: undefined });
+      this.tui.setFocus(this.editor);
+      this.tui.requestRender(true);
+    } catch (error) {
+      if (this.stopping) {
+        return;
+      }
+
+      this.externalToolsLoadingBlock = undefined;
+      this.transcript.removeChild(loadingBlock);
+      this.transcript.addChild(
+        new TextBlock(
+          `Failed to reload MCP servers: ${error instanceof Error ? error.message : String(error)}`,
+          { color: tuiTheme.error },
+        ),
+      );
+      // Runtime failure clears its tool set. Recreate the idle Agent so it
+      // cannot keep calling tools backed by the manager that was just closed.
+      this.recreateAgentForExternalTools();
+      this.updateStatus("error", { activeTool: undefined });
+      this.tui.setFocus(this.editor);
+      this.tui.requestRender(true);
+    } finally {
+      this.loadingExternalTools = false;
+      if (!this.stopping) {
+        void this.drainWakeEvents();
+      }
+    }
+  }
+
+  private recreateAgentForExternalTools(): void {
+    // The editor is unfocused before initial load or reload begins, and the
+    // MCP manager menu cannot open during a run, so replacement is race-free.
+    const messages = this.agent.state.messages;
+    this.agent.abort();
+    this.agent = this.createAgentForCurrentSession(messages);
+    this.agentEvents.resetRun();
+    this.updateContextUsageFromMessages(messages);
   }
 
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {
@@ -618,6 +721,15 @@ export class KanaTuiApp {
 
         this.editor.clear();
         this.openSkillManager();
+        break;
+      case "mcp":
+        if (command.arguments) {
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
+          return;
+        }
+
+        this.editor.clear();
+        this.openMcpServerManager();
         break;
       case "memory":
         if (command.arguments.trim()) {
@@ -774,6 +886,21 @@ export class KanaTuiApp {
     this.skillManager.open();
   }
 
+  private openMcpServerManager(): void {
+    if (this.running) {
+      return;
+    }
+    if (!this.mcpServerManager) {
+      this.showError(new Error("MCP management is unavailable."));
+      return;
+    }
+
+    this.closeSessionOverlay();
+    this.contentViewer.close();
+    this.skillManager.close();
+    this.mcpServerManager.open();
+  }
+
   private resumeSession(sessionId: string): void {
     if (this.running) {
       return;
@@ -896,13 +1023,24 @@ export class KanaTuiApp {
   }
 
   private async drainWakeEvents(): Promise<void> {
-    if (this.stopping || this.loadingExternalTools || this.drainingWakeEvents || this.running) {
+    if (
+      this.stopping ||
+      this.loadingExternalTools ||
+      this.mcpServerManager?.active ||
+      this.drainingWakeEvents ||
+      this.running
+    ) {
       return;
     }
 
     this.drainingWakeEvents = true;
     try {
-      while (!this.stopping && !this.loadingExternalTools && !this.running) {
+      while (
+        !this.stopping &&
+        !this.loadingExternalTools &&
+        !this.mcpServerManager?.active &&
+        !this.running
+      ) {
         const event = this.pendingWakeEvents.shift();
         if (!event) {
           return;

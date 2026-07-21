@@ -91,6 +91,8 @@ describe("CLI", () => {
         configStatus: "created",
         mcpConfigPath: "/tmp/mcp.json",
         mcpConfigStatus: "created",
+        mcpEnabledPath: "/tmp/mcp-enabled.json",
+        mcpEnabledStatus: "created",
         approvalsPath: "/tmp/approvals.json",
         approvalsStatus: "exists",
         skillsConfigPath: "/tmp/skills.toml",
@@ -104,6 +106,7 @@ describe("CLI", () => {
     expect(logs).toEqual([
       "Created config: /tmp/config.toml",
       "Created MCP config: /tmp/mcp.json",
+      "Created MCP activation state: /tmp/mcp-enabled.json",
       "Approvals already exists: /tmp/approvals.json",
       "Created skills config: /tmp/skills.toml",
     ]);
@@ -130,6 +133,7 @@ describe("CLI", () => {
     expect(logs).toEqual([
       "Created config: /tmp/config.toml",
       "Created MCP config: /tmp/mcp.json",
+      "Created MCP activation state: /tmp/mcp-enabled.json",
       "Created approvals: /tmp/approvals.json",
       "Created skills config: /tmp/skills.toml",
       "Reinstalled skills: /tmp/.kana/skills/kana-skills",
@@ -209,6 +213,8 @@ function defaultCliOptions(): CreateCliOptions {
       configStatus: "created",
       mcpConfigPath: "/tmp/mcp.json",
       mcpConfigStatus: "created",
+      mcpEnabledPath: "/tmp/mcp-enabled.json",
+      mcpEnabledStatus: "created",
       approvalsPath: "/tmp/approvals.json",
       approvalsStatus: "created",
       skillsConfigPath: "/tmp/skills.toml",

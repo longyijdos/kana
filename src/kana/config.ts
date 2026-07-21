@@ -73,6 +73,7 @@ export type KanaConfigPaths = {
   home: string;
   configPath: string;
   mcpConfigPath: string;
+  mcpEnabledPath: string;
   agentsPath: string;
   memoryDirectory: string;
   sessionsPath: string;
@@ -91,6 +92,8 @@ export type InstallKanaConfigResult = {
   configStatus: "created" | "exists" | "reinstalled";
   mcpConfigPath: string;
   mcpConfigStatus: "created" | "exists" | "reinstalled";
+  mcpEnabledPath: string;
+  mcpEnabledStatus: "created" | "exists" | "reinstalled";
   approvalsPath: string;
   approvalsStatus: "created" | "exists" | "reinstalled";
   skillsConfigPath: string;
@@ -136,6 +139,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
     home,
     configPath: path.join(home, "config.toml"),
     mcpConfigPath: path.join(home, "mcp.json"),
+    mcpEnabledPath: path.join(home, "mcp-enabled.json"),
     agentsPath: path.join(home, "AGENTS.md"),
     memoryDirectory: path.join(home, "memory"),
     sessionsPath: path.join(home, "sessions"),
@@ -161,12 +165,13 @@ export function installKanaConfig(
   env: NodeJS.ProcessEnv = process.env,
   options: InstallKanaConfigOptions = {},
 ): InstallKanaConfigResult {
-  const { home, configPath, mcpConfigPath, approvalsPath, skillsConfigPath } =
+  const { home, configPath, mcpConfigPath, mcpEnabledPath, approvalsPath, skillsConfigPath } =
     getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
 
   const configExists = existsSync(configPath);
   const mcpConfigExists = existsSync(mcpConfigPath);
+  const mcpEnabledExists = existsSync(mcpEnabledPath);
   const approvalsExists = existsSync(approvalsPath);
   const skillsConfigExists = existsSync(skillsConfigPath);
 
@@ -179,6 +184,13 @@ export function installKanaConfig(
 
   if (!mcpConfigExists || options.force) {
     writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  }
+
+  if (!mcpEnabledExists || options.force) {
+    writeFileSync(mcpEnabledPath, `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });
@@ -206,6 +218,9 @@ export function installKanaConfig(
     mcpConfigPath,
     mcpConfigStatus:
       mcpConfigExists && !options.force ? "exists" : mcpConfigExists ? "reinstalled" : "created",
+    mcpEnabledPath,
+    mcpEnabledStatus:
+      mcpEnabledExists && !options.force ? "exists" : mcpEnabledExists ? "reinstalled" : "created",
     approvalsPath,
     approvalsStatus:
       approvalsExists && !options.force ? "exists" : approvalsExists ? "reinstalled" : "created",

@@ -45,6 +45,15 @@ export {
 } from "./context";
 export { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./mcp";
 export {
+  DEFAULT_KANA_MCP_ACTIVATION_STATE,
+  type KanaMcpActivationState,
+  type KanaMcpServerActivation,
+  loadKanaMcpActivationState,
+  loadKanaMcpServerActivations,
+  parseKanaMcpActivationState,
+  saveKanaMcpActivationState,
+} from "./mcp-activation";
+export {
   DEFAULT_KANA_MCP_CONFIG,
   KANA_MCP_SERVER_TYPES,
   type KanaMcpConfig,
@@ -54,6 +63,14 @@ export {
   loadKanaMcpConfig,
   parseKanaMcpConfig,
 } from "./mcp-config";
+export {
+  type CreateKanaMcpRuntimeOptions,
+  createKanaMcpRuntime,
+  KanaMcpRuntime,
+  type KanaMcpRuntimeOperation,
+  type KanaMcpRuntimeProgressEvent,
+  type KanaMcpRuntimeSnapshot,
+} from "./mcp-runtime";
 export {
   type AppendKanaMemoryOptions,
   appendKanaMemory,

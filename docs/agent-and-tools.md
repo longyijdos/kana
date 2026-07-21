@@ -106,7 +106,9 @@ type ToolContext = {
 
 ## MCP 工具管理与适配
 
-TUI 启动时从独立 `mcp.json` 读取 `mcpServers`，但会等当前会话显示后再启动 stdio manager，并把发现的远端工具作为 `additionalTools` 注入重建后的主 Agent。`kana resume` 的会话选择器不会提前启动 MCP；`/new`、`/fork`、`/resume` 和 Skills 刷新后续重建 Agent 时会复用同一份首次工具集合。记忆压缩 Agent 不经过这条工厂，因此不会获得 MCP 工具。manager 保留暴露别名到 server ID/远端原名的来源映射，产品层只在审批展示时解析它。`McpManager` 只要求 client 实现 `connect/listTools/callTool/close`，工具适配器只要求 `McpToolCaller`；稳定版 stdio client 和后续无状态、Streamable HTTP 或 SSE client 可以继续共用管理、进度和工具边界。
+TUI 启动时从 `mcp.json` 读取服务器定义，从 `mcp-enabled.json` 读取选中的 ID，但会等当前会话显示后再启动 stdio manager；只有同时存在于两个文件的 ID 才会创建 registration。Kana 随后把发现的远端工具作为 `additionalTools` 注入重建后的主 Agent。`kana resume` 的会话选择器不会提前启动 MCP；`/new`、`/fork`、`/resume` 和 Skills 刷新后续重建 Agent 时会复用当前活动工具集合。`/mcp` 可以显式替换该集合，并在保留消息的同时重建空闲 Agent。记忆压缩 Agent 不经过这条工厂，因此不会获得 MCP 工具。manager 保留暴露别名到 server ID/远端原名的来源映射，产品层只在审批展示时解析它。`McpManager` 只要求 client 实现 `connect/listTools/callTool/close`，工具适配器只要求 `McpToolCaller`；稳定版 stdio client 和后续无状态、Streamable HTTP 或 SSE client 可以继续共用管理、进度和工具边界。
+
+面向产品的 `KanaMcpRuntime` 负责替换 manager，并串行执行生命周期操作。reload 会先关闭旧 manager，再读取最新文件并创建新 manager；即使替换失败，也会清空旧工具及其审批来源。TUI 在会话选定后调用 start，在用户应用有变化的 `/mcp` 草稿后调用 reload，并在退出时调用 close。reload 失败后会用无过期 MCP 工具的状态重建 Agent 并恢复输入，同时让底层 manager 继续保持一次性。
 
 Manager 并行启动服务器，并按配置顺序聚合初始工具列表。include/exclude 按远端原名筛选；可选服务器失败只禁用该服务器，必需服务器失败会终止整体启动。远端普通 JSON Schema 会在工具注册前由 TypeBox 编译器预编译，单个服务器的所有工具以原子方式适配，不留下静默的部分工具集。模型看到的名字是由 server ID 和远端工具名组成的可读别名，例如 `github_create_issue`；名称符合当前 provider 的字符集要求且不超过 64 字符，内部调用仍使用原始 MCP 工具名。Manager 显式拒绝远端重名、清洗或截断后的重名以及本地工具冲突，不静默覆盖或按加载顺序追加后缀。
 
