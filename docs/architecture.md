@@ -10,6 +10,7 @@ src/main.ts
       └─ tui             终端交互、渲染和用户审批
           └─ kana        产品装配：配置、提示词、会话、记忆、Skills
               ├─ logging  会话级 JSONL 诊断日志
+              ├─ oauth    通用 OAuth 发现、PKCE、callback、token 与 refresh 状态机
               ├─ mcp      MCP JSON-RPC 连接、协议客户端与传输
               ├─ agent   模型—工具循环和事件协议转换
               ├─ tools   文件、Shell 与 remember 工具
@@ -18,7 +19,7 @@ src/main.ts
                   └─ deepseek  DeepSeek 请求、SSE 解析和流式适配
 ```
 
-`core` 是最内层的协议包：不依赖产品配置或 TUI。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`mcp` 同样不依赖 Kana 产品装配或 Agent loop；它提供可复用的 MCP wire、连接和传输能力。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 依赖这些上层能力，但不直接实现模型协议或持久化格式。
+`core` 是最内层的协议包：不依赖产品配置或 TUI。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`oauth` 是不感知 MCP、供应商或 TUI 的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 依赖这些上层能力，但不直接实现模型协议或持久化格式。
 
 这种分层也说明了新增代码应放在哪里：新增供应商放 `providers`，可复用的执行能力放 `tools`，循环控制放 `agent`，Kana 的默认策略和本地状态放 `kana`，交互呈现放 `tui`。
 
@@ -80,11 +81,13 @@ src/main.ts
 McpManager（多服务器生命周期、筛选、冲突、诊断）
   ├→ McpToolAdapter → Tool
   └→ McpManagedClient
-      → McpClient（2025-11-25 lifecycle、capabilities、tools/list、tools/call）
-        → McpConnection（请求 ID、乱序响应、超时、取消、进度、ping）
-          → McpTransport（双向 JSON-RPC 消息边界）
-            ├→ StdioTransport（子进程、逐行 UTF-8 framing、stderr、关闭顺序）
-            └→ StreamableHttpTransport（POST、JSON/SSE、session、恢复、GET/DELETE）
+      ├→ McpClient（2025-11-25 lifecycle、capabilities、tools/list、tools/call）
+      │  → McpConnection（请求 ID、乱序响应、超时、取消、进度、ping）
+      │    → McpTransport（双向 JSON-RPC 消息边界）
+      │      ├→ StdioTransport（子进程、逐行 UTF-8 framing、stderr、关闭顺序）
+      │      └→ StreamableHttpTransport（POST、JSON/SSE、session、恢复、GET/DELETE）
+      └→ McpOAuthHttpAuthorizer（resource metadata、Bearer challenge、授权恢复）
+          → OAuthSession（metadata discovery、PKCE、loopback callback、refresh）
 ```
 
 `McpConnection` 不执行初始化，也不知道 tools 等版本特性；因此后续无状态协议客户端可以复用它，而不继承 `2025-11-25` 的握手。transport 只负责消息传递，不协商版本或能力；stdio 与 Streamable HTTP 独立实现同一边界，不共享进程或 HTTP session 状态。旧 `2024-11-05` HTTP+SSE transport 被刻意留作后续兼容层，不混入 Streamable HTTP 的单端点 lifecycle。
@@ -95,11 +98,13 @@ stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受�
 
 Streamable HTTP 严格实现 `2025-11-25` 单端点 transport，不自动回退旧 HTTP+SSE。每条出站 JSON-RPC 消息使用独立 POST，并同时接受 JSON 与 SSE 响应；共享 SSE decoder 支持跨 chunk 的 CR/LF framing、事件字节上限、`id` 与 `retry`。transport 保存初始化响应提供的可选 session ID，在后续请求附带 session 与协议版本 header，初始化完成后尝试 GET server stream，并在带事件 ID 的 POST stream 中断时通过 `Last-Event-ID` GET 恢复而不重试原请求。后台 GET/SSE 正常结束或在读取期间发生网络断开时，会按服务器 `retry` 或默认延迟重新连接，并携带已经完整接收的最后一个事件 ID；成功重连会记录安全的触发分类、重连次数、是否从事件位置恢复，以及固定格式的错误标识。非法 UTF-8、SSE、JSON 或超限事件仍会关闭连接。携带 session 的请求收到 HTTP 404 时，transport 清除旧 session，client 合并同一 session 的并发过期事件并重新执行不带 session 的初始化；触发过期的原请求永不自动重放，恢复成功后其失败结果会明确提示 Agent 可以再次调用。若替代 session 在恢复握手内再次过期，等待中的调用会收到恢复失败和 client 已关闭的结果。请求取消会先发送协议通知，再中止对应 HTTP 请求；关闭会中止剩余 stream，并对有 session 的服务器发送限时 DELETE。URL credentials 与覆盖 transport 所有 header 的配置会被拒绝。HTTP transport 失败日志包含安全的操作阶段、错误类型和固定格式错误码，但不记录 endpoint URL、headers、session ID、事件 ID 或请求参数。
 
+可识别的 OAuth `401/403` challenge 作为当前请求错误返回，不破坏 transport 或 MCP session；authorizer 可在同一 fetch 边界恢复凭据并重试一次。网络或协议致命错误仍启动后台关闭，关闭 Promise 会立即附加 rejection handler，避免 session DELETE 失败形成 TUI 外泄的未处理堆栈；显式 close caller 仍能观察并记录原错误。通用 `src/oauth` 将 metadata discovery、授权 URL/PKCE、loopback callback、token exchange 和可合并的 refresh 放在独立边界，token persistence 仅通过 `OAuthTokenStore` 接口注入。`McpOAuthHttpAuthorizer` 为每个 protected resource 持有一个 `OAuthSession`，限制 credential 只能发往精确 MCP endpoint，优先使用显式配置 scope，并在 challenge 要求范围外权限时拒绝自动扩权。Kana 产品层实现 `0600` JSON token store、系统浏览器打开和 transcript 状态，因此未来 provider 可以复用 OAuth 模块而不依赖 MCP 配置或 TUI。
+
 `McpToolAdapter` 只依赖结构化的 `McpToolCaller`，不绑定稳定版 client 或 stdio。它在工具发现时预编译远端 `inputSchema`，使用 server ID 和远端工具名生成最长 64 字符的可读模型别名，并把 MCP 进度映射到 `ToolContext.update`。结果适配器限制内容项、文本、结构化数据和元数据大小；text 与嵌入文本资源可进入模型上下文，resource link 只转为描述，image、audio 和 blob 只保留 MIME 与估算字节数，不持久化 base64。JSON-RPC error 与 MCP `isError` 保持不同的结构化错误语义。
 
 `McpManager` 只依赖结构化的 `McpManagedClient`，不创建具体协议 client 或 transport。它并行启动服务器，但按注册顺序稳定聚合工具；include/exclude 使用远端原名筛选。单个可选服务器连接、发现或 schema 适配失败时只记录诊断并关闭该服务器，必需服务器失败则关闭全部连接并终止启动。每个服务器的工具集以原子方式适配；远端重名会使该服务器失败，清洗或截断后的别名冲突以及与本地保留工具冲突会使整个聚合失败，不做隐式覆盖或顺序后缀。关闭操作幂等并按注册逆序清理所有 client。
 
-Manager 会固定使用本次发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析 `mcp.json` 中的服务器定义，读取独立 `mcp-enabled.json` 中选中的 ID，并且只为两者交集创建 registration；这个启用边界与协议和 transport 无关。工厂根据 `type` 判别配置创建 stdio 或 HTTP registration，省略 `type` 时默认使用 stdio；它为每个选中的服务器构造对应 transport 和稳定版 `McpClient`。stdio 只继承少量基础环境变量，再合并服务器显式配置的 `env` 并把 stderr 转发给当前 session logger；HTTP 使用经过快照的 URL 与 headers。两种 transport 的 client error 和 manager error 都写入当前 logger。产品层先以空的外部工具集创建临时主 Agent；会话显示后启动 manager，再用发现的工具重建 Agent。加载期间 App 禁止提交输入，因而临时 Agent 不会开始运行；memory consolidation Agent 始终不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
+Manager 会固定使用本次发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析 `mcp.json` 中的服务器定义，读取独立 `mcp-enabled.json` 中选中的 ID，并且只为两者交集创建 registration；这个启用边界与协议和 transport 无关。工厂根据 `type` 判别配置创建 stdio 或 HTTP registration，省略 `type` 时默认使用 stdio；它为每个选中的服务器构造对应 transport 和稳定版 `McpClient`。stdio 只继承少量基础环境变量，再合并服务器显式配置的 `env` 并把 stderr 转发给当前 session logger；HTTP 使用经过快照的 URL 与 headers。存在 OAuth 配置时，managed-client wrapper 会在 connect 前准备 authorizer，把授权 fetch 注入 transport，并在关闭前冻结认证生命周期，使最后一次 session DELETE 仍可使用内存中的 access token。两种 transport 的 client error、OAuth lifecycle 和 manager error 都写入当前 logger。产品层先以空的外部工具集创建临时主 Agent；会话显示后启动 manager，再用发现的工具重建 Agent。加载期间 App 禁止提交输入，因而临时 Agent 不会开始运行；memory consolidation Agent 始终不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
 
 `KanaMcpRuntime` 在产品边界持有可替换的 manager，`McpManager` 本身仍刻意保持一次性。runtime 串行执行 `start`、`reload` 和 `close`，并为底层进度标记所属的 runtime 操作。reload 会先关闭当前 manager，再重新读取服务器定义与启用状态，最后创建全新的 manager；这样不会重叠启动 server 进程，TUI 也不需要了解 transport 或协议生命周期。配置解析或启动失败后，不会残留已关闭 manager 的工具和来源映射；修正文件后仍可通过后续 `/mcp` reload 恢复。一旦请求关闭，队列中尚未开始的生命周期任务不会再创建 manager。
 
@@ -127,6 +132,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 | 配置 | `config.toml` | `kana install` 或用户编辑 |
 | MCP server 定义 | `mcp.json` | `kana install` 或用户编辑 |
 | MCP 启用状态 | `mcp-enabled.json` | `kana install` 或启用状态变更 |
+| OAuth token | `oauth-tokens.json` | 浏览器授权、refresh、退出登录或凭据失效 |
 | 审批白名单 | `approvals.json` | 用户选择某条 bash 命令“始终允许” |
 | 会话 | `sessions/<workspace>/*.jsonl` | 每个 Agent 运行成功提交后追加 |
 | 运行时日志 | `logs/<workspace>/<session-id>.jsonl` | TUI、Agent、provider、工具和记忆任务的安全生命周期事件 |
@@ -175,7 +181,7 @@ ProcessTerminal（raw mode、输入、resize、通知）
 
 `Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。Layout 固定绘制底部区域首行作为 main/bottom 分隔线，将剩余预算传给底部组件，并为较短输出补空行，从而稳定两者的边界。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史，并在有输出的子 Block 之间统一插入一行空白；Block 仅管理内容内部留白。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记；存在焦点组件时才将硬件光标移动到对应的可见宽度位置，没有焦点时则隐藏光标并留在布局末尾。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
-TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、审批和内容查看视图都会作为唯一底部组件替换编辑器。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 变更只请求一次 runtime reload。MCP 组件接收 server ID、transport，以及 stdio command/参数或 HTTP URL，但不会接收环境变量或 HTTP headers。MCP 视图打开或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
+TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关和 OAuth 操作、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、审批和内容查看视图都会作为唯一底部组件替换编辑器。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 选择或已启用 server 的认证状态变化只请求一次 runtime reload。MCP 组件接收 server ID、transport、OAuth 安全状态，以及 stdio command/参数或 HTTP URL，但不会接收环境变量、HTTP headers 或 token；授权 URL 只临时放在 transcript block 中，完成后原位替换。MCP 视图打开、认证操作或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 
 ## 扩展时的检查点
 

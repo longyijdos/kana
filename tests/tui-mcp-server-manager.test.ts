@@ -26,6 +26,7 @@ describe("MCP server manager", () => {
           type: "http",
           url: "https://example.com/mcp\nspoofed",
           enabled: false,
+          oauth: { type: "oauth2", state: "unauthorized", refreshable: false },
         },
       ],
       () => {},
@@ -47,7 +48,30 @@ describe("MCP server manager", () => {
     manager.handleInput("\x1b[B");
     const httpRendered = manager.render(80).map(stripAnsi);
     expect(httpRendered).toContain("> [ ] remote  http");
-    expect(httpRendered).toContain("  url: https://example.com/mcp spoofed");
+    expect(httpRendered).toContain("  url: https://example.com/mcp spoofed · OAuth: unauthorized");
+    expect(httpRendered).toContain("Enter toggle · A auth actions · Esc apply and close");
+  });
+
+  test("opens auth actions for the selected OAuth HTTP server", () => {
+    const decisions: McpServerManagerDecision[] = [];
+    const manager = new McpServerManager(
+      [
+        {
+          id: "github",
+          type: "http",
+          url: "https://example.com/mcp",
+          enabled: true,
+          oauth: { type: "oauth2", state: "expired", refreshable: true },
+        },
+      ],
+      (decision) => decisions.push(decision),
+    );
+
+    expect(manager.render(80).map(stripAnsi)).toContain(
+      "  url: https://example.com/mcp · OAuth: expired (refresh available)",
+    );
+    manager.handleInput("A");
+    expect(decisions).toEqual([{ type: "manage_auth", serverId: "github" }]);
   });
 
   test("keeps toggles as a draft until escape applies once", () => {

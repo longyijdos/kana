@@ -65,6 +65,97 @@ describe("MCP Streamable HTTP transport", () => {
     expect(errors[0]?.message).not.toContain("do-not-log");
   });
 
+  test("keeps the client usable after an OAuth authorization challenge", async () => {
+    let listCount = 0;
+    const fetch: StreamableHttpFetch = async (_input, init) => {
+      if (init?.method === "DELETE") {
+        return new Response(null, { status: 200 });
+      }
+      const message = JSON.parse(String(init?.body)) as JsonRpcMessage;
+      if (isRequestMethod(message, "initialize")) {
+        return jsonResponse(
+          { jsonrpc: "2.0", id: message.id, result: initializeResult() },
+          { "MCP-Session-Id": "oauth-session" },
+        );
+      }
+      if (isNotificationMethod(message, "notifications/initialized")) {
+        return new Response(null, { status: 202 });
+      }
+      if (isRequestMethod(message, "tools/list")) {
+        listCount += 1;
+        if (listCount === 1) {
+          return new Response(null, {
+            status: 403,
+            headers: {
+              "WWW-Authenticate": 'Bearer error="insufficient_scope", scope="repo"',
+            },
+          });
+        }
+        return jsonResponse({ jsonrpc: "2.0", id: message.id, result: { tools: [] } });
+      }
+      return new Response(null, { status: 202 });
+    };
+    const transport = new StreamableHttpTransport({ url: "https://example.com/mcp", fetch });
+    const client = new McpClient({
+      transport,
+      clientInfo: { name: "kana-test", version: "1.0.0" },
+      initializeTimeoutMs: 1_000,
+      requestTimeoutMs: 1_000,
+    });
+    clients.add(client);
+    await client.connect();
+
+    await expect(client.listTools()).rejects.toThrow(
+      "MCP HTTP authorization requires additional scopes.",
+    );
+    expect(client.connected).toBe(true);
+    expect(await client.listTools()).toEqual([]);
+  });
+
+  test("observes background close failures after a fatal request error", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (error: unknown) => unhandled.push(error);
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      const networkError = Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+      const closeError = new DOMException("close timed out", "AbortError");
+      const fetch: StreamableHttpFetch = async (_input, init) => {
+        if (init?.method === "DELETE") {
+          throw closeError;
+        }
+        const message = JSON.parse(String(init?.body)) as JsonRpcMessage;
+        if (isRequestMethod(message, "initialize")) {
+          return jsonResponse(
+            { jsonrpc: "2.0", id: message.id, result: initializeResult() },
+            { "MCP-Session-Id": "close-failure-session" },
+          );
+        }
+        if (isNotificationMethod(message, "notifications/initialized")) {
+          return new Response(null, { status: 202 });
+        }
+        throw networkError;
+      };
+      const transport = new StreamableHttpTransport({ url: "https://example.com/mcp", fetch });
+      const client = new McpClient({
+        transport,
+        clientInfo: { name: "kana-test", version: "1.0.0" },
+        initializeTimeoutMs: 1_000,
+        requestTimeoutMs: 1_000,
+      });
+      clients.add(client);
+      await client.connect();
+
+      await expect(client.listTools()).rejects.toThrow("MCP HTTP POST tools/list failed");
+      await expect(transport.close()).rejects.toThrow("Failed to close MCP HTTP session");
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   test("reconnects a reset standalone SSE stream with Last-Event-ID", async () => {
     const errors: Error[] = [];
     const reconnects: McpTransportReconnected[] = [];

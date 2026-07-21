@@ -2,15 +2,22 @@ import { createNoopLogger, type Logger } from "@/logging";
 import {
   McpClient,
   type McpImplementation,
+  type McpManagedClient,
   McpManager,
   type McpManagerProgressEvent,
+  type McpOAuthHttpAuthorizer,
+  type McpOAuthHttpDiagnosticEvent,
   type McpServerRegistration,
   type McpTransport,
   StdioTransport,
   StreamableHttpTransport,
 } from "@/mcp";
+import type { OAuthFetch, OAuthTokenStore } from "@/oauth";
 import { KANA_VERSION } from "../version";
 import type { KanaMcpConfig, KanaMcpServerConfig, KanaMcpStdioServerConfig } from "./mcp-config";
+import { createKanaMcpOAuthAuthorizer } from "./mcp-oauth";
+import { openKanaOAuthAuthorizationUrl } from "./oauth-browser";
+import { createKanaOAuthTokenStore } from "./oauth-token-store";
 
 const DEFAULT_CLIENT_INFO: McpImplementation = {
   name: "kana",
@@ -34,6 +41,10 @@ export type CreateKanaMcpManagerOptions = {
   reservedToolNames?: Iterable<string>;
   getLogger?: () => Logger;
   clientInfo?: McpImplementation;
+  oauthFetch?: OAuthFetch;
+  oauthTokenStore?: OAuthTokenStore;
+  openOAuthAuthorizationUrl?(serverId: string, url: string): Promise<void>;
+  onOAuthDiagnostic?(serverId: string, event: McpOAuthHttpDiagnosticEvent): void;
   onProgress?(event: McpManagerProgressEvent): void;
 };
 
@@ -44,6 +55,10 @@ export function createKanaMcpManager(
   const env = { ...(options.env ?? process.env) };
   const clientInfo = { ...(options.clientInfo ?? DEFAULT_CLIENT_INFO) };
   const getLogger = options.getLogger ?? createNoopLogger;
+  const oauthTokenStore = options.oauthTokenStore ?? createKanaOAuthTokenStore({ env, getLogger });
+  const openOAuthAuthorizationUrl =
+    options.openOAuthAuthorizationUrl ??
+    ((_serverId: string, url: string) => openKanaOAuthAuthorizationUrl(url, { getLogger }));
   const enabledServerIds = new Set(options.enabledServerIds);
   const servers = Object.entries(config.mcpServers)
     .filter(([serverId]) => enabledServerIds.has(serverId))
@@ -52,6 +67,12 @@ export function createKanaMcpManager(
         env,
         clientInfo,
         getLogger,
+        oauthTokenStore,
+        openOAuthAuthorizationUrl,
+        ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
+        ...(options.onOAuthDiagnostic === undefined
+          ? {}
+          : { onOAuthDiagnostic: options.onOAuthDiagnostic }),
       }),
     );
 
@@ -72,6 +93,10 @@ type RegistrationContext = {
   env: NodeJS.ProcessEnv;
   clientInfo: McpImplementation;
   getLogger: () => Logger;
+  oauthFetch?: OAuthFetch;
+  oauthTokenStore: OAuthTokenStore;
+  openOAuthAuthorizationUrl(serverId: string, url: string): Promise<void>;
+  onOAuthDiagnostic?(serverId: string, event: McpOAuthHttpDiagnosticEvent): void;
 };
 
 function createRegistration(
@@ -85,9 +110,9 @@ function createRegistration(
     ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools }),
     ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools }),
     createClient() {
-      const transport = createTransport(serverId, config, context);
+      const { transport, authorizer } = createTransport(serverId, config, context);
 
-      return new McpClient({
+      const client = new McpClient({
         transport,
         clientInfo: context.clientInfo,
         initializeTimeoutMs: config.startupTimeoutMs,
@@ -104,29 +129,84 @@ function createRegistration(
           }
         },
       });
+      if (authorizer === undefined) {
+        return client;
+      }
+
+      let closePromise: Promise<void> | undefined;
+      const managedClient: McpManagedClient = {
+        get serverInfo() {
+          return client.serverInfo;
+        },
+        get serverCapabilities() {
+          return client.serverCapabilities;
+        },
+        async connect() {
+          await authorizer.prepare();
+          return client.connect();
+        },
+        listTools: client.listTools.bind(client),
+        callTool: client.callTool.bind(client),
+        close() {
+          authorizer.beginClose();
+          closePromise ??= client.close().finally(() => authorizer.close());
+          return closePromise;
+        },
+      };
+      return managedClient;
     },
   };
 }
+
+type CreatedTransport = {
+  transport: McpTransport;
+  authorizer?: McpOAuthHttpAuthorizer;
+};
 
 function createTransport(
   serverId: string,
   config: KanaMcpServerConfig,
   context: RegistrationContext,
-): McpTransport {
+): CreatedTransport {
   if (config.type === "http") {
-    return new StreamableHttpTransport({
-      url: config.url,
-      headers: config.headers,
-    });
+    const authorizer =
+      config.auth === undefined
+        ? undefined
+        : createKanaMcpOAuthAuthorizer(
+            serverId,
+            { ...config, auth: config.auth },
+            {
+              env: context.env,
+              getLogger: context.getLogger,
+              tokenStore: context.oauthTokenStore,
+              openAuthorizationUrl: (url) => context.openOAuthAuthorizationUrl(serverId, url),
+              ...(context.oauthFetch === undefined ? {} : { fetch: context.oauthFetch }),
+              ...(context.onOAuthDiagnostic === undefined
+                ? {}
+                : {
+                    onDiagnostic: (event) => context.onOAuthDiagnostic?.(serverId, event),
+                  }),
+            },
+          );
+    return {
+      transport: new StreamableHttpTransport({
+        url: config.url,
+        headers: config.headers,
+        ...(authorizer === undefined ? {} : { fetch: authorizer.fetch }),
+      }),
+      ...(authorizer === undefined ? {} : { authorizer }),
+    };
   }
 
-  return new StdioTransport({
-    command: config.command,
-    args: config.args,
-    ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
-    env: createChildEnvironment(context.env, config.env),
-    onStderr: createStderrLogger(serverId, context.getLogger),
-  });
+  return {
+    transport: new StdioTransport({
+      command: config.command,
+      args: config.args,
+      ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
+      env: createChildEnvironment(context.env, config.env),
+      onStderr: createStderrLogger(serverId, context.getLogger),
+    }),
+  };
 }
 
 function createChildEnvironment(
@@ -178,6 +258,15 @@ function copyServerConfig(config: KanaMcpServerConfig): KanaMcpServerConfig {
     return {
       ...config,
       headers: { ...config.headers },
+      ...(config.auth === undefined
+        ? {}
+        : {
+            auth: {
+              ...config.auth,
+              ...(config.auth.scopes === undefined ? {} : { scopes: config.auth.scopes.slice() }),
+              authorizationParameters: { ...config.auth.authorizationParameters },
+            },
+          }),
       ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools.slice() }),
       ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools.slice() }),
     };

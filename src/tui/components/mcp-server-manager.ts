@@ -12,6 +12,13 @@ type McpServerManagerItemBase = {
   enabled: boolean;
 };
 
+export type McpServerOAuthStatus = {
+  type: "oauth2";
+  state: "unauthorized" | "authorized" | "expired";
+  refreshable: boolean;
+  expiresAt?: number;
+};
+
 export type McpServerManagerItem = McpServerManagerItemBase &
   (
     | {
@@ -22,14 +29,20 @@ export type McpServerManagerItem = McpServerManagerItemBase &
     | {
         type: "http";
         url: string;
+        oauth?: McpServerOAuthStatus;
       }
   );
 
-export type McpServerManagerDecision = {
-  type: "apply";
-  enabledServerIds: string[];
-  changed: boolean;
-};
+export type McpServerManagerDecision =
+  | {
+      type: "apply";
+      enabledServerIds: string[];
+      changed: boolean;
+    }
+  | {
+      type: "manage_auth";
+      serverId: string;
+    };
 
 export class McpServerManager implements Component {
   private readonly viewport: ListViewport;
@@ -65,6 +78,14 @@ export class McpServerManager implements Component {
       const selected = this.servers[this.viewport.selectedIndex];
       if (selected) {
         selected.enabled = !selected.enabled;
+      }
+      return;
+    }
+
+    if (data === "a" || data === "A") {
+      const selected = this.servers[this.viewport.selectedIndex];
+      if (selected?.type === "http" && selected.oauth !== undefined) {
+        this.finish({ type: "manage_auth", serverId: selected.id });
       }
       return;
     }
@@ -121,7 +142,14 @@ export class McpServerManager implements Component {
       lines.push(dim(`... ${viewport.hiddenAfter} more servers`));
     }
 
-    lines.push(dim("Enter toggle · Esc apply and close"));
+    const selected = this.servers[this.viewport.selectedIndex];
+    lines.push(
+      dim(
+        selected?.type === "http" && selected.oauth !== undefined
+          ? "Enter toggle · A auth actions · Esc apply and close"
+          : "Enter toggle · Esc apply and close",
+      ),
+    );
     return lines;
   }
 }
@@ -136,6 +164,15 @@ function formatSingleLine(value: string): string {
 
 function formatServerDetail(server: McpServerManagerItem): string {
   return server.type === "http"
-    ? `  url: ${formatSingleLine(server.url)}`
+    ? `  url: ${formatSingleLine(server.url)}${
+        server.oauth === undefined ? "" : ` · OAuth: ${formatOAuthStatus(server.oauth)}`
+      }`
     : `  command: ${[server.command, ...server.args].map(formatSingleLine).join(" ")}`;
+}
+
+function formatOAuthStatus(status: McpServerOAuthStatus): string {
+  if (status.state === "expired" && status.refreshable) {
+    return "expired (refresh available)";
+  }
+  return status.state;
 }

@@ -46,6 +46,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── config.toml             # Runtime configuration covered here
 ├── mcp.json                # MCP server definitions
 ├── mcp-enabled.json        # Enabled MCP server IDs
+├── oauth-tokens.json       # OAuth credentials created after browser authorization
 ├── approvals.json          # bash trust rules
 ├── AGENTS.md               # Optional global system instructions; not created by install
 ├── sessions/               # Workspace-grouped JSONL sessions
@@ -155,8 +156,12 @@ MCP servers are not stored in `config.toml`. Claude Code-style definitions live 
     "remote": {
       "type": "http",
       "url": "https://example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer token"
+      "auth": {
+        "type": "oauth2",
+        "clientId": "kana-client-id",
+        "clientSecretEnv": "REMOTE_MCP_CLIENT_SECRET",
+        "tokenEndpointAuthMethod": "client_secret_post",
+        "scopes": ["read", "write"]
       }
     }
   }
@@ -171,7 +176,7 @@ Activation is stored separately so `/mcp` can manage it without rewriting server
 }
 ```
 
-Server IDs must be non-empty and unique. Unknown fields, invalid values, and duplicate IDs fail activation-state loading. `/mcp` lists every configured server with its transport. Selecting a stdio server shows its full command line (`command` followed by `args`), while selecting an HTTP server shows its URL; environment values and HTTP headers are deliberately omitted. `Enter` toggles an in-memory draft; `Esc` applies and closes it. If the draft changed, Kana writes the complete configured selection to `mcp-enabled.json` once, thereby dropping stale unknown IDs, then performs one reload. An unchanged draft neither writes nor reloads. A persistence failure leaves the manager open so it can be retried.
+Server IDs must be non-empty and unique. Unknown fields, invalid values, and duplicate IDs fail activation-state loading. `/mcp` lists every configured server with its transport. Selecting a stdio server shows its full command line (`command` followed by `args`), while selecting an HTTP server shows its URL and OAuth status; environment values, HTTP headers, and tokens are deliberately omitted. `Enter` toggles an in-memory draft. An OAuth HTTP server also accepts `A` to open authorization actions for initial authorization, reauthorization, or sign-out. `Esc` applies and closes the draft. Kana performs one reload when the selection changed or an enabled server's authorization changed. Signing out also unchecks that server. A persistence failure leaves the manager open so it can be retried.
 
 Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type": "http"`. The configuration fields are:
 
@@ -184,6 +189,7 @@ Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type"
 | `env` | stdio: `{}` | String key/value pairs explicitly added to the child environment. Configured values override matching baseline variables. |
 | `url` | Required for HTTP | Single Streamable HTTP endpoint; it must be an absolute `http`/`https` URL without credentials or a fragment. |
 | `headers` | HTTP: `{}` | String headers sent with every HTTP request; transport-owned content, session, protocol, and SSE headers cannot be overridden. |
+| `auth` | Unset | HTTP OAuth 2.0 configuration. When set, `url` must use HTTPS and `headers` cannot also set `Authorization`. |
 | `required` | `false` | Whether a startup failure prevents the whole MCP manager from becoming ready. |
 | `startupTimeoutMs` | `10000` | Timeout for completing the MCP initialization handshake. |
 | `requestTimeoutMs` | `60000` | Default timeout for ordinary MCP requests. |
@@ -192,11 +198,25 @@ Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type"
 
 The stdio child inherits only defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges `env`. No other process environment variables are inherited. Environment names must use conventional syntax and values must be strings. Unknown fields, non-positive timeouts, and duplicate or empty tool names fail configuration loading.
 
-HTTP configuration implements only `2025-11-25` Streamable HTTP. POST responses support both JSON and SSE, followed by an optional GET server stream, session headers, `Last-Event-ID` resumption, and DELETE shutdown. It does not fall back to the standalone `2024-11-05` HTTP+SSE transport, and OAuth is not implemented yet; authenticated endpoints require explicit `headers`. URLs, header names and values, and transport-reserved headers are validated before startup.
+`auth` currently accepts only `type: "oauth2"`, with these nested fields:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `clientId` | Required | Registered OAuth client ID. It is not a secret and may be stored directly in `mcp.json`. |
+| `clientSecretEnv` | Unset | Environment variable from which Kana reads the client secret, for example via `<KANA_HOME>/.env`; the secret is not stored in `mcp.json`. |
+| `redirectUri` | Dynamic loopback | Optional fixed `http://localhost:<port>/path`, `127.0.0.1`, or `::1` callback. When omitted, Kana selects a free port on `127.0.0.1` and uses `/oauth/callback`. |
+| `scopes` | Unset | Explicit least-privilege boundary. Kana never requests a scope outside this list. When unset, challenge scopes take precedence, followed by protected-resource metadata. |
+| `tokenEndpointAuthMethod` | Automatic | `none`, `client_secret_basic`, or `client_secret_post`; it must agree with server metadata and the presence of a secret. |
+| `authorizationParameters` | `{}` | Provider parameters appended to the browser request, such as `access_type` or `prompt`; OAuth, PKCE, and resource parameters cannot be overridden. |
+| `callbackTimeoutMs` | `300000` | Positive timeout for the loopback callback. |
+
+Before MCP startup, OAuth discovers MCP protected-resource metadata and OAuth/OIDC authorization-server metadata, then uses Authorization Code with PKCE S256. After browser authorization, access tokens, refresh tokens, expiry, scopes, and binding metadata are stored in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. A usable refresh token renews an expiring access token automatically. If the authorization server rejects refresh with `invalid_grant`, Kana deletes the credentials and opens the browser the next time authorization is required. When a tool call receives a scoped `401/403` challenge, Kana performs step-up authorization and retries that HTTP request once if the configured permission boundary includes the required scope. A scope outside the configured boundary produces an actionable error instead of expanding access.
+
+The HTTP transport implements only `2025-11-25` Streamable HTTP. POST responses support both JSON and SSE, followed by an optional GET server stream, session headers, `Last-Event-ID` resumption, and DELETE shutdown. It does not fall back to the standalone `2024-11-05` HTTP+SSE transport. URLs, header names and values, and transport-reserved headers are validated before startup. An OAuth challenge fails only the current request and does not close an otherwise valid MCP transport; fatal network or protocol errors still close the connection. Session DELETE during shutdown is bounded and best-effort. Its failure is logged, but background cleanup cannot leak an unhandled Promise stack into the TUI.
 
 When an optional server fails to start, Kana records diagnostics, closes that server, and continues, leaving a persistent warning after the final summary. A failed required server during initial loading leaves the current session in an error state without enabling the editor. During an explicit reload, however, any configuration or required-server failure clears the closed manager's tools, rebuilds the Agent without them, reports the error in the transcript, and restores the editor so `/mcp` can be opened again. Connecting and reloading append progress blocks after the transcript, followed by startup/reload summaries with ready-server and available-tool counts; selecting no servers produces an `MCP disabled` reload summary. Remote tools retain the unknown-tool approval policy, so every call requires confirmation in `unless_trusted` mode; the approval prompt shows the server ID, original remote tool name, and complete formatted arguments, with allow-once and deny choices only. On quit, idle or loading `Ctrl+C`, or `SIGHUP`, `SIGINT`, and `SIGTERM`, Kana begins graceful shutdown and shows per-server close progress at the end of the transcript without replacing bottom. It restores the terminal and prints exit information only after every MCP server closes. Pressing `Ctrl+C` again while graceful shutdown is pending forces immediate termination.
 
-Stdio server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. HTTP endpoints likewise form a remote data and tool trust boundary. Both `env` and `headers` currently use literal JSON values, so tokens are stored in plaintext inside `mcp.json`; do not commit or share this file, and use least-privilege credentials. `kana install` creates both MCP files with mode `0600`, but `kana install --force` also resets the definitions and activation state to empty defaults. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
+Stdio server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. HTTP endpoints and OAuth authorization servers likewise form remote data, tool, and credential trust boundaries. `env` and `headers` use literal JSON values, so a static token remains plaintext inside `mcp.json`; prefer OAuth `clientSecretEnv` and least-privilege scopes, and do not commit or share config or token files. Kana's OAuth token store is also a local plaintext credential file protected only by filesystem permissions. `kana install` creates both MCP files with mode `0600`, but `kana install --force` resets definitions and activation state to empty defaults; it does not delete the OAuth token store. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
 
 ## API key and project instructions
 

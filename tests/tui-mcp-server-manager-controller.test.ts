@@ -48,6 +48,71 @@ describe("MCP server manager controller", () => {
       "activation write failed",
     );
   });
+
+  test("runs browser authorization from the auth menu and reloads an enabled server", async () => {
+    const editor = new Editor({ model: "test-model" });
+    const transcript = new Transcript();
+    const layout = new AppLayout({ main: transcript, bottom: editor });
+    const tui = createTuiStub();
+    const closed: boolean[] = [];
+    const statusPhases: string[] = [];
+    let resolveAuthorization!: (status: { state: "authorized"; refreshable: boolean }) => void;
+    const authorization = new Promise<{
+      state: "authorized";
+      refreshable: boolean;
+    }>((resolve) => {
+      resolveAuthorization = resolve;
+    });
+    const controller = new McpServerManagerController({
+      editor,
+      layout,
+      transcript,
+      tui,
+      loadServers: () => [
+        {
+          id: "github",
+          type: "http",
+          url: "https://example.com/mcp",
+          enabled: true,
+          oauth: { type: "oauth2", state: "unauthorized", refreshable: false },
+        },
+      ],
+      saveEnabledServerIds: () => {
+        throw new Error("Activation should not change during authorization.");
+      },
+      authorizeServer: async (serverId, onAuthorizationUrl, signal) => {
+        expect(serverId).toBe("github");
+        expect(signal.aborted).toBe(false);
+        onAuthorizationUrl("https://auth.example.com/authorize?state=temporary");
+        return authorization;
+      },
+      onClose: (changed) => closed.push(changed),
+      updateStatus: (phase) => statusPhases.push(phase),
+      restoreBottom: (focus) => {
+        layout.showBottom(editor);
+        if (focus) {
+          tui.setFocus(editor);
+        }
+      },
+    });
+
+    controller.open();
+    tui.getFocus()?.handleInput?.("A");
+    tui.getFocus()?.handleInput?.("\r");
+    expect(stripAnsi(transcript.render(100).join("\n"))).toContain(
+      "https://auth.example.com/authorize?state=temporary",
+    );
+
+    resolveAuthorization({ state: "authorized", refreshable: true });
+    await waitFor(() =>
+      stripAnsi(transcript.render(100).join("\n")).includes("MCP OAuth authorized: github."),
+    );
+    tui.getFocus()?.handleInput?.("\x1b");
+
+    expect(statusPhases).toEqual(["starting", "idle"]);
+    expect(closed).toEqual([true]);
+    expect(tui.getFocus()).toBe(editor);
+  });
 });
 
 function createHarness(save?: (serverIds: string[]) => void) {
@@ -93,4 +158,14 @@ function createTuiStub(): Tui {
       focusedComponent = component;
     },
   } as unknown as Tui;
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for MCP OAuth controller state.");
 }

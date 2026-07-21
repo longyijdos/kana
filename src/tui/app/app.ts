@@ -12,6 +12,7 @@ import {
 import type {
   KanaMcpServerActivation,
   KanaNotificationConfig,
+  KanaOAuthTokenStatus,
   KanaSessionMetadata,
   KanaToolApprovalConfig,
   KanaToolApprovals,
@@ -23,6 +24,7 @@ import type {
 } from "@/kana";
 import { createWakeScheduler } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
+import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
 import {
   Editor,
   MarkdownBlock,
@@ -43,6 +45,7 @@ import {
   PROMPT_SHORTCUTS_TITLE,
   type PromptCommandName,
 } from "../components/editor/commands";
+import { stripTerminalControlSequences } from "../render";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -111,6 +114,12 @@ export type KanaTuiAppOptions = {
   mcpManagement?: {
     loadServers: () => KanaMcpServerActivation[];
     saveEnabledServerIds: (serverIds: string[]) => void;
+    authorizeServer?(
+      serverId: string,
+      onAuthorizationUrl: (url: string) => void,
+      signal: AbortSignal,
+    ): Promise<KanaOAuthTokenStatus>;
+    signOutServer?(serverId: string): Promise<KanaOAuthTokenStatus>;
     reloadExternalTools: (
       onProgress: (status: string) => void,
     ) => Promise<KanaTuiExternalToolsLoadResult>;
@@ -149,6 +158,7 @@ export class KanaTuiApp {
   private loadingExternalTools = false;
   private externalToolsLoadPromise?: Promise<boolean>;
   private externalToolsLoadingBlock?: TextBlock;
+  private readonly mcpOAuthBlocks = new Map<string, TextBlock>();
   private stopping = false;
   private stopPromise?: Promise<void>;
   private resolveStopped!: () => void;
@@ -218,6 +228,8 @@ export class KanaTuiApp {
         tui: this.tui,
         loadServers: this.options.mcpManagement.loadServers,
         saveEnabledServerIds: this.options.mcpManagement.saveEnabledServerIds,
+        authorizeServer: this.options.mcpManagement.authorizeServer,
+        signOutServer: this.options.mcpManagement.signOutServer,
         onClose: (changed) => {
           if (changed) {
             void this.reloadExternalTools();
@@ -360,12 +372,52 @@ export class KanaTuiApp {
     this.tui.requestRender(true);
   }
 
+  showMcpOAuthAuthorization(serverId: string, authorizationUrl: string): void {
+    const block = this.getMcpOAuthBlock(serverId);
+    block.setText(
+      [
+        `Authorizing MCP server ${sanitizeLabel(serverId)} in your browser.`,
+        "If the browser did not open, use this temporary URL:",
+        authorizationUrl,
+      ].join("\n"),
+    );
+    this.tui.requestRender(true);
+  }
+
+  handleMcpOAuthDiagnostic(serverId: string, diagnostic: McpOAuthHttpDiagnosticEvent): void {
+    const block = this.mcpOAuthBlocks.get(serverId);
+    if (block === undefined) {
+      return;
+    }
+    if (diagnostic.event === "oauth.authorization_succeeded") {
+      block.setText(`MCP OAuth authorized: ${sanitizeLabel(serverId)}.`);
+      this.tui.requestRender(true);
+    } else if (diagnostic.event === "oauth.authorization_failed") {
+      block.setText(
+        `MCP OAuth authorization failed: ${sanitizeLabel(serverId)}. See logs for details.`,
+      );
+      this.tui.requestRender(true);
+    }
+  }
+
+  private getMcpOAuthBlock(serverId: string): TextBlock {
+    const existing = this.mcpOAuthBlocks.get(serverId);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const block = new TextBlock("", { color: tuiTheme.muted });
+    this.mcpOAuthBlocks.set(serverId, block);
+    this.transcript.addChild(block);
+    return block;
+  }
+
   private async stopInternal(): Promise<void> {
     this.getLogger().info("tui.stopped");
     const activeAgent = this.agent;
     activeAgent.abort();
     this.localShell.abort();
     this.memoryCompact.abort();
+    this.mcpServerManager?.close();
     this.unsubscribeWakeEvents();
     this.wakeScheduler.dispose();
     this.pendingWakeEvents.length = 0;
@@ -674,6 +726,7 @@ export class KanaTuiApp {
 
         this.contentViewer.close();
         this.transcript.clear();
+        this.mcpOAuthBlocks.clear();
         this.editor.clear();
         this.tui.requestRender(true);
         break;
@@ -815,6 +868,7 @@ export class KanaTuiApp {
     this.agent = this.createAgentForCurrentSession();
     this.agentEvents.resetRun();
     this.transcript.clear();
+    this.mcpOAuthBlocks.clear();
     this.editor.clear();
     this.initializeTranscript([]);
     this.updateContextUsageFromMessages([]);
@@ -926,6 +980,7 @@ export class KanaTuiApp {
     this.agent = this.createAgentForCurrentSession();
     this.agentEvents.resetRun();
     this.transcript.clear();
+    this.mcpOAuthBlocks.clear();
     this.editor.clear();
     this.initializeTranscript(session.messages);
     this.updateContextUsageFromMessages(session.messages);
@@ -1143,6 +1198,10 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
+}
+
+function sanitizeLabel(value: string): string {
+  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }
 
 function formatCny(amount: number): string {

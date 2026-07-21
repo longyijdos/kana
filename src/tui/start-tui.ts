@@ -1,8 +1,10 @@
 import type { Message } from "@/core";
 import {
   appendKanaSessionMessages,
+  authorizeKanaMcpServer,
   createKanaAgent,
   createKanaMcpRuntime,
+  createKanaOAuthTokenStore,
   createKanaSession,
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
@@ -18,10 +20,12 @@ import {
   loadKanaSkillActivations,
   loadKanaToolApprovals,
   loadKanaUsageSummary,
+  openKanaOAuthAuthorizationUrl,
   recordKanaAgentRunAccounting,
   runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
   saveKanaMcpActivationState,
+  signOutKanaMcpServer,
 } from "@/kana";
 import { createNoopLogger, createSessionLogManager } from "@/logging";
 import type { Tool } from "@/tools";
@@ -87,9 +91,18 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   let mcpTools: Tool[] = [];
   let updateMcpLifecycleStatus: ((status: string) => void) | undefined;
   let app: KanaTuiApp | undefined;
+  const oauthTokenStore = createKanaOAuthTokenStore({ getLogger: () => sessionLogger });
   const mcpRuntime = createKanaMcpRuntime({
     reservedToolNames: KANA_BUILT_IN_TOOL_NAMES,
     getLogger: () => sessionLogger,
+    oauthTokenStore,
+    openOAuthAuthorizationUrl: async (serverId, url) => {
+      app?.showMcpOAuthAuthorization(serverId, url);
+      await openKanaOAuthAuthorizationUrl(url, { getLogger: () => sessionLogger });
+    },
+    onOAuthDiagnostic: (serverId, event) => {
+      app?.handleMcpOAuthDiagnostic(serverId, event);
+    },
     onProgress: (event) => {
       const status = formatMcpLifecycleStatus(event);
       if (status === undefined) {
@@ -340,6 +353,21 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         loadServers: () => loadKanaMcpServerActivations(),
         saveEnabledServerIds: (serverIds) =>
           saveKanaMcpActivationState({ enabledServers: serverIds }),
+        authorizeServer: (serverId, onAuthorizationUrl, signal) =>
+          authorizeKanaMcpServer(serverId, {
+            getLogger: () => sessionLogger,
+            tokenStore: oauthTokenStore,
+            signal,
+            openAuthorizationUrl: async (url) => {
+              onAuthorizationUrl(url);
+              await openKanaOAuthAuthorizationUrl(url, { getLogger: () => sessionLogger });
+            },
+          }),
+        signOutServer: (serverId) =>
+          signOutKanaMcpServer(serverId, {
+            getLogger: () => sessionLogger,
+            tokenStore: oauthTokenStore,
+          }),
         reloadExternalTools: reloadMcpTools,
       },
       onStop: closeMcpRuntime,

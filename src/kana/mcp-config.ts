@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import type { OAuthClientCredentials, OAuthTokenEndpointAuthMethod } from "@/oauth";
 import { getKanaConfigPaths } from "./config";
 
 export const KANA_MCP_SERVER_TYPES = ["stdio", "http"] as const;
@@ -21,10 +22,22 @@ export type KanaMcpStdioServerConfig = KanaMcpCommonServerConfig & {
   env: Record<string, string>;
 };
 
+export type KanaMcpOAuth2Config = {
+  type: "oauth2";
+  clientId: string;
+  clientSecretEnv?: string;
+  redirectUri?: string;
+  scopes?: string[];
+  tokenEndpointAuthMethod?: OAuthTokenEndpointAuthMethod;
+  authorizationParameters: Record<string, string>;
+  callbackTimeoutMs: number;
+};
+
 export type KanaMcpHttpServerConfig = KanaMcpCommonServerConfig & {
   type: "http";
   url: string;
   headers: Record<string, string>;
+  auth?: KanaMcpOAuth2Config;
 };
 
 // Stdio keeps `type` optional in JSON for compatibility with common MCP config
@@ -56,11 +69,27 @@ const HTTP_SERVER_KEYS = new Set([
   "type",
   "url",
   "headers",
+  "auth",
   "required",
   "startupTimeoutMs",
   "requestTimeoutMs",
   "includeTools",
   "excludeTools",
+]);
+const OAUTH2_KEYS = new Set([
+  "type",
+  "clientId",
+  "clientSecretEnv",
+  "redirectUri",
+  "scopes",
+  "tokenEndpointAuthMethod",
+  "authorizationParameters",
+  "callbackTimeoutMs",
+]);
+const OAUTH2_TOKEN_ENDPOINT_AUTH_METHODS = new Set<OAuthTokenEndpointAuthMethod>([
+  "none",
+  "client_secret_basic",
+  "client_secret_post",
 ]);
 const HTTP_RESERVED_HEADER_NAMES = new Set([
   "accept",
@@ -129,12 +158,41 @@ function parseStdioServer(name: string, server: Record<string, unknown>): KanaMc
 
 function parseHttpServer(name: string, server: Record<string, unknown>): KanaMcpHttpServerConfig {
   assertKnownKeys(server, HTTP_SERVER_KEYS, name);
+  const url = readHttpUrl(server.url, `${name}.url`);
+  const headers = readHttpHeaders(server.headers, `${name}.headers`);
+  const auth = readOptionalOAuth2Config(server.auth, `${name}.auth`);
+  if (auth !== undefined && new URL(url).protocol !== "https:") {
+    throw new Error(`${name}.url must use https when OAuth is configured.`);
+  }
+  if (auth !== undefined && hasHeader(headers, "authorization")) {
+    throw new Error(`${name}.headers cannot set Authorization when OAuth is configured.`);
+  }
 
   return {
     type: "http",
-    url: readHttpUrl(server.url, `${name}.url`),
-    headers: readHttpHeaders(server.headers, `${name}.headers`),
+    url,
+    headers,
+    ...(auth === undefined ? {} : { auth }),
     ...parseCommonServerConfig(name, server),
+  };
+}
+
+export function resolveKanaMcpOAuth2Client(
+  config: KanaMcpOAuth2Config,
+  env: NodeJS.ProcessEnv = process.env,
+): OAuthClientCredentials {
+  const clientSecret =
+    config.clientSecretEnv === undefined ? undefined : env[config.clientSecretEnv];
+  if (config.clientSecretEnv !== undefined && !clientSecret) {
+    throw new Error(`MCP OAuth environment variable ${config.clientSecretEnv} is not set.`);
+  }
+
+  return {
+    clientId: config.clientId,
+    ...(clientSecret === undefined ? {} : { clientSecret }),
+    ...(config.tokenEndpointAuthMethod === undefined
+      ? {}
+      : { tokenEndpointAuthMethod: config.tokenEndpointAuthMethod }),
   };
 }
 
@@ -274,6 +332,127 @@ function readOptionalToolNames(value: unknown, name: string): string[] | undefin
   return names;
 }
 
+function readOptionalOAuth2Config(value: unknown, name: string): KanaMcpOAuth2Config | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const auth = asRecord(value, name);
+  assertKnownKeys(auth, OAUTH2_KEYS, name);
+  if (auth.type !== "oauth2") {
+    throw new Error(`${name}.type must be oauth2.`);
+  }
+
+  const clientSecretEnv = readOptionalEnvironmentName(
+    auth.clientSecretEnv,
+    `${name}.clientSecretEnv`,
+  );
+  const scopes = readOptionalNonEmptyStrings(auth.scopes, `${name}.scopes`);
+  const tokenEndpointAuthMethod = readOptionalTokenEndpointAuthMethod(
+    auth.tokenEndpointAuthMethod,
+    `${name}.tokenEndpointAuthMethod`,
+  );
+
+  return {
+    type: "oauth2",
+    clientId: readRequiredNonBlankString(auth.clientId, `${name}.clientId`),
+    ...(clientSecretEnv === undefined ? {} : { clientSecretEnv }),
+    ...readOptionalOAuthRedirectUri(auth.redirectUri, `${name}.redirectUri`),
+    ...(scopes === undefined ? {} : { scopes }),
+    ...(tokenEndpointAuthMethod === undefined ? {} : { tokenEndpointAuthMethod }),
+    authorizationParameters: readStringRecord(
+      auth.authorizationParameters,
+      `${name}.authorizationParameters`,
+    ),
+    callbackTimeoutMs: readPositiveInteger(
+      auth.callbackTimeoutMs,
+      5 * 60_000,
+      `${name}.callbackTimeoutMs`,
+    ),
+  };
+}
+
+function readOptionalEnvironmentName(value: unknown, name: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const environmentName = readRequiredNonBlankString(value, name);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(environmentName)) {
+    throw new Error(`${name} must be a valid environment variable name.`);
+  }
+  return environmentName;
+}
+
+function readOptionalTokenEndpointAuthMethod(
+  value: unknown,
+  name: string,
+): OAuthTokenEndpointAuthMethod | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    typeof value !== "string" ||
+    !OAUTH2_TOKEN_ENDPOINT_AUTH_METHODS.has(value as OAuthTokenEndpointAuthMethod)
+  ) {
+    throw new Error(
+      `${name} must be one of: ${[...OAUTH2_TOKEN_ENDPOINT_AUTH_METHODS].join(", ")}.`,
+    );
+  }
+  return value as OAuthTokenEndpointAuthMethod;
+}
+
+function readOptionalOAuthRedirectUri(value: unknown, name: string): { redirectUri?: string } {
+  if (value === undefined) {
+    return {};
+  }
+  const raw = readRequiredNonBlankString(value, name);
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch (error) {
+    throw new Error(`${name} must be an absolute loopback HTTP URL.`, { cause: error });
+  }
+
+  const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+  if (url.protocol !== "http:" || !loopbackHosts.has(url.hostname) || url.port === "") {
+    throw new Error(`${name} must use HTTP, a loopback host, and an explicit port.`);
+  }
+  if (url.port === "0") {
+    throw new Error(`${name} cannot use port zero; omit it to select a free port.`);
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error(`${name} cannot contain credentials, a query, or a fragment.`);
+  }
+  return { redirectUri: url.toString() };
+}
+
+function readOptionalNonEmptyStrings(value: unknown, name: string): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const values = readStringArray(value, [], name);
+  if (values.some((item) => !item.trim())) {
+    throw new Error(`${name} values must be non-empty strings.`);
+  }
+  if (new Set(values).size !== values.length) {
+    throw new Error(`${name} cannot contain duplicate values.`);
+  }
+  return values;
+}
+
+function readStringRecord(value: unknown, name: string): Record<string, string> {
+  if (value === undefined) {
+    return {};
+  }
+  const record = asRecord(value, name);
+  for (const [key, item] of Object.entries(record)) {
+    if (!key || typeof item !== "string" || !item) {
+      throw new Error(`${name} keys and values must be non-empty strings.`);
+    }
+  }
+  return { ...(record as Record<string, string>) };
+}
+
 function readEnvironment(value: unknown, name: string): Record<string, string> {
   if (value === undefined) {
     return {};
@@ -320,4 +499,8 @@ function readHttpHeaders(value: unknown, name: string): Record<string, string> {
   // Header values may hold credentials. Snapshot them at the same trust
   // boundary as stdio env so caller mutation cannot change later connections.
   return Object.fromEntries(parsed);
+}
+
+function hasHeader(headers: Readonly<Record<string, string>>, name: string): boolean {
+  return Object.keys(headers).some((headerName) => headerName.toLowerCase() === name);
 }

@@ -349,9 +349,17 @@ export class McpConnection {
     this.reportError(error);
     this.state = "closing";
     this.rejectAllPending(error);
-    void this.options.transport.close().finally(() => {
-      this.state = "closed";
-    });
+    // The manager owns reporting explicit close failures. This background
+    // transition must observe both outcomes so transport cleanup cannot leak
+    // an unhandled rejection while startup failure is still unwinding.
+    void this.options.transport.close().then(
+      () => {
+        this.state = "closed";
+      },
+      () => {
+        this.state = "closed";
+      },
+    );
   }
 
   private cancelPending(

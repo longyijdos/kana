@@ -1,4 +1,19 @@
 export {
+  canonicalizeMcpResource,
+  createMcpAuthorizationChallengeError,
+  type DiscoverMcpProtectedResourceOptions,
+  discoverMcpProtectedResource,
+  McpAuthorizationChallengeError,
+  type McpAuthorizationChallengeKind,
+  type McpAuthorizationDiagnosticEvent,
+  type McpAuthorizationDiagnosticHandler,
+  type McpBearerChallenge,
+  type McpProtectedResourceDiscoverySource,
+  type McpProtectedResourceMetadata,
+  parseMcpBearerChallenge,
+  selectMcpAuthorizationScopes,
+} from "./authorization";
+export {
   type McpCallToolOptions,
   McpClient,
   type McpClientOptions,
@@ -35,6 +50,12 @@ export {
   McpToolNameConflictError,
   type McpToolNameSource,
 } from "./manager";
+export {
+  McpOAuthHttpAuthorizer,
+  type McpOAuthHttpAuthorizerOptions,
+  type McpOAuthHttpDiagnosticEvent,
+  type McpOAuthHttpLifecycleDiagnosticEvent,
+} from "./oauth-http-authorizer";
 export {
   isJsonObject,
   isJsonRpcErrorResponse,

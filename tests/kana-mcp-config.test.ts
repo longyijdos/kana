@@ -7,6 +7,7 @@ import {
   getKanaConfigPaths,
   loadKanaMcpConfig,
   parseKanaMcpConfig,
+  resolveKanaMcpOAuth2Client,
 } from "@/kana";
 
 const tempDirs: string[] = [];
@@ -107,6 +108,61 @@ describe("Kana MCP config", () => {
     });
   });
 
+  test("loads OAuth-protected Streamable HTTP entries and resolves secrets from the environment", () => {
+    const parsed = parseKanaMcpConfig({
+      mcpServers: {
+        github: {
+          type: "http",
+          url: "https://api.example.com/mcp",
+          auth: {
+            type: "oauth2",
+            clientId: "kana-client",
+            clientSecretEnv: "GITHUB_MCP_CLIENT_SECRET",
+            scopes: ["read:user", "repo"],
+            tokenEndpointAuthMethod: "client_secret_post",
+            authorizationParameters: { access_type: "offline", prompt: "consent" },
+          },
+        },
+      },
+    });
+
+    expect(parsed.mcpServers.github).toEqual({
+      type: "http",
+      url: "https://api.example.com/mcp",
+      headers: {},
+      auth: {
+        type: "oauth2",
+        clientId: "kana-client",
+        clientSecretEnv: "GITHUB_MCP_CLIENT_SECRET",
+        scopes: ["read:user", "repo"],
+        tokenEndpointAuthMethod: "client_secret_post",
+        authorizationParameters: { access_type: "offline", prompt: "consent" },
+        callbackTimeoutMs: 300_000,
+      },
+      required: false,
+      startupTimeoutMs: 10_000,
+      requestTimeoutMs: 60_000,
+    });
+
+    const server = parsed.mcpServers.github;
+    if (server?.type !== "http" || server.auth === undefined) {
+      throw new Error("Expected OAuth HTTP server config.");
+    }
+    const auth = server.auth;
+    expect(
+      resolveKanaMcpOAuth2Client(auth, {
+        GITHUB_MCP_CLIENT_SECRET: "test-secret",
+      }),
+    ).toEqual({
+      clientId: "kana-client",
+      clientSecret: "test-secret",
+      tokenEndpointAuthMethod: "client_secret_post",
+    });
+    expect(() => resolveKanaMcpOAuth2Client(auth, {})).toThrow(
+      "MCP OAuth environment variable GITHUB_MCP_CLIENT_SECRET is not set.",
+    );
+  });
+
   test("defaults an omitted mcpServers object to empty", () => {
     expect(parseKanaMcpConfig({})).toEqual({ mcpServers: {} });
   });
@@ -142,6 +198,31 @@ describe("Kana MCP config", () => {
     });
     httpHeaders.Authorization = "after";
     expect(http.mcpServers.remote).toMatchObject({ headers: { Authorization: "before" } });
+
+    const scopes = ["scope:before"];
+    const authorizationParameters = { prompt: "before" };
+    const oauth = parseKanaMcpConfig({
+      mcpServers: {
+        remote: {
+          type: "http",
+          url: "https://example.com/mcp",
+          auth: {
+            type: "oauth2",
+            clientId: "client",
+            scopes,
+            authorizationParameters,
+          },
+        },
+      },
+    });
+    scopes[0] = "scope:after";
+    authorizationParameters.prompt = "after";
+    expect(oauth.mcpServers.remote).toMatchObject({
+      auth: {
+        scopes: ["scope:before"],
+        authorizationParameters: { prompt: "before" },
+      },
+    });
   });
 
   test("rejects unsupported server types and unknown fields", () => {
@@ -215,6 +296,29 @@ describe("Kana MCP config", () => {
         },
       }),
     ).toThrow("mcpServers.remote.headers.Authorization must be a string.");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: {
+            type: "http",
+            url: "http://example.com/mcp",
+            auth: { type: "oauth2", clientId: "client" },
+          },
+        },
+      }),
+    ).toThrow("mcpServers.remote.url must use https when OAuth is configured.");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer static" },
+            auth: { type: "oauth2", clientId: "client" },
+          },
+        },
+      }),
+    ).toThrow("mcpServers.remote.headers cannot set Authorization when OAuth is configured.");
   });
 
   test("rejects invalid timeouts and tool filters", () => {

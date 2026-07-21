@@ -59,12 +59,22 @@ export {
   KANA_MCP_SERVER_TYPES,
   type KanaMcpConfig,
   type KanaMcpHttpServerConfig,
+  type KanaMcpOAuth2Config,
   type KanaMcpServerConfig,
   type KanaMcpServerType,
   type KanaMcpStdioServerConfig,
   loadKanaMcpConfig,
   parseKanaMcpConfig,
+  resolveKanaMcpOAuth2Client,
 } from "./mcp-config";
+export {
+  authorizeKanaMcpServer,
+  type CreateKanaMcpOAuthAuthorizerOptions,
+  createKanaMcpOAuthAuthorizer,
+  createKanaMcpOAuthStorageKey,
+  type RunKanaMcpOAuthOptions,
+  signOutKanaMcpServer,
+} from "./mcp-oauth";
 export {
   type CreateKanaMcpRuntimeOptions,
   createKanaMcpRuntime,
@@ -112,6 +122,17 @@ export {
   saveKanaMemory,
   searchKanaDailyMemory,
 } from "./memory";
+export {
+  type OpenKanaOAuthAuthorizationUrlOptions,
+  openKanaOAuthAuthorizationUrl,
+} from "./oauth-browser";
+export {
+  type CreateKanaOAuthTokenStoreOptions,
+  createKanaOAuthTokenStore,
+  type KanaOAuthTokenStatus,
+  type LoadKanaOAuthTokenStatusesOptions,
+  loadKanaOAuthTokenStatuses,
+} from "./oauth-token-store";
 export { getKanaSessionLogPath, type KanaLogPathOptions } from "./path";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {

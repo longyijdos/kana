@@ -1,4 +1,8 @@
 import {
+  createMcpAuthorizationChallengeError,
+  McpAuthorizationChallengeError,
+} from "./authorization";
+import {
   isJsonObject,
   isJsonRpcRequest,
   type JsonRpcId,
@@ -187,7 +191,7 @@ export class StreamableHttpTransport implements McpTransport {
     });
 
     if (!response.ok) {
-      throw await createHttpStatusError(response, this.maxMessageBytes);
+      throw await createHttpResponseError(response, this.maxMessageBytes);
     }
 
     if (isInitializeRequest(message)) {
@@ -253,7 +257,7 @@ export class StreamableHttpTransport implements McpTransport {
         lastEventId: result.lastEventId,
       });
       if (!resumed.ok) {
-        throw await createHttpStatusError(resumed, this.maxMessageBytes);
+        throw await createHttpResponseError(resumed, this.maxMessageBytes);
       }
       if (readContentType(resumed) !== "text/event-stream") {
         throw new McpTransportError("MCP resumed stream did not return text/event-stream.");
@@ -400,7 +404,7 @@ export class StreamableHttpTransport implements McpTransport {
         return;
       }
       if (!response.ok) {
-        throw await createHttpStatusError(response, this.maxMessageBytes);
+        throw await createHttpResponseError(response, this.maxMessageBytes);
       }
       if (readContentType(response) !== "text/event-stream") {
         throw new McpTransportError("MCP standalone GET did not return text/event-stream.");
@@ -518,6 +522,12 @@ export class StreamableHttpTransport implements McpTransport {
           this.handlers?.onSessionExpired?.({ generation: transportError.generation });
           throw transportError;
         }
+        // Authentication challenges reject one request but do not corrupt the
+        // HTTP transport or MCP session. Keep the client usable so the host can
+        // adjust authorization policy and retry deliberately.
+        if (transportError instanceof McpAuthorizationChallengeError) {
+          throw transportError;
+        }
         if (controller.signal.reason === SESSION_REPLACED_REASON) {
           return;
         }
@@ -545,7 +555,11 @@ export class StreamableHttpTransport implements McpTransport {
         // Transport cleanup must continue even if a consumer error hook fails.
       }
     }
-    void this.close();
+    // Failure cleanup runs in the background, while explicit close callers
+    // still receive the original rejecting promise for diagnostics. Attach a
+    // handler immediately so a failed best-effort DELETE cannot surface as an
+    // unhandled rejection before the manager awaits close().
+    void this.close().catch(() => undefined);
   }
 
   private async shutdown(): Promise<void> {
@@ -590,7 +604,7 @@ export class StreamableHttpTransport implements McpTransport {
       });
 
       if (!response.ok && response.status !== 404 && response.status !== 405) {
-        throw await createHttpStatusError(response, this.maxMessageBytes);
+        throw await createHttpResponseError(response, this.maxMessageBytes);
       }
       await response.body?.cancel().catch(() => undefined);
     } finally {
@@ -765,6 +779,18 @@ async function createHttpStatusError(
       detail ? `: ${detail}` : "."
     }`,
   );
+}
+
+async function createHttpResponseError(
+  response: Response,
+  maxMessageBytes: number,
+): Promise<McpTransportError> {
+  const authorizationError = createMcpAuthorizationChallengeError(response);
+  if (authorizationError !== undefined) {
+    await response.body?.cancel().catch(() => undefined);
+    return authorizationError;
+  }
+  return createHttpStatusError(response, maxMessageBytes);
 }
 
 async function waitForDelay(milliseconds: number, signal: AbortSignal): Promise<void> {

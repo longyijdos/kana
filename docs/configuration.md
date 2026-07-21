@@ -46,6 +46,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── config.toml             # 本文的运行配置
 ├── mcp.json                # MCP server 定义
 ├── mcp-enabled.json        # 已启用的 MCP server ID
+├── oauth-tokens.json       # 浏览器授权后创建的 OAuth 凭据
 ├── approvals.json          # bash 信任规则
 ├── AGENTS.md               # 可选：全局系统指令，不由 install 创建
 ├── sessions/               # 按工作区分组的 JSONL 会话
@@ -155,8 +156,12 @@ MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA
     "remote": {
       "type": "http",
       "url": "https://example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer token"
+      "auth": {
+        "type": "oauth2",
+        "clientId": "kana-client-id",
+        "clientSecretEnv": "REMOTE_MCP_CLIENT_SECRET",
+        "tokenEndpointAuthMethod": "client_secret_post",
+        "scopes": ["read", "write"]
       }
     }
   }
@@ -171,7 +176,7 @@ MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA
 }
 ```
 
-Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都会导致启用状态加载失败。`/mcp` 会列出所有已配置 server 的 transport；选中 stdio server 时显示完整命令行（`command` 后拼接 `args`），选中 HTTP server 时显示 URL，但刻意不显示环境变量或 HTTP headers。`Enter` 只切换内存中的草稿，`Esc` 一次性应用并关闭；草稿有变化时，Kana 会把完整的已配置选中项写入 `mcp-enabled.json` 一次（同时丢弃过期的未知 ID），再执行一次 reload。草稿未变化时既不写文件也不 reload；持久化失败时管理界面保持打开，方便重试。
+Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都会导致启用状态加载失败。`/mcp` 会列出所有已配置 server 的 transport；选中 stdio server 时显示完整命令行（`command` 后拼接 `args`），选中 HTTP server 时显示 URL 和 OAuth 状态，但刻意不显示环境变量、HTTP headers 或 token。`Enter` 只切换内存中的草稿；OAuth HTTP server 还可按 `A` 打开认证操作，执行首次授权、重新授权或退出登录。`Esc` 一次性应用并关闭；草稿有变化或已启用 server 的认证状态发生变化时，Kana 执行一次 reload。退出登录会同时取消勾选该 server。持久化失败时管理界面保持打开，方便重试。
 
 省略 `type` 时默认为 `stdio`；Streamable HTTP 必须显式使用 `"type": "http"`。配置字段如下：
 
@@ -184,6 +189,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。配置值覆盖同名基础环境变量。 |
 | `url` | HTTP 必填 | Streamable HTTP 单端点 URL；必须为绝对 `http`/`https` URL，不能包含 credentials 或 fragment。 |
 | `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
+| `auth` | 未设置 | HTTP OAuth 2.0 配置；设置后 `url` 必须为 HTTPS，且 `headers` 不能再设置 `Authorization`。 |
 | `required` | `false` | 启动失败是否阻止 MCP manager 整体就绪。 |
 | `startupTimeoutMs` | `10000` | 完成 MCP 初始化握手的超时。 |
 | `requestTimeoutMs` | `60000` | 普通 MCP 请求的默认超时。 |
@@ -192,11 +198,25 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 
 stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并 `env`。不会继承其他进程环境变量。环境变量名必须符合常规格式，值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
 
-HTTP 配置只实现 `2025-11-25` Streamable HTTP：POST 响应同时支持 JSON 和 SSE，初始化后支持可选 GET server stream、session header、`Last-Event-ID` 恢复和 DELETE 关闭。不会回退 `2024-11-05` 的独立 HTTP+SSE transport，当前也不实现 OAuth；需要认证时使用显式 `headers`。URL、header 名称和值以及 transport 保留 header 会在启动前校验。
+`auth` 当前只接受 `type: "oauth2"`，子字段如下：
+
+| 键 | 默认值 | 含义 |
+| --- | --- | --- |
+| `clientId` | 必填 | 已注册 OAuth client ID；它不是 secret，可直接保存在 `mcp.json`。 |
+| `clientSecretEnv` | 未设置 | 从 Kana 进程环境读取 client secret 的变量名，例如放在 `<KANA_HOME>/.env`；secret 不写入 `mcp.json`。 |
+| `redirectUri` | 动态 loopback | 可选的固定 `http://localhost:<port>/path`、`127.0.0.1` 或 `::1` callback。省略时 Kana 在 `127.0.0.1` 上选择空闲端口并使用 `/oauth/callback`。 |
+| `scopes` | 未设置 | 显式最小权限边界。设置后不会自动申请列表外的 scope；未设置时优先使用 `WWW-Authenticate` challenge 的 scope，再回退 protected-resource metadata。 |
+| `tokenEndpointAuthMethod` | 自动选择 | `none`、`client_secret_basic` 或 `client_secret_post`；必须与服务端 metadata 和是否提供 secret 一致。 |
+| `authorizationParameters` | `{}` | 追加到浏览器授权请求的提供商参数，例如 `access_type` 或 `prompt`；不能覆盖 OAuth/PKCE/resource 核心参数。 |
+| `callbackTimeoutMs` | `300000` | 等待 loopback callback 的正整数超时。 |
+
+OAuth 启动前先按 MCP protected-resource metadata 和 OAuth/OIDC metadata 发现授权端点，再执行 Authorization Code + PKCE S256。浏览器授权成功后，access token、refresh token、到期时间、scope 和绑定信息写入权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`。可用的 refresh token 会在 access token 到期前自动刷新；授权服务器以 `invalid_grant` 拒绝 refresh 时，Kana 删除旧凭据，并在下次需要时重新打开浏览器。工具调用收到带 scope 的 `401/403` challenge 时，如果配置允许所需 scope，Kana 会增量授权并只重试该 HTTP 请求一次；若服务端要求配置范围之外的 scope，则返回明确错误，不扩大权限。
+
+HTTP transport 只实现 `2025-11-25` Streamable HTTP：POST 响应同时支持 JSON 和 SSE，初始化后支持可选 GET server stream、session header、`Last-Event-ID` 恢复和 DELETE 关闭。不会回退 `2024-11-05` 的独立 HTTP+SSE transport。URL、header 名称和值以及 transport 保留 header 会在启动前校验。OAuth challenge 只使当前请求失败，不会关闭仍然有效的 MCP transport；网络或协议级致命错误仍会关闭连接。关闭期间的 session DELETE 是有界的最佳努力操作，其失败会写日志，但后台清理不会把未处理 Promise 堆栈泄漏到 TUI。
 
 可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续，并在最终摘要后留下失败警告。初次加载时，必需服务器失败会让当前会话停留在错误状态，不启用 editor；但显式 reload 中遇到配置或必需服务器失败时，会清空已关闭 manager 的工具、用无 MCP 工具的状态重建 Agent、把错误写入 transcript，并恢复 editor，以便再次打开 `/mcp`。连接和 reload 都会在 transcript 末尾追加进度块，最终保留含 ready server 与可用工具数量的启动/reload 摘要；未选择任何服务器时，reload 摘要会显示 `MCP disabled`。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲或加载时按 `Ctrl+C`，以及收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先进入优雅关闭，并在 transcript 末尾显示逐服务器关闭进度而不替换 bottom；所有 MCP server 关闭后才恢复终端并打印退出信息。优雅关闭等待期间再次按 `Ctrl+C` 会立即强制退出。
 
-stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 同样属于远端数据与工具信任边界。`env` 与 `headers` 当前都按 JSON 字面值处理，token 会以明文保存在 `mcp.json`；不要提交或分享该文件，并使用最小权限凭据。`kana install` 会以 `0600` 创建两个 MCP 文件，但 `kana install --force` 也会把服务器定义和启用状态重置为空默认值。协议版本由代码维护，不提供任意字符串配置。
+stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 与 `headers` 按 JSON 字面值处理，静态 token 因而会以明文保存在 `mcp.json`；优先使用 OAuth 的 `clientSecretEnv` 和最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建两个 MCP 文件，但 `kana install --force` 也会把服务器定义和启用状态重置为空默认值；它不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
 
 ## API key 与项目指令
 

@@ -47,6 +47,16 @@ export class KanaMcpRuntime {
         : { reservedToolNames: [...options.reservedToolNames] }),
       ...(options.getLogger === undefined ? {} : { getLogger: options.getLogger }),
       ...(options.clientInfo === undefined ? {} : { clientInfo: { ...options.clientInfo } }),
+      ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
+      ...(options.oauthTokenStore === undefined
+        ? {}
+        : { oauthTokenStore: options.oauthTokenStore }),
+      ...(options.openOAuthAuthorizationUrl === undefined
+        ? {}
+        : { openOAuthAuthorizationUrl: options.openOAuthAuthorizationUrl }),
+      ...(options.onOAuthDiagnostic === undefined
+        ? {}
+        : { onOAuthDiagnostic: options.onOAuthDiagnostic }),
       onProgress: (event) => {
         if (this.activeOperation !== undefined) {
           options.onProgress?.({ ...event, runtimeOperation: this.activeOperation });

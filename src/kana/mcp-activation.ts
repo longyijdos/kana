@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { getKanaConfigPaths } from "./config";
 import { loadKanaMcpConfig } from "./mcp-config";
+import { createKanaMcpOAuthStorageKey } from "./mcp-oauth";
+import { type KanaOAuthTokenStatus, loadKanaOAuthTokenStatuses } from "./oauth-token-store";
 
 export type KanaMcpActivationState = {
   enabledServers: string[];
@@ -22,6 +24,7 @@ export type KanaMcpServerActivation = KanaMcpServerActivationBase &
     | {
         type: "http";
         url: string;
+        oauth?: KanaOAuthTokenStatus & { type: "oauth2" };
       }
   );
 
@@ -54,6 +57,13 @@ export function loadKanaMcpServerActivations(
 ): KanaMcpServerActivation[] {
   const config = loadKanaMcpConfig(env);
   const enabledServerIds = new Set(loadKanaMcpActivationState(env).enabledServers);
+  const oauthServerIds = Object.entries(config.mcpServers)
+    .filter(([, server]) => server.type === "http" && server.auth !== undefined)
+    .map(([id]) => id);
+  const oauthStatuses = loadKanaOAuthTokenStatuses(
+    oauthServerIds.map(createKanaMcpOAuthStorageKey),
+    { env },
+  );
 
   return Object.entries(config.mcpServers).map(([id, server]) =>
     server.type === "http"
@@ -62,6 +72,14 @@ export function loadKanaMcpServerActivations(
           type: "http",
           url: server.url,
           enabled: enabledServerIds.has(id),
+          ...(server.auth === undefined
+            ? {}
+            : {
+                oauth: {
+                  type: "oauth2" as const,
+                  ...oauthStatuses[createKanaMcpOAuthStorageKey(id)]!,
+                },
+              }),
         }
       : {
           id,
