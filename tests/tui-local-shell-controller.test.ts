@@ -44,7 +44,10 @@ describe("local shell controller", () => {
 
     expect(lines).toContain("◆ Ran");
     expect(lines).toContain("  └ printf local-shell");
-    expect(lines.join("\n")).toContain("stdout:\nlocal-shell");
+    expect(lines).toContain("local-shell");
+    expect(lines.join("\n")).not.toContain("exit 0");
+    expect(lines.join("\n")).not.toContain("stdout:");
+    expect(lines.join("\n")).not.toContain("stderr:");
     expect(lines).not.toContain("Allow agent to run bash?");
 
     editor.render(80);
