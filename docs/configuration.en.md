@@ -151,6 +151,13 @@ MCP servers are not stored in `config.toml`. Claude Code-style definitions live 
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxx"
       }
+    },
+    "remote": {
+      "type": "http",
+      "url": "https://example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer token"
+      }
     }
   }
 }
@@ -160,32 +167,36 @@ Activation is stored separately so `/mcp` can manage it without rewriting server
 
 ```json
 {
-  "enabledServers": ["filesystem", "github"]
+  "enabledServers": ["filesystem", "github", "remote"]
 }
 ```
 
-Server IDs must be non-empty and unique. Unknown fields, invalid values, and duplicate IDs fail activation-state loading. `/mcp` lists every configured server with its transport and full command line (`command` followed by `args`), but deliberately omits environment values. `Enter` toggles an in-memory draft; `Esc` applies and closes it. If the draft changed, Kana writes the complete configured selection to `mcp-enabled.json` once, thereby dropping stale unknown IDs, then performs one reload. An unchanged draft neither writes nor reloads. A persistence failure leaves the manager open so it can be retried.
+Server IDs must be non-empty and unique. Unknown fields, invalid values, and duplicate IDs fail activation-state loading. `/mcp` lists every configured server with its transport. Selecting a stdio server shows its full command line (`command` followed by `args`), while selecting an HTTP server shows its URL; environment values and HTTP headers are deliberately omitted. `Enter` toggles an in-memory draft; `Esc` applies and closes it. If the draft changed, Kana writes the complete configured selection to `mcp-enabled.json` once, thereby dropping stale unknown IDs, then performs one reload. An unchanged draft neither writes nor reloads. A persistence failure leaves the manager open so it can be retried.
 
-Omitting `type` defaults to `stdio`. Kana also accepts these optional extensions:
+Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type": "http"`. The configuration fields are:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `type` | `stdio` | Only `stdio` is accepted today; later HTTP/SSE configurations extend the same discriminated union. |
-| `command` | Required | Absolute executable path or a name resolved through `PATH`. It is launched directly as an argument array, never through a shell. |
-| `args` | `[]` | Arguments passed to the executable. |
-| `cwd` | Kana's current working directory | Child-process working directory; relative paths resolve from the directory where Kana runs. |
-| `env` | `{}` | String key/value pairs explicitly added to the child environment. Configured values override matching baseline variables. |
+| `type` | `stdio` | `stdio` or `http`. Legacy `sse` is not accepted. |
+| `command` | Required for stdio | Absolute executable path or a name resolved through `PATH`. It is launched directly as an argument array, never through a shell. |
+| `args` | stdio: `[]` | Arguments passed to the stdio executable. |
+| `cwd` | stdio: Kana's current working directory | Child-process working directory; relative paths resolve from the directory where Kana runs. |
+| `env` | stdio: `{}` | String key/value pairs explicitly added to the child environment. Configured values override matching baseline variables. |
+| `url` | Required for HTTP | Single Streamable HTTP endpoint; it must be an absolute `http`/`https` URL without credentials or a fragment. |
+| `headers` | HTTP: `{}` | String headers sent with every HTTP request; transport-owned content, session, protocol, and SSE headers cannot be overridden. |
 | `required` | `false` | Whether a startup failure prevents the whole MCP manager from becoming ready. |
-| `startupTimeoutMs` | `10000` | Timeout for the MCP initialization handshake after starting the stdio process. |
+| `startupTimeoutMs` | `10000` | Timeout for completing the MCP initialization handshake. |
 | `requestTimeoutMs` | `60000` | Default timeout for ordinary MCP requests. |
 | `includeTools` | Unset | Allowlist matched against original remote tool names. An empty array exposes no tools. |
 | `excludeTools` | Unset | Denylist matched against original remote names; exclusion wins when a name appears in both lists. |
 
 The stdio child inherits only defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges `env`. No other process environment variables are inherited. Environment names must use conventional syntax and values must be strings. Unknown fields, non-positive timeouts, and duplicate or empty tool names fail configuration loading.
 
+HTTP configuration implements only `2025-11-25` Streamable HTTP. POST responses support both JSON and SSE, followed by an optional GET server stream, session headers, `Last-Event-ID` resumption, and DELETE shutdown. It does not fall back to the standalone `2024-11-05` HTTP+SSE transport, and OAuth is not implemented yet; authenticated endpoints require explicit `headers`. URLs, header names and values, and transport-reserved headers are validated before startup.
+
 When an optional server fails to start, Kana records diagnostics, closes that server, and continues, leaving a persistent warning after the final summary. A failed required server during initial loading leaves the current session in an error state without enabling the editor. During an explicit reload, however, any configuration or required-server failure clears the closed manager's tools, rebuilds the Agent without them, reports the error in the transcript, and restores the editor so `/mcp` can be opened again. Connecting and reloading append progress blocks after the transcript, followed by startup/reload summaries with ready-server and available-tool counts; selecting no servers produces an `MCP disabled` reload summary. Remote tools retain the unknown-tool approval policy, so every call requires confirmation in `unless_trusted` mode; the approval prompt shows the server ID, original remote tool name, and complete formatted arguments, with allow-once and deny choices only. On quit, idle or loading `Ctrl+C`, or `SIGHUP`, `SIGINT`, and `SIGTERM`, Kana begins graceful shutdown and shows per-server close progress at the end of the transcript without replacing bottom. It restores the terminal and prints exit information only after every MCP server closes. Pressing `Ctrl+C` again while graceful shutdown is pending forces immediate termination.
 
-Server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. `env` currently uses literal JSON values, so tokens are stored in plaintext inside `mcp.json`; do not commit or share this file, and use least-privilege credentials. `kana install` creates both MCP files with mode `0600`, but `kana install --force` also resets the definitions and activation state to empty defaults. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
+Stdio server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. HTTP endpoints likewise form a remote data and tool trust boundary. Both `env` and `headers` currently use literal JSON values, so tokens are stored in plaintext inside `mcp.json`; do not commit or share this file, and use least-privilege credentials. `kana install` creates both MCP files with mode `0600`, but `kana install --force` also resets the definitions and activation state to empty defaults. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
 
 ## API key and project instructions
 

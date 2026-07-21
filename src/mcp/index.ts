@@ -70,6 +70,10 @@ export {
   type StdioTransportOptions,
 } from "./stdio-transport";
 export {
+  StreamableHttpTransport,
+  type StreamableHttpTransportOptions,
+} from "./streamable-http-transport";
+export {
   type AdaptedMcpTool,
   createMcpToolAdapter,
   type McpToolAdapterOptions,

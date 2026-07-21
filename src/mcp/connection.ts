@@ -159,12 +159,13 @@ export class McpConnection {
       }
     });
 
-    try {
-      await this.options.transport.send(message);
-    } catch (error) {
+    // Response-bearing HTTP sends can remain open while their SSE body is
+    // streaming. Request settlement and timeouts must therefore run in
+    // parallel with transport delivery instead of waiting for send() first.
+    void this.options.transport.send(message).catch((error) => {
       const pending = this.takePending(id);
       pending?.reject(error);
-    }
+    });
 
     return response;
   }

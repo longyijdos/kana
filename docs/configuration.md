@@ -151,6 +151,13 @@ MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxx"
       }
+    },
+    "remote": {
+      "type": "http",
+      "url": "https://example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer token"
+      }
     }
   }
 }
@@ -160,32 +167,36 @@ MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA
 
 ```json
 {
-  "enabledServers": ["filesystem", "github"]
+  "enabledServers": ["filesystem", "github", "remote"]
 }
 ```
 
-Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都会导致启用状态加载失败。`/mcp` 会列出所有已配置 server 的 transport 和完整命令行（`command` 后拼接 `args`），但刻意不显示环境变量。`Enter` 只切换内存中的草稿，`Esc` 一次性应用并关闭；草稿有变化时，Kana 会把完整的已配置选中项写入 `mcp-enabled.json` 一次（同时丢弃过期的未知 ID），再执行一次 reload。草稿未变化时既不写文件也不 reload；持久化失败时管理界面保持打开，方便重试。
+Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都会导致启用状态加载失败。`/mcp` 会列出所有已配置 server 的 transport；选中 stdio server 时显示完整命令行（`command` 后拼接 `args`），选中 HTTP server 时显示 URL，但刻意不显示环境变量或 HTTP headers。`Enter` 只切换内存中的草稿，`Esc` 一次性应用并关闭；草稿有变化时，Kana 会把完整的已配置选中项写入 `mcp-enabled.json` 一次（同时丢弃过期的未知 ID），再执行一次 reload。草稿未变化时既不写文件也不 reload；持久化失败时管理界面保持打开，方便重试。
 
-省略 `type` 时默认为 `stdio`。Kana 还接受以下可选扩展：
+省略 `type` 时默认为 `stdio`；Streamable HTTP 必须显式使用 `"type": "http"`。配置字段如下：
 
 | 键 | 默认值 | 含义 |
 | --- | --- | --- |
-| `type` | `stdio` | 当前只接受 `stdio`；后续 HTTP/SSE 配置会扩展同一判别联合。 |
-| `command` | 必填 | 可执行文件的绝对路径或通过 `PATH` 查找的名称。直接以参数数组启动，不经过 shell。 |
-| `args` | `[]` | 传给可执行文件的参数数组。 |
-| `cwd` | Kana 当前工作目录 | 子进程工作目录；相对路径由运行 Kana 的当前目录解析。 |
-| `env` | `{}` | 显式加入子进程环境的字符串键值。配置值覆盖同名基础环境变量。 |
+| `type` | `stdio` | `stdio` 或 `http`。不接受旧版 `sse`。 |
+| `command` | stdio 必填 | 可执行文件的绝对路径或通过 `PATH` 查找的名称。直接以参数数组启动，不经过 shell。 |
+| `args` | stdio: `[]` | 传给 stdio 可执行文件的参数数组。 |
+| `cwd` | stdio: Kana 当前工作目录 | 子进程工作目录；相对路径由运行 Kana 的当前目录解析。 |
+| `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。配置值覆盖同名基础环境变量。 |
+| `url` | HTTP 必填 | Streamable HTTP 单端点 URL；必须为绝对 `http`/`https` URL，不能包含 credentials 或 fragment。 |
+| `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
 | `required` | `false` | 启动失败是否阻止 MCP manager 整体就绪。 |
-| `startupTimeoutMs` | `10000` | stdio 进程启动后完成 MCP 初始化握手的超时。 |
+| `startupTimeoutMs` | `10000` | 完成 MCP 初始化握手的超时。 |
 | `requestTimeoutMs` | `60000` | 普通 MCP 请求的默认超时。 |
 | `includeTools` | 未设置 | 按远端原名选择允许暴露的工具。空数组表示不暴露任何工具。 |
 | `excludeTools` | 未设置 | 按远端原名排除工具；同时出现在 include/exclude 时以排除为准。 |
 
 stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并 `env`。不会继承其他进程环境变量。环境变量名必须符合常规格式，值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
 
+HTTP 配置只实现 `2025-11-25` Streamable HTTP：POST 响应同时支持 JSON 和 SSE，初始化后支持可选 GET server stream、session header、`Last-Event-ID` 恢复和 DELETE 关闭。不会回退 `2024-11-05` 的独立 HTTP+SSE transport，当前也不实现 OAuth；需要认证时使用显式 `headers`。URL、header 名称和值以及 transport 保留 header 会在启动前校验。
+
 可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续，并在最终摘要后留下失败警告。初次加载时，必需服务器失败会让当前会话停留在错误状态，不启用 editor；但显式 reload 中遇到配置或必需服务器失败时，会清空已关闭 manager 的工具、用无 MCP 工具的状态重建 Agent、把错误写入 transcript，并恢复 editor，以便再次打开 `/mcp`。连接和 reload 都会在 transcript 末尾追加进度块，最终保留含 ready server 与可用工具数量的启动/reload 摘要；未选择任何服务器时，reload 摘要会显示 `MCP disabled`。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲或加载时按 `Ctrl+C`，以及收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先进入优雅关闭，并在 transcript 末尾显示逐服务器关闭进度而不替换 bottom；所有 MCP server 关闭后才恢复终端并打印退出信息。优雅关闭等待期间再次按 `Ctrl+C` 会立即强制退出。
 
-服务器配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。`env` 当前按 JSON 字面值处理，包含 token 时会以明文保存在 `mcp.json`；不要提交或分享该文件，并使用最小权限凭据。`kana install` 会以 `0600` 创建两个 MCP 文件，但 `kana install --force` 也会把服务器定义和启用状态重置为空默认值。协议版本由代码维护，不提供任意字符串配置。
+stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 同样属于远端数据与工具信任边界。`env` 与 `headers` 当前都按 JSON 字面值处理，token 会以明文保存在 `mcp.json`；不要提交或分享该文件，并使用最小权限凭据。`kana install` 会以 `0600` 创建两个 MCP 文件，但 `kana install --force` 也会把服务器定义和启用状态重置为空默认值。协议版本由代码维护，不提供任意字符串配置。
 
 ## API key 与项目指令
 

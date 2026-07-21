@@ -21,6 +21,12 @@ describe("MCP server manager", () => {
           args: [],
           enabled: false,
         },
+        {
+          id: "remote",
+          type: "http",
+          url: "https://example.com/mcp\nspoofed",
+          enabled: false,
+        },
       ],
       () => {},
     );
@@ -36,6 +42,12 @@ describe("MCP server manager", () => {
     expect(rendered).toContain("  [ ] github  stdio");
     expect(rendered).toContain("Enter toggle · Esc apply and close");
     expect(rendered.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
+
+    manager.handleInput("\x1b[B");
+    manager.handleInput("\x1b[B");
+    const httpRendered = manager.render(80).map(stripAnsi);
+    expect(httpRendered).toContain("> [ ] remote  http");
+    expect(httpRendered).toContain("  url: https://example.com/mcp spoofed");
   });
 
   test("keeps toggles as a draft until escape applies once", () => {

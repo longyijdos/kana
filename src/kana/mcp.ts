@@ -5,10 +5,12 @@ import {
   McpManager,
   type McpManagerProgressEvent,
   type McpServerRegistration,
+  type McpTransport,
   StdioTransport,
+  StreamableHttpTransport,
 } from "@/mcp";
 import { KANA_VERSION } from "../version";
-import type { KanaMcpConfig, KanaMcpStdioServerConfig } from "./mcp-config";
+import type { KanaMcpConfig, KanaMcpServerConfig, KanaMcpStdioServerConfig } from "./mcp-config";
 
 const DEFAULT_CLIENT_INFO: McpImplementation = {
   name: "kana",
@@ -46,7 +48,7 @@ export function createKanaMcpManager(
   const servers = Object.entries(config.mcpServers)
     .filter(([serverId]) => enabledServerIds.has(serverId))
     .map(([serverId, server]) =>
-      createStdioRegistration(serverId, copyStdioConfig(server), {
+      createRegistration(serverId, copyServerConfig(server), {
         env,
         clientInfo,
         getLogger,
@@ -72,26 +74,18 @@ type RegistrationContext = {
   getLogger: () => Logger;
 };
 
-function createStdioRegistration(
+function createRegistration(
   serverId: string,
-  config: KanaMcpStdioServerConfig,
+  config: KanaMcpServerConfig,
   context: RegistrationContext,
 ): McpServerRegistration {
-  const childEnvironment = createChildEnvironment(context.env, config.env);
-
   return {
     id: serverId,
     required: config.required,
     ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools }),
     ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools }),
     createClient() {
-      const transport = new StdioTransport({
-        command: config.command,
-        args: config.args,
-        ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
-        env: childEnvironment,
-        onStderr: createStderrLogger(serverId, context.getLogger),
-      });
+      const transport = createTransport(serverId, config, context);
 
       return new McpClient({
         transport,
@@ -109,6 +103,27 @@ function createStdioRegistration(
       });
     },
   };
+}
+
+function createTransport(
+  serverId: string,
+  config: KanaMcpServerConfig,
+  context: RegistrationContext,
+): McpTransport {
+  if (config.type === "http") {
+    return new StreamableHttpTransport({
+      url: config.url,
+      headers: config.headers,
+    });
+  }
+
+  return new StdioTransport({
+    command: config.command,
+    args: config.args,
+    ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
+    env: createChildEnvironment(context.env, config.env),
+    onStderr: createStderrLogger(serverId, context.getLogger),
+  });
 }
 
 function createChildEnvironment(
@@ -153,6 +168,19 @@ function createStderrLogger(serverId: string, getLogger: () => Logger): (content
       });
     }
   };
+}
+
+function copyServerConfig(config: KanaMcpServerConfig): KanaMcpServerConfig {
+  if (config.type === "http") {
+    return {
+      ...config,
+      headers: { ...config.headers },
+      ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools.slice() }),
+      ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools.slice() }),
+    };
+  }
+
+  return copyStdioConfig(config);
 }
 
 function copyStdioConfig(config: KanaMcpStdioServerConfig): KanaMcpStdioServerConfig {

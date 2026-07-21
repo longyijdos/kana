@@ -44,7 +44,9 @@ export class McpServerManagerController {
     }
 
     const manager = new McpServerManager(
-      servers.map((server) => ({ ...server, args: server.args.slice() })),
+      servers.map((server) =>
+        server.type === "stdio" ? { ...server, args: server.args.slice() } : { ...server },
+      ),
       (decision) => this.finish(decision),
     );
     this.activeManager = manager;

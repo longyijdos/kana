@@ -7,13 +7,23 @@ import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 const MCP_SERVER_MANAGER_VISIBLE_LIMIT = 10;
 const MCP_SERVER_MANAGER_RESERVED_ROWS = 5;
 
-export type McpServerManagerItem = {
+type McpServerManagerItemBase = {
   id: string;
-  type: "stdio";
-  command: string;
-  args: string[];
   enabled: boolean;
 };
+
+export type McpServerManagerItem = McpServerManagerItemBase &
+  (
+    | {
+        type: "stdio";
+        command: string;
+        args: string[];
+      }
+    | {
+        type: "http";
+        url: string;
+      }
+  );
 
 export type McpServerManagerDecision = {
   type: "apply";
@@ -103,7 +113,7 @@ export class McpServerManager implements Component {
       );
 
       if (selected) {
-        lines.push(truncateToWidth(dim(`  command: ${formatCommand(server)}`), width, "..."));
+        lines.push(truncateToWidth(dim(formatServerDetail(server)), width, "..."));
       }
     }
 
@@ -124,6 +134,8 @@ function formatSingleLine(value: string): string {
   return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }
 
-function formatCommand(server: Pick<McpServerManagerItem, "command" | "args">): string {
-  return [server.command, ...server.args].map(formatSingleLine).join(" ");
+function formatServerDetail(server: McpServerManagerItem): string {
+  return server.type === "http"
+    ? `  url: ${formatSingleLine(server.url)}`
+    : `  command: ${[server.command, ...server.args].map(formatSingleLine).join(" ")}`;
 }

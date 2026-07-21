@@ -2,18 +2,27 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createKanaMcpManager, type KanaMcpConfig, type KanaMcpStdioServerConfig } from "@/kana";
+import {
+  createKanaMcpManager,
+  type KanaMcpConfig,
+  type KanaMcpHttpServerConfig,
+  type KanaMcpServerConfig,
+  type KanaMcpStdioServerConfig,
+} from "@/kana";
 import type { Logger, LogMetadata } from "@/logging";
-import { type McpManager, McpRequestTimeoutError } from "@/mcp";
+import { type JsonRpcMessage, type McpManager, McpRequestTimeoutError } from "@/mcp";
 import { normalizeToolResult } from "@/tools";
 
 const fixturePath = path.resolve("tests/fixtures/mcp-stdio-server.ts");
 const managers = new Set<McpManager>();
+const httpServers = new Set<Bun.Server<unknown>>();
 const tempDirs: string[] = [];
 
 afterEach(async () => {
   await Promise.all([...managers].map((manager) => manager.close()));
   managers.clear();
+  await Promise.all([...httpServers].map((server) => server.stop(true)));
+  httpServers.clear();
   for (const tempDir of tempDirs.splice(0)) {
     rmSync(tempDir, { recursive: true, force: true });
   }
@@ -95,6 +104,80 @@ describe("Kana MCP composition", () => {
     ).rejects.toBeInstanceOf(McpRequestTimeoutError);
   });
 
+  test("creates Streamable HTTP clients with configured headers and tools", async () => {
+    const authorizations: Array<string | null> = [];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        authorizations.push(request.headers.get("Authorization"));
+        if (request.method === "GET") {
+          return new Response(null, { status: 405 });
+        }
+
+        const message = (await request.json()) as JsonRpcMessage;
+        if ("method" in message && message.method === "notifications/initialized") {
+          return new Response(null, { status: 202 });
+        }
+        if (!("method" in message) || !("id" in message)) {
+          return new Response(null, { status: 202 });
+        }
+        if (message.method === "initialize") {
+          return jsonResponse({
+            jsonrpc: "2.0",
+            id: message.id,
+            result: {
+              protocolVersion: "2025-11-25",
+              capabilities: { tools: {} },
+              serverInfo: { name: "fake-http-server", version: "1.0.0" },
+            },
+          });
+        }
+        if (message.method === "tools/list") {
+          return jsonResponse({
+            jsonrpc: "2.0",
+            id: message.id,
+            result: {
+              tools: [
+                {
+                  name: "echo",
+                  inputSchema: { type: "object", additionalProperties: false },
+                },
+              ],
+            },
+          });
+        }
+        if (message.method === "tools/call") {
+          return jsonResponse({
+            jsonrpc: "2.0",
+            id: message.id,
+            result: {
+              content: [{ type: "text", text: "remote" }],
+              structuredContent: { transport: "http" },
+            },
+          });
+        }
+        return new Response(null, { status: 202 });
+      },
+    });
+    httpServers.add(server);
+    const manager = createManager({
+      remote: createHttpServerConfig({
+        url: `http://127.0.0.1:${server.port}/mcp`,
+        headers: { Authorization: "Bearer remote-token" },
+      }),
+    });
+
+    const tools = await manager.start();
+    const result = normalizeToolResult(
+      await tools[0]!.execute({}, { toolCallId: "call-http", update() {} }),
+    );
+
+    expect(tools.map((tool) => tool.name)).toEqual(["remote_echo"]);
+    expect(result.result).toMatchObject({ structuredContent: { transport: "http" } });
+    expect(authorizations).toContain("Bearer remote-token");
+  });
+
   test("creates clients only for selected server IDs", async () => {
     const disabledAll = createKanaMcpManager({ mcpServers: {} }, { enabledServerIds: ["unknown"] });
     const unselectedServer = createManager(
@@ -136,7 +219,7 @@ describe("Kana MCP composition", () => {
 });
 
 function createManager(
-  servers: Record<string, KanaMcpStdioServerConfig>,
+  servers: Record<string, KanaMcpServerConfig>,
   env: NodeJS.ProcessEnv = {},
   logger?: Logger,
   enabledServerIds: Iterable<string> = Object.keys(servers),
@@ -150,6 +233,20 @@ function createManager(
   });
   managers.add(manager);
   return manager;
+}
+
+function createHttpServerConfig(
+  overrides: Partial<KanaMcpHttpServerConfig> = {},
+): KanaMcpHttpServerConfig {
+  return {
+    type: "http",
+    url: "https://example.com/mcp",
+    headers: {},
+    required: false,
+    startupTimeoutMs: 1_000,
+    requestTimeoutMs: 1_000,
+    ...overrides,
+  };
 }
 
 function createServerConfig(
@@ -176,4 +273,11 @@ function createCapturingLogger(
     warn: (event, metadata) => records.push({ level: "warn", event, metadata }),
     error: (event, metadata) => records.push({ level: "error", event, metadata }),
   };
+}
+
+function jsonResponse(value: unknown): Response {
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 }

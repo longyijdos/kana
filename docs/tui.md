@@ -86,7 +86,7 @@ ProcessTerminal
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
 - `SessionOverlayController` 用恢复列表或删除确认替换编辑器。新 session、恢复和删除都会更新 transcript 和焦点。
 - `SkillManagerController` 用 global Skill 列表替换编辑器。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次，并用原消息历史重建一次 Agent，未变化则直接关闭。持久化失败时视图保持打开。
-- `McpServerManagerController` 用已配置 MCP server 的 checkbox 替换 editor。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次并触发一次完整 runtime reload，未变化则直接关闭。持久化失败时视图保持打开。组件显示 server ID、transport 和完整命令行（`command` 加 `args`），但不会接收环境变量。
+- `McpServerManagerController` 用已配置 MCP server 的 checkbox 替换 editor。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次并触发一次完整 runtime reload，未变化则直接关闭。持久化失败时视图保持打开。组件显示 server ID、transport，以及 stdio 的完整命令行（`command` 加 `args`）或 HTTP URL，但不会接收环境变量或 HTTP headers。
 - `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
 - `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具输出；transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。

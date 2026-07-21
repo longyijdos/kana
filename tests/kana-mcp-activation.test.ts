@@ -50,10 +50,15 @@ describe("Kana MCP activation state", () => {
             env: { SECRET_TOKEN: "not-exposed" },
           },
           github: { command: "/usr/local/bin/github-mcp" },
+          remote: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "not-exposed" },
+          },
         },
       })}\n`,
     );
-    saveKanaMcpActivationState({ enabledServers: ["github", "removed"] }, env);
+    saveKanaMcpActivationState({ enabledServers: ["github", "remote", "removed"] }, env);
 
     expect(loadKanaMcpServerActivations(env)).toEqual([
       {
@@ -68,6 +73,12 @@ describe("Kana MCP activation state", () => {
         type: "stdio",
         command: "/usr/local/bin/github-mcp",
         args: [],
+        enabled: true,
+      },
+      {
+        id: "remote",
+        type: "http",
+        url: "https://example.com/mcp",
         enabled: true,
       },
     ]);

@@ -71,6 +71,42 @@ describe("Kana MCP config", () => {
     });
   });
 
+  test("loads Streamable HTTP server entries", () => {
+    expect(
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: {
+            type: "http",
+            url: "https://example.com/mcp?workspace=kana",
+            headers: {
+              Authorization: "Bearer test-token",
+              "X-Tenant": "kana",
+            },
+            required: true,
+            startupTimeoutMs: 5_000,
+            requestTimeoutMs: 30_000,
+            includeTools: ["search"],
+          },
+        },
+      }),
+    ).toEqual({
+      mcpServers: {
+        remote: {
+          type: "http",
+          url: "https://example.com/mcp?workspace=kana",
+          headers: {
+            Authorization: "Bearer test-token",
+            "X-Tenant": "kana",
+          },
+          required: true,
+          startupTimeoutMs: 5_000,
+          requestTimeoutMs: 30_000,
+          includeTools: ["search"],
+        },
+      },
+    });
+  });
+
   test("defaults an omitted mcpServers object to empty", () => {
     expect(parseKanaMcpConfig({})).toEqual({ mcpServers: {} });
   });
@@ -97,16 +133,25 @@ describe("Kana MCP config", () => {
       env: { TOKEN: "before" },
       includeTools: ["before"],
     });
+
+    const httpHeaders = { Authorization: "before" };
+    const http = parseKanaMcpConfig({
+      mcpServers: {
+        remote: { type: "http", url: "https://example.com/mcp", headers: httpHeaders },
+      },
+    });
+    httpHeaders.Authorization = "after";
+    expect(http.mcpServers.remote).toMatchObject({ headers: { Authorization: "before" } });
   });
 
   test("rejects unsupported server types and unknown fields", () => {
     expect(() =>
       parseKanaMcpConfig({
         mcpServers: {
-          remote: { type: "http", url: "https://example.com/mcp" },
+          remote: { type: "sse", url: "https://example.com/sse" },
         },
       }),
-    ).toThrow("mcpServers.remote.type must be one of: stdio.");
+    ).toThrow("mcpServers.remote.type must be one of: stdio, http.");
     expect(() =>
       parseKanaMcpConfig({
         mcpServers: {
@@ -138,6 +183,38 @@ describe("Kana MCP config", () => {
         },
       }),
     ).toThrow("mcpServers.invalidValue.env.TOKEN must be a string.");
+  });
+
+  test("rejects invalid Streamable HTTP URLs and headers", () => {
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: { type: "http", url: "file:///tmp/mcp" },
+        },
+      }),
+    ).toThrow("mcpServers.remote.url must use http or https.");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { "MCP-Session-Id": "configured" },
+          },
+        },
+      }),
+    ).toThrow("cannot override transport header MCP-Session-Id");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: 42 },
+          },
+        },
+      }),
+    ).toThrow("mcpServers.remote.headers.Authorization must be a string.");
   });
 
   test("rejects invalid timeouts and tool filters", () => {

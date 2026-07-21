@@ -7,13 +7,23 @@ export type KanaMcpActivationState = {
   enabledServers: string[];
 };
 
-export type KanaMcpServerActivation = {
+type KanaMcpServerActivationBase = {
   id: string;
-  type: "stdio";
-  command: string;
-  args: string[];
   enabled: boolean;
 };
+
+export type KanaMcpServerActivation = KanaMcpServerActivationBase &
+  (
+    | {
+        type: "stdio";
+        command: string;
+        args: string[];
+      }
+    | {
+        type: "http";
+        url: string;
+      }
+  );
 
 export const DEFAULT_KANA_MCP_ACTIVATION_STATE: KanaMcpActivationState = {
   enabledServers: [],
@@ -45,13 +55,22 @@ export function loadKanaMcpServerActivations(
   const config = loadKanaMcpConfig(env);
   const enabledServerIds = new Set(loadKanaMcpActivationState(env).enabledServers);
 
-  return Object.entries(config.mcpServers).map(([id, server]) => ({
-    id,
-    type: server.type,
-    command: server.command,
-    args: server.args.slice(),
-    enabled: enabledServerIds.has(id),
-  }));
+  return Object.entries(config.mcpServers).map(([id, server]) =>
+    server.type === "http"
+      ? {
+          id,
+          type: "http",
+          url: server.url,
+          enabled: enabledServerIds.has(id),
+        }
+      : {
+          id,
+          type: "stdio",
+          command: server.command,
+          args: server.args.slice(),
+          enabled: enabledServerIds.has(id),
+        },
+  );
 }
 
 export function parseKanaMcpActivationState(value: unknown): KanaMcpActivationState {

@@ -83,20 +83,23 @@ McpManager（多服务器生命周期、筛选、冲突、诊断）
       → McpClient（2025-11-25 lifecycle、capabilities、tools/list、tools/call）
         → McpConnection（请求 ID、乱序响应、超时、取消、进度、ping）
           → McpTransport（双向 JSON-RPC 消息边界）
-            → StdioTransport（子进程、逐行 UTF-8 framing、stderr、关闭顺序）
+            ├→ StdioTransport（子进程、逐行 UTF-8 framing、stderr、关闭顺序）
+            └→ StreamableHttpTransport（POST、JSON/SSE、session、恢复、GET/DELETE）
 ```
 
-`McpConnection` 不执行初始化，也不知道 tools 等版本特性；因此后续无状态协议客户端可以复用它，而不继承 `2025-11-25` 的握手。`StdioTransport` 只传递消息，不协商版本或能力；Streamable HTTP 和旧 SSE 将作为独立 transport 实现同一边界，不复用 stdio 的进程状态。
+`McpConnection` 不执行初始化，也不知道 tools 等版本特性；因此后续无状态协议客户端可以复用它，而不继承 `2025-11-25` 的握手。transport 只负责消息传递，不协商版本或能力；stdio 与 Streamable HTTP 独立实现同一边界，不共享进程或 HTTP session 状态。旧 `2024-11-05` HTTP+SSE transport 被刻意留作后续兼容层，不混入 Streamable HTTP 的单端点 lifecycle。
 
 当前基础客户端严格执行已发布的 `2025-11-25` lifecycle：`initialize` 是首个请求，成功协商同一版本后发送 `notifications/initialized`。它只在服务器声明 tools capability 后分页执行 `tools/list` 和调用 `tools/call`。所有请求具有固定上限的超时；普通请求超时或被 `AbortSignal` 中止时发送 `notifications/cancelled`，但规范禁止取消的 `initialize` 不发送该通知。进度 token 在活跃请求内唯一，递增更新由调用方回调接收。
 
 stdio 使用参数数组直接启动进程，不经过 Shell。stdout 仅接受一行一个 JSON-RPC 消息，并设置最大字节数；协议污染、无效 UTF-8/JSON、非零退出和未完成消息都会关闭连接并拒绝 pending 请求。stderr 与协议分离，通过受保护的诊断回调交给上层。正常关闭依次关闭 stdin、等待进程、发送 SIGTERM，并在再次超时后发送 SIGKILL。
 
+Streamable HTTP 严格实现 `2025-11-25` 单端点 transport，不自动回退旧 HTTP+SSE。每条出站 JSON-RPC 消息使用独立 POST，并同时接受 JSON 与 SSE 响应；共享 SSE decoder 支持跨 chunk 的 CR/LF framing、事件字节上限、`id` 与 `retry`。transport 保存初始化响应提供的可选 session ID，在后续请求附带 session 与协议版本 header，初始化完成后尝试 GET server stream，并在带事件 ID 的 POST stream 中断时通过 `Last-Event-ID` GET 恢复而不重试原请求。请求取消会先发送协议通知，再中止对应 HTTP 请求；关闭会中止剩余 stream，并对有 session 的服务器发送限时 DELETE。URL credentials 与覆盖 transport 所有 header 的配置会被拒绝。
+
 `McpToolAdapter` 只依赖结构化的 `McpToolCaller`，不绑定稳定版 client 或 stdio。它在工具发现时预编译远端 `inputSchema`，使用 server ID 和远端工具名生成最长 64 字符的可读模型别名，并把 MCP 进度映射到 `ToolContext.update`。结果适配器限制内容项、文本、结构化数据和元数据大小；text 与嵌入文本资源可进入模型上下文，resource link 只转为描述，image、audio 和 blob 只保留 MIME 与估算字节数，不持久化 base64。JSON-RPC error 与 MCP `isError` 保持不同的结构化错误语义。
 
 `McpManager` 只依赖结构化的 `McpManagedClient`，不创建具体协议 client 或 transport。它并行启动服务器，但按注册顺序稳定聚合工具；include/exclude 使用远端原名筛选。单个可选服务器连接、发现或 schema 适配失败时只记录诊断并关闭该服务器，必需服务器失败则关闭全部连接并终止启动。每个服务器的工具集以原子方式适配；远端重名会使该服务器失败，清洗或截断后的别名冲突以及与本地保留工具冲突会使整个聚合失败，不做隐式覆盖或顺序后缀。关闭操作幂等并按注册逆序清理所有 client。
 
-Manager 会固定使用本次发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析 `mcp.json` 中的服务器定义，读取独立 `mcp-enabled.json` 中选中的 ID，并且只为两者交集创建 registration；这个启用边界与协议和 transport 无关。工厂根据 `type` 判别配置创建 stdio registration，省略 `type` 时默认使用 stdio；它为每个选中的服务器构造 `StdioTransport` 和稳定版 `McpClient`，只继承少量基础环境变量，再合并服务器显式配置的 `env`，同时把 stderr、client error 和 manager error 转发给当前 session logger。产品层先以空的外部工具集创建临时主 Agent；会话显示后启动 manager，再用发现的工具重建 Agent。加载期间 App 禁止提交输入，因而临时 Agent 不会开始运行；memory consolidation Agent 始终不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
+Manager 会固定使用本次发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析 `mcp.json` 中的服务器定义，读取独立 `mcp-enabled.json` 中选中的 ID，并且只为两者交集创建 registration；这个启用边界与协议和 transport 无关。工厂根据 `type` 判别配置创建 stdio 或 HTTP registration，省略 `type` 时默认使用 stdio；它为每个选中的服务器构造对应 transport 和稳定版 `McpClient`。stdio 只继承少量基础环境变量，再合并服务器显式配置的 `env` 并把 stderr 转发给当前 session logger；HTTP 使用经过快照的 URL 与 headers。两种 transport 的 client error 和 manager error 都写入当前 logger。产品层先以空的外部工具集创建临时主 Agent；会话显示后启动 manager，再用发现的工具重建 Agent。加载期间 App 禁止提交输入，因而临时 Agent 不会开始运行；memory consolidation Agent 始终不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
 
 `KanaMcpRuntime` 在产品边界持有可替换的 manager，`McpManager` 本身仍刻意保持一次性。runtime 串行执行 `start`、`reload` 和 `close`，并为底层进度标记所属的 runtime 操作。reload 会先关闭当前 manager，再重新读取服务器定义与启用状态，最后创建全新的 manager；这样不会重叠启动 server 进程，TUI 也不需要了解 transport 或协议生命周期。配置解析或启动失败后，不会残留已关闭 manager 的工具和来源映射；修正文件后仍可通过后续 `/mcp` reload 恢复。一旦请求关闭，队列中尚未开始的生命周期任务不会再创建 manager。
 
@@ -172,7 +175,7 @@ ProcessTerminal（raw mode、输入、resize、通知）
 
 `Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。Layout 固定绘制底部区域首行作为 main/bottom 分隔线，将剩余预算传给底部组件，并为较短输出补空行，从而稳定两者的边界。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史，并在有输出的子 Block 之间统一插入一行空白；Block 仅管理内容内部留白。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记；存在焦点组件时才将硬件光标移动到对应的可见宽度位置，没有焦点时则隐藏光标并留在布局末尾。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
-TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、审批和内容查看视图都会作为唯一底部组件替换编辑器。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 变更只请求一次 runtime reload。MCP 组件接收 server ID、transport、command 和参数以显示完整命令行，但不会接收环境变量。MCP 视图打开或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
+TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、审批和内容查看视图都会作为唯一底部组件替换编辑器。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 变更只请求一次 runtime reload。MCP 组件接收 server ID、transport，以及 stdio command/参数或 HTTP URL，但不会接收环境变量或 HTTP headers。MCP 视图打开或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 
 ## 扩展时的检查点
 

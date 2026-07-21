@@ -58,6 +58,7 @@ export {
   DEFAULT_KANA_MCP_CONFIG,
   KANA_MCP_SERVER_TYPES,
   type KanaMcpConfig,
+  type KanaMcpHttpServerConfig,
   type KanaMcpServerConfig,
   type KanaMcpServerType,
   type KanaMcpStdioServerConfig,

@@ -16,7 +16,7 @@ import {
 class MemoryTransport implements McpTransport {
   readonly sent: JsonRpcMessage[] = [];
   closed = false;
-  onSend?: (message: JsonRpcMessage) => void;
+  onSend?: (message: JsonRpcMessage) => void | Promise<void>;
   private handlers?: McpTransportHandlers;
 
   async start(handlers: McpTransportHandlers): Promise<void> {
@@ -25,7 +25,7 @@ class MemoryTransport implements McpTransport {
 
   async send(message: JsonRpcMessage): Promise<void> {
     this.sent.push(message);
-    this.onSend?.(message);
+    await this.onSend?.(message);
   }
 
   async close(): Promise<void> {
@@ -273,6 +273,26 @@ describe("MCP client", () => {
 
     transport.emit({ jsonrpc: "2.0", id: request?.id, result: { content: [] } });
     expect(errors).toEqual([]);
+
+    await client.close();
+  });
+
+  test("times out requests while transport delivery is still pending", async () => {
+    const transport = new MemoryTransport();
+    respondToInitialize(transport);
+    const client = createClient(transport, { requestTimeoutMs: 10 });
+    await client.connect();
+
+    transport.onSend = (message) =>
+      isRequest(message, "tools/call") ? new Promise<void>(() => undefined) : undefined;
+
+    await expect(client.callTool("slow")).rejects.toBeInstanceOf(McpRequestTimeoutError);
+    expect(transport.sent.some((message) => isRequest(message, "tools/call"))).toBe(true);
+    expect(
+      transport.sent.some(
+        (message) => "method" in message && message.method === "notifications/cancelled",
+      ),
+    ).toBe(true);
 
     await client.close();
   });
