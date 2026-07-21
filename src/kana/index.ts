@@ -39,6 +39,7 @@ export {
   formatKanaEnvironmentContext,
   type KanaEnvironmentContext,
 } from "./context";
+export { loadKanaEnvironment } from "./env";
 export {
   type AppendKanaMemoryOptions,
   appendKanaMemory,
