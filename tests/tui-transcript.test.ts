@@ -555,6 +555,106 @@ describe("tui transcript", () => {
     expect(full).not.toContain("\x1b[3J");
   });
 
+  test("renders failed bash output without structured result metadata", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: {
+        command: "printf before; printf failure >&2; false",
+      },
+    });
+
+    block.updateResult(
+      {
+        command: "printf before; printf failure >&2; false",
+        cwd: ".",
+        exitCode: 2,
+        stdout: "before\n",
+        stderr: "failure\n",
+        timedOut: false,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      },
+      true,
+    );
+
+    const lines = block.render(100).map(stripAnsi);
+    const output = lines.join("\n");
+
+    expect(lines).toContain("◆ Failed to run");
+    expect(lines).toContain("before");
+    expect(lines).toContain("failure");
+    expect(output).not.toContain("exit 2");
+    expect(output).not.toContain("exitCode");
+    expect(output).not.toContain("stdout:");
+    expect(output).not.toContain("stderr:");
+  });
+
+  test("uses known tool renderers for structured failures", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "list",
+      args: {
+        path: "src",
+      },
+    });
+
+    block.updateResult(
+      {
+        path: "src",
+        entries: [],
+        totalEntries: 0,
+        truncated: false,
+      },
+      true,
+    );
+
+    const lines = block.render(100).map(stripAnsi);
+    const output = lines.join("\n");
+
+    expect(lines).toContain("◆ Failed to list");
+    expect(lines).toContain("src: 0 of 0 entries");
+    expect(output).not.toContain('"totalEntries"');
+  });
+
+  test("keeps failed MCP tool results on the generic renderer", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_mcp",
+      name: "filesystem_read_file",
+      args: {
+        path: "notes.txt",
+      },
+    });
+
+    block.updateResult(
+      {
+        source: "mcp",
+        serverId: "filesystem",
+        remoteToolName: "read_file",
+        content: [
+          {
+            type: "text",
+            text: "permission denied",
+            truncated: false,
+          },
+        ],
+        omittedContentItems: 0,
+        contentTruncated: false,
+      },
+      true,
+    );
+
+    const output = block.render(100).map(stripAnsi).join("\n");
+
+    expect(output).toContain("◆ Failed to use filesystem_read_file");
+    expect(output).toContain('"source": "mcp"');
+    expect(output).toContain('"remoteToolName": "read_file"');
+    expect(output).toContain('"text": "permission denied"');
+  });
+
   test("renders edit tool results as red and green diff lines", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

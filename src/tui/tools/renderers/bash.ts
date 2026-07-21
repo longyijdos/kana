@@ -1,21 +1,15 @@
 import { splitLines, tailLines } from "../../render";
 import type { ToolOutputDetail } from "../format";
-import { getNumberProperty, getStringProperty } from "../properties";
+import { getStringProperty } from "../properties";
 
 const TOOL_OUTPUT_LINE_LIMIT = 8;
 
 export function formatBashOutput(result: object, detail: ToolOutputDetail = "compact"): string {
-  const exitCode = getNumberProperty(result, "exitCode");
   const stdout = getStringProperty(result, "stdout");
   const stderr = getStringProperty(result, "stderr");
+  const output = joinOutputStreams(stdout, stderr);
 
-  return [
-    exitCode === undefined ? undefined : `exit ${exitCode}`,
-    stdout ? `stdout:\n${formatOutputText(stdout, detail)}` : undefined,
-    stderr ? `stderr:\n${formatOutputText(stderr, detail)}` : undefined,
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n");
+  return formatOutputText(output, detail);
 }
 
 function formatOutputText(value: string, detail: ToolOutputDetail): string {
@@ -26,9 +20,21 @@ export function hasExpandableBashOutput(result: object): boolean {
   const stdout = getStringProperty(result, "stdout");
   const stderr = getStringProperty(result, "stderr");
 
-  return isOutputTextExpandable(stdout) || isOutputTextExpandable(stderr);
+  return isOutputTextExpandable(joinOutputStreams(stdout, stderr));
 }
 
-function isOutputTextExpandable(value: string | undefined): boolean {
-  return value !== undefined && splitLines(value.trimEnd()).length > TOOL_OUTPUT_LINE_LIMIT;
+function joinOutputStreams(stdout: string | undefined, stderr: string | undefined): string {
+  if (!stdout) {
+    return stderr ?? "";
+  }
+
+  if (!stderr) {
+    return stdout;
+  }
+
+  return `${stdout}${stdout.endsWith("\n") ? "" : "\n"}${stderr}`;
+}
+
+function isOutputTextExpandable(value: string): boolean {
+  return splitLines(value.trimEnd()).length > TOOL_OUTPUT_LINE_LIMIT;
 }

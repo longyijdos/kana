@@ -4,6 +4,7 @@ import type {
   InstallKanaSkillsResult,
   SyncKanaSkillsResult,
 } from "@/kana";
+import { loadKanaEnvironment } from "@/kana";
 import type { StartTuiOptions } from "@/tui";
 import { KANA_VERSION } from "../version";
 
@@ -170,6 +171,7 @@ function capitalize(value: string): string {
 
 export async function runCli(argv: string[], options: CreateCliOptions): Promise<void> {
   try {
+    loadKanaEnvironment();
     await createCli(options).parseAsync(argv);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

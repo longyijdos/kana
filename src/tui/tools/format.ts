@@ -117,8 +117,10 @@ export function formatToolOutput(
     );
   }
 
-  if (isError) {
-    return renderText(formatErrorOutput(sanitizedResult), width, tuiTheme.error);
+  const error = getStringProperty(sanitizedResult, "error");
+
+  if (isError && error !== undefined) {
+    return renderText(error, width, tuiTheme.error);
   }
 
   const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
@@ -155,7 +157,11 @@ export function hasExpandableToolOutput(
   result: unknown,
   isError: boolean,
 ): boolean {
-  if (isError || !result || typeof result !== "object") {
+  if (!result || typeof result !== "object") {
+    return false;
+  }
+
+  if (isError && getStringProperty(result, "error") !== undefined) {
     return false;
   }
 
@@ -328,12 +334,6 @@ function formatToolSummary(toolCall: ToolCallContent): string {
   } catch {
     return String(toolCall.args);
   }
-}
-
-function formatErrorOutput(result: object): string {
-  const error = getStringProperty(result, "error");
-
-  return error ?? JSON.stringify(result, null, 2);
 }
 
 function sanitizeToolCallOutput(toolCall: ToolCallContent): ToolCallContent {

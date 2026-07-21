@@ -43,6 +43,7 @@ export {
   formatKanaEnvironmentContext,
   type KanaEnvironmentContext,
 } from "./context";
+export { loadKanaEnvironment } from "./env";
 export { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./mcp";
 export {
   DEFAULT_KANA_MCP_ACTIVATION_STATE,
