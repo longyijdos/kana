@@ -172,7 +172,7 @@ ProcessTerminal（raw mode、输入、resize、通知）
 
 `Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。Layout 固定绘制底部区域首行作为 main/bottom 分隔线，将剩余预算传给底部组件，并为较短输出补空行，从而稳定两者的边界。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史，并在有输出的子 Block 之间统一插入一行空白；Block 仅管理内容内部留白。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记；存在焦点组件时才将硬件光标移动到对应的可见宽度位置，没有焦点时则隐藏光标并留在布局末尾。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
-TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、审批和内容查看视图都会作为唯一底部组件替换编辑器。MCP controller 会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择并请求 App reload；组件接收 server ID、transport、command 和参数以显示完整命令行，但不会接收环境变量。该视图打开或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
+TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、审批和内容查看视图都会作为唯一底部组件替换编辑器。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 变更只请求一次 runtime reload。MCP 组件接收 server ID、transport、command 和参数以显示完整命令行，但不会接收环境变量。MCP 视图打开或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 
 ## 扩展时的检查点
 

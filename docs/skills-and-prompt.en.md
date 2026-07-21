@@ -44,7 +44,7 @@ Skills in project directories are always enabled. Skills under `<KANA_HOME>/skil
 enabled = ["release-check", "database-migrations"]
 ```
 
-When the file is absent or `enabled` is missing, no global Skills enter the model prompt. `/skills` opens the manager: project entries are locked, while global entries can be toggled with Enter; saving rewrites this list. The manager determines scope by whether a Skill file resides under the global Skills directory.
+When the file is absent or `enabled` is missing, no global Skills enter the model prompt. `/skills` opens the manager: project entries are locked, while `Enter` toggles global entries in a local draft. `Esc` applies and closes the draft; if its final set changed, Kana rewrites the list once and rebuilds the Agent system prompt once. An unchanged draft performs neither operation, while a persistence failure leaves the manager open. The manager determines scope by whether a Skill file resides under the global Skills directory.
 
 ## System-prompt composition
 

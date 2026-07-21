@@ -44,7 +44,7 @@ frontmatter 仅识别 `name` 和 `description`；未知字段被忽略。支持�
 enabled = ["release-check", "database-migrations"]
 ```
 
-文件不存在或 `enabled` 缺失时，全局 Skills 均不注入模型提示词。`/skills` 打开管理界面：project 项显示为 locked，global 项可用 Enter 开关；保存时会重写这个列表。管理界面显示的 scope 根据 Skill 文件是否位于全局 Skills 目录内决定。
+文件不存在或 `enabled` 缺失时，全局 Skills 均不注入模型提示词。`/skills` 打开管理界面：project 项显示为 locked，`Enter` 只在本地草稿中切换 global 项。`Esc` 应用并关闭草稿；最终集合有变化时，Kana 只重写一次列表并重建一次 Agent 系统提示词，未变化时两项操作都不执行，持久化失败时管理界面保持打开。管理界面显示的 scope 根据 Skill 文件是否位于全局 Skills 目录内决定。
 
 ## 系统提示词的组成
 

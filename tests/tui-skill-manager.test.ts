@@ -32,6 +32,7 @@ describe("skill manager", () => {
     expect(rendered).toContain("> [x] project-skill  project locked");
     expect(rendered).toContain("  Project-local skill.");
     expect(rendered).toContain("  [ ] global-skill  global");
+    expect(rendered).toContain("Enter toggle · Esc apply and close");
     expect(rawRendered[0]).toBe(color("Skills", tuiTheme.bottomTitle));
   });
 
@@ -74,7 +75,7 @@ describe("skill manager", () => {
     expect(rendered).toContain("  A long descript...");
   });
 
-  test("toggles mutable global skills with enter", () => {
+  test("keeps mutable global skill toggles as a draft until escape applies once", () => {
     const decisions: SkillManagerDecision[] = [];
     const manager = new SkillManager(
       [
@@ -102,20 +103,17 @@ describe("skill manager", () => {
     manager.handleInput("\x1b[B");
     manager.handleInput("\r");
 
+    expect(decisions).toEqual([]);
+    expect(manager.render(80).map(stripAnsi)).toContain("> [x] global-skill  global");
+
+    manager.handleInput("\x1b");
     expect(decisions).toEqual([
       {
-        type: "toggle",
-        item: {
-          name: "global-skill",
-          description: "Global skill.",
-          scope: "global",
-          enabled: true,
-          mutable: true,
-        },
-        enabled: true,
+        type: "apply",
+        enabledGlobalSkillNames: ["global-skill"],
+        changed: true,
       },
     ]);
-    expect(manager.render(80).map(stripAnsi)).toContain("> [x] global-skill  global");
   });
 
   test("renders only the visible skill window", () => {
@@ -129,6 +127,7 @@ describe("skill manager", () => {
       "  [ ] skill-2  global",
       "  [ ] skill-3  global",
       "... 2 more skills",
+      "Enter toggle · Esc apply and close",
     ]);
 
     manager.handleInput("\x1b[B");
@@ -143,6 +142,7 @@ describe("skill manager", () => {
       "> [ ] skill-4  global",
       "  Skill 4.",
       "... 1 more skills",
+      "Enter toggle · Esc apply and close",
     ]);
   });
 
@@ -152,9 +152,10 @@ describe("skill manager", () => {
 
     expect(rendered).toContain("> [ ] skill-1  global");
     expect(rendered).toContain("  [ ] skill-2  global");
-    expect(rendered).toContain("  [ ] skill-3  global");
+    expect(rendered).not.toContain("  [ ] skill-3  global");
     expect(rendered).not.toContain("  [ ] skill-4  global");
-    expect(rendered).toContain("... 2 more skills");
+    expect(rendered).toContain("... 3 more skills");
+    expect(rendered).toContain("Enter toggle · Esc apply and close");
   });
 
   test("does not wrap selection at list boundaries", () => {
@@ -184,7 +185,7 @@ describe("skill manager", () => {
     expect(manager.render(80).map(stripAnsi)).toContain("> [ ] second-skill  global");
   });
 
-  test("closes with escape", () => {
+  test("applies an unchanged empty draft with escape", () => {
     let decision: SkillManagerDecision | undefined;
     const manager = new SkillManager([], (nextDecision) => {
       decision = nextDecision;
@@ -192,7 +193,11 @@ describe("skill manager", () => {
 
     manager.handleInput("\x1b");
 
-    expect(decision).toEqual({ type: "close" });
+    expect(decision).toEqual({
+      type: "apply",
+      enabledGlobalSkillNames: [],
+      changed: false,
+    });
   });
 });
 
