@@ -107,6 +107,7 @@ describe("Kana MCP composition", () => {
 
   test("creates Streamable HTTP clients with configured headers and tools", async () => {
     const authorizations: Array<string | null> = [];
+    const logs: Array<{ level: string; event: string; metadata?: LogMetadata }> = [];
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -162,12 +163,17 @@ describe("Kana MCP composition", () => {
       },
     });
     httpServers.add(server);
-    const manager = createManager({
-      remote: createHttpServerConfig({
-        url: `http://127.0.0.1:${server.port}/mcp`,
-        headers: { Authorization: "Bearer remote-token" },
-      }),
-    });
+    const manager = createManager(
+      {
+        remote: createHttpServerConfig({
+          url: `http://127.0.0.1:${server.port}/mcp`,
+          proxy: false,
+          headers: { Authorization: "Bearer remote-token" },
+        }),
+      },
+      {},
+      createCapturingLogger(logs),
+    );
 
     const tools = await manager.start();
     const result = normalizeToolResult(
@@ -177,6 +183,11 @@ describe("Kana MCP composition", () => {
     expect(tools.map((tool) => tool.name)).toEqual(["remote_echo"]);
     expect(result.result).toMatchObject({ structuredContent: { transport: "http" } });
     expect(authorizations).toContain("Bearer remote-token");
+    expect(logs).toContainEqual({
+      level: "debug",
+      event: "mcp.http_proxy_bypassed",
+      metadata: { serverId: "remote" },
+    });
   });
 
   test("routes MCP and OAuth HTTP requests through the configured server proxy", async () => {

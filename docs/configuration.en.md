@@ -189,7 +189,7 @@ Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type"
 | `cwd` | stdio: Kana's current working directory | Child-process working directory; relative paths resolve from the directory where Kana runs. |
 | `env` | stdio: `{}` | String key/value pairs explicitly added to the child environment. Configured values override matching baseline variables. |
 | `url` | Required for HTTP | Single Streamable HTTP endpoint; it must be an absolute `http`/`https` URL without credentials or a fragment. |
-| `proxy` | HTTP: Unset | Absolute `http`/`https` proxy URL used only by this server; credentials and fragments are not accepted. |
+| `proxy` | HTTP: Unset | An absolute `http`/`https` URL routes only this server through that proxy; `false` ignores process-wide proxies and forces direct connections. URLs cannot contain credentials or fragments. |
 | `headers` | HTTP: `{}` | String headers sent with every HTTP request; transport-owned content, session, protocol, and SSE headers cannot be overridden. |
 | `auth` | Unset | HTTP OAuth 2.0 configuration. When set, `url` must use HTTPS and `headers` cannot also set `Authorization`. |
 | `required` | `false` | Whether a startup failure prevents the whole MCP manager from becoming ready. |
@@ -200,7 +200,7 @@ Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type"
 
 The stdio child inherits only defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges `env`. No other process environment variables are inherited. Environment names must use conventional syntax and values must be strings. Unknown fields, non-positive timeouts, and duplicate or empty tool names fail configuration loading.
 
-When an HTTP server sets `proxy`, its MCP initialization, tool requests, SSE recovery, session DELETE, OAuth metadata discovery, token exchange, and refresh all use that proxy. The explicit field takes precedence over process-wide proxy environment variables. When omitted, Kana uses Bun's default `fetch` routing and therefore continues to honor `HTTP_PROXY`/`HTTPS_PROXY` inherited from the current shell or loaded from `<KANA_HOME>/.env`. OAuth pages opened in the system browser do not pass through Kana's `fetch` and continue to use the browser's own network settings. Diagnostic logs record only that the server has enabled a proxy, never the proxy URL.
+When an HTTP server sets `proxy` to a URL, its MCP initialization, tool requests, SSE recovery, session DELETE, OAuth metadata discovery, token exchange, and refresh all use that proxy. Setting it to `false` makes the same request set bypass process-wide proxies and connect directly. The direct wrapper adds the current target host to process-local `NO_PROXY`/`no_proxy` only for the synchronous Bun `fetch` invocation, then restores both variables exactly. It does not permanently modify Kana's environment or change later requests from other MCP servers, which retain their own explicit proxy or the original global proxy. When `proxy` is omitted, Kana uses Bun's default `fetch` routing and therefore continues to honor `HTTP_PROXY`/`HTTPS_PROXY` inherited from the current shell or loaded from `<KANA_HOME>/.env`. OAuth pages opened in the system browser do not pass through Kana's `fetch` and continue to use the browser's own network settings. Diagnostic logs record only whether a server uses an explicit proxy or bypasses proxies, never the proxy URL.
 
 `auth` currently accepts only `type: "oauth2"`, with these nested fields:
 

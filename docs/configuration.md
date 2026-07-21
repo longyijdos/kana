@@ -189,7 +189,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `cwd` | stdio: Kana 当前工作目录 | 子进程工作目录；相对路径由运行 Kana 的当前目录解析。 |
 | `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。配置值覆盖同名基础环境变量。 |
 | `url` | HTTP 必填 | Streamable HTTP 单端点 URL；必须为绝对 `http`/`https` URL，不能包含 credentials 或 fragment。 |
-| `proxy` | HTTP: 未设置 | 仅为该 server 使用的绝对 `http`/`https` 代理 URL；不能包含 credentials 或 fragment。 |
+| `proxy` | HTTP: 未设置 | 绝对 `http`/`https` 代理 URL 表示仅该 server 使用指定代理；`false` 表示忽略进程级代理并强制直连。URL 不能包含 credentials 或 fragment。 |
 | `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
 | `auth` | 未设置 | HTTP OAuth 2.0 配置；设置后 `url` 必须为 HTTPS，且 `headers` 不能再设置 `Authorization`。 |
 | `required` | `false` | 启动失败是否阻止 MCP manager 整体就绪。 |
@@ -200,7 +200,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 
 stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并 `env`。不会继承其他进程环境变量。环境变量名必须符合常规格式，值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
 
-HTTP server 设置 `proxy` 后，其 MCP initialize、工具请求、SSE 恢复、session DELETE、OAuth metadata discovery、token 获取和 refresh 都通过该代理；显式字段优先于 Kana 进程的全局代理环境变量。省略时使用 Bun 的默认 `fetch` 路由，因此继续遵守当前 shell 或 `<KANA_HOME>/.env` 注入的 `HTTP_PROXY`/`HTTPS_PROXY`。系统浏览器中的 OAuth 授权页面不经过 Kana 的 `fetch`，仍使用浏览器自身的网络设置。Kana 只在诊断日志中记录该 server 已启用代理，不记录代理 URL。
+HTTP server 将 `proxy` 设置为 URL 后，其 MCP initialize、工具请求、SSE 恢复、session DELETE、OAuth metadata discovery、token 获取和 refresh 都通过该代理；设置为 `false` 后，同一范围的请求会绕过进程级代理并直连。直连封装只在调用 Bun `fetch` 的同步区间把当前目标主机加入进程内 `NO_PROXY`/`no_proxy`，随即恢复两个变量的原始值；不会永久修改 Kana 进程环境，也不会改变随后启动的其他 MCP 请求，它们仍使用各自的显式代理或原有全局代理。省略 `proxy` 时使用 Bun 的默认 `fetch` 路由，因此继续遵守当前 shell 或 `<KANA_HOME>/.env` 注入的 `HTTP_PROXY`/`HTTPS_PROXY`。系统浏览器中的 OAuth 授权页面不经过 Kana 的 `fetch`，仍使用浏览器自身的网络设置。诊断日志只记录该 server 使用显式代理或绕过代理，不记录代理 URL。
 
 `auth` 当前只接受 `type: "oauth2"`，子字段如下：
 

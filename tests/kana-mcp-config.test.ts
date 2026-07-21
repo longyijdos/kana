@@ -110,6 +110,20 @@ describe("Kana MCP config", () => {
     });
   });
 
+  test("allows a Streamable HTTP server to bypass process-wide proxies", () => {
+    expect(
+      parseKanaMcpConfig({
+        mcpServers: {
+          direct: {
+            type: "http",
+            url: "https://mcp.deepwiki.com/mcp",
+            proxy: false,
+          },
+        },
+      }).mcpServers.direct,
+    ).toMatchObject({ proxy: false });
+  });
+
   test("loads OAuth-protected Streamable HTTP entries and resolves secrets from the environment", () => {
     const parsed = parseKanaMcpConfig({
       mcpServers: {
@@ -360,6 +374,13 @@ describe("Kana MCP config", () => {
         },
       }),
     ).toThrow("mcpServers.remote.proxy cannot contain a fragment.");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: { type: "http", url: "https://example.com/mcp", proxy: true },
+        },
+      }),
+    ).toThrow("mcpServers.remote.proxy must be a non-empty string.");
   });
 
   test("rejects invalid timeouts and tool filters", () => {

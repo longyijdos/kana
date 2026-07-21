@@ -196,7 +196,11 @@ function createTransport(
         : createHttpProxyFetch(config.proxy, context.oauthFetch ?? globalThis.fetch));
     if (config.proxy !== undefined) {
       try {
-        context.getLogger().debug("mcp.http_proxy_enabled", { serverId });
+        context
+          .getLogger()
+          .debug(config.proxy === false ? "mcp.http_proxy_bypassed" : "mcp.http_proxy_enabled", {
+            serverId,
+          });
       } catch {
         // Diagnostic logging cannot prevent a configured server from starting.
       }

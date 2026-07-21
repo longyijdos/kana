@@ -36,7 +36,7 @@ export type KanaMcpOAuth2Config = {
 export type KanaMcpHttpServerConfig = KanaMcpCommonServerConfig & {
   type: "http";
   url: string;
-  proxy?: string;
+  proxy?: string | false;
   headers: Record<string, string>;
   auth?: KanaMcpOAuth2Config;
 };
@@ -291,9 +291,12 @@ function readHttpUrl(value: unknown, name: string): string {
   return raw;
 }
 
-function readOptionalHttpProxyUrl(value: unknown, name: string): string | undefined {
+function readOptionalHttpProxyUrl(value: unknown, name: string): string | false | undefined {
   if (value === undefined) {
     return undefined;
+  }
+  if (value === false) {
+    return false;
   }
 
   const raw = readRequiredNonBlankString(value, name);
