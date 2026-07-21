@@ -15,10 +15,19 @@ import {
   type McpServerCapabilities,
   type McpTool,
 } from "./protocol";
-import type { McpTransport } from "./transport";
+import {
+  type McpTransport,
+  type McpTransportReconnected,
+  type McpTransportSessionExpired,
+  McpTransportSessionExpiredError,
+} from "./transport";
 
 const DEFAULT_INITIALIZE_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_TOOL_LIST_PAGES = 1_000;
+const SESSION_RECOVERED_MESSAGE =
+  "MCP HTTP session expired and has been reinitialized successfully. The original tool call was not retried. You may call the tool again.";
+const SESSION_EXPIRED_DURING_RECOVERY_MESSAGE =
+  "MCP HTTP session expired again during recovery. The MCP client was closed.";
 
 export type McpClientOptions = {
   transport: McpTransport;
@@ -29,6 +38,7 @@ export type McpClientOptions = {
   maxToolListPages?: number;
   onNotification?(notification: JsonRpcNotification): void;
   onError?(error: Error): void;
+  onTransportReconnect?(event: McpTransportReconnected): void;
 };
 
 export type McpRequestOptions = {
@@ -40,15 +50,25 @@ export type McpCallToolOptions = McpRequestOptions & {
   onProgress?(progress: McpProgress): void;
 };
 
-type ClientState = "idle" | "initializing" | "ready" | "closing" | "closed";
+type ClientState = "idle" | "initializing" | "ready" | "recovering" | "closing" | "closed";
+
+type SessionRecovery = {
+  generation: number;
+  promise: Promise<void>;
+};
 
 // This client implements only the published 2025-11-25 lifecycle and server
 // tool methods. The reusable JSON-RPC state lives in McpConnection so a future
 // stateless protocol client does not need to inherit this initialization flow.
+// TODO(mcp): Add the 2026-07-28 lifecycle as a separate client only after that
+// draft is published as stable; do not condition this lifecycle at runtime.
 export class McpClient {
   private state: ClientState = "idle";
   private readonly connection: McpConnection;
   private initializeResult?: McpInitializeResult;
+  private sessionRecovery?: SessionRecovery;
+  private sessionRecoveryFailure?: Error;
+  private recoveredSessionGeneration = 0;
 
   constructor(private readonly options: McpClientOptions) {
     assertPositiveInteger(options.initializeTimeoutMs, "initializeTimeoutMs");
@@ -62,6 +82,8 @@ export class McpClient {
       onClose: () => {
         this.state = "closed";
       },
+      onSessionExpired: (event) => this.handleSessionExpired(event),
+      onTransportReconnect: options.onTransportReconnect,
     });
   }
 
@@ -86,28 +108,7 @@ export class McpClient {
 
     try {
       await this.connection.start();
-      const result = await this.connection.request(
-        "initialize",
-        {
-          protocolVersion: MCP_PROTOCOL_VERSION,
-          capabilities: this.options.capabilities ?? {},
-          clientInfo: implementationToJson(this.options.clientInfo),
-        },
-        {
-          timeoutMs: this.options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS,
-          cancellable: false,
-        },
-      );
-      const initializeResult = parseInitializeResult(result);
-
-      if (initializeResult.protocolVersion !== MCP_PROTOCOL_VERSION) {
-        throw new McpProtocolError(
-          `MCP server selected unsupported protocol version ${initializeResult.protocolVersion}.`,
-        );
-      }
-
-      this.initializeResult = initializeResult;
-      await this.connection.sendNotification("notifications/initialized");
+      const initializeResult = await this.initializeSession();
 
       if (!this.connection.active) {
         throw new McpConnectionClosedError("MCP transport closed during initialization.");
@@ -122,6 +123,7 @@ export class McpClient {
   }
 
   async listTools(options: McpRequestOptions = {}): Promise<McpTool[]> {
+    await this.waitUntilReady();
     this.requireToolsCapability();
 
     const tools: McpTool[] = [];
@@ -129,7 +131,7 @@ export class McpClient {
     let cursor: string | undefined;
 
     for (let pageIndex = 0; pageIndex < this.maxToolListPages; pageIndex += 1) {
-      const result = await this.connection.request(
+      const result = await this.requestWithoutReplay(
         "tools/list",
         cursor === undefined ? {} : { cursor },
         options,
@@ -158,6 +160,7 @@ export class McpClient {
     args?: JsonObject,
     options: McpCallToolOptions = {},
   ): Promise<McpCallToolResult> {
+    await this.waitUntilReady();
     this.requireToolsCapability();
 
     const params: JsonObject = { name };
@@ -165,7 +168,7 @@ export class McpClient {
       params.arguments = args;
     }
 
-    const result = await this.connection.request("tools/call", params, options);
+    const result = await this.requestWithoutReplay("tools/call", params, options);
     return parseCallToolResult(result);
   }
 
@@ -184,6 +187,118 @@ export class McpClient {
 
   private get maxToolListPages(): number {
     return this.options.maxToolListPages ?? DEFAULT_MAX_TOOL_LIST_PAGES;
+  }
+
+  private async initializeSession(): Promise<McpInitializeResult> {
+    const result = await this.connection.request(
+      "initialize",
+      {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: this.options.capabilities ?? {},
+        clientInfo: implementationToJson(this.options.clientInfo),
+      },
+      {
+        timeoutMs: this.options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS,
+        cancellable: false,
+      },
+    );
+    const initializeResult = parseInitializeResult(result);
+
+    if (initializeResult.protocolVersion !== MCP_PROTOCOL_VERSION) {
+      throw new McpProtocolError(
+        `MCP server selected unsupported protocol version ${initializeResult.protocolVersion}.`,
+      );
+    }
+
+    this.initializeResult = initializeResult;
+    await this.connection.sendNotification("notifications/initialized");
+    return initializeResult;
+  }
+
+  private handleSessionExpired(event: McpTransportSessionExpired): void {
+    if (
+      this.state === "idle" ||
+      this.state === "initializing" ||
+      this.state === "closing" ||
+      this.state === "closed" ||
+      event.generation <= this.recoveredSessionGeneration
+    ) {
+      return;
+    }
+    if (this.sessionRecovery?.generation === event.generation) {
+      return;
+    }
+    if (this.state === "recovering") {
+      const error = new McpClientError(SESSION_EXPIRED_DURING_RECOVERY_MESSAGE);
+      this.sessionRecoveryFailure = error;
+      this.reportError(error);
+      void this.close();
+      return;
+    }
+
+    this.state = "recovering";
+    this.sessionRecoveryFailure = undefined;
+    const promise = this.recoverSession(event.generation);
+    this.sessionRecovery = { generation: event.generation, promise };
+    void promise.catch(() => undefined);
+  }
+
+  private async recoverSession(generation: number): Promise<void> {
+    try {
+      await this.initializeSession();
+      if (this.state !== "recovering") {
+        throw new McpConnectionClosedError("MCP client closed during session recovery.");
+      }
+      this.recoveredSessionGeneration = generation;
+      this.state = "ready";
+    } catch (error) {
+      const failure = this.sessionRecoveryFailure ?? asError(error);
+      if (this.state !== "closing" && this.state !== "closed") {
+        this.reportError(failure);
+        this.state = "closing";
+        try {
+          await this.connection.close();
+        } finally {
+          this.state = "closed";
+        }
+      }
+      throw failure;
+    }
+  }
+
+  private async waitUntilReady(): Promise<void> {
+    if (this.state === "recovering") {
+      await this.sessionRecovery?.promise;
+    }
+  }
+
+  private async requestWithoutReplay(
+    method: string,
+    params: JsonObject,
+    options: McpCallToolOptions,
+  ): Promise<JsonObject> {
+    try {
+      return await this.connection.request(method, params, options);
+    } catch (error) {
+      if (error instanceof McpTransportSessionExpiredError) {
+        const recovery = this.sessionRecovery;
+        if (recovery?.generation === error.generation) {
+          await recovery.promise;
+          throw new McpClientError(SESSION_RECOVERED_MESSAGE, { cause: error });
+        }
+      }
+      // A session is reinitialized for future requests, but the request that
+      // observed 404 is never replayed because tools may have side effects.
+      throw error;
+    }
+  }
+
+  private reportError(error: Error): void {
+    try {
+      this.options.onError?.(error);
+    } catch {
+      // Diagnostic hooks cannot alter lifecycle recovery.
+    }
   }
 
   private requireToolsCapability(): void {
@@ -349,4 +464,8 @@ function assertPositiveInteger(value: number | undefined, name: string): void {
   if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
     throw new Error(`${name} must be a positive integer.`);
   }
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }

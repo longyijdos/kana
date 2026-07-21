@@ -70,6 +70,7 @@ export {
   type StdioTransportOptions,
 } from "./stdio-transport";
 export {
+  type StreamableHttpFetch,
   StreamableHttpTransport,
   type StreamableHttpTransportOptions,
 } from "./streamable-http-transport";
@@ -98,4 +99,8 @@ export {
   type McpTransportClose,
   McpTransportError,
   type McpTransportHandlers,
+  type McpTransportReconnectCause,
+  type McpTransportReconnected,
+  type McpTransportSessionExpired,
+  McpTransportSessionExpiredError,
 } from "./transport";

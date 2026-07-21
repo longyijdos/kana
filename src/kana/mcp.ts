@@ -95,6 +95,9 @@ function createRegistration(
         onError: (error) => {
           context.getLogger().warn("mcp.client_error", { serverId, error });
         },
+        onTransportReconnect: (event) => {
+          context.getLogger().info("mcp.transport_reconnected", { serverId, ...event });
+        },
         onNotification: (notification) => {
           if (notification.method === "notifications/tools/list_changed") {
             context.getLogger().debug("mcp.tools_list_changed_ignored", { serverId });

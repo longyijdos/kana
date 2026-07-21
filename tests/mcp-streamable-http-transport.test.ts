@@ -6,6 +6,8 @@ import {
   type JsonRpcRequest,
   McpClient,
   McpRequestTimeoutError,
+  type McpTransportReconnected,
+  type StreamableHttpFetch,
   StreamableHttpTransport,
   type StreamableHttpTransportOptions,
 } from "../src/mcp";
@@ -35,6 +37,122 @@ describe("MCP Streamable HTTP transport", () => {
           headers: { "MCP-Session-Id": "user-supplied" },
         }),
     ).toThrow("cannot override mcp-session-id");
+  });
+
+  test("reports a safe HTTP phase and error identity for transport failures", async () => {
+    const errors: Error[] = [];
+    const socketError = Object.assign(new Error("do-not-log"), { code: "ECONNRESET" });
+    const networkError = new TypeError("do-not-log", { cause: socketError });
+    const transport = new StreamableHttpTransport({
+      url: "https://example.com/mcp?access_token=do-not-log",
+      fetch: () => Promise.reject(networkError),
+    });
+    const client = new McpClient({
+      transport,
+      clientInfo: { name: "kana-test", version: "1.0.0" },
+      initializeTimeoutMs: 1_000,
+      requestTimeoutMs: 1_000,
+      onError: (error) => errors.push(error),
+    });
+    clients.add(client);
+
+    await expect(client.connect()).rejects.toThrow("MCP HTTP POST initialize failed");
+
+    expect(errors[0]?.message).toBe(
+      "MCP HTTP POST initialize failed. (TypeError, cause Error/ECONNRESET)",
+    );
+    expect(errors[0]?.message).not.toContain("access_token");
+    expect(errors[0]?.message).not.toContain("do-not-log");
+  });
+
+  test("reconnects a reset standalone SSE stream with Last-Event-ID", async () => {
+    const errors: Error[] = [];
+    const reconnects: McpTransportReconnected[] = [];
+    const getLastEventIds: Array<string | null> = [];
+    let getCount = 0;
+    const fetch: StreamableHttpFetch = async (_input, init) => {
+      const method = init?.method ?? "GET";
+      if (method === "DELETE") {
+        return new Response(null, { status: 200 });
+      }
+      if (method === "GET") {
+        getCount += 1;
+        getLastEventIds.push(new Headers(init?.headers).get("Last-Event-ID"));
+        if (getCount === 1) {
+          const encoder = new TextEncoder();
+          let pullCount = 0;
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                pullCount += 1;
+                if (pullCount === 1) {
+                  controller.enqueue(encoder.encode("id: reset-cursor\nretry: 0\ndata:\n\n"));
+                  return;
+                }
+                controller.error(Object.assign(new Error("socket reset"), { code: "ECONNRESET" }));
+              },
+            }),
+            { headers: { "Content-Type": "text/event-stream" } },
+          );
+        }
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        );
+      }
+
+      const message = JSON.parse(String(init?.body)) as JsonRpcMessage;
+      if (isRequestMethod(message, "initialize")) {
+        return jsonResponse(
+          { jsonrpc: "2.0", id: message.id, result: initializeResult() },
+          { "MCP-Session-Id": "reset-session" },
+        );
+      }
+      if (isNotificationMethod(message, "notifications/initialized")) {
+        return new Response(null, { status: 202 });
+      }
+      if (isRequestMethod(message, "tools/call")) {
+        return jsonResponse({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { content: [{ type: "text", text: "still connected" }] },
+        });
+      }
+      return new Response(null, { status: 202 });
+    };
+    const transport = new StreamableHttpTransport({ url: "https://example.com/mcp", fetch });
+    const client = new McpClient({
+      transport,
+      clientInfo: { name: "kana-test", version: "1.0.0" },
+      initializeTimeoutMs: 1_000,
+      requestTimeoutMs: 1_000,
+      onError: (error) => errors.push(error),
+      onTransportReconnect: (event) => reconnects.push(event),
+    });
+    clients.add(client);
+
+    await client.connect();
+    await waitFor(() => reconnects.length === 1);
+
+    expect(getLastEventIds).toEqual([null, "reset-cursor"]);
+    expect(reconnects).toEqual([
+      {
+        operation: "standalone_sse",
+        cause: "read_error",
+        reconnectCount: 1,
+        resumedFromEvent: true,
+        errorIdentity: "Error, code ECONNRESET",
+      },
+    ]);
+    expect(errors).toEqual([]);
+    expect(client.connected).toBe(true);
+    expect((await client.callTool("after-reset")).content).toEqual([
+      { type: "text", text: "still connected" },
+    ]);
   });
 
   test("handles JSON and SSE responses with session headers and a standalone GET stream", async () => {
@@ -215,6 +333,171 @@ describe("MCP Streamable HTTP transport", () => {
     expect(tools.map((tool) => tool.name)).toEqual(["resumed"]);
     expect(listPostCount).toBe(1);
     expect(resumeHeaders).toEqual(["resume-1"]);
+  });
+
+  test("reinitializes an expired session once without replaying concurrent tool calls", async () => {
+    const received: ReceivedRequest[] = [];
+    const expiredResponses: Array<(response: Response) => void> = [];
+    let initializeCount = 0;
+    let toolCallCount = 0;
+    const server = createServer(async (request) => {
+      const record = await recordRequest(request);
+      received.push(record);
+
+      if (request.method === "GET") {
+        return new Response(null, { status: 405 });
+      }
+      if (request.method === "DELETE") {
+        return new Response(null, { status: 200 });
+      }
+
+      const message = record.message!;
+      if (isRequestMethod(message, "initialize")) {
+        initializeCount += 1;
+        return jsonResponse(
+          { jsonrpc: "2.0", id: message.id, result: initializeResult() },
+          { "MCP-Session-Id": `session-${initializeCount}` },
+        );
+      }
+      if (isNotificationMethod(message, "notifications/initialized")) {
+        return new Response(null, { status: 202 });
+      }
+      if (isRequestMethod(message, "tools/call")) {
+        toolCallCount += 1;
+        if (record.sessionId === "session-1") {
+          return new Promise<Response>((resolve) => {
+            expiredResponses.push(resolve);
+            if (expiredResponses.length === 2) {
+              for (const respond of expiredResponses) {
+                respond(new Response(null, { status: 404 }));
+              }
+            }
+          });
+        }
+        return jsonResponse({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { content: [{ type: "text", text: "fresh session" }] },
+        });
+      }
+      return new Response(null, { status: 202 });
+    });
+    const client = createClient(server);
+    await client.connect();
+
+    const expiredCalls = await Promise.allSettled([
+      client.callTool("write-once"),
+      client.callTool("write-twice"),
+    ]);
+
+    expect(expiredCalls.every((result) => result.status === "rejected")).toBe(true);
+    for (const result of expiredCalls) {
+      if (result.status === "rejected") {
+        expect(result.reason.message).toBe(
+          "MCP HTTP session expired and has been reinitialized successfully. The original tool call was not retried. You may call the tool again.",
+        );
+      }
+    }
+    expect(initializeCount).toBe(2);
+    expect(toolCallCount).toBe(2);
+    expect(
+      received.filter((item) => item.rpcMethod === "initialize").map((item) => item.sessionId),
+    ).toEqual([null, null]);
+    expect(client.connected).toBe(true);
+
+    const recovered = await client.callTool("after-recovery");
+    expect(recovered.content).toEqual([{ type: "text", text: "fresh session" }]);
+    expect(toolCallCount).toBe(3);
+    expect(received.at(-1)?.sessionId).toBe("session-2");
+  });
+
+  test("reports recovery failure when the replacement session immediately expires", async () => {
+    let initializeCount = 0;
+    let initializedCount = 0;
+    const server = createServer(async (request) => {
+      if (request.method === "GET") {
+        return new Response(null, { status: 405 });
+      }
+      if (request.method === "DELETE") {
+        return new Response(null, { status: 200 });
+      }
+
+      const message = (await request.json()) as JsonRpcMessage;
+      if (isRequestMethod(message, "initialize")) {
+        initializeCount += 1;
+        return jsonResponse(
+          { jsonrpc: "2.0", id: message.id, result: initializeResult() },
+          { "MCP-Session-Id": `session-${initializeCount}` },
+        );
+      }
+      if (isNotificationMethod(message, "notifications/initialized")) {
+        initializedCount += 1;
+        return new Response(null, { status: initializedCount === 1 ? 202 : 404 });
+      }
+      if (isRequestMethod(message, "tools/call")) {
+        return new Response(null, { status: 404 });
+      }
+      return new Response(null, { status: 202 });
+    });
+    const client = createClient(server);
+    await client.connect();
+
+    await expect(client.callTool("expires-during-recovery")).rejects.toThrow(
+      "MCP HTTP session expired again during recovery. The MCP client was closed.",
+    );
+    expect(initializeCount).toBe(2);
+    expect(client.connected).toBe(false);
+    await expect(client.callTool("after-failed-recovery")).rejects.toThrow(
+      "MCP client is not initialized.",
+    );
+  });
+
+  test("reinitializes when the standalone server stream reports session expiry", async () => {
+    const received: ReceivedRequest[] = [];
+    let initializeCount = 0;
+    const server = createServer(async (request) => {
+      const record = await recordRequest(request);
+      received.push(record);
+
+      if (request.method === "GET") {
+        return new Response(null, { status: record.sessionId === "session-1" ? 404 : 405 });
+      }
+      if (request.method === "DELETE") {
+        return new Response(null, { status: 200 });
+      }
+
+      const message = record.message!;
+      if (isRequestMethod(message, "initialize")) {
+        initializeCount += 1;
+        return jsonResponse(
+          { jsonrpc: "2.0", id: message.id, result: initializeResult() },
+          { "MCP-Session-Id": `session-${initializeCount}` },
+        );
+      }
+      if (isNotificationMethod(message, "notifications/initialized")) {
+        return new Response(null, { status: 202 });
+      }
+      if (isRequestMethod(message, "tools/call")) {
+        return jsonResponse({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { content: [{ type: "text", text: record.sessionId }] },
+        });
+      }
+      return new Response(null, { status: 202 });
+    });
+    const client = createClient(server);
+
+    await client.connect();
+    await waitFor(() => initializeCount === 2);
+
+    expect(client.connected).toBe(true);
+    expect(
+      received.filter((item) => item.rpcMethod === "initialize").map((item) => item.sessionId),
+    ).toEqual([null, null]);
+    expect((await client.callTool("current-session")).content).toEqual([
+      { type: "text", text: "session-2" },
+    ]);
   });
 
   test("times out a streaming request and sends an explicit cancellation notification", async () => {

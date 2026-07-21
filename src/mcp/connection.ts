@@ -22,7 +22,12 @@ import {
   McpProtocolError,
   parseJsonRpcMessage,
 } from "./protocol";
-import type { McpTransport, McpTransportClose } from "./transport";
+import type {
+  McpTransport,
+  McpTransportClose,
+  McpTransportReconnected,
+  McpTransportSessionExpired,
+} from "./transport";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_IGNORED_RESPONSE_IDS = 256;
@@ -33,6 +38,8 @@ export type McpConnectionOptions = {
   onNotification?(notification: JsonRpcNotification): void;
   onError?(error: Error): void;
   onClose?(event: McpTransportClose): void;
+  onSessionExpired?(event: McpTransportSessionExpired): void;
+  onTransportReconnect?(event: McpTransportReconnected): void;
 };
 
 export type McpConnectionRequestOptions = {
@@ -86,6 +93,8 @@ export class McpConnection {
         onMessage: (message) => this.handleMessage(message),
         onError: (error) => this.handleTransportError(error),
         onClose: (event) => this.handleTransportClose(event),
+        onSessionExpired: (event) => this.options.onSessionExpired?.(event),
+        onReconnect: (event) => this.options.onTransportReconnect?.(event),
       });
     } catch (error) {
       this.state = "closed";

@@ -6,12 +6,20 @@ import {
   MCP_PROTOCOL_VERSION,
 } from "./protocol";
 import { SseDecoder } from "./sse";
-import { type McpTransport, McpTransportError, type McpTransportHandlers } from "./transport";
+import {
+  type McpTransport,
+  McpTransportError,
+  type McpTransportHandlers,
+  type McpTransportReconnectCause,
+  type McpTransportReconnected,
+  McpTransportSessionExpiredError,
+} from "./transport";
 
 const DEFAULT_MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const DEFAULT_CLOSE_TIMEOUT_MS = 2_000;
 const CANCELLED_REQUEST_REASON = new Error("MCP HTTP request was cancelled.");
+const SESSION_REPLACED_REASON = new Error("MCP HTTP session was replaced.");
 const RESERVED_HEADER_NAMES = [
   "accept",
   "content-type",
@@ -20,11 +28,17 @@ const RESERVED_HEADER_NAMES = [
   "mcp-session-id",
 ] as const;
 
+export type StreamableHttpFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
 export type StreamableHttpTransportOptions = {
   url: string;
   headers?: Record<string, string>;
   maxMessageBytes?: number;
   closeTimeoutMs?: number;
+  fetch?: StreamableHttpFetch;
 };
 
 type TransportState = "idle" | "running" | "closing" | "closed";
@@ -35,16 +49,34 @@ type SseReadResult = {
   retryMs?: number;
 };
 
+type SseResumeState = {
+  lastEventId?: string;
+  retryMs?: number;
+};
+
+type PendingStandaloneReconnect = {
+  cause: McpTransportReconnectCause;
+  errorIdentity?: string;
+};
+
+type HttpSession = {
+  id: string;
+  generation: number;
+};
+
 // TODO(mcp): Add the deprecated 2024-11-05 HTTP+SSE transport as an explicit
 // compatibility strategy if real-world server coverage justifies it. Do not
 // mix its endpoint discovery lifecycle into this 2025-11-25 transport.
 export class StreamableHttpTransport implements McpTransport {
   private readonly endpoint: URL;
   private readonly configuredHeaders: Headers;
+  private readonly fetch: StreamableHttpFetch;
   private state: TransportState = "idle";
   private handlers?: McpTransportHandlers;
-  private sessionId?: string;
+  private session?: HttpSession;
+  private nextSessionGeneration = 1;
   private standaloneStreamStarted = false;
+  private standaloneController?: AbortController;
   private readonly activeControllers = new Set<AbortController>();
   private readonly activeOperations = new Set<Promise<void>>();
   private readonly activeRequests = new Map<JsonRpcId, AbortController>();
@@ -56,6 +88,7 @@ export class StreamableHttpTransport implements McpTransport {
   constructor(private readonly options: StreamableHttpTransportOptions) {
     this.endpoint = parseEndpoint(options.url);
     this.configuredHeaders = new Headers(options.headers);
+    this.fetch = options.fetch ?? globalThis.fetch;
     assertNoReservedHeaders(this.configuredHeaders);
     assertPositiveInteger(options.maxMessageBytes, "maxMessageBytes");
     assertNonNegativeInteger(options.closeTimeoutMs, "closeTimeoutMs");
@@ -116,7 +149,7 @@ export class StreamableHttpTransport implements McpTransport {
           this.activeRequests.delete(requestId);
         }
       }
-    });
+    }, describeSendPhase(message));
   }
 
   close(): Promise<void> {
@@ -148,6 +181,7 @@ export class StreamableHttpTransport implements McpTransport {
     const response = await this.fetchEndpoint("POST", {
       body: payload,
       controller,
+      includeSession: !isInitializeRequest(message),
       includeProtocolVersion: !isInitializeRequest(message),
       accept: "application/json, text/event-stream",
     });
@@ -237,22 +271,21 @@ export class StreamableHttpTransport implements McpTransport {
   private async readSseResponse(
     response: Response,
     expectedResponseId: JsonRpcId | undefined,
+    resumeState: SseResumeState = {},
   ): Promise<SseReadResult> {
     if (!response.body) {
       throw new McpTransportError("MCP SSE response did not contain a body.");
     }
 
     let responseReceived = false;
-    let lastEventId: string | undefined;
-    let retryMs: number | undefined;
     const decoder = new SseDecoder({
       maxEventBytes: this.maxMessageBytes,
       onEvent: (event) => {
         if (event.id !== undefined) {
-          lastEventId = event.id;
+          resumeState.lastEventId = event.id;
         }
         if (event.retry !== undefined) {
-          retryMs = event.retry;
+          resumeState.retryMs = event.retry;
         }
         if (event.data === undefined || event.data === "") {
           return;
@@ -291,20 +324,22 @@ export class StreamableHttpTransport implements McpTransport {
 
     return {
       responseReceived,
-      ...(lastEventId === undefined ? {} : { lastEventId }),
-      ...(retryMs === undefined ? {} : { retryMs }),
+      ...(resumeState.lastEventId === undefined ? {} : { lastEventId: resumeState.lastEventId }),
+      ...(resumeState.retryMs === undefined ? {} : { retryMs: resumeState.retryMs }),
     };
   }
 
   private captureSessionId(response: Response): void {
     const sessionId = response.headers.get("MCP-Session-Id");
     if (sessionId === null) {
+      this.session = undefined;
       return;
     }
     if (!isValidSessionId(sessionId)) {
       throw new McpTransportError("MCP server returned an invalid MCP-Session-Id header.");
     }
-    this.sessionId = sessionId;
+    this.session = { id: sessionId, generation: this.nextSessionGeneration };
+    this.nextSessionGeneration += 1;
   }
 
   private startStandaloneStream(): void {
@@ -313,14 +348,26 @@ export class StreamableHttpTransport implements McpTransport {
     }
     this.standaloneStreamStarted = true;
 
-    void this.trackOperation((controller) => this.runStandaloneStream(controller)).catch(() => {
-      // trackOperation reports fatal stream errors through the transport hook.
+    void this.trackOperation(async (controller) => {
+      this.standaloneController = controller;
+      try {
+        await this.runStandaloneStream(controller);
+      } finally {
+        if (this.standaloneController === controller) {
+          this.standaloneController = undefined;
+        }
+      }
+    }, "standalone GET/SSE stream").catch(() => {
+      // trackOperation reports fatal errors and session expiry through transport hooks.
     });
   }
 
   private async runStandaloneStream(controller: AbortController): Promise<void> {
-    let lastEventId: string | undefined;
-    let retryMs = DEFAULT_RECONNECT_DELAY_MS;
+    // The decoder updates this cursor before the body read completes, so a
+    // socket reset can resume from the last fully dispatched SSE event.
+    const resumeState: SseResumeState = {};
+    let pendingReconnect: PendingStandaloneReconnect | undefined;
+    let reconnectCount = 0;
 
     while (this.state === "running" && !controller.signal.aborted) {
       let response: Response;
@@ -329,13 +376,22 @@ export class StreamableHttpTransport implements McpTransport {
           controller,
           includeProtocolVersion: true,
           accept: "text/event-stream",
-          ...(lastEventId === undefined ? {} : { lastEventId }),
+          ...(resumeState.lastEventId === undefined
+            ? {}
+            : { lastEventId: resumeState.lastEventId }),
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof McpTransportSessionExpiredError) {
+          throw error;
+        }
         if (controller.signal.aborted || this.state !== "running") {
           return;
         }
-        await waitForDelay(retryMs, controller.signal);
+        pendingReconnect ??= {
+          cause: "connect_error",
+          errorIdentity: describeErrorIdentity(error),
+        };
+        await waitForDelay(resumeState.retryMs ?? DEFAULT_RECONNECT_DELAY_MS, controller.signal);
         continue;
       }
 
@@ -350,13 +406,48 @@ export class StreamableHttpTransport implements McpTransport {
         throw new McpTransportError("MCP standalone GET did not return text/event-stream.");
       }
 
-      const result = await this.readSseResponse(response, undefined);
-      lastEventId = result.lastEventId ?? lastEventId;
-      retryMs = result.retryMs ?? retryMs;
+      if (pendingReconnect !== undefined) {
+        reconnectCount += 1;
+        this.reportReconnect({
+          operation: "standalone_sse",
+          cause: pendingReconnect.cause,
+          reconnectCount,
+          resumedFromEvent: resumeState.lastEventId !== undefined,
+          ...(pendingReconnect.errorIdentity === undefined
+            ? {}
+            : { errorIdentity: pendingReconnect.errorIdentity }),
+        });
+        pendingReconnect = undefined;
+      }
+
+      try {
+        await this.readSseResponse(response, undefined, resumeState);
+      } catch (error) {
+        if (error instanceof McpTransportError) {
+          throw error;
+        }
+        if (controller.signal.aborted || this.state !== "running") {
+          return;
+        }
+        pendingReconnect = {
+          cause: "read_error",
+          errorIdentity: describeErrorIdentity(error),
+        };
+      }
+
+      pendingReconnect ??= { cause: "stream_ended" };
 
       if (this.state === "running" && !controller.signal.aborted) {
-        await waitForDelay(retryMs, controller.signal);
+        await waitForDelay(resumeState.retryMs ?? DEFAULT_RECONNECT_DELAY_MS, controller.signal);
       }
+    }
+  }
+
+  private reportReconnect(event: McpTransportReconnected): void {
+    try {
+      this.handlers?.onReconnect?.(event);
+    } catch {
+      // Diagnostic hooks cannot alter stream recovery.
     }
   }
 
@@ -364,6 +455,7 @@ export class StreamableHttpTransport implements McpTransport {
     method: "POST" | "GET",
     options: {
       controller: AbortController;
+      includeSession?: boolean;
       includeProtocolVersion: boolean;
       accept: string;
       body?: string;
@@ -371,12 +463,13 @@ export class StreamableHttpTransport implements McpTransport {
     },
   ): Promise<Response> {
     const headers = new Headers(this.configuredHeaders);
+    const session = options.includeSession === false ? undefined : this.session;
     headers.set("Accept", options.accept);
     if (method === "POST") {
       headers.set("Content-Type", "application/json");
     }
-    if (this.sessionId !== undefined) {
-      headers.set("MCP-Session-Id", this.sessionId);
+    if (session !== undefined) {
+      headers.set("MCP-Session-Id", session.id);
     }
     if (options.includeProtocolVersion) {
       headers.set("MCP-Protocol-Version", MCP_PROTOCOL_VERSION);
@@ -385,22 +478,49 @@ export class StreamableHttpTransport implements McpTransport {
       headers.set("Last-Event-ID", options.lastEventId);
     }
 
-    return fetch(this.endpoint, {
+    const response = await this.fetch(this.endpoint, {
       method,
       headers,
       ...(options.body === undefined ? {} : { body: options.body }),
       signal: options.controller.signal,
       redirect: "error",
     });
+
+    if (response.status === 404 && session !== undefined) {
+      await response.body?.cancel().catch(() => undefined);
+      this.expireSession(session.generation);
+      throw new McpTransportSessionExpiredError(session.generation);
+    }
+    return response;
   }
 
-  private trackOperation(operation: (controller: AbortController) => Promise<void>): Promise<void> {
+  private expireSession(generation: number): void {
+    if (this.session?.generation !== generation) {
+      return;
+    }
+
+    this.session = undefined;
+    this.standaloneStreamStarted = false;
+    this.standaloneController?.abort(SESSION_REPLACED_REASON);
+  }
+
+  private trackOperation(
+    operation: (controller: AbortController) => Promise<void>,
+    phase: string,
+  ): Promise<void> {
     const controller = new AbortController();
     this.activeControllers.add(controller);
 
     const tracked = operation(controller)
       .catch((error) => {
-        const transportError = asTransportError(error, "MCP HTTP transport failed.");
+        const transportError = asTransportError(error, `MCP HTTP ${phase} failed.`);
+        if (transportError instanceof McpTransportSessionExpiredError) {
+          this.handlers?.onSessionExpired?.({ generation: transportError.generation });
+          throw transportError;
+        }
+        if (controller.signal.reason === SESSION_REPLACED_REASON) {
+          return;
+        }
         if (this.state === "running") {
           this.fail(transportError);
         }
@@ -435,7 +555,7 @@ export class StreamableHttpTransport implements McpTransport {
     await Promise.allSettled([...this.activeOperations]);
 
     let closeError: unknown;
-    if (this.sessionId !== undefined) {
+    if (this.session !== undefined) {
       try {
         await this.deleteSession();
       } catch (error) {
@@ -460,9 +580,9 @@ export class StreamableHttpTransport implements McpTransport {
     try {
       const headers = new Headers(this.configuredHeaders);
       headers.set("Accept", "application/json, text/event-stream");
-      headers.set("MCP-Session-Id", this.sessionId!);
+      headers.set("MCP-Session-Id", this.session!.id);
       headers.set("MCP-Protocol-Version", MCP_PROTOCOL_VERSION);
-      const response = await fetch(this.endpoint, {
+      const response = await this.fetch(this.endpoint, {
         method: "DELETE",
         headers,
         signal: controller.signal,
@@ -526,6 +646,23 @@ function isInitializedNotification(message: JsonRpcMessage): boolean {
   return (
     "method" in message && !("id" in message) && message.method === "notifications/initialized"
   );
+}
+
+function describeSendPhase(message: JsonRpcMessage): string {
+  if ("method" in message) {
+    return `POST ${sanitizeMethodName(message.method)}`;
+  }
+  return "POST JSON-RPC response";
+}
+
+function sanitizeMethodName(method: string): string {
+  const sanitized = [...method]
+    .map((character) => {
+      const code = character.charCodeAt(0);
+      return code >= 0x21 && code <= 0x7e ? character : "?";
+    })
+    .join("");
+  return sanitized.length <= 128 ? sanitized : `${sanitized.slice(0, 128)}…`;
 }
 
 function readCancelledRequestId(message: JsonRpcMessage): JsonRpcId | undefined {
@@ -656,7 +793,31 @@ async function waitForDelay(milliseconds: number, signal: AbortSignal): Promise<
 function asTransportError(error: unknown, message: string): McpTransportError {
   return error instanceof McpTransportError
     ? error
-    : new McpTransportError(message, { cause: error });
+    : new McpTransportError(`${message} (${describeErrorIdentity(error)})`, { cause: error });
+}
+
+function describeErrorIdentity(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return `thrown ${typeof error}`;
+  }
+
+  const parts = [error.name || "Error"];
+  const code = readSafeErrorCode(error);
+  if (code !== undefined) {
+    parts.push(`code ${code}`);
+  }
+  const cause = error.cause;
+  if (cause instanceof Error && cause !== error) {
+    const causeCode = readSafeErrorCode(cause);
+    parts.push(`cause ${cause.name || "Error"}${causeCode === undefined ? "" : `/${causeCode}`}`);
+  }
+  return parts.join(", ");
+}
+
+function readSafeErrorCode(error: Error): string | undefined {
+  const code = (error as Error & { code?: unknown }).code;
+  const value = typeof code === "string" || typeof code === "number" ? String(code) : undefined;
+  return value !== undefined && /^[a-zA-Z0-9_.-]{1,64}$/.test(value) ? value : undefined;
 }
 
 function assertPositiveInteger(value: number | undefined, name: string): void {
