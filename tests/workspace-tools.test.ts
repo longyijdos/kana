@@ -784,6 +784,35 @@ describe("workspace tools", () => {
     });
   });
 
+  test("bash inherits environment variables added after process startup", async () => {
+    const root = await createTempRoot();
+    const envName = `KANA_TEST_BASH_RUNTIME_${process.pid}`;
+    const previous = process.env[envName];
+    process.env[envName] = "from-runtime";
+
+    try {
+      const bash = createBashTool({ root });
+      const result = await bash.execute(
+        {
+          command: `printf %s "$${envName}"`,
+        },
+        createToolContext(),
+      );
+
+      expectToolResult(result);
+      expect(result.result).toMatchObject({
+        exitCode: 0,
+        stdout: "from-runtime",
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env[envName];
+      } else {
+        process.env[envName] = previous;
+      }
+    }
+  });
+
   test("bash runs from a workspace subdirectory", async () => {
     const root = await createTempRoot();
     await mkdir(path.join(root, "src"), { recursive: true });
