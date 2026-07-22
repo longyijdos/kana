@@ -1,27 +1,43 @@
 import type { Message } from "@/core";
 import {
   appendKanaSessionMessages,
+  authorizeKanaMcpServer,
   createKanaAgent,
+  createKanaMcpRuntime,
+  createKanaOAuthTokenStore,
   createKanaSession,
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
   createWakeScheduler,
   deleteKanaSession,
   getKanaSessionLogPath,
+  KANA_BUILT_IN_TOOL_NAMES,
   listKanaSessions,
   loadKanaConfig,
+  loadKanaMcpServerActivations,
   loadKanaMemory,
   loadKanaSession,
   loadKanaSkillActivations,
   loadKanaToolApprovals,
   loadKanaUsageSummary,
+  openKanaOAuthAuthorizationUrl,
   recordKanaAgentRunAccounting,
   runFullMemoryConsolidation,
   saveEnabledGlobalSkillNames,
+  saveKanaMcpActivationState,
+  signOutKanaMcpServer,
 } from "@/kana";
 import { createNoopLogger, createSessionLogManager } from "@/logging";
+import type { Tool } from "@/tools";
 import { KanaTuiApp } from "./app/app";
 import type { MemoryCompactSummary } from "./app/memory-compact-controller";
+import {
+  formatMcpLifecycleStatus,
+  formatMcpReloadSummary,
+  formatMcpStartupSummary,
+  formatMcpStartupWarnings,
+} from "./mcp-lifecycle-status";
+import { registerTuiProcessSignals } from "./process-lifecycle";
 import { ProcessTerminal } from "./runtime";
 
 export type StartTuiOptions = {
@@ -30,7 +46,7 @@ export type StartTuiOptions = {
   showResumePicker?: boolean;
 };
 
-export function startTui(options: StartTuiOptions = {}): void {
+export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   const config = loadKanaConfig();
   const logManager = createSessionLogManager({ level: config.logging.level });
   const toolApprovals = loadKanaToolApprovals();
@@ -71,8 +87,79 @@ export function startTui(options: StartTuiOptions = {}): void {
   }
   let resumeSessionId = options.resumeSessionId ? session?.metadata.id : undefined;
   let pendingForkMessages: Message[] | undefined;
+  const terminal = new ProcessTerminal(config.notification);
+  let mcpTools: Tool[] = [];
+  let updateMcpLifecycleStatus: ((status: string) => void) | undefined;
+  let app: KanaTuiApp | undefined;
+  const oauthTokenStore = createKanaOAuthTokenStore({ getLogger: () => sessionLogger });
+  const mcpRuntime = createKanaMcpRuntime({
+    reservedToolNames: KANA_BUILT_IN_TOOL_NAMES,
+    getLogger: () => sessionLogger,
+    oauthTokenStore,
+    openOAuthAuthorizationUrl: async (serverId, url) => {
+      app?.showMcpOAuthAuthorization(serverId, url);
+      await openKanaOAuthAuthorizationUrl(url, { getLogger: () => sessionLogger });
+    },
+    onOAuthDiagnostic: (serverId, event) => {
+      app?.handleMcpOAuthDiagnostic(serverId, event);
+    },
+    onProgress: (event) => {
+      const status = formatMcpLifecycleStatus(event);
+      if (status === undefined) {
+        return;
+      }
 
-  const app = new KanaTuiApp(
+      if (event.runtimeOperation !== "close") {
+        updateMcpLifecycleStatus?.(status);
+      } else {
+        app?.showShutdownStatus(status);
+      }
+    },
+  });
+  let removeProcessSignals = (): void => {};
+  const closeMcpRuntime = async (): Promise<void> => {
+    removeProcessSignals();
+    await mcpRuntime.close();
+  };
+  const runMcpRuntimeOperation = async (
+    operation: "start" | "reload",
+    onProgress: (status: string) => void,
+  ): Promise<{ status?: string; warnings: string[] }> => {
+    updateMcpLifecycleStatus = onProgress;
+    try {
+      const snapshot = await (operation === "start" ? mcpRuntime.start() : mcpRuntime.reload());
+      mcpTools = snapshot.tools;
+      sessionLogger.info(operation === "start" ? "mcp.started" : "mcp.reloaded", {
+        configuredServerCount: snapshot.selectedServerIds.length,
+        readyServerCount: snapshot.diagnostics.filter((diagnostic) => diagnostic.status === "ready")
+          .length,
+        toolCount: mcpTools.length,
+      });
+      return {
+        ...(snapshot.selectedServerIds.length === 0 && operation === "start"
+          ? {}
+          : {
+              status:
+                operation === "start"
+                  ? formatMcpStartupSummary(snapshot.diagnostics, mcpTools.length)
+                  : formatMcpReloadSummary(snapshot.diagnostics, mcpTools.length),
+            }),
+        warnings: formatMcpStartupWarnings(snapshot.diagnostics),
+      };
+    } catch (error) {
+      mcpTools = mcpRuntime.tools;
+      throw error;
+    } finally {
+      updateMcpLifecycleStatus = undefined;
+    }
+  };
+  const loadMcpTools = (onProgress: (status: string) => void) =>
+    runMcpRuntimeOperation("start", onProgress);
+  const reloadMcpTools = (onProgress: (status: string) => void) =>
+    runMcpRuntimeOperation("reload", onProgress);
+
+  app = await createTuiAppWithCleanup(
+    closeMcpRuntime,
     (agentOptions) => {
       // Each Agent retains this concrete logger for its full lifetime. It must
       // never resolve the active session again after an asynchronous run starts.
@@ -80,6 +167,7 @@ export function startTui(options: StartTuiOptions = {}): void {
 
       return createKanaAgent(config, {
         ...agentOptions,
+        additionalTools: mcpTools,
         logger: agentLogger,
         wakeScheduler,
         sessionId: agentOptions.sessionId,
@@ -139,7 +227,7 @@ export function startTui(options: StartTuiOptions = {}): void {
         },
       });
     },
-    new ProcessTerminal(config.notification),
+    terminal,
     {
       sessionId: session?.metadata.id,
       initialMessages: session?.messages,
@@ -205,6 +293,11 @@ export function startTui(options: StartTuiOptions = {}): void {
       toolApproval: {
         config: config.approval,
         approvals: toolApprovals,
+        resolveToolSource: (toolName) => {
+          const source = mcpRuntime.getToolSource(toolName);
+
+          return source === undefined ? undefined : { kind: "mcp", ...source };
+        },
       },
       notification: config.notification,
       wakeScheduler,
@@ -255,8 +348,59 @@ export function startTui(options: StartTuiOptions = {}): void {
           sessionId: scope === "session" ? session?.metadata.id : undefined,
           cwd: process.cwd(),
         }),
+      loadExternalTools: loadMcpTools,
+      mcpManagement: {
+        loadServers: () => loadKanaMcpServerActivations(),
+        saveEnabledServerIds: (serverIds) =>
+          saveKanaMcpActivationState({ enabledServers: serverIds }),
+        authorizeServer: (serverId, onAuthorizationUrl, signal) =>
+          authorizeKanaMcpServer(serverId, {
+            getLogger: () => sessionLogger,
+            tokenStore: oauthTokenStore,
+            signal,
+            openAuthorizationUrl: async (url) => {
+              onAuthorizationUrl(url);
+              await openKanaOAuthAuthorizationUrl(url, { getLogger: () => sessionLogger });
+            },
+          }),
+        signOutServer: (serverId) =>
+          signOutKanaMcpServer(serverId, {
+            getLogger: () => sessionLogger,
+            tokenStore: oauthTokenStore,
+          }),
+        reloadExternalTools: reloadMcpTools,
+      },
+      onStop: closeMcpRuntime,
+      onForceStop: () => {
+        removeProcessSignals();
+        terminal.stop();
+        process.kill(process.pid, "SIGINT");
+      },
     },
   );
 
-  app.start();
+  removeProcessSignals = registerTuiProcessSignals((signal) => {
+    sessionLogger.info("tui.signal_received", { signal });
+    void app?.stop();
+  });
+
+  try {
+    app.start();
+  } catch (error) {
+    await app.stop();
+    throw error;
+  }
+  await app.waitForStop();
+}
+
+async function createTuiAppWithCleanup(
+  cleanup: () => Promise<void>,
+  ...args: ConstructorParameters<typeof KanaTuiApp>
+): Promise<KanaTuiApp> {
+  try {
+    return new KanaTuiApp(...args);
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
 }

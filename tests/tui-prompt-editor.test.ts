@@ -139,20 +139,21 @@ describe("prompt editor", () => {
         `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[0])}`,
         `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[1])}`,
         `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[2])}`,
-        "... 7 more commands",
+        `... ${PROMPT_COMMANDS.length - 3} more commands`,
       ]),
     );
 
-    for (let index = 0; index < 8; index += 1) {
+    const lastIndex = PROMPT_COMMANDS.length - 1;
+    for (let index = 0; index < lastIndex; index += 1) {
       editor.handleInput("\x1b[B");
     }
 
     expect(editor.render(80).map(stripAnsi)).toEqual(
       expect.arrayContaining([
-        "... 6 earlier commands",
-        `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[6])}`,
-        `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[7])}`,
-        `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[8])}`,
+        `... ${PROMPT_COMMANDS.length - 3} earlier commands`,
+        `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex - 2])}`,
+        `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex - 1])}`,
+        `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex])}`,
       ]),
     );
 
@@ -168,7 +169,7 @@ describe("prompt editor", () => {
       },
     ]);
 
-    for (let index = 0; index < 9; index += 1) {
+    for (let index = 0; index < PROMPT_COMMANDS.length; index += 1) {
       editor.handleInput("\x1b[A");
     }
     editor.handleInput("\r");
@@ -744,7 +745,7 @@ describe("prompt commands", () => {
       "Try /help — Show slash commands.",
     );
     expect(createRandomPromptPlaceholder(() => 0.4)).toBe(
-      "Try /fork <prompt> — Fork the current session and send a prompt.",
+      "Try /resume [id] — Switch to a saved session.",
     );
   });
 
@@ -777,6 +778,9 @@ describe("prompt commands", () => {
         },
         {
           name: "skills",
+        },
+        {
+          name: "mcp",
         },
         {
           name: "memory",

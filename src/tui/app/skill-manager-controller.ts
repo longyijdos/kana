@@ -24,6 +24,10 @@ export class SkillManagerController {
 
   constructor(private readonly options: SkillManagerControllerOptions) {}
 
+  get active(): boolean {
+    return this.activeManager !== undefined;
+  }
+
   open(): void {
     this.close();
     this.options.editor.clear();
@@ -31,7 +35,7 @@ export class SkillManagerController {
     try {
       const result = this.options.loadSkills();
 
-      this.skills = result.skills;
+      this.skills = result.skills.map((skill) => ({ ...skill }));
     } catch (error) {
       this.showError(error);
       this.options.restoreBottom(true);
@@ -63,23 +67,25 @@ export class SkillManagerController {
   }
 
   private finish(decision: SkillManagerDecision): void {
-    if (decision.type === "close") {
+    if (!decision.changed) {
       this.close();
       return;
     }
 
     try {
-      this.options.saveEnabledGlobalSkills(
-        this.skills
-          .filter((skill) => skill.scope === "global" && skill.enabled)
-          .map((skill) => skill.name),
-      );
-      this.options.onSkillsChanged();
-      this.options.updateStatus("idle", {
-        activeTool: undefined,
-      });
+      this.options.saveEnabledGlobalSkills(decision.enabledGlobalSkillNames);
     } catch (error) {
-      decision.item.enabled = !decision.enabled;
+      this.showError(error);
+      return;
+    }
+
+    this.close();
+    try {
+      this.options.onSkillsChanged();
+      this.options.updateStatus("idle", { activeTool: undefined });
+    } catch (error) {
+      // Persistence already succeeded, so report the refresh error without
+      // presenting the saved activation state as an unsaved draft.
       this.showError(error);
     }
   }

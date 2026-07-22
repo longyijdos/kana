@@ -15,7 +15,7 @@ ProcessTerminal
           exactly one bottom component (height tier)
             editor with status line
             or tool approval
-            or session / skills / slash-command prompt
+            or session / skills / MCP / slash-command prompt
             or content viewer
 ```
 
@@ -23,7 +23,7 @@ The minimum `Component` interface is `render(width, availableHeight?): string[]`
 
 ## Terminal lifecycle and rendering
 
-`ProcessTerminal.start()` requires TTY stdin/stdout, enables raw mode, bracketed paste, enhanced keyboard reporting, and a hidden cursor, then registers input and resize. Enhanced keyboard reporting lets supporting terminals distinguish `Shift+Enter` from `Enter`. Stopping restores the prior raw state, pauses stdin, shows the cursor, pops enhanced keyboard reporting, and disables bracketed paste. TUI shutdown clears the screen and scrollback, then prints exit information including accumulated tokens, API cost, and a resume command when available.
+`ProcessTerminal.start()` requires TTY stdin/stdout, enables raw mode, bracketed paste, enhanced keyboard reporting, and a hidden cursor, then registers input and resize. Enhanced keyboard reporting lets supporting terminals distinguish `Shift+Enter` from `Enter`. After the current session is visible, the external-tool loader appends a status block to the transcript and removes editor focus. The block follows MCP manager progress and remains as a final server/tool-count summary; the Agent is then rebuilt with discovered tools and the editor is restored. When an OAuth server needs browser authorization, a separate transcript block temporarily contains the authorization URL and is replaced in place by the final success or failure state, so a credential-bearing URL is not retained. Optional-server failures leave error-colored warnings after the summary, while a required-server failure during initial loading displays an error and keeps input disabled. The `kana resume` session picker sits before this loading boundary, so browsing or leaving the list never starts MCP. Applying a changed `/mcp` draft follows the same transcript-progress pattern, but a reload failure rebuilds the Agent without stale MCP tools and restores the editor so the user can retry. `KanaTuiApp.stop()` is an idempotent asynchronous boundary: it appends shutdown status to the transcript, removes focus from the bottom component, aborts and awaits the active Agent, then lets product cleanup close the MCP manager. Transport-neutral manager progress events update the same transcript block without replacing bottom. Only after cleanup does Kana stop the terminal, restore raw state, pause stdin, show the cursor, pop enhanced keyboard reporting, disable bracketed paste, clear the screen and scrollback, and print accumulated tokens, API cost, and a resume command when available. Idle exit and `SIGHUP`, `SIGINT`, and `SIGTERM` all use this path. A second raw-mode `Ctrl+C` during graceful shutdown restores the terminal first and then sends the process its default `SIGINT`. The first process signal likewise removes Kana's listeners so a second signal retains its default force-termination behavior.
 
 Normal `Tui.requestRender()` calls are coalesced into an approximately 16ms timer. Each render:
 
@@ -32,7 +32,7 @@ Normal `Tui.requestRender()` calls are coalesced into an approximately 16ms time
 3. Normalizes lines using ANSI and Unicode visible width.
 4. Repaints only changed lines when dimensions are stable and changes remain visible.
 5. Falls back to a full clear-and-repaint on width/height changes, shrinking output, changes above the viewport, or a forced refresh.
-6. Moves and shows the hardware cursor last while synchronized output is active.
+6. Moves and shows the hardware cursor only for the focused component while synchronized output is active; with no focus it leaves the cursor at the layout tail and hidden.
 
 It caches rendered lines and viewport state, avoiding repeated CJK width computation for unchanged transcript content. The TUI uses the main screen, never `?1049` alternate screen, so the transcript remains in terminal scrollback.
 
@@ -40,7 +40,7 @@ Rendering helpers strip ANSI/control sequences for width calculation and use `st
 
 ## App and Agent events
 
-`KanaTuiApp` owns the active Agent, session ID, running flag, accumulated model usage, and cost. On prompt submission it adds user text to the transcript, consumes `AgentEventStream`, and delegates visible mapping to `AgentEventRenderer`. Transcript inserts one plain blank row between every two blocks that render output, while each block owns only its internal spacing. Typed user messages use an ASCII frame, light-gray text, and a blue `> ` prefix. Explicit and soft-wrapped continuation lines align with the text. A due `schedule_wake` event is shown as `Scheduled wake: …` rather than typed user input; a running Agent, local shell, or memory compaction queues it until that operation completes. Its successful result is a compact tool block that shows the delay and reminder text:
+`KanaTuiApp` owns the active Agent, session ID, running flag, accumulated model usage, and cost. On prompt submission it adds user text to the transcript, consumes `AgentEventStream`, and delegates visible mapping to `AgentEventRenderer`. Transcript inserts one plain blank row between every two blocks that render output, while each block owns only its internal spacing. Typed user messages use an ASCII frame, light-gray text, and a blue `> ` prefix. Explicit and soft-wrapped continuation lines align with the text. A due `schedule_wake` event is shown as `Scheduled wake: …` rather than typed user input; a running Agent, local shell, memory compaction, open MCP manager, or MCP reload queues it until that state ends. Its successful result is a compact tool block that shows the delay and reminder text:
 
 | Agent event | TUI behavior |
 | --- | --- |
@@ -58,7 +58,7 @@ Global input runs before the focused component:
 
 | Input | Behavior |
 | --- | --- |
-| `Ctrl+C` | Cancel local shell, memory compaction, or Agent while running; exit while idle. |
+| `Ctrl+C` | Cancel local shell, memory compaction, or Agent while running; begin graceful exit while idle or loading external tools; press again during shutdown to force exit. |
 | `Esc` | Close the content viewer first; cancel active work when running. |
 | `Ctrl+O` | Open/close the newest expandable tool output. |
 | `!<command>` | Run local bash directly without Agent or approval, displayed in the same tool block style. |
@@ -74,6 +74,7 @@ The editor uses the same ASCII frame, light-gray text, and blue `> ` prefix as u
 | `/resume [id]` | Resume a session or open the picker. |
 | `/delete` | Select and confirm session deletion. |
 | `/skills` | Manage global Skill activation and rebuild the Agent system prompt. |
+| `/mcp` | Manage active MCP servers and reload them when the selection changes. |
 | `/memory` | Choose an action and scope in the bottom view; see [Sessions and memory](sessions-and-memory.en.md). |
 | `/usage` | Choose a scope in the bottom view, then open its API usage. |
 | `/quit` | Exit without arguments; with arguments it is a normal prompt. |
@@ -82,9 +83,10 @@ The editor uses the same ASCII frame, light-gray text, and blue `> ` prefix as u
 
 Separate controllers keep `KanaTuiApp` from owning every interaction state machine:
 
-- `ToolApprovalController` implements the Agent `beforeToolExecution` hook. Its choice prompt replaces the editor when the editor is visible. If another bottom view is active, the approval remains pending and the configured approval notification still fires; closing that view reveals the prompt. Denial aborts the run, while always allow adds only an exact bash command to the allowlist.
+- `ToolApprovalController` implements the Agent `beforeToolExecution` hook. Its choice prompt replaces the editor when the editor is visible. If another bottom view is active, the approval remains pending and the configured approval notification still fires; closing that view reveals the prompt. MCP tools use a product-level alias resolver to show the server ID, original remote tool name, and complete formatted arguments; long arguments reuse detail paging, and MCP approvals do not offer persistent trust. Denial aborts the run, while always allow adds only an exact bash command to the allowlist.
 - `SessionOverlayController` replaces the editor with the resume list or delete confirmation. New, resumed, and deleted sessions update transcript and focus.
-- `SkillManagerController` replaces the editor with the global Skill list. On save it aborts the prior Agent and constructs a new one with the same history, refreshing its prompt.
+- `SkillManagerController` replaces the editor with the global Skill list. `Enter` edits only a local draft; `Esc` applies it. A changed draft is persisted once and rebuilds the Agent once with the same history, while an unchanged draft just closes. Persistence errors keep the view open.
+- `McpServerManagerController` replaces the editor with configured MCP server checkboxes. `Enter` edits only a local draft. On a selected OAuth HTTP server, `A` opens an auth submenu for authorize, reauthorize, or sign-out; `Esc` cancels browser authorization while it is active. Authorization URLs and success, failure, or cancellation states are written to the transcript, and sign-out disables the server. Back in the list, the main `Esc` applies the draft. A selection change or credential change for an enabled server triggers exactly one full runtime reload. Persistence errors keep the view open. The component displays the server ID, transport, OAuth status, and either the full stdio command line (`command` plus `args`) or HTTP URL, but never receives environment values, HTTP headers, or tokens.
 - `SlashCommandOptionsController` collects slash-command options with cancellable multi-step prompts. `/usage` offers session, project, and global scopes; `/memory` selects an action and scope, then Compact uses a separate `TextPrompt` for the optional request. Options are not passed as editor arguments, and `Esc` returns to the previous nested step.
 - `ContentViewerController` replaces the bottom component with scrollable read-only content, including help, usage, memory, and tool output, while the transcript remains rendered. Closing it restores a waiting approval prompt first, otherwise the editor.
 - `LocalShellController` reuses bash Tool presentation but never requests approval.

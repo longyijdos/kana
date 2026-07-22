@@ -10,7 +10,9 @@ import {
   type ToolCallContent,
 } from "@/core";
 import type {
+  KanaMcpServerActivation,
   KanaNotificationConfig,
+  KanaOAuthTokenStatus,
   KanaSessionMetadata,
   KanaToolApprovalConfig,
   KanaToolApprovals,
@@ -22,6 +24,7 @@ import type {
 } from "@/kana";
 import { createWakeScheduler } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
+import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
 import {
   Editor,
   MarkdownBlock,
@@ -42,15 +45,18 @@ import {
   PROMPT_SHORTCUTS_TITLE,
   type PromptCommandName,
 } from "../components/editor/commands";
+import { stripTerminalControlSequences } from "../render";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
+import type { ToolApprovalSource } from "../tools";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
 import { ContentViewerController } from "./content-viewer-controller";
 import { addHistoryMessagesToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
+import { McpServerManagerController } from "./mcp-server-manager-controller";
 import {
   MemoryCompactController,
   type MemoryCompactSummary,
@@ -69,6 +75,11 @@ export type KanaTuiLoadedSession = {
   messages: Message[];
 };
 
+export type KanaTuiExternalToolsLoadResult = {
+  status?: string;
+  warnings?: readonly string[];
+};
+
 export type KanaTuiAppOptions = {
   sessionId?: string;
   initialMessages?: Message[];
@@ -85,6 +96,7 @@ export type KanaTuiAppOptions = {
   toolApproval: {
     config: KanaToolApprovalConfig;
     approvals: KanaToolApprovals;
+    resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
   };
   notification: KanaNotificationConfig;
   wakeScheduler?: WakeScheduler;
@@ -96,16 +108,36 @@ export type KanaTuiAppOptions = {
   ) => Promise<MemoryCompactSummary[]>;
   loadMemory: (target: Exclude<MemoryScope, "both">) => string;
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
+  loadExternalTools?: (
+    onProgress: (status: string) => void,
+  ) => Promise<KanaTuiExternalToolsLoadResult>;
+  mcpManagement?: {
+    loadServers: () => KanaMcpServerActivation[];
+    saveEnabledServerIds: (serverIds: string[]) => void;
+    authorizeServer?(
+      serverId: string,
+      onAuthorizationUrl: (url: string) => void,
+      signal: AbortSignal,
+    ): Promise<KanaOAuthTokenStatus>;
+    signOutServer?(serverId: string): Promise<KanaOAuthTokenStatus>;
+    reloadExternalTools: (
+      onProgress: (status: string) => void,
+    ) => Promise<KanaTuiExternalToolsLoadResult>;
+  };
+  onStop?: () => Promise<void> | void;
+  onForceStop?: () => void;
 };
 
 export class KanaTuiApp {
   private readonly tui: Tui;
   private readonly transcript = new Transcript();
   private readonly editor: Editor;
+  private readonly shutdownStatus = new TextBlock("", { color: tuiTheme.muted });
   private readonly layout: AppLayout;
   private readonly agentEvents: AgentEventRenderer;
   private readonly sessionOverlay: SessionOverlayController;
   private readonly skillManager: SkillManagerController;
+  private readonly mcpServerManager?: McpServerManagerController;
   private agent: Agent;
   private sessionId?: string;
   private running = false;
@@ -122,6 +154,17 @@ export class KanaTuiApp {
   private readonly unsubscribeWakeEvents: () => void;
   private readonly pendingWakeEvents: WakeEvent[] = [];
   private drainingWakeEvents = false;
+  private externalToolsLoaded: boolean;
+  private loadingExternalTools = false;
+  private externalToolsLoadPromise?: Promise<boolean>;
+  private externalToolsLoadingBlock?: TextBlock;
+  private readonly mcpOAuthBlocks = new Map<string, TextBlock>();
+  private stopping = false;
+  private stopPromise?: Promise<void>;
+  private resolveStopped!: () => void;
+  private readonly stoppedPromise = new Promise<void>((resolve) => {
+    this.resolveStopped = resolve;
+  });
 
   constructor(
     private readonly createAgent: (options: {
@@ -133,6 +176,7 @@ export class KanaTuiApp {
     private readonly options: KanaTuiAppOptions,
   ) {
     this.sessionId = options.sessionId;
+    this.externalToolsLoaded = options.loadExternalTools === undefined;
     this.getLogger = options.getLogger ?? createNoopLogger;
     this.wakeScheduler = options.wakeScheduler ?? createWakeScheduler();
     this.tui = new Tui(terminal);
@@ -159,7 +203,9 @@ export class KanaTuiApp {
       deleteSession: this.options.deleteSession,
       hasCurrentSession: () => this.sessionId !== undefined,
       onResume: (sessionId) => this.resumeSession(sessionId),
-      onStop: () => this.stop(),
+      onStop: () => {
+        void this.stop();
+      },
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
@@ -174,6 +220,27 @@ export class KanaTuiApp {
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
+    if (this.options.mcpManagement) {
+      this.mcpServerManager = new McpServerManagerController({
+        editor: this.editor,
+        layout: this.layout,
+        transcript: this.transcript,
+        tui: this.tui,
+        loadServers: this.options.mcpManagement.loadServers,
+        saveEnabledServerIds: this.options.mcpManagement.saveEnabledServerIds,
+        authorizeServer: this.options.mcpManagement.authorizeServer,
+        signOutServer: this.options.mcpManagement.signOutServer,
+        onClose: (changed) => {
+          if (changed) {
+            void this.reloadExternalTools();
+          } else {
+            void this.drainWakeEvents();
+          }
+        },
+        updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+        restoreBottom: (focus) => this.restoreBottom(focus),
+      });
+    }
     this.contentViewer = new ContentViewerController({
       layout: this.layout,
       transcript: this.transcript,
@@ -269,15 +336,92 @@ export class KanaTuiApp {
       return;
     }
 
-    if (this.options.initialPrompt) {
-      void this.submitPrompt(this.options.initialPrompt);
+    void this.activateCurrentSession(this.options.initialPrompt);
+  }
+
+  stop(): Promise<void> {
+    if (this.stopping) {
+      return this.stopPromise ?? this.stoppedPromise;
+    }
+
+    this.stopping = true;
+    this.stopPromise = this.stopInternal().finally(() => {
+      this.resolveStopped();
+    });
+    return this.stopPromise;
+  }
+
+  waitForStop(): Promise<void> {
+    return this.stoppedPromise;
+  }
+
+  showShutdownStatus(status: string): void {
+    if (!this.stopping) {
+      return;
+    }
+
+    this.shutdownStatus.setText(
+      this.options.onForceStop === undefined
+        ? status
+        : `${status}\nPress Ctrl+C again to force quit.`,
+    );
+    if (!this.transcript.children.includes(this.shutdownStatus)) {
+      this.transcript.addChild(this.shutdownStatus);
+    }
+    this.tui.setFocus(undefined);
+    this.tui.requestRender(true);
+  }
+
+  showMcpOAuthAuthorization(serverId: string, authorizationUrl: string): void {
+    const block = this.getMcpOAuthBlock(serverId);
+    block.setText(
+      [
+        `Authorizing MCP server ${sanitizeLabel(serverId)} in your browser.`,
+        "If the browser did not open, use this temporary URL:",
+        authorizationUrl,
+      ].join("\n"),
+    );
+    this.tui.requestRender(true);
+  }
+
+  handleMcpOAuthDiagnostic(serverId: string, diagnostic: McpOAuthHttpDiagnosticEvent): void {
+    const block = this.mcpOAuthBlocks.get(serverId);
+    if (block === undefined) {
+      return;
+    }
+    if (diagnostic.event === "oauth.authorization_succeeded") {
+      block.setText(`MCP OAuth authorized: ${sanitizeLabel(serverId)}.`);
+      this.tui.requestRender(true);
+    } else if (diagnostic.event === "oauth.authorization_failed") {
+      block.setText(
+        `MCP OAuth authorization failed: ${sanitizeLabel(serverId)}. See logs for details.`,
+      );
+      this.tui.requestRender(true);
     }
   }
 
-  stop(): void {
+  private getMcpOAuthBlock(serverId: string): TextBlock {
+    const existing = this.mcpOAuthBlocks.get(serverId);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const block = new TextBlock("", { color: tuiTheme.muted });
+    this.mcpOAuthBlocks.set(serverId, block);
+    this.transcript.addChild(block);
+    return block;
+  }
+
+  private async stopInternal(): Promise<void> {
     this.getLogger().info("tui.stopped");
+    const activeAgent = this.agent;
+    activeAgent.abort();
+    this.localShell.abort();
+    this.memoryCompact.abort();
+    this.mcpServerManager?.close();
     this.unsubscribeWakeEvents();
     this.wakeScheduler.dispose();
+    this.pendingWakeEvents.length = 0;
+    this.showShutdownStatus("Shutting down Kana...");
     const resumeSessionId = this.options.getResumeSessionId();
     const exitLines = [
       this.totalUsage
@@ -286,6 +430,21 @@ export class KanaTuiApp {
       this.totalCostCny > 0 ? formatExitLine("API cost", formatCny(this.totalCostCny)) : undefined,
       resumeSessionId ? formatExitLine("Resume", `kana resume ${resumeSessionId}`) : undefined,
     ].filter((line): line is string => Boolean(line));
+
+    // An MCP tools/call must observe Agent cancellation before its transport is
+    // closed. Otherwise shutdown can turn a normal abort into an unrelated
+    // connection error and leave the server uncertain about cancellation.
+    try {
+      await activeAgent.waitForIdle();
+    } catch (error) {
+      this.getLogger().error("tui.agent_shutdown_failed", { error });
+    }
+
+    try {
+      await this.options.onStop?.();
+    } catch (error) {
+      this.getLogger().error("tui.shutdown_failed", { error });
+    }
 
     exitLines.length > 0 ? this.tui.stop(exitLines.join("\r\n")) : this.tui.stop();
   }
@@ -317,7 +476,181 @@ export class KanaTuiApp {
     );
   }
 
+  private async activateCurrentSession(initialPrompt?: string): Promise<void> {
+    const ready = await this.loadExternalTools();
+
+    if (ready && initialPrompt && !this.stopping) {
+      await this.submitPrompt(initialPrompt);
+    }
+  }
+
+  private loadExternalTools(): Promise<boolean> {
+    if (this.externalToolsLoaded || this.options.loadExternalTools === undefined) {
+      return Promise.resolve(true);
+    }
+    if (this.externalToolsLoadPromise) {
+      return this.externalToolsLoadPromise;
+    }
+
+    this.loadingExternalTools = true;
+    const loadingBlock = new TextBlock("Starting external tools...", {
+      color: tuiTheme.muted,
+    });
+    this.externalToolsLoadingBlock = loadingBlock;
+    this.transcript.addChild(loadingBlock);
+    this.updateStatus("starting");
+    this.tui.setFocus(undefined);
+    this.tui.requestRender(true);
+
+    this.externalToolsLoadPromise = this.options
+      .loadExternalTools((status) => {
+        if (this.stopping || this.externalToolsLoadingBlock !== loadingBlock) {
+          return;
+        }
+
+        loadingBlock.setText(status);
+        this.tui.requestRender();
+      })
+      .then((result) => {
+        if (this.stopping) {
+          return false;
+        }
+
+        this.externalToolsLoaded = true;
+        this.loadingExternalTools = false;
+        this.externalToolsLoadingBlock = undefined;
+        if (result.status === undefined) {
+          this.transcript.removeChild(loadingBlock);
+        } else {
+          loadingBlock.setText(result.status);
+        }
+        for (const warning of result.warnings ?? []) {
+          this.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
+        }
+
+        this.recreateAgentForExternalTools();
+        this.updateStatus("idle", { activeTool: undefined });
+        this.tui.setFocus(this.editor);
+        this.tui.requestRender(true);
+        void this.drainWakeEvents();
+        return true;
+      })
+      .catch((error) => {
+        if (!this.stopping) {
+          this.loadingExternalTools = false;
+          this.externalToolsLoadingBlock = undefined;
+          this.transcript.removeChild(loadingBlock);
+          this.transcript.addChild(
+            new TextBlock(
+              `Failed to load external tools: ${error instanceof Error ? error.message : String(error)}\nPress Ctrl+C to exit.`,
+              { color: tuiTheme.error },
+            ),
+          );
+          this.updateStatus("error", { activeTool: undefined });
+          this.tui.requestRender(true);
+        }
+        return false;
+      });
+
+    return this.externalToolsLoadPromise;
+  }
+
+  private async reloadExternalTools(): Promise<void> {
+    const management = this.options.mcpManagement;
+    if (!management || this.stopping || this.loadingExternalTools) {
+      return;
+    }
+
+    this.loadingExternalTools = true;
+    const loadingBlock = new TextBlock("Reloading MCP servers...", {
+      color: tuiTheme.muted,
+    });
+    this.externalToolsLoadingBlock = loadingBlock;
+    this.transcript.addChild(loadingBlock);
+    this.updateStatus("starting", { activeTool: undefined });
+    this.tui.setFocus(undefined);
+    this.tui.requestRender(true);
+
+    try {
+      const result = await management.reloadExternalTools((status) => {
+        if (this.stopping || this.externalToolsLoadingBlock !== loadingBlock) {
+          return;
+        }
+
+        loadingBlock.setText(status);
+        this.tui.requestRender();
+      });
+      if (this.stopping) {
+        return;
+      }
+
+      this.externalToolsLoadingBlock = undefined;
+      if (result.status === undefined) {
+        this.transcript.removeChild(loadingBlock);
+      } else {
+        loadingBlock.setText(result.status);
+      }
+      for (const warning of result.warnings ?? []) {
+        this.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
+      }
+
+      this.recreateAgentForExternalTools();
+      this.updateStatus("idle", { activeTool: undefined });
+      this.tui.setFocus(this.editor);
+      this.tui.requestRender(true);
+    } catch (error) {
+      if (this.stopping) {
+        return;
+      }
+
+      this.externalToolsLoadingBlock = undefined;
+      this.transcript.removeChild(loadingBlock);
+      this.transcript.addChild(
+        new TextBlock(
+          `Failed to reload MCP servers: ${error instanceof Error ? error.message : String(error)}`,
+          { color: tuiTheme.error },
+        ),
+      );
+      // Runtime failure clears its tool set. Recreate the idle Agent so it
+      // cannot keep calling tools backed by the manager that was just closed.
+      this.recreateAgentForExternalTools();
+      this.updateStatus("error", { activeTool: undefined });
+      this.tui.setFocus(this.editor);
+      this.tui.requestRender(true);
+    } finally {
+      this.loadingExternalTools = false;
+      if (!this.stopping) {
+        void this.drainWakeEvents();
+      }
+    }
+  }
+
+  private recreateAgentForExternalTools(): void {
+    // The editor is unfocused before initial load or reload begins, and the
+    // MCP manager menu cannot open during a run, so replacement is race-free.
+    const messages = this.agent.state.messages;
+    this.agent.abort();
+    this.agent = this.createAgentForCurrentSession(messages);
+    this.agentEvents.resetRun();
+    this.updateContextUsageFromMessages(messages);
+  }
+
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {
+    if (this.stopping) {
+      if (isCtrlC(data)) {
+        this.getLogger().warn("tui.force_stop_requested");
+        this.options.onForceStop?.();
+      }
+      return { consume: true };
+    }
+
+    if (this.loadingExternalTools) {
+      if (isCtrlC(data)) {
+        void this.stop();
+      }
+      return { consume: true };
+    }
+
     if (isCtrlO(data)) {
       return this.contentViewer.toggleLatest() ? { consume: true } : undefined;
     }
@@ -333,8 +666,8 @@ export class KanaTuiApp {
         return { consume: true };
       }
 
-      this.stop();
-      process.exit(0);
+      void this.stop();
+      return { consume: true };
     }
 
     if (isEscape(data) && this.running) {
@@ -375,8 +708,7 @@ export class KanaTuiApp {
           return;
         }
 
-        this.stop();
-        process.exit(0);
+        void this.stop();
         break;
       case "help":
         if (command.arguments) {
@@ -394,6 +726,7 @@ export class KanaTuiApp {
 
         this.contentViewer.close();
         this.transcript.clear();
+        this.mcpOAuthBlocks.clear();
         this.editor.clear();
         this.tui.requestRender(true);
         break;
@@ -441,6 +774,15 @@ export class KanaTuiApp {
 
         this.editor.clear();
         this.openSkillManager();
+        break;
+      case "mcp":
+        if (command.arguments) {
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
+          return;
+        }
+
+        this.editor.clear();
+        this.openMcpServerManager();
         break;
       case "memory":
         if (command.arguments.trim()) {
@@ -526,6 +868,7 @@ export class KanaTuiApp {
     this.agent = this.createAgentForCurrentSession();
     this.agentEvents.resetRun();
     this.transcript.clear();
+    this.mcpOAuthBlocks.clear();
     this.editor.clear();
     this.initializeTranscript([]);
     this.updateContextUsageFromMessages([]);
@@ -597,6 +940,21 @@ export class KanaTuiApp {
     this.skillManager.open();
   }
 
+  private openMcpServerManager(): void {
+    if (this.running) {
+      return;
+    }
+    if (!this.mcpServerManager) {
+      this.showError(new Error("MCP management is unavailable."));
+      return;
+    }
+
+    this.closeSessionOverlay();
+    this.contentViewer.close();
+    this.skillManager.close();
+    this.mcpServerManager.open();
+  }
+
   private resumeSession(sessionId: string): void {
     if (this.running) {
       return;
@@ -622,6 +980,7 @@ export class KanaTuiApp {
     this.agent = this.createAgentForCurrentSession();
     this.agentEvents.resetRun();
     this.transcript.clear();
+    this.mcpOAuthBlocks.clear();
     this.editor.clear();
     this.initializeTranscript(session.messages);
     this.updateContextUsageFromMessages(session.messages);
@@ -630,6 +989,7 @@ export class KanaTuiApp {
     });
     this.tui.setFocus(this.editor);
     this.tui.requestRender(true);
+    void this.activateCurrentSession();
   }
 
   private showError(error: unknown): void {
@@ -670,6 +1030,10 @@ export class KanaTuiApp {
     source: "user" | "scheduled",
     displayContent = input.content,
   ): Promise<void> {
+    if (this.stopping || this.loadingExternalTools) {
+      return;
+    }
+
     this.transcript.addChild(
       source === "user"
         ? new UserMessageBlock(displayContent)
@@ -705,7 +1069,7 @@ export class KanaTuiApp {
   }
 
   private queueWakeEvent(event: WakeEvent): void {
-    if (event.sessionId !== this.sessionId) {
+    if (this.stopping || event.sessionId !== this.sessionId) {
       return;
     }
 
@@ -714,13 +1078,24 @@ export class KanaTuiApp {
   }
 
   private async drainWakeEvents(): Promise<void> {
-    if (this.drainingWakeEvents || this.running) {
+    if (
+      this.stopping ||
+      this.loadingExternalTools ||
+      this.mcpServerManager?.active ||
+      this.drainingWakeEvents ||
+      this.running
+    ) {
       return;
     }
 
     this.drainingWakeEvents = true;
     try {
-      while (!this.running) {
+      while (
+        !this.stopping &&
+        !this.loadingExternalTools &&
+        !this.mcpServerManager?.active &&
+        !this.running
+      ) {
         const event = this.pendingWakeEvents.shift();
         if (!event) {
           return;
@@ -755,7 +1130,7 @@ export class KanaTuiApp {
   private async submitShellCommand(command: string): Promise<void> {
     const shellCommand = command.trim();
 
-    if (!shellCommand || this.running) {
+    if (!shellCommand || this.running || this.loadingExternalTools) {
       return;
     }
 
@@ -823,6 +1198,10 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
+}
+
+function sanitizeLabel(value: string): string {
+  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }
 
 function formatCny(amount: number): string {

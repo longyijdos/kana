@@ -20,6 +20,11 @@ function getValidator(schema: TSchema): ReturnType<typeof Compile> {
   return validator;
 }
 
+export function precompileToolParameters<T extends TSchema>(schema: T): T {
+  getValidator(schema);
+  return schema;
+}
+
 function formatValidationPath(error: TLocalizedValidationError): string {
   if (error.keyword === "required") {
     const requiredProperty = error.params.requiredProperties[0];

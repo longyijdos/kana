@@ -53,6 +53,42 @@ describe("tool approval", () => {
     expect(rendered).toContain("  Deny");
   });
 
+  test("renders MCP provenance and complete formatted arguments", () => {
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "github_create_issue",
+        args: {
+          owner: "kana",
+          issue: { title: "Fix startup", labels: ["bug"] },
+        },
+      },
+      () => {},
+      {
+        source: {
+          kind: "mcp",
+          serverId: "github",
+          remoteToolName: "create_issue",
+        },
+      },
+    );
+
+    const rendered = approval.render(80).map(stripAnsi);
+    const detail = rendered.join("\n");
+
+    expect(rendered).toContain("Allow MCP tool?");
+    expect(rendered).toContain("Server: github");
+    expect(rendered).toContain("Tool: create_issue");
+    expect(rendered).toContain("Arguments:");
+    expect(detail).toContain('"owner": "kana"');
+    expect(detail).toContain('"title": "Fix startup"');
+    expect(detail).toContain('"labels": [');
+    expect(rendered).toContain("> Allow once");
+    expect(rendered).not.toContain("  Always allow this command");
+    expect(rendered).toContain("  Deny");
+  });
+
   test("distinguishes write overwrite approvals from new file writes", () => {
     const approval = new ToolApproval(
       {

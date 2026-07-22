@@ -5,7 +5,7 @@ import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
 const SKILL_MANAGER_VISIBLE_LIMIT = 10;
-const SKILL_MANAGER_RESERVED_ROWS = 4;
+const SKILL_MANAGER_RESERVED_ROWS = 5;
 
 export type SkillManagerItem = {
   name: string;
@@ -15,19 +15,16 @@ export type SkillManagerItem = {
   mutable: boolean;
 };
 
-export type SkillManagerDecision =
-  | {
-      type: "close";
-    }
-  | {
-      type: "toggle";
-      item: SkillManagerItem;
-      enabled: boolean;
-    };
+export type SkillManagerDecision = {
+  type: "apply";
+  enabledGlobalSkillNames: string[];
+  changed: boolean;
+};
 
 export class SkillManager implements Component {
   private readonly viewport: ListViewport;
   private readonly maximumVisibleSkills: number;
+  private readonly initialEnabledGlobalSkillNames: Set<string>;
 
   constructor(
     private readonly skills: SkillManagerItem[],
@@ -36,11 +33,23 @@ export class SkillManager implements Component {
   ) {
     this.maximumVisibleSkills = visibleLimit;
     this.viewport = new ListViewport(this.maximumVisibleSkills);
+    this.initialEnabledGlobalSkillNames = new Set(
+      skills
+        .filter((skill) => skill.scope === "global" && skill.enabled)
+        .map((skill) => skill.name),
+    );
   }
 
   handleInput(data: string): void {
     if (isEscape(data)) {
-      this.finish({ type: "close" });
+      const enabledGlobalSkillNames = this.skills
+        .filter((skill) => skill.scope === "global" && skill.enabled)
+        .map((skill) => skill.name);
+      this.finish({
+        type: "apply",
+        enabledGlobalSkillNames,
+        changed: !setsEqual(this.initialEnabledGlobalSkillNames, new Set(enabledGlobalSkillNames)),
+      });
       return;
     }
 
@@ -63,7 +72,7 @@ export class SkillManager implements Component {
     const lines = [color("Skills", tuiTheme.bottomTitle)];
 
     if (this.skills.length === 0) {
-      lines.push(dim("No skills found for this workspace."));
+      lines.push(dim("No skills found for this workspace."), dim("Esc close"));
       return lines;
     }
 
@@ -104,6 +113,7 @@ export class SkillManager implements Component {
       lines.push(dim(`... ${viewport.hiddenAfter} more skills`));
     }
 
+    lines.push(dim("Enter toggle · Esc apply and close"));
     return lines;
   }
 
@@ -115,11 +125,6 @@ export class SkillManager implements Component {
     }
 
     skill.enabled = !skill.enabled;
-    this.finish({
-      type: "toggle",
-      item: skill,
-      enabled: skill.enabled,
-    });
   }
 
   private move(delta: number): void {
@@ -129,4 +134,8 @@ export class SkillManager implements Component {
 
 function formatDescription(description: string): string {
   return description.trim().replace(/\s+/g, " ");
+}
+
+function setsEqual(first: ReadonlySet<string>, second: ReadonlySet<string>): boolean {
+  return first.size === second.size && [...first].every((value) => second.has(value));
 }

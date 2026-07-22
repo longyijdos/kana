@@ -619,6 +619,42 @@ describe("tui transcript", () => {
     expect(output).not.toContain('"totalEntries"');
   });
 
+  test("keeps failed MCP tool results on the generic renderer", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_mcp",
+      name: "filesystem_read_file",
+      args: {
+        path: "notes.txt",
+      },
+    });
+
+    block.updateResult(
+      {
+        source: "mcp",
+        serverId: "filesystem",
+        remoteToolName: "read_file",
+        content: [
+          {
+            type: "text",
+            text: "permission denied",
+            truncated: false,
+          },
+        ],
+        omittedContentItems: 0,
+        contentTruncated: false,
+      },
+      true,
+    );
+
+    const output = block.render(100).map(stripAnsi).join("\n");
+
+    expect(output).toContain("◆ Failed to use filesystem_read_file");
+    expect(output).toContain('"source": "mcp"');
+    expect(output).toContain('"remoteToolName": "read_file"');
+    expect(output).toContain('"text": "permission denied"');
+  });
+
   test("renders edit tool results as red and green diff lines", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

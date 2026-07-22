@@ -1,13 +1,14 @@
 import type { ToolCallContent } from "@/core";
 import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
-import { formatToolApproval, highlightOverwriteMarker } from "../tools";
+import { formatToolApproval, highlightOverwriteMarker, type ToolApprovalSource } from "../tools";
 import { ChoicePrompt } from "./choice-prompt";
 
 export type ToolApprovalDecision = "yes" | "always" | "no";
 
 export type ToolApprovalOptions = {
   allowAlways?: boolean;
+  source?: ToolApprovalSource;
 };
 
 export class ToolApproval implements Component {
@@ -18,7 +19,7 @@ export class ToolApproval implements Component {
     onDecision: (decision: ToolApprovalDecision) => void,
     options: ToolApprovalOptions = {},
   ) {
-    const text = formatToolApproval(toolCall);
+    const text = formatToolApproval(toolCall, options.source);
 
     this.prompt = new ChoicePrompt({
       title: text.title,

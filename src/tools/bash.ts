@@ -144,6 +144,9 @@ async function runCommand(
   try {
     const proc = Bun.spawn([shell, "-lc", `${NON_INTERACTIVE_COMMAND_PREFIX}${command}`], {
       cwd,
+      // Bun's implicit child environment does not include variables added to
+      // process.env after startup, including values loaded from KANA_HOME/.env.
+      env: process.env,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",

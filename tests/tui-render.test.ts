@@ -214,8 +214,10 @@ describe("tui main-screen renderer", () => {
   test("positions and shows the hardware cursor", async () => {
     const terminal = new FakeTerminal();
     const tui = new Tui(terminal);
+    const lines = new MutableLines([`ab${CURSOR_MARKER}cd`]);
 
-    tui.addChild(new MutableLines([`ab${CURSOR_MARKER}cd`]));
+    tui.addChild(lines);
+    tui.setFocus(lines);
     tui.start();
     await Promise.resolve();
 
@@ -230,6 +232,7 @@ describe("tui main-screen renderer", () => {
     const lines = new MutableLines([`>${CURSOR_MARKER}`, "status"]);
 
     tui.addChild(lines);
+    tui.setFocus(lines);
     tui.start();
     await Promise.resolve();
 

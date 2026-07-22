@@ -104,6 +104,16 @@ type ToolContext = {
 };
 ```
 
+## MCP tool management and adaptation
+
+At TUI startup, Kana reads server definitions from `mcp.json` and selected IDs from `mcp-enabled.json`, but starts the stdio manager only after the current session is visible. Only IDs present in both files receive registrations. Kana then injects discovered remote tools as `additionalTools` into a rebuilt main Agent. The `kana resume` session picker does not start MCP early; later Agent recreation for `/new`, `/fork`, `/resume`, and Skill refresh reuses the current active tool set. `/mcp` can explicitly replace that set and rebuild the idle Agent while preserving its messages. Memory-consolidation Agents bypass this factory and therefore never receive MCP tools. The manager retains an exposed-alias-to-server/original-name source map that product composition resolves only for approval presentation. `McpManager` still requires only `connect/listTools/callTool/close`, while the adapter requires only an `McpToolCaller`, so the stable stdio client and future stateless, Streamable HTTP, or SSE clients continue to share the management, progress, and tool boundaries.
+
+The product-facing `KanaMcpRuntime` owns manager replacement and serializes lifecycle operations. A reload closes the old manager before reading the latest files and creating a new one; stale tools and approval provenance are cleared even when the replacement fails. The TUI invokes start after session selection, reload after an edited `/mcp` draft is applied, and close during shutdown. Reload failure rebuilds the Agent without stale MCP tools and restores input, keeping the low-level manager deliberately one-shot.
+
+The manager starts servers concurrently and aggregates the initial tool list in configuration order. Include/exclude filters match original remote names; optional failures disable only that server, while a required failure aborts startup. A remote plain JSON Schema is precompiled with the TypeBox compiler before registration, and every server's tools are adapted atomically rather than leaving a silently partial set. The model sees a readable alias made from the server ID and remote tool name, such as `github_create_issue`. The alias follows the current provider's character requirements and stays within 64 characters; internal calls continue to use the original MCP tool name. The manager explicitly rejects remote duplicates, post-sanitization or truncation collisions, and local-tool conflicts instead of silently overwriting them or appending load-order suffixes.
+
+MCP results are never persisted verbatim. The adapter separately bounds content items, text, structured JSON, and metadata. Text and embedded text resources become model text; resource links describe URI and MIME without being fetched; image, audio, and blob blocks discard base64 and retain only MIME and estimated byte counts; unknown content retains only its type name. `structuredContent` remains structured within the limit and becomes a truncated preview when oversized. Remote progress is emitted through `context.update`; MCP `isError` becomes a tool execution error, while a JSON-RPC error preserves protocol code and message details.
+
 ## Built-in tools
 
 | Tool | Parameters | Behavior and result |

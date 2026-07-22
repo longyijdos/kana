@@ -22,7 +22,7 @@ export type CreateCliOptions = {
     options: { force?: boolean; targetAgent?: string; targetDir?: string },
   ) => SyncKanaSkillsResult;
   log?: (message: string) => void;
-  startTui: (options?: StartTuiOptions) => void;
+  startTui: (options?: StartTuiOptions) => Promise<void> | void;
 };
 
 export function createCli(options: CreateCliOptions): Command {
@@ -38,23 +38,23 @@ export function createCli(options: CreateCliOptions): Command {
     .description("Personal TypeScript/Bun agent runtime")
     .version(KANA_VERSION)
     .argument("[prompt...]", "Prompt to send after opening the TUI")
-    .action((promptParts: string[] = []) => {
+    .action(async (promptParts: string[] = []) => {
       const prompt = promptParts.join(" ").trim();
 
       if (prompt) {
-        runTui({ initialPrompt: prompt });
+        await runTui({ initialPrompt: prompt });
         return;
       }
 
-      runTui();
+      await runTui();
     });
 
   program
     .command("resume")
     .description("Resume a saved agent session")
     .argument("[sessionId]", "Session id to resume")
-    .action((sessionId: string | undefined) => {
-      runTui({
+    .action(async (sessionId: string | undefined) => {
+      await runTui({
         resumeSessionId: sessionId,
         showResumePicker: sessionId === undefined,
       });
@@ -70,6 +70,14 @@ export function createCli(options: CreateCliOptions): Command {
         force: options.force,
       });
       log(formatInstallMessage("config", result.configPath, result.configStatus));
+      log(formatInstallMessage("MCP config", result.mcpConfigPath, result.mcpConfigStatus));
+      log(
+        formatInstallMessage(
+          "MCP activation state",
+          result.mcpEnabledPath,
+          result.mcpEnabledStatus,
+        ),
+      );
       log(formatInstallMessage("approvals", result.approvalsPath, result.approvalsStatus));
       log(
         formatInstallMessage("skills config", result.skillsConfigPath, result.skillsConfigStatus),

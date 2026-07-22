@@ -10,7 +10,11 @@ export {
   loadKanaUsageSummary,
   recordKanaAgentRunAccounting,
 } from "./accounting";
-export { createKanaAgent } from "./agent";
+export {
+  createKanaAgent,
+  KANA_BUILT_IN_TOOL_NAMES,
+  type KanaAgentOptions,
+} from "./agent";
 export {
   DEFAULT_KANA_CONFIG,
   getKanaConfigPaths,
@@ -40,6 +44,45 @@ export {
   type KanaEnvironmentContext,
 } from "./context";
 export { loadKanaEnvironment } from "./env";
+export { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./mcp";
+export {
+  DEFAULT_KANA_MCP_ACTIVATION_STATE,
+  type KanaMcpActivationState,
+  type KanaMcpServerActivation,
+  loadKanaMcpActivationState,
+  loadKanaMcpServerActivations,
+  parseKanaMcpActivationState,
+  saveKanaMcpActivationState,
+} from "./mcp-activation";
+export {
+  DEFAULT_KANA_MCP_CONFIG,
+  KANA_MCP_SERVER_TYPES,
+  type KanaMcpConfig,
+  type KanaMcpHttpServerConfig,
+  type KanaMcpOAuth2Config,
+  type KanaMcpServerConfig,
+  type KanaMcpServerType,
+  type KanaMcpStdioServerConfig,
+  loadKanaMcpConfig,
+  parseKanaMcpConfig,
+  resolveKanaMcpOAuth2Client,
+} from "./mcp-config";
+export {
+  authorizeKanaMcpServer,
+  type CreateKanaMcpOAuthAuthorizerOptions,
+  createKanaMcpOAuthAuthorizer,
+  createKanaMcpOAuthStorageKey,
+  type RunKanaMcpOAuthOptions,
+  signOutKanaMcpServer,
+} from "./mcp-oauth";
+export {
+  type CreateKanaMcpRuntimeOptions,
+  createKanaMcpRuntime,
+  KanaMcpRuntime,
+  type KanaMcpRuntimeOperation,
+  type KanaMcpRuntimeProgressEvent,
+  type KanaMcpRuntimeSnapshot,
+} from "./mcp-runtime";
 export {
   type AppendKanaMemoryOptions,
   appendKanaMemory,
@@ -79,6 +122,17 @@ export {
   saveKanaMemory,
   searchKanaDailyMemory,
 } from "./memory";
+export {
+  type OpenKanaOAuthAuthorizationUrlOptions,
+  openKanaOAuthAuthorizationUrl,
+} from "./oauth-browser";
+export {
+  type CreateKanaOAuthTokenStoreOptions,
+  createKanaOAuthTokenStore,
+  type KanaOAuthTokenStatus,
+  type LoadKanaOAuthTokenStatusesOptions,
+  loadKanaOAuthTokenStatuses,
+} from "./oauth-token-store";
 export { getKanaSessionLogPath, type KanaLogPathOptions } from "./path";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {

@@ -5,6 +5,7 @@ export {
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
   highlightOverwriteMarker,
+  type ToolApprovalSource,
   type ToolOutputDetail,
   type ToolState,
   type ToolTranscriptTitle,
