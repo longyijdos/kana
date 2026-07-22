@@ -84,16 +84,18 @@ describe("Kana MCP composition", () => {
     });
   });
 
-  test("resolves \x24{VAR} placeholders in configured env values", async () => {
+  test("resolves configured env placeholders and defaults", async () => {
     const manager = createManager(
       {
         fixture: createServerConfig({
           args: [fixturePath],
           env: {
             KANA_TEST_MCP_SCENARIO: "inspect-environment",
-            SUBSTITUTED_VAR: "\x24{PARENT_VAR}",
-            UNRESOLVED_VAR: "\x24{MISSING_VAR}",
-            MULTI_SUB_VAR: "prefix_\x24{PARENT_VAR}_suffix",
+            SUBSTITUTED_VAR: `\${PARENT_VAR}`,
+            MULTI_SUB_VAR: `prefix_\${PARENT_VAR}_suffix`,
+            DEFAULTED_VAR: `\${MISSING_VAR:-fallback-value}`,
+            EMPTY_DEFAULTED_VAR: `\${EMPTY_PARENT_VAR:-empty-fallback}`,
+            EMPTY_PRESERVED_VAR: `\${EMPTY_PARENT_VAR}`,
           },
           includeTools: ["echo"],
         }),
@@ -102,6 +104,7 @@ describe("Kana MCP composition", () => {
         HOME: "/safe-home",
         PATH: process.env.PATH,
         PARENT_VAR: "resolved-value",
+        EMPTY_PARENT_VAR: "",
       },
     );
 
@@ -114,9 +117,47 @@ describe("Kana MCP composition", () => {
       structuredContent: {
         env: {
           SUBSTITUTED_VAR: "resolved-value",
-          UNRESOLVED_VAR: "",
           MULTI_SUB_VAR: "prefix_resolved-value_suffix",
+          DEFAULTED_VAR: "fallback-value",
+          EMPTY_DEFAULTED_VAR: "empty-fallback",
+          EMPTY_PRESERVED_VAR: "",
         },
+      },
+    });
+  });
+
+  test("fails only an optional stdio server with an unresolved env placeholder", async () => {
+    const logs: Array<{ level: string; event: string; metadata?: LogMetadata }> = [];
+    const manager = createManager(
+      {
+        fixture: createServerConfig({
+          env: { REQUIRED_SECRET: `\${MISSING_SECRET}` },
+        }),
+      },
+      {},
+      createCapturingLogger(logs),
+    );
+    const message =
+      "MCP stdio server fixture env.REQUIRED_SECRET references missing environment variable MISSING_SECRET.";
+
+    await expect(manager.start()).resolves.toEqual([]);
+
+    expect(manager.diagnostics).toEqual([
+      {
+        id: "fixture",
+        required: false,
+        status: "failed",
+        discoveredToolCount: 0,
+        toolCount: 0,
+        error: { name: "Error", message },
+      },
+    ]);
+    expect(logs).toContainEqual({
+      level: "warn",
+      event: "mcp.server_start_failed",
+      metadata: {
+        serverId: "fixture",
+        error: expect.objectContaining({ message }),
       },
     });
   });

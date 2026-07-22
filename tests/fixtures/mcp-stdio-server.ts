@@ -141,8 +141,10 @@ async function handleMessage(message: RpcMessage): Promise<void> {
               "ALLOWED_SECRET",
               "BLOCKED_SECRET",
               "SUBSTITUTED_VAR",
-              "UNRESOLVED_VAR",
               "MULTI_SUB_VAR",
+              "DEFAULTED_VAR",
+              "EMPTY_DEFAULTED_VAR",
+              "EMPTY_PRESERVED_VAR",
             ]),
           }
         : (asRecord(args) ?? {});

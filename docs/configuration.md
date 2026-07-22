@@ -187,7 +187,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `command` | stdio 必填 | 可执行文件的绝对路径或通过 `PATH` 查找的名称。直接以参数数组启动，不经过 shell。 |
 | `args` | stdio: `[]` | 传给 stdio 可执行文件的参数数组。 |
 | `cwd` | stdio: Kana 当前工作目录 | 子进程工作目录；相对路径由运行 Kana 的当前目录解析。 |
-| `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。配置值中的 `${VAR_NAME}` 会替换为当前进程的同名环境变量值，未找到时替换为空字符串。配置值覆盖同名基础环境变量。 |
+| `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。`${VAR_NAME}` 从当前进程展开，缺失时该 server 启动失败；`${VAR_NAME:-default}` 在变量缺失或为空时使用默认值。配置值覆盖同名基础环境变量。 |
 | `url` | HTTP 必填 | Streamable HTTP 单端点 URL；必须为绝对 `http`/`https` URL，不能包含 credentials 或 fragment。 |
 | `proxy` | HTTP: 未设置 | 绝对 `http`/`https` 代理 URL 表示仅该 server 使用指定代理；`false` 表示忽略进程级代理并强制直连。URL 不能包含 credentials 或 fragment。 |
 | `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
@@ -198,7 +198,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `includeTools` | 未设置 | 按远端原名选择允许暴露的工具。空数组表示不暴露任何工具。 |
 | `excludeTools` | 未设置 | 按远端原名排除工具；同时出现在 include/exclude 时以排除为准。 |
 
-stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并 `env`。不会继承其他进程环境变量。环境变量名必须符合常规格式，值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
+stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并展开后的 `env`。占位符只从 Kana 进程环境读取，因此也能使用 `<KANA_HOME>/.env` 已加载的值，但不会让子进程继承其他未显式配置的变量。`${VAR:-default}` 遵循 shell 的 `:-` 语义：变量未设置或值为空时使用默认值；默认值不递归展开。没有默认值的占位符若无法解析，该 server 会以包含 server ID、env key 和变量名的错误启动失败；可选 server 不影响其他 MCP 或 editor，错误会出现在 transcript 和诊断日志中，且不会记录 secret 值。环境变量名必须符合常规格式，配置值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
 
 HTTP server 将 `proxy` 设置为 URL 后，其 MCP initialize、工具请求、SSE 恢复、session DELETE、OAuth metadata discovery、token 获取和 refresh 都通过该代理；设置为 `false` 后，同一范围的请求会绕过进程级代理并直连。直连封装只在调用 Bun `fetch` 的同步区间把当前目标主机加入进程内 `NO_PROXY`/`no_proxy`，随即恢复两个变量的原始值；不会永久修改 Kana 进程环境，也不会改变随后启动的其他 MCP 请求，它们仍使用各自的显式代理或原有全局代理。省略 `proxy` 时使用 Bun 的默认 `fetch` 路由，因此继续遵守当前 shell 或 `<KANA_HOME>/.env` 注入的 `HTTP_PROXY`/`HTTPS_PROXY`。系统浏览器中的 OAuth 授权页面不经过 Kana 的 `fetch`，仍使用浏览器自身的网络设置。诊断日志只记录该 server 使用显式代理或绕过代理，不记录代理 URL。
 

@@ -35,6 +35,7 @@ const BASE_ENVIRONMENT_NAMES = [
   "LC_CTYPE",
 ] as const;
 const MAX_LOGGED_STDERR_CHARS = 16_000;
+const ENVIRONMENT_PLACEHOLDER_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?\}/g;
 
 export type CreateKanaMcpManagerOptions = {
   enabledServerIds: Iterable<string>;
@@ -220,13 +221,14 @@ function createTransport(
       command: config.command,
       args: config.args,
       ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
-      env: createChildEnvironment(context.env, config.env),
+      env: createChildEnvironment(serverId, context.env, config.env),
       onStderr: createStderrLogger(serverId, context.getLogger),
     }),
   };
 }
 
 function createChildEnvironment(
+  serverId: string,
   env: NodeJS.ProcessEnv,
   configured: Readonly<Record<string, string>>,
 ): Record<string, string> {
@@ -241,9 +243,23 @@ function createChildEnvironment(
 
   const resolved: Record<string, string> = {};
   for (const [key, value] of Object.entries(configured)) {
-    resolved[key] = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, varName) => {
-      return env[varName] ?? "";
-    });
+    resolved[key] = value.replace(
+      ENVIRONMENT_PLACEHOLDER_PATTERN,
+      (_placeholder, varName: string, fallback: string | undefined) => {
+        const inherited = env[varName];
+        // Follow shell `:-` semantics: a fallback applies when the inherited
+        // variable is either unset or present with an empty value.
+        if (inherited !== undefined && (fallback === undefined || inherited !== "")) {
+          return inherited;
+        }
+        if (fallback !== undefined) {
+          return fallback;
+        }
+        throw new Error(
+          `MCP stdio server ${serverId} env.${key} references missing environment variable ${varName}.`,
+        );
+      },
+    );
   }
 
   return {
