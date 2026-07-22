@@ -70,10 +70,11 @@ describe("choice prompt", () => {
     expect(firstPage).toContain("detail line 1");
     expect(firstPage).not.toContain("detail line 5");
     expect(firstPage).toContain("... 6 detail lines below");
+    expect(firstPage).toContain("Left/Right page detail");
     expect(firstPage).toContain("> Allow once");
     expect(firstPage).toContain("  Deny");
 
-    prompt.handleInput("\x1b[6~");
+    prompt.handleInput("\x1b[C");
 
     const secondPage = prompt.render(40, 10).map(stripAnsi);
 
@@ -81,9 +82,15 @@ describe("choice prompt", () => {
     expect(secondPage).toContain("detail line 5");
     expect(secondPage).not.toContain("detail line 1");
     expect(secondPage).toContain("> Allow once");
+
+    prompt.handleInput("\x1b[D");
+    expect(prompt.render(40, 10).map(stripAnsi)).toContain("detail line 1");
+
+    prompt.handleInput("\x1b[6~");
+    expect(prompt.render(40, 10).map(stripAnsi)).toContain("detail line 5");
   });
 
-  test("selects with arrow keys and submits with enter", () => {
+  test("selects with up and down without using left and right", () => {
     let selected: string | undefined;
     const prompt = new ChoicePrompt({
       title: "Delete session?",
@@ -97,6 +104,7 @@ describe("choice prompt", () => {
       },
     });
 
+    prompt.handleInput("\x1b[C");
     prompt.handleInput("\x1b[B");
     prompt.handleInput("\r");
 

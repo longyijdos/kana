@@ -59,22 +59,22 @@ export class ChoicePrompt<T extends string> implements Component {
       return;
     }
 
-    if (isPageUp(data)) {
+    if (isPageUp(data) || isLeft(data)) {
       this.detailViewport.page(-1, this.detailLength);
       return;
     }
 
-    if (isPageDown(data)) {
+    if (isPageDown(data) || isRight(data)) {
       this.detailViewport.page(1, this.detailLength);
       return;
     }
 
-    if (isUp(data) || isLeft(data)) {
+    if (isUp(data)) {
       this.move(-1);
       return;
     }
 
-    if (isDown(data) || isRight(data)) {
+    if (isDown(data)) {
       this.move(1);
       return;
     }
@@ -135,7 +135,7 @@ export class ChoicePrompt<T extends string> implements Component {
         : []),
       ...detailLines.slice(viewport.start, viewport.end),
       ...(viewport.hiddenAfter > 0 ? [dim(`... ${viewport.hiddenAfter} detail lines below`)] : []),
-      dim("PageUp/PageDown scroll detail"),
+      dim("Left/Right page detail"),
     ];
   }
 }
