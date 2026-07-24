@@ -68,6 +68,16 @@ Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop
 
 Tools run only when an assistant message ends normally with `toolUse`. A length-truncated message never executes its tool calls. A provider error with no assistant content does not persist an empty assistant message; an aborted message loses its unexecuted tool calls but retains any remaining text or thinking content.
 
+## Context compaction
+
+When a `ContextManager` is configured, every model request first receives a separate model projection of the full Agent history; compaction never deletes the original `messages`. Reaching 80% of the prompt budget triggers compaction. Rules scan oldest to newest and may cut only after a complete assistant turn without tool calls, or after every result for one assistant tool-call group has appeared. The first boundary whose “maximum summary placeholder + recent raw messages” fits the 55% target is selected. With no safe boundary, compaction is deferred while still within the prompt budget and fails when recovery cannot proceed safely.
+
+An injected `CompactPolicy` produces the actual summary. Kana's product policy calls the main Agent's same `Model` once with tool-free `generate()`; it does not start another Agent loop. Input contains the previous summary and newly covered messages. Assistant thinking, assistant usage, and a tool's structured `result` are omitted, while model-visible tool `content`, name, and error state remain. The summary must finish with `stop` and fit its summary budget; failure restores the preceding checkpoint.
+
+Every new tool result's model-visible `content` is uniformly capped at `min(16000, max(256, floor(promptBudget × 25%)))` estimated tokens. Oversized content keeps approximately a 70% head and 30% tail around a truncation marker. The structured `result` used by the host and TUI remains intact.
+
+A provider may map a definite context-window rejection to `ContextWindowExceededError`. Only a failure before any assistant output forces the same safe-cutoff compaction and retries that model request once. Partial output, a second failure, or the absence of a safe boundary never causes another retry. Compaction emits `context_compaction_start` and `context_compacted` Agent events, and summary-generation usage is committed with its checkpoint.
+
 ## `Agent` lifecycle
 
 `Agent.stream(input)` immediately appends user input to internal history, then starts the loop asynchronously. It permits only one active run; concurrent attempts receive an error stream. `prompt(input)` is the convenience form that awaits `stream(input).result()`.

@@ -172,7 +172,7 @@ function createApp(
       createNewSession: () => ({ id: "new" }),
       forkSession: () => ({ id: "fork" }),
       listSessions: () => [],
-      loadSession: () => ({ id: "session", messages: [] }),
+      loadSession: () => ({ id: "session", messages: [], timeline: [] }),
       deleteSession: () => false,
       loadSkills: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
       saveEnabledGlobalSkills: () => {},

@@ -15,17 +15,21 @@ export function recordKanaAgentRunAccounting(options: {
   outcome: KanaAccountingOutcome;
   messages: Message[];
   model: ModelMetadata;
+  additionalUsage?: ModelUsage;
   memory?: {
     scope: "global" | "project";
     mode: "incremental" | "full";
     origin: "automatic" | "manual";
   };
 }): void {
-  const usage = options.messages.reduce<ModelUsage | undefined>(
+  const messageUsage = options.messages.reduce<ModelUsage | undefined>(
     (total, message) =>
       message.role === "assistant" && message.usage ? addModelUsage(total, message.usage) : total,
     undefined,
   );
+  const usage = options.additionalUsage
+    ? addModelUsage(messageUsage, options.additionalUsage)
+    : messageUsage;
   appendKanaRunAccounting(
     {
       sessionId: options.sessionId,

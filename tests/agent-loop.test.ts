@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
+import { ContextManager } from "../src/agent/context-manager";
 import type { AgentEvent } from "../src/agent/events";
 import { runAgentLoop } from "../src/agent/loop";
 import type { ModelContext } from "../src/core/context";
@@ -354,6 +355,54 @@ describe("runAgentLoop", () => {
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
       reason: "stop",
+    });
+  });
+
+  test("caps model-visible tool content without truncating the structured result", async () => {
+    const model = new ScriptedToolModel({ a: 2, b: 3 });
+    const content = `${"A".repeat(48_000)}${"Z".repeat(12_000)}`;
+    const result = {
+      complete: content,
+    };
+    const largeAddTool = {
+      ...addTool,
+      execute: () => ({
+        content,
+        result,
+      }),
+    } satisfies Tool<typeof addParameters, typeof result>;
+    const contextManager = new ContextManager({
+      contextLimit: 128_000,
+      outputReserve: 8_192,
+    });
+
+    const messages = await runAgentLoop(
+      {
+        messages: [{ role: "user", content: "Run the large tool" }],
+        tools: [largeAddTool],
+      },
+      {
+        model,
+        maxTurns: 2,
+        contextManager,
+      },
+      () => {},
+    );
+
+    expect(messages.map((message) => message.role)).toEqual(["assistant", "tool", "assistant"]);
+    const toolMessage = messages.find((message) => message.role === "tool");
+    const limitedContentLength = toolMessage?.content.length;
+
+    expect(toolMessage).toMatchObject({
+      role: "tool",
+      content: expect.stringContaining("[Tool output truncated for model context]"),
+      result,
+    });
+    expect(limitedContentLength).toBe(48_000);
+    expect(model.contexts[1]?.messages.at(-1)).toMatchObject({
+      role: "tool",
+      content: expect.stringContaining("[Tool output truncated for model context]"),
+      result,
     });
   });
 

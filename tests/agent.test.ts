@@ -335,6 +335,51 @@ describe("Agent", () => {
     ]);
   });
 
+  test("commits context checkpoints with the run and exposes them in state", async () => {
+    const model = new TextModel("after compact");
+    const commits: Array<{ compactionCount: number; checkpointId?: string }> = [];
+    const agent = new Agent({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: "x".repeat(8_000),
+        },
+        {
+          role: "assistant",
+          stopReason: "stop",
+          content: [{ type: "text", text: "Old answer" }],
+        },
+      ],
+      context: {
+        contextLimit: 4_000,
+        outputReserve: 500,
+        compactPolicy: () => ({ summary: "Earlier exchange completed." }),
+      },
+      onRunCommitted: ({ compactions, state }) => {
+        commits.push({
+          compactionCount: compactions.length,
+          checkpointId: state.contextCheckpoint?.id,
+        });
+      },
+    });
+
+    await agent.prompt("Continue");
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]?.compactionCount).toBe(1);
+    expect(commits[0]?.checkpointId).toBe(agent.state.contextCheckpoint?.id);
+    expect(agent.state.contextLimit).toBe(4_000);
+    expect(model.contexts[0]?.messages[0]).toMatchObject({
+      role: "user",
+      content: expect.stringContaining("Earlier exchange completed."),
+    });
+
+    agent.reset();
+
+    expect(agent.state.contextCheckpoint).toBeUndefined();
+  });
+
   test("returns state snapshots without exposing mutable message history", async () => {
     const agent = new Agent({
       model: new TextModel("hello"),

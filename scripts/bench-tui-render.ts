@@ -1,6 +1,5 @@
-import type { Message } from "../src/core";
-import { loadKanaSession } from "../src/kana";
-import { addHistoryMessagesToTranscript } from "../src/tui/app/history";
+import { type KanaSessionTimelineEntry, loadKanaSession } from "../src/kana";
+import { addHistoryTimelineToTranscript } from "../src/tui/app/history";
 import { AssistantMessageBlock, Editor, TextBlock, Transcript } from "../src/tui/components";
 import type { TerminalNotification } from "../src/tui/runtime/notifications";
 import type { Terminal } from "../src/tui/runtime/terminal";
@@ -87,10 +86,10 @@ function runTranscriptBenchmark(): void {
 
 function runSessionReplayBenchmark(sessionId: string): void {
   const session = loadKanaSession(sessionId);
-  const transcript = createSessionTranscript(sessionId, session.messages);
+  const transcript = createSessionTranscript(sessionId, session.timeline);
   const lineCount = transcript.render(100).length;
   const coldReplay = measure(
-    () => createSessionTranscript(sessionId, session.messages).render(100),
+    () => createSessionTranscript(sessionId, session.timeline).render(100),
     5,
   );
   const hotTranscript = measure(() => transcript.render(100), 20);
@@ -175,7 +174,10 @@ function createTranscript(pairCount: number): Transcript {
   return transcript;
 }
 
-export function createSessionTranscript(sessionId: string, messages: Message[]): Transcript {
+export function createSessionTranscript(
+  sessionId: string,
+  timeline: KanaSessionTimelineEntry[],
+): Transcript {
   const transcript = new Transcript();
 
   // Match the restored-session UI so benchmark results include its real blocks.
@@ -184,7 +186,7 @@ export function createSessionTranscript(sessionId: string, messages: Message[]):
       color: tuiTheme.muted,
     }),
   );
-  addHistoryMessagesToTranscript(transcript, messages);
+  addHistoryTimelineToTranscript(transcript, timeline);
 
   return transcript;
 }

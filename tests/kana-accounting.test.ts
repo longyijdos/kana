@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { appendKanaRunAccounting, loadKanaUsageSummary } from "@/kana";
+import {
+  appendKanaRunAccounting,
+  loadKanaUsageSummary,
+  recordKanaAgentRunAccounting,
+} from "@/kana";
 
 const directories: string[] = [];
 
@@ -61,6 +65,71 @@ describe("Kana accounting", () => {
       stop: 0,
       turn_limit: 1,
     });
+  });
+
+  test("includes context-compaction usage in the main run ledger", () => {
+    const previousKanaHome = process.env.KANA_HOME;
+    const kanaHome = temporaryHome();
+    process.env.KANA_HOME = kanaHome;
+
+    try {
+      recordKanaAgentRunAccounting({
+        sessionId: "session-compact",
+        cwd: "/work/compact",
+        agentKind: "main",
+        outcome: "stop",
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "done" }],
+            usage: {
+              promptTokens: 100,
+              completionTokens: 20,
+              totalTokens: 120,
+            },
+          },
+        ],
+        additionalUsage: {
+          promptTokens: 50,
+          completionTokens: 10,
+          totalTokens: 60,
+        },
+        model: {
+          provider: "test",
+          model: "test-model",
+          contextWindow: 1_000,
+          maxOutputTokens: 100,
+          cost: {
+            input: 1,
+            output: 2,
+            cacheRead: 0,
+            cacheWrite: 0,
+          },
+        },
+      });
+
+      expect(
+        loadKanaUsageSummary({
+          scope: "session",
+          sessionId: "session-compact",
+          cwd: "/work/compact",
+          env: { KANA_HOME: kanaHome },
+        }),
+      ).toMatchObject({
+        runCount: 1,
+        usage: {
+          promptTokens: 150,
+          completionTokens: 30,
+          totalTokens: 180,
+        },
+      });
+    } finally {
+      if (previousKanaHome === undefined) {
+        delete process.env.KANA_HOME;
+      } else {
+        process.env.KANA_HOME = previousKanaHome;
+      }
+    }
   });
 });
 

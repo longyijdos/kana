@@ -52,6 +52,8 @@ The model prefers `apiKey` from its config, otherwise reads `DEEPSEEK_API_KEY`. 
 
 Any thrown error becomes a provider `error` event: a DOM `AbortError` or an aborted upper signal maps to `aborted`; everything else maps to `error`. The event includes the assistant message snapshot accumulated through failure, letting the Agent retain usable partial text.
 
+An HTTP 400, 413, or 422 is converted to generic `ContextWindowExceededError` only when its error code/message clearly matches a context-length/window or input/prompt-token limit. Ordinary parameter failures remain their original `DeepSeekHttpError`. The Agent catches this type only before any assistant output, performs one safe context compaction, and retries the current request once. Provider failure logs still retain only error type, status, and status text; they never record the response message inspected up to 4096 characters.
+
 ## SSE parsing and content order
 
 The response reader splits SSE frames on blank lines and retains incomplete trailing frames across network chunks. Each frame collects all `data:` lines; `[DONE]` immediately ends reading. JSON payloads go to `applyDeepSeekChunk`.
@@ -76,7 +78,7 @@ Finish reasons map as `stop → stop`, `length → length`, and `tool_calls → 
 
 ## Usage and cost
 
-`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Cost uses CNY per million tokens: cache misses bill as normal input and cache hits bill at the cache-read price; when only one cache field exists, the other portion is inferred from `promptTokens`. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / contextWindow`, clamped to 0–100%.
+`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Cost uses CNY per million tokens: cache misses bill as normal input and cache hits bill at the cache-read price; when only one cache field exists, the other portion is inferred from `promptTokens`. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%; only an unset `agent.context_limit` uses the metadata context window. Summary-request usage contributes to main-run accumulated usage and cost without replacing the latest normal model request's context percentage.
 
 ## Extension notes
 

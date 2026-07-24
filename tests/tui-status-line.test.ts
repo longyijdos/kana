@@ -46,6 +46,17 @@ describe("prompt editor status line", () => {
     expect(stripAnsi(editor.render(120).at(-1) ?? "")).toContain("turn limit");
   });
 
+  test("renders the context compaction phase", () => {
+    const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
+
+    editor.updateStatus({
+      phase: "compacting",
+      running: true,
+    });
+
+    expect(stripAnsi(editor.render(120).at(-1) ?? "")).toContain("compacting");
+  });
+
   test("hides while the slash command palette is open and returns after it closes", () => {
     const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
 

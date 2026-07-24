@@ -129,7 +129,7 @@ describe("TUI MCP management", () => {
       createTerminal(),
       {
         ...createOptions(),
-        sessionId: "session-a",
+        initialSession: { id: "session-a", messages: [], timeline: [] },
         mcpManagement: {
           loadServers: () => [],
           saveEnabledServerIds: () => {},
@@ -172,7 +172,7 @@ function createOptions() {
     createNewSession: () => ({ id: "new" }),
     forkSession: () => ({ id: "fork" }),
     listSessions: () => [],
-    loadSession: () => ({ id: "session", messages: [] }),
+    loadSession: () => ({ id: "session", messages: [], timeline: [] }),
     deleteSession: () => false,
     loadSkills: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
     saveEnabledGlobalSkills: () => {},

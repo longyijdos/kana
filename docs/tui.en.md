@@ -50,7 +50,9 @@ Rendering helpers strip ANSI/control sequences for width calculation and use `st
 | `tool_execution_end` | Store structured results and mark success/failure. |
 | `agent_end` | Update the status phase from the terminal reason and clear the active tool; `turn_limit` renders as a distinct `turn limit` error phase. |
 
-The editor owns the status line, which shows provider/model, context percentage from the latest assistant message, run phase, active tool, and cwd. The status line is hidden while the slash-command palette is open. Replacing the editor with another bottom component hides both editor input and status. Each completed assistant usage accumulates into process totals and CNY cost using model metadata; `/usage` counts turn-limit termination separately from normal completion, output truncation, abort, and failure.
+The editor owns the status line, which shows provider/model, the latest assistant prompt's percentage of the effective context limit, run phase, active tool, and cwd. Its phase is `compacting` while a context summary is generated; completion immediately updates the percentage from the checkpoint estimate, and later normal model usage replaces that estimate. The status line is hidden while the slash-command palette is open. Replacing the editor with another bottom component hides both editor input and status. Every completed assistant and summary request contributes to process totals and CNY cost, but summary usage does not become the normal prompt's context percentage; `/usage` counts turn-limit termination separately from normal completion, output truncation, abort, and failure.
+
+When resuming, TUI history consumes only the session timeline, while the Agent separately receives complete messages and the latest context checkpoint. A timeline `context_compaction` renders at its occurrence position as muted `Context compacted · 812k → ~430k tokens`; the matching live `context_compacted` event appends the same marker immediately. The TUI keeps no second compatibility path that renders restored history directly from messages.
 
 ## Input and shortcuts
 

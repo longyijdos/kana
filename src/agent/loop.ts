@@ -1,12 +1,15 @@
-import type {
-  AssistantMessage,
-  AssistantMessageEvent,
-  Message,
-  Model,
-  ToolCallContent,
-  ToolResultMessage,
+import {
+  type AssistantMessage,
+  type AssistantMessageEvent,
+  ContextWindowExceededError,
+  type Message,
+  type Model,
+  type ModelContext,
+  type ToolCallContent,
+  type ToolResultMessage,
 } from "@/core";
 import { normalizeToolResult, type Tool, type ToolResult, validateToolArguments } from "@/tools";
+import type { ContextManager, PreparedContext } from "./context-manager";
 import type { AgentEndReason, AgentEvent } from "./events";
 
 export type AgentContext = {
@@ -20,6 +23,7 @@ export type AgentLoopConfig = {
   maxTurns?: number;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
+  contextManager?: ContextManager;
 };
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
@@ -44,6 +48,8 @@ export type BeforeToolExecutionHook = (request: {
 type AssistantTurnResult = {
   message: AssistantMessage;
   isError: boolean;
+  error?: unknown;
+  canRetryContextLimit?: boolean;
 };
 
 type ExecutedToolCall = {
@@ -56,6 +62,10 @@ type ExecutedToolCall = {
 type ExecutedToolCalls = {
   toolResults: ToolResultMessage[];
   abortRun: boolean;
+};
+
+type MessageContext = {
+  messages: Message[];
 };
 
 export async function runAgentLoop(
@@ -85,14 +95,46 @@ export async function runAgentLoop(
 
     await emit({ type: "turn_start", turn });
 
-    const assistantTurn = await streamAssistantResponse(currentContext, config, emit);
+    const sourceMessageCount = currentContext.messages.length;
+    let prepared: PreparedContext;
+    try {
+      prepared = await prepareModelContext(currentContext, config, emit);
+    } catch (error) {
+      if (config.signal?.aborted) {
+        endReason = "aborted";
+        break;
+      }
+      throw error;
+    }
+    let assistantTurn = await streamAssistantResponse(prepared.context, config, emit);
+    if (
+      assistantTurn.error instanceof ContextWindowExceededError &&
+      assistantTurn.canRetryContextLimit &&
+      config.contextManager
+    ) {
+      try {
+        prepared = await prepareModelContext(currentContext, config, emit, true);
+      } catch (error) {
+        if (config.signal?.aborted) {
+          endReason = "aborted";
+          break;
+        }
+        throw error;
+      }
+      assistantTurn = await streamAssistantResponse(prepared.context, config, emit);
+    }
+    if (
+      assistantTurn.error instanceof ContextWindowExceededError &&
+      assistantTurn.canRetryContextLimit
+    ) {
+      throw assistantTurn.error;
+    }
+    config.contextManager?.recordUsage(assistantTurn.message.usage, sourceMessageCount);
     const assistantHistoryMessage = assistantMessageForHistory(assistantTurn.message);
 
     if (assistantHistoryMessage) {
-      replaceLastAssistantMessage(currentContext, assistantHistoryMessage);
+      currentContext.messages.push(assistantHistoryMessage);
       newMessages.push(assistantHistoryMessage);
-    } else {
-      removeLastAssistantMessage(currentContext);
     }
 
     if (assistantTurn.isError || config.signal?.aborted) {
@@ -140,7 +182,7 @@ export function assertValidMaxTurns(maxTurns: number | undefined): void {
 }
 
 async function streamAssistantResponse(
-  context: AgentContext,
+  context: ModelContext,
   config: AgentLoopConfig,
   emit: AgentEventSink,
 ): Promise<AssistantTurnResult> {
@@ -192,6 +234,14 @@ async function streamAssistantResponse(
         };
 
       case "error":
+        if (event.error instanceof ContextWindowExceededError && !addedAssistantMessage) {
+          return {
+            message: currentMessage,
+            isError: true,
+            error: event.error,
+            canRetryContextLimit: true,
+          };
+        }
         currentMessage = {
           ...(event.snapshot ??
             ({
@@ -208,6 +258,7 @@ async function streamAssistantResponse(
         return {
           message: currentMessage,
           isError: true,
+          error: event.error,
         };
     }
   }
@@ -218,6 +269,7 @@ async function streamAssistantResponse(
     return {
       message: currentMessage,
       isError: true,
+      error: undefined,
     };
   }
 
@@ -228,6 +280,57 @@ async function streamAssistantResponse(
     message: currentMessage,
     isError: false,
   };
+}
+
+async function prepareModelContext(
+  context: AgentContext,
+  config: AgentLoopConfig,
+  emit: AgentEventSink,
+  forceCompaction = false,
+): Promise<PreparedContext> {
+  if (!config.contextManager) {
+    return {
+      context: {
+        system: context.system,
+        messages: structuredClone(context.messages),
+        tools: context.tools ? [...context.tools] : undefined,
+        signal: config.signal,
+      },
+      estimatedTokens: 0,
+    };
+  }
+
+  const prepared = await config.contextManager.prepareForModel(
+    {
+      system: context.system,
+      messages: context.messages,
+      tools: context.tools,
+      signal: config.signal,
+    },
+    {
+      signal: config.signal,
+      forceCompaction,
+      onCompactionStart: (event) =>
+        emit({
+          type: "context_compaction_start",
+          ...event,
+        }),
+    },
+  );
+
+  if (prepared.compaction) {
+    await emit({
+      type: "context_compacted",
+      reason: prepared.compaction.reason,
+      beforeTokens: prepared.compaction.beforeTokens,
+      estimatedAfterTokens: prepared.compaction.estimatedAfterTokens,
+      compactedMessageCount: prepared.compaction.compactedMessageCount,
+      contextLimit: config.contextManager.contextLimit,
+      usage: prepared.compaction.usage,
+    });
+  }
+
+  return prepared;
 }
 
 async function emitMessageStart(message: AssistantMessage, emit: AgentEventSink): Promise<void> {
@@ -274,13 +377,14 @@ async function executeToolCalls(
         toolCalls.slice(index),
         "Tool call canceled because the run was aborted.",
         emit,
+        config.contextManager,
       );
       abortRun = true;
       break;
     }
 
     const executed = await executeToolCall(context, toolCall, config, emit);
-    const toolResultMessage = createToolResultMessage(executed);
+    const toolResultMessage = createToolResultMessage(executed, config.contextManager);
 
     toolResults.push(toolResultMessage);
 
@@ -290,6 +394,7 @@ async function executeToolCalls(
         toolCalls.slice(index + 1),
         "Tool call canceled because the run was aborted.",
         emit,
+        config.contextManager,
       );
       abortRun = true;
       break;
@@ -307,16 +412,20 @@ async function appendCanceledToolResults(
   toolCalls: ToolCallContent[],
   message: string,
   emit: AgentEventSink,
+  contextManager?: ContextManager,
 ): Promise<void> {
   for (const toolCall of toolCalls) {
     const result = createCanceledToolResult(message);
 
     toolResults.push(
-      createToolResultMessage({
-        toolCall,
-        result,
-        isError: true,
-      }),
+      createToolResultMessage(
+        {
+          toolCall,
+          result,
+          isError: true,
+        },
+        contextManager,
+      ),
     );
     await emitToolExecutionEnd(toolCall, result, true, emit);
   }
@@ -465,7 +574,7 @@ function endReasonForAssistantTurn(turn: AssistantTurnResult): AgentEndReason {
   }
 }
 
-function replaceLastAssistantMessage(context: AgentContext, message: AssistantMessage): void {
+function replaceLastAssistantMessage(context: MessageContext, message: AssistantMessage): void {
   if (context.messages[context.messages.length - 1]?.role === "assistant") {
     context.messages[context.messages.length - 1] = message;
     return;
@@ -474,14 +583,8 @@ function replaceLastAssistantMessage(context: AgentContext, message: AssistantMe
   context.messages.push(message);
 }
 
-function removeLastAssistantMessage(context: AgentContext): void {
-  if (context.messages[context.messages.length - 1]?.role === "assistant") {
-    context.messages.pop();
-  }
-}
-
 function replaceOrAppendAssistantMessage(
-  context: AgentContext,
+  context: MessageContext,
   message: AssistantMessage,
   replaceExisting: boolean,
 ): void {
@@ -534,12 +637,15 @@ async function runBeforeToolExecution(
   });
 }
 
-function createToolResultMessage(executed: ExecutedToolCall): ToolResultMessage {
+function createToolResultMessage(
+  executed: ExecutedToolCall,
+  contextManager?: ContextManager,
+): ToolResultMessage {
   return {
     role: "tool",
     toolCallId: executed.toolCall.id,
     toolName: executed.toolCall.name,
-    content: executed.result.content,
+    content: contextManager?.limitToolContent(executed.result.content) ?? executed.result.content,
     result: executed.result.result,
     isError: executed.isError,
   };

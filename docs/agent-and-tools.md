@@ -68,6 +68,16 @@ Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时�
 
 只有助手消息以 `toolUse` 正常结束时，工具才会执行。长度截断的消息即使带有工具调用也不会执行。发生 provider error 且助手没有任何内容时，该空助手消息不会写入历史；中止的消息会移除其中未执行的工具调用，但若仍有文本或 thinking 内容则保留该部分。
 
+## 上下文压缩
+
+配置了 `ContextManager` 时，每次模型请求前先从完整 Agent 历史创建一个独立的 model projection；原始 `messages` 不会因压缩而删除。估算达到 prompt budget 的 80% 时触发压缩，规则从旧到新扫描，只允许在无 tool call 的完整 assistant turn 后，或一组 assistant tool calls 的所有 results 都已出现后切分。它选择第一个能让“最大摘要占位 + 近期原始消息”进入 55% 目标的边界；没有任何安全边界且尚未超过 prompt budget 时延后压缩，不能安全恢复时则报错。
+
+实际摘要由注入的 `CompactPolicy` 生成。Kana 的产品策略直接使用主 Agent 的同一个 `Model` 做一次无工具 `generate()`，而不是启动另一个 Agent loop。输入是上一次摘要和本次新覆盖的消息；assistant thinking、assistant usage 和 tool 的结构化 `result` 不进入摘要请求，tool 的模型可见 `content`、名称及错误状态仍保留。摘要必须以 `stop` 完成且不超过摘要预算，失败会恢复上一个 checkpoint。
+
+每条新工具结果的模型可见 `content` 统一限制为 `min(16000, max(256, floor(promptBudget × 25%)))` 个估算 token；超限时保留约 70% 头部和 30% 尾部并插入截断标记。宿主/TUI 使用的结构化 `result` 不受该限制。
+
+provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededError`。仅当失败发生在任何助手输出之前，循环才强制执行同一套安全切分并重试当前模型请求一次；已经产生部分输出、第二次仍失败或没有安全边界时不会继续重试。压缩产生 `context_compaction_start` 和 `context_compacted` Agent events，生成摘要的 usage 随 checkpoint 提交。
+
 ## `Agent` 的生命周期
 
 `Agent.stream(input)` 立即把用户输入追加到内部历史，然后异步启动循环。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。

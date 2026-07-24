@@ -171,7 +171,7 @@ describe("session-scoped agents", () => {
       ...createOptions(),
       startInResumePicker: true,
       listSessions: () => [session],
-      loadSession: () => ({ id: session.id, messages: [] }),
+      loadSession: () => ({ id: session.id, messages: [], timeline: [] }),
       loadExternalTools: async () => {
         loadCount += 1;
         return {};
@@ -297,7 +297,11 @@ describe("session-scoped agents", () => {
           },
         }) as never,
       createTerminal(),
-      { ...createOptions(), sessionId: "session-a", wakeScheduler },
+      {
+        ...createOptions(),
+        initialSession: { id: "session-a", messages: [], timeline: [] },
+        wakeScheduler,
+      },
     );
     const internal = app as unknown as { submitPrompt(value: string): Promise<void> };
 
@@ -348,7 +352,10 @@ describe("session-scoped agents", () => {
           },
         }) as never,
       createTerminal(),
-      { ...createOptions(), sessionId: "session-a" },
+      {
+        ...createOptions(),
+        initialSession: { id: "session-a", messages: [], timeline: [] },
+      },
     );
     const internal = app as unknown as {
       running: boolean;
@@ -391,7 +398,7 @@ function createOptions() {
     createNewSession: () => ({ id: "new" }),
     forkSession: () => ({ id: "fork" }),
     listSessions: () => [],
-    loadSession: () => ({ id: "session", messages: [] }),
+    loadSession: () => ({ id: "session", messages: [], timeline: [] }),
     deleteSession: () => false,
     loadSkills: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
     saveEnabledGlobalSkills: () => {},

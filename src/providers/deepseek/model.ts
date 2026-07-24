@@ -1,4 +1,10 @@
-import { AssistantEventStream, type AssistantMessage, BaseModel, type ModelContext } from "@/core";
+import {
+  AssistantEventStream,
+  type AssistantMessage,
+  BaseModel,
+  ContextWindowExceededError,
+  type ModelContext,
+} from "@/core";
 import {
   createRequestSignal,
   DeepSeekHttpError,
@@ -130,11 +136,52 @@ export class DeepSeekModel extends BaseModel {
       stream.error({
         type: "error",
         reason: isAbortError(error) || context.signal?.aborted ? "aborted" : "error",
-        error,
+        error: normalizeDeepSeekError(error),
         snapshot: structuredClone(message),
       });
     }
   }
+}
+
+function normalizeDeepSeekError(error: unknown): unknown {
+  if (!(error instanceof DeepSeekHttpError) || !isContextWindowFailure(error)) {
+    return error;
+  }
+
+  return new ContextWindowExceededError(
+    "DeepSeek rejected the request because its context window was exceeded.",
+    { cause: error },
+  );
+}
+
+function isContextWindowFailure(error: DeepSeekHttpError): boolean {
+  if (![400, 413, 422].includes(error.status)) {
+    return false;
+  }
+
+  let code = "";
+  let message = error.body;
+  try {
+    const parsed = JSON.parse(error.body) as {
+      error?: {
+        code?: unknown;
+        message?: unknown;
+      };
+    };
+    code = typeof parsed.error?.code === "string" ? parsed.error.code : "";
+    message = typeof parsed.error?.message === "string" ? parsed.error.message : message;
+  } catch {
+    // Some compatible endpoints return plain-text errors.
+  }
+  message = message.slice(0, 4_096);
+
+  return (
+    /context[_ -]?(length|window)[_ -]?exceeded/i.test(code) ||
+    /(maximum|max).{0,32}context.{0,32}(length|window)|context.{0,32}(length|window).{0,32}(exceed|too (?:long|large))/i.test(
+      message,
+    ) ||
+    /(?:input|prompt).{0,32}(?:token|length).{0,32}(?:exceed|too (?:long|large))/i.test(message)
+  );
 }
 
 function formatProviderFailure(error: unknown, signal?: AbortSignal): Record<string, unknown> {

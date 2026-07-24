@@ -92,6 +92,7 @@ describe("Kana config", () => {
     expect(installed).toContain("[notification]");
     expect(installed).toContain('backend = "auto"');
     expect(installed).toContain("[memory]");
+    expect(installed).toContain("# context_limit = 200000");
     expect(installed).toContain("enabled = true");
     expect(installed).toContain("max_chars = 6000");
     expect(installed).toContain("# daily_retention_days = 30");
@@ -183,6 +184,7 @@ describe("Kana config", () => {
         "",
         "[agent]",
         "max_turns = 4",
+        "context_limit = 200000",
         "",
         "[approval]",
         'mode = "unless_trusted"',
@@ -213,6 +215,7 @@ describe("Kana config", () => {
       },
       agent: {
         maxTurns: 4,
+        contextLimit: 200000,
       },
       approval: {
         mode: "unless_trusted",
@@ -281,6 +284,27 @@ describe("Kana config", () => {
     }
   });
 
+  test("loads and validates the optional agent context limit", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), "[agent]\ncontext_limit = 200000\n");
+
+    expect(loadKanaConfig(env).agent.contextLimit).toBe(200_000);
+
+    writeFileSync(path.join(home, "config.toml"), "[agent]\ncontext_limit = 0\n");
+    expect(() => loadKanaConfig(env)).toThrow("agent.context_limit must be a positive integer.");
+  });
+
+  test("requires model.max_tokens to be a positive integer", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+
+    for (const value of [0, -1, 1.5]) {
+      writeFileSync(path.join(home, "config.toml"), `[model]\nmax_tokens = ${value}\n`);
+      expect(() => loadKanaConfig(env)).toThrow("model.max_tokens must be a positive integer.");
+    }
+  });
+
   test("loads the configured API key environment variable name", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
@@ -315,6 +339,67 @@ describe("Kana config", () => {
 
       expect(enabled.state.tools.map((tool) => tool.name)).toContain("remember");
       expect(disabled.state.tools.map((tool) => tool.name)).not.toContain("remember");
+    } finally {
+      restoreEnv("KANA_DEEPSEEK_KEY", previous);
+    }
+  });
+
+  test("uses the configured context limit for the main Agent", () => {
+    const previous = process.env.KANA_DEEPSEEK_KEY;
+    process.env.KANA_DEEPSEEK_KEY = "secret";
+
+    try {
+      const agent = createKanaAgent({
+        ...DEFAULT_KANA_CONFIG,
+        model: {
+          ...DEFAULT_KANA_CONFIG.model,
+          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+        },
+        agent: {
+          ...DEFAULT_KANA_CONFIG.agent,
+          contextLimit: 200_000,
+        },
+      });
+
+      expect(agent.state.contextLimit).toBe(200_000);
+    } finally {
+      restoreEnv("KANA_DEEPSEEK_KEY", previous);
+    }
+  });
+
+  test("rejects context limits outside the selected model capability", () => {
+    const previous = process.env.KANA_DEEPSEEK_KEY;
+    process.env.KANA_DEEPSEEK_KEY = "secret";
+
+    try {
+      expect(() =>
+        createKanaAgent({
+          ...DEFAULT_KANA_CONFIG,
+          model: {
+            ...DEFAULT_KANA_CONFIG.model,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          },
+          agent: {
+            ...DEFAULT_KANA_CONFIG.agent,
+            contextLimit: 1_000_001,
+          },
+        }),
+      ).toThrow("agent.context_limit cannot exceed the 1000000-token context window");
+
+      expect(() =>
+        createKanaAgent({
+          ...DEFAULT_KANA_CONFIG,
+          model: {
+            ...DEFAULT_KANA_CONFIG.model,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+            maxTokens: 8_192,
+          },
+          agent: {
+            ...DEFAULT_KANA_CONFIG.agent,
+            contextLimit: 8_192,
+          },
+        }),
+      ).toThrow("agent.context_limit must be greater than model.max_tokens.");
     } finally {
       restoreEnv("KANA_DEEPSEEK_KEY", previous);
     }

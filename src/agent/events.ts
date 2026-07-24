@@ -3,8 +3,10 @@ import type {
   AssistantMessageEvent,
   AssistantStopReason,
   Message,
+  ModelUsage,
   ToolResultMessage,
 } from "@/core";
+import type { ContextCompactionReason } from "./context-manager";
 
 export type AgentEndReason = Exclude<AssistantStopReason, "toolUse"> | "turn_limit";
 
@@ -26,6 +28,21 @@ export type AgentEvent =
       turn: number;
       message: AssistantMessage;
       toolResults: ToolResultMessage[];
+    }
+  | {
+      type: "context_compaction_start";
+      reason: ContextCompactionReason;
+      estimatedTokens: number;
+      contextLimit: number;
+    }
+  | {
+      type: "context_compacted";
+      reason: ContextCompactionReason;
+      beforeTokens: number;
+      estimatedAfterTokens: number;
+      compactedMessageCount: number;
+      contextLimit: number;
+      usage?: ModelUsage;
     }
   | {
       type: "message_start";
