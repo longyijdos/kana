@@ -816,6 +816,15 @@ export class KanaTuiApp {
 
         this.slashCommandOptions.openMemory();
         break;
+      case "compact":
+        if (command.arguments.trim()) {
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
+          return;
+        }
+
+        this.editor.clear();
+        void this.compactContext();
+        break;
       case "usage":
         if (command.arguments.trim()) {
           this.showError(new Error(formatPromptCommandUsage(command.name)));
@@ -1087,6 +1096,50 @@ export class KanaTuiApp {
     } catch (error) {
       this.showError(error);
     } finally {
+      this.running = false;
+      this.editor.updateStatus({
+        running: false,
+        activeTool: undefined,
+      });
+      this.tui.requestRender();
+      void this.drainWakeEvents();
+    }
+  }
+
+  private async compactContext(): Promise<void> {
+    if (this.stopping || this.loadingExternalTools) {
+      return;
+    }
+
+    this.running = true;
+    this.agentEvents.resetRun();
+    this.updateStatus("compacting");
+    const compactingBlock = new TextBlock("Compacting context…", {
+      color: tuiTheme.muted,
+    });
+    this.transcript.addChild(compactingBlock);
+    this.tui.requestRender();
+    const unsubscribe = this.agent.subscribe((event) => {
+      if (event.type !== "context_compaction_start" && event.type !== "context_compacted") {
+        return;
+      }
+      if (event.type === "context_compacted") {
+        this.transcript.removeChild(compactingBlock);
+      }
+      this.agentEvents.handle(event);
+      if (event.type === "context_compacted") {
+        this.recordUsage(event.usage, false);
+      }
+    });
+
+    try {
+      await this.agent.compact();
+    } catch (error) {
+      this.transcript.removeChild(compactingBlock);
+      this.showError(error);
+    } finally {
+      this.transcript.removeChild(compactingBlock);
+      unsubscribe();
       this.running = false;
       this.editor.updateStatus({
         running: false,

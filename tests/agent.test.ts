@@ -380,6 +380,79 @@ describe("Agent", () => {
     expect(agent.state.contextCheckpoint).toBeUndefined();
   });
 
+  test("manually compacts without running the response model and reuses the checkpoint", async () => {
+    const model = new TextModel("after manual compact");
+    const events: AgentEvent["type"][] = [];
+    const commits: Array<{ reason: string; checkpointId?: string }> = [];
+    const agent = new Agent({
+      model,
+      messages: [
+        { role: "user", content: "x".repeat(8_000) },
+        {
+          role: "assistant",
+          stopReason: "stop",
+          content: [{ type: "text", text: "Old answer" }],
+        },
+      ],
+      context: {
+        contextLimit: 4_000,
+        outputReserve: 500,
+        compactPolicy: () => ({ summary: "Earlier exchange completed." }),
+      },
+      onCompactionCommitted: ({ compaction, state }) => {
+        commits.push({
+          reason: compaction.reason,
+          checkpointId: state.contextCheckpoint?.id,
+        });
+      },
+    });
+    agent.subscribe((event) => {
+      events.push(event.type);
+    });
+
+    const checkpoint = await agent.compact();
+
+    expect(checkpoint.reason).toBe("manual");
+    expect(model.contexts).toHaveLength(0);
+    expect(commits).toEqual([{ reason: "manual", checkpointId: checkpoint.id }]);
+    expect(agent.state.contextCheckpoint?.id).toBe(checkpoint.id);
+    expect(events).toEqual(["context_compaction_start", "context_compacted"]);
+
+    await agent.prompt("Continue");
+
+    expect(model.contexts).toHaveLength(1);
+    expect(model.contexts[0]?.messages[0]).toMatchObject({
+      role: "user",
+      content: expect.stringContaining("Earlier exchange completed."),
+    });
+  });
+
+  test("does not adopt a manual checkpoint when persistence fails", async () => {
+    const agent = new Agent({
+      model: new TextModel(),
+      messages: [
+        { role: "user", content: "x".repeat(8_000) },
+        {
+          role: "assistant",
+          stopReason: "stop",
+          content: [{ type: "text", text: "Old answer" }],
+        },
+      ],
+      context: {
+        contextLimit: 4_000,
+        outputReserve: 500,
+        compactPolicy: () => ({ summary: "Earlier exchange completed." }),
+      },
+      onCompactionCommitted: () => {
+        throw new Error("persist failed");
+      },
+    });
+
+    await expect(agent.compact()).rejects.toThrow("persist failed");
+
+    expect(agent.state.contextCheckpoint).toBeUndefined();
+  });
+
   test("returns state snapshots without exposing mutable message history", async () => {
     const agent = new Agent({
       model: new TextModel("hello"),

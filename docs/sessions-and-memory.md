@@ -44,7 +44,7 @@ cwd: /Users/alice/project
 {"type":"context_compaction","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","reason":"threshold","coversThroughId":"…","compactedMessageCount":2,"beforeTokens":90000,"estimatedAfterTokens":60000,"summary":{"format":"kana-context-summary-v1","text":"…"}}
 ```
 
-每条记录的 `parentId` 指向前一条时间线记录；当前加载逻辑仍按文件顺序读取，不根据 `parentId` 重放分支。压缩记录的物理位置表示压缩何时发生，`coversThroughId` 则指向摘要实际覆盖的最后一条 message，因此两者可以不同。例如 marker 写在 `m4` 后但 `coversThroughId = m2` 时，恢复给模型的 projection 是 `summary + m3 + m4 + 后续消息`。所有原始 message 仍留在 JSONL 中，TUI 也能按原顺序显示完整历史。
+每条记录的 `parentId` 指向前一条时间线记录；当前加载逻辑仍按文件顺序读取，不根据 `parentId` 重放分支。压缩记录的 `reason` 可以是自动阈值触发的 `threshold`、provider 超限恢复的 `provider_limit`，或 `/compact` 触发的 `manual`。记录的物理位置表示压缩何时发生，`coversThroughId` 则指向摘要实际覆盖的最后一条 message，因此两者可以不同。例如 marker 写在 `m4` 后但 `coversThroughId = m2` 时，恢复给模型的 projection 是 `summary + m3 + m4 + 后续消息`。所有原始 message 仍留在 JSONL 中，TUI 也能按原顺序显示完整历史。
 
 后续压缩会带可选 `baseCompactionId` 指向上一个 checkpoint，并把旧摘要与新覆盖消息合并成一份新的累计摘要。`usage` 可保存该次摘要请求的模型用量。加载时会验证 `coversThroughId` 和 `baseCompactionId` 只引用已出现的记录，然后同时派生完整 `messages`、完整 `timeline` 和最后一个 `contextCheckpoint`：Agent 使用 messages/checkpoint，TUI 历史只消费 timeline。
 
@@ -54,7 +54,7 @@ cwd: /Users/alice/project
 
 ### 生命周期与容错
 
-- 模型—工具循环结束后，Agent 先更新内部终态，再由 `onRunCommitted` 按发生位置一起追加本轮的新消息和压缩 checkpoint；追加成功后才向外发布最终 `agent_end` 并转为空闲。因此不会持久化仍在流式生成中的快照，`waitForIdle()` 也不会早于会话写入完成。
+- 模型—工具循环结束后，Agent 先更新内部终态，再由 `onRunCommitted` 按发生位置一起追加本轮的新消息和压缩 checkpoint；追加成功后才向外发布最终 `agent_end` 并转为空闲。手动 `/compact` 则通过独立的 compaction commit 只追加 checkpoint，并在写入成功后 adopt。两条路径都不会持久化仍在流式生成中的快照，`waitForIdle()` 也不会早于会话写入完成。
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。
 - `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按 `createdAt` 降序排序。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。

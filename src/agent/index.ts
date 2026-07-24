@@ -1,5 +1,6 @@
 export {
   Agent,
+  type AgentCompactionCommittedHook,
   type AgentConfig,
   type AgentEventListener,
   type AgentPromptInput,

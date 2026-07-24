@@ -786,6 +786,9 @@ describe("prompt commands", () => {
           name: "memory",
         },
         {
+          name: "compact",
+        },
+        {
           name: "usage",
         },
       ],

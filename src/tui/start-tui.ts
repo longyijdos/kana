@@ -241,6 +241,32 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
               memoryLogger.error("memory_consolidation.failed", { error });
             });
         },
+        onCompactionCommitted: ({ compaction, state }) => {
+          if (!session) {
+            throw new Error("Cannot persist context compaction without an active session.");
+          }
+
+          try {
+            const appended = appendKanaSessionRun(session.metadata, [], {
+              compactions: [compaction],
+            });
+            session.timeline = [...session.timeline, ...appended];
+          } catch (error) {
+            agentLogger.error("session.append_failed", { error });
+            throw error;
+          }
+          session.contextCheckpoint = compaction;
+
+          recordKanaAgentRunAccounting({
+            sessionId: session.metadata.id,
+            cwd: session.metadata.cwd,
+            agentKind: "main",
+            outcome: "stop",
+            messages: [],
+            model: state.model.metadata,
+            additionalUsage: compaction.usage,
+          });
+        },
       });
     },
     terminal,

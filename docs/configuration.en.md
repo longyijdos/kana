@@ -144,7 +144,7 @@ safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
 promptBudget = contextLimit - model.max_tokens - safetyReserve
 ```
 
-At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 55% of `promptBudget`. `model.max_tokens` still controls output only; subtracting it reserves context space for that output.
+At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. `model.max_tokens` still controls output only; subtracting it reserves context space for that output.
 
 Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; DeepSeek HTTP failures additionally retain status code and status text, never the response body.
 

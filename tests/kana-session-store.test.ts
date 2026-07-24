@@ -121,7 +121,7 @@ describe("Kana session store", () => {
     expect(loaded.contextCheckpoint).toBeUndefined();
   });
 
-  test("persists compaction checkpoints without deleting covered messages", () => {
+  test("persists manual compaction checkpoints without deleting covered messages", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "compacted" });
@@ -145,7 +145,7 @@ describe("Kana session store", () => {
       coveredMessageCount: 2,
       createdAfterMessageCount: 4,
       compactedMessageCount: 2,
-      reason: "threshold",
+      reason: "manual",
       beforeTokens: 90_000,
       estimatedAfterTokens: 60_000,
       usage: {
@@ -170,7 +170,7 @@ describe("Kana session store", () => {
       type: "context_compaction",
       id: "compact-1",
       parentId: expect.any(String),
-      reason: "threshold",
+      reason: "manual",
       compactedMessageCount: 2,
       beforeTokens: 90_000,
       estimatedAfterTokens: 60_000,

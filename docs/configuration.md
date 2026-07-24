@@ -144,7 +144,7 @@ safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
 promptBudget = contextLimit - model.max_tokens - safetyReserve
 ```
 
-`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 55%。这里的 `model.max_tokens` 仍只控制最大输出；它被扣除是为了给该输出预留上下文空间。
+`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。这里的 `model.max_tokens` 仍只控制最大输出；它被扣除是为了给该输出预留上下文空间。
 
 默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；DeepSeek HTTP 失败额外记录状态码和状态文本，但不保存响应体。
 

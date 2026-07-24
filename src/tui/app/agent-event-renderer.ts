@@ -65,7 +65,7 @@ export class AgentEventRenderer {
             color: tuiTheme.muted,
           }),
         );
-        this.options.updateStatus("thinking", {
+        this.options.updateStatus(event.reason === "manual" ? "done" : "thinking", {
           contextUsedPercent: Math.min(
             100,
             Math.max(0, Math.round((event.estimatedAfterTokens / event.contextLimit) * 100)),

@@ -379,6 +379,63 @@ describe("session-scoped agents", () => {
     expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
     calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
   });
+
+  test("replaces the temporary manual-compaction message with the persisted marker", async () => {
+    let listener: ((event: never) => void) | undefined;
+    let finishCompaction!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      finishCompaction = resolve;
+    });
+    const app = new KanaTuiApp(
+      () =>
+        ({
+          ...(createAgentStub() as unknown as object),
+          subscribe(next: (event: never) => void) {
+            listener = next;
+            return () => {
+              listener = undefined;
+            };
+          },
+          async compact() {
+            listener?.({
+              type: "context_compaction_start",
+              reason: "manual",
+              estimatedTokens: 60_800,
+              contextLimit: 100_000,
+            } as never);
+            await finished;
+            listener?.({
+              type: "context_compacted",
+              reason: "manual",
+              beforeTokens: 60_800,
+              estimatedAfterTokens: 14_800,
+              compactedMessageCount: 20,
+              contextLimit: 100_000,
+            } as never);
+            return {};
+          },
+        }) as never,
+      createTerminal(),
+      createOptions(),
+    );
+    const internal = app as unknown as {
+      handleCommand(command: { name: "compact"; arguments: string; raw: string }): void;
+      transcript: { render(width: number): string[] };
+    };
+
+    internal.handleCommand({ name: "compact", arguments: "", raw: "/compact" });
+
+    expect(renderTranscript(internal.transcript)).toContain("Compacting context…");
+
+    finishCompaction();
+    await waitFor(() =>
+      renderTranscript(internal.transcript).includes("Context compacted · 60.8k → ~14.8k tokens"),
+    );
+
+    const transcript = renderTranscript(internal.transcript);
+    expect(transcript).not.toContain("Compacting context…");
+    expect(transcript).toContain("Context compacted · 60.8k → ~14.8k tokens");
+  });
 });
 
 async function waitFor(predicate: () => boolean): Promise<void> {

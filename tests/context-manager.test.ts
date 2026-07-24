@@ -39,7 +39,7 @@ describe("ContextManager", () => {
     expect(manager.safetyReserve).toBe(6_400);
     expect(manager.promptBudget).toBe(113_408);
     expect(manager.triggerTokens).toBe(90_726);
-    expect(manager.targetTokens).toBe(62_374);
+    expect(manager.targetTokens).toBe(11_340);
   });
 
   test("selects the earliest complete boundary that retains the target-sized tail", async () => {
@@ -47,6 +47,7 @@ describe("ContextManager", () => {
     const manager = new ContextManager({
       contextLimit: 4_000,
       outputReserve: 500,
+      targetRatio: 0.55,
       compactPolicy: (input) => {
         policyInput = structuredClone(input);
         return {

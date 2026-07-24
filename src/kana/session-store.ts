@@ -444,7 +444,9 @@ function assertContextCheckpointForAppend(checkpoint: ContextCheckpoint): void {
     !isPositiveInteger(checkpoint.compactedMessageCount) ||
     !isNonNegativeInteger(checkpoint.beforeTokens) ||
     !isNonNegativeInteger(checkpoint.estimatedAfterTokens) ||
-    (checkpoint.reason !== "threshold" && checkpoint.reason !== "provider_limit") ||
+    (checkpoint.reason !== "threshold" &&
+      checkpoint.reason !== "provider_limit" &&
+      checkpoint.reason !== "manual") ||
     typeof checkpoint.summary !== "string" ||
     checkpoint.summary.trim().length === 0 ||
     (checkpoint.usage !== undefined && !isModelUsage(checkpoint.usage))
@@ -631,7 +633,9 @@ function isContextCompactionEntry(
     typeof value.id === "string" &&
     (value.parentId === null || typeof value.parentId === "string") &&
     typeof value.timestamp === "string" &&
-    (value.reason === "threshold" || value.reason === "provider_limit") &&
+    (value.reason === "threshold" ||
+      value.reason === "provider_limit" ||
+      value.reason === "manual") &&
     (value.baseCompactionId === undefined || typeof value.baseCompactionId === "string") &&
     typeof value.coversThroughId === "string" &&
     isPositiveInteger(value.compactedMessageCount) &&

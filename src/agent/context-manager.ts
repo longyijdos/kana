@@ -4,12 +4,12 @@ import type { Message, ModelContext, ModelUsage, ToolCallContent } from "@/core"
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
-const DEFAULT_TARGET_RATIO = 0.55;
+const DEFAULT_TARGET_RATIO = 0.1;
 const DEFAULT_MAX_TOOL_CONTENT_TOKENS = 16_000;
 const MIN_SUMMARY_TOKENS = 64;
 const MAX_SUMMARY_TOKENS = 8_192;
 
-export type ContextCompactionReason = "threshold" | "provider_limit";
+export type ContextCompactionReason = "threshold" | "provider_limit" | "manual";
 
 export class ContextCompactionError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -72,6 +72,7 @@ export type ContextCompactionStart = {
 export type PrepareContextOptions = {
   signal?: AbortSignal;
   forceCompaction?: boolean;
+  compactionReason?: ContextCompactionReason;
   onCompactionStart?: (event: ContextCompactionStart) => Promise<void> | void;
 };
 
@@ -213,7 +214,8 @@ export class ContextManager {
 
     if (shouldCompact) {
       const reason: ContextCompactionReason =
-        options.forceCompaction === true ? "provider_limit" : "threshold";
+        options.compactionReason ??
+        (options.forceCompaction === true ? "provider_limit" : "threshold");
       compaction = await this.compact(context, estimatedTokens, reason, options);
       prepared = this.createModelContext(context);
       estimatedTokens = estimateContextTokens(prepared);
@@ -652,7 +654,9 @@ function assertValidCheckpoint(checkpoint: ContextCheckpoint): void {
     !checkpoint.createdAt ||
     !checkpoint.summary.trim() ||
     (checkpoint.baseCompactionId !== undefined && !checkpoint.baseCompactionId) ||
-    (checkpoint.reason !== "threshold" && checkpoint.reason !== "provider_limit") ||
+    (checkpoint.reason !== "threshold" &&
+      checkpoint.reason !== "provider_limit" &&
+      checkpoint.reason !== "manual") ||
     !Number.isInteger(checkpoint.coveredMessageCount) ||
     checkpoint.coveredMessageCount <= 0 ||
     !Number.isInteger(checkpoint.createdAfterMessageCount) ||

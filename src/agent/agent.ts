@@ -28,6 +28,7 @@ export type AgentConfig = {
   maxTurns?: number;
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
+  onCompactionCommitted?: AgentCompactionCommittedHook;
   logger?: Logger;
   loggerMetadata?: LogMetadata;
   context?: Omit<ContextManagerConfig, "logger" | "loggerMetadata">;
@@ -71,6 +72,11 @@ export type AgentRunCommittedHook = (commit: {
   event: Extract<AgentEvent, { type: "agent_end" }>;
 }) => Promise<void> | void;
 
+export type AgentCompactionCommittedHook = (commit: {
+  compaction: ContextCheckpoint;
+  state: AgentState;
+}) => Promise<void> | void;
+
 type ActiveRun = {
   promise: Promise<void>;
   resolve(): void;
@@ -83,6 +89,7 @@ export class Agent {
   private readonly stateData: WritableAgentState;
   private readonly beforeToolExecution?: BeforeToolExecutionHook;
   private readonly onRunCommitted?: AgentRunCommittedHook;
+  private readonly onCompactionCommitted?: AgentCompactionCommittedHook;
   private readonly logger: Logger;
   private readonly loggerMetadata?: LogMetadata;
   private readonly contextManager?: ContextManager;
@@ -94,6 +101,7 @@ export class Agent {
     this.stateData = createWritableAgentState(options);
     this.beforeToolExecution = options.beforeToolExecution;
     this.onRunCommitted = options.onRunCommitted;
+    this.onCompactionCommitted = options.onCompactionCommitted;
     this.contextManager = options.context
       ? new ContextManager({
           ...options.context,
@@ -136,6 +144,61 @@ export class Agent {
 
   async prompt(input: AgentPromptInput): Promise<void> {
     await this.stream(input).result();
+  }
+
+  async compact(): Promise<ContextCheckpoint> {
+    if (!this.contextManager) {
+      throw new Error("Context compaction is not configured.");
+    }
+
+    let committed: ContextCheckpoint | undefined;
+    await this.runWithLifecycle(async (signal) => {
+      const runContextManager = this.contextManager?.fork();
+      if (!runContextManager) {
+        throw new Error("Context compaction is not configured.");
+      }
+
+      const prepared = await runContextManager.prepareForModel(this.createContextSnapshot(), {
+        signal,
+        forceCompaction: true,
+        compactionReason: "manual",
+        onCompactionStart: async (event) => {
+          await this.processEvent({
+            type: "context_compaction_start",
+            reason: event.reason,
+            estimatedTokens: event.estimatedTokens,
+            contextLimit: event.contextLimit,
+          });
+        },
+      });
+      if (!prepared.compaction) {
+        throw new Error("There is no complete context to compact.");
+      }
+
+      committed = prepared.compaction;
+      await this.onCompactionCommitted?.({
+        compaction: structuredClone(committed),
+        state: {
+          ...this.state,
+          contextCheckpoint: structuredClone(committed),
+        },
+      });
+      this.contextManager?.adopt(runContextManager);
+      await this.processEvent({
+        type: "context_compacted",
+        reason: committed.reason,
+        beforeTokens: committed.beforeTokens,
+        estimatedAfterTokens: committed.estimatedAfterTokens,
+        compactedMessageCount: committed.compactedMessageCount,
+        contextLimit: runContextManager.contextLimit,
+        usage: committed.usage,
+      });
+    });
+
+    if (!committed) {
+      throw new Error("Context compaction did not produce a checkpoint.");
+    }
+    return structuredClone(committed);
   }
 
   stream(input: AgentPromptInput): AgentEventStream {

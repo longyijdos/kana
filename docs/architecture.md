@@ -58,7 +58,7 @@ src/main.ts
 
 `Agent` 是有状态的单次运行控制器。它拒绝并发运行；`stream()` 会先把深拷贝后的用户输入加入内部历史，再创建 `AbortController`。循环产生终态后，Agent 先提交本次助手消息和工具结果到内部状态，再等待产品层的 `onRunCommitted`；持久化成功后才向监听器和 stream 发布最终 `agent_end` 并转为空闲。commit 期间仍拒绝新运行，`waitForIdle()` 也会继续等待。`state` 和公共事件会深拷贝可变数据，普通监听器异常不会修改内部历史或终止运行。
 
-可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
+可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。`/compact` 复用同一个 manager 和摘要策略，但使用独立 commit，在持久化成功后才 adopt checkpoint。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
 
 `runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限；最后一个允许回合仍产生工具调用时以 `turn_limit` 结束。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才顺序执行工具调用。每个调用都经过 TypeBox 1.x 校验和可选的 `beforeToolExecution` 钩子；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果并回传模型；拒绝或中止会终止本次运行。
 
