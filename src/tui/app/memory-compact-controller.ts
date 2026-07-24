@@ -8,7 +8,7 @@ export type MemoryScope = "global" | "project" | "both";
 
 export type MemoryCompactSummary = {
   target: Exclude<MemoryScope, "both">;
-  outcome: "updated" | "unchanged" | "aborted" | "length" | "error";
+  outcome: "updated" | "unchanged" | "aborted" | "length" | "turn_limit" | "error";
   error?: string;
 };
 

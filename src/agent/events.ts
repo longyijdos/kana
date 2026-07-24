@@ -6,7 +6,7 @@ import type {
   ToolResultMessage,
 } from "@/core";
 
-export type AgentEndReason = Exclude<AssistantStopReason, "toolUse">;
+export type AgentEndReason = Exclude<AssistantStopReason, "toolUse"> | "turn_limit";
 
 export type AgentEvent =
   | {

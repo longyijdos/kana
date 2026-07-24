@@ -56,9 +56,9 @@ src/main.ts
 
 供应商首先产生 `AssistantMessageEvent`。事件包含增量 `delta` 和完整 `snapshot`：前者适合增量呈现，后者让消费者不必重复实现消息拼接。`agent` 将其转换为更高一层的 `AgentEvent`，并额外发出回合、工具开始/更新/结束和整个运行结束事件。`AgentEventStream` 与模型流都同时支持 `for await` 消费事件和 `result()` 获取最终值。
 
-`Agent` 是有状态的单次运行控制器。它拒绝并发运行；`stream()` 会先把用户输入加入内部历史，再创建 `AbortController`，并在 `agent_end` 时才把本次生成的助手消息和工具结果提交到状态。`state` 的返回值会深拷贝可变数据，调用方不能修改运行中的内部历史。
+`Agent` 是有状态的单次运行控制器。它拒绝并发运行；`stream()` 会先把深拷贝后的用户输入加入内部历史，再创建 `AbortController`。循环产生终态后，Agent 先提交本次助手消息和工具结果到内部状态，再等待产品层的 `onRunCommitted`；持久化成功后才向监听器和 stream 发布最终 `agent_end` 并转为空闲。commit 期间仍拒绝新运行，`waitForIdle()` 也会继续等待。`state` 和公共事件会深拷贝可变数据，普通监听器异常不会修改内部历史或终止运行。
 
-`runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才顺序执行工具调用。每个调用都经过 TypeBox 1.x 校验和可选的 `beforeToolExecution` 钩子；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果并回传模型；拒绝或中止会终止本次运行。
+`runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限；最后一个允许回合仍产生工具调用时以 `turn_limit` 结束。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才顺序执行工具调用。每个调用都经过 TypeBox 1.x 校验和可选的 `beforeToolExecution` 钩子；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果并回传模型；拒绝或中止会终止本次运行。
 
 ## 模型与供应商适配
 

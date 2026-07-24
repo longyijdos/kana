@@ -48,9 +48,9 @@ Rendering helpers strip ANSI/control sequences for width calculation and use `st
 | `tool_execution_start` | Create or mark a tool block running and start its running elapsed time at zero. |
 | `tool_execution_update` | Update partial output for bash and similar tools. |
 | `tool_execution_end` | Store structured results and mark success/failure. |
-| `agent_end` | Update status phase and clear the active tool. |
+| `agent_end` | Update the status phase from the terminal reason and clear the active tool; `turn_limit` renders as a distinct `turn limit` error phase. |
 
-The editor owns the status line, which shows provider/model, context percentage from the latest assistant message, run phase, active tool, and cwd. The status line is hidden while the slash-command palette is open. Replacing the editor with another bottom component hides both editor input and status. Each completed assistant usage accumulates into process totals and CNY cost using model metadata.
+The editor owns the status line, which shows provider/model, context percentage from the latest assistant message, run phase, active tool, and cwd. The status line is hidden while the slash-command palette is open. Replacing the editor with another bottom component hides both editor input and status. Each completed assistant usage accumulates into process totals and CNY cost using model metadata; `/usage` counts turn-limit termination separately from normal completion, output truncation, abort, and failure.
 
 ## Input and shortcuts
 

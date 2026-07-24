@@ -5,6 +5,7 @@ import type { AgentEvent } from "./events";
 import {
   type AgentContext,
   type AgentLoopConfig,
+  assertValidMaxTurns,
   type BeforeToolExecutionHook,
   runAgentLoop,
 } from "./loop";
@@ -72,6 +73,7 @@ export class Agent {
   private readonly loggerMetadata?: LogMetadata;
 
   constructor(options: AgentConfig) {
+    assertValidMaxTurns(options.maxTurns);
     this.stateData = createWritableAgentState(options);
     this.beforeToolExecution = options.beforeToolExecution;
     this.onRunCommitted = options.onRunCommitted;
@@ -115,6 +117,7 @@ export class Agent {
   stream(input: AgentPromptInput): AgentEventStream {
     const stream = new AgentEventStream();
     let doneEvent: Extract<AgentEvent, { type: "agent_end" }> | undefined;
+    let phase: "loop" | "commit" | "publish" = "loop";
 
     if (this.activeRun) {
       stream.error(new Error("Agent is already running."));
@@ -127,36 +130,40 @@ export class Agent {
     this.stateData.messages = [...this.stateData.messages, ...promptMessages];
     this.log("info", "agent.run_started", { promptMessageCount: promptMessages.length });
 
-    void this.runWithLifecycle((signal) =>
-      runAgentLoop(this.createContextSnapshot(), this.createLoopConfig(signal), async (event) => {
-        await this.processEvent(event);
+    void this.runWithLifecycle(async (signal) => {
+      await runAgentLoop(
+        this.createContextSnapshot(),
+        this.createLoopConfig(signal),
+        async (event) => {
+          if (event.type === "agent_end") {
+            doneEvent = structuredClone(event);
+            this.reduceEvent(doneEvent);
+            return;
+          }
 
-        if (event.type === "agent_end") {
-          doneEvent = event;
-          return;
-        }
+          await this.processEvent(event);
+          stream.push(structuredClone(event));
+        },
+      );
 
-        stream.push(event);
-      }),
-    )
-      .then(async () => {
-        if (!doneEvent) {
-          stream.error(new Error("Agent loop finished without agent_end."));
-          return;
-        }
+      if (!doneEvent) {
+        throw new Error("Agent loop finished without agent_end.");
+      }
 
-        await this.onRunCommitted?.({
-          messages: structuredClone([...promptMessages, ...doneEvent.messages]),
-          state: this.state,
-          event: structuredClone(doneEvent),
-        });
-
-        stream.end(doneEvent);
-      })
-      .catch((error) => {
-        this.log("error", "agent.run_failed", { error });
-        stream.error(error);
+      phase = "commit";
+      await this.onRunCommitted?.({
+        messages: structuredClone([...promptMessages, ...doneEvent.messages]),
+        state: this.state,
+        event: structuredClone(doneEvent),
       });
+
+      phase = "publish";
+      await this.publishEvent(doneEvent);
+      stream.end(structuredClone(doneEvent));
+    }).catch((error) => {
+      this.log("error", "agent.run_failed", { phase, error });
+      stream.error(error);
+    });
 
     return stream;
   }
@@ -170,8 +177,11 @@ export class Agent {
   }
 
   reset(): void {
+    if (this.activeRun) {
+      throw new Error("Cannot reset Agent while it is running.");
+    }
+
     this.stateData.messages = [];
-    this.stateData.isRunning = false;
     this.stateData.streamingMessage = undefined;
     this.stateData.pendingToolCalls = new Set<string>();
     this.stateData.error = undefined;
@@ -233,6 +243,10 @@ export class Agent {
 
   private async processEvent(event: AgentEvent): Promise<void> {
     this.reduceEvent(event);
+    await this.publishEvent(event);
+  }
+
+  private async publishEvent(event: AgentEvent): Promise<void> {
     this.logEvent(event);
 
     const signal = this.activeRun?.abortController.signal;
@@ -241,8 +255,15 @@ export class Agent {
       throw new Error("Agent event processed outside an active run.");
     }
 
-    for (const listener of this.listeners) {
-      await listener(event, signal);
+    for (const listener of [...this.listeners]) {
+      try {
+        await listener(structuredClone(event), signal);
+      } catch (error) {
+        this.log("warn", "agent.listener_failed", {
+          eventType: event.type,
+          error,
+        });
+      }
     }
   }
 
@@ -297,10 +318,14 @@ export class Agent {
       ...metadata,
     };
 
-    this.logger[level](
-      event,
-      Object.keys(mergedMetadata).length === 0 ? undefined : mergedMetadata,
-    );
+    try {
+      this.logger[level](
+        event,
+        Object.keys(mergedMetadata).length === 0 ? undefined : mergedMetadata,
+      );
+    } catch {
+      // Diagnostics must not change Agent lifecycle or cleanup behavior.
+    }
   }
 
   private reduceEvent(event: AgentEvent): void {
@@ -329,7 +354,7 @@ export class Agent {
       }
 
       case "agent_end":
-        this.stateData.messages = [...this.stateData.messages, ...event.messages];
+        this.stateData.messages = [...this.stateData.messages, ...structuredClone(event.messages)];
         this.stateData.streamingMessage = undefined;
         break;
     }
@@ -338,7 +363,7 @@ export class Agent {
 
 function createWritableAgentState(options: AgentConfig): WritableAgentState {
   let tools = options.tools?.slice() ?? [];
-  let messages = options.messages?.slice() ?? [];
+  let messages = structuredClone(options.messages ?? []);
 
   return {
     model: options.model,

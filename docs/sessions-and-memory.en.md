@@ -49,7 +49,7 @@ On first write, an explicit title wins. Otherwise Kana uses the first user messa
 
 ### Lifecycle and resilience
 
-- The Agent's `onRunCommitted` appends only this run's new messages after `agent_end`, so in-progress stream snapshots are never persisted.
+- After the model/tool loop finishes, the Agent first updates its internal terminal state and then lets `onRunCommitted` append this run's new messages. It publishes the final `agent_end` and becomes idle only after the append succeeds. In-progress stream snapshots are therefore never persisted, and `waitForIdle()` cannot return before the session write completes.
 - Resuming looks up sessions in the current working directory; the picker likewise shows only other sessions from that workspace.
 - `listKanaSessions()` without a cwd scans all workspace directories and sorts by descending `createdAt`.
 - Listing skips malformed JSONL files so one bad record does not hide other history; explicitly loading that session still errors.
@@ -101,7 +101,7 @@ successful remember
 
 The consolidation Agent uses the same model configuration as the main Agent but has no bash, file, or `remember` tools. Incremental mode exposes only `read_memory`, `edit_memory`, and `replace_memory`, and its input contains only current durable memory and the new entries from this batch. It does not scan historical daily files, preventing inference from unprovided history.
 
-Every edit/replace first affects an in-memory transaction and checks the size limit before accepting the change. `commit()` occurs only when the final assistant message stopped with `stop` and the transaction changed. Abort, error, length truncation, and no-op runs never overwrite durable memory.
+Every edit/replace first affects an in-memory transaction and checks the size limit before accepting the change. `commit()` occurs only when the Agent ends normally with `stop` and the transaction changed. Abort, error, length truncation, `turn_limit`, and no-op runs never overwrite durable memory.
 
 ## Full compaction and retention
 

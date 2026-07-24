@@ -63,6 +63,8 @@ export async function runAgentLoop(
   config: AgentLoopConfig,
   emit: AgentEventSink,
 ): Promise<Message[]> {
+  assertValidMaxTurns(config.maxTurns);
+
   const currentContext: AgentContext = {
     system: context.system,
     messages: [...context.messages],
@@ -71,7 +73,7 @@ export async function runAgentLoop(
   const newMessages: Message[] = [];
   const maxTurns = config.maxTurns ?? 8;
   const hasTurnLimit = maxTurns !== -1;
-  let endReason: AgentEndReason = "stop";
+  let endReason: AgentEndReason = hasTurnLimit ? "turn_limit" : "stop";
 
   await emit({ type: "agent_start" });
 
@@ -129,6 +131,12 @@ export async function runAgentLoop(
   await emit({ type: "agent_end", reason: endReason, messages: newMessages });
 
   return newMessages;
+}
+
+export function assertValidMaxTurns(maxTurns: number | undefined): void {
+  if (maxTurns !== undefined && maxTurns !== -1 && (!Number.isInteger(maxTurns) || maxTurns <= 0)) {
+    throw new Error("maxTurns must be -1 or a positive integer.");
+  }
 }
 
 async function streamAssistantResponse(

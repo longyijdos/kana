@@ -48,9 +48,9 @@ ProcessTerminal
 | `tool_execution_start` | 创建或标记工具块为运行中，并从零开始显示 running 耗时。 |
 | `tool_execution_update` | 更新 bash 等工具的部分输出。 |
 | `tool_execution_end` | 写入结构化结果并标记成功/失败。 |
-| `agent_end` | 更新状态阶段，清除活动工具。 |
+| `agent_end` | 按终态更新状态阶段并清除活动工具；`turn_limit` 显示为独立的 `turn limit` 错误阶段。 |
 
-编辑器内部包含状态栏，它显示 provider/model、最近助手消息的 context 使用率、运行阶段、活动工具和 cwd。打开 slash 命令面板时会隐藏状态栏；其他底部组件替换编辑器时，输入区和状态栏会一起隐藏。每条完成助手消息的 usage 会累加到进程总用量和按模型元数据计算的 CNY 成本。
+编辑器内部包含状态栏，它显示 provider/model、最近助手消息的 context 使用率、运行阶段、活动工具和 cwd。打开 slash 命令面板时会隐藏状态栏；其他底部组件替换编辑器时，输入区和状态栏会一起隐藏。每条完成助手消息的 usage 会累加到进程总用量和按模型元数据计算的 CNY 成本；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
 ## 输入与快捷方式
 

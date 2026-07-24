@@ -32,6 +32,8 @@ function phaseText(phase: string): string {
     case "aborted":
     case "length":
       return color(phase, tuiTheme.error);
+    case "turn_limit":
+      return color("turn limit", tuiTheme.error);
     case "starting":
     case "thinking":
     case "responding":
