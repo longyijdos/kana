@@ -5,6 +5,7 @@ import type { AgentEvent } from "./events";
 import {
   type AgentContext,
   type AgentLoopConfig,
+  assertValidMaxTurns,
   type BeforeToolExecutionHook,
   runAgentLoop,
 } from "./loop";
@@ -72,6 +73,7 @@ export class Agent {
   private readonly loggerMetadata?: LogMetadata;
 
   constructor(options: AgentConfig) {
+    assertValidMaxTurns(options.maxTurns);
     this.stateData = createWritableAgentState(options);
     this.beforeToolExecution = options.beforeToolExecution;
     this.onRunCommitted = options.onRunCommitted;

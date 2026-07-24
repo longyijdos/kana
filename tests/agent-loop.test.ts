@@ -284,6 +284,30 @@ const addTool = {
 } satisfies Tool<typeof addParameters, number>;
 
 describe("runAgentLoop", () => {
+  test("rejects invalid maxTurns before emitting lifecycle events", async () => {
+    for (const maxTurns of [-2, 0, 1.5]) {
+      const model = new ScriptedToolModel();
+      const events: AgentEvent[] = [];
+
+      await expect(
+        runAgentLoop(
+          {
+            messages: [],
+          },
+          {
+            model,
+            maxTurns,
+          },
+          (event) => {
+            events.push(event);
+          },
+        ),
+      ).rejects.toThrow("maxTurns must be -1 or a positive integer.");
+      expect(model.contexts).toEqual([]);
+      expect(events).toEqual([]);
+    }
+  });
+
   test("streams assistant turns and executes requested tools", async () => {
     const model = new ScriptedToolModel();
     const events: AgentEvent[] = [];

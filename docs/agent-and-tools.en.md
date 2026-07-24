@@ -64,7 +64,7 @@ Repeat (at most 8 turns by default; unlimited when maxTurns = -1):
 Emit agent_end and return messages added by this run
 ```
 
-Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. Tool calls proposed together in a single assistant message still execute serially in content order; a later call cannot start before the prior call ends.
+Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. Tool calls proposed together in a single assistant message still execute serially in content order; a later call cannot start before the prior call ends.
 
 Tools run only when an assistant message ends normally with `toolUse`. A length-truncated message never executes its tool calls. A provider error with no assistant content does not persist an empty assistant message; an aborted message loses its unexecuted tool calls but retains any remaining text or thinking content.
 

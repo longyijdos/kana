@@ -157,6 +157,18 @@ class AbortAwareModel implements Model {
 }
 
 describe("Agent", () => {
+  test("rejects invalid maxTurns during construction", () => {
+    for (const maxTurns of [-2, 0, 1.5]) {
+      expect(
+        () =>
+          new Agent({
+            model: new TextModel(),
+            maxTurns,
+          }),
+      ).toThrow("maxTurns must be -1 or a positive integer.");
+    }
+  });
+
   test("writes lifecycle events without logging message content", async () => {
     const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
     const logger: Logger = {
