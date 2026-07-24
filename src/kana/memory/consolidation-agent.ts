@@ -1,4 +1,4 @@
-import { Agent, type AgentState } from "@/agent";
+import { Agent, type AgentEndReason, type AgentState } from "@/agent";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaConfig } from "../config";
 import { createKanaModel } from "../model";
@@ -25,7 +25,12 @@ export type CreateMemoryConsolidationAgentOptions = {
   logger?: Logger;
 };
 
-export type MemoryConsolidationOutcome = "updated" | "unchanged" | "aborted" | "length";
+export type MemoryConsolidationOutcome =
+  | "updated"
+  | "unchanged"
+  | "aborted"
+  | "length"
+  | "turn_limit";
 
 export type MemoryConsolidationResult = {
   state: AgentState;
@@ -116,21 +121,29 @@ export async function runMemoryConsolidation(
     options.signal?.addEventListener("abort", abort, { once: true });
   }
 
+  let endReason: AgentEndReason | undefined;
+  const unsubscribe = agent.subscribe((event) => {
+    if (event.type === "agent_end") {
+      endReason = event.reason;
+    }
+  });
+
   try {
     await agent.prompt(options.input);
   } finally {
+    unsubscribe();
     options.signal?.removeEventListener("abort", abort);
   }
 
-  const finalMessage = agent.state.messages.at(-1);
-  if (finalMessage?.role !== "assistant") {
-    throw new Error("Memory consolidation finished without an assistant message.");
+  if (endReason === undefined) {
+    throw new Error("Memory consolidation finished without an agent_end event.");
   }
-  if (finalMessage.stopReason === "stop" && memory.hasChanges) {
+
+  if (endReason === "stop" && memory.hasChanges) {
     memory.commit();
   }
 
-  if (finalMessage.stopReason === "stop" && options.mode === "full") {
+  if (endReason === "stop" && options.mode === "full") {
     const retentionDays = config.memory.dailyRetentionDays;
     if (retentionDays !== undefined) {
       pruneKanaDailyMemory(options.scope, {
@@ -143,13 +156,15 @@ export async function runMemoryConsolidation(
   }
 
   const outcome =
-    finalMessage.stopReason === "stop"
+    endReason === "stop"
       ? memory.hasChanges
         ? "updated"
         : "unchanged"
-      : finalMessage.stopReason === "length"
+      : endReason === "length"
         ? "length"
-        : "aborted";
+        : endReason === "turn_limit"
+          ? "turn_limit"
+          : "aborted";
   logger.info("memory_consolidation.ended", { scope: options.scope, mode: options.mode, outcome });
 
   return {

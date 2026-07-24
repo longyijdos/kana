@@ -187,6 +187,28 @@ describe("Agent", () => {
     expect(JSON.stringify(records)).not.toContain("secret");
   });
 
+  test("keeps logging failures outside the runtime control flow", async () => {
+    const fail = () => {
+      throw new Error("logger unavailable");
+    };
+    const agent = new Agent({
+      model: new TextModel("hello"),
+      logger: {
+        debug: fail,
+        info: fail,
+        warn: fail,
+        error: fail,
+      },
+    });
+
+    await agent.prompt("hi");
+
+    expect(agent.state.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      stopReason: "stop",
+    });
+  });
+
   test("runs prompts and appends loop messages once", async () => {
     const model = new TextModel("hello");
     const agent = new Agent({ model });
@@ -314,6 +336,145 @@ describe("Agent", () => {
     expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
   });
 
+  test("deep-clones constructor messages before storing them", () => {
+    const initialMessage = {
+      role: "user" as const,
+      content: "original",
+    };
+    const agent = new Agent({
+      model: new TextModel(),
+      messages: [initialMessage],
+    });
+
+    initialMessage.content = "mutated";
+
+    expect(agent.state.messages).toEqual([
+      {
+        role: "user",
+        content: "original",
+      },
+    ]);
+  });
+
+  test("isolates listener mutations and failures from state and other listeners", async () => {
+    const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
+    const logger: Logger = {
+      debug: () => {},
+      info: () => {},
+      warn: (event, metadata) => records.push({ event, metadata }),
+      error: () => {},
+    };
+    const agent = new Agent({
+      model: new TextModel("committed"),
+      logger,
+    });
+    let secondListenerMessageCount = 0;
+
+    agent.subscribe((event) => {
+      if (event.type === "agent_end") {
+        event.messages.length = 0;
+        throw new Error("observer failed");
+      }
+    });
+    agent.subscribe((event) => {
+      if (event.type === "agent_end") {
+        secondListenerMessageCount = event.messages.length;
+      }
+    });
+
+    await agent.prompt("hi");
+
+    expect(secondListenerMessageCount).toBe(1);
+    expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(records).toEqual([
+      {
+        event: "agent.listener_failed",
+        metadata: {
+          eventType: "agent_end",
+          error: expect.any(Error),
+        },
+      },
+    ]);
+  });
+
+  test("keeps commit inside the active run and publishes agent_end afterward", async () => {
+    const commitStarted = deferred();
+    const releaseCommit = deferred();
+    const endEvents: AgentEvent[] = [];
+    let isRunningDuringCommit = false;
+    const agent = new Agent({
+      model: new TextModel("committed"),
+      onRunCommitted: async ({ state }) => {
+        isRunningDuringCommit = state.isRunning;
+        commitStarted.resolve();
+        await releaseCommit.promise;
+      },
+    });
+    agent.subscribe((event) => {
+      if (event.type === "agent_end") {
+        endEvents.push(event);
+      }
+    });
+
+    const stream = agent.stream("first");
+    await commitStarted.promise;
+
+    let idleSettled = false;
+    const idle = agent.waitForIdle().then(() => {
+      idleSettled = true;
+    });
+    await Promise.resolve();
+    const isRunningBeforeRelease = agent.state.isRunning;
+    const idleSettledBeforeRelease = idleSettled;
+    const endEventCountBeforeRelease = endEvents.length;
+    const concurrentResult = agent.stream("second").result();
+    let resetError: unknown;
+    try {
+      agent.reset();
+    } catch (error) {
+      resetError = error;
+    }
+
+    releaseCommit.resolve();
+    await stream.result();
+    await idle;
+
+    expect(isRunningDuringCommit).toBe(true);
+    expect(isRunningBeforeRelease).toBe(true);
+    expect(idleSettledBeforeRelease).toBe(false);
+    expect(idleSettled).toBe(true);
+    expect(endEventCountBeforeRelease).toBe(0);
+    expect(endEvents).toHaveLength(1);
+    expect(agent.state.isRunning).toBe(false);
+    expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    await expect(concurrentResult).rejects.toThrow("Agent is already running.");
+    expect(resetError).toBeInstanceOf(Error);
+    expect((resetError as Error).message).toBe("Cannot reset Agent while it is running.");
+  });
+
+  test("does not publish agent_end when commit fails", async () => {
+    const commitError = new Error("session append failed");
+    const events: AgentEvent[] = [];
+    const agent = new Agent({
+      model: new TextModel("uncommitted"),
+      onRunCommitted: () => {
+        throw commitError;
+      },
+    });
+    agent.subscribe((event) => {
+      events.push(event);
+    });
+
+    const stream = agent.stream("hi");
+
+    await expect(stream.result()).rejects.toBe(commitError);
+    await agent.waitForIdle();
+
+    expect(events.some((event) => event.type === "agent_end")).toBe(false);
+    expect(agent.state.isRunning).toBe(false);
+    expect(agent.state.error).toBe(commitError);
+  });
+
   test("passes abort signal to the running model", async () => {
     const agent = new Agent({
       model: new AbortAwareModel(),
@@ -346,3 +507,18 @@ describe("Agent", () => {
     });
   });
 });
+
+function deferred(): {
+  promise: Promise<void>;
+  resolve(): void;
+} {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return {
+    promise,
+    resolve,
+  };
+}

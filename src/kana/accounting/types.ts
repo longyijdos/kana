@@ -8,6 +8,7 @@ export type KanaAccountingOutcome =
   | "length"
   | "aborted"
   | "error"
+  | "turn_limit"
   | "updated"
   | "unchanged";
 

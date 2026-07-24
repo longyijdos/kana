@@ -6,7 +6,7 @@ export {
   type AgentRunCommittedHook,
   type AgentState,
 } from "./agent";
-export type { AgentEvent } from "./events";
+export type { AgentEndReason, AgentEvent } from "./events";
 export {
   type AgentContext,
   type AgentEventSink,

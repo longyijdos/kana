@@ -6,12 +6,13 @@ import {
   type ModelUsage,
 } from "@/core";
 import { appendKanaRunAccounting } from "./storage";
+import type { KanaAccountingOutcome } from "./types";
 
 export function recordKanaAgentRunAccounting(options: {
   sessionId: string;
   cwd: string;
   agentKind: "main" | "memory_consolidation";
-  outcome: "stop" | "length" | "aborted" | "error" | "updated" | "unchanged";
+  outcome: KanaAccountingOutcome;
   messages: Message[];
   model: ModelMetadata;
   memory?: {

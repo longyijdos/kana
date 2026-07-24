@@ -49,7 +49,7 @@ cwd: /Users/alice/project
 
 ### 生命周期与容错
 
-- Agent 的 `onRunCommitted` 只在 `agent_end` 后追加本轮的新消息，因此不会持久化仍在流式生成中的快照。
+- 模型—工具循环结束后，Agent 先更新内部终态，再由 `onRunCommitted` 追加本轮的新消息；追加成功后才向外发布最终 `agent_end` 并转为空闲。因此不会持久化仍在流式生成中的快照，`waitForIdle()` 也不会早于会话写入完成。
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。
 - `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按 `createdAt` 降序排序。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。
@@ -101,7 +101,7 @@ remember 成功
 
 合并 Agent 与主 Agent 使用同一模型配置，但没有 bash、文件工具或 `remember`。增量模式仅提供 `read_memory`、`edit_memory`、`replace_memory`，且输入只包含当前长期记忆和本批新条目。它不扫描历史 daily 文件，避免把未提供的上下文推断进记忆。
 
-所有 edit/replace 先作用于内存 transaction；每次写入前检查大小限制。仅当 Agent 最终助手消息的停止原因是 `stop` 且 transaction 有改动时才 `commit()`。中止、错误、长度截断和未改动都不会覆盖长期记忆。
+所有 edit/replace 先作用于内存 transaction；每次写入前检查大小限制。仅当 Agent 以 `stop` 正常结束且 transaction 有改动时才 `commit()`。中止、错误、长度截断、`turn_limit` 和未改动都不会覆盖长期记忆。
 
 ## 全量压缩与保留
 

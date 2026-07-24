@@ -42,7 +42,7 @@ agent_start
   → agent_end
 ```
 
-Both streams support real-time consumption with `for await` and waiting for their final value with `result()`. Consumers must not mutate event messages; messages sent to Agent listeners and exposed through `state` are deep copies.
+Both streams support real-time consumption with `for await` and waiting for their final value with `result()`. The Agent separately deep-clones public events for each listener and the stream; constructor messages and messages exposed through `state` likewise share no mutable objects with internal history.
 
 ## Turn loop
 
@@ -64,7 +64,7 @@ Repeat (at most 8 turns by default; unlimited when maxTurns = -1):
 Emit agent_end and return messages added by this run
 ```
 
-Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied. Tool calls proposed together in a single assistant message still execute serially in content order; a later call cannot start before the prior call ends.
+Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. Tool calls proposed together in a single assistant message still execute serially in content order; a later call cannot start before the prior call ends.
 
 Tools run only when an assistant message ends normally with `toolUse`. A length-truncated message never executes its tool calls. A provider error with no assistant content does not persist an empty assistant message; an aborted message loses its unexecuted tool calls but retains any remaining text or thinking content.
 
@@ -72,7 +72,9 @@ Tools run only when an assistant message ends normally with `toolUse`. A length-
 
 `Agent.stream(input)` immediately appends user input to internal history, then starts the loop asynchronously. It permits only one active run; concurrent attempts receive an error stream. `prompt(input)` is the convenience form that awaits `stream(input).result()`.
 
-While running, `Agent.state` exposes its model, system prompt, tools, history, `isRunning`, streaming assistant message, pending tool-call IDs, and final error. `abort()` cancels the run's `AbortController`; `waitForIdle()` waits for the current run; `reset()` clears history and run state. `onRunCommitted` runs only after `agent_end`, which lets the product append session records safely.
+After the model/tool loop produces its terminal state, the Agent first updates internal history and then waits for `onRunCommitted` to persist the run. Listeners and the stream receive the final `agent_end` only after commit succeeds. A commit failure rejects the stream without first publishing a successful terminal event. Commit remains part of the active run, so `isRunning` stays `true`, new runs are rejected, and `waitForIdle()` continues waiting throughout it.
+
+While running, `Agent.state` exposes its model, system prompt, tools, history, `isRunning`, streaming assistant message, pending tool-call IDs, and final error. `abort()` cancels the run's `AbortController`; `reset()` clears history and run state only while idle. Ordinary event listeners are observers: each receives an independent event copy, and listener failures are logged as `agent.listener_failed` and isolated from Agent execution. Logic that controls tool execution belongs in `beforeToolExecution`.
 
 ## Tool preconditions and error semantics
 

@@ -71,7 +71,7 @@ export async function runAgentLoop(
   const newMessages: Message[] = [];
   const maxTurns = config.maxTurns ?? 8;
   const hasTurnLimit = maxTurns !== -1;
-  let endReason: AgentEndReason = "stop";
+  let endReason: AgentEndReason = hasTurnLimit ? "turn_limit" : "stop";
 
   await emit({ type: "agent_start" });
 

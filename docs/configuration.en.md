@@ -121,17 +121,17 @@ export DEEPSEEK_API_KEY='sk-...'
 
 | Table and key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `agent.max_turns` | Finite number; `-1` means unlimited | `-1` | Maximum model/tool turns in one user run. |
+| `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
 | `approval.mode` | `always`, `unless_trusted`, `never` | `unless_trusted` | Whether tool calls enter the TUI approval flow. |
 | `notification.backend` | `auto`, `off`, `bell`, `osc9`, `osc777`, `kitty` | `auto` | Terminal-notification output protocol. `auto` detects Kitty, then iTerm, then VTE, otherwise falls back to bell. |
-| `notification.on_agent_completed` | Boolean | `true` | Notify when an Agent run completes normally. Aborted, failed, and length-truncated runs are not completion. |
+| `notification.on_agent_completed` | Boolean | `true` | Notify when an Agent run completes normally. Aborted, failed, length-truncated, and `turn_limit` runs are not completion. |
 | `notification.on_approval_required` | Boolean | `true` | Notify when a tool-approval prompt is shown. |
 | `memory.enabled` | Boolean | `true` | Register `remember` and inject memory into the system prompt. |
 | `memory.max_chars` | Positive integer | `6000` | Unicode-character limit for consolidated durable memory. |
 | `memory.daily_retention_days` | Optional positive integer | Unset | Number of daily staging records retained after successful full memory compaction. |
 | `logging.level` | `debug`, `info`, `warn`, `error`, `off` | `info` | Minimum level written to runtime JSONL logs; `off` disables file logging entirely. |
 
-When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns`, `max_tokens`, `timeout_ms`, and `max_retries` are currently validated only as finite numbers; the two `memory` quantity fields additionally require positive integers.
+When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `max_tokens`, `timeout_ms`, and `max_retries` are validated as finite numbers, while the two `memory` quantity fields require positive integers.
 
 Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; DeepSeek HTTP failures additionally retain status code and status text, never the response body.
 

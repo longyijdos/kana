@@ -28,6 +28,7 @@ function summarize(
     length: 0,
     aborted: 0,
     error: 0,
+    turn_limit: 0,
     updated: 0,
     unchanged: 0,
   };

@@ -47,7 +47,7 @@ export class UsageSummaryBlock implements Component {
         tuiTheme.usageReasoning,
       ),
       "",
-      `${color("Completed", tuiTheme.usageOutput)} ${this.summary.outcomes.stop}  ${color("Output limit", tuiTheme.usageWarning)} ${this.summary.outcomes.length}  ${color("Aborted", tuiTheme.usageWarning)} ${this.summary.outcomes.aborted}  ${color("Failed", tuiTheme.error)} ${this.summary.outcomes.error}`,
+      `${color("Completed", tuiTheme.usageOutput)} ${this.summary.outcomes.stop}  ${color("Output limit", tuiTheme.usageWarning)} ${this.summary.outcomes.length}  ${color("Turn limit", tuiTheme.usageWarning)} ${this.summary.outcomes.turn_limit}  ${color("Aborted", tuiTheme.usageWarning)} ${this.summary.outcomes.aborted}  ${color("Failed", tuiTheme.error)} ${this.summary.outcomes.error}`,
       ...this.summary.models.map((model) =>
         color(
           `${model.provider}/${model.model}  ${model.runCount} runs  ${formatCny(model.costCny)}`,

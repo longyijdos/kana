@@ -269,6 +269,18 @@ describe("Kana config", () => {
     );
   });
 
+  test("rejects invalid agent.max_turns values", () => {
+    for (const value of [-2, 0, 1.5]) {
+      const env = createTempEnv();
+      const { home } = getKanaConfigPaths(env);
+      writeFileSync(path.join(home, "config.toml"), `[agent]\nmax_turns = ${value}\n`);
+
+      expect(() => loadKanaConfig(env)).toThrow(
+        "agent.max_turns must be -1 or a positive integer.",
+      );
+    }
+  });
+
   test("loads the configured API key environment variable name", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);

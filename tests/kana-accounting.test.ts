@@ -42,6 +42,26 @@ describe("Kana accounting", () => {
     expect(globalSummary).toMatchObject({ runCount: 3, usage: { totalTokens: 60 } });
     expect(globalSummary.costCny).toBeCloseTo(0.06);
   });
+
+  test("counts turn-limited runs separately from normal completion", () => {
+    const env = { KANA_HOME: temporaryHome() };
+    const workspace = "/work/one";
+    appendKanaRunAccounting(
+      {
+        ...record("session-one", "main", 10, 0.01),
+        outcome: "turn_limit",
+      },
+      { env, cwd: workspace },
+    );
+
+    expect(
+      loadKanaUsageSummary({ scope: "session", sessionId: "session-one", env, cwd: workspace })
+        .outcomes,
+    ).toMatchObject({
+      stop: 0,
+      turn_limit: 1,
+    });
+  });
 });
 
 function record(

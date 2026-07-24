@@ -10,7 +10,8 @@ export type RunPhase =
   | "done"
   | "aborted"
   | "error"
-  | "length";
+  | "length"
+  | "turn_limit";
 
 export function phaseForAssistantMessage(message: AssistantMessage): RunPhase {
   if (message.content.some((content) => content.type === "tool_call")) {
@@ -62,6 +63,8 @@ export function phaseForAgentEndReason(
       return "error";
     case "length":
       return "length";
+    case "turn_limit":
+      return "turn_limit";
     case "stop":
       return "done";
   }

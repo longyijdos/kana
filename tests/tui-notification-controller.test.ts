@@ -29,13 +29,14 @@ describe("notification controller", () => {
     ]);
   });
 
-  test("does not report aborted, failed, or truncated runs as completed", () => {
+  test("does not report aborted, failed, truncated, or turn-limited runs as completed", () => {
     const terminal = new NotificationTerminal();
     const controller = new NotificationController(ENABLED_NOTIFICATION_CONFIG, terminal);
 
     controller.handleAgentEvent({ type: "agent_end", reason: "aborted", messages: [] });
     controller.handleAgentEvent({ type: "agent_end", reason: "error", messages: [] });
     controller.handleAgentEvent({ type: "agent_end", reason: "length", messages: [] });
+    controller.handleAgentEvent({ type: "agent_end", reason: "turn_limit", messages: [] });
     controller.handleAgentEvent({ type: "agent_start" });
 
     expect(terminal.notifications).toEqual([]);

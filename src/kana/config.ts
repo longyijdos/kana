@@ -292,7 +292,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       maxRetries: readNumber(model.max_retries, defaults.model.maxRetries, "model.max_retries"),
     },
     agent: {
-      maxTurns: readNumber(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
+      maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
     },
     approval: {
       mode: readToolApprovalMode(approval.mode, defaults.approval.mode),
@@ -374,6 +374,16 @@ function readPositiveInteger(value: unknown, fallback: number, name: string): nu
 
   if (!Number.isInteger(number) || number <= 0) {
     throw new Error(`${name} must be a positive integer.`);
+  }
+
+  return number;
+}
+
+function readAgentMaxTurns(value: unknown, fallback: number, name: string): number {
+  const number = readNumber(value, fallback, name);
+
+  if (number !== -1 && (!Number.isInteger(number) || number <= 0)) {
+    throw new Error(`${name} must be -1 or a positive integer.`);
   }
 
   return number;

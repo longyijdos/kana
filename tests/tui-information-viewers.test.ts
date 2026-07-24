@@ -199,7 +199,15 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
       promptCacheHitTokens: 20,
       promptCacheMissTokens: 10,
     },
-    outcomes: { stop: 1, length: 0, aborted: 0, error: 0, updated: 0, unchanged: 0 },
+    outcomes: {
+      stop: 1,
+      length: 0,
+      aborted: 0,
+      error: 0,
+      turn_limit: 0,
+      updated: 0,
+      unchanged: 0,
+    },
     agents: {
       main: { runCount: 1, costCny: 1.25 },
       memoryAutomatic: { runCount: 0, costCny: 0 },

@@ -643,6 +643,43 @@ describe("runAgentLoop", () => {
     });
   });
 
+  test("reports turn_limit when the final allowed turn still requests tools", async () => {
+    const model = new ScriptedToolModel({ a: 2, b: 3 }, 3);
+    const events: AgentEvent[] = [];
+
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "keep using tools",
+          },
+        ],
+        tools: [addTool],
+      },
+      {
+        model,
+        maxTurns: 2,
+      },
+      (event) => {
+        events.push(structuredClone(event));
+      },
+    );
+
+    expect(model.contexts).toHaveLength(2);
+    expect(messages.map((message) => message.role)).toEqual([
+      "assistant",
+      "tool",
+      "assistant",
+      "tool",
+    ]);
+    expect(events.at(-1)).toEqual({
+      type: "agent_end",
+      reason: "turn_limit",
+      messages,
+    });
+  });
+
   test("does not execute tool calls from length-truncated assistant turns", async () => {
     const model = new LengthTruncatedToolModel();
     const events: AgentEvent[] = [];

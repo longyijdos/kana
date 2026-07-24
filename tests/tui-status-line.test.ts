@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { phaseForAgentEndReason } from "@/tui/app/status-phase";
 import { Editor } from "@/tui/components";
 import { color, stripAnsi } from "@/tui/render";
 import { tuiTheme } from "@/tui/theme";
@@ -32,6 +33,17 @@ describe("prompt editor status line", () => {
     const rendered = stripAnsi(editor.render(120).at(-1) ?? "");
 
     expect(rendered).not.toContain("Esc abort");
+  });
+
+  test("renders a distinct turn-limit terminal phase", () => {
+    const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
+
+    editor.updateStatus({
+      phase: phaseForAgentEndReason("turn_limit"),
+      running: false,
+    });
+
+    expect(stripAnsi(editor.render(120).at(-1) ?? "")).toContain("turn limit");
   });
 
   test("hides while the slash command palette is open and returns after it closes", () => {

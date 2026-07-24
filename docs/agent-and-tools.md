@@ -42,7 +42,7 @@ agent_start
   → agent_end
 ```
 
-两个流都可用 `for await` 消费实时事件，并可用 `result()` 等待最终结果。消费者不应修改事件中的消息；Agent 发送给监听器和对外 `state` 的消息均为深拷贝。
+两个流都可用 `for await` 消费实时事件，并可用 `result()` 等待最终结果。Agent 会为每个监听器和 stream 分别深拷贝公共事件，构造时传入的消息与对外 `state` 中的消息也不会共享内部可变对象。
 
 ## 回合循环
 
@@ -64,7 +64,7 @@ agent_start
 发出 agent_end，返回本次新增消息
 ```
 
-Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8。工具调用即使由模型在同一条消息中同时提出，也按内容顺序串行执行；后一个调用不会在前一个结束前开始。
+Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。工具调用即使由模型在同一条消息中同时提出，也按内容顺序串行执行；后一个调用不会在前一个结束前开始。
 
 只有助手消息以 `toolUse` 正常结束时，工具才会执行。长度截断的消息即使带有工具调用也不会执行。发生 provider error 且助手没有任何内容时，该空助手消息不会写入历史；中止的消息会移除其中未执行的工具调用，但若仍有文本或 thinking 内容则保留该部分。
 
@@ -72,7 +72,9 @@ Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时�
 
 `Agent.stream(input)` 立即把用户输入追加到内部历史，然后异步启动循环。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
 
-运行期间，`Agent.state` 暴露：模型、系统提示词、工具、历史、`isRunning`、当前流式助手消息、尚未结束的工具调用 ID，以及最终错误。`abort()` 中止该运行的 `AbortController`；`waitForIdle()` 等待当前运行；`reset()` 清空历史和运行状态。`onRunCommitted` 只在收到 `agent_end` 后调用，产品层用它安全地追加会话记录。
+模型—工具循环产生终态后，Agent 先更新内部历史，再等待 `onRunCommitted` 完成本轮持久化；只有 commit 成功后，监听器和 stream 才会收到最终 `agent_end`。commit 失败会拒绝 stream，而不会先发布成功终态。commit 也属于 active run，因此这段时间 `isRunning` 仍为 `true`，新运行会被拒绝，`waitForIdle()` 继续等待。
+
+运行期间，`Agent.state` 暴露：模型、系统提示词、工具、历史、`isRunning`、当前流式助手消息、尚未结束的工具调用 ID，以及最终错误。`abort()` 中止该运行的 `AbortController`；`reset()` 仅能在空闲时清空历史和运行状态。普通事件监听器属于 observer：每个监听器收到独立事件副本，监听器异常会记录为 `agent.listener_failed` 并与 Agent 执行隔离；能够控制工具执行的逻辑应使用 `beforeToolExecution`。
 
 ## 工具调用的前置与错误语义
 
