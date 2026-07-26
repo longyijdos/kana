@@ -52,6 +52,8 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 
 任何抛出错误最终都会产生 provider `error` 事件：DOM `AbortError` 或上层 signal 已中止映射为 `aborted`，其余映射为 `error`。事件带有截至失败时已累积的助手消息快照，因此 Agent 能保留可用的部分文本。
 
+HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/window 或 input/prompt token 超限时，才转换为通用 `ContextWindowExceededError`；普通参数错误保持原始 `DeepSeekHttpError`。Agent 仅在还没有任何助手输出时捕获该类型，执行一次安全上下文压缩并重试当前请求一次。provider 失败日志仍只记录错误类型、状态码和状态文本，不记录最多检查 4096 字符的响应消息。
+
 ## SSE 解析与内容顺序
 
 响应读取器以空行切分 SSE frame，并保留不完整尾帧以应对网络分片。每个 frame 收集所有 `data:` 行；`[DONE]` 立即结束读取。JSON payload 交给 `applyDeepSeekChunk`。
@@ -76,7 +78,7 @@ finish_reason = tool_calls
 
 ## 用量和成本
 
-`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。成本计算以 CNY/百万 token 为单位：有 cache miss 时将它计为普通输入，有 cache hit 时按 cache-read 价格计费；只提供其中一项时从 `promptTokens` 推导另一项。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / contextWindow`，钳制在 0–100%。
+`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。成本计算以 CNY/百万 token 为单位：有 cache miss 时将它计为普通输入，有 cache hit 时按 cache-read 价格计费；只提供其中一项时从 `promptTokens` 推导另一项。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / effective context limit`，钳制在 0–100%；未配置 `agent.context_limit` 时，该分母才是 metadata context window。摘要请求的 usage 计入主运行累计用量和成本，但不会替换最近正常模型请求的 context 百分比。
 
 ## 扩展注意点
 

@@ -1,7 +1,14 @@
 import type { AgentEvent } from "@/agent";
 import type { AssistantMessage } from "@/core";
-import { AssistantMessageBlock, type StatusLineState, type Transcript } from "../components";
+import {
+  AssistantMessageBlock,
+  type StatusLineState,
+  TextBlock,
+  type Transcript,
+} from "../components";
 import type { Tui } from "../runtime";
+import { tuiTheme } from "../theme";
+import { formatContextCompaction } from "./history";
 import {
   isThinkingVisible,
   phaseForAgentEndReason,
@@ -48,6 +55,22 @@ export class AgentEventRenderer {
         this.options.updateStatus("thinking");
         break;
       case "turn_end":
+        break;
+      case "context_compaction_start":
+        this.options.updateStatus("compacting");
+        break;
+      case "context_compacted":
+        this.options.transcript.addChild(
+          new TextBlock(formatContextCompaction(event.beforeTokens, event.estimatedAfterTokens), {
+            color: tuiTheme.muted,
+          }),
+        );
+        this.options.updateStatus(event.reason === "manual" ? "done" : "thinking", {
+          contextUsedPercent: Math.min(
+            100,
+            Math.max(0, Math.round((event.estimatedAfterTokens / event.contextLimit) * 100)),
+          ),
+        });
         break;
       case "message_start":
         this.handleAssistantStart(event.message);

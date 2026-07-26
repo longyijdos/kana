@@ -1,4 +1,5 @@
 import type { AssistantMessage, Message, ToolCallContent } from "@/core";
+import type { KanaSessionTimelineEntry } from "@/kana";
 import {
   AssistantMessageBlock,
   TextBlock,
@@ -8,27 +9,47 @@ import {
 } from "../components";
 import { tuiTheme } from "../theme";
 
-export function addHistoryMessagesToTranscript(transcript: Transcript, messages: Message[]): void {
+export function addHistoryTimelineToTranscript(
+  transcript: Transcript,
+  timeline: KanaSessionTimelineEntry[],
+): void {
   const toolCalls = new Map<string, ToolCallContent>();
 
-  for (const message of messages) {
-    switch (message.role) {
-      case "user":
-        transcript.addChild(
-          message.source === "scheduled"
-            ? new TextBlock(formatUserMessage(message), { color: tuiTheme.muted })
-            : new UserMessageBlock(formatUserMessage(message)),
-        );
-        break;
-
-      case "assistant":
-        addAssistantMessage(transcript, message, toolCalls);
-        break;
-
-      case "tool":
-        addToolResult(transcript, message, toolCalls);
-        break;
+  for (const entry of timeline) {
+    if (entry.type === "message") {
+      addHistoryMessage(transcript, entry.message, toolCalls);
+      continue;
     }
+
+    transcript.addChild(
+      new TextBlock(formatContextCompaction(entry.beforeTokens, entry.estimatedAfterTokens), {
+        color: tuiTheme.muted,
+      }),
+    );
+  }
+}
+
+function addHistoryMessage(
+  transcript: Transcript,
+  message: Message,
+  toolCalls: Map<string, ToolCallContent>,
+): void {
+  switch (message.role) {
+    case "user":
+      transcript.addChild(
+        message.source === "scheduled"
+          ? new TextBlock(formatUserMessage(message), { color: tuiTheme.muted })
+          : new UserMessageBlock(formatUserMessage(message)),
+      );
+      break;
+
+    case "assistant":
+      addAssistantMessage(transcript, message, toolCalls);
+      break;
+
+    case "tool":
+      addToolResult(transcript, message, toolCalls);
+      break;
   }
 }
 
@@ -74,4 +95,22 @@ function addToolResult(
 
   block.updateResult(message.result ?? message.content, message.isError);
   transcript.addChild(block);
+}
+
+export function formatContextCompaction(beforeTokens: number, afterTokens: number): string {
+  return `Context compacted · ${formatTokenCount(beforeTokens)} → ~${formatTokenCount(afterTokens)} tokens`;
+}
+
+function formatTokenCount(tokens: number): string {
+  if (tokens < 1_000) {
+    return String(tokens);
+  }
+  if (tokens < 1_000_000) {
+    return `${formatTokenUnit(tokens / 1_000)}k`;
+  }
+  return `${formatTokenUnit(tokens / 1_000_000)}m`;
+}
+
+function formatTokenUnit(value: number): string {
+  return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
 }

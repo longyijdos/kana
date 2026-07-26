@@ -9,6 +9,7 @@ export type PromptCommandName =
   | "skills"
   | "mcp"
   | "memory"
+  | "compact"
   | "usage";
 
 export type PromptCommand = {
@@ -88,6 +89,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "memory",
     description: "View or compact saved memory.",
+  },
+  {
+    name: "compact",
+    description: "Compact the current conversation context.",
   },
   {
     name: "usage",

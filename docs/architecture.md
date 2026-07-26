@@ -58,6 +58,8 @@ src/main.ts
 
 `Agent` 是有状态的单次运行控制器。它拒绝并发运行；`stream()` 会先把深拷贝后的用户输入加入内部历史，再创建 `AbortController`。循环产生终态后，Agent 先提交本次助手消息和工具结果到内部状态，再等待产品层的 `onRunCommitted`；持久化成功后才向监听器和 stream 发布最终 `agent_end` 并转为空闲。commit 期间仍拒绝新运行，`waitForIdle()` 也会继续等待。`state` 和公共事件会深拷贝可变数据，普通监听器异常不会修改内部历史或终止运行。
 
+可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。`/compact` 复用同一个 manager 和摘要策略，但使用独立 commit，在持久化成功后才 adopt checkpoint。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
+
 `runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限；最后一个允许回合仍产生工具调用时以 `turn_limit` 结束。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才顺序执行工具调用。每个调用都经过 TypeBox 1.x 校验和可选的 `beforeToolExecution` 钩子；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果并回传模型；拒绝或中止会终止本次运行。
 
 ## 模型与供应商适配
@@ -140,7 +142,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 | 每日记忆 | 对应目录的 `daily/YYYY-MM-DD.md` | `remember` 成功时追加 |
 | 全局 Skills 配置 | `skills/skills.toml` | TUI 修改全局 Skill 开关时 |
 
-工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。会话文件是 JSONL：首行是版本化的 session header，之后每行是带父 ID 的消息条目。创建会话本身不落盘；第一批消息追加时才写 header，并用首条用户消息生成标题。
+工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V2 会话文件是 JSONL：首行是版本化的 session header，之后是带父 ID 的 message 和 context-compaction 时间线条目。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；第一批已提交记录追加时才写 header，并用首条用户消息生成标题。V1 仍可读取，并在第一次写入压缩条目时原子升级。
 
 运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。session log manager 会返回永久绑定到指定会话的 logger；每个 Agent 和后台任务启动时捕获该具体 logger，因此后续生命周期记录仍归属发起它的会话。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 TUI 装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
 

@@ -80,6 +80,7 @@ max_retries = 1
 
 [agent]
 max_turns = -1
+# context_limit = 200000
 
 [approval]
 mode = "unless_trusted"
@@ -107,7 +108,7 @@ level = "info"
 | `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
 | `thinking` | Boolean | `true` | Explicitly enables DeepSeek thinking in requests. |
 | `reasoning_effort` | `high` or `max` | `high` | DeepSeek reasoning effort; it is not sent when `thinking = false`. |
-| `max_tokens` | Finite number | `8192` | Per-request output-token limit; it cannot exceed the selected model's hard limit. |
+| `max_tokens` | Positive integer | `8192` | Per-request output-token limit; it cannot exceed the selected model's hard limit and is reserved from the context prompt budget. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
 
@@ -122,6 +123,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | Table and key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
+| `agent.context_limit` | Optional positive integer | model metadata context window | Context limit the Agent actually uses; it cannot exceed the selected model's hard limit, and omission uses metadata. |
 | `approval.mode` | `always`, `unless_trusted`, `never` | `unless_trusted` | Whether tool calls enter the TUI approval flow. |
 | `notification.backend` | `auto`, `off`, `bell`, `osc9`, `osc777`, `kitty` | `auto` | Terminal-notification output protocol. `auto` detects Kitty, then iTerm, then VTE, otherwise falls back to bell. |
 | `notification.on_agent_completed` | Boolean | `true` | Notify when an Agent run completes normally. Aborted, failed, length-truncated, and `turn_limit` runs are not completion. |
@@ -131,7 +133,18 @@ export DEEPSEEK_API_KEY='sk-...'
 | `memory.daily_retention_days` | Optional positive integer | Unset | Number of daily staging records retained after successful full memory compaction. |
 | `logging.level` | `debug`, `info`, `warn`, `error`, `off` | `info` | Minimum level written to runtime JSONL logs; `off` disables file logging entirely. |
 
-When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `max_tokens`, `timeout_ms`, and `max_retries` are validated as finite numbers, while the two `memory` quantity fields require positive integers.
+When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `max_tokens` and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
+
+### Context budget
+
+Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata and must be greater than `model.max_tokens`. The effective prompt budget is:
+
+```text
+safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
+promptBudget = contextLimit - model.max_tokens - safetyReserve
+```
+
+At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. `model.max_tokens` still controls output only; subtracting it reserves context space for that output.
 
 Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; DeepSeek HTTP failures additionally retain status code and status text, never the response body.
 

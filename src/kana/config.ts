@@ -19,6 +19,7 @@ export type KanaModelConfig = {
 
 export type KanaAgentConfig = {
   maxTurns: number;
+  contextLimit?: number;
 };
 
 export const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;
@@ -113,6 +114,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   },
   agent: {
     maxTurns: -1,
+    contextLimit: undefined,
   },
   approval: {
     mode: "unless_trusted",
@@ -248,6 +250,9 @@ function serializeKanaConfig(config: KanaConfig): string {
     "",
     "[agent]",
     `max_turns = ${config.agent.maxTurns}`,
+    ...(config.agent.contextLimit === undefined
+      ? ["# context_limit = 200000"]
+      : [`context_limit = ${config.agent.contextLimit}`]),
     "",
     "[approval]",
     `mode = "${config.approval.mode}"`,
@@ -287,12 +292,21 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       apiKeyEnv: readString(model.api_key_env, defaults.model.apiKeyEnv, "model.api_key_env"),
       thinking: readBoolean(model.thinking, defaults.model.thinking, "model.thinking"),
       reasoningEffort: readReasoningEffort(model.reasoning_effort, defaults.model.reasoningEffort),
-      maxTokens: readNumber(model.max_tokens, defaults.model.maxTokens, "model.max_tokens"),
+      maxTokens: readPositiveInteger(
+        model.max_tokens,
+        defaults.model.maxTokens,
+        "model.max_tokens",
+      ),
       timeoutMs: readNumber(model.timeout_ms, defaults.model.timeoutMs, "model.timeout_ms"),
       maxRetries: readNumber(model.max_retries, defaults.model.maxRetries, "model.max_retries"),
     },
     agent: {
       maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
+      contextLimit: readOptionalPositiveInteger(
+        agent.context_limit,
+        defaults.agent.contextLimit,
+        "agent.context_limit",
+      ),
     },
     approval: {
       mode: readToolApprovalMode(approval.mode, defaults.approval.mode),

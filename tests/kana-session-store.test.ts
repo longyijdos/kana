@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
 import {
   appendKanaSessionMessages,
+  appendKanaSessionRun,
   createKanaSession,
   deleteKanaSession,
   getKanaConfigPaths,
@@ -81,7 +83,7 @@ describe("Kana session store", () => {
     expect(lines).toHaveLength(3);
     expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
       type: "session",
-      version: 1,
+      version: 2,
       id: "session-1",
       title: "hi",
       cwd,
@@ -115,6 +117,254 @@ describe("Kana session store", () => {
         },
       },
     });
+    expect(loaded.timeline).toHaveLength(2);
+    expect(loaded.contextCheckpoint).toBeUndefined();
+  });
+
+  test("persists manual compaction checkpoints without deleting covered messages", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "compacted" });
+    const messages: Message[] = [
+      { role: "user", content: "Old question" },
+      {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Old answer" }],
+      },
+      { role: "user", content: "Recent question" },
+      {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Recent answer" }],
+      },
+    ];
+    const checkpoint: ContextCheckpoint = {
+      id: "compact-1",
+      summary: "The old exchange is complete.",
+      coveredMessageCount: 2,
+      createdAfterMessageCount: 4,
+      compactedMessageCount: 2,
+      reason: "manual",
+      beforeTokens: 90_000,
+      estimatedAfterTokens: 60_000,
+      usage: {
+        promptTokens: 2_000,
+        completionTokens: 100,
+        totalTokens: 2_100,
+      },
+      createdAt: "2026-07-24T00:00:01.000Z",
+    };
+
+    appendKanaSessionRun(session, messages, {
+      timestamp: "2026-07-24T00:00:00.000Z",
+      compactions: [checkpoint],
+    });
+
+    const loaded = loadKanaSession("compacted", { env, cwd });
+    const compaction = loaded.timeline.at(-1);
+
+    expect(loaded.messages).toEqual(messages);
+    expect(loaded.timeline).toHaveLength(5);
+    expect(compaction).toMatchObject({
+      type: "context_compaction",
+      id: "compact-1",
+      parentId: expect.any(String),
+      reason: "manual",
+      compactedMessageCount: 2,
+      beforeTokens: 90_000,
+      estimatedAfterTokens: 60_000,
+      summary: {
+        format: "kana-context-summary-v1",
+        text: "The old exchange is complete.",
+      },
+    });
+    expect(compaction).toHaveProperty("coversThroughId", loaded.timeline[1]?.id);
+    expect(loaded.contextCheckpoint).toEqual(checkpoint);
+  });
+
+  test("links cumulative checkpoints and resumes from the latest summary", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "checkpoint-chain" });
+    const firstMessages: Message[] = [
+      { role: "user", content: "First question" },
+      {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "First answer" }],
+      },
+      { role: "user", content: "Second question" },
+    ];
+    const firstCheckpoint: ContextCheckpoint = {
+      id: "compact-1",
+      summary: "First exchange.",
+      coveredMessageCount: 2,
+      createdAfterMessageCount: 3,
+      compactedMessageCount: 2,
+      reason: "threshold",
+      beforeTokens: 90_000,
+      estimatedAfterTokens: 60_000,
+      createdAt: "2026-07-24T00:00:01.000Z",
+    };
+    appendKanaSessionRun(session, firstMessages, {
+      compactions: [firstCheckpoint],
+    });
+
+    const secondMessages: Message[] = [
+      {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Second answer" }],
+      },
+      { role: "user", content: "Third question" },
+    ];
+    const secondCheckpoint: ContextCheckpoint = {
+      id: "compact-2",
+      baseCompactionId: "compact-1",
+      summary: "First and second exchanges.",
+      coveredMessageCount: 4,
+      createdAfterMessageCount: 5,
+      compactedMessageCount: 2,
+      reason: "provider_limit",
+      beforeTokens: 95_000,
+      estimatedAfterTokens: 58_000,
+      createdAt: "2026-07-24T00:00:02.000Z",
+    };
+    appendKanaSessionRun(session, secondMessages, {
+      compactions: [secondCheckpoint],
+    });
+
+    const loaded = loadKanaSession("checkpoint-chain", { env, cwd });
+
+    expect(loaded.messages).toEqual([...firstMessages, ...secondMessages]);
+    expect(
+      loaded.timeline
+        .filter((entry) => entry.type === "context_compaction")
+        .map((entry) => entry.id),
+    ).toEqual(["compact-1", "compact-2"]);
+    expect(loaded.contextCheckpoint).toEqual(secondCheckpoint);
+  });
+
+  test("atomically upgrades a v1 session before its first compaction entry", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "legacy" });
+    mkdirSync(path.dirname(session.path), { recursive: true });
+    const header = {
+      type: "session",
+      version: 1,
+      id: session.id,
+      createdAt: session.createdAt,
+      title: "Legacy",
+      cwd,
+    };
+    const userEntry = {
+      type: "message",
+      id: "message-1",
+      parentId: null,
+      timestamp: "2026-07-24T00:00:00.000Z",
+      message: { role: "user", content: "Legacy question" },
+    };
+    const assistantEntry = {
+      type: "message",
+      id: "message-2",
+      parentId: "message-1",
+      timestamp: "2026-07-24T00:00:00.000Z",
+      message: {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Legacy answer" }],
+      },
+    };
+    writeFileSync(
+      session.path,
+      `${[header, userEntry, assistantEntry].map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+      {
+        mode: 0o600,
+      },
+    );
+    const checkpoint: ContextCheckpoint = {
+      id: "compact-legacy",
+      summary: "Legacy exchange.",
+      coveredMessageCount: 2,
+      createdAfterMessageCount: 2,
+      compactedMessageCount: 2,
+      reason: "threshold",
+      beforeTokens: 90_000,
+      estimatedAfterTokens: 60_000,
+      createdAt: "2026-07-24T00:00:01.000Z",
+    };
+
+    appendKanaSessionRun(session, [], {
+      compactions: [checkpoint],
+    });
+
+    const lines = readFileSync(session.path, "utf8").trim().split("\n");
+
+    expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
+      type: "session",
+      version: 2,
+      id: "legacy",
+    });
+    expect(JSON.parse(lines[1] ?? "{}")).toEqual(userEntry);
+    expect(JSON.parse(lines[2] ?? "{}")).toEqual(assistantEntry);
+    expect(JSON.parse(lines[3] ?? "{}")).toMatchObject({
+      type: "context_compaction",
+      id: "compact-legacy",
+      coversThroughId: "message-2",
+    });
+    expect(loadKanaSession("legacy", { env, cwd }).contextCheckpoint).toEqual(checkpoint);
+  });
+
+  test("identifies unknown message and checkpoint references in corrupted sessions", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "corrupted-compaction" });
+    const messages: Message[] = [
+      { role: "user", content: "Question" },
+      {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Answer" }],
+      },
+    ];
+    appendKanaSessionRun(session, messages, {
+      compactions: [
+        {
+          id: "compact-corrupted",
+          summary: "Exchange.",
+          coveredMessageCount: 2,
+          createdAfterMessageCount: 2,
+          compactedMessageCount: 2,
+          reason: "manual",
+          beforeTokens: 1_000,
+          estimatedAfterTokens: 100,
+          createdAt: "2026-07-24T00:00:01.000Z",
+        },
+      ],
+    });
+    const lines = readFileSync(session.path, "utf8").trim().split("\n");
+    const compaction = JSON.parse(lines[3] ?? "{}") as Record<string, unknown>;
+
+    compaction.coversThroughId = "missing-message";
+    writeFileSync(
+      session.path,
+      `${[...lines.slice(0, 3), JSON.stringify(compaction)].join("\n")}\n`,
+    );
+    expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
+      "compact-corrupted references unknown message missing-message",
+    );
+
+    compaction.coversThroughId = JSON.parse(lines[2] ?? "{}").id;
+    compaction.baseCompactionId = "missing-checkpoint";
+    writeFileSync(
+      session.path,
+      `${[...lines.slice(0, 3), JSON.stringify(compaction)].join("\n")}\n`,
+    );
+    expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
+      "compact-corrupted references unknown checkpoint missing-checkpoint",
+    );
   });
 
   test("lists sessions from the configured Kana home", () => {

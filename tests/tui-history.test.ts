@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Message } from "@/core";
-import { addHistoryMessagesToTranscript } from "../src/tui/app/history";
+import type { KanaSessionTimelineEntry } from "@/kana";
+import { addHistoryTimelineToTranscript } from "../src/tui/app/history";
 import { Transcript } from "../src/tui/components";
 import { color, stripAnsi } from "../src/tui/render";
 import { tuiTheme } from "../src/tui/theme";
@@ -52,7 +53,7 @@ describe("tui history transcript", () => {
       },
     ];
 
-    addHistoryMessagesToTranscript(transcript, messages);
+    addHistoryTimelineToTranscript(transcript, timelineFromMessages(messages));
 
     const lines = transcript.render(100).map(stripAnsi);
 
@@ -70,16 +71,19 @@ describe("tui history transcript", () => {
   test("uses distinct colors for user input and Markdown headings", () => {
     const transcript = new Transcript();
 
-    addHistoryMessagesToTranscript(transcript, [
-      {
-        role: "user",
-        content: "Question",
-      },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "# Answer" }],
-      },
-    ]);
+    addHistoryTimelineToTranscript(
+      transcript,
+      timelineFromMessages([
+        {
+          role: "user",
+          content: "Question",
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "# Answer" }],
+        },
+      ]),
+    );
 
     const rendered = transcript.render(100);
     const userLine = rendered.find((line) => stripAnsi(line).includes("> Question")) ?? "";
@@ -94,18 +98,21 @@ describe("tui history transcript", () => {
   test("renders tool results even when the original tool call is missing", () => {
     const transcript = new Transcript();
 
-    addHistoryMessagesToTranscript(transcript, [
-      {
-        role: "tool",
-        toolCallId: "call_missing",
-        toolName: "bash",
-        content: "Tool call failed: no call",
-        result: {
-          error: "no call",
+    addHistoryTimelineToTranscript(
+      transcript,
+      timelineFromMessages([
+        {
+          role: "tool",
+          toolCallId: "call_missing",
+          toolName: "bash",
+          content: "Tool call failed: no call",
+          result: {
+            error: "no call",
+          },
+          isError: true,
         },
-        isError: true,
-      },
-    ]);
+      ]),
+    );
 
     const lines = transcript.render(100).map(stripAnsi);
 
@@ -117,16 +124,60 @@ describe("tui history transcript", () => {
   test("renders restored scheduled input consistently with a live wake", () => {
     const transcript = new Transcript();
 
-    addHistoryMessagesToTranscript(transcript, [
-      {
-        role: "user",
-        source: "scheduled",
-        content: "[Scheduled wake event]\nCheck the long-running task.",
-      },
-    ]);
+    addHistoryTimelineToTranscript(
+      transcript,
+      timelineFromMessages([
+        {
+          role: "user",
+          source: "scheduled",
+          content: "[Scheduled wake event]\nCheck the long-running task.",
+        },
+      ]),
+    );
 
     expect(transcript.render(100).map(stripAnsi)).toContain(
       "Scheduled wake: Check the long-running task.",
     );
   });
+
+  test("renders context compaction markers in timeline order", () => {
+    const transcript = new Transcript();
+    const [message] = timelineFromMessages([{ role: "user", content: "Before compact" }]);
+
+    expect(message).toBeDefined();
+    addHistoryTimelineToTranscript(transcript, [
+      message!,
+      {
+        type: "context_compaction",
+        id: "compact-1",
+        parentId: message!.id,
+        timestamp: "2026-07-24T00:00:01.000Z",
+        reason: "threshold",
+        coversThroughId: message!.id,
+        compactedMessageCount: 1,
+        beforeTokens: 812_000,
+        estimatedAfterTokens: 430_000,
+        summary: {
+          format: "kana-context-summary-v1",
+          text: "Earlier context.",
+        },
+      },
+    ]);
+
+    const rendered = transcript.render(100);
+    const marker = rendered.find((line) => stripAnsi(line).includes("Context compacted")) ?? "";
+
+    expect(stripAnsi(marker)).toContain("Context compacted · 812k → ~430k tokens");
+    expect(marker).toContain(`\x1b[38;2;${tuiTheme.muted.join(";")}m`);
+  });
 });
+
+function timelineFromMessages(messages: Message[]): KanaSessionTimelineEntry[] {
+  return messages.map((message, index) => ({
+    type: "message",
+    id: `message-${index + 1}`,
+    parentId: index === 0 ? null : `message-${index}`,
+    timestamp: "2026-07-24T00:00:00.000Z",
+    message,
+  }));
+}

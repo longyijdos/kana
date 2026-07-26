@@ -1,6 +1,7 @@
-import type { Message } from "@/core";
+import type { ContextCheckpoint } from "@/agent";
+import { addModelUsage, type Message, type ModelUsage } from "@/core";
 import {
-  appendKanaSessionMessages,
+  appendKanaSessionRun,
   authorizeKanaMcpServer,
   createKanaAgent,
   createKanaMcpRuntime,
@@ -12,6 +13,7 @@ import {
   deleteKanaSession,
   getKanaSessionLogPath,
   KANA_BUILT_IN_TOOL_NAMES,
+  type LoadKanaSessionResult,
   listKanaSessions,
   loadKanaConfig,
   loadKanaMcpServerActivations,
@@ -64,13 +66,14 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       },
       parentSessionPath,
     });
-  let session = options.showResumePicker
+  let session: LoadKanaSessionResult | undefined = options.showResumePicker
     ? undefined
     : options.resumeSessionId
       ? loadKanaSession(options.resumeSessionId)
       : {
           metadata: createSession(),
           messages: [],
+          timeline: [],
         };
   let sessionLogger = createNoopLogger();
   const activateSessionLogger = (nextSession: typeof session): void => {
@@ -87,6 +90,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   }
   let resumeSessionId = options.resumeSessionId ? session?.metadata.id : undefined;
   let pendingForkMessages: Message[] | undefined;
+  let pendingForkCheckpoint: ContextCheckpoint | undefined;
   const terminal = new ProcessTerminal(config.notification);
   let mcpTools: Tool[] = [];
   let updateMcpLifecycleStatus: ((status: string) => void) | undefined;
@@ -172,23 +176,34 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         wakeScheduler,
         sessionId: agentOptions.sessionId,
         messages: agentOptions.messages ?? session?.messages,
-        onRunCommitted: ({ messages, state, event }) => {
+        contextCheckpoint: agentOptions.contextCheckpoint ?? session?.contextCheckpoint,
+        onRunCommitted: ({ messages, compactions, state, event }) => {
           session ??= {
             metadata: createSession(),
             messages: [],
+            timeline: [],
           };
           const messagesToPersist = pendingForkMessages
             ? [...pendingForkMessages, ...messages]
             : messages;
+          const compactionsToPersist = [
+            ...(pendingForkCheckpoint ? [pendingForkCheckpoint] : []),
+            ...compactions,
+          ];
 
           try {
-            appendKanaSessionMessages(session.metadata, messagesToPersist);
+            const appended = appendKanaSessionRun(session.metadata, messagesToPersist, {
+              compactions: compactionsToPersist,
+            });
+            session.timeline = [...session.timeline, ...appended];
           } catch (error) {
             agentLogger.error("session.append_failed", { error });
             throw error;
           }
           session.messages = [...session.messages, ...messages];
+          session.contextCheckpoint = state.contextCheckpoint;
           pendingForkMessages = undefined;
+          pendingForkCheckpoint = undefined;
 
           if (messagesToPersist.length > 0) {
             resumeSessionId = session.metadata.id;
@@ -201,6 +216,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
             outcome: event.reason,
             messages,
             model: state.model.metadata,
+            additionalUsage: addCompactionUsage(compactions),
           });
 
           // Keep consolidation off the completed conversation's critical path;
@@ -225,12 +241,44 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
               memoryLogger.error("memory_consolidation.failed", { error });
             });
         },
+        onCompactionCommitted: ({ compaction, state }) => {
+          if (!session) {
+            throw new Error("Cannot persist context compaction without an active session.");
+          }
+
+          try {
+            const appended = appendKanaSessionRun(session.metadata, [], {
+              compactions: [compaction],
+            });
+            session.timeline = [...session.timeline, ...appended];
+          } catch (error) {
+            agentLogger.error("session.append_failed", { error });
+            throw error;
+          }
+          session.contextCheckpoint = compaction;
+
+          recordKanaAgentRunAccounting({
+            sessionId: session.metadata.id,
+            cwd: session.metadata.cwd,
+            agentKind: "main",
+            outcome: "stop",
+            messages: [],
+            model: state.model.metadata,
+            additionalUsage: compaction.usage,
+          });
+        },
       });
     },
     terminal,
     {
-      sessionId: session?.metadata.id,
-      initialMessages: session?.messages,
+      initialSession: session
+        ? {
+            id: session.metadata.id,
+            messages: session.messages,
+            timeline: session.timeline,
+            contextCheckpoint: session.contextCheckpoint,
+          }
+        : undefined,
       initialPrompt: options.initialPrompt,
       getResumeSessionId: () => resumeSessionId,
       startInResumePicker: options.showResumePicker,
@@ -238,31 +286,42 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         session = {
           metadata: createSession(),
           messages: [],
+          timeline: [],
         };
         activateSessionLogger(session);
         sessionLogger.info("session.created");
         resumeSessionId = undefined;
         pendingForkMessages = undefined;
+        pendingForkCheckpoint = undefined;
 
         return {
           id: session.metadata.id,
         };
       },
-      forkSession: (messages, prompt) => {
+      forkSession: (messages, contextCheckpoint, prompt) => {
         session ??= {
           metadata: createSession(),
           messages: [],
+          timeline: [],
         };
         const source = session;
 
         session = {
           metadata: createSession(source.metadata.path, prompt),
           messages,
+          timeline: [],
+          contextCheckpoint,
         };
         activateSessionLogger(session);
         sessionLogger.info("session.forked", { sourceSessionId: source.metadata.id });
         resumeSessionId = undefined;
         pendingForkMessages = messages;
+        pendingForkCheckpoint = contextCheckpoint
+          ? {
+              ...structuredClone(contextCheckpoint),
+              baseCompactionId: undefined,
+            }
+          : undefined;
 
         return {
           id: session.metadata.id,
@@ -281,10 +340,13 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         sessionLogger.info("session.resumed");
         resumeSessionId = session.metadata.id;
         pendingForkMessages = undefined;
+        pendingForkCheckpoint = undefined;
 
         return {
           id: session.metadata.id,
           messages: session.messages,
+          timeline: session.timeline,
+          contextCheckpoint: session.contextCheckpoint,
         };
       },
       deleteSession: (sessionId) => deleteKanaSession(sessionId, { cwd: process.cwd() }),
@@ -391,6 +453,13 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     throw error;
   }
   await app.waitForStop();
+}
+
+function addCompactionUsage(compactions: ContextCheckpoint[]): ModelUsage | undefined {
+  return compactions.reduce<ModelUsage | undefined>(
+    (total, compaction) => (compaction.usage ? addModelUsage(total, compaction.usage) : total),
+    undefined,
+  );
 }
 
 async function createTuiAppWithCleanup(

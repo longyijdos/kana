@@ -35,21 +35,26 @@ Creating a session only creates an in-memory UUID, creation time, working direct
 
 ### JSONL format
 
-The first line is a version-1 session header. Each following line is a message entry:
+New sessions start with a version-2 header. Each following line is a `message` or `context_compaction` timeline entry:
 
 ```json
-{"type":"session","version":1,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
+{"type":"session","version":2,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
 {"type":"message","id":"…","parentId":null,"timestamp":"2026-06-22T…Z","message":{"role":"user","content":"Fix parser"}}
 {"type":"message","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","message":{"role":"assistant","content":[…],"stopReason":"stop"}}
+{"type":"context_compaction","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","reason":"threshold","coversThroughId":"…","compactedMessageCount":2,"beforeTokens":90000,"estimatedAfterTokens":60000,"summary":{"format":"kana-context-summary-v1","text":"…"}}
 ```
 
-Every append reads the current leaf ID so a new entry's `parentId` points to the preceding message entry. Current loading rebuilds the message array in file order and does not replay branches from `parentId`; the field preserves lineage. `/fork <prompt>` creates a new session and records the source session file path as `parentSessionPath` in its header.
+Every record's `parentId` points to the preceding timeline entry; loading still follows file order rather than replaying branches from `parentId`. A compaction reason is `threshold` for automatic budget-triggered work, `provider_limit` for provider-limit recovery, or `manual` for `/compact`. An entry's physical position records when compaction happened, while `coversThroughId` names the last message actually covered by its summary, so they may differ. For example, a marker after `m4` with `coversThroughId = m2` resumes the model projection as `summary + m3 + m4 + later messages`. Every raw message remains in JSONL, allowing the TUI to render complete history in original order.
+
+Later compactions may carry `baseCompactionId` to the preceding checkpoint and combine its summary with newly covered messages into one cumulative replacement summary. Optional `usage` stores the summary request's model usage. Loading validates that `coversThroughId` and `baseCompactionId` reference earlier entries, then derives full `messages`, full `timeline`, and the latest `contextCheckpoint`: the Agent consumes messages/checkpoint, while restored TUI history consumes only timeline.
+
+The reader remains compatible with V1. Ordinary appends do not rewrite an old file; when a V1 session first needs a compaction entry, Kana atomically upgrades only its header through a temporary file and rename before appending the entry. A V1 file cannot directly contain `context_compaction`. `/fork <prompt>` creates a new session, records the source file in header `parentSessionPath`, and persists the current cumulative checkpoint as the fork's initial compaction entry when needed.
 
 On first write, an explicit title wins. Otherwise Kana uses the first user message, collapses whitespace, and truncates it to at most 80 JavaScript characters. With no usable text, the title is `Untitled session`.
 
 ### Lifecycle and resilience
 
-- After the model/tool loop finishes, the Agent first updates its internal terminal state and then lets `onRunCommitted` append this run's new messages. It publishes the final `agent_end` and becomes idle only after the append succeeds. In-progress stream snapshots are therefore never persisted, and `waitForIdle()` cannot return before the session write completes.
+- After the model/tool loop finishes, the Agent first updates its internal terminal state and then lets `onRunCommitted` append this run's new messages and compaction checkpoints at their occurrence positions. It publishes the final `agent_end` and becomes idle only after the append succeeds. Manual `/compact` uses a separate compaction commit that appends only its checkpoint and adopts it after the write succeeds. Neither path persists an in-progress stream snapshot, and `waitForIdle()` cannot return before the session write completes.
 - Resuming looks up sessions in the current working directory; the picker likewise shows only other sessions from that workspace.
 - `listKanaSessions()` without a cwd scans all workspace directories and sorts by descending `createdAt`.
 - Listing skips malformed JSONL files so one bad record does not hide other history; explicitly loading that session still errors.

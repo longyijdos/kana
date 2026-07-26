@@ -1,4 +1,9 @@
-import type { Agent, BeforeToolExecutionHook, BeforeToolExecutionResult } from "@/agent";
+import type {
+  Agent,
+  BeforeToolExecutionHook,
+  BeforeToolExecutionResult,
+  ContextCheckpoint,
+} from "@/agent";
 import {
   addModelUsage,
   calculateContextUsedPercent,
@@ -14,6 +19,7 @@ import type {
   KanaNotificationConfig,
   KanaOAuthTokenStatus,
   KanaSessionMetadata,
+  KanaSessionTimelineEntry,
   KanaToolApprovalConfig,
   KanaToolApprovals,
   KanaUsageScope,
@@ -54,7 +60,7 @@ import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
 import { ContentViewerController } from "./content-viewer-controller";
-import { addHistoryMessagesToTranscript } from "./history";
+import { addHistoryTimelineToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
 import { McpServerManagerController } from "./mcp-server-manager-controller";
 import {
@@ -70,9 +76,11 @@ import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
 import { WELCOME_LOGO_LINES } from "./welcome-logo";
 
-export type KanaTuiLoadedSession = {
+export type KanaTuiSessionSnapshot = {
   id: string;
   messages: Message[];
+  timeline: KanaSessionTimelineEntry[];
+  contextCheckpoint?: ContextCheckpoint;
 };
 
 export type KanaTuiExternalToolsLoadResult = {
@@ -81,14 +89,17 @@ export type KanaTuiExternalToolsLoadResult = {
 };
 
 export type KanaTuiAppOptions = {
-  sessionId?: string;
-  initialMessages?: Message[];
+  initialSession?: KanaTuiSessionSnapshot;
   initialPrompt?: string;
   getResumeSessionId: () => string | undefined;
   createNewSession: () => { id: string };
-  forkSession: (messages: Message[], prompt: string) => { id: string };
+  forkSession: (
+    messages: Message[],
+    contextCheckpoint: ContextCheckpoint | undefined,
+    prompt: string,
+  ) => { id: string };
   listSessions: () => KanaSessionMetadata[];
-  loadSession: (sessionId: string) => KanaTuiLoadedSession;
+  loadSession: (sessionId: string) => KanaTuiSessionSnapshot;
   deleteSession: (sessionId: string) => boolean;
   loadSkills: () => LoadKanaSkillActivationsResult;
   saveEnabledGlobalSkills: (names: string[]) => void;
@@ -171,17 +182,22 @@ export class KanaTuiApp {
       beforeToolExecution: BeforeToolExecutionHook;
       messages?: Message[];
       sessionId?: string;
+      contextCheckpoint?: ContextCheckpoint;
     }) => Agent,
     terminal: Terminal,
     private readonly options: KanaTuiAppOptions,
   ) {
-    this.sessionId = options.sessionId;
+    const initialSession = options.initialSession;
+    this.sessionId = initialSession?.id;
     this.externalToolsLoaded = options.loadExternalTools === undefined;
     this.getLogger = options.getLogger ?? createNoopLogger;
     this.wakeScheduler = options.wakeScheduler ?? createWakeScheduler();
     this.tui = new Tui(terminal);
     this.notifications = new NotificationController(options.notification, terminal);
-    this.agent = this.createAgentForCurrentSession();
+    this.agent = this.createAgentForCurrentSession(
+      initialSession?.messages,
+      initialSession?.contextCheckpoint,
+    );
     this.editor = new Editor({
       model: formatModelName(this.agent.state.model.metadata),
     });
@@ -297,7 +313,10 @@ export class KanaTuiApp {
     this.unsubscribeWakeEvents = this.wakeScheduler.subscribe((event) =>
       this.queueWakeEvent(event),
     );
-    this.updateContextUsageFromMessages(options.initialMessages ?? []);
+    this.updateContextUsageFromMessages(
+      initialSession?.messages ?? [],
+      initialSession?.contextCheckpoint,
+    );
   }
 
   start(): void {
@@ -308,7 +327,7 @@ export class KanaTuiApp {
     );
 
     if (!this.options.startInResumePicker) {
-      this.initializeTranscript(this.options.initialMessages ?? []);
+      this.initializeTranscript(this.options.initialSession?.timeline ?? []);
     }
 
     this.tui.addChild(this.layout);
@@ -449,22 +468,26 @@ export class KanaTuiApp {
     exitLines.length > 0 ? this.tui.stop(exitLines.join("\r\n")) : this.tui.stop();
   }
 
-  private createAgentForCurrentSession(messages?: Message[]): Agent {
+  private createAgentForCurrentSession(
+    messages?: Message[],
+    contextCheckpoint?: ContextCheckpoint,
+  ): Agent {
     return this.createAgent({
       beforeToolExecution: ({ toolCall, signal }) => this.showToolApprovalPrompt(toolCall, signal),
       messages,
       sessionId: this.sessionId,
+      contextCheckpoint,
     });
   }
 
-  private initializeTranscript(initialMessages: Message[]): void {
-    if (initialMessages.length > 0) {
+  private initializeTranscript(timeline: KanaSessionTimelineEntry[]): void {
+    if (timeline.length > 0) {
       this.transcript.addChild(
         new TextBlock(`Resumed session ${this.sessionId ?? ""}.`, {
           color: tuiTheme.muted,
         }),
       );
-      addHistoryMessagesToTranscript(this.transcript, initialMessages);
+      addHistoryTimelineToTranscript(this.transcript, timeline);
       return;
     }
 
@@ -629,10 +652,11 @@ export class KanaTuiApp {
     // The editor is unfocused before initial load or reload begins, and the
     // MCP manager menu cannot open during a run, so replacement is race-free.
     const messages = this.agent.state.messages;
+    const contextCheckpoint = this.agent.state.contextCheckpoint;
     this.agent.abort();
-    this.agent = this.createAgentForCurrentSession(messages);
+    this.agent = this.createAgentForCurrentSession(messages, contextCheckpoint);
     this.agentEvents.resetRun();
-    this.updateContextUsageFromMessages(messages);
+    this.updateContextUsageFromMessages(messages, contextCheckpoint);
   }
 
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {
@@ -792,6 +816,15 @@ export class KanaTuiApp {
 
         this.slashCommandOptions.openMemory();
         break;
+      case "compact":
+        if (command.arguments.trim()) {
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
+          return;
+        }
+
+        this.editor.clear();
+        void this.compactContext();
+        break;
       case "usage":
         if (command.arguments.trim()) {
           this.showError(new Error(formatPromptCommandUsage(command.name)));
@@ -884,8 +917,10 @@ export class KanaTuiApp {
     }
 
     this.cancelCurrentSessionWakeEvents();
-    this.sessionId = this.options.forkSession(this.agent.state.messages, prompt).id;
-    this.agent = this.createAgentForCurrentSession(this.agent.state.messages);
+    const messages = this.agent.state.messages;
+    const contextCheckpoint = this.agent.state.contextCheckpoint;
+    this.sessionId = this.options.forkSession(messages, contextCheckpoint, prompt).id;
+    this.agent = this.createAgentForCurrentSession(messages, contextCheckpoint);
     this.closeSessionOverlay();
     this.contentViewer.close();
     this.editor.clear();
@@ -926,8 +961,9 @@ export class KanaTuiApp {
   }
 
   private refreshAgentSystemPrompt(): void {
+    const contextCheckpoint = this.agent.state.contextCheckpoint;
     this.agent.abort();
-    this.agent = this.createAgentForCurrentSession(this.agent.state.messages);
+    this.agent = this.createAgentForCurrentSession(this.agent.state.messages, contextCheckpoint);
   }
 
   private openSkillManager(): void {
@@ -960,7 +996,7 @@ export class KanaTuiApp {
       return;
     }
 
-    let session: KanaTuiLoadedSession;
+    let session: KanaTuiSessionSnapshot;
 
     try {
       session = this.options.loadSession(sessionId);
@@ -977,13 +1013,13 @@ export class KanaTuiApp {
     this.cancelCurrentSessionWakeEvents();
     this.sessionId = session.id;
     this.agent.abort();
-    this.agent = this.createAgentForCurrentSession();
+    this.agent = this.createAgentForCurrentSession(session.messages, session.contextCheckpoint);
     this.agentEvents.resetRun();
     this.transcript.clear();
     this.mcpOAuthBlocks.clear();
     this.editor.clear();
-    this.initializeTranscript(session.messages);
-    this.updateContextUsageFromMessages(session.messages);
+    this.initializeTranscript(session.timeline);
+    this.updateContextUsageFromMessages(session.messages, session.contextCheckpoint);
     this.updateStatus("idle", {
       activeTool: undefined,
     });
@@ -1051,6 +1087,8 @@ export class KanaTuiApp {
         this.notifications.handleAgentEvent(event);
         if (event.type === "message_end") {
           this.recordUsage(event.message.usage);
+        } else if (event.type === "context_compacted") {
+          this.recordUsage(event.usage, false);
         }
       }
 
@@ -1058,6 +1096,50 @@ export class KanaTuiApp {
     } catch (error) {
       this.showError(error);
     } finally {
+      this.running = false;
+      this.editor.updateStatus({
+        running: false,
+        activeTool: undefined,
+      });
+      this.tui.requestRender();
+      void this.drainWakeEvents();
+    }
+  }
+
+  private async compactContext(): Promise<void> {
+    if (this.stopping || this.loadingExternalTools) {
+      return;
+    }
+
+    this.running = true;
+    this.agentEvents.resetRun();
+    this.updateStatus("compacting");
+    const compactingBlock = new TextBlock("Compacting context…", {
+      color: tuiTheme.muted,
+    });
+    this.transcript.addChild(compactingBlock);
+    this.tui.requestRender();
+    const unsubscribe = this.agent.subscribe((event) => {
+      if (event.type !== "context_compaction_start" && event.type !== "context_compacted") {
+        return;
+      }
+      if (event.type === "context_compacted") {
+        this.transcript.removeChild(compactingBlock);
+      }
+      this.agentEvents.handle(event);
+      if (event.type === "context_compacted") {
+        this.recordUsage(event.usage, false);
+      }
+    });
+
+    try {
+      await this.agent.compact();
+    } catch (error) {
+      this.transcript.removeChild(compactingBlock);
+      this.showError(error);
+    } finally {
+      this.transcript.removeChild(compactingBlock);
+      unsubscribe();
       this.running = false;
       this.editor.updateStatus({
         running: false,
@@ -1170,7 +1252,7 @@ export class KanaTuiApp {
     });
   }
 
-  private recordUsage(usage: ModelUsage | undefined): void {
+  private recordUsage(usage: ModelUsage | undefined, updateContext = true): void {
     if (!usage) {
       return;
     }
@@ -1179,10 +1261,38 @@ export class KanaTuiApp {
 
     this.totalUsage = addModelUsage(this.totalUsage, usage);
     this.totalCostCny += calculateUsageCostCny(usage, metadata.cost);
-    this.updateContextUsage(usage);
+    if (updateContext) {
+      this.updateContextUsage(usage);
+    }
   }
 
-  private updateContextUsageFromMessages(messages: Message[]): void {
+  private updateContextUsageFromMessages(
+    messages: Message[],
+    checkpoint?: ContextCheckpoint,
+  ): void {
+    if (checkpoint) {
+      const measuredUsage = findLatestAssistantUsage(
+        messages.slice(checkpoint.createdAfterMessageCount),
+      );
+      if (measuredUsage) {
+        this.updateContextUsage(measuredUsage);
+        return;
+      }
+      this.editor.updateStatus({
+        contextUsedPercent: Math.min(
+          100,
+          Math.max(
+            0,
+            Math.round(
+              (checkpoint.estimatedAfterTokens /
+                (this.agent.state.contextLimit ?? this.agent.state.model.metadata.contextWindow)) *
+                100,
+            ),
+          ),
+        ),
+      });
+      return;
+    }
     this.updateContextUsage(findLatestAssistantUsage(messages));
   }
 
@@ -1190,7 +1300,7 @@ export class KanaTuiApp {
     this.editor.updateStatus({
       contextUsedPercent: calculateContextUsedPercent(
         usage,
-        this.agent.state.model.metadata.contextWindow,
+        this.agent.state.contextLimit ?? this.agent.state.model.metadata.contextWindow,
       ),
     });
   }

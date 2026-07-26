@@ -4,6 +4,7 @@ import type { AssistantMessage } from "@/core";
 export type RunPhase =
   | "idle"
   | "starting"
+  | "compacting"
   | "thinking"
   | "responding"
   | "tool"

@@ -86,7 +86,7 @@ export class WelcomeBlock implements Component {
       muted("  ... /resume for more"),
       "",
       title("Highlights"),
-      text("  Tool result viewer"),
+      text("  Automatic context compaction"),
       text("  Persistent agent memory"),
       text("  MCP OAuth and activation"),
       muted("  ... /help for more"),

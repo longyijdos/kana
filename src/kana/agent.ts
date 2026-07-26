@@ -1,4 +1,4 @@
-import { Agent, type AgentConfig } from "@/agent";
+import { Agent, type AgentConfig, type ContextCheckpoint, createModelCompactPolicy } from "@/agent";
 import {
   createBashTool,
   createEditTool,
@@ -35,17 +35,27 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
 
 export type KanaAgentOptions = Pick<
   AgentConfig,
-  "beforeToolExecution" | "messages" | "onRunCommitted" | "logger"
+  "beforeToolExecution" | "messages" | "onRunCommitted" | "onCompactionCommitted" | "logger"
 > & {
   additionalTools?: readonly Tool[];
   wakeScheduler?: WakeScheduler;
   sessionId?: string;
+  contextCheckpoint?: ContextCheckpoint;
 };
 
 export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
   const cwd = process.cwd();
   const { skills } = loadKanaSkills({ cwd });
   const model = createKanaModel(config, options.logger);
+  const contextLimit = config.agent.contextLimit ?? model.metadata.contextWindow;
+  if (contextLimit > model.metadata.contextWindow) {
+    throw new Error(
+      `agent.context_limit cannot exceed the ${model.metadata.contextWindow}-token context window for ${model.metadata.provider}/${model.metadata.model}.`,
+    );
+  }
+  if (contextLimit <= config.model.maxTokens) {
+    throw new Error("agent.context_limit must be greater than model.max_tokens.");
+  }
   const tools: Tool[] = [
     createListTool({
       root: cwd,
@@ -95,8 +105,15 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     beforeToolExecution: options.beforeToolExecution,
     messages: options.messages,
     onRunCommitted: options.onRunCommitted,
+    onCompactionCommitted: options.onCompactionCommitted,
     logger: options.logger,
     loggerMetadata: { agentKind: "conversation" },
+    context: {
+      contextLimit,
+      outputReserve: config.model.maxTokens,
+      compactPolicy: createModelCompactPolicy(model),
+      checkpoint: options.contextCheckpoint,
+    },
   });
 }
 
