@@ -317,6 +317,56 @@ describe("Kana session store", () => {
     expect(loadKanaSession("legacy", { env, cwd }).contextCheckpoint).toEqual(checkpoint);
   });
 
+  test("identifies unknown message and checkpoint references in corrupted sessions", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "corrupted-compaction" });
+    const messages: Message[] = [
+      { role: "user", content: "Question" },
+      {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Answer" }],
+      },
+    ];
+    appendKanaSessionRun(session, messages, {
+      compactions: [
+        {
+          id: "compact-corrupted",
+          summary: "Exchange.",
+          coveredMessageCount: 2,
+          createdAfterMessageCount: 2,
+          compactedMessageCount: 2,
+          reason: "manual",
+          beforeTokens: 1_000,
+          estimatedAfterTokens: 100,
+          createdAt: "2026-07-24T00:00:01.000Z",
+        },
+      ],
+    });
+    const lines = readFileSync(session.path, "utf8").trim().split("\n");
+    const compaction = JSON.parse(lines[3] ?? "{}") as Record<string, unknown>;
+
+    compaction.coversThroughId = "missing-message";
+    writeFileSync(
+      session.path,
+      `${[...lines.slice(0, 3), JSON.stringify(compaction)].join("\n")}\n`,
+    );
+    expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
+      "compact-corrupted references unknown message missing-message",
+    );
+
+    compaction.coversThroughId = JSON.parse(lines[2] ?? "{}").id;
+    compaction.baseCompactionId = "missing-checkpoint";
+    writeFileSync(
+      session.path,
+      `${[...lines.slice(0, 3), JSON.stringify(compaction)].join("\n")}\n`,
+    );
+    expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
+      "compact-corrupted references unknown checkpoint missing-checkpoint",
+    );
+  });
+
   test("lists sessions from the configured Kana home", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");

@@ -311,12 +311,12 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
     const coveredMessageCount = messageIds.get(entry.coversThroughId);
     if (coveredMessageCount === undefined) {
       throw new Error(
-        `Kana session compaction references an unknown message: ${filePath}:${entry.id}`,
+        `Kana session compaction ${entry.id} references unknown message ${entry.coversThroughId}: ${filePath}`,
       );
     }
     if (entry.baseCompactionId && !compactionIds.has(entry.baseCompactionId)) {
       throw new Error(
-        `Kana session compaction references an unknown checkpoint: ${filePath}:${entry.id}`,
+        `Kana session compaction ${entry.id} references unknown checkpoint ${entry.baseCompactionId}: ${filePath}`,
       );
     }
 
