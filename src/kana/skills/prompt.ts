@@ -22,7 +22,7 @@ export function formatKanaSkillsForPrompt(
 
   return [
     "The following skills provide specialized instructions for specific tasks.",
-    "Use the read tool to load a skill's file when the task matches its description.",
+    "Use the read tool to load a skill's file when the task matches its description. The read tool has a per-call limit — always page through with offset to read the entire file before acting on the skill's instructions.",
     "When a skill file references a relative path, resolve it against the skill directory, which is the parent directory of SKILL.md.",
     "",
     "<available_skills>",
