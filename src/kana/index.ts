@@ -22,9 +22,11 @@ export {
   type InstallKanaConfigOptions,
   type InstallKanaConfigResult,
   installKanaConfig,
+  KANA_DEEPSEEK_REASONING_EFFORTS,
   KANA_LOG_LEVELS,
   KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,
+  KANA_OPENAI_CODEX_REASONING_EFFORTS,
   KANA_TOOL_APPROVAL_MODES,
   type KanaAgentConfig,
   type KanaConfig,
@@ -44,6 +46,10 @@ export {
   type KanaToolApprovalMode,
   loadKanaConfig,
 } from "./config";
+export {
+  createKanaConfigStore,
+  type KanaConfigStore,
+} from "./config-store";
 export {
   type CollectKanaEnvironmentContextOptions,
   collectKanaEnvironmentContext,

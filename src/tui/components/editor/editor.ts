@@ -64,6 +64,7 @@ export class Editor implements Component {
   private readonly maximumVisibleCommands: number;
   private lastCommandQuery = "";
   private readonly bracketedPaste = new BracketedPasteBuffer();
+  private model?: string;
   private inputColumns = 80;
   private inputVisibleLines = MAX_INPUT_LINES;
   private inputViewportStartLine: number | undefined;
@@ -76,7 +77,8 @@ export class Editor implements Component {
 
   onSubmit?: (submit: PromptSubmit) => void;
 
-  constructor(private readonly options: EditorOptions = {}) {
+  constructor(options: EditorOptions = {}) {
+    this.model = options.model;
     this.maximumVisibleCommands =
       options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT;
     this.commandViewport = new ListViewport(this.maximumVisibleCommands);
@@ -100,6 +102,10 @@ export class Editor implements Component {
 
   clear(): void {
     this.setText("");
+  }
+
+  setModel(model: string | undefined): void {
+    this.model = model;
   }
 
   addToHistory(value: string): void {
@@ -167,7 +173,7 @@ export class Editor implements Component {
     lines.push(...this.renderCommandPalette(frameWidth, commandPaletteHeight));
 
     if (showStatus) {
-      lines.push(renderStatusLine(width, this.options.model, this.statusState));
+      lines.push(renderStatusLine(width, this.model, this.statusState));
     }
 
     return lines.map((line) => truncateToWidth(line, width, ""));

@@ -68,6 +68,11 @@ import {
   type MemoryCompactSummary,
   type MemoryScope,
 } from "./memory-compact-controller";
+import {
+  formatTuiReasoningSelection,
+  type TuiModelSelection,
+  type TuiModelSettings,
+} from "./model-selection";
 import { NotificationController } from "./notification-controller";
 import { SessionOverlayController } from "./session-overlay-controller";
 import { SkillManagerController } from "./skill-manager-controller";
@@ -119,6 +124,9 @@ export type KanaTuiAppOptions = {
   ) => Promise<MemoryCompactSummary[]>;
   loadMemory: (target: Exclude<MemoryScope, "both">) => string;
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
+  modelManagement?: {
+    getSettings: () => TuiModelSettings;
+  };
   loadExternalTools?: (
     onProgress: (status: string) => void,
   ) => Promise<KanaTuiExternalToolsLoadResult>;
@@ -183,6 +191,7 @@ export class KanaTuiApp {
       messages?: Message[];
       sessionId?: string;
       contextCheckpoint?: ContextCheckpoint;
+      modelSelection?: TuiModelSelection;
     }) => Agent,
     terminal: Terminal,
     private readonly options: KanaTuiAppOptions,
@@ -272,6 +281,11 @@ export class KanaTuiApp {
       onMemoryCompact: (scope, request) => {
         this.restoreBottom(true);
         void this.memoryCompact.compact(scope, request);
+      },
+      getModelSettings: this.options.modelManagement?.getSettings,
+      onModelSelect: (selection) => {
+        this.restoreBottom(true);
+        this.switchModel(selection);
       },
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
@@ -471,12 +485,14 @@ export class KanaTuiApp {
   private createAgentForCurrentSession(
     messages?: Message[],
     contextCheckpoint?: ContextCheckpoint,
+    modelSelection?: TuiModelSelection,
   ): Agent {
     return this.createAgent({
       beforeToolExecution: ({ toolCall, signal }) => this.showToolApprovalPrompt(toolCall, signal),
       messages,
       sessionId: this.sessionId,
       contextCheckpoint,
+      modelSelection,
     });
   }
 
@@ -808,6 +824,15 @@ export class KanaTuiApp {
         this.editor.clear();
         this.openMcpServerManager();
         break;
+      case "model":
+        if (command.arguments.trim()) {
+          this.showError(new Error(formatPromptCommandUsage(command.name)));
+          return;
+        }
+        if (!this.slashCommandOptions.openModel()) {
+          this.showError(new Error("Model management is unavailable."));
+        }
+        break;
       case "memory":
         if (command.arguments.trim()) {
           this.showError(new Error(formatPromptCommandUsage(command.name)));
@@ -834,6 +859,43 @@ export class KanaTuiApp {
         this.slashCommandOptions.openUsage();
         break;
     }
+  }
+
+  private switchModel(selection: TuiModelSelection): void {
+    const messages = this.agent.state.messages;
+    const contextCheckpoint = this.agent.state.contextCheckpoint;
+    const logMetadata = {
+      provider: selection.provider,
+      model: selection.model,
+      reasoningEffort: formatTuiReasoningSelection(selection),
+    };
+    this.getLogger().info("tui.model_switch_started", logMetadata);
+
+    try {
+      const nextAgent = this.createAgentForCurrentSession(messages, contextCheckpoint, selection);
+      const previousAgent = this.agent;
+      this.agent = nextAgent;
+      previousAgent.abort();
+      this.editor.setModel(formatModelName(nextAgent.state.model.metadata));
+      this.updateContextUsageFromMessages(messages, contextCheckpoint);
+      this.transcript.addChild(
+        new TextBlock(
+          `Switched to ${formatModelName(nextAgent.state.model.metadata)} · reasoning ${formatTuiReasoningSelection(selection)}.`,
+          { color: tuiTheme.muted },
+        ),
+      );
+      this.updateStatus("idle", { activeTool: undefined });
+      this.getLogger().info("tui.model_switch_completed", logMetadata);
+    } catch (error) {
+      this.getLogger().error("tui.model_switch_failed", {
+        ...logMetadata,
+        error,
+      });
+      this.showError(error);
+    }
+
+    this.tui.setFocus(this.editor);
+    this.tui.requestRender(true);
   }
 
   private openMemoryViewer(target: MemoryScope): void {

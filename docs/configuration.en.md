@@ -35,7 +35,7 @@ kana auth status openai-codex
 kana auth logout openai-codex
 ```
 
-`kana install` does not create `config.toml` merely to materialize built-in defaults; Kana uses those defaults directly when the file is absent. Existing configuration is not overwritten. `--force` restores an existing `config.toml` to the default DeepSeek configuration and resets `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml`; with `--skills`, it also deletes and reclones the default Skills directory. Installation and forced reinstallation never delete `oauth-tokens.json`, and neither creates `~/.kana/AGENTS.md`.
+`kana install` does not create `config.toml` merely to materialize built-in defaults; Kana uses those defaults directly when the file is absent. Existing configuration is not overwritten. Installation creates or refreshes `config.example.toml`, which lists every provider and configuration field; Kana generates this reference and never reads it, so copy only the fields being overridden into `config.toml`. `--force` restores an existing `config.toml` to the default DeepSeek configuration and resets `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml`; with `--skills`, it also deletes and reclones the default Skills directory. Installation and forced reinstallation never delete `oauth-tokens.json`, and neither creates `~/.kana/AGENTS.md`.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. If the existing directory is not a Git repository, a regular update fails and `--force` is required to replace it. An existing Git repository is updated with `git pull --ff-only`.
 
@@ -49,6 +49,7 @@ Kana uses `KANA_HOME` as its root. When unset, it uses `$HOME/.kana`; when `HOME
 ${KANA_HOME:-$HOME/.kana}/
 ├── .env                    # Optional environment variables loaded at startup
 ├── config.toml             # Optional runtime configuration; absence uses built-in defaults
+├── config.example.toml     # Complete install-generated reference; never read at runtime
 ├── mcp.json                # MCP server definitions
 ├── mcp-enabled.json        # Enabled MCP server IDs
 ├── oauth-tokens.json       # OAuth credentials created after browser authorization
@@ -70,6 +71,8 @@ Kana reads `<KANA_HOME>/.env` before parsing CLI commands. Its values override m
 
 When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults; for example, supplying only `[model.deepseek] name` does not remove the other defaults for that provider. Legacy flat `[model]` DeepSeek configuration remains readable, but new configuration should use provider-specific tables.
 
+The TUI's `/model` command updates `config.toml` through the generic configuration store. It reloads the current file from disk, writes only known fields whose effective values changed, and preserves unrelated tables, unknown fields, and standalone comments. The first change away from defaults therefore creates only the required overrides instead of expanding every default. A candidate document must parse back into the complete target configuration before a sibling temporary file atomically replaces the original; validation or write failures leave the original file untouched. `config.example.toml` is reference-only and may be refreshed by a later `kana install`, so user configuration should not be stored there.
+
 The built-in configuration is equivalent to:
 
 ```toml
@@ -82,6 +85,14 @@ api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
 reasoning_effort = "high"
 max_tokens = 8192
+timeout_ms = 60000
+max_retries = 1
+
+[model.openai-codex]
+name = "gpt-5.6-sol"
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+max_tokens = 32768
 timeout_ms = 60000
 max_retries = 1
 

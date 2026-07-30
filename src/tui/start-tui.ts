@@ -4,6 +4,7 @@ import {
   appendKanaSessionRun,
   authorizeKanaMcpServer,
   createKanaAgent,
+  createKanaConfigStore,
   createKanaMcpRuntime,
   createKanaOAuthTokenStore,
   createKanaSession,
@@ -14,9 +15,9 @@ import {
   getActiveKanaModelConfig,
   getKanaSessionLogPath,
   KANA_BUILT_IN_TOOL_NAMES,
+  type KanaAgentOptions,
   type LoadKanaSessionResult,
   listKanaSessions,
-  loadKanaConfig,
   loadKanaMcpServerActivations,
   loadKanaMemory,
   loadKanaSession,
@@ -34,6 +35,7 @@ import { createNoopLogger, createSessionLogManager } from "@/logging";
 import type { Tool } from "@/tools";
 import { KanaTuiApp } from "./app/app";
 import type { MemoryCompactSummary } from "./app/memory-compact-controller";
+import { applyTuiModelSelection } from "./app/model-selection";
 import {
   formatMcpLifecycleStatus,
   formatMcpReloadSummary,
@@ -50,17 +52,18 @@ export type StartTuiOptions = {
 };
 
 export async function startTui(options: StartTuiOptions = {}): Promise<void> {
-  const config = loadKanaConfig();
-  const modelConfig = getActiveKanaModelConfig(config);
+  const configStore = createKanaConfigStore();
+  let config = configStore.load();
   const logManager = createSessionLogManager({ level: config.logging.level });
   const toolApprovals = loadKanaToolApprovals();
   const memoryConsolidationQueue = createMemoryConsolidationQueue();
   const wakeScheduler = createWakeScheduler();
-  const memoryConsolidation = config.memory.enabled
+  let memoryConsolidation = config.memory.enabled
     ? createMemoryConsolidationScheduler(config, { queue: memoryConsolidationQueue })
     : undefined;
-  const createSession = (parentSessionPath?: string, title?: string) =>
-    createKanaSession({
+  const createSession = (parentSessionPath?: string, title?: string) => {
+    const modelConfig = getActiveKanaModelConfig(config);
+    return createKanaSession({
       title,
       model: {
         provider: config.provider.active,
@@ -68,6 +71,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       },
       parentSessionPath,
     });
+  };
   let session: LoadKanaSessionResult | undefined = options.showResumePicker
     ? undefined
     : options.resumeSessionId
@@ -170,15 +174,15 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       // Each Agent retains this concrete logger for its full lifetime. It must
       // never resolve the active session again after an asynchronous run starts.
       const agentLogger = sessionLogger;
-
-      return createKanaAgent(config, {
-        ...agentOptions,
+      const { modelSelection, ...currentAgentOptions } = agentOptions;
+      const kanaAgentOptions: KanaAgentOptions = {
+        ...currentAgentOptions,
         additionalTools: mcpTools,
         logger: agentLogger,
         wakeScheduler,
-        sessionId: agentOptions.sessionId,
-        messages: agentOptions.messages ?? session?.messages,
-        contextCheckpoint: agentOptions.contextCheckpoint ?? session?.contextCheckpoint,
+        sessionId: currentAgentOptions.sessionId,
+        messages: currentAgentOptions.messages ?? session?.messages,
+        contextCheckpoint: currentAgentOptions.contextCheckpoint ?? session?.contextCheckpoint,
         onRunCommitted: ({ messages, compactions, state, event }) => {
           session ??= {
             metadata: createSession(),
@@ -269,7 +273,32 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
             additionalUsage: compaction.usage,
           });
         },
+      };
+
+      if (!modelSelection) {
+        return createKanaAgent(config, kanaAgentOptions);
+      }
+
+      let nextAgent: ReturnType<typeof createKanaAgent> | undefined;
+      let nextMemoryConsolidation = memoryConsolidation;
+      // Build every runtime object inside the config mutation. If construction
+      // fails, ConfigStore never reaches its atomic write.
+      const nextConfig = configStore.update((draft) => {
+        applyTuiModelSelection(draft, modelSelection);
+        nextAgent = createKanaAgent(draft, kanaAgentOptions);
+        nextMemoryConsolidation = draft.memory.enabled
+          ? createMemoryConsolidationScheduler(draft, {
+              queue: memoryConsolidationQueue,
+            })
+          : undefined;
       });
+      if (!nextAgent) {
+        throw new Error("Kana could not initialize the selected model.");
+      }
+
+      config = nextConfig;
+      memoryConsolidation = nextMemoryConsolidation;
+      return nextAgent;
     },
     terminal,
     {
@@ -412,6 +441,9 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
           sessionId: scope === "session" ? session?.metadata.id : undefined,
           cwd: process.cwd(),
         }),
+      modelManagement: {
+        getSettings: () => structuredClone(config),
+      },
       loadExternalTools: loadMcpTools,
       mcpManagement: {
         loadServers: () => loadKanaMcpServerActivations(),

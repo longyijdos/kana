@@ -744,9 +744,7 @@ describe("prompt commands", () => {
     expect(createRandomPromptPlaceholder(() => 0, "Try /quit — Exit Kana.")).toBe(
       "Try /help — Show slash commands.",
     );
-    expect(createRandomPromptPlaceholder(() => 0.4)).toBe(
-      "Try /resume [id] — Switch to a saved session.",
-    );
+    expect(createRandomPromptPlaceholder(() => 0.4)).toBe("Try /delete — Delete a saved session.");
   });
 
   test("lists commands after slash", () => {
@@ -781,6 +779,9 @@ describe("prompt commands", () => {
         },
         {
           name: "mcp",
+        },
+        {
+          name: "model",
         },
         {
           name: "memory",

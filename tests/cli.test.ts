@@ -89,6 +89,8 @@ describe("CLI", () => {
       installKanaConfig: () => ({
         configPath: "/tmp/config.toml",
         configStatus: "defaults",
+        configExamplePath: "/tmp/config.example.toml",
+        configExampleStatus: "created",
         mcpConfigPath: "/tmp/mcp.json",
         mcpConfigStatus: "created",
         mcpEnabledPath: "/tmp/mcp-enabled.json",
@@ -104,6 +106,7 @@ describe("CLI", () => {
     });
 
     expect(logs).toEqual([
+      "Created config example: /tmp/config.example.toml",
       "Created MCP config: /tmp/mcp.json",
       "Created MCP activation state: /tmp/mcp-enabled.json",
       "Approvals already exists: /tmp/approvals.json",
@@ -130,6 +133,7 @@ describe("CLI", () => {
 
     expect(calls).toEqual([{ force: true }]);
     expect(logs).toEqual([
+      "Created config example: /tmp/config.example.toml",
       "Created MCP config: /tmp/mcp.json",
       "Created MCP activation state: /tmp/mcp-enabled.json",
       "Created approvals: /tmp/approvals.json",
@@ -248,6 +252,8 @@ function defaultCliOptions(): CreateCliOptions {
     installKanaConfig: () => ({
       configPath: "/tmp/config.toml",
       configStatus: "defaults",
+      configExamplePath: "/tmp/config.example.toml",
+      configExampleStatus: "created",
       mcpConfigPath: "/tmp/mcp.json",
       mcpConfigStatus: "created",
       mcpEnabledPath: "/tmp/mcp-enabled.json",

@@ -127,7 +127,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 5. 当前目录、平台、日期和时区；
 6. 已启用 Skills 的名称、描述和 `SKILL.md` 路径。
 
-`loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。首次安装不物化默认 `config.toml`，审批数据和 Skills 开关仍以仅用户可读写的文件创建。
+`loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。首次安装不物化默认 `config.toml`，而会生成运行时不读取的完整 `config.example.toml` 参考；审批数据和 Skills 开关仍以仅用户可读写的文件创建。`KanaConfigStore` 为 TUI 等调用方提供通用 typed mutation：它比较更新前后的有效配置，只 patch 变化的规范 TOML leaf，验证回读结果后用同目录临时文件原子替换，因此无关配置、未知表和注释不需要经过全量重序列化。
 
 ## 本地状态
 
@@ -135,7 +135,8 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 | 数据 | 位置与格式 | 写入时机 |
 | --- | --- | --- |
-| 配置 | `config.toml` | 用户编辑，或对已有文件执行 `kana install --force` |
+| 配置 | `config.toml` | 用户编辑、`/model` 修改，或对已有文件执行 `kana install --force` |
+| 配置参考 | `config.example.toml` | `kana install` 创建或刷新；运行时不读取 |
 | MCP server 定义 | `mcp.json` | `kana install` 或用户编辑 |
 | MCP 启用状态 | `mcp-enabled.json` | `kana install` 或启用状态变更 |
 | OAuth token | `oauth-tokens.json` | 浏览器授权、refresh、退出登录或凭据失效 |
@@ -187,7 +188,7 @@ ProcessTerminal（raw mode、输入、resize、通知）
 
 `Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。Layout 固定绘制底部区域首行作为 main/bottom 分隔线，将剩余预算传给底部组件，并为较短输出补空行，从而稳定两者的边界。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史，并在有输出的子 Block 之间统一插入一行空白；Block 仅管理内容内部留白。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记；存在焦点组件时才将硬件光标移动到对应的可见宽度位置，没有焦点时则隐藏光标并留在布局末尾。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
-TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关和 OAuth 操作、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、审批和内容查看视图都会作为唯一底部组件替换编辑器。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 选择或已启用 server 的认证状态变化只请求一次 runtime reload。MCP 组件接收 server ID、transport、OAuth 安全状态，以及 stdio command/参数或 HTTP URL，但不会接收环境变量、HTTP headers 或 token；授权 URL 只临时放在 transcript block 中，完成后原位替换。MCP 视图打开、认证操作或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
+TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关和 OAuth 操作、provider/model 选择、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、slash 选项、审批和内容查看视图都会作为唯一底部组件替换编辑器。`/model` 保留消息和 context checkpoint，在配置写入前构造候选 Agent，成功后才替换当前 Agent；失败时旧 Agent 与配置保持可用。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 选择或已启用 server 的认证状态变化只请求一次 runtime reload。MCP 组件接收 server ID、transport、OAuth 安全状态，以及 stdio command/参数或 HTTP URL，但不会接收环境变量、HTTP headers 或 token；授权 URL 只临时放在 transcript block 中，完成后原位替换。MCP 视图打开、认证操作或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 
 ## 扩展时的检查点
 

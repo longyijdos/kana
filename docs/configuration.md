@@ -35,7 +35,7 @@ kana auth status openai-codex
 kana auth logout openai-codex
 ```
 
-`kana install` 不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；已经存在的配置也不会被覆盖。`--force` 会把已有的 `config.toml` 恢复为默认 DeepSeek 配置，并重置 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml`；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。安装和强制重装都不会删除 `oauth-tokens.json`，也**不会**创建 `~/.kana/AGENTS.md`。
+`kana install` 不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；已经存在的配置也不会被覆盖。安装会创建或刷新 `config.example.toml`，其中列出所有供应商和配置项；该文件由 Kana 生成且不会被读取，需要覆盖默认值时只把相应字段复制到 `config.toml`。`--force` 会把已有的 `config.toml` 恢复为默认 DeepSeek 配置，并重置 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml`；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。安装和强制重装都不会删除 `oauth-tokens.json`，也**不会**创建 `~/.kana/AGENTS.md`。
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。已有目录不是 Git 仓库时，普通更新会报错，必须使用 `--force` 才会替换它；已有 Git 仓库则执行 `git pull --ff-only`。
 
@@ -49,6 +49,7 @@ Kana 使用 `KANA_HOME` 指定根目录；未设置时使用 `$HOME/.kana`，若
 ${KANA_HOME:-$HOME/.kana}/
 ├── .env                    # 可选：启动时加载的环境变量
 ├── config.toml             # 可选：本文的运行配置；缺失时使用内置默认值
+├── config.example.toml     # install 生成的完整配置参考；运行时不读取
 ├── mcp.json                # MCP server 定义
 ├── mcp-enabled.json        # 已启用的 MCP server ID
 ├── oauth-tokens.json       # 浏览器授权后创建的 OAuth 凭据
@@ -70,6 +71,8 @@ Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启
 
 配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值；例如只写 `[model.deepseek] name` 不会删除该供应商的其他默认项。旧版扁平 `[model]` DeepSeek 配置仍可读取，但新配置应使用供应商分表。
 
+TUI 的 `/model` 通过通用配置存储更新 `config.toml`：它从磁盘重新读取当前配置，只写本次实际变化的已知字段，并保留无关表、未知字段和独立注释。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。候选文档必须重新解析为完整目标配置后才会通过同目录临时文件原子替换；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
+
 内置默认配置等价于：
 
 ```toml
@@ -82,6 +85,14 @@ api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
 reasoning_effort = "high"
 max_tokens = 8192
+timeout_ms = 60000
+max_retries = 1
+
+[model.openai-codex]
+name = "gpt-5.6-sol"
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+max_tokens = 32768
 timeout_ms = 60000
 max_retries = 1
 

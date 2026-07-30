@@ -61,6 +61,7 @@ describe("Kana config", () => {
     expect(getKanaConfigPaths({ HOME: "/home/kana" })).toEqual({
       home: "/home/kana/.kana",
       configPath: "/home/kana/.kana/config.toml",
+      configExamplePath: "/home/kana/.kana/config.example.toml",
       mcpConfigPath: "/home/kana/.kana/mcp.json",
       mcpEnabledPath: "/home/kana/.kana/mcp-enabled.json",
       agentsPath: "/home/kana/.kana/AGENTS.md",
@@ -80,13 +81,18 @@ describe("Kana config", () => {
     const installedMcpEnabled = JSON.parse(readFileSync(firstInstall.mcpEnabledPath, "utf8"));
     const installedApprovals = JSON.parse(readFileSync(firstInstall.approvalsPath, "utf8"));
     const installedSkillsConfig = readFileSync(firstInstall.skillsConfigPath, "utf8");
+    const installedConfigExample = readFileSync(firstInstall.configExamplePath, "utf8");
 
     expect(firstInstall.configStatus).toBe("defaults");
+    expect(firstInstall.configExampleStatus).toBe("created");
     expect(firstInstall.mcpConfigStatus).toBe("created");
     expect(firstInstall.mcpEnabledStatus).toBe("created");
     expect(firstInstall.approvalsStatus).toBe("created");
     expect(firstInstall.skillsConfigStatus).toBe("created");
     expect(fileExists(firstInstall.configPath)).toBe(false);
+    expect(installedConfigExample).toContain("[model.deepseek]");
+    expect(installedConfigExample).toContain("[model.openai-codex]");
+    expect(installedConfigExample).toContain("Kana does not read this file.");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
     expect(statSync(firstInstall.mcpEnabledPath).mode & 0o777).toBe(0o600);
@@ -104,6 +110,8 @@ describe("Kana config", () => {
     expect(secondInstall).toEqual({
       configPath: firstInstall.configPath,
       configStatus: "exists",
+      configExamplePath: firstInstall.configExamplePath,
+      configExampleStatus: "exists",
       mcpConfigPath: firstInstall.mcpConfigPath,
       mcpConfigStatus: "exists",
       mcpEnabledPath: firstInstall.mcpEnabledPath,
@@ -137,6 +145,8 @@ describe("Kana config", () => {
     expect(result).toEqual({
       configPath,
       configStatus: "reinstalled",
+      configExamplePath: path.join(path.dirname(configPath), "config.example.toml"),
+      configExampleStatus: "exists",
       mcpConfigPath,
       mcpConfigStatus: "reinstalled",
       mcpEnabledPath,
@@ -153,6 +163,19 @@ describe("Kana config", () => {
     expect(readFileSync(skillsConfigPath, "utf8")).toBe(
       ["[model_invocation]", "enabled = []", ""].join("\n"),
     );
+  });
+
+  test("refreshes the generated config example without creating config.toml", () => {
+    const env = createTempEnv();
+    const firstInstall = installKanaConfig(env);
+    writeFileSync(firstInstall.configExamplePath, "custom example\n");
+
+    const secondInstall = installKanaConfig(env);
+
+    expect(secondInstall.configStatus).toBe("defaults");
+    expect(secondInstall.configExampleStatus).toBe("updated");
+    expect(fileExists(secondInstall.configPath)).toBe(false);
+    expect(readFileSync(secondInstall.configExamplePath, "utf8")).toContain("[model.openai-codex]");
   });
 
   test("loads defaults when config.toml is missing", () => {

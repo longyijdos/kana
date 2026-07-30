@@ -3,12 +3,14 @@ import { MockModel, type MockModelConfig } from "./mock";
 import { OpenAICodexModel, type OpenAICodexModelConfig } from "./openai-codex";
 
 export type { DeepSeekReasoningEffort } from "./deepseek";
+export { DEEPSEEK_MODELS } from "./deepseek";
 export type {
   OpenAICodexCredentialProvider,
   OpenAICodexCredentials,
   OpenAICodexReasoningEffort,
   OpenAICodexReasoningSummary,
 } from "./openai-codex";
+export { OPENAI_CODEX_MODELS } from "./openai-codex";
 
 export type ProviderConfigMap = {
   deepseek: DeepSeekModelConfig;

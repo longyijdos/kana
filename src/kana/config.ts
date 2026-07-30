@@ -14,6 +14,17 @@ export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex"] as const;
 
 export type KanaModelProvider = (typeof KANA_MODEL_PROVIDERS)[number];
 
+export const KANA_DEEPSEEK_REASONING_EFFORTS = ["high", "max"] as const;
+
+export const KANA_OPENAI_CODEX_REASONING_EFFORTS = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+] as const;
+
 export type KanaProviderConfig = {
   active: KanaModelProvider;
 };
@@ -101,6 +112,7 @@ export type KanaConfig = {
 export type KanaConfigPaths = {
   home: string;
   configPath: string;
+  configExamplePath: string;
   mcpConfigPath: string;
   mcpEnabledPath: string;
   agentsPath: string;
@@ -119,6 +131,8 @@ export type InstallKanaConfigOptions = {
 export type InstallKanaConfigResult = {
   configPath: string;
   configStatus: "defaults" | "exists" | "reinstalled";
+  configExamplePath: string;
+  configExampleStatus: "created" | "exists" | "updated";
   mcpConfigPath: string;
   mcpConfigStatus: "created" | "exists" | "reinstalled";
   mcpEnabledPath: string;
@@ -180,6 +194,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
   return {
     home,
     configPath: path.join(home, "config.toml"),
+    configExamplePath: path.join(home, "config.example.toml"),
     mcpConfigPath: path.join(home, "mcp.json"),
     mcpEnabledPath: path.join(home, "mcp-enabled.json"),
     agentsPath: path.join(home, "AGENTS.md"),
@@ -196,19 +211,26 @@ export function loadKanaConfig(env: NodeJS.ProcessEnv = process.env): KanaConfig
   const { configPath } = getKanaConfigPaths(env);
 
   if (!existsSync(configPath)) {
-    return DEFAULT_KANA_CONFIG;
+    return structuredClone(DEFAULT_KANA_CONFIG);
   }
 
   const parsed = Bun.TOML.parse(readFileSync(configPath, "utf8")) as unknown;
-  return mergeKanaConfig(DEFAULT_KANA_CONFIG, parsed);
+  return parseKanaConfig(parsed);
 }
 
 export function installKanaConfig(
   env: NodeJS.ProcessEnv = process.env,
   options: InstallKanaConfigOptions = {},
 ): InstallKanaConfigResult {
-  const { home, configPath, mcpConfigPath, mcpEnabledPath, approvalsPath, skillsConfigPath } =
-    getKanaConfigPaths(env);
+  const {
+    home,
+    configPath,
+    configExamplePath,
+    mcpConfigPath,
+    mcpEnabledPath,
+    approvalsPath,
+    skillsConfigPath,
+  } = getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
 
   const configExists = existsSync(configPath);
@@ -223,6 +245,8 @@ export function installKanaConfig(
       mode: 0o600,
     });
   }
+
+  const configExampleStatus = writeGeneratedConfigExample(configExamplePath);
 
   if (!mcpConfigExists || options.force) {
     writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`, {
@@ -257,6 +281,8 @@ export function installKanaConfig(
     configPath,
     configStatus:
       configExists && !options.force ? "exists" : configExists ? "reinstalled" : "defaults",
+    configExamplePath,
+    configExampleStatus,
     mcpConfigPath,
     mcpConfigStatus:
       mcpConfigExists && !options.force ? "exists" : mcpConfigExists ? "reinstalled" : "created",
@@ -274,6 +300,57 @@ export function installKanaConfig(
           ? "reinstalled"
           : "created",
   };
+}
+
+export function parseKanaConfig(rawConfig: unknown): KanaConfig {
+  return mergeKanaConfig(DEFAULT_KANA_CONFIG, rawConfig);
+}
+
+export function validateKanaConfig(config: KanaConfig): KanaConfig {
+  return parseKanaConfig({
+    provider: {
+      active: config.provider.active,
+    },
+    model: {
+      deepseek: {
+        name: config.model.deepseek.name,
+        api_key_env: config.model.deepseek.apiKeyEnv,
+        thinking: config.model.deepseek.thinking,
+        reasoning_effort: config.model.deepseek.reasoningEffort,
+        max_tokens: config.model.deepseek.maxTokens,
+        timeout_ms: config.model.deepseek.timeoutMs,
+        max_retries: config.model.deepseek.maxRetries,
+      },
+      "openai-codex": {
+        name: config.model["openai-codex"].name,
+        reasoning_effort: config.model["openai-codex"].reasoningEffort,
+        reasoning_summary: config.model["openai-codex"].reasoningSummary,
+        max_tokens: config.model["openai-codex"].maxTokens,
+        timeout_ms: config.model["openai-codex"].timeoutMs,
+        max_retries: config.model["openai-codex"].maxRetries,
+      },
+    },
+    agent: {
+      max_turns: config.agent.maxTurns,
+      context_limit: config.agent.contextLimit,
+    },
+    approval: {
+      mode: config.approval.mode,
+    },
+    notification: {
+      backend: config.notification.backend,
+      on_agent_completed: config.notification.onAgentCompleted,
+      on_approval_required: config.notification.onApprovalRequired,
+    },
+    memory: {
+      enabled: config.memory.enabled,
+      max_chars: config.memory.maxChars,
+      daily_retention_days: config.memory.dailyRetentionDays,
+    },
+    logging: {
+      level: config.logging.level,
+    },
+  });
 }
 
 function serializeKanaConfig(config: KanaConfig): string {
@@ -317,6 +394,60 @@ function serializeKanaConfig(config: KanaConfig): string {
     `level = "${config.logging.level}"`,
     "",
   ].join("\n");
+}
+
+function serializeKanaConfigExample(config: KanaConfig): string {
+  return [
+    "# Generated configuration reference. Kana does not read this file.",
+    "# Copy only the settings you want to override into config.toml.",
+    "",
+    "[provider]",
+    `active = "${config.provider.active}"`,
+    "",
+    "[model.deepseek]",
+    `name = "${config.model.deepseek.name}"`,
+    ...serializeDeepSeekModel(config.model.deepseek),
+    "",
+    "[model.openai-codex]",
+    `name = "${config.model["openai-codex"].name}"`,
+    ...serializeOpenAICodexModel(config.model["openai-codex"]),
+    "",
+    "[agent]",
+    `max_turns = ${config.agent.maxTurns}`,
+    "# context_limit = 200000",
+    "",
+    "[approval]",
+    `mode = "${config.approval.mode}"`,
+    "",
+    "[notification]",
+    `backend = "${config.notification.backend}"`,
+    `on_agent_completed = ${config.notification.onAgentCompleted}`,
+    `on_approval_required = ${config.notification.onApprovalRequired}`,
+    "",
+    "[memory]",
+    `enabled = ${config.memory.enabled}`,
+    `max_chars = ${config.memory.maxChars}`,
+    "# daily_retention_days = 30",
+    "",
+    "[logging]",
+    `level = "${config.logging.level}"`,
+    "",
+  ].join("\n");
+}
+
+function writeGeneratedConfigExample(
+  configExamplePath: string,
+): InstallKanaConfigResult["configExampleStatus"] {
+  const content = serializeKanaConfigExample(DEFAULT_KANA_CONFIG);
+  if (!existsSync(configExamplePath)) {
+    writeFileSync(configExamplePath, content, { encoding: "utf8", mode: 0o600 });
+    return "created";
+  }
+  if (readFileSync(configExamplePath, "utf8") === content) {
+    return "exists";
+  }
+  writeFileSync(configExamplePath, content, { encoding: "utf8", mode: 0o600 });
+  return "updated";
 }
 
 function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
@@ -587,11 +718,11 @@ function readDeepSeekReasoningEffort(
 ): DeepSeekReasoningEffort {
   const effort = readString(value, fallback, "model.deepseek.reasoning_effort");
 
-  if (effort !== "high" && effort !== "max") {
+  if (!(KANA_DEEPSEEK_REASONING_EFFORTS as readonly string[]).includes(effort)) {
     throw new Error(`model.deepseek.reasoning_effort must be "high" or "max".`);
   }
 
-  return effort;
+  return effort as DeepSeekReasoningEffort;
 }
 
 function readOpenAICodexReasoningEffort(
@@ -599,10 +730,10 @@ function readOpenAICodexReasoningEffort(
   fallback: OpenAICodexReasoningEffort,
 ): OpenAICodexReasoningEffort {
   const effort = readString(value, fallback, "model.openai-codex.reasoning_effort");
-  const efforts = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
-
-  if (!(efforts as readonly string[]).includes(effort)) {
-    throw new Error(`model.openai-codex.reasoning_effort must be one of: ${efforts.join(", ")}.`);
+  if (!(KANA_OPENAI_CODEX_REASONING_EFFORTS as readonly string[]).includes(effort)) {
+    throw new Error(
+      `model.openai-codex.reasoning_effort must be one of: ${KANA_OPENAI_CODEX_REASONING_EFFORTS.join(", ")}.`,
+    );
   }
 
   return effort as OpenAICodexReasoningEffort;

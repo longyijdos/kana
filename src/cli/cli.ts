@@ -74,7 +74,7 @@ export function createCli(options: CreateCliOptions): Command {
 
   program
     .command("install")
-    .description("Create the default Kana files under ~/.kana")
+    .description("Create Kana support files under ~/.kana")
     .option("--force", "Overwrite the existing Kana files")
     .option("--skills", "Install or update Kana skills from the default repository")
     .action(async (options: { force?: boolean; skills?: boolean }) => {
@@ -84,6 +84,13 @@ export function createCli(options: CreateCliOptions): Command {
       if (result.configStatus !== "defaults") {
         log(formatInstallMessage("config", result.configPath, result.configStatus));
       }
+      log(
+        formatInstallMessage(
+          "config example",
+          result.configExamplePath,
+          result.configExampleStatus,
+        ),
+      );
       log(formatInstallMessage("MCP config", result.mcpConfigPath, result.mcpConfigStatus));
       log(
         formatInstallMessage(
@@ -215,11 +222,13 @@ function formatSyncKanaSkillsMessage(result: SyncKanaSkillsResult): string {
 function formatInstallMessage(
   name: string,
   filePath: string,
-  status: "created" | "exists" | "reinstalled",
+  status: "created" | "exists" | "reinstalled" | "updated",
 ): string {
   switch (status) {
     case "created":
       return `Created ${name}: ${filePath}`;
+    case "updated":
+      return `Updated ${name}: ${filePath}`;
     case "reinstalled":
       return `Reinstalled ${name}: ${filePath}`;
     case "exists":
