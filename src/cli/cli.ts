@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
+import type { StartHeadlessOptions } from "@/headless";
 import type {
   InstallKanaConfigResult,
   InstallKanaSkillsResult,
@@ -40,6 +41,7 @@ export type CreateCliOptions = {
   isInteractive?: () => boolean;
   signOutOpenAICodex?: typeof signOutKanaOpenAICodex;
   log?: (message: string) => void;
+  startHeadless: (options?: StartHeadlessOptions) => Promise<number>;
   startTui: (options?: StartTuiOptions) => Promise<void> | void;
   updateKana?: (options?: UpdateKanaOptions) => Promise<KanaUpdateResult>;
 };
@@ -50,6 +52,7 @@ export function createCli(options: CreateCliOptions): Command {
   const reinstallSkills = options.reinstallKanaSkills;
   const resetConfig = options.resetKanaConfig;
   const log = options.log ?? console.log;
+  const runHeadless = options.startHeadless;
   const runTui = options.startTui;
   const resyncSkills = options.resyncKanaSkills;
   const syncSkills = options.syncKanaSkills;
@@ -87,6 +90,50 @@ export function createCli(options: CreateCliOptions): Command {
         showResumePicker: sessionId === undefined,
       });
     });
+
+  const execCommand = addHeadlessOptions(
+    program
+      .command("exec")
+      .description("Run one complete agent turn without the TUI")
+      .argument("[prompt...]", "Prompt to run; reads stdin when omitted"),
+  );
+  execCommand.action(
+    async (promptParts: string[] = [], actionOptions: HeadlessCommandOptions, command: Command) => {
+      const commandOptions = getHeadlessCommandOptions(actionOptions, command);
+      await applyHeadlessExitCode(
+        runHeadless({
+          prompt: joinPromptParts(promptParts),
+          json: commandOptions.json,
+          allowAllTools: commandOptions.allowAllTools,
+        }),
+      );
+    },
+  );
+
+  addHeadlessOptions(
+    execCommand
+      .command("resume")
+      .description("Resume a saved session for one complete agent turn")
+      .argument("<sessionId>", "Session id to resume")
+      .argument("[prompt...]", "Prompt to run; reads stdin when omitted"),
+  ).action(
+    async (
+      sessionId: string,
+      promptParts: string[] = [],
+      actionOptions: HeadlessCommandOptions,
+      command: Command,
+    ) => {
+      const commandOptions = getHeadlessCommandOptions(actionOptions, command);
+      await applyHeadlessExitCode(
+        runHeadless({
+          prompt: joinPromptParts(promptParts),
+          resumeSessionId: sessionId,
+          json: commandOptions.json,
+          allowAllTools: commandOptions.allowAllTools,
+        }),
+      );
+    },
+  );
 
   program
     .command("install")
@@ -263,6 +310,42 @@ export function createCli(options: CreateCliOptions): Command {
     );
 
   return program;
+}
+
+type HeadlessCommandOptions = {
+  json?: boolean;
+  allowAllTools?: boolean;
+};
+
+function addHeadlessOptions(command: Command): Command {
+  return command
+    .option("--json", "Write versioned JSONL events to stdout")
+    .option(
+      "--allow-all-tools",
+      "Run tool calls without interactive approval (does not enable a sandbox)",
+    );
+}
+
+function getHeadlessCommandOptions(
+  actionOptions: HeadlessCommandOptions,
+  command: Command,
+): HeadlessCommandOptions {
+  return {
+    ...command.parent?.opts<HeadlessCommandOptions>(),
+    ...actionOptions,
+  };
+}
+
+function joinPromptParts(promptParts: string[]): string | undefined {
+  const prompt = promptParts.join(" ").trim();
+  return prompt || undefined;
+}
+
+async function applyHeadlessExitCode(result: Promise<number>): Promise<void> {
+  const exitCode = await result;
+  if (exitCode !== 0) {
+    process.exitCode = exitCode;
+  }
 }
 
 function requireOpenAICodexProvider(provider: string): void {

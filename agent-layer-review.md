@@ -331,9 +331,16 @@ Codex 自己的 `AGENTS.md` 也明确提醒其 `codex-core` 已经膨胀，不�
 3. 建立工具取消和 deadline 契约。
 4. 通过显式 metadata 支持安全并行。
 
-### 第五阶段：产品运行时抽取
+### 第五阶段：产品运行时抽取（已完成）
 
 仅在准备支持第二种前端或无头模式时，将 TUI 中的 session/wake/input 调度抽到 `src/kana`。
+
+实现结果：
+
+1. `ConversationRuntime` 统一持有 Agent、session、提交互斥、Agent 重建与 wake queue。
+2. `KanaConversationHost` 统一装配配置、journal、日志、accounting、记忆、MCP 与 Agent 工厂。
+3. TUI 改为消费共享 runtime/host，不再实现产品持久化和协议装配。
+4. 新增 `kana exec` 无头前端，共享同一 Agent 配置，并提供版本化 JSONL 输出协议。
 
 ## 明天建议从这里开始
 

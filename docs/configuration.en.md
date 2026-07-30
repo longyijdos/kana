@@ -39,11 +39,18 @@ kana fix the failing tests
 # Restore by ID, or open the picker when the ID is omitted
 kana resume [session-id]
 
+# Run one complete Agent turn headlessly; the prompt may also come from stdin
+kana exec fix the failing tests
+printf 'summarize this repository' | kana exec
+kana exec resume <session-id> continue the task
+
 # Manage OpenAI Codex OAuth
 kana auth login openai-codex
 kana auth status openai-codex
 kana auth logout openai-codex
 ```
+
+`kana exec` uses the same product composition as the TUI and exits after one complete Agent turn. Human mode writes only the final answer to stdout, while `--json` provides a versioned JSONL event stream. See [Headless execution and the JSONL protocol](headless.en.md) for non-interactive approval, exit codes, and the complete protocol.
 
 `kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` is a Kana-managed generated reference: install compares it with the current schema and creates or refreshes it only when missing or stale. Runtime never reads this file, so copy only fields being overridden into `config.toml`. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
 

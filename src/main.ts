@@ -1,4 +1,5 @@
 import { runCli } from "@/cli";
+import { startHeadless } from "@/headless";
 import {
   installKanaConfig,
   installKanaSkills,
@@ -17,6 +18,7 @@ await runCli(process.argv, {
   resetKanaConfig,
   resyncKanaSkills,
   syncKanaSkills,
+  startHeadless,
   startTui,
   updateKana,
 });

@@ -11,7 +11,8 @@ Recommended reading order:
 5. [Skills and the system prompt](skills-and-prompt.en.md): discovery, activation, and context composition.
 6. [DeepSeek provider adapter](deepseek-provider.en.md): request conversion, SSE, retries, and usage.
 7. [OpenAI Codex provider adapter](openai-codex-provider.en.md): OAuth, Responses Lite, SSE, and provider state.
-8. [TUI interaction and rendering](tui.en.md): terminal I/O, controllers, input, and differential repainting.
+8. [Headless execution and the JSONL protocol](headless.en.md): `kana exec`, approvals, output, and exit semantics.
+9. [TUI interaction and rendering](tui.en.md): terminal I/O, controllers, input, and differential repainting.
 
 Chinese versions:
 
@@ -22,4 +23,5 @@ Chinese versions:
 - [Skills 与系统提示词](skills-and-prompt.md)
 - [DeepSeek 提供商适配](deepseek-provider.md)
 - [OpenAI Codex 提供商适配](openai-codex-provider.md)
+- [无头执行与 JSONL 协议](headless.md)
 - [TUI 交互与渲染](tui.md)

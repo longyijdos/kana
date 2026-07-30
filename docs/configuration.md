@@ -39,11 +39,18 @@ kana 修复测试失败
 # 按 ID 恢复会话；省略 ID 时打开选择器
 kana resume [session-id]
 
+# 无头执行一次完整 Agent turn；也可从 stdin 读取 prompt
+kana exec 修复失败的测试
+printf '总结这个仓库' | kana exec
+kana exec resume <session-id> 继续完成任务
+
 # 管理 OpenAI Codex OAuth
 kana auth login openai-codex
 kana auth status openai-codex
 kana auth logout openai-codex
 ```
+
+`kana exec` 使用与 TUI 相同的产品装配并在一次完整 Agent turn 后退出。默认模式只把最终答案写到 stdout，`--json` 提供版本化 JSONL 事件；非交互工具审批、退出码和完整协议见[无头执行与 JSONL 协议](headless.md)。
 
 `kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取它，需要覆盖默认值时只把相应字段复制到 `config.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
 
