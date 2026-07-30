@@ -1,6 +1,9 @@
 import type { Message, ToolCallContent, ToolResultMessage } from "@/core";
+import type { Logger, LogMetadata } from "@/logging";
 import { normalizeToolResult, type Tool, type ToolResult, validateToolArguments } from "@/tools";
 import type { AgentEvent } from "./events";
+
+const DEFAULT_CANCELLATION_GRACE_MS = 1_000;
 
 export type BeforeToolExecutionResult =
   | {
@@ -23,6 +26,9 @@ export type ToolRuntimeConfig = {
   tools?: readonly Tool[];
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
+  cancellationGraceMs?: number;
+  logger?: Logger;
+  loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   limitToolContent?: (content: string) => string;
 };
@@ -41,14 +47,35 @@ type ExecutedToolCall = {
   abortRun?: boolean;
 };
 
+type ToolInterruption =
+  | {
+      reason: "run_aborted";
+    }
+  | {
+      reason: "deadline";
+      deadlineMs: number;
+    };
+
+type ToolExecutionSettlement =
+  | {
+      type: "fulfilled";
+      value: unknown;
+    }
+  | {
+      type: "rejected";
+      error: unknown;
+    };
+
 export class ToolRuntime {
   private readonly events: SerialEventQueue;
+  private readonly cancellationGraceMs: number;
 
   constructor(
     private readonly config: ToolRuntimeConfig,
     emit: AgentEventSink,
   ) {
     this.events = new SerialEventQueue(emit);
+    this.cancellationGraceMs = resolveCancellationGraceMs(config.cancellationGraceMs);
   }
 
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
@@ -116,7 +143,9 @@ export class ToolRuntime {
     }
 
     let acceptsUpdates = false;
+    let abortRun = false;
     try {
+      const deadlineMs = resolveToolDeadlineMs(tool);
       const args = validateToolArguments(tool, toolCall.args);
       const beforeResult = await this.runBeforeToolExecution(toolCall, tool, args);
 
@@ -146,10 +175,12 @@ export class ToolRuntime {
       });
 
       acceptsUpdates = true;
-      const executed = await tool.execute(args, {
-        toolCallId: toolCall.id,
-        signal: this.config.signal,
-        update: (partialResult) => {
+      const invocation = this.startToolExecution(
+        toolCall,
+        tool,
+        args,
+        deadlineMs,
+        (partialResult) => {
           if (!acceptsUpdates) {
             return;
           }
@@ -161,11 +192,77 @@ export class ToolRuntime {
             partialResult,
           });
         },
-      });
+      );
+      const firstOutcome = await Promise.race([
+        invocation.settlement.then((settlement) => ({
+          type: "settled" as const,
+          settlement,
+        })),
+        invocation.interruption.then((interruption) => ({
+          type: "interrupted" as const,
+          interruption,
+        })),
+      ]);
+
+      if (firstOutcome.type === "interrupted") {
+        acceptsUpdates = false;
+        abortRun = true;
+        const settlement = await waitForSettlementWithin(
+          invocation.settlement,
+          this.cancellationGraceMs,
+        );
+        invocation.dispose();
+        await this.events.drain();
+
+        if (settlement) {
+          this.log("info", "tool.execution_cancellation_completed", {
+            toolName: tool.name,
+            reason: firstOutcome.interruption.reason,
+            outcome: settlement.type,
+          });
+          return {
+            toolCall,
+            result: createInterruptedToolResult(firstOutcome.interruption, false),
+            isError: true,
+            abortRun: true,
+          };
+        }
+
+        this.log("warn", "tool.execution_orphaned", {
+          toolName: tool.name,
+          reason: firstOutcome.interruption.reason,
+          cancellationGraceMs: this.cancellationGraceMs,
+        });
+        void invocation.settlement.then((lateSettlement) => {
+          this.log("info", "tool.execution_orphan_settled", {
+            toolName: tool.name,
+            reason: firstOutcome.interruption.reason,
+            outcome: lateSettlement.type,
+            ...(lateSettlement.type === "rejected"
+              ? { errorType: getErrorType(lateSettlement.error) }
+              : {}),
+          });
+        });
+        return {
+          toolCall,
+          result: createInterruptedToolResult(
+            firstOutcome.interruption,
+            true,
+            this.cancellationGraceMs,
+          ),
+          isError: true,
+          abortRun: true,
+        };
+      }
+
+      invocation.dispose();
       acceptsUpdates = false;
       await this.events.drain();
 
-      const result = normalizeToolResult(executed);
+      if (firstOutcome.settlement.type === "rejected") {
+        throw firstOutcome.settlement.error;
+      }
+      const result = normalizeToolResult(firstOutcome.settlement.value);
       return {
         toolCall,
         result,
@@ -180,14 +277,89 @@ export class ToolRuntime {
           toolCall,
           result: createErrorToolResult(formatError(updateError)),
           isError: true,
+          abortRun,
         };
       }
       return {
         toolCall,
         result: createErrorToolResult(formatError(error)),
         isError: true,
+        abortRun,
       };
     }
+  }
+
+  private startToolExecution(
+    toolCall: ToolCallContent,
+    tool: Tool,
+    args: unknown,
+    deadlineMs: number | undefined,
+    update: (partialResult: unknown) => void,
+  ): {
+    settlement: Promise<ToolExecutionSettlement>;
+    interruption: Promise<ToolInterruption>;
+    dispose(): void;
+  } {
+    const invocationController = new AbortController();
+    let interruptionValue: ToolInterruption | undefined;
+    let resolveInterruption!: (interruption: ToolInterruption) => void;
+    const interruption = new Promise<ToolInterruption>((resolve) => {
+      resolveInterruption = resolve;
+    });
+    const interrupt = (value: ToolInterruption): void => {
+      if (interruptionValue) {
+        return;
+      }
+
+      interruptionValue = value;
+      this.log("warn", "tool.execution_cancellation_requested", {
+        toolName: tool.name,
+        reason: value.reason,
+        ...(value.reason === "deadline" ? { deadlineMs: value.deadlineMs } : {}),
+      });
+      invocationController.abort(createInterruptionError(value));
+      resolveInterruption(value);
+    };
+    const runSignal = this.config.signal;
+    const onRunAbort = (): void => interrupt({ reason: "run_aborted" });
+
+    runSignal?.addEventListener("abort", onRunAbort, { once: true });
+    if (runSignal?.aborted) {
+      onRunAbort();
+    }
+    const deadlineTimer =
+      deadlineMs === undefined
+        ? undefined
+        : setTimeout(() => interrupt({ reason: "deadline", deadlineMs }), deadlineMs);
+    const settlement = Promise.resolve()
+      .then(() =>
+        tool.execute(args, {
+          toolCallId: toolCall.id,
+          signal: invocationController.signal,
+          update,
+        }),
+      )
+      .then(
+        (value): ToolExecutionSettlement => ({
+          type: "fulfilled",
+          value,
+        }),
+        (error): ToolExecutionSettlement => ({
+          type: "rejected",
+          error,
+        }),
+      );
+
+    return {
+      settlement,
+      interruption,
+      dispose() {
+        runSignal?.removeEventListener("abort", onRunAbort);
+        if (deadlineTimer !== undefined) {
+          clearTimeout(deadlineTimer);
+        }
+      },
+    };
   }
 
   private async runBeforeToolExecution(
@@ -230,6 +402,26 @@ export class ToolRuntime {
       isError: executed.isError,
     });
     return message;
+  }
+
+  private log(
+    level: "debug" | "info" | "warn" | "error",
+    event: string,
+    metadata?: LogMetadata,
+  ): void {
+    const mergedMetadata = {
+      ...this.config.loggerMetadata,
+      ...metadata,
+    };
+
+    try {
+      this.config.logger?.[level](
+        event,
+        Object.keys(mergedMetadata).length === 0 ? undefined : mergedMetadata,
+      );
+    } catch {
+      // Diagnostics must not alter tool execution or cleanup behavior.
+    }
   }
 }
 
@@ -285,6 +477,90 @@ function createCanceledToolResult(message = "Tool call canceled before execution
     },
     isError: true,
   };
+}
+
+function createInterruptedToolResult(
+  interruption: ToolInterruption,
+  orphaned: boolean,
+  cancellationGraceMs?: number,
+): ToolResult {
+  if (orphaned) {
+    const message = `Tool execution was interrupted but did not stop within ${cancellationGraceMs}ms. Its outcome is unknown; do not retry automatically.`;
+    return {
+      content: message,
+      result: {
+        status: "unknown",
+        reason: interruption.reason,
+        message,
+        ...(interruption.reason === "deadline" ? { deadlineMs: interruption.deadlineMs } : {}),
+      },
+      isError: true,
+    };
+  }
+
+  const message =
+    interruption.reason === "deadline"
+      ? `Tool execution exceeded its ${interruption.deadlineMs}ms deadline and was canceled. Do not retry automatically.`
+      : "Tool execution was canceled because the agent run was aborted.";
+  return {
+    content: message,
+    result: {
+      status: interruption.reason === "deadline" ? "timed_out" : "canceled",
+      reason: interruption.reason,
+      message,
+      ...(interruption.reason === "deadline" ? { deadlineMs: interruption.deadlineMs } : {}),
+    },
+    isError: true,
+  };
+}
+
+function resolveToolDeadlineMs(tool: Tool): number | undefined {
+  const deadlineMs = tool.execution?.deadlineMs;
+  if (deadlineMs === undefined) {
+    return undefined;
+  }
+  if (!Number.isInteger(deadlineMs) || deadlineMs <= 0) {
+    throw new Error(`Tool "${tool.name}" execution.deadlineMs must be a positive integer.`);
+  }
+  return deadlineMs;
+}
+
+function resolveCancellationGraceMs(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_CANCELLATION_GRACE_MS;
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("cancellationGraceMs must be a positive integer.");
+  }
+  return value;
+}
+
+function waitForSettlementWithin(
+  settlement: Promise<ToolExecutionSettlement>,
+  timeoutMs: number,
+): Promise<ToolExecutionSettlement | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), timeoutMs);
+    void settlement.then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    });
+  });
+}
+
+function createInterruptionError(interruption: ToolInterruption): Error {
+  return new Error(
+    interruption.reason === "deadline"
+      ? `Tool execution exceeded its ${interruption.deadlineMs}ms deadline.`
+      : "Agent run aborted.",
+  );
+}
+
+function getErrorType(error: unknown): string {
+  if (error instanceof Error) {
+    return error.name;
+  }
+  return typeof error;
 }
 
 function formatError(error: unknown): string {

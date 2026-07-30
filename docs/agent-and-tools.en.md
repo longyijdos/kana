@@ -95,11 +95,13 @@ Every tool call is processed in this order:
 1. Find the tool by name; missing tools produce an error tool result.
 2. Deep-clone raw arguments. TypeBox schemas run through `Value.Convert`; plain JSON Schemas that lost TypeBox metadata during serialization receive compatible primitive coercion before validation with the cached compiled schema.
 3. Invoke the optional `beforeToolExecution` hook. Kana's TUI shows its approval UI here.
-4. Check the abort signal, emit `tool_execution_start`, and execute the tool.
+4. Check the abort signal, emit `tool_execution_start`, create an independent `AbortSignal` for this invocation, and execute the tool. An optional `execution.deadlineMs` starts here.
 5. A tool may call `context.update(partialResult)`; ToolRuntime uses an internal serial queue to emit updates one at a time in call order and waits for listeners before finishing.
 6. Normalize the return value, commit its `ToolResultMessage`, and only then emit `tool_execution_end`. External observers therefore cannot see success before its result has entered the journal.
 
 Argument-validation failures and exceptions thrown by tools do not throw the loop itself: they become `isError: true` results that the model can see on the next turn. When an approval hook returns `cancel`, it aborts the full run by default and adds cancelled error results for later, unexecuted calls from the same message. Abort before execution follows the same completion behavior.
+
+When the run is aborted or a tool deadline expires, ToolRuntime aborts the invocation signal and waits for a fixed, finite cancellation grace period. A tool that exits within that period receives a `canceled` or `timed_out` result; its eventual return or exception cannot replace the interruption result. If a tool ignores the signal, the runtime stops accepting its updates, persists a result with `status: "unknown"`, and aborts the current Agent run. That result explicitly forbids automatic retry because the detached invocation may still produce side effects; late settlement produces only structured diagnostics without arguments or results. Deadlines and the grace period use positive integer milliseconds. A tool with no deadline has no invocation-level time limit.
 
 The tool interface is:
 
@@ -108,11 +110,15 @@ type Tool = {
   name: string;
   description: string;
   parameters: TSchema;
+  execution?: {
+    deadlineMs?: number;
+  };
   execute(args, context): ToolResult | unknown | Promise<ToolResult | unknown>;
 };
 
 type ToolContext = {
   toolCallId: string;
+  // ToolRuntime always supplies an invocation signal; direct callers may omit it.
   signal?: AbortSignal;
   update(partialResult: unknown): void;
 };

@@ -7,6 +7,7 @@ import {
   type ModelContext,
   type ToolCallContent,
 } from "@/core";
+import type { Logger, LogMetadata } from "@/logging";
 import type { Tool } from "@/tools";
 import type { ContextCheckpoint, ContextManager, PreparedContext } from "./context-manager";
 import type { AgentEndReason, AgentEvent } from "./events";
@@ -26,6 +27,8 @@ export type AgentLoopConfig = {
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   contextManager?: ContextManager;
+  logger?: Logger;
+  loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   onCompactionCommitted?: (compaction: ContextCheckpoint) => Promise<void> | void;
 };
@@ -60,6 +63,8 @@ export async function runAgentLoop(
       tools: currentContext.tools,
       signal: config.signal,
       beforeToolExecution: config.beforeToolExecution,
+      logger: config.logger,
+      loggerMetadata: config.loggerMetadata,
       onMessageCommitted: config.onMessageCommitted,
       limitToolContent: (content) => config.contextManager?.limitToolContent(content) ?? content,
     },

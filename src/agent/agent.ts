@@ -397,6 +397,8 @@ export class Agent {
       signal,
       beforeToolExecution: this.beforeToolExecution,
       contextManager,
+      logger: this.logger,
+      loggerMetadata: this.loggerMetadata,
       ...hooks,
     };
   }

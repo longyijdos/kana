@@ -56,6 +56,7 @@ export {
 export type {
   Tool,
   ToolContext,
+  ToolExecutionPolicy,
   ToolResult,
   ToolSpec,
 } from "./tool";

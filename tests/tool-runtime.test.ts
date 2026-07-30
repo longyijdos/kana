@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import { ToolRuntime } from "../src/agent/tool-runtime";
+import type { Logger, LogMetadata } from "../src/logging";
 import type { Tool } from "../src/tools/tool";
 
 const parameters = Type.Object({});
@@ -114,4 +115,240 @@ describe("ToolRuntime", () => {
 
     expect(events).toEqual(["tool_execution_start"]);
   });
+
+  test("supplies an invocation signal and records a cooperative deadline as timed out", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const tool = {
+      name: "cooperative",
+      description: "Stop when canceled.",
+      parameters,
+      execution: {
+        deadlineMs: 5,
+      },
+      execute: (_args, context) => {
+        receivedSignal = context.signal;
+        return new Promise((resolve) => {
+          context.signal?.addEventListener(
+            "abort",
+            () => {
+              resolve({
+                content: "stopped",
+                result: { stopped: true },
+              });
+            },
+            { once: true },
+          );
+        });
+      },
+    } satisfies Tool<typeof parameters, { stopped: boolean }>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        cancellationGraceMs: 50,
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "call-1",
+        name: "cooperative",
+        args: {},
+      },
+    ]);
+
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    expect(receivedSignal?.aborted).toBe(true);
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults[0]).toMatchObject({
+      toolCallId: "call-1",
+      isError: true,
+      result: {
+        status: "timed_out",
+        reason: "deadline",
+        deadlineMs: 5,
+      },
+    });
+  });
+
+  test("returns an unknown result after cancellation grace and ignores late updates", async () => {
+    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
+    const events: string[] = [];
+    let finishTool!: () => void;
+    const tool = {
+      name: "stubborn",
+      description: "Ignore cancellation.",
+      parameters,
+      execution: {
+        deadlineMs: 5,
+      },
+      execute: (_args, context) =>
+        new Promise((resolve) => {
+          finishTool = () => {
+            context.update("late secret update");
+            resolve({
+              content: "late secret result",
+              result: { secret: "late result" },
+            });
+          };
+        }),
+    } satisfies Tool<typeof parameters, { secret: string }>;
+    const logger = createRecordingLogger(logs);
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        cancellationGraceMs: 5,
+        logger,
+        loggerMetadata: {
+          component: "test",
+        },
+      },
+      (event) => {
+        events.push(event.type);
+      },
+    );
+
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "call-1",
+        name: "stubborn",
+        args: { secret: "tool argument" },
+      },
+    ]);
+
+    expect(result).toMatchObject({
+      abortRun: true,
+      toolResults: [
+        {
+          toolCallId: "call-1",
+          isError: true,
+          result: {
+            status: "unknown",
+            reason: "deadline",
+            deadlineMs: 5,
+          },
+        },
+      ],
+    });
+    expect(events).toEqual(["tool_execution_start", "tool_execution_end"]);
+    expect(logs.map((record) => record.event)).toEqual([
+      "tool.execution_cancellation_requested",
+      "tool.execution_orphaned",
+    ]);
+
+    finishTool();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toEqual(["tool_execution_start", "tool_execution_end"]);
+    expect(logs.at(-1)).toEqual({
+      event: "tool.execution_orphan_settled",
+      metadata: {
+        component: "test",
+        toolName: "stubborn",
+        reason: "deadline",
+        outcome: "fulfilled",
+      },
+    });
+    const serializedLogs = JSON.stringify(logs);
+    expect(serializedLogs).not.toContain("tool argument");
+    expect(serializedLogs).not.toContain("late secret update");
+    expect(serializedLogs).not.toContain("late secret result");
+  });
+
+  test("run cancellation uses the same bounded orphan contract", async () => {
+    const controller = new AbortController();
+    let finishTool!: () => void;
+    const tool = {
+      name: "stubborn",
+      description: "Ignore cancellation.",
+      parameters,
+      execute: () =>
+        new Promise((resolve) => {
+          finishTool = () => resolve("late");
+        }),
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        signal: controller.signal,
+        cancellationGraceMs: 5,
+      },
+      (event) => {
+        if (event.type === "tool_execution_start") {
+          controller.abort();
+        }
+      },
+    );
+
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "call-1",
+        name: "stubborn",
+        args: {},
+      },
+    ]);
+    finishTool();
+
+    expect(result).toMatchObject({
+      abortRun: true,
+      toolResults: [
+        {
+          result: {
+            status: "unknown",
+            reason: "run_aborted",
+          },
+        },
+      ],
+    });
+  });
+
+  test("rejects invalid deadline metadata without executing the tool", async () => {
+    let executed = false;
+    const tool = {
+      name: "invalid",
+      description: "Use invalid metadata.",
+      parameters,
+      execution: {
+        deadlineMs: 0,
+      },
+      execute: () => {
+        executed = true;
+        return "unexpected";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime({ tools: [tool] }, () => {});
+
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "call-1",
+        name: "invalid",
+        args: {},
+      },
+    ]);
+
+    expect(executed).toBe(false);
+    expect(result.toolResults[0]).toMatchObject({
+      isError: true,
+      result: {
+        error: 'Tool "invalid" execution.deadlineMs must be a positive integer.',
+      },
+    });
+  });
 });
+
+function createRecordingLogger(records: Array<{ event: string; metadata?: LogMetadata }>): Logger {
+  const record = (event: string, metadata?: LogMetadata): void => {
+    records.push({ event, metadata });
+  };
+
+  return {
+    debug: record,
+    info: record,
+    warn: record,
+    error: record,
+  };
+}
