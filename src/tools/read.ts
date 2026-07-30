@@ -50,6 +50,9 @@ export function createReadTool(
     name: "read",
     description: "Read a text file. Use offset and limit to inspect large files in chunks.",
     parameters: readParameters,
+    execution: {
+      concurrency: "parallel",
+    },
     execute: async (args) => {
       const filePath = await resolveExistingWorkspaceFile(root, args.path);
       const content = await readFile(filePath.absolutePath, "utf8");

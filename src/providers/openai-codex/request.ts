@@ -39,7 +39,7 @@ export function buildOpenAICodexRequest(
     },
     include: ["reasoning.encrypted_content"],
     tool_choice: "auto",
-    parallel_tool_calls: false,
+    parallel_tool_calls: true,
   };
 
   if (config.reasoningEffort !== undefined) {

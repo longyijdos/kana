@@ -64,7 +64,7 @@ Repeat (at most 8 turns by default; unlimited when maxTurns = -1):
 Emit agent_end and return messages added by this run
 ```
 
-Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. Tool calls proposed together in a single assistant message still execute serially in content order; a later call cannot start before the prior call ends.
+Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. `runAgentLoop` owns only the model-turn state machine and delegates tool calls to an independent `ToolRuntime`. The runtime partitions calls in assistant-content order: only adjacent calls explicitly marked `parallel` share a concurrent group. An `exclusive`, undeclared, unknown, or invalidly configured tool is a barrier that read work cannot cross.
 
 Tools run only when an assistant message ends normally with `toolUse`. A length-truncated message never executes its tool calls. A provider error with no assistant content does not persist an empty assistant message; an aborted message loses its unexecuted tool calls but retains any remaining text or thinking content.
 
@@ -82,9 +82,9 @@ Running `/compact` while idle immediately forces the same policy with reason `ma
 
 ## `Agent` lifecycle
 
-`Agent.stream(input)` immediately appends user input to internal history, then starts the loop asynchronously. It permits only one active run; concurrent attempts receive an error stream. `prompt(input)` is the convenience form that awaits `stream(input).result()`.
+`Agent.stream(input)` starts the loop asynchronously. When an `AgentJournal` is configured, it persists the run boundary and user input before adding that input to internal history or allowing model I/O; generic embedders without a journal retain the original in-memory behavior. It permits only one active run; concurrent attempts receive an error stream. `prompt(input)` is the convenience form that awaits `stream(input).result()`.
 
-After the model/tool loop produces its terminal state, the Agent first updates internal history and then waits for `onRunCommitted` to persist the run. Listeners and the stream receive the final `agent_end` only after commit succeeds. A commit failure rejects the stream without first publishing a successful terminal event. Commit remains part of the active run, so `isRunning` stays `true`, new runs are rejected, and `waitForIdle()` continues waiting throughout it.
+Journal ordering is a protocol constraint: a complete assistant message is durable before any tool it names may execute; each tool result is persisted independently after completion; a context checkpoint is persisted before adoption; and the run outcome closes the journal last. `onRunCommitted` performs aggregate post-processing after that close and no longer persists Kana session messages. Listeners and the stream receive final `agent_end` only after both journaling and post-processing succeed. Either failure rejects the stream without first publishing a successful terminal event. All these phases remain part of the active run, so `isRunning` stays `true`, new runs are rejected, and `waitForIdle()` continues waiting.
 
 While running, `Agent.state` exposes its model, system prompt, tools, history, `isRunning`, streaming assistant message, pending tool-call IDs, and final error. `abort()` cancels the run's `AbortController`; `reset()` clears history and run state only while idle. Ordinary event listeners are observers: each receives an independent event copy, and listener failures are logged as `agent.listener_failed` and isolated from Agent execution. Logic that controls tool execution belongs in `beforeToolExecution`.
 
@@ -94,12 +94,16 @@ Every tool call is processed in this order:
 
 1. Find the tool by name; missing tools produce an error tool result.
 2. Deep-clone raw arguments. TypeBox schemas run through `Value.Convert`; plain JSON Schemas that lost TypeBox metadata during serialization receive compatible primitive coercion before validation with the cached compiled schema.
-3. Invoke the optional `beforeToolExecution` hook. Kana's TUI shows its approval UI here.
-4. Check the abort signal, emit `tool_execution_start`, and execute the tool.
-5. A tool may call `context.update(partialResult)`; the runtime emits matching update events and waits for their listeners before finishing.
-6. Normalize the return value, emit `tool_execution_end`, then add a `ToolResultMessage` to model context.
+3. Invoke the optional `beforeToolExecution` hook. Kana's TUI shows its approval UI here; approval hooks always enter serially even for a concurrent execution group.
+4. Check the abort signal, emit `tool_execution_start`, create an independent `AbortSignal` for this invocation, and execute the tool. The invocation's effective deadline starts here.
+5. A tool may call `context.update(partialResult)`; ToolRuntime uses an internal serial queue to emit updates one at a time in call order and waits for listeners before finishing.
+6. Normalize the return value, commit its `ToolResultMessage`, and only then emit `tool_execution_end`. External observers therefore cannot see success before its result has entered the journal.
 
 Argument-validation failures and exceptions thrown by tools do not throw the loop itself: they become `isError: true` results that the model can see on the next turn. When an approval hook returns `cancel`, it aborts the full run by default and adds cancelled error results for later, unexecuted calls from the same message. Abort before execution follows the same completion behavior.
+
+When the run is aborted or a tool deadline expires, ToolRuntime aborts the invocation signal and waits for a fixed, finite cancellation grace period. A tool that exits within that period receives a `canceled` or `timed_out` result; its eventual return or exception cannot replace the interruption result. If a tool ignores the signal, the runtime stops accepting its updates, persists a result with `status: "unknown"`, and aborts the current Agent run. That result explicitly forbids automatic retry because the detached invocation may still produce side effects; late settlement produces only structured diagnostics without arguments or results. Deadlines and the grace period use positive integer milliseconds. A tool's `execution.deadlineMs` takes precedence; otherwise the Agent default applies. Both the framework and Kana product default to 300000 ms, and Kana exposes `agent.tool_deadline_ms` as an override.
+
+Parallel-group events still pass through one serial event queue. As each tool actually completes, its result enters a serial commit queue, is written to the journal independently, and only then publishes the matching `tool_execution_end`. The next model turn receives results in that completion order and correlates them with the original calls by `toolCallId`. If one group member requests run termination, every active sibling receives an abort signal, while later groups only receive persisted canceled results. `list`, `glob`, `grep`, and `read` declare `parallel`; writes, shell, memory, scheduling, and undeclared third-party or MCP tools default to `exclusive`.
 
 The tool interface is:
 
@@ -108,11 +112,16 @@ type Tool = {
   name: string;
   description: string;
   parameters: TSchema;
+  execution?: {
+    concurrency?: "parallel" | "exclusive";
+    deadlineMs?: number;
+  };
   execute(args, context): ToolResult | unknown | Promise<ToolResult | unknown>;
 };
 
 type ToolContext = {
   toolCallId: string;
+  // ToolRuntime always supplies an invocation signal; direct callers may omit it.
   signal?: AbortSignal;
   update(partialResult: unknown): void;
 };

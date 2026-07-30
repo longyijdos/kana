@@ -80,6 +80,9 @@ export function createGlobTool(
     description:
       "Find file and directory paths with a relative glob pattern. Prefer this over bash find for file discovery.",
     parameters: globParameters,
+    execution: {
+      concurrency: "parallel",
+    },
     execute: async (args, context) => {
       const searchRoot = await resolveExistingWorkspaceDirectory(root, args.cwd ?? ".");
       const pattern = readRelativeGlobPattern(args.pattern);

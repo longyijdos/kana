@@ -1,13 +1,13 @@
 import type { ContextCheckpoint } from "@/agent";
 import { addModelUsage, type Message, type ModelUsage } from "@/core";
 import {
-  appendKanaSessionRun,
   authorizeKanaMcpServer,
   createKanaAgent,
   createKanaConfigStore,
   createKanaMcpRuntime,
   createKanaOAuthTokenStore,
   createKanaSession,
+  createKanaSessionJournal,
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
   createWakeScheduler,
@@ -81,6 +81,9 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
           messages: [],
           timeline: [],
         };
+  let sessionJournal = session
+    ? createKanaSessionJournal(session.metadata, session.timeline)
+    : undefined;
   let sessionLogger = createNoopLogger();
   const activateSessionLogger = (nextSession: typeof session): void => {
     sessionLogger = nextSession
@@ -93,6 +96,14 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   activateSessionLogger(session);
   if (session) {
     sessionLogger.info("session.started", { resumed: options.resumeSessionId !== undefined });
+    if (session.recoveredInterruptedTurn) {
+      sessionLogger.warn("session.interrupted_turn_recovered", {
+        unknownToolCallCount: session.recoveredInterruptedTurn.unknownToolCallCount,
+      });
+    }
+    if (session.recoveredIncompleteTail) {
+      sessionLogger.warn("session.incomplete_tail_recovered");
+    }
   }
   let resumeSessionId = options.resumeSessionId ? session?.metadata.id : undefined;
   let pendingForkMessages: Message[] | undefined;
@@ -174,61 +185,109 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       // Each Agent retains this concrete logger for its full lifetime. It must
       // never resolve the active session again after an asynchronous run starts.
       const agentLogger = sessionLogger;
+      const agentSession = session;
+      const agentSessionJournal = sessionJournal;
       const { modelSelection, ...currentAgentOptions } = agentOptions;
+      const appendTimeline = (entries: LoadKanaSessionResult["timeline"]): void => {
+        if (!agentSession) {
+          throw new Error("Cannot update a session journal without an active session.");
+        }
+        agentSession.timeline = [...agentSession.timeline, ...entries];
+      };
+      const writeJournal = <T>(
+        phase: "start" | "message" | "compaction" | "end" | "snapshot",
+        operation: () => T,
+      ): T => {
+        try {
+          return operation();
+        } catch (error) {
+          agentLogger.error("session.journal_write_failed", { phase, error });
+          throw error;
+        }
+      };
       const kanaAgentOptions: KanaAgentOptions = {
         ...currentAgentOptions,
         additionalTools: mcpTools,
         logger: agentLogger,
         wakeScheduler,
         sessionId: currentAgentOptions.sessionId,
-        messages: currentAgentOptions.messages ?? session?.messages,
-        contextCheckpoint: currentAgentOptions.contextCheckpoint ?? session?.contextCheckpoint,
+        messages: currentAgentOptions.messages ?? agentSession?.messages,
+        contextCheckpoint: currentAgentOptions.contextCheckpoint ?? agentSession?.contextCheckpoint,
+        journal:
+          agentSession && agentSessionJournal
+            ? {
+                startRun: ({ runId, messages }) => {
+                  if (pendingForkMessages) {
+                    const snapshotEntries = writeJournal("snapshot", () =>
+                      agentSessionJournal.appendSnapshot(pendingForkMessages ?? [], {
+                        compactions: pendingForkCheckpoint ? [pendingForkCheckpoint] : [],
+                      }),
+                    );
+                    appendTimeline(snapshotEntries);
+                    pendingForkMessages = undefined;
+                    pendingForkCheckpoint = undefined;
+                  }
+
+                  const entries = writeJournal("start", () =>
+                    agentSessionJournal.startTurn(runId, messages),
+                  );
+                  appendTimeline(entries);
+                  agentSession.messages = [...agentSession.messages, ...structuredClone(messages)];
+                  resumeSessionId = agentSession.metadata.id;
+                },
+                appendMessage: ({ runId, message }) => {
+                  const entry = writeJournal("message", () =>
+                    agentSessionJournal.appendMessage(runId, message),
+                  );
+                  appendTimeline([entry]);
+                  agentSession.messages = [...agentSession.messages, structuredClone(message)];
+                },
+                appendCompaction: ({ runId, compaction }) => {
+                  const entry = writeJournal("compaction", () =>
+                    agentSessionJournal.appendCompaction(compaction, {
+                      turnId: runId,
+                    }),
+                  );
+                  appendTimeline([entry]);
+                  agentSession.contextCheckpoint = structuredClone(compaction);
+                },
+                endRun: ({ runId, reason }) => {
+                  const entry = writeJournal("end", () =>
+                    agentSessionJournal.endTurn(runId, reason),
+                  );
+                  appendTimeline([entry]);
+                },
+              }
+            : undefined,
         onRunCommitted: ({ messages, compactions, state, event }) => {
-          session ??= {
-            metadata: createSession(),
-            messages: [],
-            timeline: [],
-          };
-          const messagesToPersist = pendingForkMessages
-            ? [...pendingForkMessages, ...messages]
-            : messages;
-          const compactionsToPersist = [
-            ...(pendingForkCheckpoint ? [pendingForkCheckpoint] : []),
-            ...compactions,
-          ];
+          if (!agentSession) {
+            throw new Error("Cannot complete an Agent run without an active session.");
+          }
 
           try {
-            const appended = appendKanaSessionRun(session.metadata, messagesToPersist, {
-              compactions: compactionsToPersist,
+            recordKanaAgentRunAccounting({
+              sessionId: agentSession.metadata.id,
+              cwd: agentSession.metadata.cwd,
+              agentKind: "main",
+              outcome: event.reason,
+              messages,
+              model: state.model.metadata,
+              additionalUsage: addCompactionUsage(compactions),
             });
-            session.timeline = [...session.timeline, ...appended];
           } catch (error) {
-            agentLogger.error("session.append_failed", { error });
-            throw error;
+            agentLogger.error("accounting.record_failed", {
+              phase: "conversation_run",
+              error,
+            });
           }
-          session.messages = [...session.messages, ...messages];
-          session.contextCheckpoint = state.contextCheckpoint;
-          pendingForkMessages = undefined;
-          pendingForkCheckpoint = undefined;
-
-          if (messagesToPersist.length > 0) {
-            resumeSessionId = session.metadata.id;
-          }
-
-          recordKanaAgentRunAccounting({
-            sessionId: session.metadata.id,
-            cwd: session.metadata.cwd,
-            agentKind: "main",
-            outcome: event.reason,
-            messages,
-            model: state.model.metadata,
-            additionalUsage: addCompactionUsage(compactions),
-          });
 
           // Keep consolidation off the completed conversation's critical path;
           // the shared queue serializes each scope's read-modify-write jobs.
           const memoryLogger = agentLogger;
-          const accountingSession = { id: session.metadata.id, cwd: session.metadata.cwd };
+          const accountingSession = {
+            id: agentSession.metadata.id,
+            cwd: agentSession.metadata.cwd,
+          };
           void memoryConsolidation
             ?.schedule(messages, {
               logger: memoryLogger,
@@ -248,30 +307,26 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
             });
         },
         onCompactionCommitted: ({ compaction, state }) => {
-          if (!session) {
+          if (!agentSession) {
             throw new Error("Cannot persist context compaction without an active session.");
           }
 
           try {
-            const appended = appendKanaSessionRun(session.metadata, [], {
-              compactions: [compaction],
+            recordKanaAgentRunAccounting({
+              sessionId: agentSession.metadata.id,
+              cwd: agentSession.metadata.cwd,
+              agentKind: "main",
+              outcome: "stop",
+              messages: [],
+              model: state.model.metadata,
+              additionalUsage: compaction.usage,
             });
-            session.timeline = [...session.timeline, ...appended];
           } catch (error) {
-            agentLogger.error("session.append_failed", { error });
-            throw error;
+            agentLogger.error("accounting.record_failed", {
+              phase: "manual_compaction",
+              error,
+            });
           }
-          session.contextCheckpoint = compaction;
-
-          recordKanaAgentRunAccounting({
-            sessionId: session.metadata.id,
-            cwd: session.metadata.cwd,
-            agentKind: "main",
-            outcome: "stop",
-            messages: [],
-            model: state.model.metadata,
-            additionalUsage: compaction.usage,
-          });
         },
       };
 
@@ -319,6 +374,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
           messages: [],
           timeline: [],
         };
+        sessionJournal = createKanaSessionJournal(session.metadata);
         activateSessionLogger(session);
         sessionLogger.info("session.created");
         resumeSessionId = undefined;
@@ -343,6 +399,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
           timeline: [],
           contextCheckpoint,
         };
+        sessionJournal = createKanaSessionJournal(session.metadata);
         activateSessionLogger(session);
         sessionLogger.info("session.forked", { sourceSessionId: source.metadata.id });
         resumeSessionId = undefined;
@@ -367,8 +424,17 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       },
       loadSession: (sessionId) => {
         session = loadKanaSession(sessionId, { cwd: process.cwd() });
+        sessionJournal = createKanaSessionJournal(session.metadata, session.timeline);
         activateSessionLogger(session);
         sessionLogger.info("session.resumed");
+        if (session.recoveredInterruptedTurn) {
+          sessionLogger.warn("session.interrupted_turn_recovered", {
+            unknownToolCallCount: session.recoveredInterruptedTurn.unknownToolCallCount,
+          });
+        }
+        if (session.recoveredIncompleteTail) {
+          sessionLogger.warn("session.incomplete_tail_recovered");
+        }
         resumeSessionId = session.metadata.id;
         pendingForkMessages = undefined;
         pendingForkCheckpoint = undefined;

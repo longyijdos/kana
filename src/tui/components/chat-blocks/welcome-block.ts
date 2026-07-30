@@ -90,6 +90,7 @@ export class WelcomeBlock implements Component {
       text("  Persistent agent memory"),
       text("  Provider and model switching"),
       text("  MCP OAuth and activation"),
+      text("  Safe parallel tool execution"),
       muted("  ... /help for more"),
     ];
 

@@ -91,6 +91,9 @@ export function createGrepTool(
     description:
       "Search text file contents with a regular expression. Prefer this over bash grep or grep piped to head for content search.",
     parameters: grepParameters,
+    execution: {
+      concurrency: "parallel",
+    },
     execute: async (args, context) => {
       const target = await resolveExistingWorkspacePath(root, args.path ?? ".");
       const pattern = args.pattern.trim();

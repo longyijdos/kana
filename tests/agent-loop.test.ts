@@ -89,6 +89,48 @@ class MultiToolCallModel implements Model {
   }
 }
 
+class ParallelToolCallModel implements Model {
+  readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "parallel-tool-call",
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+  };
+  readonly contexts: ModelContext[] = [];
+
+  stream(context: ModelContext): AssistantEventStream {
+    this.contexts.push({
+      system: context.system,
+      messages: structuredClone(context.messages),
+      tools: context.tools?.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      })),
+    });
+    const stream = new AssistantEventStream();
+
+    queueMicrotask(() => {
+      if (this.contexts.length === 1) {
+        streamMultipleToolCallMessage(stream);
+      } else {
+        streamTextMessage(stream, "done");
+      }
+    });
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 class AbortedModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
@@ -358,6 +400,37 @@ describe("runAgentLoop", () => {
     });
   });
 
+  test("commits the assistant tool call before execution and each result afterward", async () => {
+    const operations: string[] = [];
+    const orderedTool = {
+      ...addTool,
+      execute: (args: { a: number; b: number }) => {
+        operations.push("execute");
+        return {
+          content: String(args.a + args.b),
+          result: args.a + args.b,
+        };
+      },
+    } satisfies Tool<typeof addParameters, number>;
+
+    await runAgentLoop(
+      {
+        messages: [{ role: "user", content: "add the numbers" }],
+        tools: [orderedTool],
+      },
+      {
+        model: new ScriptedToolModel(),
+        maxTurns: 2,
+        onMessageCommitted: (message) => {
+          operations.push(`commit:${message.role}`);
+        },
+      },
+      () => {},
+    );
+
+    expect(operations).toEqual(["commit:assistant", "execute", "commit:tool", "commit:assistant"]);
+  });
+
   test("caps model-visible tool content without truncating the structured result", async () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 });
     const content = `${"A".repeat(48_000)}${"Z".repeat(12_000)}`;
@@ -456,6 +529,51 @@ describe("runAgentLoop", () => {
         b: 3,
       },
     });
+  });
+
+  test("passes parallel tool results to the next model turn in completion order", async () => {
+    const model = new ParallelToolCallModel();
+    const committedToolCallIds: string[] = [];
+    const tool = {
+      ...addTool,
+      execution: {
+        concurrency: "parallel",
+      },
+      execute: async ({ a, b }) => {
+        await new Promise((resolve) => setTimeout(resolve, a === 1 ? 10 : 0));
+        return {
+          content: String(a + b),
+          result: a + b,
+        };
+      },
+    } satisfies Tool<typeof addParameters, number>;
+
+    const messages = await runAgentLoop(
+      {
+        messages: [{ role: "user", content: "add both pairs" }],
+        tools: [tool],
+      },
+      {
+        model,
+        maxTurns: 2,
+        onMessageCommitted: (message) => {
+          if (message.role === "tool") {
+            committedToolCallIds.push(message.toolCallId);
+          }
+        },
+      },
+      () => {},
+    );
+
+    expect(committedToolCallIds).toEqual(["call_2", "call_1"]);
+    expect(
+      messages.filter((message) => message.role === "tool").map((message) => message.toolCallId),
+    ).toEqual(["call_2", "call_1"]);
+    expect(
+      model.contexts[1]?.messages
+        .filter((message) => message.role === "tool")
+        .map((message) => message.toolCallId),
+    ).toEqual(["call_2", "call_1"]);
   });
 
   test("turns invalid tool arguments into error tool results", async () => {

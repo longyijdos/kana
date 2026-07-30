@@ -21,6 +21,23 @@ describe("workspace tools", () => {
     );
   });
 
+  test("declares only read-only workspace tools as parallel", () => {
+    const parallelTools = [createReadTool(), createListTool(), createGlobTool(), createGrepTool()];
+    const exclusiveByDefault = [createWriteTool(), createEditTool(), createBashTool()];
+
+    expect(parallelTools.map((tool) => tool.execution?.concurrency)).toEqual([
+      "parallel",
+      "parallel",
+      "parallel",
+      "parallel",
+    ]);
+    expect(exclusiveByDefault.map((tool) => tool.execution?.concurrency)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
   test("read returns a line range from a workspace file", async () => {
     const root = await createTempRoot();
     await writeFile(path.join(root, "notes.txt"), ["one", "two", "three", "four"].join("\n"));

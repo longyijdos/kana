@@ -157,6 +157,23 @@ class AbortAwareModel implements Model {
 }
 
 describe("Agent", () => {
+  test("uses a configurable default tool deadline", () => {
+    expect(new Agent({ model: new TextModel() }).state.toolDeadlineMs).toBe(300_000);
+    expect(
+      new Agent({
+        model: new TextModel(),
+        toolDeadlineMs: 120_000,
+      }).state.toolDeadlineMs,
+    ).toBe(120_000);
+    expect(
+      () =>
+        new Agent({
+          model: new TextModel(),
+          toolDeadlineMs: 0,
+        }),
+    ).toThrow("defaultDeadlineMs must be a positive integer.");
+  });
+
   test("rejects invalid maxTurns during construction", () => {
     for (const maxTurns of [-2, 0, 1.5]) {
       expect(
@@ -333,6 +350,69 @@ describe("Agent", () => {
         eventMessages: ["assistant"],
       },
     ]);
+  });
+
+  test("journals the prompt and completed messages before the aggregate commit", async () => {
+    const operations: string[] = [];
+    const model = new TextModel("journaled");
+    const agent = new Agent({
+      model,
+      journal: {
+        startRun: ({ messages }) => {
+          operations.push(`start:${messages.map((message) => message.role).join(",")}`);
+          expect(model.contexts).toHaveLength(0);
+        },
+        appendMessage: ({ message }) => {
+          operations.push(`message:${message.role}`);
+        },
+        appendCompaction: () => {
+          operations.push("compaction");
+        },
+        endRun: ({ reason }) => {
+          operations.push(`end:${reason}`);
+        },
+      },
+      onRunCommitted: () => {
+        operations.push("commit");
+      },
+    });
+    agent.subscribe((event) => {
+      if (event.type === "agent_end") {
+        operations.push("publish");
+      }
+    });
+
+    await agent.prompt("hi");
+
+    expect(operations).toEqual([
+      "start:user",
+      "message:assistant",
+      "end:stop",
+      "commit",
+      "publish",
+    ]);
+    expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+  });
+
+  test("does not call the model when starting the journal fails", async () => {
+    const model = new TextModel("unreachable");
+    const error = new Error("session unavailable");
+    const agent = new Agent({
+      model,
+      journal: {
+        startRun: () => {
+          throw error;
+        },
+        appendMessage: () => {},
+        appendCompaction: () => {},
+        endRun: () => {},
+      },
+    });
+
+    await expect(agent.prompt("hi")).rejects.toBe(error);
+
+    expect(model.contexts).toEqual([]);
+    expect(agent.state.messages).toEqual([]);
   });
 
   test("commits context checkpoints with the run and exposes them in state", async () => {

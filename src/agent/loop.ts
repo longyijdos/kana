@@ -6,11 +6,14 @@ import {
   type Model,
   type ModelContext,
   type ToolCallContent,
-  type ToolResultMessage,
 } from "@/core";
-import { normalizeToolResult, type Tool, type ToolResult, validateToolArguments } from "@/tools";
-import type { ContextManager, PreparedContext } from "./context-manager";
+import type { Logger, LogMetadata } from "@/logging";
+import type { Tool } from "@/tools";
+import type { ContextCheckpoint, ContextManager, PreparedContext } from "./context-manager";
 import type { AgentEndReason, AgentEvent } from "./events";
+import { type BeforeToolExecutionHook, ToolRuntime } from "./tool-runtime";
+
+export type { BeforeToolExecutionHook, BeforeToolExecutionResult } from "./tool-runtime";
 
 export type AgentContext = {
   system?: string;
@@ -21,47 +24,23 @@ export type AgentContext = {
 export type AgentLoopConfig = {
   model: Model;
   maxTurns?: number;
+  toolDeadlineMs?: number;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   contextManager?: ContextManager;
+  logger?: Logger;
+  loggerMetadata?: LogMetadata;
+  onMessageCommitted?: (message: Message) => Promise<void> | void;
+  onCompactionCommitted?: (compaction: ContextCheckpoint) => Promise<void> | void;
 };
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
-
-export type BeforeToolExecutionResult =
-  | {
-      type: "continue";
-    }
-  | {
-      type: "cancel";
-      abortRun?: boolean;
-      message?: string;
-    };
-
-export type BeforeToolExecutionHook = (request: {
-  toolCall: ToolCallContent;
-  tool: Tool;
-  args: unknown;
-  signal?: AbortSignal;
-}) => Promise<BeforeToolExecutionResult> | BeforeToolExecutionResult;
 
 type AssistantTurnResult = {
   message: AssistantMessage;
   isError: boolean;
   error?: unknown;
   canRetryContextLimit?: boolean;
-};
-
-type ExecutedToolCall = {
-  toolCall: ToolCallContent;
-  result: ToolResult;
-  isError: boolean;
-  abortRun?: boolean;
-};
-
-type ExecutedToolCalls = {
-  toolResults: ToolResultMessage[];
-  abortRun: boolean;
 };
 
 type MessageContext = {
@@ -80,6 +59,19 @@ export async function runAgentLoop(
     messages: [...context.messages],
     tools: context.tools ? [...context.tools] : undefined,
   };
+  const toolRuntime = new ToolRuntime(
+    {
+      tools: currentContext.tools,
+      signal: config.signal,
+      beforeToolExecution: config.beforeToolExecution,
+      defaultDeadlineMs: config.toolDeadlineMs,
+      logger: config.logger,
+      loggerMetadata: config.loggerMetadata,
+      onMessageCommitted: config.onMessageCommitted,
+      limitToolContent: (content) => config.contextManager?.limitToolContent(content) ?? content,
+    },
+    emit,
+  );
   const newMessages: Message[] = [];
   const maxTurns = config.maxTurns ?? 8;
   const hasTurnLimit = maxTurns !== -1;
@@ -133,6 +125,9 @@ export async function runAgentLoop(
     const assistantHistoryMessage = assistantMessageForHistory(assistantTurn.message);
 
     if (assistantHistoryMessage) {
+      // Persist a complete assistant tool-call message before any referenced
+      // tool can produce an external side effect.
+      await config.onMessageCommitted?.(structuredClone(assistantHistoryMessage));
       currentContext.messages.push(assistantHistoryMessage);
       newMessages.push(assistantHistoryMessage);
     }
@@ -150,7 +145,7 @@ export async function runAgentLoop(
 
     const toolCalls =
       assistantTurn.message.stopReason === "toolUse" ? getToolCalls(assistantTurn.message) : [];
-    const executedToolCalls = await executeToolCalls(currentContext, toolCalls, config, emit);
+    const executedToolCalls = await toolRuntime.execute(toolCalls);
 
     for (const toolResult of executedToolCalls.toolResults) {
       currentContext.messages.push(toolResult);
@@ -319,6 +314,7 @@ async function prepareModelContext(
   );
 
   if (prepared.compaction) {
+    await config.onCompactionCommitted?.(structuredClone(prepared.compaction));
     await emit({
       type: "context_compacted",
       reason: prepared.compaction.reason,
@@ -357,177 +353,6 @@ async function emitMessageEnd(message: AssistantMessage, emit: AgentEventSink): 
     type: "message_end",
     message: structuredClone(message),
   });
-}
-
-async function executeToolCalls(
-  context: AgentContext,
-  toolCalls: ToolCallContent[],
-  config: AgentLoopConfig,
-  emit: AgentEventSink,
-): Promise<ExecutedToolCalls> {
-  const toolResults: ToolResultMessage[] = [];
-  let abortRun = false;
-
-  for (let index = 0; index < toolCalls.length; index += 1) {
-    const toolCall = toolCalls[index];
-
-    if (config.signal?.aborted) {
-      await appendCanceledToolResults(
-        toolResults,
-        toolCalls.slice(index),
-        "Tool call canceled because the run was aborted.",
-        emit,
-        config.contextManager,
-      );
-      abortRun = true;
-      break;
-    }
-
-    const executed = await executeToolCall(context, toolCall, config, emit);
-    const toolResultMessage = createToolResultMessage(executed, config.contextManager);
-
-    toolResults.push(toolResultMessage);
-
-    if (executed.abortRun) {
-      await appendCanceledToolResults(
-        toolResults,
-        toolCalls.slice(index + 1),
-        "Tool call canceled because the run was aborted.",
-        emit,
-        config.contextManager,
-      );
-      abortRun = true;
-      break;
-    }
-  }
-
-  return {
-    toolResults,
-    abortRun,
-  };
-}
-
-async function appendCanceledToolResults(
-  toolResults: ToolResultMessage[],
-  toolCalls: ToolCallContent[],
-  message: string,
-  emit: AgentEventSink,
-  contextManager?: ContextManager,
-): Promise<void> {
-  for (const toolCall of toolCalls) {
-    const result = createCanceledToolResult(message);
-
-    toolResults.push(
-      createToolResultMessage(
-        {
-          toolCall,
-          result,
-          isError: true,
-        },
-        contextManager,
-      ),
-    );
-    await emitToolExecutionEnd(toolCall, result, true, emit);
-  }
-}
-
-async function executeToolCall(
-  context: AgentContext,
-  toolCall: ToolCallContent,
-  config: AgentLoopConfig,
-  emit: AgentEventSink,
-): Promise<ExecutedToolCall> {
-  const tool = context.tools?.find((candidate) => candidate.name === toolCall.name);
-
-  if (!tool) {
-    const result = createErrorToolResult(`Tool "${toolCall.name}" not found`);
-
-    await emitToolExecutionEnd(toolCall, result, true, emit);
-
-    return {
-      toolCall,
-      result,
-      isError: true,
-    };
-  }
-
-  try {
-    const args = validateToolArguments(tool, toolCall.args);
-    const beforeResult = await runBeforeToolExecution(toolCall, tool, args, config);
-
-    if (beforeResult.type === "cancel") {
-      const result = createCanceledToolResult(beforeResult.message);
-
-      await emitToolExecutionEnd(toolCall, result, true, emit);
-
-      return {
-        toolCall,
-        result,
-        isError: true,
-        abortRun: beforeResult.abortRun ?? true,
-      };
-    }
-
-    if (config.signal?.aborted) {
-      const result = createErrorToolResult("Aborted before tool execution");
-
-      await emitToolExecutionEnd(toolCall, result, true, emit);
-
-      return {
-        toolCall,
-        result,
-        isError: true,
-        abortRun: true,
-      };
-    }
-
-    await emit({
-      type: "tool_execution_start",
-      toolCallId: toolCall.id,
-      toolName: toolCall.name,
-      args,
-    });
-
-    const updateEvents: Array<Promise<void>> = [];
-    const executed = await tool.execute(args, {
-      toolCallId: toolCall.id,
-      signal: config.signal,
-      update: (partialResult) => {
-        updateEvents.push(
-          Promise.resolve(
-            emit({
-              type: "tool_execution_update",
-              toolCallId: toolCall.id,
-              toolName: toolCall.name,
-              args,
-              partialResult,
-            }),
-          ),
-        );
-      },
-    });
-    await Promise.all(updateEvents);
-
-    const result = normalizeToolResult(executed);
-
-    await emitToolExecutionEnd(toolCall, result, result.isError ?? false, emit);
-
-    return {
-      toolCall,
-      result,
-      isError: result.isError ?? false,
-    };
-  } catch (error) {
-    const result = createErrorToolResult(formatError(error));
-
-    await emitToolExecutionEnd(toolCall, result, true, emit);
-
-    return {
-      toolCall,
-      result,
-      isError: true,
-    };
-  }
 }
 
 function getToolCalls(message: AssistantMessage): ToolCallContent[] {
@@ -594,78 +419,4 @@ function replaceOrAppendAssistantMessage(
   }
 
   context.messages.push(message);
-}
-
-function createErrorToolResult(message: string): ToolResult {
-  return {
-    content: `Tool call failed: ${message}`,
-    result: {
-      error: message,
-    },
-    isError: true,
-  };
-}
-
-function createCanceledToolResult(message = "Tool call canceled before execution."): ToolResult {
-  return {
-    content: message,
-    result: {
-      error: message,
-      canceled: true,
-    },
-    isError: true,
-  };
-}
-
-async function runBeforeToolExecution(
-  toolCall: ToolCallContent,
-  tool: Tool,
-  args: unknown,
-  config: AgentLoopConfig,
-): Promise<BeforeToolExecutionResult> {
-  if (!config.beforeToolExecution) {
-    return {
-      type: "continue",
-    };
-  }
-
-  return config.beforeToolExecution({
-    toolCall,
-    tool,
-    args,
-    signal: config.signal,
-  });
-}
-
-function createToolResultMessage(
-  executed: ExecutedToolCall,
-  contextManager?: ContextManager,
-): ToolResultMessage {
-  return {
-    role: "tool",
-    toolCallId: executed.toolCall.id,
-    toolName: executed.toolCall.name,
-    content: contextManager?.limitToolContent(executed.result.content) ?? executed.result.content,
-    result: executed.result.result,
-    isError: executed.isError,
-  };
-}
-
-async function emitToolExecutionEnd(
-  toolCall: ToolCallContent,
-  result: ToolResult,
-  isError: boolean,
-  emit: AgentEventSink,
-): Promise<void> {
-  await emit({
-    type: "tool_execution_end",
-    toolCallId: toolCall.id,
-    toolName: toolCall.name,
-    result: result.result,
-    isError,
-  });
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
