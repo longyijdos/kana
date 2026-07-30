@@ -12,7 +12,7 @@
 
 一个跑在终端里的通用 AI Agent。不需要 VS Code 插件或网页 UI：打开终端，直接对话。它能处理本地文件、运行 shell、维护长期记忆，并通过 Skills 扩展信息检索、内容创作和本地服务操作；工具调用、输出与审批都显示在终端中。
 
-Kana 的界面、二进制和数据都在本地，但模型请求会发送到配置的 DeepSeek API。默认配置使用 `DEEPSEEK_API_KEY`。
+Kana 的界面、二进制和数据都在本地，但模型请求会发送到所选供应商。默认使用通过 `DEEPSEEK_API_KEY` 调用的 DeepSeek，也可通过浏览器 OAuth 使用 OpenAI Codex。
 
 ## 为什么选 Kana
 
@@ -24,7 +24,7 @@ Kana 的界面、二进制和数据都在本地，但模型请求会发送到配
 
 ## 安装与启动
 
-预编译安装器支持 macOS 和 Linux 的 arm64、x64。它会下载校验过的二进制、安装到 `~/.local/bin`，并创建默认配置。
+预编译安装器支持 macOS 和 Linux 的 arm64、x64。它会下载校验过的二进制、安装到 `~/.local/bin`，并初始化本地状态；`config.toml` 可选，缺少时直接使用内置默认值。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/longyijdos/kana/main/scripts/install.sh | bash
@@ -32,10 +32,31 @@ export DEEPSEEK_API_KEY="sk-..."
 kana
 ```
 
+如需使用 OpenAI Codex，完成一次浏览器授权并在 `~/.kana/config.toml` 选择供应商：
+
+```bash
+kana auth login openai-codex
+```
+
+```toml
+[provider]
+active = "openai-codex"
+
+[model.openai-codex]
+name = "gpt-5.6-luna"
+```
+
 如果 `~/.local/bin` 不在 `PATH` 中，安装器会提示你如何添加。安装后也可直接带着首条任务启动：
 
 ```bash
 kana "修复当前项目的测试"
+```
+
+后续版本可由已安装的独立二进制直接检查和更新，不需要重新运行 curl 安装器：
+
+```bash
+kana update --check
+kana update
 ```
 
 从源码构建需要 Bun 和 Git：
@@ -48,7 +69,7 @@ bun install && ./scripts/install.sh
 可选安装默认 Skills：
 
 ```bash
-kana install --skills
+kana skills install
 ```
 
 更多安装选项、配置字段与审批模式见[配置与安装文档](docs/configuration.md)和[English version](docs/configuration.en.md)。

@@ -10,7 +10,8 @@
 4. [会话与记忆](sessions-and-memory.md)：JSONL 会话、每日记忆与合并事务。
 5. [Skills 与系统提示词](skills-and-prompt.md)：发现、启用和上下文装配。
 6. [DeepSeek 提供商适配](deepseek-provider.md)：请求转换、SSE、重试和用量。
-7. [TUI 交互与渲染](tui.md)：终端 I/O、控制器、输入与差量重绘。
+7. [OpenAI Codex 提供商适配](openai-codex-provider.md)：OAuth、Responses Lite、SSE 和 provider state。
+8. [TUI 交互与渲染](tui.md)：终端 I/O、控制器、输入与差量重绘。
 
 对应英文版本：
 
@@ -20,4 +21,5 @@
 - [Sessions and memory](sessions-and-memory.en.md)
 - [Skills and the system prompt](skills-and-prompt.en.md)
 - [DeepSeek provider adapter](deepseek-provider.en.md)
+- [OpenAI Codex provider adapter](openai-codex-provider.en.md)
 - [TUI interaction and rendering](tui.en.md)

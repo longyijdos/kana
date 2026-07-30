@@ -20,6 +20,7 @@ import {
   installKanaConfig,
   loadKanaConfig,
   loadKanaEnvironment,
+  resetKanaConfig,
   saveKanaMemory,
 } from "@/kana";
 
@@ -61,6 +62,7 @@ describe("Kana config", () => {
     expect(getKanaConfigPaths({ HOME: "/home/kana" })).toEqual({
       home: "/home/kana/.kana",
       configPath: "/home/kana/.kana/config.toml",
+      configExamplePath: "/home/kana/.kana/config.example.toml",
       mcpConfigPath: "/home/kana/.kana/mcp.json",
       mcpEnabledPath: "/home/kana/.kana/mcp-enabled.json",
       agentsPath: "/home/kana/.kana/AGENTS.md",
@@ -73,32 +75,25 @@ describe("Kana config", () => {
     });
   });
 
-  test("installs the default config files without overwriting existing files", () => {
+  test("installs state files without materializing the default config", () => {
     const env = createTempEnv();
     const firstInstall = installKanaConfig(env);
-    const installed = readFileSync(firstInstall.configPath, "utf8");
     const installedMcpConfig = JSON.parse(readFileSync(firstInstall.mcpConfigPath, "utf8"));
     const installedMcpEnabled = JSON.parse(readFileSync(firstInstall.mcpEnabledPath, "utf8"));
     const installedApprovals = JSON.parse(readFileSync(firstInstall.approvalsPath, "utf8"));
     const installedSkillsConfig = readFileSync(firstInstall.skillsConfigPath, "utf8");
+    const installedConfigExample = readFileSync(firstInstall.configExamplePath, "utf8");
 
-    expect(firstInstall.configStatus).toBe("created");
+    expect(firstInstall.configStatus).toBe("defaults");
+    expect(firstInstall.configExampleStatus).toBe("created");
     expect(firstInstall.mcpConfigStatus).toBe("created");
     expect(firstInstall.mcpEnabledStatus).toBe("created");
     expect(firstInstall.approvalsStatus).toBe("created");
     expect(firstInstall.skillsConfigStatus).toBe("created");
-    expect(installed).toContain('api_key_env = "DEEPSEEK_API_KEY"');
-    expect(installed).toContain('mode = "unless_trusted"');
-    expect(installed).toContain("[notification]");
-    expect(installed).toContain('backend = "auto"');
-    expect(installed).toContain("[memory]");
-    expect(installed).toContain("# context_limit = 200000");
-    expect(installed).toContain("enabled = true");
-    expect(installed).toContain("max_chars = 6000");
-    expect(installed).toContain("# daily_retention_days = 30");
-    expect(installed).toContain("[logging]");
-    expect(installed).toContain('level = "info"');
-    expect(installed).not.toContain("api_key =");
+    expect(fileExists(firstInstall.configPath)).toBe(false);
+    expect(installedConfigExample).toContain("[model.deepseek]");
+    expect(installedConfigExample).toContain("[model.openai-codex]");
+    expect(installedConfigExample).toContain("Kana does not read this file.");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
     expect(statSync(firstInstall.mcpEnabledPath).mode & 0o777).toBe(0o600);
@@ -116,6 +111,8 @@ describe("Kana config", () => {
     expect(secondInstall).toEqual({
       configPath: firstInstall.configPath,
       configStatus: "exists",
+      configExamplePath: firstInstall.configExamplePath,
+      configExampleStatus: "exists",
       mcpConfigPath: firstInstall.mcpConfigPath,
       mcpConfigStatus: "exists",
       mcpEnabledPath: firstInstall.mcpEnabledPath,
@@ -134,37 +131,73 @@ describe("Kana config", () => {
     expect(readFileSync(firstInstall.skillsConfigPath, "utf8")).toBe("custom = true\n");
   });
 
-  test("force installs all default config files over existing files", () => {
+  test("resets only configuration state and preserves credentials and user data", () => {
     const env = createTempEnv();
-    const { configPath, mcpConfigPath, mcpEnabledPath, approvalsPath, skillsConfigPath } =
-      installKanaConfig(env);
-    writeFileSync(configPath, "custom = true\n");
-    writeFileSync(mcpConfigPath, '{"custom":true}\n');
-    writeFileSync(mcpEnabledPath, '{"enabledServers":["custom"]}\n');
-    writeFileSync(approvalsPath, '{"custom":true}\n');
-    writeFileSync(skillsConfigPath, "custom = true\n");
+    installKanaConfig(env);
+    const paths = getKanaConfigPaths(env);
+    writeFileSync(paths.configPath, "custom = true\n");
+    writeFileSync(paths.configExamplePath, "stale template\n");
+    writeFileSync(paths.mcpConfigPath, '{"custom":true}\n');
+    writeFileSync(paths.mcpEnabledPath, '{"enabledServers":["custom"]}\n');
+    writeFileSync(paths.approvalsPath, '{"custom":true}\n');
+    writeFileSync(paths.skillsConfigPath, "custom = true\n");
 
-    const result = installKanaConfig(env, { force: true });
+    const preservedFiles = new Map([
+      [path.join(paths.home, "oauth-tokens.json"), "oauth"],
+      [paths.agentsPath, "global instructions"],
+      [path.join(paths.sessionsPath, "session.jsonl"), "session"],
+      [path.join(paths.memoryDirectory, "memory.md"), "memory"],
+      [path.join(paths.accountingPath, "usage.jsonl"), "accounting"],
+      [path.join(paths.logsPath, "session.jsonl"), "logs"],
+      [path.join(paths.home, "skills", "kana-skills", "SKILL.md"), "default repository"],
+      [path.join(paths.home, "skills", "personal", "SKILL.md"), "personal skill"],
+    ]);
+    for (const [filePath, content] of preservedFiles) {
+      mkdirSync(path.dirname(filePath), { recursive: true });
+      writeFileSync(filePath, content);
+    }
+
+    const result = resetKanaConfig(env);
 
     expect(result).toEqual({
-      configPath,
-      configStatus: "reinstalled",
-      mcpConfigPath,
-      mcpConfigStatus: "reinstalled",
-      mcpEnabledPath,
-      mcpEnabledStatus: "reinstalled",
-      approvalsPath,
-      approvalsStatus: "reinstalled",
-      skillsConfigPath,
-      skillsConfigStatus: "reinstalled",
+      configPath: paths.configPath,
+      configRemoved: true,
+      configExamplePath: paths.configExamplePath,
+      mcpConfigPath: paths.mcpConfigPath,
+      mcpEnabledPath: paths.mcpEnabledPath,
+      approvalsPath: paths.approvalsPath,
+      skillsConfigPath: paths.skillsConfigPath,
     });
-    expect(readFileSync(configPath, "utf8")).toContain('api_key_env = "DEEPSEEK_API_KEY"');
-    expect(JSON.parse(readFileSync(mcpConfigPath, "utf8"))).toEqual({ mcpServers: {} });
-    expect(JSON.parse(readFileSync(mcpEnabledPath, "utf8"))).toEqual({ enabledServers: [] });
-    expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
-    expect(readFileSync(skillsConfigPath, "utf8")).toBe(
+    expect(fileExists(paths.configPath)).toBe(false);
+    expect(readFileSync(paths.configExamplePath, "utf8")).not.toBe("stale template\n");
+    expect(readFileSync(paths.configExamplePath, "utf8")).toContain("[model.openai-codex]");
+    expect(JSON.parse(readFileSync(paths.mcpConfigPath, "utf8"))).toEqual({ mcpServers: {} });
+    expect(JSON.parse(readFileSync(paths.mcpEnabledPath, "utf8"))).toEqual({
+      enabledServers: [],
+    });
+    expect(JSON.parse(readFileSync(paths.approvalsPath, "utf8"))).toEqual(
+      DEFAULT_KANA_TOOL_APPROVALS,
+    );
+    expect(readFileSync(paths.skillsConfigPath, "utf8")).toBe(
       ["[model_invocation]", "enabled = []", ""].join("\n"),
     );
+    for (const [filePath, content] of preservedFiles) {
+      expect(readFileSync(filePath, "utf8")).toBe(content);
+    }
+    expect(resetKanaConfig(env).configRemoved).toBe(false);
+  });
+
+  test("refreshes the generated config example without creating config.toml", () => {
+    const env = createTempEnv();
+    const firstInstall = installKanaConfig(env);
+    writeFileSync(firstInstall.configExamplePath, "custom example\n");
+
+    const secondInstall = installKanaConfig(env);
+
+    expect(secondInstall.configStatus).toBe("defaults");
+    expect(secondInstall.configExampleStatus).toBe("updated");
+    expect(fileExists(secondInstall.configPath)).toBe(false);
+    expect(readFileSync(secondInstall.configExamplePath, "utf8")).toContain("[model.openai-codex]");
   });
 
   test("loads defaults when config.toml is missing", () => {
@@ -209,9 +242,12 @@ describe("Kana config", () => {
       ...DEFAULT_KANA_CONFIG,
       model: {
         ...DEFAULT_KANA_CONFIG.model,
-        name: "deepseek-v4-flash",
-        apiKeyEnv: "KANA_DEEPSEEK_KEY",
-        maxTokens: 4096,
+        deepseek: {
+          ...DEFAULT_KANA_CONFIG.model.deepseek,
+          name: "deepseek-v4-flash",
+          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          maxTokens: 4096,
+        },
       },
       agent: {
         maxTurns: 4,
@@ -234,6 +270,66 @@ describe("Kana config", () => {
         level: "debug",
       },
     });
+  });
+
+  test("loads provider-specific OpenAI Codex configuration", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(
+      path.join(home, "config.toml"),
+      [
+        "[provider]",
+        'active = "openai-codex"',
+        "",
+        "[model.openai-codex]",
+        'name = "gpt-5.6-luna"',
+        'reasoning_effort = "high"',
+        'reasoning_summary = "concise"',
+        "max_tokens = 16384",
+        "timeout_ms = 90000",
+        "max_retries = 2",
+        "",
+      ].join("\n"),
+    );
+
+    expect(loadKanaConfig(env)).toEqual({
+      ...DEFAULT_KANA_CONFIG,
+      provider: {
+        active: "openai-codex",
+      },
+      model: {
+        ...DEFAULT_KANA_CONFIG.model,
+        "openai-codex": {
+          name: "gpt-5.6-luna",
+          reasoningEffort: "high",
+          reasoningSummary: "concise",
+          maxTokens: 16_384,
+          timeoutMs: 90_000,
+          maxRetries: 2,
+        },
+      },
+    });
+  });
+
+  test("validates OpenAI Codex reasoning configuration", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+
+    writeFileSync(
+      path.join(home, "config.toml"),
+      '[model.openai-codex]\nreasoning_effort = "extreme"\n',
+    );
+    expect(() => loadKanaConfig(env)).toThrow(
+      "model.openai-codex.reasoning_effort must be one of: low, medium, high, xhigh, max, ultra.",
+    );
+
+    writeFileSync(
+      path.join(home, "config.toml"),
+      '[model.openai-codex]\nreasoning_summary = "full"\n',
+    );
+    expect(() => loadKanaConfig(env)).toThrow(
+      "model.openai-codex.reasoning_summary must be one of: auto, concise, detailed.",
+    );
   });
 
   test("rejects unknown logging.level", () => {
@@ -301,7 +397,9 @@ describe("Kana config", () => {
 
     for (const value of [0, -1, 1.5]) {
       writeFileSync(path.join(home, "config.toml"), `[model]\nmax_tokens = ${value}\n`);
-      expect(() => loadKanaConfig(env)).toThrow("model.max_tokens must be a positive integer.");
+      expect(() => loadKanaConfig(env)).toThrow(
+        "model.deepseek.max_tokens must be a positive integer.",
+      );
     }
   });
 
@@ -310,7 +408,7 @@ describe("Kana config", () => {
     const { home } = getKanaConfigPaths(env);
     writeFileSync(path.join(home, "config.toml"), '[model]\napi_key_env = "KANA_DEEPSEEK_KEY"\n');
 
-    expect(loadKanaConfig(env).model.apiKeyEnv).toBe("KANA_DEEPSEEK_KEY");
+    expect(loadKanaConfig(env).model.deepseek.apiKeyEnv).toBe("KANA_DEEPSEEK_KEY");
   });
 
   test("creates agents by reading the configured API key environment variable", () => {
@@ -322,14 +420,20 @@ describe("Kana config", () => {
         ...DEFAULT_KANA_CONFIG,
         model: {
           ...DEFAULT_KANA_CONFIG.model,
-          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          deepseek: {
+            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          },
         },
       });
       const disabled = createKanaAgent({
         ...DEFAULT_KANA_CONFIG,
         model: {
           ...DEFAULT_KANA_CONFIG.model,
-          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          deepseek: {
+            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          },
         },
         memory: {
           ...DEFAULT_KANA_CONFIG.memory,
@@ -353,7 +457,10 @@ describe("Kana config", () => {
         ...DEFAULT_KANA_CONFIG,
         model: {
           ...DEFAULT_KANA_CONFIG.model,
-          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          deepseek: {
+            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          },
         },
         agent: {
           ...DEFAULT_KANA_CONFIG.agent,
@@ -377,7 +484,10 @@ describe("Kana config", () => {
           ...DEFAULT_KANA_CONFIG,
           model: {
             ...DEFAULT_KANA_CONFIG.model,
-            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+            deepseek: {
+              ...DEFAULT_KANA_CONFIG.model.deepseek,
+              apiKeyEnv: "KANA_DEEPSEEK_KEY",
+            },
           },
           agent: {
             ...DEFAULT_KANA_CONFIG.agent,
@@ -391,8 +501,11 @@ describe("Kana config", () => {
           ...DEFAULT_KANA_CONFIG,
           model: {
             ...DEFAULT_KANA_CONFIG.model,
-            apiKeyEnv: "KANA_DEEPSEEK_KEY",
-            maxTokens: 8_192,
+            deepseek: {
+              ...DEFAULT_KANA_CONFIG.model.deepseek,
+              apiKeyEnv: "KANA_DEEPSEEK_KEY",
+              maxTokens: 8_192,
+            },
           },
           agent: {
             ...DEFAULT_KANA_CONFIG.agent,
@@ -509,7 +622,10 @@ describe("Kana config", () => {
         ...DEFAULT_KANA_CONFIG,
         model: {
           ...DEFAULT_KANA_CONFIG.model,
-          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          deepseek: {
+            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          },
         },
       });
       const system = agent.state.system ?? "";
@@ -599,7 +715,10 @@ describe("Kana config", () => {
           ...DEFAULT_KANA_CONFIG,
           model: {
             ...DEFAULT_KANA_CONFIG.model,
-            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+            deepseek: {
+              ...DEFAULT_KANA_CONFIG.model.deepseek,
+              apiKeyEnv: "KANA_DEEPSEEK_KEY",
+            },
           },
         }),
       ).toThrow("Missing KANA_DEEPSEEK_KEY");
@@ -611,9 +730,11 @@ describe("Kana config", () => {
   test("rejects unsupported providers", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[model]\nprovider = "mock"\n');
+    writeFileSync(path.join(home, "config.toml"), '[provider]\nactive = "mock"\n');
 
-    expect(() => loadKanaConfig(env)).toThrow("Unsupported model.provider: mock");
+    expect(() => loadKanaConfig(env)).toThrow(
+      "provider.active must be one of: deepseek, openai-codex.",
+    );
   });
 
   test("rejects unsupported notification backends", () => {

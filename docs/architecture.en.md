@@ -6,7 +6,7 @@ Kana is a general-purpose terminal agent running on Bun. It keeps model calls, t
 
 ```text
 src/main.ts
-  └─ cli                 Command parsing; starts, resumes, and installs Kana
+  └─ cli                 Command parsing; starts, resumes, installs, and updates Kana
       └─ tui             Terminal interaction, rendering, and user approval
           └─ kana        Product composition: config, prompts, sessions, memory, Skills
               ├─ logging  Session-scoped JSONL diagnostics
@@ -16,7 +16,8 @@ src/main.ts
               ├─ tools   File, shell, and remember tools
               ├─ core    Shared message, model, stream, and usage contracts
               └─ providers
-                  └─ deepseek  DeepSeek requests, SSE parsing, and streaming adapter
+                  ├─ deepseek      DeepSeek requests, SSE parsing, and streaming adapter
+                  └─ openai-codex  Codex Responses, OAuth credentials, and streaming adapter
 ```
 
 `core` is the innermost protocol package: it has no dependency on product configuration or the TUI. `agent` depends only on `core` and `tools`, so it can run without a terminal UI. `oauth` is a generic Authorization Code + PKCE and token-lifecycle module that knows nothing about MCP, providers, or the TUI. `mcp` layers protected-resource discovery and Bearer-challenge semantics on top while remaining independent from Kana product composition and the Agent loop. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` consumes those higher-level capabilities but does not implement model protocols or persistence formats directly.
@@ -25,12 +26,18 @@ This layering also indicates where new code belongs: new providers go in `provid
 
 ## Startup path
 
-`src/main.ts` calls `runCli`. The CLI has three paths:
+`src/main.ts` calls `runCli`. The CLI has these primary paths:
 
 - `kana [prompt...]`: starts the TUI; if arguments are supplied, sends the prompt after startup.
 - `kana resume [sessionId]`: restores a session by ID or opens the session picker.
-- `kana install [--force] [--skills]`: creates the default config, approval file, and Skills config; `--skills` additionally clones or updates the default Skills repository.
-- `kana skills sync <target>`: copies installed Kana Skills into another agent's Skills directory; the built-in target is currently `codex`, and a custom directory can also be supplied.
+- `kana install`: idempotently creates missing local state and refreshes the generated configuration reference without materializing a default `config.toml` or installing the Skills repository.
+- `kana update [--check]`: checks the latest stable Release; without `--check`, validates a candidate binary and atomically replaces the current direct-distribution executable.
+- `kana reset [--yes]`: after confirmation, deletes `config.toml`, refreshes the configuration reference, and resets MCP, approval, and Skill activation state while preserving credentials, user data, logs, instructions, and installed Skills.
+- `kana auth login|status|logout openai-codex`: manages Codex browser OAuth and local credentials.
+- `kana skills install|reinstall [--yes]`: safely installs or updates the default Skills Git repository, or deletes and reclones it after confirmation.
+- `kana skills sync|resync <target> [--yes]`: copies installed Kana Skills into another agent's Skills directory. Sync skips matching entries; confirmed resync replaces them without cleaning other or stale Skills.
+
+Self-update remains isolated in the `kana/self-update.ts` product layer and never enters the TUI or Agent lifecycle. It obtains the version, platform asset, and SHA-256 digest from the GitHub Release API; writes the download to a sibling temporary path; verifies its size and digest; and runs `--version` plus idempotent initialization through the candidate. Before replacement it compares the target's device, inode, mtime, and size again, preventing an update from overwriting a newer binary written by another installer while the download was in flight. The final rename is an atomic POSIX directory-entry replacement on the same filesystem. Source execution defaults to a `source` marker and refuses updating, while every directly installable compile entrypoint injects a `direct` marker at build time so the Bun runtime cannot be mistaken for the update target. Any external I/O, candidate-execution, or replacement failure uses a stable phase error code and removes the temporary file.
 
 When the TUI starts, `startTui` loads runtime configuration and the approval allowlist, then constructs `KanaTuiApp` with an idle `KanaMcpRuntime`. Only after the current session is known and the first TUI view is displayed does the app invoke its injected external-tool loader; the runtime then reads MCP definition and activation files, connects selected servers, discovers their tools, and lets the app rebuild the main Agent. The `kana resume` picker therefore does not start MCP; loading begins after a session is selected. Session I/O, Skill and MCP activation, memory compaction, external-tool start/reload, and the Agent factory are all injected as callbacks. The app therefore coordinates user flows without knowing JSONL, TOML, MCP transports, or other storage and protocol details.
 
@@ -41,7 +48,7 @@ User input
   → KanaTuiApp.submitPrompt
   → Agent.stream
   → runAgentLoop
-  → Model.stream (DeepSeek SSE)
+  → Model.stream (selected provider SSE)
   → AssistantMessageEvent
   → AgentEvent
   ├─ AgentEventRenderer updates the transcript, tool blocks, and status line
@@ -52,7 +59,7 @@ If the model requests tools:
   → Tool.execute → ToolResultMessage → next model turn
 ```
 
-`Message` in `core/messages.ts` is the single history format: user messages, assistant messages with ordered content blocks, and tool-result messages. Assistant content can be `text`, `thinking`, or `tool_call`; its order is preserved so it can be both sent back to the provider and displayed in model output order.
+`Message` in `core/messages.ts` is the single history format: user messages, assistant messages with ordered content blocks, and tool-result messages. Assistant content can be `text`, `thinking`, or `tool_call`; its order is preserved so it can be both sent back to the provider and displayed in model output order. Content may also carry provider-owned, JSON-serializable `providerState` for adapters such as Codex that require opaque replay state; `core` and session persistence do not interpret it.
 
 Providers first produce `AssistantMessageEvent` values. An event contains both an incremental `delta` and a complete `snapshot`: the former supports incremental rendering, while the latter means consumers do not need to reimplement message assembly. `agent` translates these into the higher-level `AgentEvent` protocol and additionally emits turn, tool-start/update/end, and run-end events. Both `AgentEventStream` and model streams support event consumption with `for await` and final-result retrieval with `result()`.
 
@@ -64,7 +71,7 @@ An optional `ContextManager` sits between Agent and Model. The Agent forks check
 
 ## Model and provider adapters
 
-`core/model.ts` defines `Model`: a provider only needs to provide metadata and `stream(context)`; the base class implements `generate()` by collecting a stream. `providers/index.ts` is the centralized factory. The product config currently permits only DeepSeek, while `MockModel` exists for tests.
+`core/model.ts` defines `Model`: a provider only needs to provide metadata and `stream(context)`; the base class implements `generate()` by collecting a stream. `providers/index.ts` is the centralized factory. Product configuration supports `deepseek` and `openai-codex`, while `MockModel` exists for tests.
 
 `DeepSeekModel` converts the generic messages, system prompt, and tool JSON Schemas into DeepSeek's OpenAI-compatible request format and sends an SSE request to `/chat/completions`. The stream parser:
 
@@ -74,6 +81,8 @@ An optional `ContextManager` sits between Agent and Model. The Agent forks check
 4. Maps finish reasons and token usage.
 
 A request can be cancelled by the Agent and is also subject to the `timeoutMs` inactivity timeout, which restarts on response headers or response data. HTTP 408, 429, and 5xx responses use exponential-backoff retries up to `maxRetries`. Model metadata also supplies the context window, output maximum, and CNY pricing; the TUI uses it to calculate context occupancy and process-lifetime accumulated cost.
+
+`OpenAICodexModel` uses the ChatGPT token and account ID supplied by Kana's generic OAuth state machine to send `store = false` SSE requests to the Codex Responses Lite endpoint. The adapter maps reasoning-summary, message, and function-call output items into the same ordered content protocol, persisting encrypted reasoning and completed items as opaque `providerState` for replay on later turns. The first `401` refreshes credentials and retries once. Subscription usage records tokens without applying Platform API pricing. See [OpenAI Codex provider adapter](openai-codex-provider.en.md).
 
 ## MCP protocol foundation
 
@@ -123,7 +132,7 @@ The system prompt consists of the following sections; the later project-level in
 5. The current directory, platform, date, and time zone.
 6. Names, descriptions, and `SKILL.md` paths for enabled Skills.
 
-`loadKanaConfig` reads `config.toml` and merges every field with defaults. Invalid types or enum values raise an error instead of being silently ignored. Default configuration, approval data, and Skill activation data are created in user-only-readable/writable files.
+`loadKanaConfig` reads optional `config.toml` and merges every field with built-in defaults. Invalid types or enum values raise an error instead of being silently ignored. Install does not materialize the default `config.toml`; it only creates missing mutable state. `config.example.toml` is a Kana-generated reference that runtime never reads, and install and reset compare and refresh stale content. `KanaConfigStore` gives the TUI and other callers a generic typed mutation boundary: it compares effective configurations, patches only changed canonical TOML leaves, validates the reloaded result, and atomically replaces the file through a sibling temporary file, avoiding full reserialization of unrelated configuration, unknown tables, and comments.
 
 ## Local state
 
@@ -131,16 +140,18 @@ Kana state is located under `KANA_HOME`, or `~/.kana` when it is unset:
 
 | Data | Location and format | Written when |
 | --- | --- | --- |
-| Configuration | `config.toml` | `kana install` or direct user edits |
-| MCP server definitions | `mcp.json` | `kana install` or direct user edits |
-| MCP activation state | `mcp-enabled.json` | `kana install` or activation changes |
+| Configuration | `config.toml` | Direct user edits or `/model` changes; deleted by `kana reset` |
+| Configuration reference | `config.example.toml` | Created/refreshed by `kana install` or `kana reset`; never read at runtime |
+| MCP server definitions | `mcp.json` | `kana install`, `kana reset`, or direct user edits |
+| MCP activation state | `mcp-enabled.json` | `kana install`, `kana reset`, or activation changes |
 | OAuth tokens | `oauth-tokens.json` | Browser authorization, refresh, sign-out, or credential invalidation |
-| Approval allowlist | `approvals.json` | The user selects “always allow” for a bash command |
+| Approval allowlist | `approvals.json` | `kana install`, `kana reset`, or selecting “always allow” for a bash command |
 | Sessions | `sessions/<workspace>/*.jsonl` | Appended after each successfully committed Agent run |
 | Runtime logs | `logs/<workspace>/<session-id>.jsonl` | Safe lifecycle events from the TUI, Agent, provider, tools, and memory tasks |
 | Durable memory | `memory/global|projects/<workspace>/memory.md` | Atomically replaced after successful memory consolidation |
 | Daily memory | `daily/YYYY-MM-DD.md` in the corresponding directory | Appended after `remember` succeeds |
-| Global Skills config | `skills/skills.toml` | The TUI changes global Skill activation |
+| Global Skills config | `skills/skills.toml` | `kana install`, `kana reset`, or TUI global Skill activation changes |
+| Default Skills repository | `skills/kana-skills/` | `kana skills install` or `kana skills reinstall` |
 
 Workspace directory names are encoded from resolved absolute paths and shared by sessions and project memory. A V2 session file is JSONL: the first line is a versioned session header, followed by a timeline of message and context-compaction entries with parent IDs. Raw messages are never deleted; compaction entries identify their covered message and cumulative base checkpoint. Creating a session does not write a file; the header is written with the first committed batch, and the first user prompt supplies its title. V1 remains readable and upgrades atomically on its first compaction write.
 
@@ -183,7 +194,7 @@ ProcessTerminal (raw mode, input, resize, notifications)
 
 `Tui` uses a component's `render(width, availableHeight?): string[]` as its minimal rendering protocol. `AppLayout` converts terminal height into a 15-, 12-, 9-, or 7-row bottom budget; terminals shorter than 7 rows use all available rows. It passes the remainder to main. The layout renders the first bottom row as the main/bottom divider, passes the remaining budget to the bottom component, and pads shorter output to stabilize the boundary. Transcript deliberately ignores the remaining-height hint and renders complete history for terminal scrollback. It inserts one blank row between child blocks that render output, while blocks own only their internal spacing. `Tui` caches the previous output and redraws only changed lines while terminal dimensions are stable; it falls back to full rendering if changed content has scrolled out of view, content shrinks, or terminal dimensions change. The editor places an internal cursor marker in logical lines, which `Tui` removes before terminal output. It moves the hardware cursor to the matching visible-width column only when a component is focused; without focus it keeps the cursor hidden at the layout tail. The rendering layer uses graphemes and `string-width` for CJK, emoji, ANSI color, and line wrapping.
 
-The main controllers handle tool approval, session selection/deletion, global Skill activation, MCP server activation and OAuth actions, local `!` shell commands, memory compaction, and long tool-output viewing. Session, Skill, MCP, approval, and content views replace the editor as the single bottom component. The Skill and MCP controllers keep checkbox edits local until `Esc`, then persist a changed selection once; Skill changes rebuild the Agent prompt once, while an MCP selection change or authorization change for an enabled server requests one runtime reload. The MCP component receives the server ID, transport, safe OAuth status, and either stdio command/arguments or HTTP URL, but never receives environment values, HTTP headers, or tokens. An authorization URL exists only in a temporary transcript block and is replaced in place when the operation finishes. Scheduled wakes remain queued while the MCP view, an auth operation, or reload is active. An approval that arrives while another bottom view is active remains pending and sends its configured notification instead of preempting the current view. `Ctrl+C`/`Esc` first cancel the active Agent, local shell, or memory task; `Ctrl+C` exits when idle. `Ctrl+O` opens the most recent expandable tool output.
+The main controllers handle tool approval, session selection/deletion, global Skill activation, MCP server activation and OAuth actions, provider/model selection, local `!` shell commands, memory compaction, and long tool-output viewing. Session, Skill, MCP, slash-option, approval, and content views replace the editor as the single bottom component. `/model` retains messages and the context checkpoint, constructs a candidate Agent before configuration persistence, and replaces the current Agent only after success; failures leave the previous Agent and configuration usable. The Skill and MCP controllers keep checkbox edits local until `Esc`, then persist a changed selection once; Skill changes rebuild the Agent prompt once, while an MCP selection change or authorization change for an enabled server requests one runtime reload. The MCP component receives the server ID, transport, safe OAuth status, and either stdio command/arguments or HTTP URL, but never receives environment values, HTTP headers, or tokens. An authorization URL exists only in a temporary transcript block and is replaced in place when the operation finishes. Scheduled wakes remain queued while the MCP view, an auth operation, or reload is active. An approval that arrives while another bottom view is active remains pending and sends its configured notification instead of preempting the current view. `Ctrl+C`/`Esc` first cancel the active Agent, local shell, or memory task; `Ctrl+C` exits when idle. `Ctrl+O` opens the most recent expandable tool output.
 
 ## Extension checkpoints
 

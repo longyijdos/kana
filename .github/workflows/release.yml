@@ -58,7 +58,7 @@ jobs:
           ref: ${{ github.event.inputs.tag || github.ref }}
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bun build --compile --target=${{ matrix.target }} --outfile=dist/${{ matrix.asset }} src/main.ts
+      - run: bun build --compile --define __KANA_DISTRIBUTION__='"direct"' --target=${{ matrix.target }} --outfile=dist/${{ matrix.asset }} src/main.ts
       - run: cd dist && sha256sum ${{ matrix.asset }} > ${{ matrix.asset }}.sha256
       - uses: actions/upload-artifact@v4
         with:

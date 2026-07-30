@@ -17,26 +17,40 @@ export {
 } from "./agent";
 export {
   DEFAULT_KANA_CONFIG,
+  getActiveKanaModelConfig,
   getKanaConfigPaths,
-  type InstallKanaConfigOptions,
   type InstallKanaConfigResult,
   installKanaConfig,
+  KANA_DEEPSEEK_REASONING_EFFORTS,
   KANA_LOG_LEVELS,
+  KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,
+  KANA_OPENAI_CODEX_REASONING_EFFORTS,
   KANA_TOOL_APPROVAL_MODES,
   type KanaAgentConfig,
   type KanaConfig,
   type KanaConfigPaths,
+  type KanaDeepSeekModelConfig,
   type KanaLoggingConfig,
   type KanaLogLevel,
   type KanaMemoryConfig,
   type KanaModelConfig,
+  type KanaModelConfigMap,
+  type KanaModelProvider,
   type KanaNotificationBackend,
   type KanaNotificationConfig,
+  type KanaOpenAICodexModelConfig,
+  type KanaProviderConfig,
   type KanaToolApprovalConfig,
   type KanaToolApprovalMode,
   loadKanaConfig,
+  type ResetKanaConfigResult,
+  resetKanaConfig,
 } from "./config";
+export {
+  createKanaConfigStore,
+  type KanaConfigStore,
+} from "./config-store";
 export {
   type CollectKanaEnvironmentContextOptions,
   collectKanaEnvironmentContext,
@@ -133,8 +147,24 @@ export {
   type LoadKanaOAuthTokenStatusesOptions,
   loadKanaOAuthTokenStatuses,
 } from "./oauth-token-store";
+export {
+  authorizeKanaOpenAICodex,
+  type CreateKanaOpenAICodexAuthOptions,
+  getKanaOpenAICodexAuthStatus,
+  KANA_OPENAI_CODEX_OAUTH_STORAGE_KEY,
+  KanaOpenAICodexAuth,
+  signOutKanaOpenAICodex,
+} from "./openai-codex-auth";
 export { getKanaSessionLogPath, type KanaLogPathOptions } from "./path";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
+export {
+  type CreateKanaUpdaterOptions,
+  createKanaUpdater,
+  type KanaUpdateProgressEvent,
+  type KanaUpdateResult,
+  type UpdateKanaOptions,
+  updateKana,
+} from "./self-update";
 export {
   type AppendKanaSessionMessagesOptions,
   type AppendKanaSessionRunOptions,
@@ -161,10 +191,15 @@ export {
   type InstallKanaSkillsOptions,
   type InstallKanaSkillsResult,
   installKanaSkills,
+  type ReinstallKanaSkillsOptions,
+  type ReinstallKanaSkillsResult,
+  reinstallKanaSkills,
 } from "./skill-install";
 export {
   KANA_SKILL_SYNC_TARGETS,
   type KanaSkillSyncTarget,
+  type ResyncKanaSkillsOptions,
+  resyncKanaSkills,
   type SyncKanaSkillResult,
   type SyncKanaSkillStatus,
   type SyncKanaSkillsOptions,

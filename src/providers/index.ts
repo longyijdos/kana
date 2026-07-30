@@ -1,9 +1,21 @@
 import { DeepSeekModel, type DeepSeekModelConfig } from "./deepseek";
 import { MockModel, type MockModelConfig } from "./mock";
+import { OpenAICodexModel, type OpenAICodexModelConfig } from "./openai-codex";
+
+export type { DeepSeekReasoningEffort } from "./deepseek";
+export { DEEPSEEK_MODELS } from "./deepseek";
+export type {
+  OpenAICodexCredentialProvider,
+  OpenAICodexCredentials,
+  OpenAICodexReasoningEffort,
+  OpenAICodexReasoningSummary,
+} from "./openai-codex";
+export { OPENAI_CODEX_MODELS } from "./openai-codex";
 
 export type ProviderConfigMap = {
   deepseek: DeepSeekModelConfig;
   mock: MockModelConfig;
+  "openai-codex": OpenAICodexModelConfig;
 };
 
 export type ProviderName = keyof ProviderConfigMap;
@@ -11,13 +23,15 @@ export type ProviderName = keyof ProviderConfigMap;
 export type ProviderModelMap = {
   deepseek: DeepSeekModel;
   mock: MockModel;
+  "openai-codex": OpenAICodexModel;
 };
 
-const PROVIDERS = ["deepseek", "mock"] as const satisfies readonly ProviderName[];
+const PROVIDERS = ["deepseek", "mock", "openai-codex"] as const satisfies readonly ProviderName[];
 
 const modelFactories = {
   deepseek: (config: DeepSeekModelConfig) => new DeepSeekModel(config),
   mock: (config: MockModelConfig) => new MockModel(config),
+  "openai-codex": (config: OpenAICodexModelConfig) => new OpenAICodexModel(config),
 } satisfies {
   [TProvider in ProviderName]: (
     config: ProviderConfigMap[TProvider],

@@ -5,14 +5,23 @@ This document describes Kana's implemented commands, configuration files, and lo
 ## Install and start
 
 ```bash
-# Create default local configuration
+# Initialize local state; missing config.toml continues to use built-in defaults
 kana install
 
-# Also install or update the default global Skills repository
-kana install --skills
+# Only check the latest stable release, or download and replace the current Kana executable
+kana update --check
+kana update
 
-# Overwrite installed config/state files; reclone Skills when requested
-kana install --force --skills
+# Reset runtime configuration; confirmation is interactive unless --yes is explicit
+kana reset
+kana reset --yes
+
+# Install or safely update the default global Skills repository
+kana skills install
+
+# Delete and reclone the default Skills repository; confirmation is interactive
+kana skills reinstall
+kana skills reinstall --yes
 
 # Copy installed Kana Skills to Codex's global Skills directory
 kana skills sync codex
@@ -20,21 +29,31 @@ kana skills sync codex
 # Copy to a custom agent Skills directory; existing matching Skills are skipped by default
 kana skills sync --target-dir ~/.other-agent/skills
 
-# Replace matching Skills that already exist in the target directory
-kana skills sync codex --force
+# Replace matching target Skills without removing other or stale Skills
+kana skills resync codex
+kana skills resync codex --yes
 
 # Start the TUI; arguments become the first prompt
 kana fix the failing tests
 
 # Restore by ID, or open the picker when the ID is omitted
 kana resume [session-id]
+
+# Manage OpenAI Codex OAuth
+kana auth login openai-codex
+kana auth status openai-codex
+kana auth logout openai-codex
 ```
 
-`kana install` does not overwrite existing files. `--force` restores `config.toml`, `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` to their defaults; when combined with `--skills`, it also deletes and reclones the default Skills directory. It does **not** create `~/.kana/AGENTS.md`; users create global instructions themselves.
+`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` is a Kana-managed generated reference: install compares it with the current schema and creates or refreshes it only when missing or stale. Runtime never reads this file, so copy only fields being overridden into `config.toml`. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
 
-The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. If the existing directory is not a Git repository, a regular update fails and `--force` is required to replace it. An existing Git repository is updated with `git pull --ff-only`.
+`kana update --check` reads version metadata for GitHub's latest stable Release without downloading or modifying the binary. `kana update` selects the asset for the current operating system and architecture, verifies its reported size and SHA-256 digest, and runs both `--version` and the idempotent `kana install` through the candidate binary. Only after the candidate version, support-file initialization, and current executable identity all pass validation does a same-directory temporary file atomically replace the executable. Failure removes the temporary file and preserves the original binary; Kana also refuses to overwrite a target replaced by another installer while the download was in flight. Updating supports macOS/Linux on arm64 and x64, inherits Bun `fetch` handling of `HTTP_PROXY`/`HTTPS_PROXY`, and requires a writable installation directory. Source run directly through Bun has no direct-distribution build marker and therefore refuses self-update; standalone binaries built by `scripts/install.sh`, `bun run build:cli`, and the Release workflow include that marker.
 
-`kana skills sync` does not clone the repository again. It reads `<KANA_HOME>/skills/kana-skills` and copies every top-level Skill directory containing `SKILL.md` into the target agent's Skills root. The `codex` preset writes to `${CODEX_HOME:-$HOME/.codex}/skills`. When the target already contains a matching directory, the command skips it by default; `--force` deletes that directory first, then copies the Skill again. If the default Skills repository is not installed yet, run `kana install --skills` first.
+`kana reset` restores configuration to the state produced by a clean install. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
+
+The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. `kana skills install` clones it when absent and runs `git pull --ff-only` for an existing Git checkout. An existing non-Git directory fails with a prompt to use `kana skills reinstall`. After confirmation, reinstall deletes only the complete default repository directory and clones it again, preserving the sibling `skills.toml` and all other installed Skills. Non-interactive use requires `--yes`.
+
+`kana skills sync` does not clone the repository again. It reads `<KANA_HOME>/skills/kana-skills` and copies every top-level Skill directory containing `SKILL.md` into the target agent's Skills root. The `codex` preset writes to `${CODEX_HOME:-$HOME/.codex}/skills`. Ordinary sync skips matching target directories. After confirmation, `kana skills resync` deletes and recopies matching Skills currently present in the source repository, but does not remove other target Skills or stale Skills no longer present in the source. Non-interactive resync requires `--yes`. If the default Skills repository is absent, run `kana skills install` first.
 
 ## Root directory and file layout
 
@@ -43,7 +62,8 @@ Kana uses `KANA_HOME` as its root. When unset, it uses `$HOME/.kana`; when `HOME
 ```text
 ${KANA_HOME:-$HOME/.kana}/
 ├── .env                    # Optional environment variables loaded at startup
-├── config.toml             # Runtime configuration covered here
+├── config.toml             # Optional runtime configuration; absence uses built-in defaults
+├── config.example.toml     # Complete install-generated reference; never read at runtime
 ├── mcp.json                # MCP server definitions
 ├── mcp-enabled.json        # Enabled MCP server IDs
 ├── oauth-tokens.json       # OAuth credentials created after browser authorization
@@ -54,7 +74,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── memory/                 # Global and project memory
 └── skills/
     ├── skills.toml         # Enabled global Skills
-    └── kana-skills/        # Default repository cloned by `kana install --skills`
+    └── kana-skills/        # Default repository cloned by `kana skills install`
 ```
 
 Files written by installation and the application are created or written with mode `0600`. This is the requested file mode; its effective result remains subject to the operating system, filesystem, and umask.
@@ -63,18 +83,30 @@ Kana reads `<KANA_HOME>/.env` before parsing CLI commands. Its values override m
 
 ## `config.toml`
 
-When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults; for example, supplying only `[model] name` does not remove the other default model settings.
+When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults; for example, supplying only `[model.deepseek] name` does not remove the other defaults for that provider. Legacy flat `[model]` DeepSeek configuration remains readable, but new configuration should use provider-specific tables.
 
-The equivalent configuration written by `kana install` is:
+The TUI's `/model` command updates `config.toml` through the generic configuration store. It reloads the current file from disk, writes only known fields whose effective values changed, and preserves unrelated tables, unknown fields, and standalone comments. The first change away from defaults therefore creates only the required overrides instead of expanding every default. A candidate document must parse back into the complete target configuration before a sibling temporary file atomically replaces the original; validation or write failures leave the original file untouched. `config.example.toml` is reference-only and may be refreshed by a later `kana install`, so user configuration should not be stored there.
+
+The built-in configuration is equivalent to:
 
 ```toml
-[model]
-provider = "deepseek"
+[provider]
+active = "deepseek"
+
+[model.deepseek]
 name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
 reasoning_effort = "high"
 max_tokens = 8192
+timeout_ms = 60000
+max_retries = 1
+
+[model.openai-codex]
+name = "gpt-5.6-sol"
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+max_tokens = 32768
 timeout_ms = 60000
 max_retries = 1
 
@@ -99,11 +131,18 @@ max_chars = 6000
 level = "info"
 ```
 
-### `[model]`
+`model.openai-codex` has independent defaults even when its table is absent, so switching providers requires only the fields being overridden.
+
+### `[provider]`
 
 | Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `provider` | Only `deepseek` | `deepseek` | The sole provider supported by the current product configuration. |
+| `active` | `deepseek` or `openai-codex` | `deepseek` | Provider used by the main Agent, memory consolidation, and context compaction. |
+
+### `[model.deepseek]`
+
+| Key | Type and allowed values | Default | Meaning |
+| --- | --- | --- | --- |
 | `name` | Non-empty string | `deepseek-v4-pro` | Model name; runtime rejects names outside DeepSeek's metadata table. |
 | `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
 | `thinking` | Boolean | `true` | Explicitly enables DeepSeek thinking in requests. |
@@ -117,6 +156,19 @@ Before startup, set the environment variable named by `api_key_env`. The default
 ```bash
 export DEEPSEEK_API_KEY='sk-...'
 ```
+
+### `[model.openai-codex]`
+
+| Key | Type and allowed values | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses model. |
+| `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | `medium` | Requested reasoning effort. |
+| `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
+| `max_tokens` | Positive integer | `32768` | Local output reserve for Kana context budgeting; the Codex backend request does not send `max_output_tokens`. |
+| `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
+| `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
+
+Before first use, run `kana auth login openai-codex`. Browser authorization stores the access token, refresh token, ID token, and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Credentials refresh before expiry; the model request also refreshes and retries once after its first `401`. `status` reports only authorization state, refreshability, and expiry, never token values. See [OpenAI Codex provider adapter](openai-codex-provider.en.md) for the complete protocol mapping.
 
 ### Other tables
 
@@ -137,16 +189,16 @@ When `daily_retention_days` is commented out or omitted, daily memory is not pru
 
 ### Context budget
 
-Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata and must be greater than `model.max_tokens`. The effective prompt budget is:
+Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata and must be greater than the active provider's `model.<provider>.max_tokens`. The effective prompt budget is:
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
-promptBudget = contextLimit - model.max_tokens - safetyReserve
+promptBudget = contextLimit - activeModel.max_tokens - safetyReserve
 ```
 
-At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. `model.max_tokens` still controls output only; subtracting it reserves context space for that output.
+At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Subtracting the active model's `max_tokens` reserves context space for output.
 
-Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; DeepSeek HTTP failures additionally retain status code and status text, never the response body.
+Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
 
 The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
 
@@ -235,7 +287,7 @@ The HTTP transport implements only `2025-11-25` Streamable HTTP. POST responses 
 
 When an optional server fails to start, Kana records diagnostics, closes that server, and continues, leaving a persistent warning after the final summary. A failed required server during initial loading leaves the current session in an error state without enabling the editor. During an explicit reload, however, any configuration or required-server failure clears the closed manager's tools, rebuilds the Agent without them, reports the error in the transcript, and restores the editor so `/mcp` can be opened again. Connecting and reloading append progress blocks after the transcript, followed by startup/reload summaries with ready-server and available-tool counts; selecting no servers produces an `MCP disabled` reload summary. Remote tools retain the unknown-tool approval policy, so every call requires confirmation in `unless_trusted` mode; the approval prompt shows the server ID, original remote tool name, and complete formatted arguments, with allow-once and deny choices only. On quit, idle or loading `Ctrl+C`, or `SIGHUP`, `SIGINT`, and `SIGTERM`, Kana begins graceful shutdown and shows per-server close progress at the end of the transcript without replacing bottom. It restores the terminal and prints exit information only after every MCP server closes. Pressing `Ctrl+C` again while graceful shutdown is pending forces immediate termination.
 
-Stdio server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. HTTP endpoints and OAuth authorization servers likewise form remote data, tool, and credential trust boundaries. `env` and `headers` use literal JSON values, so a static token remains plaintext inside `mcp.json`; prefer OAuth `clientSecretEnv` and least-privilege scopes, and do not commit or share config or token files. Kana's OAuth token store is also a local plaintext credential file protected only by filesystem permissions. `kana install` creates both MCP files with mode `0600`, but `kana install --force` resets definitions and activation state to empty defaults; it does not delete the OAuth token store. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
+Stdio server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. HTTP endpoints and OAuth authorization servers likewise form remote data, tool, and credential trust boundaries. `env` and `headers` use literal JSON values, so a static token remains plaintext inside `mcp.json`; prefer OAuth `clientSecretEnv` and least-privilege scopes, and do not commit or share config or token files. Kana's OAuth token store is also a local plaintext credential file protected only by filesystem permissions. `kana install` creates missing MCP files with mode `0600`, while confirmed `kana reset` resets definitions and activation state to empty defaults. Neither command deletes the OAuth token store. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
 
 ## API key and project instructions
 
@@ -287,12 +339,22 @@ This list names the **global** Skills that may be injected into the model system
 This example changes only the model name and notification behavior; every other field retains its default:
 
 ```toml
-[model]
+[model.deepseek]
 name = "deepseek-v4-flash"
 
 [notification]
 backend = "bell"
 on_agent_completed = false
+```
+
+Switching to an already authorized Codex Luna requires only:
+
+```toml
+[provider]
+active = "openai-codex"
+
+[model.openai-codex]
+name = "gpt-5.6-luna"
 ```
 
 Avoid copying the complete default file for a small change. Field-level merging keeps configuration shorter and automatically picks up future default fields.

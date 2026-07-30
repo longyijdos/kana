@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { installKanaSkills } from "@/kana";
+import { installKanaSkills, reinstallKanaSkills } from "@/kana";
 
 const tempDirs: string[] = [];
 
@@ -59,25 +59,30 @@ describe("Kana skill installation", () => {
     ]);
   });
 
-  test("requires force before replacing a non-git skills directory", async () => {
+  test("requires reinstall before replacing a non-git skills directory", async () => {
     const env = createTempEnv();
     const skillsPath = path.join(env.KANA_HOME, "skills", "kana-skills");
     mkdirSync(skillsPath, { recursive: true });
     writeFileSync(path.join(skillsPath, "SKILL.md"), "local skill");
 
     await expect(installKanaSkills(env, { runGit: createFakeGit([]) })).rejects.toThrow(
-      `Cannot update skills because ${skillsPath} is not a git repository. Re-run with --force to replace it.`,
+      `Cannot update skills because ${skillsPath} is not a git repository. Run kana skills reinstall to replace it.`,
     );
   });
 
-  test("force reinstalls an existing skills checkout", async () => {
+  test("reinstall replaces only the default repository directory", async () => {
     const env = createTempEnv();
     const skillsPath = path.join(env.KANA_HOME, "skills", "kana-skills");
     mkdirSync(skillsPath, { recursive: true });
+    writeFileSync(path.join(skillsPath, "old.txt"), "old checkout");
+    const skillsConfigPath = path.join(env.KANA_HOME, "skills", "skills.toml");
+    const personalSkillPath = path.join(env.KANA_HOME, "skills", "personal", "SKILL.md");
+    writeFileSync(skillsConfigPath, 'enabled = ["personal"]\n');
+    mkdirSync(path.dirname(personalSkillPath), { recursive: true });
+    writeFileSync(personalSkillPath, "personal skill");
     const calls: GitCall[] = [];
 
-    const result = await installKanaSkills(env, {
-      force: true,
+    const result = await reinstallKanaSkills(env, {
       runGit: createFakeGit(calls),
     });
 
@@ -91,6 +96,18 @@ describe("Kana skill installation", () => {
         cwd: undefined,
       },
     ]);
+    expect(existsSync(skillsPath)).toBe(false);
+    expect(readFileSync(skillsConfigPath, "utf8")).toBe('enabled = ["personal"]\n');
+    expect(readFileSync(personalSkillPath, "utf8")).toBe("personal skill");
+  });
+
+  test("rejects repository names that could escape the Skills directory", async () => {
+    await expect(
+      reinstallKanaSkills(createTempEnv(), {
+        repositoryName: "../outside",
+        runGit: createFakeGit([]),
+      }),
+    ).rejects.toThrow("Skills repository name must be a single directory name.");
   });
 });
 

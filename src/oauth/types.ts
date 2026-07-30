@@ -36,6 +36,7 @@ export type OAuthAuthorizationRequest = OAuthPkcePair & {
 export type OAuthTokenSet = {
   accessToken: string;
   tokenType: "Bearer";
+  idToken?: string;
   refreshToken?: string;
   expiresAt?: number;
   scopes?: string[];

@@ -12,7 +12,6 @@ export const DEFAULT_KANA_SKILLS_REPOSITORY = "https://github.com/longyijdos/kan
 export const DEFAULT_KANA_SKILLS_REPOSITORY_NAME = "kana-skills";
 
 export type InstallKanaSkillsOptions = {
-  force?: boolean;
   repositoryUrl?: string;
   repositoryName?: string;
   runGit?: GitRunner;
@@ -20,7 +19,14 @@ export type InstallKanaSkillsOptions = {
 
 export type InstallKanaSkillsResult = {
   skillsPath: string;
-  status: "cloned" | "updated" | "reinstalled";
+  status: "cloned" | "updated";
+};
+
+export type ReinstallKanaSkillsOptions = InstallKanaSkillsOptions;
+
+export type ReinstallKanaSkillsResult = {
+  skillsPath: string;
+  status: "reinstalled";
 };
 
 type GitRunner = (args: string[], options?: { cwd?: string }) => Promise<void>;
@@ -32,8 +38,7 @@ export async function installKanaSkills(
   const repositoryUrl = options.repositoryUrl ?? DEFAULT_KANA_SKILLS_REPOSITORY;
   const repositoryName = options.repositoryName ?? DEFAULT_KANA_SKILLS_REPOSITORY_NAME;
   const { home } = getKanaConfigPaths(env);
-  const skillsRoot = path.join(home, "skills");
-  const skillsPath = path.join(skillsRoot, repositoryName);
+  const skillsPath = getSkillsRepositoryPath(home, repositoryName);
   const runGit = options.runGit ?? runGitCommand;
   let status: InstallKanaSkillsResult["status"];
 
@@ -41,14 +46,9 @@ export async function installKanaSkills(
     mkdirSync(path.dirname(skillsPath), { recursive: true });
     await runGit(["clone", repositoryUrl, skillsPath]);
     status = "cloned";
-  } else if (options.force) {
-    rmSync(skillsPath, { recursive: true, force: true });
-    mkdirSync(path.dirname(skillsPath), { recursive: true });
-    await runGit(["clone", repositoryUrl, skillsPath]);
-    status = "reinstalled";
   } else if (!isDirectory(path.join(skillsPath, ".git"))) {
     throw new Error(
-      `Cannot update skills because ${skillsPath} is not a git repository. Re-run with --force to replace it.`,
+      `Cannot update skills because ${skillsPath} is not a git repository. Run kana skills reinstall to replace it.`,
     );
   } else {
     await runGit(["pull", "--ff-only"], { cwd: skillsPath });
@@ -58,6 +58,28 @@ export async function installKanaSkills(
   return {
     skillsPath,
     status,
+  };
+}
+
+export async function reinstallKanaSkills(
+  env: NodeJS.ProcessEnv = process.env,
+  options: ReinstallKanaSkillsOptions = {},
+): Promise<ReinstallKanaSkillsResult> {
+  const repositoryUrl = options.repositoryUrl ?? DEFAULT_KANA_SKILLS_REPOSITORY;
+  const repositoryName = options.repositoryName ?? DEFAULT_KANA_SKILLS_REPOSITORY_NAME;
+  const { home } = getKanaConfigPaths(env);
+  const skillsPath = getSkillsRepositoryPath(home, repositoryName);
+  const runGit = options.runGit ?? runGitCommand;
+
+  // Only the managed default repository is replaced. The sibling skills.toml
+  // file and any other installed Skill directories remain untouched.
+  rmSync(skillsPath, { recursive: true, force: true });
+  mkdirSync(path.dirname(skillsPath), { recursive: true });
+  await runGit(["clone", repositoryUrl, skillsPath]);
+
+  return {
+    skillsPath,
+    status: "reinstalled",
   };
 }
 
@@ -78,4 +100,17 @@ function isDirectory(filePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+function getSkillsRepositoryPath(home: string, repositoryName: string): string {
+  if (
+    repositoryName.length === 0 ||
+    repositoryName === "." ||
+    repositoryName === ".." ||
+    path.basename(repositoryName) !== repositoryName
+  ) {
+    throw new Error("Skills repository name must be a single directory name.");
+  }
+
+  return path.join(home, "skills", repositoryName);
 }

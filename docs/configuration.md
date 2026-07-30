@@ -5,14 +5,23 @@
 ## 安装与启动
 
 ```bash
-# 创建默认本地配置
+# 初始化本地状态；缺少 config.toml 时继续使用内置默认值
 kana install
 
-# 同时安装或更新默认的全局 Skills 仓库
-kana install --skills
+# 只检查最新正式版，或下载并替换当前 Kana 独立二进制
+kana update --check
+kana update
 
-# 覆盖已安装的配置与状态文件，必要时重新克隆 Skills
-kana install --force --skills
+# 重置运行配置；默认交互确认，自动化环境显式使用 --yes
+kana reset
+kana reset --yes
+
+# 安装或安全更新默认的全局 Skills 仓库
+kana skills install
+
+# 删除并重新克隆默认 Skills 仓库；默认交互确认
+kana skills reinstall
+kana skills reinstall --yes
 
 # 将已安装的 Kana Skills 复制到 Codex 的全局 Skills 目录
 kana skills sync codex
@@ -20,21 +29,31 @@ kana skills sync codex
 # 复制到自定义 agent 的 Skills 目录；已有同名 Skill 默认跳过
 kana skills sync --target-dir ~/.other-agent/skills
 
-# 替换目标目录中已有的同名 Skill
-kana skills sync codex --force
+# 替换目标目录中已有的同名 Skill；不清理其它或过期 Skill
+kana skills resync codex
+kana skills resync codex --yes
 
 # 启动 TUI；参数会作为第一条提示词
 kana 修复测试失败
 
 # 按 ID 恢复会话；省略 ID 时打开选择器
 kana resume [session-id]
+
+# 管理 OpenAI Codex OAuth
+kana auth login openai-codex
+kana auth status openai-codex
+kana auth logout openai-codex
 ```
 
-`kana install` 不会覆盖已经存在的文件。`--force` 会将 `config.toml`、`mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 恢复为默认内容；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。它**不会**创建 `~/.kana/AGENTS.md`，全局指令文件需要用户自行创建。
+`kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取它，需要覆盖默认值时只把相应字段复制到 `config.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
 
-默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。已有目录不是 Git 仓库时，普通更新会报错，必须使用 `--force` 才会替换它；已有 Git 仓库则执行 `git pull --ff-only`。
+`kana update --check` 读取 GitHub 最新正式 Release 的版本元数据，不下载或修改二进制。`kana update` 根据当前操作系统和架构下载对应资产，检查 Release 元数据中的文件大小和 SHA-256 digest，然后让候选二进制依次执行 `--version` 与幂等的 `kana install`；候选版本、支持文件初始化和当前可执行文件身份全部验证成功后，才通过同目录临时文件原子替换当前二进制。失败会删除临时文件并保留原二进制；如果另一个安装进程在下载期间已经替换目标，也会拒绝覆盖。更新支持 macOS/Linux 的 arm64、x64，沿用 Bun `fetch` 对 `HTTP_PROXY`/`HTTPS_PROXY` 的处理，且要求安装目录可写。直接通过 Bun 运行源码没有 direct distribution 构建标记，因此会拒绝自更新；`scripts/install.sh`、`bun run build:cli` 和正式 Release 构建的独立二进制包含该标记。
 
-`kana skills sync` 不会重新 clone 仓库；它读取 `<KANA_HOME>/skills/kana-skills`，把其中每个顶层、包含 `SKILL.md` 的 Skill 目录复制到目标 agent 的 Skills 根目录。`codex` 预设写入 `${CODEX_HOME:-$HOME/.codex}/skills`。若目标中已存在同名目录，默认跳过；传 `--force` 会先删除该目录再复制。若默认 Skills 仓库尚未安装，请先运行 `kana install --skills`。
+`kana reset` 将配置恢复到纯净 install 状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
+
+默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。`kana skills install` 在目录不存在时 clone，已有 Git 仓库时执行 `git pull --ff-only`；已有目录不是 Git 仓库时失败并提示使用 `kana skills reinstall`。reinstall 会在确认后只删除整个默认仓库目录并重新 clone，保留相邻的 `skills.toml` 和其它实际 Skills；非交互环境同样要求 `--yes`。
+
+`kana skills sync` 不会重新 clone 仓库；它读取 `<KANA_HOME>/skills/kana-skills`，把其中每个顶层、包含 `SKILL.md` 的 Skill 目录复制到目标 agent 的 Skills 根目录。`codex` 预设写入 `${CODEX_HOME:-$HOME/.codex}/skills`。普通 sync 跳过已有同名目录；`kana skills resync` 在确认后删除并重新复制源仓库当前包含的同名 Skill，但不删除目标中其它来源或已从源仓库移除的过期 Skill。resync 在非交互环境要求 `--yes`。若默认 Skills 仓库尚未安装，请先运行 `kana skills install`。
 
 ## 根目录与文件布局
 
@@ -43,7 +62,8 @@ Kana 使用 `KANA_HOME` 指定根目录；未设置时使用 `$HOME/.kana`，若
 ```text
 ${KANA_HOME:-$HOME/.kana}/
 ├── .env                    # 可选：启动时加载的环境变量
-├── config.toml             # 本文的运行配置
+├── config.toml             # 可选：本文的运行配置；缺失时使用内置默认值
+├── config.example.toml     # install 生成的完整配置参考；运行时不读取
 ├── mcp.json                # MCP server 定义
 ├── mcp-enabled.json        # 已启用的 MCP server ID
 ├── oauth-tokens.json       # 浏览器授权后创建的 OAuth 凭据
@@ -54,7 +74,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── memory/                 # global 与 project 的记忆
 └── skills/
     ├── skills.toml         # 全局 Skill 的启用列表
-    └── kana-skills/        # `kana install --skills` 克隆的默认仓库
+    └── kana-skills/        # `kana skills install` 克隆的默认仓库
 ```
 
 安装和应用写入的配置文件均以 `0600` 模式创建或写入。该权限是文件模式请求；实际效果仍受操作系统和文件系统 umask/权限模型影响。
@@ -63,18 +83,30 @@ Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启
 
 ## `config.toml`
 
-配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值；例如只写 `[model] name` 不会删除该表中的其他默认项。
+配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值；例如只写 `[model.deepseek] name` 不会删除该供应商的其他默认项。旧版扁平 `[model]` DeepSeek 配置仍可读取，但新配置应使用供应商分表。
 
-执行 `kana install` 后得到的等价默认配置如下：
+TUI 的 `/model` 通过通用配置存储更新 `config.toml`：它从磁盘重新读取当前配置，只写本次实际变化的已知字段，并保留无关表、未知字段和独立注释。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。候选文档必须重新解析为完整目标配置后才会通过同目录临时文件原子替换；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
+
+内置默认配置等价于：
 
 ```toml
-[model]
-provider = "deepseek"
+[provider]
+active = "deepseek"
+
+[model.deepseek]
 name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
 reasoning_effort = "high"
 max_tokens = 8192
+timeout_ms = 60000
+max_retries = 1
+
+[model.openai-codex]
+name = "gpt-5.6-sol"
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+max_tokens = 32768
 timeout_ms = 60000
 max_retries = 1
 
@@ -99,11 +131,18 @@ max_chars = 6000
 level = "info"
 ```
 
-### `[model]`
+`model.openai-codex` 即使未写入文件也有独立默认值，因此切换供应商时只需写需要覆盖的字段。
+
+### `[provider]`
 
 | 键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `provider` | 仅 `deepseek` | `deepseek` | 当前产品配置唯一支持的供应商。 |
+| `active` | `deepseek` 或 `openai-codex` | `deepseek` | 当前用于主 Agent、记忆压缩和上下文压缩的模型供应商。 |
+
+### `[model.deepseek]`
+
+| 键 | 类型与可选值 | 默认值 | 含义 |
+| --- | --- | --- | --- |
 | `name` | 非空字符串 | `deepseek-v4-pro` | 模型名；运行时会拒绝不在 DeepSeek 元数据表中的模型。 |
 | `api_key_env` | 非空字符串 | `DEEPSEEK_API_KEY` | 保存 API key 的环境变量名；key 不写入 TOML。 |
 | `thinking` | 布尔值 | `true` | 是否在 DeepSeek 请求中显式启用 thinking。 |
@@ -117,6 +156,19 @@ level = "info"
 ```bash
 export DEEPSEEK_API_KEY='sk-...'
 ```
+
+### `[model.openai-codex]`
+
+| 键 | 类型与可选值 | 默认值 | 含义 |
+| --- | --- | --- | --- |
+| `name` | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses 模型。 |
+| `reasoning_effort` | `low`、`medium`、`high`、`xhigh`、`max`、`ultra` | `medium` | 请求的推理强度。 |
+| `reasoning_summary` | `auto`、`concise`、`detailed` | `auto` | 请求可流式返回的 reasoning summary；原始思维链不会作为该字段公开。 |
+| `max_tokens` | 正整数 | `32768` | Kana 本地上下文预算的输出预留；Codex backend 请求本身不发送 `max_output_tokens`。 |
+| `timeout_ms` | 有限数字 | `60000` | 等待响应头或相邻响应数据的无活动超时毫秒数。 |
+| `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
+
+首次使用前运行 `kana auth login openai-codex`。浏览器授权得到的 access token、refresh token、ID token 与绑定信息保存在权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`；到期前会自动 refresh，模型请求收到首个 `401` 时也会 refresh 并重试一次。`status` 只显示授权状态、是否可刷新和到期时间，不显示 token。完整协议映射见 [OpenAI Codex 提供商适配](openai-codex-provider.md)。
 
 ### 其他配置表
 
@@ -137,16 +189,16 @@ export DEEPSEEK_API_KEY='sk-...'
 
 ### 上下文预算
 
-Kana 用 `agent.context_limit` 计算自动上下文压缩预算；未配置时回退到所选模型 metadata 的 context window。配置值不能超过 metadata，也必须大于 `model.max_tokens`。实际 prompt 预算为：
+Kana 用 `agent.context_limit` 计算自动上下文压缩预算；未配置时回退到所选模型 metadata 的 context window。配置值不能超过 metadata，也必须大于当前供应商的 `model.<provider>.max_tokens`。实际 prompt 预算为：
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
-promptBudget = contextLimit - model.max_tokens - safetyReserve
+promptBudget = contextLimit - activeModel.max_tokens - safetyReserve
 ```
 
-`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。这里的 `model.max_tokens` 仍只控制最大输出；它被扣除是为了给该输出预留上下文空间。
+`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。活动模型的 `max_tokens` 被扣除是为了给输出预留上下文空间。
 
-默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；DeepSeek HTTP 失败额外记录状态码和状态文本，但不保存响应体。
+默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
 
 配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
 
@@ -235,7 +287,7 @@ HTTP transport 只实现 `2025-11-25` Streamable HTTP：POST 响应同时支持 
 
 可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续，并在最终摘要后留下失败警告。初次加载时，必需服务器失败会让当前会话停留在错误状态，不启用 editor；但显式 reload 中遇到配置或必需服务器失败时，会清空已关闭 manager 的工具、用无 MCP 工具的状态重建 Agent、把错误写入 transcript，并恢复 editor，以便再次打开 `/mcp`。连接和 reload 都会在 transcript 末尾追加进度块，最终保留含 ready server 与可用工具数量的启动/reload 摘要；未选择任何服务器时，reload 摘要会显示 `MCP disabled`。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲或加载时按 `Ctrl+C`，以及收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先进入优雅关闭，并在 transcript 末尾显示逐服务器关闭进度而不替换 bottom；所有 MCP server 关闭后才恢复终端并打印退出信息。优雅关闭等待期间再次按 `Ctrl+C` 会立即强制退出。
 
-stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 与 `headers` 按 JSON 字面值处理，静态 token 因而会以明文保存在 `mcp.json`；优先使用 OAuth 的 `clientSecretEnv` 和最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建两个 MCP 文件，但 `kana install --force` 也会把服务器定义和启用状态重置为空默认值；它不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
+stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 与 `headers` 按 JSON 字面值处理，静态 token 因而会以明文保存在 `mcp.json`；优先使用 OAuth 的 `clientSecretEnv` 和最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建缺失的两个 MCP 文件，`kana reset` 则会在确认后把服务器定义和启用状态重置为空默认值；两者都不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
 
 ## API key 与项目指令
 
@@ -287,12 +339,22 @@ enabled = []
 以下示例只改变模型名和通知，其余字段继续使用默认值：
 
 ```toml
-[model]
+[model.deepseek]
 name = "deepseek-v4-flash"
 
 [notification]
 backend = "bell"
 on_agent_completed = false
+```
+
+切换到已经授权的 Codex Luna 只需要：
+
+```toml
+[provider]
+active = "openai-codex"
+
+[model.openai-codex]
+name = "gpt-5.6-luna"
 ```
 
 不要复制完整默认文件来做小改动：字段级合并允许配置保持更短，也能在代码添加新默认字段时自动获得默认行为。

@@ -11,7 +11,7 @@ import {
   createWriteTool,
   type Tool,
 } from "@/tools";
-import type { KanaConfig } from "./config";
+import { getActiveKanaModelConfig, type KanaConfig } from "./config";
 import { createKanaModel } from "./model";
 import { buildKanaSystemPrompt } from "./prompt";
 import { loadKanaSkills } from "./skills";
@@ -47,13 +47,14 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
   const cwd = process.cwd();
   const { skills } = loadKanaSkills({ cwd });
   const model = createKanaModel(config, options.logger);
+  const modelConfig = getActiveKanaModelConfig(config);
   const contextLimit = config.agent.contextLimit ?? model.metadata.contextWindow;
   if (contextLimit > model.metadata.contextWindow) {
     throw new Error(
       `agent.context_limit cannot exceed the ${model.metadata.contextWindow}-token context window for ${model.metadata.provider}/${model.metadata.model}.`,
     );
   }
-  if (contextLimit <= config.model.maxTokens) {
+  if (contextLimit <= modelConfig.maxTokens) {
     throw new Error("agent.context_limit must be greater than model.max_tokens.");
   }
   const tools: Tool[] = [
@@ -110,7 +111,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     loggerMetadata: { agentKind: "conversation" },
     context: {
       contextLimit,
-      outputReserve: config.model.maxTokens,
+      outputReserve: modelConfig.maxTokens,
       compactPolicy: createModelCompactPolicy(model),
       checkpoint: options.contextCheckpoint,
     },

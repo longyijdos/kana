@@ -175,6 +175,7 @@ function parseStoredToken(value: unknown, key: string): OAuthStoredToken {
   const allowedKeys = new Set([
     "accessToken",
     "tokenType",
+    "idToken",
     "refreshToken",
     "expiresAt",
     "scopes",
@@ -193,6 +194,7 @@ function parseStoredToken(value: unknown, key: string): OAuthStoredToken {
   return {
     accessToken: readNonEmptyString(token.accessToken, `${name}.accessToken`),
     tokenType: "Bearer",
+    ...readOptionalString(token.idToken, "idToken", name),
     ...readOptionalString(token.refreshToken, "refreshToken", name),
     ...readOptionalExpiresAt(token.expiresAt, name),
     ...readOptionalScopes(token.scopes, name),
@@ -202,7 +204,7 @@ function parseStoredToken(value: unknown, key: string): OAuthStoredToken {
   };
 }
 
-function readOptionalString<TKey extends "refreshToken" | "resource">(
+function readOptionalString<TKey extends "idToken" | "refreshToken" | "resource">(
   value: unknown,
   key: TKey,
   name: string,
