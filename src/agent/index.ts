@@ -28,8 +28,6 @@ export {
   type AgentContext,
   type AgentEventSink,
   type AgentLoopConfig,
-  type BeforeToolExecutionHook,
-  type BeforeToolExecutionResult,
   runAgentLoop,
 } from "./loop";
 export { createModelCompactPolicy } from "./model-compact-policy";
@@ -37,3 +35,10 @@ export {
   AgentEventStream,
   type ReadableAgentEventStream,
 } from "./stream";
+export {
+  type BeforeToolExecutionHook,
+  type BeforeToolExecutionResult,
+  ToolRuntime,
+  type ToolRuntimeConfig,
+  type ToolRuntimeResult,
+} from "./tool-runtime";

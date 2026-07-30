@@ -64,7 +64,7 @@ agent_start
 发出 agent_end，返回本次新增消息
 ```
 
-Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。工具调用即使由模型在同一条消息中同时提出，也按内容顺序串行执行；后一个调用不会在前一个结束前开始。
+Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`；当前工具调用仍按内容顺序串行执行，后一个调用不会在前一个结束前开始。
 
 只有助手消息以 `toolUse` 正常结束时，工具才会执行。长度截断的消息即使带有工具调用也不会执行。发生 provider error 且助手没有任何内容时，该空助手消息不会写入历史；中止的消息会移除其中未执行的工具调用，但若仍有文本或 thinking 内容则保留该部分。
 
@@ -96,8 +96,8 @@ journal 的顺序是协议约束：完整 assistant 消息必须先持久化，�
 2. 深拷贝原始参数；TypeBox schema 先执行 `Value.Convert`，序列化后缺少 TypeBox 元数据的普通 JSON Schema 则补充兼容的基础类型转换，再使用编译缓存的 schema 校验。
 3. 调用可选的 `beforeToolExecution` 钩子。Kana TUI 在此显示审批界面。
 4. 检查中止信号，发出 `tool_execution_start`，执行工具。
-5. 工具可调用 `context.update(partialResult)`；运行时会发出对应更新事件，并在结束前等待这些事件的监听器完成。
-6. 规范化返回值，发出 `tool_execution_end`，再将 `ToolResultMessage` 加入模型上下文。
+5. 工具可调用 `context.update(partialResult)`；ToolRuntime 通过内部串行队列按调用顺序逐个发出更新，并在结束前等待监听器完成。
+6. 规范化返回值，先提交 `ToolResultMessage`，再发出 `tool_execution_end`。因此外部观察者不会先看到一个尚未进入 journal 的成功结果。
 
 参数校验失败和工具抛出的异常不会使循环本身抛出：它们成为 `isError: true` 的工具结果，模型能在下一回合看到失败原因。审批钩子返回 `cancel` 时默认中止整个运行，并为之后尚未执行的同消息工具补充“已取消”错误结果。中止发生在执行前也遵循同样的补全规则。
 

@@ -64,7 +64,7 @@ Repeat (at most 8 turns by default; unlimited when maxTurns = -1):
 Emit agent_end and return messages added by this run
 ```
 
-Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. Tool calls proposed together in a single assistant message still execute serially in content order; a later call cannot start before the prior call ends.
+Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. `runAgentLoop` owns only the model-turn state machine and delegates tool calls to an independent `ToolRuntime`; calls currently remain serial in content order, so a later call cannot start before the prior call ends.
 
 Tools run only when an assistant message ends normally with `toolUse`. A length-truncated message never executes its tool calls. A provider error with no assistant content does not persist an empty assistant message; an aborted message loses its unexecuted tool calls but retains any remaining text or thinking content.
 
@@ -96,8 +96,8 @@ Every tool call is processed in this order:
 2. Deep-clone raw arguments. TypeBox schemas run through `Value.Convert`; plain JSON Schemas that lost TypeBox metadata during serialization receive compatible primitive coercion before validation with the cached compiled schema.
 3. Invoke the optional `beforeToolExecution` hook. Kana's TUI shows its approval UI here.
 4. Check the abort signal, emit `tool_execution_start`, and execute the tool.
-5. A tool may call `context.update(partialResult)`; the runtime emits matching update events and waits for their listeners before finishing.
-6. Normalize the return value, emit `tool_execution_end`, then add a `ToolResultMessage` to model context.
+5. A tool may call `context.update(partialResult)`; ToolRuntime uses an internal serial queue to emit updates one at a time in call order and waits for listeners before finishing.
+6. Normalize the return value, commit its `ToolResultMessage`, and only then emit `tool_execution_end`. External observers therefore cannot see success before its result has entered the journal.
 
 Argument-validation failures and exceptions thrown by tools do not throw the loop itself: they become `isError: true` results that the model can see on the next turn. When an approval hook returns `cancel`, it aborts the full run by default and adds cancelled error results for later, unexecuted calls from the same message. Abort before execution follows the same completion behavior.
 
