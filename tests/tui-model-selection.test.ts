@@ -74,7 +74,11 @@ describe("TUI model selection", () => {
     expect(renderTranscript(internal)).toContain(
       "Switched to openai-codex/gpt-5.6-luna · reasoning high.",
     );
-    expect(logEvents).toEqual(["tui.model_switch_started", "tui.model_switch_completed"]);
+    expect(logEvents).toEqual([
+      "tui.model_switch_started",
+      "conversation.agent_reconfigured",
+      "tui.model_switch_completed",
+    ]);
   });
 
   test("maps DeepSeek reasoning Off to thinking disabled", () => {

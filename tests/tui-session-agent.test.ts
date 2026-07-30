@@ -249,6 +249,7 @@ describe("session-scoped agents", () => {
               },
             },
           },
+          abort() {},
         } as never;
       },
       createTerminal(),
@@ -329,7 +330,15 @@ describe("session-scoped agents", () => {
   });
 
   test("drains a wake queued during an auxiliary run when it becomes idle", async () => {
+    const timers = new Map<number | ReturnType<typeof setTimeout>, () => void>();
     const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
+    const wakeScheduler = createWakeScheduler({
+      setTimeout: (callback) => {
+        timers.set(1, callback);
+        return 1;
+      },
+      clearTimeout: (timer) => timers.delete(timer),
+    });
     const app = new KanaTuiApp(
       () =>
         ({
@@ -355,21 +364,21 @@ describe("session-scoped agents", () => {
       {
         ...createOptions(),
         initialSession: { id: "session-a", messages: [], timeline: [] },
+        wakeScheduler,
       },
     );
     const internal = app as unknown as {
       running: boolean;
-      queueWakeEvent(event: { id: string; sessionId: string; dueAt: Date; message: string }): void;
       clearAuxiliaryRunStatus(): void;
     };
 
     internal.running = true;
-    internal.queueWakeEvent({
-      id: "wake-1",
+    wakeScheduler.schedule({
       sessionId: "session-a",
-      dueAt: new Date(),
+      afterMinutes: 30,
       message: "Check the task.",
     });
+    timers.get(1)?.();
 
     expect(calls).toHaveLength(0);
     internal.running = false;
@@ -378,6 +387,7 @@ describe("session-scoped agents", () => {
 
     expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
     calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+    wakeScheduler.dispose();
   });
 
   test("replaces the temporary manual-compaction message with the persisted marker", async () => {

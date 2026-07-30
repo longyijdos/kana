@@ -39,13 +39,14 @@ This layering also indicates where new code belongs: new providers go in `provid
 
 Self-update remains isolated in the `kana/self-update.ts` product layer and never enters the TUI or Agent lifecycle. It obtains the version, platform asset, and SHA-256 digest from the GitHub Release API; writes the download to a sibling temporary path; verifies its size and digest; and runs `--version` plus idempotent initialization through the candidate. Before replacement it compares the target's device, inode, mtime, and size again, preventing an update from overwriting a newer binary written by another installer while the download was in flight. The final rename is an atomic POSIX directory-entry replacement on the same filesystem. Source execution defaults to a `source` marker and refuses updating, while every directly installable compile entrypoint injects a `direct` marker at build time so the Bun runtime cannot be mistaken for the update target. Any external I/O, candidate-execution, or replacement failure uses a stable phase error code and removes the temporary file.
 
-When the TUI starts, `startTui` loads runtime configuration and the approval allowlist, then constructs `KanaTuiApp` with an idle `KanaMcpRuntime`. Only after the current session is known and the first TUI view is displayed does the app invoke its injected external-tool loader; the runtime then reads MCP definition and activation files, connects selected servers, discovers their tools, and lets the app rebuild the main Agent. The `kana resume` picker therefore does not start MCP; loading begins after a session is selected. Session I/O, Skill and MCP activation, memory compaction, external-tool start/reload, and the Agent factory are all injected as callbacks. The app therefore coordinates user flows without knowing JSONL, TOML, MCP transports, or other storage and protocol details.
+When the TUI starts, `startTui` loads runtime configuration and the approval allowlist, then constructs `KanaTuiApp` with an idle `KanaMcpRuntime`. The app creates a product-layer `ConversationRuntime` from the injected Agent factory, session operations, and wake scheduler. That runtime owns the current Agent and session, submission exclusion, Agent replacement, session new/fork/resume, and ordered delivery of queued due wakes. Only after the current session is known and the first TUI view is displayed does the app invoke its external-tool loader; the MCP runtime then reads definition and activation files, connects selected servers, discovers their tools, and lets `ConversationRuntime` rebuild the main Agent. The `kana resume` picker therefore does not start MCP; loading begins after a session is selected. The TUI still coordinates visible user flows, but no longer implements conversation lifecycle or knows JSONL, TOML, MCP transports, or other storage and protocol details.
 
 ## How one prompt runs
 
 ```text
 User input
   → KanaTuiApp.submitPrompt
+  → ConversationRuntime.submit
   → Agent.stream
   → runAgentLoop
   → Model.stream (selected provider SSE)
@@ -180,7 +181,7 @@ Approval modes are `always`, `unless_trusted`, and `never`. In the default mode,
 
 ## TUI architecture
 
-`KanaTuiApp` owns interaction-level state: the current Agent, session ID, running flag, accumulated usage/cost, and controllers. It does not render model events to ANSI itself; `AgentEventRenderer` maps `AgentEvent` values to assistant message blocks, tool blocks, and status phases.
+`ConversationRuntime` is the product-level conversation lifecycle boundary. It owns the current Agent and session, rejects concurrent submissions, centralizes new/fork/resume and Agent replacement after configuration or tool changes, and drains the current session's wake queue in order once the frontend is ready. It publishes frontend-neutral run, Agent-event, and session-change events; listener failures are isolated and recorded as diagnostics. `KanaTuiApp` owns only accumulated usage/cost and interaction controllers, subscribes to runtime events, and delegates their visible mapping to `AgentEventRenderer`.
 
 ```text
 ProcessTerminal (raw mode, input, resize, notifications)
