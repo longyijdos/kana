@@ -23,6 +23,7 @@ export {
   type PreparedContext,
 } from "./context-manager";
 export type { AgentEndReason, AgentEvent } from "./events";
+export type { AgentJournal } from "./journal";
 export {
   type AgentContext,
   type AgentEventSink,

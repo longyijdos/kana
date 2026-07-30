@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { AssistantMessage, Message, Model, UserMessage } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 import type { Tool } from "@/tools";
@@ -7,6 +9,7 @@ import {
   type ContextManagerConfig,
 } from "./context-manager";
 import type { AgentEvent } from "./events";
+import type { AgentJournal } from "./journal";
 import {
   type AgentContext,
   type AgentLoopConfig,
@@ -29,6 +32,7 @@ export type AgentConfig = {
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
   onCompactionCommitted?: AgentCompactionCommittedHook;
+  journal?: AgentJournal;
   logger?: Logger;
   loggerMetadata?: LogMetadata;
   context?: Omit<ContextManagerConfig, "logger" | "loggerMetadata">;
@@ -90,6 +94,7 @@ export class Agent {
   private readonly beforeToolExecution?: BeforeToolExecutionHook;
   private readonly onRunCommitted?: AgentRunCommittedHook;
   private readonly onCompactionCommitted?: AgentCompactionCommittedHook;
+  private readonly journal?: AgentJournal;
   private readonly logger: Logger;
   private readonly loggerMetadata?: LogMetadata;
   private readonly contextManager?: ContextManager;
@@ -102,6 +107,7 @@ export class Agent {
     this.beforeToolExecution = options.beforeToolExecution;
     this.onRunCommitted = options.onRunCommitted;
     this.onCompactionCommitted = options.onCompactionCommitted;
+    this.journal = options.journal;
     this.contextManager = options.context
       ? new ContextManager({
           ...options.context,
@@ -176,14 +182,27 @@ export class Agent {
       }
 
       committed = prepared.compaction;
-      await this.onCompactionCommitted?.({
-        compaction: structuredClone(committed),
-        state: {
-          ...this.state,
-          contextCheckpoint: structuredClone(committed),
-        },
-      });
-      this.contextManager?.adopt(runContextManager);
+      if (this.journal) {
+        await this.journal.appendCompaction({
+          compaction: structuredClone(committed),
+        });
+        this.contextManager?.adopt(runContextManager);
+        await this.onCompactionCommitted?.({
+          compaction: structuredClone(committed),
+          state: this.state,
+        });
+      } else {
+        // Preserve the original hook contract for embedders that use it as
+        // their persistence boundary instead of the incremental journal.
+        await this.onCompactionCommitted?.({
+          compaction: structuredClone(committed),
+          state: {
+            ...this.state,
+            contextCheckpoint: structuredClone(committed),
+          },
+        });
+        this.contextManager?.adopt(runContextManager);
+      }
       await this.processEvent({
         type: "context_compacted",
         reason: committed.reason,
@@ -205,55 +224,132 @@ export class Agent {
     const stream = new AgentEventStream();
     let doneEvent: Extract<AgentEvent, { type: "agent_end" }> | undefined;
     let committedCompactions: ContextCheckpoint[] = [];
-    let phase: "loop" | "commit" | "publish" = "loop";
+    let phase: "journal_start" | "loop" | "journal_end" | "commit" | "publish" = "journal_start";
+    let journalStarted = false;
+    let journalFailed = false;
+    const runId = randomUUID();
 
     if (this.activeRun) {
       stream.error(new Error("Agent is already running."));
       return stream;
     }
 
-    // User input is caller-owned state, so make it visible immediately. The
-    // loop result only contains messages produced by the agent runtime.
     const promptMessages = toPromptMessages(input);
-    this.stateData.messages = [...this.stateData.messages, ...promptMessages];
-    this.log("info", "agent.run_started", { promptMessageCount: promptMessages.length });
     const runContextManager = this.contextManager?.fork();
 
     void this.runWithLifecycle(async (signal) => {
-      await runAgentLoop(
-        this.createContextSnapshot(),
-        this.createLoopConfig(signal, runContextManager),
-        async (event) => {
-          if (event.type === "agent_end") {
-            doneEvent = structuredClone(event);
-            if (runContextManager && this.contextManager) {
-              this.contextManager.adopt(runContextManager);
-              committedCompactions = runContextManager.compactions;
+      const writeJournal = async (operation: () => Promise<void> | void): Promise<void> => {
+        try {
+          await operation();
+        } catch (error) {
+          journalFailed = true;
+          throw error;
+        }
+      };
+
+      try {
+        // A run cannot begin model I/O until its prompt is durable. Later
+        // message hooks use the same ordering before mutating Agent history.
+        await writeJournal(() =>
+          this.journal?.startRun({
+            runId,
+            messages: structuredClone(promptMessages),
+          }),
+        );
+        journalStarted = true;
+        this.stateData.messages = [...this.stateData.messages, ...structuredClone(promptMessages)];
+        this.log("info", "agent.run_started", {
+          promptMessageCount: promptMessages.length,
+        });
+
+        phase = "loop";
+        await runAgentLoop(
+          this.createContextSnapshot(),
+          this.createLoopConfig(signal, runContextManager, {
+            onMessageCommitted: async (message) => {
+              if (this.journal) {
+                await writeJournal(() =>
+                  this.journal?.appendMessage({
+                    runId,
+                    message: structuredClone(message),
+                  }),
+                );
+                this.stateData.messages = [...this.stateData.messages, structuredClone(message)];
+              }
+            },
+            onCompactionCommitted: async (compaction) => {
+              if (this.journal) {
+                // Adopt a checkpoint only after the session can recover it.
+                await writeJournal(() =>
+                  this.journal?.appendCompaction({
+                    runId,
+                    compaction: structuredClone(compaction),
+                  }),
+                );
+                if (runContextManager && this.contextManager) {
+                  this.contextManager.adopt(runContextManager);
+                }
+              }
+            },
+          }),
+          async (event) => {
+            if (event.type === "agent_end") {
+              doneEvent = structuredClone(event);
+              if (!this.journal) {
+                this.stateData.messages = [
+                  ...this.stateData.messages,
+                  ...structuredClone(doneEvent.messages),
+                ];
+              }
+              if (runContextManager && this.contextManager) {
+                this.contextManager.adopt(runContextManager);
+                committedCompactions = runContextManager.compactions;
+              }
+              this.reduceEvent(doneEvent);
+              return;
             }
-            this.reduceEvent(doneEvent);
-            return;
-          }
 
-          await this.processEvent(event);
-          stream.push(structuredClone(event));
-        },
-      );
+            await this.processEvent(event);
+            stream.push(structuredClone(event));
+          },
+        );
 
-      if (!doneEvent) {
-        throw new Error("Agent loop finished without agent_end.");
+        if (!doneEvent) {
+          throw new Error("Agent loop finished without agent_end.");
+        }
+        const completedEvent = doneEvent;
+
+        phase = "journal_end";
+        await writeJournal(() =>
+          this.journal?.endRun({
+            runId,
+            reason: completedEvent.reason,
+          }),
+        );
+
+        phase = "commit";
+        await this.onRunCommitted?.({
+          messages: structuredClone([...promptMessages, ...completedEvent.messages]),
+          compactions: structuredClone(committedCompactions),
+          state: this.state,
+          event: structuredClone(completedEvent),
+        });
+
+        phase = "publish";
+        await this.publishEvent(completedEvent);
+        stream.end(structuredClone(completedEvent));
+      } catch (error) {
+        if (journalStarted && !journalFailed && !doneEvent) {
+          phase = "journal_end";
+          await writeJournal(() =>
+            this.journal?.endRun({
+              runId,
+              reason: "error",
+            }),
+          );
+        }
+        throw error;
       }
-
-      phase = "commit";
-      await this.onRunCommitted?.({
-        messages: structuredClone([...promptMessages, ...doneEvent.messages]),
-        compactions: structuredClone(committedCompactions),
-        state: this.state,
-        event: structuredClone(doneEvent),
-      });
-
-      phase = "publish";
-      await this.publishEvent(doneEvent);
-      stream.end(structuredClone(doneEvent));
     }).catch((error) => {
       this.log("error", "agent.run_failed", { phase, error });
       stream.error(error);
@@ -293,6 +389,7 @@ export class Agent {
   private createLoopConfig(
     signal: AbortSignal,
     contextManager: ContextManager | undefined,
+    hooks: Pick<AgentLoopConfig, "onMessageCommitted" | "onCompactionCommitted"> = {},
   ): AgentLoopConfig {
     return {
       model: this.stateData.model,
@@ -300,6 +397,7 @@ export class Agent {
       signal,
       beforeToolExecution: this.beforeToolExecution,
       contextManager,
+      ...hooks,
     };
   }
 
@@ -456,7 +554,6 @@ export class Agent {
       }
 
       case "agent_end":
-        this.stateData.messages = [...this.stateData.messages, ...structuredClone(event.messages)];
         this.stateData.streamingMessage = undefined;
         break;
     }

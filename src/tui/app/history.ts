@@ -16,16 +16,21 @@ export function addHistoryTimelineToTranscript(
   const toolCalls = new Map<string, ToolCallContent>();
 
   for (const entry of timeline) {
-    if (entry.type === "message") {
-      addHistoryMessage(transcript, entry.message, toolCalls);
-      continue;
+    switch (entry.type) {
+      case "message":
+        addHistoryMessage(transcript, entry.message, toolCalls);
+        break;
+      case "context_compaction":
+        transcript.addChild(
+          new TextBlock(formatContextCompaction(entry.beforeTokens, entry.estimatedAfterTokens), {
+            color: tuiTheme.muted,
+          }),
+        );
+        break;
+      case "turn_start":
+      case "turn_end":
+        break;
     }
-
-    transcript.addChild(
-      new TextBlock(formatContextCompaction(entry.beforeTokens, entry.estimatedAfterTokens), {
-        color: tuiTheme.muted,
-      }),
-    );
   }
 }
 
@@ -37,9 +42,9 @@ function addHistoryMessage(
   switch (message.role) {
     case "user":
       transcript.addChild(
-        message.source === "scheduled"
+        message.source
           ? new TextBlock(formatUserMessage(message), { color: tuiTheme.muted })
-          : new UserMessageBlock(formatUserMessage(message)),
+          : new UserMessageBlock(message.content),
       );
       break;
 
@@ -54,12 +59,14 @@ function addHistoryMessage(
 }
 
 function formatUserMessage(message: Extract<Message, { role: "user" }>): string {
-  if (message.source !== "scheduled") {
-    return message.content;
+  switch (message.source) {
+    case "scheduled":
+      return `Scheduled wake: ${message.content.replace(/^\[Scheduled wake event\]\n?/, "")}`;
+    case "recovery":
+      return "Previous agent run was interrupted; recorded history was recovered safely.";
+    case undefined:
+      return message.content;
   }
-
-  const content = message.content.replace(/^\[Scheduled wake event\]\n?/, "");
-  return `Scheduled wake: ${content}`;
 }
 
 function addAssistantMessage(

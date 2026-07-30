@@ -52,7 +52,7 @@ User input
   → AssistantMessageEvent
   → AgentEvent
   ├─ AgentEventRenderer updates the transcript, tool blocks, and status line
-  └─ Agent commits completed messages to session storage
+  └─ Agent journal incrementally records completed messages
 
 If the model requests tools:
   Agent validates arguments → beforeToolExecution (TUI approval)
@@ -63,7 +63,7 @@ If the model requests tools:
 
 Providers first produce `AssistantMessageEvent` values. An event contains both an incremental `delta` and a complete `snapshot`: the former supports incremental rendering, while the latter means consumers do not need to reimplement message assembly. `agent` translates these into the higher-level `AgentEvent` protocol and additionally emits turn, tool-start/update/end, and run-end events. Both `AgentEventStream` and model streams support event consumption with `for await` and final-result retrieval with `result()`.
 
-`Agent` is the stateful controller for one run. It rejects concurrent runs; `stream()` first appends a deep-cloned user input to internal history, then creates an `AbortController`. After the loop produces its terminal state, the Agent commits the run's assistant messages and tool results to internal state and awaits the product-level `onRunCommitted` hook. Only after persistence succeeds does it publish the final `agent_end` to listeners and the stream and become idle. New runs remain rejected and `waitForIdle()` keeps waiting during commit. Both `state` and public events deep-clone mutable data, and ordinary listener failures cannot mutate internal history or terminate the run.
+`Agent` is the stateful controller for one run and rejects concurrent runs. Kana's injected `AgentJournal` writes the turn boundary and deep-cloned user input before model I/O. The loop writes each complete assistant message, tool result, and compaction checkpoint before adding it to the corresponding in-memory state; an assistant message containing tool calls must be durable before those tools execute. After `turn_end` is written, the product-level `onRunCommitted` performs only aggregate post-processing such as accounting and memory scheduling. Final `agent_end` reaches listeners and the stream only after all of this succeeds. New runs remain rejected and `waitForIdle()` keeps waiting throughout. Both `state` and public events deep-clone mutable data, and ordinary listener failures cannot mutate internal history or terminate the run.
 
 An optional `ContextManager` sits between Agent and Model. The Agent forks checkpoint state for each run; before every model call, the manager projects full message history into “cumulative summary + recent raw messages,” then commits the checkpoint and summary usage with the terminal run. `/compact` reuses that manager and summary policy but uses a separate commit, adopting its checkpoint only after persistence succeeds. Kana composes its budget from model metadata or `agent.context_limit` and injects a summary policy that directly calls the same Model without tools or another Agent loop. Session storage retains both raw messages and the compaction timeline, so resume supplies messages, timeline, and the latest checkpoint to the Agent, TUI, and ContextManager respectively.
 
@@ -146,14 +146,14 @@ Kana state is located under `KANA_HOME`, or `~/.kana` when it is unset:
 | MCP activation state | `mcp-enabled.json` | `kana install`, `kana reset`, or activation changes |
 | OAuth tokens | `oauth-tokens.json` | Browser authorization, refresh, sign-out, or credential invalidation |
 | Approval allowlist | `approvals.json` | `kana install`, `kana reset`, or selecting “always allow” for a bash command |
-| Sessions | `sessions/<workspace>/*.jsonl` | Appended after each successfully committed Agent run |
+| Sessions | `sessions/<workspace>/*.jsonl` | Appended incrementally as messages complete within an Agent turn |
 | Runtime logs | `logs/<workspace>/<session-id>.jsonl` | Safe lifecycle events from the TUI, Agent, provider, tools, and memory tasks |
 | Durable memory | `memory/global|projects/<workspace>/memory.md` | Atomically replaced after successful memory consolidation |
 | Daily memory | `daily/YYYY-MM-DD.md` in the corresponding directory | Appended after `remember` succeeds |
 | Global Skills config | `skills/skills.toml` | `kana install`, `kana reset`, or TUI global Skill activation changes |
 | Default Skills repository | `skills/kana-skills/` | `kana skills install` or `kana skills reinstall` |
 
-Workspace directory names are encoded from resolved absolute paths and shared by sessions and project memory. A V2 session file is JSONL: the first line is a versioned session header, followed by a timeline of message and context-compaction entries with parent IDs. Raw messages are never deleted; compaction entries identify their covered message and cumulative base checkpoint. Creating a session does not write a file; the header is written with the first committed batch, and the first user prompt supplies its title. V1 remains readable and upgrades atomically on its first compaction write.
+Workspace directory names are encoded from resolved absolute paths and shared by sessions and project memory. A V3 session file is JSONL: the first line is a versioned session header, followed by a message and context-compaction journal enclosed by `turn_start`/`turn_end` boundaries. Raw messages are never deleted; compaction entries identify their covered message and cumulative base checkpoint. Creating a session does not write a file; the header is written when the first turn starts, and the first user prompt supplies its title. After a process interruption, loading closes an open turn and records missing tool outcomes as unknown with automatic retry forbidden. The runtime does not read V1/V2.
 
 Runtime logs use the same workspace encoding and the Kana session ID as their file boundary. Resuming a session appends to its existing log, while creating, forking, or switching to another session changes files. A session log manager returns a logger permanently bound to a selected session; each Agent and background task captures that concrete logger when it starts, so later lifecycle records remain attached to their originating session. Records are leveled JSONL, defaulting to `info`; `logging.level` adjusts the threshold or disables file logging with `off`. The TUI composition layer explicitly passes a logger to the Agent and provider, while `core` remains independent of logging and filesystem APIs. Logs contain only safe lifecycle metadata, never prompts, model text, complete tool input/output, request headers, or API keys; write failures are ignored and output never passes through the terminal, so logging cannot pollute the TUI.
 

@@ -35,7 +35,12 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
 
 export type KanaAgentOptions = Pick<
   AgentConfig,
-  "beforeToolExecution" | "messages" | "onRunCommitted" | "onCompactionCommitted" | "logger"
+  | "beforeToolExecution"
+  | "messages"
+  | "onRunCommitted"
+  | "onCompactionCommitted"
+  | "journal"
+  | "logger"
 > & {
   additionalTools?: readonly Tool[];
   wakeScheduler?: WakeScheduler;
@@ -107,6 +112,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     messages: options.messages,
     onRunCommitted: options.onRunCommitted,
     onCompactionCommitted: options.onCompactionCommitted,
+    journal: options.journal,
     logger: options.logger,
     loggerMetadata: { agentKind: "conversation" },
     context: {

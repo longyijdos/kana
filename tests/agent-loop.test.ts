@@ -358,6 +358,37 @@ describe("runAgentLoop", () => {
     });
   });
 
+  test("commits the assistant tool call before execution and each result afterward", async () => {
+    const operations: string[] = [];
+    const orderedTool = {
+      ...addTool,
+      execute: (args: { a: number; b: number }) => {
+        operations.push("execute");
+        return {
+          content: String(args.a + args.b),
+          result: args.a + args.b,
+        };
+      },
+    } satisfies Tool<typeof addParameters, number>;
+
+    await runAgentLoop(
+      {
+        messages: [{ role: "user", content: "add the numbers" }],
+        tools: [orderedTool],
+      },
+      {
+        model: new ScriptedToolModel(),
+        maxTurns: 2,
+        onMessageCommitted: (message) => {
+          operations.push(`commit:${message.role}`);
+        },
+      },
+      () => {},
+    );
+
+    expect(operations).toEqual(["commit:assistant", "execute", "commit:tool", "commit:assistant"]);
+  });
+
   test("caps model-visible tool content without truncating the structured result", async () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 });
     const content = `${"A".repeat(48_000)}${"Z".repeat(12_000)}`;

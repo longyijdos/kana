@@ -140,6 +140,50 @@ describe("tui history transcript", () => {
     );
   });
 
+  test("renders recovery input as a muted marker and ignores turn boundaries", () => {
+    const transcript = new Transcript();
+    const timeline: KanaSessionTimelineEntry[] = [
+      {
+        type: "turn_start",
+        id: "start-1",
+        parentId: null,
+        timestamp: "2026-07-30T00:00:00.000Z",
+        turnId: "turn-1",
+        kind: "agent",
+      },
+      {
+        type: "message",
+        id: "recovery-1",
+        parentId: "start-1",
+        timestamp: "2026-07-30T00:00:01.000Z",
+        message: {
+          role: "user",
+          source: "recovery",
+          content: "[Session recovery]\nThe previous agent run was interrupted.",
+        },
+      },
+      {
+        type: "turn_end",
+        id: "end-1",
+        parentId: "recovery-1",
+        timestamp: "2026-07-30T00:00:02.000Z",
+        turnId: "turn-1",
+        outcome: "interrupted",
+      },
+    ];
+
+    addHistoryTimelineToTranscript(transcript, timeline);
+
+    const rendered = transcript.render(100);
+    const marker =
+      rendered.find((line) => stripAnsi(line).includes("recorded history was recovered")) ?? "";
+
+    expect(stripAnsi(marker)).toBe(
+      "Previous agent run was interrupted; recorded history was recovered safely.",
+    );
+    expect(marker).toContain(`\x1b[38;2;${tuiTheme.muted.join(";")}m`);
+  });
+
   test("renders context compaction markers in timeline order", () => {
     const transcript = new Transcript();
     const [message] = timelineFromMessages([{ role: "user", content: "Before compact" }]);

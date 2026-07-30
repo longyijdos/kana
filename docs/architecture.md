@@ -52,7 +52,7 @@ src/main.ts
   → AssistantMessageEvent
   → AgentEvent
   ├─ AgentEventRenderer 更新 transcript、工具块和状态栏
-  └─ Agent 将已完成消息提交给会话存储
+  └─ Agent journal 按完成顺序增量写入会话
 
 若模型请求工具：
   Agent 验证参数 → beforeToolExecution（TUI 审批）
@@ -63,7 +63,7 @@ src/main.ts
 
 供应商首先产生 `AssistantMessageEvent`。事件包含增量 `delta` 和完整 `snapshot`：前者适合增量呈现，后者让消费者不必重复实现消息拼接。`agent` 将其转换为更高一层的 `AgentEvent`，并额外发出回合、工具开始/更新/结束和整个运行结束事件。`AgentEventStream` 与模型流都同时支持 `for await` 消费事件和 `result()` 获取最终值。
 
-`Agent` 是有状态的单次运行控制器。它拒绝并发运行；`stream()` 会先把深拷贝后的用户输入加入内部历史，再创建 `AbortController`。循环产生终态后，Agent 先提交本次助手消息和工具结果到内部状态，再等待产品层的 `onRunCommitted`；持久化成功后才向监听器和 stream 发布最终 `agent_end` 并转为空闲。commit 期间仍拒绝新运行，`waitForIdle()` 也会继续等待。`state` 和公共事件会深拷贝可变数据，普通监听器异常不会修改内部历史或终止运行。
+`Agent` 是有状态的单次运行控制器。它拒绝并发运行；Kana 注入的 `AgentJournal` 会在模型 I/O 前写入 turn 边界和深拷贝的用户输入。循环将每条完整 assistant 消息、工具结果和压缩 checkpoint 先写 journal 再加入对应内存状态，其中带工具调用的 assistant 消息必须早于工具执行落盘。写入 `turn_end` 后，产品层的 `onRunCommitted` 只执行 accounting 和记忆调度等聚合后处理；全部成功后才向监听器和 stream 发布最终 `agent_end` 并转为空闲。整个过程仍拒绝新运行，`waitForIdle()` 也会继续等待。`state` 和公共事件会深拷贝可变数据，普通监听器异常不会修改内部历史或终止运行。
 
 可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。`/compact` 复用同一个 manager 和摘要策略，但使用独立 commit，在持久化成功后才 adopt checkpoint。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
 
@@ -146,14 +146,14 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 | MCP 启用状态 | `mcp-enabled.json` | `kana install`、`kana reset` 或启用状态变更 |
 | OAuth token | `oauth-tokens.json` | 浏览器授权、refresh、退出登录或凭据失效 |
 | 审批白名单 | `approvals.json` | `kana install`、`kana reset`，或用户选择某条 bash 命令“始终允许” |
-| 会话 | `sessions/<workspace>/*.jsonl` | 每个 Agent 运行成功提交后追加 |
+| 会话 | `sessions/<workspace>/*.jsonl` | Agent turn 中按消息完成顺序增量追加 |
 | 运行时日志 | `logs/<workspace>/<session-id>.jsonl` | TUI、Agent、provider、工具和记忆任务的安全生命周期事件 |
 | 长期记忆 | `memory/global|projects/<workspace>/memory.md` | 记忆压缩成功后原子替换 |
 | 每日记忆 | 对应目录的 `daily/YYYY-MM-DD.md` | `remember` 成功时追加 |
 | 全局 Skills 配置 | `skills/skills.toml` | `kana install`、`kana reset`，或 TUI 修改全局 Skill 开关 |
 | 默认 Skills 仓库 | `skills/kana-skills/` | `kana skills install` 或 `kana skills reinstall` |
 
-工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V2 会话文件是 JSONL：首行是版本化的 session header，之后是带父 ID 的 message 和 context-compaction 时间线条目。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；第一批已提交记录追加时才写 header，并用首条用户消息生成标题。V1 仍可读取，并在第一次写入压缩条目时原子升级。
+工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V3 会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 message 与 context-compaction journal。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用首条用户消息生成标题。进程中断后，加载器会闭合打开的 turn，并把缺失工具结果记录为未知且禁止自动重试。运行时不读取 V1/V2。
 
 运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。session log manager 会返回永久绑定到指定会话的 logger；每个 Agent 和后台任务启动时捕获该具体 logger，因此后续生命周期记录仍归属发起它的会话。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 TUI 装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
 

@@ -82,9 +82,9 @@ provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededEr
 
 ## `Agent` 的生命周期
 
-`Agent.stream(input)` 立即把用户输入追加到内部历史，然后异步启动循环。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
+`Agent.stream(input)` 异步启动循环。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；没有 journal 的通用嵌入方式保持原有内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
 
-模型—工具循环产生终态后，Agent 先更新内部历史，再等待 `onRunCommitted` 完成本轮持久化；只有 commit 成功后，监听器和 stream 才会收到最终 `agent_end`。commit 失败会拒绝 stream，而不会先发布成功终态。commit 也属于 active run，因此这段时间 `isRunning` 仍为 `true`，新运行会被拒绝，`waitForIdle()` 继续等待。
+journal 的顺序是协议约束：完整 assistant 消息必须先持久化，随后才能执行其中引用的工具；每个工具结果完成后单独持久化；context checkpoint 在 adopt 前持久化；最后写入 run 终态。`onRunCommitted` 在 journal 已闭合后执行聚合后处理，不再承担 Kana 的 session 消息落盘。只有 journal 与后处理都成功，监听器和 stream 才会收到最终 `agent_end`。任一失败都会拒绝 stream，而不会先发布成功终态；整个阶段都属于 active run，因此 `isRunning` 保持 `true`，新运行被拒绝，`waitForIdle()` 继续等待。
 
 运行期间，`Agent.state` 暴露：模型、系统提示词、工具、历史、`isRunning`、当前流式助手消息、尚未结束的工具调用 ID，以及最终错误。`abort()` 中止该运行的 `AbortController`；`reset()` 仅能在空闲时清空历史和运行状态。普通事件监听器属于 observer：每个监听器收到独立事件副本，监听器异常会记录为 `agent.listener_failed` 并与 Agent 执行隔离；能够控制工具执行的逻辑应使用 `beforeToolExecution`。
 

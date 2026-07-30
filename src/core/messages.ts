@@ -7,9 +7,9 @@ export type AssistantStopReason = "stop" | "length" | "toolUse" | "aborted" | "e
 export type UserMessage = {
   role: "user";
   content: string;
-  // The provider receives all prompts as user messages. This marker lets Kana
-  // render internally scheduled prompts without presenting them as typed input.
-  source?: "scheduled";
+  // Providers receive internal wake and recovery records as user messages.
+  // Keep their source so the TUI does not render them as user-authored input.
+  source?: "scheduled" | "recovery";
 };
 
 // Assistant content is ordered. Stream event contentIndex values refer to

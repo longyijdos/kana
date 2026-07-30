@@ -8,6 +8,7 @@ import {
   appendKanaSessionMessages,
   appendKanaSessionRun,
   createKanaSession,
+  createKanaSessionJournal,
   deleteKanaSession,
   getKanaConfigPaths,
   listKanaSessions,
@@ -75,15 +76,17 @@ describe("Kana session store", () => {
 
     const loaded = loadKanaSession("session-1", { env, cwd });
     const lines = readFileSync(session.path, "utf8").trim().split("\n");
-    const firstEntry = JSON.parse(lines[1] ?? "{}") as Record<string, unknown>;
-    const secondEntry = JSON.parse(lines[2] ?? "{}") as Record<string, unknown>;
+    const turnStart = JSON.parse(lines[1] ?? "{}") as Record<string, unknown>;
+    const firstEntry = JSON.parse(lines[2] ?? "{}") as Record<string, unknown>;
+    const secondEntry = JSON.parse(lines[3] ?? "{}") as Record<string, unknown>;
+    const turnEnd = JSON.parse(lines[4] ?? "{}") as Record<string, unknown>;
 
     expect(loaded.metadata).toEqual(session);
     expect(loaded.messages).toEqual(messages);
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(5);
     expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
       type: "session",
-      version: 2,
+      version: 3,
       id: "session-1",
       title: "hi",
       cwd,
@@ -93,9 +96,15 @@ describe("Kana session store", () => {
       },
     });
     expect(session.title).toBe("hi");
+    expect(turnStart).toMatchObject({
+      type: "turn_start",
+      parentId: null,
+      timestamp: "2026-06-12T00:00:00.000Z",
+      kind: "snapshot",
+    });
     expect(firstEntry).toMatchObject({
       type: "message",
-      parentId: null,
+      parentId: turnStart.id,
       timestamp: "2026-06-12T00:00:00.000Z",
       message: {
         role: "user",
@@ -117,7 +126,13 @@ describe("Kana session store", () => {
         },
       },
     });
-    expect(loaded.timeline).toHaveLength(2);
+    expect(turnEnd).toMatchObject({
+      type: "turn_end",
+      parentId: secondEntry.id,
+      turnId: turnStart.turnId,
+      outcome: "snapshot",
+    });
+    expect(loaded.timeline).toHaveLength(4);
     expect(loaded.contextCheckpoint).toBeUndefined();
   });
 
@@ -162,10 +177,10 @@ describe("Kana session store", () => {
     });
 
     const loaded = loadKanaSession("compacted", { env, cwd });
-    const compaction = loaded.timeline.at(-1);
+    const compaction = loaded.timeline.at(-2);
 
     expect(loaded.messages).toEqual(messages);
-    expect(loaded.timeline).toHaveLength(5);
+    expect(loaded.timeline).toHaveLength(7);
     expect(compaction).toMatchObject({
       type: "context_compaction",
       id: "compact-1",
@@ -179,7 +194,7 @@ describe("Kana session store", () => {
         text: "The old exchange is complete.",
       },
     });
-    expect(compaction).toHaveProperty("coversThroughId", loaded.timeline[1]?.id);
+    expect(compaction).toHaveProperty("coversThroughId", loaded.timeline[2]?.id);
     expect(loaded.contextCheckpoint).toEqual(checkpoint);
   });
 
@@ -246,75 +261,33 @@ describe("Kana session store", () => {
     expect(loaded.contextCheckpoint).toEqual(secondCheckpoint);
   });
 
-  test("atomically upgrades a v1 session before its first compaction entry", () => {
+  test("does not list or load obsolete v1 and v2 sessions", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
-    const session = createKanaSession({ cwd, env, id: "legacy" });
-    mkdirSync(path.dirname(session.path), { recursive: true });
-    const header = {
-      type: "session",
-      version: 1,
-      id: session.id,
-      createdAt: session.createdAt,
-      title: "Legacy",
-      cwd,
-    };
-    const userEntry = {
-      type: "message",
-      id: "message-1",
-      parentId: null,
-      timestamp: "2026-07-24T00:00:00.000Z",
-      message: { role: "user", content: "Legacy question" },
-    };
-    const assistantEntry = {
-      type: "message",
-      id: "message-2",
-      parentId: "message-1",
-      timestamp: "2026-07-24T00:00:00.000Z",
-      message: {
-        role: "assistant",
-        stopReason: "stop",
-        content: [{ type: "text", text: "Legacy answer" }],
-      },
-    };
-    writeFileSync(
-      session.path,
-      `${[header, userEntry, assistantEntry].map((entry) => JSON.stringify(entry)).join("\n")}\n`,
-      {
-        mode: 0o600,
-      },
+    for (const version of [1, 2]) {
+      const session = createKanaSession({ cwd, env, id: `legacy-v${version}` });
+      mkdirSync(path.dirname(session.path), { recursive: true });
+      writeFileSync(
+        session.path,
+        `${JSON.stringify({
+          type: "session",
+          version,
+          id: session.id,
+          createdAt: session.createdAt,
+          title: "Legacy",
+          cwd,
+        })}\n`,
+        { mode: 0o600 },
+      );
+    }
+
+    expect(listKanaSessions({ env, cwd })).toEqual([]);
+    expect(() => loadKanaSession("legacy-v1", { env, cwd })).toThrow(
+      "Kana session not found: legacy-v1",
     );
-    const checkpoint: ContextCheckpoint = {
-      id: "compact-legacy",
-      summary: "Legacy exchange.",
-      coveredMessageCount: 2,
-      createdAfterMessageCount: 2,
-      compactedMessageCount: 2,
-      reason: "threshold",
-      beforeTokens: 90_000,
-      estimatedAfterTokens: 60_000,
-      createdAt: "2026-07-24T00:00:01.000Z",
-    };
-
-    appendKanaSessionRun(session, [], {
-      compactions: [checkpoint],
-    });
-
-    const lines = readFileSync(session.path, "utf8").trim().split("\n");
-
-    expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
-      type: "session",
-      version: 2,
-      id: "legacy",
-    });
-    expect(JSON.parse(lines[1] ?? "{}")).toEqual(userEntry);
-    expect(JSON.parse(lines[2] ?? "{}")).toEqual(assistantEntry);
-    expect(JSON.parse(lines[3] ?? "{}")).toMatchObject({
-      type: "context_compaction",
-      id: "compact-legacy",
-      coversThroughId: "message-2",
-    });
-    expect(loadKanaSession("legacy", { env, cwd }).contextCheckpoint).toEqual(checkpoint);
+    expect(() => loadKanaSession("legacy-v2", { env, cwd })).toThrow(
+      "Kana session not found: legacy-v2",
+    );
   });
 
   test("identifies unknown message and checkpoint references in corrupted sessions", () => {
@@ -345,22 +318,22 @@ describe("Kana session store", () => {
       ],
     });
     const lines = readFileSync(session.path, "utf8").trim().split("\n");
-    const compaction = JSON.parse(lines[3] ?? "{}") as Record<string, unknown>;
+    const compaction = JSON.parse(lines[4] ?? "{}") as Record<string, unknown>;
 
     compaction.coversThroughId = "missing-message";
     writeFileSync(
       session.path,
-      `${[...lines.slice(0, 3), JSON.stringify(compaction)].join("\n")}\n`,
+      `${[...lines.slice(0, 4), JSON.stringify(compaction), ...lines.slice(5)].join("\n")}\n`,
     );
     expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
       "compact-corrupted references unknown message missing-message",
     );
 
-    compaction.coversThroughId = JSON.parse(lines[2] ?? "{}").id;
+    compaction.coversThroughId = JSON.parse(lines[3] ?? "{}").id;
     compaction.baseCompactionId = "missing-checkpoint";
     writeFileSync(
       session.path,
-      `${[...lines.slice(0, 3), JSON.stringify(compaction)].join("\n")}\n`,
+      `${[...lines.slice(0, 4), JSON.stringify(compaction), ...lines.slice(5)].join("\n")}\n`,
     );
     expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
       "compact-corrupted references unknown checkpoint missing-checkpoint",
@@ -439,6 +412,161 @@ describe("Kana session store", () => {
     const loaded = loadKanaSession("titled", { env, cwd });
 
     expect(loaded.metadata.title).toBe("Compare parser approaches");
+  });
+
+  test("journals an agent turn incrementally and reloads the closed turn", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "journaled" });
+    const journal = createKanaSessionJournal(session);
+
+    journal.startTurn("turn-1", [{ role: "user", content: "Run it" }], {
+      timestamp: "2026-07-30T00:00:00.000Z",
+    });
+    journal.appendMessage(
+      "turn-1",
+      {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Done" }],
+      },
+      { timestamp: "2026-07-30T00:00:01.000Z" },
+    );
+    journal.endTurn("turn-1", "stop", {
+      timestamp: "2026-07-30T00:00:02.000Z",
+    });
+
+    const loaded = loadKanaSession(session.id, { env, cwd });
+
+    expect(loaded.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(loaded.timeline.map((entry) => entry.type)).toEqual([
+      "turn_start",
+      "message",
+      "message",
+      "turn_end",
+    ]);
+    expect(loaded.timeline.at(-1)).toMatchObject({
+      type: "turn_end",
+      turnId: "turn-1",
+      outcome: "stop",
+    });
+    expect(loaded.recoveredInterruptedTurn).toBeUndefined();
+  });
+
+  test("recovers an interrupted tool call once with an unknown result", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "interrupted" });
+    const journal = createKanaSessionJournal(session);
+
+    journal.startTurn("turn-interrupted", [{ role: "user", content: "Deploy it" }]);
+    journal.appendMessage("turn-interrupted", {
+      role: "assistant",
+      stopReason: "toolUse",
+      content: [
+        {
+          type: "tool_call",
+          id: "call-1",
+          name: "deploy",
+          args: {},
+        },
+      ],
+    });
+
+    const firstLoad = loadKanaSession(session.id, { env, cwd });
+    const firstLineCount = readFileSync(session.path, "utf8").trim().split("\n").length;
+    const secondLoad = loadKanaSession(session.id, { env, cwd });
+    const secondLineCount = readFileSync(session.path, "utf8").trim().split("\n").length;
+
+    expect(firstLoad.recoveredInterruptedTurn).toEqual({
+      turnId: "turn-interrupted",
+      unknownToolCallCount: 1,
+    });
+    expect(firstLoad.messages.at(-2)).toMatchObject({
+      role: "tool",
+      toolCallId: "call-1",
+      toolName: "deploy",
+      isError: true,
+      result: { status: "unknown" },
+    });
+    expect(firstLoad.messages.at(-1)).toMatchObject({
+      role: "user",
+      source: "recovery",
+    });
+    expect(firstLoad.timeline.at(-1)).toMatchObject({
+      type: "turn_end",
+      outcome: "interrupted",
+    });
+    expect(secondLoad.recoveredInterruptedTurn).toBeUndefined();
+    expect(secondLineCount).toBe(firstLineCount);
+  });
+
+  test("does not replace a recorded tool result while closing an interrupted turn", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "completed-tool" });
+    const journal = createKanaSessionJournal(session);
+
+    journal.startTurn("turn-completed-tool", [{ role: "user", content: "Inspect it" }]);
+    journal.appendMessage("turn-completed-tool", {
+      role: "assistant",
+      stopReason: "toolUse",
+      content: [
+        {
+          type: "tool_call",
+          id: "call-recorded",
+          name: "read",
+          args: { path: "package.json" },
+        },
+      ],
+    });
+    journal.appendMessage("turn-completed-tool", {
+      role: "tool",
+      toolCallId: "call-recorded",
+      toolName: "read",
+      content: "recorded result",
+      result: { status: "completed" },
+      isError: false,
+    });
+
+    const loaded = loadKanaSession(session.id, { env, cwd });
+    const toolMessages = loaded.messages.filter((message) => message.role === "tool");
+
+    expect(loaded.recoveredInterruptedTurn).toEqual({
+      turnId: "turn-completed-tool",
+      unknownToolCallCount: 0,
+    });
+    expect(toolMessages).toHaveLength(1);
+    expect(toolMessages[0]).toMatchObject({
+      toolCallId: "call-recorded",
+      content: "recorded result",
+      result: { status: "completed" },
+      isError: false,
+    });
+  });
+
+  test("repairs only an incomplete final JSONL record before recovering the turn", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "partial-tail" });
+    const journal = createKanaSessionJournal(session);
+
+    journal.startTurn("turn-partial", [{ role: "user", content: "Hello" }]);
+    const validContent = readFileSync(session.path, "utf8");
+    writeFileSync(session.path, `${validContent}{"type":"message","id":`);
+
+    const loaded = loadKanaSession(session.id, { env, cwd });
+
+    expect(loaded.recoveredIncompleteTail).toBe(true);
+    expect(loaded.recoveredInterruptedTurn).toEqual({
+      turnId: "turn-partial",
+      unknownToolCallCount: 0,
+    });
+    expect(readFileSync(session.path, "utf8")).not.toContain('{"type":"message","id":\n');
+    expect(loaded.timeline.at(-1)).toMatchObject({
+      type: "turn_end",
+      outcome: "interrupted",
+    });
   });
 
   test("deletes sessions by id", () => {

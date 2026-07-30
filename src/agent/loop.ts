@@ -9,7 +9,7 @@ import {
   type ToolResultMessage,
 } from "@/core";
 import { normalizeToolResult, type Tool, type ToolResult, validateToolArguments } from "@/tools";
-import type { ContextManager, PreparedContext } from "./context-manager";
+import type { ContextCheckpoint, ContextManager, PreparedContext } from "./context-manager";
 import type { AgentEndReason, AgentEvent } from "./events";
 
 export type AgentContext = {
@@ -24,6 +24,8 @@ export type AgentLoopConfig = {
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   contextManager?: ContextManager;
+  onMessageCommitted?: (message: Message) => Promise<void> | void;
+  onCompactionCommitted?: (compaction: ContextCheckpoint) => Promise<void> | void;
 };
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
@@ -133,6 +135,9 @@ export async function runAgentLoop(
     const assistantHistoryMessage = assistantMessageForHistory(assistantTurn.message);
 
     if (assistantHistoryMessage) {
+      // Persist a complete assistant tool-call message before any referenced
+      // tool can produce an external side effect.
+      await config.onMessageCommitted?.(structuredClone(assistantHistoryMessage));
       currentContext.messages.push(assistantHistoryMessage);
       newMessages.push(assistantHistoryMessage);
     }
@@ -319,6 +324,7 @@ async function prepareModelContext(
   );
 
   if (prepared.compaction) {
+    await config.onCompactionCommitted?.(structuredClone(prepared.compaction));
     await emit({
       type: "context_compacted",
       reason: prepared.compaction.reason,
@@ -377,7 +383,7 @@ async function executeToolCalls(
         toolCalls.slice(index),
         "Tool call canceled because the run was aborted.",
         emit,
-        config.contextManager,
+        config,
       );
       abortRun = true;
       break;
@@ -386,6 +392,9 @@ async function executeToolCalls(
     const executed = await executeToolCall(context, toolCall, config, emit);
     const toolResultMessage = createToolResultMessage(executed, config.contextManager);
 
+    // Commit each result independently so a later tool cannot erase the
+    // confirmed outcome of an earlier side effect if the process exits.
+    await config.onMessageCommitted?.(structuredClone(toolResultMessage));
     toolResults.push(toolResultMessage);
 
     if (executed.abortRun) {
@@ -394,7 +403,7 @@ async function executeToolCalls(
         toolCalls.slice(index + 1),
         "Tool call canceled because the run was aborted.",
         emit,
-        config.contextManager,
+        config,
       );
       abortRun = true;
       break;
@@ -412,21 +421,21 @@ async function appendCanceledToolResults(
   toolCalls: ToolCallContent[],
   message: string,
   emit: AgentEventSink,
-  contextManager?: ContextManager,
+  config: AgentLoopConfig,
 ): Promise<void> {
   for (const toolCall of toolCalls) {
     const result = createCanceledToolResult(message);
-
-    toolResults.push(
-      createToolResultMessage(
-        {
-          toolCall,
-          result,
-          isError: true,
-        },
-        contextManager,
-      ),
+    const toolResultMessage = createToolResultMessage(
+      {
+        toolCall,
+        result,
+        isError: true,
+      },
+      config.contextManager,
     );
+
+    await config.onMessageCommitted?.(structuredClone(toolResultMessage));
+    toolResults.push(toolResultMessage);
     await emitToolExecutionEnd(toolCall, result, true, emit);
   }
 }
