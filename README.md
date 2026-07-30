@@ -52,6 +52,13 @@ name = "gpt-5.6-luna"
 kana "修复当前项目的测试"
 ```
 
+后续版本可由已安装的独立二进制直接检查和更新，不需要重新运行 curl 安装器：
+
+```bash
+kana update --check
+kana update
+```
+
 从源码构建需要 Bun 和 Git：
 
 ```bash

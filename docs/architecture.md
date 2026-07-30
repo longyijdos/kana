@@ -6,7 +6,7 @@ Kana 是一个以 Bun 运行的终端通用 Agent。它将模型调用、工具�
 
 ```text
 src/main.ts
-  └─ cli                 命令解析；启动、恢复会话和安装本地文件
+  └─ cli                 命令解析；启动、恢复会话、安装与更新
       └─ tui             终端交互、渲染和用户审批
           └─ kana        产品装配：配置、提示词、会话、记忆、Skills
               ├─ logging  会话级 JSONL 诊断日志
@@ -31,10 +31,13 @@ src/main.ts
 - `kana [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
 - `kana resume [sessionId]`：按 ID 恢复会话，或打开会话选择器。
 - `kana install`：幂等补齐缺失的本地状态并刷新生成的配置参考，不物化默认 `config.toml`，也不安装 Skills 仓库。
+- `kana update [--check]`：检查最新正式 Release；省略 `--check` 时验证候选二进制并原子替换当前 direct-distribution 独立二进制。
 - `kana reset [--yes]`：经确认删除 `config.toml`，刷新配置参考并重置 MCP、审批和 Skill 启用状态，同时保留凭据、用户数据、日志、指令和实际 Skills。
 - `kana auth login|status|logout openai-codex`：管理 Codex 浏览器 OAuth 与本地凭据。
 - `kana skills install|reinstall [--yes]`：安全安装/更新默认 Skills Git 仓库，或经确认删除后重新 clone。
 - `kana skills sync|resync <target> [--yes]`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；sync 跳过同名项，resync 经确认替换同名项，但不清理其它或过期 Skill。
+
+自更新由 `kana/self-update.ts` 隔离在产品层，不进入 TUI 或 Agent 生命周期。它通过 GitHub Release API 取得版本、平台资产及 SHA-256 digest，把下载写入当前可执行文件的同目录临时路径，校验大小与 digest，并让候选程序执行 `--version` 和幂等初始化。替换前会再次比较目标文件的 device、inode、mtime 和大小，避免覆盖下载期间由其它安装进程写入的新版本；最终 rename 是 POSIX 同文件系统的原子目录项替换。源码运行默认标记为 `source` 并拒绝更新，所有可直接安装的编译入口在构建期注入 `direct` 标记，防止把 Bun runtime 误判为更新目标。任一外部 I/O、候选执行或替换步骤失败时都会使用固定阶段错误码并清理临时文件。
 
 启动 TUI 时，`startTui` 会加载运行配置和审批白名单，并以空闲的 `KanaMcpRuntime` 构造 `KanaTuiApp`。当前会话确定并完成首次 TUI 渲染后，App 才调用注入的外部工具加载回调；此时 runtime 才读取 MCP 定义与启用状态文件、连接选中的 server、发现工具，再由 App 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。会话读写、Skills 与 MCP 开关、记忆压缩、外部工具 start/reload 和 Agent 工厂都以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 

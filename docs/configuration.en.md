@@ -8,6 +8,10 @@ This document describes Kana's implemented commands, configuration files, and lo
 # Initialize local state; missing config.toml continues to use built-in defaults
 kana install
 
+# Only check the latest stable release, or download and replace the current Kana executable
+kana update --check
+kana update
+
 # Reset runtime configuration; confirmation is interactive unless --yes is explicit
 kana reset
 kana reset --yes
@@ -42,6 +46,8 @@ kana auth logout openai-codex
 ```
 
 `kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` is a Kana-managed generated reference: install compares it with the current schema and creates or refreshes it only when missing or stale. Runtime never reads this file, so copy only fields being overridden into `config.toml`. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
+
+`kana update --check` reads version metadata for GitHub's latest stable Release without downloading or modifying the binary. `kana update` selects the asset for the current operating system and architecture, verifies its reported size and SHA-256 digest, and runs both `--version` and the idempotent `kana install` through the candidate binary. Only after the candidate version, support-file initialization, and current executable identity all pass validation does a same-directory temporary file atomically replace the executable. Failure removes the temporary file and preserves the original binary; Kana also refuses to overwrite a target replaced by another installer while the download was in flight. Updating supports macOS/Linux on arm64 and x64, inherits Bun `fetch` handling of `HTTP_PROXY`/`HTTPS_PROXY`, and requires a writable installation directory. Source run directly through Bun has no direct-distribution build marker and therefore refuses self-update; standalone binaries built by `scripts/install.sh`, `bun run build:cli`, and the Release workflow include that marker.
 
 `kana reset` restores configuration to the state produced by a clean install. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
 

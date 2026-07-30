@@ -37,7 +37,7 @@ install_from_source() {
 
   local tmp_bin="$tmp_dir/$bin_name"
   echo "Building Kana from source..."
-  bun build --compile --outfile="$tmp_bin" src/main.ts
+  bun build --compile --define __KANA_DISTRIBUTION__='"direct"' --outfile="$tmp_bin" src/main.ts
 
   install -m 0755 "$tmp_bin" "$target"
   echo "Installed Kana to $target"

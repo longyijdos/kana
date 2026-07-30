@@ -158,6 +158,14 @@ export {
 export { getKanaSessionLogPath, type KanaLogPathOptions } from "./path";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
+  type CreateKanaUpdaterOptions,
+  createKanaUpdater,
+  type KanaUpdateProgressEvent,
+  type KanaUpdateResult,
+  type UpdateKanaOptions,
+  updateKana,
+} from "./self-update";
+export {
   type AppendKanaSessionMessagesOptions,
   type AppendKanaSessionRunOptions,
   appendKanaSessionMessages,

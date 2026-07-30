@@ -6,7 +6,7 @@ Kana is a general-purpose terminal agent running on Bun. It keeps model calls, t
 
 ```text
 src/main.ts
-  └─ cli                 Command parsing; starts, resumes, and installs Kana
+  └─ cli                 Command parsing; starts, resumes, installs, and updates Kana
       └─ tui             Terminal interaction, rendering, and user approval
           └─ kana        Product composition: config, prompts, sessions, memory, Skills
               ├─ logging  Session-scoped JSONL diagnostics
@@ -31,10 +31,13 @@ This layering also indicates where new code belongs: new providers go in `provid
 - `kana [prompt...]`: starts the TUI; if arguments are supplied, sends the prompt after startup.
 - `kana resume [sessionId]`: restores a session by ID or opens the session picker.
 - `kana install`: idempotently creates missing local state and refreshes the generated configuration reference without materializing a default `config.toml` or installing the Skills repository.
+- `kana update [--check]`: checks the latest stable Release; without `--check`, validates a candidate binary and atomically replaces the current direct-distribution executable.
 - `kana reset [--yes]`: after confirmation, deletes `config.toml`, refreshes the configuration reference, and resets MCP, approval, and Skill activation state while preserving credentials, user data, logs, instructions, and installed Skills.
 - `kana auth login|status|logout openai-codex`: manages Codex browser OAuth and local credentials.
 - `kana skills install|reinstall [--yes]`: safely installs or updates the default Skills Git repository, or deletes and reclones it after confirmation.
 - `kana skills sync|resync <target> [--yes]`: copies installed Kana Skills into another agent's Skills directory. Sync skips matching entries; confirmed resync replaces them without cleaning other or stale Skills.
+
+Self-update remains isolated in the `kana/self-update.ts` product layer and never enters the TUI or Agent lifecycle. It obtains the version, platform asset, and SHA-256 digest from the GitHub Release API; writes the download to a sibling temporary path; verifies its size and digest; and runs `--version` plus idempotent initialization through the candidate. Before replacement it compares the target's device, inode, mtime, and size again, preventing an update from overwriting a newer binary written by another installer while the download was in flight. The final rename is an atomic POSIX directory-entry replacement on the same filesystem. Source execution defaults to a `source` marker and refuses updating, while every directly installable compile entrypoint injects a `direct` marker at build time so the Bun runtime cannot be mistaken for the update target. Any external I/O, candidate-execution, or replacement failure uses a stable phase error code and removes the temporary file.
 
 When the TUI starts, `startTui` loads runtime configuration and the approval allowlist, then constructs `KanaTuiApp` with an idle `KanaMcpRuntime`. Only after the current session is known and the first TUI view is displayed does the app invoke its injected external-tool loader; the runtime then reads MCP definition and activation files, connects selected servers, discovers their tools, and lets the app rebuild the main Agent. The `kana resume` picker therefore does not start MCP; loading begins after a session is selected. Session I/O, Skill and MCP activation, memory compaction, external-tool start/reload, and the Agent factory are all injected as callbacks. The app therefore coordinates user flows without knowing JSONL, TOML, MCP transports, or other storage and protocol details.
 

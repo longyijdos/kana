@@ -6,6 +6,7 @@ import {
   resetKanaConfig,
   resyncKanaSkills,
   syncKanaSkills,
+  updateKana,
 } from "@/kana";
 import { startTui } from "@/tui";
 
@@ -17,4 +18,5 @@ await runCli(process.argv, {
   resyncKanaSkills,
   syncKanaSkills,
   startTui,
+  updateKana,
 });

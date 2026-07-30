@@ -3,15 +3,19 @@ import { Command } from "commander";
 import type {
   InstallKanaConfigResult,
   InstallKanaSkillsResult,
+  KanaUpdateProgressEvent,
+  KanaUpdateResult,
   ReinstallKanaSkillsResult,
   ResetKanaConfigResult,
   SyncKanaSkillsResult,
+  UpdateKanaOptions,
 } from "@/kana";
 import {
   authorizeKanaOpenAICodex,
   getKanaOpenAICodexAuthStatus,
   loadKanaEnvironment,
   signOutKanaOpenAICodex,
+  updateKana as updateKanaBinary,
 } from "@/kana";
 import type { OAuthSessionStatus } from "@/oauth";
 import type { StartTuiOptions } from "@/tui";
@@ -37,6 +41,7 @@ export type CreateCliOptions = {
   signOutOpenAICodex?: typeof signOutKanaOpenAICodex;
   log?: (message: string) => void;
   startTui: (options?: StartTuiOptions) => Promise<void> | void;
+  updateKana?: (options?: UpdateKanaOptions) => Promise<KanaUpdateResult>;
 };
 
 export function createCli(options: CreateCliOptions): Command {
@@ -53,6 +58,7 @@ export function createCli(options: CreateCliOptions): Command {
   const authorizeCodex = options.authorizeOpenAICodex ?? authorizeKanaOpenAICodex;
   const getCodexAuthStatus = options.getOpenAICodexAuthStatus ?? getKanaOpenAICodexAuthStatus;
   const signOutCodex = options.signOutOpenAICodex ?? signOutKanaOpenAICodex;
+  const runUpdate = options.updateKana ?? updateKanaBinary;
   const program = new Command();
 
   program
@@ -135,6 +141,20 @@ export function createCli(options: CreateCliOptions): Command {
       log(`Reset MCP activation state: ${result.mcpEnabledPath}`);
       log(`Reset approvals: ${result.approvalsPath}`);
       log(`Reset skills config: ${result.skillsConfigPath}`);
+    });
+
+  program
+    .command("update")
+    .description("Update the installed Kana binary")
+    .option("--check", "Check for an update without installing it")
+    .action(async (commandOptions: { check?: boolean }) => {
+      const result = await runUpdate({
+        checkOnly: commandOptions.check,
+        onProgress: (event) => {
+          log(formatUpdateProgress(event));
+        },
+      });
+      log(formatUpdateResult(result));
     });
 
   const authCommand = program.command("auth").description("Manage provider authentication");
@@ -319,6 +339,34 @@ function formatResetConfigMessage(result: ResetKanaConfigResult): string {
   return result.configRemoved
     ? `Removed config override: ${result.configPath}`
     : `Config override already absent: ${result.configPath}`;
+}
+
+function formatUpdateProgress(event: KanaUpdateProgressEvent): string {
+  switch (event.phase) {
+    case "checking":
+      return `Checking for Kana updates (current ${event.currentVersion})...`;
+    case "downloading":
+      return `Downloading Kana ${event.version} for ${event.platform}...`;
+    case "verifying":
+      return `Verifying Kana ${event.version}...`;
+    case "initializing":
+      return `Refreshing Kana support files with ${event.version}...`;
+    case "replacing":
+      return `Replacing Kana executable: ${event.executablePath}`;
+  }
+}
+
+function formatUpdateResult(result: KanaUpdateResult): string {
+  switch (result.status) {
+    case "up-to-date":
+      return `Kana ${result.currentVersion} is already up to date.`;
+    case "ahead":
+      return `Kana ${result.currentVersion} is newer than the latest release ${result.latestVersion}.`;
+    case "update-available":
+      return `Kana ${result.latestVersion} is available (current ${result.currentVersion}).`;
+    case "updated":
+      return `Updated Kana from ${result.previousVersion} to ${result.currentVersion}.`;
+  }
 }
 
 function capitalize(value: string): string {

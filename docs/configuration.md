@@ -8,6 +8,10 @@
 # 初始化本地状态；缺少 config.toml 时继续使用内置默认值
 kana install
 
+# 只检查最新正式版，或下载并替换当前 Kana 独立二进制
+kana update --check
+kana update
+
 # 重置运行配置；默认交互确认，自动化环境显式使用 --yes
 kana reset
 kana reset --yes
@@ -42,6 +46,8 @@ kana auth logout openai-codex
 ```
 
 `kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取它，需要覆盖默认值时只把相应字段复制到 `config.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
+
+`kana update --check` 读取 GitHub 最新正式 Release 的版本元数据，不下载或修改二进制。`kana update` 根据当前操作系统和架构下载对应资产，检查 Release 元数据中的文件大小和 SHA-256 digest，然后让候选二进制依次执行 `--version` 与幂等的 `kana install`；候选版本、支持文件初始化和当前可执行文件身份全部验证成功后，才通过同目录临时文件原子替换当前二进制。失败会删除临时文件并保留原二进制；如果另一个安装进程在下载期间已经替换目标，也会拒绝覆盖。更新支持 macOS/Linux 的 arm64、x64，沿用 Bun `fetch` 对 `HTTP_PROXY`/`HTTPS_PROXY` 的处理，且要求安装目录可写。直接通过 Bun 运行源码没有 direct distribution 构建标记，因此会拒绝自更新；`scripts/install.sh`、`bun run build:cli` 和正式 Release 构建的独立二进制包含该标记。
 
 `kana reset` 将配置恢复到纯净 install 状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
 

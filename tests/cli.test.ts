@@ -164,6 +164,85 @@ describe("CLI", () => {
     }
   });
 
+  test("updates Kana with progress reporting", async () => {
+    const calls: Array<{ checkOnly?: boolean }> = [];
+    const logs: string[] = [];
+
+    await parse(["node", "kana", "update"], {
+      log: (message) => {
+        logs.push(message);
+      },
+      updateKana: async (options) => {
+        calls.push({ checkOnly: options?.checkOnly });
+        options?.onProgress?.({
+          phase: "checking",
+          currentVersion: "1.0.0",
+        });
+        options?.onProgress?.({
+          phase: "downloading",
+          platform: "darwin-arm64",
+          version: "1.1.0",
+        });
+        options?.onProgress?.({
+          phase: "verifying",
+          version: "1.1.0",
+        });
+        options?.onProgress?.({
+          phase: "initializing",
+          version: "1.1.0",
+        });
+        options?.onProgress?.({
+          phase: "replacing",
+          executablePath: "/tmp/bin/kana",
+          version: "1.1.0",
+        });
+        return {
+          status: "updated",
+          executablePath: "/tmp/bin/kana",
+          previousVersion: "1.0.0",
+          currentVersion: "1.1.0",
+        };
+      },
+    });
+
+    expect(calls).toEqual([{ checkOnly: undefined }]);
+    expect(logs).toEqual([
+      "Checking for Kana updates (current 1.0.0)...",
+      "Downloading Kana 1.1.0 for darwin-arm64...",
+      "Verifying Kana 1.1.0...",
+      "Refreshing Kana support files with 1.1.0...",
+      "Replacing Kana executable: /tmp/bin/kana",
+      "Updated Kana from 1.0.0 to 1.1.0.",
+    ]);
+  });
+
+  test("checks for Kana updates without installing", async () => {
+    const logs: string[] = [];
+
+    await parse(["node", "kana", "update", "--check"], {
+      log: (message) => {
+        logs.push(message);
+      },
+      updateKana: async (options) => {
+        expect(options?.checkOnly).toBe(true);
+        options?.onProgress?.({
+          phase: "checking",
+          currentVersion: "1.0.0",
+        });
+        return {
+          status: "update-available",
+          currentVersion: "1.0.0",
+          latestVersion: "1.1.0",
+        };
+      },
+    });
+
+    expect(logs).toEqual([
+      "Checking for Kana updates (current 1.0.0)...",
+      "Kana 1.1.0 is available (current 1.0.0).",
+    ]);
+  });
+
   test("confirms reset with an explicit scope before changing configuration", async () => {
     const prompts: string[] = [];
     const logs: string[] = [];
@@ -451,6 +530,11 @@ function defaultCliOptions(): CreateCliOptions {
     }),
     log: () => {},
     startTui: () => {},
+    updateKana: async () => ({
+      status: "up-to-date",
+      currentVersion: KANA_VERSION,
+      latestVersion: KANA_VERSION,
+    }),
   };
 }
 
