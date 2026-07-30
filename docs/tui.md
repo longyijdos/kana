@@ -1,6 +1,6 @@
 # TUI 交互与渲染
 
-Kana 使用自研主屏 TUI，而非 alternate screen。`ProcessTerminal` 负责原始终端 I/O，`Tui` 负责组件、焦点和 ANSI 重绘，`ConversationRuntime` 负责 Agent、会话和 wake 生命周期，`KanaTuiApp` 则把其事件与产品控制器连接到界面。
+Kana 使用自研主屏 TUI，而非 alternate screen。`ProcessTerminal` 负责原始终端 I/O，`Tui` 负责组件、焦点和 ANSI 重绘，`KanaConversationHost` 提供共享的 Kana 产品装配，`ConversationRuntime` 负责 Agent、会话和 wake 生命周期，`KanaTuiApp` 则把其事件与产品控制器连接到界面。
 
 ## 运行结构
 

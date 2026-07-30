@@ -1,6 +1,6 @@
 # TUI interaction and rendering
 
-Kana uses a custom main-screen TUI rather than an alternate screen. `ProcessTerminal` owns raw terminal I/O, `Tui` owns components, focus, and ANSI repainting, `ConversationRuntime` owns Agent, session, and wake lifecycle, and `KanaTuiApp` connects its events and product controllers to the interface.
+Kana uses a custom main-screen TUI rather than an alternate screen. `ProcessTerminal` owns raw terminal I/O, `Tui` owns components, focus, and ANSI repainting, `KanaConversationHost` provides shared Kana product composition, `ConversationRuntime` owns Agent, session, and wake lifecycle, and `KanaTuiApp` connects its events and product controllers to the interface.
 
 ## Runtime structure
 

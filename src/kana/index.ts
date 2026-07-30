@@ -58,6 +58,14 @@ export {
   type KanaEnvironmentContext,
 } from "./context";
 export {
+  type CreateKanaConversationHostOptions,
+  createKanaConversationHost,
+  KanaConversationHost,
+  type KanaConversationHostAgentOptions,
+  type KanaConversationHostSession,
+  type KanaMemoryCompactSummary,
+} from "./conversation-host";
+export {
   type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,
