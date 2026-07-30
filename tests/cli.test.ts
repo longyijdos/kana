@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type CreateCliOptions, createCli } from "../src/cli";
+import type { StartHeadlessOptions } from "../src/headless";
 import type { StartTuiOptions } from "../src/tui";
 import { KANA_VERSION } from "../src/version";
 
@@ -49,6 +50,48 @@ describe("CLI", () => {
       {
         resumeSessionId: "session-1",
         showResumePicker: false,
+      },
+    ]);
+  });
+
+  test("runs one headless turn with explicit machine-output and approval options", async () => {
+    const calls: StartHeadlessOptions[] = [];
+
+    await parse(
+      ["node", "kana", "exec", "--json", "--allow-all-tools", "explain", "this", "repo"],
+      {
+        startHeadless: async (options) => {
+          calls.push(options ?? {});
+          return 0;
+        },
+      },
+    );
+
+    expect(calls).toEqual([
+      {
+        prompt: "explain this repo",
+        json: true,
+        allowAllTools: true,
+      },
+    ]);
+  });
+
+  test("resumes a session in headless mode and leaves a missing prompt for stdin", async () => {
+    const calls: StartHeadlessOptions[] = [];
+
+    await parse(["node", "kana", "exec", "resume", "session-1", "--json"], {
+      startHeadless: async (options) => {
+        calls.push(options ?? {});
+        return 0;
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        prompt: undefined,
+        resumeSessionId: "session-1",
+        json: true,
+        allowAllTools: undefined,
       },
     ]);
   });
@@ -529,6 +572,7 @@ function defaultCliOptions(): CreateCliOptions {
       skills: [],
     }),
     log: () => {},
+    startHeadless: async () => 0,
     startTui: () => {},
     updateKana: async () => ({
       status: "up-to-date",

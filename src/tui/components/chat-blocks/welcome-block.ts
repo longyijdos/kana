@@ -88,7 +88,7 @@ export class WelcomeBlock implements Component {
       title("Highlights"),
       text("  Automatic context compaction"),
       text("  Persistent agent memory"),
-      text("  Provider and model switching"),
+      text("  Headless exec for automation"),
       text("  MCP OAuth and activation"),
       text("  Safe parallel tool execution"),
       muted("  ... /help for more"),

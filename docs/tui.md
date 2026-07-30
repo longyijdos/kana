@@ -1,6 +1,6 @@
 # TUI 交互与渲染
 
-Kana 使用自研主屏 TUI，而非 alternate screen。`ProcessTerminal` 负责原始终端 I/O，`Tui` 负责组件、焦点和 ANSI 重绘，`KanaTuiApp` 负责把 Agent、会话和产品控制器连接到界面。
+Kana 使用自研主屏 TUI，而非 alternate screen。`ProcessTerminal` 负责原始终端 I/O，`Tui` 负责组件、焦点和 ANSI 重绘，`KanaConversationHost` 提供共享的 Kana 产品装配，`ConversationRuntime` 负责 Agent、会话和 wake 生命周期，`KanaTuiApp` 则把其事件与产品控制器连接到界面。
 
 ## 运行结构
 
@@ -23,7 +23,7 @@ ProcessTerminal
 
 ## 终端生命周期与渲染
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。可选服务器失败会在摘要后留下错误色警告；初次加载时必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿也会在 transcript 中显示同样的进度；但 reload 失败时会用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，中止并等待活动 Agent，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
+`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再让 `ConversationRuntime` 用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。可选服务器失败会在摘要后留下错误色警告；初次加载时必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿也会在 transcript 中显示同样的进度；但 reload 失败时会用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，关闭并等待 `ConversationRuntime`，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
@@ -40,7 +40,7 @@ ProcessTerminal
 
 ## App 与 Agent 事件
 
-`KanaTuiApp` 维护当前 Agent、session ID、运行标志、累计模型用量和成本。提交 prompt 时，它把用户文本加入 transcript，消费 `AgentEventStream`，然后由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使它排队，状态结束后再投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
+`ConversationRuntime` 维护当前 Agent、session ID、提交互斥和 wake queue；`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |

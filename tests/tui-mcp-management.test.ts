@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AgentEventStream } from "../src/agent";
+import { createWakeScheduler } from "../src/kana";
 import { KanaTuiApp } from "../src/tui/app/app";
 import { stripAnsi } from "../src/tui/render";
 import type { Component, Terminal } from "../src/tui/runtime";
@@ -112,6 +113,14 @@ describe("TUI MCP management", () => {
   });
 
   test("queues scheduled wakes while the MCP manager is open", async () => {
+    const timers = new Map<number | ReturnType<typeof setTimeout>, () => void>();
+    const wakeScheduler = createWakeScheduler({
+      setTimeout: (callback) => {
+        timers.set(1, callback);
+        return 1;
+      },
+      clearTimeout: (timer) => timers.delete(timer),
+    });
     const calls: Array<{
       input: unknown;
       stream: AgentEventStream;
@@ -130,6 +139,7 @@ describe("TUI MCP management", () => {
       {
         ...createOptions(),
         initialSession: { id: "session-a", messages: [], timeline: [] },
+        wakeScheduler,
         mcpManagement: {
           loadServers: () => [],
           saveEnabledServerIds: () => {},
@@ -137,17 +147,15 @@ describe("TUI MCP management", () => {
         },
       },
     );
-    const internal = app as unknown as AppInternals & {
-      queueWakeEvent(event: { id: string; sessionId: string; dueAt: Date; message: string }): void;
-    };
+    const internal = app as unknown as AppInternals;
 
     internal.handleCommand({ name: "mcp", arguments: "", raw: "/mcp" });
-    internal.queueWakeEvent({
-      id: "wake-1",
+    wakeScheduler.schedule({
       sessionId: "session-a",
-      dueAt: new Date(),
+      afterMinutes: 30,
       message: "Check the task.",
     });
+    timers.get(1)?.();
     expect(calls).toEqual([]);
 
     internal.tui.getFocus()?.handleInput?.("\x1b");
@@ -155,6 +163,7 @@ describe("TUI MCP management", () => {
 
     expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
     calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+    wakeScheduler.dispose();
   });
 });
 

@@ -1,26 +1,27 @@
 # Kana Architecture Overview
 
-Kana is a general-purpose terminal agent running on Bun. It keeps model calls, tool execution, and local persistence in one process, and presents the streaming workflow through a custom TUI. This document describes the implemented runtime boundaries and module relationships so contributors can trace a request from the entry point to its concrete responsibilities.
+Kana is a general-purpose terminal agent running on Bun. It keeps model calls, tool execution, and local persistence in one process, with either an interactive custom TUI or one-shot headless execution. This document describes the implemented runtime boundaries and module relationships so contributors can trace a request from the entry point to its concrete responsibilities.
 
 ## Layers and dependency direction
 
 ```text
 src/main.ts
-  └─ cli                 Command parsing; starts, resumes, installs, and updates Kana
-      └─ tui             Terminal interaction, rendering, and user approval
-          └─ kana        Product composition: config, prompts, sessions, memory, Skills
-              ├─ logging  Session-scoped JSONL diagnostics
-              ├─ oauth    Generic OAuth discovery, PKCE, callback, token, and refresh state
-              ├─ mcp      MCP JSON-RPC connections, protocol clients, and transports
-              ├─ agent   Model/tool loop and event protocol translation
-              ├─ tools   File, shell, and remember tools
-              ├─ core    Shared message, model, stream, and usage contracts
-              └─ providers
-                  ├─ deepseek      DeepSeek requests, SSE parsing, and streaming adapter
-                  └─ openai-codex  Codex Responses, OAuth credentials, and streaming adapter
+  ├─ cli                 Command parsing; starts, resumes, installs, and updates Kana
+  ├─ headless            One-shot execution, JSONL projection, and non-interactive approval ─┐
+  └─ tui                 Terminal interaction, rendering, and user approval ─────────────────┴→ kana
+                                                                                               Product composition: config, prompts, sessions, memory, Skills
+                                                                                                 ├─ logging  Session-scoped JSONL diagnostics
+                                                                                                 ├─ oauth    Generic OAuth discovery, PKCE, callback, token, and refresh state
+                                                                                                 ├─ mcp      MCP JSON-RPC connections, protocol clients, and transports
+                                                                                                 ├─ agent    Model/tool loop and event protocol translation
+                                                                                                 ├─ tools    File, shell, and remember tools
+                                                                                                 ├─ core     Shared message, model, stream, and usage contracts
+                                                                                                 └─ providers
+                                                                                                     ├─ deepseek      DeepSeek requests, SSE parsing, and streaming adapter
+                                                                                                     └─ openai-codex  Codex Responses, OAuth credentials, and streaming adapter
 ```
 
-`core` is the innermost protocol package: it has no dependency on product configuration or the TUI. `agent` depends only on `core` and `tools`, so it can run without a terminal UI. `oauth` is a generic Authorization Code + PKCE and token-lifecycle module that knows nothing about MCP, providers, or the TUI. `mcp` layers protected-resource discovery and Bearer-challenge semantics on top while remaining independent from Kana product composition and the Agent loop. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` consumes those higher-level capabilities but does not implement model protocols or persistence formats directly.
+`core` is the innermost protocol package: it has no dependency on product configuration or a frontend. `agent` depends only on `core` and `tools`, so it can run without a terminal UI. `oauth` is a generic Authorization Code + PKCE and token-lifecycle module that knows nothing about MCP, providers, or frontends. `mcp` layers protected-resource discovery and Bearer-challenge semantics on top while remaining independent from Kana product composition and the Agent loop. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` and `headless` share that composition layer and neither implements model protocols or persistence formats directly.
 
 This layering also indicates where new code belongs: new providers go in `providers`, reusable execution capabilities in `tools`, loop control in `agent`, Kana defaults and local state in `kana`, and interaction presentation in `tui`.
 
@@ -30,6 +31,7 @@ This layering also indicates where new code belongs: new providers go in `provid
 
 - `kana [prompt...]`: starts the TUI; if arguments are supplied, sends the prompt after startup.
 - `kana resume [sessionId]`: restores a session by ID or opens the session picker.
+- `kana exec [prompt...]` / `kana exec resume <sessionId> [prompt...]`: runs one complete Agent turn without the TUI and exits; `--json` writes a versioned JSONL event stream.
 - `kana install`: idempotently creates missing local state and refreshes the generated configuration reference without materializing a default `config.toml` or installing the Skills repository.
 - `kana update [--check]`: checks the latest stable Release; without `--check`, validates a candidate binary and atomically replaces the current direct-distribution executable.
 - `kana reset [--yes]`: after confirmation, deletes `config.toml`, refreshes the configuration reference, and resets MCP, approval, and Skill activation state while preserving credentials, user data, logs, instructions, and installed Skills.
@@ -39,13 +41,16 @@ This layering also indicates where new code belongs: new providers go in `provid
 
 Self-update remains isolated in the `kana/self-update.ts` product layer and never enters the TUI or Agent lifecycle. It obtains the version, platform asset, and SHA-256 digest from the GitHub Release API; writes the download to a sibling temporary path; verifies its size and digest; and runs `--version` plus idempotent initialization through the candidate. Before replacement it compares the target's device, inode, mtime, and size again, preventing an update from overwriting a newer binary written by another installer while the download was in flight. The final rename is an atomic POSIX directory-entry replacement on the same filesystem. Source execution defaults to a `source` marker and refuses updating, while every directly installable compile entrypoint injects a `direct` marker at build time so the Bun runtime cannot be mistaken for the update target. Any external I/O, candidate-execution, or replacement failure uses a stable phase error code and removes the temporary file.
 
-When the TUI starts, `startTui` loads runtime configuration and the approval allowlist, then constructs `KanaTuiApp` with an idle `KanaMcpRuntime`. Only after the current session is known and the first TUI view is displayed does the app invoke its injected external-tool loader; the runtime then reads MCP definition and activation files, connects selected servers, discovers their tools, and lets the app rebuild the main Agent. The `kana resume` picker therefore does not start MCP; loading begins after a session is selected. Session I/O, Skill and MCP activation, memory compaction, external-tool start/reload, and the Agent factory are all injected as callbacks. The app therefore coordinates user flows without knowing JSONL, TOML, MCP transports, or other storage and protocol details.
+When the TUI starts, `startTui` first creates a `KanaConversationHost`. The host loads runtime configuration and the approval allowlist; owns session journals, logging, accounting, memory, the wake scheduler, and `KanaMcpRuntime`; and gives the frontend a unified Agent factory and session operations. `KanaTuiApp` creates a product-layer `ConversationRuntime` from those dependencies. That runtime owns the current Agent and session, submission exclusion, Agent replacement, session new/fork/resume, and ordered delivery of queued due wakes. Only after the current session is known and the first TUI view is displayed does the app ask the host to load external tools; the MCP runtime then reads definition and activation files, connects selected servers, discovers their tools, and lets `ConversationRuntime` rebuild the main Agent. The `kana resume` picker therefore does not start MCP; loading begins after a session is selected. The TUI coordinates only visible user flows: it implements neither conversation lifecycle nor Kana product composition and knows nothing about JSONL, TOML, MCP transports, or other storage and protocol details.
+
+`startHeadless` uses the same host and runtime, loads MCP first, submits one user message, and waits for the complete Agent loop. It projects runtime events into a separately versioned public JSONL protocol, or writes progress to stderr and final assistant text to stdout. The headless frontend has no interactive approval: tools not trusted by configuration or the allowlist fail closed unless the caller explicitly passes `--allow-all-tools`. `SIGINT` cancels the active Agent and exits with status `130`.
 
 ## How one prompt runs
 
 ```text
 User input
   → KanaTuiApp.submitPrompt
+  → ConversationRuntime.submit
   → Agent.stream
   → runAgentLoop
   → Model.stream (selected provider SSE)
@@ -121,6 +126,8 @@ The manager freezes its discovered tool list and does not process `notifications
 
 ## Kana product composition
 
+`KanaConversationHost` is Kana's frontend-shared product lifecycle boundary. It centralizes configuration, approvals, session journals, logging, accounting, memory consolidation, the wake scheduler, MCP, and `createKanaAgent`, and creates an Agent bound to the correct session after every new, fork, resume, or configuration change. The host returns only frontend-neutral data and operations and performs no TUI rendering; `ConversationRuntime` consumes those operations and manages execution state for a conversation. Interactive and headless frontends can therefore share exactly the same model, prompt, tool, persistence, and usage-accounting rules.
+
 `createKanaAgent` is the runtime composition point. It uses the current directory as the workspace, loads visible Skills, builds the system prompt, registers `list`, `glob`, `grep`, `read`, `write`, `edit`, `bash`, and optional built-ins, then appends product-supplied `additionalTools` after validating unique names.
 
 The system prompt consists of the following sections; the later project-level instructions take precedence:
@@ -180,7 +187,7 @@ Approval modes are `always`, `unless_trusted`, and `never`. In the default mode,
 
 ## TUI architecture
 
-`KanaTuiApp` owns interaction-level state: the current Agent, session ID, running flag, accumulated usage/cost, and controllers. It does not render model events to ANSI itself; `AgentEventRenderer` maps `AgentEvent` values to assistant message blocks, tool blocks, and status phases.
+`ConversationRuntime` is the product-level conversation lifecycle boundary. It owns the current Agent and session, rejects concurrent submissions, centralizes new/fork/resume and Agent replacement after configuration or tool changes, and drains the current session's wake queue in order once the frontend is ready. It publishes frontend-neutral run, Agent-event, and session-change events; listener failures are isolated and recorded as diagnostics. `KanaTuiApp` owns only accumulated usage/cost and interaction controllers, subscribes to runtime events, and delegates their visible mapping to `AgentEventRenderer`.
 
 ```text
 ProcessTerminal (raw mode, input, resize, notifications)

@@ -57,6 +57,23 @@ export {
   formatKanaEnvironmentContext,
   type KanaEnvironmentContext,
 } from "./context";
+export {
+  type CreateKanaConversationHostOptions,
+  createKanaConversationHost,
+  KanaConversationHost,
+  type KanaConversationHostAgentOptions,
+  type KanaConversationHostSession,
+  type KanaMemoryCompactSummary,
+} from "./conversation-host";
+export {
+  type ConversationRunSource,
+  ConversationRuntime,
+  type ConversationRuntimeEvent,
+  type ConversationRuntimeListener,
+  type ConversationRuntimeOptions,
+  type ConversationSessionSnapshot,
+  type CreateConversationAgentOptions,
+} from "./conversation-runtime";
 export { loadKanaEnvironment } from "./env";
 export { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./mcp";
 export {

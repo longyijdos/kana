@@ -1,26 +1,27 @@
 # Kana 架构总览
 
-Kana 是一个以 Bun 运行的终端通用 Agent。它将模型调用、工具执行和本地状态持久化放在同一进程中，并用自研 TUI 显示流式过程。本文描述当前实现的运行边界和模块关系，帮助新贡献者从入口一路定位到具体职责。
+Kana 是一个以 Bun 运行的终端通用 Agent。它将模型调用、工具执行和本地状态持久化放在同一进程中，可通过自研 TUI 交互，也可在无头模式下执行一次完整任务。本文描述当前实现的运行边界和模块关系，帮助新贡献者从入口一路定位到具体职责。
 
 ## 分层与依赖方向
 
 ```text
 src/main.ts
-  └─ cli                 命令解析；启动、恢复会话、安装与更新
-      └─ tui             终端交互、渲染和用户审批
-          └─ kana        产品装配：配置、提示词、会话、记忆、Skills
-              ├─ logging  会话级 JSONL 诊断日志
-              ├─ oauth    通用 OAuth 发现、PKCE、callback、token 与 refresh 状态机
-              ├─ mcp      MCP JSON-RPC 连接、协议客户端与传输
-              ├─ agent   模型—工具循环和事件协议转换
-              ├─ tools   文件、Shell 与 remember 工具
-              ├─ core    消息、模型、流和用量的共享协议
-              └─ providers
-                  ├─ deepseek      DeepSeek 请求、SSE 解析和流式适配
-                  └─ openai-codex  Codex Responses、OAuth 凭据和流式适配
+  ├─ cli                 命令解析；启动、恢复会话、安装与更新
+  ├─ headless            单次执行、JSONL 投影和非交互审批 ─┐
+  └─ tui                 终端交互、渲染和用户审批 ─────────┴→ kana
+                                                            产品装配：配置、提示词、会话、记忆、Skills
+                                                              ├─ logging  会话级 JSONL 诊断日志
+                                                              ├─ oauth    通用 OAuth 发现、PKCE、callback、token 与 refresh 状态机
+                                                              ├─ mcp      MCP JSON-RPC 连接、协议客户端与传输
+                                                              ├─ agent    模型—工具循环和事件协议转换
+                                                              ├─ tools    文件、Shell 与 remember 工具
+                                                              ├─ core     消息、模型、流和用量的共享协议
+                                                              └─ providers
+                                                                  ├─ deepseek      DeepSeek 请求、SSE 解析和流式适配
+                                                                  └─ openai-codex  Codex Responses、OAuth 凭据和流式适配
 ```
 
-`core` 是最内层的协议包：不依赖产品配置或 TUI。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`oauth` 是不感知 MCP、供应商或 TUI 的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 依赖这些上层能力，但不直接实现模型协议或持久化格式。
+`core` 是最内层的协议包：不依赖产品配置或前端。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`oauth` 是不感知 MCP、供应商或前端的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 与 `headless` 共享该装配层，且都不直接实现模型协议或持久化格式。
 
 这种分层也说明了新增代码应放在哪里：新增供应商放 `providers`，可复用的执行能力放 `tools`，循环控制放 `agent`，Kana 的默认策略和本地状态放 `kana`，交互呈现放 `tui`。
 
@@ -30,6 +31,7 @@ src/main.ts
 
 - `kana [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
 - `kana resume [sessionId]`：按 ID 恢复会话，或打开会话选择器。
+- `kana exec [prompt...]` / `kana exec resume <sessionId> [prompt...]`：不启动 TUI，执行一次完整 Agent turn 后退出；可用 `--json` 输出版本化 JSONL 事件。
 - `kana install`：幂等补齐缺失的本地状态并刷新生成的配置参考，不物化默认 `config.toml`，也不安装 Skills 仓库。
 - `kana update [--check]`：检查最新正式 Release；省略 `--check` 时验证候选二进制并原子替换当前 direct-distribution 独立二进制。
 - `kana reset [--yes]`：经确认删除 `config.toml`，刷新配置参考并重置 MCP、审批和 Skill 启用状态，同时保留凭据、用户数据、日志、指令和实际 Skills。
@@ -39,13 +41,16 @@ src/main.ts
 
 自更新由 `kana/self-update.ts` 隔离在产品层，不进入 TUI 或 Agent 生命周期。它通过 GitHub Release API 取得版本、平台资产及 SHA-256 digest，把下载写入当前可执行文件的同目录临时路径，校验大小与 digest，并让候选程序执行 `--version` 和幂等初始化。替换前会再次比较目标文件的 device、inode、mtime 和大小，避免覆盖下载期间由其它安装进程写入的新版本；最终 rename 是 POSIX 同文件系统的原子目录项替换。源码运行默认标记为 `source` 并拒绝更新，所有可直接安装的编译入口在构建期注入 `direct` 标记，防止把 Bun runtime 误判为更新目标。任一外部 I/O、候选执行或替换步骤失败时都会使用固定阶段错误码并清理临时文件。
 
-启动 TUI 时，`startTui` 会加载运行配置和审批白名单，并以空闲的 `KanaMcpRuntime` 构造 `KanaTuiApp`。当前会话确定并完成首次 TUI 渲染后，App 才调用注入的外部工具加载回调；此时 runtime 才读取 MCP 定义与启用状态文件、连接选中的 server、发现工具，再由 App 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。会话读写、Skills 与 MCP 开关、记忆压缩、外部工具 start/reload 和 Agent 工厂都以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
+启动 TUI 时，`startTui` 先创建 `KanaConversationHost`。Host 加载运行配置和审批白名单，持有 session journal、日志、accounting、记忆、wake scheduler 与 `KanaMcpRuntime`，并向前端提供统一的 Agent 工厂和 session 操作。`KanaTuiApp` 用这些依赖创建产品层 `ConversationRuntime`；该 runtime 持有当前 Agent 和 session，负责提交互斥、Agent 重建、session new/fork/resume，以及到期 wake 的排队和顺序投递。当前会话确定并完成首次 TUI 渲染后，App 才请求 Host 加载外部工具；此时 MCP runtime 读取定义与启用状态文件、连接选中的 server、发现工具，再由 `ConversationRuntime` 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。TUI 只协调可见用户流程，不实现对话生命周期或 Kana 产品装配，也不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
+
+`startHeadless` 使用同一个 Host 和 runtime，先加载 MCP，再提交一条用户消息并等待完整 Agent loop 结束。它把 runtime 事件投影成独立版本的 JSONL 公共协议，或把进度写到 stderr、最终助手文本写到 stdout。无头前端不提供交互审批；未被配置或白名单信任的工具会关闭失败，除非调用方显式传入 `--allow-all-tools`。`SIGINT` 会取消活动 Agent，进程以 `130` 退出。
 
 ## 一次对话如何执行
 
 ```text
 用户输入
   → KanaTuiApp.submitPrompt
+  → ConversationRuntime.submit
   → Agent.stream
   → runAgentLoop
   → Model.stream (selected provider SSE)
@@ -121,6 +126,8 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 ## Kana 产品装配
 
+`KanaConversationHost` 是前端共享的 Kana 产品生命周期边界。它集中装配配置、审批、session journal、日志、accounting、记忆压缩、wake scheduler、MCP 与 `createKanaAgent`，并为每次新建、分叉、恢复或配置变化创建绑定到正确 session 的 Agent。Host 只返回前端中立的数据和操作，不渲染 TUI；`ConversationRuntime` 则消费这些操作并管理一次对话的执行状态。这样交互式前端与无头前端可以共享完全相同的模型、提示词、工具、持久化和用量记录规则。
+
 `createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建系统提示词，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash` 与可选内置工具，并在校验名称唯一后追加产品层传入的 `additionalTools`。
 
 系统提示词由以下部分组成，后面的项目级指令优先级更高：
@@ -180,7 +187,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 ## TUI 架构
 
-`KanaTuiApp` 持有交互级状态：当前 Agent、会话 ID、运行标志、累计用量/成本，以及各个控制器。它不直接把模型事件渲染成 ANSI；`AgentEventRenderer` 负责把 `AgentEvent` 映射为助手消息块、工具块和状态栏阶段。
+`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台空闲后按顺序 drain 当前 session 的 wake queue。它发布与前端无关的 run、Agent event 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。
 
 ```text
 ProcessTerminal（raw mode、输入、resize、通知）
