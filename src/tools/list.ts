@@ -60,6 +60,9 @@ export function createListTool(
     description:
       "List the direct children of a directory. Prefer this over bash ls for file exploration.",
     parameters: listParameters,
+    execution: {
+      concurrency: "parallel",
+    },
     execute: async (args) => {
       const directory = await resolveExistingWorkspaceDirectory(root, args.path ?? ".");
       const includeHidden = args.includeHidden ?? true;

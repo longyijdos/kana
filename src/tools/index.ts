@@ -55,6 +55,7 @@ export {
 } from "./schedule-wake";
 export type {
   Tool,
+  ToolConcurrency,
   ToolContext,
   ToolExecutionPolicy,
   ToolResult,

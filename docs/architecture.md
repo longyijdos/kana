@@ -67,7 +67,7 @@ src/main.ts
 
 可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。`/compact` 复用同一个 manager 和摘要策略，但使用独立 commit，在持久化成功后才 adopt checkpoint。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
 
-`runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限；最后一个允许回合仍产生工具调用时以 `turn_limit` 结束。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才把调用交给 `ToolRuntime`。该 runtime 负责工具查找、TypeBox 1.x 参数校验、`beforeToolExecution`、调用级中止与 deadline、执行、结果规范化及提交；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。工具 update 通过串行事件队列保持顺序，最终结果先写 journal 再发布 `tool_execution_end`。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果。运行中止或 deadline 会中止工具的独立 signal；工具若在有限宽限期内仍未退出，其可见结果固定为 `unknown`，迟到 update 被忽略，当前 run 终止且模型不会自动重试。
+`runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限；最后一个允许回合仍产生工具调用时以 `turn_limit` 结束。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才把调用交给 `ToolRuntime`。该 runtime 负责工具查找、TypeBox 1.x 参数校验、串行审批、调用级中止与 deadline、显式并发调度、结果规范化及提交；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。只有连续的 `parallel` 工具组成并行组；默认 `exclusive` 的工具形成屏障。工具 update 通过串行事件队列保持顺序，实际完成的结果通过另一条串行 commit 队列逐条写 journal，再发布 `tool_execution_end`，并以同一完成顺序进入下一次模型请求。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果。运行中止或 deadline 会中止工具的独立 signal；工具若在有限宽限期内仍未退出，其可见结果固定为 `unknown`，迟到 update 被忽略，当前 run 终止且模型不会自动重试。
 
 ## 模型与供应商适配
 
@@ -164,6 +164,8 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 ## 工具、审批与安全边界
 
 工具优先使用 TypeBox 1.x schema；调用前先执行参数转换和编译校验，校验后的参数才交给工具。TypeBox schema 经 JSON 序列化后会丢失运行时元数据，Kana 会为这种普通 JSON Schema 补充兼容的基础类型转换，再使用同一 TypeBox 编译器校验。工具结果分为给模型的文本 `content` 和给 Agent/TUI 的结构化 `result`，避免展示层解析供应商文本。
+
+工具的 `execution.concurrency` 可声明为 `parallel` 或 `exclusive`，缺省时安全地使用 `exclusive`。内置 `list`、`glob`、`grep`、`read` 是只读并声明为 `parallel`；写入、Shell、记忆和第三方/MCP 工具不会隐式获得并发权限。
 
 - `list` 列出目录的一层子项，`glob` 用相对 pattern 查找路径，`grep` 搜索文本内容；三者用于受控只读探索。
 - `read` 读取文本文件，支持按行分页。

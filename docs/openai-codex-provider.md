@@ -40,6 +40,7 @@ max_retries = 1
 - 工具作为 developer `additional_tools` input item 发送，而不是顶层 `tools`。
 - 系统提示词作为 developer message，用户消息、工具结果和助手 output item 按原顺序追加到 `input`。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
+- `parallel_tool_calls = true`，允许模型在同一响应中提出多个调用；是否实际并行仍由 Kana 的工具并发元数据决定。
 - reasoning 设置包含 `effort`、summary 类型和 `all_turns` context。
 - `max_tokens` 只用于 Kana 的本地上下文输出预留；backend 请求不发送其拒绝的 `max_output_tokens`。
 
@@ -60,7 +61,7 @@ reader 会保留跨网络分片的不完整 SSE 帧，并在一个 body chunk �
 | function call added / argument delta / item done | `toolcall_start` / `toolcall_delta` / `toolcall_end` |
 | `response.completed` / `response.incomplete` | 最终 stop reason 与 usage |
 
-输出 item 以 `output_index` 为首选地址，并用 item ID 作为回退。完成事件中的最终内容会校正累计 delta；重复完成的 item 不会再次发出。`response.incomplete` 映射为 `length`，存在函数调用的完成响应映射为 `toolUse`，其余为 `stop`。
+输出 item 以 `output_index` 为首选地址，并用 item ID 作为回退；多个函数调用的参数 delta 可以交错到达，仍会回填各自的内容块。完成事件中的最终内容会校正累计 delta；重复完成的 item 不会再次发出。`response.incomplete` 映射为 `length`，存在函数调用的完成响应映射为 `toolUse`，其余为 `stop`。
 
 每个完成 item 都以不透明 `providerState` 附加到对应助手内容。后续回合会移除 server item ID，再原样回传 reasoning encrypted content、message 或 function call；这样 `store = false` 仍能延续推理状态。只有 summary 文本而没有供应商 item 时不会重建 reasoning input。
 

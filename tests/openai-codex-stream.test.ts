@@ -173,6 +173,103 @@ describe("OpenAI Codex stream parsing", () => {
       },
     });
   });
+
+  test("correlates interleaved parallel function-call arguments by output index", async () => {
+    const stream = new AssistantEventStream();
+    const eventsPromise = collectEvents(stream);
+    const message: AssistantMessage = { role: "assistant", content: [] };
+    const state: OpenAICodexStreamState = { terminalSeen: false };
+    const processor = new OpenAICodexStreamProcessor(stream, message, state);
+
+    processor.apply({
+      type: "response.output_item.added",
+      output_index: 0,
+      item: {
+        id: "item-1",
+        type: "function_call",
+        call_id: "call-1",
+        name: "read",
+        arguments: "",
+      },
+    });
+    processor.apply({
+      type: "response.output_item.added",
+      output_index: 1,
+      item: {
+        id: "item-2",
+        type: "function_call",
+        call_id: "call-2",
+        name: "read",
+        arguments: "",
+      },
+    });
+    processor.apply({
+      type: "response.function_call_arguments.delta",
+      output_index: 1,
+      delta: '{"path":"b',
+    });
+    processor.apply({
+      type: "response.function_call_arguments.delta",
+      output_index: 0,
+      delta: '{"path":"a"}',
+    });
+    processor.apply({
+      type: "response.function_call_arguments.delta",
+      output_index: 1,
+      delta: '"}',
+    });
+    processor.apply({
+      type: "response.output_item.done",
+      output_index: 1,
+      item: {
+        id: "item-2",
+        type: "function_call",
+        call_id: "call-2",
+        name: "read",
+        arguments: '{"path":"b"}',
+      },
+    });
+    processor.apply({
+      type: "response.output_item.done",
+      output_index: 0,
+      item: {
+        id: "item-1",
+        type: "function_call",
+        call_id: "call-1",
+        name: "read",
+        arguments: '{"path":"a"}',
+      },
+    });
+    processor.apply({
+      type: "response.completed",
+      response: {
+        status: "completed",
+        output: [],
+      },
+    });
+    stream.end({
+      type: "done",
+      reason: state.stopReason ?? "stop",
+      message: structuredClone(message),
+    });
+
+    const events = await eventsPromise;
+
+    expect(message.content).toEqual([
+      expect.objectContaining({
+        type: "tool_call",
+        id: "call-1",
+        args: { path: "a" },
+      }),
+      expect.objectContaining({
+        type: "tool_call",
+        id: "call-2",
+        args: { path: "b" },
+      }),
+    ]);
+    expect(events.filter((event) => event.type === "toolcall_end")).toHaveLength(2);
+    expect(state.stopReason).toBe("toolUse");
+  });
 });
 
 async function collectEvents(stream: AssistantEventStream) {

@@ -324,7 +324,7 @@ Codex 自己的 `AGENTS.md` 也明确提醒其 `codex-core` 已经膨胀，不�
 3. 定义 interrupted turn 与未完成尾记录的恢复语义。
 4. 运行时只保留 v3 读取路径；本地 v1/v2 session 经一次性备份和迁移后切换。
 
-### 第四阶段：ToolRuntime
+### 第四阶段：ToolRuntime（已完成）
 
 1. 从 `loop.ts` 抽出工具执行逻辑。
 2. 加入串行事件队列。

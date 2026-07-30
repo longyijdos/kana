@@ -30,6 +30,8 @@ export class AgentEventRenderer {
   private readonly textPresenter: StreamingTextPresenter;
   private streamingAssistant?: AssistantMessageBlock;
   private activityTimer?: ReturnType<typeof setInterval>;
+  private readonly activeTools = new Map<string, string>();
+  private toolErrorCount = 0;
 
   constructor(private readonly options: AgentEventRendererOptions) {
     this.toolCallBlocks = new ToolCallBlocks(options.transcript);
@@ -51,6 +53,8 @@ export class AgentEventRenderer {
     this.streamingAssistant?.showThinking(false);
     this.streamingAssistant = undefined;
     this.toolCallBlocks.clear();
+    this.activeTools.clear();
+    this.toolErrorCount = 0;
   }
 
   handle(event: AgentEvent): void {
@@ -60,11 +64,14 @@ export class AgentEventRenderer {
         break;
       case "agent_end":
         this.stopActiveTimers();
+        this.activeTools.clear();
         this.options.updateStatus(phaseForAgentEndReason(event.reason), {
           activeTool: undefined,
         });
         break;
       case "turn_start":
+        this.activeTools.clear();
+        this.toolErrorCount = 0;
         this.options.updateStatus("thinking");
         break;
       case "turn_end":
@@ -99,15 +106,13 @@ export class AgentEventRenderer {
         break;
       case "tool_execution_update":
         this.toolCallBlocks.updatePartialResult(event.toolCallId, event.partialResult);
-        this.options.updateStatus("tool", {
-          activeTool: event.toolName,
-        });
+        this.updateToolStatus();
         break;
       case "tool_execution_end":
         this.toolCallBlocks.updateResult(event.toolCallId, event.result, event.isError);
-        this.options.updateStatus(event.isError ? "error" : "tool", {
-          activeTool: undefined,
-        });
+        this.activeTools.delete(event.toolCallId);
+        this.toolErrorCount += event.isError ? 1 : 0;
+        this.updateToolStatus();
         break;
     }
 
@@ -169,8 +174,21 @@ export class AgentEventRenderer {
 
   private handleToolStart(toolCallId: string, toolName: string, args: unknown): void {
     this.toolCallBlocks.markStarted(toolCallId, toolName, args);
-    this.options.updateStatus("tool", {
-      activeTool: toolName,
+    this.activeTools.set(toolCallId, toolName);
+    this.updateToolStatus();
+  }
+
+  private updateToolStatus(): void {
+    this.options.updateStatus(this.toolErrorCount > 0 ? "error" : "tool", {
+      activeTool: formatActiveTools(this.activeTools),
     });
   }
+}
+
+function formatActiveTools(activeTools: ReadonlyMap<string, string>): string | undefined {
+  const names = [...activeTools.values()];
+  if (names.length === 0) {
+    return undefined;
+  }
+  return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
 }

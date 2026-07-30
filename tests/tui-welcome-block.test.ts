@@ -40,6 +40,7 @@ describe("tui welcome block", () => {
     expect(stripAnsi(lines.join("\n"))).toContain("Persistent agent memory");
     expect(stripAnsi(lines.join("\n"))).toContain("Provider and model switching");
     expect(stripAnsi(lines.join("\n"))).toContain("MCP OAuth and activation");
+    expect(stripAnsi(lines.join("\n"))).toContain("Safe parallel tool execution");
     expect(stripAnsi(lines.join("\n"))).not.toContain("Session runtime logs");
     expect(stripAnsi(lines.join("\n"))).toContain("... /help for more");
     expect(stripAnsi(lines.join("\n"))).toContain("Wire recent sessions");

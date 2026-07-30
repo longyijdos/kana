@@ -64,7 +64,7 @@ Repeat (at most 8 turns by default; unlimited when maxTurns = -1):
 Emit agent_end and return messages added by this run
 ```
 
-Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. `runAgentLoop` owns only the model-turn state machine and delegates tool calls to an independent `ToolRuntime`; calls currently remain serial in content order, so a later call cannot start before the prior call ends.
+Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. `runAgentLoop` owns only the model-turn state machine and delegates tool calls to an independent `ToolRuntime`. The runtime partitions calls in assistant-content order: only adjacent calls explicitly marked `parallel` share a concurrent group. An `exclusive`, undeclared, unknown, or invalidly configured tool is a barrier that read work cannot cross.
 
 Tools run only when an assistant message ends normally with `toolUse`. A length-truncated message never executes its tool calls. A provider error with no assistant content does not persist an empty assistant message; an aborted message loses its unexecuted tool calls but retains any remaining text or thinking content.
 
@@ -94,7 +94,7 @@ Every tool call is processed in this order:
 
 1. Find the tool by name; missing tools produce an error tool result.
 2. Deep-clone raw arguments. TypeBox schemas run through `Value.Convert`; plain JSON Schemas that lost TypeBox metadata during serialization receive compatible primitive coercion before validation with the cached compiled schema.
-3. Invoke the optional `beforeToolExecution` hook. Kana's TUI shows its approval UI here.
+3. Invoke the optional `beforeToolExecution` hook. Kana's TUI shows its approval UI here; approval hooks always enter serially even for a concurrent execution group.
 4. Check the abort signal, emit `tool_execution_start`, create an independent `AbortSignal` for this invocation, and execute the tool. An optional `execution.deadlineMs` starts here.
 5. A tool may call `context.update(partialResult)`; ToolRuntime uses an internal serial queue to emit updates one at a time in call order and waits for listeners before finishing.
 6. Normalize the return value, commit its `ToolResultMessage`, and only then emit `tool_execution_end`. External observers therefore cannot see success before its result has entered the journal.
@@ -102,6 +102,8 @@ Every tool call is processed in this order:
 Argument-validation failures and exceptions thrown by tools do not throw the loop itself: they become `isError: true` results that the model can see on the next turn. When an approval hook returns `cancel`, it aborts the full run by default and adds cancelled error results for later, unexecuted calls from the same message. Abort before execution follows the same completion behavior.
 
 When the run is aborted or a tool deadline expires, ToolRuntime aborts the invocation signal and waits for a fixed, finite cancellation grace period. A tool that exits within that period receives a `canceled` or `timed_out` result; its eventual return or exception cannot replace the interruption result. If a tool ignores the signal, the runtime stops accepting its updates, persists a result with `status: "unknown"`, and aborts the current Agent run. That result explicitly forbids automatic retry because the detached invocation may still produce side effects; late settlement produces only structured diagnostics without arguments or results. Deadlines and the grace period use positive integer milliseconds. A tool with no deadline has no invocation-level time limit.
+
+Parallel-group events still pass through one serial event queue. As each tool actually completes, its result enters a serial commit queue, is written to the journal independently, and only then publishes the matching `tool_execution_end`. The next model turn receives results in that completion order and correlates them with the original calls by `toolCallId`. If one group member requests run termination, every active sibling receives an abort signal, while later groups only receive persisted canceled results. `list`, `glob`, `grep`, and `read` declare `parallel`; writes, shell, memory, scheduling, and undeclared third-party or MCP tools default to `exclusive`.
 
 The tool interface is:
 
@@ -111,6 +113,7 @@ type Tool = {
   description: string;
   parameters: TSchema;
   execution?: {
+    concurrency?: "parallel" | "exclusive";
     deadlineMs?: number;
   };
   execute(args, context): ToolResult | unknown | Promise<ToolResult | unknown>;

@@ -5,6 +5,9 @@ import type { Logger, LogMetadata } from "../src/logging";
 import type { Tool } from "../src/tools/tool";
 
 const parameters = Type.Object({});
+const labeledParameters = Type.Object({
+  label: Type.String(),
+});
 
 describe("ToolRuntime", () => {
   test("serializes update events and commits the result before publishing end", async () => {
@@ -338,6 +341,247 @@ describe("ToolRuntime", () => {
       },
     });
   });
+
+  test("runs adjacent parallel calls together without crossing exclusive barriers", async () => {
+    const operations: string[] = [];
+    const finishByLabel = new Map<string, () => void>();
+    const createDeferredTool = (name: string, concurrency: "parallel" | "exclusive" | undefined) =>
+      ({
+        name,
+        description: `Run ${name}.`,
+        parameters: labeledParameters,
+        ...(concurrency === undefined
+          ? {}
+          : {
+              execution: {
+                concurrency,
+              },
+            }),
+        execute: ({ label }) =>
+          new Promise((resolve) => {
+            operations.push(`start:${label}`);
+            finishByLabel.set(label, () => {
+              operations.push(`finish:${label}`);
+              resolve({
+                content: label,
+                result: { label },
+              });
+            });
+          }),
+      }) satisfies Tool<typeof labeledParameters, { label: string }>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [
+          createDeferredTool("parallel", "parallel"),
+          createDeferredTool("barrier", undefined),
+        ],
+        onMessageCommitted: (message) => {
+          if (message.role === "tool") {
+            operations.push(`commit:${message.toolCallId}`);
+          }
+        },
+      },
+      (event) => {
+        if (event.type === "tool_execution_end") {
+          operations.push(`end:${event.toolCallId}`);
+        }
+      },
+    );
+
+    const execution = runtime.execute([
+      toolCall("p1", "parallel"),
+      toolCall("p2", "parallel"),
+      toolCall("barrier", "barrier"),
+      toolCall("p3", "parallel"),
+      toolCall("p4", "parallel"),
+    ]);
+
+    await waitFor(() => finishByLabel.has("p1") && finishByLabel.has("p2"));
+    expect(operations.filter((operation) => operation.startsWith("start:"))).toEqual([
+      "start:p1",
+      "start:p2",
+    ]);
+
+    finishByLabel.get("p2")?.();
+    await waitFor(() => operations.includes("end:p2"));
+    expect(finishByLabel.has("barrier")).toBe(false);
+    finishByLabel.get("p1")?.();
+
+    await waitFor(() => finishByLabel.has("barrier"));
+    expect(finishByLabel.has("p3")).toBe(false);
+    finishByLabel.get("barrier")?.();
+
+    await waitFor(() => finishByLabel.has("p3") && finishByLabel.has("p4"));
+    finishByLabel.get("p4")?.();
+    await waitFor(() => operations.includes("end:p4"));
+    finishByLabel.get("p3")?.();
+
+    const result = await execution;
+
+    expect(result.toolResults.map((message) => message.toolCallId)).toEqual([
+      "p2",
+      "p1",
+      "barrier",
+      "p4",
+      "p3",
+    ]);
+    expect(operations.filter((operation) => operation.startsWith("commit:"))).toEqual([
+      "commit:p2",
+      "commit:p1",
+      "commit:barrier",
+      "commit:p4",
+      "commit:p3",
+    ]);
+  });
+
+  test("serializes approval hooks inside a parallel group", async () => {
+    const pendingApprovals: Array<() => void> = [];
+    let activeApprovals = 0;
+    let maximumActiveApprovals = 0;
+    const tool = {
+      name: "parallel",
+      description: "Run in parallel.",
+      parameters: labeledParameters,
+      execution: {
+        concurrency: "parallel",
+      },
+      execute: ({ label }) => label,
+    } satisfies Tool<typeof labeledParameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: () => {
+          activeApprovals += 1;
+          maximumActiveApprovals = Math.max(maximumActiveApprovals, activeApprovals);
+          return new Promise((resolve) => {
+            pendingApprovals.push(() => {
+              activeApprovals -= 1;
+              resolve({ type: "continue" });
+            });
+          });
+        },
+      },
+      () => {},
+    );
+
+    const execution = runtime.execute([toolCall("p1", "parallel"), toolCall("p2", "parallel")]);
+
+    await waitFor(() => pendingApprovals.length === 1);
+    expect(activeApprovals).toBe(1);
+    pendingApprovals[0]?.();
+    await waitFor(() => pendingApprovals.length === 2);
+    expect(activeApprovals).toBe(1);
+    pendingApprovals[1]?.();
+
+    const result = await execution;
+
+    expect(maximumActiveApprovals).toBe(1);
+    expect(result.toolResults).toHaveLength(2);
+  });
+
+  test("cancels parallel siblings when one invocation deadline aborts the run", async () => {
+    const deadlineTool = {
+      name: "deadline",
+      description: "Reach a deadline.",
+      parameters,
+      execution: {
+        concurrency: "parallel",
+        deadlineMs: 5,
+      },
+      execute: (_args, context) =>
+        new Promise((resolve) => {
+          context.signal?.addEventListener("abort", () => resolve("stopped"), { once: true });
+        }),
+    } satisfies Tool<typeof parameters, string>;
+    const siblingTool = {
+      name: "sibling",
+      description: "Wait for group cancellation.",
+      parameters,
+      execution: {
+        concurrency: "parallel",
+      },
+      execute: (_args, context) =>
+        new Promise((resolve) => {
+          context.signal?.addEventListener("abort", () => resolve("stopped"), { once: true });
+        }),
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [deadlineTool, siblingTool],
+        cancellationGraceMs: 50,
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "deadline",
+        name: "deadline",
+        args: {},
+      },
+      {
+        type: "tool_call",
+        id: "sibling",
+        name: "sibling",
+        args: {},
+      },
+    ]);
+
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolCallId: "deadline",
+          result: expect.objectContaining({
+            status: "timed_out",
+            reason: "deadline",
+          }),
+        }),
+        expect.objectContaining({
+          toolCallId: "sibling",
+          result: expect.objectContaining({
+            status: "canceled",
+            reason: "run_aborted",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  test("fails closed on invalid concurrency metadata", async () => {
+    let executed = false;
+    const tool = {
+      name: "invalid",
+      description: "Use invalid metadata.",
+      parameters,
+      execution: {
+        concurrency: "unsafe",
+      },
+      execute: () => {
+        executed = true;
+        return "unexpected";
+      },
+    } as unknown as Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime({ tools: [tool] }, () => {});
+
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "call-1",
+        name: "invalid",
+        args: {},
+      },
+    ]);
+
+    expect(executed).toBe(false);
+    expect(result.toolResults[0]).toMatchObject({
+      isError: true,
+      result: {
+        error: 'Tool "invalid" execution.concurrency must be "parallel" or "exclusive".',
+      },
+    });
+  });
 });
 
 function createRecordingLogger(records: Array<{ event: string; metadata?: LogMetadata }>): Logger {
@@ -351,4 +595,25 @@ function createRecordingLogger(records: Array<{ event: string; metadata?: LogMet
     warn: record,
     error: record,
   };
+}
+
+function toolCall(id: string, name: string) {
+  return {
+    type: "tool_call" as const,
+    id,
+    name,
+    args: {
+      label: id,
+    },
+  };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Condition was not met.");
 }

@@ -1,6 +1,12 @@
 import type { Message, ToolCallContent, ToolResultMessage } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
-import { normalizeToolResult, type Tool, type ToolResult, validateToolArguments } from "@/tools";
+import {
+  normalizeToolResult,
+  type Tool,
+  type ToolConcurrency,
+  type ToolResult,
+  validateToolArguments,
+} from "@/tools";
 import type { AgentEvent } from "./events";
 
 const DEFAULT_CANCELLATION_GRACE_MS = 1_000;
@@ -68,7 +74,10 @@ type ToolExecutionSettlement =
 
 export class ToolRuntime {
   private readonly events: SerialEventQueue;
+  private readonly approvals = new SerialTaskQueue();
   private readonly cancellationGraceMs: number;
+  private resultCommitFailure?: { error: unknown };
+  private resultCommitTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly config: ToolRuntimeConfig,
@@ -81,10 +90,9 @@ export class ToolRuntime {
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
     const toolResults: ToolResultMessage[] = [];
     let abortRun = false;
+    let index = 0;
 
-    for (let index = 0; index < toolCalls.length; index += 1) {
-      const toolCall = toolCalls[index];
-
+    while (index < toolCalls.length) {
       if (this.config.signal?.aborted) {
         await this.appendCanceledResults(
           toolResults,
@@ -95,18 +103,96 @@ export class ToolRuntime {
         break;
       }
 
-      const executed = await this.executeToolCall(toolCall);
-      toolResults.push(await this.commitResult(executed));
+      const group = this.readExecutionGroup(toolCalls, index);
+      const executedGroup = await this.executeGroup(group);
+      toolResults.push(...executedGroup.toolResults);
+      index += group.length;
 
-      if (executed.abortRun) {
+      if (executedGroup.abortRun) {
         await this.appendCanceledResults(
           toolResults,
-          toolCalls.slice(index + 1),
+          toolCalls.slice(index),
           "Tool call canceled because the run was aborted.",
         );
         abortRun = true;
         break;
       }
+    }
+
+    return {
+      toolResults,
+      abortRun,
+    };
+  }
+
+  private readExecutionGroup(toolCalls: ToolCallContent[], startIndex: number): ToolCallContent[] {
+    // Only adjacent parallel calls share a group. Exclusive and undeclared
+    // tools are barriers, so read work cannot cross a side-effecting call.
+    const firstCall = toolCalls[startIndex];
+    if (!firstCall || this.readToolConcurrency(firstCall) === "exclusive") {
+      return firstCall ? [firstCall] : [];
+    }
+
+    let endIndex = startIndex + 1;
+    while (
+      endIndex < toolCalls.length &&
+      this.readToolConcurrency(toolCalls[endIndex] as ToolCallContent) === "parallel"
+    ) {
+      endIndex += 1;
+    }
+    return toolCalls.slice(startIndex, endIndex);
+  }
+
+  private readToolConcurrency(toolCall: ToolCallContent): ToolConcurrency {
+    const tool = this.config.tools?.find((candidate) => candidate.name === toolCall.name);
+    try {
+      return tool ? resolveToolConcurrency(tool) : "exclusive";
+    } catch {
+      // Invalid or unknown metadata must fail closed as an exclusive barrier.
+      return "exclusive";
+    }
+  }
+
+  private async executeGroup(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
+    const groupController = new AbortController();
+    const toolResults: ToolResultMessage[] = [];
+    let abortRun = false;
+
+    if (toolCalls.length > 1) {
+      this.log("debug", "tool.parallel_group_started", {
+        toolCount: toolCalls.length,
+      });
+    }
+
+    const executions = toolCalls.map(async (toolCall) => {
+      try {
+        const executed = await this.executeToolCall(toolCall, groupController.signal);
+        if (executed.abortRun) {
+          abortRun = true;
+          groupController.abort();
+        }
+        // Push after the serialized durable commit so the model sees results
+        // in completion order without allowing concurrent journal appends.
+        const message = await this.enqueueResultCommit(executed);
+        toolResults.push(message);
+      } catch (error) {
+        groupController.abort();
+        throw error;
+      }
+    });
+    const settlements = await Promise.allSettled(executions);
+    const failure = settlements.find(
+      (settlement): settlement is PromiseRejectedResult => settlement.status === "rejected",
+    );
+
+    if (toolCalls.length > 1) {
+      this.log("debug", "tool.parallel_group_ended", {
+        toolCount: toolCalls.length,
+        outcome: failure ? "failed" : abortRun ? "aborted" : "completed",
+      });
+    }
+    if (failure) {
+      throw failure.reason;
     }
 
     return {
@@ -122,7 +208,7 @@ export class ToolRuntime {
   ): Promise<void> {
     for (const toolCall of toolCalls) {
       toolResults.push(
-        await this.commitResult({
+        await this.enqueueResultCommit({
           toolCall,
           result: createCanceledToolResult(message),
           isError: true,
@@ -131,7 +217,10 @@ export class ToolRuntime {
     }
   }
 
-  private async executeToolCall(toolCall: ToolCallContent): Promise<ExecutedToolCall> {
+  private async executeToolCall(
+    toolCall: ToolCallContent,
+    groupSignal: AbortSignal,
+  ): Promise<ExecutedToolCall> {
     const tool = this.config.tools?.find((candidate) => candidate.name === toolCall.name);
 
     if (!tool) {
@@ -145,9 +234,11 @@ export class ToolRuntime {
     let acceptsUpdates = false;
     let abortRun = false;
     try {
+      resolveToolConcurrency(tool);
       const deadlineMs = resolveToolDeadlineMs(tool);
       const args = validateToolArguments(tool, toolCall.args);
-      const beforeResult = await this.runBeforeToolExecution(toolCall, tool, args);
+      const executionSignal = combineAbortSignals(this.config.signal, groupSignal);
+      const beforeResult = await this.runBeforeToolExecution(toolCall, tool, args, executionSignal);
 
       if (beforeResult.type === "cancel") {
         return {
@@ -158,10 +249,10 @@ export class ToolRuntime {
         };
       }
 
-      if (this.config.signal?.aborted) {
+      if (executionSignal?.aborted) {
         return {
           toolCall,
-          result: createErrorToolResult("Aborted before tool execution"),
+          result: createCanceledToolResult("Tool call canceled before execution."),
           isError: true,
           abortRun: true,
         };
@@ -180,6 +271,7 @@ export class ToolRuntime {
         tool,
         args,
         deadlineMs,
+        groupSignal,
         (partialResult) => {
           if (!acceptsUpdates) {
             return;
@@ -294,6 +386,7 @@ export class ToolRuntime {
     tool: Tool,
     args: unknown,
     deadlineMs: number | undefined,
+    groupSignal: AbortSignal,
     update: (partialResult: unknown) => void,
   ): {
     settlement: Promise<ToolExecutionSettlement>;
@@ -320,11 +413,13 @@ export class ToolRuntime {
       invocationController.abort(createInterruptionError(value));
       resolveInterruption(value);
     };
-    const runSignal = this.config.signal;
+    const runSignals = [...new Set([this.config.signal, groupSignal].filter(isAbortSignal))];
     const onRunAbort = (): void => interrupt({ reason: "run_aborted" });
 
-    runSignal?.addEventListener("abort", onRunAbort, { once: true });
-    if (runSignal?.aborted) {
+    for (const signal of runSignals) {
+      signal.addEventListener("abort", onRunAbort, { once: true });
+    }
+    if (runSignals.some((signal) => signal.aborted)) {
       onRunAbort();
     }
     const deadlineTimer =
@@ -354,7 +449,9 @@ export class ToolRuntime {
       settlement,
       interruption,
       dispose() {
-        runSignal?.removeEventListener("abort", onRunAbort);
+        for (const signal of runSignals) {
+          signal.removeEventListener("abort", onRunAbort);
+        }
         if (deadlineTimer !== undefined) {
           clearTimeout(deadlineTimer);
         }
@@ -366,19 +463,50 @@ export class ToolRuntime {
     toolCall: ToolCallContent,
     tool: Tool,
     args: unknown,
+    signal: AbortSignal | undefined,
   ): Promise<BeforeToolExecutionResult> {
-    if (!this.config.beforeToolExecution) {
+    const hook = this.config.beforeToolExecution;
+    if (!hook) {
       return {
         type: "continue",
       };
     }
 
-    return this.config.beforeToolExecution({
-      toolCall,
-      tool,
-      args,
-      signal: this.config.signal,
+    return this.approvals.run(() => {
+      if (signal?.aborted) {
+        return {
+          type: "cancel",
+          abortRun: true,
+          message: "Tool call canceled before approval.",
+        };
+      }
+
+      return hook({
+        toolCall,
+        tool,
+        args,
+        signal,
+      });
     });
+  }
+
+  private enqueueResultCommit(executed: ExecutedToolCall): Promise<ToolResultMessage> {
+    const committed = this.resultCommitTail.then(async () => {
+      if (this.resultCommitFailure) {
+        throw this.resultCommitFailure.error;
+      }
+      try {
+        return await this.commitResult(executed);
+      } catch (error) {
+        this.resultCommitFailure = { error };
+        throw error;
+      }
+    });
+    this.resultCommitTail = committed.then(
+      () => undefined,
+      () => undefined,
+    );
+    return committed;
   }
 
   private async commitResult(executed: ExecutedToolCall): Promise<ToolResultMessage> {
@@ -458,6 +586,19 @@ class SerialEventQueue {
   }
 }
 
+class SerialTaskQueue {
+  private tail: Promise<void> = Promise.resolve();
+
+  run<T>(task: () => Promise<T> | T): Promise<T> {
+    const result = this.tail.then(task);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+}
+
 function createErrorToolResult(message: string): ToolResult {
   return {
     content: `Tool call failed: ${message}`,
@@ -525,6 +666,14 @@ function resolveToolDeadlineMs(tool: Tool): number | undefined {
   return deadlineMs;
 }
 
+function resolveToolConcurrency(tool: Tool): ToolConcurrency {
+  const concurrency = tool.execution?.concurrency ?? "exclusive";
+  if (concurrency !== "parallel" && concurrency !== "exclusive") {
+    throw new Error(`Tool "${tool.name}" execution.concurrency must be "parallel" or "exclusive".`);
+  }
+  return concurrency;
+}
+
 function resolveCancellationGraceMs(value: number | undefined): number {
   if (value === undefined) {
     return DEFAULT_CANCELLATION_GRACE_MS;
@@ -554,6 +703,23 @@ function createInterruptionError(interruption: ToolInterruption): Error {
       ? `Tool execution exceeded its ${interruption.deadlineMs}ms deadline.`
       : "Agent run aborted.",
   );
+}
+
+function combineAbortSignals(
+  first: AbortSignal | undefined,
+  second: AbortSignal | undefined,
+): AbortSignal | undefined {
+  if (!first) {
+    return second;
+  }
+  if (!second || first === second) {
+    return first;
+  }
+  return AbortSignal.any([first, second]);
+}
+
+function isAbortSignal(value: AbortSignal | undefined): value is AbortSignal {
+  return value !== undefined;
 }
 
 function getErrorType(error: unknown): string {

@@ -40,6 +40,7 @@ The request follows the Responses Lite contract:
 - Tools are developer `additional_tools` input items rather than a top-level `tools` field.
 - The system prompt is a developer message; user messages, tool results, and assistant output items follow in input order.
 - `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
+- `parallel_tool_calls = true` allows the model to propose multiple calls in one response; Kana's tool concurrency metadata still decides which calls actually execute together.
 - Reasoning configuration carries effort, summary type, and `all_turns` context.
 - `max_tokens` is Kana's local context-budget output reserve; the backend request omits the rejected `max_output_tokens` field.
 
@@ -60,7 +61,7 @@ The reader retains incomplete SSE frames across network chunks and parses every 
 | function-call added / argument delta / item done | `toolcall_start` / `toolcall_delta` / `toolcall_end` |
 | `response.completed` / `response.incomplete` | terminal stop reason and usage |
 
-Output items use `output_index` as their primary address and item ID as a fallback. Final item content corrects accumulated deltas, and duplicate completed items are not emitted twice. `response.incomplete` maps to `length`; a completed response containing function calls maps to `toolUse`; everything else maps to `stop`.
+Output items use `output_index` as their primary address and item ID as a fallback. Argument deltas for multiple function calls may interleave and still update their respective content blocks. Final item content corrects accumulated deltas, and duplicate completed items are not emitted twice. `response.incomplete` maps to `length`; a completed response containing function calls maps to `toolUse`; everything else maps to `stop`.
 
 Every completed item is attached to its assistant content as opaque `providerState`. A later turn removes the server item ID and replays reasoning encrypted content, messages, or function calls unchanged. This preserves reasoning continuity with `store = false`. Summary text without a provider item is never reconstructed as reasoning input.
 
