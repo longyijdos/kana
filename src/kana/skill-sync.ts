@@ -10,11 +10,12 @@ export const KANA_SKILL_SYNC_TARGETS = ["codex"] as const;
 export type KanaSkillSyncTarget = (typeof KANA_SKILL_SYNC_TARGETS)[number];
 
 export type SyncKanaSkillsOptions = {
-  force?: boolean;
   repositoryName?: string;
   targetAgent?: string;
   targetDir?: string;
 };
+
+export type ResyncKanaSkillsOptions = SyncKanaSkillsOptions;
 
 export type SyncKanaSkillStatus = "copied" | "exists" | "replaced";
 
@@ -41,6 +42,21 @@ export function syncKanaSkills(
   env: NodeJS.ProcessEnv = process.env,
   options: SyncKanaSkillsOptions = {},
 ): SyncKanaSkillsResult {
+  return copyKanaSkills(env, options, false);
+}
+
+export function resyncKanaSkills(
+  env: NodeJS.ProcessEnv = process.env,
+  options: ResyncKanaSkillsOptions = {},
+): SyncKanaSkillsResult {
+  return copyKanaSkills(env, options, true);
+}
+
+function copyKanaSkills(
+  env: NodeJS.ProcessEnv,
+  options: SyncKanaSkillsOptions,
+  replaceExisting: boolean,
+): SyncKanaSkillsResult {
   const repositoryName = options.repositoryName ?? DEFAULT_KANA_SKILLS_REPOSITORY_NAME;
   const sourcePath = path.join(getKanaConfigPaths(env).home, "skills", repositoryName);
   let targetName: KanaSkillSyncTarget | "custom";
@@ -59,7 +75,7 @@ export function syncKanaSkills(
 
   if (!isDirectory(sourcePath)) {
     throw new Error(
-      `Cannot sync skills because ${sourcePath} does not exist. Run kana install --skills first.`,
+      `Cannot sync skills because ${sourcePath} does not exist. Run kana skills install first.`,
     );
   }
 
@@ -82,7 +98,7 @@ export function syncKanaSkills(
     const targetExists = existsSync(targetSkillPath);
     let status: SyncKanaSkillStatus;
 
-    if (targetExists && !options.force) {
+    if (targetExists && !replaceExisting) {
       status = "exists";
     } else {
       if (targetExists) {

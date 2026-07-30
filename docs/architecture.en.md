@@ -26,13 +26,15 @@ This layering also indicates where new code belongs: new providers go in `provid
 
 ## Startup path
 
-`src/main.ts` calls `runCli`. The CLI has three paths:
+`src/main.ts` calls `runCli`. The CLI has these primary paths:
 
 - `kana [prompt...]`: starts the TUI; if arguments are supplied, sends the prompt after startup.
 - `kana resume [sessionId]`: restores a session by ID or opens the session picker.
-- `kana install [--force] [--skills]`: initializes local state; a missing `config.toml` continues to use built-in defaults, while `--skills` additionally clones or updates the default Skills repository.
+- `kana install`: idempotently creates missing local state and refreshes the generated configuration reference without materializing a default `config.toml` or installing the Skills repository.
+- `kana reset [--yes]`: after confirmation, deletes `config.toml`, refreshes the configuration reference, and resets MCP, approval, and Skill activation state while preserving credentials, user data, logs, instructions, and installed Skills.
 - `kana auth login|status|logout openai-codex`: manages Codex browser OAuth and local credentials.
-- `kana skills sync <target>`: copies installed Kana Skills into another agent's Skills directory; the built-in target is currently `codex`, and a custom directory can also be supplied.
+- `kana skills install|reinstall [--yes]`: safely installs or updates the default Skills Git repository, or deletes and reclones it after confirmation.
+- `kana skills sync|resync <target> [--yes]`: copies installed Kana Skills into another agent's Skills directory. Sync skips matching entries; confirmed resync replaces them without cleaning other or stale Skills.
 
 When the TUI starts, `startTui` loads runtime configuration and the approval allowlist, then constructs `KanaTuiApp` with an idle `KanaMcpRuntime`. Only after the current session is known and the first TUI view is displayed does the app invoke its injected external-tool loader; the runtime then reads MCP definition and activation files, connects selected servers, discovers their tools, and lets the app rebuild the main Agent. The `kana resume` picker therefore does not start MCP; loading begins after a session is selected. Session I/O, Skill and MCP activation, memory compaction, external-tool start/reload, and the Agent factory are all injected as callbacks. The app therefore coordinates user flows without knowing JSONL, TOML, MCP transports, or other storage and protocol details.
 
@@ -127,7 +129,7 @@ The system prompt consists of the following sections; the later project-level in
 5. The current directory, platform, date, and time zone.
 6. Names, descriptions, and `SKILL.md` paths for enabled Skills.
 
-`loadKanaConfig` reads optional `config.toml` and merges every field with built-in defaults. Invalid types or enum values raise an error instead of being silently ignored. First installation does not materialize the default `config.toml`; it generates a complete `config.example.toml` reference that runtime never reads, while approval data and Skill activation data are still created in user-only-readable/writable files. `KanaConfigStore` gives the TUI and other callers a generic typed mutation boundary: it compares effective configurations, patches only changed canonical TOML leaves, validates the reloaded result, and atomically replaces the file through a sibling temporary file, avoiding full reserialization of unrelated configuration, unknown tables, and comments.
+`loadKanaConfig` reads optional `config.toml` and merges every field with built-in defaults. Invalid types or enum values raise an error instead of being silently ignored. Install does not materialize the default `config.toml`; it only creates missing mutable state. `config.example.toml` is a Kana-generated reference that runtime never reads, and install and reset compare and refresh stale content. `KanaConfigStore` gives the TUI and other callers a generic typed mutation boundary: it compares effective configurations, patches only changed canonical TOML leaves, validates the reloaded result, and atomically replaces the file through a sibling temporary file, avoiding full reserialization of unrelated configuration, unknown tables, and comments.
 
 ## Local state
 
@@ -135,17 +137,18 @@ Kana state is located under `KANA_HOME`, or `~/.kana` when it is unset:
 
 | Data | Location and format | Written when |
 | --- | --- | --- |
-| Configuration | `config.toml` | Direct user edits, `/model` changes, or `kana install --force` when the file already exists |
-| Configuration reference | `config.example.toml` | Created or refreshed by `kana install`; never read at runtime |
-| MCP server definitions | `mcp.json` | `kana install` or direct user edits |
-| MCP activation state | `mcp-enabled.json` | `kana install` or activation changes |
+| Configuration | `config.toml` | Direct user edits or `/model` changes; deleted by `kana reset` |
+| Configuration reference | `config.example.toml` | Created/refreshed by `kana install` or `kana reset`; never read at runtime |
+| MCP server definitions | `mcp.json` | `kana install`, `kana reset`, or direct user edits |
+| MCP activation state | `mcp-enabled.json` | `kana install`, `kana reset`, or activation changes |
 | OAuth tokens | `oauth-tokens.json` | Browser authorization, refresh, sign-out, or credential invalidation |
-| Approval allowlist | `approvals.json` | The user selects “always allow” for a bash command |
+| Approval allowlist | `approvals.json` | `kana install`, `kana reset`, or selecting “always allow” for a bash command |
 | Sessions | `sessions/<workspace>/*.jsonl` | Appended after each successfully committed Agent run |
 | Runtime logs | `logs/<workspace>/<session-id>.jsonl` | Safe lifecycle events from the TUI, Agent, provider, tools, and memory tasks |
 | Durable memory | `memory/global|projects/<workspace>/memory.md` | Atomically replaced after successful memory consolidation |
 | Daily memory | `daily/YYYY-MM-DD.md` in the corresponding directory | Appended after `remember` succeeds |
-| Global Skills config | `skills/skills.toml` | The TUI changes global Skill activation |
+| Global Skills config | `skills/skills.toml` | `kana install`, `kana reset`, or TUI global Skill activation changes |
+| Default Skills repository | `skills/kana-skills/` | `kana skills install` or `kana skills reinstall` |
 
 Workspace directory names are encoded from resolved absolute paths and shared by sessions and project memory. A V2 session file is JSONL: the first line is a versioned session header, followed by a timeline of message and context-compaction entries with parent IDs. Raw messages are never deleted; compaction entries identify their covered message and cumulative base checkpoint. Creating a session does not write a file; the header is written with the first committed batch, and the first user prompt supplies its title. V1 remains readable and upgrades atomically on its first compaction write.
 

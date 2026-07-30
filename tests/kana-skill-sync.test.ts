@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { syncKanaSkills } from "@/kana";
+import { resyncKanaSkills, syncKanaSkills } from "@/kana";
 
 const tempDirs: string[] = [];
 
@@ -53,7 +53,7 @@ describe("Kana skill sync", () => {
     ).toBe("template");
   });
 
-  test("skips existing target skills unless force is enabled", () => {
+  test("sync skips existing target skills", () => {
     const env = createTempEnv();
     writeKanaSkill(env, "web-search", "Search the web.");
     writeFile(path.join(env.HOME, ".codex", "skills", "web-search", "SKILL.md"), "local edit");
@@ -75,20 +75,26 @@ describe("Kana skill sync", () => {
     ).toBe("local edit");
   });
 
-  test("force replaces existing target skills", () => {
+  test("resync replaces matching target skills without deleting other Skills", () => {
     const env = createTempEnv();
     writeKanaSkill(env, "web-search", "Search the web.");
-    writeFile(path.join(env.HOME, ".codex", "skills", "web-search", "SKILL.md"), "local edit");
+    const targetRoot = path.join(env.HOME, ".codex", "skills");
+    writeFile(path.join(targetRoot, "web-search", "SKILL.md"), "local edit");
+    writeFile(path.join(targetRoot, "stale-kana-skill", "SKILL.md"), "stale");
+    writeFile(path.join(targetRoot, "personal", "SKILL.md"), "personal");
 
-    const result = syncKanaSkills(env, {
-      force: true,
+    const result = resyncKanaSkills(env, {
       targetAgent: "codex",
     });
 
     expect(result.skills[0]?.status).toBe("replaced");
-    expect(
-      readFileSync(path.join(env.HOME, ".codex", "skills", "web-search", "SKILL.md"), "utf8"),
-    ).toContain("Search the web.");
+    expect(readFileSync(path.join(targetRoot, "web-search", "SKILL.md"), "utf8")).toContain(
+      "Search the web.",
+    );
+    expect(readFileSync(path.join(targetRoot, "stale-kana-skill", "SKILL.md"), "utf8")).toBe(
+      "stale",
+    );
+    expect(readFileSync(path.join(targetRoot, "personal", "SKILL.md"), "utf8")).toBe("personal");
   });
 
   test("copies to a custom target directory", () => {
@@ -115,7 +121,7 @@ describe("Kana skill sync", () => {
         env.KANA_HOME,
         "skills",
         "kana-skills",
-      )} does not exist. Run kana install --skills first.`,
+      )} does not exist. Run kana skills install first.`,
     );
   });
 });

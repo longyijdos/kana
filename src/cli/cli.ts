@@ -1,7 +1,10 @@
+import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import type {
   InstallKanaConfigResult,
   InstallKanaSkillsResult,
+  ReinstallKanaSkillsResult,
+  ResetKanaConfigResult,
   SyncKanaSkillsResult,
 } from "@/kana";
 import {
@@ -15,20 +18,22 @@ import type { StartTuiOptions } from "@/tui";
 import { KANA_VERSION } from "../version";
 
 export type CreateCliOptions = {
-  installKanaConfig: (
-    env: NodeJS.ProcessEnv,
-    options: { force?: boolean },
-  ) => InstallKanaConfigResult;
-  installKanaSkills: (
-    env: NodeJS.ProcessEnv,
-    options: { force?: boolean },
-  ) => Promise<InstallKanaSkillsResult>;
+  installKanaConfig: (env: NodeJS.ProcessEnv) => InstallKanaConfigResult;
+  resetKanaConfig: (env: NodeJS.ProcessEnv) => ResetKanaConfigResult;
+  installKanaSkills: (env: NodeJS.ProcessEnv) => Promise<InstallKanaSkillsResult>;
+  reinstallKanaSkills: (env: NodeJS.ProcessEnv) => Promise<ReinstallKanaSkillsResult>;
   syncKanaSkills: (
     env: NodeJS.ProcessEnv,
-    options: { force?: boolean; targetAgent?: string; targetDir?: string },
+    options: { targetAgent?: string; targetDir?: string },
+  ) => SyncKanaSkillsResult;
+  resyncKanaSkills: (
+    env: NodeJS.ProcessEnv,
+    options: { targetAgent?: string; targetDir?: string },
   ) => SyncKanaSkillsResult;
   authorizeOpenAICodex?: typeof authorizeKanaOpenAICodex;
+  confirm?: (message: string) => Promise<boolean>;
   getOpenAICodexAuthStatus?: typeof getKanaOpenAICodexAuthStatus;
+  isInteractive?: () => boolean;
   signOutOpenAICodex?: typeof signOutKanaOpenAICodex;
   log?: (message: string) => void;
   startTui: (options?: StartTuiOptions) => Promise<void> | void;
@@ -37,9 +42,14 @@ export type CreateCliOptions = {
 export function createCli(options: CreateCliOptions): Command {
   const installConfig = options.installKanaConfig;
   const installSkills = options.installKanaSkills;
+  const reinstallSkills = options.reinstallKanaSkills;
+  const resetConfig = options.resetKanaConfig;
   const log = options.log ?? console.log;
   const runTui = options.startTui;
+  const resyncSkills = options.resyncKanaSkills;
   const syncSkills = options.syncKanaSkills;
+  const confirm = options.confirm ?? confirmInTerminal;
+  const isInteractive = options.isInteractive ?? isInteractiveTerminal;
   const authorizeCodex = options.authorizeOpenAICodex ?? authorizeKanaOpenAICodex;
   const getCodexAuthStatus = options.getOpenAICodexAuthStatus ?? getKanaOpenAICodexAuthStatus;
   const signOutCodex = options.signOutOpenAICodex ?? signOutKanaOpenAICodex;
@@ -75,12 +85,8 @@ export function createCli(options: CreateCliOptions): Command {
   program
     .command("install")
     .description("Create Kana support files under ~/.kana")
-    .option("--force", "Overwrite the existing Kana files")
-    .option("--skills", "Install or update Kana skills from the default repository")
-    .action(async (options: { force?: boolean; skills?: boolean }) => {
-      const result = installConfig(process.env, {
-        force: options.force,
-      });
+    .action(() => {
+      const result = installConfig(process.env);
       if (result.configStatus !== "defaults") {
         log(formatInstallMessage("config", result.configPath, result.configStatus));
       }
@@ -103,13 +109,32 @@ export function createCli(options: CreateCliOptions): Command {
       log(
         formatInstallMessage("skills config", result.skillsConfigPath, result.skillsConfigStatus),
       );
+    });
 
-      if (options.skills) {
-        const skillsResult = await installSkills(process.env, {
-          force: options.force,
-        });
-        log(formatInstallSkillsMessage(skillsResult));
+  program
+    .command("reset")
+    .description("Reset Kana configuration while preserving credentials and user data")
+    .option("--yes", "Reset without interactive confirmation")
+    .action(async (commandOptions: { yes?: boolean }) => {
+      const shouldReset = await confirmDestructiveAction({
+        confirmed: commandOptions.yes,
+        confirm,
+        interactive: isInteractive,
+        nonInteractiveHint: "kana reset --yes",
+        prompt: RESET_CONFIRMATION_PROMPT,
+      });
+      if (!shouldReset) {
+        log("Reset cancelled.");
+        return;
       }
+
+      const result = resetConfig(process.env);
+      log(formatResetConfigMessage(result));
+      log(`Reset config example: ${result.configExamplePath}`);
+      log(`Reset MCP config: ${result.mcpConfigPath}`);
+      log(`Reset MCP activation state: ${result.mcpEnabledPath}`);
+      log(`Reset approvals: ${result.approvalsPath}`);
+      log(`Reset skills config: ${result.skillsConfigPath}`);
     });
 
   const authCommand = program.command("auth").description("Manage provider authentication");
@@ -146,23 +171,74 @@ export function createCli(options: CreateCliOptions): Command {
   const skillsCommand = program.command("skills").description("Manage Kana skills");
 
   skillsCommand
+    .command("install")
+    .description("Install or safely update the default Kana Skills repository")
+    .action(async () => {
+      log(formatInstallSkillsMessage(await installSkills(process.env)));
+    });
+
+  skillsCommand
+    .command("reinstall")
+    .description("Delete and clone the default Kana Skills repository again")
+    .option("--yes", "Reinstall without interactive confirmation")
+    .action(async (commandOptions: { yes?: boolean }) => {
+      const shouldReinstall = await confirmDestructiveAction({
+        confirmed: commandOptions.yes,
+        confirm,
+        interactive: isInteractive,
+        nonInteractiveHint: "kana skills reinstall --yes",
+        prompt: SKILLS_REINSTALL_CONFIRMATION_PROMPT,
+      });
+      if (!shouldReinstall) {
+        log("Skills reinstall cancelled.");
+        return;
+      }
+
+      log(formatInstallSkillsMessage(await reinstallSkills(process.env)));
+    });
+
+  skillsCommand
     .command("sync")
     .description("Copy installed Kana skills to another agent's skills directory")
     .argument("[target]", "Target agent preset, such as codex")
     .option("--target-dir <path>", "Copy to a custom skills directory")
-    .option("--force", "Replace existing target skill directories")
+    .action((targetAgent: string | undefined, commandOptions: { targetDir?: string }) => {
+      const result = syncSkills(process.env, {
+        targetAgent,
+        targetDir: commandOptions.targetDir,
+      });
+
+      log(formatSyncKanaSkillsMessage("Synced", result));
+    });
+
+  skillsCommand
+    .command("resync")
+    .description("Replace matching skills in another agent's skills directory")
+    .argument("[target]", "Target agent preset, such as codex")
+    .option("--target-dir <path>", "Copy to a custom skills directory")
+    .option("--yes", "Replace matching target Skills without interactive confirmation")
     .action(
-      (
+      async (
         targetAgent: string | undefined,
-        commandOptions: { force?: boolean; targetDir?: string },
+        commandOptions: { targetDir?: string; yes?: boolean },
       ) => {
-        const result = syncSkills(process.env, {
-          force: commandOptions.force,
+        const shouldResync = await confirmDestructiveAction({
+          confirmed: commandOptions.yes,
+          confirm,
+          interactive: isInteractive,
+          nonInteractiveHint: "kana skills resync <target> --yes",
+          prompt: SKILLS_RESYNC_CONFIRMATION_PROMPT,
+        });
+        if (!shouldResync) {
+          log("Skills resync cancelled.");
+          return;
+        }
+
+        const result = resyncSkills(process.env, {
           targetAgent,
           targetDir: commandOptions.targetDir,
         });
-
-        log(formatSyncKanaSkillsMessage(result));
+        log(formatSyncKanaSkillsMessage("Resynced", result));
       },
     );
 
@@ -186,7 +262,9 @@ function formatOAuthStatus(provider: string, status: OAuthSessionStatus): string
   return `${provider}: ${status.state}${refreshable}${expiresAt}`;
 }
 
-function formatInstallSkillsMessage(result: InstallKanaSkillsResult): string {
+function formatInstallSkillsMessage(
+  result: InstallKanaSkillsResult | ReinstallKanaSkillsResult,
+): string {
   switch (result.status) {
     case "cloned":
       return `Installed skills: ${result.skillsPath}`;
@@ -197,7 +275,10 @@ function formatInstallSkillsMessage(result: InstallKanaSkillsResult): string {
   }
 }
 
-function formatSyncKanaSkillsMessage(result: SyncKanaSkillsResult): string {
+function formatSyncKanaSkillsMessage(
+  action: "Synced" | "Resynced",
+  result: SyncKanaSkillsResult,
+): string {
   const counts = result.skills.reduce(
     (summary, skill) => {
       summary[skill.status] += 1;
@@ -216,28 +297,100 @@ function formatSyncKanaSkillsMessage(result: SyncKanaSkillsResult): string {
   ];
   const targetLabel = result.targetName === "custom" ? "custom target" : result.targetName;
 
-  return `Synced skills to ${targetLabel}: ${result.targetPath} (${parts.join(", ")})`;
+  return `${action} skills to ${targetLabel}: ${result.targetPath} (${parts.join(", ")})`;
 }
 
 function formatInstallMessage(
   name: string,
   filePath: string,
-  status: "created" | "exists" | "reinstalled" | "updated",
+  status: "created" | "exists" | "updated",
 ): string {
   switch (status) {
     case "created":
       return `Created ${name}: ${filePath}`;
     case "updated":
       return `Updated ${name}: ${filePath}`;
-    case "reinstalled":
-      return `Reinstalled ${name}: ${filePath}`;
     case "exists":
       return `${capitalize(name)} already exists: ${filePath}`;
   }
 }
 
+function formatResetConfigMessage(result: ResetKanaConfigResult): string {
+  return result.configRemoved
+    ? `Removed config override: ${result.configPath}`
+    : `Config override already absent: ${result.configPath}`;
+}
+
 function capitalize(value: string): string {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+}
+
+const RESET_CONFIRMATION_PROMPT = [
+  "Reset Kana configuration?",
+  "",
+  "This will delete config.toml and overwrite:",
+  "  - config.example.toml",
+  "  - mcp.json",
+  "  - mcp-enabled.json",
+  "  - approvals.json",
+  "  - skills/skills.toml",
+  "",
+  "OAuth tokens, sessions, memory, accounting, logs, AGENTS.md, and installed Skills will be preserved.",
+].join("\n");
+
+const SKILLS_REINSTALL_CONFIRMATION_PROMPT = [
+  "Reinstall the default Kana Skills repository?",
+  "",
+  "This will delete the entire skills/kana-skills directory and clone it again.",
+  "skills/skills.toml and other installed Skills will be preserved.",
+].join("\n");
+
+const SKILLS_RESYNC_CONFIRMATION_PROMPT = [
+  "Replace matching Skills in the target directory?",
+  "",
+  "Each target Skill whose name matches the installed Kana repository will be deleted and copied again.",
+  "Other target Skills, including stale Skills no longer present in the source, will be preserved.",
+].join("\n");
+
+type ConfirmDestructiveActionOptions = {
+  confirmed: boolean | undefined;
+  confirm: (message: string) => Promise<boolean>;
+  interactive: () => boolean;
+  nonInteractiveHint: string;
+  prompt: string;
+};
+
+async function confirmDestructiveAction(
+  options: ConfirmDestructiveActionOptions,
+): Promise<boolean> {
+  if (options.confirmed) {
+    return true;
+  }
+  if (!options.interactive()) {
+    throw new Error(
+      `Refusing to run a destructive command in a non-interactive environment. Re-run with \`${options.nonInteractiveHint}\`.`,
+    );
+  }
+
+  return options.confirm(options.prompt);
+}
+
+function isInteractiveTerminal(): boolean {
+  return process.stdin.isTTY === true && process.stdout.isTTY === true;
+}
+
+async function confirmInTerminal(message: string): Promise<boolean> {
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const answer = await readline.question(`${message}\n\nContinue? [y/N] `);
+    return /^(?:y|yes)$/i.test(answer.trim());
+  } finally {
+    readline.close();
+  }
 }
 
 export async function runCli(argv: string[], options: CreateCliOptions): Promise<void> {

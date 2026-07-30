@@ -8,11 +8,16 @@
 # 初始化本地状态；缺少 config.toml 时继续使用内置默认值
 kana install
 
-# 同时安装或更新默认的全局 Skills 仓库
-kana install --skills
+# 重置运行配置；默认交互确认，自动化环境显式使用 --yes
+kana reset
+kana reset --yes
 
-# 覆盖已有配置与状态文件，必要时重新克隆 Skills
-kana install --force --skills
+# 安装或安全更新默认的全局 Skills 仓库
+kana skills install
+
+# 删除并重新克隆默认 Skills 仓库；默认交互确认
+kana skills reinstall
+kana skills reinstall --yes
 
 # 将已安装的 Kana Skills 复制到 Codex 的全局 Skills 目录
 kana skills sync codex
@@ -20,8 +25,9 @@ kana skills sync codex
 # 复制到自定义 agent 的 Skills 目录；已有同名 Skill 默认跳过
 kana skills sync --target-dir ~/.other-agent/skills
 
-# 替换目标目录中已有的同名 Skill
-kana skills sync codex --force
+# 替换目标目录中已有的同名 Skill；不清理其它或过期 Skill
+kana skills resync codex
+kana skills resync codex --yes
 
 # 启动 TUI；参数会作为第一条提示词
 kana 修复测试失败
@@ -35,11 +41,13 @@ kana auth status openai-codex
 kana auth logout openai-codex
 ```
 
-`kana install` 不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；已经存在的配置也不会被覆盖。安装会创建或刷新 `config.example.toml`，其中列出所有供应商和配置项；该文件由 Kana 生成且不会被读取，需要覆盖默认值时只把相应字段复制到 `config.toml`。`--force` 会把已有的 `config.toml` 恢复为默认 DeepSeek 配置，并重置 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml`；若使用 `--skills`，还会删除并重新克隆默认 Skills 目录。安装和强制重装都不会删除 `oauth-tokens.json`，也**不会**创建 `~/.kana/AGENTS.md`。
+`kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取它，需要覆盖默认值时只把相应字段复制到 `config.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
 
-默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。已有目录不是 Git 仓库时，普通更新会报错，必须使用 `--force` 才会替换它；已有 Git 仓库则执行 `git pull --ff-only`。
+`kana reset` 将配置恢复到纯净 install 状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
 
-`kana skills sync` 不会重新 clone 仓库；它读取 `<KANA_HOME>/skills/kana-skills`，把其中每个顶层、包含 `SKILL.md` 的 Skill 目录复制到目标 agent 的 Skills 根目录。`codex` 预设写入 `${CODEX_HOME:-$HOME/.codex}/skills`。若目标中已存在同名目录，默认跳过；传 `--force` 会先删除该目录再复制。若默认 Skills 仓库尚未安装，请先运行 `kana install --skills`。
+默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。`kana skills install` 在目录不存在时 clone，已有 Git 仓库时执行 `git pull --ff-only`；已有目录不是 Git 仓库时失败并提示使用 `kana skills reinstall`。reinstall 会在确认后只删除整个默认仓库目录并重新 clone，保留相邻的 `skills.toml` 和其它实际 Skills；非交互环境同样要求 `--yes`。
+
+`kana skills sync` 不会重新 clone 仓库；它读取 `<KANA_HOME>/skills/kana-skills`，把其中每个顶层、包含 `SKILL.md` 的 Skill 目录复制到目标 agent 的 Skills 根目录。`codex` 预设写入 `${CODEX_HOME:-$HOME/.codex}/skills`。普通 sync 跳过已有同名目录；`kana skills resync` 在确认后删除并重新复制源仓库当前包含的同名 Skill，但不删除目标中其它来源或已从源仓库移除的过期 Skill。resync 在非交互环境要求 `--yes`。若默认 Skills 仓库尚未安装，请先运行 `kana skills install`。
 
 ## 根目录与文件布局
 
@@ -60,7 +68,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── memory/                 # global 与 project 的记忆
 └── skills/
     ├── skills.toml         # 全局 Skill 的启用列表
-    └── kana-skills/        # `kana install --skills` 克隆的默认仓库
+    └── kana-skills/        # `kana skills install` 克隆的默认仓库
 ```
 
 安装和应用写入的配置文件均以 `0600` 模式创建或写入。该权限是文件模式请求；实际效果仍受操作系统和文件系统 umask/权限模型影响。
@@ -273,7 +281,7 @@ HTTP transport 只实现 `2025-11-25` Streamable HTTP：POST 响应同时支持 
 
 可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续，并在最终摘要后留下失败警告。初次加载时，必需服务器失败会让当前会话停留在错误状态，不启用 editor；但显式 reload 中遇到配置或必需服务器失败时，会清空已关闭 manager 的工具、用无 MCP 工具的状态重建 Agent、把错误写入 transcript，并恢复 editor，以便再次打开 `/mcp`。连接和 reload 都会在 transcript 末尾追加进度块，最终保留含 ready server 与可用工具数量的启动/reload 摘要；未选择任何服务器时，reload 摘要会显示 `MCP disabled`。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲或加载时按 `Ctrl+C`，以及收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先进入优雅关闭，并在 transcript 末尾显示逐服务器关闭进度而不替换 bottom；所有 MCP server 关闭后才恢复终端并打印退出信息。优雅关闭等待期间再次按 `Ctrl+C` 会立即强制退出。
 
-stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 与 `headers` 按 JSON 字面值处理，静态 token 因而会以明文保存在 `mcp.json`；优先使用 OAuth 的 `clientSecretEnv` 和最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建两个 MCP 文件，但 `kana install --force` 也会把服务器定义和启用状态重置为空默认值；它不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
+stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 与 `headers` 按 JSON 字面值处理，静态 token 因而会以明文保存在 `mcp.json`；优先使用 OAuth 的 `clientSecretEnv` 和最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建缺失的两个 MCP 文件，`kana reset` 则会在确认后把服务器定义和启用状态重置为空默认值；两者都不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
 
 ## API key 与项目指令
 

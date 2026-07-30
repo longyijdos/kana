@@ -19,7 +19,6 @@ export {
   DEFAULT_KANA_CONFIG,
   getActiveKanaModelConfig,
   getKanaConfigPaths,
-  type InstallKanaConfigOptions,
   type InstallKanaConfigResult,
   installKanaConfig,
   KANA_DEEPSEEK_REASONING_EFFORTS,
@@ -45,6 +44,8 @@ export {
   type KanaToolApprovalConfig,
   type KanaToolApprovalMode,
   loadKanaConfig,
+  type ResetKanaConfigResult,
+  resetKanaConfig,
 } from "./config";
 export {
   createKanaConfigStore,
@@ -182,10 +183,15 @@ export {
   type InstallKanaSkillsOptions,
   type InstallKanaSkillsResult,
   installKanaSkills,
+  type ReinstallKanaSkillsOptions,
+  type ReinstallKanaSkillsResult,
+  reinstallKanaSkills,
 } from "./skill-install";
 export {
   KANA_SKILL_SYNC_TARGETS,
   type KanaSkillSyncTarget,
+  type ResyncKanaSkillsOptions,
+  resyncKanaSkills,
   type SyncKanaSkillResult,
   type SyncKanaSkillStatus,
   type SyncKanaSkillsOptions,

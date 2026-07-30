@@ -62,7 +62,7 @@ bun install && ./scripts/install.sh
 可选安装默认 Skills：
 
 ```bash
-kana install --skills
+kana skills install
 ```
 
 更多安装选项、配置字段与审批模式见[配置与安装文档](docs/configuration.md)和[English version](docs/configuration.en.md)。

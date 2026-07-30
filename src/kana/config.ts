@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -124,23 +124,29 @@ export type KanaConfigPaths = {
   skillsConfigPath: string;
 };
 
-export type InstallKanaConfigOptions = {
-  force?: boolean;
-};
-
 export type InstallKanaConfigResult = {
   configPath: string;
-  configStatus: "defaults" | "exists" | "reinstalled";
+  configStatus: "defaults" | "exists";
   configExamplePath: string;
   configExampleStatus: "created" | "exists" | "updated";
   mcpConfigPath: string;
-  mcpConfigStatus: "created" | "exists" | "reinstalled";
+  mcpConfigStatus: "created" | "exists";
   mcpEnabledPath: string;
-  mcpEnabledStatus: "created" | "exists" | "reinstalled";
+  mcpEnabledStatus: "created" | "exists";
   approvalsPath: string;
-  approvalsStatus: "created" | "exists" | "reinstalled";
+  approvalsStatus: "created" | "exists";
   skillsConfigPath: string;
-  skillsConfigStatus: "created" | "exists" | "reinstalled";
+  skillsConfigStatus: "created" | "exists";
+};
+
+export type ResetKanaConfigResult = {
+  configPath: string;
+  configRemoved: boolean;
+  configExamplePath: string;
+  mcpConfigPath: string;
+  mcpEnabledPath: string;
+  approvalsPath: string;
+  skillsConfigPath: string;
 };
 
 export const DEFAULT_KANA_CONFIG: KanaConfig = {
@@ -218,10 +224,7 @@ export function loadKanaConfig(env: NodeJS.ProcessEnv = process.env): KanaConfig
   return parseKanaConfig(parsed);
 }
 
-export function installKanaConfig(
-  env: NodeJS.ProcessEnv = process.env,
-  options: InstallKanaConfigOptions = {},
-): InstallKanaConfigResult {
+export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): InstallKanaConfigResult {
   const {
     home,
     configPath,
@@ -234,71 +237,54 @@ export function installKanaConfig(
   mkdirSync(home, { recursive: true });
 
   const configExists = existsSync(configPath);
-  const mcpConfigExists = existsSync(mcpConfigPath);
-  const mcpEnabledExists = existsSync(mcpEnabledPath);
-  const approvalsExists = existsSync(approvalsPath);
-  const skillsConfigExists = existsSync(skillsConfigPath);
-
-  if (configExists && options.force) {
-    writeFileSync(configPath, serializeKanaConfig(DEFAULT_KANA_CONFIG), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-  }
-
-  const configExampleStatus = writeGeneratedConfigExample(configExamplePath);
-
-  if (!mcpConfigExists || options.force) {
-    writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-  }
-
-  if (!mcpEnabledExists || options.force) {
-    writeFileSync(mcpEnabledPath, `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-  }
-
-  if (!approvalsExists || options.force) {
-    writeFileSync(approvalsPath, `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-  }
-
-  if (!skillsConfigExists || options.force) {
-    mkdirSync(path.dirname(skillsConfigPath), { recursive: true });
-    writeFileSync(skillsConfigPath, ["[model_invocation]", "enabled = []", ""].join("\n"), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-  }
 
   return {
     configPath,
-    configStatus:
-      configExists && !options.force ? "exists" : configExists ? "reinstalled" : "defaults",
+    configStatus: configExists ? "exists" : "defaults",
     configExamplePath,
-    configExampleStatus,
+    configExampleStatus: writeGeneratedConfigExample(configExamplePath),
     mcpConfigPath,
-    mcpConfigStatus:
-      mcpConfigExists && !options.force ? "exists" : mcpConfigExists ? "reinstalled" : "created",
+    mcpConfigStatus: installKanaFile(
+      mcpConfigPath,
+      `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`,
+    ),
     mcpEnabledPath,
-    mcpEnabledStatus:
-      mcpEnabledExists && !options.force ? "exists" : mcpEnabledExists ? "reinstalled" : "created",
+    mcpEnabledStatus: installKanaFile(
+      mcpEnabledPath,
+      `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`,
+    ),
     approvalsPath,
-    approvalsStatus:
-      approvalsExists && !options.force ? "exists" : approvalsExists ? "reinstalled" : "created",
+    approvalsStatus: installKanaFile(
+      approvalsPath,
+      `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`,
+    ),
     skillsConfigPath,
-    skillsConfigStatus:
-      skillsConfigExists && !options.force
-        ? "exists"
-        : skillsConfigExists
-          ? "reinstalled"
-          : "created",
+    skillsConfigStatus: installKanaFile(skillsConfigPath, serializeEmptySkillsConfig()),
+  };
+}
+
+export function resetKanaConfig(env: NodeJS.ProcessEnv = process.env): ResetKanaConfigResult {
+  const paths = getKanaConfigPaths(env);
+  mkdirSync(paths.home, { recursive: true });
+
+  // Reset touches only the explicit configuration allowlist. User data,
+  // credentials, logs, AGENTS.md, and installed Skill directories stay intact.
+  const configRemoved = existsSync(paths.configPath);
+  rmSync(paths.configPath, { force: true });
+  writeGeneratedConfigExample(paths.configExamplePath);
+  writeKanaFile(paths.mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
+  writeKanaFile(paths.mcpEnabledPath, `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`);
+  writeKanaFile(paths.approvalsPath, `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`);
+  writeKanaFile(paths.skillsConfigPath, serializeEmptySkillsConfig());
+
+  return {
+    configPath: paths.configPath,
+    configRemoved,
+    configExamplePath: paths.configExamplePath,
+    mcpConfigPath: paths.mcpConfigPath,
+    mcpEnabledPath: paths.mcpEnabledPath,
+    approvalsPath: paths.approvalsPath,
+    skillsConfigPath: paths.skillsConfigPath,
   };
 }
 
@@ -353,49 +339,6 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
   });
 }
 
-function serializeKanaConfig(config: KanaConfig): string {
-  const activeProvider = config.provider.active;
-  const model = config.model[activeProvider];
-  const modelLines =
-    activeProvider === "deepseek"
-      ? serializeDeepSeekModel(config.model.deepseek)
-      : serializeOpenAICodexModel(config.model["openai-codex"]);
-
-  return [
-    "[provider]",
-    `active = "${activeProvider}"`,
-    "",
-    `[model.${activeProvider}]`,
-    `name = "${model.name}"`,
-    ...modelLines,
-    "",
-    "[agent]",
-    `max_turns = ${config.agent.maxTurns}`,
-    ...(config.agent.contextLimit === undefined
-      ? ["# context_limit = 200000"]
-      : [`context_limit = ${config.agent.contextLimit}`]),
-    "",
-    "[approval]",
-    `mode = "${config.approval.mode}"`,
-    "",
-    "[notification]",
-    `backend = "${config.notification.backend}"`,
-    `on_agent_completed = ${config.notification.onAgentCompleted}`,
-    `on_approval_required = ${config.notification.onApprovalRequired}`,
-    "",
-    "[memory]",
-    `enabled = ${config.memory.enabled}`,
-    `max_chars = ${config.memory.maxChars}`,
-    ...(config.memory.dailyRetentionDays === undefined
-      ? ["# daily_retention_days = 30"]
-      : [`daily_retention_days = ${config.memory.dailyRetentionDays}`]),
-    "",
-    "[logging]",
-    `level = "${config.logging.level}"`,
-    "",
-  ].join("\n");
-}
-
 function serializeKanaConfigExample(config: KanaConfig): string {
   return [
     "# Generated configuration reference. Kana does not read this file.",
@@ -435,19 +378,40 @@ function serializeKanaConfigExample(config: KanaConfig): string {
   ].join("\n");
 }
 
+function installKanaFile(filePath: string, content: string): "created" | "exists" {
+  if (existsSync(filePath)) {
+    return "exists";
+  }
+
+  writeKanaFile(filePath, content);
+  return "created";
+}
+
 function writeGeneratedConfigExample(
   configExamplePath: string,
 ): InstallKanaConfigResult["configExampleStatus"] {
   const content = serializeKanaConfigExample(DEFAULT_KANA_CONFIG);
   if (!existsSync(configExamplePath)) {
-    writeFileSync(configExamplePath, content, { encoding: "utf8", mode: 0o600 });
+    writeKanaFile(configExamplePath, content);
     return "created";
   }
   if (readFileSync(configExamplePath, "utf8") === content) {
     return "exists";
   }
-  writeFileSync(configExamplePath, content, { encoding: "utf8", mode: 0o600 });
+
+  // The example is generated reference material rather than user configuration,
+  // so refreshing it is safe and keeps upgrades aligned with the current schema.
+  writeKanaFile(configExamplePath, content);
   return "updated";
+}
+
+function writeKanaFile(filePath: string, content: string): void {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, content, { encoding: "utf8", mode: 0o600 });
+}
+
+function serializeEmptySkillsConfig(): string {
+  return ["[model_invocation]", "enabled = []", ""].join("\n");
 }
 
 function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {

@@ -20,6 +20,7 @@ import {
   installKanaConfig,
   loadKanaConfig,
   loadKanaEnvironment,
+  resetKanaConfig,
   saveKanaMemory,
 } from "@/kana";
 
@@ -130,39 +131,60 @@ describe("Kana config", () => {
     expect(readFileSync(firstInstall.skillsConfigPath, "utf8")).toBe("custom = true\n");
   });
 
-  test("force installs all default config files over existing files", () => {
+  test("resets only configuration state and preserves credentials and user data", () => {
     const env = createTempEnv();
-    const { configPath, mcpConfigPath, mcpEnabledPath, approvalsPath, skillsConfigPath } =
-      installKanaConfig(env);
-    writeFileSync(configPath, "custom = true\n");
-    writeFileSync(mcpConfigPath, '{"custom":true}\n');
-    writeFileSync(mcpEnabledPath, '{"enabledServers":["custom"]}\n');
-    writeFileSync(approvalsPath, '{"custom":true}\n');
-    writeFileSync(skillsConfigPath, "custom = true\n");
+    installKanaConfig(env);
+    const paths = getKanaConfigPaths(env);
+    writeFileSync(paths.configPath, "custom = true\n");
+    writeFileSync(paths.configExamplePath, "stale template\n");
+    writeFileSync(paths.mcpConfigPath, '{"custom":true}\n');
+    writeFileSync(paths.mcpEnabledPath, '{"enabledServers":["custom"]}\n');
+    writeFileSync(paths.approvalsPath, '{"custom":true}\n');
+    writeFileSync(paths.skillsConfigPath, "custom = true\n");
 
-    const result = installKanaConfig(env, { force: true });
+    const preservedFiles = new Map([
+      [path.join(paths.home, "oauth-tokens.json"), "oauth"],
+      [paths.agentsPath, "global instructions"],
+      [path.join(paths.sessionsPath, "session.jsonl"), "session"],
+      [path.join(paths.memoryDirectory, "memory.md"), "memory"],
+      [path.join(paths.accountingPath, "usage.jsonl"), "accounting"],
+      [path.join(paths.logsPath, "session.jsonl"), "logs"],
+      [path.join(paths.home, "skills", "kana-skills", "SKILL.md"), "default repository"],
+      [path.join(paths.home, "skills", "personal", "SKILL.md"), "personal skill"],
+    ]);
+    for (const [filePath, content] of preservedFiles) {
+      mkdirSync(path.dirname(filePath), { recursive: true });
+      writeFileSync(filePath, content);
+    }
+
+    const result = resetKanaConfig(env);
 
     expect(result).toEqual({
-      configPath,
-      configStatus: "reinstalled",
-      configExamplePath: path.join(path.dirname(configPath), "config.example.toml"),
-      configExampleStatus: "exists",
-      mcpConfigPath,
-      mcpConfigStatus: "reinstalled",
-      mcpEnabledPath,
-      mcpEnabledStatus: "reinstalled",
-      approvalsPath,
-      approvalsStatus: "reinstalled",
-      skillsConfigPath,
-      skillsConfigStatus: "reinstalled",
+      configPath: paths.configPath,
+      configRemoved: true,
+      configExamplePath: paths.configExamplePath,
+      mcpConfigPath: paths.mcpConfigPath,
+      mcpEnabledPath: paths.mcpEnabledPath,
+      approvalsPath: paths.approvalsPath,
+      skillsConfigPath: paths.skillsConfigPath,
     });
-    expect(readFileSync(configPath, "utf8")).toContain('api_key_env = "DEEPSEEK_API_KEY"');
-    expect(JSON.parse(readFileSync(mcpConfigPath, "utf8"))).toEqual({ mcpServers: {} });
-    expect(JSON.parse(readFileSync(mcpEnabledPath, "utf8"))).toEqual({ enabledServers: [] });
-    expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
-    expect(readFileSync(skillsConfigPath, "utf8")).toBe(
+    expect(fileExists(paths.configPath)).toBe(false);
+    expect(readFileSync(paths.configExamplePath, "utf8")).not.toBe("stale template\n");
+    expect(readFileSync(paths.configExamplePath, "utf8")).toContain("[model.openai-codex]");
+    expect(JSON.parse(readFileSync(paths.mcpConfigPath, "utf8"))).toEqual({ mcpServers: {} });
+    expect(JSON.parse(readFileSync(paths.mcpEnabledPath, "utf8"))).toEqual({
+      enabledServers: [],
+    });
+    expect(JSON.parse(readFileSync(paths.approvalsPath, "utf8"))).toEqual(
+      DEFAULT_KANA_TOOL_APPROVALS,
+    );
+    expect(readFileSync(paths.skillsConfigPath, "utf8")).toBe(
       ["[model_invocation]", "enabled = []", ""].join("\n"),
     );
+    for (const [filePath, content] of preservedFiles) {
+      expect(readFileSync(filePath, "utf8")).toBe(content);
+    }
+    expect(resetKanaConfig(env).configRemoved).toBe(false);
   });
 
   test("refreshes the generated config example without creating config.toml", () => {

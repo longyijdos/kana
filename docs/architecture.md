@@ -26,13 +26,15 @@ src/main.ts
 
 ## 启动路径
 
-`src/main.ts` 调用 `runCli`。CLI 支持三类路径：
+`src/main.ts` 调用 `runCli`。CLI 支持以下主要路径：
 
 - `kana [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
 - `kana resume [sessionId]`：按 ID 恢复会话，或打开会话选择器。
-- `kana install [--force] [--skills]`：初始化本地状态；缺少 `config.toml` 时保留内置默认值，`--skills` 额外克隆或更新默认 Skills 仓库。
+- `kana install`：幂等补齐缺失的本地状态并刷新生成的配置参考，不物化默认 `config.toml`，也不安装 Skills 仓库。
+- `kana reset [--yes]`：经确认删除 `config.toml`，刷新配置参考并重置 MCP、审批和 Skill 启用状态，同时保留凭据、用户数据、日志、指令和实际 Skills。
 - `kana auth login|status|logout openai-codex`：管理 Codex 浏览器 OAuth 与本地凭据。
-- `kana skills sync <target>`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；当前内置 `codex` 目标，也可传自定义目录。
+- `kana skills install|reinstall [--yes]`：安全安装/更新默认 Skills Git 仓库，或经确认删除后重新 clone。
+- `kana skills sync|resync <target> [--yes]`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；sync 跳过同名项，resync 经确认替换同名项，但不清理其它或过期 Skill。
 
 启动 TUI 时，`startTui` 会加载运行配置和审批白名单，并以空闲的 `KanaMcpRuntime` 构造 `KanaTuiApp`。当前会话确定并完成首次 TUI 渲染后，App 才调用注入的外部工具加载回调；此时 runtime 才读取 MCP 定义与启用状态文件、连接选中的 server、发现工具，再由 App 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。会话读写、Skills 与 MCP 开关、记忆压缩、外部工具 start/reload 和 Agent 工厂都以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 
@@ -127,7 +129,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 5. 当前目录、平台、日期和时区；
 6. 已启用 Skills 的名称、描述和 `SKILL.md` 路径。
 
-`loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。首次安装不物化默认 `config.toml`，而会生成运行时不读取的完整 `config.example.toml` 参考；审批数据和 Skills 开关仍以仅用户可读写的文件创建。`KanaConfigStore` 为 TUI 等调用方提供通用 typed mutation：它比较更新前后的有效配置，只 patch 变化的规范 TOML leaf，验证回读结果后用同目录临时文件原子替换，因此无关配置、未知表和注释不需要经过全量重序列化。
+`loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。install 不物化默认 `config.toml`，只补齐缺失的可变状态；`config.example.toml` 是运行时不读取的 Kana 生成参考，install 和 reset 会比较并刷新过期内容。`KanaConfigStore` 为 TUI 等调用方提供通用 typed mutation：它比较更新前后的有效配置，只 patch 变化的规范 TOML leaf，验证回读结果后用同目录临时文件原子替换，因此无关配置、未知表和注释不需要经过全量重序列化。
 
 ## 本地状态
 
@@ -135,17 +137,18 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 | 数据 | 位置与格式 | 写入时机 |
 | --- | --- | --- |
-| 配置 | `config.toml` | 用户编辑、`/model` 修改，或对已有文件执行 `kana install --force` |
-| 配置参考 | `config.example.toml` | `kana install` 创建或刷新；运行时不读取 |
-| MCP server 定义 | `mcp.json` | `kana install` 或用户编辑 |
-| MCP 启用状态 | `mcp-enabled.json` | `kana install` 或启用状态变更 |
+| 配置 | `config.toml` | 用户编辑或 `/model` 修改；`kana reset` 删除 |
+| 配置参考 | `config.example.toml` | `kana install` 或 `kana reset` 创建/刷新；运行时不读取 |
+| MCP server 定义 | `mcp.json` | `kana install`、`kana reset` 或用户编辑 |
+| MCP 启用状态 | `mcp-enabled.json` | `kana install`、`kana reset` 或启用状态变更 |
 | OAuth token | `oauth-tokens.json` | 浏览器授权、refresh、退出登录或凭据失效 |
-| 审批白名单 | `approvals.json` | 用户选择某条 bash 命令“始终允许” |
+| 审批白名单 | `approvals.json` | `kana install`、`kana reset`，或用户选择某条 bash 命令“始终允许” |
 | 会话 | `sessions/<workspace>/*.jsonl` | 每个 Agent 运行成功提交后追加 |
 | 运行时日志 | `logs/<workspace>/<session-id>.jsonl` | TUI、Agent、provider、工具和记忆任务的安全生命周期事件 |
 | 长期记忆 | `memory/global|projects/<workspace>/memory.md` | 记忆压缩成功后原子替换 |
 | 每日记忆 | 对应目录的 `daily/YYYY-MM-DD.md` | `remember` 成功时追加 |
-| 全局 Skills 配置 | `skills/skills.toml` | TUI 修改全局 Skill 开关时 |
+| 全局 Skills 配置 | `skills/skills.toml` | `kana install`、`kana reset`，或 TUI 修改全局 Skill 开关 |
+| 默认 Skills 仓库 | `skills/kana-skills/` | `kana skills install` 或 `kana skills reinstall` |
 
 工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V2 会话文件是 JSONL：首行是版本化的 session header，之后是带父 ID 的 message 和 context-compaction 时间线条目。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；第一批已提交记录追加时才写 header，并用首条用户消息生成标题。V1 仍可读取，并在第一次写入压缩条目时原子升级。
 

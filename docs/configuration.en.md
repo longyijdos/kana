@@ -8,11 +8,16 @@ This document describes Kana's implemented commands, configuration files, and lo
 # Initialize local state; missing config.toml continues to use built-in defaults
 kana install
 
-# Also install or update the default global Skills repository
-kana install --skills
+# Reset runtime configuration; confirmation is interactive unless --yes is explicit
+kana reset
+kana reset --yes
 
-# Overwrite existing config/state files; reclone Skills when requested
-kana install --force --skills
+# Install or safely update the default global Skills repository
+kana skills install
+
+# Delete and reclone the default Skills repository; confirmation is interactive
+kana skills reinstall
+kana skills reinstall --yes
 
 # Copy installed Kana Skills to Codex's global Skills directory
 kana skills sync codex
@@ -20,8 +25,9 @@ kana skills sync codex
 # Copy to a custom agent Skills directory; existing matching Skills are skipped by default
 kana skills sync --target-dir ~/.other-agent/skills
 
-# Replace matching Skills that already exist in the target directory
-kana skills sync codex --force
+# Replace matching target Skills without removing other or stale Skills
+kana skills resync codex
+kana skills resync codex --yes
 
 # Start the TUI; arguments become the first prompt
 kana fix the failing tests
@@ -35,11 +41,13 @@ kana auth status openai-codex
 kana auth logout openai-codex
 ```
 
-`kana install` does not create `config.toml` merely to materialize built-in defaults; Kana uses those defaults directly when the file is absent. Existing configuration is not overwritten. Installation creates or refreshes `config.example.toml`, which lists every provider and configuration field; Kana generates this reference and never reads it, so copy only the fields being overridden into `config.toml`. `--force` restores an existing `config.toml` to the default DeepSeek configuration and resets `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml`; with `--skills`, it also deletes and reclones the default Skills directory. Installation and forced reinstallation never delete `oauth-tokens.json`, and neither creates `~/.kana/AGENTS.md`.
+`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` is a Kana-managed generated reference: install compares it with the current schema and creates or refreshes it only when missing or stale. Runtime never reads this file, so copy only fields being overridden into `config.toml`. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
 
-The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. If the existing directory is not a Git repository, a regular update fails and `--force` is required to replace it. An existing Git repository is updated with `git pull --ff-only`.
+`kana reset` restores configuration to the state produced by a clean install. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
 
-`kana skills sync` does not clone the repository again. It reads `<KANA_HOME>/skills/kana-skills` and copies every top-level Skill directory containing `SKILL.md` into the target agent's Skills root. The `codex` preset writes to `${CODEX_HOME:-$HOME/.codex}/skills`. When the target already contains a matching directory, the command skips it by default; `--force` deletes that directory first, then copies the Skill again. If the default Skills repository is not installed yet, run `kana install --skills` first.
+The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. `kana skills install` clones it when absent and runs `git pull --ff-only` for an existing Git checkout. An existing non-Git directory fails with a prompt to use `kana skills reinstall`. After confirmation, reinstall deletes only the complete default repository directory and clones it again, preserving the sibling `skills.toml` and all other installed Skills. Non-interactive use requires `--yes`.
+
+`kana skills sync` does not clone the repository again. It reads `<KANA_HOME>/skills/kana-skills` and copies every top-level Skill directory containing `SKILL.md` into the target agent's Skills root. The `codex` preset writes to `${CODEX_HOME:-$HOME/.codex}/skills`. Ordinary sync skips matching target directories. After confirmation, `kana skills resync` deletes and recopies matching Skills currently present in the source repository, but does not remove other target Skills or stale Skills no longer present in the source. Non-interactive resync requires `--yes`. If the default Skills repository is absent, run `kana skills install` first.
 
 ## Root directory and file layout
 
@@ -60,7 +68,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── memory/                 # Global and project memory
 └── skills/
     ├── skills.toml         # Enabled global Skills
-    └── kana-skills/        # Default repository cloned by `kana install --skills`
+    └── kana-skills/        # Default repository cloned by `kana skills install`
 ```
 
 Files written by installation and the application are created or written with mode `0600`. This is the requested file mode; its effective result remains subject to the operating system, filesystem, and umask.
@@ -273,7 +281,7 @@ The HTTP transport implements only `2025-11-25` Streamable HTTP. POST responses 
 
 When an optional server fails to start, Kana records diagnostics, closes that server, and continues, leaving a persistent warning after the final summary. A failed required server during initial loading leaves the current session in an error state without enabling the editor. During an explicit reload, however, any configuration or required-server failure clears the closed manager's tools, rebuilds the Agent without them, reports the error in the transcript, and restores the editor so `/mcp` can be opened again. Connecting and reloading append progress blocks after the transcript, followed by startup/reload summaries with ready-server and available-tool counts; selecting no servers produces an `MCP disabled` reload summary. Remote tools retain the unknown-tool approval policy, so every call requires confirmation in `unless_trusted` mode; the approval prompt shows the server ID, original remote tool name, and complete formatted arguments, with allow-once and deny choices only. On quit, idle or loading `Ctrl+C`, or `SIGHUP`, `SIGINT`, and `SIGTERM`, Kana begins graceful shutdown and shows per-server close progress at the end of the transcript without replacing bottom. It restores the terminal and prints exit information only after every MCP server closes. Pressing `Ctrl+C` again while graceful shutdown is pending forces immediate termination.
 
-Stdio server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. HTTP endpoints and OAuth authorization servers likewise form remote data, tool, and credential trust boundaries. `env` and `headers` use literal JSON values, so a static token remains plaintext inside `mcp.json`; prefer OAuth `clientSecretEnv` and least-privilege scopes, and do not commit or share config or token files. Kana's OAuth token store is also a local plaintext credential file protected only by filesystem permissions. `kana install` creates both MCP files with mode `0600`, but `kana install --force` resets definitions and activation state to empty defaults; it does not delete the OAuth token store. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
+Stdio server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. HTTP endpoints and OAuth authorization servers likewise form remote data, tool, and credential trust boundaries. `env` and `headers` use literal JSON values, so a static token remains plaintext inside `mcp.json`; prefer OAuth `clientSecretEnv` and least-privilege scopes, and do not commit or share config or token files. Kana's OAuth token store is also a local plaintext credential file protected only by filesystem permissions. `kana install` creates missing MCP files with mode `0600`, while confirmed `kana reset` resets definitions and activation state to empty defaults. Neither command deletes the OAuth token store. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
 
 ## API key and project instructions
 
