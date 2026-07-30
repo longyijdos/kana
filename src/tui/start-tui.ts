@@ -11,6 +11,7 @@ import {
   createMemoryConsolidationScheduler,
   createWakeScheduler,
   deleteKanaSession,
+  getActiveKanaModelConfig,
   getKanaSessionLogPath,
   KANA_BUILT_IN_TOOL_NAMES,
   type LoadKanaSessionResult,
@@ -50,6 +51,7 @@ export type StartTuiOptions = {
 
 export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   const config = loadKanaConfig();
+  const modelConfig = getActiveKanaModelConfig(config);
   const logManager = createSessionLogManager({ level: config.logging.level });
   const toolApprovals = loadKanaToolApprovals();
   const memoryConsolidationQueue = createMemoryConsolidationQueue();
@@ -61,8 +63,8 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     createKanaSession({
       title,
       model: {
-        provider: config.model.provider,
-        model: config.model.name,
+        provider: config.provider.active,
+        model: modelConfig.name,
       },
       parentSessionPath,
     });

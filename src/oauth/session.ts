@@ -47,6 +47,7 @@ export type OAuthSessionOptions = {
   signal?: AbortSignal;
   now?: () => number;
   startCallbackServer?(options: StartOAuthCallbackServerOptions): Promise<OAuthCallbackServer>;
+  acceptMissingBearerTokenType?: boolean;
 };
 
 export type OAuthAuthorizeOptions = {
@@ -79,15 +80,20 @@ export class OAuthSession {
   }
 
   async getAccessToken(): Promise<string | undefined> {
+    return (await this.getToken())?.accessToken;
+  }
+
+  async getToken(): Promise<OAuthStoredToken | undefined> {
     this.assertOpen();
     const token = await this.loadToken();
     if (token === undefined) {
       return undefined;
     }
     if (this.isUsable(token)) {
-      return token.accessToken;
+      return copyStoredToken(token);
     }
-    return (await this.refresh())?.accessToken;
+    const refreshed = await this.refresh();
+    return refreshed === undefined ? undefined : copyStoredToken(refreshed);
   }
 
   async getStatus(): Promise<OAuthSessionStatus> {
@@ -233,9 +239,11 @@ export class OAuthSession {
           : { onDiagnostic: this.options.onDiagnostic }),
         signal: controller.signal,
         now: this.now,
+        acceptMissingBearerTokenType: this.options.acceptMissingBearerTokenType,
       });
       const previous = await this.loadToken();
       const stored = this.bindToken(exchanged, {
+        idToken: exchanged.idToken ?? previous?.idToken,
         refreshToken: exchanged.refreshToken ?? previous?.refreshToken,
         scopes: exchanged.scopes ?? scopes,
       });
@@ -290,15 +298,17 @@ export class OAuthSession {
           : { onDiagnostic: this.options.onDiagnostic }),
         signal: controller.signal,
         now: this.now,
+        acceptMissingBearerTokenType: this.options.acceptMissingBearerTokenType,
       });
       const stored = this.bindToken(refreshed, {
+        idToken: refreshed.idToken ?? current.idToken,
         refreshToken: refreshed.refreshToken ?? current.refreshToken,
         scopes: refreshed.scopes ?? current.scopes,
       });
       await this.saveToken(stored, revision);
       return stored;
     } catch (error) {
-      if (error instanceof OAuthTokenEndpointError && error.oauthError === "invalid_grant") {
+      if (error instanceof OAuthTokenEndpointError && isRejectedRefreshToken(error.oauthError)) {
         await this.invalidateRefreshToken(revision);
         return undefined;
       }
@@ -386,13 +396,14 @@ export class OAuthSession {
 
   private bindToken(
     token: OAuthTokenSet,
-    fallback: { refreshToken?: string; scopes?: string[] },
+    fallback: { idToken?: string; refreshToken?: string; scopes?: string[] },
   ): OAuthStoredToken {
     return {
       ...token,
       issuer: this.options.metadata.issuer,
       clientId: this.options.client.clientId,
       ...(this.options.resource === undefined ? {} : { resource: this.options.resource }),
+      ...(fallback.idToken === undefined ? {} : { idToken: fallback.idToken }),
       ...(fallback.refreshToken === undefined ? {} : { refreshToken: fallback.refreshToken }),
       ...(fallback.scopes === undefined ? {} : { scopes: fallback.scopes.slice() }),
     };
@@ -468,4 +479,13 @@ function assertNonNegativeInteger(value: number | undefined, name: string): void
   if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
     throw new Error(`${name} must be a non-negative integer.`);
   }
+}
+
+function isRejectedRefreshToken(error: string | undefined): boolean {
+  return (
+    error === "invalid_grant" ||
+    error === "refresh_token_expired" ||
+    error === "refresh_token_reused" ||
+    error === "refresh_token_invalidated"
+  );
 }

@@ -16,7 +16,8 @@ src/main.ts
               ├─ tools   文件、Shell 与 remember 工具
               ├─ core    消息、模型、流和用量的共享协议
               └─ providers
-                  └─ deepseek  DeepSeek 请求、SSE 解析和流式适配
+                  ├─ deepseek      DeepSeek 请求、SSE 解析和流式适配
+                  └─ openai-codex  Codex Responses、OAuth 凭据和流式适配
 ```
 
 `core` 是最内层的协议包：不依赖产品配置或 TUI。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`oauth` 是不感知 MCP、供应商或 TUI 的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 依赖这些上层能力，但不直接实现模型协议或持久化格式。
@@ -29,7 +30,8 @@ src/main.ts
 
 - `kana [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
 - `kana resume [sessionId]`：按 ID 恢复会话，或打开会话选择器。
-- `kana install [--force] [--skills]`：创建默认配置、审批文件和 Skills 配置；`--skills` 额外克隆或更新默认 Skills 仓库。
+- `kana install [--force] [--skills]`：初始化本地状态；缺少 `config.toml` 时保留内置默认值，`--skills` 额外克隆或更新默认 Skills 仓库。
+- `kana auth login|status|logout openai-codex`：管理 Codex 浏览器 OAuth 与本地凭据。
 - `kana skills sync <target>`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；当前内置 `codex` 目标，也可传自定义目录。
 
 启动 TUI 时，`startTui` 会加载运行配置和审批白名单，并以空闲的 `KanaMcpRuntime` 构造 `KanaTuiApp`。当前会话确定并完成首次 TUI 渲染后，App 才调用注入的外部工具加载回调；此时 runtime 才读取 MCP 定义与启用状态文件、连接选中的 server、发现工具，再由 App 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。会话读写、Skills 与 MCP 开关、记忆压缩、外部工具 start/reload 和 Agent 工厂都以回调方式注入 App；因此 App 协调用户流程，但不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
@@ -41,7 +43,7 @@ src/main.ts
   → KanaTuiApp.submitPrompt
   → Agent.stream
   → runAgentLoop
-  → Model.stream (DeepSeek SSE)
+  → Model.stream (selected provider SSE)
   → AssistantMessageEvent
   → AgentEvent
   ├─ AgentEventRenderer 更新 transcript、工具块和状态栏
@@ -52,7 +54,7 @@ src/main.ts
   → Tool.execute → ToolResultMessage → 下一轮模型调用
 ```
 
-`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。助手内容块可以是 `text`、`thinking` 或 `tool_call`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。
+`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。助手内容块可以是 `text`、`thinking` 或 `tool_call`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供 Codex 等需要不透明 replay state 的 adapter 使用；`core` 和 session 存储不解释该值。
 
 供应商首先产生 `AssistantMessageEvent`。事件包含增量 `delta` 和完整 `snapshot`：前者适合增量呈现，后者让消费者不必重复实现消息拼接。`agent` 将其转换为更高一层的 `AgentEvent`，并额外发出回合、工具开始/更新/结束和整个运行结束事件。`AgentEventStream` 与模型流都同时支持 `for await` 消费事件和 `result()` 获取最终值。
 
@@ -64,7 +66,7 @@ src/main.ts
 
 ## 模型与供应商适配
 
-`core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。`providers/index.ts` 是集中式工厂；当前产品配置只允许 DeepSeek，`MockModel` 用于测试。
+`core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。`providers/index.ts` 是集中式工厂；产品配置支持 `deepseek` 与 `openai-codex`，`MockModel` 用于测试。
 
 `DeepSeekModel` 将通用消息、系统提示词和工具 JSON Schema 转换为 DeepSeek 的 OpenAI 兼容请求格式，向 `/chat/completions` 发送 SSE 请求。流解析器会：
 
@@ -74,6 +76,8 @@ src/main.ts
 4. 映射结束原因和 token 用量。
 
 请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口、最大输出和 CNY 计价；TUI 用它计算上下文占用和本次进程累计成本。
+
+`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex Responses Lite endpoint 发送 `store = false` 的 SSE 请求。adapter 把 reasoning summary、message 和 function call output item 映射到相同的有序内容协议，并把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。首个 `401` 会 refresh 并重试一次；subscription 用量只记录 token，不套用 Platform API 价格。详见 [OpenAI Codex 提供商适配](openai-codex-provider.md)。
 
 ## MCP 协议基础
 
@@ -123,7 +127,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 5. 当前目录、平台、日期和时区；
 6. 已启用 Skills 的名称、描述和 `SKILL.md` 路径。
 
-`loadKanaConfig` 从 `config.toml` 读取配置，并按字段与默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。默认配置、审批数据和 Skills 开关均以仅用户可读写的文件创建。
+`loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。首次安装不物化默认 `config.toml`，审批数据和 Skills 开关仍以仅用户可读写的文件创建。
 
 ## 本地状态
 
@@ -131,7 +135,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 | 数据 | 位置与格式 | 写入时机 |
 | --- | --- | --- |
-| 配置 | `config.toml` | `kana install` 或用户编辑 |
+| 配置 | `config.toml` | 用户编辑，或对已有文件执行 `kana install --force` |
 | MCP server 定义 | `mcp.json` | `kana install` 或用户编辑 |
 | MCP 启用状态 | `mcp-enabled.json` | `kana install` 或启用状态变更 |
 | OAuth token | `oauth-tokens.json` | 浏览器授权、refresh、退出登录或凭据失效 |

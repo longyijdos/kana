@@ -17,22 +17,29 @@ export {
 } from "./agent";
 export {
   DEFAULT_KANA_CONFIG,
+  getActiveKanaModelConfig,
   getKanaConfigPaths,
   type InstallKanaConfigOptions,
   type InstallKanaConfigResult,
   installKanaConfig,
   KANA_LOG_LEVELS,
+  KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,
   KANA_TOOL_APPROVAL_MODES,
   type KanaAgentConfig,
   type KanaConfig,
   type KanaConfigPaths,
+  type KanaDeepSeekModelConfig,
   type KanaLoggingConfig,
   type KanaLogLevel,
   type KanaMemoryConfig,
   type KanaModelConfig,
+  type KanaModelConfigMap,
+  type KanaModelProvider,
   type KanaNotificationBackend,
   type KanaNotificationConfig,
+  type KanaOpenAICodexModelConfig,
+  type KanaProviderConfig,
   type KanaToolApprovalConfig,
   type KanaToolApprovalMode,
   loadKanaConfig,
@@ -133,6 +140,14 @@ export {
   type LoadKanaOAuthTokenStatusesOptions,
   loadKanaOAuthTokenStatuses,
 } from "./oauth-token-store";
+export {
+  authorizeKanaOpenAICodex,
+  type CreateKanaOpenAICodexAuthOptions,
+  getKanaOpenAICodexAuthStatus,
+  KANA_OPENAI_CODEX_OAUTH_STORAGE_KEY,
+  KanaOpenAICodexAuth,
+  signOutKanaOpenAICodex,
+} from "./openai-codex-auth";
 export { getKanaSessionLogPath, type KanaLogPathOptions } from "./path";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {

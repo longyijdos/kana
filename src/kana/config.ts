@@ -3,11 +3,22 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import { LOG_LEVELS, type LogLevel } from "@/logging";
-import type { DeepSeekReasoningEffort } from "@/providers/deepseek";
+import type {
+  DeepSeekReasoningEffort,
+  OpenAICodexReasoningEffort,
+  OpenAICodexReasoningSummary,
+} from "@/providers";
 import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval-defaults";
 
-export type KanaModelConfig = {
-  provider: "deepseek";
+export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex"] as const;
+
+export type KanaModelProvider = (typeof KANA_MODEL_PROVIDERS)[number];
+
+export type KanaProviderConfig = {
+  active: KanaModelProvider;
+};
+
+export type KanaDeepSeekModelConfig = {
   name: string;
   apiKeyEnv: string;
   thinking: boolean;
@@ -16,6 +27,22 @@ export type KanaModelConfig = {
   timeoutMs: number;
   maxRetries: number;
 };
+
+export type KanaOpenAICodexModelConfig = {
+  name: string;
+  reasoningEffort: OpenAICodexReasoningEffort;
+  reasoningSummary: OpenAICodexReasoningSummary;
+  maxTokens: number;
+  timeoutMs: number;
+  maxRetries: number;
+};
+
+export type KanaModelConfigMap = {
+  deepseek: KanaDeepSeekModelConfig;
+  "openai-codex": KanaOpenAICodexModelConfig;
+};
+
+export type KanaModelConfig = KanaModelConfigMap[KanaModelProvider];
 
 export type KanaAgentConfig = {
   maxTurns: number;
@@ -62,7 +89,8 @@ export type KanaLoggingConfig = {
 };
 
 export type KanaConfig = {
-  model: KanaModelConfig;
+  provider: KanaProviderConfig;
+  model: KanaModelConfigMap;
   agent: KanaAgentConfig;
   approval: KanaToolApprovalConfig;
   notification: KanaNotificationConfig;
@@ -90,7 +118,7 @@ export type InstallKanaConfigOptions = {
 
 export type InstallKanaConfigResult = {
   configPath: string;
-  configStatus: "created" | "exists" | "reinstalled";
+  configStatus: "defaults" | "exists" | "reinstalled";
   mcpConfigPath: string;
   mcpConfigStatus: "created" | "exists" | "reinstalled";
   mcpEnabledPath: string;
@@ -102,15 +130,27 @@ export type InstallKanaConfigResult = {
 };
 
 export const DEFAULT_KANA_CONFIG: KanaConfig = {
+  provider: {
+    active: "deepseek",
+  },
   model: {
-    provider: "deepseek",
-    name: "deepseek-v4-pro",
-    apiKeyEnv: "DEEPSEEK_API_KEY",
-    thinking: true,
-    reasoningEffort: "high",
-    maxTokens: 8192,
-    timeoutMs: 60_000,
-    maxRetries: 1,
+    deepseek: {
+      name: "deepseek-v4-pro",
+      apiKeyEnv: "DEEPSEEK_API_KEY",
+      thinking: true,
+      reasoningEffort: "high",
+      maxTokens: 8192,
+      timeoutMs: 60_000,
+      maxRetries: 1,
+    },
+    "openai-codex": {
+      name: "gpt-5.6-sol",
+      reasoningEffort: "medium",
+      reasoningSummary: "auto",
+      maxTokens: 32_768,
+      timeoutMs: 60_000,
+      maxRetries: 1,
+    },
   },
   agent: {
     maxTurns: -1,
@@ -177,7 +217,7 @@ export function installKanaConfig(
   const approvalsExists = existsSync(approvalsPath);
   const skillsConfigExists = existsSync(skillsConfigPath);
 
-  if (!configExists || options.force) {
+  if (configExists && options.force) {
     writeFileSync(configPath, serializeKanaConfig(DEFAULT_KANA_CONFIG), {
       encoding: "utf8",
       mode: 0o600,
@@ -216,7 +256,7 @@ export function installKanaConfig(
   return {
     configPath,
     configStatus:
-      configExists && !options.force ? "exists" : configExists ? "reinstalled" : "created",
+      configExists && !options.force ? "exists" : configExists ? "reinstalled" : "defaults",
     mcpConfigPath,
     mcpConfigStatus:
       mcpConfigExists && !options.force ? "exists" : mcpConfigExists ? "reinstalled" : "created",
@@ -237,16 +277,20 @@ export function installKanaConfig(
 }
 
 function serializeKanaConfig(config: KanaConfig): string {
+  const activeProvider = config.provider.active;
+  const model = config.model[activeProvider];
+  const modelLines =
+    activeProvider === "deepseek"
+      ? serializeDeepSeekModel(config.model.deepseek)
+      : serializeOpenAICodexModel(config.model["openai-codex"]);
+
   return [
-    "[model]",
-    `provider = "${config.model.provider}"`,
-    `name = "${config.model.name}"`,
-    `api_key_env = "${config.model.apiKeyEnv}"`,
-    `thinking = ${config.model.thinking}`,
-    `reasoning_effort = "${config.model.reasoningEffort}"`,
-    `max_tokens = ${config.model.maxTokens}`,
-    `timeout_ms = ${config.model.timeoutMs}`,
-    `max_retries = ${config.model.maxRetries}`,
+    "[provider]",
+    `active = "${activeProvider}"`,
+    "",
+    `[model.${activeProvider}]`,
+    `name = "${model.name}"`,
+    ...modelLines,
     "",
     "[agent]",
     `max_turns = ${config.agent.maxTurns}`,
@@ -277,7 +321,18 @@ function serializeKanaConfig(config: KanaConfig): string {
 
 function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const raw = asRecord(rawConfig, "config");
+  const provider = raw.provider === undefined ? {} : asRecord(raw.provider, "provider");
   const model = raw.model === undefined ? {} : asRecord(raw.model, "model");
+  const legacyModel = isLegacyModelConfig(model) ? model : undefined;
+  const activeProvider = readModelProvider(
+    provider.active ?? legacyModel?.provider,
+    defaults.provider.active,
+  );
+  const deepSeekModel =
+    legacyModel?.provider === undefined || legacyModel.provider === "deepseek"
+      ? (legacyModel ?? readModelTable(model, "deepseek"))
+      : readModelTable(model, "deepseek");
+  const openAICodexModel = readModelTable(model, "openai-codex");
   const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
   const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
   const notification =
@@ -286,19 +341,72 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const logging = raw.logging === undefined ? {} : asRecord(raw.logging, "logging");
 
   return {
+    provider: {
+      active: activeProvider,
+    },
     model: {
-      provider: readDeepSeekProvider(model.provider, defaults.model.provider),
-      name: readString(model.name, defaults.model.name, "model.name"),
-      apiKeyEnv: readString(model.api_key_env, defaults.model.apiKeyEnv, "model.api_key_env"),
-      thinking: readBoolean(model.thinking, defaults.model.thinking, "model.thinking"),
-      reasoningEffort: readReasoningEffort(model.reasoning_effort, defaults.model.reasoningEffort),
-      maxTokens: readPositiveInteger(
-        model.max_tokens,
-        defaults.model.maxTokens,
-        "model.max_tokens",
-      ),
-      timeoutMs: readNumber(model.timeout_ms, defaults.model.timeoutMs, "model.timeout_ms"),
-      maxRetries: readNumber(model.max_retries, defaults.model.maxRetries, "model.max_retries"),
+      deepseek: {
+        name: readString(deepSeekModel.name, defaults.model.deepseek.name, "model.deepseek.name"),
+        apiKeyEnv: readString(
+          deepSeekModel.api_key_env,
+          defaults.model.deepseek.apiKeyEnv,
+          "model.deepseek.api_key_env",
+        ),
+        thinking: readBoolean(
+          deepSeekModel.thinking,
+          defaults.model.deepseek.thinking,
+          "model.deepseek.thinking",
+        ),
+        reasoningEffort: readDeepSeekReasoningEffort(
+          deepSeekModel.reasoning_effort,
+          defaults.model.deepseek.reasoningEffort,
+        ),
+        maxTokens: readPositiveInteger(
+          deepSeekModel.max_tokens,
+          defaults.model.deepseek.maxTokens,
+          "model.deepseek.max_tokens",
+        ),
+        timeoutMs: readNumber(
+          deepSeekModel.timeout_ms,
+          defaults.model.deepseek.timeoutMs,
+          "model.deepseek.timeout_ms",
+        ),
+        maxRetries: readNumber(
+          deepSeekModel.max_retries,
+          defaults.model.deepseek.maxRetries,
+          "model.deepseek.max_retries",
+        ),
+      },
+      "openai-codex": {
+        name: readString(
+          openAICodexModel.name,
+          defaults.model["openai-codex"].name,
+          "model.openai-codex.name",
+        ),
+        reasoningEffort: readOpenAICodexReasoningEffort(
+          openAICodexModel.reasoning_effort,
+          defaults.model["openai-codex"].reasoningEffort,
+        ),
+        reasoningSummary: readOpenAICodexReasoningSummary(
+          openAICodexModel.reasoning_summary,
+          defaults.model["openai-codex"].reasoningSummary,
+        ),
+        maxTokens: readPositiveInteger(
+          openAICodexModel.max_tokens,
+          defaults.model["openai-codex"].maxTokens,
+          "model.openai-codex.max_tokens",
+        ),
+        timeoutMs: readNumber(
+          openAICodexModel.timeout_ms,
+          defaults.model["openai-codex"].timeoutMs,
+          "model.openai-codex.timeout_ms",
+        ),
+        maxRetries: readNumber(
+          openAICodexModel.max_retries,
+          defaults.model["openai-codex"].maxRetries,
+          "model.openai-codex.max_retries",
+        ),
+      },
     },
     agent: {
       maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
@@ -337,6 +445,50 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       level: readLogLevel(logging.level, defaults.logging.level),
     },
   };
+}
+
+export function getActiveKanaModelConfig<TProvider extends KanaModelProvider>(
+  config: KanaConfig & { provider: { active: TProvider } },
+): KanaModelConfigMap[TProvider] {
+  return config.model[config.provider.active];
+}
+
+function serializeDeepSeekModel(config: KanaDeepSeekModelConfig): string[] {
+  return [
+    `api_key_env = "${config.apiKeyEnv}"`,
+    `thinking = ${config.thinking}`,
+    `reasoning_effort = "${config.reasoningEffort}"`,
+    `max_tokens = ${config.maxTokens}`,
+    `timeout_ms = ${config.timeoutMs}`,
+    `max_retries = ${config.maxRetries}`,
+  ];
+}
+
+function serializeOpenAICodexModel(config: KanaOpenAICodexModelConfig): string[] {
+  return [
+    `reasoning_effort = "${config.reasoningEffort}"`,
+    `reasoning_summary = "${config.reasoningSummary}"`,
+    `max_tokens = ${config.maxTokens}`,
+    `timeout_ms = ${config.timeoutMs}`,
+    `max_retries = ${config.maxRetries}`,
+  ];
+}
+
+function isLegacyModelConfig(model: Record<string, unknown>): boolean {
+  return (
+    model.provider !== undefined ||
+    model.name !== undefined ||
+    model.api_key_env !== undefined ||
+    model.max_tokens !== undefined
+  );
+}
+
+function readModelTable(
+  model: Record<string, unknown>,
+  provider: KanaModelProvider,
+): Record<string, unknown> {
+  const value = model[provider];
+  return value === undefined ? {} : asRecord(value, `model.${provider}`);
 }
 
 function asRecord(value: unknown, name: string): Record<string, unknown> {
@@ -419,27 +571,57 @@ function readOptionalPositiveInteger(
   return value;
 }
 
-function readDeepSeekProvider(value: unknown, fallback: "deepseek"): "deepseek" {
-  const provider = readString(value, fallback, "model.provider");
+function readModelProvider(value: unknown, fallback: KanaModelProvider): KanaModelProvider {
+  const provider = readString(value, fallback, "provider.active");
 
-  if (provider !== "deepseek") {
-    throw new Error(`Unsupported model.provider: ${provider}`);
+  if (!(KANA_MODEL_PROVIDERS as readonly string[]).includes(provider)) {
+    throw new Error(`provider.active must be one of: ${KANA_MODEL_PROVIDERS.join(", ")}.`);
   }
 
-  return provider;
+  return provider as KanaModelProvider;
 }
 
-function readReasoningEffort(
+function readDeepSeekReasoningEffort(
   value: unknown,
   fallback: DeepSeekReasoningEffort,
 ): DeepSeekReasoningEffort {
-  const effort = readString(value, fallback, "model.reasoning_effort");
+  const effort = readString(value, fallback, "model.deepseek.reasoning_effort");
 
   if (effort !== "high" && effort !== "max") {
-    throw new Error(`model.reasoning_effort must be "high" or "max".`);
+    throw new Error(`model.deepseek.reasoning_effort must be "high" or "max".`);
   }
 
   return effort;
+}
+
+function readOpenAICodexReasoningEffort(
+  value: unknown,
+  fallback: OpenAICodexReasoningEffort,
+): OpenAICodexReasoningEffort {
+  const effort = readString(value, fallback, "model.openai-codex.reasoning_effort");
+  const efforts = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
+
+  if (!(efforts as readonly string[]).includes(effort)) {
+    throw new Error(`model.openai-codex.reasoning_effort must be one of: ${efforts.join(", ")}.`);
+  }
+
+  return effort as OpenAICodexReasoningEffort;
+}
+
+function readOpenAICodexReasoningSummary(
+  value: unknown,
+  fallback: OpenAICodexReasoningSummary,
+): OpenAICodexReasoningSummary {
+  const summary = readString(value, fallback, "model.openai-codex.reasoning_summary");
+  const summaries = ["auto", "concise", "detailed"] as const;
+
+  if (!(summaries as readonly string[]).includes(summary)) {
+    throw new Error(
+      `model.openai-codex.reasoning_summary must be one of: ${summaries.join(", ")}.`,
+    );
+  }
+
+  return summary as OpenAICodexReasoningSummary;
 }
 
 function readToolApprovalMode(

@@ -1,26 +1,59 @@
 import type { Model } from "@/core";
-import type { Logger } from "@/logging";
-import { getModel } from "@/providers";
+import { createNoopLogger, type Logger } from "@/logging";
+import { getModel, type OpenAICodexCredentialProvider } from "@/providers";
 import { getKanaConfigPaths, type KanaConfig } from "./config";
+import { KanaOpenAICodexAuth } from "./openai-codex-auth";
 
-export function createKanaModel(config: KanaConfig, logger?: Logger): Model {
-  const apiKey = process.env[config.model.apiKeyEnv];
+export type CreateKanaModelOptions = {
+  openAICodexCredentialProvider?: OpenAICodexCredentialProvider;
+};
 
-  if (!apiKey) {
-    throw new Error(
-      `Missing ${config.model.apiKeyEnv}. Set it in your environment or update ${getKanaConfigPaths().configPath}.`,
-    );
+export function createKanaModel(
+  config: KanaConfig,
+  logger?: Logger,
+  options: CreateKanaModelOptions = {},
+): Model {
+  switch (config.provider.active) {
+    case "deepseek": {
+      const model = config.model.deepseek;
+      const apiKey = process.env[model.apiKeyEnv];
+      if (!apiKey) {
+        throw new Error(
+          `Missing ${model.apiKeyEnv}. Set it in your environment or update ${getKanaConfigPaths().configPath}.`,
+        );
+      }
+
+      return getModel({
+        provider: "deepseek",
+        model: model.name,
+        apiKey,
+        thinking: model.thinking,
+        reasoningEffort: model.reasoningEffort,
+        maxTokens: model.maxTokens,
+        timeoutMs: model.timeoutMs,
+        maxRetries: model.maxRetries,
+        logger,
+      });
+    }
+    case "openai-codex": {
+      const model = config.model["openai-codex"];
+      const credentialProvider =
+        options.openAICodexCredentialProvider ??
+        new KanaOpenAICodexAuth({
+          getLogger: () => logger ?? createNoopLogger(),
+        });
+
+      return getModel({
+        provider: "openai-codex",
+        model: model.name,
+        credentialProvider,
+        reasoningEffort: model.reasoningEffort,
+        reasoningSummary: model.reasoningSummary,
+        maxTokens: model.maxTokens,
+        timeoutMs: model.timeoutMs,
+        maxRetries: model.maxRetries,
+        logger,
+      });
+    }
   }
-
-  return getModel({
-    provider: config.model.provider,
-    model: config.model.name,
-    apiKey,
-    thinking: config.model.thinking,
-    reasoningEffort: config.model.reasoningEffort,
-    maxTokens: config.model.maxTokens,
-    timeoutMs: config.model.timeoutMs,
-    maxRetries: config.model.maxRetries,
-    logger,
-  });
 }

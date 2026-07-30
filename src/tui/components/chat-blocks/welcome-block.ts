@@ -88,6 +88,7 @@ export class WelcomeBlock implements Component {
       title("Highlights"),
       text("  Automatic context compaction"),
       text("  Persistent agent memory"),
+      text("  OpenAI Codex OAuth"),
       text("  MCP OAuth and activation"),
       muted("  ... /help for more"),
     ];

@@ -4,7 +4,13 @@ import type {
   InstallKanaSkillsResult,
   SyncKanaSkillsResult,
 } from "@/kana";
-import { loadKanaEnvironment } from "@/kana";
+import {
+  authorizeKanaOpenAICodex,
+  getKanaOpenAICodexAuthStatus,
+  loadKanaEnvironment,
+  signOutKanaOpenAICodex,
+} from "@/kana";
+import type { OAuthSessionStatus } from "@/oauth";
 import type { StartTuiOptions } from "@/tui";
 import { KANA_VERSION } from "../version";
 
@@ -21,6 +27,9 @@ export type CreateCliOptions = {
     env: NodeJS.ProcessEnv,
     options: { force?: boolean; targetAgent?: string; targetDir?: string },
   ) => SyncKanaSkillsResult;
+  authorizeOpenAICodex?: typeof authorizeKanaOpenAICodex;
+  getOpenAICodexAuthStatus?: typeof getKanaOpenAICodexAuthStatus;
+  signOutOpenAICodex?: typeof signOutKanaOpenAICodex;
   log?: (message: string) => void;
   startTui: (options?: StartTuiOptions) => Promise<void> | void;
 };
@@ -31,6 +40,9 @@ export function createCli(options: CreateCliOptions): Command {
   const log = options.log ?? console.log;
   const runTui = options.startTui;
   const syncSkills = options.syncKanaSkills;
+  const authorizeCodex = options.authorizeOpenAICodex ?? authorizeKanaOpenAICodex;
+  const getCodexAuthStatus = options.getOpenAICodexAuthStatus ?? getKanaOpenAICodexAuthStatus;
+  const signOutCodex = options.signOutOpenAICodex ?? signOutKanaOpenAICodex;
   const program = new Command();
 
   program
@@ -69,7 +81,9 @@ export function createCli(options: CreateCliOptions): Command {
       const result = installConfig(process.env, {
         force: options.force,
       });
-      log(formatInstallMessage("config", result.configPath, result.configStatus));
+      if (result.configStatus !== "defaults") {
+        log(formatInstallMessage("config", result.configPath, result.configStatus));
+      }
       log(formatInstallMessage("MCP config", result.mcpConfigPath, result.mcpConfigStatus));
       log(
         formatInstallMessage(
@@ -89,6 +103,37 @@ export function createCli(options: CreateCliOptions): Command {
         });
         log(formatInstallSkillsMessage(skillsResult));
       }
+    });
+
+  const authCommand = program.command("auth").description("Manage provider authentication");
+
+  authCommand
+    .command("login")
+    .description("Sign in to a model provider")
+    .argument("<provider>", "Provider name")
+    .action(async (provider: string) => {
+      requireOpenAICodexProvider(provider);
+      await authorizeCodex();
+      log("Authorized openai-codex.");
+    });
+
+  authCommand
+    .command("status")
+    .description("Show provider authentication status")
+    .argument("<provider>", "Provider name")
+    .action(async (provider: string) => {
+      requireOpenAICodexProvider(provider);
+      log(formatOAuthStatus("openai-codex", await getCodexAuthStatus()));
+    });
+
+  authCommand
+    .command("logout")
+    .description("Sign out from a model provider")
+    .argument("<provider>", "Provider name")
+    .action(async (provider: string) => {
+      requireOpenAICodexProvider(provider);
+      await signOutCodex();
+      log("Signed out from openai-codex.");
     });
 
   const skillsCommand = program.command("skills").description("Manage Kana skills");
@@ -115,6 +160,23 @@ export function createCli(options: CreateCliOptions): Command {
     );
 
   return program;
+}
+
+function requireOpenAICodexProvider(provider: string): void {
+  if (provider !== "openai-codex") {
+    throw new Error(`Provider ${provider} does not support Kana-managed authentication.`);
+  }
+}
+
+function formatOAuthStatus(provider: string, status: OAuthSessionStatus): string {
+  if (status.state === "unauthorized") {
+    return `${provider}: unauthorized`;
+  }
+
+  const expiresAt =
+    status.expiresAt === undefined ? "" : `, expires ${new Date(status.expiresAt).toISOString()}`;
+  const refreshable = status.refreshable ? ", refreshable" : "";
+  return `${provider}: ${status.state}${refreshable}${expiresAt}`;
 }
 
 function formatInstallSkillsMessage(result: InstallKanaSkillsResult): string {

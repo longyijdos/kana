@@ -88,7 +88,7 @@ describe("CLI", () => {
     await parse(["node", "kana", "install"], {
       installKanaConfig: () => ({
         configPath: "/tmp/config.toml",
-        configStatus: "created",
+        configStatus: "defaults",
         mcpConfigPath: "/tmp/mcp.json",
         mcpConfigStatus: "created",
         mcpEnabledPath: "/tmp/mcp-enabled.json",
@@ -104,7 +104,6 @@ describe("CLI", () => {
     });
 
     expect(logs).toEqual([
-      "Created config: /tmp/config.toml",
       "Created MCP config: /tmp/mcp.json",
       "Created MCP activation state: /tmp/mcp-enabled.json",
       "Approvals already exists: /tmp/approvals.json",
@@ -131,13 +130,51 @@ describe("CLI", () => {
 
     expect(calls).toEqual([{ force: true }]);
     expect(logs).toEqual([
-      "Created config: /tmp/config.toml",
       "Created MCP config: /tmp/mcp.json",
       "Created MCP activation state: /tmp/mcp-enabled.json",
       "Created approvals: /tmp/approvals.json",
       "Created skills config: /tmp/skills.toml",
       "Reinstalled skills: /tmp/.kana/skills/kana-skills",
     ]);
+  });
+
+  test("manages OpenAI Codex authentication", async () => {
+    const calls: string[] = [];
+    const logs: string[] = [];
+    const options = {
+      authorizeOpenAICodex: async () => {
+        calls.push("login");
+        return { accessToken: "access-token", accountId: "account-id" };
+      },
+      getOpenAICodexAuthStatus: async () => ({
+        state: "authorized" as const,
+        refreshable: true,
+        expiresAt: 1_800_000,
+      }),
+      signOutOpenAICodex: async () => {
+        calls.push("logout");
+      },
+      log: (message: string) => {
+        logs.push(message);
+      },
+    };
+
+    await parse(["node", "kana", "auth", "login", "openai-codex"], options);
+    await parse(["node", "kana", "auth", "status", "openai-codex"], options);
+    await parse(["node", "kana", "auth", "logout", "openai-codex"], options);
+
+    expect(calls).toEqual(["login", "logout"]);
+    expect(logs).toEqual([
+      "Authorized openai-codex.",
+      "openai-codex: authorized, refreshable, expires 1970-01-01T00:30:00.000Z",
+      "Signed out from openai-codex.",
+    ]);
+  });
+
+  test("rejects Kana-managed authentication for unsupported providers", async () => {
+    expect(parse(["node", "kana", "auth", "login", "deepseek"], {})).rejects.toThrow(
+      "Provider deepseek does not support Kana-managed authentication.",
+    );
   });
 
   test("syncs skills to an agent preset", async () => {
@@ -210,7 +247,7 @@ function defaultCliOptions(): CreateCliOptions {
   return {
     installKanaConfig: () => ({
       configPath: "/tmp/config.toml",
-      configStatus: "created",
+      configStatus: "defaults",
       mcpConfigPath: "/tmp/mcp.json",
       mcpConfigStatus: "created",
       mcpEnabledPath: "/tmp/mcp-enabled.json",

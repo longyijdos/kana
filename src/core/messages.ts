@@ -34,14 +34,24 @@ export type ToolResultMessage = {
 
 export type AssistantContent = TextContent | ThinkingContent | ToolCallContent;
 
+export type ProviderState = {
+  provider: string;
+  // Provider adapters own replay semantics for this JSON-serializable value.
+  // Kana persists opaque protocol state such as encrypted reasoning without
+  // interpreting its contents.
+  value: unknown;
+};
+
 export type TextContent = {
   type: "text";
   text: string;
+  providerState?: ProviderState;
 };
 
 export type ThinkingContent = {
   type: "thinking";
   text: string;
+  providerState?: ProviderState;
 };
 
 export type ToolCallContent = {
@@ -51,4 +61,5 @@ export type ToolCallContent = {
   // Parsed arguments when possible. rawArgs keeps the original streamed JSON.
   args: unknown;
   rawArgs?: string;
+  providerState?: ProviderState;
 };

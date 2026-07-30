@@ -5,13 +5,13 @@ This document describes Kana's implemented commands, configuration files, and lo
 ## Install and start
 
 ```bash
-# Create default local configuration
+# Initialize local state; missing config.toml continues to use built-in defaults
 kana install
 
 # Also install or update the default global Skills repository
 kana install --skills
 
-# Overwrite installed config/state files; reclone Skills when requested
+# Overwrite existing config/state files; reclone Skills when requested
 kana install --force --skills
 
 # Copy installed Kana Skills to Codex's global Skills directory
@@ -28,9 +28,14 @@ kana fix the failing tests
 
 # Restore by ID, or open the picker when the ID is omitted
 kana resume [session-id]
+
+# Manage OpenAI Codex OAuth
+kana auth login openai-codex
+kana auth status openai-codex
+kana auth logout openai-codex
 ```
 
-`kana install` does not overwrite existing files. `--force` restores `config.toml`, `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` to their defaults; when combined with `--skills`, it also deletes and reclones the default Skills directory. It does **not** create `~/.kana/AGENTS.md`; users create global instructions themselves.
+`kana install` does not create `config.toml` merely to materialize built-in defaults; Kana uses those defaults directly when the file is absent. Existing configuration is not overwritten. `--force` restores an existing `config.toml` to the default DeepSeek configuration and resets `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml`; with `--skills`, it also deletes and reclones the default Skills directory. Installation and forced reinstallation never delete `oauth-tokens.json`, and neither creates `~/.kana/AGENTS.md`.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. If the existing directory is not a Git repository, a regular update fails and `--force` is required to replace it. An existing Git repository is updated with `git pull --ff-only`.
 
@@ -43,7 +48,7 @@ Kana uses `KANA_HOME` as its root. When unset, it uses `$HOME/.kana`; when `HOME
 ```text
 ${KANA_HOME:-$HOME/.kana}/
 ├── .env                    # Optional environment variables loaded at startup
-├── config.toml             # Runtime configuration covered here
+├── config.toml             # Optional runtime configuration; absence uses built-in defaults
 ├── mcp.json                # MCP server definitions
 ├── mcp-enabled.json        # Enabled MCP server IDs
 ├── oauth-tokens.json       # OAuth credentials created after browser authorization
@@ -63,13 +68,15 @@ Kana reads `<KANA_HOME>/.env` before parsing CLI commands. Its values override m
 
 ## `config.toml`
 
-When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults; for example, supplying only `[model] name` does not remove the other default model settings.
+When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults; for example, supplying only `[model.deepseek] name` does not remove the other defaults for that provider. Legacy flat `[model]` DeepSeek configuration remains readable, but new configuration should use provider-specific tables.
 
-The equivalent configuration written by `kana install` is:
+The built-in configuration is equivalent to:
 
 ```toml
-[model]
-provider = "deepseek"
+[provider]
+active = "deepseek"
+
+[model.deepseek]
 name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
@@ -99,11 +106,18 @@ max_chars = 6000
 level = "info"
 ```
 
-### `[model]`
+`model.openai-codex` has independent defaults even when its table is absent, so switching providers requires only the fields being overridden.
+
+### `[provider]`
 
 | Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `provider` | Only `deepseek` | `deepseek` | The sole provider supported by the current product configuration. |
+| `active` | `deepseek` or `openai-codex` | `deepseek` | Provider used by the main Agent, memory consolidation, and context compaction. |
+
+### `[model.deepseek]`
+
+| Key | Type and allowed values | Default | Meaning |
+| --- | --- | --- | --- |
 | `name` | Non-empty string | `deepseek-v4-pro` | Model name; runtime rejects names outside DeepSeek's metadata table. |
 | `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
 | `thinking` | Boolean | `true` | Explicitly enables DeepSeek thinking in requests. |
@@ -117,6 +131,19 @@ Before startup, set the environment variable named by `api_key_env`. The default
 ```bash
 export DEEPSEEK_API_KEY='sk-...'
 ```
+
+### `[model.openai-codex]`
+
+| Key | Type and allowed values | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses model. |
+| `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | `medium` | Requested reasoning effort. |
+| `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
+| `max_tokens` | Positive integer | `32768` | Local output reserve for Kana context budgeting; the Codex backend request does not send `max_output_tokens`. |
+| `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
+| `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
+
+Before first use, run `kana auth login openai-codex`. Browser authorization stores the access token, refresh token, ID token, and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Credentials refresh before expiry; the model request also refreshes and retries once after its first `401`. `status` reports only authorization state, refreshability, and expiry, never token values. See [OpenAI Codex provider adapter](openai-codex-provider.en.md) for the complete protocol mapping.
 
 ### Other tables
 
@@ -137,16 +164,16 @@ When `daily_retention_days` is commented out or omitted, daily memory is not pru
 
 ### Context budget
 
-Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata and must be greater than `model.max_tokens`. The effective prompt budget is:
+Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata and must be greater than the active provider's `model.<provider>.max_tokens`. The effective prompt budget is:
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
-promptBudget = contextLimit - model.max_tokens - safetyReserve
+promptBudget = contextLimit - activeModel.max_tokens - safetyReserve
 ```
 
-At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. `model.max_tokens` still controls output only; subtracting it reserves context space for that output.
+At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Subtracting the active model's `max_tokens` reserves context space for output.
 
-Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; DeepSeek HTTP failures additionally retain status code and status text, never the response body.
+Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
 
 The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
 
@@ -287,12 +314,22 @@ This list names the **global** Skills that may be injected into the model system
 This example changes only the model name and notification behavior; every other field retains its default:
 
 ```toml
-[model]
+[model.deepseek]
 name = "deepseek-v4-flash"
 
 [notification]
 backend = "bell"
 on_agent_completed = false
+```
+
+Switching to an already authorized Codex Luna requires only:
+
+```toml
+[provider]
+active = "openai-codex"
+
+[model.openai-codex]
+name = "gpt-5.6-luna"
 ```
 
 Avoid copying the complete default file for a small change. Field-level merging keeps configuration shorter and automatically picks up future default fields.

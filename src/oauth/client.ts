@@ -48,6 +48,7 @@ export type ExchangeOAuthAuthorizationCodeOptions = {
   onDiagnostic?: OAuthDiagnosticHandler;
   now?: () => number;
   signal?: AbortSignal;
+  acceptMissingBearerTokenType?: boolean;
 };
 
 export type RefreshOAuthAccessTokenOptions = {
@@ -61,6 +62,7 @@ export type RefreshOAuthAccessTokenOptions = {
   onDiagnostic?: OAuthDiagnosticHandler;
   now?: () => number;
   signal?: AbortSignal;
+  acceptMissingBearerTokenType?: boolean;
 };
 
 type TokenRequestOptions = {
@@ -73,6 +75,7 @@ type TokenRequestOptions = {
   onDiagnostic?: OAuthDiagnosticHandler;
   now?: () => number;
   signal?: AbortSignal;
+  acceptMissingBearerTokenType?: boolean;
 };
 
 export function createOAuthAuthorizationRequest(
@@ -224,7 +227,11 @@ async function requestToken(options: TokenRequestOptions): Promise<OAuthTokenSet
     throw new OAuthTokenEndpointError(response.status, oauthError);
   }
 
-  const tokenSet = parseTokenSet(value, options.now?.() ?? Date.now());
+  const tokenSet = parseTokenSet(
+    value,
+    options.now?.() ?? Date.now(),
+    options.acceptMissingBearerTokenType ?? false,
+  );
   emitDiagnostic(options.onDiagnostic, {
     event: "oauth.token_request_succeeded",
     level: "info",
@@ -305,24 +312,34 @@ function applyClientAuthentication(
   }
 }
 
-function parseTokenSet(value: unknown, now: number): OAuthTokenSet {
+function parseTokenSet(
+  value: unknown,
+  now: number,
+  acceptMissingBearerTokenType: boolean,
+): OAuthTokenSet {
   if (!isJsonObject(value)) {
     throw new OAuthProtocolError("OAuth token response must be a JSON object.");
   }
   if (typeof value.access_token !== "string" || value.access_token.length === 0) {
     throw new OAuthProtocolError("OAuth token response is missing access_token.");
   }
-  if (typeof value.token_type !== "string" || value.token_type.toLowerCase() !== "bearer") {
+  if (
+    (value.token_type === undefined && !acceptMissingBearerTokenType) ||
+    (value.token_type !== undefined &&
+      (typeof value.token_type !== "string" || value.token_type.toLowerCase() !== "bearer"))
+  ) {
     throw new OAuthProtocolError("OAuth token response must use the Bearer token type.");
   }
 
   const refreshToken = readOptionalNonEmptyString(value, "refresh_token");
+  const idToken = readOptionalNonEmptyString(value, "id_token");
   const expiresIn = readExpiresIn(value.expires_in);
   const scope = readOptionalNonEmptyString(value, "scope");
 
   return {
     accessToken: value.access_token,
     tokenType: "Bearer",
+    ...(idToken === undefined ? {} : { idToken }),
     ...(refreshToken === undefined ? {} : { refreshToken }),
     ...(expiresIn === undefined ? {} : { expiresAt: now + expiresIn * 1_000 }),
     ...(scope === undefined ? {} : { scopes: scope.split(/\s+/) }),
@@ -354,10 +371,18 @@ function readOptionalNonEmptyString(
 }
 
 function readSafeOAuthError(value: unknown): string | undefined {
-  if (!isJsonObject(value) || typeof value.error !== "string") {
+  if (!isJsonObject(value)) {
     return undefined;
   }
-  return /^[a-zA-Z0-9_.-]{1,64}$/.test(value.error) ? value.error : undefined;
+  const candidate =
+    typeof value.error === "string"
+      ? value.error
+      : isJsonObject(value.error) && typeof value.error.code === "string"
+        ? value.error.code
+        : undefined;
+  return candidate !== undefined && /^[a-zA-Z0-9_.-]{1,64}$/.test(candidate)
+    ? candidate
+    : undefined;
 }
 
 function validateClient(client: OAuthClientCredentials): void {

@@ -415,7 +415,10 @@ describe("Kana skills", () => {
         ...DEFAULT_KANA_CONFIG,
         model: {
           ...DEFAULT_KANA_CONFIG.model,
-          apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          deepseek: {
+            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
+          },
         },
       });
 
