@@ -93,6 +93,7 @@ describe("Kana config", () => {
     expect(fileExists(firstInstall.configPath)).toBe(false);
     expect(installedConfigExample).toContain("[model.deepseek]");
     expect(installedConfigExample).toContain("[model.openai-codex]");
+    expect(installedConfigExample).toContain("tool_deadline_ms = 300000");
     expect(installedConfigExample).toContain("Kana does not read this file.");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
@@ -217,6 +218,7 @@ describe("Kana config", () => {
         "",
         "[agent]",
         "max_turns = 4",
+        "tool_deadline_ms = 120000",
         "context_limit = 200000",
         "",
         "[approval]",
@@ -251,6 +253,7 @@ describe("Kana config", () => {
       },
       agent: {
         maxTurns: 4,
+        toolDeadlineMs: 120_000,
         contextLimit: 200000,
       },
       approval: {
@@ -380,6 +383,18 @@ describe("Kana config", () => {
     }
   });
 
+  test("requires agent.tool_deadline_ms to be a positive integer", () => {
+    for (const value of [0, -1, 1.5]) {
+      const env = createTempEnv();
+      const { home } = getKanaConfigPaths(env);
+      writeFileSync(path.join(home, "config.toml"), `[agent]\ntool_deadline_ms = ${value}\n`);
+
+      expect(() => loadKanaConfig(env)).toThrow(
+        "agent.tool_deadline_ms must be a positive integer.",
+      );
+    }
+  });
+
   test("loads and validates the optional agent context limit", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
@@ -448,7 +463,7 @@ describe("Kana config", () => {
     }
   });
 
-  test("uses the configured context limit for the main Agent", () => {
+  test("uses the configured Agent runtime limits", () => {
     const previous = process.env.KANA_DEEPSEEK_KEY;
     process.env.KANA_DEEPSEEK_KEY = "secret";
 
@@ -464,10 +479,12 @@ describe("Kana config", () => {
         },
         agent: {
           ...DEFAULT_KANA_CONFIG.agent,
+          toolDeadlineMs: 120_000,
           contextLimit: 200_000,
         },
       });
 
+      expect(agent.state.toolDeadlineMs).toBe(120_000);
       expect(agent.state.contextLimit).toBe(200_000);
     } finally {
       restoreEnv("KANA_DEEPSEEK_KEY", previous);

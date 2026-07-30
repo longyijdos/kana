@@ -24,6 +24,7 @@ export type AgentContext = {
 export type AgentLoopConfig = {
   model: Model;
   maxTurns?: number;
+  toolDeadlineMs?: number;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   contextManager?: ContextManager;
@@ -63,6 +64,7 @@ export async function runAgentLoop(
       tools: currentContext.tools,
       signal: config.signal,
       beforeToolExecution: config.beforeToolExecution,
+      defaultDeadlineMs: config.toolDeadlineMs,
       logger: config.logger,
       loggerMetadata: config.loggerMetadata,
       onMessageCommitted: config.onMessageCommitted,

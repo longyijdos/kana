@@ -57,6 +57,7 @@ export type KanaModelConfig = KanaModelConfigMap[KanaModelProvider];
 
 export type KanaAgentConfig = {
   maxTurns: number;
+  toolDeadlineMs: number;
   contextLimit?: number;
 };
 
@@ -174,6 +175,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   },
   agent: {
     maxTurns: -1,
+    toolDeadlineMs: 300_000,
     contextLimit: undefined,
   },
   approval: {
@@ -318,6 +320,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
     },
     agent: {
       max_turns: config.agent.maxTurns,
+      tool_deadline_ms: config.agent.toolDeadlineMs,
       context_limit: config.agent.contextLimit,
     },
     approval: {
@@ -357,6 +360,7 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     "",
     "[agent]",
     `max_turns = ${config.agent.maxTurns}`,
+    `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
     "# context_limit = 200000",
     "",
     "[approval]",
@@ -505,6 +509,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
     },
     agent: {
       maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
+      toolDeadlineMs: readPositiveInteger(
+        agent.tool_deadline_ms,
+        defaults.agent.toolDeadlineMs,
+        "agent.tool_deadline_ms",
+      ),
       contextLimit: readOptionalPositiveInteger(
         agent.context_limit,
         defaults.agent.contextLimit,

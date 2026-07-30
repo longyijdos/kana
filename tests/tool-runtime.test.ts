@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
-import { ToolRuntime } from "../src/agent/tool-runtime";
+import { DEFAULT_TOOL_DEADLINE_MS, ToolRuntime } from "../src/agent/tool-runtime";
 import type { Logger, LogMetadata } from "../src/logging";
 import type { Tool } from "../src/tools/tool";
 
@@ -148,6 +148,7 @@ describe("ToolRuntime", () => {
       {
         tools: [tool],
         cancellationGraceMs: 50,
+        defaultDeadlineMs: 50,
       },
       () => {},
     );
@@ -173,6 +174,52 @@ describe("ToolRuntime", () => {
         deadlineMs: 5,
       },
     });
+  });
+
+  test("applies the configured default deadline when a tool does not declare one", async () => {
+    const tool = {
+      name: "default_deadline",
+      description: "Use the runtime deadline.",
+      parameters,
+      execute: (_args, context) =>
+        new Promise((resolve) => {
+          context.signal?.addEventListener("abort", () => resolve("stopped"), { once: true });
+        }),
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        cancellationGraceMs: 50,
+        defaultDeadlineMs: 5,
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "call-1",
+        name: "default_deadline",
+        args: {},
+      },
+    ]);
+
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults[0]).toMatchObject({
+      isError: true,
+      result: {
+        status: "timed_out",
+        reason: "deadline",
+        deadlineMs: 5,
+      },
+    });
+  });
+
+  test("validates the runtime default deadline", () => {
+    expect(DEFAULT_TOOL_DEADLINE_MS).toBe(300_000);
+    expect(() => new ToolRuntime({ tools: [], defaultDeadlineMs: 0 }, () => {})).toThrow(
+      "defaultDeadlineMs must be a positive integer.",
+    );
   });
 
   test("returns an unknown result after cancellation grace and ignores late updates", async () => {

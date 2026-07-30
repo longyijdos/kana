@@ -73,6 +73,7 @@ describe("Kana config store", () => {
     store.update((draft) => {
       draft.model.deepseek.name = "deepseek-v4-flash";
       draft.model.deepseek.thinking = false;
+      draft.agent.toolDeadlineMs = 120_000;
       draft.agent.contextLimit = undefined;
     });
 
@@ -80,6 +81,7 @@ describe("Kana config store", () => {
     expect(updated).toContain("# keep this comment");
     expect(updated).toContain('name = "deepseek-v4-flash"');
     expect(updated).toContain("thinking = false");
+    expect(updated).toContain("tool_deadline_ms = 120000");
     expect(updated).not.toContain("context_limit");
     expect(updated).toContain('[custom]\nvalue = "untouched"');
     expect(readdirSync(home).filter((name) => name.endsWith(".tmp"))).toEqual([]);

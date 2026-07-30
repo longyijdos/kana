@@ -103,13 +103,23 @@ describe("memory consolidation agent", () => {
     process.env.DEEPSEEK_API_KEY = "secret";
 
     try {
-      const agent = createMemoryConsolidationAgent(DEFAULT_KANA_CONFIG, {
-        scope: "project",
-        mode: "full",
-        env,
-      });
+      const agent = createMemoryConsolidationAgent(
+        {
+          ...DEFAULT_KANA_CONFIG,
+          agent: {
+            ...DEFAULT_KANA_CONFIG.agent,
+            toolDeadlineMs: 120_000,
+          },
+        },
+        {
+          scope: "project",
+          mode: "full",
+          env,
+        },
+      );
       const toolNames = agent.state.tools.map((tool) => tool.name);
 
+      expect(agent.state.toolDeadlineMs).toBe(120_000);
       expect(toolNames).toContain("list_daily_memory");
       expect(toolNames).not.toContain("bash");
       expect(toolNames).not.toContain("remember");

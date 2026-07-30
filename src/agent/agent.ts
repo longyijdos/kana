@@ -18,6 +18,7 @@ import {
   runAgentLoop,
 } from "./loop";
 import { AgentEventStream } from "./stream";
+import { resolveDefaultToolDeadlineMs } from "./tool-runtime";
 
 export type AgentPromptInput = string | UserMessage | UserMessage[];
 
@@ -29,6 +30,7 @@ export type AgentConfig = {
   // Prevent accidental infinite tool loops while keeping the first version
   // free of custom stop hooks. Use -1 to run without a turn limit.
   maxTurns?: number;
+  toolDeadlineMs?: number;
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
   onCompactionCommitted?: AgentCompactionCommittedHook;
@@ -42,6 +44,7 @@ export type AgentState = {
   model: Model;
   system?: string;
   maxTurns?: number;
+  readonly toolDeadlineMs: number;
   tools: Tool[];
   messages: Message[];
   readonly isRunning: boolean;
@@ -101,9 +104,13 @@ export class Agent {
 
   constructor(options: AgentConfig) {
     assertValidMaxTurns(options.maxTurns);
+    const toolDeadlineMs = resolveDefaultToolDeadlineMs(options.toolDeadlineMs);
     this.logger = options.logger ?? createNoopLogger();
     this.loggerMetadata = options.loggerMetadata;
-    this.stateData = createWritableAgentState(options);
+    this.stateData = createWritableAgentState({
+      ...options,
+      toolDeadlineMs,
+    });
     this.beforeToolExecution = options.beforeToolExecution;
     this.onRunCommitted = options.onRunCommitted;
     this.onCompactionCommitted = options.onCompactionCommitted;
@@ -122,6 +129,7 @@ export class Agent {
       model: this.stateData.model,
       system: this.stateData.system,
       maxTurns: this.stateData.maxTurns,
+      toolDeadlineMs: this.stateData.toolDeadlineMs,
       tools: this.stateData.tools.slice(),
       messages: structuredClone(this.stateData.messages),
       isRunning: this.stateData.isRunning,
@@ -394,6 +402,7 @@ export class Agent {
     return {
       model: this.stateData.model,
       maxTurns: this.stateData.maxTurns,
+      toolDeadlineMs: this.stateData.toolDeadlineMs,
       signal,
       beforeToolExecution: this.beforeToolExecution,
       contextManager,
@@ -562,7 +571,9 @@ export class Agent {
   }
 }
 
-function createWritableAgentState(options: AgentConfig): WritableAgentState {
+function createWritableAgentState(
+  options: AgentConfig & { toolDeadlineMs: number },
+): WritableAgentState {
   let tools = options.tools?.slice() ?? [];
   let messages = structuredClone(options.messages ?? []);
 
@@ -570,6 +581,7 @@ function createWritableAgentState(options: AgentConfig): WritableAgentState {
     model: options.model,
     system: options.system,
     maxTurns: options.maxTurns,
+    toolDeadlineMs: options.toolDeadlineMs,
     get tools() {
       return tools;
     },

@@ -38,6 +38,8 @@ export {
 export {
   type BeforeToolExecutionHook,
   type BeforeToolExecutionResult,
+  DEFAULT_TOOL_DEADLINE_MS,
+  resolveDefaultToolDeadlineMs,
   ToolRuntime,
   type ToolRuntimeConfig,
   type ToolRuntimeResult,

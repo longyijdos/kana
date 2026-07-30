@@ -157,6 +157,23 @@ class AbortAwareModel implements Model {
 }
 
 describe("Agent", () => {
+  test("uses a configurable default tool deadline", () => {
+    expect(new Agent({ model: new TextModel() }).state.toolDeadlineMs).toBe(300_000);
+    expect(
+      new Agent({
+        model: new TextModel(),
+        toolDeadlineMs: 120_000,
+      }).state.toolDeadlineMs,
+    ).toBe(120_000);
+    expect(
+      () =>
+        new Agent({
+          model: new TextModel(),
+          toolDeadlineMs: 0,
+        }),
+    ).toThrow("defaultDeadlineMs must be a positive integer.");
+  });
+
   test("rejects invalid maxTurns during construction", () => {
     for (const maxTurns of [-2, 0, 1.5]) {
       expect(

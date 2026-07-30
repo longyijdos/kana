@@ -108,6 +108,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     system: buildKanaSystemPrompt({ cwd, skills }),
     tools,
     maxTurns: config.agent.maxTurns,
+    toolDeadlineMs: config.agent.toolDeadlineMs,
     beforeToolExecution: options.beforeToolExecution,
     messages: options.messages,
     onRunCommitted: options.onRunCommitted,

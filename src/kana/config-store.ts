@@ -49,6 +49,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("model.openai-codex", "timeout_ms", (config) => config.model["openai-codex"].timeoutMs),
   field("model.openai-codex", "max_retries", (config) => config.model["openai-codex"].maxRetries),
   field("agent", "max_turns", (config) => config.agent.maxTurns),
+  field("agent", "tool_deadline_ms", (config) => config.agent.toolDeadlineMs),
   field("agent", "context_limit", (config) => config.agent.contextLimit),
   field("approval", "mode", (config) => config.approval.mode),
   field("notification", "backend", (config) => config.notification.backend),

@@ -10,6 +10,7 @@ import {
 import type { AgentEvent } from "./events";
 
 const DEFAULT_CANCELLATION_GRACE_MS = 1_000;
+export const DEFAULT_TOOL_DEADLINE_MS = 300_000;
 
 export type BeforeToolExecutionResult =
   | {
@@ -33,6 +34,7 @@ export type ToolRuntimeConfig = {
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   cancellationGraceMs?: number;
+  defaultDeadlineMs?: number;
   logger?: Logger;
   loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
@@ -76,6 +78,7 @@ export class ToolRuntime {
   private readonly events: SerialEventQueue;
   private readonly approvals = new SerialTaskQueue();
   private readonly cancellationGraceMs: number;
+  private readonly defaultDeadlineMs: number;
   private resultCommitFailure?: { error: unknown };
   private resultCommitTail: Promise<void> = Promise.resolve();
 
@@ -85,6 +88,7 @@ export class ToolRuntime {
   ) {
     this.events = new SerialEventQueue(emit);
     this.cancellationGraceMs = resolveCancellationGraceMs(config.cancellationGraceMs);
+    this.defaultDeadlineMs = resolveDefaultToolDeadlineMs(config.defaultDeadlineMs);
   }
 
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
@@ -235,7 +239,7 @@ export class ToolRuntime {
     let abortRun = false;
     try {
       resolveToolConcurrency(tool);
-      const deadlineMs = resolveToolDeadlineMs(tool);
+      const deadlineMs = resolveInvocationDeadlineMs(tool, this.defaultDeadlineMs);
       const args = validateToolArguments(tool, toolCall.args);
       const executionSignal = combineAbortSignals(this.config.signal, groupSignal);
       const beforeResult = await this.runBeforeToolExecution(toolCall, tool, args, executionSignal);
@@ -655,15 +659,25 @@ function createInterruptedToolResult(
   };
 }
 
-function resolveToolDeadlineMs(tool: Tool): number | undefined {
+function resolveInvocationDeadlineMs(tool: Tool, defaultDeadlineMs: number): number {
   const deadlineMs = tool.execution?.deadlineMs;
   if (deadlineMs === undefined) {
-    return undefined;
+    return defaultDeadlineMs;
   }
   if (!Number.isInteger(deadlineMs) || deadlineMs <= 0) {
     throw new Error(`Tool "${tool.name}" execution.deadlineMs must be a positive integer.`);
   }
   return deadlineMs;
+}
+
+export function resolveDefaultToolDeadlineMs(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_TOOL_DEADLINE_MS;
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("defaultDeadlineMs must be a positive integer.");
+  }
+  return value;
 }
 
 function resolveToolConcurrency(tool: Tool): ToolConcurrency {
