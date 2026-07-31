@@ -8,8 +8,9 @@ import {
   formatKanaEnvironmentContext,
 } from "./context";
 import { escapeXml } from "./format";
-import { loadKanaMemory } from "./memory";
-import { formatKanaSkillsForPrompt, type KanaSkill } from "./skills";
+import { loadKanaMemory } from "./memory/storage";
+import { formatKanaSkillsForPrompt } from "./skills/prompt";
+import type { KanaSkill } from "./skills/types";
 
 const DEFAULT_SYSTEM_PROMPT = [
   "You are a concise, practical assistant working in the user's current environment.",

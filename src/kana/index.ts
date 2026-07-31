@@ -16,6 +16,21 @@ export {
   type KanaAgentOptions,
 } from "./agent";
 export {
+  authorizeKanaOpenAICodex,
+  type CreateKanaOAuthTokenStoreOptions,
+  type CreateKanaOpenAICodexAuthOptions,
+  createKanaOAuthTokenStore,
+  getKanaOpenAICodexAuthStatus,
+  KANA_OPENAI_CODEX_OAUTH_STORAGE_KEY,
+  type KanaOAuthTokenStatus,
+  KanaOpenAICodexAuth,
+  type LoadKanaOAuthTokenStatusesOptions,
+  loadKanaOAuthTokenStatuses,
+  type OpenKanaOAuthAuthorizationUrlOptions,
+  openKanaOAuthAuthorizationUrl,
+  signOutKanaOpenAICodex,
+} from "./auth";
+export {
   DEFAULT_KANA_CONFIG,
   getActiveKanaModelConfig,
   getKanaConfigPaths,
@@ -58,14 +73,6 @@ export {
   type KanaEnvironmentContext,
 } from "./context";
 export {
-  type CreateKanaConversationHostOptions,
-  createKanaConversationHost,
-  KanaConversationHost,
-  type KanaConversationHostAgentOptions,
-  type KanaConversationHostSession,
-  type KanaMemoryCompactSummary,
-} from "./conversation-host";
-export {
   type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,
@@ -73,47 +80,53 @@ export {
   type ConversationRuntimeOptions,
   type ConversationSessionSnapshot,
   type CreateConversationAgentOptions,
-} from "./conversation-runtime";
+  type CreateKanaConversationHostOptions,
+  type CreateWakeSchedulerOptions,
+  createKanaConversationHost,
+  createWakeScheduler,
+  KanaConversationHost,
+  type KanaConversationHostAgentOptions,
+  type KanaConversationHostSession,
+  type KanaMemoryCompactSummary,
+  type ScheduleWakeOptions,
+  type WakeEvent,
+  type WakeScheduler,
+} from "./conversation";
 export { loadKanaEnvironment } from "./env";
-export { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./mcp";
 export {
+  authorizeKanaMcpServer,
+  type CreateKanaMcpManagerOptions,
+  type CreateKanaMcpOAuthAuthorizerOptions,
+  type CreateKanaMcpRuntimeOptions,
+  createKanaMcpManager,
+  createKanaMcpOAuthAuthorizer,
+  createKanaMcpOAuthStorageKey,
+  createKanaMcpRuntime,
   DEFAULT_KANA_MCP_ACTIVATION_STATE,
-  type KanaMcpActivationState,
-  type KanaMcpServerActivation,
-  loadKanaMcpActivationState,
-  loadKanaMcpServerActivations,
-  parseKanaMcpActivationState,
-  saveKanaMcpActivationState,
-} from "./mcp-activation";
-export {
   DEFAULT_KANA_MCP_CONFIG,
   KANA_MCP_SERVER_TYPES,
+  type KanaMcpActivationState,
   type KanaMcpConfig,
   type KanaMcpHttpServerConfig,
   type KanaMcpOAuth2Config,
-  type KanaMcpServerConfig,
-  type KanaMcpServerType,
-  type KanaMcpStdioServerConfig,
-  loadKanaMcpConfig,
-  parseKanaMcpConfig,
-  resolveKanaMcpOAuth2Client,
-} from "./mcp-config";
-export {
-  authorizeKanaMcpServer,
-  type CreateKanaMcpOAuthAuthorizerOptions,
-  createKanaMcpOAuthAuthorizer,
-  createKanaMcpOAuthStorageKey,
-  type RunKanaMcpOAuthOptions,
-  signOutKanaMcpServer,
-} from "./mcp-oauth";
-export {
-  type CreateKanaMcpRuntimeOptions,
-  createKanaMcpRuntime,
   KanaMcpRuntime,
   type KanaMcpRuntimeOperation,
   type KanaMcpRuntimeProgressEvent,
   type KanaMcpRuntimeSnapshot,
-} from "./mcp-runtime";
+  type KanaMcpServerActivation,
+  type KanaMcpServerConfig,
+  type KanaMcpServerType,
+  type KanaMcpStdioServerConfig,
+  loadKanaMcpActivationState,
+  loadKanaMcpConfig,
+  loadKanaMcpServerActivations,
+  parseKanaMcpActivationState,
+  parseKanaMcpConfig,
+  type RunKanaMcpOAuthOptions,
+  resolveKanaMcpOAuth2Client,
+  saveKanaMcpActivationState,
+  signOutKanaMcpServer,
+} from "./mcp";
 export {
   type AppendKanaMemoryOptions,
   appendKanaMemory,
@@ -154,34 +167,11 @@ export {
   searchKanaDailyMemory,
 } from "./memory";
 export {
-  type OpenKanaOAuthAuthorizationUrlOptions,
-  openKanaOAuthAuthorizationUrl,
-} from "./oauth-browser";
-export {
-  type CreateKanaOAuthTokenStoreOptions,
-  createKanaOAuthTokenStore,
-  type KanaOAuthTokenStatus,
-  type LoadKanaOAuthTokenStatusesOptions,
-  loadKanaOAuthTokenStatuses,
-} from "./oauth-token-store";
-export {
-  authorizeKanaOpenAICodex,
-  type CreateKanaOpenAICodexAuthOptions,
-  getKanaOpenAICodexAuthStatus,
-  KANA_OPENAI_CODEX_OAUTH_STORAGE_KEY,
-  KanaOpenAICodexAuth,
-  signOutKanaOpenAICodex,
-} from "./openai-codex-auth";
+  getKanaModelManagement,
+  type KanaModelManagement,
+} from "./model-management";
 export { getKanaSessionLogPath, type KanaLogPathOptions } from "./path";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
-export {
-  type CreateKanaUpdaterOptions,
-  createKanaUpdater,
-  type KanaUpdateProgressEvent,
-  type KanaUpdateResult,
-  type UpdateKanaOptions,
-  updateKana,
-} from "./self-update";
 export {
   type AppendKanaSessionMessagesOptions,
   type AppendKanaSessionRunOptions,
@@ -207,41 +197,37 @@ export {
   type LoadKanaSessionResult,
   listKanaSessions,
   loadKanaSession,
-} from "./session-store";
+} from "./session";
 export {
   DEFAULT_KANA_SKILLS_REPOSITORY,
   DEFAULT_KANA_SKILLS_REPOSITORY_NAME,
+  type FormatKanaSkillsForPromptOptions,
+  formatKanaSkillsForPrompt,
   type InstallKanaSkillsOptions,
   type InstallKanaSkillsResult,
   installKanaSkills,
-  type ReinstallKanaSkillsOptions,
-  type ReinstallKanaSkillsResult,
-  reinstallKanaSkills,
-} from "./skill-install";
-export {
   KANA_SKILL_SYNC_TARGETS,
-  type KanaSkillSyncTarget,
-  type ResyncKanaSkillsOptions,
-  resyncKanaSkills,
-  type SyncKanaSkillResult,
-  type SyncKanaSkillStatus,
-  type SyncKanaSkillsOptions,
-  type SyncKanaSkillsResult,
-  syncKanaSkills,
-} from "./skill-sync";
-export {
-  type FormatKanaSkillsForPromptOptions,
-  formatKanaSkillsForPrompt,
   type KanaSkill,
   type KanaSkillActivation,
   type KanaSkillDiagnostic,
+  type KanaSkillSyncTarget,
   type LoadKanaSkillActivationsResult,
   type LoadKanaSkillsOptions,
   type LoadKanaSkillsResult,
   loadKanaSkillActivations,
   loadKanaSkills,
   loadKanaSkillsFromDir,
+  type ReinstallKanaSkillsOptions,
+  type ReinstallKanaSkillsResult,
+  type ResyncKanaSkillsOptions,
+  reinstallKanaSkills,
+  resyncKanaSkills,
+  type SyncKanaSkillResult,
+  type SyncKanaSkillStatus,
+  type SyncKanaSkillsOptions,
+  type SyncKanaSkillsResult,
   saveEnabledGlobalSkillNames,
+  syncKanaSkills,
 } from "./skills";
 export {
   addTrustedBashCommand,
@@ -254,9 +240,20 @@ export {
   shouldRequestToolApproval,
 } from "./tool-approval";
 export {
-  type CreateWakeSchedulerOptions,
-  createWakeScheduler,
-  type ScheduleWakeOptions,
-  type WakeEvent,
-  type WakeScheduler,
-} from "./wake-scheduler";
+  createRememberTool,
+  createScheduleWakeTool,
+  type RememberToolOptions,
+  type RememberToolResult,
+  rememberParameters,
+  type ScheduleWakeToolOptions,
+  type ScheduleWakeToolResult,
+  scheduleWakeParameters,
+} from "./tools";
+export {
+  type CreateKanaUpdaterOptions,
+  createKanaUpdater,
+  type KanaUpdateProgressEvent,
+  type KanaUpdateResult,
+  type UpdateKanaOptions,
+  updateKana,
+} from "./update";

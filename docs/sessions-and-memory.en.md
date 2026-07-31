@@ -25,6 +25,8 @@ Each line is a leveled JSON record with a timestamp, stable event name, session 
 
 ## Sessions
 
+Session persistence lives under `src/kana/session/`: `format.ts` defines and validates V3 records and checkpoint conversion, `journal.ts` owns append ordering and interrupted-turn recovery, and `repository.ts` handles creation, lookup, reading, tail repair, and deletion. Internal and cross-layer callers use these capabilities through the stable `session/index.ts` domain exports.
+
 Session files are located at:
 
 ```text

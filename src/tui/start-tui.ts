@@ -1,5 +1,6 @@
 import {
   createKanaConversationHost,
+  getKanaModelManagement,
   loadKanaSkillActivations,
   openKanaOAuthAuthorizationUrl,
   saveEnabledGlobalSkillNames,
@@ -138,7 +139,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       loadMemory: (target) => host.loadMemory(target),
       loadUsage: (scope) => host.loadUsage(scope),
       modelManagement: {
-        getSettings: () => host.config,
+        getSettings: () => getKanaModelManagement(host.config),
       },
       loadExternalTools: loadMcpTools,
       mcpManagement: {

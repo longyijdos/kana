@@ -20,7 +20,7 @@ import {
 } from "@/kana";
 import type { OAuthSessionStatus } from "@/oauth";
 import type { StartTuiOptions } from "@/tui";
-import { KANA_VERSION } from "../version";
+import { KANA_VERSION } from "@/version";
 
 export type CreateCliOptions = {
   installKanaConfig: (env: NodeJS.ProcessEnv) => InstallKanaConfigResult;

@@ -10,20 +10,24 @@ src/main.ts
   ├─ headless            单次执行、JSONL 投影和非交互审批 ─┐
   └─ tui                 终端交互、渲染和用户审批 ─────────┴→ kana
                                                             产品装配：配置、提示词、会话、记忆、Skills
-                                                              ├─ logging  会话级 JSONL 诊断日志
+                                                              ├─ logging  日志协议与会话级 JSONL 基础设施
                                                               ├─ oauth    通用 OAuth 发现、PKCE、callback、token 与 refresh 状态机
                                                               ├─ mcp      MCP JSON-RPC 连接、协议客户端与传输
                                                               ├─ agent    模型—工具循环和事件协议转换
-                                                              ├─ tools    文件、Shell 与 remember 工具
-                                                              ├─ core     消息、模型、流和用量的共享协议
+                                                              ├─ tools    可复用的文件与 Shell 工具
+                                                              ├─ core     消息、模型、工具描述、流和用量的共享协议
                                                               └─ providers
                                                                   ├─ deepseek      DeepSeek 请求、SSE 解析和流式适配
                                                                   └─ openai-codex  Codex Responses、OAuth 凭据和流式适配
 ```
 
-`core` 是最内层的协议包：不依赖产品配置或前端。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`oauth` 是不感知 MCP、供应商或前端的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 与 `headless` 共享该装配层，且都不直接实现模型协议或持久化格式。
+`core` 是最内层的协议包：不依赖产品配置或前端。Provider-facing 的 `ToolSpec` 属于该层；`tools` 中可执行的 `Tool` 在此基础上增加执行函数。`logging` 是同时提供日志协议、空实现和会话级 JSONL 实现的基础设施模块。`agent` 依赖 `core`、`tools` 以及 `logging` 中的协议和空实现，但不知道日志路径或产品配置，因此可在没有终端界面的情况下运行；具体 session logger 由 Kana 产品层装配。`oauth` 是不感知 MCP、供应商或前端的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 与 `headless` 共享该装配层，且都不直接实现模型协议或持久化格式。
 
 这种分层也说明了新增代码应放在哪里：新增供应商放 `providers`，可复用的执行能力放 `tools`，循环控制放 `agent`，Kana 的默认策略和本地状态放 `kana`，交互呈现放 `tui`。
+
+Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与 token 存储，`mcp/` 管理外部工具配置和生命周期，`conversation/` 管理前端共享的会话运行时与 wake scheduler，`session/` 管理持久化，`memory/` 和 `skills/` 管理长期状态，`tools/` 管理 Kana 专属工具，`update/` 隔离自更新。领域内部使用相对导入，跨顶层调用方仍统一经过 `@/kana`。
+
+`tests/` 按主要源码领域组织为 `agent/`、`core/`、`kana/`、`mcp/`、`oauth/`、`providers/`、`tools/` 和 `tui/` 等目录；Kana 与 Provider 测试继续按其内部领域细分。跨模块集成测试放在主要行为所有者的目录，非测试输入继续集中在 `tests/fixtures/`。Bun 会递归发现这些 `*.test.ts` 文件。
 
 ## 启动路径
 
@@ -39,7 +43,7 @@ src/main.ts
 - `kana skills install|reinstall [--yes]`：安全安装/更新默认 Skills Git 仓库，或经确认删除后重新 clone。
 - `kana skills sync|resync <target> [--yes]`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；sync 跳过同名项，resync 经确认替换同名项，但不清理其它或过期 Skill。
 
-自更新由 `kana/self-update.ts` 隔离在产品层，不进入 TUI 或 Agent 生命周期。它通过 GitHub Release API 取得版本、平台资产及 SHA-256 digest，把下载写入当前可执行文件的同目录临时路径，校验大小与 digest，并让候选程序执行 `--version` 和幂等初始化。替换前会再次比较目标文件的 device、inode、mtime 和大小，避免覆盖下载期间由其它安装进程写入的新版本；最终 rename 是 POSIX 同文件系统的原子目录项替换。源码运行默认标记为 `source` 并拒绝更新，所有可直接安装的编译入口在构建期注入 `direct` 标记，防止把 Bun runtime 误判为更新目标。任一外部 I/O、候选执行或替换步骤失败时都会使用固定阶段错误码并清理临时文件。
+自更新由 `kana/update/self-update.ts` 隔离在产品层，不进入 TUI 或 Agent 生命周期。它通过 GitHub Release API 取得版本、平台资产及 SHA-256 digest，把下载写入当前可执行文件的同目录临时路径，校验大小与 digest，并让候选程序执行 `--version` 和幂等初始化。替换前会再次比较目标文件的 device、inode、mtime 和大小，避免覆盖下载期间由其它安装进程写入的新版本；最终 rename 是 POSIX 同文件系统的原子目录项替换。源码运行默认标记为 `source` 并拒绝更新，所有可直接安装的编译入口在构建期注入 `direct` 标记，防止把 Bun runtime 误判为更新目标。任一外部 I/O、候选执行或替换步骤失败时都会使用固定阶段错误码并清理临时文件。
 
 启动 TUI 时，`startTui` 先创建 `KanaConversationHost`。Host 加载运行配置和审批白名单，持有 session journal、日志、accounting、记忆、wake scheduler 与 `KanaMcpRuntime`，并向前端提供统一的 Agent 工厂和 session 操作。`KanaTuiApp` 用这些依赖创建产品层 `ConversationRuntime`；该 runtime 持有当前 Agent 和 session，负责提交互斥、Agent 重建、session new/fork/resume，以及到期 wake 的排队和顺序投递。当前会话确定并完成首次 TUI 渲染后，App 才请求 Host 加载外部工具；此时 MCP runtime 读取定义与启用状态文件、连接选中的 server、发现工具，再由 `ConversationRuntime` 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。TUI 只协调可见用户流程，不实现对话生命周期或 Kana 产品装配，也不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 
@@ -120,7 +124,7 @@ Streamable HTTP 严格实现 `2025-11-25` 单端点 transport，不自动回退�
 
 `McpManager` 只依赖结构化的 `McpManagedClient`，不创建具体协议 client 或 transport。它并行启动服务器，但按注册顺序稳定聚合工具；include/exclude 使用远端原名筛选。单个可选服务器连接、发现或 schema 适配失败时只记录诊断并关闭该服务器，必需服务器失败则关闭全部连接并终止启动。每个服务器的工具集以原子方式适配；远端重名会使该服务器失败，清洗或截断后的别名冲突以及与本地保留工具冲突会使整个聚合失败，不做隐式覆盖或顺序后缀。关闭操作幂等并按注册逆序清理所有 client。
 
-Manager 会固定使用本次发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析 `mcp.json` 中的服务器定义，读取独立 `mcp-enabled.json` 中选中的 ID，并且只为两者交集创建 registration；这个启用边界与协议和 transport 无关。工厂根据 `type` 判别配置创建 stdio 或 HTTP registration，省略 `type` 时默认使用 stdio；它为每个选中的服务器构造对应 transport 和稳定版 `McpClient`。stdio 只继承少量基础环境变量，先从 Kana 进程环境解析服务器显式 `env` 中的必需或带默认值占位符，再把结果合并到子进程并将 stderr 转发给当前 session logger；无法解析的必需占位符沿用 manager 的单 server 启动失败隔离。HTTP 使用经过快照的 URL 与 headers。`kana/http-proxy` 在产品装配边界把 Bun 的代理扩展封装成通用 fetch 接口，并同时注入 transport 与 OAuth authorizer，使 MCP 生命周期和 OAuth metadata/token 请求保持相同路由。代理 URL 直接传给 Bun；`false` 则仅在同步调用 fetch 时把目标主机追加到 `NO_PROXY` 与 `no_proxy`，并在返回 Promise 前通过 `finally` 恢复两个进程变量，因此未配置该策略的其他 server 仍观察到原环境。未配置时继续使用默认 fetch 和进程级代理。存在 OAuth 配置时，managed-client wrapper 会在 connect 前准备 authorizer，把授权 fetch 注入 transport，并在关闭前冻结认证生命周期，使最后一次 session DELETE 仍可使用内存中的 access token。两种 transport 的 client error、OAuth lifecycle 和 manager error 都写入当前 logger。产品层先以空的外部工具集创建临时主 Agent；会话显示后启动 manager，再用发现的工具重建 Agent。加载期间 App 禁止提交输入，因而临时 Agent 不会开始运行；memory consolidation Agent 始终不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
+Manager 会固定使用本次发现的工具列表，不处理 `notifications/tools/list_changed`。`kana` 层解析 `mcp.json` 中的服务器定义，读取独立 `mcp-enabled.json` 中选中的 ID，并且只为两者交集创建 registration；这个启用边界与协议和 transport 无关。工厂根据 `type` 判别配置创建 stdio 或 HTTP registration，省略 `type` 时默认使用 stdio；它为每个选中的服务器构造对应 transport 和稳定版 `McpClient`。stdio 只继承少量基础环境变量，先从 Kana 进程环境解析服务器显式 `env` 中的必需或带默认值占位符，再把结果合并到子进程并将 stderr 转发给当前 session logger；无法解析的必需占位符沿用 manager 的单 server 启动失败隔离。HTTP 使用经过快照的 URL 与 headers。`kana/mcp/http-proxy` 在产品装配边界把 Bun 的代理扩展封装成通用 fetch 接口，并同时注入 transport 与 OAuth authorizer，使 MCP 生命周期和 OAuth metadata/token 请求保持相同路由。代理 URL 直接传给 Bun；`false` 则仅在同步调用 fetch 时把目标主机追加到 `NO_PROXY` 与 `no_proxy`，并在返回 Promise 前通过 `finally` 恢复两个进程变量，因此未配置该策略的其他 server 仍观察到原环境。未配置时继续使用默认 fetch 和进程级代理。存在 OAuth 配置时，managed-client wrapper 会在 connect 前准备 authorizer，把授权 fetch 注入 transport，并在关闭前冻结认证生命周期，使最后一次 session DELETE 仍可使用内存中的 access token。两种 transport 的 client error、OAuth lifecycle 和 manager error 都写入当前 logger。产品层先以空的外部工具集创建临时主 Agent；会话显示后启动 manager，再用发现的工具重建 Agent。加载期间 App 禁止提交输入，因而临时 Agent 不会开始运行；memory consolidation Agent 始终不获得这些外部工具。停止时 App 先取消并等待活动 Agent，再由产品装配层关闭 manager。
 
 `KanaMcpRuntime` 在产品边界持有可替换的 manager，`McpManager` 本身仍刻意保持一次性。runtime 串行执行 `start`、`reload` 和 `close`，并为底层进度标记所属的 runtime 操作。reload 会先关闭当前 manager，再重新读取服务器定义与启用状态，最后创建全新的 manager；这样不会重叠启动 server 进程，TUI 也不需要了解 transport 或协议生命周期。配置解析或启动失败后，不会残留已关闭 manager 的工具和来源映射；修正文件后仍可通过后续 `/mcp` reload 恢复。一旦请求关闭，队列中尚未开始的生命周期任务不会再创建 manager。
 
@@ -128,7 +132,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 `KanaConversationHost` 是前端共享的 Kana 产品生命周期边界。它集中装配配置、审批、session journal、日志、accounting、记忆压缩、wake scheduler、MCP 与 `createKanaAgent`，并为每次新建、分叉、恢复或配置变化创建绑定到正确 session 的 Agent。Host 只返回前端中立的数据和操作，不渲染 TUI；`ConversationRuntime` 则消费这些操作并管理一次对话的执行状态。这样交互式前端与无头前端可以共享完全相同的模型、提示词、工具、持久化和用量记录规则。
 
-`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建系统提示词，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash` 与可选内置工具，并在校验名称唯一后追加产品层传入的 `additionalTools`。
+`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建系统提示词，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash`，并从 `kana/tools` 注册产品专属的可选 `remember` 与 `schedule_wake`，最后在校验名称唯一后追加产品层传入的 `additionalTools`。通用 `tools` 层不依赖 Kana 的持久化或会话生命周期。
 
 系统提示词由以下部分组成，后面的项目级指令优先级更高：
 
@@ -160,9 +164,9 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 | 全局 Skills 配置 | `skills/skills.toml` | `kana install`、`kana reset`，或 TUI 修改全局 Skill 开关 |
 | 默认 Skills 仓库 | `skills/kana-skills/` | `kana skills install` 或 `kana skills reinstall` |
 
-工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V3 会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 message 与 context-compaction journal。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用首条用户消息生成标题。进程中断后，加载器会闭合打开的 turn，并把缺失工具结果记录为未知且禁止自动重试。运行时不读取 V1/V2。
+工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V3 会话的格式、Journal 状态机和文件仓储分别位于 `kana/session/format.ts`、`journal.ts` 与 `repository.ts`，调用方统一经过该目录的 barrel。会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 message 与 context-compaction journal。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用首条用户消息生成标题。进程中断后，加载器会闭合打开的 turn，并把缺失工具结果记录为未知且禁止自动重试。运行时不读取 V1/V2。
 
-运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。session log manager 会返回永久绑定到指定会话的 logger；每个 Agent 和后台任务启动时捕获该具体 logger，因此后续生命周期记录仍归属发起它的会话。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 TUI 装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
+运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。session log manager 会返回永久绑定到指定会话的 logger；每个 Agent 和后台任务启动时捕获该具体 logger，因此后续生命周期记录仍归属发起它的会话。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 Kana 产品装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
 
 记忆分 global 和 project 两个 scope。`remember` 先向当天的暂存文件追加结构化条目；对话提交后，调度器按 scope 启动增量压缩 Agent。增量压缩和手动全量压缩共享每个 scope 的队列，串行执行该 scope 的全部读—改—写任务。压缩 Agent 使用相同的模型，但只有记忆读写工具；它在助手以正常 `stop` 结束时才提交内存中的修改。通过 `/memory` 交互流程选择 Compact 可发起全量压缩，并在成功后按 `daily_retention_days` 清理过期每日记忆。
 
@@ -187,7 +191,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 ## TUI 架构
 
-`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台空闲后按顺序 drain 当前 session 的 wake queue。它发布与前端无关的 run、Agent event 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。
+`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台空闲后按顺序 drain 当前 session 的 wake queue。它发布与前端无关的 run、Agent event 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、进度块与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
 
 ```text
 ProcessTerminal（raw mode、输入、resize、通知）
@@ -203,7 +207,7 @@ ProcessTerminal（raw mode、输入、resize、通知）
 
 `Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。Layout 固定绘制底部区域首行作为 main/bottom 分隔线，将剩余预算传给底部组件，并为较短输出补空行，从而稳定两者的边界。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史，并在有输出的子 Block 之间统一插入一行空白；Block 仅管理内容内部留白。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记；存在焦点组件时才将硬件光标移动到对应的可见宽度位置，没有焦点时则隐藏光标并留在布局末尾。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
-TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关和 OAuth 操作、provider/model 选择、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、slash 选项、审批和内容查看视图都会作为唯一底部组件替换编辑器。`/model` 保留消息和 context checkpoint，在配置写入前构造候选 Agent，成功后才替换当前 Agent；失败时旧 Agent 与配置保持可用。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 选择或已启用 server 的认证状态变化只请求一次 runtime reload。MCP 组件接收 server ID、transport、OAuth 安全状态，以及 stdio command/参数或 HTTP URL，但不会接收环境变量、HTTP headers 或 token；授权 URL 只临时放在 transcript block 中，完成后原位替换。MCP 视图打开、认证操作或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
+TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关和 OAuth 操作、provider/model 选择、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、slash 选项、审批和内容查看视图都会作为唯一底部组件替换编辑器。`/model` 从 Kana 产品层取得可用 Provider、模型、推理档位和当前选择，不直接读取 Provider 实现目录；它会保留消息和 context checkpoint，在配置写入前构造候选 Agent，成功后才替换当前 Agent，失败时旧 Agent 与配置保持可用。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 选择或已启用 server 的认证状态变化只请求一次 runtime reload。MCP 组件接收 server ID、transport、OAuth 安全状态，以及 stdio command/参数或 HTTP URL，但不会接收环境变量、HTTP headers 或 token；授权 URL 只临时放在 transcript block 中，完成后原位替换。MCP 视图打开、认证操作或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 
 ## 扩展时的检查点
 
