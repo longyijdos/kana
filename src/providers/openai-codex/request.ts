@@ -1,5 +1,4 @@
-import type { AssistantContent, Message, ModelContext, ToolCallContent } from "@/core";
-import type { ToolSpec } from "@/tools";
+import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
 import type { OpenAICodexModelConfig } from "./types";
 
 export function buildOpenAICodexRequest(

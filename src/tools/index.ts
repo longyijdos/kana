@@ -1,3 +1,4 @@
+export type { ToolConcurrency, ToolExecutionPolicy, ToolSpec } from "@/core";
 export {
   type BashToolOptions,
   type BashToolResult,
@@ -43,11 +44,8 @@ export {
 } from "./result";
 export type {
   Tool,
-  ToolConcurrency,
   ToolContext,
-  ToolExecutionPolicy,
   ToolResult,
-  ToolSpec,
 } from "./tool";
 export {
   precompileToolParameters,

@@ -15,13 +15,13 @@ src/main.ts
                                                                                                  ├─ mcp      MCP JSON-RPC connections, protocol clients, and transports
                                                                                                  ├─ agent    Model/tool loop and event protocol translation
                                                                                                  ├─ tools    Reusable file and shell tools
-                                                                                                 ├─ core     Shared message, model, stream, and usage contracts
+                                                                                                 ├─ core     Shared message, model, tool-description, stream, and usage contracts
                                                                                                  └─ providers
                                                                                                      ├─ deepseek      DeepSeek requests, SSE parsing, and streaming adapter
                                                                                                      └─ openai-codex  Codex Responses, OAuth credentials, and streaming adapter
 ```
 
-`core` is the innermost protocol package: it has no dependency on product configuration or a frontend. `agent` depends only on `core` and `tools`, so it can run without a terminal UI. `oauth` is a generic Authorization Code + PKCE and token-lifecycle module that knows nothing about MCP, providers, or frontends. `mcp` layers protected-resource discovery and Bearer-challenge semantics on top while remaining independent from Kana product composition and the Agent loop. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` and `headless` share that composition layer and neither implements model protocols or persistence formats directly.
+`core` is the innermost protocol package: it has no dependency on product configuration or a frontend. The provider-facing `ToolSpec` belongs to this layer; executable `Tool` values in `tools` add the execution function. `agent` depends only on `core` and `tools`, so it can run without a terminal UI. `oauth` is a generic Authorization Code + PKCE and token-lifecycle module that knows nothing about MCP, providers, or frontends. `mcp` layers protected-resource discovery and Bearer-challenge semantics on top while remaining independent from Kana product composition and the Agent loop. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` and `headless` share that composition layer and neither implements model protocols or persistence formats directly.
 
 This layering also indicates where new code belongs: new providers go in `providers`, reusable execution capabilities in `tools`, loop control in `agent`, Kana defaults and local state in `kana`, and interaction presentation in `tui`.
 
