@@ -10,6 +10,7 @@ import {
   recordKanaAgentRunAccounting,
 } from "./accounting";
 import { createKanaAgent, KANA_BUILT_IN_TOOL_NAMES, type KanaAgentOptions } from "./agent";
+import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "./auth";
 import {
   getActiveKanaModelConfig,
   type KanaConfig,
@@ -18,17 +19,16 @@ import {
 } from "./config";
 import { createKanaConfigStore, type KanaConfigStore } from "./config-store";
 import {
-  type KanaMcpServerActivation,
-  loadKanaMcpServerActivations,
-  saveKanaMcpActivationState,
-} from "./mcp-activation";
-import { authorizeKanaMcpServer, signOutKanaMcpServer } from "./mcp-oauth";
-import {
+  authorizeKanaMcpServer,
   createKanaMcpRuntime,
   type KanaMcpRuntime,
   type KanaMcpRuntimeProgressEvent,
   type KanaMcpRuntimeSnapshot,
-} from "./mcp-runtime";
+  type KanaMcpServerActivation,
+  loadKanaMcpServerActivations,
+  saveKanaMcpActivationState,
+  signOutKanaMcpServer,
+} from "./mcp";
 import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
@@ -37,8 +37,6 @@ import {
   runFullMemoryConsolidation,
 } from "./memory";
 import { loadKanaMemory } from "./memory/storage";
-import type { KanaOAuthTokenStatus } from "./oauth-token-store";
-import { createKanaOAuthTokenStore } from "./oauth-token-store";
 import { getKanaSessionLogPath } from "./path";
 import {
   createKanaSession,

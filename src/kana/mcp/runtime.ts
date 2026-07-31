@@ -1,9 +1,9 @@
 import type { McpManagerProgressEvent, McpServerDiagnostic, McpToolSource } from "@/mcp";
 import type { Tool } from "@/tools";
 
-import { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./mcp";
-import { loadKanaMcpActivationState } from "./mcp-activation";
-import { loadKanaMcpConfig } from "./mcp-config";
+import { loadKanaMcpActivationState } from "./activation";
+import { loadKanaMcpConfig } from "./config";
+import { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./manager";
 
 export type KanaMcpRuntimeOperation = "start" | "reload" | "close";
 

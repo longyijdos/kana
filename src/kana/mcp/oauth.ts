@@ -1,15 +1,18 @@
 import { createNoopLogger, type Logger } from "@/logging";
 import { McpOAuthHttpAuthorizer, type McpOAuthHttpDiagnosticEvent } from "@/mcp";
 import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
-import { createHttpProxyFetch } from "./http-proxy";
+import {
+  createKanaOAuthTokenStore,
+  type KanaOAuthTokenStatus,
+  openKanaOAuthAuthorizationUrl,
+} from "../auth";
 import {
   type KanaMcpHttpServerConfig,
   type KanaMcpOAuth2Config,
   loadKanaMcpConfig,
   resolveKanaMcpOAuth2Client,
-} from "./mcp-config";
-import { openKanaOAuthAuthorizationUrl } from "./oauth-browser";
-import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "./oauth-token-store";
+} from "./config";
+import { createHttpProxyFetch } from "./http-proxy";
 
 type KanaMcpOAuthServerConfig = KanaMcpHttpServerConfig & {
   auth: KanaMcpOAuth2Config;

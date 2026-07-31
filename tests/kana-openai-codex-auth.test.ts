@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { KanaOpenAICodexAuth } from "../src/kana/openai-codex-auth";
+import { KanaOpenAICodexAuth } from "../src/kana";
 import type { OAuthStoredToken, OAuthTokenStore } from "../src/oauth";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";

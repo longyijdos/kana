@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-import { getKanaConfigPaths } from "./config";
-import { loadKanaMcpConfig } from "./mcp-config";
-import { createKanaMcpOAuthStorageKey } from "./mcp-oauth";
-import { type KanaOAuthTokenStatus, loadKanaOAuthTokenStatuses } from "./oauth-token-store";
+import { type KanaOAuthTokenStatus, loadKanaOAuthTokenStatuses } from "../auth";
+import { getKanaConfigPaths } from "../config";
+import { loadKanaMcpConfig } from "./config";
+import { createKanaMcpOAuthStorageKey } from "./oauth";
 
 export type KanaMcpActivationState = {
   enabledServers: string[];

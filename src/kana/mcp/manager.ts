@@ -14,11 +14,10 @@ import {
 } from "@/mcp";
 import type { OAuthFetch, OAuthTokenStore } from "@/oauth";
 import { KANA_VERSION } from "@/version";
+import { createKanaOAuthTokenStore, openKanaOAuthAuthorizationUrl } from "../auth";
+import type { KanaMcpConfig, KanaMcpServerConfig, KanaMcpStdioServerConfig } from "./config";
 import { createHttpProxyFetch } from "./http-proxy";
-import type { KanaMcpConfig, KanaMcpServerConfig, KanaMcpStdioServerConfig } from "./mcp-config";
-import { createKanaMcpOAuthAuthorizer } from "./mcp-oauth";
-import { openKanaOAuthAuthorizationUrl } from "./oauth-browser";
-import { createKanaOAuthTokenStore } from "./oauth-token-store";
+import { createKanaMcpOAuthAuthorizer } from "./oauth";
 
 const DEFAULT_CLIENT_INFO: McpImplementation = {
   name: "kana",

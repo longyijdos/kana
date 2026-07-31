@@ -8,8 +8,8 @@ import {
   type OAuthTokenStore,
 } from "@/oauth";
 import type { OpenAICodexCredentialProvider, OpenAICodexCredentials } from "@/providers";
-import { openKanaOAuthAuthorizationUrl } from "./oauth-browser";
-import { createKanaOAuthTokenStore } from "./oauth-token-store";
+import { openKanaOAuthAuthorizationUrl } from "./browser";
+import { createKanaOAuthTokenStore } from "./token-store";
 
 const OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_CODEX_AUTH_BASE_URL = "https://auth.openai.com";

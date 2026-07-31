@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createHttpProxyFetch } from "../src/kana/http-proxy";
+import { createHttpProxyFetch } from "../src/kana/mcp/http-proxy";
 import type { OAuthFetch } from "../src/oauth";
 
 describe("Kana HTTP proxy routing", () => {

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { OAuthClientCredentials, OAuthTokenEndpointAuthMethod } from "@/oauth";
-import { getKanaConfigPaths } from "./config";
+import { getKanaConfigPaths } from "../config";
 
 export const KANA_MCP_SERVER_TYPES = ["stdio", "http"] as const;
 
