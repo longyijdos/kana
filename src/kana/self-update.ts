@@ -4,7 +4,7 @@ import { chmodSync, createReadStream, renameSync, rmSync, statSync } from "node:
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { KANA_DISTRIBUTION, KANA_VERSION, type KanaDistribution } from "../version";
+import { KANA_DISTRIBUTION, KANA_VERSION, type KanaDistribution } from "@/version";
 import { formatError } from "./format";
 
 const execFileAsync = promisify(execFile);

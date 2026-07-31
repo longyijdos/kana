@@ -13,7 +13,7 @@ import {
   StreamableHttpTransport,
 } from "@/mcp";
 import type { OAuthFetch, OAuthTokenStore } from "@/oauth";
-import { KANA_VERSION } from "../version";
+import { KANA_VERSION } from "@/version";
 import { createHttpProxyFetch } from "./http-proxy";
 import type { KanaMcpConfig, KanaMcpServerConfig, KanaMcpStdioServerConfig } from "./mcp-config";
 import { createKanaMcpOAuthAuthorizer } from "./mcp-oauth";

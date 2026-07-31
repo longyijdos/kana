@@ -14,7 +14,7 @@ afterEach(() => {
   }
 });
 
-describe("remember tool", () => {
+describe("Kana remember tool", () => {
   test("describes proactive durable-memory use", () => {
     expect(createRememberTool().description).toContain("Proactively save non-sensitive durable");
     expect(createRememberTool().description).toContain("meaningful milestones");

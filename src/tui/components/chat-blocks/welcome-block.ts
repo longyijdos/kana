@@ -1,6 +1,6 @@
 import os from "node:os";
 import type { KanaSessionMetadata } from "@/kana";
-import { KANA_VERSION } from "../../../version";
+import { KANA_VERSION } from "@/version";
 import { color, padRightAnsi, truncateToWidth, visibleWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";

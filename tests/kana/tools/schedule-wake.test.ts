@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createScheduleWakeTool, createWakeScheduler } from "@/kana";
 
-describe("schedule_wake tool", () => {
+describe("Kana schedule_wake tool", () => {
   test("registers a process-local reminder for its session", async () => {
     const scheduled: Array<{ sessionId: string; message: string }> = [];
     const scheduler = createWakeScheduler({

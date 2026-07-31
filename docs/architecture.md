@@ -10,7 +10,7 @@ src/main.ts
   ├─ headless            单次执行、JSONL 投影和非交互审批 ─┐
   └─ tui                 终端交互、渲染和用户审批 ─────────┴→ kana
                                                             产品装配：配置、提示词、会话、记忆、Skills
-                                                              ├─ logging  会话级 JSONL 诊断日志
+                                                              ├─ logging  日志协议与会话级 JSONL 基础设施
                                                               ├─ oauth    通用 OAuth 发现、PKCE、callback、token 与 refresh 状态机
                                                               ├─ mcp      MCP JSON-RPC 连接、协议客户端与传输
                                                               ├─ agent    模型—工具循环和事件协议转换
@@ -21,7 +21,7 @@ src/main.ts
                                                                   └─ openai-codex  Codex Responses、OAuth 凭据和流式适配
 ```
 
-`core` 是最内层的协议包：不依赖产品配置或前端。Provider-facing 的 `ToolSpec` 属于该层；`tools` 中可执行的 `Tool` 在此基础上增加执行函数。`agent` 仅依赖 `core` 和 `tools`，因此可在没有终端界面的情况下运行。`oauth` 是不感知 MCP、供应商或前端的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 与 `headless` 共享该装配层，且都不直接实现模型协议或持久化格式。
+`core` 是最内层的协议包：不依赖产品配置或前端。Provider-facing 的 `ToolSpec` 属于该层；`tools` 中可执行的 `Tool` 在此基础上增加执行函数。`logging` 是同时提供日志协议、空实现和会话级 JSONL 实现的基础设施模块。`agent` 依赖 `core`、`tools` 以及 `logging` 中的协议和空实现，但不知道日志路径或产品配置，因此可在没有终端界面的情况下运行；具体 session logger 由 Kana 产品层装配。`oauth` 是不感知 MCP、供应商或前端的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 与 `headless` 共享该装配层，且都不直接实现模型协议或持久化格式。
 
 这种分层也说明了新增代码应放在哪里：新增供应商放 `providers`，可复用的执行能力放 `tools`，循环控制放 `agent`，Kana 的默认策略和本地状态放 `kana`，交互呈现放 `tui`。
 
@@ -162,7 +162,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V3 会话的格式、Journal 状态机和文件仓储分别位于 `kana/session/format.ts`、`journal.ts` 与 `repository.ts`，调用方统一经过该目录的 barrel。会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 message 与 context-compaction journal。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用首条用户消息生成标题。进程中断后，加载器会闭合打开的 turn，并把缺失工具结果记录为未知且禁止自动重试。运行时不读取 V1/V2。
 
-运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。session log manager 会返回永久绑定到指定会话的 logger；每个 Agent 和后台任务启动时捕获该具体 logger，因此后续生命周期记录仍归属发起它的会话。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 TUI 装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
+运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。session log manager 会返回永久绑定到指定会话的 logger；每个 Agent 和后台任务启动时捕获该具体 logger，因此后续生命周期记录仍归属发起它的会话。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 Kana 产品装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
 
 记忆分 global 和 project 两个 scope。`remember` 先向当天的暂存文件追加结构化条目；对话提交后，调度器按 scope 启动增量压缩 Agent。增量压缩和手动全量压缩共享每个 scope 的队列，串行执行该 scope 的全部读—改—写任务。压缩 Agent 使用相同的模型，但只有记忆读写工具；它在助手以正常 `stop` 结束时才提交内存中的修改。通过 `/memory` 交互流程选择 Compact 可发起全量压缩，并在成功后按 `daily_retention_days` 清理过期每日记忆。
 
