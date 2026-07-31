@@ -190,6 +190,42 @@ describe("session-scoped agents", () => {
     expect(loadCount).toBe(1);
   });
 
+  test("keeps customization controls and external tools disabled in clean mode", async () => {
+    let externalToolLoadCount = 0;
+    const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
+      ...createOptions(),
+      launchMode: "clean",
+      loadExternalTools: async () => {
+        externalToolLoadCount += 1;
+        return {};
+      },
+    });
+    const internal = app as unknown as {
+      handleCommand(command: {
+        name: "skills" | "mcp" | "memory";
+        arguments: string;
+        raw: string;
+      }): void;
+      layout: { render(width: number): string[] };
+      transcript: { render(width: number): string[] };
+    };
+
+    app.start();
+    internal.handleCommand({ name: "skills", arguments: "", raw: "/skills" });
+    internal.handleCommand({ name: "mcp", arguments: "", raw: "/mcp" });
+    internal.handleCommand({ name: "memory", arguments: "", raw: "/memory" });
+
+    const transcript = renderTranscript(internal.transcript);
+    expect(externalToolLoadCount).toBe(0);
+    expect(transcript).toContain(
+      "Clean mode · custom instructions, memory, Skills, and MCP are disabled.",
+    );
+    expect(transcript).toContain("Skills are unavailable in clean mode.");
+    expect(transcript).toContain("MCP management is unavailable in clean mode.");
+    expect(transcript).toContain("Memory is unavailable in clean mode.");
+    expect(stripAnsi(internal.layout.render(120).join("\n"))).toContain("clean");
+  });
+
   test("uses the second Ctrl+C to force stop while graceful MCP shutdown is pending", async () => {
     let handleInput!: (data: string) => void;
     let releaseShutdown!: () => void;

@@ -93,6 +93,7 @@ export {
   type WakeScheduler,
 } from "./conversation";
 export { loadKanaEnvironment } from "./env";
+export type { KanaLaunchMode } from "./launch-mode";
 export {
   authorizeKanaMcpServer,
   type CreateKanaMcpManagerOptions,

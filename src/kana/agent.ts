@@ -11,6 +11,7 @@ import {
 } from "@/tools";
 import { getActiveKanaModelConfig, type KanaConfig } from "./config";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
+import type { KanaLaunchMode } from "./launch-mode";
 import { createKanaModel } from "./model";
 import { buildKanaSystemPrompt } from "./prompt";
 import { loadKanaSkills } from "./skills/loader";
@@ -42,6 +43,8 @@ export type KanaAgentOptions = Pick<
   | "logger"
 > & {
   additionalTools?: readonly Tool[];
+  env?: NodeJS.ProcessEnv;
+  launchMode?: KanaLaunchMode;
   wakeScheduler?: WakeScheduler;
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
@@ -49,7 +52,8 @@ export type KanaAgentOptions = Pick<
 
 export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
   const cwd = process.cwd();
-  const { skills } = loadKanaSkills({ cwd });
+  const customizationsEnabled = options.launchMode !== "clean";
+  const skills = customizationsEnabled ? loadKanaSkills({ cwd, env: options.env }).skills : [];
   const model = createKanaModel(config, options.logger);
   const modelConfig = getActiveKanaModelConfig(config);
   const contextLimit = config.agent.contextLimit ?? model.metadata.contextWindow;
@@ -83,10 +87,11 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     createBashTool({
       root: cwd,
     }),
-    ...(config.memory.enabled
+    ...(customizationsEnabled && config.memory.enabled
       ? [
           createRememberTool({
             cwd,
+            env: options.env,
           }),
         ]
       : []),
@@ -98,13 +103,18 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
           }),
         ]
       : []),
-    ...(options.additionalTools ?? []),
+    ...(customizationsEnabled ? (options.additionalTools ?? []) : []),
   ];
   assertUniqueToolNames(tools);
 
   return new Agent({
     model,
-    system: buildKanaSystemPrompt({ cwd, skills }),
+    system: buildKanaSystemPrompt({
+      cwd,
+      env: options.env,
+      launchMode: options.launchMode,
+      skills,
+    }),
     tools,
     maxTurns: config.agent.maxTurns,
     toolDeadlineMs: config.agent.toolDeadlineMs,

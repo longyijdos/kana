@@ -4,6 +4,7 @@ import { tuiTheme } from "../../theme";
 export type StatusLineState = {
   phase: string;
   activeTool?: string;
+  cleanMode?: boolean;
   contextUsedPercent?: number;
   running: boolean;
 };
@@ -15,6 +16,7 @@ export function renderStatusLine(
 ): string {
   const parts = [
     model ? color(model, tuiTheme.model) : undefined,
+    state.cleanMode ? color("clean", tuiTheme.command) : undefined,
     state.contextUsedPercent === undefined
       ? undefined
       : color(`Context ${state.contextUsedPercent}% used`, tuiTheme.contextUsage),

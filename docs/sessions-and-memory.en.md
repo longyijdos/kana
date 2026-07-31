@@ -80,6 +80,8 @@ Memory has two scopes:
 
 Durable `memory.md` is compressed Markdown injected into the system prompt; a missing file is empty. `saveKanaMemory` trims surrounding whitespace, checks `memory.max_chars` by Unicode code point, writes a UUID temporary file, then atomically renames it and ensures one trailing newline.
 
+When started with `--clean`, the host does not read global or project memory, expose `remember`, start automatic consolidation, or allow manual viewing and consolidation through `/memory`. Existing memory files remain unchanged; resuming still loads and continues persisting session messages.
+
 `remember` does not modify durable memory directly. It defaults to project scope and appends non-empty content, plus optional title and reason, to the current day's Markdown staging file:
 
 ```markdown

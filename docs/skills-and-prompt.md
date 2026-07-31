@@ -60,6 +60,8 @@ remember 的持久化规则（若记忆启用）
 可见 Skills 的目录
 ```
 
+`--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时系统提示词只包含默认助手指令和环境上下文，Agent 不注册 `remember` 或任何外部工具；TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载。
+
 全局指令路径是 `<KANA_HOME>/AGENTS.md`，项目指令路径是 `<cwd>/AGENTS.md`。内置默认助手指令始终注入；全局文件存在时会追加到默认指令后，项目文件再追加到后面。若两条 AGENTS 路径解析到同一文件，只注入一次。项目内容处于更后的、更具体的位置，但代码没有把多份指令合并为任何优先级算法，模型仍需根据完整提示词解释它们。
 
 环境块使用 XML 风格标签，包含当前目录、`process.platform`、按本地时区格式化的 `YYYY-MM-DD` 日期与时区名：

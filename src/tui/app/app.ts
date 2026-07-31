@@ -15,6 +15,7 @@ import {
   type ToolCallContent,
 } from "@/core";
 import type {
+  KanaLaunchMode,
   KanaMcpServerActivation,
   KanaNotificationConfig,
   KanaOAuthTokenStatus,
@@ -88,6 +89,7 @@ export type KanaTuiSessionSnapshot = ConversationSessionSnapshot;
 export type KanaTuiExternalToolsLoadResult = ExternalToolsLoadResult;
 
 export type KanaTuiAppOptions = {
+  launchMode?: KanaLaunchMode;
   initialSession?: KanaTuiSessionSnapshot;
   initialPrompt?: string;
   getResumeSessionId: () => string | undefined;
@@ -186,6 +188,7 @@ export class KanaTuiApp {
     private readonly options: KanaTuiAppOptions,
   ) {
     const initialSession = options.initialSession;
+    const cleanMode = options.launchMode === "clean";
     this.getLogger = options.getLogger ?? createNoopLogger;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       initialSession,
@@ -210,6 +213,7 @@ export class KanaTuiApp {
     this.tui = new Tui(terminal);
     this.notifications = new NotificationController(options.notification, terminal);
     this.editor = new Editor({
+      cleanMode: options.launchMode === "clean",
       model: formatModelName(this.conversation.state.model.metadata),
     });
     this.layout = new AppLayout({
@@ -224,8 +228,8 @@ export class KanaTuiApp {
     this.externalTools = new ExternalToolsLifecycleController({
       transcript: this.transcript,
       tui: this.tui,
-      load: this.options.loadExternalTools,
-      reload: this.options.mcpManagement?.reloadExternalTools,
+      load: cleanMode ? undefined : this.options.loadExternalTools,
+      reload: cleanMode ? undefined : this.options.mcpManagement?.reloadExternalTools,
       isStopping: () => this.stopping,
       onToolsChanged: () => this.recreateAgentForExternalTools(),
       onReady: () => this.conversation.notifyCanStartScheduledRun(),
@@ -243,7 +247,7 @@ export class KanaTuiApp {
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
-    if (this.options.mcpManagement) {
+    if (!cleanMode && this.options.mcpManagement) {
       this.mcpServerManager = new McpServerManagerController({
         editor: this.editor,
         layout: this.layout,
@@ -392,7 +396,7 @@ export class KanaTuiApp {
         this.openMcpServerManager();
       },
       openModel: () => this.slashCommandOptions.openModel(),
-      openMemory: () => this.slashCommandOptions.openMemory(),
+      openMemory: () => this.openMemory(),
       compactContext: () => {
         this.editor.clear();
         void this.compactContext();
@@ -410,6 +414,7 @@ export class KanaTuiApp {
 
   start(): void {
     this.getLogger().info("tui.started", {
+      launchMode: this.options.launchMode ?? "normal",
       resumed: this.conversation.sessionId !== undefined,
     });
     void preloadSyntaxHighlighter().then(
@@ -419,6 +424,13 @@ export class KanaTuiApp {
 
     if (!this.options.startInResumePicker) {
       this.sessions.initializeTranscript(this.options.initialSession?.timeline ?? []);
+    }
+    if (this.options.launchMode === "clean") {
+      this.transcript.addChild(
+        new TextBlock("Clean mode · custom instructions, memory, Skills, and MCP are disabled.", {
+          color: tuiTheme.muted,
+        }),
+      );
     }
 
     this.tui.addChild(this.layout);
@@ -728,6 +740,10 @@ export class KanaTuiApp {
   }
 
   private openSkillManager(): void {
+    if (this.options.launchMode === "clean") {
+      this.showError(new Error("Skills are unavailable in clean mode."));
+      return;
+    }
     if (this.running) {
       return;
     }
@@ -738,6 +754,10 @@ export class KanaTuiApp {
   }
 
   private openMcpServerManager(): void {
+    if (this.options.launchMode === "clean") {
+      this.showError(new Error("MCP management is unavailable in clean mode."));
+      return;
+    }
     if (this.running) {
       return;
     }
@@ -750,6 +770,16 @@ export class KanaTuiApp {
     this.contentViewer.close();
     this.skillManager.close();
     this.mcpServerManager.open();
+  }
+
+  private openMemory(): void {
+    if (this.options.launchMode === "clean") {
+      this.editor.clear();
+      this.showError(new Error("Memory is unavailable in clean mode."));
+      return;
+    }
+
+    this.slashCommandOptions.openMemory();
   }
 
   private handleConversationEvent(event: ConversationRuntimeEvent): void {

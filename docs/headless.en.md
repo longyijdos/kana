@@ -20,11 +20,17 @@ kana exec resume <session-id> --json continue the analysis
 
 # Explicitly allow every tool without interactive approval
 kana exec --allow-all-tools complete this change
+
+# Run in clean mode; the flag also works when resuming a session
+kana exec --clean inspect this project
+kana exec resume <session-id> --clean continue the inspection
 ```
 
 New and resumed executions are both assembled through `KanaConversationHost` and `ConversationRuntime`, so they share the TUI's model, reasoning configuration, system prompt, Skills, workspace tools, MCP, V3 session journal, accounting, logging, and memory scheduling. A new session and its turn are persisted normally; headless mode currently has no ephemeral-session option.
 
-The only deliberately omitted tool is `schedule_wake`. It relies on a timer in the current process, while a headless process exits after this turn and could not honor a future wake. All other tools retain the same concurrency, deadline, and result semantics. MCP loads before the turn starts: an optional-server failure produces a warning, while a required-server failure aborts startup. Headless mode does not open a browser for MCP OAuth, so authorize servers that need interaction from the TUI first.
+`--clean` still loads `config.toml`, `<KANA_HOME>/.env`, provider/model settings, OAuth, approvals, sessions, accounting, and logs, but it does not read global or project `AGENTS.md`, memory, Skills, or MCP configuration, connect to MCP servers, or expose external tools. Resuming still loads existing messages and persists the new turn; clean mode is not a sandbox, privacy mode, or ephemeral session.
+
+The only deliberately omitted built-in tool is `schedule_wake`. It relies on a timer in the current process, while a headless process exits after this turn and could not honor a future wake. All other built-in tools retain the same concurrency, deadline, and result semantics. Normal mode loads MCP before the turn starts: an optional-server failure produces a warning, while a required-server failure aborts startup. Clean mode skips that step entirely. Headless mode does not open a browser for MCP OAuth, so authorize servers that need interaction from the TUI first.
 
 ## Output and exit status
 

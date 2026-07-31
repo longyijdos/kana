@@ -33,7 +33,7 @@ Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与
 
 `src/main.ts` 调用 `runCli`。CLI 支持以下主要路径：
 
-- `kana [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
+- `kana [--clean] [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
 - `kana resume [sessionId]`：按 ID 恢复会话，或打开会话选择器。
 - `kana exec [prompt...]` / `kana exec resume <sessionId> [prompt...]`：不启动 TUI，执行一次完整 Agent turn 后退出；可用 `--json` 输出版本化 JSONL 事件。
 - `kana install`：幂等补齐缺失的本地状态并刷新生成的配置参考，不物化默认 `config.toml`，也不安装 Skills 仓库。
@@ -43,11 +43,15 @@ Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与
 - `kana skills install|reinstall [--yes]`：安全安装/更新默认 Skills Git 仓库，或经确认删除后重新 clone。
 - `kana skills sync|resync <target> [--yes]`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；sync 跳过同名项，resync 经确认替换同名项，但不清理其它或过期 Skill。
 
+启动入口把 `normal | clean` 模式显式传给 `KanaConversationHost`，Host 再把它传给每次创建或重建的 Agent。Clean 模式不通过替换 `KANA_HOME` 或清空进程环境模拟，因此 `.env`、运行配置、认证、审批、会话、日志和 accounting 仍沿用普通路径；它只在装配边界关闭 AGENTS、memory、Skills 和 MCP。
+
 自更新由 `kana/update/self-update.ts` 隔离在产品层，不进入 TUI 或 Agent 生命周期。它通过 GitHub Release API 取得版本、平台资产及 SHA-256 digest，把下载写入当前可执行文件的同目录临时路径，校验大小与 digest，并让候选程序执行 `--version` 和幂等初始化。替换前会再次比较目标文件的 device、inode、mtime 和大小，避免覆盖下载期间由其它安装进程写入的新版本；最终 rename 是 POSIX 同文件系统的原子目录项替换。源码运行默认标记为 `source` 并拒绝更新，所有可直接安装的编译入口在构建期注入 `direct` 标记，防止把 Bun runtime 误判为更新目标。任一外部 I/O、候选执行或替换步骤失败时都会使用固定阶段错误码并清理临时文件。
 
 启动 TUI 时，`startTui` 先创建 `KanaConversationHost`。Host 加载运行配置和审批白名单，持有 session journal、日志、accounting、记忆、wake scheduler 与 `KanaMcpRuntime`，并向前端提供统一的 Agent 工厂和 session 操作。`KanaTuiApp` 用这些依赖创建产品层 `ConversationRuntime`；该 runtime 持有当前 Agent 和 session，负责提交互斥、Agent 重建、session new/fork/resume，以及到期 wake 的排队和顺序投递。当前会话确定并完成首次 TUI 渲染后，App 才请求 Host 加载外部工具；此时 MCP runtime 读取定义与启用状态文件、连接选中的 server、发现工具，再由 `ConversationRuntime` 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。TUI 只协调可见用户流程，不实现对话生命周期或 Kana 产品装配，也不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 
 `startHeadless` 使用同一个 Host 和 runtime，先加载 MCP，再提交一条用户消息并等待完整 Agent loop 结束。它把 runtime 事件投影成独立版本的 JSONL 公共协议，或把进度写到 stderr、最终助手文本写到 stdout。无头前端不提供交互审批；未被配置或白名单信任的工具会关闭失败。调用方传入 `--allow-all-tools` 时会无条件授权所有可用工具，但不会隔离文件或进程。`SIGINT` 会取消活动 Agent，进程以 `130` 退出。
+
+Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TUI 不安装外部工具加载器，Headless 则继续经过同一 Host 边界但不会解析或连接 MCP。这个双重边界保证后续 new/fork/resume、模型切换和 Agent 重建不会重新引入外部工具。
 
 ## 一次对话如何执行
 
@@ -142,6 +146,8 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 4. `<cwd>/AGENTS.md` 的项目指令（若存在且不是同一文件）；
 5. 当前目录、平台、日期和时区；
 6. 已启用 Skills 的名称、描述和 `SKILL.md` 路径。
+
+Clean 模式只保留第 2、5 项，并且不会扫描 Skills 路径、读取 memory 或创建自动记忆合并 scheduler。Host 仍把当前运行配置传给 Agent，因此 provider/model、上下文上限、输出保留和工具 deadline 与普通模式一致；`schedule_wake` 也仍按前端能力启用。
 
 `loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。install 不物化默认 `config.toml`，只补齐缺失的可变状态；`config.example.toml` 是运行时不读取的 Kana 生成参考，install 和 reset 会比较并刷新过期内容。`KanaConfigStore` 为 TUI 等调用方提供通用 typed mutation：它比较更新前后的有效配置，只 patch 变化的规范 TOML leaf，验证回读结果后用同目录临时文件原子替换，因此无关配置、未知表和注释不需要经过全量重序列化。
 

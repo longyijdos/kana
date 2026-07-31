@@ -20,11 +20,17 @@ kana exec resume <session-id> --json 继续分析
 
 # 显式允许所有工具，无需交互审批
 kana exec --allow-all-tools 完成这项修改
+
+# 以纯净模式执行；恢复已有 session 时同样可用
+kana exec --clean 检查当前项目
+kana exec resume <session-id> --clean 继续检查
 ```
 
 新执行和恢复执行都通过 `KanaConversationHost` 与 `ConversationRuntime` 装配，因此与 TUI 共用模型、reasoning 配置、系统提示词、Skills、工作区工具、MCP、session V3 journal、accounting、日志和记忆调度。新 session 和本次 turn 会按正常规则持久化；无头模式目前没有临时 session。
 
-唯一刻意省略的工具是 `schedule_wake`：它依赖当前进程中的定时器，而无头进程会在本次 turn 后退出，无法兑现未来的 wake。其它工具继续使用相同的并发策略、deadline 和结果语义。MCP 会在 turn 开始前加载；可选 server 失败会产生 warning，必需 server 失败会使启动失败。无头模式不会打开浏览器完成 MCP OAuth，因此需要交互授权的 server 应预先在 TUI 中授权。
+`--clean` 仍加载 `config.toml`、`<KANA_HOME>/.env`、provider/model、OAuth、审批、session、accounting 和日志，但不读取全局或项目 `AGENTS.md`、记忆、Skills 与 MCP 配置，也不会连接 MCP server 或提供外部工具。恢复 session 时，已有消息仍会加载，新 turn 也会照常持久化；纯净模式不是 sandbox、隐私模式或临时 session。
+
+唯一刻意省略的内置工具是 `schedule_wake`：它依赖当前进程中的定时器，而无头进程会在本次 turn 后退出，无法兑现未来的 wake。其它内置工具继续使用相同的并发策略、deadline 和结果语义。普通模式会在 turn 开始前加载 MCP；可选 server 失败会产生 warning，必需 server 失败会使启动失败。纯净模式完全跳过这一步。无头模式不会打开浏览器完成 MCP OAuth，因此需要交互授权的 server 应预先在 TUI 中授权。
 
 ## 输出与退出状态
 

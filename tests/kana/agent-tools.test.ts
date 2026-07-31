@@ -51,6 +51,34 @@ describe("Kana Agent tools", () => {
       ),
     ).toThrow("Duplicate Kana Agent tool name: read.");
   });
+
+  test("keeps only core tools and scheduled wakes in clean mode", () => {
+    const wakeScheduler = createWakeScheduler();
+
+    try {
+      const agent = withKanaAgentEnvironment(() =>
+        createKanaAgent(testConfig(), {
+          additionalTools: [createTool("github_create_issue")],
+          launchMode: "clean",
+          wakeScheduler,
+          sessionId: "session-1",
+        }),
+      );
+
+      expect(agent.state.tools.map((tool) => tool.name)).toEqual([
+        "list",
+        "glob",
+        "grep",
+        "read",
+        "write",
+        "edit",
+        "bash",
+        "schedule_wake",
+      ]);
+    } finally {
+      wakeScheduler.dispose();
+    }
+  });
 });
 
 function createTool(name: string): Tool {

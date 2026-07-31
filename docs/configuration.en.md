@@ -36,11 +36,15 @@ kana skills resync codex --yes
 # Start the TUI; arguments become the first prompt
 kana fix the failing tests
 
+# Use only built-in Agent context and tools
+kana --clean
+
 # Restore by ID, or open the picker when the ID is omitted
 kana resume [session-id]
 
 # Run one complete Agent turn headlessly; the prompt may also come from stdin
 kana exec fix the failing tests
+kana exec --clean analyze the project with built-in capabilities
 printf 'summarize this repository' | kana exec
 kana exec resume <session-id> continue the task
 
@@ -51,6 +55,8 @@ kana auth logout openai-codex
 ```
 
 `kana exec` uses the same product composition as the TUI and exits after one complete Agent turn. Human mode writes only the final answer to stdout, while `--json` provides a versioned JSONL event stream. See [Headless execution and the JSONL protocol](headless.en.md) for non-interactive approval, exit codes, and the complete protocol.
+
+`--clean` works with the TUI, `resume`, `exec`, and `exec resume`. It affects only the current Kana process: global and project `AGENTS.md`, global/project memory, global and project Skills, and MCP definitions and activation state are not read; `remember`, memory consolidation, and MCP connections are unavailable. Kana still loads `<KANA_HOME>/.env` and `config.toml`, preserving the selected provider/model, Agent runtime settings, OAuth credentials, approvals, notifications, sessions, logs, and accounting. Core file/Shell tools and the in-process `schedule_wake` tool remain available. `/skills`, `/mcp`, and `/memory` are unavailable in the TUI, while `/model` can still update runtime configuration. Clean mode is neither a file/process sandbox nor an incognito mode: resumed messages still enter the conversation, and new session and usage data remain persistent.
 
 `kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` is a Kana-managed generated reference: install compares it with the current schema and creates or refreshes it only when missing or stale. Runtime never reads this file, so copy only fields being overridden into `config.toml`. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
 

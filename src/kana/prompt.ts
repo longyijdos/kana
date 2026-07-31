@@ -8,6 +8,7 @@ import {
   formatKanaEnvironmentContext,
 } from "./context";
 import { escapeXml } from "./format";
+import type { KanaLaunchMode } from "./launch-mode";
 import { loadKanaMemory } from "./memory/storage";
 import { formatKanaSkillsForPrompt } from "./skills/prompt";
 import type { KanaSkill } from "./skills/types";
@@ -33,27 +34,30 @@ const REMEMBER_TOOL_GUIDANCE = [
 export type LoadKanaSystemPromptOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  launchMode?: KanaLaunchMode;
 };
 
 export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions & {
   env?: NodeJS.ProcessEnv;
+  launchMode?: KanaLaunchMode;
   skills?: KanaSkill[];
 };
 
 export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}): string {
   const cwd = options.cwd ?? process.cwd();
+  const customizationsEnabled = options.launchMode !== "clean";
   const { agentsPath } = getKanaConfigPaths(options.env);
   const projectAgentsPath = path.join(cwd, "AGENTS.md");
   const instructionBlocks: string[] = [DEFAULT_SYSTEM_PROMPT];
 
-  if (existsSync(agentsPath)) {
+  if (customizationsEnabled && existsSync(agentsPath)) {
     instructionBlocks.push(formatAgentsInstructions("global", readFileSync(agentsPath, "utf8")));
   }
 
   // AGENTS.md files refine the built-in operating rules. Project instructions
   // are appended after global instructions so local repository conventions have
   // the more specific, later position.
-  if (path.resolve(projectAgentsPath) !== path.resolve(agentsPath)) {
+  if (customizationsEnabled && path.resolve(projectAgentsPath) !== path.resolve(agentsPath)) {
     if (existsSync(projectAgentsPath)) {
       instructionBlocks.push(
         formatAgentsInstructions("project", readFileSync(projectAgentsPath, "utf8")),
@@ -65,16 +69,18 @@ export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}):
 }
 
 export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}): string {
-  const memoryEnabled = loadKanaConfig(options.env).memory.enabled;
+  const customizationsEnabled = options.launchMode !== "clean";
+  const memoryEnabled = customizationsEnabled && loadKanaConfig(options.env).memory.enabled;
   const memoryPrompt = memoryEnabled ? formatKanaMemoryForPrompt(options) : undefined;
   const systemPrompt = loadKanaSystemPrompt({
     cwd: options.cwd,
     env: options.env,
+    launchMode: options.launchMode,
   }).trimEnd();
   const environmentContext = formatKanaEnvironmentContext(collectKanaEnvironmentContext(options));
-  const skillsPrompt = formatKanaSkillsForPrompt(options.skills ?? [], {
-    env: options.env,
-  });
+  const skillsPrompt = customizationsEnabled
+    ? formatKanaSkillsForPrompt(options.skills ?? [], { env: options.env })
+    : "";
 
   return [
     memoryPrompt,

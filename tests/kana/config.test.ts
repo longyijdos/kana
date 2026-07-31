@@ -602,6 +602,41 @@ describe("Kana config", () => {
     );
   });
 
+  test("uses only built-in instructions and environment context in clean mode", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const paths = getKanaConfigPaths(env);
+    writeFileSync(paths.agentsPath, "Global instructions.");
+    writeFileSync(path.join(cwd, "AGENTS.md"), "Project instructions.");
+    saveKanaMemory("global", "Global memory.", { env });
+    saveKanaMemory("project", "Project memory.", { cwd, env });
+
+    const prompt = buildKanaSystemPrompt({
+      cwd,
+      env,
+      launchMode: "clean",
+      skills: [
+        {
+          name: "custom-skill",
+          description: "Custom skill.",
+          filePath: path.join(cwd, ".kana", "skills", "custom-skill", "SKILL.md"),
+          baseDir: path.join(cwd, ".kana", "skills", "custom-skill"),
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      "You are a concise, practical assistant working in the user's current environment.",
+    );
+    expect(prompt).toContain(`<cwd>${cwd}</cwd>`);
+    expect(prompt).not.toContain("Global instructions.");
+    expect(prompt).not.toContain("Project instructions.");
+    expect(prompt).not.toContain("Global memory.");
+    expect(prompt).not.toContain("Project memory.");
+    expect(prompt).not.toContain("<remember_tool_guidance>");
+    expect(prompt).not.toContain("custom-skill");
+  });
+
   test("guides remember usage when memory is enabled", () => {
     const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env: createTempEnv() });
 

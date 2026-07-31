@@ -22,6 +22,17 @@ describe("prompt editor status line", () => {
     expect(statusLine).toContain(color("Context 12% used", tuiTheme.contextUsage));
   });
 
+  test("keeps clean mode visible in the status line", () => {
+    const editor = new Editor({
+      cleanMode: true,
+      model: "deepseek/deepseek-v4-pro",
+    });
+
+    const rendered = stripAnsi(editor.render(120).at(-1) ?? "");
+
+    expect(rendered).toStartWith("deepseek/deepseek-v4-pro | clean | idle");
+  });
+
   test("does not render shortcut hints while running", () => {
     const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
 

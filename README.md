@@ -105,7 +105,12 @@ kana "分析这个仓库并修复失败的测试"
 
 # 恢复指定会话；省略 ID 时打开选择器
 kana resume [session-id]
+
+# 不加载自定义指令、记忆、Skills 或 MCP
+kana --clean
 ```
+
+`--clean` 保留 `.env`、模型与运行配置、认证、审批和会话持久化，只关闭会改变 Agent 上下文或工具集的自定义内容。状态栏会持续显示 `clean`；该模式不是沙箱或无痕会话。
 
 常用交互：
 
@@ -132,6 +137,7 @@ kana resume [session-id]
 kana exec "修复失败的测试"
 printf '总结这个仓库' | kana exec
 kana exec resume <session-id> "继续完成任务"
+kana exec --clean "使用内置 Agent 能力分析项目"
 ```
 
 默认只把最终回答写到 stdout，进度写到 stderr。机器调用方可使用版本化 JSONL：

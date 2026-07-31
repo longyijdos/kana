@@ -1,6 +1,7 @@
 import {
   createKanaConversationHost,
   getKanaModelManagement,
+  type KanaLaunchMode,
   loadKanaSkillActivations,
   openKanaOAuthAuthorizationUrl,
   saveEnabledGlobalSkillNames,
@@ -20,12 +21,15 @@ export type StartTuiOptions = {
   initialPrompt?: string;
   resumeSessionId?: string;
   showResumePicker?: boolean;
+  launchMode?: KanaLaunchMode;
 };
 
 export async function startTui(options: StartTuiOptions = {}): Promise<void> {
+  const cleanMode = options.launchMode === "clean";
   let app: KanaTuiApp | undefined;
   let updateMcpLifecycleStatus: ((status: string) => void) | undefined;
   const host = createKanaConversationHost<TuiModelSelection>({
+    launchMode: options.launchMode,
     session: options.showResumePicker
       ? { type: "none" }
       : options.resumeSessionId
@@ -96,6 +100,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       }),
     terminal,
     {
+      launchMode: options.launchMode,
       initialSession: host.initialSession
         ? {
             id: host.initialSession.metadata.id,
@@ -141,24 +146,35 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       modelManagement: {
         getSettings: () => getKanaModelManagement(host.config),
       },
-      loadExternalTools: loadMcpTools,
-      mcpManagement: {
-        loadServers: () => host.loadMcpServers(),
-        saveEnabledServerIds: (serverIds) => host.saveEnabledMcpServerIds(serverIds),
-        authorizeServer: (serverId, onAuthorizationUrl, signal) =>
-          host.authorizeMcpServer(
-            serverId,
-            async (url) => {
-              onAuthorizationUrl(url);
-              await openKanaOAuthAuthorizationUrl(url, {
-                getLogger: () => host.getLogger(),
-              });
+      // Clean mode must not parse MCP configuration or create external
+      // processes, including during later session and Agent rebuilds.
+      ...(cleanMode
+        ? {}
+        : {
+            loadExternalTools: loadMcpTools,
+            mcpManagement: {
+              loadServers: () => host.loadMcpServers(),
+              saveEnabledServerIds: (serverIds: string[]) =>
+                host.saveEnabledMcpServerIds(serverIds),
+              authorizeServer: (
+                serverId: string,
+                onAuthorizationUrl: (url: string) => void,
+                signal: AbortSignal,
+              ) =>
+                host.authorizeMcpServer(
+                  serverId,
+                  async (url) => {
+                    onAuthorizationUrl(url);
+                    await openKanaOAuthAuthorizationUrl(url, {
+                      getLogger: () => host.getLogger(),
+                    });
+                  },
+                  signal,
+                ),
+              signOutServer: (serverId: string) => host.signOutMcpServer(serverId),
+              reloadExternalTools: reloadMcpTools,
             },
-            signal,
-          ),
-        signOutServer: (serverId) => host.signOutMcpServer(serverId),
-        reloadExternalTools: reloadMcpTools,
-      },
+          }),
       onStop: closeMcpRuntime,
       onForceStop: () => {
         removeProcessSignals();

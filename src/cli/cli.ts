@@ -68,12 +68,17 @@ export function createCli(options: CreateCliOptions): Command {
     .name("kana")
     .description("Personal TypeScript/Bun agent runtime")
     .version(KANA_VERSION)
+    .option("--clean", "Start without custom agent context or extensions")
     .argument("[prompt...]", "Prompt to send after opening the TUI")
-    .action(async (promptParts: string[] = []) => {
+    .action(async (promptParts: string[] = [], actionOptions: LaunchCommandOptions) => {
       const prompt = promptParts.join(" ").trim();
+      const launchMode = getLaunchMode(actionOptions);
 
-      if (prompt) {
-        await runTui({ initialPrompt: prompt });
+      if (prompt || launchMode) {
+        await runTui({
+          ...(prompt ? { initialPrompt: prompt } : {}),
+          ...(launchMode ? { launchMode } : {}),
+        });
         return;
       }
 
@@ -84,12 +89,20 @@ export function createCli(options: CreateCliOptions): Command {
     .command("resume")
     .description("Resume a saved agent session")
     .argument("[sessionId]", "Session id to resume")
-    .action(async (sessionId: string | undefined) => {
-      await runTui({
-        resumeSessionId: sessionId,
-        showResumePicker: sessionId === undefined,
-      });
-    });
+    .action(
+      async (
+        sessionId: string | undefined,
+        _actionOptions: LaunchCommandOptions,
+        command: Command,
+      ) => {
+        const launchMode = getLaunchMode(command.optsWithGlobals<LaunchCommandOptions>());
+        await runTui({
+          resumeSessionId: sessionId,
+          showResumePicker: sessionId === undefined,
+          ...(launchMode ? { launchMode } : {}),
+        });
+      },
+    );
 
   const execCommand = addHeadlessOptions(
     program
@@ -100,11 +113,13 @@ export function createCli(options: CreateCliOptions): Command {
   execCommand.action(
     async (promptParts: string[] = [], actionOptions: HeadlessCommandOptions, command: Command) => {
       const commandOptions = getHeadlessCommandOptions(actionOptions, command);
+      const launchMode = getLaunchMode(commandOptions);
       await applyHeadlessExitCode(
         runHeadless({
           prompt: joinPromptParts(promptParts),
           json: commandOptions.json,
           allowAllTools: commandOptions.allowAllTools,
+          ...(launchMode ? { launchMode } : {}),
         }),
       );
     },
@@ -124,12 +139,14 @@ export function createCli(options: CreateCliOptions): Command {
       command: Command,
     ) => {
       const commandOptions = getHeadlessCommandOptions(actionOptions, command);
+      const launchMode = getLaunchMode(commandOptions);
       await applyHeadlessExitCode(
         runHeadless({
           prompt: joinPromptParts(promptParts),
           resumeSessionId: sessionId,
           json: commandOptions.json,
           allowAllTools: commandOptions.allowAllTools,
+          ...(launchMode ? { launchMode } : {}),
         }),
       );
     },
@@ -312,7 +329,11 @@ export function createCli(options: CreateCliOptions): Command {
   return program;
 }
 
-type HeadlessCommandOptions = {
+type LaunchCommandOptions = {
+  clean?: boolean;
+};
+
+type HeadlessCommandOptions = LaunchCommandOptions & {
   json?: boolean;
   allowAllTools?: boolean;
 };
@@ -331,9 +352,14 @@ function getHeadlessCommandOptions(
   command: Command,
 ): HeadlessCommandOptions {
   return {
+    ...command.optsWithGlobals<HeadlessCommandOptions>(),
     ...command.parent?.opts<HeadlessCommandOptions>(),
     ...actionOptions,
   };
+}
+
+function getLaunchMode(options: LaunchCommandOptions): "clean" | undefined {
+  return options.clean ? "clean" : undefined;
 }
 
 function joinPromptParts(promptParts: string[]): string | undefined {

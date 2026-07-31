@@ -37,6 +37,27 @@ describe("CLI", () => {
     ]);
   });
 
+  test("starts new and resumed TUI sessions in clean mode", async () => {
+    const calls: Array<StartTuiOptions | undefined> = [];
+    const options = {
+      startTui: (startOptions?: StartTuiOptions) => {
+        calls.push(startOptions);
+      },
+    };
+
+    await parse(["node", "kana", "--clean"], options);
+    await parse(["node", "kana", "resume", "session-1", "--clean"], options);
+
+    expect(calls).toEqual([
+      { launchMode: "clean" },
+      {
+        resumeSessionId: "session-1",
+        showResumePicker: false,
+        launchMode: "clean",
+      },
+    ]);
+  });
+
   test("keeps resume as a subcommand", async () => {
     const calls: Array<StartTuiOptions | undefined> = [];
 
@@ -72,6 +93,35 @@ describe("CLI", () => {
         prompt: "explain this repo",
         json: true,
         allowAllTools: true,
+      },
+    ]);
+  });
+
+  test("runs new and resumed headless sessions in clean mode", async () => {
+    const calls: StartHeadlessOptions[] = [];
+    const options = {
+      startHeadless: async (startOptions?: StartHeadlessOptions) => {
+        calls.push(startOptions ?? {});
+        return 0;
+      },
+    };
+
+    await parse(["node", "kana", "exec", "--clean", "inspect"], options);
+    await parse(["node", "kana", "exec", "resume", "session-1", "--clean", "continue"], options);
+
+    expect(calls).toEqual([
+      {
+        prompt: "inspect",
+        json: undefined,
+        allowAllTools: undefined,
+        launchMode: "clean",
+      },
+      {
+        prompt: "continue",
+        resumeSessionId: "session-1",
+        json: undefined,
+        allowAllTools: undefined,
+        launchMode: "clean",
       },
     ]);
   });

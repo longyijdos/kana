@@ -105,7 +105,12 @@ kana "analyze this repository and fix the failing tests"
 
 # Resume by ID, or open the picker when the ID is omitted
 kana resume [session-id]
+
+# Skip custom instructions, memory, Skills, and MCP
+kana --clean
 ```
+
+`--clean` preserves `.env`, model and runtime configuration, authentication, approvals, and session persistence while disabling custom content that changes Agent context or tools. The status line keeps a `clean` marker visible. This mode is neither a sandbox nor an incognito session.
 
 Common interactions:
 
@@ -132,6 +137,7 @@ See [TUI interaction and rendering](docs/tui.en.md) for the complete interaction
 kana exec "fix the failing tests"
 printf 'summarize this repository' | kana exec
 kana exec resume <session-id> "continue the task"
+kana exec --clean "analyze the project with built-in Agent capabilities"
 ```
 
 By default, only the final answer goes to stdout and progress goes to stderr. Machine consumers can request versioned JSONL:

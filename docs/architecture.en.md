@@ -33,7 +33,7 @@ Inside the Kana product layer, stable domain barrels group related responsibilit
 
 `src/main.ts` calls `runCli`. The CLI has these primary paths:
 
-- `kana [prompt...]`: starts the TUI; if arguments are supplied, sends the prompt after startup.
+- `kana [--clean] [prompt...]`: starts the TUI; if arguments are supplied, sends the prompt after startup.
 - `kana resume [sessionId]`: restores a session by ID or opens the session picker.
 - `kana exec [prompt...]` / `kana exec resume <sessionId> [prompt...]`: runs one complete Agent turn without the TUI and exits; `--json` writes a versioned JSONL event stream.
 - `kana install`: idempotently creates missing local state and refreshes the generated configuration reference without materializing a default `config.toml` or installing the Skills repository.
@@ -43,11 +43,15 @@ Inside the Kana product layer, stable domain barrels group related responsibilit
 - `kana skills install|reinstall [--yes]`: safely installs or updates the default Skills Git repository, or deletes and reclones it after confirmation.
 - `kana skills sync|resync <target> [--yes]`: copies installed Kana Skills into another agent's Skills directory. Sync skips matching entries; confirmed resync replaces them without cleaning other or stale Skills.
 
+Launch entry points pass an explicit `normal | clean` mode into `KanaConversationHost`, which forwards it to every created or rebuilt Agent. Clean mode does not simulate isolation by replacing `KANA_HOME` or clearing the process environment, so `.env`, runtime configuration, authentication, approvals, sessions, logs, and accounting keep their normal paths. Only AGENTS, memory, Skills, and MCP are disabled at composition boundaries.
+
 Self-update remains isolated in the `kana/update/self-update.ts` product layer and never enters the TUI or Agent lifecycle. It obtains the version, platform asset, and SHA-256 digest from the GitHub Release API; writes the download to a sibling temporary path; verifies its size and digest; and runs `--version` plus idempotent initialization through the candidate. Before replacement it compares the target's device, inode, mtime, and size again, preventing an update from overwriting a newer binary written by another installer while the download was in flight. The final rename is an atomic POSIX directory-entry replacement on the same filesystem. Source execution defaults to a `source` marker and refuses updating, while every directly installable compile entrypoint injects a `direct` marker at build time so the Bun runtime cannot be mistaken for the update target. Any external I/O, candidate-execution, or replacement failure uses a stable phase error code and removes the temporary file.
 
 When the TUI starts, `startTui` first creates a `KanaConversationHost`. The host loads runtime configuration and the approval allowlist; owns session journals, logging, accounting, memory, the wake scheduler, and `KanaMcpRuntime`; and gives the frontend a unified Agent factory and session operations. `KanaTuiApp` creates a product-layer `ConversationRuntime` from those dependencies. That runtime owns the current Agent and session, submission exclusion, Agent replacement, session new/fork/resume, and ordered delivery of queued due wakes. Only after the current session is known and the first TUI view is displayed does the app ask the host to load external tools; the MCP runtime then reads definition and activation files, connects selected servers, discovers their tools, and lets `ConversationRuntime` rebuild the main Agent. The `kana resume` picker therefore does not start MCP; loading begins after a session is selected. The TUI coordinates only visible user flows: it implements neither conversation lifecycle nor Kana product composition and knows nothing about JSONL, TOML, MCP transports, or other storage and protocol details.
 
 `startHeadless` uses the same host and runtime, loads MCP first, submits one user message, and waits for the complete Agent loop. It projects runtime events into a separately versioned public JSONL protocol, or writes progress to stderr and final assistant text to stdout. The headless frontend has no interactive approval, so tools not trusted by configuration or the allowlist fail closed. Passing `--allow-all-tools` unconditionally authorizes every available tool but does not isolate files or processes. `SIGINT` cancels the active Agent and exits with status `130`.
+
+In clean mode the host returns an empty tool snapshot before the MCP runtime reads configuration. The TUI omits its external-tool loader, while Headless still passes through the same host boundary without parsing or connecting MCP. These two boundaries prevent later new/fork/resume operations, model switches, or Agent rebuilds from reintroducing external tools.
 
 ## How one prompt runs
 
@@ -142,6 +146,8 @@ The system prompt consists of the following sections; the later project-level in
 4. Project instructions from `<cwd>/AGENTS.md`, if present and distinct from the global file.
 5. The current directory, platform, date, and time zone.
 6. Names, descriptions, and `SKILL.md` paths for enabled Skills.
+
+Clean mode retains only items 2 and 5. It does not scan Skill paths, read memory, or construct the automatic memory-consolidation scheduler. The host still supplies current runtime configuration to the Agent, so provider/model, context limit, output reserve, and tool deadline remain identical to normal mode; `schedule_wake` also remains available when supported by the frontend.
 
 `loadKanaConfig` reads optional `config.toml` and merges every field with built-in defaults. Invalid types or enum values raise an error instead of being silently ignored. Install does not materialize the default `config.toml`; it only creates missing mutable state. `config.example.toml` is a Kana-generated reference that runtime never reads, and install and reset compare and refresh stale content. `KanaConfigStore` gives the TUI and other callers a generic typed mutation boundary: it compares effective configurations, patches only changed canonical TOML leaves, validates the reloaded result, and atomically replaces the file through a sibling temporary file, avoiding full reserialization of unrelated configuration, unknown tables, and comments.
 

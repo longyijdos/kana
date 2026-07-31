@@ -50,6 +50,7 @@ const PROMPT = "> ";
 
 export type EditorOptions = {
   model?: string;
+  cleanMode?: boolean;
   commandPaletteVisibleLimit?: number;
 };
 
@@ -79,6 +80,7 @@ export class Editor implements Component {
 
   constructor(options: EditorOptions = {}) {
     this.model = options.model;
+    this.statusState.cleanMode = options.cleanMode;
     this.maximumVisibleCommands =
       options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT;
     this.commandViewport = new ListViewport(this.maximumVisibleCommands);

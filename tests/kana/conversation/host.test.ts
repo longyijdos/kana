@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Agent } from "../../../src/agent";
@@ -82,6 +82,52 @@ describe("Kana conversation host", () => {
     expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
     expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");
     await runtime.close();
+    await host.closeMcp();
+  });
+
+  test("keeps customizations disabled across the clean host lifecycle", async () => {
+    const env = createTempEnv();
+    writeFileSync(path.join(env.KANA_HOME ?? "", "mcp.json"), "invalid MCP config");
+    let mcpStartCount = 0;
+    const seenLaunchModes: Array<string | undefined> = [];
+    const host = createKanaConversationHost({
+      env,
+      launchMode: "clean",
+      createAgent: (_config, options = {}) => {
+        seenLaunchModes.push(options.launchMode);
+        return new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        });
+      },
+      createMcpRuntime: (() => ({
+        tools: [],
+        diagnostics: [],
+        selectedServerIds: [],
+        start: async () => {
+          mcpStartCount += 1;
+          return { tools: [], diagnostics: [], selectedServerIds: [] };
+        },
+        reload: async () => ({ tools: [], diagnostics: [], selectedServerIds: [] }),
+        close: async () => {},
+        getToolSource: () => undefined,
+      })) as never,
+    });
+    const sessionId = host.initialSession?.metadata.id;
+
+    host.createAgent({ sessionId });
+    const mcpSnapshot = await host.startMcp();
+
+    expect(seenLaunchModes).toEqual(["clean"]);
+    expect(mcpStartCount).toBe(0);
+    expect(mcpSnapshot).toEqual({ tools: [], diagnostics: [], selectedServerIds: [] });
+    expect(host.loadMcpServers()).toEqual([]);
+    expect(() => host.loadMemory("global")).toThrow("Memory is unavailable in clean mode.");
+    await expect(
+      host.compactMemory("project", undefined, new AbortController().signal),
+    ).rejects.toThrow("Memory is unavailable in clean mode.");
+
     await host.closeMcp();
   });
 });

@@ -18,6 +18,7 @@ import {
   type KanaToolApprovalConfig,
 } from "../config";
 import { createKanaConfigStore, type KanaConfigStore } from "../config-store";
+import type { KanaLaunchMode } from "../launch-mode";
 import {
   authorizeKanaMcpServer,
   createKanaMcpRuntime,
@@ -73,6 +74,7 @@ export type KanaMemoryCompactSummary = {
 export type CreateKanaConversationHostOptions<TConfiguration = never> = {
   session?: KanaConversationHostSession;
   env?: NodeJS.ProcessEnv;
+  launchMode?: KanaLaunchMode;
   enableScheduledWakeTool?: boolean;
   applyAgentConfiguration?: (config: KanaConfig, configuration: TConfiguration) => void;
   onMcpProgress?: (event: KanaMcpRuntimeProgressEvent) => void;
@@ -93,6 +95,7 @@ type HostedSession = {
 
 export class KanaConversationHost<TConfiguration = never> {
   readonly initialSession?: LoadKanaSessionResult;
+  readonly launchMode: KanaLaunchMode;
   readonly wakeScheduler: WakeScheduler;
   readonly toolApprovals: KanaToolApprovals;
 
@@ -117,6 +120,7 @@ export class KanaConversationHost<TConfiguration = never> {
 
   constructor(options: CreateKanaConversationHostOptions<TConfiguration> = {}) {
     this.env = { ...(options.env ?? process.env) };
+    this.launchMode = options.launchMode ?? "normal";
     this.configStore = (options.createConfigStore ?? createKanaConfigStore)(this.env);
     this.configData = this.configStore.load();
     this.createAgentProduct = options.createAgent ?? createKanaAgent;
@@ -295,10 +299,15 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadMcpServers(): KanaMcpServerActivation[] {
+    if (this.launchMode === "clean") {
+      return [];
+    }
+
     return loadKanaMcpServerActivations(this.env);
   }
 
   saveEnabledMcpServerIds(serverIds: string[]): void {
+    this.assertCustomizationsAvailable("MCP management");
     saveKanaMcpActivationState({ enabledServers: serverIds }, this.env);
   }
 
@@ -307,6 +316,7 @@ export class KanaConversationHost<TConfiguration = never> {
     openAuthorizationUrl: (url: string) => Promise<void>,
     signal?: AbortSignal,
   ): Promise<KanaOAuthTokenStatus> {
+    this.assertCustomizationsAvailable("MCP authorization");
     return authorizeKanaMcpServer(serverId, {
       env: this.env,
       getLogger: () => this.getLogger(),
@@ -317,6 +327,7 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   signOutMcpServer(serverId: string): Promise<KanaOAuthTokenStatus> {
+    this.assertCustomizationsAvailable("MCP authorization");
     return signOutKanaMcpServer(serverId, {
       env: this.env,
       getLogger: () => this.getLogger(),
@@ -329,6 +340,7 @@ export class KanaConversationHost<TConfiguration = never> {
     userRequest: string | undefined,
     signal: AbortSignal,
   ): Promise<KanaMemoryCompactSummary[]> {
+    this.assertCustomizationsAvailable("Memory");
     const logger = this.getLogger();
     const scopes: Array<"global" | "project"> =
       target === "both" ? ["global", "project"] : [target];
@@ -371,6 +383,7 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadMemory(target: "global" | "project"): string {
+    this.assertCustomizationsAvailable("Memory");
     return loadKanaMemory(target, { cwd: process.cwd(), env: this.env });
   }
 
@@ -412,6 +425,8 @@ export class KanaConversationHost<TConfiguration = never> {
     return {
       ...options,
       additionalTools: this.mcpTools,
+      env: this.env,
+      launchMode: this.launchMode,
       logger: agentLogger,
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
       messages: options.messages ?? hostedSession?.data.messages,
@@ -560,7 +575,10 @@ export class KanaConversationHost<TConfiguration = never> {
       messages: [],
       timeline: [],
     });
-    hosted.logger.info("session.started", { resumed: false });
+    hosted.logger.info("session.started", {
+      resumed: false,
+      launchMode: this.launchMode,
+    });
     return hosted;
   }
 
@@ -585,7 +603,10 @@ export class KanaConversationHost<TConfiguration = never> {
     event: string,
     metadata?: Record<string, unknown>,
   ): void {
-    hosted.logger.info(event, metadata);
+    hosted.logger.info(event, {
+      ...metadata,
+      launchMode: this.launchMode,
+    });
     if (hosted.data.recoveredInterruptedTurn) {
       hosted.logger.warn("session.interrupted_turn_recovered", {
         unknownToolCallCount: hosted.data.recoveredInterruptedTurn.unknownToolCallCount,
@@ -610,7 +631,7 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   private createMemoryConsolidation(config: KanaConfig): MemoryConsolidationScheduler | undefined {
-    return config.memory.enabled
+    return this.launchMode !== "clean" && config.memory.enabled
       ? createMemoryConsolidationScheduler(config, {
           env: this.env,
           queue: this.memoryConsolidationQueue,
@@ -619,6 +640,19 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   private async runMcpOperation(operation: "start" | "reload"): Promise<KanaMcpRuntimeSnapshot> {
+    if (this.launchMode === "clean") {
+      this.mcpTools = [];
+      this.getLogger().info("mcp.skipped", {
+        operation,
+        reason: "clean_mode",
+      });
+      return {
+        tools: [],
+        diagnostics: [],
+        selectedServerIds: [],
+      };
+    }
+
     try {
       const snapshot = await (operation === "start"
         ? this.mcpRuntime.start()
@@ -639,6 +673,12 @@ export class KanaConversationHost<TConfiguration = never> {
 
   private getActiveHostedSession(): HostedSession | undefined {
     return this.activeSessionId === undefined ? undefined : this.sessions.get(this.activeSessionId);
+  }
+
+  private assertCustomizationsAvailable(feature: string): void {
+    if (this.launchMode === "clean") {
+      throw new Error(`${feature} is unavailable in clean mode.`);
+    }
   }
 }
 

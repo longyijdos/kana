@@ -25,6 +25,8 @@ ProcessTerminal
 
 `ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再让 `ConversationRuntime` 用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。可选服务器失败会在摘要后留下错误色警告；初次加载时必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿也会在 transcript 中显示同样的进度；但 reload 失败时会用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，关闭并等待 `ConversationRuntime`，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
 
+使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、恢复会话和后续 Agent 重建都不会读取或连接 MCP。Transcript 会显示一次 Clean 模式说明，状态栏持续显示 `clean`。
+
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
 1. 调用根组件的 `render(width, height)`；
@@ -52,7 +54,7 @@ ProcessTerminal
 
 助手正文的协议状态与可视进度彼此分离：provider 和 Agent 仍会立即处理完整事件与消息，`StreamingTextPresenter` 只维护 Markdown 块当前可见的 `text` 前缀。稀疏文本 delta 会立即出现；当一次网络读取带来一批 SSE 事件时，积压内容约每 16ms 推进一次，并按 backlog 在每帧 1–4 个 grapheme 之间有界加速，消息完成后只额外提升一级用于收尾。thinking、工具调用与审批、工具结果、错误和状态阶段不经过文本节奏控制。新消息或运行 reset 会先 flush 剩余正文，因此持久化的 session 和 Agent 状态始终使用完整消息，而不是动画中的中间快照。
 
-编辑器内部包含状态栏，它显示 provider/model、最近助手消息相对于 effective context limit 的使用率、运行阶段、活动工具和 cwd。多个工具并行时，活动项压缩为第一个名称加剩余数量，例如 `tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比；后续正常模型 usage 会替换该估算。打开 slash 命令面板时会隐藏状态栏；其他底部组件替换编辑器时，输入区和状态栏会一起隐藏。每条完成助手消息和摘要请求的 usage 都会累加到进程总用量和按模型元数据计算的 CNY 成本，但摘要 usage 不会被当作正常 prompt 的 context 百分比；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
+编辑器内部包含状态栏，它显示 provider/model、Clean 模式标记、最近助手消息相对于 effective context limit 的使用率、运行阶段、活动工具和 cwd。多个工具并行时，活动项压缩为第一个名称加剩余数量，例如 `tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比；后续正常模型 usage 会替换该估算。打开 slash 命令面板时会隐藏状态栏；其他底部组件替换编辑器时，输入区和状态栏会一起隐藏。每条完成助手消息和摘要请求的 usage 都会累加到进程总用量和按模型元数据计算的 CNY 成本，但摘要 usage 不会被当作正常 prompt 的 context 百分比；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
 恢复会话时，TUI 历史只消费 session timeline，而 Agent 单独接收完整 messages 和最后一个 context checkpoint。`turn_start`/`turn_end` 仅作为持久化边界，不直接渲染；恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用已持久化的 marker 替换，失败时则移除临时消息并显示错误。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
 
@@ -83,6 +85,8 @@ ProcessTerminal
 | `/memory` | 在底部选择操作和 scope；具体语义见[会话与记忆](sessions-and-memory.md)。 |
 | `/usage` | 在底部选择统计范围，再打开对应的 API 用量。 |
 | `/quit` | 无参数时退出；带参数时作为普通 prompt。 |
+
+Clean 模式中 `/skills`、`/mcp` 和 `/memory` 保留为可发现命令，但执行时会显示明确的不可用错误；它们不能在当前进程中重新启用自定义内容。`/model`、session 命令、`/compact`、`/usage` 和本地 Shell 仍按普通模式工作。
 
 ## 控制器与焦点
 

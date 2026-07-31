@@ -4,6 +4,7 @@ import {
   ConversationRuntime,
   type ConversationRuntimeEvent,
   createKanaConversationHost,
+  type KanaLaunchMode,
   type KanaToolApprovalConfig,
   type KanaToolApprovals,
   shouldRequestToolApproval,
@@ -14,6 +15,7 @@ import { createKanaExecEvent, type KanaExecEvent, toKanaExecUsage } from "./prot
 export type StartHeadlessOptions = {
   prompt?: string;
   resumeSessionId?: string;
+  launchMode?: KanaLaunchMode;
   json?: boolean;
   allowAllTools?: boolean;
 };
@@ -76,9 +78,11 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
       // A one-shot process cannot honor a future process-local wake after it
       // exits, so do not advertise schedule_wake in the headless tool set.
       enableScheduledWakeTool: false,
+      launchMode: options.launchMode,
     });
     runtime = createHeadlessRuntime(host);
     host.getLogger().info("headless.started", {
+      launchMode: options.launchMode ?? "normal",
       outputMode: options.json ? "jsonl" : "human",
       resumed: options.resumeSessionId !== undefined,
     });

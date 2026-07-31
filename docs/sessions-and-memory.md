@@ -80,6 +80,8 @@ cwd: /Users/alice/project
 
 长期 `memory.md` 是会被注入系统提示词的压缩 Markdown；不存在时视为空。`saveKanaMemory` 会去除首尾空白、按 Unicode code point 检查 `memory.max_chars`，写入 UUID 临时文件后原子 `rename`，最终保证文件以一个换行结尾。
 
+以 `--clean` 启动时，宿主不会读取全局或项目记忆，不提供 `remember`，也不会启动自动合并或允许通过 `/memory` 手动查看和合并。已有记忆文件不会被修改；恢复 session 仍会加载并继续保存会话消息。
+
 `remember` 不直接改写长期记忆。它默认 project scope，将非空内容（可选标题和原因）追加到当天的 Markdown 暂存文件：
 
 ```markdown
