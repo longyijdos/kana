@@ -254,6 +254,16 @@ export {
   shouldRequestToolApproval,
 } from "./tool-approval";
 export {
+  createRememberTool,
+  createScheduleWakeTool,
+  type RememberToolOptions,
+  type RememberToolResult,
+  rememberParameters,
+  type ScheduleWakeToolOptions,
+  type ScheduleWakeToolResult,
+  scheduleWakeParameters,
+} from "./tools";
+export {
   type CreateWakeSchedulerOptions,
   createWakeScheduler,
   type ScheduleWakeOptions,

@@ -3,9 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { getKanaMemoryPaths } from "@/kana";
+import { createRememberTool, getKanaMemoryPaths } from "@/kana";
 import type { ToolResult } from "@/tools";
-import { createRememberTool } from "@/tools";
 
 const tempDirs: string[] = [];
 

@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 
-import type { WakeScheduler } from "@/kana";
-import type { Tool } from "./tool";
+import type { Tool } from "@/tools";
+import type { WakeScheduler } from "../wake-scheduler";
 
 export const scheduleWakeParameters = Type.Object({
   afterMinutes: Type.Integer({

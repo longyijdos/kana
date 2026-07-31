@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 
-import { appendKanaMemory, type KanaMemoryEntry } from "@/kana";
-import type { Tool } from "./tool";
+import type { Tool } from "@/tools";
+import { appendKanaMemory, type KanaMemoryEntry } from "../memory";
 
 export const rememberParameters = Type.Object({
   content: Type.String({

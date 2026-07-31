@@ -14,7 +14,7 @@ src/main.ts
                                                               ├─ oauth    通用 OAuth 发现、PKCE、callback、token 与 refresh 状态机
                                                               ├─ mcp      MCP JSON-RPC 连接、协议客户端与传输
                                                               ├─ agent    模型—工具循环和事件协议转换
-                                                              ├─ tools    文件、Shell 与 remember 工具
+                                                              ├─ tools    可复用的文件与 Shell 工具
                                                               ├─ core     消息、模型、流和用量的共享协议
                                                               └─ providers
                                                                   ├─ deepseek      DeepSeek 请求、SSE 解析和流式适配
@@ -128,7 +128,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 `KanaConversationHost` 是前端共享的 Kana 产品生命周期边界。它集中装配配置、审批、session journal、日志、accounting、记忆压缩、wake scheduler、MCP 与 `createKanaAgent`，并为每次新建、分叉、恢复或配置变化创建绑定到正确 session 的 Agent。Host 只返回前端中立的数据和操作，不渲染 TUI；`ConversationRuntime` 则消费这些操作并管理一次对话的执行状态。这样交互式前端与无头前端可以共享完全相同的模型、提示词、工具、持久化和用量记录规则。
 
-`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建系统提示词，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash` 与可选内置工具，并在校验名称唯一后追加产品层传入的 `additionalTools`。
+`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建系统提示词，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash`，并从 `kana/tools` 注册产品专属的可选 `remember` 与 `schedule_wake`，最后在校验名称唯一后追加产品层传入的 `additionalTools`。通用 `tools` 层不依赖 Kana 的持久化或会话生命周期。
 
 系统提示词由以下部分组成，后面的项目级指令优先级更高：
 

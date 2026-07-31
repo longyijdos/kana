@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createWakeScheduler } from "@/kana";
-import { createScheduleWakeTool } from "@/tools";
+import { createScheduleWakeTool, createWakeScheduler } from "@/kana";
 
 describe("schedule_wake tool", () => {
   test("registers a process-local reminder for its session", async () => {

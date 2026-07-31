@@ -14,7 +14,7 @@ src/main.ts
                                                                                                  ├─ oauth    Generic OAuth discovery, PKCE, callback, token, and refresh state
                                                                                                  ├─ mcp      MCP JSON-RPC connections, protocol clients, and transports
                                                                                                  ├─ agent    Model/tool loop and event protocol translation
-                                                                                                 ├─ tools    File, shell, and remember tools
+                                                                                                 ├─ tools    Reusable file and shell tools
                                                                                                  ├─ core     Shared message, model, stream, and usage contracts
                                                                                                  └─ providers
                                                                                                      ├─ deepseek      DeepSeek requests, SSE parsing, and streaming adapter
@@ -128,7 +128,7 @@ The manager freezes its discovered tool list and does not process `notifications
 
 `KanaConversationHost` is Kana's frontend-shared product lifecycle boundary. It centralizes configuration, approvals, session journals, logging, accounting, memory consolidation, the wake scheduler, MCP, and `createKanaAgent`, and creates an Agent bound to the correct session after every new, fork, resume, or configuration change. The host returns only frontend-neutral data and operations and performs no TUI rendering; `ConversationRuntime` consumes those operations and manages execution state for a conversation. Interactive and headless frontends can therefore share exactly the same model, prompt, tool, persistence, and usage-accounting rules.
 
-`createKanaAgent` is the runtime composition point. It uses the current directory as the workspace, loads visible Skills, builds the system prompt, registers `list`, `glob`, `grep`, `read`, `write`, `edit`, `bash`, and optional built-ins, then appends product-supplied `additionalTools` after validating unique names.
+`createKanaAgent` is the runtime composition point. It uses the current directory as the workspace, loads visible Skills, builds the system prompt, registers `list`, `glob`, `grep`, `read`, `write`, `edit`, and `bash`; registers the product-specific optional `remember` and `schedule_wake` tools from `kana/tools`; then appends product-supplied `additionalTools` after validating unique names. The generic `tools` layer does not depend on Kana persistence or session lifecycle.
 
 The system prompt consists of the following sections; the later project-level instructions take precedence:
 
