@@ -38,7 +38,7 @@ Exit codes:
 | `1` | Startup/run failed, or the outcome was `aborted`, `error`, `length`, or `turn_limit` |
 | `130` | `SIGINT` was received; the active Agent is cancelled first |
 
-Headless mode has no approval UI. By default it executes tools trusted by `approval.mode` and `approvals.json`. If a tool still needs interactive approval, the run ends as `aborted` without executing that tool. `--allow-all-tools` is explicit non-interactive authorization that bypasses this product approval; it does not enable a filesystem or process sandbox.
+Headless mode has no approval UI. By default it executes tools trusted by `approval.mode` and `approvals.json`. If a tool still needs interactive approval, the run ends as `aborted` without executing that tool. `--allow-all-tools` unconditionally authorizes the agent to execute every available tool: file tools retain the current user's real filesystem permissions, and `bash` still runs real system commands. The option does not isolate files or processes and should be used only in a controlled environment.
 
 ## The `--json` protocol
 

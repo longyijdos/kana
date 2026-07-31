@@ -1,117 +1,223 @@
+<p align="center">
+  <img src="assets/kana-logo.svg" width="156" alt="Kana logo">
+</p>
+
 <h1 align="center">Kana</h1>
 
 <p align="center">
-  <img src="assets/kana-logo.svg" alt="Kana logo">
+  <strong>不是又一层 SDK 胶水：4 个直接运行时依赖，核心链路全部手搓。</strong><br>
+  Agent loop、TUI、MCP/OAuth、Provider 流式适配和会话系统，都在这个仓库里。
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/typescript-%5E6.0-3178C6?logo=typescript" alt="typescript">
-  <img src="https://img.shields.io/badge/runtime-bun-f9f1e1?logo=bun" alt="bun">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
+  中文 · <a href="README.en.md">English</a>
 </p>
 
-一个跑在终端里的通用 AI Agent。不需要 VS Code 插件或网页 UI：打开终端，直接对话。它能处理本地文件、运行 shell、维护长期记忆，并通过 Skills 扩展信息检索、内容创作和本地服务操作；工具调用、输出与审批都显示在终端中。
+Kana 是一个本地优先、终端原生的个人 Agent 运行时。它没有把多个上游 SDK 包进一个命令行壳，而是直接实现从模型流到工具调度、从终端输入到差量渲染、从 MCP 传输到会话恢复的完整链路。
 
-Kana 的界面、二进制和数据都在本地，但模型请求会发送到所选供应商。默认使用通过 `DEEPSEEK_API_KEY` 调用的 DeepSeek，也可通过浏览器 OAuth 使用 OpenAI Codex。
+界面、二进制和持久化数据都在本地。模型请求会发送到你选择的供应商，目前支持 DeepSeek API 和通过浏览器 OAuth 登录的 OpenAI Codex。
 
-## 为什么选 Kana
+## 极少依赖，核心手搓
 
-大多数 AI 工具长得都差不多——聊天框、侧边栏、网页 UI。Kana 不玩这套。
+Kana 只有 4 个直接运行时依赖。没有 Agent 框架，没有 TUI 框架，也没有 MCP、OAuth 或模型供应商 SDK。Kana 自己实现了：
 
-- **100% 终端原生** — 自研 TUI 框架，不是 Electron 套壳，不是浏览器包装。就是你的终端，就是你敲命令的地方。
-- **你拥有运行时** — `bun build` 可编译为单文件二进制；会话、记忆、日志和配置默认都保存在 `~/.kana/`。
-- **过程透明** — Markdown 渲染、语法高亮、流式输出、思考过程可见。没有加载动画忽悠你，每一步都看得见。
+- **Agent runtime**：消息协议、模型—工具循环、安全并行、deadline、取消、上下文压缩和生命周期事件。
+- **Terminal UI**：raw terminal 生命周期、键盘协议、编辑器、焦点管理、Markdown/表格渲染和差量重绘。
+- **Protocol stack**：MCP JSON-RPC、stdio、Streamable HTTP、SSE、OAuth 2.0/OIDC discovery 与 PKCE。
+- **Provider adapters**：DeepSeek 与 OpenAI Codex 的请求转换、流式解析、重试、用量和上下文错误恢复。
+- **Local state**：增量 JSONL turn journal、中断恢复、会话分叉、长期记忆、日志和用量账本。
 
-## 安装与启动
+这不是为了数字好看的“零依赖”挑战。Kana 会使用成熟的小型基础库，但把决定产品行为、可靠性和安全边界的代码留在自己手里：能读、能改、能调试，也不会被某个 Agent SDK 的抽象限制住。
 
-预编译安装器支持 macOS 和 Linux 的 arm64、x64。它会下载校验过的二进制、安装到 `~/.local/bin`，并初始化本地状态；`config.toml` 可选，缺少时直接使用内置默认值。
+## 主要能力
+
+| 能力 | 说明 |
+| --- | --- |
+| 终端原生 TUI | 自研终端运行时，提供流式 Markdown、语法高亮、响应式表格、多行编辑器、工具进度与审批。 |
+| 完整 Agent 运行时 | 自研多轮模型—工具循环，支持安全并行工具、deadline、取消、自动上下文压缩与用量统计。 |
+| 本地工具 | 内置目录浏览、glob、grep、文件读写与编辑、shell、长期记忆和进程内定时唤醒。 |
+| MCP | 自研 client 与 transport，支持 stdio、Streamable HTTP、OAuth 2.0、逐服务器代理、工具筛选和运行时启停。 |
+| 会话与记忆 | 按工作区保存可恢复、可分叉的 JSONL 会话；提供 project/global 两级长期记忆和自动合并。 |
+| Skills 与项目指令 | 发现全局及项目 Skills，读取 `AGENTS.md`，并可把 Kana Skills 同步到 Codex 或其他 Agent。 |
+| 自动化接口 | `kana exec` 提供适合脚本、CI 和评测的单次运行，以及版本化 JSONL 事件协议。 |
+| 模型供应商 | 支持 DeepSeek API 与 OpenAI Codex OAuth，可在 TUI 中切换供应商、模型和推理强度。 |
+
+## 快速开始
+
+### 安装预编译版本
+
+安装器支持 macOS 和 Linux 的 arm64、x64。它会下载并校验最新 Release，将 `kana` 安装到 `~/.local/bin`，然后初始化缺失的本地支持文件。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/longyijdos/kana/main/scripts/install.sh | bash
+```
+
+如需安装指定版本或目录，可使用 `KANA_VERSION` 和 `KANA_INSTALL_DIR`。完整选项见[配置与安装](docs/configuration.md)。
+
+### 选择模型供应商
+
+DeepSeek 是默认供应商。设置 API key 后即可启动：
+
+```bash
 export DEEPSEEK_API_KEY="sk-..."
 kana
 ```
 
-如需使用 OpenAI Codex，完成一次浏览器授权并在 `~/.kana/config.toml` 选择供应商：
+如需使用 OpenAI Codex，先完成浏览器授权：
 
 ```bash
 kana auth login openai-codex
 ```
+
+然后在 `~/.kana/config.toml` 中选择供应商；未写出的字段继续使用内置默认值：
 
 ```toml
 [provider]
 active = "openai-codex"
 
 [model.openai-codex]
-name = "gpt-5.6-luna"
+name = "gpt-5.6-sol"
 ```
 
-如果 `~/.local/bin` 不在 `PATH` 中，安装器会提示你如何添加。安装后也可直接带着首条任务启动：
+授权方式、模型和 reasoning 配置见 [OpenAI Codex 提供商](docs/openai-codex-provider.md)。
+
+### 从源码安装
+
+需要 Bun 和 Git：
 
 ```bash
-kana "修复当前项目的测试"
+git clone https://github.com/longyijdos/kana.git
+cd kana
+bun install --frozen-lockfile
+./scripts/install.sh
 ```
 
-后续版本可由已安装的独立二进制直接检查和更新，不需要重新运行 curl 安装器：
+## 使用 Kana
+
+### 交互式 TUI
+
+```bash
+# 打开空会话
+kana
+
+# 直接发送第一条任务
+kana "分析这个仓库并修复失败的测试"
+
+# 恢复指定会话；省略 ID 时打开选择器
+kana resume [session-id]
+```
+
+常用交互：
+
+| 命令或按键 | 作用 |
+| --- | --- |
+| `/help` | 查看全部命令和快捷键。 |
+| `/new`、`/resume`、`/fork <任务>` | 新建、恢复或分叉会话。 |
+| `/model` | 切换供应商、模型和推理强度。 |
+| `/mcp` | 启用、停用或重新加载已配置的 MCP server。 |
+| `/skills` | 管理当前启用的全局 Skills。 |
+| `/memory` | 查看或整理 project/global 长期记忆。 |
+| `/usage` | 查看当前会话、项目或全局用量。 |
+| `!<命令>` | 绕过 Agent，直接运行本地 shell 命令。 |
+| `Ctrl+O` | 展开最近一项可查看的工具输出。 |
+| `Ctrl+C` / `Esc` | 中止当前工作、关闭视图或退出。 |
+
+完整交互说明见 [TUI 交互与渲染](docs/tui.md)。
+
+### 无头执行
+
+`kana exec` 使用与 TUI 相同的运行时，但在一个完整 Agent turn 后退出：
+
+```bash
+kana exec "修复失败的测试"
+printf '总结这个仓库' | kana exec
+kana exec resume <session-id> "继续完成任务"
+```
+
+默认只把最终回答写到 stdout，进度写到 stderr。机器调用方可使用版本化 JSONL：
+
+```bash
+kana exec --json "分析当前项目"
+```
+
+`--allow-all-tools` 会无条件授权 Agent 执行所有可用工具。它不会隔离文件或进程，只应在受控环境中使用。协议、事件和退出码见[无头执行与 JSONL 协议](docs/headless.md)。
+
+### Skills 与 MCP
+
+安装或更新默认 Skills 仓库：
+
+```bash
+kana skills install
+```
+
+已安装的 Kana Skills 还可同步到 Codex：
+
+```bash
+kana skills sync codex
+```
+
+MCP server 定义保存在 `~/.kana/mcp.json`，启用状态保存在 `~/.kana/mcp-enabled.json`。Kana 支持本地 stdio server 和远端 Streamable HTTP server；在 TUI 中使用 `/mcp` 管理连接。配置格式、OAuth 和代理选项见[配置与安装](docs/configuration.md#mcpjson-与-mcp-enabledjson)。
+
+### 更新
+
+独立二进制可以检查并原子更新自身：
 
 ```bash
 kana update --check
 kana update
 ```
 
-从源码构建需要 Bun 和 Git：
-
-```bash
-git clone https://github.com/longyijdos/kana.git && cd kana
-bun install && ./scripts/install.sh
-```
-
-可选安装默认 Skills：
-
-```bash
-kana skills install
-```
-
-更多安装选项、配置字段与审批模式见[配置与安装文档](docs/configuration.md)和[English version](docs/configuration.en.md)。
-
 ## 内置工具
 
-| | |
-|---|---|
-| 🔧 `bash` | 运行命令，实时显示 stdout/stderr |
-| 📖 `read` | 读取文件，支持分页 |
-| ✏️ `edit` | 精确替换文件中的指定文本 |
-| 📝 `write` | 创建新文件 |
-| 🧠 `remember` | 保存可跨会话使用的长期信息 |
-| ⏰ `schedule_wake` | 在当前进程中定时唤起 Agent |
+| 工具 | 用途 |
+| --- | --- |
+| `list` | 列出目录的一层内容。 |
+| `glob` | 按 glob pattern 查找路径。 |
+| `grep` | 用正则或字面量搜索文本。 |
+| `read` | 分页读取 UTF-8 文件。 |
+| `write` | 创建文件，或显式覆盖已有文件。 |
+| `edit` | 对已有文件执行精确文本替换。 |
+| `bash` | 运行 shell 命令并流式返回输出。 |
+| `remember` | 把信息写入 project 或 global 记忆。 |
+| `schedule_wake` | 在当前 Kana 进程中安排后续 Agent 输入。 |
 
-默认情况下，读文件和受信任的只读 shell 命令可直接执行；写文件与其他 shell 命令会在终端请求确认。你可以在配置中收紧、放宽或关闭审批。
+读操作和受信任的 shell 命令可按配置直接执行；有副作用的工具通常会进入审批。详细参数和执行语义见 [Agent 与工具执行协议](docs/agent-and-tools.md)。
 
-## 会话、记忆与 Skills
+## 本地数据与安全边界
 
-- 会话持久化在本地，可用 `/resume` 恢复，或用 `/fork <任务>` 从当前对话分叉。
-- Agent 可通过 `remember` 保存长期信息；使用 `/memory` 选择查看或整理。
-- 项目根目录的 `AGENTS.md` 会自动注入每次对话；`~/.kana/AGENTS.md` 可提供全局指令。
-- 使用 `/skills` 管理已安装的全局 Skills；项目内 `.kana/skills` 和 `.agents/skills` 会自动启用。
-- `/usage` 可查看当前会话、项目或全局的 token 用量与费用。
+Kana 默认把配置、OAuth 凭据、会话、日志、记忆和 Skills 保存在 `~/.kana/`；可通过 `KANA_HOME` 改变位置。
 
-默认 [Kana Skills 仓库](https://github.com/longyijdos/kana-skills)包含网页搜索与正文提取、内容创作、媒体与平台操作等工作流。每项 Skill 都声明了自己的依赖与授权边界；安装后按实际需求启用，不把它们当作默认可用的能力。
+- 模型请求会把必要的对话、系统提示词和工具定义发送到当前供应商。
+- 会话文件包含完整对话和工具结果，应视为敏感数据；OAuth token 依靠本地文件权限保护。
+- 工具审批是交互确认机制，不是文件系统或进程沙箱。内置文件工具可访问工作区以外的路径，`bash` 也会执行真实命令。
+- stdio MCP server 会在工具审批前启动，因此只应配置可信程序；远端 MCP endpoint 同样属于信任边界。
+- `!<命令>` 是用户直接发起的本地 shell，不经过 Agent 工具审批。
 
-会话、记忆和 Skills 的完整行为见[开发文档索引](docs/README.md)（[English](docs/README.en.md)）。
+更完整的文件布局、审批模式和凭据说明见[配置与安装](docs/configuration.md)。
 
-## 常用命令与快捷键
+## 文档
 
-| 操作 | 命令或按键 |
-|---|---|
-| 查看全部命令与快捷键 | `/help` |
-| 新建、恢复、分叉会话 | `/new`、`/resume`、`/fork <任务>` |
-| 删除会话 | `/delete` |
-| 管理 Skills | `/skills` |
-| 查看或整理记忆 | `/memory` |
-| 查看用量与费用 | `/usage` |
-| 清空当前显示 | `/clear` |
-| 退出 | `/quit` |
-| 本地运行命令 | 以 `!` 开头 |
-| 中断运行；空闲时退出 | `Ctrl+C` |
-| 查看最近可展开的工具输出 | `Ctrl+O` |
-| 关闭查看器或取消运行 | `Esc` |
+- [开发文档索引](docs/README.md)
+- [架构总览](docs/architecture.md)
+- [配置与安装](docs/configuration.md)
+- [Agent 与工具执行协议](docs/agent-and-tools.md)
+- [会话与记忆](docs/sessions-and-memory.md)
+- [Skills 与系统提示词](docs/skills-and-prompt.md)
+- [DeepSeek 提供商](docs/deepseek-provider.md)
+- [OpenAI Codex 提供商](docs/openai-codex-provider.md)
+- [无头执行与 JSONL 协议](docs/headless.md)
+- [TUI 交互与渲染](docs/tui.md)
+
+## 开发
+
+```bash
+bun install --frozen-lockfile
+bun src/main.ts
+bun run check
+```
+
+Kana 仍处于 `1.0` 之前的快速迭代阶段，CLI、协议和持久化格式可能随次版本演进。提交代码前请阅读 [AGENTS.md](AGENTS.md)。
+
+## 许可证
+
+[MIT](LICENSE)

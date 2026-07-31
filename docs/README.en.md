@@ -1,5 +1,7 @@
 # Kana developer documentation
 
+Project overview: [Chinese README](../README.md) · [English README](../README.en.md)
+
 This directory describes the current implementation, not future design proposals. Documents are separated by code boundary; update the corresponding article when changing its protocol or persistence format.
 
 Recommended reading order:
