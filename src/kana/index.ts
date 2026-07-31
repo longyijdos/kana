@@ -211,7 +211,7 @@ export {
   type LoadKanaSessionResult,
   listKanaSessions,
   loadKanaSession,
-} from "./session-store";
+} from "./session";
 export {
   DEFAULT_KANA_SKILLS_REPOSITORY,
   DEFAULT_KANA_SKILLS_REPOSITORY_NAME,

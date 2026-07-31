@@ -25,6 +25,8 @@ cwd: /Users/alice/project
 
 ## 会话
 
+会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V3 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。
+
 会话文件位于：
 
 ```text

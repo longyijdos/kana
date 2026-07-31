@@ -160,7 +160,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 | 全局 Skills 配置 | `skills/skills.toml` | `kana install`、`kana reset`，或 TUI 修改全局 Skill 开关 |
 | 默认 Skills 仓库 | `skills/kana-skills/` | `kana skills install` 或 `kana skills reinstall` |
 
-工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V3 会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 message 与 context-compaction journal。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用首条用户消息生成标题。进程中断后，加载器会闭合打开的 turn，并把缺失工具结果记录为未知且禁止自动重试。运行时不读取 V1/V2。
+工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V3 会话的格式、Journal 状态机和文件仓储分别位于 `kana/session/format.ts`、`journal.ts` 与 `repository.ts`，调用方统一经过该目录的 barrel。会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 message 与 context-compaction journal。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用首条用户消息生成标题。进程中断后，加载器会闭合打开的 turn，并把缺失工具结果记录为未知且禁止自动重试。运行时不读取 V1/V2。
 
 运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。session log manager 会返回永久绑定到指定会话的 logger；每个 Agent 和后台任务启动时捕获该具体 logger，因此后续生命周期记录仍归属发起它的会话。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 TUI 装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
 

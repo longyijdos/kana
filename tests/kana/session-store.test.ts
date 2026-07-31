@@ -23,7 +23,7 @@ afterEach(() => {
   }
 });
 
-describe("Kana session store", () => {
+describe("Kana session persistence", () => {
   test("creates session metadata without writing a JSONL file", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
@@ -31,6 +31,61 @@ describe("Kana session store", () => {
 
     expect(existsSync(session.path)).toBe(false);
     expect(listKanaSessions({ env, cwd })).toEqual([]);
+  });
+
+  test("keeps the V3 JSONL byte layout stable", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "byte-layout" });
+    const timestamp = "2026-07-31T00:00:00.000Z";
+    const userMessage = { role: "user" as const, content: "Byte layout" };
+
+    appendKanaSessionMessages(session, [userMessage], { timestamp });
+
+    const content = readFileSync(session.path, "utf8");
+    const [header, turnStart, message, turnEnd] = content
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(content).toBe(
+      `${[
+        {
+          type: "session",
+          version: 3,
+          id: "byte-layout",
+          createdAt: session.createdAt,
+          title: "Byte layout",
+          cwd,
+        },
+        {
+          type: "turn_start",
+          id: turnStart?.id,
+          parentId: null,
+          timestamp,
+          turnId: turnStart?.turnId,
+          kind: "snapshot",
+        },
+        {
+          type: "message",
+          id: message?.id,
+          parentId: turnStart?.id,
+          timestamp,
+          message: userMessage,
+        },
+        {
+          type: "turn_end",
+          id: turnEnd?.id,
+          parentId: message?.id,
+          timestamp,
+          turnId: turnStart?.turnId,
+          outcome: "snapshot",
+        },
+      ]
+        .map((record) => JSON.stringify(record))
+        .join("\n")}\n`,
+    );
+    expect(header).toMatchObject({ version: 3, id: "byte-layout" });
   });
 
   test("creates JSONL sessions on first append and reloads messages by id", () => {

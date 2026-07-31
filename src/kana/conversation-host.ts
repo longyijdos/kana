@@ -49,7 +49,7 @@ import {
   type LoadKanaSessionResult,
   listKanaSessions,
   loadKanaSession,
-} from "./session-store";
+} from "./session";
 import { type KanaToolApprovals, loadKanaToolApprovals } from "./tool-approval";
 import { createWakeScheduler, type WakeScheduler } from "./wake-scheduler";
 
