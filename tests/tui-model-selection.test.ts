@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_KANA_CONFIG } from "@/kana";
+import { DEFAULT_KANA_CONFIG, getKanaModelManagement } from "@/kana";
 import type { Message } from "../src/core";
 import { KanaTuiApp } from "../src/tui/app/app";
 import { applyTuiModelSelection, type TuiModelSelection } from "../src/tui/app/model-selection";
@@ -26,6 +26,42 @@ describe("TUI model selection", () => {
       reasoningEffort: "ultra",
     });
     expect(config.model.deepseek).toEqual(deepSeekBefore);
+  });
+
+  test("renders provider and model choices supplied by the product layer", () => {
+    const settings = structuredClone(DEFAULT_KANA_CONFIG);
+    const management = getKanaModelManagement(settings);
+    const app = new KanaTuiApp(
+      () =>
+        createAgentStub({
+          messages: [],
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+        }) as never,
+      createTerminal(),
+      {
+        ...createOptions(),
+        modelManagement: {
+          getSettings: () => ({
+            ...management,
+            providers: [{ value: "deepseek", label: "Product DeepSeek" }],
+            model: {
+              ...management.model,
+              deepseek: {
+                ...management.model.deepseek,
+                available: ["product-model"],
+              },
+            },
+          }),
+        },
+      },
+    );
+    const internal = app as unknown as AppInternals;
+
+    openModel(internal);
+    expect(renderLayout(internal)).toContain("Product DeepSeek");
+    press(internal, "\r");
+    expect(renderLayout(internal)).toContain("product-model");
   });
 
   test("switches provider, model, and reasoning while preserving conversation state", () => {
@@ -268,7 +304,7 @@ function createOptions() {
       models: [],
     }),
     modelManagement: {
-      getSettings: () => settings,
+      getSettings: () => getKanaModelManagement(settings),
     },
   };
 }

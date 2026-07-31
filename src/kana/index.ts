@@ -154,6 +154,10 @@ export {
   searchKanaDailyMemory,
 } from "./memory";
 export {
+  getKanaModelManagement,
+  type KanaModelManagement,
+} from "./model-management";
+export {
   type OpenKanaOAuthAuthorizationUrlOptions,
   openKanaOAuthAuthorizationUrl,
 } from "./oauth-browser";

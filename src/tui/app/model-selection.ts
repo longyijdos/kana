@@ -1,6 +1,11 @@
-import type { KanaConfig, KanaDeepSeekModelConfig, KanaOpenAICodexModelConfig } from "@/kana";
+import type {
+  KanaConfig,
+  KanaDeepSeekModelConfig,
+  KanaModelManagement,
+  KanaOpenAICodexModelConfig,
+} from "@/kana";
 
-export type TuiModelSettings = Pick<KanaConfig, "provider" | "model">;
+export type TuiModelSettings = KanaModelManagement;
 
 export type TuiModelSelection =
   | {

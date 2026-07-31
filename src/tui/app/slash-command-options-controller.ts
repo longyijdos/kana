@@ -1,10 +1,4 @@
-import {
-  KANA_DEEPSEEK_REASONING_EFFORTS,
-  KANA_OPENAI_CODEX_REASONING_EFFORTS,
-  type KanaModelProvider,
-  type KanaUsageScope,
-} from "@/kana";
-import { DEEPSEEK_MODELS, OPENAI_CODEX_MODELS } from "@/providers";
+import type { KanaModelManagement, KanaModelProvider, KanaUsageScope } from "@/kana";
 import { ChoicePrompt, type Editor, TextPrompt } from "../components";
 import type { Component, Tui } from "../runtime";
 import type { AppLayout } from "./app-layout";
@@ -12,7 +6,9 @@ import type { MemoryScope } from "./memory-compact-controller";
 import type { TuiModelSelection, TuiModelSettings } from "./model-selection";
 
 type MemoryAction = "show" | "compact";
-type DeepSeekThinkingChoice = "off" | (typeof KANA_DEEPSEEK_REASONING_EFFORTS)[number];
+type DeepSeekThinkingChoice =
+  | "off"
+  | KanaModelManagement["model"]["deepseek"]["reasoningEfforts"][number];
 
 export type SlashCommandOptionsControllerOptions = {
   editor: Editor;
@@ -67,7 +63,7 @@ export class SlashCommandOptionsController {
 
     this.close();
     this.options.editor.clear();
-    this.showModelProvider(this.options.getModelSettings().provider.active);
+    this.showModelProvider(this.options.getModelSettings().activeProvider);
     return true;
   }
 
@@ -141,12 +137,15 @@ export class SlashCommandOptionsController {
   }
 
   private showModelProvider(defaultValue: KanaModelProvider): void {
+    const settings = this.options.getModelSettings?.();
+    if (!settings) {
+      this.close();
+      return;
+    }
+
     const prompt = new ChoicePrompt<KanaModelProvider>({
       title: "Provider",
-      options: [
-        { value: "deepseek", label: "DeepSeek" },
-        { value: "openai-codex", label: "OpenAI Codex" },
-      ],
+      options: settings.providers.map((provider) => ({ ...provider })),
       defaultValue,
       onSelect: (provider) => this.replace(prompt, () => this.showModelName(provider)),
       onCancel: () => this.close(),
@@ -162,12 +161,11 @@ export class SlashCommandOptionsController {
       return;
     }
 
-    const models =
-      provider === "deepseek" ? Object.keys(DEEPSEEK_MODELS) : Object.keys(OPENAI_CODEX_MODELS);
+    const modelSettings = settings.model[provider];
     const prompt = new ChoicePrompt<string>({
       title: "Model",
-      options: models.map((model) => ({ value: model, label: model })),
-      defaultValue: defaultValue ?? settings.model[provider].name,
+      options: modelSettings.available.map((model) => ({ value: model, label: model })),
+      defaultValue: defaultValue ?? modelSettings.name,
       onSelect: (model) => this.replace(prompt, () => this.showReasoningEffort(provider, model)),
       onCancel: () => this.replace(prompt, () => this.showModelProvider(provider)),
     });
@@ -188,7 +186,7 @@ export class SlashCommandOptionsController {
         title: "Reasoning effort",
         options: [
           { value: "off", label: "Off" },
-          ...KANA_DEEPSEEK_REASONING_EFFORTS.map((effort) => ({
+          ...current.reasoningEfforts.map((effort) => ({
             value: effort,
             label: formatEffort(effort),
           })),
@@ -210,13 +208,14 @@ export class SlashCommandOptionsController {
       return;
     }
 
-    const prompt = new ChoicePrompt<(typeof KANA_OPENAI_CODEX_REASONING_EFFORTS)[number]>({
+    const current = settings.model["openai-codex"];
+    const prompt = new ChoicePrompt<(typeof current.reasoningEfforts)[number]>({
       title: "Reasoning effort",
-      options: KANA_OPENAI_CODEX_REASONING_EFFORTS.map((effort) => ({
+      options: current.reasoningEfforts.map((effort) => ({
         value: effort,
         label: formatEffort(effort),
       })),
-      defaultValue: settings.model["openai-codex"].reasoningEffort,
+      defaultValue: current.reasoningEffort,
       onSelect: (reasoningEffort) =>
         this.finish(prompt, () =>
           this.options.onModelSelect?.({
