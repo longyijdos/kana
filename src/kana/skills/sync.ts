@@ -2,8 +2,8 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "no
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { getKanaConfigPaths } from "./config";
-import { DEFAULT_KANA_SKILLS_REPOSITORY_NAME } from "./skill-install";
+import { getKanaConfigPaths } from "../config";
+import { DEFAULT_KANA_SKILLS_REPOSITORY_NAME } from "./install";
 
 export const KANA_SKILL_SYNC_TARGETS = ["codex"] as const;
 

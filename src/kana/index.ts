@@ -73,14 +73,6 @@ export {
   type KanaEnvironmentContext,
 } from "./context";
 export {
-  type CreateKanaConversationHostOptions,
-  createKanaConversationHost,
-  KanaConversationHost,
-  type KanaConversationHostAgentOptions,
-  type KanaConversationHostSession,
-  type KanaMemoryCompactSummary,
-} from "./conversation-host";
-export {
   type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,
@@ -88,7 +80,18 @@ export {
   type ConversationRuntimeOptions,
   type ConversationSessionSnapshot,
   type CreateConversationAgentOptions,
-} from "./conversation-runtime";
+  type CreateKanaConversationHostOptions,
+  type CreateWakeSchedulerOptions,
+  createKanaConversationHost,
+  createWakeScheduler,
+  KanaConversationHost,
+  type KanaConversationHostAgentOptions,
+  type KanaConversationHostSession,
+  type KanaMemoryCompactSummary,
+  type ScheduleWakeOptions,
+  type WakeEvent,
+  type WakeScheduler,
+} from "./conversation";
 export { loadKanaEnvironment } from "./env";
 export {
   authorizeKanaMcpServer,
@@ -170,14 +173,6 @@ export {
 export { getKanaSessionLogPath, type KanaLogPathOptions } from "./path";
 export { buildKanaSystemPrompt, loadKanaSystemPrompt } from "./prompt";
 export {
-  type CreateKanaUpdaterOptions,
-  createKanaUpdater,
-  type KanaUpdateProgressEvent,
-  type KanaUpdateResult,
-  type UpdateKanaOptions,
-  updateKana,
-} from "./self-update";
-export {
   type AppendKanaSessionMessagesOptions,
   type AppendKanaSessionRunOptions,
   appendKanaSessionMessages,
@@ -206,37 +201,33 @@ export {
 export {
   DEFAULT_KANA_SKILLS_REPOSITORY,
   DEFAULT_KANA_SKILLS_REPOSITORY_NAME,
+  type FormatKanaSkillsForPromptOptions,
+  formatKanaSkillsForPrompt,
   type InstallKanaSkillsOptions,
   type InstallKanaSkillsResult,
   installKanaSkills,
-  type ReinstallKanaSkillsOptions,
-  type ReinstallKanaSkillsResult,
-  reinstallKanaSkills,
-} from "./skill-install";
-export {
   KANA_SKILL_SYNC_TARGETS,
-  type KanaSkillSyncTarget,
-  type ResyncKanaSkillsOptions,
-  resyncKanaSkills,
-  type SyncKanaSkillResult,
-  type SyncKanaSkillStatus,
-  type SyncKanaSkillsOptions,
-  type SyncKanaSkillsResult,
-  syncKanaSkills,
-} from "./skill-sync";
-export {
-  type FormatKanaSkillsForPromptOptions,
-  formatKanaSkillsForPrompt,
   type KanaSkill,
   type KanaSkillActivation,
   type KanaSkillDiagnostic,
+  type KanaSkillSyncTarget,
   type LoadKanaSkillActivationsResult,
   type LoadKanaSkillsOptions,
   type LoadKanaSkillsResult,
   loadKanaSkillActivations,
   loadKanaSkills,
   loadKanaSkillsFromDir,
+  type ReinstallKanaSkillsOptions,
+  type ReinstallKanaSkillsResult,
+  type ResyncKanaSkillsOptions,
+  reinstallKanaSkills,
+  resyncKanaSkills,
+  type SyncKanaSkillResult,
+  type SyncKanaSkillStatus,
+  type SyncKanaSkillsOptions,
+  type SyncKanaSkillsResult,
   saveEnabledGlobalSkillNames,
+  syncKanaSkills,
 } from "./skills";
 export {
   addTrustedBashCommand,
@@ -259,9 +250,10 @@ export {
   scheduleWakeParameters,
 } from "./tools";
 export {
-  type CreateWakeSchedulerOptions,
-  createWakeScheduler,
-  type ScheduleWakeOptions,
-  type WakeEvent,
-  type WakeScheduler,
-} from "./wake-scheduler";
+  type CreateKanaUpdaterOptions,
+  createKanaUpdater,
+  type KanaUpdateProgressEvent,
+  type KanaUpdateResult,
+  type UpdateKanaOptions,
+  updateKana,
+} from "./update";

@@ -8,16 +8,16 @@ import {
   type KanaUsageSummary,
   loadKanaUsageSummary,
   recordKanaAgentRunAccounting,
-} from "./accounting";
-import { createKanaAgent, KANA_BUILT_IN_TOOL_NAMES, type KanaAgentOptions } from "./agent";
-import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "./auth";
+} from "../accounting";
+import { createKanaAgent, KANA_BUILT_IN_TOOL_NAMES, type KanaAgentOptions } from "../agent";
+import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth";
 import {
   getActiveKanaModelConfig,
   type KanaConfig,
   type KanaNotificationConfig,
   type KanaToolApprovalConfig,
-} from "./config";
-import { createKanaConfigStore, type KanaConfigStore } from "./config-store";
+} from "../config";
+import { createKanaConfigStore, type KanaConfigStore } from "../config-store";
 import {
   authorizeKanaMcpServer,
   createKanaMcpRuntime,
@@ -28,16 +28,16 @@ import {
   loadKanaMcpServerActivations,
   saveKanaMcpActivationState,
   signOutKanaMcpServer,
-} from "./mcp";
+} from "../mcp";
 import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
+  loadKanaMemory,
   type MemoryConsolidationQueue,
   type MemoryConsolidationScheduler,
   runFullMemoryConsolidation,
-} from "./memory";
-import { loadKanaMemory } from "./memory/storage";
-import { getKanaSessionLogPath } from "./path";
+} from "../memory";
+import { getKanaSessionLogPath } from "../path";
 import {
   createKanaSession,
   createKanaSessionJournal,
@@ -47,8 +47,8 @@ import {
   type LoadKanaSessionResult,
   listKanaSessions,
   loadKanaSession,
-} from "./session";
-import { type KanaToolApprovals, loadKanaToolApprovals } from "./tool-approval";
+} from "../session";
+import { type KanaToolApprovals, loadKanaToolApprovals } from "../tool-approval";
 import { createWakeScheduler, type WakeScheduler } from "./wake-scheduler";
 
 export type KanaConversationHostSession =

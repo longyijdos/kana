@@ -10,11 +10,11 @@ import {
   type Tool,
 } from "@/tools";
 import { getActiveKanaModelConfig, type KanaConfig } from "./config";
+import type { WakeScheduler } from "./conversation";
 import { createKanaModel } from "./model";
 import { buildKanaSystemPrompt } from "./prompt";
 import { loadKanaSkills } from "./skills";
 import { createRememberTool, createScheduleWakeTool } from "./tools";
-import type { WakeScheduler } from "./wake-scheduler";
 
 // Reserve the complete built-in namespace, including tools that are enabled
 // only for particular configurations or session states. MCP discovery happens

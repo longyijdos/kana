@@ -1,7 +1,7 @@
 import type { Agent, AgentEvent, BeforeToolExecutionHook, ContextCheckpoint } from "@/agent";
 import type { Message, UserMessage } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
-import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "./session";
+import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
 import { createWakeScheduler, type WakeEvent, type WakeScheduler } from "./wake-scheduler";
 
 export type ConversationSessionSnapshot = {
