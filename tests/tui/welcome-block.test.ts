@@ -33,23 +33,24 @@ describe("tui welcome block", () => {
 
     expect(stripAnsi(lines[0] ?? "")).toContain(`Kana v${KANA_VERSION}`);
     expect(lines.every((line) => visibleWidth(line) === 74)).toBe(true);
-    expect(stripAnsi(lines.join("\n"))).toContain("Welcome back, tester");
-    expect(stripAnsi(lines.join("\n"))).toContain("Recent activity");
-    expect(stripAnsi(lines.join("\n"))).toContain("Highlights");
-    expect(stripAnsi(lines.join("\n"))).toContain("Automatic context compaction");
-    expect(stripAnsi(lines.join("\n"))).toContain("Persistent agent memory");
-    expect(stripAnsi(lines.join("\n"))).toContain("Headless exec for automation");
-    expect(stripAnsi(lines.join("\n"))).toContain("MCP OAuth and activation");
-    expect(stripAnsi(lines.join("\n"))).toContain("Safe parallel tool execution");
-    expect(stripAnsi(lines.join("\n"))).not.toContain("Session runtime logs");
-    expect(stripAnsi(lines.join("\n"))).toContain("... /help for more");
-    expect(stripAnsi(lines.join("\n"))).toContain("Wire recent sessions");
-    expect(stripAnsi(lines.join("\n"))).toContain("Trim welcome panel");
-    expect(stripAnsi(lines.join("\n"))).not.toContain("Start a new conversation");
-    expect(stripAnsi(lines.join("\n"))).not.toContain("What's new");
-    expect(stripAnsi(lines.join("\n"))).not.toContain("/tmp/kana");
-    expect(stripAnsi(lines.join("\n"))).not.toContain("Tips");
-    expect(stripAnsi(lines.join("\n"))).not.toContain("Type a prompt");
+    const renderedLines = lines.map(stripAnsi);
+    const rendered = renderedLines.join("\n");
+    const highlightsLine = renderedLines.findIndex((line) => line.includes("Highlights"));
+    const helpLine = renderedLines.findIndex((line) => line.includes("... /help for more"));
+
+    expect(rendered).toContain("Welcome back, tester");
+    expect(rendered).toContain("Recent activity");
+    expect(rendered).toContain("Highlights");
+    expect(helpLine - highlightsLine - 1).toBe(3);
+    expect(rendered).not.toContain("Session runtime logs");
+    expect(rendered).toContain("... /help for more");
+    expect(rendered).toContain("Wire recent sessions");
+    expect(rendered).toContain("Trim welcome panel");
+    expect(rendered).not.toContain("Start a new conversation");
+    expect(rendered).not.toContain("What's new");
+    expect(rendered).not.toContain("/tmp/kana");
+    expect(rendered).not.toContain("Tips");
+    expect(rendered).not.toContain("Type a prompt");
   });
 
   test("uses a compact layout at narrow widths", () => {
