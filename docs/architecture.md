@@ -27,6 +27,8 @@ src/main.ts
 
 Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与 token 存储，`mcp/` 管理外部工具配置和生命周期，`conversation/` 管理前端共享的会话运行时与 wake scheduler，`session/` 管理持久化，`memory/` 和 `skills/` 管理长期状态，`tools/` 管理 Kana 专属工具，`update/` 隔离自更新。领域内部使用相对导入，跨顶层调用方仍统一经过 `@/kana`。
 
+`tests/` 按主要源码领域组织为 `agent/`、`core/`、`kana/`、`mcp/`、`oauth/`、`providers/`、`tools/` 和 `tui/` 等目录；Kana 与 Provider 测试继续按其内部领域细分。跨模块集成测试放在主要行为所有者的目录，非测试输入继续集中在 `tests/fixtures/`。Bun 会递归发现这些 `*.test.ts` 文件。
+
 ## 启动路径
 
 `src/main.ts` 调用 `runCli`。CLI 支持以下主要路径：

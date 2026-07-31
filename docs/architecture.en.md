@@ -27,6 +27,8 @@ This layering also indicates where new code belongs: new providers go in `provid
 
 Inside the Kana product layer, stable domain barrels group related responsibilities: `auth/` owns product credentials and token storage, `mcp/` owns external-tool configuration and lifecycle, `conversation/` owns the frontend-shared conversation runtime and wake scheduler, `session/` owns persistence, `memory/` and `skills/` own durable state, `tools/` owns Kana-specific tools, and `update/` isolates self-update. Domain internals use relative imports, while callers in other top-level source areas continue through `@/kana`.
 
+`tests/` follows the main source areas with directories such as `agent/`, `core/`, `kana/`, `mcp/`, `oauth/`, `providers/`, `tools/`, and `tui/`; Kana and provider tests are subdivided by their internal domains. Cross-module integration tests live with the primary behavior owner, while non-test inputs remain under `tests/fixtures/`. Bun discovers all of these `*.test.ts` files recursively.
+
 ## Startup path
 
 `src/main.ts` calls `runCli`. The CLI has these primary paths:
