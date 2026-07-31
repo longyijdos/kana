@@ -19,7 +19,6 @@ import type {
   KanaNotificationConfig,
   KanaOAuthTokenStatus,
   KanaSessionMetadata,
-  KanaSessionTimelineEntry,
   KanaToolApprovalConfig,
   KanaToolApprovals,
   KanaUsageScope,
@@ -42,17 +41,14 @@ import {
   Transcript,
   UsageSummaryBlock,
   UserMessageBlock,
-  WelcomeBlock,
 } from "../components";
 import {
   formatPromptCommandHelpLine,
-  formatPromptCommandUsage,
   formatPromptShortcutHelpLine,
   PROMPT_COMMANDS,
   PROMPT_HELP_TITLE,
   PROMPT_SHORTCUTS,
   PROMPT_SHORTCUTS_TITLE,
-  type PromptCommandName,
 } from "../components/editor/commands";
 import { stripTerminalControlSequences } from "../render";
 import type { Terminal } from "../runtime";
@@ -67,7 +63,6 @@ import {
   ExternalToolsLifecycleController,
   type ExternalToolsLoadResult,
 } from "./external-tools-lifecycle-controller";
-import { addHistoryTimelineToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
 import { McpServerManagerController } from "./mcp-server-manager-controller";
 import {
@@ -81,12 +76,12 @@ import {
   type TuiModelSettings,
 } from "./model-selection";
 import { NotificationController } from "./notification-controller";
-import { SessionOverlayController } from "./session-overlay-controller";
+import { SessionLifecycleController } from "./session-lifecycle-controller";
 import { SkillManagerController } from "./skill-manager-controller";
+import { type SlashCommand, SlashCommandController } from "./slash-command-controller";
 import { SlashCommandOptionsController } from "./slash-command-options-controller";
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
-import { WELCOME_LOGO_LINES } from "./welcome-logo";
 
 export type KanaTuiSessionSnapshot = ConversationSessionSnapshot;
 
@@ -153,7 +148,7 @@ export class KanaTuiApp {
   private readonly shutdownStatus = new TextBlock("", { color: tuiTheme.muted });
   private readonly layout: AppLayout;
   private readonly agentEvents: AgentEventRenderer;
-  private readonly sessionOverlay: SessionOverlayController;
+  private readonly sessions: SessionLifecycleController;
   private readonly skillManager: SkillManagerController;
   private readonly mcpServerManager?: McpServerManagerController;
   private readonly conversation: ConversationRuntime<TuiModelSelection>;
@@ -163,6 +158,7 @@ export class KanaTuiApp {
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
   private readonly contentViewer: ContentViewerController;
+  private readonly slashCommands: SlashCommandController;
   private readonly slashCommandOptions: SlashCommandOptionsController;
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
@@ -235,21 +231,6 @@ export class KanaTuiApp {
       onReady: () => this.conversation.notifyCanStartScheduledRun(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
       focusEditor: () => this.tui.setFocus(this.editor),
-    });
-    this.sessionOverlay = new SessionOverlayController({
-      editor: this.editor,
-      layout: this.layout,
-      transcript: this.transcript,
-      tui: this.tui,
-      listSessions: () => this.conversation.listSessions(),
-      deleteSession: (sessionId) => this.conversation.deleteSession(sessionId),
-      hasCurrentSession: () => this.conversation.sessionId !== undefined,
-      onResume: (sessionId) => this.resumeSession(sessionId),
-      onStop: () => {
-        void this.stop();
-      },
-      updateStatus: (phase, extra) => this.updateStatus(phase, extra),
-      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.skillManager = new SkillManagerController({
       editor: this.editor,
@@ -344,6 +325,80 @@ export class KanaTuiApp {
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       getLogger: this.getLogger,
     });
+    this.sessions = new SessionLifecycleController({
+      conversation: this.conversation,
+      editor: this.editor,
+      layout: this.layout,
+      transcript: this.transcript,
+      tui: this.tui,
+      isRunning: () => this.running,
+      closeOtherOverlays: () => this.skillManager.close(),
+      closeContentViewer: () => this.contentViewer.close(),
+      resetAgentEvents: () => this.agentEvents.resetRun(),
+      clearMcpOAuthBlocks: () => this.mcpOAuthBlocks.clear(),
+      updateContextUsage: (messages, checkpoint) =>
+        this.updateContextUsageFromMessages(messages, checkpoint),
+      updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
+      restoreBottom: (focus) => this.restoreBottom(focus),
+      showError: (error) => this.showError(error),
+      stop: () => {
+        void this.stop();
+      },
+      submitPrompt: (prompt) => this.submitPrompt(prompt),
+      activateSession: () => {
+        void this.activateCurrentSession();
+      },
+    });
+    this.slashCommands = new SlashCommandController({
+      isRunning: () => this.running,
+      stop: () => {
+        void this.stop();
+      },
+      submitRaw: (raw) => {
+        void this.submitPrompt(raw);
+      },
+      showError: (error) => this.showError(error),
+      showHelp: () => this.showHelp(),
+      clear: () => {
+        this.contentViewer.close();
+        this.transcript.clear();
+        this.mcpOAuthBlocks.clear();
+        this.editor.clear();
+        this.tui.requestRender(true);
+      },
+      startNewSession: () => {
+        this.editor.clear();
+        this.sessions.startNew();
+      },
+      forkSession: (prompt) => {
+        this.editor.clear();
+        void this.forkSession(prompt);
+      },
+      resumeSession: (sessionId) => this.sessions.resume(sessionId),
+      openResumePicker: () => {
+        this.editor.clear();
+        this.sessions.openResume();
+      },
+      openDeletePicker: () => {
+        this.editor.clear();
+        this.sessions.openDelete();
+      },
+      openSkillManager: () => {
+        this.editor.clear();
+        this.openSkillManager();
+      },
+      openMcpServerManager: () => {
+        this.editor.clear();
+        this.openMcpServerManager();
+      },
+      openModel: () => this.slashCommandOptions.openModel(),
+      openMemory: () => this.slashCommandOptions.openMemory(),
+      compactContext: () => {
+        this.editor.clear();
+        void this.compactContext();
+      },
+      openUsage: () => this.slashCommandOptions.openUsage(),
+    });
     this.unsubscribeConversationEvents = this.conversation.subscribe((event) =>
       this.handleConversationEvent(event),
     );
@@ -363,7 +418,7 @@ export class KanaTuiApp {
     );
 
     if (!this.options.startInResumePicker) {
-      this.initializeTranscript(this.options.initialSession?.timeline ?? []);
+      this.sessions.initializeTranscript(this.options.initialSession?.timeline ?? []);
     }
 
     this.tui.addChild(this.layout);
@@ -387,7 +442,7 @@ export class KanaTuiApp {
     this.tui.start();
 
     if (this.options.startInResumePicker) {
-      this.openResumePicker();
+      this.sessions.openResume();
       return;
     }
 
@@ -500,25 +555,6 @@ export class KanaTuiApp {
     exitLines.length > 0 ? this.tui.stop(exitLines.join("\r\n")) : this.tui.stop();
   }
 
-  private initializeTranscript(timeline: KanaSessionTimelineEntry[]): void {
-    if (timeline.length > 0) {
-      this.transcript.addChild(
-        new TextBlock(`Resumed session ${this.conversation.sessionId ?? ""}.`, {
-          color: tuiTheme.muted,
-        }),
-      );
-      addHistoryTimelineToTranscript(this.transcript, timeline);
-      return;
-    }
-
-    this.transcript.addChild(
-      new WelcomeBlock({
-        logoLines: WELCOME_LOGO_LINES,
-        recentSessions: this.options.listSessions(),
-      }),
-    );
-  }
-
   private async activateCurrentSession(initialPrompt?: string): Promise<void> {
     const ready = await this.externalTools.load();
 
@@ -593,133 +629,8 @@ export class KanaTuiApp {
     this.updateStatus("aborted");
   }
 
-  private handleCommand(command: {
-    name: PromptCommandName;
-    arguments: string;
-    raw: string;
-  }): void {
-    if (this.running && command.name !== "quit") {
-      return;
-    }
-
-    switch (command.name) {
-      case "quit":
-        if (command.arguments) {
-          void this.submitPrompt(command.raw);
-          return;
-        }
-
-        void this.stop();
-        break;
-      case "help":
-        if (command.arguments) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-
-        this.showHelp();
-        break;
-      case "clear":
-        if (command.arguments) {
-          void this.submitPrompt(command.raw);
-          return;
-        }
-
-        this.contentViewer.close();
-        this.transcript.clear();
-        this.mcpOAuthBlocks.clear();
-        this.editor.clear();
-        this.tui.requestRender(true);
-        break;
-      case "new":
-        if (command.arguments) {
-          void this.submitPrompt(command.raw);
-          return;
-        }
-
-        this.editor.clear();
-        this.startNewSession();
-        break;
-      case "fork":
-        if (!command.arguments) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-
-        this.editor.clear();
-        void this.forkSession(command.arguments);
-        break;
-      case "resume":
-        if (command.arguments) {
-          this.resumeSession(command.arguments);
-          return;
-        }
-
-        this.editor.clear();
-        this.openResumePicker();
-        break;
-      case "delete":
-        if (command.arguments) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-
-        this.editor.clear();
-        this.openDeletePicker();
-        break;
-      case "skills":
-        if (command.arguments) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-
-        this.editor.clear();
-        this.openSkillManager();
-        break;
-      case "mcp":
-        if (command.arguments) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-
-        this.editor.clear();
-        this.openMcpServerManager();
-        break;
-      case "model":
-        if (command.arguments.trim()) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-        if (!this.slashCommandOptions.openModel()) {
-          this.showError(new Error("Model management is unavailable."));
-        }
-        break;
-      case "memory":
-        if (command.arguments.trim()) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-
-        this.slashCommandOptions.openMemory();
-        break;
-      case "compact":
-        if (command.arguments.trim()) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-
-        this.editor.clear();
-        void this.compactContext();
-        break;
-      case "usage":
-        if (command.arguments.trim()) {
-          this.showError(new Error(formatPromptCommandUsage(command.name)));
-          return;
-        }
-
-        this.slashCommandOptions.openUsage();
-        break;
-    }
+  private handleCommand(command: SlashCommand): void {
+    this.slashCommands.handle(command);
   }
 
   private switchModel(selection: TuiModelSelection): void {
@@ -808,69 +719,8 @@ export class KanaTuiApp {
     });
   }
 
-  private startNewSession(): void {
-    if (this.running) {
-      return;
-    }
-
-    this.conversation.startNewSession();
-    this.closeSessionOverlay();
-    this.contentViewer.close();
-    this.agentEvents.resetRun();
-    this.transcript.clear();
-    this.mcpOAuthBlocks.clear();
-    this.editor.clear();
-    this.initializeTranscript([]);
-    this.updateContextUsageFromMessages([]);
-    this.updateStatus("idle", {
-      activeTool: undefined,
-    });
-    this.tui.requestRender(true);
-  }
-
   private async forkSession(prompt: string): Promise<void> {
-    if (this.running) {
-      return;
-    }
-
-    const session = this.conversation.forkSession(prompt);
-    this.closeSessionOverlay();
-    this.contentViewer.close();
-    this.editor.clear();
-    this.transcript.addChild(
-      new TextBlock(`Forked session ${session.id}.`, {
-        color: tuiTheme.muted,
-      }),
-    );
-    this.updateStatus("idle", {
-      activeTool: undefined,
-    });
-    this.tui.requestRender();
-    await this.submitPrompt(prompt);
-  }
-
-  private openResumePicker(): void {
-    if (this.running) {
-      return;
-    }
-
-    this.skillManager.close();
-    this.contentViewer.close();
-    this.sessionOverlay.openResume();
-  }
-
-  private openDeletePicker(): void {
-    if (this.running) {
-      return;
-    }
-
-    this.skillManager.close();
-    this.contentViewer.close();
-    this.sessionOverlay.openDelete();
-  }
-
-  private closeSessionOverlay(): void {
-    this.sessionOverlay.close();
+    await this.sessions.fork(prompt);
   }
 
   private refreshAgentSystemPrompt(): void {
@@ -882,7 +732,7 @@ export class KanaTuiApp {
       return;
     }
 
-    this.closeSessionOverlay();
+    this.sessions.close();
     this.contentViewer.close();
     this.skillManager.open();
   }
@@ -896,43 +746,10 @@ export class KanaTuiApp {
       return;
     }
 
-    this.closeSessionOverlay();
+    this.sessions.close();
     this.contentViewer.close();
     this.skillManager.close();
     this.mcpServerManager.open();
-  }
-
-  private resumeSession(sessionId: string): void {
-    if (this.running) {
-      return;
-    }
-
-    let session: KanaTuiSessionSnapshot;
-
-    try {
-      session = this.conversation.resumeSession(sessionId);
-    } catch (error) {
-      this.showError(error);
-      this.closeSessionOverlay();
-      this.tui.setFocus(this.editor);
-      this.tui.requestRender(true);
-      return;
-    }
-
-    this.closeSessionOverlay();
-    this.contentViewer.close();
-    this.agentEvents.resetRun();
-    this.transcript.clear();
-    this.mcpOAuthBlocks.clear();
-    this.editor.clear();
-    this.initializeTranscript(session.timeline);
-    this.updateContextUsageFromMessages(session.messages, session.contextCheckpoint);
-    this.updateStatus("idle", {
-      activeTool: undefined,
-    });
-    this.tui.setFocus(this.editor);
-    this.tui.requestRender(true);
-    void this.activateCurrentSession();
   }
 
   private handleConversationEvent(event: ConversationRuntimeEvent): void {
