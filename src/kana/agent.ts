@@ -10,10 +10,10 @@ import {
   type Tool,
 } from "@/tools";
 import { getActiveKanaModelConfig, type KanaConfig } from "./config";
-import type { WakeScheduler } from "./conversation";
+import type { WakeScheduler } from "./conversation/wake-scheduler";
 import { createKanaModel } from "./model";
 import { buildKanaSystemPrompt } from "./prompt";
-import { loadKanaSkills } from "./skills";
+import { loadKanaSkills } from "./skills/loader";
 import { createRememberTool, createScheduleWakeTool } from "./tools";
 
 // Reserve the complete built-in namespace, including tools that are enabled

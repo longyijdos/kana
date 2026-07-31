@@ -14,7 +14,8 @@ import {
 } from "@/mcp";
 import type { OAuthFetch, OAuthTokenStore } from "@/oauth";
 import { KANA_VERSION } from "@/version";
-import { createKanaOAuthTokenStore, openKanaOAuthAuthorizationUrl } from "../auth";
+import { openKanaOAuthAuthorizationUrl } from "../auth/browser";
+import { createKanaOAuthTokenStore } from "../auth/token-store";
 import type { KanaMcpConfig, KanaMcpServerConfig, KanaMcpStdioServerConfig } from "./config";
 import { createHttpProxyFetch } from "./http-proxy";
 import { createKanaMcpOAuthAuthorizer } from "./oauth";

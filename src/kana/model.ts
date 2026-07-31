@@ -1,7 +1,7 @@
 import type { Model } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import { getModel, type OpenAICodexCredentialProvider } from "@/providers";
-import { KanaOpenAICodexAuth } from "./auth";
+import { KanaOpenAICodexAuth } from "./auth/openai-codex";
 import { getKanaConfigPaths, type KanaConfig } from "./config";
 
 export type CreateKanaModelOptions = {

@@ -1,11 +1,8 @@
 import { createNoopLogger, type Logger } from "@/logging";
 import { McpOAuthHttpAuthorizer, type McpOAuthHttpDiagnosticEvent } from "@/mcp";
 import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
-import {
-  createKanaOAuthTokenStore,
-  type KanaOAuthTokenStatus,
-  openKanaOAuthAuthorizationUrl,
-} from "../auth";
+import { openKanaOAuthAuthorizationUrl } from "../auth/browser";
+import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth/token-store";
 import {
   type KanaMcpHttpServerConfig,
   type KanaMcpOAuth2Config,
