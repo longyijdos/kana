@@ -88,6 +88,7 @@ The editor uses the same ASCII frame, light-gray text, and blue `> ` prefix as u
 
 Separate controllers keep `KanaTuiApp` from owning every interaction state machine:
 
+- `ExternalToolsLifecycleController` handles both initial external-tool loading after the session becomes visible and later MCP reloads. It owns progress-block and input disable/restore state, and requests Agent rebuilding through an app callback when the tool set changes.
 - `ToolApprovalController` implements the Agent `beforeToolExecution` hook. Its choice prompt replaces the editor when the editor is visible. If another bottom view is active, the approval remains pending and the configured approval notification still fires; closing that view reveals the prompt. MCP tools use a product-level alias resolver to show the server ID, original remote tool name, and complete formatted arguments; long arguments reuse detail paging, and MCP approvals do not offer persistent trust. Denial aborts the run, while always allow adds only an exact bash command to the allowlist.
 - `SessionOverlayController` replaces the editor with the resume list or delete confirmation. New, resumed, and deleted sessions update transcript and focus.
 - `SkillManagerController` replaces the editor with the global Skill list. `Enter` edits only a local draft; `Esc` applies it. A changed draft is persisted once and rebuilds the Agent once with the same history, while an unchanged draft just closes. Persistence errors keep the view open.

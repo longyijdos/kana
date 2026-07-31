@@ -187,7 +187,7 @@ Approval modes are `always`, `unless_trusted`, and `never`. In the default mode,
 
 ## TUI architecture
 
-`ConversationRuntime` is the product-level conversation lifecycle boundary. It owns the current Agent and session, rejects concurrent submissions, centralizes new/fork/resume and Agent replacement after configuration or tool changes, and drains the current session's wake queue in order once the frontend is ready. It publishes frontend-neutral run, Agent-event, and session-change events; listener failures are isolated and recorded as diagnostics. `KanaTuiApp` owns only accumulated usage/cost and interaction controllers, subscribes to runtime events, and delegates their visible mapping to `AgentEventRenderer`.
+`ConversationRuntime` is the product-level conversation lifecycle boundary. It owns the current Agent and session, rejects concurrent submissions, centralizes new/fork/resume and Agent replacement after configuration or tool changes, and drains the current session's wake queue in order once the frontend is ready. It publishes frontend-neutral run, Agent-event, and session-change events; listener failures are isolated and recorded as diagnostics. `KanaTuiApp` owns only accumulated usage/cost and interaction controllers, subscribes to runtime events, and delegates their visible mapping to `AgentEventRenderer`. `ExternalToolsLifecycleController` owns initial loading, MCP reload, progress-block, and input-restoration state; it asks the app to rebuild the Agent through callbacks instead of mutating app state in reverse.
 
 ```text
 ProcessTerminal (raw mode, input, resize, notifications)

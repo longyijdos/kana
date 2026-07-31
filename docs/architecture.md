@@ -187,7 +187,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 ## TUI 架构
 
-`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台空闲后按顺序 drain 当前 session 的 wake queue。它发布与前端无关的 run、Agent event 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。
+`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台空闲后按顺序 drain 当前 session 的 wake queue。它发布与前端无关的 run、Agent event 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、进度块与输入恢复状态，并通过回调请求 App 重建 Agent，不反向修改 App 的内部状态。
 
 ```text
 ProcessTerminal（raw mode、输入、resize、通知）

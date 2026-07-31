@@ -63,6 +63,10 @@ import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
 import { ContentViewerController } from "./content-viewer-controller";
+import {
+  ExternalToolsLifecycleController,
+  type ExternalToolsLoadResult,
+} from "./external-tools-lifecycle-controller";
 import { addHistoryTimelineToTranscript } from "./history";
 import { LocalShellController } from "./local-shell-controller";
 import { McpServerManagerController } from "./mcp-server-manager-controller";
@@ -86,10 +90,7 @@ import { WELCOME_LOGO_LINES } from "./welcome-logo";
 
 export type KanaTuiSessionSnapshot = ConversationSessionSnapshot;
 
-export type KanaTuiExternalToolsLoadResult = {
-  status?: string;
-  warnings?: readonly string[];
-};
+export type KanaTuiExternalToolsLoadResult = ExternalToolsLoadResult;
 
 export type KanaTuiAppOptions = {
   initialSession?: KanaTuiSessionSnapshot;
@@ -165,12 +166,9 @@ export class KanaTuiApp {
   private readonly slashCommandOptions: SlashCommandOptionsController;
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
+  private readonly externalTools: ExternalToolsLifecycleController;
   private readonly getLogger: () => Logger;
   private readonly unsubscribeConversationEvents: () => void;
-  private externalToolsLoaded: boolean;
-  private loadingExternalTools = false;
-  private externalToolsLoadPromise?: Promise<boolean>;
-  private externalToolsLoadingBlock?: TextBlock;
   private contextCompactingBlock?: TextBlock;
   private readonly mcpOAuthBlocks = new Map<string, TextBlock>();
   private stopping = false;
@@ -192,7 +190,6 @@ export class KanaTuiApp {
     private readonly options: KanaTuiAppOptions,
   ) {
     const initialSession = options.initialSession;
-    this.externalToolsLoaded = options.loadExternalTools === undefined;
     this.getLogger = options.getLogger ?? createNoopLogger;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       initialSession,
@@ -209,7 +206,7 @@ export class KanaTuiApp {
       wakeScheduler: options.wakeScheduler,
       canStartScheduledRun: () =>
         !this.running &&
-        !this.loadingExternalTools &&
+        !this.externalTools.loading &&
         !this.mcpServerManager?.active &&
         !this.stopping,
       getLogger: this.getLogger,
@@ -227,6 +224,17 @@ export class KanaTuiApp {
       transcript: this.transcript,
       tui: this.tui,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
+    });
+    this.externalTools = new ExternalToolsLifecycleController({
+      transcript: this.transcript,
+      tui: this.tui,
+      load: this.options.loadExternalTools,
+      reload: this.options.mcpManagement?.reloadExternalTools,
+      isStopping: () => this.stopping,
+      onToolsChanged: () => this.recreateAgentForExternalTools(),
+      onReady: () => this.conversation.notifyCanStartScheduledRun(),
+      updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
+      focusEditor: () => this.tui.setFocus(this.editor),
     });
     this.sessionOverlay = new SessionOverlayController({
       editor: this.editor,
@@ -266,7 +274,7 @@ export class KanaTuiApp {
         signOutServer: this.options.mcpManagement.signOutServer,
         onClose: (changed) => {
           if (changed) {
-            void this.reloadExternalTools();
+            void this.externalTools.reload();
           } else {
             this.conversation.notifyCanStartScheduledRun();
           }
@@ -512,151 +520,10 @@ export class KanaTuiApp {
   }
 
   private async activateCurrentSession(initialPrompt?: string): Promise<void> {
-    const ready = await this.loadExternalTools();
+    const ready = await this.externalTools.load();
 
     if (ready && initialPrompt && !this.stopping) {
       await this.submitPrompt(initialPrompt);
-    }
-  }
-
-  private loadExternalTools(): Promise<boolean> {
-    if (this.externalToolsLoaded || this.options.loadExternalTools === undefined) {
-      return Promise.resolve(true);
-    }
-    if (this.externalToolsLoadPromise) {
-      return this.externalToolsLoadPromise;
-    }
-
-    this.loadingExternalTools = true;
-    const loadingBlock = new TextBlock("Starting external tools...", {
-      color: tuiTheme.muted,
-    });
-    this.externalToolsLoadingBlock = loadingBlock;
-    this.transcript.addChild(loadingBlock);
-    this.updateStatus("starting");
-    this.tui.setFocus(undefined);
-    this.tui.requestRender(true);
-
-    this.externalToolsLoadPromise = this.options
-      .loadExternalTools((status) => {
-        if (this.stopping || this.externalToolsLoadingBlock !== loadingBlock) {
-          return;
-        }
-
-        loadingBlock.setText(status);
-        this.tui.requestRender();
-      })
-      .then((result) => {
-        if (this.stopping) {
-          return false;
-        }
-
-        this.externalToolsLoaded = true;
-        this.loadingExternalTools = false;
-        this.externalToolsLoadingBlock = undefined;
-        if (result.status === undefined) {
-          this.transcript.removeChild(loadingBlock);
-        } else {
-          loadingBlock.setText(result.status);
-        }
-        for (const warning of result.warnings ?? []) {
-          this.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
-        }
-
-        this.recreateAgentForExternalTools();
-        this.updateStatus("idle", { activeTool: undefined });
-        this.tui.setFocus(this.editor);
-        this.tui.requestRender(true);
-        this.conversation.notifyCanStartScheduledRun();
-        return true;
-      })
-      .catch((error) => {
-        if (!this.stopping) {
-          this.loadingExternalTools = false;
-          this.externalToolsLoadingBlock = undefined;
-          this.transcript.removeChild(loadingBlock);
-          this.transcript.addChild(
-            new TextBlock(
-              `Failed to load external tools: ${error instanceof Error ? error.message : String(error)}\nPress Ctrl+C to exit.`,
-              { color: tuiTheme.error },
-            ),
-          );
-          this.updateStatus("error", { activeTool: undefined });
-          this.tui.requestRender(true);
-        }
-        return false;
-      });
-
-    return this.externalToolsLoadPromise;
-  }
-
-  private async reloadExternalTools(): Promise<void> {
-    const management = this.options.mcpManagement;
-    if (!management || this.stopping || this.loadingExternalTools) {
-      return;
-    }
-
-    this.loadingExternalTools = true;
-    const loadingBlock = new TextBlock("Reloading MCP servers...", {
-      color: tuiTheme.muted,
-    });
-    this.externalToolsLoadingBlock = loadingBlock;
-    this.transcript.addChild(loadingBlock);
-    this.updateStatus("starting", { activeTool: undefined });
-    this.tui.setFocus(undefined);
-    this.tui.requestRender(true);
-
-    try {
-      const result = await management.reloadExternalTools((status) => {
-        if (this.stopping || this.externalToolsLoadingBlock !== loadingBlock) {
-          return;
-        }
-
-        loadingBlock.setText(status);
-        this.tui.requestRender();
-      });
-      if (this.stopping) {
-        return;
-      }
-
-      this.externalToolsLoadingBlock = undefined;
-      if (result.status === undefined) {
-        this.transcript.removeChild(loadingBlock);
-      } else {
-        loadingBlock.setText(result.status);
-      }
-      for (const warning of result.warnings ?? []) {
-        this.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
-      }
-
-      this.recreateAgentForExternalTools();
-      this.updateStatus("idle", { activeTool: undefined });
-      this.tui.setFocus(this.editor);
-      this.tui.requestRender(true);
-    } catch (error) {
-      if (this.stopping) {
-        return;
-      }
-
-      this.externalToolsLoadingBlock = undefined;
-      this.transcript.removeChild(loadingBlock);
-      this.transcript.addChild(
-        new TextBlock(
-          `Failed to reload MCP servers: ${error instanceof Error ? error.message : String(error)}`,
-          { color: tuiTheme.error },
-        ),
-      );
-      // Runtime failure clears its tool set. Recreate the idle Agent so it
-      // cannot keep calling tools backed by the manager that was just closed.
-      this.recreateAgentForExternalTools();
-      this.updateStatus("error", { activeTool: undefined });
-      this.tui.setFocus(this.editor);
-      this.tui.requestRender(true);
-    } finally {
-      this.loadingExternalTools = false;
-      if (!this.stopping) {
-        this.conversation.notifyCanStartScheduledRun();
-      }
     }
   }
 
@@ -678,7 +545,7 @@ export class KanaTuiApp {
       return { consume: true };
     }
 
-    if (this.loadingExternalTools) {
+    if (this.externalTools.loading) {
       if (isCtrlC(data)) {
         void this.stop();
       }
@@ -1147,7 +1014,7 @@ export class KanaTuiApp {
   }
 
   private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {
-    if (this.stopping || this.loadingExternalTools) {
+    if (this.stopping || this.externalTools.loading) {
       return;
     }
 
@@ -1159,7 +1026,7 @@ export class KanaTuiApp {
   }
 
   private async compactContext(): Promise<void> {
-    if (this.stopping || this.loadingExternalTools) {
+    if (this.stopping || this.externalTools.loading) {
       return;
     }
 
@@ -1186,7 +1053,7 @@ export class KanaTuiApp {
   private async submitShellCommand(command: string): Promise<void> {
     const shellCommand = command.trim();
 
-    if (!shellCommand || this.running || this.loadingExternalTools) {
+    if (!shellCommand || this.running || this.externalTools.loading) {
       return;
     }
 
