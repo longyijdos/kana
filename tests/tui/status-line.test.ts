@@ -6,7 +6,7 @@ import { tuiTheme } from "@/tui/theme";
 
 describe("prompt editor status line", () => {
   test("renders context usage next to the model", () => {
-    const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
+    const editor = new Editor({ model: "deepseek-v4-pro · high" });
 
     editor.updateStatus({
       phase: "idle",
@@ -17,7 +17,7 @@ describe("prompt editor status line", () => {
     const statusLine = editor.render(120).at(-1) ?? "";
     const rendered = stripAnsi(statusLine);
 
-    expect(rendered).toStartWith("deepseek/deepseek-v4-pro | Context 12% used | idle");
+    expect(rendered).toStartWith("deepseek-v4-pro · high | Context 12% used | idle");
     expect(rendered).not.toContain("Ctrl+C exit");
     expect(statusLine).toContain(color("Context 12% used", tuiTheme.contextUsage));
   });
@@ -25,16 +25,16 @@ describe("prompt editor status line", () => {
   test("keeps clean mode visible in the status line", () => {
     const editor = new Editor({
       cleanMode: true,
-      model: "deepseek/deepseek-v4-pro",
+      model: "deepseek-v4-pro · high",
     });
 
     const rendered = stripAnsi(editor.render(120).at(-1) ?? "");
 
-    expect(rendered).toStartWith("deepseek/deepseek-v4-pro | clean | idle");
+    expect(rendered).toStartWith("deepseek-v4-pro · high | clean | idle");
   });
 
   test("does not render shortcut hints while running", () => {
-    const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
+    const editor = new Editor({ model: "deepseek-v4-pro · high" });
 
     editor.updateStatus({
       phase: "thinking",
@@ -47,7 +47,7 @@ describe("prompt editor status line", () => {
   });
 
   test("renders a distinct turn-limit terminal phase", () => {
-    const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
+    const editor = new Editor({ model: "deepseek-v4-pro · high" });
 
     editor.updateStatus({
       phase: phaseForAgentEndReason("turn_limit"),
@@ -58,7 +58,7 @@ describe("prompt editor status line", () => {
   });
 
   test("renders the context compaction phase", () => {
-    const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
+    const editor = new Editor({ model: "deepseek-v4-pro · high" });
 
     editor.updateStatus({
       phase: "compacting",
@@ -69,12 +69,12 @@ describe("prompt editor status line", () => {
   });
 
   test("hides while the slash command palette is open and returns after it closes", () => {
-    const editor = new Editor({ model: "deepseek/deepseek-v4-pro" });
+    const editor = new Editor({ model: "deepseek-v4-pro · high" });
 
     editor.setText("/");
-    expect(stripAnsi(editor.render(120).join("\n"))).not.toContain("deepseek/deepseek-v4-pro");
+    expect(stripAnsi(editor.render(120).join("\n"))).not.toContain("deepseek-v4-pro · high");
 
     editor.setText("/quit ");
-    expect(stripAnsi(editor.render(120).join("\n"))).toContain("deepseek/deepseek-v4-pro");
+    expect(stripAnsi(editor.render(120).join("\n"))).toContain("deepseek-v4-pro · high");
   });
 });

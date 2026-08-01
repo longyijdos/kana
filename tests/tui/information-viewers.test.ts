@@ -27,7 +27,7 @@ describe("information viewers", () => {
         (line) => line.includes("/fork <prompt>") && line.includes("Fork the current session"),
       ),
     ).toBe(true);
-    expect(rendered).not.toContain("test/test-model");
+    expect(rendered).not.toContain("test-model");
 
     internal.tui.getFocus()?.handleInput?.("\x1b[F");
     const scrolled = internal.layout.render(80, 24).map(stripAnsi);
@@ -97,7 +97,7 @@ describe("information viewers", () => {
     const rendered = internal.layout.render(80, 24).map(stripAnsi);
 
     expect(internal.slashCommandOptions.active).toBe(false);
-    expect(rendered.some((line) => line.includes("test/test-model"))).toBe(true);
+    expect(rendered.some((line) => line.includes("test-model"))).toBe(true);
   });
 
   test("opens memory actions in the bottom prompt", () => {

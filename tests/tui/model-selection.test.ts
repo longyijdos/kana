@@ -118,7 +118,7 @@ describe("TUI model selection", () => {
     });
     expect(agents[0]?.abortCount).toBe(1);
     expect(internal.slashCommandOptions.active).toBe(false);
-    expect(renderLayout(internal)).toContain("openai-codex/gpt-5.6-luna");
+    expect(renderLayout(internal)).toContain("gpt-5.6-luna · high | idle");
     expect(renderTranscript(internal)).toContain(
       "Switched to openai-codex/gpt-5.6-luna · reasoning high.",
     );
@@ -161,6 +161,7 @@ describe("TUI model selection", () => {
         reasoningEffort: "high",
       },
     ]);
+    expect(renderLayout(internal)).toContain("deepseek-v4-pro · off | idle");
   });
 
   test("keeps the current Agent when replacement fails", () => {
@@ -192,7 +193,7 @@ describe("TUI model selection", () => {
 
     expect(createCount).toBe(2);
     expect(firstAgent.abortCount).toBe(0);
-    expect(renderLayout(internal)).toContain("deepseek/deepseek-v4-pro");
+    expect(renderLayout(internal)).toContain("deepseek-v4-pro · high | error");
     expect(renderTranscript(internal)).toContain("provider unavailable");
     expect(logEvents).toEqual(["tui.model_switch_started", "tui.model_switch_failed"]);
   });
@@ -222,7 +223,7 @@ describe("TUI model selection", () => {
     press(internal, "\x1b");
 
     expect(internal.slashCommandOptions.active).toBe(false);
-    expect(renderLayout(internal)).toContain("deepseek/deepseek-v4-pro");
+    expect(renderLayout(internal)).toContain("deepseek-v4-pro · high | idle");
   });
 });
 

@@ -216,7 +216,10 @@ export class KanaTuiApp {
     this.notifications = new NotificationController(options.notification, terminal);
     this.editor = new Editor({
       cleanMode: options.launchMode === "clean",
-      model: formatModelName(this.conversation.state.model.metadata),
+      model: formatStatusModel(
+        this.conversation.state.model.metadata,
+        this.options.modelManagement?.getSettings(),
+      ),
     });
     this.layout = new AppLayout({
       main: this.transcript,
@@ -659,7 +662,9 @@ export class KanaTuiApp {
 
     try {
       this.conversation.reconfigure(selection);
-      this.editor.setModel(formatModelName(this.conversation.state.model.metadata));
+      this.editor.setModel(
+        `${this.conversation.state.model.metadata.model} · ${formatTuiReasoningSelection(selection)}`,
+      );
       this.updateContextUsageFromMessages(messages, contextCheckpoint);
       this.transcript.addChild(
         new TextBlock(
@@ -1002,6 +1007,25 @@ export class KanaTuiApp {
 
 function formatModelName(metadata: ModelMetadata): string {
   return `${metadata.provider}/${metadata.model}`;
+}
+
+function formatStatusModel(metadata: ModelMetadata, settings?: TuiModelSettings): string {
+  if (!settings || settings.activeProvider !== metadata.provider) {
+    return metadata.model;
+  }
+
+  if (settings.activeProvider === "deepseek") {
+    const model = settings.model.deepseek;
+    if (model.name !== metadata.model) {
+      return metadata.model;
+    }
+    return `${metadata.model} · ${model.thinking ? model.reasoningEffort : "off"}`;
+  }
+
+  const model = settings.model["openai-codex"];
+  return model.name === metadata.model
+    ? `${metadata.model} · ${model.reasoningEffort}`
+    : metadata.model;
 }
 
 function formatScheduledWakeContent(content: string): string {
