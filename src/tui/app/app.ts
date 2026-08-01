@@ -22,6 +22,7 @@ import type {
   KanaSessionMetadata,
   KanaToolApprovalConfig,
   KanaToolApprovals,
+  KanaTuiConfig,
   KanaUsageScope,
   KanaUsageSummary,
   LoadKanaSkillActivationsResult,
@@ -111,6 +112,7 @@ export type KanaTuiAppOptions = {
     resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
   };
   notification: KanaNotificationConfig;
+  tuiConfig?: KanaTuiConfig;
   wakeScheduler?: WakeScheduler;
   getLogger?: () => Logger;
   compactMemory: (
@@ -223,6 +225,7 @@ export class KanaTuiApp {
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
       tui: this.tui,
+      smoothTextStreaming: options.tuiConfig?.smoothTextStreaming ?? true,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
     this.externalTools = new ExternalToolsLifecycleController({
@@ -919,6 +922,7 @@ export class KanaTuiApp {
     toolCall: ToolCallContent,
     signal: AbortSignal | undefined,
   ): Promise<BeforeToolExecutionResult> {
+    this.agentEvents.prepareForToolInteraction();
     return this.toolApproval.request(toolCall, signal);
   }
 

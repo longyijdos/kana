@@ -1,11 +1,66 @@
 import { describe, expect, test } from "bun:test";
+import type { AssistantMessage } from "../../src/core";
 import { AgentEventRenderer } from "../../src/tui/app/agent-event-renderer";
 import type { RunPhase } from "../../src/tui/app/status-phase";
 import type { StatusLineState, Transcript } from "../../src/tui/components";
 import { Transcript as TranscriptComponent } from "../../src/tui/components";
+import { stripAnsi } from "../../src/tui/render";
 import type { Tui } from "../../src/tui/runtime";
 
 describe("AgentEventRenderer", () => {
+  test("catches up buffered text before showing a tool call", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const text = "buffered assistant text ".repeat(8).trim();
+    const textMessage: AssistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text }],
+    };
+    const toolCall = {
+      type: "tool_call" as const,
+      id: "call-buffered",
+      name: "read",
+      args: { path: "AGENTS.md" },
+    };
+    const toolMessage: AssistantMessage = {
+      role: "assistant",
+      content: [...textMessage.content, toolCall],
+    };
+
+    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_update",
+      message: textMessage,
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: text,
+        snapshot: textMessage,
+      },
+    });
+    expect(stripAnsi(transcript.children[0]?.render(500).join("") ?? "")).not.toBe(text);
+
+    renderer.handle({
+      type: "message_update",
+      message: toolMessage,
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        contentIndex: 1,
+        snapshot: toolMessage,
+      },
+    });
+
+    expect(stripAnsi(transcript.children[0]?.render(500).join("") ?? "")).toBe(text);
+    expect(transcript.children).toHaveLength(2);
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
   test("keeps parallel tools aggregated until all finish and retains error status", () => {
     const statuses: Array<{ phase: RunPhase; activeTool?: string }> = [];
     const renderer = new AgentEventRenderer({

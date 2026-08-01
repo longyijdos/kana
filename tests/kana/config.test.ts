@@ -95,6 +95,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("[model.openai-codex]");
     expect(installedConfigExample).toContain("tool_deadline_ms = 300000");
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
+    expect(installedConfigExample).toContain("smooth_text_streaming = true");
     expect(installedConfigExample).toContain("Kana does not read this file.");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
@@ -231,6 +232,9 @@ describe("Kana config", () => {
         "on_agent_completed = false",
         "on_approval_required = true",
         "",
+        "[tui]",
+        "smooth_text_streaming = false",
+        "",
         "[memory]",
         "enabled = false",
         "max_chars = 8000",
@@ -266,6 +270,9 @@ describe("Kana config", () => {
         backend: "bell",
         onAgentCompleted: false,
         onApprovalRequired: true,
+      },
+      tui: {
+        smoothTextStreaming: false,
       },
       memory: {
         enabled: false,
@@ -404,6 +411,14 @@ describe("Kana config", () => {
     writeFileSync(path.join(home, "config.toml"), '[agent]\nparallel_tool_calls = "yes"\n');
 
     expect(() => loadKanaConfig(env)).toThrow("agent.parallel_tool_calls must be a boolean.");
+  });
+
+  test("requires tui.smooth_text_streaming to be a boolean", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[tui]\nsmooth_text_streaming = "yes"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("tui.smooth_text_streaming must be a boolean.");
   });
 
   test("loads and validates the optional agent context limit", () => {

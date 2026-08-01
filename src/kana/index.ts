@@ -58,6 +58,7 @@ export {
   type KanaProviderConfig,
   type KanaToolApprovalConfig,
   type KanaToolApprovalMode,
+  type KanaTuiConfig,
   loadKanaConfig,
   type ResetKanaConfigResult,
   resetKanaConfig,

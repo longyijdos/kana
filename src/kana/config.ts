@@ -87,6 +87,10 @@ export type KanaNotificationConfig = {
   onApprovalRequired: boolean;
 };
 
+export type KanaTuiConfig = {
+  smoothTextStreaming: boolean;
+};
+
 export type KanaMemoryConfig = {
   enabled: boolean;
   maxChars: number;
@@ -107,6 +111,7 @@ export type KanaConfig = {
   agent: KanaAgentConfig;
   approval: KanaToolApprovalConfig;
   notification: KanaNotificationConfig;
+  tui: KanaTuiConfig;
   memory: KanaMemoryConfig;
   logging: KanaLoggingConfig;
 };
@@ -187,6 +192,9 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     backend: "auto",
     onAgentCompleted: true,
     onApprovalRequired: true,
+  },
+  tui: {
+    smoothTextStreaming: true,
   },
   memory: {
     enabled: true,
@@ -334,6 +342,9 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       on_agent_completed: config.notification.onAgentCompleted,
       on_approval_required: config.notification.onApprovalRequired,
     },
+    tui: {
+      smooth_text_streaming: config.tui.smoothTextStreaming,
+    },
     memory: {
       enabled: config.memory.enabled,
       max_chars: config.memory.maxChars,
@@ -374,6 +385,9 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `backend = "${config.notification.backend}"`,
     `on_agent_completed = ${config.notification.onAgentCompleted}`,
     `on_approval_required = ${config.notification.onApprovalRequired}`,
+    "",
+    "[tui]",
+    `smooth_text_streaming = ${config.tui.smoothTextStreaming}`,
     "",
     "[memory]",
     `enabled = ${config.memory.enabled}`,
@@ -440,6 +454,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
   const notification =
     raw.notification === undefined ? {} : asRecord(raw.notification, "notification");
+  const tui = raw.tui === undefined ? {} : asRecord(raw.tui, "tui");
   const memory = raw.memory === undefined ? {} : asRecord(raw.memory, "memory");
   const logging = raw.logging === undefined ? {} : asRecord(raw.logging, "logging");
 
@@ -543,6 +558,13 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         notification.on_approval_required,
         defaults.notification.onApprovalRequired,
         "notification.on_approval_required",
+      ),
+    },
+    tui: {
+      smoothTextStreaming: readBoolean(
+        tui.smooth_text_streaming,
+        defaults.tui.smoothTextStreaming,
+        "tui.smooth_text_streaming",
       ),
     },
     memory: {

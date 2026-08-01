@@ -3,13 +3,14 @@ import { graphemeSegments } from "../render";
 
 const REVEAL_INTERVAL_MS = 16;
 const BACKLOG_GRAPHEMES_PER_RATE_STEP = 16;
-const MAX_GRAPHEMES_PER_FRAME = 4;
+const MAX_GRAPHEMES_PER_FRAME = 12;
 const COMPLETION_RATE_BOOST = 1;
 
 type StreamingTextPresenterOptions = {
   onUpdate: (message: AssistantMessage, complete: boolean) => void;
   onSettled: () => void;
   requestRender: () => void;
+  smoothTextStreaming?: boolean;
   schedule?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   cancel?: (timer: ReturnType<typeof setTimeout>) => void;
 };
@@ -45,6 +46,11 @@ export class StreamingTextPresenter {
 
   update(message: AssistantMessage, animateText: boolean): void {
     this.setTarget(message);
+    if (this.options.smoothTextStreaming === false) {
+      this.revealAllText();
+      this.publish(false);
+      return;
+    }
     if (!this.hasPendingText()) {
       this.publish(false);
       return;
@@ -65,9 +71,14 @@ export class StreamingTextPresenter {
     this.ensureTimer(true);
   }
 
-  finish(message: AssistantMessage): void {
+  finish(message: AssistantMessage, immediate = false): void {
     this.setTarget(message);
     this.complete = true;
+    if (immediate || this.options.smoothTextStreaming === false) {
+      this.revealAllText();
+      this.settle();
+      return;
+    }
     if (!this.hasPendingText()) {
       this.settle();
       return;
@@ -87,13 +98,26 @@ export class StreamingTextPresenter {
       return;
     }
 
-    for (const [index, content] of this.target.content.entries()) {
-      if (content.type === "text") {
-        this.visibleTextByIndex.set(index, content.text);
-      }
-    }
+    this.revealAllText();
     this.complete = true;
     this.settle();
+  }
+
+  // Tool preparation and approval are visible semantic boundaries. Catch up
+  // the current text prefix without completing the assistant message so those
+  // later UI states cannot overtake already-received text.
+  catchUp(): void {
+    if (!this.target || !this.hasPendingText()) {
+      return;
+    }
+
+    this.clearTimer();
+    this.revealAllText();
+    if (this.complete) {
+      this.settle();
+      return;
+    }
+    this.publish(false);
   }
 
   private setTarget(message: AssistantMessage): void {
@@ -141,6 +165,17 @@ export class StreamingTextPresenter {
       return;
     }
     this.publish(false);
+  }
+
+  private revealAllText(): void {
+    if (!this.target) {
+      return;
+    }
+    for (const [index, content] of this.target.content.entries()) {
+      if (content.type === "text") {
+        this.visibleTextByIndex.set(index, content.text);
+      }
+    }
   }
 
   private frameBudget(): number {

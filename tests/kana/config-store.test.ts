@@ -76,6 +76,7 @@ describe("Kana config store", () => {
       draft.agent.toolDeadlineMs = 120_000;
       draft.agent.parallelToolCalls = false;
       draft.agent.contextLimit = undefined;
+      draft.tui.smoothTextStreaming = false;
     });
 
     const updated = readFileSync(configPath, "utf8");
@@ -84,6 +85,7 @@ describe("Kana config store", () => {
     expect(updated).toContain("thinking = false");
     expect(updated).toContain("tool_deadline_ms = 120000");
     expect(updated).toContain("parallel_tool_calls = false");
+    expect(updated).toContain("[tui]\nsmooth_text_streaming = false");
     expect(updated).not.toContain("context_limit");
     expect(updated).toContain('[custom]\nvalue = "untouched"');
     expect(readdirSync(home).filter((name) => name.endsWith(".tmp"))).toEqual([]);

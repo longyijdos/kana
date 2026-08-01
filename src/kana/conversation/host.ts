@@ -16,6 +16,7 @@ import {
   type KanaConfig,
   type KanaNotificationConfig,
   type KanaToolApprovalConfig,
+  type KanaTuiConfig,
 } from "../config";
 import { createKanaConfigStore, type KanaConfigStore } from "../config-store";
 import type { KanaLaunchMode } from "../launch-mode";
@@ -165,6 +166,10 @@ export class KanaConversationHost<TConfiguration = never> {
 
   get notificationConfig(): KanaNotificationConfig {
     return structuredClone(this.configData.notification);
+  }
+
+  get tuiConfig(): KanaTuiConfig {
+    return structuredClone(this.configData.tui);
   }
 
   get resumeSessionId(): string | undefined {

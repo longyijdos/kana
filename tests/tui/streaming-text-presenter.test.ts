@@ -50,7 +50,7 @@ class ManualScheduler {
   }
 }
 
-function createHarness(): {
+function createHarness(smoothTextStreaming = true): {
   presenter: StreamingTextPresenter;
   scheduler: ManualScheduler;
   published: PublishedMessage[];
@@ -65,6 +65,7 @@ function createHarness(): {
       settled += 1;
     },
     requestRender: () => {},
+    smoothTextStreaming,
     schedule: scheduler.schedule,
     cancel: scheduler.cancel,
   });
@@ -131,6 +132,49 @@ describe("tui streaming text presenter", () => {
     expect(published.slice(0, -1).every((update) => !update.complete)).toBe(true);
     expect(published.at(-1)?.complete).toBe(true);
     expect(settledCount()).toBe(1);
+  });
+
+  test("uses the higher frame cap for large backlogs", () => {
+    const { presenter, published } = createHarness();
+    const finalText = "流".repeat(240);
+
+    presenter.start(assistantMessage(""));
+    presenter.update(assistantMessage(finalText), true);
+
+    expect([...visibleText(published.at(-1) as PublishedMessage)]).toHaveLength(12);
+    presenter.flush();
+  });
+
+  test("bypasses pacing when smooth text streaming is disabled", () => {
+    const { presenter, scheduler, published, settledCount } = createHarness(false);
+    const finalText = "immediate provider snapshot";
+
+    presenter.start(assistantMessage(""));
+    presenter.update(assistantMessage(finalText), true);
+
+    expect(visibleText(published.at(-1) as PublishedMessage)).toBe(finalText);
+    expect(scheduler.size).toBe(0);
+
+    presenter.finish(assistantMessage(finalText));
+    expect(published.at(-1)?.complete).toBe(true);
+    expect(settledCount()).toBe(1);
+  });
+
+  test("catches up pending text without completing the message", () => {
+    const { presenter, scheduler, published, settledCount } = createHarness();
+    const finalText = "pending before a tool boundary";
+
+    presenter.start(assistantMessage(""));
+    presenter.update(assistantMessage(finalText), true);
+    expect(visibleText(published.at(-1) as PublishedMessage)).not.toBe(finalText);
+
+    presenter.catchUp();
+
+    expect(visibleText(published.at(-1) as PublishedMessage)).toBe(finalText);
+    expect(published.at(-1)?.complete).toBe(false);
+    expect(scheduler.size).toBe(0);
+    expect(settledCount()).toBe(0);
+    presenter.finish(assistantMessage(finalText));
   });
 
   test("paces only text while publishing non-text state immediately", () => {

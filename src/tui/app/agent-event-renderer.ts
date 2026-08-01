@@ -22,6 +22,7 @@ import { ToolCallBlocks } from "./tool-call-blocks";
 export type AgentEventRendererOptions = {
   transcript: Transcript;
   tui: Tui;
+  smoothTextStreaming?: boolean;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
 };
 
@@ -44,7 +45,12 @@ export class AgentEventRenderer {
         this.streamingAssistant = undefined;
       },
       requestRender: () => this.options.tui.requestRender(),
+      smoothTextStreaming: options.smoothTextStreaming,
     });
+  }
+
+  prepareForToolInteraction(): void {
+    this.textPresenter.catchUp();
   }
 
   resetRun(): void {
@@ -134,6 +140,9 @@ export class AgentEventRenderer {
     }
 
     this.textPresenter.update(event.message, event.assistantMessageEvent.type === "text_delta");
+    if (event.assistantMessageEvent.type === "toolcall_start") {
+      this.textPresenter.catchUp();
+    }
     this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
     this.toolCallBlocks.createOrUpdateFromMessage(event.message);
     if (event.assistantMessageEvent.type === "toolcall_end") {
@@ -144,7 +153,7 @@ export class AgentEventRenderer {
 
   private handleAssistantEnd(message: AssistantMessage): void {
     this.streamingAssistant?.showThinking(false);
-    this.textPresenter.finish(message);
+    this.textPresenter.finish(message, message.stopReason === "toolUse");
     this.options.updateStatus(phaseForStopReason(message.stopReason));
   }
 
@@ -173,6 +182,7 @@ export class AgentEventRenderer {
   }
 
   private handleToolStart(toolCallId: string, toolName: string, args: unknown): void {
+    this.textPresenter.catchUp();
     this.toolCallBlocks.markStarted(toolCallId, toolName, args);
     this.activeTools.set(toolCallId, toolName);
     this.updateToolStatus();

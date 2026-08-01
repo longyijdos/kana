@@ -137,6 +137,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         },
       },
       notification: host.notificationConfig,
+      tuiConfig: host.tuiConfig,
       wakeScheduler: host.wakeScheduler,
       getLogger: () => host.getLogger(),
       compactMemory: (target, userRequest, signal) =>
