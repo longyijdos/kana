@@ -24,6 +24,7 @@ export const MOCK_MODEL_METADATA = {
   },
   contextWindow: 128_000,
   maxOutputTokens: 16_000,
+  supportsParallelToolCalls: false,
 } as const satisfies ModelMetadata;
 
 export class MockModel extends BaseModel {

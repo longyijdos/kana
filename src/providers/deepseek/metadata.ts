@@ -16,6 +16,7 @@ export const DEEPSEEK_MODELS = {
     },
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
+    supportsParallelToolCalls: true,
   },
   "deepseek-v4-pro": {
     provider: "deepseek",
@@ -28,6 +29,7 @@ export const DEEPSEEK_MODELS = {
     },
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
+    supportsParallelToolCalls: true,
   },
 } as const satisfies Record<string, DeepSeekModelMetadata>;
 

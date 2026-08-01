@@ -25,6 +25,7 @@ export type AgentLoopConfig = {
   model: Model;
   maxTurns?: number;
   toolDeadlineMs?: number;
+  parallelToolCalls?: boolean;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   contextManager?: ContextManager;
@@ -53,6 +54,10 @@ export async function runAgentLoop(
   emit: AgentEventSink,
 ): Promise<Message[]> {
   assertValidMaxTurns(config.maxTurns);
+  // Resolve once per run so provider advertisement and runtime scheduling
+  // cannot diverge, and unsupported models always fail closed to serial use.
+  const parallelToolCalls =
+    (config.parallelToolCalls ?? true) && config.model.metadata.supportsParallelToolCalls;
 
   const currentContext: AgentContext = {
     system: context.system,
@@ -62,6 +67,7 @@ export async function runAgentLoop(
   const toolRuntime = new ToolRuntime(
     {
       tools: currentContext.tools,
+      parallelToolCalls,
       signal: config.signal,
       beforeToolExecution: config.beforeToolExecution,
       defaultDeadlineMs: config.toolDeadlineMs,
@@ -98,7 +104,12 @@ export async function runAgentLoop(
       }
       throw error;
     }
-    let assistantTurn = await streamAssistantResponse(prepared.context, config, emit);
+    let assistantTurn = await streamAssistantResponse(
+      prepared.context,
+      config,
+      parallelToolCalls,
+      emit,
+    );
     if (
       assistantTurn.error instanceof ContextWindowExceededError &&
       assistantTurn.canRetryContextLimit &&
@@ -113,7 +124,12 @@ export async function runAgentLoop(
         }
         throw error;
       }
-      assistantTurn = await streamAssistantResponse(prepared.context, config, emit);
+      assistantTurn = await streamAssistantResponse(
+        prepared.context,
+        config,
+        parallelToolCalls,
+        emit,
+      );
     }
     if (
       assistantTurn.error instanceof ContextWindowExceededError &&
@@ -179,12 +195,14 @@ export function assertValidMaxTurns(maxTurns: number | undefined): void {
 async function streamAssistantResponse(
   context: ModelContext,
   config: AgentLoopConfig,
+  parallelToolCalls: boolean,
   emit: AgentEventSink,
 ): Promise<AssistantTurnResult> {
   const response = config.model.stream({
     system: context.system,
     messages: context.messages,
     tools: context.tools,
+    parallelToolCalls,
     signal: config.signal,
   });
   let addedAssistantMessage = false;

@@ -21,6 +21,7 @@ class ScriptedToolModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -38,6 +39,7 @@ class ScriptedToolModel implements Model {
         description: tool.description,
         parameters: tool.parameters,
       })),
+      parallelToolCalls: context.parallelToolCalls,
     });
 
     const stream = new AssistantEventStream();
@@ -72,9 +74,21 @@ class MultiToolCallModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: false,
   };
+  readonly contexts: ModelContext[] = [];
 
-  stream(_context: ModelContext): AssistantEventStream {
+  stream(context: ModelContext): AssistantEventStream {
+    this.contexts.push({
+      system: context.system,
+      messages: structuredClone(context.messages),
+      tools: context.tools?.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      })),
+      parallelToolCalls: context.parallelToolCalls,
+    });
     const stream = new AssistantEventStream();
 
     queueMicrotask(() => {
@@ -101,6 +115,7 @@ class ParallelToolCallModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -113,6 +128,7 @@ class ParallelToolCallModel implements Model {
         description: tool.description,
         parameters: tool.parameters,
       })),
+      parallelToolCalls: context.parallelToolCalls,
     });
     const stream = new AssistantEventStream();
 
@@ -143,6 +159,7 @@ class AbortedModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -185,6 +202,7 @@ class AbortedToolCallModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -246,6 +264,7 @@ class EmptyErrorModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -283,6 +302,7 @@ class LengthTruncatedToolModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -295,6 +315,7 @@ class LengthTruncatedToolModel implements Model {
         description: tool.description,
         parameters: tool.parameters,
       })),
+      parallelToolCalls: context.parallelToolCalls,
     });
 
     const stream = new AssistantEventStream();
@@ -349,6 +370,25 @@ describe("runAgentLoop", () => {
       expect(model.contexts).toEqual([]);
       expect(events).toEqual([]);
     }
+  });
+
+  test("disables parallel tool calls when model metadata does not support them", async () => {
+    const model = new MultiToolCallModel();
+
+    await runAgentLoop(
+      {
+        messages: [{ role: "user", content: "add both pairs" }],
+        tools: [addTool],
+      },
+      {
+        model,
+        maxTurns: 1,
+        parallelToolCalls: true,
+      },
+      () => {},
+    );
+
+    expect(model.contexts[0]?.parallelToolCalls).toBe(false);
   });
 
   test("streams assistant turns and executes requested tools", async () => {

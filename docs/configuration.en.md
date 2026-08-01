@@ -126,6 +126,7 @@ max_retries = 1
 [agent]
 max_turns = -1
 tool_deadline_ms = 300000
+parallel_tool_calls = true
 # context_limit = 200000
 
 [approval]
@@ -190,6 +191,7 @@ Before first use, run `kana auth login openai-codex`. Browser authorization stor
 | --- | --- | --- | --- |
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
 | `agent.tool_deadline_ms` | Positive integer | `300000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
+| `agent.parallel_tool_calls` | Boolean | `true` | Whether the model may propose and actually execute safe tool calls concurrently; always disabled when selected-model metadata does not support it. |
 | `agent.context_limit` | Optional positive integer | model metadata context window | Context limit the Agent actually uses; it cannot exceed the selected model's hard limit, and omission uses metadata. |
 | `approval.mode` | `always`, `unless_trusted`, `never` | `unless_trusted` | Whether tool calls enter the TUI approval flow. |
 | `notification.backend` | `auto`, `off`, `bell`, `osc9`, `osc777`, `kitty` | `auto` | Terminal-notification output protocol. `auto` detects Kitty, then iTerm, then VTE, otherwise falls back to bell. |
@@ -200,7 +202,9 @@ Before first use, run `kana auth login openai-codex`. Browser authorization stor
 | `memory.daily_retention_days` | Optional positive integer | Unset | Number of daily staging records retained after successful full memory compaction. |
 | `logging.level` | `debug`, `info`, `warn`, `error`, `off` | `info` | Minimum level written to runtime JSONL logs; `off` disables file logging entirely. |
 
-When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `tool_deadline_ms`, `max_tokens`, and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
+`parallel_tool_calls` is a user policy; its effective value is the user setting AND selected-model metadata support. When disabled, the provider request does not advertise parallel capability, and ToolRuntime executes calls one at a time even if a model still returns several in one response. When enabled, only adjacent tools declaring `execution.concurrency = "parallel"` can form a concurrent group. Current OpenAI Codex Responses Lite model metadata does not support top-level parallel tool calls, so this setting cannot override that hard limit.
+
+When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `parallel_tool_calls` must be Boolean; `tool_deadline_ms`, `max_tokens`, and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
 
 ### Context budget
 
@@ -213,7 +217,7 @@ promptBudget = contextLimit - activeModel.max_tokens - safetyReserve
 
 At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Subtracting the active model's `max_tokens` reserves context space for output.
 
-Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
+Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Agent construction also emits `agent.parallel_tool_calls_configured` at `debug` with only `requested`, `supported`, and the final `enabled` value. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
 
 The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
 

@@ -94,6 +94,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("[model.deepseek]");
     expect(installedConfigExample).toContain("[model.openai-codex]");
     expect(installedConfigExample).toContain("tool_deadline_ms = 300000");
+    expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("Kana does not read this file.");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
@@ -219,6 +220,7 @@ describe("Kana config", () => {
         "[agent]",
         "max_turns = 4",
         "tool_deadline_ms = 120000",
+        "parallel_tool_calls = false",
         "context_limit = 200000",
         "",
         "[approval]",
@@ -254,6 +256,7 @@ describe("Kana config", () => {
       agent: {
         maxTurns: 4,
         toolDeadlineMs: 120_000,
+        parallelToolCalls: false,
         contextLimit: 200000,
       },
       approval: {
@@ -393,6 +396,14 @@ describe("Kana config", () => {
         "agent.tool_deadline_ms must be a positive integer.",
       );
     }
+  });
+
+  test("requires agent.parallel_tool_calls to be a boolean", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[agent]\nparallel_tool_calls = "yes"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("agent.parallel_tool_calls must be a boolean.");
   });
 
   test("loads and validates the optional agent context limit", () => {

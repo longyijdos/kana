@@ -481,6 +481,38 @@ describe("ToolRuntime", () => {
     ]);
   });
 
+  test("serializes parallel tools when parallel calls are disabled", async () => {
+    let activeExecutions = 0;
+    let maximumActiveExecutions = 0;
+    const tool = {
+      name: "parallel",
+      description: "Run in parallel when enabled.",
+      parameters: labeledParameters,
+      execution: {
+        concurrency: "parallel",
+      },
+      execute: async ({ label }) => {
+        activeExecutions += 1;
+        maximumActiveExecutions = Math.max(maximumActiveExecutions, activeExecutions);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        activeExecutions -= 1;
+        return label;
+      },
+    } satisfies Tool<typeof labeledParameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        parallelToolCalls: false,
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([toolCall("p1", "parallel"), toolCall("p2", "parallel")]);
+
+    expect(maximumActiveExecutions).toBe(1);
+    expect(result.toolResults.map((message) => message.toolCallId)).toEqual(["p1", "p2"]);
+  });
+
   test("serializes approval hooks inside a parallel group", async () => {
     const pendingApprovals: Array<() => void> = [];
     let activeApprovals = 0;

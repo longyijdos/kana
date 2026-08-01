@@ -31,6 +31,7 @@ export type AgentConfig = {
   // free of custom stop hooks. Use -1 to run without a turn limit.
   maxTurns?: number;
   toolDeadlineMs?: number;
+  parallelToolCalls?: boolean;
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
   onCompactionCommitted?: AgentCompactionCommittedHook;
@@ -101,12 +102,16 @@ export class Agent {
   private readonly logger: Logger;
   private readonly loggerMetadata?: LogMetadata;
   private readonly contextManager?: ContextManager;
+  private readonly parallelToolCalls: boolean;
 
   constructor(options: AgentConfig) {
     assertValidMaxTurns(options.maxTurns);
     const toolDeadlineMs = resolveDefaultToolDeadlineMs(options.toolDeadlineMs);
     this.logger = options.logger ?? createNoopLogger();
     this.loggerMetadata = options.loggerMetadata;
+    const parallelToolCallsRequested = options.parallelToolCalls ?? true;
+    this.parallelToolCalls =
+      parallelToolCallsRequested && options.model.metadata.supportsParallelToolCalls;
     this.stateData = createWritableAgentState({
       ...options,
       toolDeadlineMs,
@@ -122,6 +127,11 @@ export class Agent {
           loggerMetadata: this.loggerMetadata,
         })
       : undefined;
+    this.log("debug", "agent.parallel_tool_calls_configured", {
+      requested: parallelToolCallsRequested,
+      supported: options.model.metadata.supportsParallelToolCalls,
+      enabled: this.parallelToolCalls,
+    });
   }
 
   get state(): AgentState {
@@ -403,6 +413,7 @@ export class Agent {
       model: this.stateData.model,
       maxTurns: this.stateData.maxTurns,
       toolDeadlineMs: this.stateData.toolDeadlineMs,
+      parallelToolCalls: this.parallelToolCalls,
       signal,
       beforeToolExecution: this.beforeToolExecution,
       contextManager,

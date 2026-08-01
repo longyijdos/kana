@@ -19,6 +19,7 @@ class TextModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -32,6 +33,7 @@ class TextModel implements Model {
       system: context.system,
       messages: structuredClone(context.messages),
       tools: context.tools,
+      parallelToolCalls: context.parallelToolCalls,
       signal: context.signal,
     });
 
@@ -98,6 +100,7 @@ class AbortAwareModel implements Model {
     },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
   };
 
   stream(context: ModelContext): AssistantEventStream {
@@ -186,6 +189,34 @@ describe("Agent", () => {
     }
   });
 
+  test("enables parallel tool calls only when requested and supported", async () => {
+    const supportedModel = new TextModel();
+    const supportedAgent = new Agent({
+      model: supportedModel,
+      parallelToolCalls: true,
+    });
+    await supportedAgent.prompt("supported");
+
+    const unsupportedModel = new TextModel();
+    unsupportedModel.metadata.supportsParallelToolCalls = false;
+    const unsupportedAgent = new Agent({
+      model: unsupportedModel,
+      parallelToolCalls: true,
+    });
+    await unsupportedAgent.prompt("unsupported");
+
+    const disabledModel = new TextModel();
+    const disabledAgent = new Agent({
+      model: disabledModel,
+      parallelToolCalls: false,
+    });
+    await disabledAgent.prompt("disabled");
+
+    expect(supportedModel.contexts[0]?.parallelToolCalls).toBe(true);
+    expect(unsupportedModel.contexts[0]?.parallelToolCalls).toBe(false);
+    expect(disabledModel.contexts[0]?.parallelToolCalls).toBe(false);
+  });
+
   test("writes lifecycle events without logging message content", async () => {
     const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
     const logger: Logger = {
@@ -203,6 +234,7 @@ describe("Agent", () => {
     await agent.prompt("secret prompt");
 
     expect(records.map((record) => record.event)).toEqual([
+      "agent.parallel_tool_calls_configured",
       "agent.run_started",
       "agent.started",
       "agent.turn_started",
@@ -210,6 +242,15 @@ describe("Agent", () => {
       "agent.ended",
     ]);
     expect(records[0]).toEqual({
+      event: "agent.parallel_tool_calls_configured",
+      metadata: {
+        agentKind: "conversation",
+        requested: true,
+        supported: true,
+        enabled: true,
+      },
+    });
+    expect(records[1]).toEqual({
       event: "agent.run_started",
       metadata: { agentKind: "conversation", promptMessageCount: 1 },
     });

@@ -31,6 +31,7 @@ export type BeforeToolExecutionHook = (request: {
 
 export type ToolRuntimeConfig = {
   tools?: readonly Tool[];
+  parallelToolCalls?: boolean;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   cancellationGraceMs?: number;
@@ -130,6 +131,11 @@ export class ToolRuntime {
   }
 
   private readExecutionGroup(toolCalls: ToolCallContent[], startIndex: number): ToolCallContent[] {
+    if (this.config.parallelToolCalls === false) {
+      const toolCall = toolCalls[startIndex];
+      return toolCall ? [toolCall] : [];
+    }
+
     // Only adjacent parallel calls share a group. Exclusive and undeclared
     // tools are barriers, so read work cannot cross a side-effecting call.
     const firstCall = toolCalls[startIndex];

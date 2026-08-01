@@ -39,6 +39,7 @@ describe("buildOpenAICodexRequest", () => {
             },
           },
         ],
+        parallelToolCalls: false,
       },
       {
         provider: "openai-codex",
@@ -62,7 +63,7 @@ describe("buildOpenAICodexRequest", () => {
         context: "all_turns",
       },
       tool_choice: "auto",
-      parallel_tool_calls: true,
+      parallel_tool_calls: false,
     });
     expect(request).not.toHaveProperty("max_output_tokens");
     expect(request.input).toEqual([

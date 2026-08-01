@@ -99,6 +99,7 @@ describe("Kana accounting", () => {
           model: "test-model",
           contextWindow: 1_000,
           maxOutputTokens: 100,
+          supportsParallelToolCalls: false,
           cost: {
             input: 1,
             output: 2,

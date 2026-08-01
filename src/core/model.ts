@@ -38,6 +38,8 @@ export type ModelMetadata = {
   contextWindow: number;
   // Provider hard limit for one completion, distinct from request maxTokens.
   maxOutputTokens: number;
+  // Capability of the concrete model and wire protocol, not only the provider.
+  supportsParallelToolCalls: boolean;
 };
 
 export interface Model {

@@ -16,6 +16,8 @@ export const OPENAI_CODEX_MODELS = {
     },
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
+    // Responses Lite rejects native top-level parallel tool calls.
+    supportsParallelToolCalls: false,
   },
   "gpt-5.6-terra": {
     provider: "openai-codex",
@@ -28,6 +30,7 @@ export const OPENAI_CODEX_MODELS = {
     },
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
+    supportsParallelToolCalls: false,
   },
   "gpt-5.6-luna": {
     provider: "openai-codex",
@@ -40,6 +43,7 @@ export const OPENAI_CODEX_MODELS = {
     },
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
+    supportsParallelToolCalls: false,
   },
 } as const satisfies Record<string, OpenAICodexModelMetadata>;
 

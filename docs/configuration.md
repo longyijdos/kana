@@ -126,6 +126,7 @@ max_retries = 1
 [agent]
 max_turns = -1
 tool_deadline_ms = 300000
+parallel_tool_calls = true
 # context_limit = 200000
 
 [approval]
@@ -190,6 +191,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | --- | --- | --- | --- |
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
 | `agent.tool_deadline_ms` | 正整数 | `300000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
+| `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
 | `agent.context_limit` | 可选正整数 | 模型 metadata 的 context window | Agent 实际使用的上下文上限；不能超过所选模型的硬上限，省略时使用 metadata。 |
 | `approval.mode` | `always`、`unless_trusted`、`never` | `unless_trusted` | 工具调用是否进入 TUI 审批。 |
 | `notification.backend` | `auto`、`off`、`bell`、`osc9`、`osc777`、`kitty` | `auto` | 终端通知输出协议。`auto` 依次识别 Kitty、iTerm、VTE，否则退回 bell。 |
@@ -200,7 +202,9 @@ export DEEPSEEK_API_KEY='sk-...'
 | `memory.daily_retention_days` | 可选正整数 | 未设置 | 全量记忆压缩成功后保留每日暂存记录的天数。 |
 | `logging.level` | `debug`、`info`、`warn`、`error`、`off` | `info` | 运行时 JSONL 日志的最低记录级别；`off` 完全关闭文件日志。 |
 
-`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`tool_deadline_ms`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
+`parallel_tool_calls` 是用户策略，最终值为“用户配置且所选模型 metadata 支持”。关闭后 provider 请求不会声明并行能力，且即使模型仍在一个响应中返回多个调用，ToolRuntime 也会按顺序逐个执行。打开后仍只有声明 `execution.concurrency = "parallel"` 的相邻工具能够组成并行组；OpenAI Codex Responses Lite 的当前模型 metadata 均不支持顶层并行工具调用，因此该配置不会覆盖其硬限制。
+
+`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls` 必须是布尔值；`tool_deadline_ms`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
 
 ### 上下文预算
 
@@ -213,7 +217,7 @@ promptBudget = contextLimit - activeModel.max_tokens - safetyReserve
 
 `promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。活动模型的 `max_tokens` 被扣除是为了给输出预留上下文空间。
 
-默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
+默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。Agent 创建时的 `agent.parallel_tool_calls_configured` 也属于 `debug`，只记录 `requested`、`supported` 和最终的 `enabled`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
 
 配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
 

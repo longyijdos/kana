@@ -8,12 +8,12 @@ Kana's product configuration currently uses DeepSeek; its adapter lives in `src/
 
 Current built-in metadata:
 
-| Model | Context window | Max output | Input / output / cache-read price (CNY per million tokens) |
-| --- | ---: | ---: | --- |
-| `deepseek-v4-flash` | 1,000,000 | 384,000 | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | 1,000,000 | 384,000 | 3 / 6 / 0.025 |
+| Model | Context window | Max output | Parallel tool calls | Input / output / cache-read price (CNY per million tokens) |
+| --- | ---: | ---: | --- | --- |
+| `deepseek-v4-flash` | 1,000,000 | 384,000 | Supported | 1 / 2 / 0.02 |
+| `deepseek-v4-pro` | 1,000,000 | 384,000 | Supported | 3 / 6 / 0.025 |
 
-Cache-write price is currently zero. Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. The TUI uses metadata for context percentage and accumulated CNY cost.
+Cache-write price is currently zero. Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. The TUI uses metadata for context percentage and accumulated CNY cost. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting.
 
 ## Request conversion
 

@@ -70,7 +70,16 @@ export class OpenAICodexModel extends BaseModel {
       const requestSignal = createOpenAICodexRequestSignal(this.config, context.signal);
       try {
         const response = await this.request(
-          JSON.stringify(buildOpenAICodexRequest(context, this.config)),
+          JSON.stringify(
+            buildOpenAICodexRequest(
+              {
+                ...context,
+                parallelToolCalls:
+                  context.parallelToolCalls === true && this.metadata.supportsParallelToolCalls,
+              },
+              this.config,
+            ),
+          ),
           credentials,
           requestSignal.signal,
         );

@@ -64,7 +64,7 @@ agent_start
 发出 agent_end，返回本次新增消息
 ```
 
-Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`。Runtime 按助手内容顺序划分执行组：只有相邻且显式声明 `parallel` 的调用会同组并行，`exclusive`、未声明、未知或元数据无效的工具都是屏障，不会被只读工作跨越。
+Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`。并行策略在每个 run 开始时解析一次：`AgentConfig.parallelToolCalls`（Kana 对应 `agent.parallel_tool_calls`）必须启用，且模型 metadata 的 `supportsParallelToolCalls` 必须为真；否则传给 provider 的 `ModelContext.parallelToolCalls` 为假，Runtime 也逐个执行调用。允许并行时，Runtime 按助手内容顺序划分执行组：只有相邻且显式声明 `parallel` 的调用会同组并行，`exclusive`、未声明、未知或元数据无效的工具都是屏障，不会被只读工作跨越。
 
 只有助手消息以 `toolUse` 正常结束时，工具才会执行。长度截断的消息即使带有工具调用也不会执行。发生 provider error 且助手没有任何内容时，该空助手消息不会写入历史；中止的消息会移除其中未执行的工具调用，但若仍有文本或 thinking 内容则保留该部分。
 

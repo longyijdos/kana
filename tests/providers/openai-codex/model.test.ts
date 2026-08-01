@@ -67,6 +67,7 @@ describe("OpenAI Codex model", () => {
     const message = await model.generate({
       messages: [{ role: "user", content: "hi" }],
       tools: [],
+      parallelToolCalls: true,
     });
 
     expect(refreshCount).toBe(1);
@@ -77,6 +78,7 @@ describe("OpenAI Codex model", () => {
       model: "gpt-5.6-luna",
       stream: true,
       store: false,
+      parallel_tool_calls: false,
     });
     expect(message).toMatchObject({
       role: "assistant",

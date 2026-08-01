@@ -40,7 +40,7 @@ The request follows the Responses Lite contract:
 - Tools are developer `additional_tools` input items rather than a top-level `tools` field.
 - The system prompt is a developer message; user messages, tool results, and assistant output items follow in input order.
 - `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
-- `parallel_tool_calls = true` allows the model to propose multiple calls in one response; Kana's tool concurrency metadata still decides which calls actually execute together.
+- `parallel_tool_calls = false`. Responses Lite does not support top-level parallel tool calls, so model metadata overrides `agent.parallel_tool_calls = true`; Kana also serializes any unexpected multiple calls.
 - Reasoning configuration carries effort, summary type, and `all_turns` context.
 - `max_tokens` is Kana's local context-budget output reserve; the backend request omits the rejected `max_output_tokens` field.
 

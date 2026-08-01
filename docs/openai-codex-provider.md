@@ -40,7 +40,7 @@ max_retries = 1
 - 工具作为 developer `additional_tools` input item 发送，而不是顶层 `tools`。
 - 系统提示词作为 developer message，用户消息、工具结果和助手 output item 按原顺序追加到 `input`。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
-- `parallel_tool_calls = true`，允许模型在同一响应中提出多个调用；是否实际并行仍由 Kana 的工具并发元数据决定。
+- `parallel_tool_calls = false`。Responses Lite 不支持顶层并行工具调用，因此模型 metadata 会覆盖 `agent.parallel_tool_calls = true`；Kana 也会串行执行意外出现的多个调用。
 - reasoning 设置包含 `effort`、summary 类型和 `all_turns` context。
 - `max_tokens` 只用于 Kana 的本地上下文输出预留；backend 请求不发送其拒绝的 `max_output_tokens`。
 

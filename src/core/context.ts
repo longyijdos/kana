@@ -8,5 +8,6 @@ export type ModelContext = {
   system?: string;
   messages: Message[];
   tools?: ToolSpec[];
+  parallelToolCalls?: boolean;
   signal?: AbortSignal;
 };

@@ -58,6 +58,7 @@ export type KanaModelConfig = KanaModelConfigMap[KanaModelProvider];
 export type KanaAgentConfig = {
   maxTurns: number;
   toolDeadlineMs: number;
+  parallelToolCalls: boolean;
   contextLimit?: number;
 };
 
@@ -176,6 +177,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   agent: {
     maxTurns: -1,
     toolDeadlineMs: 300_000,
+    parallelToolCalls: true,
     contextLimit: undefined,
   },
   approval: {
@@ -321,6 +323,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
     agent: {
       max_turns: config.agent.maxTurns,
       tool_deadline_ms: config.agent.toolDeadlineMs,
+      parallel_tool_calls: config.agent.parallelToolCalls,
       context_limit: config.agent.contextLimit,
     },
     approval: {
@@ -361,6 +364,7 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     "[agent]",
     `max_turns = ${config.agent.maxTurns}`,
     `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
+    `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
     "# context_limit = 200000",
     "",
     "[approval]",
@@ -513,6 +517,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         agent.tool_deadline_ms,
         defaults.agent.toolDeadlineMs,
         "agent.tool_deadline_ms",
+      ),
+      parallelToolCalls: readBoolean(
+        agent.parallel_tool_calls,
+        defaults.agent.parallelToolCalls,
+        "agent.parallel_tool_calls",
       ),
       contextLimit: readOptionalPositiveInteger(
         agent.context_limit,

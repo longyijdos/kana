@@ -56,6 +56,7 @@ export function createMemoryConsolidationAgent(
     tools: createMemoryConsolidationTools(options, options.mode, memory),
     maxTurns: config.agent.maxTurns,
     toolDeadlineMs: config.agent.toolDeadlineMs,
+    parallelToolCalls: config.agent.parallelToolCalls,
     logger: options.logger,
     loggerMetadata: {
       agentKind: "memory_consolidation",
