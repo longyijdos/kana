@@ -30,7 +30,7 @@ describe("Kana config store", () => {
     const config = store.update((draft) => {
       draft.provider.active = "openai-codex";
       draft.model["openai-codex"].name = "gpt-5.6-luna";
-      draft.model["openai-codex"].reasoningEffort = "ultra";
+      draft.model["openai-codex"].reasoningEffort = "max";
     });
 
     expect(readFileSync(configPath, "utf8")).toBe(
@@ -40,13 +40,13 @@ describe("Kana config store", () => {
         "",
         "[model.openai-codex]",
         'name = "gpt-5.6-luna"',
-        'reasoning_effort = "ultra"',
+        'reasoning_effort = "max"',
         "",
       ].join("\n"),
     );
     expect(config.provider.active).toBe("openai-codex");
     expect(config.model["openai-codex"].name).toBe("gpt-5.6-luna");
-    expect(config.model["openai-codex"].reasoningEffort).toBe("ultra");
+    expect(config.model["openai-codex"].reasoningEffort).toBe("max");
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
   });
 

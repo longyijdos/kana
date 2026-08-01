@@ -330,10 +330,10 @@ describe("Kana config", () => {
 
     writeFileSync(
       path.join(home, "config.toml"),
-      '[model.openai-codex]\nreasoning_effort = "extreme"\n',
+      '[model.openai-codex]\nreasoning_effort = "ultra"\n',
     );
     expect(() => loadKanaConfig(env)).toThrow(
-      "model.openai-codex.reasoning_effort must be one of: low, medium, high, xhigh, max, ultra.",
+      "model.openai-codex.reasoning_effort must be one of: low, medium, high, xhigh, max.",
     );
 
     writeFileSync(

@@ -180,7 +180,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | 键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `name` | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses 模型。 |
-| `reasoning_effort` | `low`、`medium`、`high`、`xhigh`、`max`、`ultra` | `medium` | 请求的推理强度。 |
+| `reasoning_effort` | `low`、`medium`、`high`、`xhigh`、`max` | `medium` | 请求的推理强度。 |
 | `reasoning_summary` | `auto`、`concise`、`detailed` | `auto` | 请求可流式返回的 reasoning summary；原始思维链不会作为该字段公开。 |
 | `max_tokens` | 正整数 | `32768` | Kana 本地上下文预算的输出预留；Codex backend 请求本身不发送 `max_output_tokens`。 |
 | `timeout_ms` | 有限数字 | `60000` | 等待响应头或相邻响应数据的无活动超时毫秒数。 |

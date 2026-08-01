@@ -180,7 +180,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
 | `name` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses model. |
-| `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | `medium` | Requested reasoning effort. |
+| `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` | Requested reasoning effort. |
 | `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
 | `max_tokens` | Positive integer | `32768` | Local output reserve for Kana context budgeting; the Codex backend request does not send `max_output_tokens`. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |

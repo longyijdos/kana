@@ -17,15 +17,27 @@ describe("TUI model selection", () => {
     applyTuiModelSelection(config, {
       provider: "openai-codex",
       model: "gpt-5.6-luna",
-      reasoningEffort: "ultra",
+      reasoningEffort: "max",
     });
 
     expect(config.provider.active).toBe("openai-codex");
     expect(config.model["openai-codex"]).toMatchObject({
       name: "gpt-5.6-luna",
-      reasoningEffort: "ultra",
+      reasoningEffort: "max",
     });
     expect(config.model.deepseek).toEqual(deepSeekBefore);
+  });
+
+  test("offers only reasoning efforts accepted by Responses Lite", () => {
+    const management = getKanaModelManagement(structuredClone(DEFAULT_KANA_CONFIG));
+
+    expect(management.model["openai-codex"].reasoningEfforts).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
   });
 
   test("renders provider and model choices supplied by the product layer", () => {

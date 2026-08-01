@@ -41,7 +41,7 @@ The request follows the Responses Lite contract:
 - The system prompt is a developer message; user messages, tool results, and assistant output items follow in input order.
 - `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
 - `parallel_tool_calls = false`. Responses Lite does not support top-level parallel tool calls, so model metadata overrides `agent.parallel_tool_calls = true`; Kana also serializes any unexpected multiple calls.
-- Reasoning configuration carries effort, summary type, and `all_turns` context.
+- Reasoning configuration carries effort, summary type, and `all_turns` context. Responses Lite accepts `low`, `medium`, `high`, `xhigh`, and `max`; Ultra is a Codex client orchestration mode and Kana does not send it as a request effort.
 - `max_tokens` is Kana's local context-budget output reserve; the backend request omits the rejected `max_output_tokens` field.
 
 A Codex reasoning summary is not raw chain-of-thought. Kana can stream the summary as thinking events, but the TUI uses those events only for its temporary thinking state and does not render the summary body.

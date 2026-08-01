@@ -41,7 +41,7 @@ max_retries = 1
 - 系统提示词作为 developer message，用户消息、工具结果和助手 output item 按原顺序追加到 `input`。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
 - `parallel_tool_calls = false`。Responses Lite 不支持顶层并行工具调用，因此模型 metadata 会覆盖 `agent.parallel_tool_calls = true`；Kana 也会串行执行意外出现的多个调用。
-- reasoning 设置包含 `effort`、summary 类型和 `all_turns` context。
+- reasoning 设置包含 `effort`、summary 类型和 `all_turns` context。Responses Lite 的 `effort` 仅支持 `low`、`medium`、`high`、`xhigh` 和 `max`；Ultra 属于 Codex 客户端编排模式，Kana 不会将其作为请求强度发送。
 - `max_tokens` 只用于 Kana 的本地上下文输出预留；backend 请求不发送其拒绝的 `max_output_tokens`。
 
 Codex 的 reasoning summary 不是原始思维链。Kana 可以流式接收 summary 并产生 thinking 事件，但 TUI 只用这些事件显示临时 thinking 状态，不展示摘要正文。

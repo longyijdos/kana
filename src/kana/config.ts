@@ -22,7 +22,6 @@ export const KANA_OPENAI_CODEX_REASONING_EFFORTS = [
   "high",
   "xhigh",
   "max",
-  "ultra",
 ] as const;
 
 export type KanaProviderConfig = {
