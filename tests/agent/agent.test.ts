@@ -34,6 +34,7 @@ class TextModel implements Model {
       messages: structuredClone(context.messages),
       tools: context.tools,
       parallelToolCalls: context.parallelToolCalls,
+      maxOutputTokens: context.maxOutputTokens,
       signal: context.signal,
     });
 
@@ -464,7 +465,7 @@ describe("Agent", () => {
       messages: [
         {
           role: "user",
-          content: "x".repeat(8_000),
+          content: "x".repeat(10_000),
         },
         {
           role: "assistant",
@@ -474,7 +475,7 @@ describe("Agent", () => {
       ],
       context: {
         contextLimit: 4_000,
-        outputReserve: 500,
+        maxOutputTokens: 500,
         compactPolicy: () => ({ summary: "Earlier exchange completed." }),
       },
       onRunCommitted: ({ compactions, state }) => {
@@ -495,6 +496,7 @@ describe("Agent", () => {
       role: "user",
       content: expect.stringContaining("Earlier exchange completed."),
     });
+    expect(model.contexts[0]?.maxOutputTokens).toBe(500);
 
     agent.reset();
 
@@ -517,7 +519,7 @@ describe("Agent", () => {
       ],
       context: {
         contextLimit: 4_000,
-        outputReserve: 500,
+        maxOutputTokens: 500,
         compactPolicy: () => ({ summary: "Earlier exchange completed." }),
       },
       onCompactionCommitted: ({ compaction, state }) => {
@@ -561,7 +563,7 @@ describe("Agent", () => {
       ],
       context: {
         contextLimit: 4_000,
-        outputReserve: 500,
+        maxOutputTokens: 500,
         compactPolicy: () => ({ summary: "Earlier exchange completed." }),
       },
       onCompactionCommitted: () => {

@@ -78,7 +78,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 `Agent` 是有状态的单次运行控制器。它拒绝并发运行；Kana 注入的 `AgentJournal` 会在模型 I/O 前写入 turn 边界和深拷贝的用户输入。循环将每条完整 assistant 消息、工具结果和压缩 checkpoint 先写 journal 再加入对应内存状态，其中带工具调用的 assistant 消息必须早于工具执行落盘。写入 `turn_end` 后，产品层的 `onRunCommitted` 只执行 accounting 和记忆调度等聚合后处理；全部成功后才向监听器和 stream 发布最终 `agent_end` 并转为空闲。整个过程仍拒绝新运行，`waitForIdle()` 也会继续等待。`state` 和公共事件会深拷贝可变数据，普通监听器异常不会修改内部历史或终止运行。
 
-可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。`/compact` 复用同一个 manager 和摘要策略，但使用独立 commit，在持久化成功后才 adopt checkpoint。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
+可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，并根据估算输入和剩余 context 计算通用的逐轮输出上限，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。`/compact` 复用同一个 manager 和摘要策略，但使用独立 commit，在持久化成功后才 adopt checkpoint。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。provider 负责决定如何映射 `ModelContext.maxOutputTokens`；session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
 
 `runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限；最后一个允许回合仍产生工具调用时以 `turn_limit` 结束。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才把调用交给 `ToolRuntime`。该 runtime 负责工具查找、TypeBox 1.x 参数校验、串行审批、调用级中止与 deadline、显式并发调度、结果规范化及提交；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。每个 run 的并行能力统一解析为用户 `parallelToolCalls` 设置与模型 metadata `supportsParallelToolCalls` 的交集，并同时写入 provider `ModelContext` 与 ToolRuntime，避免请求能力和实际调度分歧。工具自身的 `execution.deadlineMs` 优先，否则使用 Agent 默认值；框架默认 300000 毫秒，Kana 通过 `agent.tool_deadline_ms` 装配同一默认值。只有并行能力启用时，连续的 `parallel` 工具才组成并行组；关闭时所有调用逐个执行，默认 `exclusive` 的工具仍形成屏障。工具 update 通过串行事件队列保持顺序，实际完成的结果通过另一条串行 commit 队列逐条写 journal，再发布 `tool_execution_end`，并以同一完成顺序进入下一次模型请求。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果。运行中止或 deadline 会中止工具的独立 signal；工具若在有限宽限期内仍未退出，其可见结果固定为 `unknown`，迟到 update 被忽略，当前 run 终止且模型不会自动重试。
 
@@ -147,7 +147,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 5. 当前目录、平台、日期和时区；
 6. 已启用 Skills 的名称、描述和 `SKILL.md` 路径。
 
-Clean 模式只保留第 2、5 项，并且不会扫描 Skills 路径、读取 memory 或创建自动记忆合并 scheduler。Host 仍把当前运行配置传给 Agent，因此 provider/model、上下文上限、输出保留和工具 deadline 与普通模式一致；`schedule_wake` 也仍按前端能力启用。
+Clean 模式只保留第 2、5 项，并且不会扫描 Skills 路径、读取 memory 或创建自动记忆合并 scheduler。Host 仍把当前运行配置传给 Agent，因此 provider/model、上下文上限、输出上限和工具 deadline 与普通模式一致；`schedule_wake` 也仍按前端能力启用。
 
 `loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。install 不物化默认 `config.toml`，只补齐缺失的可变状态；`config.example.toml` 是运行时不读取的 Kana 生成参考，install 和 reset 会比较并刷新过期内容。`KanaConfigStore` 为 TUI 等调用方提供通用 typed mutation：它比较更新前后的有效配置，只 patch 变化的规范 TOML leaf，验证回读结果后用同目录临时文件原子替换，因此无关配置、未知表和注释不需要经过全量重序列化。
 

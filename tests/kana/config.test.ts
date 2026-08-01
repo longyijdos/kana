@@ -207,6 +207,11 @@ describe("Kana config", () => {
     expect(loadKanaConfig(createTempEnv())).toEqual(DEFAULT_KANA_CONFIG);
   });
 
+  test("defaults output ceilings to the provider metadata limits", () => {
+    expect(DEFAULT_KANA_CONFIG.model.deepseek.maxTokens).toBe(384_000);
+    expect(DEFAULT_KANA_CONFIG.model["openai-codex"].maxTokens).toBe(128_000);
+  });
+
   test("merges TOML config with defaults", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
@@ -538,24 +543,6 @@ describe("Kana config", () => {
           },
         }),
       ).toThrow("agent.context_limit cannot exceed the 1000000-token context window");
-
-      expect(() =>
-        createKanaAgent({
-          ...DEFAULT_KANA_CONFIG,
-          model: {
-            ...DEFAULT_KANA_CONFIG.model,
-            deepseek: {
-              ...DEFAULT_KANA_CONFIG.model.deepseek,
-              apiKeyEnv: "KANA_DEEPSEEK_KEY",
-              maxTokens: 8_192,
-            },
-          },
-          agent: {
-            ...DEFAULT_KANA_CONFIG.agent,
-            contextLimit: 8_192,
-          },
-        }),
-      ).toThrow("agent.context_limit must be greater than model.max_tokens.");
     } finally {
       restoreEnv("KANA_DEEPSEEK_KEY", previous);
     }

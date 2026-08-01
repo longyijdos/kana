@@ -70,7 +70,9 @@ Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时�
 
 ## 上下文压缩
 
-配置了 `ContextManager` 时，每次模型请求前先从完整 Agent 历史创建一个独立的 model projection；原始 `messages` 不会因压缩而删除。估算达到 prompt budget 的 80% 时触发压缩，规则从旧到新扫描，只允许在无 tool call 的完整 assistant turn 后，或一组 assistant tool calls 的所有 results 都已出现后切分。它选择第一个能让“最大摘要占位 + 近期原始消息”进入 10% 目标的边界，从而让一次压缩覆盖尽可能多的旧上下文；没有任何安全边界且尚未超过 prompt budget 时延后压缩，不能安全恢复时则报错。
+配置了 `ContextManager` 时，每次模型请求前先从完整 Agent 历史创建一个独立的 model projection；原始 `messages` 不会因压缩而删除。prompt budget 是 context limit 扣除安全预留后的容量，不固定预留配置的最大输出。估算达到该预算的 80% 时触发压缩，规则从旧到新扫描，只允许在无 tool call 的完整 assistant turn 后，或一组 assistant tool calls 的所有 results 都已出现后切分。它选择第一个能让“最大摘要占位 + 近期原始消息”进入 10% 目标的边界，从而让一次压缩覆盖尽可能多的旧上下文；没有任何安全边界且尚未超过 prompt budget 时延后压缩，不能安全恢复时则报错。
+
+manager 会把“配置的最大输出”和“prompt budget 减去估算输入后的剩余空间”中的较小值写入本轮 `ModelContext.maxOutputTokens`。Agent 只转发这个通用上限，具体 provider 决定是否以及如何映射到请求协议；Kana 的摘要策略则把摘要预算作为该次摘要请求的输出上限。
 
 实际摘要由注入的 `CompactPolicy` 生成。Kana 的产品策略直接使用主 Agent 的同一个 `Model` 做一次无工具 `generate()`，而不是启动另一个 Agent loop。输入是上一次摘要和本次新覆盖的消息；assistant thinking、assistant usage 和 tool 的结构化 `result` 不进入摘要请求，tool 的模型可见 `content`、名称及错误状态仍保留。摘要必须以 `stop` 完成且不超过摘要预算，失败会恢复上一个 checkpoint。
 

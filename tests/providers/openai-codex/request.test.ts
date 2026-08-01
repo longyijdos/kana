@@ -40,6 +40,7 @@ describe("buildOpenAICodexRequest", () => {
           },
         ],
         parallelToolCalls: false,
+        maxOutputTokens: 12_345,
       },
       {
         provider: "openai-codex",

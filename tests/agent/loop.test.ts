@@ -486,7 +486,7 @@ describe("runAgentLoop", () => {
     } satisfies Tool<typeof addParameters, typeof result>;
     const contextManager = new ContextManager({
       contextLimit: 128_000,
-      outputReserve: 8_192,
+      maxOutputTokens: 8_192,
     });
 
     const messages = await runAgentLoop(

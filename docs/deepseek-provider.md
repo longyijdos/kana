@@ -35,14 +35,14 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 | Kana / `DeepSeekModelConfig` | 请求字段 |
 | --- | --- |
 | `temperature` | `temperature` |
-| `maxTokens` | `max_tokens` |
+| `ModelContext.maxOutputTokens ?? maxTokens` | `max_tokens` |
 | `topP` | `top_p` |
 | `thinking` | `thinking.type`，值为 `enabled`/`disabled` |
 | `reasoningEffort` | `reasoning_effort` |
 | `responseFormat` | `response_format` |
 | `userId` | `user_id` |
 
-当 `thinking` 显式为 `false` 时，不发送 `reasoning_effort`，因为 DeepSeek 拒绝这一组合。若上下文有工具，则每个工具的 JSON Schema 作为 function `parameters` 透传，默认 `tool_choice` 为 `auto`；`strictTools` 会给每个 function 加上 `strict: true`。上下文没有工具时，只有显式配置的 `toolChoice` 才会被发送。
+Agent 提供逐轮 `ModelContext.maxOutputTokens` 时，它优先于构造配置的 `maxTokens`；缺少逐轮值时仍使用配置值。当 `thinking` 显式为 `false` 时，不发送 `reasoning_effort`，因为 DeepSeek 拒绝这一组合。若上下文有工具，则每个工具的 JSON Schema 作为 function `parameters` 透传，默认 `tool_choice` 为 `auto`；`strictTools` 会给每个 function 加上 `strict: true`。上下文没有工具时，只有显式配置的 `toolChoice` 才会被发送。
 
 ## 认证、取消、超时与重试
 

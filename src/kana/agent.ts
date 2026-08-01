@@ -62,9 +62,6 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       `agent.context_limit cannot exceed the ${model.metadata.contextWindow}-token context window for ${model.metadata.provider}/${model.metadata.model}.`,
     );
   }
-  if (contextLimit <= modelConfig.maxTokens) {
-    throw new Error("agent.context_limit must be greater than model.max_tokens.");
-  }
   const tools: Tool[] = [
     createListTool({
       root: cwd,
@@ -128,7 +125,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     loggerMetadata: { agentKind: "conversation" },
     context: {
       contextLimit,
-      outputReserve: modelConfig.maxTokens,
+      maxOutputTokens: modelConfig.maxTokens,
       compactPolicy: createModelCompactPolicy(model),
       checkpoint: options.contextCheckpoint,
     },

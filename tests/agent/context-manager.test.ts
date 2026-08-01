@@ -34,20 +34,32 @@ describe("ContextManager", () => {
   test("computes prompt, trigger, and target budgets from the context limit", () => {
     const manager = new ContextManager({
       contextLimit: 128_000,
-      outputReserve: 8_192,
+      maxOutputTokens: 384_000,
     });
 
     expect(manager.safetyReserve).toBe(6_400);
-    expect(manager.promptBudget).toBe(113_408);
-    expect(manager.triggerTokens).toBe(90_726);
-    expect(manager.targetTokens).toBe(11_340);
+    expect(manager.promptBudget).toBe(121_600);
+    expect(manager.triggerTokens).toBe(97_280);
+    expect(manager.targetTokens).toBe(12_160);
+  });
+
+  test("treats configured output tokens as a per-request ceiling", async () => {
+    const manager = new ContextManager({
+      contextLimit: 4_000,
+      maxOutputTokens: 5_000,
+    });
+
+    const prepared = await manager.prepareForModel({ messages: [] });
+
+    expect(prepared.estimatedTokens).toBe(8);
+    expect(prepared.context.maxOutputTokens).toBe(3_736);
   });
 
   test("selects the earliest complete boundary that retains the target-sized tail", async () => {
     let policyInput: CompactPolicyInput | undefined;
     const manager = new ContextManager({
       contextLimit: 4_000,
-      outputReserve: 500,
+      maxOutputTokens: 500,
       targetRatio: 0.55,
       compactPolicy: (input) => {
         policyInput = structuredClone(input);
@@ -151,7 +163,7 @@ describe("ContextManager", () => {
     let policyCalls = 0;
     const manager = new ContextManager({
       contextLimit: 4_000,
-      outputReserve: 500,
+      maxOutputTokens: 500,
       compactPolicy: () => {
         policyCalls += 1;
         return { summary: "unused" };
@@ -177,7 +189,7 @@ describe("ContextManager", () => {
     let policyCalls = 0;
     const manager = new ContextManager({
       contextLimit: 4_000,
-      outputReserve: 500,
+      maxOutputTokens: 500,
       compactPolicy: () => {
         policyCalls += 1;
         return { summary: "unused" };
@@ -213,7 +225,7 @@ describe("ContextManager", () => {
   test("bounds model-visible tool content while retaining the structured result elsewhere", () => {
     const manager = new ContextManager({
       contextLimit: 128_000,
-      outputReserve: 8_192,
+      maxOutputTokens: 8_192,
     });
     const content = `${"A".repeat(48_000)}${"Z".repeat(12_000)}`;
 
@@ -229,7 +241,7 @@ describe("ContextManager", () => {
   test("restores the previous checkpoint when summary generation fails", async () => {
     const manager = new ContextManager({
       contextLimit: 4_000,
-      outputReserve: 500,
+      maxOutputTokens: 500,
       compactPolicy: () => {
         throw new TypeError("secret provider response");
       },
@@ -238,7 +250,7 @@ describe("ContextManager", () => {
     await expect(
       manager.prepareForModel({
         messages: [
-          { role: "user", content: "x".repeat(8_000) },
+          { role: "user", content: "x".repeat(10_000) },
           {
             role: "assistant",
             stopReason: "stop",
@@ -306,6 +318,7 @@ describe("model compaction policy", () => {
     });
 
     expect(capturedContext?.tools).toBeUndefined();
+    expect(capturedContext?.maxOutputTokens).toBe(256);
     expect(capturedContext?.messages).toHaveLength(1);
     expect(JSON.stringify(capturedContext)).toContain("Previous state.");
     expect(JSON.stringify(capturedContext)).toContain("Visible history");
@@ -328,7 +341,7 @@ describe("context-limit recovery", () => {
     const model = new ContextLimitThenTextModel();
     const manager = new ContextManager({
       contextLimit: 4_000,
-      outputReserve: 500,
+      maxOutputTokens: 500,
       compactPolicy: () => ({ summary: "Earlier exchange completed." }),
     });
     const events: string[] = [];

@@ -26,6 +26,22 @@ describe("buildDeepSeekRequest", () => {
     });
   });
 
+  test("prefers the per-request output ceiling over the configured maximum", () => {
+    const request = buildDeepSeekRequest(
+      {
+        messages: [{ role: "user", content: "hi" }],
+        maxOutputTokens: 12_345,
+      },
+      {
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        maxTokens: 384_000,
+      },
+    );
+
+    expect(request.max_tokens).toBe(12_345);
+  });
+
   test("omits reasoning_effort when thinking is disabled", () => {
     const request = buildDeepSeekRequest(
       {

@@ -9,5 +9,8 @@ export type ModelContext = {
   messages: Message[];
   tools?: ToolSpec[];
   parallelToolCalls?: boolean;
+  // Per-request completion ceiling after the caller accounts for the prompt.
+  // Providers decide whether and how their wire protocol can express it.
+  maxOutputTokens?: number;
   signal?: AbortSignal;
 };

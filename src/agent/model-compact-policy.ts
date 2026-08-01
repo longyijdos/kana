@@ -22,6 +22,7 @@ export function createModelCompactPolicy(model: Model): CompactPolicy {
             content: formatCompactionRequest(previousSummary, messages, maxSummaryTokens),
           },
         ],
+        maxOutputTokens: maxSummaryTokens,
         signal,
       });
     } catch (error) {

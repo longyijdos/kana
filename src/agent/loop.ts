@@ -203,6 +203,7 @@ async function streamAssistantResponse(
     messages: context.messages,
     tools: context.tools,
     parallelToolCalls,
+    maxOutputTokens: context.maxOutputTokens,
     signal: config.signal,
   });
   let addedAssistantMessage = false;

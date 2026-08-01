@@ -20,8 +20,9 @@ export function buildDeepSeekRequest(
     request.temperature = config.temperature;
   }
 
-  if (config.maxTokens !== undefined) {
-    request.max_tokens = config.maxTokens;
+  const maxTokens = context.maxOutputTokens ?? config.maxTokens;
+  if (maxTokens !== undefined) {
+    request.max_tokens = maxTokens;
   }
 
   if (config.topP !== undefined) {

@@ -54,7 +54,7 @@ export type CompactPolicy = (
 
 export type ContextManagerConfig = {
   contextLimit: number;
-  outputReserve: number;
+  maxOutputTokens: number;
   compactPolicy?: CompactPolicy;
   checkpoint?: ContextCheckpoint;
   compactAtRatio?: number;
@@ -90,7 +90,7 @@ type UsageMeasurement = {
 
 export class ContextManager {
   readonly contextLimit: number;
-  readonly outputReserve: number;
+  readonly maxOutputTokens: number;
   readonly safetyReserve: number;
   readonly promptBudget: number;
   readonly triggerTokens: number;
@@ -107,11 +107,7 @@ export class ContextManager {
 
   constructor(config: ContextManagerConfig) {
     assertPositiveInteger(config.contextLimit, "contextLimit");
-    assertNonNegativeInteger(config.outputReserve, "outputReserve");
-
-    if (config.outputReserve >= config.contextLimit) {
-      throw new Error("outputReserve must be smaller than contextLimit.");
-    }
+    assertPositiveInteger(config.maxOutputTokens, "maxOutputTokens");
 
     const compactAtRatio = config.compactAtRatio ?? DEFAULT_COMPACT_AT_RATIO;
     const targetRatio = config.targetRatio ?? DEFAULT_TARGET_RATIO;
@@ -122,15 +118,15 @@ export class ContextManager {
     }
 
     const safetyReserve = Math.min(8_192, Math.max(256, Math.floor(config.contextLimit * 0.05)));
-    const promptBudget = config.contextLimit - config.outputReserve - safetyReserve;
+    const promptBudget = config.contextLimit - safetyReserve;
     if (promptBudget < 512) {
       throw new Error(
-        "contextLimit must leave at least 512 prompt tokens after output and safety reserves.",
+        "contextLimit must leave at least 512 prompt tokens after the safety reserve.",
       );
     }
 
     this.contextLimit = config.contextLimit;
-    this.outputReserve = config.outputReserve;
+    this.maxOutputTokens = config.maxOutputTokens;
     this.safetyReserve = safetyReserve;
     this.promptBudget = promptBudget;
     this.triggerTokens = Math.floor(promptBudget * compactAtRatio);
@@ -168,7 +164,7 @@ export class ContextManager {
   fork(): ContextManager {
     const manager = new ContextManager({
       contextLimit: this.contextLimit,
-      outputReserve: this.outputReserve,
+      maxOutputTokens: this.maxOutputTokens,
       compactPolicy: this.compactPolicy,
       checkpoint: this.checkpointData,
       compactAtRatio: this.triggerTokens / this.promptBudget,
@@ -184,7 +180,7 @@ export class ContextManager {
   adopt(manager: ContextManager): void {
     if (
       manager.contextLimit !== this.contextLimit ||
-      manager.outputReserve !== this.outputReserve
+      manager.maxOutputTokens !== this.maxOutputTokens
     ) {
       throw new Error("Cannot adopt context state from a manager with a different budget.");
     }
@@ -221,10 +217,23 @@ export class ContextManager {
       estimatedTokens = estimateContextTokens(prepared);
     }
 
-    if (estimatedTokens > this.promptBudget) {
+    if (estimatedTokens >= this.promptBudget) {
       throw new Error(
-        `Prepared model context is estimated at ${estimatedTokens} tokens, exceeding the ${this.promptBudget}-token prompt budget.`,
+        `Prepared model context is estimated at ${estimatedTokens} tokens, leaving no output capacity within the ${this.promptBudget}-token prompt budget.`,
       );
+    }
+
+    // Treat the configured maximum as a ceiling rather than space that every
+    // prompt must reserve. The safety reserve absorbs estimation drift; the
+    // remaining verified capacity becomes this request's completion limit.
+    const maxOutputTokens = Math.min(this.maxOutputTokens, this.promptBudget - estimatedTokens);
+    prepared.maxOutputTokens = maxOutputTokens;
+    if (maxOutputTokens < this.maxOutputTokens) {
+      this.log("debug", "context.output_limit_adjusted", {
+        configuredMaxOutputTokens: this.maxOutputTokens,
+        effectiveMaxOutputTokens: maxOutputTokens,
+        estimatedPromptTokens: estimatedTokens,
+      });
     }
 
     return {
@@ -323,9 +332,9 @@ export class ContextManager {
       this.usageMeasurement = undefined;
       checkpoint.estimatedAfterTokens = estimateContextTokens(this.createModelContext(context));
 
-      if (checkpoint.estimatedAfterTokens > this.promptBudget) {
+      if (checkpoint.estimatedAfterTokens >= this.promptBudget) {
         throw new Error(
-          `Compacted context is still estimated at ${checkpoint.estimatedAfterTokens} tokens, exceeding the ${this.promptBudget}-token prompt budget.`,
+          `Compacted context is still estimated at ${checkpoint.estimatedAfterTokens} tokens, leaving no output capacity within the ${this.promptBudget}-token prompt budget.`,
         );
       }
 
@@ -439,7 +448,7 @@ export class ContextManager {
     }
   }
 
-  private log(level: "info" | "error", event: string, metadata?: LogMetadata): void {
+  private log(level: "debug" | "info" | "error", event: string, metadata?: LogMetadata): void {
     try {
       this.logger[level](event, {
         ...this.loggerMetadata,
@@ -633,12 +642,6 @@ function isLowSurrogate(value: number): boolean {
 function assertPositiveInteger(value: number, name: string): void {
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`${name} must be a positive integer.`);
-  }
-}
-
-function assertNonNegativeInteger(value: number, name: string): void {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`${name} must be a non-negative integer.`);
   }
 }
 

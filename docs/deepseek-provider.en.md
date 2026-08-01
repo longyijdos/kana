@@ -35,14 +35,14 @@ Provided optional configuration maps to DeepSeek fields:
 | Kana / `DeepSeekModelConfig` | Request field |
 | --- | --- |
 | `temperature` | `temperature` |
-| `maxTokens` | `max_tokens` |
+| `ModelContext.maxOutputTokens ?? maxTokens` | `max_tokens` |
 | `topP` | `top_p` |
 | `thinking` | `thinking.type`, `enabled`/`disabled` |
 | `reasoningEffort` | `reasoning_effort` |
 | `responseFormat` | `response_format` |
 | `userId` | `user_id` |
 
-When `thinking` is explicitly `false`, `reasoning_effort` is omitted because DeepSeek rejects the combination. When context has tools, each tool's JSON Schema passes through as function `parameters` and default `tool_choice` is `auto`; `strictTools` adds `strict: true` to every function. Without context tools, `toolChoice` is sent only when explicitly configured.
+A per-turn `ModelContext.maxOutputTokens` from the Agent takes precedence over configured `maxTokens`; requests without a per-turn value still use the configuration. When `thinking` is explicitly `false`, `reasoning_effort` is omitted because DeepSeek rejects the combination. When context has tools, each tool's JSON Schema passes through as function `parameters` and default `tool_choice` is `auto`; `strictTools` adds `strict: true` to every function. Without context tools, `toolChoice` is sent only when explicitly configured.
 
 ## Authentication, cancellation, timeout, and retries
 

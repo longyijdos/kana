@@ -111,7 +111,7 @@ name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
 reasoning_effort = "high"
-max_tokens = 8192
+max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
 
@@ -119,7 +119,7 @@ max_retries = 1
 name = "gpt-5.6-sol"
 reasoning_effort = "medium"
 reasoning_summary = "auto"
-max_tokens = 32768
+max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
 
@@ -165,7 +165,7 @@ level = "info"
 | `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
 | `thinking` | Boolean | `true` | Explicitly enables DeepSeek thinking in requests. |
 | `reasoning_effort` | `high` or `max` | `high` | DeepSeek reasoning effort; it is not sent when `thinking = false`. |
-| `max_tokens` | Positive integer | `8192` | Per-request output-token limit; it cannot exceed the selected model's hard limit and is reserved from the context prompt budget. |
+| `max_tokens` | Positive integer | `384000` | Allowed per-request output-token ceiling; it cannot exceed the selected model's hard limit. The Agent lowers the value sent for each turn when the current prompt leaves less space. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
 
@@ -182,7 +182,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `name` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses model. |
 | `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` | Requested reasoning effort. |
 | `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
-| `max_tokens` | Positive integer | `32768` | Local output reserve for Kana context budgeting; the Codex backend request does not send `max_output_tokens`. |
+| `max_tokens` | Positive integer | `128000` | Configured ceiling used when Kana calculates a per-turn output limit; the Codex backend rejects `max_output_tokens`, so requests do not send it. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
 
@@ -212,16 +212,17 @@ By default, `smooth_text_streaming` changes only visible-text pacing and never b
 
 ### Context budget
 
-Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata and must be greater than the active provider's `model.<provider>.max_tokens`. The effective prompt budget is:
+Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata, but it need not be greater than the active provider's `model.<provider>.max_tokens`. The effective prompt budget and per-turn output ceiling are:
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
-promptBudget = contextLimit - activeModel.max_tokens - safetyReserve
+promptBudget = contextLimit - safetyReserve
+effectiveMaxTokens = min(activeModel.max_tokens, promptBudget - estimatedPromptTokens)
 ```
 
-At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Subtracting the active model's `max_tokens` reserves context space for output.
+At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Configured `max_tokens` is a ceiling rather than a fixed reserve; as the prompt grows beyond the space available for that ceiling, the Agent lowers the current `ModelContext.maxOutputTokens`. DeepSeek sends it as `max_tokens`, while a provider without a corresponding request field may ignore it.
 
-Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Agent construction also emits `agent.parallel_tool_calls_configured` at `debug` with only `requested`, `supported`, and the final `enabled` value. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
+Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Agent construction emits `agent.parallel_tool_calls_configured` with only `requested`, `supported`, and the final `enabled`; `context.output_limit_adjusted` contains only the configured ceiling, effective per-turn ceiling, and estimated prompt tokens. Both are `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
 
 The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
 

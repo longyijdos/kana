@@ -26,8 +26,8 @@ export function buildOpenAICodexRequest(
     },
     ...toOpenAICodexInput(context.messages),
   ];
-  // The Codex backend rejects max_output_tokens, so maxTokens remains Kana's
-  // local context-compaction output reserve and is intentionally omitted here.
+  // The Codex backend rejects max_output_tokens, so configured and per-request
+  // output ceilings are intentionally omitted from the wire request.
   const request: Record<string, unknown> = {
     model: config.model,
     store: false,
