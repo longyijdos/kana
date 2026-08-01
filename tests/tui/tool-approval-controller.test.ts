@@ -17,6 +17,51 @@ class LinesComponent implements Component {
 }
 
 describe("tool approval controller", () => {
+  test("temporarily overrides and resets the configured mode", async () => {
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({
+      main: new LinesComponent(["transcript"]),
+      bottom: editor,
+    });
+    const controller = new ToolApprovalController({
+      config: { mode: "unless_trusted" },
+      approvals: {
+        version: 2,
+        bash: { exactCommands: [], readOnlyCommands: [] },
+      },
+      editor,
+      layout,
+      tui: createTuiStub(),
+      onApprovalRequired: () => {},
+    });
+    const trustedRead = {
+      type: "tool_call" as const,
+      id: "call_read",
+      name: "read",
+      args: { path: "README.md" },
+    };
+
+    await expect(controller.request(trustedRead, undefined)).resolves.toEqual({
+      type: "continue",
+    });
+
+    controller.setTemporaryMode("always");
+    const approval = controller.request(trustedRead, undefined);
+
+    expect(controller.mode).toBe("always");
+    expect(controller.activePrompt).toBeDefined();
+    controller.activePrompt?.handleInput?.("\r");
+    await expect(approval).resolves.toEqual({ type: "continue" });
+
+    controller.setTemporaryMode("never");
+    await expect(controller.request(createToolCall(), undefined)).resolves.toEqual({
+      type: "continue",
+    });
+    expect(controller.activePrompt).toBeUndefined();
+    expect(controller.resetTemporaryMode()).toBe("never");
+    expect(controller.mode).toBe("unless_trusted");
+  });
+
   test("replaces the editor while approval is active and restores it after a decision", async () => {
     const editor = new LinesComponent(["editor"]) as unknown as Editor;
     const layout = new AppLayout({

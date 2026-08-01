@@ -21,6 +21,7 @@ import type {
   KanaOAuthTokenStatus,
   KanaSessionMetadata,
   KanaToolApprovalConfig,
+  KanaToolApprovalMode,
   KanaToolApprovals,
   KanaTuiConfig,
   KanaUsageScope,
@@ -81,7 +82,10 @@ import { NotificationController } from "./notification-controller";
 import { SessionLifecycleController } from "./session-lifecycle-controller";
 import { SkillManagerController } from "./skill-manager-controller";
 import { type SlashCommand, SlashCommandController } from "./slash-command-controller";
-import { SlashCommandOptionsController } from "./slash-command-options-controller";
+import {
+  formatToolApprovalMode,
+  SlashCommandOptionsController,
+} from "./slash-command-options-controller";
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
 
@@ -290,6 +294,11 @@ export class KanaTuiApp {
         this.restoreBottom(true);
         void this.memoryCompact.compact(scope, request);
       },
+      getApprovalMode: () => this.toolApproval.mode,
+      onApprovalModeSelect: (mode) => {
+        this.restoreBottom(true);
+        this.setToolApprovalMode(mode);
+      },
       getModelSettings: this.options.modelManagement?.getSettings,
       onModelSelect: (selection) => {
         this.restoreBottom(true);
@@ -401,6 +410,7 @@ export class KanaTuiApp {
         this.editor.clear();
         this.openMcpServerManager();
       },
+      openApproval: () => this.slashCommandOptions.openApproval(),
       openModel: () => this.slashCommandOptions.openModel(),
       openMemory: () => this.openMemory(),
       compactContext: () => {
@@ -834,6 +844,12 @@ export class KanaTuiApp {
         break;
 
       case "session_changed":
+        if (this.toolApproval.resetTemporaryMode() !== undefined) {
+          this.getLogger().info("tui.tool_approval_mode_reset", {
+            action: event.action,
+            mode: this.toolApproval.mode,
+          });
+        }
         break;
     }
   }
@@ -843,6 +859,28 @@ export class KanaTuiApp {
     this.editor.updateStatus({
       running: false,
       activeTool: undefined,
+    });
+    this.tui.requestRender();
+  }
+
+  private setToolApprovalMode(mode: KanaToolApprovalMode): void {
+    const previousMode = this.toolApproval.mode;
+    this.toolApproval.setTemporaryMode(mode);
+    const currentMode = this.toolApproval.mode;
+
+    this.transcript.addChild(
+      new TextBlock(
+        `Tool approval mode for this session: ${formatToolApprovalMode(currentMode)}.`,
+        {
+          color: tuiTheme.muted,
+        },
+      ),
+    );
+    this.updateStatus("idle", { activeTool: undefined });
+    this.getLogger().info("tui.tool_approval_mode_changed", {
+      previousMode,
+      mode: currentMode,
+      scope: "session",
     });
     this.tui.requestRender();
   }

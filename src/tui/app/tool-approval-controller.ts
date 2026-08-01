@@ -4,6 +4,7 @@ import {
   addTrustedBashCommand,
   getBashCommand,
   type KanaToolApprovalConfig,
+  type KanaToolApprovalMode,
   type KanaToolApprovals,
   shouldRequestToolApproval,
 } from "@/kana";
@@ -24,6 +25,9 @@ export type ToolApprovalControllerOptions = {
 
 export class ToolApprovalController {
   private approvals: KanaToolApprovals;
+  // Keep the session override separate from configured policy and persistent
+  // command trust; the app clears it at every session lifecycle boundary.
+  private temporaryMode?: KanaToolApprovalMode;
 
   constructor(private readonly options: ToolApprovalControllerOptions) {
     this.approvals = options.approvals;
@@ -33,13 +37,27 @@ export class ToolApprovalController {
     return this.activeApproval;
   }
 
+  get mode(): KanaToolApprovalMode {
+    return this.temporaryMode ?? this.options.config.mode;
+  }
+
+  setTemporaryMode(mode: KanaToolApprovalMode): void {
+    this.temporaryMode = mode === this.options.config.mode ? undefined : mode;
+  }
+
+  resetTemporaryMode(): KanaToolApprovalMode | undefined {
+    const previousMode = this.temporaryMode;
+    this.temporaryMode = undefined;
+    return previousMode;
+  }
+
   private activeApproval?: ToolApproval;
 
   request(
     toolCall: ToolCallContent,
     signal: AbortSignal | undefined,
   ): Promise<BeforeToolExecutionResult> {
-    if (!shouldRequestToolApproval(this.options.config, this.approvals, toolCall)) {
+    if (!shouldRequestToolApproval({ mode: this.mode }, this.approvals, toolCall)) {
       return Promise.resolve({ type: "continue" });
     }
 

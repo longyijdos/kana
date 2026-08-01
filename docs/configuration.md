@@ -348,6 +348,8 @@ DEEPSEEK_API_KEY=sk-...
 | `unless_trusted` | `read`、`list`、`glob`、`grep`、精确受信 bash 命令和受信简单只读 bash 命令跳过审批；其余调用请求审批。 |
 | `never` | 所有调用都跳过审批，包括写入和 Shell。 |
 
+TUI 的 `/approval` 可以临时覆盖当前所选 session 的模式；选择 `Never ask` 需要二次确认。该覆盖不会写入 `config.toml`、session journal 或 `approvals.json`，并在 new、fork、resume 或进程退出时恢复这里配置的模式。
+
 ## 全局 Skills 配置：`skills/skills.toml`
 
 ```toml

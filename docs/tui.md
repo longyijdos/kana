@@ -81,12 +81,13 @@ ProcessTerminal
 | `/delete` | 选择并确认删除会话。 |
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
 | `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
+| `/approval` | 临时更改当前 session 的工具审批模式；选择 `Never ask` 需要二次确认。 |
 | `/model` | 依次选择供应商、模型和推理强度，保存配置并热切换当前 Agent。 |
 | `/memory` | 在底部选择操作和 scope；具体语义见[会话与记忆](sessions-and-memory.md)。 |
 | `/usage` | 在底部选择统计范围，再打开对应的 API 用量。 |
 | `/quit` | 无参数时退出；带参数时作为普通 prompt。 |
 
-Clean 模式中 `/skills`、`/mcp` 和 `/memory` 保留为可发现命令，但执行时会显示明确的不可用错误；它们不能在当前进程中重新启用自定义内容。`/model`、session 命令、`/compact`、`/usage` 和本地 Shell 仍按普通模式工作。
+Clean 模式中 `/skills`、`/mcp` 和 `/memory` 保留为可发现命令，但执行时会显示明确的不可用错误；它们不能在当前进程中重新启用自定义内容。`/approval`、`/model`、session 命令、`/compact`、`/usage` 和本地 Shell 仍按普通模式工作。
 
 ## 控制器与焦点
 
@@ -94,11 +95,11 @@ Clean 模式中 `/skills`、`/mcp` 和 `/memory` 保留为可发现命令，但�
 
 - `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有进度块、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
-- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
+- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前读取当前有效审批模式。`/approval` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
 - `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和外部工具激活；其内部的 `SessionOverlayController` 用恢复列表或删除确认替换编辑器。
 - `SkillManagerController` 用 global Skill 列表替换编辑器。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次，并用原消息历史重建一次 Agent，未变化则直接关闭。持久化失败时视图保持打开。
 - `McpServerManagerController` 用已配置 MCP server 的 checkbox 替换 editor。`Enter` 只修改本地草稿；选中 OAuth HTTP server 时，`A` 打开认证子菜单，可授权、重新授权或退出登录，进行中的浏览器授权可用 `Esc` 中止。授权 URL、成功、失败或取消状态写入 transcript；退出登录会禁用该 server。返回列表后，主 `Esc` 才应用草稿；选择或已启用 server 的凭据发生变化时只触发一次完整 runtime reload。持久化失败时视图保持打开。组件显示 server ID、transport、OAuth 状态，以及 stdio 的完整命令行（`command` 加 `args`）或 HTTP URL，但不会接收环境变量、HTTP headers 或 token。
-- `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request；`/model` 依次选择 provider、model 和 reasoning effort，其中 DeepSeek 提供 Off/High/Max，OpenAI Codex 提供 Low 到 Max。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
+- `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request；`/approval` 可选择 Always ask、Ask unless trusted 或 Never ask，最后一项使用与删除会话相同的默认否定二次确认；`/model` 依次选择 provider、model 和 reasoning effort，其中 DeepSeek 提供 Off/High/Max，OpenAI Codex 提供 Low 到 Max。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
 - `/model` 只在空闲时完成切换。Kana 保留当前消息和 context checkpoint，先用新配置构造候选 Agent 和记忆压缩 scheduler，再原子保存实际变化的配置字段；全部成功后才替换当前 Agent，并同步状态栏中的模型和推理强度。构造或持久化失败会保留旧 Agent 和旧配置并在 transcript 显示错误。选择会成为后续新建、分叉、恢复会话和压缩任务的活动配置；同一 session 的后续回合可以使用不同 provider，逐次 accounting 仍记录实际模型。
 - `/compact` 不接受参数；它只在空闲时强制压缩当前对话上下文，不发送用户消息。
 - `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具输出；transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。

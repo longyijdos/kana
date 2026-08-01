@@ -735,7 +735,7 @@ describe("prompt input layout", () => {
 describe("prompt commands", () => {
   test("creates prompt placeholders from help command entries", () => {
     expect(createRandomPromptPlaceholder(() => 0)).toBe("Try /quit — Exit Kana.");
-    expect(createRandomPromptPlaceholder(() => 0.8)).toBe(
+    expect(createRandomPromptPlaceholder(() => 0.85)).toBe(
       "Try /usage — Show session, project, or global API usage.",
     );
     expect(createRandomPromptPlaceholder(() => 0.999)).toBe(
@@ -779,6 +779,9 @@ describe("prompt commands", () => {
         },
         {
           name: "mcp",
+        },
+        {
+          name: "approval",
         },
         {
           name: "model",

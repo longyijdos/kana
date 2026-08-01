@@ -348,6 +348,8 @@ Approval modes behave as follows:
 | `unless_trusted` | Skips approval for `read`, `list`, `glob`, `grep`, exact trusted bash commands, and trusted simple read-only bash commands; asks for everything else. |
 | `never` | Skips approval for all calls, including writes and shell commands. |
 
+The TUI's `/approval` command can temporarily override the mode for the currently selected session; selecting `Never ask` requires confirmation. The override does not write `config.toml`, the session journal, or `approvals.json`, and new, fork, resume, or process exit restores the configured mode above.
+
 ## Global Skills configuration: `skills/skills.toml`
 
 ```toml

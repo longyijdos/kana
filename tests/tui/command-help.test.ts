@@ -12,11 +12,13 @@ describe("prompt command help", () => {
     const fork = PROMPT_COMMANDS.find((command) => command.name === "fork");
     const memory = PROMPT_COMMANDS.find((command) => command.name === "memory");
     const mcp = PROMPT_COMMANDS.find((command) => command.name === "mcp");
+    const approval = PROMPT_COMMANDS.find((command) => command.name === "approval");
     const compact = PROMPT_COMMANDS.find((command) => command.name === "compact");
 
     expect(fork).toBeDefined();
     expect(memory).toBeDefined();
     expect(mcp).toBeDefined();
+    expect(approval).toBeDefined();
     expect(compact).toBeDefined();
     expect(formatPromptCommandHelpLine(fork!)).toContain("/fork <prompt>");
     expect(formatPromptCommandUsage("fork")).toBe("Usage: /fork <prompt>");
@@ -24,6 +26,8 @@ describe("prompt command help", () => {
     expect(formatPromptCommandUsage("memory")).toBe("Usage: /memory");
     expect(formatPromptCommandHelpLine(mcp!)).toContain("/mcp");
     expect(formatPromptCommandUsage("mcp")).toBe("Usage: /mcp");
+    expect(formatPromptCommandHelpLine(approval!)).toContain("/approval");
+    expect(formatPromptCommandUsage("approval")).toBe("Usage: /approval");
     expect(formatPromptCommandHelpLine(compact!)).toContain("/compact");
     expect(formatPromptCommandUsage("compact")).toBe("Usage: /compact");
   });

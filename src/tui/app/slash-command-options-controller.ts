@@ -1,6 +1,12 @@
-import type { KanaModelManagement, KanaModelProvider, KanaUsageScope } from "@/kana";
+import type {
+  KanaModelManagement,
+  KanaModelProvider,
+  KanaToolApprovalMode,
+  KanaUsageScope,
+} from "@/kana";
 import { ChoicePrompt, type Editor, TextPrompt } from "../components";
 import type { Component, Tui } from "../runtime";
+import { tuiTheme } from "../theme";
 import type { AppLayout } from "./app-layout";
 import type { MemoryScope } from "./memory-compact-controller";
 import type { TuiModelSelection, TuiModelSettings } from "./model-selection";
@@ -17,6 +23,8 @@ export type SlashCommandOptionsControllerOptions = {
   onUsageScope: (scope: KanaUsageScope) => void;
   onMemoryShow: (scope: MemoryScope) => void;
   onMemoryCompact: (scope: MemoryScope, request: string | undefined) => void;
+  getApprovalMode: () => KanaToolApprovalMode;
+  onApprovalModeSelect: (mode: KanaToolApprovalMode) => void;
   getModelSettings?: () => TuiModelSettings;
   onModelSelect?: (selection: TuiModelSelection) => void;
   restoreBottom: (focus: boolean) => void;
@@ -54,6 +62,12 @@ export class SlashCommandOptionsController {
     this.close();
     this.options.editor.clear();
     this.showMemoryAction();
+  }
+
+  openApproval(): void {
+    this.close();
+    this.options.editor.clear();
+    this.showApprovalMode();
   }
 
   openModel(): boolean {
@@ -96,6 +110,53 @@ export class SlashCommandOptionsController {
       defaultValue,
       onSelect: (action) => this.replace(prompt, () => this.showMemoryScope(action)),
       onCancel: () => this.close(),
+    });
+
+    this.show(prompt);
+  }
+
+  private showApprovalMode(): void {
+    const prompt = new ChoicePrompt<KanaToolApprovalMode>({
+      title: "Tool approval mode",
+      options: [
+        { value: "always", label: formatToolApprovalMode("always") },
+        { value: "unless_trusted", label: formatToolApprovalMode("unless_trusted") },
+        { value: "never", label: formatToolApprovalMode("never") },
+      ],
+      defaultValue: this.options.getApprovalMode(),
+      onSelect: (mode) => {
+        if (mode === "never") {
+          this.replace(prompt, () => this.showNeverAskConfirmation());
+          return;
+        }
+
+        this.finish(prompt, () => this.options.onApprovalModeSelect(mode));
+      },
+      onCancel: () => this.close(),
+    });
+
+    this.show(prompt);
+  }
+
+  private showNeverAskConfirmation(): void {
+    const prompt = new ChoicePrompt<"yes" | "no">({
+      title: "Disable tool approvals?",
+      detail: "All Agent tool calls will run without approval for the current session.",
+      options: [
+        { value: "no", label: "No, keep current mode" },
+        { value: "yes", label: "Yes, never ask" },
+      ],
+      defaultValue: "no",
+      titleColor: tuiTheme.error,
+      onSelect: (decision) => {
+        if (decision === "yes") {
+          this.finish(prompt, () => this.options.onApprovalModeSelect("never"));
+          return;
+        }
+
+        this.replace(prompt, () => this.showApprovalMode());
+      },
+      onCancel: () => this.replace(prompt, () => this.showApprovalMode()),
     });
 
     this.show(prompt);
@@ -261,4 +322,15 @@ function formatScope(scope: MemoryScope): string {
 
 function formatEffort(effort: string): string {
   return effort === "xhigh" ? "XHigh" : `${effort[0]?.toUpperCase()}${effort.slice(1)}`;
+}
+
+export function formatToolApprovalMode(mode: KanaToolApprovalMode): string {
+  switch (mode) {
+    case "always":
+      return "Always ask";
+    case "unless_trusted":
+      return "Ask unless trusted";
+    case "never":
+      return "Never ask";
+  }
 }

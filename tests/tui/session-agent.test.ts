@@ -6,6 +6,24 @@ import { stripAnsi } from "../../src/tui/render";
 import type { Terminal } from "../../src/tui/runtime";
 
 describe("session-scoped agents", () => {
+  test("resets a temporary tool approval mode when the session changes", () => {
+    const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), createOptions());
+    const internal = app as unknown as {
+      handleCommand(command: { name: "new"; arguments: string; raw: string }): void;
+      toolApproval: {
+        mode: string;
+        setTemporaryMode(mode: "never"): void;
+      };
+    };
+
+    internal.toolApproval.setTemporaryMode("never");
+    expect(internal.toolApproval.mode).toBe("never");
+
+    internal.handleCommand({ name: "new", arguments: "", raw: "/new" });
+
+    expect(internal.toolApproval.mode).toBe("unless_trusted");
+  });
+
   test("cancels the active Agent before running host shutdown once", async () => {
     const events: string[] = [];
     let releaseIdle!: () => void;
@@ -505,7 +523,13 @@ function createOptions() {
     deleteSession: () => false,
     loadSkills: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
     saveEnabledGlobalSkills: () => {},
-    toolApproval: { config: {}, approvals: {} } as never,
+    toolApproval: {
+      config: { mode: "unless_trusted" as const },
+      approvals: {
+        version: 2 as const,
+        bash: { exactCommands: [], readOnlyCommands: [] },
+      },
+    },
     notification: {} as never,
     compactMemory: async () => [],
     loadMemory: () => "",

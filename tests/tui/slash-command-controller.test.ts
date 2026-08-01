@@ -13,6 +13,7 @@ describe("slash command controller", () => {
     harness.handle("fork", "Continue here");
     harness.handle("resume", "session-a");
     harness.handle("resume");
+    harness.handle("approval");
     harness.handle("model");
     harness.handle("compact");
 
@@ -21,6 +22,7 @@ describe("slash command controller", () => {
       "fork:Continue here",
       "resume:session-a",
       "resume-picker",
+      "approval",
       "model",
       "compact",
     ]);
@@ -31,11 +33,13 @@ describe("slash command controller", () => {
 
     harness.handle("help", "extra");
     harness.handle("fork");
+    harness.handle("approval", "never");
     harness.handle("usage", "global");
 
     expect(harness.events).toEqual([
       "error:Usage: /help",
       "error:Usage: /fork <prompt>",
+      "error:Usage: /approval",
       "error:Usage: /usage",
     ]);
   });
@@ -68,6 +72,7 @@ function createHarness(running = false) {
     openDeletePicker: () => events.push("delete-picker"),
     openSkillManager: () => events.push("skills"),
     openMcpServerManager: () => events.push("mcp"),
+    openApproval: () => events.push("approval"),
     openModel: () => {
       events.push("model");
       return true;
