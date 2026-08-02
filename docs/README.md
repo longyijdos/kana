@@ -14,7 +14,8 @@
 6. [DeepSeek 提供商适配](deepseek-provider.md)：请求转换、SSE、重试和用量。
 7. [OpenAI Codex 提供商适配](openai-codex-provider.md)：OAuth、Responses Lite、SSE 和 provider state。
 8. [无头执行与 JSONL 协议](headless.md)：`kana exec`、审批、输出与退出语义。
-9. [TUI 交互与渲染](tui.md)：终端 I/O、控制器、输入与差量重绘。
+9. [Terminal-Bench 本地评测](terminal-bench.md)：Harbor adapter、运行参数、代理与结果。
+10. [TUI 交互与渲染](tui.md)：终端 I/O、控制器、输入与差量重绘。
 
 对应英文版本：
 
@@ -26,4 +27,5 @@
 - [DeepSeek provider adapter](deepseek-provider.en.md)
 - [OpenAI Codex provider adapter](openai-codex-provider.en.md)
 - [Headless execution and the JSONL protocol](headless.en.md)
+- [Local Terminal-Bench evaluation](terminal-bench.en.md)
 - [TUI interaction and rendering](tui.en.md)

@@ -24,6 +24,16 @@ class KanaAgent(BaseInstalledAgent):
     _REMOTE_HOME = PurePosixPath("/tmp/kana-home")
     _REMOTE_INSTRUCTION = PurePosixPath("/tmp/kana-instruction.txt")
     _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+    _PROXY_ENV_NAMES = (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+    )
 
     def __init__(self, *args, binary_path: str | None = None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -166,6 +176,13 @@ class KanaAgent(BaseInstalledAgent):
             raise ValueError(f"Invalid DeepSeek model name: {model!r}.")
         return model
 
+    def _resolve_proxy_env(self) -> dict[str, str]:
+        proxy_env: dict[str, str] = {}
+        for name in self._PROXY_ENV_NAMES:
+            if value := self._get_env(name):
+                proxy_env[name] = value
+        return proxy_env
+
     async def _upload_instruction(
         self, instruction: str, environment: BaseEnvironment
     ) -> None:
@@ -224,7 +241,9 @@ class KanaAgent(BaseInstalledAgent):
         agent_dir = EnvironmentPaths.agent_dir.as_posix()
         output_path = (EnvironmentPaths.agent_dir / self._OUTPUT_FILENAME).as_posix()
         stderr_path = (EnvironmentPaths.agent_dir / self._STDERR_FILENAME).as_posix()
+        proxy_env = self._resolve_proxy_env()
         env = {
+            **proxy_env,
             "DEEPSEEK_API_KEY": api_key,
             "KANA_HOME": self._REMOTE_HOME.as_posix(),
         }
@@ -236,6 +255,7 @@ class KanaAgent(BaseInstalledAgent):
                 "operation": "run",
                 "outcome": "started",
                 "model": self.model_name,
+                "proxy_env_count": len(proxy_env),
             },
         )
         try:

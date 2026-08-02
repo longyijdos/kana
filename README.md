@@ -212,6 +212,7 @@ Kana 默认把配置、OAuth 凭据、会话、日志、记忆和 Skills 保存�
 - [DeepSeek 提供商](docs/deepseek-provider.md)
 - [OpenAI Codex 提供商](docs/openai-codex-provider.md)
 - [无头执行与 JSONL 协议](docs/headless.md)
+- [Terminal-Bench 本地评测](docs/terminal-bench.md)
 - [TUI 交互与渲染](docs/tui.md)
 
 ## 开发

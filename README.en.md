@@ -212,6 +212,7 @@ See [Configuration and installation](docs/configuration.en.md) for the complete 
 - [DeepSeek provider](docs/deepseek-provider.en.md)
 - [OpenAI Codex provider](docs/openai-codex-provider.en.md)
 - [Headless execution and the JSONL protocol](docs/headless.en.md)
+- [Local Terminal-Bench evaluation](docs/terminal-bench.en.md)
 - [TUI interaction and rendering](docs/tui.en.md)
 
 ## Development
