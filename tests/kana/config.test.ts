@@ -93,7 +93,7 @@ describe("Kana config", () => {
     expect(fileExists(firstInstall.configPath)).toBe(false);
     expect(installedConfigExample).toContain("[model.deepseek]");
     expect(installedConfigExample).toContain("[model.openai-codex]");
-    expect(installedConfigExample).toContain("tool_deadline_ms = 300000");
+    expect(installedConfigExample).toContain("tool_deadline_ms = 660000");
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("smooth_text_streaming = true");
     expect(installedConfigExample).toContain("Kana does not read this file.");

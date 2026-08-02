@@ -180,7 +180,9 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   },
   agent: {
     maxTurns: -1,
-    toolDeadlineMs: 300_000,
+    // Keep the outer tool deadline above bash's ten-minute command ceiling so
+    // bash can terminate the process tree and report its own timeout result.
+    toolDeadlineMs: 11 * 60 * 1000,
     parallelToolCalls: true,
     contextLimit: undefined,
   },

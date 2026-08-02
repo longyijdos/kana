@@ -125,7 +125,7 @@ max_retries = 1
 
 [agent]
 max_turns = -1
-tool_deadline_ms = 300000
+tool_deadline_ms = 660000
 parallel_tool_calls = true
 # context_limit = 200000
 
@@ -193,7 +193,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | 表与键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
-| `agent.tool_deadline_ms` | 正整数 | `300000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
+| `agent.tool_deadline_ms` | 正整数 | `660000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
 | `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
 | `agent.context_limit` | 可选正整数 | 模型 metadata 的 context window | Agent 实际使用的上下文上限；不能超过所选模型的硬上限，省略时使用 metadata。 |
 | `approval.mode` | `always`、`unless_trusted`、`never` | `unless_trusted` | 工具调用是否进入 TUI 审批。 |

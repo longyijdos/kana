@@ -125,7 +125,7 @@ max_retries = 1
 
 [agent]
 max_turns = -1
-tool_deadline_ms = 300000
+tool_deadline_ms = 660000
 parallel_tool_calls = true
 # context_limit = 200000
 
@@ -193,7 +193,7 @@ Before first use, run `kana auth login openai-codex`. Browser authorization stor
 | Table and key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
-| `agent.tool_deadline_ms` | Positive integer | `300000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
+| `agent.tool_deadline_ms` | Positive integer | `660000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
 | `agent.parallel_tool_calls` | Boolean | `true` | Whether the model may propose and actually execute safe tool calls concurrently; always disabled when selected-model metadata does not support it. |
 | `agent.context_limit` | Optional positive integer | model metadata context window | Context limit the Agent actually uses; it cannot exceed the selected model's hard limit, and omission uses metadata. |
 | `approval.mode` | `always`, `unless_trusted`, `never` | `unless_trusted` | Whether tool calls enter the TUI approval flow. |

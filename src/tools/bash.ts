@@ -4,7 +4,9 @@ import type { Tool } from "./tool";
 import { resolveWorkspaceDirectory } from "./workspace-path";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_TIMEOUT_MS = 120_000;
+// Builds and benchmark workloads can legitimately run for several minutes, while
+// retaining a ceiling prevents a single model-issued command from running forever.
+const MAX_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;
 // A background child can inherit stdout/stderr after its shell exits. Give a

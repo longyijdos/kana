@@ -103,7 +103,7 @@ journal 的顺序是协议约束：完整 assistant 消息必须先持久化，�
 
 参数校验失败和工具抛出的异常不会使循环本身抛出：它们成为 `isError: true` 的工具结果，模型能在下一回合看到失败原因。审批钩子返回 `cancel` 时默认中止整个运行，并为之后尚未执行的同消息工具补充“已取消”错误结果。中止发生在执行前也遵循同样的补全规则。
 
-运行中止或工具 deadline 到期时，ToolRuntime 会中止调用级 signal，并等待固定且有限的取消宽限期。工具在宽限期内退出时，结果分别记录为 `canceled` 或 `timed_out`；无论工具随后返回还是抛错，都不会覆盖这个中止结果。若工具忽略 signal，runtime 会停止接收其 update，将持久化结果标记为 `status: "unknown"`，并终止当前 Agent run。该结果明确要求不得自动重试，因为脱离 runtime 的调用仍可能产生副作用；其迟到的完成只产生不含参数和结果的结构化诊断日志。deadline 与宽限期都使用正整数毫秒。工具的 `execution.deadlineMs` 优先；未声明时使用 Agent 默认值，框架与 Kana 产品默认都是 300000 毫秒，Kana 可通过 `agent.tool_deadline_ms` 覆盖。
+运行中止或工具 deadline 到期时，ToolRuntime 会中止调用级 signal，并等待固定且有限的取消宽限期。工具在宽限期内退出时，结果分别记录为 `canceled` 或 `timed_out`；无论工具随后返回还是抛错，都不会覆盖这个中止结果。若工具忽略 signal，runtime 会停止接收其 update，将持久化结果标记为 `status: "unknown"`，并终止当前 Agent run。该结果明确要求不得自动重试，因为脱离 runtime 的调用仍可能产生副作用；其迟到的完成只产生不含参数和结果的结构化诊断日志。deadline 与宽限期都使用正整数毫秒。工具的 `execution.deadlineMs` 优先；未声明时使用 Agent 默认值。框架默认是 300000 毫秒，Kana 产品默认是 660000 毫秒，并可通过 `agent.tool_deadline_ms` 覆盖。
 
 并行组的工具事件仍通过同一串行事件队列发布。每个结果在实际完成时进入串行 commit 队列，先单独写入 journal，再发出对应的 `tool_execution_end`；下一轮模型按这一完成顺序接收工具结果，并用 `toolCallId` 与原始调用关联。组内任一调用要求中止 run 时，其余活动调用也会收到中止 signal；后续尚未开始的执行组只写入 canceled 结果。`list`、`glob`、`grep`、`read` 声明为 `parallel`；写入、Shell、记忆、调度以及未声明的第三方/MCP 工具默认 `exclusive`。
 
@@ -149,7 +149,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 | `read` | `path`，可选 `offset`（从 1 开始）、`limit`（1–2000，默认 200） | 读取 UTF-8 文本，返回行区间、总行数和 `truncated`。 |
 | `write` | `path`、完整 `content`、可选 `overwrite` | 递归创建父目录，并默认以排他创建方式写入新文件；`overwrite: true` 会替换既有文件。返回 UTF-8 字节数。 |
 | `edit` | `path`、非空 `oldText`、`newText`、可选 `replaceAll` | 对既有 UTF-8 文件做精确替换。默认要求恰好一次匹配；返回替换数、写入字节数及前后文本。 |
-| `bash` | `command`，可选 `cwd`、`timeoutMs`（1–120000，默认 30000） | 用用户 shell 的 login command 模式执行，返回退出码、stdout、stderr、超时和截断状态。 |
+| `bash` | `command`，可选 `cwd`、`timeoutMs`（1–600000，默认 30000） | 用用户 shell 的 login command 模式执行，返回退出码、stdout、stderr、超时和截断状态。 |
 | `remember` | `content`，可选 `scope`、`title`、`reason` | 向每日记忆记录持久信息，返回宿主生成的记忆条目。仅在记忆启用时注册。 |
 | `schedule_wake` | `afterMinutes`（1–1440）、`message`，可选 `key` | 在当前 Kana 进程中安排一次后续 Agent 输入。相同 session 和 key 的新事件会替换旧事件；Kana 退出后事件丢失。 |
 
