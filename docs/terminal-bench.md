@@ -62,11 +62,15 @@ harbor run \
   -l 1 \
   -n 1 \
   -k 1 \
+  --agent-timeout-multiplier 3 \
+  --verifier-timeout-multiplier 10 \
   --job-name kana-tb21-smoke \
   --jobs-dir ~/evals/kana/jobs
 ```
 
 `-l` 限制 task 数，`-n` 控制并发 trial 数，`-k` 控制每个 task 的独立尝试次数。删除 `-l 1` 即可运行整个数据集；增加 `-n` 前应确认宿主机有足够的 CPU 和内存。
+
+`--agent-timeout-multiplier` 和 `--verifier-timeout-multiplier` 分别只作用于 Agent 和 Verifier。以 Harbor 0.6.1 的默认 900 秒为基准，`--agent-timeout-multiplier 3` 给 Agent 约 45 分钟；Verifier 的 timeout multiplier 不会延长 Agent 的运行时间。
 
 ## 传入代理
 
@@ -87,6 +91,8 @@ harbor run \
   -l 1 \
   -n 1 \
   -k 1 \
+  --agent-timeout-multiplier 3 \
+  --verifier-timeout-multiplier 10 \
   --ae HTTP_PROXY="$EVAL_PROXY" \
   --ae HTTPS_PROXY="$EVAL_PROXY" \
   --ae http_proxy="$EVAL_PROXY" \

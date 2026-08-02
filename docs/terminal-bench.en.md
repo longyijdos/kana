@@ -62,11 +62,15 @@ harbor run \
   -l 1 \
   -n 1 \
   -k 1 \
+  --agent-timeout-multiplier 3 \
+  --verifier-timeout-multiplier 10 \
   --job-name kana-tb21-smoke \
   --jobs-dir ~/evals/kana/jobs
 ```
 
 `-l` limits the number of tasks, `-n` controls concurrent trials, and `-k` controls independent attempts per task. Remove `-l 1` to run the full dataset. Confirm that the host has sufficient CPU and memory before increasing `-n`.
+
+`--agent-timeout-multiplier` and `--verifier-timeout-multiplier` apply only to the Agent and Verifier respectively. With Harbor 0.6.1's default of 900 seconds, `--agent-timeout-multiplier 3` gives the Agent about 45 minutes; the verifier multiplier does not extend Agent execution.
 
 ## Passing a proxy
 
@@ -87,6 +91,8 @@ harbor run \
   -l 1 \
   -n 1 \
   -k 1 \
+  --agent-timeout-multiplier 3 \
+  --verifier-timeout-multiplier 10 \
   --ae HTTP_PROXY="$EVAL_PROXY" \
   --ae HTTPS_PROXY="$EVAL_PROXY" \
   --ae http_proxy="$EVAL_PROXY" \
