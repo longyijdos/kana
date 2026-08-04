@@ -367,6 +367,7 @@ export class KanaTuiApp {
       activateSession: () => {
         void this.activateCurrentSession();
       },
+      savedSessionsAvailable: !cleanMode,
     });
     this.slashCommands = new SlashCommandController({
       isRunning: () => this.running,
@@ -393,13 +394,27 @@ export class KanaTuiApp {
         this.editor.clear();
         void this.forkSession(prompt);
       },
-      resumeSession: (sessionId) => this.sessions.resume(sessionId),
+      resumeSession: (sessionId) => {
+        if (cleanMode) {
+          this.showSavedSessionsUnavailable();
+          return;
+        }
+        this.sessions.resume(sessionId);
+      },
       openResumePicker: () => {
         this.editor.clear();
+        if (cleanMode) {
+          this.showSavedSessionsUnavailable();
+          return;
+        }
         this.sessions.openResume();
       },
       openDeletePicker: () => {
         this.editor.clear();
+        if (cleanMode) {
+          this.showSavedSessionsUnavailable();
+          return;
+        }
         this.sessions.openDelete();
       },
       openSkillManager: () => {
@@ -443,7 +458,7 @@ export class KanaTuiApp {
     }
     if (this.options.launchMode === "clean") {
       this.transcript.addChild(
-        new TextBlock("Clean mode · custom instructions, memory, Skills, and MCP are disabled.", {
+        new TextBlock("Clean mode · temporary session; customizations and saving are disabled.", {
           color: tuiTheme.muted,
         }),
       );
@@ -717,6 +732,10 @@ export class KanaTuiApp {
   }
 
   private showUsage(scope: KanaUsageScope): void {
+    if (this.options.launchMode === "clean" && scope === "session") {
+      this.showError(new Error("Session usage is unavailable in clean mode."));
+      return;
+    }
     const summary = this.options.loadUsage(scope);
     const usage = new UsageSummaryBlock(summary);
     this.editor.clear();
@@ -798,6 +817,10 @@ export class KanaTuiApp {
     }
 
     this.slashCommandOptions.openMemory();
+  }
+
+  private showSavedSessionsUnavailable(): void {
+    this.showError(new Error("Saved sessions are unavailable in clean mode."));
   }
 
   private handleConversationEvent(event: ConversationRuntimeEvent): void {

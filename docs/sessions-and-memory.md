@@ -23,6 +23,8 @@ cwd: /Users/alice/project
 
 每行是一个分级 JSON 记录，包含时间、级别、稳定事件名、session ID 和安全的元数据。session 是日志文件边界：恢复同一 session 会追加原文件，`/new`、`/fork` 或恢复另一 session 会写入新文件。日志不是会话历史，不保存 prompt、助手文本、完整工具参数或输出；其配置和级别见[配置与安装](configuration.md)。
 
+Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使用 no-op logger，不创建上述日志文件。
+
 ## 会话
 
 会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V3 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。
@@ -34,6 +36,8 @@ cwd: /Users/alice/project
 ```
 
 创建会话只在内存中生成 UUID、创建时间、工作目录、可选模型元数据和可选父会话路径。文件在第一次有消息需要追加时才创建；空会话不会出现在 `/resume` 列表中。
+
+Clean 模式不向 session repository 注册 journal：消息和 context checkpoint 只保留在当前 `ConversationRuntime` 中，new/fork 仍可在进程内切换临时会话，但这些会话不能恢复、列出或删除，退出后全部丢弃。
 
 ### JSONL 格式
 
@@ -80,7 +84,7 @@ cwd: /Users/alice/project
 
 长期 `memory.md` 是会被注入系统提示词的压缩 Markdown；不存在时视为空。`saveKanaMemory` 会去除首尾空白、按 Unicode code point 检查 `memory.max_chars`，写入 UUID 临时文件后原子 `rename`，最终保证文件以一个换行结尾。
 
-以 `--clean` 启动时，宿主不会读取全局或项目记忆，不提供 `remember`，也不会启动自动合并或允许通过 `/memory` 手动查看和合并。已有记忆文件不会被修改；恢复 session 仍会加载并继续保存会话消息。
+以 `--clean` 启动时，宿主不会读取全局或项目记忆，不提供 `remember`，也不会启动自动合并或允许通过 `/memory` 手动查看和合并。已有记忆文件不会被修改；Clean 模式也不允许恢复 session，当前临时会话的消息不会写入 session journal。
 
 `remember` 不直接改写长期记忆。它默认 project scope，将非空内容（可选标题和原因）追加到当天的 Markdown 暂存文件：
 

@@ -60,7 +60,7 @@ Environment context
 Visible Skills catalogue
 ```
 
-`--clean` bypasses global and project Skill discovery, `skills.toml` activation reads, both memory scopes, and both `AGENTS.md` scopes. The system prompt then contains only built-in assistant instructions and environment context, and the Agent registers neither `remember` nor external tools. `/skills` and `/memory` report that they are unavailable in clean mode. `.env`, provider/model selection, and other runtime configuration still follow the normal startup path.
+`--clean` bypasses global and project Skill discovery, `skills.toml` activation reads, both memory scopes, and both `AGENTS.md` scopes. The system prompt then contains only built-in assistant instructions and environment context, and the Agent registers neither `remember` nor external tools. `/skills` and `/memory` report that they are unavailable in clean mode. `.env`, provider/model selection, and other runtime configuration still follow the normal startup path, but a `/model` selection remains local to the temporary process.
 
 Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults, then the project file is appended. When the two AGENTS paths resolve to the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
 

@@ -118,7 +118,7 @@ For each trial, the adapter:
 5. exposes JSONL, stderr, and token usage to Harbor;
 6. removes the temporary instruction file.
 
-`--clean` excludes host AGENTS, Skills, Memory, and MCP customization. `--allow-all-tools` disables interactive approval, while the task container provides the actual isolation boundary. The primary per-trial files are:
+`--clean` excludes host AGENTS, Skills, Memory, and MCP customization and prevents Kana from writing a session journal, session log, or accounting record for the trial. `--allow-all-tools` disables interactive approval, while the task container provides the actual isolation boundary. Harbor still retains the adapter's JSONL, stderr, and token usage. The primary per-trial files are:
 
 ```text
 agent/kana.jsonl

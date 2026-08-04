@@ -56,7 +56,7 @@ kana auth logout openai-codex
 
 `kana exec` 使用与 TUI 相同的产品装配并在一次完整 Agent turn 后退出。默认模式只把最终答案写到 stdout，`--json` 提供版本化 JSONL 事件；非交互工具审批、退出码和完整协议见[无头执行与 JSONL 协议](headless.md)。
 
-`--clean` 可用于 TUI、`resume`、`exec` 和 `exec resume`。它只影响本次 Kana 进程：不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，保留当前 provider/model、Agent 运行参数、OAuth 凭据、审批规则、通知、会话、日志与 accounting，也继续提供核心文件/Shell 工具和进程内 `schedule_wake`。TUI 中 `/skills`、`/mcp` 和 `/memory` 不可用，但 `/model` 仍可修改运行配置。Clean 模式不是文件/进程沙箱，也不是无痕模式；恢复的历史消息仍会进入对话，本次产生的 session 和用量也照常持久化。
+`--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、OAuth 凭据、审批规则与通知，也继续提供核心文件/Shell 工具和 TUI 的进程内 `schedule_wake`。TUI 中 `/skills`、`/mcp`、`/memory`、`/resume`、`/delete` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
 
 `kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取它，需要覆盖默认值时只把相应字段复制到 `config.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
 

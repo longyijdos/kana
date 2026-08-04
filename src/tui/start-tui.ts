@@ -26,6 +26,9 @@ export type StartTuiOptions = {
 
 export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   const cleanMode = options.launchMode === "clean";
+  if (cleanMode && (options.resumeSessionId !== undefined || options.showResumePicker)) {
+    throw new Error("Clean mode cannot resume saved sessions because its session is temporary.");
+  }
   let app: KanaTuiApp | undefined;
   let updateMcpLifecycleStatus: ((status: string) => void) | undefined;
   const host = createKanaConversationHost<TuiModelSelection>({

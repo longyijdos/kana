@@ -77,6 +77,21 @@ describe("tui welcome block", () => {
     expect(rendered).toContain("Your work will appear here");
   });
 
+  test("explains temporary clean sessions without a resume hint", () => {
+    const lines = new WelcomeBlock({
+      logoLines: LOGO,
+      savedSessionsAvailable: false,
+      username: "tester",
+    }).render(80);
+
+    const rendered = stripAnsi(lines.join("\n"));
+
+    expect(rendered).toContain("Temporary clean session");
+    expect(rendered).toContain("Nothing will be saved");
+    expect(rendered).toContain("Discarded on exit");
+    expect(rendered).not.toContain("/resume");
+  });
+
   test("keeps the default logo compact within the welcome panel", () => {
     expect(WELCOME_LOGO_LINES).toHaveLength(7);
     expect(Math.max(...WELCOME_LOGO_LINES.map(visibleWidth))).toBeLessThanOrEqual(22);

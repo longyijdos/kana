@@ -33,6 +33,7 @@ export type SessionLifecycleControllerOptions = {
   stop: () => void;
   submitPrompt: (prompt: string) => Promise<void>;
   activateSession: () => void;
+  savedSessionsAvailable?: boolean;
 };
 
 export class SessionLifecycleController {
@@ -69,6 +70,7 @@ export class SessionLifecycleController {
       new WelcomeBlock({
         logoLines: WELCOME_LOGO_LINES,
         recentSessions: this.options.conversation.listSessions(),
+        savedSessionsAvailable: this.options.savedSessionsAvailable,
       }),
     );
   }

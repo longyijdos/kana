@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Type } from "typebox";
 import { Agent } from "../../src/agent";
 import {
@@ -12,6 +12,7 @@ import {
   type HeadlessOutputStream,
   resolveHeadlessPrompt,
   runHeadlessConversation,
+  startHeadless,
 } from "../../src/headless";
 import {
   ConversationRuntime,
@@ -175,6 +176,37 @@ describe("headless execution", () => {
     await expect(resolveHeadlessPrompt(undefined, chunks([], { isTTY: true }))).rejects.toThrow(
       "prompt argument",
     );
+  });
+
+  test("rejects resuming a saved session in clean mode using the JSON protocol", async () => {
+    const writes: string[] = [];
+    const write = spyOn(process.stdout, "write").mockImplementation(((
+      chunk: string | Uint8Array,
+    ) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write);
+
+    try {
+      expect(
+        await startHeadless({
+          prompt: "Continue.",
+          resumeSessionId: "saved-session",
+          launchMode: "clean",
+          json: true,
+        }),
+      ).toBe(1);
+      expect(JSON.parse(writes.join("").trim())).toMatchObject({
+        schema_version: 1,
+        type: "error",
+        phase: "startup",
+        error: {
+          message: "Clean mode cannot resume saved sessions because its session is temporary.",
+        },
+      });
+    } finally {
+      write.mockRestore();
+    }
   });
 });
 

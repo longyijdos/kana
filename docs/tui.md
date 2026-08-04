@@ -25,7 +25,7 @@ ProcessTerminal
 
 `ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再让 `ConversationRuntime` 用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。可选服务器失败会在摘要后留下错误色警告；初次加载时必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿也会在 transcript 中显示同样的进度；但 reload 失败时会用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，关闭并等待 `ConversationRuntime`，再由产品层关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token、API 成本和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
 
-使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、恢复会话和后续 Agent 重建都不会读取或连接 MCP。Transcript 会显示一次 Clean 模式说明，状态栏持续显示 `clean`。
+使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、new/fork、模型切换和后续 Agent 重建都不会读取或连接 MCP。欢迎面板说明当前会话不会保存，transcript 会显示一次 Clean 模式说明，状态栏持续显示 `clean`；退出时不会打印恢复命令。
 
 `Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
 
@@ -56,7 +56,7 @@ ProcessTerminal
 
 编辑器内部包含状态栏，它显示模型及推理强度（例如 `gpt-5.6-luna · max`；DeepSeek 关闭 thinking 时显示 `off`）、Clean 模式标记、最近助手消息相对于 effective context limit 的使用率、运行阶段、活动工具和 cwd。多个工具并行时，活动项压缩为第一个名称加剩余数量，例如 `tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比；后续正常模型 usage 会替换该估算。打开 slash 命令面板时会隐藏状态栏；其他底部组件替换编辑器时，输入区和状态栏会一起隐藏。每条完成助手消息和摘要请求的 usage 都会累加到进程总用量和按模型元数据计算的 CNY 成本，但摘要 usage 不会被当作正常 prompt 的 context 百分比；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
-恢复会话时，TUI 历史只消费 session timeline，而 Agent 单独接收完整 messages 和最后一个 context checkpoint。`turn_start`/`turn_end` 仅作为持久化边界，不直接渲染；恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用已持久化的 marker 替换，失败时则移除临时消息并显示错误。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
+恢复会话时，TUI 历史只消费 session timeline，而 Agent 单独接收完整 messages 和最后一个 context checkpoint。`turn_start`/`turn_end` 仅作为持久化边界，不直接渲染；恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用完成 marker 替换，失败时则移除临时消息并显示错误；普通模式同时将 marker 持久化，Clean 模式只保留进程内 checkpoint。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
 
 ## 输入与快捷方式
 
@@ -87,7 +87,7 @@ ProcessTerminal
 | `/usage` | 在底部选择统计范围，再打开对应的 API 用量。 |
 | `/quit` | 无参数时退出；带参数时作为普通 prompt。 |
 
-Clean 模式中 `/skills`、`/mcp` 和 `/memory` 保留为可发现命令，但执行时会显示明确的不可用错误；它们不能在当前进程中重新启用自定义内容。`/approval`、`/model`、session 命令、`/compact`、`/usage` 和本地 Shell 仍按普通模式工作。
+Clean 模式中 `/skills`、`/mcp`、`/memory`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/fork`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用，其中 `/model` 不写回配置文件。
 
 ## 控制器与焦点
 
@@ -100,7 +100,7 @@ Clean 模式中 `/skills`、`/mcp` 和 `/memory` 保留为可发现命令，但�
 - `SkillManagerController` 用 global Skill 列表替换编辑器。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次，并用原消息历史重建一次 Agent，未变化则直接关闭。持久化失败时视图保持打开。
 - `McpServerManagerController` 用已配置 MCP server 的 checkbox 替换 editor。`Enter` 只修改本地草稿；选中 OAuth HTTP server 时，`A` 打开认证子菜单，可授权、重新授权或退出登录，进行中的浏览器授权可用 `Esc` 中止。授权 URL、成功、失败或取消状态写入 transcript；退出登录会禁用该 server。返回列表后，主 `Esc` 才应用草稿；选择或已启用 server 的凭据发生变化时只触发一次完整 runtime reload。持久化失败时视图保持打开。组件显示 server ID、transport、OAuth 状态，以及 stdio 的完整命令行（`command` 加 `args`）或 HTTP URL，但不会接收环境变量、HTTP headers 或 token。
 - `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request；`/approval` 可选择 Always ask、Ask unless trusted 或 Never ask，最后一项使用与删除会话相同的默认否定二次确认；`/model` 依次选择 provider、model 和 reasoning effort，其中 DeepSeek 提供 Off/High/Max，OpenAI Codex 提供 Low 到 Max。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
-- `/model` 只在空闲时完成切换。Kana 保留当前消息和 context checkpoint，先用新配置构造候选 Agent 和记忆压缩 scheduler，再原子保存实际变化的配置字段；全部成功后才替换当前 Agent，并同步状态栏中的模型和推理强度。构造或持久化失败会保留旧 Agent 和旧配置并在 transcript 显示错误。选择会成为后续新建、分叉、恢复会话和压缩任务的活动配置；同一 session 的后续回合可以使用不同 provider，逐次 accounting 仍记录实际模型。
+- `/model` 只在空闲时完成切换。Kana 保留当前消息和 context checkpoint，先用新配置构造候选 Agent 和记忆压缩 scheduler；普通模式再原子保存实际变化的配置字段，Clean 模式只更新当前 Host 的已校验配置。全部成功后才替换当前 Agent，并同步状态栏中的模型和推理强度。构造或持久化失败会保留旧 Agent 和旧配置并在 transcript 显示错误。普通模式的选择会成为后续新建、分叉、恢复会话和压缩任务的活动配置；Clean 模式的选择只覆盖当前进程中的后续 new/fork 和压缩工作，且不产生逐次 accounting 记录。
 - `/compact` 不接受参数；它只在空闲时强制压缩当前对话上下文，不发送用户消息。
 - `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具输出；transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。

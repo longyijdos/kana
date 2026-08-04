@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { KanaUsageScope, KanaUsageSummary } from "@/kana";
+import type { KanaLaunchMode, KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { color, stripAnsi } from "../../src/tui/render";
 import type { Component, Terminal } from "../../src/tui/runtime";
@@ -100,6 +100,25 @@ describe("information viewers", () => {
     expect(rendered.some((line) => line.includes("test-model"))).toBe(true);
   });
 
+  test("reports session usage as unavailable in clean mode", () => {
+    const loadedScopes: KanaUsageScope[] = [];
+    const app = createApp((scope) => {
+      loadedScopes.push(scope);
+      return createUsageSummary(scope);
+    }, "clean");
+    const internal = app as unknown as AppInternals;
+
+    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
+    internal.tui.getFocus()?.handleInput?.("\r");
+
+    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
+
+    expect(loadedScopes).toEqual([]);
+    expect(internal.slashCommandOptions.active).toBe(false);
+    expect(internal.contentViewer.active).toBe(false);
+    expect(rendered).toContain("Session usage is unavailable in clean mode.");
+  });
+
   test("opens memory actions in the bottom prompt", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
@@ -149,6 +168,7 @@ type AppInternals = {
 
 function createApp(
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary = createUsageSummary,
+  launchMode?: KanaLaunchMode,
 ): KanaTuiApp {
   return new KanaTuiApp(
     () =>
@@ -168,6 +188,7 @@ function createApp(
       }) as never,
     createTerminal(),
     {
+      launchMode,
       getResumeSessionId: () => undefined,
       createNewSession: () => ({ id: "new" }),
       forkSession: () => ({ id: "fork" }),

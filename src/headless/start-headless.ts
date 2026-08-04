@@ -51,6 +51,14 @@ export type HeadlessWarning = {
 };
 
 export async function startHeadless(options: StartHeadlessOptions = {}): Promise<number> {
+  if (options.launchMode === "clean" && options.resumeSessionId !== undefined) {
+    writeStartupError(
+      new Error("Clean mode cannot resume saved sessions because its session is temporary."),
+      options.json ?? false,
+    );
+    return 1;
+  }
+
   let prompt: string;
   try {
     prompt = await resolveHeadlessPrompt(options.prompt);

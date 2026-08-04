@@ -37,7 +37,7 @@ describe("CLI", () => {
     ]);
   });
 
-  test("starts new and resumed TUI sessions in clean mode", async () => {
+  test("forwards clean mode to new and resumed TUI entry requests", async () => {
     const calls: Array<StartTuiOptions | undefined> = [];
     const options = {
       startTui: (startOptions?: StartTuiOptions) => {
@@ -97,7 +97,7 @@ describe("CLI", () => {
     ]);
   });
 
-  test("runs new and resumed headless sessions in clean mode", async () => {
+  test("forwards clean mode to new and resumed headless entry requests", async () => {
     const calls: StartHeadlessOptions[] = [];
     const options = {
       startHeadless: async (startOptions?: StartHeadlessOptions) => {

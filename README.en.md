@@ -106,11 +106,11 @@ kana "analyze this repository and fix the failing tests"
 # Resume by ID, or open the picker when the ID is omitted
 kana resume [session-id]
 
-# Skip custom instructions, memory, Skills, and MCP
+# Open a temporary session that will not be saved
 kana --clean
 ```
 
-`--clean` preserves `.env`, model and runtime configuration, authentication, approvals, and session persistence while disabling custom content that changes Agent context or tools. The status line keeps a `clean` marker visible. This mode is neither a sandbox nor an incognito session.
+`--clean` creates a temporary session that is discarded when the process exits. It writes no session journal, runtime log, or accounting record and loads no custom instructions, memory, Skills, or MCP. It still reads `.env`, model and runtime configuration, authentication, and approval rules, and the status line keeps a `clean` marker visible. Clean mode cannot be combined with `resume` and is not a file or process sandbox: built-in tools, providers, and the local shell can still have external side effects. `/model` changes only the current process in clean mode.
 
 Common interactions:
 
@@ -126,6 +126,8 @@ Common interactions:
 | `!<command>` | Run a local shell command directly, bypassing the agent. |
 | `Ctrl+O` | Expand the most recent inspectable tool output. |
 | `Ctrl+C` / `Esc` | Abort active work, close a view, or exit. |
+
+In clean mode, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable; Project and Global usage remain readable.
 
 See [TUI interaction and rendering](docs/tui.en.md) for the complete interaction model.
 

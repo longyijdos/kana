@@ -220,7 +220,7 @@ describe("session-scoped agents", () => {
     });
     const internal = app as unknown as {
       handleCommand(command: {
-        name: "skills" | "mcp" | "memory";
+        name: "skills" | "mcp" | "memory" | "resume" | "delete";
         arguments: string;
         raw: string;
       }): void;
@@ -232,15 +232,18 @@ describe("session-scoped agents", () => {
     internal.handleCommand({ name: "skills", arguments: "", raw: "/skills" });
     internal.handleCommand({ name: "mcp", arguments: "", raw: "/mcp" });
     internal.handleCommand({ name: "memory", arguments: "", raw: "/memory" });
+    internal.handleCommand({ name: "resume", arguments: "saved-session", raw: "/resume" });
+    internal.handleCommand({ name: "delete", arguments: "", raw: "/delete" });
 
     const transcript = renderTranscript(internal.transcript);
     expect(externalToolLoadCount).toBe(0);
     expect(transcript).toContain(
-      "Clean mode · custom instructions, memory, Skills, and MCP are disabled.",
+      "Clean mode · temporary session; customizations and saving are disabled.",
     );
     expect(transcript).toContain("Skills are unavailable in clean mode.");
     expect(transcript).toContain("MCP management is unavailable in clean mode.");
     expect(transcript).toContain("Memory is unavailable in clean mode.");
+    expect(transcript.match(/Saved sessions are unavailable in clean mode\./g)).toHaveLength(2);
     expect(stripAnsi(internal.layout.render(120).join("\n"))).toContain("clean");
   });
 

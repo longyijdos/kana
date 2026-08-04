@@ -8,6 +8,7 @@ import { tuiTheme } from "../../theme";
 type WelcomeBlockOptions = {
   logoLines: readonly string[];
   recentSessions?: readonly KanaSessionMetadata[];
+  savedSessionsAvailable?: boolean;
   username?: string;
 };
 
@@ -74,16 +75,23 @@ export class WelcomeBlock implements Component {
 
   private rightColumn(width: number): string[] {
     const recentSessions = (this.options.recentSessions ?? []).slice(0, 3);
+    const savedSessionsAvailable = this.options.savedSessionsAvailable !== false;
     const rows = [
       title("Recent activity"),
       ...(recentSessions.length > 0
         ? recentSessions.map((session) => text(`  ${formatSessionTitle(session)}`))
-        : [
-            muted("  No recent sessions yet"),
-            text("  Start a conversation"),
-            muted("  Your work will appear here"),
-          ]),
-      muted("  ... /resume for more"),
+        : savedSessionsAvailable
+          ? [
+              text("  No recent sessions yet"),
+              text("  Start a conversation"),
+              text("  Your work will appear here"),
+            ]
+          : [
+              text("  Temporary clean session"),
+              text("  Nothing will be saved"),
+              text("  Discarded on exit"),
+            ]),
+      ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
       text("  OpenAI Codex + model switching"),

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Agent } from "../../../src/agent";
@@ -81,6 +81,52 @@ describe("Kana conversation host", () => {
 
     expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
     expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");
+    await runtime.close();
+    await host.closeMcp();
+  });
+
+  test("keeps clean sessions and model changes in memory", async () => {
+    const env = createTempEnv();
+    process.env.KANA_HOME = env.KANA_HOME;
+    const seenModels: string[] = [];
+    const host = createKanaConversationHost<string>({
+      env,
+      launchMode: "clean",
+      applyAgentConfiguration: (config, model) => {
+        config.model.deepseek.name = model;
+      },
+      createAgent: (config, options = {}) => {
+        seenModels.push(config.model.deepseek.name);
+        return new Agent({
+          model: new MockModel({ provider: "mock", model: "mock", response: "Complete." }),
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+          journal: options.journal,
+          logger: options.logger,
+          onRunCommitted: options.onRunCommitted,
+          onCompactionCommitted: options.onCompactionCommitted,
+        });
+      },
+    });
+    const runtime = createRuntime(host);
+    runtime.setBeforeToolExecution(() => ({ type: "continue" }));
+
+    runtime.reconfigure("deepseek-v4-flash");
+    await runtime.submit({ role: "user", content: "Run the task." });
+
+    expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
+    expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");
+    expect(host.resumeSessionId).toBeUndefined();
+    expect(host.listSessions()).toEqual([]);
+    expect(() => host.loadSession("saved-session")).toThrow(
+      "Saved sessions are unavailable in clean mode.",
+    );
+    expect(() => host.deleteSession("saved-session")).toThrow(
+      "Saved sessions are unavailable in clean mode.",
+    );
+    expect(() => host.loadUsage("session")).toThrow("Session usage is unavailable in clean mode.");
+    expect(readdirSync(env.KANA_HOME ?? "", { recursive: true })).toEqual([]);
+
     await runtime.close();
     await host.closeMcp();
   });

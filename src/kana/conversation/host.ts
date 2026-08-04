@@ -17,6 +17,7 @@ import {
   type KanaNotificationConfig,
   type KanaToolApprovalConfig,
   type KanaTuiConfig,
+  validateKanaConfig,
 } from "../config";
 import { createKanaConfigStore, type KanaConfigStore } from "../config-store";
 import type { KanaLaunchMode } from "../launch-mode";
@@ -88,8 +89,9 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
 
 type HostedSession = {
   data: LoadKanaSessionResult;
-  journal: KanaSessionJournal;
+  journal?: KanaSessionJournal;
   logger: Logger;
+  persistent: boolean;
   pendingForkMessages?: Message[];
   pendingForkCheckpoint?: ContextCheckpoint;
 };
@@ -195,6 +197,18 @@ export class KanaConversationHost<TConfiguration = never> {
     let agent: Agent;
     if (configuration === undefined) {
       agent = this.createAgentProduct(this.configData, kanaAgentOptions);
+    } else if (this.launchMode === "clean") {
+      if (!this.applyAgentConfiguration) {
+        throw new Error("This Kana conversation host does not support Agent reconfiguration.");
+      }
+      const nextConfig = structuredClone(this.configData);
+      this.applyAgentConfiguration(nextConfig, configuration);
+      const validatedConfig = validateKanaConfig(nextConfig);
+      // Model changes remain useful within a temporary conversation, but the
+      // clean-mode state boundary must not update the shared config store.
+      agent = this.createAgentProduct(validatedConfig, kanaAgentOptions);
+      this.configData = validatedConfig;
+      this.memoryConsolidation = this.createMemoryConsolidation(validatedConfig);
     } else {
       if (!this.applyAgentConfiguration) {
         throw new Error("This Kana conversation host does not support Agent reconfiguration.");
@@ -250,14 +264,16 @@ export class KanaConversationHost<TConfiguration = never> {
       timeline: [],
       contextCheckpoint: structuredClone(contextCheckpoint),
     });
-    hosted.pendingForkMessages = structuredClone(messages);
-    hosted.pendingForkCheckpoint =
-      contextCheckpoint === undefined
-        ? undefined
-        : {
-            ...structuredClone(contextCheckpoint),
-            baseCompactionId: undefined,
-          };
+    if (hosted.persistent) {
+      hosted.pendingForkMessages = structuredClone(messages);
+      hosted.pendingForkCheckpoint =
+        contextCheckpoint === undefined
+          ? undefined
+          : {
+              ...structuredClone(contextCheckpoint),
+              baseCompactionId: undefined,
+            };
+    }
     hosted.logger.info("session.forked", {
       sourceSessionId: source.data.metadata.id,
     });
@@ -265,6 +281,7 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadSession(sessionId: string): LoadKanaSessionResult {
+    this.assertSavedSessionsAvailable();
     const hosted = this.registerSession(
       loadKanaSession(sessionId, { cwd: process.cwd(), env: this.env }),
     );
@@ -273,10 +290,14 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   listSessions(): KanaSessionMetadata[] {
+    if (this.launchMode === "clean") {
+      return [];
+    }
     return listKanaSessions({ cwd: process.cwd(), env: this.env });
   }
 
   deleteSession(sessionId: string): boolean {
+    this.assertSavedSessionsAvailable();
     const deleted = deleteKanaSession(sessionId, {
       cwd: process.cwd(),
       env: this.env,
@@ -393,6 +414,9 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadUsage(scope: KanaUsageScope): KanaUsageSummary {
+    if (this.launchMode === "clean" && scope === "session") {
+      throw new Error("Session usage is unavailable in clean mode.");
+    }
     return loadKanaUsageSummary({
       scope,
       sessionId: scope === "session" ? this.activeSessionId : undefined,
@@ -409,6 +433,7 @@ export class KanaConversationHost<TConfiguration = never> {
     hostedSession: HostedSession | undefined,
     agentLogger: Logger,
   ): KanaAgentOptions {
+    const journal = hostedSession?.journal;
     const appendTimeline = (entries: LoadKanaSessionResult["timeline"]): void => {
       if (!hostedSession) {
         throw new Error("Cannot update a session journal without an active session.");
@@ -437,13 +462,13 @@ export class KanaConversationHost<TConfiguration = never> {
       messages: options.messages ?? hostedSession?.data.messages,
       contextCheckpoint: options.contextCheckpoint ?? hostedSession?.data.contextCheckpoint,
       journal:
-        hostedSession === undefined
+        hostedSession === undefined || journal === undefined
           ? undefined
           : {
               startRun: ({ runId, messages }) => {
                 if (hostedSession.pendingForkMessages) {
                   const snapshotEntries = writeJournal("snapshot", () =>
-                    hostedSession.journal.appendSnapshot(hostedSession.pendingForkMessages ?? [], {
+                    journal.appendSnapshot(hostedSession.pendingForkMessages ?? [], {
                       compactions: hostedSession.pendingForkCheckpoint
                         ? [hostedSession.pendingForkCheckpoint]
                         : [],
@@ -454,9 +479,7 @@ export class KanaConversationHost<TConfiguration = never> {
                   hostedSession.pendingForkCheckpoint = undefined;
                 }
 
-                const entries = writeJournal("start", () =>
-                  hostedSession.journal.startTurn(runId, messages),
-                );
+                const entries = writeJournal("start", () => journal.startTurn(runId, messages));
                 appendTimeline(entries);
                 hostedSession.data.messages = [
                   ...hostedSession.data.messages,
@@ -465,9 +488,7 @@ export class KanaConversationHost<TConfiguration = never> {
                 this.resumableSessionId = hostedSession.data.metadata.id;
               },
               appendMessage: ({ runId, message }) => {
-                const entry = writeJournal("message", () =>
-                  hostedSession.journal.appendMessage(runId, message),
-                );
+                const entry = writeJournal("message", () => journal.appendMessage(runId, message));
                 appendTimeline([entry]);
                 hostedSession.data.messages = [
                   ...hostedSession.data.messages,
@@ -476,7 +497,7 @@ export class KanaConversationHost<TConfiguration = never> {
               },
               appendCompaction: ({ runId, compaction }) => {
                 const entry = writeJournal("compaction", () =>
-                  hostedSession.journal.appendCompaction(compaction, {
+                  journal.appendCompaction(compaction, {
                     turnId: runId,
                   }),
                 );
@@ -484,15 +505,16 @@ export class KanaConversationHost<TConfiguration = never> {
                 hostedSession.data.contextCheckpoint = structuredClone(compaction);
               },
               endRun: ({ runId, reason }) => {
-                const entry = writeJournal("end", () =>
-                  hostedSession.journal.endTurn(runId, reason),
-                );
+                const entry = writeJournal("end", () => journal.endTurn(runId, reason));
                 appendTimeline([entry]);
               },
             },
       onRunCommitted: ({ messages, compactions, state, event }) => {
         if (!hostedSession) {
           throw new Error("Cannot complete an Agent run without an active session.");
+        }
+        if (!hostedSession.persistent) {
+          return;
         }
 
         try {
@@ -538,6 +560,9 @@ export class KanaConversationHost<TConfiguration = never> {
         if (!hostedSession) {
           throw new Error("Cannot persist context compaction without an active session.");
         }
+        if (!hostedSession.persistent) {
+          return;
+        }
 
         try {
           recordKanaAgentRunAccounting({
@@ -564,6 +589,7 @@ export class KanaConversationHost<TConfiguration = never> {
       return undefined;
     }
     if (session.type === "resume") {
+      this.assertSavedSessionsAvailable();
       const hosted = this.registerSession(
         loadKanaSession(session.sessionId, {
           cwd: process.cwd(),
@@ -588,16 +614,22 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   private registerSession(data: LoadKanaSessionResult): HostedSession {
+    const persistent = this.launchMode !== "clean";
+    // Temporary sessions keep a normal identity for runtime correlation and
+    // scheduled wakes, while omitting every filesystem-backed session sink.
     const hosted: HostedSession = {
       data: structuredClone(data),
-      journal: createKanaSessionJournal(data.metadata, data.timeline),
-      logger: this.logManager.forSession({
-        path: getKanaSessionLogPath(data.metadata.id, {
-          cwd: data.metadata.cwd,
-          env: this.env,
-        }),
-        sessionId: data.metadata.id,
-      }),
+      ...(persistent ? { journal: createKanaSessionJournal(data.metadata, data.timeline) } : {}),
+      logger: persistent
+        ? this.logManager.forSession({
+            path: getKanaSessionLogPath(data.metadata.id, {
+              cwd: data.metadata.cwd,
+              env: this.env,
+            }),
+            sessionId: data.metadata.id,
+          })
+        : createNoopLogger(),
+      persistent,
     };
     this.sessions.set(hosted.data.metadata.id, hosted);
     return hosted;
@@ -683,6 +715,12 @@ export class KanaConversationHost<TConfiguration = never> {
   private assertCustomizationsAvailable(feature: string): void {
     if (this.launchMode === "clean") {
       throw new Error(`${feature} is unavailable in clean mode.`);
+    }
+  }
+
+  private assertSavedSessionsAvailable(): void {
+    if (this.launchMode === "clean") {
+      throw new Error("Saved sessions are unavailable in clean mode.");
     }
   }
 }

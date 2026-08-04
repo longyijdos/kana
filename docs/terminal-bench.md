@@ -118,7 +118,7 @@ harbor run \
 5. 把 JSONL、stderr 和 token usage 交给 Harbor；
 6. 删除临时指令文件。
 
-`--clean` 会排除宿主机的 AGENTS、Skills、Memory 和 MCP 定制；`--allow-all-tools` 关闭交互审批，实际隔离边界由任务容器提供。每个 trial 的主要文件包括：
+`--clean` 会排除宿主机的 AGENTS、Skills、Memory 和 MCP 定制，并阻止 Kana 为 trial 写入 session journal、session log 与 accounting；`--allow-all-tools` 关闭交互审批，实际隔离边界由任务容器提供。Harbor 仍会保存适配器输出的 JSONL、stderr 与 token usage。每个 trial 的主要文件包括：
 
 ```text
 agent/kana.jsonl

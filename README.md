@@ -106,11 +106,11 @@ kana "分析这个仓库并修复失败的测试"
 # 恢复指定会话；省略 ID 时打开选择器
 kana resume [session-id]
 
-# 不加载自定义指令、记忆、Skills 或 MCP
+# 打开不保存记录的临时会话
 kana --clean
 ```
 
-`--clean` 保留 `.env`、模型与运行配置、认证、审批和会话持久化，只关闭会改变 Agent 上下文或工具集的自定义内容。状态栏会持续显示 `clean`；该模式不是沙箱或无痕会话。
+`--clean` 创建随进程退出即丢弃的临时会话，不写 session journal、运行时日志或 accounting，也不加载自定义指令、记忆、Skills 与 MCP。它仍读取 `.env`、模型与运行配置、认证和审批规则；状态栏会持续显示 `clean`。该模式不能与 `resume` 组合，也不是文件或进程沙箱：内置工具、provider 和本地 shell 仍可能产生外部副作用。Clean 模式中的 `/model` 只影响当前进程。
 
 常用交互：
 
@@ -126,6 +126,8 @@ kana --clean
 | `!<命令>` | 绕过 Agent，直接运行本地 shell 命令。 |
 | `Ctrl+O` | 展开最近一项可查看的工具输出。 |
 | `Ctrl+C` / `Esc` | 中止当前工作、关闭视图或退出。 |
+
+Clean 模式下 `/resume`、`/delete` 和 `/usage` 的 Session 范围不可用；Project 与 Global 用量仍可查看。
 
 完整交互说明见 [TUI 交互与渲染](docs/tui.md)。
 

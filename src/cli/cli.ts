@@ -68,7 +68,7 @@ export function createCli(options: CreateCliOptions): Command {
     .name("kana")
     .description("Personal TypeScript/Bun agent runtime")
     .version(KANA_VERSION)
-    .option("--clean", "Start without custom agent context or extensions")
+    .option("--clean", "Start a temporary session without custom context or session persistence")
     .argument("[prompt...]", "Prompt to send after opening the TUI")
     .action(async (promptParts: string[] = [], actionOptions: LaunchCommandOptions) => {
       const prompt = promptParts.join(" ").trim();

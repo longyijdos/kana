@@ -35,7 +35,7 @@ Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与
 
 - `kana [--clean] [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
 - `kana resume [sessionId]`：按 ID 恢复会话，或打开会话选择器。
-- `kana exec [prompt...]` / `kana exec resume <sessionId> [prompt...]`：不启动 TUI，执行一次完整 Agent turn 后退出；可用 `--json` 输出版本化 JSONL 事件。
+- `kana exec [--clean] [prompt...]` / `kana exec resume <sessionId> [prompt...]`：不启动 TUI，执行一次完整 Agent turn 后退出；可用 `--json` 输出版本化 JSONL 事件。
 - `kana install`：幂等补齐缺失的本地状态并刷新生成的配置参考，不物化默认 `config.toml`，也不安装 Skills 仓库。
 - `kana update [--check]`：检查最新正式 Release；省略 `--check` 时验证候选二进制并原子替换当前 direct-distribution 独立二进制。
 - `kana reset [--yes]`：经确认删除 `config.toml`，刷新配置参考并重置 MCP、审批和 Skill 启用状态，同时保留凭据、用户数据、日志、指令和实际 Skills。
@@ -43,15 +43,15 @@ Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与
 - `kana skills install|reinstall [--yes]`：安全安装/更新默认 Skills Git 仓库，或经确认删除后重新 clone。
 - `kana skills sync|resync <target> [--yes]`：把已安装的 Kana Skills 复制到其它 agent 的 Skills 目录；sync 跳过同名项，resync 经确认替换同名项，但不清理其它或过期 Skill。
 
-启动入口把 `normal | clean` 模式显式传给 `KanaConversationHost`，Host 再把它传给每次创建或重建的 Agent。Clean 模式不通过替换 `KANA_HOME` 或清空进程环境模拟，因此 `.env`、运行配置、认证、审批、会话、日志和 accounting 仍沿用普通路径；它只在装配边界关闭 AGENTS、memory、Skills 和 MCP。
+启动入口把 `normal | clean` 模式显式传给前端与 `KanaConversationHost`，Host 再把它传给每次创建或重建的 Agent。TUI 和 Headless 会拒绝 clean 与 resume 的组合，Host 继续保留相同不变量。Clean 模式不通过替换 `KANA_HOME` 或清空进程环境模拟隔离，因此仍读取 `.env`、运行配置、认证和审批；但它在 Host 边界为 session journal、session logger 和 accounting 关闭持久化，并在 Agent 装配边界关闭 AGENTS、memory、Skills 和 MCP。
 
 自更新由 `kana/update/self-update.ts` 隔离在产品层，不进入 TUI 或 Agent 生命周期。它通过 GitHub Release API 取得版本、平台资产及 SHA-256 digest，把下载写入当前可执行文件的同目录临时路径，校验大小与 digest，并让候选程序执行 `--version` 和幂等初始化。替换前会再次比较目标文件的 device、inode、mtime 和大小，避免覆盖下载期间由其它安装进程写入的新版本；最终 rename 是 POSIX 同文件系统的原子目录项替换。源码运行默认标记为 `source` 并拒绝更新，所有可直接安装的编译入口在构建期注入 `direct` 标记，防止把 Bun runtime 误判为更新目标。任一外部 I/O、候选执行或替换步骤失败时都会使用固定阶段错误码并清理临时文件。
 
-启动 TUI 时，`startTui` 先创建 `KanaConversationHost`。Host 加载运行配置和审批白名单，持有 session journal、日志、accounting、记忆、wake scheduler 与 `KanaMcpRuntime`，并向前端提供统一的 Agent 工厂和 session 操作。`KanaTuiApp` 用这些依赖创建产品层 `ConversationRuntime`；该 runtime 持有当前 Agent 和 session，负责提交互斥、Agent 重建、session new/fork/resume，以及到期 wake 的排队和顺序投递。当前会话确定并完成首次 TUI 渲染后，App 才请求 Host 加载外部工具；此时 MCP runtime 读取定义与启用状态文件、连接选中的 server、发现工具，再由 `ConversationRuntime` 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。TUI 只协调可见用户流程，不实现对话生命周期或 Kana 产品装配，也不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
+启动 TUI 时，`startTui` 先创建 `KanaConversationHost`。Host 加载运行配置和审批白名单，并向前端提供统一的 Agent 工厂和 session 操作；普通模式还持有 session journal、日志、accounting、记忆、wake scheduler 与 `KanaMcpRuntime`，Clean 模式则注册带普通 ID、no-op logger 且没有 journal 的进程内 session。`KanaTuiApp` 用这些依赖创建产品层 `ConversationRuntime`；该 runtime 持有当前 Agent 和 session，负责提交互斥、Agent 重建、session new/fork/resume，以及到期 wake 的排队和顺序投递。当前会话确定并完成首次 TUI 渲染后，App 才请求 Host 加载外部工具；此时 MCP runtime 读取定义与启用状态文件、连接选中的 server、发现工具，再由 `ConversationRuntime` 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。TUI 只协调可见用户流程，不实现对话生命周期或 Kana 产品装配，也不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 
 `startHeadless` 使用同一个 Host 和 runtime，先加载 MCP，再提交一条用户消息并等待完整 Agent loop 结束。它把 runtime 事件投影成独立版本的 JSONL 公共协议，或把进度写到 stderr、最终助手文本写到 stdout。无头前端不提供交互审批；未被配置或白名单信任的工具会关闭失败。调用方传入 `--allow-all-tools` 时会无条件授权所有可用工具，但不会隔离文件或进程。`SIGINT` 会取消活动 Agent，进程以 `130` 退出。
 
-Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TUI 不安装外部工具加载器，Headless 则继续经过同一 Host 边界但不会解析或连接 MCP。这个双重边界保证后续 new/fork/resume、模型切换和 Agent 重建不会重新引入外部工具。
+Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TUI 不安装外部工具加载器，Headless 则继续经过同一 Host 边界但不会解析或连接 MCP。这个双重边界保证后续 new/fork、模型切换和 Agent 重建不会重新引入外部工具。
 
 ## 一次对话如何执行
 
@@ -65,7 +65,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
   → AssistantMessageEvent
   → AgentEvent
   ├─ AgentEventRenderer 更新 transcript、工具块和状态栏
-  └─ Agent journal 按完成顺序增量写入会话
+  └─ 普通模式的 Agent journal 按完成顺序增量写入会话
 
 若模型请求工具：
   Agent 验证参数 → beforeToolExecution（TUI 审批）
@@ -76,9 +76,9 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 供应商首先产生 `AssistantMessageEvent`。事件包含增量 `delta` 和完整 `snapshot`：前者适合增量呈现，后者让消费者不必重复实现消息拼接。`agent` 将其转换为更高一层的 `AgentEvent`，并额外发出回合、工具开始/更新/结束和整个运行结束事件。`AgentEventStream` 与模型流都同时支持 `for await` 消费事件和 `result()` 获取最终值。
 
-`Agent` 是有状态的单次运行控制器。它拒绝并发运行；Kana 注入的 `AgentJournal` 会在模型 I/O 前写入 turn 边界和深拷贝的用户输入。循环将每条完整 assistant 消息、工具结果和压缩 checkpoint 先写 journal 再加入对应内存状态，其中带工具调用的 assistant 消息必须早于工具执行落盘。写入 `turn_end` 后，产品层的 `onRunCommitted` 只执行 accounting 和记忆调度等聚合后处理；全部成功后才向监听器和 stream 发布最终 `agent_end` 并转为空闲。整个过程仍拒绝新运行，`waitForIdle()` 也会继续等待。`state` 和公共事件会深拷贝可变数据，普通监听器异常不会修改内部历史或终止运行。
+`Agent` 是有状态的单次运行控制器。它拒绝并发运行；普通模式下 Kana 注入的 `AgentJournal` 会在模型 I/O 前写入 turn 边界和深拷贝的用户输入。循环将每条完整 assistant 消息、工具结果和压缩 checkpoint 先写 journal 再加入对应内存状态，其中带工具调用的 assistant 消息必须早于工具执行落盘。写入 `turn_end` 后，产品层的 `onRunCommitted` 只执行 accounting 和记忆调度等聚合后处理；全部成功后才向监听器和 stream 发布最终 `agent_end` 并转为空闲。Clean 模式不注入 journal，消息与 checkpoint 只更新 Agent 内存状态，Host 的 run/compaction commit 回调也跳过 accounting 和记忆调度。整个过程仍拒绝新运行，`waitForIdle()` 也会继续等待。`state` 和公共事件会深拷贝可变数据，普通监听器异常不会修改内部历史或终止运行。
 
-可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，并根据估算输入和剩余 context 计算通用的逐轮输出上限，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。`/compact` 复用同一个 manager 和摘要策略，但使用独立 commit，在持久化成功后才 adopt checkpoint。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。provider 负责决定如何映射 `ModelContext.maxOutputTokens`；session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
+可选的 `ContextManager` 位于 Agent 与 Model 之间。Agent 为每个 run fork 一份 checkpoint 状态；每次模型调用前，manager 用完整消息历史创建“累计摘要 + 近期原始消息”的 model projection，并根据估算输入和剩余 context 计算通用的逐轮输出上限，终止时再把 checkpoint 和摘要 usage 随 run 一起提交。`/compact` 复用同一个 manager 和摘要策略，但使用独立 commit，在产品 commit 回调成功后才 adopt checkpoint；普通模式的回调包含持久化，Clean 模式的回调只保留进程内状态。Kana 产品层以模型 metadata 或 `agent.context_limit` 装配预算，并注入一个直接调用同一 Model、但没有工具和 Agent loop 的摘要策略。provider 负责决定如何映射 `ModelContext.maxOutputTokens`；session 存储保留原始消息和压缩时间线，因此恢复时 Agent、TUI 和 ContextManager 分别消费 messages、timeline 和最后 checkpoint。
 
 `runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限；最后一个允许回合仍产生工具调用时以 `turn_limit` 结束。每一回合先流式取得助手消息；只有停止原因为 `toolUse` 时才把调用交给 `ToolRuntime`。该 runtime 负责工具查找、TypeBox 1.x 参数校验、串行审批、调用级中止与 deadline、显式并发调度、结果规范化及提交；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。每个 run 的并行能力统一解析为用户 `parallelToolCalls` 设置与模型 metadata `supportsParallelToolCalls` 的交集，并同时写入 provider `ModelContext` 与 ToolRuntime，避免请求能力和实际调度分歧。工具自身的 `execution.deadlineMs` 优先，否则使用 Agent 默认值；框架默认 300000 毫秒，Kana 通过 `agent.tool_deadline_ms` 将产品默认值设为 660000 毫秒。只有并行能力启用时，连续的 `parallel` 工具才组成并行组；关闭时所有调用逐个执行，默认 `exclusive` 的工具仍形成屏障。工具 update 通过串行事件队列保持顺序，实际完成的结果通过另一条串行 commit 队列逐条写 journal，再发布 `tool_execution_end`，并以同一完成顺序进入下一次模型请求。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果。运行中止或 deadline 会中止工具的独立 signal；工具若在有限宽限期内仍未退出，其可见结果固定为 `unknown`，迟到 update 被忽略，当前 run 终止且模型不会自动重试。
 
@@ -134,7 +134,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 ## Kana 产品装配
 
-`KanaConversationHost` 是前端共享的 Kana 产品生命周期边界。它集中装配配置、审批、session journal、日志、accounting、记忆压缩、wake scheduler、MCP 与 `createKanaAgent`，并为每次新建、分叉、恢复或配置变化创建绑定到正确 session 的 Agent。Host 只返回前端中立的数据和操作，不渲染 TUI；`ConversationRuntime` 则消费这些操作并管理一次对话的执行状态。这样交互式前端与无头前端可以共享完全相同的模型、提示词、工具、持久化和用量记录规则。
+`KanaConversationHost` 是前端共享的 Kana 产品生命周期边界。它集中装配配置、审批、session journal、日志、accounting、记忆压缩、wake scheduler、MCP 与 `createKanaAgent`，并为每次新建、分叉、恢复或配置变化创建绑定到正确 session 的 Agent。Host 只返回前端中立的数据和操作，不渲染 TUI；`ConversationRuntime` 则消费这些操作并管理一次对话的执行状态。这样交互式前端与无头前端可以共享相同的模型、提示词、工具和 launch-mode 持久化策略。
 
 `createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建系统提示词，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash`，并从 `kana/tools` 注册产品专属的可选 `remember` 与 `schedule_wake`，最后在校验名称唯一后追加产品层传入的 `additionalTools`。通用 `tools` 层不依赖 Kana 的持久化或会话生命周期。
 
@@ -147,7 +147,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 5. 当前目录、平台、日期和时区；
 6. 已启用 Skills 的名称、描述和 `SKILL.md` 路径。
 
-Clean 模式只保留第 2、5 项，并且不会扫描 Skills 路径、读取 memory 或创建自动记忆合并 scheduler。Host 仍把当前运行配置传给 Agent，因此 provider/model、上下文上限、输出上限和工具 deadline 与普通模式一致；`schedule_wake` 也仍按前端能力启用。
+Clean 模式只保留第 2、5 项，并且不会扫描 Skills 路径、读取 memory 或创建自动记忆合并 scheduler。Host 仍把当前运行配置传给 Agent，因此 provider/model、上下文上限、输出上限和工具 deadline 与普通模式一致；`schedule_wake` 也仍按前端能力启用。Clean 模式中的 Agent 配置变更会经过同一 schema 校验，但只替换 Host 的进程内配置，不调用共享 `KanaConfigStore`。
 
 `loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。install 不物化默认 `config.toml`，只补齐缺失的可变状态；`config.example.toml` 是运行时不读取的 Kana 生成参考，install 和 reset 会比较并刷新过期内容。`KanaConfigStore` 为 TUI 等调用方提供通用 typed mutation：它比较更新前后的有效配置，只 patch 变化的规范 TOML leaf，验证回读结果后用同目录临时文件原子替换，因此无关配置、未知表和注释不需要经过全量重序列化。
 
@@ -155,9 +155,11 @@ Clean 模式只保留第 2、5 项，并且不会扫描 Skills 路径、读取 m
 
 所有 Kana 状态都位于 `KANA_HOME`，未设置时为 `~/.kana`：
 
+下表描述普通模式的持久化。Clean 会话不会写入其中的 session、运行时日志、accounting 或 memory 项；Project/Global `/usage` 仍可读取既有 accounting 汇总。
+
 | 数据 | 位置与格式 | 写入时机 |
 | --- | --- | --- |
-| 配置 | `config.toml` | 用户编辑或 `/model` 修改；`kana reset` 删除 |
+| 配置 | `config.toml` | 用户编辑或普通模式的 `/model` 修改；`kana reset` 删除 |
 | 配置参考 | `config.example.toml` | `kana install` 或 `kana reset` 创建/刷新；运行时不读取 |
 | MCP server 定义 | `mcp.json` | `kana install`、`kana reset` 或用户编辑 |
 | MCP 启用状态 | `mcp-enabled.json` | `kana install`、`kana reset` 或启用状态变更 |

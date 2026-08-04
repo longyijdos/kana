@@ -23,6 +23,8 @@ Runtime logs use the same workspace encoding and live at:
 
 Each line is a leveled JSON record with a timestamp, stable event name, session ID, and safe metadata. A session is the log-file boundary: resuming it appends to the existing file, while `/new`, `/fork`, or resuming another session writes to a new file. Logs are not conversation history and do not retain prompts, assistant text, complete tool arguments, or output; see [Configuration and installation](configuration.en.md) for configuration and levels.
 
+Clean mode still allocates an in-process session ID for runtime state correlation, but uses a no-op logger and creates no log file at this path.
+
 ## Sessions
 
 Session persistence lives under `src/kana/session/`: `format.ts` defines and validates V3 records and checkpoint conversion, `journal.ts` owns append ordering and interrupted-turn recovery, and `repository.ts` handles creation, lookup, reading, tail repair, and deletion. Internal and cross-layer callers use these capabilities through the stable `session/index.ts` domain exports.
@@ -34,6 +36,8 @@ Session files are located at:
 ```
 
 Creating a session only creates an in-memory UUID, creation time, working directory, optional model metadata, and optional parent-session path. The file is created only when messages are first appended; empty sessions do not appear in `/resume`.
+
+Clean mode registers no journal with the session repository. Messages and context checkpoints remain only in the current `ConversationRuntime`; new/fork can still switch between temporary sessions in the process, but those sessions cannot be resumed, listed, or deleted and are all discarded on exit.
 
 ### JSONL format
 
@@ -80,7 +84,7 @@ Memory has two scopes:
 
 Durable `memory.md` is compressed Markdown injected into the system prompt; a missing file is empty. `saveKanaMemory` trims surrounding whitespace, checks `memory.max_chars` by Unicode code point, writes a UUID temporary file, then atomically renames it and ensures one trailing newline.
 
-When started with `--clean`, the host does not read global or project memory, expose `remember`, start automatic consolidation, or allow manual viewing and consolidation through `/memory`. Existing memory files remain unchanged; resuming still loads and continues persisting session messages.
+When started with `--clean`, the host does not read global or project memory, expose `remember`, start automatic consolidation, or allow manual viewing and consolidation through `/memory`. Existing memory files remain unchanged. Clean mode also cannot resume a session, and the current temporary conversation is not written to a session journal.
 
 `remember` does not modify durable memory directly. It defaults to project scope and appends non-empty content, plus optional title and reason, to the current day's Markdown staging file:
 
