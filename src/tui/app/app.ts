@@ -392,6 +392,10 @@ export class KanaTuiApp {
       },
       forkSession: (prompt) => {
         this.editor.clear();
+        if (cleanMode) {
+          this.showForkingUnavailable();
+          return;
+        }
         void this.forkSession(prompt);
       },
       resumeSession: (sessionId) => {
@@ -821,6 +825,10 @@ export class KanaTuiApp {
 
   private showSavedSessionsUnavailable(): void {
     this.showError(new Error("Saved sessions are unavailable in clean mode."));
+  }
+
+  private showForkingUnavailable(): void {
+    this.showError(new Error("Forking sessions is unavailable in clean mode."));
   }
 
   private handleConversationEvent(event: ConversationRuntimeEvent): void {

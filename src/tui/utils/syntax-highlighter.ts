@@ -7,6 +7,9 @@ export type HighlightedCodeLine = Array<{
 }>;
 
 const SHIKI_THEME = "dark-plus";
+// The upstream shell grammar mis-scopes the final character before `>` (for
+// example, `<hash>`). Track jeff-hykin/better-shell-syntax#111 and #130
+// instead of patching Shiki's generated grammar locally.
 const SHIKI_LANGUAGES = [
   "bash",
   "css",

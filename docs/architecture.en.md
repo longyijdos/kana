@@ -51,7 +51,7 @@ When the TUI starts, `startTui` first creates a `KanaConversationHost`. The host
 
 `startHeadless` uses the same host and runtime, loads MCP first, submits one user message, and waits for the complete Agent loop. It projects runtime events into a separately versioned public JSONL protocol, or writes progress to stderr and final assistant text to stdout. The headless frontend has no interactive approval, so tools not trusted by configuration or the allowlist fail closed. Passing `--allow-all-tools` unconditionally authorizes every available tool but does not isolate files or processes. `SIGINT` cancels the active Agent and exits with status `130`.
 
-In clean mode the host returns an empty tool snapshot before the MCP runtime reads configuration. The TUI omits its external-tool loader, while Headless still passes through the same host boundary without parsing or connecting MCP. These two boundaries prevent later new/fork operations, model switches, or Agent rebuilds from reintroducing external tools.
+In clean mode the host returns an empty tool snapshot before the MCP runtime reads configuration. The TUI omits its external-tool loader, while Headless still passes through the same host boundary without parsing or connecting MCP. These two boundaries prevent later new operations, model switches, or Agent rebuilds from reintroducing external tools; the host separately rejects forks in clean mode.
 
 ## How one prompt runs
 

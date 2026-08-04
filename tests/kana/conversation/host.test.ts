@@ -124,6 +124,9 @@ describe("Kana conversation host", () => {
     expect(() => host.deleteSession("saved-session")).toThrow(
       "Saved sessions are unavailable in clean mode.",
     );
+    expect(() => host.forkSession([], undefined, "Fork the task.")).toThrow(
+      "Forking sessions is unavailable in clean mode.",
+    );
     expect(() => host.loadUsage("session")).toThrow("Session usage is unavailable in clean mode.");
     expect(readdirSync(env.KANA_HOME ?? "", { recursive: true })).toEqual([]);
 

@@ -249,6 +249,7 @@ export class KanaConversationHost<TConfiguration = never> {
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
   ): { id: string } {
+    this.assertForkingAvailable();
     let source =
       this.activeSessionId === undefined ? undefined : this.sessions.get(this.activeSessionId);
     if (!source) {
@@ -721,6 +722,12 @@ export class KanaConversationHost<TConfiguration = never> {
   private assertSavedSessionsAvailable(): void {
     if (this.launchMode === "clean") {
       throw new Error("Saved sessions are unavailable in clean mode.");
+    }
+  }
+
+  private assertForkingAvailable(): void {
+    if (this.launchMode === "clean") {
+      throw new Error("Forking sessions is unavailable in clean mode.");
     }
   }
 }

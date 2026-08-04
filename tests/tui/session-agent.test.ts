@@ -210,9 +210,14 @@ describe("session-scoped agents", () => {
 
   test("keeps customization controls and external tools disabled in clean mode", async () => {
     let externalToolLoadCount = 0;
+    let forkCount = 0;
     const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
       ...createOptions(),
       launchMode: "clean",
+      forkSession: () => {
+        forkCount += 1;
+        return { id: "fork" };
+      },
       loadExternalTools: async () => {
         externalToolLoadCount += 1;
         return {};
@@ -220,7 +225,7 @@ describe("session-scoped agents", () => {
     });
     const internal = app as unknown as {
       handleCommand(command: {
-        name: "skills" | "mcp" | "memory" | "resume" | "delete";
+        name: "skills" | "mcp" | "memory" | "fork" | "resume" | "delete";
         arguments: string;
         raw: string;
       }): void;
@@ -232,17 +237,20 @@ describe("session-scoped agents", () => {
     internal.handleCommand({ name: "skills", arguments: "", raw: "/skills" });
     internal.handleCommand({ name: "mcp", arguments: "", raw: "/mcp" });
     internal.handleCommand({ name: "memory", arguments: "", raw: "/memory" });
+    internal.handleCommand({ name: "fork", arguments: "Try another path.", raw: "/fork" });
     internal.handleCommand({ name: "resume", arguments: "saved-session", raw: "/resume" });
     internal.handleCommand({ name: "delete", arguments: "", raw: "/delete" });
 
     const transcript = renderTranscript(internal.transcript);
     expect(externalToolLoadCount).toBe(0);
+    expect(forkCount).toBe(0);
     expect(transcript).toContain(
       "Clean mode · temporary session; customizations and saving are disabled.",
     );
     expect(transcript).toContain("Skills are unavailable in clean mode.");
     expect(transcript).toContain("MCP management is unavailable in clean mode.");
     expect(transcript).toContain("Memory is unavailable in clean mode.");
+    expect(transcript).toContain("Forking sessions is unavailable in clean mode.");
     expect(transcript.match(/Saved sessions are unavailable in clean mode\./g)).toHaveLength(2);
     expect(stripAnsi(internal.layout.render(120).join("\n"))).toContain("clean");
   });

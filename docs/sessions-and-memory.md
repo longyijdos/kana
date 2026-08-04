@@ -37,7 +37,7 @@ Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使�
 
 创建会话只在内存中生成 UUID、创建时间、工作目录、可选模型元数据和可选父会话路径。文件在第一次有消息需要追加时才创建；空会话不会出现在 `/resume` 列表中。
 
-Clean 模式不向 session repository 注册 journal：消息和 context checkpoint 只保留在当前 `ConversationRuntime` 中，new/fork 仍可在进程内切换临时会话，但这些会话不能恢复、列出或删除，退出后全部丢弃。
+Clean 模式不向 session repository 注册 journal：消息和 context checkpoint 只保留在当前 `ConversationRuntime` 中，`/new` 可切换到新的临时会话，但 `/fork`、恢复、列出和删除 session 均不可用，退出后当前会话即丢弃。
 
 ### JSONL 格式
 

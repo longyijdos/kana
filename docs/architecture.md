@@ -51,7 +51,7 @@ Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与
 
 `startHeadless` 使用同一个 Host 和 runtime，先加载 MCP，再提交一条用户消息并等待完整 Agent loop 结束。它把 runtime 事件投影成独立版本的 JSONL 公共协议，或把进度写到 stderr、最终助手文本写到 stdout。无头前端不提供交互审批；未被配置或白名单信任的工具会关闭失败。调用方传入 `--allow-all-tools` 时会无条件授权所有可用工具，但不会隔离文件或进程。`SIGINT` 会取消活动 Agent，进程以 `130` 退出。
 
-Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TUI 不安装外部工具加载器，Headless 则继续经过同一 Host 边界但不会解析或连接 MCP。这个双重边界保证后续 new/fork、模型切换和 Agent 重建不会重新引入外部工具。
+Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TUI 不安装外部工具加载器，Headless 则继续经过同一 Host 边界但不会解析或连接 MCP。这个双重边界保证后续 new、模型切换和 Agent 重建不会重新引入外部工具；Host 另行拒绝 Clean 模式的 fork。
 
 ## 一次对话如何执行
 

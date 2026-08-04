@@ -37,7 +37,7 @@ Session files are located at:
 
 Creating a session only creates an in-memory UUID, creation time, working directory, optional model metadata, and optional parent-session path. The file is created only when messages are first appended; empty sessions do not appear in `/resume`.
 
-Clean mode registers no journal with the session repository. Messages and context checkpoints remain only in the current `ConversationRuntime`; new/fork can still switch between temporary sessions in the process, but those sessions cannot be resumed, listed, or deleted and are all discarded on exit.
+Clean mode registers no journal with the session repository. Messages and context checkpoints remain only in the current `ConversationRuntime`. `/new` can switch to another temporary session, but `/fork`, resume, listing, and deletion are unavailable; the current session is discarded on exit.
 
 ### JSONL format
 

@@ -127,7 +127,7 @@ Common interactions:
 | `Ctrl+O` | Expand the most recent inspectable tool output. |
 | `Ctrl+C` / `Esc` | Abort active work, close a view, or exit. |
 
-In clean mode, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable; Project and Global usage remain readable.
+In clean mode, `/fork`, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable; Project and Global usage remain readable.
 
 See [TUI interaction and rendering](docs/tui.en.md) for the complete interaction model.
 

@@ -127,7 +127,7 @@ kana --clean
 | `Ctrl+O` | 展开最近一项可查看的工具输出。 |
 | `Ctrl+C` / `Esc` | 中止当前工作、关闭视图或退出。 |
 
-Clean 模式下 `/resume`、`/delete` 和 `/usage` 的 Session 范围不可用；Project 与 Global 用量仍可查看。
+Clean 模式下 `/fork`、`/resume`、`/delete` 和 `/usage` 的 Session 范围不可用；Project 与 Global 用量仍可查看。
 
 完整交互说明见 [TUI 交互与渲染](docs/tui.md)。
 
