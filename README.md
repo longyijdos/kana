@@ -227,6 +227,8 @@ bun run check
 
 Kana 仍处于 `1.0` 之前的快速迭代阶段，CLI、协议和持久化格式可能随次版本演进。提交代码前请阅读 [AGENTS.md](AGENTS.md)。
 
+版本选择、Changelog、tag 和 GitHub Release 的具体步骤见[发版流程](docs/releasing.md)，历史发布说明见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 许可证
 
 [MIT](LICENSE)

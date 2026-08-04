@@ -227,6 +227,8 @@ bun run check
 
 Kana is still evolving before `1.0`; CLI behavior, protocols, and persistence formats may change across minor releases. Read [AGENTS.md](AGENTS.md) before contributing code.
 
+See the [release process](docs/releasing.en.md) for version selection, Changelog, tags, and GitHub Releases. Historical release notes are in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 [MIT](LICENSE)

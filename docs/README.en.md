@@ -16,6 +16,7 @@ Recommended reading order:
 8. [Headless execution and the JSONL protocol](headless.en.md): `kana exec`, approvals, output, and exit semantics.
 9. [Local Terminal-Bench evaluation](terminal-bench.en.md): Harbor adapter, run parameters, proxying, and results.
 10. [TUI interaction and rendering](tui.en.md): terminal I/O, controllers, input, and differential repainting.
+11. [Release process](releasing.en.md): version policy, Changelog, tags, and Release automation.
 
 Chinese versions:
 
@@ -29,3 +30,4 @@ Chinese versions:
 - [无头执行与 JSONL 协议](headless.md)
 - [Terminal-Bench 本地评测](terminal-bench.md)
 - [TUI 交互与渲染](tui.md)
+- [发版流程](releasing.md)
