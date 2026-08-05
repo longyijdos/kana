@@ -337,9 +337,27 @@ async function downloadBinary(
     "asset_download",
     asset.name,
   );
+  if (!response.body) {
+    throw failure("asset_download", `${asset.name} returned an empty response body.`);
+  }
+
+  // Consume the body explicitly because Bun.write(destination, response) can
+  // stall on large proxied responses after the response headers have arrived.
+  const writer = Bun.file(destination).writer({ highWaterMark: 1024 * 1024 });
+  let downloadedBytes = 0;
   try {
-    return await Bun.write(destination, response);
+    for await (const chunk of response.body) {
+      writer.write(chunk);
+      downloadedBytes += chunk.byteLength;
+    }
+    await writer.end();
+    return downloadedBytes;
   } catch (error) {
+    try {
+      await writer.end(error instanceof Error ? error : undefined);
+    } catch {
+      // Preserve the original download or write failure.
+    }
     throw failure("asset_download", `Could not write ${asset.name}: ${formatError(error)}`, error);
   }
 }

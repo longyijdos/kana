@@ -112,6 +112,33 @@ describe("Kana self-update", () => {
     ]);
   });
 
+  test("streams a chunked asset response to the candidate file", async () => {
+    const chunks = [NEW_BINARY.subarray(0, 3), NEW_BINARY.subarray(3, 9), NEW_BINARY.subarray(9)];
+    let chunkIndex = 0;
+    const fixture = createFixture({
+      assetResponse: () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              const chunk = chunks[chunkIndex];
+              if (!chunk) {
+                controller.close();
+                return;
+              }
+              chunkIndex += 1;
+              controller.enqueue(chunk);
+            },
+          }),
+        ),
+    });
+
+    await expect(fixture.updater()).resolves.toMatchObject({ status: "updated" });
+
+    expect(chunkIndex).toBe(chunks.length);
+    expect(readFileSync(fixture.executablePath)).toEqual(NEW_BINARY);
+    expect(readdirSync(path.dirname(fixture.executablePath))).toEqual(["kana"]);
+  });
+
   test("keeps the old binary when checksum verification fails", async () => {
     const fixture = createFixture({ sha256: "0".repeat(64) });
 
@@ -202,6 +229,7 @@ describe("Kana self-update", () => {
 });
 
 type FixtureOptions = {
+  assetResponse?: () => Response;
   platform?: NodeJS.Platform;
   releaseVersion?: string;
   runExecutable?: NonNullable<CreateKanaUpdaterOptions["runExecutable"]>;
@@ -252,7 +280,7 @@ function createFixture(options: FixtureOptions = {}) {
       });
     }
     if (url === ASSET_URL) {
-      return new Response(NEW_BINARY);
+      return options.assetResponse?.() ?? new Response(NEW_BINARY);
     }
     return new Response("not found", { status: 404, statusText: "Not Found" });
   };
