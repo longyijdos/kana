@@ -1,3 +1,11 @@
+## [0.2.2](https://github.com/longyijdos/kana/compare/v0.2.1...v0.2.2) (2026-08-05)
+
+Kana v0.2.2 makes `kana update` more reliable by streaming asset downloads to disk instead of buffering them in memory.
+
+### Bug Fixes
+
+- Stream self-update downloads to disk so large releases no longer stall on slow or proxied responses.
+
 ## [0.2.1](https://github.com/longyijdos/kana/compare/v0.2.0...v0.2.1) (2026-08-04)
 
 Kana v0.2.1 sharpens session control and reliability with a new clean launch mode, per-session approval overrides, and smarter context handling.
