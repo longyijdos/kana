@@ -14,7 +14,12 @@ export {
 } from "./choice-prompt";
 export { type ContentView, ContentViewer } from "./content-viewer";
 export { DeleteSessionConfirmation } from "./delete-session-confirmation";
-export { Editor, type EditorOptions, type StatusLineState } from "./editor";
+export {
+  Editor,
+  type EditorOptions,
+  type EditorQueuedInput,
+  type StatusLineState,
+} from "./editor";
 export {
   type McpAuthAction,
   McpAuthActionMenu,

@@ -5,6 +5,7 @@ import type {
   Message,
   ModelUsage,
   ToolResultMessage,
+  UserMessage,
 } from "@/core";
 import type { ContextCompactionReason } from "./context-manager";
 
@@ -28,6 +29,10 @@ export type AgentEvent =
       turn: number;
       message: AssistantMessage;
       toolResults: ToolResultMessage[];
+    }
+  | {
+      type: "turn_input";
+      message: UserMessage;
     }
   | {
       type: "context_compaction_start";

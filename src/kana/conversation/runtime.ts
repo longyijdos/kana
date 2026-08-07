@@ -13,6 +13,8 @@ export type ConversationSessionSnapshot = {
 
 export type ConversationRunSource = "user" | "scheduled" | "compaction";
 
+export type ConversationInputDisposition = "steered" | "queued" | "discarded";
+
 export type ConversationRuntimeEvent =
   | {
       type: "run_start";
@@ -64,22 +66,30 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   deleteSession?: (sessionId: string) => boolean;
   wakeScheduler?: WakeScheduler;
   scheduledRuns?: boolean;
+  canStartQueuedRun?: () => boolean;
+  /** @deprecated Use canStartQueuedRun. */
   canStartScheduledRun?: () => boolean;
   getLogger?: () => Logger;
+};
+
+type PendingSubmission = {
+  sessionId?: string;
+  input: UserMessage;
+  source: Exclude<ConversationRunSource, "compaction">;
 };
 
 export class ConversationRuntime<TConfiguration = never> {
   private readonly listeners = new Set<ConversationRuntimeListener>();
   private readonly wakeScheduler: WakeScheduler;
   private readonly unsubscribeWakeEvents: () => void;
-  private readonly pendingWakeEvents: WakeEvent[] = [];
+  private readonly pendingSubmissions: PendingSubmission[] = [];
   private readonly getLogger: () => Logger;
   private agent: Agent;
   private sessionData?: ConversationSessionSnapshot;
   private beforeToolExecution?: BeforeToolExecutionHook;
   private activeSource?: ConversationRunSource;
   private terminalEvent?: Extract<AgentEvent, { type: "agent_end" }>;
-  private drainingWakeEvents = false;
+  private drainingSubmissions = false;
   private stopping = false;
 
   constructor(private readonly options: ConversationRuntimeOptions<TConfiguration>) {
@@ -116,6 +126,14 @@ export class ConversationRuntime<TConfiguration = never> {
 
   get isRunning(): boolean {
     return this.activeSource !== undefined || this.agent.state.isRunning;
+  }
+
+  get canSteer(): boolean {
+    return (
+      this.activeSource !== undefined &&
+      this.activeSource !== "compaction" &&
+      this.agent.state.isRunning
+    );
   }
 
   setBeforeToolExecution(hook: BeforeToolExecutionHook): void {
@@ -167,7 +185,7 @@ export class ConversationRuntime<TConfiguration = never> {
     } finally {
       this.activeSource = undefined;
       this.terminalEvent = undefined;
-      void this.drainScheduledRuns();
+      void this.drainPendingSubmissions();
     }
   }
 
@@ -192,7 +210,7 @@ export class ConversationRuntime<TConfiguration = never> {
     } finally {
       unsubscribe();
       this.activeSource = undefined;
-      void this.drainScheduledRuns();
+      void this.drainPendingSubmissions();
     }
   }
 
@@ -205,7 +223,7 @@ export class ConversationRuntime<TConfiguration = never> {
   startNewSession(): ConversationSessionSnapshot {
     this.assertIdle("start a new session");
     const created = this.options.createNewSession();
-    this.cancelCurrentSessionWakeEvents();
+    this.cancelCurrentSessionInputs();
     const session: ConversationSessionSnapshot = {
       id: created.id,
       messages: [],
@@ -219,7 +237,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.assertIdle("fork the session");
     const state = this.agent.state;
     const created = this.options.forkSession(state.messages, state.contextCheckpoint, prompt);
-    this.cancelCurrentSessionWakeEvents();
+    this.cancelCurrentSessionInputs();
     const session: ConversationSessionSnapshot = {
       id: created.id,
       messages: state.messages,
@@ -233,7 +251,7 @@ export class ConversationRuntime<TConfiguration = never> {
   resumeSession(sessionId: string): ConversationSessionSnapshot {
     this.assertIdle("resume a session");
     const session = this.options.loadSession(sessionId);
-    this.cancelCurrentSessionWakeEvents();
+    this.cancelCurrentSessionInputs();
     this.replaceSession("resume", session);
     return this.session as ConversationSessionSnapshot;
   }
@@ -260,8 +278,46 @@ export class ConversationRuntime<TConfiguration = never> {
     return this.agent.waitForIdle();
   }
 
+  notifyCanStartQueuedRun(): void {
+    void this.drainPendingSubmissions();
+  }
+
+  /** @deprecated Use notifyCanStartQueuedRun. */
   notifyCanStartScheduledRun(): void {
-    void this.drainScheduledRuns();
+    this.notifyCanStartQueuedRun();
+  }
+
+  queueInput(input: UserMessage): void {
+    this.queueSubmission({
+      sessionId: this.sessionId,
+      input,
+      source: "user",
+    });
+  }
+
+  async steer(input: UserMessage): Promise<ConversationInputDisposition> {
+    if (this.stopping) {
+      return "discarded";
+    }
+
+    const sessionId = this.sessionId;
+    const outcome = await this.agent.steer(input);
+    if (outcome === "consumed") {
+      return "steered";
+    }
+    if (this.stopping || sessionId !== this.sessionId) {
+      this.log("warn", "conversation.input_discarded", {
+        reason: this.stopping ? "stopping" : "session_changed",
+      });
+      return "discarded";
+    }
+
+    this.queueSubmission({
+      sessionId,
+      input,
+      source: "user",
+    });
+    return "queued";
   }
 
   async close(): Promise<void> {
@@ -272,7 +328,7 @@ export class ConversationRuntime<TConfiguration = never> {
 
     this.stopping = true;
     this.unsubscribeWakeEvents();
-    this.pendingWakeEvents.length = 0;
+    this.pendingSubmissions.length = 0;
     this.agent.abort();
     await this.agent.waitForIdle();
     this.wakeScheduler.dispose();
@@ -365,58 +421,72 @@ export class ConversationRuntime<TConfiguration = never> {
       return;
     }
 
-    this.pendingWakeEvents.push(structuredClone(event));
-    void this.drainScheduledRuns();
+    this.queueSubmission({
+      sessionId: event.sessionId,
+      input: {
+        role: "user",
+        content: ["[Scheduled wake event]", event.message].join("\n"),
+        source: "scheduled",
+      },
+      source: "scheduled",
+    });
   }
 
-  private async drainScheduledRuns(): Promise<void> {
-    if (
-      this.stopping ||
-      this.options.scheduledRuns === false ||
-      this.drainingWakeEvents ||
-      this.isRunning ||
-      this.options.canStartScheduledRun?.() === false
-    ) {
+  private queueSubmission(submission: PendingSubmission): void {
+    if (this.stopping) {
       return;
     }
 
-    this.drainingWakeEvents = true;
+    this.pendingSubmissions.push(structuredClone(submission));
+    this.log("info", "conversation.input_queued", {
+      source: submission.source,
+      pendingInputCount: this.pendingSubmissions.length,
+    });
+    void this.drainPendingSubmissions();
+  }
+
+  private async drainPendingSubmissions(): Promise<void> {
+    if (this.stopping || this.drainingSubmissions || this.isRunning || !this.canStartQueuedRun()) {
+      return;
+    }
+
+    this.drainingSubmissions = true;
     try {
-      while (!this.stopping && !this.isRunning && this.options.canStartScheduledRun?.() !== false) {
-        const event = this.pendingWakeEvents.shift();
-        if (!event) {
+      while (!this.stopping && !this.isRunning && this.canStartQueuedRun()) {
+        const submission = this.pendingSubmissions.shift();
+        if (!submission) {
           return;
         }
-        if (event.sessionId !== this.sessionId) {
+        if (submission.sessionId !== this.sessionId) {
           continue;
         }
 
-        await this.submit(
-          {
-            role: "user",
-            content: ["[Scheduled wake event]", event.message].join("\n"),
-            source: "scheduled",
-          },
-          "scheduled",
-        ).catch(() => {
+        this.log("info", "conversation.queued_input_started", {
+          source: submission.source,
+          pendingInputCount: this.pendingSubmissions.length,
+        });
+        await this.submit(submission.input, submission.source).catch(() => {
           // run_error already carries the failure to the active frontend.
         });
       }
     } finally {
-      this.drainingWakeEvents = false;
+      this.drainingSubmissions = false;
     }
   }
 
-  private cancelCurrentSessionWakeEvents(): void {
+  private canStartQueuedRun(): boolean {
+    return (this.options.canStartQueuedRun ?? this.options.canStartScheduledRun)?.() !== false;
+  }
+
+  private cancelCurrentSessionInputs(): void {
     const sessionId = this.sessionId;
-    if (!sessionId) {
-      return;
+    if (sessionId) {
+      this.wakeScheduler.cancelSession(sessionId);
     }
 
-    this.wakeScheduler.cancelSession(sessionId);
-    for (let index = this.pendingWakeEvents.length - 1; index >= 0; index -= 1) {
-      if (this.pendingWakeEvents[index]?.sessionId === sessionId) {
-        this.pendingWakeEvents.splice(index, 1);
+    for (let index = this.pendingSubmissions.length - 1; index >= 0; index -= 1) {
+      if (this.pendingSubmissions[index]?.sessionId === sessionId) {
+        this.pendingSubmissions.splice(index, 1);
       }
     }
   }

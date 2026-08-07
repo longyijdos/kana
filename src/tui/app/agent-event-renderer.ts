@@ -5,6 +5,7 @@ import {
   type StatusLineState,
   TextBlock,
   type Transcript,
+  UserMessageBlock,
 } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -81,6 +82,9 @@ export class AgentEventRenderer {
         this.options.updateStatus("thinking");
         break;
       case "turn_end":
+        break;
+      case "turn_input":
+        this.options.transcript.addChild(new UserMessageBlock(event.message.content));
         break;
       case "context_compaction_start":
         this.options.updateStatus("compacting");

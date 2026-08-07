@@ -466,6 +466,7 @@ class HeadlessRunOutput {
       case "agent_start":
       case "agent_end":
       case "message_start":
+      case "turn_input":
         return;
     }
   }

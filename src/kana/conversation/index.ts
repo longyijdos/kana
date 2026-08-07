@@ -7,6 +7,7 @@ export {
   type KanaMemoryCompactSummary,
 } from "./host";
 export {
+  type ConversationInputDisposition,
   type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,

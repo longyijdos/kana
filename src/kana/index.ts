@@ -74,6 +74,7 @@ export {
   type KanaEnvironmentContext,
 } from "./context";
 export {
+  type ConversationInputDisposition,
   type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,

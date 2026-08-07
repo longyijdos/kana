@@ -38,6 +38,7 @@ agent_start
   → message_start / message_update* / message_end
   → tool_execution_start / tool_execution_update* / tool_execution_end
   → turn_end
+  → turn_input* (when the current run has pending input)
   → … (next turn)
   → agent_end
 ```
@@ -60,11 +61,13 @@ Repeat (at most 8 turns by default; unlimited when maxTurns = -1):
   Extract tool_call content only when stopReason = toolUse
   Run those tools in appearance order; add results to context and new messages
   Emit turn_end
-  Stop if there were no tool calls or execution requested abort
+  Stop if execution requested abort
+  If another turn is available, commit queued turn input, add it to context, and emit turn_input for each message
+  Stop if there were neither tool calls nor turn input
 Emit agent_end and return messages added by this run
 ```
 
-Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. `runAgentLoop` owns only the model-turn state machine and delegates tool calls to an independent `ToolRuntime`. Parallel policy resolves once at the start of each run: `AgentConfig.parallelToolCalls` (Kana's `agent.parallel_tool_calls`) must be enabled and model metadata `supportsParallelToolCalls` must be true. Otherwise the provider receives a false `ModelContext.parallelToolCalls` and the runtime executes calls one at a time. When parallelism is allowed, the runtime partitions calls in assistant-content order: only adjacent calls explicitly marked `parallel` share a concurrent group. An `exclusive`, undeclared, unknown, or invalidly configured tool is a barrier that read work cannot cross.
+Kana's product default is `max_turns = -1`, but standalone `Agent`/`runAgentLoop` use 8 when no configuration is supplied; the public APIs likewise accept only `-1` or a positive integer. If the last allowed turn still executes tool calls, the run ends with `turn_limit` instead of being misreported as a normal `stop`. Turn input is consumed only after a complete model/tool turn and after confirming that another turn can start; abort or the turn limit leaves it for the Agent owner to defer. `runAgentLoop` owns only the model-turn state machine and delegates tool calls to an independent `ToolRuntime`. Parallel policy resolves once at the start of each run: `AgentConfig.parallelToolCalls` (Kana's `agent.parallel_tool_calls`) must be enabled and model metadata `supportsParallelToolCalls` must be true. Otherwise the provider receives a false `ModelContext.parallelToolCalls` and the runtime executes calls one at a time. When parallelism is allowed, the runtime partitions calls in assistant-content order: only adjacent calls explicitly marked `parallel` share a concurrent group. An `exclusive`, undeclared, unknown, or invalidly configured tool is a barrier that read work cannot cross.
 
 Tools run only when an assistant message ends normally with `toolUse`. A length-truncated message never executes its tool calls. A provider error with no assistant content does not persist an empty assistant message; an aborted message loses its unexecuted tool calls but retains any remaining text or thinking content.
 
@@ -84,7 +87,7 @@ Running `/compact` while idle immediately forces the same policy with reason `ma
 
 ## `Agent` lifecycle
 
-`Agent.stream(input)` starts the loop asynchronously. When an `AgentJournal` is configured, it persists the run boundary and user input before adding that input to internal history or allowing model I/O; generic embedders without a journal retain the original in-memory behavior. It permits only one active run; concurrent attempts receive an error stream. `prompt(input)` is the convenience form that awaits `stream(input).result()`.
+`Agent.stream(input)` starts the loop asynchronously. When an `AgentJournal` is configured, it persists the run boundary and user input before adding that input to internal history or allowing model I/O; generic embedders without a journal retain the original in-memory behavior. It permits only one active run; concurrent attempts receive an error stream. `prompt(input)` is the convenience form that awaits `stream(input).result()`. An active run accepts run-local input through `Agent.steer(userMessage)`: the next available turn boundary writes that input to the journal before emitting `turn_input` and including it in the next model context, then returns `consumed`. Input still pending when the run ends returns `deferred`, leaving the product layer to queue it as a new run if appropriate.
 
 Journal ordering is a protocol constraint: a complete assistant message is durable before any tool it names may execute; each tool result is persisted independently after completion; a context checkpoint is persisted before adoption; and the run outcome closes the journal last. `onRunCommitted` performs aggregate post-processing after that close and no longer persists Kana session messages. Listeners and the stream receive final `agent_end` only after both journaling and post-processing succeed. Either failure rejects the stream without first publishing a successful terminal event. All these phases remain part of the active run, so `isRunning` stays `true`, new runs are rejected, and `waitForIdle()` continues waiting.
 
@@ -157,7 +160,7 @@ MCP results are never persisted verbatim. The adapter separately bounds content 
 
 `list`, `glob`, `grep`, `read`, `write`, `edit`, and `bash` resolve relative paths against the tool `root` (Kana's startup directory) and accept absolute paths. They are not workspace sandboxes: relative paths may escape the root, symlinks may resolve outside it, and `bash.cwd`, `glob.cwd`, and `grep.path` may also be outside. Treat approval as interactive confirmation, not filesystem isolation.
 
-`schedule_wake` does not write to disk or restore undelivered events. If the Agent is running when an event becomes due, the TUI queues it and starts a new turn after the current run finishes; creating, forking, or resuming another session cancels the prior session's undelivered events. It does not require tool approval.
+`schedule_wake` does not write to disk or restore undelivered events. If the Agent is running when an event becomes due, the TUI puts it in the pending-submission FIFO shared with Tab input and starts new runs in enqueue order after the current `agent_end`. Enter steering deferred by abort or the turn limit falls back to the same FIFO tail. Creating, forking, or resuming another session cancels the prior session's undelivered wakes and pending input. It does not require tool approval.
 
 ## Constraints for custom tools
 

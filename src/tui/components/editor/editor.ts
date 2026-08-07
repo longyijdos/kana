@@ -46,12 +46,18 @@ import { renderStatusLine, type StatusLineState } from "./status-line";
 
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
+const QUEUED_INPUT_VISIBLE_LIMIT = 5;
 const PROMPT = "> ";
 
 export type EditorOptions = {
   model?: string;
   cleanMode?: boolean;
   commandPaletteVisibleLimit?: number;
+};
+
+export type EditorQueuedInput = {
+  content: string;
+  delivery: "turn" | "run";
 };
 
 export class Editor implements Component {
@@ -73,10 +79,12 @@ export class Editor implements Component {
     phase: "idle",
     running: false,
   };
+  private queuedInputs: EditorQueuedInput[] = [];
   // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
   private placeholder = createRandomPromptPlaceholder();
 
   onSubmit?: (submit: PromptSubmit) => void;
+  onQueue?: (submit: PromptSubmit) => void;
 
   constructor(options: EditorOptions = {}) {
     this.model = options.model;
@@ -131,6 +139,10 @@ export class Editor implements Component {
     };
   }
 
+  setQueuedInputs(inputs: EditorQueuedInput[]): void {
+    this.queuedInputs = structuredClone(inputs);
+  }
+
   render(width: number, availableHeight?: number): string[] {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
@@ -176,6 +188,14 @@ export class Editor implements Component {
 
     if (showStatus) {
       lines.push(renderStatusLine(width, this.model, this.statusState));
+    }
+
+    if (!commandState.showPalette && this.queuedInputs.length > 0) {
+      const queuedInputHeight =
+        availableHeight === undefined
+          ? undefined
+          : Math.max(0, Math.floor(availableHeight) - lines.length);
+      lines.push(...this.renderQueuedInputs(width, queuedInputHeight));
     }
 
     return lines.map((line) => truncateToWidth(line, width, ""));
@@ -265,6 +285,12 @@ export class Editor implements Component {
 
       if (commandState.showPalette && command) {
         this.setText(completeCommand(command));
+        return;
+      }
+
+      const submit = createCommandSubmit(this.state.value, command);
+      if (submit) {
+        this.onQueue?.(submit);
       }
       return;
     }
@@ -362,6 +388,44 @@ export class Editor implements Component {
       lines.push(dim(`... ${viewport.hiddenAfter} more commands`));
     }
 
+    return lines;
+  }
+
+  private renderQueuedInputs(width: number, availableHeight?: number): string[] {
+    const maximumRows =
+      availableHeight === undefined
+        ? QUEUED_INPUT_VISIBLE_LIMIT + 1
+        : Math.max(0, Math.floor(availableHeight));
+    if (maximumRows === 0) {
+      return [];
+    }
+
+    const header = color(`Queued inputs · ${this.queuedInputs.length}`, tuiTheme.command);
+    if (maximumRows === 1) {
+      return [header];
+    }
+
+    const detailRows = Math.min(maximumRows - 1, QUEUED_INPUT_VISIBLE_LIMIT);
+    const needsOverflow = this.queuedInputs.length > detailRows;
+    const visibleCount = needsOverflow && detailRows > 1 ? detailRows - 1 : detailRows;
+    const lines = [header];
+
+    for (const input of this.queuedInputs.slice(0, visibleCount)) {
+      const delivery = input.delivery === "turn" ? "next turn" : "next run";
+      const content = input.content.replace(/\s+/g, " ").trim();
+      const prefix = `  ${delivery.padEnd(9)} · `;
+      lines.push(
+        truncateToWidth(
+          `${color(prefix, tuiTheme.muted)}${color(content, tuiTheme.userMessageText)}`,
+          width,
+          "…",
+        ),
+      );
+    }
+
+    if (needsOverflow && detailRows > 1) {
+      lines.push(dim(`  … ${this.queuedInputs.length - visibleCount} more`));
+    }
     return lines;
   }
 

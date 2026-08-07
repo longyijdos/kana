@@ -79,6 +79,7 @@ import {
   type TuiModelSettings,
 } from "./model-selection";
 import { NotificationController } from "./notification-controller";
+import { QueuedInputController } from "./queued-input-controller";
 import { SessionLifecycleController } from "./session-lifecycle-controller";
 import { SkillManagerController } from "./skill-manager-controller";
 import { type SlashCommand, SlashCommandController } from "./slash-command-controller";
@@ -160,6 +161,7 @@ export class KanaTuiApp {
   private readonly skillManager: SkillManagerController;
   private readonly mcpServerManager?: McpServerManagerController;
   private readonly conversation: ConversationRuntime<TuiModelSelection>;
+  private readonly queuedInputs: QueuedInputController;
   private running = false;
   private totalUsage?: ModelUsage;
   private totalCostCny = 0;
@@ -209,7 +211,7 @@ export class KanaTuiApp {
       listSessions: options.listSessions,
       deleteSession: options.deleteSession,
       wakeScheduler: options.wakeScheduler,
-      canStartScheduledRun: () =>
+      canStartQueuedRun: () =>
         !this.running &&
         !this.externalTools.loading &&
         !this.mcpServerManager?.active &&
@@ -224,6 +226,10 @@ export class KanaTuiApp {
         this.conversation.state.model.metadata,
         this.options.modelManagement?.getSettings(),
       ),
+    });
+    this.queuedInputs = new QueuedInputController((inputs) => {
+      this.editor.setQueuedInputs(inputs);
+      this.tui.requestRender();
     });
     this.layout = new AppLayout({
       main: this.transcript,
@@ -242,7 +248,7 @@ export class KanaTuiApp {
       reload: cleanMode ? undefined : this.options.mcpManagement?.reloadExternalTools,
       isStopping: () => this.stopping,
       onToolsChanged: () => this.recreateAgentForExternalTools(),
-      onReady: () => this.conversation.notifyCanStartScheduledRun(),
+      onReady: () => this.conversation.notifyCanStartQueuedRun(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
       focusEditor: () => this.tui.setFocus(this.editor),
     });
@@ -271,7 +277,7 @@ export class KanaTuiApp {
           if (changed) {
             void this.externalTools.reload();
           } else {
-            this.conversation.notifyCanStartScheduledRun();
+            this.conversation.notifyCanStartQueuedRun();
           }
         },
         updateStatus: (phase, extra) => this.updateStatus(phase, extra),
@@ -483,6 +489,11 @@ export class KanaTuiApp {
       }
 
       void this.submitPrompt(submit.content);
+    };
+    this.editor.onQueue = (submit) => {
+      if (submit.type === "message") {
+        this.queuePrompt(submit.content);
+      }
     };
 
     this.updateStatus("idle");
@@ -837,6 +848,7 @@ export class KanaTuiApp {
         this.running = true;
         this.agentEvents.resetRun();
         if (event.source === "user" && event.input) {
+          this.queuedInputs.startRun(event.input.content);
           this.transcript.addChild(new UserMessageBlock(event.input.content));
         } else if (event.source === "scheduled" && event.input) {
           this.transcript.addChild(
@@ -853,6 +865,9 @@ export class KanaTuiApp {
         if (event.event.type === "context_compacted" && this.contextCompactingBlock !== undefined) {
           this.transcript.removeChild(this.contextCompactingBlock);
           this.contextCompactingBlock = undefined;
+        }
+        if (event.event.type === "turn_input") {
+          this.queuedInputs.deliverTurn(event.event.message.content);
         }
         this.agentEvents.handle(event.event);
         if (event.source !== "compaction") {
@@ -875,6 +890,7 @@ export class KanaTuiApp {
         break;
 
       case "session_changed":
+        this.queuedInputs.clear();
         if (this.toolApproval.resetTemporaryMode() !== undefined) {
           this.getLogger().info("tui.tool_approval_mode_reset", {
             action: event.action,
@@ -928,13 +944,41 @@ export class KanaTuiApp {
   private async submitPrompt(value: string): Promise<void> {
     const prompt = value.trim();
 
-    if (!prompt || this.running) {
+    if (!prompt) {
+      return;
+    }
+
+    if (this.conversation.canSteer) {
+      this.editor.addToHistory(prompt);
+      this.editor.clear();
+      const queuedInputId = this.queuedInputs.add(prompt, "turn");
+      const disposition = await this.conversation.steer({ role: "user", content: prompt });
+      if (disposition === "queued") {
+        this.queuedInputs.moveToRun(queuedInputId);
+      } else {
+        this.queuedInputs.remove(queuedInputId);
+      }
+      return;
+    }
+    if (this.running) {
       return;
     }
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
     await this.submitAgentInput({ role: "user", content: prompt });
+  }
+
+  private queuePrompt(value: string): void {
+    const prompt = value.trim();
+    if (!prompt || !this.conversation.canSteer) {
+      return;
+    }
+
+    this.editor.addToHistory(prompt);
+    this.editor.clear();
+    this.queuedInputs.add(prompt, "run");
+    this.conversation.queueInput({ role: "user", content: prompt });
   }
 
   private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {
@@ -989,7 +1033,7 @@ export class KanaTuiApp {
       running: false,
       activeTool: undefined,
     });
-    this.conversation.notifyCanStartScheduledRun();
+    this.conversation.notifyCanStartQueuedRun();
   }
 
   private showToolApprovalPrompt(

@@ -289,6 +289,54 @@ describe("prompt editor", () => {
     ]);
   });
 
+  test("queues ordinary input with Tab while preserving slash completion", () => {
+    const editor = new Editor();
+    const queued: unknown[] = [];
+    editor.onQueue = (submit) => {
+      queued.push(submit);
+    };
+
+    editor.setText("Queue this message.");
+    editor.handleInput("\t");
+
+    expect(queued).toEqual([
+      {
+        type: "message",
+        content: "Queue this message.",
+      },
+    ]);
+
+    editor.setText("/he");
+    editor.handleInput("\t");
+
+    expect(editor.getText()).toBe("/help ");
+    expect(queued).toHaveLength(1);
+  });
+
+  test("renders queued turn and run previews below status and hides them for slash commands", () => {
+    const editor = new Editor({ model: "test-model" });
+    editor.updateStatus({ phase: "responding", running: true });
+    editor.setQueuedInputs([
+      { delivery: "turn", content: "Use the new direction." },
+      { delivery: "run", content: "Check types after this run." },
+      { delivery: "run", content: "First line\nSecond line" },
+      { delivery: "run", content: "Fourth input" },
+      { delivery: "run", content: "Fifth input" },
+      { delivery: "run", content: "Sixth input" },
+    ]);
+
+    const rendered = editor.render(48, 14).map(stripAnsi);
+
+    expect(rendered).toContain("Queued inputs · 6");
+    expect(rendered).toContain("  next turn · Use the new direction.");
+    expect(rendered).toContain("  next run  · First line Second line");
+    expect(rendered.at(-1)).toMatch(/… \d+ more/);
+    expect(rendered.length).toBeLessThanOrEqual(14);
+
+    editor.setText("/");
+    expect(stripAnsi(editor.render(48, 14).join("\n"))).not.toContain("Queued inputs");
+  });
+
   test("moves up within multiline input before switching history", () => {
     const editor = new Editor();
 

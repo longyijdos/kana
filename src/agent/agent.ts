@@ -80,6 +80,8 @@ export type AgentRunCommittedHook = (commit: {
   event: Extract<AgentEvent, { type: "agent_end" }>;
 }) => Promise<void> | void;
 
+export type AgentSteerOutcome = "consumed" | "deferred";
+
 export type AgentCompactionCommittedHook = (commit: {
   compaction: ContextCheckpoint;
   state: AgentState;
@@ -89,6 +91,12 @@ type ActiveRun = {
   promise: Promise<void>;
   resolve(): void;
   abortController: AbortController;
+  steeringInputs?: PendingSteeringInput[];
+};
+
+type PendingSteeringInput = {
+  message: UserMessage;
+  resolve(outcome: AgentSteerOutcome): void;
 };
 
 export class Agent {
@@ -255,7 +263,7 @@ export class Agent {
     const promptMessages = toPromptMessages(input);
     const runContextManager = this.contextManager?.fork();
 
-    void this.runWithLifecycle(async (signal) => {
+    void this.runWithSteeringLifecycle(async (signal) => {
       const writeJournal = async (operation: () => Promise<void> | void): Promise<void> => {
         try {
           await operation();
@@ -263,6 +271,19 @@ export class Agent {
           journalFailed = true;
           throw error;
         }
+      };
+      const commitMessage = async (message: Message): Promise<void> => {
+        if (!this.journal) {
+          return;
+        }
+
+        await writeJournal(() =>
+          this.journal?.appendMessage({
+            runId,
+            message: structuredClone(message),
+          }),
+        );
+        this.stateData.messages = [...this.stateData.messages, structuredClone(message)];
       };
 
       try {
@@ -284,17 +305,7 @@ export class Agent {
         await runAgentLoop(
           this.createContextSnapshot(),
           this.createLoopConfig(signal, runContextManager, {
-            onMessageCommitted: async (message) => {
-              if (this.journal) {
-                await writeJournal(() =>
-                  this.journal?.appendMessage({
-                    runId,
-                    message: structuredClone(message),
-                  }),
-                );
-                this.stateData.messages = [...this.stateData.messages, structuredClone(message)];
-              }
-            },
+            onMessageCommitted: commitMessage,
             onCompactionCommitted: async (compaction) => {
               if (this.journal) {
                 // Adopt a checkpoint only after the session can recover it.
@@ -309,6 +320,7 @@ export class Agent {
                 }
               }
             },
+            consumeTurnInputs: () => this.consumeSteeringInputs(commitMessage),
           }),
           async (event) => {
             if (event.type === "agent_end") {
@@ -380,6 +392,23 @@ export class Agent {
     this.activeRun?.abortController.abort();
   }
 
+  steer(input: UserMessage): Promise<AgentSteerOutcome> {
+    const steeringInputs = this.activeRun?.steeringInputs;
+    if (!steeringInputs) {
+      return Promise.resolve("deferred");
+    }
+
+    this.log("info", "agent.steering_input_queued", {
+      pendingInputCount: steeringInputs.length + 1,
+    });
+    return new Promise((resolve) => {
+      steeringInputs.push({
+        message: structuredClone(input),
+        resolve,
+      });
+    });
+  }
+
   waitForIdle(): Promise<void> {
     return this.activeRun?.promise ?? Promise.resolve();
   }
@@ -407,7 +436,10 @@ export class Agent {
   private createLoopConfig(
     signal: AbortSignal,
     contextManager: ContextManager | undefined,
-    hooks: Pick<AgentLoopConfig, "onMessageCommitted" | "onCompactionCommitted"> = {},
+    hooks: Pick<
+      AgentLoopConfig,
+      "onMessageCommitted" | "onCompactionCommitted" | "consumeTurnInputs"
+    > = {},
   ): AgentLoopConfig {
     return {
       model: this.stateData.model,
@@ -421,6 +453,20 @@ export class Agent {
       loggerMetadata: this.loggerMetadata,
       ...hooks,
     };
+  }
+
+  private runWithSteeringLifecycle(
+    executor: (signal: AbortSignal) => Promise<unknown>,
+  ): Promise<void> {
+    return this.runWithLifecycle((signal) => {
+      if (!this.activeRun) {
+        throw new Error("Agent steering initialized outside an active run.");
+      }
+      // Steering input belongs to this run only. Compaction uses the base
+      // lifecycle and therefore never exposes a queue that it cannot consume.
+      this.activeRun.steeringInputs = [];
+      return executor(signal);
+    });
   }
 
   private async runWithLifecycle(
@@ -452,12 +498,46 @@ export class Agent {
       this.stateData.error = error;
       throw error;
     } finally {
+      const deferredInputs = this.activeRun.steeringInputs ?? [];
+      if (deferredInputs.length > 0) {
+        this.log("info", "agent.steering_inputs_deferred", {
+          inputCount: deferredInputs.length,
+        });
+      }
+      for (const input of deferredInputs) {
+        input.resolve("deferred");
+      }
       this.stateData.isRunning = false;
       this.stateData.streamingMessage = undefined;
       this.stateData.pendingToolCalls = new Set<string>();
       this.activeRun.resolve();
       this.activeRun = undefined;
     }
+  }
+
+  private async consumeSteeringInputs(
+    commit: (message: UserMessage) => Promise<void>,
+  ): Promise<UserMessage[]> {
+    const steeringInputs = this.activeRun?.steeringInputs;
+    if (!steeringInputs) {
+      return [];
+    }
+
+    const consumed: UserMessage[] = [];
+    while (steeringInputs.length > 0) {
+      const pending = steeringInputs[0] as PendingSteeringInput;
+      await commit(structuredClone(pending.message));
+      steeringInputs.shift();
+      pending.resolve("consumed");
+      consumed.push(structuredClone(pending.message));
+    }
+
+    if (consumed.length > 0) {
+      this.log("info", "agent.steering_inputs_consumed", {
+        inputCount: consumed.length,
+      });
+    }
+    return consumed;
   }
 
   private async processEvent(event: AgentEvent): Promise<void> {
@@ -500,6 +580,8 @@ export class Agent {
           stopReason: event.message.stopReason,
           toolResultCount: event.toolResults.length,
         });
+        break;
+      case "turn_input":
         break;
       case "tool_execution_start":
         this.log("debug", "tool.execution_started", { toolName: event.toolName });
@@ -577,6 +659,9 @@ export class Agent {
 
       case "agent_end":
         this.stateData.streamingMessage = undefined;
+        break;
+
+      case "turn_input":
         break;
     }
   }

@@ -436,6 +436,71 @@ describe("Agent", () => {
     expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
   });
 
+  test("steers the active run at the next turn boundary and journals the input", async () => {
+    const operations: string[] = [];
+    const model = new TextModel("done");
+    const agent = new Agent({
+      model,
+      journal: {
+        startRun: ({ messages }) => {
+          operations.push(`start:${messages.map((message) => message.role).join(",")}`);
+        },
+        appendMessage: ({ message }) => {
+          operations.push(`message:${message.role}`);
+        },
+        appendCompaction: () => {},
+        endRun: ({ reason }) => {
+          operations.push(`end:${reason}`);
+        },
+      },
+    });
+    const events: AgentEvent[] = [];
+    agent.subscribe((event) => {
+      events.push(event);
+    });
+
+    const stream = agent.stream("Start.");
+    const steering = agent.steer({ role: "user", content: "Use the new direction." });
+
+    await stream.result();
+
+    expect(await steering).toBe("consumed");
+    expect(model.contexts).toHaveLength(2);
+    expect(model.contexts[1]?.messages.at(-1)).toEqual({
+      role: "user",
+      content: "Use the new direction.",
+    });
+    expect(agent.state.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(operations).toEqual([
+      "start:user",
+      "message:assistant",
+      "message:user",
+      "message:assistant",
+      "end:stop",
+    ]);
+    expect(events.some((event) => event.type === "turn_input")).toBe(true);
+  });
+
+  test("defers steering input when no further turn is available", async () => {
+    const agent = new Agent({
+      model: new TextModel("done"),
+      maxTurns: 1,
+    });
+
+    const stream = agent.stream("Start.");
+    const steering = agent.steer({ role: "user", content: "Follow up." });
+
+    await stream.result();
+
+    expect(await steering).toBe("deferred");
+    expect(agent.state.messages).not.toContainEqual({ role: "user", content: "Follow up." });
+  });
+
   test("does not call the model when starting the journal fails", async () => {
     const model = new TextModel("unreachable");
     const error = new Error("session unavailable");
