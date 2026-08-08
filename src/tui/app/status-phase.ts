@@ -41,6 +41,10 @@ export function isThinkingVisible(
   switch (eventType) {
     case "thinking_start":
     case "thinking_delta":
+    case "thinking_end":
+      // A provider may split one uninterrupted pre-action reasoning phase
+      // across adjacent reasoning items. Keep the timer active until the next
+      // visible response or action event establishes the real phase boundary.
       return true;
     default:
       return false;

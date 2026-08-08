@@ -46,7 +46,7 @@ ProcessTerminal
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
-| `message_start` / `message_update` / `message_end` | 创建、更新、完成有序助手内容块；Markdown 文本与 provider-hosted 动作保留供应商顺序。thinking 在流式 thinking 事件期间显示当前耗时；本地工具调用解析期间显示 preparing 耗时，并在该调用结束时冻结。 |
+| `message_start` / `message_update` / `message_end` | 创建、更新、完成有序助手内容块；Markdown 文本与 provider-hosted 动作保留供应商顺序。thinking 显示当前动作前推理阶段的累计耗时；相邻 provider reasoning item 共用一次计时，正文、工具或 hosted tool 开始时结束。本地工具调用解析期间显示 preparing 耗时，并在该调用结束时冻结。 |
 | `tool_execution_start` | 创建或标记工具块为运行中，并从零开始显示各自的 running 耗时；并行调用按 `toolCallId` 独立维护。 |
 | `tool_execution_update` | 更新 bash 等工具的部分输出。 |
 | `tool_execution_end` | 写入结构化结果并标记成功/失败。 |

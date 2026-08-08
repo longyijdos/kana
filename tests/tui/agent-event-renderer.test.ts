@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { AssistantMessage } from "../../src/core";
 import { AgentEventRenderer } from "../../src/tui/app/agent-event-renderer";
 import type { RunPhase } from "../../src/tui/app/status-phase";
@@ -149,6 +149,89 @@ describe("AgentEventRenderer", () => {
     expect(stripAnsi(transcript.render(100).join("\n"))).toContain("◆ Searching the web");
 
     renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
+  test("keeps one timer across adjacent thinking items until the next action", () => {
+    let now = 0;
+    const dateNow = spyOn(Date, "now").mockImplementation(() => now);
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const firstThinking: AssistantMessage = {
+      role: "assistant",
+      content: [{ type: "thinking", text: "first" }],
+    };
+    const adjacentThinking: AssistantMessage = {
+      role: "assistant",
+      content: [...firstThinking.content, { type: "thinking", text: "second" }],
+    };
+    const toolCall = {
+      type: "tool_call" as const,
+      id: "call-after-thinking",
+      name: "read",
+      args: { path: "AGENTS.md" },
+    };
+    const toolMessage: AssistantMessage = {
+      role: "assistant",
+      content: [...adjacentThinking.content, toolCall],
+    };
+
+    try {
+      renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+      renderer.handle({
+        type: "message_update",
+        message: firstThinking,
+        assistantMessageEvent: {
+          type: "thinking_start",
+          contentIndex: 0,
+          snapshot: firstThinking,
+        },
+      });
+
+      now = 2_000;
+      renderer.handle({
+        type: "message_update",
+        message: firstThinking,
+        assistantMessageEvent: {
+          type: "thinking_end",
+          contentIndex: 0,
+          content: "first",
+          snapshot: firstThinking,
+        },
+      });
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("thinking (2s) (Esc to abort)");
+
+      now = 3_000;
+      renderer.handle({
+        type: "message_update",
+        message: adjacentThinking,
+        assistantMessageEvent: {
+          type: "thinking_start",
+          contentIndex: 1,
+          snapshot: adjacentThinking,
+        },
+      });
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("thinking (3s) (Esc to abort)");
+
+      renderer.handle({
+        type: "message_update",
+        message: toolMessage,
+        assistantMessageEvent: {
+          type: "toolcall_start",
+          contentIndex: 2,
+          snapshot: toolMessage,
+        },
+      });
+      expect(stripAnsi(transcript.children[0]?.render(80).join("\n") ?? "")).toBe("");
+    } finally {
+      renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+      dateNow.mockRestore();
+    }
   });
 });
 

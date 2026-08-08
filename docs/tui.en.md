@@ -46,7 +46,7 @@ Rendering helpers strip ANSI/control sequences for width calculation and use `st
 
 | Agent event | TUI behavior |
 | --- | --- |
-| `message_start` / `message_update` / `message_end` | Create, update, and complete ordered assistant content blocks; Markdown text and provider-hosted activity retain provider order. Thinking shows its current elapsed time while streamed thinking is active. Local tool calls show preparing elapsed time while parsing, then freeze it when that call ends. |
+| `message_start` / `message_update` / `message_end` | Create, update, and complete ordered assistant content blocks; Markdown text and provider-hosted activity retain provider order. Thinking shows cumulative elapsed time for the current pre-action reasoning phase: adjacent provider reasoning items share one timer, which ends when text, a tool, or a hosted tool starts. Local tool calls show preparing elapsed time while parsing, then freeze it when that call ends. |
 | `tool_execution_start` | Create or mark a tool block running and start its own running elapsed time at zero; parallel calls remain independent by `toolCallId`. |
 | `tool_execution_update` | Update partial output for bash and similar tools. |
 | `tool_execution_end` | Store structured results and mark success/failure. |
