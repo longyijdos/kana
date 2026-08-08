@@ -57,6 +57,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("notification", "backend", (config) => config.notification.backend),
   field("notification", "on_agent_completed", (config) => config.notification.onAgentCompleted),
   field("notification", "on_approval_required", (config) => config.notification.onApprovalRequired),
+  field("tui", "hyperlinks", (config) => config.tui.hyperlinks),
   field("tui", "smooth_text_streaming", (config) => config.tui.smoothTextStreaming),
   field("memory", "enabled", (config) => config.memory.enabled),
   field("memory", "max_chars", (config) => config.memory.maxChars),

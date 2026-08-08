@@ -10,6 +10,10 @@ type AssistantMessageBlockUpdateOptions = {
   complete?: boolean;
 };
 
+type AssistantMessageBlockOptions = {
+  hyperlinks?: boolean;
+};
+
 export class AssistantMessageBlock implements Component {
   private thinkingVisible = false;
   private contentBlocks: (HostedToolBlock | MarkdownBlock)[] = [];
@@ -19,7 +23,10 @@ export class AssistantMessageBlock implements Component {
   private cachedLines?: string[];
   private cachedThinkingElapsedSeconds?: number;
 
-  constructor(private readonly now: Clock = Date.now) {
+  constructor(
+    private readonly now: Clock = Date.now,
+    private readonly options: AssistantMessageBlockOptions = {},
+  ) {
     this.thinkingTimer = new ElapsedTimer(now);
   }
 
@@ -36,6 +43,7 @@ export class AssistantMessageBlock implements Component {
         contentBlocks.push(
           new MarkdownBlock(content.text.trim(), {
             complete: blockComplete,
+            hyperlinks: this.options.hyperlinks,
             trailingLineComplete: blockComplete || /(?:\r\n|\r|\n)\s*$/.test(content.text),
           }),
         );

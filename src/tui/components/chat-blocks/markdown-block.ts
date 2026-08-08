@@ -8,6 +8,7 @@ import { parseMarkdownTable, renderMarkdownTable } from "./markdown-table";
 type MarkdownBlockOptions = {
   color?: Color;
   complete?: boolean;
+  hyperlinks?: boolean;
   trailingLineComplete?: boolean;
 };
 
@@ -73,6 +74,7 @@ export class MarkdownBlock implements Component {
         lines.push(
           ...renderMarkdownTable(table.table, width, {
             color: this.options.color,
+            hyperlinks: this.options.hyperlinks,
           }),
         );
         index = table.nextLine - 1;
@@ -105,6 +107,7 @@ export class MarkdownBlock implements Component {
       return renderWrappedInline(heading[2] ?? "", width, {
         defaultColor: this.options.color ?? tuiTheme.markdownHeading,
         forceBold: true,
+        hyperlinks: this.options.hyperlinks,
       });
     }
 
@@ -119,6 +122,7 @@ export class MarkdownBlock implements Component {
 
       return renderWrappedInline(quote.content, width, {
         defaultColor: tuiTheme.markdownQuote,
+        hyperlinks: this.options.hyperlinks,
         prefix,
         continuationPrefix: " ".repeat(visibleWidth(prefix)),
       });
@@ -132,6 +136,7 @@ export class MarkdownBlock implements Component {
 
       return renderWrappedInline(taskList[3] ?? "", width, {
         defaultColor: this.options.color ?? tuiTheme.markdownText,
+        hyperlinks: this.options.hyperlinks,
         prefix,
         continuationPrefix: " ".repeat(visibleWidth(prefix)),
       });
@@ -144,6 +149,7 @@ export class MarkdownBlock implements Component {
 
       return renderWrappedInline(unorderedList[2] ?? "", width, {
         defaultColor: this.options.color ?? tuiTheme.markdownText,
+        hyperlinks: this.options.hyperlinks,
         prefix,
         continuationPrefix: " ".repeat(visibleWidth(prefix)),
       });
@@ -157,6 +163,7 @@ export class MarkdownBlock implements Component {
 
       return renderWrappedInline(orderedList[2] ?? "", width, {
         defaultColor: this.options.color ?? tuiTheme.markdownText,
+        hyperlinks: this.options.hyperlinks,
         prefix,
         continuationPrefix: " ".repeat(visibleWidth(prefix)),
       });
@@ -164,6 +171,7 @@ export class MarkdownBlock implements Component {
 
     return renderWrappedInline(normalizeHtmlLine(line), width, {
       defaultColor: this.options.color ?? tuiTheme.markdownText,
+      hyperlinks: this.options.hyperlinks,
     });
   }
 

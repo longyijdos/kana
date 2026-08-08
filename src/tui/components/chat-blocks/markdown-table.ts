@@ -1,6 +1,12 @@
 import { type Color, color, truncateToWidth, visibleWidth } from "../../render";
 import { tuiTheme } from "../../theme";
-import { type InlineSpan, parseInline, styleSpans, wrapSpans } from "./markdown-inline";
+import {
+  type InlineSpan,
+  parseInline,
+  resolveInlineLinks,
+  styleSpans,
+  wrapSpans,
+} from "./markdown-inline";
 
 type TableAlignment = "left" | "center" | "right";
 
@@ -23,6 +29,7 @@ export type ParsedMarkdownTable = {
 
 type RenderTableOptions = {
   color?: Color;
+  hyperlinks?: boolean;
 };
 
 type TableCell = {
@@ -116,11 +123,12 @@ export function renderMarkdownTable(
   options: RenderTableOptions = {},
 ): string[] {
   const safeWidth = Math.max(1, width);
-  const header = table.header.map(createCell);
+  const hyperlinks = options.hyperlinks === true;
+  const header = table.header.map((value) => createCell(value, hyperlinks));
   const rows = table.rows.map((row) => ({
-    cells: row.cells.map(createCell),
+    cells: row.cells.map((value) => createCell(value, hyperlinks)),
     pending: row.pending,
-    preview: createPreviewCell(row.previewCells),
+    preview: createPreviewCell(row.previewCells, hyperlinks),
   }));
   const committedRows = rows.filter((row) => !row.pending);
   const pendingRows = rows.filter((row) => row.pending);
@@ -244,11 +252,11 @@ function parseDelimiterCell(value: string): TableAlignment | undefined {
   return "left";
 }
 
-function createCell(value: string): TableCell {
-  return createCellFromSpans(parseInline(value));
+function createCell(value: string, hyperlinks: boolean): TableCell {
+  return createCellFromSpans(resolveInlineLinks(parseInline(value), hyperlinks));
 }
 
-function createPreviewCell(values: string[]): TableCell {
+function createPreviewCell(values: string[], hyperlinks: boolean): TableCell {
   const spans: InlineSpan[] = [];
 
   for (const [index, value] of values.entries()) {
@@ -258,7 +266,7 @@ function createPreviewCell(values: string[]): TableCell {
     spans.push(...parseInline(value));
   }
 
-  return createCellFromSpans(spans);
+  return createCellFromSpans(resolveInlineLinks(spans, hyperlinks));
 }
 
 function createCellFromSpans(spans: InlineSpan[]): TableCell {

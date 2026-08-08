@@ -12,6 +12,12 @@ export {
 } from "./ansi";
 export { firstGrapheme, graphemeSegments } from "./graphemes";
 export {
+  CLOSE_TERMINAL_HYPERLINK,
+  sanitizeTerminalHyperlinkDestination,
+  terminalHyperlink,
+  terminalHyperlinkState,
+} from "./hyperlink";
+export {
   isLineBreak,
   mapLines,
   normalizeLineEndings,

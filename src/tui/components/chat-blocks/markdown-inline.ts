@@ -5,7 +5,10 @@ import {
   dim,
   graphemeSegments,
   italic,
+  sanitizeTerminalHyperlinkDestination,
   strikethrough,
+  stripTerminalControlSequences,
+  terminalHyperlink,
   truncateToWidth,
   visibleWidth,
 } from "../../render";
@@ -20,8 +23,16 @@ type InlineStyle = {
 };
 
 export type InlineSpan = {
+  link?: InlineLink;
   text: string;
   style?: InlineStyle;
+};
+
+export type InlineLink = {
+  // One shared object marks all styled spans from the same Markdown link so
+  // fallback rendering appends its destination exactly once.
+  destination: string;
+  fallbackDestination: string;
 };
 
 export function renderWrappedInline(
@@ -31,6 +42,7 @@ export function renderWrappedInline(
     defaultColor?: Color;
     dim?: boolean;
     forceBold?: boolean;
+    hyperlinks?: boolean;
     prefix?: string;
     continuationPrefix?: string;
   },
@@ -39,7 +51,8 @@ export function renderWrappedInline(
   const continuationPrefix = options.continuationPrefix ?? "";
   const firstWidth = Math.max(1, width - visibleWidth(prefix));
   const restWidth = Math.max(1, width - visibleWidth(continuationPrefix));
-  const lines = wrapSpans(parseInline(value), firstWidth, restWidth);
+  const spans = resolveInlineLinks(parseInline(value), options.hyperlinks === true);
+  const lines = wrapSpans(spans, firstWidth, restWidth);
 
   return lines.map((line, index) => {
     const linePrefix = index === 0 ? prefix : continuationPrefix;
@@ -58,7 +71,11 @@ export function wrapSpans(
   let current: InlineSpan[] = [];
   let currentWidth = 0;
 
-  const pushSegment = (segment: string, style: InlineStyle | undefined): void => {
+  const pushSegment = (
+    segment: string,
+    style: InlineStyle | undefined,
+    link: InlineLink | undefined,
+  ): void => {
     const limit = lines.length === 0 ? firstWidth : restWidth;
     const segmentWidth = visibleWidth(segment);
 
@@ -69,17 +86,17 @@ export function wrapSpans(
     }
 
     const last = current.at(-1);
-    if (last && sameStyle(last.style, style)) {
+    if (last && last.link === link && sameStyle(last.style, style)) {
       last.text += segment;
     } else {
-      current.push({ text: segment, style });
+      current.push({ link, text: segment, style });
     }
     currentWidth += segmentWidth;
   };
 
   for (const span of spans) {
     for (const { segment } of graphemeSegments(span.text)) {
-      pushSegment(segment, span.style);
+      pushSegment(segment, span.style, span.link);
     }
   }
 
@@ -122,6 +139,10 @@ export function styleSpans(
         text = strikethrough(text);
       }
 
+      if (span.link) {
+        text = terminalHyperlink(text, span.link.destination);
+      }
+
       return text;
     })
     .join("");
@@ -161,7 +182,37 @@ export function wrapPlainLine(value: string, width: number): string[] {
 }
 
 export function parseInline(value: string): InlineSpan[] {
-  return parseInlineWithStyle(normalizeInlineMarkdown(value), {});
+  return parseInlineWithStyle(normalizeInlineImages(value), {});
+}
+
+export function resolveInlineLinks(spans: InlineSpan[], hyperlinks: boolean): InlineSpan[] {
+  if (hyperlinks) {
+    return spans;
+  }
+
+  // Expand fallback text before measuring and wrapping so unsupported
+  // terminals use the same visible-width path as every other inline span.
+  const resolved: InlineSpan[] = [];
+  let index = 0;
+
+  while (index < spans.length) {
+    const span = spans[index]!;
+    if (!span.link) {
+      resolved.push(span);
+      index += 1;
+      continue;
+    }
+
+    const link = span.link;
+    while (index < spans.length && spans[index]?.link === link) {
+      const linkedSpan = spans[index]!;
+      resolved.push({ text: linkedSpan.text, style: linkedSpan.style });
+      index += 1;
+    }
+    resolved.push({ text: ` (${link.fallbackDestination})` });
+  }
+
+  return resolved;
 }
 
 function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSpan[] {
@@ -180,6 +231,37 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
   };
 
   while (index < value.length) {
+    if (value[index] === "[" && value[index - 1] !== "!") {
+      // Streamed partial links remain literal until every closing delimiter is
+      // present, avoiding transient or unterminated OSC state.
+      const link = readInlineLink(value, index);
+
+      if (link) {
+        flushPlain();
+        const destination = sanitizeTerminalHyperlinkDestination(link.destination);
+        const labelSpans = parseInlineWithStyle(link.label, activeStyle);
+
+        if (destination) {
+          const inlineLink: InlineLink = {
+            destination,
+            fallbackDestination: link.destination,
+          };
+          spans.push(...labelSpans.map((span) => ({ ...span, link: inlineLink })));
+        } else {
+          spans.push(...labelSpans);
+          const readableDestination = stripTerminalControlSequences(link.destination).replace(
+            /[\u0000-\u001f\u007f-\u009f]/g,
+            "",
+          );
+          if (readableDestination) {
+            spans.push({ text: ` (${readableDestination})` });
+          }
+        }
+        index = link.end;
+        continue;
+      }
+    }
+
     if (value[index] === "`") {
       const end = value.indexOf("`", index + 1);
 
@@ -269,12 +351,153 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
   return spans;
 }
 
-function normalizeInlineMarkdown(value: string): string {
-  return value
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, alt, url) =>
-      alt ? `[image: ${alt}] ${url}` : `[image] ${url}`,
-    )
-    .replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, "$1 ($2)");
+function normalizeInlineImages(value: string): string {
+  return value.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, alt, url) =>
+    alt ? `[image: ${alt}] ${url}` : `[image] ${url}`,
+  );
+}
+
+function readInlineLink(
+  value: string,
+  start: number,
+): { destination: string; end: number; label: string } | undefined {
+  const labelEnd = findClosingBracket(value, start);
+  if (labelEnd === undefined || labelEnd === start + 1 || value[labelEnd + 1] !== "(") {
+    return undefined;
+  }
+
+  let index = labelEnd + 2;
+  while (isInlineWhitespace(value[index])) {
+    index += 1;
+  }
+
+  const destination = readLinkDestination(value, index);
+  if (!destination) {
+    return undefined;
+  }
+  index = destination.end;
+
+  while (isInlineWhitespace(value[index])) {
+    index += 1;
+  }
+
+  if (value[index] === '"' || value[index] === "'") {
+    const titleEnd = findClosingQuote(value, index, value[index]!);
+    if (titleEnd === undefined) {
+      return undefined;
+    }
+    index = titleEnd + 1;
+    while (isInlineWhitespace(value[index])) {
+      index += 1;
+    }
+  }
+
+  if (value[index] !== ")") {
+    return undefined;
+  }
+
+  return {
+    destination: unescapeMarkdownDestination(destination.value),
+    end: index + 1,
+    label: value.slice(start + 1, labelEnd),
+  };
+}
+
+function findClosingBracket(value: string, start: number): number | undefined {
+  let depth = 0;
+
+  for (let index = start + 1; index < value.length; index += 1) {
+    if (isMarkdownEscape(value, index)) {
+      index += 1;
+      continue;
+    }
+    if (value[index] === "[") {
+      depth += 1;
+      continue;
+    }
+    if (value[index] === "]") {
+      if (depth === 0) {
+        return index;
+      }
+      depth -= 1;
+    }
+  }
+
+  return undefined;
+}
+
+function readLinkDestination(
+  value: string,
+  start: number,
+): { end: number; value: string } | undefined {
+  if (value[start] === "<") {
+    for (let index = start + 1; index < value.length; index += 1) {
+      if (isMarkdownEscape(value, index)) {
+        index += 1;
+        continue;
+      }
+      if (value[index] === ">") {
+        return { end: index + 1, value: value.slice(start + 1, index) };
+      }
+      if (value[index] === "\n" || value[index] === "\r") {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  let depth = 0;
+  for (let index = start; index < value.length; index += 1) {
+    const character = value[index];
+    if (isMarkdownEscape(value, index)) {
+      index += 1;
+      continue;
+    }
+    if (character === "(") {
+      depth += 1;
+      continue;
+    }
+    if (character === ")") {
+      if (depth === 0) {
+        return index === start ? undefined : { end: index, value: value.slice(start, index) };
+      }
+      depth -= 1;
+      continue;
+    }
+    if (isInlineWhitespace(character) && depth === 0) {
+      return index === start ? undefined : { end: index, value: value.slice(start, index) };
+    }
+  }
+
+  return undefined;
+}
+
+function findClosingQuote(value: string, start: number, quote: string): number | undefined {
+  for (let index = start + 1; index < value.length; index += 1) {
+    if (isMarkdownEscape(value, index)) {
+      index += 1;
+      continue;
+    }
+    if (value[index] === quote) {
+      return index;
+    }
+  }
+
+  return undefined;
+}
+
+function isInlineWhitespace(value: string | undefined): boolean {
+  return value === " " || value === "\t";
+}
+
+function isMarkdownEscape(value: string, index: number): boolean {
+  // ESC \ terminates an OSC string; treating that backslash as Markdown
+  // escaping could leave a hostile destination outside link sanitization.
+  return value[index] === "\\" && value[index - 1] !== "\x1b";
+}
+
+function unescapeMarkdownDestination(value: string): string {
+  return value.replace(/\\([\\()[\]<>])/g, "$1");
 }
 
 function sameStyle(left: InlineStyle | undefined, right: InlineStyle | undefined): boolean {

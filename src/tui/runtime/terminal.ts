@@ -5,6 +5,7 @@ import {
   resolveNotificationBackend,
   type TerminalNotification,
 } from "./notifications";
+import { supportsTerminalHyperlinks } from "./terminal-capabilities";
 
 // Matches crossterm's DISAMBIGUATE_ESCAPE_CODES | REPORT_EVENT_TYPES |
 // REPORT_ALTERNATE_KEYS so terminals can report Shift+Enter separately.
@@ -16,6 +17,7 @@ export interface Terminal {
   stop(): void;
   write(data: string): void;
   notify(notification: TerminalNotification): void;
+  readonly supportsHyperlinks?: boolean;
   readonly columns: number;
   readonly rows: number;
 }
@@ -27,12 +29,14 @@ export class ProcessTerminal implements Terminal {
   private stopped = true;
   private notificationId = 0;
   private readonly notificationBackend: ReturnType<typeof resolveNotificationBackend>;
+  readonly supportsHyperlinks: boolean;
 
   constructor(
     notificationConfig: Pick<KanaNotificationConfig, "backend"> = { backend: "auto" },
     env: NodeJS.ProcessEnv = process.env,
   ) {
     this.notificationBackend = resolveNotificationBackend(notificationConfig.backend, env);
+    this.supportsHyperlinks = supportsTerminalHyperlinks(env);
   }
 
   start(onInput: (data: string) => void, onResize: () => void): void {

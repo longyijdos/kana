@@ -12,13 +12,14 @@ import { tuiTheme } from "../theme";
 export function addHistoryTimelineToTranscript(
   transcript: Transcript,
   timeline: KanaSessionTimelineEntry[],
+  options: { hyperlinks?: boolean } = {},
 ): void {
   const toolCalls = new Map<string, ToolCallContent>();
 
   for (const entry of timeline) {
     switch (entry.type) {
       case "message":
-        addHistoryMessage(transcript, entry.message, toolCalls);
+        addHistoryMessage(transcript, entry.message, toolCalls, options);
         break;
       case "context_compaction":
         transcript.addChild(
@@ -38,6 +39,7 @@ function addHistoryMessage(
   transcript: Transcript,
   message: Message,
   toolCalls: Map<string, ToolCallContent>,
+  options: { hyperlinks?: boolean },
 ): void {
   switch (message.role) {
     case "user":
@@ -49,7 +51,7 @@ function addHistoryMessage(
       break;
 
     case "assistant":
-      addAssistantMessage(transcript, message, toolCalls);
+      addAssistantMessage(transcript, message, toolCalls, options);
       break;
 
     case "tool":
@@ -73,8 +75,9 @@ function addAssistantMessage(
   transcript: Transcript,
   message: AssistantMessage,
   toolCalls: Map<string, ToolCallContent>,
+  options: { hyperlinks?: boolean },
 ): void {
-  const block = new AssistantMessageBlock();
+  const block = new AssistantMessageBlock(Date.now, options);
   block.update(message);
   block.showThinking(false);
   transcript.addChild(block);

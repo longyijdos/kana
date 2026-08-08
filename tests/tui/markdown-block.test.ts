@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MarkdownBlock } from "../../src/tui/components";
-import { color, stripAnsi, visibleWidth } from "../../src/tui/render";
+import { CLOSE_TERMINAL_HYPERLINK, color, stripAnsi, visibleWidth } from "../../src/tui/render";
 import { tuiTheme } from "../../src/tui/theme";
 import { preloadSyntaxHighlighter } from "../../src/tui/utils/syntax-highlighter";
 
@@ -127,6 +127,108 @@ describe("tui markdown block", () => {
       "[Ctrl] + [C]",
       "inline HTMLnext",
     ]);
+  });
+
+  test("renders safe links with OSC 8 across Markdown block contexts", () => {
+    const cases = [
+      { source: "[Paragraph](https://example.com/paragraph)", visible: "Paragraph" },
+      { source: "# [Heading](https://example.com/heading)", visible: "Heading" },
+      { source: "- [List](https://example.com/list)", visible: "- List" },
+      { source: "> [Quote](https://example.com/quote)", visible: "> Quote" },
+    ];
+
+    for (const { source, visible } of cases) {
+      const rendered = new MarkdownBlock(source, { hyperlinks: true }).render(80);
+
+      expect(rendered.map(stripAnsi)).toEqual([visible]);
+      expect(rendered[0]).toContain("\x1b]8;;https://example.com/");
+      expect(rendered[0]).toContain(CLOSE_TERMINAL_HYPERLINK);
+    }
+  });
+
+  test("preserves inline styles inside terminal hyperlinks", () => {
+    const rendered = new MarkdownBlock(
+      "[**Bold** and *italic*](https://example.com/styles) [Email](mailto:test@example.com)",
+      { hyperlinks: true },
+    ).render(80);
+
+    expect(rendered.map(stripAnsi)).toEqual(["Bold and italic Email"]);
+    expect(rendered[0]).toContain("\x1b[1m");
+    expect(rendered[0]).toContain("\x1b[3m");
+    expect(rendered[0]).toContain("\x1b]8;;mailto:test@example.com\x1b\\");
+  });
+
+  test("falls back to visible destinations before wrapping", () => {
+    const rendered = new MarkdownBlock("[OpenAI](https://example.com) tail", {
+      hyperlinks: false,
+    }).render(12);
+    const plain = rendered.map(stripAnsi);
+
+    expect(plain.join("")).toBe("OpenAI (https://example.com) tail");
+    expect(rendered.every((line) => visibleWidth(line) <= 12)).toBe(true);
+    expect(rendered.join("")).not.toContain("\x1b]8;;");
+  });
+
+  test("closes and reopens hyperlinks around wrapped lines", () => {
+    const rendered = new MarkdownBlock("[abcdefgh](https://example.com) tail", {
+      hyperlinks: true,
+    }).render(5);
+
+    expect(rendered.map(stripAnsi)).toEqual(["abcde", "fgh t", "ail"]);
+    for (const line of rendered.slice(0, 2)) {
+      expect(countOccurrences(line, "\x1b]8;;https://example.com/\x1b\\")).toBe(1);
+      expect(countOccurrences(line, CLOSE_TERMINAL_HYPERLINK)).toBe(1);
+    }
+    expect(rendered[2]).not.toContain("\x1b]8;;");
+  });
+
+  test("renders links inside table cells without changing table width", () => {
+    const rendered = new MarkdownBlock(
+      ["| Name | Link |", "| --- | --- |", "| Kana | [Repository](https://example.com) |"].join(
+        "\n",
+      ),
+      { hyperlinks: true },
+    ).render(30);
+    const linkLine = rendered.find((line) => stripAnsi(line).includes("Repository"));
+
+    expect(linkLine).toContain("\x1b]8;;https://example.com/\x1b\\");
+    expect(stripAnsi(linkLine ?? "")).not.toContain("https://example.com");
+    expect(rendered.every((line) => visibleWidth(line) <= 30)).toBe(true);
+  });
+
+  test("degrades unsafe destinations without emitting terminal controls", () => {
+    const rendered = new MarkdownBlock(
+      [
+        "[JavaScript](javascript:alert(1))",
+        "[Data](data:text/plain,hello)",
+        "[Relative](../docs)",
+        "[Injected](https://example.com/\x1b]8;;bad\x1b\\)",
+      ].join(" "),
+      { hyperlinks: true },
+    ).render(200);
+
+    expect(rendered.map(stripAnsi)).toEqual([
+      "JavaScript (javascript:alert(1)) Data (data:text/plain,hello) Relative (../docs) Injected (https://example.com/)",
+    ]);
+    expect(rendered.join("")).not.toContain("\x1b]8;;");
+  });
+
+  test("keeps incomplete streamed links literal until they close", () => {
+    const block = new MarkdownBlock("[OpenAI](https://example.com", {
+      complete: false,
+      hyperlinks: true,
+      trailingLineComplete: false,
+    });
+    const partial = block.render(80);
+
+    expect(partial.map(stripAnsi)).toEqual(["[OpenAI](https://example.com"]);
+    expect(partial.join("")).not.toContain("\x1b]8;;");
+
+    block.setText("[OpenAI](https://example.com)");
+    const completed = block.render(80);
+
+    expect(completed.map(stripAnsi)).toEqual(["OpenAI"]);
+    expect(completed[0]).toContain("\x1b]8;;https://example.com/\x1b\\");
   });
 
   test("aligns complete tables and supports rows without outer pipes", () => {
@@ -259,3 +361,7 @@ describe("tui markdown block", () => {
     expect(lines.every((line) => visibleWidth(line) <= 6)).toBe(true);
   });
 });
+
+function countOccurrences(value: string, search: string): number {
+  return value.split(search).length - 1;
+}

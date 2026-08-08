@@ -1,11 +1,13 @@
 import stringWidth from "string-width";
 import { stripCursorMarker } from "../runtime/cursor";
 import { RESET } from "./ansi";
+import { CLOSE_TERMINAL_HYPERLINK, terminalHyperlinkState } from "./hyperlink";
 import { splitLines } from "./lines";
 
 const ANSI_PATTERN =
-  // Covers the SGR sequences emitted by this TUI and common OSC/CSI output.
-  /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
+  // OSC strings terminate with BEL, ESC \, or C1 ST. Matching the whole
+  // string keeps embedded hyperlink destinations out of visible-width math.
+  /(?:(?:\u001b\]|\u009d)[\s\S]*?(?:\u0007|\u001b\\|\u009c))|[\u001b\u009b][[\]()#;?]*(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]/g;
 const UNSAFE_CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 
 export function visibleWidth(value: string): number {
@@ -39,6 +41,7 @@ export function truncateToWidth(value: string, width: number, suffix = "..."): s
   let currentWidth = 0;
   let index = 0;
   let usedAnsi = false;
+  let hyperlinkOpen = false;
 
   while (index < value.length) {
     const ansi = readAnsi(value, index);
@@ -47,6 +50,10 @@ export function truncateToWidth(value: string, width: number, suffix = "..."): s
       result += ansi.sequence;
       index = ansi.end;
       usedAnsi = true;
+      const hyperlinkState = terminalHyperlinkState(ansi.sequence);
+      if (hyperlinkState !== undefined) {
+        hyperlinkOpen = hyperlinkState === "open";
+      }
       continue;
     }
 
@@ -67,7 +74,14 @@ export function truncateToWidth(value: string, width: number, suffix = "..."): s
     index += segment.length;
   }
 
-  return usedAnsi ? `${result}${suffix}${RESET}` : `${result}${suffix}`;
+  if (!usedAnsi) {
+    return `${result}${suffix}`;
+  }
+
+  // SGR reset does not close OSC 8, so close an active hyperlink before the
+  // suffix to prevent either it or later terminal output from becoming linked.
+  const hyperlinkClose = hyperlinkOpen ? CLOSE_TERMINAL_HYPERLINK : "";
+  return `${result}${hyperlinkClose}${suffix}${RESET}`;
 }
 
 export function wrapPlainText(value: string, width: number): string[] {

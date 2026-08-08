@@ -175,6 +175,7 @@ export class KanaTuiApp {
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
   private readonly externalTools: ExternalToolsLifecycleController;
+  private readonly hyperlinks: boolean;
   private readonly getLogger: () => Logger;
   private readonly unsubscribeConversationEvents: () => void;
   private contextCompactingBlock?: TextBlock;
@@ -200,6 +201,10 @@ export class KanaTuiApp {
     const initialSession = options.initialSession;
     const cleanMode = options.launchMode === "clean";
     this.getLogger = options.getLogger ?? createNoopLogger;
+    // The config enables the feature but never forces OSC 8 through a terminal
+    // that the runtime could not positively identify as hyperlink-capable.
+    this.hyperlinks =
+      (options.tuiConfig?.hyperlinks ?? true) && terminal.supportsHyperlinks === true;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       initialSession,
       createAgent: ({ configuration, ...agentOptions }) =>
@@ -243,6 +248,7 @@ export class KanaTuiApp {
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
       tui: this.tui,
+      hyperlinks: this.hyperlinks,
       smoothTextStreaming: options.tuiConfig?.smoothTextStreaming ?? true,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
@@ -372,6 +378,7 @@ export class KanaTuiApp {
       layout: this.layout,
       transcript: this.transcript,
       tui: this.tui,
+      hyperlinks: this.hyperlinks,
       isRunning: () => this.running,
       closeOtherOverlays: () => {
         this.skillManager.close();
@@ -762,6 +769,7 @@ export class KanaTuiApp {
           this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
         ])
         .join("\n"),
+      { hyperlinks: this.hyperlinks },
     );
 
     this.contentViewer.open({

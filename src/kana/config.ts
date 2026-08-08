@@ -88,6 +88,7 @@ export type KanaNotificationConfig = {
 };
 
 export type KanaTuiConfig = {
+  hyperlinks: boolean;
   smoothTextStreaming: boolean;
 };
 
@@ -197,6 +198,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     onApprovalRequired: true,
   },
   tui: {
+    hyperlinks: true,
     smoothTextStreaming: true,
   },
   memory: {
@@ -347,6 +349,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       on_approval_required: config.notification.onApprovalRequired,
     },
     tui: {
+      hyperlinks: config.tui.hyperlinks,
       smooth_text_streaming: config.tui.smoothTextStreaming,
     },
     memory: {
@@ -391,6 +394,7 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `on_approval_required = ${config.notification.onApprovalRequired}`,
     "",
     "[tui]",
+    `hyperlinks = ${config.tui.hyperlinks}`,
     `smooth_text_streaming = ${config.tui.smoothTextStreaming}`,
     "",
     "[memory]",
@@ -570,6 +574,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       ),
     },
     tui: {
+      hyperlinks: readBoolean(tui.hyperlinks, defaults.tui.hyperlinks, "tui.hyperlinks"),
       smoothTextStreaming: readBoolean(
         tui.smooth_text_streaming,
         defaults.tui.smoothTextStreaming,

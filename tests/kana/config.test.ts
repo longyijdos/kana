@@ -96,6 +96,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("web_search = true");
     expect(installedConfigExample).toContain("tool_deadline_ms = 660000");
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
+    expect(installedConfigExample).toContain("hyperlinks = true");
     expect(installedConfigExample).toContain("smooth_text_streaming = true");
     expect(installedConfigExample).toContain("Kana does not read this file.");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
@@ -240,6 +241,7 @@ describe("Kana config", () => {
         "on_approval_required = true",
         "",
         "[tui]",
+        "hyperlinks = false",
         "smooth_text_streaming = false",
         "",
         "[memory]",
@@ -279,6 +281,7 @@ describe("Kana config", () => {
         onApprovalRequired: true,
       },
       tui: {
+        hyperlinks: false,
         smoothTextStreaming: false,
       },
       memory: {
@@ -431,6 +434,14 @@ describe("Kana config", () => {
     writeFileSync(path.join(home, "config.toml"), '[tui]\nsmooth_text_streaming = "yes"\n');
 
     expect(() => loadKanaConfig(env)).toThrow("tui.smooth_text_streaming must be a boolean.");
+  });
+
+  test("requires tui.hyperlinks to be a boolean", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[tui]\nhyperlinks = "yes"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("tui.hyperlinks must be a boolean.");
   });
 
   test("loads and validates the optional agent context limit", () => {

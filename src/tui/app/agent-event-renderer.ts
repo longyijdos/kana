@@ -23,6 +23,7 @@ import { ToolCallBlocks } from "./tool-call-blocks";
 export type AgentEventRendererOptions = {
   transcript: Transcript;
   tui: Tui;
+  hyperlinks?: boolean;
   smoothTextStreaming?: boolean;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
 };
@@ -132,7 +133,9 @@ export class AgentEventRenderer {
 
   private handleAssistantStart(message: AssistantMessage): void {
     this.textPresenter.flush();
-    this.streamingAssistant = new AssistantMessageBlock();
+    this.streamingAssistant = new AssistantMessageBlock(Date.now, {
+      hyperlinks: this.options.hyperlinks,
+    });
     this.options.transcript.addChild(this.streamingAssistant);
     this.textPresenter.start(message);
     this.options.updateStatus("thinking");

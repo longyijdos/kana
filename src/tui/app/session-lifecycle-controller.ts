@@ -21,6 +21,7 @@ export type SessionLifecycleControllerOptions = {
   layout: AppLayout;
   transcript: Transcript;
   tui: Tui;
+  hyperlinks?: boolean;
   isRunning: () => boolean;
   closeOtherOverlays: () => void;
   closeContentViewer: () => void;
@@ -62,7 +63,9 @@ export class SessionLifecycleController {
           color: tuiTheme.muted,
         }),
       );
-      addHistoryTimelineToTranscript(this.options.transcript, timeline);
+      addHistoryTimelineToTranscript(this.options.transcript, timeline, {
+        hyperlinks: this.options.hyperlinks,
+      });
       return;
     }
 
