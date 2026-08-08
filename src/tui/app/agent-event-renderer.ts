@@ -57,7 +57,7 @@ export class AgentEventRenderer {
   resetRun(): void {
     this.textPresenter.flush();
     this.stopActivityTimer();
-    this.streamingAssistant?.showThinking(false);
+    this.streamingAssistant?.stopActivityTimers();
     this.streamingAssistant = undefined;
     this.toolCallBlocks.clear();
     this.activeTools.clear();
@@ -144,7 +144,10 @@ export class AgentEventRenderer {
     }
 
     this.textPresenter.update(event.message, event.assistantMessageEvent.type === "text_delta");
-    if (event.assistantMessageEvent.type === "toolcall_start") {
+    if (
+      event.assistantMessageEvent.type === "toolcall_start" ||
+      event.assistantMessageEvent.type === "hosted_tool_start"
+    ) {
       this.textPresenter.catchUp();
     }
     this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
@@ -163,7 +166,9 @@ export class AgentEventRenderer {
 
   private updateActivityTimer(): void {
     const hasActiveActivity =
-      this.streamingAssistant?.isThinking() === true || this.toolCallBlocks.hasActiveTimers();
+      this.streamingAssistant?.isThinking() === true ||
+      this.streamingAssistant?.hasActiveHostedTools() === true ||
+      this.toolCallBlocks.hasActiveTimers();
 
     if (hasActiveActivity && !this.activityTimer) {
       this.activityTimer = setInterval(() => this.options.tui.requestRender(), 1_000);
@@ -173,7 +178,7 @@ export class AgentEventRenderer {
   }
 
   private stopActiveTimers(): void {
-    this.streamingAssistant?.showThinking(false);
+    this.streamingAssistant?.stopActivityTimers();
     this.toolCallBlocks.stopTimers();
     this.stopActivityTimer();
   }

@@ -119,6 +119,7 @@ max_retries = 1
 name = "gpt-5.6-sol"
 reasoning_effort = "medium"
 reasoning_summary = "auto"
+web_search = true
 max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
@@ -182,6 +183,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `name` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses model. |
 | `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` | Requested reasoning effort. |
 | `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
+| `web_search` | Boolean | `true` | Advertises the provider-hosted `web_search` tool to Codex Responses. Setting it to `false` omits that top-level tool entirely; other providers do not have this setting. |
 | `max_tokens` | Positive integer | `128000` | Configured ceiling used when Kana calculates a per-turn output limit; the Codex backend rejects `max_output_tokens`, so requests do not send it. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |

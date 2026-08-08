@@ -22,6 +22,7 @@ export type OpenAICodexModelConfig = ModelConfig & {
   credentialProvider: OpenAICodexCredentialProvider;
   reasoningEffort?: OpenAICodexReasoningEffort;
   reasoningSummary?: OpenAICodexReasoningSummary;
+  webSearch?: boolean;
   logger?: Logger;
   fetch?: typeof globalThis.fetch;
 };

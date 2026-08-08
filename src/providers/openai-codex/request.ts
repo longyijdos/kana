@@ -5,14 +5,14 @@ export function buildOpenAICodexRequest(
   context: ModelContext,
   config: OpenAICodexModelConfig,
 ): Record<string, unknown> {
-  const tools = toOpenAICodexTools(context.tools ?? []);
+  const functionTools = toOpenAICodexTools(context.tools ?? []);
   const input: Record<string, unknown>[] = [
     // GPT-5.6 Codex models use the Responses Lite contract: client tools and
     // instructions are input items rather than top-level request fields.
     {
       type: "additional_tools",
       role: "developer",
-      tools,
+      tools: functionTools,
     },
     {
       type: "message",
@@ -47,6 +47,12 @@ export function buildOpenAICodexRequest(
       summary: config.reasoningSummary ?? "auto",
       context: "all_turns",
     };
+  }
+
+  if (config.webSearch !== false) {
+    // Hosted Responses tools stay top-level; putting them in the Lite
+    // additional_tools item only advertises them as client-run functions.
+    request.tools = [{ type: "web_search" }];
   }
 
   return request;
@@ -101,6 +107,10 @@ function toOpenAICodexAssistantContent(content: AssistantContent): Record<string
       ];
     case "tool_call":
       return [toOpenAICodexFunctionCall(content)];
+    case "hosted_tool":
+      // Provider-hosted calls can only be replayed from their opaque response
+      // item; there is no client-generated equivalent.
+      return [];
   }
 }
 
@@ -121,7 +131,12 @@ function readOpenAICodexResponseItem(
     return undefined;
   }
   const type = state.value.type;
-  if (type !== "reasoning" && type !== "message" && type !== "function_call") {
+  if (
+    type !== "reasoning" &&
+    type !== "message" &&
+    type !== "function_call" &&
+    type !== "web_search_call"
+  ) {
     return undefined;
   }
   // store=false means response item IDs must not reference server-side state.

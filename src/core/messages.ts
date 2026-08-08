@@ -32,7 +32,7 @@ export type ToolResultMessage = {
   isError: boolean;
 };
 
-export type AssistantContent = TextContent | ThinkingContent | ToolCallContent;
+export type AssistantContent = TextContent | ThinkingContent | ToolCallContent | HostedToolContent;
 
 export type ProviderState = {
   provider: string;
@@ -61,5 +61,24 @@ export type ToolCallContent = {
   // Parsed arguments when possible. rawArgs keeps the original streamed JSON.
   args: unknown;
   rawArgs?: string;
+  providerState?: ProviderState;
+};
+
+export type HostedToolAction = {
+  type: string;
+  query?: string;
+  queries?: string[];
+  url?: string;
+  pattern?: string;
+};
+
+// Hosted tools run inside a model provider. They remain ordered assistant
+// content but never enter Kana's local tool runtime or approval flow.
+export type HostedToolContent = {
+  type: "hosted_tool";
+  id: string;
+  name: string;
+  status: "in_progress" | "completed";
+  action?: HostedToolAction;
   providerState?: ProviderState;
 };

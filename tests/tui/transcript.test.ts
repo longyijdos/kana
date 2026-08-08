@@ -35,6 +35,51 @@ describe("tui transcript", () => {
     expect(block.render(80)[0]).toContain("hello");
   });
 
+  test("renders hosted web actions separately with blank rows before following text", () => {
+    const block = new AssistantMessageBlock();
+
+    block.update({
+      role: "assistant",
+      content: [
+        {
+          type: "hosted_tool",
+          id: "web-search-1",
+          name: "web_search",
+          status: "completed",
+          action: {
+            type: "search",
+            query: "current release",
+            queries: ["current release"],
+          },
+        },
+        {
+          type: "hosted_tool",
+          id: "web-search-2",
+          name: "web_search",
+          status: "completed",
+          action: {
+            type: "open_page",
+            url: "https://example.com/releases",
+          },
+        },
+        {
+          type: "text",
+          text: "Final answer with [citation](https://example.com/releases).",
+        },
+      ],
+    });
+
+    expect(block.render(100).map(stripAnsi)).toEqual([
+      "◆ Searched the web",
+      "  └ current release",
+      "",
+      "◆ Opened a web page",
+      "  └ example.com/releases",
+      "",
+      "Final answer with citation (https://example.com/releases).",
+    ]);
+  });
+
   test("uses distinct colors for assistant text and completed tool calls", () => {
     const assistant = new AssistantMessageBlock();
     assistant.update({

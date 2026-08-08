@@ -1,6 +1,6 @@
 # OpenAI Codex provider adapter
 
-Kana's `openai-codex` adapter lives in `src/providers/openai-codex`. It uses ChatGPT Codex OAuth credentials to call the Codex Responses Lite stream, reconstructing reasoning summaries, visible text, and function calls as ordered `core` assistant content.
+Kana's `openai-codex` adapter lives in `src/providers/openai-codex`. It uses ChatGPT Codex OAuth credentials to call the Codex Responses Lite stream, reconstructing reasoning summaries, provider-hosted web searches, visible text, and function calls as ordered `core` assistant content.
 
 ## Activation and authentication
 
@@ -24,6 +24,7 @@ active = "openai-codex"
 name = "gpt-5.6-luna"
 reasoning_effort = "medium"
 reasoning_summary = "auto"
+web_search = true
 max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
@@ -37,7 +38,8 @@ See [Configuration and installation](configuration.en.md) for available models a
 
 The request follows the Responses Lite contract:
 
-- Tools are developer `additional_tools` input items rather than a top-level `tools` field.
+- Function tools executed by Kana are developer `additional_tools` input items rather than a top-level `tools` field.
+- With `web_search = true`, the provider-hosted search tool is advertised separately as top-level `tools: [{ "type": "web_search" }]`; `tool_choice: "auto"` lets the model decide whether to use it. Setting the option to `false` omits that field.
 - The system prompt is a developer message; user messages, tool results, and assistant output items follow in input order.
 - `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
 - `parallel_tool_calls = false`. Responses Lite does not support top-level parallel tool calls, so model metadata overrides `agent.parallel_tool_calls = true`; Kana also serializes any unexpected multiple calls.
@@ -59,11 +61,18 @@ The reader retains incomplete SSE frames across network chunks and parses every 
 | `response.output_text.delta` / `response.refusal.delta` | `text_delta` |
 | message `response.output_item.done` | `text_end` |
 | function-call added / argument delta / item done | `toolcall_start` / `toolcall_delta` / `toolcall_end` |
+| web-search-call added / item done | `hosted_tool_start` / `hosted_tool_end` |
 | `response.completed` / `response.incomplete` | terminal stop reason and usage |
 
-Output items use `output_index` as their primary address and item ID as a fallback. Argument deltas for multiple function calls may interleave and still update their respective content blocks. Final item content corrects accumulated deltas, and duplicate completed items are not emitted twice. `response.incomplete` maps to `length`; a completed response containing function calls maps to `toolUse`; everything else maps to `stop`.
+Output items use `output_index` as their primary address and item ID as a fallback. Argument deltas for multiple function calls may interleave and still update their respective content blocks. A `web_search_call.action` preserves normalized `search`, `open_page`, or `find_in_page` details, including queries, URLs, and page patterns. Final item content corrects accumulated deltas, and duplicate completed items are not emitted twice. `response.incomplete` maps to `length`; a completed response containing local function calls maps to `toolUse`, while a response containing only hosted searches still maps to `stop`.
 
-Every completed item is attached to its assistant content as opaque `providerState`. A later turn removes the server item ID and replays reasoning encrypted content, messages, or function calls unchanged. This preserves reasoning continuity with `store = false`. Summary text without a provider item is never reconstructed as reasoning input.
+Every completed item is attached to its assistant content as opaque `providerState`. A later turn removes the server item ID and replays reasoning encrypted content, messages, function calls, or `web_search_call` items unchanged. This preserves reasoning and search continuity with `store = false`. Summary text without a provider item is never reconstructed as reasoning input.
+
+## Search presentation and citations
+
+Hosted searches never enter Kana's ToolRuntime, approval flow, or tool-result messages. The TUI renders one action block per `web_search_call` in provider order: an active call shows `Searching the web`; a completed action becomes `Searched the web`, `Opened a web page`, or `Searched within a web page`, followed by a control-character-safe, bounded query or page target. Calls are not aggregated today. A blank row separates each visible action block and the following assistant text, matching the rest of the transcript.
+
+The final message's `output_text.text` enters Markdown rendering unchanged. Provider-supplied inline Markdown links therefore retain their label and visible URL. `url_citation` annotations remain attached to the completed message in `providerState`; Kana does not insert `[1]` markers back into prior text or append a generated `Sources` footer. See [OpenAI Web search](https://developers.openai.com/api/docs/guides/tools-web-search) for the protocol fields and action definitions.
 
 ## Failures, retries, and usage
 

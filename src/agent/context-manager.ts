@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Message, ModelContext, ModelUsage, ToolCallContent } from "@/core";
+import type { HostedToolContent, Message, ModelContext, ModelUsage, ToolCallContent } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
@@ -476,7 +476,11 @@ function messageForCompaction(message: Message): Message {
       return {
         role: "assistant",
         stopReason: message.stopReason,
-        content: structuredClone(message.content.filter((content) => content.type !== "thinking")),
+        content: structuredClone(
+          message.content.filter(
+            (content) => content.type !== "thinking" && content.type !== "hosted_tool",
+          ),
+        ),
       };
   }
 }
@@ -519,11 +523,19 @@ function estimateMessageTokens(message: Message): number {
               return total + 4 + estimateTextTokens(content.text);
             case "tool_call":
               return total + estimateToolCallTokens(content);
+            case "hosted_tool":
+              return total + estimateHostedToolTokens(content);
           }
           return total;
         }, 0)
       );
   }
+}
+
+function estimateHostedToolTokens(content: HostedToolContent): number {
+  return (
+    8 + estimateTextTokens(content.name) + estimateTextTokens(stringifyForEstimate(content.action))
+  );
 }
 
 function estimateToolCallTokens(content: ToolCallContent): number {

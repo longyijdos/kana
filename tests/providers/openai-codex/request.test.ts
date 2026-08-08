@@ -24,6 +24,30 @@ describe("buildOpenAICodexRequest", () => {
                   },
                 },
               },
+              {
+                type: "hosted_tool",
+                id: "web-search-id",
+                name: "web_search",
+                status: "completed",
+                action: {
+                  type: "search",
+                  query: "current release",
+                  queries: ["current release"],
+                },
+                providerState: {
+                  provider: "openai-codex",
+                  value: {
+                    id: "web-search-id",
+                    type: "web_search_call",
+                    status: "completed",
+                    action: {
+                      type: "search",
+                      query: "current release",
+                      queries: ["current release"],
+                    },
+                  },
+                },
+              },
               { type: "text", text: "answer" },
             ],
           },
@@ -65,6 +89,7 @@ describe("buildOpenAICodexRequest", () => {
       },
       tool_choice: "auto",
       parallel_tool_calls: false,
+      tools: [{ type: "web_search" }],
     });
     expect(request).not.toHaveProperty("max_output_tokens");
     expect(request.input).toEqual([
@@ -100,10 +125,48 @@ describe("buildOpenAICodexRequest", () => {
         summary: [{ type: "summary_text", text: "summary" }],
       },
       {
+        type: "web_search_call",
+        status: "completed",
+        action: {
+          type: "search",
+          query: "current release",
+          queries: ["current release"],
+        },
+      },
+      {
         type: "message",
         role: "assistant",
         status: "completed",
         content: [{ type: "output_text", text: "answer", annotations: [] }],
+      },
+    ]);
+  });
+
+  test("omits the hosted web search tool when disabled", () => {
+    const request = buildOpenAICodexRequest(
+      {
+        messages: [],
+        tools: [],
+      },
+      {
+        provider: "openai-codex",
+        model: "gpt-5.6-luna",
+        credentialProvider: credentials(),
+        webSearch: false,
+      },
+    );
+
+    expect(request).not.toHaveProperty("tools");
+    expect(request.input).toEqual([
+      {
+        type: "additional_tools",
+        role: "developer",
+        tools: [],
+      },
+      {
+        type: "message",
+        role: "developer",
+        content: [{ type: "input_text", text: "You are a helpful assistant." }],
       },
     ]);
   });

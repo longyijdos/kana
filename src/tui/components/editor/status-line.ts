@@ -39,6 +39,7 @@ function phaseText(phase: string): string {
     case "starting":
     case "compacting":
     case "thinking":
+    case "searching":
     case "responding":
     case "tool":
       return color(phase, tuiTheme.toolActive);

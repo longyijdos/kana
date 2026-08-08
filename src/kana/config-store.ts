@@ -45,6 +45,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
     "reasoning_summary",
     (config) => config.model["openai-codex"].reasoningSummary,
   ),
+  field("model.openai-codex", "web_search", (config) => config.model["openai-codex"].webSearch),
   field("model.openai-codex", "max_tokens", (config) => config.model["openai-codex"].maxTokens),
   field("model.openai-codex", "timeout_ms", (config) => config.model["openai-codex"].timeoutMs),
   field("model.openai-codex", "max_retries", (config) => config.model["openai-codex"].maxRetries),

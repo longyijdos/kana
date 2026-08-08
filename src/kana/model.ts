@@ -49,6 +49,7 @@ export function createKanaModel(
         credentialProvider,
         reasoningEffort: model.reasoningEffort,
         reasoningSummary: model.reasoningSummary,
+        webSearch: model.webSearch,
         maxTokens: model.maxTokens,
         timeoutMs: model.timeoutMs,
         maxRetries: model.maxRetries,

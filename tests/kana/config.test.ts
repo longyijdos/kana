@@ -93,6 +93,7 @@ describe("Kana config", () => {
     expect(fileExists(firstInstall.configPath)).toBe(false);
     expect(installedConfigExample).toContain("[model.deepseek]");
     expect(installedConfigExample).toContain("[model.openai-codex]");
+    expect(installedConfigExample).toContain("web_search = true");
     expect(installedConfigExample).toContain("tool_deadline_ms = 660000");
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("smooth_text_streaming = true");
@@ -210,6 +211,7 @@ describe("Kana config", () => {
   test("defaults output ceilings to the provider metadata limits", () => {
     expect(DEFAULT_KANA_CONFIG.model.deepseek.maxTokens).toBe(384_000);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].maxTokens).toBe(128_000);
+    expect(DEFAULT_KANA_CONFIG.model["openai-codex"].webSearch).toBe(true);
   });
 
   test("merges TOML config with defaults", () => {
@@ -303,6 +305,7 @@ describe("Kana config", () => {
         'name = "gpt-5.6-luna"',
         'reasoning_effort = "high"',
         'reasoning_summary = "concise"',
+        "web_search = false",
         "max_tokens = 16384",
         "timeout_ms = 90000",
         "max_retries = 2",
@@ -321,6 +324,7 @@ describe("Kana config", () => {
           name: "gpt-5.6-luna",
           reasoningEffort: "high",
           reasoningSummary: "concise",
+          webSearch: false,
           maxTokens: 16_384,
           timeoutMs: 90_000,
           maxRetries: 2,
@@ -348,6 +352,9 @@ describe("Kana config", () => {
     expect(() => loadKanaConfig(env)).toThrow(
       "model.openai-codex.reasoning_summary must be one of: auto, concise, detailed.",
     );
+
+    writeFileSync(path.join(home, "config.toml"), '[model.openai-codex]\nweb_search = "yes"\n');
+    expect(() => loadKanaConfig(env)).toThrow("model.openai-codex.web_search must be a boolean.");
   });
 
   test("rejects unknown logging.level", () => {

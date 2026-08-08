@@ -6,6 +6,7 @@ export type RunPhase =
   | "starting"
   | "compacting"
   | "thinking"
+  | "searching"
   | "responding"
   | "tool"
   | "done"
@@ -17,6 +18,14 @@ export type RunPhase =
 export function phaseForAssistantMessage(message: AssistantMessage): RunPhase {
   if (message.content.some((content) => content.type === "tool_call")) {
     return "tool";
+  }
+
+  if (
+    message.content.some(
+      (content) => content.type === "hosted_tool" && content.status === "in_progress",
+    )
+  ) {
+    return "searching";
   }
 
   if (message.content.some((content) => content.type === "text" && content.text)) {

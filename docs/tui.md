@@ -42,20 +42,22 @@ ProcessTerminal
 
 ## App 与 Agent 事件
 
-`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及由 Tab 输入和到期 wake 共用的 pending submission FIFO；它同时发布当前 session 的 pending 与尚未到期 wake 快照，作为新 run 排序和展示的唯一事实来源。`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再按 FIFO 顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
+`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及由 Tab 输入和到期 wake 共用的 pending submission FIFO；它同时发布当前 session 的 pending 与尚未到期 wake 快照，作为新 run 排序和展示的唯一事实来源。`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白；一条助手消息内部有多个有序可见内容块时，`AssistantMessageBlock` 也在相邻块之间使用同样的一行空白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再按 FIFO 顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
-| `message_start` / `message_update` / `message_end` | 创建、更新、完成助手 Markdown 块；thinking 在流式 thinking 事件期间显示当前耗时。工具调用解析期间显示 preparing 耗时，并在该调用结束时冻结。 |
+| `message_start` / `message_update` / `message_end` | 创建、更新、完成有序助手内容块；Markdown 文本与 provider-hosted 动作保留供应商顺序。thinking 在流式 thinking 事件期间显示当前耗时；本地工具调用解析期间显示 preparing 耗时，并在该调用结束时冻结。 |
 | `tool_execution_start` | 创建或标记工具块为运行中，并从零开始显示各自的 running 耗时；并行调用按 `toolCallId` 独立维护。 |
 | `tool_execution_update` | 更新 bash 等工具的部分输出。 |
 | `tool_execution_end` | 写入结构化结果并标记成功/失败。 |
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
 | `agent_end` | 按终态更新状态阶段并清除活动工具；`turn_limit` 显示为独立的 `turn limit` 错误阶段。 |
 
+OpenAI Codex 的 `web_search_call` 属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。TUI 为每个调用单独显示 `Searching the web`、`Searched the web`、`Opened a web page` 或 `Searched within a web page`；当前不聚合多个调用。搜索期间状态栏阶段为 `searching`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
+
 助手正文的协议状态与可视进度彼此分离：provider 和 Agent 仍会立即处理完整事件与消息，`StreamingTextPresenter` 只维护 Markdown 块当前可见的 `text` 前缀。稀疏文本 delta 会立即出现；当一次网络读取带来一批 SSE 事件时，积压内容约每 16ms 推进一次，并按 backlog 在每帧 1–12 个 grapheme 之间有界加速，消息完成后只额外提升一级用于收尾。工具调用开始、`toolUse` 消息完成、审批显示和实际执行前会先追平已经收到的正文，保证后续工具状态不会越过仍在展开的文本，同时不延迟 Agent 或 ToolRuntime。新消息或运行 reset 也会先 flush 剩余正文，因此持久化的 session 和 Agent 状态始终使用完整消息，而不是动画中的中间快照。配置 `tui.smooth_text_streaming = false` 会完全绕过该节奏控制，直接显示 provider 的最新流式快照；thinking、工具调用、工具结果、错误和状态阶段始终不参与文本节奏控制。
 
-编辑器内部包含状态栏，它显示模型及推理强度（例如 `gpt-5.6-luna · max`；DeepSeek 关闭 thinking 时显示 `off`）、Clean 模式标记、最近助手消息相对于 effective context limit 的使用率、运行阶段、活动工具和 cwd。多个工具并行时，活动项压缩为第一个名称加剩余数量，例如 `tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比；后续正常模型 usage 会替换该估算。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开 slash 命令面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求的 usage 都会累加到进程总用量和按模型元数据计算的 CNY 成本，但摘要 usage 不会被当作正常 prompt 的 context 百分比；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
+编辑器内部包含状态栏，它显示模型及推理强度（例如 `gpt-5.6-luna · max`；DeepSeek 关闭 thinking 时显示 `off`）、Clean 模式标记、最近助手消息相对于 effective context limit 的使用率、运行阶段、活动工具和 cwd。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比；后续正常模型 usage 会替换该估算。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开 slash 命令面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求的 usage 都会累加到进程总用量和按模型元数据计算的 CNY 成本，但摘要 usage 不会被当作正常 prompt 的 context 百分比；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
 恢复会话时，TUI 历史只消费 session timeline，而 Agent 单独接收完整 messages 和最后一个 context checkpoint。`turn_start`/`turn_end` 仅作为持久化边界，不直接渲染；恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用完成 marker 替换，失败时则移除临时消息并显示错误；普通模式同时将 marker 持久化，Clean 模式只保留进程内 checkpoint。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
 

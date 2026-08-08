@@ -1,4 +1,9 @@
-import type { AssistantMessage, AssistantStopReason, ToolCallContent } from "./messages";
+import type {
+  AssistantMessage,
+  AssistantStopReason,
+  HostedToolContent,
+  ToolCallContent,
+} from "./messages";
 import type { ModelUsage } from "./model";
 
 export type StopReason = AssistantStopReason;
@@ -60,6 +65,17 @@ export type AssistantMessageEvent =
       type: "toolcall_end";
       contentIndex: number;
       toolCall: ToolCallContent;
+      snapshot: AssistantMessage;
+    }
+  | {
+      type: "hosted_tool_start";
+      contentIndex: number;
+      snapshot: AssistantMessage;
+    }
+  | {
+      type: "hosted_tool_end";
+      contentIndex: number;
+      hostedTool: HostedToolContent;
       snapshot: AssistantMessage;
     }
   | {

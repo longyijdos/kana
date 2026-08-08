@@ -247,6 +247,8 @@ async function streamAssistantResponse(
       case "toolcall_start":
       case "toolcall_delta":
       case "toolcall_end":
+      case "hosted_tool_start":
+      case "hosted_tool_end":
         currentMessage = event.snapshot;
         replaceLastAssistantMessage(context, currentMessage);
         await emitMessageUpdate(currentMessage, event, emit);

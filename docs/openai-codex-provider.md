@@ -1,6 +1,6 @@
 # OpenAI Codex 提供商适配
 
-Kana 的 `openai-codex` adapter 位于 `src/providers/openai-codex`。它使用 ChatGPT Codex OAuth 凭据调用 Codex Responses Lite 流，并把 reasoning summary、可见文本和函数调用恢复为 `core` 的有序助手内容。
+Kana 的 `openai-codex` adapter 位于 `src/providers/openai-codex`。它使用 ChatGPT Codex OAuth 凭据调用 Codex Responses Lite 流，并把 reasoning summary、供应商托管的网页搜索、可见文本和函数调用恢复为 `core` 的有序助手内容。
 
 ## 启用与认证
 
@@ -24,6 +24,7 @@ active = "openai-codex"
 name = "gpt-5.6-luna"
 reasoning_effort = "medium"
 reasoning_summary = "auto"
+web_search = true
 max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
@@ -37,7 +38,8 @@ max_retries = 1
 
 请求使用 Responses Lite 约定：
 
-- 工具作为 developer `additional_tools` input item 发送，而不是顶层 `tools`。
+- Kana 本地执行的函数工具作为 developer `additional_tools` input item 发送，而不是顶层 `tools`。
+- `web_search = true` 时，供应商托管的搜索工具单独作为顶层 `tools: [{ "type": "web_search" }]` 声明，并由模型按 `tool_choice: "auto"` 决定是否使用；设为 `false` 时不发送该字段。
 - 系统提示词作为 developer message，用户消息、工具结果和助手 output item 按原顺序追加到 `input`。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
 - `parallel_tool_calls = false`。Responses Lite 不支持顶层并行工具调用，因此模型 metadata 会覆盖 `agent.parallel_tool_calls = true`；Kana 也会串行执行意外出现的多个调用。
@@ -59,11 +61,18 @@ reader 会保留跨网络分片的不完整 SSE 帧，并在一个 body chunk �
 | `response.output_text.delta` / `response.refusal.delta` | `text_delta` |
 | message `response.output_item.done` | `text_end` |
 | function call added / argument delta / item done | `toolcall_start` / `toolcall_delta` / `toolcall_end` |
+| web-search-call added / item done | `hosted_tool_start` / `hosted_tool_end` |
 | `response.completed` / `response.incomplete` | 最终 stop reason 与 usage |
 
-输出 item 以 `output_index` 为首选地址，并用 item ID 作为回退；多个函数调用的参数 delta 可以交错到达，仍会回填各自的内容块。完成事件中的最终内容会校正累计 delta；重复完成的 item 不会再次发出。`response.incomplete` 映射为 `length`，存在函数调用的完成响应映射为 `toolUse`，其余为 `stop`。
+输出 item 以 `output_index` 为首选地址，并用 item ID 作为回退；多个函数调用的参数 delta 可以交错到达，仍会回填各自的内容块。`web_search_call.action` 会规范化保留 `search`、`open_page` 或 `find_in_page` 及其查询、URL 和页内模式。完成事件中的最终内容会校正累计 delta；重复完成的 item 不会再次发出。`response.incomplete` 映射为 `length`，存在本地函数调用的完成响应映射为 `toolUse`，只有托管搜索的响应仍映射为 `stop`。
 
-每个完成 item 都以不透明 `providerState` 附加到对应助手内容。后续回合会移除 server item ID，再原样回传 reasoning encrypted content、message 或 function call；这样 `store = false` 仍能延续推理状态。只有 summary 文本而没有供应商 item 时不会重建 reasoning input。
+每个完成 item 都以不透明 `providerState` 附加到对应助手内容。后续回合会移除 server item ID，再原样回传 reasoning encrypted content、message、function call 或 `web_search_call`；这样 `store = false` 仍能延续推理和搜索上下文。只有 summary 文本而没有供应商 item 时不会重建 reasoning input。
+
+## 搜索展示与引用
+
+托管搜索不会进入 Kana 的 ToolRuntime、审批流程或工具结果消息。TUI 按供应商顺序为每个 `web_search_call` 单独显示一个动作块：进行中显示 `Searching the web`，完成后根据 action 显示 `Searched the web`、`Opened a web page` 或 `Searched within a web page`，并附上经过控制字符清理和长度限制的查询或页面目标。当前不聚合多个搜索调用；每个可见动作块及其后的助手正文之间保留一行空白，与 transcript 的其他块一致。
+
+最终 message 的 `output_text.text` 按供应商返回内容原样进入 Markdown 渲染；其中已有的行内 Markdown 链接会继续显示链接文字和 URL。`url_citation` annotations 连同完成 message 保留在 `providerState` 中，Kana 不向正文回插 `[1]` 编号，也不额外生成 `Sources` 尾注。协议字段和 action 定义见 [OpenAI Web search](https://developers.openai.com/api/docs/guides/tools-web-search)。
 
 ## 失败、重试与用量
 

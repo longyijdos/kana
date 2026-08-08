@@ -31,6 +31,7 @@ describe("Kana config store", () => {
       draft.provider.active = "openai-codex";
       draft.model["openai-codex"].name = "gpt-5.6-luna";
       draft.model["openai-codex"].reasoningEffort = "max";
+      draft.model["openai-codex"].webSearch = false;
     });
 
     expect(readFileSync(configPath, "utf8")).toBe(
@@ -41,12 +42,14 @@ describe("Kana config store", () => {
         "[model.openai-codex]",
         'name = "gpt-5.6-luna"',
         'reasoning_effort = "max"',
+        "web_search = false",
         "",
       ].join("\n"),
     );
     expect(config.provider.active).toBe("openai-codex");
     expect(config.model["openai-codex"].name).toBe("gpt-5.6-luna");
     expect(config.model["openai-codex"].reasoningEffort).toBe("max");
+    expect(config.model["openai-codex"].webSearch).toBe(false);
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
   });
 

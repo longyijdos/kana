@@ -436,6 +436,7 @@ function finishContentAtIndex(
       state.endedContentIndexes.add(contentIndex);
       break;
     case "tool_call":
+    case "hosted_tool":
       break;
   }
 }

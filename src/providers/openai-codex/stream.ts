@@ -1,6 +1,8 @@
 import type {
   AssistantEventStream,
   AssistantMessage,
+  HostedToolAction,
+  HostedToolContent,
   ModelUsage,
   TextContent,
   ThinkingContent,
@@ -25,6 +27,12 @@ type PendingItem =
       kind: "function_call";
       contentIndex: number;
       content: ToolCallContent;
+      item: Record<string, unknown>;
+    }
+  | {
+      kind: "web_search_call";
+      contentIndex: number;
+      content: HostedToolContent;
       item: Record<string, unknown>;
     };
 
@@ -125,6 +133,20 @@ export class OpenAICodexStreamProcessor {
       pending = { kind: "function_call", contentIndex, content, item: structuredClone(item) };
       this.stream.push({
         type: "toolcall_start",
+        contentIndex,
+        snapshot: structuredClone(this.message),
+      });
+    } else if (type === "web_search_call") {
+      const content: HostedToolContent = {
+        type: "hosted_tool",
+        id: requireString(item.id, "OpenAI Codex web search call ID"),
+        name: "web_search",
+        status: "in_progress",
+      };
+      this.message.content.push(content);
+      pending = { kind: "web_search_call", contentIndex, content, item: structuredClone(item) };
+      this.stream.push({
+        type: "hosted_tool_start",
         contentIndex,
         snapshot: structuredClone(this.message),
       });
@@ -255,7 +277,7 @@ export class OpenAICodexStreamProcessor {
         content: pending.content.text,
         snapshot: structuredClone(this.message),
       });
-    } else {
+    } else if (pending.kind === "function_call") {
       const rawArgs = readString(item.arguments) ?? pending.content.rawArgs ?? "";
       pending.content.id = readString(item.call_id) ?? pending.content.id;
       pending.content.name = readString(item.name) ?? pending.content.name;
@@ -265,6 +287,15 @@ export class OpenAICodexStreamProcessor {
         type: "toolcall_end",
         contentIndex: pending.contentIndex,
         toolCall: structuredClone(pending.content),
+        snapshot: structuredClone(this.message),
+      });
+    } else {
+      pending.content.status = "completed";
+      pending.content.action = readHostedToolAction(item.action);
+      this.stream.push({
+        type: "hosted_tool_end",
+        contentIndex: pending.contentIndex,
+        hostedTool: structuredClone(pending.content),
         snapshot: structuredClone(this.message),
       });
     }
@@ -468,6 +499,31 @@ function parseToolArguments(value: string): unknown {
   } catch {
     return {};
   }
+}
+
+function readHostedToolAction(value: unknown): HostedToolAction | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const type = readString(value.type);
+  if (type === undefined) {
+    return undefined;
+  }
+  const queries = Array.isArray(value.queries)
+    ? value.queries.filter(
+        (query): query is string => typeof query === "string" && query.length > 0,
+      )
+    : undefined;
+  const query = readString(value.query);
+  const url = readString(value.url);
+  const pattern = readString(value.pattern);
+  return {
+    type,
+    ...(query === undefined ? {} : { query }),
+    ...(queries?.length ? { queries } : {}),
+    ...(url === undefined ? {} : { url }),
+    ...(pattern === undefined ? {} : { pattern }),
+  };
 }
 
 function readOutputIndex(event: Record<string, unknown>, fallback: number): number {

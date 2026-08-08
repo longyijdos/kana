@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AssistantMessage } from "../../../src/core";
+import type { AssistantMessage, HostedToolAction } from "../../../src/core";
 import { AssistantEventStream } from "../../../src/core";
 import {
   OpenAICodexStreamProcessor,
@@ -95,7 +95,21 @@ describe("OpenAI Codex stream parsing", () => {
         type: "message",
         role: "assistant",
         status: "completed",
-        content: [{ type: "output_text", text: "hello", annotations: [] }],
+        content: [
+          {
+            type: "output_text",
+            text: "hello",
+            annotations: [
+              {
+                type: "url_citation",
+                url: "https://example.com/source",
+                title: "Example source",
+                start_index: 0,
+                end_index: 5,
+              },
+            ],
+          },
+        ],
       },
     });
     processor.apply({
@@ -155,7 +169,21 @@ describe("OpenAI Codex stream parsing", () => {
             type: "message",
             role: "assistant",
             status: "completed",
-            content: [{ type: "output_text", text: "hello", annotations: [] }],
+            content: [
+              {
+                type: "output_text",
+                text: "hello",
+                annotations: [
+                  {
+                    type: "url_citation",
+                    url: "https://example.com/source",
+                    title: "Example source",
+                    start_index: 0,
+                    end_index: 5,
+                  },
+                ],
+              },
+            ],
           },
         },
       },
@@ -269,6 +297,95 @@ describe("OpenAI Codex stream parsing", () => {
     ]);
     expect(events.filter((event) => event.type === "toolcall_end")).toHaveLength(2);
     expect(state.stopReason).toBe("toolUse");
+  });
+
+  test("emits provider-hosted web search actions without entering local tool use", async () => {
+    const stream = new AssistantEventStream();
+    const eventsPromise = collectEvents(stream);
+    const message: AssistantMessage = { role: "assistant", content: [] };
+    const state: OpenAICodexStreamState = { terminalSeen: false };
+    const processor = new OpenAICodexStreamProcessor(stream, message, state);
+    const actions: HostedToolAction[] = [
+      {
+        type: "search",
+        query: "current release",
+        queries: ["current release", "official announcement"],
+      },
+      {
+        type: "open_page",
+        url: "https://example.com/releases",
+      },
+      {
+        type: "find_in_page",
+        url: "https://example.com/releases",
+        pattern: "Responses API",
+      },
+    ];
+
+    for (const [outputIndex, action] of actions.entries()) {
+      processor.apply({
+        type: "response.output_item.added",
+        output_index: outputIndex,
+        item: {
+          id: `web-search-${outputIndex}`,
+          type: "web_search_call",
+          status: "in_progress",
+        },
+      });
+      processor.apply({
+        type: "response.output_item.done",
+        output_index: outputIndex,
+        item: {
+          id: `web-search-${outputIndex}`,
+          type: "web_search_call",
+          status: "completed",
+          action,
+        },
+      });
+    }
+    processor.apply({
+      type: "response.completed",
+      response: {
+        status: "completed",
+        output: [],
+      },
+    });
+    stream.end({
+      type: "done",
+      reason: state.stopReason ?? "stop",
+      message: structuredClone(message),
+    });
+
+    const events = await eventsPromise;
+
+    expect(events.map((event) => event.type)).toEqual([
+      "hosted_tool_start",
+      "hosted_tool_end",
+      "hosted_tool_start",
+      "hosted_tool_end",
+      "hosted_tool_start",
+      "hosted_tool_end",
+      "done",
+    ]);
+    expect(message.content).toEqual(
+      actions.map((action, outputIndex) => ({
+        type: "hosted_tool",
+        id: `web-search-${outputIndex}`,
+        name: "web_search",
+        status: "completed",
+        providerState: {
+          provider: "openai-codex",
+          value: {
+            id: `web-search-${outputIndex}`,
+            type: "web_search_call",
+            status: "completed",
+            action,
+          },
+        },
+        action,
+      })),
+    );
+    expect(state.stopReason).toBe("stop");
   });
 });
 

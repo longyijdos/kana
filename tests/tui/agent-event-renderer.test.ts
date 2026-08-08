@@ -110,6 +110,46 @@ describe("AgentEventRenderer", () => {
       messages: [],
     });
   });
+
+  test("renders hosted web search as provider activity without a local tool block", () => {
+    const transcript = new TranscriptComponent();
+    const statuses: RunPhase[] = [];
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus: (phase) => statuses.push(phase),
+    });
+    const searchingMessage: AssistantMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "hosted_tool",
+          id: "web-search-1",
+          name: "web_search",
+          status: "in_progress",
+        },
+      ],
+    };
+
+    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_update",
+      message: searchingMessage,
+      assistantMessageEvent: {
+        type: "hosted_tool_start",
+        contentIndex: 0,
+        snapshot: searchingMessage,
+      },
+    });
+
+    expect(statuses.at(-1)).toBe("searching");
+    expect(transcript.children).toHaveLength(1);
+    expect(stripAnsi(transcript.render(100).join("\n"))).toContain("◆ Searching the web");
+
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
 });
 
 function toolStart(toolCallId: string, toolName: string) {

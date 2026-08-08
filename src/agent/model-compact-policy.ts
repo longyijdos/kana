@@ -88,6 +88,7 @@ function formatMessage(message: Message): object {
 function formatAssistantContent(content: AssistantContent): object[] {
   switch (content.type) {
     case "thinking":
+    case "hosted_tool":
       return [];
     case "text":
       return [{ type: "text", text: content.text }];

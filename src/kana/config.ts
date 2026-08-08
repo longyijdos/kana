@@ -42,6 +42,7 @@ export type KanaOpenAICodexModelConfig = {
   name: string;
   reasoningEffort: OpenAICodexReasoningEffort;
   reasoningSummary: OpenAICodexReasoningSummary;
+  webSearch: boolean;
   maxTokens: number;
   timeoutMs: number;
   maxRetries: number;
@@ -173,6 +174,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       name: "gpt-5.6-sol",
       reasoningEffort: "medium",
       reasoningSummary: "auto",
+      webSearch: true,
       maxTokens: 128_000,
       timeoutMs: 60_000,
       maxRetries: 1,
@@ -324,6 +326,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
         name: config.model["openai-codex"].name,
         reasoning_effort: config.model["openai-codex"].reasoningEffort,
         reasoning_summary: config.model["openai-codex"].reasoningSummary,
+        web_search: config.model["openai-codex"].webSearch,
         max_tokens: config.model["openai-codex"].maxTokens,
         timeout_ms: config.model["openai-codex"].timeoutMs,
         max_retries: config.model["openai-codex"].maxRetries,
@@ -510,6 +513,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           openAICodexModel.reasoning_summary,
           defaults.model["openai-codex"].reasoningSummary,
         ),
+        webSearch: readBoolean(
+          openAICodexModel.web_search,
+          defaults.model["openai-codex"].webSearch,
+          "model.openai-codex.web_search",
+        ),
         maxTokens: readPositiveInteger(
           openAICodexModel.max_tokens,
           defaults.model["openai-codex"].maxTokens,
@@ -604,6 +612,7 @@ function serializeOpenAICodexModel(config: KanaOpenAICodexModelConfig): string[]
   return [
     `reasoning_effort = "${config.reasoningEffort}"`,
     `reasoning_summary = "${config.reasoningSummary}"`,
+    `web_search = ${config.webSearch}`,
     `max_tokens = ${config.maxTokens}`,
     `timeout_ms = ${config.timeoutMs}`,
     `max_retries = ${config.maxRetries}`,

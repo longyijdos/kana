@@ -1,5 +1,6 @@
 export {
   AssistantMessageBlock,
+  HostedToolBlock,
   MarkdownBlock,
   TextBlock,
   ToolCallBlock,
