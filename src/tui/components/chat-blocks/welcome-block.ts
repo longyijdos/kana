@@ -94,9 +94,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  OpenAI Codex + model switching"),
-      text("  MCP stdio, HTTP, and OAuth"),
-      text("  Headless exec for automation"),
+      text("  Queue input during agent runs"),
+      text("  Schedule and manage future messages"),
+      text("  Codex web search and terminal hyperlinks"),
       muted("  ... /help for more"),
     ];
 

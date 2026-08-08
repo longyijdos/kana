@@ -1,3 +1,18 @@
+## [0.3.0](https://github.com/longyijdos/kana/compare/v0.2.2...v0.3.0) (2026-08-08)
+
+Kana v0.3.0 adds queued input and scheduled-message management, Codex hosted web search, and clickable terminal hyperlinks.
+
+### Features
+
+- Add OpenAI Codex hosted web search with visible provider activity rendering.
+- Add `/schedule` to view, create, refresh, and delete in-process scheduled messages.
+- Queue input during Agent runs and deliver queued submissions and due wakes in FIFO order.
+- Render safe Markdown links as terminal hyperlinks when supported, with readable fallbacks.
+
+### Bug Fixes
+
+- Fix queued-input delivery and duplicate display after deferred steering.
+
 ## [0.2.2](https://github.com/longyijdos/kana/compare/v0.2.1...v0.2.2) (2026-08-05)
 
 Kana v0.2.2 makes `kana update` more reliable by streaming asset downloads to disk instead of buffering them in memory.
