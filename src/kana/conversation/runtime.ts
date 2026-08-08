@@ -389,6 +389,9 @@ export class ConversationRuntime<TConfiguration = never> {
     if (!sessionId) {
       throw new Error("Cannot schedule a message without an active session.");
     }
+    if (this.options.scheduledRuns === false) {
+      throw new Error("Scheduled messages are unavailable when scheduled runs are disabled.");
+    }
     if (!Number.isInteger(afterMinutes) || afterMinutes < 1 || afterMinutes > 1_440) {
       throw new Error("Scheduled message delay must be between 1 minute and 24 hours.");
     }

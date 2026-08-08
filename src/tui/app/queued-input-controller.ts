@@ -32,9 +32,9 @@ export class QueuedInputController {
   }
 
   syncRuntimeQueue(queue: ConversationInputQueueSnapshot): void {
-    // Runtime publishes a deferred fallback before the awaiting Enter handler
-    // resumes, so reconcile it by stable queue ID instead of briefly showing
-    // the same input in both delivery lanes.
+    // Runtime publishes a deferred fallback before the awaiting Enter handler resumes.
+    // Runtime IDs make each fallback reconcile once; pairing it with the local preview
+    // still relies on content and FIFO ordering until correlation IDs span both layers.
     for (const pending of queue.pending) {
       if (pending.kind !== "deferred" || this.observedDeferredInputIds.has(pending.id)) {
         continue;

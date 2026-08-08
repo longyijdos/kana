@@ -342,6 +342,27 @@ describe("ConversationRuntime", () => {
     await runtime.close();
   });
 
+  test("rejects scheduled input when scheduled runs are disabled", async () => {
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      scheduledRuns: false,
+      createAgent: (options) =>
+        new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+
+    expect(() => runtime.scheduleInput(1, "Never deliver this message.")).toThrow(
+      "Scheduled messages are unavailable when scheduled runs are disabled.",
+    );
+    expect(runtime.inputQueue).toEqual({ pending: [], scheduled: [] });
+
+    await runtime.close();
+  });
+
   test("steers input into the active run after its current turn", async () => {
     const model = new ControlledModel();
     const events: ConversationRuntimeEvent[] = [];

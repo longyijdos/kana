@@ -344,6 +344,24 @@ describe("prompt editor", () => {
     expect(slashRendered).not.toContain("Scheduled · 3");
   });
 
+  test("strips terminal control sequences from queued previews", () => {
+    const editor = new Editor();
+    editor.setQueuedInputs([
+      {
+        delivery: "scheduled",
+        content: "CSI\x1b[2J OSC\x1b]0;owned\x07 C0\x00\x08",
+      },
+    ]);
+
+    const rendered = editor.render(48).join("\n");
+
+    expect(stripAnsi(rendered)).toContain("scheduled · CSI OSC C0");
+    expect(rendered).not.toContain("\x1b[2J");
+    expect(rendered).not.toContain("\x1b]0;owned\x07");
+    expect(rendered).not.toContain("\x00");
+    expect(rendered).not.toContain("\x08");
+  });
+
   test("moves up within multiline input before switching history", () => {
     const editor = new Editor();
 

@@ -5,6 +5,7 @@ import {
   normalizeLineEndings,
   padRightAnsi,
   renderHighlightedLine,
+  stripTerminalControlSequences,
   truncateToWidth,
   visibleWidth,
 } from "../../render";
@@ -430,7 +431,7 @@ export class Editor implements Component {
           : input.delivery === "run"
             ? "next run"
             : "scheduled";
-      const content = input.content.replace(/\s+/g, " ").trim();
+      const content = stripTerminalControlSequences(input.content).replace(/\s+/g, " ").trim();
       const prefix = `  ${delivery.padEnd(9)} · `;
       lines.push(
         truncateToWidth(
