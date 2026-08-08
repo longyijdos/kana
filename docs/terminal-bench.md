@@ -1,23 +1,23 @@
-# Terminal-Bench 本地评测
+# Local Terminal-Bench evaluation
 
-Kana 通过 Harbor custom installed agent 接入 Terminal-Bench。适配器位于 `evals/harbor/kana_agent.py`：Harbor 在宿主机加载它，把已编译的 Kana Linux 二进制上传到任务容器，然后以无头模式执行一次完整 Agent run。该集成面向本地评测，不生成 ATIF；未显式传入 `--upload` 时，Harbor 只把结果保存在本地 jobs 目录。
+Kana integrates with Terminal-Bench through a Harbor custom installed agent. The adapter lives at `evals/harbor/kana_agent.py`: Harbor loads it on the host, uploads a compiled Kana Linux binary to the task container, and runs one complete headless Agent run. This integration targets local evaluation and does not generate ATIF. Unless `--upload` is explicitly supplied, Harbor stores results only in the local jobs directory.
 
-## 准备环境
+## Prerequisites
 
-运行评测的机器需要：
+The evaluation host needs:
 
-- Docker daemon；
-- Harbor 0.6.1；
-- 与任务容器架构兼容的 Kana Linux 二进制；
-- 可用的 `DEEPSEEK_API_KEY`。
+- a Docker daemon;
+- Harbor 0.6.1;
+- a Kana Linux binary compatible with the task container architecture;
+- a valid `DEEPSEEK_API_KEY`.
 
-Harbor 可以通过 uv tool 安装到独立环境，不需要在 Kana 仓库创建 Python `.venv`：
+Harbor can be installed into an isolated uv tool environment; the Kana repository does not need a Python `.venv`:
 
 ```bash
 uv tool install harbor==0.6.1
 ```
 
-在 Linux x64 宿主机上从源码构建默认二进制：
+Build the default binary from source on a Linux x64 host:
 
 ```bash
 bun install --frozen-lockfile
@@ -25,7 +25,7 @@ bun run build:cli
 ./kana --version
 ```
 
-适配器默认读取仓库根目录的 `./kana`。也可通过 agent kwarg 或宿主机环境变量指定其它路径：
+The adapter reads `./kana` from the repository root by default. An agent kwarg or host environment variable can select another path:
 
 ```bash
 --ak binary_path=/path/to/kana
@@ -35,9 +35,9 @@ bun run build:cli
 export KANA_EVAL_BINARY=/path/to/kana
 ```
 
-## 运行评测
+## Running evaluations
 
-先用单任务数据集验证完整链路：
+Start with a single-task dataset to validate the complete path:
 
 ```bash
 export DEEPSEEK_API_KEY="sk-..."
@@ -52,7 +52,7 @@ harbor run \
   --jobs-dir ~/evals/kana/jobs
 ```
 
-再运行一个 Terminal-Bench 2.1 task：
+Then run one Terminal-Bench 2.1 task:
 
 ```bash
 harbor run \
@@ -68,18 +68,18 @@ harbor run \
   --jobs-dir ~/evals/kana/jobs
 ```
 
-`-l` 限制 task 数，`-n` 控制并发 trial 数，`-k` 控制每个 task 的独立尝试次数。删除 `-l 1` 即可运行整个数据集；增加 `-n` 前应确认宿主机有足够的 CPU 和内存。
+`-l` limits the number of tasks, `-n` controls concurrent trials, and `-k` controls independent attempts per task. Remove `-l 1` to run the full dataset. Confirm that the host has sufficient CPU and memory before increasing `-n`.
 
-`--agent-timeout-multiplier` 和 `--verifier-timeout-multiplier` 分别只作用于 Agent 和 Verifier。以 Harbor 0.6.1 的默认 900 秒为基准，`--agent-timeout-multiplier 3` 给 Agent 约 45 分钟；Verifier 的 timeout multiplier 不会延长 Agent 的运行时间。
+`--agent-timeout-multiplier` and `--verifier-timeout-multiplier` apply only to the Agent and Verifier respectively. With Harbor 0.6.1's default of 900 seconds, `--agent-timeout-multiplier 3` gives the Agent about 45 minutes; the verifier multiplier does not extend Agent execution.
 
-## 传入代理
+## Passing a proxy
 
-如果任务容器需要通过代理访问模型、源码站点或包仓库，可以传入一个容器可访问的 HTTP proxy URL。Agent 和 Verifier 是两个独立阶段：
+If task containers need a proxy to reach the model, source hosts, or package registries, pass an HTTP proxy URL that is reachable from the containers. The Agent and Verifier are separate phases:
 
-- `--ae KEY=VALUE` 把环境变量传给 Kana Agent；
-- `--ve KEY=VALUE` 把环境变量传给 Verifier。
+- `--ae KEY=VALUE` passes an environment variable to the Kana Agent;
+- `--ve KEY=VALUE` passes an environment variable to the Verifier.
 
-例如让两者使用同一个代理：
+For example, both phases can use the same proxy:
 
 ```bash
 export EVAL_PROXY="http://proxy-host:8080"
@@ -105,20 +105,20 @@ harbor run \
   --jobs-dir ~/evals/kana/jobs
 ```
 
-适配器支持 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 及其小写形式。若启动 Harbor 的进程已设置这些变量，Kana 会继承它们；显式传入的 `--ae` 值优先。代理地址必须能从任务容器访问，`localhost` 和 `127.0.0.1` 指向容器自身。
+The adapter supports `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, and their lowercase forms. Kana inherits these variables when they are present in the process that starts Harbor; explicit `--ae` values take precedence. The proxy address must be reachable from the task container: `localhost` and `127.0.0.1` refer to the container itself.
 
-## 运行行为与结果
+## Runtime behavior and results
 
-每个 trial 中，适配器会：
+For each trial, the adapter:
 
-1. 上传 Kana 到 `/installed-agent/kana`；
-2. 创建隔离的 `/tmp/kana-home` 并写入本次 DeepSeek model 配置；
-3. 通过临时文件传入任务指令；
-4. 执行 `kana exec --clean --json --allow-all-tools`；
-5. 把 JSONL、stderr 和 token usage 交给 Harbor；
-6. 删除临时指令文件。
+1. uploads Kana to `/installed-agent/kana`;
+2. creates an isolated `/tmp/kana-home` and writes the selected DeepSeek model configuration;
+3. supplies the task instruction through a temporary file;
+4. runs `kana exec --clean --json --allow-all-tools`;
+5. exposes JSONL, stderr, and token usage to Harbor;
+6. removes the temporary instruction file.
 
-`--clean` 会排除宿主机的 AGENTS、Skills、Memory 和 MCP 定制，并阻止 Kana 为 trial 写入 session journal、session log 与 accounting；`--allow-all-tools` 关闭交互审批，实际隔离边界由任务容器提供。Harbor 仍会保存适配器输出的 JSONL、stderr 与 token usage。每个 trial 的主要文件包括：
+`--clean` excludes host AGENTS, Skills, Memory, and MCP customization and prevents Kana from writing a session journal, session log, or accounting record for the trial. `--allow-all-tools` disables interactive approval, while the task container provides the actual isolation boundary. Harbor still retains the adapter's JSONL, stderr, and token usage. The primary per-trial files are:
 
 ```text
 agent/kana.jsonl
@@ -129,10 +129,10 @@ verifier/reward.txt
 result.json
 ```
 
-可以在本地启动结果浏览器：
+Start the local result viewer with:
 
 ```bash
 harbor view ~/evals/kana/jobs --jobs
 ```
 
-JSONL 可能包含任务指令、模型文本、工具参数和工具结果，应按敏感评测数据管理。
+JSONL may contain task instructions, model text, tool arguments, and tool results. Treat it as sensitive evaluation data.

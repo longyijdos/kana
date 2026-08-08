@@ -1,23 +1,23 @@
-# DeepSeek 提供商适配
+# DeepSeek provider adapter
 
-Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek`。该适配层把 `core` 的通用消息和工具协议转换为 DeepSeek 的流式 `/chat/completions` 请求，并将 SSE 增量恢复为有序助手内容。
+Kana's product configuration currently uses DeepSeek; its adapter lives in `src/providers/deepseek`. The adapter converts `core`'s generic messages and tool protocol into streaming DeepSeek `/chat/completions` requests, then reconstructs SSE deltas into ordered assistant content.
 
-## 模型与元数据
+## Model and metadata
 
-`DeepSeekModel` 继承 `BaseModel`。`stream(context)` 同步返回 `AssistantEventStream`，真实网络请求在后台异步写入该流；`generate()` 因而只是收集同一条流，不会走另一套非流式路径。
+`DeepSeekModel` extends `BaseModel`. `stream(context)` synchronously returns an `AssistantEventStream`, while the network request writes to it asynchronously; `generate()` therefore collects the same stream rather than taking a separate non-streaming path.
 
-当前内置元数据：
+Current built-in metadata:
 
-| 模型 | 上下文窗口 | 最大输出 | 并行工具调用 | 输入 / 输出 / 缓存读取价格（CNY/百万 token） |
+| Model | Context window | Max output | Parallel tool calls | Input / output / cache-read price (CNY per million tokens) |
 | --- | ---: | ---: | --- | --- |
-| `deepseek-v4-flash` | 1,000,000 | 384,000 | 支持 | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | 1,000,000 | 384,000 | 支持 | 3 / 6 / 0.025 |
+| `deepseek-v4-flash` | 1,000,000 | 384,000 | Supported | 1 / 2 / 0.02 |
+| `deepseek-v4-pro` | 1,000,000 | 384,000 | Supported | 3 / 6 / 0.025 |
 
-缓存写入价格当前为 0。构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。TUI 使用元数据计算上下文使用率和 CNY 累计成本。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。
+Cache-write price is currently zero. Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. The TUI uses metadata for context percentage and accumulated CNY cost. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting.
 
-## 请求转换
+## Request conversion
 
-默认 base URL 为 `https://api.deepseek.com`，请求路径固定为 `/chat/completions`。请求始终设置：
+The default base URL is `https://api.deepseek.com`, with fixed request path `/chat/completions`. Requests always include:
 
 ```json
 {
@@ -28,61 +28,61 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 }
 ```
 
-系统提示词在通用 `ModelContext` 外保存，发送时会作为消息数组的首个 `system` 消息。用户消息直接映射；工具结果变为带 `tool_call_id` 的 `tool` 消息。助手有序内容会转换为一个 DeepSeek assistant 消息：所有 text 拼接为 `content`，所有 thinking 拼接为 `reasoning_content`，工具调用变为 `tool_calls`。原始流式参数 `rawArgs` 存在时优先回传它，避免重新序列化改变调用内容。
+The system prompt is held outside the generic `ModelContext` message history and is sent as the first `system` message. User messages map directly; tool results become `tool` messages with `tool_call_id`. Ordered assistant content becomes one DeepSeek assistant message: all text joins into `content`, all thinking joins into `reasoning_content`, and calls become `tool_calls`. When streamed `rawArgs` exist, they are sent back preferentially so reserialization cannot change call content.
 
-配置中已提供的可选字段会被转为 DeepSeek 名称：
+Provided optional configuration maps to DeepSeek fields:
 
-| Kana / `DeepSeekModelConfig` | 请求字段 |
+| Kana / `DeepSeekModelConfig` | Request field |
 | --- | --- |
 | `temperature` | `temperature` |
 | `ModelContext.maxOutputTokens ?? maxTokens` | `max_tokens` |
 | `topP` | `top_p` |
-| `thinking` | `thinking.type`，值为 `enabled`/`disabled` |
+| `thinking` | `thinking.type`, `enabled`/`disabled` |
 | `reasoningEffort` | `reasoning_effort` |
 | `responseFormat` | `response_format` |
 | `userId` | `user_id` |
 
-Agent 提供逐轮 `ModelContext.maxOutputTokens` 时，它优先于构造配置的 `maxTokens`；缺少逐轮值时仍使用配置值。当 `thinking` 显式为 `false` 时，不发送 `reasoning_effort`，因为 DeepSeek 拒绝这一组合。若上下文有工具，则每个工具的 JSON Schema 作为 function `parameters` 透传，默认 `tool_choice` 为 `auto`；`strictTools` 会给每个 function 加上 `strict: true`。上下文没有工具时，只有显式配置的 `toolChoice` 才会被发送。
+A per-turn `ModelContext.maxOutputTokens` from the Agent takes precedence over configured `maxTokens`; requests without a per-turn value still use the configuration. When `thinking` is explicitly `false`, `reasoning_effort` is omitted because DeepSeek rejects the combination. When context has tools, each tool's JSON Schema passes through as function `parameters` and default `tool_choice` is `auto`; `strictTools` adds `strict: true` to every function. Without context tools, `toolChoice` is sent only when explicitly configured.
 
-## 认证、取消、超时与重试
+## Authentication, cancellation, timeout, and retries
 
-模型优先使用构造配置里的 `apiKey`，否则读取 `DEEPSEEK_API_KEY`。Kana 产品层通常先从 `config.toml` 指定的环境变量读 key 并传入配置；直接使用 `DeepSeekModel` 时则适用该回退。请求带有 `Authorization: Bearer <key>`、`content-type: application/json` 和 `accept: text/event-stream`，并可合并自定义 headers。
+The model prefers `apiKey` from its config, otherwise reads `DEEPSEEK_API_KEY`. Kana's product layer normally reads the environment variable selected in `config.toml` and passes it in configuration; direct `DeepSeekModel` use gets this fallback. Requests carry `Authorization: Bearer <key>`, `content-type: application/json`, and `accept: text/event-stream`, plus optional custom headers.
 
-`createRequestSignal` 将 Agent 的取消信号和可选 `timeoutMs` 合并。`timeoutMs` 是无活动超时：等待响应头时受其限制，收到响应头或任意响应字节后重新计时。因此持续输出的长 reasoning 流可以超过该时长，但连接停止传输达到该时长时仍会中止。结束时会清理定时器和事件监听器。HTTP 408、429 和所有 5xx 响应可重试；其他 HTTP 错误不重试。非 HTTP 异常也会被视为可重试，除非已中止。退避为 1s、2s、4s、8s（之后保持 8s），最多执行 `maxRetries` 次重试。
+`createRequestSignal` combines the Agent cancellation signal with optional `timeoutMs`. `timeoutMs` is an inactivity timeout: it limits the wait for response headers and restarts when headers or any response bytes arrive. A long reasoning stream can therefore exceed the configured duration while data continues, but the request is still aborted when the connection stops transferring data for that duration. Completion cleans up the timer and listener. HTTP 408, 429, and all 5xx responses are retryable; other HTTP failures are not. Non-HTTP errors are also retryable unless aborted. Backoff is 1s, 2s, 4s, 8s, then remains 8s, up to `maxRetries` retries.
 
-任何抛出错误最终都会产生 provider `error` 事件：DOM `AbortError` 或上层 signal 已中止映射为 `aborted`，其余映射为 `error`。事件带有截至失败时已累积的助手消息快照，因此 Agent 能保留可用的部分文本。
+Any thrown error becomes a provider `error` event: a DOM `AbortError` or an aborted upper signal maps to `aborted`; everything else maps to `error`. The event includes the assistant message snapshot accumulated through failure, letting the Agent retain usable partial text.
 
-HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/window 或 input/prompt token 超限时，才转换为通用 `ContextWindowExceededError`；普通参数错误保持原始 `DeepSeekHttpError`。Agent 仅在还没有任何助手输出时捕获该类型，执行一次安全上下文压缩并重试当前请求一次。provider 失败日志仍只记录错误类型、状态码和状态文本，不记录最多检查 4096 字符的响应消息。
+An HTTP 400, 413, or 422 is converted to generic `ContextWindowExceededError` only when its error code/message clearly matches a context-length/window or input/prompt-token limit. Ordinary parameter failures remain their original `DeepSeekHttpError`. The Agent catches this type only before any assistant output, performs one safe context compaction, and retries the current request once. Provider failure logs still retain only error type, status, and status text; they never record the response message inspected up to 4096 characters.
 
-## SSE 解析与内容顺序
+## SSE parsing and content order
 
-响应读取器以空行切分 SSE frame，并保留不完整尾帧以应对网络分片。每个 frame 收集所有 `data:` 行；`[DONE]` 立即结束读取。JSON payload 交给 `applyDeepSeekChunk`。
+The response reader splits SSE frames on blank lines and retains incomplete trailing frames across network chunks. Each frame collects all `data:` lines; `[DONE]` immediately ends reading. JSON payloads go to `applyDeepSeekChunk`.
 
 ```text
 reasoning_content delta
-  → thinking_start（首次）→ thinking_delta*
+  → thinking_start (first) → thinking_delta*
 content delta
-  → 结束所有未结束 thinking
-  → text_start（首次）→ text_delta*
+  → end all open thinking
+  → text_start (first) → text_delta*
 tool_calls delta
-  → 结束所有未结束 thinking/text
-  → 新 index 首次出现时，结束此前所有 tool call
-  → toolcall_start（首次）→ toolcall_delta*
+  → end all open thinking/text
+  → on the first higher index, end all preceding tool calls
+  → toolcall_start (first) → toolcall_delta*
 finish_reason = tool_calls
-  → 解析并结束最后仍未结束的 tool call
+  → parse and end the final unfinished tool call
 ```
 
-工具 delta 由 provider 的 `index` 对应当前消息中的第 N 个工具块。DeepSeek 不提供每个工具调用的完成标记；其 index 按序流出，因此首次收到更高 index 时，会推断并结束所有此前的调用。流结束时再结束最后尚未完成的调用。ID、函数名和参数都可跨多个 chunk 拼接；无参数时最终参数为 `{}`，非 JSON 参数保留为原始字符串。可见文本或工具调用开始时会关闭前一个不同类型的开放内容块，保证 `content` 数组和事件顺序一致。
+Tool deltas use the provider `index` to address the Nth tool block in the current message. DeepSeek does not provide a per-call completion marker; its indexes arrive in order, so the first higher index ends every preceding call. Stream completion then ends only the final unfinished call. IDs, function names, and arguments may concatenate across chunks; missing arguments become `{}`, while non-JSON arguments remain raw strings. Starting visible text or a tool call closes an open block of a different kind, keeping event order and the `content` array consistent.
 
-结束原因映射为：`stop → stop`、`length → length`、`tool_calls → toolUse`。`content_filter` 与 `insufficient_system_resource` 被视为错误。流中携带的 usage 转为通用字段，包括 prompt cache hit/miss 和 reasoning token。
+Finish reasons map as `stop → stop`, `length → length`, and `tool_calls → toolUse`. `content_filter` and `insufficient_system_resource` are errors. Usage in stream chunks maps to generic fields including prompt cache hit/miss and reasoning tokens.
 
-## 用量和成本
+## Usage and cost
 
-`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。成本计算以 CNY/百万 token 为单位：有 cache miss 时将它计为普通输入，有 cache hit 时按 cache-read 价格计费；只提供其中一项时从 `promptTokens` 推导另一项。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / effective context limit`，钳制在 0–100%；未配置 `agent.context_limit` 时，该分母才是 metadata context window。摘要请求的 usage 计入主运行累计用量和成本，但不会替换最近正常模型请求的 context 百分比。
+`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Cost uses CNY per million tokens: cache misses bill as normal input and cache hits bill at the cache-read price; when only one cache field exists, the other portion is inferred from `promptTokens`. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%; only an unset `agent.context_limit` uses the metadata context window. Summary-request usage contributes to main-run accumulated usage and cost without replacing the latest normal model request's context percentage.
 
-## 扩展注意点
+## Extension notes
 
-- 保持 provider 输出为 `AssistantMessageEvent`，并为每次事件发送深拷贝快照。
-- 不要把 provider 的 thinking/text/tool 调用顺序扁平化；Agent 历史和 TUI 依赖有序 content。
-- 新增可重试条件时必须区分取消，取消不应被重试。
-- 新模型要同时更新 metadata、产品配置允许值和成本显示测试。
+- Keep provider output in `AssistantMessageEvent` and emit deep-cloned snapshots for every event.
+- Do not flatten provider ordering of thinking, text, and calls; Agent history and the TUI rely on ordered content.
+- New retry conditions must distinguish cancellation, which must never retry.
+- Adding a model requires updating metadata, product-config allowed values, and cost-display tests.

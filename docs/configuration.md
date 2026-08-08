@@ -1,106 +1,106 @@
-# 配置与安装
+# Configuration and installation
 
-本文说明 Kana 当前实现的启动命令、配置文件和本地目录。配置以 Bun TOML 解析；字段名使用 `snake_case`，而代码内部使用 `camelCase`。
+This document describes Kana's implemented commands, configuration files, and local directory layout. Configuration is parsed as Bun TOML; file keys use `snake_case` while the code uses `camelCase`.
 
-## 安装与启动
+## Install and start
 
 ```bash
-# 初始化本地状态；缺少 config.toml 时继续使用内置默认值
+# Initialize local state; missing config.toml continues to use built-in defaults
 kana install
 
-# 只检查最新正式版，或下载并替换当前 Kana 独立二进制
+# Only check the latest stable release, or download and replace the current Kana executable
 kana update --check
 kana update
 
-# 重置运行配置；默认交互确认，自动化环境显式使用 --yes
+# Reset runtime configuration; confirmation is interactive unless --yes is explicit
 kana reset
 kana reset --yes
 
-# 安装或安全更新默认的全局 Skills 仓库
+# Install or safely update the default global Skills repository
 kana skills install
 
-# 删除并重新克隆默认 Skills 仓库；默认交互确认
+# Delete and reclone the default Skills repository; confirmation is interactive
 kana skills reinstall
 kana skills reinstall --yes
 
-# 将已安装的 Kana Skills 复制到 Codex 的全局 Skills 目录
+# Copy installed Kana Skills to Codex's global Skills directory
 kana skills sync codex
 
-# 复制到自定义 agent 的 Skills 目录；已有同名 Skill 默认跳过
+# Copy to a custom agent Skills directory; existing matching Skills are skipped by default
 kana skills sync --target-dir ~/.other-agent/skills
 
-# 替换目标目录中已有的同名 Skill；不清理其它或过期 Skill
+# Replace matching target Skills without removing other or stale Skills
 kana skills resync codex
 kana skills resync codex --yes
 
-# 启动 TUI；参数会作为第一条提示词
-kana 修复测试失败
+# Start the TUI; arguments become the first prompt
+kana fix the failing tests
 
-# 只使用内置 Agent 上下文和工具
+# Use only built-in Agent context and tools
 kana --clean
 
-# 按 ID 恢复会话；省略 ID 时打开选择器
+# Restore by ID, or open the picker when the ID is omitted
 kana resume [session-id]
 
-# 无头执行一次完整 Agent turn；也可从 stdin 读取 prompt
-kana exec 修复失败的测试
-kana exec --clean 使用内置能力分析项目
-printf '总结这个仓库' | kana exec
-kana exec resume <session-id> 继续完成任务
+# Run one complete Agent turn headlessly; the prompt may also come from stdin
+kana exec fix the failing tests
+kana exec --clean analyze the project with built-in capabilities
+printf 'summarize this repository' | kana exec
+kana exec resume <session-id> continue the task
 
-# 管理 OpenAI Codex OAuth
+# Manage OpenAI Codex OAuth
 kana auth login openai-codex
 kana auth status openai-codex
 kana auth logout openai-codex
 ```
 
-`kana exec` 使用与 TUI 相同的产品装配并在一次完整 Agent turn 后退出。默认模式只把最终答案写到 stdout，`--json` 提供版本化 JSONL 事件；非交互工具审批、退出码和完整协议见[无头执行与 JSONL 协议](headless.md)。
+`kana exec` uses the same product composition as the TUI and exits after one complete Agent turn. Human mode writes only the final answer to stdout, while `--json` provides a versioned JSONL event stream. See [Headless execution and the JSONL protocol](headless.md) for non-interactive approval, exit codes, and the complete protocol.
 
-`--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、OAuth 凭据、审批规则与通知，也继续提供核心文件/Shell 工具和 TUI 的进程内 `schedule_wake`。TUI 中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume`、`/delete` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
+`--clean` applies only to a new TUI or `exec` session; combining it with `resume` or `exec resume` fails at the corresponding frontend startup boundary. It creates a temporary session that exists only in the current process: no session journal, session logger, or accounting record is created, and the session never appears in the resume list. Clean mode does not read global or project `AGENTS.md`, global/project memory, global or project Skills, or MCP definitions and activation state; it does not register `remember`, start memory consolidation, or connect to MCP servers. Kana still loads `<KANA_HOME>/.env` and `config.toml`, retaining the current provider/model, Agent runtime settings, OAuth credentials, approval rules, and notifications. Core file/Shell tools and the TUI's in-process `schedule_wake` remain available. `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable in the TUI. `/model` validates and switches the current Agent without writing `config.toml`. Clean mode is not a file/process sandbox: built-in tools, providers, approval flows, and authentication flows can still produce their normal external side effects.
 
-`kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取它，需要覆盖默认值时只把相应字段复制到 `config.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
+`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` is a Kana-managed generated reference: install compares it with the current schema and creates or refreshes it only when missing or stale. Runtime never reads this file, so copy only fields being overridden into `config.toml`. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
 
-`kana update --check` 读取 GitHub 最新正式 Release 的版本元数据，不下载或修改二进制。`kana update` 根据当前操作系统和架构下载对应资产，检查 Release 元数据中的文件大小和 SHA-256 digest，然后让候选二进制依次执行 `--version` 与幂等的 `kana install`；候选版本、支持文件初始化和当前可执行文件身份全部验证成功后，才通过同目录临时文件原子替换当前二进制。失败会删除临时文件并保留原二进制；如果另一个安装进程在下载期间已经替换目标，也会拒绝覆盖。更新支持 macOS/Linux 的 arm64、x64，沿用 Bun `fetch` 对 `HTTP_PROXY`/`HTTPS_PROXY` 的处理，且要求安装目录可写。直接通过 Bun 运行源码没有 direct distribution 构建标记，因此会拒绝自更新；`scripts/install.sh`、`bun run build:cli` 和正式 Release 构建的独立二进制包含该标记。
+`kana update --check` reads version metadata for GitHub's latest stable Release without downloading or modifying the binary. `kana update` selects the asset for the current operating system and architecture, verifies its reported size and SHA-256 digest, and runs both `--version` and the idempotent `kana install` through the candidate binary. Only after the candidate version, support-file initialization, and current executable identity all pass validation does a same-directory temporary file atomically replace the executable. Failure removes the temporary file and preserves the original binary; Kana also refuses to overwrite a target replaced by another installer while the download was in flight. Updating supports macOS/Linux on arm64 and x64, inherits Bun `fetch` handling of `HTTP_PROXY`/`HTTPS_PROXY`, and requires a writable installation directory. Source run directly through Bun has no direct-distribution build marker and therefore refuses self-update; standalone binaries built by `scripts/install.sh`, `bun run build:cli`, and the Release workflow include that marker.
 
-`kana reset` 将配置恢复到纯净 install 状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
+`kana reset` restores configuration to the state produced by a clean install. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
 
-默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。`kana skills install` 在目录不存在时 clone，已有 Git 仓库时执行 `git pull --ff-only`；已有目录不是 Git 仓库时失败并提示使用 `kana skills reinstall`。reinstall 会在确认后只删除整个默认仓库目录并重新 clone，保留相邻的 `skills.toml` 和其它实际 Skills；非交互环境同样要求 `--yes`。
+The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. `kana skills install` clones it when absent and runs `git pull --ff-only` for an existing Git checkout. An existing non-Git directory fails with a prompt to use `kana skills reinstall`. After confirmation, reinstall deletes only the complete default repository directory and clones it again, preserving the sibling `skills.toml` and all other installed Skills. Non-interactive use requires `--yes`.
 
-`kana skills sync` 不会重新 clone 仓库；它读取 `<KANA_HOME>/skills/kana-skills`，把其中每个顶层、包含 `SKILL.md` 的 Skill 目录复制到目标 agent 的 Skills 根目录。`codex` 预设写入 `${CODEX_HOME:-$HOME/.codex}/skills`。普通 sync 跳过已有同名目录；`kana skills resync` 在确认后删除并重新复制源仓库当前包含的同名 Skill，但不删除目标中其它来源或已从源仓库移除的过期 Skill。resync 在非交互环境要求 `--yes`。若默认 Skills 仓库尚未安装，请先运行 `kana skills install`。
+`kana skills sync` does not clone the repository again. It reads `<KANA_HOME>/skills/kana-skills` and copies every top-level Skill directory containing `SKILL.md` into the target agent's Skills root. The `codex` preset writes to `${CODEX_HOME:-$HOME/.codex}/skills`. Ordinary sync skips matching target directories. After confirmation, `kana skills resync` deletes and recopies matching Skills currently present in the source repository, but does not remove other target Skills or stale Skills no longer present in the source. Non-interactive resync requires `--yes`. If the default Skills repository is absent, run `kana skills install` first.
 
-## 根目录与文件布局
+## Root directory and file layout
 
-Kana 使用 `KANA_HOME` 指定根目录；未设置时使用 `$HOME/.kana`，若 `HOME` 也不存在则回退到操作系统返回的用户主目录。
+Kana uses `KANA_HOME` as its root. When unset, it uses `$HOME/.kana`; when `HOME` is unavailable, it falls back to the OS-reported home directory.
 
 ```text
 ${KANA_HOME:-$HOME/.kana}/
-├── .env                    # 可选：启动时加载的环境变量
-├── config.toml             # 可选：本文的运行配置；缺失时使用内置默认值
-├── config.example.toml     # install 生成的完整配置参考；运行时不读取
-├── mcp.json                # MCP server 定义
-├── mcp-enabled.json        # 已启用的 MCP server ID
-├── oauth-tokens.json       # 浏览器授权后创建的 OAuth 凭据
-├── approvals.json          # bash 信任规则
-├── AGENTS.md               # 可选：全局系统指令，不由 install 创建
-├── sessions/               # 按工作区分组的 JSONL 会话
-├── logs/                   # 按工作区和会话分组的运行时 JSONL 日志
-├── memory/                 # global 与 project 的记忆
+├── .env                    # Optional environment variables loaded at startup
+├── config.toml             # Optional runtime configuration; absence uses built-in defaults
+├── config.example.toml     # Complete install-generated reference; never read at runtime
+├── mcp.json                # MCP server definitions
+├── mcp-enabled.json        # Enabled MCP server IDs
+├── oauth-tokens.json       # OAuth credentials created after browser authorization
+├── approvals.json          # bash trust rules
+├── AGENTS.md               # Optional global system instructions; not created by install
+├── sessions/               # Workspace-grouped JSONL sessions
+├── logs/                   # Workspace- and session-grouped runtime JSONL logs
+├── memory/                 # Global and project memory
 └── skills/
-    ├── skills.toml         # 全局 Skill 的启用列表
-    └── kana-skills/        # `kana skills install` 克隆的默认仓库
+    ├── skills.toml         # Enabled global Skills
+    └── kana-skills/        # Default repository cloned by `kana skills install`
 ```
 
-安装和应用写入的配置文件均以 `0600` 模式创建或写入。该权限是文件模式请求；实际效果仍受操作系统和文件系统 umask/权限模型影响。
+Files written by installation and the application are created or written with mode `0600`. This is the requested file mode; its effective result remains subject to the operating system, filesystem, and umask.
 
-Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启动进程继承的同名环境变量，并成为 Kana 当前进程环境的一部分。内置 `bash` 工具和 TUI 的 `!` 本地 Shell 会继承这些值，因此该文件中的 secret 对它们执行的命令可见。MCP stdio 子进程仍使用独立的受限环境；需要通过 server 的 `env` 显式传入值或引用 `${VAR_NAME}` 占位符。
+Kana reads `<KANA_HOME>/.env` before parsing CLI commands. Its values override matching variables inherited by the startup process and become part of Kana's current process environment. The built-in `bash` tool and the TUI's `!` local Shell inherit these values, so commands they run can access secrets stored in this file. MCP stdio children continue to use a separate restricted environment; pass values explicitly through the server's `env` or reference `${VAR_NAME}` placeholders there.
 
 ## `config.toml`
 
-配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值；例如只写 `[model.deepseek] name` 不会删除该供应商的其他默认项。旧版扁平 `[model]` DeepSeek 配置仍可读取，但新配置应使用供应商分表。
+When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults; for example, supplying only `[model.deepseek] name` does not remove the other defaults for that provider. Legacy flat `[model]` DeepSeek configuration remains readable, but new configuration should use provider-specific tables.
 
-TUI 的 `/model` 通过通用配置存储更新 `config.toml`：它从磁盘重新读取当前配置，只写本次实际变化的已知字段，并保留无关表、未知字段和独立注释。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。候选文档必须重新解析为完整目标配置后才会通过同目录临时文件原子替换；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
+The TUI's `/model` command updates `config.toml` through the generic configuration store. It reloads the current file from disk, writes only known fields whose effective values changed, and preserves unrelated tables, unknown fields, and standalone comments. The first change away from defaults therefore creates only the required overrides instead of expanding every default. A candidate document must parse back into the complete target configuration before a sibling temporary file atomically replaces the original; validation or write failures leave the original file untouched. `config.example.toml` is reference-only and may be refreshed by a later `kana install`, so user configuration should not be stored there.
 
-内置默认配置等价于：
+The built-in configuration is equivalent to:
 
 ```toml
 [provider]
@@ -151,27 +151,27 @@ max_chars = 6000
 level = "info"
 ```
 
-`model.openai-codex` 即使未写入文件也有独立默认值，因此切换供应商时只需写需要覆盖的字段。
+`model.openai-codex` has independent defaults even when its table is absent, so switching providers requires only the fields being overridden.
 
 ### `[provider]`
 
-| 键 | 类型与可选值 | 默认值 | 含义 |
+| Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `active` | `deepseek` 或 `openai-codex` | `deepseek` | 当前用于主 Agent、记忆压缩和上下文压缩的模型供应商。 |
+| `active` | `deepseek` or `openai-codex` | `deepseek` | Provider used by the main Agent, memory consolidation, and context compaction. |
 
 ### `[model.deepseek]`
 
-| 键 | 类型与可选值 | 默认值 | 含义 |
+| Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `name` | 非空字符串 | `deepseek-v4-pro` | 模型名；运行时会拒绝不在 DeepSeek 元数据表中的模型。 |
-| `api_key_env` | 非空字符串 | `DEEPSEEK_API_KEY` | 保存 API key 的环境变量名；key 不写入 TOML。 |
-| `thinking` | 布尔值 | `true` | 是否在 DeepSeek 请求中显式启用 thinking。 |
-| `reasoning_effort` | `high` 或 `max` | `high` | DeepSeek 推理强度；`thinking = false` 时不会发送该字段。 |
-| `max_tokens` | 正整数 | `384000` | 单个请求允许的输出 token 上限；不能超过所选模型的硬上限。Agent 会按当前 prompt 剩余空间逐轮下调实际发送值。 |
-| `timeout_ms` | 有限数字 | `60000` | 等待 DeepSeek 响应头或相邻响应数据的无活动超时毫秒数。 |
-| `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
+| `name` | Non-empty string | `deepseek-v4-pro` | Model name; runtime rejects names outside DeepSeek's metadata table. |
+| `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
+| `thinking` | Boolean | `true` | Explicitly enables DeepSeek thinking in requests. |
+| `reasoning_effort` | `high` or `max` | `high` | DeepSeek reasoning effort; it is not sent when `thinking = false`. |
+| `max_tokens` | Positive integer | `384000` | Allowed per-request output-token ceiling; it cannot exceed the selected model's hard limit. The Agent lowers the value sent for each turn when the current prompt leaves less space. |
+| `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
+| `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
 
-启动前必须在环境中设置 `api_key_env` 指定的变量。例如默认配置使用：
+Before startup, set the environment variable named by `api_key_env`. The default configuration uses:
 
 ```bash
 export DEEPSEEK_API_KEY='sk-...'
@@ -179,44 +179,44 @@ export DEEPSEEK_API_KEY='sk-...'
 
 ### `[model.openai-codex]`
 
-| 键 | 类型与可选值 | 默认值 | 含义 |
+| Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `name` | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses 模型。 |
-| `reasoning_effort` | `low`、`medium`、`high`、`xhigh`、`max` | `medium` | 请求的推理强度。 |
-| `reasoning_summary` | `auto`、`concise`、`detailed` | `auto` | 请求可流式返回的 reasoning summary；原始思维链不会作为该字段公开。 |
-| `web_search` | 布尔值 | `true` | 是否向 Codex Responses 请求声明供应商托管的 `web_search` 工具。设为 `false` 时完全省略该顶层工具；其他供应商没有此配置。 |
-| `max_tokens` | 正整数 | `128000` | Kana 计算逐轮输出上限时使用的配置上限；Codex backend 不接受 `max_output_tokens`，因此请求不会发送该值。 |
-| `timeout_ms` | 有限数字 | `60000` | 等待响应头或相邻响应数据的无活动超时毫秒数。 |
-| `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
+| `name` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses model. |
+| `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` | Requested reasoning effort. |
+| `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
+| `web_search` | Boolean | `true` | Advertises the provider-hosted `web_search` tool to Codex Responses. Setting it to `false` omits that top-level tool entirely; other providers do not have this setting. |
+| `max_tokens` | Positive integer | `128000` | Configured ceiling used when Kana calculates a per-turn output limit; the Codex backend rejects `max_output_tokens`, so requests do not send it. |
+| `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
+| `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
 
-首次使用前运行 `kana auth login openai-codex`。浏览器授权得到的 access token、refresh token、ID token 与绑定信息保存在权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`；到期前会自动 refresh，模型请求收到首个 `401` 时也会 refresh 并重试一次。`status` 只显示授权状态、是否可刷新和到期时间，不显示 token。完整协议映射见 [OpenAI Codex 提供商适配](openai-codex-provider.md)。
+Before first use, run `kana auth login openai-codex`. Browser authorization stores the access token, refresh token, ID token, and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Credentials refresh before expiry; the model request also refreshes and retries once after its first `401`. `status` reports only authorization state, refreshability, and expiry, never token values. See [OpenAI Codex provider adapter](openai-codex-provider.md) for the complete protocol mapping.
 
-### 其他配置表
+### Other tables
 
-| 表与键 | 类型与可选值 | 默认值 | 含义 |
+| Table and key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
-| `agent.tool_deadline_ms` | 正整数 | `660000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
-| `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
-| `agent.context_limit` | 可选正整数 | 模型 metadata 的 context window | Agent 实际使用的上下文上限；不能超过所选模型的硬上限，省略时使用 metadata。 |
-| `approval.mode` | `always`、`unless_trusted`、`never` | `unless_trusted` | 工具调用是否进入 TUI 审批。 |
-| `notification.backend` | `auto`、`off`、`bell`、`osc9`、`osc777`、`kitty` | `auto` | 终端通知输出协议。`auto` 依次识别 Kitty、iTerm、VTE，否则退回 bell。 |
-| `notification.on_agent_completed` | 布尔值 | `true` | 正常完成的 Agent 运行是否通知。中止、错误、长度截断或 `turn_limit` 不会视作完成。 |
-| `notification.on_approval_required` | 布尔值 | `true` | 显示工具审批时是否通知。 |
-| `tui.hyperlinks` | 布尔值 | `true` | 是否允许 TUI 在确认终端支持时用 OSC 8 渲染 Markdown 链接；关闭、终端未知或不支持时显示 `label (url)`。 |
-| `tui.smooth_text_streaming` | 布尔值 | `true` | 是否平滑展开突发到达的助手文本；关闭时直接显示 provider 的最新流式快照。 |
-| `memory.enabled` | 布尔值 | `true` | 是否注册 `remember`，并把记忆注入系统提示词。 |
-| `memory.max_chars` | 正整数 | `6000` | 合并后长期记忆的 Unicode 字符数上限。 |
-| `memory.daily_retention_days` | 可选正整数 | 未设置 | 全量记忆压缩成功后保留每日暂存记录的天数。 |
-| `logging.level` | `debug`、`info`、`warn`、`error`、`off` | `info` | 运行时 JSONL 日志的最低记录级别；`off` 完全关闭文件日志。 |
+| `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
+| `agent.tool_deadline_ms` | Positive integer | `660000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
+| `agent.parallel_tool_calls` | Boolean | `true` | Whether the model may propose and actually execute safe tool calls concurrently; always disabled when selected-model metadata does not support it. |
+| `agent.context_limit` | Optional positive integer | model metadata context window | Context limit the Agent actually uses; it cannot exceed the selected model's hard limit, and omission uses metadata. |
+| `approval.mode` | `always`, `unless_trusted`, `never` | `unless_trusted` | Whether tool calls enter the TUI approval flow. |
+| `notification.backend` | `auto`, `off`, `bell`, `osc9`, `osc777`, `kitty` | `auto` | Terminal-notification output protocol. `auto` detects Kitty, then iTerm, then VTE, otherwise falls back to bell. |
+| `notification.on_agent_completed` | Boolean | `true` | Notify when an Agent run completes normally. Aborted, failed, length-truncated, and `turn_limit` runs are not completion. |
+| `notification.on_approval_required` | Boolean | `true` | Notify when a tool-approval prompt is shown. |
+| `tui.hyperlinks` | Boolean | `true` | Allow the TUI to render Markdown links with OSC 8 when terminal support is confirmed; disabled, unknown, or unsupported terminals show `label (url)`. |
+| `tui.smooth_text_streaming` | Boolean | `true` | Smoothly reveal bursty assistant text; when disabled, show each latest provider streaming snapshot directly. |
+| `memory.enabled` | Boolean | `true` | Register `remember` and inject memory into the system prompt. |
+| `memory.max_chars` | Positive integer | `6000` | Unicode-character limit for consolidated durable memory. |
+| `memory.daily_retention_days` | Optional positive integer | Unset | Number of daily staging records retained after successful full memory compaction. |
+| `logging.level` | `debug`, `info`, `warn`, `error`, `off` | `info` | Minimum level written to runtime JSONL logs; `off` disables file logging entirely. |
 
-`parallel_tool_calls` 是用户策略，最终值为“用户配置且所选模型 metadata 支持”。关闭后 provider 请求不会声明并行能力，且即使模型仍在一个响应中返回多个调用，ToolRuntime 也会按顺序逐个执行。打开后仍只有声明 `execution.concurrency = "parallel"` 的相邻工具能够组成并行组；OpenAI Codex Responses Lite 的当前模型 metadata 均不支持顶层并行工具调用，因此该配置不会覆盖其硬限制。
+`parallel_tool_calls` is a user policy; its effective value is the user setting AND selected-model metadata support. When disabled, the provider request does not advertise parallel capability, and ToolRuntime executes calls one at a time even if a model still returns several in one response. When enabled, only adjacent tools declaring `execution.concurrency = "parallel"` can form a concurrent group. Current OpenAI Codex Responses Lite model metadata does not support top-level parallel tool calls, so this setting cannot override that hard limit.
 
-`hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls`、`hyperlinks` 和 `smooth_text_streaming` 必须是布尔值；`tool_deadline_ms`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
+`hyperlinks` is permission rather than a force switch: even when it is `true`, Kana emits OSC 8 only for terminals with confirmed support and keeps the URL visible when capability is unknown; `false` always uses the text fallback. By default, `smooth_text_streaming` changes only visible-text pacing and never backpressures the provider or Agent. When disabled, the TUI still coalesces terminal repaints but no longer subdivides provider text snapshots. When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `parallel_tool_calls`, `hyperlinks`, and `smooth_text_streaming` must be Boolean; `tool_deadline_ms`, `max_tokens`, and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
 
-### 上下文预算
+### Context budget
 
-Kana 用 `agent.context_limit` 计算自动上下文压缩预算；未配置时回退到所选模型 metadata 的 context window。配置值不能超过 metadata，但不需要大于当前供应商的 `model.<provider>.max_tokens`。实际 prompt 预算和逐轮输出上限为：
+Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata, but it need not be greater than the active provider's `model.<provider>.max_tokens`. The effective prompt budget and per-turn output ceiling are:
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
@@ -224,15 +224,15 @@ promptBudget = contextLimit - safetyReserve
 effectiveMaxTokens = min(activeModel.max_tokens, promptBudget - estimatedPromptTokens)
 ```
 
-`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。配置的 `max_tokens` 是输出上限而不是固定预留；prompt 增长到剩余空间不足时，Agent 会降低本轮 `ModelContext.maxOutputTokens`。DeepSeek 将其发送为 `max_tokens`，不支持对应请求字段的 provider 可以忽略它。
+At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Configured `max_tokens` is a ceiling rather than a fixed reserve; as the prompt grows beyond the space available for that ceiling, the Agent lowers the current `ModelContext.maxOutputTokens`. DeepSeek sends it as `max_tokens`, while a provider without a corresponding request field may ignore it.
 
-默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。Agent 创建时的 `agent.parallel_tool_calls_configured` 只记录 `requested`、`supported` 和最终的 `enabled`；`context.output_limit_adjusted` 只记录配置上限、本轮有效上限和估算 prompt tokens，两者也都属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
+Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Agent construction emits `agent.parallel_tool_calls_configured` with only `requested`, `supported`, and the final `enabled`; `context.output_limit_adjusted` contains only the configured ceiling, effective per-turn ceiling, and estimated prompt tokens. Both are `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
 
-配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
+The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
 
-## `mcp.json` 与 `mcp-enabled.json`
+## `mcp.json` and `mcp-enabled.json`
 
-MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA_HOME>/mcp.json`，`<KANA_HOME>/mcp-enabled.json` 则是启用状态的唯一来源。定义文件不存在或省略 `mcpServers` 时等价于未配置服务器；启用文件不存在或省略 `enabledServers` 时等价于未启用任何服务器。Kana 只启动同时存在于定义和 `enabledServers` 中的 ID，过期的未知 ID 会被忽略。当前会话显示后，TUI 才会连接选中的服务器，使用稳定版 `2025-11-25` client 获取工具列表，再把远端工具注入重建后的主 Agent；不带 ID 的 `kana resume` 会先显示会话选择器，选中会话后才开始连接。记忆压缩 Agent 不会获得 MCP 工具。每次发现的工具列表会固定到显式执行下一次 `/mcp` reload 或本次进程结束，不处理运行中的 `notifications/tools/list_changed`。
+MCP servers are not stored in `config.toml`. Claude Code-style definitions live in `<KANA_HOME>/mcp.json`, while `<KANA_HOME>/mcp-enabled.json` is the sole source of activation state. A missing definitions file or omitted `mcpServers` means that no servers are configured; a missing activation file or omitted `enabledServers` means that none are enabled. Only configured IDs listed in `enabledServers` are started, and stale unknown IDs are ignored. After the current session is visible, the TUI connects the selected servers, uses stable `2025-11-25` clients to discover their tools, and injects the remote tools into a rebuilt main Agent. `kana resume` without an ID shows the session picker first and begins connecting only after selection. Memory-consolidation Agents never receive MCP tools. Each discovered tool list remains fixed until an explicit `/mcp` reload or process exit; runtime `notifications/tools/list_changed` events are not processed.
 
 ```json
 {
@@ -264,7 +264,7 @@ MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA
 }
 ```
 
-启用状态单独保存，因此 `/mcp` 管理开关时无需重写服务器命令、参数、格式或包含明文环境变量的定义文件：
+Activation is stored separately so `/mcp` can manage it without rewriting server commands, arguments, formatting, or plaintext environment values:
 
 ```json
 {
@@ -272,66 +272,66 @@ MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA
 }
 ```
 
-Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都会导致启用状态加载失败。`/mcp` 会列出所有已配置 server 的 transport；选中 stdio server 时显示完整命令行（`command` 后拼接 `args`），选中 HTTP server 时显示 URL 和 OAuth 状态，但刻意不显示环境变量、HTTP headers、代理地址或 token。`Enter` 只切换内存中的草稿；OAuth HTTP server 还可按 `A` 打开认证操作，执行首次授权、重新授权或退出登录。`Esc` 一次性应用并关闭；草稿有变化或已启用 server 的认证状态发生变化时，Kana 执行一次 reload。退出登录会同时取消勾选该 server。持久化失败时管理界面保持打开，方便重试。
+Server IDs must be non-empty and unique. Unknown fields, invalid values, and duplicate IDs fail activation-state loading. `/mcp` lists every configured server with its transport. Selecting a stdio server shows its full command line (`command` followed by `args`), while selecting an HTTP server shows its URL and OAuth status; environment values, HTTP headers, proxy URLs, and tokens are deliberately omitted. `Enter` toggles an in-memory draft. An OAuth HTTP server also accepts `A` to open authorization actions for initial authorization, reauthorization, or sign-out. `Esc` applies and closes the draft. Kana performs one reload when the selection changed or an enabled server's authorization changed. Signing out also unchecks that server. A persistence failure leaves the manager open so it can be retried.
 
-省略 `type` 时默认为 `stdio`；Streamable HTTP 必须显式使用 `"type": "http"`。配置字段如下：
+Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type": "http"`. The configuration fields are:
 
-| 键 | 默认值 | 含义 |
+| Key | Default | Meaning |
 | --- | --- | --- |
-| `type` | `stdio` | `stdio` 或 `http`。不接受旧版 `sse`。 |
-| `command` | stdio 必填 | 可执行文件的绝对路径或通过 `PATH` 查找的名称。直接以参数数组启动，不经过 shell。 |
-| `args` | stdio: `[]` | 传给 stdio 可执行文件的参数数组。 |
-| `cwd` | stdio: Kana 当前工作目录 | 子进程工作目录；相对路径由运行 Kana 的当前目录解析。 |
-| `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。`${VAR_NAME}` 从当前进程展开，缺失时该 server 启动失败；`${VAR_NAME:-default}` 在变量缺失或为空时使用默认值。配置值覆盖同名基础环境变量。 |
-| `url` | HTTP 必填 | Streamable HTTP 单端点 URL；必须为绝对 `http`/`https` URL，不能包含 credentials 或 fragment。 |
-| `proxy` | HTTP: 未设置 | 绝对 `http`/`https` 代理 URL 表示仅该 server 使用指定代理；`false` 表示忽略进程级代理并强制直连。URL 不能包含 credentials 或 fragment。 |
-| `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
-| `auth` | 未设置 | HTTP OAuth 2.0 配置；设置后 `url` 必须为 HTTPS，且 `headers` 不能再设置 `Authorization`。 |
-| `required` | `false` | 启动失败是否阻止 MCP manager 整体就绪。 |
-| `startupTimeoutMs` | `10000` | 完成 MCP 初始化握手的超时。 |
-| `requestTimeoutMs` | `60000` | 普通 MCP 请求的默认超时。 |
-| `includeTools` | 未设置 | 按远端原名选择允许暴露的工具。空数组表示不暴露任何工具。 |
-| `excludeTools` | 未设置 | 按远端原名排除工具；同时出现在 include/exclude 时以排除为准。 |
+| `type` | `stdio` | `stdio` or `http`. Legacy `sse` is not accepted. |
+| `command` | Required for stdio | Absolute executable path or a name resolved through `PATH`. It is launched directly as an argument array, never through a shell. |
+| `args` | stdio: `[]` | Arguments passed to the stdio executable. |
+| `cwd` | stdio: Kana's current working directory | Child-process working directory; relative paths resolve from the directory where Kana runs. |
+| `env` | stdio: `{}` | String key/value pairs explicitly added to the child environment. `${VAR_NAME}` expands from the current process and fails that server when missing; `${VAR_NAME:-default}` uses its default when the variable is missing or empty. Configured values override matching baseline variables. |
+| `url` | Required for HTTP | Single Streamable HTTP endpoint; it must be an absolute `http`/`https` URL without credentials or a fragment. |
+| `proxy` | HTTP: Unset | An absolute `http`/`https` URL routes only this server through that proxy; `false` ignores process-wide proxies and forces direct connections. URLs cannot contain credentials or fragments. |
+| `headers` | HTTP: `{}` | String headers sent with every HTTP request; transport-owned content, session, protocol, and SSE headers cannot be overridden. |
+| `auth` | Unset | HTTP OAuth 2.0 configuration. When set, `url` must use HTTPS and `headers` cannot also set `Authorization`. |
+| `required` | `false` | Whether a startup failure prevents the whole MCP manager from becoming ready. |
+| `startupTimeoutMs` | `10000` | Timeout for completing the MCP initialization handshake. |
+| `requestTimeoutMs` | `60000` | Default timeout for ordinary MCP requests. |
+| `includeTools` | Unset | Allowlist matched against original remote tool names. An empty array exposes no tools. |
+| `excludeTools` | Unset | Denylist matched against original remote names; exclusion wins when a name appears in both lists. |
 
-stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并展开后的 `env`。占位符只从 Kana 进程环境读取，因此也能使用 `<KANA_HOME>/.env` 已加载的值，但不会让子进程继承其他未显式配置的变量。`${VAR:-default}` 遵循 shell 的 `:-` 语义：变量未设置或值为空时使用默认值；默认值不递归展开。没有默认值的占位符若无法解析，该 server 会以包含 server ID、env key 和变量名的错误启动失败；可选 server 不影响其他 MCP 或 editor，错误会出现在 transcript 和诊断日志中，且不会记录 secret 值。环境变量名必须符合常规格式，配置值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
+The stdio child inherits only defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges the expanded `env`. Placeholders read only from Kana's process environment, including values already loaded from `<KANA_HOME>/.env`, without making other unconfigured variables inheritable by the child. `${VAR:-default}` follows shell `:-` semantics and uses the default when the variable is unset or empty; defaults are not expanded recursively. An unresolved placeholder without a default fails that server with an error containing the server ID, env key, and variable name. An optional server does not block other MCP servers or the editor; the error appears in the transcript and diagnostic log without recording the secret value. Environment names must use conventional syntax and configured values must be strings. Unknown fields, non-positive timeouts, and duplicate or empty tool names fail configuration loading.
 
-HTTP server 将 `proxy` 设置为 URL 后，其 MCP initialize、工具请求、SSE 恢复、session DELETE、OAuth metadata discovery、token 获取和 refresh 都通过该代理；设置为 `false` 后，同一范围的请求会绕过进程级代理并直连。直连封装只在调用 Bun `fetch` 的同步区间把当前目标主机加入进程内 `NO_PROXY`/`no_proxy`，随即恢复两个变量的原始值；不会永久修改 Kana 进程环境，也不会改变随后启动的其他 MCP 请求，它们仍使用各自的显式代理或原有全局代理。省略 `proxy` 时使用 Bun 的默认 `fetch` 路由，因此继续遵守当前 shell 或 `<KANA_HOME>/.env` 注入的 `HTTP_PROXY`/`HTTPS_PROXY`。系统浏览器中的 OAuth 授权页面不经过 Kana 的 `fetch`，仍使用浏览器自身的网络设置。诊断日志只记录该 server 使用显式代理或绕过代理，不记录代理 URL。
+When an HTTP server sets `proxy` to a URL, its MCP initialization, tool requests, SSE recovery, session DELETE, OAuth metadata discovery, token exchange, and refresh all use that proxy. Setting it to `false` makes the same request set bypass process-wide proxies and connect directly. The direct wrapper adds the current target host to process-local `NO_PROXY`/`no_proxy` only for the synchronous Bun `fetch` invocation, then restores both variables exactly. It does not permanently modify Kana's environment or change later requests from other MCP servers, which retain their own explicit proxy or the original global proxy. When `proxy` is omitted, Kana uses Bun's default `fetch` routing and therefore continues to honor `HTTP_PROXY`/`HTTPS_PROXY` inherited from the current shell or loaded from `<KANA_HOME>/.env`. OAuth pages opened in the system browser do not pass through Kana's `fetch` and continue to use the browser's own network settings. Diagnostic logs record only whether a server uses an explicit proxy or bypasses proxies, never the proxy URL.
 
-`auth` 当前只接受 `type: "oauth2"`，子字段如下：
+`auth` currently accepts only `type: "oauth2"`, with these nested fields:
 
-| 键 | 默认值 | 含义 |
+| Key | Default | Meaning |
 | --- | --- | --- |
-| `clientId` | 必填 | 已注册 OAuth client ID；它不是 secret，可直接保存在 `mcp.json`。 |
-| `clientSecretEnv` | 未设置 | 从 Kana 进程环境读取 client secret 的变量名，例如放在 `<KANA_HOME>/.env`；secret 不写入 `mcp.json`。 |
-| `redirectUri` | 动态 loopback | 可选的固定 `http://localhost:<port>/path`、`127.0.0.1` 或 `::1` callback。省略时 Kana 在 `127.0.0.1` 上选择空闲端口并使用 `/oauth/callback`。 |
-| `scopes` | 未设置 | 显式最小权限边界。设置后不会自动申请列表外的 scope；未设置时优先使用 `WWW-Authenticate` challenge 的 scope，再回退 protected-resource metadata。 |
-| `tokenEndpointAuthMethod` | 自动选择 | `none`、`client_secret_basic` 或 `client_secret_post`；必须与服务端 metadata 和是否提供 secret 一致。 |
-| `authorizationParameters` | `{}` | 追加到浏览器授权请求的提供商参数，例如 `access_type` 或 `prompt`；不能覆盖 OAuth/PKCE/resource 核心参数。 |
-| `callbackTimeoutMs` | `300000` | 等待 loopback callback 的正整数超时。 |
+| `clientId` | Required | Registered OAuth client ID. It is not a secret and may be stored directly in `mcp.json`. |
+| `clientSecretEnv` | Unset | Environment variable from which Kana reads the client secret, for example via `<KANA_HOME>/.env`; the secret is not stored in `mcp.json`. |
+| `redirectUri` | Dynamic loopback | Optional fixed `http://localhost:<port>/path`, `127.0.0.1`, or `::1` callback. When omitted, Kana selects a free port on `127.0.0.1` and uses `/oauth/callback`. |
+| `scopes` | Unset | Explicit least-privilege boundary. Kana never requests a scope outside this list. When unset, challenge scopes take precedence, followed by protected-resource metadata. |
+| `tokenEndpointAuthMethod` | Automatic | `none`, `client_secret_basic`, or `client_secret_post`; it must agree with server metadata and the presence of a secret. |
+| `authorizationParameters` | `{}` | Provider parameters appended to the browser request, such as `access_type` or `prompt`; OAuth, PKCE, and resource parameters cannot be overridden. |
+| `callbackTimeoutMs` | `300000` | Positive timeout for the loopback callback. |
 
-OAuth 启动前先按 MCP protected-resource metadata 和 OAuth/OIDC metadata 发现授权端点，再执行 Authorization Code + PKCE S256。浏览器授权成功后，access token、refresh token、到期时间、scope 和绑定信息写入权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`。可用的 refresh token 会在 access token 到期前自动刷新；授权服务器以 `invalid_grant` 拒绝 refresh 时，Kana 删除旧凭据，并在下次需要时重新打开浏览器。工具调用收到带 scope 的 `401/403` challenge 时，如果配置允许所需 scope，Kana 会增量授权并只重试该 HTTP 请求一次；若服务端要求配置范围之外的 scope，则返回明确错误，不扩大权限。
+Before MCP startup, OAuth discovers MCP protected-resource metadata and OAuth/OIDC authorization-server metadata, then uses Authorization Code with PKCE S256. After browser authorization, access tokens, refresh tokens, expiry, scopes, and binding metadata are stored in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. A usable refresh token renews an expiring access token automatically. If the authorization server rejects refresh with `invalid_grant`, Kana deletes the credentials and opens the browser the next time authorization is required. When a tool call receives a scoped `401/403` challenge, Kana performs step-up authorization and retries that HTTP request once if the configured permission boundary includes the required scope. A scope outside the configured boundary produces an actionable error instead of expanding access.
 
-HTTP transport 只实现 `2025-11-25` Streamable HTTP：POST 响应同时支持 JSON 和 SSE，初始化后支持可选 GET server stream、session header、`Last-Event-ID` 恢复和 DELETE 关闭。不会回退 `2024-11-05` 的独立 HTTP+SSE transport。URL、代理 URL、header 名称和值以及 transport 保留 header 会在启动前校验。OAuth challenge 只使当前请求失败，不会关闭仍然有效的 MCP transport；网络或协议级致命错误仍会关闭连接。关闭期间的 session DELETE 是有界的最佳努力操作，其失败会写日志，但后台清理不会把未处理 Promise 堆栈泄漏到 TUI。
+The HTTP transport implements only `2025-11-25` Streamable HTTP. POST responses support both JSON and SSE, followed by an optional GET server stream, session headers, `Last-Event-ID` resumption, and DELETE shutdown. It does not fall back to the standalone `2024-11-05` HTTP+SSE transport. Endpoint URLs, proxy URLs, header names and values, and transport-reserved headers are validated before startup. An OAuth challenge fails only the current request and does not close an otherwise valid MCP transport; fatal network or protocol errors still close the connection. Session DELETE during shutdown is bounded and best-effort. Its failure is logged, but background cleanup cannot leak an unhandled Promise stack into the TUI.
 
-可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续，并在最终摘要后留下失败警告。初次加载时，必需服务器失败会让当前会话停留在错误状态，不启用 editor；但显式 reload 中遇到配置或必需服务器失败时，会清空已关闭 manager 的工具、用无 MCP 工具的状态重建 Agent、把错误写入 transcript，并恢复 editor，以便再次打开 `/mcp`。连接和 reload 都会在 transcript 末尾追加进度块，最终保留含 ready server 与可用工具数量的启动/reload 摘要；未选择任何服务器时，reload 摘要会显示 `MCP disabled`。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲或加载时按 `Ctrl+C`，以及收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先进入优雅关闭，并在 transcript 末尾显示逐服务器关闭进度而不替换 bottom；所有 MCP server 关闭后才恢复终端并打印退出信息。优雅关闭等待期间再次按 `Ctrl+C` 会立即强制退出。
+When an optional server fails to start, Kana records diagnostics, closes that server, and continues, leaving a persistent warning after the final summary. A failed required server during initial loading leaves the current session in an error state without enabling the editor. During an explicit reload, however, any configuration or required-server failure clears the closed manager's tools, rebuilds the Agent without them, reports the error in the transcript, and restores the editor so `/mcp` can be opened again. Connecting and reloading append progress blocks after the transcript, followed by startup/reload summaries with ready-server and available-tool counts; selecting no servers produces an `MCP disabled` reload summary. Remote tools retain the unknown-tool approval policy, so every call requires confirmation in `unless_trusted` mode; the approval prompt shows the server ID, original remote tool name, and complete formatted arguments, with allow-once and deny choices only. On quit, idle or loading `Ctrl+C`, or `SIGHUP`, `SIGINT`, and `SIGTERM`, Kana begins graceful shutdown and shows per-server close progress at the end of the transcript without replacing bottom. It restores the terminal and prints exit information only after every MCP server closes. Pressing `Ctrl+C` again while graceful shutdown is pending forces immediate termination.
 
-stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 与 `headers` 按 JSON 字面值处理，静态 token 因而会以明文保存在 `mcp.json`；优先使用 OAuth 的 `clientSecretEnv` 和最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建缺失的两个 MCP 文件，`kana reset` 则会在确认后把服务器定义和启用状态重置为空默认值；两者都不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
+Stdio server configuration is a local-code-execution trust boundary: Kana must start `command` before any MCP tool approval can occur, so configure only trusted programs. HTTP endpoints and OAuth authorization servers likewise form remote data, tool, and credential trust boundaries. `env` and `headers` use literal JSON values, so a static token remains plaintext inside `mcp.json`; prefer OAuth `clientSecretEnv` and least-privilege scopes, and do not commit or share config or token files. Kana's OAuth token store is also a local plaintext credential file protected only by filesystem permissions. `kana install` creates missing MCP files with mode `0600`, while confirmed `kana reset` resets definitions and activation state to empty defaults. Neither command deletes the OAuth token store. Protocol versions are maintained in code and are not exposed as arbitrary configuration strings.
 
-## API key 与项目指令
+## API key and project instructions
 
-`api_key_env` 只告诉 Kana 从哪里读取 key，不会把 key 持久化到 `config.toml`。Kana 在解析启动命令前会读取 `<KANA_HOME>/.env`；文件不存在时直接跳过。其中的值会覆盖启动 shell 继承的同名变量，也会覆盖 Bun 从当前工作目录 `.env` 自动加载的同名变量。因此可以把默认 key 写为：
+`api_key_env` only tells Kana where to read the key; it does not persist the key in `config.toml`. Before parsing its startup command, Kana reads `<KANA_HOME>/.env` when that file exists. Values from this file override matching variables inherited from the launching shell as well as matching values Bun automatically loaded from the current workspace's `.env`. The default key can therefore be stored as:
 
 ```dotenv
 DEEPSEEK_API_KEY=sk-...
 ```
 
-`.env` 路径使用加载前的 `KANA_HOME` 确定；未设置时为 `$HOME/.kana/.env`。
+The `.env` path is resolved from `KANA_HOME` before the file is loaded; when `KANA_HOME` is unset, the path is `$HOME/.kana/.env`.
 
-全局 `AGENTS.md` 位于 `<KANA_HOME>/AGENTS.md`。内置默认助手指令始终注入；全局文件存在时追加到默认指令后。项目根目录的 `AGENTS.md` 也会被读取，并追加在全局内容后，因此拥有更具体的后置位置。详见[架构总览](architecture.md)中的提示词装配说明。
+The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults. A project-root `AGENTS.md` is also read and appended after global content, so it occupies the more specific, later position. See the prompt-composition section of the [architecture overview](architecture.md).
 
-## 审批文件：`approvals.json`
+## Approval file: `approvals.json`
 
-默认内容：
+The default file is:
 
 ```json
 {
@@ -343,30 +343,30 @@ DEEPSEEK_API_KEY=sk-...
 }
 ```
 
-`exactCommands` 是去掉首尾空白后的完整 bash 命令列表。TUI 中选择“Always allow this command”会把该命令追加到这里。`readOnlyCommands` 只能包含没有空白和 `/` 的可执行文件名；只有简单单命令的首个单词在此列表中时才被自动信任。含有 `;`、`|`、重定向、命令替换、反引号、反斜杠或换行的 bash 命令不会被当作只读。
+`exactCommands` holds complete bash commands after trimming surrounding whitespace. Choosing “Always allow this command” in the TUI appends that command. `readOnlyCommands` can contain only executable names without whitespace or `/`; a command is automatically trusted only when its first word is one of these names and it is a single simple command. Bash commands with `;`, `|`, redirection, command substitution, backticks, backslashes, or newlines are never treated as read-only.
 
-审批模式的效果：
+Approval modes behave as follows:
 
-| 模式 | 行为 |
+| Mode | Behavior |
 | --- | --- |
-| `always` | 除 `remember` 和 `schedule_wake` 外，每个工具调用都请求审批。 |
-| `unless_trusted` | `read`、`list`、`glob`、`grep`、精确受信 bash 命令和受信简单只读 bash 命令跳过审批；其余调用请求审批。 |
-| `never` | 所有调用都跳过审批，包括写入和 Shell。 |
+| `always` | Requests approval for every tool call except `remember` and `schedule_wake`. |
+| `unless_trusted` | Skips approval for `read`, `list`, `glob`, `grep`, exact trusted bash commands, and trusted simple read-only bash commands; asks for everything else. |
+| `never` | Skips approval for all calls, including writes and shell commands. |
 
-TUI 的 `/approval` 可以临时覆盖当前所选 session 的模式；选择 `Never ask` 需要二次确认。该覆盖不会写入 `config.toml`、session journal 或 `approvals.json`，并在 new、fork、resume 或进程退出时恢复这里配置的模式。
+The TUI's `/approval` command can temporarily override the mode for the currently selected session; selecting `Never ask` requires confirmation. The override does not write `config.toml`, the session journal, or `approvals.json`, and new, fork, resume, or process exit restores the configured mode above.
 
-## 全局 Skills 配置：`skills/skills.toml`
+## Global Skills configuration: `skills/skills.toml`
 
 ```toml
 [model_invocation]
 enabled = []
 ```
 
-该列表列出允许注入模型系统提示词的**全局** Skill 名称。项目 `.kana/skills` 和 `.agents/skills` 下的 Skills 始终启用，不能从该文件关闭。TUI 的 `/skills` 只修改这份全局启用列表：`Enter` 修改草稿，`Esc` 仅在最终选择变化时写入并刷新一次。
+This list names the **global** Skills that may be injected into the model system prompt. Skills in project `.kana/skills` and `.agents/skills` are always enabled and cannot be disabled through this file. The TUI's `/skills` command changes only this global activation list: `Enter` edits a draft, while `Esc` writes and refreshes once only when the final selection changed.
 
-## 推荐的最小配置
+## Recommended minimal configuration
 
-以下示例只改变模型名和通知，其余字段继续使用默认值：
+This example changes only the model name and notification behavior; every other field retains its default:
 
 ```toml
 [model.deepseek]
@@ -377,7 +377,7 @@ backend = "bell"
 on_agent_completed = false
 ```
 
-切换到已经授权的 Codex Luna 只需要：
+Switching to an already authorized Codex Luna requires only:
 
 ```toml
 [provider]
@@ -387,4 +387,4 @@ active = "openai-codex"
 name = "gpt-5.6-luna"
 ```
 
-不要复制完整默认文件来做小改动：字段级合并允许配置保持更短，也能在代码添加新默认字段时自动获得默认行为。
+Avoid copying the complete default file for a small change. Field-level merging keeps configuration shorter and automatically picks up future default fields.

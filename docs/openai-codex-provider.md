@@ -1,8 +1,8 @@
-# OpenAI Codex 提供商适配
+# OpenAI Codex provider adapter
 
-Kana 的 `openai-codex` adapter 位于 `src/providers/openai-codex`。它使用 ChatGPT Codex OAuth 凭据调用 Codex Responses Lite 流，并把 reasoning summary、供应商托管的网页搜索、可见文本和函数调用恢复为 `core` 的有序助手内容。
+Kana's `openai-codex` adapter lives in `src/providers/openai-codex`. It uses ChatGPT Codex OAuth credentials to call the Codex Responses Lite stream, reconstructing reasoning summaries, provider-hosted web searches, visible text, and function calls as ordered `core` assistant content.
 
-## 启用与认证
+## Activation and authentication
 
 ```bash
 kana auth login openai-codex
@@ -10,11 +10,11 @@ kana auth status openai-codex
 kana auth logout openai-codex
 ```
 
-`login` 使用固定的公开 client ID、Authorization Code 与 PKCE S256，在 `http://localhost:1455/auth/callback` 等待浏览器回调。成功后的 access token、ID token、refresh token、到期时间和绑定信息写入 `<KANA_HOME>/oauth-tokens.json` 的 `provider:openai-codex` 条目。token 文件以 `0600` 写入；`kana install`、重新构建或替换 Kana 二进制都不会删除它。
+`login` uses a fixed public client ID, Authorization Code, and PKCE S256, waiting for the browser callback at `http://localhost:1455/auth/callback`. The resulting access token, ID token, refresh token, expiry, and binding metadata are stored under `provider:openai-codex` in `<KANA_HOME>/oauth-tokens.json`. The token file is written with mode `0600`; `kana install`, rebuilding Kana, and replacing its binary do not delete it.
 
-供应商需要 ChatGPT account ID。Kana 优先从 ID token 读取，缺失时再从 access token 的 JWT claim 读取。到期 token 会通过 refresh token 自动更新；Codex token endpoint 当前 refresh 请求使用 JSON，而首次 authorization-code exchange 保持表单编码。token response 可以省略 `token_type`，Kana 在这个供应商边界将其按 Bearer 处理。
+The provider requires a ChatGPT account ID. Kana reads it from the ID token first, then falls back to the access-token JWT claim. Expiring credentials refresh automatically. The current Codex token endpoint receives refresh grants as JSON while the initial authorization-code exchange remains form encoded. A token response may omit `token_type`; Kana accepts that response as Bearer only at this provider boundary.
 
-配置通过供应商分表选择：
+Provider-specific configuration activates the adapter:
 
 ```toml
 [provider]
@@ -30,27 +30,27 @@ timeout_ms = 60000
 max_retries = 1
 ```
 
-可用模型和字段见[配置与安装](configuration.md)。
+See [Configuration and installation](configuration.md) for available models and fields.
 
-## 请求转换
+## Request conversion
 
-`OpenAICodexModel` 向 `https://chatgpt.com/backend-api/codex/responses` 发送流式请求。Bearer token 和 ChatGPT account ID 只存在于请求 header，不写入日志或会话。
+`OpenAICodexModel` sends a streaming request to `https://chatgpt.com/backend-api/codex/responses`. The Bearer token and ChatGPT account ID exist only in request headers and are not written to logs or sessions.
 
-请求使用 Responses Lite 约定：
+The request follows the Responses Lite contract:
 
-- Kana 本地执行的函数工具作为 developer `additional_tools` input item 发送，而不是顶层 `tools`。
-- `web_search = true` 时，供应商托管的搜索工具单独作为顶层 `tools: [{ "type": "web_search" }]` 声明，并由模型按 `tool_choice: "auto"` 决定是否使用；设为 `false` 时不发送该字段。
-- 系统提示词作为 developer message，用户消息、工具结果和助手 output item 按原顺序追加到 `input`。
-- `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
-- `parallel_tool_calls = false`。Responses Lite 不支持顶层并行工具调用，因此模型 metadata 会覆盖 `agent.parallel_tool_calls = true`；Kana 也会串行执行意外出现的多个调用。
-- reasoning 设置包含 `effort`、summary 类型和 `all_turns` context。Responses Lite 的 `effort` 仅支持 `low`、`medium`、`high`、`xhigh` 和 `max`；Ultra 属于 Codex 客户端编排模式，Kana 不会将其作为请求强度发送。
-- Kana 会通过配置的 `max_tokens` 与剩余 context 计算逐轮 `ModelContext.maxOutputTokens`；backend 不接受该字段，因此请求仍不发送其拒绝的 `max_output_tokens`。
+- Function tools executed by Kana are developer `additional_tools` input items rather than a top-level `tools` field.
+- With `web_search = true`, the provider-hosted search tool is advertised separately as top-level `tools: [{ "type": "web_search" }]`; `tool_choice: "auto"` lets the model decide whether to use it. Setting the option to `false` omits that field.
+- The system prompt is a developer message; user messages, tool results, and assistant output items follow in input order.
+- `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
+- `parallel_tool_calls = false`. Responses Lite does not support top-level parallel tool calls, so model metadata overrides `agent.parallel_tool_calls = true`; Kana also serializes any unexpected multiple calls.
+- Reasoning configuration carries effort, summary type, and `all_turns` context. Responses Lite accepts `low`, `medium`, `high`, `xhigh`, and `max`; Ultra is a Codex client orchestration mode and Kana does not send it as a request effort.
+- Kana uses configured `max_tokens` and remaining context to calculate each turn's `ModelContext.maxOutputTokens`; the backend cannot express that field, so requests still omit the rejected `max_output_tokens` parameter.
 
-Codex 的 reasoning summary 不是原始思维链。Kana 可以流式接收 summary 并产生 thinking 事件，但 TUI 只用这些事件显示临时 thinking 状态，不展示摘要正文。
+A Codex reasoning summary is not raw chain-of-thought. Kana can stream the summary as thinking events, but the TUI uses those events only for its temporary thinking state and does not render the summary body.
 
-## SSE 与有序内容
+## SSE and ordered content
 
-reader 会保留跨网络分片的不完整 SSE 帧，并在一个 body chunk 包含多个帧时逐帧解析。主要事件映射是：
+The reader retains incomplete SSE frames across network chunks and parses every frame when one body chunk contains several. The primary event mapping is:
 
 | Codex SSE | Kana event |
 | --- | --- |
@@ -60,24 +60,24 @@ reader 会保留跨网络分片的不完整 SSE 帧，并在一个 body chunk �
 | message `response.output_item.added` | `text_start` |
 | `response.output_text.delta` / `response.refusal.delta` | `text_delta` |
 | message `response.output_item.done` | `text_end` |
-| function call added / argument delta / item done | `toolcall_start` / `toolcall_delta` / `toolcall_end` |
+| function-call added / argument delta / item done | `toolcall_start` / `toolcall_delta` / `toolcall_end` |
 | web-search-call added / item done | `hosted_tool_start` / `hosted_tool_end` |
-| `response.completed` / `response.incomplete` | 最终 stop reason 与 usage |
+| `response.completed` / `response.incomplete` | terminal stop reason and usage |
 
-输出 item 以 `output_index` 为首选地址，并用 item ID 作为回退；多个函数调用的参数 delta 可以交错到达，仍会回填各自的内容块。`web_search_call.action` 会规范化保留 `search`、`open_page` 或 `find_in_page` 及其查询、URL 和页内模式。完成事件中的最终内容会校正累计 delta；重复完成的 item 不会再次发出。`response.incomplete` 映射为 `length`，存在本地函数调用的完成响应映射为 `toolUse`，只有托管搜索的响应仍映射为 `stop`。
+Output items use `output_index` as their primary address and item ID as a fallback. Argument deltas for multiple function calls may interleave and still update their respective content blocks. A `web_search_call.action` preserves normalized `search`, `open_page`, or `find_in_page` details, including queries, URLs, and page patterns. Final item content corrects accumulated deltas, and duplicate completed items are not emitted twice. `response.incomplete` maps to `length`; a completed response containing local function calls maps to `toolUse`, while a response containing only hosted searches still maps to `stop`.
 
-每个完成 item 都以不透明 `providerState` 附加到对应助手内容。后续回合会移除 server item ID，再原样回传 reasoning encrypted content、message、function call 或 `web_search_call`；这样 `store = false` 仍能延续推理和搜索上下文。只有 summary 文本而没有供应商 item 时不会重建 reasoning input。
+Every completed item is attached to its assistant content as opaque `providerState`. A later turn removes the server item ID and replays reasoning encrypted content, messages, function calls, or `web_search_call` items unchanged. This preserves reasoning and search continuity with `store = false`. Summary text without a provider item is never reconstructed as reasoning input.
 
-## 搜索展示与引用
+## Search presentation and citations
 
-托管搜索不会进入 Kana 的 ToolRuntime、审批流程或工具结果消息。TUI 按供应商顺序为每个 `web_search_call` 单独显示一个动作块：进行中显示 `Searching the web`，完成后根据 action 显示 `Searched the web`、`Opened a web page` 或 `Searched within a web page`，并附上经过控制字符清理和长度限制的查询或页面目标。当前不聚合多个搜索调用；每个可见动作块及其后的助手正文之间保留一行空白，与 transcript 的其他块一致。
+Hosted searches never enter Kana's ToolRuntime, approval flow, or tool-result messages. The TUI renders one action block per `web_search_call` in provider order: an active call shows `Searching the web`; a completed action becomes `Searched the web`, `Opened a web page`, or `Searched within a web page`, followed by a control-character-safe, bounded query or page target. Calls are not aggregated today. A blank row separates each visible action block and the following assistant text, matching the rest of the transcript.
 
-最终 message 的 `output_text.text` 按供应商返回内容原样进入 Markdown 渲染；其中已有的行内 Markdown 链接会继续显示链接文字和 URL。`url_citation` annotations 连同完成 message 保留在 `providerState` 中，Kana 不向正文回插 `[1]` 编号，也不额外生成 `Sources` 尾注。协议字段和 action 定义见 [OpenAI Web search](https://developers.openai.com/api/docs/guides/tools-web-search)。
+The final message's `output_text.text` enters Markdown rendering unchanged. Provider-supplied inline Markdown links therefore retain their label and visible URL. `url_citation` annotations remain attached to the completed message in `providerState`; Kana does not insert `[1]` markers back into prior text or append a generated `Sources` footer. See [OpenAI Web search](https://developers.openai.com/api/docs/guides/tools-web-search) for the protocol fields and action definitions.
 
-## 失败、重试与用量
+## Failures, retries, and usage
 
-首个 HTTP `401` 会触发一次凭据 refresh，并用新 token 重试请求。HTTP 408、429、5xx 和网络错误按有界指数退避重试；Agent 中止和无活动超时立即停止。明确的 context-window 拒绝会映射为 `ContextWindowExceededError`，供 Agent 在尚未产生输出时执行一次安全压缩恢复。
+The first HTTP `401` triggers one credential refresh and retries with the new token. HTTP 408, 429, 5xx, and network failures use bounded exponential-backoff retries; Agent cancellation and inactivity timeout stop immediately. A recognized context-window rejection maps to `ContextWindowExceededError`, allowing one safe Agent compaction recovery when no output has started.
 
-诊断日志使用稳定的 provider request、authentication refresh、retry 和 failure 事件，只记录供应商、模型、阶段、结果、错误类型或 HTTP 状态。日志不会记录 token、account ID、header、prompt、完整工具参数或响应体。
+Diagnostics use stable provider-request, authentication-refresh, retry, and failure events. They contain only provider, model, phase, outcome, error type, or HTTP status. Logs never contain tokens, account IDs, headers, prompts, complete tool arguments, or response bodies.
 
-Responses usage 映射为输入、输出、缓存命中/未命中和 reasoning token。ChatGPT subscription 按 quota 而不是 Kana 的 API 计价结算，因此当前模型 metadata 的 CNY 成本为零。
+Responses usage maps to input, output, cache-hit/miss, and reasoning tokens. ChatGPT subscription usage is quota-based rather than billed through Kana API accounting, so these model metadata currently carry zero CNY cost.

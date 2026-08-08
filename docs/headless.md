@@ -1,70 +1,70 @@
-# 无头执行与 JSONL 协议
+# Headless execution and the JSONL protocol
 
-`kana exec` 在不启动 TUI 的情况下执行一次完整的 Agent turn，适合脚本、CI 和评测。这里的“一次 turn”不是一次模型请求：它会沿用 TUI 相同的 Agent 配置，持续完成模型调用、工具执行、上下文压缩和后续模型调用，直到 Agent 得到终止结果，然后进程退出。
+`kana exec` runs one complete Agent turn without starting the TUI, for scripts, CI, and evaluations. A “turn” here is not one model request: it uses the same Agent configuration as the TUI and continues through model calls, tool execution, context compaction, and subsequent model calls until the Agent reaches a terminal outcome, then exits.
 
-## 命令
+## Commands
 
 ```bash
-# 执行新 session；参数会拼成一条 prompt
-kana exec 修复失败的测试
+# Run a new session; arguments are joined into one prompt
+kana exec fix the failing tests
 
-# 也可从 stdin 读取 prompt
-printf '总结这个仓库' | kana exec
+# A prompt can also come from stdin
+printf 'summarize this repository' | kana exec
 
-# 恢复已有 session 后再执行一次
-kana exec resume <session-id> 继续完成任务
+# Resume an existing session for one more turn
+kana exec resume <session-id> continue the task
 
-# 输出稳定的 JSONL 事件
-kana exec --json 分析当前项目
-kana exec resume <session-id> --json 继续分析
+# Write the stable JSONL event stream
+kana exec --json analyze this project
+kana exec resume <session-id> --json continue the analysis
 
-# 显式允许所有工具，无需交互审批
-kana exec --allow-all-tools 完成这项修改
+# Explicitly allow every tool without interactive approval
+kana exec --allow-all-tools complete this change
 
-# 在不保存 session 的纯净模式中执行
-kana exec --clean 检查当前项目
+# Run in clean mode without saving a session
+kana exec --clean inspect this project
 ```
 
-新执行和恢复执行都通过 `KanaConversationHost` 与 `ConversationRuntime` 装配，因此与 TUI 共用模型、reasoning 配置、系统提示词、Skills、工作区工具和产品策略。普通模式继续使用 MCP、session V3 journal、accounting、日志和记忆调度。
+New and resumed executions are both assembled through `KanaConversationHost` and `ConversationRuntime`, so they share the TUI's model, reasoning configuration, system prompt, Skills, workspace tools, and product policies. Normal mode continues to use MCP, the V3 session journal, accounting, logging, and memory scheduling.
 
-`--clean` 创建随本次进程结束即丢弃的临时 session。它仍加载 `config.toml`、`<KANA_HOME>/.env`、provider/model、OAuth 与审批规则，但不读取全局或项目 `AGENTS.md`、记忆、Skills 与 MCP 配置，不连接 MCP server，也不创建 session journal、session log 或 accounting 记录。`exec resume` 与 `--clean` 组合会在启动时以退出码 `1` 失败；JSON 模式会输出相应的 startup `error` 事件。纯净模式不是 sandbox 或隐私边界，内置工具和 provider 仍可能产生外部副作用。
+`--clean` creates a temporary session that is discarded when this process exits. It still loads `config.toml`, `<KANA_HOME>/.env`, provider/model settings, OAuth, and approval rules, but it does not read global or project `AGENTS.md`, memory, Skills, or MCP configuration; connect to MCP servers; or create a session journal, session log, or accounting record. Combining `exec resume` with `--clean` fails during startup with exit status `1`; JSON mode emits the corresponding startup `error` event. Clean mode is not a sandbox or privacy boundary, and built-in tools and providers can still have external side effects.
 
-唯一刻意省略的内置工具是 `schedule_wake`：它依赖当前进程中的定时器，而无头进程会在本次 turn 后退出，无法兑现未来的 wake。其它内置工具继续使用相同的并发策略、deadline 和结果语义。普通模式会在 turn 开始前加载 MCP；可选 server 失败会产生 warning，必需 server 失败会使启动失败。纯净模式完全跳过这一步。无头模式不会打开浏览器完成 MCP OAuth，因此需要交互授权的 server 应预先在 TUI 中授权。
+The only deliberately omitted built-in tool is `schedule_wake`. It relies on a timer in the current process, while a headless process exits after this turn and could not honor a future wake. All other built-in tools retain the same concurrency, deadline, and result semantics. Normal mode loads MCP before the turn starts: an optional-server failure produces a warning, while a required-server failure aborts startup. Clean mode skips that step entirely. Headless mode does not open a browser for MCP OAuth, so authorize servers that need interaction from the TUI first.
 
-## 输出与退出状态
+## Output and exit status
 
-默认的人类可读模式把 session、工具和压缩进度写到 stderr，只把最后一条助手消息的可见文本写到 stdout。因此脚本可以直接捕获最终答案，同时仍可在终端观察进度。模型文本写到终端前会移除控制字符；`--json` 中的文本保持为 JSON 数据。
+The default human-readable mode writes session, tool, and compaction progress to stderr and writes only the final assistant message's visible text to stdout. Scripts can therefore capture the answer directly while a terminal still shows progress. Control characters are removed from model text before terminal output; `--json` preserves the text as JSON data.
 
-退出码含义：
+Exit codes:
 
-| 退出码 | 含义 |
+| Exit code | Meaning |
 | --- | --- |
-| `0` | Agent 以 `stop` 正常完成 |
-| `1` | 启动/运行失败，或结果为 `aborted`、`error`、`length`、`turn_limit` |
-| `130` | 收到 `SIGINT`；活动 Agent 会先收到取消信号 |
+| `0` | The Agent completed normally with `stop` |
+| `1` | Startup/run failed, or the outcome was `aborted`, `error`, `length`, or `turn_limit` |
+| `130` | `SIGINT` was received; the active Agent is cancelled first |
 
-无头模式没有审批界面。它默认执行 `approval.mode` 与 `approvals.json` 已信任的工具；若某个工具仍需交互审批，本次 run 会以 `aborted` 结束且不会执行该工具。`--allow-all-tools` 会无条件授权 Agent 执行所有可用工具：文件工具仍使用当前用户的真实文件权限，`bash` 仍会执行真实系统命令。该选项不会隔离文件或进程，只应在受控环境中使用。
+Headless mode has no approval UI. By default it executes tools trusted by `approval.mode` and `approvals.json`. If a tool still needs interactive approval, the run ends as `aborted` without executing that tool. `--allow-all-tools` unconditionally authorizes the agent to execute every available tool: file tools retain the current user's real filesystem permissions, and `bash` still runs real system commands. The option does not isolate files or processes and should be used only in a controlled environment.
 
-## `--json` 协议
+## The `--json` protocol
 
-`--json` 让 stdout 只包含一行一个 JSON object。每个事件都包含 `schema_version: 1`；调用方应按 `type` 分派并忽略不认识的附加字段。该协议由无头前端从内部事件投影而来，不直接序列化 `AgentEvent`，因此内部重构不会自动变成公共协议变化。
+With `--json`, stdout contains exactly one JSON object per line. Every event has `schema_version: 1`; consumers should dispatch on `type` and ignore unfamiliar additional fields. The headless frontend projects this protocol from internal events instead of serializing `AgentEvent` directly, so internal refactoring does not silently become a public protocol change.
 
-| `type` | 主要字段 | 含义 |
+| `type` | Primary fields | Meaning |
 | --- | --- | --- |
-| `session.started` | `session_id` | 已创建或加载 session |
-| `warning` | `phase`, `message`, `server_id?` | 非致命启动警告 |
-| `run.started` | — | 本次 Agent run 已开始 |
-| `model_turn.started` | `turn` | 一次模型回合开始 |
-| `assistant.delta` | `delta` | 可见助手文本增量 |
-| `assistant.completed` | `text`, `usage?` | 一条完整助手消息 |
-| `tool.started` | `tool_call_id`, `name`, `arguments` | 工具开始执行 |
-| `tool.updated` | `tool_call_id`, `name`, `partial_result` | 工具进度更新 |
-| `tool.completed` | `tool_call_id`, `name`, `result`, `is_error` | 工具结果已经提交 |
-| `model_turn.completed` | `turn`, `stop_reason?`, `usage?` | 一次模型回合结束 |
-| `context.compaction_started` | token 估算与上限 | 上下文压缩开始 |
-| `context.compacted` | 压缩统计与 `usage?` | 压缩 checkpoint 已提交 |
-| `run.completed` | `outcome`, `usage?` | run 得到终止结果 |
-| `run.failed` | `error` | run 因基础设施或持久化异常失败 |
-| `error` | `phase`, `error` | Agent run 开始前的启动失败 |
+| `session.started` | `session_id` | A session was created or loaded |
+| `warning` | `phase`, `message`, `server_id?` | Non-fatal startup warning |
+| `run.started` | — | The Agent run started |
+| `model_turn.started` | `turn` | A model turn started |
+| `assistant.delta` | `delta` | Visible assistant-text delta |
+| `assistant.completed` | `text`, `usage?` | One complete assistant message |
+| `tool.started` | `tool_call_id`, `name`, `arguments` | Tool execution started |
+| `tool.updated` | `tool_call_id`, `name`, `partial_result` | Tool progress update |
+| `tool.completed` | `tool_call_id`, `name`, `result`, `is_error` | A tool result was committed |
+| `model_turn.completed` | `turn`, `stop_reason?`, `usage?` | A model turn ended |
+| `context.compaction_started` | token estimate and limit | Context compaction started |
+| `context.compacted` | compaction statistics and `usage?` | The compaction checkpoint was committed |
+| `run.completed` | `outcome`, `usage?` | The run reached a terminal outcome |
+| `run.failed` | `error` | Infrastructure or persistence failed during the run |
+| `error` | `phase`, `error` | Startup failed before an Agent run began |
 
-`usage` 使用 `input_tokens`、`output_tokens`、`total_tokens`，并可包含 `cache_read_input_tokens`、`cache_miss_input_tokens` 和 `reasoning_tokens`。`run.completed.usage` 是本次 run 内模型回合与上下文压缩的累计值。工具的 `arguments`、`partial_result` 和 `result` 属于显式请求的机器输出，可能包含工具处理的数据；不要把 JSONL 不加审查地上传或写入公开日志。
+`usage` contains `input_tokens`, `output_tokens`, and `total_tokens`, with optional `cache_read_input_tokens`, `cache_miss_input_tokens`, and `reasoning_tokens`. `run.completed.usage` is the sum of model turns and context compactions in this run. Tool `arguments`, `partial_result`, and `result` are explicitly requested machine output and may contain data processed by tools; do not upload or place JSONL in public logs without review.

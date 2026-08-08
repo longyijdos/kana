@@ -1,33 +1,33 @@
-# Kana 开发文档
+# Kana developer documentation
 
-项目概览：[中文 README](../README.md) · [English README](../README.en.md)
+Project overview: [English README](../README.md) · [Chinese README](../README.zh-CN.md)
 
-本目录记录当前实现，而不是未来设计提案。文档按代码边界拆分；修改相应协议或持久化格式时，应同步更新对应文章。
+This directory describes the current implementation, not future design proposals. Documents are separated by code boundary; update the corresponding article when changing its protocol or persistence format.
 
-建议的阅读顺序：
+Recommended reading order:
 
-1. [架构总览](architecture.md)：模块分层、启动与两条主数据流。
-2. [配置与安装](configuration.md)：CLI、本地文件、配置字段和审批模式。
-3. [Agent 与工具执行协议](agent-and-tools.md)：消息、流、回合循环和内置工具。
-4. [会话与记忆](sessions-and-memory.md)：JSONL 会话、每日记忆与合并事务。
-5. [Skills 与系统提示词](skills-and-prompt.md)：发现、启用和上下文装配。
-6. [DeepSeek 提供商适配](deepseek-provider.md)：请求转换、SSE、重试和用量。
-7. [OpenAI Codex 提供商适配](openai-codex-provider.md)：OAuth、Responses Lite、SSE 和 provider state。
-8. [无头执行与 JSONL 协议](headless.md)：`kana exec`、审批、输出与退出语义。
-9. [Terminal-Bench 本地评测](terminal-bench.md)：Harbor adapter、运行参数、代理与结果。
-10. [TUI 交互与渲染](tui.md)：终端 I/O、控制器、输入与差量重绘。
-11. [发版流程](releasing.md)：版本策略、Changelog、tag 与 Release 自动化。
+1. [Architecture overview](architecture.md): module layering, startup, and the two primary data flows.
+2. [Configuration and installation](configuration.md): CLI, local files, configuration fields, and approval modes.
+3. [Agent and tool execution protocol](agent-and-tools.md): messages, streams, turn loop, and built-in tools.
+4. [Sessions and memory](sessions-and-memory.md): JSONL sessions, daily memory, and consolidation transactions.
+5. [Skills and the system prompt](skills-and-prompt.md): discovery, activation, and context composition.
+6. [DeepSeek provider adapter](deepseek-provider.md): request conversion, SSE, retries, and usage.
+7. [OpenAI Codex provider adapter](openai-codex-provider.md): OAuth, Responses Lite, SSE, and provider state.
+8. [Headless execution and the JSONL protocol](headless.md): `kana exec`, approvals, output, and exit semantics.
+9. [Local Terminal-Bench evaluation](terminal-bench.md): Harbor adapter, run parameters, proxying, and results.
+10. [TUI interaction and rendering](tui.md): terminal I/O, controllers, input, and differential repainting.
+11. [Release process](releasing.md): version policy, Changelog, tags, and Release automation.
 
-对应英文版本：
+Chinese versions:
 
-- [Architecture overview](architecture.en.md)
-- [Configuration and installation](configuration.en.md)
-- [Agent and tool execution protocol](agent-and-tools.en.md)
-- [Sessions and memory](sessions-and-memory.en.md)
-- [Skills and the system prompt](skills-and-prompt.en.md)
-- [DeepSeek provider adapter](deepseek-provider.en.md)
-- [OpenAI Codex provider adapter](openai-codex-provider.en.md)
-- [Headless execution and the JSONL protocol](headless.en.md)
-- [Local Terminal-Bench evaluation](terminal-bench.en.md)
-- [TUI interaction and rendering](tui.en.md)
-- [Release process](releasing.en.md)
+- [架构总览](architecture.zh-CN.md)
+- [配置与安装](configuration.zh-CN.md)
+- [Agent 与工具执行协议](agent-and-tools.zh-CN.md)
+- [会话与记忆](sessions-and-memory.zh-CN.md)
+- [Skills 与系统提示词](skills-and-prompt.zh-CN.md)
+- [DeepSeek 提供商适配](deepseek-provider.zh-CN.md)
+- [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)
+- [无头执行与 JSONL 协议](headless.zh-CN.md)
+- [Terminal-Bench 本地评测](terminal-bench.zh-CN.md)
+- [TUI 交互与渲染](tui.zh-CN.md)
+- [发版流程](releasing.zh-CN.md)
