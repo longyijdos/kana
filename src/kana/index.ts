@@ -74,11 +74,15 @@ export {
   type KanaEnvironmentContext,
 } from "./context";
 export {
+  type ConversationInputDisposition,
+  type ConversationInputQueueSnapshot,
+  type ConversationPendingInput,
   type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,
   type ConversationRuntimeListener,
   type ConversationRuntimeOptions,
+  type ConversationScheduledInputCancellation,
   type ConversationSessionSnapshot,
   type CreateConversationAgentOptions,
   type CreateKanaConversationHostOptions,
@@ -91,6 +95,7 @@ export {
   type KanaMemoryCompactSummary,
   type ScheduleWakeOptions,
   type WakeEvent,
+  type WakeEventOrigin,
   type WakeScheduler,
 } from "./conversation";
 export { loadKanaEnvironment } from "./env";

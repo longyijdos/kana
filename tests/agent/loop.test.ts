@@ -471,6 +471,65 @@ describe("runAgentLoop", () => {
     expect(operations).toEqual(["commit:assistant", "execute", "commit:tool", "commit:assistant"]);
   });
 
+  test("adds queued turn input after turn_end and continues without a tool call", async () => {
+    const model = new ScriptedToolModel(undefined, 0);
+    const events: AgentEvent[] = [];
+    const turnInputs = [{ role: "user" as const, content: "Use the new direction." }];
+    let consumed = false;
+
+    const messages = await runAgentLoop(
+      {
+        messages: [{ role: "user", content: "Start." }],
+      },
+      {
+        model,
+        maxTurns: 3,
+        consumeTurnInputs: async () => {
+          if (consumed) {
+            return [];
+          }
+          consumed = true;
+          return structuredClone(turnInputs);
+        },
+      },
+      (event) => {
+        events.push(structuredClone(event));
+      },
+    );
+
+    expect(model.contexts).toHaveLength(2);
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(turnInputs[0]);
+    expect(messages.map((message) => message.role)).toEqual(["assistant", "user", "assistant"]);
+    expect(
+      events
+        .filter((event) =>
+          ["turn_start", "turn_end", "turn_input", "agent_end"].includes(event.type),
+        )
+        .map((event) => event.type),
+    ).toEqual(["turn_start", "turn_end", "turn_input", "turn_start", "turn_end", "agent_end"]);
+  });
+
+  test("leaves turn input untouched when the turn limit cannot start another turn", async () => {
+    let consumeCount = 0;
+
+    await runAgentLoop(
+      {
+        messages: [{ role: "user", content: "Start." }],
+      },
+      {
+        model: new ScriptedToolModel(undefined, 0),
+        maxTurns: 1,
+        consumeTurnInputs: async () => {
+          consumeCount += 1;
+          return [{ role: "user", content: "Do not consume this." }];
+        },
+      },
+      () => {},
+    );
+
+    expect(consumeCount).toBe(0);
+  });
+
   test("caps model-visible tool content without truncating the structured result", async () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 });
     const content = `${"A".repeat(48_000)}${"Z".repeat(12_000)}`;

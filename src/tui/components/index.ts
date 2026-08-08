@@ -14,7 +14,13 @@ export {
 } from "./choice-prompt";
 export { type ContentView, ContentViewer } from "./content-viewer";
 export { DeleteSessionConfirmation } from "./delete-session-confirmation";
-export { Editor, type EditorOptions, type StatusLineState } from "./editor";
+export {
+  Editor,
+  type EditorOptions,
+  type EditorQueuedInput,
+  type EditorScheduledInputSummary,
+  type StatusLineState,
+} from "./editor";
 export {
   type McpAuthAction,
   McpAuthActionMenu,
@@ -26,6 +32,11 @@ export {
   type McpServerManagerItem,
   type McpServerOAuthStatus,
 } from "./mcp-server-manager";
+export {
+  ScheduledMessageManager,
+  type ScheduledMessageManagerAction,
+  type ScheduledMessageManagerItem,
+} from "./scheduled-message-manager";
 export {
   SessionPicker,
   type SessionPickerDecision,

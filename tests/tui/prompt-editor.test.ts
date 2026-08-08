@@ -289,6 +289,79 @@ describe("prompt editor", () => {
     ]);
   });
 
+  test("queues ordinary input with Tab while preserving slash completion", () => {
+    const editor = new Editor();
+    const queued: unknown[] = [];
+    editor.onQueue = (submit) => {
+      queued.push(submit);
+    };
+
+    editor.setText("Queue this message.");
+    editor.handleInput("\t");
+
+    expect(queued).toEqual([
+      {
+        type: "message",
+        content: "Queue this message.",
+      },
+    ]);
+
+    editor.setText("/he");
+    editor.handleInput("\t");
+
+    expect(editor.getText()).toBe("/help ");
+    expect(queued).toHaveLength(1);
+  });
+
+  test("renders queued and scheduled previews below status and hides them for slash commands", () => {
+    const editor = new Editor({ model: "test-model" });
+    editor.updateStatus({ phase: "responding", running: true });
+    editor.setQueuedInputs([
+      { delivery: "turn", content: "Use the new direction." },
+      { delivery: "run", content: "Check types after this run." },
+      { delivery: "scheduled", content: "Check task progress." },
+      { delivery: "run", content: "First line\nSecond line" },
+      { delivery: "run", content: "Fourth input" },
+      { delivery: "run", content: "Fifth input" },
+    ]);
+    editor.setScheduledInputSummary({
+      count: 3,
+      nextAt: new Date(2026, 7, 8, 14, 30),
+    });
+
+    const rendered = editor.render(48, 14).map(stripAnsi);
+
+    expect(rendered).toContain("Queued inputs · 6");
+    expect(rendered).toContain("  next turn · Use the new direction.");
+    expect(rendered).toContain("  scheduled · Check task progress.");
+    expect(rendered.at(-2)).toMatch(/… \d+ more/);
+    expect(rendered.at(-1)).toBe("Scheduled · 3 · next 14:30");
+    expect(rendered.length).toBeLessThanOrEqual(14);
+
+    editor.setText("/");
+    const slashRendered = stripAnsi(editor.render(48, 14).join("\n"));
+    expect(slashRendered).not.toContain("Queued inputs");
+    expect(slashRendered).not.toContain("Scheduled · 3");
+  });
+
+  test("strips terminal control sequences from queued previews", () => {
+    const editor = new Editor();
+    editor.setQueuedInputs([
+      {
+        delivery: "scheduled",
+        content: "CSI\x1b[2J OSC\x1b]0;owned\x07 C0\x00\x08",
+      },
+    ]);
+
+    const rendered = editor.render(48).join("\n");
+
+    expect(stripAnsi(rendered)).toContain("scheduled · CSI OSC C0");
+    expect(rendered).not.toContain("\x1b[2J");
+    expect(rendered).not.toContain("\x1b]0;owned\x07");
+    expect(rendered).not.toContain("\x00");
+    expect(rendered).not.toContain("\x08");
+  });
+
   test("moves up within multiline input before switching history", () => {
     const editor = new Editor();
 
@@ -779,6 +852,9 @@ describe("prompt commands", () => {
         },
         {
           name: "mcp",
+        },
+        {
+          name: "schedule",
         },
         {
           name: "approval",

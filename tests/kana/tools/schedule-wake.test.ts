@@ -20,6 +20,7 @@ describe("Kana schedule_wake tool", () => {
       content: expect.stringContaining("Scheduled wake event for"),
       result: { id: expect.any(String), dueAt: expect.any(String) },
     });
+    expect(scheduler.list("session-a")).toMatchObject([{ origin: "agent" }]);
     expect(scheduled).toEqual([]);
     scheduler.dispose();
   });

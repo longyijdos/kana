@@ -6,6 +6,7 @@ export {
   type AgentPromptInput,
   type AgentRunCommittedHook,
   type AgentState,
+  type AgentSteerOutcome,
 } from "./agent";
 export {
   type CompactPolicy,

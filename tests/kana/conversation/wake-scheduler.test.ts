@@ -59,4 +59,40 @@ describe("wake scheduler", () => {
     scheduler.dispose();
     expect(timers.size).toBe(0);
   });
+
+  test("lists process-local events by due time and publishes management changes", () => {
+    const now = new Date("2026-08-08T08:00:00.000Z");
+    const ids = ["later", "other", "sooner"];
+    const snapshots: string[][] = [];
+    const scheduler = createWakeScheduler({
+      now: () => now,
+      createId: () => ids.shift() as string,
+      setTimeout: () => 1,
+      clearTimeout: () => {},
+    });
+    scheduler.subscribeState(() => {
+      throw new Error("observer unavailable");
+    });
+    scheduler.subscribeState(() => {
+      snapshots.push(scheduler.list("session-a").map((event) => event.id));
+    });
+
+    scheduler.schedule({
+      sessionId: "session-a",
+      afterMinutes: 20,
+      message: "later",
+      origin: "user",
+    });
+    scheduler.schedule({ sessionId: "session-b", afterMinutes: 1, message: "other" });
+    scheduler.schedule({ sessionId: "session-a", afterMinutes: 5, message: "sooner" });
+
+    expect(scheduler.list("session-a").map((event) => event.id)).toEqual(["sooner", "later"]);
+    expect(scheduler.list("session-a").map((event) => event.origin)).toEqual(["agent", "user"]);
+    expect(scheduler.cancel("later")).toBe(true);
+    expect(scheduler.cancel("later")).toBe(false);
+    expect(scheduler.list("session-a").map((event) => event.id)).toEqual(["sooner"]);
+    expect(snapshots).toEqual([["later"], ["later"], ["sooner", "later"], ["sooner"]]);
+
+    scheduler.dispose();
+  });
 });

@@ -6,6 +6,7 @@ import {
   type Model,
   type ModelContext,
   type ToolCallContent,
+  type UserMessage,
 } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
 import type { Tool } from "@/tools";
@@ -33,6 +34,7 @@ export type AgentLoopConfig = {
   loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   onCompactionCommitted?: (compaction: ContextCheckpoint) => Promise<void> | void;
+  consumeTurnInputs?: () => Promise<UserMessage[]>;
 };
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
@@ -175,8 +177,23 @@ export async function runAgentLoop(
       toolResults: executedToolCalls.toolResults,
     });
 
-    if (toolCalls.length === 0 || executedToolCalls.abortRun) {
-      endReason = executedToolCalls.abortRun ? "aborted" : endReasonForAssistantTurn(assistantTurn);
+    if (executedToolCalls.abortRun) {
+      endReason = "aborted";
+      break;
+    }
+
+    // Steering belongs after the complete model/tool turn. Leave it queued when
+    // no further turn is available so the Agent owner can defer it to a new run.
+    const canStartAnotherTurn = !hasTurnLimit || turn < maxTurns;
+    const turnInputs = canStartAnotherTurn ? await config.consumeTurnInputs?.() : undefined;
+    for (const input of turnInputs ?? []) {
+      currentContext.messages.push(input);
+      newMessages.push(input);
+      await emit({ type: "turn_input", message: input });
+    }
+
+    if (toolCalls.length === 0 && !turnInputs?.length) {
+      endReason = endReasonForAssistantTurn(assistantTurn);
       break;
     }
   }

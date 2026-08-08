@@ -38,6 +38,7 @@ agent_start
   → message_start / message_update* / message_end
   → tool_execution_start / tool_execution_update* / tool_execution_end
   → turn_end
+  → turn_input*（若当前 run 有待投递输入）
   → …（下一回合）
   → agent_end
 ```
@@ -60,11 +61,13 @@ agent_start
   仅当 stopReason = toolUse 时取出 tool_call 内容
   按出现顺序执行这些工具，并将结果加入 context 与新消息列表
   发出 turn_end
-  若没有工具调用或执行要求中止，结束
+  若执行要求中止，结束
+  若还可开始下一回合，提交排队的 turn input，加入 context，并逐条发出 turn_input
+  若既没有工具调用也没有 turn input，结束
 发出 agent_end，返回本次新增消息
 ```
 
-Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`。并行策略在每个 run 开始时解析一次：`AgentConfig.parallelToolCalls`（Kana 对应 `agent.parallel_tool_calls`）必须启用，且模型 metadata 的 `supportsParallelToolCalls` 必须为真；否则传给 provider 的 `ModelContext.parallelToolCalls` 为假，Runtime 也逐个执行调用。允许并行时，Runtime 按助手内容顺序划分执行组：只有相邻且显式声明 `parallel` 的调用会同组并行，`exclusive`、未声明、未知或元数据无效的工具都是屏障，不会被只读工作跨越。
+Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。回合输入只在完整的 model/tool turn 结束并确认还能开始下一回合后消费；中止或 turn limit 会把它留给 Agent owner 降级处理。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`。并行策略在每个 run 开始时解析一次：`AgentConfig.parallelToolCalls`（Kana 对应 `agent.parallel_tool_calls`）必须启用，且模型 metadata 的 `supportsParallelToolCalls` 必须为真；否则传给 provider 的 `ModelContext.parallelToolCalls` 为假，Runtime 也逐个执行调用。允许并行时，Runtime 按助手内容顺序划分执行组：只有相邻且显式声明 `parallel` 的调用会同组并行，`exclusive`、未声明、未知或元数据无效的工具都是屏障，不会被只读工作跨越。
 
 只有助手消息以 `toolUse` 正常结束时，工具才会执行。长度截断的消息即使带有工具调用也不会执行。发生 provider error 且助手没有任何内容时，该空助手消息不会写入历史；中止的消息会移除其中未执行的工具调用，但若仍有文本或 thinking 内容则保留该部分。
 
@@ -84,7 +87,7 @@ provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededEr
 
 ## `Agent` 的生命周期
 
-`Agent.stream(input)` 异步启动循环。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；没有 journal 的通用嵌入方式保持原有内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
+`Agent.stream(input)` 异步启动循环。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；没有 journal 的通用嵌入方式保持原有内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。活动 run 可以通过 `Agent.steer(userMessage)` 接收 run-local 输入：输入会在下一个可用 turn 边界先写 journal、再发出 `turn_input` 并进入下一次模型 context；返回值为 `consumed`。运行结束时仍未消费的输入返回 `deferred`，由产品层决定是否作为新 run 排队。
 
 journal 的顺序是协议约束：完整 assistant 消息必须先持久化，随后才能执行其中引用的工具；每个工具结果完成后单独持久化；context checkpoint 在 adopt 前持久化；最后写入 run 终态。`onRunCommitted` 在 journal 已闭合后执行聚合后处理，不再承担 Kana 的 session 消息落盘。只有 journal 与后处理都成功，监听器和 stream 才会收到最终 `agent_end`。任一失败都会拒绝 stream，而不会先发布成功终态；整个阶段都属于 active run，因此 `isRunning` 保持 `true`，新运行被拒绝，`waitForIdle()` 继续等待。
 
@@ -157,7 +160,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 
 `list`、`glob`、`grep`、`read`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd`、`glob.cwd` 和 `grep.path` 也可在外部。请将审批理解为交互确认，而不是文件系统隔离。
 
-`schedule_wake` 不写入磁盘，也不恢复未触发的事件。到期时若 Agent 正在运行，TUI 将事件排队，等当前运行结束后再开始新的回合；新建、分叉或恢复其他会话会取消旧会话尚未触发的事件。它不需要工具审批。
+`schedule_wake` 不写入磁盘，也不恢复未触发的事件。进程内 scheduler 提供按到期时间排序的 list 和按稳定 ID 取消；`ConversationRuntime` 为事件保留来源、到期时间和同一个 ID，使它从未来 timer 转入已到期 pending FIFO 后仍可安全管理。`/schedule` 将 Agent 创建的事件标为 `agent`，将用户在面板中添加的事件标为 `you`，但不显示 Agent 用于替换事件的 key。到期时若 Agent 正在运行，TUI 将事件加入与 Tab 输入共用的 pending submission FIFO，等当前 `agent_end` 后按入队顺序开始新的 run；Enter steering 因中止或 turn limit 被 deferred 时也会降级到同一 FIFO 尾部。定时管理面板活动时只暂停 pending run 的启动，不暂停 timer；关闭面板后恢复投递。新建、分叉或恢复其他会话会取消旧会话尚未触发和待投递的输入。它不需要工具审批。
 
 ## 自定义工具的约束
 

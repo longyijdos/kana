@@ -79,6 +79,8 @@ import {
   type TuiModelSettings,
 } from "./model-selection";
 import { NotificationController } from "./notification-controller";
+import { QueuedInputController } from "./queued-input-controller";
+import { ScheduledMessageManagerController } from "./scheduled-message-manager-controller";
 import { SessionLifecycleController } from "./session-lifecycle-controller";
 import { SkillManagerController } from "./skill-manager-controller";
 import { type SlashCommand, SlashCommandController } from "./slash-command-controller";
@@ -160,6 +162,8 @@ export class KanaTuiApp {
   private readonly skillManager: SkillManagerController;
   private readonly mcpServerManager?: McpServerManagerController;
   private readonly conversation: ConversationRuntime<TuiModelSelection>;
+  private readonly queuedInputs: QueuedInputController;
+  private readonly scheduledMessageManager: ScheduledMessageManagerController;
   private running = false;
   private totalUsage?: ModelUsage;
   private totalCostCny = 0;
@@ -209,10 +213,11 @@ export class KanaTuiApp {
       listSessions: options.listSessions,
       deleteSession: options.deleteSession,
       wakeScheduler: options.wakeScheduler,
-      canStartScheduledRun: () =>
+      canStartQueuedRun: () =>
         !this.running &&
         !this.externalTools.loading &&
         !this.mcpServerManager?.active &&
+        !this.scheduledMessageManager?.active &&
         !this.stopping,
       getLogger: this.getLogger,
     });
@@ -225,6 +230,12 @@ export class KanaTuiApp {
         this.options.modelManagement?.getSettings(),
       ),
     });
+    this.queuedInputs = new QueuedInputController((inputs, scheduled) => {
+      this.editor.setQueuedInputs(inputs);
+      this.editor.setScheduledInputSummary(scheduled);
+      this.tui.requestRender();
+    });
+    this.queuedInputs.syncRuntimeQueue(this.conversation.inputQueue);
     this.layout = new AppLayout({
       main: this.transcript,
       bottom: this.editor,
@@ -242,7 +253,7 @@ export class KanaTuiApp {
       reload: cleanMode ? undefined : this.options.mcpManagement?.reloadExternalTools,
       isStopping: () => this.stopping,
       onToolsChanged: () => this.recreateAgentForExternalTools(),
-      onReady: () => this.conversation.notifyCanStartScheduledRun(),
+      onReady: () => this.conversation.notifyCanStartQueuedRun(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
       focusEditor: () => this.tui.setFocus(this.editor),
     });
@@ -271,7 +282,7 @@ export class KanaTuiApp {
           if (changed) {
             void this.externalTools.reload();
           } else {
-            this.conversation.notifyCanStartScheduledRun();
+            this.conversation.notifyCanStartQueuedRun();
           }
         },
         updateStatus: (phase, extra) => this.updateStatus(phase, extra),
@@ -283,6 +294,17 @@ export class KanaTuiApp {
       transcript: this.transcript,
       tui: this.tui,
       restoreBottom: (focus) => this.restoreBottom(focus),
+    });
+    this.scheduledMessageManager = new ScheduledMessageManagerController({
+      editor: this.editor,
+      layout: this.layout,
+      tui: this.tui,
+      getQueue: () => this.conversation.inputQueue,
+      schedule: (afterMinutes, message) => this.conversation.scheduleInput(afterMinutes, message),
+      cancel: (id) => this.conversation.cancelScheduledInput(id),
+      showError: (error) => this.showError(error),
+      restoreBottom: (focus) => this.restoreBottom(focus),
+      onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
     this.slashCommandOptions = new SlashCommandOptionsController({
       editor: this.editor,
@@ -351,7 +373,10 @@ export class KanaTuiApp {
       transcript: this.transcript,
       tui: this.tui,
       isRunning: () => this.running,
-      closeOtherOverlays: () => this.skillManager.close(),
+      closeOtherOverlays: () => {
+        this.skillManager.close();
+        this.scheduledMessageManager.close();
+      },
       closeContentViewer: () => this.contentViewer.close(),
       resetAgentEvents: () => this.agentEvents.resetRun(),
       clearMcpOAuthBlocks: () => this.mcpOAuthBlocks.clear(),
@@ -429,6 +454,10 @@ export class KanaTuiApp {
         this.editor.clear();
         this.openMcpServerManager();
       },
+      openScheduledMessageManager: () => {
+        this.editor.clear();
+        this.openScheduledMessageManager();
+      },
       openApproval: () => this.slashCommandOptions.openApproval(),
       openModel: () => this.slashCommandOptions.openModel(),
       openMemory: () => this.openMemory(),
@@ -483,6 +512,11 @@ export class KanaTuiApp {
       }
 
       void this.submitPrompt(submit.content);
+    };
+    this.editor.onQueue = (submit) => {
+      if (submit.type === "message") {
+        this.queuePrompt(submit.content);
+      }
     };
 
     this.updateStatus("idle");
@@ -572,6 +606,7 @@ export class KanaTuiApp {
     this.getLogger().info("tui.stopped");
     this.localShell.abort();
     this.memoryCompact.abort();
+    this.scheduledMessageManager.close();
     this.mcpServerManager?.close();
     this.unsubscribeConversationEvents();
     this.showShutdownStatus("Shutting down Kana...");
@@ -791,6 +826,7 @@ export class KanaTuiApp {
 
     this.sessions.close();
     this.contentViewer.close();
+    this.scheduledMessageManager.close();
     this.skillManager.open();
   }
 
@@ -810,7 +846,20 @@ export class KanaTuiApp {
     this.sessions.close();
     this.contentViewer.close();
     this.skillManager.close();
+    this.scheduledMessageManager.close();
     this.mcpServerManager.open();
+  }
+
+  private openScheduledMessageManager(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.sessions.close();
+    this.contentViewer.close();
+    this.skillManager.close();
+    this.mcpServerManager?.close();
+    this.scheduledMessageManager.open();
   }
 
   private openMemory(): void {
@@ -854,6 +903,9 @@ export class KanaTuiApp {
           this.transcript.removeChild(this.contextCompactingBlock);
           this.contextCompactingBlock = undefined;
         }
+        if (event.event.type === "turn_input") {
+          this.queuedInputs.deliverTurn(event.event.message.content);
+        }
         this.agentEvents.handle(event.event);
         if (event.source !== "compaction") {
           this.notifications.handleAgentEvent(event.event);
@@ -875,12 +927,17 @@ export class KanaTuiApp {
         break;
 
       case "session_changed":
+        this.queuedInputs.clear();
         if (this.toolApproval.resetTemporaryMode() !== undefined) {
           this.getLogger().info("tui.tool_approval_mode_reset", {
             action: event.action,
             mode: this.toolApproval.mode,
           });
         }
+        break;
+
+      case "input_queue_changed":
+        this.queuedInputs.syncRuntimeQueue(event.queue);
         break;
     }
   }
@@ -928,13 +985,38 @@ export class KanaTuiApp {
   private async submitPrompt(value: string): Promise<void> {
     const prompt = value.trim();
 
-    if (!prompt || this.running) {
+    if (!prompt) {
+      return;
+    }
+
+    if (this.conversation.canSteer) {
+      this.editor.addToHistory(prompt);
+      this.editor.clear();
+      const queuedInputId = this.queuedInputs.addTurn(prompt);
+      const disposition = await this.conversation.steer({ role: "user", content: prompt });
+      if (disposition !== "queued") {
+        this.queuedInputs.remove(queuedInputId);
+      }
+      return;
+    }
+    if (this.running) {
       return;
     }
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
     await this.submitAgentInput({ role: "user", content: prompt });
+  }
+
+  private queuePrompt(value: string): void {
+    const prompt = value.trim();
+    if (!prompt || !this.conversation.canSteer) {
+      return;
+    }
+
+    this.editor.addToHistory(prompt);
+    this.editor.clear();
+    this.conversation.queueInput({ role: "user", content: prompt });
   }
 
   private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {
@@ -989,7 +1071,7 @@ export class KanaTuiApp {
       running: false,
       activeTool: undefined,
     });
-    this.conversation.notifyCanStartScheduledRun();
+    this.conversation.notifyCanStartQueuedRun();
   }
 
   private showToolApprovalPrompt(

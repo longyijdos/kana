@@ -3,7 +3,7 @@ import { AgentEventStream } from "../../src/agent";
 import { createWakeScheduler, type KanaSessionMetadata } from "../../src/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { stripAnsi } from "../../src/tui/render";
-import type { Terminal } from "../../src/tui/runtime";
+import type { Component, Terminal } from "../../src/tui/runtime";
 
 describe("session-scoped agents", () => {
   test("resets a temporary tool approval mode when the session changes", () => {
@@ -391,6 +391,66 @@ describe("session-scoped agents", () => {
       source: "scheduled",
     });
     calls[1]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+    wakeScheduler.dispose();
+  });
+
+  test("holds due wakes while the schedule manager is open and drains them on close", async () => {
+    const timers = new Map<number | ReturnType<typeof setTimeout>, () => void>();
+    const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
+    const wakeScheduler = createWakeScheduler({
+      setTimeout: (callback) => {
+        timers.set(1, callback);
+        return 1;
+      },
+      clearTimeout: (timer) => timers.delete(timer),
+    });
+    const app = new KanaTuiApp(
+      () =>
+        ({
+          state: {
+            messages: [],
+            model: {
+              metadata: {
+                provider: "test",
+                model: "test-model",
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1,
+                maxOutputTokens: 1,
+              },
+            },
+          },
+          stream(input: unknown) {
+            const stream = new AgentEventStream();
+            calls.push({ input, stream });
+            return stream;
+          },
+        }) as never,
+      createTerminal(),
+      {
+        ...createOptions(),
+        initialSession: { id: "session-a", messages: [], timeline: [] },
+        wakeScheduler,
+      },
+    );
+    const internal = app as unknown as {
+      handleCommand(command: { name: "schedule"; arguments: string; raw: string }): void;
+      tui: { getFocus(): Component | undefined };
+    };
+
+    internal.handleCommand({ name: "schedule", arguments: "", raw: "/schedule" });
+    wakeScheduler.schedule({
+      sessionId: "session-a",
+      afterMinutes: 30,
+      message: "Check the task.",
+    });
+    timers.get(1)?.();
+
+    expect(calls).toEqual([]);
+    internal.tui.getFocus()?.handleInput?.("\x1b");
+    await waitFor(() => calls.length === 1);
+
+    expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
+    calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
     wakeScheduler.dispose();
   });
 

@@ -16,6 +16,7 @@ export type SlashCommandControllerOptions = {
   openDeletePicker: () => void;
   openSkillManager: () => void;
   openMcpServerManager: () => void;
+  openScheduledMessageManager: () => void;
   openApproval: () => void;
   openModel: () => boolean;
   openMemory: () => void;
@@ -78,6 +79,9 @@ export class SlashCommandController {
         break;
       case "mcp":
         this.runWithoutArguments(command, () => this.options.openMcpServerManager());
+        break;
+      case "schedule":
+        this.runWithoutArguments(command, () => this.options.openScheduledMessageManager());
         break;
       case "approval":
         this.runWithoutArguments(command, () => this.options.openApproval());

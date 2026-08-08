@@ -15,6 +15,7 @@ describe("slash command controller", () => {
     harness.handle("resume");
     harness.handle("approval");
     harness.handle("model");
+    harness.handle("schedule");
     harness.handle("compact");
 
     expect(harness.events).toEqual([
@@ -24,6 +25,7 @@ describe("slash command controller", () => {
       "resume-picker",
       "approval",
       "model",
+      "schedule",
       "compact",
     ]);
   });
@@ -72,6 +74,7 @@ function createHarness(running = false) {
     openDeletePicker: () => events.push("delete-picker"),
     openSkillManager: () => events.push("skills"),
     openMcpServerManager: () => events.push("mcp"),
+    openScheduledMessageManager: () => events.push("schedule"),
     openApproval: () => events.push("approval"),
     openModel: () => {
       events.push("model");
