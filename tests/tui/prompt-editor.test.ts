@@ -836,6 +836,9 @@ describe("prompt commands", () => {
           name: "mcp",
         },
         {
+          name: "schedule",
+        },
+        {
           name: "approval",
         },
         {

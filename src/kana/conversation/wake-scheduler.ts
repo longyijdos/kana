@@ -1,8 +1,11 @@
+export type WakeEventOrigin = "agent" | "user";
+
 export type WakeEvent = {
   id: string;
   sessionId: string;
   dueAt: Date;
   message: string;
+  origin: WakeEventOrigin;
   key?: string;
 };
 
@@ -10,6 +13,7 @@ export type ScheduleWakeOptions = {
   sessionId: string;
   afterMinutes: number;
   message: string;
+  origin?: WakeEventOrigin;
   key?: string;
 };
 
@@ -89,6 +93,7 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
         sessionId: scheduleOptions.sessionId,
         dueAt,
         message: scheduleOptions.message,
+        origin: scheduleOptions.origin ?? "agent",
         key: scheduleOptions.key,
       };
       const timer = scheduleTimeout(

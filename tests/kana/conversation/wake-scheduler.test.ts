@@ -77,11 +77,17 @@ describe("wake scheduler", () => {
       snapshots.push(scheduler.list("session-a").map((event) => event.id));
     });
 
-    scheduler.schedule({ sessionId: "session-a", afterMinutes: 20, message: "later" });
+    scheduler.schedule({
+      sessionId: "session-a",
+      afterMinutes: 20,
+      message: "later",
+      origin: "user",
+    });
     scheduler.schedule({ sessionId: "session-b", afterMinutes: 1, message: "other" });
     scheduler.schedule({ sessionId: "session-a", afterMinutes: 5, message: "sooner" });
 
     expect(scheduler.list("session-a").map((event) => event.id)).toEqual(["sooner", "later"]);
+    expect(scheduler.list("session-a").map((event) => event.origin)).toEqual(["agent", "user"]);
     expect(scheduler.cancel("later")).toBe(true);
     expect(scheduler.cancel("later")).toBe(false);
     expect(scheduler.list("session-a").map((event) => event.id)).toEqual(["sooner"]);

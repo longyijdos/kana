@@ -15,6 +15,7 @@ export {
   type ConversationRuntimeEvent,
   type ConversationRuntimeListener,
   type ConversationRuntimeOptions,
+  type ConversationScheduledInputCancellation,
   type ConversationSessionSnapshot,
   type CreateConversationAgentOptions,
 } from "./runtime";
@@ -23,5 +24,6 @@ export {
   createWakeScheduler,
   type ScheduleWakeOptions,
   type WakeEvent,
+  type WakeEventOrigin,
   type WakeScheduler,
 } from "./wake-scheduler";

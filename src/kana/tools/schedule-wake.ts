@@ -48,6 +48,7 @@ export function createScheduleWakeTool(
         sessionId: options.sessionId,
         afterMinutes: args.afterMinutes,
         message: args.message,
+        origin: "agent",
         key: args.key,
       });
       const result = {

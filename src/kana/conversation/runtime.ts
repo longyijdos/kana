@@ -2,7 +2,12 @@ import type { Agent, AgentEvent, BeforeToolExecutionHook, ContextCheckpoint } fr
 import type { Message, UserMessage } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
-import { createWakeScheduler, type WakeEvent, type WakeScheduler } from "./wake-scheduler";
+import {
+  createWakeScheduler,
+  type WakeEvent,
+  type WakeEventOrigin,
+  type WakeScheduler,
+} from "./wake-scheduler";
 
 export type ConversationSessionSnapshot = {
   id: string;
@@ -15,16 +20,27 @@ export type ConversationRunSource = "user" | "scheduled" | "compaction";
 
 export type ConversationInputDisposition = "steered" | "queued" | "discarded";
 
-export type ConversationPendingInput = {
-  id: string;
-  kind: "queued" | "deferred" | "scheduled";
-  content: string;
-};
+export type ConversationPendingInput =
+  | {
+      id: string;
+      kind: "queued" | "deferred";
+      content: string;
+    }
+  | {
+      id: string;
+      kind: "scheduled";
+      content: string;
+      dueAt: Date;
+      origin: WakeEventOrigin;
+      key?: string;
+    };
 
 export type ConversationInputQueueSnapshot = {
   pending: ConversationPendingInput[];
   scheduled: WakeEvent[];
 };
+
+export type ConversationScheduledInputCancellation = "future" | "pending" | "not_found";
 
 export type ConversationRuntimeEvent =
   | {
@@ -87,14 +103,33 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   getLogger?: () => Logger;
 };
 
-type PendingSubmission = {
+type PendingSubmissionBase = {
   id: string;
   sessionId?: string;
   input: UserMessage;
-  source: Exclude<ConversationRunSource, "compaction">;
-  kind: ConversationPendingInput["kind"];
   displayContent: string;
 };
+
+type PendingSubmission =
+  | (PendingSubmissionBase & {
+      source: "user";
+      kind: "queued" | "deferred";
+    })
+  | (PendingSubmissionBase & {
+      source: "scheduled";
+      kind: "scheduled";
+      scheduled: {
+        dueAt: Date;
+        origin: WakeEventOrigin;
+        key?: string;
+      };
+    });
+
+type PendingSubmissionDraft =
+  | (Omit<Extract<PendingSubmission, { source: "user" }>, "id"> & { id?: string })
+  | (Omit<Extract<PendingSubmission, { source: "scheduled" }>, "id"> & {
+      id?: string;
+    });
 
 export class ConversationRuntime<TConfiguration = never> {
   private readonly listeners = new Set<ConversationRuntimeListener>();
@@ -163,11 +198,24 @@ export class ConversationRuntime<TConfiguration = never> {
     return {
       pending: this.pendingSubmissions
         .filter((submission) => submission.sessionId === sessionId)
-        .map(({ id, kind, displayContent }) => ({
-          id,
-          kind,
-          content: displayContent,
-        })),
+        .map((submission): ConversationPendingInput => {
+          if (submission.kind === "scheduled") {
+            return {
+              id: submission.id,
+              kind: "scheduled",
+              content: submission.displayContent,
+              dueAt: new Date(submission.scheduled.dueAt.getTime()),
+              origin: submission.scheduled.origin,
+              key: submission.scheduled.key,
+            };
+          }
+
+          return {
+            id: submission.id,
+            kind: submission.kind,
+            content: submission.displayContent,
+          };
+        }),
       scheduled:
         sessionId === undefined || this.options.scheduledRuns === false
           ? []
@@ -336,6 +384,62 @@ export class ConversationRuntime<TConfiguration = never> {
     });
   }
 
+  scheduleInput(afterMinutes: number, message: string): WakeEvent {
+    const sessionId = this.sessionId;
+    if (!sessionId) {
+      throw new Error("Cannot schedule a message without an active session.");
+    }
+    if (!Number.isInteger(afterMinutes) || afterMinutes < 1 || afterMinutes > 1_440) {
+      throw new Error("Scheduled message delay must be between 1 minute and 24 hours.");
+    }
+    const normalizedMessage = message.trim();
+    if (!normalizedMessage || normalizedMessage.length > 4_000) {
+      throw new Error("Scheduled message must contain between 1 and 4000 characters.");
+    }
+
+    return this.wakeScheduler.schedule({
+      sessionId,
+      afterMinutes,
+      message: normalizedMessage,
+      origin: "user",
+    });
+  }
+
+  cancelScheduledInput(id: string): ConversationScheduledInputCancellation {
+    const sessionId = this.sessionId;
+    if (!sessionId) {
+      return "not_found";
+    }
+
+    const isCurrentSessionWake = this.wakeScheduler
+      .list(sessionId)
+      .some((event) => event.id === id);
+    // Expiry and cancellation share the JavaScript event loop, so the stable
+    // ID is synchronously present in either the timer map or the pending FIFO.
+    if (isCurrentSessionWake && this.wakeScheduler.cancel(id)) {
+      this.log("info", "conversation.scheduled_input_cancelled", { state: "future" });
+      return "future";
+    }
+
+    const pendingIndex = this.pendingSubmissions.findIndex(
+      (submission) =>
+        submission.id === id &&
+        submission.sessionId === sessionId &&
+        submission.kind === "scheduled",
+    );
+    if (pendingIndex < 0) {
+      this.log("info", "conversation.scheduled_input_cancel_skipped", {
+        reason: "not_found",
+      });
+      return "not_found";
+    }
+
+    this.pendingSubmissions.splice(pendingIndex, 1);
+    this.emitInputQueueChanged();
+    this.log("info", "conversation.scheduled_input_cancelled", { state: "pending" });
+    return "pending";
+  }
+
   async steer(input: UserMessage): Promise<ConversationInputDisposition> {
     if (this.stopping) {
       return "discarded";
@@ -477,18 +581,21 @@ export class ConversationRuntime<TConfiguration = never> {
       source: "scheduled",
       kind: "scheduled",
       displayContent: event.message,
+      scheduled: {
+        dueAt: event.dueAt,
+        origin: event.origin,
+        key: event.key,
+      },
     });
   }
 
-  private queueSubmission(submission: Omit<PendingSubmission, "id"> & { id?: string }): string {
+  private queueSubmission(submission: PendingSubmissionDraft): string {
     if (this.stopping) {
       return submission.id ?? crypto.randomUUID();
     }
 
-    const queuedSubmission: PendingSubmission = {
-      ...structuredClone(submission),
-      id: submission.id ?? crypto.randomUUID(),
-    };
+    const id = submission.id ?? crypto.randomUUID();
+    const queuedSubmission: PendingSubmission = { ...structuredClone(submission), id };
     this.pendingSubmissions.push(queuedSubmission);
     this.log("info", "conversation.input_queued", {
       source: submission.source,

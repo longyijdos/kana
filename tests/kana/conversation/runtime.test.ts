@@ -283,6 +283,65 @@ describe("ConversationRuntime", () => {
     await runtime.close();
   });
 
+  test("creates user scheduled input and cancels future or pending delivery by stable ID", async () => {
+    const timers = new Map<number | ReturnType<typeof setTimeout>, () => void>();
+    let nextTimer = 0;
+    const ids = ["future-wake", "pending-wake"];
+    const wakeScheduler = createWakeScheduler({
+      now: () => new Date("2026-08-08T08:00:00.000Z"),
+      createId: () => ids.shift() as string,
+      setTimeout: (callback) => {
+        nextTimer += 1;
+        timers.set(nextTimer, callback);
+        return nextTimer;
+      },
+      clearTimeout: (timer) => timers.delete(timer),
+    });
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      wakeScheduler,
+      canStartQueuedRun: () => false,
+      createAgent: (options) =>
+        new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+
+    const future = runtime.scheduleInput(5, "  Review the output.  ");
+    expect(future).toMatchObject({
+      id: "future-wake",
+      origin: "user",
+      message: "Review the output.",
+    });
+    expect(runtime.inputQueue.scheduled).toMatchObject([
+      { id: "future-wake", origin: "user", message: "Review the output." },
+    ]);
+    expect(runtime.cancelScheduledInput(future.id)).toBe("future");
+    expect(runtime.inputQueue.scheduled).toEqual([]);
+
+    const pending = runtime.scheduleInput(1, "Continue after the timer.");
+    timers.get(2)?.();
+    expect(runtime.inputQueue.pending).toMatchObject([
+      {
+        id: "pending-wake",
+        kind: "scheduled",
+        content: "Continue after the timer.",
+        origin: "user",
+        dueAt: pending.dueAt,
+      },
+    ]);
+    expect(runtime.cancelScheduledInput(pending.id)).toBe("pending");
+    expect(runtime.cancelScheduledInput(pending.id)).toBe("not_found");
+    expect(runtime.inputQueue.pending).toEqual([]);
+    expect(() => runtime.scheduleInput(0, "Too soon.")).toThrow("between 1 minute and 24 hours");
+    expect(() => runtime.scheduleInput(1, "   ")).toThrow("between 1 and 4000 characters");
+
+    await runtime.close();
+  });
+
   test("steers input into the active run after its current turn", async () => {
     const model = new ControlledModel();
     const events: ConversationRuntimeEvent[] = [];

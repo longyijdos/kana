@@ -80,6 +80,7 @@ import {
 } from "./model-selection";
 import { NotificationController } from "./notification-controller";
 import { QueuedInputController } from "./queued-input-controller";
+import { ScheduledMessageManagerController } from "./scheduled-message-manager-controller";
 import { SessionLifecycleController } from "./session-lifecycle-controller";
 import { SkillManagerController } from "./skill-manager-controller";
 import { type SlashCommand, SlashCommandController } from "./slash-command-controller";
@@ -162,6 +163,7 @@ export class KanaTuiApp {
   private readonly mcpServerManager?: McpServerManagerController;
   private readonly conversation: ConversationRuntime<TuiModelSelection>;
   private readonly queuedInputs: QueuedInputController;
+  private readonly scheduledMessageManager: ScheduledMessageManagerController;
   private running = false;
   private totalUsage?: ModelUsage;
   private totalCostCny = 0;
@@ -215,6 +217,7 @@ export class KanaTuiApp {
         !this.running &&
         !this.externalTools.loading &&
         !this.mcpServerManager?.active &&
+        !this.scheduledMessageManager?.active &&
         !this.stopping,
       getLogger: this.getLogger,
     });
@@ -292,6 +295,17 @@ export class KanaTuiApp {
       tui: this.tui,
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
+    this.scheduledMessageManager = new ScheduledMessageManagerController({
+      editor: this.editor,
+      layout: this.layout,
+      tui: this.tui,
+      getQueue: () => this.conversation.inputQueue,
+      schedule: (afterMinutes, message) => this.conversation.scheduleInput(afterMinutes, message),
+      cancel: (id) => this.conversation.cancelScheduledInput(id),
+      showError: (error) => this.showError(error),
+      restoreBottom: (focus) => this.restoreBottom(focus),
+      onClose: () => this.conversation.notifyCanStartQueuedRun(),
+    });
     this.slashCommandOptions = new SlashCommandOptionsController({
       editor: this.editor,
       layout: this.layout,
@@ -359,7 +373,10 @@ export class KanaTuiApp {
       transcript: this.transcript,
       tui: this.tui,
       isRunning: () => this.running,
-      closeOtherOverlays: () => this.skillManager.close(),
+      closeOtherOverlays: () => {
+        this.skillManager.close();
+        this.scheduledMessageManager.close();
+      },
       closeContentViewer: () => this.contentViewer.close(),
       resetAgentEvents: () => this.agentEvents.resetRun(),
       clearMcpOAuthBlocks: () => this.mcpOAuthBlocks.clear(),
@@ -436,6 +453,10 @@ export class KanaTuiApp {
       openMcpServerManager: () => {
         this.editor.clear();
         this.openMcpServerManager();
+      },
+      openScheduledMessageManager: () => {
+        this.editor.clear();
+        this.openScheduledMessageManager();
       },
       openApproval: () => this.slashCommandOptions.openApproval(),
       openModel: () => this.slashCommandOptions.openModel(),
@@ -585,6 +606,7 @@ export class KanaTuiApp {
     this.getLogger().info("tui.stopped");
     this.localShell.abort();
     this.memoryCompact.abort();
+    this.scheduledMessageManager.close();
     this.mcpServerManager?.close();
     this.unsubscribeConversationEvents();
     this.showShutdownStatus("Shutting down Kana...");
@@ -804,6 +826,7 @@ export class KanaTuiApp {
 
     this.sessions.close();
     this.contentViewer.close();
+    this.scheduledMessageManager.close();
     this.skillManager.open();
   }
 
@@ -823,7 +846,20 @@ export class KanaTuiApp {
     this.sessions.close();
     this.contentViewer.close();
     this.skillManager.close();
+    this.scheduledMessageManager.close();
     this.mcpServerManager.open();
+  }
+
+  private openScheduledMessageManager(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.sessions.close();
+    this.contentViewer.close();
+    this.skillManager.close();
+    this.mcpServerManager?.close();
+    this.scheduledMessageManager.open();
   }
 
   private openMemory(): void {

@@ -33,6 +33,11 @@ export {
   type McpServerOAuthStatus,
 } from "./mcp-server-manager";
 export {
+  ScheduledMessageManager,
+  type ScheduledMessageManagerAction,
+  type ScheduledMessageManagerItem,
+} from "./scheduled-message-manager";
+export {
   SessionPicker,
   type SessionPickerDecision,
 } from "./session-picker";

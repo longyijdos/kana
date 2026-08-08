@@ -15,7 +15,7 @@ ProcessTerminal
           exactly one bottom component (height tier)
             editor with status line
             or tool approval
-            or session / skills / MCP / slash-command prompt
+            or session / skills / MCP / schedule / slash-command prompt
             or content viewer
 ```
 
@@ -82,13 +82,14 @@ The editor uses the same ASCII frame, light-gray text, and blue `> ` prefix as u
 | `/delete` | Select and confirm session deletion. |
 | `/skills` | Manage global Skill activation and rebuild the Agent system prompt. |
 | `/mcp` | Manage active MCP servers and reload them when the selection changes. |
+| `/schedule` | View, add, refresh, or delete in-process scheduled messages for the current session. |
 | `/approval` | Temporarily change tool approval mode for the current session; selecting `Never ask` requires confirmation. |
 | `/model` | Choose provider, model, and reasoning effort, persist them, and hot-swap the current Agent. |
 | `/memory` | Choose an action and scope in the bottom view; see [Sessions and memory](sessions-and-memory.en.md). |
 | `/usage` | Choose a scope in the bottom view, then open its API usage. |
 | `/quit` | Exit without arguments; with arguments it is a normal prompt. |
 
-In clean mode, `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, and `/delete` remain discoverable commands but report an explicit unavailable error when invoked. `/usage` still presents Session, Project, and Global; choosing Session reports that it is unavailable, while the other two scopes can still read historical aggregates. `/new`, `/approval`, `/compact`, `/model`, and the local Shell remain usable inside the temporary conversation, with `/model` leaving the configuration file unchanged.
+In clean mode, `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, and `/delete` remain discoverable commands but report an explicit unavailable error when invoked. `/usage` still presents Session, Project, and Global; choosing Session reports that it is unavailable, while the other two scopes can still read historical aggregates. `/new`, `/schedule`, `/approval`, `/compact`, `/model`, and the local Shell remain usable inside the temporary conversation. `/schedule` messages still exist only in the current process, and `/model` leaves the configuration file unchanged.
 
 ## Controllers and focus
 
@@ -96,6 +97,7 @@ Separate controllers keep `KanaTuiApp` from owning every interaction state machi
 
 - `ExternalToolsLifecycleController` handles both initial external-tool loading after the session becomes visible and later MCP reloads. It owns progress-block and input disable/restore state, and requests Agent rebuilding through an app callback when the tool set changes.
 - `QueuedInputController` stores only the current run's local `next turn` items. It projects `next run`, due `scheduled`, and future-wake summaries directly from the `ConversationRuntime` snapshot. When the Agent reports steering as deferred, the controller uses the runtime queue ID to remove the brief duplicate between delivery lanes.
+- `ScheduledMessageManagerController` opens the current session's scheduled-message snapshot for `/schedule`. Future items are ordered by due time and due-but-unsent items appear at the bottom. The view shows only the `agent` or `you` origin, never the Agent's replacement key. The list does not change automatically with the clock or background state; `R`, add, and delete reload it. `A` offers 5/15/30 minutes, one hour, and custom relative values such as `3m`, `90m`, or `2h`. After confirmation, `D` uses the stable ID to check both the future scheduler and due pending FIFO. No pending run starts while the panel is active; closing it with `Esc` resumes FIFO delivery.
 - `SlashCommandController` centralizes slash-command routing and argument validation. Commands that need multi-step input delegate to `SlashCommandOptionsController`, so the app does not own a command dispatch table.
 - `ToolApprovalController` implements the Agent `beforeToolExecution` hook and reads the effective approval mode before every call. A temporary `/approval` override applies only to the currently selected session; new, fork, resume, or process exit restores `config.toml`, without writing the session journal or approval file. Its choice prompt replaces the editor when the editor is visible. If another bottom view is active, the approval remains pending and the configured approval notification still fires; closing that view reveals the prompt. MCP tools use a product-level alias resolver to show the server ID, original remote tool name, and complete formatted arguments; long arguments reuse detail paging, and MCP approvals do not offer persistent trust. Denial aborts the run, while always allow adds only an exact bash command to the allowlist.
 - `SessionLifecycleController` coordinates transcript, focus, context state, and external-tool activation after new, fork, and resume. Its internal `SessionOverlayController` replaces the editor with the resume list or delete confirmation.

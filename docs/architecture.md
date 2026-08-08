@@ -199,7 +199,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 ## TUI 架构
 
-`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台允许后按顺序 drain 当前 session 的 pending submission FIFO。Tab 输入、到期 wake 和 deferred steering 共用这条新 run 队列，Enter steering 则先进入 Agent 的 run-local queue。Runtime 为每个 pending item 保留稳定 ID、来源和安全显示文本，并把它与进程内 scheduler 的未来 wake 列表一起发布为只读快照；因此执行顺序与 TUI 展示不会分叉。它发布与前端无关的 run、Agent event、input-queue 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`QueuedInputController` 只持有 run-local 的可视 `next turn` 项，并将 runtime 快照投影为 `next run`、到期 `scheduled` 和未来 wake 摘要；`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、进度块与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
+`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台允许后按顺序 drain 当前 session 的 pending submission FIFO。Tab 输入、到期 wake 和 deferred steering 共用这条新 run 队列，Enter steering 则先进入 Agent 的 run-local queue。Runtime 为每个 pending item 保留稳定 ID、来源、安全显示文本；scheduled item 还保留到期时间，并与进程内 scheduler 的未来 wake 列表一起发布为只读快照。它提供当前 session 的用户定时创建与按 ID 取消边界，取消会同步检查未来 timer 和已到期 pending 项，因此执行顺序、管理状态与 TUI 展示不会分叉。它发布与前端无关的 run、Agent event、input-queue 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`QueuedInputController` 只持有 run-local 的可视 `next turn` 项，并将 runtime 快照投影为 `next run`、到期 `scheduled` 和未来 wake 摘要；`ScheduledMessageManagerController` 持有 `/schedule` 的静态管理快照和多步添加/删除流程；`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、进度块与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
 
 ```text
 ProcessTerminal（raw mode、输入、resize、通知）
@@ -209,13 +209,13 @@ ProcessTerminal（raw mode、输入、resize、通知）
       └─ 底部（严格一个组件；分档高度）
          ├─ Editor（输入区、状态栏和队列预览）
          ├─ ToolApproval
-         ├─ Session / Skills / MCP 视图
+         ├─ Session / Skills / MCP / Schedule 视图
          └─ ContentViewer
 ```
 
 `Tui` 以组件的 `render(width, availableHeight?): string[]` 作为最小渲染协议。`AppLayout` 根据终端高度选择 15、12、9 或 7 行底部预算；终端不足 7 行时使用全部可用高度，其余高度传给 main。Layout 固定绘制底部区域首行作为 main/bottom 分隔线，将剩余预算传给底部组件，并为较短输出补空行，从而稳定两者的边界。Editor 会优先使用状态栏下方本来由 Layout 补齐的空间显示 pending 队列和一行未来 wake 摘要；空间不足时优先保留 pending、截断明细，slash palette 打开时隐藏两者。Transcript 刻意忽略 main 的剩余高度提示，继续为终端 scrollback 渲染完整历史，并在有输出的子 Block 之间统一插入一行空白；Block 仅管理内容内部留白。`Tui` 缓存上次输出，尺寸不变时只重绘变化的行；改变已滚出视口的内容、缩小内容或终端尺寸改变时改用全量重绘。编辑器在逻辑行中插入内部光标标记，`Tui` 在写入终端前取走该标记；存在焦点组件时才将硬件光标移动到对应的可见宽度位置，没有焦点时则隐藏光标并留在布局末尾。渲染层以 grapheme 和 `string-width` 处理 CJK、emoji、ANSI 颜色和换行。
 
-TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关和 OAuth 操作、provider/model 选择、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、slash 选项、审批和内容查看视图都会作为唯一底部组件替换编辑器。`/model` 从 Kana 产品层取得可用 Provider、模型、推理档位和当前选择，不直接读取 Provider 实现目录；它会保留消息和 context checkpoint，在配置写入前构造候选 Agent，成功后才替换当前 Agent，失败时旧 Agent 与配置保持可用。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 选择或已启用 server 的认证状态变化只请求一次 runtime reload。MCP 组件接收 server ID、transport、OAuth 安全状态，以及 stdio command/参数或 HTTP URL，但不会接收环境变量、HTTP headers 或 token；授权 URL 只临时放在 transcript block 中，完成后原位替换。MCP 视图打开、认证操作或 reload 进行中时，到期的 schedule wake 会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
+TUI 的主要控制器分别处理工具审批、会话选择/删除、全局 Skills 开关、MCP server 开关和 OAuth 操作、定时消息管理、provider/model 选择、`!` 本地 Shell、记忆压缩和长工具输出查看。Session、Skill、MCP、Schedule、slash 选项、审批和内容查看视图都会作为唯一底部组件替换编辑器。`/model` 从 Kana 产品层取得可用 Provider、模型、推理档位和当前选择，不直接读取 Provider 实现目录；它会保留消息和 context checkpoint，在配置写入前构造候选 Agent，成功后才替换当前 Agent，失败时旧 Agent 与配置保持可用。Skill 与 MCP controller 都会把 checkbox 修改保留在本地草稿中，直到 `Esc` 时一次性持久化有变化的选择；Skill 变更只重建一次 Agent 提示词，MCP 选择或已启用 server 的认证状态变化只请求一次 runtime reload。MCP 组件接收 server ID、transport、OAuth 安全状态，以及 stdio command/参数或 HTTP URL，但不会接收环境变量、HTTP headers 或 token；授权 URL 只临时放在 transcript block 中，完成后原位替换。Schedule 视图只读取当前 session 的进程内快照，不持久化、显示或按 Agent replacement key 删除任务；其活动期间到期消息继续进入 pending FIFO，但关闭前不会启动新 run。MCP 视图打开、认证操作或 reload 进行中时，到期的 schedule wake 也会继续排队。审批在其他底部视图活动时到达，会保持等待并发送已配置的通知，而不是抢占当前视图。`Ctrl+C`/`Esc` 优先中止当前 Agent、本地 Shell 或记忆任务；空闲时 `Ctrl+C` 退出。`Ctrl+O` 打开最近一项可展开的工具输出。
 
 ## 扩展时的检查点
 

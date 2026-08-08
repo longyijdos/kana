@@ -8,6 +8,7 @@ export type PromptCommandName =
   | "delete"
   | "skills"
   | "mcp"
+  | "schedule"
   | "approval"
   | "model"
   | "memory"
@@ -87,6 +88,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "mcp",
     description: "Manage active MCP servers.",
+  },
+  {
+    name: "schedule",
+    description: "Manage scheduled messages for this session.",
   },
   {
     name: "approval",

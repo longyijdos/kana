@@ -16,15 +16,28 @@ describe("QueuedInputController", () => {
     controller.syncRuntimeQueue({
       pending: [
         { id: "tab-1", kind: "queued", content: "Queued with Tab." },
-        { id: "wake-1", kind: "scheduled", content: "Check progress." },
+        {
+          id: "wake-1",
+          kind: "scheduled",
+          content: "Check progress.",
+          dueAt: nextAt,
+          origin: "agent",
+        },
       ],
       scheduled: [
-        { id: "wake-2", sessionId: "session-a", dueAt: nextAt, message: "Later." },
+        {
+          id: "wake-2",
+          sessionId: "session-a",
+          dueAt: nextAt,
+          message: "Later.",
+          origin: "agent",
+        },
         {
           id: "wake-3",
           sessionId: "session-a",
           dueAt: new Date("2026-08-08T08:10:00.000Z"),
           message: "Later again.",
+          origin: "user",
         },
       ],
     });
