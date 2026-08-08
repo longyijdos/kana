@@ -18,6 +18,7 @@ export {
   Editor,
   type EditorOptions,
   type EditorQueuedInput,
+  type EditorScheduledInputSummary,
   type StatusLineState,
 } from "./editor";
 export {

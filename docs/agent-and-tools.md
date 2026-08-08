@@ -160,7 +160,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 
 `list`、`glob`、`grep`、`read`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd`、`glob.cwd` 和 `grep.path` 也可在外部。请将审批理解为交互确认，而不是文件系统隔离。
 
-`schedule_wake` 不写入磁盘，也不恢复未触发的事件。到期时若 Agent 正在运行，TUI 将事件加入与 Tab 输入共用的 pending submission FIFO，等当前 `agent_end` 后按入队顺序开始新的 run；Enter steering 因中止或 turn limit 被 deferred 时也会降级到同一 FIFO 尾部。新建、分叉或恢复其他会话会取消旧会话尚未触发和待投递的输入。它不需要工具审批。
+`schedule_wake` 不写入磁盘，也不恢复未触发的事件。进程内 scheduler 提供按到期时间排序的 list、按稳定 ID 取消和状态订阅，供 TUI 展示及后续管理入口复用；这些接口不会改变其临时语义。到期时若 Agent 正在运行，TUI 将事件加入与 Tab 输入共用的 pending submission FIFO，等当前 `agent_end` 后按入队顺序开始新的 run；Enter steering 因中止或 turn limit 被 deferred 时也会降级到同一 FIFO 尾部。新建、分叉或恢复其他会话会取消旧会话尚未触发和待投递的输入。它不需要工具审批。
 
 ## 自定义工具的约束
 

@@ -42,7 +42,7 @@ ProcessTerminal
 
 ## App 与 Agent 事件
 
-`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及由 Tab 输入和到期 wake 共用的 pending submission FIFO；`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再按 FIFO 顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
+`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及由 Tab 输入和到期 wake 共用的 pending submission FIFO；它同时发布当前 session 的 pending 与尚未到期 wake 快照，作为新 run 排序和展示的唯一事实来源。`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再按 FIFO 顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
@@ -55,7 +55,7 @@ ProcessTerminal
 
 助手正文的协议状态与可视进度彼此分离：provider 和 Agent 仍会立即处理完整事件与消息，`StreamingTextPresenter` 只维护 Markdown 块当前可见的 `text` 前缀。稀疏文本 delta 会立即出现；当一次网络读取带来一批 SSE 事件时，积压内容约每 16ms 推进一次，并按 backlog 在每帧 1–12 个 grapheme 之间有界加速，消息完成后只额外提升一级用于收尾。工具调用开始、`toolUse` 消息完成、审批显示和实际执行前会先追平已经收到的正文，保证后续工具状态不会越过仍在展开的文本，同时不延迟 Agent 或 ToolRuntime。新消息或运行 reset 也会先 flush 剩余正文，因此持久化的 session 和 Agent 状态始终使用完整消息，而不是动画中的中间快照。配置 `tui.smooth_text_streaming = false` 会完全绕过该节奏控制，直接显示 provider 的最新流式快照；thinking、工具调用、工具结果、错误和状态阶段始终不参与文本节奏控制。
 
-编辑器内部包含状态栏，它显示模型及推理强度（例如 `gpt-5.6-luna · max`；DeepSeek 关闭 thinking 时显示 `off`）、Clean 模式标记、最近助手消息相对于 effective context limit 的使用率、运行阶段、活动工具和 cwd。多个工具并行时，活动项压缩为第一个名称加剩余数量，例如 `tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比；后续正常模型 usage 会替换该估算。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn` 或 `next run` 标出投递时机；多行内容折叠为一行，空间不足时只显示前几项和剩余数量。打开 slash 命令面板时会同时隐藏状态栏和队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求的 usage 都会累加到进程总用量和按模型元数据计算的 CNY 成本，但摘要 usage 不会被当作正常 prompt 的 context 百分比；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
+编辑器内部包含状态栏，它显示模型及推理强度（例如 `gpt-5.6-luna · max`；DeepSeek 关闭 thinking 时显示 `off`）、Clean 模式标记、最近助手消息相对于 effective context limit 的使用率、运行阶段、活动工具和 cwd。多个工具并行时，活动项压缩为第一个名称加剩余数量，例如 `tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比；后续正常模型 usage 会替换该估算。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开 slash 命令面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求的 usage 都会累加到进程总用量和按模型元数据计算的 CNY 成本，但摘要 usage 不会被当作正常 prompt 的 context 百分比；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
 恢复会话时，TUI 历史只消费 session timeline，而 Agent 单独接收完整 messages 和最后一个 context checkpoint。`turn_start`/`turn_end` 仅作为持久化边界，不直接渲染；恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用完成 marker 替换，失败时则移除临时消息并显示错误；普通模式同时将 marker 持久化，Clean 模式只保留进程内 checkpoint。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
 
@@ -95,7 +95,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 独立 controller 保持 `KanaTuiApp` 不必承载每个交互状态机：
 
 - `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有进度块、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
-- `QueuedInputController` 保存 TUI 队列项的显示 ID、投递层级和顺序；Agent 把 steering 标记为 deferred 时，它将该项从 `next turn` 移到共享 FIFO 的 `next run` 尾部。
+- `QueuedInputController` 只在本地保存当前 run 的 `next turn` 项；`next run`、到期 `scheduled` 和未来 wake 摘要直接投影 `ConversationRuntime` 快照。Agent 把 steering 标记为 deferred 时，controller 按 runtime queue ID 消除两个投递层级之间的短暂重复。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前读取当前有效审批模式。`/approval` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
 - `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和外部工具激活；其内部的 `SessionOverlayController` 用恢复列表或删除确认替换编辑器。

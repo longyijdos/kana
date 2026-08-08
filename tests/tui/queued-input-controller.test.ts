@@ -1,40 +1,63 @@
 import { describe, expect, test } from "bun:test";
 import { QueuedInputController } from "../../src/tui/app/queued-input-controller";
-import type { EditorQueuedInput } from "../../src/tui/components";
+import type { EditorQueuedInput, EditorScheduledInputSummary } from "../../src/tui/components";
 
 describe("QueuedInputController", () => {
-  test("orders turn input before run input and moves deferred steering to the FIFO tail", () => {
+  test("projects turn input before the runtime FIFO and summarizes future wakes", () => {
     const snapshots: EditorQueuedInput[][] = [];
-    const controller = new QueuedInputController((inputs) => {
+    const scheduled: Array<EditorScheduledInputSummary | undefined> = [];
+    const controller = new QueuedInputController((inputs, summary) => {
       snapshots.push(inputs);
+      scheduled.push(summary);
     });
+    const nextAt = new Date("2026-08-08T08:05:00.000Z");
 
-    controller.add("Queued with Tab.", "run");
-    const steeringId = controller.add("Queued with Enter.", "turn");
+    controller.addTurn("Queued with Enter.");
+    controller.syncRuntimeQueue({
+      pending: [
+        { id: "tab-1", kind: "queued", content: "Queued with Tab." },
+        { id: "wake-1", kind: "scheduled", content: "Check progress." },
+      ],
+      scheduled: [
+        { id: "wake-2", sessionId: "session-a", dueAt: nextAt, message: "Later." },
+        {
+          id: "wake-3",
+          sessionId: "session-a",
+          dueAt: new Date("2026-08-08T08:10:00.000Z"),
+          message: "Later again.",
+        },
+      ],
+    });
 
     expect(snapshots.at(-1)).toEqual([
       { content: "Queued with Enter.", delivery: "turn" },
       { content: "Queued with Tab.", delivery: "run" },
+      { content: "Check progress.", delivery: "scheduled" },
     ]);
-
-    controller.moveToRun(steeringId);
-
-    expect(snapshots.at(-1)).toEqual([
-      { content: "Queued with Tab.", delivery: "run" },
-      { content: "Queued with Enter.", delivery: "run" },
-    ]);
+    expect(scheduled.at(-1)).toEqual({ count: 2, nextAt });
   });
 
-  test("removes a fallback run that starts before its steering preview changes lanes", () => {
+  test("reconciles each deferred fallback once by its runtime queue id", () => {
     const snapshots: EditorQueuedInput[][] = [];
     const controller = new QueuedInputController((inputs) => {
       snapshots.push(inputs);
     });
 
-    const id = controller.add("Follow up.", "turn");
-    controller.startRun("Follow up.");
-    controller.moveToRun(id);
+    controller.addTurn("Follow up.");
+    const queue = {
+      pending: [{ id: "deferred-1", kind: "deferred" as const, content: "Follow up." }],
+      scheduled: [],
+    };
+    controller.syncRuntimeQueue(queue);
 
-    expect(snapshots.at(-1)).toEqual([]);
+    expect(snapshots.at(-1)).toEqual([{ content: "Follow up.", delivery: "run" }]);
+
+    controller.addTurn("Follow up.");
+    controller.syncRuntimeQueue(queue);
+
+    expect(snapshots.at(-1)).toEqual([
+      { content: "Follow up.", delivery: "turn" },
+      { content: "Follow up.", delivery: "run" },
+    ]);
   });
 });

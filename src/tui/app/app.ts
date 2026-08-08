@@ -227,10 +227,12 @@ export class KanaTuiApp {
         this.options.modelManagement?.getSettings(),
       ),
     });
-    this.queuedInputs = new QueuedInputController((inputs) => {
+    this.queuedInputs = new QueuedInputController((inputs, scheduled) => {
       this.editor.setQueuedInputs(inputs);
+      this.editor.setScheduledInputSummary(scheduled);
       this.tui.requestRender();
     });
+    this.queuedInputs.syncRuntimeQueue(this.conversation.inputQueue);
     this.layout = new AppLayout({
       main: this.transcript,
       bottom: this.editor,
@@ -848,7 +850,6 @@ export class KanaTuiApp {
         this.running = true;
         this.agentEvents.resetRun();
         if (event.source === "user" && event.input) {
-          this.queuedInputs.startRun(event.input.content);
           this.transcript.addChild(new UserMessageBlock(event.input.content));
         } else if (event.source === "scheduled" && event.input) {
           this.transcript.addChild(
@@ -897,6 +898,10 @@ export class KanaTuiApp {
             mode: this.toolApproval.mode,
           });
         }
+        break;
+
+      case "input_queue_changed":
+        this.queuedInputs.syncRuntimeQueue(event.queue);
         break;
     }
   }
@@ -951,11 +956,9 @@ export class KanaTuiApp {
     if (this.conversation.canSteer) {
       this.editor.addToHistory(prompt);
       this.editor.clear();
-      const queuedInputId = this.queuedInputs.add(prompt, "turn");
+      const queuedInputId = this.queuedInputs.addTurn(prompt);
       const disposition = await this.conversation.steer({ role: "user", content: prompt });
-      if (disposition === "queued") {
-        this.queuedInputs.moveToRun(queuedInputId);
-      } else {
+      if (disposition !== "queued") {
         this.queuedInputs.remove(queuedInputId);
       }
       return;
@@ -977,7 +980,6 @@ export class KanaTuiApp {
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
-    this.queuedInputs.add(prompt, "run");
     this.conversation.queueInput({ role: "user", content: prompt });
   }
 

@@ -15,6 +15,17 @@ export type ConversationRunSource = "user" | "scheduled" | "compaction";
 
 export type ConversationInputDisposition = "steered" | "queued" | "discarded";
 
+export type ConversationPendingInput = {
+  id: string;
+  kind: "queued" | "deferred" | "scheduled";
+  content: string;
+};
+
+export type ConversationInputQueueSnapshot = {
+  pending: ConversationPendingInput[];
+  scheduled: WakeEvent[];
+};
+
 export type ConversationRuntimeEvent =
   | {
       type: "run_start";
@@ -40,6 +51,10 @@ export type ConversationRuntimeEvent =
       type: "session_changed";
       action: "new" | "fork" | "resume";
       session: ConversationSessionSnapshot;
+    }
+  | {
+      type: "input_queue_changed";
+      queue: ConversationInputQueueSnapshot;
     };
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
@@ -73,15 +88,19 @@ export type ConversationRuntimeOptions<TConfiguration> = {
 };
 
 type PendingSubmission = {
+  id: string;
   sessionId?: string;
   input: UserMessage;
   source: Exclude<ConversationRunSource, "compaction">;
+  kind: ConversationPendingInput["kind"];
+  displayContent: string;
 };
 
 export class ConversationRuntime<TConfiguration = never> {
   private readonly listeners = new Set<ConversationRuntimeListener>();
   private readonly wakeScheduler: WakeScheduler;
   private readonly unsubscribeWakeEvents: () => void;
+  private readonly unsubscribeWakeState: () => void;
   private readonly pendingSubmissions: PendingSubmission[] = [];
   private readonly getLogger: () => Logger;
   private agent: Agent;
@@ -99,6 +118,9 @@ export class ConversationRuntime<TConfiguration = never> {
     this.agent = this.buildAgent(this.sessionData?.messages, this.sessionData?.contextCheckpoint);
     this.unsubscribeWakeEvents = this.wakeScheduler.subscribe((event) => {
       this.queueWakeEvent(event);
+    });
+    this.unsubscribeWakeState = this.wakeScheduler.subscribeState(() => {
+      this.emitInputQueueChanged();
     });
   }
 
@@ -134,6 +156,23 @@ export class ConversationRuntime<TConfiguration = never> {
       this.activeSource !== "compaction" &&
       this.agent.state.isRunning
     );
+  }
+
+  get inputQueue(): ConversationInputQueueSnapshot {
+    const sessionId = this.sessionId;
+    return {
+      pending: this.pendingSubmissions
+        .filter((submission) => submission.sessionId === sessionId)
+        .map(({ id, kind, displayContent }) => ({
+          id,
+          kind,
+          content: displayContent,
+        })),
+      scheduled:
+        sessionId === undefined || this.options.scheduledRuns === false
+          ? []
+          : this.wakeScheduler.list(sessionId),
+    };
   }
 
   setBeforeToolExecution(hook: BeforeToolExecutionHook): void {
@@ -287,11 +326,13 @@ export class ConversationRuntime<TConfiguration = never> {
     this.notifyCanStartQueuedRun();
   }
 
-  queueInput(input: UserMessage): void {
-    this.queueSubmission({
+  queueInput(input: UserMessage): string {
+    return this.queueSubmission({
       sessionId: this.sessionId,
       input,
       source: "user",
+      kind: "queued",
+      displayContent: input.content,
     });
   }
 
@@ -316,6 +357,8 @@ export class ConversationRuntime<TConfiguration = never> {
       sessionId,
       input,
       source: "user",
+      kind: "deferred",
+      displayContent: input.content,
     });
     return "queued";
   }
@@ -328,6 +371,7 @@ export class ConversationRuntime<TConfiguration = never> {
 
     this.stopping = true;
     this.unsubscribeWakeEvents();
+    this.unsubscribeWakeState();
     this.pendingSubmissions.length = 0;
     this.agent.abort();
     await this.agent.waitForIdle();
@@ -390,6 +434,7 @@ export class ConversationRuntime<TConfiguration = never> {
       action,
       session: this.session as ConversationSessionSnapshot,
     });
+    this.emitInputQueueChanged();
     this.log("info", "conversation.session_changed", { action });
   }
 
@@ -422,6 +467,7 @@ export class ConversationRuntime<TConfiguration = never> {
     }
 
     this.queueSubmission({
+      id: event.id,
       sessionId: event.sessionId,
       input: {
         role: "user",
@@ -429,20 +475,28 @@ export class ConversationRuntime<TConfiguration = never> {
         source: "scheduled",
       },
       source: "scheduled",
+      kind: "scheduled",
+      displayContent: event.message,
     });
   }
 
-  private queueSubmission(submission: PendingSubmission): void {
+  private queueSubmission(submission: Omit<PendingSubmission, "id"> & { id?: string }): string {
     if (this.stopping) {
-      return;
+      return submission.id ?? crypto.randomUUID();
     }
 
-    this.pendingSubmissions.push(structuredClone(submission));
+    const queuedSubmission: PendingSubmission = {
+      ...structuredClone(submission),
+      id: submission.id ?? crypto.randomUUID(),
+    };
+    this.pendingSubmissions.push(queuedSubmission);
     this.log("info", "conversation.input_queued", {
       source: submission.source,
       pendingInputCount: this.pendingSubmissions.length,
     });
+    this.emitInputQueueChanged();
     void this.drainPendingSubmissions();
+    return queuedSubmission.id;
   }
 
   private async drainPendingSubmissions(): Promise<void> {
@@ -457,6 +511,7 @@ export class ConversationRuntime<TConfiguration = never> {
         if (!submission) {
           return;
         }
+        this.emitInputQueueChanged();
         if (submission.sessionId !== this.sessionId) {
           continue;
         }
@@ -484,11 +539,26 @@ export class ConversationRuntime<TConfiguration = never> {
       this.wakeScheduler.cancelSession(sessionId);
     }
 
+    let pendingChanged = false;
     for (let index = this.pendingSubmissions.length - 1; index >= 0; index -= 1) {
       if (this.pendingSubmissions[index]?.sessionId === sessionId) {
         this.pendingSubmissions.splice(index, 1);
+        pendingChanged = true;
       }
     }
+    if (pendingChanged) {
+      this.emitInputQueueChanged();
+    }
+  }
+
+  private emitInputQueueChanged(): void {
+    if (this.stopping) {
+      return;
+    }
+    this.emit({
+      type: "input_queue_changed",
+      queue: this.inputQueue,
+    });
   }
 
   private assertCanStartRun(): void {

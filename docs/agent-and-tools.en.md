@@ -160,7 +160,7 @@ MCP results are never persisted verbatim. The adapter separately bounds content 
 
 `list`, `glob`, `grep`, `read`, `write`, `edit`, and `bash` resolve relative paths against the tool `root` (Kana's startup directory) and accept absolute paths. They are not workspace sandboxes: relative paths may escape the root, symlinks may resolve outside it, and `bash.cwd`, `glob.cwd`, and `grep.path` may also be outside. Treat approval as interactive confirmation, not filesystem isolation.
 
-`schedule_wake` does not write to disk or restore undelivered events. If the Agent is running when an event becomes due, the TUI puts it in the pending-submission FIFO shared with Tab input and starts new runs in enqueue order after the current `agent_end`. Enter steering deferred by abort or the turn limit falls back to the same FIFO tail. Creating, forking, or resuming another session cancels the prior session's undelivered wakes and pending input. It does not require tool approval.
+`schedule_wake` does not write to disk or restore undelivered events. The in-process scheduler supports due-time-ordered listing, cancellation by stable ID, and state subscriptions for TUI display and later management surfaces; none of these APIs changes its temporary semantics. If the Agent is running when an event becomes due, the TUI puts it in the pending-submission FIFO shared with Tab input and starts new runs in enqueue order after the current `agent_end`. Enter steering deferred by abort or the turn limit falls back to the same FIFO tail. Creating, forking, or resuming another session cancels the prior session's undelivered wakes and pending input. It does not require tool approval.
 
 ## Constraints for custom tools
 

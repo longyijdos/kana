@@ -75,6 +75,8 @@ export {
 } from "./context";
 export {
   type ConversationInputDisposition,
+  type ConversationInputQueueSnapshot,
+  type ConversationPendingInput,
   type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,

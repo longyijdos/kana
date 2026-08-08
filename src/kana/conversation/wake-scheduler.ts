@@ -15,7 +15,10 @@ export type ScheduleWakeOptions = {
 
 export type WakeScheduler = {
   schedule(options: ScheduleWakeOptions): WakeEvent;
+  list(sessionId?: string): WakeEvent[];
+  cancel(id: string): boolean;
   subscribe(listener: (event: WakeEvent) => void): () => void;
+  subscribeState(listener: () => void): () => void;
   cancelSession(sessionId: string): void;
   dispose(): void;
 };
@@ -43,11 +46,12 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
   const events = new Map<string, ScheduledWakeEvent>();
   const keys = new Map<string, string>();
   const listeners = new Set<(event: WakeEvent) => void>();
+  const stateListeners = new Set<() => void>();
 
-  const cancel = (id: string): void => {
+  const remove = (id: string): boolean => {
     const event = events.get(id);
     if (!event) {
-      return;
+      return false;
     }
 
     cancelTimeout(event.timer);
@@ -56,6 +60,17 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
     if (key && keys.get(key) === id) {
       keys.delete(key);
     }
+    return true;
+  };
+
+  const publishState = (): void => {
+    for (const listener of stateListeners) {
+      try {
+        listener();
+      } catch {
+        // Schedule observers cannot change timer creation, replacement, or cleanup.
+      }
+    }
   };
 
   return {
@@ -63,7 +78,7 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
       if (scheduleOptions.key) {
         const previousId = keys.get(keyFor(scheduleOptions.sessionId, scheduleOptions.key));
         if (previousId) {
-          cancel(previousId);
+          remove(previousId);
         }
       }
 
@@ -78,15 +93,12 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
       };
       const timer = scheduleTimeout(
         () => {
-          events.delete(id);
-          const key = event.key ? keyFor(event.sessionId, event.key) : undefined;
-          if (key && keys.get(key) === id) {
-            keys.delete(key);
-          }
+          remove(id);
 
           for (const listener of listeners) {
             listener(structuredClone(event));
           }
+          publishState();
         },
         Math.max(0, dueAt.getTime() - now().getTime()),
       );
@@ -95,25 +107,55 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
       if (event.key) {
         keys.set(keyFor(event.sessionId, event.key), id);
       }
+      publishState();
 
       return structuredClone(event);
+    },
+    list(sessionId) {
+      return [...events.values()]
+        .filter((event) => sessionId === undefined || event.sessionId === sessionId)
+        .sort(
+          (left, right) =>
+            left.dueAt.getTime() - right.dueAt.getTime() || left.id.localeCompare(right.id),
+        )
+        .map(({ timer: _timer, ...event }) => structuredClone(event));
+    },
+    cancel(id) {
+      const removed = remove(id);
+      if (removed) {
+        publishState();
+      }
+      return removed;
     },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    subscribeState(listener) {
+      stateListeners.add(listener);
+      return () => stateListeners.delete(listener);
+    },
     cancelSession(sessionId) {
+      let changed = false;
       for (const event of events.values()) {
         if (event.sessionId === sessionId) {
-          cancel(event.id);
+          changed = remove(event.id) || changed;
         }
+      }
+      if (changed) {
+        publishState();
       }
     },
     dispose() {
+      const changed = events.size > 0;
       for (const id of events.keys()) {
-        cancel(id);
+        remove(id);
+      }
+      if (changed) {
+        publishState();
       }
       listeners.clear();
+      stateListeners.clear();
     },
   };
 }

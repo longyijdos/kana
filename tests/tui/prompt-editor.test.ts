@@ -313,28 +313,35 @@ describe("prompt editor", () => {
     expect(queued).toHaveLength(1);
   });
 
-  test("renders queued turn and run previews below status and hides them for slash commands", () => {
+  test("renders queued and scheduled previews below status and hides them for slash commands", () => {
     const editor = new Editor({ model: "test-model" });
     editor.updateStatus({ phase: "responding", running: true });
     editor.setQueuedInputs([
       { delivery: "turn", content: "Use the new direction." },
       { delivery: "run", content: "Check types after this run." },
+      { delivery: "scheduled", content: "Check task progress." },
       { delivery: "run", content: "First line\nSecond line" },
       { delivery: "run", content: "Fourth input" },
       { delivery: "run", content: "Fifth input" },
-      { delivery: "run", content: "Sixth input" },
     ]);
+    editor.setScheduledInputSummary({
+      count: 3,
+      nextAt: new Date(2026, 7, 8, 14, 30),
+    });
 
     const rendered = editor.render(48, 14).map(stripAnsi);
 
     expect(rendered).toContain("Queued inputs · 6");
     expect(rendered).toContain("  next turn · Use the new direction.");
-    expect(rendered).toContain("  next run  · First line Second line");
-    expect(rendered.at(-1)).toMatch(/… \d+ more/);
+    expect(rendered).toContain("  scheduled · Check task progress.");
+    expect(rendered.at(-2)).toMatch(/… \d+ more/);
+    expect(rendered.at(-1)).toBe("Scheduled · 3 · next 14:30");
     expect(rendered.length).toBeLessThanOrEqual(14);
 
     editor.setText("/");
-    expect(stripAnsi(editor.render(48, 14).join("\n"))).not.toContain("Queued inputs");
+    const slashRendered = stripAnsi(editor.render(48, 14).join("\n"));
+    expect(slashRendered).not.toContain("Queued inputs");
+    expect(slashRendered).not.toContain("Scheduled · 3");
   });
 
   test("moves up within multiline input before switching history", () => {

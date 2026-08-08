@@ -235,7 +235,30 @@ describe("ConversationRuntime", () => {
       afterMinutes: 1,
       message: "Scheduled after the queued input.",
     });
+    expect(runtime.inputQueue.pending).toMatchObject([
+      {
+        kind: "queued",
+        content: "Queued with Tab.",
+      },
+    ]);
+    expect(runtime.inputQueue.scheduled).toMatchObject([
+      {
+        sessionId: "session-a",
+        message: "Scheduled after the queued input.",
+      },
+    ]);
     timers.get(1)?.();
+    expect(runtime.inputQueue.pending).toMatchObject([
+      {
+        kind: "queued",
+        content: "Queued with Tab.",
+      },
+      {
+        kind: "scheduled",
+        content: "Scheduled after the queued input.",
+      },
+    ]);
+    expect(runtime.inputQueue.scheduled).toEqual([]);
 
     model.finish(0, "First done.");
     await userRun;
@@ -301,9 +324,11 @@ describe("ConversationRuntime", () => {
   test("falls back to a queued run when steering reaches the turn limit", async () => {
     const model = new ControlledModel();
     const sources: string[] = [];
+    let hostReady = false;
     const runtime = new ConversationRuntime({
       ...createRuntimeOptions(),
       initialSession: { id: "session-a", messages: [], timeline: [] },
+      canStartQueuedRun: () => hostReady,
       createAgent: (options) =>
         new Agent({
           model,
@@ -325,6 +350,14 @@ describe("ConversationRuntime", () => {
     model.finish(0, "First run done.");
     await userRun;
     expect(await steering).toBe("queued");
+    expect(runtime.inputQueue.pending).toMatchObject([
+      {
+        kind: "deferred",
+        content: "Follow up.",
+      },
+    ]);
+    hostReady = true;
+    runtime.notifyCanStartQueuedRun();
     await waitFor(() => model.contexts.length === 2);
     expect(model.contexts[1]?.messages.at(-1)).toEqual({
       role: "user",
