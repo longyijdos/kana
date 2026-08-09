@@ -32,4 +32,23 @@ describe("tui user message block", () => {
     ]);
     expect(rendered.every((line) => visibleWidth(line) <= 8)).toBe(true);
   });
+
+  test("renders image attachment metadata without exposing encoded bytes", () => {
+    const rendered = new UserMessageBlock({
+      role: "user",
+      content: "",
+      images: [
+        {
+          mimeType: "image/png",
+          data: "eA==",
+          width: 32,
+          height: 16,
+        },
+      ],
+    }).render(48);
+    const plain = rendered.map(stripAnsi);
+
+    expect(plain).toContainEqual(expect.stringContaining("[Image 1 · PNG · 32×16 · 1 KB]"));
+    expect(rendered.join("\n")).not.toContain("eA==");
+  });
 });

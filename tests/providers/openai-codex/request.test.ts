@@ -7,7 +7,18 @@ describe("buildOpenAICodexRequest", () => {
       {
         system: "system",
         messages: [
-          { role: "user", content: "question" },
+          {
+            role: "user",
+            content: "question",
+            images: [
+              {
+                mimeType: "image/png",
+                data: "aGVsbG8=",
+                width: 2,
+                height: 3,
+              },
+            ],
+          },
           {
             role: "assistant",
             content: [
@@ -109,7 +120,10 @@ describe("buildOpenAICodexRequest", () => {
       {
         type: "message",
         role: "user",
-        content: [{ type: "input_text", text: "question" }],
+        content: [
+          { type: "input_text", text: "question" },
+          { type: "input_image", image_url: "data:image/png;base64,aGVsbG8=" },
+        ],
       },
       {
         type: "reasoning",
@@ -180,6 +194,48 @@ describe("buildOpenAICodexRequest", () => {
       role: "developer",
       tools: expect.anything(),
     });
+  });
+
+  test("keeps disabled image attachments explicit without transmitting their bytes", () => {
+    const request = buildOpenAICodexRequest(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "Inspect this.",
+            images: [
+              {
+                mimeType: "image/jpeg",
+                data: "private-image-bytes",
+                width: 32,
+                height: 16,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        provider: "openai-codex",
+        model: "gpt-5.6-luna",
+        credentialProvider: credentials(),
+        imageInput: false,
+      },
+    );
+
+    expect(request.input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "Inspect this." },
+          {
+            type: "input_text",
+            text: "[1 image attachment(s) omitted because image input is disabled.]",
+          },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
   });
 });
 

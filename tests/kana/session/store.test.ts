@@ -104,6 +104,14 @@ describe("Kana session persistence", () => {
       {
         role: "user",
         content: "hi",
+        images: [
+          {
+            mimeType: "image/png",
+            data: "c2VsZi1jb250YWluZWQtaW1hZ2U=",
+            width: 32,
+            height: 16,
+          },
+        ],
       },
       {
         role: "assistant",
@@ -163,6 +171,14 @@ describe("Kana session persistence", () => {
       timestamp: "2026-06-12T00:00:00.000Z",
       message: {
         role: "user",
+        images: [
+          {
+            mimeType: "image/png",
+            data: "c2VsZi1jb250YWluZWQtaW1hZ2U=",
+            width: 32,
+            height: 16,
+          },
+        ],
       },
     });
     expect(secondEntry).toMatchObject({

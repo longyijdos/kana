@@ -266,6 +266,61 @@ describe("prompt editor", () => {
     ]);
   });
 
+  test("attaches images to submissions and renders only their summary", () => {
+    const editor = new Editor();
+    const submissions: unknown[] = [];
+    editor.onSubmit = (submit) => submissions.push(submit);
+    editor.attachImage({
+      mimeType: "image/png",
+      data: "eA==",
+      width: 32,
+      height: 16,
+    });
+    editor.setText("Inspect this.");
+
+    const rendered = stripAnsi(editor.render(60).join("\n"));
+    expect(rendered).toContain("Images · 1 · 32×16 · 1 KB");
+    expect(rendered).not.toContain("eA==");
+
+    editor.handleInput("\r");
+
+    expect(submissions).toEqual([
+      {
+        type: "message",
+        content: "Inspect this.",
+        images: [
+          {
+            mimeType: "image/png",
+            data: "eA==",
+            width: 32,
+            height: 16,
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("uses Ctrl+V only for clipboard images and removes the last image from empty input", () => {
+    const editor = new Editor();
+    let pasteRequests = 0;
+    editor.onPasteClipboard = () => {
+      pasteRequests += 1;
+    };
+    editor.attachImage({
+      mimeType: "image/jpeg",
+      data: "eA==",
+      width: 16,
+      height: 8,
+    });
+
+    editor.handleInput("\x16");
+    expect(pasteRequests).toBe(1);
+    expect(editor.getText()).toBe("");
+
+    editor.handleInput("\x7f");
+    expect(stripAnsi(editor.render(60).join("\n"))).not.toContain("Images · 1");
+  });
+
   test("collapses long pastes while submitting the original text", () => {
     const editor = new Editor();
     const pastedText = "🙂".repeat(1_000);
@@ -863,9 +918,11 @@ describe("prompt commands", () => {
     const helpEntryCount = PROMPT_COMMANDS.length + PROMPT_SHORTCUTS.length;
 
     expect(createRandomPromptPlaceholder(() => 0)).toBe("Try /quit — Exit Kana.");
-    expect(createRandomPromptPlaceholder(() => 14 / helpEntryCount)).toBe(
-      "Try /usage — Show session, project, or global API usage.",
-    );
+    expect(
+      createRandomPromptPlaceholder(
+        () => PROMPT_COMMANDS.findIndex((command) => command.name === "usage") / helpEntryCount,
+      ),
+    ).toBe("Try /usage — Show session, project, or global API usage.");
     expect(createRandomPromptPlaceholder(() => 0.999)).toBe(
       "Try !<command> — Run a local bash command.",
     );
@@ -912,6 +969,9 @@ describe("prompt commands", () => {
         },
         {
           name: "schedule",
+        },
+        {
+          name: "image",
         },
         {
           name: "approval",

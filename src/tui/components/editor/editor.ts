@@ -157,10 +157,6 @@ export class Editor implements Component {
     this.images.push(structuredClone(image));
   }
 
-  pasteText(text: string): void {
-    this.applyPaste(text);
-  }
-
   setModel(model: string | undefined): void {
     this.model = model;
   }

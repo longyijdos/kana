@@ -52,6 +52,8 @@ New sessions start with a version-3 header followed by a turn journal with expli
 {"type":"turn_end","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","turnId":"…","outcome":"stop"}
 ```
 
+A user message may include `images`, with each entry storing `mimeType`, raw base64 `data`, `width`, and `height`. These bytes are inline rather than external file references, so a session remains self-contained after the source file or clipboard changes. The tradeoff is larger JSONL files—base64 adds overhead on top of the normalized image—so the sessions directory may grow noticeably in image-heavy conversations. Context token estimation uses 32-pixel image patches instead of base64 length. Compaction requests include only each image's index, MIME type, dimensions, and `contentOmitted: true`; they never copy the encoded bytes into the summary prompt.
+
 Every record's `parentId` must name the immediately preceding timeline entry; loading follows file order rather than replaying branches. At most one turn may be open, and `turn_end.turnId` must match it. Outcomes are the Agent's `stop`, `length`, `aborted`, `error`, or `turn_limit`, recovery's `interrupted`, and a snapshot's `snapshot`.
 
 A compaction reason is `threshold` for automatic budget-triggered work, `provider_limit` for provider-limit recovery, or `manual` for `/compact`. An entry's physical position records when compaction happened, while `coversThroughId` names the last message actually covered by its summary, so they may differ. For example, a marker after `m4` with `coversThroughId = m2` resumes the model projection as `summary + m3 + m4 + later messages`. Every raw message remains in JSONL, allowing the TUI to render complete history in original order.

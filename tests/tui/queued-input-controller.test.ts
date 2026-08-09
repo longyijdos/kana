@@ -12,10 +12,21 @@ describe("QueuedInputController", () => {
     });
     const nextAt = new Date("2026-08-08T08:05:00.000Z");
 
-    controller.addTurn("Queued with Enter.");
+    controller.addTurn({
+      role: "user",
+      content: "Queued with Enter.",
+      images: [
+        {
+          mimeType: "image/png",
+          data: "aW1hZ2U=",
+          width: 32,
+          height: 16,
+        },
+      ],
+    });
     controller.syncRuntimeQueue({
       pending: [
-        { id: "tab-1", kind: "queued", content: "Queued with Tab." },
+        { id: "tab-1", kind: "queued", content: "Queued with Tab.", imageCount: 2 },
         {
           id: "wake-1",
           kind: "scheduled",
@@ -43,8 +54,8 @@ describe("QueuedInputController", () => {
     });
 
     expect(snapshots.at(-1)).toEqual([
-      { content: "Queued with Enter.", delivery: "turn" },
-      { content: "Queued with Tab.", delivery: "run" },
+      { content: "Queued with Enter.", imageCount: 1, delivery: "turn" },
+      { content: "Queued with Tab.", imageCount: 2, delivery: "run" },
       { content: "Check progress.", delivery: "scheduled" },
     ]);
     expect(scheduled.at(-1)).toEqual({ count: 2, nextAt });

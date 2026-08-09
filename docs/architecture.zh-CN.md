@@ -73,7 +73,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
   → Tool.execute → ToolResultMessage → 下一轮模型调用
 ```
 
-`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。助手内容块可以是 `text`、`thinking`、`tool_call` 或供应商托管的 `hosted_tool`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供需要不透明 replay state 的 Responses adapter 使用；`core` 和 session 存储不解释该值。
+`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。用户消息可以携带 `UserImage` 附件，以 MIME 类型、内联 base64 数据和尺寸组成与供应商无关的自包含历史；各 provider adapter 再决定将其映射到通用 wire protocol，还是生成明确的不支持提示。助手内容块可以是 `text`、`thinking`、`tool_call` 或供应商托管的 `hosted_tool`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供需要不透明 replay state 的 Responses adapter 使用；`core` 和 session 存储不解释该值。
 
 供应商首先产生 `AssistantMessageEvent`。事件包含增量 `delta` 和完整 `snapshot`：前者适合增量呈现，后者让消费者不必重复实现消息拼接。`agent` 将其转换为更高一层的 `AgentEvent`，并额外发出回合、回合输入、工具开始/更新/结束和整个运行结束事件。`AgentEventStream` 与模型流都同时支持 `for await` 消费事件和 `result()` 获取最终值。
 
@@ -85,7 +85,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 ## 模型与供应商适配
 
-`core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。通用 `ModelMetadata.protocol` 标识 `responses` 或 `chat-completions` wire protocol，`supportsHostedWebSearch` 则独立声明所选模型的托管搜索能力。Provider 可以据此选择共享 codec，而无需让 `core` 包含供应商专用路由。`providers/index.ts` 是集中式工厂；产品配置支持 `deepseek` 与 `openai-codex`，`MockModel` 用于测试并使用 null protocol。
+`core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。通用 `ModelMetadata.protocol` 标识 `responses` 或 `chat-completions` wire protocol，`supportsHostedWebSearch` 和 `supportsImageInput` 则独立声明所选模型的能力，不与用户配置混合。Provider 可以据此选择共享 codec，而无需让 `core` 包含供应商专用路由。`providers/index.ts` 是集中式工厂；产品配置支持 `deepseek` 与 `openai-codex`，`MockModel` 用于测试并使用 null protocol。
 
 `DeepSeekModel` 根据 metadata 将 V4 Flash 路由到 `/responses`，将 V4 Pro 路由到 `/chat/completions`。Flash 会把通用历史转换为语义化 Responses input，把已完成的供应商 item 保存为不透明 `providerState` 以供无状态 replay，在启用时声明托管 `web_search`，并使用共享的 `src/providers/responses` 语义 SSE 处理器。该处理器按 index 与 item ID 关联输出，把 reasoning、消息、函数调用、托管搜索、终态和 usage 映射为有序 core event。
 
@@ -203,6 +203,8 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 ## TUI 架构
 
 `ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台允许后按顺序 drain 当前 session 的 pending submission FIFO。Tab 输入、到期 wake 和 deferred steering 共用这条新 run 队列，Enter steering 则先进入 Agent 的 run-local queue。Runtime 为每个 pending item 保留稳定 ID、来源、安全显示文本；scheduled item 还保留到期时间，并与进程内 scheduler 的未来 wake 列表一起发布为只读快照。它提供当前 session 的用户定时创建与按 ID 取消边界，取消会同步检查未来 timer 和已到期 pending 项，因此执行顺序、管理状态与 TUI 展示不会分叉。它发布与前端无关的 run、Agent event、input-queue 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`QueuedInputController` 只持有 run-local 的可视 `next turn` 项，并将 runtime 快照投影为 `next run`、到期 `scheduled` 和未来 wake 摘要；`ScheduledMessageManagerController` 持有 `/schedule` 的静态管理快照和多步添加/删除流程；`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、进度块与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
+
+剪贴板图片粘贴和 `/image <path>` 会在进入编辑器前汇合到共享图片输入 utility。该边界负责解析运行主机上的路径、解码并限制图片尺寸/字节，最终返回同一种 `UserImage` 表示；只有 macOS 剪贴板 reader 是平台专用实现。
 
 ```text
 ProcessTerminal（raw mode、输入、resize、通知）

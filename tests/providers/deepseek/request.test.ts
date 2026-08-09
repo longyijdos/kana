@@ -26,6 +26,39 @@ describe("buildDeepSeekRequest", () => {
     });
   });
 
+  test("converts image attachments into an explicit text-only fallback", () => {
+    const request = buildDeepSeekRequest(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "",
+            images: [
+              {
+                mimeType: "image/jpeg",
+                data: "private-image-bytes",
+                width: 32,
+                height: 16,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+      },
+    );
+
+    expect(request.messages).toEqual([
+      {
+        role: "user",
+        content: "[1 image attachment(s) omitted because DeepSeek does not support image input.]",
+      },
+    ]);
+    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
+  });
+
   test("prefers the per-request output ceiling over the configured maximum", () => {
     const request = buildDeepSeekRequest(
       {

@@ -3,6 +3,7 @@ import {
   type CompactPolicyInput,
   ContextManager,
   createModelCompactPolicy,
+  estimateContextTokens,
   estimateTextTokens,
   runAgentLoop,
 } from "@/agent";
@@ -240,6 +241,28 @@ describe("ContextManager", () => {
     expect(limited).toContain("[Tool output truncated for model context]");
   });
 
+  test("estimates image patches without counting persisted base64 bytes", () => {
+    const createContext = (data: string): ModelContext => ({
+      messages: [
+        {
+          role: "user",
+          content: "",
+          images: [
+            {
+              mimeType: "image/png",
+              data,
+              width: 33,
+              height: 65,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(estimateContextTokens(createContext("small"))).toBe(20);
+    expect(estimateContextTokens(createContext("x".repeat(100_000)))).toBe(20);
+  });
+
   test("restores the previous checkpoint when summary generation fails", async () => {
     const manager = new ContextManager({
       contextLimit: 4_000,
@@ -301,6 +324,18 @@ describe("model compaction policy", () => {
       previousSummary: "Previous state.",
       messages: [
         {
+          role: "user",
+          content: "Inspect the attached image.",
+          images: [
+            {
+              mimeType: "image/png",
+              data: "private-image-bytes",
+              width: 64,
+              height: 32,
+            },
+          ],
+        },
+        {
           role: "assistant",
           content: [
             { type: "thinking", text: "hidden history" },
@@ -325,6 +360,15 @@ describe("model compaction policy", () => {
     expect(JSON.stringify(capturedContext)).toContain("Previous state.");
     expect(JSON.stringify(capturedContext)).toContain("Visible history");
     expect(JSON.stringify(capturedContext)).toContain("visible tool content");
+    const compactionRequest = capturedContext?.messages[0];
+    expect(compactionRequest?.role).toBe("user");
+    expect(compactionRequest?.role === "user" ? compactionRequest.content : "").toContain(
+      '"contentOmitted":true',
+    );
+    expect(compactionRequest?.role === "user" ? compactionRequest.content : "").toContain(
+      '"width":64',
+    );
+    expect(JSON.stringify(capturedContext)).not.toContain("private-image-bytes");
     expect(JSON.stringify(capturedContext)).not.toContain("hidden history");
     expect(JSON.stringify(capturedContext)).not.toContain("structured result");
     expect(result).toEqual({

@@ -229,7 +229,18 @@ describe("ConversationRuntime", () => {
 
     const userRun = runtime.submit({ role: "user", content: "Start." });
     await waitFor(() => model.contexts.length === 1);
-    runtime.queueInput({ role: "user", content: "Queued with Tab." });
+    runtime.queueInput({
+      role: "user",
+      content: "Queued with Tab.",
+      images: [
+        {
+          mimeType: "image/png",
+          data: "aW1hZ2U=",
+          width: 32,
+          height: 16,
+        },
+      ],
+    });
     wakeScheduler.schedule({
       sessionId: "session-a",
       afterMinutes: 1,
@@ -239,6 +250,7 @@ describe("ConversationRuntime", () => {
       {
         kind: "queued",
         content: "Queued with Tab.",
+        imageCount: 1,
       },
     ]);
     expect(runtime.inputQueue.scheduled).toMatchObject([
@@ -252,6 +264,7 @@ describe("ConversationRuntime", () => {
       {
         kind: "queued",
         content: "Queued with Tab.",
+        imageCount: 1,
       },
       {
         kind: "scheduled",
@@ -266,6 +279,14 @@ describe("ConversationRuntime", () => {
     expect(model.contexts[1]?.messages.at(-1)).toEqual({
       role: "user",
       content: "Queued with Tab.",
+      images: [
+        {
+          mimeType: "image/png",
+          data: "aW1hZ2U=",
+          width: 32,
+          height: 16,
+        },
+      ],
     });
 
     model.finish(1, "Queued input done.");

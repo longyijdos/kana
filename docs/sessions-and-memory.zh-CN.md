@@ -52,6 +52,8 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 {"type":"turn_end","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","turnId":"…","outcome":"stop"}
 ```
 
+用户消息可以包含 `images`；每一项保存 `mimeType`、原始 base64 `data`、`width` 和 `height`。图片字节以内联方式保存，而不是引用外部文件，因此即使源文件或剪贴板之后变化，会话仍然自包含。代价是 JSONL 会增大——base64 还会在规范化后的图片大小上增加编码开销——图片较多的会话可能明显占用空间。上下文 token 估算使用 32 像素图片 patch，不按 base64 长度计算；压缩请求只包含每张图片的序号、MIME 类型、尺寸和 `contentOmitted: true`，不会把编码字节复制进摘要 prompt。
+
 每条记录的 `parentId` 必须指向紧邻的前一条时间线记录；加载仍按文件顺序进行，不根据 `parentId` 重放分支。同一时刻最多有一个打开的 turn，`turn_end.turnId` 必须匹配它。终态可以是 Agent 的 `stop`、`length`、`aborted`、`error`、`turn_limit`，恢复生成的 `interrupted`，或快照的 `snapshot`。
 
 压缩记录的 `reason` 可以是自动阈值触发的 `threshold`、provider 超限恢复的 `provider_limit`，或 `/compact` 触发的 `manual`。记录的物理位置表示压缩何时发生，`coversThroughId` 则指向摘要实际覆盖的最后一条 message，因此两者可以不同。例如 marker 写在 `m4` 后但 `coversThroughId = m2` 时，恢复给模型的 projection 是 `summary + m3 + m4 + 后续消息`。所有原始 message 仍留在 JSONL 中，TUI 也能按原顺序显示完整历史。
