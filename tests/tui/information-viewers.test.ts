@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaLaunchMode, KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
+import { PROMPT_SHORTCUTS } from "../../src/tui/components/editor/commands";
 import { color, stripAnsi } from "../../src/tui/render";
 import type { Component, Terminal } from "../../src/tui/runtime";
 import { tuiTheme } from "../../src/tui/theme";
@@ -33,9 +34,16 @@ describe("information viewers", () => {
 
     internal.tui.getFocus()?.handleInput?.("\x1b[F");
     const scrolled = internal.layout.render(80, 24).map(stripAnsi);
+    const tabShortcut = PROMPT_SHORTCUTS.find((shortcut) => shortcut.input === "Tab");
+
+    if (!tabShortcut) {
+      throw new Error("Missing Tab shortcut");
+    }
 
     expect(
-      scrolled.some((line) => line.includes("Tab") && line.includes("queue for the next run")),
+      scrolled.some(
+        (line) => line.includes(tabShortcut.input) && line.includes(tabShortcut.description),
+      ),
     ).toBe(true);
     expect(
       scrolled.some(
