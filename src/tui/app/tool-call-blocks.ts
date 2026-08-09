@@ -1,112 +1,139 @@
 import type { AssistantMessage, ToolCallContent } from "@/core";
 import { ToolCallBlock, type Transcript } from "../components";
+import { formatExplorationToolActivity } from "../tools";
 
 export class ToolCallBlocks {
-  private readonly pendingTools = new Map<string, ToolCallBlock>();
+  private readonly preparedCalls = new Map<string, ToolCallContent>();
+  private readonly runningBlocks = new Map<string, ToolCallBlock>();
 
   constructor(private readonly transcript: Transcript) {}
 
   clear(): void {
     this.stopTimers();
-    this.pendingTools.clear();
+    this.preparedCalls.clear();
+    this.runningBlocks.clear();
     this.transcript.finishExplorationPhase();
   }
 
+  discardPrepared(): void {
+    this.preparedCalls.clear();
+  }
+
+  registerFromMessage(message: AssistantMessage): void {
+    for (const content of message.content) {
+      if (content.type === "tool_call") {
+        this.register(content);
+      }
+    }
+  }
+
+  register(toolCall: ToolCallContent): void {
+    this.preparedCalls.set(toolCall.id, structuredClone(toolCall));
+    this.finishPriorExplorationFor(toolCall);
+  }
+
+  noteCallStreamStarted(toolCall: ToolCallContent): void {
+    this.finishPriorExplorationFor(toolCall);
+  }
+
   hasActiveTimers(): boolean {
-    return [...this.pendingTools.values()].some((block) => block.hasActiveTimer());
+    return [...this.runningBlocks.values()].some((block) => block.hasActiveTimer());
   }
 
   stopTimers(): void {
-    for (const block of this.pendingTools.values()) {
+    for (const block of this.runningBlocks.values()) {
       block.stopTimer();
     }
   }
 
-  markPendingCanceled(): void {
-    for (const block of this.pendingTools.values()) {
+  markActiveCanceled(): void {
+    for (const block of this.runningBlocks.values()) {
       block.markCanceled();
     }
   }
 
-  createOrUpdateFromMessage(message: AssistantMessage): void {
-    for (const content of message.content) {
-      if (content.type !== "tool_call") {
-        continue;
-      }
-
-      let block = this.pendingTools.get(content.id);
-
-      if (!block) {
-        block = new ToolCallBlock(content);
-        this.pendingTools.set(content.id, block);
-        this.addBlock(block);
-      } else {
-        block.updateArgs(content.args);
-      }
-    }
-  }
-
   markStarted(toolCallId: string, toolName: string, args: unknown): void {
-    const block = this.getOrCreate(toolCallId, toolName, args);
+    const existing = this.runningBlocks.get(toolCallId);
+    if (existing) {
+      existing.updateArgs(args);
+      return;
+    }
 
+    const toolCall = this.preparedCalls.get(toolCallId) ?? {
+      type: "tool_call",
+      id: toolCallId,
+      name: toolName,
+      args,
+    };
+    const block = new ToolCallBlock(toolCall);
     block.updateArgs(args);
-    block.setTranscriptVisible(true);
     block.markExecutionStarted();
-  }
-
-  freezePreparation(toolCallId: string): void {
-    const block = this.pendingTools.get(toolCallId);
-    block?.setTranscriptVisible(true);
-    block?.freezePreparation();
+    this.preparedCalls.delete(toolCallId);
+    this.runningBlocks.set(toolCallId, block);
+    this.addBlock(block);
   }
 
   updatePartialResult(toolCallId: string, result: unknown): void {
-    const block = this.pendingTools.get(toolCallId);
-    block?.setTranscriptVisible(true);
-    block?.updatePartialResult(result);
+    this.runningBlocks.get(toolCallId)?.updatePartialResult(result);
   }
 
-  updateResult(toolCallId: string, result: unknown, isError: boolean): void {
-    const block = this.pendingTools.get(toolCallId);
-    block?.updateResult(result, isError);
-    block?.setTranscriptVisible(true);
-    const activity = block?.getExplorationActivity();
+  updateResult(toolCallId: string, toolName: string, result: unknown, isError: boolean): void {
+    let block = this.runningBlocks.get(toolCallId);
+
+    if (block) {
+      block.updateResult(result, isError);
+    } else {
+      // Validation, approval, or cancellation can finish a fully parsed call
+      // before execution_start. Keep the terminal outcome visible without
+      // exposing a provisional tool block.
+      const toolCall = this.preparedCalls.get(toolCallId) ?? {
+        type: "tool_call",
+        id: toolCallId,
+        name: toolName,
+        args: undefined,
+      };
+      block = new ToolCallBlock(toolCall);
+      block.updateResult(result, isError);
+      this.addBlock(block);
+    }
+
+    const activity = block.getExplorationActivity();
     if (activity?.state === "canceled") {
       this.transcript.cancelExplorationPhase();
     } else if (isError && activity === undefined) {
       this.transcript.finishExplorationPhase();
     }
-    this.pendingTools.delete(toolCallId);
-  }
-
-  private getOrCreate(toolCallId: string, toolName: string, args: unknown): ToolCallBlock {
-    let block = this.pendingTools.get(toolCallId);
-
-    if (!block) {
-      const toolCall: ToolCallContent = {
-        type: "tool_call",
-        id: toolCallId,
-        name: toolName,
-        args,
-      };
-      block = new ToolCallBlock(toolCall);
-      this.pendingTools.set(toolCallId, block);
-      this.addBlock(block);
-    }
-
-    return block;
+    this.preparedCalls.delete(toolCallId);
+    this.runningBlocks.delete(toolCallId);
+    this.finishExplorationBeforeNextPreparedCall();
   }
 
   private addBlock(block: ToolCallBlock): void {
     if (block.getExplorationActivity()) {
-      // Start the phase immediately, but keep streamed arguments provisional.
-      // The stable item appears only at toolcall_end or an execution fallback.
-      if (this.transcript.startExplorationPhase()) {
-        block.setTranscriptVisible(false);
-      }
+      this.transcript.startExplorationPhase();
     } else {
       this.transcript.finishExplorationPhase();
     }
     this.transcript.addChild(block);
+  }
+
+  private finishPriorExplorationFor(toolCall: ToolCallContent): void {
+    // A non-exploration call is a semantic boundary as soon as its name is
+    // known. Waiting for execution_start would incorrectly include approval
+    // and queue time in the preceding Explore timer.
+    if (toolCall.name && !formatExplorationToolActivity(toolCall)) {
+      this.transcript.finishExplorationPhase();
+    }
+  }
+
+  private finishExplorationBeforeNextPreparedCall(): void {
+    if (this.runningBlocks.size > 0) {
+      return;
+    }
+
+    const nextCall = this.preparedCalls.values().next().value;
+    if (nextCall) {
+      this.finishPriorExplorationFor(nextCall);
+    }
   }
 }

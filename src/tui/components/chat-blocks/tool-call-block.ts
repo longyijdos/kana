@@ -17,14 +17,12 @@ import type { ContentView } from "../content-viewer";
 import type { ToolActivityItem } from "./tool-activity-group";
 
 export class ToolCallBlock implements Component {
-  private executionStarted = false;
   private canceled = false;
   private result?: unknown;
   private partialResult?: unknown;
   private hasResult = false;
   private isError = false;
-  private transcriptVisible = true;
-  private readonly phaseTimer: ElapsedTimer;
+  private readonly executionTimer: ElapsedTimer;
   private renderVersion = 0;
   private cachedWidth?: number;
   private cachedVersion?: number;
@@ -35,8 +33,7 @@ export class ToolCallBlock implements Component {
     private readonly toolCall: ToolCallContent,
     now: Clock = Date.now,
   ) {
-    this.phaseTimer = new ElapsedTimer(now);
-    this.phaseTimer.start();
+    this.executionTimer = new ElapsedTimer(now);
   }
 
   updateArgs(args: unknown): void {
@@ -44,28 +41,9 @@ export class ToolCallBlock implements Component {
     this.invalidate();
   }
 
-  setTranscriptVisible(visible: boolean): void {
-    if (this.transcriptVisible === visible) {
-      return;
-    }
-
-    this.transcriptVisible = visible;
-    this.invalidate();
-  }
-
   markExecutionStarted(): void {
-    this.executionStarted = true;
     this.canceled = false;
-    this.phaseTimer.start();
-    this.invalidate();
-  }
-
-  freezePreparation(): void {
-    if (this.executionStarted || this.hasResult) {
-      return;
-    }
-
-    this.phaseTimer.stop();
+    this.executionTimer.start();
     this.invalidate();
   }
 
@@ -80,12 +58,12 @@ export class ToolCallBlock implements Component {
     this.isError = isError;
     this.canceled = false;
     this.partialResult = undefined;
-    this.phaseTimer.stop();
+    this.executionTimer.stop();
     this.invalidate();
   }
 
   stopTimer(): void {
-    this.phaseTimer.stop();
+    this.executionTimer.stop();
   }
 
   markCanceled(): void {
@@ -95,12 +73,12 @@ export class ToolCallBlock implements Component {
 
     this.canceled = true;
     this.partialResult = undefined;
-    this.phaseTimer.stop();
+    this.executionTimer.stop();
     this.invalidate();
   }
 
   hasActiveTimer(): boolean {
-    return this.phaseTimer.active;
+    return this.executionTimer.active;
   }
 
   invalidate(): void {
@@ -112,13 +90,8 @@ export class ToolCallBlock implements Component {
   }
 
   render(width: number, _availableHeight?: number): string[] {
-    if (!this.transcriptVisible) {
-      return [];
-    }
-
     const state = this.currentState();
-    const elapsedSeconds =
-      state === "preparing" || state === "running" ? this.phaseTimer.elapsedSeconds() : undefined;
+    const elapsedSeconds = state === "running" ? this.executionTimer.elapsedSeconds() : undefined;
 
     if (
       this.cachedLines &&
@@ -172,10 +145,6 @@ export class ToolCallBlock implements Component {
   }
 
   getExplorationActivity(): ToolActivityItem | undefined {
-    if (!this.transcriptVisible) {
-      return undefined;
-    }
-
     const state = this.currentState();
     if (state === "failed") {
       return undefined;
@@ -192,8 +161,7 @@ export class ToolCallBlock implements Component {
     return {
       ...activity,
       state,
-      elapsedSeconds:
-        state === "preparing" || state === "running" ? this.phaseTimer.elapsedSeconds() : undefined,
+      elapsedSeconds: state === "running" ? this.executionTimer.elapsedSeconds() : undefined,
     };
   }
 
@@ -209,7 +177,7 @@ export class ToolCallBlock implements Component {
       return "canceled";
     }
 
-    return this.executionStarted ? "running" : "preparing";
+    return "running";
   }
 
   private hasInspectableOutput(): boolean {

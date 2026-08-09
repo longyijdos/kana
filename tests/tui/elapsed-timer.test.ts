@@ -28,7 +28,7 @@ describe("tui elapsed timer", () => {
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking (2s) (Esc to abort)");
   });
 
-  test("freezes preparation time for approval and restarts it for execution", () => {
+  test("starts local tool elapsed time only when execution begins", () => {
     let now = 0;
     const block = new ToolCallBlock(
       {
@@ -40,11 +40,7 @@ describe("tui elapsed timer", () => {
       () => now,
     );
 
-    now = 2_000;
-    block.freezePreparation();
     now = 5_000;
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Preparing bash (2s)");
-
     block.markExecutionStarted();
     now = 7_000;
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Running (2s) (Esc to abort)");

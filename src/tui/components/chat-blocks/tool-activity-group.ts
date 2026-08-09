@@ -8,7 +8,7 @@ import {
 } from "../../render";
 import { tuiTheme } from "../../theme";
 
-export type ToolActivityState = "preparing" | "running" | "done" | "canceled";
+export type ToolActivityState = "running" | "done" | "canceled";
 
 export type ToolActivityItem = {
   label: string;
@@ -47,9 +47,7 @@ export function renderToolActivityGroup(
     return [];
   }
 
-  const derivedState: ToolActivityGroupState = items.some(
-    (item) => item.state === "preparing" || item.state === "running",
-  )
+  const derivedState: ToolActivityGroupState = items.some((item) => item.state === "running")
     ? "active"
     : items.some((item) => item.state === "canceled")
       ? "canceled"

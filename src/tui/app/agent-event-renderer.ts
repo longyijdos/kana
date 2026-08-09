@@ -75,11 +75,12 @@ export class AgentEventRenderer {
         break;
       case "agent_end":
         if (event.reason === "aborted") {
-          this.toolCallBlocks.markPendingCanceled();
+          this.toolCallBlocks.markActiveCanceled();
           this.options.transcript.cancelExplorationPhase();
         } else {
           this.options.transcript.finishExplorationPhase();
         }
+        this.toolCallBlocks.discardPrepared();
         this.stopActiveTimers(event.reason === "aborted" ? "canceled" : "failed");
         this.activeTools.clear();
         this.options.updateStatus(phaseForAgentEndReason(event.reason), {
@@ -132,7 +133,12 @@ export class AgentEventRenderer {
         this.updateToolStatus();
         break;
       case "tool_execution_end":
-        this.toolCallBlocks.updateResult(event.toolCallId, event.result, event.isError);
+        this.toolCallBlocks.updateResult(
+          event.toolCallId,
+          event.toolName,
+          event.result,
+          event.isError,
+        );
         this.activeTools.delete(event.toolCallId);
         this.toolErrorCount += event.isError ? 1 : 0;
         this.updateToolStatus();
@@ -152,6 +158,7 @@ export class AgentEventRenderer {
       hyperlinks: this.options.hyperlinks,
       groupToolCalls: this.options.groupToolCalls,
     });
+    this.streamingAssistant.showThinking(!hasVisibleAssistantContent(message));
     this.options.transcript.addChild(this.streamingAssistant);
     this.textPresenter.start(message);
     this.options.updateStatus("thinking");
@@ -162,13 +169,26 @@ export class AgentEventRenderer {
       this.handleAssistantStart(event.message);
     }
 
-    if (
-      event.assistantMessageEvent.type === "text_start" ||
-      event.assistantMessageEvent.type === "hosted_tool_start"
-    ) {
+    if (event.assistantMessageEvent.type === "text_start") {
+      this.streamingAssistant?.finishHostedActivity();
       this.options.transcript.finishExplorationPhase();
+    } else if (event.assistantMessageEvent.type === "hosted_tool_start") {
+      this.streamingAssistant?.startHostedActivity();
+      this.options.transcript.finishExplorationPhase();
+    } else if (event.assistantMessageEvent.type === "toolcall_start") {
+      this.streamingAssistant?.finishHostedActivity();
+      const content = event.message.content[event.assistantMessageEvent.contentIndex];
+      if (content?.type === "tool_call") {
+        this.toolCallBlocks.noteCallStreamStarted(content);
+      }
     }
 
+    this.streamingAssistant?.showThinking(
+      isThinkingVisible(
+        event.assistantMessageEvent.type,
+        this.streamingAssistant.hasActiveHostedTools(),
+      ),
+    );
     this.textPresenter.update(event.message, event.assistantMessageEvent.type === "text_delta");
     if (
       event.assistantMessageEvent.type === "toolcall_start" ||
@@ -176,16 +196,24 @@ export class AgentEventRenderer {
     ) {
       this.textPresenter.catchUp();
     }
-    this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
-    this.toolCallBlocks.createOrUpdateFromMessage(event.message);
     if (event.assistantMessageEvent.type === "toolcall_end") {
-      this.toolCallBlocks.freezePreparation(event.assistantMessageEvent.toolCall.id);
+      this.toolCallBlocks.register(event.assistantMessageEvent.toolCall);
     }
-    this.options.updateStatus(phaseForAssistantMessage(event.message));
+    this.options.updateStatus(
+      this.streamingAssistant?.hasActiveHostedTools()
+        ? "searching"
+        : phaseForAssistantMessage(event.message),
+    );
   }
 
   private handleAssistantEnd(message: AssistantMessage): void {
+    if (message.stopReason === "toolUse") {
+      this.toolCallBlocks.registerFromMessage(message);
+    } else {
+      this.toolCallBlocks.discardPrepared();
+    }
     this.streamingAssistant?.showThinking(false);
+    this.streamingAssistant?.finishHostedActivity();
     // A tool-use response can be followed by another tool-only model turn in
     // the same exploration phase. Every other stop reason is a terminal edge.
     if (message.stopReason === "aborted") {

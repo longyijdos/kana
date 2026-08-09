@@ -1281,24 +1281,20 @@ describe("tui transcript", () => {
     ]);
   });
 
-  test("keeps finalized entries when a later provisional exploration call is canceled", () => {
+  test("keeps finalized entries when a later tool parse is canceled", () => {
     const transcript = new Transcript();
     const completedRead = completedExplorationTool(
       "read",
       { path: "src/app.ts" },
       { path: "src/app.ts" },
     );
-    const provisionalRead = new ToolCallBlock({
-      type: "tool_call",
-      id: "provisional-read",
-      name: "read",
-      args: { path: "src/part" },
-    });
-    provisionalRead.setTranscriptVisible(false);
+    const thinking = new AssistantMessageBlock();
+    thinking.showThinking(true);
 
     transcript.startExplorationPhase();
     transcript.addChild(completedRead);
-    transcript.addChild(provisionalRead);
+    transcript.addChild(thinking);
+    thinking.showThinking(false);
     transcript.cancelExplorationPhase();
 
     expect(transcript.render(100).map(stripAnsi)).toEqual([

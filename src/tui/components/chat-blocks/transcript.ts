@@ -139,12 +139,14 @@ export class Transcript implements Component {
         continue;
       }
 
-      // Thinking-only assistant blocks between tool-use turns are transparent:
-      // the active exploration group owns that phase's single visible status.
+      // Thinking-only assistant blocks are transparent while an exploration
+      // phase owns the live or canceled status. Once Explored is final, a
+      // following non-exploration call may show its own Thinking activity.
       if (
         this.options.groupToolCalls !== false &&
         child instanceof AssistantMessageBlock &&
         explorationPhase &&
+        (explorationPhase.state === "active" || explorationPhase.state === "canceled") &&
         child.rendersOnlyThinking()
       ) {
         continue;

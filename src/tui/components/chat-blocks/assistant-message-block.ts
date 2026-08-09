@@ -26,6 +26,7 @@ export class AssistantMessageBlock implements Component {
   private readonly hostedToolBlocks = new Map<string, HostedToolBlock>();
   private readonly thinkingTimer: ElapsedTimer;
   private readonly webActivityTimer: ElapsedTimer;
+  private webActivityClosed = false;
   private messageComplete = true;
   private cachedWidth?: number;
   private cachedLines?: string[];
@@ -104,6 +105,20 @@ export class AssistantMessageBlock implements Component {
     this.invalidate();
   }
 
+  startHostedActivity(): void {
+    this.webActivityClosed = false;
+    if (!this.webActivityTimer.active) {
+      this.webActivityTimer.start();
+    }
+    this.invalidate();
+  }
+
+  finishHostedActivity(): void {
+    this.webActivityClosed = true;
+    this.webActivityTimer.stop();
+    this.invalidate();
+  }
+
   isThinking(): boolean {
     return this.thinkingVisible;
   }
@@ -121,7 +136,7 @@ export class AssistantMessageBlock implements Component {
 
   stopActivityTimers(terminalState: "canceled" | "failed" = "failed"): void {
     this.showThinking(false);
-    this.webActivityTimer.stop();
+    this.finishHostedActivity();
     for (const block of this.hostedToolBlocks.values()) {
       block.settleInProgress(terminalState);
     }
@@ -226,11 +241,11 @@ export class AssistantMessageBlock implements Component {
     }
     flushWebActivity(!this.messageComplete && this.webActivityTimer.active);
 
-    if (this.thinkingVisible && this.contentBlocks.length === 0) {
-      lines.push(
+    if (this.thinkingVisible) {
+      appendLines([
         `${dim(`thinking (${thinkingElapsedSeconds}s)`)}` +
           color(" (Esc to abort)", tuiTheme.shortcutHint),
-      );
+      ]);
     }
 
     this.cachedWidth = width;
@@ -246,6 +261,7 @@ export class AssistantMessageBlock implements Component {
       trailingBlock instanceof HostedToolBlock ? trailingBlock.getWebActivityState() : undefined;
     const keepOpen =
       this.options.groupToolCalls !== false &&
+      !this.webActivityClosed &&
       trailingState !== undefined &&
       trailingState !== "canceled" &&
       trailingState !== "failed" &&
