@@ -22,6 +22,8 @@ export class AssistantMessageBlock implements Component {
   private contentBlocks: (HostedToolBlock | MarkdownBlock)[] = [];
   private readonly hostedToolBlocks = new Map<string, HostedToolBlock>();
   private readonly thinkingTimer: ElapsedTimer;
+  private readonly webActivityTimer: ElapsedTimer;
+  private messageComplete = true;
   private cachedWidth?: number;
   private cachedLines?: string[];
   private cachedThinkingElapsedSeconds?: number;
@@ -31,12 +33,14 @@ export class AssistantMessageBlock implements Component {
     private readonly options: AssistantMessageBlockOptions = {},
   ) {
     this.thinkingTimer = new ElapsedTimer(now);
+    this.webActivityTimer = new ElapsedTimer(now);
   }
 
   update(message: AssistantMessage, options: AssistantMessageBlockUpdateOptions = {}): void {
     const contentBlocks: (HostedToolBlock | MarkdownBlock)[] = [];
     const hostedToolIds = new Set<string>();
     const messageComplete = options.complete ?? true;
+    this.messageComplete = messageComplete;
 
     // This block precedes every local tool block created from the same model
     // response. Keep the marker sticky across streaming snapshots so Transcript
@@ -75,6 +79,7 @@ export class AssistantMessageBlock implements Component {
       }
     }
     this.contentBlocks = contentBlocks;
+    this.updateWebActivityTimer();
 
     this.invalidate();
   }
@@ -102,11 +107,15 @@ export class AssistantMessageBlock implements Component {
   }
 
   hasActiveHostedTools(): boolean {
-    return [...this.hostedToolBlocks.values()].some((block) => block.hasActiveTimer());
+    return (
+      this.webActivityTimer.active ||
+      [...this.hostedToolBlocks.values()].some((block) => block.hasActiveTimer())
+    );
   }
 
   stopActivityTimers(): void {
     this.showThinking(false);
+    this.webActivityTimer.stop();
     for (const block of this.hostedToolBlocks.values()) {
       block.stopTimer();
     }
@@ -152,14 +161,24 @@ export class AssistantMessageBlock implements Component {
       lines.push(...blockLines);
       hasRenderedContentBlock = true;
     };
-    const flushWebActivity = (): void => {
+    const flushWebActivity = (keepOpen = false): void => {
       if (webActivityItems.length === 0) {
         return;
       }
 
+      const items = keepOpen
+        ? webActivityItems.map(
+            (item): ToolActivityItem => ({
+              ...item,
+              state: "running",
+              elapsedSeconds: this.webActivityTimer.elapsedSeconds(),
+            }),
+          )
+        : webActivityItems;
+
       appendLines(
         renderToolActivityGroup(
-          webActivityItems,
+          items,
           {
             active: "Searching the web",
             done: "Searched the web",
@@ -190,7 +209,7 @@ export class AssistantMessageBlock implements Component {
       // provider order. Mirror Transcript spacing at this internal boundary.
       appendLines(blockLines);
     }
-    flushWebActivity();
+    flushWebActivity(!this.messageComplete && this.webActivityTimer.active);
 
     if (this.thinkingVisible && this.contentBlocks.length === 0) {
       lines.push(
@@ -204,5 +223,22 @@ export class AssistantMessageBlock implements Component {
     this.cachedThinkingElapsedSeconds = thinkingElapsedSeconds;
 
     return lines;
+  }
+
+  private updateWebActivityTimer(): void {
+    const trailingBlock = this.contentBlocks.at(-1);
+    const trailingActivity =
+      trailingBlock instanceof HostedToolBlock ? trailingBlock.getWebActivity() : undefined;
+    const keepOpen =
+      this.options.groupToolCalls !== false &&
+      !this.messageComplete &&
+      trailingActivity !== undefined &&
+      trailingActivity.state !== "canceled";
+
+    if (keepOpen && !this.webActivityTimer.active) {
+      this.webActivityTimer.start();
+    } else if (!keepOpen) {
+      this.webActivityTimer.stop();
+    }
   }
 }

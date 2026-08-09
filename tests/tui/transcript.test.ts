@@ -159,6 +159,86 @@ describe("tui transcript", () => {
     expect(block.render(100).map(stripAnsi)).toEqual(["◆ Web search stopped", "  └ Search Kana"]);
   });
 
+  test("keeps a trailing hosted web group active until the response settles", () => {
+    let now = 0;
+    const block = new AssistantMessageBlock(() => now);
+    const firstCompleted = {
+      type: "hosted_tool" as const,
+      id: "web-search-1",
+      name: "web_search",
+      status: "completed" as const,
+      action: { type: "search", query: "Kana" },
+    };
+
+    block.update(
+      {
+        role: "assistant",
+        content: [{ ...firstCompleted, status: "in_progress" }],
+      },
+      { complete: false },
+    );
+
+    now = 1_000;
+    block.update(
+      {
+        role: "assistant",
+        content: [firstCompleted],
+      },
+      { complete: false },
+    );
+    expect(block.render(100).map(stripAnsi)).toEqual([
+      "◆ Searching the web (1s) (Esc to abort)",
+      "  └ Search Kana",
+    ]);
+
+    now = 2_000;
+    block.update(
+      {
+        role: "assistant",
+        content: [
+          firstCompleted,
+          {
+            type: "hosted_tool",
+            id: "web-search-2",
+            name: "web_search",
+            status: "in_progress",
+            action: { type: "open_page", url: "https://example.com/docs" },
+          },
+        ],
+      },
+      { complete: false },
+    );
+    expect(block.render(100).map(stripAnsi)).toEqual([
+      "◆ Searching the web (2s) (Esc to abort)",
+      "  ├ Search Kana",
+      "  └ Open example.com/docs",
+    ]);
+
+    now = 3_000;
+    const completedMessage = {
+      role: "assistant" as const,
+      content: [
+        firstCompleted,
+        {
+          type: "hosted_tool" as const,
+          id: "web-search-2",
+          name: "web_search",
+          status: "completed" as const,
+          action: { type: "open_page", url: "https://example.com/docs" },
+        },
+      ],
+    };
+    block.update(completedMessage, { complete: false });
+    expect(stripAnsi(block.render(100)[0] ?? "")).toBe("◆ Searching the web (3s) (Esc to abort)");
+
+    block.update(completedMessage, { complete: true });
+    expect(block.render(100).map(stripAnsi)).toEqual([
+      "◆ Searched the web",
+      "  ├ Search Kana",
+      "  └ Open example.com/docs",
+    ]);
+  });
+
   test("freezes stopped hosted tool activity without an abort hint", () => {
     let now = 0;
     const block = new HostedToolBlock(

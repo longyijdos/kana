@@ -53,7 +53,7 @@ ProcessTerminal
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
 | `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时将仍在 preparing 的调用标记为已取消，`turn_limit` 显示为独立的 `turn limit` 错误阶段。 |
 
-Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSeek V4 Flash）属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。启用工具分组时，相邻调用共用一个 `Searching the web`/`Searched the web` 动作，并按供应商顺序列出 `Search`、`Open` 和 `Find`；可见助手正文会结束分组。关闭分组后恢复逐条 `Searching the web`、`Searched the web`、`Opened a web page` 和 `Searched within a web page` 工具块。搜索期间状态栏阶段为 `searching`。进行中的搜索显示耗时和 `Esc to abort`；中止会记录语义化的 canceled 状态、冻结计时，并显示 `Web search stopped`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
+Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSeek V4 Flash）属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。启用工具分组时，相邻调用共用一个 `Searching the web`/`Searched the web` 动作，并按供应商顺序列出 `Search`、`Open` 和 `Find`。位于响应尾部的分组在同一 provider 响应仍可能继续流式追加动作时保持 `Searching the web`；可见助手正文或响应完成后才定稿为 `Searched the web`，不会再从该终态返回活动态。关闭分组后恢复逐条 `Searching the web`、`Searched the web`、`Opened a web page` 和 `Searched within a web page` 工具块。搜索期间状态栏阶段为 `searching`。进行中的搜索显示耗时和 `Esc to abort`；中止会记录语义化的 canceled 状态、冻结计时，并显示 `Web search stopped`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
 
 助手正文的协议状态与可视进度彼此分离：provider 和 Agent 仍会立即处理完整事件与消息，`StreamingTextPresenter` 只维护 Markdown 块当前可见的 `text` 前缀。稀疏文本 delta 会立即出现；当一次网络读取带来一批 SSE 事件时，积压内容约每 16ms 推进一次，并按 backlog 在每帧 1–12 个 grapheme 之间有界加速，消息完成后只额外提升一级用于收尾。工具调用开始、`toolUse` 消息完成、审批显示和实际执行前会先追平已经收到的正文，保证后续工具状态不会越过仍在展开的文本，同时不延迟 Agent 或 ToolRuntime。新消息或运行 reset 也会先 flush 剩余正文，因此持久化的 session 和 Agent 状态始终使用完整消息，而不是动画中的中间快照。配置 `tui.smooth_text_streaming = false` 会完全绕过该节奏控制，直接显示 provider 的最新流式快照；thinking、工具调用、工具结果、错误和状态阶段始终不参与文本节奏控制。
 
