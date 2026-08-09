@@ -1,3 +1,5 @@
+import type { UserImage } from "@/core";
+
 export type PromptCommandName =
   | "quit"
   | "help"
@@ -30,6 +32,7 @@ export type PromptSubmit =
   | {
       type: "message";
       content: string;
+      images?: UserImage[];
     }
   | {
       type: "shell";
@@ -129,6 +132,10 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   {
     input: "Shift+Enter",
     description: "Insert a newline in supported terminals.",
+  },
+  {
+    input: "Ctrl+V",
+    description: "Paste an image from the clipboard, or paste clipboard text.",
   },
   {
     input: "Esc",

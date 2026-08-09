@@ -1,5 +1,6 @@
 import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
 import type { DeepSeekModelConfig, DeepSeekToolChoice } from "./types";
+import { toDeepSeekUserText } from "./user-input";
 
 export function buildDeepSeekResponsesRequest(
   context: ModelContext,
@@ -65,7 +66,7 @@ function toDeepSeekResponsesMessage(message: Message): Record<string, unknown>[]
         {
           type: "message",
           role: "user",
-          content: [{ type: "input_text", text: message.content }],
+          content: [{ type: "input_text", text: toDeepSeekUserText(message) }],
         },
       ];
     case "tool":

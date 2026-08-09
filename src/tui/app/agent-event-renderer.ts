@@ -85,7 +85,7 @@ export class AgentEventRenderer {
       case "turn_end":
         break;
       case "turn_input":
-        this.options.transcript.addChild(new UserMessageBlock(event.message.content));
+        this.options.transcript.addChild(new UserMessageBlock(event.message));
         break;
       case "context_compaction_start":
         this.options.updateStatus("compacting");

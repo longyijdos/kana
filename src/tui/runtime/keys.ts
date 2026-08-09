@@ -30,6 +30,12 @@ export function isCtrlO(data: string): boolean {
   return data === "\x0f" || isCtrlModifiedCode(key, 15, "o");
 }
 
+export function isCtrlV(data: string): boolean {
+  const key = parseModifiedKey(data);
+
+  return data === "\x16" || isCtrlModifiedCode(key, 22, "v");
+}
+
 export function isEscape(data: string): boolean {
   const key = parseModifiedKey(data);
 

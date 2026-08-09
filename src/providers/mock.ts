@@ -27,6 +27,7 @@ export const MOCK_MODEL_METADATA = {
   maxOutputTokens: 16_000,
   supportsParallelToolCalls: false,
   supportsHostedWebSearch: false,
+  supportsImageInput: false,
 } as const satisfies ModelMetadata;
 
 export class MockModel extends BaseModel {

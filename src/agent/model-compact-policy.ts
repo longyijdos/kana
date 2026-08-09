@@ -72,7 +72,21 @@ function formatCompactionRequest(
 function formatMessage(message: Message): object {
   switch (message.role) {
     case "user":
-      return { role: "user", content: message.content };
+      return {
+        role: "user",
+        content: message.content,
+        ...(message.images?.length
+          ? {
+              images: message.images.map((image, index) => ({
+                index: index + 1,
+                mimeType: image.mimeType,
+                width: image.width,
+                height: image.height,
+                contentOmitted: true,
+              })),
+            }
+          : {}),
+      };
     case "tool":
       return {
         role: "tool",

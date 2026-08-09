@@ -19,6 +19,7 @@ export const DEEPSEEK_MODELS = {
     supportsParallelToolCalls: true,
     protocol: "responses",
     supportsHostedWebSearch: true,
+    supportsImageInput: false,
   },
   "deepseek-v4-pro": {
     provider: "deepseek",
@@ -36,6 +37,7 @@ export const DEEPSEEK_MODELS = {
     // search once DeepSeek officially exposes Responses support for the model.
     protocol: "chat-completions",
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   },
 } as const satisfies Record<string, DeepSeekModelMetadata>;
 

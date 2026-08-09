@@ -27,6 +27,7 @@ export type DeepSeekModelConfig = ModelConfig & {
   thinking?: boolean;
   reasoningEffort?: DeepSeekReasoningEffort;
   webSearch?: boolean;
+  imageInput?: boolean;
   topP?: number;
   toolChoice?: DeepSeekToolChoice;
   responseFormat?: DeepSeekResponseFormat;

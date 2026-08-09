@@ -34,6 +34,7 @@ export type KanaDeepSeekModelConfig = {
   thinking: boolean;
   reasoningEffort: DeepSeekReasoningEffort;
   webSearch: boolean;
+  imageInput?: boolean;
   maxTokens: number;
   timeoutMs: number;
   maxRetries: number;
@@ -44,6 +45,7 @@ export type KanaOpenAICodexModelConfig = {
   reasoningEffort: OpenAICodexReasoningEffort;
   reasoningSummary: OpenAICodexReasoningSummary;
   webSearch: boolean;
+  imageInput?: boolean;
   maxTokens: number;
   timeoutMs: number;
   maxRetries: number;
@@ -170,6 +172,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       thinking: true,
       reasoningEffort: "high",
       webSearch: true,
+      imageInput: false,
       maxTokens: 384_000,
       timeoutMs: 60_000,
       maxRetries: 1,
@@ -179,6 +182,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       reasoningEffort: "medium",
       reasoningSummary: "auto",
       webSearch: true,
+      imageInput: true,
       maxTokens: 128_000,
       timeoutMs: 60_000,
       maxRetries: 1,
@@ -325,6 +329,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
         thinking: config.model.deepseek.thinking,
         reasoning_effort: config.model.deepseek.reasoningEffort,
         web_search: config.model.deepseek.webSearch,
+        image_input: config.model.deepseek.imageInput,
         max_tokens: config.model.deepseek.maxTokens,
         timeout_ms: config.model.deepseek.timeoutMs,
         max_retries: config.model.deepseek.maxRetries,
@@ -334,6 +339,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
         reasoning_effort: config.model["openai-codex"].reasoningEffort,
         reasoning_summary: config.model["openai-codex"].reasoningSummary,
         web_search: config.model["openai-codex"].webSearch,
+        image_input: config.model["openai-codex"].imageInput,
         max_tokens: config.model["openai-codex"].maxTokens,
         timeout_ms: config.model["openai-codex"].timeoutMs,
         max_retries: config.model["openai-codex"].maxRetries,
@@ -499,6 +505,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           defaults.model.deepseek.webSearch,
           "model.deepseek.web_search",
         ),
+        imageInput: readBoolean(
+          deepSeekModel.image_input,
+          defaults.model.deepseek.imageInput ?? false,
+          "model.deepseek.image_input",
+        ),
         maxTokens: readPositiveInteger(
           deepSeekModel.max_tokens,
           defaults.model.deepseek.maxTokens,
@@ -533,6 +544,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           openAICodexModel.web_search,
           defaults.model["openai-codex"].webSearch,
           "model.openai-codex.web_search",
+        ),
+        imageInput: readBoolean(
+          openAICodexModel.image_input,
+          defaults.model["openai-codex"].imageInput ?? true,
+          "model.openai-codex.image_input",
         ),
         maxTokens: readPositiveInteger(
           openAICodexModel.max_tokens,
@@ -625,6 +641,7 @@ function serializeDeepSeekModel(config: KanaDeepSeekModelConfig): string[] {
     `thinking = ${config.thinking}`,
     `reasoning_effort = "${config.reasoningEffort}"`,
     `web_search = ${config.webSearch}`,
+    `image_input = ${config.imageInput ?? false}`,
     `max_tokens = ${config.maxTokens}`,
     `timeout_ms = ${config.timeoutMs}`,
     `max_retries = ${config.maxRetries}`,
@@ -636,6 +653,7 @@ function serializeOpenAICodexModel(config: KanaOpenAICodexModelConfig): string[]
     `reasoning_effort = "${config.reasoningEffort}"`,
     `reasoning_summary = "${config.reasoningSummary}"`,
     `web_search = ${config.webSearch}`,
+    `image_input = ${config.imageInput ?? true}`,
     `max_tokens = ${config.maxTokens}`,
     `timeout_ms = ${config.timeoutMs}`,
     `max_retries = ${config.maxRetries}`,
@@ -648,6 +666,7 @@ function isLegacyModelConfig(model: Record<string, unknown>): boolean {
     model.name !== undefined ||
     model.api_key_env !== undefined ||
     model.web_search !== undefined ||
+    model.image_input !== undefined ||
     model.max_tokens !== undefined
   );
 }
