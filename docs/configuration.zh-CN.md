@@ -141,6 +141,7 @@ on_approval_required = true
 [tui]
 hyperlinks = true
 smooth_text_streaming = true
+collapse_long_pastes = true
 
 [memory]
 enabled = true
@@ -205,6 +206,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `notification.on_approval_required` | 布尔值 | `true` | 显示工具审批时是否通知。 |
 | `tui.hyperlinks` | 布尔值 | `true` | 是否允许 TUI 在确认终端支持时用 OSC 8 渲染 Markdown 链接；关闭、终端未知或不支持时显示 `label (url)`。 |
 | `tui.smooth_text_streaming` | 布尔值 | `true` | 是否平滑展开突发到达的助手文本；关闭时直接显示 provider 的最新流式快照。 |
+| `tui.collapse_long_pastes` | 布尔值 | `true` | 是否把达到 1,000 个 grapheme 的 bracketed paste 折叠为原子的 `[Pasted N chars]` 编辑项；关闭时正常显示并逐字编辑粘贴文本。 |
 | `memory.enabled` | 布尔值 | `true` | 是否注册 `remember`，并把记忆注入系统提示词。 |
 | `memory.max_chars` | 正整数 | `6000` | 合并后长期记忆的 Unicode 字符数上限。 |
 | `memory.daily_retention_days` | 可选正整数 | 未设置 | 全量记忆压缩成功后保留每日暂存记录的天数。 |
@@ -212,7 +214,7 @@ export DEEPSEEK_API_KEY='sk-...'
 
 `parallel_tool_calls` 是用户策略，最终值为“用户配置且所选模型 metadata 支持”。关闭后 provider 请求不会声明并行能力，且即使模型仍在一个响应中返回多个调用，ToolRuntime 也会按顺序逐个执行。打开后仍只有声明 `execution.concurrency = "parallel"` 的相邻工具能够组成并行组；OpenAI Codex Responses Lite 的当前模型 metadata 均不支持顶层并行工具调用，因此该配置不会覆盖其硬限制。
 
-`hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls`、`hyperlinks` 和 `smooth_text_streaming` 必须是布尔值；`tool_deadline_ms`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
+`hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`collapse_long_pastes` 只影响编辑器的显示与编辑方式，提交、排队和从输入历史恢复时仍使用完整粘贴原文。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls`、`hyperlinks`、`smooth_text_streaming` 和 `collapse_long_pastes` 必须是布尔值；`tool_deadline_ms`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
 
 ### 上下文预算
 

@@ -266,6 +266,58 @@ describe("prompt editor", () => {
     ]);
   });
 
+  test("collapses long pastes while submitting the original text", () => {
+    const editor = new Editor();
+    const pastedText = "🙂".repeat(1_000);
+    const submissions: unknown[] = [];
+    editor.onSubmit = (submit) => submissions.push(submit);
+
+    editor.handleInput(`\x1b[200~${pastedText}\x1b[201~`);
+
+    expect(editor.getText()).toBe(pastedText);
+    expect(stripAnsi(editor.render(80).join("\n"))).toContain("[Pasted 1,000 chars]");
+
+    editor.handleInput("\r");
+
+    expect(submissions).toEqual([{ type: "message", content: pastedText }]);
+  });
+
+  test("navigates, deletes, and restores collapsed pastes as atomic input", () => {
+    const pastedText = "x".repeat(1_000);
+    const editor = new Editor();
+
+    editor.handleInput("before ");
+    editor.handleInput(`\x1b[200~${pastedText}\x1b[201~`);
+    editor.addToHistory(editor.getText());
+    editor.handleInput("\x7f");
+
+    expect(editor.getText()).toBe("before ");
+
+    editor.clear();
+    editor.handleInput("\x1b[A");
+
+    expect(editor.getText()).toBe(`before ${pastedText}`);
+    expect(stripAnsi(editor.render(80).join("\n"))).toContain("[Pasted 1,000 chars]");
+
+    editor.handleInput("\x1b[D");
+    editor.handleInput("\x1b[3~");
+
+    expect(editor.getText()).toBe("before ");
+  });
+
+  test("renders and edits long pastes normally when collapsing is disabled", () => {
+    const editor = new Editor({ collapseLongPastes: false });
+    const pastedText = "x".repeat(1_000);
+
+    editor.handleInput(`\x1b[200~${pastedText}\x1b[201~`);
+
+    expect(stripAnsi(editor.render(80).join("\n"))).not.toContain("[Pasted");
+
+    editor.handleInput("\x7f");
+
+    expect(editor.getText()).toBe("x".repeat(999));
+  });
+
   test("inserts newline with Shift+Enter before submitting with Enter", () => {
     const editor = new Editor();
     const submissions: unknown[] = [];

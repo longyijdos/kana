@@ -98,6 +98,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("hyperlinks = true");
     expect(installedConfigExample).toContain("smooth_text_streaming = true");
+    expect(installedConfigExample).toContain("collapse_long_pastes = true");
     expect(installedConfigExample).toContain("Kana does not read this file.");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
@@ -243,6 +244,7 @@ describe("Kana config", () => {
         "[tui]",
         "hyperlinks = false",
         "smooth_text_streaming = false",
+        "collapse_long_pastes = false",
         "",
         "[memory]",
         "enabled = false",
@@ -283,6 +285,7 @@ describe("Kana config", () => {
       tui: {
         hyperlinks: false,
         smoothTextStreaming: false,
+        collapseLongPastes: false,
       },
       memory: {
         enabled: false,
@@ -442,6 +445,14 @@ describe("Kana config", () => {
     writeFileSync(path.join(home, "config.toml"), '[tui]\nhyperlinks = "yes"\n');
 
     expect(() => loadKanaConfig(env)).toThrow("tui.hyperlinks must be a boolean.");
+  });
+
+  test("requires tui.collapse_long_pastes to be a boolean", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[tui]\ncollapse_long_pastes = "yes"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("tui.collapse_long_pastes must be a boolean.");
   });
 
   test("loads and validates the optional agent context limit", () => {

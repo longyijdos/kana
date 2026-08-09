@@ -61,6 +61,23 @@ describe("scheduled message manager controller", () => {
     expect(harness.loadCount()).toBe(3);
   });
 
+  test("passes disabled long-paste collapsing to scheduled message prompts", () => {
+    const harness = createHarness([], { collapseLongPastes: false });
+    const pastedText = "x".repeat(1_000);
+    harness.controller.open();
+
+    harness.press("A");
+    harness.press("\r");
+    harness.press(`\x1b[200~${pastedText}\x1b[201~`);
+
+    expect(harness.renderFocus()).not.toContain("[Pasted");
+
+    harness.press("\x7f");
+    harness.press("\r");
+
+    expect(harness.scheduled).toEqual([{ afterMinutes: 5, message: "x".repeat(999) }]);
+  });
+
   test("handles a stale delete by stable ID and clears its warning on manual refresh", () => {
     const harness = createHarness([wake("old", "Old reminder", "agent", 5)], {
       cancel: (id, queue) => {
@@ -85,6 +102,7 @@ describe("scheduled message manager controller", () => {
 });
 
 type HarnessOptions = {
+  collapseLongPastes?: boolean;
   cancel?: (
     id: string,
     queue: ConversationInputQueueSnapshot,
@@ -135,6 +153,7 @@ function createHarness(initial: WakeEvent[] = [], options: HarnessOptions = {}) 
       return "future";
     },
     showError: (error) => errors.push(error),
+    collapseLongPastes: options.collapseLongPastes,
     restoreBottom: (focus) => {
       layout.showBottom(editor);
       if (focus) {

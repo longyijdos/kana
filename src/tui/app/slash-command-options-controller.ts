@@ -25,6 +25,7 @@ export type SlashCommandOptionsControllerOptions = {
   onMemoryCompact: (scope: MemoryScope, request: string | undefined) => void;
   getApprovalMode: () => KanaToolApprovalMode;
   onApprovalModeSelect: (mode: KanaToolApprovalMode) => void;
+  collapseLongPastes?: boolean;
   getModelSettings?: () => TuiModelSettings;
   onModelSelect?: (selection: TuiModelSelection) => void;
   restoreBottom: (focus: boolean) => void;
@@ -189,6 +190,7 @@ export class SlashCommandOptionsController {
     const prompt = new TextPrompt({
       title: `${formatScope(scope)} compaction request (optional)`,
       placeholder: "No additional request",
+      collapseLongPastes: this.options.collapseLongPastes,
       onSubmit: (request) =>
         this.finish(prompt, () => this.options.onMemoryCompact(scope, request.trim() || undefined)),
       onCancel: () => this.replace(prompt, () => this.showMemoryScope("compact", scope)),

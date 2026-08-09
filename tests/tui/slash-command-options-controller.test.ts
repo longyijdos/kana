@@ -43,6 +43,24 @@ describe("slash command options controller", () => {
     expect(harness.compactCalls).toEqual([{ scope: "project", request: undefined }]);
   });
 
+  test("passes disabled long-paste collapsing to text prompts", () => {
+    const harness = createHarness(false);
+    const pastedText = "x".repeat(1_000);
+
+    harness.controller.openMemory();
+    harness.input("\x1b[B");
+    harness.input("\r");
+    harness.input("\r");
+    harness.input(`\x1b[200~${pastedText}\x1b[201~`);
+
+    expect(harness.render().join("\n")).not.toContain("[Pasted");
+
+    harness.input("\x7f");
+    harness.input("\r");
+
+    expect(harness.compactCalls).toEqual([{ scope: "project", request: "x".repeat(999) }]);
+  });
+
   test("opens the selected memory scope for viewing", () => {
     const harness = createHarness();
 
@@ -125,7 +143,7 @@ describe("slash command options controller", () => {
   });
 });
 
-function createHarness() {
+function createHarness(collapseLongPastes = true) {
   const editor = new Editor({ model: "test-model" });
   const layout = new AppLayout({ main: new Transcript(), bottom: editor });
   const tui = createTuiStub();
@@ -160,6 +178,7 @@ function createHarness() {
       approvalCalls.push(mode);
       restoreBottom(true);
     },
+    collapseLongPastes,
     restoreBottom,
   });
 

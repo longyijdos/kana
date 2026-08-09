@@ -1,6 +1,7 @@
 import {
   color,
   dim,
+  graphemeSegments,
   type HighlightedLineToken,
   normalizeLineEndings,
   padRightAnsi,
@@ -42,7 +43,17 @@ import {
   type InputLayoutLine,
   moveInputCursorVertically,
 } from "./input-layout";
-import { applyEditorAction, type EditorTextState } from "./state";
+import {
+  applyEditorAction,
+  type CollapsedPaste,
+  createEditorDisplayState,
+  createPasteAction,
+  displayOffsetToSourceOffset,
+  type EditorDisplayState,
+  type EditorTextState,
+  LONG_PASTE_CHARACTER_THRESHOLD,
+  splitEditorDisplayRange,
+} from "./state";
 import { renderStatusLine, type StatusLineState } from "./status-line";
 
 const MAX_INPUT_LINES = 5;
@@ -54,6 +65,7 @@ export type EditorOptions = {
   model?: string;
   cleanMode?: boolean;
   commandPaletteVisibleLimit?: number;
+  collapseLongPastes?: boolean;
 };
 
 export type EditorQueuedInput = {
@@ -66,15 +78,22 @@ export type EditorScheduledInputSummary = {
   nextAt: Date;
 };
 
+type EditorHistoryEntry = {
+  value: string;
+  collapsedPastes: CollapsedPaste[];
+};
+
 export class Editor implements Component {
   private state: EditorTextState = {
     value: "",
     cursorOffset: 0,
+    collapsedPastes: [],
   };
-  private history: string[] = [];
+  private history: EditorHistoryEntry[] = [];
   private historyIndex = -1;
   private readonly commandViewport: ListViewport;
   private readonly maximumVisibleCommands: number;
+  private readonly collapseLongPastes: boolean;
   private lastCommandQuery = "";
   private readonly bracketedPaste = new BracketedPasteBuffer();
   private model?: string;
@@ -98,6 +117,7 @@ export class Editor implements Component {
     this.statusState.cleanMode = options.cleanMode;
     this.maximumVisibleCommands =
       options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT;
+    this.collapseLongPastes = options.collapseLongPastes ?? true;
     this.commandViewport = new ListViewport(this.maximumVisibleCommands);
   }
 
@@ -111,6 +131,7 @@ export class Editor implements Component {
     this.state = {
       value: normalized,
       cursorOffset: normalized.length,
+      collapsedPastes: [],
     };
     this.inputViewportStartLine = undefined;
     this.historyIndex = -1;
@@ -128,11 +149,11 @@ export class Editor implements Component {
   addToHistory(value: string): void {
     const prompt = value.trim();
 
-    if (!prompt || this.history[0] === prompt) {
+    if (!prompt || this.history[0]?.value === prompt) {
       return;
     }
 
-    this.history.unshift(prompt);
+    this.history.unshift(this.createHistoryEntry(prompt));
 
     if (this.history.length > 100) {
       this.history.pop();
@@ -169,9 +190,10 @@ export class Editor implements Component {
     );
     this.inputColumns = inputColumns;
     this.inputVisibleLines = maximumInputLines;
+    const display = createEditorDisplayState(this.state);
     const layout = createInputLayout({
-      value: this.state.value,
-      cursorOffset: this.state.cursorOffset,
+      value: display.value,
+      cursorOffset: display.cursorOffset,
       columns: inputColumns,
       maxLines: maximumInputLines,
       preferredStartLine: this.inputViewportStartLine,
@@ -183,7 +205,7 @@ export class Editor implements Component {
       const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));
       const tokens: HighlightedLineToken[] = [
         ...(linePrompt ? [{ text: linePrompt, color: tuiTheme.user }] : []),
-        ...this.renderLine(line, index === layout.cursor.line),
+        ...this.renderLine(line, index === layout.cursor.line, display),
       ];
       const content = renderHighlightedLine(tokens);
 
@@ -220,7 +242,7 @@ export class Editor implements Component {
 
     if (paste !== undefined) {
       if (paste.text) {
-        this.applyText(paste.text);
+        this.applyPaste(paste.text);
       }
       if (paste.remaining) {
         queueMicrotask(() => this.handleInput(paste.remaining));
@@ -314,9 +336,13 @@ export class Editor implements Component {
     }
   }
 
-  private renderLine(line: InputLayoutLine, showCursor: boolean): HighlightedLineToken[] {
+  private renderLine(
+    line: InputLayoutLine,
+    showCursor: boolean,
+    display: EditorDisplayState,
+  ): HighlightedLineToken[] {
     if (!showCursor) {
-      return this.renderCommandInputTokens(line.text, line.startOffset);
+      return this.renderInputTokens(line.text, line.startOffset, display);
     }
 
     if (!this.state.value) {
@@ -326,23 +352,40 @@ export class Editor implements Component {
       ];
     }
 
-    if (this.state.cursorOffset < line.startOffset || this.state.cursorOffset > line.endOffset) {
-      return this.renderCommandInputTokens(line.text, line.startOffset);
+    if (display.cursorOffset < line.startOffset || display.cursorOffset > line.endOffset) {
+      return this.renderInputTokens(line.text, line.startOffset, display);
     }
 
-    const relativeOffset = this.state.cursorOffset - line.startOffset;
+    const relativeOffset = display.cursorOffset - line.startOffset;
     const beforeCursor = line.text.slice(0, relativeOffset);
     const afterCursor = line.text.slice(relativeOffset);
 
     return [
-      ...this.renderCommandInputTokens(beforeCursor, line.startOffset),
+      ...this.renderInputTokens(beforeCursor, line.startOffset, display),
       { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
-      ...this.renderCommandInputTokens(afterCursor, this.state.cursorOffset),
+      ...this.renderInputTokens(afterCursor, display.cursorOffset, display),
     ];
   }
 
-  private renderCommandInputTokens(text: string, absoluteStart: number): HighlightedLineToken[] {
-    const commandEnd = commandTokenEnd(this.state.value);
+  private renderInputTokens(
+    text: string,
+    absoluteStart: number,
+    display: EditorDisplayState,
+  ): HighlightedLineToken[] {
+    return splitEditorDisplayRange(display, absoluteStart, absoluteStart + text.length).flatMap(
+      (segment) =>
+        segment.collapsedPaste
+          ? [{ text: segment.text, color: tuiTheme.muted }]
+          : this.renderCommandInputTokens(segment.text, segment.startOffset, display.value),
+    );
+  }
+
+  private renderCommandInputTokens(
+    text: string,
+    absoluteStart: number,
+    displayValue: string,
+  ): HighlightedLineToken[] {
+    const commandEnd = commandTokenEnd(displayValue);
 
     if (commandEnd === undefined || !text) {
       return text ? [{ text, color: tuiTheme.userMessageText }] : [];
@@ -496,34 +539,50 @@ export class Editor implements Component {
     this.historyIndex = -1;
   }
 
+  private applyPaste(text: string): void {
+    const normalized = normalizeLineEndings(text);
+
+    if (!normalized) {
+      return;
+    }
+
+    this.applyAction(
+      this.collapseLongPastes
+        ? createPasteAction(normalized)
+        : { type: "insert", text: normalized },
+    );
+    this.historyIndex = -1;
+  }
+
   private applyAction(action: Parameters<typeof applyEditorAction>[1]): void {
     this.state = applyEditorAction(this.state, action);
     this.syncCommandSelection();
   }
 
   private moveVertically(direction: -1 | 1): boolean {
+    const display = createEditorDisplayState(this.state);
     const currentLayout = createInputLayout({
-      value: this.state.value,
-      cursorOffset: this.state.cursorOffset,
+      value: display.value,
+      cursorOffset: display.cursorOffset,
       columns: this.inputColumns,
       maxLines: this.inputVisibleLines,
       preferredStartLine: this.inputViewportStartLine,
     });
-    const cursorOffset = moveInputCursorVertically({
-      value: this.state.value,
-      cursorOffset: this.state.cursorOffset,
+    const displayCursorOffset = moveInputCursorVertically({
+      value: display.value,
+      cursorOffset: display.cursorOffset,
       columns: this.inputColumns,
       direction,
     });
 
-    if (cursorOffset === undefined) {
+    if (displayCursorOffset === undefined) {
       return false;
     }
 
     this.inputViewportStartLine = currentLayout.startLine;
     this.state = {
       ...this.state,
-      cursorOffset,
+      cursorOffset: displayOffsetToSourceOffset(display, displayCursorOffset),
     };
     this.syncCommandSelection();
 
@@ -541,14 +600,15 @@ export class Editor implements Component {
       ...this.state,
       cursorOffset,
     };
+    const display = createEditorDisplayState(this.state);
     this.inputViewportStartLine =
       direction === -1
         ? 0
         : Math.max(
             0,
             findInputCursorLine({
-              value: this.state.value,
-              cursorOffset,
+              value: display.value,
+              cursorOffset: display.cursorOffset,
               columns: this.inputColumns,
             }) -
               this.inputVisibleLines +
@@ -571,8 +631,51 @@ export class Editor implements Component {
     }
 
     this.historyIndex = nextIndex;
-    this.setText(this.historyIndex === -1 ? "" : (this.history[this.historyIndex] ?? ""));
+    const entry = this.history[this.historyIndex];
+    this.setText(entry?.value ?? "");
+    if (entry) {
+      this.state = {
+        ...this.state,
+        collapsedPastes: structuredClone(entry.collapsedPastes),
+      };
+    }
     this.historyIndex = nextIndex;
+  }
+
+  private createHistoryEntry(value: string): EditorHistoryEntry {
+    if (this.state.value.trim() !== value) {
+      return { value, collapsedPastes: [] };
+    }
+
+    const trimmedStartOffset = this.state.value.length - this.state.value.trimStart().length;
+    const trimmedEndOffset = trimmedStartOffset + value.length;
+    const collapsedPastes = (this.state.collapsedPastes ?? []).flatMap(
+      (paste): CollapsedPaste[] => {
+        const sourceStartOffset = Math.max(paste.startOffset, trimmedStartOffset);
+        const sourceEndOffset = Math.min(paste.endOffset, trimmedEndOffset);
+        if (sourceStartOffset >= sourceEndOffset) {
+          return [];
+        }
+
+        const characterCount =
+          sourceStartOffset === paste.startOffset && sourceEndOffset === paste.endOffset
+            ? paste.characterCount
+            : graphemeSegments(this.state.value.slice(sourceStartOffset, sourceEndOffset)).length;
+        if (characterCount < LONG_PASTE_CHARACTER_THRESHOLD) {
+          return [];
+        }
+
+        return [
+          {
+            startOffset: sourceStartOffset - trimmedStartOffset,
+            endOffset: sourceEndOffset - trimmedStartOffset,
+            characterCount,
+          },
+        ];
+      },
+    );
+
+    return { value, collapsedPastes };
   }
 
   private syncCommandSelection(): void {

@@ -90,6 +90,7 @@ export type KanaNotificationConfig = {
 export type KanaTuiConfig = {
   hyperlinks: boolean;
   smoothTextStreaming: boolean;
+  collapseLongPastes: boolean;
 };
 
 export type KanaMemoryConfig = {
@@ -200,6 +201,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   tui: {
     hyperlinks: true,
     smoothTextStreaming: true,
+    collapseLongPastes: true,
   },
   memory: {
     enabled: true,
@@ -351,6 +353,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
     tui: {
       hyperlinks: config.tui.hyperlinks,
       smooth_text_streaming: config.tui.smoothTextStreaming,
+      collapse_long_pastes: config.tui.collapseLongPastes,
     },
     memory: {
       enabled: config.memory.enabled,
@@ -396,6 +399,7 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     "[tui]",
     `hyperlinks = ${config.tui.hyperlinks}`,
     `smooth_text_streaming = ${config.tui.smoothTextStreaming}`,
+    `collapse_long_pastes = ${config.tui.collapseLongPastes}`,
     "",
     "[memory]",
     `enabled = ${config.memory.enabled}`,
@@ -579,6 +583,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         tui.smooth_text_streaming,
         defaults.tui.smoothTextStreaming,
         "tui.smooth_text_streaming",
+      ),
+      collapseLongPastes: readBoolean(
+        tui.collapse_long_pastes,
+        defaults.tui.collapseLongPastes,
+        "tui.collapse_long_pastes",
       ),
     },
     memory: {

@@ -32,7 +32,15 @@ import {
   type InputLayoutLine,
   moveInputCursorVertically,
 } from "./editor/input-layout";
-import { applyEditorAction, type EditorTextState } from "./editor/state";
+import {
+  applyEditorAction,
+  createEditorDisplayState,
+  createPasteAction,
+  displayOffsetToSourceOffset,
+  type EditorDisplayState,
+  type EditorTextState,
+  splitEditorDisplayRange,
+} from "./editor/state";
 
 const MAX_INPUT_LINES = 5;
 const PROMPT = "> ";
@@ -41,6 +49,7 @@ export type TextPromptOptions = {
   title: string;
   initialValue?: string;
   placeholder?: string;
+  collapseLongPastes?: boolean;
   onSubmit: (value: string) => void;
   onCancel: () => void;
 };
@@ -57,6 +66,7 @@ export class TextPrompt implements Component {
     this.state = {
       value,
       cursorOffset: value.length,
+      collapsedPastes: [],
     };
   }
 
@@ -71,9 +81,10 @@ export class TextPrompt implements Component {
     const maximumInputLines = visibleLimitForHeight(MAX_INPUT_LINES, availableHeight, 3);
     this.inputColumns = inputColumns;
     this.inputVisibleLines = maximumInputLines;
+    const display = createEditorDisplayState(this.state);
     const layout = createInputLayout({
-      value: this.state.value,
-      cursorOffset: this.state.cursorOffset,
+      value: display.value,
+      cursorOffset: display.cursorOffset,
       columns: inputColumns,
       maxLines: maximumInputLines,
       preferredStartLine: this.inputViewportStartLine,
@@ -88,7 +99,7 @@ export class TextPrompt implements Component {
       const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));
       const content = renderHighlightedLine([
         { text: linePrompt, color: tuiTheme.user },
-        ...this.renderLine(line, index === layout.cursor.line),
+        ...this.renderLine(line, index === layout.cursor.line, display),
       ]);
 
       lines.push(`| ${padRightAnsi(content, contentWidth)} |`);
@@ -104,7 +115,7 @@ export class TextPrompt implements Component {
 
     if (paste !== undefined) {
       if (paste.text) {
-        this.applyText(paste.text);
+        this.applyPaste(paste.text);
       }
       if (paste.remaining) {
         queueMicrotask(() => this.handleInput(paste.remaining));
@@ -167,9 +178,13 @@ export class TextPrompt implements Component {
     }
   }
 
-  private renderLine(line: InputLayoutLine, showCursor: boolean): HighlightedLineToken[] {
+  private renderLine(
+    line: InputLayoutLine,
+    showCursor: boolean,
+    display: EditorDisplayState,
+  ): HighlightedLineToken[] {
     if (!showCursor) {
-      return line.text ? [{ text: line.text, color: tuiTheme.userMessageText }] : [];
+      return this.renderInputTokens(line.text, line.startOffset, display);
     }
 
     if (!this.state.value) {
@@ -181,17 +196,30 @@ export class TextPrompt implements Component {
       ];
     }
 
-    if (this.state.cursorOffset < line.startOffset || this.state.cursorOffset > line.endOffset) {
-      return line.text ? [{ text: line.text, color: tuiTheme.userMessageText }] : [];
+    if (display.cursorOffset < line.startOffset || display.cursorOffset > line.endOffset) {
+      return this.renderInputTokens(line.text, line.startOffset, display);
     }
 
-    const relativeOffset = this.state.cursorOffset - line.startOffset;
+    const relativeOffset = display.cursorOffset - line.startOffset;
 
     return [
-      { text: line.text.slice(0, relativeOffset), color: tuiTheme.userMessageText },
+      ...this.renderInputTokens(line.text.slice(0, relativeOffset), line.startOffset, display),
       { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
-      { text: line.text.slice(relativeOffset), color: tuiTheme.userMessageText },
+      ...this.renderInputTokens(line.text.slice(relativeOffset), display.cursorOffset, display),
     ];
+  }
+
+  private renderInputTokens(
+    text: string,
+    absoluteStart: number,
+    display: EditorDisplayState,
+  ): HighlightedLineToken[] {
+    return splitEditorDisplayRange(display, absoluteStart, absoluteStart + text.length).map(
+      (segment) => ({
+        text: segment.text,
+        color: segment.collapsedPaste ? tuiTheme.muted : tuiTheme.userMessageText,
+      }),
+    );
   }
 
   private applyText(text: string): void {
@@ -202,33 +230,46 @@ export class TextPrompt implements Component {
     }
   }
 
+  private applyPaste(text: string): void {
+    const normalized = normalizeLineEndings(text);
+
+    if (normalized) {
+      this.applyAction(
+        this.options.collapseLongPastes === false
+          ? { type: "insert", text: normalized }
+          : createPasteAction(normalized),
+      );
+    }
+  }
+
   private applyAction(action: Parameters<typeof applyEditorAction>[1]): void {
     this.state = applyEditorAction(this.state, action);
   }
 
   private moveVertically(direction: -1 | 1): void {
+    const display = createEditorDisplayState(this.state);
     const currentLayout = createInputLayout({
-      value: this.state.value,
-      cursorOffset: this.state.cursorOffset,
+      value: display.value,
+      cursorOffset: display.cursorOffset,
       columns: this.inputColumns,
       maxLines: this.inputVisibleLines,
       preferredStartLine: this.inputViewportStartLine,
     });
-    const cursorOffset = moveInputCursorVertically({
-      value: this.state.value,
-      cursorOffset: this.state.cursorOffset,
+    const displayCursorOffset = moveInputCursorVertically({
+      value: display.value,
+      cursorOffset: display.cursorOffset,
       columns: this.inputColumns,
       direction,
     });
 
-    if (cursorOffset === undefined) {
+    if (displayCursorOffset === undefined) {
       return;
     }
 
     this.inputViewportStartLine = currentLayout.startLine;
     this.state = {
       ...this.state,
-      cursorOffset,
+      cursorOffset: displayOffsetToSourceOffset(display, displayCursorOffset),
     };
   }
 }

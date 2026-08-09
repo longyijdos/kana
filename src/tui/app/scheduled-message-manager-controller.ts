@@ -25,6 +25,7 @@ export type ScheduledMessageManagerControllerOptions = {
   schedule: (afterMinutes: number, message: string) => WakeEvent;
   cancel: (id: string) => ConversationScheduledInputCancellation;
   showError: (error: unknown) => void;
+  collapseLongPastes?: boolean;
   restoreBottom: (focus: boolean) => void;
   onClose: () => void;
 };
@@ -117,6 +118,7 @@ export class ScheduledMessageManagerController {
       title: error ? `Custom delay · ${error}` : "Custom delay (1m–24h)",
       initialValue,
       placeholder: "Examples: 3m, 90m, 2h",
+      collapseLongPastes: this.options.collapseLongPastes,
       onSubmit: (value) => {
         const result = parseCustomDelay(value);
         if (typeof result === "string") {
@@ -141,6 +143,7 @@ export class ScheduledMessageManagerController {
       title: error ? `Scheduled message · ${error}` : "Scheduled message",
       initialValue,
       placeholder: "Message to send when the timer expires",
+      collapseLongPastes: this.options.collapseLongPastes,
       onSubmit: (value) => {
         const message = value.trim();
         if (!message) {

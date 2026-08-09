@@ -230,6 +230,7 @@ export class KanaTuiApp {
     this.notifications = new NotificationController(options.notification, terminal);
     this.editor = new Editor({
       cleanMode: options.launchMode === "clean",
+      collapseLongPastes: options.tuiConfig?.collapseLongPastes ?? true,
       model: formatStatusModel(
         this.conversation.state.model.metadata,
         this.options.modelManagement?.getSettings(),
@@ -309,6 +310,7 @@ export class KanaTuiApp {
       schedule: (afterMinutes, message) => this.conversation.scheduleInput(afterMinutes, message),
       cancel: (id) => this.conversation.cancelScheduledInput(id),
       showError: (error) => this.showError(error),
+      collapseLongPastes: options.tuiConfig?.collapseLongPastes ?? true,
       restoreBottom: (focus) => this.restoreBottom(focus),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
@@ -327,6 +329,7 @@ export class KanaTuiApp {
         this.restoreBottom(true);
         this.setToolApprovalMode(mode);
       },
+      collapseLongPastes: options.tuiConfig?.collapseLongPastes ?? true,
       getModelSettings: this.options.modelManagement?.getSettings,
       onModelSelect: (selection) => {
         this.restoreBottom(true);

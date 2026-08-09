@@ -56,6 +56,33 @@ describe("text prompt", () => {
     expect(submitted).toEqual(["first\nsecond\nthird"]);
   });
 
+  test("shares configurable long-paste collapsing with the main editor", () => {
+    const pastedText = "界".repeat(1_000);
+    const collapsed = new TextPrompt({
+      title: "Request",
+      onSubmit: () => {},
+      onCancel: () => {},
+    });
+    const expanded = new TextPrompt({
+      title: "Request",
+      collapseLongPastes: false,
+      onSubmit: () => {},
+      onCancel: () => {},
+    });
+
+    collapsed.handleInput(`\x1b[200~${pastedText}\x1b[201~`);
+    expanded.handleInput(`\x1b[200~${pastedText}\x1b[201~`);
+
+    expect(stripAnsi(collapsed.render(80).join("\n"))).toContain("[Pasted 1,000 chars]");
+    expect(stripAnsi(expanded.render(80).join("\n"))).not.toContain("[Pasted");
+
+    collapsed.handleInput("\x7f");
+    expanded.handleInput("\x7f");
+
+    expect(collapsed.getText()).toBe("");
+    expect(expanded.getText()).toBe("界".repeat(999));
+  });
+
   test("allows an empty submission and cancels with escape", () => {
     const submitted: string[] = [];
     let cancelled = false;
