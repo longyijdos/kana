@@ -505,7 +505,17 @@ function estimateMessagesTokens(messages: Message[]): number {
 function estimateMessageTokens(message: Message): number {
   switch (message.role) {
     case "user":
-      return 6 + estimateTextTokens(message.content);
+      return (
+        6 +
+        estimateTextTokens(message.content) +
+        // Current Codex models use 32px image patches at original/auto detail.
+        // Keep image bytes out of token estimation; base64 size is unrelated to
+        // the visual token budget consumed by the provider.
+        (message.images ?? []).reduce(
+          (total, image) => total + Math.ceil(image.width / 32) * Math.ceil(image.height / 32),
+          0,
+        )
+      );
     case "tool":
       return (
         10 +

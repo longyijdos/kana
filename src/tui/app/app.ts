@@ -13,6 +13,8 @@ import {
   type ModelMetadata,
   type ModelUsage,
   type ToolCallContent,
+  type UserImage,
+  type UserMessage,
 } from "@/core";
 import type {
   KanaLaunchMode,
@@ -36,6 +38,8 @@ import {
 } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
+import { loadUserImageFile } from "@/utils";
+import { readClipboardImage } from "../clipboard-image";
 import {
   Editor,
   MarkdownBlock,
@@ -180,6 +184,8 @@ export class KanaTuiApp {
   private readonly unsubscribeConversationEvents: () => void;
   private contextCompactingBlock?: TextBlock;
   private readonly mcpOAuthBlocks = new Map<string, TextBlock>();
+  private clipboardPasteRunning = false;
+  private imageFileAttachRunning = false;
   private stopping = false;
   private stopPromise?: Promise<void>;
   private resolveStopped!: () => void;
@@ -468,6 +474,9 @@ export class KanaTuiApp {
         this.editor.clear();
         this.openScheduledMessageManager();
       },
+      attachImageFile: (path) => {
+        void this.attachImageFile(path);
+      },
       openApproval: () => this.slashCommandOptions.openApproval(),
       openModel: () => this.slashCommandOptions.openModel(),
       openMemory: () => this.openMemory(),
@@ -521,12 +530,15 @@ export class KanaTuiApp {
         return;
       }
 
-      void this.submitPrompt(submit.content);
+      void this.submitPrompt(submit.content, submit.images);
     };
     this.editor.onQueue = (submit) => {
       if (submit.type === "message") {
-        this.queuePrompt(submit.content);
+        this.queuePrompt(submit.content, submit.images);
       }
+    };
+    this.editor.onPasteClipboard = () => {
+      void this.pasteClipboard();
     };
 
     this.updateStatus("idle");
@@ -897,7 +909,7 @@ export class KanaTuiApp {
         this.running = true;
         this.agentEvents.resetRun();
         if (event.source === "user" && event.input) {
-          this.transcript.addChild(new UserMessageBlock(event.input.content));
+          this.transcript.addChild(new UserMessageBlock(event.input));
         } else if (event.source === "scheduled" && event.input) {
           this.transcript.addChild(
             new TextBlock(`Scheduled wake: ${formatScheduledWakeContent(event.input.content)}`, {
@@ -915,7 +927,7 @@ export class KanaTuiApp {
           this.contextCompactingBlock = undefined;
         }
         if (event.event.type === "turn_input") {
-          this.queuedInputs.deliverTurn(event.event.message.content);
+          this.queuedInputs.deliverTurn(event.event.message);
         }
         this.agentEvents.handle(event.event);
         if (event.source !== "compaction") {
@@ -993,18 +1005,28 @@ export class KanaTuiApp {
     this.updateStatus("error");
   }
 
-  private async submitPrompt(value: string): Promise<void> {
+  private async submitPrompt(value: string, images: UserImage[] = []): Promise<void> {
     const prompt = value.trim();
 
-    if (!prompt) {
+    if (!prompt && images.length === 0) {
       return;
     }
+    const imageInputError = this.getImageInputError(images);
+    if (imageInputError) {
+      this.showError(imageInputError);
+      return;
+    }
+    const input: UserMessage = {
+      role: "user",
+      content: prompt,
+      ...(images.length > 0 ? { images: structuredClone(images) } : {}),
+    };
 
     if (this.conversation.canSteer) {
       this.editor.addToHistory(prompt);
       this.editor.clear();
-      const queuedInputId = this.queuedInputs.addTurn(prompt);
-      const disposition = await this.conversation.steer({ role: "user", content: prompt });
+      const queuedInputId = this.queuedInputs.addTurn(input);
+      const disposition = await this.conversation.steer(input);
       if (disposition !== "queued") {
         this.queuedInputs.remove(queuedInputId);
       }
@@ -1016,18 +1038,135 @@ export class KanaTuiApp {
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
-    await this.submitAgentInput({ role: "user", content: prompt });
+    await this.submitAgentInput(input);
   }
 
-  private queuePrompt(value: string): void {
+  private queuePrompt(value: string, images: UserImage[] = []): void {
     const prompt = value.trim();
-    if (!prompt || !this.conversation.canSteer) {
+    if ((!prompt && images.length === 0) || !this.conversation.canSteer) {
       return;
     }
+    const imageInputError = this.getImageInputError(images);
+    if (imageInputError) {
+      this.showError(imageInputError);
+      return;
+    }
+    const input: UserMessage = {
+      role: "user",
+      content: prompt,
+      ...(images.length > 0 ? { images: structuredClone(images) } : {}),
+    };
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
-    this.conversation.queueInput({ role: "user", content: prompt });
+    this.conversation.queueInput(input);
+  }
+
+  private async pasteClipboard(): Promise<void> {
+    if (this.clipboardPasteRunning) {
+      return;
+    }
+
+    this.clipboardPasteRunning = true;
+    try {
+      const image = await readClipboardImage();
+      if (image) {
+        const imageInputError = this.getImageInputError([image]);
+        if (imageInputError) {
+          throw imageInputError;
+        }
+        this.editor.attachImage(image);
+        try {
+          this.getLogger().debug("tui.clipboard_paste_completed", {
+            contentType: "image",
+            mimeType: image.mimeType,
+            width: image.width,
+            height: image.height,
+          });
+        } catch {
+          // Clipboard diagnostics must not change attachment behavior.
+        }
+        return;
+      }
+
+      throw new Error("The clipboard does not contain an image.");
+    } catch (error) {
+      try {
+        this.getLogger().warn("tui.clipboard_paste_failed", {
+          platform: process.platform,
+          errorType: error instanceof Error ? error.name : typeof error,
+        });
+      } catch {
+        // Clipboard diagnostics must not replace the user-facing failure.
+      }
+      this.showError(error);
+    } finally {
+      this.clipboardPasteRunning = false;
+      this.tui.requestRender();
+    }
+  }
+
+  private async attachImageFile(path: string): Promise<void> {
+    if (this.imageFileAttachRunning) {
+      return;
+    }
+
+    this.imageFileAttachRunning = true;
+    try {
+      const imageInputError = this.getImageInputAvailabilityError();
+      if (imageInputError) {
+        throw imageInputError;
+      }
+      const image = await loadUserImageFile(path);
+      this.editor.attachImage(image);
+      this.editor.setText("");
+      try {
+        this.getLogger().debug("tui.image_file_attach_completed", {
+          mimeType: image.mimeType,
+          width: image.width,
+          height: image.height,
+        });
+      } catch {
+        // Image diagnostics must not change attachment behavior.
+      }
+    } catch (error) {
+      try {
+        this.getLogger().warn("tui.image_file_attach_failed", {
+          errorType: error instanceof Error ? error.name : typeof error,
+        });
+      } catch {
+        // Image diagnostics must not replace the user-facing failure.
+      }
+      this.showError(error);
+    } finally {
+      this.imageFileAttachRunning = false;
+      this.tui.requestRender();
+    }
+  }
+
+  private getImageInputError(images: readonly UserImage[]): Error | undefined {
+    if (images.length === 0) {
+      return undefined;
+    }
+
+    return this.getImageInputAvailabilityError();
+  }
+
+  private getImageInputAvailabilityError(): Error | undefined {
+    const metadata = this.conversation.state.model.metadata;
+    if (metadata.supportsImageInput !== true) {
+      return new Error(`Model ${metadata.model} does not support image input.`);
+    }
+
+    const settings = this.options.modelManagement?.getSettings();
+    if (!settings || settings.activeProvider !== metadata.provider) {
+      return undefined;
+    }
+    const enabled =
+      settings.activeProvider === "deepseek"
+        ? settings.model.deepseek.imageInput === true
+        : settings.model["openai-codex"].imageInput !== false;
+    return enabled ? undefined : new Error("Image input is disabled in the active model config.");
   }
 
   private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {

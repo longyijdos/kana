@@ -104,6 +104,14 @@ describe("Kana session persistence", () => {
       {
         role: "user",
         content: "hi",
+        images: [
+          {
+            mimeType: "image/png",
+            data: "c2VsZi1jb250YWluZWQtaW1hZ2U=",
+            width: 32,
+            height: 16,
+          },
+        ],
       },
       {
         role: "assistant",
@@ -163,6 +171,14 @@ describe("Kana session persistence", () => {
       timestamp: "2026-06-12T00:00:00.000Z",
       message: {
         role: "user",
+        images: [
+          {
+            mimeType: "image/png",
+            data: "c2VsZi1jb250YWluZWQtaW1hZ2U=",
+            width: 32,
+            height: 16,
+          },
+        ],
       },
     });
     expect(secondEntry).toMatchObject({
@@ -445,6 +461,51 @@ describe("Kana session persistence", () => {
       title: "branch from here",
       parentSessionPath: "/tmp/source.jsonl",
     });
+  });
+
+  test("rejects malformed user image attachments while loading", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "invalid-images" });
+    appendKanaSessionMessages(session, [
+      {
+        role: "user",
+        content: "Inspect this.",
+        images: [
+          {
+            mimeType: "image/png",
+            data: "aW1hZ2U=",
+            width: 32,
+            height: 16,
+          },
+        ],
+      },
+    ]);
+    const originalLines = readFileSync(session.path, "utf8").trim().split("\n");
+    const invalidImages: unknown[] = [
+      { mimeType: "image/png", data: "aW1hZ2U=", width: 32, height: 16 },
+      [{ mimeType: "image/svg+xml", data: "aW1hZ2U=", width: 32, height: 16 }],
+      [{ mimeType: "image/png", data: 123, width: 32, height: 16 }],
+      [{ mimeType: "image/png", data: "aW1hZ2U=", width: 0, height: 16 }],
+      [{ mimeType: "image/png", data: "aW1hZ2U=", width: 32, height: 1.5 }],
+    ];
+
+    for (const images of invalidImages) {
+      const lines = [...originalLines];
+      const entry = JSON.parse(lines[2] ?? "{}") as {
+        message?: Record<string, unknown>;
+      };
+      if (!entry.message) {
+        throw new Error("Expected a persisted user message.");
+      }
+      entry.message.images = images;
+      lines[2] = JSON.stringify(entry);
+      writeFileSync(session.path, `${lines.join("\n")}\n`);
+
+      expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
+        "Invalid Kana session message entry",
+      );
+    }
   });
 
   test("uses an explicit session title when provided", () => {

@@ -22,12 +22,14 @@ export type KanaModelManagement = {
       thinking: boolean;
       reasoningEffort: KanaDeepSeekModelConfig["reasoningEffort"];
       reasoningEfforts: readonly KanaDeepSeekModelConfig["reasoningEffort"][];
+      imageInput?: boolean;
     };
     "openai-codex": {
       available: readonly string[];
       name: string;
       reasoningEffort: KanaOpenAICodexModelConfig["reasoningEffort"];
       reasoningEfforts: readonly KanaOpenAICodexModelConfig["reasoningEffort"][];
+      imageInput?: boolean;
     };
   };
 };
@@ -51,12 +53,14 @@ export function getKanaModelManagement(config: KanaConfig): KanaModelManagement 
         thinking: config.model.deepseek.thinking,
         reasoningEffort: config.model.deepseek.reasoningEffort,
         reasoningEfforts: KANA_DEEPSEEK_REASONING_EFFORTS,
+        imageInput: config.model.deepseek.imageInput,
       },
       "openai-codex": {
         available: KANA_OPENAI_CODEX_MODELS,
         name: config.model["openai-codex"].name,
         reasoningEffort: config.model["openai-codex"].reasoningEffort,
         reasoningEfforts: KANA_OPENAI_CODEX_REASONING_EFFORTS,
+        imageInput: config.model["openai-codex"].imageInput,
       },
     },
   };

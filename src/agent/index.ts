@@ -31,7 +31,10 @@ export {
   type AgentLoopConfig,
   runAgentLoop,
 } from "./loop";
-export { createModelCompactPolicy } from "./model-compact-policy";
+export {
+  createModelCompactPolicy,
+  type ModelCompactPolicyOptions,
+} from "./model-compact-policy";
 export {
   AgentEventStream,
   type ReadableAgentEventStream,

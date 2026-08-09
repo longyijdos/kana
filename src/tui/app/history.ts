@@ -46,7 +46,7 @@ function addHistoryMessage(
       transcript.addChild(
         message.source
           ? new TextBlock(formatUserMessage(message), { color: tuiTheme.muted })
-          : new UserMessageBlock(message.content),
+          : new UserMessageBlock(message),
       );
       break;
 

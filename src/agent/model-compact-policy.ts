@@ -1,4 +1,4 @@
-import type { AssistantContent, AssistantMessage, Message, Model } from "@/core";
+import type { AssistantContent, AssistantMessage, Message, Model, UserImage } from "@/core";
 import type { CompactPolicy } from "./context-manager";
 
 const COMPACTION_SYSTEM_PROMPT = [
@@ -10,8 +10,24 @@ const COMPACTION_SYSTEM_PROMPT = [
   "Do not preserve hidden reasoning or reproduce large tool outputs.",
 ].join(" ");
 
-export function createModelCompactPolicy(model: Model): CompactPolicy {
+export type ModelCompactPolicyOptions = {
+  imageInputEnabled?: boolean;
+};
+
+export function createModelCompactPolicy(
+  model: Model,
+  options: ModelCompactPolicyOptions = {},
+): CompactPolicy {
   return async ({ previousSummary, messages, maxSummaryTokens, signal }) => {
+    const canReadImages =
+      model.metadata.supportsImageInput === true && options.imageInputEnabled !== false;
+    const request = formatCompactionRequest(
+      previousSummary,
+      messages,
+      maxSummaryTokens,
+      canReadImages,
+    );
+
     let response: AssistantMessage;
     try {
       response = await model.generate({
@@ -19,7 +35,8 @@ export function createModelCompactPolicy(model: Model): CompactPolicy {
         messages: [
           {
             role: "user",
-            content: formatCompactionRequest(previousSummary, messages, maxSummaryTokens),
+            content: request.content,
+            ...(request.images.length > 0 ? { images: request.images } : {}),
           },
         ],
         maxOutputTokens: maxSummaryTokens,
@@ -58,21 +75,65 @@ function formatCompactionRequest(
   previousSummary: string | undefined,
   messages: Message[],
   maxSummaryTokens: number,
-): string {
-  return [
+  includeImages: boolean,
+): { content: string; images: UserImage[] } {
+  const imageState: CompactionImageState = {
+    images: [],
+    nextIndex: 0,
+  };
+  const transcript = messages.map((message) => formatMessage(message, imageState, includeImages));
+  const imageInstruction =
+    imageState.nextIndex === 0
+      ? undefined
+      : includeImages
+        ? "Image attachments follow the JSON in imageIndex order. Preserve visually relevant information in text."
+        : "Image bytes are unavailable. Preserve the explicit image-omission metadata in the summary.";
+  const content = [
     `Keep the summary within approximately ${maxSummaryTokens} tokens.`,
+    ...(imageInstruction ? [imageInstruction] : []),
     "Summarize the following JSON data:",
     JSON.stringify({
       previousSummary,
-      transcript: messages.map(formatMessage),
+      transcript,
     }),
   ].join("\n");
+
+  return { content, images: imageState.images };
 }
 
-function formatMessage(message: Message): object {
+type CompactionImageState = {
+  images: UserImage[];
+  nextIndex: number;
+};
+
+function formatMessage(
+  message: Message,
+  imageState: CompactionImageState,
+  includeImages: boolean,
+): object {
   switch (message.role) {
     case "user":
-      return { role: "user", content: message.content };
+      return {
+        role: "user",
+        content: message.content,
+        ...(message.images?.length
+          ? {
+              images: message.images.map((image) => {
+                imageState.nextIndex += 1;
+                if (includeImages) {
+                  imageState.images.push(structuredClone(image));
+                }
+                return {
+                  imageIndex: imageState.nextIndex,
+                  mimeType: image.mimeType,
+                  width: image.width,
+                  height: image.height,
+                  ...(!includeImages ? { contentOmitted: true } : {}),
+                };
+              }),
+            }
+          : {}),
+      };
     case "tool":
       return {
         role: "tool",

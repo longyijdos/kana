@@ -1,3 +1,5 @@
+import type { UserImage } from "@/core";
+
 import {
   color,
   dim,
@@ -14,6 +16,7 @@ import type { Component } from "../../runtime";
 import {
   CURSOR_MARKER,
   isBackspace,
+  isCtrlV,
   isDelete,
   isDown,
   isEnd,
@@ -59,6 +62,7 @@ import { renderStatusLine, type StatusLineState } from "./status-line";
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
 const QUEUED_INPUT_VISIBLE_LIMIT = 5;
+const MAX_INPUT_IMAGES = 10;
 const PROMPT = "> ";
 
 export type EditorOptions = {
@@ -70,6 +74,7 @@ export type EditorOptions = {
 
 export type EditorQueuedInput = {
   content: string;
+  imageCount?: number;
   delivery: "turn" | "run" | "scheduled";
 };
 
@@ -106,11 +111,13 @@ export class Editor implements Component {
   };
   private queuedInputs: EditorQueuedInput[] = [];
   private scheduledInputSummary?: EditorScheduledInputSummary;
+  private images: UserImage[] = [];
   // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
   private placeholder = createRandomPromptPlaceholder();
 
   onSubmit?: (submit: PromptSubmit) => void;
   onQueue?: (submit: PromptSubmit) => void;
+  onPasteClipboard?: () => void;
 
   constructor(options: EditorOptions = {}) {
     this.model = options.model;
@@ -140,6 +147,14 @@ export class Editor implements Component {
 
   clear(): void {
     this.setText("");
+    this.images = [];
+  }
+
+  attachImage(image: UserImage): void {
+    if (this.images.length >= MAX_INPUT_IMAGES) {
+      throw new Error(`Kana supports at most ${MAX_INPUT_IMAGES} images in one input.`);
+    }
+    this.images.push(structuredClone(image));
   }
 
   setModel(model: string | undefined): void {
@@ -182,7 +197,9 @@ export class Editor implements Component {
     const commandState = getCommandState(this.state.value);
     const showStatus =
       !commandState.showPalette && (availableHeight === undefined || availableHeight >= 5);
-    const inputReservedRows = 2 + (showStatus ? 1 : 0) + (commandState.showPalette ? 3 : 0);
+    const imageRows = this.images.length > 0 ? 1 : 0;
+    const inputReservedRows =
+      2 + imageRows + (showStatus ? 1 : 0) + (commandState.showPalette ? 3 : 0);
     const maximumInputLines = visibleLimitForHeight(
       MAX_INPUT_LINES,
       availableHeight,
@@ -200,6 +217,11 @@ export class Editor implements Component {
     });
     this.inputViewportStartLine = layout.startLine;
     const lines = [`+${"-".repeat(frameWidth - 2)}+`];
+
+    if (this.images.length > 0) {
+      const summary = color(formatImageSummary(this.images), tuiTheme.command);
+      lines.push(`| ${padRightAnsi(truncateToWidth(summary, contentWidth, "…"), contentWidth)} |`);
+    }
 
     for (const [index, line] of layout.lines.entries()) {
       const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));
@@ -250,6 +272,11 @@ export class Editor implements Component {
       return;
     }
 
+    if (isCtrlV(data)) {
+      this.onPasteClipboard?.();
+      return;
+    }
+
     if (isShiftEnter(data)) {
       this.applyText("\n");
       return;
@@ -264,7 +291,7 @@ export class Editor implements Component {
       );
 
       if (submit) {
-        this.onSubmit?.(submit);
+        this.onSubmit?.(this.withImages(submit));
       }
       return;
     }
@@ -290,6 +317,10 @@ export class Editor implements Component {
     }
 
     if (isBackspace(data)) {
+      if (!this.state.value && this.images.length > 0) {
+        this.images.pop();
+        return;
+      }
       this.applyAction({ type: "deleteBefore" });
       return;
     }
@@ -326,7 +357,7 @@ export class Editor implements Component {
 
       const submit = createCommandSubmit(this.state.value, command);
       if (submit) {
-        this.onQueue?.(submit);
+        this.onQueue?.(this.withImages(submit));
       }
       return;
     }
@@ -475,10 +506,13 @@ export class Editor implements Component {
             ? "next run"
             : "scheduled";
       const content = stripTerminalControlSequences(input.content).replace(/\s+/g, " ").trim();
+      const preview = [content, input.imageCount ? `[${input.imageCount} image(s)]` : ""]
+        .filter(Boolean)
+        .join(" ");
       const prefix = `  ${delivery.padEnd(9)} · `;
       lines.push(
         truncateToWidth(
-          `${color(prefix, tuiTheme.muted)}${color(content, tuiTheme.userMessageText)}`,
+          `${color(prefix, tuiTheme.muted)}${color(preview, tuiTheme.userMessageText)}`,
           width,
           "…",
         ),
@@ -557,6 +591,12 @@ export class Editor implements Component {
   private applyAction(action: Parameters<typeof applyEditorAction>[1]): void {
     this.state = applyEditorAction(this.state, action);
     this.syncCommandSelection();
+  }
+
+  private withImages(submit: PromptSubmit): PromptSubmit {
+    return submit.type === "message" && this.images.length > 0
+      ? { ...submit, images: structuredClone(this.images) }
+      : submit;
   }
 
   private moveVertically(direction: -1 | 1): boolean {
@@ -696,6 +736,27 @@ export class Editor implements Component {
 
 function formatClockTime(value: Date): string {
   return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatImageSummary(images: UserImage[]): string {
+  const dimensions = images
+    .slice(0, 3)
+    .map((image) => `${image.width}×${image.height}`)
+    .join(", ");
+  const remaining = images.length > 3 ? `, +${images.length - 3}` : "";
+  const totalBytes = images.reduce((total, image) => total + base64ByteLength(image.data), 0);
+  return `Images · ${images.length} · ${dimensions}${remaining} · ${formatByteSize(totalBytes)}`;
+}
+
+function base64ByteLength(data: string): number {
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+}
+
+function formatByteSize(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function commandTokenEnd(value: string): number | undefined {

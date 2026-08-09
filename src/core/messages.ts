@@ -7,9 +7,23 @@ export type AssistantStopReason = "stop" | "length" | "toolUse" | "aborted" | "e
 export type UserMessage = {
   role: "user";
   content: string;
+  // Images stay provider-neutral and JSON-serializable so sessions can replay
+  // the same visual input through any adapter that supports it.
+  images?: UserImage[];
   // Providers receive internal wake and recovery records as user messages.
   // Keep their source so the TUI does not render them as user-authored input.
   source?: "scheduled" | "recovery";
+};
+
+export type UserImageMimeType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+
+export type UserImage = {
+  mimeType: UserImageMimeType;
+  // Raw base64 without a data-URL prefix. Provider adapters own their wire
+  // representation, while Kana sessions keep the original bytes inline.
+  data: string;
+  width: number;
+  height: number;
 };
 
 // Assistant content is ordered. Stream event contentIndex values refer to

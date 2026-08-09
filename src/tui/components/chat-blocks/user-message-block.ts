@@ -1,3 +1,5 @@
+import type { UserImage, UserMessage } from "@/core";
+
 import { padRightAnsi, renderHighlightedLine, visibleWidth, wrapPlainText } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
@@ -7,8 +9,11 @@ const PREFIX = "> ";
 export class UserMessageBlock implements Component {
   private cachedWidth?: number;
   private cachedLines?: string[];
+  private readonly message: UserMessage;
 
-  constructor(private readonly text: string) {}
+  constructor(message: UserMessage | string) {
+    this.message = typeof message === "string" ? { role: "user", content: message } : message;
+  }
 
   render(width: number, _availableHeight?: number): string[] {
     if (this.cachedLines && this.cachedWidth === width) {
@@ -18,10 +23,19 @@ export class UserMessageBlock implements Component {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
     const prefixWidth = visibleWidth(PREFIX);
-    const messageLines = wrapPlainText(this.text, Math.max(1, contentWidth - prefixWidth));
+    const messageLines = this.message.content
+      ? wrapPlainText(this.message.content, Math.max(1, contentWidth - prefixWidth))
+      : [];
+    const rows = [
+      ...(this.message.images ?? []).map((image, index) => formatImage(image, index)),
+      ...messageLines,
+    ];
+    if (rows.length === 0) {
+      rows.push("");
+    }
     const lines = [
       `+${"-".repeat(frameWidth - 2)}+`,
-      ...messageLines.map((line, index) =>
+      ...rows.map((line, index) =>
         this.renderRow(
           [
             {
@@ -50,4 +64,22 @@ export class UserMessageBlock implements Component {
 
     return `| ${padRightAnsi(content, contentWidth)} |`;
   }
+}
+
+function formatImage(image: UserImage, index: number): string {
+  const format = image.mimeType.slice("image/".length).toUpperCase();
+  return `[Image ${index + 1} · ${format} · ${image.width}×${image.height} · ${formatByteSize(
+    base64ByteLength(image.data),
+  )}]`;
+}
+
+function base64ByteLength(data: string): number {
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+}
+
+function formatByteSize(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }

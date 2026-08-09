@@ -17,7 +17,7 @@ export function buildOpenAICodexRequest(
     store: false,
     stream: true,
     instructions: context.system || "You are a helpful assistant.",
-    input: toOpenAICodexInput(context.messages),
+    input: toOpenAICodexInput(context.messages, config),
     text: {
       verbosity: "low",
     },
@@ -37,18 +37,24 @@ export function buildOpenAICodexRequest(
   return request;
 }
 
-function toOpenAICodexInput(messages: Message[]): Record<string, unknown>[] {
-  return messages.flatMap(toOpenAICodexMessage);
+function toOpenAICodexInput(
+  messages: Message[],
+  config: OpenAICodexModelConfig,
+): Record<string, unknown>[] {
+  return messages.flatMap((message) => toOpenAICodexMessage(message, config));
 }
 
-function toOpenAICodexMessage(message: Message): Record<string, unknown>[] {
+function toOpenAICodexMessage(
+  message: Message,
+  config: OpenAICodexModelConfig,
+): Record<string, unknown>[] {
   switch (message.role) {
     case "user":
       return [
         {
           type: "message",
           role: "user",
-          content: [{ type: "input_text", text: message.content }],
+          content: toOpenAICodexUserContent(message, config),
         },
       ];
     case "tool":
@@ -62,6 +68,35 @@ function toOpenAICodexMessage(message: Message): Record<string, unknown>[] {
     case "assistant":
       return message.content.flatMap(toOpenAICodexAssistantContent);
   }
+}
+
+function toOpenAICodexUserContent(
+  message: Extract<Message, { role: "user" }>,
+  config: OpenAICodexModelConfig,
+): Record<string, unknown>[] {
+  const content: Record<string, unknown>[] = [];
+
+  if (message.content) {
+    content.push({ type: "input_text", text: message.content });
+  }
+
+  if (config.imageInput !== false) {
+    for (const image of message.images ?? []) {
+      content.push({
+        type: "input_image",
+        image_url: `data:${image.mimeType};base64,${image.data}`,
+      });
+    }
+  } else if (message.images?.length) {
+    // Keep cross-configuration session replay explicit without transmitting
+    // image bytes after the user disables image input.
+    content.push({
+      type: "input_text",
+      text: `[${message.images.length} image attachment(s) omitted because image input is disabled.]`,
+    });
+  }
+
+  return content;
 }
 
 function toOpenAICodexAssistantContent(content: AssistantContent): Record<string, unknown>[] {

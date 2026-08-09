@@ -4,6 +4,7 @@ export {
   isBackspace,
   isCtrlC,
   isCtrlO,
+  isCtrlV,
   isDelete,
   isDown,
   isEnd,

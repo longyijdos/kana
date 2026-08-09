@@ -32,6 +32,7 @@ describe("Kana config store", () => {
       draft.model["openai-codex"].name = "gpt-5.6-luna";
       draft.model["openai-codex"].reasoningEffort = "max";
       draft.model["openai-codex"].webSearch = false;
+      draft.model["openai-codex"].imageInput = false;
     });
 
     expect(readFileSync(configPath, "utf8")).toBe(
@@ -43,6 +44,7 @@ describe("Kana config store", () => {
         'name = "gpt-5.6-luna"',
         'reasoning_effort = "max"',
         "web_search = false",
+        "image_input = false",
         "",
       ].join("\n"),
     );
@@ -50,6 +52,7 @@ describe("Kana config store", () => {
     expect(config.model["openai-codex"].name).toBe("gpt-5.6-luna");
     expect(config.model["openai-codex"].reasoningEffort).toBe("max");
     expect(config.model["openai-codex"].webSearch).toBe(false);
+    expect(config.model["openai-codex"].imageInput).toBe(false);
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
   });
 
@@ -77,6 +80,7 @@ describe("Kana config store", () => {
       draft.model.deepseek.name = "deepseek-v4-flash";
       draft.model.deepseek.thinking = false;
       draft.model.deepseek.webSearch = false;
+      draft.model.deepseek.imageInput = true;
       draft.agent.toolDeadlineMs = 120_000;
       draft.agent.parallelToolCalls = false;
       draft.agent.contextLimit = undefined;
@@ -90,6 +94,7 @@ describe("Kana config store", () => {
     expect(updated).toContain('name = "deepseek-v4-flash"');
     expect(updated).toContain("thinking = false");
     expect(updated).toContain("web_search = false");
+    expect(updated).toContain("image_input = true");
     expect(updated).toContain("tool_deadline_ms = 120000");
     expect(updated).toContain("parallel_tool_calls = false");
     expect(updated).toContain(

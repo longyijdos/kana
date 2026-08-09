@@ -112,6 +112,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
 reasoning_effort = "high"
 web_search = true
+image_input = false
 max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
@@ -121,6 +122,7 @@ name = "gpt-5.6-sol"
 reasoning_effort = "medium"
 reasoning_summary = "auto"
 web_search = true
+image_input = true
 max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
@@ -170,6 +172,7 @@ level = "info"
 | `thinking` | Boolean | `true` | Controls DeepSeek thinking. `false` selects Responses effort `none` for V4 Flash and disables thinking for V4 Pro. |
 | `reasoning_effort` | `high` or `max` | `high` | DeepSeek reasoning effort used while thinking is enabled. |
 | `web_search` | Boolean | `true` | Advertises DeepSeek's hosted `web_search` tool when the selected model metadata supports it. This currently affects V4 Flash Responses; V4 Pro remains on Chat Completions and ignores it. |
+| `image_input` | Boolean | `false` | Allows image attachment delivery only when the selected model metadata also supports image input. Current DeepSeek models are text-only, so this reserved setting cannot enable images by itself. |
 | `max_tokens` | Positive integer | `384000` | Allowed per-request output-token ceiling; it cannot exceed the selected model's hard limit. The Agent lowers the value sent for each turn when the current prompt leaves less space. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
@@ -188,6 +191,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` | Requested reasoning effort. |
 | `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
 | `web_search` | Boolean | `true` | Advertises the provider-hosted `web_search` tool to Codex Responses. Setting it to `false` omits that top-level tool entirely. |
+| `image_input` | Boolean | `true` | Sends persisted user images as classic Responses `input_image` data URLs. Setting it to `false` retains attachments in the session but replaces them with an explicit omission marker in model input. |
 | `max_tokens` | Positive integer | `128000` | Configured ceiling used when Kana calculates a per-turn output limit; the ChatGPT Codex request contract does not expose `max_output_tokens`, so requests do not send it. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
@@ -216,7 +220,7 @@ Before first use, run `kana auth login openai-codex`. Browser authorization stor
 
 `parallel_tool_calls` is a user policy; its effective value is the user setting AND selected-model metadata support. When disabled, the provider request does not advertise parallel capability, and ToolRuntime executes calls one at a time even if a model still returns several in one response. When enabled, only adjacent tools declaring `execution.concurrency = "parallel"` can form a concurrent group. Current OpenAI Codex models use classic Responses and advertise parallel-tool support, so their request field follows this effective setting.
 
-`hyperlinks` is permission rather than a force switch: even when it is `true`, Kana emits OSC 8 only for terminals with confirmed support and keeps the URL visible when capability is unknown; `false` always uses the text fallback. By default, `smooth_text_streaming` changes only visible-text pacing and never backpressures the provider or Agent. When disabled, the TUI still coalesces terminal repaints but no longer subdivides provider text snapshots. `collapse_long_pastes` affects only editor presentation and editing: the complete pasted text is still submitted, queued, and restored from input history. When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `parallel_tool_calls`, `hyperlinks`, `smooth_text_streaming`, and `collapse_long_pastes` must be Boolean; `tool_deadline_ms`, `max_tokens`, and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
+`hyperlinks` is permission rather than a force switch: even when it is `true`, Kana emits OSC 8 only for terminals with confirmed support and keeps the URL visible when capability is unknown; `false` always uses the text fallback. By default, `smooth_text_streaming` changes only visible-text pacing and never backpressures the provider or Agent. When disabled, the TUI still coalesces terminal repaints but no longer subdivides provider text snapshots. `collapse_long_pastes` affects only editor presentation and editing: the complete pasted text is still submitted, queued, and restored from input history. When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `parallel_tool_calls`, provider `web_search`/`image_input`, `hyperlinks`, `smooth_text_streaming`, and `collapse_long_pastes` must be Boolean; `tool_deadline_ms`, `max_tokens`, and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
 
 ### Context budget
 

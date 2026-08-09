@@ -19,6 +19,7 @@ export const OPENAI_CODEX_MODELS = {
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,
     supportsHostedWebSearch: true,
+    supportsImageInput: true,
   },
   "gpt-5.6-terra": {
     provider: "openai-codex",
@@ -34,6 +35,7 @@ export const OPENAI_CODEX_MODELS = {
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,
     supportsHostedWebSearch: true,
+    supportsImageInput: true,
   },
   "gpt-5.6-luna": {
     provider: "openai-codex",
@@ -49,6 +51,7 @@ export const OPENAI_CODEX_MODELS = {
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,
     supportsHostedWebSearch: true,
+    supportsImageInput: true,
   },
 } as const satisfies Record<string, OpenAICodexModelMetadata>;
 

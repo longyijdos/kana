@@ -17,6 +17,7 @@ export type SlashCommandControllerOptions = {
   openSkillManager: () => void;
   openMcpServerManager: () => void;
   openScheduledMessageManager: () => void;
+  attachImageFile: (path: string) => void;
   openApproval: () => void;
   openModel: () => boolean;
   openMemory: () => void;
@@ -82,6 +83,13 @@ export class SlashCommandController {
         break;
       case "schedule":
         this.runWithoutArguments(command, () => this.options.openScheduledMessageManager());
+        break;
+      case "image":
+        if (!command.arguments) {
+          this.showUsage(command);
+        } else {
+          this.options.attachImageFile(command.arguments);
+        }
         break;
       case "approval":
         this.runWithoutArguments(command, () => this.options.openApproval());

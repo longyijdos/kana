@@ -3,6 +3,7 @@ import {
   type CompactPolicyInput,
   ContextManager,
   createModelCompactPolicy,
+  estimateContextTokens,
   estimateTextTokens,
   runAgentLoop,
 } from "@/agent";
@@ -240,6 +241,28 @@ describe("ContextManager", () => {
     expect(limited).toContain("[Tool output truncated for model context]");
   });
 
+  test("estimates image patches without counting persisted base64 bytes", () => {
+    const createContext = (data: string): ModelContext => ({
+      messages: [
+        {
+          role: "user",
+          content: "",
+          images: [
+            {
+              mimeType: "image/png",
+              data,
+              width: 33,
+              height: 65,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(estimateContextTokens(createContext("small"))).toBe(20);
+    expect(estimateContextTokens(createContext("x".repeat(100_000)))).toBe(20);
+  });
+
   test("restores the previous checkpoint when summary generation fails", async () => {
     const manager = new ContextManager({
       contextLimit: 4_000,
@@ -271,10 +294,13 @@ describe("ContextManager", () => {
 });
 
 describe("model compaction policy", () => {
-  test("uses one tool-free model request and extracts only visible text", async () => {
+  test("omits image bytes when the model cannot read images", async () => {
     let capturedContext: ModelContext | undefined;
     const model: Model = {
-      metadata: MODEL_METADATA,
+      metadata: {
+        ...MODEL_METADATA,
+        supportsImageInput: false,
+      },
       stream() {
         throw new Error("stream should not be called directly");
       },
@@ -301,6 +327,18 @@ describe("model compaction policy", () => {
       previousSummary: "Previous state.",
       messages: [
         {
+          role: "user",
+          content: "Inspect the attached image.",
+          images: [
+            {
+              mimeType: "image/png",
+              data: "private-image-bytes",
+              width: 64,
+              height: 32,
+            },
+          ],
+        },
+        {
           role: "assistant",
           content: [
             { type: "thinking", text: "hidden history" },
@@ -325,6 +363,15 @@ describe("model compaction policy", () => {
     expect(JSON.stringify(capturedContext)).toContain("Previous state.");
     expect(JSON.stringify(capturedContext)).toContain("Visible history");
     expect(JSON.stringify(capturedContext)).toContain("visible tool content");
+    const compactionRequest = capturedContext?.messages[0];
+    expect(compactionRequest?.role).toBe("user");
+    expect(compactionRequest?.role === "user" ? compactionRequest.content : "").toContain(
+      '"contentOmitted":true',
+    );
+    expect(compactionRequest?.role === "user" ? compactionRequest.content : "").toContain(
+      '"width":64',
+    );
+    expect(JSON.stringify(capturedContext)).not.toContain("private-image-bytes");
     expect(JSON.stringify(capturedContext)).not.toContain("hidden history");
     expect(JSON.stringify(capturedContext)).not.toContain("structured result");
     expect(result).toEqual({
@@ -335,6 +382,84 @@ describe("model compaction policy", () => {
         totalTokens: 220,
       },
     });
+  });
+
+  test("attaches images when the model and configuration support them", async () => {
+    let capturedContext: ModelContext | undefined;
+    const model: Model = {
+      metadata: {
+        ...MODEL_METADATA,
+        supportsImageInput: true,
+      },
+      stream() {
+        throw new Error("stream should not be called directly");
+      },
+      async generate(context) {
+        capturedContext = structuredClone(context);
+        return {
+          role: "assistant",
+          stopReason: "stop",
+          content: [{ type: "text", text: "Visual summary." }],
+        };
+      },
+    };
+    const policy = createModelCompactPolicy(model, { imageInputEnabled: true });
+
+    const result = await policy({
+      messages: [
+        {
+          role: "user",
+          content: "Compare these images.",
+          images: [
+            {
+              mimeType: "image/png",
+              data: "first-image-bytes",
+              width: 64,
+              height: 32,
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: "And this one.",
+          images: [
+            {
+              mimeType: "image/jpeg",
+              data: "second-image-bytes",
+              width: 16,
+              height: 48,
+            },
+          ],
+        },
+      ],
+      maxSummaryTokens: 256,
+    });
+
+    const compactionRequest = capturedContext?.messages[0];
+    expect(compactionRequest?.role).toBe("user");
+    if (compactionRequest?.role !== "user") {
+      throw new Error("Expected a user compaction request.");
+    }
+    expect(compactionRequest.images).toEqual([
+      {
+        mimeType: "image/png",
+        data: "first-image-bytes",
+        width: 64,
+        height: 32,
+      },
+      {
+        mimeType: "image/jpeg",
+        data: "second-image-bytes",
+        width: 16,
+        height: 48,
+      },
+    ]);
+    expect(compactionRequest.content).toContain('"imageIndex":1');
+    expect(compactionRequest.content).toContain('"imageIndex":2');
+    expect(compactionRequest.content).not.toContain("contentOmitted");
+    expect(compactionRequest.content).not.toContain("first-image-bytes");
+    expect(compactionRequest.content).not.toContain("second-image-bytes");
+    expect(result).toEqual({ summary: "Visual summary.", usage: undefined });
   });
 });
 

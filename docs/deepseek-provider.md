@@ -8,16 +8,18 @@ Kana's product configuration currently uses DeepSeek; its adapter lives in `src/
 
 Current built-in metadata:
 
-| Model | Protocol | Context window | Max output | Parallel tool calls | Hosted web search | Input / output / cache-read price (CNY per million tokens) |
-| --- | --- | ---: | ---: | --- | --- | --- |
-| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | Supported | Supported | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | Chat Completions | 1,000,000 | 384,000 | Supported | Not yet supported | 3 / 6 / 0.025 |
+| Model | Protocol | Context window | Max output | Parallel tool calls | Hosted web search | Image input | Input / output / cache-read price (CNY per million tokens) |
+| --- | --- | ---: | ---: | --- | --- | --- | --- |
+| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported | 1 / 2 / 0.02 |
+| `deepseek-v4-pro` | Chat Completions | 1,000,000 | 384,000 | Supported | Not yet supported | Not supported | 3 / 6 / 0.025 |
 
 Cache-write price is currently zero. Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the user's `web_search` setting. The TUI uses metadata for context percentage and accumulated CNY cost. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting.
 
 ## Protocol selection and request conversion
 
 The default base URL is `https://api.deepseek.com`. Authentication, cancellation, timeout, retries, error normalization, and lifecycle logging are shared, while metadata chooses the endpoint and request codec.
+
+Both current DeepSeek models are text-only. If a persisted user message contains images, both request codecs replace them with an explicit attachment-omitted marker and never transmit their base64 data. `model.deepseek.image_input` is reserved for future metadata support and cannot override a model that declares no image capability.
 
 ### V4 Flash Responses
 
@@ -47,6 +49,8 @@ Provided optional configuration maps as follows:
 | `userId` | `user` |
 
 A per-turn output ceiling takes precedence over configured `maxTokens`. Client functions use flattened Responses tool definitions. When `model.deepseek.web_search = true` and metadata supports it, `{ "type": "web_search" }` is appended to the same `tools` array; `false` removes only the hosted tool. Default `tool_choice` is `auto`, named Chat Completions choices are converted to the flattened Responses shape, and `strictTools` adds `strict: true` to function tools.
+
+Current DeepSeek model metadata marks image input as unsupported. Normal turns and context compaction therefore never send stored base64 image bytes. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
 ### V4 Pro Chat Completions
 

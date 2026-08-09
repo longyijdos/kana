@@ -25,11 +25,13 @@ export type ConversationPendingInput =
       id: string;
       kind: "queued" | "deferred";
       content: string;
+      imageCount?: number;
     }
   | {
       id: string;
       kind: "scheduled";
       content: string;
+      imageCount?: number;
       dueAt: Date;
       origin: WakeEventOrigin;
       key?: string;
@@ -214,6 +216,9 @@ export class ConversationRuntime<TConfiguration = never> {
             id: submission.id,
             kind: submission.kind,
             content: submission.displayContent,
+            ...(submission.input.images?.length
+              ? { imageCount: submission.input.images.length }
+              : {}),
           };
         }),
       scheduled:

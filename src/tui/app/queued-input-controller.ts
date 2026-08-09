@@ -1,9 +1,10 @@
+import type { UserMessage } from "@/core";
 import type { ConversationInputQueueSnapshot } from "@/kana";
 import type { EditorQueuedInput, EditorScheduledInputSummary } from "../components";
 
 type QueuedTurnInput = {
   id: number;
-  content: string;
+  input: UserMessage;
 };
 
 export class QueuedInputController {
@@ -20,9 +21,12 @@ export class QueuedInputController {
     ) => void,
   ) {}
 
-  addTurn(content: string): number {
+  addTurn(input: UserMessage | string): number {
     const id = ++this.nextId;
-    this.turnInputs.push({ id, content });
+    this.turnInputs.push({
+      id,
+      input: typeof input === "string" ? { role: "user", content: input } : structuredClone(input),
+    });
     this.publish();
     return id;
   }
@@ -40,7 +44,11 @@ export class QueuedInputController {
         continue;
       }
       this.observedDeferredInputIds.add(pending.id);
-      const turnIndex = this.turnInputs.findIndex((input) => input.content === pending.content);
+      const turnIndex = this.turnInputs.findIndex(
+        ({ input }) =>
+          input.content === pending.content &&
+          (input.images?.length ?? 0) === (pending.imageCount ?? 0),
+      );
       if (turnIndex >= 0) {
         this.turnInputs.splice(turnIndex, 1);
       }
@@ -54,6 +62,7 @@ export class QueuedInputController {
 
     this.runtimeInputs = queue.pending.map((pending) => ({
       content: pending.content,
+      imageCount: pending.imageCount,
       delivery: pending.kind === "scheduled" ? "scheduled" : "run",
     }));
     const nextScheduled = queue.scheduled[0];
@@ -66,8 +75,14 @@ export class QueuedInputController {
     this.publish();
   }
 
-  deliverTurn(content: string): void {
-    this.removeAt(this.turnInputs.findIndex((input) => input.content === content));
+  deliverTurn(input: UserMessage): void {
+    this.removeAt(
+      this.turnInputs.findIndex(
+        (queued) =>
+          queued.input.content === input.content &&
+          (queued.input.images?.length ?? 0) === (input.images?.length ?? 0),
+      ),
+    );
   }
 
   clear(): void {
@@ -91,7 +106,11 @@ export class QueuedInputController {
 
   private publish(): void {
     const ordered = [
-      ...this.turnInputs.map(({ content }) => ({ content, delivery: "turn" as const })),
+      ...this.turnInputs.map(({ input }) => ({
+        content: input.content,
+        imageCount: input.images?.length,
+        delivery: "turn" as const,
+      })),
       ...this.runtimeInputs,
     ];
     this.onChanged(ordered, this.scheduled);

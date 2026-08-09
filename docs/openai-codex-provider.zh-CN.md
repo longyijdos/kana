@@ -25,6 +25,7 @@ name = "gpt-5.6-luna"
 reasoning_effort = "medium"
 reasoning_summary = "auto"
 web_search = true
+image_input = true
 max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
@@ -40,6 +41,7 @@ max_retries = 1
 
 - Kana 本地执行的函数工具使用顶层 `tools` 数组。`web_search = true` 时，供应商托管的 `{ "type": "web_search" }` 工具追加到同一个数组，并由模型按 `tool_choice: "auto"` 决定是否使用；设为 `false` 时只移除托管工具，客户端函数工具仍然可用。
 - 系统提示词使用顶层 `instructions`；用户消息、工具结果和助手 output item 继续按原顺序保留在 `input`。
+- 用户图片附件会转换为带自包含 data URL 的 classic Responses `input_image` item。上下文压缩使用同一个实际能力开关，因此摘要可以将视觉细节保存为文本。`image_input = false` 时不发送图片字节，改为追加明确的文本省略提示。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
 - `parallel_tool_calls` 使用经过模型能力判断后的 Agent 有效设置。当前 Sol、Terra 和 Luna metadata 均支持并行调用；用户策略关闭并行，或工具执行 metadata 不允许并发时，ToolRuntime 仍会串行执行。
 - reasoning 设置包含 `effort` 与 summary 类型，但省略 `reasoning.context`，由 backend 决定实际的持久化推理模式。可用 effort 为 `low`、`medium`、`high`、`xhigh` 和 `max`；Ultra 属于 Codex 客户端编排模式，Kana 不会将其作为请求强度发送。

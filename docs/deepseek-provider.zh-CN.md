@@ -8,16 +8,18 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 
 当前内置元数据：
 
-| 模型 | 协议 | 上下文窗口 | 最大输出 | 并行工具调用 | 托管网页搜索 | 输入 / 输出 / 缓存读取价格（CNY/百万 token） |
-| --- | --- | ---: | ---: | --- | --- | --- |
-| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | Chat Completions | 1,000,000 | 384,000 | 支持 | 暂不支持 | 3 / 6 / 0.025 |
+| 模型 | 协议 | 上下文窗口 | 最大输出 | 并行工具调用 | 托管网页搜索 | 图片输入 | 输入 / 输出 / 缓存读取价格（CNY/百万 token） |
+| --- | --- | ---: | ---: | --- | --- | --- | --- |
+| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 | 1 / 2 / 0.02 |
+| `deepseek-v4-pro` | Chat Completions | 1,000,000 | 384,000 | 支持 | 暂不支持 | 不支持 | 3 / 6 / 0.025 |
 
 缓存写入价格当前为 0。构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与用户的 `web_search` 配置分开记录。TUI 使用元数据计算上下文使用率和 CNY 累计成本。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。
 
 ## 协议选择与请求转换
 
 默认 base URL 为 `https://api.deepseek.com`。认证、取消、超时、重试、错误归一化和生命周期日志由两条路径共享，endpoint 与请求 codec 则由元数据选择。
+
+当前两个 DeepSeek 模型均为纯文本模型。持久化的用户消息如果包含图片，两套请求 codec 都会将其替换为明确的附件省略提示，并且绝不发送 base64 数据。`model.deepseek.image_input` 为未来 metadata 支持预留，不能覆盖模型声明的不支持能力。
 
 ### V4 Flash Responses
 
@@ -47,6 +49,8 @@ V4 Flash 向 `POST /responses` 发送语义化 input item：
 | `userId` | `user` |
 
 逐轮输出上限优先于配置的 `maxTokens`。客户端函数使用扁平的 Responses 工具定义。当模型元数据支持且 `model.deepseek.web_search = true` 时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`；设为 `false` 只会移除该托管工具。默认 `tool_choice` 为 `auto`，Chat Completions 风格的具名选择会转换为扁平 Responses 结构，`strictTools` 会给函数工具加上 `strict: true`。
+
+当前 DeepSeek 模型 metadata 将图片输入标记为不支持。普通对话和上下文压缩因此都不会发送会话中保存的 base64 图片字节，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
 
 ### V4 Pro Chat Completions
 

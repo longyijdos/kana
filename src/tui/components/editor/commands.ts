@@ -1,3 +1,5 @@
+import type { UserImage } from "@/core";
+
 export type PromptCommandName =
   | "quit"
   | "help"
@@ -9,6 +11,7 @@ export type PromptCommandName =
   | "skills"
   | "mcp"
   | "schedule"
+  | "image"
   | "approval"
   | "model"
   | "memory"
@@ -30,6 +33,7 @@ export type PromptSubmit =
   | {
       type: "message";
       content: string;
+      images?: UserImage[];
     }
   | {
       type: "shell";
@@ -94,6 +98,11 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
     description: "Manage scheduled messages for this session.",
   },
   {
+    name: "image",
+    argumentSyntax: "<path>",
+    description: "Attach a local image file to the editor.",
+  },
+  {
     name: "approval",
     description: "Set tool approval mode for this session.",
   },
@@ -129,6 +138,10 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   {
     input: "Shift+Enter",
     description: "Insert a newline in supported terminals.",
+  },
+  {
+    input: "Ctrl+V",
+    description: "Paste an image from the clipboard.",
   },
   {
     input: "Esc",

@@ -47,6 +47,10 @@ export type ModelMetadata = {
   supportsParallelToolCalls: boolean;
   // Provider/model capability only; provider configuration may still disable it.
   supportsHostedWebSearch: boolean;
+  // Input modality capability only; provider configuration may still disable it.
+  // Omitted capabilities are treated as unsupported for compatibility with
+  // in-process models that predate image inputs.
+  supportsImageInput?: boolean;
 };
 
 export interface Model {

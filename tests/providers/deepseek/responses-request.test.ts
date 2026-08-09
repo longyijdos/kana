@@ -7,7 +7,18 @@ describe("buildDeepSeekResponsesRequest", () => {
       {
         system: "system",
         messages: [
-          { role: "user", content: "question" },
+          {
+            role: "user",
+            content: "question",
+            images: [
+              {
+                mimeType: "image/png",
+                data: "private-image-bytes",
+                width: 32,
+                height: 16,
+              },
+            ],
+          },
           {
             role: "assistant",
             content: [
@@ -115,7 +126,16 @@ describe("buildDeepSeekResponsesRequest", () => {
       {
         type: "message",
         role: "user",
-        content: [{ type: "input_text", text: "question" }],
+        content: [
+          {
+            type: "input_text",
+            text: [
+              "question",
+              "",
+              "[1 image attachment(s) omitted because DeepSeek does not support image input.]",
+            ].join("\n"),
+          },
+        ],
       },
       {
         id: "reasoning-1",
@@ -146,6 +166,7 @@ describe("buildDeepSeekResponsesRequest", () => {
         output: "source",
       },
     ]);
+    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
   });
 
   test("disables thinking and hosted search without removing client function tools", () => {

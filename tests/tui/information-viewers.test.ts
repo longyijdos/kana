@@ -34,9 +34,9 @@ describe("information viewers", () => {
     internal.tui.getFocus()?.handleInput?.("\x1b[F");
     const scrolled = internal.layout.render(80, 24).map(stripAnsi);
 
-    expect(
-      scrolled.some((line) => line.includes("Tab") && line.includes("queue for next run")),
-    ).toBe(true);
+    expect(scrolled.some((line) => line.includes("Ctrl+V") && line.includes("clipboard"))).toBe(
+      true,
+    );
     expect(
       scrolled.some(
         (line) => line.includes("!<command>") && line.includes("Run a local bash command"),

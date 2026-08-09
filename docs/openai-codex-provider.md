@@ -25,6 +25,7 @@ name = "gpt-5.6-luna"
 reasoning_effort = "medium"
 reasoning_summary = "auto"
 web_search = true
+image_input = true
 max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
@@ -40,6 +41,7 @@ The request follows one complete classic Responses contract:
 
 - Function tools executed by Kana use the top-level `tools` array. With `web_search = true`, the provider-hosted `{ "type": "web_search" }` tool is appended to that same array and `tool_choice: "auto"` lets the model decide whether to use it. Setting the option to `false` removes only the hosted tool; client function tools remain available.
 - The system prompt uses top-level `instructions`; user messages, tool results, and assistant output items remain in input order.
+- User image attachments become classic Responses `input_image` items with self-contained data URLs. Context compaction uses the same effective capability gate so its summary can preserve visual details as text. When `image_input = false`, Kana sends no image bytes and appends an explicit text omission marker instead.
 - `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
 - `parallel_tool_calls` follows the effective Agent setting after model-capability gating. The current Sol, Terra, and Luna metadata support parallel calls; ToolRuntime still serializes calls when user policy disables parallelism or tool execution metadata does not permit concurrency.
 - Reasoning configuration carries effort and summary type but omits `reasoning.context`, leaving the effective persisted-reasoning mode to the backend. Accepted efforts are `low`, `medium`, `high`, `xhigh`, and `max`; Ultra is a Codex client orchestration mode and Kana does not send it as a request effort.
