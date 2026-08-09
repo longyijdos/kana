@@ -12,10 +12,10 @@ type WelcomeBlockOptions = {
   username?: string;
 };
 
-const PANEL_MIN_WIDTH = 68;
-const PANEL_MAX_WIDTH = 74;
+const PANEL_MIN_WIDTH = 73;
+const PANEL_MAX_WIDTH = 73;
 const LEFT_WIDTH = 34;
-const COLUMN_GAP = 3;
+const COLUMN_GAP = 1;
 
 export class WelcomeBlock implements Component {
   constructor(private readonly options: WelcomeBlockOptions) {}
@@ -100,7 +100,7 @@ export class WelcomeBlock implements Component {
       muted("  ... /help for more"),
     ];
 
-    return rows.map((row) => truncateToWidth(row, width, ""));
+    return rows.map((row) => truncateToWidth(row, width));
   }
 
   private topBorder(width: number): string {

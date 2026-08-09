@@ -32,12 +32,16 @@ describe("tui welcome block", () => {
     }).render(80);
 
     expect(stripAnsi(lines[0] ?? "")).toContain(`Kana v${KANA_VERSION}`);
-    expect(lines.every((line) => visibleWidth(line) === 74)).toBe(true);
+    expect(lines.every((line) => visibleWidth(line) === 73)).toBe(true);
     const renderedLines = lines.map(stripAnsi);
     const rendered = renderedLines.join("\n");
+    const greetingLine = renderedLines.find((line) => line.includes("Welcome back"));
+    const [, leftColumn, rightColumn] = greetingLine?.split("|") ?? [];
     const highlightsLine = renderedLines.findIndex((line) => line.includes("Highlights"));
     const helpLine = renderedLines.findIndex((line) => line.includes("... /help for more"));
 
+    expect(visibleWidth(leftColumn ?? "")).toBe(35);
+    expect(visibleWidth(rightColumn ?? "")).toBe(35);
     expect(rendered).toContain("Welcome back, tester");
     expect(rendered).toContain("Recent activity");
     expect(rendered).toContain("Highlights");
@@ -53,13 +57,31 @@ describe("tui welcome block", () => {
     expect(rendered).not.toContain("Type a prompt");
   });
 
+  test("shows an ellipsis when a recent session title is truncated", () => {
+    const title = "帮我做一次只读检查，看一下我的五分钟后提醒";
+    const renderedLines = new WelcomeBlock({
+      logoLines: LOGO,
+      recentSessions: [{ ...SESSIONS[0]!, title }],
+      username: "tester",
+    })
+      .render(80)
+      .map(stripAnsi);
+
+    const sessionLine = renderedLines.find((line) => line.includes("帮我做一次"));
+    const sessionColumn = sessionLine?.split("|")[2];
+
+    expect(sessionLine).toBeDefined();
+    expect(sessionColumn?.trimEnd().endsWith("...")).toBe(true);
+    expect(sessionLine).not.toContain(title);
+  });
+
   test("uses a compact layout at narrow widths", () => {
     const lines = new WelcomeBlock({
       logoLines: LOGO,
-    }).render(30);
+    }).render(72);
 
     expect(stripAnsi(lines[0] ?? "")).toBe("Kana");
-    expect(lines.every((line) => visibleWidth(line) <= 30)).toBe(true);
+    expect(lines.every((line) => visibleWidth(line) <= 72)).toBe(true);
     expect(stripAnsi(lines.join("\n"))).toContain("Plan, act, and follow through");
     expect(stripAnsi(lines.join("\n"))).not.toContain("Recent activity");
   });
