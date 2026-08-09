@@ -1,8 +1,5 @@
-import type { UserImage, UserImageMimeType } from "@/core";
-
-export const MAX_CLIPBOARD_IMAGE_BYTES = 10 * 1024 * 1024;
-
-const MAX_CLIPBOARD_IMAGE_DIMENSION = 2048;
+import type { UserImage } from "@/core";
+import { encodeUserImage } from "@/utils";
 
 const MACOS_CLIPBOARD_FILE_PATHS_SCRIPT = `
 ObjC.import("AppKit");
@@ -36,31 +33,33 @@ function run() {
 `;
 
 export async function readClipboardImage(): Promise<UserImage | undefined> {
-  if (process.platform !== "darwin" && process.platform !== "win32") {
+  if (process.platform !== "darwin") {
     throw new Error(`Clipboard image paste is not supported on ${process.platform} yet.`);
   }
 
-  if (process.platform === "darwin") {
-    const filePaths = await readMacOSClipboardFilePaths();
-    if (filePaths.length > 0) {
-      // Finder also publishes a TIFF representation of a copied file's icon.
-      // Resolve image files first and never fall through to that bitmap when a
-      // file reference is present.
-      for (const path of filePaths) {
-        const metadata = await readImageMetadata(path);
-        if (metadata) {
-          return encodeClipboardImage(new Bun.Image(path), metadata);
-        }
+  const filePaths = await readMacOSClipboardFilePaths();
+  if (filePaths.length > 0) {
+    // Finder also publishes a TIFF representation of a copied file's icon.
+    // Resolve image files first and never fall through to that bitmap when a
+    // file reference is present.
+    for (const path of filePaths) {
+      const image = new Bun.Image(path);
+      let metadata: Bun.Image.Metadata;
+      try {
+        metadata = await image.metadata();
+      } catch {
+        continue;
       }
-      return undefined;
+      return encodeUserImage(image, metadata);
     }
+    return undefined;
   }
 
   const image = Bun.Image.fromClipboard();
   if (!image) {
     return undefined;
   }
-  return encodeClipboardImage(image, await image.metadata());
+  return encodeUserImage(image, await image.metadata());
 }
 
 async function readMacOSClipboardFilePaths(): Promise<string[]> {
@@ -91,62 +90,4 @@ async function readMacOSClipboardFilePaths(): Promise<string[]> {
     throw new Error("macOS clipboard file probe returned invalid paths.");
   }
   return value;
-}
-
-async function readImageMetadata(path: string): Promise<Bun.Image.Metadata | undefined> {
-  try {
-    return await new Bun.Image(path).metadata();
-  } catch {
-    return undefined;
-  }
-}
-
-async function encodeClipboardImage(
-  image: Bun.Image,
-  metadata: Bun.Image.Metadata,
-): Promise<UserImage> {
-  image.resize(MAX_CLIPBOARD_IMAGE_DIMENSION, MAX_CLIPBOARD_IMAGE_DIMENSION, {
-    fit: "inside",
-    withoutEnlargement: true,
-  });
-
-  const mimeType = selectOutputFormat(image, metadata.format);
-  const bytes = await image.bytes();
-  if (bytes.length > MAX_CLIPBOARD_IMAGE_BYTES) {
-    throw new Error(
-      `Clipboard image exceeds Kana's ${formatByteSize(MAX_CLIPBOARD_IMAGE_BYTES)} limit.`,
-    );
-  }
-
-  return {
-    mimeType,
-    data: Buffer.from(bytes).toString("base64"),
-    width: image.width,
-    height: image.height,
-  };
-}
-
-function selectOutputFormat(image: Bun.Image, format: Bun.Image.Format): UserImageMimeType {
-  switch (format) {
-    case "jpeg":
-      image.jpeg({ quality: 85 });
-      return "image/jpeg";
-    case "webp":
-      image.webp({ quality: 85 });
-      return "image/webp";
-    case "png":
-      image.png();
-      return "image/png";
-    case "avif":
-    case "bmp":
-    case "gif":
-    case "heic":
-    case "tiff":
-      image.png();
-      return "image/png";
-  }
-}
-
-function formatByteSize(bytes: number): string {
-  return `${Math.round(bytes / (1024 * 1024))} MB`;
 }

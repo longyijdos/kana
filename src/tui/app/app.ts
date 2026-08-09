@@ -38,6 +38,7 @@ import {
 } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
+import { loadUserImageFile } from "@/utils";
 import { readClipboardImage } from "../clipboard-image";
 import {
   Editor,
@@ -184,6 +185,7 @@ export class KanaTuiApp {
   private contextCompactingBlock?: TextBlock;
   private readonly mcpOAuthBlocks = new Map<string, TextBlock>();
   private clipboardPasteRunning = false;
+  private imageFileAttachRunning = false;
   private stopping = false;
   private stopPromise?: Promise<void>;
   private resolveStopped!: () => void;
@@ -471,6 +473,9 @@ export class KanaTuiApp {
       openScheduledMessageManager: () => {
         this.editor.clear();
         this.openScheduledMessageManager();
+      },
+      attachImageFile: (path) => {
+        void this.attachImageFile(path);
       },
       openApproval: () => this.slashCommandOptions.openApproval(),
       openModel: () => this.slashCommandOptions.openModel(),
@@ -1101,11 +1106,53 @@ export class KanaTuiApp {
     }
   }
 
+  private async attachImageFile(path: string): Promise<void> {
+    if (this.imageFileAttachRunning) {
+      return;
+    }
+
+    this.imageFileAttachRunning = true;
+    try {
+      const imageInputError = this.getImageInputAvailabilityError();
+      if (imageInputError) {
+        throw imageInputError;
+      }
+      const image = await loadUserImageFile(path);
+      this.editor.attachImage(image);
+      this.editor.setText("");
+      try {
+        this.getLogger().debug("tui.image_file_attach_completed", {
+          mimeType: image.mimeType,
+          width: image.width,
+          height: image.height,
+        });
+      } catch {
+        // Image diagnostics must not change attachment behavior.
+      }
+    } catch (error) {
+      try {
+        this.getLogger().warn("tui.image_file_attach_failed", {
+          errorType: error instanceof Error ? error.name : typeof error,
+        });
+      } catch {
+        // Image diagnostics must not replace the user-facing failure.
+      }
+      this.showError(error);
+    } finally {
+      this.imageFileAttachRunning = false;
+      this.tui.requestRender();
+    }
+  }
+
   private getImageInputError(images: readonly UserImage[]): Error | undefined {
     if (images.length === 0) {
       return undefined;
     }
 
+    return this.getImageInputAvailabilityError();
+  }
+
+  private getImageInputAvailabilityError(): Error | undefined {
     const metadata = this.conversation.state.model.metadata;
     if (metadata.supportsImageInput !== true) {
       return new Error(`Model ${metadata.model} does not support image input.`);

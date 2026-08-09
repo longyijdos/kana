@@ -11,6 +11,7 @@ export type PromptCommandName =
   | "skills"
   | "mcp"
   | "schedule"
+  | "image"
   | "approval"
   | "model"
   | "memory"
@@ -97,6 +98,11 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
     description: "Manage scheduled messages for this session.",
   },
   {
+    name: "image",
+    argumentSyntax: "<path>",
+    description: "Attach a local image file to the editor.",
+  },
+  {
     name: "approval",
     description: "Set tool approval mode for this session.",
   },
@@ -135,7 +141,7 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "Ctrl+V",
-    description: "Paste an image from the clipboard, or paste clipboard text.",
+    description: "Paste an image from the clipboard.",
   },
   {
     input: "Esc",
