@@ -151,6 +151,60 @@ describe("AgentEventRenderer", () => {
     renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
   });
 
+  test("stops an unfinished hosted tool timer when an aborted message settles", () => {
+    let now = 0;
+    const dateNow = spyOn(Date, "now").mockImplementation(() => now);
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const searchingMessage: AssistantMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "hosted_tool",
+          id: "web-search-aborted",
+          name: "web_search",
+          status: "in_progress",
+        },
+      ],
+    };
+
+    try {
+      renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+      renderer.handle({
+        type: "message_update",
+        message: searchingMessage,
+        assistantMessageEvent: {
+          type: "hosted_tool_start",
+          contentIndex: 0,
+          snapshot: searchingMessage,
+        },
+      });
+
+      now = 2_000;
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe(
+        "◆ Searching the web (2s) (Esc to abort)",
+      );
+
+      renderer.handle({
+        type: "message_end",
+        message: { ...searchingMessage, stopReason: "aborted" },
+      });
+      renderer.handle({ type: "agent_end", reason: "aborted", messages: [] });
+      now = 7_000;
+
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("◆ Searching the web (2s)");
+    } finally {
+      renderer.handle({ type: "agent_end", reason: "aborted", messages: [] });
+      dateNow.mockRestore();
+    }
+  });
+
   test("keeps one timer across adjacent thinking items until the next action", () => {
     let now = 0;
     const dateNow = spyOn(Date, "now").mockImplementation(() => now);

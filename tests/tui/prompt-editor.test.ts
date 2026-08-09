@@ -934,6 +934,31 @@ describe("prompt commands", () => {
     );
   });
 
+  test("keeps every prompt placeholder inside input frames of different widths", () => {
+    const helpEntryCount = PROMPT_COMMANDS.length + PROMPT_SHORTCUTS.length;
+    const placeholders = Array.from({ length: helpEntryCount }, (_, index) =>
+      createRandomPromptPlaceholder(() => index / helpEntryCount),
+    );
+    const editor = new Editor();
+    const editorInternal = editor as unknown as { placeholder: string };
+    const invalidFrames: Array<{ placeholder: string; rendered: string; width: number }> = [];
+
+    for (const placeholder of placeholders) {
+      editorInternal.placeholder = placeholder;
+
+      for (const width of [8, 12, 20, 40, 80]) {
+        const inputLine = editor.render(width).find((line) => line.includes(CURSOR_MARKER));
+        const rendered = stripAnsi(inputLine ?? "");
+
+        if (!inputLine || visibleWidth(rendered) !== width || !rendered.endsWith(" |")) {
+          invalidFrames.push({ placeholder, rendered, width });
+        }
+      }
+    }
+
+    expect(invalidFrames).toEqual([]);
+  });
+
   test("lists commands after slash", () => {
     expect(getCommandState("/")).toMatchObject({
       isCommandMode: true,

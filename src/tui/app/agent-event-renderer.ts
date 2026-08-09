@@ -43,7 +43,9 @@ export class AgentEventRenderer {
         this.streamingAssistant?.update(message, { complete });
       },
       onSettled: () => {
-        this.streamingAssistant?.showThinking(false);
+        // Provider abort snapshots can leave hosted tools in progress. Stop
+        // child activity timers before releasing the last mutable block reference.
+        this.streamingAssistant?.stopActivityTimers();
         this.streamingAssistant = undefined;
       },
       requestRender: () => this.options.tui.requestRender(),

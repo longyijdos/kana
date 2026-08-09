@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   AssistantMessageBlock,
   ContentViewer,
+  HostedToolBlock,
   ToolCallBlock,
   Transcript,
 } from "../../src/tui/components";
@@ -78,6 +79,27 @@ describe("tui transcript", () => {
       "",
       "Final answer with citation (https://example.com/releases).",
     ]);
+  });
+
+  test("freezes stopped hosted tool activity without an abort hint", () => {
+    let now = 0;
+    const block = new HostedToolBlock(
+      {
+        type: "hosted_tool",
+        id: "web-search-active",
+        name: "web_search",
+        status: "in_progress",
+      },
+      () => now,
+    );
+
+    now = 2_000;
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Searching the web (2s) (Esc to abort)");
+
+    block.stopTimer();
+    now = 7_000;
+
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Searching the web (2s)");
   });
 
   test("uses distinct colors for assistant text and completed tool calls", () => {

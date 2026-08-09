@@ -129,11 +129,11 @@ export const PROMPT_SHORTCUTS_TITLE = "Input and shortcuts";
 export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   {
     input: "Enter",
-    description: "Submit input; during an Agent run, queue it for the next turn.",
+    description: "Submit input; queue for next turn in an Agent run.",
   },
   {
     input: "Tab",
-    description: "Complete slash commands; in an Agent run, queue for the next run.",
+    description: "Complete slash commands; queue for next run in an Agent run.",
   },
   {
     input: "Shift+Enter",
