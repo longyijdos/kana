@@ -1,4 +1,6 @@
 export {
+  type ExplorationToolActivity,
+  formatExplorationToolActivity,
   formatToolApproval,
   formatToolOutput,
   formatToolTitle,

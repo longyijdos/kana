@@ -94,6 +94,7 @@ export type KanaTuiConfig = {
   hyperlinks: boolean;
   smoothTextStreaming: boolean;
   collapseLongPastes: boolean;
+  groupToolCalls: boolean;
 };
 
 export type KanaMemoryConfig = {
@@ -208,6 +209,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     hyperlinks: true,
     smoothTextStreaming: true,
     collapseLongPastes: true,
+    groupToolCalls: true,
   },
   memory: {
     enabled: true,
@@ -363,6 +365,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       hyperlinks: config.tui.hyperlinks,
       smooth_text_streaming: config.tui.smoothTextStreaming,
       collapse_long_pastes: config.tui.collapseLongPastes,
+      group_tool_calls: config.tui.groupToolCalls,
     },
     memory: {
       enabled: config.memory.enabled,
@@ -409,6 +412,7 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `hyperlinks = ${config.tui.hyperlinks}`,
     `smooth_text_streaming = ${config.tui.smoothTextStreaming}`,
     `collapse_long_pastes = ${config.tui.collapseLongPastes}`,
+    `group_tool_calls = ${config.tui.groupToolCalls}`,
     "",
     "[memory]",
     `enabled = ${config.memory.enabled}`,
@@ -612,6 +616,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         tui.collapse_long_pastes,
         defaults.tui.collapseLongPastes,
         "tui.collapse_long_pastes",
+      ),
+      groupToolCalls: readBoolean(
+        tui.group_tool_calls,
+        defaults.tui.groupToolCalls,
+        "tui.group_tool_calls",
       ),
     },
     memory: {

@@ -42,7 +42,7 @@ ProcessTerminal
 
 ## App 与 Agent 事件
 
-`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及由 Tab 输入和到期 wake 共用的 pending submission FIFO；它同时发布当前 session 的 pending 与尚未到期 wake 快照，作为新 run 排序和展示的唯一事实来源。`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白；一条助手消息内部有多个有序可见内容块时，`AssistantMessageBlock` 也在相邻块之间使用同样的一行空白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再按 FIFO 顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
+`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及由 Tab 输入和到期 wake 共用的 pending submission FIFO；它同时发布当前 session 的 pending 与尚未到期 wake 快照，作为新 run 排序和展示的唯一事实来源。`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白；一条助手消息内部有多个有序可见内容块时，`AssistantMessageBlock` 也在相邻块之间使用同样的一行空白。启用 `tui.group_tool_calls` 时，连续的 list/glob/grep/read 块合并为一个 `Exploring`/`Explored` 动作；空的助手协议块不会打断分组，可见内容、其他工具类型或失败的探索调用则构成边界。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再按 FIFO 顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
@@ -53,7 +53,7 @@ ProcessTerminal
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
 | `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时将仍在 preparing 的调用标记为已取消，`turn_limit` 显示为独立的 `turn limit` 错误阶段。 |
 
-Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSeek V4 Flash）属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。TUI 为每个调用单独显示 `Searching the web`、`Searched the web`、`Opened a web page` 或 `Searched within a web page`；当前不聚合多个调用。搜索期间状态栏阶段为 `searching`。进行中的搜索显示耗时和 `Esc to abort`；中止会记录语义化的 canceled 状态、冻结计时，并显示 `Web search stopped`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
+Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSeek V4 Flash）属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。启用工具分组时，相邻调用共用一个 `Searching the web`/`Searched the web` 动作，并按供应商顺序列出 `Search`、`Open` 和 `Find`；可见助手正文会结束分组。关闭分组后恢复逐条 `Searching the web`、`Searched the web`、`Opened a web page` 和 `Searched within a web page` 工具块。搜索期间状态栏阶段为 `searching`。进行中的搜索显示耗时和 `Esc to abort`；中止会记录语义化的 canceled 状态、冻结计时，并显示 `Web search stopped`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
 
 助手正文的协议状态与可视进度彼此分离：provider 和 Agent 仍会立即处理完整事件与消息，`StreamingTextPresenter` 只维护 Markdown 块当前可见的 `text` 前缀。稀疏文本 delta 会立即出现；当一次网络读取带来一批 SSE 事件时，积压内容约每 16ms 推进一次，并按 backlog 在每帧 1–12 个 grapheme 之间有界加速，消息完成后只额外提升一级用于收尾。工具调用开始、`toolUse` 消息完成、审批显示和实际执行前会先追平已经收到的正文，保证后续工具状态不会越过仍在展开的文本，同时不延迟 Agent 或 ToolRuntime。新消息或运行 reset 也会先 flush 剩余正文，因此持久化的 session 和 Agent 状态始终使用完整消息，而不是动画中的中间快照。配置 `tui.smooth_text_streaming = false` 会完全绕过该节奏控制，直接显示 provider 的最新流式快照；thinking、工具调用、工具结果、错误和状态阶段始终不参与文本节奏控制。
 
@@ -122,7 +122,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 
 通知后端由配置选择。`auto` 依次探测 Kitty、iTerm 和 VTE，最后使用 bell；显式 `off` 不写任何通知。通知文本会移除控制字符、折叠空白，OSC 777 字段额外替换分号。正常 Agent 完成和需要审批可分别配置通知。
 
-助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。配置允许且终端确认支持时，`http:`、`https:` 和 `mailto:` Markdown 链接通过 OSC 8 绑定到可见 label；每条软换行都会独立关闭并重新打开链接。关闭 `tui.hyperlinks`、终端能力未知或目标 scheme/内容不安全时不发送 OSC 8，并以 `label (url)` 保留可读目标；尚未闭合的流式链接按 Markdown 原文显示。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 直接显示 stdout/stderr 文本，不添加退出码或字段标签；用户取消使用独立的弱化 stopped 状态，不显示为工具执行失败；write 审批和工具块会区分新建与覆盖；长输出可在查看器中滚动，查看器会将多行标题折叠并截断为一行。
+助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。配置允许且终端确认支持时，`http:`、`https:` 和 `mailto:` Markdown 链接通过 OSC 8 绑定到可见 label；每条软换行都会独立关闭并重新打开链接。关闭 `tui.hyperlinks`、终端能力未知或目标 scheme/内容不安全时不发送 OSC 8，并以 `label (url)` 保留可读目标；尚未闭合的流式链接按 Markdown 原文显示。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。合并后的探索块显示 `List`、`Search` 和合并去重的连续 `Read` 项；带高亮的 write/edit diff 与 bash stdout/stderr 仍独立显示。用户取消使用独立的弱化 stopped 状态，不显示为工具执行失败；取消后的分组使用 `Exploration stopped` 或 `Web search stopped`。write 审批和工具块会区分新建与覆盖；长输出可在查看器中滚动，查看器会将多行标题折叠并截断为一行。
 
 ## 修改渲染时的约束
 

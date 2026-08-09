@@ -62,9 +62,8 @@ describe("tui history transcript", () => {
     );
     expect(lines).toContain("I'll inspect it.");
     expect(lines).not.toContain("thinking (Esc to abort)");
-    expect(lines).toContain("◆ Read");
-    expect(lines).toContain("  └ package.json");
-    expect(lines).toContain("package.json:1-3 of 3");
+    expect(lines).toContain("◆ Explored");
+    expect(lines).toContain("  └ Read package.json");
     expect(lines).not.toContain('  "private": true');
   });
 

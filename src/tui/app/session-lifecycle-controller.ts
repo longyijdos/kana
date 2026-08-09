@@ -22,6 +22,7 @@ export type SessionLifecycleControllerOptions = {
   transcript: Transcript;
   tui: Tui;
   hyperlinks?: boolean;
+  groupToolCalls?: boolean;
   isRunning: () => boolean;
   closeOtherOverlays: () => void;
   closeContentViewer: () => void;
@@ -65,6 +66,7 @@ export class SessionLifecycleController {
       );
       addHistoryTimelineToTranscript(this.options.transcript, timeline, {
         hyperlinks: this.options.hyperlinks,
+        groupToolCalls: this.options.groupToolCalls,
       });
       return;
     }

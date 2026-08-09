@@ -11,6 +11,7 @@ import {
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
+import type { ToolActivityItem } from "./tool-activity-group";
 
 export class HostedToolBlock implements Component {
   private readonly timer: ElapsedTimer;
@@ -47,6 +48,25 @@ export class HostedToolBlock implements Component {
   stopTimer(): void {
     this.timer.stop();
     this.invalidate();
+  }
+
+  getWebActivity(): ToolActivityItem | undefined {
+    if (this.content.name !== "web_search") {
+      return undefined;
+    }
+
+    const activity = formatWebActivity(this.content);
+    return {
+      ...activity,
+      state:
+        this.content.status === "in_progress"
+          ? "running"
+          : this.content.status === "canceled"
+            ? "canceled"
+            : "done",
+      elapsedSeconds:
+        this.content.status === "in_progress" ? this.timer.elapsedSeconds() : undefined,
+    };
   }
 
   invalidate(): void {
@@ -141,6 +161,28 @@ function formatHostedToolTitle(content: HostedToolContent): {
       };
     default:
       return { activity: "Used web search" };
+  }
+}
+
+function formatWebActivity(content: HostedToolContent): { label: string; target?: string } {
+  switch (content.action?.type) {
+    case "search":
+      return {
+        label: "Search",
+        target: formatSearchQueries(content.action.queries, content.action.query),
+      };
+    case "open_page":
+      return {
+        label: "Open",
+        target: content.action.url ? formatUrl(content.action.url) : undefined,
+      };
+    case "find_in_page":
+      return {
+        label: "Find",
+        target: formatFindTarget(content.action.pattern, content.action.url),
+      };
+    default:
+      return { label: "Search" };
   }
 }
 

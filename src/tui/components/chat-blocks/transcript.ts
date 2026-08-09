@@ -1,7 +1,15 @@
 import type { Component } from "../../runtime";
+import { renderToolActivityGroup, type ToolActivityItem } from "./tool-activity-group";
+import { ToolCallBlock } from "./tool-call-block";
+
+type TranscriptOptions = {
+  groupToolCalls?: boolean;
+};
 
 export class Transcript implements Component {
   readonly children: Component[] = [];
+
+  constructor(private readonly options: TranscriptOptions = {}) {}
 
   addChild(component: Component): void {
     this.children.push(component);
@@ -22,12 +30,11 @@ export class Transcript implements Component {
   render(width: number, availableHeight?: number): string[] {
     const lines: string[] = [];
     let hasRenderedChild = false;
+    let explorationItems: ToolActivityItem[] = [];
 
-    for (const child of this.children) {
-      const childLines = child.render(width, availableHeight);
-
+    const appendLines = (childLines: string[]): void => {
       if (childLines.length === 0) {
-        continue;
+        return;
       }
 
       if (hasRenderedChild) {
@@ -36,7 +43,46 @@ export class Transcript implements Component {
 
       lines.push(...childLines);
       hasRenderedChild = true;
+    };
+    const flushExploration = (): void => {
+      if (explorationItems.length === 0) {
+        return;
+      }
+
+      appendLines(
+        renderToolActivityGroup(
+          explorationItems,
+          {
+            active: "Exploring",
+            done: "Explored",
+            canceled: "Exploration stopped",
+          },
+          width,
+        ),
+      );
+      explorationItems = [];
+    };
+
+    for (const child of this.children) {
+      if (this.options.groupToolCalls !== false && child instanceof ToolCallBlock) {
+        const activity = child.getExplorationActivity();
+        if (activity) {
+          explorationItems.push(activity);
+          continue;
+        }
+      }
+
+      const childLines = child.render(width, availableHeight);
+
+      if (childLines.length === 0) {
+        continue;
+      }
+
+      flushExploration();
+      appendLines(childLines);
     }
+
+    flushExploration();
 
     return lines;
   }

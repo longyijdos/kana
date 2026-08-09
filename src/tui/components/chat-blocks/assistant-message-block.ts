@@ -5,6 +5,7 @@ import { tuiTheme } from "../../theme";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import { HostedToolBlock } from "./hosted-tool-block";
 import { MarkdownBlock } from "./markdown-block";
+import { renderToolActivityGroup, type ToolActivityItem } from "./tool-activity-group";
 
 type AssistantMessageBlockUpdateOptions = {
   complete?: boolean;
@@ -12,6 +13,7 @@ type AssistantMessageBlockUpdateOptions = {
 
 type AssistantMessageBlockOptions = {
   hyperlinks?: boolean;
+  groupToolCalls?: boolean;
 };
 
 export class AssistantMessageBlock implements Component {
@@ -127,20 +129,58 @@ export class AssistantMessageBlock implements Component {
 
     const lines: string[] = [];
     let hasRenderedContentBlock = false;
+    let webActivityItems: ToolActivityItem[] = [];
 
-    for (const block of this.contentBlocks) {
-      const blockLines = block.render(width, availableHeight);
+    const appendLines = (blockLines: string[]): void => {
       if (blockLines.length === 0) {
-        continue;
+        return;
       }
-      // Hosted tools and text share one assistant component so they retain
-      // provider order. Mirror Transcript spacing at this internal boundary.
+
       if (hasRenderedContentBlock) {
         lines.push("");
       }
       lines.push(...blockLines);
       hasRenderedContentBlock = true;
+    };
+    const flushWebActivity = (): void => {
+      if (webActivityItems.length === 0) {
+        return;
+      }
+
+      appendLines(
+        renderToolActivityGroup(
+          webActivityItems,
+          {
+            active: "Searching the web",
+            done: "Searched the web",
+            canceled: "Web search stopped",
+          },
+          width,
+        ),
+      );
+      webActivityItems = [];
+    };
+
+    for (const block of this.contentBlocks) {
+      if (this.options.groupToolCalls !== false && block instanceof HostedToolBlock) {
+        const activity = block.getWebActivity();
+        if (activity) {
+          webActivityItems.push(activity);
+          continue;
+        }
+      }
+
+      const blockLines = block.render(width, availableHeight);
+      if (blockLines.length === 0) {
+        continue;
+      }
+
+      flushWebActivity();
+      // Hosted tools and text share one assistant component so they retain
+      // provider order. Mirror Transcript spacing at this internal boundary.
+      appendLines(blockLines);
     }
+    flushWebActivity();
 
     if (this.thinkingVisible && this.contentBlocks.length === 0) {
       lines.push(

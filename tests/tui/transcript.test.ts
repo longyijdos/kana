@@ -19,6 +19,17 @@ class LinesBlock implements Component {
   }
 }
 
+function completedExplorationTool(name: string, args: unknown, result: unknown): ToolCallBlock {
+  const block = new ToolCallBlock({
+    type: "tool_call",
+    id: name,
+    name,
+    args,
+  });
+  block.updateResult(result, false);
+  return block;
+}
+
 describe("tui transcript", () => {
   test("renders assistant messages without leading blank lines", () => {
     const block = new AssistantMessageBlock();
@@ -36,7 +47,7 @@ describe("tui transcript", () => {
     expect(block.render(80)[0]).toContain("hello");
   });
 
-  test("renders hosted web actions separately with blank rows before following text", () => {
+  test("groups adjacent hosted web actions before following text", () => {
     const block = new AssistantMessageBlock();
 
     block.update({
@@ -72,13 +83,80 @@ describe("tui transcript", () => {
 
     expect(block.render(100).map(stripAnsi)).toEqual([
       "◆ Searched the web",
+      "  ├ Search current release",
+      "  └ Open example.com/releases",
+      "",
+      "Final answer with citation (https://example.com/releases).",
+    ]);
+  });
+
+  test("keeps hosted web actions separate when grouping is disabled", () => {
+    const block = new AssistantMessageBlock(Date.now, { groupToolCalls: false });
+
+    block.update({
+      role: "assistant",
+      content: [
+        {
+          type: "hosted_tool",
+          id: "web-search-1",
+          name: "web_search",
+          status: "completed",
+          action: { type: "search", query: "current release" },
+        },
+        {
+          type: "hosted_tool",
+          id: "web-search-2",
+          name: "web_search",
+          status: "completed",
+          action: { type: "open_page", url: "https://example.com/releases" },
+        },
+      ],
+    });
+
+    expect(block.render(100).map(stripAnsi)).toEqual([
+      "◆ Searched the web",
       "  └ current release",
       "",
       "◆ Opened a web page",
       "  └ example.com/releases",
-      "",
-      "Final answer with citation (https://example.com/releases).",
     ]);
+  });
+
+  test("uses active and canceled states for hosted web groups", () => {
+    let now = 0;
+    const block = new AssistantMessageBlock(() => now);
+    block.update({
+      role: "assistant",
+      content: [
+        {
+          type: "hosted_tool",
+          id: "web-search-active",
+          name: "web_search",
+          status: "in_progress",
+          action: { type: "search", query: "Kana" },
+        },
+      ],
+    });
+
+    now = 2_000;
+    expect(block.render(100).map(stripAnsi)).toEqual([
+      "◆ Searching the web (2s) (Esc to abort)",
+      "  └ Search Kana",
+    ]);
+
+    block.update({
+      role: "assistant",
+      content: [
+        {
+          type: "hosted_tool",
+          id: "web-search-active",
+          name: "web_search",
+          status: "canceled",
+          action: { type: "search", query: "Kana" },
+        },
+      ],
+    });
+    expect(block.render(100).map(stripAnsi)).toEqual(["◆ Web search stopped", "  └ Search Kana"]);
   });
 
   test("freezes stopped hosted tool activity without an abort hint", () => {
@@ -937,6 +1015,118 @@ describe("tui transcript", () => {
     transcript.addChild(new LinesBlock(["1", "2", "3", "4", "5"]));
 
     expect(transcript.render(80)).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  test("groups adjacent exploration tools and coalesces consecutive reads", () => {
+    const transcript = new Transcript();
+    const list = completedExplorationTool("list", { path: "src" }, { path: "src" });
+    const readFirst = completedExplorationTool(
+      "read",
+      { path: "src/app.ts" },
+      { path: "src/app.ts" },
+    );
+    const readDuplicate = completedExplorationTool(
+      "read",
+      { path: "src/app.ts" },
+      { path: "src/app.ts" },
+    );
+    const readSecond = completedExplorationTool(
+      "read",
+      { path: "src/config.ts" },
+      { path: "src/config.ts" },
+    );
+    const glob = completedExplorationTool(
+      "glob",
+      { pattern: "*.ts", cwd: "src" },
+      { pattern: "*.ts", cwd: "src" },
+    );
+
+    transcript.addChild(list);
+    transcript.addChild(new LinesBlock([]));
+    transcript.addChild(readFirst);
+    transcript.addChild(readDuplicate);
+    transcript.addChild(readSecond);
+    transcript.addChild(glob);
+
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Explored",
+      "  ├ List src",
+      "  ├ Read src/app.ts, src/config.ts",
+      "  └ Search “*.ts” in src",
+    ]);
+  });
+
+  test("keeps exploration failures as standalone barriers", () => {
+    const transcript = new Transcript();
+    const first = completedExplorationTool("read", { path: "a.ts" }, { path: "a.ts" });
+    const failed = new ToolCallBlock({
+      type: "tool_call",
+      id: "failed-grep",
+      name: "grep",
+      args: { pattern: "missing", path: "src" },
+    });
+    failed.updateResult({ error: "search failed" }, true);
+    const last = completedExplorationTool("list", { path: "tests" }, { path: "tests" });
+
+    transcript.addChild(first);
+    transcript.addChild(failed);
+    transcript.addChild(last);
+
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Explored",
+      "  └ Read a.ts",
+      "",
+      "◆ Failed to search",
+      "  └ missing",
+      "search failed",
+      "",
+      "◆ Explored",
+      "  └ List tests",
+    ]);
+  });
+
+  test("renders active and canceled exploration groups distinctly", () => {
+    let now = 0;
+    const transcript = new Transcript();
+    const read = new ToolCallBlock(
+      {
+        type: "tool_call",
+        id: "active-read",
+        name: "read",
+        args: { path: "src/app.ts" },
+      },
+      () => now,
+    );
+    read.markExecutionStarted();
+    transcript.addChild(read);
+
+    now = 3_000;
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Exploring (3s) (Esc to abort)",
+      "  └ Read src/app.ts",
+    ]);
+
+    read.markCanceled();
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Exploration stopped",
+      "  └ Read src/app.ts",
+    ]);
+  });
+
+  test("renders exploration tools individually when grouping is disabled", () => {
+    const transcript = new Transcript({ groupToolCalls: false });
+    transcript.addChild(completedExplorationTool("list", { path: "src" }, { path: "src" }));
+    transcript.addChild(completedExplorationTool("read", { path: "app.ts" }, { path: "app.ts" }));
+
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Listed",
+      "  └ src",
+      "src",
+      "",
+      "◆ Read",
+      "  └ app.ts",
+      "app.ts",
+    ]);
   });
 
   test("appends new child output in render order", () => {

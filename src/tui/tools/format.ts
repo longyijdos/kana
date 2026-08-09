@@ -19,6 +19,7 @@ import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 export type ToolState = "preparing" | "running" | "done" | "failed" | "canceled";
 export type ToolOutputDetail = "compact" | "full";
 export type ToolTranscriptTitle = { activity: string; hint?: string; target?: string };
+export type ExplorationToolActivity = { label: "List" | "Read" | "Search"; target: string };
 
 type ToolApprovalText = {
   title: string;
@@ -94,6 +95,57 @@ export function formatToolTranscriptTitle(
   }
 
   return { activity: text.doneTitle.replace(` ${target}`, ""), target };
+}
+
+export function formatExplorationToolActivity(
+  toolCall: ToolCallContent,
+  result?: unknown,
+): ExplorationToolActivity | undefined {
+  const sanitize = (value: string): string =>
+    summarizeText(stripTerminalControlSequences(value).trim().replace(/\s+/g, " "), 240);
+
+  switch (toolCall.name) {
+    case "list":
+      return {
+        label: "List",
+        target: sanitize(
+          getStringProperty(result, "path") ?? getStringProperty(toolCall.args, "path") ?? ".",
+        ),
+      };
+    case "read":
+      return {
+        label: "Read",
+        target: sanitize(
+          getStringProperty(result, "path") ?? getStringProperty(toolCall.args, "path") ?? "file",
+        ),
+      };
+    case "glob": {
+      const pattern = sanitize(
+        getStringProperty(result, "pattern") ??
+          getStringProperty(toolCall.args, "pattern") ??
+          "glob",
+      );
+      const cwd = getStringProperty(result, "cwd") ?? getStringProperty(toolCall.args, "cwd");
+      return {
+        label: "Search",
+        target: cwd && cwd !== "." ? `“${pattern}” in ${sanitize(cwd)}` : `“${pattern}”`,
+      };
+    }
+    case "grep": {
+      const pattern = sanitize(
+        getStringProperty(result, "pattern") ??
+          getStringProperty(toolCall.args, "pattern") ??
+          "grep",
+      );
+      const path = getStringProperty(result, "path") ?? getStringProperty(toolCall.args, "path");
+      return {
+        label: "Search",
+        target: path ? `“${pattern}” in ${sanitize(path)}` : `“${pattern}”`,
+      };
+    }
+    default:
+      return undefined;
+  }
 }
 
 export function formatToolApproval(

@@ -145,6 +145,7 @@ on_approval_required = true
 hyperlinks = true
 smooth_text_streaming = true
 collapse_long_pastes = true
+group_tool_calls = true
 
 [memory]
 enabled = true
@@ -213,6 +214,7 @@ Before first use, run `kana auth login openai-codex`. Browser authorization stor
 | `tui.hyperlinks` | Boolean | `true` | Allow the TUI to render Markdown links with OSC 8 when terminal support is confirmed; disabled, unknown, or unsupported terminals show `label (url)`. |
 | `tui.smooth_text_streaming` | Boolean | `true` | Smoothly reveal bursty assistant text; when disabled, show each latest provider streaming snapshot directly. |
 | `tui.collapse_long_pastes` | Boolean | `true` | Collapse bracketed pastes of 1,000 or more graphemes into an atomic `[Pasted N chars]` editor item; when disabled, render and edit pasted text normally. |
+| `tui.group_tool_calls` | Boolean | `true` | Group adjacent list/glob/grep/read calls into one `Explored` activity and adjacent provider-hosted web actions into one search activity; when disabled, render every call separately. |
 | `memory.enabled` | Boolean | `true` | Register `remember` and inject memory into the system prompt. |
 | `memory.max_chars` | Positive integer | `6000` | Unicode-character limit for consolidated durable memory. |
 | `memory.daily_retention_days` | Optional positive integer | Unset | Number of daily staging records retained after successful full memory compaction. |
@@ -220,7 +222,7 @@ Before first use, run `kana auth login openai-codex`. Browser authorization stor
 
 `parallel_tool_calls` is a user policy; its effective value is the user setting AND selected-model metadata support. When disabled, the provider request does not advertise parallel capability, and ToolRuntime executes calls one at a time even if a model still returns several in one response. When enabled, only adjacent tools declaring `execution.concurrency = "parallel"` can form a concurrent group. Current OpenAI Codex models use classic Responses and advertise parallel-tool support, so their request field follows this effective setting.
 
-`hyperlinks` is permission rather than a force switch: even when it is `true`, Kana emits OSC 8 only for terminals with confirmed support and keeps the URL visible when capability is unknown; `false` always uses the text fallback. By default, `smooth_text_streaming` changes only visible-text pacing and never backpressures the provider or Agent. When disabled, the TUI still coalesces terminal repaints but no longer subdivides provider text snapshots. `collapse_long_pastes` affects only editor presentation and editing: the complete pasted text is still submitted, queued, and restored from input history. When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `parallel_tool_calls`, provider `web_search`/`image_input`, `hyperlinks`, `smooth_text_streaming`, and `collapse_long_pastes` must be Boolean; `tool_deadline_ms`, `max_tokens`, and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
+`hyperlinks` is permission rather than a force switch: even when it is `true`, Kana emits OSC 8 only for terminals with confirmed support and keeps the URL visible when capability is unknown; `false` always uses the text fallback. By default, `smooth_text_streaming` changes only visible-text pacing and never backpressures the provider or Agent. When disabled, the TUI still coalesces terminal repaints but no longer subdivides provider text snapshots. `collapse_long_pastes` affects only editor presentation and editing: the complete pasted text is still submitted, queued, and restored from input history. `group_tool_calls` affects presentation only: visible text, a non-exploration tool, or a failed exploration call ends the current group, and failures retain their standalone error output. When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `parallel_tool_calls`, provider `web_search`/`image_input`, `hyperlinks`, `smooth_text_streaming`, `collapse_long_pastes`, and `group_tool_calls` must be Boolean; `tool_deadline_ms`, `max_tokens`, and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
 
 ### Context budget
 

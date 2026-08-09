@@ -157,7 +157,7 @@ export type KanaTuiAppOptions = {
 
 export class KanaTuiApp {
   private readonly tui: Tui;
-  private readonly transcript = new Transcript();
+  private readonly transcript: Transcript;
   private readonly editor: Editor;
   private readonly shutdownStatus = new TextBlock("", { color: tuiTheme.muted });
   private readonly layout: AppLayout;
@@ -206,6 +206,8 @@ export class KanaTuiApp {
   ) {
     const initialSession = options.initialSession;
     const cleanMode = options.launchMode === "clean";
+    const groupToolCalls = options.tuiConfig?.groupToolCalls ?? true;
+    this.transcript = new Transcript({ groupToolCalls });
     this.getLogger = options.getLogger ?? createNoopLogger;
     // The config enables the feature but never forces OSC 8 through a terminal
     // that the runtime could not positively identify as hyperlink-capable.
@@ -256,6 +258,7 @@ export class KanaTuiApp {
       transcript: this.transcript,
       tui: this.tui,
       hyperlinks: this.hyperlinks,
+      groupToolCalls,
       smoothTextStreaming: options.tuiConfig?.smoothTextStreaming ?? true,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
@@ -388,6 +391,7 @@ export class KanaTuiApp {
       transcript: this.transcript,
       tui: this.tui,
       hyperlinks: this.hyperlinks,
+      groupToolCalls,
       isRunning: () => this.running,
       closeOtherOverlays: () => {
         this.skillManager.close();

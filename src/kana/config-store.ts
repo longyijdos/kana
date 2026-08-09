@@ -63,6 +63,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("tui", "hyperlinks", (config) => config.tui.hyperlinks),
   field("tui", "smooth_text_streaming", (config) => config.tui.smoothTextStreaming),
   field("tui", "collapse_long_pastes", (config) => config.tui.collapseLongPastes),
+  field("tui", "group_tool_calls", (config) => config.tui.groupToolCalls),
   field("memory", "enabled", (config) => config.memory.enabled),
   field("memory", "max_chars", (config) => config.memory.maxChars),
   field("memory", "daily_retention_days", (config) => config.memory.dailyRetentionDays),

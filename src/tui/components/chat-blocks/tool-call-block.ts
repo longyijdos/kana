@@ -3,6 +3,7 @@ import { bold, color, truncateToWidth, visibleWidth, wrapPlainText } from "../..
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import {
+  formatExplorationToolActivity,
   formatToolOutput,
   formatToolTitle,
   formatToolTranscriptTitle,
@@ -13,6 +14,7 @@ import {
 } from "../../tools";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import type { ContentView } from "../content-viewer";
+import type { ToolActivityItem } from "./tool-activity-group";
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
@@ -153,6 +155,28 @@ export class ToolCallBlock implements Component {
     }
 
     return hasExpandableToolOutput(this.toolCall, this.result ?? this.partialResult, this.isError);
+  }
+
+  getExplorationActivity(): ToolActivityItem | undefined {
+    const state = this.currentState();
+    if (state === "failed") {
+      return undefined;
+    }
+
+    const activity = formatExplorationToolActivity(
+      this.toolCall,
+      this.result ?? this.partialResult,
+    );
+    if (!activity) {
+      return undefined;
+    }
+
+    return {
+      ...activity,
+      state,
+      elapsedSeconds:
+        state === "preparing" || state === "running" ? this.phaseTimer.elapsedSeconds() : undefined,
+    };
   }
 
   private currentState(): ToolState {
