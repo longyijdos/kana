@@ -18,6 +18,7 @@ type AssistantMessageBlockOptions = {
 
 export class AssistantMessageBlock implements Component {
   private thinkingVisible = false;
+  private localToolBatchStarted = false;
   private contentBlocks: (HostedToolBlock | MarkdownBlock)[] = [];
   private readonly hostedToolBlocks = new Map<string, HostedToolBlock>();
   private readonly thinkingTimer: ElapsedTimer;
@@ -36,6 +37,11 @@ export class AssistantMessageBlock implements Component {
     const contentBlocks: (HostedToolBlock | MarkdownBlock)[] = [];
     const hostedToolIds = new Set<string>();
     const messageComplete = options.complete ?? true;
+
+    // This block precedes every local tool block created from the same model
+    // response. Keep the marker sticky across streaming snapshots so Transcript
+    // can treat each response as an immutable exploration-group boundary.
+    this.localToolBatchStarted ||= message.content.some((content) => content.type === "tool_call");
 
     for (const [index, content] of message.content.entries()) {
       if (content.type === "text" && content.text.trim()) {
@@ -89,6 +95,10 @@ export class AssistantMessageBlock implements Component {
 
   isThinking(): boolean {
     return this.thinkingVisible;
+  }
+
+  startsLocalToolBatch(): boolean {
+    return this.localToolBatchStarted;
   }
 
   hasActiveHostedTools(): boolean {

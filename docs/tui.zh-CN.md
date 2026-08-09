@@ -42,7 +42,7 @@ ProcessTerminal
 
 ## App 与 Agent 事件
 
-`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及由 Tab 输入和到期 wake 共用的 pending submission FIFO；它同时发布当前 session 的 pending 与尚未到期 wake 快照，作为新 run 排序和展示的唯一事实来源。`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白；一条助手消息内部有多个有序可见内容块时，`AssistantMessageBlock` 也在相邻块之间使用同样的一行空白。启用 `tui.group_tool_calls` 时，连续的 list/glob/grep/read 块合并为一个 `Exploring`/`Explored` 动作；空的助手协议块不会打断分组，可见内容、其他工具类型或失败的探索调用则构成边界。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再按 FIFO 顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
+`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及由 Tab 输入和到期 wake 共用的 pending submission FIFO；它同时发布当前 session 的 pending 与尚未到期 wake 快照，作为新 run 排序和展示的唯一事实来源。`KanaTuiApp` 维护累计模型用量、成本和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白；一条助手消息内部有多个有序可见内容块时，`AssistantMessageBlock` 也在相邻块之间使用同样的一行空白。启用 `tui.group_tool_calls` 时，每条模型工具调用响应中的 list/glob/grep/read 合并为一个 `Exploring`/`Explored` 动作，单个调用也使用只有一项的分组。包含本地调用但没有其他可见内容的助手块仍会开启新分组，因此已经完成或取消的分组不会在后续模型回合重新变成活动态；可见内容、其他工具类型或失败的探索调用也会构成边界。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会使 runtime 将它排队，状态结束后再按 FIFO 顺序投递。该工具的成功结果是紧凑工具块，显示等待时长和提醒文本：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |

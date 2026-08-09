@@ -1,4 +1,5 @@
 import type { Component } from "../../runtime";
+import { AssistantMessageBlock } from "./assistant-message-block";
 import { renderToolActivityGroup, type ToolActivityItem } from "./tool-activity-group";
 import { ToolCallBlock } from "./tool-call-block";
 
@@ -64,6 +65,14 @@ export class Transcript implements Component {
     };
 
     for (const child of this.children) {
+      if (
+        this.options.groupToolCalls !== false &&
+        child instanceof AssistantMessageBlock &&
+        child.startsLocalToolBatch()
+      ) {
+        flushExploration();
+      }
+
       if (this.options.groupToolCalls !== false && child instanceof ToolCallBlock) {
         const activity = child.getExplorationActivity();
         if (activity) {

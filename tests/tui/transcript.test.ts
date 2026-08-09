@@ -1056,6 +1056,69 @@ describe("tui transcript", () => {
     ]);
   });
 
+  test("starts a new exploration group for each model tool-call batch", () => {
+    let now = 0;
+    const transcript = new Transcript();
+    const firstBatch = new AssistantMessageBlock();
+    firstBatch.update({
+      role: "assistant",
+      content: [
+        {
+          type: "tool_call",
+          id: "first-read",
+          name: "read",
+          args: { path: "first.ts" },
+        },
+      ],
+    });
+    const firstRead = completedExplorationTool("read", { path: "first.ts" }, { path: "first.ts" });
+    const secondBatch = new AssistantMessageBlock();
+    secondBatch.update({
+      role: "assistant",
+      content: [
+        {
+          type: "tool_call",
+          id: "second-read",
+          name: "read",
+          args: { path: "second.ts" },
+        },
+      ],
+    });
+    const secondRead = new ToolCallBlock(
+      {
+        type: "tool_call",
+        id: "second-read",
+        name: "read",
+        args: { path: "second.ts" },
+      },
+      () => now,
+    );
+    secondRead.markExecutionStarted();
+
+    transcript.addChild(firstBatch);
+    transcript.addChild(firstRead);
+    transcript.addChild(secondBatch);
+    transcript.addChild(secondRead);
+
+    now = 2_000;
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Explored",
+      "  └ Read first.ts",
+      "",
+      "◆ Exploring (2s) (Esc to abort)",
+      "  └ Read second.ts",
+    ]);
+
+    secondRead.updateResult({ path: "second.ts" }, false);
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Explored",
+      "  └ Read first.ts",
+      "",
+      "◆ Explored",
+      "  └ Read second.ts",
+    ]);
+  });
+
   test("keeps exploration failures as standalone barriers", () => {
     const transcript = new Transcript();
     const first = completedExplorationTool("read", { path: "a.ts" }, { path: "a.ts" });
