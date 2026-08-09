@@ -9,6 +9,6 @@ describe("provider model metadata", () => {
     ]);
     expect(
       Object.values(OPENAI_CODEX_MODELS).map((model) => model.supportsParallelToolCalls),
-    ).toEqual([false, false, false]);
+    ).toEqual([true, true, true]);
   });
 });

@@ -1,6 +1,6 @@
 # OpenAI Codex provider adapter
 
-Kana's `openai-codex` adapter lives in `src/providers/openai-codex`. It uses ChatGPT Codex OAuth credentials to call the Codex Responses Lite stream, reconstructing reasoning summaries, provider-hosted web searches, visible text, and function calls as ordered `core` assistant content.
+Kana's `openai-codex` adapter lives in `src/providers/openai-codex`. It uses ChatGPT Codex OAuth credentials to call the Codex Responses stream, reconstructing reasoning summaries, provider-hosted web searches, visible text, and function calls as ordered `core` assistant content.
 
 ## Activation and authentication
 
@@ -36,15 +36,15 @@ See [Configuration and installation](configuration.md) for available models and 
 
 `OpenAICodexModel` sends a streaming request to `https://chatgpt.com/backend-api/codex/responses`. The Bearer token and ChatGPT account ID exist only in request headers and are not written to logs or sessions.
 
-The request follows the Responses Lite contract:
+The request follows one complete classic Responses contract:
 
-- Function tools executed by Kana are developer `additional_tools` input items rather than a top-level `tools` field.
-- With `web_search = true`, the provider-hosted search tool is advertised separately as top-level `tools: [{ "type": "web_search" }]`; `tool_choice: "auto"` lets the model decide whether to use it. Setting the option to `false` omits that field.
-- The system prompt is a developer message; user messages, tool results, and assistant output items follow in input order.
+- Function tools executed by Kana use the top-level `tools` array. With `web_search = true`, the provider-hosted `{ "type": "web_search" }` tool is appended to that same array and `tool_choice: "auto"` lets the model decide whether to use it. Setting the option to `false` removes only the hosted tool; client function tools remain available.
+- The system prompt uses top-level `instructions`; user messages, tool results, and assistant output items remain in input order.
 - `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
-- `parallel_tool_calls = false`. Responses Lite does not support top-level parallel tool calls, so model metadata overrides `agent.parallel_tool_calls = true`; Kana also serializes any unexpected multiple calls.
-- Reasoning configuration carries effort, summary type, and `all_turns` context. Responses Lite accepts `low`, `medium`, `high`, `xhigh`, and `max`; Ultra is a Codex client orchestration mode and Kana does not send it as a request effort.
-- Kana uses configured `max_tokens` and remaining context to calculate each turn's `ModelContext.maxOutputTokens`; the backend cannot express that field, so requests still omit the rejected `max_output_tokens` parameter.
+- `parallel_tool_calls` follows the effective Agent setting after model-capability gating. The current Sol, Terra, and Luna metadata support parallel calls; ToolRuntime still serializes calls when user policy disables parallelism or tool execution metadata does not permit concurrency.
+- Reasoning configuration carries effort and summary type but omits `reasoning.context`, leaving the effective persisted-reasoning mode to the backend. Accepted efforts are `low`, `medium`, `high`, `xhigh`, and `max`; Ultra is a Codex client orchestration mode and Kana does not send it as a request effort.
+- Kana uses configured `max_tokens` and remaining context to calculate each turn's `ModelContext.maxOutputTokens`. The ChatGPT Codex request contract used here does not expose `max_output_tokens`, so the wire request omits it.
+- Kana sends neither the Responses Lite header nor Lite-only input markers. Lite should be reconsidered only after OpenAI stabilizes a hosted-tool-compatible contract; its header and request body must never be enabled independently.
 
 A Codex reasoning summary is not raw chain-of-thought. Kana can stream the summary as thinking events, but the TUI uses those events only for its temporary thinking state and does not render the summary body.
 

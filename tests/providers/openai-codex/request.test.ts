@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildOpenAICodexRequest } from "../../../src/providers/openai-codex/request";
 
 describe("buildOpenAICodexRequest", () => {
-  test("uses the Responses Lite contract and preserves provider replay state", () => {
+  test("uses the classic Responses contract and preserves provider replay state", () => {
     const request = buildOpenAICodexRequest(
       {
         system: "system",
@@ -80,40 +80,32 @@ describe("buildOpenAICodexRequest", () => {
       model: "gpt-5.6-luna",
       store: false,
       stream: true,
+      instructions: "system",
       include: ["reasoning.encrypted_content"],
       text: { verbosity: "low" },
       reasoning: {
         effort: "medium",
         summary: "auto",
-        context: "all_turns",
       },
       tool_choice: "auto",
       parallel_tool_calls: false,
-      tools: [{ type: "web_search" }],
+      tools: [
+        {
+          type: "function",
+          name: "read",
+          description: "Read a file",
+          parameters: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+        { type: "web_search" },
+      ],
     });
     expect(request).not.toHaveProperty("max_output_tokens");
+    expect(request.reasoning).not.toHaveProperty("context");
     expect(request.input).toEqual([
-      {
-        type: "additional_tools",
-        role: "developer",
-        tools: [
-          {
-            type: "function",
-            name: "read",
-            description: "Read a file",
-            parameters: {
-              type: "object",
-              properties: { path: { type: "string" } },
-              required: ["path"],
-            },
-          },
-        ],
-      },
-      {
-        type: "message",
-        role: "developer",
-        content: [{ type: "input_text", text: "system" }],
-      },
       {
         type: "message",
         role: "user",
@@ -142,11 +134,21 @@ describe("buildOpenAICodexRequest", () => {
     ]);
   });
 
-  test("omits the hosted web search tool when disabled", () => {
+  test("omits only the hosted web search tool when disabled", () => {
     const request = buildOpenAICodexRequest(
       {
         messages: [],
-        tools: [],
+        tools: [
+          {
+            name: "read",
+            description: "Read a file",
+            parameters: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+            },
+          },
+        ],
       },
       {
         provider: "openai-codex",
@@ -156,19 +158,28 @@ describe("buildOpenAICodexRequest", () => {
       },
     );
 
-    expect(request).not.toHaveProperty("tools");
-    expect(request.input).toEqual([
-      {
-        type: "additional_tools",
-        role: "developer",
-        tools: [],
-      },
-      {
-        type: "message",
-        role: "developer",
-        content: [{ type: "input_text", text: "You are a helpful assistant." }],
-      },
-    ]);
+    expect(request).toMatchObject({
+      instructions: "You are a helpful assistant.",
+      input: [],
+      tools: [
+        {
+          type: "function",
+          name: "read",
+          description: "Read a file",
+          parameters: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+      ],
+    });
+    expect(request.tools).not.toContainEqual({ type: "web_search" });
+    expect(request.input).not.toContainEqual({
+      type: "additional_tools",
+      role: "developer",
+      tools: expect.anything(),
+    });
   });
 });
 

@@ -142,6 +142,9 @@ export class OpenAICodexModel extends BaseModel {
       let response: Response | undefined;
       let failure: unknown;
       try {
+        // TODO: Re-evaluate Responses Lite after OpenAI stabilizes its hosted-tool
+        // contract. Lite requires a distinct body and transport marker, so the
+        // header and request builder must always switch together.
         response = await fetch(resolveOpenAICodexUrl(this.config.baseUrl), {
           method: "POST",
           headers: {
@@ -150,7 +153,6 @@ export class OpenAICodexModel extends BaseModel {
             "content-type": "application/json",
             authorization: `Bearer ${credentials.accessToken}`,
             "chatgpt-account-id": credentials.accountId,
-            "x-openai-internal-codex-responses-lite": "true",
             originator: "kana",
             "user-agent": "kana",
           },

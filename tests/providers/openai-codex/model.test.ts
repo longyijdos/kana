@@ -5,6 +5,7 @@ describe("OpenAI Codex model", () => {
   test("refreshes once after a 401 and streams the retried response", async () => {
     const authorizationHeaders: string[] = [];
     const accountHeaders: string[] = [];
+    const responsesLiteHeaders: Array<string | null> = [];
     const requests: Record<string, unknown>[] = [];
     let refreshCount = 0;
     const model = new OpenAICodexModel({
@@ -26,6 +27,7 @@ describe("OpenAI Codex model", () => {
         const headers = new Headers(init?.headers);
         authorizationHeaders.push(headers.get("authorization") ?? "");
         accountHeaders.push(headers.get("chatgpt-account-id") ?? "");
+        responsesLiteHeaders.push(headers.get("x-openai-internal-codex-responses-lite"));
         requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         if (authorizationHeaders.length === 1) {
           return new Response("", { status: 401 });
@@ -73,12 +75,13 @@ describe("OpenAI Codex model", () => {
     expect(refreshCount).toBe(1);
     expect(authorizationHeaders).toEqual(["Bearer expired-token", "Bearer refreshed-token"]);
     expect(accountHeaders).toEqual(["account-id", "account-id"]);
+    expect(responsesLiteHeaders).toEqual([null, null]);
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({
       model: "gpt-5.6-luna",
       stream: true,
       store: false,
-      parallel_tool_calls: false,
+      parallel_tool_calls: true,
     });
     expect(message).toMatchObject({
       role: "assistant",

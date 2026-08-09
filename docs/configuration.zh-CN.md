@@ -186,7 +186,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `reasoning_effort` | `low`、`medium`、`high`、`xhigh`、`max` | `medium` | 请求的推理强度。 |
 | `reasoning_summary` | `auto`、`concise`、`detailed` | `auto` | 请求可流式返回的 reasoning summary；原始思维链不会作为该字段公开。 |
 | `web_search` | 布尔值 | `true` | 是否向 Codex Responses 请求声明供应商托管的 `web_search` 工具。设为 `false` 时完全省略该顶层工具；其他供应商没有此配置。 |
-| `max_tokens` | 正整数 | `128000` | Kana 计算逐轮输出上限时使用的配置上限；Codex backend 不接受 `max_output_tokens`，因此请求不会发送该值。 |
+| `max_tokens` | 正整数 | `128000` | Kana 计算逐轮输出上限时使用的配置上限；ChatGPT Codex 请求约定不暴露 `max_output_tokens`，因此请求不会发送该值。 |
 | `timeout_ms` | 有限数字 | `60000` | 等待响应头或相邻响应数据的无活动超时毫秒数。 |
 | `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
 
@@ -212,7 +212,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `memory.daily_retention_days` | 可选正整数 | 未设置 | 全量记忆压缩成功后保留每日暂存记录的天数。 |
 | `logging.level` | `debug`、`info`、`warn`、`error`、`off` | `info` | 运行时 JSONL 日志的最低记录级别；`off` 完全关闭文件日志。 |
 
-`parallel_tool_calls` 是用户策略，最终值为“用户配置且所选模型 metadata 支持”。关闭后 provider 请求不会声明并行能力，且即使模型仍在一个响应中返回多个调用，ToolRuntime 也会按顺序逐个执行。打开后仍只有声明 `execution.concurrency = "parallel"` 的相邻工具能够组成并行组；OpenAI Codex Responses Lite 的当前模型 metadata 均不支持顶层并行工具调用，因此该配置不会覆盖其硬限制。
+`parallel_tool_calls` 是用户策略，最终值为“用户配置且所选模型 metadata 支持”。关闭后 provider 请求不会声明并行能力，且即使模型仍在一个响应中返回多个调用，ToolRuntime 也会按顺序逐个执行。打开后仍只有声明 `execution.concurrency = "parallel"` 的相邻工具能够组成并行组；当前 OpenAI Codex 模型使用 classic Responses 并声明支持 parallel tool，因此请求字段会遵循这个有效设置。
 
 `hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`collapse_long_pastes` 只影响编辑器的显示与编辑方式，提交、排队和从输入历史恢复时仍使用完整粘贴原文。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls`、`hyperlinks`、`smooth_text_streaming` 和 `collapse_long_pastes` 必须是布尔值；`tool_deadline_ms`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
 

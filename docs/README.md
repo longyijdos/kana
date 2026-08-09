@@ -12,7 +12,7 @@ Recommended reading order:
 4. [Sessions and memory](sessions-and-memory.md): JSONL sessions, daily memory, and consolidation transactions.
 5. [Skills and the system prompt](skills-and-prompt.md): discovery, activation, and context composition.
 6. [DeepSeek provider adapter](deepseek-provider.md): request conversion, SSE, retries, and usage.
-7. [OpenAI Codex provider adapter](openai-codex-provider.md): OAuth, Responses Lite, SSE, and provider state.
+7. [OpenAI Codex provider adapter](openai-codex-provider.md): OAuth, classic Responses, SSE, and provider state.
 8. [Headless execution and the JSONL protocol](headless.md): `kana exec`, approvals, output, and exit semantics.
 9. [Local Terminal-Bench evaluation](terminal-bench.md): Harbor adapter, run parameters, proxying, and results.
 10. [TUI interaction and rendering](tui.md): terminal I/O, controllers, input, and differential repainting.

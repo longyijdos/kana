@@ -1,6 +1,6 @@
 # OpenAI Codex 提供商适配
 
-Kana 的 `openai-codex` adapter 位于 `src/providers/openai-codex`。它使用 ChatGPT Codex OAuth 凭据调用 Codex Responses Lite 流，并把 reasoning summary、供应商托管的网页搜索、可见文本和函数调用恢复为 `core` 的有序助手内容。
+Kana 的 `openai-codex` adapter 位于 `src/providers/openai-codex`。它使用 ChatGPT Codex OAuth 凭据调用 Codex Responses 流，并把 reasoning summary、供应商托管的网页搜索、可见文本和函数调用恢复为 `core` 的有序助手内容。
 
 ## 启用与认证
 
@@ -36,15 +36,15 @@ max_retries = 1
 
 `OpenAICodexModel` 向 `https://chatgpt.com/backend-api/codex/responses` 发送流式请求。Bearer token 和 ChatGPT account ID 只存在于请求 header，不写入日志或会话。
 
-请求使用 Responses Lite 约定：
+请求完整使用一套 classic Responses 约定：
 
-- Kana 本地执行的函数工具作为 developer `additional_tools` input item 发送，而不是顶层 `tools`。
-- `web_search = true` 时，供应商托管的搜索工具单独作为顶层 `tools: [{ "type": "web_search" }]` 声明，并由模型按 `tool_choice: "auto"` 决定是否使用；设为 `false` 时不发送该字段。
-- 系统提示词作为 developer message，用户消息、工具结果和助手 output item 按原顺序追加到 `input`。
+- Kana 本地执行的函数工具使用顶层 `tools` 数组。`web_search = true` 时，供应商托管的 `{ "type": "web_search" }` 工具追加到同一个数组，并由模型按 `tool_choice: "auto"` 决定是否使用；设为 `false` 时只移除托管工具，客户端函数工具仍然可用。
+- 系统提示词使用顶层 `instructions`；用户消息、工具结果和助手 output item 继续按原顺序保留在 `input`。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
-- `parallel_tool_calls = false`。Responses Lite 不支持顶层并行工具调用，因此模型 metadata 会覆盖 `agent.parallel_tool_calls = true`；Kana 也会串行执行意外出现的多个调用。
-- reasoning 设置包含 `effort`、summary 类型和 `all_turns` context。Responses Lite 的 `effort` 仅支持 `low`、`medium`、`high`、`xhigh` 和 `max`；Ultra 属于 Codex 客户端编排模式，Kana 不会将其作为请求强度发送。
-- Kana 会通过配置的 `max_tokens` 与剩余 context 计算逐轮 `ModelContext.maxOutputTokens`；backend 不接受该字段，因此请求仍不发送其拒绝的 `max_output_tokens`。
+- `parallel_tool_calls` 使用经过模型能力判断后的 Agent 有效设置。当前 Sol、Terra 和 Luna metadata 均支持并行调用；用户策略关闭并行，或工具执行 metadata 不允许并发时，ToolRuntime 仍会串行执行。
+- reasoning 设置包含 `effort` 与 summary 类型，但省略 `reasoning.context`，由 backend 决定实际的持久化推理模式。可用 effort 为 `low`、`medium`、`high`、`xhigh` 和 `max`；Ultra 属于 Codex 客户端编排模式，Kana 不会将其作为请求强度发送。
+- Kana 会通过配置的 `max_tokens` 与剩余 context 计算逐轮 `ModelContext.maxOutputTokens`。这里使用的 ChatGPT Codex 请求约定不暴露 `max_output_tokens`，因此 wire request 仍省略该字段。
+- Kana 既不发送 Responses Lite header，也不发送 Lite-only input marker。只有 OpenAI 稳定提供兼容 hosted tool 的协议后才重新评估 Lite；其 header 与请求体绝不能独立启用。
 
 Codex 的 reasoning summary 不是原始思维链。Kana 可以流式接收 summary 并产生 thinking 事件，但 TUI 只用这些事件显示临时 thinking 状态，不展示摘要正文。
 

@@ -95,7 +95,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口、最大输出和 CNY 计价；TUI 用它计算上下文占用和本次进程累计成本。
 
-`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex Responses Lite endpoint 发送 `store = false` 的 SSE 请求。adapter 把 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item 映射到相同的有序内容协议，并把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量只记录 token，不套用 Platform API 价格。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
+`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。adapter 把 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item 映射到相同的有序内容协议，并把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量只记录 token，不套用 Platform API 价格。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
 
 ## MCP 协议基础
 

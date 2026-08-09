@@ -5,38 +5,24 @@ export function buildOpenAICodexRequest(
   context: ModelContext,
   config: OpenAICodexModelConfig,
 ): Record<string, unknown> {
-  const functionTools = toOpenAICodexTools(context.tools ?? []);
-  const input: Record<string, unknown>[] = [
-    // GPT-5.6 Codex models use the Responses Lite contract: client tools and
-    // instructions are input items rather than top-level request fields.
-    {
-      type: "additional_tools",
-      role: "developer",
-      tools: functionTools,
-    },
-    {
-      type: "message",
-      role: "developer",
-      content: [
-        {
-          type: "input_text",
-          text: context.system || "You are a helpful assistant.",
-        },
-      ],
-    },
-    ...toOpenAICodexInput(context.messages),
-  ];
-  // The Codex backend rejects max_output_tokens, so configured and per-request
-  // output ceilings are intentionally omitted from the wire request.
+  const tools = toOpenAICodexTools(context.tools ?? []);
+  if (config.webSearch !== false) {
+    tools.push({ type: "web_search" });
+  }
+
+  // The ChatGPT Codex request contract does not expose max_output_tokens, so
+  // configured and per-request output ceilings stay local to Kana.
   const request: Record<string, unknown> = {
     model: config.model,
     store: false,
     stream: true,
-    input,
+    instructions: context.system || "You are a helpful assistant.",
+    input: toOpenAICodexInput(context.messages),
     text: {
       verbosity: "low",
     },
     include: ["reasoning.encrypted_content"],
+    tools,
     tool_choice: "auto",
     parallel_tool_calls: context.parallelToolCalls === true,
   };
@@ -45,14 +31,7 @@ export function buildOpenAICodexRequest(
     request.reasoning = {
       effort: config.reasoningEffort,
       summary: config.reasoningSummary ?? "auto",
-      context: "all_turns",
     };
-  }
-
-  if (config.webSearch !== false) {
-    // Hosted Responses tools stay top-level; putting them in the Lite
-    // additional_tools item only advertises them as client-run functions.
-    request.tools = [{ type: "web_search" }];
   }
 
   return request;

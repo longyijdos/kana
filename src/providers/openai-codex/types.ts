@@ -1,7 +1,7 @@
 import type { ModelConfig, ModelUsage } from "@/core";
 import type { Logger } from "@/logging";
 
-// Responses Lite accepts reasoning effort through max. Ultra is a Codex client
+// OpenAI Codex Responses accepts reasoning effort through max. Ultra is a Codex client
 // orchestration mode and must not be sent as a provider reasoning effort.
 export type OpenAICodexReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
