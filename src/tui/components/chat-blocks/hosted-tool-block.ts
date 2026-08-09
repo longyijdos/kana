@@ -15,6 +15,7 @@ import type { ToolActivityGroupState, ToolActivityItem } from "./tool-activity-g
 
 export class HostedToolBlock implements Component {
   private readonly timer: ElapsedTimer;
+  private terminalState?: Extract<ToolActivityGroupState, "canceled" | "failed">;
   private renderVersion = 0;
   private cachedWidth?: number;
   private cachedVersion?: number;
@@ -33,6 +34,7 @@ export class HostedToolBlock implements Component {
 
   update(content: HostedToolContent): void {
     this.content = structuredClone(content);
+    this.terminalState = undefined;
     if (content.status !== "in_progress") {
       this.timer.stop();
     } else if (!this.timer.active) {
@@ -46,6 +48,16 @@ export class HostedToolBlock implements Component {
   }
 
   stopTimer(): void {
+    this.timer.stop();
+    this.invalidate();
+  }
+
+  settleInProgress(state: Extract<ToolActivityGroupState, "canceled" | "failed">): void {
+    if (this.content.status !== "in_progress" || this.terminalState) {
+      return;
+    }
+
+    this.terminalState = state;
     this.timer.stop();
     this.invalidate();
   }
@@ -69,6 +81,10 @@ export class HostedToolBlock implements Component {
       return undefined;
     }
 
+    if (this.terminalState) {
+      return this.terminalState;
+    }
+
     return this.content.status === "in_progress"
       ? "active"
       : this.content.status === "canceled"
@@ -85,7 +101,7 @@ export class HostedToolBlock implements Component {
   }
 
   render(width: number, _availableHeight?: number): string[] {
-    const inProgress = this.content.status === "in_progress";
+    const inProgress = this.content.status === "in_progress" && !this.terminalState;
     const elapsedSeconds = inProgress ? this.timer.elapsedSeconds() : undefined;
     if (
       this.cachedLines &&
@@ -96,13 +112,15 @@ export class HostedToolBlock implements Component {
       return this.cachedLines;
     }
 
-    const title = formatHostedToolTitle(this.content);
+    const title = formatHostedToolTitle(this.content, this.terminalState);
     const titleColor =
-      this.content.status === "canceled"
-        ? tuiTheme.muted
-        : inProgress
-          ? tuiTheme.toolActive
-          : tuiTheme.toolSuccess;
+      this.terminalState === "failed"
+        ? tuiTheme.error
+        : this.terminalState === "canceled" || this.content.status === "canceled"
+          ? tuiTheme.muted
+          : inProgress
+            ? tuiTheme.toolActive
+            : tuiTheme.toolSuccess;
     const activity = `${title.activity}${elapsedSeconds === undefined ? "" : ` (${elapsedSeconds}s)`}`;
     const hint =
       inProgress && this.timer.active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
@@ -128,10 +146,24 @@ export class HostedToolBlock implements Component {
   }
 }
 
-function formatHostedToolTitle(content: HostedToolContent): {
+function formatHostedToolTitle(
+  content: HostedToolContent,
+  terminalState?: Extract<ToolActivityGroupState, "canceled" | "failed">,
+): {
   activity: string;
   target?: string;
 } {
+  if (terminalState === "failed") {
+    return {
+      activity: content.name === "web_search" ? "Web search failed" : "Provider tool failed",
+    };
+  }
+  if (terminalState === "canceled") {
+    return {
+      activity: content.name === "web_search" ? "Web search stopped" : "Provider tool stopped",
+    };
+  }
+
   if (content.name !== "web_search") {
     return {
       activity:

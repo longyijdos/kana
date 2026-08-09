@@ -112,6 +112,7 @@ export class Transcript implements Component {
             active: "Exploring",
             done: "Explored",
             canceled: "Exploration stopped",
+            failed: "Exploration failed",
           },
           width,
           explorationPhase?.state === "active" || explorationPhase?.state === "canceled"

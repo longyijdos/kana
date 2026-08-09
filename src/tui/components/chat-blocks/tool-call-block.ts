@@ -199,7 +199,7 @@ export class ToolCallBlock implements Component {
 
   private currentState(): ToolState {
     if (this.hasResult) {
-      if (isCanceledResult(this.result)) {
+      if (this.isError && isCanceledResult(this.result)) {
         return "canceled";
       }
       return this.isError ? "failed" : "done";

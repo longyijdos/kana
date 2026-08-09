@@ -125,18 +125,21 @@ describe("tui transcript", () => {
   test("keeps provisional hosted web actions out of active and canceled groups", () => {
     let now = 0;
     const block = new AssistantMessageBlock(() => now);
-    block.update({
-      role: "assistant",
-      content: [
-        {
-          type: "hosted_tool",
-          id: "web-search-active",
-          name: "web_search",
-          status: "in_progress",
-          action: { type: "search", query: "Kana" },
-        },
-      ],
-    });
+    block.update(
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "hosted_tool",
+            id: "web-search-active",
+            name: "web_search",
+            status: "in_progress",
+            action: { type: "search", query: "Kana" },
+          },
+        ],
+      },
+      { complete: false },
+    );
 
     now = 2_000;
     expect(block.render(100).map(stripAnsi)).toEqual(["◆ Searching the web (2s) (Esc to abort)"]);
@@ -154,6 +157,33 @@ describe("tui transcript", () => {
       ],
     });
     expect(block.render(100).map(stripAnsi)).toEqual(["◆ Web search stopped"]);
+  });
+
+  test("renders an unfinished hosted web action as failed after a provider error", () => {
+    let now = 0;
+    const block = new AssistantMessageBlock(() => now);
+    const message = {
+      role: "assistant" as const,
+      content: [
+        {
+          type: "hosted_tool" as const,
+          id: "web-search-failed",
+          name: "web_search",
+          status: "in_progress" as const,
+        },
+      ],
+    };
+
+    block.update(message, { complete: false });
+    now = 2_000;
+    expect(stripAnsi(block.render(100)[0] ?? "")).toBe("◆ Searching the web (2s) (Esc to abort)");
+
+    block.update({ ...message, stopReason: "error" }, { complete: false });
+    const rendered = block.render(100)[0] ?? "";
+
+    expect(stripAnsi(rendered)).toBe("◆ Web search failed");
+    expect(rendered).toContain(color("◆ Web search failed", tuiTheme.error));
+    expect(block.hasActiveHostedTools()).toBe(false);
   });
 
   test("keeps a trailing hosted web group active until the response settles", () => {
@@ -332,6 +362,22 @@ describe("tui transcript", () => {
 
     expect(rendered).toEqual(["◆ Canceled reading", "  └ src/app.ts"]);
     expect(rendered.join("\n")).not.toContain("Failed");
+  });
+
+  test("does not infer cancellation from a successful tool result payload", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_business_canceled_field",
+      name: "custom_tool",
+      args: {},
+    });
+    block.updateResult({ canceled: true, value: "business data" }, false);
+
+    const rendered = block.render(80).map(stripAnsi);
+
+    expect(rendered).toContain("◆ Used");
+    expect(rendered).toContain('  "value": "business data"');
+    expect(rendered.join("\n")).not.toContain("Canceled");
   });
 
   test("renders a completed remember call as one visible line", () => {
@@ -1111,6 +1157,16 @@ describe("tui transcript", () => {
       { path: "C:\\repo\\src\\config.ts" },
       { path: "C:\\repo\\src\\config.ts" },
     );
+    const collidingReadFirst = completedExplorationTool(
+      "read",
+      { path: "src/index.ts" },
+      { path: "src/index.ts" },
+    );
+    const collidingReadSecond = completedExplorationTool(
+      "read",
+      { path: "tests/index.ts" },
+      { path: "tests/index.ts" },
+    );
     const glob = completedExplorationTool(
       "glob",
       { pattern: "*.ts", cwd: "src" },
@@ -1122,12 +1178,14 @@ describe("tui transcript", () => {
     transcript.addChild(readFirst);
     transcript.addChild(readDuplicate);
     transcript.addChild(readSecond);
+    transcript.addChild(collidingReadFirst);
+    transcript.addChild(collidingReadSecond);
     transcript.addChild(glob);
 
     expect(transcript.render(100).map(stripAnsi)).toEqual([
       "◆ Explored",
       "  ├ List src",
-      "  ├ Read app.ts, config.ts",
+      "  ├ Read app.ts, config.ts, src/index.ts, tests/index.ts",
       "  └ Search “*.ts” in src",
     ]);
   });

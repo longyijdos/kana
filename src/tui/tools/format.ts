@@ -115,10 +115,8 @@ export function formatExplorationToolActivity(
     case "read":
       return {
         label: "Read",
-        target: fileName(
-          sanitize(
-            getStringProperty(result, "path") ?? getStringProperty(toolCall.args, "path") ?? "file",
-          ),
+        target: sanitize(
+          getStringProperty(result, "path") ?? getStringProperty(toolCall.args, "path") ?? "file",
         ),
       };
     case "glob": {
@@ -148,10 +146,6 @@ export function formatExplorationToolActivity(
     default:
       return undefined;
   }
-}
-
-function fileName(value: string): string {
-  return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value;
 }
 
 export function formatToolApproval(

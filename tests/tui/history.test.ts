@@ -120,6 +120,33 @@ describe("tui history transcript", () => {
     expect(lines).toContain("no call");
   });
 
+  test("renders a recovered unfinished hosted search as failed", () => {
+    const transcript = new Transcript();
+
+    addHistoryTimelineToTranscript(
+      transcript,
+      timelineFromMessages([
+        {
+          role: "assistant",
+          stopReason: "error",
+          content: [
+            {
+              type: "hosted_tool",
+              id: "web-search-interrupted",
+              name: "web_search",
+              status: "in_progress",
+            },
+          ],
+        },
+      ]),
+    );
+
+    const rendered = transcript.render(100).map(stripAnsi);
+
+    expect(rendered).toEqual(["◆ Web search failed"]);
+    expect(rendered.join("\n")).not.toContain("Esc to abort");
+  });
+
   test("renders restored scheduled input consistently with a live wake", () => {
     const transcript = new Transcript();
 

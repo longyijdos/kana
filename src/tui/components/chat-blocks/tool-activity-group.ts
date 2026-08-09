@@ -21,13 +21,15 @@ export type ToolActivityGroupTitles = {
   active: string;
   done: string;
   canceled: string;
+  failed: string;
 };
 
-export type ToolActivityGroupState = "active" | "done" | "canceled";
+export type ToolActivityGroupState = "active" | "done" | "canceled" | "failed";
 
 type ToolActivityGroupOptions = {
   state?: ToolActivityGroupState;
   elapsedSeconds?: number;
+  abortable?: boolean;
 };
 
 export function renderToolActivityGroup(
@@ -36,7 +38,12 @@ export function renderToolActivityGroup(
   width: number,
   options: ToolActivityGroupOptions = {},
 ): string[] {
-  if (items.length === 0 && options.state !== "active" && options.state !== "canceled") {
+  if (
+    items.length === 0 &&
+    options.state !== "active" &&
+    options.state !== "canceled" &&
+    options.state !== "failed"
+  ) {
     return [];
   }
 
@@ -50,17 +57,27 @@ export function renderToolActivityGroup(
   const state = options.state ?? derivedState;
   const active = state === "active";
   const canceled = state === "canceled";
+  const failed = state === "failed";
   const elapsedSeconds = active
     ? (options.elapsedSeconds ?? Math.max(0, ...items.map((item) => item.elapsedSeconds ?? 0)))
     : undefined;
-  const title = active ? titles.active : canceled ? titles.canceled : titles.done;
+  const title = active
+    ? titles.active
+    : canceled
+      ? titles.canceled
+      : failed
+        ? titles.failed
+        : titles.done;
   const titleColor = active
     ? tuiTheme.toolActive
     : canceled
       ? tuiTheme.muted
-      : tuiTheme.toolSuccess;
+      : failed
+        ? tuiTheme.error
+        : tuiTheme.toolSuccess;
   const elapsed = elapsedSeconds === undefined ? "" : ` (${elapsedSeconds}s)`;
-  const hint = active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
+  const hint =
+    active && options.abortable !== false ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
   const lines = [`${bold(color(`◆ ${title}${elapsed}`, titleColor))}${hint}`];
   const displayItems = coalesceReads(items);
 
@@ -106,12 +123,34 @@ function coalesceReads(items: ToolActivityItem[]): ToolActivityItem[] {
 
     result.push({
       ...item,
-      target: targets.length > 0 ? targets.join(", ") : undefined,
+      // Keep full paths through collection so same-named files remain distinct,
+      // then shorten only as far as the group can do without losing identity.
+      target: targets.length > 0 ? shortestUniquePathSuffixes(targets).join(", ") : undefined,
     });
     index = nextIndex - 1;
   }
 
   return result;
+}
+
+function shortestUniquePathSuffixes(paths: string[]): string[] {
+  const segments = paths.map((path) => path.split(/[\\/]/).filter(Boolean));
+
+  return paths.map((path, index) => {
+    const pathSegments = segments[index] ?? [];
+    for (let depth = 1; depth <= pathSegments.length; depth += 1) {
+      const candidate = pathSegments.slice(-depth).join("/");
+      const unique = segments.every(
+        (otherSegments, otherIndex) =>
+          otherIndex === index || otherSegments.slice(-depth).join("/") !== candidate,
+      );
+      if (unique) {
+        return candidate;
+      }
+    }
+
+    return path.replaceAll("\\", "/");
+  });
 }
 
 function sanitizeActivityText(value: string): string {

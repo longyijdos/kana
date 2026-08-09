@@ -80,7 +80,7 @@ export class AgentEventRenderer {
         } else {
           this.options.transcript.finishExplorationPhase();
         }
-        this.stopActiveTimers();
+        this.stopActiveTimers(event.reason === "aborted" ? "canceled" : "failed");
         this.activeTools.clear();
         this.options.updateStatus(phaseForAgentEndReason(event.reason), {
           activeTool: undefined,
@@ -213,8 +213,8 @@ export class AgentEventRenderer {
     }
   }
 
-  private stopActiveTimers(): void {
-    this.streamingAssistant?.stopActivityTimers();
+  private stopActiveTimers(hostedTerminalState: "canceled" | "failed"): void {
+    this.streamingAssistant?.stopActivityTimers(hostedTerminalState);
     this.toolCallBlocks.stopTimers();
     this.stopActivityTimer();
   }

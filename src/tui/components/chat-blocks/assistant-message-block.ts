@@ -76,6 +76,14 @@ export class AssistantMessageBlock implements Component {
         this.hostedToolBlocks.delete(id);
       }
     }
+    if (messageComplete || message.stopReason !== undefined) {
+      // A completed provider response cannot leave an action live. Preserve an
+      // abort as cancellation; any other unresolved action is a provider failure.
+      const terminalState = message.stopReason === "aborted" ? "canceled" : "failed";
+      for (const block of this.hostedToolBlocks.values()) {
+        block.settleInProgress(terminalState);
+      }
+    }
     this.contentBlocks = contentBlocks;
     this.updateWebActivityTimer();
 
@@ -111,12 +119,13 @@ export class AssistantMessageBlock implements Component {
     );
   }
 
-  stopActivityTimers(): void {
+  stopActivityTimers(terminalState: "canceled" | "failed" = "failed"): void {
     this.showThinking(false);
     this.webActivityTimer.stop();
     for (const block of this.hostedToolBlocks.values()) {
-      block.stopTimer();
+      block.settleInProgress(terminalState);
     }
+    this.invalidate();
   }
 
   invalidate(): void {
@@ -174,12 +183,14 @@ export class AssistantMessageBlock implements Component {
             active: "Searching the web",
             done: "Searched the web",
             canceled: "Web search stopped",
+            failed: "Web search failed",
           },
           width,
           state
             ? {
                 state,
                 elapsedSeconds: this.webActivityTimer.elapsedSeconds(),
+                abortable: this.webActivityTimer.active,
               }
             : undefined,
         ),
@@ -237,6 +248,7 @@ export class AssistantMessageBlock implements Component {
       this.options.groupToolCalls !== false &&
       trailingState !== undefined &&
       trailingState !== "canceled" &&
+      trailingState !== "failed" &&
       (trailingState === "active" || !this.messageComplete);
 
     if (keepOpen && !this.webActivityTimer.active) {
@@ -253,6 +265,9 @@ function combineToolActivityGroupState(
 ): ToolActivityGroupState {
   if (current === "active" || next === "active") {
     return "active";
+  }
+  if (current === "failed" || next === "failed") {
+    return "failed";
   }
   if (current === "canceled" || next === "canceled") {
     return "canceled";
