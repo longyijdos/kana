@@ -348,7 +348,7 @@ export class Editor implements Component {
     if (!this.state.value) {
       return [
         { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
-        { text: this.placeholder, color: tuiTheme.muted },
+        { text: truncateToWidth(this.placeholder, this.inputColumns, ""), color: tuiTheme.muted },
       ];
     }
 

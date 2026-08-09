@@ -35,7 +35,7 @@ describe("information viewers", () => {
     const scrolled = internal.layout.render(80, 24).map(stripAnsi);
 
     expect(
-      scrolled.some((line) => line.includes("Tab") && line.includes("queue for the next run")),
+      scrolled.some((line) => line.includes("Tab") && line.includes("queue for next run")),
     ).toBe(true);
     expect(
       scrolled.some(
