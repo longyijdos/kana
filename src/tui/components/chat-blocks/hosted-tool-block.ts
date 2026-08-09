@@ -58,8 +58,8 @@ export class HostedToolBlock implements Component {
   }
 
   render(width: number, _availableHeight?: number): string[] {
-    const active = this.content.status === "in_progress";
-    const elapsedSeconds = active ? this.timer.elapsedSeconds() : undefined;
+    const inProgress = this.content.status === "in_progress";
+    const elapsedSeconds = inProgress ? this.timer.elapsedSeconds() : undefined;
     if (
       this.cachedLines &&
       this.cachedWidth === width &&
@@ -70,9 +70,10 @@ export class HostedToolBlock implements Component {
     }
 
     const title = formatHostedToolTitle(this.content);
-    const titleColor = active ? tuiTheme.toolActive : tuiTheme.toolSuccess;
+    const titleColor = inProgress ? tuiTheme.toolActive : tuiTheme.toolSuccess;
     const activity = `${title.activity}${elapsedSeconds === undefined ? "" : ` (${elapsedSeconds}s)`}`;
-    const hint = active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
+    const hint =
+      inProgress && this.timer.active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
     const lines = [`${bold(color(`◆ ${activity}`, titleColor))}${hint}`];
     const prefix = "  └ ";
     const continuationPrefix = " ".repeat(visibleWidth(prefix));
