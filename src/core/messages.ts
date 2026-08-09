@@ -92,7 +92,24 @@ export type HostedToolContent = {
   type: "hosted_tool";
   id: string;
   name: string;
-  status: "in_progress" | "completed";
+  status: "in_progress" | "completed" | "canceled";
   action?: HostedToolAction;
   providerState?: ProviderState;
 };
+
+export function cancelInProgressHostedTools(message: AssistantMessage): AssistantMessage {
+  let changed = false;
+  const content = message.content.map((item): AssistantContent => {
+    if (item.type !== "hosted_tool" || item.status !== "in_progress") {
+      return item;
+    }
+
+    changed = true;
+    return {
+      ...item,
+      status: "canceled",
+    };
+  });
+
+  return changed ? { ...message, content } : message;
+}

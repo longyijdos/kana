@@ -16,7 +16,7 @@ import { formatListOutput, hasExpandableListOutput } from "./renderers/list";
 import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
 import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 
-export type ToolState = "preparing" | "running" | "done" | "failed";
+export type ToolState = "preparing" | "running" | "done" | "failed" | "canceled";
 export type ToolOutputDetail = "compact" | "full";
 export type ToolTranscriptTitle = { activity: string; hint?: string; target?: string };
 
@@ -57,6 +57,10 @@ export function formatToolTitle(
     return `Failed to ${text.action}`;
   }
 
+  if (state === "canceled") {
+    return `Canceled ${text.runningActivity}`;
+  }
+
   return text.doneTitle;
 }
 
@@ -82,6 +86,12 @@ export function formatToolTranscriptTitle(
     };
   }
   if (state === "failed") return { activity: `Failed to ${action}`, target };
+  if (state === "canceled") {
+    return {
+      activity: `Canceled ${text.runningActivity.replace(` ${target}`, "")}`,
+      target,
+    };
+  }
 
   return { activity: text.doneTitle.replace(` ${target}`, ""), target };
 }

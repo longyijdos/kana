@@ -102,6 +102,20 @@ describe("tui transcript", () => {
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Searching the web (2s)");
   });
 
+  test("renders canceled hosted tool activity as stopped", () => {
+    const block = new HostedToolBlock({
+      type: "hosted_tool",
+      id: "web-search-canceled",
+      name: "web_search",
+      status: "canceled",
+    });
+
+    const rendered = block.render(80)[0] ?? "";
+
+    expect(stripAnsi(rendered)).toBe("◆ Web search stopped");
+    expect(rendered).toContain(color("◆ Web search stopped", tuiTheme.muted));
+  });
+
   test("uses distinct colors for assistant text and completed tool calls", () => {
     const assistant = new AssistantMessageBlock();
     assistant.update({
@@ -139,6 +153,31 @@ describe("tui transcript", () => {
 
     expect(assistantLine).toContain(color("hello", tuiTheme.markdownText));
     expect(toolTitle).toContain(color(stripAnsi(toolTitle), tuiTheme.toolSuccess));
+  });
+
+  test("renders user-canceled local tools separately from failures", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_canceled",
+      name: "read",
+      args: {
+        path: "src/app.ts",
+      },
+    });
+    block.markExecutionStarted();
+    block.updateResult(
+      {
+        status: "canceled",
+        reason: "run_aborted",
+        message: "Tool execution was canceled because the agent run was aborted.",
+      },
+      true,
+    );
+
+    const rendered = block.render(80).map(stripAnsi);
+
+    expect(rendered).toEqual(["◆ Canceled reading", "  └ src/app.ts"]);
+    expect(rendered.join("\n")).not.toContain("Failed");
   });
 
   test("renders a completed remember call as one visible line", () => {

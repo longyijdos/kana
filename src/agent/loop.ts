@@ -2,6 +2,7 @@ import {
   type AssistantMessage,
   type AssistantMessageEvent,
   ContextWindowExceededError,
+  cancelInProgressHostedTools,
   type Message,
   type Model,
   type ModelContext,
@@ -406,10 +407,11 @@ function assistantMessageForHistory(message: AssistantMessage): AssistantMessage
     return message;
   }
 
-  const content = message.content.filter((item) => item.type !== "tool_call");
+  const canceledMessage = cancelInProgressHostedTools(message);
+  const content = canceledMessage.content.filter((item) => item.type !== "tool_call");
 
-  if (content.length === message.content.length) {
-    return message;
+  if (content.length === canceledMessage.content.length) {
+    return canceledMessage;
   }
 
   if (content.length === 0) {
@@ -417,7 +419,7 @@ function assistantMessageForHistory(message: AssistantMessage): AssistantMessage
   }
 
   return {
-    ...message,
+    ...canceledMessage,
     content,
   };
 }

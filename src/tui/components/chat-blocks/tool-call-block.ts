@@ -16,6 +16,7 @@ import type { ContentView } from "../content-viewer";
 
 export class ToolCallBlock implements Component {
   private executionStarted = false;
+  private canceled = false;
   private result?: unknown;
   private partialResult?: unknown;
   private hasResult = false;
@@ -42,6 +43,7 @@ export class ToolCallBlock implements Component {
 
   markExecutionStarted(): void {
     this.executionStarted = true;
+    this.canceled = false;
     this.phaseTimer.start();
     this.invalidate();
   }
@@ -64,6 +66,7 @@ export class ToolCallBlock implements Component {
     this.result = result;
     this.hasResult = true;
     this.isError = isError;
+    this.canceled = false;
     this.partialResult = undefined;
     this.phaseTimer.stop();
     this.invalidate();
@@ -71,6 +74,17 @@ export class ToolCallBlock implements Component {
 
   stopTimer(): void {
     this.phaseTimer.stop();
+  }
+
+  markCanceled(): void {
+    if (this.hasResult) {
+      return;
+    }
+
+    this.canceled = true;
+    this.partialResult = undefined;
+    this.phaseTimer.stop();
+    this.invalidate();
   }
 
   hasActiveTimer(): boolean {
@@ -99,13 +113,18 @@ export class ToolCallBlock implements Component {
       return this.cachedLines;
     }
 
-    const titleColor = this.isError
-      ? tuiTheme.error
-      : state === "done"
-        ? tuiTheme.toolSuccess
-        : tuiTheme.toolActive;
+    const titleColor =
+      state === "canceled"
+        ? tuiTheme.muted
+        : this.isError
+          ? tuiTheme.error
+          : state === "done"
+            ? tuiTheme.toolSuccess
+            : tuiTheme.toolActive;
     const lines = this.renderTitle(width, titleColor, elapsedSeconds);
-    lines.push(...this.renderOutput(width, "compact"));
+    if (state !== "canceled") {
+      lines.push(...this.renderOutput(width, "compact"));
+    }
 
     const rendered = lines.map((line) => truncateToWidth(line, width));
 
@@ -138,7 +157,14 @@ export class ToolCallBlock implements Component {
 
   private currentState(): ToolState {
     if (this.hasResult) {
+      if (isCanceledResult(this.result)) {
+        return "canceled";
+      }
       return this.isError ? "failed" : "done";
+    }
+
+    if (this.canceled) {
+      return "canceled";
     }
 
     return this.executionStarted ? "running" : "preparing";
@@ -185,6 +211,17 @@ export class ToolCallBlock implements Component {
 
     return lines;
   }
+}
+
+function isCanceledResult(result: unknown): boolean {
+  if (!result || typeof result !== "object") {
+    return false;
+  }
+
+  const record = result as Record<string, unknown>;
+  return (
+    record.canceled === true || (record.status === "canceled" && record.reason === "run_aborted")
+  );
 }
 
 function colorTitleWithShortcutHint(

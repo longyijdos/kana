@@ -262,6 +262,60 @@ class AbortedToolCallModel implements Model {
   }
 }
 
+class AbortedHostedToolModel implements Model {
+  readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "aborted-hosted-tool",
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: true,
+  };
+
+  stream(_context: ModelContext): AssistantEventStream {
+    const stream = new AssistantEventStream();
+
+    queueMicrotask(() => {
+      const message: AssistantMessage = {
+        role: "assistant",
+        content: [
+          {
+            type: "hosted_tool",
+            id: "search-1",
+            name: "web_search",
+            status: "in_progress",
+          },
+        ],
+      };
+      stream.push({ type: "start", snapshot: { role: "assistant", content: [] } });
+      stream.push({
+        type: "hosted_tool_start",
+        contentIndex: 0,
+        snapshot: structuredClone(message),
+      });
+      stream.error({
+        type: "error",
+        reason: "aborted",
+        error: new Error("aborted"),
+        snapshot: structuredClone(message),
+      });
+    });
+
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 class EmptyErrorModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
@@ -1109,6 +1163,33 @@ describe("runAgentLoop", () => {
       reason: "aborted",
       messages: [],
     });
+  });
+
+  test("persists aborted hosted tools with a canceled semantic status", async () => {
+    const messages = await runAgentLoop(
+      {
+        messages: [{ role: "user", content: "search the web" }],
+      },
+      {
+        model: new AbortedHostedToolModel(),
+      },
+      () => {},
+    );
+
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        stopReason: "aborted",
+        content: [
+          {
+            type: "hosted_tool",
+            id: "search-1",
+            name: "web_search",
+            status: "canceled",
+          },
+        ],
+      },
+    ]);
   });
 });
 

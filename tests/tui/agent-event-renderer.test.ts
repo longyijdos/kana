@@ -198,11 +198,49 @@ describe("AgentEventRenderer", () => {
       renderer.handle({ type: "agent_end", reason: "aborted", messages: [] });
       now = 7_000;
 
-      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("◆ Searching the web (2s)");
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("◆ Web search stopped");
     } finally {
       renderer.handle({ type: "agent_end", reason: "aborted", messages: [] });
       dateNow.mockRestore();
     }
+  });
+
+  test("marks a partially prepared local tool as canceled when the agent is aborted", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const toolCall = {
+      type: "tool_call" as const,
+      id: "call-preparing-aborted",
+      name: "edit",
+      args: {
+        path: "src/app.ts",
+      },
+    };
+    const message: AssistantMessage = {
+      role: "assistant",
+      content: [toolCall],
+    };
+
+    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_update",
+      message,
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        contentIndex: 0,
+        snapshot: message,
+      },
+    });
+    renderer.handle({ type: "message_end", message: { ...message, stopReason: "aborted" } });
+    renderer.handle({ type: "agent_end", reason: "aborted", messages: [] });
+
+    expect(stripAnsi(transcript.render(80).join("\n"))).toContain("◆ Canceled editing");
   });
 
   test("keeps one timer across adjacent thinking items until the next action", () => {

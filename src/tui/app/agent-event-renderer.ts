@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@/agent";
-import type { AssistantMessage } from "@/core";
+import { type AssistantMessage, cancelInProgressHostedTools } from "@/core";
 import {
   AssistantMessageBlock,
   type StatusLineState,
@@ -73,6 +73,9 @@ export class AgentEventRenderer {
         this.options.updateStatus("starting");
         break;
       case "agent_end":
+        if (event.reason === "aborted") {
+          this.toolCallBlocks.markPendingCanceled();
+        }
         this.stopActiveTimers();
         this.activeTools.clear();
         this.options.updateStatus(phaseForAgentEndReason(event.reason), {
@@ -165,7 +168,9 @@ export class AgentEventRenderer {
 
   private handleAssistantEnd(message: AssistantMessage): void {
     this.streamingAssistant?.showThinking(false);
-    this.textPresenter.finish(message, message.stopReason === "toolUse");
+    const displayMessage =
+      message.stopReason === "aborted" ? cancelInProgressHostedTools(message) : message;
+    this.textPresenter.finish(displayMessage, message.stopReason === "toolUse");
     this.options.updateStatus(phaseForStopReason(message.stopReason));
   }
 
