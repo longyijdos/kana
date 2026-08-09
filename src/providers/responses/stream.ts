@@ -18,6 +18,12 @@ export type ResponsesStreamState = {
 export type ResponsesStreamProcessorOptions = {
   provider: string;
   providerLabel: string;
+  // Provider adapters may remove transport-only metadata from the semantic
+  // action while the processor still preserves the raw item for replay.
+  normalizeHostedToolAction?: (
+    action: HostedToolAction,
+    item: Readonly<Record<string, unknown>>,
+  ) => HostedToolAction;
 };
 
 type PendingItem =
@@ -308,7 +314,11 @@ export class ResponsesStreamProcessor {
       });
     } else {
       pending.content.status = "completed";
-      pending.content.action = readHostedToolAction(item.action);
+      const action = readHostedToolAction(item.action);
+      pending.content.action =
+        action === undefined
+          ? undefined
+          : (this.options.normalizeHostedToolAction?.(action, item) ?? action);
       this.stream.push({
         type: "hosted_tool_end",
         contentIndex: pending.contentIndex,

@@ -75,7 +75,7 @@ HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/
 
 ## SSE 解析与内容顺序
 
-V4 Flash 使用与 OpenAI Codex 相同的共享 `src/providers/responses` 语义 SSE 处理器。它按 `output_index` 和 item ID 关联输出，保持 reasoning/message/function/search 顺序，把 `web_search_call` 映射为 `hosted_tool`，并且只在 `response.completed`、`response.incomplete` 或 `response.failed` 后结束。完成 item 会保留 `providerState.provider = "deepseek"`；`response.incomplete` 映射为 `length`，包含客户端函数调用的响应映射为 `toolUse`，只有托管搜索时仍映射为 `stop`。Responses usage 会映射 input、output、total、cached 和 reasoning token。
+V4 Flash 使用与 OpenAI Codex 相同的共享 `src/providers/responses` 语义 SSE 处理器。它按 `output_index` 和 item ID 关联输出，保持 reasoning/message/function/search 顺序，把 `web_search_call` 映射为 `hosted_tool`，并且只在 `response.completed`、`response.incomplete` 或 `response.failed` 后结束。DeepSeek 的 `ws_call_id` replay 标记会在展示前从语义化搜索 query 和 URL fragment 中移除，而 `providerState` 中的原始 output item 保持不变。完成 item 会保留 `providerState.provider = "deepseek"`；`response.incomplete` 映射为 `length`，包含客户端函数调用的响应映射为 `toolUse`，只有托管搜索时仍映射为 `stop`。Responses usage 会映射 input、output、total、cached 和 reasoning token。
 
 V4 Pro 的 Chat Completions 读取器以空行切分 SSE frame，并保留不完整尾帧以应对网络分片。每个 frame 收集所有 `data:` 行；`[DONE]` 立即结束读取。JSON payload 交给 `applyDeepSeekChunk`。
 

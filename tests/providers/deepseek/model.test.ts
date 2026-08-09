@@ -23,22 +23,43 @@ describe("DeepSeek model protocol routing", () => {
               id: "search-1",
               type: "web_search_call",
               status: "completed",
-              action: { type: "search", query: "latest DeepSeek release" },
+              action: {
+                type: "search",
+                queries: ["latest DeepSeek release", "ws_call_id=search-1"],
+              },
             },
           },
           {
             type: "response.output_item.added",
             output_index: 1,
-            item: { id: "message-1", type: "message", role: "assistant", content: [] },
-          },
-          {
-            type: "response.output_text.delta",
-            output_index: 1,
-            delta: "answer",
+            item: { id: "open-1", type: "web_search_call", status: "in_progress" },
           },
           {
             type: "response.output_item.done",
             output_index: 1,
+            item: {
+              id: "open-1",
+              type: "web_search_call",
+              status: "completed",
+              action: {
+                type: "open_page",
+                url: "https://example.com/releases#ws_call_id=open-1",
+              },
+            },
+          },
+          {
+            type: "response.output_item.added",
+            output_index: 2,
+            item: { id: "message-1", type: "message", role: "assistant", content: [] },
+          },
+          {
+            type: "response.output_text.delta",
+            output_index: 2,
+            delta: "answer",
+          },
+          {
+            type: "response.output_item.done",
+            output_index: 2,
             item: {
               id: "message-1",
               type: "message",
@@ -99,9 +120,29 @@ describe("DeepSeek model protocol routing", () => {
             id: "search-1",
             name: "web_search",
             status: "completed",
-            action: { type: "search", query: "latest DeepSeek release" },
+            action: { type: "search", queries: ["latest DeepSeek release"] },
             providerState: {
               provider: "deepseek",
+              value: {
+                action: {
+                  queries: ["latest DeepSeek release", "ws_call_id=search-1"],
+                },
+              },
+            },
+          },
+          {
+            type: "hosted_tool",
+            id: "open-1",
+            name: "web_search",
+            status: "completed",
+            action: { type: "open_page", url: "https://example.com/releases" },
+            providerState: {
+              provider: "deepseek",
+              value: {
+                action: {
+                  url: "https://example.com/releases#ws_call_id=open-1",
+                },
+              },
             },
           },
           {

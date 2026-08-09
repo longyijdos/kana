@@ -3,6 +3,7 @@ import {
   type AssistantMessage,
   BaseModel,
   ContextWindowExceededError,
+  type HostedToolAction,
   type ModelContext,
   type ModelUsage,
 } from "@/core";
@@ -194,6 +195,7 @@ export class DeepSeekModel extends BaseModel {
     const processor = new ResponsesStreamProcessor(stream, message, state, {
       provider: "deepseek",
       providerLabel: "DeepSeek",
+      normalizeHostedToolAction: normalizeDeepSeekHostedToolAction,
     });
     await readResponsesStream(response, (event) => processor.apply(event), "DeepSeek", onActivity);
     if (!state.terminalSeen || state.stopReason === undefined) {
@@ -210,6 +212,36 @@ type DeepSeekStreamOutcome = {
   stopReason: "stop" | "length" | "toolUse";
   usage?: ModelUsage;
 };
+
+function normalizeDeepSeekHostedToolAction(
+  action: HostedToolAction,
+  item: Readonly<Record<string, unknown>>,
+): HostedToolAction {
+  const itemId = typeof item.id === "string" ? item.id : undefined;
+  if (itemId === undefined) {
+    return action;
+  }
+
+  // DeepSeek appends its replay correlation marker to user-facing queries and
+  // URL fragments. Keep it in providerState, but not in the semantic action.
+  const marker = `ws_call_id=${itemId}`;
+  const normalized = structuredClone(action);
+  if (normalized.query === marker) {
+    delete normalized.query;
+  }
+  if (normalized.queries !== undefined) {
+    const queries = normalized.queries.filter((query) => query !== marker);
+    if (queries.length > 0) {
+      normalized.queries = queries;
+    } else {
+      delete normalized.queries;
+    }
+  }
+  if (normalized.url?.endsWith(`#${marker}`)) {
+    normalized.url = normalized.url.slice(0, -(marker.length + 1));
+  }
+  return normalized;
+}
 
 function normalizeDeepSeekError(error: unknown): unknown {
   if (!(error instanceof DeepSeekHttpError) || !isContextWindowFailure(error)) {
