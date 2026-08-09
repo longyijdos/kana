@@ -7,6 +7,7 @@ import {
   formatPromptCommandHelpLine,
   getCommandState,
   PROMPT_COMMANDS,
+  PROMPT_SHORTCUTS,
 } from "../../src/tui/components/editor/commands";
 import {
   createInputLayout,
@@ -807,17 +808,21 @@ describe("prompt input layout", () => {
 
 describe("prompt commands", () => {
   test("creates prompt placeholders from help command entries", () => {
+    const helpEntryCount = PROMPT_COMMANDS.length + PROMPT_SHORTCUTS.length;
+
     expect(createRandomPromptPlaceholder(() => 0)).toBe("Try /quit — Exit Kana.");
-    expect(createRandomPromptPlaceholder(() => 0.85)).toBe(
+    expect(createRandomPromptPlaceholder(() => 14 / helpEntryCount)).toBe(
       "Try /usage — Show session, project, or global API usage.",
     );
     expect(createRandomPromptPlaceholder(() => 0.999)).toBe(
-      "Try Ctrl+O — Open the latest expandable tool output.",
+      "Try !<command> — Run a local bash command.",
     );
     expect(createRandomPromptPlaceholder(() => 0, "Try /quit — Exit Kana.")).toBe(
-      "Try /help — Show slash commands.",
+      "Try /help — Show commands and shortcuts.",
     );
-    expect(createRandomPromptPlaceholder(() => 0.4)).toBe("Try /delete — Delete a saved session.");
+    expect(createRandomPromptPlaceholder(() => 6 / helpEntryCount)).toBe(
+      "Try /delete — Delete a saved session.",
+    );
   });
 
   test("lists commands after slash", () => {

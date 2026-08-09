@@ -2,9 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   formatPromptCommandHelpLine,
   formatPromptCommandUsage,
-  formatPromptShortcutHelpLine,
   PROMPT_COMMANDS,
-  PROMPT_SHORTCUTS,
 } from "../../src/tui/components/editor/commands";
 
 describe("prompt command help", () => {
@@ -34,15 +32,5 @@ describe("prompt command help", () => {
     expect(formatPromptCommandUsage("approval")).toBe("Usage: /approval");
     expect(formatPromptCommandHelpLine(compact!)).toContain("/compact");
     expect(formatPromptCommandUsage("compact")).toBe("Usage: /compact");
-  });
-
-  test("stores global shortcuts as structured help entries", () => {
-    expect(PROMPT_SHORTCUTS).toContainEqual({
-      input: "Ctrl+O",
-      description: "Open the latest expandable tool output.",
-    });
-    expect(formatPromptShortcutHelpLine(PROMPT_SHORTCUTS[0])).toBe(
-      "!<command> Run a local bash command.",
-    );
   });
 });

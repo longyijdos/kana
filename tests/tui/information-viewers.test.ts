@@ -20,7 +20,9 @@ describe("information viewers", () => {
     expect(rendered).toContain("Slash commands");
     expect(rawRendered).toContain(color("Slash commands", tuiTheme.bottomTitle));
     expect(
-      rendered.some((line) => line.includes("/help") && line.includes("Show slash commands")),
+      rendered.some(
+        (line) => line.includes("/help") && line.includes("Show commands and shortcuts"),
+      ),
     ).toBe(true);
     expect(
       rendered.some(
@@ -33,7 +35,12 @@ describe("information viewers", () => {
     const scrolled = internal.layout.render(80, 24).map(stripAnsi);
 
     expect(
-      scrolled.some((line) => line.includes("Ctrl+O") && line.includes("expandable tool output")),
+      scrolled.some((line) => line.includes("Tab") && line.includes("queue for the next run")),
+    ).toBe(true);
+    expect(
+      scrolled.some(
+        (line) => line.includes("!<command>") && line.includes("Run a local bash command"),
+      ),
     ).toBe(true);
   });
 

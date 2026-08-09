@@ -57,7 +57,7 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   },
   {
     name: "help",
-    description: "Show slash commands.",
+    description: "Show commands and shortcuts.",
   },
   {
     name: "clear",
@@ -116,15 +116,35 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
 ];
 
 export const PROMPT_HELP_TITLE = "Slash commands";
-export const PROMPT_SHORTCUTS_TITLE = "Shell shortcuts";
+export const PROMPT_SHORTCUTS_TITLE = "Input and shortcuts";
 export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   {
-    input: "!<command>",
-    description: "Run a local bash command.",
+    input: "Enter",
+    description: "Submit input; during an Agent run, queue it for the next turn.",
+  },
+  {
+    input: "Tab",
+    description: "Complete slash commands; in an Agent run, queue for the next run.",
+  },
+  {
+    input: "Shift+Enter",
+    description: "Insert a newline in supported terminals.",
+  },
+  {
+    input: "Esc",
+    description: "Close an open viewer, or abort active work.",
+  },
+  {
+    input: "Ctrl+C",
+    description: "Abort active work, or exit Kana while idle.",
   },
   {
     input: "Ctrl+O",
-    description: "Open the latest expandable tool output.",
+    description: "Toggle the latest expandable tool output.",
+  },
+  {
+    input: "!<command>",
+    description: "Run a local bash command.",
   },
 ];
 
