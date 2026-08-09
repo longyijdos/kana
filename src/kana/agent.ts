@@ -126,7 +126,12 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     context: {
       contextLimit,
       maxOutputTokens: modelConfig.maxTokens,
-      compactPolicy: createModelCompactPolicy(model),
+      compactPolicy: createModelCompactPolicy(model, {
+        // Capability and configuration are separate: a capable model must not
+        // receive image bytes when the provider setting disables them.
+        imageInputEnabled:
+          model.metadata.supportsImageInput === true && modelConfig.imageInput !== false,
+      }),
       checkpoint: options.contextCheckpoint,
     },
   });

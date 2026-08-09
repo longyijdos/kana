@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AgentEndReason, ContextCheckpoint } from "@/agent";
-import type { Message, ModelMetadata, ModelUsage, UserMessage } from "@/core";
+import type { Message, ModelMetadata, ModelUsage, UserImage, UserMessage } from "@/core";
 
 export const SESSION_VERSION = 3;
 export const CONTEXT_SUMMARY_FORMAT = "kana-context-summary-v1";
@@ -445,7 +445,47 @@ function isMessage(value: unknown): value is Message {
   }
 
   const role = (value as Record<string, unknown>).role;
-  return role === "user" || role === "assistant" || role === "tool";
+  return role === "user" ? isUserMessage(value) : role === "assistant" || role === "tool";
+}
+
+function isUserMessage(value: unknown): value is UserMessage {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const message = value as Record<string, unknown>;
+  return (
+    message.role === "user" &&
+    typeof message.content === "string" &&
+    (message.images === undefined ||
+      (Array.isArray(message.images) && message.images.every(isUserImage))) &&
+    (message.source === undefined ||
+      message.source === "scheduled" ||
+      message.source === "recovery")
+  );
+}
+
+function isUserImage(value: unknown): value is UserImage {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const image = value as Record<string, unknown>;
+  return (
+    isUserImageMimeType(image.mimeType) &&
+    typeof image.data === "string" &&
+    isPositiveInteger(image.width) &&
+    isPositiveInteger(image.height)
+  );
+}
+
+function isUserImageMimeType(value: unknown): value is UserImage["mimeType"] {
+  return (
+    value === "image/png" ||
+    value === "image/jpeg" ||
+    value === "image/webp" ||
+    value === "image/gif"
+  );
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

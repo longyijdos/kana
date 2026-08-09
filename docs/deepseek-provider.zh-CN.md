@@ -50,6 +50,8 @@ V4 Flash 向 `POST /responses` 发送语义化 input item：
 
 逐轮输出上限优先于配置的 `maxTokens`。客户端函数使用扁平的 Responses 工具定义。当模型元数据支持且 `model.deepseek.web_search = true` 时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`；设为 `false` 只会移除该托管工具。默认 `tool_choice` 为 `auto`，Chat Completions 风格的具名选择会转换为扁平 Responses 结构，`strictTools` 会给函数工具加上 `strict: true`。
 
+当前 DeepSeek 模型 metadata 将图片输入标记为不支持。普通对话和上下文压缩因此都不会发送会话中保存的 base64 图片字节，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
+
 ### V4 Pro Chat Completions
 
 V4 Pro 继续向 `POST /chat/completions` 发送请求：
