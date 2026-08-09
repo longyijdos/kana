@@ -124,7 +124,7 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "Tab",
-    description: "Complete slash commands; in an Agent run, queue for the next run.",
+    description: "Complete slash commands; during runs, queue input.",
   },
   {
     input: "Shift+Enter",
