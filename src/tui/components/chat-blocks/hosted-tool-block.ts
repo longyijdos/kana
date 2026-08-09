@@ -32,7 +32,7 @@ export class HostedToolBlock implements Component {
 
   update(content: HostedToolContent): void {
     this.content = structuredClone(content);
-    if (content.status === "completed") {
+    if (content.status !== "in_progress") {
       this.timer.stop();
     } else if (!this.timer.active) {
       this.timer.start();
@@ -70,7 +70,12 @@ export class HostedToolBlock implements Component {
     }
 
     const title = formatHostedToolTitle(this.content);
-    const titleColor = inProgress ? tuiTheme.toolActive : tuiTheme.toolSuccess;
+    const titleColor =
+      this.content.status === "canceled"
+        ? tuiTheme.muted
+        : inProgress
+          ? tuiTheme.toolActive
+          : tuiTheme.toolSuccess;
     const activity = `${title.activity}${elapsedSeconds === undefined ? "" : ` (${elapsedSeconds}s)`}`;
     const hint =
       inProgress && this.timer.active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
@@ -102,9 +107,17 @@ function formatHostedToolTitle(content: HostedToolContent): {
 } {
   if (content.name !== "web_search") {
     return {
-      activity: content.status === "in_progress" ? "Using provider tool" : "Used provider tool",
+      activity:
+        content.status === "canceled"
+          ? "Provider tool stopped"
+          : content.status === "in_progress"
+            ? "Using provider tool"
+            : "Used provider tool",
       target: safeText(content.name),
     };
+  }
+  if (content.status === "canceled") {
+    return { activity: "Web search stopped" };
   }
   if (content.status === "in_progress") {
     return { activity: "Searching the web" };

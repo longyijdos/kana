@@ -21,6 +21,12 @@ export class ToolCallBlocks {
     }
   }
 
+  markPendingCanceled(): void {
+    for (const block of this.pendingTools.values()) {
+      block.markCanceled();
+    }
+  }
+
   createOrUpdateFromMessage(message: AssistantMessage): void {
     for (const content of message.content) {
       if (content.type !== "tool_call") {

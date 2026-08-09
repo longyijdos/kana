@@ -73,6 +73,9 @@ export class AgentEventRenderer {
         this.options.updateStatus("starting");
         break;
       case "agent_end":
+        if (event.reason === "aborted") {
+          this.toolCallBlocks.markPendingCanceled();
+        }
         this.stopActiveTimers();
         this.activeTools.clear();
         this.options.updateStatus(phaseForAgentEndReason(event.reason), {

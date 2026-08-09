@@ -1,4 +1,5 @@
 import {
+  type AssistantContent,
   type AssistantMessage,
   type AssistantMessageEvent,
   ContextWindowExceededError,
@@ -266,7 +267,7 @@ async function streamAssistantResponse(
           isError: false,
         };
 
-      case "error":
+      case "error": {
         if (event.error instanceof ContextWindowExceededError && !addedAssistantMessage) {
           return {
             message: currentMessage,
@@ -275,7 +276,7 @@ async function streamAssistantResponse(
             canRetryContextLimit: true,
           };
         }
-        currentMessage = {
+        const terminalMessage: AssistantMessage = {
           ...(event.snapshot ??
             ({
               role: "assistant",
@@ -283,6 +284,13 @@ async function streamAssistantResponse(
             } satisfies AssistantMessage)),
           stopReason: event.reason,
         };
+        // Provider snapshots describe the last streamed state. The Agent owns
+        // the terminal transition, so publish and persist one canonical
+        // canceled status for hosted work interrupted by an abort.
+        currentMessage =
+          event.reason === "aborted"
+            ? cancelInProgressHostedTools(terminalMessage)
+            : terminalMessage;
         replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
         if (!addedAssistantMessage) {
           await emitMessageStart(currentMessage, emit);
@@ -293,6 +301,7 @@ async function streamAssistantResponse(
           isError: true,
           error: event.error,
         };
+      }
     }
   }
 
@@ -420,6 +429,23 @@ function assistantMessageForHistory(message: AssistantMessage): AssistantMessage
     ...message,
     content,
   };
+}
+
+function cancelInProgressHostedTools(message: AssistantMessage): AssistantMessage {
+  let changed = false;
+  const content = message.content.map((item): AssistantContent => {
+    if (item.type !== "hosted_tool" || item.status !== "in_progress") {
+      return item;
+    }
+
+    changed = true;
+    return {
+      ...item,
+      status: "canceled",
+    };
+  });
+
+  return changed ? { ...message, content } : message;
 }
 
 function endReasonForAssistantTurn(turn: AssistantTurnResult): AgentEndReason {

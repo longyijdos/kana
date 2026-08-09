@@ -92,7 +92,7 @@ export type HostedToolContent = {
   type: "hosted_tool";
   id: string;
   name: string;
-  status: "in_progress" | "completed";
+  status: "in_progress" | "completed" | "canceled";
   action?: HostedToolAction;
   providerState?: ProviderState;
 };
