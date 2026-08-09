@@ -76,6 +76,9 @@ export class AgentEventRenderer {
       case "agent_end":
         if (event.reason === "aborted") {
           this.toolCallBlocks.markPendingCanceled();
+          this.options.transcript.cancelExplorationPhase();
+        } else {
+          this.options.transcript.finishExplorationPhase();
         }
         this.stopActiveTimers();
         this.activeTools.clear();
@@ -91,12 +94,15 @@ export class AgentEventRenderer {
       case "turn_end":
         break;
       case "turn_input":
+        this.options.transcript.finishExplorationPhase();
         this.options.transcript.addChild(new UserMessageBlock(event.message));
         break;
       case "context_compaction_start":
+        this.options.transcript.finishExplorationPhase();
         this.options.updateStatus("compacting");
         break;
       case "context_compacted":
+        this.options.transcript.finishExplorationPhase();
         this.options.transcript.addChild(
           new TextBlock(formatContextCompaction(event.beforeTokens, event.estimatedAfterTokens), {
             color: tuiTheme.muted,
@@ -139,6 +145,9 @@ export class AgentEventRenderer {
 
   private handleAssistantStart(message: AssistantMessage): void {
     this.textPresenter.flush();
+    if (hasVisibleAssistantContent(message)) {
+      this.options.transcript.finishExplorationPhase();
+    }
     this.streamingAssistant = new AssistantMessageBlock(Date.now, {
       hyperlinks: this.options.hyperlinks,
       groupToolCalls: this.options.groupToolCalls,
@@ -151,6 +160,13 @@ export class AgentEventRenderer {
   private handleAssistantUpdate(event: Extract<AgentEvent, { type: "message_update" }>): void {
     if (!this.streamingAssistant) {
       this.handleAssistantStart(event.message);
+    }
+
+    if (
+      event.assistantMessageEvent.type === "text_start" ||
+      event.assistantMessageEvent.type === "hosted_tool_start"
+    ) {
+      this.options.transcript.finishExplorationPhase();
     }
 
     this.textPresenter.update(event.message, event.assistantMessageEvent.type === "text_delta");
@@ -170,6 +186,13 @@ export class AgentEventRenderer {
 
   private handleAssistantEnd(message: AssistantMessage): void {
     this.streamingAssistant?.showThinking(false);
+    // A tool-use response can be followed by another tool-only model turn in
+    // the same exploration phase. Every other stop reason is a terminal edge.
+    if (message.stopReason === "aborted") {
+      this.options.transcript.cancelExplorationPhase();
+    } else if (message.stopReason !== "toolUse") {
+      this.options.transcript.finishExplorationPhase();
+    }
     const displayMessage =
       message.stopReason === "aborted" ? cancelInProgressHostedTools(message) : message;
     this.textPresenter.finish(displayMessage, message.stopReason === "toolUse");
@@ -180,6 +203,7 @@ export class AgentEventRenderer {
     const hasActiveActivity =
       this.streamingAssistant?.isThinking() === true ||
       this.streamingAssistant?.hasActiveHostedTools() === true ||
+      this.options.transcript.hasActiveExplorationPhase() ||
       this.toolCallBlocks.hasActiveTimers();
 
     if (hasActiveActivity && !this.activityTimer) {
@@ -214,6 +238,13 @@ export class AgentEventRenderer {
       activeTool: formatActiveTools(this.activeTools),
     });
   }
+}
+
+function hasVisibleAssistantContent(message: AssistantMessage): boolean {
+  return message.content.some(
+    (content) =>
+      (content.type === "text" && content.text.trim().length > 0) || content.type === "hosted_tool",
+  );
 }
 
 function formatActiveTools(activeTools: ReadonlyMap<string, string>): string | undefined {

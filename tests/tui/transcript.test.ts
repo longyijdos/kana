@@ -122,7 +122,7 @@ describe("tui transcript", () => {
     ]);
   });
 
-  test("uses active and canceled states for hosted web groups", () => {
+  test("keeps provisional hosted web actions out of active and canceled groups", () => {
     let now = 0;
     const block = new AssistantMessageBlock(() => now);
     block.update({
@@ -139,10 +139,7 @@ describe("tui transcript", () => {
     });
 
     now = 2_000;
-    expect(block.render(100).map(stripAnsi)).toEqual([
-      "◆ Searching the web (2s) (Esc to abort)",
-      "  └ Search Kana",
-    ]);
+    expect(block.render(100).map(stripAnsi)).toEqual(["◆ Searching the web (2s) (Esc to abort)"]);
 
     block.update({
       role: "assistant",
@@ -156,7 +153,7 @@ describe("tui transcript", () => {
         },
       ],
     });
-    expect(block.render(100).map(stripAnsi)).toEqual(["◆ Web search stopped", "  └ Search Kana"]);
+    expect(block.render(100).map(stripAnsi)).toEqual(["◆ Web search stopped"]);
   });
 
   test("keeps a trailing hosted web group active until the response settles", () => {
@@ -210,8 +207,7 @@ describe("tui transcript", () => {
     );
     expect(block.render(100).map(stripAnsi)).toEqual([
       "◆ Searching the web (2s) (Esc to abort)",
-      "  ├ Search Kana",
-      "  └ Open example.com/docs",
+      "  └ Search Kana",
     ]);
 
     now = 3_000;
@@ -1112,8 +1108,8 @@ describe("tui transcript", () => {
     );
     const readSecond = completedExplorationTool(
       "read",
-      { path: "src/config.ts" },
-      { path: "src/config.ts" },
+      { path: "C:\\repo\\src\\config.ts" },
+      { path: "C:\\repo\\src\\config.ts" },
     );
     const glob = completedExplorationTool(
       "glob",
@@ -1131,71 +1127,42 @@ describe("tui transcript", () => {
     expect(transcript.render(100).map(stripAnsi)).toEqual([
       "◆ Explored",
       "  ├ List src",
-      "  ├ Read src/app.ts, src/config.ts",
+      "  ├ Read app.ts, config.ts",
       "  └ Search “*.ts” in src",
     ]);
   });
 
-  test("starts a new exploration group for each model tool-call batch", () => {
+  test("keeps one exploration phase open across tool-only model turns", () => {
     let now = 0;
-    const transcript = new Transcript();
-    const firstBatch = new AssistantMessageBlock();
-    firstBatch.update({
-      role: "assistant",
-      content: [
-        {
-          type: "tool_call",
-          id: "first-read",
-          name: "read",
-          args: { path: "first.ts" },
-        },
-      ],
-    });
+    const transcript = new Transcript({ now: () => now });
     const firstRead = completedExplorationTool("read", { path: "first.ts" }, { path: "first.ts" });
-    const secondBatch = new AssistantMessageBlock();
-    secondBatch.update({
-      role: "assistant",
-      content: [
-        {
-          type: "tool_call",
-          id: "second-read",
-          name: "read",
-          args: { path: "second.ts" },
-        },
-      ],
-    });
-    const secondRead = new ToolCallBlock(
-      {
-        type: "tool_call",
-        id: "second-read",
-        name: "read",
-        args: { path: "second.ts" },
-      },
-      () => now,
-    );
-    secondRead.markExecutionStarted();
+    const thinking = new AssistantMessageBlock(() => now);
+    thinking.showThinking(true);
 
-    transcript.addChild(firstBatch);
+    transcript.startExplorationPhase();
     transcript.addChild(firstRead);
-    transcript.addChild(secondBatch);
-    transcript.addChild(secondRead);
+    transcript.addChild(thinking);
 
-    now = 2_000;
+    now = 1_000;
     expect(transcript.render(100).map(stripAnsi)).toEqual([
-      "◆ Explored",
+      "◆ Exploring (1s) (Esc to abort)",
       "  └ Read first.ts",
-      "",
-      "◆ Exploring (2s) (Esc to abort)",
-      "  └ Read second.ts",
     ]);
 
-    secondRead.updateResult({ path: "second.ts" }, false);
+    thinking.showThinking(false);
+    transcript.addChild(
+      completedExplorationTool("read", { path: "second.ts" }, { path: "second.ts" }),
+    );
+    now = 2_000;
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Exploring (2s) (Esc to abort)",
+      "  └ Read first.ts, second.ts",
+    ]);
+
+    transcript.finishExplorationPhase();
     expect(transcript.render(100).map(stripAnsi)).toEqual([
       "◆ Explored",
-      "  └ Read first.ts",
-      "",
-      "◆ Explored",
-      "  └ Read second.ts",
+      "  └ Read first.ts, second.ts",
     ]);
   });
 
@@ -1246,13 +1213,39 @@ describe("tui transcript", () => {
     now = 3_000;
     expect(transcript.render(100).map(stripAnsi)).toEqual([
       "◆ Exploring (3s) (Esc to abort)",
-      "  └ Read src/app.ts",
+      "  └ Read app.ts",
     ]);
 
     read.markCanceled();
     expect(transcript.render(100).map(stripAnsi)).toEqual([
       "◆ Exploration stopped",
-      "  └ Read src/app.ts",
+      "  └ Read app.ts",
+    ]);
+  });
+
+  test("keeps finalized entries when a later provisional exploration call is canceled", () => {
+    const transcript = new Transcript();
+    const completedRead = completedExplorationTool(
+      "read",
+      { path: "src/app.ts" },
+      { path: "src/app.ts" },
+    );
+    const provisionalRead = new ToolCallBlock({
+      type: "tool_call",
+      id: "provisional-read",
+      name: "read",
+      args: { path: "src/part" },
+    });
+    provisionalRead.setTranscriptVisible(false);
+
+    transcript.startExplorationPhase();
+    transcript.addChild(completedRead);
+    transcript.addChild(provisionalRead);
+    transcript.cancelExplorationPhase();
+
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Exploration stopped",
+      "  └ Read app.ts",
     ]);
   });
 

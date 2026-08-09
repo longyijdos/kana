@@ -9,6 +9,7 @@ export class ToolCallBlocks {
   clear(): void {
     this.stopTimers();
     this.pendingTools.clear();
+    this.transcript.finishExplorationPhase();
   }
 
   hasActiveTimers(): boolean {
@@ -38,7 +39,7 @@ export class ToolCallBlocks {
       if (!block) {
         block = new ToolCallBlock(content);
         this.pendingTools.set(content.id, block);
-        this.transcript.addChild(block);
+        this.addBlock(block);
       } else {
         block.updateArgs(content.args);
       }
@@ -48,19 +49,33 @@ export class ToolCallBlocks {
   markStarted(toolCallId: string, toolName: string, args: unknown): void {
     const block = this.getOrCreate(toolCallId, toolName, args);
 
+    block.updateArgs(args);
+    block.setTranscriptVisible(true);
     block.markExecutionStarted();
   }
 
   freezePreparation(toolCallId: string): void {
-    this.pendingTools.get(toolCallId)?.freezePreparation();
+    const block = this.pendingTools.get(toolCallId);
+    block?.setTranscriptVisible(true);
+    block?.freezePreparation();
   }
 
   updatePartialResult(toolCallId: string, result: unknown): void {
-    this.pendingTools.get(toolCallId)?.updatePartialResult(result);
+    const block = this.pendingTools.get(toolCallId);
+    block?.setTranscriptVisible(true);
+    block?.updatePartialResult(result);
   }
 
   updateResult(toolCallId: string, result: unknown, isError: boolean): void {
-    this.pendingTools.get(toolCallId)?.updateResult(result, isError);
+    const block = this.pendingTools.get(toolCallId);
+    block?.updateResult(result, isError);
+    block?.setTranscriptVisible(true);
+    const activity = block?.getExplorationActivity();
+    if (activity?.state === "canceled") {
+      this.transcript.cancelExplorationPhase();
+    } else if (isError && activity === undefined) {
+      this.transcript.finishExplorationPhase();
+    }
     this.pendingTools.delete(toolCallId);
   }
 
@@ -76,9 +91,22 @@ export class ToolCallBlocks {
       };
       block = new ToolCallBlock(toolCall);
       this.pendingTools.set(toolCallId, block);
-      this.transcript.addChild(block);
+      this.addBlock(block);
     }
 
     return block;
+  }
+
+  private addBlock(block: ToolCallBlock): void {
+    if (block.getExplorationActivity()) {
+      // Start the phase immediately, but keep streamed arguments provisional.
+      // The stable item appears only at toolcall_end or an execution fallback.
+      if (this.transcript.startExplorationPhase()) {
+        block.setTranscriptVisible(false);
+      }
+    } else {
+      this.transcript.finishExplorationPhase();
+    }
+    this.transcript.addChild(block);
   }
 }

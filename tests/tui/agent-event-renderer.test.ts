@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import type { AssistantMessage } from "../../src/core";
+import type { AssistantMessage, ToolCallContent } from "../../src/core";
 import { AgentEventRenderer } from "../../src/tui/app/agent-event-renderer";
 import type { RunPhase } from "../../src/tui/app/status-phase";
 import type { StatusLineState, Transcript } from "../../src/tui/components";
@@ -111,6 +111,233 @@ describe("AgentEventRenderer", () => {
     });
   });
 
+  test("keeps exploration active across tool-only turns until assistant text starts", () => {
+    let now = 0;
+    const dateNow = spyOn(Date, "now").mockImplementation(() => now);
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      smoothTextStreaming: false,
+      updateStatus() {},
+    });
+
+    const runReadTurn = (id: string, path: string): void => {
+      const toolCall = {
+        type: "tool_call" as const,
+        id,
+        name: "read",
+        args: { path },
+      };
+      const message: AssistantMessage = {
+        role: "assistant",
+        content: [toolCall],
+      };
+
+      renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+      renderer.handle({
+        type: "message_update",
+        message,
+        assistantMessageEvent: {
+          type: "toolcall_start",
+          contentIndex: 0,
+          snapshot: message,
+        },
+      });
+      renderer.handle({
+        type: "message_update",
+        message,
+        assistantMessageEvent: {
+          type: "toolcall_end",
+          contentIndex: 0,
+          toolCall,
+          snapshot: message,
+        },
+      });
+      renderer.handle({ type: "message_end", message: { ...message, stopReason: "toolUse" } });
+      renderer.handle({
+        type: "tool_execution_start",
+        toolCallId: id,
+        toolName: "read",
+        args: { path },
+      });
+      renderer.handle({
+        type: "tool_execution_end",
+        toolCallId: id,
+        toolName: "read",
+        result: { path },
+        isError: false,
+      });
+    };
+
+    try {
+      runReadTurn("first-read", "src/first.ts");
+      now = 1_000;
+      runReadTurn("second-read", "tests/second.ts");
+      now = 2_000;
+
+      expect(transcript.render(100).map(stripAnsi)).toEqual([
+        "◆ Exploring (2s) (Esc to abort)",
+        "  └ Read first.ts, second.ts",
+      ]);
+
+      const finalMessage: AssistantMessage = {
+        role: "assistant",
+        content: [{ type: "text", text: "Done" }],
+      };
+      renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+      renderer.handle({
+        type: "message_update",
+        message: finalMessage,
+        assistantMessageEvent: {
+          type: "text_start",
+          contentIndex: 0,
+          snapshot: finalMessage,
+        },
+      });
+
+      expect(transcript.render(100).map(stripAnsi)).toEqual([
+        "◆ Explored",
+        "  └ Read first.ts, second.ts",
+        "",
+        "Done",
+      ]);
+    } finally {
+      renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+      dateNow.mockRestore();
+    }
+  });
+
+  test("shows an empty stopped exploration when the first provisional call is aborted", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const initialMessage: AssistantMessage = {
+      role: "assistant",
+      content: [{ type: "tool_call", id: "provisional-read", name: "read", args: {} }],
+    };
+    const partialMessage: AssistantMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_call",
+          id: "provisional-read",
+          name: "read",
+          args: { path: "src/part" },
+        },
+      ],
+    };
+
+    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_update",
+      message: initialMessage,
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        contentIndex: 0,
+        snapshot: initialMessage,
+      },
+    });
+
+    const preparingLines = transcript.render(100).map(stripAnsi);
+    expect(preparingLines).toHaveLength(1);
+    expect(preparingLines[0]).toStartWith("◆ Exploring (");
+
+    renderer.handle({
+      type: "message_update",
+      message: partialMessage,
+      assistantMessageEvent: {
+        type: "toolcall_delta",
+        contentIndex: 0,
+        delta: '"src/part"',
+        snapshot: partialMessage,
+      },
+    });
+    expect(transcript.render(100).map(stripAnsi)).toEqual(preparingLines);
+
+    renderer.handle({
+      type: "message_end",
+      message: { ...partialMessage, stopReason: "aborted" },
+    });
+    renderer.handle({ type: "agent_end", reason: "aborted", messages: [] });
+
+    expect(transcript.render(100).map(stripAnsi)).toEqual(["◆ Exploration stopped"]);
+  });
+
+  test("reveals exploration entries only after each tool call is complete", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const toolCalls: ToolCallContent[] = [
+      { type: "tool_call", id: "list-call", name: "list", args: { path: "src" } },
+      {
+        type: "tool_call",
+        id: "glob-call",
+        name: "glob",
+        args: { pattern: "*.ts", cwd: "src" },
+      },
+      {
+        type: "tool_call",
+        id: "grep-call",
+        name: "grep",
+        args: { pattern: "TODO", path: "src" },
+      },
+      {
+        type: "tool_call",
+        id: "read-call",
+        name: "read",
+        args: { path: "src/app.ts" },
+      },
+    ];
+    const message: AssistantMessage = { role: "assistant", content: toolCalls };
+
+    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_update",
+      message,
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        contentIndex: 0,
+        snapshot: message,
+      },
+    });
+    expect(transcript.render(100).map(stripAnsi)).toHaveLength(1);
+
+    for (const [contentIndex, toolCall] of toolCalls.entries()) {
+      renderer.handle({
+        type: "message_update",
+        message,
+        assistantMessageEvent: {
+          type: "toolcall_end",
+          contentIndex,
+          toolCall,
+          snapshot: message,
+        },
+      });
+    }
+
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Exploring (0s) (Esc to abort)",
+      "  ├ List src",
+      "  ├ Search “*.ts” in src",
+      "  ├ Search “TODO” in src",
+      "  └ Read app.ts",
+    ]);
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
   test("renders hosted web search as provider activity without a local tool block", () => {
     const transcript = new TranscriptComponent();
     const statuses: RunPhase[] = [];
@@ -146,7 +373,44 @@ describe("AgentEventRenderer", () => {
 
     expect(statuses.at(-1)).toBe("searching");
     expect(transcript.children).toHaveLength(1);
-    expect(stripAnsi(transcript.render(100).join("\n"))).toContain("◆ Searching the web");
+    const provisionalLines = transcript.render(100).map(stripAnsi);
+    expect(provisionalLines).toHaveLength(1);
+    expect(provisionalLines[0]).toStartWith("◆ Searching the web (");
+
+    const completedTool = {
+      type: "hosted_tool" as const,
+      id: "web-search-1",
+      name: "web_search",
+      status: "completed" as const,
+      action: { type: "open_page" as const, url: "https://example.com/docs" },
+    };
+    const completedMessage: AssistantMessage = {
+      role: "assistant",
+      content: [completedTool],
+    };
+    renderer.handle({
+      type: "message_update",
+      message: completedMessage,
+      assistantMessageEvent: {
+        type: "hosted_tool_end",
+        contentIndex: 0,
+        hostedTool: completedTool,
+        snapshot: completedMessage,
+      },
+    });
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Searching the web (0s) (Esc to abort)",
+      "  └ Open example.com/docs",
+    ]);
+
+    renderer.handle({
+      type: "message_end",
+      message: { ...completedMessage, stopReason: "stop" },
+    });
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Searched the web",
+      "  └ Open example.com/docs",
+    ]);
 
     renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
   });

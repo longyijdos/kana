@@ -23,6 +23,7 @@ export class ToolCallBlock implements Component {
   private partialResult?: unknown;
   private hasResult = false;
   private isError = false;
+  private transcriptVisible = true;
   private readonly phaseTimer: ElapsedTimer;
   private renderVersion = 0;
   private cachedWidth?: number;
@@ -40,6 +41,15 @@ export class ToolCallBlock implements Component {
 
   updateArgs(args: unknown): void {
     this.toolCall.args = args;
+    this.invalidate();
+  }
+
+  setTranscriptVisible(visible: boolean): void {
+    if (this.transcriptVisible === visible) {
+      return;
+    }
+
+    this.transcriptVisible = visible;
     this.invalidate();
   }
 
@@ -102,6 +112,10 @@ export class ToolCallBlock implements Component {
   }
 
   render(width: number, _availableHeight?: number): string[] {
+    if (!this.transcriptVisible) {
+      return [];
+    }
+
     const state = this.currentState();
     const elapsedSeconds =
       state === "preparing" || state === "running" ? this.phaseTimer.elapsedSeconds() : undefined;
@@ -158,6 +172,10 @@ export class ToolCallBlock implements Component {
   }
 
   getExplorationActivity(): ToolActivityItem | undefined {
+    if (!this.transcriptVisible) {
+      return undefined;
+    }
+
     const state = this.currentState();
     if (state === "failed") {
       return undefined;

@@ -5,7 +5,11 @@ import { tuiTheme } from "../../theme";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import { HostedToolBlock } from "./hosted-tool-block";
 import { MarkdownBlock } from "./markdown-block";
-import { renderToolActivityGroup, type ToolActivityItem } from "./tool-activity-group";
+import {
+  renderToolActivityGroup,
+  type ToolActivityGroupState,
+  type ToolActivityItem,
+} from "./tool-activity-group";
 
 type AssistantMessageBlockUpdateOptions = {
   complete?: boolean;
@@ -18,7 +22,6 @@ type AssistantMessageBlockOptions = {
 
 export class AssistantMessageBlock implements Component {
   private thinkingVisible = false;
-  private localToolBatchStarted = false;
   private contentBlocks: (HostedToolBlock | MarkdownBlock)[] = [];
   private readonly hostedToolBlocks = new Map<string, HostedToolBlock>();
   private readonly thinkingTimer: ElapsedTimer;
@@ -41,11 +44,6 @@ export class AssistantMessageBlock implements Component {
     const hostedToolIds = new Set<string>();
     const messageComplete = options.complete ?? true;
     this.messageComplete = messageComplete;
-
-    // This block precedes every local tool block created from the same model
-    // response. Keep the marker sticky across streaming snapshots so Transcript
-    // can treat each response as an immutable exploration-group boundary.
-    this.localToolBatchStarted ||= message.content.some((content) => content.type === "tool_call");
 
     for (const [index, content] of message.content.entries()) {
       if (content.type === "text" && content.text.trim()) {
@@ -102,8 +100,8 @@ export class AssistantMessageBlock implements Component {
     return this.thinkingVisible;
   }
 
-  startsLocalToolBatch(): boolean {
-    return this.localToolBatchStarted;
+  rendersOnlyThinking(): boolean {
+    return this.thinkingVisible && this.contentBlocks.length === 0;
   }
 
   hasActiveHostedTools(): boolean {
@@ -149,6 +147,7 @@ export class AssistantMessageBlock implements Component {
     const lines: string[] = [];
     let hasRenderedContentBlock = false;
     let webActivityItems: ToolActivityItem[] = [];
+    let webActivityState: ToolActivityGroupState | undefined;
 
     const appendLines = (blockLines: string[]): void => {
       if (blockLines.length === 0) {
@@ -162,39 +161,44 @@ export class AssistantMessageBlock implements Component {
       hasRenderedContentBlock = true;
     };
     const flushWebActivity = (keepOpen = false): void => {
-      if (webActivityItems.length === 0) {
+      if (webActivityItems.length === 0 && !webActivityState) {
         return;
       }
 
-      const items = keepOpen
-        ? webActivityItems.map(
-            (item): ToolActivityItem => ({
-              ...item,
-              state: "running",
-              elapsedSeconds: this.webActivityTimer.elapsedSeconds(),
-            }),
-          )
-        : webActivityItems;
+      const state = keepOpen ? "active" : webActivityState;
 
       appendLines(
         renderToolActivityGroup(
-          items,
+          webActivityItems,
           {
             active: "Searching the web",
             done: "Searched the web",
             canceled: "Web search stopped",
           },
           width,
+          state
+            ? {
+                state,
+                elapsedSeconds: this.webActivityTimer.elapsedSeconds(),
+              }
+            : undefined,
         ),
       );
       webActivityItems = [];
+      webActivityState = undefined;
     };
 
     for (const block of this.contentBlocks) {
       if (this.options.groupToolCalls !== false && block instanceof HostedToolBlock) {
+        const state = block.getWebActivityState();
+        if (state) {
+          webActivityState = combineToolActivityGroupState(webActivityState, state);
+        }
         const activity = block.getWebActivity();
         if (activity) {
           webActivityItems.push(activity);
+        }
+        if (state) {
           continue;
         }
       }
@@ -227,13 +231,13 @@ export class AssistantMessageBlock implements Component {
 
   private updateWebActivityTimer(): void {
     const trailingBlock = this.contentBlocks.at(-1);
-    const trailingActivity =
-      trailingBlock instanceof HostedToolBlock ? trailingBlock.getWebActivity() : undefined;
+    const trailingState =
+      trailingBlock instanceof HostedToolBlock ? trailingBlock.getWebActivityState() : undefined;
     const keepOpen =
       this.options.groupToolCalls !== false &&
-      !this.messageComplete &&
-      trailingActivity !== undefined &&
-      trailingActivity.state !== "canceled";
+      trailingState !== undefined &&
+      trailingState !== "canceled" &&
+      (trailingState === "active" || !this.messageComplete);
 
     if (keepOpen && !this.webActivityTimer.active) {
       this.webActivityTimer.start();
@@ -241,4 +245,17 @@ export class AssistantMessageBlock implements Component {
       this.webActivityTimer.stop();
     }
   }
+}
+
+function combineToolActivityGroupState(
+  current: ToolActivityGroupState | undefined,
+  next: ToolActivityGroupState,
+): ToolActivityGroupState {
+  if (current === "active" || next === "active") {
+    return "active";
+  }
+  if (current === "canceled" || next === "canceled") {
+    return "canceled";
+  }
+  return "done";
 }

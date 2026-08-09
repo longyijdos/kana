@@ -11,7 +11,7 @@ import {
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
-import type { ToolActivityItem } from "./tool-activity-group";
+import type { ToolActivityGroupState, ToolActivityItem } from "./tool-activity-group";
 
 export class HostedToolBlock implements Component {
   private readonly timer: ElapsedTimer;
@@ -51,22 +51,29 @@ export class HostedToolBlock implements Component {
   }
 
   getWebActivity(): ToolActivityItem | undefined {
+    // Responses providers commit the concrete Search/Open/Find action only at
+    // hosted_tool_end. Hiding provisional actions prevents a generic Search
+    // row from changing identity when the completed action arrives.
+    if (this.content.name !== "web_search" || this.content.status !== "completed") {
+      return undefined;
+    }
+
+    return {
+      ...formatWebActivity(this.content),
+      state: "done",
+    };
+  }
+
+  getWebActivityState(): ToolActivityGroupState | undefined {
     if (this.content.name !== "web_search") {
       return undefined;
     }
 
-    const activity = formatWebActivity(this.content);
-    return {
-      ...activity,
-      state:
-        this.content.status === "in_progress"
-          ? "running"
-          : this.content.status === "canceled"
-            ? "canceled"
-            : "done",
-      elapsedSeconds:
-        this.content.status === "in_progress" ? this.timer.elapsedSeconds() : undefined,
-    };
+    return this.content.status === "in_progress"
+      ? "active"
+      : this.content.status === "canceled"
+        ? "canceled"
+        : "done";
   }
 
   invalidate(): void {

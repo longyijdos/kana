@@ -23,19 +23,35 @@ export type ToolActivityGroupTitles = {
   canceled: string;
 };
 
+export type ToolActivityGroupState = "active" | "done" | "canceled";
+
+type ToolActivityGroupOptions = {
+  state?: ToolActivityGroupState;
+  elapsedSeconds?: number;
+};
+
 export function renderToolActivityGroup(
   items: ToolActivityItem[],
   titles: ToolActivityGroupTitles,
   width: number,
+  options: ToolActivityGroupOptions = {},
 ): string[] {
-  if (items.length === 0) {
+  if (items.length === 0 && options.state !== "active" && options.state !== "canceled") {
     return [];
   }
 
-  const active = items.some((item) => item.state === "preparing" || item.state === "running");
-  const canceled = !active && items.some((item) => item.state === "canceled");
+  const derivedState: ToolActivityGroupState = items.some(
+    (item) => item.state === "preparing" || item.state === "running",
+  )
+    ? "active"
+    : items.some((item) => item.state === "canceled")
+      ? "canceled"
+      : "done";
+  const state = options.state ?? derivedState;
+  const active = state === "active";
+  const canceled = state === "canceled";
   const elapsedSeconds = active
-    ? Math.max(0, ...items.map((item) => item.elapsedSeconds ?? 0))
+    ? (options.elapsedSeconds ?? Math.max(0, ...items.map((item) => item.elapsedSeconds ?? 0)))
     : undefined;
   const title = active ? titles.active : canceled ? titles.canceled : titles.done;
   const titleColor = active
