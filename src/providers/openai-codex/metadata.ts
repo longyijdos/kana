@@ -6,6 +6,7 @@ export const OPENAI_CODEX_MODELS = {
   "gpt-5.6-sol": {
     provider: "openai-codex",
     model: "gpt-5.6-sol",
+    protocol: "responses",
     // ChatGPT subscription usage is quota-based rather than metered through
     // Kana, so monetary accounting must not apply Platform API pricing.
     cost: {
@@ -17,10 +18,12 @@ export const OPENAI_CODEX_MODELS = {
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,
+    supportsHostedWebSearch: true,
   },
   "gpt-5.6-terra": {
     provider: "openai-codex",
     model: "gpt-5.6-terra",
+    protocol: "responses",
     cost: {
       input: 0,
       output: 0,
@@ -30,10 +33,12 @@ export const OPENAI_CODEX_MODELS = {
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,
+    supportsHostedWebSearch: true,
   },
   "gpt-5.6-luna": {
     provider: "openai-codex",
     model: "gpt-5.6-luna",
+    protocol: "responses",
     cost: {
       input: 0,
       output: 0,
@@ -43,6 +48,7 @@ export const OPENAI_CODEX_MODELS = {
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,
+    supportsHostedWebSearch: true,
   },
 } as const satisfies Record<string, OpenAICodexModelMetadata>;
 

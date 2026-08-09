@@ -29,6 +29,7 @@ export function createKanaModel(
         apiKey,
         thinking: model.thinking,
         reasoningEffort: model.reasoningEffort,
+        webSearch: model.webSearch,
         maxTokens: model.maxTokens,
         timeoutMs: model.timeoutMs,
         maxRetries: model.maxRetries,

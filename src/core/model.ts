@@ -31,15 +31,22 @@ export type ModelUsage = {
   reasoningTokens?: number;
 };
 
+export type ModelProtocol = "chat-completions" | "responses";
+
 export type ModelMetadata = {
   provider: string;
   model: string;
+  // Shared wire codec used by the provider adapter. In-process or fully
+  // provider-specific implementations use null.
+  protocol: ModelProtocol | null;
   cost: ModelCost;
   contextWindow: number;
   // Provider hard limit for one completion, distinct from request maxTokens.
   maxOutputTokens: number;
   // Capability of the concrete model and wire protocol, not only the provider.
   supportsParallelToolCalls: boolean;
+  // Provider/model capability only; provider configuration may still disable it.
+  supportsHostedWebSearch: boolean;
 };
 
 export interface Model {

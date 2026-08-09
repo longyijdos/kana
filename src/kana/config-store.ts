@@ -31,6 +31,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("model.deepseek", "api_key_env", (config) => config.model.deepseek.apiKeyEnv),
   field("model.deepseek", "thinking", (config) => config.model.deepseek.thinking),
   field("model.deepseek", "reasoning_effort", (config) => config.model.deepseek.reasoningEffort),
+  field("model.deepseek", "web_search", (config) => config.model.deepseek.webSearch),
   field("model.deepseek", "max_tokens", (config) => config.model.deepseek.maxTokens),
   field("model.deepseek", "timeout_ms", (config) => config.model.deepseek.timeoutMs),
   field("model.deepseek", "max_retries", (config) => config.model.deepseek.maxRetries),

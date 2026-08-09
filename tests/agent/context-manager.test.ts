@@ -28,6 +28,8 @@ const MODEL_METADATA: ModelMetadata = {
   contextWindow: 4_000,
   maxOutputTokens: 500,
   supportsParallelToolCalls: true,
+  protocol: null,
+  supportsHostedWebSearch: false,
 };
 
 describe("ContextManager", () => {

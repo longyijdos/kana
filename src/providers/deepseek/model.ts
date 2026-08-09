@@ -4,7 +4,13 @@ import {
   BaseModel,
   ContextWindowExceededError,
   type ModelContext,
+  type ModelUsage,
 } from "@/core";
+import {
+  ResponsesStreamProcessor,
+  type ResponsesStreamState,
+  readResponsesStream,
+} from "../responses";
 import {
   createRequestSignal,
   DeepSeekHttpError,
@@ -14,6 +20,7 @@ import {
 } from "./http";
 import { getDeepSeekModelMetadata } from "./metadata";
 import { buildDeepSeekRequest } from "./request";
+import { buildDeepSeekResponsesRequest } from "./responses-request";
 import {
   applyDeepSeekChunk,
   finishOpenContent,
@@ -48,14 +55,11 @@ export class DeepSeekModel extends BaseModel {
       role: "assistant",
       content: [],
     };
-    const state: DeepSeekStreamState = {
-      endedContentIndexes: new Set<number>(),
-    };
-
     try {
       this.config.logger?.debug("provider.request_started", {
         provider: "deepseek",
         model: this.config.model,
+        protocol: this.metadata.protocol,
       });
       const apiKey = this.config.apiKey ?? process.env.DEEPSEEK_API_KEY;
 
@@ -76,12 +80,21 @@ export class DeepSeekModel extends BaseModel {
         );
       }
 
-      const request = buildDeepSeekRequest(context, this.config);
+      const request =
+        this.metadata.protocol === "responses"
+          ? buildDeepSeekResponsesRequest(context, {
+              ...this.config,
+              webSearch: this.metadata.supportsHostedWebSearch && this.config.webSearch !== false,
+            })
+          : buildDeepSeekRequest(context, this.config);
       const requestSignal = createRequestSignal(this.config, context.signal);
 
       try {
         const response = await fetchWithRetries(
-          joinUrl(this.config.baseUrl ?? DEFAULT_BASE_URL, "/chat/completions"),
+          joinUrl(
+            this.config.baseUrl ?? DEFAULT_BASE_URL,
+            this.metadata.protocol === "responses" ? "/responses" : "/chat/completions",
+          ),
           {
             method: "POST",
             headers: {
@@ -94,7 +107,12 @@ export class DeepSeekModel extends BaseModel {
             signal: requestSignal.signal,
           },
           this.config.maxRetries ?? 0,
-          (details) => this.config.logger?.warn("provider.retrying", details),
+          (details) =>
+            this.config.logger?.warn("provider.retrying", {
+              provider: "deepseek",
+              protocol: this.metadata.protocol,
+              ...details,
+            }),
         );
         requestSignal.refresh();
 
@@ -103,29 +121,21 @@ export class DeepSeekModel extends BaseModel {
           snapshot: structuredClone(message),
         });
 
-        await readDeepSeekStream(
-          response,
-          (chunk) => {
-            applyDeepSeekChunk(stream, message, state, chunk);
-          },
-          requestSignal.refresh,
-        );
-
-        finishOpenContent(stream, message, state);
-
-        if (state.finishReason === "tool_calls") {
-          finishToolCalls(stream, message, state);
-        }
+        const outcome =
+          this.metadata.protocol === "responses"
+            ? await this.consumeResponses(response, stream, message, requestSignal.refresh)
+            : await this.consumeChatCompletions(response, stream, message, requestSignal.refresh);
 
         stream.end({
           type: "done",
-          reason: getDoneReason(state.finishReason),
+          reason: outcome.stopReason,
           message: structuredClone(message),
-          usage: state.usage,
+          usage: outcome.usage,
         });
         this.config.logger?.debug("provider.request_ended", {
           provider: "deepseek",
-          stopReason: getDoneReason(state.finishReason),
+          protocol: this.metadata.protocol,
+          stopReason: outcome.stopReason,
         });
       } finally {
         requestSignal.dispose();
@@ -133,6 +143,7 @@ export class DeepSeekModel extends BaseModel {
     } catch (error) {
       this.config.logger?.error("provider.request_failed", {
         provider: "deepseek",
+        protocol: this.metadata.protocol,
         ...formatProviderFailure(error, context.signal),
       });
       stream.error({
@@ -143,7 +154,62 @@ export class DeepSeekModel extends BaseModel {
       });
     }
   }
+
+  private async consumeChatCompletions(
+    response: Response,
+    stream: AssistantEventStream,
+    message: AssistantMessage,
+    onActivity: () => void,
+  ): Promise<DeepSeekStreamOutcome> {
+    const state: DeepSeekStreamState = {
+      endedContentIndexes: new Set<number>(),
+    };
+    await readDeepSeekStream(
+      response,
+      (chunk) => {
+        applyDeepSeekChunk(stream, message, state, chunk);
+      },
+      onActivity,
+    );
+
+    finishOpenContent(stream, message, state);
+    if (state.finishReason === "tool_calls") {
+      finishToolCalls(stream, message, state);
+    }
+    return {
+      stopReason: getDoneReason(state.finishReason),
+      usage: state.usage,
+    };
+  }
+
+  private async consumeResponses(
+    response: Response,
+    stream: AssistantEventStream,
+    message: AssistantMessage,
+    onActivity: () => void,
+  ): Promise<DeepSeekStreamOutcome> {
+    const state: ResponsesStreamState = {
+      terminalSeen: false,
+    };
+    const processor = new ResponsesStreamProcessor(stream, message, state, {
+      provider: "deepseek",
+      providerLabel: "DeepSeek",
+    });
+    await readResponsesStream(response, (event) => processor.apply(event), "DeepSeek", onActivity);
+    if (!state.terminalSeen || state.stopReason === undefined) {
+      throw new Error("DeepSeek stream ended before a terminal response event.");
+    }
+    return {
+      stopReason: state.stopReason,
+      usage: state.usage,
+    };
+  }
 }
+
+type DeepSeekStreamOutcome = {
+  stopReason: "stop" | "length" | "toolUse";
+  usage?: ModelUsage;
+};
 
 function normalizeDeepSeekError(error: unknown): unknown {
   if (!(error instanceof DeepSeekHttpError) || !isContextWindowFailure(error)) {

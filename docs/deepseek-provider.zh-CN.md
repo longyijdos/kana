@@ -1,6 +1,6 @@
 # DeepSeek 提供商适配
 
-Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek`。该适配层把 `core` 的通用消息和工具协议转换为 DeepSeek 的流式 `/chat/completions` 请求，并将 SSE 增量恢复为有序助手内容。
+Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek`。模型元数据负责选择共享 wire protocol：V4 Flash 使用 Responses API，V4 Pro 则在 DeepSeek 官方提供 Responses 支持之前继续使用 Chat Completions。两条路径都会把流式输出恢复为相同的有序助手内容。
 
 ## 模型与元数据
 
@@ -8,16 +8,49 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 
 当前内置元数据：
 
-| 模型 | 上下文窗口 | 最大输出 | 并行工具调用 | 输入 / 输出 / 缓存读取价格（CNY/百万 token） |
-| --- | ---: | ---: | --- | --- |
-| `deepseek-v4-flash` | 1,000,000 | 384,000 | 支持 | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | 1,000,000 | 384,000 | 支持 | 3 / 6 / 0.025 |
+| 模型 | 协议 | 上下文窗口 | 最大输出 | 并行工具调用 | 托管网页搜索 | 输入 / 输出 / 缓存读取价格（CNY/百万 token） |
+| --- | --- | ---: | ---: | --- | --- | --- |
+| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 1 / 2 / 0.02 |
+| `deepseek-v4-pro` | Chat Completions | 1,000,000 | 384,000 | 支持 | 暂不支持 | 3 / 6 / 0.025 |
 
-缓存写入价格当前为 0。构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。TUI 使用元数据计算上下文使用率和 CNY 累计成本。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。
+缓存写入价格当前为 0。构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与用户的 `web_search` 配置分开记录。TUI 使用元数据计算上下文使用率和 CNY 累计成本。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。
 
-## 请求转换
+## 协议选择与请求转换
 
-默认 base URL 为 `https://api.deepseek.com`，请求路径固定为 `/chat/completions`。请求始终设置：
+默认 base URL 为 `https://api.deepseek.com`。认证、取消、超时、重试、错误归一化和生命周期日志由两条路径共享，endpoint 与请求 codec 则由元数据选择。
+
+### V4 Flash Responses
+
+V4 Flash 向 `POST /responses` 发送语义化 input item：
+
+```json
+{
+  "model": "…",
+  "instructions": "…",
+  "input": ["…"],
+  "stream": true
+}
+```
+
+系统提示词映射为 `instructions`。用户与助手消息、推理、函数调用及函数结果映射为 Responses input item。已完成的 DeepSeek output item 会作为不透明 `providerState` 保存并原样 replay；Responses API 是无状态的，这样服务端才能还原此前的托管搜索结果。没有 provider state 的旧 Chat Completions 历史则根据可见 reasoning、文本、函数调用和工具结果重建。来自其他供应商的托管调用不会 replay。
+
+已提供的可选配置按下表映射：
+
+| Kana / `DeepSeekModelConfig` | 请求字段 |
+| --- | --- |
+| `temperature` | `temperature` |
+| `ModelContext.maxOutputTokens ?? maxTokens` | `max_output_tokens` |
+| `topP` | `top_p` |
+| `thinking = false` | `reasoning.effort = "none"` |
+| `reasoningEffort` | `reasoning.effort` |
+| `responseFormat` | `text.format` |
+| `userId` | `user` |
+
+逐轮输出上限优先于配置的 `maxTokens`。客户端函数使用扁平的 Responses 工具定义。当模型元数据支持且 `model.deepseek.web_search = true` 时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`；设为 `false` 只会移除该托管工具。默认 `tool_choice` 为 `auto`，Chat Completions 风格的具名选择会转换为扁平 Responses 结构，`strictTools` 会给函数工具加上 `strict: true`。
+
+### V4 Pro Chat Completions
+
+V4 Pro 继续向 `POST /chat/completions` 发送请求：
 
 ```json
 {
@@ -28,21 +61,7 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 }
 ```
 
-系统提示词在通用 `ModelContext` 外保存，发送时会作为消息数组的首个 `system` 消息。用户消息直接映射；工具结果变为带 `tool_call_id` 的 `tool` 消息。助手有序内容会转换为一个 DeepSeek assistant 消息：所有 text 拼接为 `content`，所有 thinking 拼接为 `reasoning_content`，工具调用变为 `tool_calls`。原始流式参数 `rawArgs` 存在时优先回传它，避免重新序列化改变调用内容。
-
-配置中已提供的可选字段会被转为 DeepSeek 名称：
-
-| Kana / `DeepSeekModelConfig` | 请求字段 |
-| --- | --- |
-| `temperature` | `temperature` |
-| `ModelContext.maxOutputTokens ?? maxTokens` | `max_tokens` |
-| `topP` | `top_p` |
-| `thinking` | `thinking.type`，值为 `enabled`/`disabled` |
-| `reasoningEffort` | `reasoning_effort` |
-| `responseFormat` | `response_format` |
-| `userId` | `user_id` |
-
-Agent 提供逐轮 `ModelContext.maxOutputTokens` 时，它优先于构造配置的 `maxTokens`；缺少逐轮值时仍使用配置值。当 `thinking` 显式为 `false` 时，不发送 `reasoning_effort`，因为 DeepSeek 拒绝这一组合。若上下文有工具，则每个工具的 JSON Schema 作为 function `parameters` 透传，默认 `tool_choice` 为 `auto`；`strictTools` 会给每个 function 加上 `strict: true`。上下文没有工具时，只有显式配置的 `toolChoice` 才会被发送。
+系统提示词成为第一个 `system` 消息。用户消息直接映射；工具结果变为带 `tool_call_id` 的 `tool` 消息。助手有序内容会转换为一个 assistant 消息：text 拼接为 `content`，thinking 拼接为 `reasoning_content`，调用变为 `tool_calls`。原始流式参数 `rawArgs` 存在时优先 replay。该路径继续使用 Chat Completions 字段名发送 `max_tokens`、`thinking.type`、`reasoning_effort`、`response_format` 和 `user_id`；`thinking` 显式为 false 时会省略 `reasoning_effort`。供应商级 `web_search` 配置仍会保留，但在 V4 Pro 获得 Responses 与托管搜索支持之前不会产生效果。
 
 ## 认证、取消、超时与重试
 
@@ -56,7 +75,9 @@ HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/
 
 ## SSE 解析与内容顺序
 
-响应读取器以空行切分 SSE frame，并保留不完整尾帧以应对网络分片。每个 frame 收集所有 `data:` 行；`[DONE]` 立即结束读取。JSON payload 交给 `applyDeepSeekChunk`。
+V4 Flash 使用与 OpenAI Codex 相同的共享 `src/providers/responses` 语义 SSE 处理器。它按 `output_index` 和 item ID 关联输出，保持 reasoning/message/function/search 顺序，把 `web_search_call` 映射为 `hosted_tool`，并且只在 `response.completed`、`response.incomplete` 或 `response.failed` 后结束。完成 item 会保留 `providerState.provider = "deepseek"`；`response.incomplete` 映射为 `length`，包含客户端函数调用的响应映射为 `toolUse`，只有托管搜索时仍映射为 `stop`。Responses usage 会映射 input、output、total、cached 和 reasoning token。
+
+V4 Pro 的 Chat Completions 读取器以空行切分 SSE frame，并保留不完整尾帧以应对网络分片。每个 frame 收集所有 `data:` 行；`[DONE]` 立即结束读取。JSON payload 交给 `applyDeepSeekChunk`。
 
 ```text
 reasoning_content delta
@@ -74,7 +95,7 @@ finish_reason = tool_calls
 
 工具 delta 由 provider 的 `index` 对应当前消息中的第 N 个工具块。DeepSeek 不提供每个工具调用的完成标记；其 index 按序流出，因此首次收到更高 index 时，会推断并结束所有此前的调用。流结束时再结束最后尚未完成的调用。ID、函数名和参数都可跨多个 chunk 拼接；无参数时最终参数为 `{}`，非 JSON 参数保留为原始字符串。可见文本或工具调用开始时会关闭前一个不同类型的开放内容块，保证 `content` 数组和事件顺序一致。
 
-结束原因映射为：`stop → stop`、`length → length`、`tool_calls → toolUse`。`content_filter` 与 `insufficient_system_resource` 被视为错误。流中携带的 usage 转为通用字段，包括 prompt cache hit/miss 和 reasoning token。
+Chat Completions 结束原因映射为：`stop → stop`、`length → length`、`tool_calls → toolUse`。`content_filter` 与 `insufficient_system_resource` 被视为错误。流中携带的 usage 转为通用字段，包括 prompt cache hit/miss 和 reasoning token。
 
 ## 用量和成本
 
@@ -84,5 +105,6 @@ finish_reason = tool_calls
 
 - 保持 provider 输出为 `AssistantMessageEvent`，并为每次事件发送深拷贝快照。
 - 不要把 provider 的 thinking/text/tool 调用顺序扁平化；Agent 历史和 TUI 依赖有序 content。
+- 共享 Responses 代码只负责语义 SSE item 的组装。请求字段、endpoint 选择、认证、重试策略和 replay 规则仍由各 provider adapter 负责。
 - 新增可重试条件时必须区分取消，取消不应被重试。
 - 新模型要同时更新 metadata、产品配置允许值和成本显示测试。

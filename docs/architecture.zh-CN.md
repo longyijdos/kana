@@ -17,7 +17,8 @@ src/main.ts
                                                               ├─ tools    可复用的文件与 Shell 工具
                                                               ├─ core     消息、模型、工具描述、流和用量的共享协议
                                                               └─ providers
-                                                                  ├─ deepseek      DeepSeek 请求、SSE 解析和流式适配
+                                                                  ├─ responses     共享 Responses 语义 SSE 组装
+                                                                  ├─ deepseek      DeepSeek 协议路由和流式适配
                                                                   └─ openai-codex  Codex Responses、OAuth 凭据和流式适配
 ```
 
@@ -72,7 +73,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
   → Tool.execute → ToolResultMessage → 下一轮模型调用
 ```
 
-`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。助手内容块可以是 `text`、`thinking` 或 `tool_call`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供 Codex 等需要不透明 replay state 的 adapter 使用；`core` 和 session 存储不解释该值。
+`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。助手内容块可以是 `text`、`thinking`、`tool_call` 或供应商托管的 `hosted_tool`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供需要不透明 replay state 的 Responses adapter 使用；`core` 和 session 存储不解释该值。
 
 供应商首先产生 `AssistantMessageEvent`。事件包含增量 `delta` 和完整 `snapshot`：前者适合增量呈现，后者让消费者不必重复实现消息拼接。`agent` 将其转换为更高一层的 `AgentEvent`，并额外发出回合、回合输入、工具开始/更新/结束和整个运行结束事件。`AgentEventStream` 与模型流都同时支持 `for await` 消费事件和 `result()` 获取最终值。
 
@@ -84,9 +85,11 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 ## 模型与供应商适配
 
-`core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。`providers/index.ts` 是集中式工厂；产品配置支持 `deepseek` 与 `openai-codex`，`MockModel` 用于测试。
+`core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。通用 `ModelMetadata.protocol` 标识 `responses` 或 `chat-completions` wire protocol，`supportsHostedWebSearch` 则独立声明所选模型的托管搜索能力。Provider 可以据此选择共享 codec，而无需让 `core` 包含供应商专用路由。`providers/index.ts` 是集中式工厂；产品配置支持 `deepseek` 与 `openai-codex`，`MockModel` 用于测试并使用 null protocol。
 
-`DeepSeekModel` 将通用消息、系统提示词和工具 JSON Schema 转换为 DeepSeek 的 OpenAI 兼容请求格式，向 `/chat/completions` 发送 SSE 请求。流解析器会：
+`DeepSeekModel` 根据 metadata 将 V4 Flash 路由到 `/responses`，将 V4 Pro 路由到 `/chat/completions`。Flash 会把通用历史转换为语义化 Responses input，把已完成的供应商 item 保存为不透明 `providerState` 以供无状态 replay，在启用时声明托管 `web_search`，并使用共享的 `src/providers/responses` 语义 SSE 处理器。该处理器按 index 与 item ID 关联输出，把 reasoning、消息、函数调用、托管搜索、终态和 usage 映射为有序 core event。
+
+V4 Pro 保留 Chat Completions converter 与 parser；后者会：
 
 1. 缓冲被网络分片切开的 SSE 帧；
 2. 将 reasoning、可见文本和工具参数增量写入同一有序助手消息；
@@ -95,7 +98,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口、最大输出和 CNY 计价；TUI 用它计算上下文占用和本次进程累计成本。
 
-`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。adapter 把 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item 映射到相同的有序内容协议，并把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量只记录 token，不套用 Platform API 价格。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
+`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。adapter 提供 Codex 专用的请求与 replay 规则，同时复用共享的语义 Responses 处理器组装 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item。它把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量只记录 token，不套用 Platform API 价格。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
 
 ## MCP 协议基础
 

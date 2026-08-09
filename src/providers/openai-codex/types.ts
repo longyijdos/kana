@@ -1,5 +1,6 @@
-import type { ModelConfig, ModelUsage } from "@/core";
+import type { ModelConfig } from "@/core";
 import type { Logger } from "@/logging";
+import type { ResponsesStreamState } from "../responses";
 
 // OpenAI Codex Responses accepts reasoning effort through max. Ultra is a Codex client
 // orchestration mode and must not be sent as a provider reasoning effort.
@@ -27,8 +28,4 @@ export type OpenAICodexModelConfig = ModelConfig & {
   fetch?: typeof globalThis.fetch;
 };
 
-export type OpenAICodexStreamState = {
-  terminalSeen: boolean;
-  stopReason?: "stop" | "length" | "toolUse";
-  usage?: ModelUsage;
-};
+export type OpenAICodexStreamState = ResponsesStreamState;

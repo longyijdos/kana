@@ -111,6 +111,7 @@ name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
 reasoning_effort = "high"
+web_search = true
 max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
@@ -166,8 +167,9 @@ level = "info"
 | --- | --- | --- | --- |
 | `name` | 非空字符串 | `deepseek-v4-pro` | 模型名；运行时会拒绝不在 DeepSeek 元数据表中的模型。 |
 | `api_key_env` | 非空字符串 | `DEEPSEEK_API_KEY` | 保存 API key 的环境变量名；key 不写入 TOML。 |
-| `thinking` | 布尔值 | `true` | 是否在 DeepSeek 请求中显式启用 thinking。 |
-| `reasoning_effort` | `high` 或 `max` | `high` | DeepSeek 推理强度；`thinking = false` 时不会发送该字段。 |
+| `thinking` | 布尔值 | `true` | 控制 DeepSeek thinking。设为 `false` 时，V4 Flash 选择 Responses effort `none`，V4 Pro 则关闭 thinking。 |
+| `reasoning_effort` | `high` 或 `max` | `high` | 启用 thinking 时使用的 DeepSeek 推理强度。 |
+| `web_search` | 布尔值 | `true` | 所选模型 metadata 支持时，声明 DeepSeek 托管的 `web_search` 工具。目前仅影响 V4 Flash Responses；V4 Pro 仍使用 Chat Completions 并忽略该配置。 |
 | `max_tokens` | 正整数 | `384000` | 单个请求允许的输出 token 上限；不能超过所选模型的硬上限。Agent 会按当前 prompt 剩余空间逐轮下调实际发送值。 |
 | `timeout_ms` | 有限数字 | `60000` | 等待 DeepSeek 响应头或相邻响应数据的无活动超时毫秒数。 |
 | `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
@@ -185,7 +187,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `name` | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses 模型。 |
 | `reasoning_effort` | `low`、`medium`、`high`、`xhigh`、`max` | `medium` | 请求的推理强度。 |
 | `reasoning_summary` | `auto`、`concise`、`detailed` | `auto` | 请求可流式返回的 reasoning summary；原始思维链不会作为该字段公开。 |
-| `web_search` | 布尔值 | `true` | 是否向 Codex Responses 请求声明供应商托管的 `web_search` 工具。设为 `false` 时完全省略该顶层工具；其他供应商没有此配置。 |
+| `web_search` | 布尔值 | `true` | 是否向 Codex Responses 请求声明供应商托管的 `web_search` 工具。设为 `false` 时完全省略该顶层工具。 |
 | `max_tokens` | 正整数 | `128000` | Kana 计算逐轮输出上限时使用的配置上限；ChatGPT Codex 请求约定不暴露 `max_output_tokens`，因此请求不会发送该值。 |
 | `timeout_ms` | 有限数字 | `60000` | 等待响应头或相邻响应数据的无活动超时毫秒数。 |
 | `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
@@ -226,7 +228,7 @@ promptBudget = contextLimit - safetyReserve
 effectiveMaxTokens = min(activeModel.max_tokens, promptBudget - estimatedPromptTokens)
 ```
 
-`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。配置的 `max_tokens` 是输出上限而不是固定预留；prompt 增长到剩余空间不足时，Agent 会降低本轮 `ModelContext.maxOutputTokens`。DeepSeek 将其发送为 `max_tokens`，不支持对应请求字段的 provider 可以忽略它。
+`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。配置的 `max_tokens` 是输出上限而不是固定预留；prompt 增长到剩余空间不足时，Agent 会降低本轮 `ModelContext.maxOutputTokens`。DeepSeek V4 Flash 将其发送为 Responses `max_output_tokens`，V4 Pro 将其发送为 Chat Completions `max_tokens`，不支持对应请求字段的 provider 可以忽略它。
 
 默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。Agent 创建时的 `agent.parallel_tool_calls_configured` 只记录 `requested`、`supported` 和最终的 `enabled`；`context.output_limit_adjusted` 只记录配置上限、本轮有效上限和估算 prompt tokens，两者也都属于 `debug`。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
 

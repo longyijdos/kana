@@ -33,6 +33,7 @@ export type KanaDeepSeekModelConfig = {
   apiKeyEnv: string;
   thinking: boolean;
   reasoningEffort: DeepSeekReasoningEffort;
+  webSearch: boolean;
   maxTokens: number;
   timeoutMs: number;
   maxRetries: number;
@@ -168,6 +169,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       apiKeyEnv: "DEEPSEEK_API_KEY",
       thinking: true,
       reasoningEffort: "high",
+      webSearch: true,
       maxTokens: 384_000,
       timeoutMs: 60_000,
       maxRetries: 1,
@@ -322,6 +324,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
         api_key_env: config.model.deepseek.apiKeyEnv,
         thinking: config.model.deepseek.thinking,
         reasoning_effort: config.model.deepseek.reasoningEffort,
+        web_search: config.model.deepseek.webSearch,
         max_tokens: config.model.deepseek.maxTokens,
         timeout_ms: config.model.deepseek.timeoutMs,
         max_retries: config.model.deepseek.maxRetries,
@@ -491,6 +494,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           deepSeekModel.reasoning_effort,
           defaults.model.deepseek.reasoningEffort,
         ),
+        webSearch: readBoolean(
+          deepSeekModel.web_search,
+          defaults.model.deepseek.webSearch,
+          "model.deepseek.web_search",
+        ),
         maxTokens: readPositiveInteger(
           deepSeekModel.max_tokens,
           defaults.model.deepseek.maxTokens,
@@ -616,6 +624,7 @@ function serializeDeepSeekModel(config: KanaDeepSeekModelConfig): string[] {
     `api_key_env = "${config.apiKeyEnv}"`,
     `thinking = ${config.thinking}`,
     `reasoning_effort = "${config.reasoningEffort}"`,
+    `web_search = ${config.webSearch}`,
     `max_tokens = ${config.maxTokens}`,
     `timeout_ms = ${config.timeoutMs}`,
     `max_retries = ${config.maxRetries}`,
@@ -638,6 +647,7 @@ function isLegacyModelConfig(model: Record<string, unknown>): boolean {
     model.provider !== undefined ||
     model.name !== undefined ||
     model.api_key_env !== undefined ||
+    model.web_search !== undefined ||
     model.max_tokens !== undefined
   );
 }

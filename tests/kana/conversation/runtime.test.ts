@@ -496,6 +496,8 @@ class ControlledModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
   readonly contexts: ModelContext[] = [];
   private readonly streams: AssistantEventStream[] = [];

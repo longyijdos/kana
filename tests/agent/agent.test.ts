@@ -20,6 +20,8 @@ class TextModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -102,6 +104,8 @@ class AbortAwareModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
 
   stream(context: ModelContext): AssistantEventStream {

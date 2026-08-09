@@ -22,6 +22,8 @@ class ScriptedToolModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -75,6 +77,8 @@ class MultiToolCallModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: false,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -116,6 +120,8 @@ class ParallelToolCallModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -160,6 +166,8 @@ class AbortedModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -203,6 +211,8 @@ class AbortedToolCallModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -265,6 +275,8 @@ class EmptyErrorModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -303,6 +315,8 @@ class LengthTruncatedToolModel implements Model {
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
   };
   readonly contexts: ModelContext[] = [];
 

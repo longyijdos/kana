@@ -11,4 +11,26 @@ describe("provider model metadata", () => {
       Object.values(OPENAI_CODEX_MODELS).map((model) => model.supportsParallelToolCalls),
     ).toEqual([true, true, true]);
   });
+
+  test("declares shared wire protocols and hosted web-search capabilities", () => {
+    expect(
+      Object.values(DEEPSEEK_MODELS).map((model) => ({
+        protocol: model.protocol,
+        supportsHostedWebSearch: model.supportsHostedWebSearch,
+      })),
+    ).toEqual([
+      { protocol: "responses", supportsHostedWebSearch: true },
+      { protocol: "chat-completions", supportsHostedWebSearch: false },
+    ]);
+    expect(
+      Object.values(OPENAI_CODEX_MODELS).map((model) => ({
+        protocol: model.protocol,
+        supportsHostedWebSearch: model.supportsHostedWebSearch,
+      })),
+    ).toEqual([
+      { protocol: "responses", supportsHostedWebSearch: true },
+      { protocol: "responses", supportsHostedWebSearch: true },
+      { protocol: "responses", supportsHostedWebSearch: true },
+    ]);
+  });
 });

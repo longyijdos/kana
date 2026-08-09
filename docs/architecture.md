@@ -17,7 +17,8 @@ src/main.ts
                                                                                                  ├─ tools    Reusable file and shell tools
                                                                                                  ├─ core     Shared message, model, tool-description, stream, and usage contracts
                                                                                                  └─ providers
-                                                                                                     ├─ deepseek      DeepSeek requests, SSE parsing, and streaming adapter
+                                                                                                     ├─ responses     Shared semantic Responses SSE assembly
+                                                                                                     ├─ deepseek      DeepSeek protocol routing and streaming adapter
                                                                                                      └─ openai-codex  Codex Responses, OAuth credentials, and streaming adapter
 ```
 
@@ -72,7 +73,7 @@ If the model requests tools:
   → Tool.execute → ToolResultMessage → next model turn
 ```
 
-`Message` in `core/messages.ts` is the single history format: user messages, assistant messages with ordered content blocks, and tool-result messages. Assistant content can be `text`, `thinking`, or `tool_call`; its order is preserved so it can be both sent back to the provider and displayed in model output order. Content may also carry provider-owned, JSON-serializable `providerState` for adapters such as Codex that require opaque replay state; `core` and session persistence do not interpret it.
+`Message` in `core/messages.ts` is the single history format: user messages, assistant messages with ordered content blocks, and tool-result messages. Assistant content can be `text`, `thinking`, `tool_call`, or provider-hosted `hosted_tool`; its order is preserved so it can be both sent back to the provider and displayed in model output order. Content may also carry provider-owned, JSON-serializable `providerState` for Responses adapters that require opaque replay state; `core` and session persistence do not interpret it.
 
 Providers first produce `AssistantMessageEvent` values. An event contains both an incremental `delta` and a complete `snapshot`: the former supports incremental rendering, while the latter means consumers do not need to reimplement message assembly. `agent` translates these into the higher-level `AgentEvent` protocol and additionally emits turn, turn-input, tool-start/update/end, and run-end events. Both `AgentEventStream` and model streams support event consumption with `for await` and final-result retrieval with `result()`.
 
@@ -84,9 +85,11 @@ An optional `ContextManager` sits between Agent and Model. The Agent forks check
 
 ## Model and provider adapters
 
-`core/model.ts` defines `Model`: a provider only needs to provide metadata and `stream(context)`; the base class implements `generate()` by collecting a stream. `providers/index.ts` is the centralized factory. Product configuration supports `deepseek` and `openai-codex`, while `MockModel` exists for tests.
+`core/model.ts` defines `Model`: a provider only needs to provide metadata and `stream(context)`; the base class implements `generate()` by collecting a stream. Common `ModelMetadata.protocol` identifies the generic `responses` or `chat-completions` wire protocol, while `supportsHostedWebSearch` advertises the selected model's hosted-search capability independently of user configuration. Providers can use these fields to select shared codecs without encoding provider-specific routing in `core`. `providers/index.ts` is the centralized factory. Product configuration supports `deepseek` and `openai-codex`, while `MockModel` exists for tests and uses a null protocol.
 
-`DeepSeekModel` converts the generic messages, system prompt, and tool JSON Schemas into DeepSeek's OpenAI-compatible request format and sends an SSE request to `/chat/completions`. The stream parser:
+`DeepSeekModel` uses metadata to route V4 Flash through `/responses` and V4 Pro through `/chat/completions`. Flash converts generic history into semantic Responses input, stores completed provider items as opaque `providerState` for stateless replay, advertises hosted `web_search` when enabled, and uses the shared `src/providers/responses` semantic SSE processor. That processor correlates output by index and item ID and maps reasoning, messages, function calls, hosted searches, terminal status, and usage into ordered core events.
+
+V4 Pro retains the Chat Completions converter and parser, which:
 
 1. Buffers SSE frames split by network chunks.
 2. Writes reasoning, visible text, and tool-argument deltas into one ordered assistant message.
@@ -95,7 +98,7 @@ An optional `ContextManager` sits between Agent and Model. The Agent forks check
 
 A request can be cancelled by the Agent and is also subject to the `timeoutMs` inactivity timeout, which restarts on response headers or response data. HTTP 408, 429, and 5xx responses use exponential-backoff retries up to `maxRetries`. Model metadata also supplies the context window, output maximum, and CNY pricing; the TUI uses it to calculate context occupancy and process-lifetime accumulated cost.
 
-`OpenAICodexModel` uses the ChatGPT token and account ID supplied by Kana's generic OAuth state machine to send classic `store = false` Responses SSE requests to the Codex endpoint. Instructions and client or hosted tools use classic top-level fields; no Responses Lite header or input markers are sent. The adapter maps reasoning-summary, provider-hosted `web_search_call`, message, and function-call output items into the same ordered content protocol, persisting encrypted reasoning and completed items as opaque `providerState` for replay on later turns. Hosted searches never enter the local ToolRuntime. The first `401` refreshes credentials and retries once. Subscription usage records tokens without applying Platform API pricing. See [OpenAI Codex provider adapter](openai-codex-provider.md).
+`OpenAICodexModel` uses the ChatGPT token and account ID supplied by Kana's generic OAuth state machine to send classic `store = false` Responses SSE requests to the Codex endpoint. Instructions and client or hosted tools use classic top-level fields; no Responses Lite header or input markers are sent. The adapter supplies Codex-specific request and replay rules while reusing the shared semantic Responses processor for reasoning-summary, provider-hosted `web_search_call`, message, and function-call output items. It persists encrypted reasoning and completed items as opaque `providerState` for later replay. Hosted searches never enter the local ToolRuntime. The first `401` refreshes credentials and retries once. Subscription usage records tokens without applying Platform API pricing. See [OpenAI Codex provider adapter](openai-codex-provider.md).
 
 ## MCP protocol foundation
 

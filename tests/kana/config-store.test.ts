@@ -76,6 +76,7 @@ describe("Kana config store", () => {
     store.update((draft) => {
       draft.model.deepseek.name = "deepseek-v4-flash";
       draft.model.deepseek.thinking = false;
+      draft.model.deepseek.webSearch = false;
       draft.agent.toolDeadlineMs = 120_000;
       draft.agent.parallelToolCalls = false;
       draft.agent.contextLimit = undefined;
@@ -88,6 +89,7 @@ describe("Kana config store", () => {
     expect(updated).toContain("# keep this comment");
     expect(updated).toContain('name = "deepseek-v4-flash"');
     expect(updated).toContain("thinking = false");
+    expect(updated).toContain("web_search = false");
     expect(updated).toContain("tool_deadline_ms = 120000");
     expect(updated).toContain("parallel_tool_calls = false");
     expect(updated).toContain(

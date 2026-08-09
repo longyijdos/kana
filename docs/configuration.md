@@ -111,6 +111,7 @@ name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 thinking = true
 reasoning_effort = "high"
+web_search = true
 max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
@@ -166,8 +167,9 @@ level = "info"
 | --- | --- | --- | --- |
 | `name` | Non-empty string | `deepseek-v4-pro` | Model name; runtime rejects names outside DeepSeek's metadata table. |
 | `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
-| `thinking` | Boolean | `true` | Explicitly enables DeepSeek thinking in requests. |
-| `reasoning_effort` | `high` or `max` | `high` | DeepSeek reasoning effort; it is not sent when `thinking = false`. |
+| `thinking` | Boolean | `true` | Controls DeepSeek thinking. `false` selects Responses effort `none` for V4 Flash and disables thinking for V4 Pro. |
+| `reasoning_effort` | `high` or `max` | `high` | DeepSeek reasoning effort used while thinking is enabled. |
+| `web_search` | Boolean | `true` | Advertises DeepSeek's hosted `web_search` tool when the selected model metadata supports it. This currently affects V4 Flash Responses; V4 Pro remains on Chat Completions and ignores it. |
 | `max_tokens` | Positive integer | `384000` | Allowed per-request output-token ceiling; it cannot exceed the selected model's hard limit. The Agent lowers the value sent for each turn when the current prompt leaves less space. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
@@ -185,7 +187,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `name` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses model. |
 | `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` | Requested reasoning effort. |
 | `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
-| `web_search` | Boolean | `true` | Advertises the provider-hosted `web_search` tool to Codex Responses. Setting it to `false` omits that top-level tool entirely; other providers do not have this setting. |
+| `web_search` | Boolean | `true` | Advertises the provider-hosted `web_search` tool to Codex Responses. Setting it to `false` omits that top-level tool entirely. |
 | `max_tokens` | Positive integer | `128000` | Configured ceiling used when Kana calculates a per-turn output limit; the ChatGPT Codex request contract does not expose `max_output_tokens`, so requests do not send it. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
@@ -226,7 +228,7 @@ promptBudget = contextLimit - safetyReserve
 effectiveMaxTokens = min(activeModel.max_tokens, promptBudget - estimatedPromptTokens)
 ```
 
-At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Configured `max_tokens` is a ceiling rather than a fixed reserve; as the prompt grows beyond the space available for that ceiling, the Agent lowers the current `ModelContext.maxOutputTokens`. DeepSeek sends it as `max_tokens`, while a provider without a corresponding request field may ignore it.
+At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Configured `max_tokens` is a ceiling rather than a fixed reserve; as the prompt grows beyond the space available for that ceiling, the Agent lowers the current `ModelContext.maxOutputTokens`. DeepSeek V4 Flash sends it as Responses `max_output_tokens`, V4 Pro sends it as Chat Completions `max_tokens`, and a provider without a corresponding request field may ignore it.
 
 Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Agent construction emits `agent.parallel_tool_calls_configured` with only `requested`, `supported`, and the final `enabled`; `context.output_limit_adjusted` contains only the configured ceiling, effective per-turn ceiling, and estimated prompt tokens. Both are `debug`. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
 

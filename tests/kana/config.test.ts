@@ -212,6 +212,7 @@ describe("Kana config", () => {
 
   test("defaults output ceilings to the provider metadata limits", () => {
     expect(DEFAULT_KANA_CONFIG.model.deepseek.maxTokens).toBe(384_000);
+    expect(DEFAULT_KANA_CONFIG.model.deepseek.webSearch).toBe(true);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].maxTokens).toBe(128_000);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].webSearch).toBe(true);
   });
@@ -296,6 +297,20 @@ describe("Kana config", () => {
         level: "debug",
       },
     });
+  });
+
+  test("loads provider-specific DeepSeek web-search configuration", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), "[model.deepseek]\nweb_search = false\n");
+
+    expect(loadKanaConfig(env).model.deepseek).toEqual({
+      ...DEFAULT_KANA_CONFIG.model.deepseek,
+      webSearch: false,
+    });
+
+    writeFileSync(path.join(home, "config.toml"), '[model.deepseek]\nweb_search = "yes"\n');
+    expect(() => loadKanaConfig(env)).toThrow("model.deepseek.web_search must be a boolean.");
   });
 
   test("loads provider-specific OpenAI Codex configuration", () => {

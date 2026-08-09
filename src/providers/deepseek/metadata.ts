@@ -17,6 +17,8 @@ export const DEEPSEEK_MODELS = {
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
     supportsParallelToolCalls: true,
+    protocol: "responses",
+    supportsHostedWebSearch: true,
   },
   "deepseek-v4-pro": {
     provider: "deepseek",
@@ -30,6 +32,10 @@ export const DEEPSEEK_MODELS = {
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
     supportsParallelToolCalls: true,
+    // TODO: Route deepseek-v4-pro through Responses and enable hosted web
+    // search once DeepSeek officially exposes Responses support for the model.
+    protocol: "chat-completions",
+    supportsHostedWebSearch: false,
   },
 } as const satisfies Record<string, DeepSeekModelMetadata>;
 

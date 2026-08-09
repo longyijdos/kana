@@ -16,6 +16,7 @@ export type MockModelConfig = ModelConfig & {
 export const MOCK_MODEL_METADATA = {
   provider: "mock",
   model: "mock",
+  protocol: null,
   cost: {
     input: 0,
     output: 0,
@@ -25,6 +26,7 @@ export const MOCK_MODEL_METADATA = {
   contextWindow: 128_000,
   maxOutputTokens: 16_000,
   supportsParallelToolCalls: false,
+  supportsHostedWebSearch: false,
 } as const satisfies ModelMetadata;
 
 export class MockModel extends BaseModel {
