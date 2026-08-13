@@ -55,6 +55,7 @@ export class AgentEventRenderer {
 
   prepareForToolInteraction(): void {
     this.textPresenter.catchUp();
+    this.toolCallBlocks.finishPreparation();
   }
 
   resetRun(): void {
@@ -75,6 +76,8 @@ export class AgentEventRenderer {
       case "agent_end":
         if (event.reason === "aborted") {
           this.toolCallBlocks.markPendingCanceled();
+        } else {
+          this.toolCallBlocks.finishPreparation();
         }
         this.stopActiveTimers();
         this.activeTools.clear();
@@ -160,14 +163,12 @@ export class AgentEventRenderer {
     }
     this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
     this.toolCallBlocks.createOrUpdateFromMessage(event.message);
-    if (event.assistantMessageEvent.type === "toolcall_end") {
-      this.toolCallBlocks.freezePreparation(event.assistantMessageEvent.toolCall.id);
-    }
     this.options.updateStatus(phaseForAssistantMessage(event.message));
   }
 
   private handleAssistantEnd(message: AssistantMessage): void {
     this.streamingAssistant?.showThinking(false);
+    this.toolCallBlocks.stopPreparationTimer();
     this.textPresenter.finish(message, message.stopReason === "toolUse");
     this.options.updateStatus(phaseForStopReason(message.stopReason));
   }

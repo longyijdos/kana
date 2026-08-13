@@ -16,7 +16,7 @@ import { formatListOutput, hasExpandableListOutput } from "./renderers/list";
 import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
 import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 
-export type ToolState = "preparing" | "running" | "done" | "failed" | "canceled";
+export type ToolState = "running" | "done" | "failed" | "canceled";
 export type ToolOutputDetail = "compact" | "full";
 export type ToolTranscriptTitle = { activity: string; hint?: string; target?: string };
 
@@ -45,10 +45,6 @@ export function formatToolTitle(
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target, toolCall.args);
 
-  if (state === "preparing") {
-    return `Preparing ${toolCall.name}...`;
-  }
-
   if (state === "running") {
     return `${formatStatusActivity(capitalize(text.runningActivity), "...")} (Esc to abort)`;
   }
@@ -75,9 +71,6 @@ export function formatToolTranscriptTitle(
   const action = text.action.replace(` ${target}`, "");
   const runningActivity = capitalize(text.runningActivity.replace(` ${target}`, ""));
 
-  if (state === "preparing") {
-    return { activity: `Preparing ${toolCall.name} (${elapsedSeconds ?? 0}s)` };
-  }
   if (state === "running") {
     return {
       activity: formatStatusActivity(runningActivity, ` (${elapsedSeconds ?? 0}s)`),

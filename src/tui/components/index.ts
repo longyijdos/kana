@@ -4,6 +4,7 @@ export {
   MarkdownBlock,
   TextBlock,
   ToolCallBlock,
+  ToolPreparationBlock,
   Transcript,
   UserMessageBlock,
   WelcomeBlock,

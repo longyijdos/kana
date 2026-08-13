@@ -15,7 +15,6 @@ import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import type { ContentView } from "../content-viewer";
 
 export class ToolCallBlock implements Component {
-  private executionStarted = false;
   private canceled = false;
   private result?: unknown;
   private partialResult?: unknown;
@@ -33,7 +32,6 @@ export class ToolCallBlock implements Component {
     now: Clock = Date.now,
   ) {
     this.phaseTimer = new ElapsedTimer(now);
-    this.phaseTimer.start();
   }
 
   updateArgs(args: unknown): void {
@@ -42,18 +40,8 @@ export class ToolCallBlock implements Component {
   }
 
   markExecutionStarted(): void {
-    this.executionStarted = true;
     this.canceled = false;
     this.phaseTimer.start();
-    this.invalidate();
-  }
-
-  freezePreparation(): void {
-    if (this.executionStarted || this.hasResult) {
-      return;
-    }
-
-    this.phaseTimer.stop();
     this.invalidate();
   }
 
@@ -101,8 +89,7 @@ export class ToolCallBlock implements Component {
 
   render(width: number, _availableHeight?: number): string[] {
     const state = this.currentState();
-    const elapsedSeconds =
-      state === "preparing" || state === "running" ? this.phaseTimer.elapsedSeconds() : undefined;
+    const elapsedSeconds = state === "running" ? this.phaseTimer.elapsedSeconds() : undefined;
 
     if (
       this.cachedLines &&
@@ -167,7 +154,7 @@ export class ToolCallBlock implements Component {
       return "canceled";
     }
 
-    return this.executionStarted ? "running" : "preparing";
+    return "running";
   }
 
   private hasInspectableOutput(): boolean {
