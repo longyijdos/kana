@@ -46,12 +46,12 @@ ProcessTerminal
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
-| `message_start` / `message_update` / `message_end` | 创建、更新、完成有序助手内容块；Markdown 文本与 provider-hosted 动作保留供应商顺序。thinking 显示当前动作前推理阶段的累计耗时；相邻 provider reasoning item 共用一次计时，正文、工具或 hosted tool 开始时结束。本地工具调用解析期间显示 preparing 耗时，并在该调用结束时冻结。 |
-| `tool_execution_start` | 创建或标记工具块为运行中，并从零开始显示各自的 running 耗时；并行调用按 `toolCallId` 独立维护。 |
+| `message_start` / `message_update` / `message_end` | 创建、更新、完成有序助手内容块；Markdown 文本与 provider-hosted 动作保留供应商顺序。thinking 显示当前动作前推理阶段的累计耗时；相邻 provider reasoning item 共用一次计时，正文、工具或 hosted tool 开始时结束。Provider 流式生成一个或多个本地工具调用及其参数时，TUI 只显示一个共享的 `preparing tools` 计时，而不是为每个调用提前创建工具块；助手消息结束时冻结该计时。 |
+| `tool_execution_start` | 移除共享的准备活动，创建对应的单工具块，并从零开始显示 running 耗时；并行调用仍按 `toolCallId` 独立维护，并随各自的 start 事件依次出现。 |
 | `tool_execution_update` | 更新 bash 等工具的部分输出。 |
 | `tool_execution_end` | 写入结构化结果并标记成功、失败或取消。用户中止的调用显示为已取消，而不是工具失败。 |
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
-| `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时将仍在 preparing 的调用标记为已取消，`turn_limit` 显示为独立的 `turn limit` 错误阶段。 |
+| `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时移除尚未解析为单工具块的聚合准备活动，`turn_limit` 显示为独立的 `turn limit` 错误阶段。 |
 
 Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSeek V4 Flash）属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。TUI 为每个调用单独显示 `Searching the web`、`Searched the web`、`Opened a web page` 或 `Searched within a web page`；当前不聚合多个调用。搜索期间状态栏阶段为 `searching`。进行中的搜索显示耗时和 `Esc to abort`；中止时 Agent 会发布并持久化语义化的 canceled 状态，TUI 则冻结计时并显示 `Web search stopped`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
 

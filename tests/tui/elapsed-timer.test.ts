@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { AssistantMessageBlock, ToolCallBlock } from "../../src/tui/components";
+import {
+  AssistantMessageBlock,
+  ToolCallBlock,
+  ToolPreparationBlock,
+} from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import { ElapsedTimer } from "../../src/tui/utils/elapsed-timer";
 
@@ -28,8 +32,15 @@ describe("tui elapsed timer", () => {
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking (2s) (Esc to abort)");
   });
 
-  test("freezes preparation time for approval and restarts it for execution", () => {
+  test("tracks aggregate tool preparation separately from tool execution", () => {
     let now = 0;
+    const preparation = new ToolPreparationBlock(() => now);
+
+    now = 2_000;
+    preparation.stopTimer();
+    now = 5_000;
+    expect(stripAnsi(preparation.render(80)[0] ?? "")).toBe("preparing tools (2s)");
+
     const block = new ToolCallBlock(
       {
         type: "tool_call",
@@ -39,11 +50,6 @@ describe("tui elapsed timer", () => {
       },
       () => now,
     );
-
-    now = 2_000;
-    block.freezePreparation();
-    now = 5_000;
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Preparing bash (2s)");
 
     block.markExecutionStarted();
     now = 7_000;

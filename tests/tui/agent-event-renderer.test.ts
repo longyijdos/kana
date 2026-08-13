@@ -58,6 +58,91 @@ describe("AgentEventRenderer", () => {
 
     expect(stripAnsi(transcript.children[0]?.render(500).join("") ?? "")).toBe(text);
     expect(transcript.children).toHaveLength(2);
+    expect(stripAnsi(transcript.children[1]?.render(80)[0] ?? "")).toBe(
+      "preparing tools (0s) (Esc to abort)",
+    );
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
+  test("aggregates streamed tool preparation until individual tools start", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const firstToolCall = {
+      type: "tool_call" as const,
+      id: "call-read",
+      name: "read",
+      args: { path: "src/tools/read.ts" },
+    };
+    const secondToolCall = {
+      type: "tool_call" as const,
+      id: "call-grep",
+      name: "grep",
+      args: { pattern: "ToolCallBlock", path: "src" },
+    };
+    const firstMessage: AssistantMessage = {
+      role: "assistant",
+      content: [firstToolCall],
+    };
+    const completeMessage: AssistantMessage = {
+      role: "assistant",
+      content: [firstToolCall, secondToolCall],
+    };
+
+    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_update",
+      message: firstMessage,
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        contentIndex: 0,
+        snapshot: firstMessage,
+      },
+    });
+    renderer.handle({
+      type: "message_update",
+      message: completeMessage,
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        contentIndex: 1,
+        snapshot: completeMessage,
+      },
+    });
+
+    expect(transcript.children).toHaveLength(2);
+    expect(stripAnsi(transcript.render(120).join("\n"))).toContain("preparing tools (0s)");
+    expect(stripAnsi(transcript.render(120).join("\n"))).not.toContain("src/tools/read.ts");
+
+    renderer.handle({
+      type: "message_end",
+      message: { ...completeMessage, stopReason: "toolUse" },
+    });
+    renderer.handle({
+      type: "tool_execution_start",
+      toolCallId: firstToolCall.id,
+      toolName: firstToolCall.name,
+      args: firstToolCall.args,
+    });
+
+    expect(transcript.children).toHaveLength(2);
+    expect(stripAnsi(transcript.render(120).join("\n"))).not.toContain("preparing tools");
+    expect(stripAnsi(transcript.render(120).join("\n"))).toContain("src/tools/read.ts");
+
+    renderer.handle({
+      type: "tool_execution_start",
+      toolCallId: secondToolCall.id,
+      toolName: secondToolCall.name,
+      args: secondToolCall.args,
+    });
+    expect(transcript.children).toHaveLength(3);
+
+    renderer.handle(toolEnd(firstToolCall.id, firstToolCall.name, false));
+    renderer.handle(toolEnd(secondToolCall.id, secondToolCall.name, false));
     renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
   });
 
@@ -212,7 +297,7 @@ describe("AgentEventRenderer", () => {
     }
   });
 
-  test("marks a partially prepared local tool as canceled when the agent is aborted", () => {
+  test("removes aggregate tool preparation without materializing calls when aborted", () => {
     const transcript = new TranscriptComponent();
     const renderer = new AgentEventRenderer({
       transcript,
@@ -247,7 +332,8 @@ describe("AgentEventRenderer", () => {
     renderer.handle({ type: "message_end", message: { ...message, stopReason: "aborted" } });
     renderer.handle({ type: "agent_end", reason: "aborted", messages: [] });
 
-    expect(stripAnsi(transcript.render(80).join("\n"))).toContain("◆ Canceled editing");
+    expect(stripAnsi(transcript.render(80).join("\n"))).toBe("");
+    expect(transcript.children).toHaveLength(1);
   });
 
   test("keeps one timer across adjacent thinking items until the next action", () => {
