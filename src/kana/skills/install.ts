@@ -8,7 +8,7 @@ import { formatError } from "../format";
 
 const execFileAsync = promisify(execFile);
 
-export const DEFAULT_KANA_SKILLS_REPOSITORY = "https://github.com/longyijdos/kana-skills.git";
+const DEFAULT_KANA_SKILLS_REPOSITORY = "https://github.com/longyijdos/kana-skills.git";
 export const DEFAULT_KANA_SKILLS_REPOSITORY_NAME = "kana-skills";
 
 export type InstallKanaSkillsOptions = {

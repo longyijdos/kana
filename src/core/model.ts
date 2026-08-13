@@ -31,7 +31,7 @@ export type ModelUsage = {
   reasoningTokens?: number;
 };
 
-export type ModelProtocol = "chat-completions" | "responses";
+type ModelProtocol = "chat-completions" | "responses";
 
 export type ModelMetadata = {
   provider: string;

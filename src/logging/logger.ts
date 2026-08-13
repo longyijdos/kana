@@ -7,7 +7,7 @@ export type LogLevel = (typeof LOG_LEVELS)[number];
 type ActiveLogLevel = Exclude<LogLevel, "off">;
 export type LogMetadata = Record<string, unknown>;
 
-export type LogRecord = {
+type LogRecord = {
   timestamp: string;
   level: ActiveLogLevel;
   event: string;
@@ -29,7 +29,7 @@ export type CreateSessionLoggerOptions = {
   now?: () => Date;
 };
 
-export type SessionLogTarget = Pick<CreateSessionLoggerOptions, "path" | "sessionId">;
+type SessionLogTarget = Pick<CreateSessionLoggerOptions, "path" | "sessionId">;
 
 export type SessionLogManager = {
   forSession(target: SessionLogTarget): Logger;

@@ -5,5 +5,4 @@ export {
 export {
   encodeUserImage,
   loadUserImageFile,
-  MAX_IMAGE_INPUT_BYTES,
 } from "./image-input";

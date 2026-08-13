@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/main.ts", "tests/fixtures/mcp-stdio-server.ts"],
+  "includeEntryExports": true,
+  "ignoreDependencies": ["conventional-changelog-conventionalcommits"]
+}

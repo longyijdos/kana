@@ -25,12 +25,7 @@ export type CreateMemoryConsolidationAgentOptions = {
   logger?: Logger;
 };
 
-export type MemoryConsolidationOutcome =
-  | "updated"
-  | "unchanged"
-  | "aborted"
-  | "length"
-  | "turn_limit";
+type MemoryConsolidationOutcome = "updated" | "unchanged" | "aborted" | "length" | "turn_limit";
 
 export type MemoryConsolidationResult = {
   state: AgentState;

@@ -3,10 +3,10 @@ import { type AdaptedMcpTool, createMcpToolAdapter, type McpToolCaller } from ".
 import type { McpToolResultLimits, McpToolSource } from "./tool-result";
 
 export type McpManagerState = "idle" | "starting" | "ready" | "closing" | "closed";
-export type McpServerStatus = "idle" | "starting" | "ready" | "failed" | "closed";
+type McpServerStatus = "idle" | "starting" | "ready" | "failed" | "closed";
 export type McpManagerErrorPhase = "start" | "close";
-export type McpManagerOperation = "start" | "close";
-export type McpManagerProgressOutcome = "ready" | "failed" | "closed";
+type McpManagerOperation = "start" | "close";
+type McpManagerProgressOutcome = "ready" | "failed" | "closed";
 
 // The manager depends on capabilities rather than McpClient so a future
 // lifecycle implementation can be registered without inheriting initialize.

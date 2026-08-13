@@ -30,9 +30,9 @@ export const listParameters = Type.Object({
   ),
 });
 
-export type ListEntryType = "file" | "directory" | "symlink" | "other";
+type ListEntryType = "file" | "directory" | "symlink" | "other";
 
-export type ListToolEntry = {
+type ListToolEntry = {
   name: string;
   path: string;
   type: ListEntryType;

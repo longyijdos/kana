@@ -31,7 +31,7 @@ const REMEMBER_TOOL_GUIDANCE = [
   "</remember_tool_guidance>",
 ].join("\n");
 
-export type LoadKanaSystemPromptOptions = {
+type LoadKanaSystemPromptOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   launchMode?: KanaLaunchMode;
@@ -43,7 +43,7 @@ export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions 
   skills?: KanaSkill[];
 };
 
-export function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}): string {
+function loadKanaSystemPrompt(options: LoadKanaSystemPromptOptions = {}): string {
   const cwd = options.cwd ?? process.cwd();
   const customizationsEnabled = options.launchMode !== "clean";
   const { agentsPath } = getKanaConfigPaths(options.env);

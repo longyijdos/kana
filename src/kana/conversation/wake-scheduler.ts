@@ -9,7 +9,7 @@ export type WakeEvent = {
   key?: string;
 };
 
-export type ScheduleWakeOptions = {
+type ScheduleWakeOptions = {
   sessionId: string;
   afterMinutes: number;
   message: string;

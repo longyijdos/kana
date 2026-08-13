@@ -9,16 +9,11 @@ export {
   UserMessageBlock,
   WelcomeBlock,
 } from "./chat-blocks";
-export {
-  ChoicePrompt,
-  type ChoicePromptOption,
-  type ChoicePromptOptions,
-} from "./choice-prompt";
+export { ChoicePrompt } from "./choice-prompt";
 export { type ContentView, ContentViewer } from "./content-viewer";
 export { DeleteSessionConfirmation } from "./delete-session-confirmation";
 export {
   Editor,
-  type EditorOptions,
   type EditorQueuedInput,
   type EditorScheduledInputSummary,
   type StatusLineState,
@@ -32,7 +27,6 @@ export {
   McpServerManager,
   type McpServerManagerDecision,
   type McpServerManagerItem,
-  type McpServerOAuthStatus,
 } from "./mcp-server-manager";
 export {
   ScheduledMessageManager,
@@ -46,8 +40,7 @@ export {
 export {
   SkillManager,
   type SkillManagerDecision,
-  type SkillManagerItem,
 } from "./skill-manager";
-export { TextPrompt, type TextPromptOptions } from "./text-prompt";
+export { TextPrompt } from "./text-prompt";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";
 export { UsageSummaryBlock } from "./usage-summary";

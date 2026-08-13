@@ -1,6 +1,6 @@
 import { McpTransportError } from "./transport";
 
-export type SseEvent = {
+type SseEvent = {
   data?: string;
   event?: string;
   id?: string;

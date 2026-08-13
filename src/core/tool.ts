@@ -2,7 +2,7 @@ import type { TSchema } from "typebox";
 
 export type ToolConcurrency = "parallel" | "exclusive";
 
-export type ToolExecutionPolicy = {
+type ToolExecutionPolicy = {
   concurrency?: ToolConcurrency;
   deadlineMs?: number;
 };

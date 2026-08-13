@@ -1,6 +1,4 @@
 export {
-  type CreateSessionLoggerOptions,
-  type CreateSessionLogManagerOptions,
   createNoopLogger,
   createSessionLogger,
   createSessionLogManager,
@@ -8,7 +6,4 @@ export {
   type Logger,
   type LogLevel,
   type LogMetadata,
-  type LogRecord,
-  type SessionLogManager,
-  type SessionLogTarget,
 } from "./logger";

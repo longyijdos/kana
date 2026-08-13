@@ -7,7 +7,7 @@ export type InputLayoutLine = {
   width: number;
 };
 
-export type InputLayoutCursor = {
+type InputLayoutCursor = {
   line: number;
   column: number;
 };

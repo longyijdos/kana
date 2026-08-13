@@ -1,4 +1,4 @@
-export type AnsiColor =
+type AnsiColor =
   | "black"
   | "red"
   | "green"
@@ -9,7 +9,7 @@ export type AnsiColor =
   | "white"
   | "gray";
 
-export type RgbColor = readonly [red: number, green: number, blue: number];
+type RgbColor = readonly [red: number, green: number, blue: number];
 export type Color = AnsiColor | RgbColor;
 export type HighlightedLineToken = { text: string; color?: Color | string };
 

@@ -20,7 +20,7 @@ export type McpToolResultLimits = {
   maxMetadataCharacters: number;
 };
 
-export const DEFAULT_MCP_TOOL_RESULT_LIMITS: Readonly<McpToolResultLimits> = {
+const DEFAULT_MCP_TOOL_RESULT_LIMITS: Readonly<McpToolResultLimits> = {
   maxContentItems: 64,
   maxTextCharacters: 40_000,
   maxStructuredCharacters: 20_000,
@@ -28,7 +28,7 @@ export const DEFAULT_MCP_TOOL_RESULT_LIMITS: Readonly<McpToolResultLimits> = {
   maxMetadataCharacters: 512,
 };
 
-export type McpNormalizedContent =
+type McpNormalizedContent =
   | {
       type: "text";
       text: string;

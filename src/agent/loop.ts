@@ -15,7 +15,7 @@ import type { ContextCheckpoint, ContextManager, PreparedContext } from "./conte
 import type { AgentEndReason, AgentEvent } from "./events";
 import { type BeforeToolExecutionHook, ToolRuntime } from "./tool-runtime";
 
-export type { BeforeToolExecutionHook, BeforeToolExecutionResult } from "./tool-runtime";
+export type { BeforeToolExecutionHook } from "./tool-runtime";
 
 export type AgentContext = {
   system?: string;

@@ -11,7 +11,7 @@ export function normalizeToolResult(value: unknown): ToolResult {
   };
 }
 
-export function isToolResult(value: unknown): value is ToolResult {
+function isToolResult(value: unknown): value is ToolResult {
   return (
     typeof value === "object" &&
     value !== null &&

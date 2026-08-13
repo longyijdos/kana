@@ -8,5 +8,4 @@ export {
   type ToolApprovalSource,
   type ToolOutputDetail,
   type ToolState,
-  type ToolTranscriptTitle,
 } from "./format";

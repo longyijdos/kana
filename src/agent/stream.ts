@@ -5,7 +5,7 @@ import type { AgentEvent } from "./events";
 export type AgentDoneEvent = Extract<AgentEvent, { type: "agent_end" }>;
 export type AgentStreamEvent = Exclude<AgentEvent, AgentDoneEvent>;
 
-export type ReadableAgentEventStream = ReadableEventStream<AgentEvent, Message[]>;
+type ReadableAgentEventStream = ReadableEventStream<AgentEvent, Message[]>;
 
 export class AgentEventStream implements ReadableAgentEventStream {
   private readonly stream = new EventStream<AgentEvent, Message[]>(

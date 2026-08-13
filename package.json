@@ -10,10 +10,13 @@
     "build:cli": "bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --outfile=kana src/main.ts",
     "build:release": "bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-darwin-arm64 --outfile=dist/kana-darwin-arm64 src/main.ts && bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-darwin-x64 --outfile=dist/kana-darwin-x64 src/main.ts && bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-linux-arm64 --outfile=dist/kana-linux-arm64 src/main.ts && bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-linux-x64-baseline --outfile=dist/kana-linux-x64 src/main.ts",
     "changelog": "conventional-changelog -p conventionalcommits",
-    "check": "biome check --error-on-warnings . && bun run typecheck && bun test",
-    "check:write": "biome check --write --error-on-warnings . && bun run typecheck && bun test",
+    "check": "biome check --error-on-warnings . && bun run typecheck && bun run knip && bun test",
+    "check:write": "biome check --write --error-on-warnings . && bun run typecheck && bun run knip && bun test",
     "format": "biome format --write .",
+    "generate:logo": "bun scripts/generate-logo.ts",
     "install:bin": "./scripts/install.sh",
+    "knip": "knip",
+    "knip:fix": "knip --fix --format",
     "lint": "biome lint --error-on-warnings .",
     "prepare": "husky",
     "start": "bun run build:cli && ./kana",
@@ -34,6 +37,7 @@
     "conventional-changelog": "^8.1.0",
     "conventional-changelog-conventionalcommits": "^10.2.1",
     "husky": "9.1.7",
+    "knip": "^6.32.2",
     "typescript": "^6.0.3"
   }
 }
