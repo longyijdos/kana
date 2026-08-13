@@ -116,7 +116,7 @@ export function createBashTool(
       return {
         content: formatBashContent(toolResult),
         result: toolResult,
-        isError: result.exitCode !== 0 || result.timedOut,
+        isError: result.timedOut,
       };
     },
   };

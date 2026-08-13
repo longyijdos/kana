@@ -676,6 +676,25 @@ describe("workspace tools", () => {
     expect(result.isError).toBe(false);
   });
 
+  test("bash preserves non-zero command exits without marking the tool as an error", async () => {
+    const root = await createTempRoot();
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: "printf command-failed >&2; exit 7",
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({
+      exitCode: 7,
+      stderr: "command-failed",
+      timedOut: false,
+    });
+    expect(result.isError).toBe(false);
+  });
+
   test("bash streams stdout before the command completes", async () => {
     const root = await createTempRoot();
     const updates: unknown[] = [];

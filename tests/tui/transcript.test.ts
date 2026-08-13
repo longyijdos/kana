@@ -661,7 +661,7 @@ describe("tui transcript", () => {
     expect(full).not.toContain("\x1b[3J");
   });
 
-  test("renders failed bash output without structured result metadata", () => {
+  test("renders non-zero bash output as a completed command without structured result metadata", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
@@ -682,13 +682,14 @@ describe("tui transcript", () => {
         stdoutTruncated: false,
         stderrTruncated: false,
       },
-      true,
+      false,
     );
 
     const lines = block.render(100).map(stripAnsi);
     const output = lines.join("\n");
 
-    expect(lines).toContain("◆ Failed to run");
+    expect(lines).toContain("◆ Ran");
+    expect(lines).not.toContain("◆ Failed to run");
     expect(lines).toContain("before");
     expect(lines).toContain("failure");
     expect(output).not.toContain("exit 2");
