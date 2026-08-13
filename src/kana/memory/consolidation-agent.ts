@@ -118,6 +118,11 @@ export async function runMemoryConsolidation(
   const abort = () => agent.abort();
 
   if (options.signal?.aborted) {
+    logger.info("memory_consolidation.ended", {
+      scope: options.scope,
+      mode: options.mode,
+      outcome: "aborted",
+    });
     return { state: agent.state, outcome: "aborted" };
   } else {
     options.signal?.addEventListener("abort", abort, { once: true });

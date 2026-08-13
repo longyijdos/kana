@@ -125,6 +125,8 @@ The consolidation Agent uses the same model configuration as the main Agent but 
 
 Every edit/replace first affects an in-memory transaction and checks the size limit before accepting the change. `commit()` occurs only when the Agent ends normally with `stop` and the transaction changed. Abort, error, length truncation, `turn_limit`, and no-op runs never overwrite durable memory.
 
+Automatic consolidation is process-owned background work. During TUI or headless shutdown, the host stops new automatic scheduling, aborts running or queued consolidation Agents from every scheduler it created (including schedulers replaced by model reconfiguration), and awaits their settlement before closing external resources. The `remember` entry already stored in daily staging remains intact, while an aborted in-memory transaction does not modify durable `memory.md`.
+
 ## Full compaction and retention
 
 Choose Compact under `/memory` to run full consolidation. Then choose Project, Global, or Both and optionally enter additional instructions in the separate input. The consolidation Agent receives current durable memory and this optional request, and additionally exposes these read-only tools:

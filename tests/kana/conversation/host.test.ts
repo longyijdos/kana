@@ -55,7 +55,7 @@ describe("Kana conversation host", () => {
     ).toEqual(["user", "assistant"]);
 
     await runtime.close();
-    await host.closeMcp();
+    await host.close();
   });
 
   test("applies model changes atomically through the shared config store", async () => {
@@ -82,7 +82,7 @@ describe("Kana conversation host", () => {
     expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
     expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");
     await runtime.close();
-    await host.closeMcp();
+    await host.close();
   });
 
   test("keeps clean sessions and model changes in memory", async () => {
@@ -131,7 +131,7 @@ describe("Kana conversation host", () => {
     expect(readdirSync(env.KANA_HOME ?? "", { recursive: true })).toEqual([]);
 
     await runtime.close();
-    await host.closeMcp();
+    await host.close();
   });
 
   test("keeps customizations disabled across the clean host lifecycle", async () => {
@@ -177,7 +177,7 @@ describe("Kana conversation host", () => {
       host.compactMemory("project", undefined, new AbortController().signal),
     ).rejects.toThrow("Memory is unavailable in clean mode.");
 
-    await host.closeMcp();
+    await host.close();
   });
 });
 

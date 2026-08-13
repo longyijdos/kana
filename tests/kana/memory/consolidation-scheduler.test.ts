@@ -121,6 +121,50 @@ describe("memory consolidation scheduler", () => {
     await Promise.all([incremental, full]);
     expect(started).toEqual(["incremental", "full"]);
   });
+
+  test("aborts and awaits active schedules during shutdown", async () => {
+    const events: string[] = [];
+    const logger = createLogger(events);
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let runSignal: AbortSignal | undefined;
+    let runSettled = false;
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+      logger,
+      runIncremental: async (_scope, _entries, _logger, signal) => {
+        runSignal = signal;
+        markStarted();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) {
+            resolve();
+            return;
+          }
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        runSettled = true;
+      },
+    });
+
+    const scheduled = scheduler.schedule([rememberResult("project", "mem_project")]);
+    await started;
+
+    const shutdown = scheduler.close();
+    expect(scheduler.close()).toBe(shutdown);
+    await Promise.all([scheduled, shutdown]);
+
+    expect(runSignal?.aborted).toBe(true);
+    expect(runSettled).toBe(true);
+    expect(events).toEqual([
+      "memory_consolidation.scheduled",
+      "memory_consolidation.shutdown_started",
+      "memory_consolidation.shutdown_ended",
+    ]);
+
+    await scheduler.schedule([rememberResult("project", "mem_after_shutdown")]);
+    expect(events.at(-1)).toBe("memory_consolidation.schedule_skipped");
+  });
 });
 
 function createLogger(events: string[]): Logger {

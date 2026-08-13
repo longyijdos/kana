@@ -27,6 +27,8 @@ kana exec --clean 检查当前项目
 
 新执行和恢复执行都通过 `KanaConversationHost` 与 `ConversationRuntime` 装配，因此与 TUI 共用模型、reasoning 配置、系统提示词、Skills、工作区工具和产品策略。普通模式继续使用 MCP、session V3 journal、accounting、日志和记忆调度。
 
+conversation runtime 关闭后，headless 退出流程会取消并等待尚未完成的自动记忆合并，再关闭 MCP。此时 `remember` 条目已经持久化到 daily 暂存；取消会保留该条目，也不会提交未完成的长期记忆 transaction。
+
 `--clean` 创建随本次进程结束即丢弃的临时 session。它仍加载 `config.toml`、`<KANA_HOME>/.env`、provider/model、OAuth 与审批规则，但不读取全局或项目 `AGENTS.md`、记忆、Skills 与 MCP 配置，不连接 MCP server，也不创建 session journal、session log 或 accounting 记录。`exec resume` 与 `--clean` 组合会在启动时以退出码 `1` 失败；JSON 模式会输出相应的 startup `error` 事件。纯净模式不是 sandbox 或隐私边界，内置工具和 provider 仍可能产生外部副作用。
 
 唯一刻意省略的内置工具是 `schedule_wake`：它依赖当前进程中的定时器，而无头进程会在本次 turn 后退出，无法兑现未来的 wake。其它内置工具继续使用相同的并发策略、deadline 和结果语义。普通模式会在 turn 开始前加载 MCP；可选 server 失败会产生 warning，必需 server 失败会使启动失败。纯净模式完全跳过这一步。无头模式不会打开浏览器完成 MCP OAuth，因此需要交互授权的 server 应预先在 TUI 中授权。

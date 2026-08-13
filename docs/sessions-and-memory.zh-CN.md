@@ -125,6 +125,8 @@ remember 成功
 
 所有 edit/replace 先作用于内存 transaction；每次写入前检查大小限制。仅当 Agent 以 `stop` 正常结束且 transaction 有改动时才 `commit()`。中止、错误、长度截断、`turn_limit` 和未改动都不会覆盖长期记忆。
 
+自动记忆合并属于进程持有的后台工作。TUI 或 headless 关闭时，host 会停止新的自动调度，取消并等待其创建过的全部 scheduler 中正在运行或排队的合并 Agent（包括模型重配后被替换的 scheduler），然后才关闭外部资源。`remember` 已写入 daily 暂存的条目会完整保留；被中止的内存 transaction 不会修改长期 `memory.md`。
+
 ## 全量压缩与保留
 
 在 `/memory` 中选择 Compact 可运行全量合并。随后选择 Project、Global 或 Both，并可在独立输入框中填写额外要求。合并 Agent 会收到当前长期记忆和这段可选请求，并额外开放以下只读工具：

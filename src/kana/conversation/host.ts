@@ -113,6 +113,7 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly logManager;
   private readonly sessions = new Map<string, HostedSession>();
   private readonly memoryConsolidationQueue: MemoryConsolidationQueue;
+  private readonly memoryConsolidationSchedulers = new Set<MemoryConsolidationScheduler>();
   private readonly oauthTokenStore;
   private readonly mcpRuntime: KanaMcpRuntime;
   private configData: KanaConfig;
@@ -319,6 +320,18 @@ export class KanaConversationHost<TConfiguration = never> {
 
   closeMcp(): Promise<void> {
     return this.mcpRuntime.close();
+  }
+
+  async close(): Promise<void> {
+    const schedulers = [...this.memoryConsolidationSchedulers];
+    this.memoryConsolidation = undefined;
+
+    try {
+      await Promise.all(schedulers.map((scheduler) => scheduler.close()));
+    } finally {
+      this.memoryConsolidationSchedulers.clear();
+      await this.mcpRuntime.close();
+    }
   }
 
   getMcpToolSource(toolName: string): McpToolSource | undefined {
@@ -669,12 +682,19 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   private createMemoryConsolidation(config: KanaConfig): MemoryConsolidationScheduler | undefined {
-    return this.launchMode !== "clean" && config.memory.enabled
-      ? createMemoryConsolidationScheduler(config, {
-          env: this.env,
-          queue: this.memoryConsolidationQueue,
-        })
-      : undefined;
+    const scheduler =
+      this.launchMode !== "clean" && config.memory.enabled
+        ? createMemoryConsolidationScheduler(config, {
+            env: this.env,
+            queue: this.memoryConsolidationQueue,
+          })
+        : undefined;
+    if (scheduler) {
+      // Model reconfiguration can replace the active scheduler while an older
+      // one still owns work, so the host retains every instance for shutdown.
+      this.memoryConsolidationSchedulers.add(scheduler);
+    }
+    return scheduler;
   }
 
   private async runMcpOperation(operation: "start" | "reload"): Promise<KanaMcpRuntimeSnapshot> {

@@ -134,8 +134,11 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
     return interrupted ? 130 : 1;
   } finally {
     process.off("SIGINT", onInterrupt);
-    await runtime?.close();
-    await host?.closeMcp();
+    try {
+      await runtime?.close();
+    } finally {
+      await host?.close();
+    }
   }
 }
 

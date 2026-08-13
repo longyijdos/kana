@@ -63,9 +63,9 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   });
   const terminal = new ProcessTerminal(host.notificationConfig);
   let removeProcessSignals = (): void => {};
-  const closeMcpRuntime = async (): Promise<void> => {
+  const closeHostRuntime = async (): Promise<void> => {
     removeProcessSignals();
-    await host.closeMcp();
+    await host.close();
   };
   const runMcpRuntimeOperation = async (
     operation: "start" | "reload",
@@ -95,7 +95,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     runMcpRuntimeOperation("reload", onProgress);
 
   app = await createTuiAppWithCleanup(
-    closeMcpRuntime,
+    closeHostRuntime,
     (agentOptions) =>
       host.createAgent({
         ...agentOptions,
@@ -179,7 +179,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
               reloadExternalTools: reloadMcpTools,
             },
           }),
-      onStop: closeMcpRuntime,
+      onStop: closeHostRuntime,
       onForceStop: () => {
         removeProcessSignals();
         terminal.stop();

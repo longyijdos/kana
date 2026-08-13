@@ -10,6 +10,7 @@ import type { KanaMemoryEntry, KanaMemoryScope } from "./storage";
 
 export type MemoryConsolidationScheduler = {
   schedule(messages: Message[], options?: ScheduleMemoryConsolidationOptions): Promise<void>;
+  close(): Promise<void>;
 };
 
 export type ScheduleMemoryConsolidationOptions = {
@@ -31,6 +32,7 @@ export type CreateMemoryConsolidationSchedulerOptions = {
     scope: KanaMemoryScope,
     entries: KanaMemoryEntry[],
     logger: Logger,
+    signal: AbortSignal,
   ) => Promise<MemoryConsolidationResult | undefined>;
   logger?: Logger;
 };
@@ -65,9 +67,17 @@ export function createMemoryConsolidationScheduler(
 ): MemoryConsolidationScheduler {
   const defaultLogger = options.logger ?? createNoopLogger();
   const queue = options.queue ?? createMemoryConsolidationQueue();
+  const shutdown = new AbortController();
+  const activeSchedules = new Map<Promise<void>, Logger>();
+  let closePromise: Promise<void> | undefined;
   const runIncremental =
     options.runIncremental ??
-    (async (scope: KanaMemoryScope, entries: KanaMemoryEntry[], logger: Logger) => {
+    (async (
+      scope: KanaMemoryScope,
+      entries: KanaMemoryEntry[],
+      logger: Logger,
+      signal: AbortSignal,
+    ) => {
       return runMemoryConsolidation(config, {
         scope,
         mode: "incremental",
@@ -75,6 +85,7 @@ export function createMemoryConsolidationScheduler(
         env: options.env,
         input: formatIncrementalMemoryConsolidationInput(scope, entries, options),
         logger,
+        signal,
       });
     });
 
@@ -86,6 +97,18 @@ export function createMemoryConsolidationScheduler(
       }
 
       const logger = scheduleOptions.logger ?? defaultLogger;
+      if (shutdown.signal.aborted) {
+        logger.warn("memory_consolidation.schedule_skipped", {
+          reason: "scheduler_closed",
+          scopeCount: entriesByScope.size,
+          entryCount: [...entriesByScope.values()].reduce(
+            (count, entries) => count + entries.length,
+            0,
+          ),
+        });
+        return Promise.resolve();
+      }
+
       logger.info("memory_consolidation.scheduled", {
         scopeCount: entriesByScope.size,
         entryCount: [...entriesByScope.values()].reduce(
@@ -95,12 +118,47 @@ export function createMemoryConsolidationScheduler(
       });
       const jobs = [...entriesByScope].map(([scope, entries]) => {
         return queue.enqueue(scope, async () => {
-          const result = await runIncremental(scope, entries, logger);
+          const result = await runIncremental(scope, entries, logger, shutdown.signal);
           if (result) scheduleOptions.onCompleted?.(scope, result);
         });
       });
+      const schedule = Promise.all(jobs).then(() => undefined);
 
-      return Promise.all(jobs).then(() => undefined);
+      activeSchedules.set(schedule, logger);
+      void schedule.then(
+        () => activeSchedules.delete(schedule),
+        () => activeSchedules.delete(schedule),
+      );
+
+      return schedule;
+    },
+    close() {
+      if (closePromise) {
+        return closePromise;
+      }
+
+      const pendingSchedules = [...activeSchedules];
+      const pendingByLogger = new Map<Logger, number>();
+      for (const [, logger] of pendingSchedules) {
+        pendingByLogger.set(logger, (pendingByLogger.get(logger) ?? 0) + 1);
+      }
+      for (const [logger, pendingScheduleCount] of pendingByLogger) {
+        logger.info("memory_consolidation.shutdown_started", { pendingScheduleCount });
+      }
+
+      // Automatic consolidation owns no durable state until its transaction
+      // commits, so shutdown cancels model work while preserving daily entries.
+      shutdown.abort(new Error("Memory consolidation scheduler is shutting down."));
+      closePromise = Promise.allSettled(pendingSchedules.map(([schedule]) => schedule)).then(() => {
+        for (const [logger, pendingScheduleCount] of pendingByLogger) {
+          logger.info("memory_consolidation.shutdown_ended", {
+            pendingScheduleCount,
+            outcome: "settled",
+          });
+        }
+      });
+
+      return closePromise;
     },
   };
 }
