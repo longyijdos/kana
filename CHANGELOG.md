@@ -1,3 +1,23 @@
+## [0.4.0](https://github.com/longyijdos/kana/compare/v0.3.0...v0.4.0) (2026-08-13)
+
+Kana v0.4.0 adds image prompts for OpenAI Codex, hosted web search for DeepSeek V4, and clearer TUI feedback for large inputs and tool execution.
+
+### Features
+
+- Attach up to 10 images to OpenAI Codex prompts from the macOS clipboard or local paths, with safe normalization, session persistence, and context compaction.
+- Run DeepSeek V4 Flash and Pro through the Responses API with hosted web search and low, high, or max reasoning effort.
+- Collapse long pasted input into a compact editor item while preserving the complete text for submission and history.
+- Group streamed tool-call preparation into one progress block, then show running, completed, canceled, and failed states at their actual lifecycle boundaries.
+- Expand `/help` with the current editor, image, cancellation, tool-output, and local-shell shortcuts.
+
+### Bug Fixes
+
+- Keep Codex tools and image inputs on the compatible classic Responses contract and surface provider stream error details.
+- Distinguish non-zero Bash exits from execution failures, and stop tool or hosted-search timers cleanly after cancellation.
+- Estimate context usage from replayable conversation state and preserve image-bearing history safely during compaction.
+- Keep prompt placeholders inside the editor frame and preserve one thinking timer across adjacent reasoning items.
+- Stop background memory consolidation cleanly during shutdown.
+
 ## [0.3.0](https://github.com/longyijdos/kana/compare/v0.2.2...v0.3.0) (2026-08-08)
 
 Kana v0.3.0 adds queued input and scheduled-message management, Codex hosted web search, and clickable terminal hyperlinks.

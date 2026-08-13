@@ -94,9 +94,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  Queue input during agent runs"),
-      text("  Schedule and manage future messages"),
-      text("  Codex web search and terminal hyperlinks"),
+      text("  Attach images to prompts"),
+      text("  DeepSeek V4 hosted web search"),
+      text("  Clearer tool progress and status"),
       muted("  ... /help for more"),
     ];
 
