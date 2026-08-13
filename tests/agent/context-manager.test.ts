@@ -263,6 +263,86 @@ describe("ContextManager", () => {
     expect(estimateContextTokens(createContext("x".repeat(100_000)))).toBe(20);
   });
 
+  test("keeps a clean usage anchor when hosted tools inflate response input", async () => {
+    let policyCalls = 0;
+    const manager = new ContextManager({
+      contextLimit: 100_000,
+      maxOutputTokens: 10_000,
+      compactPolicy: () => {
+        policyCalls += 1;
+        return { summary: "unused" };
+      },
+    });
+    const messages: Message[] = [{ role: "user", content: "Hello" }];
+    const cleanResponse: AssistantMessage = {
+      role: "assistant",
+      stopReason: "stop",
+      usage: {
+        promptTokens: 10_000,
+        completionTokens: 10,
+        totalTokens: 10_010,
+      },
+      content: [{ type: "text", text: "Hello back" }],
+    };
+
+    manager.recordAssistantUsage(cleanResponse, messages.length);
+    messages.push(cleanResponse, { role: "user", content: "Search for Kana" });
+
+    const hostedResponse: AssistantMessage = {
+      role: "assistant",
+      stopReason: "stop",
+      usage: {
+        promptTokens: 90_000,
+        completionTokens: 100,
+        totalTokens: 90_100,
+      },
+      content: [
+        {
+          type: "hosted_tool",
+          id: "search-1",
+          name: "web_search",
+          status: "completed",
+          action: { type: "search", query: "Kana" },
+        },
+        { type: "text", text: "Search result" },
+      ],
+    };
+
+    manager.recordAssistantUsage(hostedResponse, messages.length);
+    messages.push(hostedResponse);
+
+    const expectedAfterSearch =
+      cleanResponse.usage!.promptTokens +
+      estimateContextTokens({ messages: messages.slice(1) }) -
+      8;
+    expect(manager.estimateContextTokens({ messages })).toBe(expectedAfterSearch);
+    expect(expectedAfterSearch).toBeLessThan(20_000);
+
+    const prepared = await manager.prepareForModel({ messages });
+    expect(prepared.compaction).toBeUndefined();
+    expect(policyCalls).toBe(0);
+
+    messages.push({ role: "user", content: "Thanks" });
+    const recalibratedResponse: AssistantMessage = {
+      role: "assistant",
+      stopReason: "stop",
+      usage: {
+        promptTokens: 12_000,
+        completionTokens: 5,
+        totalTokens: 12_005,
+      },
+      content: [{ type: "text", text: "You're welcome" }],
+    };
+    manager.recordAssistantUsage(recalibratedResponse, messages.length);
+    messages.push(recalibratedResponse);
+
+    expect(manager.estimateContextTokens({ messages })).toBe(
+      recalibratedResponse.usage!.promptTokens +
+        estimateContextTokens({ messages: [recalibratedResponse] }) -
+        8,
+    );
+  });
+
   test("restores the previous checkpoint when summary generation fails", async () => {
     const manager = new ContextManager({
       contextLimit: 4_000,

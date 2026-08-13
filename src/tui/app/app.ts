@@ -6,9 +6,7 @@ import type {
 } from "@/agent";
 import {
   addModelUsage,
-  calculateContextUsedPercent,
   calculateUsageCostCny,
-  findLatestAssistantUsage,
   type Message,
   type ModelMetadata,
   type ModelUsage,
@@ -62,6 +60,7 @@ import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { ToolApprovalSource } from "../tools";
+import { calculateContextUsedPercent } from "../utils/context-usage";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
@@ -396,8 +395,7 @@ export class KanaTuiApp {
       closeContentViewer: () => this.contentViewer.close(),
       resetAgentEvents: () => this.agentEvents.resetRun(),
       clearMcpOAuthBlocks: () => this.mcpOAuthBlocks.clear(),
-      updateContextUsage: (messages, checkpoint) =>
-        this.updateContextUsageFromMessages(messages, checkpoint),
+      updateContextUsage: () => this.updateContextUsage(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
       restoreBottom: (focus) => this.restoreBottom(focus),
       showError: (error) => this.showError(error),
@@ -489,10 +487,7 @@ export class KanaTuiApp {
     this.unsubscribeConversationEvents = this.conversation.subscribe((event) =>
       this.handleConversationEvent(event),
     );
-    this.updateContextUsageFromMessages(
-      initialSession?.messages ?? [],
-      initialSession?.contextCheckpoint,
-    );
+    this.updateContextUsage();
   }
 
   start(): void {
@@ -670,10 +665,9 @@ export class KanaTuiApp {
   private recreateAgentForExternalTools(): void {
     // The editor is unfocused before initial load or reload begins, and the
     // MCP manager menu cannot open during a run, so replacement is race-free.
-    const { messages, contextCheckpoint } = this.conversation.state;
     this.conversation.reconfigure();
     this.agentEvents.resetRun();
-    this.updateContextUsageFromMessages(messages, contextCheckpoint);
+    this.updateContextUsage();
   }
 
   private handleGlobalInput(data: string): { consume?: boolean } | undefined {
@@ -738,7 +732,6 @@ export class KanaTuiApp {
   }
 
   private switchModel(selection: TuiModelSelection): void {
-    const { messages, contextCheckpoint } = this.conversation.state;
     const logMetadata = {
       provider: selection.provider,
       model: selection.model,
@@ -751,7 +744,7 @@ export class KanaTuiApp {
       this.editor.setModel(
         `${this.conversation.state.model.metadata.model} · ${formatTuiReasoningSelection(selection)}`,
       );
-      this.updateContextUsageFromMessages(messages, contextCheckpoint);
+      this.updateContextUsage();
       this.transcript.addChild(
         new TextBlock(
           `Switched to ${formatModelName(this.conversation.state.model.metadata)} · reasoning ${formatTuiReasoningSelection(selection)}.`,
@@ -935,8 +928,11 @@ export class KanaTuiApp {
         }
         if (event.event.type === "message_end") {
           this.recordUsage(event.event.message.usage);
+        } else if (event.event.type === "turn_end") {
+          this.updateContextUsage(event.event.estimatedContextTokens);
+          this.tui.requestRender();
         } else if (event.event.type === "context_compacted") {
-          this.recordUsage(event.event.usage, false);
+          this.recordUsage(event.event.usage);
         }
         break;
 
@@ -967,6 +963,7 @@ export class KanaTuiApp {
 
   private finishConversationRun(): void {
     this.running = false;
+    this.updateContextUsage();
     this.editor.updateStatus({
       running: false,
       activeTool: undefined,
@@ -1250,7 +1247,7 @@ export class KanaTuiApp {
     });
   }
 
-  private recordUsage(usage: ModelUsage | undefined, updateContext = true): void {
+  private recordUsage(usage: ModelUsage | undefined): void {
     if (!usage) {
       return;
     }
@@ -1259,48 +1256,14 @@ export class KanaTuiApp {
 
     this.totalUsage = addModelUsage(this.totalUsage, usage);
     this.totalCostCny += calculateUsageCostCny(usage, metadata.cost);
-    if (updateContext) {
-      this.updateContextUsage(usage);
-    }
   }
 
-  private updateContextUsageFromMessages(
-    messages: Message[],
-    checkpoint?: ContextCheckpoint,
-  ): void {
-    if (checkpoint) {
-      const measuredUsage = findLatestAssistantUsage(
-        messages.slice(checkpoint.createdAfterMessageCount),
-      );
-      if (measuredUsage) {
-        this.updateContextUsage(measuredUsage);
-        return;
-      }
-      this.editor.updateStatus({
-        contextUsedPercent: Math.min(
-          100,
-          Math.max(
-            0,
-            Math.round(
-              (checkpoint.estimatedAfterTokens /
-                (this.conversation.state.contextLimit ??
-                  this.conversation.state.model.metadata.contextWindow)) *
-                100,
-            ),
-          ),
-        ),
-      });
-      return;
-    }
-    this.updateContextUsage(findLatestAssistantUsage(messages));
-  }
-
-  private updateContextUsage(usage: ModelUsage | undefined): void {
+  private updateContextUsage(estimatedTokens?: number): void {
+    const state = this.conversation.state;
     this.editor.updateStatus({
       contextUsedPercent: calculateContextUsedPercent(
-        usage,
-        this.conversation.state.contextLimit ??
-          this.conversation.state.model.metadata.contextWindow,
+        estimatedTokens ?? state.estimatedContextTokens,
+        state.contextLimit ?? state.model.metadata.contextWindow,
       ),
     });
   }

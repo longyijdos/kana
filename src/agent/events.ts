@@ -29,6 +29,7 @@ export type AgentEvent =
       turn: number;
       message: AssistantMessage;
       toolResults: ToolResultMessage[];
+      estimatedContextTokens?: number;
     }
   | {
       type: "turn_input";

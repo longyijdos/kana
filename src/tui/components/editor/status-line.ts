@@ -19,7 +19,7 @@ export function renderStatusLine(
     state.cleanMode ? color("clean", tuiTheme.command) : undefined,
     state.contextUsedPercent === undefined
       ? undefined
-      : color(`Context ${state.contextUsedPercent}% used`, tuiTheme.contextUsage),
+      : color(`Context ~${state.contextUsedPercent}% used`, tuiTheme.contextUsage),
     phaseText(state.phase),
     state.activeTool ? color(`tool ${state.activeTool}`, tuiTheme.toolActive) : undefined,
     color(formatCwd(process.cwd()), tuiTheme.cwd),

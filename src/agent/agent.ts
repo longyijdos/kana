@@ -54,6 +54,7 @@ export type AgentState = {
   readonly error?: unknown;
   readonly contextLimit?: number;
   readonly contextCheckpoint?: ContextCheckpoint;
+  readonly estimatedContextTokens?: number;
 };
 
 type WritableAgentState = Omit<
@@ -64,6 +65,7 @@ type WritableAgentState = Omit<
   | "error"
   | "contextLimit"
   | "contextCheckpoint"
+  | "estimatedContextTokens"
 > & {
   isRunning: boolean;
   streamingMessage?: AssistantMessage;
@@ -159,6 +161,11 @@ export class Agent {
       error: this.stateData.error,
       contextLimit: this.contextManager?.contextLimit,
       contextCheckpoint: this.contextManager?.checkpoint,
+      estimatedContextTokens: this.contextManager?.estimateContextTokens({
+        system: this.stateData.system,
+        messages: this.stateData.messages,
+        tools: this.stateData.tools,
+      }),
     };
   }
 

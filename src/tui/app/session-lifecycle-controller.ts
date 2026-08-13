@@ -1,5 +1,3 @@
-import type { ContextCheckpoint } from "@/agent";
-import type { Message } from "@/core";
 import type {
   ConversationRuntime,
   ConversationSessionSnapshot,
@@ -27,7 +25,7 @@ export type SessionLifecycleControllerOptions = {
   closeContentViewer: () => void;
   resetAgentEvents: () => void;
   clearMcpOAuthBlocks: () => void;
-  updateContextUsage: (messages: Message[], checkpoint?: ContextCheckpoint) => void;
+  updateContextUsage: () => void;
   updateStatus: (phase: RunPhase) => void;
   restoreBottom: (focus: boolean) => void;
   showError: (error: unknown) => void;
@@ -91,7 +89,7 @@ export class SessionLifecycleController {
     this.options.clearMcpOAuthBlocks();
     this.options.editor.clear();
     this.initializeTranscript([]);
-    this.options.updateContextUsage([]);
+    this.options.updateContextUsage();
     this.options.updateStatus("idle");
     this.options.tui.requestRender(true);
   }
@@ -163,7 +161,7 @@ export class SessionLifecycleController {
     this.options.clearMcpOAuthBlocks();
     this.options.editor.clear();
     this.initializeTranscript(session.timeline);
-    this.options.updateContextUsage(session.messages, session.contextCheckpoint);
+    this.options.updateContextUsage();
     this.options.updateStatus("idle");
     this.options.tui.setFocus(this.options.editor);
     this.options.tui.requestRender(true);

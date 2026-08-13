@@ -17,9 +17,9 @@ describe("prompt editor status line", () => {
     const statusLine = editor.render(120).at(-1) ?? "";
     const rendered = stripAnsi(statusLine);
 
-    expect(rendered).toStartWith("deepseek-v4-pro · high | Context 12% used | idle");
+    expect(rendered).toStartWith("deepseek-v4-pro · high | Context ~12% used | idle");
     expect(rendered).not.toContain("Ctrl+C exit");
-    expect(statusLine).toContain(color("Context 12% used", tuiTheme.contextUsage));
+    expect(statusLine).toContain(color("Context ~12% used", tuiTheme.contextUsage));
   });
 
   test("keeps clean mode visible in the status line", () => {

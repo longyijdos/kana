@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
-import { ContextManager } from "../../src/agent/context-manager";
+import { ContextManager, estimateContextTokens } from "../../src/agent/context-manager";
 import type { AgentEvent } from "../../src/agent/events";
 import { runAgentLoop } from "../../src/agent/loop";
 import type { ModelContext } from "../../src/core/context";
@@ -506,6 +506,47 @@ describe("runAgentLoop", () => {
       type: "agent_end",
       reason: "stop",
     });
+  });
+
+  test("publishes the next prompt estimate after each complete model/tool turn", async () => {
+    const initialMessages = [{ role: "user" as const, content: "add the numbers" }];
+    const events: AgentEvent[] = [];
+    const contextManager = new ContextManager({
+      contextLimit: 128_000,
+      maxOutputTokens: 16_000,
+    });
+    const messages = await runAgentLoop(
+      {
+        messages: initialMessages,
+        tools: [addTool],
+      },
+      {
+        model: new ScriptedToolModel(),
+        maxTurns: 2,
+        contextManager,
+      },
+      (event) => {
+        events.push(structuredClone(event));
+      },
+    );
+    const turnEnds = events.filter(
+      (event): event is Extract<AgentEvent, { type: "turn_end" }> => event.type === "turn_end",
+    );
+
+    expect(turnEnds).toHaveLength(2);
+    expect(turnEnds[0]?.toolResults).toHaveLength(1);
+    expect(turnEnds[0]?.estimatedContextTokens).toBe(
+      estimateContextTokens({
+        messages: [...initialMessages, ...messages.slice(0, 2)],
+        tools: [addTool],
+      }),
+    );
+    expect(turnEnds[1]?.estimatedContextTokens).toBe(
+      estimateContextTokens({
+        messages: [...initialMessages, ...messages],
+        tools: [addTool],
+      }),
+    );
   });
 
   test("commits the assistant tool call before execution and each result afterward", async () => {

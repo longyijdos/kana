@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { Message, ModelCost, ModelUsage } from "@/core";
-import {
-  addModelUsage,
-  calculateContextUsedPercent,
-  calculateUsageCostCny,
-  findLatestAssistantUsage,
-} from "@/core";
+import type { ModelCost, ModelUsage } from "@/core";
+import { addModelUsage, calculateUsageCostCny } from "@/core";
 
 const cost: ModelCost = {
   input: 3,
@@ -62,48 +57,5 @@ describe("core usage helpers", () => {
     };
 
     expect(calculateUsageCostCny(usage, cost)).toBe(6);
-  });
-
-  test("calculates context used from prompt tokens", () => {
-    expect(
-      calculateContextUsedPercent(
-        {
-          promptTokens: 123_456,
-          completionTokens: 1,
-          totalTokens: 123_457,
-        },
-        1_000_000,
-      ),
-    ).toBe(12);
-  });
-
-  test("finds the latest assistant usage in message history", () => {
-    const latestUsage: ModelUsage = {
-      promptTokens: 30,
-      completionTokens: 4,
-      totalTokens: 34,
-    };
-    const messages: Message[] = [
-      {
-        role: "assistant",
-        usage: {
-          promptTokens: 10,
-          completionTokens: 2,
-          totalTokens: 12,
-        },
-        content: [],
-      },
-      {
-        role: "user",
-        content: "hi",
-      },
-      {
-        role: "assistant",
-        usage: latestUsage,
-        content: [],
-      },
-    ];
-
-    expect(findLatestAssistantUsage(messages)).toBe(latestUsage);
   });
 });

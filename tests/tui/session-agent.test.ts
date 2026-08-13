@@ -515,6 +515,75 @@ describe("session-scoped agents", () => {
     wakeScheduler.dispose();
   });
 
+  test("updates approximate context from turn_end instead of raw response usage", async () => {
+    const calls: AgentEventStream[] = [];
+    const app = new KanaTuiApp(
+      () =>
+        ({
+          state: {
+            messages: [],
+            estimatedContextTokens: 1_000,
+            contextLimit: 100_000,
+            model: {
+              metadata: {
+                provider: "test",
+                model: "test-model",
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 100_000,
+                maxOutputTokens: 1,
+              },
+            },
+          },
+          stream() {
+            const stream = new AgentEventStream();
+            calls.push(stream);
+            return stream;
+          },
+        }) as never,
+      createTerminal(),
+      {
+        ...createOptions(),
+        initialSession: { id: "session-a", messages: [], timeline: [] },
+      },
+    );
+    const internal = app as unknown as {
+      submitPrompt(value: string): Promise<void>;
+      layout: { render(width: number): string[] };
+    };
+    const message = {
+      role: "assistant" as const,
+      stopReason: "stop" as const,
+      usage: {
+        promptTokens: 90_000,
+        completionTokens: 100,
+        totalTokens: 90_100,
+      },
+      content: [{ type: "text" as const, text: "Done" }],
+    };
+
+    const prompt = internal.submitPrompt("Start the task.");
+    expect(calls).toHaveLength(1);
+    calls[0]?.push({ type: "agent_start" });
+    calls[0]?.push({ type: "turn_start", turn: 1 });
+    calls[0]?.push({ type: "message_start", message });
+    calls[0]?.push({ type: "message_end", message });
+    calls[0]?.push({
+      type: "turn_end",
+      turn: 1,
+      message,
+      toolResults: [],
+      estimatedContextTokens: 25_000,
+    });
+
+    await waitFor(() =>
+      stripAnsi(internal.layout.render(100).join("\n")).includes("Context ~25% used"),
+    );
+    expect(stripAnsi(internal.layout.render(100).join("\n"))).not.toContain("Context ~90% used");
+
+    calls[0]?.end({ type: "agent_end", reason: "stop", messages: [message] });
+    await prompt;
+  });
+
   test("replaces the temporary manual-compaction message with the persisted marker", async () => {
     let listener: ((event: never) => void) | undefined;
     let finishCompaction!: () => void;

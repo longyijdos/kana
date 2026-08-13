@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import type { HostedToolContent, Message, ModelContext, ModelUsage, ToolCallContent } from "@/core";
+import type {
+  AssistantMessage,
+  HostedToolContent,
+  Message,
+  ModelContext,
+  ModelUsage,
+  ToolCallContent,
+} from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
@@ -243,8 +250,25 @@ export class ContextManager {
     };
   }
 
-  recordUsage(usage: ModelUsage | undefined, messageCount: number): void {
+  estimateContextTokens(context: ModelContext): number {
+    this.assertCheckpointFits(context.messages);
+    return this.estimateNextPrompt(context, this.createModelContext(context));
+  }
+
+  recordAssistantUsage(message: AssistantMessage, messageCount: number): void {
+    const usage = message.usage;
     if (!usage) {
+      return;
+    }
+
+    // Hosted providers can add search pages or other transient material after
+    // the request begins. That material is billable input but is not present in
+    // Kana's replayable history, so it must not replace a clean prompt anchor.
+    if (message.content.some((content) => content.type === "hosted_tool")) {
+      this.log("debug", "context.usage_anchor_skipped", {
+        reason: "hosted_tool",
+        messageCount,
+      });
       return;
     }
 

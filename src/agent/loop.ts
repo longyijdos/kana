@@ -140,7 +140,7 @@ export async function runAgentLoop(
     ) {
       throw assistantTurn.error;
     }
-    config.contextManager?.recordUsage(assistantTurn.message.usage, sourceMessageCount);
+    config.contextManager?.recordAssistantUsage(assistantTurn.message, sourceMessageCount);
     const assistantHistoryMessage = assistantMessageForHistory(assistantTurn.message);
 
     if (assistantHistoryMessage) {
@@ -158,6 +158,7 @@ export async function runAgentLoop(
         turn,
         message: assistantHistoryMessage ?? assistantTurn.message,
         toolResults: [],
+        estimatedContextTokens: estimateCurrentContextTokens(currentContext, config),
       });
       break;
     }
@@ -176,6 +177,7 @@ export async function runAgentLoop(
       turn,
       message: assistantTurn.message,
       toolResults: executedToolCalls.toolResults,
+      estimatedContextTokens: estimateCurrentContextTokens(currentContext, config),
     });
 
     if (executedToolCalls.abortRun) {
@@ -374,6 +376,17 @@ async function prepareModelContext(
   }
 
   return prepared;
+}
+
+function estimateCurrentContextTokens(
+  context: AgentContext,
+  config: AgentLoopConfig,
+): number | undefined {
+  return config.contextManager?.estimateContextTokens({
+    system: context.system,
+    messages: context.messages,
+    tools: context.tools,
+  });
 }
 
 async function emitMessageStart(message: AssistantMessage, emit: AgentEventSink): Promise<void> {
