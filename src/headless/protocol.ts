@@ -1,7 +1,7 @@
 import type { AgentEndReason, ContextCompactionReason } from "@/agent";
 import type { ModelUsage } from "@/core";
 
-export const KANA_EXEC_EVENT_SCHEMA_VERSION = 1 as const;
+const KANA_EXEC_EVENT_SCHEMA_VERSION = 1 as const;
 
 export type KanaExecUsage = {
   input_tokens: number;

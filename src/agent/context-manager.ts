@@ -18,7 +18,7 @@ const MAX_SUMMARY_TOKENS = 8_192;
 
 export type ContextCompactionReason = "threshold" | "provider_limit" | "manual";
 
-export class ContextCompactionError extends Error {
+class ContextCompactionError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "ContextCompactionError";
@@ -50,7 +50,7 @@ export type CompactPolicyInput = {
   signal?: AbortSignal;
 };
 
-export type CompactPolicyResult = {
+type CompactPolicyResult = {
   summary: string;
   usage?: ModelUsage;
 };
@@ -70,7 +70,7 @@ export type ContextManagerConfig = {
   loggerMetadata?: LogMetadata;
 };
 
-export type ContextCompactionStart = {
+type ContextCompactionStart = {
   reason: ContextCompactionReason;
   estimatedTokens: number;
   contextLimit: number;

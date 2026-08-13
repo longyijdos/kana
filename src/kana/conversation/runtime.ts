@@ -20,7 +20,7 @@ export type ConversationRunSource = "user" | "scheduled" | "compaction";
 
 export type ConversationInputDisposition = "steered" | "queued" | "discarded";
 
-export type ConversationPendingInput =
+type ConversationPendingInput =
   | {
       id: string;
       kind: "queued" | "deferred";
@@ -77,7 +77,7 @@ export type ConversationRuntimeEvent =
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
 
-export type CreateConversationAgentOptions<TConfiguration> = {
+type CreateConversationAgentOptions<TConfiguration> = {
   beforeToolExecution: BeforeToolExecutionHook;
   messages?: Message[];
   sessionId?: string;

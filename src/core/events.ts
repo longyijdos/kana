@@ -6,7 +6,7 @@ import type {
 } from "./messages";
 import type { ModelUsage } from "./model";
 
-export type StopReason = AssistantStopReason;
+type StopReason = AssistantStopReason;
 
 // delta is the increment parsed from the current provider stream chunk.
 // snapshot is the assistant message after applying that increment.

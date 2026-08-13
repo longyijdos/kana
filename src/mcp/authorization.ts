@@ -37,10 +37,7 @@ export type McpProtectedResourceMetadata = {
   resourceDocumentation?: string;
 };
 
-export type McpProtectedResourceDiscoverySource =
-  | "challenge"
-  | "path_well_known"
-  | "root_well_known";
+type McpProtectedResourceDiscoverySource = "challenge" | "path_well_known" | "root_well_known";
 
 export type McpAuthorizationDiagnosticEvent =
   | {
@@ -65,7 +62,7 @@ export type McpAuthorizationDiagnosticEvent =
       authorizationServerCount: number;
     };
 
-export type McpAuthorizationDiagnosticHandler = (event: McpAuthorizationDiagnosticEvent) => void;
+type McpAuthorizationDiagnosticHandler = (event: McpAuthorizationDiagnosticEvent) => void;
 
 export type DiscoverMcpProtectedResourceOptions = {
   challenge?: McpBearerChallenge;
@@ -97,7 +94,7 @@ export function createMcpAuthorizationChallengeError(
   return undefined;
 }
 
-export function parseMcpBearerChallenge(value: string | null): McpBearerChallenge | undefined {
+function parseMcpBearerChallenge(value: string | null): McpBearerChallenge | undefined {
   if (value === null || value.trim() === "") {
     return undefined;
   }

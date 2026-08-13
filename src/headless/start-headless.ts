@@ -44,7 +44,7 @@ export type HeadlessRunResult = {
   usage?: ModelUsage;
 };
 
-export type HeadlessWarning = {
+type HeadlessWarning = {
   phase: "mcp_startup";
   message: string;
   serverId?: string;

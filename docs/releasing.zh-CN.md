@@ -55,7 +55,7 @@ git push --atomic origin main v0.3.0
 推送 `v*` tag 后，Release workflow 会：
 
 1. 校验 tag、`package.json` 版本和 `CHANGELOG.md` 版本段一致。
-2. 运行格式、类型和测试检查。
+2. 运行格式、类型、死代码和测试检查。
 3. 构建 macOS/Linux 的 arm64、x64 二进制及 SHA-256 文件。
 4. 从对应 Changelog 版本段提取 GitHub Release 正文。
 5. 创建 Release，或在重新运行时更新正文并覆盖上传资产。

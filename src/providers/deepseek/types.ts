@@ -14,7 +14,7 @@ export type DeepSeekToolChoice =
       };
     };
 
-export type DeepSeekResponseFormat =
+type DeepSeekResponseFormat =
   | {
       type: "text";
     }

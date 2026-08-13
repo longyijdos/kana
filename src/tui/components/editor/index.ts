@@ -1,6 +1,5 @@
 export {
   Editor,
-  type EditorOptions,
   type EditorQueuedInput,
   type EditorScheduledInputSummary,
 } from "./editor";

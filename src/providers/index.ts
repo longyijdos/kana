@@ -26,8 +26,6 @@ export type ProviderModelMap = {
   "openai-codex": OpenAICodexModel;
 };
 
-const PROVIDERS = ["deepseek", "mock", "openai-codex"] as const satisfies readonly ProviderName[];
-
 const modelFactories = {
   deepseek: (config: DeepSeekModelConfig) => new DeepSeekModel(config),
   mock: (config: MockModelConfig) => new MockModel(config),
@@ -48,12 +46,4 @@ export function getModel<TProvider extends ProviderName>(
   ) => ProviderModelMap[TProvider];
 
   return createModel(config);
-}
-
-export function hasProvider(provider: string): provider is ProviderName {
-  return (PROVIDERS as readonly string[]).includes(provider);
-}
-
-export function listProviders(): readonly ProviderName[] {
-  return PROVIDERS;
 }

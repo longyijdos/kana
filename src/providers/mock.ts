@@ -13,7 +13,7 @@ export type MockModelConfig = ModelConfig & {
   response?: string;
 };
 
-export const MOCK_MODEL_METADATA = {
+const MOCK_MODEL_METADATA = {
   provider: "mock",
   model: "mock",
   protocol: null,

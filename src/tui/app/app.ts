@@ -94,9 +94,9 @@ import {
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
 
-export type KanaTuiSessionSnapshot = ConversationSessionSnapshot;
+type KanaTuiSessionSnapshot = ConversationSessionSnapshot;
 
-export type KanaTuiExternalToolsLoadResult = ExternalToolsLoadResult;
+type KanaTuiExternalToolsLoadResult = ExternalToolsLoadResult;
 
 export type KanaTuiAppOptions = {
   launchMode?: KanaLaunchMode;

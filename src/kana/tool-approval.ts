@@ -29,7 +29,7 @@ export function shouldRequestToolApproval(
   }
 }
 
-export function isBashToolCall(toolCall: ToolCallContent): boolean {
+function isBashToolCall(toolCall: ToolCallContent): boolean {
   return toolCall.name === "bash";
 }
 
@@ -82,7 +82,7 @@ export function loadKanaToolApprovals(env: NodeJS.ProcessEnv = process.env): Kan
   return readKanaToolApprovals(parsed);
 }
 
-export function saveKanaToolApprovals(
+function saveKanaToolApprovals(
   approvals: KanaToolApprovals,
   env: NodeJS.ProcessEnv = process.env,
 ): void {

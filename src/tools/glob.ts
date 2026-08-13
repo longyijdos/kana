@@ -49,9 +49,9 @@ export const globParameters = Type.Object({
   ),
 });
 
-export type GlobEntryType = "file" | "directory" | "symlink" | "other";
+type GlobEntryType = "file" | "directory" | "symlink" | "other";
 
-export type GlobToolMatch = {
+type GlobToolMatch = {
   path: string;
   type: GlobEntryType;
   size: number;

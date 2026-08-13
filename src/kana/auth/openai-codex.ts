@@ -17,7 +17,7 @@ const OPENAI_CODEX_REDIRECT_URI = "http://localhost:1455/auth/callback";
 const OPENAI_CODEX_SCOPES = ["openid", "profile", "email", "offline_access"] as const;
 const OPENAI_AUTH_CLAIM = "https://api.openai.com/auth";
 
-export const KANA_OPENAI_CODEX_OAUTH_STORAGE_KEY = "provider:openai-codex";
+const KANA_OPENAI_CODEX_OAUTH_STORAGE_KEY = "provider:openai-codex";
 
 export type CreateKanaOpenAICodexAuthOptions = {
   env?: NodeJS.ProcessEnv;

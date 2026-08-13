@@ -55,7 +55,7 @@ Adjust the staged files to match the actual diff. Use annotated tags for every s
 After a `v*` tag is pushed, the Release workflow:
 
 1. Verifies that the tag, `package.json` version, and `CHANGELOG.md` section agree.
-2. Runs formatting, type, and test checks.
+2. Runs formatting, type, dead-code, and test checks.
 3. Builds macOS/Linux binaries and SHA-256 files for arm64 and x64.
 4. Extracts the matching Changelog section as the GitHub Release body.
 5. Creates the Release, or updates its body and replaces its assets when rerun.

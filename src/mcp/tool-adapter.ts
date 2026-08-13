@@ -18,7 +18,7 @@ import {
   resolveMcpToolResultLimits,
 } from "./tool-result";
 
-export type McpToolCallOptions = {
+type McpToolCallOptions = {
   signal?: AbortSignal;
   onProgress?(progress: McpProgress): void;
 };
@@ -47,7 +47,7 @@ export type AdaptedMcpTool = Omit<Tool<TSchema, McpNormalizedToolResult>, "execu
   ): Promise<ToolResult<McpNormalizedToolResult>>;
 };
 
-export type McpToolProgressResult = McpToolSource & {
+type McpToolProgressResult = McpToolSource & {
   source: "mcp";
   progress: number;
   total?: number;

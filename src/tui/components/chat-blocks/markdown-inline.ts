@@ -28,7 +28,7 @@ export type InlineSpan = {
   style?: InlineStyle;
 };
 
-export type InlineLink = {
+type InlineLink = {
   // One shared object marks all styled spans from the same Markdown link so
   // fallback rendering appends its destination exactly once.
   destination: string;

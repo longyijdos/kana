@@ -1,8 +1,8 @@
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
 
 export type JsonRpcId = string | number;
-export type JsonPrimitive = null | boolean | number | string;
-export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+type JsonPrimitive = null | boolean | number | string;
+type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
 export type JsonObject = { [key: string]: JsonValue };
 
 export type JsonRpcRequest = {
@@ -18,13 +18,13 @@ export type JsonRpcNotification = {
   params?: JsonObject;
 };
 
-export type JsonRpcSuccessResponse = {
+type JsonRpcSuccessResponse = {
   jsonrpc: "2.0";
   id: JsonRpcId;
   result: JsonObject;
 };
 
-export type JsonRpcErrorData = {
+type JsonRpcErrorData = {
   code: number;
   message: string;
   data?: JsonValue;

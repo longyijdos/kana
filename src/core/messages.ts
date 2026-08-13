@@ -48,7 +48,7 @@ export type ToolResultMessage = {
 
 export type AssistantContent = TextContent | ThinkingContent | ToolCallContent | HostedToolContent;
 
-export type ProviderState = {
+type ProviderState = {
   provider: string;
   // Provider adapters own replay semantics for this JSON-serializable value.
   // Kana persists opaque protocol state such as encrypted reasoning without

@@ -13,7 +13,8 @@ import path from "node:path";
 
 import { getKanaConfigPaths, loadKanaConfig } from "../config";
 import { encodeKanaWorkspacePath } from "../path";
-export const KANA_MEMORY_SCOPES = ["global", "project"] as const;
+
+const KANA_MEMORY_SCOPES = ["global", "project"] as const;
 
 export type KanaMemoryScope = (typeof KANA_MEMORY_SCOPES)[number];
 

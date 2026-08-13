@@ -18,7 +18,7 @@ import {
 } from "./authorization";
 import { McpTransportError } from "./transport";
 
-export type McpOAuthHttpLifecycleDiagnosticEvent =
+type McpOAuthHttpLifecycleDiagnosticEvent =
   | {
       event: "mcp.oauth_preparation_started";
       level: "info";

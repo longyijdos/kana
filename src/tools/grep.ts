@@ -54,7 +54,7 @@ export const grepParameters = Type.Object({
   ),
 });
 
-export type GrepToolMatch = {
+type GrepToolMatch = {
   path: string;
   line: number;
   column: number;

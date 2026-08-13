@@ -5,9 +5,9 @@ import path from "node:path";
 import { getKanaConfigPaths } from "../config";
 import { DEFAULT_KANA_SKILLS_REPOSITORY_NAME } from "./install";
 
-export const KANA_SKILL_SYNC_TARGETS = ["codex"] as const;
+const KANA_SKILL_SYNC_TARGETS = ["codex"] as const;
 
-export type KanaSkillSyncTarget = (typeof KANA_SKILL_SYNC_TARGETS)[number];
+type KanaSkillSyncTarget = (typeof KANA_SKILL_SYNC_TARGETS)[number];
 
 export type SyncKanaSkillsOptions = {
   repositoryName?: string;
@@ -17,9 +17,9 @@ export type SyncKanaSkillsOptions = {
 
 export type ResyncKanaSkillsOptions = SyncKanaSkillsOptions;
 
-export type SyncKanaSkillStatus = "copied" | "exists" | "replaced";
+type SyncKanaSkillStatus = "copied" | "exists" | "replaced";
 
-export type SyncKanaSkillResult = {
+type SyncKanaSkillResult = {
   name: string;
   sourcePath: string;
   status: SyncKanaSkillStatus;

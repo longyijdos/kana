@@ -13,7 +13,7 @@ export type MemoryConsolidationScheduler = {
   close(): Promise<void>;
 };
 
-export type ScheduleMemoryConsolidationOptions = {
+type ScheduleMemoryConsolidationOptions = {
   // A background run must retain the logger for the session that scheduled it.
   // The active TUI session can change before the queued work actually starts.
   logger?: Logger;

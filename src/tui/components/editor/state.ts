@@ -14,7 +14,7 @@ export type EditorTextState = {
   collapsedPastes?: CollapsedPaste[];
 };
 
-export type EditorDisplayPaste = CollapsedPaste & {
+type EditorDisplayPaste = CollapsedPaste & {
   displayStartOffset: number;
   displayEndOffset: number;
 };
@@ -158,10 +158,7 @@ export function createEditorDisplayState(state: EditorTextState): EditorDisplayS
   return projection;
 }
 
-export function sourceOffsetToDisplayOffset(
-  display: EditorDisplayState,
-  sourceOffset: number,
-): number {
+function sourceOffsetToDisplayOffset(display: EditorDisplayState, sourceOffset: number): number {
   let offsetDelta = 0;
 
   for (const paste of display.collapsedPastes) {
@@ -268,7 +265,7 @@ export function splitEditorDisplayRange(
   return segments;
 }
 
-export function clampToBoundary(value: string, offset: number): number {
+function clampToBoundary(value: string, offset: number): number {
   if (offset <= 0) {
     return 0;
   }
@@ -290,7 +287,7 @@ export function clampToBoundary(value: string, offset: number): number {
   return value.length;
 }
 
-export function previousBoundary(value: string, offset: number): number {
+function previousBoundary(value: string, offset: number): number {
   const normalizedOffset = clampToBoundary(value, offset);
   let previous = 0;
 
@@ -305,7 +302,7 @@ export function previousBoundary(value: string, offset: number): number {
   return previous;
 }
 
-export function nextBoundary(value: string, offset: number): number {
+function nextBoundary(value: string, offset: number): number {
   const normalizedOffset = clampToBoundary(value, offset);
 
   for (const boundary of graphemeBoundaries(value)) {

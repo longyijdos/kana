@@ -168,7 +168,7 @@ const PROMPT_SHORTCUT_INPUT_WIDTH = Math.max(
   ...PROMPT_SHORTCUTS.map((shortcut) => shortcut.input.length),
 );
 
-export function formatPromptCommandSyntax(command: PromptCommand): string {
+function formatPromptCommandSyntax(command: PromptCommand): string {
   return `/${command.name}${command.argumentSyntax ? ` ${command.argumentSyntax}` : ""}`;
 }
 

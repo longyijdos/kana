@@ -4,11 +4,11 @@ import type { AgentEndReason, ContextCheckpoint } from "@/agent";
 import type { Message, ModelMetadata, ModelUsage, UserImage, UserMessage } from "@/core";
 
 export const SESSION_VERSION = 3;
-export const CONTEXT_SUMMARY_FORMAT = "kana-context-summary-v1";
+const CONTEXT_SUMMARY_FORMAT = "kana-context-summary-v1";
 const DEFAULT_SESSION_TITLE = "Untitled session";
 const MAX_SESSION_TITLE_LENGTH = 80;
 
-export type KanaSessionModelMetadata = Pick<ModelMetadata, "provider" | "model">;
+type KanaSessionModelMetadata = Pick<ModelMetadata, "provider" | "model">;
 
 export type KanaSessionMetadata = {
   id: string;
@@ -31,7 +31,7 @@ export type KanaSessionHeader = {
   parentSessionPath?: string;
 };
 
-export type KanaSessionTurnKind = "agent" | "snapshot";
+type KanaSessionTurnKind = "agent" | "snapshot";
 export type KanaSessionTurnOutcome = AgentEndReason | "interrupted" | "snapshot";
 
 export type KanaSessionTurnStartEntry = {
@@ -83,8 +83,6 @@ export type KanaSessionTimelineEntry =
   | KanaSessionMessageEntry
   | KanaSessionContextCompactionEntry
   | KanaSessionTurnEndEntry;
-
-export type KanaSessionEntry = KanaSessionHeader | KanaSessionTimelineEntry;
 
 export type CreateKanaSessionOptions = {
   cwd?: string;

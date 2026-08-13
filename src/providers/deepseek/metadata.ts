@@ -1,6 +1,4 @@
-import type { ModelCost, ModelMetadata } from "@/core";
-
-export type DeepSeekModelCost = ModelCost;
+import type { ModelMetadata } from "@/core";
 
 export type DeepSeekModelMetadata = ModelMetadata;
 

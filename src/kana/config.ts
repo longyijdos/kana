@@ -24,7 +24,7 @@ export const KANA_OPENAI_CODEX_REASONING_EFFORTS = [
   "max",
 ] as const;
 
-export type KanaProviderConfig = {
+type KanaProviderConfig = {
   active: KanaModelProvider;
 };
 
@@ -56,16 +56,14 @@ export type KanaModelConfigMap = {
   "openai-codex": KanaOpenAICodexModelConfig;
 };
 
-export type KanaModelConfig = KanaModelConfigMap[KanaModelProvider];
-
-export type KanaAgentConfig = {
+type KanaAgentConfig = {
   maxTurns: number;
   toolDeadlineMs: number;
   parallelToolCalls: boolean;
   contextLimit?: number;
 };
 
-export const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;
+const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;
 
 export type KanaToolApprovalMode = (typeof KANA_TOOL_APPROVAL_MODES)[number];
 
@@ -73,14 +71,7 @@ export type KanaToolApprovalConfig = {
   mode: KanaToolApprovalMode;
 };
 
-export const KANA_NOTIFICATION_BACKENDS = [
-  "auto",
-  "off",
-  "bell",
-  "osc9",
-  "osc777",
-  "kitty",
-] as const;
+const KANA_NOTIFICATION_BACKENDS = ["auto", "off", "bell", "osc9", "osc777", "kitty"] as const;
 
 export type KanaNotificationBackend = (typeof KANA_NOTIFICATION_BACKENDS)[number];
 
@@ -96,17 +87,17 @@ export type KanaTuiConfig = {
   collapseLongPastes: boolean;
 };
 
-export type KanaMemoryConfig = {
+type KanaMemoryConfig = {
   enabled: boolean;
   maxChars: number;
   dailyRetentionDays?: number;
 };
 
-export const KANA_LOG_LEVELS = LOG_LEVELS;
+const KANA_LOG_LEVELS = LOG_LEVELS;
 
-export type KanaLogLevel = LogLevel;
+type KanaLogLevel = LogLevel;
 
-export type KanaLoggingConfig = {
+type KanaLoggingConfig = {
   level: KanaLogLevel;
 };
 

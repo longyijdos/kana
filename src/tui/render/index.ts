@@ -6,16 +6,14 @@ export {
   dim,
   type HighlightedLineToken,
   italic,
-  RESET,
   renderHighlightedLine,
   strikethrough,
 } from "./ansi";
-export { firstGrapheme, graphemeSegments } from "./graphemes";
+export { graphemeSegments } from "./graphemes";
 export {
   CLOSE_TERMINAL_HYPERLINK,
   sanitizeTerminalHyperlinkDestination,
   terminalHyperlink,
-  terminalHyperlinkState,
 } from "./hyperlink";
 export {
   isLineBreak,

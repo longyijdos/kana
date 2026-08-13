@@ -2,7 +2,7 @@ import type { ModelCost, ModelUsage } from "@/core";
 
 export const KANA_ACCOUNTING_VERSION = 1;
 
-export type KanaAccountingAgentKind = "main" | "memory_consolidation";
+type KanaAccountingAgentKind = "main" | "memory_consolidation";
 export type KanaAccountingOutcome =
   | "stop"
   | "length"

@@ -2,9 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { OAuthClientCredentials, OAuthTokenEndpointAuthMethod } from "@/oauth";
 import { getKanaConfigPaths } from "../config";
 
-export const KANA_MCP_SERVER_TYPES = ["stdio", "http"] as const;
-
-export type KanaMcpServerType = (typeof KANA_MCP_SERVER_TYPES)[number];
+const KANA_MCP_SERVER_TYPES = ["stdio", "http"] as const;
 
 type KanaMcpCommonServerConfig = {
   required: boolean;

@@ -6,7 +6,7 @@ const DEFAULT_CALLBACK_TIMEOUT_MS = 5 * 60 * 1_000;
 const DEFAULT_CALLBACK_REDIRECT_URI = "http://127.0.0.1:0/oauth/callback";
 const SAFE_OAUTH_ERROR = /^[a-zA-Z0-9_.-]{1,64}$/;
 
-export type OAuthAuthorizationCallback = {
+type OAuthAuthorizationCallback = {
   code: string;
 };
 

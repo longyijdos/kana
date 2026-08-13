@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { UserImage, UserImageMimeType } from "@/core";
 
-export const MAX_IMAGE_INPUT_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_INPUT_BYTES = 10 * 1024 * 1024;
 
 const MAX_IMAGE_INPUT_DIMENSION = 2048;
 
