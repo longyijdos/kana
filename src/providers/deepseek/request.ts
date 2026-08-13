@@ -2,6 +2,8 @@ import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec
 import type { DeepSeekMessage, DeepSeekModelConfig, DeepSeekTool, DeepSeekToolCall } from "./types";
 import { toDeepSeekUserText } from "./user-input";
 
+// TODO: Extract this legacy Chat Completions request builder into a shared
+// adapter when another provider needs the same compatibility path.
 export function buildDeepSeekRequest(
   context: ModelContext,
   config: DeepSeekModelConfig,

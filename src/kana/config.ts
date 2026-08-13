@@ -14,7 +14,7 @@ export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex"] as const;
 
 export type KanaModelProvider = (typeof KANA_MODEL_PROVIDERS)[number];
 
-export const KANA_DEEPSEEK_REASONING_EFFORTS = ["high", "max"] as const;
+export const KANA_DEEPSEEK_REASONING_EFFORTS = ["low", "high", "max"] as const;
 
 export const KANA_OPENAI_CODEX_REASONING_EFFORTS = [
   "low",
@@ -776,7 +776,9 @@ function readDeepSeekReasoningEffort(
   const effort = readString(value, fallback, "model.deepseek.reasoning_effort");
 
   if (!(KANA_DEEPSEEK_REASONING_EFFORTS as readonly string[]).includes(effort)) {
-    throw new Error(`model.deepseek.reasoning_effort must be "high" or "max".`);
+    throw new Error(
+      `model.deepseek.reasoning_effort must be one of: ${KANA_DEEPSEEK_REASONING_EFFORTS.join(", ")}.`,
+    );
   }
 
   return effort as DeepSeekReasoningEffort;

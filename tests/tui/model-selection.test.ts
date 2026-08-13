@@ -28,9 +28,10 @@ describe("TUI model selection", () => {
     expect(config.model.deepseek).toEqual(deepSeekBefore);
   });
 
-  test("offers only reasoning efforts accepted by Responses Lite", () => {
+  test("offers provider-specific reasoning efforts", () => {
     const management = getKanaModelManagement(structuredClone(DEFAULT_KANA_CONFIG));
 
+    expect(management.model.deepseek.reasoningEfforts).toEqual(["low", "high", "max"]);
     expect(management.model["openai-codex"].reasoningEfforts).toEqual([
       "low",
       "medium",
@@ -150,6 +151,7 @@ describe("TUI model selection", () => {
     openModel(internal);
     press(internal, "\r");
     press(internal, "\r");
+    press(internal, "\x1b[A");
     press(internal, "\x1b[A");
     press(internal, "\r");
 

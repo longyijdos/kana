@@ -1,6 +1,6 @@
 # DeepSeek 提供商适配
 
-Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek`。模型元数据负责选择共享 wire protocol：V4 Flash 使用 Responses API，V4 Pro 则在 DeepSeek 官方提供 Responses 支持之前继续使用 Chat Completions。两条路径都会把流式输出恢复为相同的有序助手内容。
+Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek`。模型元数据负责选择共享 wire protocol：V4 Flash 和 V4 Pro 都使用 Responses API。Provider 仍保留 DeepSeek 专用的 legacy Chat Completions adapter，用于兼容性和未来可能的提取，但当前 V4 metadata 不会选择它。当前路径会把流式输出恢复为相同的有序助手内容。
 
 ## 模型与元数据
 
@@ -11,7 +11,7 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 | 模型 | 协议 | 上下文窗口 | 最大输出 | 并行工具调用 | 托管网页搜索 | 图片输入 | 输入 / 输出 / 缓存读取价格（CNY/百万 token） |
 | --- | --- | ---: | ---: | --- | --- | --- | --- |
 | `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | Chat Completions | 1,000,000 | 384,000 | 支持 | 暂不支持 | 不支持 | 3 / 6 / 0.025 |
+| `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 | 3 / 6 / 0.025 |
 
 缓存写入价格当前为 0。构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与用户的 `web_search` 配置分开记录。TUI 使用元数据计算上下文使用率和 CNY 累计成本。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。
 
@@ -21,9 +21,9 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 
 当前两个 DeepSeek 模型均为纯文本模型。持久化的用户消息如果包含图片，两套请求 codec 都会将其替换为明确的附件省略提示，并且绝不发送 base64 数据。`model.deepseek.image_input` 为未来 metadata 支持预留，不能覆盖模型声明的不支持能力。
 
-### V4 Flash Responses
+### V4 Flash 和 V4 Pro Responses
 
-V4 Flash 向 `POST /responses` 发送语义化 input item：
+两个 V4 模型都向 `POST /responses` 发送语义化 input item：
 
 ```json
 {
@@ -52,9 +52,9 @@ V4 Flash 向 `POST /responses` 发送语义化 input item：
 
 当前 DeepSeek 模型 metadata 将图片输入标记为不支持。普通对话和上下文压缩因此都不会发送会话中保存的 base64 图片字节，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
 
-### V4 Pro Chat Completions
+### Legacy Chat Completions 兼容路径
 
-V4 Pro 继续向 `POST /chat/completions` 发送请求：
+Provider 仍保留 DeepSeek 专用的 `POST /chat/completions` adapter，用于兼容性和未来可能提取为通用 adapter。当前 V4 metadata 不会选择这条路径。
 
 ```json
 {
@@ -65,7 +65,7 @@ V4 Pro 继续向 `POST /chat/completions` 发送请求：
 }
 ```
 
-系统提示词成为第一个 `system` 消息。用户消息直接映射；工具结果变为带 `tool_call_id` 的 `tool` 消息。助手有序内容会转换为一个 assistant 消息：text 拼接为 `content`，thinking 拼接为 `reasoning_content`，调用变为 `tool_calls`。原始流式参数 `rawArgs` 存在时优先 replay。该路径继续使用 Chat Completions 字段名发送 `max_tokens`、`thinking.type`、`reasoning_effort`、`response_format` 和 `user_id`；`thinking` 显式为 false 时会省略 `reasoning_effort`。供应商级 `web_search` 配置仍会保留，但在 V4 Pro 获得 Responses 与托管搜索支持之前不会产生效果。
+legacy converter 会把系统提示词映射为 `system` 消息，把用户消息直接映射，把工具结果转换为带 `tool_call_id` 的 `tool` 消息，并把有序助手内容合并为一个 assistant 消息。text 拼接为 `content`，thinking 拼接为 `reasoning_content`，调用变为 `tool_calls`；原始流式参数 `rawArgs` 存在时优先 replay。该路径使用 Chat Completions 字段名发送 `max_tokens`、`thinking.type`、`reasoning_effort`、`response_format` 和 `user_id`；`thinking` 显式为 false 时省略 `reasoning_effort`。在其他 provider 也需要同一兼容路径之前，应继续将该 adapter 保留在 DeepSeek provider 内。
 
 ## 认证、取消、超时与重试
 
@@ -79,9 +79,9 @@ HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/
 
 ## SSE 解析与内容顺序
 
-V4 Flash 使用与 OpenAI Codex 相同的共享 `src/providers/responses` 语义 SSE 处理器。它按 `output_index` 和 item ID 关联输出，保持 reasoning/message/function/search 顺序，把 `web_search_call` 映射为 `hosted_tool`，并且只在 `response.completed`、`response.incomplete` 或 `response.failed` 后结束。DeepSeek 的 `ws_call_id` replay 标记会在展示前从语义化搜索 query 和 URL fragment 中移除，而 `providerState` 中的原始 output item 保持不变。完成 item 会保留 `providerState.provider = "deepseek"`；`response.incomplete` 映射为 `length`，包含客户端函数调用的响应映射为 `toolUse`，只有托管搜索时仍映射为 `stop`。Responses usage 会映射 input、output、total、cached 和 reasoning token。
+两个 V4 模型都使用与 OpenAI Codex 相同的共享 `src/providers/responses` 语义 SSE 处理器。它按 `output_index` 和 item ID 关联输出，保持 reasoning/message/function/search 顺序，把 `web_search_call` 映射为 `hosted_tool`，并且只在 `response.completed`、`response.incomplete` 或 `response.failed` 后结束。DeepSeek 的 `ws_call_id` replay 标记会在展示前从语义化搜索 query 和 URL fragment 中移除，而 `providerState` 中的原始 output item 保持不变。完成 item 会保留 `providerState.provider = "deepseek"`；`response.incomplete` 映射为 `length`，包含客户端函数调用的响应映射为 `toolUse`，只有托管搜索时仍映射为 `stop`。Responses usage 会映射 input、output、total、cached 和 reasoning token。
 
-V4 Pro 的 Chat Completions 读取器以空行切分 SSE frame，并保留不完整尾帧以应对网络分片。每个 frame 收集所有 `data:` 行；`[DONE]` 立即结束读取。JSON payload 交给 `applyDeepSeekChunk`。
+保留的 legacy Chat Completions 读取器仍以空行切分 SSE frame，并保留不完整尾帧以应对网络分片。每个 frame 收集所有 `data:` 行；`[DONE]` 立即结束读取。JSON payload 交给 `applyDeepSeekChunk`。
 
 ```text
 reasoning_content delta

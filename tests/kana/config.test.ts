@@ -323,6 +323,22 @@ describe("Kana config", () => {
     expect(() => loadKanaConfig(env)).toThrow("model.deepseek.image_input must be a boolean.");
   });
 
+  test("accepts DeepSeek low reasoning effort", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[model.deepseek]\nreasoning_effort = "low"\n');
+
+    expect(loadKanaConfig(env).model.deepseek.reasoningEffort).toBe("low");
+
+    writeFileSync(
+      path.join(home, "config.toml"),
+      '[model.deepseek]\nreasoning_effort = "medium"\n',
+    );
+    expect(() => loadKanaConfig(env)).toThrow(
+      "model.deepseek.reasoning_effort must be one of: low, high, max.",
+    );
+  });
+
   test("loads provider-specific OpenAI Codex configuration", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);

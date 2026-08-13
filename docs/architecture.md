@@ -87,9 +87,9 @@ An optional `ContextManager` sits between Agent and Model. The Agent forks check
 
 `core/model.ts` defines `Model`: a provider only needs to provide metadata and `stream(context)`; the base class implements `generate()` by collecting a stream. Common `ModelMetadata.protocol` identifies the generic `responses` or `chat-completions` wire protocol, while `supportsHostedWebSearch` and `supportsImageInput` advertise selected-model capabilities independently of user configuration. Providers can use these fields to select shared codecs without encoding provider-specific routing in `core`. `providers/index.ts` is the centralized factory. Product configuration supports `deepseek` and `openai-codex`, while `MockModel` exists for tests and uses a null protocol.
 
-`DeepSeekModel` uses metadata to route V4 Flash through `/responses` and V4 Pro through `/chat/completions`. Flash converts generic history into semantic Responses input, stores completed provider items as opaque `providerState` for stateless replay, advertises hosted `web_search` when enabled, and uses the shared `src/providers/responses` semantic SSE processor. That processor correlates output by index and item ID and maps reasoning, messages, function calls, hosted searches, terminal status, and usage into ordered core events.
+`DeepSeekModel` uses metadata to route both V4 Flash and V4 Pro through `/responses`. Both models convert generic history into semantic Responses input, store completed provider items as opaque `providerState` for stateless replay, advertise hosted `web_search` when enabled, and use the shared `src/providers/responses` semantic SSE processor. That processor correlates output by index and item ID and maps reasoning, messages, function calls, hosted searches, terminal status, and usage into ordered core events.
 
-V4 Pro retains the Chat Completions converter and parser, which:
+The provider retains a DeepSeek-specific legacy Chat Completions converter and parser for compatibility and possible future reuse by another provider. Current V4 metadata does not select this path. It:
 
 1. Buffers SSE frames split by network chunks.
 2. Writes reasoning, visible text, and tool-argument deltas into one ordered assistant message.

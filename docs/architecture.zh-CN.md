@@ -87,9 +87,9 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 `core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。通用 `ModelMetadata.protocol` 标识 `responses` 或 `chat-completions` wire protocol，`supportsHostedWebSearch` 和 `supportsImageInput` 则独立声明所选模型的能力，不与用户配置混合。Provider 可以据此选择共享 codec，而无需让 `core` 包含供应商专用路由。`providers/index.ts` 是集中式工厂；产品配置支持 `deepseek` 与 `openai-codex`，`MockModel` 用于测试并使用 null protocol。
 
-`DeepSeekModel` 根据 metadata 将 V4 Flash 路由到 `/responses`，将 V4 Pro 路由到 `/chat/completions`。Flash 会把通用历史转换为语义化 Responses input，把已完成的供应商 item 保存为不透明 `providerState` 以供无状态 replay，在启用时声明托管 `web_search`，并使用共享的 `src/providers/responses` 语义 SSE 处理器。该处理器按 index 与 item ID 关联输出，把 reasoning、消息、函数调用、托管搜索、终态和 usage 映射为有序 core event。
+`DeepSeekModel` 根据 metadata 将 V4 Flash 和 V4 Pro 都路由到 `/responses`。两个模型都会把通用历史转换为语义化 Responses input，把已完成的供应商 item 保存为不透明 `providerState` 以供无状态 replay，在启用时声明托管 `web_search`，并使用共享的 `src/providers/responses` 语义 SSE 处理器。该处理器按 index 与 item ID 关联输出，把 reasoning、消息、函数调用、托管搜索、终态和 usage 映射为有序 core event。
 
-V4 Pro 保留 Chat Completions converter 与 parser；后者会：
+Provider 仍保留 DeepSeek 专用的 legacy Chat Completions converter 与 parser，用于兼容性和未来可能的跨 provider 复用；当前 V4 metadata 不会选择这条路径。它会：
 
 1. 缓冲被网络分片切开的 SSE 帧；
 2. 将 reasoning、可见文本和工具参数增量写入同一有序助手消息；

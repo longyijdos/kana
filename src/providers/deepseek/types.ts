@@ -1,7 +1,7 @@
 import type { ModelConfig, ModelUsage, ToolCallContent } from "@/core";
 import type { Logger } from "@/logging";
 
-export type DeepSeekReasoningEffort = "high" | "max";
+export type DeepSeekReasoningEffort = "low" | "high" | "max";
 
 export type DeepSeekToolChoice =
   | "none"

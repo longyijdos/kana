@@ -1,6 +1,6 @@
 # DeepSeek provider adapter
 
-Kana's product configuration currently uses DeepSeek; its adapter lives in `src/providers/deepseek`. Model metadata selects a shared wire protocol: V4 Flash uses the Responses API, while V4 Pro remains on Chat Completions until DeepSeek officially exposes Responses support for it. Both paths reconstruct streaming output into the same ordered assistant content.
+Kana's product configuration currently uses DeepSeek; its adapter lives in `src/providers/deepseek`. Model metadata selects a shared wire protocol: both V4 Flash and V4 Pro use the Responses API. The provider retains a DeepSeek-specific legacy Chat Completions adapter for compatibility and possible future extraction, but current V4 metadata does not select it. The active path reconstructs streaming output into the same ordered assistant content.
 
 ## Model and metadata
 
@@ -11,7 +11,7 @@ Current built-in metadata:
 | Model | Protocol | Context window | Max output | Parallel tool calls | Hosted web search | Image input | Input / output / cache-read price (CNY per million tokens) |
 | --- | --- | ---: | ---: | --- | --- | --- | --- |
 | `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | Chat Completions | 1,000,000 | 384,000 | Supported | Not yet supported | Not supported | 3 / 6 / 0.025 |
+| `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported | 3 / 6 / 0.025 |
 
 Cache-write price is currently zero. Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the user's `web_search` setting. The TUI uses metadata for context percentage and accumulated CNY cost. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting.
 
@@ -21,9 +21,9 @@ The default base URL is `https://api.deepseek.com`. Authentication, cancellation
 
 Both current DeepSeek models are text-only. If a persisted user message contains images, both request codecs replace them with an explicit attachment-omitted marker and never transmit their base64 data. `model.deepseek.image_input` is reserved for future metadata support and cannot override a model that declares no image capability.
 
-### V4 Flash Responses
+### V4 Flash and V4 Pro Responses
 
-V4 Flash sends `POST /responses` with semantic input items:
+Both V4 models send `POST /responses` with semantic input items:
 
 ```json
 {
@@ -52,9 +52,9 @@ A per-turn output ceiling takes precedence over configured `maxTokens`. Client f
 
 Current DeepSeek model metadata marks image input as unsupported. Normal turns and context compaction therefore never send stored base64 image bytes. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
-### V4 Pro Chat Completions
+### Legacy Chat Completions compatibility
 
-V4 Pro continues to send `POST /chat/completions`:
+The provider retains a DeepSeek-specific `POST /chat/completions` adapter for compatibility and possible future extraction into a shared adapter. Current V4 metadata does not select this path.
 
 ```json
 {
@@ -65,7 +65,7 @@ V4 Pro continues to send `POST /chat/completions`:
 }
 ```
 
-The system prompt becomes the first `system` message. User messages map directly; tool results become `tool` messages with `tool_call_id`. Ordered assistant content becomes one assistant message: text joins into `content`, thinking joins into `reasoning_content`, and calls become `tool_calls`. Streamed `rawArgs` are replayed preferentially. This path sends `max_tokens`, `thinking.type`, `reasoning_effort`, `response_format`, and `user_id` under their Chat Completions names. When `thinking` is explicitly false, `reasoning_effort` is omitted. The provider-level `web_search` setting remains configured but has no effect until V4 Pro gains Responses and hosted-search support.
+The legacy converter maps the system prompt to a `system` message, user messages directly, tool results to `tool` messages with `tool_call_id`, and ordered assistant content to one assistant message. Text joins into `content`, thinking joins into `reasoning_content`, and calls become `tool_calls`; streamed `rawArgs` are replayed preferentially. It sends `max_tokens`, `thinking.type`, `reasoning_effort`, `response_format`, and `user_id` under their Chat Completions names, omitting `reasoning_effort` when thinking is explicitly disabled. Keep this adapter provider-local until another provider needs the same compatibility path.
 
 ## Authentication, cancellation, timeout, and retries
 
@@ -79,9 +79,9 @@ An HTTP 400, 413, or 422 is converted to generic `ContextWindowExceededError` on
 
 ## SSE parsing and content order
 
-V4 Flash uses the shared `src/providers/responses` semantic SSE processor also used by OpenAI Codex. It correlates output items by `output_index` and item ID, preserves reasoning/message/function/search order, maps `web_search_call` to `hosted_tool`, and finishes only after `response.completed`, `response.incomplete`, or `response.failed`. DeepSeek's `ws_call_id` replay marker is removed from semantic search queries and URL fragments before presentation, while the raw output item remains unchanged in `providerState`. Completed items retain `providerState.provider = "deepseek"`; `response.incomplete` maps to `length`, a response containing client function calls maps to `toolUse`, and hosted searches alone still map to `stop`. Responses usage maps input, output, total, cached, and reasoning tokens.
+Both V4 models use the shared `src/providers/responses` semantic SSE processor also used by OpenAI Codex. It correlates output items by `output_index` and item ID, preserves reasoning/message/function/search order, maps `web_search_call` to `hosted_tool`, and finishes only after `response.completed`, `response.incomplete`, or `response.failed`. DeepSeek's `ws_call_id` replay marker is removed from semantic search queries and URL fragments before presentation, while the raw output item remains unchanged in `providerState`. Completed items retain `providerState.provider = "deepseek"`; `response.incomplete` maps to `length`, a response containing client function calls maps to `toolUse`, and hosted searches alone still map to `stop`. Responses usage maps input, output, total, cached, and reasoning tokens.
 
-V4 Pro's Chat Completions reader splits SSE frames on blank lines and retains incomplete trailing frames across network chunks. Each frame collects all `data:` lines; `[DONE]` immediately ends reading. JSON payloads go to `applyDeepSeekChunk`.
+The retained legacy Chat Completions reader splits SSE frames on blank lines and retains incomplete trailing frames across network chunks. Each frame collects all `data:` lines; `[DONE]` immediately ends reading. JSON payloads go to `applyDeepSeekChunk`.
 
 ```text
 reasoning_content delta

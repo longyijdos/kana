@@ -20,7 +20,7 @@ describe("provider model metadata", () => {
       })),
     ).toEqual([
       { protocol: "responses", supportsHostedWebSearch: true },
-      { protocol: "chat-completions", supportsHostedWebSearch: false },
+      { protocol: "responses", supportsHostedWebSearch: true },
     ]);
     expect(
       Object.values(OPENAI_CODEX_MODELS).map((model) => ({

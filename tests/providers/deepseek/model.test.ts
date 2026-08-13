@@ -167,7 +167,7 @@ describe("DeepSeek model protocol routing", () => {
     }
   });
 
-  test("keeps V4 Pro on Chat Completions until official Responses support", async () => {
+  test("routes V4 Pro through Responses with hosted search and low reasoning", async () => {
     let requestPath = "";
     let requestBody: Record<string, unknown> = {};
     const server = Bun.serve({
@@ -175,13 +175,35 @@ describe("DeepSeek model protocol routing", () => {
       async fetch(request) {
         requestPath = new URL(request.url).pathname;
         requestBody = (await request.json()) as Record<string, unknown>;
-        return chatCompletionsSse([
+        return responsesSse([
           {
-            choices: [{ delta: { role: "assistant", content: "answer" } }],
+            type: "response.output_item.added",
+            output_index: 0,
+            item: { id: "message-1", type: "message", role: "assistant", content: [] },
           },
           {
-            choices: [{ delta: {}, finish_reason: "stop" }],
-            usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+            type: "response.output_text.delta",
+            output_index: 0,
+            delta: "answer",
+          },
+          {
+            type: "response.output_item.done",
+            output_index: 0,
+            item: {
+              id: "message-1",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [{ type: "output_text", text: "answer", annotations: [] }],
+            },
+          },
+          {
+            type: "response.completed",
+            response: {
+              status: "completed",
+              output: [],
+              usage: { input_tokens: 3, output_tokens: 1, total_tokens: 4 },
+            },
           },
         ]);
       },
@@ -193,21 +215,25 @@ describe("DeepSeek model protocol routing", () => {
         model: "deepseek-v4-pro",
         apiKey: "test-key",
         baseUrl: `http://127.0.0.1:${server.port}`,
+        thinking: true,
+        reasoningEffort: "low",
         webSearch: true,
         maxRetries: 0,
       });
       const message = await model.generate({
         messages: [{ role: "user", content: "hello" }],
+        maxOutputTokens: 2_048,
       });
 
-      expect(requestPath).toBe("/chat/completions");
+      expect(requestPath).toBe("/responses");
       expect(requestBody).toMatchObject({
         model: "deepseek-v4-pro",
         stream: true,
-        messages: [{ role: "user", content: "hello" }],
+        max_output_tokens: 2_048,
+        reasoning: { effort: "low" },
+        tools: [{ type: "web_search" }],
+        tool_choice: "auto",
       });
-      expect(requestBody).not.toHaveProperty("web_search");
-      expect(requestBody).not.toHaveProperty("max_output_tokens");
       expect(message).toMatchObject({
         stopReason: "stop",
         content: [{ type: "text", text: "answer" }],
@@ -222,11 +248,4 @@ function responsesSse(events: Record<string, unknown>[]): Response {
   return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
     headers: { "content-type": "text/event-stream" },
   });
-}
-
-function chatCompletionsSse(chunks: Record<string, unknown>[]): Response {
-  return new Response(
-    `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
-    { headers: { "content-type": "text/event-stream" } },
-  );
 }
