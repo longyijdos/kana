@@ -520,7 +520,13 @@ function readResponseError(event: Record<string, unknown>): string | undefined {
 }
 
 function readEventError(event: Record<string, unknown>): string | undefined {
-  return readString(event.message) ?? readString(event.code);
+  const error = isRecord(event.error) ? event.error : undefined;
+  return (
+    readString(event.message) ??
+    (error ? readString(error.message) : undefined) ??
+    readString(event.code) ??
+    (error ? readString(error.code) : undefined)
+  );
 }
 
 function parseToolArguments(value: string): unknown {

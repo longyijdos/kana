@@ -387,6 +387,24 @@ describe("OpenAI Codex stream parsing", () => {
     );
     expect(state.stopReason).toBe("stop");
   });
+
+  test("surfaces nested Responses stream error details", () => {
+    const processor = new OpenAICodexStreamProcessor(
+      new AssistantEventStream(),
+      { role: "assistant", content: [] },
+      { terminalSeen: false },
+    );
+
+    expect(() =>
+      processor.apply({
+        type: "error",
+        error: {
+          code: "server_overloaded",
+          message: "Our servers are currently overloaded. Please try again later.",
+        },
+      }),
+    ).toThrow("Our servers are currently overloaded. Please try again later.");
+  });
 });
 
 async function collectEvents(stream: AssistantEventStream) {
