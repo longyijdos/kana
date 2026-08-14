@@ -99,6 +99,34 @@ describe("slash command options controller", () => {
     expect(harness.restoreCalls).toEqual([true]);
   });
 
+  test("dismisses the usage scope prompt when the scope action does not replace it", () => {
+    const harness = createHarness();
+
+    harness.controller.openUsage();
+    expect(harness.render()).toContain("Usage scope");
+
+    harness.input("\r");
+
+    expect(harness.controller.active).toBe(false);
+    expect(harness.render()).not.toContain("Usage scope");
+    expect(harness.restoreCalls).toEqual([true]);
+
+    // Esc must not be swallowed by the dismissed prompt.
+    harness.input("\x1b");
+    expect(harness.render().some((line) => line.includes("test-model"))).toBe(true);
+  });
+
+  test("keeps the bottom replacement made by the usage scope action", () => {
+    const harness = createHarness(true, true);
+
+    harness.controller.openUsage();
+    harness.input("\r");
+
+    expect(harness.controller.active).toBe(false);
+    expect(harness.restoreCalls).toEqual([]);
+    expect(harness.render().some((line) => line.includes("test-model"))).toBe(true);
+  });
+
   test("changes approval mode directly when approvals remain enabled", () => {
     const harness = createHarness();
 
@@ -143,7 +171,7 @@ describe("slash command options controller", () => {
   });
 });
 
-function createHarness(collapseLongPastes = true) {
+function createHarness(collapseLongPastes = true, usageScopeReplacesBottom = false) {
   const editor = new Editor({ model: "test-model" });
   const layout = new AppLayout({ main: new Transcript(), bottom: editor });
   const tui = createTuiStub();
@@ -163,7 +191,13 @@ function createHarness(collapseLongPastes = true) {
     editor,
     layout,
     tui,
-    onUsageScope: () => {},
+    onUsageScope: () => {
+      if (usageScopeReplacesBottom) {
+        // Simulates the content viewer replacing the bottom prompt (success path).
+        layout.showBottom(editor);
+        tui.setFocus(editor);
+      }
+    },
     onMemoryShow: (scope) => {
       showCalls.push(scope);
       restoreBottom(true);

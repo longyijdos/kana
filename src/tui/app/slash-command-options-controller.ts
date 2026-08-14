@@ -315,6 +315,13 @@ export class SlashCommandOptionsController {
 
     this.activePrompt = undefined;
     action();
+
+    // A terminal action that early-returns without replacing the bottom prompt
+    // (for example an unavailable-feature error) must not leave the dismissed
+    // prompt on screen and focused, where Esc would be swallowed forever.
+    if (this.options.layout.isBottom(prompt)) {
+      this.options.restoreBottom(this.options.tui.getFocus() === prompt);
+    }
   }
 }
 
