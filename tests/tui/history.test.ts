@@ -7,6 +7,23 @@ import { color, stripAnsi } from "../../src/tui/render";
 import { tuiTheme } from "../../src/tui/theme";
 
 describe("tui history transcript", () => {
+  test("preserves LaTeX source in restored messages when rendering is disabled", () => {
+    const transcript = new Transcript();
+
+    addHistoryTimelineToTranscript(
+      transcript,
+      timelineFromMessages([
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Result $x^2$" }],
+        },
+      ]),
+      { renderLatex: false },
+    );
+
+    expect(transcript.render(80).map(stripAnsi)).toEqual(["Result $x^2$"]);
+  });
+
   test("renders restored user, assistant, and tool messages", () => {
     const transcript = new Transcript();
     const messages: Message[] = [

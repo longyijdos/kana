@@ -30,6 +30,7 @@ export type ParsedMarkdownTable = {
 type RenderTableOptions = {
   color?: Color;
   hyperlinks?: boolean;
+  renderLatex?: boolean;
 };
 
 type TableCell = {
@@ -124,11 +125,12 @@ export function renderMarkdownTable(
 ): string[] {
   const safeWidth = Math.max(1, width);
   const hyperlinks = options.hyperlinks === true;
-  const header = table.header.map((value) => createCell(value, hyperlinks));
+  const renderLatex = options.renderLatex !== false;
+  const header = table.header.map((value) => createCell(value, hyperlinks, renderLatex));
   const rows = table.rows.map((row) => ({
-    cells: row.cells.map((value) => createCell(value, hyperlinks)),
+    cells: row.cells.map((value) => createCell(value, hyperlinks, renderLatex)),
     pending: row.pending,
-    preview: createPreviewCell(row.previewCells, hyperlinks),
+    preview: createPreviewCell(row.previewCells, hyperlinks, renderLatex),
   }));
   const committedRows = rows.filter((row) => !row.pending);
   const pendingRows = rows.filter((row) => row.pending);
@@ -252,18 +254,18 @@ function parseDelimiterCell(value: string): TableAlignment | undefined {
   return "left";
 }
 
-function createCell(value: string, hyperlinks: boolean): TableCell {
-  return createCellFromSpans(resolveInlineLinks(parseInline(value), hyperlinks));
+function createCell(value: string, hyperlinks: boolean, renderLatex: boolean): TableCell {
+  return createCellFromSpans(resolveInlineLinks(parseInline(value, { renderLatex }), hyperlinks));
 }
 
-function createPreviewCell(values: string[], hyperlinks: boolean): TableCell {
+function createPreviewCell(values: string[], hyperlinks: boolean, renderLatex: boolean): TableCell {
   const spans: InlineSpan[] = [];
 
   for (const [index, value] of values.entries()) {
     if (index > 0) {
       spans.push({ text: " | " });
     }
-    spans.push(...parseInline(value));
+    spans.push(...parseInline(value, { renderLatex }));
   }
 
   return createCellFromSpans(resolveInlineLinks(spans, hyperlinks));

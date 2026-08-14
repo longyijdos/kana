@@ -179,6 +179,7 @@ export class KanaTuiApp {
   private readonly memoryCompact: MemoryCompactController;
   private readonly externalTools: ExternalToolsLifecycleController;
   private readonly hyperlinks: boolean;
+  private readonly renderLatex: boolean;
   private readonly getLogger: () => Logger;
   private readonly unsubscribeConversationEvents: () => void;
   private contextCompactingBlock?: TextBlock;
@@ -210,6 +211,7 @@ export class KanaTuiApp {
     // that the runtime could not positively identify as hyperlink-capable.
     this.hyperlinks =
       (options.tuiConfig?.hyperlinks ?? true) && terminal.supportsHyperlinks === true;
+    this.renderLatex = options.tuiConfig?.renderLatex ?? true;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       initialSession,
       createAgent: ({ configuration, ...agentOptions }) =>
@@ -255,6 +257,7 @@ export class KanaTuiApp {
       transcript: this.transcript,
       tui: this.tui,
       hyperlinks: this.hyperlinks,
+      renderLatex: this.renderLatex,
       smoothTextStreaming: options.tuiConfig?.smoothTextStreaming ?? true,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
@@ -387,6 +390,7 @@ export class KanaTuiApp {
       transcript: this.transcript,
       tui: this.tui,
       hyperlinks: this.hyperlinks,
+      renderLatex: this.renderLatex,
       isRunning: () => this.running,
       closeOtherOverlays: () => {
         this.skillManager.close();
@@ -777,7 +781,7 @@ export class KanaTuiApp {
           this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
         ])
         .join("\n"),
-      { hyperlinks: this.hyperlinks },
+      { hyperlinks: this.hyperlinks, renderLatex: this.renderLatex },
     );
 
     this.contentViewer.open({

@@ -15,6 +15,7 @@ export {
   sanitizeTerminalHyperlinkDestination,
   terminalHyperlink,
 } from "./hyperlink";
+export { renderLatex } from "./latex";
 export {
   isLineBreak,
   mapLines,

@@ -231,6 +231,105 @@ describe("tui markdown block", () => {
     expect(completed[0]).toContain("\x1b]8;;https://example.com/\x1b\\");
   });
 
+  test("renders dollar and parenthesis inline math delimiters", () => {
+    const rendered = new MarkdownBlock(
+      String.raw`Map $\mathbb{C}^3 \to \mathbb{C}^3$ and \(x^2 + y_1\).`,
+    )
+      .render(80)
+      .map(stripAnsi);
+
+    expect(rendered).toEqual(["Map ℂ³ → ℂ³ and x² + y₁."]);
+  });
+
+  test("renders dollar and bracket display math delimiters", () => {
+    const rendered = new MarkdownBlock(
+      [
+        "Before",
+        "$$",
+        String.raw`\frac{a+b}{c+d}`,
+        "$$",
+        String.raw`\[`,
+        String.raw`\begin{pmatrix}1&2\\3&4\end{pmatrix}`,
+        String.raw`\]`,
+        "After",
+      ].join("\n"),
+    )
+      .render(80)
+      .map(stripAnsi);
+
+    expect(rendered).toEqual(["Before", "a+b", "───", "c+d", "⎛ 1 │ 2 ⎞", "⎝ 3 │ 4 ⎠", "After"]);
+  });
+
+  test("keeps streamed partial math literal until its delimiter closes", () => {
+    const inline = new MarkdownBlock("Result $x^", {
+      complete: false,
+      trailingLineComplete: false,
+    });
+    expect(inline.render(80).map(stripAnsi)).toEqual(["Result $x^"]);
+
+    inline.setText("Result $x^2$");
+    expect(inline.render(80).map(stripAnsi)).toEqual(["Result x²"]);
+
+    const display = new MarkdownBlock("$$\n\\frac{1}{", {
+      complete: false,
+      trailingLineComplete: false,
+    });
+    expect(display.render(80).map(stripAnsi)).toEqual(["$$", "\\frac{1}{"]);
+
+    display.setText("$$\n\\frac{1}{2}\n$$");
+    expect(display.render(80).map(stripAnsi)).toEqual(["1", "─", "2"]);
+  });
+
+  test("preserves unsupported math and math inside code", () => {
+    const rendered = new MarkdownBlock(
+      [
+        String.raw`Value $x+\unknown{y}$ and \(\frac{1}{x\).`,
+        "Use `$x^2$` literally.",
+        "```latex",
+        String.raw`$$\frac{1}{2}$$`,
+        "```",
+      ].join("\n"),
+    )
+      .render(100)
+      .map(stripAnsi);
+
+    expect(rendered).toEqual([
+      String.raw`Value $x+\unknown{y}$ and \(\frac{1}{x\).`,
+      "Use $x^2$ literally.",
+      String.raw`    $$\frac{1}{2}$$`,
+    ]);
+  });
+
+  test("keeps rendered display math when the terminal is narrow", () => {
+    const rendered = new MarkdownBlock(
+      String.raw`$$\begin{pmatrix}1234&5678\\90&12\end{pmatrix}$$`,
+    ).render(10);
+    const plain = rendered.map(stripAnsi);
+
+    expect(plain.join("\n")).not.toContain(String.raw`\begin{pmatrix}`);
+    expect(plain.join("\n")).toContain("⎛");
+    expect(plain.join("\n")).toContain("⎠");
+    expect(rendered.every((line) => visibleWidth(line) <= 10)).toBe(true);
+  });
+
+  test("preserves math source when LaTeX rendering is disabled", () => {
+    const source = [
+      "Inline $x^2$",
+      "$$",
+      String.raw`\frac{1}{2}`,
+      "$$",
+      "| Formula |",
+      "| --- |",
+      "| $y_1$ |",
+    ].join("\n");
+    const rendered = new MarkdownBlock(source, { renderLatex: false }).render(80).map(stripAnsi);
+
+    expect(rendered.slice(0, 4)).toEqual(["Inline $x^2$", "$$", String.raw`\frac{1}{2}`, "$$"]);
+    expect(rendered.join("\n")).toContain("$y_1$");
+    expect(rendered.join("\n")).not.toContain("x²");
+    expect(rendered.join("\n")).not.toContain("y₁");
+  });
+
   test("aligns complete tables and supports rows without outer pipes", () => {
     const rendered = new MarkdownBlock(
       ["Name | Score | State", ":--- | ---: | :---:", "A | 7 | ok", "Long | 42 | done"].join("\n"),

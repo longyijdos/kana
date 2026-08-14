@@ -61,6 +61,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("notification", "on_agent_completed", (config) => config.notification.onAgentCompleted),
   field("notification", "on_approval_required", (config) => config.notification.onApprovalRequired),
   field("tui", "hyperlinks", (config) => config.tui.hyperlinks),
+  field("tui", "render_latex", (config) => config.tui.renderLatex),
   field("tui", "smooth_text_streaming", (config) => config.tui.smoothTextStreaming),
   field("tui", "collapse_long_pastes", (config) => config.tui.collapseLongPastes),
   field("memory", "enabled", (config) => config.memory.enabled),

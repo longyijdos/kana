@@ -24,6 +24,7 @@ export type AgentEventRendererOptions = {
   transcript: Transcript;
   tui: Tui;
   hyperlinks?: boolean;
+  renderLatex?: boolean;
   smoothTextStreaming?: boolean;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
 };
@@ -143,6 +144,7 @@ export class AgentEventRenderer {
     this.textPresenter.flush();
     this.streamingAssistant = new AssistantMessageBlock(Date.now, {
       hyperlinks: this.options.hyperlinks,
+      renderLatex: this.options.renderLatex,
     });
     this.options.transcript.addChild(this.streamingAssistant);
     this.textPresenter.start(message);

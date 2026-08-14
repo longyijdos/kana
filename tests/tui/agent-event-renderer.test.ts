@@ -8,6 +8,38 @@ import { stripAnsi } from "../../src/tui/render";
 import type { Tui } from "../../src/tui/runtime";
 
 describe("AgentEventRenderer", () => {
+  test("preserves LaTeX source for live assistant text when rendering is disabled", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      renderLatex: false,
+      smoothTextStreaming: false,
+      updateStatus() {},
+    });
+    const message: AssistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "Result $x^2$" }],
+    };
+
+    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_update",
+      message,
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "Result $x^2$",
+        snapshot: message,
+      },
+    });
+
+    expect(transcript.render(80).map(stripAnsi)).toEqual(["Result $x^2$"]);
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
   test("catches up buffered text before showing a tool call", () => {
     const transcript = new TranscriptComponent();
     const renderer = new AgentEventRenderer({

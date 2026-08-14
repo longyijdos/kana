@@ -1,14 +1,23 @@
-import { type Color, color, splitLines, truncateToWidth, visibleWidth } from "../../render";
+import {
+  type Color,
+  color,
+  renderLatex,
+  splitLines,
+  truncateToWidth,
+  visibleWidth,
+} from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import { type HighlightedCodeLine, highlightCodeSync } from "../../utils/syntax-highlighter";
 import { renderWrappedInline, styleSpans, wrapPlainLine, wrapSpans } from "./markdown-inline";
+import { type BlockLatexToken, readBlockLatex } from "./markdown-latex";
 import { parseMarkdownTable, renderMarkdownTable } from "./markdown-table";
 
 type MarkdownBlockOptions = {
   color?: Color;
   complete?: boolean;
   hyperlinks?: boolean;
+  renderLatex?: boolean;
   trailingLineComplete?: boolean;
 };
 
@@ -69,12 +78,20 @@ export class MarkdownBlock implements Component {
         continue;
       }
 
+      const latexBlock = readBlockLatex(sourceLines, index);
+      if (latexBlock) {
+        lines.push(...this.renderLatexBlock(latexBlock, width));
+        index = latexBlock.nextLine - 1;
+        continue;
+      }
+
       const table = parseMarkdownTable(sourceLines, index, lastLineComplete);
       if (table) {
         lines.push(
           ...renderMarkdownTable(table.table, width, {
             color: this.options.color,
             hyperlinks: this.options.hyperlinks,
+            renderLatex: this.options.renderLatex,
           }),
         );
         index = table.nextLine - 1;
@@ -108,6 +125,7 @@ export class MarkdownBlock implements Component {
         defaultColor: this.options.color ?? tuiTheme.markdownHeading,
         forceBold: true,
         hyperlinks: this.options.hyperlinks,
+        renderLatex: this.options.renderLatex,
       });
     }
 
@@ -124,6 +142,7 @@ export class MarkdownBlock implements Component {
         defaultColor: tuiTheme.markdownQuote,
         hyperlinks: this.options.hyperlinks,
         prefix,
+        renderLatex: this.options.renderLatex,
         continuationPrefix: " ".repeat(visibleWidth(prefix)),
       });
     }
@@ -138,6 +157,7 @@ export class MarkdownBlock implements Component {
         defaultColor: this.options.color ?? tuiTheme.markdownText,
         hyperlinks: this.options.hyperlinks,
         prefix,
+        renderLatex: this.options.renderLatex,
         continuationPrefix: " ".repeat(visibleWidth(prefix)),
       });
     }
@@ -151,6 +171,7 @@ export class MarkdownBlock implements Component {
         defaultColor: this.options.color ?? tuiTheme.markdownText,
         hyperlinks: this.options.hyperlinks,
         prefix,
+        renderLatex: this.options.renderLatex,
         continuationPrefix: " ".repeat(visibleWidth(prefix)),
       });
     }
@@ -165,6 +186,7 @@ export class MarkdownBlock implements Component {
         defaultColor: this.options.color ?? tuiTheme.markdownText,
         hyperlinks: this.options.hyperlinks,
         prefix,
+        renderLatex: this.options.renderLatex,
         continuationPrefix: " ".repeat(visibleWidth(prefix)),
       });
     }
@@ -172,7 +194,23 @@ export class MarkdownBlock implements Component {
     return renderWrappedInline(normalizeHtmlLine(line), width, {
       defaultColor: this.options.color ?? tuiTheme.markdownText,
       hyperlinks: this.options.hyperlinks,
+      renderLatex: this.options.renderLatex,
     });
+  }
+
+  private renderLatexBlock(token: BlockLatexToken, width: number): string[] {
+    const safeWidth = Math.max(1, width);
+    const rendered =
+      token.pending || this.options.renderLatex === false
+        ? undefined
+        : renderLatex(token.text, { display: true });
+    const output = rendered ?? token.raw.trim();
+
+    return splitLines(output).flatMap((line) =>
+      wrapPlainLine(line, safeWidth).map((wrapped) =>
+        truncateToWidth(color(wrapped, this.options.color ?? tuiTheme.markdownText), safeWidth, ""),
+      ),
+    );
   }
 
   private renderCodeBlock(

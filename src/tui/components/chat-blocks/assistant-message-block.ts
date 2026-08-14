@@ -12,6 +12,7 @@ type AssistantMessageBlockUpdateOptions = {
 
 type AssistantMessageBlockOptions = {
   hyperlinks?: boolean;
+  renderLatex?: boolean;
 };
 
 export class AssistantMessageBlock implements Component {
@@ -44,6 +45,7 @@ export class AssistantMessageBlock implements Component {
           new MarkdownBlock(content.text.trim(), {
             complete: blockComplete,
             hyperlinks: this.options.hyperlinks,
+            renderLatex: this.options.renderLatex,
             trailingLineComplete: blockComplete || /(?:\r\n|\r|\n)\s*$/.test(content.text),
           }),
         );

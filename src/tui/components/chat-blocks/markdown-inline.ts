@@ -5,6 +5,7 @@ import {
   dim,
   graphemeSegments,
   italic,
+  renderLatex,
   sanitizeTerminalHyperlinkDestination,
   strikethrough,
   stripTerminalControlSequences,
@@ -13,6 +14,7 @@ import {
   visibleWidth,
 } from "../../render";
 import { tuiTheme } from "../../theme";
+import { readInlineLatex } from "./markdown-latex";
 
 type InlineStyle = {
   bold?: boolean;
@@ -44,6 +46,7 @@ export function renderWrappedInline(
     forceBold?: boolean;
     hyperlinks?: boolean;
     prefix?: string;
+    renderLatex?: boolean;
     continuationPrefix?: string;
   },
 ): string[] {
@@ -51,7 +54,10 @@ export function renderWrappedInline(
   const continuationPrefix = options.continuationPrefix ?? "";
   const firstWidth = Math.max(1, width - visibleWidth(prefix));
   const restWidth = Math.max(1, width - visibleWidth(continuationPrefix));
-  const spans = resolveInlineLinks(parseInline(value), options.hyperlinks === true);
+  const spans = resolveInlineLinks(
+    parseInline(value, { renderLatex: options.renderLatex }),
+    options.hyperlinks === true,
+  );
   const lines = wrapSpans(spans, firstWidth, restWidth);
 
   return lines.map((line, index) => {
@@ -181,8 +187,8 @@ export function wrapPlainLine(value: string, width: number): string[] {
   return lines;
 }
 
-export function parseInline(value: string): InlineSpan[] {
-  return parseInlineWithStyle(normalizeInlineImages(value), {});
+export function parseInline(value: string, options: { renderLatex?: boolean } = {}): InlineSpan[] {
+  return parseInlineWithStyle(normalizeInlineImages(value), {}, options);
 }
 
 export function resolveInlineLinks(spans: InlineSpan[], hyperlinks: boolean): InlineSpan[] {
@@ -215,7 +221,11 @@ export function resolveInlineLinks(spans: InlineSpan[], hyperlinks: boolean): In
   return resolved;
 }
 
-function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSpan[] {
+function parseInlineWithStyle(
+  value: string,
+  activeStyle: InlineStyle,
+  options: { renderLatex?: boolean },
+): InlineSpan[] {
   const spans: InlineSpan[] = [];
   let plain = "";
   let index = 0;
@@ -239,7 +249,7 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
       if (link) {
         flushPlain();
         const destination = sanitizeTerminalHyperlinkDestination(link.destination);
-        const labelSpans = parseInlineWithStyle(link.label, activeStyle);
+        const labelSpans = parseInlineWithStyle(link.label, activeStyle, options);
 
         if (destination) {
           const inlineLink: InlineLink = {
@@ -276,17 +286,36 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
       }
     }
 
+    const latex = readInlineLatex(value, index);
+    if (latex) {
+      flushPlain();
+      const rendered =
+        latex.pending || options.renderLatex === false ? undefined : renderLatex(latex.text);
+      spans.push({
+        // Multi-line environments cannot participate in Kana's inline span
+        // wrapping without corrupting line boundaries, so keep those literal.
+        text: rendered !== undefined && !/[\r\n]/.test(rendered) ? rendered : latex.raw,
+        style: styleOrUndefined(activeStyle),
+      });
+      index = latex.end;
+      continue;
+    }
+
     if (value.startsWith("***", index)) {
       const end = value.indexOf("***", index + 3);
 
       if (end > index + 3) {
         flushPlain();
         spans.push(
-          ...parseInlineWithStyle(value.slice(index + 3, end), {
-            ...activeStyle,
-            bold: true,
-            italic: true,
-          }),
+          ...parseInlineWithStyle(
+            value.slice(index + 3, end),
+            {
+              ...activeStyle,
+              bold: true,
+              italic: true,
+            },
+            options,
+          ),
         );
         index = end + 3;
         continue;
@@ -299,10 +328,14 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
       if (end > index + 2) {
         flushPlain();
         spans.push(
-          ...parseInlineWithStyle(value.slice(index + 2, end), {
-            ...activeStyle,
-            strike: true,
-          }),
+          ...parseInlineWithStyle(
+            value.slice(index + 2, end),
+            {
+              ...activeStyle,
+              strike: true,
+            },
+            options,
+          ),
         );
         index = end + 2;
         continue;
@@ -315,10 +348,14 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
       if (end > index + 2) {
         flushPlain();
         spans.push(
-          ...parseInlineWithStyle(value.slice(index + 2, end), {
-            ...activeStyle,
-            bold: true,
-          }),
+          ...parseInlineWithStyle(
+            value.slice(index + 2, end),
+            {
+              ...activeStyle,
+              bold: true,
+            },
+            options,
+          ),
         );
         index = end + 2;
         continue;
@@ -332,10 +369,14 @@ function parseInlineWithStyle(value: string, activeStyle: InlineStyle): InlineSp
       if (end > index + 1 && value[end + 1] !== marker) {
         flushPlain();
         spans.push(
-          ...parseInlineWithStyle(value.slice(index + 1, end), {
-            ...activeStyle,
-            italic: true,
-          }),
+          ...parseInlineWithStyle(
+            value.slice(index + 1, end),
+            {
+              ...activeStyle,
+              italic: true,
+            },
+            options,
+          ),
         );
         index = end + 1;
         continue;
