@@ -95,6 +95,8 @@ An input can contain up to 10 images. The editor renders attachment count, dimen
 | `/usage` | Choose a scope in the bottom view, then open its API usage. |
 | `/quit` | Exit without arguments; with arguments it is a normal prompt. |
 
+The `/usage` view keeps token labels, values, and proportional bars in stable columns. The Runs section and per-model breakdown size their numeric columns from the visible data, so larger counts or longer model names do not shift neighboring values. Outcome counters remain a compact inline summary and may be truncated in a narrow bottom view.
+
 In clean mode, `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, and `/delete` remain discoverable commands but report an explicit unavailable error when invoked. `/usage` still presents Session, Project, and Global; choosing Session reports that it is unavailable, while the other two scopes can still read historical aggregates. `/new`, `/schedule`, `/image`, `/approval`, `/compact`, `/model`, and the local Shell remain usable inside the temporary conversation. `/schedule` messages still exist only in the current process, and `/model` leaves the configuration file unchanged.
 
 ## Controllers and focus
