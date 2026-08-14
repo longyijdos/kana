@@ -22,6 +22,10 @@ export function resolveNotificationBackend(
     return "osc9";
   }
 
+  if (env.TERM_PROGRAM === "ghostty") {
+    return "osc777";
+  }
+
   if (env.VTE_VERSION) {
     return "osc777";
   }

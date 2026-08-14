@@ -13,6 +13,7 @@ describe("terminal notifications", () => {
   test("selects the most capable detected backend", () => {
     expect(resolveNotificationBackend("auto", { KITTY_WINDOW_ID: "3" })).toBe("kitty");
     expect(resolveNotificationBackend("auto", { TERM_PROGRAM: "iTerm.app" })).toBe("osc9");
+    expect(resolveNotificationBackend("auto", { TERM_PROGRAM: "ghostty" })).toBe("osc777");
     expect(resolveNotificationBackend("auto", { VTE_VERSION: "7800" })).toBe("osc777");
     expect(resolveNotificationBackend("auto", {})).toBe("bell");
   });
