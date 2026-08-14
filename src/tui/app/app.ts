@@ -180,6 +180,7 @@ export class KanaTuiApp {
   private readonly externalTools: ExternalToolsLifecycleController;
   private readonly hyperlinks: boolean;
   private readonly renderLatex: boolean;
+  private readonly renderMermaid: boolean;
   private readonly getLogger: () => Logger;
   private readonly unsubscribeConversationEvents: () => void;
   private contextCompactingBlock?: TextBlock;
@@ -212,6 +213,7 @@ export class KanaTuiApp {
     this.hyperlinks =
       (options.tuiConfig?.hyperlinks ?? true) && terminal.supportsHyperlinks === true;
     this.renderLatex = options.tuiConfig?.renderLatex ?? true;
+    this.renderMermaid = options.tuiConfig?.renderMermaid ?? true;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       initialSession,
       createAgent: ({ configuration, ...agentOptions }) =>
@@ -258,6 +260,7 @@ export class KanaTuiApp {
       tui: this.tui,
       hyperlinks: this.hyperlinks,
       renderLatex: this.renderLatex,
+      renderMermaid: this.renderMermaid,
       smoothTextStreaming: options.tuiConfig?.smoothTextStreaming ?? true,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
@@ -391,6 +394,7 @@ export class KanaTuiApp {
       tui: this.tui,
       hyperlinks: this.hyperlinks,
       renderLatex: this.renderLatex,
+      renderMermaid: this.renderMermaid,
       isRunning: () => this.running,
       closeOtherOverlays: () => {
         this.skillManager.close();
@@ -781,7 +785,11 @@ export class KanaTuiApp {
           this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
         ])
         .join("\n"),
-      { hyperlinks: this.hyperlinks, renderLatex: this.renderLatex },
+      {
+        hyperlinks: this.hyperlinks,
+        renderLatex: this.renderLatex,
+        renderMermaid: this.renderMermaid,
+      },
     );
 
     this.contentViewer.open({

@@ -21,6 +21,7 @@ export type SessionLifecycleControllerOptions = {
   tui: Tui;
   hyperlinks?: boolean;
   renderLatex?: boolean;
+  renderMermaid?: boolean;
   isRunning: () => boolean;
   closeOtherOverlays: () => void;
   closeContentViewer: () => void;
@@ -65,6 +66,7 @@ export class SessionLifecycleController {
       addHistoryTimelineToTranscript(this.options.transcript, timeline, {
         hyperlinks: this.options.hyperlinks,
         renderLatex: this.options.renderLatex,
+        renderMermaid: this.options.renderMermaid,
       });
       return;
     }

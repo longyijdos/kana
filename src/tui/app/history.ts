@@ -12,7 +12,7 @@ import { tuiTheme } from "../theme";
 export function addHistoryTimelineToTranscript(
   transcript: Transcript,
   timeline: KanaSessionTimelineEntry[],
-  options: { hyperlinks?: boolean; renderLatex?: boolean } = {},
+  options: { hyperlinks?: boolean; renderLatex?: boolean; renderMermaid?: boolean } = {},
 ): void {
   const toolCalls = new Map<string, ToolCallContent>();
 
@@ -39,7 +39,7 @@ function addHistoryMessage(
   transcript: Transcript,
   message: Message,
   toolCalls: Map<string, ToolCallContent>,
-  options: { hyperlinks?: boolean; renderLatex?: boolean },
+  options: { hyperlinks?: boolean; renderLatex?: boolean; renderMermaid?: boolean },
 ): void {
   switch (message.role) {
     case "user":
@@ -75,7 +75,7 @@ function addAssistantMessage(
   transcript: Transcript,
   message: AssistantMessage,
   toolCalls: Map<string, ToolCallContent>,
-  options: { hyperlinks?: boolean; renderLatex?: boolean },
+  options: { hyperlinks?: boolean; renderLatex?: boolean; renderMermaid?: boolean },
 ): void {
   const block = new AssistantMessageBlock(Date.now, options);
   block.update(message);

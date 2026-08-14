@@ -40,6 +40,39 @@ describe("AgentEventRenderer", () => {
     renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
   });
 
+  test("preserves Mermaid source for live assistant text when rendering is disabled", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      renderMermaid: false,
+      smoothTextStreaming: false,
+      updateStatus() {},
+    });
+    const text = ["```mermaid", "flowchart LR", "  A --> B", "```"].join("\n");
+    const message: AssistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text }],
+    };
+
+    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_update",
+      message,
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: text,
+        snapshot: message,
+      },
+    });
+
+    expect(transcript.render(80).map(stripAnsi)).toEqual(["    flowchart LR", "      A --> B"]);
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
   test("catches up buffered text before showing a tool call", () => {
     const transcript = new TranscriptComponent();
     const renderer = new AgentEventRenderer({

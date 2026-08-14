@@ -13,6 +13,7 @@ type AssistantMessageBlockUpdateOptions = {
 type AssistantMessageBlockOptions = {
   hyperlinks?: boolean;
   renderLatex?: boolean;
+  renderMermaid?: boolean;
 };
 
 export class AssistantMessageBlock implements Component {
@@ -46,6 +47,7 @@ export class AssistantMessageBlock implements Component {
             complete: blockComplete,
             hyperlinks: this.options.hyperlinks,
             renderLatex: this.options.renderLatex,
+            renderMermaid: this.options.renderMermaid,
             trailingLineComplete: blockComplete || /(?:\r\n|\r|\n)\s*$/.test(content.text),
           }),
         );

@@ -128,6 +128,8 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 
 默认开启 `tui.render_latex = true`：`$...$` 与 `\(...\)` 渲染行内公式，独立成块的 `$$...$$` 与 `\[...\]` 渲染 display 公式。这个刻意受限的渲染器会把常见符号、黑板粗体字母、上下标、分数、根式、命名运算符、矩阵、cases 和 display 运算符上下限转换为 Unicode 与字符单元布局。不支持或格式错误的表达式会完整保留源码分隔符；流式表达式在分隔符闭合前始终按字面量显示。行内代码和代码围栏不会解释数学分隔符。display 输出在渲染后按终端可见单元宽度测量和换行，宽度不足不会把有效公式重新切换为源码。设置 `tui.render_latex = false` 可让所有已识别的数学公式保留原始 LaTeX。
 
+默认开启 `tui.render_mermaid = true`：语言为 `mermaid` 的代码围栏会持续渲染为使用 Kana 主题的 Unicode 图，源码仍在流式生成时也会尝试更新。终端渲染器支持 `graph`/`flowchart`、`stateDiagram`/`stateDiagram-v2`、`classDiagram`、`erDiagram` 和 `sequenceDiagram`；这是 Mermaid.js 的实用子集，并不等同于浏览器中的完整语法。`:::highlight` 这类 Mermaid 样式类附加语法可以被接受，但不会改变终端颜色；边框、正文、连线和连线标签仍映射到 Kana 的语义主题。不支持或严重格式错误的图、渲染器失败以及宽于 Markdown 可用宽度的图会保留为普通代码块，不追加 warning。流式阶段可以继续显示尽力解析出的部分图；消息完成后若仍有源码无法表达，Kana 会恢复代码块，显示第一条 warning，并汇总其余 warning 的数量。设置 `tui.render_mermaid = false` 可让所有 Mermaid 代码围栏保留为源码。
+
 ## 修改渲染时的约束
 
 - 不要直接向 stdout 写组件内容；经 `Tui.requestRender` 让差量渲染维护缓存和光标。

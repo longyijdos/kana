@@ -24,6 +24,28 @@ describe("tui history transcript", () => {
     expect(transcript.render(80).map(stripAnsi)).toEqual(["Result $x^2$"]);
   });
 
+  test("preserves Mermaid source in restored messages when rendering is disabled", () => {
+    const transcript = new Transcript();
+
+    addHistoryTimelineToTranscript(
+      transcript,
+      timelineFromMessages([
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: ["```mermaid", "flowchart LR", "  A --> B", "```"].join("\n"),
+            },
+          ],
+        },
+      ]),
+      { renderMermaid: false },
+    );
+
+    expect(transcript.render(80).map(stripAnsi)).toEqual(["    flowchart LR", "      A --> B"]);
+  });
+
   test("renders restored user, assistant, and tool messages", () => {
     const transcript = new Transcript();
     const messages: Message[] = [

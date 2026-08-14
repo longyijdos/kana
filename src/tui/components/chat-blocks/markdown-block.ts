@@ -11,6 +11,7 @@ import { tuiTheme } from "../../theme";
 import { type HighlightedCodeLine, highlightCodeSync } from "../../utils/syntax-highlighter";
 import { renderWrappedInline, styleSpans, wrapPlainLine, wrapSpans } from "./markdown-inline";
 import { type BlockLatexToken, readBlockLatex } from "./markdown-latex";
+import { renderMarkdownMermaid } from "./markdown-mermaid";
 import { parseMarkdownTable, renderMarkdownTable } from "./markdown-table";
 
 type MarkdownBlockOptions = {
@@ -18,6 +19,7 @@ type MarkdownBlockOptions = {
   complete?: boolean;
   hyperlinks?: boolean;
   renderLatex?: boolean;
+  renderMermaid?: boolean;
   trailingLineComplete?: boolean;
 };
 
@@ -218,10 +220,35 @@ export class MarkdownBlock implements Component {
     width: number,
     language: string | undefined,
   ): string[] {
+    const lines = codeLines.length ? codeLines : [""];
+
+    if (this.options.renderMermaid !== false && language?.toLowerCase() === "mermaid") {
+      const mermaid = renderMarkdownMermaid(lines.join("\n"), width, {
+        color: this.options.color,
+        complete: this.options.complete !== false,
+      });
+
+      if (mermaid.kind === "rendered") {
+        return mermaid.lines;
+      }
+
+      const fallback = this.renderPlainCodeBlock(lines, width, language);
+      return mermaid.warning
+        ? [...fallback, ...this.renderMermaidWarning(mermaid.warning, width)]
+        : fallback;
+    }
+
+    return this.renderPlainCodeBlock(lines, width, language);
+  }
+
+  private renderPlainCodeBlock(
+    lines: string[],
+    width: number,
+    language: string | undefined,
+  ): string[] {
     const rendered: string[] = [];
     const prefix = "    ";
     const contentWidth = Math.max(1, width - visibleWidth(prefix));
-    const lines = codeLines.length ? codeLines : [""];
     const highlighted = highlightCodeSync(lines.join("\n"), language);
 
     if (highlighted) {
@@ -244,6 +271,14 @@ export class MarkdownBlock implements Component {
     }
 
     return rendered;
+  }
+
+  private renderMermaidWarning(warning: string, width: number): string[] {
+    const safeWidth = Math.max(1, width);
+
+    return wrapPlainLine(warning, safeWidth).map((line) =>
+      truncateToWidth(color(line, tuiTheme.usageWarning), safeWidth, ""),
+    );
   }
 
   private renderHighlightedCodeBlock(codeLines: HighlightedCodeLine[], width: number): string[] {

@@ -99,6 +99,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("hyperlinks = true");
     expect(installedConfigExample).toContain("render_latex = true");
+    expect(installedConfigExample).toContain("render_mermaid = true");
     expect(installedConfigExample).toContain("smooth_text_streaming = true");
     expect(installedConfigExample).toContain("collapse_long_pastes = true");
     expect(installedConfigExample).toContain("Kana does not read this file.");
@@ -249,6 +250,7 @@ describe("Kana config", () => {
         "[tui]",
         "hyperlinks = false",
         "render_latex = false",
+        "render_mermaid = false",
         "smooth_text_streaming = false",
         "collapse_long_pastes = false",
         "",
@@ -291,6 +293,7 @@ describe("Kana config", () => {
       tui: {
         hyperlinks: false,
         renderLatex: false,
+        renderMermaid: false,
         smoothTextStreaming: false,
         collapseLongPastes: false,
       },
@@ -502,6 +505,14 @@ describe("Kana config", () => {
     writeFileSync(path.join(home, "config.toml"), '[tui]\nrender_latex = "yes"\n');
 
     expect(() => loadKanaConfig(env)).toThrow("tui.render_latex must be a boolean.");
+  });
+
+  test("requires tui.render_mermaid to be a boolean", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[tui]\nrender_mermaid = "yes"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("tui.render_mermaid must be a boolean.");
   });
 
   test("requires tui.collapse_long_pastes to be a boolean", () => {

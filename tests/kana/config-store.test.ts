@@ -86,6 +86,7 @@ describe("Kana config store", () => {
       draft.agent.contextLimit = undefined;
       draft.tui.hyperlinks = false;
       draft.tui.renderLatex = false;
+      draft.tui.renderMermaid = false;
       draft.tui.smoothTextStreaming = false;
       draft.tui.collapseLongPastes = false;
     });
@@ -99,7 +100,7 @@ describe("Kana config store", () => {
     expect(updated).toContain("tool_deadline_ms = 120000");
     expect(updated).toContain("parallel_tool_calls = false");
     expect(updated).toContain(
-      "[tui]\nhyperlinks = false\nrender_latex = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false",
+      "[tui]\nhyperlinks = false\nrender_latex = false\nrender_mermaid = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false",
     );
     expect(updated).not.toContain("context_limit");
     expect(updated).toContain('[custom]\nvalue = "untouched"');

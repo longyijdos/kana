@@ -25,6 +25,7 @@ export type AgentEventRendererOptions = {
   tui: Tui;
   hyperlinks?: boolean;
   renderLatex?: boolean;
+  renderMermaid?: boolean;
   smoothTextStreaming?: boolean;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
 };
@@ -145,6 +146,7 @@ export class AgentEventRenderer {
     this.streamingAssistant = new AssistantMessageBlock(Date.now, {
       hyperlinks: this.options.hyperlinks,
       renderLatex: this.options.renderLatex,
+      renderMermaid: this.options.renderMermaid,
     });
     this.options.transcript.addChild(this.streamingAssistant);
     this.textPresenter.start(message);

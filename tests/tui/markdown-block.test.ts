@@ -43,6 +43,64 @@ describe("tui markdown block", () => {
     expect(rendered[0]).toContain("\x1b[38;2;");
   });
 
+  test("renders Mermaid code blocks as themed Unicode diagrams", () => {
+    const rendered = new MarkdownBlock(
+      [
+        "Before",
+        "```mermaid",
+        "flowchart LR",
+        "  A[Start]:::highlight --> B[Done]",
+        "```",
+        "After",
+      ].join("\n"),
+    ).render(80);
+    const plain = rendered.map(stripAnsi);
+
+    expect(plain).toEqual([
+      "Before",
+      "┌───────┐    ┌──────┐",
+      "│ Start ├───▶│ Done │",
+      "└───────┘    └──────┘",
+      "After",
+    ]);
+    expect(rendered.join("\n")).toContain(`\x1b[38;2;${tuiTheme.markdownHeading.join(";")}m`);
+  });
+
+  test("renders partial Mermaid while streaming and reports incomplete final diagrams", () => {
+    const source = ["```mermaid", "flowchart LR", "  A[Start"].join("\n");
+    const streaming = new MarkdownBlock(source, {
+      complete: false,
+      renderMermaid: true,
+      trailingLineComplete: false,
+    })
+      .render(80)
+      .map(stripAnsi);
+    const complete = new MarkdownBlock(source, { renderMermaid: true }).render(80).map(stripAnsi);
+
+    expect(streaming).toEqual(["┌───────┐", "│ Start │", "└───────┘"]);
+    expect(streaming.join("\n")).not.toContain("Mermaid source restored");
+    expect(complete.slice(0, 2)).toEqual(["    flowchart LR", "      A[Start"]);
+    expect(complete.at(-1)).toBe(
+      'Mermaid source restored: node "A": label is missing its closing `]`',
+    );
+  });
+
+  test("falls back to Mermaid source when disabled, unsupported, or too wide", () => {
+    const flowchart = ["```mermaid", "flowchart LR", "  A[Start] --> B[Done]", "```"].join("\n");
+    const disabled = new MarkdownBlock(flowchart, { renderMermaid: false })
+      .render(80)
+      .map(stripAnsi);
+    const narrow = new MarkdownBlock(flowchart).render(10).map(stripAnsi);
+    const unsupported = new MarkdownBlock(["```mermaid", "pie", '  "Dogs" : 4', "```"].join("\n"))
+      .render(80)
+      .map(stripAnsi);
+
+    expect(disabled).toEqual(["    flowchart LR", "      A[Start] --> B[Done]"]);
+    expect(narrow.join("").replaceAll(/\s/g, "")).toBe("flowchartLRA[Start]-->B[Done]");
+    expect(narrow.join("\n")).not.toContain("┌");
+    expect(unsupported).toEqual(["    pie", '      "Dogs" : 4']);
+  });
+
   test("renders inline code and bold without changing visible text", () => {
     const rendered = new MarkdownBlock("Use `bun test` for **checks**.", {
       color: "white",
