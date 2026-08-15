@@ -3,6 +3,7 @@ import {
   type AssistantMessage,
   BaseModel,
   ContextWindowExceededError,
+  createMessageIdentity,
   type ModelContext,
 } from "@/core";
 import {
@@ -39,6 +40,7 @@ export class OpenAICodexModel extends BaseModel {
 
   private async run(stream: AssistantEventStream, context: ModelContext): Promise<void> {
     const message: AssistantMessage = {
+      ...createMessageIdentity({ kind: "model_output" }),
       role: "assistant",
       content: [],
     };

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildDeepSeekResponsesRequest } from "../../../src/providers/deepseek/responses-request";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("buildDeepSeekResponsesRequest", () => {
   test("uses the Responses contract and preserves DeepSeek output items for stateless replay", () => {
@@ -8,6 +9,7 @@ describe("buildDeepSeekResponsesRequest", () => {
         system: "system",
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "question",
             images: [
@@ -20,6 +22,7 @@ describe("buildDeepSeekResponsesRequest", () => {
             ],
           },
           {
+            ...messageIdentityForTest("assistant"),
             role: "assistant",
             content: [
               {
@@ -62,6 +65,7 @@ describe("buildDeepSeekResponsesRequest", () => {
             ],
           },
           {
+            ...messageIdentityForTest("tool"),
             role: "tool",
             toolCallId: "call-1",
             toolName: "read",
@@ -174,6 +178,7 @@ describe("buildDeepSeekResponsesRequest", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("assistant"),
             role: "assistant",
             content: [{ type: "thinking", text: "chat-completions reasoning" }],
           },

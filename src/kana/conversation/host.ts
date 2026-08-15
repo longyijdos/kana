@@ -61,7 +61,7 @@ export type KanaConversationHostSession =
 
 export type KanaConversationHostAgentOptions<TConfiguration> = Pick<
   KanaAgentOptions,
-  "beforeToolExecution" | "messages" | "contextCheckpoint"
+  "beforeToolExecution" | "inbox" | "messages" | "contextCheckpoint"
 > & {
   sessionId?: string;
   configuration?: TConfiguration;
@@ -442,7 +442,7 @@ export class KanaConversationHost<TConfiguration = never> {
   private createKanaAgentOptions(
     options: Pick<
       KanaConversationHostAgentOptions<TConfiguration>,
-      "beforeToolExecution" | "messages" | "contextCheckpoint" | "sessionId"
+      "beforeToolExecution" | "inbox" | "messages" | "contextCheckpoint" | "sessionId"
     >,
     hostedSession: HostedSession | undefined,
     agentLogger: Logger,
@@ -474,6 +474,7 @@ export class KanaConversationHost<TConfiguration = never> {
       logger: agentLogger,
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
       messages: options.messages ?? hostedSession?.data.messages,
+      inbox: options.inbox,
       contextCheckpoint: options.contextCheckpoint ?? hostedSession?.data.contextCheckpoint,
       journal:
         hostedSession === undefined || journal === undefined

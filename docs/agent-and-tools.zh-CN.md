@@ -8,9 +8,11 @@ Agent 历史只使用三种 `Message`：
 
 | 角色 | 主要字段 | 用途 |
 | --- | --- | --- |
-| `user` | `content: string`，可选 `source` | 用户输入；`source: "scheduled"` 表示由进程内定时器投递的内部输入。 |
-| `assistant` | 有序 `content`、可选 `stopReason` 与 `usage` | 保存模型输出和它提出的工具调用。 |
-| `tool` | `toolCallId`、`toolName`、`content`、`result`、`isError` | 将某一个工具调用的结果关联回模型。 |
+| `user` | `id`、必填 `provenance`、`content: string` | 直接输入、定时输入、恢复、上下文摘要或压缩策略输入。 |
+| `assistant` | `id`、`provenance: { kind: "model_output" }`、有序 `content`、可选 `stopReason` 与 `usage` | 保存模型输出和它提出的工具调用。 |
+| `tool` | `id`、`provenance: { kind: "tool_result" }`、`toolCallId`、`toolName`、`content`、`result`、`isError` | 将某一个工具调用的结果关联回模型。 |
+
+每条逻辑消息在进入 Kana 或由内部产生时只获得一个带品牌类型的 `MessageId`。深拷贝、steering、inbox lane 移动、Agent event、journal 持久化/重放、fork 和模型历史都保留该 ID。它与 journal entry ID、run/turn ID、provider tool-call ID 和 session ID 相互独立。必填的可辨识 `provenance` 记录内容生产者或内部用途；展示层依此判断语义，不会把所有 `user` role 消息都当成人类输入。Agent 历史、inbox 和 session journal 都拒绝重复逻辑 ID。
 
 助手消息的 `content` 是有序数组，而不是按类别分组。元素为 `text`、`thinking` 或 `tool_call`；每个流事件的 `contentIndex` 都指向这个数组。这使“思考 → 文本 → 工具调用”之类的交错输出能够原样回传供应商并按顺序渲染。
 
@@ -89,11 +91,13 @@ provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededEr
 
 ## `Agent` 的生命周期
 
-`Agent.stream(input)` 异步启动循环。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；没有 journal 的通用嵌入方式保持原有内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。活动 run 可以通过 `Agent.steer(userMessage)` 接收 run-local 输入：输入会在下一个可用 turn 边界先写 journal、再发出 `turn_input` 并进入下一次模型 context；返回值为 `consumed`。运行结束时仍未消费的输入返回 `deferred`，由产品层决定是否作为新 run 排队。
+`Agent.stream(input)` 异步启动循环。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；没有 journal 的通用嵌入方式保持原有内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
+
+Agent 持有一个仅存在于内存的 inbox，其中有 `next-step` 和 `next-turn` 两条 lane。活动 run 的 `steer(userMessage)` 把原始带 ID 消息放入 `next-step`；下一个可用 turn 边界先写 journal，再按 MessageId claim，随后发出 `turn_input` 并返回 `consumed`。journal commit 一旦开始，该项会保持 reservation，不能被取消或 inbox clear 删除，直到按身份校验的 claim 完成，因此 shutdown 不会让 durable input 与实际 claim 的消息错位。中止或 turn limit 会把未 claim 的 steering 移到 `next-turn` 尾部，不更换 ID，并返回 `deferred`。Tab 后续输入和到期定时消息直接进入 `next-turn`。`ConversationRuntime` 只编排该 lane 何时可启动新 run，并发布只读前端快照，不再生成第二套队列身份。
 
 journal 的顺序是协议约束：完整 assistant 消息必须先持久化，随后才能执行其中引用的工具；每个工具结果完成后单独持久化；context checkpoint 在 adopt 前持久化；最后写入 run 终态。`onRunCommitted` 在 journal 已闭合后执行聚合后处理，不再承担 Kana 的 session 消息落盘。只有 journal 与后处理都成功，监听器和 stream 才会收到最终 `agent_end`。任一失败都会拒绝 stream，而不会先发布成功终态；整个阶段都属于 active run，因此 `isRunning` 保持 `true`，新运行被拒绝，`waitForIdle()` 继续等待。
 
-运行期间，`Agent.state` 暴露：模型、系统提示词、工具、历史、`isRunning`、当前流式助手消息、尚未结束的工具调用 ID，以及最终错误。`abort()` 中止该运行的 `AbortController`；`reset()` 仅能在空闲时清空历史和运行状态。普通事件监听器属于 observer：每个监听器收到独立事件副本，监听器异常会记录为 `agent.listener_failed` 并与 Agent 执行隔离；能够控制工具执行的逻辑应使用 `beforeToolExecution`。
+运行期间，`Agent.state` 暴露：模型、系统提示词、工具、历史、inbox 快照、`isRunning`、当前流式助手消息、尚未结束的工具调用 ID，以及最终错误。`abort()` 中止该运行的 `AbortController`；`reset()` 仅能在空闲时清空历史、inbox 和运行状态。普通事件监听器属于 observer：每个监听器收到独立事件副本，监听器异常会记录为 `agent.listener_failed` 并与 Agent 执行隔离；能够控制工具执行的逻辑应使用 `beforeToolExecution`。
 
 ## 工具调用的前置与错误语义
 
@@ -162,7 +166,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 
 `list`、`glob`、`grep`、`read`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd`、`glob.cwd` 和 `grep.path` 也可在外部。请将审批理解为交互确认，而不是文件系统隔离。
 
-`schedule_wake` 不写入磁盘，也不恢复未触发的事件。进程内 scheduler 提供按到期时间排序的 list 和按稳定 ID 取消；`ConversationRuntime` 为事件保留来源、到期时间和同一个 ID，使它从未来 timer 转入已到期 pending FIFO 后仍可安全管理。`/schedule` 将 Agent 创建的事件标为 `agent`，将用户在面板中添加的事件标为 `you`，但不显示 Agent 用于替换事件的 key。到期时若 Agent 正在运行，TUI 将事件加入与 Tab 输入共用的 pending submission FIFO，等当前 `agent_end` 后按入队顺序开始新的 run；Enter steering 因中止或 turn limit 被 deferred 时也会降级到同一 FIFO 尾部。定时管理面板活动时只暂停 pending run 的启动，不暂停 timer；关闭面板后恢复投递。新建、分叉或恢复其他会话会取消旧会话尚未触发和待投递的输入。它不需要工具审批。
+`schedule_wake` 不写入磁盘，也不恢复未投递事件。进程内 scheduler 提供按到期时间排序的 list，并使用该未来输入本身的 `MessageId` 取消。timer 到期后，同一个 ID 进入 Agent 的 `next-turn` lane，最终进入已提交历史；不会再创建 wake/queue correlation ID。`/schedule` 将 Agent 创建的事件标为 `agent`，将用户在面板中添加的事件标为 `you`，但不显示 Agent 用于替换事件的 key。到期时若 Agent 正在运行，inbox 会把它排在更早的 next-turn 输入之后，等当前 `agent_end` 后按顺序开始新 run。定时管理面板活动时只暂停 pending run 的启动，不暂停 timer；关闭面板后恢复投递。新建、分叉或恢复其他会话会清空旧会话的未来 wake 和 pending inbox，退出也一样。它不需要工具审批。
 
 ## 自定义工具的约束
 

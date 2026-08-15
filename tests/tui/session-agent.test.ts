@@ -4,6 +4,8 @@ import { createWakeScheduler, type KanaSessionMetadata } from "../../src/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Terminal } from "../../src/tui/runtime";
+import { withAgentInboxForTest } from "../helpers/agent-inbox";
+import { messageIdentityForTest } from "../helpers/messages";
 
 describe("session-scoped agents", () => {
   test("resets a temporary tool approval mode when the session changes", () => {
@@ -34,7 +36,7 @@ describe("session-scoped agents", () => {
     let app!: KanaTuiApp;
     app = new KanaTuiApp(
       () =>
-        ({
+        withAgentInboxForTest({
           state: {
             messages: [],
             model: {
@@ -343,12 +345,17 @@ describe("session-scoped agents", () => {
 
   test("recreates the agent after forking so the new session owns later run state", async () => {
     const createdMessages: unknown[][] = [];
+    const originalMessage = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "original",
+    };
     const app = new KanaTuiApp(
       (options) => {
         createdMessages.push(options.messages ?? []);
-        return {
+        return withAgentInboxForTest({
           state: {
-            messages: [{ role: "user", content: "original" }],
+            messages: [originalMessage],
             model: {
               metadata: {
                 provider: "test",
@@ -360,7 +367,7 @@ describe("session-scoped agents", () => {
             },
           },
           abort() {},
-        } as never;
+        }) as never;
       },
       createTerminal(),
       createOptions(),
@@ -373,7 +380,7 @@ describe("session-scoped agents", () => {
 
     await internal.forkSession("Continue on the fork.");
 
-    expect(createdMessages).toEqual([[], [{ role: "user", content: "original" }]]);
+    expect(createdMessages).toEqual([[], [originalMessage]]);
   });
 
   test("queues due wake events until the active agent run ends", async () => {
@@ -388,7 +395,7 @@ describe("session-scoped agents", () => {
     });
     const app = new KanaTuiApp(
       () =>
-        ({
+        withAgentInboxForTest({
           state: {
             messages: [],
             model: {
@@ -430,10 +437,10 @@ describe("session-scoped agents", () => {
     await prompt;
     await waitFor(() => calls.length === 2);
 
-    expect(calls[1]?.input).toEqual({
+    expect(calls[1]?.input).toMatchObject({
       role: "user",
       content: "[Scheduled wake event]\nCheck the task.",
-      source: "scheduled",
+      provenance: { kind: "scheduled_input", origin: "agent" },
     });
     calls[1]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
     wakeScheduler.dispose();
@@ -451,7 +458,7 @@ describe("session-scoped agents", () => {
     });
     const app = new KanaTuiApp(
       () =>
-        ({
+        withAgentInboxForTest({
           state: {
             messages: [],
             model: {
@@ -494,7 +501,9 @@ describe("session-scoped agents", () => {
     internal.tui.getFocus()?.handleInput?.("\x1b");
     await waitFor(() => calls.length === 1);
 
-    expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
+    expect(calls[0]?.input).toMatchObject({
+      provenance: { kind: "scheduled_input", origin: "agent" },
+    });
     calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
     wakeScheduler.dispose();
   });
@@ -511,7 +520,7 @@ describe("session-scoped agents", () => {
     });
     const app = new KanaTuiApp(
       () =>
-        ({
+        withAgentInboxForTest({
           state: {
             messages: [],
             model: {
@@ -555,7 +564,9 @@ describe("session-scoped agents", () => {
     internal.clearAuxiliaryRunStatus();
     await waitFor(() => calls.length === 1);
 
-    expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
+    expect(calls[0]?.input).toMatchObject({
+      provenance: { kind: "scheduled_input", origin: "agent" },
+    });
     calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
     wakeScheduler.dispose();
   });
@@ -564,7 +575,7 @@ describe("session-scoped agents", () => {
     const calls: AgentEventStream[] = [];
     const app = new KanaTuiApp(
       () =>
-        ({
+        withAgentInboxForTest({
           state: {
             messages: [],
             estimatedContextTokens: 1_000,
@@ -596,6 +607,7 @@ describe("session-scoped agents", () => {
       layout: { render(width: number): string[] };
     };
     const message = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant" as const,
       stopReason: "stop" as const,
       usage: {
@@ -637,7 +649,7 @@ describe("session-scoped agents", () => {
     });
     const app = new KanaTuiApp(
       () =>
-        ({
+        withAgentInboxForTest({
           ...(createAgentStub() as unknown as object),
           subscribe(next: (event: never) => void) {
             listener = next;
@@ -755,7 +767,7 @@ function createTerminal(): Terminal {
 }
 
 function createAgentStub() {
-  return {
+  return withAgentInboxForTest({
     state: {
       messages: [],
       model: {
@@ -770,7 +782,7 @@ function createAgentStub() {
     },
     abort() {},
     async waitForIdle() {},
-  } as never;
+  }) as never;
 }
 
 function renderTranscript(transcript: { render(width: number): string[] }): string {

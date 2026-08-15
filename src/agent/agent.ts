@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import type { AssistantMessage, Message, Model, UserMessage } from "@/core";
+import {
+  type AssistantMessage,
+  createUserMessage,
+  type Message,
+  type MessageId,
+  type Model,
+  type UserMessage,
+} from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 import type { Tool } from "@/tools";
 import {
@@ -9,6 +16,13 @@ import {
   type ContextManagerConfig,
 } from "./context-manager";
 import type { AgentEvent } from "./events";
+import {
+  AgentInbox,
+  type AgentInboxItem,
+  type AgentInboxSnapshot,
+  type AgentInputDelivery,
+  type AgentInputLane,
+} from "./inbox";
 import type { AgentJournal } from "./journal";
 import {
   type AgentContext,
@@ -26,6 +40,7 @@ export type AgentConfig = {
   model: Model;
   system?: string;
   messages?: Message[];
+  inbox?: AgentInboxSnapshot;
   tools?: Tool[];
   // Prevent accidental infinite tool loops while keeping the first version
   // free of custom stop hooks. Use -1 to run without a turn limit.
@@ -48,6 +63,7 @@ export type AgentState = {
   readonly toolDeadlineMs: number;
   tools: Tool[];
   messages: Message[];
+  readonly inbox: AgentInboxSnapshot;
   readonly isRunning: boolean;
   readonly streamingMessage?: AssistantMessage;
   readonly pendingToolCalls: ReadonlySet<string>;
@@ -60,6 +76,7 @@ export type AgentState = {
 type WritableAgentState = Omit<
   AgentState,
   | "isRunning"
+  | "inbox"
   | "streamingMessage"
   | "pendingToolCalls"
   | "error"
@@ -93,17 +110,18 @@ type ActiveRun = {
   promise: Promise<void>;
   resolve(): void;
   abortController: AbortController;
-  steeringInputs?: PendingSteeringInput[];
+  steeringEnabled?: boolean;
 };
 
-type PendingSteeringInput = {
-  message: UserMessage;
-  resolve(outcome: AgentSteerOutcome): void;
-};
+export type AgentInboxListener = (snapshot: AgentInboxSnapshot) => void;
 
 export class Agent {
   private readonly listeners = new Set<AgentEventListener>();
+  private readonly inboxListeners = new Set<AgentInboxListener>();
+  private readonly steeringResolvers = new Map<MessageId, (outcome: AgentSteerOutcome) => void>();
+  private readonly committingSteeringIds = new Set<MessageId>();
   private activeRun?: ActiveRun;
+  private readonly inboxData: AgentInbox;
   private readonly stateData: WritableAgentState;
   private readonly beforeToolExecution?: BeforeToolExecutionHook;
   private readonly onRunCommitted?: AgentRunCommittedHook;
@@ -126,6 +144,12 @@ export class Agent {
       ...options,
       toolDeadlineMs,
     });
+    this.inboxData = new AgentInbox(options.inbox);
+    assertUniqueMessageIds([
+      ...this.stateData.messages,
+      ...this.inboxData.snapshot.nextStep.map((item) => item.message),
+      ...this.inboxData.snapshot.nextTurn.map((item) => item.message),
+    ]);
     this.beforeToolExecution = options.beforeToolExecution;
     this.onRunCommitted = options.onRunCommitted;
     this.onCompactionCommitted = options.onCompactionCommitted;
@@ -152,6 +176,7 @@ export class Agent {
       toolDeadlineMs: this.stateData.toolDeadlineMs,
       tools: this.stateData.tools.slice(),
       messages: structuredClone(this.stateData.messages),
+      inbox: this.inboxData.snapshot,
       isRunning: this.stateData.isRunning,
       streamingMessage:
         this.stateData.streamingMessage === undefined
@@ -173,11 +198,22 @@ export class Agent {
     return this.activeRun?.abortController.signal;
   }
 
+  get inbox(): AgentInboxSnapshot {
+    return this.inboxData.snapshot;
+  }
+
   subscribe(listener: AgentEventListener): () => void {
     this.listeners.add(listener);
 
     return () => {
       this.listeners.delete(listener);
+    };
+  }
+
+  subscribeInbox(listener: AgentInboxListener): () => void {
+    this.inboxListeners.add(listener);
+    return () => {
+      this.inboxListeners.delete(listener);
     };
   }
 
@@ -268,6 +304,18 @@ export class Agent {
     }
 
     const promptMessages = toPromptMessages(input);
+    const inbox = this.inboxData.snapshot;
+    try {
+      assertUniqueMessageIds([
+        ...this.stateData.messages,
+        ...promptMessages,
+        ...inbox.nextStep.map((item) => item.message),
+        ...inbox.nextTurn.map((item) => item.message),
+      ]);
+    } catch (error) {
+      stream.error(error);
+      return stream;
+    }
     const runContextManager = this.contextManager?.fork();
 
     void this.runWithSteeringLifecycle(async (signal) => {
@@ -283,6 +331,7 @@ export class Agent {
         if (!this.journal) {
           return;
         }
+        assertMessageIdAvailable(this.stateData.messages, message);
 
         await writeJournal(() =>
           this.journal?.appendMessage({
@@ -333,6 +382,7 @@ export class Agent {
             if (event.type === "agent_end") {
               doneEvent = structuredClone(event);
               if (!this.journal) {
+                assertUniqueMessageIds([...this.stateData.messages, ...doneEvent.messages]);
                 this.stateData.messages = [
                   ...this.stateData.messages,
                   ...structuredClone(doneEvent.messages),
@@ -400,20 +450,67 @@ export class Agent {
   }
 
   steer(input: UserMessage): Promise<AgentSteerOutcome> {
-    const steeringInputs = this.activeRun?.steeringInputs;
-    if (!steeringInputs) {
+    if (this.activeRun?.steeringEnabled !== true) {
+      this.enqueueInput(input, "next-turn", { kind: "steering" });
       return Promise.resolve("deferred");
     }
 
-    this.log("info", "agent.steering_input_queued", {
-      pendingInputCount: steeringInputs.length + 1,
-    });
     return new Promise((resolve) => {
-      steeringInputs.push({
-        message: structuredClone(input),
-        resolve,
+      this.enqueueInput(input, "next-step", { kind: "steering" });
+      // Inbox insertion must succeed before the resolver becomes visible;
+      // otherwise a duplicate ID could replace the original caller's waiter.
+      this.steeringResolvers.set(input.id, resolve);
+      this.log("info", "agent.steering_input_queued", {
+        pendingInputCount: this.inboxData.snapshot.nextStep.length,
       });
     });
+  }
+
+  enqueueInput(input: UserMessage, lane: AgentInputLane, delivery: AgentInputDelivery): void {
+    if (this.stateData.messages.some((message) => message.id === input.id)) {
+      throw new Error(`Message ${input.id} is already committed to Agent history.`);
+    }
+    this.inboxData.enqueue({ message: structuredClone(input), delivery }, lane);
+    this.emitInboxChanged();
+  }
+
+  shiftNextTurnInput(): AgentInboxItem | undefined {
+    const item = this.inboxData.shiftNextTurn();
+    if (item) {
+      this.emitInboxChanged();
+    }
+    return item;
+  }
+
+  cancelInput(id: MessageId): AgentInboxItem | undefined {
+    if (this.committingSteeringIds.has(id)) {
+      // Once journal commit starts, cancellation cannot make the durable
+      // message disagree with the inbox item claimed for model history.
+      this.log("info", "agent.input_cancel_skipped", { reason: "commit_in_progress" });
+      return undefined;
+    }
+    const item = this.inboxData.remove(id);
+    if (!item) {
+      return undefined;
+    }
+    this.steeringResolvers.get(id)?.("deferred");
+    this.steeringResolvers.delete(id);
+    this.emitInboxChanged();
+    return item;
+  }
+
+  clearInbox(): void {
+    // A steering item crossing the journal boundary is no longer cancelable.
+    // Shutdown may clear every other item, then wait for this claim to finish.
+    const removed = this.inboxData.clear(this.committingSteeringIds);
+    if (removed.length === 0) {
+      return;
+    }
+    for (const item of removed) {
+      this.steeringResolvers.get(item.message.id)?.("deferred");
+      this.steeringResolvers.delete(item.message.id);
+    }
+    this.emitInboxChanged();
   }
 
   waitForIdle(): Promise<void> {
@@ -429,6 +526,7 @@ export class Agent {
     this.stateData.streamingMessage = undefined;
     this.stateData.pendingToolCalls = new Set<string>();
     this.stateData.error = undefined;
+    this.clearInbox();
     this.contextManager?.reset();
   }
 
@@ -471,7 +569,7 @@ export class Agent {
       }
       // Steering input belongs to this run only. Compaction uses the base
       // lifecycle and therefore never exposes a queue that it cannot consume.
-      this.activeRun.steeringInputs = [];
+      this.activeRun.steeringEnabled = true;
       return executor(signal);
     });
   }
@@ -505,14 +603,18 @@ export class Agent {
       this.stateData.error = error;
       throw error;
     } finally {
-      const deferredInputs = this.activeRun.steeringInputs ?? [];
+      const deferredInputs = this.activeRun.steeringEnabled ? this.inboxData.deferNextStep() : [];
       if (deferredInputs.length > 0) {
         this.log("info", "agent.steering_inputs_deferred", {
           inputCount: deferredInputs.length,
         });
       }
       for (const input of deferredInputs) {
-        input.resolve("deferred");
+        this.steeringResolvers.get(input.message.id)?.("deferred");
+        this.steeringResolvers.delete(input.message.id);
+      }
+      if (deferredInputs.length > 0) {
+        this.emitInboxChanged();
       }
       this.stateData.isRunning = false;
       this.stateData.streamingMessage = undefined;
@@ -525,26 +627,46 @@ export class Agent {
   private async consumeSteeringInputs(
     commit: (message: UserMessage) => Promise<void>,
   ): Promise<UserMessage[]> {
-    const steeringInputs = this.activeRun?.steeringInputs;
-    if (!steeringInputs) {
+    if (this.activeRun?.steeringEnabled !== true) {
       return [];
     }
 
     const consumed: UserMessage[] = [];
-    while (steeringInputs.length > 0) {
-      const pending = steeringInputs[0] as PendingSteeringInput;
-      await commit(structuredClone(pending.message));
-      steeringInputs.shift();
-      pending.resolve("consumed");
-      consumed.push(structuredClone(pending.message));
+    let pending = this.inboxData.peekNextStep();
+    while (pending) {
+      const pendingId = pending.message.id;
+      this.committingSteeringIds.add(pendingId);
+      let claimed: AgentInboxItem;
+      try {
+        await commit(structuredClone(pending.message));
+        claimed = this.inboxData.claimNextStep(pendingId);
+      } finally {
+        this.committingSteeringIds.delete(pendingId);
+      }
+      this.steeringResolvers.get(claimed.message.id)?.("consumed");
+      this.steeringResolvers.delete(claimed.message.id);
+      consumed.push(structuredClone(claimed.message));
+      pending = this.inboxData.peekNextStep();
     }
 
     if (consumed.length > 0) {
+      this.emitInboxChanged();
       this.log("info", "agent.steering_inputs_consumed", {
         inputCount: consumed.length,
       });
     }
     return consumed;
+  }
+
+  private emitInboxChanged(): void {
+    const snapshot = this.inboxData.snapshot;
+    for (const listener of [...this.inboxListeners]) {
+      try {
+        listener(structuredClone(snapshot));
+      } catch (error) {
+        this.log("warn", "agent.inbox_listener_failed", { error });
+      }
+    }
   }
 
   private async processEvent(event: AgentEvent): Promise<void> {
@@ -679,6 +801,7 @@ function createWritableAgentState(
 ): WritableAgentState {
   let tools = options.tools?.slice() ?? [];
   let messages = structuredClone(options.messages ?? []);
+  assertUniqueMessageIds(messages);
 
   return {
     model: options.model,
@@ -704,6 +827,22 @@ function createWritableAgentState(
   };
 }
 
+function assertUniqueMessageIds(messages: readonly Message[]): void {
+  const ids = new Set<MessageId>();
+  for (const message of messages) {
+    if (ids.has(message.id)) {
+      throw new Error(`Duplicate Message id in Agent history: ${message.id}`);
+    }
+    ids.add(message.id);
+  }
+}
+
+function assertMessageIdAvailable(messages: readonly Message[], candidate: Message): void {
+  if (messages.some((message) => message.id === candidate.id)) {
+    throw new Error(`Duplicate Message id in Agent history: ${candidate.id}`);
+  }
+}
+
 function toPromptMessages(input: AgentPromptInput): UserMessage[] {
   if (Array.isArray(input)) {
     return input.map((message) => structuredClone(message));
@@ -714,9 +853,9 @@ function toPromptMessages(input: AgentPromptInput): UserMessage[] {
   }
 
   return [
-    {
-      role: "user",
+    createUserMessage({
       content: input,
-    },
+      provenance: { kind: "user_input" },
+    }),
   ];
 }

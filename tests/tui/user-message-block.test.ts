@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { UserMessageBlock } from "../../src/tui/components";
 import { stripAnsi, visibleWidth } from "../../src/tui/render";
 import { tuiTheme } from "../../src/tui/theme";
+import { messageIdentityForTest } from "../helpers/messages";
 
 describe("tui user message block", () => {
   test("renders neutral text with an accent prefix inside an ASCII frame", () => {
@@ -35,6 +36,7 @@ describe("tui user message block", () => {
 
   test("renders image attachment metadata without exposing encoded bytes", () => {
     const rendered = new UserMessageBlock({
+      ...messageIdentityForTest("user"),
       role: "user",
       content: "",
       images: [

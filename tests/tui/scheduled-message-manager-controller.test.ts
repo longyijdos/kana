@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readMessageId } from "@/core";
 import type {
   ConversationInputQueueSnapshot,
   ConversationScheduledInputCancellation,
@@ -192,7 +193,7 @@ function wake(
   afterMinutes: number,
 ): WakeEvent {
   return {
-    id,
+    id: readMessageId(id),
     sessionId: "session-a",
     dueAt: new Date(Date.UTC(2026, 7, 8, 8, afterMinutes, 18)),
     message,

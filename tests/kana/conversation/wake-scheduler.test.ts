@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import type { MessageId } from "@/core";
 import { createWakeScheduler } from "@/kana";
+import { messageIdForTest } from "../../helpers/messages";
 
 describe("wake scheduler", () => {
   test("delivers scheduled events and removes their replacement key", () => {
     const timers = new Map<number | ReturnType<typeof setTimeout>, () => void>();
     const delivered: string[] = [];
     const scheduler = createWakeScheduler({
-      createId: () => "wake-1",
+      createId: () => messageIdForTest("wake-1"),
       setTimeout: (callback) => {
         timers.set(1, callback);
         return 1;
@@ -62,11 +64,14 @@ describe("wake scheduler", () => {
 
   test("lists process-local events by due time and publishes management changes", () => {
     const now = new Date("2026-08-08T08:00:00.000Z");
-    const ids = ["later", "other", "sooner"];
-    const snapshots: string[][] = [];
+    const laterId = messageIdForTest("later");
+    const otherId = messageIdForTest("other");
+    const soonerId = messageIdForTest("sooner");
+    const ids = [laterId, otherId, soonerId];
+    const snapshots: MessageId[][] = [];
     const scheduler = createWakeScheduler({
       now: () => now,
-      createId: () => ids.shift() as string,
+      createId: () => ids.shift() as MessageId,
       setTimeout: () => 1,
       clearTimeout: () => {},
     });
@@ -86,12 +91,12 @@ describe("wake scheduler", () => {
     scheduler.schedule({ sessionId: "session-b", afterMinutes: 1, message: "other" });
     scheduler.schedule({ sessionId: "session-a", afterMinutes: 5, message: "sooner" });
 
-    expect(scheduler.list("session-a").map((event) => event.id)).toEqual(["sooner", "later"]);
+    expect(scheduler.list("session-a").map((event) => event.id)).toEqual([soonerId, laterId]);
     expect(scheduler.list("session-a").map((event) => event.origin)).toEqual(["agent", "user"]);
-    expect(scheduler.cancel("later")).toBe(true);
-    expect(scheduler.cancel("later")).toBe(false);
-    expect(scheduler.list("session-a").map((event) => event.id)).toEqual(["sooner"]);
-    expect(snapshots).toEqual([["later"], ["later"], ["sooner", "later"], ["sooner"]]);
+    expect(scheduler.cancel(laterId)).toBe(true);
+    expect(scheduler.cancel(laterId)).toBe(false);
+    expect(scheduler.list("session-a").map((event) => event.id)).toEqual([soonerId]);
+    expect(snapshots).toEqual([[laterId], [laterId], [soonerId, laterId], [soonerId]]);
 
     scheduler.dispose();
   });

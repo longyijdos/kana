@@ -69,7 +69,7 @@ describe("ToolRuntime", () => {
       "commit:tool",
       "end",
     ]);
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       toolResults: [
         {
           role: "tool",
@@ -82,6 +82,7 @@ describe("ToolRuntime", () => {
       ],
       abortRun: false,
     });
+    expect(result.toolResults[0]?.id).toBeDefined();
   });
 
   test("does not publish tool end when the result commit fails", async () => {

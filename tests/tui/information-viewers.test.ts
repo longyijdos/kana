@@ -4,6 +4,7 @@ import { KanaTuiApp } from "../../src/tui/app/app";
 import { color, stripAnsi } from "../../src/tui/render";
 import type { Component, Terminal } from "../../src/tui/runtime";
 import { tuiTheme } from "../../src/tui/theme";
+import { withAgentInboxForTest } from "../helpers/agent-inbox";
 
 describe("information viewers", () => {
   test("opens help in the bottom viewer without adding transcript content", () => {
@@ -179,7 +180,7 @@ function createApp(
 ): KanaTuiApp {
   return new KanaTuiApp(
     () =>
-      ({
+      withAgentInboxForTest({
         state: {
           messages: [],
           model: {

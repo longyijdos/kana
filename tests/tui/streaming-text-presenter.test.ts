@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AssistantContent, AssistantMessage } from "../../src/core";
 import { StreamingTextPresenter } from "../../src/tui/app/streaming-text-presenter";
+import { messageIdentityForTest } from "../helpers/messages";
 
 type PublishedMessage = {
   message: AssistantMessage;
@@ -83,6 +84,7 @@ function assistantMessage(
   trailingContent: AssistantContent[] = [],
 ): AssistantMessage {
   return {
+    ...messageIdentityForTest("assistant"),
     role: "assistant",
     content: [{ type: "text", text }, ...trailingContent],
   };

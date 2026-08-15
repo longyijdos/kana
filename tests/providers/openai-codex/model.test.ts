@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { OpenAICodexModel } from "../../../src/providers/openai-codex/model";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("OpenAI Codex model", () => {
   test("refreshes once after a 401 and streams the retried response", async () => {
@@ -67,7 +68,7 @@ describe("OpenAI Codex model", () => {
     });
 
     const message = await model.generate({
-      messages: [{ role: "user", content: "hi" }],
+      messages: [{ ...messageIdentityForTest("user"), role: "user", content: "hi" }],
       tools: [],
       parallelToolCalls: true,
     });

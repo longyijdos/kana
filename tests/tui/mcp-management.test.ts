@@ -4,6 +4,7 @@ import { createWakeScheduler } from "../../src/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Terminal } from "../../src/tui/runtime";
+import { withAgentInboxForTest } from "../helpers/agent-inbox";
 
 describe("TUI MCP management", () => {
   test("applies one draft and rebuilds the Agent after reload", async () => {
@@ -161,7 +162,9 @@ describe("TUI MCP management", () => {
     internal.tui.getFocus()?.handleInput?.("\x1b");
     await waitFor(() => calls.length === 1);
 
-    expect(calls[0]?.input).toMatchObject({ source: "scheduled" });
+    expect(calls[0]?.input).toMatchObject({
+      provenance: { kind: "scheduled_input", origin: "agent" },
+    });
     calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
     wakeScheduler.dispose();
   });
@@ -215,7 +218,7 @@ function createOptions() {
 }
 
 function createAgentStub() {
-  return {
+  return withAgentInboxForTest({
     state: {
       messages: [],
       model: {
@@ -230,7 +233,7 @@ function createAgentStub() {
     },
     abort() {},
     async waitForIdle() {},
-  };
+  });
 }
 
 function createTerminal(): Terminal {

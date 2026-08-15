@@ -9,6 +9,7 @@ import {
   readDeepSeekStream,
 } from "../../../src/providers/deepseek/stream";
 import type { DeepSeekStreamState } from "../../../src/providers/deepseek/types";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("DeepSeek stream parsing", () => {
   test("reports raw stream activity for heartbeats and data frames", async () => {
@@ -43,6 +44,7 @@ describe("DeepSeek stream parsing", () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEventTypes(stream);
     const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [],
     };
@@ -153,6 +155,7 @@ describe("DeepSeek stream parsing", () => {
   test("captures usage from the stream chunk", () => {
     const stream = new AssistantEventStream();
     const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [],
     };
@@ -188,6 +191,7 @@ describe("DeepSeek stream parsing", () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEvents(stream);
     const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [],
     };

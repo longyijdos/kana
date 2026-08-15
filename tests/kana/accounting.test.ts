@@ -7,6 +7,7 @@ import {
   loadKanaUsageSummary,
   recordKanaAgentRunAccounting,
 } from "@/kana";
+import { messageIdentityForTest } from "../helpers/messages";
 
 const directories: string[] = [];
 
@@ -80,6 +81,7 @@ describe("Kana accounting", () => {
         outcome: "stop",
         messages: [
           {
+            ...messageIdentityForTest("assistant"),
             role: "assistant",
             content: [{ type: "text", text: "done" }],
             usage: {

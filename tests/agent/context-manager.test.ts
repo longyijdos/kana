@@ -16,6 +16,7 @@ import {
   type ModelContext,
   type ModelMetadata,
 } from "@/core";
+import { messageIdentityForTest } from "../helpers/messages";
 
 const MODEL_METADATA: ModelMetadata = {
   provider: "test",
@@ -78,10 +79,12 @@ describe("ContextManager", () => {
     });
     const messages: Message[] = [
       {
+        ...messageIdentityForTest("user"),
         role: "user",
         content: "Old question",
       },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         usage: {
@@ -95,10 +98,12 @@ describe("ContextManager", () => {
         ],
       },
       {
+        ...messageIdentityForTest("user"),
         role: "user",
         content: "x".repeat(9_000),
       },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "toolUse",
         content: [
@@ -111,6 +116,7 @@ describe("ContextManager", () => {
         ],
       },
       {
+        ...messageIdentityForTest("tool"),
         role: "tool",
         toolCallId: "call-1",
         toolName: "read",
@@ -121,10 +127,12 @@ describe("ContextManager", () => {
         isError: false,
       },
       {
+        ...messageIdentityForTest("user"),
         role: "user",
         content: "Recent question",
       },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         content: [{ type: "text", text: "Recent answer" }],
@@ -147,11 +155,15 @@ describe("ContextManager", () => {
 
     expect(policyInput?.messages).toHaveLength(5);
     expect(policyInput?.messages[1]).toEqual({
+      id: messages[1]?.id,
+      provenance: { kind: "model_output" },
       role: "assistant",
       stopReason: "stop",
       content: [{ type: "text", text: "Old answer" }],
     });
     expect(policyInput?.messages[4]).toEqual({
+      id: messages[4]?.id,
+      provenance: { kind: "tool_result" },
       role: "tool",
       toolCallId: "call-1",
       toolName: "read",
@@ -173,7 +185,13 @@ describe("ContextManager", () => {
       },
     });
     const context = {
-      messages: [{ role: "user" as const, content: "x".repeat(8_000) }],
+      messages: [
+        {
+          ...messageIdentityForTest("user"),
+          role: "user" as const,
+          content: "x".repeat(8_000),
+        },
+      ],
     };
 
     const prepared = await manager.prepareForModel(context);
@@ -200,8 +218,13 @@ describe("ContextManager", () => {
     });
     const context = {
       messages: [
-        { role: "user" as const, content: "x".repeat(8_000) },
         {
+          ...messageIdentityForTest("user"),
+          role: "user" as const,
+          content: "x".repeat(8_000),
+        },
+        {
+          ...messageIdentityForTest("assistant"),
           role: "assistant" as const,
           stopReason: "toolUse" as const,
           content: [
@@ -210,6 +233,7 @@ describe("ContextManager", () => {
           ],
         },
         {
+          ...messageIdentityForTest("tool"),
           role: "tool" as const,
           toolCallId: "call-1",
           toolName: "read",
@@ -245,6 +269,7 @@ describe("ContextManager", () => {
     const createContext = (data: string): ModelContext => ({
       messages: [
         {
+          ...messageIdentityForTest("user"),
           role: "user",
           content: "",
           images: [
@@ -273,8 +298,11 @@ describe("ContextManager", () => {
         return { summary: "unused" };
       },
     });
-    const messages: Message[] = [{ role: "user", content: "Hello" }];
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Hello" },
+    ];
     const cleanResponse: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       stopReason: "stop",
       usage: {
@@ -286,9 +314,14 @@ describe("ContextManager", () => {
     };
 
     manager.recordAssistantUsage(cleanResponse, messages.length);
-    messages.push(cleanResponse, { role: "user", content: "Search for Kana" });
+    messages.push(cleanResponse, {
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Search for Kana",
+    });
 
     const hostedResponse: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       stopReason: "stop",
       usage: {
@@ -322,8 +355,9 @@ describe("ContextManager", () => {
     expect(prepared.compaction).toBeUndefined();
     expect(policyCalls).toBe(0);
 
-    messages.push({ role: "user", content: "Thanks" });
+    messages.push({ ...messageIdentityForTest("user"), role: "user", content: "Thanks" });
     const recalibratedResponse: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       stopReason: "stop",
       usage: {
@@ -355,8 +389,9 @@ describe("ContextManager", () => {
     await expect(
       manager.prepareForModel({
         messages: [
-          { role: "user", content: "x".repeat(10_000) },
+          { ...messageIdentityForTest("user"), role: "user", content: "x".repeat(10_000) },
           {
+            ...messageIdentityForTest("assistant"),
             role: "assistant",
             stopReason: "stop",
             content: [{ type: "text", text: "done" }],
@@ -387,6 +422,7 @@ describe("model compaction policy", () => {
       async generate(context) {
         capturedContext = structuredClone(context);
         return {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           stopReason: "stop",
           usage: {
@@ -407,6 +443,7 @@ describe("model compaction policy", () => {
       previousSummary: "Previous state.",
       messages: [
         {
+          ...messageIdentityForTest("user"),
           role: "user",
           content: "Inspect the attached image.",
           images: [
@@ -419,6 +456,7 @@ describe("model compaction policy", () => {
           ],
         },
         {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           content: [
             { type: "thinking", text: "hidden history" },
@@ -426,6 +464,7 @@ describe("model compaction policy", () => {
           ],
         },
         {
+          ...messageIdentityForTest("tool"),
           role: "tool",
           toolCallId: "call-1",
           toolName: "read",
@@ -477,6 +516,7 @@ describe("model compaction policy", () => {
       async generate(context) {
         capturedContext = structuredClone(context);
         return {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           stopReason: "stop",
           content: [{ type: "text", text: "Visual summary." }],
@@ -488,6 +528,7 @@ describe("model compaction policy", () => {
     const result = await policy({
       messages: [
         {
+          ...messageIdentityForTest("user"),
           role: "user",
           content: "Compare these images.",
           images: [
@@ -500,6 +541,7 @@ describe("model compaction policy", () => {
           ],
         },
         {
+          ...messageIdentityForTest("user"),
           role: "user",
           content: "And this one.",
           images: [
@@ -553,16 +595,22 @@ describe("context-limit recovery", () => {
     });
     const events: string[] = [];
 
+    const currentQuestion = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Current question",
+    };
     const messages = await runAgentLoop(
       {
         messages: [
-          { role: "user", content: "Old question" },
+          { ...messageIdentityForTest("user"), role: "user", content: "Old question" },
           {
+            ...messageIdentityForTest("assistant"),
             role: "assistant",
             stopReason: "stop",
             content: [{ type: "text", text: "Old answer" }],
           },
-          { role: "user", content: "Current question" },
+          currentQuestion,
         ],
       },
       {
@@ -576,27 +624,25 @@ describe("context-limit recovery", () => {
 
     expect(model.contexts).toHaveLength(2);
     expect(model.contexts[0]?.messages).toHaveLength(3);
-    expect(model.contexts[1]?.messages).toEqual([
-      {
-        role: "user",
-        content: expect.stringContaining("Earlier exchange completed."),
-      },
-      {
-        role: "user",
-        content: "Current question",
-      },
-    ]);
+    expect(model.contexts[1]?.messages[0]).toMatchObject({
+      role: "user",
+      provenance: { kind: "context_summary" },
+      content: expect.stringContaining("Earlier exchange completed."),
+    });
+    expect(model.contexts[1]?.messages[1]).toEqual(currentQuestion);
     expect(manager.compactions).toHaveLength(1);
     expect(manager.compactions[0]?.reason).toBe("provider_limit");
     expect(events.filter((event) => event === "context_compaction_start")).toHaveLength(1);
     expect(events.filter((event) => event === "context_compacted")).toHaveLength(1);
-    expect(messages).toEqual([
+    expect(messages).toMatchObject([
       {
         role: "assistant",
+        provenance: { kind: "model_output" },
         stopReason: "stop",
         content: [{ type: "text", text: "Recovered response" }],
       },
     ]);
+    expect(messages[0]?.id).toBeDefined();
   });
 });
 
@@ -616,6 +662,7 @@ class ContextLimitThenTextModel implements Model {
           reason: "error",
           error: new ContextWindowExceededError(),
           snapshot: {
+            ...messageIdentityForTest("assistant"),
             role: "assistant",
             content: [],
           },
@@ -624,12 +671,13 @@ class ContextLimitThenTextModel implements Model {
       }
 
       const message: AssistantMessage = {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         content: [{ type: "text", text: "Recovered response" }],
       };
       stream.push({
         type: "start",
-        snapshot: { role: "assistant", content: [] },
+        snapshot: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
       });
       stream.push({
         type: "text_start",

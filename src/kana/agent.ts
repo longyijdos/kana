@@ -36,6 +36,7 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
 export type KanaAgentOptions = Pick<
   AgentConfig,
   | "beforeToolExecution"
+  | "inbox"
   | "messages"
   | "onRunCommitted"
   | "onCompactionCommitted"
@@ -117,6 +118,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     toolDeadlineMs: config.agent.toolDeadlineMs,
     parallelToolCalls: config.agent.parallelToolCalls,
     beforeToolExecution: options.beforeToolExecution,
+    inbox: options.inbox,
     messages: options.messages,
     onRunCommitted: options.onRunCommitted,
     onCompactionCommitted: options.onCompactionCommitted,

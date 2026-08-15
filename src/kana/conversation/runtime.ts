@@ -1,5 +1,17 @@
-import type { Agent, AgentEvent, BeforeToolExecutionHook, ContextCheckpoint } from "@/agent";
-import type { Message, UserMessage } from "@/core";
+import type {
+  Agent,
+  AgentEvent,
+  AgentInboxSnapshot,
+  BeforeToolExecutionHook,
+  ContextCheckpoint,
+} from "@/agent";
+import {
+  createUserMessage,
+  type Message,
+  type MessageId,
+  readMessageId,
+  type UserMessage,
+} from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
 import {
@@ -22,13 +34,13 @@ export type ConversationInputDisposition = "steered" | "queued" | "discarded";
 
 type ConversationPendingInput =
   | {
-      id: string;
-      kind: "queued" | "deferred";
+      id: MessageId;
+      kind: "steering" | "queued" | "deferred";
       content: string;
       imageCount?: number;
     }
   | {
-      id: string;
+      id: MessageId;
       kind: "scheduled";
       content: string;
       imageCount?: number;
@@ -80,6 +92,7 @@ export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => v
 type CreateConversationAgentOptions<TConfiguration> = {
   beforeToolExecution: BeforeToolExecutionHook;
   messages?: Message[];
+  inbox?: AgentInboxSnapshot;
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
   configuration?: TConfiguration;
@@ -105,41 +118,13 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   getLogger?: () => Logger;
 };
 
-type PendingSubmissionBase = {
-  id: string;
-  sessionId?: string;
-  input: UserMessage;
-  displayContent: string;
-};
-
-type PendingSubmission =
-  | (PendingSubmissionBase & {
-      source: "user";
-      kind: "queued" | "deferred";
-    })
-  | (PendingSubmissionBase & {
-      source: "scheduled";
-      kind: "scheduled";
-      scheduled: {
-        dueAt: Date;
-        origin: WakeEventOrigin;
-        key?: string;
-      };
-    });
-
-type PendingSubmissionDraft =
-  | (Omit<Extract<PendingSubmission, { source: "user" }>, "id"> & { id?: string })
-  | (Omit<Extract<PendingSubmission, { source: "scheduled" }>, "id"> & {
-      id?: string;
-    });
-
 export class ConversationRuntime<TConfiguration = never> {
   private readonly listeners = new Set<ConversationRuntimeListener>();
   private readonly wakeScheduler: WakeScheduler;
   private readonly unsubscribeWakeEvents: () => void;
   private readonly unsubscribeWakeState: () => void;
-  private readonly pendingSubmissions: PendingSubmission[] = [];
   private readonly getLogger: () => Logger;
+  private unsubscribeAgentInbox?: () => void;
   private agent: Agent;
   private sessionData?: ConversationSessionSnapshot;
   private beforeToolExecution?: BeforeToolExecutionHook;
@@ -153,6 +138,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.getLogger = options.getLogger ?? createNoopLogger;
     this.wakeScheduler = options.wakeScheduler ?? createWakeScheduler();
     this.agent = this.buildAgent(this.sessionData?.messages, this.sessionData?.contextCheckpoint);
+    this.observeAgentInbox(this.agent);
     this.unsubscribeWakeEvents = this.wakeScheduler.subscribe((event) => {
       this.queueWakeEvent(event);
     });
@@ -197,30 +183,12 @@ export class ConversationRuntime<TConfiguration = never> {
 
   get inputQueue(): ConversationInputQueueSnapshot {
     const sessionId = this.sessionId;
+    const inbox = this.agent.inbox;
     return {
-      pending: this.pendingSubmissions
-        .filter((submission) => submission.sessionId === sessionId)
-        .map((submission): ConversationPendingInput => {
-          if (submission.kind === "scheduled") {
-            return {
-              id: submission.id,
-              kind: "scheduled",
-              content: submission.displayContent,
-              dueAt: new Date(submission.scheduled.dueAt.getTime()),
-              origin: submission.scheduled.origin,
-              key: submission.scheduled.key,
-            };
-          }
-
-          return {
-            id: submission.id,
-            kind: submission.kind,
-            content: submission.displayContent,
-            ...(submission.input.images?.length
-              ? { imageCount: submission.input.images.length }
-              : {}),
-          };
-        }),
+      pending: [
+        ...inbox.nextStep.map((item) => this.toPendingInput(item, "next-step")),
+        ...inbox.nextTurn.map((item) => this.toPendingInput(item, "next-turn")),
+      ],
       scheduled:
         sessionId === undefined || this.options.scheduledRuns === false
           ? []
@@ -379,17 +347,23 @@ export class ConversationRuntime<TConfiguration = never> {
     this.notifyCanStartQueuedRun();
   }
 
-  queueInput(input: UserMessage): string {
-    return this.queueSubmission({
-      sessionId: this.sessionId,
-      input,
+  queueInput(input: UserMessage): MessageId {
+    if (this.stopping) {
+      this.log("warn", "conversation.input_discarded", { reason: "stopping" });
+      return input.id;
+    }
+    this.agent.enqueueInput(input, "next-turn", { kind: "queued" });
+    this.log("info", "conversation.input_queued", {
       source: "user",
-      kind: "queued",
-      displayContent: input.content,
+      pendingInputCount: this.agent.inbox.nextTurn.length,
     });
+    return input.id;
   }
 
   scheduleInput(afterMinutes: number, message: string): WakeEvent {
+    if (this.stopping) {
+      throw new Error("Conversation runtime is stopping.");
+    }
     const sessionId = this.sessionId;
     if (!sessionId) {
       throw new Error("Cannot schedule a message without an active session.");
@@ -424,26 +398,22 @@ export class ConversationRuntime<TConfiguration = never> {
       .some((event) => event.id === id);
     // Expiry and cancellation share the JavaScript event loop, so the stable
     // ID is synchronously present in either the timer map or the pending FIFO.
-    if (isCurrentSessionWake && this.wakeScheduler.cancel(id)) {
+    if (isCurrentSessionWake && this.wakeScheduler.cancel(readMessageId(id))) {
       this.log("info", "conversation.scheduled_input_cancelled", { state: "future" });
       return "future";
     }
 
-    const pendingIndex = this.pendingSubmissions.findIndex(
-      (submission) =>
-        submission.id === id &&
-        submission.sessionId === sessionId &&
-        submission.kind === "scheduled",
+    const pending = this.agent.inbox.nextTurn.find(
+      (item) => item.message.id === id && item.delivery.kind === "scheduled",
     );
-    if (pendingIndex < 0) {
+    if (!pending) {
       this.log("info", "conversation.scheduled_input_cancel_skipped", {
         reason: "not_found",
       });
       return "not_found";
     }
 
-    this.pendingSubmissions.splice(pendingIndex, 1);
-    this.emitInputQueueChanged();
+    this.agent.cancelInput(pending.message.id);
     this.log("info", "conversation.scheduled_input_cancelled", { state: "pending" });
     return "pending";
   }
@@ -465,13 +435,6 @@ export class ConversationRuntime<TConfiguration = never> {
       return "discarded";
     }
 
-    this.queueSubmission({
-      sessionId,
-      input,
-      source: "user",
-      kind: "deferred",
-      displayContent: input.content,
-    });
     return "queued";
   }
 
@@ -484,7 +447,8 @@ export class ConversationRuntime<TConfiguration = never> {
     this.stopping = true;
     this.unsubscribeWakeEvents();
     this.unsubscribeWakeState();
-    this.pendingSubmissions.length = 0;
+    this.unsubscribeAgentInbox?.();
+    this.agent.clearInbox();
     this.agent.abort();
     await this.agent.waitForIdle();
     this.wakeScheduler.dispose();
@@ -497,6 +461,7 @@ export class ConversationRuntime<TConfiguration = never> {
     contextCheckpoint?: ContextCheckpoint,
     configuration?: TConfiguration,
     sessionId = this.sessionData?.id,
+    inbox?: AgentInboxSnapshot,
   ): Agent {
     return this.options.createAgent({
       beforeToolExecution: (request) =>
@@ -506,6 +471,7 @@ export class ConversationRuntime<TConfiguration = never> {
           message: "Tool approval is unavailable.",
         },
       messages,
+      inbox,
       sessionId,
       contextCheckpoint,
       configuration,
@@ -518,9 +484,16 @@ export class ConversationRuntime<TConfiguration = never> {
     configuration?: TConfiguration,
   ): void {
     const previousAgent = this.agent;
-    const nextAgent = this.buildAgent(messages, contextCheckpoint, configuration);
+    const nextAgent = this.buildAgent(
+      messages,
+      contextCheckpoint,
+      configuration,
+      this.sessionData?.id,
+      this.agent.inbox,
+    );
 
     this.agent = nextAgent;
+    this.observeAgentInbox(nextAgent);
     previousAgent.abort();
   }
 
@@ -540,6 +513,7 @@ export class ConversationRuntime<TConfiguration = never> {
     const previousAgent = this.agent;
     this.sessionData = nextSession;
     this.agent = nextAgent;
+    this.observeAgentInbox(nextAgent);
     previousAgent.abort();
     this.emit({
       type: "session_changed",
@@ -578,40 +552,53 @@ export class ConversationRuntime<TConfiguration = never> {
       return;
     }
 
-    this.queueSubmission({
+    const input = createUserMessage({
       id: event.id,
-      sessionId: event.sessionId,
-      input: {
-        role: "user",
-        content: ["[Scheduled wake event]", event.message].join("\n"),
-        source: "scheduled",
-      },
-      source: "scheduled",
+      content: ["[Scheduled wake event]", event.message].join("\n"),
+      provenance: { kind: "scheduled_input", origin: event.origin },
+    });
+    this.agent.enqueueInput(input, "next-turn", {
       kind: "scheduled",
       displayContent: event.message,
-      scheduled: {
-        dueAt: event.dueAt,
-        origin: event.origin,
-        key: event.key,
-      },
+      dueAt: event.dueAt,
+      key: event.key,
+    });
+    this.log("info", "conversation.input_queued", {
+      source: "scheduled",
+      pendingInputCount: this.agent.inbox.nextTurn.length,
     });
   }
 
-  private queueSubmission(submission: PendingSubmissionDraft): string {
-    if (this.stopping) {
-      return submission.id ?? crypto.randomUUID();
+  private toPendingInput(
+    item: AgentInboxSnapshot["nextTurn"][number],
+    lane: "next-step" | "next-turn",
+  ): ConversationPendingInput {
+    if (item.delivery.kind === "scheduled") {
+      const provenance = item.message.provenance;
+      if (provenance.kind !== "scheduled_input") {
+        throw new Error("Scheduled Agent input is missing scheduled provenance.");
+      }
+      return {
+        id: item.message.id,
+        kind: "scheduled",
+        content: item.delivery.displayContent,
+        dueAt: new Date(item.delivery.dueAt.getTime()),
+        origin: provenance.origin,
+        key: item.delivery.key,
+      };
     }
 
-    const id = submission.id ?? crypto.randomUUID();
-    const queuedSubmission: PendingSubmission = { ...structuredClone(submission), id };
-    this.pendingSubmissions.push(queuedSubmission);
-    this.log("info", "conversation.input_queued", {
-      source: submission.source,
-      pendingInputCount: this.pendingSubmissions.length,
-    });
-    this.emitInputQueueChanged();
-    void this.drainPendingSubmissions();
-    return queuedSubmission.id;
+    return {
+      id: item.message.id,
+      kind:
+        lane === "next-step"
+          ? "steering"
+          : item.delivery.kind === "steering"
+            ? "deferred"
+            : "queued",
+      content: item.message.content,
+      ...(item.message.images?.length ? { imageCount: item.message.images.length } : {}),
+    };
   }
 
   private async drainPendingSubmissions(): Promise<void> {
@@ -622,20 +609,18 @@ export class ConversationRuntime<TConfiguration = never> {
     this.drainingSubmissions = true;
     try {
       while (!this.stopping && !this.isRunning && this.canStartQueuedRun()) {
-        const submission = this.pendingSubmissions.shift();
+        const submission = this.agent.shiftNextTurnInput();
         if (!submission) {
           return;
         }
-        this.emitInputQueueChanged();
-        if (submission.sessionId !== this.sessionId) {
-          continue;
-        }
+
+        const source = submission.delivery.kind === "scheduled" ? "scheduled" : "user";
 
         this.log("info", "conversation.queued_input_started", {
-          source: submission.source,
-          pendingInputCount: this.pendingSubmissions.length,
+          source,
+          pendingInputCount: this.agent.inbox.nextTurn.length,
         });
-        await this.submit(submission.input, submission.source).catch(() => {
+        await this.submit(submission.message, source).catch(() => {
           // run_error already carries the failure to the active frontend.
         });
       }
@@ -654,16 +639,15 @@ export class ConversationRuntime<TConfiguration = never> {
       this.wakeScheduler.cancelSession(sessionId);
     }
 
-    let pendingChanged = false;
-    for (let index = this.pendingSubmissions.length - 1; index >= 0; index -= 1) {
-      if (this.pendingSubmissions[index]?.sessionId === sessionId) {
-        this.pendingSubmissions.splice(index, 1);
-        pendingChanged = true;
-      }
-    }
-    if (pendingChanged) {
+    this.agent.clearInbox();
+  }
+
+  private observeAgentInbox(agent: Agent): void {
+    this.unsubscribeAgentInbox?.();
+    this.unsubscribeAgentInbox = agent.subscribeInbox(() => {
       this.emitInputQueueChanged();
-    }
+      void this.drainPendingSubmissions();
+    });
   }
 
   private emitInputQueueChanged(): void {

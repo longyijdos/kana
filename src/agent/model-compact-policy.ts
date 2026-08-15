@@ -1,4 +1,11 @@
-import type { AssistantContent, AssistantMessage, Message, Model, UserImage } from "@/core";
+import {
+  type AssistantContent,
+  type AssistantMessage,
+  createUserMessage,
+  type Message,
+  type Model,
+  type UserImage,
+} from "@/core";
 import type { CompactPolicy } from "./context-manager";
 
 const COMPACTION_SYSTEM_PROMPT = [
@@ -33,11 +40,11 @@ export function createModelCompactPolicy(
       response = await model.generate({
         system: COMPACTION_SYSTEM_PROMPT,
         messages: [
-          {
-            role: "user",
+          createUserMessage({
             content: request.content,
+            provenance: { kind: "compaction_request" },
             ...(request.images.length > 0 ? { images: request.images } : {}),
-          },
+          }),
         ],
         maxOutputTokens: maxSummaryTokens,
         signal,

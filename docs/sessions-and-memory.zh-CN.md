@@ -27,7 +27,7 @@ Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使�
 
 ## 会话
 
-会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V3 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。
+会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V4 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。
 
 会话文件位于：
 
@@ -41,13 +41,13 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 
 ### JSONL 格式
 
-新 session 的第一行是版本为 3 的 header，后续是带明确边界的 turn journal。正常运行使用 `kind: "agent"`；分叉初始历史和内部批量导入使用 `kind: "snapshot"`：
+新 session 的第一行是版本为 4 的 header，后续是带明确边界的 turn journal。正常运行使用 `kind: "agent"`；分叉初始历史和内部批量导入使用 `kind: "snapshot"`：
 
 ```json
-{"type":"session","version":3,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
+{"type":"session","version":4,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
 {"type":"turn_start","id":"…","parentId":null,"timestamp":"2026-06-22T…Z","turnId":"…","kind":"agent"}
-{"type":"message","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","message":{"role":"user","content":"Fix parser"}}
-{"type":"message","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","message":{"role":"assistant","content":[…],"stopReason":"stop"}}
+{"type":"message","id":"entry-u1","parentId":"…","timestamp":"2026-06-22T…Z","message":{"id":"message-u1","role":"user","provenance":{"kind":"user_input"},"content":"Fix parser"}}
+{"type":"message","id":"entry-a1","parentId":"entry-u1","timestamp":"2026-06-22T…Z","message":{"id":"message-a1","role":"assistant","provenance":{"kind":"model_output"},"content":[…],"stopReason":"stop"}}
 {"type":"context_compaction","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","reason":"threshold","coversThroughId":"…","compactedMessageCount":2,"beforeTokens":90000,"estimatedAfterTokens":60000,"summary":{"format":"kana-context-summary-v1","text":"…"}}
 {"type":"turn_end","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","turnId":"…","outcome":"stop"}
 ```
@@ -56,13 +56,13 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 
 压缩会遵循当前模型实际生效的图片输入能力。模型支持图片且 `image_input` 已启用时，Kana 会把图片附件连同有序序号、MIME 类型和尺寸元数据发送给模型，让摘要将相关视觉信息保存为文本；base64 不会写进文本形式的 transcript JSON。图片输入不受支持或被关闭时，压缩只发送这些元数据和 `contentOmitted: true`，不带图片字节并继续执行。这样切换到 DeepSeek 等纯文本模型后不会因历史图片而中断压缩，但尚未在文本中描述的纯视觉细节可能不会进入摘要。原始自包含图片仍保留在 session JSONL 中。
 
-每条记录的 `parentId` 必须指向紧邻的前一条时间线记录；加载仍按文件顺序进行，不根据 `parentId` 重放分支。同一时刻最多有一个打开的 turn，`turn_end.turnId` 必须匹配它。终态可以是 Agent 的 `stop`、`length`、`aborted`、`error`、`turn_limit`，恢复生成的 `interrupted`，或快照的 `snapshot`。
+每条记录的 `parentId` 必须指向紧邻的前一条时间线记录；加载仍按文件顺序进行，不根据 `parentId` 重放分支。message record 外层的 `id` 用于标识 journal entry 并维护时间线顺序，`message.id` 则在 Agent event、inbox 移动、持久化、重放和 fork 之间标识同一条逻辑消息；它们属于不同的身份域。每条消息都必须带可辨识的 `provenance`，同一 session 会拒绝重复的逻辑消息 ID。同一时刻最多有一个打开的 turn，`turn_end.turnId` 必须匹配它。终态可以是 Agent 的 `stop`、`length`、`aborted`、`error`、`turn_limit`，恢复生成的 `interrupted`，或快照的 `snapshot`。
 
 压缩记录的 `reason` 可以是自动阈值触发的 `threshold`、provider 超限恢复的 `provider_limit`，或 `/compact` 触发的 `manual`。记录的物理位置表示压缩何时发生，`coversThroughId` 则指向摘要实际覆盖的最后一条 message，因此两者可以不同。例如 marker 写在 `m4` 后但 `coversThroughId = m2` 时，恢复给模型的 projection 是 `summary + m3 + m4 + 后续消息`。所有原始 message 仍留在 JSONL 中，TUI 也能按原顺序显示完整历史。
 
 后续压缩会带可选 `baseCompactionId` 指向上一个 checkpoint，并把旧摘要与新覆盖消息合并成一份新的累计摘要。`usage` 可保存该次摘要请求的模型用量。加载时会验证 `coversThroughId` 和 `baseCompactionId` 只引用已出现的记录，然后同时派生完整 `messages`、完整 `timeline` 和最后一个 `contextCheckpoint`：Agent 使用 messages/checkpoint，TUI 历史只消费 timeline。
 
-运行时只读取 V3，不包含 V1/V2 兼容分支。`/fork <prompt>` 创建新会话，将源 session 文件路径写入 header 的 `parentSessionPath`，并把继承的消息与当前累计 checkpoint 写成一个已闭合的 snapshot turn。
+运行时只读取 V4，不包含 V1/V2/V3 兼容分支。`/fork <prompt>` 创建新会话，将源 session 文件路径写入 header 的 `parentSessionPath`，并把继承的消息与当前累计 checkpoint 写成一个已闭合的 snapshot turn。继承消息保留原来的逻辑 `message.id`，只有 fork 中的 journal entry ID 是新生成的。
 
 首次写入时，标题优先使用显式标题；否则使用第一条用户消息，折叠所有空白并截断为最多 80 个 JavaScript 字符。没有可用文本时使用 `Untitled session`。
 
@@ -70,6 +70,7 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 
 - Agent journal 在任何模型 I/O 前写入 `turn_start` 和本轮用户消息；完整 assistant 消息在其工具执行前写入，每个工具结果在对应执行结束后独立写入，压缩 checkpoint 也在 adopt 前写入。终态 `turn_end` 写入后才运行 `onRunCommitted` 的 accounting/记忆等聚合后处理，随后发布 `agent_end`。手动 `/compact` 同样先写 checkpoint 再 adopt。`waitForIdle()` 不会早于这些写入和后处理完成。
 - 加载发现未闭合 turn 时会直接修复原 JSONL：为每个没有结果的工具调用追加 `status: "unknown"` 的错误结果，明确禁止自动重试，再追加内部 recovery 用户消息和 `outcome: "interrupted"` 的 `turn_end`。若最后一行是未完成的 JSON，则只截断这条未终止尾记录；已完成行中的损坏仍报错。恢复具有幂等性，因此第二次加载不会再次追加。
+- 恢复只重建 journal 中已提交的消息与最后一个 context checkpoint。Agent inbox 和未来 scheduled wake 仍只存在于当前进程：切换、分叉或恢复 session 以及退出 Kana 都会丢弃它们，不会在恢复时还原。
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。
 - `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按 `createdAt` 降序排序。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。

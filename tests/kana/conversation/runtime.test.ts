@@ -6,6 +6,7 @@ import {
   type Model,
   type ModelContext,
   type ModelMetadata,
+  type UserMessage,
 } from "../../../src/core";
 import {
   ConversationRuntime,
@@ -13,6 +14,7 @@ import {
   createWakeScheduler,
 } from "../../../src/kana";
 import { MockModel } from "../../../src/providers/mock";
+import { messageIdentityForTest, messageIdForTest } from "../../helpers/messages";
 
 describe("ConversationRuntime", () => {
   test("runs one complete Agent turn and publishes frontend-neutral lifecycle events", async () => {
@@ -30,7 +32,11 @@ describe("ConversationRuntime", () => {
       events.push(event);
     });
 
-    await runtime.submit({ role: "user", content: "Finish the task." });
+    await runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Finish the task.",
+    });
 
     expect(events[0]).toMatchObject({
       type: "run_start",
@@ -66,11 +72,21 @@ describe("ConversationRuntime", () => {
       messages: unknown[];
       sessionId?: string;
     }> = [];
+    const existingMessage = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Existing context.",
+    };
+    const resumedMessage = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Resumed context.",
+    };
     const runtime = new ConversationRuntime<string>({
       ...createRuntimeOptions(),
       initialSession: {
         id: "session-a",
-        messages: [{ role: "user", content: "Existing context." }],
+        messages: [existingMessage],
         timeline: [],
       },
       createAgent: (options) => {
@@ -89,42 +105,42 @@ describe("ConversationRuntime", () => {
       forkSession: () => ({ id: "session-fork" }),
       loadSession: (sessionId) => ({
         id: sessionId,
-        messages: [{ role: "user", content: "Resumed context." }],
+        messages: [resumedMessage],
         timeline: [],
       }),
     });
 
     runtime.reconfigure("alternate-model");
-    expect(runtime.state.messages).toEqual([{ role: "user", content: "Existing context." }]);
+    expect(runtime.state.messages).toEqual([existingMessage]);
 
     const fork = runtime.forkSession("Continue.");
     expect(fork.id).toBe("session-fork");
-    expect(fork.messages).toEqual([{ role: "user", content: "Existing context." }]);
+    expect(fork.messages).toEqual([existingMessage]);
 
     const resumed = runtime.resumeSession("session-resumed");
-    expect(resumed.messages).toEqual([{ role: "user", content: "Resumed context." }]);
+    expect(resumed.messages).toEqual([resumedMessage]);
 
     const fresh = runtime.startNewSession();
     expect(fresh).toMatchObject({ id: "session-new", messages: [], timeline: [] });
     expect(creations).toEqual([
       {
         configuration: undefined,
-        messages: [{ role: "user", content: "Existing context." }],
+        messages: [existingMessage],
         sessionId: "session-a",
       },
       {
         configuration: "alternate-model",
-        messages: [{ role: "user", content: "Existing context." }],
+        messages: [existingMessage],
         sessionId: "session-a",
       },
       {
         configuration: undefined,
-        messages: [{ role: "user", content: "Existing context." }],
+        messages: [existingMessage],
         sessionId: "session-fork",
       },
       {
         configuration: undefined,
-        messages: [{ role: "user", content: "Resumed context." }],
+        messages: [resumedMessage],
         sessionId: "session-resumed",
       },
       {
@@ -168,9 +184,13 @@ describe("ConversationRuntime", () => {
       }
     });
 
-    const userRun = runtime.submit({ role: "user", content: "Start." });
+    const userRun = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Start.",
+    });
     await waitFor(() => model.contexts.length === 1);
-    wakeScheduler.schedule({
+    const wake = wakeScheduler.schedule({
       sessionId: "session-a",
       afterMinutes: 1,
       message: "Check progress.",
@@ -187,9 +207,10 @@ describe("ConversationRuntime", () => {
     runtime.notifyCanStartScheduledRun();
     await waitFor(() => model.contexts.length === 2);
     expect(model.contexts[1]?.messages.at(-1)).toEqual({
+      id: wake.id,
+      provenance: { kind: "scheduled_input", origin: "agent" },
       role: "user",
       content: "[Scheduled wake event]\nCheck progress.",
-      source: "scheduled",
     });
     model.finish(1, "Wake done.");
     await runtime.waitForIdle();
@@ -227,10 +248,15 @@ describe("ConversationRuntime", () => {
       }
     });
 
-    const userRun = runtime.submit({ role: "user", content: "Start." });
-    await waitFor(() => model.contexts.length === 1);
-    runtime.queueInput({
+    const userRun = runtime.submit({
+      ...messageIdentityForTest("user"),
       role: "user",
+      content: "Start.",
+    });
+    await waitFor(() => model.contexts.length === 1);
+    const queuedInput: UserMessage = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
       content: "Queued with Tab.",
       images: [
         {
@@ -240,8 +266,9 @@ describe("ConversationRuntime", () => {
           height: 16,
         },
       ],
-    });
-    wakeScheduler.schedule({
+    };
+    runtime.queueInput(queuedInput);
+    const wake = wakeScheduler.schedule({
       sessionId: "session-a",
       afterMinutes: 1,
       message: "Scheduled after the queued input.",
@@ -276,25 +303,15 @@ describe("ConversationRuntime", () => {
     model.finish(0, "First done.");
     await userRun;
     await waitFor(() => model.contexts.length === 2);
-    expect(model.contexts[1]?.messages.at(-1)).toEqual({
-      role: "user",
-      content: "Queued with Tab.",
-      images: [
-        {
-          mimeType: "image/png",
-          data: "aW1hZ2U=",
-          width: 32,
-          height: 16,
-        },
-      ],
-    });
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(queuedInput);
 
     model.finish(1, "Queued input done.");
     await waitFor(() => model.contexts.length === 3);
     expect(model.contexts[2]?.messages.at(-1)).toEqual({
+      id: wake.id,
+      provenance: { kind: "scheduled_input", origin: "agent" },
       role: "user",
       content: "[Scheduled wake event]\nScheduled after the queued input.",
-      source: "scheduled",
     });
 
     model.finish(2, "Wake done.");
@@ -307,10 +324,10 @@ describe("ConversationRuntime", () => {
   test("creates user scheduled input and cancels future or pending delivery by stable ID", async () => {
     const timers = new Map<number | ReturnType<typeof setTimeout>, () => void>();
     let nextTimer = 0;
-    const ids = ["future-wake", "pending-wake"];
+    const ids = [messageIdForTest("future-wake"), messageIdForTest("pending-wake")];
     const wakeScheduler = createWakeScheduler({
       now: () => new Date("2026-08-08T08:00:00.000Z"),
-      createId: () => ids.shift() as string,
+      createId: () => ids.shift() as (typeof ids)[number],
       setTimeout: (callback) => {
         nextTimer += 1;
         timers.set(nextTimer, callback);
@@ -401,16 +418,22 @@ describe("ConversationRuntime", () => {
       events.push(event);
     });
 
-    const userRun = runtime.submit({ role: "user", content: "Start." });
+    const userRun = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Start.",
+    });
     await waitFor(() => model.contexts.length === 1);
-    const steering = runtime.steer({ role: "user", content: "Use the new direction." });
+    const steeringInput = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Use the new direction.",
+    };
+    const steering = runtime.steer(steeringInput);
 
     model.finish(0, "First turn done.");
     await waitFor(() => model.contexts.length === 2);
-    expect(model.contexts[1]?.messages.at(-1)).toEqual({
-      role: "user",
-      content: "Use the new direction.",
-    });
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(steeringInput);
 
     model.finish(1, "Steered turn done.");
     expect(await steering).toBe("steered");
@@ -444,9 +467,18 @@ describe("ConversationRuntime", () => {
       }
     });
 
-    const userRun = runtime.submit({ role: "user", content: "Start." });
+    const userRun = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Start.",
+    });
     await waitFor(() => model.contexts.length === 1);
-    const steering = runtime.steer({ role: "user", content: "Follow up." });
+    const steeringInput = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Follow up.",
+    };
+    const steering = runtime.steer(steeringInput);
 
     model.finish(0, "First run done.");
     await userRun;
@@ -460,10 +492,7 @@ describe("ConversationRuntime", () => {
     hostReady = true;
     runtime.notifyCanStartQueuedRun();
     await waitFor(() => model.contexts.length === 2);
-    expect(model.contexts[1]?.messages.at(-1)).toEqual({
-      role: "user",
-      content: "Follow up.",
-    });
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(steeringInput);
 
     model.finish(1, "Follow-up run done.");
     await runtime.waitForIdle();
@@ -489,11 +518,68 @@ describe("ConversationRuntime", () => {
       observed.push(event.type);
     });
 
-    await runtime.submit({ role: "user", content: "Continue." });
+    await runtime.submit({ ...messageIdentityForTest("user"), role: "user", content: "Continue." });
 
     expect(observed[0]).toBe("run_start");
     expect(observed.at(-1)).toBe("run_end");
     await runtime.close();
+  });
+
+  test("keeps pending input only across same-session reconfiguration", async () => {
+    const runtime = new ConversationRuntime<string>({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      canStartQueuedRun: () => false,
+      createAgent: (options) =>
+        new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    const queued = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Stay only in this process.",
+    };
+
+    runtime.queueInput(queued);
+    runtime.reconfigure("alternate-model");
+    expect(runtime.inputQueue.pending.map((input) => input.id)).toEqual([queued.id]);
+
+    runtime.resumeSession("session-b");
+    expect(runtime.inputQueue).toEqual({ pending: [], scheduled: [] });
+
+    await runtime.close();
+  });
+
+  test("does not accept queued or scheduled input after close", async () => {
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      canStartQueuedRun: () => false,
+      createAgent: (options) =>
+        new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    const input = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Too late.",
+    };
+
+    await runtime.close();
+
+    expect(runtime.queueInput(input)).toBe(input.id);
+    expect(runtime.inputQueue).toEqual({ pending: [], scheduled: [] });
+    expect(() => runtime.scheduleInput(5, "Too late.")).toThrow(
+      "Conversation runtime is stopping.",
+    );
   });
 });
 
@@ -543,10 +629,14 @@ class ControlledModel implements Model {
       throw new Error(`Missing controlled stream ${index}.`);
     }
     const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [{ type: "text", text }],
     };
-    stream.push({ type: "start", snapshot: { role: "assistant", content: [] } });
+    stream.push({
+      type: "start",
+      snapshot: { ...message, content: [] },
+    });
     stream.push({ type: "text_start", contentIndex: 0, snapshot: structuredClone(message) });
     stream.push({
       type: "text_delta",

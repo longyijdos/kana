@@ -1,9 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import type { AgentEndReason, ContextCheckpoint } from "@/agent";
-import type { Message, ModelMetadata, ModelUsage, UserImage, UserMessage } from "@/core";
+import type {
+  Message,
+  MessageProvenance,
+  ModelMetadata,
+  ModelUsage,
+  UserImage,
+  UserMessage,
+} from "@/core";
 
-export const SESSION_VERSION = 3;
+export const SESSION_VERSION = 4;
 const CONTEXT_SUMMARY_FORMAT = "kana-context-summary-v1";
 const DEFAULT_SESSION_TITLE = "Untitled session";
 const MAX_SESSION_TITLE_LENGTH = 80;
@@ -334,7 +341,8 @@ export function parseTimelineEntry(
 
 function findFirstPrompt(messages: Message[]): string | undefined {
   return messages.find(
-    (message): message is UserMessage => message.role === "user" && message.source !== "recovery",
+    (message): message is UserMessage =>
+      message.role === "user" && message.provenance.kind !== "recovery",
   )?.content;
 }
 
@@ -442,8 +450,25 @@ function isMessage(value: unknown): value is Message {
     return false;
   }
 
-  const role = (value as Record<string, unknown>).role;
-  return role === "user" ? isUserMessage(value) : role === "assistant" || role === "tool";
+  const message = value as Record<string, unknown>;
+  if (!hasMessageIdentity(message)) {
+    return false;
+  }
+
+  if (message.role === "user") {
+    return isUserMessage(value);
+  }
+  if (message.role === "assistant") {
+    return message.provenance.kind === "model_output" && Array.isArray(message.content);
+  }
+  return (
+    message.role === "tool" &&
+    message.provenance.kind === "tool_result" &&
+    typeof message.toolCallId === "string" &&
+    typeof message.toolName === "string" &&
+    typeof message.content === "string" &&
+    typeof message.isError === "boolean"
+  );
 }
 
 function isUserMessage(value: unknown): value is UserMessage {
@@ -453,13 +478,53 @@ function isUserMessage(value: unknown): value is UserMessage {
 
   const message = value as Record<string, unknown>;
   return (
+    hasMessageIdentity(message) &&
     message.role === "user" &&
+    isUserMessageProvenance(message.provenance) &&
     typeof message.content === "string" &&
     (message.images === undefined ||
-      (Array.isArray(message.images) && message.images.every(isUserImage))) &&
-    (message.source === undefined ||
-      message.source === "scheduled" ||
-      message.source === "recovery")
+      (Array.isArray(message.images) && message.images.every(isUserImage)))
+  );
+}
+
+function isUserMessageProvenance(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const kind = (value as Record<string, unknown>).kind;
+  return (
+    kind === "user_input" ||
+    kind === "scheduled_input" ||
+    kind === "recovery" ||
+    kind === "context_summary" ||
+    kind === "compaction_request"
+  );
+}
+
+function hasMessageIdentity(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & { id: string; provenance: MessageProvenance } {
+  return (
+    typeof value.id === "string" && value.id.length > 0 && isMessageProvenance(value.provenance)
+  );
+}
+
+function isMessageProvenance(value: unknown): value is MessageProvenance {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const provenance = value as Record<string, unknown>;
+  if (provenance.kind === "scheduled_input") {
+    return provenance.origin === "user" || provenance.origin === "agent";
+  }
+  return (
+    provenance.kind === "user_input" ||
+    provenance.kind === "recovery" ||
+    provenance.kind === "model_output" ||
+    provenance.kind === "tool_result" ||
+    provenance.kind === "context_summary" ||
+    provenance.kind === "compaction_request"
   );
 }
 

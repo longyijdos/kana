@@ -21,6 +21,7 @@ import {
 } from "../../src/kana";
 import { MockModel } from "../../src/providers/mock";
 import type { Tool } from "../../src/tools";
+import { messageIdentityForTest } from "../helpers/messages";
 
 describe("headless execution", () => {
   test("writes only the final answer to human stdout", async () => {
@@ -240,15 +241,19 @@ class ToolThenAnswerModel extends BaseModel {
           args: {},
         };
         const message: AssistantMessage = {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           stopReason: "toolUse",
           content: [toolCall],
         };
-        stream.push({ type: "start", snapshot: { role: "assistant", content: [] } });
+        stream.push({
+          type: "start",
+          snapshot: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+        });
         stream.push({
           type: "toolcall_start",
           contentIndex: 0,
-          snapshot: { role: "assistant", content: [] },
+          snapshot: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
         });
         stream.push({
           type: "toolcall_end",
@@ -261,15 +266,23 @@ class ToolThenAnswerModel extends BaseModel {
       }
 
       const message: AssistantMessage = {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         content: [{ type: "text", text: "Finished." }],
       };
-      stream.push({ type: "start", snapshot: { role: "assistant", content: [] } });
+      stream.push({
+        type: "start",
+        snapshot: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+      });
       stream.push({
         type: "text_start",
         contentIndex: 0,
-        snapshot: { role: "assistant", content: [{ type: "text", text: "" }] },
+        snapshot: {
+          ...messageIdentityForTest("assistant"),
+          role: "assistant",
+          content: [{ type: "text", text: "" }],
+        },
       });
       stream.push({
         type: "text_delta",

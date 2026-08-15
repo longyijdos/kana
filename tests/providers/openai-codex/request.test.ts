@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildOpenAICodexRequest } from "../../../src/providers/openai-codex/request";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("buildOpenAICodexRequest", () => {
   test("uses the classic Responses contract and preserves provider replay state", () => {
@@ -8,6 +9,7 @@ describe("buildOpenAICodexRequest", () => {
         system: "system",
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "question",
             images: [
@@ -20,6 +22,7 @@ describe("buildOpenAICodexRequest", () => {
             ],
           },
           {
+            ...messageIdentityForTest("assistant"),
             role: "assistant",
             content: [
               {
@@ -201,6 +204,7 @@ describe("buildOpenAICodexRequest", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "Inspect this.",
             images: [

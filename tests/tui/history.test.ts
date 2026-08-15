@@ -5,6 +5,7 @@ import { addHistoryTimelineToTranscript } from "../../src/tui/app/history";
 import { Transcript } from "../../src/tui/components";
 import { color, stripAnsi } from "../../src/tui/render";
 import { tuiTheme } from "../../src/tui/theme";
+import { messageIdentityForTest } from "../helpers/messages";
 
 describe("tui history transcript", () => {
   test("preserves LaTeX source in restored messages when rendering is disabled", () => {
@@ -14,6 +15,7 @@ describe("tui history transcript", () => {
       transcript,
       timelineFromMessages([
         {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           content: [{ type: "text", text: "Result $x^2$" }],
         },
@@ -31,6 +33,7 @@ describe("tui history transcript", () => {
       transcript,
       timelineFromMessages([
         {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           content: [
             {
@@ -50,10 +53,12 @@ describe("tui history transcript", () => {
     const transcript = new Transcript();
     const messages: Message[] = [
       {
+        ...messageIdentityForTest("user"),
         role: "user",
         content: "show package",
       },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "toolUse",
         content: [
@@ -76,6 +81,7 @@ describe("tui history transcript", () => {
         ],
       },
       {
+        ...messageIdentityForTest("tool"),
         role: "tool",
         toolCallId: "call_1",
         toolName: "read",
@@ -114,10 +120,12 @@ describe("tui history transcript", () => {
       transcript,
       timelineFromMessages([
         {
+          ...messageIdentityForTest("user"),
           role: "user",
           content: "Question",
         },
         {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           content: [{ type: "text", text: "# Answer" }],
         },
@@ -141,6 +149,7 @@ describe("tui history transcript", () => {
       transcript,
       timelineFromMessages([
         {
+          ...messageIdentityForTest("tool"),
           role: "tool",
           toolCallId: "call_missing",
           toolName: "bash",
@@ -167,8 +176,8 @@ describe("tui history transcript", () => {
       transcript,
       timelineFromMessages([
         {
+          ...messageIdentityForTest("user", "scheduled"),
           role: "user",
-          source: "scheduled",
           content: "[Scheduled wake event]\nCheck the long-running task.",
         },
       ]),
@@ -196,8 +205,8 @@ describe("tui history transcript", () => {
         parentId: "start-1",
         timestamp: "2026-07-30T00:00:01.000Z",
         message: {
+          ...messageIdentityForTest("user", "recovery"),
           role: "user",
-          source: "recovery",
           content: "[Session recovery]\nThe previous agent run was interrupted.",
         },
       },
@@ -225,7 +234,9 @@ describe("tui history transcript", () => {
 
   test("renders context compaction markers in timeline order", () => {
     const transcript = new Transcript();
-    const [message] = timelineFromMessages([{ role: "user", content: "Before compact" }]);
+    const [message] = timelineFromMessages([
+      { ...messageIdentityForTest("user"), role: "user", content: "Before compact" },
+    ]);
 
     expect(message).toBeDefined();
     addHistoryTimelineToTranscript(transcript, [

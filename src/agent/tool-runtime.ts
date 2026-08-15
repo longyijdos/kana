@@ -1,4 +1,9 @@
-import type { Message, ToolCallContent, ToolResultMessage } from "@/core";
+import {
+  createMessageIdentity,
+  type Message,
+  type ToolCallContent,
+  type ToolResultMessage,
+} from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
 import {
   normalizeToolResult,
@@ -521,6 +526,7 @@ export class ToolRuntime {
 
   private async commitResult(executed: ExecutedToolCall): Promise<ToolResultMessage> {
     const message: ToolResultMessage = {
+      ...createMessageIdentity({ kind: "tool_result" }),
       role: "tool",
       toolCallId: executed.toolCall.id,
       toolName: executed.toolCall.name,

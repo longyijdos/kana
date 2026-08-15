@@ -6,6 +6,7 @@ import type { AssistantMessage, Message } from "../../src/core/messages";
 import type { Model, ModelMetadata, ModelUsage } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
 import type { Logger } from "../../src/logging";
+import { messageIdentityForTest } from "../helpers/messages";
 
 class TextModel implements Model {
   readonly metadata: ModelMetadata = {
@@ -28,6 +29,7 @@ class TextModel implements Model {
   constructor(
     private readonly response = "hello",
     private readonly usage?: ModelUsage,
+    private readonly identity?: Pick<AssistantMessage, "id" | "provenance">,
   ) {}
 
   stream(context: ModelContext): AssistantEventStream {
@@ -44,6 +46,7 @@ class TextModel implements Model {
 
     queueMicrotask(() => {
       const message: AssistantMessage = {
+        ...(this.identity ?? messageIdentityForTest("assistant")),
         role: "assistant",
         content: [],
       };
@@ -113,6 +116,7 @@ class AbortAwareModel implements Model {
 
     queueMicrotask(() => {
       const message: AssistantMessage = {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         content: [],
       };
@@ -464,16 +468,18 @@ describe("Agent", () => {
     });
 
     const stream = agent.stream("Start.");
-    const steering = agent.steer({ role: "user", content: "Use the new direction." });
+    const steeringInput = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Use the new direction.",
+    };
+    const steering = agent.steer(steeringInput);
 
     await stream.result();
 
     expect(await steering).toBe("consumed");
     expect(model.contexts).toHaveLength(2);
-    expect(model.contexts[1]?.messages.at(-1)).toEqual({
-      role: "user",
-      content: "Use the new direction.",
-    });
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(steeringInput);
     expect(agent.state.messages.map((message) => message.role)).toEqual([
       "user",
       "assistant",
@@ -490,6 +496,109 @@ describe("Agent", () => {
     expect(events.some((event) => event.type === "turn_input")).toBe(true);
   });
 
+  test("does not cancel or misclaim a steering input while its journal commit is pending", async () => {
+    const commitStarted = deferred();
+    const releaseCommit = deferred();
+    const committedUserIds: string[] = [];
+    const model = new TextModel("done");
+    const agent = new Agent({
+      model,
+      journal: {
+        startRun: () => {},
+        appendMessage: ({ message }) => {
+          if (message.role !== "user") {
+            return;
+          }
+          committedUserIds.push(message.id);
+          if (message.content === "Steer A.") {
+            commitStarted.resolve();
+            return releaseCommit.promise;
+          }
+        },
+        appendCompaction: () => {},
+        endRun: () => {},
+      },
+    });
+    const first = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Steer A.",
+    };
+    const second = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Steer B.",
+    };
+
+    const stream = agent.stream("Start.");
+    const firstSteering = agent.steer(first);
+    const secondSteering = agent.steer(second);
+    await commitStarted.promise;
+
+    expect(agent.cancelInput(first.id)).toBeUndefined();
+    expect(agent.inbox.nextStep.map((item) => item.message.id)).toEqual([first.id, second.id]);
+
+    releaseCommit.resolve();
+    await stream.result();
+
+    expect(await firstSteering).toBe("consumed");
+    expect(await secondSteering).toBe("consumed");
+    expect(committedUserIds).toEqual([first.id, second.id]);
+    expect(model.contexts[1]?.messages.slice(-2)).toEqual([first, second]);
+  });
+
+  test("clears other input without removing a steering item whose commit is pending", async () => {
+    const commitStarted = deferred();
+    const releaseCommit = deferred();
+    const committedUserIds: string[] = [];
+    const model = new TextModel("done");
+    const agent = new Agent({
+      model,
+      journal: {
+        startRun: () => {},
+        appendMessage: ({ message }) => {
+          if (message.role !== "user") {
+            return;
+          }
+          committedUserIds.push(message.id);
+          if (message.content === "Steer A.") {
+            commitStarted.resolve();
+            return releaseCommit.promise;
+          }
+        },
+        appendCompaction: () => {},
+        endRun: () => {},
+      },
+    });
+    const first = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Steer A.",
+    };
+    const second = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Steer B.",
+    };
+
+    const stream = agent.stream("Start.");
+    const firstSteering = agent.steer(first);
+    const secondSteering = agent.steer(second);
+    await commitStarted.promise;
+
+    agent.clearInbox();
+    expect(agent.inbox.nextStep.map((item) => item.message.id)).toEqual([first.id]);
+    expect(await secondSteering).toBe("deferred");
+
+    releaseCommit.resolve();
+    await stream.result();
+
+    expect(await firstSteering).toBe("consumed");
+    expect(committedUserIds).toEqual([first.id]);
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(first);
+    expect(agent.inbox).toEqual({ nextStep: [], nextTurn: [] });
+  });
+
   test("defers steering input when no further turn is available", async () => {
     const agent = new Agent({
       model: new TextModel("done"),
@@ -497,12 +606,69 @@ describe("Agent", () => {
     });
 
     const stream = agent.stream("Start.");
-    const steering = agent.steer({ role: "user", content: "Follow up." });
+    const steering = agent.steer({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Follow up.",
+    });
 
     await stream.result();
 
     expect(await steering).toBe("deferred");
     expect(agent.state.messages).not.toContainEqual({ role: "user", content: "Follow up." });
+  });
+
+  test("does not replace the original steering waiter when a duplicate ID is rejected", async () => {
+    const agent = new Agent({ model: new TextModel("done") });
+    const stream = agent.stream("Start.");
+    const input = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Same logical input.",
+    };
+
+    const first = agent.steer(input);
+    await expect(agent.steer(input)).rejects.toThrow("already pending");
+    await stream.result();
+
+    expect(await first).toBe("consumed");
+  });
+
+  test("rejects a run input whose Message ID is still pending in the inbox", async () => {
+    const model = new TextModel("unreachable");
+    const agent = new Agent({ model });
+    const input = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Pending input.",
+    };
+    agent.enqueueInput(input, "next-turn", { kind: "queued" });
+
+    await expect(agent.prompt(input)).rejects.toThrow("Duplicate Message id");
+
+    expect(model.contexts).toEqual([]);
+    expect(agent.inbox.nextTurn.map((item) => item.message.id)).toEqual([input.id]);
+  });
+
+  test("rejects a model output ID that is already committed", async () => {
+    const priorAssistant: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      stopReason: "stop",
+      content: [{ type: "text", text: "Earlier output" }],
+    };
+    const agent = new Agent({
+      model: new TextModel("Repeated output", undefined, priorAssistant),
+      messages: [priorAssistant],
+    });
+
+    await expect(agent.prompt("Continue.")).rejects.toThrow("Duplicate Message id");
+    expect(agent.state.messages).toHaveLength(2);
+    expect(agent.state.messages[0]).toEqual(priorAssistant);
+    expect(agent.state.messages[1]).toMatchObject({ role: "user", content: "Continue." });
+    expect(agent.state.messages.filter((message) => message.id === priorAssistant.id)).toHaveLength(
+      1,
+    );
   });
 
   test("does not call the model when starting the journal fails", async () => {
@@ -533,10 +699,12 @@ describe("Agent", () => {
       model,
       messages: [
         {
+          ...messageIdentityForTest("user"),
           role: "user",
           content: "x".repeat(10_000),
         },
         {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           stopReason: "stop",
           content: [{ type: "text", text: "Old answer" }],
@@ -579,8 +747,9 @@ describe("Agent", () => {
     const agent = new Agent({
       model,
       messages: [
-        { role: "user", content: "x".repeat(8_000) },
+        { ...messageIdentityForTest("user"), role: "user", content: "x".repeat(8_000) },
         {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           stopReason: "stop",
           content: [{ type: "text", text: "Old answer" }],
@@ -623,8 +792,9 @@ describe("Agent", () => {
     const agent = new Agent({
       model: new TextModel(),
       messages: [
-        { role: "user", content: "x".repeat(8_000) },
+        { ...messageIdentityForTest("user"), role: "user", content: "x".repeat(8_000) },
         {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           stopReason: "stop",
           content: [{ type: "text", text: "Old answer" }],
@@ -660,6 +830,7 @@ describe("Agent", () => {
 
   test("deep-clones constructor messages before storing them", () => {
     const initialMessage = {
+      ...messageIdentityForTest("user"),
       role: "user" as const,
       content: "original",
     };
@@ -670,12 +841,7 @@ describe("Agent", () => {
 
     initialMessage.content = "mutated";
 
-    expect(agent.state.messages).toEqual([
-      {
-        role: "user",
-        content: "original",
-      },
-    ]);
+    expect(agent.state.messages).toEqual([{ ...initialMessage, content: "original" }]);
   });
 
   test("isolates listener mutations and failures from state and other listeners", async () => {

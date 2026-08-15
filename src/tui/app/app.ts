@@ -7,12 +7,12 @@ import type {
 import {
   addModelUsage,
   calculateUsageCostCny,
+  createUserMessage,
   type Message,
   type ModelMetadata,
   type ModelUsage,
   type ToolCallContent,
   type UserImage,
-  type UserMessage,
 } from "@/core";
 import type {
   KanaLaunchMode,
@@ -1034,11 +1034,11 @@ export class KanaTuiApp {
       this.showError(imageInputError);
       return;
     }
-    const input: UserMessage = {
-      role: "user",
+    const input = createUserMessage({
       content: prompt,
+      provenance: { kind: "user_input" },
       ...(images.length > 0 ? { images: structuredClone(images) } : {}),
-    };
+    });
 
     if (this.conversation.canSteer) {
       this.editor.addToHistory(prompt);
@@ -1069,11 +1069,11 @@ export class KanaTuiApp {
       this.showError(imageInputError);
       return;
     }
-    const input: UserMessage = {
-      role: "user",
+    const input = createUserMessage({
       content: prompt,
+      provenance: { kind: "user_input" },
       ...(images.length > 0 ? { images: structuredClone(images) } : {}),
-    };
+    });
 
     this.editor.addToHistory(prompt);
     this.editor.clear();
