@@ -1,3 +1,4 @@
+import { createMessageIdentity } from "../src/core";
 import { type KanaSessionTimelineEntry, loadKanaSession } from "../src/kana";
 import { addHistoryTimelineToTranscript } from "../src/tui/app/history";
 import { AssistantMessageBlock, Editor, TextBlock, Transcript } from "../src/tui/components";
@@ -160,6 +161,7 @@ function createTranscript(pairCount: number): Transcript {
 
     const assistant = new AssistantMessageBlock();
     assistant.update({
+      ...createMessageIdentity({ kind: "model_output" }),
       role: "assistant",
       content: [
         {

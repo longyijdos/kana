@@ -1,7 +1,11 @@
+import { createMessageId, type MessageId } from "@/core";
+
 export type WakeEventOrigin = "agent" | "user";
 
 export type WakeEvent = {
-  id: string;
+  // A one-shot wake is a future logical input, so its cancellation identity is
+  // the same MessageId later carried into the Agent inbox and model history.
+  id: MessageId;
   sessionId: string;
   dueAt: Date;
   message: string;
@@ -20,7 +24,7 @@ type ScheduleWakeOptions = {
 export type WakeScheduler = {
   schedule(options: ScheduleWakeOptions): WakeEvent;
   list(sessionId?: string): WakeEvent[];
-  cancel(id: string): boolean;
+  cancel(id: MessageId): boolean;
   subscribe(listener: (event: WakeEvent) => void): () => void;
   subscribeState(listener: () => void): () => void;
   cancelSession(sessionId: string): void;
@@ -31,7 +35,7 @@ export type CreateWakeSchedulerOptions = {
   now?: () => Date;
   setTimeout?: (callback: () => void, delay: number) => WakeTimer;
   clearTimeout?: (timer: WakeTimer) => void;
-  createId?: () => string;
+  createId?: () => MessageId;
 };
 
 type WakeTimer = ReturnType<typeof setTimeout> | number;
@@ -46,13 +50,13 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
   const now = options.now ?? (() => new Date());
   const scheduleTimeout = options.setTimeout ?? setTimeout;
   const cancelTimeout = options.clearTimeout ?? clearTimeout;
-  const createId = options.createId ?? (() => crypto.randomUUID());
-  const events = new Map<string, ScheduledWakeEvent>();
-  const keys = new Map<string, string>();
+  const createId = options.createId ?? createMessageId;
+  const events = new Map<MessageId, ScheduledWakeEvent>();
+  const keys = new Map<string, MessageId>();
   const listeners = new Set<(event: WakeEvent) => void>();
   const stateListeners = new Set<() => void>();
 
-  const remove = (id: string): boolean => {
+  const remove = (id: MessageId): boolean => {
     const event = events.get(id);
     if (!event) {
       return false;

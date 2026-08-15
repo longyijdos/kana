@@ -1,4 +1,4 @@
-import type { UserImage, UserMessage } from "@/core";
+import { createUserMessage, type UserImage, type UserMessage } from "@/core";
 
 import { padRightAnsi, renderHighlightedLine, visibleWidth, wrapPlainText } from "../../render";
 import type { Component } from "../../runtime";
@@ -12,7 +12,10 @@ export class UserMessageBlock implements Component {
   private readonly message: UserMessage;
 
   constructor(message: UserMessage | string) {
-    this.message = typeof message === "string" ? { role: "user", content: message } : message;
+    this.message =
+      typeof message === "string"
+        ? createUserMessage({ content: message, provenance: { kind: "user_input" } })
+        : message;
   }
 
   render(width: number, _availableHeight?: number): string[] {

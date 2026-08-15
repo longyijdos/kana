@@ -3,6 +3,7 @@ import {
   type AssistantMessage,
   type AssistantMessageEvent,
   ContextWindowExceededError,
+  createMessageIdentity,
   type Message,
   type Model,
   type ModelContext,
@@ -228,6 +229,7 @@ async function streamAssistantResponse(
   });
   let addedAssistantMessage = false;
   let currentMessage: AssistantMessage = {
+    ...createMessageIdentity({ kind: "model_output" }),
     role: "assistant",
     content: [],
   };
@@ -281,6 +283,7 @@ async function streamAssistantResponse(
         const terminalMessage: AssistantMessage = {
           ...(event.snapshot ??
             ({
+              ...createMessageIdentity({ kind: "model_output" }),
               role: "assistant",
               content: [],
             } satisfies AssistantMessage)),

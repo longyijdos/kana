@@ -44,7 +44,7 @@ function addHistoryMessage(
   switch (message.role) {
     case "user":
       transcript.addChild(
-        message.source
+        message.provenance.kind !== "user_input"
           ? new TextBlock(formatUserMessage(message), { color: tuiTheme.muted })
           : new UserMessageBlock(message),
       );
@@ -61,12 +61,15 @@ function addHistoryMessage(
 }
 
 function formatUserMessage(message: Extract<Message, { role: "user" }>): string {
-  switch (message.source) {
-    case "scheduled":
+  switch (message.provenance.kind) {
+    case "scheduled_input":
       return `Scheduled wake: ${message.content.replace(/^\[Scheduled wake event\]\n?/, "")}`;
     case "recovery":
       return "Previous agent run was interrupted; recorded history was recovered safely.";
-    case undefined:
+    case "user_input":
+      return message.content;
+    case "compaction_request":
+    case "context_summary":
       return message.content;
   }
 }

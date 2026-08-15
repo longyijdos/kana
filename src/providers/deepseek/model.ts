@@ -3,6 +3,7 @@ import {
   type AssistantMessage,
   BaseModel,
   ContextWindowExceededError,
+  createMessageIdentity,
   type HostedToolAction,
   type ModelContext,
   type ModelUsage,
@@ -53,6 +54,7 @@ export class DeepSeekModel extends BaseModel {
 
   private async run(stream: AssistantEventStream, context: ModelContext): Promise<void> {
     const message: AssistantMessage = {
+      ...createMessageIdentity({ kind: "model_output" }),
       role: "assistant",
       content: [],
     };

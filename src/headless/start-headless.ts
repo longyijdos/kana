@@ -1,5 +1,5 @@
 import type { AgentEndReason, BeforeToolExecutionHook } from "@/agent";
-import { type AssistantMessage, addModelUsage, type ModelUsage } from "@/core";
+import { type AssistantMessage, addModelUsage, createUserMessage, type ModelUsage } from "@/core";
 import {
   ConversationRuntime,
   type ConversationRuntimeEvent,
@@ -166,10 +166,12 @@ export async function runHeadlessConversation(
   });
 
   try {
-    const submission = options.runtime.submit({
-      role: "user",
-      content: options.prompt,
-    });
+    const submission = options.runtime.submit(
+      createUserMessage({
+        content: options.prompt,
+        provenance: { kind: "user_input" },
+      }),
+    );
     if (options.signal?.aborted) {
       options.runtime.abort();
     }

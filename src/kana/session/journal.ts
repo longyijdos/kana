@@ -3,7 +3,14 @@ import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 import type { ContextCheckpoint } from "@/agent";
-import type { Message, ToolCallContent, ToolResultMessage } from "@/core";
+import {
+  createMessageIdentity,
+  createUserMessage,
+  type Message,
+  type MessageId,
+  type ToolCallContent,
+  type ToolResultMessage,
+} from "@/core";
 import {
   type AppendCompactionOptions,
   type AppendKanaSessionMessagesOptions,
@@ -33,6 +40,7 @@ type JournalState = {
   activeTurn?: KanaSessionTurnStartEntry;
   activeTurnMessages: Message[];
   messageIds: string[];
+  logicalMessageIds: Set<MessageId>;
   compactionIds: Set<string>;
 };
 
@@ -45,6 +53,7 @@ export class KanaSessionJournal {
     turnIds: new Set<string>(),
     activeTurnMessages: [],
     messageIds: [],
+    logicalMessageIds: new Set<MessageId>(),
     compactionIds: new Set<string>(),
   };
   private fileCreated: boolean;
@@ -302,6 +311,7 @@ export class KanaSessionJournal {
       // A missing result cannot distinguish "never started" from "completed
       // before the process exited". Record an unknown outcome, never a retry.
       const message: ToolResultMessage = {
+        ...createMessageIdentity({ kind: "tool_result" }),
         role: "tool",
         toolCallId: toolCall.id,
         toolName: toolCall.name,
@@ -318,14 +328,13 @@ export class KanaSessionJournal {
     }
 
     const recoveryMessage = createMessageEntry(
-      {
-        role: "user",
-        source: "recovery",
+      createUserMessage({
+        provenance: { kind: "recovery" },
         content:
           unresolvedToolCalls.length > 0
             ? `[Session recovery]\nThe previous agent run was interrupted. ${unresolvedToolCalls.length} tool call outcome(s) are unknown and must not be retried automatically.`
             : "[Session recovery]\nThe previous agent run was interrupted. Continue only from messages that were fully recorded.",
-      },
+      }),
       parentId,
       timestamp,
     );
@@ -366,6 +375,7 @@ export class KanaSessionJournal {
     if (!this.fileCreated && existsSync(this.session.path)) {
       throw new Error(`Kana session file was created by another writer: ${this.session.path}`);
     }
+    this.assertLogicalMessageIdsAvailable(entries);
 
     const title = this.fileCreated
       ? this.session.title
@@ -433,7 +443,11 @@ export class KanaSessionJournal {
         if (!this.state.activeTurn) {
           throw new Error(`Kana session message ${entry.id} is outside a turn.`);
         }
+        if (this.state.logicalMessageIds.has(entry.message.id)) {
+          throw new Error(`Duplicate Kana logical message id: ${entry.message.id}`);
+        }
         this.state.messageIds.push(entry.id);
+        this.state.logicalMessageIds.add(entry.message.id);
         this.state.activeTurnMessages.push(structuredClone(entry.message));
         break;
 
@@ -463,6 +477,19 @@ export class KanaSessionJournal {
 
     this.state.entryIds.add(entry.id);
     this.state.tailId = entry.id;
+  }
+
+  private assertLogicalMessageIdsAvailable(entries: readonly KanaSessionTimelineEntry[]): void {
+    const ids = new Set(this.state.logicalMessageIds);
+    for (const entry of entries) {
+      if (entry.type !== "message") {
+        continue;
+      }
+      if (ids.has(entry.message.id)) {
+        throw new Error(`Duplicate Kana logical message id: ${entry.message.id}`);
+      }
+      ids.add(entry.message.id);
+    }
   }
 
   private assertActiveTurn(turnId: string): void {

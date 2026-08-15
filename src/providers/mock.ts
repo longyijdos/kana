@@ -2,6 +2,7 @@ import {
   AssistantEventStream,
   type AssistantMessage,
   BaseModel,
+  createMessageIdentity,
   type ModelConfig,
   type ModelContext,
   type ModelMetadata,
@@ -43,6 +44,7 @@ export class MockModel extends BaseModel {
     // Match real providers: stream() returns before events start arriving.
     queueMicrotask(() => {
       const message: AssistantMessage = {
+        ...createMessageIdentity({ kind: "model_output" }),
         role: "assistant",
         content: [],
       };

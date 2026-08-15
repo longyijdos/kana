@@ -12,6 +12,13 @@ export {
   estimateTextTokens,
 } from "./context-manager";
 export type { AgentEndReason, AgentEvent } from "./events";
+export {
+  AgentInbox,
+  type AgentInboxItem,
+  type AgentInboxSnapshot,
+  type AgentInputDelivery,
+  type AgentInputLane,
+} from "./inbox";
 export { runAgentLoop } from "./loop";
 export { createModelCompactPolicy } from "./model-compact-policy";
 export { AgentEventStream } from "./stream";

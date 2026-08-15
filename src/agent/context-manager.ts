@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import type {
-  AssistantMessage,
-  HostedToolContent,
-  Message,
-  ModelContext,
-  ModelUsage,
-  ToolCallContent,
+import {
+  type AssistantMessage,
+  createUserMessage,
+  type HostedToolContent,
+  type Message,
+  type ModelContext,
+  type ModelUsage,
+  type ToolCallContent,
 } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 
@@ -395,10 +396,12 @@ export class ContextManager {
     const messages = context.messages.slice(coveredMessageCount);
 
     if (this.checkpointData) {
-      messages.unshift({
-        role: "user",
-        content: formatSummaryForModel(this.checkpointData.summary),
-      });
+      messages.unshift(
+        createUserMessage({
+          content: formatSummaryForModel(this.checkpointData.summary),
+          provenance: { kind: "context_summary" },
+        }),
+      );
     }
 
     return {
@@ -446,10 +449,10 @@ export class ContextManager {
       const tailContext: ModelContext = {
         system: context.system,
         messages: [
-          {
-            role: "user",
+          createUserMessage({
             content: formatSummaryForModel("x".repeat(this.maxSummaryTokens * 3)),
-          },
+            provenance: { kind: "context_summary" },
+          }),
           ...context.messages.slice(boundary),
         ],
         tools: context.tools,
@@ -490,6 +493,8 @@ function messageForCompaction(message: Message): Message {
       return structuredClone(message);
     case "tool":
       return {
+        id: message.id,
+        provenance: structuredClone(message.provenance),
         role: "tool",
         toolCallId: message.toolCallId,
         toolName: message.toolName,
@@ -498,6 +503,8 @@ function messageForCompaction(message: Message): Message {
       };
     case "assistant":
       return {
+        id: message.id,
+        provenance: structuredClone(message.provenance),
         role: "assistant",
         stopReason: message.stopReason,
         content: structuredClone(
