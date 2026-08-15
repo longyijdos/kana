@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildDeepSeekRequest } from "../../../src/providers/deepseek/request";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("buildDeepSeekRequest", () => {
   test("requests usage in streaming responses", () => {
@@ -7,6 +8,7 @@ describe("buildDeepSeekRequest", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "hi",
           },
@@ -31,6 +33,7 @@ describe("buildDeepSeekRequest", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "",
             images: [
@@ -62,7 +65,7 @@ describe("buildDeepSeekRequest", () => {
   test("prefers the per-request output ceiling over the configured maximum", () => {
     const request = buildDeepSeekRequest(
       {
-        messages: [{ role: "user", content: "hi" }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "hi" }],
         maxOutputTokens: 12_345,
       },
       {
@@ -80,6 +83,7 @@ describe("buildDeepSeekRequest", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "hi",
           },

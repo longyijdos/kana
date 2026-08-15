@@ -9,6 +9,7 @@ import {
   loadKanaSession,
 } from "../../../src/kana";
 import { MockModel } from "../../../src/providers/mock";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 const temporaryHomes: string[] = [];
 const originalKanaHome = process.env.KANA_HOME;
@@ -44,7 +45,11 @@ describe("Kana conversation host", () => {
     const runtime = createRuntime(host);
     runtime.setBeforeToolExecution(() => ({ type: "continue" }));
 
-    await runtime.submit({ role: "user", content: "Run the task." });
+    await runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Run the task.",
+    });
 
     const sessionId = host.resumeSessionId;
     expect(sessionId).toBeString();
@@ -112,7 +117,11 @@ describe("Kana conversation host", () => {
     runtime.setBeforeToolExecution(() => ({ type: "continue" }));
 
     runtime.reconfigure("deepseek-v4-flash");
-    await runtime.submit({ role: "user", content: "Run the task." });
+    await runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Run the task.",
+    });
 
     expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
     expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");

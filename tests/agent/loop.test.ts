@@ -8,6 +8,7 @@ import type { AssistantMessage } from "../../src/core/messages";
 import type { Model, ModelMetadata } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
 import type { Tool } from "../../src/tools/tool";
+import { messageIdentityForTest } from "../helpers/messages";
 
 class ScriptedToolModel implements Model {
   readonly metadata: ModelMetadata = {
@@ -179,6 +180,7 @@ class AbortedModel implements Model {
         reason: "aborted",
         error: new Error("aborted"),
         snapshot: {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           content: [
             {
@@ -220,6 +222,7 @@ class AbortedToolCallModel implements Model {
 
     queueMicrotask(() => {
       const message: AssistantMessage = {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         content: [],
       };
@@ -284,6 +287,7 @@ class AbortedHostedToolModel implements Model {
 
     queueMicrotask(() => {
       const message: AssistantMessage = {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         content: [
           {
@@ -294,7 +298,10 @@ class AbortedHostedToolModel implements Model {
           },
         ],
       };
-      stream.push({ type: "start", snapshot: { role: "assistant", content: [] } });
+      stream.push({
+        type: "start",
+        snapshot: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+      });
       stream.push({
         type: "hosted_tool_start",
         contentIndex: 0,
@@ -342,6 +349,7 @@ class EmptyErrorModel implements Model {
         reason: "error",
         error: new Error("provider rejected the request"),
         snapshot: {
+          ...messageIdentityForTest("assistant"),
           role: "assistant",
           content: [],
         },
@@ -445,7 +453,7 @@ describe("runAgentLoop", () => {
 
     await runAgentLoop(
       {
-        messages: [{ role: "user", content: "add both pairs" }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add both pairs" }],
         tools: [addTool],
       },
       {
@@ -467,6 +475,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "add the numbers",
           },
@@ -509,7 +518,13 @@ describe("runAgentLoop", () => {
   });
 
   test("publishes the next prompt estimate after each complete model/tool turn", async () => {
-    const initialMessages = [{ role: "user" as const, content: "add the numbers" }];
+    const initialMessages = [
+      {
+        ...messageIdentityForTest("user"),
+        role: "user" as const,
+        content: "add the numbers",
+      },
+    ];
     const events: AgentEvent[] = [];
     const contextManager = new ContextManager({
       contextLimit: 128_000,
@@ -564,7 +579,7 @@ describe("runAgentLoop", () => {
 
     await runAgentLoop(
       {
-        messages: [{ role: "user", content: "add the numbers" }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add the numbers" }],
         tools: [orderedTool],
       },
       {
@@ -583,12 +598,18 @@ describe("runAgentLoop", () => {
   test("adds queued turn input after turn_end and continues without a tool call", async () => {
     const model = new ScriptedToolModel(undefined, 0);
     const events: AgentEvent[] = [];
-    const turnInputs = [{ role: "user" as const, content: "Use the new direction." }];
+    const turnInputs = [
+      {
+        ...messageIdentityForTest("user"),
+        role: "user" as const,
+        content: "Use the new direction.",
+      },
+    ];
     let consumed = false;
 
     const messages = await runAgentLoop(
       {
-        messages: [{ role: "user", content: "Start." }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "Start." }],
       },
       {
         model,
@@ -623,14 +644,16 @@ describe("runAgentLoop", () => {
 
     await runAgentLoop(
       {
-        messages: [{ role: "user", content: "Start." }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "Start." }],
       },
       {
         model: new ScriptedToolModel(undefined, 0),
         maxTurns: 1,
         consumeTurnInputs: async () => {
           consumeCount += 1;
-          return [{ role: "user", content: "Do not consume this." }];
+          return [
+            { ...messageIdentityForTest("user"), role: "user", content: "Do not consume this." },
+          ];
         },
       },
       () => {},
@@ -659,7 +682,9 @@ describe("runAgentLoop", () => {
 
     const messages = await runAgentLoop(
       {
-        messages: [{ role: "user", content: "Run the large tool" }],
+        messages: [
+          { ...messageIdentityForTest("user"), role: "user", content: "Run the large tool" },
+        ],
         tools: [largeAddTool],
       },
       {
@@ -694,6 +719,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "add the numbers",
           },
@@ -758,7 +784,7 @@ describe("runAgentLoop", () => {
 
     const messages = await runAgentLoop(
       {
-        messages: [{ role: "user", content: "add both pairs" }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add both pairs" }],
         tools: [tool],
       },
       {
@@ -793,6 +819,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "add the numbers",
           },
@@ -844,6 +871,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "add the numbers",
           },
@@ -894,6 +922,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "add the numbers",
           },
@@ -955,6 +984,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "add both numbers",
           },
@@ -1021,6 +1051,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "keep using tools",
           },
@@ -1050,6 +1081,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "keep using tools",
           },
@@ -1087,6 +1119,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "write a long file",
           },
@@ -1120,6 +1153,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "hi",
           },
@@ -1156,6 +1190,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "hi",
           },
@@ -1183,6 +1218,7 @@ describe("runAgentLoop", () => {
       {
         messages: [
           {
+            ...messageIdentityForTest("user"),
             role: "user",
             content: "edit the file",
           },
@@ -1210,7 +1246,7 @@ describe("runAgentLoop", () => {
     const events: AgentEvent[] = [];
     const messages = await runAgentLoop(
       {
-        messages: [{ role: "user", content: "search the web" }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "search the web" }],
       },
       {
         model: new AbortedHostedToolModel(),
@@ -1220,23 +1256,26 @@ describe("runAgentLoop", () => {
       },
     );
 
-    const canceledMessage: AssistantMessage = {
-      role: "assistant",
-      stopReason: "aborted",
-      content: [
-        {
-          type: "hosted_tool",
-          id: "search-1",
-          name: "web_search",
-          status: "canceled",
-        },
-      ],
-    };
-    expect(events.find((event) => event.type === "message_end")).toEqual({
+    const messageEnd = events.find(
+      (event): event is Extract<AgentEvent, { type: "message_end" }> =>
+        event.type === "message_end",
+    );
+    expect(messageEnd).toMatchObject({
       type: "message_end",
-      message: canceledMessage,
+      message: {
+        role: "assistant",
+        stopReason: "aborted",
+        content: [
+          {
+            type: "hosted_tool",
+            id: "search-1",
+            name: "web_search",
+            status: "canceled",
+          },
+        ],
+      },
     });
-    expect(messages).toEqual([canceledMessage]);
+    expect(messages).toEqual(messageEnd ? [messageEnd.message] : []);
   });
 });
 
@@ -1250,6 +1289,7 @@ function formatEventSequence(events: AgentEvent[]): string[] {
 
 function streamToolCallMessage(stream: AssistantEventStream, args: unknown): void {
   const message: AssistantMessage = {
+    ...messageIdentityForTest("assistant"),
     role: "assistant",
     content: [],
   };
@@ -1289,6 +1329,7 @@ function streamToolCallMessage(stream: AssistantEventStream, args: unknown): voi
 
 function streamMultipleToolCallMessage(stream: AssistantEventStream): void {
   const message: AssistantMessage = {
+    ...messageIdentityForTest("assistant"),
     role: "assistant",
     content: [],
   };
@@ -1340,6 +1381,7 @@ function streamMultipleToolCallMessage(stream: AssistantEventStream): void {
 
 function streamLengthTruncatedToolCallMessage(stream: AssistantEventStream): void {
   const message: AssistantMessage = {
+    ...messageIdentityForTest("assistant"),
     role: "assistant",
     content: [],
   };
@@ -1377,6 +1419,7 @@ function streamLengthTruncatedToolCallMessage(stream: AssistantEventStream): voi
 
 function streamTextMessage(stream: AssistantEventStream, text: string): void {
   const message: AssistantMessage = {
+    ...messageIdentityForTest("assistant"),
     role: "assistant",
     content: [],
   };

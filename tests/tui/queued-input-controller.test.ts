@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { QueuedInputController } from "../../src/tui/app/queued-input-controller";
 import type { EditorQueuedInput, EditorScheduledInputSummary } from "../../src/tui/components";
+import { messageIdentityForTest, messageIdForTest } from "../helpers/messages";
 
 describe("QueuedInputController", () => {
   test("projects turn input before the runtime FIFO and summarizes future wakes", () => {
@@ -13,6 +14,7 @@ describe("QueuedInputController", () => {
     const nextAt = new Date("2026-08-08T08:05:00.000Z");
 
     controller.addTurn({
+      ...messageIdentityForTest("user"),
       role: "user",
       content: "Queued with Enter.",
       images: [
@@ -26,9 +28,14 @@ describe("QueuedInputController", () => {
     });
     controller.syncRuntimeQueue({
       pending: [
-        { id: "tab-1", kind: "queued", content: "Queued with Tab.", imageCount: 2 },
         {
-          id: "wake-1",
+          id: messageIdForTest("tab-1"),
+          kind: "queued",
+          content: "Queued with Tab.",
+          imageCount: 2,
+        },
+        {
+          id: messageIdForTest("wake-1"),
           kind: "scheduled",
           content: "Check progress.",
           dueAt: nextAt,
@@ -37,14 +44,14 @@ describe("QueuedInputController", () => {
       ],
       scheduled: [
         {
-          id: "wake-2",
+          id: messageIdForTest("wake-2"),
           sessionId: "session-a",
           dueAt: nextAt,
           message: "Later.",
           origin: "agent",
         },
         {
-          id: "wake-3",
+          id: messageIdForTest("wake-3"),
           sessionId: "session-a",
           dueAt: new Date("2026-08-08T08:10:00.000Z"),
           message: "Later again.",
@@ -61,15 +68,21 @@ describe("QueuedInputController", () => {
     expect(scheduled.at(-1)).toEqual({ count: 2, nextAt });
   });
 
-  test("reconciles each deferred fallback once by its runtime queue id", () => {
+  test("reconciles a deferred fallback by the original message id", () => {
     const snapshots: EditorQueuedInput[][] = [];
     const controller = new QueuedInputController((inputs) => {
       snapshots.push(inputs);
     });
 
-    controller.addTurn("Follow up.");
+    const firstId = controller.addTurn("Follow up.");
     const queue = {
-      pending: [{ id: "deferred-1", kind: "deferred" as const, content: "Follow up." }],
+      pending: [
+        {
+          id: firstId,
+          kind: "deferred" as const,
+          content: "Follow up.",
+        },
+      ],
       scheduled: [],
     };
     controller.syncRuntimeQueue(queue);

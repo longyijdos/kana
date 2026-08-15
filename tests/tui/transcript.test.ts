@@ -10,6 +10,7 @@ import { color, stripAnsi, visibleWidth } from "../../src/tui/render";
 import type { Component } from "../../src/tui/runtime";
 import { tuiTheme } from "../../src/tui/theme";
 import { preloadSyntaxHighlighter } from "../../src/tui/utils/syntax-highlighter";
+import { messageIdentityForTest } from "../helpers/messages";
 
 class LinesBlock implements Component {
   constructor(readonly lines: string[]) {}
@@ -24,6 +25,7 @@ describe("tui transcript", () => {
     const block = new AssistantMessageBlock();
 
     block.update({
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [
         {
@@ -40,6 +42,7 @@ describe("tui transcript", () => {
     const block = new AssistantMessageBlock();
 
     block.update({
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [
         {
@@ -119,6 +122,7 @@ describe("tui transcript", () => {
   test("uses distinct colors for assistant text and completed tool calls", () => {
     const assistant = new AssistantMessageBlock();
     assistant.update({
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [
         {
@@ -230,6 +234,7 @@ describe("tui transcript", () => {
     const block = new AssistantMessageBlock();
 
     block.update({
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       stopReason: "toolUse",
       content: [],
@@ -242,6 +247,7 @@ describe("tui transcript", () => {
     const block = new AssistantMessageBlock();
 
     block.update({
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [
         {
@@ -266,6 +272,7 @@ describe("tui transcript", () => {
     const block = new AssistantMessageBlock();
 
     block.update({
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [
         {
@@ -278,6 +285,7 @@ describe("tui transcript", () => {
     expect(stripAnsi(block.render(80).join("\n"))).toContain("before");
 
     block.update({
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [
         {
@@ -296,6 +304,7 @@ describe("tui transcript", () => {
   test("finalizes a streaming table tail when the assistant message ends", () => {
     const block = new AssistantMessageBlock();
     const message = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant" as const,
       content: [
         {

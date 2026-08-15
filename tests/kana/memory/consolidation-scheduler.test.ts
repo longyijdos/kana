@@ -6,6 +6,7 @@ import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
 } from "../../../src/kana/memory";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("memory consolidation scheduler", () => {
   test("does not log or schedule when no successful remember entries exist", async () => {
@@ -19,7 +20,14 @@ describe("memory consolidation scheduler", () => {
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, { logger });
 
     await scheduler.schedule([
-      { role: "tool", toolCallId: "call_read", toolName: "read", content: "", isError: false },
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool",
+        toolCallId: "call_read",
+        toolName: "read",
+        content: "",
+        isError: false,
+      },
     ]);
 
     expect(events).toEqual([]);
@@ -38,7 +46,14 @@ describe("memory consolidation scheduler", () => {
       rememberResult("project", "mem_project_2"),
       rememberResult("global", "mem_global"),
       { ...rememberResult("project", "mem_failed"), isError: true },
-      { role: "tool", toolCallId: "call_read", toolName: "read", content: "", isError: false },
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool",
+        toolCallId: "call_read",
+        toolName: "read",
+        content: "",
+        isError: false,
+      },
     ]);
 
     expect(calls).toEqual([
@@ -178,6 +193,7 @@ function createLogger(events: string[]): Logger {
 
 function rememberResult(scope: "global" | "project", id: string): ToolResultMessage {
   return {
+    ...messageIdentityForTest("tool"),
     role: "tool",
     toolCallId: `call_${id}`,
     toolName: "remember",

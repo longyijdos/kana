@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DeepSeekModel } from "../../../src/providers/deepseek/model";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("DeepSeek model protocol routing", () => {
   test("routes V4 Flash through Responses and maps hosted web search items", async () => {
@@ -98,7 +99,7 @@ describe("DeepSeek model protocol routing", () => {
         maxRetries: 0,
       });
       const message = await model.generate({
-        messages: [{ role: "user", content: "What is new?" }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "What is new?" }],
         maxOutputTokens: 2_048,
       });
 
@@ -221,7 +222,7 @@ describe("DeepSeek model protocol routing", () => {
         maxRetries: 0,
       });
       const message = await model.generate({
-        messages: [{ role: "user", content: "hello" }],
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "hello" }],
         maxOutputTokens: 2_048,
       });
 

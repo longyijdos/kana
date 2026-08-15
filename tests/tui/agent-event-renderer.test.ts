@@ -6,6 +6,7 @@ import type { StatusLineState, Transcript } from "../../src/tui/components";
 import { Transcript as TranscriptComponent } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Tui } from "../../src/tui/runtime";
+import { messageIdentityForTest } from "../helpers/messages";
 
 describe("AgentEventRenderer", () => {
   test("preserves LaTeX source for live assistant text when rendering is disabled", () => {
@@ -20,11 +21,15 @@ describe("AgentEventRenderer", () => {
       updateStatus() {},
     });
     const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [{ type: "text", text: "Result $x^2$" }],
     };
 
-    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_start",
+      message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+    });
     renderer.handle({
       type: "message_update",
       message,
@@ -53,11 +58,15 @@ describe("AgentEventRenderer", () => {
     });
     const text = ["```mermaid", "flowchart LR", "  A --> B", "```"].join("\n");
     const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [{ type: "text", text }],
     };
 
-    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_start",
+      message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+    });
     renderer.handle({
       type: "message_update",
       message,
@@ -84,6 +93,7 @@ describe("AgentEventRenderer", () => {
     });
     const text = "buffered assistant text ".repeat(8).trim();
     const textMessage: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [{ type: "text", text }],
     };
@@ -94,11 +104,15 @@ describe("AgentEventRenderer", () => {
       args: { path: "AGENTS.md" },
     };
     const toolMessage: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [...textMessage.content, toolCall],
     };
 
-    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_start",
+      message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+    });
     renderer.handle({
       type: "message_update",
       message: textMessage,
@@ -151,15 +165,20 @@ describe("AgentEventRenderer", () => {
       args: { pattern: "ToolCallBlock", path: "src" },
     };
     const firstMessage: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [firstToolCall],
     };
     const completeMessage: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [firstToolCall, secondToolCall],
     };
 
-    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_start",
+      message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+    });
     renderer.handle({
       type: "message_update",
       message: firstMessage,
@@ -272,6 +291,7 @@ describe("AgentEventRenderer", () => {
       updateStatus: (phase) => statuses.push(phase),
     });
     const searchingMessage: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [
         {
@@ -283,7 +303,10 @@ describe("AgentEventRenderer", () => {
       ],
     };
 
-    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_start",
+      message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+    });
     renderer.handle({
       type: "message_update",
       message: searchingMessage,
@@ -313,6 +336,7 @@ describe("AgentEventRenderer", () => {
       updateStatus() {},
     });
     const searchingMessage: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [
         {
@@ -332,7 +356,10 @@ describe("AgentEventRenderer", () => {
     };
 
     try {
-      renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+      renderer.handle({
+        type: "message_start",
+        message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+      });
       renderer.handle({
         type: "message_update",
         message: searchingMessage,
@@ -380,11 +407,15 @@ describe("AgentEventRenderer", () => {
       },
     };
     const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [toolCall],
     };
 
-    renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+    renderer.handle({
+      type: "message_start",
+      message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+    });
     renderer.handle({
       type: "message_update",
       message,
@@ -413,10 +444,12 @@ describe("AgentEventRenderer", () => {
       updateStatus() {},
     });
     const firstThinking: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [{ type: "thinking", text: "first" }],
     };
     const adjacentThinking: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [...firstThinking.content, { type: "thinking", text: "second" }],
     };
@@ -427,12 +460,16 @@ describe("AgentEventRenderer", () => {
       args: { path: "AGENTS.md" },
     };
     const toolMessage: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       content: [...adjacentThinking.content, toolCall],
     };
 
     try {
-      renderer.handle({ type: "message_start", message: { role: "assistant", content: [] } });
+      renderer.handle({
+        type: "message_start",
+        message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+      });
       renderer.handle({
         type: "message_update",
         message: firstThinking,

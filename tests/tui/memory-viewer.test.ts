@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { stripAnsi } from "../../src/tui/render";
 import type { Terminal } from "../../src/tui/runtime";
+import { withAgentInboxForTest } from "../helpers/agent-inbox";
 
 describe("memory viewer", () => {
   test("renders Markdown and wraps long memory lines instead of truncating them", () => {
     const longMemory = "This memory entry must remain fully visible after wrapping.";
     const app = new KanaTuiApp(
       () =>
-        ({
+        withAgentInboxForTest({
           state: {
             messages: [],
             model: {

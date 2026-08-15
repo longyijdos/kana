@@ -5,6 +5,8 @@ import { KanaTuiApp } from "../../src/tui/app/app";
 import { applyTuiModelSelection, type TuiModelSelection } from "../../src/tui/app/model-selection";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Terminal } from "../../src/tui/runtime";
+import { withAgentInboxForTest } from "../helpers/agent-inbox";
+import { messageIdentityForTest } from "../helpers/messages";
 
 type AgentFactory = ConstructorParameters<typeof KanaTuiApp>[0];
 type AgentFactoryOptions = Parameters<AgentFactory>[0];
@@ -78,7 +80,9 @@ describe("TUI model selection", () => {
   });
 
   test("switches provider, model, and reasoning while preserving conversation state", () => {
-    const messages: Message[] = [{ role: "user", content: "keep this context" }];
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "keep this context" },
+    ];
     const calls: AgentFactoryOptions[] = [];
     const agents: AgentStub[] = [];
     const logEvents: string[] = [];
@@ -260,7 +264,7 @@ function createAgentStub(options: {
   provider: string;
   model: string;
 }): AgentStub {
-  return {
+  return withAgentInboxForTest({
     state: {
       messages: options.messages,
       model: {
@@ -278,7 +282,7 @@ function createAgentStub(options: {
       this.abortCount += 1;
     },
     async waitForIdle() {},
-  };
+  }) as AgentStub;
 }
 
 function createOptions() {

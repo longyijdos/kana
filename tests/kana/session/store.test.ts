@@ -14,6 +14,7 @@ import {
   listKanaSessions,
   loadKanaSession,
 } from "@/kana";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 const tempDirs: string[] = [];
 
@@ -33,12 +34,16 @@ describe("Kana session persistence", () => {
     expect(listKanaSessions({ env, cwd })).toEqual([]);
   });
 
-  test("keeps the V3 JSONL byte layout stable", () => {
+  test("keeps the V4 JSONL byte layout stable", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "byte-layout" });
     const timestamp = "2026-07-31T00:00:00.000Z";
-    const userMessage = { role: "user" as const, content: "Byte layout" };
+    const userMessage = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Byte layout",
+    };
 
     appendKanaSessionMessages(session, [userMessage], { timestamp });
 
@@ -52,7 +57,7 @@ describe("Kana session persistence", () => {
       `${[
         {
           type: "session",
-          version: 3,
+          version: 4,
           id: "byte-layout",
           createdAt: session.createdAt,
           title: "Byte layout",
@@ -85,7 +90,7 @@ describe("Kana session persistence", () => {
         .map((record) => JSON.stringify(record))
         .join("\n")}\n`,
     );
-    expect(header).toMatchObject({ version: 3, id: "byte-layout" });
+    expect(header).toMatchObject({ version: 4, id: "byte-layout" });
   });
 
   test("creates JSONL sessions on first append and reloads messages by id", () => {
@@ -102,6 +107,7 @@ describe("Kana session persistence", () => {
     });
     const messages: Message[] = [
       {
+        ...messageIdentityForTest("user"),
         role: "user",
         content: "hi",
         images: [
@@ -114,6 +120,7 @@ describe("Kana session persistence", () => {
         ],
       },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         usage: {
@@ -149,7 +156,7 @@ describe("Kana session persistence", () => {
     expect(lines).toHaveLength(5);
     expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
       type: "session",
-      version: 3,
+      version: 4,
       id: "session-1",
       title: "hi",
       cwd,
@@ -207,19 +214,37 @@ describe("Kana session persistence", () => {
     expect(loaded.contextCheckpoint).toBeUndefined();
   });
 
+  test("rejects duplicate logical message IDs before writing a session", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "duplicate-message-id" });
+    const message = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Do not write twice.",
+    };
+
+    expect(() => appendKanaSessionMessages(session, [message, message])).toThrow(
+      "Duplicate Kana logical message id",
+    );
+    expect(existsSync(session.path)).toBe(false);
+  });
+
   test("persists manual compaction checkpoints without deleting covered messages", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "compacted" });
     const messages: Message[] = [
-      { role: "user", content: "Old question" },
+      { ...messageIdentityForTest("user"), role: "user", content: "Old question" },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         content: [{ type: "text", text: "Old answer" }],
       },
-      { role: "user", content: "Recent question" },
+      { ...messageIdentityForTest("user"), role: "user", content: "Recent question" },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         content: [{ type: "text", text: "Recent answer" }],
@@ -274,13 +299,14 @@ describe("Kana session persistence", () => {
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "checkpoint-chain" });
     const firstMessages: Message[] = [
-      { role: "user", content: "First question" },
+      { ...messageIdentityForTest("user"), role: "user", content: "First question" },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         content: [{ type: "text", text: "First answer" }],
       },
-      { role: "user", content: "Second question" },
+      { ...messageIdentityForTest("user"), role: "user", content: "Second question" },
     ];
     const firstCheckpoint: ContextCheckpoint = {
       id: "compact-1",
@@ -299,11 +325,12 @@ describe("Kana session persistence", () => {
 
     const secondMessages: Message[] = [
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         content: [{ type: "text", text: "Second answer" }],
       },
-      { role: "user", content: "Third question" },
+      { ...messageIdentityForTest("user"), role: "user", content: "Third question" },
     ];
     const secondCheckpoint: ContextCheckpoint = {
       id: "compact-2",
@@ -366,8 +393,9 @@ describe("Kana session persistence", () => {
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "corrupted-compaction" });
     const messages: Message[] = [
-      { role: "user", content: "Question" },
+      { ...messageIdentityForTest("user"), role: "user", content: "Question" },
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         content: [{ type: "text", text: "Answer" }],
@@ -417,8 +445,12 @@ describe("Kana session persistence", () => {
     const first = createKanaSession({ cwd, env, id: "first" });
     const second = createKanaSession({ cwd, env, id: "second" });
 
-    appendKanaSessionMessages(first, [{ role: "user", content: "first" }]);
-    appendKanaSessionMessages(second, [{ role: "user", content: "second" }]);
+    appendKanaSessionMessages(first, [
+      { ...messageIdentityForTest("user"), role: "user", content: "first" },
+    ]);
+    appendKanaSessionMessages(second, [
+      { ...messageIdentityForTest("user"), role: "user", content: "second" },
+    ]);
 
     expect(new Set(listKanaSessions({ env, cwd }).map((session) => session.id))).toEqual(
       new Set([first.id, second.id]),
@@ -434,6 +466,7 @@ describe("Kana session persistence", () => {
     const cwd = path.join(env.HOME ?? "", "repo");
     const messages: Message[] = [
       {
+        ...messageIdentityForTest("user"),
         role: "user",
         content: "branch from here",
       },
@@ -469,6 +502,7 @@ describe("Kana session persistence", () => {
     const session = createKanaSession({ cwd, env, id: "invalid-images" });
     appendKanaSessionMessages(session, [
       {
+        ...messageIdentityForTest("user"),
         role: "user",
         content: "Inspect this.",
         images: [
@@ -520,6 +554,7 @@ describe("Kana session persistence", () => {
 
     appendKanaSessionMessages(session, [
       {
+        ...messageIdentityForTest("user"),
         role: "user",
         content: "this prompt should not replace the explicit title",
       },
@@ -536,12 +571,17 @@ describe("Kana session persistence", () => {
     const session = createKanaSession({ cwd, env, id: "journaled" });
     const journal = createKanaSessionJournal(session);
 
-    journal.startTurn("turn-1", [{ role: "user", content: "Run it" }], {
-      timestamp: "2026-07-30T00:00:00.000Z",
-    });
+    journal.startTurn(
+      "turn-1",
+      [{ ...messageIdentityForTest("user"), role: "user", content: "Run it" }],
+      {
+        timestamp: "2026-07-30T00:00:00.000Z",
+      },
+    );
     journal.appendMessage(
       "turn-1",
       {
+        ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
         content: [{ type: "text", text: "Done" }],
@@ -575,8 +615,11 @@ describe("Kana session persistence", () => {
     const session = createKanaSession({ cwd, env, id: "interrupted" });
     const journal = createKanaSessionJournal(session);
 
-    journal.startTurn("turn-interrupted", [{ role: "user", content: "Deploy it" }]);
+    journal.startTurn("turn-interrupted", [
+      { ...messageIdentityForTest("user"), role: "user", content: "Deploy it" },
+    ]);
     journal.appendMessage("turn-interrupted", {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       stopReason: "toolUse",
       content: [
@@ -607,7 +650,7 @@ describe("Kana session persistence", () => {
     });
     expect(firstLoad.messages.at(-1)).toMatchObject({
       role: "user",
-      source: "recovery",
+      provenance: { kind: "recovery" },
     });
     expect(firstLoad.timeline.at(-1)).toMatchObject({
       type: "turn_end",
@@ -623,8 +666,11 @@ describe("Kana session persistence", () => {
     const session = createKanaSession({ cwd, env, id: "completed-tool" });
     const journal = createKanaSessionJournal(session);
 
-    journal.startTurn("turn-completed-tool", [{ role: "user", content: "Inspect it" }]);
+    journal.startTurn("turn-completed-tool", [
+      { ...messageIdentityForTest("user"), role: "user", content: "Inspect it" },
+    ]);
     journal.appendMessage("turn-completed-tool", {
+      ...messageIdentityForTest("assistant"),
       role: "assistant",
       stopReason: "toolUse",
       content: [
@@ -637,6 +683,7 @@ describe("Kana session persistence", () => {
       ],
     });
     journal.appendMessage("turn-completed-tool", {
+      ...messageIdentityForTest("tool"),
       role: "tool",
       toolCallId: "call-recorded",
       toolName: "read",
@@ -667,7 +714,9 @@ describe("Kana session persistence", () => {
     const session = createKanaSession({ cwd, env, id: "partial-tail" });
     const journal = createKanaSessionJournal(session);
 
-    journal.startTurn("turn-partial", [{ role: "user", content: "Hello" }]);
+    journal.startTurn("turn-partial", [
+      { ...messageIdentityForTest("user"), role: "user", content: "Hello" },
+    ]);
     const validContent = readFileSync(session.path, "utf8");
     writeFileSync(session.path, `${validContent}{"type":"message","id":`);
 
@@ -690,7 +739,9 @@ describe("Kana session persistence", () => {
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "delete-me" });
 
-    appendKanaSessionMessages(session, [{ role: "user", content: "remove this" }]);
+    appendKanaSessionMessages(session, [
+      { ...messageIdentityForTest("user"), role: "user", content: "remove this" },
+    ]);
 
     expect(deleteKanaSession("missing", { env, cwd })).toBe(false);
     expect(deleteKanaSession("delete-me", { env, cwd })).toBe(true);
