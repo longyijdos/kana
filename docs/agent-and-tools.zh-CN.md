@@ -93,7 +93,7 @@ provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededEr
 
 `Agent.stream(input)` 异步启动循环。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；没有 journal 的通用嵌入方式保持原有内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
 
-Agent 持有一个仅存在于内存的 inbox，其中有 `next-step` 和 `next-turn` 两条 lane。活动 run 的 `steer(userMessage)` 把原始带 ID 消息放入 `next-step`；下一个可用 turn 边界先写 journal 并 claim，再发出 `turn_input`，返回 `consumed`。中止或 turn limit 会把未 claim 的 steering 移到 `next-turn` 尾部，不更换 ID，并返回 `deferred`。Tab 后续输入和到期定时消息直接进入 `next-turn`。`ConversationRuntime` 只编排该 lane 何时可启动新 run，并发布只读前端快照，不再生成第二套队列身份。
+Agent 持有一个仅存在于内存的 inbox，其中有 `next-step` 和 `next-turn` 两条 lane。活动 run 的 `steer(userMessage)` 把原始带 ID 消息放入 `next-step`；下一个可用 turn 边界先写 journal，再按 MessageId claim，随后发出 `turn_input` 并返回 `consumed`。journal commit 一旦开始，该项会保持 reservation，不能被取消或 inbox clear 删除，直到按身份校验的 claim 完成，因此 shutdown 不会让 durable input 与实际 claim 的消息错位。中止或 turn limit 会把未 claim 的 steering 移到 `next-turn` 尾部，不更换 ID，并返回 `deferred`。Tab 后续输入和到期定时消息直接进入 `next-turn`。`ConversationRuntime` 只编排该 lane 何时可启动新 run，并发布只读前端快照，不再生成第二套队列身份。
 
 journal 的顺序是协议约束：完整 assistant 消息必须先持久化，随后才能执行其中引用的工具；每个工具结果完成后单独持久化；context checkpoint 在 adopt 前持久化；最后写入 run 终态。`onRunCommitted` 在 journal 已闭合后执行聚合后处理，不再承担 Kana 的 session 消息落盘。只有 journal 与后处理都成功，监听器和 stream 才会收到最终 `agent_end`。任一失败都会拒绝 stream，而不会先发布成功终态；整个阶段都属于 active run，因此 `isRunning` 保持 `true`，新运行被拒绝，`waitForIdle()` 继续等待。
 

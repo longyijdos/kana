@@ -496,6 +496,109 @@ describe("Agent", () => {
     expect(events.some((event) => event.type === "turn_input")).toBe(true);
   });
 
+  test("does not cancel or misclaim a steering input while its journal commit is pending", async () => {
+    const commitStarted = deferred();
+    const releaseCommit = deferred();
+    const committedUserIds: string[] = [];
+    const model = new TextModel("done");
+    const agent = new Agent({
+      model,
+      journal: {
+        startRun: () => {},
+        appendMessage: ({ message }) => {
+          if (message.role !== "user") {
+            return;
+          }
+          committedUserIds.push(message.id);
+          if (message.content === "Steer A.") {
+            commitStarted.resolve();
+            return releaseCommit.promise;
+          }
+        },
+        appendCompaction: () => {},
+        endRun: () => {},
+      },
+    });
+    const first = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Steer A.",
+    };
+    const second = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Steer B.",
+    };
+
+    const stream = agent.stream("Start.");
+    const firstSteering = agent.steer(first);
+    const secondSteering = agent.steer(second);
+    await commitStarted.promise;
+
+    expect(agent.cancelInput(first.id)).toBeUndefined();
+    expect(agent.inbox.nextStep.map((item) => item.message.id)).toEqual([first.id, second.id]);
+
+    releaseCommit.resolve();
+    await stream.result();
+
+    expect(await firstSteering).toBe("consumed");
+    expect(await secondSteering).toBe("consumed");
+    expect(committedUserIds).toEqual([first.id, second.id]);
+    expect(model.contexts[1]?.messages.slice(-2)).toEqual([first, second]);
+  });
+
+  test("clears other input without removing a steering item whose commit is pending", async () => {
+    const commitStarted = deferred();
+    const releaseCommit = deferred();
+    const committedUserIds: string[] = [];
+    const model = new TextModel("done");
+    const agent = new Agent({
+      model,
+      journal: {
+        startRun: () => {},
+        appendMessage: ({ message }) => {
+          if (message.role !== "user") {
+            return;
+          }
+          committedUserIds.push(message.id);
+          if (message.content === "Steer A.") {
+            commitStarted.resolve();
+            return releaseCommit.promise;
+          }
+        },
+        appendCompaction: () => {},
+        endRun: () => {},
+      },
+    });
+    const first = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Steer A.",
+    };
+    const second = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Steer B.",
+    };
+
+    const stream = agent.stream("Start.");
+    const firstSteering = agent.steer(first);
+    const secondSteering = agent.steer(second);
+    await commitStarted.promise;
+
+    agent.clearInbox();
+    expect(agent.inbox.nextStep.map((item) => item.message.id)).toEqual([first.id]);
+    expect(await secondSteering).toBe("deferred");
+
+    releaseCommit.resolve();
+    await stream.result();
+
+    expect(await firstSteering).toBe("consumed");
+    expect(committedUserIds).toEqual([first.id]);
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(first);
+    expect(agent.inbox).toEqual({ nextStep: [], nextTurn: [] });
+  });
+
   test("defers steering input when no further turn is available", async () => {
     const agent = new Agent({
       model: new TextModel("done"),

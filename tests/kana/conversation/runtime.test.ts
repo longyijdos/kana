@@ -553,6 +553,34 @@ describe("ConversationRuntime", () => {
 
     await runtime.close();
   });
+
+  test("does not accept queued or scheduled input after close", async () => {
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      canStartQueuedRun: () => false,
+      createAgent: (options) =>
+        new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    const input = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Too late.",
+    };
+
+    await runtime.close();
+
+    expect(runtime.queueInput(input)).toBe(input.id);
+    expect(runtime.inputQueue).toEqual({ pending: [], scheduled: [] });
+    expect(() => runtime.scheduleInput(5, "Too late.")).toThrow(
+      "Conversation runtime is stopping.",
+    );
+  });
 });
 
 function createRuntimeOptions() {

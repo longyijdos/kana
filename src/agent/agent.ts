@@ -119,6 +119,7 @@ export class Agent {
   private readonly listeners = new Set<AgentEventListener>();
   private readonly inboxListeners = new Set<AgentInboxListener>();
   private readonly steeringResolvers = new Map<MessageId, (outcome: AgentSteerOutcome) => void>();
+  private readonly committingSteeringIds = new Set<MessageId>();
   private activeRun?: ActiveRun;
   private readonly inboxData: AgentInbox;
   private readonly stateData: WritableAgentState;
@@ -482,6 +483,12 @@ export class Agent {
   }
 
   cancelInput(id: MessageId): AgentInboxItem | undefined {
+    if (this.committingSteeringIds.has(id)) {
+      // Once journal commit starts, cancellation cannot make the durable
+      // message disagree with the inbox item claimed for model history.
+      this.log("info", "agent.input_cancel_skipped", { reason: "commit_in_progress" });
+      return undefined;
+    }
     const item = this.inboxData.remove(id);
     if (!item) {
       return undefined;
@@ -493,7 +500,9 @@ export class Agent {
   }
 
   clearInbox(): void {
-    const removed = this.inboxData.clear();
+    // A steering item crossing the journal boundary is no longer cancelable.
+    // Shutdown may clear every other item, then wait for this claim to finish.
+    const removed = this.inboxData.clear(this.committingSteeringIds);
     if (removed.length === 0) {
       return;
     }
@@ -625,10 +634,14 @@ export class Agent {
     const consumed: UserMessage[] = [];
     let pending = this.inboxData.peekNextStep();
     while (pending) {
-      await commit(structuredClone(pending.message));
-      const claimed = this.inboxData.shiftNextStep();
-      if (!claimed) {
-        throw new Error("Agent inbox lost a steering input while it was being claimed.");
+      const pendingId = pending.message.id;
+      this.committingSteeringIds.add(pendingId);
+      let claimed: AgentInboxItem;
+      try {
+        await commit(structuredClone(pending.message));
+        claimed = this.inboxData.claimNextStep(pendingId);
+      } finally {
+        this.committingSteeringIds.delete(pendingId);
       }
       this.steeringResolvers.get(claimed.message.id)?.("consumed");
       this.steeringResolvers.delete(claimed.message.id);

@@ -52,4 +52,26 @@ describe("AgentInbox", () => {
       secondSteer.id,
     ]);
   });
+
+  test("claims only the expected next-step ID and can preserve an in-flight item while clearing", () => {
+    const first = createUserMessage({
+      content: "First.",
+      provenance: { kind: "user_input" },
+    });
+    const second = createUserMessage({
+      content: "Second.",
+      provenance: { kind: "user_input" },
+    });
+    const inbox = new AgentInbox();
+    inbox.enqueue({ message: first, delivery: { kind: "steering" } }, "next-step");
+    inbox.enqueue({ message: second, delivery: { kind: "steering" } }, "next-step");
+
+    expect(() => inbox.claimNextStep(second.id)).toThrow("next-step head");
+    expect(inbox.snapshot.nextStep.map((item) => item.message.id)).toEqual([first.id, second.id]);
+
+    const removed = inbox.clear(new Set([first.id]));
+    expect(removed.map((item) => item.message.id)).toEqual([second.id]);
+    expect(inbox.claimNextStep(first.id).message.id).toBe(first.id);
+    expect(inbox.snapshot).toEqual({ nextStep: [], nextTurn: [] });
+  });
 });

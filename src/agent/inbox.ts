@@ -60,6 +60,24 @@ export class AgentInbox {
     return this.shift(this.nextStepItems);
   }
 
+  claimNextStep(id: MessageId): AgentInboxItem {
+    const item = this.nextStepItems[0];
+    if (!item) {
+      throw new Error(`Cannot claim Message ${id}; the next-step lane is empty.`);
+    }
+    if (item.message.id !== id) {
+      throw new Error(
+        `Cannot claim Message ${id}; the next-step head is Message ${item.message.id}.`,
+      );
+    }
+
+    const claimed = this.shift(this.nextStepItems);
+    if (!claimed) {
+      throw new Error(`Cannot claim Message ${id}; the next-step lane changed unexpectedly.`);
+    }
+    return claimed;
+  }
+
   shiftNextTurn(): AgentInboxItem | undefined {
     return this.shift(this.nextTurnItems);
   }
@@ -90,11 +108,21 @@ export class AgentInbox {
     return undefined;
   }
 
-  clear(): AgentInboxItem[] {
-    const removed = [...this.nextStepItems, ...this.nextTurnItems];
-    this.nextStepItems.length = 0;
-    this.nextTurnItems.length = 0;
-    this.pendingIds.clear();
+  clear(preserveIds: ReadonlySet<MessageId> = new Set()): AgentInboxItem[] {
+    const removed: AgentInboxItem[] = [];
+    for (const items of [this.nextStepItems, this.nextTurnItems]) {
+      let retainedCount = 0;
+      for (const item of items) {
+        if (preserveIds.has(item.message.id)) {
+          items[retainedCount] = item;
+          retainedCount += 1;
+          continue;
+        }
+        removed.push(item);
+        this.pendingIds.delete(item.message.id);
+      }
+      items.length = retainedCount;
+    }
     return structuredClone(removed);
   }
 

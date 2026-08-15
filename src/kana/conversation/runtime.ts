@@ -348,6 +348,10 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   queueInput(input: UserMessage): MessageId {
+    if (this.stopping) {
+      this.log("warn", "conversation.input_discarded", { reason: "stopping" });
+      return input.id;
+    }
     this.agent.enqueueInput(input, "next-turn", { kind: "queued" });
     this.log("info", "conversation.input_queued", {
       source: "user",
@@ -357,6 +361,9 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   scheduleInput(afterMinutes: number, message: string): WakeEvent {
+    if (this.stopping) {
+      throw new Error("Conversation runtime is stopping.");
+    }
     const sessionId = this.sessionId;
     if (!sessionId) {
       throw new Error("Cannot schedule a message without an active session.");
