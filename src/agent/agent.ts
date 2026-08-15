@@ -303,8 +303,14 @@ export class Agent {
     }
 
     const promptMessages = toPromptMessages(input);
+    const inbox = this.inboxData.snapshot;
     try {
-      assertUniqueMessageIds([...this.stateData.messages, ...promptMessages]);
+      assertUniqueMessageIds([
+        ...this.stateData.messages,
+        ...promptMessages,
+        ...inbox.nextStep.map((item) => item.message),
+        ...inbox.nextTurn.map((item) => item.message),
+      ]);
     } catch (error) {
       stream.error(error);
       return stream;

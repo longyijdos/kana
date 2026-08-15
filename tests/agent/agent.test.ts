@@ -531,6 +531,22 @@ describe("Agent", () => {
     expect(await first).toBe("consumed");
   });
 
+  test("rejects a run input whose Message ID is still pending in the inbox", async () => {
+    const model = new TextModel("unreachable");
+    const agent = new Agent({ model });
+    const input = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Pending input.",
+    };
+    agent.enqueueInput(input, "next-turn", { kind: "queued" });
+
+    await expect(agent.prompt(input)).rejects.toThrow("Duplicate Message id");
+
+    expect(model.contexts).toEqual([]);
+    expect(agent.inbox.nextTurn.map((item) => item.message.id)).toEqual([input.id]);
+  });
+
   test("rejects a model output ID that is already committed", async () => {
     const priorAssistant: AssistantMessage = {
       ...messageIdentityForTest("assistant"),
