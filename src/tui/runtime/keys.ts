@@ -8,15 +8,18 @@ const MODIFIER_LOCKS = 64 | 128;
 
 type ModifiedKey = {
   code: number;
+  alternateCodes: number[];
   modifierBits: number;
   eventType?: number;
 };
 
-type CursorKey = {
-  direction: "up" | "down" | "right" | "left";
+type NavigationKey = {
+  direction: "up" | "down" | "right" | "left" | "home" | "end";
   modifierBits: number;
   eventType?: number;
 };
+
+type KeyModifier = "alt" | "ctrl";
 
 export function isCtrlC(data: string): boolean {
   const key = parseModifiedKey(data);
@@ -34,6 +37,68 @@ export function isCtrlV(data: string): boolean {
   const key = parseModifiedKey(data);
 
   return data === "\x16" || isCtrlModifiedCode(key, 22, "v");
+}
+
+export function isCtrlKey(data: string, char: string): boolean {
+  const normalized = char.toLowerCase();
+  const charCode = normalized.codePointAt(0);
+
+  if (char.length !== 1 || charCode === undefined || charCode > 127) {
+    return false;
+  }
+
+  const controlCode = charCode & 31;
+  if (data === String.fromCharCode(controlCode)) {
+    return true;
+  }
+
+  return isModifiedCode(parseModifiedKey(data), [controlCode, charCode], MODIFIER_CTRL, true);
+}
+
+export function isAltKey(data: string, char: string): boolean {
+  const normalized = char.toLowerCase();
+  const charCode = normalized.codePointAt(0);
+
+  if (char.length !== 1 || charCode === undefined) {
+    return false;
+  }
+
+  return (
+    data === `\x1b${normalized}` ||
+    isModifiedCode(parseModifiedKey(data), [charCode], MODIFIER_ALT, true)
+  );
+}
+
+export function isModifiedCursorKey(
+  data: string,
+  direction: "up" | "down" | "right" | "left",
+  modifier: KeyModifier,
+): boolean {
+  const key = parseNavigationKey(data);
+
+  return (
+    key?.direction === direction &&
+    isPressOrRepeat(key) &&
+    hasOnlyModifiers(key.modifierBits, modifierBit(modifier))
+  );
+}
+
+export function isModifiedBackspace(data: string, modifier: KeyModifier): boolean {
+  if (modifier === "alt" && (data === "\x1b\x7f" || data === "\x1b\b")) {
+    return true;
+  }
+
+  return isModifiedCode(parseModifiedKey(data), [8, 127], modifierBit(modifier), true);
+}
+
+export function isModifiedDelete(data: string, modifier: KeyModifier): boolean {
+  const key = parseTildeKey(data);
+
+  return (
+    key?.code === 3 &&
+    isPressOrRepeat(key) &&
+    hasOnlyModifiers(key.modifierBits, modifierBit(modifier))
+  );
 }
 
 export function isEscape(data: string): boolean {
@@ -66,7 +131,9 @@ export function isBackspace(data: string): boolean {
 }
 
 export function isDelete(data: string): boolean {
-  return data === "\x1b[3~";
+  const key = parseTildeKey(data);
+
+  return key?.code === 3 && isPressOrRepeat(key) && hasOnlyModifiers(key.modifierBits, 0);
 }
 
 export function isTab(data: string): boolean {
@@ -90,11 +157,21 @@ export function isLeft(data: string): boolean {
 }
 
 export function isHome(data: string): boolean {
-  return data === "\x1b[H" || data === "\x1b[1~";
+  const key = parseNavigationKey(data);
+
+  return (
+    data === "\x1b[1~" ||
+    (key?.direction === "home" && isPressOrRepeat(key) && hasOnlyModifiers(key.modifierBits, 0))
+  );
 }
 
 export function isEnd(data: string): boolean {
-  return data === "\x1b[F" || data === "\x1b[4~";
+  const key = parseNavigationKey(data);
+
+  return (
+    data === "\x1b[4~" ||
+    (key?.direction === "end" && isPressOrRepeat(key) && hasOnlyModifiers(key.modifierBits, 0))
+  );
 }
 
 export function isPageUp(data: string): boolean {
@@ -122,13 +199,19 @@ export function isPrintable(data: string): boolean {
 }
 
 function parseModifiedKey(data: string): ModifiedKey | undefined {
-  // Kitty CSI-u: ESC [ code ; modifiers[:event-type] u
-  const csiU = /^\x1b\[(\d+)(?::\d*)?(?:;(\d+)(?::(\d+))?)?u$/.exec(data);
+  // Kitty CSI-u: ESC [ code[:shifted-code[:base-layout-code]] ;
+  // modifiers[:event-type] [;text-as-codepoints] u
+  const csiU = /^\x1b\[(\d+(?::\d*)*)(?:;(\d*)(?::(\d+))?)?(?:;[\d:]*)?u$/.exec(data);
 
   if (csiU) {
+    const [code, ...alternateCodes] = csiU[1]
+      .split(":")
+      .map((value) => (value ? Number(value) : undefined));
+
     return {
-      code: Number(csiU[1]),
-      modifierBits: Number(csiU[2] ?? "1") - 1,
+      code: code ?? 0,
+      alternateCodes: alternateCodes.filter((value): value is number => value !== undefined),
+      modifierBits: Number(csiU[2] || "1") - 1,
       eventType: csiU[3] === undefined ? undefined : Number(csiU[3]),
     };
   }
@@ -139,6 +222,7 @@ function parseModifiedKey(data: string): ModifiedKey | undefined {
   if (modifyOtherKeys) {
     return {
       code: Number(modifyOtherKeys[2]),
+      alternateCodes: [],
       modifierBits: Number(modifyOtherKeys[1]) - 1,
     };
   }
@@ -146,10 +230,10 @@ function parseModifiedKey(data: string): ModifiedKey | undefined {
   return undefined;
 }
 
-function parseCursorKey(data: string): CursorKey | undefined {
-  // Enhanced keyboard mode reports cursor key repeat/release events as
-  // CSI 1 ; modifiers : event-type A/B/C/D.
-  const cursorKey = /^\x1b\[(?:(\d+);(\d+)(?::(\d+))?)?([ABCD])$/.exec(data);
+function parseNavigationKey(data: string): NavigationKey | undefined {
+  // Enhanced keyboard mode reports navigation key repeat/release events as
+  // CSI 1 ; modifiers : event-type A/B/C/D/F/H.
+  const cursorKey = /^\x1b\[(?:(\d+);(\d+)(?::(\d+))?)?([ABCDFH])$/.exec(data);
 
   if (!cursorKey) {
     return undefined;
@@ -168,7 +252,7 @@ function parseCursorKey(data: string): CursorKey | undefined {
   };
 }
 
-function cursorDirection(finalByte: string | undefined): CursorKey["direction"] | undefined {
+function cursorDirection(finalByte: string | undefined): NavigationKey["direction"] | undefined {
   switch (finalByte) {
     case "A":
       return "up";
@@ -178,32 +262,49 @@ function cursorDirection(finalByte: string | undefined): CursorKey["direction"] 
       return "right";
     case "D":
       return "left";
+    case "H":
+      return "home";
+    case "F":
+      return "end";
     default:
       return undefined;
   }
+}
+
+function parseTildeKey(data: string): ModifiedKey | undefined {
+  const key = /^\x1b\[(\d+)(?:;(\d+)(?::(\d+))?)?~$/.exec(data);
+
+  if (!key) {
+    return undefined;
+  }
+
+  return {
+    code: Number(key[1]),
+    alternateCodes: [],
+    modifierBits: Number(key[2] ?? "1") - 1,
+    eventType: key[3] === undefined ? undefined : Number(key[3]),
+  };
 }
 
 function isPress(key: ModifiedKey | undefined): boolean {
   return key !== undefined && (key.eventType === undefined || key.eventType === 1);
 }
 
-function isPressOrRepeat(key: CursorKey | undefined): boolean {
+function isPressOrRepeat(key: { eventType?: number } | undefined): boolean {
   return (
     key !== undefined && (key.eventType === undefined || key.eventType === 1 || key.eventType === 2)
   );
 }
 
 function isUnmodifiedKey(key: ModifiedKey | undefined, code: number): boolean {
-  return key?.code === code && isPress(key) && (key.modifierBits & ~MODIFIER_LOCKS) === 0;
+  return keyMatchesCode(key, code) && isPress(key) && hasOnlyModifiers(key.modifierBits, 0);
 }
 
-function isCursorKey(data: string, direction: CursorKey["direction"]): boolean {
-  const key = parseCursorKey(data);
+function isCursorKey(data: string, direction: NavigationKey["direction"]): boolean {
+  const key = parseNavigationKey(data);
 
   return (
-    key?.direction === direction &&
-    isPressOrRepeat(key) &&
-    (key.modifierBits & ~MODIFIER_LOCKS) === 0
+    key?.direction === direction && isPressOrRepeat(key) && hasOnlyModifiers(key.modifierBits, 0)
   );
 }
 
@@ -212,11 +313,35 @@ function isCtrlModifiedCode(
   controlCode: number,
   char: string,
 ): boolean {
-  if (!isPress(key) || key === undefined || (key.modifierBits & MODIFIER_CTRL) === 0) {
-    return false;
-  }
-
   const charCode = char.codePointAt(0);
 
-  return key.code === controlCode || key.code === charCode;
+  return (
+    charCode !== undefined && isModifiedCode(key, [controlCode, charCode], MODIFIER_CTRL, false)
+  );
+}
+
+function isModifiedCode(
+  key: ModifiedKey | undefined,
+  codes: number[],
+  modifierBits: number,
+  allowRepeat: boolean,
+): boolean {
+  return (
+    key !== undefined &&
+    (allowRepeat ? isPressOrRepeat(key) : isPress(key)) &&
+    hasOnlyModifiers(key.modifierBits, modifierBits) &&
+    codes.some((code) => keyMatchesCode(key, code))
+  );
+}
+
+function keyMatchesCode(key: ModifiedKey | undefined, code: number): key is ModifiedKey {
+  return key !== undefined && (key.code === code || key.alternateCodes.includes(code));
+}
+
+function hasOnlyModifiers(actual: number, required: number): boolean {
+  return (actual & ~MODIFIER_LOCKS) === required;
+}
+
+function modifierBit(modifier: KeyModifier): number {
+  return modifier === "alt" ? MODIFIER_ALT : MODIFIER_CTRL;
 }

@@ -67,12 +67,34 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 | 输入 | 行为 |
 | --- | --- |
-| `Ctrl+C` | 正在运行时中止本地 Shell、记忆压缩或 Agent；空闲或加载外部工具时开始优雅退出；关闭等待期间再次按下会强制退出。 |
+| `Ctrl+C` | 正在运行时中止本地 Shell、记忆压缩或 Agent；空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；加载外部工具时直接退出；关闭等待期间再次按下会强制退出。 |
 | `Esc` | 先关闭内容查看器；运行时中止当前工作。 |
 | `Ctrl+O` | 打开/关闭最近一项可展开的工具输出。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
-编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后。输入为空时，它会从 `/help` 的 slash 命令和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。命令面板、placeholder、`/help` 和 usage 错误共同读取同一份命令语法与描述。`/help` 的快捷键区涵盖编辑器提交与排队、多行输入、图片粘贴、中止、工具输出切换和本地 Shell 输入。编辑器支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、方向键导航、Home/End/Delete、bracketed paste 和 slash 补全。启用 `tui.collapse_long_pastes` 时，达到 1,000 个 grapheme 的 bracketed paste 会在主编辑器和 slash 命令文本提示中显示为弱化的 `[Pasted N chars]` 原子项；提交内容和历史记录仍保留完整原文，Left/Right 会跨过该项，紧随其后按 Backspace 或紧邻其前按 Delete 会删除整段。关闭配置后恢复完整显示和逐 grapheme 编辑。空闲时 `Enter` 正常提交；Agent 运行中按 `Enter` 会把消息投递到当前完整 model/tool turn 的 `turn_end` 之后，并在同一个 run 中开始下一次模型调用。若中止或 turn limit 使下一 turn 无法开始，该输入自动降级到 pending submission FIFO。Agent 运行中按 `Tab` 会直接加入该 FIFO，等当前 `agent_end` 后作为新的 run 发送；空闲时普通输入的 `Tab` 不提交消息，slash 面板中的 `Tab` 仍用于补全。队列与到期 wake 按入队顺序共享投递通道。在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。编辑、移动和删除按 grapheme 边界进行。上/下先在软换行/显式换行中移动，到边界才进入历史。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入和没有 shell 命令的单独 `!` 作为普通模型消息发送。
+编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后。输入为空时，它会从 `/help` 的 slash 命令和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。命令面板、placeholder、`/help` 和 usage 错误共同读取同一份命令语法与描述。`/help` 的快捷键区涵盖编辑器提交与排队、多行输入、Readline 风格编辑、图片粘贴、中止、工具输出切换和本地 Shell 输入。
+
+编辑器的移动与编辑快捷键如下：
+
+| 输入 | 行为 |
+| --- | --- |
+| `Left` / `Right`、`Ctrl+B` / `Ctrl+F` | 按一个 grapheme 左右移动。 |
+| `Home` / `End`、`Ctrl+A` / `Ctrl+E` | 移动到当前显式逻辑行的行首/行尾。 |
+| `Alt+B` / `Alt+F`、`Alt+Left` / `Alt+Right`、`Ctrl+Left` / `Ctrl+Right` | 按一个 Unicode 单词向前/向后移动。 |
+| `Up` / `Down` | 先在软换行或显式换行之间移动，到输入边界后再进入历史记录。 |
+| `Ctrl+P` / `Ctrl+N` | 选择上一/下一条 slash 建议，或直接浏览输入历史。 |
+| `Backspace` / `Delete`、`Ctrl+H` / `Ctrl+D` | 删除前一个/后一个 grapheme。 |
+| `Alt+Backspace`、`Ctrl+Backspace` | 删除前一个 Unicode 单词并保存到 kill buffer。 |
+| `Ctrl+W` | 按空白分隔删除前一个词并保存到 kill buffer。 |
+| `Alt+D`、`Alt+Delete`、`Ctrl+Delete` | 删除后一个 Unicode 单词并保存到 kill buffer。 |
+| `Ctrl+U` / `Ctrl+K` | 删除光标到当前逻辑行行首/行尾的内容并保存到 kill buffer。 |
+| `Ctrl+Y` | 粘回最近一次 kill 命令删除的内容。 |
+
+在 macOS 上，`Option` 是物理上的 `Alt` 键。终端将 Option 作为 Alt/Meta 上报（传统 `Esc` 前缀或增强键盘协议）时这些快捷键可用；如果终端直接把 Option 组合转换成可打印 Unicode 字符，Kana 会继续把它当作普通文字输入。
+
+编辑器支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、bracketed paste 和 slash 补全。启用 `tui.collapse_long_pastes` 时，达到 1,000 个 grapheme 的 bracketed paste 会在主编辑器和 slash 命令文本提示中显示为弱化的 `[Pasted N chars]` 原子项，提交内容和历史记录仍保留完整原文。按字符、按词、逻辑行边界和 kill 操作都会保持折叠粘贴块的原子性；kill buffer 同时保留折叠元数据，因此 `Ctrl+Y` 会恢复折叠项，而不是展开它的原始文字。关闭配置后恢复完整显示和逐 grapheme 编辑。
+
+空闲时 `Enter` 正常提交；Agent 运行中按 `Enter` 会把消息投递到当前完整 model/tool turn 的 `turn_end` 之后，并在同一个 run 中开始下一次模型调用。若中止或 turn limit 使下一 turn 无法开始，该输入自动降级到 pending submission FIFO。Agent 运行中按 `Tab` 会直接加入该 FIFO，等当前 `agent_end` 后作为新的 run 发送；空闲时普通输入的 `Tab` 不提交消息，slash 面板中的 `Tab` 仍用于补全。队列与到期 wake 按入队顺序共享投递通道。在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入和没有 shell 命令的单独 `!` 作为普通模型消息发送。
 
 一条输入最多可附加 10 张图片。编辑器只显示附件数量、尺寸和编码后大小，不显示图片字节；输入文本为空时，Backspace 会移除最后附加的图片。在 macOS 上，`Ctrl+V` 从系统剪贴板读取图片；剪贴板没有图片时直接报错，不会退回文本粘贴，因为普通终端文本仍使用 `Cmd+V`。`/image <path>` 是跨平台的路径方案，只附加图片而不立即提交。相对路径从 Kana 当前工作目录解析，也支持带引号路径、`~/…` 和 `file://` URL。路径属于 Kana 实际运行的主机，因此 SSH 场景应填写远端路径；WSL 即使不能读取图片剪贴板，也可以使用 `/mnt/c/Users/me/Pictures/image.png` 这类 Windows 挂载路径。图片会在附加前解码并规范化：最长边最多 2048 像素且不会放大，JPEG/PNG/WebP 保持为供应商可接受的对应格式，其他可解码格式转为 PNG，编码后的结果不能超过 10 MB。
 

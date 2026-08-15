@@ -15,16 +15,11 @@ import {
 import type { Component } from "../../runtime";
 import {
   CURSOR_MARKER,
-  isBackspace,
+  isCtrlKey,
   isCtrlV,
-  isDelete,
   isDown,
-  isEnd,
   isEnter,
-  isHome,
-  isLeft,
   isPrintable,
-  isRight,
   isShiftEnter,
   isTab,
   isUp,
@@ -40,6 +35,7 @@ import {
   getCommandState,
   type PromptSubmit,
 } from "./commands";
+import { resolveEditorInputAction } from "./input-actions";
 import {
   createInputLayout,
   findInputCursorLine,
@@ -134,11 +130,13 @@ export class Editor implements Component {
 
   setText(value: string): void {
     const normalized = normalizeLineEndings(value);
+    const killBuffer = this.state.killBuffer;
 
     this.state = {
       value: normalized,
       cursorOffset: normalized.length,
       collapsedPastes: [],
+      ...(killBuffer === undefined ? {} : { killBuffer }),
     };
     this.inputViewportStartLine = undefined;
     this.historyIndex = -1;
@@ -148,6 +146,10 @@ export class Editor implements Component {
   clear(): void {
     this.setText("");
     this.images = [];
+  }
+
+  hasDraft(): boolean {
+    return this.state.value.length > 0 || this.images.length > 0;
   }
 
   attachImage(image: UserImage): void {
@@ -296,49 +298,31 @@ export class Editor implements Component {
       return;
     }
 
-    if (isLeft(data)) {
-      this.applyAction({ type: "moveLeft" });
-      return;
-    }
-
-    if (isRight(data)) {
-      this.applyAction({ type: "moveRight" });
-      return;
-    }
-
-    if (isHome(data)) {
-      this.applyAction({ type: "moveStart" });
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.applyAction({ type: "moveEnd" });
-      return;
-    }
-
-    if (isBackspace(data)) {
-      if (!this.state.value && this.images.length > 0) {
+    const editAction = resolveEditorInputAction(data);
+    if (editAction) {
+      if (editAction.type === "deleteBefore" && !this.state.value && this.images.length > 0) {
         this.images.pop();
         return;
       }
-      this.applyAction({ type: "deleteBefore" });
+      this.applyAction(editAction);
       return;
     }
 
-    if (isDelete(data)) {
-      this.applyAction({ type: "deleteAfter" });
-      return;
-    }
-
-    if (isUp(data) || isDown(data)) {
+    const historyUp = isCtrlKey(data, "p");
+    const historyDown = isCtrlKey(data, "n");
+    if (isUp(data) || isDown(data) || historyUp || historyDown) {
       const commandState = getCommandState(this.state.value);
+      const direction = isUp(data) || historyUp ? -1 : 1;
 
       if (commandState.showPalette && commandState.suggestions.length > 0) {
-        this.commandViewport.move(isUp(data) ? -1 : 1, commandState.suggestions.length);
+        this.commandViewport.move(direction, commandState.suggestions.length);
         return;
       }
 
-      const direction = isUp(data) ? -1 : 1;
+      if (historyUp || historyDown) {
+        this.navigateHistory(direction === -1 ? 1 : -1);
+        return;
+      }
 
       if (!this.moveVertically(direction) && !this.moveToBoundary(direction)) {
         this.navigateHistory(direction === -1 ? 1 : -1);
@@ -570,7 +554,6 @@ export class Editor implements Component {
       type: "insert",
       text: normalized,
     });
-    this.historyIndex = -1;
   }
 
   private applyPaste(text: string): void {
@@ -585,11 +568,14 @@ export class Editor implements Component {
         ? createPasteAction(normalized)
         : { type: "insert", text: normalized },
     );
-    this.historyIndex = -1;
   }
 
   private applyAction(action: Parameters<typeof applyEditorAction>[1]): void {
+    const previousValue = this.state.value;
     this.state = applyEditorAction(this.state, action);
+    if (this.state.value !== previousValue) {
+      this.historyIndex = -1;
+    }
     this.syncCommandSelection();
   }
 

@@ -296,6 +296,51 @@ describe("session-scoped agents", () => {
     await app.waitForStop();
   });
 
+  test("clears a focused editor draft before idle Ctrl+C exits", async () => {
+    let handleInput!: (data: string) => void;
+    let terminalStopCount = 0;
+    const terminal = {
+      ...createTerminal(),
+      start: (onInput: (data: string) => void) => {
+        handleInput = onInput;
+      },
+      stop: () => {
+        terminalStopCount += 1;
+      },
+    };
+    const app = new KanaTuiApp(() => createAgentStub(), terminal, createOptions());
+    const editor = (
+      app as unknown as {
+        editor: {
+          attachImage(image: {
+            mimeType: "image/png";
+            data: string;
+            width: number;
+            height: number;
+          }): void;
+          getText(): string;
+          hasDraft(): boolean;
+          setText(value: string): void;
+        };
+      }
+    ).editor;
+
+    app.start();
+    editor.setText("unfinished");
+    editor.attachImage({ mimeType: "image/png", data: "eA==", width: 1, height: 1 });
+
+    handleInput("\x03");
+
+    expect(editor.getText()).toBe("");
+    expect(editor.hasDraft()).toBe(false);
+    expect(terminalStopCount).toBe(0);
+
+    handleInput("\x03");
+    await app.waitForStop();
+
+    expect(terminalStopCount).toBe(1);
+  });
+
   test("recreates the agent after forking so the new session owns later run state", async () => {
     const createdMessages: unknown[][] = [];
     const app = new KanaTuiApp(

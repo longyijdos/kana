@@ -13,7 +13,7 @@ import {
   createInputLayout,
   moveInputCursorVertically,
 } from "../../src/tui/components/editor/input-layout";
-import { applyEditorAction } from "../../src/tui/components/editor/state";
+import { applyEditorAction, createEditorDisplayState } from "../../src/tui/components/editor/state";
 import { stripAnsi, visibleWidth } from "../../src/tui/render";
 import { CURSOR_MARKER } from "../../src/tui/runtime";
 import { tuiTheme } from "../../src/tui/theme";
@@ -83,6 +83,80 @@ describe("prompt editor", () => {
       value: "ab",
       cursorOffset: 1,
     });
+  });
+
+  test("supports Readline movement, kill, yank, and history shortcuts", () => {
+    const editor = new Editor();
+
+    editor.setText("one two");
+    editor.handleInput("\x1bb");
+    editor.handleInput("X");
+    expect(editor.getText()).toBe("one Xtwo");
+
+    editor.setText("first\nsecond");
+    editor.handleInput("\x01");
+    editor.handleInput("\x0b");
+    expect(editor.getText()).toBe("first\n");
+
+    editor.handleInput("\x19");
+    expect(editor.getText()).toBe("first\nsecond");
+
+    editor.handleInput("\x15");
+    expect(editor.getText()).toBe("first\n");
+
+    editor.addToHistory("older");
+    editor.addToHistory("newer");
+    editor.clear();
+    editor.handleInput("\x10");
+    expect(editor.getText()).toBe("newer");
+    editor.handleInput("\x10");
+    expect(editor.getText()).toBe("older");
+    editor.handleInput("\x0e");
+    expect(editor.getText()).toBe("newer");
+  });
+
+  test("keeps collapsed pastes atomic across word, line, kill, and yank actions", () => {
+    const pastedText = "pasted\ncontent";
+    const pasteStart = "before".length;
+    const pasteEnd = pasteStart + pastedText.length;
+    const state = {
+      value: `before${pastedText}after\nnext`,
+      cursorOffset: pasteEnd,
+      collapsedPastes: [
+        {
+          startOffset: pasteStart,
+          endOffset: pasteEnd,
+          characterCount: 14,
+        },
+      ],
+    };
+
+    expect(applyEditorAction(state, { type: "moveWordLeft" }).cursorOffset).toBe(pasteStart);
+    expect(
+      applyEditorAction({ ...state, cursorOffset: pasteStart }, { type: "moveWordRight" })
+        .cursorOffset,
+    ).toBe(pasteEnd);
+    expect(
+      applyEditorAction({ ...state, cursorOffset: 0 }, { type: "moveLineEnd" }).cursorOffset,
+    ).toBe(pasteEnd + "after".length);
+
+    const killed = applyEditorAction(state, { type: "killWordBefore" });
+    expect(killed.value).toBe("beforeafter\nnext");
+    expect(killed.killBuffer).toEqual({
+      text: pastedText,
+      collapsedPastes: [
+        {
+          startOffset: 0,
+          endOffset: pastedText.length,
+          characterCount: 14,
+        },
+      ],
+    });
+
+    const yanked = applyEditorAction(killed, { type: "yank" });
+    expect(yanked.value).toBe(state.value);
+    expect(yanked.collapsedPastes).toEqual(state.collapsedPastes);
+    expect(createEditorDisplayState(yanked).value).toContain("[Pasted 14 chars]");
   });
 
   test("renders only one cursor at a wrapped line boundary", () => {
@@ -535,6 +609,7 @@ describe("prompt editor", () => {
     editor.setText("abc\ndef");
     editor.render(20);
     editor.handleInput("\x1b[H");
+    editor.handleInput("\x1b[A");
     editor.handleInput("\x1b[B");
     editor.handleInput("X");
 
@@ -547,6 +622,8 @@ describe("prompt editor", () => {
     editor.setText("one\ntwo\nthree");
     editor.render(20);
     editor.handleInput("\x1b[H");
+    editor.handleInput("\x1b[A");
+    editor.handleInput("\x1b[A");
 
     editor.handleInput("\x1b[B");
     expect(cursorLine(editor.render(20))).toBe(2);
@@ -564,6 +641,9 @@ describe("prompt editor", () => {
     editor.setText("one\ntwo\nthree\nfour\nfive\nsix");
     editor.render(20);
     editor.handleInput("\x1b[H");
+    for (let line = 1; line < 6; line += 1) {
+      editor.handleInput("\x1b[A");
+    }
 
     const initial = editor.render(20).map(stripAnsi);
 

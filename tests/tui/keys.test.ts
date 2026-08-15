@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
+  isAltKey,
   isCtrlC,
+  isCtrlKey,
   isCtrlO,
   isDown,
   isEnter,
   isEscape,
+  isHome,
   isLeft,
+  isModifiedBackspace,
+  isModifiedCursorKey,
+  isModifiedDelete,
   isPageDown,
   isPageUp,
   isRight,
@@ -40,6 +46,29 @@ describe("tui key parsing", () => {
     expect(isCtrlO("\x0f")).toBe(true);
     expect(isCtrlO("\x1b[15;5u")).toBe(true);
     expect(isCtrlO("\x1b[111;5u")).toBe(true);
+
+    expect(isCtrlKey("\x01", "a")).toBe(true);
+    expect(isCtrlKey("\x1b[97;5u", "a")).toBe(true);
+    expect(isCtrlKey("\x1b[1;5:2u", "a")).toBe(true);
+    expect(isCtrlKey("\x1b[97;3u", "a")).toBe(false);
+  });
+
+  test("recognizes Alt shortcuts from legacy and enhanced Option encodings", () => {
+    expect(isAltKey("\x1bb", "b")).toBe(true);
+    expect(isAltKey("\x1b[98;3u", "b")).toBe(true);
+    expect(isAltKey("\x1b[8747::98;3u", "b")).toBe(true);
+    expect(isAltKey("\x1b[98;5u", "b")).toBe(false);
+  });
+
+  test("recognizes modified navigation and deletion keys", () => {
+    expect(isModifiedCursorKey("\x1b[1;3D", "left", "alt")).toBe(true);
+    expect(isModifiedCursorKey("\x1b[1;5:2C", "right", "ctrl")).toBe(true);
+    expect(isModifiedCursorKey("\x1b[D", "left", "alt")).toBe(false);
+
+    expect(isModifiedBackspace("\x1b\x7f", "alt")).toBe(true);
+    expect(isModifiedBackspace("\x1b[127;5u", "ctrl")).toBe(true);
+    expect(isModifiedDelete("\x1b[3;3~", "alt")).toBe(true);
+    expect(isModifiedDelete("\x1b[3;5:2~", "ctrl")).toBe(true);
   });
 
   test("recognizes page navigation keys", () => {
@@ -62,6 +91,7 @@ describe("tui key parsing", () => {
     expect(isDown("\x1b[1;1:2B")).toBe(true);
     expect(isRight("\x1b[1;1:2C")).toBe(true);
     expect(isLeft("\x1b[1;1:2D")).toBe(true);
+    expect(isHome("\x1b[1;1:2H")).toBe(true);
   });
 
   test("ignores release events for enhanced key sequences", () => {
@@ -72,5 +102,8 @@ describe("tui key parsing", () => {
     expect(isDown("\x1b[1;1:3B")).toBe(false);
     expect(isRight("\x1b[1;1:3C")).toBe(false);
     expect(isLeft("\x1b[1;1:3D")).toBe(false);
+    expect(isModifiedCursorKey("\x1b[1;3:3D", "left", "alt")).toBe(false);
+    expect(isModifiedBackspace("\x1b[127;3:3u", "alt")).toBe(false);
+    expect(isModifiedDelete("\x1b[3;3:3~", "alt")).toBe(false);
   });
 });

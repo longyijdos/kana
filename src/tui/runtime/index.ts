@@ -1,8 +1,10 @@
 export type { Component } from "./component";
 export { CURSOR_MARKER, stripCursorMarker } from "./cursor";
 export {
+  isAltKey,
   isBackspace,
   isCtrlC,
+  isCtrlKey,
   isCtrlO,
   isCtrlV,
   isDelete,
@@ -12,6 +14,9 @@ export {
   isEscape,
   isHome,
   isLeft,
+  isModifiedBackspace,
+  isModifiedCursorKey,
+  isModifiedDelete,
   isPageDown,
   isPageUp,
   isPrintable,

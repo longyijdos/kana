@@ -11,22 +11,17 @@ import {
 import type { Component } from "../runtime";
 import {
   CURSOR_MARKER,
-  isBackspace,
-  isDelete,
   isDown,
-  isEnd,
   isEnter,
   isEscape,
-  isHome,
-  isLeft,
   isPrintable,
-  isRight,
   isShiftEnter,
   isUp,
 } from "../runtime";
 import { tuiTheme } from "../theme";
 import { BracketedPasteBuffer } from "../utils/bracketed-paste";
 import { visibleLimitForHeight } from "../utils/list-viewport";
+import { resolveEditorInputAction } from "./editor/input-actions";
 import {
   createInputLayout,
   type InputLayoutLine,
@@ -138,33 +133,9 @@ export class TextPrompt implements Component {
       return;
     }
 
-    if (isLeft(data)) {
-      this.applyAction({ type: "moveLeft" });
-      return;
-    }
-
-    if (isRight(data)) {
-      this.applyAction({ type: "moveRight" });
-      return;
-    }
-
-    if (isHome(data)) {
-      this.applyAction({ type: "moveStart" });
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.applyAction({ type: "moveEnd" });
-      return;
-    }
-
-    if (isBackspace(data)) {
-      this.applyAction({ type: "deleteBefore" });
-      return;
-    }
-
-    if (isDelete(data)) {
-      this.applyAction({ type: "deleteAfter" });
+    const editAction = resolveEditorInputAction(data);
+    if (editAction) {
+      this.applyAction(editAction);
       return;
     }
 

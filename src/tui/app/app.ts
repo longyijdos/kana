@@ -709,6 +709,15 @@ export class KanaTuiApp {
         return { consume: true };
       }
 
+      if (
+        this.layout.isBottom(this.editor) &&
+        this.tui.getFocus() === this.editor &&
+        this.editor.hasDraft()
+      ) {
+        this.editor.clear();
+        return { consume: true };
+      }
+
       void this.stop();
       return { consume: true };
     }

@@ -12,6 +12,13 @@ export type EditorTextState = {
   value: string;
   cursorOffset: number;
   collapsedPastes?: CollapsedPaste[];
+  // Readline-style kill commands use one reusable slot rather than a full kill ring.
+  killBuffer?: EditorKill;
+};
+
+type EditorKill = {
+  text: string;
+  collapsedPastes: CollapsedPaste[];
 };
 
 type EditorDisplayPaste = CollapsedPaste & {
@@ -48,16 +55,40 @@ export type EditorAction =
       type: "moveRight";
     }
   | {
-      type: "moveStart";
+      type: "moveWordLeft";
     }
   | {
-      type: "moveEnd";
+      type: "moveWordRight";
+    }
+  | {
+      type: "moveLineStart";
+    }
+  | {
+      type: "moveLineEnd";
     }
   | {
       type: "deleteBefore";
     }
   | {
       type: "deleteAfter";
+    }
+  | {
+      type: "killWordBefore";
+    }
+  | {
+      type: "killWhitespaceWordBefore";
+    }
+  | {
+      type: "killWordAfter";
+    }
+  | {
+      type: "killLineBefore";
+    }
+  | {
+      type: "killLineAfter";
+    }
+  | {
+      type: "yank";
     };
 
 export function createPasteAction(
@@ -104,15 +135,25 @@ export function applyEditorAction(state: EditorTextState, action: EditorAction):
         ...state,
         cursorOffset: nextEditorBoundary(state.value, collapsedPastes, cursorOffset),
       };
-    case "moveStart":
+    case "moveWordLeft":
       return {
         ...state,
-        cursorOffset: 0,
+        cursorOffset: previousWordBoundary(state.value, collapsedPastes, cursorOffset),
       };
-    case "moveEnd":
+    case "moveWordRight":
       return {
         ...state,
-        cursorOffset: state.value.length,
+        cursorOffset: nextWordBoundary(state.value, collapsedPastes, cursorOffset),
+      };
+    case "moveLineStart":
+      return {
+        ...state,
+        cursorOffset: editorLineBoundary(state, collapsedPastes, cursorOffset, "start"),
+      };
+    case "moveLineEnd":
+      return {
+        ...state,
+        cursorOffset: editorLineBoundary(state, collapsedPastes, cursorOffset, "end"),
       };
     case "deleteBefore": {
       const start = previousEditorBoundary(state.value, collapsedPastes, cursorOffset);
@@ -124,6 +165,35 @@ export function applyEditorAction(state: EditorTextState, action: EditorAction):
 
       return deleteTextRange(state, collapsedPastes, cursorOffset, end, cursorOffset);
     }
+    case "killWordBefore": {
+      const start = previousWordBoundary(state.value, collapsedPastes, cursorOffset);
+
+      return deleteTextRange(state, collapsedPastes, start, cursorOffset, start, true);
+    }
+    case "killWhitespaceWordBefore": {
+      const start = previousWhitespaceWordBoundary(state.value, collapsedPastes, cursorOffset);
+
+      return deleteTextRange(state, collapsedPastes, start, cursorOffset, start, true);
+    }
+    case "killWordAfter": {
+      const end = nextWordBoundary(state.value, collapsedPastes, cursorOffset);
+
+      return deleteTextRange(state, collapsedPastes, cursorOffset, end, cursorOffset, true);
+    }
+    case "killLineBefore": {
+      const start = editorKillLineBoundary(state, collapsedPastes, cursorOffset, "start");
+
+      return deleteTextRange(state, collapsedPastes, start, cursorOffset, start, true);
+    }
+    case "killLineAfter": {
+      const end = editorKillLineBoundary(state, collapsedPastes, cursorOffset, "end");
+
+      return deleteTextRange(state, collapsedPastes, cursorOffset, end, cursorOffset, true);
+    }
+    case "yank":
+      return state.killBuffer
+        ? insertKilledText(state, collapsedPastes, cursorOffset, state.killBuffer)
+        : state;
   }
 }
 
@@ -338,13 +408,46 @@ function insertText(
   );
 }
 
+function insertKilledText(
+  state: EditorTextState,
+  collapsedPastes: CollapsedPaste[],
+  cursorOffset: number,
+  killed: EditorKill,
+): EditorTextState {
+  const inserted = insertText(state, collapsedPastes, cursorOffset, killed.text);
+
+  if (killed.collapsedPastes.length === 0) {
+    return inserted;
+  }
+
+  return {
+    ...inserted,
+    collapsedPastes: [
+      ...(inserted.collapsedPastes ?? []),
+      ...killed.collapsedPastes.map((paste) => ({
+        ...paste,
+        startOffset: cursorOffset + paste.startOffset,
+        endOffset: cursorOffset + paste.endOffset,
+      })),
+    ].sort((left, right) => left.startOffset - right.startOffset),
+  };
+}
+
 function deleteTextRange(
   state: EditorTextState,
   collapsedPastes: CollapsedPaste[],
   startOffset: number,
   endOffset: number,
   cursorOffset: number,
+  storeKill = false,
 ): EditorTextState {
+  [startOffset, endOffset] = expandRangeToCollapsedPasteBoundaries(
+    collapsedPastes,
+    startOffset,
+    endOffset,
+  );
+  cursorOffset = Math.min(cursorOffset, startOffset);
+
   if (startOffset === endOffset) {
     return {
       ...state,
@@ -372,12 +475,28 @@ function deleteTextRange(
     return [];
   });
 
-  return withCollapsedPastes(
+  const next = withCollapsedPastes(
     state,
     state.value.slice(0, startOffset) + state.value.slice(endOffset),
     cursorOffset,
     nextCollapsedPastes,
   );
+
+  return storeKill
+    ? {
+        ...next,
+        killBuffer: {
+          text: state.value.slice(startOffset, endOffset),
+          collapsedPastes: collapsedPastes
+            .filter((paste) => paste.startOffset >= startOffset && paste.endOffset <= endOffset)
+            .map((paste) => ({
+              ...paste,
+              startOffset: paste.startOffset - startOffset,
+              endOffset: paste.endOffset - startOffset,
+            })),
+        },
+      }
+    : next;
 }
 
 function withCollapsedPastes(
@@ -386,7 +505,9 @@ function withCollapsedPastes(
   cursorOffset: number,
   collapsedPastes: CollapsedPaste[],
 ): EditorTextState {
+  const { collapsedPastes: _previousCollapsedPastes, ...previousState } = previous;
   const next = {
+    ...previousState,
     value,
     cursorOffset,
   };
@@ -394,6 +515,21 @@ function withCollapsedPastes(
   return previous.collapsedPastes !== undefined || collapsedPastes.length > 0
     ? { ...next, collapsedPastes }
     : next;
+}
+
+function expandRangeToCollapsedPasteBoundaries(
+  collapsedPastes: CollapsedPaste[],
+  startOffset: number,
+  endOffset: number,
+): [number, number] {
+  for (const paste of collapsedPastes) {
+    if (paste.startOffset < endOffset && paste.endOffset > startOffset) {
+      startOffset = Math.min(startOffset, paste.startOffset);
+      endOffset = Math.max(endOffset, paste.endOffset);
+    }
+  }
+
+  return [startOffset, endOffset];
 }
 
 function clampToEditorBoundary(
@@ -478,6 +614,197 @@ function nextEditorBoundary(
   }
 
   return offset + nextBoundary(value.slice(offset, plainEndOffset), 0);
+}
+
+function previousWordBoundary(
+  value: string,
+  collapsedPastes: CollapsedPaste[],
+  offset: number,
+): number {
+  const units = createEditorUnits(value, collapsedPastes);
+  let index = previousEditorUnitIndex(units, offset);
+  let current = offset;
+
+  while (index >= 0 && !isWordUnit(units[index])) {
+    current = units[index]?.startOffset ?? current;
+    index -= 1;
+  }
+  if (units[index]?.kind === "paste") {
+    return units[index].startOffset;
+  }
+  while (index >= 0 && units[index]?.kind === "word") {
+    current = units[index]?.startOffset ?? current;
+    index -= 1;
+  }
+
+  return current;
+}
+
+function nextWordBoundary(
+  value: string,
+  collapsedPastes: CollapsedPaste[],
+  offset: number,
+): number {
+  const units = createEditorUnits(value, collapsedPastes);
+  let index = nextEditorUnitIndex(units, offset);
+  let current = offset;
+
+  while (index < units.length && !isWordUnit(units[index])) {
+    current = units[index]?.endOffset ?? current;
+    index += 1;
+  }
+  if (units[index]?.kind === "paste") {
+    return units[index].endOffset;
+  }
+  while (index < units.length && units[index]?.kind === "word") {
+    current = units[index]?.endOffset ?? current;
+    index += 1;
+  }
+
+  return current;
+}
+
+function previousWhitespaceWordBoundary(
+  value: string,
+  collapsedPastes: CollapsedPaste[],
+  offset: number,
+): number {
+  const units = createEditorUnits(value, collapsedPastes);
+  let index = previousEditorUnitIndex(units, offset);
+  let current = offset;
+
+  while (index >= 0 && units[index]?.kind === "whitespace") {
+    current = units[index]?.startOffset ?? current;
+    index -= 1;
+  }
+  while (index >= 0 && units[index]?.kind !== "whitespace") {
+    current = units[index]?.startOffset ?? current;
+    index -= 1;
+  }
+
+  return current;
+}
+
+type EditorUnit = {
+  startOffset: number;
+  endOffset: number;
+  kind: "word" | "whitespace" | "punctuation" | "paste";
+};
+
+function createEditorUnits(value: string, collapsedPastes: CollapsedPaste[]): EditorUnit[] {
+  const units: EditorUnit[] = [];
+  let sourceOffset = 0;
+
+  for (const paste of collapsedPastes) {
+    appendPlainEditorUnits(units, value.slice(sourceOffset, paste.startOffset), sourceOffset);
+    units.push({
+      startOffset: paste.startOffset,
+      endOffset: paste.endOffset,
+      kind: "paste",
+    });
+    sourceOffset = paste.endOffset;
+  }
+
+  appendPlainEditorUnits(units, value.slice(sourceOffset), sourceOffset);
+
+  return units;
+}
+
+function appendPlainEditorUnits(units: EditorUnit[], value: string, sourceOffset: number): void {
+  for (const grapheme of graphemeSegments(value)) {
+    const text = grapheme.segment;
+    const startOffset = sourceOffset + grapheme.index;
+    units.push({
+      startOffset,
+      endOffset: startOffset + text.length,
+      kind: /^\s+$/u.test(text)
+        ? "whitespace"
+        : /^[\p{L}\p{N}_]+$/u.test(text)
+          ? "word"
+          : "punctuation",
+    });
+  }
+}
+
+function isWordUnit(unit: EditorUnit | undefined): boolean {
+  return unit?.kind === "word" || unit?.kind === "paste";
+}
+
+function previousEditorUnitIndex(units: EditorUnit[], offset: number): number {
+  for (let index = units.length - 1; index >= 0; index -= 1) {
+    if ((units[index]?.endOffset ?? Number.POSITIVE_INFINITY) <= offset) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function nextEditorUnitIndex(units: EditorUnit[], offset: number): number {
+  for (const [index, unit] of units.entries()) {
+    if (unit.startOffset >= offset) {
+      return index;
+    }
+  }
+
+  return units.length;
+}
+
+function editorLineBoundary(
+  state: EditorTextState,
+  collapsedPastes: CollapsedPaste[],
+  cursorOffset: number,
+  boundary: "start" | "end",
+): number {
+  const display = createEditorDisplayState({
+    ...state,
+    cursorOffset,
+    collapsedPastes,
+  });
+  const displayBoundary = currentDisplayLineBoundary(display, boundary);
+
+  return displayOffsetToSourceOffset(display, displayBoundary);
+}
+
+function editorKillLineBoundary(
+  state: EditorTextState,
+  collapsedPastes: CollapsedPaste[],
+  cursorOffset: number,
+  boundary: "start" | "end",
+): number {
+  const display = createEditorDisplayState({
+    ...state,
+    cursorOffset,
+    collapsedPastes,
+  });
+  let displayBoundary = currentDisplayLineBoundary(display, boundary);
+
+  // Readline's forward kill consumes the newline when the cursor is already
+  // at the logical line end. Its backward line discard is a no-op at line start.
+  if (
+    boundary === "end" &&
+    display.cursorOffset === displayBoundary &&
+    displayBoundary < display.value.length
+  ) {
+    displayBoundary += 1;
+  }
+
+  return displayOffsetToSourceOffset(display, displayBoundary);
+}
+
+function currentDisplayLineBoundary(
+  display: EditorDisplayState,
+  boundary: "start" | "end",
+): number {
+  if (boundary === "start") {
+    return display.cursorOffset === 0
+      ? 0
+      : display.value.lastIndexOf("\n", display.cursorOffset - 1) + 1;
+  }
+
+  const newlineOffset = display.value.indexOf("\n", display.cursorOffset);
+
+  return newlineOffset === -1 ? display.value.length : newlineOffset;
 }
 
 function validCollapsedPastes(state: EditorTextState): CollapsedPaste[] {

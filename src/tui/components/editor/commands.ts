@@ -140,6 +140,42 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
     description: "Insert a newline in supported terminals.",
   },
   {
+    input: "←/→ · Ctrl+B/F",
+    description: "Move left or right by one character.",
+  },
+  {
+    input: "Home/End · Ctrl+A/E",
+    description: "Move to the start or end of the current logical line.",
+  },
+  {
+    input: "Alt+B/F · Alt/Ctrl+←/→",
+    description: "Move backward or forward by one word; Alt is Option on macOS.",
+  },
+  {
+    input: "↑/↓ · Ctrl+P/N",
+    description: "Move vertically or browse input history.",
+  },
+  {
+    input: "Backspace/Delete · Ctrl+H/D",
+    description: "Delete the previous or next character.",
+  },
+  {
+    input: "Alt/Ctrl+Backspace",
+    description: "Kill the previous word.",
+  },
+  {
+    input: "Alt+D · Alt/Ctrl+Delete",
+    description: "Kill the next word.",
+  },
+  {
+    input: "Ctrl+W",
+    description: "Kill the preceding whitespace-delimited word.",
+  },
+  {
+    input: "Ctrl+U/K · Ctrl+Y",
+    description: "Kill to a line boundary, or yank the latest killed text.",
+  },
+  {
     input: "Ctrl+V",
     description: "Paste an image from the clipboard.",
   },
@@ -149,7 +185,7 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "Ctrl+C",
-    description: "Abort active work, or exit Kana while idle.",
+    description: "Abort active work; clear a draft before exiting while idle.",
   },
   {
     input: "Ctrl+O",
