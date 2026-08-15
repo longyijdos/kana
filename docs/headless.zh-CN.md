@@ -25,7 +25,7 @@ kana exec --allow-all-tools 完成这项修改
 kana exec --clean 检查当前项目
 ```
 
-新执行和恢复执行都通过 `KanaConversationHost` 与 `ConversationRuntime` 装配，因此与 TUI 共用模型、reasoning 配置、系统提示词、Skills、工作区工具和产品策略。普通模式继续使用 MCP、session V3 journal、accounting、日志和记忆调度。
+新执行和恢复执行都通过 `KanaConversationHost` 与 `ConversationRuntime` 装配，因此与 TUI 共用模型、reasoning 配置、系统提示词、Skills、工作区工具和产品策略。普通模式继续使用 MCP、session V4 journal、accounting、日志和记忆调度。
 
 conversation runtime 关闭后，headless 退出流程会取消并等待尚未完成的自动记忆合并，再关闭 MCP。此时 `remember` 条目已经持久化到 daily 暂存；取消会保留该条目，也不会提交未完成的长期记忆 transaction。
 

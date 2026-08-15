@@ -27,7 +27,7 @@ Clean mode still allocates an in-process session ID for runtime state correlatio
 
 ## Sessions
 
-Session persistence lives under `src/kana/session/`: `format.ts` defines and validates V3 records and checkpoint conversion, `journal.ts` owns append ordering and interrupted-turn recovery, and `repository.ts` handles creation, lookup, reading, tail repair, and deletion. Internal and cross-layer callers use these capabilities through the stable `session/index.ts` domain exports.
+Session persistence lives under `src/kana/session/`: `format.ts` defines and validates V4 records and checkpoint conversion, `journal.ts` owns append ordering and interrupted-turn recovery, and `repository.ts` handles creation, lookup, reading, tail repair, and deletion. Internal and cross-layer callers use these capabilities through the stable `session/index.ts` domain exports.
 
 Session files are located at:
 
@@ -41,13 +41,13 @@ Clean mode registers no journal with the session repository. Messages and contex
 
 ### JSONL format
 
-New sessions start with a version-3 header followed by a turn journal with explicit boundaries. Normal runs use `kind: "agent"`; inherited fork history and internal batch imports use `kind: "snapshot"`:
+New sessions start with a version-4 header followed by a turn journal with explicit boundaries. Normal runs use `kind: "agent"`; inherited fork history and internal batch imports use `kind: "snapshot"`:
 
 ```json
-{"type":"session","version":3,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
+{"type":"session","version":4,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
 {"type":"turn_start","id":"…","parentId":null,"timestamp":"2026-06-22T…Z","turnId":"…","kind":"agent"}
-{"type":"message","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","message":{"role":"user","content":"Fix parser"}}
-{"type":"message","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","message":{"role":"assistant","content":[…],"stopReason":"stop"}}
+{"type":"message","id":"entry-u1","parentId":"…","timestamp":"2026-06-22T…Z","message":{"id":"message-u1","role":"user","provenance":{"kind":"user_input"},"content":"Fix parser"}}
+{"type":"message","id":"entry-a1","parentId":"entry-u1","timestamp":"2026-06-22T…Z","message":{"id":"message-a1","role":"assistant","provenance":{"kind":"model_output"},"content":[…],"stopReason":"stop"}}
 {"type":"context_compaction","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","reason":"threshold","coversThroughId":"…","compactedMessageCount":2,"beforeTokens":90000,"estimatedAfterTokens":60000,"summary":{"format":"kana-context-summary-v1","text":"…"}}
 {"type":"turn_end","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","turnId":"…","outcome":"stop"}
 ```
@@ -56,13 +56,13 @@ A user message may include `images`, with each entry storing `mimeType`, raw bas
 
 Compaction follows the selected model's effective image-input capability. When the model supports images and `image_input` is enabled, Kana sends the image attachments with ordered index, MIME, and dimension metadata so the summary can preserve relevant visual information as text; base64 does not appear inside the textual transcript JSON. When image input is unsupported or disabled, compaction sends only that metadata with `contentOmitted: true` and continues without image bytes. This makes switching to a text-only model such as DeepSeek safe, but image-only details that were not already described in text may be absent from the resulting summary. The original self-contained images remain in the session JSONL.
 
-Every record's `parentId` must name the immediately preceding timeline entry; loading follows file order rather than replaying branches. At most one turn may be open, and `turn_end.turnId` must match it. Outcomes are the Agent's `stop`, `length`, `aborted`, `error`, or `turn_limit`, recovery's `interrupted`, and a snapshot's `snapshot`.
+Every record's `parentId` must name the immediately preceding timeline entry; loading follows file order rather than replaying branches. A message record's outer `id` identifies and orders the journal entry, while `message.id` identifies the logical message across Agent events, inbox movement, persistence, replay, and forks. These are separate identity domains. Every message has required discriminated `provenance`, and a session rejects duplicate logical message IDs. At most one turn may be open, and `turn_end.turnId` must match it. Outcomes are the Agent's `stop`, `length`, `aborted`, `error`, or `turn_limit`, recovery's `interrupted`, and a snapshot's `snapshot`.
 
 A compaction reason is `threshold` for automatic budget-triggered work, `provider_limit` for provider-limit recovery, or `manual` for `/compact`. An entry's physical position records when compaction happened, while `coversThroughId` names the last message actually covered by its summary, so they may differ. For example, a marker after `m4` with `coversThroughId = m2` resumes the model projection as `summary + m3 + m4 + later messages`. Every raw message remains in JSONL, allowing the TUI to render complete history in original order.
 
 Later compactions may carry `baseCompactionId` to the preceding checkpoint and combine its summary with newly covered messages into one cumulative replacement summary. Optional `usage` stores the summary request's model usage. Loading validates that `coversThroughId` and `baseCompactionId` reference earlier entries, then derives full `messages`, full `timeline`, and the latest `contextCheckpoint`: the Agent consumes messages/checkpoint, while restored TUI history consumes only timeline.
 
-The runtime reads V3 only and contains no V1/V2 compatibility path. `/fork <prompt>` creates a new session, records the source file in header `parentSessionPath`, and writes inherited messages plus the current cumulative checkpoint as one closed snapshot turn.
+The runtime reads V4 only and contains no V1/V2/V3 compatibility path. `/fork <prompt>` creates a new session, records the source file in header `parentSessionPath`, and writes inherited messages plus the current cumulative checkpoint as one closed snapshot turn. Inherited messages preserve their logical `message.id` values; only the fork's journal entry IDs are new.
 
 On first write, an explicit title wins. Otherwise Kana uses the first user message, collapses whitespace, and truncates it to at most 80 JavaScript characters. With no usable text, the title is `Untitled session`.
 
@@ -70,6 +70,7 @@ On first write, an explicit title wins. Otherwise Kana uses the first user messa
 
 - Before any model I/O, the Agent journal writes `turn_start` and this run's user input. It writes a complete assistant message before executing its tools, writes each tool result independently after that execution, and writes compaction checkpoints before adopting them. Only after terminal `turn_end` does `onRunCommitted` perform aggregate post-processing such as accounting and memory, followed by final `agent_end` publication. Manual `/compact` likewise writes its checkpoint before adoption. `waitForIdle()` cannot return before these writes and post-processing finish.
 - Loading an open turn repairs the original JSONL: it appends an error result with `status: "unknown"` for every tool call lacking a result, explicitly forbids automatic retry, then appends an internal recovery user message and a `turn_end` with `outcome: "interrupted"`. If the final line is incomplete JSON, only that unterminated tail record is truncated; corruption in a completed line still errors. Recovery is idempotent, so a second load appends nothing.
+- Resume reconstructs only committed journal messages and the latest context checkpoint. The Agent inbox and future scheduled wakes remain process-local: switching, forking, or resuming a session and exiting Kana discard them rather than restoring them.
 - Resuming looks up sessions in the current working directory; the picker likewise shows only other sessions from that workspace.
 - `listKanaSessions()` without a cwd scans all workspace directories and sorts by descending `createdAt`.
 - Listing skips malformed JSONL files so one bad record does not hide other history; explicitly loading that session still errors.
