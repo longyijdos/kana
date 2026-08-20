@@ -240,7 +240,6 @@ type AgentStub = {
       metadata: {
         provider: string;
         model: string;
-        cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
         contextWindow: number;
         maxOutputTokens: number;
       };
@@ -271,7 +270,6 @@ function createAgentStub(options: {
         metadata: {
           provider: options.provider,
           model: options.model,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextWindow: 372_000,
           maxOutputTokens: 128_000,
         },
@@ -305,7 +303,6 @@ function createOptions() {
       runCount: 0,
       mainRunCount: 0,
       memoryRunCount: 0,
-      costCny: 0,
       outcomes: {
         stop: 0,
         length: 0,
@@ -316,9 +313,9 @@ function createOptions() {
         unchanged: 0,
       },
       agents: {
-        main: { runCount: 0, costCny: 0 },
-        memoryAutomatic: { runCount: 0, costCny: 0 },
-        memoryManual: { runCount: 0, costCny: 0 },
+        main: { runCount: 0 },
+        memoryAutomatic: { runCount: 0 },
+        memoryManual: { runCount: 0 },
       },
       models: [],
     }),

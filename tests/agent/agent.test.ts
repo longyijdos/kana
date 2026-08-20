@@ -12,12 +12,6 @@ class TextModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "text",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
@@ -98,12 +92,6 @@ class AbortAwareModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "abort-aware",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,

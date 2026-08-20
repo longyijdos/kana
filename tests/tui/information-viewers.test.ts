@@ -187,7 +187,6 @@ function createApp(
             metadata: {
               provider: "test",
               model: "test-model",
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               contextWindow: 1,
               maxOutputTokens: 1,
             },
@@ -220,7 +219,6 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
     runCount: 1,
     mainRunCount: 1,
     memoryRunCount: 0,
-    costCny: 1.25,
     usage: {
       promptTokens: 30,
       completionTokens: 10,
@@ -238,9 +236,12 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
       unchanged: 0,
     },
     agents: {
-      main: { runCount: 1, costCny: 1.25 },
-      memoryAutomatic: { runCount: 0, costCny: 0 },
-      memoryManual: { runCount: 0, costCny: 0 },
+      main: {
+        runCount: 1,
+        usage: { promptTokens: 30, completionTokens: 10, totalTokens: 40 },
+      },
+      memoryAutomatic: { runCount: 0 },
+      memoryManual: { runCount: 0 },
     },
     models: [],
   };

@@ -96,9 +96,9 @@ Provider 仍保留 DeepSeek 专用的 legacy Chat Completions converter 与 pars
 3. 按 DeepSeek tool call index 推断单个调用结束：更高 index 首次出现时解析并结束此前调用，流结束时再结束最后一个，同时保留原始参数字符串；
 4. 映射结束原因和 token 用量。
 
-请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口、最大输出和 CNY 计价；TUI 用它计算上下文占用和本次进程累计成本。
+请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口和最大输出；TUI 用它计算上下文占用，进程累计 token 则来自 provider usage 事件。
 
-`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。adapter 提供 Codex 专用的请求与 replay 规则，同时复用共享的语义 Responses 处理器组装 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item。它把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量只记录 token，不套用 Platform API 价格。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
+`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。adapter 提供 Codex 专用的请求与 replay 规则，同时复用共享的语义 Responses 处理器组装 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item。它把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量与其他 provider 一样只记录 token，Kana 不估算金额。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
 
 ## MCP 协议基础
 
@@ -170,10 +170,13 @@ Clean 模式只保留第 2、5 项，并且不会扫描 Skills 路径、读取 m
 | 审批白名单 | `approvals.json` | `kana install`、`kana reset`，或用户选择某条 bash 命令“始终允许” |
 | 会话 | `sessions/<workspace>/*.jsonl` | Agent turn 中按消息完成顺序增量追加 |
 | 运行时日志 | `logs/<workspace>/<session-id>.jsonl` | TUI、Agent、provider、工具和记忆任务的安全生命周期事件 |
-| 长期记忆 | `memory/global|projects/<workspace>/memory.md` | 记忆压缩成功后原子替换 |
+| 用量账本 | `accounting/<workspace>/<session-id>.jsonl` | 主运行、压缩或记忆运行完成后追加 |
+| 长期记忆 | `memory/{global,projects/<workspace>}/memory.md` | 记忆压缩成功后原子替换 |
 | 每日记忆 | 对应目录的 `daily/YYYY-MM-DD.md` | `remember` 成功时追加 |
 | 全局 Skills 配置 | `skills/skills.toml` | `kana install`、`kana reset`，或 TUI 修改全局 Skill 开关 |
 | 默认 Skills 仓库 | `skills/kana-skills/` | `kana skills install` 或 `kana skills reinstall` |
+
+Accounting v2 记录 run 身份与 outcome、provider/model 身份、原始 token usage、助手消息数量和记忆运行元数据。它有意不保存 provider 定价或派生金额；实际费用由 provider 的账单系统负责。
 
 工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V4 会话的格式、Journal 状态机和文件仓储分别位于 `kana/session/format.ts`、`journal.ts` 与 `repository.ts`，调用方统一经过该目录的 barrel。会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 message 与 context-compaction journal。每条内层消息带有稳定的逻辑 `MessageId` 和必填 provenance；外层 journal entry ID 仍是独立的时间线身份。原始消息不删除；压缩条目指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用首条用户消息生成标题。进程中断后，加载器会闭合打开的 turn，并把缺失工具结果记录为未知且禁止自动重试。运行时只读取 V4。
 
@@ -202,7 +205,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 ## TUI 架构
 
-`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台允许后按顺序 drain Agent 持有的 `next-turn` lane。Tab 输入、到期 wake 和 deferred steering 共用这条 FIFO lane，Enter steering 则先进入 `next-step`。每条逻辑输入在两条 lane、runtime 与 Agent event、UI 投影、journal commit 和历史之间保留同一个 `MessageId`；runtime 不再创建 queue correlation ID。scheduled item 还保留到期时间，并与进程内 scheduler 的未来 wake 列表一起发布为只读快照。Runtime 提供当前 session 的用户定时创建与按 MessageId 取消边界，取消会同步检查未来 timer 和已到期 inbox item，因此执行顺序、管理状态与 TUI 展示不会分叉。它发布与前端无关的 run、Agent event、inbox 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量/成本和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`QueuedInputController` 将 runtime 快照投影为 `next turn`、`next run`、到期 `scheduled` 和未来 wake 摘要，并按 MessageId 对齐状态切换；`ScheduledMessageManagerController` 持有 `/schedule` 的静态管理快照和多步添加/删除流程；`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、进度块与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
+`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台允许后按顺序 drain Agent 持有的 `next-turn` lane。Tab 输入、到期 wake 和 deferred steering 共用这条 FIFO lane，Enter steering 则先进入 `next-step`。每条逻辑输入在两条 lane、runtime 与 Agent event、UI 投影、journal commit 和历史之间保留同一个 `MessageId`；runtime 不再创建 queue correlation ID。scheduled item 还保留到期时间，并与进程内 scheduler 的未来 wake 列表一起发布为只读快照。Runtime 提供当前 session 的用户定时创建与按 MessageId 取消边界，取消会同步检查未来 timer 和已到期 inbox item，因此执行顺序、管理状态与 TUI 展示不会分叉。它发布与前端无关的 run、Agent event、inbox 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`QueuedInputController` 将 runtime 快照投影为 `next turn`、`next run`、到期 `scheduled` 和未来 wake 摘要，并按 MessageId 对齐状态切换；`ScheduledMessageManagerController` 持有 `/schedule` 的静态管理快照和多步添加/删除流程；`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、进度块与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
 
 剪贴板图片粘贴和 `/image <path>` 会在进入编辑器前汇合到共享图片输入 utility。该边界负责解析运行主机上的路径、解码并限制图片尺寸/字节，最终返回同一种 `UserImage` 表示；只有 macOS 剪贴板 reader 是平台专用实现。
 

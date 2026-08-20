@@ -16,7 +16,6 @@ describe("memory viewer", () => {
               metadata: {
                 provider: "test",
                 model: "test-model",
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 1,
                 maxOutputTokens: 1,
               },
@@ -42,7 +41,6 @@ describe("memory viewer", () => {
           runCount: 0,
           mainRunCount: 0,
           memoryRunCount: 0,
-          costCny: 0,
           outcomes: {
             stop: 0,
             length: 0,
@@ -53,9 +51,9 @@ describe("memory viewer", () => {
             unchanged: 0,
           },
           agents: {
-            main: { runCount: 0, costCny: 0 },
-            memoryAutomatic: { runCount: 0, costCny: 0 },
-            memoryManual: { runCount: 0, costCny: 0 },
+            main: { runCount: 0 },
+            memoryAutomatic: { runCount: 0 },
+            memoryManual: { runCount: 0 },
           },
           models: [],
         }),

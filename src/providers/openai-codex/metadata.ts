@@ -7,14 +7,6 @@ export const OPENAI_CODEX_MODELS = {
     provider: "openai-codex",
     model: "gpt-5.6-sol",
     protocol: "responses",
-    // ChatGPT subscription usage is quota-based rather than metered through
-    // Kana, so monetary accounting must not apply Platform API pricing.
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,
@@ -25,12 +17,6 @@ export const OPENAI_CODEX_MODELS = {
     provider: "openai-codex",
     model: "gpt-5.6-terra",
     protocol: "responses",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,
@@ -41,12 +27,6 @@ export const OPENAI_CODEX_MODELS = {
     provider: "openai-codex",
     model: "gpt-5.6-luna",
     protocol: "responses",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 372_000,
     maxOutputTokens: 128_000,
     supportsParallelToolCalls: true,

@@ -6,7 +6,6 @@ import type {
 } from "@/agent";
 import {
   addModelUsage,
-  calculateUsageCostCny,
   createUserMessage,
   type Message,
   type ModelMetadata,
@@ -169,7 +168,6 @@ export class KanaTuiApp {
   private readonly scheduledMessageManager: ScheduledMessageManagerController;
   private running = false;
   private totalUsage?: ModelUsage;
-  private totalCostCny = 0;
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
   private readonly contentViewer: ContentViewerController;
@@ -640,7 +638,6 @@ export class KanaTuiApp {
       this.totalUsage
         ? formatExitLine("Token usage", formatModelUsage(this.totalUsage))
         : undefined,
-      this.totalCostCny > 0 ? formatExitLine("API cost", formatCny(this.totalCostCny)) : undefined,
       resumeSessionId ? formatExitLine("Resume", `kana resume ${resumeSessionId}`) : undefined,
     ].filter((line): line is string => Boolean(line));
 
@@ -1273,10 +1270,7 @@ export class KanaTuiApp {
       return;
     }
 
-    const metadata = this.conversation.state.model.metadata;
-
     this.totalUsage = addModelUsage(this.totalUsage, usage);
-    this.totalCostCny += calculateUsageCostCny(usage, metadata.cost);
   }
 
   private updateContextUsage(estimatedTokens?: number): void {
@@ -1321,10 +1315,6 @@ function sanitizeLabel(value: string): string {
   return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }
 
-function formatCny(amount: number): string {
-  return `¥${amount.toFixed(4)}`;
-}
-
 function formatExitLine(label: string, value: string): string {
   return `${`${label}:`.padEnd(13)}${value}`;
 }
@@ -1332,7 +1322,7 @@ function formatExitLine(label: string, value: string): string {
 function formatModelUsage(usage: ModelUsage): string {
   const cachedTokens = usage.promptCacheHitTokens ?? 0;
   const inputTokens = usage.promptCacheMissTokens ?? Math.max(0, usage.promptTokens - cachedTokens);
-  const totalTokens = inputTokens + usage.completionTokens;
+  const totalTokens = usage.totalTokens;
 
   return [
     `total=${formatInteger(totalTokens)}`,

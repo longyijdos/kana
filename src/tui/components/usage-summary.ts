@@ -29,34 +29,40 @@ export class UsageSummaryBlock implements Component {
       {
         label: "Main",
         runCount: this.summary.agents.main.runCount,
-        costCny: this.summary.agents.main.costCny,
+        tokenCount: this.summary.agents.main.usage?.totalTokens ?? 0,
         tone: tuiTheme.usageInput,
       },
       {
         label: "Memory auto",
         runCount: this.summary.agents.memoryAutomatic.runCount,
-        costCny: this.summary.agents.memoryAutomatic.costCny,
+        tokenCount: this.summary.agents.memoryAutomatic.usage?.totalTokens ?? 0,
         tone: tuiTheme.usageCache,
       },
       {
         label: "Memory manual",
         runCount: this.summary.agents.memoryManual.runCount,
-        costCny: this.summary.agents.memoryManual.costCny,
+        tokenCount: this.summary.agents.memoryManual.usage?.totalTokens ?? 0,
         tone: tuiTheme.usageReasoning,
       },
     ];
     const runCountWidth = Math.max(1, ...agentRows.map((row) => String(row.runCount).length));
+    const runTokenCountWidth = Math.max(
+      1,
+      ...agentRows.map((row) => visibleWidth(formatInteger(row.tokenCount))),
+    );
     const modelRows = this.summary.models.map((model) => ({
       label: `${model.provider}/${model.model}`,
       runCount: model.runCount,
-      costCny: model.costCny,
+      tokenCount: model.usage?.totalTokens ?? 0,
     }));
     const modelLabelWidth = Math.max(0, ...modelRows.map((row) => visibleWidth(row.label)));
     const modelRunCountWidth = Math.max(1, ...modelRows.map((row) => String(row.runCount).length));
+    const modelTokenCountWidth = Math.max(
+      1,
+      ...modelRows.map((row) => visibleWidth(formatInteger(row.tokenCount))),
+    );
 
     return [
-      `${color("Cost", tuiTheme.usageMuted).padEnd(12)}${color(formatCny(this.summary.costCny), tuiTheme.usageCost)}`,
-      "",
       color("Tokens", tuiTheme.markdownHeading),
       line("Input", input, tuiTheme.usageInput),
       line("Cached", cached, tuiTheme.usageCache),
@@ -67,13 +73,27 @@ export class UsageSummaryBlock implements Component {
       "",
       color("Runs", tuiTheme.markdownHeading),
       ...agentRows.map((row) =>
-        runLine(row.label, row.runCount, row.costCny, row.tone, runCountWidth),
+        runLine(
+          row.label,
+          row.runCount,
+          row.tokenCount,
+          row.tone,
+          runCountWidth,
+          runTokenCountWidth,
+        ),
       ),
       "",
       `${color("Completed", tuiTheme.usageOutput)} ${this.summary.outcomes.stop}  ${color("Output limit", tuiTheme.usageWarning)} ${this.summary.outcomes.length}  ${color("Turn limit", tuiTheme.usageWarning)} ${this.summary.outcomes.turn_limit}  ${color("Aborted", tuiTheme.usageWarning)} ${this.summary.outcomes.aborted}  ${color("Failed", tuiTheme.error)} ${this.summary.outcomes.error}`,
       ...modelRows.map((row) =>
         color(
-          modelLine(row.label, row.runCount, row.costCny, modelLabelWidth, modelRunCountWidth),
+          modelLine(
+            row.label,
+            row.runCount,
+            row.tokenCount,
+            modelLabelWidth,
+            modelRunCountWidth,
+            modelTokenCountWidth,
+          ),
           tuiTheme.usageMuted,
         ),
       ),
@@ -86,27 +106,26 @@ export class UsageSummaryBlock implements Component {
 function runLine(
   label: string,
   count: number,
-  cost: number,
+  tokens: number,
   tone: Parameters<typeof color>[1],
   countWidth: number,
+  tokenCountWidth: number,
 ): string {
-  return `${color(label.padEnd(14), tone)}${String(count).padStart(countWidth)}  ${formatCny(cost)}`;
+  return `${color(label.padEnd(14), tone)}${String(count).padStart(countWidth)}  ${formatInteger(tokens).padStart(tokenCountWidth)} tokens`;
 }
 function modelLine(
   label: string,
   count: number,
-  cost: number,
+  tokens: number,
   labelWidth: number,
   countWidth: number,
+  tokenCountWidth: number,
 ): string {
-  return `${label.padEnd(labelWidth)}  ${String(count).padStart(countWidth)} runs  ${formatCny(cost)}`;
+  return `${label.padEnd(labelWidth)}  ${String(count).padStart(countWidth)} runs  ${formatInteger(tokens).padStart(tokenCountWidth)} tokens`;
 }
 function bar(value: number, total: number, width: number): string {
   const filled = Math.round((value / total) * width);
   return `${"█".repeat(filled)}${"░".repeat(width - filled)}`;
-}
-function formatCny(value: number): string {
-  return `¥${value.toFixed(4)}`;
 }
 function formatInteger(value: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);

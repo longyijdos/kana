@@ -8,12 +8,12 @@ Kana's product configuration currently uses DeepSeek; its adapter lives in `src/
 
 Current built-in metadata:
 
-| Model | Protocol | Context window | Max output | Parallel tool calls | Hosted web search | Image input | Input / output / cache-read price (CNY per million tokens) |
-| --- | --- | ---: | ---: | --- | --- | --- | --- |
-| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported | 3 / 6 / 0.025 |
+| Model | Protocol | Context window | Max output | Parallel tool calls | Hosted web search | Image input |
+| --- | --- | ---: | ---: | --- | --- | --- |
+| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported |
+| `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported |
 
-Cache-write price is currently zero. Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the user's `web_search` setting. The TUI uses metadata for context percentage and accumulated CNY cost. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting.
+Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the user's `web_search` setting. The TUI uses metadata for context percentage. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting. Kana intentionally does not embed provider pricing; actual charges come from DeepSeek billing.
 
 ## Protocol selection and request conversion
 
@@ -101,9 +101,9 @@ Tool deltas use the provider `index` to address the Nth tool block in the curren
 
 Chat Completions finish reasons map as `stop → stop`, `length → length`, and `tool_calls → toolUse`. `content_filter` and `insufficient_system_resource` are errors. Usage in stream chunks maps to generic fields including prompt cache hit/miss and reasoning tokens.
 
-## Usage and cost
+## Usage
 
-`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Cost uses CNY per million tokens: cache misses bill as normal input and cache hits bill at the cache-read price; when only one cache field exists, the other portion is inferred from `promptTokens`. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%; only an unset `agent.context_limit` uses the metadata context window. Summary-request usage contributes to main-run accumulated usage and cost without replacing the latest normal model request's context percentage.
+`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%; only an unset `agent.context_limit` uses the metadata context window. Summary-request usage contributes to main-run accumulated usage without replacing the latest normal model request's context percentage.
 
 ## Extension notes
 
@@ -111,4 +111,4 @@ Chat Completions finish reasons map as `stop → stop`, `length → length`, and
 - Do not flatten provider ordering of thinking, text, and calls; Agent history and the TUI rely on ordered content.
 - Shared Responses code owns semantic SSE item assembly only. Provider adapters still own request fields, endpoint selection, authentication, retry policy, and replay rules.
 - New retry conditions must distinguish cancellation, which must never retry.
-- Adding a model requires updating metadata, product-config allowed values, and cost-display tests.
+- Adding a model requires updating metadata, product-config allowed values, and usage-display tests.

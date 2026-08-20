@@ -23,7 +23,6 @@ export const tuiTheme = {
   toolSuccess: [137, 209, 133],
   toolOutput: [156, 166, 178],
   error: [244, 112, 103],
-  usageCost: [255, 202, 114],
   usageInput: [126, 166, 255],
   usageCache: [105, 208, 196],
   usageOutput: [137, 209, 133],

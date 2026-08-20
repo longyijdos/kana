@@ -14,14 +14,6 @@ export type ModelConfig = {
   maxRetries?: number;
 };
 
-export type ModelCost = {
-  // Prices are denominated in CNY per 1M tokens.
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-};
-
 export type ModelUsage = {
   promptTokens: number;
   completionTokens: number;
@@ -39,7 +31,6 @@ export type ModelMetadata = {
   // Shared wire codec used by the provider adapter. In-process or fully
   // provider-specific implementations use null.
   protocol: ModelProtocol | null;
-  cost: ModelCost;
   contextWindow: number;
   // Provider hard limit for one completion, distinct from request maxTokens.
   maxOutputTokens: number;

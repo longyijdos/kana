@@ -82,4 +82,4 @@ reader 会保留跨网络分片的不完整 SSE 帧，并在一个 body chunk �
 
 诊断日志使用稳定的 provider request、authentication refresh、retry 和 failure 事件，只记录供应商、模型、阶段、结果、错误类型或 HTTP 状态。日志不会记录 token、account ID、header、prompt、完整工具参数或响应体。
 
-Responses usage 映射为输入、输出、缓存命中/未命中和 reasoning token。ChatGPT subscription 按 quota 而不是 Kana 的 API 计价结算，因此当前模型 metadata 的 CNY 成本为零。
+Responses usage 映射为输入、输出、缓存命中/未命中和 reasoning token。Kana 记录这些值但不估算金额；ChatGPT subscription quota 和实际账单仍由 provider 管理。

@@ -100,7 +100,7 @@ TUI 中的常用命令：
 | `/mcp`、`/skills` | 管理当前启用的 MCP server 和全局 Skills。 |
 | `/memory` | 查看或整理 project/global 长期记忆。 |
 | `/approval` | 临时修改当前会话的工具审批模式。 |
-| `/usage` | 查看 session、project 或 global 范围的 token 用量与成本。 |
+| `/usage` | 查看 session、project 或 global 范围的 token 用量。 |
 | `!<命令>` | 绕过 Agent loop，直接运行本地 Shell。 |
 
 快捷键、输入排队、定时消息和完整命令集见 [TUI 交互与渲染](docs/tui.zh-CN.md)。

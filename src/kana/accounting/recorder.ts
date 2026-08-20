@@ -1,10 +1,4 @@
-import {
-  addModelUsage,
-  calculateUsageCostCny,
-  type Message,
-  type ModelMetadata,
-  type ModelUsage,
-} from "@/core";
+import { addModelUsage, type Message, type ModelMetadata, type ModelUsage } from "@/core";
 import { appendKanaRunAccounting } from "./storage";
 import type { KanaAccountingOutcome } from "./types";
 
@@ -36,9 +30,7 @@ export function recordKanaAgentRunAccounting(options: {
       agentKind: options.agentKind,
       outcome: options.outcome,
       model: { provider: options.model.provider, model: options.model.model },
-      pricing: options.model.cost,
       usage,
-      costCny: usage ? calculateUsageCostCny(usage, options.model.cost) : 0,
       assistantMessageCount: options.messages.filter((message) => message.role === "assistant")
         .length,
       ...(options.memory

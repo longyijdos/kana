@@ -20,12 +20,12 @@ describe("Kana accounting", () => {
   test("aggregates session, project, and global run ledgers", () => {
     const env = { KANA_HOME: temporaryHome() };
     const workspace = "/work/one";
-    appendKanaRunAccounting(record("session-one", "main", 10, 0.01), { env, cwd: workspace });
-    appendKanaRunAccounting(record("session-two", "memory_consolidation", 20, 0.02), {
+    appendKanaRunAccounting(record("session-one", "main", 10), { env, cwd: workspace });
+    appendKanaRunAccounting(record("session-two", "memory_consolidation", 20), {
       env,
       cwd: workspace,
     });
-    appendKanaRunAccounting(record("elsewhere", "main", 30, 0.03), { env, cwd: "/work/two" });
+    appendKanaRunAccounting(record("elsewhere", "main", 30), { env, cwd: "/work/two" });
 
     expect(
       loadKanaUsageSummary({ scope: "session", sessionId: "session-one", env, cwd: workspace }),
@@ -33,19 +33,28 @@ describe("Kana accounting", () => {
       runCount: 1,
       mainRunCount: 1,
       memoryRunCount: 0,
-      costCny: 0.01,
       usage: { totalTokens: 10 },
     });
     expect(loadKanaUsageSummary({ scope: "project", env, cwd: workspace })).toMatchObject({
       runCount: 2,
       mainRunCount: 1,
       memoryRunCount: 1,
-      costCny: 0.03,
       usage: { totalTokens: 30 },
     });
     const globalSummary = loadKanaUsageSummary({ scope: "global", env, cwd: workspace });
     expect(globalSummary).toMatchObject({ runCount: 3, usage: { totalTokens: 60 } });
-    expect(globalSummary.costCny).toBeCloseTo(0.06);
+  });
+
+  test("writes token-only version 2 records", () => {
+    const env = { KANA_HOME: temporaryHome() };
+    const appended = appendKanaRunAccounting(record("session-one", "main", 10), {
+      env,
+      cwd: "/work/one",
+    });
+
+    expect(appended).toMatchObject({ version: 2, usage: { totalTokens: 10 } });
+    expect(Object.hasOwn(appended, "pricing")).toBe(false);
+    expect(Object.hasOwn(appended, "costCny")).toBe(false);
   });
 
   test("counts turn-limited runs separately from normal completion", () => {
@@ -53,7 +62,7 @@ describe("Kana accounting", () => {
     const workspace = "/work/one";
     appendKanaRunAccounting(
       {
-        ...record("session-one", "main", 10, 0.01),
+        ...record("session-one", "main", 10),
         outcome: "turn_limit",
       },
       { env, cwd: workspace },
@@ -104,12 +113,6 @@ describe("Kana accounting", () => {
           supportsParallelToolCalls: false,
           protocol: null,
           supportsHostedWebSearch: false,
-          cost: {
-            input: 1,
-            output: 2,
-            cacheRead: 0,
-            cacheWrite: 0,
-          },
         },
       });
 
@@ -138,20 +141,13 @@ describe("Kana accounting", () => {
   });
 });
 
-function record(
-  sessionId: string,
-  agentKind: "main" | "memory_consolidation",
-  tokens: number,
-  costCny: number,
-) {
+function record(sessionId: string, agentKind: "main" | "memory_consolidation", tokens: number) {
   return {
     sessionId,
     agentKind,
     outcome: "stop" as const,
     model: { provider: "test", model: "test-model" },
-    pricing: { input: 1, output: 1, cacheRead: 1, cacheWrite: 0 },
     usage: { promptTokens: tokens, completionTokens: 0, totalTokens: tokens },
-    costCny,
     assistantMessageCount: 1,
   };
 }

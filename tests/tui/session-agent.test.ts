@@ -43,7 +43,6 @@ describe("session-scoped agents", () => {
               metadata: {
                 provider: "test",
                 model: "test-model",
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 1,
                 maxOutputTokens: 1,
               },
@@ -97,6 +96,42 @@ describe("session-scoped agents", () => {
 
     expect(shutdownRender).toContain("Closing MCP servers... 0/1");
     expect(events).toEqual(["agent.abort", "agent.waitForIdle", "host.stop", "terminal.stop"]);
+  });
+
+  test("prints complete token usage without a monetary estimate on exit", async () => {
+    let output = "";
+    const app = new KanaTuiApp(
+      () => createAgentStub(),
+      {
+        ...createTerminal(),
+        write: (data) => {
+          output += data;
+        },
+      },
+      createOptions(),
+    );
+    const internal = app as unknown as {
+      recordUsage(usage: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        promptCacheHitTokens?: number;
+        promptCacheMissTokens?: number;
+      }): void;
+    };
+
+    internal.recordUsage({
+      promptTokens: 30,
+      completionTokens: 10,
+      totalTokens: 40,
+      promptCacheHitTokens: 20,
+      promptCacheMissTokens: 10,
+    });
+    app.start();
+    await app.stop();
+
+    expect(output).toContain("Token usage: total=40 input=10 (+ 20 cached) output=10");
+    expect(output).not.toContain("API cost");
   });
 
   test("loads external tools inside the visible session before enabling the editor", async () => {
@@ -360,7 +395,6 @@ describe("session-scoped agents", () => {
               metadata: {
                 provider: "test",
                 model: "test-model",
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 1,
                 maxOutputTokens: 1,
               },
@@ -402,7 +436,6 @@ describe("session-scoped agents", () => {
               metadata: {
                 provider: "test",
                 model: "test-model",
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 1,
                 maxOutputTokens: 1,
               },
@@ -465,7 +498,6 @@ describe("session-scoped agents", () => {
               metadata: {
                 provider: "test",
                 model: "test-model",
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 1,
                 maxOutputTokens: 1,
               },
@@ -527,7 +559,6 @@ describe("session-scoped agents", () => {
               metadata: {
                 provider: "test",
                 model: "test-model",
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 1,
                 maxOutputTokens: 1,
               },
@@ -584,7 +615,6 @@ describe("session-scoped agents", () => {
               metadata: {
                 provider: "test",
                 model: "test-model",
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 100_000,
                 maxOutputTokens: 1,
               },
@@ -735,7 +765,6 @@ function createOptions() {
       runCount: 0,
       mainRunCount: 0,
       memoryRunCount: 0,
-      costCny: 0,
       outcomes: {
         stop: 0,
         length: 0,
@@ -746,9 +775,9 @@ function createOptions() {
         unchanged: 0,
       },
       agents: {
-        main: { runCount: 0, costCny: 0 },
-        memoryAutomatic: { runCount: 0, costCny: 0 },
-        memoryManual: { runCount: 0, costCny: 0 },
+        main: { runCount: 0 },
+        memoryAutomatic: { runCount: 0 },
+        memoryManual: { runCount: 0 },
       },
       models: [],
     }),
@@ -774,7 +803,6 @@ function createAgentStub() {
         metadata: {
           provider: "test",
           model: "test-model",
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextWindow: 1,
           maxOutputTokens: 1,
         },

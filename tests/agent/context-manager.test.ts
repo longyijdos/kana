@@ -21,12 +21,6 @@ import { messageIdentityForTest } from "../helpers/messages";
 const MODEL_METADATA: ModelMetadata = {
   provider: "test",
   model: "context",
-  cost: {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-  },
   contextWindow: 4_000,
   maxOutputTokens: 500,
   supportsParallelToolCalls: true,

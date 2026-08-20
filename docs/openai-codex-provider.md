@@ -82,4 +82,4 @@ The first HTTP `401` triggers one credential refresh and retries with the new to
 
 Diagnostics use stable provider-request, authentication-refresh, retry, and failure events. They contain only provider, model, phase, outcome, error type, or HTTP status. Logs never contain tokens, account IDs, headers, prompts, complete tool arguments, or response bodies.
 
-Responses usage maps to input, output, cache-hit/miss, and reasoning tokens. ChatGPT subscription usage is quota-based rather than billed through Kana API accounting, so these model metadata currently carry zero CNY cost.
+Responses usage maps to input, output, cache-hit/miss, and reasoning tokens. Kana records those values without estimating monetary cost; ChatGPT subscription quota and actual billing remain provider-owned.

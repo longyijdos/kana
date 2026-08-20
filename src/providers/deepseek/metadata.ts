@@ -6,12 +6,6 @@ export const DEEPSEEK_MODELS = {
   "deepseek-v4-flash": {
     provider: "deepseek",
     model: "deepseek-v4-flash",
-    cost: {
-      input: 1,
-      output: 2,
-      cacheRead: 0.02,
-      cacheWrite: 0,
-    },
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
     supportsParallelToolCalls: true,
@@ -22,12 +16,6 @@ export const DEEPSEEK_MODELS = {
   "deepseek-v4-pro": {
     provider: "deepseek",
     model: "deepseek-v4-pro",
-    cost: {
-      input: 3,
-      output: 6,
-      cacheRead: 0.025,
-      cacheWrite: 0,
-    },
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
     supportsParallelToolCalls: true,

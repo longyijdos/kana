@@ -1,6 +1,6 @@
-import type { ModelCost, ModelUsage } from "@/core";
+import type { ModelUsage } from "@/core";
 
-export const KANA_ACCOUNTING_VERSION = 1;
+export const KANA_ACCOUNTING_VERSION = 2;
 
 type KanaAccountingAgentKind = "main" | "memory_consolidation";
 export type KanaAccountingOutcome =
@@ -21,9 +21,7 @@ export type KanaRunAccountingRecord = {
   agentKind: KanaAccountingAgentKind;
   outcome: KanaAccountingOutcome;
   model: { provider: string; model: string };
-  pricing: ModelCost;
   usage?: ModelUsage;
-  costCny: number;
   assistantMessageCount: number;
   memoryScope?: "global" | "project";
   memoryMode?: "incremental" | "full";
@@ -47,18 +45,16 @@ export type KanaUsageSummary = {
   runCount: number;
   mainRunCount: number;
   memoryRunCount: number;
-  costCny: number;
   usage?: ModelUsage;
   outcomes: Record<KanaAccountingOutcome, number>;
   agents: Record<
     "main" | "memoryAutomatic" | "memoryManual",
-    { runCount: number; costCny: number; usage?: ModelUsage }
+    { runCount: number; usage?: ModelUsage }
   >;
   models: Array<{
     provider: string;
     model: string;
     runCount: number;
-    costCny: number;
     usage?: ModelUsage;
   }>;
 };

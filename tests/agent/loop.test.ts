@@ -14,12 +14,6 @@ class ScriptedToolModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "scripted-tool",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
@@ -69,12 +63,6 @@ class MultiToolCallModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "multi-tool-call",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: false,
@@ -112,12 +100,6 @@ class ParallelToolCallModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "parallel-tool-call",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
@@ -158,12 +140,6 @@ class AbortedModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "aborted",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
@@ -204,12 +180,6 @@ class AbortedToolCallModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "aborted-tool-call",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
@@ -269,12 +239,6 @@ class AbortedHostedToolModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "aborted-hosted-tool",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
@@ -327,12 +291,6 @@ class EmptyErrorModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "empty-error",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
@@ -368,12 +326,6 @@ class LengthTruncatedToolModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
     model: "length-truncated-tool",
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,

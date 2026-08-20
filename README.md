@@ -100,7 +100,7 @@ Useful commands inside the TUI:
 | `/mcp`, `/skills` | Manage active MCP servers and global Skills. |
 | `/memory` | View or consolidate durable project/global memory. |
 | `/approval` | Change tool approval behavior for the current session. |
-| `/usage` | Inspect session, project, or global token usage and cost. |
+| `/usage` | Inspect session, project, or global token usage. |
 | `!<command>` | Run a local shell command directly, outside the agent loop. |
 
 See [TUI interaction and rendering](docs/tui.md) for shortcuts, queued input, scheduled messages, and the complete command set.

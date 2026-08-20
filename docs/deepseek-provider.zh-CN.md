@@ -8,12 +8,12 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 
 当前内置元数据：
 
-| 模型 | 协议 | 上下文窗口 | 最大输出 | 并行工具调用 | 托管网页搜索 | 图片输入 | 输入 / 输出 / 缓存读取价格（CNY/百万 token） |
-| --- | --- | ---: | ---: | --- | --- | --- | --- |
-| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 | 1 / 2 / 0.02 |
-| `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 | 3 / 6 / 0.025 |
+| 模型 | 协议 | 上下文窗口 | 最大输出 | 并行工具调用 | 托管网页搜索 | 图片输入 |
+| --- | --- | ---: | ---: | --- | --- | --- |
+| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 |
+| `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 |
 
-缓存写入价格当前为 0。构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与用户的 `web_search` 配置分开记录。TUI 使用元数据计算上下文使用率和 CNY 累计成本。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。
+构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与用户的 `web_search` 配置分开记录。TUI 使用元数据计算上下文使用率。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。Kana 有意不内置 provider 价格，实际费用以 DeepSeek 账单为准。
 
 ## 协议选择与请求转换
 
@@ -101,9 +101,9 @@ finish_reason = tool_calls
 
 Chat Completions 结束原因映射为：`stop → stop`、`length → length`、`tool_calls → toolUse`。`content_filter` 与 `insufficient_system_resource` 被视为错误。流中携带的 usage 转为通用字段，包括 prompt cache hit/miss 和 reasoning token。
 
-## 用量和成本
+## 用量
 
-`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。成本计算以 CNY/百万 token 为单位：有 cache miss 时将它计为普通输入，有 cache hit 时按 cache-read 价格计费；只提供其中一项时从 `promptTokens` 推导另一项。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / effective context limit`，钳制在 0–100%；未配置 `agent.context_limit` 时，该分母才是 metadata context window。摘要请求的 usage 计入主运行累计用量和成本，但不会替换最近正常模型请求的 context 百分比。
+`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / effective context limit`，钳制在 0–100%；未配置 `agent.context_limit` 时，该分母才是 metadata context window。摘要请求的 usage 计入主运行累计用量，但不会替换最近正常模型请求的 context 百分比。
 
 ## 扩展注意点
 
@@ -111,4 +111,4 @@ Chat Completions 结束原因映射为：`stop → stop`、`length → length`�
 - 不要把 provider 的 thinking/text/tool 调用顺序扁平化；Agent 历史和 TUI 依赖有序 content。
 - 共享 Responses 代码只负责语义 SSE item 的组装。请求字段、endpoint 选择、认证、重试策略和 replay 规则仍由各 provider adapter 负责。
 - 新增可重试条件时必须区分取消，取消不应被重试。
-- 新模型要同时更新 metadata、产品配置允许值和成本显示测试。
+- 新模型要同时更新 metadata、产品配置允许值和用量显示测试。

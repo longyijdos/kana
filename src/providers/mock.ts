@@ -18,12 +18,6 @@ const MOCK_MODEL_METADATA = {
   provider: "mock",
   model: "mock",
   protocol: null,
-  cost: {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-  },
   contextWindow: 128_000,
   maxOutputTokens: 16_000,
   supportsParallelToolCalls: false,

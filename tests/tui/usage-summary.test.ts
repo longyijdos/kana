@@ -16,17 +16,17 @@ describe("tui usage summary", () => {
 
     const runsStart = rendered.indexOf("Runs");
     const runRows = rendered.slice(runsStart + 1, runsStart + 4);
-    expect(runRows.map((line) => line.indexOf("¥"))).toEqual([20, 20, 20]);
+    expect(new Set(runRows.map((line) => line.indexOf("tokens"))).size).toBe(1);
     expect(runRows).toEqual([
-      "Main          2296  ¥24.2819",
-      "Memory auto     57  ¥0.4573",
-      "Memory manual    8  ¥0.0835",
+      "Main          2296  150,000,000 tokens",
+      "Memory auto     57    7,000,000 tokens",
+      "Memory manual    8      633,440 tokens",
     ]);
 
-    const modelRows = rendered.filter((line) => line.includes(" runs  ¥"));
+    const modelRows = rendered.filter((line) => line.includes(" runs  "));
     expect(modelRows).toHaveLength(3);
     expect(new Set(modelRows.map((line) => line.indexOf("runs"))).size).toBe(1);
-    expect(new Set(modelRows.map((line) => line.indexOf("¥"))).size).toBe(1);
+    expect(new Set(modelRows.map((line) => line.indexOf("tokens"))).size).toBe(1);
   });
 });
 
@@ -36,7 +36,6 @@ function createUsageSummary(): KanaUsageSummary {
     runCount: 2355,
     mainRunCount: 2296,
     memoryRunCount: 65,
-    costCny: 24.8228,
     usage: {
       promptTokens: 155_462_545,
       completionTokens: 2_170_895,
@@ -55,28 +54,37 @@ function createUsageSummary(): KanaUsageSummary {
       unchanged: 0,
     },
     agents: {
-      main: { runCount: 2296, costCny: 24.2819 },
-      memoryAutomatic: { runCount: 57, costCny: 0.4573 },
-      memoryManual: { runCount: 8, costCny: 0.0835 },
+      main: {
+        runCount: 2296,
+        usage: { promptTokens: 148_000_000, completionTokens: 2_000_000, totalTokens: 150_000_000 },
+      },
+      memoryAutomatic: {
+        runCount: 57,
+        usage: { promptTokens: 6_900_000, completionTokens: 100_000, totalTokens: 7_000_000 },
+      },
+      memoryManual: {
+        runCount: 8,
+        usage: { promptTokens: 562_545, completionTokens: 70_895, totalTokens: 633_440 },
+      },
     },
     models: [
       {
         provider: "deepseek",
         model: "deepseek-v4-pro",
         runCount: 1768,
-        costCny: 21.3522,
+        usage: { promptTokens: 128_000_000, completionTokens: 2_000_000, totalTokens: 130_000_000 },
       },
       {
         provider: "deepseek",
         model: "deepseek-v4-flash",
         runCount: 389,
-        costCny: 3.4705,
+        usage: { promptTokens: 26_000_000, completionTokens: 1_000_000, totalTokens: 27_000_000 },
       },
       {
         provider: "openai-codex",
         model: "gpt-5.6-terra",
         runCount: 22,
-        costCny: 0,
+        usage: { promptTokens: 600_000, completionTokens: 33_440, totalTokens: 633_440 },
       },
     ],
   };
