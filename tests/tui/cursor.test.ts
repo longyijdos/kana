@@ -50,8 +50,8 @@ describe("tui cursor positioning", () => {
 
     const writeCount = writes.length;
     tui.setFocus(component);
-    tui.requestRender(true);
-    await Promise.resolve();
+    tui.requestRender();
+    await new Promise((resolve) => setTimeout(resolve, 25));
 
     expect(writes.slice(writeCount).join("")).toContain("\x1b[1A");
   });

@@ -27,16 +27,19 @@ The minimum `Component` interface is `render(width, availableHeight?): string[]`
 
 With `kana --clean`, the app installs no external-tool loader and constructs no MCP management controller, so initial display, new, model switches, and later Agent rebuilds never read or connect MCP. The welcome panel explains that the current session will not be saved, the transcript shows one clean-mode notice, and the status line keeps `clean` visible. Exit prints no resume command.
 
-Normal `Tui.requestRender()` calls are coalesced into an approximately 16ms timer. Each render:
+Application and controller code calls only the declarative `Tui.requestRender()` API; the runtime owns the terminal update strategy. Normal requests are coalesced into an approximately 16ms timer. Each render:
 
 1. Calls the root component's `render(width, height)`.
 2. Extracts the editor's internal cursor marker.
 3. Normalizes lines using ANSI and Unicode visible width.
-4. Repaints only changed lines when dimensions are stable and changes remain visible.
-5. Falls back to a full clear-and-repaint on width/height changes, shrinking output, changes above the viewport, or a forced refresh.
-6. Moves and shows the hardware cursor only for the focused component while synchronized output is active; with no focus it leaves the cursor at the layout tail and hidden.
+4. Performs only a hardware-cursor update when logical content is unchanged.
+5. Otherwise repaints the smallest visible first-to-last changed range, appends with natural terminal scrolling, and clears visible stale tail rows with `CSI 2K` when content shrinks.
+6. Falls back to a full clear-and-repaint on the first frame, width/height changes, changes in terminal scrollback, deletion that moves the new tail above the addressable viewport, or cursor/viewport state that cannot be inferred safely.
+7. Moves and shows the hardware cursor only for the focused component while synchronized output is active; with no focus it leaves the cursor at the layout tail and hidden.
 
 It caches rendered lines and viewport state, avoiding repeated CJK width computation for unchanged transcript content. The TUI uses the main screen, never `?1049` alternate screen, so the transcript remains in terminal scrollback.
+
+`/clear` remains an ordinary transcript/editor state mutation followed by `requestRender()`. If all removed content is still visible, the renderer patches the surviving layout and clears stale rows locally without issuing `3J`. If removed transcript rows have entered scrollback, the affected logical range is no longer addressable and the normal full-redraw fallback clears and replays the remaining frame.
 
 Rendering helpers strip ANSI/control sequences for width calculation and use `string-width` plus `Intl.Segmenter` to wrap and truncate by grapheme. CJK, emoji, combining characters, and color therefore do not consume incorrect columns. Tool output is stripped of unsafe terminal controls before display.
 

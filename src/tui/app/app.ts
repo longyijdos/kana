@@ -430,7 +430,7 @@ export class KanaTuiApp {
         this.transcript.clear();
         this.mcpOAuthBlocks.clear();
         this.editor.clear();
-        this.tui.requestRender(true);
+        this.tui.requestRender();
       },
       startNewSession: () => {
         this.editor.clear();
@@ -584,7 +584,7 @@ export class KanaTuiApp {
       this.transcript.addChild(this.shutdownStatus);
     }
     this.tui.setFocus(undefined);
-    this.tui.requestRender(true);
+    this.tui.requestRender();
   }
 
   showMcpOAuthAuthorization(serverId: string, authorizationUrl: string): void {
@@ -596,7 +596,7 @@ export class KanaTuiApp {
         authorizationUrl,
       ].join("\n"),
     );
-    this.tui.requestRender(true);
+    this.tui.requestRender();
   }
 
   handleMcpOAuthDiagnostic(serverId: string, diagnostic: McpOAuthHttpDiagnosticEvent): void {
@@ -606,12 +606,12 @@ export class KanaTuiApp {
     }
     if (diagnostic.event === "oauth.authorization_succeeded") {
       block.setText(`MCP OAuth authorized: ${sanitizeLabel(serverId)}.`);
-      this.tui.requestRender(true);
+      this.tui.requestRender();
     } else if (diagnostic.event === "oauth.authorization_failed") {
       block.setText(
         `MCP OAuth authorization failed: ${sanitizeLabel(serverId)}. See logs for details.`,
       );
-      this.tui.requestRender(true);
+      this.tui.requestRender();
     }
   }
 
@@ -781,7 +781,7 @@ export class KanaTuiApp {
     }
 
     this.tui.setFocus(this.editor);
-    this.tui.requestRender(true);
+    this.tui.requestRender();
   }
 
   private openMemoryViewer(target: MemoryScope): void {
@@ -1256,7 +1256,7 @@ export class KanaTuiApp {
     if (focus) {
       this.tui.setFocus(bottom);
     }
-    this.tui.requestRender(true);
+    this.tui.requestRender();
   }
 
   private updateStatus(phase: RunPhase, extra: Partial<StatusLineState> = {}): void {

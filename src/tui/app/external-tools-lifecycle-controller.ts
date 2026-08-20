@@ -57,7 +57,7 @@ export class ExternalToolsLifecycleController {
         this.options.onToolsChanged();
         this.options.updateStatus("idle");
         this.options.focusEditor();
-        this.options.tui.requestRender(true);
+        this.options.tui.requestRender();
         this.options.onReady();
         return true;
       })
@@ -73,7 +73,7 @@ export class ExternalToolsLifecycleController {
             ),
           );
           this.options.updateStatus("error");
-          this.options.tui.requestRender(true);
+          this.options.tui.requestRender();
         }
         return false;
       });
@@ -99,7 +99,7 @@ export class ExternalToolsLifecycleController {
       this.options.onToolsChanged();
       this.options.updateStatus("idle");
       this.options.focusEditor();
-      this.options.tui.requestRender(true);
+      this.options.tui.requestRender();
     } catch (error) {
       if (this.options.isStopping()) {
         return;
@@ -117,7 +117,7 @@ export class ExternalToolsLifecycleController {
       this.options.onToolsChanged();
       this.options.updateStatus("error");
       this.options.focusEditor();
-      this.options.tui.requestRender(true);
+      this.options.tui.requestRender();
     } finally {
       this.isLoading = false;
       if (!this.options.isStopping()) {
@@ -133,7 +133,7 @@ export class ExternalToolsLifecycleController {
     this.options.transcript.addChild(loadingBlock);
     this.options.updateStatus("starting");
     this.options.tui.setFocus(undefined);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
     return loadingBlock;
   }
 

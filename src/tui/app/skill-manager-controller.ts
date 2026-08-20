@@ -49,7 +49,7 @@ export class SkillManagerController {
     this.activeManager = manager;
     this.options.layout.showBottom(manager);
     this.options.tui.setFocus(manager);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   close(): void {

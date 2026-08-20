@@ -75,7 +75,7 @@ export class McpServerManagerController {
     this.activeManager = manager;
     this.options.layout.showBottom(manager);
     this.options.tui.setFocus(manager);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   close(): void {
@@ -118,7 +118,7 @@ export class McpServerManagerController {
     this.activeAuthMenu = menu;
     this.options.layout.showBottom(menu);
     this.options.tui.setFocus(menu);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private finishAuthAction(serverId: string, decision: McpAuthActionMenuDecision): void {
@@ -149,7 +149,7 @@ export class McpServerManagerController {
     this.options.transcript.addChild(block);
     menu.setOperation(formatAuthMenuOperation(action));
     this.options.updateStatus("starting", { activeTool: undefined });
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
 
     try {
       const wasEnabled = server.enabled;
@@ -232,7 +232,7 @@ export class McpServerManagerController {
       `MCP OAuth authorization cancelled: ${sanitizeLabel(operation.serverId)}.`,
     );
     operation.controller.abort(new Error("MCP OAuth authorization was cancelled."));
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private returnToManager(): void {
@@ -243,7 +243,7 @@ export class McpServerManagerController {
     this.activeAuthMenu = undefined;
     this.options.layout.showBottom(manager);
     this.options.tui.setFocus(manager);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private closeInternal(changed: boolean): void {
@@ -274,7 +274,7 @@ export class McpServerManagerController {
       }),
     );
     this.options.updateStatus("error", { activeTool: undefined });
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 }
 

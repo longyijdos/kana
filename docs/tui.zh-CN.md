@@ -27,16 +27,19 @@ ProcessTerminal
 
 使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、new、模型切换和后续 Agent 重建都不会读取或连接 MCP。欢迎面板说明当前会话不会保存，transcript 会显示一次 Clean 模式说明，状态栏持续显示 `clean`；退出时不会打印恢复命令。
 
-`Tui` 将普通 `requestRender()` 合并到约 16ms 的定时器。每次渲染都会：
+App 和 controller 代码只调用声明式的 `Tui.requestRender()`，终端更新策略完全由 runtime 决定。普通请求会合并到约 16ms 的定时器。每次渲染都会：
 
 1. 调用根组件的 `render(width, height)`；
 2. 取出编辑器插入的内部光标标记；
 3. 根据 ANSI 以及 Unicode 可见宽度规范化行；
-4. 在尺寸未变、内容只增加或改动可见时只重绘变化行；
-5. 在宽高变化、行数减少、改动已滚出视口或请求强制刷新时全量清屏重绘；
-6. 在同步输出模式下，仅为当前焦点组件移动并显示硬件光标；没有焦点时将光标留在布局末尾并保持隐藏。
+4. 逻辑内容未变化时只更新硬件光标；
+5. 其余情况只重绘可见的最小首尾变化范围，追加内容时使用终端自然滚屏，内容收缩时用 `CSI 2K` 清除可见的尾部残留行；
+6. 首帧、宽高变化、改动位于终端 scrollback、删除后新尾部高于可寻址视口，或无法安全推断光标/视口状态时，回退到全量清屏重绘；
+7. 在同步输出模式下，仅为当前焦点组件移动并显示硬件光标；没有焦点时将光标留在布局末尾并保持隐藏。
 
 它维护已渲染行和可视 viewport 的缓存，避免反复计算未变 transcript 的 CJK 宽度。TUI 使用主屏，不进入 `?1049` alternate screen；这让 transcript 留在用户的终端 scrollback 中。
+
+`/clear` 仍只是清空 transcript/editor 状态后调用 `requestRender()`。如果被移除的内容仍全部可见，renderer 会局部更新保留的布局并清除残留行，不发送 `3J`；如果 transcript 行已经进入 scrollback，受影响的逻辑范围无法寻址，常规全量重绘 fallback 会清除并重新播放剩余 frame。
 
 渲染辅助会去除 ANSI/控制序列计算宽度，使用 `string-width` 和 `Intl.Segmenter` 按 grapheme 换行和截断。因而 CJK、emoji、组合字符和颜色不会错误占用列数。工具输出在显示前会移除不安全的终端控制序列。
 

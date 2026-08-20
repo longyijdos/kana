@@ -91,7 +91,7 @@ export class SlashCommandOptionsController {
       return;
     }
 
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private showMemoryAction(defaultValue: MemoryAction = "show"): void {
@@ -283,7 +283,7 @@ export class SlashCommandOptionsController {
     this.activePrompt = prompt;
     this.options.layout.showBottom(prompt);
     this.options.tui.setFocus(prompt);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private replace(prompt: Component, next: () => void): void {
