@@ -24,6 +24,8 @@ export {
   getKanaConfigPaths,
   type InstallKanaConfigResult,
   installKanaConfig,
+  KANA_DEEPSEEK_REASONING_EFFORTS,
+  KANA_OPENAI_CODEX_REASONING_EFFORTS,
   type KanaConfig,
   type KanaDeepSeekModelConfig,
   type KanaModelProvider,

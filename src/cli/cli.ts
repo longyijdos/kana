@@ -179,6 +179,13 @@ export function createCli(options: CreateCliOptions): Command {
       log(
         formatInstallMessage("skills config", result.skillsConfigPath, result.skillsConfigStatus),
       );
+      log(
+        formatInstallMessage(
+          "Custom provider example",
+          result.customProviderExamplePath,
+          result.customProviderExampleStatus,
+        ),
+      );
     });
 
   program

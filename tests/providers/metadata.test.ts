@@ -33,4 +33,16 @@ describe("provider model metadata", () => {
       { protocol: "responses", supportsHostedWebSearch: true },
     ]);
   });
+
+  test("declares model-specific reasoning controls", () => {
+    expect(Object.values(DEEPSEEK_MODELS).map((model) => model.reasoning.efforts)).toEqual([
+      ["none", "low", "high", "max"],
+      ["none", "low", "high", "max"],
+    ]);
+    expect(Object.values(OPENAI_CODEX_MODELS).map((model) => model.reasoning.efforts)).toEqual([
+      ["low", "medium", "high", "xhigh", "max"],
+      ["low", "medium", "high", "xhigh", "max"],
+      ["low", "medium", "high", "xhigh", "max"],
+    ]);
+  });
 });

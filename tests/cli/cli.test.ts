@@ -192,6 +192,8 @@ describe("CLI", () => {
         approvalsStatus: "exists",
         skillsConfigPath: "/tmp/skills.toml",
         skillsConfigStatus: "created",
+        customProviderExamplePath: "/tmp/providers/custom.example.toml",
+        customProviderExampleStatus: "created",
       }),
       log: (message) => {
         logs.push(message);
@@ -204,6 +206,7 @@ describe("CLI", () => {
       "Created MCP activation state: /tmp/mcp-enabled.json",
       "Approvals already exists: /tmp/approvals.json",
       "Created skills config: /tmp/skills.toml",
+      "Created Custom provider example: /tmp/providers/custom.example.toml",
     ]);
   });
 
@@ -646,6 +649,8 @@ function defaultInstallResult(): ReturnType<CreateCliOptions["installKanaConfig"
     approvalsStatus: "created",
     skillsConfigPath: "/tmp/skills.toml",
     skillsConfigStatus: "created",
+    customProviderExamplePath: "/tmp/providers/custom.example.toml",
+    customProviderExampleStatus: "created",
   };
 }
 

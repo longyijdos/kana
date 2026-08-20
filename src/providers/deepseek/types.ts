@@ -1,7 +1,7 @@
 import type { ModelConfig } from "@/core";
 import type { Logger } from "@/logging";
 
-export type DeepSeekReasoningEffort = "low" | "high" | "max";
+export type DeepSeekReasoningEffort = "none" | "low" | "high" | "max";
 
 export type DeepSeekToolChoice =
   | "none"
@@ -24,7 +24,6 @@ type DeepSeekResponseFormat =
 
 export type DeepSeekModelConfig = ModelConfig & {
   provider: "deepseek";
-  thinking?: boolean;
   reasoningEffort?: DeepSeekReasoningEffort;
   webSearch?: boolean;
   imageInput?: boolean;

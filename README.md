@@ -54,7 +54,7 @@ kana auth login openai-codex
 active = "openai-codex"
 ```
 
-You can switch provider, model, and reasoning effort later with `/model`.
+You can switch provider, model, and supported reasoning effort later with `/model`. A static [Custom OpenAI-compatible provider](docs/custom-provider.md) slot is available for local or hosted compatible endpoints.
 
 ## Why Kana
 
@@ -95,7 +95,7 @@ Useful commands inside the TUI:
 
 | Command | Action |
 | --- | --- |
-| `/model` | Switch provider, model, and reasoning effort. |
+| `/model` | Switch provider, model, and reasoning effort when supported. |
 | `/resume`, `/fork <task>` | Resume or branch from earlier work. |
 | `/mcp`, `/skills` | Manage active MCP servers and global Skills. |
 | `/memory` | View or consolidate durable project/global memory. |
@@ -168,6 +168,7 @@ Read [Configuration and installation](docs/configuration.md) for the complete se
 - [Skills and system prompt](docs/skills-and-prompt.md)
 - [DeepSeek provider](docs/deepseek-provider.md)
 - [OpenAI Codex provider](docs/openai-codex-provider.md)
+- [Custom OpenAI-compatible provider](docs/custom-provider.md)
 - [Terminal-Bench evaluation](docs/terminal-bench.md)
 
 ## Development

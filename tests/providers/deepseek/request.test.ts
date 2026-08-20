@@ -89,7 +89,6 @@ describe("buildDeepSeekRequest", () => {
       {
         provider: "deepseek",
         model: "deepseek-v4-flash",
-        thinking: true,
         reasoningEffort: "max",
         webSearch: true,
         maxTokens: 32_768,
@@ -173,7 +172,7 @@ describe("buildDeepSeekRequest", () => {
     expect(JSON.stringify(request)).not.toContain("private-image-bytes");
   });
 
-  test("disables thinking and hosted search without removing client function tools", () => {
+  test("uses none reasoning and disables hosted search without removing client function tools", () => {
     const request = buildDeepSeekRequest(
       {
         messages: [
@@ -194,7 +193,7 @@ describe("buildDeepSeekRequest", () => {
       {
         provider: "deepseek",
         model: "deepseek-v4-flash",
-        thinking: false,
+        reasoningEffort: "none",
         webSearch: false,
         toolChoice: { type: "function", function: { name: "read" } },
       },

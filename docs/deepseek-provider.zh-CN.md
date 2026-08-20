@@ -1,6 +1,6 @@
 # DeepSeek 提供商适配
 
-Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek`。V4 Flash 和 V4 Pro 现在都只使用 Responses API，并把流式输出恢复为相同的有序助手内容。
+Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。V4 Flash 和 V4 Pro 现在都只使用 Responses API，并把流式输出恢复为相同的有序助手内容。
 
 ## 模型与元数据
 
@@ -14,6 +14,8 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 | `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 |
 
 构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与用户的 `web_search` 配置分开记录。TUI 使用元数据计算上下文使用率。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。Kana 有意不内置 provider 价格，实际费用以 DeepSeek 账单为准。
+
+两个模型都通过通用 reasoning metadata 暴露 `none`、`low`、`high` 和 `max`。`model.deepseek.reasoning_effort = "none"` 会关闭推理；此前独立的 `thinking` 开关不再属于配置或请求约定。
 
 ## 请求转换
 
@@ -43,7 +45,6 @@ Kana 的产品配置当前使用 DeepSeek；实现位于 `src/providers/deepseek
 | `temperature` | `temperature` |
 | `ModelContext.maxOutputTokens ?? maxTokens` | `max_output_tokens` |
 | `topP` | `top_p` |
-| `thinking = false` | `reasoning.effort = "none"` |
 | `reasoningEffort` | `reasoning.effort` |
 | `responseFormat` | `text.format` |
 | `userId` | `user` |
@@ -68,7 +69,7 @@ HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/
 
 ## 用量
 
-`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / effective context limit`，钳制在 0–100%；未配置 `agent.context_limit` 时，该分母才是 metadata context window。摘要请求的 usage 计入主运行累计用量，但不会替换最近正常模型请求的 context 百分比。
+`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / effective context limit`，钳制在 0–100%。该 effective limit 是 `agent.context_limit` 与模型 metadata context window 中较小的一个；未配置上限时直接使用 metadata。摘要请求的 usage 计入主运行累计用量，但不会替换最近正常模型请求的 context 百分比。
 
 ## 扩展注意点
 

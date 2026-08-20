@@ -8,13 +8,14 @@ import type {
   OpenAICodexReasoningEffort,
   OpenAICodexReasoningSummary,
 } from "@/providers";
+import { serializeKanaCustomProviderExample } from "./custom-provider";
 import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval-defaults";
 
-export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex"] as const;
+export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex", "custom"] as const;
 
 export type KanaModelProvider = (typeof KANA_MODEL_PROVIDERS)[number];
 
-export const KANA_DEEPSEEK_REASONING_EFFORTS = ["low", "high", "max"] as const;
+export const KANA_DEEPSEEK_REASONING_EFFORTS = ["none", "low", "high", "max"] as const;
 
 export const KANA_OPENAI_CODEX_REASONING_EFFORTS = [
   "low",
@@ -31,7 +32,6 @@ type KanaProviderConfig = {
 export type KanaDeepSeekModelConfig = {
   name: string;
   apiKeyEnv: string;
-  thinking: boolean;
   reasoningEffort: DeepSeekReasoningEffort;
   webSearch: boolean;
   imageInput?: boolean;
@@ -51,9 +51,15 @@ export type KanaOpenAICodexModelConfig = {
   maxRetries: number;
 };
 
+type KanaCustomModelConfig = {
+  name: string;
+  reasoningEffort?: string;
+};
+
 export type KanaModelConfigMap = {
   deepseek: KanaDeepSeekModelConfig;
   "openai-codex": KanaOpenAICodexModelConfig;
+  custom: KanaCustomModelConfig;
 };
 
 type KanaAgentConfig = {
@@ -127,6 +133,9 @@ export type KanaConfigPaths = {
   accountingPath: string;
   approvalsPath: string;
   skillsConfigPath: string;
+  providersDirectory: string;
+  customProviderPath: string;
+  customProviderExamplePath: string;
 };
 
 export type InstallKanaConfigResult = {
@@ -142,6 +151,8 @@ export type InstallKanaConfigResult = {
   approvalsStatus: "created" | "exists";
   skillsConfigPath: string;
   skillsConfigStatus: "created" | "exists";
+  customProviderExamplePath: string;
+  customProviderExampleStatus: "created" | "exists" | "updated";
 };
 
 export type ResetKanaConfigResult = {
@@ -162,7 +173,6 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     deepseek: {
       name: "deepseek-v4-pro",
       apiKeyEnv: "DEEPSEEK_API_KEY",
-      thinking: true,
       reasoningEffort: "high",
       webSearch: true,
       imageInput: false,
@@ -179,6 +189,10 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       maxTokens: 128_000,
       timeoutMs: 60_000,
       maxRetries: 1,
+    },
+    custom: {
+      name: "",
+      reasoningEffort: undefined,
     },
   },
   agent: {
@@ -230,6 +244,9 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
     accountingPath: path.join(home, "accounting"),
     approvalsPath: path.join(home, "approvals.json"),
     skillsConfigPath: path.join(home, "skills", "skills.toml"),
+    providersDirectory: path.join(home, "providers"),
+    customProviderPath: path.join(home, "providers", "custom.toml"),
+    customProviderExamplePath: path.join(home, "providers", "custom.example.toml"),
   };
 }
 
@@ -253,8 +270,11 @@ export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): Install
     mcpEnabledPath,
     approvalsPath,
     skillsConfigPath,
+    providersDirectory,
+    customProviderExamplePath,
   } = getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
+  mkdirSync(providersDirectory, { recursive: true });
 
   const configExists = existsSync(configPath);
 
@@ -280,6 +300,11 @@ export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): Install
     ),
     skillsConfigPath,
     skillsConfigStatus: installKanaFile(skillsConfigPath, serializeEmptySkillsConfig()),
+    customProviderExamplePath,
+    customProviderExampleStatus: writeGeneratedExample(
+      customProviderExamplePath,
+      serializeKanaCustomProviderExample(),
+    ),
   };
 }
 
@@ -321,7 +346,6 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       deepseek: {
         name: config.model.deepseek.name,
         api_key_env: config.model.deepseek.apiKeyEnv,
-        thinking: config.model.deepseek.thinking,
         reasoning_effort: config.model.deepseek.reasoningEffort,
         web_search: config.model.deepseek.webSearch,
         image_input: config.model.deepseek.imageInput,
@@ -338,6 +362,10 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
         max_tokens: config.model["openai-codex"].maxTokens,
         timeout_ms: config.model["openai-codex"].timeoutMs,
         max_retries: config.model["openai-codex"].maxRetries,
+      },
+      custom: {
+        name: config.model.custom.name || undefined,
+        reasoning_effort: config.model.custom.reasoningEffort,
       },
     },
     agent: {
@@ -388,6 +416,11 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `name = "${config.model["openai-codex"].name}"`,
     ...serializeOpenAICodexModel(config.model["openai-codex"]),
     "",
+    "# Custom model definitions live in providers/custom.toml.",
+    "# [model.custom]",
+    '# name = "my-model"',
+    '# reasoning_effort = "medium"',
+    "",
     "[agent]",
     `max_turns = ${config.agent.maxTurns}`,
     `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
@@ -433,17 +466,24 @@ function writeGeneratedConfigExample(
   configExamplePath: string,
 ): InstallKanaConfigResult["configExampleStatus"] {
   const content = serializeKanaConfigExample(DEFAULT_KANA_CONFIG);
-  if (!existsSync(configExamplePath)) {
-    writeKanaFile(configExamplePath, content);
+  return writeGeneratedExample(configExamplePath, content);
+}
+
+function writeGeneratedExample(
+  filePath: string,
+  content: string,
+): "created" | "exists" | "updated" {
+  if (!existsSync(filePath)) {
+    writeKanaFile(filePath, content);
     return "created";
   }
-  if (readFileSync(configExamplePath, "utf8") === content) {
+  if (readFileSync(filePath, "utf8") === content) {
     return "exists";
   }
 
   // The example is generated reference material rather than user configuration,
   // so refreshing it is safe and keeps upgrades aligned with the current schema.
-  writeKanaFile(configExamplePath, content);
+  writeKanaFile(filePath, content);
   return "updated";
 }
 
@@ -470,6 +510,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       ? (legacyModel ?? readModelTable(model, "deepseek"))
       : readModelTable(model, "deepseek");
   const openAICodexModel = readModelTable(model, "openai-codex");
+  const customModel = readModelTable(model, "custom");
   const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
   const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
   const notification =
@@ -477,6 +518,14 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const tui = raw.tui === undefined ? {} : asRecord(raw.tui, "tui");
   const memory = raw.memory === undefined ? {} : asRecord(raw.memory, "memory");
   const logging = raw.logging === undefined ? {} : asRecord(raw.logging, "logging");
+  const customModelName = readOptionalString(
+    customModel.name,
+    defaults.model.custom.name,
+    "model.custom.name",
+  );
+  if (activeProvider === "custom" && !customModelName) {
+    throw new Error("model.custom.name is required when provider.active is custom.");
+  }
 
   return {
     provider: {
@@ -489,11 +538,6 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           deepSeekModel.api_key_env,
           defaults.model.deepseek.apiKeyEnv,
           "model.deepseek.api_key_env",
-        ),
-        thinking: readBoolean(
-          deepSeekModel.thinking,
-          defaults.model.deepseek.thinking,
-          "model.deepseek.thinking",
         ),
         reasoningEffort: readDeepSeekReasoningEffort(
           deepSeekModel.reasoning_effort,
@@ -563,6 +607,14 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           openAICodexModel.max_retries,
           defaults.model["openai-codex"].maxRetries,
           "model.openai-codex.max_retries",
+        ),
+      },
+      custom: {
+        name: customModelName ?? "",
+        reasoningEffort: readOptionalString(
+          customModel.reasoning_effort,
+          defaults.model.custom.reasoningEffort,
+          "model.custom.reasoning_effort",
         ),
       },
     },
@@ -643,7 +695,6 @@ export function getActiveKanaModelConfig<TProvider extends KanaModelProvider>(
 function serializeDeepSeekModel(config: KanaDeepSeekModelConfig): string[] {
   return [
     `api_key_env = "${config.apiKeyEnv}"`,
-    `thinking = ${config.thinking}`,
     `reasoning_effort = "${config.reasoningEffort}"`,
     `web_search = ${config.webSearch}`,
     `image_input = ${config.imageInput ?? false}`,
@@ -701,6 +752,20 @@ function readString(value: unknown, fallback: string, name: string): string {
     throw new Error(`${name} must be a non-empty string.`);
   }
 
+  return value;
+}
+
+function readOptionalString(
+  value: unknown,
+  fallback: string | undefined,
+  name: string,
+): string | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${name} must be a non-empty string.`);
+  }
   return value;
 }
 

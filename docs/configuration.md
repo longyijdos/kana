@@ -58,11 +58,11 @@ kana auth logout openai-codex
 
 `--clean` applies only to a new TUI or `exec` session; combining it with `resume` or `exec resume` fails at the corresponding frontend startup boundary. It creates a temporary session that exists only in the current process: no session journal, session logger, or accounting record is created, and the session never appears in the resume list. Clean mode does not read global or project `AGENTS.md`, global/project memory, global or project Skills, or MCP definitions and activation state; it does not register `remember`, start memory consolidation, or connect to MCP servers. Kana still loads `<KANA_HOME>/.env` and `config.toml`, retaining the current provider/model, Agent runtime settings, OAuth credentials, approval rules, and notifications. Core file/Shell tools and the TUI's in-process `schedule_wake` remain available. `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable in the TUI. `/model` validates and switches the current Agent without writing `config.toml`. Clean mode is not a file/process sandbox: built-in tools, providers, approval flows, and authentication flows can still produce their normal external side effects.
 
-`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` is a Kana-managed generated reference: install compares it with the current schema and creates or refreshes it only when missing or stale. Runtime never reads this file, so copy only fields being overridden into `config.toml`. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
+`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` and `providers/custom.example.toml` are Kana-managed generated references: install compares them with the current schema and creates or refreshes them only when missing or stale. Runtime never reads either example, so copy only fields being overridden into `config.toml` and copy the Custom example to `providers/custom.toml` before editing it. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
 
 `kana update --check` reads version metadata for GitHub's latest stable Release without downloading or modifying the binary. `kana update` selects the asset for the current operating system and architecture, verifies its reported size and SHA-256 digest, and runs both `--version` and the idempotent `kana install` through the candidate binary. Only after the candidate version, support-file initialization, and current executable identity all pass validation does a same-directory temporary file atomically replace the executable. Failure removes the temporary file and preserves the original binary; Kana also refuses to overwrite a target replaced by another installer while the download was in flight. Updating supports macOS/Linux on arm64 and x64, inherits Bun `fetch` handling of `HTTP_PROXY`/`HTTPS_PROXY`, and requires a writable installation directory. Source run directly through Bun has no direct-distribution build marker and therefore refuses self-update; standalone binaries built by `scripts/install.sh`, `bun run build:cli`, and the Release workflow include that marker.
 
-`kana reset` restores configuration to the state produced by a clean install. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
+`kana reset` restores the main runtime configuration to its defaults. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `providers/custom.toml`, `providers/custom.example.toml`, `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. `kana skills install` clones it when absent and runs `git pull --ff-only` for an existing Git checkout. An existing non-Git directory fails with a prompt to use `kana skills reinstall`. After confirmation, reinstall deletes only the complete default repository directory and clones it again, preserving the sibling `skills.toml` and all other installed Skills. Non-interactive use requires `--yes`.
 
@@ -77,6 +77,9 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── .env                    # Optional environment variables loaded at startup
 ├── config.toml             # Optional runtime configuration; absence uses built-in defaults
 ├── config.example.toml     # Complete install-generated reference; never read at runtime
+├── providers/
+│   ├── custom.toml         # Optional Custom OpenAI-compatible provider definition
+│   └── custom.example.toml # Install-generated Custom reference; never read at runtime
 ├── mcp.json                # MCP server definitions
 ├── mcp-enabled.json        # Enabled MCP server IDs
 ├── oauth-tokens.json       # OAuth credentials created after browser authorization
@@ -109,13 +112,17 @@ active = "deepseek"
 [model.deepseek]
 name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
-thinking = true
 reasoning_effort = "high"
 web_search = true
 image_input = false
 max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
+
+# Custom model definitions live in providers/custom.toml.
+# [model.custom]
+# name = "my-model"
+# reasoning_effort = "medium"
 
 [model.openai-codex]
 name = "gpt-5.6-sol"
@@ -163,7 +170,7 @@ level = "info"
 
 | Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `active` | `deepseek` or `openai-codex` | `deepseek` | Provider used by the main Agent, memory consolidation, and context compaction. |
+| `active` | `deepseek`, `openai-codex`, or `custom` | `deepseek` | Provider used by the main Agent, memory consolidation, and context compaction. |
 
 ### `[model.deepseek]`
 
@@ -171,8 +178,7 @@ level = "info"
 | --- | --- | --- | --- |
 | `name` | Non-empty string | `deepseek-v4-pro` | Model name; runtime rejects names outside DeepSeek's metadata table. |
 | `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
-| `thinking` | Boolean | `true` | Controls DeepSeek thinking. `false` selects Responses effort `none` for both V4 Flash and V4 Pro. |
-| `reasoning_effort` | `low`, `high`, or `max` | `high` | DeepSeek reasoning effort used while thinking is enabled. |
+| `reasoning_effort` | `none`, `low`, `high`, or `max` | `high` | DeepSeek Responses reasoning effort. `none` disables reasoning. |
 | `web_search` | Boolean | `true` | Advertises DeepSeek's hosted `web_search` tool when the selected model metadata supports it. Both current V4 models use Responses and support this hosted tool; `false` omits only the hosted tool. |
 | `image_input` | Boolean | `false` | Allows image attachment delivery only when the selected model metadata also supports image input. Current DeepSeek models are text-only, so this reserved setting cannot enable images by itself. |
 | `max_tokens` | Positive integer | `384000` | Allowed per-request output-token ceiling; it cannot exceed the selected model's hard limit. The Agent lowers the value sent for each turn when the current prompt leaves less space. |
@@ -200,6 +206,17 @@ export DEEPSEEK_API_KEY='sk-...'
 
 Before first use, run `kana auth login openai-codex`. Browser authorization stores the access token, refresh token, ID token, and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Credentials refresh before expiry; the model request also refreshes and retries once after its first `401`. `status` reports only authorization state, refreshability, and expiry, never token values. See [OpenAI Codex provider adapter](openai-codex-provider.md) for the complete protocol mapping.
 
+### `[model.custom]`
+
+The main config stores only the selected Custom model and optional reasoning override:
+
+| Key | Type and allowed values | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | Non-empty string | Unset | Model selected from `<KANA_HOME>/providers/custom.toml`; required while `provider.active = "custom"`. |
+| `reasoning_effort` | A value advertised by the selected model | Model definition default | Optional override persisted by `/model`. |
+
+Endpoint, authentication, model metadata, and reasoning capabilities remain in `providers/custom.toml`. See [Custom OpenAI-compatible provider](custom-provider.md) for the schema, minimal configuration, protocol, and security rules.
+
 ### Other tables
 
 | Table and key | Type and allowed values | Default | Meaning |
@@ -207,7 +224,7 @@ Before first use, run `kana auth login openai-codex`. Browser authorization stor
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
 | `agent.tool_deadline_ms` | Positive integer | `660000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
 | `agent.parallel_tool_calls` | Boolean | `true` | Whether the model may propose and actually execute safe tool calls concurrently; always disabled when selected-model metadata does not support it. |
-| `agent.context_limit` | Optional positive integer | model metadata context window | Context limit the Agent actually uses; it cannot exceed the selected model's hard limit, and omission uses metadata. |
+| `agent.context_limit` | Optional positive integer | model metadata context window | Provider-independent context cap; the Agent uses the smaller of this value and the selected model's context window. |
 | `approval.mode` | `always`, `unless_trusted`, `never` | `unless_trusted` | Whether tool calls enter the TUI approval flow. |
 | `notification.backend` | `auto`, `off`, `bell`, `osc9`, `osc777`, `kitty` | `auto` | Terminal-notification output protocol. `auto` detects Kitty, iTerm, Ghostty, then VTE, otherwise falls back to bell. |
 | `notification.on_agent_completed` | Boolean | `true` | Notify when an Agent run completes normally. Aborted, failed, length-truncated, and `turn_limit` runs are not completion. |
@@ -228,7 +245,7 @@ Before first use, run `kana auth login openai-codex`. Browser authorization stor
 
 ### Context budget
 
-Kana uses `agent.context_limit` to calculate its automatic context-compaction budget; when omitted, it falls back to the selected model metadata's context window. The configured value cannot exceed metadata, but it need not be greater than the active provider's `model.<provider>.max_tokens`. The effective prompt budget and per-turn output ceiling are:
+Kana uses `agent.context_limit` to calculate its automatic context-compaction budget. The effective context limit is `min(agent.context_limit, model context window)`; when omitted it is the selected model metadata's context window. This makes one global cap safe when switching between models with different windows. The effective prompt budget and per-turn output ceiling are:
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)

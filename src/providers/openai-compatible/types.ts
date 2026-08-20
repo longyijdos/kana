@@ -4,6 +4,7 @@ import type { Logger } from "@/logging";
 export type OpenAICompatibleModelConfig = Omit<ModelConfig, "baseUrl"> & {
   baseUrl: string;
   metadata: Omit<ModelMetadata, "provider" | "model" | "protocol">;
+  reasoningEffort?: string;
   logger?: Logger;
 };
 

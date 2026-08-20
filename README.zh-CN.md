@@ -54,7 +54,7 @@ kana auth login openai-codex
 active = "openai-codex"
 ```
 
-之后可随时通过 `/model` 切换供应商、模型和推理强度。
+之后可随时通过 `/model` 切换供应商、模型和支持的推理强度。本地或托管的兼容 endpoint 可使用静态的[自定义 OpenAI-compatible 提供商](docs/custom-provider.zh-CN.md)槽位。
 
 ## 为什么选择 Kana
 
@@ -95,7 +95,7 @@ TUI 中的常用命令：
 
 | 命令 | 作用 |
 | --- | --- |
-| `/model` | 切换供应商、模型和推理强度。 |
+| `/model` | 切换供应商、模型以及模型支持的推理强度。 |
 | `/resume`、`/fork <任务>` | 恢复旧会话，或从当前上下文分叉。 |
 | `/mcp`、`/skills` | 管理当前启用的 MCP server 和全局 Skills。 |
 | `/memory` | 查看或整理 project/global 长期记忆。 |
@@ -168,6 +168,7 @@ kana update
 - [Skills 与系统提示词](docs/skills-and-prompt.zh-CN.md)
 - [DeepSeek 提供商](docs/deepseek-provider.zh-CN.md)
 - [OpenAI Codex 提供商](docs/openai-codex-provider.zh-CN.md)
+- [自定义 OpenAI-compatible 提供商](docs/custom-provider.zh-CN.md)
 - [Terminal-Bench 评测](docs/terminal-bench.zh-CN.md)
 
 ## 开发

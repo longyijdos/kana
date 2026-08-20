@@ -58,11 +58,11 @@ kana auth logout openai-codex
 
 `--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、OAuth 凭据、审批规则与通知，也继续提供核心文件/Shell 工具和 TUI 的进程内 `schedule_wake`。TUI 中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume`、`/delete` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
 
-`kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取它，需要覆盖默认值时只把相应字段复制到 `config.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
+`kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 和 `providers/custom.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取这两个 example，需要覆盖默认值时只把相应字段复制到 `config.toml`，并在编辑前把 Custom example 复制为 `providers/custom.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
 
 `kana update --check` 读取 GitHub 最新正式 Release 的版本元数据，不下载或修改二进制。`kana update` 根据当前操作系统和架构下载对应资产，检查 Release 元数据中的文件大小和 SHA-256 digest，然后让候选二进制依次执行 `--version` 与幂等的 `kana install`；候选版本、支持文件初始化和当前可执行文件身份全部验证成功后，才通过同目录临时文件原子替换当前二进制。失败会删除临时文件并保留原二进制；如果另一个安装进程在下载期间已经替换目标，也会拒绝覆盖。更新支持 macOS/Linux 的 arm64、x64，沿用 Bun `fetch` 对 `HTTP_PROXY`/`HTTPS_PROXY` 的处理，且要求安装目录可写。直接通过 Bun 运行源码没有 direct distribution 构建标记，因此会拒绝自更新；`scripts/install.sh`、`bun run build:cli` 和正式 Release 构建的独立二进制包含该标记。
 
-`kana reset` 将配置恢复到纯净 install 状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
+`kana reset` 将主运行配置恢复到默认状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `providers/custom.toml`、`providers/custom.example.toml`、`oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。`kana skills install` 在目录不存在时 clone，已有 Git 仓库时执行 `git pull --ff-only`；已有目录不是 Git 仓库时失败并提示使用 `kana skills reinstall`。reinstall 会在确认后只删除整个默认仓库目录并重新 clone，保留相邻的 `skills.toml` 和其它实际 Skills；非交互环境同样要求 `--yes`。
 
@@ -77,6 +77,9 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── .env                    # 可选：启动时加载的环境变量
 ├── config.toml             # 可选：本文的运行配置；缺失时使用内置默认值
 ├── config.example.toml     # install 生成的完整配置参考；运行时不读取
+├── providers/
+│   ├── custom.toml         # 可选：Custom OpenAI-compatible 供应商定义
+│   └── custom.example.toml # install 生成的 Custom 参考；运行时不读取
 ├── mcp.json                # MCP server 定义
 ├── mcp-enabled.json        # 已启用的 MCP server ID
 ├── oauth-tokens.json       # 浏览器授权后创建的 OAuth 凭据
@@ -109,13 +112,17 @@ active = "deepseek"
 [model.deepseek]
 name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
-thinking = true
 reasoning_effort = "high"
 web_search = true
 image_input = false
 max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
+
+# Custom 模型定义保存在 providers/custom.toml。
+# [model.custom]
+# name = "my-model"
+# reasoning_effort = "medium"
 
 [model.openai-codex]
 name = "gpt-5.6-sol"
@@ -163,7 +170,7 @@ level = "info"
 
 | 键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `active` | `deepseek` 或 `openai-codex` | `deepseek` | 当前用于主 Agent、记忆压缩和上下文压缩的模型供应商。 |
+| `active` | `deepseek`、`openai-codex` 或 `custom` | `deepseek` | 当前用于主 Agent、记忆压缩和上下文压缩的模型供应商。 |
 
 ### `[model.deepseek]`
 
@@ -171,8 +178,7 @@ level = "info"
 | --- | --- | --- | --- |
 | `name` | 非空字符串 | `deepseek-v4-pro` | 模型名；运行时会拒绝不在 DeepSeek 元数据表中的模型。 |
 | `api_key_env` | 非空字符串 | `DEEPSEEK_API_KEY` | 保存 API key 的环境变量名；key 不写入 TOML。 |
-| `thinking` | 布尔值 | `true` | 控制 DeepSeek thinking。设为 `false` 时，V4 Flash 和 V4 Pro 都选择 Responses effort `none`。 |
-| `reasoning_effort` | `low`、`high` 或 `max` | `high` | 启用 thinking 时使用的 DeepSeek 推理强度。 |
+| `reasoning_effort` | `none`、`low`、`high` 或 `max` | `high` | DeepSeek Responses 推理强度；`none` 表示关闭推理。 |
 | `web_search` | 布尔值 | `true` | 所选模型 metadata 支持时，声明 DeepSeek 托管的 `web_search` 工具。当前两个 V4 模型都使用 Responses 并支持该托管工具；设为 `false` 只会移除托管工具。 |
 | `image_input` | 布尔值 | `false` | 仅在所选模型 metadata 同时支持图片输入时允许传递图片附件。当前 DeepSeek 模型均为纯文本模型，因此这个预留配置本身不能开启图片。 |
 | `max_tokens` | 正整数 | `384000` | 单个请求允许的输出 token 上限；不能超过所选模型的硬上限。Agent 会按当前 prompt 剩余空间逐轮下调实际发送值。 |
@@ -200,6 +206,17 @@ export DEEPSEEK_API_KEY='sk-...'
 
 首次使用前运行 `kana auth login openai-codex`。浏览器授权得到的 access token、refresh token、ID token 与绑定信息保存在权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`；到期前会自动 refresh，模型请求收到首个 `401` 时也会 refresh 并重试一次。`status` 只显示授权状态、是否可刷新和到期时间，不显示 token。完整协议映射见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
 
+### `[model.custom]`
+
+主配置只保存所选 Custom 模型和可选的推理覆盖值：
+
+| 键 | 类型与可选值 | 默认值 | 含义 |
+| --- | --- | --- | --- |
+| `name` | 非空字符串 | 未设置 | 从 `<KANA_HOME>/providers/custom.toml` 选择的模型；`provider.active = "custom"` 时必需。 |
+| `reasoning_effort` | 所选模型声明的值 | 模型定义中的默认值 | `/model` 可持久化的可选覆盖值。 |
+
+Endpoint、鉴权、模型 metadata 和推理能力仍保存在 `providers/custom.toml`。完整 schema、最小配置、协议和安全规则见[自定义 OpenAI-compatible 提供商](custom-provider.zh-CN.md)。
+
 ### 其他配置表
 
 | 表与键 | 类型与可选值 | 默认值 | 含义 |
@@ -207,7 +224,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
 | `agent.tool_deadline_ms` | 正整数 | `660000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
 | `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
-| `agent.context_limit` | 可选正整数 | 模型 metadata 的 context window | Agent 实际使用的上下文上限；不能超过所选模型的硬上限，省略时使用 metadata。 |
+| `agent.context_limit` | 可选正整数 | 模型 metadata 的 context window | 与供应商无关的上下文上限；Agent 使用该值与所选模型 context window 中较小的一个。 |
 | `approval.mode` | `always`、`unless_trusted`、`never` | `unless_trusted` | 工具调用是否进入 TUI 审批。 |
 | `notification.backend` | `auto`、`off`、`bell`、`osc9`、`osc777`、`kitty` | `auto` | 终端通知输出协议。`auto` 依次识别 Kitty、iTerm、Ghostty、VTE，否则退回 bell。 |
 | `notification.on_agent_completed` | 布尔值 | `true` | 正常完成的 Agent 运行是否通知。中止、错误、长度截断或 `turn_limit` 不会视作完成。 |
@@ -228,7 +245,7 @@ export DEEPSEEK_API_KEY='sk-...'
 
 ### 上下文预算
 
-Kana 用 `agent.context_limit` 计算自动上下文压缩预算；未配置时回退到所选模型 metadata 的 context window。配置值不能超过 metadata，但不需要大于当前供应商的 `model.<provider>.max_tokens`。实际 prompt 预算和逐轮输出上限为：
+Kana 用 `agent.context_limit` 计算自动上下文压缩预算。实际 context limit 为 `min(agent.context_limit, 模型 context window)`；未配置时使用所选模型 metadata 的 context window。这样在不同窗口模型之间切换时，同一个全局上限仍然有效。实际 prompt 预算和逐轮输出上限为：
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)

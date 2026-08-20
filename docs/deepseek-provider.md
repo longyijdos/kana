@@ -1,6 +1,6 @@
 # DeepSeek provider adapter
 
-Kana's product configuration currently uses DeepSeek; its adapter lives in `src/providers/deepseek`. Both V4 Flash and V4 Pro use the Responses API exclusively and reconstruct streaming output into the same ordered assistant content.
+Kana's built-in DeepSeek adapter lives in `src/providers/deepseek`. Both V4 Flash and V4 Pro use the Responses API exclusively and reconstruct streaming output into the same ordered assistant content.
 
 ## Model and metadata
 
@@ -14,6 +14,8 @@ Current built-in metadata:
 | `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported |
 
 Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the user's `web_search` setting. The TUI uses metadata for context percentage. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting. Kana intentionally does not embed provider pricing; actual charges come from DeepSeek billing.
+
+Both models expose `none`, `low`, `high`, and `max` through common reasoning metadata. `model.deepseek.reasoning_effort = "none"` disables reasoning; the previous separate `thinking` switch is no longer part of the configuration or request contract.
 
 ## Request conversion
 
@@ -43,7 +45,6 @@ Provided optional configuration maps as follows:
 | `temperature` | `temperature` |
 | `ModelContext.maxOutputTokens ?? maxTokens` | `max_output_tokens` |
 | `topP` | `top_p` |
-| `thinking = false` | `reasoning.effort = "none"` |
 | `reasoningEffort` | `reasoning.effort` |
 | `responseFormat` | `text.format` |
 | `userId` | `user` |
@@ -68,7 +69,7 @@ Both V4 models use the shared `src/providers/responses` semantic SSE processor a
 
 ## Usage
 
-`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%; only an unset `agent.context_limit` uses the metadata context window. Summary-request usage contributes to main-run accumulated usage without replacing the latest normal model request's context percentage.
+`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%. That effective limit is the smaller of `agent.context_limit` and the model metadata context window, or the metadata window when no cap is configured. Summary-request usage contributes to main-run accumulated usage without replacing the latest normal model request's context percentage.
 
 ## Extension notes
 

@@ -78,7 +78,7 @@ describe("Kana config store", () => {
 
     store.update((draft) => {
       draft.model.deepseek.name = "deepseek-v4-flash";
-      draft.model.deepseek.thinking = false;
+      draft.model.deepseek.reasoningEffort = "none";
       draft.model.deepseek.webSearch = false;
       draft.model.deepseek.imageInput = true;
       draft.agent.toolDeadlineMs = 120_000;
@@ -94,7 +94,7 @@ describe("Kana config store", () => {
     const updated = readFileSync(configPath, "utf8");
     expect(updated).toContain("# keep this comment");
     expect(updated).toContain('name = "deepseek-v4-flash"');
-    expect(updated).toContain("thinking = false");
+    expect(updated).toContain('reasoning_effort = "none"');
     expect(updated).toContain("web_search = false");
     expect(updated).toContain("image_input = true");
     expect(updated).toContain("tool_deadline_ms = 120000");
@@ -105,6 +105,31 @@ describe("Kana config store", () => {
     expect(updated).not.toContain("context_limit");
     expect(updated).toContain('[custom]\nvalue = "untouched"');
     expect(readdirSync(home).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+  });
+
+  test("persists only the selected Custom model fields", () => {
+    const env = createTempEnv();
+    const store = createKanaConfigStore(env);
+    const { configPath } = getKanaConfigPaths(env);
+
+    const config = store.update((draft) => {
+      draft.provider.active = "custom";
+      draft.model.custom.name = "local-model";
+      draft.model.custom.reasoningEffort = "high";
+    });
+
+    expect(readFileSync(configPath, "utf8")).toBe(
+      [
+        "[provider]",
+        'active = "custom"',
+        "",
+        "[model.custom]",
+        'name = "local-model"',
+        'reasoning_effort = "high"',
+        "",
+      ].join("\n"),
+    );
+    expect(config.model.custom).toEqual({ name: "local-model", reasoningEffort: "high" });
   });
 
   test("leaves the original document untouched when validation fails", () => {

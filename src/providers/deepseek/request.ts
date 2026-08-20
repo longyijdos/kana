@@ -31,9 +31,7 @@ export function buildDeepSeekRequest(
     request.top_p = config.topP;
   }
 
-  if (config.thinking === false) {
-    request.reasoning = { effort: "none" };
-  } else if (config.reasoningEffort !== undefined) {
+  if (config.reasoningEffort !== undefined) {
     request.reasoning = { effort: config.reasoningEffort };
   }
 

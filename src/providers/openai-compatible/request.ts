@@ -18,6 +18,9 @@ export function buildOpenAICompatibleRequest(
   if (maxTokens !== undefined) {
     request.max_tokens = maxTokens;
   }
+  if (config.reasoningEffort !== undefined) {
+    request.reasoning_effort = config.reasoningEffort;
+  }
   if (context.tools?.length) {
     request.tools = context.tools.map(toTool);
     request.tool_choice = "auto";

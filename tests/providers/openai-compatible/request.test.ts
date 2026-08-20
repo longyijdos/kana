@@ -51,7 +51,7 @@ describe("buildOpenAICompatibleRequest", () => {
         parallelToolCalls: true,
         maxOutputTokens: 12_345,
       },
-      createConfig(),
+      createConfig({ reasoningEffort: "high" }),
     );
 
     expect(request).toEqual({
@@ -75,6 +75,7 @@ describe("buildOpenAICompatibleRequest", () => {
       stream: true,
       stream_options: { include_usage: true },
       max_tokens: 12_345,
+      reasoning_effort: "high",
       tools: [
         {
           type: "function",
