@@ -95,7 +95,7 @@ export class SessionLifecycleController {
     this.initializeTranscript([]);
     this.options.updateContextUsage();
     this.options.updateStatus("idle");
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   async fork(prompt: string): Promise<void> {
@@ -154,7 +154,7 @@ export class SessionLifecycleController {
       this.options.showError(error);
       this.overlay.close();
       this.options.tui.setFocus(this.options.editor);
-      this.options.tui.requestRender(true);
+      this.options.tui.requestRender();
       return;
     }
 
@@ -168,7 +168,7 @@ export class SessionLifecycleController {
     this.options.updateContextUsage();
     this.options.updateStatus("idle");
     this.options.tui.setFocus(this.options.editor);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
     this.options.activateSession();
   }
 }

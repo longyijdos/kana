@@ -224,7 +224,7 @@ export class ScheduledMessageManagerController {
       this.options.showError(error);
       manager.replaceItems([], "Unable to load scheduled messages.");
     }
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private show(component: Component): void {
@@ -234,7 +234,7 @@ export class ScheduledMessageManagerController {
     this.activeBottom = component;
     this.options.layout.showBottom(component);
     this.options.tui.setFocus(component);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private returnToManager(): void {

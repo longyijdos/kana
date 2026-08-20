@@ -68,7 +68,7 @@ export class SessionOverlayController {
     this.activePicker = picker;
     this.options.layout.showBottom(picker);
     this.options.tui.setFocus(picker);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private finishResumePicker(decision: SessionPickerDecision): void {
@@ -101,7 +101,7 @@ export class SessionOverlayController {
     this.activeDeleteConfirmation = confirmation;
     this.options.layout.showBottom(confirmation);
     this.options.tui.setFocus(confirmation);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private finishDeleteConfirmation(session: KanaSessionMetadata, confirmed: boolean): void {

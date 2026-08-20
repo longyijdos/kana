@@ -5,6 +5,7 @@ import type { Terminal } from "./terminal";
 
 type InputListenerResult = { consume?: boolean; data?: string } | undefined;
 type InputListener = (data: string) => InputListenerResult;
+type ChangedRange = { first: number; last: number };
 const GOODBYE_MESSAGE = "Goodbye from Kana.";
 
 export class Tui extends Container {
@@ -18,7 +19,7 @@ export class Tui extends Container {
   private previousHeight = 0;
   private previousViewportTop = 0;
   private hardwareCursorRow = 0;
-  private forceFullRender = false;
+  private hasRendered = false;
   private renderRequested = false;
   private renderTimer?: ReturnType<typeof setTimeout>;
   private stopped = true;
@@ -29,11 +30,19 @@ export class Tui extends Container {
 
   start(): void {
     this.stopped = false;
+    this.hasRendered = false;
+    this.renderRequested = false;
     this.terminal.start(
       (data) => this.handleInput(data),
-      () => this.requestRender(true),
+      () => this.requestRender(),
     );
-    this.requestRender(true);
+    // Keep the first paint responsive while leaving full-redraw selection to
+    // renderNow(), just like every later declarative render request.
+    this.renderRequested = true;
+    queueMicrotask(() => {
+      this.renderRequested = false;
+      this.renderNow();
+    });
   }
 
   stop(message = GOODBYE_MESSAGE): void {
@@ -43,6 +52,7 @@ export class Tui extends Container {
       clearTimeout(this.renderTimer);
       this.renderTimer = undefined;
     }
+    this.renderRequested = false;
 
     this.terminal.stop();
     this.terminal.write(`\x1b[2J\x1b[H\x1b[3J${message}\r\n`);
@@ -64,19 +74,8 @@ export class Tui extends Container {
     };
   }
 
-  requestRender(force = false): void {
+  requestRender(): void {
     if (this.stopped) {
-      return;
-    }
-
-    if (force) {
-      this.forceFullRender = true;
-      this.renderRequested = false;
-      if (this.renderTimer) {
-        clearTimeout(this.renderTimer);
-        this.renderTimer = undefined;
-      }
-      queueMicrotask(() => this.renderNow());
       return;
     }
 
@@ -134,43 +133,47 @@ export class Tui extends Container {
     );
     const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
     const heightChanged = this.previousHeight !== 0 && this.previousHeight !== height;
-    const forceFullRender = this.forceFullRender;
 
-    this.forceFullRender = false;
     this.previousRenderedLines = rendered;
 
-    if (this.previousLines.length === 0) {
-      this.fullRender(lines, cursor, width, height, forceFullRender);
+    if (!this.hasRendered) {
+      this.fullRender(lines, cursor, width, height);
       return;
     }
 
-    if (forceFullRender || widthChanged || heightChanged) {
-      this.fullRender(lines, cursor, width, height, true);
+    if (widthChanged || heightChanged) {
+      this.fullRender(lines, cursor, width, height);
       return;
     }
 
     const changed = findChangedRange(this.previousLines, lines);
+    const grew = lines.length > this.previousLines.length;
+    const shrank = lines.length < this.previousLines.length;
 
-    if (!changed) {
+    if (!changed && !grew && !shrank) {
       this.positionHardwareCursor(cursor, width, height);
       this.previousWidth = width;
       this.previousHeight = height;
       return;
     }
 
-    if (lines.length < this.previousLines.length) {
-      this.fullRender(lines, cursor, width, height, true);
-      return;
-    }
-
-    if (changed.first < this.previousViewportTop) {
+    if (changed && changed.first < this.previousViewportTop) {
       // The changed line has already scrolled out of the visible working area.
       // Redraw the current screen instead of corrupting terminal scrollback.
-      this.fullRender(lines, cursor, width, height, true);
+      this.fullRender(lines, cursor, width, height);
       return;
     }
 
-    this.renderChangedLines(lines, changed.first, cursor, width, height);
+    const nextTail = Math.max(0, lines.length - 1);
+
+    if (shrank && nextTail < this.previousViewportTop) {
+      this.fullRender(lines, cursor, width, height);
+      return;
+    }
+
+    if (!this.renderChangedLines(lines, changed, cursor, width, height)) {
+      this.fullRender(lines, cursor, width, height);
+    }
   }
 
   private fullRender(
@@ -178,16 +181,9 @@ export class Tui extends Container {
     cursor: { row: number; column: number } | undefined,
     width: number,
     height: number,
-    clear: boolean,
   ): void {
     const viewportTop = viewportTopFor(lines.length, height);
-    let buffer = "\x1b[?2026h\x1b[?25l";
-
-    if (clear) {
-      buffer += "\x1b[2J\x1b[H\x1b[3J";
-    }
-
-    buffer += lines.join("\r\n");
+    let buffer = `\x1b[?2026h\x1b[?25l\x1b[2J\x1b[H\x1b[3J${lines.join("\r\n")}`;
 
     this.previousViewportTop = viewportTop;
 
@@ -203,6 +199,7 @@ export class Tui extends Container {
 
     this.terminal.write(buffer);
     this.hardwareCursorRow = positioned.row;
+    this.hasRendered = true;
     this.previousLines = lines;
     this.previousWidth = width;
     this.previousHeight = height;
@@ -210,51 +207,95 @@ export class Tui extends Container {
 
   private renderChangedLines(
     lines: string[],
-    firstChanged: number,
+    changed: ChangedRange | undefined,
     cursor: { row: number; column: number } | undefined,
     width: number,
     height: number,
-  ): void {
+  ): boolean {
+    const previousLineCount = this.previousLines.length;
     const previousViewportBottom = this.previousViewportTop + height - 1;
-    const appendOnly =
-      lines.length > this.previousLines.length &&
-      firstChanged === this.previousLines.length &&
-      firstChanged > 0;
-    const moveTarget = appendOnly ? firstChanged - 1 : firstChanged;
+    const isAddressable = (row: number) =>
+      row >= this.previousViewportTop && row <= previousViewportBottom;
 
-    if (moveTarget < this.previousViewportTop || moveTarget > previousViewportBottom) {
-      this.fullRender(lines, cursor, width, height, true);
-      return;
+    if (!isAddressable(this.hardwareCursorRow)) {
+      return false;
+    }
+
+    if (changed && (!isAddressable(changed.first) || !isAddressable(changed.last))) {
+      return false;
+    }
+
+    if (lines.length > previousLineCount) {
+      const appendAnchor = Math.max(0, previousLineCount - 1);
+
+      if (!isAddressable(appendAnchor)) {
+        return false;
+      }
+    }
+
+    if (lines.length < previousLineCount && !isAddressable(lines.length)) {
+      return false;
     }
 
     let buffer = "\x1b[?2026h\x1b[?25l";
-    const rowDelta = moveTarget - this.hardwareCursorRow;
+    let currentRow = this.hardwareCursorRow;
 
-    if (rowDelta > 0) {
-      buffer += `\x1b[${rowDelta}B`;
-    } else if (rowDelta < 0) {
-      buffer += `\x1b[${-rowDelta}A`;
-    }
+    if (changed) {
+      buffer = moveToRow(buffer, currentRow, changed.first);
+      buffer += "\r";
 
-    buffer += appendOnly ? "\r\n" : "\r";
+      for (let index = changed.first; index <= changed.last; index += 1) {
+        if (index > changed.first) {
+          buffer += "\r\n";
+        }
 
-    for (let index = firstChanged; index < lines.length; index += 1) {
-      if (index > firstChanged) {
-        buffer += "\r\n";
+        buffer += `\x1b[2K${lines[index]}`;
       }
 
-      buffer += `\x1b[2K${lines[index]}`;
+      currentRow = changed.last;
     }
 
-    this.previousViewportTop = viewportTopFor(lines.length, height);
+    if (lines.length > previousLineCount) {
+      const appendAnchor = Math.max(0, previousLineCount - 1);
+      buffer = moveToRow(buffer, currentRow, appendAnchor);
+      buffer += previousLineCount === 0 ? "\r" : "\r\n";
 
-    const positioned = this.appendHardwareCursorPosition(
-      buffer,
-      cursor,
-      Math.max(0, lines.length - 1),
-      width,
-      height,
-    );
+      for (let index = previousLineCount; index < lines.length; index += 1) {
+        if (index > previousLineCount) {
+          buffer += "\r\n";
+        }
+
+        buffer += `\x1b[2K${lines[index]}`;
+      }
+
+      currentRow = lines.length - 1;
+      // A prior local shrink can leave logical rows in scrollback even when the
+      // frame is shorter than the terminal. Appending can advance this boundary,
+      // but it cannot make those rows addressable again.
+      this.previousViewportTop = Math.max(
+        this.previousViewportTop,
+        viewportTopFor(lines.length, height),
+      );
+    }
+
+    if (lines.length < previousLineCount) {
+      buffer = moveToRow(buffer, currentRow, lines.length);
+      buffer += "\r";
+
+      for (let index = lines.length; index < previousLineCount; index += 1) {
+        if (index > lines.length) {
+          buffer += "\r\n";
+        }
+
+        buffer += "\x1b[2K";
+      }
+
+      const nextTail = Math.max(0, lines.length - 1);
+      buffer = moveToRow(buffer, previousLineCount - 1, nextTail);
+      currentRow = nextTail;
+    }
+
+    const positioned = this.appendHardwareCursorPosition(buffer, cursor, currentRow, width, height);
 
     buffer = `${positioned.buffer}\x1b[?2026l`;
     this.terminal.write(buffer);
@@ -263,6 +304,7 @@ export class Tui extends Container {
     this.previousLines = lines;
     this.previousWidth = width;
     this.previousHeight = height;
+    return true;
   }
 
   private positionHardwareCursor(
@@ -358,22 +400,36 @@ function normalizeLine(line: string, width: number): string {
   return `${truncated}\x1b[0m`;
 }
 
-function findChangedRange(previousLines: string[], lines: string[]): { first: number } | undefined {
-  const maxLines = Math.max(previousLines.length, lines.length);
+function findChangedRange(previousLines: string[], lines: string[]): ChangedRange | undefined {
+  const sharedLineCount = Math.min(previousLines.length, lines.length);
   let first = -1;
+  let last = -1;
 
-  for (let index = 0; index < maxLines; index += 1) {
-    const previous = previousLines[index] ?? "";
-    const next = lines[index] ?? "";
-
-    if (previous !== next) {
+  for (let index = 0; index < sharedLineCount; index += 1) {
+    if (previousLines[index] !== lines[index]) {
       if (first === -1) {
         first = index;
       }
+
+      last = index;
     }
   }
 
-  return first === -1 ? undefined : { first };
+  return first === -1 ? undefined : { first, last };
+}
+
+function moveToRow(buffer: string, fromRow: number, toRow: number): string {
+  const rowDelta = toRow - fromRow;
+
+  if (rowDelta > 0) {
+    return `${buffer}\x1b[${rowDelta}B`;
+  }
+
+  if (rowDelta < 0) {
+    return `${buffer}\x1b[${-rowDelta}A`;
+  }
+
+  return buffer;
 }
 
 function viewportTopFor(lineCount: number, height: number): number {

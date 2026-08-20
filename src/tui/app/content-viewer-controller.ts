@@ -48,7 +48,7 @@ export class ContentViewerController {
     this.activeViewer = viewer;
     this.options.layout.showBottom(viewer);
     this.options.tui.setFocus(viewer);
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   close(): void {
@@ -68,7 +68,7 @@ export class ContentViewerController {
       return;
     }
 
-    this.options.tui.requestRender(true);
+    this.options.tui.requestRender();
   }
 
   private findLatestToolResultView(): ContentView | undefined {
