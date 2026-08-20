@@ -13,6 +13,7 @@ export type OpenAICompatibleChunk = {
     index?: number;
     delta?: {
       content?: string | null;
+      reasoning_content?: string | null;
       tool_calls?: OpenAICompatibleToolCallDelta[];
     };
     finish_reason?: string | null;

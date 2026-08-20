@@ -102,6 +102,42 @@ describe("OpenAI-compatible stream parsing", () => {
     ]);
   });
 
+  test("maps reasoning content to thinking events before visible text", async () => {
+    const stream = new AssistantEventStream();
+    const eventsPromise = collectEventTypes(stream);
+    const message = createMessage();
+    const state = createState();
+
+    stream.push({ type: "start", snapshot: structuredClone(message) });
+    applyOpenAICompatibleChunk(stream, message, state, {
+      choices: [{ delta: { reasoning_content: "plan " } }],
+    });
+    applyOpenAICompatibleChunk(stream, message, state, {
+      choices: [{ delta: { reasoning_content: "steps" } }],
+    });
+    applyOpenAICompatibleChunk(stream, message, state, {
+      choices: [{ delta: { content: "answer" }, finish_reason: "stop" }],
+    });
+    finishOpenAICompatibleContent(stream, message, state);
+    stream.end({ type: "done", reason: "stop", message: structuredClone(message) });
+
+    expect(await eventsPromise).toEqual([
+      "start",
+      "thinking_start",
+      "thinking_delta",
+      "thinking_delta",
+      "thinking_end",
+      "text_start",
+      "text_delta",
+      "text_end",
+      "done",
+    ]);
+    expect(message.content).toEqual([
+      { type: "thinking", text: "plan steps" },
+      { type: "text", text: "answer" },
+    ]);
+  });
+
   test("captures standard and detailed usage fields", () => {
     const stream = new AssistantEventStream();
     const message = createMessage();

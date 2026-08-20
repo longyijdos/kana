@@ -70,6 +70,9 @@ export function applyOpenAICompatibleChunk(
       continue;
     }
 
+    if (choice.delta?.reasoning_content) {
+      applyThinkingDelta(stream, message, state, choice.delta.reasoning_content);
+    }
     if (choice.delta?.content) {
       applyTextDelta(stream, message, state, choice.delta.content);
     }
@@ -97,14 +100,8 @@ export function finishOpenAICompatibleContent(
       continue;
     }
     const content = message.content[contentIndex];
-    if (content.type === "text") {
-      stream.push({
-        type: "text_end",
-        contentIndex,
-        content: content.text,
-        snapshot: structuredClone(message),
-      });
-      state.endedContentIndexes.add(contentIndex);
+    if (content.type === "thinking" || content.type === "text") {
+      finishContentAtIndex(stream, message, state, contentIndex);
     }
   }
 }
@@ -151,15 +148,43 @@ function parseSseData(part: string): string | undefined {
   return dataLines.length ? dataLines.join("\n") : undefined;
 }
 
+function applyThinkingDelta(
+  stream: AssistantEventStream,
+  message: AssistantMessage,
+  state: OpenAICompatibleStreamState,
+  delta: string,
+): void {
+  let contentIndex = findOpenContentIndex(message, state, "thinking");
+  if (contentIndex === -1) {
+    contentIndex = message.content.length;
+    message.content.push({ type: "thinking", text: "" });
+    stream.push({ type: "thinking_start", contentIndex, snapshot: structuredClone(message) });
+  }
+
+  const content = message.content[contentIndex];
+  if (content.type !== "thinking") {
+    throw new Error("Internal error: expected thinking content.");
+  }
+  content.text += delta;
+  stream.push({
+    type: "thinking_delta",
+    contentIndex,
+    delta,
+    snapshot: structuredClone(message),
+  });
+}
+
 function applyTextDelta(
   stream: AssistantEventStream,
   message: AssistantMessage,
   state: OpenAICompatibleStreamState,
   delta: string,
 ): void {
-  let contentIndex = message.content.findIndex(
-    (content, index) => content.type === "text" && !state.endedContentIndexes.has(index),
-  );
+  // Reasoning and visible text are separate ordered content blocks. The first
+  // visible token establishes the end of the current reasoning block.
+  finishContentOfType(stream, message, state, "thinking");
+
+  let contentIndex = findOpenContentIndex(message, state, "text");
   if (contentIndex === -1) {
     contentIndex = message.content.length;
     message.content.push({ type: "text", text: "" });
@@ -212,6 +237,60 @@ function applyToolCallDelta(
       snapshot: structuredClone(message),
     });
   }
+}
+
+function findOpenContentIndex(
+  message: AssistantMessage,
+  state: OpenAICompatibleStreamState,
+  type: "thinking" | "text",
+): number {
+  return message.content.findIndex(
+    (content, contentIndex) =>
+      content.type === type && !state.endedContentIndexes.has(contentIndex),
+  );
+}
+
+function finishContentOfType(
+  stream: AssistantEventStream,
+  message: AssistantMessage,
+  state: OpenAICompatibleStreamState,
+  type: "thinking" | "text",
+): void {
+  for (let contentIndex = 0; contentIndex < message.content.length; contentIndex += 1) {
+    if (
+      !state.endedContentIndexes.has(contentIndex) &&
+      message.content[contentIndex]?.type === type
+    ) {
+      finishContentAtIndex(stream, message, state, contentIndex);
+    }
+  }
+}
+
+function finishContentAtIndex(
+  stream: AssistantEventStream,
+  message: AssistantMessage,
+  state: OpenAICompatibleStreamState,
+  contentIndex: number,
+): void {
+  const content = message.content[contentIndex];
+  if (content.type === "thinking") {
+    stream.push({
+      type: "thinking_end",
+      contentIndex,
+      content: content.text,
+      snapshot: structuredClone(message),
+    });
+  } else if (content.type === "text") {
+    stream.push({
+      type: "text_end",
+      contentIndex,
+      content: content.text,
+      snapshot: structuredClone(message),
+    });
+  } else {
+    return;
+  }
+  state.endedContentIndexes.add(contentIndex);
 }
 
 function finishToolCallsBeforeIndex(
