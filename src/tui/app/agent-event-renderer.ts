@@ -11,7 +11,6 @@ import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { formatContextCompaction } from "./history";
 import {
-  isThinkingVisible,
   phaseForAgentEndReason,
   phaseForAssistantMessage,
   phaseForStopReason,
@@ -34,6 +33,7 @@ export class AgentEventRenderer {
   private readonly toolCallBlocks: ToolCallBlocks;
   private readonly textPresenter: StreamingTextPresenter;
   private streamingAssistant?: AssistantMessageBlock;
+  private assistantStarted = false;
   private activityTimer?: ReturnType<typeof setInterval>;
   private readonly activeTools = new Map<string, string>();
   private toolErrorCount = 0;
@@ -49,6 +49,7 @@ export class AgentEventRenderer {
         // child activity timers before releasing the last mutable block reference.
         this.streamingAssistant?.stopActivityTimers();
         this.streamingAssistant = undefined;
+        this.assistantStarted = false;
       },
       requestRender: () => this.options.tui.requestRender(),
       smoothTextStreaming: options.smoothTextStreaming,
@@ -62,9 +63,11 @@ export class AgentEventRenderer {
 
   resetRun(): void {
     this.textPresenter.flush();
+    this.discardPendingAssistant();
     this.stopActivityTimer();
     this.streamingAssistant?.stopActivityTimers();
     this.streamingAssistant = undefined;
+    this.assistantStarted = false;
     this.toolCallBlocks.clear();
     this.activeTools.clear();
     this.toolErrorCount = 0;
@@ -81,6 +84,7 @@ export class AgentEventRenderer {
         } else {
           this.toolCallBlocks.finishPreparation();
         }
+        this.discardPendingAssistant();
         this.stopActiveTimers();
         this.activeTools.clear();
         this.options.updateStatus(phaseForAgentEndReason(event.reason), {
@@ -90,7 +94,11 @@ export class AgentEventRenderer {
       case "turn_start":
         this.activeTools.clear();
         this.toolErrorCount = 0;
-        this.options.updateStatus("thinking");
+        this.textPresenter.flush();
+        // Working is a client-observable pre-output phase, so start it at the
+        // turn boundary instead of waiting for an optional reasoning event.
+        this.beginWorking();
+        this.options.updateStatus("working");
         break;
       case "turn_end":
         break;
@@ -98,6 +106,8 @@ export class AgentEventRenderer {
         this.options.transcript.addChild(new UserMessageBlock(event.message));
         break;
       case "context_compaction_start":
+        // Keep the compaction summary before the eventual assistant block.
+        this.discardPendingAssistant();
         this.options.updateStatus("compacting");
         break;
       case "context_compacted":
@@ -106,7 +116,10 @@ export class AgentEventRenderer {
             color: tuiTheme.muted,
           }),
         );
-        this.options.updateStatus(event.reason === "manual" ? "done" : "thinking", {
+        if (event.reason !== "manual") {
+          this.beginWorking();
+        }
+        this.options.updateStatus(event.reason === "manual" ? "done" : "working", {
           contextUsedPercent: Math.min(
             100,
             Math.max(0, Math.round((event.estimatedAfterTokens / event.contextLimit) * 100)),
@@ -143,14 +156,10 @@ export class AgentEventRenderer {
 
   private handleAssistantStart(message: AssistantMessage): void {
     this.textPresenter.flush();
-    this.streamingAssistant = new AssistantMessageBlock(Date.now, {
-      hyperlinks: this.options.hyperlinks,
-      renderLatex: this.options.renderLatex,
-      renderMermaid: this.options.renderMermaid,
-    });
-    this.options.transcript.addChild(this.streamingAssistant);
+    this.beginWorking();
+    this.assistantStarted = true;
     this.textPresenter.start(message);
-    this.options.updateStatus("thinking");
+    this.options.updateStatus("working");
   }
 
   private handleAssistantUpdate(event: Extract<AgentEvent, { type: "message_update" }>): void {
@@ -165,13 +174,14 @@ export class AgentEventRenderer {
     ) {
       this.textPresenter.catchUp();
     }
-    this.streamingAssistant?.showThinking(isThinkingVisible(event.assistantMessageEvent.type));
     this.toolCallBlocks.createOrUpdateFromMessage(event.message);
-    this.options.updateStatus(phaseForAssistantMessage(event.message));
+    const phase = phaseForAssistantMessage(event.message);
+    this.streamingAssistant?.showWorking(phase === "working");
+    this.options.updateStatus(phase);
   }
 
   private handleAssistantEnd(message: AssistantMessage): void {
-    this.streamingAssistant?.showThinking(false);
+    this.streamingAssistant?.showWorking(false);
     this.toolCallBlocks.stopPreparationTimer();
     this.textPresenter.finish(message, message.stopReason === "toolUse");
     this.options.updateStatus(phaseForStopReason(message.stopReason));
@@ -179,7 +189,7 @@ export class AgentEventRenderer {
 
   private updateActivityTimer(): void {
     const hasActiveActivity =
-      this.streamingAssistant?.isThinking() === true ||
+      this.streamingAssistant?.isWorking() === true ||
       this.streamingAssistant?.hasActiveHostedTools() === true ||
       this.toolCallBlocks.hasActiveTimers();
 
@@ -194,6 +204,27 @@ export class AgentEventRenderer {
     this.streamingAssistant?.stopActivityTimers();
     this.toolCallBlocks.stopTimers();
     this.stopActivityTimer();
+  }
+
+  private beginWorking(): void {
+    if (!this.streamingAssistant) {
+      this.streamingAssistant = new AssistantMessageBlock(Date.now, {
+        hyperlinks: this.options.hyperlinks,
+        renderLatex: this.options.renderLatex,
+        renderMermaid: this.options.renderMermaid,
+      });
+      this.options.transcript.addChild(this.streamingAssistant);
+    }
+    this.streamingAssistant.showWorking(true);
+  }
+
+  private discardPendingAssistant(): void {
+    if (!this.streamingAssistant || this.assistantStarted) {
+      return;
+    }
+    this.streamingAssistant.stopActivityTimers();
+    this.options.transcript.removeChild(this.streamingAssistant);
+    this.streamingAssistant = undefined;
   }
 
   private stopActivityTimer(): void {

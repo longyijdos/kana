@@ -1,143 +1,165 @@
 import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
-import type { DeepSeekMessage, DeepSeekModelConfig, DeepSeekTool, DeepSeekToolCall } from "./types";
+import type { DeepSeekModelConfig, DeepSeekToolChoice } from "./types";
 import { toDeepSeekUserText } from "./user-input";
 
-// TODO: Extract this legacy Chat Completions request builder into a shared
-// adapter when another provider needs the same compatibility path.
 export function buildDeepSeekRequest(
   context: ModelContext,
   config: DeepSeekModelConfig,
 ): Record<string, unknown> {
-  // Non-streaming generation is implemented by BaseModel.generate(), so the
-  // model always uses DeepSeek's streaming endpoint shape.
+  const tools = toDeepSeekResponsesTools(context.tools ?? [], config.strictTools ?? false);
+  if (config.webSearch !== false) {
+    tools.push({ type: "web_search" });
+  }
+
   const request: Record<string, unknown> = {
     model: config.model,
-    messages: toDeepSeekMessages(context),
+    instructions: context.system || "You are a helpful assistant.",
+    input: toDeepSeekResponsesInput(context.messages),
     stream: true,
-    stream_options: {
-      include_usage: true,
-    },
   };
 
   if (config.temperature !== undefined) {
     request.temperature = config.temperature;
   }
 
-  const maxTokens = context.maxOutputTokens ?? config.maxTokens;
-  if (maxTokens !== undefined) {
-    request.max_tokens = maxTokens;
+  const maxOutputTokens = context.maxOutputTokens ?? config.maxTokens;
+  if (maxOutputTokens !== undefined) {
+    request.max_output_tokens = maxOutputTokens;
   }
 
   if (config.topP !== undefined) {
     request.top_p = config.topP;
   }
 
-  if (config.thinking !== undefined) {
-    request.thinking = {
-      type: config.thinking ? "enabled" : "disabled",
-    };
-  }
-
-  // DeepSeek rejects reasoning_effort when thinking is explicitly disabled.
-  if (config.reasoningEffort !== undefined && config.thinking !== false) {
-    request.reasoning_effort = config.reasoningEffort;
+  if (config.reasoningEffort !== undefined) {
+    request.reasoning = { effort: config.reasoningEffort };
   }
 
   if (config.responseFormat !== undefined) {
-    request.response_format = config.responseFormat;
+    request.text = { format: config.responseFormat };
   }
 
   if (config.userId !== undefined) {
-    request.user_id = config.userId;
+    request.user = config.userId;
   }
 
-  if (context.tools?.length) {
-    request.tools = toDeepSeekTools(context.tools, config.strictTools ?? false);
-    request.tool_choice = config.toolChoice ?? "auto";
+  if (tools.length > 0) {
+    request.tools = tools;
+    request.tool_choice = toDeepSeekResponsesToolChoice(config.toolChoice ?? "auto");
   } else if (config.toolChoice !== undefined) {
-    request.tool_choice = config.toolChoice;
+    request.tool_choice = toDeepSeekResponsesToolChoice(config.toolChoice);
   }
 
   return request;
 }
 
-function toDeepSeekMessages(context: ModelContext): DeepSeekMessage[] {
-  const messages: DeepSeekMessage[] = [];
-
-  // Keep system outside Message for now, but send it as a normal
-  // DeepSeek/OpenAI-compatible system message.
-  if (context.system) {
-    messages.push({
-      role: "system",
-      content: context.system,
-    });
-  }
-
-  for (const message of context.messages) {
-    messages.push(toDeepSeekMessage(message));
-  }
-
-  return messages;
+function toDeepSeekResponsesInput(messages: Message[]): Record<string, unknown>[] {
+  return messages.flatMap(toDeepSeekResponsesMessage);
 }
 
-function toDeepSeekMessage(message: Message): DeepSeekMessage {
+function toDeepSeekResponsesMessage(message: Message): Record<string, unknown>[] {
   switch (message.role) {
     case "user":
-      return {
-        role: "user",
-        content: toDeepSeekUserText(message),
-      };
+      return [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: toDeepSeekUserText(message) }],
+        },
+      ];
     case "tool":
-      return {
-        role: "tool",
-        content: message.content,
-        tool_call_id: message.toolCallId,
-      };
+      return [
+        {
+          type: "function_call_output",
+          call_id: message.toolCallId,
+          output: message.content,
+        },
+      ];
     case "assistant":
-      return toDeepSeekAssistantMessage(message.content);
+      return message.content.flatMap(toDeepSeekResponsesAssistantContent);
   }
 }
 
-function toDeepSeekAssistantMessage(content: AssistantContent[]): DeepSeekMessage {
-  // DeepSeek stores visible text and reasoning content on separate fields, but
-  // our assistant message keeps both as ordered content blocks.
-  const text = content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
-  const reasoningContent = content
-    .filter((block) => block.type === "thinking")
-    .map((block) => block.text)
-    .join("");
-  const toolCalls = content.filter((block) => block.type === "tool_call").map(toDeepSeekToolCall);
+function toDeepSeekResponsesAssistantContent(content: AssistantContent): Record<string, unknown>[] {
+  const responseItem = readDeepSeekResponseItem(content);
+  if (responseItem !== undefined) {
+    // DeepSeek Responses is stateless and documents completed output items as
+    // replayable input, including web searches whose results it reconstructs.
+    return [structuredClone(responseItem)];
+  }
 
+  switch (content.type) {
+    case "thinking":
+      return [
+        {
+          type: "reasoning",
+          content: [{ type: "reasoning_text", text: content.text }],
+        },
+      ];
+    case "text":
+      return [
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: content.text }],
+        },
+      ];
+    case "tool_call":
+      return [toDeepSeekResponsesFunctionCall(content)];
+    case "hosted_tool":
+      // Hosted calls from another provider cannot be reconstructed locally.
+      return [];
+  }
+}
+
+function readDeepSeekResponseItem(content: AssistantContent): Record<string, unknown> | undefined {
+  const state = content.providerState;
+  if (state?.provider !== "deepseek" || !isRecord(state.value)) {
+    return undefined;
+  }
+  const type = state.value.type;
+  if (
+    type !== "reasoning" &&
+    type !== "message" &&
+    type !== "function_call" &&
+    type !== "web_search_call"
+  ) {
+    return undefined;
+  }
+  return state.value;
+}
+
+function toDeepSeekResponsesFunctionCall(content: ToolCallContent): Record<string, unknown> {
   return {
-    role: "assistant",
-    content: text,
-    ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
-    ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+    type: "function_call",
+    call_id: content.id,
+    name: content.name,
+    arguments: content.rawArgs ?? JSON.stringify(content.args),
   };
 }
 
-function toDeepSeekToolCall(content: ToolCallContent): DeepSeekToolCall {
-  return {
-    id: content.id,
-    type: "function",
-    function: {
-      name: content.name,
-      arguments: content.rawArgs ?? JSON.stringify(content.args),
-    },
-  };
-}
-
-function toDeepSeekTools(tools: ToolSpec[], strict: boolean): DeepSeekTool[] {
+function toDeepSeekResponsesTools(tools: ToolSpec[], strict: boolean): Record<string, unknown>[] {
   return tools.map((tool) => ({
     type: "function",
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-      ...(strict ? { strict: true } : {}),
-    },
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+    ...(strict ? { strict: true } : {}),
   }));
+}
+
+function toDeepSeekResponsesToolChoice(
+  choice: DeepSeekToolChoice,
+): string | Record<string, unknown> {
+  if (typeof choice === "string") {
+    return choice;
+  }
+  return {
+    type: "function",
+    name: choice.function.name,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

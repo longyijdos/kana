@@ -17,19 +17,19 @@ type AssistantMessageBlockOptions = {
 };
 
 export class AssistantMessageBlock implements Component {
-  private thinkingVisible = false;
+  private workingVisible = false;
   private contentBlocks: (HostedToolBlock | MarkdownBlock)[] = [];
   private readonly hostedToolBlocks = new Map<string, HostedToolBlock>();
-  private readonly thinkingTimer: ElapsedTimer;
+  private readonly workingTimer: ElapsedTimer;
   private cachedWidth?: number;
   private cachedLines?: string[];
-  private cachedThinkingElapsedSeconds?: number;
+  private cachedWorkingElapsedSeconds?: number;
 
   constructor(
     private readonly now: Clock = Date.now,
     private readonly options: AssistantMessageBlockOptions = {},
   ) {
-    this.thinkingTimer = new ElapsedTimer(now);
+    this.workingTimer = new ElapsedTimer(now);
   }
 
   update(message: AssistantMessage, options: AssistantMessageBlockUpdateOptions = {}): void {
@@ -75,22 +75,22 @@ export class AssistantMessageBlock implements Component {
     this.invalidate();
   }
 
-  showThinking(value: boolean): void {
-    if (this.thinkingVisible === value) {
+  showWorking(value: boolean): void {
+    if (this.workingVisible === value) {
       return;
     }
 
-    this.thinkingVisible = value;
+    this.workingVisible = value;
     if (value) {
-      this.thinkingTimer.start();
+      this.workingTimer.start();
     } else {
-      this.thinkingTimer.stop();
+      this.workingTimer.stop();
     }
     this.invalidate();
   }
 
-  isThinking(): boolean {
-    return this.thinkingVisible;
+  isWorking(): boolean {
+    return this.workingVisible;
   }
 
   hasActiveHostedTools(): boolean {
@@ -98,7 +98,7 @@ export class AssistantMessageBlock implements Component {
   }
 
   stopActivityTimers(): void {
-    this.showThinking(false);
+    this.showWorking(false);
     for (const block of this.hostedToolBlocks.values()) {
       block.stopTimer();
     }
@@ -107,7 +107,7 @@ export class AssistantMessageBlock implements Component {
   invalidate(): void {
     this.cachedWidth = undefined;
     this.cachedLines = undefined;
-    this.cachedThinkingElapsedSeconds = undefined;
+    this.cachedWorkingElapsedSeconds = undefined;
 
     for (const block of this.contentBlocks) {
       block.invalidate();
@@ -115,8 +115,8 @@ export class AssistantMessageBlock implements Component {
   }
 
   render(width: number, availableHeight?: number): string[] {
-    const thinkingElapsedSeconds = this.thinkingVisible
-      ? this.thinkingTimer.elapsedSeconds()
+    const workingElapsedSeconds = this.workingVisible
+      ? this.workingTimer.elapsedSeconds()
       : undefined;
     const hasActiveHostedTools = this.hasActiveHostedTools();
 
@@ -124,7 +124,7 @@ export class AssistantMessageBlock implements Component {
       this.cachedLines &&
       !hasActiveHostedTools &&
       this.cachedWidth === width &&
-      this.cachedThinkingElapsedSeconds === thinkingElapsedSeconds
+      this.cachedWorkingElapsedSeconds === workingElapsedSeconds
     ) {
       return this.cachedLines;
     }
@@ -146,16 +146,19 @@ export class AssistantMessageBlock implements Component {
       hasRenderedContentBlock = true;
     }
 
-    if (this.thinkingVisible && this.contentBlocks.length === 0) {
+    if (this.workingVisible) {
+      if (hasRenderedContentBlock) {
+        lines.push("");
+      }
       lines.push(
-        `${dim(`thinking (${thinkingElapsedSeconds}s)`)}` +
+        `${dim(`working (${workingElapsedSeconds}s)`)}` +
           color(" (Esc to abort)", tuiTheme.shortcutHint),
       );
     }
 
     this.cachedWidth = width;
     this.cachedLines = lines;
-    this.cachedThinkingElapsedSeconds = thinkingElapsedSeconds;
+    this.cachedWorkingElapsedSeconds = workingElapsedSeconds;
 
     return lines;
   }

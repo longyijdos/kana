@@ -1,9 +1,4 @@
-import type {
-  KanaModelManagement,
-  KanaModelProvider,
-  KanaToolApprovalMode,
-  KanaUsageScope,
-} from "@/kana";
+import type { KanaModelProvider, KanaToolApprovalMode, KanaUsageScope } from "@/kana";
 import { ChoicePrompt, type Editor, TextPrompt } from "../components";
 import type { Component, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -12,9 +7,6 @@ import type { MemoryScope } from "./memory-compact-controller";
 import type { TuiModelSelection, TuiModelSettings } from "./model-selection";
 
 type MemoryAction = "show" | "compact";
-type DeepSeekThinkingChoice =
-  | "off"
-  | KanaModelManagement["model"]["deepseek"]["reasoningEfforts"][number];
 
 export type SlashCommandOptionsControllerOptions = {
   editor: Editor;
@@ -28,6 +20,7 @@ export type SlashCommandOptionsControllerOptions = {
   collapseLongPastes?: boolean;
   getModelSettings?: () => TuiModelSettings;
   onModelSelect?: (selection: TuiModelSelection) => void;
+  showError?: (error: unknown) => void;
   restoreBottom: (focus: boolean) => void;
 };
 
@@ -225,9 +218,17 @@ export class SlashCommandOptionsController {
     }
 
     const modelSettings = settings.model[provider];
+    if (modelSettings.error) {
+      this.options.showError?.(new Error(modelSettings.error));
+      this.close();
+      return;
+    }
     const prompt = new ChoicePrompt<string>({
       title: "Model",
-      options: modelSettings.available.map((model) => ({ value: model, label: model })),
+      options: modelSettings.available.map((model) => ({
+        value: model.name,
+        label: model.name,
+      })),
       defaultValue: defaultValue ?? modelSettings.name,
       onSelect: (model) => this.replace(prompt, () => this.showReasoningEffort(provider, model)),
       onCancel: () => this.replace(prompt, () => this.showModelProvider(provider)),
@@ -243,48 +244,33 @@ export class SlashCommandOptionsController {
       return;
     }
 
-    if (provider === "deepseek") {
-      const current = settings.model.deepseek;
-      const prompt = new ChoicePrompt<DeepSeekThinkingChoice>({
-        title: "Reasoning effort",
-        options: [
-          { value: "off", label: "Off" },
-          ...current.reasoningEfforts.map((effort) => ({
-            value: effort,
-            label: formatEffort(effort),
-          })),
-        ],
-        defaultValue: current.thinking ? current.reasoningEffort : "off",
-        onSelect: (effort) =>
-          this.finish(prompt, () =>
-            this.options.onModelSelect?.({
-              provider,
-              model,
-              thinking: effort !== "off",
-              reasoningEffort: effort === "off" ? current.reasoningEffort : effort,
-            }),
-          ),
-        onCancel: () => this.replace(prompt, () => this.showModelName(provider, model)),
-      });
-
-      this.show(prompt);
+    const current = settings.model[provider];
+    const reasoning = current.available.find((candidate) => candidate.name === model)?.reasoning;
+    if (!reasoning) {
+      this.options.onModelSelect?.({ provider, model });
+      this.close();
       return;
     }
 
-    const current = settings.model["openai-codex"];
-    const prompt = new ChoicePrompt<(typeof current.reasoningEfforts)[number]>({
+    const currentEffort =
+      current.name === model &&
+      current.reasoningEffort !== undefined &&
+      reasoning.efforts.includes(current.reasoningEffort)
+        ? current.reasoningEffort
+        : reasoning.defaultEffort;
+    const prompt = new ChoicePrompt<string>({
       title: "Reasoning effort",
-      options: current.reasoningEfforts.map((effort) => ({
+      options: reasoning.efforts.map((effort) => ({
         value: effort,
         label: formatEffort(effort),
       })),
-      defaultValue: current.reasoningEffort,
-      onSelect: (reasoningEffort) =>
+      defaultValue: currentEffort,
+      onSelect: (effort) =>
         this.finish(prompt, () =>
           this.options.onModelSelect?.({
             provider,
             model,
-            reasoningEffort,
+            reasoningEffort: effort,
           }),
         ),
       onCancel: () => this.replace(prompt, () => this.showModelName(provider, model)),
@@ -330,6 +316,9 @@ function formatScope(scope: MemoryScope): string {
 }
 
 function formatEffort(effort: string): string {
+  if (effort === "none") {
+    return "Off";
+  }
   return effort === "xhigh" ? "XHigh" : `${effort[0]?.toUpperCase()}${effort.slice(1)}`;
 }
 

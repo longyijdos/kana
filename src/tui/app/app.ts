@@ -344,6 +344,7 @@ export class KanaTuiApp {
         this.restoreBottom(true);
         this.switchModel(selection);
       },
+      showError: (error) => this.showError(error),
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.toolApproval = new ToolApprovalController({
@@ -746,22 +747,26 @@ export class KanaTuiApp {
   }
 
   private switchModel(selection: TuiModelSelection): void {
+    const reasoning = formatTuiReasoningSelection(selection);
     const logMetadata = {
       provider: selection.provider,
       model: selection.model,
-      reasoningEffort: formatTuiReasoningSelection(selection),
+      ...(reasoning ? { reasoningEffort: reasoning } : {}),
     };
     this.getLogger().info("tui.model_switch_started", logMetadata);
 
     try {
       this.conversation.reconfigure(selection);
-      this.editor.setModel(
-        `${this.conversation.state.model.metadata.model} · ${formatTuiReasoningSelection(selection)}`,
-      );
+      this.editor.setModel(formatModelSelection(this.conversation.state.model.metadata, reasoning));
       this.updateContextUsage();
       this.transcript.addChild(
         new TextBlock(
-          `Switched to ${formatModelName(this.conversation.state.model.metadata)} · reasoning ${formatTuiReasoningSelection(selection)}.`,
+          `Switched to ${formatModelSelection(
+            this.conversation.state.model.metadata,
+            reasoning,
+            true,
+            true,
+          )}.`,
           { color: tuiTheme.muted },
         ),
       );
@@ -1177,10 +1182,7 @@ export class KanaTuiApp {
     if (!settings || settings.activeProvider !== metadata.provider) {
       return undefined;
     }
-    const enabled =
-      settings.activeProvider === "deepseek"
-        ? settings.model.deepseek.imageInput === true
-        : settings.model["openai-codex"].imageInput !== false;
+    const enabled = settings.model[settings.activeProvider].imageInputEnabled;
     return enabled ? undefined : new Error("Image input is disabled in the active model config.");
   }
 
@@ -1293,18 +1295,21 @@ function formatStatusModel(metadata: ModelMetadata, settings?: TuiModelSettings)
     return metadata.model;
   }
 
-  if (settings.activeProvider === "deepseek") {
-    const model = settings.model.deepseek;
-    if (model.name !== metadata.model) {
-      return metadata.model;
-    }
-    return `${metadata.model} · ${model.thinking ? model.reasoningEffort : "off"}`;
+  const model = settings.model[settings.activeProvider];
+  if (model.name !== metadata.model || model.reasoningEffort === undefined) {
+    return metadata.model;
   }
+  return `${metadata.model} · ${model.reasoningEffort === "none" ? "off" : model.reasoningEffort}`;
+}
 
-  const model = settings.model["openai-codex"];
-  return model.name === metadata.model
-    ? `${metadata.model} · ${model.reasoningEffort}`
-    : metadata.model;
+function formatModelSelection(
+  metadata: ModelMetadata,
+  reasoning: string | undefined,
+  includeProvider = false,
+  labelReasoning = false,
+): string {
+  const model = includeProvider ? formatModelName(metadata) : metadata.model;
+  return reasoning ? `${model} · ${labelReasoning ? "reasoning " : ""}${reasoning}` : model;
 }
 
 function formatScheduledWakeContent(content: string): string {

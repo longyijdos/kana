@@ -22,15 +22,7 @@ import {
 } from "./http";
 import { getDeepSeekModelMetadata } from "./metadata";
 import { buildDeepSeekRequest } from "./request";
-import { buildDeepSeekResponsesRequest } from "./responses-request";
-import {
-  applyDeepSeekChunk,
-  finishOpenContent,
-  finishToolCalls,
-  getDoneReason,
-  readDeepSeekStream,
-} from "./stream";
-import type { DeepSeekModelConfig, DeepSeekStreamState } from "./types";
+import type { DeepSeekModelConfig } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.deepseek.com";
 
@@ -83,21 +75,15 @@ export class DeepSeekModel extends BaseModel {
         );
       }
 
-      const request =
-        this.metadata.protocol === "responses"
-          ? buildDeepSeekResponsesRequest(context, {
-              ...this.config,
-              webSearch: this.metadata.supportsHostedWebSearch && this.config.webSearch !== false,
-            })
-          : buildDeepSeekRequest(context, this.config);
+      const request = buildDeepSeekRequest(context, {
+        ...this.config,
+        webSearch: this.metadata.supportsHostedWebSearch && this.config.webSearch !== false,
+      });
       const requestSignal = createRequestSignal(this.config, context.signal);
 
       try {
         const response = await fetchWithRetries(
-          joinUrl(
-            this.config.baseUrl ?? DEFAULT_BASE_URL,
-            this.metadata.protocol === "responses" ? "/responses" : "/chat/completions",
-          ),
+          joinUrl(this.config.baseUrl ?? DEFAULT_BASE_URL, "/responses"),
           {
             method: "POST",
             headers: {
@@ -124,10 +110,12 @@ export class DeepSeekModel extends BaseModel {
           snapshot: structuredClone(message),
         });
 
-        const outcome =
-          this.metadata.protocol === "responses"
-            ? await this.consumeResponses(response, stream, message, requestSignal.refresh)
-            : await this.consumeChatCompletions(response, stream, message, requestSignal.refresh);
+        const outcome = await this.consumeResponses(
+          response,
+          stream,
+          message,
+          requestSignal.refresh,
+        );
 
         stream.end({
           type: "done",
@@ -156,33 +144,6 @@ export class DeepSeekModel extends BaseModel {
         snapshot: structuredClone(message),
       });
     }
-  }
-
-  private async consumeChatCompletions(
-    response: Response,
-    stream: AssistantEventStream,
-    message: AssistantMessage,
-    onActivity: () => void,
-  ): Promise<DeepSeekStreamOutcome> {
-    const state: DeepSeekStreamState = {
-      endedContentIndexes: new Set<number>(),
-    };
-    await readDeepSeekStream(
-      response,
-      (chunk) => {
-        applyDeepSeekChunk(stream, message, state, chunk);
-      },
-      onActivity,
-    );
-
-    finishOpenContent(stream, message, state);
-    if (state.finishReason === "tool_calls") {
-      finishToolCalls(stream, message, state);
-    }
-    return {
-      stopReason: getDoneReason(state.finishReason),
-      usage: state.usage,
-    };
   }
 
   private async consumeResponses(

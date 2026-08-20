@@ -72,6 +72,9 @@ describe("Kana config", () => {
       accountingPath: "/home/kana/.kana/accounting",
       approvalsPath: "/home/kana/.kana/approvals.json",
       skillsConfigPath: "/home/kana/.kana/skills/skills.toml",
+      providersDirectory: "/home/kana/.kana/providers",
+      customProviderPath: "/home/kana/.kana/providers/custom.toml",
+      customProviderExamplePath: "/home/kana/.kana/providers/custom.example.toml",
     });
   });
 
@@ -83,6 +86,10 @@ describe("Kana config", () => {
     const installedApprovals = JSON.parse(readFileSync(firstInstall.approvalsPath, "utf8"));
     const installedSkillsConfig = readFileSync(firstInstall.skillsConfigPath, "utf8");
     const installedConfigExample = readFileSync(firstInstall.configExamplePath, "utf8");
+    const installedCustomProviderExample = readFileSync(
+      firstInstall.customProviderExamplePath,
+      "utf8",
+    );
 
     expect(firstInstall.configStatus).toBe("defaults");
     expect(firstInstall.configExampleStatus).toBe("created");
@@ -90,6 +97,7 @@ describe("Kana config", () => {
     expect(firstInstall.mcpEnabledStatus).toBe("created");
     expect(firstInstall.approvalsStatus).toBe("created");
     expect(firstInstall.skillsConfigStatus).toBe("created");
+    expect(firstInstall.customProviderExampleStatus).toBe("created");
     expect(fileExists(firstInstall.configPath)).toBe(false);
     expect(installedConfigExample).toContain("[model.deepseek]");
     expect(installedConfigExample).toContain("[model.openai-codex]");
@@ -103,6 +111,9 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("smooth_text_streaming = true");
     expect(installedConfigExample).toContain("collapse_long_pastes = true");
     expect(installedConfigExample).toContain("Kana does not read this file.");
+    expect(installedConfigExample).toContain("[model.custom]");
+    expect(installedCustomProviderExample).toContain('base_url = "https://api.example.com/v1"');
+    expect(installedCustomProviderExample).toContain("[[models]]");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
     expect(statSync(firstInstall.mcpEnabledPath).mode & 0o777).toBe(0o600);
@@ -130,6 +141,8 @@ describe("Kana config", () => {
       approvalsStatus: "exists",
       skillsConfigPath: firstInstall.skillsConfigPath,
       skillsConfigStatus: "exists",
+      customProviderExamplePath: firstInstall.customProviderExamplePath,
+      customProviderExampleStatus: "exists",
     });
     expect(readFileSync(firstInstall.configPath, "utf8")).toBe("custom = true\n");
     expect(readFileSync(firstInstall.mcpConfigPath, "utf8")).toBe('{"custom":true}\n');
@@ -329,19 +342,49 @@ describe("Kana config", () => {
     expect(() => loadKanaConfig(env)).toThrow("model.deepseek.image_input must be a boolean.");
   });
 
-  test("accepts DeepSeek low reasoning effort", () => {
+  test("accepts DeepSeek reasoning efforts including none", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
     writeFileSync(path.join(home, "config.toml"), '[model.deepseek]\nreasoning_effort = "low"\n');
 
     expect(loadKanaConfig(env).model.deepseek.reasoningEffort).toBe("low");
 
+    writeFileSync(path.join(home, "config.toml"), '[model.deepseek]\nreasoning_effort = "none"\n');
+    expect(loadKanaConfig(env).model.deepseek.reasoningEffort).toBe("none");
+
     writeFileSync(
       path.join(home, "config.toml"),
       '[model.deepseek]\nreasoning_effort = "medium"\n',
     );
     expect(() => loadKanaConfig(env)).toThrow(
-      "model.deepseek.reasoning_effort must be one of: low, high, max.",
+      "model.deepseek.reasoning_effort must be one of: none, low, high, max.",
+    );
+  });
+
+  test("loads the static Custom provider selection", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(
+      path.join(home, "config.toml"),
+      [
+        "[provider]",
+        'active = "custom"',
+        "",
+        "[model.custom]",
+        'name = "local-model"',
+        'reasoning_effort = "high"',
+        "",
+      ].join("\n"),
+    );
+
+    expect(loadKanaConfig(env)).toMatchObject({
+      provider: { active: "custom" },
+      model: { custom: { name: "local-model", reasoningEffort: "high" } },
+    });
+
+    writeFileSync(path.join(home, "config.toml"), '[provider]\nactive = "custom"\n');
+    expect(() => loadKanaConfig(env)).toThrow(
+      "model.custom.name is required when provider.active is custom.",
     );
   });
 
@@ -619,27 +662,27 @@ describe("Kana config", () => {
     }
   });
 
-  test("rejects context limits outside the selected model capability", () => {
+  test("caps the configured context limit at the selected model capability", () => {
     const previous = process.env.KANA_DEEPSEEK_KEY;
     process.env.KANA_DEEPSEEK_KEY = "secret";
 
     try {
-      expect(() =>
-        createKanaAgent({
-          ...DEFAULT_KANA_CONFIG,
-          model: {
-            ...DEFAULT_KANA_CONFIG.model,
-            deepseek: {
-              ...DEFAULT_KANA_CONFIG.model.deepseek,
-              apiKeyEnv: "KANA_DEEPSEEK_KEY",
-            },
+      const agent = createKanaAgent({
+        ...DEFAULT_KANA_CONFIG,
+        model: {
+          ...DEFAULT_KANA_CONFIG.model,
+          deepseek: {
+            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            apiKeyEnv: "KANA_DEEPSEEK_KEY",
           },
-          agent: {
-            ...DEFAULT_KANA_CONFIG.agent,
-            contextLimit: 1_000_001,
-          },
-        }),
-      ).toThrow("agent.context_limit cannot exceed the 1000000-token context window");
+        },
+        agent: {
+          ...DEFAULT_KANA_CONFIG.agent,
+          contextLimit: 1_000_001,
+        },
+      });
+
+      expect(agent.state.contextLimit).toBe(1_000_000);
     } finally {
       restoreEnv("KANA_DEEPSEEK_KEY", previous);
     }
@@ -895,7 +938,7 @@ describe("Kana config", () => {
     writeFileSync(path.join(home, "config.toml"), '[provider]\nactive = "mock"\n');
 
     expect(() => loadKanaConfig(env)).toThrow(
-      "provider.active must be one of: deepseek, openai-codex.",
+      "provider.active must be one of: deepseek, openai-codex, custom.",
     );
   });
 

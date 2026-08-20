@@ -25,6 +25,10 @@ export type ModelUsage = {
 
 type ModelProtocol = "chat-completions" | "responses";
 
+export type ModelReasoningMetadata = {
+  efforts: readonly [string, ...string[]];
+};
+
 export type ModelMetadata = {
   provider: string;
   model: string;
@@ -42,6 +46,9 @@ export type ModelMetadata = {
   // Omitted capabilities are treated as unsupported for compatibility with
   // in-process models that predate image inputs.
   supportsImageInput?: boolean;
+  // User-configurable reasoning controls. Omission does not imply that the
+  // model cannot reason internally; it means Kana must not expose controls.
+  reasoning?: ModelReasoningMetadata;
 };
 
 export interface Model {

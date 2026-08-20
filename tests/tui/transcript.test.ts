@@ -243,7 +243,7 @@ describe("tui transcript", () => {
     expect(block.render(80)).toEqual([]);
   });
 
-  test("clears the thinking placeholder when thinking is no longer active", () => {
+  test("clears the working placeholder when working is no longer active", () => {
     const block = new AssistantMessageBlock();
 
     block.update({
@@ -256,14 +256,14 @@ describe("tui transcript", () => {
         },
       ],
     });
-    block.showThinking(true);
+    block.showWorking(true);
 
-    const thinkingLine = block.render(80)[0] ?? "";
+    const workingLine = block.render(80)[0] ?? "";
 
-    expect(stripAnsi(thinkingLine)).toBe("thinking (0s) (Esc to abort)");
-    expect(thinkingLine).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
+    expect(stripAnsi(workingLine)).toBe("working (0s) (Esc to abort)");
+    expect(workingLine).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
-    block.showThinking(false);
+    block.showWorking(false);
 
     expect(block.render(80)).toEqual([]);
   });

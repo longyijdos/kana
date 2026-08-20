@@ -33,8 +33,13 @@ describe("TUI model selection", () => {
   test("offers provider-specific reasoning efforts", () => {
     const management = getKanaModelManagement(structuredClone(DEFAULT_KANA_CONFIG));
 
-    expect(management.model.deepseek.reasoningEfforts).toEqual(["low", "high", "max"]);
-    expect(management.model["openai-codex"].reasoningEfforts).toEqual([
+    expect(management.model.deepseek.available[0]?.reasoning?.efforts).toEqual([
+      "none",
+      "low",
+      "high",
+      "max",
+    ]);
+    expect(management.model["openai-codex"].available[0]?.reasoning?.efforts).toEqual([
       "low",
       "medium",
       "high",
@@ -64,7 +69,7 @@ describe("TUI model selection", () => {
               ...management.model,
               deepseek: {
                 ...management.model.deepseek,
-                available: ["product-model"],
+                available: [{ name: "product-model" }],
               },
             },
           }),
@@ -134,7 +139,7 @@ describe("TUI model selection", () => {
     ]);
   });
 
-  test("maps DeepSeek reasoning Off to thinking disabled", () => {
+  test("maps DeepSeek reasoning Off to the none effort", () => {
     const selections: TuiModelSelection[] = [];
     const app = new KanaTuiApp(
       (options) => {
@@ -163,11 +168,108 @@ describe("TUI model selection", () => {
       {
         provider: "deepseek",
         model: "deepseek-v4-pro",
-        thinking: false,
-        reasoningEffort: "high",
+        reasoningEffort: "none",
       },
     ]);
     expect(renderLayout(internal)).toContain("deepseek-v4-pro · off | idle");
+  });
+
+  test("offers configured reasoning efforts for a Custom model", () => {
+    const selections: TuiModelSelection[] = [];
+    const management = getKanaModelManagement(structuredClone(DEFAULT_KANA_CONFIG));
+    const app = new KanaTuiApp(
+      (options) => {
+        if (options.modelSelection) {
+          selections.push(options.modelSelection);
+        }
+        return createAgentStub({
+          messages: options.messages ?? [],
+          provider: options.modelSelection?.provider ?? "deepseek",
+          model: options.modelSelection?.model ?? "deepseek-v4-pro",
+        }) as never;
+      },
+      createTerminal(),
+      {
+        ...createOptions(),
+        modelManagement: {
+          getSettings: () => ({
+            ...management,
+            providers: [{ value: "custom", label: "Custom" }],
+            model: {
+              ...management.model,
+              custom: {
+                available: [
+                  {
+                    name: "reasoning-model",
+                    reasoning: { efforts: ["none", "high"], defaultEffort: "none" },
+                  },
+                ],
+                name: "reasoning-model",
+                reasoningEffort: "none",
+                imageInputEnabled: false,
+              },
+            },
+          }),
+        },
+      },
+    );
+    const internal = app as unknown as AppInternals;
+
+    openModel(internal);
+    press(internal, "\r");
+    press(internal, "\r");
+    expect(renderLayout(internal)).toContain("Reasoning effort");
+    press(internal, "\x1b[B");
+    press(internal, "\r");
+
+    expect(selections).toEqual([
+      { provider: "custom", model: "reasoning-model", reasoningEffort: "high" },
+    ]);
+    expect(renderLayout(internal)).toContain("reasoning-model · high | idle");
+  });
+
+  test("skips reasoning selection for a Custom model without reasoning metadata", () => {
+    const selections: TuiModelSelection[] = [];
+    const management = getKanaModelManagement(structuredClone(DEFAULT_KANA_CONFIG));
+    const app = new KanaTuiApp(
+      (options) => {
+        if (options.modelSelection) {
+          selections.push(options.modelSelection);
+        }
+        return createAgentStub({
+          messages: options.messages ?? [],
+          provider: options.modelSelection?.provider ?? "deepseek",
+          model: options.modelSelection?.model ?? "deepseek-v4-pro",
+        }) as never;
+      },
+      createTerminal(),
+      {
+        ...createOptions(),
+        modelManagement: {
+          getSettings: () => ({
+            ...management,
+            providers: [{ value: "custom", label: "Custom" }],
+            model: {
+              ...management.model,
+              custom: {
+                available: [{ name: "local-model" }],
+                name: "local-model",
+                imageInputEnabled: false,
+              },
+            },
+          }),
+        },
+      },
+    );
+    const internal = app as unknown as AppInternals;
+
+    openModel(internal);
+    press(internal, "\r");
+    press(internal, "\r");
+
+    expect(selections).toEqual([{ provider: "custom", model: "local-model" }]);
+    expect(internal.slashCommandOptions.active).toBe(false);
+    expect(renderLayout(internal)).toContain("local-model | idle");
   });
 
   test("keeps the current Agent when replacement fails", () => {

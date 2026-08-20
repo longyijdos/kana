@@ -1,6 +1,6 @@
 import type { ModelMetadata } from "@/core";
 
-export type DeepSeekModelMetadata = ModelMetadata;
+export type DeepSeekModelMetadata = ModelMetadata & { protocol: "responses" };
 
 export const DEEPSEEK_MODELS = {
   "deepseek-v4-flash": {
@@ -12,6 +12,9 @@ export const DEEPSEEK_MODELS = {
     protocol: "responses",
     supportsHostedWebSearch: true,
     supportsImageInput: false,
+    reasoning: {
+      efforts: ["none", "low", "high", "max"],
+    },
   },
   "deepseek-v4-pro": {
     provider: "deepseek",
@@ -22,6 +25,9 @@ export const DEEPSEEK_MODELS = {
     protocol: "responses",
     supportsHostedWebSearch: true,
     supportsImageInput: false,
+    reasoning: {
+      efforts: ["none", "low", "high", "max"],
+    },
   },
 } as const satisfies Record<string, DeepSeekModelMetadata>;
 

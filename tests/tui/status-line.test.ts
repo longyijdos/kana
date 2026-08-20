@@ -37,7 +37,7 @@ describe("prompt editor status line", () => {
     const editor = new Editor({ model: "deepseek-v4-pro · high" });
 
     editor.updateStatus({
-      phase: "thinking",
+      phase: "working",
       running: true,
     });
 

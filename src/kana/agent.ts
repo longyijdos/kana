@@ -57,12 +57,16 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
   const skills = customizationsEnabled ? loadKanaSkills({ cwd, env: options.env }).skills : [];
   const model = createKanaModel(config, options.logger);
   const modelConfig = getActiveKanaModelConfig(config);
-  const contextLimit = config.agent.contextLimit ?? model.metadata.contextWindow;
-  if (contextLimit > model.metadata.contextWindow) {
-    throw new Error(
-      `agent.context_limit cannot exceed the ${model.metadata.contextWindow}-token context window for ${model.metadata.provider}/${model.metadata.model}.`,
-    );
-  }
+  const maxOutputTokens =
+    "maxTokens" in modelConfig ? modelConfig.maxTokens : model.metadata.maxOutputTokens;
+  const imageInputEnabled =
+    model.metadata.supportsImageInput === true &&
+    (!("imageInput" in modelConfig) || modelConfig.imageInput !== false);
+  // The shared Agent limit is a cap so switching to a smaller model remains valid.
+  const contextLimit = Math.min(
+    config.agent.contextLimit ?? model.metadata.contextWindow,
+    model.metadata.contextWindow,
+  );
   const tools: Tool[] = [
     createListTool({
       root: cwd,
@@ -127,12 +131,11 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     loggerMetadata: { agentKind: "conversation" },
     context: {
       contextLimit,
-      maxOutputTokens: modelConfig.maxTokens,
+      maxOutputTokens,
       compactPolicy: createModelCompactPolicy(model, {
         // Capability and configuration are separate: a capable model must not
         // receive image bytes when the provider setting disables them.
-        imageInputEnabled:
-          model.metadata.supportsImageInput === true && modelConfig.imageInput !== false,
+        imageInputEnabled,
       }),
       checkpoint: options.contextCheckpoint,
     },

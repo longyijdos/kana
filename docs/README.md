@@ -13,10 +13,11 @@ Recommended reading order:
 5. [Skills and the system prompt](skills-and-prompt.md): discovery, activation, and context composition.
 6. [DeepSeek provider adapter](deepseek-provider.md): request conversion, SSE, retries, and usage.
 7. [OpenAI Codex provider adapter](openai-codex-provider.md): OAuth, classic Responses, SSE, and provider state.
-8. [Headless execution and the JSONL protocol](headless.md): `kana exec`, approvals, output, and exit semantics.
-9. [Local Terminal-Bench evaluation](terminal-bench.md): Harbor adapter, run parameters, proxying, and results.
-10. [TUI interaction and rendering](tui.md): terminal I/O, controllers, input, and differential repainting.
-11. [Release process](releasing.md): version policy, Changelog, tags, and Release automation.
+8. [Custom OpenAI-compatible provider](custom-provider.md): static Custom configuration, model metadata, and security boundaries.
+9. [Headless execution and the JSONL protocol](headless.md): `kana exec`, approvals, output, and exit semantics.
+10. [Local Terminal-Bench evaluation](terminal-bench.md): Harbor adapter, run parameters, proxying, and results.
+11. [TUI interaction and rendering](tui.md): terminal I/O, controllers, input, and differential repainting.
+12. [Release process](releasing.md): version policy, Changelog, tags, and Release automation.
 
 Chinese versions:
 
@@ -27,6 +28,7 @@ Chinese versions:
 - [Skills 与系统提示词](skills-and-prompt.zh-CN.md)
 - [DeepSeek 提供商适配](deepseek-provider.zh-CN.md)
 - [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)
+- [自定义 OpenAI-compatible 提供商](custom-provider.zh-CN.md)
 - [无头执行与 JSONL 协议](headless.zh-CN.md)
 - [Terminal-Bench 本地评测](terminal-bench.zh-CN.md)
 - [TUI 交互与渲染](tui.zh-CN.md)
