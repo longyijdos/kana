@@ -432,16 +432,19 @@ describe("AgentEventRenderer", () => {
     expect(transcript.children).toHaveLength(1);
   });
 
-  test("keeps one timer across adjacent thinking items until the next action", () => {
+  test("starts one working timer at turn start and keeps it through adjacent thinking items", () => {
     let now = 0;
     const dateNow = spyOn(Date, "now").mockImplementation(() => now);
     const transcript = new TranscriptComponent();
+    const phases: RunPhase[] = [];
     const renderer = new AgentEventRenderer({
       transcript,
       tui: {
         requestRender() {},
       } as unknown as Tui,
-      updateStatus() {},
+      updateStatus(phase) {
+        phases.push(phase);
+      },
     });
     const firstThinking: AssistantMessage = {
       ...messageIdentityForTest("assistant"),
@@ -466,6 +469,10 @@ describe("AgentEventRenderer", () => {
     };
 
     try {
+      renderer.handle({ type: "turn_start", turn: 1 });
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("working (0s) (Esc to abort)");
+      expect(phases.at(-1)).toBe("working");
+
       renderer.handle({
         type: "message_start",
         message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
@@ -491,7 +498,7 @@ describe("AgentEventRenderer", () => {
           snapshot: firstThinking,
         },
       });
-      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("thinking (2s) (Esc to abort)");
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("working (2s) (Esc to abort)");
 
       now = 3_000;
       renderer.handle({
@@ -503,7 +510,7 @@ describe("AgentEventRenderer", () => {
           snapshot: adjacentThinking,
         },
       });
-      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("thinking (3s) (Esc to abort)");
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("working (3s) (Esc to abort)");
 
       renderer.handle({
         type: "message_update",

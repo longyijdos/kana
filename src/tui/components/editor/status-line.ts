@@ -38,7 +38,7 @@ function phaseText(phase: string): string {
       return color("turn limit", tuiTheme.error);
     case "starting":
     case "compacting":
-    case "thinking":
+    case "working":
     case "searching":
     case "responding":
     case "tool":

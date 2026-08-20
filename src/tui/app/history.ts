@@ -82,7 +82,6 @@ function addAssistantMessage(
 ): void {
   const block = new AssistantMessageBlock(Date.now, options);
   block.update(message);
-  block.showThinking(false);
   transcript.addChild(block);
 
   for (const content of message.content) {

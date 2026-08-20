@@ -21,15 +21,15 @@ describe("tui elapsed timer", () => {
     expect(timer.elapsedSeconds()).toBe(1);
   });
 
-  test("updates the thinking placeholder as time advances", () => {
+  test("updates the working placeholder as time advances", () => {
     let now = 0;
     const block = new AssistantMessageBlock(() => now);
-    block.showThinking(true);
+    block.showWorking(true);
 
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking (0s) (Esc to abort)");
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("working (0s) (Esc to abort)");
 
     now = 2_000;
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("thinking (2s) (Esc to abort)");
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("working (2s) (Esc to abort)");
   });
 
   test("tracks aggregate tool preparation separately from tool execution", () => {
