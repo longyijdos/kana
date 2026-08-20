@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Component, Terminal } from "../../src/tui/runtime";
 import { CURSOR_MARKER, type TerminalNotification, Tui } from "../../src/tui/runtime";
+import { VirtualTerminal } from "./virtual-terminal";
 
 class FakeTerminal implements Terminal {
   writes: string[] = [];
@@ -50,6 +51,18 @@ function waitForScheduledRender(): Promise<void> {
 
 function countOccurrences(value: string, search: string): number {
   return value.split(search).length - 1;
+}
+
+async function startVirtualRenderer(initialLines: string[], rows: number) {
+  const terminal = new VirtualTerminal({ columns: 80, rows });
+  const lines = new MutableLines([...initialLines]);
+  const tui = new Tui(terminal);
+
+  tui.addChild(lines);
+  tui.start();
+  await Promise.resolve();
+
+  return { terminal, lines, tui };
 }
 
 describe("tui main-screen renderer", () => {
@@ -473,5 +486,100 @@ describe("tui main-screen renderer", () => {
     expect(output).toContain("\x1b[4G\x1b[?25h\x1b[?2026l");
     expect(cursorShowIndex).toBeGreaterThan(-1);
     expect(syncEndIndex).toBeGreaterThan(cursorShowIndex);
+  });
+});
+
+describe("tui main-screen terminal state", () => {
+  test("natural growth scrolls viewport rows into scrollback", async () => {
+    const { terminal, lines, tui } = await startVirtualRenderer(["one", "two", "three"], 3);
+
+    expect(terminal.screen).toEqual(["one", "two", "three"]);
+    expect(terminal.scrollback).toEqual([]);
+
+    lines.lines.push("four", "five");
+    tui.requestRender();
+    await waitForScheduledRender();
+
+    expect(terminal.screen).toEqual(["three", "four", "five"]);
+    expect(terminal.scrollback).toEqual(["one", "two"]);
+    expect({ row: terminal.cursorRow, column: terminal.cursorColumn }).toEqual({
+      row: 2,
+      column: 4,
+    });
+  });
+
+  test("mixed patch and shrink leaves unchanged rows intact and clears the old tail", async () => {
+    const { terminal, lines, tui } = await startVirtualRenderer(["A", "B", "C", "D", "E"], 5);
+
+    lines.lines.splice(0, lines.lines.length, "A", "X", "C");
+    tui.requestRender();
+    await waitForScheduledRender();
+
+    expect(terminal.screen).toEqual(["A", "X", "C", "", ""]);
+    expect(terminal.scrollback).toEqual([]);
+    expect({ row: terminal.cursorRow, column: terminal.cursorColumn }).toEqual({
+      row: 2,
+      column: 0,
+    });
+  });
+
+  test("growth after a visible shrink preserves the physical viewport mapping", async () => {
+    const { terminal, lines, tui } = await startVirtualRenderer(["A", "B", "C", "D", "E"], 4);
+
+    expect(terminal.screen).toEqual(["B", "C", "D", "E"]);
+    expect(terminal.scrollback).toEqual(["A"]);
+
+    lines.lines.splice(2);
+    tui.requestRender();
+    await waitForScheduledRender();
+
+    expect(terminal.screen).toEqual(["B", "", "", ""]);
+    expect(terminal.scrollback).toEqual(["A"]);
+
+    lines.lines.push("C", "D", "E", "F");
+    tui.requestRender();
+    await waitForScheduledRender();
+
+    expect(terminal.screen).toEqual(["C", "D", "E", "F"]);
+    expect(terminal.scrollback).toEqual(["A", "B"]);
+    expect((tui as unknown as { previousViewportTop: number }).previousViewportTop).toBe(2);
+  });
+
+  test("visible clear keeps scrollback while removing stale screen rows", async () => {
+    const { terminal, lines, tui } = await startVirtualRenderer(
+      ["transcript one", "transcript two", "divider", "editor"],
+      6,
+    );
+
+    lines.lines.splice(0, lines.lines.length, "divider", "editor");
+    tui.requestRender();
+    await waitForScheduledRender();
+
+    expect(terminal.screen).toEqual(["divider", "editor", "", "", "", ""]);
+    expect(terminal.scrollback).toEqual([]);
+  });
+
+  test("clear fallback removes transcript-backed scrollback before replay", async () => {
+    const { terminal, lines, tui } = await startVirtualRenderer(
+      [
+        "transcript one",
+        "transcript two",
+        "transcript three",
+        "transcript four",
+        "divider",
+        "editor",
+      ],
+      3,
+    );
+
+    expect(terminal.screen).toEqual(["transcript four", "divider", "editor"]);
+    expect(terminal.scrollback).toEqual(["transcript one", "transcript two", "transcript three"]);
+
+    lines.lines.splice(0, lines.lines.length, "divider", "editor");
+    tui.requestRender();
+    await waitForScheduledRender();
+
+    expect(terminal.screen).toEqual(["divider", "editor", ""]);
+    expect(terminal.scrollback).toEqual([]);
   });
 });
