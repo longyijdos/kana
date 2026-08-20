@@ -244,40 +244,11 @@ function readBaseUrl(value: unknown): string {
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new Error("base_url must not contain credentials, a query, or a fragment.");
   }
-  if (
-    parsed.protocol !== "https:" &&
-    !(parsed.protocol === "http:" && isPrivateHost(parsed.hostname))
-  ) {
-    throw new Error(
-      "base_url must use HTTPS, except for HTTP loopback or private-network endpoints.",
-    );
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("base_url must use HTTP or HTTPS.");
   }
 
   return baseUrl.replace(/\/+$/, "");
-}
-
-function isPrivateHost(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "[::1]") {
-    return true;
-  }
-
-  const octets = hostname.split(".").map(Number);
-  if (
-    octets.length === 4 &&
-    octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)
-  ) {
-    const [first, second] = octets;
-    return (
-      first === 10 ||
-      first === 127 ||
-      (first === 169 && second === 254) ||
-      (first === 172 && second !== undefined && second >= 16 && second <= 31) ||
-      (first === 192 && second === 168)
-    );
-  }
-
-  const ipv6 = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  return /^(?:fc|fd|fe[89ab])/.test(ipv6);
 }
 
 function readOptionalEnvironmentVariable(value: unknown): string | undefined {

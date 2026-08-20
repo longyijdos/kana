@@ -80,6 +80,6 @@ default_reasoning_effort = "none"
 
 适配器发送流式 `POST <base_url>/chat/completions` 请求，并设置 `stream_options.include_usage = true`；它会转换 system/user/assistant/tool 历史和本地函数定义，并解析流式文本、工具调用、结束原因与 usage。为避免 Bearer 凭据被转发到其他 origin，适配器拒绝 redirect。Custom 槽位不支持托管网页搜索和供应商专用 replay state。
 
-`base_url` 必须使用 HTTPS；只有 loopback、私网或 link-local host 可以使用 HTTP。URL 中的凭据、query 和 fragment 都会被拒绝。配置还会拒绝未知字段、非法环境变量名、重复模型名、无效 token 上限、重复 reasoning 值、`off`，以及不在声明列表中的 reasoning 默认值。
+`base_url` 接受 HTTP 和 HTTPS 端点。凭据经过不可信网络时应优先使用 HTTPS，因为 HTTP 传输 Bearer 凭据时没有传输层加密。URL 中的凭据、query 和 fragment 都会被拒绝。配置还会拒绝未知字段、非法环境变量名、重复模型名、无效 token 上限、重复 reasoning 值、`off`，以及不在声明列表中的 reasoning 默认值。
 
 当前槽位只支持 OpenAI-compatible Chat Completions。Custom Responses、Anthropic Messages、任意 JavaScript/TypeScript adapter、动态 provider ID 和由 TOML 定义 wire protocol 仍不在范围内。

@@ -80,6 +80,6 @@ default_reasoning_effort = "none"
 
 The adapter sends streaming `POST <base_url>/chat/completions` requests with `stream_options.include_usage = true`, maps system/user/assistant/tool history and local function definitions, and parses streamed text, tool calls, finish reasons, and usage. It rejects redirects so a Bearer credential cannot be forwarded to another origin. Hosted web search and provider-specific replay state are not supported by the Custom slot.
 
-`base_url` must use HTTPS unless the host is loopback, private-network, or link-local. Credentials in the URL, query strings, and fragments are rejected. The configuration also rejects unknown fields, invalid environment-variable names, duplicate model names, invalid token limits, duplicate reasoning values, `off`, and a reasoning default outside the advertised list.
+`base_url` accepts HTTP and HTTPS endpoints. Prefer HTTPS whenever credentials cross an untrusted network because HTTP sends the Bearer credential without transport encryption. Credentials in the URL, query strings, and fragments are rejected. The configuration also rejects unknown fields, invalid environment-variable names, duplicate model names, invalid token limits, duplicate reasoning values, `off`, and a reasoning default outside the advertised list.
 
 The current slot supports only OpenAI-compatible Chat Completions. Custom Responses, Anthropic Messages, arbitrary JavaScript/TypeScript adapters, dynamic provider IDs, and TOML-defined wire protocols remain out of scope.

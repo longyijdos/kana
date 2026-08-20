@@ -56,9 +56,9 @@ describe("Kana Custom provider", () => {
     });
   });
 
-  test("parses private-network endpoints and model reasoning metadata", () => {
+  test("parses HTTP endpoints and model reasoning metadata", () => {
     const provider = parseKanaCustomProvider({
-      base_url: "http://192.168.5.5:8080/v1",
+      base_url: "http://models.example.com/v1",
       api_key_env: "LOCAL_MODEL_KEY",
       timeout_ms: 300_000,
       max_retries: 0,
@@ -77,7 +77,7 @@ describe("Kana Custom provider", () => {
     const model = getKanaCustomProviderModel(provider, "reasoning-model");
 
     expect(provider).toMatchObject({
-      baseUrl: "http://192.168.5.5:8080/v1",
+      baseUrl: "http://models.example.com/v1",
       apiKeyEnv: "LOCAL_MODEL_KEY",
       timeoutMs: 300_000,
       maxRetries: 0,
@@ -104,8 +104,8 @@ describe("Kana Custom provider", () => {
     };
     const cases: Array<{ config: Record<string, unknown>; message: string }> = [
       {
-        config: { base_url: "http://example.com/v1", models: [validModel] },
-        message: "base_url must use HTTPS, except for HTTP loopback or private-network endpoints.",
+        config: { base_url: "ftp://example.com/v1", models: [validModel] },
+        message: "base_url must use HTTP or HTTPS.",
       },
       {
         config: {
