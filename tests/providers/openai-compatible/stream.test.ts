@@ -2,16 +2,16 @@ import { describe, expect, test } from "bun:test";
 import type { AssistantMessage } from "../../../src/core";
 import { AssistantEventStream } from "../../../src/core";
 import {
-  applyDeepSeekChunk,
-  finishOpenContent,
-  finishToolCalls,
-  getDoneReason,
-  readDeepSeekStream,
-} from "../../../src/providers/deepseek/stream";
-import type { DeepSeekStreamState } from "../../../src/providers/deepseek/types";
+  applyOpenAICompatibleChunk,
+  finishOpenAICompatibleContent,
+  finishOpenAICompatibleToolCalls,
+  getOpenAICompatibleDoneReason,
+  readOpenAICompatibleStream,
+} from "../../../src/providers/openai-compatible/stream";
+import type { OpenAICompatibleStreamState } from "../../../src/providers/openai-compatible/types";
 import { messageIdentityForTest } from "../../helpers/messages";
 
-describe("DeepSeek stream parsing", () => {
+describe("OpenAI-compatible stream parsing", () => {
   test("reports raw stream activity for heartbeats and data frames", async () => {
     const encoder = new TextEncoder();
     let activityCount = 0;
@@ -20,15 +20,13 @@ describe("DeepSeek stream parsing", () => {
       new ReadableStream({
         start(controller) {
           controller.enqueue(encoder.encode(": heartbeat\n\n"));
-          controller.enqueue(
-            encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n\n'),
-          );
+          controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'));
           controller.close();
         },
       }),
     );
 
-    await readDeepSeekStream(
+    await readOpenAICompatibleStream(
       response,
       (chunk) => chunks.push(chunk),
       () => {
@@ -40,41 +38,17 @@ describe("DeepSeek stream parsing", () => {
     expect(chunks).toHaveLength(1);
   });
 
-  test("emits thinking, text, and tool call events in content order", async () => {
+  test("emits text and tool call events in content order", async () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEventTypes(stream);
-    const message: AssistantMessage = {
-      ...messageIdentityForTest("assistant"),
-      role: "assistant",
-      content: [],
-    };
-    const state: DeepSeekStreamState = {
-      endedContentIndexes: new Set<number>(),
-    };
+    const message = createMessage();
+    const state = createState();
 
-    stream.push({
-      type: "start",
-      snapshot: structuredClone(message),
+    stream.push({ type: "start", snapshot: structuredClone(message) });
+    applyOpenAICompatibleChunk(stream, message, state, {
+      choices: [{ delta: { content: "answer" } }],
     });
-    applyDeepSeekChunk(stream, message, state, {
-      choices: [
-        {
-          delta: {
-            reasoning_content: "thinking",
-          },
-        },
-      ],
-    });
-    applyDeepSeekChunk(stream, message, state, {
-      choices: [
-        {
-          delta: {
-            content: "answer",
-          },
-        },
-      ],
-    });
-    applyDeepSeekChunk(stream, message, state, {
+    applyOpenAICompatibleChunk(stream, message, state, {
       choices: [
         {
           delta: {
@@ -82,46 +56,31 @@ describe("DeepSeek stream parsing", () => {
               {
                 index: 0,
                 id: "call_1",
-                function: {
-                  name: "read",
-                  arguments: '{"path":"a',
-                },
+                function: { name: "read", arguments: '{"path":"a' },
               },
             ],
           },
         },
       ],
     });
-    applyDeepSeekChunk(stream, message, state, {
+    applyOpenAICompatibleChunk(stream, message, state, {
       choices: [
         {
-          delta: {
-            tool_calls: [
-              {
-                index: 0,
-                function: {
-                  arguments: '.ts"}',
-                },
-              },
-            ],
-          },
+          delta: { tool_calls: [{ index: 0, function: { arguments: '.ts"}' } }] },
           finish_reason: "tool_calls",
         },
       ],
     });
-    finishOpenContent(stream, message, state);
-    finishToolCalls(stream, message, state);
+    finishOpenAICompatibleContent(stream, message, state);
+    finishOpenAICompatibleToolCalls(stream, message, state);
     stream.end({
       type: "done",
-      reason: getDoneReason(state.finishReason),
+      reason: getOpenAICompatibleDoneReason(state.finishReason),
       message: structuredClone(message),
     });
 
     expect(await eventsPromise).toEqual([
       "start",
-      "thinking_start",
-      "thinking_delta",
-      "thinking_end",
       "text_start",
       "text_delta",
       "text_end",
@@ -132,48 +91,30 @@ describe("DeepSeek stream parsing", () => {
       "done",
     ]);
     expect(message.content).toEqual([
-      {
-        type: "thinking",
-        text: "thinking",
-      },
-      {
-        type: "text",
-        text: "answer",
-      },
+      { type: "text", text: "answer" },
       {
         type: "tool_call",
         id: "call_1",
         name: "read",
         rawArgs: '{"path":"a.ts"}',
-        args: {
-          path: "a.ts",
-        },
+        args: { path: "a.ts" },
       },
     ]);
   });
 
-  test("captures usage from the stream chunk", () => {
+  test("captures standard and detailed usage fields", () => {
     const stream = new AssistantEventStream();
-    const message: AssistantMessage = {
-      ...messageIdentityForTest("assistant"),
-      role: "assistant",
-      content: [],
-    };
-    const state: DeepSeekStreamState = {
-      endedContentIndexes: new Set<number>(),
-    };
+    const message = createMessage();
+    const state = createState();
 
-    applyDeepSeekChunk(stream, message, state, {
+    applyOpenAICompatibleChunk(stream, message, state, {
       choices: [],
       usage: {
         prompt_tokens: 100,
         completion_tokens: 20,
         total_tokens: 120,
-        prompt_cache_hit_tokens: 90,
-        prompt_cache_miss_tokens: 10,
-        completion_tokens_details: {
-          reasoning_tokens: 5,
-        },
+        prompt_tokens_details: { cached_tokens: 90 },
+        completion_tokens_details: { reasoning_tokens: 5 },
       },
     });
 
@@ -190,16 +131,10 @@ describe("DeepSeek stream parsing", () => {
   test("ends each ordered tool call when the next one starts", async () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEvents(stream);
-    const message: AssistantMessage = {
-      ...messageIdentityForTest("assistant"),
-      role: "assistant",
-      content: [],
-    };
-    const state: DeepSeekStreamState = {
-      endedContentIndexes: new Set<number>(),
-    };
+    const message = createMessage();
+    const state = createState();
 
-    applyDeepSeekChunk(stream, message, state, {
+    applyOpenAICompatibleChunk(stream, message, state, {
       choices: [
         {
           delta: {
@@ -214,7 +149,7 @@ describe("DeepSeek stream parsing", () => {
         },
       ],
     });
-    applyDeepSeekChunk(stream, message, state, {
+    applyOpenAICompatibleChunk(stream, message, state, {
       choices: [
         {
           delta: {
@@ -230,15 +165,14 @@ describe("DeepSeek stream parsing", () => {
         },
       ],
     });
-    finishToolCalls(stream, message, state);
+    finishOpenAICompatibleToolCalls(stream, message, state);
     stream.end({
       type: "done",
-      reason: getDoneReason(state.finishReason),
+      reason: getOpenAICompatibleDoneReason(state.finishReason),
       message: structuredClone(message),
     });
 
     const events = await eventsPromise;
-
     expect(events.map((event) => event.type)).toEqual([
       "toolcall_start",
       "toolcall_delta",
@@ -253,24 +187,51 @@ describe("DeepSeek stream parsing", () => {
       toolCall: { id: "call_1", args: { path: "one" } },
     });
   });
+
+  test("rejects unsupported finish reasons and incomplete tool calls", () => {
+    const stream = new AssistantEventStream();
+    const message = createMessage();
+    const state = createState();
+
+    expect(() =>
+      applyOpenAICompatibleChunk(stream, message, state, {
+        choices: [{ finish_reason: "content_filter" }],
+      }),
+    ).toThrow("unsupported reason content_filter");
+
+    applyOpenAICompatibleChunk(stream, message, state, {
+      choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: "{}" } }] } }],
+    });
+    expect(() => finishOpenAICompatibleToolCalls(stream, message, state)).toThrow(
+      "incomplete tool call",
+    );
+  });
 });
+
+function createMessage(): AssistantMessage {
+  return {
+    ...messageIdentityForTest("assistant"),
+    role: "assistant",
+    content: [],
+  };
+}
+
+function createState(): OpenAICompatibleStreamState {
+  return { endedContentIndexes: new Set<number>() };
+}
 
 async function collectEventTypes(stream: AssistantEventStream): Promise<string[]> {
   const events: string[] = [];
-
   for await (const event of stream) {
     events.push(event.type);
   }
-
   return events;
 }
 
 async function collectEvents(stream: AssistantEventStream) {
   const events = [];
-
   for await (const event of stream) {
     events.push(event);
   }
-
   return events;
 }

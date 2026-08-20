@@ -1,6 +1,6 @@
 # DeepSeek provider adapter
 
-Kana's product configuration currently uses DeepSeek; its adapter lives in `src/providers/deepseek`. Model metadata selects a shared wire protocol: both V4 Flash and V4 Pro use the Responses API. The provider retains a DeepSeek-specific legacy Chat Completions adapter for compatibility and possible future extraction, but current V4 metadata does not select it. The active path reconstructs streaming output into the same ordered assistant content.
+Kana's product configuration currently uses DeepSeek; its adapter lives in `src/providers/deepseek`. Both V4 Flash and V4 Pro use the Responses API exclusively and reconstruct streaming output into the same ordered assistant content.
 
 ## Model and metadata
 
@@ -15,11 +15,11 @@ Current built-in metadata:
 
 Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the user's `web_search` setting. The TUI uses metadata for context percentage. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting. Kana intentionally does not embed provider pricing; actual charges come from DeepSeek billing.
 
-## Protocol selection and request conversion
+## Request conversion
 
-The default base URL is `https://api.deepseek.com`. Authentication, cancellation, timeout, retries, error normalization, and lifecycle logging are shared, while metadata chooses the endpoint and request codec.
+The default base URL is `https://api.deepseek.com`, and both current models send requests to `/responses`.
 
-Both current DeepSeek models are text-only. If a persisted user message contains images, both request codecs replace them with an explicit attachment-omitted marker and never transmit their base64 data. `model.deepseek.image_input` is reserved for future metadata support and cannot override a model that declares no image capability.
+Both current DeepSeek models are text-only. If a persisted user message contains images, the request converter replaces them with an explicit attachment-omitted marker and never transmits their base64 data. `model.deepseek.image_input` is reserved for future metadata support and cannot override a model that declares no image capability.
 
 ### V4 Flash and V4 Pro Responses
 
@@ -52,21 +52,6 @@ A per-turn output ceiling takes precedence over configured `maxTokens`. Client f
 
 Current DeepSeek model metadata marks image input as unsupported. Normal turns and context compaction therefore never send stored base64 image bytes. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
-### Legacy Chat Completions compatibility
-
-The provider retains a DeepSeek-specific `POST /chat/completions` adapter for compatibility and possible future extraction into a shared adapter. Current V4 metadata does not select this path.
-
-```json
-{
-  "model": "…",
-  "messages": ["…"],
-  "stream": true,
-  "stream_options": { "include_usage": true }
-}
-```
-
-The legacy converter maps the system prompt to a `system` message, user messages directly, tool results to `tool` messages with `tool_call_id`, and ordered assistant content to one assistant message. Text joins into `content`, thinking joins into `reasoning_content`, and calls become `tool_calls`; streamed `rawArgs` are replayed preferentially. It sends `max_tokens`, `thinking.type`, `reasoning_effort`, `response_format`, and `user_id` under their Chat Completions names, omitting `reasoning_effort` when thinking is explicitly disabled. Keep this adapter provider-local until another provider needs the same compatibility path.
-
 ## Authentication, cancellation, timeout, and retries
 
 The model prefers `apiKey` from its config, otherwise reads `DEEPSEEK_API_KEY`. Kana's product layer normally reads the environment variable selected in `config.toml` and passes it in configuration; direct `DeepSeekModel` use gets this fallback. Requests carry `Authorization: Bearer <key>`, `content-type: application/json`, and `accept: text/event-stream`, plus optional custom headers.
@@ -80,26 +65,6 @@ An HTTP 400, 413, or 422 is converted to generic `ContextWindowExceededError` on
 ## SSE parsing and content order
 
 Both V4 models use the shared `src/providers/responses` semantic SSE processor also used by OpenAI Codex. It correlates output items by `output_index` and item ID, preserves reasoning/message/function/search order, maps `web_search_call` to `hosted_tool`, and finishes only after `response.completed`, `response.incomplete`, or `response.failed`. DeepSeek's `ws_call_id` replay marker is removed from semantic search queries and URL fragments before presentation, while the raw output item remains unchanged in `providerState`. Completed items retain `providerState.provider = "deepseek"`; `response.incomplete` maps to `length`, a response containing client function calls maps to `toolUse`, and hosted searches alone still map to `stop`. Responses usage maps input, output, total, cached, and reasoning tokens.
-
-The retained legacy Chat Completions reader splits SSE frames on blank lines and retains incomplete trailing frames across network chunks. Each frame collects all `data:` lines; `[DONE]` immediately ends reading. JSON payloads go to `applyDeepSeekChunk`.
-
-```text
-reasoning_content delta
-  → thinking_start (first) → thinking_delta*
-content delta
-  → end all open thinking
-  → text_start (first) → text_delta*
-tool_calls delta
-  → end all open thinking/text
-  → on the first higher index, end all preceding tool calls
-  → toolcall_start (first) → toolcall_delta*
-finish_reason = tool_calls
-  → parse and end the final unfinished tool call
-```
-
-Tool deltas use the provider `index` to address the Nth tool block in the current message. DeepSeek does not provide a per-call completion marker; its indexes arrive in order, so the first higher index ends every preceding call. Stream completion then ends only the final unfinished call. IDs, function names, and arguments may concatenate across chunks; missing arguments become `{}`, while non-JSON arguments remain raw strings. Starting visible text or a tool call closes an open block of a different kind, keeping event order and the `content` array consistent.
-
-Chat Completions finish reasons map as `stop → stop`, `length → length`, and `tool_calls → toolUse`. `content_filter` and `insufficient_system_resource` are errors. Usage in stream chunks maps to generic fields including prompt cache hit/miss and reasoning tokens.
 
 ## Usage
 

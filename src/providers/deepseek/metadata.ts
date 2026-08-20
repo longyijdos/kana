@@ -1,6 +1,6 @@
 import type { ModelMetadata } from "@/core";
 
-export type DeepSeekModelMetadata = ModelMetadata;
+export type DeepSeekModelMetadata = ModelMetadata & { protocol: "responses" };
 
 export const DEEPSEEK_MODELS = {
   "deepseek-v4-flash": {

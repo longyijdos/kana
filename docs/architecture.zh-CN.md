@@ -18,7 +18,8 @@ src/main.ts
                                                               ├─ core     消息、模型、工具描述、流和用量的共享协议
                                                               └─ providers
                                                                   ├─ responses     共享 Responses 语义 SSE 组装
-                                                                  ├─ deepseek      DeepSeek 协议路由和流式适配
+                                                                  ├─ openai-compatible  共享 Chat Completions 适配
+                                                                  ├─ deepseek      DeepSeek Responses 请求与流式适配
                                                                   └─ openai-codex  Codex Responses、OAuth 凭据和流式适配
 ```
 
@@ -87,14 +88,9 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 `core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。通用 `ModelMetadata.protocol` 标识 `responses` 或 `chat-completions` wire protocol，`supportsHostedWebSearch` 和 `supportsImageInput` 则独立声明所选模型的能力，不与用户配置混合。Provider 可以据此选择共享 codec，而无需让 `core` 包含供应商专用路由。`providers/index.ts` 是集中式工厂；产品配置支持 `deepseek` 与 `openai-codex`，`MockModel` 用于测试并使用 null protocol。
 
-`DeepSeekModel` 根据 metadata 将 V4 Flash 和 V4 Pro 都路由到 `/responses`。两个模型都会把通用历史转换为语义化 Responses input，把已完成的供应商 item 保存为不透明 `providerState` 以供无状态 replay，在启用时声明托管 `web_search`，并使用共享的 `src/providers/responses` 语义 SSE 处理器。该处理器按 index 与 item ID 关联输出，把 reasoning、消息、函数调用、托管搜索、终态和 usage 映射为有序 core event。
+`DeepSeekModel` 将 V4 Flash 和 V4 Pro 都发送到 `/responses`。两个模型都会把通用历史转换为语义化 Responses input，把已完成的供应商 item 保存为不透明 `providerState` 以供无状态 replay，在启用时声明托管 `web_search`，并使用共享的 `src/providers/responses` 语义 SSE 处理器。该处理器按 index 与 item ID 关联输出，把 reasoning、消息、函数调用、托管搜索、终态和 usage 映射为有序 core event。
 
-Provider 仍保留 DeepSeek 专用的 legacy Chat Completions converter 与 parser，用于兼容性和未来可能的跨 provider 复用；当前 V4 metadata 不会选择这条路径。它会：
-
-1. 缓冲被网络分片切开的 SSE 帧；
-2. 将 reasoning、可见文本和工具参数增量写入同一有序助手消息；
-3. 按 DeepSeek tool call index 推断单个调用结束：更高 index 首次出现时解析并结束此前调用，流结束时再结束最后一个，同时保留原始参数字符串；
-4. 映射结束原因和 token 用量。
+`src/providers/openai-compatible` 负责可复用的 OpenAI-compatible Chat Completions 路径。它转换通用消息与本地函数工具，仅在模型 metadata 允许图片输入时发送 image data URL，并在跨 provider replay 时省略供应商专用 reasoning 或托管工具状态。其 SSE reader 会保留被网络分片切开的 frame，逐步组装有序文本和函数调用，映射结束原因与 usage，并遵循 provider 生命周期关于取消、无活动超时、重试、安全日志及上下文超限归一化的约束。该模型可直接导入，但不注册为独立 `ProviderName`；产品装配层可为具体配置的 provider 实例化它。
 
 请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口和最大输出；TUI 用它计算上下文占用，进程累计 token 则来自 provider usage 事件。
 

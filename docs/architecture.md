@@ -18,7 +18,8 @@ src/main.ts
                                                                                                  ├─ core     Shared message, model, tool-description, stream, and usage contracts
                                                                                                  └─ providers
                                                                                                      ├─ responses     Shared semantic Responses SSE assembly
-                                                                                                     ├─ deepseek      DeepSeek protocol routing and streaming adapter
+                                                                                                     ├─ openai-compatible  Shared Chat Completions adapter
+                                                                                                     ├─ deepseek      DeepSeek Responses request and streaming adapter
                                                                                                      └─ openai-codex  Codex Responses, OAuth credentials, and streaming adapter
 ```
 
@@ -87,14 +88,9 @@ An optional `ContextManager` sits between Agent and Model. The Agent forks check
 
 `core/model.ts` defines `Model`: a provider only needs to provide metadata and `stream(context)`; the base class implements `generate()` by collecting a stream. Common `ModelMetadata.protocol` identifies the generic `responses` or `chat-completions` wire protocol, while `supportsHostedWebSearch` and `supportsImageInput` advertise selected-model capabilities independently of user configuration. Providers can use these fields to select shared codecs without encoding provider-specific routing in `core`. `providers/index.ts` is the centralized factory. Product configuration supports `deepseek` and `openai-codex`, while `MockModel` exists for tests and uses a null protocol.
 
-`DeepSeekModel` uses metadata to route both V4 Flash and V4 Pro through `/responses`. Both models convert generic history into semantic Responses input, store completed provider items as opaque `providerState` for stateless replay, advertise hosted `web_search` when enabled, and use the shared `src/providers/responses` semantic SSE processor. That processor correlates output by index and item ID and maps reasoning, messages, function calls, hosted searches, terminal status, and usage into ordered core events.
+`DeepSeekModel` sends both V4 Flash and V4 Pro through `/responses`. Both models convert generic history into semantic Responses input, store completed provider items as opaque `providerState` for stateless replay, advertise hosted `web_search` when enabled, and use the shared `src/providers/responses` semantic SSE processor. That processor correlates output by index and item ID and maps reasoning, messages, function calls, hosted searches, terminal status, and usage into ordered core events.
 
-The provider retains a DeepSeek-specific legacy Chat Completions converter and parser for compatibility and possible future reuse by another provider. Current V4 metadata does not select this path. It:
-
-1. Buffers SSE frames split by network chunks.
-2. Writes reasoning, visible text, and tool-argument deltas into one ordered assistant message.
-3. Infers individual DeepSeek tool-call completion from ordered indexes: a first higher index parses and ends preceding calls, while stream completion ends the final call; raw argument strings are retained.
-4. Maps finish reasons and token usage.
+`src/providers/openai-compatible` owns the reusable OpenAI-compatible Chat Completions path. It converts generic messages and local function tools, emits image data URLs only when model metadata enables image input, and omits provider-specific reasoning or hosted-tool state during cross-provider replay. Its SSE reader preserves partial frames, incrementally assembles ordered text and function calls, maps finish reasons and usage, and shares the normal provider lifecycle guarantees for cancellation, inactivity timeout, retries, safe logging, and context-limit normalization. The model is exported directly but is not registered as a standalone `ProviderName`; product composition can instantiate it for a configured provider.
 
 A request can be cancelled by the Agent and is also subject to the `timeoutMs` inactivity timeout, which restarts on response headers or response data. HTTP 408, 429, and 5xx responses use exponential-backoff retries up to `maxRetries`. Model metadata also supplies the context window and output maximum; the TUI uses it to calculate context occupancy, while provider usage events supply process-lifetime token totals.
 
