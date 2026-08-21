@@ -52,6 +52,8 @@ Adjust the staged files to match the actual diff. Use annotated tags for every s
 
 ## Release automation
 
+The repository pins the Bun toolchain in `package.json` and in both the CI and Release workflows. When upgrading Bun, update all three locations to the same version so local tooling, validation, and compiled release runtimes stay aligned.
+
 After a `v*` tag is pushed, the Release workflow:
 
 1. Verifies that the tag, `package.json` version, and `CHANGELOG.md` section agree.

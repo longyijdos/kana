@@ -52,6 +52,8 @@ git push --atomic origin main v0.3.0
 
 ## 发布自动化
 
+仓库会在 `package.json`、CI workflow 和 Release workflow 中固定 Bun 工具链版本。升级 Bun 时，应将这三处同步更新为同一版本，确保本地工具、校验流程和 release 二进制内嵌的运行时保持一致。
+
 推送 `v*` tag 后，Release workflow 会：
 
 1. 校验 tag、`package.json` 版本和 `CHANGELOG.md` 版本段一致。
