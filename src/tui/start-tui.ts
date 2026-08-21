@@ -156,19 +156,6 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         ? {}
         : {
             loadExternalTools: loadMcpTools,
-            initialLoadStatus: () => {
-              const enabledServerCount = host
-                .loadMcpServers()
-                .filter((activation) => activation.enabled).length;
-              if (enabledServerCount === 0) {
-                return undefined;
-              }
-              return formatMcpLifecycleStatus({
-                operation: "start",
-                completedServerCount: 0,
-                totalServerCount: enabledServerCount,
-              });
-            },
             mcpManagement: {
               loadServers: () => host.loadMcpServers(),
               saveEnabledServerIds: (serverIds: string[]) =>

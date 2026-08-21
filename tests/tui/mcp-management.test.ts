@@ -48,6 +48,7 @@ describe("TUI MCP management", () => {
 
     expect(saved).toEqual([["filesystem"]]);
     expect(internal.tui.getFocus()).toBeUndefined();
+    expect(renderTranscript(internal.transcript)).toContain("Reloading MCP servers...");
 
     reportProgress("Starting MCP servers... 0/1");
     expect(renderTranscript(internal.transcript)).toContain("Starting MCP servers... 0/1");

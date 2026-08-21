@@ -154,7 +154,6 @@ describe("session-scoped agents", () => {
           reportProgress = onProgress;
           return loadResult;
         },
-        initialLoadStatus: () => "Starting MCP servers... 0/1",
       },
     );
     const internal = app as unknown as {
@@ -167,7 +166,7 @@ describe("session-scoped agents", () => {
     app.start();
 
     expect(renderTranscript(internal.transcript)).toContain("Kana v");
-    expect(renderTranscript(internal.transcript)).toContain("Starting MCP servers... 0/1");
+    expect(renderTranscript(internal.transcript)).toContain("Starting external tools...");
     expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain("test-model");
     expect(internal.tui.getFocus()).toBeUndefined();
     expect(agentToolStates).toEqual([false]);
@@ -187,35 +186,6 @@ describe("session-scoped agents", () => {
     expect(transcript).not.toContain("Starting MCP servers...");
     expect(transcript).toContain("MCP startup complete: 1/2 servers ready · 3 tools");
     expect(transcript).toContain("MCP server optional failed to start: unavailable");
-    expect(internal.tui.getFocus()).toBe(internal.editor);
-  });
-
-  test("skips the loading UI entirely when no external tools are enabled", async () => {
-    const agentToolStates: boolean[] = [];
-    const app = new KanaTuiApp(
-      () => {
-        agentToolStates.push(true);
-        return createAgentStub();
-      },
-      createTerminal(),
-      {
-        ...createOptions(),
-        loadExternalTools: async () => ({ status: undefined, warnings: [] }),
-        initialLoadStatus: () => undefined,
-      },
-    );
-    const internal = app as unknown as {
-      transcript: { render(width: number): string[] };
-      editor: unknown;
-      tui: { getFocus(): unknown };
-    };
-
-    app.start();
-    await waitFor(() => agentToolStates.length === 2);
-
-    const transcript = renderTranscript(internal.transcript);
-    expect(transcript).not.toContain("Starting");
-    expect(transcript).not.toContain("MCP");
     expect(internal.tui.getFocus()).toBe(internal.editor);
   });
 
