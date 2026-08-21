@@ -1,19 +1,35 @@
+import type { KanaMcpRuntimeProgressEvent } from "@/kana";
 import type { McpManagerProgressEvent, McpServerDiagnostic } from "@/mcp";
 import { stripTerminalControlSequences } from "./render";
 
-export function formatMcpLifecycleStatus(event: McpManagerProgressEvent): string | undefined {
-  if (event.totalServerCount === 0) {
+export function formatMcpLifecycleStatus(
+  event: McpManagerProgressEvent,
+  runtimeOperation?: KanaMcpRuntimeProgressEvent["runtimeOperation"],
+): string | undefined {
+  if (event.operation === "close") {
+    if (runtimeOperation !== undefined && runtimeOperation !== "close") {
+      return undefined;
+    }
+    if (event.totalServerCount === 0) {
+      return undefined;
+    }
+
+    const progress = `${event.completedServerCount}/${event.totalServerCount}`;
+    const server =
+      event.serverId === undefined || event.outcome === undefined
+        ? ""
+        : ` · ${sanitizeLabel(event.serverId)} ${event.outcome}`;
+    return `Closing MCP servers... ${progress}${server}`;
+  }
+
+  if (event.serverId === undefined || event.outcome === undefined) {
     return undefined;
   }
 
-  const action = event.operation === "start" ? "Starting" : "Closing";
-  const progress = `${event.completedServerCount}/${event.totalServerCount}`;
-  const server =
-    event.serverId === undefined || event.outcome === undefined
-      ? ""
-      : ` · ${sanitizeLabel(event.serverId)} ${event.outcome}`;
-
-  return `${action} MCP servers... ${progress}${server}`;
+  const toolCount = event.toolCount ?? 0;
+  const toolLabel = toolCount === 1 ? "tool" : "tools";
+  const progress = `[${event.completedServerCount}/${event.totalServerCount}]`;
+  return `${progress} MCP server ${sanitizeLabel(event.serverId)} ${event.outcome} · ${toolCount} ${toolLabel}.`;
 }
 
 export function formatMcpStartupWarnings(diagnostics: readonly McpServerDiagnostic[]): string[] {
@@ -39,10 +55,6 @@ export function formatMcpReloadSummary(
   diagnostics: readonly McpServerDiagnostic[],
   toolCount: number,
 ): string {
-  if (diagnostics.length === 0) {
-    return "MCP disabled: no servers enabled.";
-  }
-
   return formatMcpSummary("reload", diagnostics, toolCount);
 }
 

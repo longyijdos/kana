@@ -49,7 +49,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       app?.handleMcpOAuthDiagnostic(serverId, event);
     },
     onMcpProgress: (event) => {
-      const status = formatMcpLifecycleStatus(event);
+      const status = formatMcpLifecycleStatus(event, event.runtimeOperation);
       if (status === undefined) {
         return;
       }
@@ -75,14 +75,10 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     try {
       const snapshot = await (operation === "start" ? host.startMcp() : host.reloadMcp());
       return {
-        ...(snapshot.selectedServerIds.length === 0 && operation === "start"
-          ? {}
-          : {
-              status:
-                operation === "start"
-                  ? formatMcpStartupSummary(snapshot.diagnostics, snapshot.tools.length)
-                  : formatMcpReloadSummary(snapshot.diagnostics, snapshot.tools.length),
-            }),
+        status:
+          operation === "start"
+            ? formatMcpStartupSummary(snapshot.diagnostics, snapshot.tools.length)
+            : formatMcpReloadSummary(snapshot.diagnostics, snapshot.tools.length),
         warnings: formatMcpStartupWarnings(snapshot.diagnostics),
       };
     } finally {

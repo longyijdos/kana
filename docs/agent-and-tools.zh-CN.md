@@ -144,7 +144,7 @@ TUI 启动时从 `mcp.json` 读取服务器定义，从 `mcp-enabled.json` 读�
 
 面向产品的 `KanaMcpRuntime` 负责替换 manager，并串行执行生命周期操作。reload 会先关闭旧 manager，再读取最新文件并创建新 manager；即使替换失败，也会清空旧工具及其审批来源。TUI 在会话选定后调用 start，在用户应用有变化的 `/mcp` 草稿后调用 reload，并在退出时调用 close。reload 失败后会用无过期 MCP 工具的状态重建 Agent 并恢复输入，同时让底层 manager 继续保持一次性。
 
-Manager 并行启动服务器，并按配置顺序聚合初始工具列表。include/exclude 按远端原名筛选；可选服务器失败只禁用该服务器，必需服务器失败会终止整体启动。远端普通 JSON Schema 会在工具注册前由 TypeBox 编译器预编译，单个服务器的所有工具以原子方式适配，不留下静默的部分工具集。模型看到的名字是由 server ID 和远端工具名组成的可读别名，例如 `github_create_issue`；名称符合当前 provider 的字符集要求且不超过 64 字符，内部调用仍使用原始 MCP 工具名。Manager 显式拒绝远端重名、清洗或截断后的重名以及本地工具冲突，不静默覆盖或按加载顺序追加后缀。
+Manager 并行启动服务器，并按配置顺序聚合初始工具列表；每个服务器完成时的进度事件都包含结果和过滤后的工具数。include/exclude 按远端原名筛选；可选服务器失败只禁用该服务器，必需服务器失败会终止整体启动。远端普通 JSON Schema 会在工具注册前由 TypeBox 编译器预编译，单个服务器的所有工具以原子方式适配，不留下静默的部分工具集。模型看到的名字是由 server ID 和远端工具名组成的可读别名，例如 `github_create_issue`；名称符合当前 provider 的字符集要求且不超过 64 字符，内部调用仍使用原始 MCP 工具名。Manager 显式拒绝远端重名、清洗或截断后的重名以及本地工具冲突，不静默覆盖或按加载顺序追加后缀。
 
 MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 JSON 和元数据分别限长；text 与嵌入文本资源转换成模型文本，resource link 只描述 URI/MIME 而不自动读取，image、audio 和 blob 丢弃 base64 后只记录 MIME 与估算字节数，未知内容类型只记录类型名。`structuredContent` 在限制内保留结构，超限时只保留截断预览。远端进度通过 `context.update` 发出；MCP `isError` 作为工具执行错误返回，JSON-RPC error 则保存 code/message 等协议错误信息。
 

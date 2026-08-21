@@ -23,7 +23,7 @@ ProcessTerminal
 
 ## 终端生命周期与渲染
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再让 `ConversationRuntime` 用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。可选服务器失败会在摘要后留下错误色警告；初次加载时必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿也会在 transcript 中显示同样的进度；但 reload 失败时会用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，关闭并等待 `ConversationRuntime`，再由产品层取消并等待自动记忆合并，然后关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token 和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
+`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器取消 editor 焦点，并在 transcript 末尾追加 `Starting MCP servers...`。随后每个选中的服务器完成时都会追加一条不可变的 `[已完成/总数]` 结果行，其中包含结果和过滤后的工具数；可选服务器的错误色 warning 位于最终启动摘要之前。未选择服务器时也走同一路径，只是不产生中间结果行，并以 `0/0` 摘要结束。之后 `ConversationRuntime` 才用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。初次加载时必需服务器失败会显示错误而不是完成摘要，并保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿沿用相同的追加式 transcript 结构，但使用 reload 开始行和摘要；内部 close 阶段不会写入，reload 失败时则用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，关闭并等待 `ConversationRuntime`，再由产品层取消并等待自动记忆合并，然后关闭 MCP manager；manager 的中立进度事件更新同一个关闭 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token 和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
 
 使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、new、模型切换和后续 Agent 重建都不会读取或连接 MCP。欢迎面板说明当前会话不会保存，transcript 会显示一次 Clean 模式说明，状态栏持续显示 `Clean`；退出时不会打印恢复命令。
 
@@ -129,7 +129,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 
 独立 controller 保持 `KanaTuiApp` 不必承载每个交互状态机：
 
-- `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有进度块、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
+- `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有追加式生命周期输出、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
 - `QueuedInputController` 只在本地保留当前 run 的 `next turn` 乐观预览；权威的 `next-step`、`next-turn`、到期 `scheduled` 和未来 wake 状态都投影自 `ConversationRuntime` 快照。输入被接受或 deferred 后，controller 按原有 `MessageId` 对齐该预览，即使正文完全相同也不会混淆。
 - `ScheduledMessageManagerController` 用 `/schedule` 打开当前 session 的定时消息快照。未到期项按时间排列，已到期但尚未发送的项放在底部；只显示 `agent` 或 `you` 来源，不显示 Agent 的替换 key。列表不会随时钟或后台状态自动变化；`R`、添加或删除会重新读取快照。`A` 提供 5/15/30 分钟、1 小时和 `3m`、`90m`、`2h` 形式的自定义相对时间；`D` 确认后按未来输入的稳定 `MessageId` 同时检查 scheduler 与已到期 `next-turn` 项。面板活动期间新的 pending run 不会启动，`Esc` 关闭后恢复 FIFO 投递。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
