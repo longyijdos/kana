@@ -1,6 +1,6 @@
 # DeepSeek provider adapter
 
-Kana's built-in DeepSeek adapter lives in `src/providers/deepseek`. Both V4 Flash and V4 Pro use the Responses API exclusively and reconstruct streaming output into the same ordered assistant content.
+Kana's built-in DeepSeek adapter lives in `src/providers/deepseek`. All V4 models use the Responses API exclusively and reconstruct streaming output into the same ordered assistant content.
 
 ## Model and metadata
 
@@ -11,6 +11,7 @@ Current built-in metadata:
 | Model | Protocol | Context window | Max output | Parallel tool calls | Hosted web search | Image input |
 | --- | --- | ---: | ---: | --- | --- | --- |
 | `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported |
+| `deepseek-v4-flash-vision-exp` | Responses | 1,000,000 | 384,000 | Supported | Supported | Supported |
 | `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported |
 
 Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the user's `web_search` setting. The TUI uses metadata for context percentage. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting. Kana intentionally does not embed provider pricing; actual charges come from DeepSeek billing.
@@ -19,13 +20,13 @@ Both models expose `none`, `low`, `high`, and `max` through common reasoning met
 
 ## Request conversion
 
-The default base URL is `https://api.deepseek.com`, and both current models send requests to `/responses`.
+The default base URL is `https://api.deepseek.com`, and all current models send requests to `/responses`.
 
-Both current DeepSeek models are text-only. If a persisted user message contains images, the request converter replaces them with an explicit attachment-omitted marker and never transmits their base64 data. `model.deepseek.image_input` is reserved for future metadata support and cannot override a model that declares no image capability.
+Image input follows the selected model's metadata and the `model.deepseek.image_input` setting. `deepseek-v4-flash-vision-exp` accepts persisted user images as classic Responses `input_image` items with self-contained base64 data URLs. The text-only V4 Flash and V4 Pro models replace persisted user images with an explicit attachment-omitted marker and never transmit their base64 data; model metadata takes precedence, so enabling `image_input` cannot add image delivery to a model that declares no image capability, and `model.deepseek.image_input = false` disables delivery even on the vision model.
 
-### V4 Flash and V4 Pro Responses
+### V4 Responses
 
-Both V4 models send `POST /responses` with semantic input items:
+All V4 models send `POST /responses` with semantic input items:
 
 ```json
 {
@@ -51,7 +52,7 @@ Provided optional configuration maps as follows:
 
 A per-turn output ceiling takes precedence over configured `maxTokens`. Client functions use flattened Responses tool definitions. When `model.deepseek.web_search = true` and metadata supports it, `{ "type": "web_search" }` is appended to the same `tools` array; `false` removes only the hosted tool. Default `tool_choice` is `auto`, named Chat Completions choices are converted to the flattened Responses shape, and `strictTools` adds `strict: true` to function tools.
 
-Current DeepSeek model metadata marks image input as unsupported. Normal turns and context compaction therefore never send stored base64 image bytes. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
+Image input is gated by both model metadata and configuration: only `deepseek-v4-flash-vision-exp` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
 ## Authentication, cancellation, timeout, and retries
 
@@ -65,7 +66,7 @@ An HTTP 400, 413, or 422 is converted to generic `ContextWindowExceededError` on
 
 ## SSE parsing and content order
 
-Both V4 models use the shared `src/providers/responses` semantic SSE processor also used by OpenAI Codex. It correlates output items by `output_index` and item ID, preserves reasoning/message/function/search order, maps `web_search_call` to `hosted_tool`, and finishes only after `response.completed`, `response.incomplete`, or `response.failed`. DeepSeek's `ws_call_id` replay marker is removed from semantic search queries and URL fragments before presentation, while the raw output item remains unchanged in `providerState`. Completed items retain `providerState.provider = "deepseek"`; `response.incomplete` maps to `length`, a response containing client function calls maps to `toolUse`, and hosted searches alone still map to `stop`. Responses usage maps input, output, total, cached, and reasoning tokens.
+All V4 models use the shared `src/providers/responses` semantic SSE processor also used by OpenAI Codex. It correlates output items by `output_index` and item ID, preserves reasoning/message/function/search order, maps `web_search_call` to `hosted_tool`, and finishes only after `response.completed`, `response.incomplete`, or `response.failed`. DeepSeek's `ws_call_id` replay marker is removed from semantic search queries and URL fragments before presentation, while the raw output item remains unchanged in `providerState`. Completed items retain `providerState.provider = "deepseek"`; `response.incomplete` maps to `length`, a response containing client function calls maps to `toolUse`, and hosted searches alone still map to `stop`. Responses usage maps input, output, total, cached, and reasoning tokens.
 
 ## Usage
 

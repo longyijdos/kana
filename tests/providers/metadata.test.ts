@@ -6,6 +6,7 @@ describe("provider model metadata", () => {
     expect(Object.values(DEEPSEEK_MODELS).map((model) => model.supportsParallelToolCalls)).toEqual([
       true,
       true,
+      true,
     ]);
     expect(
       Object.values(OPENAI_CODEX_MODELS).map((model) => model.supportsParallelToolCalls),
@@ -19,6 +20,7 @@ describe("provider model metadata", () => {
         supportsHostedWebSearch: model.supportsHostedWebSearch,
       })),
     ).toEqual([
+      { protocol: "responses", supportsHostedWebSearch: true },
       { protocol: "responses", supportsHostedWebSearch: true },
       { protocol: "responses", supportsHostedWebSearch: true },
     ]);
@@ -36,6 +38,7 @@ describe("provider model metadata", () => {
 
   test("declares model-specific reasoning controls", () => {
     expect(Object.values(DEEPSEEK_MODELS).map((model) => model.reasoning.efforts)).toEqual([
+      ["none", "low", "high", "max"],
       ["none", "low", "high", "max"],
       ["none", "low", "high", "max"],
     ]);

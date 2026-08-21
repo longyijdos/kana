@@ -130,13 +130,10 @@ describe("buildDeepSeekRequest", () => {
         type: "message",
         role: "user",
         content: [
+          { type: "input_text", text: "question" },
           {
             type: "input_text",
-            text: [
-              "question",
-              "",
-              "[1 image attachment(s) omitted because DeepSeek does not support image input.]",
-            ].join("\n"),
+            text: "[1 image attachment(s) omitted because image input is disabled.]",
           },
         ],
       },
@@ -215,5 +212,129 @@ describe("buildDeepSeekRequest", () => {
         content: [{ type: "reasoning_text", text: "chat-completions reasoning" }],
       },
     ]);
+  });
+
+  test("sends image attachments as input_image for the vision model", () => {
+    const request = buildDeepSeekRequest(
+      {
+        messages: [
+          {
+            ...messageIdentityForTest("user"),
+            role: "user",
+            content: "What is in this screenshot?",
+            images: [
+              {
+                mimeType: "image/png",
+                data: "base64-image-bytes",
+                width: 32,
+                height: 16,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        provider: "deepseek",
+        model: "deepseek-v4-flash-vision-exp",
+      },
+    );
+
+    expect(request.input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "What is in this screenshot?" },
+          {
+            type: "input_image",
+            image_url: "data:image/png;base64,base64-image-bytes",
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("keeps disabled image attachments explicit for the vision model without transmitting their bytes", () => {
+    const request = buildDeepSeekRequest(
+      {
+        messages: [
+          {
+            ...messageIdentityForTest("user"),
+            role: "user",
+            content: "Inspect this.",
+            images: [
+              {
+                mimeType: "image/jpeg",
+                data: "private-image-bytes",
+                width: 32,
+                height: 16,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        provider: "deepseek",
+        model: "deepseek-v4-flash-vision-exp",
+        imageInput: false,
+      },
+    );
+
+    expect(request.input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "Inspect this." },
+          {
+            type: "input_text",
+            text: "[1 image attachment(s) omitted because image input is disabled.]",
+          },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
+  });
+
+  test("never sends images for text-only models even when image input is enabled", () => {
+    const request = buildDeepSeekRequest(
+      {
+        messages: [
+          {
+            ...messageIdentityForTest("user"),
+            role: "user",
+            content: "question",
+            images: [
+              {
+                mimeType: "image/png",
+                data: "private-image-bytes",
+                width: 32,
+                height: 16,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        imageInput: true,
+      },
+    );
+
+    expect(request.input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "question" },
+          {
+            type: "input_text",
+            text: "[1 image attachment(s) omitted because image input is disabled.]",
+          },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
   });
 });

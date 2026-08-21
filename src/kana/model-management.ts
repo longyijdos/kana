@@ -82,7 +82,9 @@ export function getKanaModelManagement(config: KanaConfig): KanaModelManagement 
         available: toManagedModels(DEEPSEEK_MODELS, config.model.deepseek.reasoningEffort),
         name: config.model.deepseek.name,
         reasoningEffort: config.model.deepseek.reasoningEffort,
-        imageInputEnabled: false,
+        imageInputEnabled:
+          DEEPSEEK_MODELS[config.model.deepseek.name as keyof typeof DEEPSEEK_MODELS]
+            ?.supportsImageInput === true && config.model.deepseek.imageInput !== false,
       },
       "openai-codex": {
         available: toManagedModels(

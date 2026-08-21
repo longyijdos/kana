@@ -114,7 +114,7 @@ name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 reasoning_effort = "high"
 web_search = true
-image_input = false
+image_input = true
 max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
@@ -179,8 +179,8 @@ level = "info"
 | `name` | Non-empty string | `deepseek-v4-pro` | Model name; runtime rejects names outside DeepSeek's metadata table. |
 | `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
 | `reasoning_effort` | `none`, `low`, `high`, or `max` | `high` | DeepSeek Responses reasoning effort. `none` disables reasoning. |
-| `web_search` | Boolean | `true` | Advertises DeepSeek's hosted `web_search` tool when the selected model metadata supports it. Both current V4 models use Responses and support this hosted tool; `false` omits only the hosted tool. |
-| `image_input` | Boolean | `false` | Allows image attachment delivery only when the selected model metadata also supports image input. Current DeepSeek models are text-only, so this reserved setting cannot enable images by itself. |
+| `web_search` | Boolean | `true` | Advertises DeepSeek's hosted `web_search` tool when the selected model metadata supports it. All current V4 models use Responses and support this hosted tool; `false` omits only the hosted tool. |
+| `image_input` | Boolean | `true` | Allows image attachment delivery as Responses `input_image` data URLs when the selected model metadata also supports image input. Only `deepseek-v4-flash-vision-exp` currently declares image capability; model metadata takes precedence, so this setting cannot enable images on the text-only V4 Flash or V4 Pro. Setting it to `false` retains attachments in the session but replaces them with an explicit omission marker in model input. |
 | `max_tokens` | Positive integer | `384000` | Allowed per-request output-token ceiling; it cannot exceed the selected model's hard limit. The Agent lowers the value sent for each turn when the current prompt leaves less space. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |

@@ -114,7 +114,7 @@ name = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 reasoning_effort = "high"
 web_search = true
-image_input = false
+image_input = true
 max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
@@ -179,8 +179,8 @@ level = "info"
 | `name` | 非空字符串 | `deepseek-v4-pro` | 模型名；运行时会拒绝不在 DeepSeek 元数据表中的模型。 |
 | `api_key_env` | 非空字符串 | `DEEPSEEK_API_KEY` | 保存 API key 的环境变量名；key 不写入 TOML。 |
 | `reasoning_effort` | `none`、`low`、`high` 或 `max` | `high` | DeepSeek Responses 推理强度；`none` 表示关闭推理。 |
-| `web_search` | 布尔值 | `true` | 所选模型 metadata 支持时，声明 DeepSeek 托管的 `web_search` 工具。当前两个 V4 模型都使用 Responses 并支持该托管工具；设为 `false` 只会移除托管工具。 |
-| `image_input` | 布尔值 | `false` | 仅在所选模型 metadata 同时支持图片输入时允许传递图片附件。当前 DeepSeek 模型均为纯文本模型，因此这个预留配置本身不能开启图片。 |
+| `web_search` | 布尔值 | `true` | 所选模型 metadata 支持时，声明 DeepSeek 托管的 `web_search` 工具。当前所有 V4 模型都使用 Responses 并支持该托管工具；设为 `false` 只会移除托管工具。 |
+| `image_input` | 布尔值 | `true` | 所选模型 metadata 同时支持图片输入时，允许把图片附件作为 Responses `input_image` data URL 发送。目前只有 `deepseek-v4-flash-vision-exp` 声明支持图片；模型 metadata 优先级更高，因此该配置无法在纯文本的 V4 Flash 或 V4 Pro 上开启图片。设为 `false` 时仍保留会话附件，但模型输入会改为明确的省略提示。 |
 | `max_tokens` | 正整数 | `384000` | 单个请求允许的输出 token 上限；不能超过所选模型的硬上限。Agent 会按当前 prompt 剩余空间逐轮下调实际发送值。 |
 | `timeout_ms` | 有限数字 | `60000` | 等待 DeepSeek 响应头或相邻响应数据的无活动超时毫秒数。 |
 | `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |

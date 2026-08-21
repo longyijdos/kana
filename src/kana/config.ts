@@ -175,7 +175,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       apiKeyEnv: "DEEPSEEK_API_KEY",
       reasoningEffort: "high",
       webSearch: true,
-      imageInput: false,
+      imageInput: true,
       maxTokens: 384_000,
       timeoutMs: 60_000,
       maxRetries: 1,
@@ -550,7 +550,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         ),
         imageInput: readBoolean(
           deepSeekModel.image_input,
-          defaults.model.deepseek.imageInput ?? false,
+          defaults.model.deepseek.imageInput ?? true,
           "model.deepseek.image_input",
         ),
         maxTokens: readPositiveInteger(

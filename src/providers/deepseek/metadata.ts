@@ -16,6 +16,19 @@ export const DEEPSEEK_MODELS = {
       efforts: ["none", "low", "high", "max"],
     },
   },
+  "deepseek-v4-flash-vision-exp": {
+    provider: "deepseek",
+    model: "deepseek-v4-flash-vision-exp",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 384_000,
+    supportsParallelToolCalls: true,
+    protocol: "responses",
+    supportsHostedWebSearch: true,
+    supportsImageInput: true,
+    reasoning: {
+      efforts: ["none", "low", "high", "max"],
+    },
+  },
   "deepseek-v4-pro": {
     provider: "deepseek",
     model: "deepseek-v4-pro",

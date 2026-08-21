@@ -1,6 +1,6 @@
 import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
+import { getDeepSeekModelMetadata } from "./metadata";
 import type { DeepSeekModelConfig, DeepSeekToolChoice } from "./types";
-import { toDeepSeekUserText } from "./user-input";
 
 export function buildDeepSeekRequest(
   context: ModelContext,
@@ -11,10 +11,14 @@ export function buildDeepSeekRequest(
     tools.push({ type: "web_search" });
   }
 
+  const imageInputEnabled =
+    getDeepSeekModelMetadata(config.model).supportsImageInput === true &&
+    config.imageInput !== false;
+
   const request: Record<string, unknown> = {
     model: config.model,
     instructions: context.system || "You are a helpful assistant.",
-    input: toDeepSeekResponsesInput(context.messages),
+    input: toDeepSeekResponsesInput(context.messages, imageInputEnabled),
     stream: true,
   };
 
@@ -53,18 +57,24 @@ export function buildDeepSeekRequest(
   return request;
 }
 
-function toDeepSeekResponsesInput(messages: Message[]): Record<string, unknown>[] {
-  return messages.flatMap(toDeepSeekResponsesMessage);
+function toDeepSeekResponsesInput(
+  messages: Message[],
+  imageInputEnabled: boolean,
+): Record<string, unknown>[] {
+  return messages.flatMap((message) => toDeepSeekResponsesMessage(message, imageInputEnabled));
 }
 
-function toDeepSeekResponsesMessage(message: Message): Record<string, unknown>[] {
+function toDeepSeekResponsesMessage(
+  message: Message,
+  imageInputEnabled: boolean,
+): Record<string, unknown>[] {
   switch (message.role) {
     case "user":
       return [
         {
           type: "message",
           role: "user",
-          content: [{ type: "input_text", text: toDeepSeekUserText(message) }],
+          content: toDeepSeekUserContent(message, imageInputEnabled),
         },
       ];
     case "tool":
@@ -78,6 +88,35 @@ function toDeepSeekResponsesMessage(message: Message): Record<string, unknown>[]
     case "assistant":
       return message.content.flatMap(toDeepSeekResponsesAssistantContent);
   }
+}
+
+function toDeepSeekUserContent(
+  message: Extract<Message, { role: "user" }>,
+  imageInputEnabled: boolean,
+): Record<string, unknown>[] {
+  const content: Record<string, unknown>[] = [];
+
+  if (message.content) {
+    content.push({ type: "input_text", text: message.content });
+  }
+
+  if (imageInputEnabled) {
+    for (const image of message.images ?? []) {
+      content.push({
+        type: "input_image",
+        image_url: `data:${image.mimeType};base64,${image.data}`,
+      });
+    }
+  } else if (message.images?.length) {
+    // Keep cross-configuration session replay explicit without transmitting
+    // image bytes after image input is unavailable or disabled.
+    content.push({
+      type: "input_text",
+      text: `[${message.images.length} image attachment(s) omitted because image input is disabled.]`,
+    });
+  }
+
+  return content;
 }
 
 function toDeepSeekResponsesAssistantContent(content: AssistantContent): Record<string, unknown>[] {

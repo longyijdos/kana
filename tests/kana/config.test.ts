@@ -229,7 +229,7 @@ describe("Kana config", () => {
   test("defaults output ceilings to the provider metadata limits", () => {
     expect(DEFAULT_KANA_CONFIG.model.deepseek.maxTokens).toBe(384_000);
     expect(DEFAULT_KANA_CONFIG.model.deepseek.webSearch).toBe(true);
-    expect(DEFAULT_KANA_CONFIG.model.deepseek.imageInput).toBe(false);
+    expect(DEFAULT_KANA_CONFIG.model.deepseek.imageInput).toBe(true);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].maxTokens).toBe(128_000);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].webSearch).toBe(true);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].imageInput).toBe(true);
