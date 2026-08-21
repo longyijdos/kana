@@ -138,7 +138,7 @@ describe("AgentEventRenderer", () => {
     expect(stripAnsi(transcript.children[0]?.render(500).join("") ?? "")).toBe(text);
     expect(transcript.children).toHaveLength(2);
     expect(stripAnsi(transcript.children[1]?.render(80)[0] ?? "")).toBe(
-      "preparing tools (0s) (Esc to abort)",
+      "Preparing tools (0s) (Esc to abort)",
     );
     renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
   });
@@ -199,7 +199,7 @@ describe("AgentEventRenderer", () => {
     });
 
     expect(transcript.children).toHaveLength(2);
-    expect(stripAnsi(transcript.render(120).join("\n"))).toContain("preparing tools (0s)");
+    expect(stripAnsi(transcript.render(120).join("\n"))).toContain("Preparing tools (0s)");
     expect(stripAnsi(transcript.render(120).join("\n"))).not.toContain("src/tools/read.ts");
 
     renderer.handle({
@@ -214,7 +214,7 @@ describe("AgentEventRenderer", () => {
     });
 
     expect(transcript.children).toHaveLength(2);
-    expect(stripAnsi(transcript.render(120).join("\n"))).not.toContain("preparing tools");
+    expect(stripAnsi(transcript.render(120).join("\n"))).not.toContain("Preparing tools");
     expect(stripAnsi(transcript.render(120).join("\n"))).toContain("src/tools/read.ts");
 
     renderer.handle({
@@ -470,7 +470,7 @@ describe("AgentEventRenderer", () => {
 
     try {
       renderer.handle({ type: "turn_start", turn: 1 });
-      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("working (0s) (Esc to abort)");
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("Working (0s) (Esc to abort)");
       expect(phases.at(-1)).toBe("working");
 
       renderer.handle({
@@ -498,7 +498,7 @@ describe("AgentEventRenderer", () => {
           snapshot: firstThinking,
         },
       });
-      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("working (2s) (Esc to abort)");
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("Working (2s) (Esc to abort)");
 
       now = 3_000;
       renderer.handle({
@@ -510,7 +510,7 @@ describe("AgentEventRenderer", () => {
           snapshot: adjacentThinking,
         },
       });
-      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("working (3s) (Esc to abort)");
+      expect(stripAnsi(transcript.render(80)[0] ?? "")).toBe("Working (3s) (Esc to abort)");
 
       renderer.handle({
         type: "message_update",

@@ -109,7 +109,7 @@ function formatSession(session: KanaSessionMetadata): string {
   const title = session.title || "Untitled session";
   const model = session.model
     ? `${session.model.provider}/${session.model.model}`
-    : "unknown model";
+    : "Unknown model";
 
   return `${created}  ${shortId(session.id)}  ${title}  ${model}`;
 }

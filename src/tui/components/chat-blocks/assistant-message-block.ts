@@ -151,7 +151,7 @@ export class AssistantMessageBlock implements Component {
         lines.push("");
       }
       lines.push(
-        `${dim(`working (${workingElapsedSeconds}s)`)}` +
+        `${dim(`Working (${workingElapsedSeconds}s)`)}` +
           color(" (Esc to abort)", tuiTheme.shortcutHint),
       );
     }

@@ -106,7 +106,7 @@ describe("tui history transcript", () => {
       "| > show package                                                                                   |",
     );
     expect(lines).toContain("I'll inspect it.");
-    expect(lines.some((line) => line.includes("working ("))).toBe(false);
+    expect(lines.some((line) => line.includes("Working ("))).toBe(false);
     expect(lines).toContain("◆ Read");
     expect(lines).toContain("  └ package.json");
     expect(lines).toContain("package.json:1-3 of 3");

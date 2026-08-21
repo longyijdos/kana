@@ -41,7 +41,7 @@ describe("session picker", () => {
     expect(rendered.map(stripAnsi)).toEqual([
       "Sessions",
       `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  Explain lazy sessions  deepseek/deepseek-v4-pro`,
-      `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  Add fork prompt titles  unknown model`,
+      `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  Add fork prompt titles  Unknown model`,
     ]);
     expect(rendered[0]).toBe(color("Sessions", tuiTheme.bottomTitle));
 
@@ -87,9 +87,9 @@ describe("session picker", () => {
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
-      `> ${localTimestamp(manySessions[0].createdAt)}  session-  Session 1  unknown model`,
-      `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  unknown model`,
-      `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  unknown model`,
+      `> ${localTimestamp(manySessions[0].createdAt)}  session-  Session 1  Unknown model`,
+      `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  Unknown model`,
+      `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  Unknown model`,
       "... 2 more sessions",
     ]);
 
@@ -100,9 +100,9 @@ describe("session picker", () => {
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
       "... 1 earlier sessions",
-      `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  unknown model`,
-      `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  unknown model`,
-      `> ${localTimestamp(manySessions[3].createdAt)}  session-  Session 4  unknown model`,
+      `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  Unknown model`,
+      `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  Unknown model`,
+      `> ${localTimestamp(manySessions[3].createdAt)}  session-  Session 4  Unknown model`,
       "... 1 more sessions",
     ]);
   });

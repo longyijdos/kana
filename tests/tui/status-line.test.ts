@@ -17,7 +17,7 @@ describe("prompt editor status line", () => {
     const statusLine = editor.render(120).at(-1) ?? "";
     const rendered = stripAnsi(statusLine);
 
-    expect(rendered).toStartWith("deepseek-v4-pro · high | Context ~12% used | idle");
+    expect(rendered).toStartWith("deepseek-v4-pro · high | Context ~12% used | Idle");
     expect(rendered).not.toContain("Ctrl+C exit");
     expect(statusLine).toContain(color("Context ~12% used", tuiTheme.contextUsage));
   });
@@ -30,7 +30,7 @@ describe("prompt editor status line", () => {
 
     const rendered = stripAnsi(editor.render(120).at(-1) ?? "");
 
-    expect(rendered).toStartWith("deepseek-v4-pro · high | clean | idle");
+    expect(rendered).toStartWith("deepseek-v4-pro · high | Clean | Idle");
   });
 
   test("does not render shortcut hints while running", () => {
@@ -54,7 +54,7 @@ describe("prompt editor status line", () => {
       running: false,
     });
 
-    expect(stripAnsi(editor.render(120).at(-1) ?? "")).toContain("turn limit");
+    expect(stripAnsi(editor.render(120).at(-1) ?? "")).toContain("Turn limit");
   });
 
   test("renders the context compaction phase", () => {
@@ -65,7 +65,7 @@ describe("prompt editor status line", () => {
       running: true,
     });
 
-    expect(stripAnsi(editor.render(120).at(-1) ?? "")).toContain("compacting");
+    expect(stripAnsi(editor.render(120).at(-1) ?? "")).toContain("Compacting");
   });
 
   test("hides while the slash command palette is open and returns after it closes", () => {

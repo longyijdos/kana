@@ -260,7 +260,7 @@ describe("tui transcript", () => {
 
     const workingLine = block.render(80)[0] ?? "";
 
-    expect(stripAnsi(workingLine)).toBe("working (0s) (Esc to abort)");
+    expect(stripAnsi(workingLine)).toBe("Working (0s) (Esc to abort)");
     expect(workingLine).toContain(color(" (Esc to abort)", tuiTheme.shortcutHint));
 
     block.showWorking(false);

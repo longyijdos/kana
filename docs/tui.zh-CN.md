@@ -25,7 +25,7 @@ ProcessTerminal
 
 `ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器在 transcript 末尾追加状态块并取消 editor 焦点；状态块随 MCP manager 进度更新，完成后保留为 server/tool 数量摘要，再让 `ConversationRuntime` 用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。可选服务器失败会在摘要后留下错误色警告；初次加载时必需服务器失败则显示错误、保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿也会在 transcript 中显示同样的进度；但 reload 失败时会用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，关闭并等待 `ConversationRuntime`，再由产品层取消并等待自动记忆合并，然后关闭 MCP manager；manager 的中立进度事件更新同一个 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token 和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
 
-使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、new、模型切换和后续 Agent 重建都不会读取或连接 MCP。欢迎面板说明当前会话不会保存，transcript 会显示一次 Clean 模式说明，状态栏持续显示 `clean`；退出时不会打印恢复命令。
+使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、new、模型切换和后续 Agent 重建都不会读取或连接 MCP。欢迎面板说明当前会话不会保存，transcript 会显示一次 Clean 模式说明，状态栏持续显示 `Clean`；退出时不会打印恢复命令。
 
 App 和 controller 代码只调用声明式的 `Tui.requestRender()`，终端更新策略完全由 runtime 决定。普通请求会合并到约 16ms 的定时器。每次渲染都会：
 
@@ -49,19 +49,19 @@ App 和 controller 代码只调用声明式的 `Tui.requestRender()`，终端更
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
-| `turn_start` | 立即创建一个临时的 `working (Ns)` 块，并把状态阶段设为 `working`。这段与供应商无关的活动覆盖可见正文、工具或 hosted 动作开始前的时间。 |
-| `message_start` / `message_update` / `message_end` | 创建、更新、完成有序助手内容块；Markdown 文本与 provider-hosted 动作保留供应商顺序。Core thinking 事件会让既有 `working` 活动继续计时；正文、工具或 hosted tool 开始时，transcript 活动和状态栏会一起切换到对应阶段。Provider 流式生成一个或多个本地工具调用及其参数时，TUI 只显示一个共享的 `preparing tools` 计时，而不是为每个调用提前创建工具块；助手消息结束时冻结该计时。 |
+| `turn_start` | 立即创建一个临时的 `Working (Ns)` 块，并把状态阶段设为 `working`。这段与供应商无关的活动覆盖可见正文、工具或 hosted 动作开始前的时间。 |
+| `message_start` / `message_update` / `message_end` | 创建、更新、完成有序助手内容块；Markdown 文本与 provider-hosted 动作保留供应商顺序。Core thinking 事件会让既有 `working` 活动继续计时；正文、工具或 hosted tool 开始时，transcript 活动和状态栏会一起切换到对应阶段。Provider 流式生成一个或多个本地工具调用及其参数时，TUI 只显示一个共享的 `Preparing tools` 计时，而不是为每个调用提前创建工具块；助手消息结束时冻结该计时。 |
 | `tool_execution_start` | 移除共享的准备活动，创建对应的单工具块，并从零开始显示 running 耗时；并行调用仍按 `toolCallId` 独立维护，并随各自的 start 事件依次出现。 |
 | `tool_execution_update` | 更新 bash 等工具的部分输出。 |
 | `tool_execution_end` | 写入结构化结果并标记成功、失败或取消。用户中止的调用显示为已取消，而不是工具失败。 |
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
-| `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时移除尚未解析为单工具块的聚合准备活动，`turn_limit` 显示为独立的 `turn limit` 错误阶段。 |
+| `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时移除尚未解析为单工具块的聚合准备活动，`turn_limit` 显示为独立的 `Turn limit` 错误阶段。 |
 
 Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSeek V4 Flash）属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。TUI 为每个调用单独显示 `Searching the web`、`Searched the web`、`Opened a web page` 或 `Searched within a web page`；当前不聚合多个调用。搜索期间状态栏阶段为 `searching`。进行中的搜索显示耗时和 `Esc to abort`；中止时 Agent 会发布并持久化语义化的 canceled 状态，TUI 则冻结计时并显示 `Web search stopped`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
 
 助手正文的协议状态与可视进度彼此分离：provider 和 Agent 仍会立即处理完整事件与消息，`StreamingTextPresenter` 只维护 Markdown 块当前可见的 `text` 前缀。稀疏文本 delta 会立即出现；当一次网络读取带来一批 SSE 事件时，积压内容约每 16ms 推进一次，并按 backlog 在每帧 1–12 个 grapheme 之间有界加速，消息完成后只额外提升一级用于收尾。工具调用开始、`toolUse` 消息完成、审批显示和实际执行前会先追平已经收到的正文，保证后续工具状态不会越过仍在展开的文本，同时不延迟 Agent 或 ToolRuntime。新消息或运行 reset 也会先 flush 剩余正文，因此持久化的 session 和 Agent 状态始终使用完整消息，而不是动画中的中间快照。配置 `tui.smooth_text_streaming = false` 会完全绕过该节奏控制，直接显示 provider 的最新流式快照；working 活动、Core thinking 事件、工具调用、工具结果、错误和状态阶段始终不参与文本节奏控制。
 
-编辑器内部包含状态栏，它显示模型及可选推理强度（例如 `gpt-5.6-luna · max`；`none` 档位显示为 `off`）、Clean 模式标记、形如 `Context ~N% used` 的下一轮近似上下文、运行阶段、活动工具和 cwd。该百分比用可重放上下文除以 effective context limit，而不是直接展示上一轮 response 的原始 `input_tokens`；因此 system instructions 和工具 schema 会让新 session 带有非零基线。普通 provider usage 用于校准估算；包含托管搜索的响应则保留之前的干净锚点，只增加持久化输出与调用元数据，不计入临时搜索网页。数值在每个完整 model/tool `turn_end` 后、上下文压缩后以及 Agent run 结束时刷新。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开 slash 命令面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求都会把 provider 原始 usage 原样累计到进程总用量。Kana 不估算金额，实际费用以 provider 账单为准；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
+编辑器内部包含状态栏，它显示模型及可选推理强度（例如 `gpt-5.6-luna · max`；`none` 档位显示为 `off`）、Clean 模式标记、形如 `Context ~N% used` 的下一轮近似上下文、运行阶段、活动工具和 cwd。该百分比用可重放上下文除以 effective context limit，而不是直接展示上一轮 response 的原始 `input_tokens`；因此 system instructions 和工具 schema 会让新 session 带有非零基线。普通 provider usage 用于校准估算；包含托管搜索的响应则保留之前的干净锚点，只增加持久化输出与调用元数据，不计入临时搜索网页。数值在每个完整 model/tool `turn_end` 后、上下文压缩后以及 Agent run 结束时刷新。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `Tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `Tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开 slash 命令面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求都会把 provider 原始 usage 原样累计到进程总用量。Kana 不估算金额，实际费用以 provider 账单为准；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
 恢复会话时，TUI 历史只消费 session 中已提交的 timeline，而 Agent 单独接收完整的已提交 messages 和最后一个 context checkpoint。进程内 inbox 输入和未来 wake 会在 session 切换或退出时清空，不会恢复。恢复的历史 `turn_start` 不渲染；实时 `turn_start` 只创建临时 working 活动。`turn_end` 不增加 transcript block，但会把完整回合的 context 估算传给状态栏。恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用完成 marker 替换，失败时则移除临时消息并显示错误；普通模式同时将 marker 持久化，Clean 模式只保留进程内 checkpoint。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
 

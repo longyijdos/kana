@@ -26,10 +26,10 @@ describe("tui elapsed timer", () => {
     const block = new AssistantMessageBlock(() => now);
     block.showWorking(true);
 
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("working (0s) (Esc to abort)");
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("Working (0s) (Esc to abort)");
 
     now = 2_000;
-    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("working (2s) (Esc to abort)");
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("Working (2s) (Esc to abort)");
   });
 
   test("tracks aggregate tool preparation separately from tool execution", () => {
@@ -39,7 +39,7 @@ describe("tui elapsed timer", () => {
     now = 2_000;
     preparation.stopTimer();
     now = 5_000;
-    expect(stripAnsi(preparation.render(80)[0] ?? "")).toBe("preparing tools (2s)");
+    expect(stripAnsi(preparation.render(80)[0] ?? "")).toBe("Preparing tools (2s)");
 
     const block = new ToolCallBlock(
       {

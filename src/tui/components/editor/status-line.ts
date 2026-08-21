@@ -16,12 +16,12 @@ export function renderStatusLine(
 ): string {
   const parts = [
     model ? color(model, tuiTheme.model) : undefined,
-    state.cleanMode ? color("clean", tuiTheme.command) : undefined,
+    state.cleanMode ? color("Clean", tuiTheme.command) : undefined,
     state.contextUsedPercent === undefined
       ? undefined
       : color(`Context ~${state.contextUsedPercent}% used`, tuiTheme.contextUsage),
     phaseText(state.phase),
-    state.activeTool ? color(`tool ${state.activeTool}`, tuiTheme.toolActive) : undefined,
+    state.activeTool ? color(`Tool ${state.activeTool}`, tuiTheme.toolActive) : undefined,
     color(formatCwd(process.cwd()), tuiTheme.cwd),
   ].filter((part): part is string => Boolean(part));
 
@@ -29,23 +29,29 @@ export function renderStatusLine(
 }
 
 function phaseText(phase: string): string {
+  const text = phase === "turn_limit" ? "Turn limit" : capitalizeFirst(phase);
+
   switch (phase) {
     case "error":
     case "aborted":
     case "length":
-      return color(phase, tuiTheme.error);
+      return color(text, tuiTheme.error);
     case "turn_limit":
-      return color("turn limit", tuiTheme.error);
+      return color(text, tuiTheme.error);
     case "starting":
     case "compacting":
     case "working":
     case "searching":
     case "responding":
     case "tool":
-      return color(phase, tuiTheme.toolActive);
+      return color(text, tuiTheme.toolActive);
     default:
-      return color(phase, tuiTheme.statusIdle);
+      return color(text, tuiTheme.statusIdle);
   }
+}
+
+function capitalizeFirst(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function formatCwd(cwd: string): string {

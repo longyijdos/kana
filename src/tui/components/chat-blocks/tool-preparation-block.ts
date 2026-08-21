@@ -41,7 +41,7 @@ export class ToolPreparationBlock implements Component {
     }
 
     const hint = this.timer.active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
-    const line = truncateToWidth(`${dim(`preparing tools (${elapsedSeconds}s)`)}${hint}`, width);
+    const line = truncateToWidth(`${dim(`Preparing tools (${elapsedSeconds}s)`)}${hint}`, width);
 
     this.cachedWidth = width;
     this.cachedElapsedSeconds = elapsedSeconds;
