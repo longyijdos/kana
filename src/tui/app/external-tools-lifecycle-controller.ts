@@ -23,7 +23,7 @@ export type ExternalToolsLifecycleControllerOptions = {
 export class ExternalToolsLifecycleController {
   private loaded: boolean;
   private loadPromise?: Promise<boolean>;
-  private loadingBlock?: TextBlock;
+  private loadingOperation?: symbol;
   private isLoading = false;
 
   constructor(private readonly options: ExternalToolsLifecycleControllerOptions) {
@@ -42,18 +42,19 @@ export class ExternalToolsLifecycleController {
       return this.loadPromise;
     }
 
-    const loadingBlock = this.beginLoading("Starting external tools...");
+    const loadingOperation = this.beginLoading("Starting MCP servers...");
 
     this.loadPromise = this.options
-      .load((status) => this.updateProgress(loadingBlock, status))
+      .load((status) => this.updateProgress(loadingOperation, status))
       .then((result) => {
         if (this.options.isStopping()) {
+          this.endLoading(loadingOperation);
           return false;
         }
 
         this.loaded = true;
-        this.isLoading = false;
-        this.finishLoading(loadingBlock, result);
+        this.endLoading(loadingOperation);
+        this.renderResult(result);
         this.options.onToolsChanged();
         this.options.updateStatus("idle");
         this.options.focusEditor();
@@ -62,10 +63,8 @@ export class ExternalToolsLifecycleController {
         return true;
       })
       .catch((error) => {
+        this.endLoading(loadingOperation);
         if (!this.options.isStopping()) {
-          this.isLoading = false;
-          this.loadingBlock = undefined;
-          this.options.transcript.removeChild(loadingBlock);
           this.options.transcript.addChild(
             new TextBlock(
               `Failed to load external tools: ${formatError(error)}\nPress Ctrl+C to exit.`,
@@ -87,15 +86,15 @@ export class ExternalToolsLifecycleController {
       return;
     }
 
-    const loadingBlock = this.beginLoading("Reloading MCP servers...");
+    const loadingOperation = this.beginLoading("Reloading MCP servers...");
 
     try {
-      const result = await reload((status) => this.updateProgress(loadingBlock, status));
+      const result = await reload((status) => this.updateProgress(loadingOperation, status));
       if (this.options.isStopping()) {
         return;
       }
 
-      this.finishLoading(loadingBlock, result);
+      this.renderResult(result);
       this.options.onToolsChanged();
       this.options.updateStatus("idle");
       this.options.focusEditor();
@@ -105,8 +104,6 @@ export class ExternalToolsLifecycleController {
         return;
       }
 
-      this.loadingBlock = undefined;
-      this.options.transcript.removeChild(loadingBlock);
       this.options.transcript.addChild(
         new TextBlock(`Failed to reload MCP servers: ${formatError(error)}`, {
           color: tuiTheme.error,
@@ -119,42 +116,49 @@ export class ExternalToolsLifecycleController {
       this.options.focusEditor();
       this.options.tui.requestRender();
     } finally {
-      this.isLoading = false;
+      this.endLoading(loadingOperation);
       if (!this.options.isStopping()) {
         this.options.onReady();
       }
     }
   }
 
-  private beginLoading(message: string): TextBlock {
+  private beginLoading(message: string): symbol {
     this.isLoading = true;
-    const loadingBlock = new TextBlock(message, { color: tuiTheme.muted });
-    this.loadingBlock = loadingBlock;
-    this.options.transcript.addChild(loadingBlock);
+    const loadingOperation = Symbol("external-tools-loading");
+    this.loadingOperation = loadingOperation;
+    this.options.transcript.addChild(new TextBlock(message, { color: tuiTheme.muted }));
     this.options.updateStatus("starting");
     this.options.tui.setFocus(undefined);
     this.options.tui.requestRender();
-    return loadingBlock;
+    return loadingOperation;
   }
 
-  private updateProgress(loadingBlock: TextBlock, status: string): void {
-    if (this.options.isStopping() || this.loadingBlock !== loadingBlock) {
+  private updateProgress(loadingOperation: symbol, status: string): void {
+    if (this.options.isStopping() || this.loadingOperation !== loadingOperation) {
       return;
     }
 
-    loadingBlock.setText(status);
+    this.options.transcript.addChild(new TextBlock(status, { color: tuiTheme.muted }));
     this.options.tui.requestRender();
   }
 
-  private finishLoading(loadingBlock: TextBlock, result: ExternalToolsLoadResult): void {
-    this.loadingBlock = undefined;
-    if (result.status === undefined) {
-      this.options.transcript.removeChild(loadingBlock);
-    } else {
-      loadingBlock.setText(result.status);
+  private endLoading(loadingOperation: symbol): void {
+    // A completed callback must not clear a newer reload operation's state.
+    if (this.loadingOperation !== loadingOperation) {
+      return;
     }
+
+    this.loadingOperation = undefined;
+    this.isLoading = false;
+  }
+
+  private renderResult(result: ExternalToolsLoadResult): void {
     for (const warning of result.warnings ?? []) {
       this.options.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
+    }
+    if (result.status !== undefined) {
+      this.options.transcript.addChild(new TextBlock(result.status, { color: tuiTheme.muted }));
     }
   }
 }

@@ -166,13 +166,13 @@ describe("session-scoped agents", () => {
     app.start();
 
     expect(renderTranscript(internal.transcript)).toContain("Kana v");
-    expect(renderTranscript(internal.transcript)).toContain("Starting external tools...");
+    expect(renderTranscript(internal.transcript)).toContain("Starting MCP servers...");
     expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain("test-model");
     expect(internal.tui.getFocus()).toBeUndefined();
     expect(agentToolStates).toEqual([false]);
 
-    reportProgress("Starting MCP servers... 0/1");
-    expect(renderTranscript(internal.transcript)).toContain("Starting MCP servers... 0/1");
+    reportProgress("[1/2] MCP server github ready · 3 tools.");
+    reportProgress("[2/2] MCP server optional failed · 0 tools.");
 
     toolsLoaded = true;
     resolveLoad({
@@ -183,9 +183,45 @@ describe("session-scoped agents", () => {
 
     const transcript = renderTranscript(internal.transcript);
     expect(agentToolStates).toEqual([false, true]);
-    expect(transcript).not.toContain("Starting MCP servers...");
+    expect(transcript).toContain("Starting MCP servers...");
+    expect(transcript).toContain("[1/2] MCP server github ready · 3 tools.");
+    expect(transcript).toContain("[2/2] MCP server optional failed · 0 tools.");
     expect(transcript).toContain("MCP startup complete: 1/2 servers ready · 3 tools");
     expect(transcript).toContain("MCP server optional failed to start: unavailable");
+    expect(transcript.indexOf("MCP server optional failed to start: unavailable")).toBeLessThan(
+      transcript.indexOf("MCP startup complete: 1/2 servers ready · 3 tools"),
+    );
+    expect(internal.tui.getFocus()).toBe(internal.editor);
+  });
+
+  test("uses the same startup transcript when no MCP servers are enabled", async () => {
+    let agentCreateCount = 0;
+    const app = new KanaTuiApp(
+      () => {
+        agentCreateCount += 1;
+        return createAgentStub();
+      },
+      createTerminal(),
+      {
+        ...createOptions(),
+        loadExternalTools: async () => ({
+          status: "MCP startup complete: 0/0 servers ready · 0 tools",
+        }),
+      },
+    );
+    const internal = app as unknown as {
+      transcript: { render(width: number): string[] };
+      editor: unknown;
+      tui: { getFocus(): unknown };
+    };
+
+    app.start();
+    await waitFor(() => agentCreateCount === 2);
+
+    const transcript = renderTranscript(internal.transcript);
+    expect(transcript).toContain("Starting MCP servers...");
+    expect(transcript).toContain("MCP startup complete: 0/0 servers ready · 0 tools");
+    expect(transcript).not.toContain("Starting external tools...");
     expect(internal.tui.getFocus()).toBe(internal.editor);
   });
 

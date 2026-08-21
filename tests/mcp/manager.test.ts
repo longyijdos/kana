@@ -255,6 +255,7 @@ describe("MCP manager", () => {
       totalServerCount: number;
       serverId?: string;
       outcome?: string;
+      toolCount?: number;
     }> = [];
     const client = createFakeClient({ name: "filesystem", tools: [createTool("read_file")] });
     const manager = new McpManager({
@@ -273,6 +274,7 @@ describe("MCP manager", () => {
         totalServerCount: 1,
         serverId: "filesystem",
         outcome: "ready",
+        toolCount: 1,
       },
       { operation: "close", completedServerCount: 0, totalServerCount: 1 },
       {

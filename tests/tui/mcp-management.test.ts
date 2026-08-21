@@ -50,8 +50,10 @@ describe("TUI MCP management", () => {
     expect(internal.tui.getFocus()).toBeUndefined();
     expect(renderTranscript(internal.transcript)).toContain("Reloading MCP servers...");
 
-    reportProgress("Starting MCP servers... 0/1");
-    expect(renderTranscript(internal.transcript)).toContain("Starting MCP servers... 0/1");
+    reportProgress("[1/1] MCP server filesystem ready · 2 tools.");
+    expect(renderTranscript(internal.transcript)).toContain(
+      "[1/1] MCP server filesystem ready · 2 tools.",
+    );
 
     toolsReady = true;
     resolveReload({

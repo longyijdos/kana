@@ -39,6 +39,7 @@ export type McpManagerProgressEvent = {
   totalServerCount: number;
   serverId?: string;
   outcome?: McpManagerProgressOutcome;
+  toolCount?: number;
 };
 
 export type McpManagerOptions = {
@@ -214,6 +215,7 @@ export class McpManager {
           totalServerCount: this.records.length,
           serverId: record.registration.id,
           outcome: record.status === "ready" ? "ready" : "failed",
+          toolCount: record.tools.length,
         });
       }),
     );

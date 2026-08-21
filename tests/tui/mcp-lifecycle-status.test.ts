@@ -7,7 +7,7 @@ import {
 } from "../../src/tui/mcp-lifecycle-status";
 
 describe("MCP lifecycle status", () => {
-  test("formats startup and shutdown progress with the latest server outcome", () => {
+  test("formats per-server startup results and shutdown progress", () => {
     expect(
       formatMcpLifecycleStatus({
         operation: "start",
@@ -15,8 +15,9 @@ describe("MCP lifecycle status", () => {
         totalServerCount: 3,
         serverId: "github",
         outcome: "ready",
+        toolCount: 1,
       }),
-    ).toBe("Starting MCP servers... 2/3 · github ready");
+    ).toBe("[2/3] MCP server github ready · 1 tool.");
     expect(
       formatMcpLifecycleStatus({
         operation: "close",
@@ -28,13 +29,25 @@ describe("MCP lifecycle status", () => {
     ).toBe("Closing MCP servers... 1/2 · postgres closed");
   });
 
-  test("does not render lifecycle status when no servers are enabled", () => {
+  test("omits aggregate startup and internal reload-close events", () => {
     expect(
       formatMcpLifecycleStatus({
         operation: "start",
         completedServerCount: 0,
         totalServerCount: 0,
       }),
+    ).toBeUndefined();
+    expect(
+      formatMcpLifecycleStatus(
+        {
+          operation: "close",
+          completedServerCount: 1,
+          totalServerCount: 1,
+          serverId: "github",
+          outcome: "closed",
+        },
+        "reload",
+      ),
     ).toBeUndefined();
   });
 
@@ -87,6 +100,9 @@ describe("MCP lifecycle status", () => {
     expect(formatMcpReloadSummary(diagnostics.slice(0, 1), 1)).toBe(
       "MCP reload complete: 1/1 servers ready · 1 tool",
     );
-    expect(formatMcpReloadSummary([], 0)).toBe("MCP disabled: no servers enabled.");
+    expect(formatMcpStartupSummary([], 0)).toBe(
+      "MCP startup complete: 0/0 servers ready · 0 tools",
+    );
+    expect(formatMcpReloadSummary([], 0)).toBe("MCP reload complete: 0/0 servers ready · 0 tools");
   });
 });
