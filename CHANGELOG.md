@@ -1,3 +1,22 @@
+## [0.5.0](https://github.com/longyijdos/kana/compare/v0.4.0...v0.5.0) (2026-08-21)
+
+Kana v0.5.0 adds custom OpenAI-compatible providers, image prompts for DeepSeek V4 Flash Vision, and terminal-native Mermaid and LaTeX rendering.
+
+### Features
+
+- Connect any OpenAI-compatible endpoint with static custom model definitions over HTTP or HTTPS, including streamed thinking events and unified TUI working state for compatible models.
+- Attach images to DeepSeek V4 Flash Vision Exp prompts, gated by model metadata and the `image_input` option so text-only V4 models stay unchanged.
+- Render Mermaid diagrams and LaTeX formulas directly in the terminal transcript.
+- Align editor shortcuts with readline for consistent text navigation.
+- Remove per-request cost estimates from `/usage`; token usage summaries remain.
+
+### Bug Fixes
+
+- Detect the Ghostty notification backend instead of silently falling back to a generic terminal notification.
+- Dismiss the usage-scope prompt when the selection fails, and align `/usage` summary columns.
+- Reject duplicate pending message identities and serialize inbox claims during shutdown.
+- Pin the Bun toolchain version so local tooling, CI, and release builds stay aligned.
+
 ## [0.4.0](https://github.com/longyijdos/kana/compare/v0.3.0...v0.4.0) (2026-08-13)
 
 Kana v0.4.0 adds image prompts for OpenAI Codex, hosted web search for DeepSeek V4, and clearer TUI feedback for large inputs and tool execution.
