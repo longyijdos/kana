@@ -136,6 +136,7 @@ export type KanaTuiAppOptions = {
   loadExternalTools?: (
     onProgress: (status: string) => void,
   ) => Promise<KanaTuiExternalToolsLoadResult>;
+  initialLoadStatus?: () => string | undefined;
   mcpManagement?: {
     loadServers: () => KanaMcpServerActivation[];
     saveEnabledServerIds: (serverIds: string[]) => void;
@@ -267,6 +268,7 @@ export class KanaTuiApp {
       tui: this.tui,
       load: cleanMode ? undefined : this.options.loadExternalTools,
       reload: cleanMode ? undefined : this.options.mcpManagement?.reloadExternalTools,
+      initialLoadStatus: cleanMode ? undefined : this.options.initialLoadStatus,
       isStopping: () => this.stopping,
       onToolsChanged: () => this.recreateAgentForExternalTools(),
       onReady: () => this.conversation.notifyCanStartQueuedRun(),

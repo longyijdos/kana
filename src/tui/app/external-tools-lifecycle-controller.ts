@@ -13,6 +13,10 @@ export type ExternalToolsLifecycleControllerOptions = {
   tui: Tui;
   load?: (onProgress: (status: string) => void) => Promise<ExternalToolsLoadResult>;
   reload?: (onProgress: (status: string) => void) => Promise<ExternalToolsLoadResult>;
+  // Returns the loading status to display before the first progress event
+  // arrives, or undefined when there is nothing to load (no MCP servers
+  // enabled) and the loading UI should be skipped entirely.
+  initialLoadStatus?: () => string | undefined;
   isStopping: () => boolean;
   onToolsChanged: () => void;
   onReady: () => void;
@@ -42,10 +46,39 @@ export class ExternalToolsLifecycleController {
       return this.loadPromise;
     }
 
-    const loadingBlock = this.beginLoading("Starting external tools...");
+    if (this.options.initialLoadStatus !== undefined) {
+      let initialStatus: string | undefined;
+      try {
+        initialStatus = this.options.initialLoadStatus();
+      } catch {
+        // Fall back to the regular load path so its error handling reports
+        // the underlying configuration failure.
+        initialStatus = "";
+      }
+      if (initialStatus === undefined) {
+        // Nothing to load: skip the loading UI so the transcript never shows
+        // a transient line, and finish as if loading succeeded.
+        this.loaded = true;
+        this.loadPromise = Promise.resolve(true);
+        this.options.onToolsChanged();
+        this.options.updateStatus("idle");
+        this.options.focusEditor();
+        this.options.tui.requestRender();
+        this.options.onReady();
+        return this.loadPromise;
+      }
+      return this.runLoad(this.beginLoading(initialStatus));
+    }
 
-    this.loadPromise = this.options
-      .load((status) => this.updateProgress(loadingBlock, status))
+    return this.runLoad(this.beginLoading());
+  }
+
+  private runLoad(loadingBlock: TextBlock): Promise<boolean> {
+    const load = this.options.load;
+    if (load === undefined) {
+      return Promise.resolve(true);
+    }
+    this.loadPromise = load((status) => this.updateProgress(loadingBlock, status))
       .then((result) => {
         if (this.options.isStopping()) {
           return false;
@@ -87,7 +120,7 @@ export class ExternalToolsLifecycleController {
       return;
     }
 
-    const loadingBlock = this.beginLoading("Reloading MCP servers...");
+    const loadingBlock = this.beginLoading();
 
     try {
       const result = await reload((status) => this.updateProgress(loadingBlock, status));
@@ -126,9 +159,9 @@ export class ExternalToolsLifecycleController {
     }
   }
 
-  private beginLoading(message: string): TextBlock {
+  private beginLoading(message?: string): TextBlock {
     this.isLoading = true;
-    const loadingBlock = new TextBlock(message, { color: tuiTheme.muted });
+    const loadingBlock = new TextBlock(message ?? "", { color: tuiTheme.muted });
     this.loadingBlock = loadingBlock;
     this.options.transcript.addChild(loadingBlock);
     this.options.updateStatus("starting");
