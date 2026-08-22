@@ -268,6 +268,28 @@ describe("Kana session persistence", () => {
     expect(JSON.stringify(persistedToolMessage.result)).not.toContain("dG9vbC1pbWFnZS1ieXRlcw==");
   });
 
+  test("round-trips bounded tool-result artifact metadata without a structured result", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "tool-artifact" });
+    const locator = path.join(env.KANA_HOME ?? "", "artifacts", "tool-result.txt");
+    const message: Message = {
+      ...messageIdentityForTest("tool"),
+      role: "tool",
+      toolCallId: "call-large",
+      toolName: "bash",
+      content: `Bounded preview\nFull output locator: ${locator}`,
+      artifact: { kind: "text", locator, byteLength: 50_000 },
+      isError: false,
+    };
+
+    appendKanaSessionMessages(session, [message]);
+
+    const loaded = loadKanaSession(session.id, { env, cwd });
+    expect(loaded.messages).toEqual([message]);
+    expect(loaded.messages[0]).not.toHaveProperty("result");
+  });
+
   test("round-trips internal context without using it as the session title", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");

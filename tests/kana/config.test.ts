@@ -70,6 +70,7 @@ describe("Kana config", () => {
       agentsPath: "/home/kana/.kana/AGENTS.md",
       memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
+      artifactsPath: "/home/kana/.kana/artifacts",
       logsPath: "/home/kana/.kana/logs",
       accountingPath: "/home/kana/.kana/accounting",
       approvalsPath: "/home/kana/.kana/approvals.json",
@@ -108,6 +109,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("tool_deadline_ms = 660000");
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("max_parallel_tool_calls = 4");
+    expect(installedConfigExample).toContain("tool_result_artifacts = true");
     expect(installedConfigExample).toContain("[agent.repeated_tool_calls]");
     expect(installedConfigExample).toContain("reminder_thresholds = [3,5,8]");
     expect(installedConfigExample).toContain("excluded_tools = []");
@@ -244,6 +246,7 @@ describe("Kana config", () => {
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].maxTokens).toBe(128_000);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].webSearch).toBe(true);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].imageInput).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.agent.toolResultArtifacts).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.repeatedToolCalls).toEqual(repeatedToolCalls);
   });
 
@@ -264,6 +267,7 @@ describe("Kana config", () => {
         "parallel_tool_calls = false",
         "max_parallel_tool_calls = 2",
         "context_limit = 200000",
+        "tool_result_artifacts = false",
         "",
         "[agent.repeated_tool_calls]",
         "reminder_thresholds = [2, 4]",
@@ -312,6 +316,7 @@ describe("Kana config", () => {
         parallelToolCalls: false,
         maxParallelToolCalls: 2,
         contextLimit: 200000,
+        toolResultArtifacts: false,
         repeatedToolCalls: {
           reminderThresholds: [2, 4],
           excludedTools: ["remember"],
@@ -642,6 +647,14 @@ describe("Kana config", () => {
 
     writeFileSync(path.join(home, "config.toml"), "[agent]\ncontext_limit = 0\n");
     expect(() => loadKanaConfig(env)).toThrow("agent.context_limit must be a positive integer.");
+  });
+
+  test("requires agent.tool_result_artifacts to be a boolean", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    writeFileSync(path.join(home, "config.toml"), '[agent]\ntool_result_artifacts = "yes"\n');
+
+    expect(() => loadKanaConfig(env)).toThrow("agent.tool_result_artifacts must be a boolean.");
   });
 
   test("requires model.max_tokens to be a positive integer", () => {

@@ -1,0 +1,221 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import type { Logger, LogMetadata } from "@/logging";
+import { createGrepTool, createReadTool } from "@/tools";
+import {
+  createKanaToolResultArtifactPolicy,
+  createPersistentKanaSessionArtifactStore,
+  type KanaSessionArtifactStore,
+} from "../../../src/kana/artifacts";
+
+const tempDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of tempDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+describe("Kana tool-result artifacts", () => {
+  test("stores complete oversized text and returns an exactly bounded retrievable preview", async () => {
+    const kanaHome = createTempDirectory();
+    const cwd = path.join(kanaHome, "workspace");
+    mkdirSync(cwd);
+    const store = createPersistentKanaSessionArtifactStore({
+      sessionId: "session-1",
+      cwd,
+      env: { KANA_HOME: kanaHome },
+    });
+    const policy = createKanaToolResultArtifactPolicy({ store });
+    const content = `HEAD\n${"内容🙂".repeat(800)}\nTAIL needle`;
+    const contentByteLimit = 1_024;
+
+    const result = await policy.finalize({
+      toolCall: {
+        type: "tool_call",
+        id: "call-1",
+        name: "bash",
+        args: { path: "../../unsafe output.log" },
+      },
+      content,
+      isError: false,
+      resultByteLength: Buffer.byteLength(JSON.stringify({ content }), "utf8"),
+      contentByteLimit,
+    });
+
+    expect(result?.persistResult).toBe(false);
+    expect(result?.artifact).toBeDefined();
+    const artifact = result?.artifact;
+    if (!artifact || !result?.content) {
+      throw new Error("Expected an artifact-backed preview.");
+    }
+    expect(readFileSync(artifact.locator, "utf8")).toBe(content);
+    expect(artifact.byteLength).toBe(Buffer.byteLength(content, "utf8"));
+    expect(Buffer.byteLength(result.content, "utf8")).toBeLessThanOrEqual(contentByteLimit);
+    expect(result.content).toStartWith("HEAD");
+    expect(result.content).toEndWith("TAIL needle");
+    expect(result.content).toContain(`Full output locator: ${artifact.locator}`);
+    expect(path.basename(artifact.locator)).toMatch(/^[0-9a-f-]+-unsafe-output\.txt$/);
+
+    const omittedBytes = readOmittedByteCount(result.content);
+    const notice = formatExpectedNotice(artifact.locator, omittedBytes);
+    const retainedBytes =
+      Buffer.byteLength(result.content, "utf8") - Buffer.byteLength(notice, "utf8");
+    expect(artifact.byteLength - retainedBytes).toBe(omittedBytes);
+
+    const readResult = await createReadTool({ root: cwd }).execute(
+      { path: artifact.locator },
+      createToolContext(),
+    );
+    expect(readResult).toMatchObject({ result: { content } });
+    const grepResult = await createGrepTool({ root: cwd }).execute(
+      { path: artifact.locator, pattern: "needle", literal: true },
+      createToolContext(),
+    );
+    expect(grepResult).toMatchObject({
+      result: { matches: [expect.objectContaining({ text: "TAIL needle" })] },
+    });
+
+    expect(statSync(path.dirname(path.dirname(path.dirname(artifact.locator)))).mode & 0o777).toBe(
+      0o700,
+    );
+    expect(statSync(path.dirname(path.dirname(artifact.locator))).mode & 0o777).toBe(0o700);
+    expect(statSync(path.dirname(artifact.locator)).mode & 0o777).toBe(0o700);
+    expect(statSync(artifact.locator).mode & 0o777).toBe(0o600);
+  });
+
+  test("bounds read output without creating a recursive artifact", async () => {
+    let saveCount = 0;
+    const policy = createKanaToolResultArtifactPolicy({
+      store: createRecordingStore(async () => {
+        saveCount += 1;
+        throw new Error("read must not save");
+      }),
+    });
+    const content = "line\n".repeat(1_000);
+
+    const result = await policy.finalize({
+      toolCall: { type: "tool_call", id: "call-1", name: "read", args: {} },
+      content,
+      isError: false,
+      resultByteLength: Buffer.byteLength(JSON.stringify({ content }), "utf8"),
+      contentByteLimit: 768,
+    });
+
+    expect(saveCount).toBe(0);
+    expect(result?.artifact).toBeUndefined();
+    expect(result?.persistResult).toBe(false);
+    expect(Buffer.byteLength(result?.content ?? "", "utf8")).toBeLessThanOrEqual(768);
+    expect(result?.content).toContain("Call read again with offset and limit");
+  });
+
+  test("keeps the original outcome and logs safe diagnostics when storage fails", async () => {
+    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
+    const error = Object.assign(new Error("secret output must not be logged"), {
+      code: "ENOSPC",
+    });
+    const policy = createKanaToolResultArtifactPolicy({
+      store: createRecordingStore(async () => {
+        throw error;
+      }),
+      logger: createRecordingLogger(logs),
+    });
+
+    const result = await policy.finalize({
+      toolCall: { type: "tool_call", id: "call-1", name: "bash", args: {} },
+      content: "secret content".repeat(100),
+      isError: false,
+      resultByteLength: 2_000,
+      contentByteLimit: 768,
+    });
+
+    expect(result).toBeUndefined();
+    expect(logs).toEqual([
+      {
+        event: "tool.result_artifact_save_failed",
+        metadata: {
+          toolName: "bash",
+          phase: "write",
+          errorType: "Error",
+          errorCode: "ENOSPC",
+        },
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("secret");
+  });
+
+  test("drops an oversized structured result without spilling inline text", async () => {
+    let saveCount = 0;
+    const policy = createKanaToolResultArtifactPolicy({
+      store: createRecordingStore(async () => {
+        saveCount += 1;
+        throw new Error("inline text must not save");
+      }),
+    });
+
+    const result = await policy.finalize({
+      toolCall: { type: "tool_call", id: "call-1", name: "grep", args: {} },
+      content: "short result",
+      isError: false,
+      resultByteLength: 2_000,
+      contentByteLimit: 768,
+    });
+
+    expect(saveCount).toBe(0);
+    expect(result).toEqual({ persistResult: false });
+  });
+});
+
+function createTempDirectory(): string {
+  const directory = mkdtempSync(path.join(tmpdir(), "kana-artifact-policy-"));
+  tempDirectories.push(directory);
+  return directory;
+}
+
+function createRecordingStore(
+  saveText: KanaSessionArtifactStore["saveText"],
+): KanaSessionArtifactStore {
+  return {
+    persistent: true,
+    saveText,
+    async discard() {},
+    async close() {},
+  };
+}
+
+function createRecordingLogger(records: Array<{ event: string; metadata?: LogMetadata }>): Logger {
+  const record = (event: string, metadata?: LogMetadata): void => {
+    records.push({ event, metadata });
+  };
+  return { debug: record, info: record, warn: record, error: record };
+}
+
+function createToolContext() {
+  return {
+    toolCallId: "artifact-retrieval",
+    update() {},
+  };
+}
+
+function readOmittedByteCount(content: string): number {
+  const match = content.match(/(\d+) UTF-8 bytes omitted/);
+  if (!match?.[1]) {
+    throw new Error("Artifact preview did not include an omitted byte count.");
+  }
+  return Number(match[1]);
+}
+
+function formatExpectedNotice(locator: string, omittedBytes: number): string {
+  return [
+    "",
+    "",
+    `[Tool output stored as a session artifact: ${omittedBytes} UTF-8 bytes omitted from this preview.]`,
+    `Full output locator: ${locator}`,
+    "Use read with this locator plus offset/limit, or grep with this locator plus pattern.",
+    "",
+    "",
+  ].join("\n");
+}

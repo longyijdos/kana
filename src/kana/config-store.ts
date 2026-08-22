@@ -64,6 +64,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("agent", "parallel_tool_calls", (config) => config.agent.parallelToolCalls),
   field("agent", "max_parallel_tool_calls", (config) => config.agent.maxParallelToolCalls),
   field("agent", "context_limit", (config) => config.agent.contextLimit),
+  field("agent", "tool_result_artifacts", (config) => config.agent.toolResultArtifacts),
   field(
     "agent.repeated_tool_calls",
     "reminder_thresholds",

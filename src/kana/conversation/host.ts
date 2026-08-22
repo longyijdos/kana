@@ -10,6 +10,16 @@ import {
   recordKanaAgentRunAccounting,
 } from "../accounting";
 import { createKanaAgent, KANA_BUILT_IN_TOOL_NAMES, type KanaAgentOptions } from "../agent";
+import {
+  auditKanaSessionArtifacts,
+  cleanupOrphanedKanaSessionArtifacts,
+  createPersistentKanaSessionArtifactStore,
+  createTemporaryKanaSessionArtifactStore,
+  deleteKanaSessionArtifacts,
+  forkKanaSessionArtifacts,
+  type KanaArtifactCleanupResult,
+  type KanaSessionArtifactStore,
+} from "../artifacts";
 import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth";
 import {
   getActiveKanaModelConfig,
@@ -89,6 +99,7 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
 
 type HostedSession = {
   data: LoadKanaSessionResult;
+  artifactStore: KanaSessionArtifactStore;
   journal?: KanaSessionJournal;
   logger: Logger;
   persistent: boolean;
@@ -138,6 +149,13 @@ export class KanaConversationHost<TConfiguration = never> {
 
     const initialSession = this.loadInitialSession(options.session ?? { type: "new" });
     this.initialSession = initialSession?.data;
+    if (this.launchMode !== "clean") {
+      this.logArtifactCleanup(
+        initialSession?.logger,
+        "orphan_cleanup",
+        cleanupOrphanedKanaSessionArtifacts({ cwd: process.cwd(), env: this.env }),
+      );
+    }
 
     this.oauthTokenStore = createKanaOAuthTokenStore({
       env: this.env,
@@ -260,19 +278,48 @@ export class KanaConversationHost<TConfiguration = never> {
         timeline: [],
       });
     }
+    const metadata = this.createSessionMetadata(source.data.metadata.path, prompt);
+    let forkedMessages = structuredClone(messages);
+    let forkedCheckpoint = structuredClone(contextCheckpoint);
+    if (source.persistent) {
+      try {
+        const forked = forkKanaSessionArtifacts({
+          messages,
+          contextCheckpoint,
+          sourceSessionId: source.data.metadata.id,
+          targetSessionId: metadata.id,
+          cwd: source.data.metadata.cwd,
+          env: this.env,
+        });
+        forkedMessages = forked.messages;
+        forkedCheckpoint = forked.contextCheckpoint;
+        if (forked.copiedArtifactCount > 0) {
+          source.logger.info("session.artifact_forked", {
+            artifactCount: forked.copiedArtifactCount,
+          });
+        }
+      } catch (error) {
+        source.logger.error("session.artifact_fork_failed", {
+          phase: "copy",
+          errorType: getErrorType(error),
+          errorCode: getErrorCode(error),
+        });
+        throw error;
+      }
+    }
     const hosted = this.registerSession({
-      metadata: this.createSessionMetadata(source.data.metadata.path, prompt),
-      messages: structuredClone(messages),
+      metadata,
+      messages: forkedMessages,
       timeline: [],
-      contextCheckpoint: structuredClone(contextCheckpoint),
+      contextCheckpoint: forkedCheckpoint,
     });
     if (hosted.persistent) {
-      hosted.pendingForkMessages = structuredClone(messages);
+      hosted.pendingForkMessages = structuredClone(forkedMessages);
       hosted.pendingForkCheckpoint =
-        contextCheckpoint === undefined
+        forkedCheckpoint === undefined
           ? undefined
           : {
-              ...structuredClone(contextCheckpoint),
+              ...structuredClone(forkedCheckpoint),
               baseCompactionId: undefined,
             };
     }
@@ -300,11 +347,21 @@ export class KanaConversationHost<TConfiguration = never> {
 
   deleteSession(sessionId: string): boolean {
     this.assertSavedSessionsAvailable();
+    const hosted = this.sessions.get(sessionId);
     const deleted = deleteKanaSession(sessionId, {
       cwd: process.cwd(),
       env: this.env,
     });
     if (deleted) {
+      this.logArtifactCleanup(
+        hosted?.logger ?? this.getLogger(),
+        "session_delete",
+        deleteKanaSessionArtifacts({
+          sessionId,
+          cwd: hosted?.data.metadata.cwd ?? process.cwd(),
+          env: this.env,
+        }),
+      );
       this.sessions.delete(sessionId);
     }
     return deleted;
@@ -330,6 +387,19 @@ export class KanaConversationHost<TConfiguration = never> {
       await Promise.all(schedulers.map((scheduler) => scheduler.close()));
     } finally {
       this.memoryConsolidationSchedulers.clear();
+      await Promise.all(
+        [...this.sessions.values()].map(async (session) => {
+          try {
+            await session.artifactStore.close();
+          } catch (error) {
+            session.logger.warn("session.artifact_cleanup_failed", {
+              phase: "session_close",
+              errorType: getErrorType(error),
+              errorCode: getErrorCode(error),
+            });
+          }
+        }),
+      );
       await this.mcpRuntime.close();
     }
   }
@@ -475,6 +545,7 @@ export class KanaConversationHost<TConfiguration = never> {
       env: this.env,
       launchMode: this.launchMode,
       logger: agentLogger,
+      artifactStore: hostedSession?.artifactStore,
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
       messages: options.messages ?? hostedSession?.data.messages,
       inbox: options.inbox,
@@ -634,9 +705,17 @@ export class KanaConversationHost<TConfiguration = never> {
   private registerSession(data: LoadKanaSessionResult): HostedSession {
     const persistent = this.launchMode !== "clean";
     // Temporary sessions keep a normal identity for runtime correlation and
-    // scheduled wakes, while omitting every filesystem-backed session sink.
+    // scheduled wakes. Their artifact store is lazy, process-scoped temporary
+    // storage rather than a resumable session sink.
     const hosted: HostedSession = {
       data: structuredClone(data),
+      artifactStore: persistent
+        ? createPersistentKanaSessionArtifactStore({
+            sessionId: data.metadata.id,
+            cwd: data.metadata.cwd,
+            env: this.env,
+          })
+        : createTemporaryKanaSessionArtifactStore(),
       ...(persistent ? { journal: createKanaSessionJournal(data.metadata, data.timeline) } : {}),
       logger: persistent
         ? this.logManager.forSession({
@@ -650,6 +729,21 @@ export class KanaConversationHost<TConfiguration = never> {
       persistent,
     };
     this.sessions.set(hosted.data.metadata.id, hosted);
+    if (persistent) {
+      const audit = auditKanaSessionArtifacts({
+        messages: hosted.data.messages,
+        sessionId: hosted.data.metadata.id,
+        cwd: hosted.data.metadata.cwd,
+        env: this.env,
+      });
+      if (audit.missingCount > 0 || audit.invalidCount > 0) {
+        hosted.logger.warn("session.artifact_references_invalid", {
+          artifactCount: audit.artifactCount,
+          missingCount: audit.missingCount,
+          invalidCount: audit.invalidCount,
+        });
+      }
+    }
     return hosted;
   }
 
@@ -669,6 +763,26 @@ export class KanaConversationHost<TConfiguration = never> {
     }
     if (hosted.data.recoveredIncompleteTail) {
       hosted.logger.warn("session.incomplete_tail_recovered");
+    }
+  }
+
+  private logArtifactCleanup(
+    logger: Logger | undefined,
+    phase: "orphan_cleanup" | "session_delete",
+    result: KanaArtifactCleanupResult,
+  ): void {
+    if (result.removedDirectoryCount > 0 || result.removedFileCount > 0) {
+      logger?.info("session.artifact_cleaned", {
+        phase,
+        directoryCount: result.removedDirectoryCount,
+        fileCount: result.removedFileCount,
+      });
+    }
+    for (const failure of result.failures) {
+      logger?.warn("session.artifact_cleanup_failed", {
+        phase,
+        ...failure,
+      });
     }
   }
 
@@ -754,6 +868,18 @@ export class KanaConversationHost<TConfiguration = never> {
       throw new Error("Forking sessions is unavailable in clean mode.");
     }
   }
+}
+
+function getErrorType(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
 }
 
 export function createKanaConversationHost<TConfiguration = never>(

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { AgentEndReason, ContextCheckpoint } from "@/agent";
 import {
+  isToolResultArtifact,
   isUserImage,
   type Message,
   type MessageProvenance,
@@ -472,6 +473,7 @@ function isMessage(value: unknown): value is Message {
     typeof message.content === "string" &&
     (message.images === undefined ||
       (Array.isArray(message.images) && message.images.every(isUserImage))) &&
+    (message.artifact === undefined || isToolResultArtifact(message.artifact)) &&
     typeof message.isError === "boolean"
   );
 }

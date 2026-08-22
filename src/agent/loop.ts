@@ -49,6 +49,7 @@ export type AgentLoopConfig = {
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   toolResultPolicy?: ToolResultPolicy;
+  toolResultPolicies?: readonly ToolResultPolicy[];
   contextManager?: ContextManager;
   logger?: Logger;
   loggerMetadata?: LogMetadata;
@@ -220,7 +221,9 @@ export async function runAgentLoop(
         loggerMetadata: config.loggerMetadata,
         onMessageCommitted: config.onMessageCommitted,
         limitToolContent: (content) => config.contextManager?.limitToolContent(content) ?? content,
+        toolContentByteLimit: config.contextManager?.maxToolContentBytes,
         toolResultPolicy: config.toolResultPolicy,
+        toolResultPolicies: config.toolResultPolicies,
       },
       emit,
     );

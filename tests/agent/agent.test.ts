@@ -280,6 +280,7 @@ describe("Agent", () => {
     expect(records.map((record) => record.event)).toEqual([
       "agent.parallel_tool_calls_configured",
       "agent.repeated_tool_calls_configured",
+      "agent.tool_result_policies_configured",
       "agent.run_started",
       "agent.started",
       "agent.turn_started",
@@ -306,6 +307,14 @@ describe("Agent", () => {
       },
     });
     expect(records[2]).toEqual({
+      event: "agent.tool_result_policies_configured",
+      metadata: {
+        agentKind: "conversation",
+        policyCount: 0,
+        policySources: [],
+      },
+    });
+    expect(records[3]).toEqual({
       event: "agent.run_started",
       metadata: { agentKind: "conversation", promptMessageCount: 1 },
     });

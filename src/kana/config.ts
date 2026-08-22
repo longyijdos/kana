@@ -74,6 +74,7 @@ type KanaAgentConfig = {
   parallelToolCalls: boolean;
   maxParallelToolCalls: number;
   contextLimit?: number;
+  toolResultArtifacts: boolean;
   repeatedToolCalls: KanaRepeatedToolCallsConfig;
 };
 
@@ -137,6 +138,7 @@ export type KanaConfigPaths = {
   agentsPath: string;
   memoryDirectory: string;
   sessionsPath: string;
+  artifactsPath: string;
   logsPath: string;
   accountingPath: string;
   approvalsPath: string;
@@ -211,6 +213,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     parallelToolCalls: true,
     maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
     contextLimit: undefined,
+    toolResultArtifacts: true,
     repeatedToolCalls: {
       reminderThresholds: [3, 5, 8],
       excludedTools: [],
@@ -253,6 +256,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
     agentsPath: path.join(home, "AGENTS.md"),
     memoryDirectory: path.join(home, "memory"),
     sessionsPath: path.join(home, "sessions"),
+    artifactsPath: path.join(home, "artifacts"),
     logsPath: path.join(home, "logs"),
     accountingPath: path.join(home, "accounting"),
     approvalsPath: path.join(home, "approvals.json"),
@@ -387,6 +391,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       parallel_tool_calls: config.agent.parallelToolCalls,
       max_parallel_tool_calls: config.agent.maxParallelToolCalls,
       context_limit: config.agent.contextLimit,
+      tool_result_artifacts: config.agent.toolResultArtifacts,
       repeated_tool_calls: {
         reminder_thresholds: config.agent.repeatedToolCalls.reminderThresholds,
         excluded_tools: config.agent.repeatedToolCalls.excludedTools,
@@ -444,6 +449,7 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
     `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
     `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
+    `tool_result_artifacts = ${config.agent.toolResultArtifacts}`,
     "# context_limit = 200000",
     "",
     "[agent.repeated_tool_calls]",
@@ -666,6 +672,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         agent.context_limit,
         defaults.agent.contextLimit,
         "agent.context_limit",
+      ),
+      toolResultArtifacts: readBoolean(
+        agent.tool_result_artifacts,
+        defaults.agent.toolResultArtifacts,
+        "agent.tool_result_artifacts",
       ),
       repeatedToolCalls: {
         reminderThresholds: readReminderThresholds(

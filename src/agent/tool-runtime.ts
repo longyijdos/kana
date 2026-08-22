@@ -1,8 +1,10 @@
 import {
   createMessageIdentity,
   createUserMessage,
+  isToolResultArtifact,
   type Message,
   type ToolCallContent,
+  type ToolResultArtifact,
   type ToolResultMessage,
   type UserMessage,
 } from "@/core";
@@ -50,7 +52,9 @@ export type ToolRuntimeConfig = {
   loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   limitToolContent?: (content: string) => string;
+  toolContentByteLimit?: number;
   toolResultPolicy?: ToolResultPolicy;
+  toolResultPolicies?: readonly ToolResultPolicy[];
 };
 
 export type ToolRuntimeResult = {
@@ -62,6 +66,19 @@ export type ToolRuntimeResult = {
 type FinalizedToolResult = {
   toolResult: ToolResultMessage;
   additionalMessages: UserMessage[];
+};
+
+type AppliedToolResultPolicies = {
+  content: string;
+  additionalMessages: UserMessage[];
+  persistResult: boolean;
+  result: unknown;
+  artifact?: ToolResultArtifact;
+};
+
+type DurableResultSnapshot = {
+  value: unknown;
+  byteLength: number;
 };
 
 type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
@@ -118,6 +135,7 @@ export class ToolRuntime {
   private readonly cancellationGraceMs: number;
   private readonly defaultDeadlineMs: number;
   private readonly maxParallelToolCalls: number;
+  private readonly toolResultPolicies: readonly ToolResultPolicy[];
 
   constructor(
     private readonly config: ToolRuntimeConfig,
@@ -127,7 +145,11 @@ export class ToolRuntime {
     this.cancellationGraceMs = resolveCancellationGraceMs(config.cancellationGraceMs);
     this.defaultDeadlineMs = resolveDefaultToolDeadlineMs(config.defaultDeadlineMs);
     this.maxParallelToolCalls = resolveMaxParallelToolCalls(config.maxParallelToolCalls);
-    assertValidToolResultPolicy(config.toolResultPolicy);
+    this.toolResultPolicies = [
+      ...(config.toolResultPolicy ? [config.toolResultPolicy] : []),
+      ...(config.toolResultPolicies ?? []),
+    ];
+    assertValidToolResultPolicies(this.toolResultPolicies);
   }
 
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
@@ -176,7 +198,7 @@ export class ToolRuntime {
     }
     if (additionalMessages.length > 0) {
       this.log("info", "tool.result_policy_context_committed", {
-        policySource: this.config.toolResultPolicy?.source,
+        policySource: formatPolicySources(this.toolResultPolicies),
         messageCount: additionalMessages.length,
       });
     }
@@ -739,63 +761,89 @@ export class ToolRuntime {
   }
 
   private async commitResult(executed: ExecutedToolCall): Promise<FinalizedToolResult> {
-    const policyResult = await this.finalizeResult(executed);
-    const content = policyResult?.content ?? executed.result.content;
+    const finalized = await this.finalizeResult(executed);
     const message: ToolResultMessage = {
       ...createMessageIdentity({ kind: "tool_result" }),
       role: "tool",
       toolCallId: executed.toolCall.id,
       toolName: executed.toolCall.name,
-      content: this.config.limitToolContent?.(content) ?? content,
+      content: this.config.limitToolContent?.(finalized.content) ?? finalized.content,
       ...(executed.result.images?.length
         ? { images: structuredClone(executed.result.images) }
         : {}),
-      result: executed.result.result,
+      ...(finalized.artifact === undefined
+        ? {}
+        : { artifact: structuredClone(finalized.artifact) }),
+      ...(finalized.persistResult ? { result: finalized.result } : {}),
       isError: executed.isError,
     };
-    const policy = this.config.toolResultPolicy;
-    const additionalMessages = policy
-      ? (policyResult?.additionalContext ?? []).map((context) =>
-          createUserMessage({
-            content: context,
-            provenance: {
-              kind: "tool_result_policy",
-              source: policy.source,
-            },
-          }),
-        )
-      : [];
 
     await this.config.onMessageCommitted?.(structuredClone(message));
     return {
       toolResult: message,
-      additionalMessages,
+      additionalMessages: finalized.additionalMessages,
     };
   }
 
-  private async finalizeResult(
-    executed: ExecutedToolCall,
-  ): Promise<ToolResultPolicyResult | undefined> {
-    const policy = this.config.toolResultPolicy;
-    if (!policy) {
-      return undefined;
+  private async finalizeResult(executed: ExecutedToolCall): Promise<AppliedToolResultPolicies> {
+    let content = executed.result.content;
+    let persistResult = true;
+    let artifact: ToolResultArtifact | undefined;
+    const additionalMessages: UserMessage[] = [];
+    const durableResult = createDurableResultSnapshot(executed.result.result);
+
+    // Policies form one ordered finalization pipeline. Each policy observes the
+    // previous policy's provider-facing text, while persistence can only become
+    // more restrictive as the pipeline advances.
+    for (const policy of this.toolResultPolicies) {
+      try {
+        const result = parseToolResultPolicyResult(
+          await policy.finalize({
+            toolCall: structuredClone(executed.toolCall),
+            content,
+            isError: executed.isError,
+            resultByteLength: durableResult?.byteLength,
+            contentByteLimit: this.config.toolContentByteLimit,
+          }),
+        );
+        if (!result) {
+          continue;
+        }
+        if (result.artifact && artifact) {
+          throw new Error("Only one tool result artifact can be retained.");
+        }
+        content = result.content ?? content;
+        persistResult = result.persistResult === false ? false : persistResult;
+        if (result.artifact) {
+          artifact = result.artifact;
+        }
+        for (const context of result.additionalContext ?? []) {
+          additionalMessages.push(
+            createUserMessage({
+              content: context,
+              provenance: {
+                kind: "tool_result_policy",
+                source: policy.source,
+              },
+            }),
+          );
+        }
+      } catch (error) {
+        this.log("warn", "tool.result_policy_failed", {
+          policySource: policy.source,
+          toolName: executed.toolCall.name,
+          errorType: getErrorType(error),
+        });
+      }
     }
 
-    try {
-      const result = await policy.finalize({
-        toolCall: structuredClone(executed.toolCall),
-        content: executed.result.content,
-        isError: executed.isError,
-      });
-      return parseToolResultPolicyResult(result);
-    } catch (error) {
-      this.log("warn", "tool.result_policy_failed", {
-        policySource: policy.source,
-        toolName: executed.toolCall.name,
-        errorType: getErrorType(error),
-      });
-      return undefined;
-    }
+    return {
+      content,
+      additionalMessages,
+      persistResult,
+      result: durableResult?.value ?? executed.result.result,
+      ...(artifact === undefined ? {} : { artifact }),
+    };
   }
 
   private async publishExecutionEnd(executed: ExecutedToolCall): Promise<void> {
@@ -1005,14 +1053,15 @@ export function resolveMaxParallelToolCalls(value: number | undefined): number {
   return value;
 }
 
-function assertValidToolResultPolicy(policy: ToolResultPolicy | undefined): void {
-  if (
-    policy &&
-    (typeof policy.source !== "string" ||
+function assertValidToolResultPolicies(policies: readonly ToolResultPolicy[] | undefined): void {
+  for (const policy of policies ?? []) {
+    if (
+      typeof policy.source !== "string" ||
       policy.source.length === 0 ||
-      policy.source !== policy.source.trim())
-  ) {
-    throw new Error("Tool result policy source must be a non-empty trimmed string.");
+      policy.source !== policy.source.trim()
+    ) {
+      throw new Error("Tool result policy source must be a non-empty trimmed string.");
+    }
   }
 }
 
@@ -1028,8 +1077,16 @@ function parseToolResultPolicyResult(value: unknown): ToolResultPolicyResult | u
   const policyResult = value as Record<string, unknown>;
   const content = policyResult.content;
   const contextValue = policyResult.additionalContext;
+  const persistResult = policyResult.persistResult;
+  const artifact = policyResult.artifact;
   if (content !== undefined && typeof content !== "string") {
     throw new Error("Tool result policy content must be a string.");
+  }
+  if (persistResult !== undefined && persistResult !== false) {
+    throw new Error("Tool result policy persistResult can only be false.");
+  }
+  if (artifact !== undefined && (!isToolResultArtifact(artifact) || persistResult !== false)) {
+    throw new Error("Tool result policy artifacts require valid metadata and persistResult false.");
   }
   let additionalContext: string[] | undefined;
   if (contextValue !== undefined) {
@@ -1050,7 +1107,34 @@ function parseToolResultPolicyResult(value: unknown): ToolResultPolicyResult | u
   return {
     ...(content === undefined ? {} : { content }),
     ...(additionalContext === undefined ? {} : { additionalContext }),
+    ...(persistResult === undefined ? {} : { persistResult }),
+    ...(artifact === undefined ? {} : { artifact: structuredClone(artifact) }),
   };
+}
+
+function createDurableResultSnapshot(value: unknown): DurableResultSnapshot | undefined {
+  try {
+    const snapshot = structuredClone(value);
+    const serialized = JSON.stringify(snapshot);
+    return {
+      value: snapshot,
+      byteLength: serialized === undefined ? 0 : Buffer.byteLength(serialized, "utf8"),
+    };
+  } catch {
+    // A non-serializable canonical result cannot safely enter a JSON journal.
+    // Product policies can use the missing measurement to omit it.
+    return undefined;
+  }
+}
+
+function formatPolicySources(
+  policies: readonly ToolResultPolicy[] | undefined,
+): string | undefined {
+  const sources = policies?.map((policy) => policy.source) ?? [];
+  if (sources.length === 0) {
+    return undefined;
+  }
+  return sources.join(",");
 }
 
 function resolveToolConcurrency(tool: Tool): ToolConcurrency {
