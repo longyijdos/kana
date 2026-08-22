@@ -2,9 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Type } from "typebox";
 
+import type { Message } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
-import { createGrepTool, createReadTool } from "@/tools";
+import { createGrepTool, createReadTool, type Tool } from "@/tools";
+import { ToolRuntime } from "../../../src/agent/tool-runtime";
 import {
   createKanaToolResultArtifactPolicy,
   createPersistentKanaSessionArtifactStore,
@@ -109,10 +112,10 @@ describe("Kana tool-result artifacts", () => {
     expect(result?.artifact).toBeUndefined();
     expect(result?.persistResult).toBe(false);
     expect(Buffer.byteLength(result?.content ?? "", "utf8")).toBeLessThanOrEqual(768);
-    expect(result?.content).toContain("Call read again with offset and limit");
+    expect(result?.content).toContain("cannot page within one very long line");
   });
 
-  test("keeps the original outcome and logs safe diagnostics when storage fails", async () => {
+  test("keeps structured persistence bounded and logs safe diagnostics when storage fails", async () => {
     const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
     const error = Object.assign(new Error("secret output must not be logged"), {
       code: "ENOSPC",
@@ -132,7 +135,7 @@ describe("Kana tool-result artifacts", () => {
       contentByteLimit: 768,
     });
 
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ persistResult: false });
     expect(logs).toEqual([
       {
         event: "tool.result_artifact_save_failed",
@@ -145,6 +148,54 @@ describe("Kana tool-result artifacts", () => {
       },
     ]);
     expect(JSON.stringify(logs)).not.toContain("secret");
+  });
+
+  test("keeps failed artifact writes live while omitting non-serializable results from durable messages", async () => {
+    const parameters = Type.Object({});
+    const canonicalResult = {
+      payload: "structured".repeat(300),
+      liveOnly: () => "not JSON serializable",
+    };
+    const tool = {
+      name: "large",
+      description: "Return oversized text and structured data.",
+      parameters,
+      execute: () => ({
+        content: "artifact text".repeat(300),
+        result: canonicalResult,
+      }),
+    } satisfies Tool<typeof parameters, typeof canonicalResult>;
+    const committed: Message[] = [];
+    let liveResult: unknown;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolContentByteLimit: 768,
+        limitToolContent: () => "ordinary bounded fallback",
+        toolResultPolicy: createKanaToolResultArtifactPolicy({
+          store: createRecordingStore(async () => {
+            throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+          }),
+        }),
+        onMessageCommitted: (message) => {
+          committed.push(message);
+        },
+      },
+      (event) => {
+        if (event.type === "tool_execution_end") {
+          liveResult = event.result;
+        }
+      },
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-large", name: "large", args: {} },
+    ]);
+
+    expect(liveResult).toBe(canonicalResult);
+    expect(result.toolResults[0]).toMatchObject({ content: "ordinary bounded fallback" });
+    expect(result.toolResults[0]).not.toHaveProperty("result");
+    expect(committed).toEqual(result.toolResults);
   });
 
   test("drops an oversized structured result without spilling inline text", async () => {
@@ -214,7 +265,7 @@ function formatExpectedNotice(locator: string, omittedBytes: number): string {
     "",
     `[Tool output stored as a session artifact: ${omittedBytes} UTF-8 bytes omitted from this preview.]`,
     `Full output locator: ${locator}`,
-    "Use read with this locator plus offset/limit, or grep with this locator plus pattern.",
+    "Use grep with this locator plus pattern to locate text; for line-oriented output, use read with this locator plus offset/limit.",
     "",
     "",
   ].join("\n");

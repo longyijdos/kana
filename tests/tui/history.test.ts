@@ -155,6 +155,44 @@ describe("tui history transcript", () => {
     expect(lines.join("\n")).not.toContain('"byteSize"');
   });
 
+  test("renders artifact-backed restored results as compact metadata", () => {
+    const transcript = new Transcript();
+    const messages: Message[] = [
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        content: [
+          {
+            type: "tool_call",
+            id: "call-artifact",
+            name: "bash",
+            args: { command: "generate lots of output" },
+          },
+        ],
+      },
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool",
+        toolCallId: "call-artifact",
+        toolName: "bash",
+        content: "MODEL_FACING_ARTIFACT_PREVIEW_SHOULD_NOT_RENDER",
+        artifact: {
+          kind: "text",
+          locator: "/tmp/kana-artifacts/session/large-output.txt",
+          byteLength: 83 * 1_024,
+        },
+        isError: false,
+      },
+    ];
+
+    addHistoryTimelineToTranscript(transcript, timelineFromMessages(messages));
+
+    const rendered = transcript.render(100).map(stripAnsi).join("\n");
+    expect(rendered).toContain("Output stored · 83 KB");
+    expect(rendered).not.toContain("MODEL_FACING_ARTIFACT_PREVIEW_SHOULD_NOT_RENDER");
+    expect(rendered).not.toContain("/tmp/kana-artifacts/session/large-output.txt");
+  });
+
   test("uses distinct colors for user input and Markdown headings", () => {
     const transcript = new Transcript();
 

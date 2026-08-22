@@ -184,6 +184,26 @@ describe("tui transcript", () => {
     expect(rendered.join("\n")).not.toContain("Failed");
   });
 
+  test("keeps artifact output compact while exposing retrieval metadata in the viewer", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_artifact",
+      name: "bash",
+      args: { command: "generate lots of output" },
+    });
+    const locator = "/tmp/kana-artifacts/session/large-output.txt";
+    block.updateResult({ kind: "text", locator, byteLength: 83 * 1_024 }, false);
+
+    expect(block.render(100).map(stripAnsi)).toContain("Output stored · 83 KB");
+    expect(block.hasExpandableOutput()).toBe(true);
+
+    const view = block.getResultView();
+    expect(view).toBeDefined();
+    const expanded = view?.render(100).map(stripAnsi).join("\n") ?? "";
+    expect(expanded).toContain(`Full output locator: ${locator}`);
+    expect(expanded).toContain("Use grep with this locator plus pattern");
+  });
+
   test("renders a completed remember call as one visible line", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

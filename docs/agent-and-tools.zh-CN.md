@@ -85,7 +85,7 @@ manager 会把“配置的最大输出”和“prompt budget 减去估算输入�
 
 实际摘要由注入的 `CompactPolicy` 生成。Kana 的产品策略直接使用主 Agent 的同一个 `Model` 做一次无工具 `generate()`，而不是启动另一个 Agent loop。输入是上一次摘要和本次新覆盖的消息；assistant thinking、assistant usage 和 tool 的结构化 `result` 不进入摘要请求，tool 的模型可见 `content`、名称、错误状态及视觉观察仍保留。摘要必须以 `stop` 完成且不超过摘要预算，失败会恢复上一个 checkpoint。
 
-每条新工具结果的模型可见 `content` 统一限制为 `min(16000, max(256, floor(promptBudget × 25%)))` 个估算 token，并以每个估算 token 三个 UTF-8 字节作为最终精确字节保护。Kana 默认 artifact 策略会先完整保存超大的非 `read` 内容，再生成约 70% 头部、30% 尾部的预览；取回 notice、精确省略字节数和 locator 都计入同一字节上限。顶层 `read` 结果只给出有界的 offset/limit 提示，不会递归落盘。canonical 结构化结果仍会出现在实时 `tool_execution_end` 事件中；过大、不可序列化或已由 artifact 承载的结构化数据则不进入持久消息。
+每条新工具结果的模型可见 `content` 统一限制为 `min(16000, max(256, floor(promptBudget × 25%)))` 个估算 token，并以每个估算 token 三个 UTF-8 字节作为最终精确字节保护。Kana 默认 artifact 策略会先完整保存超大的非 `read` 内容，再生成约 70% 头部、30% 尾部的预览；取回 notice、精确省略字节数和 locator 都计入同一字节上限。顶层 `read` 结果只给出有界 notice，不会递归落盘；notice 会明确说明 offset/limit 按行分页，无法在单个超长行内翻页。canonical 结构化结果仍会出现在实时 `tool_execution_end` 事件中；过大、不可序列化或已由 artifact 承载的结构化数据即使在 artifact 保存失败时也不会进入持久消息。
 
 provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededError`。仅当失败发生在任何助手输出之前，循环才强制执行同一套安全切分并重试当前模型请求一次；已经产生部分输出、第二次仍失败或没有安全边界时不会继续重试。压缩产生 `context_compaction_start` 和 `context_compacted` Agent events，生成摘要的 usage 随 checkpoint 提交。
 

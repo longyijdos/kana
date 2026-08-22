@@ -44,7 +44,7 @@ export function createKanaToolResultArtifactPolicy(
           input.content,
           byteLimit,
           (omittedBytes) =>
-            `\n\n[Read output truncated: ${omittedBytes} UTF-8 bytes omitted. Call read again with offset and limit to inspect the missing section.]\n\n`,
+            `\n\n[Read output truncated: ${omittedBytes} UTF-8 bytes omitted. Offset and limit can inspect other lines, but cannot page within one very long line.]\n\n`,
         );
         return {
           content,
@@ -91,9 +91,9 @@ export function createKanaToolResultArtifactPolicy(
           errorType: getErrorType(error),
           errorCode: getErrorCode(error),
         });
-        // Storage is advisory. Preserve the normalized outcome and let the
-        // existing context guard apply its ordinary model-facing fallback.
-        return undefined;
+        // Storage is advisory for model-facing text, but a failed spill must
+        // not reopen the independent structured-result persistence boundary.
+        return resultExceedsLimit ? { persistResult: false } : undefined;
       }
     },
   };
@@ -119,7 +119,7 @@ function formatArtifactNotice(artifact: ToolResultArtifact, omittedBytes: number
     "",
     `[Tool output stored as a session artifact: ${omittedBytes} UTF-8 bytes omitted from this preview.]`,
     `Full output locator: ${artifact.locator}`,
-    "Use read with this locator plus offset/limit, or grep with this locator plus pattern.",
+    "Use grep with this locator plus pattern to locate text; for line-oriented output, use read with this locator plus offset/limit.",
     "",
     "",
   ].join("\n");
