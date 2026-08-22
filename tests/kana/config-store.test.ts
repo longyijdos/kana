@@ -33,6 +33,7 @@ describe("Kana config store", () => {
       draft.model["openai-codex"].reasoningEffort = "max";
       draft.model["openai-codex"].webSearch = false;
       draft.model["openai-codex"].imageInput = false;
+      draft.agent.toolResultArtifacts = false;
       draft.agent.repeatedToolCalls.reminderThresholds = [2, 4];
       draft.agent.repeatedToolCalls.excludedTools = ["remember", "status"];
     });
@@ -48,6 +49,9 @@ describe("Kana config store", () => {
         "web_search = false",
         "image_input = false",
         "",
+        "[agent]",
+        "tool_result_artifacts = false",
+        "",
         "[agent.repeated_tool_calls]",
         "reminder_thresholds = [2,4]",
         'excluded_tools = ["remember","status"]',
@@ -59,6 +63,7 @@ describe("Kana config store", () => {
     expect(config.model["openai-codex"].reasoningEffort).toBe("max");
     expect(config.model["openai-codex"].webSearch).toBe(false);
     expect(config.model["openai-codex"].imageInput).toBe(false);
+    expect(config.agent.toolResultArtifacts).toBe(false);
     expect(config.agent.repeatedToolCalls).toEqual({
       reminderThresholds: [2, 4],
       excludedTools: ["remember", "status"],

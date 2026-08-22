@@ -59,6 +59,14 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 
 工具结果策略可以追加另一类内部 user-role 消息，其 `provenance.kind` 为 `"tool_result_policy"`，并带有非空的策略 `source`。它在完整 sibling 工具结果组之后写入 journal，并在下一次模型请求前重放。恢复 session 时会保留它以维持模型上下文连续性；由于它不是人类输入，恢复后的 TUI 历史和自动 session 标题都会忽略它。
 
+超大的文本工具结果可以只在消息中保留有界 `content` 预览和 `artifact: { kind: "text", locator, byteLength }`，不保存结构化 `result`。完整 UTF-8 文本位于：
+
+```text
+<KANA_HOME>/artifacts/<encoded-workspace>/<session-id>/<uuid>-<safe-stem>.txt
+```
+
+artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访问的 `0700`，文件使用不可预测名称、exclusive no-follow 创建和 `0600`；建议文件名会缩减成不能穿越目录的安全 stem。绝对 locator 可直接交给现有 `read` 与 `grep` 工具，同时结构化 artifact 元数据让恢复和生命周期代码无需解析模型可见 notice，就能校验归属与字节长度。恢复后的 TUI 历史也会用这些元数据生成紧凑的已存储输出摘要，只在展开式查看器中显示 locator。artifact 文本可能包含原本会进入 session 的同等敏感工具输出，因此该目录属于私有用户数据，并不是通用文件管理器。Clean 模式使用惰性创建的进程级临时目录，正常关闭时删除，不创建上述持久路径。
+
 压缩会遵循当前模型实际生效的图片输入能力。模型支持图片且 `image_input` 已启用时，Kana 会把用户附件和工具视觉观察连同有序序号、MIME 类型和尺寸元数据发送给模型，让摘要将相关视觉信息保存为文本；base64 不会写进文本形式的 transcript JSON。图片输入不受支持或被关闭时，压缩只发送这些元数据和 `contentOmitted: true`，不带图片字节并继续执行。这样切换到 DeepSeek 等纯文本模型后不会因历史图片而中断压缩，但尚未在文本中描述的纯视觉细节可能不会进入摘要。原始自包含图片仍保留在 session JSONL 中。
 
 每条记录的 `parentId` 必须指向紧邻的前一条时间线记录；加载仍按文件顺序进行，不根据 `parentId` 重放分支。message record 外层的 `id` 用于标识 journal entry 并维护时间线顺序，`message.id` 则在 Agent event、inbox 移动、持久化、重放和 fork 之间标识同一条逻辑消息；它们属于不同的身份域。每条消息都必须带可辨识的 `provenance`，同一 session 会拒绝重复的逻辑消息 ID。同一时刻最多有一个打开的 turn，`turn_end.turnId` 必须匹配它。终态可以是 Agent 的 `stop`、`length`、`aborted`、`error`、`turn_limit`，恢复生成的 `interrupted`，或快照的 `snapshot`。
@@ -76,12 +84,15 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 - Agent journal 在任何模型 I/O 前写入 `turn_start`、本轮用户消息和所有有变化的 runtime-context 快照或 inactive marker；完整 assistant 消息在其工具执行前写入，每个工具结果在对应执行结束后独立写入，全部 sibling 结果写完后、下一次模型请求前再写入带来源的工具结果策略上下文。压缩 checkpoint 也在 adopt 前写入。终态 `turn_end` 写入后才运行 `onRunCommitted` 的 accounting/记忆等聚合后处理，随后发布 `agent_end`。手动 `/compact` 同样先写 checkpoint 再 adopt。`waitForIdle()` 不会早于这些写入和后处理完成。
 - 加载发现未闭合 turn 时会直接修复原 JSONL：为每个没有结果的工具调用追加 `status: "unknown"` 的错误结果，明确禁止自动重试，再追加内部 recovery 用户消息和 `outcome: "interrupted"` 的 `turn_end`。若最后一行是未完成的 JSON，则只截断这条未终止尾记录；已完成行中的损坏仍报错。恢复具有幂等性，因此第二次加载不会再次追加。
 - 恢复只重建 journal 中已提交的消息与最后一个 context checkpoint。Agent inbox 和未来 scheduled wake 仍只存在于当前进程：切换、分叉或恢复 session 以及退出 Kana 都会丢弃它们，不会在恢复时还原。
+- 恢复会检查每个保留 artifact 是否位于该 session 的受管目录、是否为普通文件，以及大小是否与记录字节数一致。引用缺失或无效时记录安全诊断，但不会让 journal 无法读取，也不会修改其中的有界预览。
+- fork 会在注册 snapshot 前把所有保留 artifact 复制到目标 session 的私有目录，再重写继承工具消息与累计 checkpoint 摘要中的 locator。因此源 session 与 fork 可以独立删除。复制或重写失败会中止 fork，并以 best-effort 回滚目标目录。
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。
 - `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按 `createdAt` 降序排序。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。
-- 删除按 session ID 找到文件后直接移除；找不到返回 `false`。
+- 删除按 session ID 找到文件并成功移除 journal 后，会以 best-effort 删除对应 artifact 目录；找不到返回 `false`。
+- 普通模式启动时执行保守的孤儿清理，并保留 24 小时宽限期：删除没有对应 session journal 的陈旧 artifact 目录，以及其 JSON 编码 locator 不在已有 journal 中的陈旧文件。近期文件、被引用文件、符号链接、异常路径和清理失败不会被冒险删除，只会保留或报告。
 
-会话文件用 `0600` 追加。文件格式中保存完整用户、助手和工具消息，可能包含工具结果；不要把会话目录当作无敏感信息的日志位置。
+会话文件用 `0600` 追加。文件格式中保存完整用户、助手和工具消息，包括内联结果或有界 artifact 元数据；不要把会话目录或 artifact 目录当作无敏感信息的日志位置。
 
 ## 记忆模型
 

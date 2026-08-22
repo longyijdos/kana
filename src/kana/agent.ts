@@ -16,6 +16,7 @@ import {
   createWriteTool,
   type Tool,
 } from "@/tools";
+import { createKanaToolResultArtifactPolicy, type KanaSessionArtifactStore } from "./artifacts";
 import { getActiveKanaModelConfig, type KanaConfig } from "./config";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
 import type { KanaLaunchMode } from "./launch-mode";
@@ -58,6 +59,7 @@ export type KanaAgentOptions = Pick<
   wakeScheduler?: WakeScheduler;
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
+  artifactStore?: KanaSessionArtifactStore;
 };
 
 export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
@@ -152,6 +154,13 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     parallelToolCalls: config.agent.parallelToolCalls,
     maxParallelToolCalls: config.agent.maxParallelToolCalls,
     repeatedToolCalls: config.agent.repeatedToolCalls,
+    toolResultPolicy:
+      options.artifactStore && config.agent.toolResultArtifacts
+        ? createKanaToolResultArtifactPolicy({
+            store: options.artifactStore,
+            logger: options.logger,
+          })
+        : undefined,
     beforeToolExecution: options.beforeToolExecution,
     inbox: options.inbox,
     messages: options.messages,

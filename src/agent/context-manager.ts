@@ -109,6 +109,7 @@ export class ContextManager {
   readonly targetTokens: number;
   readonly maxSummaryTokens: number;
   readonly maxToolContentTokens: number;
+  readonly maxToolContentBytes: number;
 
   private readonly compactPolicy?: CompactPolicy;
   private readonly logger: Logger;
@@ -156,6 +157,7 @@ export class ContextManager {
       DEFAULT_MAX_TOOL_CONTENT_TOKENS,
       Math.max(256, Math.floor(promptBudget * 0.25)),
     );
+    this.maxToolContentBytes = this.maxToolContentTokens * 3;
     this.compactPolicy = config.compactPolicy;
     if (config.checkpoint) {
       assertValidCheckpoint(config.checkpoint);

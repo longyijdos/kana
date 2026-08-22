@@ -141,9 +141,39 @@ export type ToolResultMessage = MessageIdentity<
   toolName: string;
   content: string;
   images?: UserImage[];
+  // Artifact references are durable presentation metadata. The original host
+  // result can remain execution-local while resume and session lifecycle code
+  // still have a structured locator to follow.
+  artifact?: ToolResultArtifact;
   result?: unknown;
   isError: boolean;
 };
+
+export type ToolResultArtifact = {
+  kind: "text";
+  locator: string;
+  byteLength: number;
+};
+
+const MAX_TOOL_RESULT_ARTIFACT_LOCATOR_LENGTH = 4_096;
+
+export function isToolResultArtifact(value: unknown): value is ToolResultArtifact {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const artifact = value as Record<string, unknown>;
+  return (
+    artifact.kind === "text" &&
+    typeof artifact.locator === "string" &&
+    artifact.locator.length > 0 &&
+    artifact.locator.length <= MAX_TOOL_RESULT_ARTIFACT_LOCATOR_LENGTH &&
+    !artifact.locator.includes("\0") &&
+    typeof artifact.byteLength === "number" &&
+    Number.isSafeInteger(artifact.byteLength) &&
+    artifact.byteLength >= 0
+  );
+}
 
 export type AssistantContent = TextContent | ThinkingContent | ToolCallContent | HostedToolContent;
 

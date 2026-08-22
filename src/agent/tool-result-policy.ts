@@ -1,4 +1,4 @@
-import type { ToolCallContent } from "@/core";
+import type { ToolCallContent, ToolResultArtifact } from "@/core";
 
 export type ToolResultPolicyInput = {
   readonly toolCall: Readonly<ToolCallContent>;
@@ -6,6 +6,10 @@ export type ToolResultPolicyInput = {
   // stays outside this advisory boundary and therefore needs no cloneability contract.
   readonly content: string;
   readonly isError: boolean;
+  // Policies can make persistence decisions from a bounded measurement
+  // without receiving the arbitrary execution-local structured value.
+  readonly resultByteLength?: number;
+  readonly contentByteLimit?: number;
 };
 
 export type ToolResultPolicyResult = {
@@ -15,6 +19,10 @@ export type ToolResultPolicyResult = {
   // ToolRuntime assigns identity and provenance so policy-authored context
   // cannot enter durable history as anonymous user input.
   additionalContext?: readonly string[];
+  // Policies may only remove the canonical host result from durable history;
+  // they cannot replace it with another arbitrary unbounded value.
+  persistResult?: false;
+  artifact?: ToolResultArtifact;
 };
 
 export type ToolResultPolicy = {

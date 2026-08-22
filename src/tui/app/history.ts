@@ -115,7 +115,9 @@ function addToolResult(
     },
   );
 
-  block.updateResult(message.result ?? message.content, message.isError);
+  // Artifact previews are model-facing context, not restored transcript
+  // presentation. Keep history compact and expose retrieval metadata instead.
+  block.updateResult(message.artifact ?? message.result ?? message.content, message.isError);
   transcript.addChild(block);
 }
 

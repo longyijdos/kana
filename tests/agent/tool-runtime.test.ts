@@ -1065,6 +1065,57 @@ describe("ToolRuntime", () => {
     ]);
   });
 
+  test("keeps canonical results live while omitting artifact-backed results from durable messages", async () => {
+    const canonicalResult = { payload: "large structured result" };
+    const locator = "/tmp/kana-artifact.txt";
+    let executionEndResult: unknown;
+    const tool = {
+      name: "large",
+      description: "Return a large result.",
+      parameters,
+      execute: () => ({
+        content: "large model-facing output",
+        result: canonicalResult,
+      }),
+    } satisfies Tool<typeof parameters, typeof canonicalResult>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolContentByteLimit: 768,
+        toolResultPolicy: {
+          source: "artifact_policy",
+          finalize: (input) => {
+            expect(input.resultByteLength).toBe(
+              Buffer.byteLength(JSON.stringify(canonicalResult), "utf8"),
+            );
+            expect(input.contentByteLimit).toBe(768);
+            return {
+              content: "bounded preview",
+              artifact: { kind: "text", locator, byteLength: 10_000 },
+              persistResult: false,
+            };
+          },
+        },
+      },
+      (event) => {
+        if (event.type === "tool_execution_end") {
+          executionEndResult = event.result;
+        }
+      },
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-1", name: "large", args: {} },
+    ]);
+
+    expect(executionEndResult).toBe(canonicalResult);
+    expect(result.toolResults[0]).toMatchObject({
+      content: "bounded preview",
+      artifact: { kind: "text", locator, byteLength: 10_000 },
+    });
+    expect(result.toolResults[0]).not.toHaveProperty("result");
+  });
+
   test("detaches validated policy output from getters before leaving containment", async () => {
     let contentReads = 0;
     const tool = {
@@ -1178,6 +1229,8 @@ describe("ToolRuntime", () => {
       toolCall: { type: "tool_call", id: "call-1", name: "non_cloneable", args: {} },
       content: "original content",
       isError: false,
+      resultByteLength: undefined,
+      contentByteLimit: undefined,
     });
     expect(result.toolResults[0]?.content).toBe("policy saw: original content");
     expect(result.toolResults[0]?.result).toBe(structuredResult);

@@ -56,6 +56,7 @@ export type AgentConfig = {
   parallelToolCalls?: boolean;
   maxParallelToolCalls?: number;
   repeatedToolCalls?: RepeatedToolCallPolicyConfig;
+  toolResultPolicy?: ToolResultPolicy;
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
   onCompactionCommitted?: AgentCompactionCommittedHook;
@@ -142,7 +143,7 @@ export class Agent {
   private readonly parallelToolCalls: boolean;
   private readonly maxParallelToolCalls: number;
   private readonly promptAssembly: PromptAssembly;
-  private readonly toolResultPolicy?: ToolResultPolicy;
+  private readonly toolResultPolicies: readonly ToolResultPolicy[];
 
   constructor(options: AgentConfig) {
     assertValidMaxTurns(options.maxTurns);
@@ -175,11 +176,14 @@ export class Agent {
       ...this.inboxData.snapshot.nextTurn.map((item) => item.message),
     ]);
     this.beforeToolExecution = options.beforeToolExecution;
-    if (options.repeatedToolCalls) {
-      const policy = createRepeatedToolCallPolicy(options.repeatedToolCalls);
-      this.toolResultPolicy =
-        options.repeatedToolCalls.reminderThresholds.length === 0 ? undefined : policy;
+    const toolResultPolicies: ToolResultPolicy[] = [];
+    if (options.toolResultPolicy) {
+      toolResultPolicies.push(options.toolResultPolicy);
     }
+    if (options.repeatedToolCalls?.reminderThresholds.length) {
+      toolResultPolicies.push(createRepeatedToolCallPolicy(options.repeatedToolCalls));
+    }
+    this.toolResultPolicies = toolResultPolicies;
     this.onRunCommitted = options.onRunCommitted;
     this.onCompactionCommitted = options.onCompactionCommitted;
     this.journal = options.journal;
@@ -197,9 +201,13 @@ export class Agent {
       maxParallelToolCalls: this.maxParallelToolCalls,
     });
     this.log("debug", "agent.repeated_tool_calls_configured", {
-      enabled: this.toolResultPolicy !== undefined,
+      enabled: Boolean(options.repeatedToolCalls?.reminderThresholds.length),
       reminderThresholds: options.repeatedToolCalls?.reminderThresholds ?? [],
       excludedToolCount: options.repeatedToolCalls?.excludedTools?.length ?? 0,
+    });
+    this.log("debug", "agent.tool_result_policies_configured", {
+      policyCount: this.toolResultPolicies.length,
+      policySources: this.toolResultPolicies.map((policy) => policy.source),
     });
   }
 
@@ -591,7 +599,7 @@ export class Agent {
       maxParallelToolCalls: this.maxParallelToolCalls,
       signal,
       beforeToolExecution: this.beforeToolExecution,
-      toolResultPolicy: this.toolResultPolicy,
+      toolResultPolicies: this.toolResultPolicies,
       contextManager,
       logger: this.logger,
       loggerMetadata: this.loggerMetadata,
@@ -722,13 +730,15 @@ export class Agent {
   }
 
   private resetToolResultPolicy(): void {
-    try {
-      this.toolResultPolicy?.reset?.();
-    } catch (error) {
-      this.log("warn", "tool.result_policy_reset_failed", {
-        policySource: this.toolResultPolicy?.source,
-        errorType: error instanceof Error ? error.name : typeof error,
-      });
+    for (const policy of this.toolResultPolicies) {
+      try {
+        policy.reset?.();
+      } catch (error) {
+        this.log("warn", "tool.result_policy_reset_failed", {
+          policySource: policy.source,
+          errorType: error instanceof Error ? error.name : typeof error,
+        });
+      }
     }
   }
 

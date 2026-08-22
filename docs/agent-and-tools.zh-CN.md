@@ -10,13 +10,13 @@ Agent 历史只使用三种 `Message`：
 | --- | --- | --- |
 | `user` | `id`、必填 `provenance`、`content: string` | 直接输入、定时输入、恢复、运行时上下文、上下文摘要或压缩策略输入。 |
 | `assistant` | `id`、`provenance: { kind: "model_output" }`、有序 `content`、可选 `stopReason` 与 `usage` | 保存模型输出和它提出的工具调用。 |
-| `tool` | `id`、`provenance: { kind: "tool_result" }`、`toolCallId`、`toolName`、`content`、可选 `images`、`result`、`isError` | 将某一个文本或视觉工具结果关联回模型。 |
+| `tool` | `id`、`provenance: { kind: "tool_result" }`、`toolCallId`、`toolName`、`content`、可选 `images`、`artifact`、`result`、`isError` | 将某一个文本或视觉工具结果关联回模型。 |
 
 每条逻辑消息在进入 Kana 或由内部产生时只获得一个带品牌类型的 `MessageId`。深拷贝、steering、inbox lane 移动、Agent event、journal 持久化/重放、fork 和模型历史都保留该 ID。它与 journal entry ID、run/turn ID、provider tool-call ID 和 session ID 相互独立。必填的可辨识 `provenance` 记录内容生产者或内部用途；展示层依此判断语义，不会把所有 `user` role 消息都当成人类输入。`runtime_context` provenance 还包含 `environment` 之类的稳定 `source`，让不同 provider 可以比较和投影自己拥有的状态，而不必检查其它 provider 的内容。Agent 历史、inbox 和 session journal 都拒绝重复逻辑 ID。
 
 助手消息的 `content` 是有序数组，而不是按类别分组。元素为 `text`、`thinking` 或 `tool_call`；每个流事件的 `contentIndex` 都指向这个数组。这使“思考 → 文本 → 工具调用”之类的交错输出能够原样回传供应商并按顺序渲染。
 
-工具结果有两层：`content` 是给模型的文本，`result` 保留原始结构化值给 Agent、TUI 和持久化使用。可选且与 provider 无关的 `images: UserImage[]` 会在文本之外携带原生视觉观察，并随对应工具结果消息一并提交。工具直接返回普通值时，运行时会将字符串原样或将其他值 JSON 序列化为 `content`，同时把原值作为 `result`。
+工具结果有两个主要层次：`content` 是给模型的文本，`result` 是实时 Agent/TUI 消费者使用的原始结构化值，并且只在安全时持久化。可选的 `artifact: { kind: "text", locator, byteLength }` 是消息外完整文本的有界展示元数据；与 provider 无关的 `images: UserImage[]` 则在文本之外携带原生视觉观察。工具直接返回普通值时，运行时会将字符串原样或将其他值 JSON 序列化为 `content`，同时把原值保留为实时 canonical `result`。
 
 ## 两层流事件
 
@@ -85,7 +85,7 @@ manager 会把“配置的最大输出”和“prompt budget 减去估算输入�
 
 实际摘要由注入的 `CompactPolicy` 生成。Kana 的产品策略直接使用主 Agent 的同一个 `Model` 做一次无工具 `generate()`，而不是启动另一个 Agent loop。输入是上一次摘要和本次新覆盖的消息；assistant thinking、assistant usage 和 tool 的结构化 `result` 不进入摘要请求，tool 的模型可见 `content`、名称、错误状态及视觉观察仍保留。摘要必须以 `stop` 完成且不超过摘要预算，失败会恢复上一个 checkpoint。
 
-每条新工具结果的模型可见 `content` 统一限制为 `min(16000, max(256, floor(promptBudget × 25%)))` 个估算 token；超限时保留约 70% 头部和 30% 尾部并插入截断标记。宿主/TUI 使用的结构化 `result` 不受该限制。
+每条新工具结果的模型可见 `content` 统一限制为 `min(16000, max(256, floor(promptBudget × 25%)))` 个估算 token，并以每个估算 token 三个 UTF-8 字节作为最终精确字节保护。Kana 默认 artifact 策略会先完整保存超大的非 `read` 内容，再生成约 70% 头部、30% 尾部的预览；取回 notice、精确省略字节数和 locator 都计入同一字节上限。顶层 `read` 结果只给出有界 notice，不会递归落盘；notice 会明确说明 offset/limit 按行分页，无法在单个超长行内翻页。canonical 结构化结果仍会出现在实时 `tool_execution_end` 事件中；过大、不可序列化或已由 artifact 承载的结构化数据即使在 artifact 保存失败时也不会进入持久消息。
 
 provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededError`。仅当失败发生在任何助手输出之前，循环才强制执行同一套安全切分并重试当前模型请求一次；已经产生部分输出、第二次仍失败或没有安全边界时不会继续重试。压缩产生 `context_compaction_start` 和 `context_compacted` Agent events，生成摘要的 usage 随 checkpoint 提交。
 
@@ -116,9 +116,9 @@ journal 的顺序是协议约束：完整 assistant 消息必须先持久化，�
 
 ### 工具结果策略
 
-通用 Agent 层接受一个可选的 `ToolResultPolicy`。每个结果规范化为 `ToolResult` 后，ToolRuntime 都会恰好调用一次策略的 `finalize()`；成功、未知工具、参数错误、审批拒绝、取消、超时和异常都遵循同一路径。策略收到模型原始调用的深拷贝只读视图，以及规范化后给模型的 `content` 和错误状态。任意的 host 结构化 `result` 不进入这个建议边界，因此无需满足可克隆约束。策略可以保留或替换给模型的结果文本，或在结果后追加带来源的内部 user-role 上下文；不能改写工具名、参数、给 host 的结构化结果或错误状态。策略抛错或返回非法值时只产生安全诊断，并回退为原始结果。验证后的策略输出会在离开 containment 前复制为普通内部快照，因此 getter、Proxy、稀疏数组或后续修改都不能逃逸到结果提交阶段。
+通用 Agent 层接受一个可选的外部 `ToolResultPolicy`，并可与精确重复检测等产品无关策略组合。每个结果规范化为 `ToolResult` 后，ToolRuntime 会按顺序调用各策略；成功、未知工具、参数错误、审批拒绝、取消、超时和异常都遵循同一路径。策略收到模型原始调用的深拷贝只读视图、当前给模型的 `content`、错误状态、可克隆结构化结果的 JSON 字节数和当前内容字节上限；任意的 host 结构化 `result` 本身不进入这个建议边界。策略可以替换文本、追加带来源的内部上下文、单向关闭 `result` 持久化，或附加一个通过校验的 artifact 引用；不能改写工具身份、参数、实时 canonical 结果或错误状态。策略抛错或返回非法值时只产生安全诊断，并保留此前 pipeline 状态。验证后的输出会在离开 containment 前复制为普通内部快照，因此 getter、Proxy、稀疏数组或后续修改都不能逃逸到结果提交阶段。
 
-结果顺序继续满足 provider 协议：同一 assistant 消息的全部 sibling 工具结果先按模型顺序提交，之后才提交带 `provenance.kind: "tool_result_policy"` 的策略上下文，再开始下一次模型请求。每个 Agent 都拥有独立的策略实例和状态。内置精确重复策略以“工具名 + 深度规范化 JSON 参数”为 key，因此对象键顺序无关、数组顺序仍有意义。它会统计审批拒绝和失败结果，把配置排除项视为透明调用，在不同的未排除调用或已接受的人类输入处重置，并且只在配置的精确阈值上插入建议而不阻止调用。`AgentConfig.repeatedToolCalls` 启用这项通用策略；Kana 只负责把产品 TOML 配置映射到该通用配置。
+结果顺序继续满足 provider 协议：同一 assistant 消息的全部 sibling 工具结果先按模型顺序提交，之后才提交带 `provenance.kind: "tool_result_policy"` 的策略上下文，再开始下一次模型请求。每个 Agent 都拥有独立的策略实例及其状态。内置精确重复策略以“工具名 + 深度规范化 JSON 参数”为 key，因此对象键顺序无关、数组顺序仍有意义。它会统计审批拒绝和失败结果，把配置排除项视为透明调用，在不同的未排除调用或已接受的人类输入处重置，并且只在配置的精确阈值上插入建议而不阻止调用。`AgentConfig.repeatedToolCalls` 启用这项通用策略；Kana 只负责把产品 TOML 配置映射到该通用配置。
 
 运行中止或工具 deadline 到期时，ToolRuntime 会中止调用级 signal，并等待固定且有限的取消宽限期。在并行组中，这个决定会先立即停止 pool 补充并中止活动 sibling，再等待触发调用 drain；排队调用不会启动，而是得到 canceled 结果。工具在宽限期内退出时，结果分别记录为 `canceled` 或 `timed_out`；无论工具随后返回还是抛错，都不会覆盖这个中止结果。若工具忽略 signal，runtime 会停止接收其 update，将持久化结果标记为 `status: "unknown"`，并终止当前 Agent run。该结果明确要求不得自动重试，因为脱离 runtime 的调用仍可能产生副作用；其迟到的完成只产生不含参数和结果的结构化诊断日志。deadline 与宽限期都使用正整数毫秒。工具的 `execution.deadlineMs` 优先；未声明时使用 Agent 默认值。框架默认是 300000 毫秒，Kana 产品默认是 660000 毫秒，并可通过 `agent.tool_deadline_ms` 覆盖。
 

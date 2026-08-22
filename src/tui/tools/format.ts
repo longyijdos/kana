@@ -1,4 +1,4 @@
-import type { ToolCallContent } from "@/core";
+import { isToolResultArtifact, type ToolCallContent, type ToolResultArtifact } from "@/core";
 import {
   capitalize,
   color,
@@ -113,6 +113,10 @@ export function formatToolOutput(
 ): string[] {
   const sanitizedResult = sanitizeToolOutput(result);
 
+  if (isToolResultArtifact(sanitizedResult)) {
+    return renderText(formatArtifactOutput(sanitizedResult, detail), width, tuiTheme.toolOutput);
+  }
+
   if (!sanitizedResult || typeof sanitizedResult !== "object") {
     return renderText(
       sanitizedResult === undefined ? "" : String(sanitizedResult),
@@ -167,6 +171,10 @@ export function hasExpandableToolOutput(
     return false;
   }
 
+  if (isToolResultArtifact(result)) {
+    return true;
+  }
+
   if (isError && getStringProperty(result, "error") !== undefined) {
     return false;
   }
@@ -189,6 +197,28 @@ export function hasExpandableToolOutput(
   }
 
   return false;
+}
+
+function formatArtifactOutput(artifact: ToolResultArtifact, detail: ToolOutputDetail): string {
+  const summary = `Output stored · ${formatByteSize(artifact.byteLength)}`;
+  if (detail === "compact") {
+    return summary;
+  }
+  return [
+    summary,
+    `Full output locator: ${artifact.locator}`,
+    "Use grep with this locator plus pattern to locate text; for line-oriented output, use read with offset and limit.",
+  ].join("\n");
+}
+
+function formatByteSize(bytes: number): string {
+  if (bytes < 1_024) {
+    return `${bytes} bytes`;
+  }
+  if (bytes < 1_024 * 1_024) {
+    return `${Math.round(bytes / 1_024)} KB`;
+  }
+  return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
 }
 
 function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
