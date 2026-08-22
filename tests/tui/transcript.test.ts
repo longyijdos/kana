@@ -738,8 +738,6 @@ describe("tui transcript", () => {
         stdout: "before\n",
         stderr: "failure\n",
         timedOut: false,
-        stdoutTruncated: false,
-        stderrTruncated: false,
       },
       false,
     );

@@ -125,8 +125,9 @@ describe("Kana tool-result artifacts", () => {
 
     expect(liveResult).toMatchObject({
       stdout: "x".repeat(25_000),
-      stdoutTruncated: false,
     });
+    expect(liveResult).not.toHaveProperty("stdoutTruncated");
+    expect(liveResult).not.toHaveProperty("stderrTruncated");
     const toolResult = result.toolResults[0];
     expect(toolResult).not.toHaveProperty("result");
     expect(toolResult?.artifact).toBeDefined();
@@ -136,7 +137,8 @@ describe("Kana tool-result artifacts", () => {
     }
     const stored = readFileSync(locator, "utf8");
     expect(stored).toContain("x".repeat(25_000));
-    expect(stored).toContain("stdoutTruncated: false");
+    expect(stored).not.toContain("stdoutTruncated");
+    expect(stored).not.toContain("stderrTruncated");
     expect(toolResult?.content).toContain(`Full output locator: ${locator}`);
   });
 

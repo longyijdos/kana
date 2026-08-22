@@ -167,11 +167,11 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 | `view_image` | `path` | 加载并规范化本地图片，返回确定的路径、格式、尺寸与字节元数据，并把图片作为视觉观察交给同一个活动模型。仅当该模型支持图片且 `image_input` 已启用时注册。 |
 | `write` | `path`、完整 `content`、可选 `overwrite` | 递归创建父目录，并默认以排他创建方式写入新文件；`overwrite: true` 会替换既有文件。返回 UTF-8 字节数。 |
 | `edit` | `path`、非空 `oldText`、`newText`、可选 `replaceAll` | 对既有 UTF-8 文件做精确替换。默认要求恰好一次匹配；返回替换数、写入字节数及前后文本。 |
-| `bash` | `command`，可选 `cwd`、`timeoutMs`（1–600000，默认 30000） | 用用户 shell 的 login command 模式执行，返回退出码、完整的最终 stdout/stderr 和超时状态；实时更新携带有界输出和截断状态。 |
+| `bash` | `command`，可选 `cwd`、`timeoutMs`（1–600000，默认 30000） | 用用户 shell 的 login command 模式执行，返回退出码、完整的最终 stdout/stderr 和超时状态；实时更新提供每个流的有界尾部快照。 |
 | `remember` | `content`，可选 `scope`、`title`、`reason` | 向每日记忆记录持久信息，返回宿主生成的记忆条目。仅在记忆启用时注册。 |
 | `schedule_wake` | `afterMinutes`（1–1440）、`message`，可选 `key` | 在当前 Kana 进程中安排一次后续 Agent 输入。相同 session 和 key 的新事件会替换旧事件；Kana 退出后事件丢失。 |
 
-`bash` 的 stdin 始终断开；它把 `sudo` 定义为 `sudo -n`，避免密码提示占用 TUI。stdout/stderr 在运行期间约每 100ms 发送部分更新，每个实时快照的每个流限制为 20,000 个 JavaScript 字符。完整的最终输出随后进入统一结果策略，由该策略先按需保存 artifact，再限制模型可见内容和持久化结构化数据。每次命令在独立进程组中运行；取消或超时会终止整组，避免后台子进程残留或继续占用输出流。顶层 shell 已退出时，工具会在短暂排空输出后返回，因此后台任务不会阻塞工具结果。非 0 退出码表示命令本身的执行结果，不会将工具结果的 `isError` 标记为 true；超时的退出码记为 `null`，并将结果标为错误。
+`bash` 的 stdin 始终断开；它把 `sudo` 定义为 `sudo -n`，避免密码提示占用 TUI。stdout/stderr 在运行期间约每 100ms 发送部分更新；每个实时快照是每个流最多 20,000 个 JavaScript 字符的有界尾部窗口，长命令展示的是最新输出而不是输出开头。完整的最终输出随后进入统一结果策略，由该策略先按需保存 artifact，再限制模型可见内容和持久化结构化数据。每次命令在独立进程组中运行；取消或超时会终止整组，避免后台子进程残留或继续占用输出流。顶层 shell 已退出时，工具会在短暂排空输出后返回，因此后台任务不会阻塞工具结果。非 0 退出码表示命令本身的执行结果，不会将工具结果的 `isError` 标记为 true；超时的退出码记为 `null`，并将结果标为错误。
 
 `list`、`glob`、`grep`、`read`、`view_image`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd`、`glob.cwd` 和 `grep.path` 也可在外部。`view_image` 与用户附件共用同一解码器和规范化限制；GIF 等动画图片以解码后的首帧表示，并规范化为静态 PNG。请将审批理解为交互确认，而不是文件系统隔离。
 

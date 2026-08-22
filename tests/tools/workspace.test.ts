@@ -796,27 +796,27 @@ describe("workspace tools", () => {
     });
   });
 
-  test("bash preserves complete final output after bounding live updates", async () => {
+  test("bash preserves complete final output and bounds live updates to a trailing snapshot", async () => {
     const root = await createTempRoot();
     const updates: unknown[] = [];
     const bash = createBashTool({ root });
+    const fullStdout = `prefix-${"x".repeat(25_000)}-suffix`;
     const result = await bash.execute(
       {
-        command: `awk 'BEGIN { for (i = 0; i < 25000; i++) printf "x" }'`,
+        command: `printf %s ${shellQuote(fullStdout)}`,
       },
       createToolContext(updates),
     );
 
     expectToolResult(result);
-    expect(result.result.stdout).toHaveLength(25_000);
-    expect(result.result).toMatchObject({
-      stdoutTruncated: false,
-      stderrTruncated: false,
-    });
+    expect(result.result.stdout).toBe(fullStdout);
+    expect(result.result).not.toHaveProperty("stdoutTruncated");
+    expect(result.result).not.toHaveProperty("stderrTruncated");
     expect(updates.at(-1)).toMatchObject({
-      stdout: "x".repeat(20_000),
-      stdoutTruncated: true,
+      stdout: fullStdout.slice(-20_000),
     });
+    expect(updates.at(-1)).not.toHaveProperty("stdoutTruncated");
+    expect(updates.at(-1)).not.toHaveProperty("stderrTruncated");
   });
 
   test("bash runs commands with stdin disconnected", async () => {

@@ -49,8 +49,6 @@ export type BashToolResult = {
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  stdoutTruncated: boolean;
-  stderrTruncated: boolean;
 };
 
 export type BashToolOptions = {
@@ -109,8 +107,6 @@ export function createBashTool(
         stdout: result.stdout,
         stderr: result.stderr,
         timedOut: result.timedOut,
-        stdoutTruncated: false,
-        stderrTruncated: false,
       };
 
       return {
@@ -303,18 +299,15 @@ function resolveShell(shell: string | undefined): string {
   return value?.trim() ? value : "bash";
 }
 
-function truncatePartialOutput(content: string): { content: string; truncated: boolean } {
+// Live updates are transient bounded trailing snapshots for presentation, not a
+// complete record of the stream. Keep the freshest output so long-running
+// commands show recent lines instead of the beginning of the stream.
+function tailPartialOutput(content: string): string {
   if (content.length <= MAX_PARTIAL_OUTPUT_CHARS) {
-    return {
-      content,
-      truncated: false,
-    };
+    return content;
   }
 
-  return {
-    content: content.slice(0, MAX_PARTIAL_OUTPUT_CHARS),
-    truncated: true,
-  };
+  return content.slice(-MAX_PARTIAL_OUTPUT_CHARS);
 }
 
 function createBashPartialResult(
@@ -322,16 +315,11 @@ function createBashPartialResult(
   cwd: string,
   output: BashOutputSnapshot,
 ): Partial<BashToolResult> {
-  const stdout = truncatePartialOutput(output.stdout);
-  const stderr = truncatePartialOutput(output.stderr);
-
   return {
     command,
     cwd,
-    stdout: stdout.content,
-    stderr: stderr.content,
-    stdoutTruncated: stdout.truncated,
-    stderrTruncated: stderr.truncated,
+    stdout: tailPartialOutput(output.stdout),
+    stderr: tailPartialOutput(output.stderr),
   };
 }
 
@@ -397,8 +385,6 @@ function formatBashContent(result: BashToolResult): string {
     `cwd: ${result.cwd}`,
     `exitCode: ${result.exitCode}`,
     `timedOut: ${result.timedOut}`,
-    `stdoutTruncated: ${result.stdoutTruncated}`,
-    `stderrTruncated: ${result.stderrTruncated}`,
     "",
     "stdout:",
     result.stdout,
