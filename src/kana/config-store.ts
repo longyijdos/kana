@@ -10,7 +10,13 @@ import {
   validateKanaConfig,
 } from "./config";
 
-type KanaConfigValue = string | number | boolean | undefined;
+type KanaConfigValue =
+  | string
+  | number
+  | boolean
+  | readonly string[]
+  | readonly number[]
+  | undefined;
 
 type KanaConfigField = {
   section: string;
@@ -58,6 +64,16 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("agent", "parallel_tool_calls", (config) => config.agent.parallelToolCalls),
   field("agent", "max_parallel_tool_calls", (config) => config.agent.maxParallelToolCalls),
   field("agent", "context_limit", (config) => config.agent.contextLimit),
+  field(
+    "agent.repeated_tool_calls",
+    "reminder_thresholds",
+    (config) => config.agent.repeatedToolCalls.reminderThresholds,
+  ),
+  field(
+    "agent.repeated_tool_calls",
+    "excluded_tools",
+    (config) => config.agent.repeatedToolCalls.excludedTools,
+  ),
   field("approval", "mode", (config) => config.approval.mode),
   field("notification", "backend", (config) => config.notification.backend),
   field("notification", "on_agent_completed", (config) => config.notification.onAgentCompleted),
@@ -82,7 +98,7 @@ export function createKanaConfigStore(env: NodeJS.ProcessEnv = process.env): Kan
       mutate(next);
       const validated = validateKanaConfig(next);
       const changedFields = CONFIG_FIELDS.filter(
-        (candidate) => candidate.read(current) !== candidate.read(validated),
+        (candidate) => !sameConfigValue(candidate.read(current), candidate.read(validated)),
       );
       if (changedFields.length === 0) {
         return current;
@@ -120,7 +136,16 @@ function field(section: string, key: string, read: KanaConfigField["read"]): Kan
 }
 
 function sameKnownConfig(left: KanaConfig, right: KanaConfig): boolean {
-  return CONFIG_FIELDS.every((candidate) => candidate.read(left) === candidate.read(right));
+  return CONFIG_FIELDS.every((candidate) =>
+    sameConfigValue(candidate.read(left), candidate.read(right)),
+  );
+}
+
+function sameConfigValue(left: KanaConfigValue, right: KanaConfigValue): boolean {
+  if (!Array.isArray(left) || !Array.isArray(right)) {
+    return left === right;
+  }
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function updateTomlField(
@@ -198,7 +223,10 @@ function findKey(lines: string[], key: string, start: number, end: number): numb
 }
 
 function formatTomlValue(value: Exclude<KanaConfigValue, undefined>): string {
-  return typeof value === "string" ? JSON.stringify(value) : String(value);
+  if (typeof value === "string" || Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+  return String(value);
 }
 
 function escapeRegExp(value: string): string {

@@ -114,6 +114,12 @@ journal 的顺序是协议约束：完整 assistant 消息必须先持久化，�
 
 参数校验失败和工具抛出的异常不会使循环本身抛出：它们成为 `isError: true` 的工具结果，模型能在下一回合看到失败原因。审批钩子返回 `cancel` 时默认中止整个运行，并为之后尚未执行的同消息工具补充“已取消”错误结果。中止发生在执行前也遵循同样的补全规则。
 
+### 工具结果策略
+
+通用 Agent 层接受一个可选的 `ToolResultPolicy`。每个结果规范化为 `ToolResult` 后，ToolRuntime 都会恰好调用一次策略的 `finalize()`；成功、未知工具、参数错误、审批拒绝、取消、超时和异常都遵循同一路径。策略收到模型原始调用的深拷贝只读视图，以及规范化后给模型的 `content` 和错误状态。任意的 host 结构化 `result` 不进入这个建议边界，因此无需满足可克隆约束。策略可以保留或替换给模型的结果文本，或在结果后追加带来源的内部 user-role 上下文；不能改写工具名、参数、给 host 的结构化结果或错误状态。策略抛错或返回非法值时只产生安全诊断，并回退为原始结果。验证后的策略输出会在离开 containment 前复制为普通内部快照，因此 getter、Proxy、稀疏数组或后续修改都不能逃逸到结果提交阶段。
+
+结果顺序继续满足 provider 协议：同一 assistant 消息的全部 sibling 工具结果先按模型顺序提交，之后才提交带 `provenance.kind: "tool_result_policy"` 的策略上下文，再开始下一次模型请求。每个 Agent 都拥有独立的策略实例和状态。内置精确重复策略以“工具名 + 深度规范化 JSON 参数”为 key，因此对象键顺序无关、数组顺序仍有意义。它会统计审批拒绝和失败结果，把配置排除项视为透明调用，在不同的未排除调用或已接受的人类输入处重置，并且只在配置的精确阈值上插入建议而不阻止调用。`AgentConfig.repeatedToolCalls` 启用这项通用策略；Kana 只负责把产品 TOML 配置映射到该通用配置。
+
 运行中止或工具 deadline 到期时，ToolRuntime 会中止调用级 signal，并等待固定且有限的取消宽限期。在并行组中，这个决定会先立即停止 pool 补充并中止活动 sibling，再等待触发调用 drain；排队调用不会启动，而是得到 canceled 结果。工具在宽限期内退出时，结果分别记录为 `canceled` 或 `timed_out`；无论工具随后返回还是抛错，都不会覆盖这个中止结果。若工具忽略 signal，runtime 会停止接收其 update，将持久化结果标记为 `status: "unknown"`，并终止当前 Agent run。该结果明确要求不得自动重试，因为脱离 runtime 的调用仍可能产生副作用；其迟到的完成只产生不含参数和结果的结构化诊断日志。deadline 与宽限期都使用正整数毫秒。工具的 `execution.deadlineMs` 优先；未声明时使用 Agent 默认值。框架默认是 300000 毫秒，Kana 产品默认是 660000 毫秒，并可通过 `agent.tool_deadline_ms` 覆盖。
 
 相邻并行组通过有界滚动池运行。调用按模型顺序领取并进入串行审批，同时在途的调用 body 不超过 `maxParallelToolCalls`。每个 start、partial update 和终态事件仍以 `toolCallId` 关联；`tool_execution_end` 跟随物理完成，因此后面的快速调用可以早于前面的慢调用显示完成。持久化提交则独立等待按模型顺序排列的结果槽位，使 session 历史与下一次模型请求都保持确定顺序。助手工具调用消息在执行前已经持久化，因此进程若在实时终态与结果提交之间退出，恢复时会把该调用记为 `unknown`，而不会自动重试。run abort 或内部调度失败会停止补充并中止活动 sibling；已启动调用被 drain 到明确终态或 unknown，尚未启动的调用得到 canceled 结果。池的开始、结束和异常 drain 诊断只包含聚合计数。`list`、`glob`、`grep`、`read` 声明为 `parallel`；写入、Shell、记忆、调度以及未声明的第三方/MCP 工具默认 `exclusive`。

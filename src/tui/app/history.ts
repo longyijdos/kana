@@ -43,7 +43,10 @@ function addHistoryMessage(
 ): void {
   switch (message.role) {
     case "user":
-      if (message.provenance.kind === "runtime_context") {
+      if (
+        message.provenance.kind === "runtime_context" ||
+        message.provenance.kind === "tool_result_policy"
+      ) {
         break;
       }
       transcript.addChild(
@@ -73,6 +76,8 @@ function formatUserMessage(message: Extract<Message, { role: "user" }>): string 
       return message.content;
     case "runtime_context":
       return "Runtime context updated.";
+    case "tool_result_policy":
+      return "Tool result policy context updated.";
     case "compaction_request":
     case "context_summary":
       return message.content;

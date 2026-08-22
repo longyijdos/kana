@@ -32,6 +32,7 @@ export {
   type KanaNotificationBackend,
   type KanaNotificationConfig,
   type KanaOpenAICodexModelConfig,
+  type KanaRepeatedToolCallsConfig,
   type KanaToolApprovalConfig,
   type KanaToolApprovalMode,
   type KanaTuiConfig,

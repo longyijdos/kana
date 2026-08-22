@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
+import type { ToolResultPolicy, ToolResultPolicyInput } from "../../src/agent";
 import {
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   DEFAULT_TOOL_DEADLINE_MS,
   ToolRuntime,
 } from "../../src/agent/tool-runtime";
+import type { Message } from "../../src/core";
 import type { Logger, LogMetadata } from "../../src/logging";
 import type { Tool } from "../../src/tools/tool";
 
@@ -232,6 +234,19 @@ describe("ToolRuntime", () => {
     expect(() => new ToolRuntime({ tools: [], maxParallelToolCalls: 0 }, () => {})).toThrow(
       "maxParallelToolCalls must be a positive integer.",
     );
+  });
+
+  test("validates tool-result policy sources", () => {
+    expect(
+      () =>
+        new ToolRuntime(
+          {
+            tools: [],
+            toolResultPolicy: { source: " invalid", finalize: () => undefined },
+          },
+          () => {},
+        ),
+    ).toThrow("Tool result policy source must be a non-empty trimmed string.");
   });
 
   test("returns an unknown result after cancellation grace and ignores late updates", async () => {
@@ -804,6 +819,332 @@ describe("ToolRuntime", () => {
 
     expect(maximumActiveApprovals).toBe(1);
     expect(result.toolResults).toHaveLength(2);
+  });
+
+  test("finalizes every normalized result exactly once", async () => {
+    const finalized: Array<{ name: string; isError: boolean }> = [];
+    const success = {
+      name: "success",
+      description: "Succeed.",
+      parameters: labeledParameters,
+      execute: ({ label }) => label,
+    } satisfies Tool<typeof labeledParameters, string>;
+    const failure = {
+      name: "failure",
+      description: "Throw.",
+      parameters: labeledParameters,
+      execute: () => {
+        throw new Error("execution failed");
+      },
+    } satisfies Tool<typeof labeledParameters, string>;
+    const denied = {
+      name: "denied",
+      description: "Require approval.",
+      parameters: labeledParameters,
+      execute: () => "unexpected",
+    } satisfies Tool<typeof labeledParameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [success, failure, denied],
+        beforeToolExecution: ({ tool }) =>
+          tool.name === "denied"
+            ? { type: "cancel", abortRun: false, message: "Approval denied." }
+            : { type: "continue" },
+        toolResultPolicy: {
+          source: "recording",
+          finalize: ({ toolCall, isError }) => {
+            finalized.push({ name: toolCall.name, isError });
+          },
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "success", name: "success", args: { label: "ok" } },
+      { type: "tool_call", id: "invalid", name: "success", args: {} },
+      { type: "tool_call", id: "missing", name: "missing", args: {} },
+      { type: "tool_call", id: "failure", name: "failure", args: { label: "bad" } },
+      { type: "tool_call", id: "denied", name: "denied", args: { label: "no" } },
+    ]);
+
+    expect(finalized).toEqual([
+      { name: "success", isError: false },
+      { name: "success", isError: true },
+      { name: "missing", isError: true },
+      { name: "failure", isError: true },
+      { name: "denied", isError: true },
+    ]);
+    expect(result.toolResults).toHaveLength(5);
+    expect(result.abortRun).toBe(false);
+  });
+
+  test("finalizes calls canceled before execution", async () => {
+    const controller = new AbortController();
+    const finalized: string[] = [];
+    controller.abort();
+    const runtime = new ToolRuntime(
+      {
+        signal: controller.signal,
+        toolResultPolicy: {
+          source: "recording",
+          finalize: ({ toolCall }) => {
+            finalized.push(toolCall.id);
+          },
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "canceled", name: "unused", args: {} },
+    ]);
+
+    expect(finalized).toEqual(["canceled"]);
+    expect(result.toolResults[0]).toMatchObject({ isError: true });
+  });
+
+  test("commits policy context after sibling results and keeps structured results intact", async () => {
+    const commits: Message[] = [];
+    const tool = {
+      name: "parallel",
+      description: "Return a labeled result.",
+      parameters: labeledParameters,
+      execution: { concurrency: "parallel" },
+      execute: ({ label }) => ({
+        content: `original:${label}`,
+        result: { label },
+      }),
+    } satisfies Tool<typeof labeledParameters, { label: string }>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolResultPolicy: {
+          source: "test_policy",
+          finalize: ({ toolCall }) => ({
+            content: `replacement:${toolCall.id}`,
+            additionalContext: [`context:${toolCall.id}`],
+          }),
+        },
+        onMessageCommitted: (message) => {
+          commits.push(message);
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([toolCall("p1", "parallel"), toolCall("p2", "parallel")]);
+
+    expect(commits.map((message) => message.role)).toEqual(["tool", "tool", "user", "user"]);
+    expect(result.toolResults).toEqual([
+      expect.objectContaining({
+        toolCallId: "p1",
+        content: "replacement:p1",
+        result: { label: "p1" },
+      }),
+      expect.objectContaining({
+        toolCallId: "p2",
+        content: "replacement:p2",
+        result: { label: "p2" },
+      }),
+    ]);
+    expect(result.additionalMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "context:p1",
+        provenance: { kind: "tool_result_policy", source: "test_policy" },
+      }),
+      expect.objectContaining({
+        role: "user",
+        content: "context:p2",
+        provenance: { kind: "tool_result_policy", source: "test_policy" },
+      }),
+    ]);
+  });
+
+  test("detaches validated policy output from getters before leaving containment", async () => {
+    let contentReads = 0;
+    const tool = {
+      name: "safe",
+      description: "Return original content.",
+      parameters,
+      execute: () => "original content",
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolResultPolicy: {
+          source: "getter_policy",
+          finalize: () => {
+            const output = {};
+            Object.defineProperty(output, "content", {
+              enumerable: true,
+              get() {
+                contentReads += 1;
+                if (contentReads > 2) {
+                  throw new Error("content read outside containment");
+                }
+                return "replacement content";
+              },
+            });
+            return output;
+          },
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-1", name: "safe", args: {} },
+    ]);
+
+    expect(contentReads).toBe(1);
+    expect(result.toolResults[0]?.content).toBe("replacement content");
+  });
+
+  test("rejects sparse policy context and falls back to the original result", async () => {
+    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
+    const tool = {
+      name: "safe",
+      description: "Return original content.",
+      parameters,
+      execute: () => "original content",
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolResultPolicy: {
+          source: "sparse_policy",
+          finalize: () => ({ additionalContext: new Array<string>(1) }),
+        },
+        logger: createRecordingLogger(logs),
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-1", name: "safe", args: {} },
+    ]);
+
+    expect(result.toolResults[0]?.content).toBe("original content");
+    expect(result.additionalMessages).toEqual([]);
+    expect(logs).toEqual([
+      {
+        event: "tool.result_policy_failed",
+        metadata: {
+          policySource: "sparse_policy",
+          toolName: "safe",
+          errorType: "Error",
+        },
+      },
+    ]);
+  });
+
+  test("finalizes outcomes whose structured result cannot be cloned", async () => {
+    const structuredResult = new WeakMap<object, string>();
+    structuredResult.set({}, "host-only value");
+    let policyInput: ToolResultPolicyInput | undefined;
+    const tool = {
+      name: "non_cloneable",
+      description: "Return host-only structured data.",
+      parameters,
+      execute: () => ({
+        content: "original content",
+        result: structuredResult,
+      }),
+    } satisfies Tool<typeof parameters, WeakMap<object, string>>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolResultPolicy: {
+          source: "content_only_policy",
+          finalize: (input) => {
+            policyInput = input;
+            return { content: `policy saw: ${input.content}` };
+          },
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-1", name: "non_cloneable", args: {} },
+    ]);
+
+    expect(policyInput).toEqual({
+      toolCall: { type: "tool_call", id: "call-1", name: "non_cloneable", args: {} },
+      content: "original content",
+      isError: false,
+    });
+    expect(result.toolResults[0]?.content).toBe("policy saw: original content");
+    expect(result.toolResults[0]?.result).toBe(structuredResult);
+  });
+
+  test("contains policy failures and protects the model-authored call and result", async () => {
+    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
+    const calls = [
+      {
+        type: "tool_call" as const,
+        id: "call-1",
+        name: "safe",
+        args: { value: "secret argument" },
+      },
+    ];
+    const tool = {
+      name: "safe",
+      description: "Return an original result.",
+      parameters: Type.Object({ value: Type.String() }),
+      execute: () => ({
+        content: "original content",
+        result: { value: "original structured result" },
+      }),
+    } satisfies Tool;
+    const policy: ToolResultPolicy = {
+      source: "failing_policy",
+      finalize: (input) => {
+        const mutableInput = input as {
+          toolCall: { name: string; args: { value: string } };
+          content: string;
+        };
+        mutableInput.toolCall.name = "mutated";
+        mutableInput.toolCall.args.value = "mutated";
+        mutableInput.content = "mutated";
+        throw new Error("secret policy failure");
+      },
+    };
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolResultPolicy: policy,
+        logger: createRecordingLogger(logs),
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute(calls);
+
+    expect(calls[0]).toEqual({
+      type: "tool_call",
+      id: "call-1",
+      name: "safe",
+      args: { value: "secret argument" },
+    });
+    expect(result.toolResults[0]).toMatchObject({
+      toolName: "safe",
+      content: "original content",
+      result: { value: "original structured result" },
+    });
+    expect(logs).toEqual([
+      {
+        event: "tool.result_policy_failed",
+        metadata: {
+          policySource: "failing_policy",
+          toolName: "safe",
+          errorType: "Error",
+        },
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("secret");
   });
 
   test("stops replenishing immediately and cancels siblings when one invocation reaches deadline", async () => {

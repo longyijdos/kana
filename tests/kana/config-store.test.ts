@@ -33,6 +33,8 @@ describe("Kana config store", () => {
       draft.model["openai-codex"].reasoningEffort = "max";
       draft.model["openai-codex"].webSearch = false;
       draft.model["openai-codex"].imageInput = false;
+      draft.agent.repeatedToolCalls.reminderThresholds = [2, 4];
+      draft.agent.repeatedToolCalls.excludedTools = ["remember", "status"];
     });
 
     expect(readFileSync(configPath, "utf8")).toBe(
@@ -46,6 +48,10 @@ describe("Kana config store", () => {
         "web_search = false",
         "image_input = false",
         "",
+        "[agent.repeated_tool_calls]",
+        "reminder_thresholds = [2,4]",
+        'excluded_tools = ["remember","status"]',
+        "",
       ].join("\n"),
     );
     expect(config.provider.active).toBe("openai-codex");
@@ -53,6 +59,10 @@ describe("Kana config store", () => {
     expect(config.model["openai-codex"].reasoningEffort).toBe("max");
     expect(config.model["openai-codex"].webSearch).toBe(false);
     expect(config.model["openai-codex"].imageInput).toBe(false);
+    expect(config.agent.repeatedToolCalls).toEqual({
+      reminderThresholds: [2, 4],
+      excludedTools: ["remember", "status"],
+    });
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
   });
 

@@ -188,7 +188,7 @@ describe("tui history transcript", () => {
     );
   });
 
-  test("hides runtime context snapshots from restored transcripts", () => {
+  test("hides internal context messages from restored transcripts", () => {
     const transcript = new Transcript();
 
     addHistoryTimelineToTranscript(
@@ -198,6 +198,11 @@ describe("tui history transcript", () => {
           ...createMessageIdentity({ kind: "runtime_context", source: "environment" }),
           role: "user",
           content: '<runtime_context source="environment">hidden</runtime_context>',
+        },
+        {
+          ...createMessageIdentity({ kind: "tool_result_policy", source: "repeated_tool_call" }),
+          role: "user",
+          content: "hidden repeated-call reminder",
         },
         {
           ...messageIdentityForTest("user"),
@@ -211,6 +216,7 @@ describe("tui history transcript", () => {
     expect(rendered).toContain("Visible question");
     expect(rendered).not.toContain("runtime_context");
     expect(rendered).not.toContain("hidden");
+    expect(rendered).not.toContain("repeated-call reminder");
   });
 
   test("renders recovery input as a muted marker and ignores turn boundaries", () => {

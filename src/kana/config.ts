@@ -63,12 +63,18 @@ export type KanaModelConfigMap = {
   custom: KanaCustomModelConfig;
 };
 
+export type KanaRepeatedToolCallsConfig = {
+  reminderThresholds: number[];
+  excludedTools: string[];
+};
+
 type KanaAgentConfig = {
   maxTurns: number;
   toolDeadlineMs: number;
   parallelToolCalls: boolean;
   maxParallelToolCalls: number;
   contextLimit?: number;
+  repeatedToolCalls: KanaRepeatedToolCallsConfig;
 };
 
 const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;
@@ -205,6 +211,10 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     parallelToolCalls: true,
     maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
     contextLimit: undefined,
+    repeatedToolCalls: {
+      reminderThresholds: [3, 5, 8],
+      excludedTools: [],
+    },
   },
   approval: {
     mode: "unless_trusted",
@@ -377,6 +387,10 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       parallel_tool_calls: config.agent.parallelToolCalls,
       max_parallel_tool_calls: config.agent.maxParallelToolCalls,
       context_limit: config.agent.contextLimit,
+      repeated_tool_calls: {
+        reminder_thresholds: config.agent.repeatedToolCalls.reminderThresholds,
+        excluded_tools: config.agent.repeatedToolCalls.excludedTools,
+      },
     },
     approval: {
       mode: config.approval.mode,
@@ -431,6 +445,10 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
     `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
     "# context_limit = 200000",
+    "",
+    "[agent.repeated_tool_calls]",
+    `reminder_thresholds = ${JSON.stringify(config.agent.repeatedToolCalls.reminderThresholds)}`,
+    `excluded_tools = ${JSON.stringify(config.agent.repeatedToolCalls.excludedTools)}`,
     "",
     "[approval]",
     `mode = "${config.approval.mode}"`,
@@ -517,6 +535,10 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const openAICodexModel = readModelTable(model, "openai-codex");
   const customModel = readModelTable(model, "custom");
   const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
+  const repeatedToolCalls =
+    agent.repeated_tool_calls === undefined
+      ? {}
+      : asRecord(agent.repeated_tool_calls, "agent.repeated_tool_calls");
   const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
   const notification =
     raw.notification === undefined ? {} : asRecord(raw.notification, "notification");
@@ -645,6 +667,18 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         defaults.agent.contextLimit,
         "agent.context_limit",
       ),
+      repeatedToolCalls: {
+        reminderThresholds: readReminderThresholds(
+          repeatedToolCalls.reminder_thresholds,
+          defaults.agent.repeatedToolCalls.reminderThresholds,
+          "agent.repeated_tool_calls.reminder_thresholds",
+        ),
+        excludedTools: readExcludedToolNames(
+          repeatedToolCalls.excluded_tools,
+          defaults.agent.repeatedToolCalls.excludedTools,
+          "agent.repeated_tool_calls.excluded_tools",
+        ),
+      },
     },
     approval: {
       mode: readToolApprovalMode(approval.mode, defaults.approval.mode),
@@ -837,6 +871,62 @@ function readOptionalPositiveInteger(
   }
 
   return value;
+}
+
+function readReminderThresholds(
+  value: unknown,
+  fallback: readonly number[],
+  name: string,
+): number[] {
+  if (value === undefined) {
+    return [...fallback];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`${name} must be an array.`);
+  }
+
+  let previous = 1;
+  const thresholds: number[] = [];
+  for (const threshold of value) {
+    if (
+      typeof threshold !== "number" ||
+      !Number.isInteger(threshold) ||
+      threshold < 2 ||
+      threshold <= previous
+    ) {
+      throw new Error(
+        `${name} must contain strictly increasing integers greater than or equal to 2.`,
+      );
+    }
+    thresholds.push(threshold);
+    previous = threshold;
+  }
+  return thresholds;
+}
+
+function readExcludedToolNames(
+  value: unknown,
+  fallback: readonly string[],
+  name: string,
+): string[] {
+  if (value === undefined) {
+    return [...fallback];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`${name} must be an array.`);
+  }
+
+  const names = new Set<string>();
+  for (const toolName of value) {
+    if (typeof toolName !== "string" || toolName.length === 0 || toolName !== toolName.trim()) {
+      throw new Error(`${name} must contain non-empty trimmed tool names.`);
+    }
+    if (names.has(toolName)) {
+      throw new Error(`${name} must not contain duplicate tool names.`);
+    }
+    names.add(toolName);
+  }
+  return [...names];
 }
 
 function readModelProvider(value: unknown, fallback: KanaModelProvider): KanaModelProvider {

@@ -18,6 +18,7 @@ import {
   formatKanaEnvironmentContext,
   getKanaConfigPaths,
   installKanaConfig,
+  type KanaRepeatedToolCallsConfig,
   loadKanaConfig,
   loadKanaEnvironment,
   resetKanaConfig,
@@ -107,6 +108,9 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("tool_deadline_ms = 660000");
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("max_parallel_tool_calls = 4");
+    expect(installedConfigExample).toContain("[agent.repeated_tool_calls]");
+    expect(installedConfigExample).toContain("reminder_thresholds = [3,5,8]");
+    expect(installedConfigExample).toContain("excluded_tools = []");
     expect(installedConfigExample).toContain("hyperlinks = true");
     expect(installedConfigExample).toContain("render_latex = true");
     expect(installedConfigExample).toContain("render_mermaid = true");
@@ -229,12 +233,18 @@ describe("Kana config", () => {
   });
 
   test("defaults output ceilings to the provider metadata limits", () => {
+    const repeatedToolCalls: KanaRepeatedToolCallsConfig = {
+      reminderThresholds: [3, 5, 8],
+      excludedTools: [],
+    };
+
     expect(DEFAULT_KANA_CONFIG.model.deepseek.maxTokens).toBe(384_000);
     expect(DEFAULT_KANA_CONFIG.model.deepseek.webSearch).toBe(true);
     expect(DEFAULT_KANA_CONFIG.model.deepseek.imageInput).toBe(true);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].maxTokens).toBe(128_000);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].webSearch).toBe(true);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].imageInput).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.agent.repeatedToolCalls).toEqual(repeatedToolCalls);
   });
 
   test("merges TOML config with defaults", () => {
@@ -254,6 +264,10 @@ describe("Kana config", () => {
         "parallel_tool_calls = false",
         "max_parallel_tool_calls = 2",
         "context_limit = 200000",
+        "",
+        "[agent.repeated_tool_calls]",
+        "reminder_thresholds = [2, 4]",
+        'excluded_tools = ["remember"]',
         "",
         "[approval]",
         'mode = "unless_trusted"',
@@ -298,6 +312,10 @@ describe("Kana config", () => {
         parallelToolCalls: false,
         maxParallelToolCalls: 2,
         contextLimit: 200000,
+        repeatedToolCalls: {
+          reminderThresholds: [2, 4],
+          excludedTools: ["remember"],
+        },
       },
       approval: {
         mode: "unless_trusted",
@@ -542,6 +560,36 @@ describe("Kana config", () => {
       expect(() => loadKanaConfig(env)).toThrow(
         "agent.max_parallel_tool_calls must be a positive integer.",
       );
+    }
+  });
+
+  test("loads and validates repeated tool-call policy settings", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    const configPath = path.join(home, "config.toml");
+
+    writeFileSync(
+      configPath,
+      [
+        "[agent.repeated_tool_calls]",
+        "reminder_thresholds = []",
+        'excluded_tools = ["remember", "status"]',
+        "",
+      ].join("\n"),
+    );
+    expect(loadKanaConfig(env).agent.repeatedToolCalls).toEqual({
+      reminderThresholds: [],
+      excludedTools: ["remember", "status"],
+    });
+
+    for (const value of ["1", '"invalid"', "[1]", "[3, 3]", "[4, 3]", "[2.5]"]) {
+      writeFileSync(configPath, `[agent.repeated_tool_calls]\nreminder_thresholds = ${value}\n`);
+      expect(() => loadKanaConfig(env)).toThrow();
+    }
+
+    for (const value of ['"invalid"', '[""]', '[" remember"]', '["read", "read"]']) {
+      writeFileSync(configPath, `[agent.repeated_tool_calls]\nexcluded_tools = ${value}\n`);
+      expect(() => loadKanaConfig(env)).toThrow();
     }
   });
 
