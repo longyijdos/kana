@@ -33,7 +33,7 @@ import {
 } from "./loop";
 import { createPromptAssembly, type PromptAssembly } from "./prompt-assembly";
 import { AgentEventStream } from "./stream";
-import { resolveDefaultToolDeadlineMs } from "./tool-runtime";
+import { resolveDefaultToolDeadlineMs, resolveMaxParallelToolCalls } from "./tool-runtime";
 
 export type AgentPromptInput = string | UserMessage | UserMessage[];
 
@@ -49,6 +49,7 @@ export type AgentConfig = {
   maxTurns?: number;
   toolDeadlineMs?: number;
   parallelToolCalls?: boolean;
+  maxParallelToolCalls?: number;
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
   onCompactionCommitted?: AgentCompactionCommittedHook;
@@ -133,11 +134,13 @@ export class Agent {
   private readonly loggerMetadata?: LogMetadata;
   private readonly contextManager?: ContextManager;
   private readonly parallelToolCalls: boolean;
+  private readonly maxParallelToolCalls: number;
   private readonly promptAssembly: PromptAssembly;
 
   constructor(options: AgentConfig) {
     assertValidMaxTurns(options.maxTurns);
     const toolDeadlineMs = resolveDefaultToolDeadlineMs(options.toolDeadlineMs);
+    this.maxParallelToolCalls = resolveMaxParallelToolCalls(options.maxParallelToolCalls);
     this.logger = options.logger ?? createNoopLogger();
     this.loggerMetadata = options.loggerMetadata;
     const parallelToolCallsRequested = options.parallelToolCalls ?? true;
@@ -179,6 +182,7 @@ export class Agent {
       requested: parallelToolCallsRequested,
       supported: options.model.metadata.supportsParallelToolCalls,
       enabled: this.parallelToolCalls,
+      maxParallelToolCalls: this.maxParallelToolCalls,
     });
   }
 
@@ -565,6 +569,7 @@ export class Agent {
       maxTurns: this.stateData.maxTurns,
       toolDeadlineMs: this.stateData.toolDeadlineMs,
       parallelToolCalls: this.parallelToolCalls,
+      maxParallelToolCalls: this.maxParallelToolCalls,
       signal,
       beforeToolExecution: this.beforeToolExecution,
       contextManager,

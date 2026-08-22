@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
-import { DEFAULT_TOOL_DEADLINE_MS, ToolRuntime } from "../../src/agent/tool-runtime";
+import {
+  DEFAULT_MAX_PARALLEL_TOOL_CALLS,
+  DEFAULT_TOOL_DEADLINE_MS,
+  ToolRuntime,
+} from "../../src/agent/tool-runtime";
 import type { Logger, LogMetadata } from "../../src/logging";
 import type { Tool } from "../../src/tools/tool";
 
@@ -148,7 +152,7 @@ describe("ToolRuntime", () => {
     const runtime = new ToolRuntime(
       {
         tools: [tool],
-        cancellationGraceMs: 50,
+        cancellationGraceMs: 5,
         defaultDeadlineMs: 50,
       },
       () => {},
@@ -220,6 +224,13 @@ describe("ToolRuntime", () => {
     expect(DEFAULT_TOOL_DEADLINE_MS).toBe(300_000);
     expect(() => new ToolRuntime({ tools: [], defaultDeadlineMs: 0 }, () => {})).toThrow(
       "defaultDeadlineMs must be a positive integer.",
+    );
+  });
+
+  test("uses and validates a conservative parallel tool limit", () => {
+    expect(DEFAULT_MAX_PARALLEL_TOOL_CALLS).toBe(4);
+    expect(() => new ToolRuntime({ tools: [], maxParallelToolCalls: 0 }, () => {})).toThrow(
+      "maxParallelToolCalls must be a positive integer.",
     );
   });
 
@@ -423,6 +434,7 @@ describe("ToolRuntime", () => {
           createDeferredTool("parallel", "parallel"),
           createDeferredTool("barrier", undefined),
         ],
+        maxParallelToolCalls: 2,
         onMessageCommitted: (message) => {
           if (message.role === "tool") {
             operations.push(`commit:${message.toolCallId}`);
@@ -467,18 +479,113 @@ describe("ToolRuntime", () => {
     const result = await execution;
 
     expect(result.toolResults.map((message) => message.toolCallId)).toEqual([
-      "p2",
       "p1",
+      "p2",
       "barrier",
-      "p4",
       "p3",
+      "p4",
     ]);
     expect(operations.filter((operation) => operation.startsWith("commit:"))).toEqual([
-      "commit:p2",
       "commit:p1",
+      "commit:p2",
       "commit:barrier",
-      "commit:p4",
       "commit:p3",
+      "commit:p4",
+    ]);
+    expect(operations.filter((operation) => operation.startsWith("end:"))).toEqual([
+      "end:p2",
+      "end:p1",
+      "end:barrier",
+      "end:p4",
+      "end:p3",
+    ]);
+  });
+
+  test("runs a bounded rolling pool and logs its lifecycle", async () => {
+    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
+    const starts: string[] = [];
+    const ends: string[] = [];
+    const finishByLabel = new Map<string, () => void>();
+    let activeExecutions = 0;
+    let maximumActiveExecutions = 0;
+    const tool = {
+      name: "parallel",
+      description: "Run in a bounded pool.",
+      parameters: labeledParameters,
+      execution: {
+        concurrency: "parallel",
+      },
+      execute: ({ label }) =>
+        new Promise((resolve) => {
+          starts.push(label);
+          activeExecutions += 1;
+          maximumActiveExecutions = Math.max(maximumActiveExecutions, activeExecutions);
+          finishByLabel.set(label, () => {
+            activeExecutions -= 1;
+            resolve(label);
+          });
+        }),
+    } satisfies Tool<typeof labeledParameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        maxParallelToolCalls: 2,
+        logger: createRecordingLogger(logs),
+      },
+      (event) => {
+        if (event.type === "tool_execution_end") {
+          ends.push(event.toolCallId);
+        }
+      },
+    );
+
+    const execution = runtime.execute([
+      toolCall("p1", "parallel"),
+      toolCall("p2", "parallel"),
+      toolCall("p3", "parallel"),
+      toolCall("p4", "parallel"),
+    ]);
+
+    await waitFor(() => starts.length === 2);
+    expect(starts).toEqual(["p1", "p2"]);
+    finishByLabel.get("p2")?.();
+    await waitFor(() => starts.includes("p3"));
+    finishByLabel.get("p3")?.();
+    await waitFor(() => starts.includes("p4"));
+    finishByLabel.get("p4")?.();
+    finishByLabel.get("p1")?.();
+
+    const result = await execution;
+
+    expect(maximumActiveExecutions).toBe(2);
+    expect(starts).toEqual(["p1", "p2", "p3", "p4"]);
+    expect(ends).toEqual(["p2", "p3", "p4", "p1"]);
+    expect(result.toolResults.map((message) => message.toolCallId)).toEqual([
+      "p1",
+      "p2",
+      "p3",
+      "p4",
+    ]);
+    expect(logs).toEqual([
+      {
+        event: "tool.parallel_pool_started",
+        metadata: {
+          toolCount: 4,
+          maxParallelToolCalls: 2,
+          workerCount: 2,
+        },
+      },
+      {
+        event: "tool.parallel_pool_ended",
+        metadata: {
+          toolCount: 4,
+          maxParallelToolCalls: 2,
+          startedCount: 4,
+          canceledBeforeStartCount: 0,
+          unknownOutcomeCount: 0,
+          outcome: "completed",
+        },
+      },
     ]);
   });
 
@@ -504,14 +611,154 @@ describe("ToolRuntime", () => {
       {
         tools: [tool],
         parallelToolCalls: false,
+        maxParallelToolCalls: 4,
       },
       () => {},
     );
 
-    const result = await runtime.execute([toolCall("p1", "parallel"), toolCall("p2", "parallel")]);
+    const result = await runtime.execute([
+      toolCall("p1", "parallel"),
+      toolCall("p2", "parallel"),
+      toolCall("p3", "parallel"),
+    ]);
 
     expect(maximumActiveExecutions).toBe(1);
-    expect(result.toolResults.map((message) => message.toolCallId)).toEqual(["p1", "p2"]);
+    expect(result.toolResults.map((message) => message.toolCallId)).toEqual(["p1", "p2", "p3"]);
+  });
+
+  test("stops replenishing the pool and cancels queued calls after run abort", async () => {
+    const controller = new AbortController();
+    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
+    const starts: string[] = [];
+    const completed = new Map<string, unknown>();
+    const tool = {
+      name: "parallel",
+      description: "Wait until the run is aborted.",
+      parameters: labeledParameters,
+      execution: {
+        concurrency: "parallel",
+      },
+      execute: ({ label }, context) =>
+        new Promise((resolve) => {
+          starts.push(label);
+          context.signal?.addEventListener("abort", () => resolve(label), { once: true });
+        }),
+    } satisfies Tool<typeof labeledParameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        maxParallelToolCalls: 2,
+        signal: controller.signal,
+        cancellationGraceMs: 50,
+        logger: createRecordingLogger(logs),
+      },
+      (event) => {
+        if (event.type === "tool_execution_end") {
+          completed.set(event.toolCallId, event.result);
+        }
+      },
+    );
+
+    const execution = runtime.execute([
+      toolCall("p1", "parallel"),
+      toolCall("p2", "parallel"),
+      toolCall("p3", "parallel"),
+      toolCall("p4", "parallel"),
+    ]);
+
+    await waitFor(() => starts.length === 2);
+    controller.abort();
+    const result = await execution;
+
+    expect(starts).toEqual(["p1", "p2"]);
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults.map((message) => message.toolCallId)).toEqual([
+      "p1",
+      "p2",
+      "p3",
+      "p4",
+    ]);
+    expect(completed.get("p3")).toMatchObject({ canceled: true });
+    expect(completed.get("p4")).toMatchObject({ canceled: true });
+    expect(logs.find((record) => record.event === "tool.parallel_pool_abnormal_drain")).toEqual({
+      event: "tool.parallel_pool_abnormal_drain",
+      metadata: {
+        toolCount: 4,
+        maxParallelToolCalls: 2,
+        startedCount: 2,
+        canceledBeforeStartCount: 2,
+        unknownOutcomeCount: 0,
+        outcome: "aborted",
+      },
+    });
+  });
+
+  test("drains started calls and cancels queued calls after commit failure", async () => {
+    const commitError = new Error("journal unavailable");
+    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
+    const starts: string[] = [];
+    const completed = new Map<string, unknown>();
+    let finishFirst!: () => void;
+    const tool = {
+      name: "parallel",
+      description: "Expose scheduler failure behavior.",
+      parameters: labeledParameters,
+      execution: {
+        concurrency: "parallel",
+      },
+      execute: ({ label }, context) =>
+        new Promise((resolve) => {
+          starts.push(label);
+          if (label === "p1") {
+            finishFirst = () => resolve(label);
+            return;
+          }
+          context.signal?.addEventListener("abort", () => resolve(label), { once: true });
+        }),
+    } satisfies Tool<typeof labeledParameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        maxParallelToolCalls: 2,
+        cancellationGraceMs: 5,
+        logger: createRecordingLogger(logs),
+        onMessageCommitted: () => {
+          throw commitError;
+        },
+      },
+      (event) => {
+        if (event.type === "tool_execution_end") {
+          completed.set(event.toolCallId, event.result);
+        }
+      },
+    );
+
+    const execution = runtime.execute([
+      toolCall("p1", "parallel"),
+      toolCall("p2", "parallel"),
+      toolCall("p3", "parallel"),
+      toolCall("p4", "parallel"),
+    ]);
+
+    await waitFor(() => starts.length === 2);
+    finishFirst();
+    await expect(execution).rejects.toBe(commitError);
+
+    expect(starts.slice(0, 2)).toEqual(["p1", "p2"]);
+    expect(starts).not.toContain("p4");
+    expect(completed.get("p4")).toMatchObject({ canceled: true });
+    expect(logs.find((record) => record.event === "tool.parallel_pool_abnormal_drain")).toEqual({
+      event: "tool.parallel_pool_abnormal_drain",
+      metadata: {
+        toolCount: 4,
+        maxParallelToolCalls: 2,
+        startedCount: 3,
+        canceledBeforeStartCount: 1,
+        unknownOutcomeCount: 1,
+        outcome: "failed",
+        errorType: "Error",
+      },
+    });
   });
 
   test("serializes approval hooks inside a parallel group", async () => {

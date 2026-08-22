@@ -56,6 +56,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("agent", "max_turns", (config) => config.agent.maxTurns),
   field("agent", "tool_deadline_ms", (config) => config.agent.toolDeadlineMs),
   field("agent", "parallel_tool_calls", (config) => config.agent.parallelToolCalls),
+  field("agent", "max_parallel_tool_calls", (config) => config.agent.maxParallelToolCalls),
   field("agent", "context_limit", (config) => config.agent.contextLimit),
   field("approval", "mode", (config) => config.approval.mode),
   field("notification", "backend", (config) => config.notification.backend),

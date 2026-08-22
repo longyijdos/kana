@@ -32,3 +32,4 @@ export type {
   BeforeToolExecutionHook,
   BeforeToolExecutionResult,
 } from "./tool-runtime";
+export { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "./tool-runtime";

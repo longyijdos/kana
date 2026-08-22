@@ -15,6 +15,7 @@ import {
 import type { AgentEvent } from "./events";
 
 const DEFAULT_CANCELLATION_GRACE_MS = 1_000;
+export const DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4;
 export const DEFAULT_TOOL_DEADLINE_MS = 300_000;
 
 export type BeforeToolExecutionResult =
@@ -37,6 +38,7 @@ export type BeforeToolExecutionHook = (request: {
 export type ToolRuntimeConfig = {
   tools?: readonly Tool[];
   parallelToolCalls?: boolean;
+  maxParallelToolCalls?: number;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   cancellationGraceMs?: number;
@@ -80,13 +82,32 @@ type ToolExecutionSettlement =
       error: unknown;
     };
 
+type ToolExecutionSlot = {
+  promise: Promise<ExecutedToolCall>;
+  readonly settled: boolean;
+  resolve(executed: ExecutedToolCall): void;
+};
+
+type ParallelPoolSnapshot = {
+  abortRun: boolean;
+  canceledBeforeStartCount: number;
+  failure?: { error: unknown };
+  startedCount: number;
+  unknownOutcomeCount: number;
+};
+
+type RunningParallelPool = {
+  done: Promise<void>;
+  fail(error: unknown): void;
+  snapshot(): ParallelPoolSnapshot;
+};
+
 export class ToolRuntime {
   private readonly events: SerialEventQueue;
   private readonly approvals = new SerialTaskQueue();
   private readonly cancellationGraceMs: number;
   private readonly defaultDeadlineMs: number;
-  private resultCommitFailure?: { error: unknown };
-  private resultCommitTail: Promise<void> = Promise.resolve();
+  private readonly maxParallelToolCalls: number;
 
   constructor(
     private readonly config: ToolRuntimeConfig,
@@ -95,6 +116,7 @@ export class ToolRuntime {
     this.events = new SerialEventQueue(emit);
     this.cancellationGraceMs = resolveCancellationGraceMs(config.cancellationGraceMs);
     this.defaultDeadlineMs = resolveDefaultToolDeadlineMs(config.defaultDeadlineMs);
+    this.maxParallelToolCalls = resolveMaxParallelToolCalls(config.maxParallelToolCalls);
   }
 
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
@@ -170,50 +192,209 @@ export class ToolRuntime {
 
   private async executeGroup(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
     const groupController = new AbortController();
+    const onlyCall = toolCalls[0];
+    if (toolCalls.length === 1 && onlyCall) {
+      const executed = await this.executeToolCall(onlyCall, groupController.signal);
+      const message = await this.commitResult(executed);
+      await this.publishExecutionEnd(executed);
+      return {
+        toolResults: [message],
+        abortRun: executed.abortRun ?? false,
+      };
+    }
+
+    const slots = toolCalls.map(() => createToolExecutionSlot());
     const toolResults: ToolResultMessage[] = [];
-    let abortRun = false;
 
-    if (toolCalls.length > 1) {
-      this.log("debug", "tool.parallel_group_started", {
-        toolCount: toolCalls.length,
-      });
-    }
-
-    const executions = toolCalls.map(async (toolCall) => {
-      try {
-        const executed = await this.executeToolCall(toolCall, groupController.signal);
-        if (executed.abortRun) {
-          abortRun = true;
-          groupController.abort();
-        }
-        // Push after the serialized durable commit so the model sees results
-        // in completion order without allowing concurrent journal appends.
-        const message = await this.enqueueResultCommit(executed);
-        toolResults.push(message);
-      } catch (error) {
-        groupController.abort();
-        throw error;
-      }
+    this.log("debug", "tool.parallel_pool_started", {
+      toolCount: toolCalls.length,
+      maxParallelToolCalls: this.maxParallelToolCalls,
+      workerCount: Math.min(toolCalls.length, this.maxParallelToolCalls),
     });
-    const settlements = await Promise.allSettled(executions);
-    const failure = settlements.find(
-      (settlement): settlement is PromiseRejectedResult => settlement.status === "rejected",
-    );
 
-    if (toolCalls.length > 1) {
-      this.log("debug", "tool.parallel_group_ended", {
-        toolCount: toolCalls.length,
-        outcome: failure ? "failed" : abortRun ? "aborted" : "completed",
-      });
+    const pool = this.startParallelPool(toolCalls, slots, groupController);
+    try {
+      // A later call may finish and publish its live terminal event first, but
+      // durable messages wait on these model-ordered slots. Agent sessions have
+      // already journaled the assistant call and recover any crash gap as unknown.
+      for (const slot of slots) {
+        toolResults.push(await this.commitResult(await slot.promise));
+      }
+    } catch (error) {
+      pool.fail(error);
+      await pool.done;
+      this.logParallelPoolEnd(toolCalls.length, pool.snapshot());
+      throw error;
     }
-    if (failure) {
-      throw failure.reason;
+
+    await pool.done;
+    const snapshot = pool.snapshot();
+    this.logParallelPoolEnd(toolCalls.length, snapshot);
+    if (snapshot.failure !== undefined) {
+      throw snapshot.failure.error;
     }
 
     return {
       toolResults,
-      abortRun,
+      abortRun: snapshot.abortRun,
     };
+  }
+
+  private startParallelPool(
+    toolCalls: ToolCallContent[],
+    slots: ToolExecutionSlot[],
+    groupController: AbortController,
+  ): RunningParallelPool {
+    // Workers share these counters on one JavaScript event loop. Claiming an
+    // index is synchronous, so calls enter validation and approval in model order.
+    let nextIndex = 0;
+    let abortRun = false;
+    let failure: { error: unknown } | undefined;
+    let stopped = false;
+    const outcomes: Array<ExecutedToolCall | undefined> = toolCalls.map(() => undefined);
+
+    const stopForAbort = (): void => {
+      abortRun = true;
+      stopped = true;
+      if (!groupController.signal.aborted) {
+        groupController.abort();
+      }
+    };
+    const stopForFailure = (error: unknown): void => {
+      failure ??= { error };
+      stopped = true;
+      if (!groupController.signal.aborted) {
+        groupController.abort();
+      }
+    };
+    const claimNextIndex = (): number | undefined => {
+      if (this.config.signal?.aborted) {
+        stopForAbort();
+      }
+      if (stopped || nextIndex >= toolCalls.length) {
+        return undefined;
+      }
+      const index = nextIndex;
+      nextIndex += 1;
+      return index;
+    };
+
+    const runWorker = async (): Promise<void> => {
+      while (true) {
+        const index = claimNextIndex();
+        if (index === undefined) {
+          return;
+        }
+        const toolCall = toolCalls[index] as ToolCallContent;
+        let executed: ExecutedToolCall;
+        try {
+          executed = await this.executeToolCall(toolCall, groupController.signal);
+        } catch (error) {
+          stopForFailure(error);
+          executed = {
+            toolCall,
+            result: createUnknownToolResult(
+              "Tool execution encountered an internal scheduler failure. Its outcome is unknown; do not retry automatically.",
+              "internal_scheduler_failure",
+            ),
+            isError: true,
+            abortRun: true,
+          };
+        }
+
+        outcomes[index] = executed;
+        if (executed.abortRun) {
+          stopForAbort();
+        }
+        try {
+          // Parallel completion stays tied to physical settlement. Resolving
+          // the ordered slot afterward prevents journal ordering from delaying
+          // a later call's live terminal state.
+          await this.publishExecutionEnd(executed);
+        } catch (error) {
+          stopForFailure(error);
+        }
+        (slots[index] as ToolExecutionSlot).resolve(executed);
+      }
+    };
+
+    const workerCount = Math.min(toolCalls.length, this.maxParallelToolCalls);
+    const workers = Array.from({ length: workerCount }, () =>
+      runWorker().catch((error) => {
+        // Keep the pool drainable even if scheduler code outside the guarded
+        // invocation path fails unexpectedly.
+        stopForFailure(error);
+      }),
+    );
+    const done = Promise.all(workers).then(async () => {
+      for (let index = 0; index < toolCalls.length; index += 1) {
+        const slot = slots[index] as ToolExecutionSlot;
+        if (slot.settled) {
+          continue;
+        }
+        const existingOutcome = outcomes[index];
+        if (existingOutcome) {
+          slot.resolve(existingOutcome);
+          continue;
+        }
+        const wasStarted = index < nextIndex;
+        const message = wasStarted
+          ? "Tool execution encountered an internal scheduler failure. Its outcome is unknown; do not retry automatically."
+          : failure === undefined
+            ? "Tool call canceled because the run was aborted."
+            : "Tool call canceled before execution because parallel scheduling failed.";
+        const executed: ExecutedToolCall = {
+          toolCall: toolCalls[index] as ToolCallContent,
+          result: wasStarted
+            ? createUnknownToolResult(message, "internal_scheduler_failure")
+            : createCanceledToolResult(message),
+          isError: true,
+        };
+        outcomes[index] = executed;
+        try {
+          await this.publishExecutionEnd(executed);
+        } catch (error) {
+          stopForFailure(error);
+        }
+        slot.resolve(executed);
+      }
+    });
+
+    return {
+      done,
+      fail: stopForFailure,
+      snapshot: () => ({
+        abortRun,
+        canceledBeforeStartCount: toolCalls.length - nextIndex,
+        failure,
+        startedCount: nextIndex,
+        unknownOutcomeCount: outcomes.filter(isUnknownToolExecution).length,
+      }),
+    };
+  }
+
+  private logParallelPoolEnd(toolCount: number, snapshot: ParallelPoolSnapshot): void {
+    if (toolCount <= 1) {
+      return;
+    }
+    const outcome = snapshot.failure ? "failed" : snapshot.abortRun ? "aborted" : "completed";
+    const metadata = {
+      toolCount,
+      maxParallelToolCalls: this.maxParallelToolCalls,
+      startedCount: snapshot.startedCount,
+      canceledBeforeStartCount: snapshot.canceledBeforeStartCount,
+      unknownOutcomeCount: snapshot.unknownOutcomeCount,
+      outcome,
+      ...(snapshot.failure === undefined
+        ? {}
+        : { errorType: getErrorType(snapshot.failure.error) }),
+    };
+
+    if (outcome !== "completed") {
+      const level = snapshot.failure || snapshot.unknownOutcomeCount > 0 ? "warn" : "info";
+      this.log(level, "tool.parallel_pool_abnormal_drain", metadata);
+    }
+    this.log("debug", "tool.parallel_pool_ended", metadata);
   }
 
   private async appendCanceledResults(
@@ -222,13 +403,13 @@ export class ToolRuntime {
     message: string,
   ): Promise<void> {
     for (const toolCall of toolCalls) {
-      toolResults.push(
-        await this.enqueueResultCommit({
-          toolCall,
-          result: createCanceledToolResult(message),
-          isError: true,
-        }),
-      );
+      const executed = {
+        toolCall,
+        result: createCanceledToolResult(message),
+        isError: true,
+      } satisfies ExecutedToolCall;
+      toolResults.push(await this.commitResult(executed));
+      await this.publishExecutionEnd(executed);
     }
   }
 
@@ -505,25 +686,6 @@ export class ToolRuntime {
     });
   }
 
-  private enqueueResultCommit(executed: ExecutedToolCall): Promise<ToolResultMessage> {
-    const committed = this.resultCommitTail.then(async () => {
-      if (this.resultCommitFailure) {
-        throw this.resultCommitFailure.error;
-      }
-      try {
-        return await this.commitResult(executed);
-      } catch (error) {
-        this.resultCommitFailure = { error };
-        throw error;
-      }
-    });
-    this.resultCommitTail = committed.then(
-      () => undefined,
-      () => undefined,
-    );
-    return committed;
-  }
-
   private async commitResult(executed: ExecutedToolCall): Promise<ToolResultMessage> {
     const message: ToolResultMessage = {
       ...createMessageIdentity({ kind: "tool_result" }),
@@ -535,9 +697,11 @@ export class ToolRuntime {
       isError: executed.isError,
     };
 
-    // A successful end event must never become visible before the result can
-    // be recovered from the journal.
     await this.config.onMessageCommitted?.(structuredClone(message));
+    return message;
+  }
+
+  private async publishExecutionEnd(executed: ExecutedToolCall): Promise<void> {
     await this.events.emit({
       type: "tool_execution_end",
       toolCallId: executed.toolCall.id,
@@ -545,7 +709,6 @@ export class ToolRuntime {
       result: executed.result.result,
       isError: executed.isError,
     });
-    return message;
   }
 
   private log(
@@ -615,6 +778,27 @@ class SerialTaskQueue {
   }
 }
 
+function createToolExecutionSlot(): ToolExecutionSlot {
+  let resolvePromise!: (executed: ExecutedToolCall) => void;
+  let settled = false;
+  const promise = new Promise<ExecutedToolCall>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    get settled() {
+      return settled;
+    },
+    resolve(executed) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolvePromise(executed);
+    },
+  };
+}
+
 function createErrorToolResult(message: string): ToolResult {
   return {
     content: `Tool call failed: ${message}`,
@@ -634,6 +818,28 @@ function createCanceledToolResult(message = "Tool call canceled before execution
     },
     isError: true,
   };
+}
+
+function createUnknownToolResult(message: string, reason: string): ToolResult {
+  return {
+    content: message,
+    result: {
+      status: "unknown",
+      reason,
+      message,
+    },
+    isError: true,
+  };
+}
+
+function isUnknownToolExecution(executed: ExecutedToolCall | undefined): boolean {
+  const result = executed?.result.result;
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "status" in result &&
+    result.status === "unknown"
+  );
 }
 
 function createInterruptedToolResult(
@@ -688,6 +894,16 @@ export function resolveDefaultToolDeadlineMs(value: number | undefined): number 
   }
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error("defaultDeadlineMs must be a positive integer.");
+  }
+  return value;
+}
+
+export function resolveMaxParallelToolCalls(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_MAX_PARALLEL_TOOL_CALLS;
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("maxParallelToolCalls must be a positive integer.");
   }
   return value;
 }
