@@ -85,7 +85,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 `runAgentLoop` 默认最多执行 8 回合，Kana 的默认配置将其设为 `-1`，表示不设上限；最后一个允许回合仍产生工具调用时以 `turn_limit` 结束。每一回合先解析动态 context 和工具，再流式取得助手消息；只有停止原因为 `toolUse` 时才把调用交给 `ToolRuntime`。ToolRuntime 使用的正是该模型步骤声明过的工具对象；下一步骤可以解析出更新后的能力集合。该 runtime 负责工具查找、TypeBox 1.x 参数校验、串行审批、调用级中止与 deadline、显式并发调度、结果规范化及提交；经 JSON 序列化后缺少 TypeBox 元数据的普通 schema 也可使用同一编译器校验。每个 run 的并行能力统一解析为用户 `parallelToolCalls` 设置与模型 metadata `supportsParallelToolCalls` 的交集，并同时写入 provider `ModelContext` 与 ToolRuntime，避免请求能力和实际调度分歧。工具自身的 `execution.deadlineMs` 优先，否则使用 Agent 默认值；框架默认 300000 毫秒，Kana 通过 `agent.tool_deadline_ms` 将产品默认值设为 660000 毫秒。只有并行能力启用时，连续的 `parallel` 工具才组成并行组；关闭时所有调用逐个执行，正整数 `maxParallelToolCalls` 配置不影响调度。启用后，组内使用按模型顺序领取的滚动池，默认最多同时执行四个调用 body，默认 `exclusive` 的工具仍形成屏障。串行事件队列按物理完成顺序发布以 `toolCallId` 关联的 partial 与终态活动；独立的模型顺序结果槽位则串行提交 journal 和下一次请求上下文，因此即使后面的调用先显示完成，持久历史仍保持确定。run abort、工具 deadline 或内部调度失败会立即停止补充；活动调用被中止并 drain，未启动调用得到 canceled 结果。若被中止的工具在有限宽限期内仍未退出，其可见结果固定为 `unknown`，迟到 update 被忽略，当前 run 终止且模型不会自动重试。拒绝、取消、未知工具、校验失败和工具异常都会转换成工具结果。
 
-工具结果策略是通用 `agent` 边界，而不是 Kana 专用的循环逻辑。每个结果规范化后，`ToolRuntime` 都会以不可变的调用/结果克隆输入执行可选策略。策略只能替换给模型的结果内容，或追加带来源的 `tool_result_policy` user 上下文；返回非法值或抛出异常时回退为原始结果。同一 assistant 消息的全部 sibling 工具结果先按模型顺序写入 journal，随后才写策略上下文，再开始下一次模型请求。每个 Agent 拥有自己的策略实例；已接受的人类输入或 `reset()` 会清空可变状态。Kana 装配层只负责把产品默认值和 TOML 映射到可复用的精确重复策略。
+工具结果策略是通用 `agent` 边界，而不是 Kana 专用的循环逻辑。每个结果规范化后，`ToolRuntime` 都会以不可变的调用克隆、给模型的内容和错误状态执行可选策略；任意的 host 结构化结果留在边界之外。策略只能替换给模型的结果内容，或追加带来源的 `tool_result_policy` user 上下文。返回对象会在 failure containment 内解析成脱离原对象的普通快照；返回非法值或抛出异常时回退为原始结果。同一 assistant 消息的全部 sibling 工具结果先按模型顺序写入 journal，随后才写策略上下文，再开始下一次模型请求。每个 Agent 拥有自己的策略实例；已接受的人类输入或 `reset()` 会清空可变状态。Kana 装配层只负责把产品默认值和 TOML 映射到可复用的精确重复策略。
 
 ## 模型与供应商适配
 

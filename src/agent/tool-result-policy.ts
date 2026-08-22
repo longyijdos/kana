@@ -1,9 +1,10 @@
 import type { ToolCallContent } from "@/core";
-import type { ToolResult } from "@/tools";
 
 export type ToolResultPolicyInput = {
   readonly toolCall: Readonly<ToolCallContent>;
-  readonly result: Readonly<ToolResult>;
+  // Policies operate only on provider-facing text. The structured host result
+  // stays outside this advisory boundary and therefore needs no cloneability contract.
+  readonly content: string;
   readonly isError: boolean;
 };
 

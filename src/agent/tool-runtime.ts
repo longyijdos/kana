@@ -777,11 +777,10 @@ export class ToolRuntime {
     try {
       const result = await policy.finalize({
         toolCall: structuredClone(executed.toolCall),
-        result: structuredClone(executed.result),
+        content: executed.result.content,
         isError: executed.isError,
       });
-      assertValidToolResultPolicyResult(result);
-      return result ?? undefined;
+      return parseToolResultPolicyResult(result);
     } catch (error) {
       this.log("warn", "tool.result_policy_failed", {
         policySource: policy.source,
@@ -1010,28 +1009,41 @@ function assertValidToolResultPolicy(policy: ToolResultPolicy | undefined): void
   }
 }
 
-function assertValidToolResultPolicyResult(
-  value: unknown,
-): asserts value is ToolResultPolicyResult | undefined {
+function parseToolResultPolicyResult(value: unknown): ToolResultPolicyResult | undefined {
   if (value === undefined) {
-    return;
+    return undefined;
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Tool result policy must return an object or undefined.");
   }
-  const result = value as Record<string, unknown>;
-  if (result.content !== undefined && typeof result.content !== "string") {
+  // Read untrusted properties only inside the containment boundary, then
+  // return a detached plain object that cannot retain getters or Proxy traps.
+  const policyResult = value as Record<string, unknown>;
+  const content = policyResult.content;
+  const contextValue = policyResult.additionalContext;
+  if (content !== undefined && typeof content !== "string") {
     throw new Error("Tool result policy content must be a string.");
   }
-  if (
-    result.additionalContext !== undefined &&
-    (!Array.isArray(result.additionalContext) ||
-      result.additionalContext.some(
-        (content) => typeof content !== "string" || content.trim().length === 0,
-      ))
-  ) {
-    throw new Error("Tool result policy context must contain non-empty strings.");
+  let additionalContext: string[] | undefined;
+  if (contextValue !== undefined) {
+    if (!Array.isArray(contextValue)) {
+      throw new Error("Tool result policy context must contain non-empty strings.");
+    }
+    // Array.from materializes holes as undefined so sparse arrays cannot pass
+    // validation and later inject invalid messages into the journal.
+    const contextItems: unknown[] = Array.from(contextValue);
+    if (
+      contextItems.some((context) => typeof context !== "string" || context.trim().length === 0)
+    ) {
+      throw new Error("Tool result policy context must contain non-empty strings.");
+    }
+    additionalContext = contextItems as string[];
   }
+
+  return {
+    ...(content === undefined ? {} : { content }),
+    ...(additionalContext === undefined ? {} : { additionalContext }),
+  };
 }
 
 function resolveToolConcurrency(tool: Tool): ToolConcurrency {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
-import type { ToolResultPolicy } from "../../src/agent";
+import type { ToolResultPolicy, ToolResultPolicyInput } from "../../src/agent";
 import {
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   DEFAULT_TOOL_DEADLINE_MS,
@@ -962,6 +962,124 @@ describe("ToolRuntime", () => {
     ]);
   });
 
+  test("detaches validated policy output from getters before leaving containment", async () => {
+    let contentReads = 0;
+    const tool = {
+      name: "safe",
+      description: "Return original content.",
+      parameters,
+      execute: () => "original content",
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolResultPolicy: {
+          source: "getter_policy",
+          finalize: () => {
+            const output = {};
+            Object.defineProperty(output, "content", {
+              enumerable: true,
+              get() {
+                contentReads += 1;
+                if (contentReads > 2) {
+                  throw new Error("content read outside containment");
+                }
+                return "replacement content";
+              },
+            });
+            return output;
+          },
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-1", name: "safe", args: {} },
+    ]);
+
+    expect(contentReads).toBe(1);
+    expect(result.toolResults[0]?.content).toBe("replacement content");
+  });
+
+  test("rejects sparse policy context and falls back to the original result", async () => {
+    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
+    const tool = {
+      name: "safe",
+      description: "Return original content.",
+      parameters,
+      execute: () => "original content",
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolResultPolicy: {
+          source: "sparse_policy",
+          finalize: () => ({ additionalContext: new Array<string>(1) }),
+        },
+        logger: createRecordingLogger(logs),
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-1", name: "safe", args: {} },
+    ]);
+
+    expect(result.toolResults[0]?.content).toBe("original content");
+    expect(result.additionalMessages).toEqual([]);
+    expect(logs).toEqual([
+      {
+        event: "tool.result_policy_failed",
+        metadata: {
+          policySource: "sparse_policy",
+          toolName: "safe",
+          errorType: "Error",
+        },
+      },
+    ]);
+  });
+
+  test("finalizes outcomes whose structured result cannot be cloned", async () => {
+    const structuredResult = new WeakMap<object, string>();
+    structuredResult.set({}, "host-only value");
+    let policyInput: ToolResultPolicyInput | undefined;
+    const tool = {
+      name: "non_cloneable",
+      description: "Return host-only structured data.",
+      parameters,
+      execute: () => ({
+        content: "original content",
+        result: structuredResult,
+      }),
+    } satisfies Tool<typeof parameters, WeakMap<object, string>>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        toolResultPolicy: {
+          source: "content_only_policy",
+          finalize: (input) => {
+            policyInput = input;
+            return { content: `policy saw: ${input.content}` };
+          },
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-1", name: "non_cloneable", args: {} },
+    ]);
+
+    expect(policyInput).toEqual({
+      toolCall: { type: "tool_call", id: "call-1", name: "non_cloneable", args: {} },
+      content: "original content",
+      isError: false,
+    });
+    expect(result.toolResults[0]?.content).toBe("policy saw: original content");
+    expect(result.toolResults[0]?.result).toBe(structuredResult);
+  });
+
   test("contains policy failures and protects the model-authored call and result", async () => {
     const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
     const calls = [
@@ -986,12 +1104,11 @@ describe("ToolRuntime", () => {
       finalize: (input) => {
         const mutableInput = input as {
           toolCall: { name: string; args: { value: string } };
-          result: { content: string; result: { value: string } };
+          content: string;
         };
         mutableInput.toolCall.name = "mutated";
         mutableInput.toolCall.args.value = "mutated";
-        mutableInput.result.content = "mutated";
-        mutableInput.result.result.value = "mutated";
+        mutableInput.content = "mutated";
         throw new Error("secret policy failure");
       },
     };

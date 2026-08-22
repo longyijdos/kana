@@ -83,10 +83,7 @@ async function finalize(
       name,
       args,
     },
-    result: {
-      content: "ok",
-      result: { ok: true },
-    },
+    content: "ok",
     isError: false,
   };
   return policy.finalize(input);
