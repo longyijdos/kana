@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Type } from "typebox";
-import { Agent } from "../../src/agent";
+import { Agent, type AgentConfig } from "../../src/agent";
 import {
   AssistantEventStream,
   type AssistantMessage,
@@ -86,7 +86,7 @@ describe("headless execution", () => {
       "model_turn.completed",
       "run.completed",
     ]);
-    expect(events.every((event) => event.schema_version === 1)).toBe(true);
+    expect(events.every((event) => event.schema_version === 2)).toBe(true);
     expect(events.find((event) => event.type === "assistant.completed")).toMatchObject({
       text: "JSON answer.",
     });
@@ -154,14 +154,14 @@ describe("headless execution", () => {
         .filter((event) => event.type.startsWith("tool.")),
     ).toEqual([
       {
-        schema_version: 1,
+        schema_version: 2,
         type: "tool.started",
         tool_call_id: "call-1",
         name: "change_state",
         arguments: {},
       },
       {
-        schema_version: 1,
+        schema_version: 2,
         type: "tool.completed",
         tool_call_id: "call-1",
         name: "change_state",
@@ -170,6 +170,58 @@ describe("headless execution", () => {
       },
     ]);
     await allowedRuntime.close();
+  });
+
+  test("reports physical tool completion before a later journal failure", async () => {
+    const commitError = new Error("journal unavailable");
+    const tool: Tool = {
+      name: "change_state",
+      description: "Change state.",
+      parameters: Type.Object({}),
+      execute: () => ({ content: "changed", result: { changed: true } }),
+    };
+    const runtime = createRuntime({
+      model: new ToolThenAnswerModel(),
+      tools: [tool],
+      journal: {
+        startRun: () => {},
+        appendMessage: ({ message }) => {
+          if (message.role === "tool") {
+            throw commitError;
+          }
+        },
+        appendCompaction: () => {},
+        endRun: () => {},
+      },
+    });
+    const stdout = new StringOutput();
+
+    const result = await runHeadlessConversation({
+      runtime,
+      prompt: "Change it.",
+      approvalConfig: { mode: "unless_trusted" },
+      toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+      allowAllTools: true,
+      json: true,
+      stderr: new StringOutput(),
+      stdout,
+    });
+    const events = stdout.lines().map((line) => JSON.parse(line));
+    const eventTypes = events.map((event) => event.type);
+
+    expect(result.exitCode).toBe(1);
+    expect(eventTypes.indexOf("tool.completed")).toBeLessThan(eventTypes.indexOf("run.failed"));
+    expect(eventTypes).not.toContain("run.completed");
+    expect(events.find((event) => event.type === "tool.completed")).toMatchObject({
+      schema_version: 2,
+      result: { changed: true },
+      is_error: false,
+    });
+    expect(events.find((event) => event.type === "run.failed")).toMatchObject({
+      schema_version: 2,
+      error: { message: "journal unavailable" },
+    });
+    await runtime.close();
   });
 
   test("reads a missing prompt from stdin and rejects empty interactive input", async () => {
@@ -198,7 +250,7 @@ describe("headless execution", () => {
         }),
       ).toBe(1);
       expect(JSON.parse(writes.join("").trim())).toMatchObject({
-        schema_version: 1,
+        schema_version: 2,
         type: "error",
         phase: "startup",
         error: {
@@ -303,7 +355,11 @@ class ToolThenAnswerModel extends BaseModel {
   }
 }
 
-function createRuntime(options: { model: Model; tools?: Tool[] }): ConversationRuntime {
+function createRuntime(options: {
+  model: Model;
+  tools?: Tool[];
+  journal?: AgentConfig["journal"];
+}): ConversationRuntime {
   const runtimeOptions: ConversationRuntimeOptions<never> = {
     initialSession: {
       id: "session-1",
@@ -316,6 +372,7 @@ function createRuntime(options: { model: Model; tools?: Tool[] }): ConversationR
         tools: options.tools,
         messages: agentOptions.messages,
         beforeToolExecution: agentOptions.beforeToolExecution,
+        journal: options.journal,
       }),
     createNewSession: () => ({ id: "session-new" }),
     forkSession: () => ({ id: "session-fork" }),

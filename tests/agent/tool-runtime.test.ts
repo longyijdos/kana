@@ -14,7 +14,7 @@ const labeledParameters = Type.Object({
 });
 
 describe("ToolRuntime", () => {
-  test("serializes update events and commits the result before publishing end", async () => {
+  test("serializes update events and publishes completion before committing the result", async () => {
     const operations: string[] = [];
     const tool = {
       name: "progress",
@@ -70,8 +70,8 @@ describe("ToolRuntime", () => {
       "update:first:end",
       "update:second:start",
       "update:second:end",
-      "commit:tool",
       "end",
+      "commit:tool",
     ]);
     expect(result).toMatchObject({
       toolResults: [
@@ -89,7 +89,7 @@ describe("ToolRuntime", () => {
     expect(result.toolResults[0]?.id).toBeDefined();
   });
 
-  test("does not publish tool end when the result commit fails", async () => {
+  test("publishes tool completion even when the result commit fails", async () => {
     const events: string[] = [];
     const commitError = new Error("journal unavailable");
     const tool = {
@@ -121,7 +121,7 @@ describe("ToolRuntime", () => {
       ]),
     ).rejects.toBe(commitError);
 
-    expect(events).toEqual(["tool_execution_start"]);
+    expect(events).toEqual(["tool_execution_start", "tool_execution_end"]);
   });
 
   test("supplies an invocation signal and records a cooperative deadline as timed out", async () => {
@@ -806,19 +806,20 @@ describe("ToolRuntime", () => {
     expect(result.toolResults).toHaveLength(2);
   });
 
-  test("cancels parallel siblings when one invocation deadline aborts the run", async () => {
+  test("stops replenishing immediately and cancels siblings when one invocation reaches deadline", async () => {
+    const starts: string[] = [];
     const deadlineTool = {
       name: "deadline",
-      description: "Reach a deadline.",
+      description: "Reach a deadline without honoring cancellation.",
       parameters,
       execution: {
         concurrency: "parallel",
         deadlineMs: 5,
       },
-      execute: (_args, context) =>
-        new Promise((resolve) => {
-          context.signal?.addEventListener("abort", () => resolve("stopped"), { once: true });
-        }),
+      execute: () => {
+        starts.push("deadline");
+        return new Promise(() => {});
+      },
     } satisfies Tool<typeof parameters, string>;
     const siblingTool = {
       name: "sibling",
@@ -829,13 +830,15 @@ describe("ToolRuntime", () => {
       },
       execute: (_args, context) =>
         new Promise((resolve) => {
+          starts.push(context.toolCallId);
           context.signal?.addEventListener("abort", () => resolve("stopped"), { once: true });
         }),
     } satisfies Tool<typeof parameters, string>;
     const runtime = new ToolRuntime(
       {
         tools: [deadlineTool, siblingTool],
-        cancellationGraceMs: 50,
+        cancellationGraceMs: 10,
+        maxParallelToolCalls: 2,
       },
       () => {},
     );
@@ -853,27 +856,44 @@ describe("ToolRuntime", () => {
         name: "sibling",
         args: {},
       },
+      {
+        type: "tool_call",
+        id: "queued-1",
+        name: "sibling",
+        args: {},
+      },
+      {
+        type: "tool_call",
+        id: "queued-2",
+        name: "sibling",
+        args: {},
+      },
     ]);
 
+    expect(starts).toEqual(["deadline", "sibling"]);
     expect(result.abortRun).toBe(true);
-    expect(result.toolResults).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          toolCallId: "deadline",
-          result: expect.objectContaining({
-            status: "timed_out",
-            reason: "deadline",
-          }),
-        }),
-        expect.objectContaining({
-          toolCallId: "sibling",
-          result: expect.objectContaining({
-            status: "canceled",
-            reason: "run_aborted",
-          }),
-        }),
-      ]),
-    );
+    expect(result.toolResults.map((message) => message.toolCallId)).toEqual([
+      "deadline",
+      "sibling",
+      "queued-1",
+      "queued-2",
+    ]);
+    expect(result.toolResults[0]).toMatchObject({
+      result: {
+        status: "unknown",
+        reason: "deadline",
+      },
+    });
+    expect(result.toolResults[1]).toMatchObject({
+      result: {
+        status: "canceled",
+        reason: "run_aborted",
+      },
+    });
+    expect(result.toolResults.slice(2)).toEqual([
+      expect.objectContaining({ result: expect.objectContaining({ canceled: true }) }),
+      expect.objectContaining({ result: expect.objectContaining({ canceled: true }) }),
+    ]);
   });
 
   test("fails closed on invalid concurrency metadata", async () => {

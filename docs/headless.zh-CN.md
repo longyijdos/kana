@@ -49,7 +49,7 @@ conversation runtime 关闭后，headless 退出流程会取消并等待尚未�
 
 ## `--json` 协议
 
-`--json` 让 stdout 只包含一行一个 JSON object。每个事件都包含 `schema_version: 1`；调用方应按 `type` 分派并忽略不认识的附加字段。该协议由无头前端从内部事件投影而来，不直接序列化 `AgentEvent`，因此内部重构不会自动变成公共协议变化。
+`--json` 让 stdout 只包含一行一个 JSON object。每个事件都包含 `schema_version: 2`；调用方应按 `type` 分派并忽略不认识的附加字段。该协议由无头前端从内部事件投影而来，不直接序列化 `AgentEvent`，因此内部重构不会自动变成公共协议变化。
 
 | `type` | 主要字段 | 含义 |
 | --- | --- | --- |
@@ -61,12 +61,14 @@ conversation runtime 关闭后，headless 退出流程会取消并等待尚未�
 | `assistant.completed` | `text`, `usage?` | 一条完整助手消息 |
 | `tool.started` | `tool_call_id`, `name`, `arguments` | 工具开始执行 |
 | `tool.updated` | `tool_call_id`, `name`, `partial_result` | 工具进度更新 |
-| `tool.completed` | `tool_call_id`, `name`, `result`, `is_error` | 工具结果已经提交 |
+| `tool.completed` | `tool_call_id`、`name`、`result`、`is_error` | 工具调用到达物理终态 |
 | `model_turn.completed` | `turn`, `stop_reason?`, `usage?` | 一次模型回合结束 |
 | `context.compaction_started` | token 估算与上限 | 上下文压缩开始 |
 | `context.compacted` | 压缩统计与 `usage?` | 压缩 checkpoint 已提交 |
-| `run.completed` | `outcome`, `usage?` | run 得到终止结果 |
+| `run.completed` | `outcome`、`usage?` | run、有序消息提交与后处理全部完成 |
 | `run.failed` | `error` | run 因基础设施或持久化异常失败 |
 | `error` | `phase`, `error` | Agent run 开始前的启动失败 |
+
+Schema v2 将 `tool.completed` 从提交确认改为执行生命周期事件。它跟随物理完成、取消或明确的 unknown 终态，不表示工具结果已经进入 journal。因此即使已经出现一个或多个 `tool.completed`，之后的 journal 或后处理失败仍会发出 `run.failed`；需要完整持久 run 的调用方必须等待 `run.completed`。
 
 `usage` 使用 `input_tokens`、`output_tokens`、`total_tokens`，并可包含 `cache_read_input_tokens`、`cache_miss_input_tokens` 和 `reasoning_tokens`。`run.completed.usage` 是本次 run 内模型回合与上下文压缩的累计值。工具的 `arguments`、`partial_result` 和 `result` 属于显式请求的机器输出，可能包含工具处理的数据；不要把 JSONL 不加审查地上传或写入公开日志。

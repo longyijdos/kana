@@ -195,8 +195,8 @@ export class ToolRuntime {
     const onlyCall = toolCalls[0];
     if (toolCalls.length === 1 && onlyCall) {
       const executed = await this.executeToolCall(onlyCall, groupController.signal);
-      const message = await this.commitResult(executed);
       await this.publishExecutionEnd(executed);
+      const message = await this.commitResult(executed);
       return {
         toolResults: [message],
         abortRun: executed.abortRun ?? false,
@@ -288,7 +288,7 @@ export class ToolRuntime {
         const toolCall = toolCalls[index] as ToolCallContent;
         let executed: ExecutedToolCall;
         try {
-          executed = await this.executeToolCall(toolCall, groupController.signal);
+          executed = await this.executeToolCall(toolCall, groupController.signal, stopForAbort);
         } catch (error) {
           stopForFailure(error);
           executed = {
@@ -408,14 +408,15 @@ export class ToolRuntime {
         result: createCanceledToolResult(message),
         isError: true,
       } satisfies ExecutedToolCall;
-      toolResults.push(await this.commitResult(executed));
       await this.publishExecutionEnd(executed);
+      toolResults.push(await this.commitResult(executed));
     }
   }
 
   private async executeToolCall(
     toolCall: ToolCallContent,
     groupSignal: AbortSignal,
+    onAbortRun?: () => void,
   ): Promise<ExecutedToolCall> {
     const tool = this.config.tools?.find((candidate) => candidate.name === toolCall.name);
 
@@ -437,15 +438,20 @@ export class ToolRuntime {
       const beforeResult = await this.runBeforeToolExecution(toolCall, tool, args, executionSignal);
 
       if (beforeResult.type === "cancel") {
+        const shouldAbortRun = beforeResult.abortRun ?? true;
+        if (shouldAbortRun) {
+          onAbortRun?.();
+        }
         return {
           toolCall,
           result: createCanceledToolResult(beforeResult.message),
           isError: true,
-          abortRun: beforeResult.abortRun ?? true,
+          abortRun: shouldAbortRun,
         };
       }
 
       if (executionSignal?.aborted) {
+        onAbortRun?.();
         return {
           toolCall,
           result: createCanceledToolResult("Tool call canceled before execution."),
@@ -495,6 +501,9 @@ export class ToolRuntime {
       if (firstOutcome.type === "interrupted") {
         acceptsUpdates = false;
         abortRun = true;
+        // Stop the rolling pool before waiting for this invocation to drain;
+        // otherwise another worker could claim queued work during cancellation grace.
+        onAbortRun?.();
         const settlement = await waitForSettlementWithin(
           invocation.settlement,
           this.cancellationGraceMs,
