@@ -185,7 +185,7 @@ level = "info"
 | `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
 | `reasoning_effort` | `none`, `low`, `high`, or `max` | `high` | DeepSeek Responses reasoning effort. `none` disables reasoning. |
 | `web_search` | Boolean | `true` | Advertises DeepSeek's hosted `web_search` tool when the selected model metadata supports it. All current V4 models use Responses and support this hosted tool; `false` omits only the hosted tool. |
-| `image_input` | Boolean | `true` | Allows image attachment delivery as Responses `input_image` data URLs when the selected model metadata also supports image input. Only `deepseek-v4-flash-vision-exp` currently declares image capability; model metadata takes precedence, so this setting cannot enable images on the text-only V4 Flash or V4 Pro. Setting it to `false` retains attachments in the session but replaces them with an explicit omission marker in model input. |
+| `image_input` | Boolean | `true` | Allows user attachments and tool visual observations to be delivered as Responses `input_image` data URLs when the selected model metadata also supports image input; the same effective gate registers `view_image`. Only `deepseek-v4-flash-vision-exp` currently declares image capability; model metadata takes precedence, so this setting cannot enable images or `view_image` on the text-only V4 Flash or V4 Pro. Setting it to `false` retains persisted images but replaces them with an explicit omission marker in model input. |
 | `max_tokens` | Positive integer | `384000` | Allowed per-request output-token ceiling; it cannot exceed the selected model's hard limit. The Agent lowers the value sent for each turn when the current prompt leaves less space. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
@@ -204,7 +204,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` | Requested reasoning effort. |
 | `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
 | `web_search` | Boolean | `true` | Advertises the provider-hosted `web_search` tool to Codex Responses. Setting it to `false` omits that top-level tool entirely. |
-| `image_input` | Boolean | `true` | Sends persisted user images as classic Responses `input_image` data URLs. Setting it to `false` retains attachments in the session but replaces them with an explicit omission marker in model input. |
+| `image_input` | Boolean | `true` | Sends persisted user images and tool visual observations as classic Responses `input_image` data URLs and registers `view_image`. Setting it to `false` omits the tool, retains persisted images in the session, and replaces them with an explicit omission marker in model input. |
 | `max_tokens` | Positive integer | `128000` | Configured ceiling used when Kana calculates a per-turn output limit; the ChatGPT Codex request contract does not expose `max_output_tokens`, so requests do not send it. |
 | `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
 | `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |

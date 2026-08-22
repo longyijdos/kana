@@ -53,13 +53,13 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 {"type":"turn_end","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","turnId":"…","outcome":"stop"}
 ```
 
-用户消息可以包含 `images`；每一项保存 `mimeType`、原始 base64 `data`、`width` 和 `height`。图片字节以内联方式保存，而不是引用外部文件，因此即使源文件或剪贴板之后变化，会话仍然自包含。代价是 JSONL 会增大——base64 还会在规范化后的图片大小上增加编码开销——图片较多的会话可能明显占用空间。上下文 token 估算使用 32 像素图片 patch，不按 base64 长度计算。加载时会拒绝格式错误的图片数组、不支持的 MIME 类型、非字符串数据，以及非正整数尺寸。
+用户消息和工具结果消息都可以包含 `images`；每一项保存 `mimeType`、原始 base64 `data`、`width` 和 `height`。图片字节以内联方式保存，而不是引用外部文件，因此即使源文件或剪贴板之后变化，用户附件和 Agent 发起的视觉观察仍然自包含。工具的结构化 `result` 只保存元数据，不重复图片字节。代价是 JSONL 会增大——base64 还会在规范化后的图片大小上增加编码开销——图片较多的会话可能明显占用空间。上下文 token 估算使用 32 像素图片 patch，不按 base64 长度计算。加载时会对两种 role 拒绝格式错误的图片数组、不支持的 MIME 类型、非字符串数据，以及非正整数尺寸。
 
 动态 prompt 状态使用内部 user-role 消息，`provenance.kind` 为 `"runtime_context"`，并带有非空 `source`。只有该来源的内容变化时，Agent 才写入新快照；来源消失时则写入一次 inactive marker。这些变化会追加保留在 JSONL 中，而 model projection 对每个来源只保留当前最新且仍 active 的快照，并省略 inactive marker。因此恢复可以重建当前 capability 状态，又不会暴露旧值；这些内部消息不是人类输入，恢复后的 TUI 历史也不会展示。
 
 工具结果策略可以追加另一类内部 user-role 消息，其 `provenance.kind` 为 `"tool_result_policy"`，并带有非空的策略 `source`。它在完整 sibling 工具结果组之后写入 journal，并在下一次模型请求前重放。恢复 session 时会保留它以维持模型上下文连续性；由于它不是人类输入，恢复后的 TUI 历史和自动 session 标题都会忽略它。
 
-压缩会遵循当前模型实际生效的图片输入能力。模型支持图片且 `image_input` 已启用时，Kana 会把图片附件连同有序序号、MIME 类型和尺寸元数据发送给模型，让摘要将相关视觉信息保存为文本；base64 不会写进文本形式的 transcript JSON。图片输入不受支持或被关闭时，压缩只发送这些元数据和 `contentOmitted: true`，不带图片字节并继续执行。这样切换到 DeepSeek 等纯文本模型后不会因历史图片而中断压缩，但尚未在文本中描述的纯视觉细节可能不会进入摘要。原始自包含图片仍保留在 session JSONL 中。
+压缩会遵循当前模型实际生效的图片输入能力。模型支持图片且 `image_input` 已启用时，Kana 会把用户附件和工具视觉观察连同有序序号、MIME 类型和尺寸元数据发送给模型，让摘要将相关视觉信息保存为文本；base64 不会写进文本形式的 transcript JSON。图片输入不受支持或被关闭时，压缩只发送这些元数据和 `contentOmitted: true`，不带图片字节并继续执行。这样切换到 DeepSeek 等纯文本模型后不会因历史图片而中断压缩，但尚未在文本中描述的纯视觉细节可能不会进入摘要。原始自包含图片仍保留在 session JSONL 中。
 
 每条记录的 `parentId` 必须指向紧邻的前一条时间线记录；加载仍按文件顺序进行，不根据 `parentId` 重放分支。message record 外层的 `id` 用于标识 journal entry 并维护时间线顺序，`message.id` 则在 Agent event、inbox 移动、持久化、重放和 fork 之间标识同一条逻辑消息；它们属于不同的身份域。每条消息都必须带可辨识的 `provenance`，同一 session 会拒绝重复的逻辑消息 ID。同一时刻最多有一个打开的 turn，`turn_end.turnId` 必须匹配它。终态可以是 Agent 的 `stop`、`length`、`aborted`、`error`、`turn_limit`，恢复生成的 `interrupted`，或快照的 `snapshot`。
 

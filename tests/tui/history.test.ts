@@ -113,6 +113,48 @@ describe("tui history transcript", () => {
     expect(lines).not.toContain('  "private": true');
   });
 
+  test("restores view_image results with their dedicated renderer", () => {
+    const transcript = new Transcript();
+    const messages: Message[] = [
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        content: [
+          {
+            type: "tool_call",
+            id: "call-view",
+            name: "view_image",
+            args: { path: "artifacts/screenshot.png" },
+          },
+        ],
+      },
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool",
+        toolCallId: "call-view",
+        toolName: "view_image",
+        content: "Viewed screenshot",
+        images: [{ mimeType: "image/png", data: "aW1hZ2U=", width: 1440, height: 832 }],
+        result: {
+          path: "artifacts/screenshot.png",
+          mimeType: "image/png",
+          width: 1440,
+          height: 832,
+          byteSize: 19 * 1024,
+        },
+        isError: false,
+      },
+    ];
+
+    addHistoryTimelineToTranscript(transcript, timelineFromMessages(messages));
+
+    const lines = transcript.render(100).map(stripAnsi);
+    expect(lines).toContain("◆ Viewed");
+    expect(lines).toContain("  └ artifacts/screenshot.png");
+    expect(lines).toContain("PNG · 1440×832 · 19 KB");
+    expect(lines.join("\n")).not.toContain('"byteSize"');
+  });
+
   test("uses distinct colors for user input and Markdown headings", () => {
     const transcript = new Transcript();
 

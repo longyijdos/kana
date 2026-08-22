@@ -8,6 +8,7 @@ import {
   type ModelContext,
   type ModelUsage,
   type ToolCallContent,
+  type UserImage,
   type UserMessage,
 } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
@@ -577,6 +578,7 @@ function messageForCompaction(message: Message): Message {
         toolCallId: message.toolCallId,
         toolName: message.toolName,
         content: message.content,
+        ...(message.images?.length ? { images: structuredClone(message.images) } : {}),
         isError: message.isError,
       };
     case "assistant":
@@ -614,23 +616,14 @@ function estimateMessagesTokens(messages: Message[]): number {
 function estimateMessageTokens(message: Message): number {
   switch (message.role) {
     case "user":
-      return (
-        6 +
-        estimateTextTokens(message.content) +
-        // Current Codex models use 32px image patches at original/auto detail.
-        // Keep image bytes out of token estimation; base64 size is unrelated to
-        // the visual token budget consumed by the provider.
-        (message.images ?? []).reduce(
-          (total, image) => total + Math.ceil(image.width / 32) * Math.ceil(image.height / 32),
-          0,
-        )
-      );
+      return 6 + estimateTextTokens(message.content) + estimateImageTokens(message.images);
     case "tool":
       return (
         10 +
         estimateTextTokens(message.toolName) +
         estimateTextTokens(message.toolCallId) +
-        estimateTextTokens(message.content)
+        estimateTextTokens(message.content) +
+        estimateImageTokens(message.images)
       );
     case "assistant":
       return (
@@ -649,6 +642,15 @@ function estimateMessageTokens(message: Message): number {
         }, 0)
       );
   }
+}
+
+function estimateImageTokens(images: readonly UserImage[] | undefined): number {
+  // Current Codex models use 32px image patches at original/auto detail. Keep
+  // base64 bytes out of token estimation because they are not textual input.
+  return (images ?? []).reduce(
+    (total, image) => total + Math.ceil(image.width / 32) * Math.ceil(image.height / 32),
+    0,
+  );
 }
 
 function estimateHostedToolTokens(content: HostedToolContent): number {

@@ -15,4 +15,5 @@ export {
   precompileToolParameters,
   validateToolArguments,
 } from "./validation";
+export { createViewImageTool } from "./view-image";
 export { createWriteTool } from "./write";

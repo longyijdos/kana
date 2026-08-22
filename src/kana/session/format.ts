@@ -470,6 +470,8 @@ function isMessage(value: unknown): value is Message {
     typeof message.toolCallId === "string" &&
     typeof message.toolName === "string" &&
     typeof message.content === "string" &&
+    (message.images === undefined ||
+      (Array.isArray(message.images) && message.images.every(isUserImage))) &&
     typeof message.isError === "boolean"
   );
 }

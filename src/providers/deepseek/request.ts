@@ -82,12 +82,35 @@ function toDeepSeekResponsesMessage(
         {
           type: "function_call_output",
           call_id: message.toolCallId,
-          output: message.content,
+          output: toDeepSeekToolOutput(message, imageInputEnabled),
         },
       ];
     case "assistant":
       return message.content.flatMap(toDeepSeekResponsesAssistantContent);
   }
+}
+
+function toDeepSeekToolOutput(
+  message: Extract<Message, { role: "tool" }>,
+  imageInputEnabled: boolean,
+): string | Record<string, unknown>[] {
+  const images = message.images ?? [];
+  if (images.length === 0) {
+    return message.content;
+  }
+  if (!imageInputEnabled) {
+    return appendImageOmission(message.content, images.length);
+  }
+
+  // DeepSeek's Responses endpoint supports the same multimodal function output
+  // blocks as user messages, so the observation stays attached to its call ID.
+  return [
+    ...(message.content ? [{ type: "input_text", text: message.content }] : []),
+    ...images.map((image) => ({
+      type: "input_image",
+      image_url: `data:${image.mimeType};base64,${image.data}`,
+    })),
+  ];
 }
 
 function toDeepSeekUserContent(
@@ -201,4 +224,9 @@ function toDeepSeekResponsesToolChoice(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function appendImageOmission(content: string, imageCount: number): string {
+  const omitted = `[${imageCount} tool image observation(s) omitted because image input is disabled.]`;
+  return content ? `${content}\n\n${omitted}` : omitted;
 }

@@ -75,7 +75,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
   → Tool.execute → ToolResultMessage → 下一轮模型调用
 ```
 
-`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。用户消息 provenance 会区分直接/定时输入与内部 recovery、summary 和 `runtime_context` 快照；runtime 快照还携带稳定的 `source`，标识拥有该变化值的 provider。用户消息可以携带 `UserImage` 附件，以 MIME 类型、内联 base64 数据和尺寸组成与供应商无关的自包含历史；各 provider adapter 再决定将其映射到通用 wire protocol，还是生成明确的不支持提示。助手内容块可以是 `text`、`thinking`、`tool_call` 或供应商托管的 `hosted_tool`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供需要不透明 replay state 的 Responses adapter 使用；`core` 和 session 存储不解释该值。
+`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。用户消息 provenance 会区分直接/定时输入与内部 recovery、summary 和 `runtime_context` 快照；runtime 快照还携带稳定的 `source`，标识拥有该变化值的 provider。用户消息和工具结果消息都可以携带 `UserImage`，以 MIME 类型、内联 base64 数据和尺寸组成与供应商无关的自包含历史；各 provider adapter 再决定将其映射到 wire protocol，还是生成明确的不支持提示。助手内容块可以是 `text`、`thinking`、`tool_call` 或供应商托管的 `hosted_tool`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供需要不透明 replay state 的 Responses adapter 使用；`core` 和 session 存储不解释该值。
 
 供应商首先产生 `AssistantMessageEvent`。事件包含增量 `delta` 和完整 `snapshot`：前者适合增量呈现，后者让消费者不必重复实现消息拼接。`agent` 将其转换为更高一层的 `AgentEvent`，并额外发出回合、回合输入、工具开始/更新/结束和整个运行结束事件。`AgentEventStream` 与模型流都同时支持 `for await` 消费事件和 `result()` 获取最终值。
 
@@ -91,13 +91,13 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 `core/model.ts` 定义 `Model`：供应商实现只需提供元数据和 `stream(context)`，`generate()` 由基类通过收集流实现。通用 `ModelMetadata.protocol` 标识 `responses` 或 `chat-completions` wire protocol，`supportsHostedWebSearch`、`supportsImageInput` 和可选 reasoning efforts 则独立声明所选模型的能力，不与用户配置混合。Provider 可以据此选择共享 codec，而无需让 `core` 包含供应商专用路由。`providers/index.ts` 是内置供应商的集中式工厂；产品配置支持 `deepseek`、`openai-codex` 和一个静态 `custom` 槽位，`MockModel` 用于测试并使用 null protocol。
 
-`DeepSeekModel` 将 V4 Flash 和 V4 Pro 都发送到 `/responses`。两个模型都会把通用历史转换为语义化 Responses input，把已完成的供应商 item 保存为不透明 `providerState` 以供无状态 replay，在启用时声明托管 `web_search`，并使用共享的 `src/providers/responses` 语义 SSE 处理器。该处理器按 index 与 item ID 关联输出，把 reasoning、消息、函数调用、托管搜索、终态和 usage 映射为有序 core event。
+`DeepSeekModel` 将所有 V4 模型都发送到 `/responses`。它们会把通用历史转换为语义化 Responses input，把已完成的供应商 item 保存为不透明 `providerState` 以供无状态 replay，在启用时声明托管 `web_search`，并使用共享的 `src/providers/responses` 语义 SSE 处理器。在视觉模型上，视觉工具结果会成为与原调用 ID 关联的原生 `function_call_output` 文本/图片输入块。该处理器按 index 与 item ID 关联输出，把 reasoning、消息、函数调用、托管搜索、终态和 usage 映射为有序 core event。
 
-`src/providers/openai-compatible` 负责可复用的 OpenAI-compatible Chat Completions 路径。它转换通用消息与本地函数工具，仅在模型 metadata 允许图片输入时发送 image data URL，并在跨 provider replay 时省略供应商专用 reasoning 或托管工具状态。其 SSE reader 会保留被网络分片切开的 frame，逐步组装有序文本和函数调用，映射结束原因与 usage，并遵循 provider 生命周期关于取消、无活动超时、重试、安全日志及上下文超限归一化的约束。该模型可直接导入，但不注册为独立 `ProviderName`；Kana 的静态 `custom` 槽位解析 `<KANA_HOME>/providers/custom.toml` 后直接实例化它，刻意不引入动态 provider catalog 或任意运行时 adapter。
+`src/providers/openai-compatible` 负责可复用的 OpenAI-compatible Chat Completions 路径。它转换通用消息与本地函数工具，仅在模型 metadata 允许图片输入时发送 image data URL，并在跨 provider replay 时省略供应商专用 reasoning 或托管工具状态。由于 Chat Completions 的 tool-role 消息不能携带图片内容，adapter 会保留每组连续 sibling 工具结果，再追加一条合成的多模态 user observation 来承载其中的工具图片。其 SSE reader 会保留被网络分片切开的 frame，逐步组装有序文本和函数调用，映射结束原因与 usage，并遵循 provider 生命周期关于取消、无活动超时、重试、安全日志及上下文超限归一化的约束。该模型可直接导入，但不注册为独立 `ProviderName`；Kana 的静态 `custom` 槽位解析 `<KANA_HOME>/providers/custom.toml` 后直接实例化它，刻意不引入动态 provider catalog 或任意运行时 adapter。
 
 请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口和最大输出；TUI 用它计算上下文占用，进程累计 token 则来自 provider usage 事件。
 
-`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。adapter 提供 Codex 专用的请求与 replay 规则，同时复用共享的语义 Responses 处理器组装 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item。它把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量与其他 provider 一样只记录 token，Kana 不估算金额。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
+`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。视觉工具结果使用与原调用 ID 关联的原生 `function_call_output` 文本/图片输入块。adapter 提供 Codex 专用的请求与 replay 规则，同时复用共享的语义 Responses 处理器组装 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item。它把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量与其他 provider 一样只记录 token，Kana 不估算金额。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
 
 ## MCP 协议基础
 
@@ -138,7 +138,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 `KanaConversationHost` 是前端共享的 Kana 产品生命周期边界。它集中装配配置、审批、session journal、日志、accounting、记忆压缩、wake scheduler、MCP 与 `createKanaAgent`，并为每次新建、分叉、恢复或配置变化创建绑定到正确 session 的 Agent。Host 只返回前端中立的数据和操作，不渲染 TUI；`ConversationRuntime` 则消费这些操作并管理一次对话的执行状态。这样交互式前端与无头前端可以共享相同的模型、提示词、工具和 launch-mode 持久化策略。
 
-`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建 `PromptAssembly`，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash`，并从 `kana/tools` 注册产品专属的可选 `remember` 与 `schedule_wake`，最后通过可替换的 external capability section 解析产品层传入的 `additionalTools`。通用 `tools` 层不依赖 Kana 的持久化或会话生命周期。
+`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建 `PromptAssembly`，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash`；当活动模型支持图片且 `image_input` 已启用时有条件注册 `view_image`；并从 `kana/tools` 注册产品专属的可选 `remember` 与 `schedule_wake`，最后通过可替换的 external capability section 解析产品层传入的 `additionalTools`。通用 `tools` 层不依赖 Kana 的持久化或会话生命周期。
 
 稳定 system 前缀由以下部分组成，后面的项目级指令优先级更高：
 
@@ -188,18 +188,19 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 ## 工具、审批与安全边界
 
-工具优先使用 TypeBox 1.x schema；调用前先执行参数转换和编译校验，校验后的参数才交给工具。TypeBox schema 经 JSON 序列化后会丢失运行时元数据，Kana 会为这种普通 JSON Schema 补充兼容的基础类型转换，再使用同一 TypeBox 编译器校验。工具结果分为给模型的文本 `content` 和给 Agent/TUI 的结构化 `result`，避免展示层解析供应商文本。
+工具优先使用 TypeBox 1.x schema；调用前先执行参数转换和编译校验，校验后的参数才交给工具。TypeBox schema 经 JSON 序列化后会丢失运行时元数据，Kana 会为这种普通 JSON Schema 补充兼容的基础类型转换，再使用同一 TypeBox 编译器校验。工具结果分为给模型的文本 `content`、可选且与 provider 无关的 `images` 视觉观察，以及给 Agent/TUI 的结构化 `result`，避免展示层解析供应商文本。
 
-工具的 `execution.concurrency` 可声明为 `parallel` 或 `exclusive`，缺省时安全地使用 `exclusive`。内置 `list`、`glob`、`grep`、`read` 是只读并声明为 `parallel`；写入、Shell、记忆和第三方/MCP 工具不会隐式获得并发权限。
+工具的 `execution.concurrency` 可声明为 `parallel` 或 `exclusive`，缺省时安全地使用 `exclusive`。内置 `list`、`glob`、`grep`、`read`、`view_image` 是只读并声明为 `parallel`；写入、Shell、记忆和第三方/MCP 工具不会隐式获得并发权限。
 
 - `list` 列出目录的一层子项，`glob` 用相对 pattern 查找路径，`grep` 搜索文本内容；三者用于受控只读探索。
 - `read` 读取文本文件，支持按行分页。
+- `view_image` 通过共享附件解码器加载本地图片，并作为视觉观察交给活动模型；动画格式使用解码后的首帧并规范化为静态 PNG。
 - `write` 默认只创建不存在的新文件，显式 `overwrite` 时可替换既有文件。
 - `edit` 对既有文件做精确字符串替换；多次匹配必须显式 `replaceAll`。
 - `bash` 使用用户 shell 运行，默认超时 30 秒、最大 120 秒，输出每个流最多保留 20,000 字符，并以节流更新事件显示实时输出。每个命令使用独立进程组；取消和超时会终止整个进程组，顶层 shell 退出后会短暂排空输出再返回，避免后台子进程卡住工具调用。它将 `sudo` 改写为非交互模式，避免抢占 TUI 输入。
 - `remember` 将非敏感的长期信息追加到每日记忆；它不会请求审批。
 
-审批模式为 `always`、`unless_trusted`、`never`。在默认模式下，`list`、`glob`、`grep` 和 `read` 自动通过；白名单中的单个只读 bash 可执行名和精确 bash 命令自动通过；其他工具会显示 TUI 选择框。用户可只把某一条 bash 命令加入精确白名单。只读命令判断刻意拒绝 shell 组合符、路径形式的可执行文件和换行，以免把看似只读的组合命令误判为安全。
+审批模式为 `always`、`unless_trusted`、`never`。在默认模式下，`list`、`glob`、`grep`、`read` 和 `view_image` 自动通过；白名单中的单个只读 bash 可执行名和精确 bash 命令自动通过；其他工具会显示 TUI 选择框。用户可只把某一条 bash 命令加入精确白名单。只读命令判断刻意拒绝 shell 组合符、路径形式的可执行文件和换行，以免把看似只读的组合命令误判为安全。
 
 这里的“工作区工具”不是沙箱：文件路径、`bash.cwd`、`glob.cwd` 和 `grep.path` 可以是绝对路径，或通过相对路径离开工作区。文件读取会解析符号链接，写入会检查已有父目录的真实路径；这些机制用于获得规范化显示路径和处理链接，而非限制访问范围。审批是用户可见的授权层，不是操作系统级隔离。
 
@@ -207,7 +208,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 `ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台允许后按顺序 drain Agent 持有的 `next-turn` lane。Tab 输入、到期 wake 和 deferred steering 共用这条 FIFO lane，Enter steering 则先进入 `next-step`。每条逻辑输入在两条 lane、runtime 与 Agent event、UI 投影、journal commit 和历史之间保留同一个 `MessageId`；runtime 不再创建 queue correlation ID。scheduled item 还保留到期时间，并与进程内 scheduler 的未来 wake 列表一起发布为只读快照。Runtime 提供当前 session 的用户定时创建与按 MessageId 取消边界，取消会同步检查未来 timer 和已到期 inbox item，因此执行顺序、管理状态与 TUI 展示不会分叉。它发布与前端无关的 run、Agent event、inbox 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`QueuedInputController` 将 runtime 快照投影为 `next turn`、`next run`、到期 `scheduled` 和未来 wake 摘要，并按 MessageId 对齐状态切换；`ScheduledMessageManagerController` 持有 `/schedule` 的静态管理快照和多步添加/删除流程；`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、追加式生命周期输出与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
 
-剪贴板图片粘贴和 `/image <path>` 会在进入编辑器前汇合到共享图片输入 utility。该边界负责解析运行主机上的路径、解码并限制图片尺寸/字节，最终返回同一种 `UserImage` 表示；只有 macOS 剪贴板 reader 是平台专用实现。
+剪贴板图片粘贴、`/image <path>` 和 `view_image` 会汇合到共享图片输入 utility。该边界负责解析运行主机上的路径、解码并限制图片尺寸/字节，最终返回同一种 `UserImage` 表示；只有 macOS 剪贴板 reader 是平台专用实现。
 
 ```text
 ProcessTerminal（raw mode、输入、resize、通知）

@@ -26,7 +26,7 @@ describe("Kana Agent tools", () => {
 
     try {
       const agent = withKanaAgentEnvironment(() =>
-        createKanaAgent(testConfig(), {
+        createKanaAgent(visionTestConfig(), {
           additionalTools: [externalTool],
           wakeScheduler,
           sessionId: "session-1",
@@ -40,6 +40,18 @@ describe("Kana Agent tools", () => {
     } finally {
       wakeScheduler.dispose();
     }
+  });
+
+  test("enables view_image only when the active model and configuration support images", () => {
+    const enabled = withKanaAgentEnvironment(() => createKanaAgent(visionTestConfig()));
+    const disabledByConfig = withKanaAgentEnvironment(() =>
+      createKanaAgent(visionTestConfig({ imageInput: false })),
+    );
+    const unsupportedModel = withKanaAgentEnvironment(() => createKanaAgent(testConfig()));
+
+    expect(enabled.state.tools.some((tool) => tool.name === "view_image")).toBe(true);
+    expect(disabledByConfig.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
+    expect(unsupportedModel.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
   });
 
   test("rejects external tool names that collide with built-in tools", () => {
@@ -98,6 +110,21 @@ function testConfig() {
       deepseek: {
         ...DEFAULT_KANA_CONFIG.model.deepseek,
         apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
+      },
+    },
+  };
+}
+
+function visionTestConfig(overrides: { imageInput?: boolean } = {}) {
+  const config = testConfig();
+  return {
+    ...config,
+    model: {
+      ...config.model,
+      deepseek: {
+        ...config.model.deepseek,
+        name: "deepseek-v4-flash-vision-exp" as const,
+        ...overrides,
       },
     },
   };

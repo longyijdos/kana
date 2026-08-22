@@ -14,6 +14,7 @@ import { formatGlobOutput, hasExpandableGlobOutput } from "./renderers/glob";
 import { formatGrepOutput, hasExpandableGrepOutput } from "./renderers/grep";
 import { formatListOutput, hasExpandableListOutput } from "./renderers/list";
 import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
+import { formatViewImageOutput, hasExpandableViewImageOutput } from "./renderers/view-image";
 import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
 
 export type ToolState = "running" | "done" | "failed" | "canceled";
@@ -137,6 +138,8 @@ export function formatToolOutput(
       return renderText(formatGrepOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "read":
       return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput);
+    case "view_image":
+      return renderText(formatViewImageOutput(sanitizedResult), width, tuiTheme.toolOutput);
     case "write":
       return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail, width);
     case "edit":
@@ -177,6 +180,8 @@ export function hasExpandableToolOutput(
       return hasExpandableGrepOutput();
     case "read":
       return hasExpandableReadOutput();
+    case "view_image":
+      return hasExpandableViewImageOutput();
     case "write":
       return hasExpandableWriteOutput(toolCall);
     case "bash":
@@ -310,6 +315,9 @@ function formatToolSummary(toolCall: ToolCallContent): string {
         : "";
     }
 
+    case "view_image":
+      return "";
+
     case "write": {
       const content = getStringProperty(toolCall.args, "content");
       return content ? summarizeText(content) : "";
@@ -402,6 +410,13 @@ function toolText(
         approvalTitle: "Allow agent to read file?",
         doneTitle: `Read ${target}`,
         runningActivity: `reading ${target}`,
+      };
+    case "view_image":
+      return {
+        action: `view ${target}`,
+        approvalTitle: "Allow agent to view image?",
+        doneTitle: `Viewed ${target}`,
+        runningActivity: `viewing ${target}`,
       };
     case "write":
       return {

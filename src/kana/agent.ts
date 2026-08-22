@@ -12,6 +12,7 @@ import {
   createGrepTool,
   createListTool,
   createReadTool,
+  createViewImageTool,
   createWriteTool,
   type Tool,
 } from "@/tools";
@@ -32,6 +33,7 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
   "glob",
   "grep",
   "read",
+  "view_image",
   "write",
   "edit",
   "bash",
@@ -87,6 +89,13 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     createReadTool({
       root: cwd,
     }),
+    ...(imageInputEnabled
+      ? [
+          createViewImageTool({
+            root: cwd,
+          }),
+        ]
+      : []),
     createWriteTool({
       root: cwd,
     }),

@@ -356,7 +356,7 @@ describe("ContextManager", () => {
     expect(limited).toContain("[Tool output truncated for model context]");
   });
 
-  test("estimates image patches without counting persisted base64 bytes", () => {
+  test("estimates user and tool image patches without counting persisted base64 bytes", () => {
     const createContext = (data: string): ModelContext => ({
       messages: [
         {
@@ -372,11 +372,28 @@ describe("ContextManager", () => {
             },
           ],
         },
+        {
+          ...messageIdentityForTest("tool"),
+          role: "tool",
+          toolCallId: "call-view",
+          toolName: "view_image",
+          content: "Viewed image",
+          images: [
+            {
+              mimeType: "image/png",
+              data,
+              width: 33,
+              height: 65,
+            },
+          ],
+          result: {},
+          isError: false,
+        },
       ],
     });
 
-    expect(estimateContextTokens(createContext("small"))).toBe(20);
-    expect(estimateContextTokens(createContext("x".repeat(100_000)))).toBe(20);
+    expect(estimateContextTokens(createContext("small"))).toBe(47);
+    expect(estimateContextTokens(createContext("x".repeat(100_000)))).toBe(47);
   });
 
   test("keeps a clean usage anchor when hosted tools inflate response input", async () => {
@@ -560,6 +577,14 @@ describe("model compaction policy", () => {
           toolCallId: "call-1",
           toolName: "read",
           content: "visible tool content",
+          images: [
+            {
+              mimeType: "image/jpeg",
+              data: "private-tool-image-bytes",
+              width: 16,
+              height: 48,
+            },
+          ],
           result: { secret: "structured result" },
           isError: false,
         },
@@ -581,7 +606,11 @@ describe("model compaction policy", () => {
     expect(compactionRequest?.role === "user" ? compactionRequest.content : "").toContain(
       '"width":64',
     );
+    expect(compactionRequest?.role === "user" ? compactionRequest.content : "").toContain(
+      '"width":16',
+    );
     expect(JSON.stringify(capturedContext)).not.toContain("private-image-bytes");
+    expect(JSON.stringify(capturedContext)).not.toContain("private-tool-image-bytes");
     expect(JSON.stringify(capturedContext)).not.toContain("hidden history");
     expect(JSON.stringify(capturedContext)).not.toContain("structured result");
     expect(result).toEqual({
@@ -632,9 +661,11 @@ describe("model compaction policy", () => {
           ],
         },
         {
-          ...messageIdentityForTest("user"),
-          role: "user",
-          content: "And this one.",
+          ...messageIdentityForTest("tool"),
+          role: "tool",
+          toolCallId: "call-view",
+          toolName: "view_image",
+          content: "Viewed another image.",
           images: [
             {
               mimeType: "image/jpeg",
@@ -643,6 +674,8 @@ describe("model compaction policy", () => {
               height: 48,
             },
           ],
+          result: { path: "second.jpg" },
+          isError: false,
         },
       ],
       maxSummaryTokens: 256,

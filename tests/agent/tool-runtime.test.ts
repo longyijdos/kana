@@ -91,6 +91,50 @@ describe("ToolRuntime", () => {
     expect(result.toolResults[0]?.id).toBeDefined();
   });
 
+  test("commits visual observations returned by tools", async () => {
+    const image = {
+      mimeType: "image/png" as const,
+      data: "aW1hZ2U=",
+      width: 32,
+      height: 16,
+    };
+    const tool = {
+      name: "view_image",
+      description: "View an image.",
+      parameters,
+      execute: () => ({
+        content: "Viewed image.png",
+        images: [image],
+        result: { path: "image.png" },
+      }),
+    } satisfies Tool<typeof parameters, { path: string }>;
+    const committed: Message[] = [];
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        onMessageCommitted: (message) => {
+          committed.push(message);
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-view", name: "view_image", args: {} },
+    ]);
+
+    expect(result.toolResults[0]).toMatchObject({
+      role: "tool",
+      toolCallId: "call-view",
+      toolName: "view_image",
+      content: "Viewed image.png",
+      images: [image],
+      result: { path: "image.png" },
+      isError: false,
+    });
+    expect(committed).toEqual(result.toolResults);
+  });
+
   test("publishes tool completion even when the result commit fails", async () => {
     const events: string[] = [];
     const commitError = new Error("journal unavailable");

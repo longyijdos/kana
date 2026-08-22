@@ -214,6 +214,60 @@ describe("Kana session persistence", () => {
     expect(loaded.contextCheckpoint).toBeUndefined();
   });
 
+  test("round-trips tool image observations in JSONL without duplicating them in result metadata", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "tool-images" });
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Inspect the screenshot." },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        content: [
+          {
+            type: "tool_call",
+            id: "call-view",
+            name: "view_image",
+            args: { path: "screenshot.png" },
+          },
+        ],
+      },
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool",
+        toolCallId: "call-view",
+        toolName: "view_image",
+        content: "Viewed screenshot.png",
+        images: [
+          {
+            mimeType: "image/png",
+            data: "dG9vbC1pbWFnZS1ieXRlcw==",
+            width: 32,
+            height: 16,
+          },
+        ],
+        result: { path: "screenshot.png", width: 32, height: 16 },
+        isError: false,
+      },
+    ];
+
+    appendKanaSessionMessages(session, messages);
+
+    const loaded = loadKanaSession(session.id, { env, cwd });
+    const toolLine = readFileSync(session.path, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { message?: Message })
+      .find((entry) => entry.message?.role === "tool");
+    const persistedToolMessage = toolLine?.message;
+    if (persistedToolMessage?.role !== "tool") {
+      throw new Error("Expected a persisted tool message.");
+    }
+    expect(loaded.messages).toEqual(messages);
+    expect(persistedToolMessage).toEqual(messages[2] as Extract<Message, { role: "tool" }>);
+    expect(JSON.stringify(persistedToolMessage.result)).not.toContain("dG9vbC1pbWFnZS1ieXRlcw==");
+  });
+
   test("round-trips internal context without using it as the session title", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
@@ -569,6 +623,36 @@ describe("Kana session persistence", () => {
         "Invalid Kana session message entry",
       );
     }
+  });
+
+  test("rejects malformed tool image observations while loading", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "invalid-tool-images" });
+    appendKanaSessionMessages(session, [
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool",
+        toolCallId: "call-view",
+        toolName: "view_image",
+        content: "Viewed image",
+        images: [{ mimeType: "image/png", data: "aW1hZ2U=", width: 32, height: 16 }],
+        result: {},
+        isError: false,
+      },
+    ]);
+    const lines = readFileSync(session.path, "utf8").trim().split("\n");
+    const entry = JSON.parse(lines[2] ?? "{}") as { message?: Record<string, unknown> };
+    if (!entry.message) {
+      throw new Error("Expected a persisted tool message.");
+    }
+    entry.message.images = [{ mimeType: "image/svg+xml", data: "aW1hZ2U=", width: 32, height: 16 }];
+    lines[2] = JSON.stringify(entry);
+    writeFileSync(session.path, `${lines.join("\n")}\n`);
+
+    expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
+      "Invalid Kana session message entry",
+    );
   });
 
   test("uses an explicit session title when provided", () => {

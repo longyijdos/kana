@@ -104,7 +104,8 @@ export type AssistantMessage = MessageIdentity<
 };
 
 // content is the provider-facing text sent back to the model. result keeps the
-// original structured value for the agent runtime.
+// original structured value for the agent runtime. Tool-produced images use
+// the same provider-neutral, self-contained representation as user attachments.
 export type ToolResultMessage = MessageIdentity<
   Extract<MessageProvenance, { kind: "tool_result" }>
 > & {
@@ -112,6 +113,7 @@ export type ToolResultMessage = MessageIdentity<
   toolCallId: string;
   toolName: string;
   content: string;
+  images?: UserImage[];
   result?: unknown;
   isError: boolean;
 };

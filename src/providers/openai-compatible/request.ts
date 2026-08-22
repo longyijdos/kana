@@ -37,14 +37,22 @@ function toMessages(
   supportsImageInput: boolean,
 ): Array<Record<string, unknown>> {
   const messages: Array<Record<string, unknown>> = [];
+  const pendingToolImageMessages: Array<Extract<Message, { role: "tool" }>> = [];
   if (context.system) {
     // The system role remains the most widely implemented instruction shape
     // across OpenAI-compatible Chat Completions endpoints.
     messages.push({ role: "system", content: context.system });
   }
   for (const message of context.messages) {
+    if (message.role !== "tool") {
+      appendToolImageObservation(messages, pendingToolImageMessages);
+    }
     messages.push(toMessage(message, supportsImageInput));
+    if (message.role === "tool" && supportsImageInput && message.images?.length) {
+      pendingToolImageMessages.push(message);
+    }
   }
+  appendToolImageObservation(messages, pendingToolImageMessages);
   return messages;
 }
 
@@ -58,12 +66,53 @@ function toMessage(message: Message, supportsImageInput: boolean): Record<string
     case "tool":
       return {
         role: "tool",
-        content: message.content,
+        content: toToolContent(message, supportsImageInput),
         tool_call_id: message.toolCallId,
       };
     case "assistant":
       return toAssistantMessage(message.content);
   }
+}
+
+function toToolContent(
+  message: Extract<Message, { role: "tool" }>,
+  supportsImageInput: boolean,
+): string {
+  const imageCount = message.images?.length ?? 0;
+  if (imageCount === 0 || supportsImageInput) {
+    return message.content;
+  }
+
+  const omitted = `[${imageCount} tool image observation(s) omitted because this model does not support image input.]`;
+  return message.content ? `${message.content}\n\n${omitted}` : omitted;
+}
+
+function appendToolImageObservation(
+  messages: Array<Record<string, unknown>>,
+  pending: Array<Extract<Message, { role: "tool" }>>,
+): void {
+  if (pending.length === 0) {
+    return;
+  }
+
+  // Chat Completions tool messages cannot carry image_url content. Defer one
+  // aggregated user observation until every sibling tool result is contiguous.
+  messages.push({
+    role: "user",
+    content: pending.flatMap((message) => [
+      {
+        type: "text",
+        text: `[Visual observation from ${message.toolName} tool call ${message.toolCallId}]`,
+      },
+      ...(message.images ?? []).map((image) => ({
+        type: "image_url",
+        image_url: {
+          url: `data:${image.mimeType};base64,${image.data}`,
+        },
+      })),
+    ]),
+  });
+  pending.length = 0;
 }
 
 function toUserContent(
