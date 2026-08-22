@@ -8,8 +8,10 @@ import {
   type ModelContext,
   type ModelUsage,
   type ToolCallContent,
+  type UserMessage,
 } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
+import { type PromptContextSnapshot, resolveRuntimeContextMessages } from "./prompt-assembly";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
 const DEFAULT_TARGET_RATIO = 0.1;
@@ -81,6 +83,7 @@ export type PrepareContextOptions = {
   signal?: AbortSignal;
   forceCompaction?: boolean;
   compactionReason?: ContextCompactionReason;
+  runtimeContext?: readonly PromptContextSnapshot[];
   onCompactionStart?: (event: ContextCompactionStart) => Promise<void> | void;
 };
 
@@ -111,6 +114,7 @@ export class ContextManager {
   private readonly loggerMetadata?: LogMetadata;
   private checkpointData?: ContextCheckpoint;
   private usageMeasurement?: UsageMeasurement;
+  private runtimeContextData?: PromptContextSnapshot[];
   private readonly compactionData: ContextCheckpoint[] = [];
 
   constructor(config: ContextManagerConfig) {
@@ -182,6 +186,8 @@ export class ContextManager {
     });
     manager.usageMeasurement =
       this.usageMeasurement === undefined ? undefined : { ...this.usageMeasurement };
+    manager.runtimeContextData =
+      this.runtimeContextData === undefined ? undefined : structuredClone(this.runtimeContextData);
     return manager;
   }
 
@@ -195,11 +201,16 @@ export class ContextManager {
     this.checkpointData = manager.checkpoint;
     this.usageMeasurement =
       manager.usageMeasurement === undefined ? undefined : { ...manager.usageMeasurement };
+    this.runtimeContextData =
+      manager.runtimeContextData === undefined
+        ? undefined
+        : structuredClone(manager.runtimeContextData);
   }
 
   reset(): void {
     this.checkpointData = undefined;
     this.usageMeasurement = undefined;
+    this.runtimeContextData = undefined;
     this.compactionData.length = 0;
   }
 
@@ -207,6 +218,9 @@ export class ContextManager {
     context: ModelContext,
     options: PrepareContextOptions = {},
   ): Promise<PreparedContext> {
+    if (options.runtimeContext !== undefined) {
+      this.updateRuntimeContext(options.runtimeContext);
+    }
     this.assertCheckpointFits(context.messages);
 
     let prepared = this.createModelContext(context);
@@ -325,7 +339,9 @@ export class ContextManager {
         previousSummary: this.checkpointData?.summary,
         // Policies receive only model-visible history. Structured tool results
         // can be much larger than their bounded content and are for the host/TUI.
-        messages: compactedMessages.map(messageForCompaction),
+        messages: compactedMessages
+          .filter((message) => !isRuntimeContextMessage(message))
+          .map(messageForCompaction),
         maxSummaryTokens: this.maxSummaryTokens,
         signal: options.signal,
       });
@@ -393,14 +409,28 @@ export class ContextManager {
 
   private createModelContext(context: ModelContext): ModelContext {
     const coveredMessageCount = this.checkpointData?.coveredMessageCount ?? 0;
-    const messages = context.messages.slice(coveredMessageCount);
+    const runtimeContext = resolveRuntimeContextMessages(context.messages, this.runtimeContextData);
+    const activeRuntimeContextIds = new Set(runtimeContext.map(({ message }) => message.id));
+    const messages = context.messages
+      .slice(coveredMessageCount)
+      .filter(
+        (message) =>
+          message.provenance.kind !== "runtime_context" || activeRuntimeContextIds.has(message.id),
+      );
 
     if (this.checkpointData) {
+      // Runtime snapshots are authoritative state rather than conversation to
+      // summarize. Re-project the latest covered value for each source without
+      // writing another logical message to the append-only history.
+      const coveredRuntimeContext = runtimeContext
+        .filter(({ index }) => index < coveredMessageCount)
+        .map(({ message }) => structuredClone(message));
       messages.unshift(
         createUserMessage({
           content: formatSummaryForModel(this.checkpointData.summary),
           provenance: { kind: "context_summary" },
         }),
+        ...coveredRuntimeContext,
       );
     }
 
@@ -453,7 +483,7 @@ export class ContextManager {
             content: formatSummaryForModel("x".repeat(this.maxSummaryTokens * 3)),
             provenance: { kind: "context_summary" },
           }),
-          ...context.messages.slice(boundary),
+          ...projectRuntimeContextForBoundary(context.messages, boundary, this.runtimeContextData),
         ],
         tools: context.tools,
       };
@@ -475,6 +505,18 @@ export class ContextManager {
     }
   }
 
+  private updateRuntimeContext(runtimeContext: readonly PromptContextSnapshot[]): void {
+    if (
+      this.runtimeContextData !== undefined &&
+      !sameRuntimeContext(this.runtimeContextData, runtimeContext)
+    ) {
+      // Provider usage measured a different model projection. Once a source is
+      // replaced or removed, that request can no longer anchor future estimates.
+      this.usageMeasurement = undefined;
+    }
+    this.runtimeContextData = runtimeContext.map((snapshot) => ({ ...snapshot }));
+  }
+
   private log(level: "debug" | "info" | "error", event: string, metadata?: LogMetadata): void {
     try {
       this.logger[level](event, {
@@ -485,6 +527,42 @@ export class ContextManager {
       // Diagnostics must not change context preparation or recovery behavior.
     }
   }
+}
+
+function isRuntimeContextMessage(message: Message): message is UserMessage {
+  return message.role === "user" && message.provenance.kind === "runtime_context";
+}
+
+function projectRuntimeContextForBoundary(
+  messages: readonly Message[],
+  boundary: number,
+  runtimeContext: readonly PromptContextSnapshot[] | undefined,
+): Message[] {
+  const resolved = resolveRuntimeContextMessages(messages, runtimeContext);
+  const activeIds = new Set(resolved.map(({ message }) => message.id));
+  return [
+    ...resolved
+      .filter(({ index }) => index < boundary)
+      .map(({ message }) => structuredClone(message)),
+    ...messages
+      .slice(boundary)
+      .filter(
+        (message) => message.provenance.kind !== "runtime_context" || activeIds.has(message.id),
+      ),
+  ];
+}
+
+function sameRuntimeContext(
+  left: readonly PromptContextSnapshot[],
+  right: readonly PromptContextSnapshot[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (snapshot, index) =>
+        snapshot.source === right[index]?.source && snapshot.content === right[index]?.content,
+    )
+  );
 }
 
 function messageForCompaction(message: Message): Message {

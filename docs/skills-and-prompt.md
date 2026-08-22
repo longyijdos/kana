@@ -46,36 +46,40 @@ enabled = ["release-check", "database-migrations"]
 
 When the file is absent or `enabled` is missing, no global Skills enter the model prompt. `/skills` opens the manager: project entries are locked, while `Enter` toggles global entries in a local draft. `Esc` applies and closes the draft; if its final set changed, Kana rewrites the list once and rebuilds the Agent system prompt once. An unchanged draft performs neither operation, while a persistence failure leaves the manager open. The manager determines scope by whether a Skill file resides under the global Skills directory.
 
-## System-prompt composition
+## Prompt composition
 
-`createKanaAgent` loads Skills from the current working directory and builds the system prompt in this order:
+`createKanaAgent` loads Skills from the current working directory and builds an immutable prompt assembly. Its stable system prefix uses this order:
 
 ```text
 Available global/project durable memory (when enabled and non-empty)
-Durable-memory guidance for remember (when memory is enabled)
 Default assistant instructions
 Global AGENTS.md (when present)
 Project AGENTS.md (when present)
-Environment context
 Visible Skills catalogue
 ```
 
-`--clean` bypasses global and project Skill discovery, `skills.toml` activation reads, both memory scopes, and both `AGENTS.md` scopes. The system prompt then contains only built-in assistant instructions and environment context, and the Agent registers neither `remember` nor external tools. `/skills` and `/memory` report that they are unavailable in clean mode. `.env`, provider/model selection, and other runtime configuration still follow the normal startup path, but a `/model` selection remains local to the temporary process.
+Before every model step, the Agent resolves dynamic context and tool sections. The environment is a dynamic section; workspace, memory, scheduled-wake, and external/MCP tools are separate capability sections. The tool objects resolved for a step are both advertised to that model request and used to execute its resulting calls, so a later refresh cannot change the meaning of an in-flight call. The stable system prefix remains unchanged across these steps, allowing provider prompt caches to reuse it.
+
+`--clean` bypasses global and project Skill discovery, `skills.toml` activation reads, both memory scopes, and both `AGENTS.md` scopes. The stable system prompt then contains only built-in assistant instructions; dynamic environment context remains available. The Agent registers neither `remember` nor external tools. `/skills` and `/memory` report that they are unavailable in clean mode. `.env`, provider/model selection, and other runtime configuration still follow the normal startup path, but a `/model` selection remains local to the temporary process.
 
 Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults, then the project file is appended. When the two AGENTS paths resolve to the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
 
-The environment block uses XML-like tags and contains the current directory, `process.platform`, a locally time-zone-formatted `YYYY-MM-DD` date, and the time-zone name:
+The environment block contains the current directory, `process.platform`, a locally time-zone-formatted `YYYY-MM-DD` date, and the time-zone name. It is wrapped in an internal source-tagged runtime-context message:
 
 ```xml
+<runtime_context source="environment">
 <environment_context>
   <cwd>/workspace</cwd>
   <platform>darwin</platform>
   <current_date>2026-06-22</current_date>
   <timezone>Asia/Shanghai</timezone>
 </environment_context>
+</runtime_context>
 ```
 
-When memory is enabled and its durable file is non-empty, Kana starts the prompt with `<memory>`, containing separate `global` and `project` reference blocks. Memory text is XML-escaped so `<`, `&`, and similar characters cannot alter the host tag structure; it remains untrusted data in model context, and the consolidation prompt directs the model to treat it as data rather than instructions.
+The Agent compares each dynamic section with the latest history state having the same `source`. It appends and journals a new snapshot only when the content changes, or one inactive marker when the section stops rendering. This durable history remains append-only for resume and audit, and the internal messages stay hidden from the transcript. Before each model request, Kana projects only the latest currently active snapshot for each source; older values and inactive markers are omitted, while an unchanged active snapshot retains its original position for prompt-cache reuse. Compaction does not summarize runtime context and reprojects only current active snapshots after the summary when needed.
+
+When memory is enabled and its durable file is non-empty, Kana starts the stable system prefix with `<memory>`, containing separate `global` and `project` reference blocks. Memory text is XML-escaped so `<`, `&`, and similar characters cannot alter the host tag structure; it remains untrusted data in model context, and the consolidation prompt directs the model to treat it as data rather than instructions. Memory is captured when an Agent is built instead of being appended after every `remember` call, avoiding repeated copies of a growing memory file. Guidance about when and what to remember lives in the `remember` tool description, so it is advertised only when that capability is available.
 
 ## Skill catalogue injected into the model
 

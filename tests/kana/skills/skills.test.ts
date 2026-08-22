@@ -383,7 +383,7 @@ describe("Kana skills", () => {
       ],
     });
 
-    expect(prompt).toContain("<environment_context>");
+    expect(prompt).not.toContain("<environment_context>");
     expect(prompt).toContain("<available_skills>");
     expect(prompt).toContain("<name>test-skill</name>");
   });

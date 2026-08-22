@@ -31,6 +31,7 @@ import {
   type BeforeToolExecutionHook,
   runAgentLoop,
 } from "./loop";
+import { createPromptAssembly, type PromptAssembly } from "./prompt-assembly";
 import { AgentEventStream } from "./stream";
 import { resolveDefaultToolDeadlineMs } from "./tool-runtime";
 
@@ -39,6 +40,7 @@ export type AgentPromptInput = string | UserMessage | UserMessage[];
 export type AgentConfig = {
   model: Model;
   system?: string;
+  promptAssembly?: PromptAssembly;
   messages?: Message[];
   inbox?: AgentInboxSnapshot;
   tools?: Tool[];
@@ -131,6 +133,7 @@ export class Agent {
   private readonly loggerMetadata?: LogMetadata;
   private readonly contextManager?: ContextManager;
   private readonly parallelToolCalls: boolean;
+  private readonly promptAssembly: PromptAssembly;
 
   constructor(options: AgentConfig) {
     assertValidMaxTurns(options.maxTurns);
@@ -140,8 +143,19 @@ export class Agent {
     const parallelToolCallsRequested = options.parallelToolCalls ?? true;
     this.parallelToolCalls =
       parallelToolCallsRequested && options.model.metadata.supportsParallelToolCalls;
+    if (options.promptAssembly && (options.system !== undefined || options.tools !== undefined)) {
+      throw new Error("Agent promptAssembly cannot be combined with system or tools.");
+    }
+    this.promptAssembly =
+      options.promptAssembly ??
+      createPromptAssembly({
+        system: options.system === undefined ? [] : [{ name: "agent", content: options.system }],
+        tools: options.tools === undefined ? [] : [{ name: "agent", tools: options.tools }],
+      });
     this.stateData = createWritableAgentState({
       ...options,
+      system: this.promptAssembly.initialSystem,
+      tools: this.promptAssembly.initialTools.slice(),
       toolDeadlineMs,
     });
     this.inboxData = new AgentInbox(options.inbox);
@@ -556,6 +570,22 @@ export class Agent {
       contextManager,
       logger: this.logger,
       loggerMetadata: this.loggerMetadata,
+      assemblePrompt: async () => {
+        try {
+          const prompt = await this.promptAssembly.assemble({ signal });
+          this.stateData.system = prompt.system;
+          this.stateData.tools = prompt.tools;
+          return prompt;
+        } catch (error) {
+          if (signal.aborted) {
+            throw error;
+          }
+          this.log("error", "agent.prompt_assembly_failed", {
+            errorType: error instanceof Error ? error.name : typeof error,
+          });
+          throw error;
+        }
+      },
       ...hooks,
     };
   }

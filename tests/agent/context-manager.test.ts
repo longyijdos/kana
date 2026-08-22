@@ -16,6 +16,7 @@ import {
   type ModelContext,
   type ModelMetadata,
 } from "@/core";
+import { createRuntimeContextMessage } from "../../src/agent/prompt-assembly";
 import { messageIdentityForTest } from "../helpers/messages";
 
 const MODEL_METADATA: ModelMetadata = {
@@ -166,6 +167,102 @@ describe("ContextManager", () => {
     });
     expect(JSON.stringify(policyInput)).not.toContain("private chain of thought");
     expect(JSON.stringify(policyInput)).not.toContain("structured host result");
+  });
+
+  test("keeps runtime context out of summaries and reprojects covered snapshots", async () => {
+    let policyInput: CompactPolicyInput | undefined;
+    const manager = new ContextManager({
+      contextLimit: 4_000,
+      maxOutputTokens: 500,
+      targetRatio: 0.55,
+      compactPolicy: (input) => {
+        policyInput = structuredClone(input);
+        return { summary: "Earlier conversation." };
+      },
+    });
+    const previousRuntimeContext = createRuntimeContextMessage({
+      source: "environment",
+      content: "current date: 2026-08-21",
+    });
+    const runtimeContext = createRuntimeContextMessage({
+      source: "environment",
+      content: "current date: 2026-08-22",
+    });
+    const messages: Message[] = [
+      {
+        ...messageIdentityForTest("user"),
+        role: "user",
+        content: "x".repeat(9_000),
+      },
+      previousRuntimeContext,
+      runtimeContext,
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Old answer" }],
+      },
+      {
+        ...messageIdentityForTest("user"),
+        role: "user",
+        content: "Recent question",
+      },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Recent answer" }],
+      },
+    ];
+
+    const prepared = await manager.prepareForModel(
+      { messages },
+      { runtimeContext: [{ source: "environment", content: "current date: 2026-08-22" }] },
+    );
+
+    expect(prepared.compaction).toMatchObject({
+      coveredMessageCount: 4,
+      compactedMessageCount: 4,
+    });
+    expect(policyInput?.messages).toEqual([messages[0], messages[3]]);
+    expect(JSON.stringify(policyInput)).not.toContain("runtime_context");
+    expect(prepared.context.messages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        provenance: { kind: "context_summary" },
+        content: expect.stringContaining("Earlier conversation."),
+      }),
+      runtimeContext,
+      ...messages.slice(4),
+    ]);
+
+    const inactive = await manager.prepareForModel({ messages }, { runtimeContext: [] });
+    expect(inactive.context.messages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        provenance: { kind: "context_summary" },
+        content: expect.stringContaining("Earlier conversation."),
+      }),
+      ...messages.slice(4),
+    ]);
+  });
+
+  test("projects only the latest active runtime context before compaction", async () => {
+    const manager = new ContextManager({
+      contextLimit: 128_000,
+      maxOutputTokens: 16_000,
+    });
+    const dayOne = createRuntimeContextMessage({ source: "environment", content: "day one" });
+    const dayTwo = createRuntimeContextMessage({ source: "environment", content: "day two" });
+    const context = { messages: [dayOne, dayTwo] };
+
+    const active = await manager.prepareForModel(context, {
+      runtimeContext: [{ source: "environment", content: "day two" }],
+    });
+    expect(active.context.messages).toEqual([dayTwo]);
+
+    const inactive = await manager.prepareForModel(context, { runtimeContext: [] });
+    expect(inactive.context.messages).toEqual([]);
   });
 
   test("defers threshold compaction when no complete turn is available", async () => {

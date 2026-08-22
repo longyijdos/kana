@@ -16,8 +16,13 @@ afterEach(() => {
 
 describe("Kana remember tool", () => {
   test("describes proactive durable-memory use", () => {
-    expect(createRememberTool().description).toContain("Proactively save non-sensitive durable");
-    expect(createRememberTool().description).toContain("meaningful milestones");
+    const description = createRememberTool().description;
+
+    expect(description).toContain("Proactively save non-sensitive durable");
+    expect(description).toContain("meaningful milestones");
+    expect(description).toContain("Record it even when the current response already handles");
+    expect(description).toContain("Default to project scope");
+    expect(description).toContain("Do not save secrets");
   });
 
   test("records a project memory without exposing its file path", async () => {

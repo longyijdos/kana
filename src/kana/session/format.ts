@@ -342,7 +342,9 @@ export function parseTimelineEntry(
 function findFirstPrompt(messages: Message[]): string | undefined {
   return messages.find(
     (message): message is UserMessage =>
-      message.role === "user" && message.provenance.kind !== "recovery",
+      message.role === "user" &&
+      message.provenance.kind !== "recovery" &&
+      message.provenance.kind !== "runtime_context",
   )?.content;
 }
 
@@ -496,6 +498,7 @@ function isUserMessageProvenance(value: unknown): boolean {
     kind === "user_input" ||
     kind === "scheduled_input" ||
     kind === "recovery" ||
+    kind === "runtime_context" ||
     kind === "context_summary" ||
     kind === "compaction_request"
   );
@@ -517,6 +520,9 @@ function isMessageProvenance(value: unknown): value is MessageProvenance {
   const provenance = value as Record<string, unknown>;
   if (provenance.kind === "scheduled_input") {
     return provenance.origin === "user" || provenance.origin === "agent";
+  }
+  if (provenance.kind === "runtime_context") {
+    return typeof provenance.source === "string" && provenance.source.length > 0;
   }
   return (
     provenance.kind === "user_input" ||

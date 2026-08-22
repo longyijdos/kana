@@ -43,6 +43,9 @@ function addHistoryMessage(
 ): void {
   switch (message.role) {
     case "user":
+      if (message.provenance.kind === "runtime_context") {
+        break;
+      }
       transcript.addChild(
         message.provenance.kind !== "user_input"
           ? new TextBlock(formatUserMessage(message), { color: tuiTheme.muted })
@@ -68,6 +71,8 @@ function formatUserMessage(message: Extract<Message, { role: "user" }>): string 
       return "Previous agent run was interrupted; recorded history was recovered safely.";
     case "user_input":
       return message.content;
+    case "runtime_context":
+      return "Runtime context updated.";
     case "compaction_request":
     case "context_summary":
       return message.content;
