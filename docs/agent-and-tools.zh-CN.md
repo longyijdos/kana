@@ -71,7 +71,7 @@ agent_start
 发出 agent_end，返回本次新增消息
 ```
 
-Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。回合输入只在完整的 model/tool turn 结束并确认还能开始下一回合后消费；中止或 turn limit 会把它留给 Agent owner 降级处理。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`。Prompt assembly 会在每次模型调用前解析 context 和 capability 自己管理的工具 section。解析出的工具会同时声明给该请求并交给对应 ToolRuntime；只有之后的模型步骤才能观察刷新后的集合。并行策略在每个 run 开始时解析一次：`AgentConfig.parallelToolCalls`（Kana 对应 `agent.parallel_tool_calls`）必须启用，且模型 metadata 的 `supportsParallelToolCalls` 必须为真；否则传给 provider 的 `ModelContext.parallelToolCalls` 为假，Runtime 也逐个执行调用。允许并行时，Runtime 按助手内容顺序划分执行组：只有相邻且显式声明 `parallel` 的调用会同组并行，`exclusive`、未声明、未知或元数据无效的工具都是屏障，不会被只读工作跨越。
+Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。回合输入只在完整的 model/tool turn 结束并确认还能开始下一回合后消费；中止或 turn limit 会把它留给 Agent owner 降级处理。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`。Prompt assembly 会在每次模型调用前解析 context 和 capability 自己管理的工具 section。解析出的工具会同时声明给该请求并交给对应 ToolRuntime；只有之后的模型步骤才能观察刷新后的集合。并行策略在每个 run 开始时解析一次：`AgentConfig.parallelToolCalls`（Kana 对应 `agent.parallel_tool_calls`）必须启用，且模型 metadata 的 `supportsParallelToolCalls` 必须为真；否则传给 provider 的 `ModelContext.parallelToolCalls` 为假，Runtime 也逐个执行调用。`AgentConfig.maxParallelToolCalls`（Kana 对应 `agent.max_parallel_tool_calls`）始终要求正整数，默认值为 4，但只在并行策略实际生效时参与调度。允许并行时，Runtime 按助手内容顺序划分执行组：只有相邻且显式声明 `parallel` 的调用会同组并行，`exclusive`、未声明、未知或元数据无效的工具都是屏障，不会被只读工作跨越。
 
 只有助手消息以 `toolUse` 正常结束时，工具才会执行。长度截断的消息即使带有工具调用也不会执行。发生 provider error 且助手没有任何内容时，该空助手消息不会写入历史；中止的消息会移除其中未执行的工具调用，但若仍有文本或 thinking 内容则保留该部分。
 
@@ -97,7 +97,7 @@ provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededEr
 
 Agent 持有一个仅存在于内存的 inbox，其中有 `next-step` 和 `next-turn` 两条 lane。活动 run 的 `steer(userMessage)` 把原始带 ID 消息放入 `next-step`；下一个可用 turn 边界先写 journal，再按 MessageId claim，随后发出 `turn_input` 并返回 `consumed`。journal commit 一旦开始，该项会保持 reservation，不能被取消或 inbox clear 删除，直到按身份校验的 claim 完成，因此 shutdown 不会让 durable input 与实际 claim 的消息错位。中止或 turn limit 会把未 claim 的 steering 移到 `next-turn` 尾部，不更换 ID，并返回 `deferred`。Tab 后续输入和到期定时消息直接进入 `next-turn`。`ConversationRuntime` 只编排该 lane 何时可启动新 run，并发布只读前端快照，不再生成第二套队列身份。
 
-journal 的顺序是协议约束：完整 assistant 消息必须先持久化，随后才能执行其中引用的工具；每个工具结果完成后单独持久化；context checkpoint 在 adopt 前持久化；最后写入 run 终态。`onRunCommitted` 在 journal 已闭合后执行聚合后处理，不再承担 Kana 的 session 消息落盘。只有 journal 与后处理都成功，监听器和 stream 才会收到最终 `agent_end`。任一失败都会拒绝 stream，而不会先发布成功终态；整个阶段都属于 active run，因此 `isRunning` 保持 `true`，新运行被拒绝，`waitForIdle()` 继续等待。
+journal 的顺序是协议约束：完整 assistant 消息必须先持久化，随后才能执行其中引用的工具；串行工具结果在完成后持久化，并行组结果则在对应槽位就绪后按模型调用顺序持久化；context checkpoint 在 adopt 前持久化；最后写入 run 终态。`onRunCommitted` 在 journal 已闭合后执行聚合后处理，不再承担 Kana 的 session 消息落盘。只有 journal 与后处理都成功，监听器和 stream 才会收到最终 `agent_end`。任一失败都会拒绝 stream，而不会先发布成功终态；整个阶段都属于 active run，因此 `isRunning` 保持 `true`，新运行被拒绝，`waitForIdle()` 继续等待。
 
 运行期间，`Agent.state` 暴露：模型、系统提示词、工具、历史、inbox 快照、`isRunning`、当前流式助手消息、尚未结束的工具调用 ID，以及最终错误。`abort()` 中止该运行的 `AbortController`；`reset()` 仅能在空闲时清空历史、inbox 和运行状态。普通事件监听器属于 observer：每个监听器收到独立事件副本，监听器异常会记录为 `agent.listener_failed` 并与 Agent 执行隔离；能够控制工具执行的逻辑应使用 `beforeToolExecution`。
 
@@ -110,13 +110,13 @@ journal 的顺序是协议约束：完整 assistant 消息必须先持久化，�
 3. 调用可选的 `beforeToolExecution` 钩子。Kana TUI 在此显示审批界面；即使执行组可并行，审批钩子也始终串行进入。
 4. 检查中止信号，发出 `tool_execution_start`，为本次调用创建独立的 `AbortSignal`，再执行工具；本次调用的有效 deadline 从这里开始计时。
 5. 工具可调用 `context.update(partialResult)`；ToolRuntime 通过内部串行队列按调用顺序逐个发出更新，并在结束前等待监听器完成。
-6. 规范化返回值，先提交 `ToolResultMessage`，再发出 `tool_execution_end`。因此外部观察者不会先看到一个尚未进入 journal 的成功结果。
+6. 规范化返回值，为物理终态发出 `tool_execution_end`，再把该终态交给执行组协调器按序提交结果。这个事件不表示结果已经持久化；成功的 run 终态才提供该保证。
 
 参数校验失败和工具抛出的异常不会使循环本身抛出：它们成为 `isError: true` 的工具结果，模型能在下一回合看到失败原因。审批钩子返回 `cancel` 时默认中止整个运行，并为之后尚未执行的同消息工具补充“已取消”错误结果。中止发生在执行前也遵循同样的补全规则。
 
-运行中止或工具 deadline 到期时，ToolRuntime 会中止调用级 signal，并等待固定且有限的取消宽限期。工具在宽限期内退出时，结果分别记录为 `canceled` 或 `timed_out`；无论工具随后返回还是抛错，都不会覆盖这个中止结果。若工具忽略 signal，runtime 会停止接收其 update，将持久化结果标记为 `status: "unknown"`，并终止当前 Agent run。该结果明确要求不得自动重试，因为脱离 runtime 的调用仍可能产生副作用；其迟到的完成只产生不含参数和结果的结构化诊断日志。deadline 与宽限期都使用正整数毫秒。工具的 `execution.deadlineMs` 优先；未声明时使用 Agent 默认值。框架默认是 300000 毫秒，Kana 产品默认是 660000 毫秒，并可通过 `agent.tool_deadline_ms` 覆盖。
+运行中止或工具 deadline 到期时，ToolRuntime 会中止调用级 signal，并等待固定且有限的取消宽限期。在并行组中，这个决定会先立即停止 pool 补充并中止活动 sibling，再等待触发调用 drain；排队调用不会启动，而是得到 canceled 结果。工具在宽限期内退出时，结果分别记录为 `canceled` 或 `timed_out`；无论工具随后返回还是抛错，都不会覆盖这个中止结果。若工具忽略 signal，runtime 会停止接收其 update，将持久化结果标记为 `status: "unknown"`，并终止当前 Agent run。该结果明确要求不得自动重试，因为脱离 runtime 的调用仍可能产生副作用；其迟到的完成只产生不含参数和结果的结构化诊断日志。deadline 与宽限期都使用正整数毫秒。工具的 `execution.deadlineMs` 优先；未声明时使用 Agent 默认值。框架默认是 300000 毫秒，Kana 产品默认是 660000 毫秒，并可通过 `agent.tool_deadline_ms` 覆盖。
 
-并行组的工具事件仍通过同一串行事件队列发布。每个结果在实际完成时进入串行 commit 队列，先单独写入 journal，再发出对应的 `tool_execution_end`；下一轮模型按这一完成顺序接收工具结果，并用 `toolCallId` 与原始调用关联。组内任一调用要求中止 run 时，其余活动调用也会收到中止 signal；后续尚未开始的执行组只写入 canceled 结果。`list`、`glob`、`grep`、`read` 声明为 `parallel`；写入、Shell、记忆、调度以及未声明的第三方/MCP 工具默认 `exclusive`。
+相邻并行组通过有界滚动池运行。调用按模型顺序领取并进入串行审批，同时在途的调用 body 不超过 `maxParallelToolCalls`。每个 start、partial update 和终态事件仍以 `toolCallId` 关联；`tool_execution_end` 跟随物理完成，因此后面的快速调用可以早于前面的慢调用显示完成。持久化提交则独立等待按模型顺序排列的结果槽位，使 session 历史与下一次模型请求都保持确定顺序。助手工具调用消息在执行前已经持久化，因此进程若在实时终态与结果提交之间退出，恢复时会把该调用记为 `unknown`，而不会自动重试。run abort 或内部调度失败会停止补充并中止活动 sibling；已启动调用被 drain 到明确终态或 unknown，尚未启动的调用得到 canceled 结果。池的开始、结束和异常 drain 诊断只包含聚合计数。`list`、`glob`、`grep`、`read` 声明为 `parallel`；写入、Shell、记忆、调度以及未声明的第三方/MCP 工具默认 `exclusive`。
 
 工具接口为：
 

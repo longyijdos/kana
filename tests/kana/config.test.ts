@@ -106,6 +106,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("image_input = true");
     expect(installedConfigExample).toContain("tool_deadline_ms = 660000");
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
+    expect(installedConfigExample).toContain("max_parallel_tool_calls = 4");
     expect(installedConfigExample).toContain("hyperlinks = true");
     expect(installedConfigExample).toContain("render_latex = true");
     expect(installedConfigExample).toContain("render_mermaid = true");
@@ -251,6 +252,7 @@ describe("Kana config", () => {
         "max_turns = 4",
         "tool_deadline_ms = 120000",
         "parallel_tool_calls = false",
+        "max_parallel_tool_calls = 2",
         "context_limit = 200000",
         "",
         "[approval]",
@@ -294,6 +296,7 @@ describe("Kana config", () => {
         maxTurns: 4,
         toolDeadlineMs: 120_000,
         parallelToolCalls: false,
+        maxParallelToolCalls: 2,
         contextLimit: 200000,
       },
       approval: {
@@ -525,6 +528,21 @@ describe("Kana config", () => {
     writeFileSync(path.join(home, "config.toml"), '[agent]\nparallel_tool_calls = "yes"\n');
 
     expect(() => loadKanaConfig(env)).toThrow("agent.parallel_tool_calls must be a boolean.");
+  });
+
+  test("requires agent.max_parallel_tool_calls to be a positive integer", () => {
+    for (const value of [0, -1, 1.5]) {
+      const env = createTempEnv();
+      const { home } = getKanaConfigPaths(env);
+      writeFileSync(
+        path.join(home, "config.toml"),
+        `[agent]\nmax_parallel_tool_calls = ${value}\n`,
+      );
+
+      expect(() => loadKanaConfig(env)).toThrow(
+        "agent.max_parallel_tool_calls must be a positive integer.",
+      );
+    }
   });
 
   test("requires tui.smooth_text_streaming to be a boolean", () => {

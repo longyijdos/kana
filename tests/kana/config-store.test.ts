@@ -83,6 +83,7 @@ describe("Kana config store", () => {
       draft.model.deepseek.imageInput = false;
       draft.agent.toolDeadlineMs = 120_000;
       draft.agent.parallelToolCalls = false;
+      draft.agent.maxParallelToolCalls = 2;
       draft.agent.contextLimit = undefined;
       draft.tui.hyperlinks = false;
       draft.tui.renderLatex = false;
@@ -99,6 +100,7 @@ describe("Kana config store", () => {
     expect(updated).toContain("image_input = false");
     expect(updated).toContain("tool_deadline_ms = 120000");
     expect(updated).toContain("parallel_tool_calls = false");
+    expect(updated).toContain("max_parallel_tool_calls = 2");
     expect(updated).toContain(
       "[tui]\nhyperlinks = false\nrender_latex = false\nrender_mermaid = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false",
     );

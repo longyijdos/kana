@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import path from "node:path";
 
+import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "@/agent";
 import { LOG_LEVELS, type LogLevel } from "@/logging";
 import type {
   DeepSeekReasoningEffort,
@@ -66,6 +67,7 @@ type KanaAgentConfig = {
   maxTurns: number;
   toolDeadlineMs: number;
   parallelToolCalls: boolean;
+  maxParallelToolCalls: number;
   contextLimit?: number;
 };
 
@@ -201,6 +203,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     // bash can terminate the process tree and report its own timeout result.
     toolDeadlineMs: 11 * 60 * 1000,
     parallelToolCalls: true,
+    maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
     contextLimit: undefined,
   },
   approval: {
@@ -372,6 +375,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       max_turns: config.agent.maxTurns,
       tool_deadline_ms: config.agent.toolDeadlineMs,
       parallel_tool_calls: config.agent.parallelToolCalls,
+      max_parallel_tool_calls: config.agent.maxParallelToolCalls,
       context_limit: config.agent.contextLimit,
     },
     approval: {
@@ -425,6 +429,7 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `max_turns = ${config.agent.maxTurns}`,
     `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
     `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
+    `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
     "# context_limit = 200000",
     "",
     "[approval]",
@@ -629,6 +634,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         agent.parallel_tool_calls,
         defaults.agent.parallelToolCalls,
         "agent.parallel_tool_calls",
+      ),
+      maxParallelToolCalls: readPositiveInteger(
+        agent.max_parallel_tool_calls,
+        defaults.agent.maxParallelToolCalls,
+        "agent.max_parallel_tool_calls",
       ),
       contextLimit: readOptionalPositiveInteger(
         agent.context_limit,

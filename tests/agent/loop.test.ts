@@ -759,9 +759,10 @@ describe("runAgentLoop", () => {
     });
   });
 
-  test("passes parallel tool results to the next model turn in completion order", async () => {
+  test("keeps parallel completion live while committing results in model order", async () => {
     const model = new ParallelToolCallModel();
     const committedToolCallIds: string[] = [];
+    const completedToolCallIds: string[] = [];
     const tool = {
       ...addTool,
       execution: {
@@ -790,18 +791,23 @@ describe("runAgentLoop", () => {
           }
         },
       },
-      () => {},
+      (event) => {
+        if (event.type === "tool_execution_end") {
+          completedToolCallIds.push(event.toolCallId);
+        }
+      },
     );
 
-    expect(committedToolCallIds).toEqual(["call_2", "call_1"]);
+    expect(completedToolCallIds).toEqual(["call_2", "call_1"]);
+    expect(committedToolCallIds).toEqual(["call_1", "call_2"]);
     expect(
       messages.filter((message) => message.role === "tool").map((message) => message.toolCallId),
-    ).toEqual(["call_2", "call_1"]);
+    ).toEqual(["call_1", "call_2"]);
     expect(
       model.contexts[1]?.messages
         .filter((message) => message.role === "tool")
         .map((message) => message.toolCallId),
-    ).toEqual(["call_2", "call_1"]);
+    ).toEqual(["call_1", "call_2"]);
   });
 
   test("turns invalid tool arguments into error tool results", async () => {

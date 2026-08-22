@@ -49,7 +49,7 @@ Headless mode has no approval UI. By default it executes tools trusted by `appro
 
 ## The `--json` protocol
 
-With `--json`, stdout contains exactly one JSON object per line. Every event has `schema_version: 1`; consumers should dispatch on `type` and ignore unfamiliar additional fields. The headless frontend projects this protocol from internal events instead of serializing `AgentEvent` directly, so internal refactoring does not silently become a public protocol change.
+With `--json`, stdout contains exactly one JSON object per line. Every event has `schema_version: 2`; consumers should dispatch on `type` and ignore unfamiliar additional fields. The headless frontend projects this protocol from internal events instead of serializing `AgentEvent` directly, so internal refactoring does not silently become a public protocol change.
 
 | `type` | Primary fields | Meaning |
 | --- | --- | --- |
@@ -61,12 +61,14 @@ With `--json`, stdout contains exactly one JSON object per line. Every event has
 | `assistant.completed` | `text`, `usage?` | One complete assistant message |
 | `tool.started` | `tool_call_id`, `name`, `arguments` | Tool execution started |
 | `tool.updated` | `tool_call_id`, `name`, `partial_result` | Tool progress update |
-| `tool.completed` | `tool_call_id`, `name`, `result`, `is_error` | A tool result was committed |
+| `tool.completed` | `tool_call_id`, `name`, `result`, `is_error` | A tool call reached its physical terminal outcome |
 | `model_turn.completed` | `turn`, `stop_reason?`, `usage?` | A model turn ended |
 | `context.compaction_started` | token estimate and limit | Context compaction started |
 | `context.compacted` | compaction statistics and `usage?` | The compaction checkpoint was committed |
-| `run.completed` | `outcome`, `usage?` | The run reached a terminal outcome |
+| `run.completed` | `outcome`, `usage?` | The run, ordered message commits, and post-processing completed |
 | `run.failed` | `error` | Infrastructure or persistence failed during the run |
 | `error` | `phase`, `error` | Startup failed before an Agent run began |
+
+Schema v2 changes `tool.completed` from a commit acknowledgement to an execution-lifecycle event. It follows physical completion, cancellation, or an explicit unknown outcome and does not imply that the tool result entered the journal. A later journal or post-processing failure therefore emits `run.failed` even if one or more `tool.completed` events are already visible; consumers that require a durable complete run must wait for `run.completed`.
 
 `usage` contains `input_tokens`, `output_tokens`, and `total_tokens`, with optional `cache_read_input_tokens`, `cache_miss_input_tokens`, and `reasoning_tokens`. `run.completed.usage` is the sum of model turns and context compactions in this run. Tool `arguments`, `partial_result`, and `result` are explicitly requested machine output and may contain data processed by tools; do not upload or place JSONL in public logs without review.

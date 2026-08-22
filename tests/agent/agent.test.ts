@@ -186,6 +186,18 @@ describe("Agent", () => {
     }
   });
 
+  test("rejects invalid parallel tool limits during construction", () => {
+    for (const maxParallelToolCalls of [0, -1, 1.5]) {
+      expect(
+        () =>
+          new Agent({
+            model: new TextModel(),
+            maxParallelToolCalls,
+          }),
+      ).toThrow("maxParallelToolCalls must be a positive integer.");
+    }
+  });
+
   test("enables parallel tool calls only when requested and supported", async () => {
     const supportedModel = new TextModel();
     const supportedAgent = new Agent({
@@ -245,6 +257,7 @@ describe("Agent", () => {
         requested: true,
         supported: true,
         enabled: true,
+        maxParallelToolCalls: 4,
       },
     });
     expect(records[1]).toEqual({

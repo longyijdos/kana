@@ -21,7 +21,11 @@ import {
   type PromptContextSnapshot,
   projectRuntimeContextMessages,
 } from "./prompt-assembly";
-import { type BeforeToolExecutionHook, ToolRuntime } from "./tool-runtime";
+import {
+  type BeforeToolExecutionHook,
+  resolveMaxParallelToolCalls,
+  ToolRuntime,
+} from "./tool-runtime";
 
 export type { BeforeToolExecutionHook } from "./tool-runtime";
 
@@ -40,6 +44,7 @@ export type AgentLoopConfig = {
   maxTurns?: number;
   toolDeadlineMs?: number;
   parallelToolCalls?: boolean;
+  maxParallelToolCalls?: number;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
   contextManager?: ContextManager;
@@ -70,6 +75,7 @@ export async function runAgentLoop(
   emit: AgentEventSink,
 ): Promise<Message[]> {
   assertValidMaxTurns(config.maxTurns);
+  const maxParallelToolCalls = resolveMaxParallelToolCalls(config.maxParallelToolCalls);
   // Resolve once per run so provider advertisement and runtime scheduling
   // cannot diverge, and unsupported models always fail closed to serial use.
   const parallelToolCalls =
@@ -204,6 +210,7 @@ export async function runAgentLoop(
       {
         tools: currentContext.tools,
         parallelToolCalls,
+        maxParallelToolCalls,
         signal: config.signal,
         beforeToolExecution: config.beforeToolExecution,
         defaultDeadlineMs: config.toolDeadlineMs,
