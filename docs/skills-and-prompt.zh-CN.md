@@ -77,7 +77,7 @@ enabled = ["release-check", "database-migrations"]
 </runtime_context>
 ```
 
-Agent 会按 `source` 将每个动态 section 与历史中最近的同源快照比较；只有内容变化时才追加并写入 journal，未变化的值不会增加历史 token。这些内部消息会持久化以支持恢复，但不会显示在 transcript 中。上下文压缩不总结这些消息；checkpoint 覆盖它们时，每个来源最新的已覆盖快照会紧接摘要重新投影给模型。
+Agent 会按 `source` 将每个动态 section 与历史中最近的同源状态比较；只有内容变化时才追加并写入新快照，section 停止渲染时则写入一次 inactive marker。这份持久历史保持追加式，以支持恢复和审计；内部消息不会显示在 transcript 中。每次模型请求前，Kana 只投影每个来源当前最新且仍 active 的快照：旧值和 inactive marker 都不会发送给模型，未变化的 active 快照则保留原位置以复用 prompt cache。上下文压缩不总结 runtime context，并只在需要时把当前 active 快照重新投影到摘要后。
 
 如果 memory 启用且对应长期文件非空，Kana 在稳定 system 前缀开头写入 `<memory>`，内部区分 `global` 与 `project` 引用块。记忆文本会 XML 转义，避免其中的 `<`、`&` 等改变宿主标签结构；但它仍是模型上下文中的不可信数据，记忆合并提示要求将其作为数据而非指令。Memory 在 Agent 构建时读取，而不会在每次 `remember` 后把不断增长的完整文件追加到历史中，从而避免重复 token。何时保存、保存什么的 guidance 位于 `remember` 工具 description，因此只会在该能力可用时声明给模型。
 

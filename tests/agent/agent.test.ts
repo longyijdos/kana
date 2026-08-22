@@ -484,7 +484,48 @@ describe("Agent", () => {
             (message) => message.role === "user" && message.provenance.kind === "runtime_context",
           ).length,
       ),
-    ).toEqual([1, 1, 2]);
+    ).toEqual([1, 1, 1]);
+    expect(
+      model.contexts[2]?.messages.filter(
+        (message) => message.role === "user" && message.provenance.kind === "runtime_context",
+      ),
+    ).toEqual([snapshots[1]]);
+  });
+
+  test("removes inactive runtime context from model input without rewriting history", async () => {
+    const model = new TextModel("done");
+    let capabilityContext: string | undefined = "capability enabled";
+    const agent = new Agent({
+      model,
+      promptAssembly: createPromptAssembly({
+        context: [{ name: "optional-capability", render: () => capabilityContext }],
+      }),
+    });
+
+    await agent.prompt("first");
+    capabilityContext = undefined;
+    await agent.prompt("second");
+    await agent.prompt("third");
+
+    const durableSnapshots = agent.state.messages.filter(
+      (message) => message.role === "user" && message.provenance.kind === "runtime_context",
+    );
+    expect(durableSnapshots.map((message) => message.content)).toEqual([
+      [
+        '<runtime_context source="optional-capability">',
+        "capability enabled",
+        "</runtime_context>",
+      ].join("\n"),
+      '<runtime_context source="optional-capability" status="inactive" />',
+    ]);
+    expect(
+      model.contexts.map((context) =>
+        context.messages.filter(
+          (message) => message.role === "user" && message.provenance.kind === "runtime_context",
+        ),
+      ),
+    ).toEqual([[durableSnapshots[0]], [], []]);
+    expect(JSON.stringify(model.contexts[1])).not.toContain("capability enabled");
   });
 
   test("cancels prompt assembly before starting model I/O", async () => {
