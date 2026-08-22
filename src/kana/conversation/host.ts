@@ -469,6 +469,9 @@ export class KanaConversationHost<TConfiguration = never> {
     return {
       ...options,
       additionalTools: this.mcpTools,
+      // Prompt assembly reads the host-owned MCP snapshot at each model step;
+      // Agent construction still receives the initial list for synchronous state.
+      resolveAdditionalTools: () => this.mcpTools,
       env: this.env,
       launchMode: this.launchMode,
       logger: agentLogger,

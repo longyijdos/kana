@@ -11,6 +11,7 @@ import {
   AssistantEventStream,
   type AssistantMessage,
   ContextWindowExceededError,
+  createMessageIdentity,
   type Message,
   type Model,
   type ModelContext,
@@ -166,6 +167,71 @@ describe("ContextManager", () => {
     });
     expect(JSON.stringify(policyInput)).not.toContain("private chain of thought");
     expect(JSON.stringify(policyInput)).not.toContain("structured host result");
+  });
+
+  test("keeps runtime context out of summaries and reprojects covered snapshots", async () => {
+    let policyInput: CompactPolicyInput | undefined;
+    const manager = new ContextManager({
+      contextLimit: 4_000,
+      maxOutputTokens: 500,
+      targetRatio: 0.55,
+      compactPolicy: (input) => {
+        policyInput = structuredClone(input);
+        return { summary: "Earlier conversation." };
+      },
+    });
+    const runtimeContext: Message = {
+      ...createMessageIdentity({ kind: "runtime_context", source: "environment" }),
+      role: "user",
+      content: [
+        '<runtime_context source="environment">',
+        "current date: 2026-08-22",
+        "</runtime_context>",
+      ].join("\n"),
+    };
+    const messages: Message[] = [
+      {
+        ...messageIdentityForTest("user"),
+        role: "user",
+        content: "x".repeat(9_000),
+      },
+      runtimeContext,
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Old answer" }],
+      },
+      {
+        ...messageIdentityForTest("user"),
+        role: "user",
+        content: "Recent question",
+      },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Recent answer" }],
+      },
+    ];
+
+    const prepared = await manager.prepareForModel({ messages });
+
+    expect(prepared.compaction).toMatchObject({
+      coveredMessageCount: 3,
+      compactedMessageCount: 3,
+    });
+    expect(policyInput?.messages).toEqual([messages[0], messages[2]]);
+    expect(JSON.stringify(policyInput)).not.toContain("runtime_context");
+    expect(prepared.context.messages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        provenance: { kind: "context_summary" },
+        content: expect.stringContaining("Earlier conversation."),
+      }),
+      runtimeContext,
+      ...messages.slice(3),
+    ]);
   });
 
   test("defers threshold compaction when no complete turn is available", async () => {

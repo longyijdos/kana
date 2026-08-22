@@ -21,6 +21,12 @@ export {
 } from "./inbox";
 export { runAgentLoop } from "./loop";
 export { createModelCompactPolicy } from "./model-compact-policy";
+export {
+  createPromptAssembly,
+  PromptAssembly,
+  type PromptSystemSection,
+  type PromptToolSection,
+} from "./prompt-assembly";
 export { AgentEventStream } from "./stream";
 export type {
   BeforeToolExecutionHook,

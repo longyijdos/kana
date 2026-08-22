@@ -23,6 +23,7 @@ import {
   resetKanaConfig,
   saveKanaMemory,
 } from "@/kana";
+import { buildKanaPromptAssembly } from "../../src/kana/prompt";
 
 const tempDirs: string[] = [];
 
@@ -688,7 +689,7 @@ describe("Kana config", () => {
     }
   });
 
-  test("formats environment context for the system prompt", () => {
+  test("formats environment context for model input", () => {
     expect(
       formatKanaEnvironmentContext({
         cwd: "/repo",
@@ -708,26 +709,37 @@ describe("Kana config", () => {
     );
   });
 
-  test("builds the system prompt with environment context", () => {
+  test("keeps environment context dynamic and outside the stable system prompt", async () => {
     const env = createTempEnv();
     const previousKanaHome = process.env.KANA_HOME;
     process.env.KANA_HOME = getKanaConfigPaths(env).home;
 
     try {
-      const prompt = buildKanaSystemPrompt({
+      const assembly = buildKanaPromptAssembly({
         cwd: "/repo",
         now: new Date("2026-06-11T16:30:00.000Z"),
         platform: "darwin",
         timezone: "Asia/Shanghai",
       });
+      const prompt = await assembly.assemble({ signal: new AbortController().signal });
 
-      expect(prompt).toContain(
+      expect(prompt.system).toContain(
         "You are a concise, practical assistant working in the user's current environment.",
       );
-      expect(prompt).toContain("<cwd>/repo</cwd>");
-      expect(prompt).toContain("<platform>darwin</platform>");
-      expect(prompt).toContain("<current_date>2026-06-12</current_date>");
-      expect(prompt).toContain("<timezone>Asia/Shanghai</timezone>");
+      expect(prompt.system).not.toContain("<environment_context>");
+      expect(prompt.context).toEqual([
+        {
+          source: "environment",
+          content: [
+            "<environment_context>",
+            "  <cwd>/repo</cwd>",
+            "  <platform>darwin</platform>",
+            "  <current_date>2026-06-12</current_date>",
+            "  <timezone>Asia/Shanghai</timezone>",
+            "</environment_context>",
+          ].join("\n"),
+        },
+      ]);
     } finally {
       restoreEnv("KANA_HOME", previousKanaHome);
     }
@@ -755,7 +767,7 @@ describe("Kana config", () => {
     );
   });
 
-  test("uses only built-in instructions and environment context in clean mode", () => {
+  test("uses only built-in instructions in clean mode", () => {
     const env = createTempEnv();
     const cwd = createTempDir();
     const paths = getKanaConfigPaths(env);
@@ -781,7 +793,7 @@ describe("Kana config", () => {
     expect(prompt).toContain(
       "You are a concise, practical assistant working in the user's current environment.",
     );
-    expect(prompt).toContain(`<cwd>${cwd}</cwd>`);
+    expect(prompt).not.toContain("<environment_context>");
     expect(prompt).not.toContain("Global instructions.");
     expect(prompt).not.toContain("Project instructions.");
     expect(prompt).not.toContain("Global memory.");
@@ -790,15 +802,11 @@ describe("Kana config", () => {
     expect(prompt).not.toContain("custom-skill");
   });
 
-  test("guides remember usage when memory is enabled", () => {
+  test("keeps remember guidance out of the stable system prompt", () => {
     const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env: createTempEnv() });
 
-    expect(prompt).toContain("<remember_tool_guidance>");
-    expect(prompt).toContain("Proactively use remember");
-    expect(prompt).toContain("project milestones that affect the current state or next steps");
-    expect(prompt).toContain("even when a normal response fully handles the current turn");
-    expect(prompt).toContain("Default to project scope.");
-    expect(prompt).toContain("Do not record secrets");
+    expect(prompt).not.toContain("<remember_tool_guidance>");
+    expect(prompt).not.toContain("Proactively use remember");
   });
 
   test("does not inject memory when memory is disabled", () => {
@@ -846,9 +854,7 @@ describe("Kana config", () => {
           "You are a concise, practical assistant working in the user's current environment.",
         ),
       ).toBeLessThan(system.indexOf("Custom system prompt."));
-      expect(system).toContain("<environment_context>");
-      expect(system).toContain(`<cwd>${process.cwd()}</cwd>`);
-      expect(system).toContain(`<platform>${process.platform}</platform>`);
+      expect(system).not.toContain("<environment_context>");
     } finally {
       restoreEnv("KANA_HOME", previousKanaHome);
       restoreEnv("KANA_DEEPSEEK_KEY", previousKey);
@@ -885,7 +891,7 @@ describe("Kana config", () => {
     expect(prompt.indexOf("Global instructions.")).toBeLessThan(
       prompt.indexOf("Project instructions."),
     );
-    expect(prompt).toContain("<environment_context>");
+    expect(prompt).not.toContain("<environment_context>");
   });
 
   test("uses project AGENTS.md with the default prompt when global instructions are missing", () => {

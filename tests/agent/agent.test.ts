@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Agent } from "../../src/agent";
+import { Agent, createPromptAssembly } from "../../src/agent";
 import type { AgentEvent } from "../../src/agent/events";
 import type { ModelContext } from "../../src/core/context";
 import type { AssistantMessage, Message } from "../../src/core/messages";
@@ -430,6 +430,93 @@ describe("Agent", () => {
       "publish",
     ]);
     expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+  });
+
+  test("journals changed runtime context before model I/O and skips unchanged snapshots", async () => {
+    const model = new TextModel("done");
+    const runtimeContextModelCounts: number[] = [];
+    let environment = "day one";
+    const agent = new Agent({
+      model,
+      promptAssembly: createPromptAssembly({
+        system: [{ name: "assistant", content: "Stable instructions." }],
+        context: [{ name: "environment", render: () => environment }],
+      }),
+      journal: {
+        startRun: () => {},
+        appendMessage: ({ message }) => {
+          if (message.provenance.kind === "runtime_context") {
+            runtimeContextModelCounts.push(model.contexts.length);
+          }
+        },
+        appendCompaction: () => {},
+        endRun: () => {},
+      },
+    });
+
+    await agent.prompt("first");
+    await agent.prompt("second");
+    environment = "day two";
+    await agent.prompt("third");
+
+    const snapshots = agent.state.messages.filter(
+      (message) => message.role === "user" && message.provenance.kind === "runtime_context",
+    );
+    expect(runtimeContextModelCounts).toEqual([0, 2]);
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots.map((message) => message.provenance)).toEqual([
+      { kind: "runtime_context", source: "environment" },
+      { kind: "runtime_context", source: "environment" },
+    ]);
+    expect(snapshots.map((message) => message.content)).toEqual([
+      ['<runtime_context source="environment">', "day one", "</runtime_context>"].join("\n"),
+      ['<runtime_context source="environment">', "day two", "</runtime_context>"].join("\n"),
+    ]);
+    expect(model.contexts.map((context) => context.system)).toEqual([
+      "Stable instructions.",
+      "Stable instructions.",
+      "Stable instructions.",
+    ]);
+    expect(
+      model.contexts.map(
+        (context) =>
+          context.messages.filter(
+            (message) => message.role === "user" && message.provenance.kind === "runtime_context",
+          ).length,
+      ),
+    ).toEqual([1, 1, 2]);
+  });
+
+  test("cancels prompt assembly before starting model I/O", async () => {
+    const model = new TextModel("unused");
+    const renderStarted = deferred();
+    const agent = new Agent({
+      model,
+      promptAssembly: createPromptAssembly({
+        context: [
+          {
+            name: "environment",
+            render: ({ signal }) => {
+              renderStarted.resolve();
+              return new Promise<string>((_resolve, reject) => {
+                signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+              });
+            },
+          },
+        ],
+      }),
+    });
+
+    const prompt = agent.prompt("cancel me");
+    await renderStarted.promise;
+    agent.abort();
+    await prompt;
+
+    expect(model.contexts).toEqual([]);
+    expect(agent.state.messages).toEqual([
+      expect.objectContaining({ role: "user", content: "cancel me" }),
+    ]);
+    expect(agent.state.error).toBeUndefined();
   });
 
   test("steers the active run at the next turn boundary and journals the input", async () => {

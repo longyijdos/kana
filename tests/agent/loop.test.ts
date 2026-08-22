@@ -469,6 +469,48 @@ describe("runAgentLoop", () => {
     });
   });
 
+  test("executes tools from the same per-step snapshot advertised to the model", async () => {
+    const model = new ScriptedToolModel();
+    const refreshedTool = {
+      ...addTool,
+      name: "refreshed",
+      description: "A tool available on the next model step.",
+    } satisfies Tool<typeof addParameters, number>;
+    let assemblyCalls = 0;
+
+    const messages = await runAgentLoop(
+      {
+        messages: [
+          {
+            ...messageIdentityForTest("user"),
+            role: "user",
+            content: "add the numbers",
+          },
+        ],
+      },
+      {
+        model,
+        maxTurns: 3,
+        assemblePrompt: async () => {
+          assemblyCalls += 1;
+          return {
+            system: "stable",
+            context: [],
+            tools: assemblyCalls === 1 ? [addTool] : [refreshedTool],
+          };
+        },
+      },
+      () => {},
+    );
+
+    expect(messages[1]).toMatchObject({ role: "tool", toolName: "add", content: "5" });
+    expect(model.contexts.map((context) => context.tools?.map((tool) => tool.name))).toEqual([
+      ["add"],
+      ["refreshed"],
+    ]);
+    expect(assemblyCalls).toBe(2);
+  });
+
   test("publishes the next prompt estimate after each complete model/tool turn", async () => {
     const initialMessages = [
       {

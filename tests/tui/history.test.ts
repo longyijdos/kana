@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Message } from "@/core";
+import { createMessageIdentity, type Message } from "@/core";
 import type { KanaSessionTimelineEntry } from "@/kana";
 import { addHistoryTimelineToTranscript } from "../../src/tui/app/history";
 import { Transcript } from "../../src/tui/components";
@@ -186,6 +186,31 @@ describe("tui history transcript", () => {
     expect(transcript.render(100).map(stripAnsi)).toContain(
       "Scheduled wake: Check the long-running task.",
     );
+  });
+
+  test("hides runtime context snapshots from restored transcripts", () => {
+    const transcript = new Transcript();
+
+    addHistoryTimelineToTranscript(
+      transcript,
+      timelineFromMessages([
+        {
+          ...createMessageIdentity({ kind: "runtime_context", source: "environment" }),
+          role: "user",
+          content: '<runtime_context source="environment">hidden</runtime_context>',
+        },
+        {
+          ...messageIdentityForTest("user"),
+          role: "user",
+          content: "Visible question",
+        },
+      ]),
+    );
+
+    const rendered = transcript.render(100).map(stripAnsi).join("\n");
+    expect(rendered).toContain("Visible question");
+    expect(rendered).not.toContain("runtime_context");
+    expect(rendered).not.toContain("hidden");
   });
 
   test("renders recovery input as a muted marker and ignores turn boundaries", () => {

@@ -8,6 +8,7 @@ import {
   type ModelContext,
   type ModelUsage,
   type ToolCallContent,
+  type UserMessage,
 } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 
@@ -325,7 +326,9 @@ export class ContextManager {
         previousSummary: this.checkpointData?.summary,
         // Policies receive only model-visible history. Structured tool results
         // can be much larger than their bounded content and are for the host/TUI.
-        messages: compactedMessages.map(messageForCompaction),
+        messages: compactedMessages
+          .filter((message) => !isRuntimeContextMessage(message))
+          .map(messageForCompaction),
         maxSummaryTokens: this.maxSummaryTokens,
         signal: options.signal,
       });
@@ -396,11 +399,16 @@ export class ContextManager {
     const messages = context.messages.slice(coveredMessageCount);
 
     if (this.checkpointData) {
+      // Runtime snapshots are authoritative state rather than conversation to
+      // summarize. Re-project the latest covered value for each source without
+      // writing another logical message to the append-only history.
+      const runtimeContext = collectCoveredRuntimeContext(context.messages, coveredMessageCount);
       messages.unshift(
         createUserMessage({
           content: formatSummaryForModel(this.checkpointData.summary),
           provenance: { kind: "context_summary" },
         }),
+        ...runtimeContext,
       );
     }
 
@@ -453,6 +461,7 @@ export class ContextManager {
             content: formatSummaryForModel("x".repeat(this.maxSummaryTokens * 3)),
             provenance: { kind: "context_summary" },
           }),
+          ...collectCoveredRuntimeContext(context.messages, boundary),
           ...context.messages.slice(boundary),
         ],
         tools: context.tools,
@@ -485,6 +494,30 @@ export class ContextManager {
       // Diagnostics must not change context preparation or recovery behavior.
     }
   }
+}
+
+function collectCoveredRuntimeContext(
+  messages: readonly Message[],
+  coveredMessageCount: number,
+): UserMessage[] {
+  const latestBySource = new Map<string, { index: number; message: UserMessage }>();
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (message?.role !== "user" || message.provenance.kind !== "runtime_context") {
+      continue;
+    }
+    latestBySource.set(message.provenance.source, { index, message });
+  }
+
+  return [...latestBySource.values()]
+    .filter(({ index }) => index < coveredMessageCount)
+    .sort((left, right) => left.index - right.index)
+    .map(({ message }) => structuredClone(message));
+}
+
+function isRuntimeContextMessage(message: Message): message is UserMessage {
+  return message.role === "user" && message.provenance.kind === "runtime_context";
 }
 
 function messageForCompaction(message: Message): Message {

@@ -14,6 +14,11 @@ import type { Logger, LogMetadata } from "@/logging";
 import type { Tool } from "@/tools";
 import type { ContextCheckpoint, ContextManager, PreparedContext } from "./context-manager";
 import type { AgentEndReason, AgentEvent } from "./events";
+import {
+  type AssembledPrompt,
+  createRuntimeContextMessage,
+  type PromptContextSnapshot,
+} from "./prompt-assembly";
 import { type BeforeToolExecutionHook, ToolRuntime } from "./tool-runtime";
 
 export type { BeforeToolExecutionHook } from "./tool-runtime";
@@ -37,6 +42,7 @@ export type AgentLoopConfig = {
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   onCompactionCommitted?: (compaction: ContextCheckpoint) => Promise<void> | void;
   consumeTurnInputs?: () => Promise<UserMessage[]>;
+  assemblePrompt?: () => Promise<AssembledPrompt>;
 };
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
@@ -68,20 +74,6 @@ export async function runAgentLoop(
     messages: [...context.messages],
     tools: context.tools ? [...context.tools] : undefined,
   };
-  const toolRuntime = new ToolRuntime(
-    {
-      tools: currentContext.tools,
-      parallelToolCalls,
-      signal: config.signal,
-      beforeToolExecution: config.beforeToolExecution,
-      defaultDeadlineMs: config.toolDeadlineMs,
-      logger: config.logger,
-      loggerMetadata: config.loggerMetadata,
-      onMessageCommitted: config.onMessageCommitted,
-      limitToolContent: (content) => config.contextManager?.limitToolContent(content) ?? content,
-    },
-    emit,
-  );
   const newMessages: Message[] = [];
   const maxTurns = config.maxTurns ?? 8;
   const hasTurnLimit = maxTurns !== -1;
@@ -96,6 +88,34 @@ export async function runAgentLoop(
     }
 
     await emit({ type: "turn_start", turn });
+
+    let assembledPrompt: AssembledPrompt;
+    try {
+      assembledPrompt = config.assemblePrompt
+        ? await config.assemblePrompt()
+        : {
+            system: currentContext.system,
+            context: [],
+            tools: currentContext.tools ?? [],
+          };
+      await applyAssembledPrompt(
+        currentContext,
+        assembledPrompt,
+        newMessages,
+        config.onMessageCommitted,
+        config.signal,
+      );
+    } catch (error) {
+      if (config.signal?.aborted) {
+        endReason = "aborted";
+        break;
+      }
+      throw error;
+    }
+    if (config.signal?.aborted) {
+      endReason = "aborted";
+      break;
+    }
 
     const sourceMessageCount = currentContext.messages.length;
     let prepared: PreparedContext;
@@ -166,6 +186,22 @@ export async function runAgentLoop(
 
     const toolCalls =
       assistantTurn.message.stopReason === "toolUse" ? getToolCalls(assistantTurn.message) : [];
+    // Execute against exactly the tool objects advertised for this model step.
+    // A later assembly may observe a different capability set.
+    const toolRuntime = new ToolRuntime(
+      {
+        tools: currentContext.tools,
+        parallelToolCalls,
+        signal: config.signal,
+        beforeToolExecution: config.beforeToolExecution,
+        defaultDeadlineMs: config.toolDeadlineMs,
+        logger: config.logger,
+        loggerMetadata: config.loggerMetadata,
+        onMessageCommitted: config.onMessageCommitted,
+        limitToolContent: (content) => config.contextManager?.limitToolContent(content) ?? content,
+      },
+      emit,
+    );
     const executedToolCalls = await toolRuntime.execute(toolCalls);
 
     for (const toolResult of executedToolCalls.toolResults) {
@@ -205,6 +241,55 @@ export async function runAgentLoop(
   await emit({ type: "agent_end", reason: endReason, messages: newMessages });
 
   return newMessages;
+}
+
+async function applyAssembledPrompt(
+  context: AgentContext,
+  prompt: AssembledPrompt,
+  newMessages: Message[],
+  commit: ((message: Message) => Promise<void> | void) | undefined,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  context.system = prompt.system;
+  context.tools = prompt.tools.slice();
+
+  for (const snapshot of prompt.context) {
+    throwIfAborted(signal);
+    const message = createRuntimeContextMessage(snapshot);
+    const previous = findLatestRuntimeContext(context.messages, snapshot);
+    if (previous?.content === message.content) {
+      continue;
+    }
+
+    // Dynamic state becomes visible only after the same logical message is
+    // durable, preserving recovery ordering before the model request begins.
+    await commit?.(structuredClone(message));
+    context.messages.push(message);
+    newMessages.push(message);
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw signal.reason ?? new Error("Prompt assembly aborted.");
+  }
+}
+
+function findLatestRuntimeContext(
+  messages: readonly Message[],
+  snapshot: PromptContextSnapshot,
+): UserMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      message?.role === "user" &&
+      message.provenance.kind === "runtime_context" &&
+      message.provenance.source === snapshot.source
+    ) {
+      return message;
+    }
+  }
+  return undefined;
 }
 
 export function assertValidMaxTurns(maxTurns: number | undefined): void {

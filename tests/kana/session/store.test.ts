@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ContextCheckpoint } from "@/agent";
-import type { Message } from "@/core";
+import { createMessageIdentity, type Message } from "@/core";
 import {
   appendKanaSessionMessages,
   appendKanaSessionRun,
@@ -212,6 +212,30 @@ describe("Kana session persistence", () => {
     });
     expect(loaded.timeline).toHaveLength(4);
     expect(loaded.contextCheckpoint).toBeUndefined();
+  });
+
+  test("round-trips runtime context without using it as the session title", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "runtime-context" });
+    const messages: Message[] = [
+      {
+        ...createMessageIdentity({ kind: "runtime_context", source: "environment" }),
+        role: "user",
+        content: '<runtime_context source="environment">dynamic</runtime_context>',
+      },
+      {
+        ...messageIdentityForTest("user"),
+        role: "user",
+        content: "Visible title",
+      },
+    ];
+
+    appendKanaSessionMessages(session, messages);
+
+    const loaded = loadKanaSession("runtime-context", { env, cwd });
+    expect(loaded.messages).toEqual(messages);
+    expect(loaded.metadata.title).toBe("Visible title");
   });
 
   test("rejects duplicate logical message IDs before writing a session", () => {

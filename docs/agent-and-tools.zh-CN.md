@@ -8,11 +8,11 @@ Agent 历史只使用三种 `Message`：
 
 | 角色 | 主要字段 | 用途 |
 | --- | --- | --- |
-| `user` | `id`、必填 `provenance`、`content: string` | 直接输入、定时输入、恢复、上下文摘要或压缩策略输入。 |
+| `user` | `id`、必填 `provenance`、`content: string` | 直接输入、定时输入、恢复、运行时上下文、上下文摘要或压缩策略输入。 |
 | `assistant` | `id`、`provenance: { kind: "model_output" }`、有序 `content`、可选 `stopReason` 与 `usage` | 保存模型输出和它提出的工具调用。 |
 | `tool` | `id`、`provenance: { kind: "tool_result" }`、`toolCallId`、`toolName`、`content`、`result`、`isError` | 将某一个工具调用的结果关联回模型。 |
 
-每条逻辑消息在进入 Kana 或由内部产生时只获得一个带品牌类型的 `MessageId`。深拷贝、steering、inbox lane 移动、Agent event、journal 持久化/重放、fork 和模型历史都保留该 ID。它与 journal entry ID、run/turn ID、provider tool-call ID 和 session ID 相互独立。必填的可辨识 `provenance` 记录内容生产者或内部用途；展示层依此判断语义，不会把所有 `user` role 消息都当成人类输入。Agent 历史、inbox 和 session journal 都拒绝重复逻辑 ID。
+每条逻辑消息在进入 Kana 或由内部产生时只获得一个带品牌类型的 `MessageId`。深拷贝、steering、inbox lane 移动、Agent event、journal 持久化/重放、fork 和模型历史都保留该 ID。它与 journal entry ID、run/turn ID、provider tool-call ID 和 session ID 相互独立。必填的可辨识 `provenance` 记录内容生产者或内部用途；展示层依此判断语义，不会把所有 `user` role 消息都当成人类输入。`runtime_context` provenance 还包含 `environment` 之类的稳定 `source`，让不同 provider 可以比较和投影自己拥有的状态，而不必检查其它 provider 的内容。Agent 历史、inbox 和 session journal 都拒绝重复逻辑 ID。
 
 助手消息的 `content` 是有序数组，而不是按类别分组。元素为 `text`、`thinking` 或 `tool_call`；每个流事件的 `contentIndex` 都指向这个数组。这使“思考 → 文本 → 工具调用”之类的交错输出能够原样回传供应商并按顺序渲染。
 
@@ -57,6 +57,8 @@ agent_start
 重复（默认最多 8 回合；maxTurns = -1 时不限）：
   若 signal 已中止，结束
   发出 turn_start
+  为本次模型调用解析 prompt assembly
+  只提交并追加有变化的 runtime-context 快照
   流式读取助手消息，并把每个快照写入当前 context
   将可保留的助手消息加入新消息列表
   若模型错误或已中止，发出 turn_end 后结束
@@ -69,13 +71,13 @@ agent_start
 发出 agent_end，返回本次新增消息
 ```
 
-Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。回合输入只在完整的 model/tool turn 结束并确认还能开始下一回合后消费；中止或 turn limit 会把它留给 Agent owner 降级处理。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`。并行策略在每个 run 开始时解析一次：`AgentConfig.parallelToolCalls`（Kana 对应 `agent.parallel_tool_calls`）必须启用，且模型 metadata 的 `supportsParallelToolCalls` 必须为真；否则传给 provider 的 `ModelContext.parallelToolCalls` 为假，Runtime 也逐个执行调用。允许并行时，Runtime 按助手内容顺序划分执行组：只有相邻且显式声明 `parallel` 的调用会同组并行，`exclusive`、未声明、未知或元数据无效的工具都是屏障，不会被只读工作跨越。
+Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时未提供配置的默认值是 8；公共 API 同样只接受 `-1` 或正整数。若最后一个允许的回合仍然执行了工具调用，运行以 `turn_limit` 结束，而不是误报为正常 `stop`。回合输入只在完整的 model/tool turn 结束并确认还能开始下一回合后消费；中止或 turn limit 会把它留给 Agent owner 降级处理。`runAgentLoop` 只负责模型回合状态机，并把工具调用交给独立 `ToolRuntime`。Prompt assembly 会在每次模型调用前解析 context 和 capability 自己管理的工具 section。解析出的工具会同时声明给该请求并交给对应 ToolRuntime；只有之后的模型步骤才能观察刷新后的集合。并行策略在每个 run 开始时解析一次：`AgentConfig.parallelToolCalls`（Kana 对应 `agent.parallel_tool_calls`）必须启用，且模型 metadata 的 `supportsParallelToolCalls` 必须为真；否则传给 provider 的 `ModelContext.parallelToolCalls` 为假，Runtime 也逐个执行调用。允许并行时，Runtime 按助手内容顺序划分执行组：只有相邻且显式声明 `parallel` 的调用会同组并行，`exclusive`、未声明、未知或元数据无效的工具都是屏障，不会被只读工作跨越。
 
 只有助手消息以 `toolUse` 正常结束时，工具才会执行。长度截断的消息即使带有工具调用也不会执行。发生 provider error 且助手没有任何内容时，该空助手消息不会写入历史；中止的消息会移除其中未执行的工具调用，但若仍有文本或 thinking 内容则保留该部分。
 
 ## 上下文压缩
 
-配置了 `ContextManager` 时，每次模型请求前先从完整 Agent 历史创建一个独立的 model projection；原始 `messages` 不会因压缩而删除。prompt budget 是 context limit 扣除安全预留后的容量，不固定预留配置的最大输出。估算达到该预算的 80% 时触发压缩，规则从旧到新扫描，只允许在无 tool call 的完整 assistant turn 后，或一组 assistant tool calls 的所有 results 都已出现后切分。它选择第一个能让“最大摘要占位 + 近期原始消息”进入 10% 目标的边界，从而让一次压缩覆盖尽可能多的旧上下文；没有任何安全边界且尚未超过 prompt budget 时延后压缩，不能安全恢复时则报错。
+配置了 `ContextManager` 时，每次模型请求前先从完整 Agent 历史创建一个独立的 model projection；原始 `messages` 不会因压缩而删除。Runtime-context 快照是权威状态而不是对话，因此不会进入摘要策略输入；checkpoint 覆盖它们时，每个来源最新的已覆盖快照会紧接摘要重新投影。prompt budget 是 context limit 扣除安全预留后的容量，不固定预留配置的最大输出。估算达到该预算的 80% 时触发压缩，规则从旧到新扫描，只允许在无 tool call 的完整 assistant turn 后，或一组 assistant tool calls 的所有 results 都已出现后切分。它选择第一个能让“最大摘要占位 + 重新投影的 runtime context + 近期原始消息”进入 10% 目标的边界，从而让一次压缩覆盖尽可能多的旧上下文；没有任何安全边界且尚未超过 prompt budget 时延后压缩，不能安全恢复时则报错。
 
 prompt 估算会区分可重放上下文和单次 response 的计费用量。没有 provider-hosted tool 的响应完成后，manager 把 provider 返回的 `input_tokens` 保存为该请求的精确锚点，此后只为新提交的消息增加本地估算；包含 hosted tool 的响应不会替换锚点，因为托管搜索网页等临时 provider 内容可能计入本轮输入费用，却不存在于 Kana 可重放的历史中。下一次普通响应重新校准以前，Kana 只累计已持久化的 assistant 内容、hosted-call 元数据、客户端工具调用/结果和后续用户消息。新建、恢复、切换模型或刚完成压缩且没有锚点时，则对 model projection 做完整本地估算。文本采用偏保守的 UTF-8 字节估算，协议 envelope 使用固定开销，工具 schema/action 按 JSON 估算，图片按 patch 数量计算而不使用持久化 base64 大小。
 
@@ -91,7 +93,7 @@ provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededEr
 
 ## `Agent` 的生命周期
 
-`Agent.stream(input)` 异步启动循环。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；没有 journal 的通用嵌入方式保持原有内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
+`Agent.stream(input)` 异步启动循环。`AgentConfig.promptAssembly` 不能与旧的 `system`/`tools` 输入同时使用；为兼容旧调用，这两个输入会转换成单个不可变 assembly。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；发生变化的 runtime-context 消息遵循同样的“先写入、后调用模型”规则。没有 journal 的通用嵌入方式保持内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
 
 Agent 持有一个仅存在于内存的 inbox，其中有 `next-step` 和 `next-turn` 两条 lane。活动 run 的 `steer(userMessage)` 把原始带 ID 消息放入 `next-step`；下一个可用 turn 边界先写 journal，再按 MessageId claim，随后发出 `turn_input` 并返回 `consumed`。journal commit 一旦开始，该项会保持 reservation，不能被取消或 inbox clear 删除，直到按身份校验的 claim 完成，因此 shutdown 不会让 durable input 与实际 claim 的消息错位。中止或 turn limit 会把未 claim 的 steering 移到 `next-turn` 尾部，不更换 ID，并返回 `deferred`。Tab 后续输入和到期定时消息直接进入 `next-turn`。`ConversationRuntime` 只编排该 lane 何时可启动新 run，并发布只读前端快照，不再生成第二套队列身份。
 

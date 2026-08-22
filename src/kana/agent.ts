@@ -1,4 +1,10 @@
-import { Agent, type AgentConfig, type ContextCheckpoint, createModelCompactPolicy } from "@/agent";
+import {
+  Agent,
+  type AgentConfig,
+  type ContextCheckpoint,
+  createModelCompactPolicy,
+  type PromptToolSection,
+} from "@/agent";
 import {
   createBashTool,
   createEditTool,
@@ -13,7 +19,7 @@ import { getActiveKanaModelConfig, type KanaConfig } from "./config";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
 import type { KanaLaunchMode } from "./launch-mode";
 import { createKanaModel } from "./model";
-import { buildKanaSystemPrompt } from "./prompt";
+import { buildKanaPromptAssembly } from "./prompt";
 import { loadKanaSkills } from "./skills/loader";
 import { createRememberTool, createScheduleWakeTool } from "./tools";
 
@@ -44,6 +50,7 @@ export type KanaAgentOptions = Pick<
   | "logger"
 > & {
   additionalTools?: readonly Tool[];
+  resolveAdditionalTools?: () => Promise<readonly Tool[]> | readonly Tool[];
   env?: NodeJS.ProcessEnv;
   launchMode?: KanaLaunchMode;
   wakeScheduler?: WakeScheduler;
@@ -67,7 +74,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     config.agent.contextLimit ?? model.metadata.contextWindow,
     model.metadata.contextWindow,
   );
-  const tools: Tool[] = [
+  const workspaceTools: Tool[] = [
     createListTool({
       root: cwd,
     }),
@@ -89,35 +96,48 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     createBashTool({
       root: cwd,
     }),
-    ...(customizationsEnabled && config.memory.enabled
-      ? [
-          createRememberTool({
-            cwd,
-            env: options.env,
-          }),
-        ]
-      : []),
-    ...(options.wakeScheduler && options.sessionId
-      ? [
-          createScheduleWakeTool({
-            scheduler: options.wakeScheduler,
-            sessionId: options.sessionId,
-          }),
-        ]
-      : []),
-    ...(customizationsEnabled ? (options.additionalTools ?? []) : []),
   ];
-  assertUniqueToolNames(tools);
+  const toolSections: PromptToolSection[] = [{ name: "workspace", tools: workspaceTools }];
+  if (customizationsEnabled && config.memory.enabled) {
+    toolSections.push({
+      name: "memory",
+      tools: [
+        createRememberTool({
+          cwd,
+          env: options.env,
+        }),
+      ],
+    });
+  }
+  if (options.wakeScheduler && options.sessionId) {
+    toolSections.push({
+      name: "scheduled-wake",
+      tools: [
+        createScheduleWakeTool({
+          scheduler: options.wakeScheduler,
+          sessionId: options.sessionId,
+        }),
+      ],
+    });
+  }
+  if (customizationsEnabled) {
+    toolSections.push({
+      name: "external",
+      tools: options.additionalTools ?? [],
+      resolve: options.resolveAdditionalTools,
+    });
+  }
+  assertUniqueToolNames(toolSections.flatMap((section) => section.tools));
 
   return new Agent({
     model,
-    system: buildKanaSystemPrompt({
+    promptAssembly: buildKanaPromptAssembly({
       cwd,
       env: options.env,
       launchMode: options.launchMode,
       skills,
+      toolSections,
     }),
-    tools,
     maxTurns: config.agent.maxTurns,
     toolDeadlineMs: config.agent.toolDeadlineMs,
     parallelToolCalls: config.agent.parallelToolCalls,

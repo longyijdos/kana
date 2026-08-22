@@ -42,7 +42,7 @@ export function createRememberTool(
   return {
     name: "remember",
     description:
-      "Proactively save non-sensitive durable user preferences, project decisions, meaningful milestones, and unfinished work for future conversations.",
+      "Proactively save non-sensitive durable information that will help future conversations, including user preferences, recurring constraints, relevant background, confirmed decisions, meaningful milestones, and unfinished work. Record it even when the current response already handles the request. Default to project scope; use global only for information that applies across projects. Do not save secrets, sensitive personal information, transient progress, or facts available directly from the workspace.",
     parameters: rememberParameters,
     execute: (args, context) => {
       if (context.signal?.aborted) {

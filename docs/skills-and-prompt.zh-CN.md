@@ -46,36 +46,40 @@ enabled = ["release-check", "database-migrations"]
 
 文件不存在或 `enabled` 缺失时，全局 Skills 均不注入模型提示词。`/skills` 打开管理界面：project 项显示为 locked，`Enter` 只在本地草稿中切换 global 项。`Esc` 应用并关闭草稿；最终集合有变化时，Kana 只重写一次列表并重建一次 Agent 系统提示词，未变化时两项操作都不执行，持久化失败时管理界面保持打开。管理界面显示的 scope 根据 Skill 文件是否位于全局 Skills 目录内决定。
 
-## 系统提示词的组成
+## 提示词的组成
 
-`createKanaAgent` 在当前工作目录加载 Skills，并按以下顺序构造系统提示词：
+`createKanaAgent` 在当前工作目录加载 Skills，并构造一份不可变的 prompt assembly。稳定 system 前缀按以下顺序组成：
 
 ```text
 可用的 global/project 长期记忆（若启用且非空）
-remember 的持久化规则（若记忆启用）
 默认助手指令
 全局 AGENTS.md（若存在）
 项目 AGENTS.md（若存在）
-环境上下文
 可见 Skills 的目录
 ```
 
-`--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时系统提示词只包含默认助手指令和环境上下文，Agent 不注册 `remember` 或任何外部工具；TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载，但 `/model` 的选择只保留在当前临时进程中。
+每次模型调用前，Agent 都会解析动态 context 和工具 section。环境属于动态 section；工作区、memory、scheduled-wake 和外部/MCP 工具分别属于独立 capability section。同一步解析出的工具对象既会声明给该次模型请求，也会用于执行该请求产生的调用，因此后续刷新不会改变正在进行中的调用语义。稳定 system 前缀在这些步骤之间保持不变，供应商 prompt cache 可以复用它。
+
+`--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时稳定 system 提示词只包含默认助手指令，动态环境上下文仍然可用；Agent 不注册 `remember` 或任何外部工具。TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载，但 `/model` 的选择只保留在当前临时进程中。
 
 全局指令路径是 `<KANA_HOME>/AGENTS.md`，项目指令路径是 `<cwd>/AGENTS.md`。内置默认助手指令始终注入；全局文件存在时会追加到默认指令后，项目文件再追加到后面。若两条 AGENTS 路径解析到同一文件，只注入一次。项目内容处于更后的、更具体的位置，但代码没有把多份指令合并为任何优先级算法，模型仍需根据完整提示词解释它们。
 
-环境块使用 XML 风格标签，包含当前目录、`process.platform`、按本地时区格式化的 `YYYY-MM-DD` 日期与时区名：
+环境块包含当前目录、`process.platform`、按本地时区格式化的 `YYYY-MM-DD` 日期与时区名，并包装在带内部来源标记的 runtime-context 消息中：
 
 ```xml
+<runtime_context source="environment">
 <environment_context>
   <cwd>/workspace</cwd>
   <platform>darwin</platform>
   <current_date>2026-06-22</current_date>
   <timezone>Asia/Shanghai</timezone>
 </environment_context>
+</runtime_context>
 ```
 
-如果 memory 启用且对应长期文件非空，Kana 在提示词开头写入 `<memory>`，内部区分 `global` 与 `project` 引用块。记忆文本会 XML 转义，避免其中的 `<`、`&` 等改变宿主标签结构；但它仍是模型上下文中的不可信数据，记忆合并提示要求将其作为数据而非指令。
+Agent 会按 `source` 将每个动态 section 与历史中最近的同源快照比较；只有内容变化时才追加并写入 journal，未变化的值不会增加历史 token。这些内部消息会持久化以支持恢复，但不会显示在 transcript 中。上下文压缩不总结这些消息；checkpoint 覆盖它们时，每个来源最新的已覆盖快照会紧接摘要重新投影给模型。
+
+如果 memory 启用且对应长期文件非空，Kana 在稳定 system 前缀开头写入 `<memory>`，内部区分 `global` 与 `project` 引用块。记忆文本会 XML 转义，避免其中的 `<`、`&` 等改变宿主标签结构；但它仍是模型上下文中的不可信数据，记忆合并提示要求将其作为数据而非指令。Memory 在 Agent 构建时读取，而不会在每次 `remember` 后把不断增长的完整文件追加到历史中，从而避免重复 token。何时保存、保存什么的 guidance 位于 `remember` 工具 description，因此只会在该能力可用时声明给模型。
 
 ## 注入给模型的 Skill 目录
 
