@@ -135,6 +135,65 @@ describe("ToolRuntime", () => {
     expect(committed).toEqual(result.toolResults);
   });
 
+  test("turns malformed visual result fields into safe failures before commit", async () => {
+    const tools: Tool[] = [
+      {
+        name: "invalid_images",
+        description: "Return malformed images.",
+        parameters,
+        execute: () => ({
+          content: "done",
+          images: [{ foo: "bar" }],
+          result: {},
+        }),
+      },
+      {
+        name: "invalid_is_error",
+        description: "Return malformed isError.",
+        parameters,
+        execute: () => ({
+          content: "done",
+          result: {},
+          isError: "yes",
+        }),
+      },
+    ];
+    const committed: Message[] = [];
+    const runtime = new ToolRuntime(
+      {
+        tools,
+        onMessageCommitted: (message) => {
+          committed.push(message);
+        },
+      },
+      () => {},
+    );
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "call-images", name: "invalid_images", args: {} },
+      { type: "tool_call", id: "call-error", name: "invalid_is_error", args: {} },
+    ]);
+
+    expect(result.toolResults).toEqual([
+      expect.objectContaining({
+        toolCallId: "call-images",
+        content:
+          "Tool call failed: Tool result images must be an array of valid UserImage objects.",
+        isError: true,
+      }),
+      expect.objectContaining({
+        toolCallId: "call-error",
+        content: "Tool call failed: Tool result isError must be a boolean when provided.",
+        isError: true,
+      }),
+    ]);
+    for (const message of result.toolResults) {
+      expect(message).not.toHaveProperty("images");
+    }
+    expect(committed).toEqual(result.toolResults);
+    expect(JSON.stringify(committed)).not.toContain('"foo":"bar"');
+  });
+
   test("publishes tool completion even when the result commit fails", async () => {
     const events: string[] = [];
     const commitError = new Error("journal unavailable");

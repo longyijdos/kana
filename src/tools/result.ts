@@ -1,8 +1,24 @@
+import { isUserImage } from "@/core";
 import type { ToolResult } from "./tool";
 
 export function normalizeToolResult(value: unknown): ToolResult {
-  if (isToolResult(value)) {
-    return value;
+  if (hasToolResultShape(value)) {
+    const images = value.images;
+    if (images !== undefined && (!Array.isArray(images) || !images.every(isUserImage))) {
+      throw new TypeError("Tool result images must be an array of valid UserImage objects.");
+    }
+    if (value.isError !== undefined && typeof value.isError !== "boolean") {
+      throw new TypeError("Tool result isError must be a boolean when provided.");
+    }
+
+    // Detach validated observations at the normalization boundary so a tool
+    // cannot mutate them into an invalid provider or session message later.
+    return {
+      content: value.content,
+      ...(images === undefined ? {} : { images: structuredClone(images) }),
+      result: value.result,
+      ...(value.isError === undefined ? {} : { isError: value.isError }),
+    };
   }
 
   return {
@@ -11,7 +27,9 @@ export function normalizeToolResult(value: unknown): ToolResult {
   };
 }
 
-function isToolResult(value: unknown): value is ToolResult {
+function hasToolResultShape(
+  value: unknown,
+): value is Record<string, unknown> & { content: string; result: unknown } {
   return (
     typeof value === "object" &&
     value !== null &&

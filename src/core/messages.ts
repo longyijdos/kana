@@ -92,6 +92,33 @@ export type UserImage = {
   height: number;
 };
 
+export function isUserImage(value: unknown): value is UserImage {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const image = value as Record<string, unknown>;
+  return (
+    isUserImageMimeType(image.mimeType) &&
+    typeof image.data === "string" &&
+    isPositiveInteger(image.width) &&
+    isPositiveInteger(image.height)
+  );
+}
+
+function isUserImageMimeType(value: unknown): value is UserImageMimeType {
+  return (
+    value === "image/png" ||
+    value === "image/jpeg" ||
+    value === "image/webp" ||
+    value === "image/gif"
+  );
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
 // Assistant content is ordered. Stream event contentIndex values refer to
 // positions in this array.
 export type AssistantMessage = MessageIdentity<

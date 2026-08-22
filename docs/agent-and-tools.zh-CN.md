@@ -180,7 +180,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 ## 自定义工具的约束
 
 - 在 TypeScript 中优先使用 TypeBox 1.x schema，以保留静态参数类型。运行时也接受 TypeBox schema 经 JSON 序列化后的普通 JSON Schema；这类 schema 会补充兼容的基础类型转换，再由 TypeBox 编译器校验。
-- 返回可序列化的结构化 `result`，并提供简短、对模型有用的 `content`。
+- 返回可序列化的结构化 `result`，并提供简短、对模型有用的 `content`。可选 `images` 必须是 `UserImage[]`，可选 `isError` 必须是布尔值；字段格式错误时，本次调用会在任何消息提交前转成安全的工具失败。
 - 对可长时间运行的工具检查 `context.signal`，并用 `context.update` 提供进度。
 - 让失败抛出有操作意义的 `Error`；循环会将其安全转换为模型可见的工具结果。
 - 若工具会改变用户状态，需在产品装配层决定审批策略，并为 TUI 提供可理解的显示格式。

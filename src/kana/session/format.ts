@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import type { AgentEndReason, ContextCheckpoint } from "@/agent";
-import type {
-  Message,
-  MessageProvenance,
-  ModelMetadata,
-  ModelUsage,
-  UserImage,
-  UserMessage,
+import {
+  isUserImage,
+  type Message,
+  type MessageProvenance,
+  type ModelMetadata,
+  type ModelUsage,
+  type UserMessage,
 } from "@/core";
 
 export const SESSION_VERSION = 4;
@@ -535,29 +535,6 @@ function isMessageProvenance(value: unknown): value is MessageProvenance {
     provenance.kind === "tool_result" ||
     provenance.kind === "context_summary" ||
     provenance.kind === "compaction_request"
-  );
-}
-
-function isUserImage(value: unknown): value is UserImage {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const image = value as Record<string, unknown>;
-  return (
-    isUserImageMimeType(image.mimeType) &&
-    typeof image.data === "string" &&
-    isPositiveInteger(image.width) &&
-    isPositiveInteger(image.height)
-  );
-}
-
-function isUserImageMimeType(value: unknown): value is UserImage["mimeType"] {
-  return (
-    value === "image/png" ||
-    value === "image/jpeg" ||
-    value === "image/webp" ||
-    value === "image/gif"
   );
 }
 

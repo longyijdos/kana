@@ -180,7 +180,7 @@ MCP results are never persisted verbatim. The adapter separately bounds content 
 ## Constraints for custom tools
 
 - Prefer TypeBox 1.x schemas in TypeScript so tool arguments retain static types. The runtime also accepts plain JSON Schema produced by serializing a TypeBox schema; it applies compatible primitive coercion before validating with the TypeBox compiler.
-- Return a serializable structured `result` with concise, model-useful `content`.
+- Return a serializable structured `result` with concise, model-useful `content`. Optional `images` must be a `UserImage[]`, and optional `isError` must be Boolean; malformed fields turn that invocation into a safe tool failure before any message is committed.
 - Check `context.signal` in long-running work and use `context.update` for progress.
 - Throw actionable `Error` values for failures; the loop safely converts them into model-visible results.
 - For a tool that can change user state, decide approval policy in product composition and provide understandable TUI formatting.
