@@ -22,7 +22,7 @@ Both models expose `none`, `low`, `high`, and `max` through common reasoning met
 
 The default base URL is `https://api.deepseek.com`, and all current models send requests to `/responses`.
 
-Image input follows the selected model's metadata and the `model.deepseek.image_input` setting. `deepseek-v4-flash-vision-exp` accepts persisted user images as classic Responses `input_image` items with self-contained base64 data URLs. The text-only V4 Flash and V4 Pro models replace persisted user images with an explicit attachment-omitted marker and never transmit their base64 data; model metadata takes precedence, so enabling `image_input` cannot add image delivery to a model that declares no image capability, and `model.deepseek.image_input = false` disables delivery even on the vision model.
+Image input follows the selected model's metadata and the `model.deepseek.image_input` setting. `deepseek-v4-flash-vision-exp` accepts persisted user images as classic Responses `input_image` items with self-contained base64 data URLs and registers `view_image`. Visual tool results become native multimodal `function_call_output` content tied to the originating call. The text-only V4 Flash and V4 Pro models replace persisted images with an explicit omitted marker, never transmit their base64 data, and do not register `view_image`; model metadata takes precedence, and `model.deepseek.image_input = false` also disables delivery and the tool on the vision model.
 
 ### V4 Responses
 
@@ -52,7 +52,7 @@ Provided optional configuration maps as follows:
 
 A per-turn output ceiling takes precedence over configured `maxTokens`. Client functions use flattened Responses tool definitions. When `model.deepseek.web_search = true` and metadata supports it, `{ "type": "web_search" }` is appended to the same `tools` array; `false` removes only the hosted tool. Default `tool_choice` is `auto`, named Chat Completions choices are converted to the flattened Responses shape, and `strictTools` adds `strict: true` to function tools.
 
-Image input is gated by both model metadata and configuration: only `deepseek-v4-flash-vision-exp` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
+Image input is gated by both model metadata and configuration: only `deepseek-v4-flash-vision-exp` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes or advertise `view_image`. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
 ## Authentication, cancellation, timeout, and retries
 

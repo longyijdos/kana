@@ -185,7 +185,7 @@ level = "info"
 | `api_key_env` | 非空字符串 | `DEEPSEEK_API_KEY` | 保存 API key 的环境变量名；key 不写入 TOML。 |
 | `reasoning_effort` | `none`、`low`、`high` 或 `max` | `high` | DeepSeek Responses 推理强度；`none` 表示关闭推理。 |
 | `web_search` | 布尔值 | `true` | 所选模型 metadata 支持时，声明 DeepSeek 托管的 `web_search` 工具。当前所有 V4 模型都使用 Responses 并支持该托管工具；设为 `false` 只会移除托管工具。 |
-| `image_input` | 布尔值 | `true` | 所选模型 metadata 同时支持图片输入时，允许把图片附件作为 Responses `input_image` data URL 发送。目前只有 `deepseek-v4-flash-vision-exp` 声明支持图片；模型 metadata 优先级更高，因此该配置无法在纯文本的 V4 Flash 或 V4 Pro 上开启图片。设为 `false` 时仍保留会话附件，但模型输入会改为明确的省略提示。 |
+| `image_input` | 布尔值 | `true` | 所选模型 metadata 同时支持图片输入时，允许把用户附件和工具视觉观察作为 Responses `input_image` data URL 发送；同一个实际能力开关也控制 `view_image` 的注册。目前只有 `deepseek-v4-flash-vision-exp` 声明支持图片；模型 metadata 优先级更高，因此该配置无法在纯文本的 V4 Flash 或 V4 Pro 上开启图片或 `view_image`。设为 `false` 时仍保留已持久化图片，但模型输入会改为明确的省略提示。 |
 | `max_tokens` | 正整数 | `384000` | 单个请求允许的输出 token 上限；不能超过所选模型的硬上限。Agent 会按当前 prompt 剩余空间逐轮下调实际发送值。 |
 | `timeout_ms` | 有限数字 | `60000` | 等待 DeepSeek 响应头或相邻响应数据的无活动超时毫秒数。 |
 | `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
@@ -204,7 +204,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `reasoning_effort` | `low`、`medium`、`high`、`xhigh`、`max` | `medium` | 请求的推理强度。 |
 | `reasoning_summary` | `auto`、`concise`、`detailed` | `auto` | 请求可流式返回的 reasoning summary；原始思维链不会作为该字段公开。 |
 | `web_search` | 布尔值 | `true` | 是否向 Codex Responses 请求声明供应商托管的 `web_search` 工具。设为 `false` 时完全省略该顶层工具。 |
-| `image_input` | 布尔值 | `true` | 将会话中持久化的用户图片作为 classic Responses `input_image` data URL 发送。设为 `false` 时仍保留会话附件，但模型输入会改为明确的省略提示。 |
+| `image_input` | 布尔值 | `true` | 将会话中持久化的用户图片和工具视觉观察作为 classic Responses `input_image` data URL 发送，并注册 `view_image`。设为 `false` 时移除该工具、仍保留已持久化图片，但模型输入会改为明确的省略提示。 |
 | `max_tokens` | 正整数 | `128000` | Kana 计算逐轮输出上限时使用的配置上限；ChatGPT Codex 请求约定不暴露 `max_output_tokens`，因此请求不会发送该值。 |
 | `timeout_ms` | 有限数字 | `60000` | 等待响应头或相邻响应数据的无活动超时毫秒数。 |
 | `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |

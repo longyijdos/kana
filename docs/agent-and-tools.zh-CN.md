@@ -10,13 +10,13 @@ Agent 历史只使用三种 `Message`：
 | --- | --- | --- |
 | `user` | `id`、必填 `provenance`、`content: string` | 直接输入、定时输入、恢复、运行时上下文、上下文摘要或压缩策略输入。 |
 | `assistant` | `id`、`provenance: { kind: "model_output" }`、有序 `content`、可选 `stopReason` 与 `usage` | 保存模型输出和它提出的工具调用。 |
-| `tool` | `id`、`provenance: { kind: "tool_result" }`、`toolCallId`、`toolName`、`content`、`result`、`isError` | 将某一个工具调用的结果关联回模型。 |
+| `tool` | `id`、`provenance: { kind: "tool_result" }`、`toolCallId`、`toolName`、`content`、可选 `images`、`result`、`isError` | 将某一个文本或视觉工具结果关联回模型。 |
 
 每条逻辑消息在进入 Kana 或由内部产生时只获得一个带品牌类型的 `MessageId`。深拷贝、steering、inbox lane 移动、Agent event、journal 持久化/重放、fork 和模型历史都保留该 ID。它与 journal entry ID、run/turn ID、provider tool-call ID 和 session ID 相互独立。必填的可辨识 `provenance` 记录内容生产者或内部用途；展示层依此判断语义，不会把所有 `user` role 消息都当成人类输入。`runtime_context` provenance 还包含 `environment` 之类的稳定 `source`，让不同 provider 可以比较和投影自己拥有的状态，而不必检查其它 provider 的内容。Agent 历史、inbox 和 session journal 都拒绝重复逻辑 ID。
 
 助手消息的 `content` 是有序数组，而不是按类别分组。元素为 `text`、`thinking` 或 `tool_call`；每个流事件的 `contentIndex` 都指向这个数组。这使“思考 → 文本 → 工具调用”之类的交错输出能够原样回传供应商并按顺序渲染。
 
-工具结果有两层：`content` 是给模型的文本，`result` 保留原始结构化值给 Agent、TUI 和持久化使用。工具直接返回普通值时，运行时会将字符串原样或将其他值 JSON 序列化为 `content`，同时把原值作为 `result`。
+工具结果有两层：`content` 是给模型的文本，`result` 保留原始结构化值给 Agent、TUI 和持久化使用。可选且与 provider 无关的 `images: UserImage[]` 会在文本之外携带原生视觉观察，并随对应工具结果消息一并提交。工具直接返回普通值时，运行时会将字符串原样或将其他值 JSON 序列化为 `content`，同时把原值作为 `result`。
 
 ## 两层流事件
 
@@ -83,7 +83,7 @@ prompt 估算会区分可重放上下文和单次 response 的计费用量。没
 
 manager 会把“配置的最大输出”和“prompt budget 减去估算输入后的剩余空间”中的较小值写入本轮 `ModelContext.maxOutputTokens`。Agent 只转发这个通用上限，具体 provider 决定是否以及如何映射到请求协议；Kana 的摘要策略则把摘要预算作为该次摘要请求的输出上限。
 
-实际摘要由注入的 `CompactPolicy` 生成。Kana 的产品策略直接使用主 Agent 的同一个 `Model` 做一次无工具 `generate()`，而不是启动另一个 Agent loop。输入是上一次摘要和本次新覆盖的消息；assistant thinking、assistant usage 和 tool 的结构化 `result` 不进入摘要请求，tool 的模型可见 `content`、名称及错误状态仍保留。摘要必须以 `stop` 完成且不超过摘要预算，失败会恢复上一个 checkpoint。
+实际摘要由注入的 `CompactPolicy` 生成。Kana 的产品策略直接使用主 Agent 的同一个 `Model` 做一次无工具 `generate()`，而不是启动另一个 Agent loop。输入是上一次摘要和本次新覆盖的消息；assistant thinking、assistant usage 和 tool 的结构化 `result` 不进入摘要请求，tool 的模型可见 `content`、名称、错误状态及视觉观察仍保留。摘要必须以 `stop` 完成且不超过摘要预算，失败会恢复上一个 checkpoint。
 
 每条新工具结果的模型可见 `content` 统一限制为 `min(16000, max(256, floor(promptBudget × 25%)))` 个估算 token；超限时保留约 70% 头部和 30% 尾部并插入截断标记。宿主/TUI 使用的结构化 `result` 不受该限制。
 
@@ -122,7 +122,7 @@ journal 的顺序是协议约束：完整 assistant 消息必须先持久化，�
 
 运行中止或工具 deadline 到期时，ToolRuntime 会中止调用级 signal，并等待固定且有限的取消宽限期。在并行组中，这个决定会先立即停止 pool 补充并中止活动 sibling，再等待触发调用 drain；排队调用不会启动，而是得到 canceled 结果。工具在宽限期内退出时，结果分别记录为 `canceled` 或 `timed_out`；无论工具随后返回还是抛错，都不会覆盖这个中止结果。若工具忽略 signal，runtime 会停止接收其 update，将持久化结果标记为 `status: "unknown"`，并终止当前 Agent run。该结果明确要求不得自动重试，因为脱离 runtime 的调用仍可能产生副作用；其迟到的完成只产生不含参数和结果的结构化诊断日志。deadline 与宽限期都使用正整数毫秒。工具的 `execution.deadlineMs` 优先；未声明时使用 Agent 默认值。框架默认是 300000 毫秒，Kana 产品默认是 660000 毫秒，并可通过 `agent.tool_deadline_ms` 覆盖。
 
-相邻并行组通过有界滚动池运行。调用按模型顺序领取并进入串行审批，同时在途的调用 body 不超过 `maxParallelToolCalls`。每个 start、partial update 和终态事件仍以 `toolCallId` 关联；`tool_execution_end` 跟随物理完成，因此后面的快速调用可以早于前面的慢调用显示完成。持久化提交则独立等待按模型顺序排列的结果槽位，使 session 历史与下一次模型请求都保持确定顺序。助手工具调用消息在执行前已经持久化，因此进程若在实时终态与结果提交之间退出，恢复时会把该调用记为 `unknown`，而不会自动重试。run abort 或内部调度失败会停止补充并中止活动 sibling；已启动调用被 drain 到明确终态或 unknown，尚未启动的调用得到 canceled 结果。池的开始、结束和异常 drain 诊断只包含聚合计数。`list`、`glob`、`grep`、`read` 声明为 `parallel`；写入、Shell、记忆、调度以及未声明的第三方/MCP 工具默认 `exclusive`。
+相邻并行组通过有界滚动池运行。调用按模型顺序领取并进入串行审批，同时在途的调用 body 不超过 `maxParallelToolCalls`。每个 start、partial update 和终态事件仍以 `toolCallId` 关联；`tool_execution_end` 跟随物理完成，因此后面的快速调用可以早于前面的慢调用显示完成。持久化提交则独立等待按模型顺序排列的结果槽位，使 session 历史与下一次模型请求都保持确定顺序。助手工具调用消息在执行前已经持久化，因此进程若在实时终态与结果提交之间退出，恢复时会把该调用记为 `unknown`，而不会自动重试。run abort 或内部调度失败会停止补充并中止活动 sibling；已启动调用被 drain 到明确终态或 unknown，尚未启动的调用得到 canceled 结果。池的开始、结束和异常 drain 诊断只包含聚合计数。`list`、`glob`、`grep`、`read`、`view_image` 声明为 `parallel`；写入、Shell、记忆、调度以及未声明的第三方/MCP 工具默认 `exclusive`。
 
 工具接口为：
 
@@ -164,6 +164,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 | `glob` | `pattern`，可选 `cwd`（默认 `.`）、`type`、`maxDepth`、`includeHidden`（默认 `false`）、`limit`（1–2000，默认 200） | 用相对 glob pattern 查找路径，返回稳定排序的匹配项、总数和 `truncated`。pattern 不能是绝对路径，也不能包含 `..` 路径段。 |
 | `grep` | `pattern`，可选 `path`（默认 `.`）、`include`、`literal`、`caseSensitive`、`includeHidden`、`limit`（1–2000，默认 100） | 用 JavaScript 正则或字面量搜索文本内容，返回匹配行、行列位置、搜索文件数和 `truncated`。目录搜索时 `include` 必须是相对 glob pattern。 |
 | `read` | `path`，可选 `offset`（从 1 开始）、`limit`（1–2000，默认 200） | 读取 UTF-8 文本，返回行区间、总行数和 `truncated`。 |
+| `view_image` | `path` | 加载并规范化本地图片，返回确定的路径、格式、尺寸与字节元数据，并把图片作为视觉观察交给同一个活动模型。仅当该模型支持图片且 `image_input` 已启用时注册。 |
 | `write` | `path`、完整 `content`、可选 `overwrite` | 递归创建父目录，并默认以排他创建方式写入新文件；`overwrite: true` 会替换既有文件。返回 UTF-8 字节数。 |
 | `edit` | `path`、非空 `oldText`、`newText`、可选 `replaceAll` | 对既有 UTF-8 文件做精确替换。默认要求恰好一次匹配；返回替换数、写入字节数及前后文本。 |
 | `bash` | `command`，可选 `cwd`、`timeoutMs`（1–600000，默认 30000） | 用用户 shell 的 login command 模式执行，返回退出码、stdout、stderr、超时和截断状态。 |
@@ -172,14 +173,14 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 
 `bash` 的 stdin 始终断开；它把 `sudo` 定义为 `sudo -n`，避免密码提示占用 TUI。stdout/stderr 在运行期间约每 100ms 发送部分更新，最终每个流最多保留 20,000 个 JavaScript 字符。每次命令在独立进程组中运行；取消或超时会终止整组，避免后台子进程残留或继续占用输出流。顶层 shell 已退出时，工具会在短暂排空输出后返回，因此后台任务不会阻塞工具结果。非 0 退出码表示命令本身的执行结果，不会将工具结果的 `isError` 标记为 true；超时的退出码记为 `null`，并将结果标为错误。
 
-`list`、`glob`、`grep`、`read`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd`、`glob.cwd` 和 `grep.path` 也可在外部。请将审批理解为交互确认，而不是文件系统隔离。
+`list`、`glob`、`grep`、`read`、`view_image`、`write`、`edit` 和 `bash` 都会解析相对路径相对于工具的 `root`（Kana 中为启动时的工作目录），也接受绝对路径。它们不是工作区沙箱：相对路径可越出 root，符号链接可解析到外部，`bash.cwd`、`glob.cwd` 和 `grep.path` 也可在外部。`view_image` 与用户附件共用同一解码器和规范化限制；GIF 等动画图片以解码后的首帧表示，并规范化为静态 PNG。请将审批理解为交互确认，而不是文件系统隔离。
 
 `schedule_wake` 不写入磁盘，也不恢复未投递事件。进程内 scheduler 提供按到期时间排序的 list，并使用该未来输入本身的 `MessageId` 取消。timer 到期后，同一个 ID 进入 Agent 的 `next-turn` lane，最终进入已提交历史；不会再创建 wake/queue correlation ID。`/schedule` 将 Agent 创建的事件标为 `agent`，将用户在面板中添加的事件标为 `you`，但不显示 Agent 用于替换事件的 key。到期时若 Agent 正在运行，inbox 会把它排在更早的 next-turn 输入之后，等当前 `agent_end` 后按顺序开始新 run。定时管理面板活动时只暂停 pending run 的启动，不暂停 timer；关闭面板后恢复投递。新建、分叉或恢复其他会话会清空旧会话的未来 wake 和 pending inbox，退出也一样。它不需要工具审批。
 
 ## 自定义工具的约束
 
 - 在 TypeScript 中优先使用 TypeBox 1.x schema，以保留静态参数类型。运行时也接受 TypeBox schema 经 JSON 序列化后的普通 JSON Schema；这类 schema 会补充兼容的基础类型转换，再由 TypeBox 编译器校验。
-- 返回可序列化的结构化 `result`，并提供简短、对模型有用的 `content`。
+- 返回可序列化的结构化 `result`，并提供简短、对模型有用的 `content`。可选 `images` 必须是 `UserImage[]`，可选 `isError` 必须是布尔值；字段格式错误时，本次调用会在任何消息提交前转成安全的工具失败。
 - 对可长时间运行的工具检查 `context.signal`，并用 `context.update` 提供进度。
 - 让失败抛出有操作意义的 `Error`；循环会将其安全转换为模型可见的工具结果。
 - 若工具会改变用户状态，需在产品装配层决定审批策略，并为 TUI 提供可理解的显示格式。

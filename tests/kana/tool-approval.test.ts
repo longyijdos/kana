@@ -97,6 +97,13 @@ describe("Kana tool approval", () => {
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
+        toolCall("view_image", { path: "screenshot.png" }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "unless_trusted" },
+        trusted,
         toolCall("bash", { command: " git status " }),
       ),
     ).toBe(false);

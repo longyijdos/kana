@@ -139,6 +139,98 @@ describe("buildOpenAICompatibleRequest", () => {
     ]);
     expect(JSON.stringify(unsupported)).not.toContain("private-image-bytes");
   });
+
+  test("emits tool images after contiguous sibling results as one user observation", () => {
+    const messages = [
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant" as const,
+        content: [
+          {
+            type: "tool_call" as const,
+            id: "call-view",
+            name: "view_image",
+            args: { path: "screen.png" },
+          },
+          {
+            type: "tool_call" as const,
+            id: "call-read",
+            name: "read",
+            args: { path: "notes.txt" },
+          },
+        ],
+      },
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool" as const,
+        toolCallId: "call-view",
+        toolName: "view_image",
+        content: "Viewed screen.png",
+        images: [
+          {
+            mimeType: "image/png" as const,
+            data: "tool-image-bytes",
+            width: 32,
+            height: 16,
+          },
+        ],
+        isError: false,
+      },
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool" as const,
+        toolCallId: "call-read",
+        toolName: "read",
+        content: "notes",
+        isError: false,
+      },
+    ];
+
+    const supported = buildOpenAICompatibleRequest({ messages }, createConfig({}, true));
+    const unsupported = buildOpenAICompatibleRequest({ messages }, createConfig());
+    if (!Array.isArray(unsupported.messages)) {
+      throw new Error("Expected Chat Completions messages.");
+    }
+
+    expect(supported.messages).toEqual([
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call-view",
+            type: "function",
+            function: { name: "view_image", arguments: '{"path":"screen.png"}' },
+          },
+          {
+            id: "call-read",
+            type: "function",
+            function: { name: "read", arguments: '{"path":"notes.txt"}' },
+          },
+        ],
+      },
+      { role: "tool", content: "Viewed screen.png", tool_call_id: "call-view" },
+      { role: "tool", content: "notes", tool_call_id: "call-read" },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "[Visual observation from view_image tool call call-view]" },
+          {
+            type: "image_url",
+            image_url: { url: "data:image/png;base64,tool-image-bytes" },
+          },
+        ],
+      },
+    ]);
+    expect(unsupported.messages[1]).toEqual({
+      role: "tool",
+      content:
+        "Viewed screen.png\n\n[1 tool image observation(s) omitted because this model does not support image input.]",
+      tool_call_id: "call-view",
+    });
+    expect(unsupported.messages).toHaveLength(3);
+    expect(JSON.stringify(unsupported)).not.toContain("tool-image-bytes");
+  });
 });
 
 function createConfig(

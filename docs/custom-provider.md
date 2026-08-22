@@ -55,7 +55,7 @@ api_key_env = "LOCAL_MODEL_API_KEY"
 | `context_window` | Yes | — | Positive context-window size used for Agent budgeting. |
 | `max_output_tokens` | Yes | — | Positive per-request output ceiling; cannot exceed `context_window`. |
 | `supports_parallel_tool_calls` | No | `false` | Whether Kana may advertise and execute safe tool calls in parallel. |
-| `supports_image_input` | No | `false` | Whether user images may be sent as Chat Completions image data URLs. |
+| `supports_image_input` | No | `false` | Whether user and tool images may be sent as Chat Completions image data URLs. When true, Kana also registers `view_image`. |
 | `reasoning_efforts` | No | Unset | Non-empty list of request values supported by `reasoning_effort`. |
 | `default_reasoning_effort` | With `reasoning_efforts` | — | Default value; it must appear in `reasoning_efforts`. |
 
@@ -78,7 +78,7 @@ default_reasoning_effort = "none"
 
 ## Protocol and security boundaries
 
-The adapter sends streaming `POST <base_url>/chat/completions` requests with `stream_options.include_usage = true`, maps system/user/assistant/tool history and local function definitions, and parses streamed text, tool calls, finish reasons, and usage. Streamed `delta.reasoning_content` is mapped to Kana thinking events so reasoning remains represented in Core. TUI activity is provider-independent: its `working` timer starts at `turn_start` and does not depend on this optional field. The adapter rejects redirects so a Bearer credential cannot be forwarded to another origin. Hosted web search and provider-specific replay state are not supported by the Custom slot.
+The adapter sends streaming `POST <base_url>/chat/completions` requests with `stream_options.include_usage = true`, maps system/user/assistant/tool history and local function definitions, and parses streamed text, tool calls, finish reasons, and usage. Chat Completions tool-role messages cannot carry images, so when image capability is declared the adapter keeps the text tool results contiguous and appends one synthetic multimodal user observation for their images. Streamed `delta.reasoning_content` is mapped to Kana thinking events so reasoning remains represented in Core. TUI activity is provider-independent: its `working` timer starts at `turn_start` and does not depend on this optional field. The adapter rejects redirects so a Bearer credential cannot be forwarded to another origin. Hosted web search and provider-specific replay state are not supported by the Custom slot.
 
 `base_url` accepts HTTP and HTTPS endpoints. Prefer HTTPS whenever credentials cross an untrusted network because HTTP sends the Bearer credential without transport encryption. Credentials in the URL, query strings, and fragments are rejected. The configuration also rejects unknown fields, invalid environment-variable names, duplicate model names, invalid token limits, duplicate reasoning values, `off`, and a reasoning default outside the advertised list.
 

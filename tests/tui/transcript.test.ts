@@ -363,6 +363,36 @@ describe("tui transcript", () => {
     expect(lines).not.toContain("line 10");
   });
 
+  test("renders view_image with dedicated visual metadata instead of generic JSON", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_view",
+      name: "view_image",
+      args: { path: "artifacts/screenshot.png" },
+    });
+
+    block.markExecutionStarted();
+    expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Viewing (0s) (Esc to abort)");
+
+    block.updateResult(
+      {
+        path: "artifacts/screenshot.png",
+        mimeType: "image/png",
+        width: 1440,
+        height: 832,
+        byteSize: 19 * 1024,
+      },
+      false,
+    );
+
+    const lines = block.render(80).map(stripAnsi);
+    expect(lines[0]).toBe("◆ Viewed");
+    expect(lines[1]).toBe("  └ artifacts/screenshot.png");
+    expect(lines).toContain("PNG · 1440×832 · 19 KB");
+    expect(lines.join("\n")).not.toContain('"mimeType"');
+    expect(block.hasExpandableOutput()).toBe(false);
+  });
+
   test("renders list tool output as directory metadata", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

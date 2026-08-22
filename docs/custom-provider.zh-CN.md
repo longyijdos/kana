@@ -55,7 +55,7 @@ api_key_env = "LOCAL_MODEL_API_KEY"
 | `context_window` | 是 | — | Agent 预算使用的正整数上下文窗口。 |
 | `max_output_tokens` | 是 | — | 单次请求的正整数输出上限；不能超过 `context_window`。 |
 | `supports_parallel_tool_calls` | 否 | `false` | Kana 是否可以声明并实际并发执行安全工具调用。 |
-| `supports_image_input` | 否 | `false` | 是否可以把用户图片作为 Chat Completions image data URL 发送。 |
+| `supports_image_input` | 否 | `false` | 是否可以把用户和工具图片作为 Chat Completions image data URL 发送。设为 true 时 Kana 也会注册 `view_image`。 |
 | `reasoning_efforts` | 否 | 未设置 | `reasoning_effort` 支持的非空请求值列表。 |
 | `default_reasoning_effort` | 配置 `reasoning_efforts` 时 | — | 默认值；必须出现在 `reasoning_efforts` 中。 |
 
@@ -78,7 +78,7 @@ default_reasoning_effort = "none"
 
 ## 协议与安全边界
 
-适配器发送流式 `POST <base_url>/chat/completions` 请求，并设置 `stream_options.include_usage = true`；它会转换 system/user/assistant/tool 历史和本地函数定义，并解析流式文本、工具调用、结束原因与 usage。流式 `delta.reasoning_content` 会转换成 Kana thinking 事件，使推理内容继续保留在 Core 中。TUI 活动状态与供应商无关：`working` 计时从 `turn_start` 开始，不依赖这个可选字段。为避免 Bearer 凭据被转发到其他 origin，适配器拒绝 redirect。Custom 槽位不支持托管网页搜索和供应商专用 replay state。
+适配器发送流式 `POST <base_url>/chat/completions` 请求，并设置 `stream_options.include_usage = true`；它会转换 system/user/assistant/tool 历史和本地函数定义，并解析流式文本、工具调用、结束原因与 usage。Chat Completions 的 tool-role 消息不能携带图片，因此声明图片能力后，adapter 会保持文本工具结果连续，再为其中的图片追加一条合成的多模态 user observation。流式 `delta.reasoning_content` 会转换成 Kana thinking 事件，使推理内容继续保留在 Core 中。TUI 活动状态与供应商无关：`working` 计时从 `turn_start` 开始，不依赖这个可选字段。为避免 Bearer 凭据被转发到其他 origin，适配器拒绝 redirect。Custom 槽位不支持托管网页搜索和供应商专用 replay state。
 
 `base_url` 接受 HTTP 和 HTTPS 端点。凭据经过不可信网络时应优先使用 HTTPS，因为 HTTP 传输 Bearer 凭据时没有传输层加密。URL 中的凭据、query 和 fragment 都会被拒绝。配置还会拒绝未知字段、非法环境变量名、重复模型名、无效 token 上限、重复 reasoning 值、`off`，以及不在声明列表中的 reasoning 默认值。
 

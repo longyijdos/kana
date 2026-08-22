@@ -241,6 +241,81 @@ describe("buildOpenAICodexRequest", () => {
     ]);
     expect(JSON.stringify(request)).not.toContain("private-image-bytes");
   });
+
+  test("encodes tool image observations as native multimodal function outputs", () => {
+    const context = {
+      messages: [
+        {
+          ...messageIdentityForTest("assistant"),
+          role: "assistant" as const,
+          content: [
+            {
+              type: "tool_call" as const,
+              id: "call-view",
+              name: "view_image",
+              args: { path: "screen.png" },
+            },
+          ],
+        },
+        {
+          ...messageIdentityForTest("tool"),
+          role: "tool" as const,
+          toolCallId: "call-view",
+          toolName: "view_image",
+          content: "Viewed screen.png",
+          images: [
+            {
+              mimeType: "image/png" as const,
+              data: "tool-image-bytes",
+              width: 32,
+              height: 16,
+            },
+          ],
+          isError: false,
+        },
+      ],
+    };
+    const config = {
+      provider: "openai-codex" as const,
+      model: "gpt-5.6-luna" as const,
+      credentialProvider: credentials(),
+    };
+
+    const enabled = buildOpenAICodexRequest(context, config);
+    const disabled = buildOpenAICodexRequest(context, { ...config, imageInput: false });
+
+    expect(enabled.input).toEqual([
+      {
+        type: "function_call",
+        call_id: "call-view",
+        name: "view_image",
+        arguments: '{"path":"screen.png"}',
+      },
+      {
+        type: "function_call_output",
+        call_id: "call-view",
+        output: [
+          { type: "input_text", text: "Viewed screen.png" },
+          { type: "input_image", image_url: "data:image/png;base64,tool-image-bytes" },
+        ],
+      },
+    ]);
+    expect(disabled.input).toEqual([
+      {
+        type: "function_call",
+        call_id: "call-view",
+        name: "view_image",
+        arguments: '{"path":"screen.png"}',
+      },
+      {
+        type: "function_call_output",
+        call_id: "call-view",
+        output:
+          "Viewed screen.png\n\n[1 tool image observation(s) omitted because image input is disabled.]",
+      },
+    ]);
+    expect(JSON.stringify(disabled)).not.toContain("tool-image-bytes");
+  });
 });
 
 function credentials() {

@@ -606,6 +606,10 @@ export class ToolRuntime {
       };
     } catch (error) {
       acceptsUpdates = false;
+      this.log("warn", "tool.execution_failed", {
+        toolName: tool.name,
+        errorType: getErrorType(error),
+      });
       try {
         await this.events.drain();
       } catch (updateError) {
@@ -743,6 +747,9 @@ export class ToolRuntime {
       toolCallId: executed.toolCall.id,
       toolName: executed.toolCall.name,
       content: this.config.limitToolContent?.(content) ?? content,
+      ...(executed.result.images?.length
+        ? { images: structuredClone(executed.result.images) }
+        : {}),
       result: executed.result.result,
       isError: executed.isError,
     };

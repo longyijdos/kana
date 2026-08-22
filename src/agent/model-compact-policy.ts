@@ -119,38 +119,51 @@ function formatMessage(
   includeImages: boolean,
 ): object {
   switch (message.role) {
-    case "user":
+    case "user": {
+      const images = formatImages(message.images, imageState, includeImages);
       return {
         role: "user",
         content: message.content,
-        ...(message.images?.length
-          ? {
-              images: message.images.map((image) => {
-                imageState.nextIndex += 1;
-                if (includeImages) {
-                  imageState.images.push(structuredClone(image));
-                }
-                return {
-                  imageIndex: imageState.nextIndex,
-                  mimeType: image.mimeType,
-                  width: image.width,
-                  height: image.height,
-                  ...(!includeImages ? { contentOmitted: true } : {}),
-                };
-              }),
-            }
-          : {}),
+        ...(images ? { images } : {}),
       };
-    case "tool":
+    }
+    case "tool": {
+      const images = formatImages(message.images, imageState, includeImages);
       return {
         role: "tool",
         name: message.toolName,
         isError: message.isError,
         content: message.content,
+        ...(images ? { images } : {}),
       };
+    }
     case "assistant":
       return { role: "assistant", content: message.content.flatMap(formatAssistantContent) };
   }
+}
+
+function formatImages(
+  images: readonly UserImage[] | undefined,
+  imageState: CompactionImageState,
+  includeImages: boolean,
+): object[] | undefined {
+  if (!images?.length) {
+    return undefined;
+  }
+
+  return images.map((image) => {
+    imageState.nextIndex += 1;
+    if (includeImages) {
+      imageState.images.push(structuredClone(image));
+    }
+    return {
+      imageIndex: imageState.nextIndex,
+      mimeType: image.mimeType,
+      width: image.width,
+      height: image.height,
+      ...(!includeImages ? { contentOmitted: true } : {}),
+    };
+  });
 }
 
 function formatAssistantContent(content: AssistantContent): object[] {

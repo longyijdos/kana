@@ -1,6 +1,6 @@
 import type { Static, TSchema } from "typebox";
 
-import type { ToolSpec } from "@/core";
+import type { ToolSpec, UserImage } from "@/core";
 
 export type ToolContext = {
   toolCallId: string;
@@ -11,6 +11,9 @@ export type ToolContext = {
 export type ToolResult<TResult = unknown> = {
   // Text sent back to the model as the provider-facing tool result.
   content: string;
+  // Visual observations remain provider-neutral until a model adapter encodes
+  // them in the wire shape supported by its protocol.
+  images?: UserImage[];
   // Structured result remains available for agent consumers and logs.
   result: TResult;
   isError?: boolean;
