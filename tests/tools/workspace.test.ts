@@ -796,6 +796,29 @@ describe("workspace tools", () => {
     });
   });
 
+  test("bash preserves complete final output after bounding live updates", async () => {
+    const root = await createTempRoot();
+    const updates: unknown[] = [];
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: `awk 'BEGIN { for (i = 0; i < 25000; i++) printf "x" }'`,
+      },
+      createToolContext(updates),
+    );
+
+    expectToolResult(result);
+    expect(result.result.stdout).toHaveLength(25_000);
+    expect(result.result).toMatchObject({
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    });
+    expect(updates.at(-1)).toMatchObject({
+      stdout: "x".repeat(20_000),
+      stdoutTruncated: true,
+    });
+  });
+
   test("bash runs commands with stdin disconnected", async () => {
     const root = await createTempRoot();
     const bash = createBashTool({ root });

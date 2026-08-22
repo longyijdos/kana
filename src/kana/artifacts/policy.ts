@@ -9,7 +9,9 @@ const TOOL_RESULT_ARTIFACT_POLICY_SOURCE = "session_artifact";
 const HEAD_RATIO = 0.7;
 
 export type KanaToolResultArtifactPolicyOptions = {
-  store: KanaSessionArtifactStore;
+  // An absent store disables spilling but retains the independent durable
+  // structured-result boundary.
+  store?: KanaSessionArtifactStore;
   logger?: Logger;
 };
 
@@ -28,6 +30,18 @@ export function createKanaToolResultArtifactPolicy(
         input.resultByteLength === undefined || input.resultByteLength > byteLimit;
 
       if (contentByteLength <= byteLimit) {
+        if (!resultExceedsLimit) {
+          return undefined;
+        }
+        log(options.logger, "info", "tool.result_persistence_bounded", {
+          toolName: input.toolCall.name,
+          reason: input.resultByteLength === undefined ? "not_serializable" : "result_oversized",
+          inlineByteLimit: byteLimit,
+        });
+        return { persistResult: false };
+      }
+
+      if (!options.store) {
         if (!resultExceedsLimit) {
           return undefined;
         }

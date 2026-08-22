@@ -7,7 +7,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // Builds and benchmark workloads can legitimately run for several minutes, while
 // retaining a ceiling prevents a single model-issued command from running forever.
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
-const MAX_OUTPUT_CHARS = 20_000;
+const MAX_PARTIAL_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;
 // A background child can inherit stdout/stderr after its shell exits. Give a
 // normally exiting shell a brief chance to drain its final output, then stop
@@ -67,7 +67,7 @@ export function createBashTool(
   return {
     name: "bash",
     description:
-      "Run a shell command. Commands execute with the user's shell, requested working directory, timeout, and output truncation.",
+      "Run a shell command. Commands execute with the user's shell, requested working directory, timeout, and bounded live output updates.",
     parameters: bashParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {
@@ -100,17 +100,17 @@ export function createBashTool(
         partialEmitter.flush();
       }
 
-      const stdout = truncateOutput(result.stdout);
-      const stderr = truncateOutput(result.stderr);
+      // Final output must reach the shared result policy intact so it can be
+      // stored as an artifact before model and session views are bounded.
       const toolResult: BashToolResult = {
         command,
         cwd: cwd.relativePath,
         exitCode: result.exitCode,
-        stdout: stdout.content,
-        stderr: stderr.content,
+        stdout: result.stdout,
+        stderr: result.stderr,
         timedOut: result.timedOut,
-        stdoutTruncated: stdout.truncated,
-        stderrTruncated: stderr.truncated,
+        stdoutTruncated: false,
+        stderrTruncated: false,
       };
 
       return {
@@ -303,8 +303,8 @@ function resolveShell(shell: string | undefined): string {
   return value?.trim() ? value : "bash";
 }
 
-function truncateOutput(content: string): { content: string; truncated: boolean } {
-  if (content.length <= MAX_OUTPUT_CHARS) {
+function truncatePartialOutput(content: string): { content: string; truncated: boolean } {
+  if (content.length <= MAX_PARTIAL_OUTPUT_CHARS) {
     return {
       content,
       truncated: false,
@@ -312,7 +312,7 @@ function truncateOutput(content: string): { content: string; truncated: boolean 
   }
 
   return {
-    content: content.slice(0, MAX_OUTPUT_CHARS),
+    content: content.slice(0, MAX_PARTIAL_OUTPUT_CHARS),
     truncated: true,
   };
 }
@@ -322,8 +322,8 @@ function createBashPartialResult(
   cwd: string,
   output: BashOutputSnapshot,
 ): Partial<BashToolResult> {
-  const stdout = truncateOutput(output.stdout);
-  const stderr = truncateOutput(output.stderr);
+  const stdout = truncatePartialOutput(output.stdout);
+  const stderr = truncatePartialOutput(output.stderr);
 
   return {
     command,

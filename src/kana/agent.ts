@@ -154,13 +154,12 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     parallelToolCalls: config.agent.parallelToolCalls,
     maxParallelToolCalls: config.agent.maxParallelToolCalls,
     repeatedToolCalls: config.agent.repeatedToolCalls,
-    toolResultPolicy:
-      options.artifactStore && config.agent.toolResultArtifacts
-        ? createKanaToolResultArtifactPolicy({
-            store: options.artifactStore,
-            logger: options.logger,
-          })
-        : undefined,
+    toolResultPolicy: createKanaToolResultArtifactPolicy({
+      ...(config.agent.toolResultArtifacts && options.artifactStore
+        ? { store: options.artifactStore }
+        : {}),
+      logger: options.logger,
+    }),
     beforeToolExecution: options.beforeToolExecution,
     inbox: options.inbox,
     messages: options.messages,

@@ -6,7 +6,7 @@ import { Type } from "typebox";
 
 import type { Message } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
-import { createGrepTool, createReadTool, type Tool } from "@/tools";
+import { createBashTool, createGrepTool, createReadTool, type Tool } from "@/tools";
 import { ToolRuntime } from "../../../src/agent/tool-runtime";
 import {
   createKanaToolResultArtifactPolicy,
@@ -88,6 +88,56 @@ describe("Kana tool-result artifacts", () => {
     expect(statSync(path.dirname(path.dirname(artifact.locator))).mode & 0o777).toBe(0o700);
     expect(statSync(path.dirname(artifact.locator)).mode & 0o777).toBe(0o700);
     expect(statSync(artifact.locator).mode & 0o777).toBe(0o600);
+  });
+
+  test("stores complete bash output after live updates have been bounded", async () => {
+    const kanaHome = createTempDirectory();
+    const cwd = path.join(kanaHome, "workspace");
+    mkdirSync(cwd);
+    const store = createPersistentKanaSessionArtifactStore({
+      sessionId: "session-bash",
+      cwd,
+      env: { KANA_HOME: kanaHome },
+    });
+    const bash = createBashTool({ root: cwd });
+    let liveResult: unknown;
+    const runtime = new ToolRuntime(
+      {
+        tools: [bash],
+        toolContentByteLimit: 1_024,
+        toolResultPolicy: createKanaToolResultArtifactPolicy({ store }),
+      },
+      (event) => {
+        if (event.type === "tool_execution_end") {
+          liveResult = event.result;
+        }
+      },
+    );
+
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "call-bash",
+        name: "bash",
+        args: { command: `awk 'BEGIN { for (i = 0; i < 25000; i++) printf "x" }'` },
+      },
+    ]);
+
+    expect(liveResult).toMatchObject({
+      stdout: "x".repeat(25_000),
+      stdoutTruncated: false,
+    });
+    const toolResult = result.toolResults[0];
+    expect(toolResult).not.toHaveProperty("result");
+    expect(toolResult?.artifact).toBeDefined();
+    const locator = toolResult?.artifact?.locator;
+    if (!locator) {
+      throw new Error("Expected complete bash output to be stored as an artifact.");
+    }
+    const stored = readFileSync(locator, "utf8");
+    expect(stored).toContain("x".repeat(25_000));
+    expect(stored).toContain("stdoutTruncated: false");
+    expect(toolResult?.content).toContain(`Full output locator: ${locator}`);
   });
 
   test("bounds read output without creating a recursive artifact", async () => {
@@ -216,6 +266,21 @@ describe("Kana tool-result artifacts", () => {
     });
 
     expect(saveCount).toBe(0);
+    expect(result).toEqual({ persistResult: false });
+  });
+
+  test("bounds oversized structured persistence when artifact storage is disabled", async () => {
+    const policy = createKanaToolResultArtifactPolicy({});
+    const content = "unspilled output".repeat(100);
+
+    const result = await policy.finalize({
+      toolCall: { type: "tool_call", id: "call-1", name: "bash", args: {} },
+      content,
+      isError: false,
+      resultByteLength: 2_000,
+      contentByteLimit: 768,
+    });
+
     expect(result).toEqual({ persistResult: false });
   });
 });
