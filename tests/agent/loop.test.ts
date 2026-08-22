@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { ContextManager, estimateContextTokens } from "../../src/agent/context-manager";
 import type { AgentEvent } from "../../src/agent/events";
 import { runAgentLoop } from "../../src/agent/loop";
+import { createRepeatedToolCallPolicy } from "../../src/agent/repeated-tool-call-policy";
 import type { ModelContext } from "../../src/core/context";
 import type { AssistantMessage } from "../../src/core/messages";
 import type { Model, ModelMetadata } from "../../src/core/model";
@@ -467,6 +468,41 @@ describe("runAgentLoop", () => {
       type: "agent_end",
       reason: "stop",
     });
+  });
+
+  test("persists policy context after its tool result and before the next model request", async () => {
+    const model = new ScriptedToolModel({ a: "2", b: 3 }, 2);
+    const committedRoles: string[] = [];
+
+    const messages = await runAgentLoop(
+      {
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "keep adding" }],
+        tools: [addTool],
+      },
+      {
+        model,
+        maxTurns: 3,
+        toolResultPolicy: createRepeatedToolCallPolicy({ reminderThresholds: [2] }),
+        onMessageCommitted: (message) => {
+          committedRoles.push(message.role);
+        },
+      },
+      () => {},
+    );
+
+    expect(committedRoles).toEqual(["assistant", "tool", "assistant", "tool", "user", "assistant"]);
+    expect(messages.map((message) => message.role)).toEqual([
+      "assistant",
+      "tool",
+      "assistant",
+      "tool",
+      "user",
+      "assistant",
+    ]);
+    expect(messages[4]).toMatchObject({
+      provenance: { kind: "tool_result_policy", source: "repeated_tool_call" },
+    });
+    expect(model.contexts[2]?.messages.at(-1)).toEqual(messages[4]);
   });
 
   test("executes tools from the same per-step snapshot advertised to the model", async () => {

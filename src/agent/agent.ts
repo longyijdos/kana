@@ -32,7 +32,12 @@ import {
   runAgentLoop,
 } from "./loop";
 import { createPromptAssembly, type PromptAssembly } from "./prompt-assembly";
+import {
+  createRepeatedToolCallPolicy,
+  type RepeatedToolCallPolicyConfig,
+} from "./repeated-tool-call-policy";
 import { AgentEventStream } from "./stream";
+import type { ToolResultPolicy } from "./tool-result-policy";
 import { resolveDefaultToolDeadlineMs, resolveMaxParallelToolCalls } from "./tool-runtime";
 
 export type AgentPromptInput = string | UserMessage | UserMessage[];
@@ -50,6 +55,7 @@ export type AgentConfig = {
   toolDeadlineMs?: number;
   parallelToolCalls?: boolean;
   maxParallelToolCalls?: number;
+  repeatedToolCalls?: RepeatedToolCallPolicyConfig;
   beforeToolExecution?: BeforeToolExecutionHook;
   onRunCommitted?: AgentRunCommittedHook;
   onCompactionCommitted?: AgentCompactionCommittedHook;
@@ -136,6 +142,7 @@ export class Agent {
   private readonly parallelToolCalls: boolean;
   private readonly maxParallelToolCalls: number;
   private readonly promptAssembly: PromptAssembly;
+  private readonly toolResultPolicy?: ToolResultPolicy;
 
   constructor(options: AgentConfig) {
     assertValidMaxTurns(options.maxTurns);
@@ -168,6 +175,11 @@ export class Agent {
       ...this.inboxData.snapshot.nextTurn.map((item) => item.message),
     ]);
     this.beforeToolExecution = options.beforeToolExecution;
+    if (options.repeatedToolCalls) {
+      const policy = createRepeatedToolCallPolicy(options.repeatedToolCalls);
+      this.toolResultPolicy =
+        options.repeatedToolCalls.reminderThresholds.length === 0 ? undefined : policy;
+    }
     this.onRunCommitted = options.onRunCommitted;
     this.onCompactionCommitted = options.onCompactionCommitted;
     this.journal = options.journal;
@@ -183,6 +195,11 @@ export class Agent {
       supported: options.model.metadata.supportsParallelToolCalls,
       enabled: this.parallelToolCalls,
       maxParallelToolCalls: this.maxParallelToolCalls,
+    });
+    this.log("debug", "agent.repeated_tool_calls_configured", {
+      enabled: this.toolResultPolicy !== undefined,
+      reminderThresholds: options.repeatedToolCalls?.reminderThresholds ?? [],
+      excludedToolCount: options.repeatedToolCalls?.excludedTools?.length ?? 0,
     });
   }
 
@@ -371,6 +388,7 @@ export class Agent {
         );
         journalStarted = true;
         this.stateData.messages = [...this.stateData.messages, ...structuredClone(promptMessages)];
+        this.resetToolResultPolicyFor(promptMessages);
         this.log("info", "agent.run_started", {
           promptMessageCount: promptMessages.length,
         });
@@ -545,6 +563,7 @@ export class Agent {
     this.stateData.pendingToolCalls = new Set<string>();
     this.stateData.error = undefined;
     this.clearInbox();
+    this.resetToolResultPolicy();
     this.contextManager?.reset();
   }
 
@@ -572,6 +591,7 @@ export class Agent {
       maxParallelToolCalls: this.maxParallelToolCalls,
       signal,
       beforeToolExecution: this.beforeToolExecution,
+      toolResultPolicy: this.toolResultPolicy,
       contextManager,
       logger: this.logger,
       loggerMetadata: this.loggerMetadata,
@@ -685,12 +705,31 @@ export class Agent {
     }
 
     if (consumed.length > 0) {
+      this.resetToolResultPolicyFor(consumed);
       this.emitInboxChanged();
       this.log("info", "agent.steering_inputs_consumed", {
         inputCount: consumed.length,
       });
     }
     return consumed;
+  }
+
+  private resetToolResultPolicyFor(messages: readonly UserMessage[]): void {
+    if (!messages.some(isHumanAuthoredInput)) {
+      return;
+    }
+    this.resetToolResultPolicy();
+  }
+
+  private resetToolResultPolicy(): void {
+    try {
+      this.toolResultPolicy?.reset?.();
+    } catch (error) {
+      this.log("warn", "tool.result_policy_reset_failed", {
+        policySource: this.toolResultPolicy?.source,
+        errorType: error instanceof Error ? error.name : typeof error,
+      });
+    }
   }
 
   private emitInboxChanged(): void {
@@ -893,4 +932,11 @@ function toPromptMessages(input: AgentPromptInput): UserMessage[] {
       provenance: { kind: "user_input" },
     }),
   ];
+}
+
+function isHumanAuthoredInput(message: UserMessage): boolean {
+  return (
+    message.provenance.kind === "user_input" ||
+    (message.provenance.kind === "scheduled_input" && message.provenance.origin === "user")
+  );
 }

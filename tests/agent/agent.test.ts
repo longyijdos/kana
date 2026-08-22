@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { Type } from "typebox";
 import { Agent, createPromptAssembly } from "../../src/agent";
 import type { AgentEvent } from "../../src/agent/events";
 import type { ModelContext } from "../../src/core/context";
-import type { AssistantMessage, Message } from "../../src/core/messages";
+import { type AssistantMessage, createUserMessage, type Message } from "../../src/core/messages";
 import type { Model, ModelMetadata, ModelUsage } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
 import type { Logger } from "../../src/logging";
+import type { Tool } from "../../src/tools/tool";
 import { messageIdentityForTest } from "../helpers/messages";
 
 class TextModel implements Model {
@@ -156,6 +158,39 @@ class AbortAwareModel implements Model {
   }
 }
 
+class RepeatedToolModel implements Model {
+  readonly metadata: ModelMetadata = {
+    provider: "test",
+    model: "repeated-tool",
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+    supportsParallelToolCalls: true,
+    protocol: null,
+    supportsHostedWebSearch: false,
+  };
+  private requestCount = 0;
+
+  stream(_context: ModelContext): AssistantEventStream {
+    const stream = new AssistantEventStream();
+    this.requestCount += 1;
+    const requestCount = this.requestCount;
+
+    queueMicrotask(() => {
+      if (requestCount % 2 === 1) {
+        streamProbeToolCall(stream, Math.ceil(requestCount / 2));
+        return;
+      }
+      streamText(stream, "done");
+    });
+
+    return stream;
+  }
+
+  generate(context: ModelContext): Promise<AssistantMessage> {
+    return this.stream(context).result();
+  }
+}
+
 describe("Agent", () => {
   test("uses a configurable default tool deadline", () => {
     expect(new Agent({ model: new TextModel() }).state.toolDeadlineMs).toBe(300_000);
@@ -244,6 +279,7 @@ describe("Agent", () => {
 
     expect(records.map((record) => record.event)).toEqual([
       "agent.parallel_tool_calls_configured",
+      "agent.repeated_tool_calls_configured",
       "agent.run_started",
       "agent.started",
       "agent.turn_started",
@@ -261,6 +297,15 @@ describe("Agent", () => {
       },
     });
     expect(records[1]).toEqual({
+      event: "agent.repeated_tool_calls_configured",
+      metadata: {
+        agentKind: "conversation",
+        enabled: false,
+        reminderThresholds: [],
+        excludedToolCount: 0,
+      },
+    });
+    expect(records[2]).toEqual({
       event: "agent.run_started",
       metadata: { agentKind: "conversation", promptMessageCount: 1 },
     });
@@ -316,6 +361,42 @@ describe("Agent", () => {
     expect(events.at(-1)).toMatchObject({
       type: "agent_end",
     });
+  });
+
+  test("isolates repeated-call state per Agent and resets it for human input", async () => {
+    const parameters = Type.Object({ path: Type.String() });
+    const tool = {
+      name: "probe",
+      description: "Probe a path.",
+      parameters,
+      execute: () => "ok",
+    } satisfies Tool<typeof parameters, string>;
+    const createAgent = () =>
+      new Agent({
+        model: new RepeatedToolModel(),
+        tools: [tool],
+        repeatedToolCalls: {
+          reminderThresholds: [2, 3],
+        },
+      });
+    const firstAgent = createAgent();
+    const secondAgent = createAgent();
+    const agentInput = () =>
+      createUserMessage({
+        content: "continue automatically",
+        provenance: { kind: "scheduled_input", origin: "agent" },
+      });
+
+    await firstAgent.prompt("first human request");
+    await secondAgent.prompt("second agent's human request");
+    await firstAgent.prompt(agentInput());
+
+    expect(policyMessages(firstAgent.state.messages)).toHaveLength(1);
+    expect(policyMessages(secondAgent.state.messages)).toHaveLength(0);
+
+    await firstAgent.prompt("new human direction");
+
+    expect(policyMessages(firstAgent.state.messages)).toHaveLength(1);
   });
 
   test("streams agent events from the stateful agent", async () => {
@@ -1138,4 +1219,77 @@ function deferred(): {
     promise,
     resolve,
   };
+}
+
+function streamProbeToolCall(stream: AssistantEventStream, callNumber: number): void {
+  const message: AssistantMessage = {
+    ...messageIdentityForTest("assistant"),
+    role: "assistant",
+    content: [],
+  };
+  const toolCall = {
+    type: "tool_call" as const,
+    id: `probe-${callNumber}`,
+    name: "probe",
+    args: { path: "same" },
+    rawArgs: '{"path":"same"}',
+  };
+
+  stream.push({ type: "start", snapshot: structuredClone(message) });
+  message.content.push(toolCall);
+  stream.push({
+    type: "toolcall_start",
+    contentIndex: 0,
+    snapshot: structuredClone(message),
+  });
+  stream.push({
+    type: "toolcall_end",
+    contentIndex: 0,
+    toolCall,
+    snapshot: structuredClone(message),
+  });
+  stream.end({
+    type: "done",
+    reason: "toolUse",
+    message: structuredClone(message),
+  });
+}
+
+function streamText(stream: AssistantEventStream, text: string): void {
+  const message: AssistantMessage = {
+    ...messageIdentityForTest("assistant"),
+    role: "assistant",
+    content: [],
+  };
+
+  stream.push({ type: "start", snapshot: structuredClone(message) });
+  message.content.push({ type: "text", text });
+  stream.push({
+    type: "text_start",
+    contentIndex: 0,
+    snapshot: structuredClone(message),
+  });
+  stream.push({
+    type: "text_delta",
+    contentIndex: 0,
+    delta: text,
+    snapshot: structuredClone(message),
+  });
+  stream.push({
+    type: "text_end",
+    contentIndex: 0,
+    content: text,
+    snapshot: structuredClone(message),
+  });
+  stream.end({
+    type: "done",
+    reason: "stop",
+    message: structuredClone(message),
+  });
+}
+
+function policyMessages(messages: Message[]): Message[] {
+  return messages.filter(
+    (message) => message.role === "user" && message.provenance.kind === "tool_result_policy",
+  );
 }

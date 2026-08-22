@@ -214,11 +214,16 @@ describe("Kana session persistence", () => {
     expect(loaded.contextCheckpoint).toBeUndefined();
   });
 
-  test("round-trips runtime context without using it as the session title", () => {
+  test("round-trips internal context without using it as the session title", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "runtime-context" });
     const messages: Message[] = [
+      {
+        ...createMessageIdentity({ kind: "tool_result_policy", source: "repeated_tool_call" }),
+        role: "user",
+        content: "Internal policy reminder",
+      },
       {
         ...createMessageIdentity({ kind: "runtime_context", source: "environment" }),
         role: "user",

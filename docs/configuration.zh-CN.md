@@ -141,6 +141,10 @@ parallel_tool_calls = true
 max_parallel_tool_calls = 4
 # context_limit = 200000
 
+[agent.repeated_tool_calls]
+reminder_thresholds = [3,5,8]
+excluded_tools = []
+
 [approval]
 mode = "unless_trusted"
 
@@ -227,6 +231,8 @@ Endpoint、鉴权、模型 metadata 和推理能力仍保存在 `providers/custo
 | `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
 | `agent.max_parallel_tool_calls` | 正整数 | `4` | 一个相邻并行安全组内可同时执行的工具调用 body 上限。 |
 | `agent.context_limit` | 可选正整数 | 模型 metadata 的 context window | 与供应商无关的上下文上限；Agent 使用该值与所选模型 context window 中较小的一个。 |
+| `agent.repeated_tool_calls.reminder_thresholds` | 严格递增且每项不小于 2 的整数数组 | `[3,5,8]` | 连续精确重复达到哪些次数时，Agent 插入逐级增强的建议上下文；空数组关闭策略。 |
+| `agent.repeated_tool_calls.excluded_tools` | 唯一、非空、已去除首尾空白的工具名数组 | `[]` | 重复调用统计透明忽略的工具；被排除的调用既不推进也不重置连续计数。 |
 | `approval.mode` | `always`、`unless_trusted`、`never` | `unless_trusted` | 工具调用是否进入 TUI 审批。 |
 | `notification.backend` | `auto`、`off`、`bell`、`osc9`、`osc777`、`kitty` | `auto` | 终端通知输出协议。`auto` 依次识别 Kitty、iTerm、Ghostty、VTE，否则退回 bell。 |
 | `notification.on_agent_completed` | 布尔值 | `true` | 正常完成的 Agent 运行是否通知。中止、错误、长度截断或 `turn_limit` 不会视作完成。 |
@@ -243,6 +249,8 @@ Endpoint、鉴权、模型 metadata 和推理能力仍保存在 `providers/custo
 
 `parallel_tool_calls` 是用户策略，最终值为“用户配置且所选模型 metadata 支持”。关闭后 provider 请求不会声明并行能力，且即使模型仍在一个响应中返回多个调用，ToolRuntime 也会按顺序逐个执行；此时 `max_parallel_tool_calls` 不影响调度，但仍会校验，避免以后重新启用并行时暴露潜伏的非法值。打开后仍只有声明 `execution.concurrency = "parallel"` 的相邻工具能够组成并行组。ToolRuntime 按模型顺序启动这些调用，并使用滚动池保证同时在途的调用 body 不超过 `max_parallel_tool_calls`；`exclusive`、未声明、未知或元数据非法的工具仍是屏障。当前 OpenAI Codex 模型使用 classic Responses 并声明支持 parallel tool，因此请求字段会遵循这个有效设置。
 
+重复调用策略比较“工具名 + 规范化 JSON 参数”：对象键会递归排序，数组顺序保持不变。不同的未排除调用会重置连续计数，被排除调用则完全透明。人类 prompt、人工 steering 和 `Agent.reset()` 也会重置；Agent 来源的 scheduled input 不会。达到阈值时写入供下一次模型请求使用的内部建议上下文，但不会阻止工具调用。审批拒绝、取消、参数校验失败、未知工具和执行异常都在结果规范化后参与计数。
+
 `hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`render_latex` 同时作用于实时与恢复的助手消息、Markdown 表格和内存查看器。支持的表达式默认渲染；关闭该配置、遇到不支持或格式错误的语法、或流式分隔符尚未闭合时保留原始 LaTeX。终端宽度只在成功渲染后影响换行，不会触发源码 fallback。`render_mermaid` 同时作用于实时与恢复的助手消息和内存查看器。启用后 Mermaid 代码块会随文本流式生成持续渲染；不支持或格式错误的图、渲染器失败以及宽于终端可用宽度的图会保留为普通代码块。流式阶段可以显示部分解析结果；消息完成后若仍报告丢弃了源码，Kana 会恢复代码块并追加一条 warning。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`collapse_long_pastes` 只影响编辑器的显示与编辑方式，提交、排队和从输入历史恢复时仍使用完整粘贴原文。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls`、供应商 `web_search`/`image_input`、`hyperlinks`、`render_latex`、`render_mermaid`、`smooth_text_streaming` 和 `collapse_long_pastes` 必须是布尔值；`tool_deadline_ms`、`max_parallel_tool_calls`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
 
 ### 上下文预算
@@ -257,7 +265,7 @@ effectiveMaxTokens = min(activeModel.max_tokens, promptBudget - estimatedPromptT
 
 `promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。配置的 `max_tokens` 是输出上限而不是固定预留；prompt 增长到剩余空间不足时，Agent 会降低本轮 `ModelContext.maxOutputTokens`。当前两个 DeepSeek V4 模型都将其发送为 Responses `max_output_tokens`，不支持对应请求字段的 provider 可以忽略它。
 
-默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。Agent 创建时的 `agent.parallel_tool_calls_configured` 会记录 `requested`、`supported`、最终的 `enabled` 和 `maxParallelToolCalls`。并行组在 `debug` 级别记录 `tool.parallel_pool_started` 与 `tool.parallel_pool_ended`；中止或失败的 drain 还会以 `info` 或 `warn` 记录一次只含聚合计数的 `tool.parallel_pool_abnormal_drain`。`context.output_limit_adjusted` 只记录配置上限、本轮有效上限和估算 prompt tokens。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
+默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。Agent 创建时的 `agent.parallel_tool_calls_configured` 会记录 `requested`、`supported`、最终的 `enabled` 和 `maxParallelToolCalls`，`agent.repeated_tool_calls_configured` 会记录是否启用、阈值和排除工具数量。并行组在 `debug` 级别记录 `tool.parallel_pool_started` 与 `tool.parallel_pool_ended`；中止或失败的 drain 还会以 `info` 或 `warn` 记录一次只含聚合计数的 `tool.parallel_pool_abnormal_drain`。策略失败记录 `tool.result_policy_failed`，但不含参数或结果内容；成功插入上下文时，`tool.result_policy_context_committed` 只记录来源和数量。`context.output_limit_adjusted` 只记录配置上限、本轮有效上限和估算 prompt tokens。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
 
 配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
 

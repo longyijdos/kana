@@ -1,8 +1,10 @@
 import {
   createMessageIdentity,
+  createUserMessage,
   type Message,
   type ToolCallContent,
   type ToolResultMessage,
+  type UserMessage,
 } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
 import {
@@ -13,6 +15,7 @@ import {
   validateToolArguments,
 } from "@/tools";
 import type { AgentEvent } from "./events";
+import type { ToolResultPolicy, ToolResultPolicyResult } from "./tool-result-policy";
 
 const DEFAULT_CANCELLATION_GRACE_MS = 1_000;
 export const DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4;
@@ -29,7 +32,7 @@ export type BeforeToolExecutionResult =
     };
 
 export type BeforeToolExecutionHook = (request: {
-  toolCall: ToolCallContent;
+  toolCall: Readonly<ToolCallContent>;
   tool: Tool;
   args: unknown;
   signal?: AbortSignal;
@@ -47,11 +50,18 @@ export type ToolRuntimeConfig = {
   loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   limitToolContent?: (content: string) => string;
+  toolResultPolicy?: ToolResultPolicy;
 };
 
 export type ToolRuntimeResult = {
   toolResults: ToolResultMessage[];
+  additionalMessages: UserMessage[];
   abortRun: boolean;
+};
+
+type FinalizedToolResult = {
+  toolResult: ToolResultMessage;
+  additionalMessages: UserMessage[];
 };
 
 type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
@@ -117,33 +127,41 @@ export class ToolRuntime {
     this.cancellationGraceMs = resolveCancellationGraceMs(config.cancellationGraceMs);
     this.defaultDeadlineMs = resolveDefaultToolDeadlineMs(config.defaultDeadlineMs);
     this.maxParallelToolCalls = resolveMaxParallelToolCalls(config.maxParallelToolCalls);
+    assertValidToolResultPolicy(config.toolResultPolicy);
   }
 
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
+    // Capture the model output once. Approval hooks and policies receive
+    // separate clones so they cannot rewrite the durable call description.
+    const pendingToolCalls = structuredClone(toolCalls);
     const toolResults: ToolResultMessage[] = [];
+    const additionalMessages: UserMessage[] = [];
     let abortRun = false;
     let index = 0;
 
-    while (index < toolCalls.length) {
+    while (index < pendingToolCalls.length) {
       if (this.config.signal?.aborted) {
         await this.appendCanceledResults(
           toolResults,
-          toolCalls.slice(index),
+          additionalMessages,
+          pendingToolCalls.slice(index),
           "Tool call canceled because the run was aborted.",
         );
         abortRun = true;
         break;
       }
 
-      const group = this.readExecutionGroup(toolCalls, index);
+      const group = this.readExecutionGroup(pendingToolCalls, index);
       const executedGroup = await this.executeGroup(group);
       toolResults.push(...executedGroup.toolResults);
+      additionalMessages.push(...executedGroup.additionalMessages);
       index += group.length;
 
       if (executedGroup.abortRun) {
         await this.appendCanceledResults(
           toolResults,
-          toolCalls.slice(index),
+          additionalMessages,
+          pendingToolCalls.slice(index),
           "Tool call canceled because the run was aborted.",
         );
         abortRun = true;
@@ -151,8 +169,21 @@ export class ToolRuntime {
       }
     }
 
+    // Keep every result for one assistant tool-call message contiguous. Some
+    // providers reject user context interleaved between sibling tool results.
+    for (const message of additionalMessages) {
+      await this.config.onMessageCommitted?.(structuredClone(message));
+    }
+    if (additionalMessages.length > 0) {
+      this.log("info", "tool.result_policy_context_committed", {
+        policySource: this.config.toolResultPolicy?.source,
+        messageCount: additionalMessages.length,
+      });
+    }
+
     return {
       toolResults,
+      additionalMessages,
       abortRun,
     };
   }
@@ -196,15 +227,17 @@ export class ToolRuntime {
     if (toolCalls.length === 1 && onlyCall) {
       const executed = await this.executeToolCall(onlyCall, groupController.signal);
       await this.publishExecutionEnd(executed);
-      const message = await this.commitResult(executed);
+      const finalized = await this.commitResult(executed);
       return {
-        toolResults: [message],
+        toolResults: [finalized.toolResult],
+        additionalMessages: finalized.additionalMessages,
         abortRun: executed.abortRun ?? false,
       };
     }
 
     const slots = toolCalls.map(() => createToolExecutionSlot());
     const toolResults: ToolResultMessage[] = [];
+    const additionalMessages: UserMessage[] = [];
 
     this.log("debug", "tool.parallel_pool_started", {
       toolCount: toolCalls.length,
@@ -218,7 +251,9 @@ export class ToolRuntime {
       // durable messages wait on these model-ordered slots. Agent sessions have
       // already journaled the assistant call and recover any crash gap as unknown.
       for (const slot of slots) {
-        toolResults.push(await this.commitResult(await slot.promise));
+        const finalized = await this.commitResult(await slot.promise);
+        toolResults.push(finalized.toolResult);
+        additionalMessages.push(...finalized.additionalMessages);
       }
     } catch (error) {
       pool.fail(error);
@@ -236,6 +271,7 @@ export class ToolRuntime {
 
     return {
       toolResults,
+      additionalMessages,
       abortRun: snapshot.abortRun,
     };
   }
@@ -399,6 +435,7 @@ export class ToolRuntime {
 
   private async appendCanceledResults(
     toolResults: ToolResultMessage[],
+    additionalMessages: UserMessage[],
     toolCalls: ToolCallContent[],
     message: string,
   ): Promise<void> {
@@ -409,7 +446,9 @@ export class ToolRuntime {
         isError: true,
       } satisfies ExecutedToolCall;
       await this.publishExecutionEnd(executed);
-      toolResults.push(await this.commitResult(executed));
+      const finalized = await this.commitResult(executed);
+      toolResults.push(finalized.toolResult);
+      additionalMessages.push(...finalized.additionalMessages);
     }
   }
 
@@ -687,27 +726,70 @@ export class ToolRuntime {
       }
 
       return hook({
-        toolCall,
+        toolCall: structuredClone(toolCall),
         tool,
-        args,
+        args: structuredClone(args),
         signal,
       });
     });
   }
 
-  private async commitResult(executed: ExecutedToolCall): Promise<ToolResultMessage> {
+  private async commitResult(executed: ExecutedToolCall): Promise<FinalizedToolResult> {
+    const policyResult = await this.finalizeResult(executed);
+    const content = policyResult?.content ?? executed.result.content;
     const message: ToolResultMessage = {
       ...createMessageIdentity({ kind: "tool_result" }),
       role: "tool",
       toolCallId: executed.toolCall.id,
       toolName: executed.toolCall.name,
-      content: this.config.limitToolContent?.(executed.result.content) ?? executed.result.content,
+      content: this.config.limitToolContent?.(content) ?? content,
       result: executed.result.result,
       isError: executed.isError,
     };
+    const policy = this.config.toolResultPolicy;
+    const additionalMessages = policy
+      ? (policyResult?.additionalContext ?? []).map((context) =>
+          createUserMessage({
+            content: context,
+            provenance: {
+              kind: "tool_result_policy",
+              source: policy.source,
+            },
+          }),
+        )
+      : [];
 
     await this.config.onMessageCommitted?.(structuredClone(message));
-    return message;
+    return {
+      toolResult: message,
+      additionalMessages,
+    };
+  }
+
+  private async finalizeResult(
+    executed: ExecutedToolCall,
+  ): Promise<ToolResultPolicyResult | undefined> {
+    const policy = this.config.toolResultPolicy;
+    if (!policy) {
+      return undefined;
+    }
+
+    try {
+      const result = await policy.finalize({
+        toolCall: structuredClone(executed.toolCall),
+        result: structuredClone(executed.result),
+        isError: executed.isError,
+      });
+      assertValidToolResultPolicyResult(result);
+      return result ?? undefined;
+    } catch (error) {
+      this.log("warn", "tool.result_policy_failed", {
+        policySource: policy.source,
+        toolName: executed.toolCall.name,
+        errorType: getErrorType(error),
+      });
+      return undefined;
+    }
   }
 
   private async publishExecutionEnd(executed: ExecutedToolCall): Promise<void> {
@@ -915,6 +997,41 @@ export function resolveMaxParallelToolCalls(value: number | undefined): number {
     throw new Error("maxParallelToolCalls must be a positive integer.");
   }
   return value;
+}
+
+function assertValidToolResultPolicy(policy: ToolResultPolicy | undefined): void {
+  if (
+    policy &&
+    (typeof policy.source !== "string" ||
+      policy.source.length === 0 ||
+      policy.source !== policy.source.trim())
+  ) {
+    throw new Error("Tool result policy source must be a non-empty trimmed string.");
+  }
+}
+
+function assertValidToolResultPolicyResult(
+  value: unknown,
+): asserts value is ToolResultPolicyResult | undefined {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Tool result policy must return an object or undefined.");
+  }
+  const result = value as Record<string, unknown>;
+  if (result.content !== undefined && typeof result.content !== "string") {
+    throw new Error("Tool result policy content must be a string.");
+  }
+  if (
+    result.additionalContext !== undefined &&
+    (!Array.isArray(result.additionalContext) ||
+      result.additionalContext.some(
+        (content) => typeof content !== "string" || content.trim().length === 0,
+      ))
+  ) {
+    throw new Error("Tool result policy context must contain non-empty strings.");
+  }
 }
 
 function resolveToolConcurrency(tool: Tool): ToolConcurrency {

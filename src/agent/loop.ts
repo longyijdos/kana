@@ -21,6 +21,7 @@ import {
   type PromptContextSnapshot,
   projectRuntimeContextMessages,
 } from "./prompt-assembly";
+import type { ToolResultPolicy } from "./tool-result-policy";
 import {
   type BeforeToolExecutionHook,
   resolveMaxParallelToolCalls,
@@ -47,6 +48,7 @@ export type AgentLoopConfig = {
   maxParallelToolCalls?: number;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
+  toolResultPolicy?: ToolResultPolicy;
   contextManager?: ContextManager;
   logger?: Logger;
   loggerMetadata?: LogMetadata;
@@ -218,6 +220,7 @@ export async function runAgentLoop(
         loggerMetadata: config.loggerMetadata,
         onMessageCommitted: config.onMessageCommitted,
         limitToolContent: (content) => config.contextManager?.limitToolContent(content) ?? content,
+        toolResultPolicy: config.toolResultPolicy,
       },
       emit,
     );
@@ -226,6 +229,10 @@ export async function runAgentLoop(
     for (const toolResult of executedToolCalls.toolResults) {
       currentContext.messages.push(toolResult);
       newMessages.push(toolResult);
+    }
+    for (const additionalMessage of executedToolCalls.additionalMessages) {
+      currentContext.messages.push(additionalMessage);
+      newMessages.push(additionalMessage);
     }
 
     await emit({

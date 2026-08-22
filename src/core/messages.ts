@@ -14,6 +14,7 @@ export type MessageProvenance =
   | { kind: "recovery" }
   | { kind: "model_output" }
   | { kind: "tool_result" }
+  | { kind: "tool_result_policy"; source: string }
   | { kind: "runtime_context"; source: string }
   | { kind: "context_summary" }
   | { kind: "compaction_request" };
@@ -23,6 +24,7 @@ export type UserMessageProvenance = Extract<
   | { kind: "user_input" }
   | { kind: "scheduled_input" }
   | { kind: "recovery" }
+  | { kind: "tool_result_policy" }
   | { kind: "runtime_context" }
   | { kind: "context_summary" }
   | { kind: "compaction_request" }

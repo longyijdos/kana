@@ -27,7 +27,16 @@ export {
   type PromptSystemSection,
   type PromptToolSection,
 } from "./prompt-assembly";
+export {
+  createRepeatedToolCallPolicy,
+  type RepeatedToolCallPolicyConfig,
+} from "./repeated-tool-call-policy";
 export { AgentEventStream } from "./stream";
+export type {
+  ToolResultPolicy,
+  ToolResultPolicyInput,
+  ToolResultPolicyResult,
+} from "./tool-result-policy";
 export type {
   BeforeToolExecutionHook,
   BeforeToolExecutionResult,

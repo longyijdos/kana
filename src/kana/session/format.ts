@@ -344,6 +344,7 @@ function findFirstPrompt(messages: Message[]): string | undefined {
     (message): message is UserMessage =>
       message.role === "user" &&
       message.provenance.kind !== "recovery" &&
+      message.provenance.kind !== "tool_result_policy" &&
       message.provenance.kind !== "runtime_context",
   )?.content;
 }
@@ -498,6 +499,7 @@ function isUserMessageProvenance(value: unknown): boolean {
     kind === "user_input" ||
     kind === "scheduled_input" ||
     kind === "recovery" ||
+    kind === "tool_result_policy" ||
     kind === "runtime_context" ||
     kind === "context_summary" ||
     kind === "compaction_request"
@@ -521,7 +523,7 @@ function isMessageProvenance(value: unknown): value is MessageProvenance {
   if (provenance.kind === "scheduled_input") {
     return provenance.origin === "user" || provenance.origin === "agent";
   }
-  if (provenance.kind === "runtime_context") {
+  if (provenance.kind === "runtime_context" || provenance.kind === "tool_result_policy") {
     return typeof provenance.source === "string" && provenance.source.length > 0;
   }
   return (

@@ -142,6 +142,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     toolDeadlineMs: config.agent.toolDeadlineMs,
     parallelToolCalls: config.agent.parallelToolCalls,
     maxParallelToolCalls: config.agent.maxParallelToolCalls,
+    repeatedToolCalls: config.agent.repeatedToolCalls,
     beforeToolExecution: options.beforeToolExecution,
     inbox: options.inbox,
     messages: options.messages,
