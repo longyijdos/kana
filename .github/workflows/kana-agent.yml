@@ -3,14 +3,24 @@ name: Kana Agent
 on:
   issue_comment:
     types: [created]
+  push:
+    branches:
+      - fix/kana-agent-workflow
 
 concurrency:
-  group: kana-agent-${{ github.event.issue.number }}
+  group: kana-agent-${{ github.event.issue.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  validate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate workflow load
+        run: echo "Kana Agent workflow parsed successfully."
+
   kana:
-    if: github.actor == 'longyijdos'
+    if: github.event_name == 'issue_comment' && github.actor == 'longyijdos'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -50,6 +60,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
           PR_URL: ${{ github.event.issue.pull_request.url }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -71,8 +82,8 @@ jobs:
             jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-comment.txt"
 
             echo "mode=issue" >> "$GITHUB_OUTPUT"
-            echo "ref=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
-            echo "base=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+            echo "ref=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "base=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
             echo "active=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -121,6 +132,7 @@ jobs:
         if: steps.context.outputs.active == 'true'
         run: |
           set -euo pipefail
+
           kana_home="$RUNNER_TEMP/kana-home"
           mkdir -p "$kana_home"
           echo "KANA_HOME=$kana_home" >> "$GITHUB_ENV"
@@ -150,34 +162,36 @@ jobs:
         run: |
           set -euo pipefail
 
-          {
-            if [[ "$MODE" == "issue" ]]; then
-              printf 'You are implementing GitHub issue #%s in the current repository.\n\n' "$ISSUE_NUMBER"
-              printf 'Issue title:\n'
-              cat "$RUNNER_TEMP/task-title.txt"
-              printf '\n\nIssue description:\n'
-              cat "$RUNNER_TEMP/task-body.txt"
-              printf '\n\nMaintainer command:\n'
-              cat "$RUNNER_TEMP/task-comment.txt"
-            else
-              printf 'You are continuing work on GitHub pull request #%s in the current repository.\n\n' "$ISSUE_NUMBER"
-              printf 'Pull request title:\n'
-              cat "$RUNNER_TEMP/task-title.txt"
-              printf '\n\nPull request description:\n'
-              cat "$RUNNER_TEMP/task-body.txt"
-              printf '\n\nLatest maintainer instruction:\n'
-              cat "$RUNNER_TEMP/task-comment.txt"
-            fi
+          if [[ "$MODE" == "issue" ]]; then
+            printf 'You are implementing GitHub issue #%s in the current repository.\n\n' "$ISSUE_NUMBER" > "$RUNNER_TEMP/kana-prompt.txt"
+            printf 'Issue title:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          else
+            printf 'You are continuing work on GitHub pull request #%s in the current repository.\n\n' "$ISSUE_NUMBER" > "$RUNNER_TEMP/kana-prompt.txt"
+            printf 'Pull request title:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          fi
 
-            cat <<'EOF'
+          cat "$RUNNER_TEMP/task-title.txt" >> "$RUNNER_TEMP/kana-prompt.txt"
 
-Work directly in the checked-out repository.
-Inspect the code before modifying it and keep changes scoped to the requested task.
-Run relevant tests and checks when useful.
-Do not commit, push, create or update pull requests, or use GitHub credentials.
-Leave all code changes in the working tree for the workflow to publish mechanically after you exit.
-EOF
-          } > "$RUNNER_TEMP/kana-prompt.txt"
+          if [[ "$MODE" == "issue" ]]; then
+            printf '\n\nIssue description:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          else
+            printf '\n\nPull request description:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          fi
+
+          cat "$RUNNER_TEMP/task-body.txt" >> "$RUNNER_TEMP/kana-prompt.txt"
+
+          if [[ "$MODE" == "issue" ]]; then
+            printf '\n\nMaintainer command:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          else
+            printf '\n\nLatest maintainer instruction:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          fi
+
+          cat "$RUNNER_TEMP/task-comment.txt" >> "$RUNNER_TEMP/kana-prompt.txt"
+          printf '\n\nWork directly in the checked-out repository.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          printf 'Inspect the code before modifying it and keep changes scoped to the requested task.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          printf 'Run relevant tests and checks when useful.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          printf 'Do not commit, push, create or update pull requests, or use GitHub credentials.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+          printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
 
       - name: Run Kana
         id: run_kana
@@ -202,10 +216,6 @@ EOF
 
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
-
-          if [[ "$outcome" != "stop" && "$outcome" != "turn_limit" ]]; then
-            echo "Kana ended with outcome: $outcome" >> "$GITHUB_STEP_SUMMARY"
-          fi
 
       - name: Detect changes
         id: initial_changes
@@ -310,14 +320,15 @@ EOF
             printf '\n\nCloses #%s\n' "$ISSUE_NUMBER"
           } > "$RUNNER_TEMP/pr-body.md"
 
-          pr_url="$(gh pr create \
+          gh pr create \
             --draft \
             --base "$BASE" \
             --head "$BRANCH" \
             --title "fix: $ISSUE_TITLE" \
-            --body-file "$RUNNER_TEMP/pr-body.md")"
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            > "$RUNNER_TEMP/pr-url.txt"
 
-          echo "url=$pr_url" >> "$GITHUB_OUTPUT"
+          echo "url=$(cat "$RUNNER_TEMP/pr-url.txt")" >> "$GITHUB_OUTPUT"
 
       - name: Comment on issue after creating PR
         if: steps.create_pr.outputs.url != ''
