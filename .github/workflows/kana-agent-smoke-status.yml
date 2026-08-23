@@ -1,4 +1,4 @@
-name: Kana Agent Smoke Status
+name: Kana Agent Issue 67 Repro
 
 on:
   push:
@@ -10,24 +10,30 @@ permissions:
   statuses: write
 
 jobs:
-  smoke:
+  repro:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
-      - name: Mark smoke test pending
+      - name: Mark repro pending
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           gh api \
             --method POST \
             "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
             -f state=pending \
-            -f context=kana-agent-smoke \
-            -f description='Kana headless smoke test is running'
+            -f context=kana-agent-issue67 \
+            -f description='Kana issue #67 repro is running' \
+            -f target_url="$run_url"
 
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -49,7 +55,7 @@ jobs:
             'reasoning_effort = "max"' \
             '' \
             '[agent]' \
-            'max_turns = 4' \
+            'max_turns = 40' \
             '' \
             '[memory]' \
             'enabled = false' \
@@ -60,45 +66,84 @@ jobs:
             'on_approval_required = false' \
             > "$kana_home/config.toml"
 
-      - name: Run Kana smoke test
-        id: kana_smoke
+      - name: Prepare issue 67 prompt
+        run: |
+          {
+            printf 'You are implementing GitHub issue #67 in the current repository.\n\n'
+            printf 'Issue title:\n'
+            printf '%s\n' 'docs: clarify headless automation in README'
+            printf '\nIssue description:\n'
+            printf '%s\n' 'Add a short note to `README.md` under the **Headless automation** section clarifying that `kana exec` is suitable for CI and other scripted workflows.'
+            printf '\nKeep this intentionally small:\n\n'
+            printf '%s\n' '- Change only `README.md` unless absolutely necessary.' '- Add one concise sentence after the existing headless automation examples.' '- Mention CI / scripted automation explicitly.' '- Do not change behavior or source code.'
+            printf '\nThis issue is intentionally simple for validating the Kana GitHub automation flow.\n'
+            printf '\nMaintainer command:\n@kanajdos fix\n'
+            printf '\nWork directly in the checked-out repository.\n'
+            printf 'Inspect the code before modifying it and keep changes scoped to the requested task.\n'
+            printf 'Run relevant tests and checks when useful.\n'
+            printf 'Do not commit, push, create or update pull requests, or use GitHub credentials.\n'
+            printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n'
+          } > "$RUNNER_TEMP/kana-prompt.txt"
+
+      - name: Run exact issue repro
+        id: kana_repro
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           set +e
-          printf 'Reply with exactly OK. Do not use tools.\n' | \
-            bun src/main.ts exec --json > "$RUNNER_TEMP/kana-smoke.jsonl"
+          bun src/main.ts exec --json --allow-all-tools \
+            < "$RUNNER_TEMP/kana-prompt.txt" \
+            > "$RUNNER_TEMP/kana-repro.jsonl"
           exit_code=$?
           set -e
 
-          outcome="$(jq -r 'select(.type == "run.completed") | .outcome' "$RUNNER_TEMP/kana-smoke.jsonl" 2>/dev/null | tail -n 1 || true)"
+          outcome="$(jq -r 'select(.type == "run.completed") | .outcome' "$RUNNER_TEMP/kana-repro.jsonl" 2>/dev/null | tail -n 1 || true)"
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           echo "outcome=${outcome:-missing}" >> "$GITHUB_OUTPUT"
+
+          session_id="$(jq -r 'select(.type == "session.started") | .session_id' "$RUNNER_TEMP/kana-repro.jsonl" 2>/dev/null | tail -n 1 || true)"
+          echo "Kana repro: exit_code=$exit_code outcome=${outcome:-missing} session=${session_id:-missing}"
+
+          jq -r 'select(.type == "run.failed" or .type == "error") | @json' "$RUNNER_TEMP/kana-repro.jsonl" 2>/dev/null || true
+
+          if [[ -n "$session_id" ]]; then
+            log_file="$(find "$KANA_HOME/logs" -type f -name "${session_id}.jsonl" -print -quit 2>/dev/null || true)"
+            if [[ -n "$log_file" ]]; then
+              echo 'Sanitized Kana error logs:'
+              jq -c 'select(.level == "error")' "$log_file" 2>/dev/null || true
+            fi
+          fi
+
+          echo 'Working tree after Kana:'
+          git status --short
+          git diff -- README.md || true
 
           if [[ "$exit_code" == "0" && "$outcome" == "stop" ]]; then
             exit 0
           fi
           exit 1
 
-      - name: Publish smoke result
+      - name: Publish repro result
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          SMOKE_RESULT: ${{ steps.kana_smoke.outcome }}
-          EXIT_CODE: ${{ steps.kana_smoke.outputs.exit_code }}
-          OUTCOME: ${{ steps.kana_smoke.outputs.outcome }}
+          STEP_RESULT: ${{ steps.kana_repro.outcome }}
+          EXIT_CODE: ${{ steps.kana_repro.outputs.exit_code }}
+          OUTCOME: ${{ steps.kana_repro.outputs.outcome }}
         run: |
-          if [[ "$SMOKE_RESULT" == "success" ]]; then
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [[ "$STEP_RESULT" == "success" ]]; then
             state=success
-            description="Kana smoke passed: outcome=${OUTCOME:-stop}"
+            description="Issue #67 repro passed: outcome=${OUTCOME:-stop}"
           else
             state=failure
-            description="Kana smoke failed: exit=${EXIT_CODE:-unknown}, outcome=${OUTCOME:-unknown}"
+            description="Issue #67 repro failed: exit=${EXIT_CODE:-unknown}, outcome=${OUTCOME:-unknown}"
           fi
 
           gh api \
             --method POST \
             "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
             -f state="$state" \
-            -f context=kana-agent-smoke \
-            -f description="$description"
+            -f context=kana-agent-issue67 \
+            -f description="$description" \
+            -f target_url="$run_url"
