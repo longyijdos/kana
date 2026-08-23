@@ -63,8 +63,8 @@ You can switch provider, model, and supported reasoning effort later with `/mode
 | 🛠️ | Work directly in your repository | Built-in file search, reading, writing, editing, and shell tools, with visible progress and approvals. |
 | 🧠 | Keep context across work | Resumable and forkable sessions, interrupted-run recovery, automatic context compaction, and durable project/global memory. |
 | 🔌 | Bring your own tools | Project instructions through `AGENTS.md`, reusable Skills, and MCP servers over stdio or Streamable HTTP with OAuth. |
-| 🤖 | Choose your model | DeepSeek API and OpenAI Codex OAuth, live model switching, configurable reasoning effort, and Codex-hosted web search. |
-| ⌨️ | Stay in the terminal | A custom TUI with streaming Markdown, syntax-highlighted diffs, queued input, scheduled messages, notifications, and terminal hyperlinks. |
+| 🤖 | Choose your model | DeepSeek API and OpenAI Codex OAuth, custom OpenAI-compatible endpoints, live model switching, configurable reasoning effort, image prompts on supported models, and hosted web search. |
+| ⌨️ | Stay in the terminal | A custom TUI with streaming Markdown, terminal-native Mermaid and LaTeX rendering, syntax-highlighted diffs, queued input, scheduled messages, notifications, and terminal hyperlinks. |
 | ⚙️ | Automate the same runtime | One-shot and resumable `kana exec` runs, plus a versioned JSONL event stream for scripts, CI, and evaluations. |
 
 ## Built for control, not as an SDK wrapper
@@ -74,7 +74,7 @@ Kana keeps its critical path in this repository instead of delegating product be
 - **Agent runtime** — the model/tool loop, parallel tool scheduling, deadlines, cancellation, context compaction, lifecycle events, and usage accounting.
 - **Terminal UI** — raw terminal lifecycle, input handling, streaming Markdown, syntax highlighting, responsive tables, and differential rendering.
 - **Protocol stack** — MCP JSON-RPC, stdio, Streamable HTTP, SSE, OAuth 2.0/OIDC discovery, and PKCE.
-- **Provider adapters** — request conversion, streaming, retries, usage, and context-error recovery for DeepSeek and OpenAI Codex.
+- **Provider adapters** — request conversion, streaming, retries, usage, and context-error recovery for DeepSeek, OpenAI Codex, and custom OpenAI-compatible endpoints.
 - **Local state** — incremental session journals, recovery, forks, memory, logs, and accounting.
 
 The goal is not zero dependencies. Kana uses focused libraries where they help, while keeping the behavior that defines reliability, safety, and the user experience readable and changeable.
@@ -99,6 +99,7 @@ Useful commands inside the TUI:
 | `/resume`, `/fork <task>` | Resume or branch from earlier work. |
 | `/mcp`, `/skills` | Manage active MCP servers and global Skills. |
 | `/memory` | View or consolidate durable project/global memory. |
+| `/schedule` | View, create, refresh, and delete scheduled messages. |
 | `/approval` | Change tool approval behavior for the current session. |
 | `/usage` | Inspect session, project, or global token usage. |
 | `!<command>` | Run a local shell command directly, outside the agent loop. |

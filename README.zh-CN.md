@@ -63,8 +63,8 @@ active = "openai-codex"
 | 🛠️ | 直接在仓库中工作 | 内置文件搜索、读取、写入、编辑和 Shell 工具，并提供可见进度与审批。 |
 | 🧠 | 在多次工作间延续上下文 | 可恢复、可分叉的会话，中断恢复，自动上下文压缩，以及 project/global 两级长期记忆。 |
 | 🔌 | 接入自己的工具 | 通过 `AGENTS.md` 提供项目指令，使用可复用 Skills，并通过 stdio 或带 OAuth 的 Streamable HTTP 连接 MCP server。 |
-| 🤖 | 自由选择模型 | 支持 DeepSeek API 与 OpenAI Codex OAuth、运行时模型切换、可配置推理强度和 Codex 托管网页搜索。 |
-| ⌨️ | 始终留在终端 | 自研 TUI 提供流式 Markdown、语法高亮 diff、输入排队、定时消息、通知和终端超链接。 |
+| 🤖 | 自由选择模型 | 支持 DeepSeek API、OpenAI Codex OAuth 与自定义 OpenAI-compatible endpoint，运行时模型切换、可配置推理强度、受支持模型上的图片输入和托管网页搜索。 |
+| ⌨️ | 始终留在终端 | 自研 TUI 提供流式 Markdown、终端原生 Mermaid 与 LaTeX 渲染、语法高亮 diff、输入排队、定时消息、通知和终端超链接。 |
 | ⚙️ | 自动化同一套运行时 | 一次性或可恢复的 `kana exec`，以及适用于脚本、CI 和评测的版本化 JSONL 事件流。 |
 
 ## 核心链路自研，而不是 SDK 外壳
@@ -74,7 +74,7 @@ Kana 把关键行为留在这个仓库中，而不是交给上游 Agent 框架�
 - **Agent runtime**：模型—工具循环、并行工具调度、deadline、取消、上下文压缩、生命周期事件和用量统计。
 - **Terminal UI**：raw terminal 生命周期、输入处理、流式 Markdown、语法高亮、响应式表格和差量渲染。
 - **Protocol stack**：MCP JSON-RPC、stdio、Streamable HTTP、SSE、OAuth 2.0/OIDC discovery 与 PKCE。
-- **Provider adapters**：DeepSeek 与 OpenAI Codex 的请求转换、流式传输、重试、用量和上下文错误恢复。
+- **Provider adapters**：DeepSeek、OpenAI Codex 与自定义 OpenAI-compatible endpoint 的请求转换、流式传输、重试、用量和上下文错误恢复。
 - **Local state**：增量会话日志、中断恢复、会话分叉、长期记忆、运行日志和用量账本。
 
 目标不是追求“零依赖”。Kana 会在合适的地方使用专注的小型库，同时把决定可靠性、安全边界和用户体验的行为保持为可读、可改的本地代码。
@@ -99,6 +99,7 @@ TUI 中的常用命令：
 | `/resume`、`/fork <任务>` | 恢复旧会话，或从当前上下文分叉。 |
 | `/mcp`、`/skills` | 管理当前启用的 MCP server 和全局 Skills。 |
 | `/memory` | 查看或整理 project/global 长期记忆。 |
+| `/schedule` | 查看、创建、刷新和删除定时消息。 |
 | `/approval` | 临时修改当前会话的工具审批模式。 |
 | `/usage` | 查看 session、project 或 global 范围的 token 用量。 |
 | `!<命令>` | 绕过 Agent loop，直接运行本地 Shell。 |
