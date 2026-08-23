@@ -75,7 +75,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | --- | --- |
 | `Ctrl+C` | 正在运行时中止本地 Shell、记忆压缩或 Agent；空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；加载外部工具时直接退出；关闭等待期间再次按下会强制退出。 |
 | `Esc` | 先关闭内容查看器；运行时中止当前工作。 |
-| `Ctrl+O` | 打开/关闭最近一项工具调用的详情查看器；打开期间按 `[` / `]` 切换到上/下一个工具调用。 |
+| `Ctrl+O` | 打开/关闭最近一项工具调用的详情查看器；`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
 编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后。输入为空时，它会从 `/help` 的 slash 命令和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。命令面板、placeholder、`/help` 和 usage 错误共同读取同一份命令语法与描述。`/help` 的快捷键区涵盖编辑器提交与排队、多行输入、Readline 风格编辑、图片粘贴、中止、工具输出切换和本地 Shell 输入。
@@ -115,6 +115,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
 | `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
 | `/schedule` | 查看、添加、刷新或删除当前 session 的进程内定时消息。 |
+| `/tools` | 浏览当前会话的全部工具调用，并可任意打开其中一个的详情查看器。 |
 | `/image <path>` | 将本地图片路径附加到编辑器，但不立即提交。 |
 | `/approval` | 临时更改当前 session 的工具审批模式；选择 `Never ask` 需要二次确认。 |
 | `/model` | 依次选择供应商、模型以及模型支持时的推理强度，保存配置并热切换当前 Agent。 |
@@ -143,6 +144,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 - `/model` 只在空闲时完成切换。Kana 保留当前消息和 context checkpoint，先用新配置构造候选 Agent 和记忆压缩 scheduler；普通模式再原子保存实际变化的配置字段，Clean 模式只更新当前 Host 的已校验配置。全部成功后才替换当前 Agent，并同步状态栏中的模型和推理强度。构造或持久化失败会保留旧 Agent 和旧配置并在 transcript 显示错误。普通模式的选择会成为后续新建、分叉、恢复会话和压缩任务的活动配置；Clean 模式的选择只覆盖当前进程中的后续 new 和压缩工作，且不产生逐次 accounting 记录。
 - `/compact` 不接受参数；它只在空闲时强制压缩当前对话上下文，不发送用户消息。
 - `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具详情；transcript 仍保持渲染。工具查看器打开最近一次工具调用，且任意 ToolCallBlock 都可以打开——输出很短、没有 result、正在运行/已取消、read，以及 custom/unknown 工具一律可查看，不依赖 expandability 或宽度。`[` 和 `]` 在上一个/下一个工具调用之间切换；导航直接在底部原位替换查看器，保持焦点、不触碰编辑器，每个工具都获得一个从顶部开始的新视口。关闭时优先恢复正在等待的审批，否则恢复编辑器。
+- `ToolHistoryController` 支撑 `/tools`：把当前 transcript 中的每个 ToolCallBlock 快照成一个小型选择器，最新在前（每个工具一行：标题加 schema 已知的摘要）。成员资格不依赖 expandability、终端宽度、紧凑渲染状态或 resize——列表在打开时固定，选择始终落在同一个稳定 `toolCall.id` 上。`Enter` 直接把底部交给 `Ctrl+O` 快路径使用的同一个工具详情查看器，中间不恢复编辑器；`[` / `]` 导航保持 transcript 时间线顺序，从选中哪个工具开始都成立。`Esc` 关闭选择器回到编辑器。只浏览当前会话，不存在跨会话历史。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 

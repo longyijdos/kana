@@ -44,6 +44,21 @@ export class ContentViewerController {
     return true;
   }
 
+  // Opens the tool call with the given stable id, e.g. picked from the
+  // /tools history. Returns false when the transcript no longer contains it.
+  // The same id drives [ / ] navigation, so a picker selection lines up with
+  // transcript chronology without any index bookkeeping here.
+  openTool(toolCallId: string): boolean {
+    const block = this.collectToolBlocks().find((candidate) => candidate.toolCallId === toolCallId);
+
+    if (!block) {
+      return false;
+    }
+
+    this.showTool(block);
+    return true;
+  }
+
   showPreviousTool(): boolean {
     return this.navigateTool(-1);
   }

@@ -43,4 +43,9 @@ export {
 } from "./skill-manager";
 export { TextPrompt } from "./text-prompt";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";
+export {
+  type ToolHistoryEntry,
+  ToolHistoryPicker,
+  type ToolHistoryPickerDecision,
+} from "./tool-history-picker";
 export { UsageSummaryBlock } from "./usage-summary";

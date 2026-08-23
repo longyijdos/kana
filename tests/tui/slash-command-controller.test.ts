@@ -16,6 +16,7 @@ describe("slash command controller", () => {
     harness.handle("approval");
     harness.handle("model");
     harness.handle("schedule");
+    harness.handle("tools");
     harness.handle("image", '"/tmp/image with spaces.png"');
     harness.handle("compact");
 
@@ -27,6 +28,7 @@ describe("slash command controller", () => {
       "approval",
       "model",
       "schedule",
+      "tools",
       'image:"/tmp/image with spaces.png"',
       "compact",
     ]);
@@ -40,6 +42,7 @@ describe("slash command controller", () => {
     harness.handle("image");
     harness.handle("approval", "never");
     harness.handle("usage", "global");
+    harness.handle("tools", "extra");
 
     expect(harness.events).toEqual([
       "error:Usage: /help",
@@ -47,6 +50,7 @@ describe("slash command controller", () => {
       "error:Usage: /image <path>",
       "error:Usage: /approval",
       "error:Usage: /usage",
+      "error:Usage: /tools",
     ]);
   });
 
@@ -79,6 +83,7 @@ function createHarness(running = false) {
     openSkillManager: () => events.push("skills"),
     openMcpServerManager: () => events.push("mcp"),
     openScheduledMessageManager: () => events.push("schedule"),
+    openToolHistory: () => events.push("tools"),
     attachImageFile: (path) => events.push(`image:${path}`),
     openApproval: () => events.push("approval"),
     openModel: () => {

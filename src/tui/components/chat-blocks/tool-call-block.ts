@@ -10,11 +10,14 @@ import {
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
   highlightOverwriteMarker,
+  resolveToolTarget,
+  sanitizeToolHistorySummary,
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import type { ContentView } from "../content-viewer";
+import type { ToolHistoryEntry } from "../tool-history-picker";
 
 export class ToolCallBlock implements Component {
   private canceled = false;
@@ -146,6 +149,24 @@ export class ToolCallBlock implements Component {
           this.currentState(),
           width,
         ),
+    };
+  }
+
+  // One picker row per tool call: the short semantic identity plus the
+  // schema-owned target when Kana owns the schema. The summary is untrusted
+  // display data, so it is sanitized here — before it enters a terminal row;
+  // the picker itself stays tool-agnostic. Unknown/custom/MCP tools
+  // deliberately carry no summary — their name is the identity, and the TUI
+  // never guesses a target from arbitrary arguments.
+  getToolHistoryEntry(): ToolHistoryEntry {
+    const target = resolveToolTarget(this.toolCall, this.result ?? this.partialResult);
+    const summary = target === undefined ? undefined : sanitizeToolHistorySummary(target);
+
+    return {
+      toolCallId: this.toolCall.id,
+      title: buildFullToolDetail(this.toolCall).title,
+      // A target made only of control sequences sanitizes to nothing.
+      summary: summary || undefined,
     };
   }
 

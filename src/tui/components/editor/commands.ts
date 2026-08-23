@@ -11,6 +11,7 @@ export type PromptCommandName =
   | "skills"
   | "mcp"
   | "schedule"
+  | "tools"
   | "image"
   | "approval"
   | "model"
@@ -96,6 +97,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "schedule",
     description: "Manage scheduled messages for this session.",
+  },
+  {
+    name: "tools",
+    description: "Browse tool calls in this session.",
   },
   {
     name: "image",

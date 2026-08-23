@@ -1076,6 +1076,9 @@ describe("prompt commands", () => {
           name: "schedule",
         },
         {
+          name: "tools",
+        },
+        {
           name: "image",
         },
         {

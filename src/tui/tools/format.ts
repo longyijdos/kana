@@ -1,5 +1,11 @@
 import { isToolResultArtifact, type ToolCallContent, type ToolResultArtifact } from "@/core";
-import { capitalize, color, truncateToWidth, wrapPlainText } from "../render";
+import {
+  capitalize,
+  color,
+  stripTerminalControlSequences,
+  truncateToWidth,
+  wrapPlainText,
+} from "../render";
 import { tuiTheme } from "../theme";
 import {
   COMPACT_DIFF_LINE_LIMIT,
@@ -45,7 +51,7 @@ export function formatToolTranscriptTitle(
   result: unknown,
   elapsedSeconds?: number,
 ): ToolTranscriptTitle {
-  const target = toolTarget(toolCall, result);
+  const target = resolveToolTarget(toolCall, result);
   const text = toolText(toolCall.name, target, toolCall.args);
   const action = target ? text.action.replace(` ${target}`, "") : text.action;
   const runningActivity = capitalize(
@@ -71,7 +77,21 @@ export function formatToolTranscriptTitle(
 }
 
 export function formatToolTargetLine(target: string, width: number): string {
-  return truncateToWidth(target.replace(/\s+/g, " ").trim(), Math.max(1, width));
+  return truncateToWidth(flattenToolTargetText(target), Math.max(1, width));
+}
+
+// Picker-safe summary for a schema-owned target: the target text is
+// untrusted display data coming from tool args/results, so terminal control
+// sequences are removed before whitespace is collapsed into one row. Width
+// truncation stays in the picker render layer.
+export function sanitizeToolHistorySummary(target: string): string {
+  return flattenToolTargetText(stripTerminalControlSequences(target));
+}
+
+// Collapses a possibly multi-line target (e.g. a schedule delay plus its
+// message) into one renderable row without truncating it.
+function flattenToolTargetText(target: string): string {
+  return target.replace(/\s+/g, " ").trim();
 }
 
 export function formatToolApproval(
@@ -264,13 +284,14 @@ function formatByteSize(bytes: number): string {
 }
 
 /**
- * Resolves the transcript target row for tools whose argument schema Kana
- * owns. Unknown/custom/MCP tools have arbitrary schemas, so the TUI must
- * not guess which argument (if any) is the primary operation target; they
- * return undefined and render no target row. Their identity stays in the
- * tool name itself.
+ * Resolves the target for tools whose argument schema Kana owns: the
+ * transcript target row and the tool history picker summary both reuse this
+ * single extraction. Unknown/custom/MCP tools have arbitrary schemas, so the
+ * TUI must not guess which argument (if any) is the primary operation
+ * target; they return undefined and render no target/summary. Their identity
+ * stays in the tool name itself.
  */
-function toolTarget(toolCall: ToolCallContent, result?: unknown): string | undefined {
+export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): string | undefined {
   switch (toolCall.name) {
     case "remember":
       return (

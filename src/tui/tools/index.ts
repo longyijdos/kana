@@ -12,6 +12,8 @@ export {
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
   highlightOverwriteMarker,
+  resolveToolTarget,
+  sanitizeToolHistorySummary,
   type ToolOutputDetail,
   type ToolState,
 } from "./format";
