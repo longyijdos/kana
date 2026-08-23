@@ -116,7 +116,7 @@ kana exec resume <session-id> "continue the task"
 kana exec --json "analyze this project"
 ```
 
-`kana exec` is suitable for CI and other scripted automation workflows.
+`kana exec` suits CI and scripted automation.
 
 By default, the final answer goes to stdout and progress goes to stderr. `--json` emits versioned JSONL events. `--allow-all-tools` skips interactive approval for controlled automation; it does not create a sandbox.
 
