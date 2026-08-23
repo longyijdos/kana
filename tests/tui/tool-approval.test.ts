@@ -254,6 +254,46 @@ describe("tool approval", () => {
     expect(rendered).toContain("  every occurrence in the file");
   });
 
+  test("renders an empty Write payload with a blank Content section", () => {
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "write",
+        args: { path: "empty.ts", content: "" },
+      },
+      () => {},
+    );
+
+    const rendered = approval.render(80).map(stripAnsi);
+
+    expect(rendered).toContain("Allow agent to create file?");
+    expect(rendered).toContain("Path");
+    expect(rendered).toContain("  empty.ts");
+    // The Content section survives for a genuinely empty payload, with a
+    // blank value rather than a sentinel string.
+    expect(rendered).toContain("Content");
+  });
+
+  test("renders an empty newText deletion with a blank With section", () => {
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "edit",
+        args: { path: "foo.ts", oldText: "obsolete code", newText: "" },
+      },
+      () => {},
+    );
+
+    const rendered = approval.render(80).map(stripAnsi);
+
+    expect(rendered).toContain("Allow agent to edit file?");
+    expect(rendered).toContain("Replace");
+    expect(rendered).toContain("  obsolete code");
+    expect(rendered).toContain("With");
+  });
+
   test("keeps the complete bash command together with cwd and timeout", () => {
     const command = `echo "${"x".repeat(300)}"`;
     const approval = new ToolApproval(

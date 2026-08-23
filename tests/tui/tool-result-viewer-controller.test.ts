@@ -452,6 +452,31 @@ describe("tool detail inspector controller", () => {
     expect(body).toContain("Text not found");
   });
 
+  test("keeps an empty newText deletion visible as a blank With section while running", () => {
+    // A running or failed edit recovers its material from args; an empty
+    // newText is a real deletion and must not collapse into a missing With.
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_edit_running_deletion",
+      name: "edit",
+      args: { path: "foo.ts", oldText: "obsolete code", newText: "" },
+    });
+    block.markExecutionStarted();
+    const transcript = new Transcript();
+    transcript.addChild(block);
+    const { controller } = createController(transcript);
+
+    expect(controller.openLatest()).toBe(true);
+
+    const body = block.getToolDetailView().render(58).map(stripAnsi).join("\n");
+
+    expect(body).toContain("Replace");
+    expect(body).toContain("obsolete code");
+    expect(body).toContain("With");
+    expect(body).toContain("Status");
+    expect(body).toContain("Running");
+  });
+
   test("keeps edit replace and with in context when a done result lacks old and new text", () => {
     // formatEditOutput recovers the diff only from result.oldText/newText;
     // without them the output renderer has nothing to show, so the inspector

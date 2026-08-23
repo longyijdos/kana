@@ -147,7 +147,9 @@ function buildToolSections(
     case "write": {
       pushSection(sections, "Path", getStringProperty(args, "path"));
       if (includeMaterial) {
-        pushSection(sections, "Content", getStringProperty(args, "content"));
+        pushSection(sections, "Content", getStringProperty(args, "content"), {
+          preserveEmpty: true,
+        });
       }
       if (getBooleanProperty(args, "overwrite") === true) {
         pushSection(sections, "Overwrite", "replaces the existing file");
@@ -158,8 +160,12 @@ function buildToolSections(
     case "edit": {
       pushSection(sections, "Path", getStringProperty(args, "path"));
       if (includeMaterial) {
-        pushSection(sections, "Replace", getStringProperty(args, "oldText"));
-        pushSection(sections, "With", getStringProperty(args, "newText"));
+        pushSection(sections, "Replace", getStringProperty(args, "oldText"), {
+          preserveEmpty: true,
+        });
+        pushSection(sections, "With", getStringProperty(args, "newText"), {
+          preserveEmpty: true,
+        });
       }
       if (getBooleanProperty(args, "replaceAll") === true) {
         pushSection(sections, "Replace all", "every occurrence in the file");
@@ -288,8 +294,21 @@ function pushSection(
   sections: ToolDetailSection[],
   label: string,
   content: string | undefined,
+  options?: { preserveEmpty?: boolean },
 ): void {
-  if (content === undefined || content === "") {
+  if (content === undefined) {
+    return;
+  }
+
+  if (content === "") {
+    // A material payload that is genuinely empty (an edit deleting to an
+    // empty newText, a write creating an empty file) must keep its section
+    // so the field is not mistaken for missing. The content stays empty
+    // rather than a sentinel value, which a real string could collide with;
+    // a bare label row above the blank value is unambiguous enough.
+    if (options?.preserveEmpty) {
+      sections.push({ label, content: "" });
+    }
     return;
   }
 

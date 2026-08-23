@@ -236,6 +236,41 @@ describe("full-fidelity tool detail", () => {
     expect(detail.sections).toContainEqual({ label: "Timeout", content: "120000 ms" });
   });
 
+  test("keeps an empty write content visible with a blank content row", () => {
+    const detail = buildFullToolDetail(toolCall("write", { path: "empty.ts", content: "" }));
+
+    // path stays an ordinary non-empty field, content is a real payload that
+    // happens to be empty — it must not collapse into a missing field.
+    expect(detail.sections).toContainEqual({ label: "Path", content: "empty.ts" });
+    expect(detail.sections).toContainEqual({ label: "Content", content: "" });
+  });
+
+  test("keeps an empty edit newText visible with a blank With row on a deletion", () => {
+    const detail = buildFullToolDetail(
+      toolCall("edit", { path: "foo.ts", oldText: "obsolete code", newText: "" }),
+    );
+
+    // The deletion intent is not recoverable if With vanishes: a blank
+    // destination must keep its section.
+    expect(detail.sections).toContainEqual({ label: "Path", content: "foo.ts" });
+    expect(detail.sections).toContainEqual({ label: "Replace", content: "obsolete code" });
+    expect(detail.sections).toContainEqual({ label: "With", content: "" });
+    // The bare label row marks the empty destination without a sentinel.
+    expect(formatFullToolDetail(detail)).toContain("With\n");
+  });
+
+  test("omits ordinary empty optional metadata but keeps material payloads", () => {
+    // remember Title/Reason are optional metadata: an empty string is simply
+    // absent, matching prior behavior — only material sections preserve empty.
+    const remember = buildFullToolDetail(
+      toolCall("remember", { content: "prefer tea", title: "" }),
+    );
+    expect(remember.sections.map((section) => section.label)).not.toContain("Title");
+
+    const write = buildFullToolDetail(toolCall("write", { path: "empty.ts", content: "" }));
+    expect(write.sections.map((section) => section.label)).toContain("Content");
+  });
+
   test("expresses remember scope with the runtime default when omitted", () => {
     const withDefault = buildFullToolDetail(toolCall("remember", { content: "prefer tea" }));
 
