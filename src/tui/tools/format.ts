@@ -39,29 +39,6 @@ export function highlightOverwriteMarker(text: string): string {
   return text.replaceAll(overwriteMarker, color(overwriteMarker, tuiTheme.error));
 }
 
-export function formatToolTitle(
-  toolCall: ToolCallContent,
-  state: ToolState,
-  result: unknown,
-): string {
-  const target = toolTarget(toolCall, result);
-  const text = toolText(toolCall.name, target, toolCall.args);
-
-  if (state === "running") {
-    return `${formatStatusActivity(capitalize(text.runningActivity), "...")} (Esc to abort)`;
-  }
-
-  if (state === "failed") {
-    return `Failed to ${text.action}`;
-  }
-
-  if (state === "canceled") {
-    return `Canceled ${text.runningActivity}`;
-  }
-
-  return text.doneTitle;
-}
-
 export function formatToolTranscriptTitle(
   toolCall: ToolCallContent,
   state: ToolState,

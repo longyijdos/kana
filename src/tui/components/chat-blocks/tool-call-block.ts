@@ -3,9 +3,10 @@ import { bold, color, truncateToWidth, visibleWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import {
+  buildFullToolDetail,
+  formatToolInspector,
   formatToolOutput,
   formatToolTargetLine,
-  formatToolTitle,
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
   highlightOverwriteMarker,
@@ -124,14 +125,27 @@ export class ToolCallBlock implements Component {
     return rendered;
   }
 
-  getResultView(): ContentView | undefined {
-    if (!this.hasInspectableOutput() || this.toolCall.name === "read") {
-      return undefined;
-    }
+  get toolCallId(): string {
+    return this.toolCall.id;
+  }
+
+  // Every ToolCallBlock is inspectable: short output, missing results,
+  // running/canceled tools, read, and custom/unknown tools all open. The
+  // view reads live block state on every render, so running tools keep
+  // updating arguments and partial output while the inspector is open.
+  getToolDetailView(): ContentView {
+    const toolCall = this.toolCall;
 
     return {
-      title: formatToolTitle(this.toolCall, this.currentState(), this.result),
-      render: (width) => this.renderOutput(width, "full"),
+      title: buildFullToolDetail(toolCall).title,
+      render: (width) =>
+        formatToolInspector(
+          toolCall,
+          this.result ?? this.partialResult,
+          this.isError,
+          this.currentState(),
+          width,
+        ),
     };
   }
 

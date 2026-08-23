@@ -9,10 +9,10 @@ export {
   formatToolApproval,
   formatToolOutput,
   formatToolTargetLine,
-  formatToolTitle,
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
   highlightOverwriteMarker,
   type ToolOutputDetail,
   type ToolState,
 } from "./format";
+export { formatToolInspector } from "./inspector";

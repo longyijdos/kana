@@ -189,7 +189,11 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "Ctrl+O",
-    description: "Toggle the latest expandable tool output.",
+    description: "Open/close the newest tool detail inspector.",
+  },
+  {
+    input: "[ / ]",
+    description: "Move to the previous or next tool call.",
   },
   {
     input: "!<command>",

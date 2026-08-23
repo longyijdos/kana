@@ -45,8 +45,20 @@ export function buildFullToolDetail(
 
   return {
     title: toolDetailTitle(toolCall.name),
-    sections: buildBuiltInSections(toolCall),
+    sections: buildToolSections(toolCall, true),
   };
+}
+
+// Operation context for the inspector. Can write content and edit old/new
+// text be omitted from the context? Only the caller knows whether the rich
+// full output renderers below actually recovered them (see the inspector),
+// so `includeMaterial` is an explicit decision: material payloads stay in
+// the context whenever the output renderers cannot present them.
+export function buildToolInspectorContext(
+  toolCall: ToolCallContent,
+  includeMaterial: boolean,
+): ToolDetailSection[] {
+  return buildToolSections(toolCall, includeMaterial);
 }
 
 // Label row per section, content rows indented, blank row between sections.
@@ -79,39 +91,39 @@ export function sanitizeToolDetailLabel(value: string): string {
 }
 
 function toolDetailTitle(toolName: string): string {
-  switch (toolName) {
-    case "bash":
-      return "Bash";
-    case "list":
-      return "List";
-    case "glob":
-      return "Glob";
-    case "grep":
-      return "Grep";
-    case "read":
-      return "Read";
-    case "write":
-      return "Write";
-    case "edit":
-      return "Edit";
-    case "view_image":
-      return "View image";
-    case "remember":
-      return "Remember";
-    case "schedule_wake":
-      return "Schedule wake";
-    // Unknown/custom tool names are model/MCP-provided and must be sanitized
-    // before they become a renderable title.
-    default:
-      return sanitizeToolDetailLabel(toolName);
-  }
+  // Unknown/custom tool names are model/MCP-provided and must be sanitized
+  // before they become a renderable title.
+  return BUILT_IN_TOOL_TITLES.get(toolName) ?? sanitizeToolDetailLabel(toolName);
 }
+
+// Single source of truth for Kana-owned tool names: the inspector renders
+// their raw result through "Output", while custom/unknown results are the
+// generic payload under "Result".
+export function isBuiltInToolName(toolName: string): boolean {
+  return BUILT_IN_TOOL_TITLES.has(toolName);
+}
+
+const BUILT_IN_TOOL_TITLES = new Map<string, string>([
+  ["bash", "Bash"],
+  ["list", "List"],
+  ["glob", "Glob"],
+  ["grep", "Grep"],
+  ["read", "Read"],
+  ["write", "Write"],
+  ["edit", "Edit"],
+  ["view_image", "View image"],
+  ["remember", "Remember"],
+  ["schedule_wake", "Schedule wake"],
+]);
 
 function mcpDetailTitle(source: ToolApprovalSource): string {
   return `MCP ${sanitizeToolDetailLabel(source.serverId)} · ${sanitizeToolDetailLabel(source.remoteToolName)}`;
 }
 
-function buildBuiltInSections(toolCall: ToolCallContent): ToolDetailSection[] {
+function buildToolSections(
+  toolCall: ToolCallContent,
+  includeMaterial: boolean,
+): ToolDetailSection[] {
   const args = toolCall.args;
   const sections: ToolDetailSection[] = [];
 
@@ -125,7 +137,9 @@ function buildBuiltInSections(toolCall: ToolCallContent): ToolDetailSection[] {
 
     case "write": {
       pushSection(sections, "Path", getStringProperty(args, "path"));
-      pushSection(sections, "Content", getStringProperty(args, "content"));
+      if (includeMaterial) {
+        pushSection(sections, "Content", getStringProperty(args, "content"));
+      }
       if (getBooleanProperty(args, "overwrite") === true) {
         pushSection(sections, "Overwrite", "replaces the existing file");
       }
@@ -134,8 +148,10 @@ function buildBuiltInSections(toolCall: ToolCallContent): ToolDetailSection[] {
 
     case "edit": {
       pushSection(sections, "Path", getStringProperty(args, "path"));
-      pushSection(sections, "Replace", getStringProperty(args, "oldText"));
-      pushSection(sections, "With", getStringProperty(args, "newText"));
+      if (includeMaterial) {
+        pushSection(sections, "Replace", getStringProperty(args, "oldText"));
+        pushSection(sections, "With", getStringProperty(args, "newText"));
+      }
       if (getBooleanProperty(args, "replaceAll") === true) {
         pushSection(sections, "Replace all", "every occurrence in the file");
       }

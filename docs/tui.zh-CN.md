@@ -57,7 +57,7 @@ App 和 controller 代码只调用声明式的 `Tui.requestRender()`，终端更
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
 | `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时移除尚未解析为单工具块的聚合准备活动，`turn_limit` 显示为独立的 `Turn limit` 错误阶段。 |
 
-内置工具使用语义化 renderer，而不是通用结构化 JSON。具体来说，`view_image` 会显示 `Viewing`/`Viewed`、解析后的路径，以及 `PNG · 1440×832 · 19 KB` 这类紧凑的格式、尺寸和编码后大小元数据；它不会打印持久化的 base64 图片，也不会回退到通用 renderer。实时事件和恢复后的 session 历史使用同一路径。当恢复历史只有 artifact 元数据而没有结构化结果时，transcript 只显示 `Output stored · <size>`；展开式输出查看器会显示有界 locator 和取回提示，而不会重放模型可见预览。
+内置工具使用语义化 renderer，而不是通用结构化 JSON。具体来说，`view_image` 会显示 `Viewing`/`Viewed`、解析后的路径，以及 `PNG · 1440×832 · 19 KB` 这类紧凑的格式、尺寸和编码后大小元数据；它不会打印持久化的 base64 图片，也不会回退到通用 renderer。实时事件和恢复后的 session 历史使用同一路径。当恢复历史只有 artifact 元数据而没有结构化结果时，transcript 只显示 `Output stored · <size>`；工具详情查看器会显示有界 locator 和取回提示，而不会重放模型可见预览。
 
 Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSeek V4 Flash）属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。TUI 为每个调用单独显示 `Searching the web`、`Searched the web`、`Opened a web page` 或 `Searched within a web page`；当前不聚合多个调用。搜索期间状态栏阶段为 `searching`。进行中的搜索显示耗时和 `Esc to abort`；中止时 Agent 会发布并持久化语义化的 canceled 状态，TUI 则冻结计时并显示 `Web search stopped`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
 
@@ -75,7 +75,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | --- | --- |
 | `Ctrl+C` | 正在运行时中止本地 Shell、记忆压缩或 Agent；空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；加载外部工具时直接退出；关闭等待期间再次按下会强制退出。 |
 | `Esc` | 先关闭内容查看器；运行时中止当前工作。 |
-| `Ctrl+O` | 打开/关闭最近一项可展开的工具输出。 |
+| `Ctrl+O` | 打开/关闭最近一项工具调用的详情查看器；打开期间按 `[` / `]` 切换到上/下一个工具调用。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
 编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后。输入为空时，它会从 `/help` 的 slash 命令和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。命令面板、placeholder、`/help` 和 usage 错误共同读取同一份命令语法与描述。`/help` 的快捷键区涵盖编辑器提交与排队、多行输入、Readline 风格编辑、图片粘贴、中止、工具输出切换和本地 Shell 输入。
@@ -142,7 +142,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 - `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request；`/approval` 可选择 Always ask、Ask unless trusted 或 Never ask，最后一项使用与删除会话相同的默认否定二次确认；`/model` 先选择 provider 与 model，再显示该模型 metadata 声明的 reasoning efforts。没有 reasoning metadata 的模型会跳过最后一步，`none` 显示为 `Off`。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
 - `/model` 只在空闲时完成切换。Kana 保留当前消息和 context checkpoint，先用新配置构造候选 Agent 和记忆压缩 scheduler；普通模式再原子保存实际变化的配置字段，Clean 模式只更新当前 Host 的已校验配置。全部成功后才替换当前 Agent，并同步状态栏中的模型和推理强度。构造或持久化失败会保留旧 Agent 和旧配置并在 transcript 显示错误。普通模式的选择会成为后续新建、分叉、恢复会话和压缩任务的活动配置；Clean 模式的选择只覆盖当前进程中的后续 new 和压缩工作，且不产生逐次 accounting 记录。
 - `/compact` 不接受参数；它只在空闲时强制压缩当前对话上下文，不发送用户消息。
-- `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具输出；transcript 仍保持渲染。关闭时优先恢复正在等待的审批，否则恢复编辑器。
+- `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具详情；transcript 仍保持渲染。工具查看器打开最近一次工具调用，且任意 ToolCallBlock 都可以打开——输出很短、没有 result、正在运行/已取消、read，以及 custom/unknown 工具一律可查看，不依赖 expandability 或宽度。`[` 和 `]` 在上一个/下一个工具调用之间切换；导航直接在底部原位替换查看器，保持焦点、不触碰编辑器，每个工具都获得一个从顶部开始的新视口。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 
@@ -152,7 +152,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 
 通知后端由配置选择。`auto` 依次探测 Kitty、iTerm、Ghostty 和 VTE，最后使用 bell；显式 `off` 不写任何通知。通知文本会移除控制字符、折叠空白，OSC 777 字段额外替换分号。正常 Agent 完成和需要审批可分别配置通知。
 
-助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。配置允许且终端确认支持时，`http:`、`https:` 和 `mailto:` Markdown 链接通过 OSC 8 绑定到可见 label；每条软换行都会独立关闭并重新打开链接。关闭 `tui.hyperlinks`、终端能力未知或目标 scheme/内容不安全时不发送 OSC 8，并以 `label (url)` 保留可读目标；尚未闭合的流式链接按 Markdown 原文显示。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 直接显示 stdout/stderr 文本，不添加退出码或字段标签。bash 返回非 0 退出码时仍按已完成命令渲染；真正的执行错误和超时才使用 failed 样式。用户取消使用独立的弱化 stopped 状态，不显示为工具执行失败；write 审批和工具块会区分新建与覆盖；长输出可在查看器中滚动，查看器会将多行标题折叠并截断为一行。每个工具块还拥有与视口高度无关的有界紧凑形态：一行标题、一行压平并水平截断而非换行的 target，以及固定的少量预览行预算。只有 Kana 拥有其参数 schema 的内置工具才会解析出 target 行；未知/custom/MCP 工具不会把 `path`、`command` 等参数提升为 target，只以工具名作为身份展示。bash 预览最多保留最后 8 个源行，write 最多保留 7 个（其中一行让位给字节数结果行），edit 最多保留 3 行删除与 3 行新增 diff（replacements 行与两侧各自的省略标记都计入视觉预算），未知/custom/MCP 结果最多保留 pretty JSON 的前 8 行；每个预览行按终端宽度水平截断而非换行，被省略的行用显式的 `... N more lines` 标记说明。这些界限只影响展示：canonical 参数、结果与审批详情保持完整。当紧凑预览省略了行，或截断了宽于终端的行时，该工具块变为可展开，`Ctrl+O` 在可滚动查看器中显示完整输出，长行会软换行到可用宽度而非再次被截断。
+助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。配置允许且终端确认支持时，`http:`、`https:` 和 `mailto:` Markdown 链接通过 OSC 8 绑定到可见 label；每条软换行都会独立关闭并重新打开链接。关闭 `tui.hyperlinks`、终端能力未知或目标 scheme/内容不安全时不发送 OSC 8，并以 `label (url)` 保留可读目标；尚未闭合的流式链接按 Markdown 原文显示。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 直接显示 stdout/stderr 文本，不添加退出码或字段标签。bash 返回非 0 退出码时仍按已完成命令渲染；真正的执行错误和超时才使用 failed 样式。用户取消使用独立的弱化 stopped 状态，不显示为工具执行失败；write 审批和工具块会区分新建与覆盖；`Ctrl+O` 打开可滚动的详情查看器，固定短标题（如工具名）加上完整的操作上下文与输出，即使紧凑输出并未标记为可展开也能打开。每个工具块还拥有与视口高度无关的有界紧凑形态：一行标题、一行压平并水平截断而非换行的 target，以及固定的少量预览行预算。只有 Kana 拥有其参数 schema 的内置工具才会解析出 target 行；未知/custom/MCP 工具不会把 `path`、`command` 等参数提升为 target，只以工具名作为身份展示。bash 预览最多保留最后 8 个源行，write 最多保留 7 个（其中一行让位给字节数结果行），edit 最多保留 3 行删除与 3 行新增 diff（replacements 行与两侧各自的省略标记都计入视觉预算），未知/custom/MCP 结果最多保留 pretty JSON 的前 8 行；每个预览行按终端宽度水平截断而非换行，被省略的行用显式的 `... N more lines` 标记说明。这些界限只影响展示：canonical 参数、结果与审批详情保持完整。当紧凑预览省略了行，或截断了宽于终端的行时，该工具块会标记为可展开。查看器与标记无关，任何工具调用都可以打开，长行会软换行到可用宽度而非再次被截断；查看器打开期间按 `[` 和 `]` 可切换到上一个/下一个工具调用。
 
 默认开启 `tui.render_latex = true`：`$...$` 与 `\(...\)` 渲染行内公式，独立成块的 `$$...$$` 与 `\[...\]` 渲染 display 公式。这个刻意受限的渲染器会把常见符号、黑板粗体字母、上下标、分数、根式、命名运算符、矩阵、cases 和 display 运算符上下限转换为 Unicode 与字符单元布局。不支持或格式错误的表达式会完整保留源码分隔符；流式表达式在分隔符闭合前始终按字面量显示。行内代码和代码围栏不会解释数学分隔符。display 输出在渲染后按终端可见单元宽度测量和换行，宽度不足不会把有效公式重新切换为源码。设置 `tui.render_latex = false` 可让所有已识别的数学公式保留原始 LaTeX。
 

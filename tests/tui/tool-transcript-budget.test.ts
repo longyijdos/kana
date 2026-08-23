@@ -46,8 +46,8 @@ describe("compact tool transcript bounds", () => {
     expect(compact.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const full = block.getResultView()?.render(WIDTH).map(stripAnsi).join("") ?? "";
-    expect(full).toBe(stdout);
+    const full = block.getToolDetailView().render(WIDTH).map(stripAnsi).join("");
+    expect(full).toContain(stdout);
   }, 20_000);
 
   test("marks omitted multi-line Bash output with an explicit old-style indicator", () => {
@@ -67,7 +67,7 @@ describe("compact tool transcript bounds", () => {
     expect(compact).not.toContain("line 92");
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const full = block.getResultView()?.render(WIDTH).map(stripAnsi) ?? [];
+    const full = block.getToolDetailView().render(WIDTH).map(stripAnsi);
     expect(full).toContain("line 1");
   });
 
@@ -86,7 +86,7 @@ describe("compact tool transcript bounds", () => {
     expect(args.content).toBe(content);
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const full = block.getResultView()?.render(WIDTH).map(stripAnsi) ?? [];
+    const full = block.getToolDetailView().render(WIDTH).map(stripAnsi);
     expect(full.length).toBeGreaterThan(MAX_TOOL_ROWS);
   });
 
@@ -108,7 +108,7 @@ describe("compact tool transcript bounds", () => {
     expect(compact.join("\n")).not.toContain("+ line 23");
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const full = block.getResultView()?.render(WIDTH).map(stripAnsi) ?? [];
+    const full = block.getToolDetailView().render(WIDTH).map(stripAnsi);
     expect(full).toContain("+ line 1");
     expect(full).toContain("+ line 30");
   });
@@ -134,7 +134,7 @@ describe("compact tool transcript bounds", () => {
     expect(compact.join("\n")).not.toContain("+ new line 497");
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const full = block.getResultView()?.render(WIDTH).map(stripAnsi) ?? [];
+    const full = block.getToolDetailView().render(WIDTH).map(stripAnsi);
     expect(full).toContain("- old line 1");
     expect(full).toContain("- old line 500");
     expect(full).toContain("+ new line 500");
@@ -155,7 +155,7 @@ describe("compact tool transcript bounds", () => {
     expect(compact.some((line) => line.startsWith("- ") && line.endsWith("..."))).toBe(true);
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const full = block.getResultView()?.render(WIDTH).map(stripAnsi) ?? [];
+    const full = block.getToolDetailView().render(WIDTH).map(stripAnsi);
 
     // Full rows wrap to the viewer content width instead of staying overlong
     // and getting truncated again by the viewer. The rendered rows include
@@ -183,7 +183,7 @@ describe("compact tool transcript bounds", () => {
     expect(result.items).toHaveLength(10_000);
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const full = block.getResultView()?.render(WIDTH).map(stripAnsi).join("\n") ?? "";
+    const full = block.getToolDetailView().render(WIDTH).map(stripAnsi).join("\n");
     expect(full).toContain('"index": 9999');
   });
 
@@ -200,7 +200,7 @@ describe("compact tool transcript bounds", () => {
       expect(compact.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
       expect(block.hasExpandableOutput()).toBe(true);
 
-      const full = block.getResultView()?.render(WIDTH).map(stripAnsi) ?? [];
+      const full = block.getToolDetailView().render(WIDTH).map(stripAnsi);
       expect(full.length).toBeGreaterThan(MAX_TOOL_ROWS);
     }
   });
@@ -229,7 +229,7 @@ describe("compact tool transcript bounds", () => {
 
     expect(failedLines).toContain("◆ Failed to use filesystem_get_file_info");
     expect(failedLines.join("\n")).not.toContain("  └ ");
-    expect(block.getResultView()?.title).toBe("Failed to use filesystem_get_file_info");
+    expect(block.getToolDetailView().title).toBe("filesystem_get_file_info");
 
     block.updateResult(
       {
@@ -245,7 +245,7 @@ describe("compact tool transcript bounds", () => {
 
     expect(doneLines).toContain("◆ Used filesystem_get_file_info");
     expect(doneLines.join("\n")).not.toContain("  └ ");
-    expect(block.getResultView()?.title).toBe("Used filesystem_get_file_info");
+    expect(block.getToolDetailView().title).toBe("filesystem_get_file_info");
   });
 
   test("preserves custom tool identity without promoting command to a target row", () => {
@@ -264,7 +264,7 @@ describe("compact tool transcript bounds", () => {
 
     expect(lines).toContain("◆ Failed to use custom_build_tool");
     expect(lines.join("\n")).not.toContain("  └ ");
-    expect(block.getResultView()?.title).toBe("Failed to use custom_build_tool");
+    expect(block.getToolDetailView().title).toBe("custom_build_tool");
   });
 
   test("shows the full tool name for unknown tools in every state without a target row", () => {

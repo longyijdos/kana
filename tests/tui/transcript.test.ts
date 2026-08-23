@@ -197,9 +197,7 @@ describe("tui transcript", () => {
     expect(block.render(100).map(stripAnsi)).toContain("Output stored · 83 KB");
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const view = block.getResultView();
-    expect(view).toBeDefined();
-    const expanded = view?.render(100).map(stripAnsi).join("\n") ?? "";
+    const expanded = block.getToolDetailView().render(100).map(stripAnsi).join("\n");
     expect(expanded).toContain(`Full output locator: ${locator}`);
     expect(expanded).toContain("Use grep with this locator plus pattern");
   });
@@ -514,7 +512,7 @@ describe("tui transcript", () => {
     expect(lines.join("\n")).not.toContain('"matches"');
   });
 
-  test("does not provide read content in the result viewer", () => {
+  test("inspects read tool detail without dumping the file content", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
@@ -535,7 +533,11 @@ describe("tui transcript", () => {
       false,
     );
 
-    expect(block.getResultView()).toBeUndefined();
+    const view = block.getToolDetailView();
+    const rendered = view.render(100).map(stripAnsi).join("\n");
+    expect(rendered).toContain("Path");
+    expect(rendered).toContain("AGENTS.md:1-10 of 10");
+    expect(rendered).not.toContain("line 10");
   });
 
   test("tool result viewer scrolls and pages with arrow keys", () => {
@@ -593,6 +595,32 @@ describe("tui transcript", () => {
     viewer.handleInput("\x1b");
 
     expect(decisions).toEqual(["close"]);
+  });
+
+  test("tool viewer navigates tools with brackets and keeps arrow paging", () => {
+    const decisions: string[] = [];
+    const viewer = new ContentViewer(
+      {
+        title: "Bash",
+        render: () => ["one", "two", "three", "four", "five"],
+      },
+      {
+        onClose: () => decisions.push("close"),
+        onPrevious: () => decisions.push("previous"),
+        onNext: () => decisions.push("next"),
+        visibleLimit: 3,
+      },
+    );
+
+    viewer.handleInput("[");
+    viewer.handleInput("]");
+
+    expect(decisions).toEqual(["previous", "next"]);
+
+    viewer.render(80);
+    viewer.handleInput("\x1b[C");
+
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 3-5 of 5");
   });
 
   test("tool result viewer shrinks its window for a short available height", () => {
@@ -708,7 +736,7 @@ describe("tui transcript", () => {
     );
 
     const compact = block.render(80).join("\n");
-    const full = block.getResultView()?.render(80).join("\n") ?? "";
+    const full = block.getToolDetailView().render(80).join("\n");
 
     expect(compact).not.toContain("\x1b[31m");
     expect(compact).not.toContain("\x1b[2J");
