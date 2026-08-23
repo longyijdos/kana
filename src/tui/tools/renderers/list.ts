@@ -12,11 +12,6 @@ export function formatListOutput(result: object): string {
 
   return `${path}: ${entries} of ${totalEntries} entries${truncated ? " (truncated)" : ""}`;
 }
-
-export function hasExpandableListOutput(): boolean {
-  return false;
-}
-
 function readObjectArrayLength(value: object, key: string): number | undefined {
   const property = (value as Record<string, unknown>)[key];
 

@@ -16,11 +16,6 @@ export function formatGrepOutput(result: object): string {
 
   return `${location}${matches} matches${files} for ${pattern}${truncated ? " (truncated)" : ""}`;
 }
-
-export function hasExpandableGrepOutput(): boolean {
-  return false;
-}
-
 function readObjectArrayLength(value: object, key: string): number | undefined {
   const property = (value as Record<string, unknown>)[key];
 

@@ -1,6 +1,7 @@
 export {
   formatToolApproval,
   formatToolOutput,
+  formatToolTargetLine,
   formatToolTitle,
   formatToolTranscriptTitle,
   hasExpandableToolOutput,

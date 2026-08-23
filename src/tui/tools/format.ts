@@ -4,18 +4,25 @@ import {
   color,
   stripTerminalControlSequences,
   summarizeText,
+  truncateToWidth,
   wrapPlainText,
 } from "../render";
 import { tuiTheme } from "../theme";
+import {
+  COMPACT_DIFF_LINE_LIMIT,
+  COMPACT_WRITE_LINE_LIMIT,
+  hasOmittedContent,
+  renderCompactText,
+} from "./compact";
 import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
-import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
+import { formatBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
-import { formatGlobOutput, hasExpandableGlobOutput } from "./renderers/glob";
-import { formatGrepOutput, hasExpandableGrepOutput } from "./renderers/grep";
-import { formatListOutput, hasExpandableListOutput } from "./renderers/list";
-import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
-import { formatViewImageOutput, hasExpandableViewImageOutput } from "./renderers/view-image";
-import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
+import { formatGlobOutput } from "./renderers/glob";
+import { formatGrepOutput } from "./renderers/grep";
+import { formatListOutput } from "./renderers/list";
+import { formatReadOutput } from "./renderers/read";
+import { formatViewImageOutput } from "./renderers/view-image";
+import { formatWriteOutput } from "./renderers/write";
 
 export type ToolState = "running" | "done" | "failed" | "canceled";
 export type ToolOutputDetail = "compact" | "full";
@@ -69,8 +76,10 @@ export function formatToolTranscriptTitle(
 ): ToolTranscriptTitle {
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target, toolCall.args);
-  const action = text.action.replace(` ${target}`, "");
-  const runningActivity = capitalize(text.runningActivity.replace(` ${target}`, ""));
+  const action = target ? text.action.replace(` ${target}`, "") : text.action;
+  const runningActivity = capitalize(
+    target ? text.runningActivity.replace(` ${target}`, "") : text.runningActivity,
+  );
 
   if (state === "running") {
     return {
@@ -82,12 +91,16 @@ export function formatToolTranscriptTitle(
   if (state === "failed") return { activity: `Failed to ${action}`, target };
   if (state === "canceled") {
     return {
-      activity: `Canceled ${text.runningActivity.replace(` ${target}`, "")}`,
+      activity: `Canceled ${target ? text.runningActivity.replace(` ${target}`, "") : text.runningActivity}`,
       target,
     };
   }
 
-  return { activity: text.doneTitle.replace(` ${target}`, ""), target };
+  return { activity: target ? text.doneTitle.replace(` ${target}`, "") : text.doneTitle, target };
+}
+
+export function formatToolTargetLine(target: string, width: number): string {
+  return truncateToWidth(target.replace(/\s+/g, " ").trim(), Math.max(1, width));
 }
 
 export function formatToolApproval(
@@ -114,7 +127,12 @@ export function formatToolOutput(
   const sanitizedResult = sanitizeToolOutput(result);
 
   if (isToolResultArtifact(sanitizedResult)) {
-    return renderText(formatArtifactOutput(sanitizedResult, detail), width, tuiTheme.toolOutput);
+    return renderText(
+      formatArtifactOutput(sanitizedResult, detail),
+      width,
+      tuiTheme.toolOutput,
+      detail,
+    );
   }
 
   if (!sanitizedResult || typeof sanitizedResult !== "object") {
@@ -122,81 +140,135 @@ export function formatToolOutput(
       sanitizedResult === undefined ? "" : String(sanitizedResult),
       width,
       tuiTheme.toolOutput,
+      detail,
     );
   }
 
   const error = getStringProperty(sanitizedResult, "error");
 
   if (isError && error !== undefined) {
-    return renderText(error, width, tuiTheme.error);
+    return renderText(error, width, tuiTheme.error, detail);
   }
 
   const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
 
   switch (toolCall.name) {
     case "list":
-      return renderText(formatListOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatListOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "glob":
-      return renderText(formatGlobOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatGlobOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "grep":
-      return renderText(formatGrepOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatGrepOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "read":
-      return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "view_image":
-      return renderText(formatViewImageOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatViewImageOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "write":
       return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail, width);
     case "edit":
-      return formatEditOutput(sanitizedResult);
-    case "bash":
-      return renderText(formatBashOutput(sanitizedResult, detail), width, tuiTheme.toolOutput);
+      return formatEditOutput(sanitizedResult, detail, width);
+    case "bash": {
+      // Preserve the old tail-style compact preview ("... N more lines").
+      const output = formatBashOutput(sanitizedResult);
+      return detail === "full"
+        ? renderText(output, width, tuiTheme.toolOutput, detail)
+        : renderCompactText(output, width, tuiTheme.toolOutput, "tail");
+    }
     case "remember":
     case "schedule_wake":
       return [];
   }
 
-  return renderText(JSON.stringify(sanitizedResult, null, 2), width, tuiTheme.toolOutput);
+  return renderText(stringifyToolResult(sanitizedResult), width, tuiTheme.toolOutput, detail);
 }
 
-function renderText(text: string, width: number, textColor: Parameters<typeof color>[1]): string[] {
-  return text ? wrapPlainText(text, width).map((line) => color(line, textColor)) : [];
+function renderText(
+  text: string,
+  width: number,
+  textColor: Parameters<typeof color>[1],
+  detail: ToolOutputDetail,
+): string[] {
+  if (!text) {
+    return [];
+  }
+
+  if (detail === "full") {
+    return wrapPlainText(text, width).map((line) => color(line, textColor));
+  }
+
+  return renderCompactText(text, width, textColor);
+}
+
+function stringifyToolResult(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 export function hasExpandableToolOutput(
   toolCall: ToolCallContent,
   result: unknown,
   isError: boolean,
+  width?: number,
 ): boolean {
-  if (!result || typeof result !== "object") {
-    return false;
-  }
-
   if (isToolResultArtifact(result)) {
     return true;
   }
 
-  if (isError && getStringProperty(result, "error") !== undefined) {
-    return false;
+  if (!result || typeof result !== "object") {
+    return result !== undefined && hasOmittedContent(String(result), width);
+  }
+
+  const error = getStringProperty(result, "error");
+
+  if (isError && error !== undefined) {
+    return hasOmittedContent(error, width);
   }
 
   switch (toolCall.name) {
     case "list":
-      return hasExpandableListOutput();
     case "glob":
-      return hasExpandableGlobOutput();
     case "grep":
-      return hasExpandableGrepOutput();
     case "read":
-      return hasExpandableReadOutput();
     case "view_image":
-      return hasExpandableViewImageOutput();
-    case "write":
-      return hasExpandableWriteOutput(toolCall);
+    case "remember":
+    case "schedule_wake":
+      return false;
+
+    case "write": {
+      const content = getStringProperty(toolCall.args, "content");
+      // Compact write rows render inside a 2-column "+ " prefix.
+      return (
+        content !== undefined &&
+        hasOmittedContent(
+          content,
+          width === undefined ? undefined : width - 2,
+          COMPACT_WRITE_LINE_LIMIT,
+        )
+      );
+    }
+
     case "bash":
-      return hasExpandableBashOutput(result);
+      return hasOmittedContent(formatBashOutput(result), width);
+
+    case "edit": {
+      // Compact diff rows render inside 2-column "- "/"+ " prefixes.
+      const contentWidth = width === undefined ? undefined : width - 2;
+      const oldText = getStringProperty(result, "oldText");
+      const newText = getStringProperty(result, "newText");
+      return (
+        (oldText !== undefined &&
+          hasOmittedContent(oldText, contentWidth, COMPACT_DIFF_LINE_LIMIT)) ||
+        (newText !== undefined && hasOmittedContent(newText, contentWidth, COMPACT_DIFF_LINE_LIMIT))
+      );
+    }
   }
 
-  return false;
+  // Unknown/custom/MCP tools render a bounded pretty-JSON preview; the
+  // complete result stays available through the scrollable viewer.
+  return hasOmittedContent(stringifyToolResult(result), width);
 }
 
 function formatArtifactOutput(artifact: ToolResultArtifact, detail: ToolOutputDetail): string {
@@ -221,49 +293,65 @@ function formatByteSize(bytes: number): string {
   return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
 }
 
-function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
-  if (toolCall.name === "remember") {
-    return (
-      getStringProperty(result, "scope") ?? getStringProperty(toolCall.args, "scope") ?? "project"
-    );
-  }
+/**
+ * Resolves the transcript target row for tools whose argument schema Kana
+ * owns. Unknown/custom/MCP tools have arbitrary schemas, so the TUI must
+ * not guess which argument (if any) is the primary operation target; they
+ * return undefined and render no target row. Their identity stays in the
+ * tool name itself.
+ */
+function toolTarget(toolCall: ToolCallContent, result?: unknown): string | undefined {
+  switch (toolCall.name) {
+    case "remember":
+      return (
+        getStringProperty(result, "scope") ?? getStringProperty(toolCall.args, "scope") ?? "project"
+      );
 
-  if (toolCall.name === "schedule_wake") {
-    const afterMinutes = getNumberProperty(toolCall.args, "afterMinutes");
-    const message = getStringProperty(toolCall.args, "message");
+    case "schedule_wake": {
+      const afterMinutes = getNumberProperty(toolCall.args, "afterMinutes");
+      const message = getStringProperty(toolCall.args, "message");
 
-    if (afterMinutes !== undefined) {
-      const delay = `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
-      return message ? `${delay}\n${message}` : delay;
+      if (afterMinutes !== undefined) {
+        const delay = `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
+        return message ? `${delay}\n${message}` : delay;
+      }
+      return undefined;
     }
+
+    case "glob":
+      return (
+        getStringProperty(result, "pattern") ??
+        getStringProperty(toolCall.args, "pattern") ??
+        "glob"
+      );
+
+    case "grep":
+      return (
+        getStringProperty(result, "pattern") ??
+        getStringProperty(toolCall.args, "pattern") ??
+        "grep"
+      );
+
+    case "list":
+    case "read":
+    case "view_image":
+    case "write":
+    case "edit": {
+      const path = getStringProperty(result, "path") ?? getStringProperty(toolCall.args, "path");
+
+      return path ?? toolCall.name;
+    }
+
+    case "bash": {
+      const command =
+        getStringProperty(result, "command") ?? getStringProperty(toolCall.args, "command");
+
+      return command ?? toolCall.name;
+    }
+
+    default:
+      return undefined;
   }
-
-  if (toolCall.name === "glob") {
-    return (
-      getStringProperty(result, "pattern") ?? getStringProperty(toolCall.args, "pattern") ?? "glob"
-    );
-  }
-
-  if (toolCall.name === "grep") {
-    return (
-      getStringProperty(result, "pattern") ?? getStringProperty(toolCall.args, "pattern") ?? "grep"
-    );
-  }
-
-  const path = getStringProperty(toolCall.args, "path");
-  const resultPath = getStringProperty(result, "path");
-  const command = getStringProperty(toolCall.args, "command");
-  const resultCommand = getStringProperty(result, "command");
-
-  if (resultPath || path) {
-    return resultPath ?? path ?? toolCall.name;
-  }
-
-  if (resultCommand || command) {
-    return resultCommand ?? command ?? toolCall.name;
-  }
-
-  return toolCall.name;
 }
 
 function formatToolApprovalTitle(toolCall: ToolCallContent): string {
@@ -302,7 +390,10 @@ function formatToolDetail(toolCall: ToolCallContent): string {
   const target = toolTarget(toolCall);
   const summary = formatToolSummary(toolCall);
 
-  return summary ? `${target} - ${summary}` : target;
+  if (summary) {
+    return target ? `${target} - ${summary}` : summary;
+  }
+  return target ?? toolCall.name;
 }
 
 function formatToolSummary(toolCall: ToolCallContent): string {
@@ -404,7 +495,7 @@ function sanitizeToolOutput(value: unknown): unknown {
 
 function toolText(
   toolName: string,
-  target: string,
+  target: string | undefined,
   args?: unknown,
 ): {
   action: string;

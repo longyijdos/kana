@@ -36,13 +36,6 @@ export function color(text: string, value: Color): string {
   return `\x1b[${COLOR_CODES[value]}m${text}${RESET}`;
 }
 
-export function background(text: string, value: Color): string {
-  return renderHighlightedLine([{ text }], {
-    background: value,
-    clearToEnd: true,
-  });
-}
-
 export function renderHighlightedLine(
   tokens: HighlightedLineToken[],
   options: { background?: Color; clearToEnd?: boolean; prefix?: string } = {},

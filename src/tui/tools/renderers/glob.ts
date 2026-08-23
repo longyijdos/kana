@@ -15,11 +15,6 @@ export function formatGlobOutput(result: object): string {
 
   return `${location}: ${matches} of ${totalMatches} matches${truncated ? " (truncated)" : ""}`;
 }
-
-export function hasExpandableGlobOutput(): boolean {
-  return false;
-}
-
 function readObjectArrayLength(value: object, key: string): number | undefined {
   const property = (value as Record<string, unknown>)[key];
 

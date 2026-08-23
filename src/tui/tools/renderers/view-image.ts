@@ -14,11 +14,6 @@ export function formatViewImageOutput(result: object): string {
     .filter((detail): detail is string => detail !== undefined)
     .join(" · ");
 }
-
-export function hasExpandableViewImageOutput(): boolean {
-  return false;
-}
-
 function formatByteSize(bytes: number): string {
   return bytes >= 1024 * 1024
     ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`

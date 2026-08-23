@@ -12,7 +12,3 @@ export function formatReadOutput(result: object): string {
 
   return header ?? "";
 }
-
-export function hasExpandableReadOutput(): boolean {
-  return false;
-}

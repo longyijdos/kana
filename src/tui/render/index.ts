@@ -1,5 +1,4 @@
 export {
-  background,
   bold,
   type Color,
   color,
@@ -30,5 +29,6 @@ export {
   stripTerminalControlSequences,
   truncateToWidth,
   visibleWidth,
+  wrapHighlightedLine,
   wrapPlainText,
 } from "./width";
