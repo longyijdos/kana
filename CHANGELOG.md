@@ -1,3 +1,22 @@
+## [0.6.0](https://github.com/longyijdos/kana/compare/v0.5.0...v0.6.0) (2026-08-23)
+
+Kana v0.6.0 adds agent image inspection, durable artifacts for oversized tool results, and tool-result policies with repeated tool-call detection.
+
+### Features
+
+- Let the agent inspect local images with the new `view_image` tool and carry native visual observations into model requests.
+- Persist oversized tool results as on-disk artifacts with a bounded model-facing preview, so complete bash output is never lost.
+- Add tool-result policies with built-in repeated tool-call detection so model loops stop before they burn context.
+
+### Bug Fixes
+
+- Preserve complete bash output for artifact storage and harden artifact fallback and replay.
+- Bound compact tool transcript rendering to a fixed row budget and stop guessing targets for unknown tools.
+- Replace stale runtime context in model input by assembling prompt context per model step.
+- Align parallel tool completion and cancellation semantics during bounded scheduling.
+- Harden the tool-result policy boundary against invalid policy returns.
+- Validate visual tool results, keep the MCP loading transcript append-only across reloads, and capitalize status labels in the TUI.
+
 ## [0.5.0](https://github.com/longyijdos/kana/compare/v0.4.0...v0.5.0) (2026-08-21)
 
 Kana v0.5.0 adds custom OpenAI-compatible providers, image prompts for DeepSeek V4 Flash Vision, and terminal-native Mermaid and LaTeX rendering.

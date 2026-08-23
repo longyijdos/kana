@@ -94,9 +94,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  Custom OpenAI-compatible providers"),
-      text("  Image prompts for DeepSeek V4"),
-      text("  Mermaid and LaTeX rendering"),
+      text("  Agent image inspection"),
+      text("  Oversized tool results as artifacts"),
+      text("  Repeated tool-call detection"),
       muted("  ... /help for more"),
     ];
 
