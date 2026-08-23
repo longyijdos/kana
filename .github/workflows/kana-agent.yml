@@ -3,24 +3,14 @@ name: Kana Agent
 on:
   issue_comment:
     types: [created]
-  push:
-    branches:
-      - fix/kana-agent-workflow
 
 concurrency:
-  group: kana-agent-${{ github.event.issue.number || github.ref }}
+  group: kana-agent-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
-  validate:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate workflow load
-        run: echo "Kana Agent workflow parsed successfully."
-
   kana:
-    if: github.event_name == 'issue_comment' && github.actor == 'longyijdos'
+    if: github.actor == 'longyijdos'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -137,22 +127,23 @@ jobs:
           mkdir -p "$kana_home"
           echo "KANA_HOME=$kana_home" >> "$GITHUB_ENV"
 
-          cat > "$kana_home/config.toml" <<'EOF'
-          [model.deepseek]
-          name = "deepseek-v4-flash"
-          reasoning_effort = "max"
-
-          [agent]
-          max_turns = 40
-
-          [memory]
-          enabled = false
-
-          [notification]
-          backend = "off"
-          on_agent_completed = false
-          on_approval_required = false
-          EOF
+          {
+            printf '%s\n' \
+              '[model.deepseek]' \
+              'name = "deepseek-v4-flash"' \
+              'reasoning_effort = "max"' \
+              '' \
+              '[agent]' \
+              'max_turns = 40' \
+              '' \
+              '[memory]' \
+              'enabled = false' \
+              '' \
+              '[notification]' \
+              'backend = "off"' \
+              'on_agent_completed = false' \
+              'on_approval_required = false'
+          } > "$kana_home/config.toml"
 
       - name: Prepare Kana prompt
         if: steps.context.outputs.active == 'true'
@@ -162,36 +153,39 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "$MODE" == "issue" ]]; then
-            printf 'You are implementing GitHub issue #%s in the current repository.\n\n' "$ISSUE_NUMBER" > "$RUNNER_TEMP/kana-prompt.txt"
-            printf 'Issue title:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          else
-            printf 'You are continuing work on GitHub pull request #%s in the current repository.\n\n' "$ISSUE_NUMBER" > "$RUNNER_TEMP/kana-prompt.txt"
-            printf 'Pull request title:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          fi
+          {
+            if [[ "$MODE" == "issue" ]]; then
+              printf 'You are implementing GitHub issue #%s in the current repository.\n\n' "$ISSUE_NUMBER"
+              printf 'Issue title:\n'
+            else
+              printf 'You are continuing work on GitHub pull request #%s in the current repository.\n\n' "$ISSUE_NUMBER"
+              printf 'Pull request title:\n'
+            fi
 
-          cat "$RUNNER_TEMP/task-title.txt" >> "$RUNNER_TEMP/kana-prompt.txt"
+            cat "$RUNNER_TEMP/task-title.txt"
 
-          if [[ "$MODE" == "issue" ]]; then
-            printf '\n\nIssue description:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          else
-            printf '\n\nPull request description:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          fi
+            if [[ "$MODE" == "issue" ]]; then
+              printf '\n\nIssue description:\n'
+            else
+              printf '\n\nPull request description:\n'
+            fi
 
-          cat "$RUNNER_TEMP/task-body.txt" >> "$RUNNER_TEMP/kana-prompt.txt"
+            cat "$RUNNER_TEMP/task-body.txt"
 
-          if [[ "$MODE" == "issue" ]]; then
-            printf '\n\nMaintainer command:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          else
-            printf '\n\nLatest maintainer instruction:\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          fi
+            if [[ "$MODE" == "issue" ]]; then
+              printf '\n\nMaintainer command:\n'
+            else
+              printf '\n\nLatest maintainer instruction:\n'
+            fi
 
-          cat "$RUNNER_TEMP/task-comment.txt" >> "$RUNNER_TEMP/kana-prompt.txt"
-          printf '\n\nWork directly in the checked-out repository.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          printf 'Inspect the code before modifying it and keep changes scoped to the requested task.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          printf 'Run relevant tests and checks when useful.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          printf 'Do not commit, push, create or update pull requests, or use GitHub credentials.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
-          printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n' >> "$RUNNER_TEMP/kana-prompt.txt"
+            cat "$RUNNER_TEMP/task-comment.txt"
+
+            printf '\n\nWork directly in the checked-out repository.\n'
+            printf 'Inspect the code before modifying it and keep changes scoped to the requested task.\n'
+            printf 'Run relevant tests and checks when useful.\n'
+            printf 'Do not commit, push, create or update pull requests, or use GitHub credentials.\n'
+            printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n'
+          } > "$RUNNER_TEMP/kana-prompt.txt"
 
       - name: Run Kana
         id: run_kana
@@ -211,7 +205,7 @@ jobs:
             outcome="failed"
           fi
 
-          jq -rs '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
+          jq -r -s '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
             "$RUNNER_TEMP/kana.jsonl" > "$RUNNER_TEMP/kana-summary.txt"
 
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
