@@ -247,7 +247,7 @@ describe("tui transcript", () => {
 
     const rendered = block.render(80).map(stripAnsi).filter(Boolean);
 
-    expect(rendered).toEqual(["◆ Scheduled wake", "  └ in 30 minutes", "    Check the task."]);
+    expect(rendered).toEqual(["◆ Scheduled wake", "  └ in 30 minutes Check the task."]);
   });
 
   test("does not render assistant stop reasons as transcript content", () => {
@@ -931,7 +931,7 @@ describe("tui transcript", () => {
     expect(block.render(8).map(stripAnsi)).toContain("+ abc...");
   });
 
-  test("renders failed multiline bash command titles as separate logical lines", () => {
+  test("keeps failed multiline bash command titles on one flattened target row", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
@@ -947,14 +947,16 @@ describe("tui transcript", () => {
 
     expect(lines.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
     expect(lines).toContain("◆ Failed to run");
-    expect(lines).toContain('  └ git commit -m "feat: add something');
+    expect(lines.some((line) => line.startsWith('  └ git commit -m "feat: add something'))).toBe(
+      true,
+    );
     expect(lines.some((line) => line.includes('Co-authored-by: Name <email@example.com>"'))).toBe(
       true,
     );
     expect(lines).toContain("Tool call rejected by user.");
   });
 
-  test("wraps long running and completed tool titles instead of truncating them", () => {
+  test("bounds long running and completed tool titles to one truncated target row", () => {
     const command = `printf ${Array.from({ length: 8 }, (_, index) => `segment-${index}`).join("-")}`;
     const block = new ToolCallBlock({
       type: "tool_call",
@@ -971,6 +973,7 @@ describe("tui transcript", () => {
 
     expect(runningLines).toContain("◆ Running (0s) (Esc to abort)");
     expect(runningLines.join("\n")).toContain("  └ printf segment-0");
+    expect(runningLines.length).toBeLessThanOrEqual(2);
     expect(runningLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
 
     block.updateResult(
@@ -986,6 +989,7 @@ describe("tui transcript", () => {
 
     expect(completedLines).toContain("◆ Ran");
     expect(completedLines.join("\n")).toContain("  └ printf segment-0");
+    expect(completedLines.length).toBeLessThanOrEqual(2);
     expect(completedLines.every((line) => visibleWidth(line) <= 32)).toBe(true);
   });
 

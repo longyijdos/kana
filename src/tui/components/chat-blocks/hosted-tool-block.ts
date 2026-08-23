@@ -6,10 +6,10 @@ import {
   summarizeText,
   truncateToWidth,
   visibleWidth,
-  wrapPlainText,
 } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
+import { formatToolTargetLine } from "../../tools";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 
 export class HostedToolBlock implements Component {
@@ -81,15 +81,11 @@ export class HostedToolBlock implements Component {
       inProgress && this.timer.active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
     const lines = [`${bold(color(`◆ ${activity}`, titleColor))}${hint}`];
     const prefix = "  └ ";
-    const continuationPrefix = " ".repeat(visibleWidth(prefix));
 
     if (title.target) {
-      for (const [index, line] of wrapPlainText(
-        title.target,
-        Math.max(1, width - visibleWidth(prefix)),
-      ).entries()) {
-        lines.push(`${index === 0 ? prefix : continuationPrefix}${line}`);
-      }
+      // The target stays a single transcript row: horizontally truncated
+      // instead of wrapping into arbitrarily many rows.
+      lines.push(`${prefix}${formatToolTargetLine(title.target, width - visibleWidth(prefix))}`);
     }
 
     const rendered = lines.map((line) => truncateToWidth(line, width));

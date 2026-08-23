@@ -1,9 +1,10 @@
 import type { ToolCallContent } from "@/core";
-import { bold, color, truncateToWidth, visibleWidth, wrapPlainText } from "../../render";
+import { bold, color, truncateToWidth, visibleWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import {
   formatToolOutput,
+  formatToolTargetLine,
   formatToolTitle,
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
@@ -139,7 +140,12 @@ export class ToolCallBlock implements Component {
       return false;
     }
 
-    return hasExpandableToolOutput(this.toolCall, this.result ?? this.partialResult, this.isError);
+    return hasExpandableToolOutput(
+      this.toolCall,
+      this.result ?? this.partialResult,
+      this.isError,
+      this.cachedWidth,
+    );
   }
 
   private currentState(): ToolState {
@@ -185,15 +191,11 @@ export class ToolCallBlock implements Component {
     );
     const lines = [colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor)];
     const prefix = "  └ ";
-    const continuationPrefix = " ".repeat(visibleWidth(prefix));
 
     if (title.target) {
-      for (const [index, line] of wrapPlainText(
-        title.target,
-        Math.max(1, width - visibleWidth(prefix)),
-      ).entries()) {
-        lines.push(`${index === 0 ? prefix : continuationPrefix}${line}`);
-      }
+      // The target stays a single transcript row: flattened and horizontally
+      // truncated instead of wrapping into arbitrarily many rows.
+      lines.push(`${prefix}${formatToolTargetLine(title.target, width - visibleWidth(prefix))}`);
     }
 
     return lines;

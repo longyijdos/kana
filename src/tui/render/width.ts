@@ -1,6 +1,6 @@
 import stringWidth from "string-width";
 import { stripCursorMarker } from "../runtime/cursor";
-import { RESET } from "./ansi";
+import { type HighlightedLineToken, RESET } from "./ansi";
 import { CLOSE_TERMINAL_HYPERLINK, terminalHyperlinkState } from "./hyperlink";
 import { splitLines } from "./lines";
 
@@ -43,6 +43,10 @@ export function truncateToWidth(value: string, width: number, suffix = "..."): s
   let usedAnsi = false;
   let hyperlinkOpen = false;
 
+  // Iterate graphemes lazily so truncating a huge single line stays O(width)
+  // instead of re-segmenting the remaining string on every step.
+  const graphemeIterator = graphemeSegments(value);
+
   while (index < value.length) {
     const ansi = readAnsi(value, index);
 
@@ -57,7 +61,7 @@ export function truncateToWidth(value: string, width: number, suffix = "..."): s
       continue;
     }
 
-    const [segment] = graphemes(value.slice(index));
+    const segment = nextGraphemeAt(graphemeIterator, index);
 
     if (!segment) {
       break;
@@ -97,7 +101,7 @@ export function wrapPlainText(value: string, width: number): string[] {
     let line = "";
     let lineWidth = 0;
 
-    for (const segment of graphemes(rawLine)) {
+    for (const { segment } of graphemeSegments(rawLine)) {
       const segmentWidth = visibleWidth(segment);
 
       if (line && lineWidth + segmentWidth > columns) {
@@ -116,26 +120,86 @@ export function wrapPlainText(value: string, width: number): string[] {
   return lines;
 }
 
-function graphemes(value: string): string[] {
+/**
+ * Wraps a highlighted token line to `width` visible columns, splitting
+ * between graphemes so every wrapped row keeps its own colors. Mirrors
+ * wrapPlainText for token-based renderers such as write/edit diff rows.
+ */
+export function wrapHighlightedLine(
+  tokens: HighlightedLineToken[],
+  width: number,
+): HighlightedLineToken[][] {
+  const columns = Math.max(width, 1);
+  const lines: HighlightedLineToken[][] = [];
+  let line: HighlightedLineToken[] = [];
+  let lineWidth = 0;
+
+  for (const token of tokens) {
+    for (const { segment } of graphemeSegments(token.text.replace(/\t/g, "   "))) {
+      const segmentWidth = visibleWidth(segment);
+
+      if (line.length > 0 && lineWidth + segmentWidth > columns) {
+        lines.push(line);
+        line = [];
+        lineWidth = 0;
+      }
+
+      const last = line.at(-1);
+      if (last && last.color === token.color) last.text += segment;
+      else line.push({ text: segment, color: token.color });
+      lineWidth += segmentWidth;
+    }
+  }
+
+  lines.push(line);
+  return lines;
+}
+
+function graphemeSegments(value: string): IterableIterator<{ segment: string; index: number }> {
   const Segmenter = (
     Intl as typeof Intl & {
       Segmenter?: new (
         locale: string,
         options: { granularity: "grapheme" },
       ) => {
-        segment(value: string): Iterable<{ segment: string }>;
+        segment(value: string): Iterable<{ segment: string; index: number }>;
       };
     }
   ).Segmenter;
 
   if (!Segmenter) {
-    return Array.from(value);
+    return codePointSegments(value);
   }
 
-  return Array.from(
-    new Segmenter("en", { granularity: "grapheme" }).segment(value),
-    (segment) => segment.segment,
-  );
+  return new Segmenter("en", { granularity: "grapheme" }).segment(value)[Symbol.iterator]();
+}
+
+/** Fallback without Intl.Segmenter: iterate code points instead of grapheme clusters. */
+function* codePointSegments(value: string): IterableIterator<{ segment: string; index: number }> {
+  let index = 0;
+
+  for (const segment of value) {
+    yield { segment, index };
+    index += segment.length;
+  }
+}
+
+/** Consumes the iterator up to the grapheme at or after `index`. */
+function nextGraphemeAt(
+  iterator: IterableIterator<{ segment: string; index: number }>,
+  index: number,
+): string | undefined {
+  for (;;) {
+    const next = iterator.next();
+
+    if (next.done) {
+      return undefined;
+    }
+
+    if (next.value.index >= index) {
+      return next.value.segment;
+    }
+  }
 }
 
 function readAnsi(value: string, index: number): { sequence: string; end: number } | undefined {

@@ -4,18 +4,25 @@ import {
   color,
   stripTerminalControlSequences,
   summarizeText,
+  truncateToWidth,
   wrapPlainText,
 } from "../render";
 import { tuiTheme } from "../theme";
+import {
+  COMPACT_DIFF_LINE_LIMIT,
+  COMPACT_WRITE_LINE_LIMIT,
+  hasOmittedContent,
+  renderCompactText,
+} from "./compact";
 import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
-import { formatBashOutput, hasExpandableBashOutput } from "./renderers/bash";
+import { formatBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
-import { formatGlobOutput, hasExpandableGlobOutput } from "./renderers/glob";
-import { formatGrepOutput, hasExpandableGrepOutput } from "./renderers/grep";
-import { formatListOutput, hasExpandableListOutput } from "./renderers/list";
-import { formatReadOutput, hasExpandableReadOutput } from "./renderers/read";
-import { formatViewImageOutput, hasExpandableViewImageOutput } from "./renderers/view-image";
-import { formatWriteOutput, hasExpandableWriteOutput } from "./renderers/write";
+import { formatGlobOutput } from "./renderers/glob";
+import { formatGrepOutput } from "./renderers/grep";
+import { formatListOutput } from "./renderers/list";
+import { formatReadOutput } from "./renderers/read";
+import { formatViewImageOutput } from "./renderers/view-image";
+import { formatWriteOutput } from "./renderers/write";
 
 export type ToolState = "running" | "done" | "failed" | "canceled";
 export type ToolOutputDetail = "compact" | "full";
@@ -90,6 +97,10 @@ export function formatToolTranscriptTitle(
   return { activity: text.doneTitle.replace(` ${target}`, ""), target };
 }
 
+export function formatToolTargetLine(target: string, width: number): string {
+  return truncateToWidth(target.replace(/\s+/g, " ").trim(), Math.max(1, width));
+}
+
 export function formatToolApproval(
   toolCall: ToolCallContent,
   source?: ToolApprovalSource,
@@ -114,7 +125,12 @@ export function formatToolOutput(
   const sanitizedResult = sanitizeToolOutput(result);
 
   if (isToolResultArtifact(sanitizedResult)) {
-    return renderText(formatArtifactOutput(sanitizedResult, detail), width, tuiTheme.toolOutput);
+    return renderText(
+      formatArtifactOutput(sanitizedResult, detail),
+      width,
+      tuiTheme.toolOutput,
+      detail,
+    );
   }
 
   if (!sanitizedResult || typeof sanitizedResult !== "object") {
@@ -122,81 +138,135 @@ export function formatToolOutput(
       sanitizedResult === undefined ? "" : String(sanitizedResult),
       width,
       tuiTheme.toolOutput,
+      detail,
     );
   }
 
   const error = getStringProperty(sanitizedResult, "error");
 
   if (isError && error !== undefined) {
-    return renderText(error, width, tuiTheme.error);
+    return renderText(error, width, tuiTheme.error, detail);
   }
 
   const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
 
   switch (toolCall.name) {
     case "list":
-      return renderText(formatListOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatListOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "glob":
-      return renderText(formatGlobOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatGlobOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "grep":
-      return renderText(formatGrepOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatGrepOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "read":
-      return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatReadOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "view_image":
-      return renderText(formatViewImageOutput(sanitizedResult), width, tuiTheme.toolOutput);
+      return renderText(formatViewImageOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "write":
       return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail, width);
     case "edit":
-      return formatEditOutput(sanitizedResult);
-    case "bash":
-      return renderText(formatBashOutput(sanitizedResult, detail), width, tuiTheme.toolOutput);
+      return formatEditOutput(sanitizedResult, detail, width);
+    case "bash": {
+      // Preserve the old tail-style compact preview ("... N more lines").
+      const output = formatBashOutput(sanitizedResult);
+      return detail === "full"
+        ? renderText(output, width, tuiTheme.toolOutput, detail)
+        : renderCompactText(output, width, tuiTheme.toolOutput, "tail");
+    }
     case "remember":
     case "schedule_wake":
       return [];
   }
 
-  return renderText(JSON.stringify(sanitizedResult, null, 2), width, tuiTheme.toolOutput);
+  return renderText(stringifyToolResult(sanitizedResult), width, tuiTheme.toolOutput, detail);
 }
 
-function renderText(text: string, width: number, textColor: Parameters<typeof color>[1]): string[] {
-  return text ? wrapPlainText(text, width).map((line) => color(line, textColor)) : [];
+function renderText(
+  text: string,
+  width: number,
+  textColor: Parameters<typeof color>[1],
+  detail: ToolOutputDetail,
+): string[] {
+  if (!text) {
+    return [];
+  }
+
+  if (detail === "full") {
+    return wrapPlainText(text, width).map((line) => color(line, textColor));
+  }
+
+  return renderCompactText(text, width, textColor);
+}
+
+function stringifyToolResult(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 export function hasExpandableToolOutput(
   toolCall: ToolCallContent,
   result: unknown,
   isError: boolean,
+  width?: number,
 ): boolean {
-  if (!result || typeof result !== "object") {
-    return false;
-  }
-
   if (isToolResultArtifact(result)) {
     return true;
   }
 
-  if (isError && getStringProperty(result, "error") !== undefined) {
-    return false;
+  if (!result || typeof result !== "object") {
+    return result !== undefined && hasOmittedContent(String(result), width);
+  }
+
+  const error = getStringProperty(result, "error");
+
+  if (isError && error !== undefined) {
+    return hasOmittedContent(error, width);
   }
 
   switch (toolCall.name) {
     case "list":
-      return hasExpandableListOutput();
     case "glob":
-      return hasExpandableGlobOutput();
     case "grep":
-      return hasExpandableGrepOutput();
     case "read":
-      return hasExpandableReadOutput();
     case "view_image":
-      return hasExpandableViewImageOutput();
-    case "write":
-      return hasExpandableWriteOutput(toolCall);
+    case "remember":
+    case "schedule_wake":
+      return false;
+
+    case "write": {
+      const content = getStringProperty(toolCall.args, "content");
+      // Compact write rows render inside a 2-column "+ " prefix.
+      return (
+        content !== undefined &&
+        hasOmittedContent(
+          content,
+          width === undefined ? undefined : width - 2,
+          COMPACT_WRITE_LINE_LIMIT,
+        )
+      );
+    }
+
     case "bash":
-      return hasExpandableBashOutput(result);
+      return hasOmittedContent(formatBashOutput(result), width);
+
+    case "edit": {
+      // Compact diff rows render inside 2-column "- "/"+ " prefixes.
+      const contentWidth = width === undefined ? undefined : width - 2;
+      const oldText = getStringProperty(result, "oldText");
+      const newText = getStringProperty(result, "newText");
+      return (
+        (oldText !== undefined &&
+          hasOmittedContent(oldText, contentWidth, COMPACT_DIFF_LINE_LIMIT)) ||
+        (newText !== undefined && hasOmittedContent(newText, contentWidth, COMPACT_DIFF_LINE_LIMIT))
+      );
+    }
   }
 
-  return false;
+  // Unknown/custom/MCP tools render a bounded pretty-JSON preview; the
+  // complete result stays available through the scrollable viewer.
+  return hasOmittedContent(stringifyToolResult(result), width);
 }
 
 function formatArtifactOutput(artifact: ToolResultArtifact, detail: ToolOutputDetail): string {
