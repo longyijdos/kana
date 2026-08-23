@@ -3,7 +3,6 @@ import {
   capitalize,
   color,
   stripTerminalControlSequences,
-  summarizeText,
   truncateToWidth,
   wrapPlainText,
 } from "../render";
@@ -14,6 +13,13 @@ import {
   hasOmittedContent,
   renderCompactText,
 } from "./compact";
+import {
+  buildFullToolDetail,
+  formatFullToolDetail,
+  sanitizeToolDetailLabel,
+  sanitizeToolOutput,
+  type ToolApprovalSource,
+} from "./detail";
 import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
 import { formatBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
@@ -33,39 +39,10 @@ type ToolApprovalText = {
   detail: string;
 };
 
-export type ToolApprovalSource = {
-  kind: "mcp";
-  serverId: string;
-  remoteToolName: string;
-};
-
 const overwriteMarker = "[OVERWRITE]";
 
 export function highlightOverwriteMarker(text: string): string {
   return text.replaceAll(overwriteMarker, color(overwriteMarker, tuiTheme.error));
-}
-
-export function formatToolTitle(
-  toolCall: ToolCallContent,
-  state: ToolState,
-  result: unknown,
-): string {
-  const target = toolTarget(toolCall, result);
-  const text = toolText(toolCall.name, target, toolCall.args);
-
-  if (state === "running") {
-    return `${formatStatusActivity(capitalize(text.runningActivity), "...")} (Esc to abort)`;
-  }
-
-  if (state === "failed") {
-    return `Failed to ${text.action}`;
-  }
-
-  if (state === "canceled") {
-    return `Canceled ${text.runningActivity}`;
-  }
-
-  return text.doneTitle;
 }
 
 export function formatToolTranscriptTitle(
@@ -74,7 +51,7 @@ export function formatToolTranscriptTitle(
   result: unknown,
   elapsedSeconds?: number,
 ): ToolTranscriptTitle {
-  const target = toolTarget(toolCall, result);
+  const target = resolveToolTarget(toolCall, result);
   const text = toolText(toolCall.name, target, toolCall.args);
   const action = target ? text.action.replace(` ${target}`, "") : text.action;
   const runningActivity = capitalize(
@@ -99,21 +76,36 @@ export function formatToolTranscriptTitle(
   return { activity: target ? text.doneTitle.replace(` ${target}`, "") : text.doneTitle, target };
 }
 
+// One-line, display-safe rendering of a schema-owned target: terminal
+// control sequences (ANSI SGR, OSC title/hyperlinks, C0/C1 controls) are
+// removed before whitespace is collapsed, so targets can never smuggle
+// escape sequences into a terminal row. Shared by the compact transcript
+// target row and the /tools picker summary; width truncation stays in the
+// consuming render layer.
+export function sanitizeToolTargetText(target: string): string {
+  return flattenToolTargetText(stripTerminalControlSequences(target));
+}
+
 export function formatToolTargetLine(target: string, width: number): string {
-  return truncateToWidth(target.replace(/\s+/g, " ").trim(), Math.max(1, width));
+  return truncateToWidth(sanitizeToolTargetText(target), Math.max(1, width));
+}
+
+// Collapses a possibly multi-line target (e.g. a schedule delay plus its
+// message) into one renderable row without truncating it.
+function flattenToolTargetText(target: string): string {
+  return target.replace(/\s+/g, " ").trim();
 }
 
 export function formatToolApproval(
   toolCall: ToolCallContent,
   source?: ToolApprovalSource,
 ): ToolApprovalText {
-  if (source?.kind === "mcp") {
-    return formatMcpToolApproval(toolCall, source);
-  }
-
   return {
-    title: formatToolApprovalTitle(toolCall),
-    detail: formatToolDetail(toolCall),
+    // The title stays approval-specific UI wording; the paged detail below
+    // reuses the full-fidelity representation so approval never pre-summarizes
+    // material data before it reaches the ChoicePrompt viewport.
+    title: source?.kind === "mcp" ? "Allow MCP tool?" : formatToolApprovalTitle(toolCall),
+    detail: formatFullToolDetail(buildFullToolDetail(toolCall, source)),
   };
 }
 
@@ -294,13 +286,14 @@ function formatByteSize(bytes: number): string {
 }
 
 /**
- * Resolves the transcript target row for tools whose argument schema Kana
- * owns. Unknown/custom/MCP tools have arbitrary schemas, so the TUI must
- * not guess which argument (if any) is the primary operation target; they
- * return undefined and render no target row. Their identity stays in the
- * tool name itself.
+ * Resolves the target for tools whose argument schema Kana owns: the
+ * transcript target row and the tool history picker summary both reuse this
+ * single extraction. Unknown/custom/MCP tools have arbitrary schemas, so the
+ * TUI must not guess which argument (if any) is the primary operation
+ * target; they return undefined and render no target/summary. Their identity
+ * stays in the tool name itself.
  */
-function toolTarget(toolCall: ToolCallContent, result?: unknown): string | undefined {
+export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): string | undefined {
   switch (toolCall.name) {
     case "remember":
       return (
@@ -358,139 +351,11 @@ function formatToolApprovalTitle(toolCall: ToolCallContent): string {
   return toolText(toolCall.name, toolCall.name, toolCall.args).approvalTitle;
 }
 
-function formatMcpToolApproval(
-  toolCall: ToolCallContent,
-  source: ToolApprovalSource,
-): ToolApprovalText {
-  const args = sanitizeToolOutput(toolCall.args ?? {});
-  let formattedArgs: string;
-
-  try {
-    formattedArgs = JSON.stringify(args, null, 2);
-  } catch {
-    formattedArgs = String(args);
-  }
-
-  return {
-    title: "Allow MCP tool?",
-    detail: [
-      `Server: ${sanitizeApprovalLabel(source.serverId)}`,
-      `Tool: ${sanitizeApprovalLabel(source.remoteToolName)}`,
-      "Arguments:",
-      formattedArgs,
-    ].join("\n"),
-  };
-}
-
-function sanitizeApprovalLabel(value: string): string {
-  return stripTerminalControlSequences(value).replace(/[\r\n]+/g, " ");
-}
-
-function formatToolDetail(toolCall: ToolCallContent): string {
-  const target = toolTarget(toolCall);
-  const summary = formatToolSummary(toolCall);
-
-  if (summary) {
-    return target ? `${target} - ${summary}` : summary;
-  }
-  return target ?? toolCall.name;
-}
-
-function formatToolSummary(toolCall: ToolCallContent): string {
-  switch (toolCall.name) {
-    case "list": {
-      const includeHidden = getBooleanProperty(toolCall.args, "includeHidden");
-
-      return includeHidden === false ? "excluding hidden entries" : "";
-    }
-
-    case "glob": {
-      const cwd = getStringProperty(toolCall.args, "cwd");
-      const type = getStringProperty(toolCall.args, "type");
-      const parts = [cwd ? `cwd ${cwd}` : undefined, type ? `type ${type}` : undefined].filter(
-        (part): part is string => part !== undefined,
-      );
-
-      return parts.join(", ");
-    }
-
-    case "grep": {
-      const path = getStringProperty(toolCall.args, "path");
-      const include = getStringProperty(toolCall.args, "include");
-      const literal = getBooleanProperty(toolCall.args, "literal");
-      const parts = [
-        path ? `path ${path}` : undefined,
-        include ? `include ${include}` : undefined,
-        literal ? "literal" : undefined,
-      ].filter((part): part is string => part !== undefined);
-
-      return parts.join(", ");
-    }
-
-    case "read": {
-      const startLine = getNumberProperty(toolCall.args, "startLine");
-      const endLine = getNumberProperty(toolCall.args, "endLine");
-
-      return startLine !== undefined || endLine !== undefined
-        ? `lines ${startLine ?? "start"}-${endLine ?? "end"}`
-        : "";
-    }
-
-    case "view_image":
-      return "";
-
-    case "write": {
-      const content = getStringProperty(toolCall.args, "content");
-      return content ? summarizeText(content) : "";
-    }
-
-    case "edit": {
-      const oldText = getStringProperty(toolCall.args, "oldText");
-
-      return oldText ? `replace ${summarizeText(oldText)}` : "";
-    }
-
-    case "bash": {
-      const cwd = getStringProperty(toolCall.args, "cwd");
-
-      return cwd ? `cwd ${cwd}` : "";
-    }
-  }
-
-  if (toolCall.args === undefined) {
-    return "";
-  }
-
-  try {
-    return JSON.stringify(toolCall.args);
-  } catch {
-    return String(toolCall.args);
-  }
-}
-
 function sanitizeToolCallOutput(toolCall: ToolCallContent): ToolCallContent {
   return {
     ...toolCall,
     args: sanitizeToolOutput(toolCall.args),
   };
-}
-
-function sanitizeToolOutput(value: unknown): unknown {
-  if (typeof value === "string") {
-    return stripTerminalControlSequences(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(sanitizeToolOutput);
-  }
-
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, sanitizeToolOutput(entry)]),
-  );
 }
 
 function toolText(
@@ -577,7 +442,11 @@ function toolText(
     default:
       return {
         action: `use ${toolName}`,
-        approvalTitle: `Allow agent to use ${toolName}?`,
+        // Custom/unknown tool names are model/MCP-provided; only the
+        // approval title sanitizes the identity because it renders on a
+        // fixed row. Transcript action/done/running wording keeps the raw
+        // name so compact rendering stays unchanged.
+        approvalTitle: `Allow agent to use ${sanitizeToolDetailLabel(toolName)}?`,
         doneTitle: `Used ${toolName}`,
         runningActivity: `using ${toolName}`,
       };

@@ -92,6 +92,7 @@ import {
 } from "./slash-command-options-controller";
 import type { RunPhase } from "./status-phase";
 import { ToolApprovalController } from "./tool-approval-controller";
+import { ToolHistoryController } from "./tool-history-controller";
 
 type KanaTuiSessionSnapshot = ConversationSessionSnapshot;
 
@@ -171,6 +172,7 @@ export class KanaTuiApp {
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
   private readonly contentViewer: ContentViewerController;
+  private readonly toolHistory: ToolHistoryController;
   private readonly slashCommands: SlashCommandController;
   private readonly slashCommandOptions: SlashCommandOptionsController;
   private readonly notifications: NotificationController;
@@ -311,6 +313,14 @@ export class KanaTuiApp {
       tui: this.tui,
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
+    this.toolHistory = new ToolHistoryController({
+      editor: this.editor,
+      layout: this.layout,
+      transcript: this.transcript,
+      tui: this.tui,
+      contentViewer: this.contentViewer,
+      restoreBottom: (focus) => this.restoreBottom(focus),
+    });
     this.scheduledMessageManager = new ScheduledMessageManagerController({
       editor: this.editor,
       layout: this.layout,
@@ -398,6 +408,7 @@ export class KanaTuiApp {
       closeOtherOverlays: () => {
         this.skillManager.close();
         this.scheduledMessageManager.close();
+        this.toolHistory.close();
       },
       closeContentViewer: () => this.contentViewer.close(),
       resetAgentEvents: () => this.agentEvents.resetRun(),
@@ -478,6 +489,10 @@ export class KanaTuiApp {
       openScheduledMessageManager: () => {
         this.editor.clear();
         this.openScheduledMessageManager();
+      },
+      openToolHistory: () => {
+        this.editor.clear();
+        this.openToolHistoryPicker();
       },
       attachImageFile: (path) => {
         void this.attachImageFile(path);
@@ -693,7 +708,17 @@ export class KanaTuiApp {
     }
 
     if (isCtrlO(data)) {
-      return this.contentViewer.toggleLatest() ? { consume: true } : undefined;
+      // A successful toggle (opening the latest tool or closing the active
+      // viewer) replaces any bottom view directly. If the tool history
+      // picker was open, it must relinquish ownership — otherwise the
+      // controller would keep tracking a bottom it no longer owns. When
+      // there is no tool to open, the toggle fails and the picker stays.
+      if (this.contentViewer.toggleLatest()) {
+        this.toolHistory.relinquish();
+        return { consume: true };
+      }
+
+      return undefined;
     }
 
     if (isEscape(data) && this.contentViewer.active) {
@@ -866,6 +891,7 @@ export class KanaTuiApp {
     this.sessions.close();
     this.contentViewer.close();
     this.scheduledMessageManager.close();
+    this.toolHistory.close();
     this.skillManager.open();
   }
 
@@ -886,6 +912,7 @@ export class KanaTuiApp {
     this.contentViewer.close();
     this.skillManager.close();
     this.scheduledMessageManager.close();
+    this.toolHistory.close();
     this.mcpServerManager.open();
   }
 
@@ -898,7 +925,21 @@ export class KanaTuiApp {
     this.contentViewer.close();
     this.skillManager.close();
     this.mcpServerManager?.close();
+    this.toolHistory.close();
     this.scheduledMessageManager.open();
+  }
+
+  private openToolHistoryPicker(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.sessions.close();
+    this.contentViewer.close();
+    this.skillManager.close();
+    this.mcpServerManager?.close();
+    this.scheduledMessageManager.close();
+    this.toolHistory.open();
   }
 
   private openMemory(): void {

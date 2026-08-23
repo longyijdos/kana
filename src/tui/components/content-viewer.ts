@@ -24,6 +24,8 @@ export type ContentView = {
 
 export type ContentViewerOptions = {
   onClose: () => void;
+  onPrevious?: () => void;
+  onNext?: () => void;
   visibleLimit?: number;
 };
 
@@ -73,6 +75,16 @@ export class ContentViewer implements Component {
 
     if (isEnd(data)) {
       this.viewport.moveTo(this.contentLength - 1, this.contentLength);
+      return;
+    }
+
+    if (data === "[") {
+      this.options.onPrevious?.();
+      return;
+    }
+
+    if (data === "]") {
+      this.options.onNext?.();
     }
   }
 
@@ -116,7 +128,12 @@ export class ContentViewer implements Component {
       lines.push(dim(`... ${window.hiddenAfter} lines below`));
     }
 
-    lines.push(dim("Esc close  Up/Down scroll  Left/Right page"));
+    const footer =
+      this.options.onPrevious !== undefined || this.options.onNext !== undefined
+        ? "Esc close  Up/Down scroll  Left/Right page  [/] tool"
+        : "Esc close  Up/Down scroll  Left/Right page";
+
+    lines.push(truncateToWidth(dim(footer), width));
 
     return lines;
   }

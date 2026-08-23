@@ -527,6 +527,124 @@ describe("AgentEventRenderer", () => {
       dateNow.mockRestore();
     }
   });
+
+  test("freezes tool preparation instead of shrinking the transcript on approval", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const toolCall = {
+      type: "tool_call" as const,
+      id: "call-approval-freeze",
+      name: "bash",
+      args: { command: "pwd" },
+    };
+    const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      content: [toolCall],
+    };
+
+    renderer.handle({
+      type: "message_start",
+      message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+    });
+    renderer.handle({
+      type: "message_update",
+      message,
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        contentIndex: 0,
+        snapshot: message,
+      },
+    });
+
+    const before = transcript.children.length;
+    const beforeLines = transcript.render(120).join("\n").split("\n").length;
+    expect(stripAnsi(transcript.render(120).join("\n"))).toContain(
+      "Preparing tools (0s) (Esc to abort)",
+    );
+
+    // Simulate entering tool approval: freeze instead of removing the block.
+    renderer.prepareForToolInteraction();
+
+    expect(transcript.children).toHaveLength(before);
+    expect(stripAnsi(transcript.render(120).join("\n"))).toContain("Prepared tools (0s)");
+    expect(stripAnsi(transcript.render(120).join("\n"))).not.toContain("(Esc to abort)");
+    expect(transcript.render(120).join("\n").split("\n").length).toBe(beforeLines);
+
+    // The first real ToolCallBlock replaces the preparation block.
+    renderer.handle({
+      type: "tool_execution_start",
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      args: toolCall.args,
+    });
+
+    expect(stripAnsi(transcript.render(120).join("\n"))).not.toContain("Prepared tools");
+    expect(stripAnsi(transcript.render(120).join("\n"))).toContain("◆ Running");
+    expect(transcript.children).toHaveLength(2);
+
+    renderer.handle(toolEnd(toolCall.id, toolCall.name, false));
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
+  test("replaces frozen preparation with a terminal block on denial without a start event", () => {
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: {
+        requestRender() {},
+      } as unknown as Tui,
+      updateStatus() {},
+    });
+    const toolCall = {
+      type: "tool_call" as const,
+      id: "call-denied",
+      name: "write",
+      args: { path: "src/new.ts", content: "export {}" },
+    };
+    const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      content: [toolCall],
+    };
+
+    renderer.handle({
+      type: "message_start",
+      message: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+    });
+    renderer.handle({
+      type: "message_update",
+      message,
+      assistantMessageEvent: {
+        type: "toolcall_start",
+        contentIndex: 0,
+        snapshot: message,
+      },
+    });
+    renderer.prepareForToolInteraction();
+
+    expect(stripAnsi(transcript.render(120).join("\n"))).toContain("Prepared tools");
+
+    // Denial/cancel publishes a terminal result without tool_execution_start.
+    renderer.handle({
+      type: "tool_execution_end",
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      result: {},
+      isError: true,
+    });
+
+    expect(stripAnsi(transcript.render(120).join("\n"))).not.toContain("Prepared tools");
+    expect(transcript.children).toHaveLength(2);
+
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
 });
 
 function toolStart(toolCallId: string, toolName: string) {

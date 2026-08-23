@@ -197,9 +197,7 @@ describe("tui transcript", () => {
     expect(block.render(100).map(stripAnsi)).toContain("Output stored · 83 KB");
     expect(block.hasExpandableOutput()).toBe(true);
 
-    const view = block.getResultView();
-    expect(view).toBeDefined();
-    const expanded = view?.render(100).map(stripAnsi).join("\n") ?? "";
+    const expanded = block.getToolDetailView().render(100).map(stripAnsi).join("\n");
     expect(expanded).toContain(`Full output locator: ${locator}`);
     expect(expanded).toContain("Use grep with this locator plus pattern");
   });
@@ -514,7 +512,7 @@ describe("tui transcript", () => {
     expect(lines.join("\n")).not.toContain('"matches"');
   });
 
-  test("does not provide read content in the result viewer", () => {
+  test("inspects read tool detail without dumping the file content", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
@@ -535,7 +533,11 @@ describe("tui transcript", () => {
       false,
     );
 
-    expect(block.getResultView()).toBeUndefined();
+    const view = block.getToolDetailView();
+    const rendered = view.render(100).map(stripAnsi).join("\n");
+    expect(rendered).toContain("Path");
+    expect(rendered).toContain("AGENTS.md:1-10 of 10");
+    expect(rendered).not.toContain("line 10");
   });
 
   test("tool result viewer scrolls and pages with arrow keys", () => {
@@ -593,6 +595,32 @@ describe("tui transcript", () => {
     viewer.handleInput("\x1b");
 
     expect(decisions).toEqual(["close"]);
+  });
+
+  test("tool viewer navigates tools with brackets and keeps arrow paging", () => {
+    const decisions: string[] = [];
+    const viewer = new ContentViewer(
+      {
+        title: "Bash",
+        render: () => ["one", "two", "three", "four", "five"],
+      },
+      {
+        onClose: () => decisions.push("close"),
+        onPrevious: () => decisions.push("previous"),
+        onNext: () => decisions.push("next"),
+        visibleLimit: 3,
+      },
+    );
+
+    viewer.handleInput("[");
+    viewer.handleInput("]");
+
+    expect(decisions).toEqual(["previous", "next"]);
+
+    viewer.render(80);
+    viewer.handleInput("\x1b[C");
+
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 3-5 of 5");
   });
 
   test("tool result viewer shrinks its window for a short available height", () => {
@@ -708,7 +736,7 @@ describe("tui transcript", () => {
     );
 
     const compact = block.render(80).join("\n");
-    const full = block.getResultView()?.render(80).join("\n") ?? "";
+    const full = block.getToolDetailView().render(80).join("\n");
 
     expect(compact).not.toContain("\x1b[31m");
     expect(compact).not.toContain("\x1b[2J");
@@ -718,6 +746,101 @@ describe("tui transcript", () => {
     expect(stripAnsi(compact)).toContain("before red afterhidden");
     expect(full).not.toContain("\x1b[2J");
     expect(full).not.toContain("\x1b[3J");
+  });
+
+  test("sanitizes terminal control sequences in a bash command target row", () => {
+    const command = `echo safe\u001b[31mred\u001b[0m\u001b]0;owned\u0007tail`;
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_1",
+      name: "bash",
+      args: { command },
+    });
+    block.updateResult({ command, exitCode: 0, stdout: "ok" }, false);
+
+    const rendered = block.render(80);
+    const raw = rendered.join("\n");
+
+    // Assert on raw rows: the attack sequences must never reach the terminal.
+    expect(raw).not.toContain("\u001b[31m");
+    expect(raw).not.toContain("\u001b]0;");
+    expect(raw).not.toContain("\u0007");
+    expect(raw).not.toContain("owned");
+    // The sanitized plain text stays visible on the single target row.
+    expect(rendered.map(stripAnsi)).toContain("  └ echo saferedtail");
+    expect(rendered.every((line) => visibleWidth(line) <= 80)).toBe(true);
+  });
+
+  test("sanitizes terminal control sequences in read/write/edit path target rows", () => {
+    const cases = [
+      {
+        name: "read",
+        args: { path: `src/\u001b[31mx\u001b[0m.ts` },
+        result: {
+          path: `src/\u001b[31mx\u001b[0m.ts`,
+          content: "",
+          startLine: 1,
+          endLine: 1,
+          totalLines: 1,
+        },
+        target: "src/x.ts",
+      },
+      {
+        name: "write",
+        args: { path: `src/y\u001b]0;w\u0007.ts`, content: "" },
+        result: { path: `src/y\u001b]0;w\u0007.ts`, bytesWritten: 0 },
+        target: "src/y.ts",
+      },
+      {
+        name: "edit",
+        args: { path: `src/z\u001b]0;z\u0007.ts` },
+        result: { path: `src/z\u001b]0;z\u0007.ts`, replacements: 1, oldText: "a", newText: "b" },
+        target: "src/z.ts",
+      },
+    ];
+
+    for (const entry of cases) {
+      const block = new ToolCallBlock({
+        type: "tool_call",
+        id: `call-${entry.name}`,
+        name: entry.name,
+        args: entry.args,
+      });
+      block.updateResult(entry.result, false);
+
+      const rendered = block.render(80);
+      const raw = rendered.join("\n");
+
+      expect(raw).not.toContain("\u001b[31m");
+      expect(raw).not.toContain("\u001b]0;");
+      expect(raw).not.toContain("\u0007");
+      expect(rendered.map(stripAnsi)).toContain(`  └ ${entry.target}`);
+      expect(rendered.every((line) => visibleWidth(line) <= 80)).toBe(true);
+    }
+  });
+
+  test("flattens a multiline schedule_wake target and removes control sequences", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_wake",
+      name: "schedule_wake",
+      args: {
+        afterMinutes: 5,
+        message: `first\u001b[31mred\u001b[0m\nsecond line\u0007`,
+      },
+    });
+    block.updateResult({ id: "wake_123", dueAt: "2026-08-23T00:00:00.000Z" }, false);
+
+    const rendered = block.render(80);
+    const raw = rendered.join("\n");
+
+    expect(raw).not.toContain("\u001b[31m");
+    expect(raw).not.toContain("\u0007");
+    // The multiline target collapses onto one flattened, width-bounded row.
+    const targetRow = rendered.map(stripAnsi).find((line) => line.startsWith("  └ "));
+    expect(targetRow).toBe("  └ in 5 minutes firstred second line");
+    expect(targetRow).not.toContain("\n");
+    expect(rendered.every((line) => visibleWidth(line) <= 80)).toBe(true);
   });
 
   test("renders non-zero bash output as a completed command without structured result metadata", () => {

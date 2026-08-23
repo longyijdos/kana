@@ -1,12 +1,20 @@
 export {
+  buildFullToolDetail,
+  formatFullToolDetail,
+  type ToolApprovalSource,
+  type ToolDetail,
+  type ToolDetailSection,
+} from "./detail";
+export {
   formatToolApproval,
   formatToolOutput,
   formatToolTargetLine,
-  formatToolTitle,
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
   highlightOverwriteMarker,
-  type ToolApprovalSource,
+  resolveToolTarget,
+  sanitizeToolTargetText,
   type ToolOutputDetail,
   type ToolState,
 } from "./format";
+export { formatToolInspector } from "./inspector";

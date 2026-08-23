@@ -6,6 +6,7 @@ import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 /** Shows one transient activity for all local tool calls in a streamed assistant message. */
 export class ToolPreparationBlock implements Component {
   private readonly timer: ElapsedTimer;
+  private prepared = false;
   private cachedWidth?: number;
   private cachedElapsedSeconds?: number;
   private cachedLine?: string;
@@ -20,6 +21,17 @@ export class ToolPreparationBlock implements Component {
   }
 
   stopTimer(): void {
+    this.timer.stop();
+    this.invalidate();
+  }
+
+  /** Freeze the preparation in place once tool interaction begins (e.g. approval),
+   * preserving the elapsed seconds and dropping the `(Esc to abort)` hint. */
+  markPrepared(): void {
+    if (this.prepared) {
+      return;
+    }
+    this.prepared = true;
     this.timer.stop();
     this.invalidate();
   }
@@ -40,8 +52,10 @@ export class ToolPreparationBlock implements Component {
       return [this.cachedLine];
     }
 
-    const hint = this.timer.active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
-    const line = truncateToWidth(`${dim(`Preparing tools (${elapsedSeconds}s)`)}${hint}`, width);
+    const label = this.prepared ? "Prepared tools" : "Preparing tools";
+    const hint =
+      this.prepared || !this.timer.active ? "" : color(" (Esc to abort)", tuiTheme.shortcutHint);
+    const line = truncateToWidth(`${dim(`${label} (${elapsedSeconds}s)`)}${hint}`, width);
 
     this.cachedWidth = width;
     this.cachedElapsedSeconds = elapsedSeconds;

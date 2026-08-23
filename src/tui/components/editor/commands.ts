@@ -11,6 +11,7 @@ export type PromptCommandName =
   | "skills"
   | "mcp"
   | "schedule"
+  | "tools"
   | "image"
   | "approval"
   | "model"
@@ -96,6 +97,10 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "schedule",
     description: "Manage scheduled messages for this session.",
+  },
+  {
+    name: "tools",
+    description: "Browse tool calls in this session.",
   },
   {
     name: "image",
@@ -189,7 +194,11 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "Ctrl+O",
-    description: "Toggle the latest expandable tool output.",
+    description: "Open/close the newest tool detail inspector.",
+  },
+  {
+    input: "[ / ]",
+    description: "Move to the previous or next tool call.",
   },
   {
     input: "!<command>",

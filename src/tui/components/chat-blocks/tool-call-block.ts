@@ -3,17 +3,21 @@ import { bold, color, truncateToWidth, visibleWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import {
+  buildFullToolDetail,
+  formatToolInspector,
   formatToolOutput,
   formatToolTargetLine,
-  formatToolTitle,
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
   highlightOverwriteMarker,
+  resolveToolTarget,
+  sanitizeToolTargetText,
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
 import { type Clock, ElapsedTimer } from "../../utils/elapsed-timer";
 import type { ContentView } from "../content-viewer";
+import type { ToolHistoryEntry } from "../tool-history-picker";
 
 export class ToolCallBlock implements Component {
   private canceled = false;
@@ -124,14 +128,45 @@ export class ToolCallBlock implements Component {
     return rendered;
   }
 
-  getResultView(): ContentView | undefined {
-    if (!this.hasInspectableOutput() || this.toolCall.name === "read") {
-      return undefined;
-    }
+  get toolCallId(): string {
+    return this.toolCall.id;
+  }
+
+  // Every ToolCallBlock is inspectable: short output, missing results,
+  // running/canceled tools, read, and custom/unknown tools all open. The
+  // view reads live block state on every render, so running tools keep
+  // updating arguments and partial output while the inspector is open.
+  getToolDetailView(): ContentView {
+    const toolCall = this.toolCall;
 
     return {
-      title: formatToolTitle(this.toolCall, this.currentState(), this.result),
-      render: (width) => this.renderOutput(width, "full"),
+      title: buildFullToolDetail(toolCall).title,
+      render: (width) =>
+        formatToolInspector(
+          toolCall,
+          this.result ?? this.partialResult,
+          this.isError,
+          this.currentState(),
+          width,
+        ),
+    };
+  }
+
+  // One picker row per tool call: the short semantic identity plus the
+  // schema-owned target when Kana owns the schema. The summary is untrusted
+  // display data, so it is sanitized here — before it enters a terminal row;
+  // the picker itself stays tool-agnostic. Unknown/custom/MCP tools
+  // deliberately carry no summary — their name is the identity, and the TUI
+  // never guesses a target from arbitrary arguments.
+  getToolHistoryEntry(): ToolHistoryEntry {
+    const target = resolveToolTarget(this.toolCall, this.result ?? this.partialResult);
+    const summary = target === undefined ? undefined : sanitizeToolTargetText(target);
+
+    return {
+      toolCallId: this.toolCall.id,
+      title: buildFullToolDetail(this.toolCall).title,
+      // A target made only of control sequences sanitizes to nothing.
+      summary: summary || undefined,
     };
   }
 

@@ -195,9 +195,18 @@ describe("tool approval controller", () => {
     const rendered = layout.render(80).map(stripAnsi).join("\n");
 
     expect(rendered).toContain("Allow MCP tool?");
-    expect(rendered).toContain("Server: github");
-    expect(rendered).toContain("Tool: create_issue");
-    expect(rendered).toContain('"title": "Bug"');
+    expect(rendered).toContain("Server");
+    expect(rendered).toContain("  github");
+    expect(rendered).toContain("Tool");
+    expect(rendered).toContain("  create_issue");
+    expect(rendered).toContain("Arguments");
+    expect(rendered).toContain("Left/Right page detail");
+
+    // The complete arguments stay recoverable through detail paging.
+    for (let page = 0; page < 3; page += 1) {
+      controller.activePrompt?.handleInput?.("\x1b[C");
+    }
+    expect(layout.render(80).map(stripAnsi).join("\n")).toContain('"title": "Bug"');
 
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });

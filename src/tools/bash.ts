@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import type { Tool } from "./tool";
 import { resolveWorkspaceDirectory } from "./workspace-path";
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+export const DEFAULT_TIMEOUT_MS = 30_000;
 // Builds and benchmark workloads can legitimately run for several minutes, while
 // retaining a ceiling prevents a single model-issued command from running forever.
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
