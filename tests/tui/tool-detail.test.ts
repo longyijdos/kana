@@ -102,11 +102,14 @@ describe("full-fidelity tool detail", () => {
     const detail = buildFullToolDetail(toolCall("custom_lookup", args));
 
     expect(detail.title).toBe("custom_lookup");
-    expect(detail.sections).toHaveLength(1);
-    expect(detail.sections[0]?.label).toBe("Arguments");
-    expect(detail.sections[0]?.content).toContain('"target": "element-ref"');
-    expect(detail.sections[0]?.content).toContain('"entry-39"');
-    expect(detail.sections[0]?.content).toContain(LONG_COMMAND);
+    expect(detail.sections).toHaveLength(2);
+    // The complete tool identity stays recoverable in the body because
+    // fixed approval/inspector titles truncate to the viewport width.
+    expect(detail.sections[0]).toEqual({ label: "Tool", content: "custom_lookup" });
+    expect(detail.sections[1]?.label).toBe("Arguments");
+    expect(detail.sections[1]?.content).toContain('"target": "element-ref"');
+    expect(detail.sections[1]?.content).toContain('"entry-39"');
+    expect(detail.sections[1]?.content).toContain(LONG_COMMAND);
   });
 
   test("sanitizes terminal control sequences in string arguments and nested values", () => {
@@ -117,7 +120,7 @@ describe("full-fidelity tool detail", () => {
       }),
     );
 
-    const content = detail.sections[0]?.content ?? "";
+    const content = detail.sections.find((section) => section.label === "Arguments")?.content ?? "";
 
     expect(content).toContain("safeprefix");
     expect(content).toContain("ctl");
@@ -289,6 +292,8 @@ describe("full-fidelity tool detail", () => {
 
     expect(detail.title).toBe("eviltool name");
     expect(detail.title).not.toContain("\u001b");
+    // The Tool section carries the same sanitized identity as the title.
+    expect(detail.sections[0]).toEqual({ label: "Tool", content: "eviltool name" });
   });
 
   test("sanitizes the non-serializable argument fallback", () => {
@@ -300,7 +305,8 @@ describe("full-fidelity tool detail", () => {
     };
     const detail = buildFullToolDetail(toolCall("custom_hostile", evil));
 
-    expect(detail.sections[0]?.content).toBe("hostilepayload");
-    expect(detail.sections[0]?.content).not.toContain("\u001b");
+    const argsSection = detail.sections.find((section) => section.label === "Arguments");
+    expect(argsSection?.content).toBe("hostilepayload");
+    expect(argsSection?.content).not.toContain("\u001b");
   });
 });

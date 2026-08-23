@@ -247,6 +247,10 @@ function buildBuiltInSections(toolCall: ToolCallContent): ToolDetailSection[] {
     }
 
     default: {
+      // Unknown/custom tool names are model/MCP-provided; keep the complete
+      // sanitized identity recoverable in the body because fixed approval or
+      // inspector titles truncate to the viewport width.
+      pushSection(sections, "Tool", sanitizeToolDetailLabel(toolCall.name));
       pushSection(sections, "Arguments", formatSanitizedArguments(args));
       break;
     }
@@ -276,7 +280,7 @@ function formatNumber(value: number | undefined, suffix = ""): string | undefine
 }
 
 // Pretty-prints sanitized args as JSON; undefined when there are no args.
-export function formatSanitizedArguments(args: unknown): string | undefined {
+function formatSanitizedArguments(args: unknown): string | undefined {
   if (args === undefined) {
     return undefined;
   }
