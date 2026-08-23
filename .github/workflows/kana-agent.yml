@@ -19,9 +19,6 @@ jobs:
       issues: read
       pull-requests: read
 
-    env:
-      KANA_HOME: ${{ runner.temp }}/kana-home
-
     steps:
       - name: Identify Kana account
         id: kana-account
@@ -124,8 +121,11 @@ jobs:
         if: steps.context.outputs.active == 'true'
         run: |
           set -euo pipefail
-          mkdir -p "$KANA_HOME"
-          cat > "$KANA_HOME/config.toml" <<'EOF'
+          kana_home="$RUNNER_TEMP/kana-home"
+          mkdir -p "$kana_home"
+          echo "KANA_HOME=$kana_home" >> "$GITHUB_ENV"
+
+          cat > "$kana_home/config.toml" <<'EOF'
           [model.deepseek]
           name = "deepseek-v4-flash"
           reasoning_effort = "max"
@@ -242,11 +242,10 @@ EOF
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit and push as Kana
-        id: publish
+      - name: Commit changes
+        id: commit
         if: steps.publishable.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           KANA_LOGIN: ${{ steps.kana-account.outputs.login }}
           KANA_ID: ${{ steps.kana-account.outputs.id }}
           MODE: ${{ steps.context.outputs.mode }}
@@ -265,12 +264,19 @@ EOF
           fi
 
           git add -A
-          SKIP_PRECOMMIT=1 git commit -m "fix: address #${ISSUE_NUMBER}"
-
-          gh auth setup-git
-          git push origin "HEAD:$branch"
-
+          git commit --no-verify -m "fix: address #${ISSUE_NUMBER}"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Push as Kana
+        if: steps.publishable.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://github.com/$GITHUB_REPOSITORY.git"
+          gh auth setup-git
+          git push --no-verify origin "HEAD:$BRANCH"
 
       - name: Create draft pull request
         id: create-pr
@@ -279,7 +285,7 @@ EOF
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
-          BRANCH: ${{ steps.publish.outputs.branch }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
           BASE: ${{ steps.context.outputs.base }}
           OUTCOME: ${{ steps.run-kana.outputs.outcome }}
           PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
@@ -322,10 +328,11 @@ EOF
           OUTCOME: ${{ steps.run-kana.outputs.outcome }}
         run: |
           if [[ "$OUTCOME" == "turn_limit" ]]; then
-            gh issue comment "$ISSUE_NUMBER" --body "I preserved the current progress in a draft PR: $PR_URL\n\nI reached the 40-turn limit. Mention me in that PR to continue."
+            printf 'I preserved the current progress in a draft PR: %s\n\nI reached the 40-turn limit. Mention me in that PR to continue.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
           else
-            gh issue comment "$ISSUE_NUMBER" --body "I opened a draft PR with the implementation: $PR_URL"
+            printf 'I opened a draft PR with the implementation: %s\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
           fi
+          gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
 
       - name: Comment on updated PR
         if: steps.publishable.outputs.changed == 'true' && steps.context.outputs.mode == 'pr'
@@ -347,7 +354,8 @@ EOF
             check_line="Preflight checks did not pass; please check the latest CI run."
           fi
 
-          gh pr comment "$PR_NUMBER" --body "$status_line\n\n$check_line"
+          printf '%s\n\n%s\n' "$status_line" "$check_line" > "$RUNNER_TEMP/comment.md"
+          gh pr comment "$PR_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
 
       - name: Report no changes
         if: >-
