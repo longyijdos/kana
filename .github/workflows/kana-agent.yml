@@ -50,6 +50,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
           PR_URL: ${{ github.event.issue.pull_request.url }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -71,8 +72,8 @@ jobs:
             jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-comment.txt"
 
             echo "mode=issue" >> "$GITHUB_OUTPUT"
-            echo "ref=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
-            echo "base=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+            echo "ref=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "base=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
             echo "active=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -121,26 +122,28 @@ jobs:
         if: steps.context.outputs.active == 'true'
         run: |
           set -euo pipefail
+
           kana_home="$RUNNER_TEMP/kana-home"
           mkdir -p "$kana_home"
           echo "KANA_HOME=$kana_home" >> "$GITHUB_ENV"
 
-          cat > "$kana_home/config.toml" <<'EOF'
-          [model.deepseek]
-          name = "deepseek-v4-flash"
-          reasoning_effort = "max"
-
-          [agent]
-          max_turns = 40
-
-          [memory]
-          enabled = false
-
-          [notification]
-          backend = "off"
-          on_agent_completed = false
-          on_approval_required = false
-          EOF
+          {
+            printf '%s\n' \
+              '[model.deepseek]' \
+              'name = "deepseek-v4-flash"' \
+              'reasoning_effort = "max"' \
+              '' \
+              '[agent]' \
+              'max_turns = 40' \
+              '' \
+              '[memory]' \
+              'enabled = false' \
+              '' \
+              '[notification]' \
+              'backend = "off"' \
+              'on_agent_completed = false' \
+              'on_approval_required = false'
+          } > "$kana_home/config.toml"
 
       - name: Prepare Kana prompt
         if: steps.context.outputs.active == 'true'
@@ -154,29 +157,34 @@ jobs:
             if [[ "$MODE" == "issue" ]]; then
               printf 'You are implementing GitHub issue #%s in the current repository.\n\n' "$ISSUE_NUMBER"
               printf 'Issue title:\n'
-              cat "$RUNNER_TEMP/task-title.txt"
-              printf '\n\nIssue description:\n'
-              cat "$RUNNER_TEMP/task-body.txt"
-              printf '\n\nMaintainer command:\n'
-              cat "$RUNNER_TEMP/task-comment.txt"
             else
               printf 'You are continuing work on GitHub pull request #%s in the current repository.\n\n' "$ISSUE_NUMBER"
               printf 'Pull request title:\n'
-              cat "$RUNNER_TEMP/task-title.txt"
-              printf '\n\nPull request description:\n'
-              cat "$RUNNER_TEMP/task-body.txt"
-              printf '\n\nLatest maintainer instruction:\n'
-              cat "$RUNNER_TEMP/task-comment.txt"
             fi
 
-            cat <<'EOF'
+            cat "$RUNNER_TEMP/task-title.txt"
 
-Work directly in the checked-out repository.
-Inspect the code before modifying it and keep changes scoped to the requested task.
-Run relevant tests and checks when useful.
-Do not commit, push, create or update pull requests, or use GitHub credentials.
-Leave all code changes in the working tree for the workflow to publish mechanically after you exit.
-EOF
+            if [[ "$MODE" == "issue" ]]; then
+              printf '\n\nIssue description:\n'
+            else
+              printf '\n\nPull request description:\n'
+            fi
+
+            cat "$RUNNER_TEMP/task-body.txt"
+
+            if [[ "$MODE" == "issue" ]]; then
+              printf '\n\nMaintainer command:\n'
+            else
+              printf '\n\nLatest maintainer instruction:\n'
+            fi
+
+            cat "$RUNNER_TEMP/task-comment.txt"
+
+            printf '\n\nWork directly in the checked-out repository.\n'
+            printf 'Inspect the code before modifying it and keep changes scoped to the requested task.\n'
+            printf 'Run relevant tests and checks when useful.\n'
+            printf 'Do not commit, push, create or update pull requests, or use GitHub credentials.\n'
+            printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n'
           } > "$RUNNER_TEMP/kana-prompt.txt"
 
       - name: Run Kana
@@ -197,15 +205,11 @@ EOF
             outcome="failed"
           fi
 
-          jq -rs '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
+          jq -r -s '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
             "$RUNNER_TEMP/kana.jsonl" > "$RUNNER_TEMP/kana-summary.txt"
 
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
-
-          if [[ "$outcome" != "stop" && "$outcome" != "turn_limit" ]]; then
-            echo "Kana ended with outcome: $outcome" >> "$GITHUB_STEP_SUMMARY"
-          fi
 
       - name: Detect changes
         id: initial_changes
@@ -310,14 +314,15 @@ EOF
             printf '\n\nCloses #%s\n' "$ISSUE_NUMBER"
           } > "$RUNNER_TEMP/pr-body.md"
 
-          pr_url="$(gh pr create \
+          gh pr create \
             --draft \
             --base "$BASE" \
             --head "$BRANCH" \
             --title "fix: $ISSUE_TITLE" \
-            --body-file "$RUNNER_TEMP/pr-body.md")"
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            > "$RUNNER_TEMP/pr-url.txt"
 
-          echo "url=$pr_url" >> "$GITHUB_OUTPUT"
+          echo "url=$(cat "$RUNNER_TEMP/pr-url.txt")" >> "$GITHUB_OUTPUT"
 
       - name: Comment on issue after creating PR
         if: steps.create_pr.outputs.url != ''
