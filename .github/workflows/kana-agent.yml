@@ -194,22 +194,95 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           set +e
-          bun src/main.ts exec --json --allow-all-tools \
-            < "$RUNNER_TEMP/kana-prompt.txt" \
+          cat "$RUNNER_TEMP/kana-prompt.txt" | \
+            bun src/main.ts exec --json --allow-all-tools \
             > "$RUNNER_TEMP/kana.jsonl"
           exit_code=$?
           set -e
 
-          outcome="$(jq -r 'select(.type == "run.completed") | .outcome' "$RUNNER_TEMP/kana.jsonl" | tail -n 1)"
+          outcome="$(jq -r 'select(.type == "run.completed") | .outcome' "$RUNNER_TEMP/kana.jsonl" 2>/dev/null | tail -n 1 || true)"
           if [[ -z "$outcome" ]]; then
             outcome="failed"
           fi
 
-          jq -r -s '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
-            "$RUNNER_TEMP/kana.jsonl" > "$RUNNER_TEMP/kana-summary.txt"
+          if ! jq -r -s '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
+            "$RUNNER_TEMP/kana.jsonl" > "$RUNNER_TEMP/kana-summary.txt" 2>/dev/null; then
+            : > "$RUNNER_TEMP/kana-summary.txt"
+          fi
+
+          session_id="$(jq -r 'select(.type == "session.started") | .session_id' "$RUNNER_TEMP/kana.jsonl" 2>/dev/null | tail -n 1 || true)"
+          failure_event=""
+          failure_detail=""
+
+          structured_failure="$(jq -c -s '[.[] | select(.type == "run.failed" or .type == "error")] | last // empty' \
+            "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || true)"
+          if [[ -n "$structured_failure" ]]; then
+            failure_event="$(jq -r '.type // "structured-error"' <<< "$structured_failure")"
+            failure_detail="$(jq -r '
+              if (.error | type) == "object" then
+                (.error.message // .error.name // "Structured Kana error")
+              elif .error != null then
+                (.error | tostring)
+              elif .message != null then
+                (.message | tostring)
+              else
+                "Structured Kana error"
+              end
+            ' <<< "$structured_failure")"
+          fi
+
+          if [[ "$outcome" != "stop" && "$outcome" != "turn_limit" && -n "$session_id" ]]; then
+            log_file="$(find "$KANA_HOME/logs" -type f -name "${session_id}.jsonl" -print -quit 2>/dev/null || true)"
+            if [[ -n "$log_file" ]]; then
+              log_failure="$(jq -c 'select(.level == "error")' "$log_file" 2>/dev/null | tail -n 1 || true)"
+              if [[ -n "$log_failure" ]]; then
+                failure_event="$(jq -r '.event // "log.error"' <<< "$log_failure")"
+                failure_detail="$(jq -r '
+                  [
+                    (.metadata.phase // empty),
+                    (.metadata.errorName // empty),
+                    (if .metadata.status != null then
+                      ("HTTP " + (.metadata.status | tostring) +
+                        (if (.metadata.statusText // "") != "" then " " + .metadata.statusText else "" end))
+                     else empty end),
+                    (.metadata.message // empty),
+                    (.metadata.error.message // empty)
+                  ]
+                  | map(select(type == "string" and length > 0))
+                  | unique
+                  | join(": ")
+                ' <<< "$log_failure")"
+              fi
+            fi
+          fi
+
+          if [[ "$outcome" != "stop" && "$outcome" != "turn_limit" && -z "$failure_detail" ]]; then
+            failure_detail="No structured diagnostic was emitted; inspect the workflow run logs."
+          fi
+
+          if [[ -n "${DEEPSEEK_API_KEY:-}" && -n "$failure_detail" ]]; then
+            failure_detail="${failure_detail//$DEEPSEEK_API_KEY/[REDACTED]}"
+          fi
+          failure_detail="$(printf '%s' "$failure_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
+          printf '%s\n' "$failure_detail" > "$RUNNER_TEMP/kana-failure.txt"
 
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
+          echo "failure_event=$failure_event" >> "$GITHUB_OUTPUT"
+
+          if [[ "$outcome" != "stop" && "$outcome" != "turn_limit" ]]; then
+            {
+              printf '### Kana failure\n\n'
+              printf -- '- Exit code: `%s`\n' "$exit_code"
+              printf -- '- Outcome: `%s`\n' "$outcome"
+              if [[ -n "$failure_event" ]]; then
+                printf -- '- Event: `%s`\n' "$failure_event"
+              fi
+              printf '\nDiagnostic:\n\n'
+              sed 's/^/> /' "$RUNNER_TEMP/kana-failure.txt"
+              printf '\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Detect changes
         id: initial_changes
@@ -382,6 +455,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           NUMBER: ${{ github.event.issue.number }}
+          EXIT_CODE: ${{ steps.run_kana.outputs.exit_code }}
           OUTCOME: ${{ steps.run_kana.outputs.outcome }}
+          FAILURE_EVENT: ${{ steps.run_kana.outputs.failure_event }}
         run: |
-          gh issue comment "$NUMBER" --body "Kana stopped without publishing changes. Outcome: \`$OUTCOME\`. Check the workflow run for details."
+          {
+            printf 'Kana stopped without publishing changes.\n\n'
+            printf -- '- Exit code: `%s`\n' "$EXIT_CODE"
+            printf -- '- Outcome: `%s`\n' "$OUTCOME"
+            if [[ -n "$FAILURE_EVENT" ]]; then
+              printf -- '- Event: `%s`\n' "$FAILURE_EVENT"
+            fi
+            printf '\nDiagnostic:\n\n'
+            sed 's/^/> /' "$RUNNER_TEMP/kana-failure.txt"
+            printf '\n'
+          } > "$RUNNER_TEMP/comment.md"
+
+          gh issue comment "$NUMBER" --body-file "$RUNNER_TEMP/comment.md"
+
+      - name: Mark Kana failure
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          steps.run_kana.outputs.outcome != 'stop' &&
+          steps.run_kana.outputs.outcome != 'turn_limit'
+        run: exit 1
