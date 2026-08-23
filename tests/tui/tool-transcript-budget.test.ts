@@ -7,7 +7,7 @@ import { formatToolApproval } from "../../src/tui/tools";
 const WIDTH = 80;
 // Compact tool block shape: 1 title row + 1 target row + at most 9 output
 // rows (edit: replacements + 3 old + 3 new + 2 omission markers).
-const MAX_TOOL_ROWS = 12;
+const MAX_TOOL_ROWS = 11;
 
 describe("compact tool transcript bounds", () => {
   test("keeps a very long Bash command on one target row without changing arguments or approval details", () => {
