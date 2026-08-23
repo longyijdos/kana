@@ -205,7 +205,7 @@ describe("compact tool transcript bounds", () => {
     }
   });
 
-  test("identifies unknown MCP tools by name while the path stays the separate target", () => {
+  test("identifies unknown MCP tools by name without promoting args to a target row", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_mcp_path",
@@ -228,7 +228,7 @@ describe("compact tool transcript bounds", () => {
     const failedLines = block.render(100).map(stripAnsi);
 
     expect(failedLines).toContain("◆ Failed to use filesystem_get_file_info");
-    expect(failedLines).toContain("  └ /Users/longyijdos/aiTemp");
+    expect(failedLines.join("\n")).not.toContain("  └ ");
     expect(block.getResultView()?.title).toBe("Failed to use filesystem_get_file_info");
 
     block.updateResult(
@@ -244,11 +244,11 @@ describe("compact tool transcript bounds", () => {
     const doneLines = block.render(100).map(stripAnsi);
 
     expect(doneLines).toContain("◆ Used filesystem_get_file_info");
-    expect(doneLines).toContain("  └ /Users/longyijdos/aiTemp");
+    expect(doneLines.join("\n")).not.toContain("  └ ");
     expect(block.getResultView()?.title).toBe("Used filesystem_get_file_info");
   });
 
-  test("preserves custom tool identity when a top-level command resolves the target", () => {
+  test("preserves custom tool identity without promoting command to a target row", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_custom_command",
@@ -263,8 +263,78 @@ describe("compact tool transcript bounds", () => {
     const lines = block.render(100).map(stripAnsi);
 
     expect(lines).toContain("◆ Failed to use custom_build_tool");
-    expect(lines).toContain("  └ make build");
+    expect(lines.join("\n")).not.toContain("  └ ");
     expect(block.getResultView()?.title).toBe("Failed to use custom_build_tool");
+  });
+
+  test("shows the full tool name for unknown tools in every state without a target row", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_unknown",
+      name: "mcp__server__lookup",
+      args: { query: "anything" },
+    });
+
+    block.markExecutionStarted();
+    const running = block.render(80).map(stripAnsi);
+
+    expect(running.some((line) => line.startsWith("◆ Using mcp__server__lookup"))).toBe(true);
+    expect(running.join("\n")).not.toContain("  └ ");
+
+    block.updateResult({ ok: true }, false);
+    const done = block.render(80).map(stripAnsi);
+
+    expect(done).toContain("◆ Used mcp__server__lookup");
+    expect(done.join("\n")).not.toContain("  └ ");
+
+    const failedBlock = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_unknown_failed",
+      name: "mcp__server__lookup",
+      args: { query: "anything" },
+    });
+    failedBlock.updateResult({ error: "boom" }, true);
+
+    const failed = failedBlock.render(80).map(stripAnsi);
+
+    expect(failed).toContain("◆ Failed to use mcp__server__lookup");
+    expect(failed.join("\n")).not.toContain("  └ ");
+  });
+
+  test("keeps target rows for built-in tools", () => {
+    const cases = [
+      {
+        name: "bash",
+        args: { command: "npm test" },
+        result: { command: "npm test", exitCode: 0, stdout: "" },
+        target: "npm test",
+      },
+      {
+        name: "read",
+        args: { path: "src/app.ts" },
+        result: { path: "src/app.ts", content: "", startLine: 1, endLine: 1, totalLines: 1 },
+        target: "src/app.ts",
+      },
+      {
+        name: "write",
+        args: { path: "src/out.ts", content: "" },
+        result: { path: "src/out.ts", bytesWritten: 0 },
+        target: "src/out.ts",
+      },
+      {
+        name: "edit",
+        args: { path: "src/app.ts" },
+        result: { path: "src/app.ts", replacements: 1, oldText: "a", newText: "b" },
+        target: "src/app.ts",
+      },
+    ];
+
+    for (const entry of cases) {
+      const block = completedBlock(entry.name, entry.args, entry.result);
+      const lines = block.render(80).map(stripAnsi);
+
+      expect(lines).toContain(`  └ ${entry.target}`);
+    }
   });
 
   test("keeps approval details complete for oversized commands", () => {

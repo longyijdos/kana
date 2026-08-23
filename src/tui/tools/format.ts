@@ -76,8 +76,10 @@ export function formatToolTranscriptTitle(
 ): ToolTranscriptTitle {
   const target = toolTarget(toolCall, result);
   const text = toolText(toolCall.name, target, toolCall.args);
-  const action = text.action.replace(` ${target}`, "");
-  const runningActivity = capitalize(text.runningActivity.replace(` ${target}`, ""));
+  const action = target ? text.action.replace(` ${target}`, "") : text.action;
+  const runningActivity = capitalize(
+    target ? text.runningActivity.replace(` ${target}`, "") : text.runningActivity,
+  );
 
   if (state === "running") {
     return {
@@ -89,12 +91,12 @@ export function formatToolTranscriptTitle(
   if (state === "failed") return { activity: `Failed to ${action}`, target };
   if (state === "canceled") {
     return {
-      activity: `Canceled ${text.runningActivity.replace(` ${target}`, "")}`,
+      activity: `Canceled ${target ? text.runningActivity.replace(` ${target}`, "") : text.runningActivity}`,
       target,
     };
   }
 
-  return { activity: text.doneTitle.replace(` ${target}`, ""), target };
+  return { activity: target ? text.doneTitle.replace(` ${target}`, "") : text.doneTitle, target };
 }
 
 export function formatToolTargetLine(target: string, width: number): string {
@@ -291,49 +293,65 @@ function formatByteSize(bytes: number): string {
   return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
 }
 
-function toolTarget(toolCall: ToolCallContent, result?: unknown): string {
-  if (toolCall.name === "remember") {
-    return (
-      getStringProperty(result, "scope") ?? getStringProperty(toolCall.args, "scope") ?? "project"
-    );
-  }
+/**
+ * Resolves the transcript target row for tools whose argument schema Kana
+ * owns. Unknown/custom/MCP tools have arbitrary schemas, so the TUI must
+ * not guess which argument (if any) is the primary operation target; they
+ * return undefined and render no target row. Their identity stays in the
+ * tool name itself.
+ */
+function toolTarget(toolCall: ToolCallContent, result?: unknown): string | undefined {
+  switch (toolCall.name) {
+    case "remember":
+      return (
+        getStringProperty(result, "scope") ?? getStringProperty(toolCall.args, "scope") ?? "project"
+      );
 
-  if (toolCall.name === "schedule_wake") {
-    const afterMinutes = getNumberProperty(toolCall.args, "afterMinutes");
-    const message = getStringProperty(toolCall.args, "message");
+    case "schedule_wake": {
+      const afterMinutes = getNumberProperty(toolCall.args, "afterMinutes");
+      const message = getStringProperty(toolCall.args, "message");
 
-    if (afterMinutes !== undefined) {
-      const delay = `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
-      return message ? `${delay}\n${message}` : delay;
+      if (afterMinutes !== undefined) {
+        const delay = `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
+        return message ? `${delay}\n${message}` : delay;
+      }
+      return undefined;
     }
+
+    case "glob":
+      return (
+        getStringProperty(result, "pattern") ??
+        getStringProperty(toolCall.args, "pattern") ??
+        "glob"
+      );
+
+    case "grep":
+      return (
+        getStringProperty(result, "pattern") ??
+        getStringProperty(toolCall.args, "pattern") ??
+        "grep"
+      );
+
+    case "list":
+    case "read":
+    case "view_image":
+    case "write":
+    case "edit": {
+      const path = getStringProperty(result, "path") ?? getStringProperty(toolCall.args, "path");
+
+      return path ?? toolCall.name;
+    }
+
+    case "bash": {
+      const command =
+        getStringProperty(result, "command") ?? getStringProperty(toolCall.args, "command");
+
+      return command ?? toolCall.name;
+    }
+
+    default:
+      return undefined;
   }
-
-  if (toolCall.name === "glob") {
-    return (
-      getStringProperty(result, "pattern") ?? getStringProperty(toolCall.args, "pattern") ?? "glob"
-    );
-  }
-
-  if (toolCall.name === "grep") {
-    return (
-      getStringProperty(result, "pattern") ?? getStringProperty(toolCall.args, "pattern") ?? "grep"
-    );
-  }
-
-  const path = getStringProperty(toolCall.args, "path");
-  const resultPath = getStringProperty(result, "path");
-  const command = getStringProperty(toolCall.args, "command");
-  const resultCommand = getStringProperty(result, "command");
-
-  if (resultPath || path) {
-    return resultPath ?? path ?? toolCall.name;
-  }
-
-  if (resultCommand || command) {
-    return resultCommand ?? command ?? toolCall.name;
-  }
-
-  return toolCall.name;
 }
 
 function formatToolApprovalTitle(toolCall: ToolCallContent): string {
@@ -372,7 +390,10 @@ function formatToolDetail(toolCall: ToolCallContent): string {
   const target = toolTarget(toolCall);
   const summary = formatToolSummary(toolCall);
 
-  return summary ? `${target} - ${summary}` : target;
+  if (summary) {
+    return target ? `${target} - ${summary}` : summary;
+  }
+  return target ?? toolCall.name;
 }
 
 function formatToolSummary(toolCall: ToolCallContent): string {
@@ -474,7 +495,7 @@ function sanitizeToolOutput(value: unknown): unknown {
 
 function toolText(
   toolName: string,
-  target: string,
+  target: string | undefined,
   args?: unknown,
 ): {
   action: string;
