@@ -126,6 +126,10 @@ jobs:
           set -euo pipefail
           mkdir -p "$KANA_HOME"
           cat > "$KANA_HOME/config.toml" <<'EOF'
+          [model.deepseek]
+          name = "deepseek-v4-flash"
+          reasoning_effort = "max"
+
           [agent]
           max_turns = 40
 
