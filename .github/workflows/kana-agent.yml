@@ -1,0 +1,370 @@
+name: Kana Agent
+
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: kana-agent-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  kana:
+    if: github.actor == 'longyijdos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+
+    env:
+      KANA_HOME: ${{ runner.temp }}/kana-home
+
+    steps:
+      - name: Identify Kana account
+        id: kana-account
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+
+          login="$(gh api user --jq .login)"
+          id="$(gh api user --jq .id)"
+
+          echo "login=$login" >> "$GITHUB_OUTPUT"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+          if [[ "$COMMENT_BODY" == *"@$login"* ]]; then
+            echo "mentioned=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mentioned=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve task context
+        id: context
+        if: steps.kana-account.outputs.mentioned == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KANA_LOGIN: ${{ steps.kana-account.outputs.login }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
+        run: |
+          set -euo pipefail
+
+          echo "active=false" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "$PR_URL" ]]; then
+            if [[ "$ISSUE_AUTHOR" != "longyijdos" ]]; then
+              echo "Ignoring: V1 only accepts maintainer-authored issues." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            if [[ "$COMMENT_BODY" != *"@$KANA_LOGIN fix"* ]]; then
+              echo "Ignoring: issue tasks must contain '@$KANA_LOGIN fix'." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            jq -r '.issue.title // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-title.txt"
+            jq -r '.issue.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-body.txt"
+            jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-comment.txt"
+
+            echo "mode=issue" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+            echo "base=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$ISSUE_NUMBER" > "$RUNNER_TEMP/pr.json"
+
+          pr_author="$(jq -r '.user.login' "$RUNNER_TEMP/pr.json")"
+          head_repo="$(jq -r '.head.repo.full_name' "$RUNNER_TEMP/pr.json")"
+          head_ref="$(jq -r '.head.ref' "$RUNNER_TEMP/pr.json")"
+          base_ref="$(jq -r '.base.ref' "$RUNNER_TEMP/pr.json")"
+          state="$(jq -r '.state' "$RUNNER_TEMP/pr.json")"
+
+          if [[ "$pr_author" != "$KANA_LOGIN" || "$head_repo" != "$GITHUB_REPOSITORY" || "$head_ref" != kana/* || "$state" != "open" ]]; then
+            echo "Ignoring: PR follow-up is only enabled for open Kana-authored kana/* branches in this repository." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          jq -r '.title // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/task-title.txt"
+          jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/task-body.txt"
+          jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-comment.txt"
+
+          echo "mode=pr" >> "$GITHUB_OUTPUT"
+          echo "ref=$head_ref" >> "$GITHUB_OUTPUT"
+          echo "base=$base_ref" >> "$GITHUB_OUTPUT"
+          echo "active=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.context.outputs.active == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.context.outputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Bun
+        if: steps.context.outputs.active == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        if: steps.context.outputs.active == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Configure Kana
+        if: steps.context.outputs.active == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$KANA_HOME"
+          cat > "$KANA_HOME/config.toml" <<'EOF'
+          [agent]
+          max_turns = 40
+
+          [memory]
+          enabled = false
+
+          [notification]
+          backend = "off"
+          on_agent_completed = false
+          on_approval_required = false
+          EOF
+
+      - name: Prepare Kana prompt
+        if: steps.context.outputs.active == 'true'
+        env:
+          MODE: ${{ steps.context.outputs.mode }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          {
+            if [[ "$MODE" == "issue" ]]; then
+              printf 'You are implementing GitHub issue #%s in the current repository.\n\n' "$ISSUE_NUMBER"
+              printf 'Issue title:\n'
+              cat "$RUNNER_TEMP/task-title.txt"
+              printf '\n\nIssue description:\n'
+              cat "$RUNNER_TEMP/task-body.txt"
+              printf '\n\nMaintainer command:\n'
+              cat "$RUNNER_TEMP/task-comment.txt"
+            else
+              printf 'You are continuing work on GitHub pull request #%s in the current repository.\n\n' "$ISSUE_NUMBER"
+              printf 'Pull request title:\n'
+              cat "$RUNNER_TEMP/task-title.txt"
+              printf '\n\nPull request description:\n'
+              cat "$RUNNER_TEMP/task-body.txt"
+              printf '\n\nLatest maintainer instruction:\n'
+              cat "$RUNNER_TEMP/task-comment.txt"
+            fi
+
+            cat <<'EOF'
+
+Work directly in the checked-out repository.
+Inspect the code before modifying it and keep changes scoped to the requested task.
+Run relevant tests and checks when useful.
+Do not commit, push, create or update pull requests, or use GitHub credentials.
+Leave all code changes in the working tree for the workflow to publish mechanically after you exit.
+EOF
+          } > "$RUNNER_TEMP/kana-prompt.txt"
+
+      - name: Run Kana
+        id: run-kana
+        if: steps.context.outputs.active == 'true'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          set +e
+          bun src/main.ts exec --json --allow-all-tools \
+            < "$RUNNER_TEMP/kana-prompt.txt" \
+            > "$RUNNER_TEMP/kana.jsonl"
+          exit_code=$?
+          set -e
+
+          outcome="$(jq -r 'select(.type == "run.completed") | .outcome' "$RUNNER_TEMP/kana.jsonl" | tail -n 1)"
+          if [[ -z "$outcome" ]]; then
+            outcome="failed"
+          fi
+
+          jq -rs '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
+            "$RUNNER_TEMP/kana.jsonl" > "$RUNNER_TEMP/kana-summary.txt"
+
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
+
+          if [[ "$outcome" != "stop" && "$outcome" != "turn_limit" ]]; then
+            echo "Kana ended with outcome: $outcome" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Detect changes
+        id: initial-changes
+        if: steps.context.outputs.active == 'true'
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run preflight checks
+        id: preflight
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          steps.initial-changes.outputs.changed == 'true' &&
+          (steps.run-kana.outputs.outcome == 'stop' || steps.run-kana.outputs.outcome == 'turn_limit')
+        run: |
+          set +e
+          bun run check:write
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Detect publishable changes
+        id: publishable
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          (steps.run-kana.outputs.outcome == 'stop' || steps.run-kana.outputs.outcome == 'turn_limit')
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push as Kana
+        id: publish
+        if: steps.publishable.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          KANA_LOGIN: ${{ steps.kana-account.outputs.login }}
+          KANA_ID: ${{ steps.kana-account.outputs.id }}
+          MODE: ${{ steps.context.outputs.mode }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "$KANA_LOGIN"
+          git config user.email "${KANA_ID}+${KANA_LOGIN}@users.noreply.github.com"
+
+          if [[ "$MODE" == "issue" ]]; then
+            branch="kana/issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}"
+            git switch -c "$branch"
+          else
+            branch="${{ steps.context.outputs.ref }}"
+          fi
+
+          git add -A
+          SKIP_PRECOMMIT=1 git commit -m "fix: address #${ISSUE_NUMBER}"
+
+          gh auth setup-git
+          git push origin "HEAD:$branch"
+
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft pull request
+        id: create-pr
+        if: steps.publishable.outputs.changed == 'true' && steps.context.outputs.mode == 'issue'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          BRANCH: ${{ steps.publish.outputs.branch }}
+          BASE: ${{ steps.context.outputs.base }}
+          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+          PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$OUTCOME" == "turn_limit" ]]; then
+            status_line="⚠️ Kana reached the 40-turn limit; current progress was preserved."
+          else
+            status_line="✅ Kana completed the requested turn."
+          fi
+
+          if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+            check_line="✅ Preflight checks passed."
+          else
+            check_line="⚠️ Preflight checks did not pass; review CI before merging."
+          fi
+
+          {
+            printf '%s\n\n%s\n\n' "$status_line" "$check_line"
+            cat "$RUNNER_TEMP/kana-summary.txt"
+            printf '\n\nCloses #%s\n' "$ISSUE_NUMBER"
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          pr_url="$(gh pr create \
+            --draft \
+            --base "$BASE" \
+            --head "$BRANCH" \
+            --title "fix: $ISSUE_TITLE" \
+            --body-file "$RUNNER_TEMP/pr-body.md")"
+
+          echo "url=$pr_url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on issue after creating PR
+        if: steps.create-pr.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PR_URL: ${{ steps.create-pr.outputs.url }}
+          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+        run: |
+          if [[ "$OUTCOME" == "turn_limit" ]]; then
+            gh issue comment "$ISSUE_NUMBER" --body "I preserved the current progress in a draft PR: $PR_URL\n\nI reached the 40-turn limit. Mention me in that PR to continue."
+          else
+            gh issue comment "$ISSUE_NUMBER" --body "I opened a draft PR with the implementation: $PR_URL"
+          fi
+
+      - name: Comment on updated PR
+        if: steps.publishable.outputs.changed == 'true' && steps.context.outputs.mode == 'pr'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+          PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
+        run: |
+          if [[ "$OUTCOME" == "turn_limit" ]]; then
+            status_line="I pushed the current progress, but reached the 40-turn limit."
+          else
+            status_line="I pushed the requested follow-up changes."
+          fi
+
+          if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+            check_line="Preflight checks passed."
+          else
+            check_line="Preflight checks did not pass; please check the latest CI run."
+          fi
+
+          gh pr comment "$PR_NUMBER" --body "$status_line\n\n$check_line"
+
+      - name: Report no changes
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          steps.publishable.outputs.changed == 'false' &&
+          (steps.run-kana.outputs.outcome == 'stop' || steps.run-kana.outputs.outcome == 'turn_limit')
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.issue.number }}
+          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+        run: |
+          gh issue comment "$NUMBER" --body "Kana finished with outcome \`$OUTCOME\`, but there were no working-tree changes to publish."
+
+      - name: Report Kana failure
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          steps.run-kana.outputs.outcome != 'stop' &&
+          steps.run-kana.outputs.outcome != 'turn_limit'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.issue.number }}
+          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+        run: |
+          gh issue comment "$NUMBER" --body "Kana stopped without publishing changes. Outcome: \`$OUTCOME\`. Check the workflow run for details."
