@@ -84,6 +84,7 @@ jobs:
             printf 'Do not commit, push, create or update pull requests, or use GitHub credentials.\n'
             printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n'
           } > "$RUNNER_TEMP/kana-prompt.txt"
+          wc -c "$RUNNER_TEMP/kana-prompt.txt"
 
       - name: Run exact issue repro
         id: kana_repro
@@ -91,8 +92,8 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           set +e
-          bun src/main.ts exec --json --allow-all-tools \
-            < "$RUNNER_TEMP/kana-prompt.txt" \
+          cat "$RUNNER_TEMP/kana-prompt.txt" | \
+            bun src/main.ts exec --json --allow-all-tools \
             > "$RUNNER_TEMP/kana-repro.jsonl"
           exit_code=$?
           set -e
