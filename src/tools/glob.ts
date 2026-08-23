@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import type { Tool, ToolContext } from "./tool";
 import { resolveExistingWorkspaceDirectory } from "./workspace-path";
 
-const DEFAULT_GLOB_LIMIT = 200;
+export const DEFAULT_GLOB_LIMIT = 200;
 const MAX_GLOB_LIMIT = 2000;
 const MAX_GLOB_DEPTH = 50;
 const GLOB_ENTRY_TYPES = ["file", "directory", "any"] as const;

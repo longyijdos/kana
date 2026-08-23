@@ -4,9 +4,9 @@ import { Type } from "typebox";
 import type { Tool, ToolContext } from "./tool";
 import { resolveExistingWorkspacePath } from "./workspace-path";
 
-const DEFAULT_GREP_LIMIT = 100;
+export const DEFAULT_GREP_LIMIT = 100;
 const MAX_GREP_LIMIT = 2000;
-const DEFAULT_GREP_INCLUDE = "**/*";
+export const DEFAULT_GREP_INCLUDE = "**/*";
 
 export const grepParameters = Type.Object({
   pattern: Type.String({

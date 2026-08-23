@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import type { Tool } from "./tool";
 import { resolveExistingWorkspaceDirectory } from "./workspace-path";
 
-const DEFAULT_LIST_LIMIT = 200;
+export const DEFAULT_LIST_LIMIT = 200;
 const MAX_LIST_LIMIT = 2000;
 
 export const listParameters = Type.Object({

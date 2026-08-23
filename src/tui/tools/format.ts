@@ -1,12 +1,5 @@
 import { isToolResultArtifact, type ToolCallContent, type ToolResultArtifact } from "@/core";
-import {
-  capitalize,
-  color,
-  stripTerminalControlSequences,
-  summarizeText,
-  truncateToWidth,
-  wrapPlainText,
-} from "../render";
+import { capitalize, color, summarizeText, truncateToWidth, wrapPlainText } from "../render";
 import { tuiTheme } from "../theme";
 import {
   COMPACT_DIFF_LINE_LIMIT,
@@ -14,6 +7,12 @@ import {
   hasOmittedContent,
   renderCompactText,
 } from "./compact";
+import {
+  formatSanitizedArguments,
+  sanitizeToolDetailLabel,
+  sanitizeToolOutput,
+  type ToolApprovalSource,
+} from "./detail";
 import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
 import { formatBashOutput } from "./renderers/bash";
 import { formatEditOutput } from "./renderers/edit";
@@ -31,12 +30,6 @@ export type ToolTranscriptTitle = { activity: string; hint?: string; target?: st
 type ToolApprovalText = {
   title: string;
   detail: string;
-};
-
-export type ToolApprovalSource = {
-  kind: "mcp";
-  serverId: string;
-  remoteToolName: string;
 };
 
 const overwriteMarker = "[OVERWRITE]";
@@ -362,28 +355,17 @@ function formatMcpToolApproval(
   toolCall: ToolCallContent,
   source: ToolApprovalSource,
 ): ToolApprovalText {
-  const args = sanitizeToolOutput(toolCall.args ?? {});
-  let formattedArgs: string;
-
-  try {
-    formattedArgs = JSON.stringify(args, null, 2);
-  } catch {
-    formattedArgs = String(args);
-  }
+  const formattedArgs = formatSanitizedArguments(toolCall.args ?? {}) ?? "{}";
 
   return {
     title: "Allow MCP tool?",
     detail: [
-      `Server: ${sanitizeApprovalLabel(source.serverId)}`,
-      `Tool: ${sanitizeApprovalLabel(source.remoteToolName)}`,
+      `Server: ${sanitizeToolDetailLabel(source.serverId)}`,
+      `Tool: ${sanitizeToolDetailLabel(source.remoteToolName)}`,
       "Arguments:",
       formattedArgs,
     ].join("\n"),
   };
-}
-
-function sanitizeApprovalLabel(value: string): string {
-  return stripTerminalControlSequences(value).replace(/[\r\n]+/g, " ");
 }
 
 function formatToolDetail(toolCall: ToolCallContent): string {
@@ -473,24 +455,6 @@ function sanitizeToolCallOutput(toolCall: ToolCallContent): ToolCallContent {
     ...toolCall,
     args: sanitizeToolOutput(toolCall.args),
   };
-}
-
-function sanitizeToolOutput(value: unknown): unknown {
-  if (typeof value === "string") {
-    return stripTerminalControlSequences(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(sanitizeToolOutput);
-  }
-
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, sanitizeToolOutput(entry)]),
-  );
 }
 
 function toolText(

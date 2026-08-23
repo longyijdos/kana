@@ -1,4 +1,11 @@
 export {
+  buildFullToolDetail,
+  formatFullToolDetail,
+  type ToolApprovalSource,
+  type ToolDetail,
+  type ToolDetailSection,
+} from "./detail";
+export {
   formatToolApproval,
   formatToolOutput,
   formatToolTargetLine,
@@ -6,7 +13,6 @@ export {
   formatToolTranscriptTitle,
   hasExpandableToolOutput,
   highlightOverwriteMarker,
-  type ToolApprovalSource,
   type ToolOutputDetail,
   type ToolState,
 } from "./format";

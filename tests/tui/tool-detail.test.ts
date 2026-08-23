@@ -1,0 +1,306 @@
+import { describe, expect, test } from "bun:test";
+import type { ToolCallContent } from "../../src/core";
+import { stripTerminalControlSequences } from "../../src/tui/render";
+import {
+  buildFullToolDetail,
+  formatFullToolDetail,
+  type ToolDetail,
+  type ToolDetailSection,
+} from "../../src/tui/tools";
+
+// Long values must clearly exceed summarizeText()'s 80-char threshold so the
+// tests would fail if the detail layer ever summarized material data.
+const LONG_COMMAND = `python -c '${"print('hello world');".repeat(500)}' --flag-with-a-long-name=value`;
+const LONG_TEXT = Array.from({ length: 120 }, (_, index) => `line ${index + 1}`).join("\n");
+
+function toolCall(name: string, args: unknown): ToolCallContent {
+  return { type: "tool_call", id: `call-${name}`, name, args };
+}
+
+function sectionsOf(detail: ToolDetail): ToolDetailSection[] {
+  return detail.sections;
+}
+
+describe("full-fidelity tool detail", () => {
+  test("keeps a long bash command and cwd complete without summarizing", () => {
+    const detail = buildFullToolDetail(
+      toolCall("bash", { command: LONG_COMMAND, cwd: "deeply/nested/working/directory/for/tests" }),
+    );
+
+    expect(detail.title).toBe("Bash");
+    expect(sectionsOf(detail)).toHaveLength(2);
+    expect(detail.sections[0]).toEqual({ label: "Command", content: LONG_COMMAND });
+    expect(detail.sections[1]).toEqual({
+      label: "Working directory",
+      content: "deeply/nested/working/directory/for/tests",
+    });
+
+    const formatted = formatFullToolDetail(detail);
+    expect(formatted).toContain(LONG_COMMAND);
+    expect(formatted).not.toContain("...");
+  });
+
+  test("omits the bash working-directory section when cwd is absent", () => {
+    const detail = buildFullToolDetail(toolCall("bash", { command: "bun test" }));
+
+    expect(detail.sections.map((section) => section.label)).toEqual(["Command"]);
+  });
+
+  test("keeps long write content complete instead of summarizeText()", () => {
+    const content = `export const value = ${JSON.stringify(LONG_TEXT)};`;
+    const detail = buildFullToolDetail(toolCall("write", { path: "src/generated.ts", content }));
+
+    expect(detail.title).toBe("Write");
+    expect(detail.sections[0]).toEqual({ label: "Path", content: "src/generated.ts" });
+    expect(detail.sections[1]).toEqual({ label: "Content", content });
+    expect(formatFullToolDetail(detail)).toContain(content);
+  });
+
+  test("keeps complete oldText and newText for edit with both sides present", () => {
+    const oldText = `// TODO: remove this placeholder\n${LONG_TEXT}`;
+    const newText = `// Implemented\n${LONG_TEXT}`;
+    const detail = buildFullToolDetail(
+      toolCall("edit", { path: "src/app.ts", oldText, newText, replaceAll: true }),
+    );
+
+    expect(detail.sections).toContainEqual({ label: "Path", content: "src/app.ts" });
+    expect(detail.sections).toContainEqual({ label: "Replace", content: oldText });
+    expect(detail.sections).toContainEqual({ label: "With", content: newText });
+    expect(detail.sections).toContainEqual({
+      label: "Replace all",
+      content: "every occurrence in the file",
+    });
+
+    const formatted = formatFullToolDetail(detail);
+    // Indented rows preserve every source line of both sides.
+    expect(formatted).toContain("  // TODO: remove this placeholder");
+    expect(formatted).toContain("  // Implemented");
+    expect(formatted.split("line 120").length - 1).toBe(2);
+  });
+
+  test("describes read paths and optional line ranges", () => {
+    const plain = buildFullToolDetail(toolCall("read", { path: "src/read.ts" }));
+    expect(plain.sections).toEqual([{ label: "Path", content: "src/read.ts" }]);
+
+    const withOffsetOnly = buildFullToolDetail(
+      toolCall("read", { path: "src/read.ts", offset: 40 }),
+    );
+    expect(withOffsetOnly.sections).toContainEqual({ label: "Lines", content: "40-end" });
+
+    const withBoth = buildFullToolDetail(
+      toolCall("read", { path: "src/read.ts", offset: 40, limit: 200 }),
+    );
+    expect(withBoth.sections).toContainEqual({ label: "Lines", content: "40-239" });
+  });
+
+  test("keeps complete arguments for custom and unknown tools without guessing a target", () => {
+    const args = {
+      target: "element-ref",
+      command: LONG_COMMAND,
+      nested: { items: Array.from({ length: 40 }, (_, index) => `entry-${index}`) },
+    };
+    const detail = buildFullToolDetail(toolCall("custom_lookup", args));
+
+    expect(detail.title).toBe("custom_lookup");
+    expect(detail.sections).toHaveLength(1);
+    expect(detail.sections[0]?.label).toBe("Arguments");
+    expect(detail.sections[0]?.content).toContain('"target": "element-ref"');
+    expect(detail.sections[0]?.content).toContain('"entry-39"');
+    expect(detail.sections[0]?.content).toContain(LONG_COMMAND);
+  });
+
+  test("sanitizes terminal control sequences in string arguments and nested values", () => {
+    const detail = buildFullToolDetail(
+      toolCall("custom_inject", {
+        label: `safe\u001b]0;evil\u0007prefix`,
+        nested: [`\u001b[31mred\u001b[0m`, "plain", "ctl\u0000\u001f"],
+      }),
+    );
+
+    const content = detail.sections[0]?.content ?? "";
+
+    expect(content).toContain("safeprefix");
+    expect(content).toContain("ctl");
+    expect(content).not.toContain("\u001b");
+    expect(content).not.toContain("\u0000");
+    expect(content).not.toContain("\u001f");
+
+    // The sanitizer behavior matches the render-layer definition.
+    expect(content).toContain(stripTerminalControlSequences("\u001b[31mred\u001b[0m"));
+  });
+
+  test("carries MCP provenance and complete sanitized arguments", () => {
+    const detail = buildFullToolDetail(
+      toolCall("github_create_issue", {
+        owner: "kana",
+        body: `${LONG_TEXT}\u001b[2m`,
+        labels: ["bug"],
+      }),
+      { kind: "mcp", serverId: "github", remoteToolName: "create_issue" },
+    );
+
+    expect(detail.title).toBe("MCP github · create_issue");
+    expect(detail.sections).toEqual([
+      { label: "Server", content: "github" },
+      { label: "Tool", content: "create_issue" },
+      {
+        label: "Arguments",
+        content: expect.stringContaining('"owner": "kana"'),
+      },
+    ]);
+    expect(detail.sections[2]?.content).toContain(JSON.stringify(LONG_TEXT).slice(1, -1));
+    expect(detail.sections[2]?.content).not.toContain("\u001b");
+  });
+
+  test("collapses line breaks in MCP provenance labels", () => {
+    const detail = buildFullToolDetail(toolCall("mcp_tool", {}), {
+      kind: "mcp",
+      serverId: "evil\nserver",
+      remoteToolName: "remote\u001b[31m",
+    });
+
+    expect(detail.sections[0]).toEqual({ label: "Server", content: "evil server" });
+    expect(detail.sections[1]?.content).not.toContain("\u001b");
+  });
+
+  test("formats sections with labels, indented content, and blank separators", () => {
+    const formatted = formatFullToolDetail({
+      title: "Write",
+      sections: [
+        { label: "Path", content: "src/a.ts" },
+        { label: "Content", content: "one\ntwo" },
+      ],
+    });
+
+    expect(formatted).toBe("Path\n  src/a.ts\n\nContent\n  one\n  two");
+  });
+
+  test("renders material search filters for grep and glob", () => {
+    const grep = buildFullToolDetail(
+      toolCall("grep", {
+        pattern: "TODO|FIXME",
+        path: "src",
+        include: "**/*.ts",
+        literal: true,
+        caseSensitive: false,
+        includeHidden: true,
+        limit: 500,
+      }),
+    );
+
+    expect(grep.sections.map((section) => section.label)).toEqual([
+      "Pattern",
+      "Path",
+      "Include",
+      "Match",
+      "Case",
+      "Hidden entries",
+      "Limit",
+    ]);
+    expect(grep.sections).toContainEqual({ label: "Match", content: "literal text" });
+    expect(grep.sections).toContainEqual({ label: "Case", content: "insensitive" });
+
+    const glob = buildFullToolDetail(
+      toolCall("glob", { pattern: "**/*.ts", cwd: "packages", type: "file", maxDepth: 10 }),
+    );
+
+    expect(glob.sections).toContainEqual({ label: "Pattern", content: "**/*.ts" });
+    expect(glob.sections).toContainEqual({ label: "Directory", content: "packages" });
+    expect(glob.sections).toContainEqual({ label: "Max depth", content: "10" });
+  });
+
+  test("expresses a specified bash timeout in milliseconds", () => {
+    const detail = buildFullToolDetail(
+      toolCall("bash", { command: "bun test", timeoutMs: 120_000 }),
+    );
+
+    expect(detail.sections).toContainEqual({ label: "Timeout", content: "120000 ms" });
+
+    const withoutTimeout = buildFullToolDetail(toolCall("bash", { command: "bun test" }));
+    expect(withoutTimeout.sections.map((section) => section.label)).not.toContain("Timeout");
+  });
+
+  test("expresses grep match, case, and hidden-entry modes for defaults and overrides", () => {
+    const defaults = buildFullToolDetail(toolCall("grep", { pattern: "TODO" }));
+
+    expect(defaults.sections).toContainEqual({ label: "Match", content: "regular expression" });
+    expect(defaults.sections).toContainEqual({ label: "Case", content: "sensitive" });
+    expect(defaults.sections).toContainEqual({ label: "Hidden entries", content: "excluded" });
+    expect(defaults.sections).toContainEqual({ label: "Path", content: "." });
+    expect(defaults.sections).toContainEqual({ label: "Include", content: "**/*" });
+    expect(defaults.sections).toContainEqual({ label: "Limit", content: "100" });
+
+    const overrides = buildFullToolDetail(
+      toolCall("grep", {
+        pattern: "TODO",
+        literal: true,
+        caseSensitive: false,
+        includeHidden: true,
+        limit: 25,
+      }),
+    );
+
+    expect(overrides.sections).toContainEqual({ label: "Match", content: "literal text" });
+    expect(overrides.sections).toContainEqual({ label: "Case", content: "insensitive" });
+    expect(overrides.sections).toContainEqual({ label: "Hidden entries", content: "included" });
+    expect(overrides.sections).toContainEqual({ label: "Limit", content: "25" });
+  });
+
+  test("expresses list hidden-entry and limit semantics for defaults and overrides", () => {
+    const defaults = buildFullToolDetail(toolCall("list", { path: "src" }));
+
+    expect(defaults.sections).toContainEqual({ label: "Hidden entries", content: "included" });
+    expect(defaults.sections).toContainEqual({ label: "Limit", content: "200" });
+
+    const overrides = buildFullToolDetail(toolCall("list", { includeHidden: false, limit: 5 }));
+
+    expect(overrides.sections).toContainEqual({ label: "Path", content: "." });
+    expect(overrides.sections).toContainEqual({ label: "Hidden entries", content: "excluded" });
+    expect(overrides.sections).toContainEqual({ label: "Limit", content: "5" });
+  });
+
+  test("expresses glob type, hidden-entry, and limit semantics for defaults and overrides", () => {
+    const defaults = buildFullToolDetail(toolCall("glob", { pattern: "**/*.md" }));
+
+    expect(defaults.sections).toContainEqual({ label: "Directory", content: "." });
+    expect(defaults.sections).toContainEqual({ label: "Type", content: "file" });
+    expect(defaults.sections).toContainEqual({ label: "Hidden entries", content: "excluded" });
+    expect(defaults.sections).toContainEqual({ label: "Limit", content: "200" });
+    expect(defaults.sections.map((section) => section.label)).not.toContain("Max depth");
+
+    const overrides = buildFullToolDetail(
+      toolCall("glob", {
+        pattern: "**/*",
+        type: "directory",
+        includeHidden: true,
+        limit: 8,
+        maxDepth: 3,
+      }),
+    );
+
+    expect(overrides.sections).toContainEqual({ label: "Type", content: "directory" });
+    expect(overrides.sections).toContainEqual({ label: "Hidden entries", content: "included" });
+    expect(overrides.sections).toContainEqual({ label: "Limit", content: "8" });
+    expect(overrides.sections).toContainEqual({ label: "Max depth", content: "3" });
+  });
+
+  test("sanitizes unknown tool titles before they become renderable", () => {
+    const detail = buildFullToolDetail(toolCall("evil\u001b[31mtool\nname", {}));
+
+    expect(detail.title).toBe("eviltool name");
+    expect(detail.title).not.toContain("\u001b");
+  });
+
+  test("sanitizes the non-serializable argument fallback", () => {
+    const evil = {
+      toJSON: () => {
+        throw new Error("not serializable");
+      },
+      toString: () => "hostile\u001b]0;owned\u0007payload",
+    };
+    const detail = buildFullToolDetail(toolCall("custom_hostile", evil));
+
+    expect(detail.sections[0]?.content).toBe("hostilepayload");
+    expect(detail.sections[0]?.content).not.toContain("\u001b");
+  });
+});
