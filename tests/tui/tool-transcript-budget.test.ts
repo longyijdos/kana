@@ -29,7 +29,9 @@ describe("compact tool transcript bounds", () => {
 
     // Canonical arguments and approval details stay complete.
     expect((toolCall.args as { command: string }).command).toBe(command);
-    expect(formatToolApproval(toolCall).detail).toBe(`Command\n  ${command}`);
+    expect(formatToolApproval(toolCall).detail).toBe(
+      `Command\n  ${command}\n\nWorking directory\n  .\n\nTimeout\n  30000 ms`,
+    );
   });
 
   test("bounds a one-line multi-megabyte Bash stdout while the full result view keeps it complete", () => {
@@ -347,7 +349,9 @@ describe("compact tool transcript bounds", () => {
     };
 
     expect((toolCall.args as { command: string }).command).toBe(command);
-    expect(formatToolApproval(toolCall).detail).toBe(`Command\n  ${command}`);
+    expect(formatToolApproval(toolCall).detail).toBe(
+      `Command\n  ${command}\n\nWorking directory\n  .\n\nTimeout\n  30000 ms`,
+    );
 
     const block = new ToolCallBlock(toolCall);
     block.markExecutionStarted();

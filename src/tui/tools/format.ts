@@ -76,16 +76,18 @@ export function formatToolTranscriptTitle(
   return { activity: target ? text.doneTitle.replace(` ${target}`, "") : text.doneTitle, target };
 }
 
-export function formatToolTargetLine(target: string, width: number): string {
-  return truncateToWidth(flattenToolTargetText(target), Math.max(1, width));
+// One-line, display-safe rendering of a schema-owned target: terminal
+// control sequences (ANSI SGR, OSC title/hyperlinks, C0/C1 controls) are
+// removed before whitespace is collapsed, so targets can never smuggle
+// escape sequences into a terminal row. Shared by the compact transcript
+// target row and the /tools picker summary; width truncation stays in the
+// consuming render layer.
+export function sanitizeToolTargetText(target: string): string {
+  return flattenToolTargetText(stripTerminalControlSequences(target));
 }
 
-// Picker-safe summary for a schema-owned target: the target text is
-// untrusted display data coming from tool args/results, so terminal control
-// sequences are removed before whitespace is collapsed into one row. Width
-// truncation stays in the picker render layer.
-export function sanitizeToolHistorySummary(target: string): string {
-  return flattenToolTargetText(stripTerminalControlSequences(target));
+export function formatToolTargetLine(target: string, width: number): string {
+  return truncateToWidth(sanitizeToolTargetText(target), Math.max(1, width));
 }
 
 // Collapses a possibly multi-line target (e.g. a schedule delay plus its

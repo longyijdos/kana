@@ -13,7 +13,7 @@ export {
   hasExpandableToolOutput,
   highlightOverwriteMarker,
   resolveToolTarget,
-  sanitizeToolHistorySummary,
+  sanitizeToolTargetText,
   type ToolOutputDetail,
   type ToolState,
 } from "./format";

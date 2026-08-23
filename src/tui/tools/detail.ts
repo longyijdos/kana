@@ -4,6 +4,8 @@ import {
   DEFAULT_GREP_INCLUDE,
   DEFAULT_GREP_LIMIT,
   DEFAULT_LIST_LIMIT,
+  DEFAULT_READ_LIMIT,
+  DEFAULT_TIMEOUT_MS,
 } from "@/tools";
 import { stripTerminalControlSequences } from "../render";
 import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
@@ -130,8 +132,15 @@ function buildToolSections(
   switch (toolCall.name) {
     case "bash": {
       pushSection(sections, "Command", getStringProperty(args, "command"));
-      pushSection(sections, "Working directory", getStringProperty(args, "cwd"));
-      pushSection(sections, "Timeout", formatNumber(getNumberProperty(args, "timeoutMs"), " ms"));
+      // Final execution semantics: an omitted cwd/timeout use the runtime
+      // defaults, so both are always visible rather than deleted from the
+      // detail when the model happens to omit them.
+      pushSection(sections, "Working directory", getStringProperty(args, "cwd") ?? ".");
+      pushSection(
+        sections,
+        "Timeout",
+        formatNumber(getNumberProperty(args, "timeoutMs") ?? DEFAULT_TIMEOUT_MS, " ms"),
+      );
       break;
     }
 
@@ -160,16 +169,13 @@ function buildToolSections(
 
     case "read": {
       pushSection(sections, "Path", getStringProperty(args, "path"));
-      // offset defaults to 1; an omitted limit reads to the end of the file.
-      const offset = getNumberProperty(args, "offset");
-      const limit = getNumberProperty(args, "limit");
+      // Final execution semantics: offset defaults to 1 and an omitted limit
+      // reads DEFAULT_READ_LIMIT lines — the runtime never reads "to the end
+      // of the file", so the reachable range is always explicit.
+      const offset = getNumberProperty(args, "offset") ?? 1;
+      const limit = getNumberProperty(args, "limit") ?? DEFAULT_READ_LIMIT;
 
-      if (offset !== undefined || limit !== undefined) {
-        const startLine = offset ?? 1;
-        const endLine = limit !== undefined ? startLine + limit - 1 : "end";
-
-        pushSection(sections, "Lines", `${startLine}-${endLine}`);
-      }
+      pushSection(sections, "Lines", `${offset}-${offset + limit - 1}`);
       break;
     }
 
@@ -241,7 +247,10 @@ function buildToolSections(
 
     case "remember": {
       pushSection(sections, "Content", getStringProperty(args, "content"));
-      pushSection(sections, "Scope", getStringProperty(args, "scope"));
+      // Final execution semantics: an omitted scope defaults to project, so
+      // the effective scope is always shown (matching rememberParameters /
+      // appendKanaMemory).
+      pushSection(sections, "Scope", getStringProperty(args, "scope") ?? "project");
       pushSection(sections, "Title", getStringProperty(args, "title"));
       pushSection(sections, "Reason", getStringProperty(args, "reason"));
       break;

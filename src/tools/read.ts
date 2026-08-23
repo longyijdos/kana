@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import type { Tool } from "./tool";
 import { resolveExistingWorkspaceFile } from "./workspace-path";
 
-const DEFAULT_READ_LIMIT = 200;
+export const DEFAULT_READ_LIMIT = 200;
 const MAX_READ_LIMIT = 2000;
 
 export const readParameters = Type.Object({

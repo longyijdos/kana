@@ -11,7 +11,7 @@ import {
   hasExpandableToolOutput,
   highlightOverwriteMarker,
   resolveToolTarget,
-  sanitizeToolHistorySummary,
+  sanitizeToolTargetText,
   type ToolOutputDetail,
   type ToolState,
 } from "../../tools";
@@ -160,7 +160,7 @@ export class ToolCallBlock implements Component {
   // never guesses a target from arbitrary arguments.
   getToolHistoryEntry(): ToolHistoryEntry {
     const target = resolveToolTarget(this.toolCall, this.result ?? this.partialResult);
-    const summary = target === undefined ? undefined : sanitizeToolHistorySummary(target);
+    const summary = target === undefined ? undefined : sanitizeToolTargetText(target);
 
     return {
       toolCallId: this.toolCall.id,

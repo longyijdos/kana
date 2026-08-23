@@ -28,22 +28,33 @@ describe("full-fidelity tool detail", () => {
     );
 
     expect(detail.title).toBe("Bash");
-    expect(sectionsOf(detail)).toHaveLength(2);
+    expect(sectionsOf(detail)).toHaveLength(3);
     expect(detail.sections[0]).toEqual({ label: "Command", content: LONG_COMMAND });
     expect(detail.sections[1]).toEqual({
       label: "Working directory",
       content: "deeply/nested/working/directory/for/tests",
     });
+    expect(detail.sections[2]).toEqual({ label: "Timeout", content: "30000 ms" });
 
     const formatted = formatFullToolDetail(detail);
     expect(formatted).toContain(LONG_COMMAND);
     expect(formatted).not.toContain("...");
   });
 
-  test("omits the bash working-directory section when cwd is absent", () => {
+  test("expresses bash working-directory and timeout runtime defaults when omitted", () => {
     const detail = buildFullToolDetail(toolCall("bash", { command: "bun test" }));
 
-    expect(detail.sections.map((section) => section.label)).toEqual(["Command"]);
+    expect(detail.sections).toContainEqual({ label: "Working directory", content: "." });
+    expect(detail.sections).toContainEqual({ label: "Timeout", content: "30000 ms" });
+
+    const explicit = buildFullToolDetail(
+      toolCall("bash", { command: "bun test", cwd: "packages/cli", timeoutMs: 60_000 }),
+    );
+    expect(explicit.sections).toContainEqual({
+      label: "Working directory",
+      content: "packages/cli",
+    });
+    expect(explicit.sections).toContainEqual({ label: "Timeout", content: "60000 ms" });
   });
 
   test("keeps long write content complete instead of summarizeText()", () => {
@@ -78,19 +89,24 @@ describe("full-fidelity tool detail", () => {
     expect(formatted.split("line 120").length - 1).toBe(2);
   });
 
-  test("describes read paths and optional line ranges", () => {
+  test("expresses read line ranges with runtime defaults", () => {
+    // Defaults: offset 1, limit DEFAULT_READ_LIMIT — the runtime never reads
+    // "to the end of the file", so the reachable range is always explicit.
     const plain = buildFullToolDetail(toolCall("read", { path: "src/read.ts" }));
-    expect(plain.sections).toEqual([{ label: "Path", content: "src/read.ts" }]);
+    expect(plain.sections).toContainEqual({ label: "Lines", content: "1-200" });
 
     const withOffsetOnly = buildFullToolDetail(
       toolCall("read", { path: "src/read.ts", offset: 40 }),
     );
-    expect(withOffsetOnly.sections).toContainEqual({ label: "Lines", content: "40-end" });
+    expect(withOffsetOnly.sections).toContainEqual({ label: "Lines", content: "40-239" });
+
+    const withLimitOnly = buildFullToolDetail(toolCall("read", { path: "src/read.ts", limit: 50 }));
+    expect(withLimitOnly.sections).toContainEqual({ label: "Lines", content: "1-50" });
 
     const withBoth = buildFullToolDetail(
-      toolCall("read", { path: "src/read.ts", offset: 40, limit: 200 }),
+      toolCall("read", { path: "src/read.ts", offset: 40, limit: 50 }),
     );
-    expect(withBoth.sections).toContainEqual({ label: "Lines", content: "40-239" });
+    expect(withBoth.sections).toContainEqual({ label: "Lines", content: "40-89" });
   });
 
   test("keeps complete arguments for custom and unknown tools without guessing a target", () => {
@@ -218,9 +234,17 @@ describe("full-fidelity tool detail", () => {
     );
 
     expect(detail.sections).toContainEqual({ label: "Timeout", content: "120000 ms" });
+  });
 
-    const withoutTimeout = buildFullToolDetail(toolCall("bash", { command: "bun test" }));
-    expect(withoutTimeout.sections.map((section) => section.label)).not.toContain("Timeout");
+  test("expresses remember scope with the runtime default when omitted", () => {
+    const withDefault = buildFullToolDetail(toolCall("remember", { content: "prefer tea" }));
+
+    expect(withDefault.sections).toContainEqual({ label: "Scope", content: "project" });
+
+    const withGlobal = buildFullToolDetail(
+      toolCall("remember", { content: "prefer tea", scope: "global" }),
+    );
+    expect(withGlobal.sections).toContainEqual({ label: "Scope", content: "global" });
   });
 
   test("expresses grep match, case, and hidden-entry modes for defaults and overrides", () => {
