@@ -32,6 +32,23 @@ describe("tui elapsed timer", () => {
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("Working (2s) (Esc to abort)");
   });
 
+  test("freezes tool preparation in place when marked prepared", () => {
+    let now = 0;
+    const preparation = new ToolPreparationBlock(() => now);
+
+    expect(stripAnsi(preparation.render(80)[0] ?? "")).toBe("Preparing tools (0s) (Esc to abort)");
+
+    now = 3_000;
+    preparation.markPrepared();
+
+    expect(stripAnsi(preparation.render(80)[0] ?? "")).toBe("Prepared tools (3s)");
+    expect(preparation.hasActiveTimer()).toBe(false);
+
+    // Advancing the clock no longer changes the frozen elapsed seconds.
+    now = 10_000;
+    expect(stripAnsi(preparation.render(80)[0] ?? "")).toBe("Prepared tools (3s)");
+  });
+
   test("tracks aggregate tool preparation separately from tool execution", () => {
     let now = 0;
     const preparation = new ToolPreparationBlock(() => now);

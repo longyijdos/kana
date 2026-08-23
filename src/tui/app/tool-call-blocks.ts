@@ -69,6 +69,10 @@ export class ToolCallBlocks {
     this.preparationBlock?.stopTimer();
   }
 
+  markPreparationPrepared(): void {
+    this.preparationBlock?.markPrepared();
+  }
+
   finishPreparation(): void {
     this.removePreparation();
   }

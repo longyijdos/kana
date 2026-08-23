@@ -58,7 +58,11 @@ export class AgentEventRenderer {
 
   prepareForToolInteraction(): void {
     this.textPresenter.catchUp();
-    this.toolCallBlocks.finishPreparation();
+    // Freeze the preparation block instead of removing it: approval may wait
+    // on user input, and deleting the block would shrink the transcript by the
+    // single line plus the inter-block blank separator. The block stays visible
+    // as `Prepared tools (Xs)` until the first real ToolCallBlock replaces it.
+    this.toolCallBlocks.markPreparationPrepared();
   }
 
   resetRun(): void {
