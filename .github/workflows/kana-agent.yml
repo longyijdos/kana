@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Identify Kana account
-        id: kana-account
+        id: kana_account
         env:
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -42,10 +42,10 @@ jobs:
 
       - name: Resolve task context
         id: context
-        if: steps.kana-account.outputs.mentioned == 'true'
+        if: steps.kana_account.outputs.mentioned == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          KANA_LOGIN: ${{ steps.kana-account.outputs.login }}
+          KANA_LOGIN: ${{ steps.kana_account.outputs.login }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
@@ -180,7 +180,7 @@ EOF
           } > "$RUNNER_TEMP/kana-prompt.txt"
 
       - name: Run Kana
-        id: run-kana
+        id: run_kana
         if: steps.context.outputs.active == 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -208,7 +208,7 @@ EOF
           fi
 
       - name: Detect changes
-        id: initial-changes
+        id: initial_changes
         if: steps.context.outputs.active == 'true'
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
@@ -221,8 +221,8 @@ EOF
         id: preflight
         if: >-
           steps.context.outputs.active == 'true' &&
-          steps.initial-changes.outputs.changed == 'true' &&
-          (steps.run-kana.outputs.outcome == 'stop' || steps.run-kana.outputs.outcome == 'turn_limit')
+          steps.initial_changes.outputs.changed == 'true' &&
+          (steps.run_kana.outputs.outcome == 'stop' || steps.run_kana.outputs.outcome == 'turn_limit')
         run: |
           set +e
           bun run check:write
@@ -234,7 +234,7 @@ EOF
         id: publishable
         if: >-
           steps.context.outputs.active == 'true' &&
-          (steps.run-kana.outputs.outcome == 'stop' || steps.run-kana.outputs.outcome == 'turn_limit')
+          (steps.run_kana.outputs.outcome == 'stop' || steps.run_kana.outputs.outcome == 'turn_limit')
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -246,8 +246,8 @@ EOF
         id: commit
         if: steps.publishable.outputs.changed == 'true'
         env:
-          KANA_LOGIN: ${{ steps.kana-account.outputs.login }}
-          KANA_ID: ${{ steps.kana-account.outputs.id }}
+          KANA_LOGIN: ${{ steps.kana_account.outputs.login }}
+          KANA_ID: ${{ steps.kana_account.outputs.id }}
           MODE: ${{ steps.context.outputs.mode }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
@@ -279,7 +279,7 @@ EOF
           git push --no-verify origin "HEAD:$BRANCH"
 
       - name: Create draft pull request
-        id: create-pr
+        id: create_pr
         if: steps.publishable.outputs.changed == 'true' && steps.context.outputs.mode == 'issue'
         env:
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
@@ -287,7 +287,7 @@ EOF
           ISSUE_TITLE: ${{ github.event.issue.title }}
           BRANCH: ${{ steps.commit.outputs.branch }}
           BASE: ${{ steps.context.outputs.base }}
-          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+          OUTCOME: ${{ steps.run_kana.outputs.outcome }}
           PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
         run: |
           set -euo pipefail
@@ -320,12 +320,12 @@ EOF
           echo "url=$pr_url" >> "$GITHUB_OUTPUT"
 
       - name: Comment on issue after creating PR
-        if: steps.create-pr.outputs.url != ''
+        if: steps.create_pr.outputs.url != ''
         env:
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          PR_URL: ${{ steps.create-pr.outputs.url }}
-          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+          PR_URL: ${{ steps.create_pr.outputs.url }}
+          OUTCOME: ${{ steps.run_kana.outputs.outcome }}
         run: |
           if [[ "$OUTCOME" == "turn_limit" ]]; then
             printf 'I preserved the current progress in a draft PR: %s\n\nI reached the 40-turn limit. Mention me in that PR to continue.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
@@ -339,7 +339,7 @@ EOF
         env:
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number }}
-          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+          OUTCOME: ${{ steps.run_kana.outputs.outcome }}
           PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
         run: |
           if [[ "$OUTCOME" == "turn_limit" ]]; then
@@ -361,22 +361,22 @@ EOF
         if: >-
           steps.context.outputs.active == 'true' &&
           steps.publishable.outputs.changed == 'false' &&
-          (steps.run-kana.outputs.outcome == 'stop' || steps.run-kana.outputs.outcome == 'turn_limit')
+          (steps.run_kana.outputs.outcome == 'stop' || steps.run_kana.outputs.outcome == 'turn_limit')
         env:
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           NUMBER: ${{ github.event.issue.number }}
-          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+          OUTCOME: ${{ steps.run_kana.outputs.outcome }}
         run: |
           gh issue comment "$NUMBER" --body "Kana finished with outcome \`$OUTCOME\`, but there were no working-tree changes to publish."
 
       - name: Report Kana failure
         if: >-
           steps.context.outputs.active == 'true' &&
-          steps.run-kana.outputs.outcome != 'stop' &&
-          steps.run-kana.outputs.outcome != 'turn_limit'
+          steps.run_kana.outputs.outcome != 'stop' &&
+          steps.run_kana.outputs.outcome != 'turn_limit'
         env:
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           NUMBER: ${{ github.event.issue.number }}
-          OUTCOME: ${{ steps.run-kana.outputs.outcome }}
+          OUTCOME: ${{ steps.run_kana.outputs.outcome }}
         run: |
           gh issue comment "$NUMBER" --body "Kana stopped without publishing changes. Outcome: \`$OUTCOME\`. Check the workflow run for details."
