@@ -86,18 +86,36 @@ jobs:
           base_ref="$(jq -r '.base.ref' "$RUNNER_TEMP/pr.json")"
           state="$(jq -r '.state' "$RUNNER_TEMP/pr.json")"
 
-          if [[ "$pr_author" != "$KANA_LOGIN" || "$head_repo" != "$GITHUB_REPOSITORY" || "$head_ref" != kana/* || "$state" != "open" ]]; then
-            echo "Ignoring: PR follow-up is only enabled for open Kana-authored kana/* branches in this repository." >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$pr_author" != "$KANA_LOGIN" || "$head_repo" != "$GITHUB_REPOSITORY" || "$state" != "open" ]]; then
+            echo "Ignoring: PR follow-up is only enabled for open Kana-authored branches in this repository." >> "$GITHUB_STEP_SUMMARY"
             exit 0
+          fi
+
+          if [[ ! "$head_ref" =~ ^kana/issue-([1-9][0-9]*)-[0-9]+$ ]]; then
+            echo "Ignoring: the Kana branch name does not identify its source issue." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          source_issue="${BASH_REMATCH[1]}"
+
+          if ! gh api "repos/$GITHUB_REPOSITORY/issues/$source_issue" > "$RUNNER_TEMP/source-issue.json"; then
+            echo "Failed to load source issue #$source_issue for PR follow-up context." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if jq -e 'has("pull_request")' "$RUNNER_TEMP/source-issue.json" >/dev/null; then
+            echo "Refusing PR follow-up because #$source_issue is not an issue." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
 
           jq -r '.title // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/task-title.txt"
           jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/task-body.txt"
           jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-comment.txt"
+          jq -r '.title // ""' "$RUNNER_TEMP/source-issue.json" > "$RUNNER_TEMP/source-issue-title.txt"
+          jq -r '.body // ""' "$RUNNER_TEMP/source-issue.json" > "$RUNNER_TEMP/source-issue-body.txt"
 
           echo "mode=pr" >> "$GITHUB_OUTPUT"
           echo "ref=$head_ref" >> "$GITHUB_OUTPUT"
           echo "base=$base_ref" >> "$GITHUB_OUTPUT"
+          echo "source_issue=$source_issue" >> "$GITHUB_OUTPUT"
           echo "active=true" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
@@ -193,6 +211,7 @@ jobs:
         env:
           MODE: ${{ steps.context.outputs.mode }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          SOURCE_ISSUE: ${{ steps.context.outputs.source_issue }}
         run: |
           set -euo pipefail
 
@@ -214,6 +233,14 @@ jobs:
             fi
 
             cat "$RUNNER_TEMP/task-body.txt"
+
+            if [[ "$MODE" == "pr" ]]; then
+              printf '\n\nOriginal issue #%s:\n\n' "$SOURCE_ISSUE"
+              printf 'Issue title:\n'
+              cat "$RUNNER_TEMP/source-issue-title.txt"
+              printf '\n\nIssue description:\n'
+              cat "$RUNNER_TEMP/source-issue-body.txt"
+            fi
 
             if [[ "$MODE" == "issue" ]]; then
               printf '\n\nMaintainer command:\n'
