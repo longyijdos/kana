@@ -97,6 +97,35 @@ describe("CLI", () => {
     ]);
   });
 
+  test("forwards bounded Goal mode for new and resumed headless requests", async () => {
+    const calls: StartHeadlessOptions[] = [];
+    const options = {
+      startHeadless: async (startOptions?: StartHeadlessOptions) => {
+        calls.push(startOptions ?? {});
+        return 0;
+      },
+    };
+
+    await parse(["node", "kana", "exec", "--goal", "finish", "the", "task"], options);
+    await parse(["node", "kana", "exec", "resume", "session-1", "--goal", "finish", "it"], options);
+
+    expect(calls).toEqual([
+      {
+        prompt: "finish the task",
+        goal: true,
+        json: undefined,
+        allowAllTools: undefined,
+      },
+      {
+        prompt: "finish it",
+        resumeSessionId: "session-1",
+        goal: true,
+        json: undefined,
+        allowAllTools: undefined,
+      },
+    ]);
+  });
+
   test("forwards clean mode to new and resumed headless entry requests", async () => {
     const calls: StartHeadlessOptions[] = [];
     const options = {

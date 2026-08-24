@@ -4,6 +4,7 @@ import {
   ConversationRuntime,
   type ConversationRuntimeEvent,
   createKanaConversationHost,
+  type KanaGoalSnapshot,
   type KanaLaunchMode,
   type KanaToolApprovalConfig,
   type KanaToolApprovals,
@@ -15,6 +16,7 @@ import {
   createKanaExecEvent,
   type KanaExecEvent,
   type KanaExecRunTermination,
+  toKanaExecGoal,
   toKanaExecUsage,
 } from "./protocol";
 import { assertValidHeadlessTimeoutMs } from "./timeout";
@@ -23,6 +25,7 @@ export type StartHeadlessOptions = {
   prompt?: string;
   resumeSessionId?: string;
   launchMode?: KanaLaunchMode;
+  goal?: boolean;
   json?: boolean;
   allowAllTools?: boolean;
   timeoutMs?: number;
@@ -35,6 +38,7 @@ export type HeadlessOutputStream = {
 export type RunHeadlessConversationOptions = {
   runtime: ConversationRuntime;
   prompt: string;
+  goal?: boolean;
   approvalConfig: KanaToolApprovalConfig;
   toolApprovals: KanaToolApprovals;
   allowAllTools?: boolean;
@@ -62,6 +66,7 @@ export type HeadlessRunResult = {
   termination?: HeadlessRunTermination;
   finalMessage?: string;
   usage?: ModelUsage;
+  goal?: KanaGoalSnapshot;
 };
 
 type HeadlessWarning = {
@@ -127,6 +132,7 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
     host.getLogger().info("headless.started", {
       launchMode: options.launchMode ?? "normal",
       outputMode: options.json ? "jsonl" : "human",
+      runMode: options.goal ? "goal" : "turn",
       resumed: options.resumeSessionId !== undefined,
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     });
@@ -148,6 +154,7 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
     const result = await runHeadlessConversation({
       runtime,
       prompt,
+      goal: options.goal,
       approvalConfig: host.approvalConfig,
       toolApprovals: host.toolApprovals,
       allowAllTools: options.allowAllTools,
@@ -161,6 +168,7 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
     host.getLogger().info("headless.completed", {
       outcome: result.outcome ?? "failed",
       exitCode,
+      ...(result.goal === undefined ? {} : { goalStatus: result.goal.status }),
       ...(result.termination === undefined ? {} : { terminationReason: result.termination.reason }),
     });
     return exitCode;
@@ -199,6 +207,7 @@ export async function runHeadlessConversation(
     return true;
   };
   const output = new HeadlessRunOutput({
+    goal: options.goal ?? false,
     json: options.json ?? false,
     stdout: options.stdout ?? process.stdout,
     stderr: options.stderr ?? process.stderr,
@@ -218,10 +227,11 @@ export async function runHeadlessConversation(
   const unsubscribe = options.runtime.subscribe((event) => {
     output.handle(event);
   });
+  const goalCompletion = options.goal ? waitForGoalCompletion(options.runtime) : undefined;
 
   try {
     const timeoutMs = options.timeoutMs;
-    // This is an Agent-run deadline: session/MCP startup happened before this
+    // This is a headless-run deadline: session/MCP startup happened before this
     // boundary, and normal frontend cleanup continues after the timer is cleared.
     const timeout =
       timeoutMs === undefined
@@ -235,27 +245,34 @@ export async function runHeadlessConversation(
             }
           }, timeoutMs);
     try {
-      const submission = options.runtime.submit(
-        createUserMessage({
-          content: options.prompt,
-          provenance: { kind: "user_input" },
-        }),
-      );
+      const submission = options.goal
+        ? options.runtime.startGoal(options.prompt)
+        : options.runtime.submit(
+            createUserMessage({
+              content: options.prompt,
+              provenance: { kind: "user_input" },
+            }),
+          );
       if (options.signal?.aborted) {
         onAbort();
       }
       await submission;
+      if (goalCompletion) {
+        output.completeGoal(await goalCompletion.promise);
+      }
       return output.result();
     } finally {
       if (timeout !== undefined) {
         clearTimeout(timeout);
       }
     }
-  } catch {
-    // ConversationRuntime publishes run_error before rejecting submit(), so
-    // the stable output event has already captured the failure.
+  } catch (error) {
+    // Runtime failures normally publish run_error first. fail() is idempotent
+    // and also covers validation errors raised before a run can start.
+    output.fail(error);
     return output.result();
   } finally {
+    goalCompletion?.unsubscribe();
     unsubscribe();
     options.signal?.removeEventListener("abort", onAbort);
   }
@@ -349,6 +366,7 @@ function createHeadlessApprovalHook(
 }
 
 type HeadlessRunOutputOptions = {
+  goal: boolean;
   json: boolean;
   stdout: HeadlessOutputStream;
   stderr: HeadlessOutputStream;
@@ -361,6 +379,9 @@ class HeadlessRunOutput {
   private usage?: ModelUsage;
   private termination?: HeadlessRunTermination;
   private runFailed = false;
+  private runStarted = false;
+  private runCompleted = false;
+  private goal?: KanaGoalSnapshot;
 
   constructor(private readonly options: HeadlessRunOutputOptions) {}
 
@@ -398,7 +419,10 @@ class HeadlessRunOutput {
   handle(event: ConversationRuntimeEvent): void {
     switch (event.type) {
       case "run_start":
-        this.emit(createKanaExecEvent({ type: "run.started" }), "Running...");
+        if (!this.runStarted) {
+          this.runStarted = true;
+          this.emit(createKanaExecEvent({ type: "run.started" }), "Running...");
+        }
         return;
       case "run_end":
         if (!event.event) {
@@ -408,49 +432,60 @@ class HeadlessRunOutput {
         // The headless cancellation cause wins a narrow race where the core
         // Agent reaches its terminal event immediately after cancellation.
         this.outcome = this.termination === undefined ? event.event.reason : "aborted";
-        this.emit(
-          createKanaExecEvent({
-            type: "run.completed",
-            outcome: this.outcome,
-            ...(this.usage === undefined ? {} : { usage: toKanaExecUsage(this.usage) }),
-            ...(this.termination === undefined
-              ? {}
-              : { termination: toKanaExecRunTermination(this.termination) }),
-          }),
-        );
-        if (!this.options.json && this.termination?.reason === "timeout") {
-          this.write(
-            this.options.stderr,
-            `Kana exec timed out after ${this.termination.timeoutMs}ms.\n`,
-          );
-        }
-        if (!this.options.json && this.finalMessage) {
-          this.write(this.options.stdout, `${sanitizeTerminalOutput(this.finalMessage)}\n`);
+        if (!this.options.goal) {
+          this.complete();
         }
         return;
       case "run_error": {
-        this.runFailed = true;
-        this.termination = this.options.getTermination();
-        const error = normalizeError(event.error);
-        this.emit(
-          createKanaExecEvent({
-            type: "run.failed",
-            error,
-            ...(this.termination === undefined
-              ? {}
-              : { termination: toKanaExecRunTermination(this.termination) }),
-          }),
-          `Error: ${error.message}`,
-        );
+        this.fail(event.error);
         return;
       }
       case "agent_event":
         this.handleAgentEvent(event.event);
         return;
       case "session_changed":
+      case "input_queue_changed":
       case "todo_state_changed":
         return;
+      case "goal_state_changed":
+        this.goal = structuredClone(event.goal);
+        return;
     }
+  }
+
+  completeGoal(goal: KanaGoalSnapshot): void {
+    this.goal = structuredClone(goal);
+    this.complete();
+    if (!this.options.json && goal.status !== "completed" && this.termination === undefined) {
+      const detail = goal.detail === undefined ? "" : `: ${goal.detail}`;
+      this.write(
+        this.options.stderr,
+        `Goal stopped (${goal.status})${sanitizeTerminalText(detail)}\n`,
+      );
+    }
+  }
+
+  fail(error: unknown): void {
+    if (this.runFailed || this.runCompleted) {
+      return;
+    }
+    this.runFailed = true;
+    this.outcome = undefined;
+    this.termination = this.options.getTermination();
+    const normalized = normalizeError(error);
+    this.emit(
+      createKanaExecEvent({
+        type: "run.failed",
+        error: normalized,
+        ...(this.termination === undefined
+          ? {}
+          : { termination: toKanaExecRunTermination(this.termination) }),
+        ...(this.goal === undefined || this.goal.status === "active"
+          ? {}
+          : { goal: toKanaExecGoal(this.goal) }),
+      }),
+      `Error: ${normalized.message}`,
+    );
   }
 
   result(): HeadlessRunResult {
@@ -460,6 +495,7 @@ class HeadlessRunOutput {
       termination: this.termination,
       finalMessage: this.finalMessage,
       usage: this.usage,
+      ...(this.goal === undefined ? {} : { goal: structuredClone(this.goal) }),
     };
   }
 
@@ -587,6 +623,37 @@ class HeadlessRunOutput {
     }
   }
 
+  private complete(): void {
+    if (this.runFailed || this.runCompleted || this.outcome === undefined) {
+      return;
+    }
+    this.runCompleted = true;
+    this.termination = this.options.getTermination();
+    if (this.termination !== undefined) {
+      this.outcome = "aborted";
+    }
+    this.emit(
+      createKanaExecEvent({
+        type: "run.completed",
+        outcome: this.outcome,
+        ...(this.usage === undefined ? {} : { usage: toKanaExecUsage(this.usage) }),
+        ...(this.termination === undefined
+          ? {}
+          : { termination: toKanaExecRunTermination(this.termination) }),
+        ...(this.goal === undefined ? {} : { goal: toKanaExecGoal(this.goal) }),
+      }),
+    );
+    if (!this.options.json && this.termination?.reason === "timeout") {
+      this.write(
+        this.options.stderr,
+        `Kana exec timed out after ${this.termination.timeoutMs}ms.\n`,
+      );
+    }
+    if (!this.options.json && this.finalMessage) {
+      this.write(this.options.stdout, `${sanitizeTerminalOutput(this.finalMessage)}\n`);
+    }
+  }
+
   private exitCode(): number {
     if (this.runFailed) {
       return 1;
@@ -597,7 +664,13 @@ class HeadlessRunOutput {
       case "sigint":
         return 130;
       default:
-        return this.outcome === "stop" ? 0 : 1;
+        return this.options.goal
+          ? this.goal?.status === "completed"
+            ? 0
+            : 1
+          : this.outcome === "stop"
+            ? 0
+            : 1;
     }
   }
 
@@ -614,6 +687,45 @@ class HeadlessRunOutput {
   private write(stream: HeadlessOutputStream, chunk: string): void {
     stream.write(chunk);
   }
+}
+
+function waitForGoalCompletion(runtime: ConversationRuntime): {
+  promise: Promise<KanaGoalSnapshot>;
+  unsubscribe(): void;
+} {
+  let activeGoalId: string | undefined;
+  let terminalGoal: KanaGoalSnapshot | undefined;
+  let resolveCompletion: (goal: KanaGoalSnapshot) => void = () => {};
+  const promise = new Promise<KanaGoalSnapshot>((resolve) => {
+    resolveCompletion = resolve;
+  });
+  let settled = false;
+  const settle = (): void => {
+    if (settled || terminalGoal === undefined) {
+      return;
+    }
+    settled = true;
+    resolveCompletion(terminalGoal);
+  };
+  const unsubscribe = runtime.subscribe((event) => {
+    if (event.type === "goal_state_changed") {
+      if (event.change === "started") {
+        activeGoalId = event.goal.id;
+      }
+      if (event.goal.id !== activeGoalId || event.goal.status === "active") {
+        return;
+      }
+      terminalGoal = structuredClone(event.goal);
+      if (!runtime.isRunning) {
+        settle();
+      }
+      return;
+    }
+    if (terminalGoal !== undefined && (event.type === "run_end" || event.type === "run_error")) {
+      settle();
+    }
+  });
+  return { promise, unsubscribe };
 }
 
 function createHeadlessSignalReason(termination: HeadlessRunTermination): HeadlessSignalReason {

@@ -114,6 +114,7 @@ TUI 中的常用命令：
 kana exec "修复失败的测试"
 printf '总结这个仓库' | kana exec
 kana exec resume <session-id> "继续完成任务"
+kana exec --goal "完成并验证这项任务"
 kana exec --json "分析当前项目"
 ```
 

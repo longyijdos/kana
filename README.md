@@ -114,6 +114,7 @@ See [TUI interaction and rendering](docs/tui.md) for shortcuts, queued input, sc
 kana exec "fix the failing tests"
 printf 'summarize this repository' | kana exec
 kana exec resume <session-id> "continue the task"
+kana exec --goal "finish and verify this task"
 kana exec --json "analyze this project"
 ```
 

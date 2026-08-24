@@ -20,6 +20,7 @@ import {
   type ConversationRuntimeOptions,
   DEFAULT_KANA_TOOL_APPROVALS,
 } from "../../src/kana";
+import { createUpdateGoalTool } from "../../src/kana/tools";
 import type { Logger } from "../../src/logging";
 import { MockModel } from "../../src/providers/mock";
 import type { Tool } from "../../src/tools";
@@ -93,6 +94,173 @@ describe("headless execution", () => {
       text: "JSON answer.",
     });
     expect(stdout.value).not.toContain('"type":"agent_event"');
+    await runtime.close();
+  });
+
+  for (const goalCase of [
+    { status: "completed" as const, exitCode: 0 },
+    { status: "blocked" as const, exitCode: 1 },
+  ]) {
+    test(`waits for an explicitly ${goalCase.status} Goal before completing`, async () => {
+      const stdout = new StringOutput();
+      const runtime = createRuntime({
+        model: new ToolThenAnswerModel(
+          "update_goal",
+          { status: goalCase.status, detail: `Goal ${goalCase.status}.` },
+          "Goal report.",
+        ),
+        goalTool: true,
+      });
+
+      const result = await runHeadlessConversation({
+        runtime,
+        prompt: "Finish the task.",
+        goal: true,
+        approvalConfig: { mode: "unless_trusted" },
+        toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+        json: true,
+        stdout,
+        stderr: new StringOutput(),
+      });
+      const events = stdout.lines().map((line) => JSON.parse(line));
+      const terminalEvent = events.at(-1);
+
+      expect(result).toMatchObject({
+        exitCode: goalCase.exitCode,
+        outcome: "stop",
+        finalMessage: "Goal report.",
+        goal: {
+          status: goalCase.status,
+          admittedRounds: 1,
+          detail: `Goal ${goalCase.status}.`,
+        },
+      });
+      expect(events.filter((event) => event.type === "run.started")).toHaveLength(1);
+      expect(events.filter((event) => event.type === "run.completed")).toHaveLength(1);
+      expect(terminalEvent).toMatchObject({
+        schema_version: 2,
+        type: "run.completed",
+        outcome: "stop",
+        goal: {
+          status: goalCase.status,
+          admitted_rounds: 1,
+          max_rounds: 8,
+          detail: `Goal ${goalCase.status}.`,
+        },
+      });
+      await runtime.close();
+    });
+  }
+
+  test("projects a multi-round Goal as one bounded headless run", async () => {
+    const stdout = new StringOutput();
+    const runtime = createRuntime({
+      model: new MockModel({
+        provider: "mock",
+        model: "mock",
+        response: "Still working.",
+      }),
+      goalMaxRounds: 2,
+    });
+
+    const result = await runHeadlessConversation({
+      runtime,
+      prompt: "Finish the task.",
+      goal: true,
+      approvalConfig: { mode: "unless_trusted" },
+      toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+      json: true,
+      stdout,
+      stderr: new StringOutput(),
+    });
+    const events = stdout.lines().map((line) => JSON.parse(line));
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      outcome: "stop",
+      finalMessage: "Still working.",
+      goal: {
+        status: "round_limit",
+        admittedRounds: 2,
+        maxRounds: 2,
+      },
+    });
+    expect(events.filter((event) => event.type === "run.started")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "assistant.completed")).toHaveLength(2);
+    expect(events.filter((event) => event.type === "run.completed")).toHaveLength(1);
+    expect(events.at(-1)).toEqual({
+      schema_version: 2,
+      type: "run.completed",
+      outcome: "stop",
+      goal: {
+        status: "round_limit",
+        admitted_rounds: 2,
+        max_rounds: 2,
+        detail: "The goal reached its round limit.",
+      },
+    });
+    await runtime.close();
+  });
+
+  test("keeps the headless timeout active across Goal rounds", async () => {
+    let toolAborted = false;
+    const tool: Tool = {
+      name: "wait_for_abort",
+      description: "Wait for cancellation.",
+      parameters: Type.Object({}),
+      execute: (_args, context) =>
+        new Promise((resolve) => {
+          const finish = (): void => {
+            toolAborted = true;
+            resolve({ content: "stopped", result: { stopped: true } });
+          };
+          if (context.signal?.aborted) {
+            finish();
+            return;
+          }
+          context.signal?.addEventListener("abort", finish, { once: true });
+        }),
+    };
+    const runtime = createRuntime({
+      model: new ScriptedModel([
+        { type: "text", text: "Continue." },
+        { type: "tool", name: "wait_for_abort", args: {} },
+      ]),
+      tools: [tool],
+      goalMaxRounds: 3,
+    });
+    const stdout = new StringOutput();
+
+    const result = await runHeadlessConversation({
+      runtime,
+      prompt: "Finish the task.",
+      goal: true,
+      approvalConfig: { mode: "unless_trusted" },
+      toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+      allowAllTools: true,
+      timeoutMs: 20,
+      json: true,
+      stdout,
+      stderr: new StringOutput(),
+    });
+    const events = stdout.lines().map((line) => JSON.parse(line));
+
+    expect(result).toMatchObject({
+      exitCode: 124,
+      outcome: "aborted",
+      termination: { reason: "timeout", timeoutMs: 20 },
+      goal: { status: "cancelled", admittedRounds: 2 },
+    });
+    expect(toolAborted).toBe(true);
+    expect(events.filter((event) => event.type === "run.started")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "run.completed")).toHaveLength(1);
+    expect(events.at(-1)).toMatchObject({
+      schema_version: 2,
+      type: "run.completed",
+      outcome: "aborted",
+      termination: { reason: "timeout", timeout_ms: 20 },
+      goal: { status: "cancelled", admitted_rounds: 2, max_rounds: 3 },
+    });
     await runtime.close();
   });
 
@@ -422,22 +590,39 @@ class StringOutput implements HeadlessOutputStream {
   }
 }
 
-class ToolThenAnswerModel extends BaseModel {
+type ScriptedModelResponse =
+  | { type: "text"; text: string }
+  | { type: "tool"; name: string; args: Record<string, unknown> };
+
+class ScriptedModel extends BaseModel {
   readonly metadata = new MockModel({ provider: "mock", model: "mock" }).metadata;
   private invocation = 0;
 
+  constructor(private readonly responses: readonly ScriptedModelResponse[]) {
+    super();
+  }
+
   stream(_context: ModelContext): AssistantEventStream {
     const stream = new AssistantEventStream();
-    const invocation = this.invocation;
+    const response = this.responses[this.invocation];
     this.invocation += 1;
 
     queueMicrotask(() => {
-      if (invocation === 0) {
+      if (!response) {
+        stream.error({
+          type: "error",
+          reason: "error",
+          error: new Error("Scripted model ran out of responses."),
+          snapshot: { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+        });
+        return;
+      }
+      if (response.type === "tool") {
         const toolCall = {
           type: "tool_call" as const,
           id: "call-1",
-          name: "change_state",
-          args: {},
+          name: response.name,
+          args: response.args,
         };
         const message: AssistantMessage = {
           ...messageIdentityForTest("assistant"),
@@ -468,7 +653,7 @@ class ToolThenAnswerModel extends BaseModel {
         ...messageIdentityForTest("assistant"),
         role: "assistant",
         stopReason: "stop",
-        content: [{ type: "text", text: "Finished." }],
+        content: [{ type: "text", text: response.text }],
       };
       stream.push({
         type: "start",
@@ -486,13 +671,13 @@ class ToolThenAnswerModel extends BaseModel {
       stream.push({
         type: "text_delta",
         contentIndex: 0,
-        delta: "Finished.",
+        delta: response.text,
         snapshot: message,
       });
       stream.push({
         type: "text_end",
         contentIndex: 0,
-        content: "Finished.",
+        content: response.text,
         snapshot: message,
       });
       stream.end({ type: "done", reason: "stop", message });
@@ -502,10 +687,25 @@ class ToolThenAnswerModel extends BaseModel {
   }
 }
 
+class ToolThenAnswerModel extends ScriptedModel {
+  constructor(
+    toolName = "change_state",
+    toolArgs: Record<string, unknown> = {},
+    answer = "Finished.",
+  ) {
+    super([
+      { type: "tool", name: toolName, args: toolArgs },
+      { type: "text", text: answer },
+    ]);
+  }
+}
+
 function createRuntime(options: {
   model: Model;
   tools?: Tool[];
   journal?: AgentConfig["journal"];
+  goalTool?: boolean;
+  goalMaxRounds?: number;
 }): ConversationRuntime {
   const runtimeOptions: ConversationRuntimeOptions<never> = {
     initialSession: {
@@ -516,7 +716,10 @@ function createRuntime(options: {
     createAgent: (agentOptions) =>
       new Agent({
         model: options.model,
-        tools: options.tools,
+        tools: [
+          ...(options.tools ?? []),
+          ...(options.goalTool ? [createUpdateGoalTool({ update: agentOptions.updateGoal })] : []),
+        ],
         messages: agentOptions.messages,
         beforeToolExecution: agentOptions.beforeToolExecution,
         journal: options.journal,
@@ -528,6 +731,7 @@ function createRuntime(options: {
       messages: [],
       timeline: [],
     }),
+    goalMaxRounds: options.goalMaxRounds,
     scheduledRuns: false,
   };
   return new ConversationRuntime(runtimeOptions);

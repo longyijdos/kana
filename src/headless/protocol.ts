@@ -1,5 +1,6 @@
 import type { AgentEndReason, ContextCompactionReason } from "@/agent";
 import type { ModelUsage } from "@/core";
+import type { KanaGoalSnapshot } from "@/kana";
 
 const KANA_EXEC_EVENT_SCHEMA_VERSION = 2 as const;
 
@@ -24,6 +25,13 @@ export type KanaExecRunTermination =
   | {
       reason: "sigint";
     };
+
+export type KanaExecGoalResult = {
+  status: Exclude<KanaGoalSnapshot["status"], "active">;
+  admitted_rounds: number;
+  max_rounds: number;
+  detail?: string;
+};
 
 export type KanaExecEvent =
   | (KanaExecEventBase & {
@@ -97,6 +105,7 @@ export type KanaExecEvent =
       outcome: AgentEndReason;
       usage?: KanaExecUsage;
       termination?: KanaExecRunTermination;
+      goal?: KanaExecGoalResult;
     })
   | (KanaExecEventBase & {
       type: "run.failed";
@@ -105,6 +114,7 @@ export type KanaExecEvent =
         message: string;
       };
       termination?: KanaExecRunTermination;
+      goal?: KanaExecGoalResult;
     })
   | (KanaExecEventBase & {
       type: "error";
@@ -140,5 +150,17 @@ export function toKanaExecUsage(usage: ModelUsage | undefined): KanaExecUsage | 
       ? {}
       : { cache_miss_input_tokens: usage.promptCacheMissTokens }),
     ...(usage.reasoningTokens === undefined ? {} : { reasoning_tokens: usage.reasoningTokens }),
+  };
+}
+
+export function toKanaExecGoal(goal: KanaGoalSnapshot): KanaExecGoalResult {
+  if (goal.status === "active") {
+    throw new Error("Cannot project an active Goal as a completed headless run.");
+  }
+  return {
+    status: goal.status,
+    admitted_rounds: goal.admittedRounds,
+    max_rounds: goal.maxRounds,
+    ...(goal.detail === undefined ? {} : { detail: goal.detail }),
   };
 }
