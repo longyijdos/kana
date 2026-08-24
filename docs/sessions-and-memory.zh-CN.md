@@ -27,7 +27,7 @@ Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使�
 
 ## 会话
 
-会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V4 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。
+会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V5 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。
 
 会话文件位于：
 
@@ -41,21 +41,24 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 
 ### JSONL 格式
 
-新 session 的第一行是版本为 4 的 header，后续是带明确边界的 turn journal。正常运行使用 `kind: "agent"`；分叉初始历史和内部批量导入使用 `kind: "snapshot"`：
+新 session 的第一行是版本为 5 的 header，后续是带明确边界的 turn journal。正常运行使用 `kind: "agent"`；分叉初始历史和内部批量导入使用 `kind: "snapshot"`：
 
 ```json
-{"type":"session","version":4,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
+{"type":"session","version":5,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
 {"type":"turn_start","id":"…","parentId":null,"timestamp":"2026-06-22T…Z","turnId":"…","kind":"agent"}
 {"type":"message","id":"entry-u1","parentId":"…","timestamp":"2026-06-22T…Z","message":{"id":"message-u1","role":"user","provenance":{"kind":"user_input"},"content":"Fix parser"}}
 {"type":"message","id":"entry-c1","parentId":"entry-u1","timestamp":"2026-06-22T…Z","message":{"id":"message-c1","role":"user","provenance":{"kind":"runtime_context","source":"environment"},"content":"<runtime_context source=\"environment\">…</runtime_context>"}}
 {"type":"message","id":"entry-a1","parentId":"entry-c1","timestamp":"2026-06-22T…Z","message":{"id":"message-a1","role":"assistant","provenance":{"kind":"model_output"},"content":[…],"stopReason":"stop"}}
+{"type":"todo_state","id":"…","parentId":"entry-a1","timestamp":"2026-06-22T…Z","toolCallId":"call-todo-1","items":[{"content":"Fix parser","status":"in_progress"}]}
 {"type":"context_compaction","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","reason":"threshold","coversThroughId":"…","compactedMessageCount":2,"beforeTokens":90000,"estimatedAfterTokens":60000,"summary":{"format":"kana-context-summary-v1","text":"…"}}
 {"type":"turn_end","id":"…","parentId":"…","timestamp":"2026-06-22T…Z","turnId":"…","outcome":"stop"}
 ```
 
 用户消息和工具结果消息都可以包含 `images`；每一项保存 `mimeType`、原始 base64 `data`、`width` 和 `height`。图片字节以内联方式保存，而不是引用外部文件，因此即使源文件或剪贴板之后变化，用户附件和 Agent 发起的视觉观察仍然自包含。工具的结构化 `result` 只保存元数据，不重复图片字节。代价是 JSONL 会增大——base64 还会在规范化后的图片大小上增加编码开销——图片较多的会话可能明显占用空间。上下文 token 估算使用 32 像素图片 patch，不按 base64 长度计算。加载时会对两种 role 拒绝格式错误的图片数组、不支持的 MIME 类型、非字符串数据，以及非正整数尺寸。
 
-动态 prompt 状态使用内部 user-role 消息，`provenance.kind` 为 `"runtime_context"`，并带有非空 `source`。只有该来源的内容变化时，Agent 才写入新快照；来源消失时则写入一次 inactive marker。这些变化会追加保留在 JSONL 中，而 model projection 对每个来源只保留当前最新且仍 active 的快照，并省略 inactive marker。因此恢复可以重建当前 capability 状态，又不会暴露旧值；这些内部消息不是人类输入，恢复后的 TUI 历史也不会展示。
+动态 prompt 状态使用内部 user-role 消息，`provenance.kind` 为 `"runtime_context"`，并带有非空 `source`。只有该来源的内容变化时，Agent 才写入新快照；来源消失时则写入一次 inactive marker。这些变化会追加保留在 JSONL 中，而 model projection 对每个来源只保留当前最新且仍 active 的快照，并省略 inactive marker。`environment` 来源从进程重新计算；`todo` 来源则是权威 `todo_state` 的只读投影。压缩后会重新投影最新 active 值，而不依赖摘要是否保留它。由于这些内部消息不是人类输入，恢复后的 TUI 历史不会展示。
+
+每条 `todo_state` 保存一次完整接受列表；由工具更新时还记录所属 `toolCallId`。Journal 会在 `todo_write` 校验通过后、紧凑工具结果写入前同步保存它，因此崩溃不会留下“已确认但未持久化”的更新。加载器扫描这些记录重建最新列表；空 `items` 显式清空，全部为 `completed` 或出现新的 human turn 都不会自动清空。如果中断发生在状态记录之后、结果之前，恢复会补写确定的成功确认，而不会把该调用降级为 unknown。Clean 模式维持相同的内存状态变化，但不写 JSONL。
 
 工具结果策略可以追加另一类内部 user-role 消息，其 `provenance.kind` 为 `"tool_result_policy"`，并带有非空的策略 `source`。它在完整 sibling 工具结果组之后写入 journal，并在下一次模型请求前重放。恢复 session 时会保留它以维持模型上下文连续性；由于它不是人类输入，恢复后的 TUI 历史和自动 session 标题都会忽略它。
 
@@ -75,15 +78,15 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 
 后续压缩会带可选 `baseCompactionId` 指向上一个 checkpoint，并把旧摘要与新覆盖消息合并成一份新的累计摘要。`usage` 可保存该次摘要请求的模型用量。加载时会验证 `coversThroughId` 和 `baseCompactionId` 只引用已出现的记录，然后同时派生完整 `messages`、完整 `timeline` 和最后一个 `contextCheckpoint`：Agent 使用 messages/checkpoint，TUI 历史只消费 timeline。
 
-运行时只读取 V4，不包含 V1/V2/V3 兼容分支。`/fork <prompt>` 创建新会话，将源 session 文件路径写入 header 的 `parentSessionPath`，并把继承的消息与当前累计 checkpoint 写成一个已闭合的 snapshot turn。继承消息保留原来的逻辑 `message.id`，只有 fork 中的 journal entry ID 是新生成的。
+运行时只读取 V5，不包含旧于 V5 的兼容分支。`/fork <prompt>` 创建新会话，将源 session 文件路径写入 header 的 `parentSessionPath`，并把继承的消息、当前累计 checkpoint 与最新 todo 状态的按值副本写成一个已闭合的 snapshot turn。继承消息保留原来的逻辑 `message.id`，只有 fork 中的 journal entry ID 是新生成的。
 
 首次写入时，标题优先使用显式标题；否则使用第一条既不是 recovery、runtime context，也不是工具结果策略上下文的 user-role 消息，再折叠所有空白并截断为最多 80 个 JavaScript 字符。没有可用文本时使用 `Untitled session`。
 
 ### 生命周期与容错
 
-- Agent journal 在任何模型 I/O 前写入 `turn_start`、本轮用户消息和所有有变化的 runtime-context 快照或 inactive marker；完整 assistant 消息在其工具执行前写入，每个工具结果在对应执行结束后独立写入，全部 sibling 结果写完后、下一次模型请求前再写入带来源的工具结果策略上下文。压缩 checkpoint 也在 adopt 前写入。终态 `turn_end` 写入后才运行 `onRunCommitted` 的 accounting/记忆等聚合后处理，随后发布 `agent_end`。手动 `/compact` 同样先写 checkpoint 再 adopt。`waitForIdle()` 不会早于这些写入和后处理完成。
+- Agent journal 在任何模型 I/O 前写入 `turn_start`、本轮用户消息和所有有变化的 runtime-context 快照或 inactive marker；完整 assistant 消息在其工具执行前写入，接受的 `todo_write` 会先写 `todo_state` 再写紧凑工具结果。其他工具结果同样在执行结束后独立写入，全部 sibling 结果写完后、下一次模型请求前再写入带来源的工具结果策略上下文。压缩 checkpoint 也在 adopt 前写入。终态 `turn_end` 写入后才运行 `onRunCommitted` 的 accounting/记忆等聚合后处理，随后发布 `agent_end`。手动 `/compact` 同样先写 checkpoint 再 adopt。`waitForIdle()` 不会早于这些写入和后处理完成。
 - 加载发现未闭合 turn 时会直接修复原 JSONL：为每个没有结果的工具调用追加 `status: "unknown"` 的错误结果，明确禁止自动重试，再追加内部 recovery 用户消息和 `outcome: "interrupted"` 的 `turn_end`。若最后一行是未完成的 JSON，则只截断这条未终止尾记录；已完成行中的损坏仍报错。恢复具有幂等性，因此第二次加载不会再次追加。
-- 恢复只重建 journal 中已提交的消息与最后一个 context checkpoint。Agent inbox 和未来 scheduled wake 仍只存在于当前进程：切换、分叉或恢复 session 以及退出 Kana 都会丢弃它们，不会在恢复时还原。
+- 恢复会重建 journal 中已提交的消息、最后一个 context checkpoint 和最新 todo 状态。Agent inbox 和未来 scheduled wake 仍只存在于当前进程：切换、分叉或恢复 session 以及退出 Kana 都会丢弃它们，不会在恢复时还原。
 - 恢复会检查每个保留 artifact 是否位于该 session 的受管目录、是否为普通文件，以及大小是否与记录字节数一致。引用缺失或无效时记录安全诊断，但不会让 journal 无法读取，也不会修改其中的有界预览。
 - fork 会在注册 snapshot 前把所有保留 artifact 复制到目标 session 的私有目录，再重写继承工具消息与累计 checkpoint 摘要中的 locator。因此源 session 与 fork 可以独立删除。复制或重写失败会中止 fork，并以 best-effort 回滚目标目录。
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。

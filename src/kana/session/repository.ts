@@ -159,11 +159,16 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
   const messageIds = new Map<string, number>();
   const compactionIds = new Set<string>();
   let contextCheckpoint: ContextCheckpoint | undefined;
+  let todoState = [] as LoadKanaSessionResult["todoState"];
 
   for (const entry of parsed.timeline) {
     if (entry.type === "message") {
       messages.push(structuredClone(entry.message));
       messageIds.set(entry.id, messages.length);
+      continue;
+    }
+    if (entry.type === "todo_state") {
+      todoState = structuredClone(entry.items);
       continue;
     }
     if (entry.type !== "context_compaction") {
@@ -190,6 +195,7 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
     metadata,
     messages,
     timeline: structuredClone(parsed.timeline),
+    todoState,
     contextCheckpoint,
     recoveredInterruptedTurn,
     recoveredIncompleteTail: recoveredIncompleteTail || undefined,

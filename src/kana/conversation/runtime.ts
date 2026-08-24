@@ -14,6 +14,7 @@ import {
 } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
+import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
 import {
   createWakeScheduler,
   type WakeEvent,
@@ -25,6 +26,7 @@ export type ConversationSessionSnapshot = {
   id: string;
   messages: Message[];
   timeline: KanaSessionTimelineEntry[];
+  todoState?: KanaTodoItem[];
   contextCheckpoint?: ContextCheckpoint;
 };
 
@@ -85,6 +87,11 @@ export type ConversationRuntimeEvent =
   | {
       type: "input_queue_changed";
       queue: ConversationInputQueueSnapshot;
+    }
+  | {
+      type: "todo_state_changed";
+      source: ConversationRunSource;
+      change: KanaTodoStateChange;
     };
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
@@ -96,6 +103,7 @@ type CreateConversationAgentOptions<TConfiguration> = {
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
   configuration?: TConfiguration;
+  onTodoStateCommitted: (change: KanaTodoStateChange) => void;
 };
 
 export type ConversationRuntimeOptions<TConfiguration> = {
@@ -106,7 +114,7 @@ export type ConversationRuntimeOptions<TConfiguration> = {
     messages: Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
-  ) => { id: string };
+  ) => { id: string; todoState?: KanaTodoItem[] };
   loadSession: (sessionId: string) => ConversationSessionSnapshot;
   listSessions?: () => KanaSessionMetadata[];
   deleteSession?: (sessionId: string) => boolean;
@@ -167,6 +175,10 @@ export class ConversationRuntime<TConfiguration = never> {
       messages: state.messages,
       contextCheckpoint: state.contextCheckpoint,
     };
+  }
+
+  get todoState(): KanaTodoItem[] {
+    return structuredClone(this.sessionData?.todoState ?? []);
   }
 
   get isRunning(): boolean {
@@ -288,6 +300,7 @@ export class ConversationRuntime<TConfiguration = never> {
       id: created.id,
       messages: [],
       timeline: [],
+      todoState: [],
     };
     this.replaceSession("new", session);
     return this.session as ConversationSessionSnapshot;
@@ -302,6 +315,7 @@ export class ConversationRuntime<TConfiguration = never> {
       id: created.id,
       messages: state.messages,
       timeline: [],
+      todoState: structuredClone(created.todoState ?? this.sessionData?.todoState ?? []),
       contextCheckpoint: state.contextCheckpoint,
     };
     this.replaceSession("fork", session);
@@ -475,6 +489,24 @@ export class ConversationRuntime<TConfiguration = never> {
       sessionId,
       contextCheckpoint,
       configuration,
+      onTodoStateCommitted: (change) => this.handleTodoStateCommitted(sessionId, change),
+    });
+  }
+
+  private handleTodoStateCommitted(
+    sessionId: string | undefined,
+    change: KanaTodoStateChange,
+  ): void {
+    const source = this.activeSource;
+    if (!source || !this.sessionData || sessionId !== this.sessionData.id) {
+      return;
+    }
+
+    this.sessionData.todoState = structuredClone(change.items);
+    this.emit({
+      type: "todo_state_changed",
+      source,
+      change: structuredClone(change),
     });
   }
 

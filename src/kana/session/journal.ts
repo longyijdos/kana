@@ -12,6 +12,11 @@ import {
   type ToolResultMessage,
 } from "@/core";
 import {
+  formatKanaTodoWriteAcknowledgement,
+  type KanaTodoItem,
+  normalizeKanaTodoItems,
+} from "../todo";
+import {
   type AppendCompactionOptions,
   type AppendKanaSessionMessagesOptions,
   type AppendSnapshotOptions,
@@ -23,6 +28,7 @@ import {
   type KanaSessionMessageEntry,
   type KanaSessionMetadata,
   type KanaSessionTimelineEntry,
+  type KanaSessionTodoStateEntry,
   type KanaSessionTurnEndEntry,
   type KanaSessionTurnOutcome,
   type KanaSessionTurnStartEntry,
@@ -42,6 +48,8 @@ type JournalState = {
   messageIds: string[];
   logicalMessageIds: Set<MessageId>;
   compactionIds: Set<string>;
+  todoToolCallIds: Set<string>;
+  activeTurnTodoStates: Map<string, KanaTodoItem[]>;
 };
 
 export class KanaSessionJournal {
@@ -55,6 +63,8 @@ export class KanaSessionJournal {
     messageIds: [],
     logicalMessageIds: new Set<MessageId>(),
     compactionIds: new Set<string>(),
+    todoToolCallIds: new Set<string>(),
+    activeTurnTodoStates: new Map<string, KanaTodoItem[]>(),
   };
   private fileCreated: boolean;
   private writeFailed = false;
@@ -155,6 +165,35 @@ export class KanaSessionJournal {
     return structuredClone(entry);
   }
 
+  appendTodoState(
+    turnId: string,
+    toolCallId: string,
+    items: readonly KanaTodoItem[],
+    options: AppendKanaSessionMessagesOptions = {},
+  ): KanaSessionTodoStateEntry {
+    this.assertActiveTurn(turnId);
+    if (!toolCallId) {
+      throw new Error("Todo state tool call id cannot be empty.");
+    }
+    if (this.state.todoToolCallIds.has(toolCallId)) {
+      throw new Error(`Todo state for tool call ${toolCallId} has already been persisted.`);
+    }
+    if (!findToolCall(this.state.activeTurnMessages, toolCallId, "todo_write")) {
+      throw new Error(`Todo state references unknown todo_write call ${toolCallId}.`);
+    }
+
+    const entry: KanaSessionTodoStateEntry = {
+      type: "todo_state",
+      id: createEntryId(),
+      parentId: this.state.tailId,
+      timestamp: options.timestamp ?? new Date().toISOString(),
+      toolCallId,
+      items: normalizeKanaTodoItems(items),
+    };
+    this.appendEntries([entry]);
+    return structuredClone(entry);
+  }
+
   endTurn(
     turnId: string,
     outcome: KanaSessionTurnOutcome,
@@ -192,7 +231,7 @@ export class KanaSessionJournal {
       (left, right) => left.createdAfterMessageCount - right.createdAfterMessageCount,
     );
 
-    if (messages.length === 0) {
+    if (messages.length === 0 && options.todoState === undefined) {
       const entries: KanaSessionContextCompactionEntry[] = [];
       let parentId = this.state.tailId;
       const knownCompactionIds = new Set(this.state.compactionIds);
@@ -278,6 +317,18 @@ export class KanaSessionJournal {
       throw new Error("Context compaction references messages that have not been persisted.");
     }
 
+    if (options.todoState !== undefined) {
+      const todoEntry: KanaSessionTodoStateEntry = {
+        type: "todo_state",
+        id: createEntryId(),
+        parentId,
+        timestamp,
+        items: normalizeKanaTodoItems(options.todoState),
+      };
+      entries.push(todoEntry);
+      parentId = todoEntry.id;
+    }
+
     const endEntry: KanaSessionTurnEndEntry = {
       type: "turn_end",
       id: createEntryId(),
@@ -307,20 +358,29 @@ export class KanaSessionJournal {
     const entries: KanaSessionTimelineEntry[] = [];
     let parentId = this.state.tailId;
 
+    let unknownToolCallCount = 0;
     for (const toolCall of unresolvedToolCalls) {
       // A missing result cannot distinguish "never started" from "completed
       // before the process exited". Record an unknown outcome, never a retry.
+      const acceptedTodoState = this.state.activeTurnTodoStates.get(toolCall.id);
+      const isAcceptedTodoWrite = toolCall.name === "todo_write" && acceptedTodoState !== undefined;
+      unknownToolCallCount += isAcceptedTodoWrite ? 0 : 1;
+      const content = isAcceptedTodoWrite
+        ? formatKanaTodoWriteAcknowledgement(acceptedTodoState)
+        : INTERRUPTED_TOOL_RESULT;
       const message: ToolResultMessage = {
         ...createMessageIdentity({ kind: "tool_result" }),
         role: "tool",
         toolCallId: toolCall.id,
         toolName: toolCall.name,
-        content: INTERRUPTED_TOOL_RESULT,
-        result: {
-          status: "unknown",
-          message: INTERRUPTED_TOOL_RESULT,
-        },
-        isError: true,
+        content,
+        result: isAcceptedTodoWrite
+          ? { status: acceptedTodoState.length === 0 ? "cleared" : "updated" }
+          : {
+              status: "unknown",
+              message: INTERRUPTED_TOOL_RESULT,
+            },
+        isError: !isAcceptedTodoWrite,
       };
       const entry = createMessageEntry(message, parentId, timestamp);
       entries.push(entry);
@@ -331,8 +391,8 @@ export class KanaSessionJournal {
       createUserMessage({
         provenance: { kind: "recovery" },
         content:
-          unresolvedToolCalls.length > 0
-            ? `[Session recovery]\nThe previous agent run was interrupted. ${unresolvedToolCalls.length} tool call outcome(s) are unknown and must not be retried automatically.`
+          unknownToolCallCount > 0
+            ? `[Session recovery]\nThe previous agent run was interrupted. ${unknownToolCallCount} tool call outcome(s) are unknown and must not be retried automatically.`
             : "[Session recovery]\nThe previous agent run was interrupted. Continue only from messages that were fully recorded.",
       }),
       parentId,
@@ -355,7 +415,7 @@ export class KanaSessionJournal {
     return {
       entries: structuredClone(entries),
       turnId: activeTurn.turnId,
-      unknownToolCallCount: unresolvedToolCalls.length,
+      unknownToolCallCount,
     };
   }
 
@@ -436,6 +496,7 @@ export class KanaSessionJournal {
         }
         this.state.activeTurn = structuredClone(entry);
         this.state.activeTurnMessages = [];
+        this.state.activeTurnTodoStates.clear();
         this.state.turnIds.add(entry.turnId);
         break;
 
@@ -468,10 +529,29 @@ export class KanaSessionJournal {
         this.state.compactionIds.add(entry.id);
         break;
 
+      case "todo_state":
+        if (!this.state.activeTurn) {
+          throw new Error(`Kana session todo state ${entry.id} is outside a turn.`);
+        }
+        if (entry.toolCallId !== undefined) {
+          if (this.state.todoToolCallIds.has(entry.toolCallId)) {
+            throw new Error(`Duplicate Kana todo tool call id: ${entry.toolCallId}`);
+          }
+          if (!findToolCall(this.state.activeTurnMessages, entry.toolCallId, "todo_write")) {
+            throw new Error(
+              `Kana session todo state ${entry.id} references unknown todo_write call ${entry.toolCallId}.`,
+            );
+          }
+          this.state.todoToolCallIds.add(entry.toolCallId);
+          this.state.activeTurnTodoStates.set(entry.toolCallId, structuredClone(entry.items));
+        }
+        break;
+
       case "turn_end":
         this.assertActiveTurn(entry.turnId);
         this.state.activeTurn = undefined;
         this.state.activeTurnMessages = [];
+        this.state.activeTurnTodoStates.clear();
         break;
     }
 
@@ -528,4 +608,24 @@ function findUnresolvedToolCalls(messages: readonly Message[]): ToolCallContent[
   }
 
   return [...unresolved.values()];
+}
+
+function findToolCall(
+  messages: readonly Message[],
+  toolCallId: string,
+  toolName: string,
+): ToolCallContent | undefined {
+  for (const message of messages) {
+    if (message.role !== "assistant") {
+      continue;
+    }
+    const toolCall = message.content.find(
+      (content): content is ToolCallContent =>
+        content.type === "tool_call" && content.id === toolCallId && content.name === toolName,
+    );
+    if (toolCall) {
+      return toolCall;
+    }
+  }
+  return undefined;
 }

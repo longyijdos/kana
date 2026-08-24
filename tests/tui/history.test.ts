@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createMessageIdentity, type Message } from "@/core";
 import type { KanaSessionTimelineEntry } from "@/kana";
 import { addHistoryTimelineToTranscript } from "../../src/tui/app/history";
-import { Transcript } from "../../src/tui/components";
+import { ToolCallBlock, Transcript } from "../../src/tui/components";
 import { color, stripAnsi } from "../../src/tui/render";
 import { tuiTheme } from "../../src/tui/theme";
 import { messageIdentityForTest } from "../helpers/messages";
@@ -265,6 +265,77 @@ describe("tui history transcript", () => {
 
     expect(transcript.render(100).map(stripAnsi)).toContain(
       "Scheduled wake: Check the long-running task.",
+    );
+  });
+
+  test("replays todo tool blocks from their durable accepted snapshots", () => {
+    const transcript = new Transcript();
+    const assistant = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant" as const,
+      stopReason: "toolUse" as const,
+      content: [
+        {
+          type: "tool_call" as const,
+          id: "call-todo-history",
+          name: "todo_write",
+          args: {
+            items: [{ content: "Untrusted proposed text", status: "pending" }],
+          },
+        },
+      ],
+    };
+    const result = {
+      ...messageIdentityForTest("tool"),
+      role: "tool" as const,
+      toolCallId: "call-todo-history",
+      toolName: "todo_write",
+      content: "Todo list updated.",
+      result: { status: "updated" },
+      isError: false,
+    };
+    const timeline: KanaSessionTimelineEntry[] = [
+      {
+        type: "message",
+        id: "assistant-entry",
+        parentId: null,
+        timestamp: "2026-08-24T00:00:00.000Z",
+        message: assistant,
+      },
+      {
+        type: "todo_state",
+        id: "todo-entry",
+        parentId: "assistant-entry",
+        timestamp: "2026-08-24T00:00:01.000Z",
+        toolCallId: "call-todo-history",
+        items: [
+          { content: "Persist the accepted snapshot", status: "in_progress" },
+          { content: "Replay it in the TUI", status: "completed" },
+        ],
+      },
+      {
+        type: "message",
+        id: "result-entry",
+        parentId: "todo-entry",
+        timestamp: "2026-08-24T00:00:02.000Z",
+        message: result,
+      },
+    ];
+
+    addHistoryTimelineToTranscript(transcript, timeline);
+
+    expect(transcript.render(100).map(stripAnsi)).toEqual([
+      "◆ Updated todos",
+      "  └ 1 active · 0 pending · 1 completed · Persist the accepted snapshot",
+    ]);
+    const block = transcript.children.find(
+      (child): child is ToolCallBlock => child instanceof ToolCallBlock,
+    );
+    expect(block?.getToolDetailView().render(100).map(stripAnsi)).toContain(
+      "◉ Persist the accepted snapshot",
+    );
+    expect(block?.getToolDetailView().render(100).map(stripAnsi).join("\n")).not.toContain(
+      "Untrusted proposed text",
     );
   });
 

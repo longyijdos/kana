@@ -1,4 +1,5 @@
 import type { AssistantMessage, ToolCallContent } from "@/core";
+import type { KanaTodoItem } from "@/kana";
 import { ToolCallBlock, ToolPreparationBlock, type Transcript } from "../components";
 
 export class ToolCallBlocks {
@@ -79,6 +80,10 @@ export class ToolCallBlocks {
 
   updatePartialResult(toolCallId: string, result: unknown): void {
     this.pendingTools.get(toolCallId)?.updatePartialResult(result);
+  }
+
+  updateTodoState(toolCallId: string, items: readonly KanaTodoItem[]): void {
+    this.pendingTools.get(toolCallId)?.updateTodoState(items);
   }
 
   updateResult(toolCallId: string, result: unknown, isError: boolean): void {

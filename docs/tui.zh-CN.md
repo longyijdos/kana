@@ -54,10 +54,11 @@ App 和 controller 代码只调用声明式的 `Tui.requestRender()`，终端更
 | `tool_execution_start` | 移除共享的准备活动，创建对应的单工具块，并从零开始显示 running 耗时；并行调用仍按 `toolCallId` 独立维护，并随各自的 start 事件依次出现。 |
 | `tool_execution_update` | 更新 bash 等工具的部分输出。 |
 | `tool_execution_end` | 写入结构化结果并标记成功、失败或取消。用户中止的调用显示为已取消，而不是工具失败。 |
+| `todo_state_changed` | 把完整接受快照关联到对应的实时 `todo_write` 工具块，并更新 `/todo` 使用的 session 状态。 |
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
 | `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时移除尚未解析为单工具块的聚合准备活动，`turn_limit` 显示为独立的 `Turn limit` 错误阶段。 |
 
-内置工具使用语义化 renderer，而不是通用结构化 JSON。具体来说，`view_image` 会显示 `Viewing`/`Viewed`、解析后的路径，以及 `PNG · 1440×832 · 19 KB` 这类紧凑的格式、尺寸和编码后大小元数据；它不会打印持久化的 base64 图片，也不会回退到通用 renderer。实时事件和恢复后的 session 历史使用同一路径。当恢复历史只有 artifact 元数据而没有结构化结果时，transcript 只显示 `Output stored · <size>`；工具详情查看器会显示有界 locator 和取回提示，而不会重放模型可见预览。
+内置工具使用语义化 renderer，而不是通用结构化 JSON。具体来说，`view_image` 会显示 `Viewing`/`Viewed`、解析后的路径，以及 `PNG · 1440×832 · 19 KB` 这类紧凑的格式、尺寸和编码后大小元数据；它不会打印持久化的 base64 图片，也不会回退到通用 renderer。`todo_write` 运行时显示 `Updating todos (Ns)`，完成后显示 `Updated todos` 与一行计数/active 项 target；空替换显示 `Cleared todos`，失败和取消使用不同标题。`Ctrl+O` 显示该次调用的完整接受快照，`/todo` 则显示 session 最新列表与状态计数；界面没有常驻 todo 面板。实时事件和恢复后的 session 历史都使用持久快照，不解析紧凑工具确认。当恢复历史只有 artifact 元数据而没有结构化结果时，transcript 只显示 `Output stored · <size>`；工具详情查看器会显示有界 locator 和取回提示，而不会重放模型可见预览。
 
 Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSeek V4 Flash）属于 provider-hosted 动作，不创建本地工具审批或 ToolRuntime 执行。TUI 为每个调用单独显示 `Searching the web`、`Searched the web`、`Opened a web page` 或 `Searched within a web page`；当前不聚合多个调用。搜索期间状态栏阶段为 `searching`。进行中的搜索显示耗时和 `Esc to abort`；中止时 Agent 会发布并持久化语义化的 canceled 状态，TUI 则冻结计时并显示 `Web search stopped`。最终回答中的供应商 Markdown 链接按正文原样渲染，TUI 不回插引用编号或追加 `Sources` 区块。
 
@@ -65,7 +66,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 编辑器内部包含状态栏，它显示模型及可选推理强度（例如 `gpt-5.6-luna · max`；`none` 档位显示为 `off`）、Clean 模式标记、形如 `Context ~N% used` 的下一轮近似上下文、运行阶段、活动工具和 cwd。该百分比用可重放上下文除以 effective context limit，而不是直接展示上一轮 response 的原始 `input_tokens`；因此 system instructions 和工具 schema 会让新 session 带有非零基线。普通 provider usage 用于校准估算；包含托管搜索的响应则保留之前的干净锚点，只增加持久化输出与调用元数据，不计入临时搜索网页。数值在每个完整 model/tool `turn_end` 后、上下文压缩后以及 Agent run 结束时刷新。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `Tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `Tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开 slash 命令面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求都会把 provider 原始 usage 原样累计到进程总用量。Kana 不估算金额，实际费用以 provider 账单为准；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
-恢复会话时，TUI 历史只消费 session 中已提交的 timeline，而 Agent 单独接收完整的已提交 messages 和最后一个 context checkpoint。进程内 inbox 输入和未来 wake 会在 session 切换或退出时清空，不会恢复。恢复的历史 `turn_start` 不渲染；实时 `turn_start` 只创建临时 working 活动。`turn_end` 不增加 transcript block，但会把完整回合的 context 估算传给状态栏。恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用完成 marker 替换，失败时则移除临时消息并显示错误；普通模式同时将 marker 持久化，Clean 模式只保留进程内 checkpoint。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
+恢复会话时，TUI 历史只消费 session 中已提交的 timeline，而 Agent 单独接收完整的已提交 messages、最后一个 context checkpoint 和最新 todo 状态。进程内 inbox 输入和未来 wake 会在 session 切换或退出时清空，不会恢复。恢复的历史 `turn_start` 不渲染；`todo_state` 记录只补充对应工具块，不单独增加 transcript 行。实时 `turn_start` 只创建临时 working 活动。`turn_end` 不增加 transcript block，但会把完整回合的 context 估算传给状态栏。恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用完成 marker 替换，失败时则移除临时消息并显示错误；普通模式同时将 marker 持久化，Clean 模式只保留进程内 checkpoint。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
 
 ## 输入与快捷方式
 
@@ -115,6 +116,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
 | `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
 | `/schedule` | 查看、添加、刷新或删除当前 session 的进程内定时消息。 |
+| `/todo` | 打开当前 session 的 todo 列表和状态计数。 |
 | `/tools` | 浏览当前会话的全部工具调用，并可任意打开其中一个的详情查看器。 |
 | `/image <path>` | 将本地图片路径附加到编辑器，但不立即提交。 |
 | `/approval` | 临时更改当前 session 的工具审批模式；选择 `Never ask` 需要二次确认。 |
@@ -126,7 +128,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 `/usage` 会让 token 标签、数值和比例条保持稳定列位。Runs 区域和按模型明细会显示 token 总数，并根据当前可见数据动态计算数字列宽，因此更大的次数、token 总数或更长的模型名不会推动相邻数值错位。各类 outcome 仍保持紧凑的单行摘要，底部视图较窄时可能被截断。
 
-Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用，其中 `/schedule` 的消息仍只存在于当前进程，`/model` 不写回配置文件。
+Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用，其中 `/schedule` 的消息仍只存在于当前进程，`/todo` 读取进程内列表，`/model` 不写回配置文件。
 
 ## 控制器与焦点
 

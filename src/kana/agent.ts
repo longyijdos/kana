@@ -23,7 +23,8 @@ import type { KanaLaunchMode } from "./launch-mode";
 import { createKanaModel } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
 import { loadKanaSkills } from "./skills/loader";
-import { createRememberTool, createScheduleWakeTool } from "./tools";
+import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
+import { createRememberTool, createScheduleWakeTool, createTodoWriteTool } from "./tools";
 
 // Reserve the complete built-in namespace, including tools that are enabled
 // only for particular configurations or session states. MCP discovery happens
@@ -38,6 +39,7 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
   "write",
   "edit",
   "bash",
+  "todo_write",
   "remember",
   "schedule_wake",
 ] as const;
@@ -60,6 +62,8 @@ export type KanaAgentOptions = Pick<
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
   artifactStore?: KanaSessionArtifactStore;
+  commitTodoState?: (change: KanaTodoStateChange) => Promise<void> | void;
+  resolveTodoState?: () => readonly KanaTodoItem[];
 };
 
 export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
@@ -109,6 +113,14 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     }),
   ];
   const toolSections: PromptToolSection[] = [{ name: "workspace", tools: workspaceTools }];
+  toolSections.push({
+    name: "collaboration",
+    tools: [
+      createTodoWriteTool({
+        commit: options.commitTodoState,
+      }),
+    ],
+  });
   if (customizationsEnabled && config.memory.enabled) {
     toolSections.push({
       name: "memory",
@@ -148,6 +160,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       launchMode: options.launchMode,
       skills,
       toolSections,
+      resolveTodoState: options.resolveTodoState,
     }),
     maxTurns: config.agent.maxTurns,
     toolDeadlineMs: config.agent.toolDeadlineMs,

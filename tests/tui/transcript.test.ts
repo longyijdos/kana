@@ -248,6 +248,92 @@ describe("tui transcript", () => {
     expect(rendered).toEqual(["◆ Scheduled wake", "  └ in 30 minutes Check the task."]);
   });
 
+  test("renders accepted todo state compactly and keeps the complete snapshot in details", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_todo",
+      name: "todo_write",
+      args: {
+        items: [
+          { content: "Implement persistence", status: "in_progress" },
+          { content: "Update documentation", status: "pending" },
+          { content: "Inspect the issue", status: "completed" },
+        ],
+      },
+    });
+    block.updateTodoState([
+      { content: "Implement persistence", status: "in_progress" },
+      { content: "Update documentation", status: "pending" },
+      { content: "Inspect the issue", status: "completed" },
+    ]);
+    block.updateResult({ status: "updated" }, false);
+
+    expect(block.render(100).map(stripAnsi)).toEqual([
+      "◆ Updated todos",
+      "  └ 1 active · 1 pending · 1 completed · Implement persistence",
+    ]);
+    expect(block.hasExpandableOutput()).toBe(false);
+    expect(block.getToolDetailView().render(100).map(stripAnsi)).toEqual([
+      "Output",
+      "1 active · 1 pending · 1 completed",
+      "",
+      "◉ Implement persistence",
+      "○ Update documentation",
+      "✓ Inspect the issue",
+    ]);
+  });
+
+  test("renders an explicit empty todo replacement as cleared", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_todo_clear",
+      name: "todo_write",
+      args: { items: [] },
+    });
+    block.updateTodoState([]);
+    block.updateResult({ status: "cleared" }, false);
+
+    expect(block.render(80).map(stripAnsi)).toEqual(["◆ Cleared todos"]);
+    expect(block.getToolDetailView().render(80).map(stripAnsi)).toEqual(["Output", "No todos."]);
+  });
+
+  test("renders todo running, failure, and cancellation states semantically", () => {
+    let now = 0;
+    const failed = new ToolCallBlock(
+      {
+        type: "tool_call",
+        id: "call_todo_failed",
+        name: "todo_write",
+        args: { items: [{ content: "Invalid list", status: "pending" }] },
+      },
+      () => now,
+    );
+    failed.markExecutionStarted();
+    now = 2_000;
+    expect(failed.render(80).map(stripAnsi)).toEqual(["◆ Updating todos (2s) (Esc to abort)"]);
+    failed.updateResult({ error: "Duplicate todo item content." }, true);
+    expect(failed.render(80).map(stripAnsi)).toEqual([
+      "◆ Failed to update todos",
+      "Duplicate todo item content.",
+    ]);
+
+    const canceled = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_todo_canceled",
+      name: "todo_write",
+      args: { items: [{ content: "Canceled list", status: "pending" }] },
+    });
+    canceled.updateResult(
+      {
+        status: "canceled",
+        reason: "run_aborted",
+        message: "Tool execution was canceled because the agent run was aborted.",
+      },
+      true,
+    );
+    expect(canceled.render(80).map(stripAnsi)).toEqual(["◆ Canceled updating todos"]);
+  });
+
   test("does not render assistant stop reasons as transcript content", () => {
     const block = new AssistantMessageBlock();
 

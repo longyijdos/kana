@@ -64,7 +64,7 @@ describe("Kana Agent tools", () => {
     ).toThrow("Duplicate Kana Agent tool name: read.");
   });
 
-  test("keeps only core tools and scheduled wakes in clean mode", () => {
+  test("keeps only core session tools and scheduled wakes in clean mode", () => {
     const wakeScheduler = createWakeScheduler();
 
     try {
@@ -85,6 +85,7 @@ describe("Kana Agent tools", () => {
         "write",
         "edit",
         "bash",
+        "todo_write",
         "schedule_wake",
       ]);
     } finally {

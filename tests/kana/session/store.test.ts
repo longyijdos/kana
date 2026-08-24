@@ -11,6 +11,7 @@ import {
   createKanaSessionJournal,
   deleteKanaSession,
   getKanaConfigPaths,
+  type KanaTodoItem,
   listKanaSessions,
   loadKanaSession,
 } from "@/kana";
@@ -34,7 +35,7 @@ describe("Kana session persistence", () => {
     expect(listKanaSessions({ env, cwd })).toEqual([]);
   });
 
-  test("keeps the V4 JSONL byte layout stable", () => {
+  test("keeps the V5 JSONL byte layout stable", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "byte-layout" });
@@ -57,7 +58,7 @@ describe("Kana session persistence", () => {
       `${[
         {
           type: "session",
-          version: 4,
+          version: 5,
           id: "byte-layout",
           createdAt: session.createdAt,
           title: "Byte layout",
@@ -90,7 +91,7 @@ describe("Kana session persistence", () => {
         .map((record) => JSON.stringify(record))
         .join("\n")}\n`,
     );
-    expect(header).toMatchObject({ version: 4, id: "byte-layout" });
+    expect(header).toMatchObject({ version: 5, id: "byte-layout" });
   });
 
   test("creates JSONL sessions on first append and reloads messages by id", () => {
@@ -156,7 +157,7 @@ describe("Kana session persistence", () => {
     expect(lines).toHaveLength(5);
     expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
       type: "session",
-      version: 4,
+      version: 5,
       id: "session-1",
       title: "hi",
       cwd,
@@ -464,10 +465,10 @@ describe("Kana session persistence", () => {
     expect(loaded.contextCheckpoint).toEqual(secondCheckpoint);
   });
 
-  test("does not list or load obsolete v1 and v2 sessions", () => {
+  test("does not list or load pre-V5 sessions", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
-    for (const version of [1, 2]) {
+    for (const version of [1, 2, 3, 4]) {
       const session = createKanaSession({ cwd, env, id: `legacy-v${version}` });
       mkdirSync(path.dirname(session.path), { recursive: true });
       writeFileSync(
@@ -485,12 +486,11 @@ describe("Kana session persistence", () => {
     }
 
     expect(listKanaSessions({ env, cwd })).toEqual([]);
-    expect(() => loadKanaSession("legacy-v1", { env, cwd })).toThrow(
-      "Kana session not found: legacy-v1",
-    );
-    expect(() => loadKanaSession("legacy-v2", { env, cwd })).toThrow(
-      "Kana session not found: legacy-v2",
-    );
+    for (const version of [1, 2, 3, 4]) {
+      expect(() => loadKanaSession(`legacy-v${version}`, { env, cwd })).toThrow(
+        `Kana session not found: legacy-v${version}`,
+      );
+    }
   });
 
   test("identifies unknown message and checkpoint references in corrupted sessions", () => {
@@ -744,6 +744,97 @@ describe("Kana session persistence", () => {
     expect(loaded.recoveredInterruptedTurn).toBeUndefined();
   });
 
+  test("persists accepted todo snapshots and reconstructs the latest whole-list replacement", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "todo-state" });
+    const journal = createKanaSessionJournal(session);
+
+    appendTodoTurn(journal, "turn-todo-1", "call-todo-1", [
+      { content: "Inspect persistence", status: "completed" },
+      { content: "Implement replay", status: "in_progress" },
+    ]);
+    appendTodoTurn(journal, "turn-todo-2", "call-todo-2", [
+      { content: "Implement replay", status: "completed" },
+    ]);
+
+    const replaced = loadKanaSession(session.id, { env, cwd });
+    expect(replaced.todoState).toEqual([{ content: "Implement replay", status: "completed" }]);
+    expect(
+      replaced.timeline
+        .filter((entry) => entry.type === "todo_state")
+        .map((entry) => ({ toolCallId: entry.toolCallId, items: entry.items })),
+    ).toEqual([
+      {
+        toolCallId: "call-todo-1",
+        items: [
+          { content: "Inspect persistence", status: "completed" },
+          { content: "Implement replay", status: "in_progress" },
+        ],
+      },
+      {
+        toolCallId: "call-todo-2",
+        items: [{ content: "Implement replay", status: "completed" }],
+      },
+    ]);
+    expect(
+      replaced.messages
+        .filter((message) => message.role === "tool")
+        .map((message) => message.content),
+    ).toEqual(["Todo list updated.", "Todo list updated."]);
+
+    appendTodoTurn(journal, "turn-todo-clear", "call-todo-clear", []);
+    const cleared = loadKanaSession(session.id, { env, cwd });
+    expect(cleared.todoState).toEqual([]);
+    expect(cleared.messages.at(-1)).toMatchObject({
+      role: "tool",
+      toolCallId: "call-todo-clear",
+      content: "Todo list cleared.",
+      result: { status: "cleared" },
+    });
+  });
+
+  test("recovers a durably accepted todo call without downgrading it to unknown", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "interrupted-todo" });
+    const journal = createKanaSessionJournal(session);
+    const items: KanaTodoItem[] = [{ content: "Resume safely", status: "in_progress" }];
+
+    journal.startTurn("turn-interrupted-todo", [
+      { ...messageIdentityForTest("user"), role: "user", content: "Track the work" },
+    ]);
+    journal.appendMessage("turn-interrupted-todo", {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      stopReason: "toolUse",
+      content: [
+        {
+          type: "tool_call",
+          id: "call-interrupted-todo",
+          name: "todo_write",
+          args: { items },
+        },
+      ],
+    });
+    journal.appendTodoState("turn-interrupted-todo", "call-interrupted-todo", items);
+
+    const loaded = loadKanaSession(session.id, { env, cwd });
+
+    expect(loaded.todoState).toEqual(items);
+    expect(loaded.recoveredInterruptedTurn).toEqual({
+      turnId: "turn-interrupted-todo",
+      unknownToolCallCount: 0,
+    });
+    expect(loaded.messages.at(-2)).toMatchObject({
+      role: "tool",
+      toolCallId: "call-interrupted-todo",
+      content: "Todo list updated.",
+      result: { status: "updated" },
+      isError: false,
+    });
+  });
+
   test("recovers an interrupted tool call once with an unknown result", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
@@ -896,4 +987,32 @@ function createTempEnv(): NodeJS.ProcessEnv {
   return {
     HOME: home,
   };
+}
+
+function appendTodoTurn(
+  journal: ReturnType<typeof createKanaSessionJournal>,
+  turnId: string,
+  toolCallId: string,
+  items: KanaTodoItem[],
+): void {
+  journal.startTurn(turnId, [
+    { ...messageIdentityForTest("user"), role: "user", content: `Update ${toolCallId}` },
+  ]);
+  journal.appendMessage(turnId, {
+    ...messageIdentityForTest("assistant"),
+    role: "assistant",
+    stopReason: "toolUse",
+    content: [{ type: "tool_call", id: toolCallId, name: "todo_write", args: { items } }],
+  });
+  journal.appendTodoState(turnId, toolCallId, items);
+  journal.appendMessage(turnId, {
+    ...messageIdentityForTest("tool"),
+    role: "tool",
+    toolCallId,
+    toolName: "todo_write",
+    content: items.length === 0 ? "Todo list cleared." : "Todo list updated.",
+    result: { status: items.length === 0 ? "cleared" : "updated" },
+    isError: false,
+  });
+  journal.endTurn(turnId, "stop");
 }

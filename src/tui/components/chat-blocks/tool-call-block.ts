@@ -1,4 +1,5 @@
 import type { ToolCallContent } from "@/core";
+import type { KanaTodoItem } from "@/kana";
 import { bold, color, truncateToWidth, visibleWidth } from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
@@ -23,6 +24,7 @@ export class ToolCallBlock implements Component {
   private canceled = false;
   private result?: unknown;
   private partialResult?: unknown;
+  private todoState?: KanaTodoItem[];
   private hasResult = false;
   private isError = false;
   private readonly phaseTimer: ElapsedTimer;
@@ -62,6 +64,14 @@ export class ToolCallBlock implements Component {
     this.canceled = false;
     this.partialResult = undefined;
     this.phaseTimer.stop();
+    this.invalidate();
+  }
+
+  updateTodoState(items: readonly KanaTodoItem[]): void {
+    if (this.toolCall.name !== "todo_write") {
+      return;
+    }
+    this.todoState = structuredClone([...items]);
     this.invalidate();
   }
 
@@ -144,7 +154,7 @@ export class ToolCallBlock implements Component {
       render: (width) =>
         formatToolInspector(
           toolCall,
-          this.result ?? this.partialResult,
+          this.presentationResult(),
           this.isError,
           this.currentState(),
           width,
@@ -155,7 +165,7 @@ export class ToolCallBlock implements Component {
   // Sanitize Kana-owned targets before they enter picker rows. Unknown schemas stay
   // name-only so the TUI never guesses a target from arbitrary arguments.
   getToolHistoryEntry(): ToolHistoryEntry {
-    const target = resolveToolTarget(this.toolCall, this.result ?? this.partialResult);
+    const target = resolveToolTarget(this.toolCall, this.presentationResult());
     const summary = target === undefined ? undefined : sanitizeToolTargetText(target);
 
     return {
@@ -173,7 +183,7 @@ export class ToolCallBlock implements Component {
 
     return hasExpandableToolOutput(
       this.toolCall,
-      this.result ?? this.partialResult,
+      this.presentationResult(),
       this.isError,
       this.cachedWidth,
     );
@@ -201,12 +211,18 @@ export class ToolCallBlock implements Component {
   private renderOutput(width: number, detail: ToolOutputDetail): string[] {
     const output = formatToolOutput(
       this.toolCall,
-      this.result ?? this.partialResult,
+      this.presentationResult(),
       this.isError,
       detail,
       width,
     );
     return output;
+  }
+
+  private presentationResult(): unknown {
+    return this.todoState === undefined
+      ? (this.result ?? this.partialResult)
+      : { items: this.todoState };
   }
 
   private renderTitle(
@@ -217,7 +233,7 @@ export class ToolCallBlock implements Component {
     const title = formatToolTranscriptTitle(
       this.toolCall,
       this.currentState(),
-      this.result,
+      this.presentationResult(),
       elapsedSeconds,
     );
     const lines = [colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor)];

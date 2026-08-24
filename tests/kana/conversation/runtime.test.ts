@@ -12,6 +12,7 @@ import {
   ConversationRuntime,
   type ConversationRuntimeEvent,
   createWakeScheduler,
+  type KanaTodoStateChange,
 } from "../../../src/kana";
 import { MockModel } from "../../../src/providers/mock";
 import { messageIdentityForTest, messageIdForTest } from "../../helpers/messages";
@@ -66,6 +67,52 @@ describe("ConversationRuntime", () => {
     await runtime.close();
   });
 
+  test("publishes committed todo state during the active run", async () => {
+    const model = new ControlledModel();
+    const events: ConversationRuntimeEvent[] = [];
+    let commitTodoState: ((change: KanaTodoStateChange) => void) | undefined;
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [], todoState: [] },
+      createAgent: (options) => {
+        commitTodoState = options.onTodoStateCommitted;
+        return new Agent({
+          model,
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        });
+      },
+    });
+    runtime.subscribe((event) => events.push(event));
+
+    const run = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Implement the feature.",
+    });
+    await waitFor(() => model.contexts.length === 1);
+    commitTodoState?.({
+      toolCallId: "call-todo",
+      items: [{ content: "Implement the feature", status: "in_progress" }],
+    });
+
+    expect(runtime.todoState).toEqual([
+      { content: "Implement the feature", status: "in_progress" },
+    ]);
+    expect(events).toContainEqual({
+      type: "todo_state_changed",
+      source: "user",
+      change: {
+        toolCallId: "call-todo",
+        items: [{ content: "Implement the feature", status: "in_progress" }],
+      },
+    });
+
+    model.finish(0, "Done.");
+    await run;
+    await runtime.close();
+  });
+
   test("owns session replacement and preserves state across Agent reconfiguration", async () => {
     const creations: Array<{
       configuration?: string;
@@ -82,12 +129,14 @@ describe("ConversationRuntime", () => {
       role: "user" as const,
       content: "Resumed context.",
     };
+    const existingTodoState = [{ content: "Keep this state", status: "in_progress" as const }];
     const runtime = new ConversationRuntime<string>({
       ...createRuntimeOptions(),
       initialSession: {
         id: "session-a",
         messages: [existingMessage],
         timeline: [],
+        todoState: existingTodoState,
       },
       createAgent: (options) => {
         creations.push({
@@ -116,12 +165,15 @@ describe("ConversationRuntime", () => {
     const fork = runtime.forkSession("Continue.");
     expect(fork.id).toBe("session-fork");
     expect(fork.messages).toEqual([existingMessage]);
+    expect(fork.todoState).toEqual(existingTodoState);
+    fork.todoState?.splice(0);
+    expect(runtime.todoState).toEqual(existingTodoState);
 
     const resumed = runtime.resumeSession("session-resumed");
     expect(resumed.messages).toEqual([resumedMessage]);
 
     const fresh = runtime.startNewSession();
-    expect(fresh).toMatchObject({ id: "session-new", messages: [], timeline: [] });
+    expect(fresh).toMatchObject({ id: "session-new", messages: [], timeline: [], todoState: [] });
     expect(creations).toEqual([
       {
         configuration: undefined,
