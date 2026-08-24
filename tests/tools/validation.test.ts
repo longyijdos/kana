@@ -133,4 +133,31 @@ describe("tool validation", () => {
       "must not have fewer than 2 characters",
     );
   });
+
+  test("keeps external JSON Schemas without additionalProperties permissive", () => {
+    const tool = createPlainSchemaTool({
+      type: "object",
+      properties: { value: { type: "string" } },
+      required: ["value"],
+    } as TSchema);
+
+    expect(validateToolArguments(tool, { value: "ok", extra: 1 })).toEqual({
+      value: "ok",
+      extra: 1,
+    });
+  });
+
+  test("honors declared additionalProperties: false in external JSON Schemas", () => {
+    const tool = createPlainSchemaTool({
+      type: "object",
+      properties: { value: { type: "string" } },
+      required: ["value"],
+      additionalProperties: false,
+    } as TSchema);
+
+    expect(validateToolArguments(tool, { value: "ok" })).toEqual({ value: "ok" });
+    expect(() => validateToolArguments(tool, { value: "ok", extra: 1 })).toThrow(
+      "extra: Unexpected property (not declared in the tool schema)",
+    );
+  });
 });

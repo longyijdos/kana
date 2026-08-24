@@ -1,5 +1,6 @@
 import { type Static, Type } from "typebox";
 import type { Tool } from "@/tools";
+import { strictObject } from "@/tools";
 import {
   assertKanaMemoryContentSize,
   type KanaMemoryScope,
@@ -26,23 +27,23 @@ export type MemoryConsolidationTransaction = {
   commit(): void;
 };
 
-const EDIT_PARAMETERS = Type.Object({
+const EDIT_PARAMETERS = strictObject({
   oldText: Type.String({ minLength: 1, description: "Exact existing memory text to replace." }),
   newText: Type.String({ description: "Replacement text." }),
   replaceAll: Type.Optional(Type.Boolean({ default: false })),
 });
-const REPLACE_PARAMETERS = Type.Object({
+const REPLACE_PARAMETERS = strictObject({
   content: Type.String({ description: "Complete replacement memory." }),
 });
 const DATE_RANGE_PROPERTIES = {
   startDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
   endDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
 };
-const DATE_RANGE_PARAMETERS = Type.Object(DATE_RANGE_PROPERTIES);
-const READ_DAILY_PARAMETERS = Type.Object({
+const DATE_RANGE_PARAMETERS = strictObject(DATE_RANGE_PROPERTIES);
+const READ_DAILY_PARAMETERS = strictObject({
   date: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
 });
-const SEARCH_PARAMETERS = Type.Object({
+const SEARCH_PARAMETERS = strictObject({
   ...DATE_RANGE_PROPERTIES,
   query: Type.String({ minLength: 1 }),
 });
@@ -104,7 +105,7 @@ export function createMemoryConsolidationTools(
   const readMemoryTool: Tool = {
     name: "read_memory",
     description: "Read the current memory working copy, including this run's pending edits.",
-    parameters: Type.Object({}),
+    parameters: strictObject({}),
     execute: () => result(memory.content),
   };
   const writeTools: Tool[] = [
