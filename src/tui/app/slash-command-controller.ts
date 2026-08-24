@@ -17,6 +17,7 @@ export type SlashCommandControllerOptions = {
   openSkillManager: () => void;
   openMcpServerManager: () => void;
   openScheduledMessageManager: () => void;
+  openTodo?: () => void;
   openToolHistory: () => void;
   attachImageFile: (path: string) => void;
   openApproval: () => void;
@@ -84,6 +85,15 @@ export class SlashCommandController {
         break;
       case "schedule":
         this.runWithoutArguments(command, () => this.options.openScheduledMessageManager());
+        break;
+      case "todo":
+        this.runWithoutArguments(command, () => {
+          if (this.options.openTodo) {
+            this.options.openTodo();
+          } else {
+            this.options.showError(new Error("Todo viewer is unavailable."));
+          }
+        });
         break;
       case "tools":
         this.runWithoutArguments(command, () => this.options.openToolHistory());

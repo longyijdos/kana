@@ -27,6 +27,7 @@ import { formatGlobOutput } from "./renderers/glob";
 import { formatGrepOutput } from "./renderers/grep";
 import { formatListOutput } from "./renderers/list";
 import { formatReadOutput } from "./renderers/read";
+import { formatTodoTarget, renderTodoState } from "./renderers/todo-write";
 import { formatViewImageOutput } from "./renderers/view-image";
 import { formatWriteOutput } from "./renderers/write";
 
@@ -51,6 +52,9 @@ export function formatToolTranscriptTitle(
   result: unknown,
   elapsedSeconds?: number,
 ): ToolTranscriptTitle {
+  if (toolCall.name === "todo_write") {
+    return formatTodoTranscriptTitle(state, result, elapsedSeconds);
+  }
   const target = resolveToolTarget(toolCall, result);
   const text = toolText(toolCall.name, target, toolCall.args);
   const action = target ? text.action.replace(` ${target}`, "") : text.action;
@@ -162,6 +166,10 @@ export function formatToolOutput(
         ? renderText(output, width, tuiTheme.toolOutput, detail)
         : renderCompactText(output, width, tuiTheme.toolOutput, "tail");
     }
+    case "todo_write": {
+      const items = getTodoItems(sanitizedResult);
+      return items === undefined || detail === "compact" ? [] : renderTodoState(items, width);
+    }
     case "remember":
     case "schedule_wake":
       return [];
@@ -221,6 +229,7 @@ export function hasExpandableToolOutput(
     case "grep":
     case "read":
     case "view_image":
+    case "todo_write":
     case "remember":
     case "schedule_wake":
       return false;
@@ -331,9 +340,61 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       return command ?? toolCall.name;
     }
 
+    case "todo_write":
+      return formatTodoTarget(getTodoItems(result) ?? []);
+
     default:
       return undefined;
   }
+}
+
+function formatTodoTranscriptTitle(
+  state: ToolState,
+  result: unknown,
+  elapsedSeconds: number | undefined,
+): ToolTranscriptTitle {
+  const items = getTodoItems(result);
+  if (state === "running") {
+    return {
+      activity: formatStatusActivity("Updating todos", ` (${elapsedSeconds ?? 0}s)`),
+      hint: "Esc to abort",
+    };
+  }
+  if (state === "failed") {
+    return { activity: "Failed to update todos" };
+  }
+  if (state === "canceled") {
+    return { activity: "Canceled updating todos" };
+  }
+  if (items?.length === 0) {
+    return { activity: "Cleared todos" };
+  }
+  return {
+    activity: "Updated todos",
+    target: items === undefined ? undefined : formatTodoTarget(items),
+  };
+}
+
+function getTodoItems(
+  value: unknown,
+): Array<{ content: string; status: "pending" | "in_progress" | "completed" }> | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const items = (value as Record<string, unknown>).items;
+  if (!Array.isArray(items)) {
+    return undefined;
+  }
+  const parsed = items.filter(
+    (item): item is { content: string; status: "pending" | "in_progress" | "completed" } =>
+      typeof item === "object" &&
+      item !== null &&
+      typeof (item as Record<string, unknown>).content === "string" &&
+      ((item as Record<string, unknown>).status === "pending" ||
+        (item as Record<string, unknown>).status === "in_progress" ||
+        (item as Record<string, unknown>).status === "completed"),
+  );
+  return parsed.length === items.length ? parsed : undefined;
 }
 
 function formatToolApprovalTitle(toolCall: ToolCallContent): string {

@@ -19,6 +19,7 @@ import type {
   KanaNotificationConfig,
   KanaOAuthTokenStatus,
   KanaSessionMetadata,
+  KanaTodoItem,
   KanaToolApprovalConfig,
   KanaToolApprovalMode,
   KanaToolApprovals,
@@ -58,7 +59,7 @@ import { stripTerminalControlSequences } from "../render";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
-import type { ToolApprovalSource } from "../tools";
+import { renderTodoState, type ToolApprovalSource } from "../tools";
 import { calculateContextUsedPercent } from "../utils/context-usage";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
@@ -108,7 +109,7 @@ export type KanaTuiAppOptions = {
     messages: Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
-  ) => { id: string };
+  ) => { id: string; todoState?: KanaTodoItem[] };
   listSessions: () => KanaSessionMetadata[];
   loadSession: (sessionId: string) => KanaTuiSessionSnapshot;
   deleteSession: (sessionId: string) => boolean;
@@ -489,6 +490,10 @@ export class KanaTuiApp {
       openScheduledMessageManager: () => {
         this.editor.clear();
         this.openScheduledMessageManager();
+      },
+      openTodo: () => {
+        this.editor.clear();
+        this.openTodoViewer();
       },
       openToolHistory: () => {
         this.editor.clear();
@@ -939,6 +944,22 @@ export class KanaTuiApp {
     this.toolHistory.open();
   }
 
+  private openTodoViewer(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.sessions.close();
+    this.skillManager.close();
+    this.mcpServerManager?.close();
+    this.scheduledMessageManager.close();
+    this.toolHistory.close();
+    this.contentViewer.open({
+      title: "Todos",
+      render: (width) => renderTodoState(this.conversation.todoState, width),
+    });
+  }
+
   private openMemory(): void {
     if (this.options.launchMode === "clean") {
       this.editor.clear();
@@ -1018,6 +1039,10 @@ export class KanaTuiApp {
 
       case "input_queue_changed":
         this.queuedInputs.syncRuntimeQueue(event.queue);
+        break;
+
+      case "todo_state_changed":
+        this.agentEvents.handleTodoStateChange(event.change);
         break;
     }
   }

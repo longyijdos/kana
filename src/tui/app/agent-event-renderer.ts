@@ -1,5 +1,6 @@
 import type { AgentEvent } from "@/agent";
 import type { AssistantMessage } from "@/core";
+import type { KanaTodoStateChange } from "@/kana";
 import {
   AssistantMessageBlock,
   type StatusLineState,
@@ -63,6 +64,11 @@ export class AgentEventRenderer {
     // single line plus the inter-block blank separator. The block stays visible
     // as `Prepared tools (Xs)` until the first real ToolCallBlock replaces it.
     this.toolCallBlocks.markPreparationPrepared();
+  }
+
+  handleTodoStateChange(change: KanaTodoStateChange): void {
+    this.toolCallBlocks.updateTodoState(change.toolCallId, change.items);
+    this.options.tui.requestRender();
   }
 
   resetRun(): void {

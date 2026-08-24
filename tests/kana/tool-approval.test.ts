@@ -47,6 +47,15 @@ describe("Kana tool approval", () => {
       shouldRequestToolApproval(
         { mode: "always" },
         approvals({ exactCommands: ["git status"] }),
+        toolCall("todo_write", {
+          items: [{ content: "Check the task", status: "pending" }],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequestToolApproval(
+        { mode: "always" },
+        approvals({ exactCommands: ["git status"] }),
         toolCall("bash", { command: "git status" }),
       ),
     ).toBe(true);

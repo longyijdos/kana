@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { KanaLaunchMode, KanaUsageScope, KanaUsageSummary } from "@/kana";
+import type { KanaLaunchMode, KanaTodoItem, KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { ToolCallBlock } from "../../src/tui/components";
 import { color, stripAnsi } from "../../src/tui/render";
@@ -164,6 +164,24 @@ describe("information viewers", () => {
     expect(rendered).toContain("Usage: /tools");
   });
 
+  test("opens the current session todo state without adding transcript content", () => {
+    const app = createApp(createUsageSummary, undefined, [
+      { content: "Implement durable state", status: "in_progress" },
+      { content: "Update documentation", status: "completed" },
+    ]);
+    const internal = app as unknown as AppInternals;
+
+    internal.handleCommand({ name: "todo", arguments: "", raw: "/todo" });
+
+    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
+    expect(internal.transcript.children).toHaveLength(0);
+    expect(internal.contentViewer.active).toBe(true);
+    expect(rendered).toContain("Todos");
+    expect(rendered).toContain("1 active · 0 pending · 1 completed");
+    expect(rendered).toContain("◉ Implement durable state");
+    expect(rendered).toContain("✓ Update documentation");
+  });
+
   test("opens a tool picked from /tools in the same detail inspector", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
@@ -279,7 +297,7 @@ describe("information viewers", () => {
 
 type AppInternals = {
   handleCommand: (command: {
-    name: "help" | "memory" | "usage" | "tools";
+    name: "help" | "memory" | "todo" | "usage" | "tools";
     arguments: string;
     raw: string;
   }) => void;
@@ -295,6 +313,7 @@ type AppInternals = {
 function createApp(
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary = createUsageSummary,
   launchMode?: KanaLaunchMode,
+  todoState?: KanaTodoItem[],
 ): KanaTuiApp {
   return new KanaTuiApp(
     () =>
@@ -314,6 +333,10 @@ function createApp(
     createTerminal(),
     {
       launchMode,
+      initialSession:
+        todoState === undefined
+          ? undefined
+          : { id: "session", messages: [], timeline: [], todoState },
       getResumeSessionId: () => undefined,
       createNewSession: () => ({ id: "new" }),
       forkSession: () => ({ id: "fork" }),

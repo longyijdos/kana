@@ -61,6 +61,7 @@ import {
   listKanaSessions,
   loadKanaSession,
 } from "../session";
+import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
 import { type KanaToolApprovals, loadKanaToolApprovals } from "../tool-approval";
 import { createWakeScheduler, type WakeScheduler } from "./wake-scheduler";
 
@@ -75,6 +76,7 @@ export type KanaConversationHostAgentOptions<TConfiguration> = Pick<
 > & {
   sessionId?: string;
   configuration?: TConfiguration;
+  onTodoStateCommitted?: (change: KanaTodoStateChange) => void;
 };
 
 export type KanaMemoryCompactSummary = {
@@ -105,6 +107,7 @@ type HostedSession = {
   persistent: boolean;
   pendingForkMessages?: Message[];
   pendingForkCheckpoint?: ContextCheckpoint;
+  pendingForkTodoState?: KanaTodoItem[];
 };
 
 export class KanaConversationHost<TConfiguration = never> {
@@ -258,6 +261,7 @@ export class KanaConversationHost<TConfiguration = never> {
       metadata: this.createSessionMetadata(),
       messages: [],
       timeline: [],
+      todoState: [],
     });
     hosted.logger.info("session.created");
     return { id: hosted.data.metadata.id };
@@ -267,7 +271,7 @@ export class KanaConversationHost<TConfiguration = never> {
     messages: Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
-  ): { id: string } {
+  ): { id: string; todoState: KanaTodoItem[] } {
     this.assertForkingAvailable();
     let source =
       this.activeSessionId === undefined ? undefined : this.sessions.get(this.activeSessionId);
@@ -276,6 +280,7 @@ export class KanaConversationHost<TConfiguration = never> {
         metadata: this.createSessionMetadata(),
         messages: [],
         timeline: [],
+        todoState: [],
       });
     }
     const metadata = this.createSessionMetadata(source.data.metadata.path, prompt);
@@ -311,6 +316,7 @@ export class KanaConversationHost<TConfiguration = never> {
       metadata,
       messages: forkedMessages,
       timeline: [],
+      todoState: structuredClone(source.data.todoState),
       contextCheckpoint: forkedCheckpoint,
     });
     if (hosted.persistent) {
@@ -322,11 +328,15 @@ export class KanaConversationHost<TConfiguration = never> {
               ...structuredClone(forkedCheckpoint),
               baseCompactionId: undefined,
             };
+      hosted.pendingForkTodoState = structuredClone(source.data.todoState);
     }
     hosted.logger.info("session.forked", {
       sourceSessionId: source.data.metadata.id,
     });
-    return { id: hosted.data.metadata.id };
+    return {
+      id: hosted.data.metadata.id,
+      todoState: structuredClone(hosted.data.todoState),
+    };
   }
 
   loadSession(sessionId: string): LoadKanaSessionResult {
@@ -512,7 +522,12 @@ export class KanaConversationHost<TConfiguration = never> {
   private createKanaAgentOptions(
     options: Pick<
       KanaConversationHostAgentOptions<TConfiguration>,
-      "beforeToolExecution" | "inbox" | "messages" | "contextCheckpoint" | "sessionId"
+      | "beforeToolExecution"
+      | "inbox"
+      | "messages"
+      | "contextCheckpoint"
+      | "sessionId"
+      | "onTodoStateCommitted"
     >,
     hostedSession: HostedSession | undefined,
     agentLogger: Logger,
@@ -525,23 +540,32 @@ export class KanaConversationHost<TConfiguration = never> {
       hostedSession.data.timeline = [...hostedSession.data.timeline, ...entries];
     };
     const writeJournal = <T>(
-      phase: "start" | "message" | "compaction" | "end" | "snapshot",
+      phase: "start" | "message" | "compaction" | "todo" | "end" | "snapshot",
       operation: () => T,
     ): T => {
       try {
         return operation();
       } catch (error) {
-        agentLogger.error("session.journal_write_failed", { phase, error });
+        agentLogger.error("session.journal_write_failed", {
+          phase,
+          errorType: getErrorType(error),
+          errorCode: getErrorCode(error),
+        });
         throw error;
       }
     };
+    const { onTodoStateCommitted, ...agentOptions } = options;
 
     return {
-      ...options,
+      ...agentOptions,
       additionalTools: this.mcpTools,
       // Prompt assembly reads the host-owned MCP snapshot at each model step;
       // Agent construction still receives the initial list for synchronous state.
       resolveAdditionalTools: () => this.mcpTools,
+      resolveTodoState:
+        hostedSession === undefined
+          ? undefined
+          : () => structuredClone(hostedSession.data.todoState),
       env: this.env,
       launchMode: this.launchMode,
       logger: agentLogger,
@@ -561,11 +585,13 @@ export class KanaConversationHost<TConfiguration = never> {
                       compactions: hostedSession.pendingForkCheckpoint
                         ? [hostedSession.pendingForkCheckpoint]
                         : [],
+                      todoState: hostedSession.pendingForkTodoState,
                     }),
                   );
                   appendTimeline(snapshotEntries);
                   hostedSession.pendingForkMessages = undefined;
                   hostedSession.pendingForkCheckpoint = undefined;
+                  hostedSession.pendingForkTodoState = undefined;
                 }
 
                 const entries = writeJournal("start", () => journal.startTurn(runId, messages));
@@ -598,6 +624,37 @@ export class KanaConversationHost<TConfiguration = never> {
                 appendTimeline([entry]);
               },
             },
+      commitTodoState: ({ toolCallId, items }) => {
+        if (!hostedSession) {
+          throw new Error("Cannot update todo state without an active session.");
+        }
+        const acceptedItems = structuredClone(items);
+        if (journal) {
+          const turnId = journal.activeTurnId;
+          if (!turnId) {
+            throw new Error("Cannot update todo state outside an active session turn.");
+          }
+          const entry = writeJournal("todo", () =>
+            journal.appendTodoState(turnId, toolCallId, acceptedItems),
+          );
+          appendTimeline([entry]);
+        }
+        hostedSession.data.todoState = structuredClone(acceptedItems);
+        try {
+          onTodoStateCommitted?.({
+            toolCallId,
+            items: structuredClone(acceptedItems),
+          });
+        } catch (error) {
+          agentLogger.warn("session.todo_state_notification_failed", {
+            errorType: getErrorType(error),
+            errorCode: getErrorCode(error),
+          });
+        }
+        agentLogger.debug("session.todo_state_committed", {
+          itemCount: acceptedItems.length,
+        });
+      },
       onRunCommitted: ({ messages, compactions, state, event }) => {
         if (!hostedSession) {
           throw new Error("Cannot complete an Agent run without an active session.");
@@ -694,6 +751,7 @@ export class KanaConversationHost<TConfiguration = never> {
       metadata: this.createSessionMetadata(),
       messages: [],
       timeline: [],
+      todoState: [],
     });
     hosted.logger.info("session.started", {
       resumed: false,

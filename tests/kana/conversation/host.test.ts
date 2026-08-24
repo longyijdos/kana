@@ -6,6 +6,9 @@ import { Agent } from "../../../src/agent";
 import {
   ConversationRuntime,
   createKanaConversationHost,
+  createKanaSession,
+  createKanaSessionJournal,
+  type KanaTodoItem,
   loadKanaSession,
 } from "../../../src/kana";
 import { MockModel } from "../../../src/providers/mock";
@@ -185,6 +188,49 @@ describe("Kana conversation host", () => {
     await expect(
       host.compactMemory("project", undefined, new AbortController().signal),
     ).rejects.toThrow("Memory is unavailable in clean mode.");
+
+    await host.close();
+  });
+
+  test("copies todo state by value into a fork and persists it with the fork snapshot", async () => {
+    const env = createTempEnv();
+    const source = createKanaSession({ cwd: process.cwd(), env, id: "todo-source" });
+    const todoState: KanaTodoItem[] = [
+      { content: "Preserve the source plan", status: "in_progress" },
+    ];
+    createKanaSessionJournal(source).appendSnapshot([], { todoState });
+    let resolveTodoState: (() => readonly KanaTodoItem[]) | undefined;
+    const host = createKanaConversationHost({
+      env,
+      session: { type: "resume", sessionId: source.id },
+      createAgent: (_config, options = {}) => {
+        resolveTodoState = options.resolveTodoState;
+        return new Agent({
+          model: new MockModel({ provider: "mock", model: "mock", response: "Complete." }),
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+          journal: options.journal,
+          onRunCommitted: options.onRunCommitted,
+          onCompactionCommitted: options.onCompactionCommitted,
+        });
+      },
+    });
+
+    host.createAgent({ sessionId: source.id });
+    expect(resolveTodoState?.()).toEqual(todoState);
+
+    const fork = host.forkSession([], undefined, "Continue independently.");
+    expect(fork.todoState).toEqual(todoState);
+    fork.todoState[0]!.content = "Mutated return value";
+    expect(resolveTodoState?.()).toEqual(todoState);
+
+    const forkAgent = host.createAgent({ sessionId: fork.id });
+    expect(resolveTodoState?.()).toEqual(todoState);
+    await forkAgent.prompt("Continue the fork.");
+
+    const loadedFork = host.loadSession(fork.id);
+    expect(loadedFork.todoState).toEqual(todoState);
+    expect(loadedFork.timeline.some((entry) => entry.type === "todo_state")).toBe(true);
 
     await host.close();
   });

@@ -301,6 +301,7 @@ function createHeadlessRuntime(
           id: host.initialSession.metadata.id,
           messages: host.initialSession.messages,
           timeline: host.initialSession.timeline,
+          todoState: host.initialSession.todoState,
           contextCheckpoint: host.initialSession.contextCheckpoint,
         }
       : undefined,
@@ -314,6 +315,7 @@ function createHeadlessRuntime(
         id: session.metadata.id,
         messages: session.messages,
         timeline: session.timeline,
+        todoState: session.todoState,
         contextCheckpoint: session.contextCheckpoint,
       };
     },
@@ -445,6 +447,7 @@ class HeadlessRunOutput {
         this.handleAgentEvent(event.event);
         return;
       case "session_changed":
+      case "todo_state_changed":
         return;
     }
   }

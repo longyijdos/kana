@@ -11,6 +11,7 @@ import {
 } from "../../src/kana/memory/consolidation-tools";
 import { createRememberTool } from "../../src/kana/tools/remember";
 import { createScheduleWakeTool } from "../../src/kana/tools/schedule-wake";
+import { createTodoWriteTool } from "../../src/kana/tools/todo-write";
 import { createBashTool } from "../../src/tools/bash";
 import { createEditTool } from "../../src/tools/edit";
 import { createGlobTool } from "../../src/tools/glob";
@@ -171,6 +172,13 @@ const schemaCases: SchemaCase[] = [
     valid: { afterMinutes: 30, message: "continue", key: "build" },
     invalidArgs: { afterMinutes: 30, message: "continue", replaceKey: "build" },
     unexpected: "replaceKey",
+  },
+  {
+    name: "todo_write",
+    tool: createTodoWriteTool(),
+    valid: { items: [{ content: "Implement it", status: "in_progress" }] },
+    invalidArgs: { items: [], append: true },
+    unexpected: "append",
   },
   {
     name: "read_memory",

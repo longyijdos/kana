@@ -121,6 +121,11 @@ export {
   syncKanaSkills,
 } from "./skills";
 export {
+  countKanaTodos,
+  type KanaTodoItem,
+  type KanaTodoStateChange,
+} from "./todo";
+export {
   addTrustedBashCommand,
   DEFAULT_KANA_TOOL_APPROVALS,
   getBashCommand,

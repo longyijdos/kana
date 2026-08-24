@@ -10,8 +10,9 @@ import {
   type ModelUsage,
   type UserMessage,
 } from "@/core";
+import { isKanaTodoItems, type KanaTodoItem } from "../todo";
 
-export const SESSION_VERSION = 4;
+export const SESSION_VERSION = 5;
 const CONTEXT_SUMMARY_FORMAT = "kana-context-summary-v1";
 const DEFAULT_SESSION_TITLE = "Untitled session";
 const MAX_SESSION_TITLE_LENGTH = 80;
@@ -86,10 +87,20 @@ export type KanaSessionContextCompactionEntry = {
   usage?: ModelUsage;
 };
 
+export type KanaSessionTodoStateEntry = {
+  type: "todo_state";
+  id: string;
+  parentId: string | null;
+  timestamp: string;
+  toolCallId?: string;
+  items: KanaTodoItem[];
+};
+
 export type KanaSessionTimelineEntry =
   | KanaSessionTurnStartEntry
   | KanaSessionMessageEntry
   | KanaSessionContextCompactionEntry
+  | KanaSessionTodoStateEntry
   | KanaSessionTurnEndEntry;
 
 export type CreateKanaSessionOptions = {
@@ -118,6 +129,7 @@ export type LoadKanaSessionResult = {
   metadata: KanaSessionMetadata;
   messages: Message[];
   timeline: KanaSessionTimelineEntry[];
+  todoState: KanaTodoItem[];
   contextCheckpoint?: ContextCheckpoint;
   recoveredInterruptedTurn?: {
     turnId: string;
@@ -130,7 +142,9 @@ export type AppendCompactionOptions = {
   turnId?: string;
 };
 
-export type AppendSnapshotOptions = AppendKanaSessionRunOptions;
+export type AppendSnapshotOptions = AppendKanaSessionRunOptions & {
+  todoState?: KanaTodoItem[];
+};
 
 export function createEntryId(): string {
   return randomUUID();
@@ -324,6 +338,18 @@ export function parseTimelineEntry(
       throw new Error(`Invalid Kana session compaction entry: ${filePath}:${lineNumber}`);
     }
     return parsed;
+  }
+
+  if (parsed.type === "todo_state") {
+    if (
+      !hasTimelineIdentity(parsed) ||
+      (parsed.toolCallId !== undefined &&
+        (typeof parsed.toolCallId !== "string" || parsed.toolCallId.length === 0)) ||
+      !isKanaTodoItems(parsed.items)
+    ) {
+      throw new Error(`Invalid Kana session todo state: ${filePath}:${lineNumber}`);
+    }
+    return parsed as KanaSessionTodoStateEntry;
   }
 
   if (parsed.type === "turn_end") {

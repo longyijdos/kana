@@ -14,6 +14,7 @@ describe("prompt command help", () => {
     const approval = PROMPT_COMMANDS.find((command) => command.name === "approval");
     const compact = PROMPT_COMMANDS.find((command) => command.name === "compact");
     const tools = PROMPT_COMMANDS.find((command) => command.name === "tools");
+    const todo = PROMPT_COMMANDS.find((command) => command.name === "todo");
 
     expect(fork).toBeDefined();
     expect(memory).toBeDefined();
@@ -39,5 +40,8 @@ describe("prompt command help", () => {
     expect(formatPromptCommandHelpLine(tools!)).toContain("Browse tool calls");
     expect(formatPromptCommandUsage("tools")).toBe("Usage: /tools");
     expect(tools!.argumentSyntax).toBeUndefined();
+    expect(todo).toBeDefined();
+    expect(todo!.description).toBe("Show the current session todo list.");
+    expect(formatPromptCommandUsage("todo")).toBe("Usage: /todo");
   });
 });

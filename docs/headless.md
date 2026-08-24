@@ -30,7 +30,7 @@ kana exec --timeout 30m complete this change
 kana exec resume <session-id> --timeout 30m continue the task
 ```
 
-New and resumed executions are both assembled through `KanaConversationHost` and `ConversationRuntime`, so they share the TUI's model, reasoning configuration, system prompt, Skills, workspace tools, and product policies. Normal mode continues to use MCP, the V4 session journal, accounting, logging, and memory scheduling.
+New and resumed executions are both assembled through `KanaConversationHost` and `ConversationRuntime`, so they share the TUI's model, reasoning configuration, system prompt, Skills, workspace tools, and product policies. Normal mode continues to use MCP, the V5 session journal, accounting, logging, and memory scheduling.
 
 After the conversation runtime closes, headless shutdown aborts and awaits any unfinished automatic memory consolidation before closing MCP. A `remember` entry has already been persisted to daily staging at that point; cancellation leaves that entry intact and does not commit a partial durable-memory transaction.
 

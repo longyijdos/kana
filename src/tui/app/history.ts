@@ -15,11 +15,15 @@ export function addHistoryTimelineToTranscript(
   options: { hyperlinks?: boolean; renderLatex?: boolean; renderMermaid?: boolean } = {},
 ): void {
   const toolCalls = new Map<string, ToolCallContent>();
+  const todoStates = new Map<
+    string,
+    Extract<KanaSessionTimelineEntry, { type: "todo_state" }>["items"]
+  >();
 
   for (const entry of timeline) {
     switch (entry.type) {
       case "message":
-        addHistoryMessage(transcript, entry.message, toolCalls, options);
+        addHistoryMessage(transcript, entry.message, toolCalls, todoStates, options);
         break;
       case "context_compaction":
         transcript.addChild(
@@ -31,6 +35,11 @@ export function addHistoryTimelineToTranscript(
       case "turn_start":
       case "turn_end":
         break;
+      case "todo_state":
+        if (entry.toolCallId !== undefined) {
+          todoStates.set(entry.toolCallId, structuredClone(entry.items));
+        }
+        break;
     }
   }
 }
@@ -39,6 +48,7 @@ function addHistoryMessage(
   transcript: Transcript,
   message: Message,
   toolCalls: Map<string, ToolCallContent>,
+  todoStates: Map<string, Extract<KanaSessionTimelineEntry, { type: "todo_state" }>["items"]>,
   options: { hyperlinks?: boolean; renderLatex?: boolean; renderMermaid?: boolean },
 ): void {
   switch (message.role) {
@@ -61,7 +71,7 @@ function addHistoryMessage(
       break;
 
     case "tool":
-      addToolResult(transcript, message, toolCalls);
+      addToolResult(transcript, message, toolCalls, todoStates);
       break;
   }
 }
@@ -105,6 +115,7 @@ function addToolResult(
   transcript: Transcript,
   message: Extract<Message, { role: "tool" }>,
   toolCalls: Map<string, ToolCallContent>,
+  todoStates: Map<string, Extract<KanaSessionTimelineEntry, { type: "todo_state" }>["items"]>,
 ): void {
   const block = new ToolCallBlock(
     toolCalls.get(message.toolCallId) ?? {
@@ -114,6 +125,11 @@ function addToolResult(
       args: undefined,
     },
   );
+  const todoState = todoStates.get(message.toolCallId);
+  if (todoState !== undefined) {
+    block.updateTodoState(todoState);
+    todoStates.delete(message.toolCallId);
+  }
 
   // Artifact previews are model-facing context, not restored transcript
   // presentation. Keep history compact and expose retrieval metadata instead.

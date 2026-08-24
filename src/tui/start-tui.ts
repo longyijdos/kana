@@ -105,6 +105,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
             id: host.initialSession.metadata.id,
             messages: host.initialSession.messages,
             timeline: host.initialSession.timeline,
+            todoState: host.initialSession.todoState,
             contextCheckpoint: host.initialSession.contextCheckpoint,
           }
         : undefined,
@@ -121,6 +122,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
           id: session.metadata.id,
           messages: session.messages,
           timeline: session.timeline,
+          todoState: session.todoState,
           contextCheckpoint: session.contextCheckpoint,
         };
       },

@@ -17,6 +17,7 @@ import type { KanaLaunchMode } from "./launch-mode";
 import { formatKanaMemoryForPrompt } from "./memory/prompt";
 import { formatKanaSkillsForPrompt } from "./skills/prompt";
 import type { KanaSkill } from "./skills/types";
+import type { KanaTodoItem } from "./todo";
 
 const DEFAULT_SYSTEM_PROMPT = [
   "You are a concise, practical assistant working in the user's current environment.",
@@ -24,6 +25,7 @@ const DEFAULT_SYSTEM_PROMPT = [
   "Use write to create complete files, and set overwrite only when intentionally replacing the whole file.",
   "Use edit to modify existing files by exact text replacement.",
   "Use bash when a shell command is the right way to inspect or change local state.",
+  "Use todo_write to keep a whole-list plan synchronized during multi-step work, but skip it for simple tasks.",
   "Do not claim to have read a file unless you used the read tool or the content was provided directly.",
 ].join(" ");
 
@@ -41,6 +43,7 @@ export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions 
 
 export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
   toolSections?: readonly PromptToolSection[];
+  resolveTodoState?: () => readonly KanaTodoItem[];
 };
 
 function loadKanaSystemSections(options: LoadKanaSystemPromptOptions = {}): PromptSystemSection[] {
@@ -102,9 +105,28 @@ export function buildKanaPromptAssembly(
         name: "environment",
         render: () => formatKanaEnvironmentContext(collectKanaEnvironmentContext(options)),
       },
+      ...(options.resolveTodoState
+        ? [
+            {
+              name: "todo",
+              render: () => formatKanaTodoRuntimeContext(options.resolveTodoState?.() ?? []),
+            },
+          ]
+        : []),
     ],
     tools: options.toolSections,
   });
+}
+
+function formatKanaTodoRuntimeContext(items: readonly KanaTodoItem[]): string | undefined {
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  return [
+    "Current session todo state. todo_write replaces the complete list when updating it.",
+    JSON.stringify({ items }),
+  ].join("\n");
 }
 
 function formatAgentsInstructions(scope: "global" | "project", content: string): string {
