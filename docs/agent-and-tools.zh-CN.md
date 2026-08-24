@@ -58,7 +58,7 @@ agent_start
   若 signal 已中止，结束
   发出 turn_start
   为本次模型调用解析 prompt assembly
-  提交并追加有变化的 runtime-context 快照或一次性 inactive marker
+  提交并追加有变化的明确 runtime-context 状态转换
   流式读取助手消息，并把每个快照写入当前 context
   将可保留的助手消息加入新消息列表
   若模型错误或已中止，发出 turn_end 后结束
@@ -77,7 +77,7 @@ Kana 产品默认 `max_turns = -1`，但独立使用 `Agent`/`runAgentLoop` 时�
 
 ## 上下文压缩
 
-配置了 `ContextManager` 时，每次模型请求前先从完整 Agent 历史创建一个独立的 model projection；原始 `messages` 不会因压缩而删除。该 projection 对每个来源只保留当前最新且仍 active 的 runtime-context 快照，因此被替换的旧值和 inactive marker 可以持久保存，却不会发送给模型。Runtime-context 消息是权威状态而不是对话，因此不会进入摘要策略输入；checkpoint 覆盖当前 active 快照时，该快照会紧接摘要重新投影。prompt budget 是 context limit 扣除安全预留后的容量，不固定预留配置的最大输出。估算达到该预算的 80% 时触发压缩，规则从旧到新扫描，只允许在无 tool call 的完整 assistant turn 后，或一组 assistant tool calls 的所有 results 都已出现后切分。它选择第一个能让“最大摘要占位 + 重新投影的 runtime context + 近期原始消息”进入 10% 目标的边界，从而让一次压缩覆盖尽可能多的旧上下文；没有任何安全边界且尚未超过 prompt budget 时延后压缩，不能安全恢复时则报错。
+配置了 `ContextManager` 时，每次模型请求前先从完整 Agent 历史创建一个独立的 model projection；原始 `messages` 不会因压缩而删除。在两个 checkpoint 之间，该 projection 会保留所有 runtime-context 转换。稳定 system 协议只让每个 source 的最后一条消息生效，因此更新和 inactive 状态都能追加，而无需改写前面的模型消息前缀。Runtime-context 消息是权威状态而不是对话，因此不会进入摘要策略输入；在 checkpoint 边界处，只把该边界上每个 source 仍 active 的最后状态紧接摘要重新投影，边界后的全部转换则保持原顺序。prompt budget 是 context limit 扣除安全预留后的容量，不固定预留配置的最大输出。估算达到该预算的 80% 时触发压缩，规则从旧到新扫描，只允许在无 tool call 的完整 assistant turn 后，或一组 assistant tool calls 的所有 results 都已出现后切分。它选择第一个能让“最大摘要占位 + 边界 runtime 状态 + 近期原始消息”进入 10% 目标的边界，从而让一次压缩覆盖尽可能多的旧上下文；没有任何安全边界且尚未超过 prompt budget 时延后压缩，不能安全恢复时则报错。
 
 prompt 估算会区分可重放上下文和单次 response 的计费用量。没有 provider-hosted tool 的响应完成后，manager 把 provider 返回的 `input_tokens` 保存为该请求的精确锚点，此后只为新提交的消息增加本地估算；包含 hosted tool 的响应不会替换锚点，因为托管搜索网页等临时 provider 内容可能计入本轮输入费用，却不存在于 Kana 可重放的历史中。下一次普通响应重新校准以前，Kana 只累计已持久化的 assistant 内容、hosted-call 元数据、客户端工具调用/结果和后续用户消息。新建、恢复、切换模型或刚完成压缩且没有锚点时，则对 model projection 做完整本地估算。文本采用偏保守的 UTF-8 字节估算，协议 envelope 使用固定开销，工具 schema/action 按 JSON 估算，图片按 patch 数量计算而不使用持久化 base64 大小。
 
@@ -93,7 +93,7 @@ provider 可把明确的 context-window 拒绝映射为 `ContextWindowExceededEr
 
 ## `Agent` 的生命周期
 
-`Agent.stream(input)` 异步启动循环。`AgentConfig.promptAssembly` 不能与旧的 `system`/`tools` 输入同时使用；为兼容旧调用，这两个输入会转换成单个不可变 assembly。配置 `AgentJournal` 时，它先持久化 run 边界和用户输入，再把输入加入内部历史并允许模型 I/O；发生变化的 runtime-context 快照和 inactive marker 遵循同样的“先写入、后调用模型”规则。没有 journal 的通用嵌入方式保持内存行为。它在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
+`Agent.stream(input)` 异步启动循环。`AgentConfig.promptAssembly` 不能与旧的 `system`/`tools` 输入同时使用；为兼容旧调用，这两个输入会转换成单个不可变 assembly。每个已配置的 context renderer 都必须返回明确且非空的 active 或 inactive 状态。初始就是 inactive 的 source 不写消息；激活后，有变化的状态和 run 输入一样遵循“先写入、后调用模型”的规则。没有 journal 的通用嵌入方式保持内存行为。Agent 在任意时刻只允许一个活动运行；并发调用会得到错误流。`prompt(input)` 是等待 `stream(input).result()` 的便捷方法。
 
 Agent 持有一个仅存在于内存的 inbox，其中有 `next-step` 和 `next-turn` 两条 lane。活动 run 的 `steer(userMessage)` 把原始带 ID 消息放入 `next-step`；下一个可用 turn 边界先写 journal，再按 MessageId claim，随后发出 `turn_input` 并返回 `consumed`。journal commit 一旦开始，该项会保持 reservation，不能被取消或 inbox clear 删除，直到按身份校验的 claim 完成，因此 shutdown 不会让 durable input 与实际 claim 的消息错位。中止或 turn limit 会把未 claim 的 steering 移到 `next-turn` 尾部，不更换 ID，并返回 `deferred`。Tab 后续输入和到期定时消息直接进入 `next-turn`。`ConversationRuntime` 只编排该 lane 何时可启动新 run，并发布只读前端快照，不再生成第二套队列身份。
 

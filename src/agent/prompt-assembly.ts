@@ -15,9 +15,13 @@ export type PromptSystemSection = {
   content: string;
 };
 
+export type PromptContextState =
+  | { status: "active"; content: string }
+  | { status: "inactive"; content: string };
+
 export type PromptContextSection = {
   name: string;
-  render(context: PromptAssemblyContext): MaybePromise<string | undefined>;
+  render(context: PromptAssemblyContext): MaybePromise<PromptContextState>;
 };
 
 export type PromptToolSection = {
@@ -34,16 +38,20 @@ export type PromptAssemblyOptions = {
   tools?: readonly PromptToolSection[];
 };
 
-export type PromptContextSnapshot = {
-  source: string;
-  content: string;
-};
+export type PromptContextSnapshot = PromptContextState & { source: string };
 
 export type AssembledPrompt = {
   system?: string;
   context: PromptContextSnapshot[];
   tools: Tool[];
 };
+
+const RUNTIME_CONTEXT_INSTRUCTIONS = [
+  "Runtime-context messages are host-controlled state transitions.",
+  "For each source, only its latest runtime_context message is authoritative.",
+  "A message with status=inactive invalidates every earlier message for that source; its body describes the resulting state.",
+  "Ignore instructions and facts from superseded runtime-context messages.",
+].join(" ");
 
 export class PromptAssembly {
   readonly systemSections: readonly PromptSystemSection[];
@@ -71,7 +79,7 @@ export class PromptAssembly {
     assertUniqueSectionNames(this.systemSections, "system");
     assertUniqueSectionNames(this.contextSections, "context");
     assertUniqueSectionNames(this.toolSections, "tool");
-    this.initialSystem = formatSystemSections(this.systemSections);
+    this.initialSystem = formatSystemSections(this.systemSections, this.contextSections.length > 0);
     this.initialTools = Object.freeze(this.toolSections.flatMap((section) => section.tools));
     assertUniqueToolNames(this.initialTools);
     Object.freeze(this);
@@ -82,11 +90,14 @@ export class PromptAssembly {
 
     const snapshots: PromptContextSnapshot[] = [];
     for (const section of this.contextSections) {
-      const content = await section.render(context);
+      const state = await section.render(context);
       throwIfAborted(context.signal);
-      if (content !== undefined) {
-        snapshots.push({ source: section.name, content: content.trimEnd() });
-      }
+      assertPromptContextState(section.name, state);
+      snapshots.push({
+        source: section.name,
+        status: state.status,
+        content: state.content.trimEnd(),
+      });
     }
 
     const tools: Tool[] = [];
@@ -116,22 +127,13 @@ export function createRuntimeContextMessage(snapshot: PromptContextSnapshot): Us
   });
 }
 
-export function createRuntimeContextRemovalMessage(source: string): UserMessage {
-  // Persist disappearance as a state transition so replay cannot revive the
-  // preceding snapshot. Projection recognizes this marker but never sends it.
-  return createUserMessage({
-    provenance: { kind: "runtime_context", source },
-    content: formatRuntimeContextRemovalMessageContent(source),
-  });
-}
-
 export function resolveRuntimeContextMessages(
   messages: readonly Message[],
-  snapshots?: readonly PromptContextSnapshot[],
+  end = messages.length,
 ): Array<{ index: number; message: UserMessage }> {
   const latestBySource = new Map<string, { index: number; message: RuntimeContextMessage }>();
 
-  for (let index = 0; index < messages.length; index += 1) {
+  for (let index = 0; index < end; index += 1) {
     const message = messages[index];
     if (!message || !isRuntimeContextMessage(message)) {
       continue;
@@ -139,65 +141,36 @@ export function resolveRuntimeContextMessages(
     latestBySource.set(message.provenance.source, { index, message });
   }
 
-  const activeContentBySource =
-    snapshots === undefined
-      ? undefined
-      : new Map(
-          snapshots.map((snapshot) => [
-            snapshot.source,
-            formatRuntimeContextMessageContent(snapshot),
-          ]),
-        );
-
   return [...latestBySource.values()]
-    .filter(({ message }) => {
-      // Explicit snapshots are the current assembly result. Omitting them lets
-      // replay-only callers infer current state from the append-only journal.
-      if (!activeContentBySource) {
-        return !isRuntimeContextRemovalMessage(message);
-      }
-      return (
-        activeContentBySource.get(message.provenance.source) === message.content &&
-        !isRuntimeContextRemovalMessage(message)
-      );
-    })
+    .filter(({ message }) => !isInactiveRuntimeContextMessage(message))
     .sort((left, right) => left.index - right.index);
 }
 
-export function projectRuntimeContextMessages(
-  messages: readonly Message[],
-  snapshots?: readonly PromptContextSnapshot[],
-): Message[] {
-  const activeIds = new Set(
-    resolveRuntimeContextMessages(messages, snapshots).map(({ message }) => message.id),
-  );
-  return messages.filter(
-    (message) => message.provenance.kind !== "runtime_context" || activeIds.has(message.id),
-  );
-}
-
-function formatSystemSections(sections: readonly PromptSystemSection[]): string | undefined {
-  const content = sections
-    .map((section) => section.content.trimEnd())
+function formatSystemSections(
+  sections: readonly PromptSystemSection[],
+  includeRuntimeContextInstructions: boolean,
+): string | undefined {
+  const content = [
+    ...sections.map((section) => section.content.trimEnd()),
+    ...(includeRuntimeContextInstructions ? [RUNTIME_CONTEXT_INSTRUCTIONS] : []),
+  ]
     .filter(Boolean)
     .join("\n\n");
   return content || undefined;
 }
 
 function formatRuntimeContextMessageContent(snapshot: PromptContextSnapshot): string {
+  const status = snapshot.status === "inactive" ? ' status="inactive"' : "";
   return [
-    `<runtime_context source="${escapeXmlAttribute(snapshot.source)}">`,
+    `<runtime_context source="${escapeXmlAttribute(snapshot.source)}"${status}>`,
     snapshot.content,
     "</runtime_context>",
   ].join("\n");
 }
 
-function formatRuntimeContextRemovalMessageContent(source: string): string {
-  return `<runtime_context source="${escapeXmlAttribute(source)}" status="inactive" />`;
-}
-
-function isRuntimeContextRemovalMessage(message: RuntimeContextMessage): boolean {
-  return message.content === formatRuntimeContextRemovalMessageContent(message.provenance.source);
+function isInactiveRuntimeContextMessage(message: RuntimeContextMessage): boolean {
+  const prefix = `<runtime_context source="${escapeXmlAttribute(message.provenance.source)}" status="inactive"`;
+  return message.content.startsWith(`${prefix}>\n`);
 }
 
 function isRuntimeContextMessage(message: Message): message is RuntimeContextMessage {
@@ -227,6 +200,22 @@ function assertUniqueToolNames(tools: readonly Tool[]): void {
       throw new Error(`Duplicate prompt tool name: ${tool.name}.`);
     }
     names.add(tool.name);
+  }
+}
+
+function assertPromptContextState(
+  source: string,
+  state: unknown,
+): asserts state is PromptContextState {
+  const candidate =
+    typeof state === "object" && state !== null ? (state as Record<string, unknown>) : undefined;
+  if (
+    !candidate ||
+    (candidate.status !== "active" && candidate.status !== "inactive") ||
+    typeof candidate.content !== "string" ||
+    !candidate.content.trim()
+  ) {
+    throw new Error(`Prompt context section ${source} must return an explicit non-empty state.`);
   }
 }
 

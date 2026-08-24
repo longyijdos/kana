@@ -825,6 +825,7 @@ describe("Kana config", () => {
       expect(prompt.context).toEqual([
         {
           source: "environment",
+          status: "active",
           content: [
             "<environment_context>",
             "  <cwd>/repo</cwd>",

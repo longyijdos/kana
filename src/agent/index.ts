@@ -24,6 +24,7 @@ export { createModelCompactPolicy } from "./model-compact-policy";
 export {
   createPromptAssembly,
   PromptAssembly,
+  type PromptContextState,
   type PromptSystemSection,
   type PromptToolSection,
 } from "./prompt-assembly";

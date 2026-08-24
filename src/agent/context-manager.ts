@@ -412,22 +412,16 @@ export class ContextManager {
 
   private createModelContext(context: ModelContext): ModelContext {
     const coveredMessageCount = this.checkpointData?.coveredMessageCount ?? 0;
-    const runtimeContext = resolveRuntimeContextMessages(context.messages, this.runtimeContextData);
-    const activeRuntimeContextIds = new Set(runtimeContext.map(({ message }) => message.id));
-    const messages = context.messages
-      .slice(coveredMessageCount)
-      .filter(
-        (message) =>
-          message.provenance.kind !== "runtime_context" || activeRuntimeContextIds.has(message.id),
-      );
+    const messages = context.messages.slice(coveredMessageCount);
 
     if (this.checkpointData) {
       // Runtime snapshots are authoritative state rather than conversation to
-      // summarize. Re-project the latest covered value for each source without
-      // writing another logical message to the append-only history.
-      const coveredRuntimeContext = runtimeContext
-        .filter(({ index }) => index < coveredMessageCount)
-        .map(({ message }) => structuredClone(message));
+      // summarize. Re-project the state at the boundary, then retain every
+      // later transition so the latest message for each source remains current.
+      const coveredRuntimeContext = resolveRuntimeContextMessages(
+        context.messages,
+        coveredMessageCount,
+      ).map(({ message }) => structuredClone(message));
       messages.unshift(
         createUserMessage({
           content: formatSummaryForModel(this.checkpointData.summary),
@@ -486,7 +480,7 @@ export class ContextManager {
             content: formatSummaryForModel("x".repeat(this.maxSummaryTokens * 3)),
             provenance: { kind: "context_summary" },
           }),
-          ...projectRuntimeContextForBoundary(context.messages, boundary, this.runtimeContextData),
+          ...projectRuntimeContextForBoundary(context.messages, boundary),
         ],
         tools: context.tools,
       };
@@ -513,8 +507,8 @@ export class ContextManager {
       this.runtimeContextData !== undefined &&
       !sameRuntimeContext(this.runtimeContextData, runtimeContext)
     ) {
-      // Provider usage measured a different model projection. Once a source is
-      // replaced or removed, that request can no longer anchor future estimates.
+      // Dynamic context can change alongside system or tool capabilities. Keep
+      // estimates conservative until a request with the new prompt is measured.
       this.usageMeasurement = undefined;
     }
     this.runtimeContextData = runtimeContext.map((snapshot) => ({ ...snapshot }));
@@ -539,19 +533,12 @@ function isRuntimeContextMessage(message: Message): message is UserMessage {
 function projectRuntimeContextForBoundary(
   messages: readonly Message[],
   boundary: number,
-  runtimeContext: readonly PromptContextSnapshot[] | undefined,
 ): Message[] {
-  const resolved = resolveRuntimeContextMessages(messages, runtimeContext);
-  const activeIds = new Set(resolved.map(({ message }) => message.id));
   return [
-    ...resolved
-      .filter(({ index }) => index < boundary)
-      .map(({ message }) => structuredClone(message)),
-    ...messages
-      .slice(boundary)
-      .filter(
-        (message) => message.provenance.kind !== "runtime_context" || activeIds.has(message.id),
-      ),
+    ...resolveRuntimeContextMessages(messages, boundary).map(({ message }) =>
+      structuredClone(message),
+    ),
+    ...structuredClone(messages.slice(boundary)),
   ];
 }
 
@@ -563,7 +550,9 @@ function sameRuntimeContext(
     left.length === right.length &&
     left.every(
       (snapshot, index) =>
-        snapshot.source === right[index]?.source && snapshot.content === right[index]?.content,
+        snapshot.source === right[index]?.source &&
+        snapshot.status === right[index]?.status &&
+        snapshot.content === right[index]?.content,
     )
   );
 }

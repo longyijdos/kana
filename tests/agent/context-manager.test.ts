@@ -182,10 +182,12 @@ describe("ContextManager", () => {
     });
     const previousRuntimeContext = createRuntimeContextMessage({
       source: "environment",
+      status: "active",
       content: "current date: 2026-08-21",
     });
     const runtimeContext = createRuntimeContextMessage({
       source: "environment",
+      status: "active",
       content: "current date: 2026-08-22",
     });
     const messages: Message[] = [
@@ -217,7 +219,11 @@ describe("ContextManager", () => {
 
     const prepared = await manager.prepareForModel(
       { messages },
-      { runtimeContext: [{ source: "environment", content: "current date: 2026-08-22" }] },
+      {
+        runtimeContext: [
+          { source: "environment", status: "active", content: "current date: 2026-08-22" },
+        ],
+      },
     );
 
     expect(prepared.compaction).toMatchObject({
@@ -236,33 +242,67 @@ describe("ContextManager", () => {
       ...messages.slice(4),
     ]);
 
-    const inactive = await manager.prepareForModel({ messages }, { runtimeContext: [] });
+    const inactiveRuntimeContext = createRuntimeContextMessage({
+      source: "environment",
+      status: "inactive",
+      content: "No environment context is active.",
+    });
+    const inactive = await manager.prepareForModel(
+      { messages: [...messages, inactiveRuntimeContext] },
+      {
+        runtimeContext: [
+          {
+            source: "environment",
+            status: "inactive",
+            content: "No environment context is active.",
+          },
+        ],
+      },
+    );
     expect(inactive.context.messages).toEqual([
       expect.objectContaining({
         role: "user",
         provenance: { kind: "context_summary" },
         content: expect.stringContaining("Earlier conversation."),
       }),
+      runtimeContext,
       ...messages.slice(4),
+      inactiveRuntimeContext,
     ]);
   });
 
-  test("projects only the latest active runtime context before compaction", async () => {
+  test("retains every runtime context transition before compaction", async () => {
     const manager = new ContextManager({
       contextLimit: 128_000,
       maxOutputTokens: 16_000,
     });
-    const dayOne = createRuntimeContextMessage({ source: "environment", content: "day one" });
-    const dayTwo = createRuntimeContextMessage({ source: "environment", content: "day two" });
-    const context = { messages: [dayOne, dayTwo] };
-
-    const active = await manager.prepareForModel(context, {
-      runtimeContext: [{ source: "environment", content: "day two" }],
+    const dayOne = createRuntimeContextMessage({
+      source: "environment",
+      status: "active",
+      content: "day one",
     });
-    expect(active.context.messages).toEqual([dayTwo]);
+    const dayTwo = createRuntimeContextMessage({
+      source: "environment",
+      status: "active",
+      content: "day two",
+    });
+    const inactive = createRuntimeContextMessage({
+      source: "environment",
+      status: "inactive",
+      content: "No environment context is active.",
+    });
+    const context = { messages: [dayOne, dayTwo, inactive] };
 
-    const inactive = await manager.prepareForModel(context, { runtimeContext: [] });
-    expect(inactive.context.messages).toEqual([]);
+    const prepared = await manager.prepareForModel(context, {
+      runtimeContext: [
+        {
+          source: "environment",
+          status: "inactive",
+          content: "No environment context is active.",
+        },
+      ],
+    });
+    expect(prepared.context.messages).toEqual([dayOne, dayTwo, inactive]);
   });
 
   test("defers threshold compaction when no complete turn is available", async () => {
