@@ -185,7 +185,7 @@ bun run check
 `comment-check-ignore: <reason>` 豁免除外。需要主动清理未使用的导出或依赖时，应单独运行
 `bun run knip:fix`，并在提交前审阅它产生的修改。
 
-Kana 仍处于 `1.0` 前的快速开发阶段，CLI 行为、协议和持久化格式可能随次版本演进。贡献前请阅读 [AGENTS.md](AGENTS.md)，版本与发布细节见[发版流程](docs/releasing.zh-CN.md)。
+Kana 仍处于 `1.0` 前的快速开发阶段，CLI 行为、协议和持久化格式可能随次版本演进。贡献方式见 [CONTRIBUTING.md](CONTRIBUTING.md)；[AGENTS.md](AGENTS.md) 包含面向编码 Agent 的工作流与实现指引，不是面向人类贡献者的主要指南。版本与发布细节见[发版流程](docs/releasing.zh-CN.md)。
 
 ## 许可证
 
