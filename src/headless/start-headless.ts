@@ -9,8 +9,15 @@ import {
   type KanaToolApprovals,
   shouldRequestToolApproval,
 } from "@/kana";
+import type { Logger } from "@/logging";
 import type { McpServerDiagnostic } from "@/mcp";
-import { createKanaExecEvent, type KanaExecEvent, toKanaExecUsage } from "./protocol";
+import {
+  createKanaExecEvent,
+  type KanaExecEvent,
+  type KanaExecRunTermination,
+  toKanaExecUsage,
+} from "./protocol";
+import { assertValidHeadlessTimeoutMs } from "./timeout";
 
 export type StartHeadlessOptions = {
   prompt?: string;
@@ -18,6 +25,7 @@ export type StartHeadlessOptions = {
   launchMode?: KanaLaunchMode;
   json?: boolean;
   allowAllTools?: boolean;
+  timeoutMs?: number;
 };
 
 export type HeadlessOutputStream = {
@@ -33,13 +41,25 @@ export type RunHeadlessConversationOptions = {
   json?: boolean;
   warnings?: readonly HeadlessWarning[];
   signal?: AbortSignal;
+  timeoutMs?: number;
+  logger?: Logger;
   stdout?: HeadlessOutputStream;
   stderr?: HeadlessOutputStream;
 };
 
+type HeadlessRunTermination =
+  | {
+      reason: "timeout";
+      timeoutMs: number;
+    }
+  | {
+      reason: "sigint";
+    };
+
 export type HeadlessRunResult = {
   exitCode: number;
   outcome?: AgentEndReason;
+  termination?: HeadlessRunTermination;
   finalMessage?: string;
   usage?: ModelUsage;
 };
@@ -50,7 +70,20 @@ type HeadlessWarning = {
   serverId?: string;
 };
 
+const HEADLESS_SIGNAL_REASON = Symbol("headlessSignalReason");
+
+type HeadlessSignalReason = {
+  [HEADLESS_SIGNAL_REASON]: HeadlessRunTermination;
+};
+
 export async function startHeadless(options: StartHeadlessOptions = {}): Promise<number> {
+  try {
+    assertValidHeadlessTimeoutMs(options.timeoutMs);
+  } catch (error) {
+    writeStartupError(error, options.json ?? false);
+    return 1;
+  }
+
   if (options.launchMode === "clean" && options.resumeSessionId !== undefined) {
     writeStartupError(
       new Error("Clean mode cannot resume saved sessions because its session is temporary."),
@@ -69,11 +102,13 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
 
   const controller = new AbortController();
   let runtime: ConversationRuntime | undefined;
-  let interrupted = false;
   const onInterrupt = (): void => {
-    interrupted = true;
-    controller.abort(new Error("Kana exec was interrupted."));
-    runtime?.abort();
+    if (controller.signal.aborted) {
+      return;
+    }
+    // Brand only frontend-owned cancellation so arbitrary callers using the
+    // public AbortSignal path remain ordinary `aborted` runs.
+    controller.abort(createHeadlessSignalReason({ reason: "sigint" }));
   };
   process.once("SIGINT", onInterrupt);
 
@@ -93,6 +128,7 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
       launchMode: options.launchMode ?? "normal",
       outputMode: options.json ? "jsonl" : "human",
       resumed: options.resumeSessionId !== undefined,
+      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     });
 
     const mcpSnapshot = await host.startMcp();
@@ -118,11 +154,14 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
       json: options.json,
       warnings: warningsFromMcpDiagnostics(mcpSnapshot.diagnostics),
       signal: controller.signal,
+      timeoutMs: options.timeoutMs,
+      logger: host.getLogger(),
     });
-    const exitCode = interrupted ? 130 : result.exitCode;
+    const exitCode = result.exitCode;
     host.getLogger().info("headless.completed", {
       outcome: result.outcome ?? "failed",
       exitCode,
+      ...(result.termination === undefined ? {} : { terminationReason: result.termination.reason }),
     });
     return exitCode;
   } catch (error) {
@@ -131,7 +170,7 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
       error,
     });
     writeStartupError(error, options.json ?? false);
-    return interrupted ? 130 : 1;
+    return readHeadlessSignalReason(controller.signal)?.reason === "sigint" ? 130 : 1;
   } finally {
     process.off("SIGINT", onInterrupt);
     try {
@@ -145,10 +184,25 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
 export async function runHeadlessConversation(
   options: RunHeadlessConversationOptions,
 ): Promise<HeadlessRunResult> {
+  assertValidHeadlessTimeoutMs(options.timeoutMs);
+  let abortRequested = false;
+  let termination: HeadlessRunTermination | undefined;
+  const requestAbort = (requestedTermination?: HeadlessRunTermination): boolean => {
+    // Preserve the first cancellation source when timeout and SIGINT arrive
+    // together so output and exit status cannot disagree.
+    if (abortRequested) {
+      return false;
+    }
+    abortRequested = true;
+    termination = requestedTermination;
+    options.runtime.abort();
+    return true;
+  };
   const output = new HeadlessRunOutput({
     json: options.json ?? false,
     stdout: options.stdout ?? process.stdout,
     stderr: options.stderr ?? process.stderr,
+    getTermination: () => termination,
   });
   output.startSession(options.runtime.sessionId);
   for (const warning of options.warnings ?? []) {
@@ -158,7 +212,7 @@ export async function runHeadlessConversation(
   const beforeToolExecution = createHeadlessApprovalHook(options, output);
   options.runtime.setBeforeToolExecution(beforeToolExecution);
   const onAbort = (): void => {
-    options.runtime.abort();
+    requestAbort(readHeadlessSignalReason(options.signal));
   };
   options.signal?.addEventListener("abort", onAbort, { once: true });
   const unsubscribe = options.runtime.subscribe((event) => {
@@ -166,17 +220,37 @@ export async function runHeadlessConversation(
   });
 
   try {
-    const submission = options.runtime.submit(
-      createUserMessage({
-        content: options.prompt,
-        provenance: { kind: "user_input" },
-      }),
-    );
-    if (options.signal?.aborted) {
-      options.runtime.abort();
+    const timeoutMs = options.timeoutMs;
+    // This is an Agent-run deadline: session/MCP startup happened before this
+    // boundary, and normal frontend cleanup continues after the timer is cleared.
+    const timeout =
+      timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            if (requestAbort({ reason: "timeout", timeoutMs })) {
+              options.logger?.warn("headless.timeout_elapsed", {
+                phase: "run",
+                timeoutMs,
+              });
+            }
+          }, timeoutMs);
+    try {
+      const submission = options.runtime.submit(
+        createUserMessage({
+          content: options.prompt,
+          provenance: { kind: "user_input" },
+        }),
+      );
+      if (options.signal?.aborted) {
+        onAbort();
+      }
+      await submission;
+      return output.result();
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
     }
-    await submission;
-    return output.result();
   } catch {
     // ConversationRuntime publishes run_error before rejecting submit(), so
     // the stable output event has already captured the failure.
@@ -189,19 +263,27 @@ export async function runHeadlessConversation(
 
 export async function resolveHeadlessPrompt(
   prompt: string | undefined,
-  stdin: AsyncIterable<unknown> & { isTTY?: boolean } = process.stdin,
+  stdin?: AsyncIterable<unknown> & { isTTY?: boolean },
 ): Promise<string> {
   const argumentPrompt = prompt?.trim();
   if (argumentPrompt) {
     return argumentPrompt;
   }
-  if (stdin.isTTY) {
+  if ((stdin ?? process.stdin).isTTY) {
     throw new Error("Kana exec requires a prompt argument or prompt text on stdin.");
   }
 
   let input = "";
-  for await (const chunk of stdin) {
-    input += typeof chunk === "string" ? chunk : Buffer.from(chunk as Uint8Array).toString("utf8");
+  if (stdin === undefined) {
+    // Bun's process.stdin async iterator can be empty for regular-file
+    // redirection after node:process is loaded by CLI dependencies. Bun.stdin
+    // reads both pipes and redirected files directly from file descriptor 0.
+    input = await Bun.stdin.text();
+  } else {
+    for await (const chunk of stdin) {
+      input +=
+        typeof chunk === "string" ? chunk : Buffer.from(chunk as Uint8Array).toString("utf8");
+    }
   }
   const stdinPrompt = input.trim();
   if (!stdinPrompt) {
@@ -267,12 +349,14 @@ type HeadlessRunOutputOptions = {
   json: boolean;
   stdout: HeadlessOutputStream;
   stderr: HeadlessOutputStream;
+  getTermination(): HeadlessRunTermination | undefined;
 };
 
 class HeadlessRunOutput {
   private outcome?: AgentEndReason;
   private finalMessage?: string;
   private usage?: ModelUsage;
+  private termination?: HeadlessRunTermination;
   private runFailed = false;
 
   constructor(private readonly options: HeadlessRunOutputOptions) {}
@@ -317,25 +401,41 @@ class HeadlessRunOutput {
         if (!event.event) {
           return;
         }
-        this.outcome = event.event.reason;
+        this.termination = this.options.getTermination();
+        // The headless cancellation cause wins a narrow race where the core
+        // Agent reaches its terminal event immediately after cancellation.
+        this.outcome = this.termination === undefined ? event.event.reason : "aborted";
         this.emit(
           createKanaExecEvent({
             type: "run.completed",
-            outcome: event.event.reason,
+            outcome: this.outcome,
             ...(this.usage === undefined ? {} : { usage: toKanaExecUsage(this.usage) }),
+            ...(this.termination === undefined
+              ? {}
+              : { termination: toKanaExecRunTermination(this.termination) }),
           }),
         );
+        if (!this.options.json && this.termination?.reason === "timeout") {
+          this.write(
+            this.options.stderr,
+            `Kana exec timed out after ${this.termination.timeoutMs}ms.\n`,
+          );
+        }
         if (!this.options.json && this.finalMessage) {
           this.write(this.options.stdout, `${sanitizeTerminalOutput(this.finalMessage)}\n`);
         }
         return;
       case "run_error": {
         this.runFailed = true;
+        this.termination = this.options.getTermination();
         const error = normalizeError(event.error);
         this.emit(
           createKanaExecEvent({
             type: "run.failed",
             error,
+            ...(this.termination === undefined
+              ? {}
+              : { termination: toKanaExecRunTermination(this.termination) }),
           }),
           `Error: ${error.message}`,
         );
@@ -351,8 +451,9 @@ class HeadlessRunOutput {
 
   result(): HeadlessRunResult {
     return {
-      exitCode: !this.runFailed && this.outcome === "stop" ? 0 : 1,
+      exitCode: this.exitCode(),
       outcome: this.outcome,
+      termination: this.termination,
       finalMessage: this.finalMessage,
       usage: this.usage,
     };
@@ -482,6 +583,20 @@ class HeadlessRunOutput {
     }
   }
 
+  private exitCode(): number {
+    if (this.runFailed) {
+      return 1;
+    }
+    switch (this.termination?.reason) {
+      case "timeout":
+        return 124;
+      case "sigint":
+        return 130;
+      default:
+        return this.outcome === "stop" ? 0 : 1;
+    }
+  }
+
   private emit(event: KanaExecEvent, humanMessage?: string): void {
     if (this.options.json) {
       this.write(this.options.stdout, `${stringifyJsonLine(event)}\n`);
@@ -495,6 +610,26 @@ class HeadlessRunOutput {
   private write(stream: HeadlessOutputStream, chunk: string): void {
     stream.write(chunk);
   }
+}
+
+function createHeadlessSignalReason(termination: HeadlessRunTermination): HeadlessSignalReason {
+  return { [HEADLESS_SIGNAL_REASON]: termination };
+}
+
+function readHeadlessSignalReason(
+  signal: AbortSignal | undefined,
+): HeadlessRunTermination | undefined {
+  if (!signal?.aborted || typeof signal.reason !== "object" || signal.reason === null) {
+    return undefined;
+  }
+  const reason = signal.reason as Partial<HeadlessSignalReason>;
+  return reason[HEADLESS_SIGNAL_REASON];
+}
+
+function toKanaExecRunTermination(termination: HeadlessRunTermination): KanaExecRunTermination {
+  return termination.reason === "timeout"
+    ? { reason: "timeout", timeout_ms: termination.timeoutMs }
+    : { reason: "sigint" };
 }
 
 function visibleAssistantText(message: AssistantMessage): string {

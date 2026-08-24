@@ -37,7 +37,7 @@ Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与
 
 - `kana [--clean] [prompt...]`：启动 TUI；有参数时启动后立即发送该提示词。
 - `kana resume [sessionId]`：按 ID 恢复会话，或打开会话选择器。
-- `kana exec [--clean] [prompt...]` / `kana exec resume <sessionId> [prompt...]`：不启动 TUI，执行一次完整 Agent turn 后退出；可用 `--json` 输出版本化 JSONL 事件。
+- `kana exec [--clean] [--timeout <duration>] [prompt...]` / `kana exec resume <sessionId> [prompt...]`：不启动 TUI，执行一次完整 Agent turn 后退出；可用 `--json` 输出版本化 JSONL 事件。
 - `kana install`：幂等补齐缺失的本地状态并刷新生成的配置参考，不物化默认 `config.toml`，也不安装 Skills 仓库。
 - `kana update [--check]`：检查最新正式 Release；省略 `--check` 时验证候选二进制并原子替换当前 direct-distribution 独立二进制。
 - `kana reset [--yes]`：经确认删除 `config.toml`，刷新配置参考并重置 MCP、审批和 Skill 启用状态，同时保留凭据、用户数据、日志、指令和实际 Skills。
@@ -51,7 +51,7 @@ Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与
 
 启动 TUI 时，`startTui` 先创建 `KanaConversationHost`。Host 加载运行配置和审批白名单，并向前端提供统一的 Agent 工厂和 session 操作；普通模式还持有 session journal、日志、accounting、记忆、wake scheduler 与 `KanaMcpRuntime`，Clean 模式则注册带普通 ID、no-op logger 且没有 journal 的进程内 session。`KanaTuiApp` 用这些依赖创建产品层 `ConversationRuntime`；该 runtime 持有当前 Agent 和 session，负责提交互斥、Agent 重建、session new/fork/resume，以及从 Agent inbox 编排新 run。Agent 同时持有 run-local `next-step` steering 与 FIFO `next-turn` 输入，后者包含 Tab、到期 wake 和 deferred steering；runtime 只发布 inbox 投影，不再维护第二条队列。当前会话确定并完成首次 TUI 渲染后，App 才请求 Host 加载外部工具；此时 MCP runtime 读取定义与启用状态文件、连接选中的 server、发现工具，再由 `ConversationRuntime` 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。TUI 只协调可见用户流程，不实现对话生命周期或 Kana 产品装配，也不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 
-`startHeadless` 使用同一个 Host 和 runtime，先加载 MCP，再提交一条用户消息并等待完整 Agent loop 结束。它把 runtime 事件投影成独立版本的 JSONL 公共协议，或把进度写到 stderr、最终助手文本写到 stdout。Schema v2 在工具得到物理终态时报告 `tool.completed`；只有 `run.completed` 保证有序结果提交与 run 后处理成功，之后发生持久化失败则产生 `run.failed`。无头前端不提供交互审批；未被配置或白名单信任的工具会关闭失败。调用方传入 `--allow-all-tools` 时会无条件授权所有可用工具，但不会隔离文件或进程。`SIGINT` 会取消活动 Agent，进程以 `130` 退出。
+`startHeadless` 使用同一个 Host 和 runtime，先加载 MCP，再提交一条用户消息并等待完整 Agent loop 结束。它把 runtime 事件投影成独立版本的 JSONL 公共协议，或把进度写到 stderr、最终助手文本写到 stdout。Schema v2 在工具得到物理终态时报告 `tool.completed`；只有 `run.completed` 保证有序结果提交与 run 后处理成功，之后发生持久化失败则产生 `run.failed`。无头前端不提供交互审批；未被配置或白名单信任的工具会关闭失败。调用方传入 `--allow-all-tools` 时会无条件授权所有可用工具，但不会隔离文件或进程。`--timeout` 会在 MCP 启动后设置仅覆盖 Agent run 的软 deadline，到时优雅取消 runtime，在终态 JSONL 事件记录 `termination`，并以 `124` 退出；前端清理不计入该 deadline。`SIGINT` 使用相同的优雅取消边界，并以 `130` 退出。
 
 Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TUI 不安装外部工具加载器，Headless 则继续经过同一 Host 边界但不会解析或连接 MCP。这个双重边界保证后续 new、模型切换和 Agent 重建不会重新引入外部工具；Host 另行拒绝 Clean 模式的 fork。
 

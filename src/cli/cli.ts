@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline/promises";
-import { Command } from "commander";
-import type { StartHeadlessOptions } from "@/headless";
+import { Command, InvalidArgumentError } from "commander";
+import { parseHeadlessTimeout, type StartHeadlessOptions } from "@/headless";
 import type {
   InstallKanaConfigResult,
   InstallKanaSkillsResult,
@@ -119,6 +119,7 @@ export function createCli(options: CreateCliOptions): Command {
           prompt: joinPromptParts(promptParts),
           json: commandOptions.json,
           allowAllTools: commandOptions.allowAllTools,
+          ...(commandOptions.timeout === undefined ? {} : { timeoutMs: commandOptions.timeout }),
           ...(launchMode ? { launchMode } : {}),
         }),
       );
@@ -146,6 +147,7 @@ export function createCli(options: CreateCliOptions): Command {
           resumeSessionId: sessionId,
           json: commandOptions.json,
           allowAllTools: commandOptions.allowAllTools,
+          ...(commandOptions.timeout === undefined ? {} : { timeoutMs: commandOptions.timeout }),
           ...(launchMode ? { launchMode } : {}),
         }),
       );
@@ -343,11 +345,19 @@ type LaunchCommandOptions = {
 type HeadlessCommandOptions = LaunchCommandOptions & {
   json?: boolean;
   allowAllTools?: boolean;
+  timeout?: number;
 };
 
 function addHeadlessOptions(command: Command): Command {
   return command
     .option("--json", "Write versioned JSONL events to stdout")
+    .option("--timeout <duration>", "Abort the Agent run after a duration such as 30m", (value) => {
+      try {
+        return parseHeadlessTimeout(value);
+      } catch (error) {
+        throw new InvalidArgumentError(error instanceof Error ? error.message : String(error));
+      }
+    })
     .option(
       "--allow-all-tools",
       "Run tool calls without interactive approval (does not enable a sandbox)",

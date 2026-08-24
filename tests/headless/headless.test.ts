@@ -10,6 +10,7 @@ import {
 } from "../../src/core";
 import {
   type HeadlessOutputStream,
+  parseHeadlessTimeout,
   resolveHeadlessPrompt,
   runHeadlessConversation,
   startHeadless,
@@ -19,6 +20,7 @@ import {
   type ConversationRuntimeOptions,
   DEFAULT_KANA_TOOL_APPROVALS,
 } from "../../src/kana";
+import type { Logger } from "../../src/logging";
 import { MockModel } from "../../src/providers/mock";
 import type { Tool } from "../../src/tools";
 import { messageIdentityForTest } from "../helpers/messages";
@@ -92,6 +94,127 @@ describe("headless execution", () => {
     });
     expect(stdout.value).not.toContain('"type":"agent_event"');
     await runtime.close();
+  });
+
+  test("completes normally before an Agent-run timeout", async () => {
+    const stdout = new StringOutput();
+    const runtime = createRuntime({
+      model: new MockModel({
+        provider: "mock",
+        model: "mock",
+        response: "On time.",
+      }),
+    });
+
+    const result = await runHeadlessConversation({
+      runtime,
+      prompt: "Run the task.",
+      approvalConfig: { mode: "unless_trusted" },
+      toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+      timeoutMs: 1_000,
+      json: true,
+      stdout,
+      stderr: new StringOutput(),
+    });
+    const terminalEvent = stdout
+      .lines()
+      .map((line) => JSON.parse(line))
+      .at(-1);
+
+    expect(result).toMatchObject({
+      exitCode: 0,
+      outcome: "stop",
+      finalMessage: "On time.",
+    });
+    expect(result.termination).toBeUndefined();
+    expect(terminalEvent).toEqual({
+      schema_version: 2,
+      type: "run.completed",
+      outcome: "stop",
+    });
+    await runtime.close();
+  });
+
+  test("gracefully aborts an active tool when the Agent-run timeout elapses", async () => {
+    let toolAborted = false;
+    const tool: Tool = {
+      name: "change_state",
+      description: "Wait until the run is canceled.",
+      parameters: Type.Object({}),
+      execute: (_args, context) =>
+        new Promise((resolve) => {
+          const finish = (): void => {
+            toolAborted = true;
+            resolve({ content: "stopped", result: { stopped: true } });
+          };
+          if (context.signal?.aborted) {
+            finish();
+            return;
+          }
+          context.signal?.addEventListener("abort", finish, { once: true });
+        }),
+    };
+    const runtime = createRuntime({
+      model: new ToolThenAnswerModel(),
+      tools: [tool],
+    });
+    const stdout = new StringOutput();
+    const logs: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
+    const logger: Logger = {
+      debug: () => {},
+      info: () => {},
+      warn: (event, metadata) => {
+        logs.push({ event, metadata });
+      },
+      error: () => {},
+    };
+
+    const result = await runHeadlessConversation({
+      runtime,
+      prompt: "Change it.",
+      approvalConfig: { mode: "unless_trusted" },
+      toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+      allowAllTools: true,
+      timeoutMs: 20,
+      logger,
+      json: true,
+      stdout,
+      stderr: new StringOutput(),
+    });
+    const events = stdout.lines().map((line) => JSON.parse(line));
+    const eventTypes = events.map((event) => event.type);
+
+    expect(result).toMatchObject({
+      exitCode: 124,
+      outcome: "aborted",
+      termination: { reason: "timeout", timeoutMs: 20 },
+    });
+    expect(toolAborted).toBe(true);
+    expect(eventTypes.indexOf("tool.completed")).toBeLessThan(eventTypes.indexOf("run.completed"));
+    expect(events.at(-1)).toEqual({
+      schema_version: 2,
+      type: "run.completed",
+      outcome: "aborted",
+      termination: { reason: "timeout", timeout_ms: 20 },
+    });
+    expect(logs).toEqual([
+      {
+        event: "headless.timeout_elapsed",
+        metadata: { phase: "run", timeoutMs: 20 },
+      },
+    ]);
+    expect(runtime.isRunning).toBe(false);
+    await runtime.close();
+  });
+
+  test("parses bounded timeout durations and rejects invalid values", () => {
+    expect(parseHeadlessTimeout("500ms")).toBe(500);
+    expect(parseHeadlessTimeout("30s")).toBe(30_000);
+    expect(parseHeadlessTimeout("30m")).toBe(1_800_000);
+    expect(parseHeadlessTimeout("2h")).toBe(7_200_000);
+    expect(() => parseHeadlessTimeout("0s")).toThrow("between 1ms");
+    expect(() => parseHeadlessTimeout("30")).toThrow("duration such as");
+    expect(() => parseHeadlessTimeout("597h")).toThrow("between 1ms");
   });
 
   test("fails closed when a tool needs approval and can explicitly allow it", async () => {
@@ -229,6 +352,30 @@ describe("headless execution", () => {
     await expect(resolveHeadlessPrompt(undefined, chunks([], { isTTY: true }))).rejects.toThrow(
       "prompt argument",
     );
+  });
+
+  test("reads a regular file redirected to the default stdin", async () => {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        'import "node:process"; import { resolveHeadlessPrompt } from "./src/headless"; process.stdout.write(await resolveHeadlessPrompt(undefined));',
+      ],
+      {
+        stdin: Bun.file("package.json"),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toBe((await Bun.file("package.json").text()).trim());
   });
 
   test("rejects resuming a saved session in clean mode using the JSON protocol", async () => {

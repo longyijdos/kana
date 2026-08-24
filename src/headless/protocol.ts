@@ -16,6 +16,15 @@ type KanaExecEventBase = {
   schema_version: typeof KANA_EXEC_EVENT_SCHEMA_VERSION;
 };
 
+export type KanaExecRunTermination =
+  | {
+      reason: "timeout";
+      timeout_ms: number;
+    }
+  | {
+      reason: "sigint";
+    };
+
 export type KanaExecEvent =
   | (KanaExecEventBase & {
       type: "session.started";
@@ -87,6 +96,7 @@ export type KanaExecEvent =
       type: "run.completed";
       outcome: AgentEndReason;
       usage?: KanaExecUsage;
+      termination?: KanaExecRunTermination;
     })
   | (KanaExecEventBase & {
       type: "run.failed";
@@ -94,6 +104,7 @@ export type KanaExecEvent =
         name: string;
         message: string;
       };
+      termination?: KanaExecRunTermination;
     })
   | (KanaExecEventBase & {
       type: "error";
