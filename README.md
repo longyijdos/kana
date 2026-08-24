@@ -188,7 +188,7 @@ characters; license headers and explicit `comment-check-ignore: <reason>` suppre
 Run `bun run knip:fix` separately when intentionally cleaning unused exports or dependencies so
 its changes can be reviewed before committing.
 
-Kana is under active development before `1.0`; CLI behavior, protocols, and persistence formats may evolve between minor releases. Read [AGENTS.md](AGENTS.md) before contributing and see the [release process](docs/releasing.md) for versioning and release details.
+Kana is under active development before `1.0`; CLI behavior, protocols, and persistence formats may evolve between minor releases. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute; [AGENTS.md](AGENTS.md) contains coding-agent workflow and implementation guidance and is not the primary human contribution guide. See the [release process](docs/releasing.md) for versioning and release details.
 
 ## License
 
