@@ -126,6 +126,38 @@ describe("CLI", () => {
     ]);
   });
 
+  test("parses and forwards Agent-run timeouts for new and resumed headless requests", async () => {
+    const calls: StartHeadlessOptions[] = [];
+    const options = {
+      startHeadless: async (startOptions?: StartHeadlessOptions) => {
+        calls.push(startOptions ?? {});
+        return 0;
+      },
+    };
+
+    await parse(["node", "kana", "exec", "--timeout", "30m", "inspect"], options);
+    await parse(
+      ["node", "kana", "exec", "resume", "session-1", "--timeout", "2h", "continue"],
+      options,
+    );
+
+    expect(calls).toEqual([
+      {
+        prompt: "inspect",
+        json: undefined,
+        allowAllTools: undefined,
+        timeoutMs: 1_800_000,
+      },
+      {
+        prompt: "continue",
+        resumeSessionId: "session-1",
+        json: undefined,
+        allowAllTools: undefined,
+        timeoutMs: 7_200_000,
+      },
+    ]);
+  });
+
   test("resumes a session in headless mode and leaves a missing prompt for stdin", async () => {
     const calls: StartHeadlessOptions[] = [];
 
