@@ -90,11 +90,8 @@ export class ToolHistoryController {
     this.activePicker = undefined;
   }
 
-  // Newest first: the most recent tool call starts selected, mirroring the
-  // Ctrl+O fast path. Every ToolCallBlock participates — short or untruncated
-  // output, read, empty results, failed, canceled, and custom/unknown tools —
-  // without consulting expandability or render state; non-tool transcript
-  // children never appear.
+  // Newest first mirrors Ctrl+O. Include every ToolCallBlock regardless of state,
+  // output length, or schema; never include non-tool transcript children.
   private collectEntries(): ToolHistoryEntry[] {
     const blocks = this.options.transcript.children.filter(
       (child): child is ToolCallBlock => child instanceof ToolCallBlock,

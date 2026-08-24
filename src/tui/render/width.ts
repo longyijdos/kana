@@ -121,9 +121,7 @@ export function wrapPlainText(value: string, width: number): string[] {
 }
 
 /**
- * Wraps a highlighted token line to `width` visible columns, splitting
- * between graphemes so every wrapped row keeps its own colors. Mirrors
- * wrapPlainText for token-based renderers such as write/edit diff rows.
+ * Wraps highlighted tokens between graphemes while preserving row colors.
  */
 export function wrapHighlightedLine(
   tokens: HighlightedLineToken[],

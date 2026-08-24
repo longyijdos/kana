@@ -216,9 +216,7 @@ export function searchKanaDailyMemory(
 }
 
 /**
- * Removes dated daily-memory files outside the configured retention window.
- * Callers must only invoke this after a successful full consolidation so the
- * expired records have had an opportunity to contribute to durable memory.
+ * Removes expired daily-memory files after a successful full consolidation.
  */
 export function pruneKanaDailyMemory(
   scope: KanaMemoryScope,

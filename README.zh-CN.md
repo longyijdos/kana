@@ -180,8 +180,10 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-`bun run check` 会依次运行 Biome、TypeScript、Knip 死代码分析和 Bun 测试。需要主动清理未使用的
-导出或依赖时，应单独运行 `bun run knip:fix`，并在提交前审阅它产生的修改。
+`bun run check` 会依次运行 Biome、项目注释长度检查、TypeScript、Knip 死代码分析和 Bun 测试。
+注释检查会拒绝超过四行或 320 个字符的 TypeScript 注释块；许可证头和显式的
+`comment-check-ignore: <reason>` 豁免除外。需要主动清理未使用的导出或依赖时，应单独运行
+`bun run knip:fix`，并在提交前审阅它产生的修改。
 
 Kana 仍处于 `1.0` 前的快速开发阶段，CLI 行为、协议和持久化格式可能随次版本演进。贡献前请阅读 [AGENTS.md](AGENTS.md)，版本与发布细节见[发版流程](docs/releasing.zh-CN.md)。
 

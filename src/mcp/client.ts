@@ -57,11 +57,8 @@ type SessionRecovery = {
   promise: Promise<void>;
 };
 
-// This client implements only the published 2025-11-25 lifecycle and server
-// tool methods. The reusable JSON-RPC state lives in McpConnection so a future
-// stateless protocol client does not need to inherit this initialization flow.
-// TODO(mcp): Add the 2026-07-28 lifecycle as a separate client only after that
-// draft is published as stable; do not condition this lifecycle at runtime.
+// Implements only the stable 2025-11-25 lifecycle; McpConnection owns reusable JSON-RPC state.
+// TODO(mcp): Add 2026-07-28 as a separate client once stable; never select it dynamically here.
 export class McpClient {
   private state: ClientState = "idle";
   private readonly connection: McpConnection;

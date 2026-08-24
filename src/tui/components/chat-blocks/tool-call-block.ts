@@ -152,12 +152,8 @@ export class ToolCallBlock implements Component {
     };
   }
 
-  // One picker row per tool call: the short semantic identity plus the
-  // schema-owned target when Kana owns the schema. The summary is untrusted
-  // display data, so it is sanitized here — before it enters a terminal row;
-  // the picker itself stays tool-agnostic. Unknown/custom/MCP tools
-  // deliberately carry no summary — their name is the identity, and the TUI
-  // never guesses a target from arbitrary arguments.
+  // Sanitize Kana-owned targets before they enter picker rows. Unknown schemas stay
+  // name-only so the TUI never guesses a target from arbitrary arguments.
   getToolHistoryEntry(): ToolHistoryEntry {
     const target = resolveToolTarget(this.toolCall, this.result ?? this.partialResult);
     const summary = target === undefined ? undefined : sanitizeToolTargetText(target);

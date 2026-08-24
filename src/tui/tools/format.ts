@@ -76,12 +76,8 @@ export function formatToolTranscriptTitle(
   return { activity: target ? text.doneTitle.replace(` ${target}`, "") : text.doneTitle, target };
 }
 
-// One-line, display-safe rendering of a schema-owned target: terminal
-// control sequences (ANSI SGR, OSC title/hyperlinks, C0/C1 controls) are
-// removed before whitespace is collapsed, so targets can never smuggle
-// escape sequences into a terminal row. Shared by the compact transcript
-// target row and the /tools picker summary; width truncation stays in the
-// consuming render layer.
+// Strip terminal controls before collapsing whitespace so schema-owned targets cannot
+// inject escapes. The transcript and picker share this untruncated representation.
 export function sanitizeToolTargetText(target: string): string {
   return flattenToolTargetText(stripTerminalControlSequences(target));
 }
@@ -285,14 +281,7 @@ function formatByteSize(bytes: number): string {
   return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
 }
 
-/**
- * Resolves the target for tools whose argument schema Kana owns: the
- * transcript target row and the tool history picker summary both reuse this
- * single extraction. Unknown/custom/MCP tools have arbitrary schemas, so the
- * TUI must not guess which argument (if any) is the primary operation
- * target; they return undefined and render no target/summary. Their identity
- * stays in the tool name itself.
- */
+/** Extracts targets only for Kana-owned schemas; unknown tools remain name-only. */
 export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): string | undefined {
   switch (toolCall.name) {
     case "remember":

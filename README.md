@@ -182,9 +182,11 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-`bun run check` runs Biome, TypeScript, Knip dead-code analysis, and the Bun test suite. Run
-`bun run knip:fix` separately when intentionally cleaning unused exports or dependencies so its
-changes can be reviewed before committing.
+`bun run check` runs Biome, the project comment-length guard, TypeScript, Knip dead-code analysis,
+and the Bun test suite. The guard rejects TypeScript comment blocks longer than four lines or 320
+characters; license headers and explicit `comment-check-ignore: <reason>` suppressions are exempt.
+Run `bun run knip:fix` separately when intentionally cleaning unused exports or dependencies so
+its changes can be reviewed before committing.
 
 Kana is under active development before `1.0`; CLI behavior, protocols, and persistence formats may evolve between minor releases. Read [AGENTS.md](AGENTS.md) before contributing and see the [release process](docs/releasing.md) for versioning and release details.
 

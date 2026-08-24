@@ -51,11 +51,8 @@ export function buildFullToolDetail(
   };
 }
 
-// Operation context for the inspector. Can write content and edit old/new
-// text be omitted from the context? Only the caller knows whether the rich
-// full output renderers below actually recovered them (see the inspector),
-// so `includeMaterial` is an explicit decision: material payloads stay in
-// the context whenever the output renderers cannot present them.
+// Only the caller knows whether rich output recovered write/edit payloads, so it
+// explicitly decides whether the inspector context must retain that material.
 export function buildToolInspectorContext(
   toolCall: ToolCallContent,
   includeMaterial: boolean,
@@ -301,11 +298,8 @@ function pushSection(
   }
 
   if (content === "") {
-    // A material payload that is genuinely empty (an edit deleting to an
-    // empty newText, a write creating an empty file) must keep its section
-    // so the field is not mistaken for missing. The content stays empty
-    // rather than a sentinel value, which a real string could collide with;
-    // a bare label row above the blank value is unambiguous enough.
+    // Preserve genuinely empty write/edit payloads so they are not mistaken for missing.
+    // A blank value is unambiguous here and cannot collide with a sentinel string.
     if (options?.preserveEmpty) {
       sections.push({ label, content: "" });
     }

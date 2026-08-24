@@ -13,13 +13,8 @@ const TOOL_STATUS_LABELS: Record<ToolState, string> = {
   canceled: "Canceled",
 };
 
-// Composes a tool inspector body for the scrollable viewer: operation
-// context first (reusing the full-fidelity detail sections), non-terminal
-// status, then the execution output through the existing full renderers.
-// Write content and edit old/new text are duplicated into the plain context
-// only while the rich renderers below cannot present them (running,
-// canceled, or failed tools, where output is missing or error-only);
-// completed tools show their material once through the output renderers.
+// Context precedes non-terminal status and full output. Write/edit payloads stay in
+// context only when rich output cannot show them, avoiding both loss and duplication.
 export function formatToolInspector(
   toolCall: ToolCallContent,
   result: unknown,
@@ -56,12 +51,8 @@ export function formatToolInspector(
   return lines;
 }
 
-// The full renderers recover material payloads from different places:
-// formatWriteOutput re-renders content from the tool arguments, while
-// formatEditOutput only renders old/new text when the result itself carries
-// the complete values. Material stays in the context whenever the renderers
-// below would not present it, so running/canceled/failed tools never lose
-// their operation payload even when output is missing or error-only.
+// Write output comes from arguments; edit old/new text comes from successful results.
+// Keep material in context whenever those renderers cannot show it.
 function includeMaterial(toolCall: ToolCallContent, result: unknown, state: ToolState): boolean {
   if (state !== "done") {
     return true;

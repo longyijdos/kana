@@ -1,10 +1,6 @@
 import { type Color, color, splitLines, tailLines, truncateToWidth, visibleWidth } from "../render";
 
-/**
- * Fixed compact-transcript preview budgets. A compact tool block therefore
- * has a simple, width-independent maximum height: one title row, one target
- * row, and at most these many preview rows.
- */
+/** Shared preview budgets keep compact tool-block height independent of terminal width. */
 // Default preview budget for bash and generic/MCP/primitive results.
 const COMPACT_OUTPUT_LINE_LIMIT = 8;
 // Write reserves one row for the `N bytes` result line, so its content
@@ -16,9 +12,7 @@ export const COMPACT_WRITE_LINE_LIMIT = 7;
 export const COMPACT_DIFF_LINE_LIMIT = 3;
 
 /**
- * Renders a bounded compact preview of plain text: at most `maxLines` source
- * rows, each horizontally truncated to `width` instead of wrapped. Omitted
- * source lines are indicated with an explicit "... N more lines" marker.
+ * Truncates each of at most `maxLines` source rows and marks omitted rows.
  */
 export function renderCompactText(
   text: string,
@@ -38,9 +32,7 @@ export function renderCompactText(
 }
 
 /**
- * True when a compact preview omits inspectable content: more source lines
- * than the preview limit, or (when the rendered width is known) any source
- * line wider than the terminal and therefore horizontally truncated.
+ * Reports vertical or known horizontal truncation in a compact preview.
  */
 export function hasOmittedContent(
   text: string,

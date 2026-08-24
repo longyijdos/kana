@@ -708,11 +708,8 @@ export class KanaTuiApp {
     }
 
     if (isCtrlO(data)) {
-      // A successful toggle (opening the latest tool or closing the active
-      // viewer) replaces any bottom view directly. If the tool history
-      // picker was open, it must relinquish ownership — otherwise the
-      // controller would keep tracking a bottom it no longer owns. When
-      // there is no tool to open, the toggle fails and the picker stays.
+      // A successful toggle replaces the bottom view, so an open picker must relinquish
+      // ownership. If no tool opens, the failed toggle leaves the picker active.
       if (this.contentViewer.toggleLatest()) {
         this.toolHistory.relinquish();
         return { consume: true };

@@ -3,8 +3,11 @@
 * Choose a change scope that matches the task.
 * Keep changes focused and avoid unnecessary churn.
 * For larger features or refactors, keep the implementation cohesive and explain the reasoning when the scope is significant.
-* Add comments for non-obvious logic, design decisions, protocol semantics, ordering requirements, provider-specific behavior, and mutable state boundaries.
-* Do not add comments that only restate the code.
+* Prefer clear names and code structure over comments.
+* Add comments only for non-obvious invariants, design decisions, protocol semantics, ordering requirements, provider-specific behavior, and mutable state boundaries.
+* Keep implementation comment blocks within four lines and 320 characters.
+* Do not add comments that restate the code. Move longer design explanations to the corresponding documentation.
+* Do not add `comment-check-ignore` suppressions without maintainer approval.
 * Unless the user explicitly requests a different workflow, make code changes in two phases:
   * During the implementation and review phase, change production code only. Do not add or update tests or documentation yet.
   * Summarize the production-code changes and ask the user to review them before preparing a commit.
