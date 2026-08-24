@@ -16,7 +16,7 @@ guidance and is not the primary human contribution guide.
 - [Git](https://git-scm.com/).
 - [Bun](https://bun.sh/), matching the repository's pinned version `1.3.14` (see the
   `packageManager` field in `package.json`; CI uses the same version). Use a version manager or
-  `bun upgrade` to switch to it if needed.
+  Bun's version-specific installer if you need to switch versions.
 
 ## Local setup
 
@@ -26,8 +26,8 @@ cd kana
 bun install --frozen-lockfile
 ```
 
-`--frozen-lockfile` installs exactly the locked dependencies; commit `bun.lock` changes
-separately when you intentionally add or update a dependency.
+`--frozen-lockfile` installs exactly the locked dependencies. `bun.lock` should only change when
+dependencies are intentionally added or updated.
 
 ## Validating changes
 
