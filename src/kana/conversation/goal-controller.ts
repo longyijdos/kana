@@ -43,7 +43,7 @@ export class KanaGoalController {
       throw new Error("Goal max rounds must be a positive integer.");
     }
 
-    const normalizedObjective = normalizeText(objective, "Goal objective", 4_000);
+    const normalizedObjective = normalizeText(objective, "Goal objective");
     this.goalData = {
       id: randomUUID(),
       objective: normalizedObjective,
@@ -109,9 +109,12 @@ export class KanaGoalController {
   }
 }
 
-function normalizeText(value: string, label: string, maxLength: number): string {
+function normalizeText(value: string, label: string, maxLength?: number): string {
   const normalized = value.trim();
-  if (!normalized || normalized.length > maxLength) {
+  if (!normalized) {
+    throw new Error(`${label} must not be empty.`);
+  }
+  if (maxLength !== undefined && normalized.length > maxLength) {
     throw new Error(`${label} must contain between 1 and ${maxLength} characters.`);
   }
   return normalized;

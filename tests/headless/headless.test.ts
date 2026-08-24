@@ -202,6 +202,63 @@ describe("headless execution", () => {
     await runtime.close();
   });
 
+  test("accepts a long headless Goal objective", async () => {
+    const runtime = createRuntime({
+      model: new MockModel({ provider: "mock", model: "mock", response: "Received." }),
+      goalMaxRounds: 1,
+    });
+    const objective = "x".repeat(8_000);
+
+    const result = await runHeadlessConversation({
+      runtime,
+      prompt: objective,
+      goal: true,
+      approvalConfig: { mode: "unless_trusted" },
+      toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+      stdout: new StringOutput(),
+      stderr: new StringOutput(),
+    });
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      finalMessage: "Received.",
+      goal: { objective, status: "round_limit" },
+    });
+    await runtime.close();
+  });
+
+  test("emits run.started before a Goal setup failure", async () => {
+    const stdout = new StringOutput();
+    const runtime = createRuntime({
+      model: new MockModel({ provider: "mock", model: "mock", response: "Unused." }),
+    });
+
+    const result = await runHeadlessConversation({
+      runtime,
+      prompt: "   ",
+      goal: true,
+      approvalConfig: { mode: "unless_trusted" },
+      toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+      json: true,
+      stdout,
+      stderr: new StringOutput(),
+    });
+    const events = stdout.lines().map((line) => JSON.parse(line));
+
+    expect(result.exitCode).toBe(1);
+    expect(events.map((event) => event.type)).toEqual([
+      "session.started",
+      "run.started",
+      "run.failed",
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      schema_version: 2,
+      type: "run.failed",
+      error: { message: "Goal objective must not be empty." },
+    });
+    await runtime.close();
+  });
+
   test("keeps the headless timeout active across Goal rounds", async () => {
     let toolAborted = false;
     const tool: Tool = {

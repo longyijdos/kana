@@ -58,11 +58,16 @@ describe("KanaGoalController", () => {
   test("rejects invalid objectives and round limits", () => {
     const controller = new KanaGoalController();
 
-    expect(() => controller.start("", 8)).toThrow(
-      "Goal objective must contain between 1 and 4000 characters.",
-    );
+    expect(() => controller.start("", 8)).toThrow("Goal objective must not be empty.");
     expect(() => controller.start("Valid objective", 0)).toThrow(
       "Goal max rounds must be a positive integer.",
     );
+  });
+
+  test("accepts objectives larger than interactive input conventions", () => {
+    const controller = new KanaGoalController();
+    const objective = "x".repeat(8_000);
+
+    expect(controller.start(objective, 1).objective).toBe(objective);
   });
 });

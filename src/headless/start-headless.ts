@@ -245,6 +245,7 @@ export async function runHeadlessConversation(
             }
           }, timeoutMs);
     try {
+      output.startRun();
       const submission = options.goal
         ? options.runtime.startGoal(options.prompt)
         : options.runtime.submit(
@@ -416,13 +417,18 @@ class HeadlessRunOutput {
     }
   }
 
+  startRun(): void {
+    if (this.runStarted) {
+      return;
+    }
+    this.runStarted = true;
+    this.emit(createKanaExecEvent({ type: "run.started" }), "Running...");
+  }
+
   handle(event: ConversationRuntimeEvent): void {
     switch (event.type) {
       case "run_start":
-        if (!this.runStarted) {
-          this.runStarted = true;
-          this.emit(createKanaExecEvent({ type: "run.started" }), "Running...");
-        }
+        this.startRun();
         return;
       case "run_end":
         if (!event.event) {
