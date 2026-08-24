@@ -275,12 +275,53 @@ jobs:
             : > "$RUNNER_TEMP/kana-final-response.txt"
           fi
 
+          # The final response may be published on a public PR, including when its
+          # structure is invalid, so redact the provider credential before parsing it.
+          if [[ -n "${DEEPSEEK_API_KEY:-}" && -s "$RUNNER_TEMP/kana-final-response.txt" ]]; then
+            perl -0pi -e 's/\Q$ENV{DEEPSEEK_API_KEY}\E/[REDACTED]/g' "$RUNNER_TEMP/kana-final-response.txt"
+          fi
+
           turn_count="$(jq -r -s '[.[] | select(.type == "model_turn.started")] | length' \
             "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || printf '0')"
           tool_count="$(jq -r -s '[.[] | select(.type == "tool.completed")] | length' \
             "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || printf '0')"
           tool_error_count="$(jq -r -s '[.[] | select(.type == "tool.completed" and .is_error == true)] | length' \
             "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || printf '0')"
+
+          input_tokens="$(jq -r '.usage.input_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+          output_tokens="$(jq -r '.usage.output_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+          total_tokens="$(jq -r '.usage.total_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+          cached_tokens="$(jq -r '.usage.cache_read_input_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+          reasoning_tokens="$(jq -r '.usage.reasoning_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+
+          format_number() {
+            printf '%s' "$1" | rev | sed 's/[0-9][0-9][0-9]/&,/g' | rev | sed 's/^,//'
+          }
+
+          {
+            printf '**Run:** %s turns · %s tools' \
+              "$(format_number "$turn_count")" \
+              "$(format_number "$tool_count")"
+            if [[ "$tool_error_count" =~ ^[0-9]+$ && "$tool_error_count" -gt 0 ]]; then
+              printf ' · %s tool errors' "$(format_number "$tool_error_count")"
+            fi
+            if [[ "$input_tokens" =~ ^[0-9]+$ && "$output_tokens" =~ ^[0-9]+$ && "$total_tokens" =~ ^[0-9]+$ ]]; then
+              printf ' · %s tokens (%s in / %s out' \
+                "$(format_number "$total_tokens")" \
+                "$(format_number "$input_tokens")" \
+                "$(format_number "$output_tokens")"
+              if [[ "$cached_tokens" =~ ^[0-9]+$ && "$cached_tokens" -gt 0 ]]; then
+                printf '; %s cached' "$(format_number "$cached_tokens")"
+              fi
+              if [[ "$reasoning_tokens" =~ ^[0-9]+$ && "$reasoning_tokens" -gt 0 ]]; then
+                printf '; %s reasoning' "$(format_number "$reasoning_tokens")"
+              fi
+              printf ')'
+            else
+              printf ' · token usage unavailable'
+            fi
+            printf '\n'
+          } > "$RUNNER_TEMP/run-details.md"
 
           session_id="$(jq -r 'select(.type == "session.started") | .session_id' "$RUNNER_TEMP/kana.jsonl" 2>/dev/null | tail -n 1 || true)"
           failure_event=""
@@ -394,20 +435,47 @@ jobs:
 
           handoff_valid=false
           : > "$RUNNER_TEMP/kana-handoff.md"
+          : > "$RUNNER_TEMP/kana-handoff-fallback.md"
+          handoff_failures=()
           if [[ "$RESULT" == "completed" ]]; then
             tr -d '\r' < "$RUNNER_TEMP/kana-final-response.txt" > "$RUNNER_TEMP/kana-final-response-normalized.txt"
-            first_line="$(sed -n '1p' "$RUNNER_TEMP/kana-final-response-normalized.txt")"
-            proposed_title="${first_line#PR_TITLE: }"
-            sed '1d' "$RUNNER_TEMP/kana-final-response-normalized.txt" > "$RUNNER_TEMP/kana-handoff-candidate.md"
-            sed -i '1{/^[[:space:]]*$/d;}' "$RUNNER_TEMP/kana-handoff-candidate.md"
-            body_first_line="$(sed -n '1p' "$RUNNER_TEMP/kana-handoff-candidate.md")"
-            body_size="$(wc -c < "$RUNNER_TEMP/kana-handoff-candidate.md")"
+            if [[ ! -s "$RUNNER_TEMP/kana-final-response-normalized.txt" ]]; then
+              handoff_failures+=("empty_response")
+            else
+              first_line="$(sed -n '1p' "$RUNNER_TEMP/kana-final-response-normalized.txt")"
+              proposed_title=""
+              if [[ "$first_line" == PR_TITLE:\ * ]]; then
+                proposed_title="${first_line#PR_TITLE: }"
+                if [[ ${#proposed_title} -gt 120 ]]; then
+                  handoff_failures+=("title_too_long")
+                elif [[ ! "$proposed_title" =~ $conventional_pattern ]]; then
+                  handoff_failures+=("invalid_title")
+                fi
+              else
+                handoff_failures+=("missing_pr_title")
+              fi
 
-            if [[ "$first_line" == PR_TITLE:\ * && ${#proposed_title} -le 120 && "$proposed_title" =~ $conventional_pattern && "$body_first_line" == "## Summary" && "$body_size" -le 12000 ]] && grep -Fqx '## Notes' "$RUNNER_TEMP/kana-handoff-candidate.md"; then
-              handoff_valid=true
-              printf '%s\n' "$proposed_title" > "$RUNNER_TEMP/change-title.txt"
-              printf '%s\n' "$proposed_title" > "$RUNNER_TEMP/pr-title.txt"
-              cp "$RUNNER_TEMP/kana-handoff-candidate.md" "$RUNNER_TEMP/kana-handoff.md"
+              sed '1d' "$RUNNER_TEMP/kana-final-response-normalized.txt" > "$RUNNER_TEMP/kana-handoff-candidate.md"
+              sed -i '1{/^[[:space:]]*$/d;}' "$RUNNER_TEMP/kana-handoff-candidate.md"
+              body_first_line="$(sed -n '1p' "$RUNNER_TEMP/kana-handoff-candidate.md")"
+              body_size="$(wc -c < "$RUNNER_TEMP/kana-handoff-candidate.md")"
+
+              if [[ "$body_first_line" != "## Summary" ]]; then
+                handoff_failures+=("missing_summary")
+              fi
+              if [[ "$body_size" -gt 12000 ]]; then
+                handoff_failures+=("body_too_long")
+              fi
+              if ! grep -Fqx '## Notes' "$RUNNER_TEMP/kana-handoff-candidate.md"; then
+                handoff_failures+=("missing_notes")
+              fi
+
+              if [[ ${#handoff_failures[@]} -eq 0 ]]; then
+                handoff_valid=true
+                printf '%s\n' "$proposed_title" > "$RUNNER_TEMP/change-title.txt"
+                printf '%s\n' "$proposed_title" > "$RUNNER_TEMP/pr-title.txt"
+                cp "$RUNNER_TEMP/kana-handoff-candidate.md" "$RUNNER_TEMP/kana-handoff.md"
+              fi
             fi
           fi
 
@@ -418,9 +486,45 @@ jobs:
               printf '%s\n' "$fallback_commit_title" > "$RUNNER_TEMP/change-title.txt"
             fi
             printf '%s\n' "$task_title" > "$RUNNER_TEMP/pr-title.txt"
+
+            if [[ "$RESULT" == "completed" ]]; then
+              handoff_failure_summary=""
+              for failure in "${handoff_failures[@]}"; do
+                if [[ -n "$handoff_failure_summary" ]]; then
+                  handoff_failure_summary+=", "
+                fi
+                handoff_failure_summary+="$failure"
+              done
+
+              {
+                printf '## Summary\n\n'
+                printf -- '- Kana completed the run, but its final handoff could not be parsed; review the diff directly.\n\n'
+                printf '## Notes\n\n'
+                printf -- '- Handoff validation failed: `%s`.\n' "$handoff_failure_summary"
+                printf -- '- PR and commit titles used safe workflow fallbacks.\n'
+
+                if [[ -s "$RUNNER_TEMP/kana-final-response-normalized.txt" ]]; then
+                  response_length="$(jq -Rrs 'length' "$RUNNER_TEMP/kana-final-response-normalized.txt")"
+                  printf '\n<details>\n<summary>Unparsed agent handoff</summary>\n\n<pre>'
+                  jq -Rrs '.[0:8000] | @html' "$RUNNER_TEMP/kana-final-response-normalized.txt"
+                  if [[ "$response_length" -gt 8000 ]]; then
+                    printf '\n… [truncated]'
+                  fi
+                  printf '</pre>\n</details>\n'
+                fi
+              } > "$RUNNER_TEMP/kana-handoff-fallback.md"
+            fi
           fi
 
           echo "valid=$handoff_valid" >> "$GITHUB_OUTPUT"
+
+          {
+            printf '\n### Kana handoff\n\n'
+            printf -- '- Valid: `%s`\n' "$handoff_valid"
+            if [[ "$RESULT" == "completed" && "$handoff_valid" != "true" ]]; then
+              printf -- '- Validation failures: `%s`\n' "$handoff_failure_summary"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Detect changes
         id: initial_changes
@@ -508,9 +612,6 @@ jobs:
           RESULT: ${{ steps.run_kana.outputs.result }}
           HANDOFF_VALID: ${{ steps.handoff.outputs.valid }}
           PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
-          TURN_COUNT: ${{ steps.run_kana.outputs.turn_count }}
-          TOOL_COUNT: ${{ steps.run_kana.outputs.tool_count }}
-          TOOL_ERROR_COUNT: ${{ steps.run_kana.outputs.tool_error_count }}
         run: |
           set -euo pipefail
 
@@ -538,16 +639,15 @@ jobs:
             if [[ "$RESULT" == "completed" && "$HANDOFF_VALID" == "true" ]]; then
               cat "$RUNNER_TEMP/kana-handoff.md"
             elif [[ "$RESULT" == "completed" ]]; then
-              printf '## Summary\n\n- Kana completed the run, but its final handoff did not match the publication contract; review the diff directly.\n\n'
-              printf '## Notes\n\n- PR and commit titles used safe workflow fallbacks.\n'
+              cat "$RUNNER_TEMP/kana-handoff-fallback.md"
             else
               printf '## Partial progress\n\n'
-              printf -- '- Model turns started: `%s`\n' "$TURN_COUNT"
-              printf -- '- Tool calls completed: `%s` (`%s` reported errors)\n\n' "$TOOL_COUNT" "$TOOL_ERROR_COUNT"
               printf '## Changed files\n\n```text\n'
               cat "$RUNNER_TEMP/change-files.txt"
               printf '```\n'
             fi
+            printf '\n\n'
+            cat "$RUNNER_TEMP/run-details.md"
             printf '\n\nCloses #%s\n' "$ISSUE_NUMBER"
           } > "$RUNNER_TEMP/pr-body.md"
 
@@ -589,9 +689,6 @@ jobs:
           RESULT: ${{ steps.run_kana.outputs.result }}
           HANDOFF_VALID: ${{ steps.handoff.outputs.valid }}
           PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
-          TURN_COUNT: ${{ steps.run_kana.outputs.turn_count }}
-          TOOL_COUNT: ${{ steps.run_kana.outputs.tool_count }}
-          TOOL_ERROR_COUNT: ${{ steps.run_kana.outputs.tool_error_count }}
         run: |
           if [[ "$RESULT" == "timeout" ]]; then
             status_line="I pushed partial progress after reaching the 30-minute timeout. Mention me again to continue."
@@ -617,10 +714,12 @@ jobs:
             if [[ "$RESULT" == "completed" && "$HANDOFF_VALID" == "true" ]]; then
               printf '\n'
               cat "$RUNNER_TEMP/kana-handoff.md"
-            elif [[ "$RESULT" != "completed" ]]; then
-              printf '\n- Model turns started: `%s`\n' "$TURN_COUNT"
-              printf -- '- Tool calls completed: `%s` (`%s` reported errors)\n' "$TOOL_COUNT" "$TOOL_ERROR_COUNT"
+            elif [[ "$RESULT" == "completed" ]]; then
+              printf '\n'
+              cat "$RUNNER_TEMP/kana-handoff-fallback.md"
             fi
+            printf '\n'
+            cat "$RUNNER_TEMP/run-details.md"
           } > "$RUNNER_TEMP/comment.md"
           gh pr comment "$PR_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
 
