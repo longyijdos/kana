@@ -94,9 +94,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  Agent image inspection"),
-      text("  Oversized tool results as artifacts"),
-      text("  Repeated tool-call detection"),
+      text("  Full tool detail inspection"),
+      text("  /tools history picker"),
+      text("  Headless execution timeouts"),
       muted("  ... /help for more"),
     ];
 

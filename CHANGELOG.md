@@ -1,3 +1,20 @@
+## [0.7.0](https://github.com/longyijdos/kana/compare/v0.6.0...v0.7.0) (2026-08-24)
+
+Kana v0.7.0 adds full-fidelity tool inspection and history, maintainer-triggered GitHub issue automation, and reliable time-bounded headless execution.
+
+### Features
+
+- Inspect every tool call with `Ctrl+O`, navigate adjacent calls with `[` and `]`, and review complete commands, paths, arguments, diffs, results, and runtime status without expanding the compact transcript.
+- Browse the current session's tool history with `/tools` and open any selected call in the shared full-detail inspector.
+- Trigger scoped Kana work from maintainer-authored GitHub issues and continue it on Kana-owned pull requests, with draft-PR publication, structured handoffs, diagnostics, and preserved partial progress.
+- Bound a complete `kana exec` Agent run with `--timeout`, graceful cancellation, exit status `124`, and structured JSONL termination metadata; prompts now work with both stdin pipes and regular-file redirection.
+
+### Bug Fixes
+
+- Preserve complete material values in tool approvals and inspection, including empty write content and edit replacements, while showing the same effective defaults used at execution time.
+- Sanitize tool targets before terminal rendering and keep prepared-tool feedback stable while an approval prompt is open.
+- Run GitHub automation from the latest verified stable Kana release so a broken target branch cannot prevent the Agent from repairing it, and report structured failures without publishing incomplete error output as a final summary.
+
 ## [0.6.0](https://github.com/longyijdos/kana/compare/v0.5.0...v0.6.0) (2026-08-23)
 
 Kana v0.6.0 adds agent image inspection, durable artifacts for oversized tool results, and tool-result policies with repeated tool-call detection.
