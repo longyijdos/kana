@@ -1,13 +1,14 @@
 import { lstat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveExistingWorkspaceDirectory } from "./workspace-path";
 
 export const DEFAULT_LIST_LIMIT = 200;
 const MAX_LIST_LIMIT = 2000;
 
-export const listParameters = Type.Object({
+export const listParameters = strictObject({
   path: Type.Optional(
     Type.String({
       default: ".",

@@ -40,12 +40,30 @@ function formatValidationPath(error: TLocalizedValidationError): string {
 
 function formatValidationMessage(error: TLocalizedValidationError): string {
   // Preserve the existing model-facing wording across the TypeBox migration.
-  return error.keyword === "required" ? "Expected required property" : error.message;
+  if (error.keyword === "required") {
+    return "Expected required property";
+  }
+  if (error.keyword === "additionalProperties") {
+    return "Unexpected property (not declared in the tool schema)";
+  }
+  return error.message;
 }
 
+// TypeBox reports all unexpected keys of one object in a single error, so
+// expand it into one line per key to name every rejected argument.
 function formatValidationErrors(errors: TLocalizedValidationError[]): string {
   const formatted = errors
-    .map((error) => `  - ${formatValidationPath(error)}: ${formatValidationMessage(error)}`)
+    .flatMap((error) => {
+      if (error.keyword === "additionalProperties") {
+        const basePath = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
+        return error.params.additionalProperties.map((property) => {
+          const path = basePath ? `${basePath}.${property}` : property;
+          return `  - ${path}: ${formatValidationMessage(error)}`;
+        });
+      }
+
+      return [`  - ${formatValidationPath(error)}: ${formatValidationMessage(error)}`];
+    })
     .join("\n");
 
   return formatted || "Unknown validation error";

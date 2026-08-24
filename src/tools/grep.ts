@@ -1,6 +1,7 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { strictObject } from "./strict-object";
 import type { Tool, ToolContext } from "./tool";
 import { resolveExistingWorkspacePath } from "./workspace-path";
 
@@ -8,7 +9,7 @@ export const DEFAULT_GREP_LIMIT = 100;
 const MAX_GREP_LIMIT = 2000;
 export const DEFAULT_GREP_INCLUDE = "**/*";
 
-export const grepParameters = Type.Object({
+export const grepParameters = strictObject({
   pattern: Type.String({
     minLength: 1,
     description: "JavaScript regular expression to search for. Use unescaped | for alternation.",

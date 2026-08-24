@@ -1,13 +1,14 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveExistingWorkspaceFile } from "./workspace-path";
 
 export const DEFAULT_READ_LIMIT = 200;
 const MAX_READ_LIMIT = 2000;
 
-export const readParameters = Type.Object({
+export const readParameters = strictObject({
   path: Type.String({
     description: "File path to read, relative to the workspace root or absolute.",
   }),

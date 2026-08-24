@@ -1,6 +1,7 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { strictObject } from "./strict-object";
 import type { Tool, ToolContext } from "./tool";
 import { resolveExistingWorkspaceDirectory } from "./workspace-path";
 
@@ -9,7 +10,7 @@ const MAX_GLOB_LIMIT = 2000;
 const MAX_GLOB_DEPTH = 50;
 const GLOB_ENTRY_TYPES = ["file", "directory", "any"] as const;
 
-export const globParameters = Type.Object({
+export const globParameters = strictObject({
   cwd: Type.Optional(
     Type.String({
       default: ".",

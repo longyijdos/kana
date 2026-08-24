@@ -114,6 +114,8 @@ journal 的顺序是协议约束：完整 assistant 消息必须先持久化，�
 
 参数校验失败和工具抛出的异常不会使循环本身抛出：它们成为 `isError: true` 的工具结果，模型能在下一回合看到失败原因。审批钩子返回 `cancel` 时默认中止整个运行，并为之后尚未执行的同消息工具补充“已取消”错误结果。中止发生在执行前也遵循同样的补全规则。
 
+Kana 自有的内置工具 schema 声明 `additionalProperties: false`，因此未在工具 schema 中声明的参数会直接校验失败，错误信息会指明该意外参数，而不会被静默忽略。外部工具与 MCP 工具 schema 保持各自声明的 `additionalProperties` 行为。
+
 ### 工具结果策略
 
 通用 Agent 层接受一个可选的外部 `ToolResultPolicy`，并可与精确重复检测等产品无关策略组合。每个结果规范化为 `ToolResult` 后，ToolRuntime 会按顺序调用各策略；成功、未知工具、参数错误、审批拒绝、取消、超时和异常都遵循同一路径。策略收到模型原始调用的深拷贝只读视图、当前给模型的 `content`、错误状态、可克隆结构化结果的 JSON 字节数和当前内容字节上限；任意的 host 结构化 `result` 本身不进入这个建议边界。策略可以替换文本、追加带来源的内部上下文、单向关闭 `result` 持久化，或附加一个通过校验的 artifact 引用；不能改写工具身份、参数、实时 canonical 结果或错误状态。策略抛错或返回非法值时只产生安全诊断，并保留此前 pipeline 状态。验证后的输出会在离开 containment 前复制为普通内部快照，因此 getter、Proxy、稀疏数组或后续修改都不能逃逸到结果提交阶段。
@@ -180,6 +182,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 ## 自定义工具的约束
 
 - 在 TypeScript 中优先使用 TypeBox 1.x schema，以保留静态参数类型。运行时也接受 TypeBox schema 经 JSON 序列化后的普通 JSON Schema；这类 schema 会补充兼容的基础类型转换，再由 TypeBox 编译器校验。
+- 在对象参数 schema 上声明 `additionalProperties: false`，让未知模型参数直接校验失败，而不是被静默忽略。
 - 返回可序列化的结构化 `result`，并提供简短、对模型有用的 `content`。可选 `images` 必须是 `UserImage[]`，可选 `isError` 必须是布尔值；字段格式错误时，本次调用会在任何消息提交前转成安全的工具失败。
 - 对可长时间运行的工具检查 `context.signal`，并用 `context.update` 提供进度。
 - 让失败抛出有操作意义的 `Error`；循环会将其安全转换为模型可见的工具结果。

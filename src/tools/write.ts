@@ -1,10 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveNewWorkspaceFile } from "./workspace-path";
 
-export const writeParameters = Type.Object({
+export const writeParameters = strictObject({
   path: Type.String({
     description: "New file path to create, relative to the workspace root or absolute.",
   }),

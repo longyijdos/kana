@@ -3,10 +3,11 @@ import { Type } from "typebox";
 
 import type { UserImageMimeType } from "@/core";
 import { loadUserImageFile } from "@/utils";
+import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveExistingWorkspaceFile } from "./workspace-path";
 
-export const viewImageParameters = Type.Object({
+export const viewImageParameters = strictObject({
   path: Type.String({
     description: "Image path to inspect, relative to the workspace root or absolute.",
   }),

@@ -1,0 +1,198 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createWakeScheduler } from "../../src/kana/conversation/wake-scheduler";
+import {
+  createMemoryConsolidationTools,
+  createMemoryConsolidationTransaction,
+} from "../../src/kana/memory/consolidation-tools";
+import { createRememberTool } from "../../src/kana/tools/remember";
+import { createScheduleWakeTool } from "../../src/kana/tools/schedule-wake";
+import { createBashTool } from "../../src/tools/bash";
+import { createEditTool } from "../../src/tools/edit";
+import { createGlobTool } from "../../src/tools/glob";
+import { createGrepTool } from "../../src/tools/grep";
+import { createListTool } from "../../src/tools/list";
+import { createReadTool } from "../../src/tools/read";
+import type { Tool } from "../../src/tools/tool";
+import { validateToolArguments } from "../../src/tools/validation";
+import { createViewImageTool } from "../../src/tools/view-image";
+import { createWriteTool } from "../../src/tools/write";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const tempDir of tempDirs.splice(0)) {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+function createTempEnv(): NodeJS.ProcessEnv {
+  const home = mkdtempSync(path.join(tmpdir(), "kana-strict-schemas-"));
+  tempDirs.push(home);
+  return { KANA_HOME: home };
+}
+
+function createInternalMemoryTools(): Map<string, Tool> {
+  const env = createTempEnv();
+  const tools = createMemoryConsolidationTools(
+    { scope: "global", env },
+    "full",
+    createMemoryConsolidationTransaction({ scope: "global", env }),
+  );
+  return new Map(tools.map((tool) => [tool.name, tool]));
+}
+
+const scheduler = createWakeScheduler({ setTimeout: () => 1, clearTimeout: () => {} });
+const internalMemoryTools = createInternalMemoryTools();
+
+type SchemaCase = {
+  name: string;
+  tool: Tool;
+  valid: Record<string, unknown>;
+  invalidArgs: Record<string, unknown>;
+  unexpected: string;
+};
+
+const schemaCases: SchemaCase[] = [
+  {
+    name: "list",
+    tool: createListTool(),
+    valid: { path: "src", includeHidden: false, limit: 10 },
+    invalidArgs: { cwd: "src" },
+    unexpected: "cwd",
+  },
+  {
+    name: "glob",
+    tool: createGlobTool(),
+    valid: { pattern: "**/*.ts", cwd: "src", type: "file" },
+    invalidArgs: { pattern: "**/*.ts", path: "src" },
+    unexpected: "path",
+  },
+  {
+    name: "grep",
+    tool: createGrepTool(),
+    valid: { pattern: "commander", path: "src", include: "**/*.ts", literal: true },
+    invalidArgs: { pattern: "foo", cwd: "src" },
+    unexpected: "cwd",
+  },
+  {
+    name: "read",
+    tool: createReadTool(),
+    valid: { path: "src/main.ts", offset: 2, limit: 10 },
+    invalidArgs: { path: "src/main.ts", startLine: 100 },
+    unexpected: "startLine",
+  },
+  {
+    name: "view_image",
+    tool: createViewImageTool(),
+    valid: { path: "screenshot.png" },
+    invalidArgs: { path: "screenshot.png", scale: 2 },
+    unexpected: "scale",
+  },
+  {
+    name: "write",
+    tool: createWriteTool(),
+    valid: { path: "a.txt", content: "hello", overwrite: false },
+    invalidArgs: { path: "a.txt", content: "hello", mode: 0o644 },
+    unexpected: "mode",
+  },
+  {
+    name: "edit",
+    tool: createEditTool(),
+    valid: { path: "a.txt", oldText: "a", newText: "b", replaceAll: false },
+    invalidArgs: { path: "a.txt", oldText: "a", newText: "b", text: "a" },
+    unexpected: "text",
+  },
+  {
+    name: "bash",
+    tool: createBashTool(),
+    valid: { command: "bun test", cwd: "src", timeoutMs: 1000 },
+    invalidArgs: { command: "bun test", path: "src" },
+    unexpected: "path",
+  },
+  {
+    name: "remember",
+    tool: createRememberTool(),
+    valid: { content: "x", scope: "global", title: "t", reason: "r" },
+    invalidArgs: { content: "x", project: true },
+    unexpected: "project",
+  },
+  {
+    name: "schedule_wake",
+    tool: createScheduleWakeTool({ scheduler, sessionId: "session-a" }),
+    valid: { afterMinutes: 30, message: "continue", key: "build" },
+    invalidArgs: { afterMinutes: 30, message: "continue", replaceKey: "build" },
+    unexpected: "replaceKey",
+  },
+  {
+    name: "read_memory",
+    tool: internalMemoryTools.get("read_memory") ?? missingTool("read_memory"),
+    valid: {},
+    invalidArgs: { cwd: "src" },
+    unexpected: "cwd",
+  },
+  {
+    name: "edit_memory",
+    tool: internalMemoryTools.get("edit_memory") ?? missingTool("edit_memory"),
+    valid: { oldText: "a", newText: "b", replaceAll: false },
+    invalidArgs: { oldText: "a", newText: "b", replace_all: true },
+    unexpected: "replace_all",
+  },
+  {
+    name: "replace_memory",
+    tool: internalMemoryTools.get("replace_memory") ?? missingTool("replace_memory"),
+    valid: { content: "x" },
+    invalidArgs: { contents: "x" },
+    unexpected: "contents",
+  },
+  {
+    name: "list_daily_memory",
+    tool: internalMemoryTools.get("list_daily_memory") ?? missingTool("list_daily_memory"),
+    valid: { startDate: "2026-01-01", endDate: "2026-01-31" },
+    invalidArgs: { from: "2026-01-01" },
+    unexpected: "from",
+  },
+  {
+    name: "read_daily_memory",
+    tool: internalMemoryTools.get("read_daily_memory") ?? missingTool("read_daily_memory"),
+    valid: { date: "2026-01-01" },
+    invalidArgs: { date: "2026-01-01", day: "2026-01-01" },
+    unexpected: "day",
+  },
+  {
+    name: "search_daily_memory",
+    tool: internalMemoryTools.get("search_daily_memory") ?? missingTool("search_daily_memory"),
+    valid: { query: "x" },
+    invalidArgs: { query: "x", q: "x" },
+    unexpected: "q",
+  },
+];
+
+function missingTool(name: string): Tool {
+  throw new Error(`Expected ${name} tool.`);
+}
+
+describe("Kana-owned tool parameter schemas", () => {
+  test("reject unknown arguments with the unexpected property named", () => {
+    for (const schemaCase of schemaCases) {
+      expect(
+        () => validateToolArguments(schemaCase.tool, schemaCase.invalidArgs),
+        schemaCase.name,
+      ).toThrow(
+        new RegExp(
+          `${schemaCase.unexpected}: Unexpected property \\(not declared in the tool schema\\)`,
+        ),
+      );
+    }
+  });
+
+  test("continue accepting every declared argument", () => {
+    for (const schemaCase of schemaCases) {
+      expect(validateToolArguments(schemaCase.tool, schemaCase.valid), schemaCase.name).toEqual(
+        schemaCase.valid,
+      );
+    }
+  });
+});

@@ -1,10 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveExistingWorkspaceFile } from "./workspace-path";
 
-export const editParameters = Type.Object({
+export const editParameters = strictObject({
   path: Type.String({
     description: "Existing file path to edit, relative to the workspace root or absolute.",
   }),

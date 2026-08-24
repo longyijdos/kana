@@ -1,9 +1,9 @@
 import { Type } from "typebox";
-
 import type { Tool } from "@/tools";
+import { strictObject } from "@/tools";
 import { appendKanaMemory, type KanaMemoryEntry } from "../memory/storage";
 
-export const rememberParameters = Type.Object({
+export const rememberParameters = strictObject({
   content: Type.String({
     minLength: 1,
     description: "The durable fact, preference, decision, or unfinished work to retain.",

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { Type } from "typebox";
+import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveWorkspaceDirectory } from "./workspace-path";
 
@@ -22,7 +23,7 @@ type BashOutputSnapshot = {
   stderr: string;
 };
 
-export const bashParameters = Type.Object({
+export const bashParameters = strictObject({
   command: Type.String({
     description: "Command to execute.",
   }),

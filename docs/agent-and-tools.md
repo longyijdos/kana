@@ -114,6 +114,8 @@ Every tool call is processed in this order:
 
 Argument-validation failures and exceptions thrown by tools do not throw the loop itself: they become `isError: true` results that the model can see on the next turn. When an approval hook returns `cancel`, it aborts the full run by default and adds cancelled error results for later, unexecuted calls from the same message. Abort before execution follows the same completion behavior.
 
+Kana-owned built-in tool schemas declare `additionalProperties: false`, so arguments not declared in a tool's schema fail validation with the unexpected property named in the error instead of being silently ignored. External and MCP tool schemas keep their own declared `additionalProperties` behavior.
+
 ### Tool-result policies
 
 The generic Agent layer accepts an optional external `ToolResultPolicy` and may compose it with product-independent policies such as repeated-call detection. ToolRuntime invokes each policy in order after every outcome has become a normalized `ToolResult`, including success, missing tools, argument failures, approval denial, cancellation, timeout, and exceptions. A policy receives a deep-cloned, read-only view of the model-authored call, the current model-visible `content`, error state, the measured JSON byte length of a cloneable structured result, and the active content byte limit. The arbitrary structured host `result` itself does not cross this advisory boundary. A policy may replace content, append source-attributed internal context, monotonically disable durable `result` persistence, or attach one validated artifact reference; it cannot rewrite tool identity, arguments, the canonical live result, or error state. Policy exceptions and invalid returns emit safe diagnostics and leave the preceding pipeline state intact. Validated output is copied into a plain internal snapshot before leaving containment, so getters, proxies, sparse arrays, or later mutation cannot escape into result commit.
@@ -180,6 +182,7 @@ MCP results are never persisted verbatim. The adapter separately bounds content 
 ## Constraints for custom tools
 
 - Prefer TypeBox 1.x schemas in TypeScript so tool arguments retain static types. The runtime also accepts plain JSON Schema produced by serializing a TypeBox schema; it applies compatible primitive coercion before validating with the TypeBox compiler.
+- Declare `additionalProperties: false` on object parameter schemas so unknown model arguments fail validation instead of being silently ignored.
 - Return a serializable structured `result` with concise, model-useful `content`. Optional `images` must be a `UserImage[]`, and optional `isError` must be Boolean; malformed fields turn that invocation into a safe tool failure before any message is committed.
 - Check `context.signal` in long-running work and use `context.update` for progress.
 - Throw actionable `Error` values for failures; the loop safely converts them into model-visible results.

@@ -1,9 +1,9 @@
 import { Type } from "typebox";
-
 import type { Tool } from "@/tools";
+import { strictObject } from "@/tools";
 import type { WakeScheduler } from "../conversation/wake-scheduler";
 
-export const scheduleWakeParameters = Type.Object({
+export const scheduleWakeParameters = strictObject({
   afterMinutes: Type.Integer({
     minimum: 1,
     maximum: 1_440,

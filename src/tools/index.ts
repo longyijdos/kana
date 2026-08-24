@@ -6,6 +6,7 @@ export { createGrepTool, DEFAULT_GREP_INCLUDE, DEFAULT_GREP_LIMIT } from "./grep
 export { createListTool, DEFAULT_LIST_LIMIT } from "./list";
 export { createReadTool, DEFAULT_READ_LIMIT } from "./read";
 export { normalizeToolResult } from "./result";
+export { strictObject } from "./strict-object";
 export type {
   Tool,
   ToolContext,
