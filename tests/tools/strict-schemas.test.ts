@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createKanaAgent, KANA_BUILT_IN_TOOL_NAMES } from "../../src/kana/agent";
+import { DEFAULT_KANA_CONFIG } from "../../src/kana/config";
 import { createWakeScheduler } from "../../src/kana/conversation/wake-scheduler";
 import {
   createMemoryConsolidationTools,
@@ -42,6 +44,50 @@ function createInternalMemoryTools(): Map<string, Tool> {
     createMemoryConsolidationTransaction({ scope: "global", env }),
   );
   return new Map(tools.map((tool) => [tool.name, tool]));
+}
+
+// Derive the conversation built-in tools from the real registration path
+// (createKanaAgent) instead of a hand-maintained list, with every optional
+// built-in enabled so a newly added tool is checked automatically.
+function createAgentBuiltInTools(): Tool[] {
+  const home = mkdtempSync(path.join(tmpdir(), "kana-strict-schemas-"));
+  tempDirs.push(home);
+  const previousHome = process.env.KANA_HOME;
+  const previousKey = process.env.KANA_TEST_DEEPSEEK_KEY;
+  process.env.KANA_HOME = home;
+  process.env.KANA_TEST_DEEPSEEK_KEY = "secret";
+
+  try {
+    const agent = createKanaAgent(
+      {
+        ...DEFAULT_KANA_CONFIG,
+        model: {
+          ...DEFAULT_KANA_CONFIG.model,
+          deepseek: {
+            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            name: "deepseek-v4-flash-vision-exp" as const,
+            apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
+          },
+        },
+      },
+      {
+        wakeScheduler: scheduler,
+        sessionId: "session-a",
+      },
+    );
+    return agent.state.tools;
+  } finally {
+    restoreEnvironment("KANA_HOME", previousHome);
+    restoreEnvironment("KANA_TEST_DEEPSEEK_KEY", previousKey);
+  }
+}
+
+function restoreEnvironment(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
 }
 
 const scheduler = createWakeScheduler({ setTimeout: () => 1, clearTimeout: () => {} });
@@ -193,6 +239,44 @@ describe("Kana-owned tool parameter schemas", () => {
       expect(validateToolArguments(schemaCase.tool, schemaCase.valid), schemaCase.name).toEqual(
         schemaCase.valid,
       );
+    }
+  });
+
+  test("require additionalProperties: false on every built-in schema from the agent assembly paths", () => {
+    const agentTools = createAgentBuiltInTools();
+    // Guard that the derivation enabled every built-in: a missing tool here
+    // would silently skip the strictness check below.
+    expect(agentTools.map((tool) => tool.name)).toEqual([...KANA_BUILT_IN_TOOL_NAMES]);
+
+    const incrementalEnv = createTempEnv();
+    const fullEnv = createTempEnv();
+    const consolidationTools = [
+      ...createMemoryConsolidationTools(
+        { scope: "global", env: incrementalEnv },
+        "incremental",
+        createMemoryConsolidationTransaction({ scope: "global", env: incrementalEnv }),
+      ),
+      ...createMemoryConsolidationTools(
+        { scope: "global", env: fullEnv },
+        "full",
+        createMemoryConsolidationTransaction({ scope: "global", env: fullEnv }),
+      ),
+    ];
+    expect(consolidationTools.map((tool) => tool.name)).toEqual([
+      "read_memory",
+      "edit_memory",
+      "replace_memory",
+      "read_memory",
+      "list_daily_memory",
+      "read_daily_memory",
+      "search_daily_memory",
+      "edit_memory",
+      "replace_memory",
+    ]);
+
+    for (const tool of [...agentTools, ...consolidationTools]) {
+      const parameters = tool.parameters as { additionalProperties?: boolean };
+      expect(parameters.additionalProperties, tool.name).toBe(false);
     }
   });
 });
