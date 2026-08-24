@@ -13,6 +13,7 @@ import {
   collectKanaEnvironmentContext,
   formatKanaEnvironmentContext,
 } from "./context";
+import type { KanaGoalSnapshot } from "./conversation/goal-controller";
 import type { KanaLaunchMode } from "./launch-mode";
 import { formatKanaMemoryForPrompt } from "./memory/prompt";
 import { formatKanaSkillsForPrompt } from "./skills/prompt";
@@ -44,6 +45,7 @@ export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions 
 export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
   toolSections?: readonly PromptToolSection[];
   resolveTodoState?: () => readonly KanaTodoItem[];
+  resolveGoalState?: () => KanaGoalSnapshot | undefined;
 };
 
 function loadKanaSystemSections(options: LoadKanaSystemPromptOptions = {}): PromptSystemSection[] {
@@ -113,9 +115,34 @@ export function buildKanaPromptAssembly(
             },
           ]
         : []),
+      ...(options.resolveGoalState
+        ? [
+            {
+              name: "goal",
+              render: () => formatKanaGoalRuntimeContext(options.resolveGoalState?.()),
+            },
+          ]
+        : []),
     ],
     tools: options.toolSections,
   });
+}
+
+function formatKanaGoalRuntimeContext(goal: KanaGoalSnapshot | undefined): string | undefined {
+  if (goal?.status !== "active") {
+    return undefined;
+  }
+
+  return [
+    "An explicitly user-authorized goal is active for this process.",
+    "Continue making concrete progress toward the objective.",
+    "Call update_goal with completed only when the objective is achieved, or blocked only when meaningful progress requires user input or an external state change.",
+    JSON.stringify({
+      goal: {
+        objective: goal.objective,
+      },
+    }),
+  ].join("\n");
 }
 
 function formatKanaTodoRuntimeContext(items: readonly KanaTodoItem[]): string | undefined {

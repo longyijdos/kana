@@ -60,6 +60,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("model.custom", "name", (config) => config.model.custom.name || undefined),
   field("model.custom", "reasoning_effort", (config) => config.model.custom.reasoningEffort),
   field("agent", "max_turns", (config) => config.agent.maxTurns),
+  field("agent", "goal_max_rounds", (config) => config.agent.goalMaxRounds),
   field("agent", "tool_deadline_ms", (config) => config.agent.toolDeadlineMs),
   field("agent", "parallel_tool_calls", (config) => config.agent.parallelToolCalls),
   field("agent", "max_parallel_tool_calls", (config) => config.agent.maxParallelToolCalls),

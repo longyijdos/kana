@@ -103,6 +103,8 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 空闲时 `Enter` 正常提交；Agent 运行中按 `Enter` 会把消息放入 `next-step`，在当前完整 model/tool turn 的 `turn_end` 之后投递，并在同一个 run 中开始下一次模型调用。若中止或 turn limit 使下一 turn 无法开始，Agent 会把同一条带 ID 消息移到 `next-turn` 尾部。Agent 运行中按 `Tab` 会直接加入 `next-turn`，等当前 `agent_end` 后作为新的 run 发送；空闲时普通输入的 `Tab` 不提交消息，slash 面板中的 `Tab` 仍用于补全。队列与到期 wake 按入队顺序共享 FIFO 投递通道。在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入和没有 shell 命令的单独 `!` 作为普通模型消息发送。
 
+`/goal <目标>` 会启动一个进程内 Goal，并把目标作为首次 Agent run 的输入。只要 Goal 仍为 active，runtime 就会在每次 `agent_end` 后启动下一 run，但已经排队的 Tab 输入、deferred steering 或到期 wake 会优先执行。模型通过权威 runtime context 获得 active 目标，并可调用 `update_goal` 标记 `completed` 或 `blocked`；配置的 run 计数和上限不会暴露给模型。TUI 把续轮显示为弱化 marker，并抑制逐轮完成通知。`Esc` 或 `Ctrl+C` 会取消 active Goal；新建、分叉或恢复 session、Agent 重配置、关闭、run 失败、显式终态更新以及达到 `agent.goal_max_rounds` 上限也会结束它。Goal 控制状态不会从 session 历史恢复；当前进程仍在运行时，自动上下文压缩会重新投影 active 目标。
+
 一条输入最多可附加 10 张图片。编辑器只显示附件数量、尺寸和编码后大小，不显示图片字节；输入文本为空时，Backspace 会移除最后附加的图片。在 macOS 上，`Ctrl+V` 从系统剪贴板读取图片；剪贴板没有图片时直接报错，不会退回文本粘贴，因为普通终端文本仍使用 `Cmd+V`。`/image <path>` 是跨平台的路径方案，只附加图片而不立即提交。相对路径从 Kana 当前工作目录解析，也支持带引号路径、`~/…` 和 `file://` URL。路径属于 Kana 实际运行的主机，因此 SSH 场景应填写远端路径；WSL 即使不能读取图片剪贴板，也可以使用 `/mnt/c/Users/me/Pictures/image.png` 这类 Windows 挂载路径。图片会在附加前解码并规范化：最长边最多 2048 像素且不会放大，JPEG/PNG/WebP 保持为供应商可接受的对应格式，其他可解码格式转为 PNG，编码后的结果不能超过 10 MB。
 
 | Slash 命令 | 行为 |
@@ -116,6 +118,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
 | `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
 | `/schedule` | 查看、添加、刷新或删除当前 session 的进程内定时消息。 |
+| `/goal <目标>` | 在有界的连续 Agent run 中持续推进一个目标。 |
 | `/todo` | 打开当前 session 的 todo 列表和状态计数。 |
 | `/tools` | 浏览当前会话的全部工具调用，并可任意打开其中一个的详情查看器。 |
 | `/image <path>` | 将本地图片路径附加到编辑器，但不立即提交。 |
@@ -128,7 +131,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 `/usage` 会让 token 标签、数值和比例条保持稳定列位。Runs 区域和按模型明细会显示 token 总数，并根据当前可见数据动态计算数字列宽，因此更大的次数、token 总数或更长的模型名不会推动相邻数值错位。各类 outcome 仍保持紧凑的单行摘要，底部视图较窄时可能被截断。
 
-Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用，其中 `/schedule` 的消息仍只存在于当前进程，`/todo` 读取进程内列表，`/model` 不写回配置文件。
+Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/goal`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用，其中 `/schedule` 消息和 `/goal` 控制状态仍只存在于当前进程，`/todo` 读取进程内列表，`/model` 不写回配置文件。
 
 ## 控制器与焦点
 

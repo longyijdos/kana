@@ -320,6 +320,7 @@ function createHeadlessRuntime(
       };
     },
     wakeScheduler: host.wakeScheduler,
+    goalMaxRounds: host.config.agent.goalMaxRounds,
     scheduledRuns: false,
     getLogger: () => host.getLogger(),
   });

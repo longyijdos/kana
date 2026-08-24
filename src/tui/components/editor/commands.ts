@@ -11,6 +11,7 @@ export type PromptCommandName =
   | "skills"
   | "mcp"
   | "schedule"
+  | "goal"
   | "todo"
   | "tools"
   | "image"
@@ -98,6 +99,11 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "schedule",
     description: "Manage scheduled messages for this session.",
+  },
+  {
+    name: "goal",
+    argumentSyntax: "<objective>",
+    description: "Run one bounded goal through sequential Agent rounds.",
   },
   {
     name: "todo",

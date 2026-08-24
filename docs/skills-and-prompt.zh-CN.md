@@ -58,7 +58,7 @@ enabled = ["release-check", "database-migrations"]
 可见 Skills 的目录
 ```
 
-每次模型调用前，Agent 都会解析动态 context 和工具 section。环境属于动态 section；工作区、memory、scheduled-wake 和外部/MCP 工具分别属于独立 capability section。同一步解析出的工具对象既会声明给该次模型请求，也会用于执行该请求产生的调用，因此后续刷新不会改变正在进行中的调用语义。稳定 system 前缀在这些步骤之间保持不变，供应商 prompt cache 可以复用它。
+每次模型调用前，Agent 都会解析动态 context 和工具 section。环境、session todo 状态和 active `/goal` 目标属于动态 section；工作区、Goal 控制、memory、scheduled-wake 和外部/MCP 工具分别属于独立 capability section。`update_goal` 只在进程内 Goal 为 active 时声明。同一步解析出的工具对象既会声明给该次模型请求，也会用于执行该请求产生的调用，因此后续刷新不会改变正在进行中的调用语义。稳定 system 前缀在这些步骤之间保持不变，供应商 prompt cache 可以复用它。
 
 `--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时稳定 system 提示词只包含默认助手指令，动态环境上下文仍然可用；Agent 不注册 `remember` 或任何外部工具。TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载，但 `/model` 的选择只保留在当前临时进程中。
 
@@ -78,6 +78,8 @@ enabled = ["release-check", "database-migrations"]
 ```
 
 Agent 会按 `source` 将每个动态 section 与历史中最近的同源状态比较；只有内容变化时才追加并写入新快照，section 停止渲染时则写入一次 inactive marker。这份持久历史保持追加式，以支持恢复和审计；内部消息不会显示在 transcript 中。每次模型请求前，Kana 只投影每个来源当前最新且仍 active 的快照：旧值和 inactive marker 都不会发送给模型，未变化的 active 快照则保留原位置以复用 prompt cache。上下文压缩不总结 runtime context，并只在需要时把当前 active 快照重新投影到摘要后。
+
+Active Goal 使用独立的 `goal` runtime-context source。该快照包含目标与终态更新 guidance，但省略 controller ID、已允许的 run 计数和配置上限，避免把 runtime 调度误当成任务语义。自动上下文压缩会在摘要后重新投影该目标。快照可以保留在追加式 session 历史中，但授权与 controller 只存在于当前进程；没有 active controller 时恢复 session 会把该 source 投影为 inactive，不会重建 Goal。
 
 如果 memory 启用且对应长期文件非空，Kana 在稳定 system 前缀开头写入 `<memory>`，内部区分 `global` 与 `project` 引用块。记忆文本会 XML 转义，避免其中的 `<`、`&` 等改变宿主标签结构；但它仍是模型上下文中的不可信数据，记忆合并提示要求将其作为数据而非指令。Memory 在 Agent 构建时读取，而不会在每次 `remember` 后把不断增长的完整文件追加到历史中，从而避免重复 token。何时保存、保存什么的 guidance 位于 `remember` 工具 description，因此只会在该能力可用时声明给模型。
 

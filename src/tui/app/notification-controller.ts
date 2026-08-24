@@ -13,6 +13,14 @@ export class NotificationController {
       return;
     }
 
+    this.agentCompleted();
+  }
+
+  agentCompleted(): void {
+    if (!this.config.onAgentCompleted) {
+      return;
+    }
+
     this.terminal.notify({
       title: "Kana",
       body: "Agent completed.",

@@ -114,6 +114,7 @@ const BUILT_IN_TOOL_TITLES = new Map<string, string>([
   ["remember", "Remember"],
   ["schedule_wake", "Schedule wake"],
   ["todo_write", "Todos"],
+  ["update_goal", "Update goal"],
 ]);
 
 function mcpDetailTitle(source: ToolApprovalSource): string {
@@ -272,6 +273,12 @@ function buildToolSections(
       }
       pushSection(sections, "Message", getStringProperty(args, "message"));
       pushSection(sections, "Key", getStringProperty(args, "key"));
+      break;
+    }
+
+    case "update_goal": {
+      pushSection(sections, "Status", getStringProperty(args, "status"));
+      pushSection(sections, "Detail", getStringProperty(args, "detail"));
       break;
     }
 

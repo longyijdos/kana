@@ -172,6 +172,7 @@ export function formatToolOutput(
     }
     case "remember":
     case "schedule_wake":
+    case "update_goal":
       return [];
   }
 
@@ -232,6 +233,7 @@ export function hasExpandableToolOutput(
     case "todo_write":
     case "remember":
     case "schedule_wake":
+    case "update_goal":
       return false;
 
     case "write": {
@@ -308,6 +310,9 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       }
       return undefined;
     }
+
+    case "update_goal":
+      return getStringProperty(toolCall.args, "status");
 
     case "glob":
       return (
@@ -488,6 +493,13 @@ function toolText(
         approvalTitle: "Allow agent to schedule a wake?",
         doneTitle: `Scheduled wake ${target}`,
         runningActivity: `scheduling wake ${target}`,
+      };
+    case "update_goal":
+      return {
+        action: "update goal",
+        approvalTitle: "Allow agent to update the goal?",
+        doneTitle: target === "completed" ? "Completed goal" : "Blocked goal",
+        runningActivity: "updating goal",
       };
     default:
       return {

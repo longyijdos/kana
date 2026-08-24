@@ -11,6 +11,7 @@ describe("prompt command help", () => {
     const memory = PROMPT_COMMANDS.find((command) => command.name === "memory");
     const mcp = PROMPT_COMMANDS.find((command) => command.name === "mcp");
     const schedule = PROMPT_COMMANDS.find((command) => command.name === "schedule");
+    const goal = PROMPT_COMMANDS.find((command) => command.name === "goal");
     const approval = PROMPT_COMMANDS.find((command) => command.name === "approval");
     const compact = PROMPT_COMMANDS.find((command) => command.name === "compact");
     const tools = PROMPT_COMMANDS.find((command) => command.name === "tools");
@@ -20,6 +21,7 @@ describe("prompt command help", () => {
     expect(memory).toBeDefined();
     expect(mcp).toBeDefined();
     expect(schedule).toBeDefined();
+    expect(goal).toBeDefined();
     expect(approval).toBeDefined();
     expect(compact).toBeDefined();
     expect(formatPromptCommandHelpLine(fork!)).toContain("/fork <prompt>");
@@ -30,6 +32,8 @@ describe("prompt command help", () => {
     expect(formatPromptCommandUsage("mcp")).toBe("Usage: /mcp");
     expect(formatPromptCommandHelpLine(schedule!)).toContain("/schedule");
     expect(formatPromptCommandUsage("schedule")).toBe("Usage: /schedule");
+    expect(formatPromptCommandHelpLine(goal!)).toContain("/goal <objective>");
+    expect(formatPromptCommandUsage("goal")).toBe("Usage: /goal <objective>");
     expect(formatPromptCommandHelpLine(approval!)).toContain("/approval");
     expect(formatPromptCommandUsage("approval")).toBe("Usage: /approval");
     expect(formatPromptCommandHelpLine(compact!)).toContain("/compact");

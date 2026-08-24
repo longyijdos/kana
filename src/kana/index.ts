@@ -51,6 +51,7 @@ export {
   type ConversationSessionSnapshot,
   createKanaConversationHost,
   createWakeScheduler,
+  type KanaGoalSnapshot,
   type WakeEvent,
   type WakeEventOrigin,
   type WakeScheduler,

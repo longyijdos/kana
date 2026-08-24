@@ -553,6 +553,180 @@ describe("ConversationRuntime", () => {
     await runtime.close();
   });
 
+  test("continues an active goal until its configured Agent-run limit", async () => {
+    const model = new ControlledModel();
+    const sources: string[] = [];
+    const goalChanges: string[] = [];
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      goalMaxRounds: 2,
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    runtime.subscribe((event) => {
+      if (event.type === "run_start") {
+        sources.push(event.source);
+      } else if (event.type === "goal_state_changed") {
+        goalChanges.push(event.change);
+      }
+    });
+
+    const firstRun = runtime.startGoal("Finish the bounded task");
+    await waitFor(() => model.contexts.length === 1);
+    expect(runtime.goal).toMatchObject({
+      objective: "Finish the bounded task",
+      status: "active",
+      admittedRounds: 1,
+      maxRounds: 2,
+    });
+
+    model.finish(0, "Made progress.");
+    await firstRun;
+    await waitFor(() => model.contexts.length === 2);
+    expect(model.contexts[1]?.messages.at(-1)).toMatchObject({
+      role: "user",
+      provenance: {
+        kind: "goal_continuation",
+        goalId: runtime.goal?.id,
+        round: 2,
+      },
+    });
+    expect(model.contexts[1]?.messages.at(-1)?.content).not.toContain("Round");
+    expect(model.contexts[1]?.messages.at(-1)?.content).not.toContain("2 of 2");
+
+    model.finish(1, "More progress.");
+    await waitFor(() => runtime.goal?.status === "round_limit");
+    expect(runtime.goal).toMatchObject({ admittedRounds: 2, maxRounds: 2 });
+    expect(sources).toEqual(["goal", "goal"]);
+    expect(goalChanges).toEqual(["started", "round_admitted", "round_limit"]);
+
+    await runtime.close();
+  });
+
+  test("stops automatic continuation after an explicit goal update", async () => {
+    const model = new ControlledModel();
+    let lastEvent: ConversationRuntimeEvent | undefined;
+    let commitGoal:
+      | ((change: { status: "completed" | "blocked"; detail?: string }) => unknown)
+      | undefined;
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      createAgent: (options) => {
+        commitGoal = options.updateGoal;
+        return new Agent({
+          model,
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        });
+      },
+    });
+    runtime.subscribe((event) => {
+      lastEvent = event;
+    });
+
+    const run = runtime.startGoal("Finish in one run");
+    await waitFor(() => model.contexts.length === 1);
+    commitGoal?.({ status: "completed", detail: "Objective achieved." });
+    model.finish(0, "Done.");
+    await run;
+    await Promise.resolve();
+
+    expect(runtime.goal).toMatchObject({
+      status: "completed",
+      detail: "Objective achieved.",
+      admittedRounds: 1,
+    });
+    expect(model.contexts).toHaveLength(1);
+    expect(lastEvent).toMatchObject({
+      type: "run_end",
+      source: "goal",
+      goal: { status: "completed" },
+    });
+
+    await runtime.close();
+  });
+
+  test("drains queued human input before the next goal continuation", async () => {
+    const model = new ControlledModel();
+    const sources: string[] = [];
+    let commitGoal:
+      | ((change: { status: "completed" | "blocked"; detail?: string }) => unknown)
+      | undefined;
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      goalMaxRounds: 3,
+      createAgent: (options) => {
+        commitGoal = options.updateGoal;
+        return new Agent({
+          model,
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        });
+      },
+    });
+    runtime.subscribe((event) => {
+      if (event.type === "run_start") {
+        sources.push(event.source);
+      }
+    });
+
+    const firstRun = runtime.startGoal("Work across runs");
+    await waitFor(() => model.contexts.length === 1);
+    const queued = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Use this additional constraint.",
+    };
+    runtime.queueInput(queued);
+
+    model.finish(0, "First round done.");
+    await firstRun;
+    await waitFor(() => model.contexts.length === 2);
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(queued);
+
+    model.finish(1, "Constraint incorporated.");
+    await waitFor(() => model.contexts.length === 3);
+    expect(model.contexts[2]?.messages.at(-1)?.provenance.kind).toBe("goal_continuation");
+    commitGoal?.({ status: "completed" });
+    model.finish(2, "Goal done.");
+    await runtime.waitForIdle();
+    await waitFor(() => runtime.goal?.status === "completed");
+
+    expect(sources).toEqual(["goal", "user", "goal"]);
+    expect(runtime.goal?.admittedRounds).toBe(2);
+
+    await runtime.close();
+  });
+
+  test("cancels an active goal when the Agent is aborted", async () => {
+    const model = new ControlledModel();
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+
+    const run = runtime.startGoal("Keep working");
+    await waitFor(() => model.contexts.length === 1);
+    runtime.abort();
+    expect(runtime.goal?.status).toBe("cancelled");
+
+    model.finish(0, "Stopped.");
+    await run;
+    await Promise.resolve();
+    expect(model.contexts).toHaveLength(1);
+
+    await runtime.close();
+  });
+
   test("isolates frontend listener failures", async () => {
     const observed: string[] = [];
     const runtime = new ConversationRuntime({

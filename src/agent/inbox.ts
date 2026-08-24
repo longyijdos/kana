@@ -10,6 +10,13 @@ export type AgentInputDelivery =
       displayContent: string;
       dueAt: Date;
       key?: string;
+    }
+  | {
+      kind: "goal";
+      displayContent: string;
+      goalId: string;
+      round: number;
+      maxRounds: number;
     };
 
 export type AgentInboxItem = {

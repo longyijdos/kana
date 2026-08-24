@@ -11,6 +11,7 @@ export type MessageId = string & { readonly [messageIdBrand]: true };
 export type MessageProvenance =
   | { kind: "user_input" }
   | { kind: "scheduled_input"; origin: "user" | "agent" }
+  | { kind: "goal_continuation"; goalId: string; round: number }
   | { kind: "recovery" }
   | { kind: "model_output" }
   | { kind: "tool_result" }
@@ -23,6 +24,7 @@ export type UserMessageProvenance = Extract<
   MessageProvenance,
   | { kind: "user_input" }
   | { kind: "scheduled_input" }
+  | { kind: "goal_continuation" }
   | { kind: "recovery" }
   | { kind: "tool_result_policy" }
   | { kind: "runtime_context" }

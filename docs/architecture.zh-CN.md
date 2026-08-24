@@ -49,7 +49,7 @@ Kana 产品层内部按领域提供稳定 barrel：`auth/` 管理产品凭据与
 
 自更新由 `kana/update/self-update.ts` 隔离在产品层，不进入 TUI 或 Agent 生命周期。它通过 GitHub Release API 取得版本、平台资产及 SHA-256 digest，把下载写入当前可执行文件的同目录临时路径，校验大小与 digest，并让候选程序执行 `--version` 和幂等初始化。替换前会再次比较目标文件的 device、inode、mtime 和大小，避免覆盖下载期间由其它安装进程写入的新版本；最终 rename 是 POSIX 同文件系统的原子目录项替换。源码运行默认标记为 `source` 并拒绝更新，所有可直接安装的编译入口在构建期注入 `direct` 标记，防止把 Bun runtime 误判为更新目标。任一外部 I/O、候选执行或替换步骤失败时都会使用固定阶段错误码并清理临时文件。
 
-启动 TUI 时，`startTui` 先创建 `KanaConversationHost`。Host 加载运行配置和审批白名单，并向前端提供统一的 Agent 工厂和 session 操作；普通模式还持有 session journal、日志、accounting、记忆、wake scheduler 与 `KanaMcpRuntime`，Clean 模式则注册带普通 ID、no-op logger 且没有 journal 的进程内 session。`KanaTuiApp` 用这些依赖创建产品层 `ConversationRuntime`；该 runtime 持有当前 Agent 和 session，负责提交互斥、Agent 重建、session new/fork/resume，以及从 Agent inbox 编排新 run。Agent 同时持有 run-local `next-step` steering 与 FIFO `next-turn` 输入，后者包含 Tab、到期 wake 和 deferred steering；runtime 只发布 inbox 投影，不再维护第二条队列。当前会话确定并完成首次 TUI 渲染后，App 才请求 Host 加载外部工具；此时 MCP runtime 读取定义与启用状态文件、连接选中的 server、发现工具，再由 `ConversationRuntime` 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。TUI 只协调可见用户流程，不实现对话生命周期或 Kana 产品装配，也不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
+启动 TUI 时，`startTui` 先创建 `KanaConversationHost`。Host 加载运行配置和审批白名单，并向前端提供统一的 Agent 工厂和 session 操作；普通模式还持有 session journal、日志、accounting、记忆、wake scheduler 与 `KanaMcpRuntime`，Clean 模式则注册带普通 ID、no-op logger 且没有 journal 的进程内 session。`KanaTuiApp` 用这些依赖创建产品层 `ConversationRuntime`；该 runtime 持有当前 Agent 和 session，负责提交互斥、Agent 重建、session new/fork/resume、进程内 Goal 控制，以及从 Agent inbox 编排新 run。Agent 同时持有 run-local `next-step` steering 与 FIFO `next-turn` 输入，后者包含 Tab、到期 wake、deferred steering 和已允许的 Goal continuation；runtime 只发布 inbox 投影，不再维护第二条队列。当前会话确定并完成首次 TUI 渲染后，App 才请求 Host 加载外部工具；此时 MCP runtime 读取定义与启用状态文件、连接选中的 server、发现工具，再由 `ConversationRuntime` 重建主 Agent。`kana resume` 的会话选择器因此不会启动 MCP，选中会话后才会加载。TUI 只协调可见用户流程，不实现对话生命周期或 Kana 产品装配，也不知道 JSONL、TOML 或 MCP transport 等存储与协议细节。
 
 `startHeadless` 使用同一个 Host 和 runtime，先加载 MCP，再提交一条用户消息并等待完整 Agent loop 结束。它把 runtime 事件投影成独立版本的 JSONL 公共协议，或把进度写到 stderr、最终助手文本写到 stdout。Schema v2 在工具得到物理终态时报告 `tool.completed`；只有 `run.completed` 保证有序结果提交与 run 后处理成功，之后发生持久化失败则产生 `run.failed`。无头前端不提供交互审批；未被配置或白名单信任的工具会关闭失败。调用方传入 `--allow-all-tools` 时会无条件授权所有可用工具，但不会隔离文件或进程。`--timeout` 会在 MCP 启动后设置仅覆盖 Agent run 的软 deadline，到时优雅取消 runtime，在终态 JSONL 事件记录 `termination`，并以 `124` 退出；前端清理不计入该 deadline。`SIGINT` 使用相同的优雅取消边界，并以 `130` 退出。
 
@@ -75,7 +75,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
   → Tool.execute → ToolResultMessage → 下一轮模型调用
 ```
 
-`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。用户消息 provenance 会区分直接/定时输入与内部 recovery、summary 和 `runtime_context` 快照；runtime 快照还携带稳定的 `source`，标识拥有该变化值的 provider。用户消息和工具结果消息都可以携带 `UserImage`，以 MIME 类型、内联 base64 数据和尺寸组成与供应商无关的自包含历史；各 provider adapter 再决定将其映射到 wire protocol，还是生成明确的不支持提示。助手内容块可以是 `text`、`thinking`、`tool_call` 或供应商托管的 `hosted_tool`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供需要不透明 replay state 的 Responses adapter 使用；`core` 和 session 存储不解释该值。
+`core/messages.ts` 中的 `Message` 是历史记录的唯一格式：用户消息、含有有序内容块的助手消息，以及工具结果消息。用户消息 provenance 会区分直接输入、定时输入、Goal continuation 与内部 recovery、summary 和 `runtime_context` 快照；runtime 快照还携带稳定的 `source`，标识拥有该变化值的 provider。用户消息和工具结果消息都可以携带 `UserImage`，以 MIME 类型、内联 base64 数据和尺寸组成与供应商无关的自包含历史；各 provider adapter 再决定将其映射到 wire protocol，还是生成明确的不支持提示。助手内容块可以是 `text`、`thinking`、`tool_call` 或供应商托管的 `hosted_tool`；顺序被保留，以便既能正确回传给供应商，也能在 TUI 中按模型输出顺序展示。内容还可携带供应商拥有的 JSON 可序列化 `providerState`，供需要不透明 replay state 的 Responses adapter 使用；`core` 和 session 存储不解释该值。
 
 供应商首先产生 `AssistantMessageEvent`。事件包含增量 `delta` 和完整 `snapshot`：前者适合增量呈现，后者让消费者不必重复实现消息拼接。`agent` 将其转换为更高一层的 `AgentEvent`，并额外发出回合、回合输入、工具开始/更新/结束和整个运行结束事件。`AgentEventStream` 与模型流都同时支持 `for await` 消费事件和 `result()` 获取最终值。
 
@@ -138,7 +138,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 `KanaConversationHost` 是前端共享的 Kana 产品生命周期边界。它集中装配配置、审批、session journal、日志、accounting、记忆压缩、wake scheduler、MCP 与 `createKanaAgent`，并为每次新建、分叉、恢复或配置变化创建绑定到正确 session 的 Agent。Host 只返回前端中立的数据和操作，不渲染 TUI；`ConversationRuntime` 则消费这些操作并管理一次对话的执行状态。这样交互式前端与无头前端可以共享相同的模型、提示词、工具和 launch-mode 持久化策略。
 
-`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建 `PromptAssembly`，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash` 和 session 自有的 `todo_write`；当活动模型支持图片且 `image_input` 已启用时有条件注册 `view_image`；并从 `kana/tools` 注册产品专属的可选 `remember` 与 `schedule_wake`，最后通过可替换的 external capability section 解析产品层传入的 `additionalTools`。通用 `tools` 层不依赖 Kana 的持久化或会话生命周期。
+`createKanaAgent` 是运行时组合点。它以当前目录为工作区，加载可见 Skills，构建 `PromptAssembly`，注册 `list`、`glob`、`grep`、`read`、`write`、`edit`、`bash` 和 session 自有的 `todo_write`；当活动模型支持图片且 `image_input` 已启用时有条件注册 `view_image`；只在 runtime 报告 active Goal 时注册 `update_goal`；并从 `kana/tools` 注册产品专属的可选 `remember` 与 `schedule_wake`，最后通过可替换的 external capability section 解析产品层传入的 `additionalTools`。通用 `tools` 层不依赖 Kana 的持久化或会话生命周期。
 
 稳定 system 前缀由以下部分组成，后面的项目级指令优先级更高：
 
@@ -148,7 +148,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 4. `<cwd>/AGENTS.md` 的项目指令（若存在且不是同一文件）；
 5. 已启用 Skills 的名称、描述和 `SKILL.md` 路径。
 
-当前目录、平台、日期和时区会在每次模型调用前解析，并只在发生变化时作为 `environment` runtime-context 消息追加。Host 自有的 todo 列表在同一边界解析，并仅在非空时通过独立的 `todo` 来源投影。历史投影仍会持久保存，但模型输入只保留每个来源的当前值；压缩后会在累计摘要之后重新投影。长期记忆在该 Agent 生命周期内保持在稳定前缀中；`remember` guidance 改由工具 description 承载，不再进入系统提示词。Clean 模式只保留第 2 项、动态环境上下文和进程内 todo 上下文，并且不会扫描 Skills 路径、读取 memory 或创建自动记忆合并 scheduler。Host 仍把当前运行配置传给 Agent，因此 provider/model、上下文上限、输出上限和工具 deadline 与普通模式一致；`schedule_wake` 也仍按前端能力启用。Clean 模式中的 Agent 配置变更会经过同一 schema 校验，但只替换 Host 的进程内配置，不调用共享 `KanaConfigStore`。
+当前目录、平台、日期和时区会在每次模型调用前解析，并只在发生变化时作为 `environment` runtime-context 消息追加。Host 自有的 todo 列表和进程内 active Goal 在同一边界解析，并仅在有效时分别通过独立的 `todo` 与 `goal` 来源投影；Goal 投影包含目标和终态 guidance，但不含 controller ID 或 run 预算。历史投影仍会持久保存，但模型输入只保留每个来源的当前值；压缩后会在累计摘要之后重新投影。长期记忆在该 Agent 生命周期内保持在稳定前缀中；`remember` guidance 改由工具 description 承载，不再进入系统提示词。Clean 模式只保留第 2 项、动态环境上下文、进程内 todo 和 active Goal 上下文，并且不会扫描 Skills 路径、读取 memory 或创建自动记忆合并 scheduler。Host 仍把当前运行配置传给 Agent，因此 provider/model、上下文上限、输出上限、工具 deadline 与 Goal run 上限和普通模式一致；`schedule_wake` 也仍按前端能力启用。Clean 模式中的 Agent 配置变更会经过同一 schema 校验，但只替换 Host 的进程内配置，不调用共享 `KanaConfigStore`。
 
 `loadKanaConfig` 从可选 `config.toml` 读取配置，并按字段与内置默认值合并；类型或枚举不合法会直接报错，而不是静默忽略。install 不物化默认 `config.toml`，只补齐缺失的可变状态；`config.example.toml` 与 `providers/custom.example.toml` 是运行时不读取的 Kana 生成参考，install 会刷新过期 example，reset 则刷新主配置 example 并保留 Custom provider 文件。`KanaConfigStore` 为 TUI 等调用方提供通用 typed mutation：它比较更新前后的有效配置，只 patch 变化的规范 TOML leaf，验证回读结果后用同目录临时文件原子替换，因此无关配置、未知表和注释不需要经过全量重序列化。
 
@@ -178,7 +178,7 @@ Manager 会固定使用本次发现的工具列表，不处理 `notifications/to
 
 Accounting v2 记录 run 身份与 outcome、provider/model 身份、原始 token usage、助手消息数量和记忆运行元数据。它有意不保存 provider 定价或派生金额；实际费用由 provider 的账单系统负责。
 
-工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V5 会话的格式、Journal 状态机和文件仓储分别位于 `kana/session/format.ts`、`journal.ts` 与 `repository.ts`，调用方统一经过该目录的 barrel。会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 timeline。message 与 context-compaction 记录保存对话状态；带类型的 `todo_state` 记录会原子保存完整的 session todo 列表，并可关联到接受它的工具调用。每条内层消息带有稳定的逻辑 `MessageId` 和必填 provenance；外层 journal entry ID 仍是独立的时间线身份。原始消息（包括有变化的 runtime-context 投影与 inactive marker）不会删除；model projection 会独立解析它们的当前状态，压缩条目则指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用第一条不是 recovery 或 runtime context 的 user-role 消息生成标题。进程中断后，加载器会闭合打开的 turn，保留已经持久化的 todo 更新，并把其它缺失工具结果记录为未知且禁止自动重试。运行时只读取 V5。
+工作区目录名由解析后的绝对路径稳定编码，供会话和项目记忆共同使用。V5 会话的格式、Journal 状态机和文件仓储分别位于 `kana/session/format.ts`、`journal.ts` 与 `repository.ts`，调用方统一经过该目录的 barrel。会话文件是 JSONL：首行是版本化的 session header，之后是由 `turn_start`/`turn_end` 包围的 timeline。message 与 context-compaction 记录保存对话状态；带类型的 `todo_state` 记录会原子保存完整的 session todo 列表，并可关联到接受它的工具调用。每条内层消息带有稳定的逻辑 `MessageId` 和必填 provenance；外层 journal entry ID 仍是独立的时间线身份。原始消息（包括有变化的 runtime-context 投影与 inactive marker）不会删除；model projection 会独立解析它们的当前状态，压缩条目则指明覆盖的消息和累计 base checkpoint。创建会话本身不落盘；首次开始 turn 时才写 header，并用第一条不是 recovery、runtime context 或 Goal continuation 的 user-role 消息生成标题。Goal 消息仍是可审计的普通历史，但 controller、授权和 run 预算不会持久化。进程中断后，加载器会闭合打开的 turn，保留已经持久化的 todo 更新，并把其它缺失工具结果记录为未知且禁止自动重试。运行时只读取 V5。
 
 运行时日志也使用相同的工作区编码，并以 Kana session ID 为文件边界；恢复会话会追加原日志，新建、分叉或恢复到另一会话会切换文件。session log manager 会返回永久绑定到指定会话的 logger；每个 Agent 和后台任务启动时捕获该具体 logger，因此后续生命周期记录仍归属发起它的会话。记录为分级 JSONL，默认 `info`，可通过 `logging.level` 调整或设为 `off`。logger 从 Kana 产品装配层显式传入 Agent 和 provider，`core` 不依赖日志或文件系统。日志只记录安全的生命周期元数据，不记录 prompt、模型文本、完整工具输入/输出、请求头或 API key；文件写入失败被忽略，且从不经由终端输出，因此不会污染 TUI。
 
@@ -199,6 +199,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 - `edit` 对既有文件做精确字符串替换；多次匹配必须显式 `replaceAll`。
 - `bash` 使用用户 shell 运行，默认超时 30 秒、最大 600 秒；节流的实时更新是每个流最多 20,000 字符的有界尾部快照，但会保留完整最终输出交给统一结果 finalization。每个命令使用独立进程组；取消和超时会终止整个进程组，顶层 shell 退出后会短暂排空输出再返回，避免后台子进程卡住工具调用。它将 `sudo` 改写为非交互模式，避免抢占 TUI 输入。
 - `todo_write` 原子替换 session todo 状态，将其重新投影给模型，且不请求审批。
+- `update_goal` 将进程内 active Goal 关闭为 `completed` 或 `blocked`，且不请求审批。
 - `remember` 将非敏感的长期信息追加到每日记忆；它不会请求审批。
 
 审批模式为 `always`、`unless_trusted`、`never`。在默认模式下，`list`、`glob`、`grep`、`read` 和 `view_image` 自动通过；白名单中的单个只读 bash 可执行名和精确 bash 命令自动通过；其他工具会显示 TUI 选择框。用户可只把某一条 bash 命令加入精确白名单。只读命令判断刻意拒绝 shell 组合符、路径形式的可执行文件和换行，以免把看似只读的组合命令误判为安全。
@@ -207,7 +208,7 @@ Skills 从项目 `.kana/skills`、项目 `.agents/skills` 和全局 `~/.kana/ski
 
 ## TUI 架构
 
-`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台允许后按顺序 drain Agent 持有的 `next-turn` lane。Tab 输入、到期 wake 和 deferred steering 共用这条 FIFO lane，Enter steering 则先进入 `next-step`。每条逻辑输入在两条 lane、runtime 与 Agent event、UI 投影、journal commit 和历史之间保留同一个 `MessageId`；runtime 不再创建 queue correlation ID。scheduled item 还保留到期时间，并与进程内 scheduler 的未来 wake 列表一起发布为只读快照。Runtime 提供当前 session 的用户定时创建与按 MessageId 取消边界，取消会同步检查未来 timer 和已到期 inbox item，因此执行顺序、管理状态与 TUI 展示不会分叉。它发布与前端无关的 run、Agent event、inbox 和 session-change 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`QueuedInputController` 将 runtime 快照投影为 `next turn`、`next run`、到期 `scheduled` 和未来 wake 摘要，并按 MessageId 对齐状态切换；`ScheduledMessageManagerController` 持有 `/schedule` 的静态管理快照和多步添加/删除流程；`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、追加式生命周期输出与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
+`ConversationRuntime` 是产品级对话生命周期边界：持有当前 Agent 和 session，拒绝并发提交，统一 new/fork/resume 与配置或工具变化后的 Agent 替换，并在前台允许后按顺序 drain Agent 持有的 `next-turn` lane。Tab 输入、到期 wake 和 deferred steering 共用这条 FIFO lane，Enter steering 则先进入 `next-step`。Active `/goal` 只在该 FIFO 为空时允许一条 synthetic continuation，因此 lane 中已有的人类或定时输入保持在它之前。Runtime 把配置的正整数 run 上限快照到 Goal controller，终态只保留在当前进程，中止时取消，session 变化、Agent 替换或关闭时丢弃 active 状态。每条逻辑输入在两条 lane、runtime 与 Agent event、UI 投影、journal commit 和历史之间保留同一个 `MessageId`；runtime 不再创建 queue correlation ID。scheduled 与 Goal item 还保留投递 metadata，并与进程内 scheduler 的未来 wake 列表一起发布为只读快照。Runtime 提供当前 session 的用户定时创建与按 MessageId 取消边界，取消会同步检查未来 timer 和已到期 inbox item，因此执行顺序、管理状态与 TUI 展示不会分叉。它发布与前端无关的 run、Agent event、inbox、session-change 和 Goal-state 事件；监听器异常会被隔离并写入诊断日志。`KanaTuiApp` 只持有累计用量和交互控制器，订阅 runtime 事件后交给 `AgentEventRenderer` 映射为助手消息块、工具块和状态栏阶段。`QueuedInputController` 将 runtime 快照投影为 `next turn`、`next run`、到期 `scheduled`、Goal continuation 和未来 wake 摘要，并按 MessageId 对齐状态切换；`ScheduledMessageManagerController` 持有 `/schedule` 的静态管理快照和多步添加/删除流程；`ExternalToolsLifecycleController` 持有首次加载、MCP 重载、追加式生命周期输出与输入恢复状态；`SlashCommandController` 统一命令路由和参数校验；`SessionLifecycleController` 协调 new/fork/resume 后的 transcript、焦点和状态重置。它们只通过窄回调请求跨域动作，不反向修改 App 的内部状态。
 
 剪贴板图片粘贴、`/image <path>` 和 `view_image` 会汇合到共享图片输入 utility。该边界负责解析运行主机上的路径、解码并限制图片尺寸/字节，最终返回同一种 `UserImage` 表示；只有 macOS 剪贴板 reader 是平台专用实现。
 

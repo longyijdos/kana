@@ -16,6 +16,7 @@ describe("slash command controller", () => {
     harness.handle("approval");
     harness.handle("model");
     harness.handle("schedule");
+    harness.handle("goal", "Ship the feature");
     harness.handle("todo");
     harness.handle("tools");
     harness.handle("image", '"/tmp/image with spaces.png"');
@@ -29,6 +30,7 @@ describe("slash command controller", () => {
       "approval",
       "model",
       "schedule",
+      "goal:Ship the feature",
       "todo",
       "tools",
       'image:"/tmp/image with spaces.png"',
@@ -42,6 +44,7 @@ describe("slash command controller", () => {
     harness.handle("help", "extra");
     harness.handle("fork");
     harness.handle("image");
+    harness.handle("goal");
     harness.handle("approval", "never");
     harness.handle("usage", "global");
     harness.handle("todo", "extra");
@@ -51,6 +54,7 @@ describe("slash command controller", () => {
       "error:Usage: /help",
       "error:Usage: /fork <prompt>",
       "error:Usage: /image <path>",
+      "error:Usage: /goal <objective>",
       "error:Usage: /approval",
       "error:Usage: /usage",
       "error:Usage: /todo",
@@ -87,6 +91,7 @@ function createHarness(running = false) {
     openSkillManager: () => events.push("skills"),
     openMcpServerManager: () => events.push("mcp"),
     openScheduledMessageManager: () => events.push("schedule"),
+    startGoal: (objective) => events.push(`goal:${objective}`),
     openTodo: () => events.push("todo"),
     openToolHistory: () => events.push("tools"),
     attachImageFile: (path) => events.push(`image:${path}`),

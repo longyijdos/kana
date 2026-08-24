@@ -100,6 +100,7 @@ TUI 中的常用命令：
 | `/mcp`、`/skills` | 管理当前启用的 MCP server 和全局 Skills。 |
 | `/memory` | 查看或整理 project/global 长期记忆。 |
 | `/schedule` | 查看、创建、刷新和删除定时消息。 |
+| `/goal <目标>` | 在连续的 Agent run 中持续推进一个有上限的目标。 |
 | `/tools` | 浏览当前会话的全部工具调用，重新打开任意详情查看器。 |
 | `/approval` | 临时修改当前会话的工具审批模式。 |
 | `/usage` | 查看 session、project 或 global 范围的 token 用量。 |

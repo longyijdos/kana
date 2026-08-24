@@ -1,7 +1,9 @@
 import type {
   Agent,
   AgentEvent,
+  AgentInboxItem,
   AgentInboxSnapshot,
+  AgentInputDelivery,
   BeforeToolExecutionHook,
   ContextCheckpoint,
 } from "@/agent";
@@ -15,6 +17,12 @@ import {
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
+import {
+  DEFAULT_KANA_GOAL_MAX_ROUNDS,
+  KanaGoalController,
+  type KanaGoalSnapshot,
+  type KanaGoalUpdate,
+} from "./goal-controller";
 import {
   createWakeScheduler,
   type WakeEvent,
@@ -30,7 +38,7 @@ export type ConversationSessionSnapshot = {
   contextCheckpoint?: ContextCheckpoint;
 };
 
-export type ConversationRunSource = "user" | "scheduled" | "compaction";
+export type ConversationRunSource = "user" | "scheduled" | "goal" | "compaction";
 
 export type ConversationInputDisposition = "steered" | "queued" | "discarded";
 
@@ -49,6 +57,15 @@ type ConversationPendingInput =
       dueAt: Date;
       origin: WakeEventOrigin;
       key?: string;
+    }
+  | {
+      id: MessageId;
+      kind: "goal";
+      content: string;
+      imageCount?: number;
+      goalId: string;
+      round: number;
+      maxRounds: number;
     };
 
 export type ConversationInputQueueSnapshot = {
@@ -73,6 +90,7 @@ export type ConversationRuntimeEvent =
       type: "run_end";
       source: ConversationRunSource;
       event?: Extract<AgentEvent, { type: "agent_end" }>;
+      goal?: KanaGoalSnapshot;
     }
   | {
       type: "run_error";
@@ -92,6 +110,18 @@ export type ConversationRuntimeEvent =
       type: "todo_state_changed";
       source: ConversationRunSource;
       change: KanaTodoStateChange;
+    }
+  | {
+      type: "goal_state_changed";
+      change:
+        | "started"
+        | "round_admitted"
+        | "completed"
+        | "blocked"
+        | "cancelled"
+        | "round_limit"
+        | "discarded";
+      goal: KanaGoalSnapshot;
     };
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
@@ -104,6 +134,8 @@ type CreateConversationAgentOptions<TConfiguration> = {
   contextCheckpoint?: ContextCheckpoint;
   configuration?: TConfiguration;
   onTodoStateCommitted: (change: KanaTodoStateChange) => void;
+  resolveGoal: () => KanaGoalSnapshot | undefined;
+  updateGoal: (change: KanaGoalUpdate) => KanaGoalSnapshot;
 };
 
 export type ConversationRuntimeOptions<TConfiguration> = {
@@ -123,6 +155,7 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   canStartQueuedRun?: () => boolean;
   /** @deprecated Use canStartQueuedRun. */
   canStartScheduledRun?: () => boolean;
+  goalMaxRounds?: number;
   getLogger?: () => Logger;
 };
 
@@ -132,11 +165,13 @@ export class ConversationRuntime<TConfiguration = never> {
   private readonly unsubscribeWakeEvents: () => void;
   private readonly unsubscribeWakeState: () => void;
   private readonly getLogger: () => Logger;
+  private readonly goalController = new KanaGoalController();
   private unsubscribeAgentInbox?: () => void;
   private agent: Agent;
   private sessionData?: ConversationSessionSnapshot;
   private beforeToolExecution?: BeforeToolExecutionHook;
   private activeSource?: ConversationRunSource;
+  private activeRunGoalId?: string;
   private terminalEvent?: Extract<AgentEvent, { type: "agent_end" }>;
   private drainingSubmissions = false;
   private stopping = false;
@@ -181,6 +216,10 @@ export class ConversationRuntime<TConfiguration = never> {
     return structuredClone(this.sessionData?.todoState ?? []);
   }
 
+  get goal(): KanaGoalSnapshot | undefined {
+    return this.goalController.current;
+  }
+
   get isRunning(): boolean {
     return this.activeSource !== undefined || this.agent.state.isRunning;
   }
@@ -219,9 +258,13 @@ export class ConversationRuntime<TConfiguration = never> {
     };
   }
 
-  async submit(input: UserMessage, source: "user" | "scheduled" = "user"): Promise<void> {
+  async submit(
+    input: UserMessage,
+    source: Exclude<ConversationRunSource, "compaction"> = "user",
+  ): Promise<void> {
     this.assertCanStartRun();
     this.activeSource = source;
+    this.activeRunGoalId = this.goalController.active?.id;
     this.terminalEvent = undefined;
     this.emit({
       type: "run_start",
@@ -241,24 +284,56 @@ export class ConversationRuntime<TConfiguration = never> {
       if (!terminalEvent) {
         throw new Error("Conversation run finished without an agent_end event.");
       }
+      if (
+        source === "goal" &&
+        (terminalEvent.reason === "error" || terminalEvent.reason === "aborted")
+      ) {
+        this.blockActiveGoal(`The goal run ended with ${terminalEvent.reason}.`);
+      }
+      const runGoal = this.goalForActiveRun();
       this.emit({
         type: "run_end",
         source,
         event: structuredClone(terminalEvent),
+        ...(runGoal === undefined ? {} : { goal: runGoal }),
       });
       this.log("info", "conversation.run_completed", {
         source,
         outcome: terminalEvent.reason,
       });
     } catch (error) {
+      if (source === "goal") {
+        this.blockActiveGoal("The goal run failed before it could continue.");
+      }
       this.emit({ type: "run_error", source, error });
       this.log("error", "conversation.run_failed", { source, error });
       throw error;
     } finally {
       this.activeSource = undefined;
+      this.activeRunGoalId = undefined;
       this.terminalEvent = undefined;
       void this.drainPendingSubmissions();
     }
+  }
+
+  async startGoal(objective: string): Promise<KanaGoalSnapshot> {
+    this.assertCanStartRun();
+    const goal = this.goalController.start(
+      objective,
+      this.options.goalMaxRounds ?? DEFAULT_KANA_GOAL_MAX_ROUNDS,
+    );
+    this.emitGoalChanged("started", goal);
+    this.log("info", "conversation.goal_started", {
+      goalId: goal.id,
+      maxRounds: goal.maxRounds,
+    });
+
+    const input = createUserMessage({
+      content: goal.objective,
+      provenance: { kind: "user_input" },
+    });
+    await this.submit(input, "goal");
+    return this.goalController.current ?? goal;
   }
 
   async compact(): Promise<ContextCheckpoint> {
@@ -289,6 +364,7 @@ export class ConversationRuntime<TConfiguration = never> {
   reconfigure(configuration?: TConfiguration): void {
     this.assertIdle("reconfigure the conversation");
     this.replaceAgent(this.agent.state.messages, this.agent.state.contextCheckpoint, configuration);
+    this.discardActiveGoal("agent_reconfigured");
     this.log("info", "conversation.agent_reconfigured");
   }
 
@@ -345,6 +421,14 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   abort(): void {
+    const cancelled = this.goalController.cancel();
+    if (cancelled) {
+      this.emitGoalChanged("cancelled", cancelled);
+      this.log("info", "conversation.goal_cancelled", {
+        goalId: cancelled.id,
+        admittedRounds: cancelled.admittedRounds,
+      });
+    }
     this.agent.abort();
   }
 
@@ -459,6 +543,7 @@ export class ConversationRuntime<TConfiguration = never> {
     }
 
     this.stopping = true;
+    this.discardActiveGoal("shutdown");
     this.unsubscribeWakeEvents();
     this.unsubscribeWakeState();
     this.unsubscribeAgentInbox?.();
@@ -490,6 +575,8 @@ export class ConversationRuntime<TConfiguration = never> {
       contextCheckpoint,
       configuration,
       onTodoStateCommitted: (change) => this.handleTodoStateCommitted(sessionId, change),
+      resolveGoal: () => this.goalForAgent(),
+      updateGoal: (change) => this.updateGoal(change),
     });
   }
 
@@ -589,15 +676,146 @@ export class ConversationRuntime<TConfiguration = never> {
       content: ["[Scheduled wake event]", event.message].join("\n"),
       provenance: { kind: "scheduled_input", origin: event.origin },
     });
-    this.agent.enqueueInput(input, "next-turn", {
-      kind: "scheduled",
-      displayContent: event.message,
-      dueAt: event.dueAt,
-      key: event.key,
-    });
-    this.log("info", "conversation.input_queued", {
-      source: "scheduled",
+    this.queueAutomaticInput(
+      input,
+      {
+        kind: "scheduled",
+        displayContent: event.message,
+        dueAt: event.dueAt,
+        key: event.key,
+      },
+      "scheduled",
+    );
+  }
+
+  private queueAutomaticInput(
+    input: UserMessage,
+    delivery: Extract<AgentInputDelivery, { kind: "scheduled" | "goal" }>,
+    source: "scheduled" | "goal",
+  ): void {
+    this.agent.enqueueInput(input, "next-turn", delivery);
+    this.log("info", "conversation.automatic_input_queued", {
+      source,
       pendingInputCount: this.agent.inbox.nextTurn.length,
+    });
+  }
+
+  private createGoalContinuationSubmission(): AgentInboxItem | undefined {
+    const admission = this.goalController.admitContinuation();
+    if (!admission) {
+      return undefined;
+    }
+    if (admission.type === "round_limit") {
+      this.emitGoalChanged("round_limit", admission.goal);
+      this.log("info", "conversation.goal_round_limit_reached", {
+        goalId: admission.goal.id,
+        admittedRounds: admission.goal.admittedRounds,
+      });
+      return undefined;
+    }
+
+    const goal = admission.goal;
+    const content = [
+      "[Goal continuation]",
+      "Continue the active goal using the authoritative runtime context.",
+    ].join("\n");
+    const input = createUserMessage({
+      content,
+      provenance: {
+        kind: "goal_continuation",
+        goalId: goal.id,
+        round: goal.admittedRounds,
+      },
+    });
+    this.queueAutomaticInput(
+      input,
+      {
+        kind: "goal",
+        displayContent: `Goal continuation · round ${goal.admittedRounds}/${goal.maxRounds}`,
+        goalId: goal.id,
+        round: goal.admittedRounds,
+        maxRounds: goal.maxRounds,
+      },
+      "goal",
+    );
+    this.emitGoalChanged("round_admitted", goal);
+    this.log("info", "conversation.goal_round_admitted", {
+      goalId: goal.id,
+      admittedRounds: goal.admittedRounds,
+      maxRounds: goal.maxRounds,
+    });
+    return this.agent.shiftNextTurnInput();
+  }
+
+  private resolveSubmissionSource(
+    delivery: AgentInputDelivery,
+  ): Exclude<ConversationRunSource, "compaction"> {
+    if (delivery.kind === "scheduled") {
+      return "scheduled";
+    }
+    if (delivery.kind === "goal") {
+      return "goal";
+    }
+    return "user";
+  }
+
+  private updateGoal(change: KanaGoalUpdate): KanaGoalSnapshot {
+    const goal = this.goalController.update(change);
+    this.emitGoalChanged(change.status, goal);
+    this.log("info", `conversation.goal_${goal.status}`, {
+      goalId: goal.id,
+      admittedRounds: goal.admittedRounds,
+    });
+    return goal;
+  }
+
+  private goalForAgent(): KanaGoalSnapshot | undefined {
+    const current = this.goalController.current;
+    if (current?.id === this.activeRunGoalId) {
+      return current;
+    }
+    return this.goalController.active;
+  }
+
+  private goalForActiveRun(): KanaGoalSnapshot | undefined {
+    const goal = this.goalController.current;
+    return goal?.id === this.activeRunGoalId ? goal : undefined;
+  }
+
+  private blockActiveGoal(detail: string): void {
+    const blocked = this.goalController.block(detail);
+    if (!blocked) {
+      return;
+    }
+    this.emitGoalChanged("blocked", blocked);
+    this.log("warn", "conversation.goal_blocked", {
+      goalId: blocked.id,
+      admittedRounds: blocked.admittedRounds,
+      reason: "run_failure",
+    });
+  }
+
+  private discardActiveGoal(reason: "agent_reconfigured" | "session_changed" | "shutdown"): void {
+    const discarded = this.goalController.discard();
+    if (!discarded) {
+      return;
+    }
+    this.emitGoalChanged("discarded", discarded);
+    this.log("info", "conversation.goal_discarded", {
+      goalId: discarded.id,
+      admittedRounds: discarded.admittedRounds,
+      reason,
+    });
+  }
+
+  private emitGoalChanged(
+    change: Extract<ConversationRuntimeEvent, { type: "goal_state_changed" }>["change"],
+    goal: KanaGoalSnapshot,
+  ): void {
+    this.emit({
+      type: "goal_state_changed",
+      change,
+      goal: structuredClone(goal),
     });
   }
 
@@ -617,6 +835,20 @@ export class ConversationRuntime<TConfiguration = never> {
         dueAt: new Date(item.delivery.dueAt.getTime()),
         origin: provenance.origin,
         key: item.delivery.key,
+      };
+    }
+    if (item.delivery.kind === "goal") {
+      const provenance = item.message.provenance;
+      if (provenance.kind !== "goal_continuation") {
+        throw new Error("Goal Agent input is missing goal continuation provenance.");
+      }
+      return {
+        id: item.message.id,
+        kind: "goal",
+        content: item.delivery.displayContent,
+        goalId: item.delivery.goalId,
+        round: item.delivery.round,
+        maxRounds: item.delivery.maxRounds,
       };
     }
 
@@ -641,12 +873,13 @@ export class ConversationRuntime<TConfiguration = never> {
     this.drainingSubmissions = true;
     try {
       while (!this.stopping && !this.isRunning && this.canStartQueuedRun()) {
-        const submission = this.agent.shiftNextTurnInput();
+        const submission =
+          this.agent.shiftNextTurnInput() ?? this.createGoalContinuationSubmission();
         if (!submission) {
           return;
         }
 
-        const source = submission.delivery.kind === "scheduled" ? "scheduled" : "user";
+        const source = this.resolveSubmissionSource(submission.delivery);
 
         this.log("info", "conversation.queued_input_started", {
           source,
@@ -672,6 +905,7 @@ export class ConversationRuntime<TConfiguration = never> {
     }
 
     this.agent.clearInbox();
+    this.discardActiveGoal("session_changed");
   }
 
   private observeAgentInbox(agent: Agent): void {

@@ -307,6 +307,15 @@ describe("Kana session persistence", () => {
         content: '<runtime_context source="environment">dynamic</runtime_context>',
       },
       {
+        ...createMessageIdentity({
+          kind: "goal_continuation",
+          goalId: "goal-1",
+          round: 2,
+        }),
+        role: "user",
+        content: "[Goal continuation]\nContinue the active goal.",
+      },
+      {
         ...messageIdentityForTest("user"),
         role: "user",
         content: "Visible title",
