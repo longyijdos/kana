@@ -12,7 +12,7 @@ import {
   type UserMessage,
 } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
-import { type PromptContextSnapshot, resolveRuntimeContextMessages } from "./prompt-assembly";
+import { resolveRuntimeContextMessages } from "./prompt-assembly";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
 const DEFAULT_TARGET_RATIO = 0.1;
@@ -84,7 +84,6 @@ export type PrepareContextOptions = {
   signal?: AbortSignal;
   forceCompaction?: boolean;
   compactionReason?: ContextCompactionReason;
-  runtimeContext?: readonly PromptContextSnapshot[];
   onCompactionStart?: (event: ContextCompactionStart) => Promise<void> | void;
 };
 
@@ -116,7 +115,6 @@ export class ContextManager {
   private readonly loggerMetadata?: LogMetadata;
   private checkpointData?: ContextCheckpoint;
   private usageMeasurement?: UsageMeasurement;
-  private runtimeContextData?: PromptContextSnapshot[];
   private readonly compactionData: ContextCheckpoint[] = [];
 
   constructor(config: ContextManagerConfig) {
@@ -189,8 +187,6 @@ export class ContextManager {
     });
     manager.usageMeasurement =
       this.usageMeasurement === undefined ? undefined : { ...this.usageMeasurement };
-    manager.runtimeContextData =
-      this.runtimeContextData === undefined ? undefined : structuredClone(this.runtimeContextData);
     return manager;
   }
 
@@ -204,16 +200,11 @@ export class ContextManager {
     this.checkpointData = manager.checkpoint;
     this.usageMeasurement =
       manager.usageMeasurement === undefined ? undefined : { ...manager.usageMeasurement };
-    this.runtimeContextData =
-      manager.runtimeContextData === undefined
-        ? undefined
-        : structuredClone(manager.runtimeContextData);
   }
 
   reset(): void {
     this.checkpointData = undefined;
     this.usageMeasurement = undefined;
-    this.runtimeContextData = undefined;
     this.compactionData.length = 0;
   }
 
@@ -221,9 +212,6 @@ export class ContextManager {
     context: ModelContext,
     options: PrepareContextOptions = {},
   ): Promise<PreparedContext> {
-    if (options.runtimeContext !== undefined) {
-      this.updateRuntimeContext(options.runtimeContext);
-    }
     this.assertCheckpointFits(context.messages);
 
     let prepared = this.createModelContext(context);
@@ -502,18 +490,6 @@ export class ContextManager {
     }
   }
 
-  private updateRuntimeContext(runtimeContext: readonly PromptContextSnapshot[]): void {
-    if (
-      this.runtimeContextData !== undefined &&
-      !sameRuntimeContext(this.runtimeContextData, runtimeContext)
-    ) {
-      // Dynamic context can change alongside system or tool capabilities. Keep
-      // estimates conservative until a request with the new prompt is measured.
-      this.usageMeasurement = undefined;
-    }
-    this.runtimeContextData = runtimeContext.map((snapshot) => ({ ...snapshot }));
-  }
-
   private log(level: "debug" | "info" | "error", event: string, metadata?: LogMetadata): void {
     try {
       this.logger[level](event, {
@@ -540,21 +516,6 @@ function projectRuntimeContextForBoundary(
     ),
     ...structuredClone(messages.slice(boundary)),
   ];
-}
-
-function sameRuntimeContext(
-  left: readonly PromptContextSnapshot[],
-  right: readonly PromptContextSnapshot[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (snapshot, index) =>
-        snapshot.source === right[index]?.source &&
-        snapshot.status === right[index]?.status &&
-        snapshot.content === right[index]?.content,
-    )
-  );
 }
 
 function messageForCompaction(message: Message): Message {

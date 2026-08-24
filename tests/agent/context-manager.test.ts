@@ -217,14 +217,7 @@ describe("ContextManager", () => {
       },
     ];
 
-    const prepared = await manager.prepareForModel(
-      { messages },
-      {
-        runtimeContext: [
-          { source: "environment", status: "active", content: "current date: 2026-08-22" },
-        ],
-      },
-    );
+    const prepared = await manager.prepareForModel({ messages });
 
     expect(prepared.compaction).toMatchObject({
       coveredMessageCount: 4,
@@ -247,18 +240,9 @@ describe("ContextManager", () => {
       status: "inactive",
       content: "No environment context is active.",
     });
-    const inactive = await manager.prepareForModel(
-      { messages: [...messages, inactiveRuntimeContext] },
-      {
-        runtimeContext: [
-          {
-            source: "environment",
-            status: "inactive",
-            content: "No environment context is active.",
-          },
-        ],
-      },
-    );
+    const inactive = await manager.prepareForModel({
+      messages: [...messages, inactiveRuntimeContext],
+    });
     expect(inactive.context.messages).toEqual([
       expect.objectContaining({
         role: "user",
@@ -293,15 +277,7 @@ describe("ContextManager", () => {
     });
     const context = { messages: [dayOne, dayTwo, inactive] };
 
-    const prepared = await manager.prepareForModel(context, {
-      runtimeContext: [
-        {
-          source: "environment",
-          status: "inactive",
-          content: "No environment context is active.",
-        },
-      ],
-    });
+    const prepared = await manager.prepareForModel(context);
     expect(prepared.context.messages).toEqual([dayOne, dayTwo, inactive]);
   });
 
@@ -523,6 +499,56 @@ describe("ContextManager", () => {
         estimateContextTokens({ messages: [recalibratedResponse] }) -
         8,
     );
+  });
+
+  test("reuses the provider usage anchor when runtime context appends new state", async () => {
+    const manager = new ContextManager({
+      contextLimit: 100_000,
+      maxOutputTokens: 10_000,
+    });
+    const dayOne = createRuntimeContextMessage({
+      source: "environment",
+      status: "active",
+      content: "current date: 2026-08-21",
+    });
+    const dayTwo = createRuntimeContextMessage({
+      source: "environment",
+      status: "active",
+      content: "current date: 2026-08-22",
+    });
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Hello" },
+      dayOne,
+    ];
+
+    const firstResponse: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      stopReason: "stop",
+      usage: {
+        promptTokens: 10_000,
+        completionTokens: 10,
+        totalTokens: 10_010,
+      },
+      content: [{ type: "text", text: "Hi" }],
+    };
+    manager.recordAssistantUsage(firstResponse, messages.length);
+    messages.push(firstResponse);
+
+    const anchored = manager.estimateContextTokens({ messages });
+
+    // Appending a runtime context transition is additive, so the provider
+    // prompt-token anchor stays valid and only the newly appended message is
+    // estimated instead of recomputing the whole prompt.
+    messages.push(dayTwo);
+
+    const next = manager.estimateContextTokens({ messages });
+    expect(next).toBe(
+      firstResponse.usage!.promptTokens +
+        estimateContextTokens({ messages: messages.slice(2) }) -
+        8,
+    );
+    expect(next).toBeGreaterThan(anchored);
   });
 
   test("restores the previous checkpoint when summary generation fails", async () => {

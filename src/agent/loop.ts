@@ -129,7 +129,7 @@ export async function runAgentLoop(
     const sourceMessageCount = currentContext.messages.length;
     let prepared: PreparedContext;
     try {
-      prepared = await prepareModelContext(currentContext, config, emit, assembledPrompt.context);
+      prepared = await prepareModelContext(currentContext, config, emit);
     } catch (error) {
       if (config.signal?.aborted) {
         endReason = "aborted";
@@ -149,13 +149,7 @@ export async function runAgentLoop(
       config.contextManager
     ) {
       try {
-        prepared = await prepareModelContext(
-          currentContext,
-          config,
-          emit,
-          assembledPrompt.context,
-          true,
-        );
+        prepared = await prepareModelContext(currentContext, config, emit, true);
       } catch (error) {
         if (config.signal?.aborted) {
           endReason = "aborted";
@@ -445,7 +439,6 @@ async function prepareModelContext(
   context: AgentContext,
   config: AgentLoopConfig,
   emit: AgentEventSink,
-  runtimeContext: readonly PromptContextSnapshot[],
   forceCompaction = false,
 ): Promise<PreparedContext> {
   if (!config.contextManager) {
@@ -470,7 +463,6 @@ async function prepareModelContext(
     {
       signal: config.signal,
       forceCompaction,
-      runtimeContext,
       onCompactionStart: (event) =>
         emit({
           type: "context_compaction_start",
