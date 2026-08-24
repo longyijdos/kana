@@ -63,6 +63,7 @@ import {
 } from "../session";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
 import { type KanaToolApprovals, loadKanaToolApprovals } from "../tool-approval";
+import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import { createWakeScheduler, type WakeScheduler } from "./wake-scheduler";
 
 export type KanaConversationHostSession =
@@ -77,6 +78,8 @@ export type KanaConversationHostAgentOptions<TConfiguration> = Pick<
   sessionId?: string;
   configuration?: TConfiguration;
   onTodoStateCommitted?: (change: KanaTodoStateChange) => void;
+  resolveGoal?: () => KanaGoalSnapshot | undefined;
+  updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
 };
 
 export type KanaMemoryCompactSummary = {
@@ -528,6 +531,8 @@ export class KanaConversationHost<TConfiguration = never> {
       | "contextCheckpoint"
       | "sessionId"
       | "onTodoStateCommitted"
+      | "resolveGoal"
+      | "updateGoal"
     >,
     hostedSession: HostedSession | undefined,
     agentLogger: Logger,

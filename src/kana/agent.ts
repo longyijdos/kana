@@ -18,13 +18,19 @@ import {
 } from "@/tools";
 import { createKanaToolResultArtifactPolicy, type KanaSessionArtifactStore } from "./artifacts";
 import { getActiveKanaModelConfig, type KanaConfig } from "./config";
+import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-controller";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
 import type { KanaLaunchMode } from "./launch-mode";
 import { createKanaModel } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
 import { loadKanaSkills } from "./skills/loader";
 import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
-import { createRememberTool, createScheduleWakeTool, createTodoWriteTool } from "./tools";
+import {
+  createRememberTool,
+  createScheduleWakeTool,
+  createTodoWriteTool,
+  createUpdateGoalTool,
+} from "./tools";
 
 // Reserve the complete built-in namespace, including tools that are enabled
 // only for particular configurations or session states. MCP discovery happens
@@ -40,6 +46,7 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
   "edit",
   "bash",
   "todo_write",
+  "update_goal",
   "remember",
   "schedule_wake",
 ] as const;
@@ -64,6 +71,8 @@ export type KanaAgentOptions = Pick<
   artifactStore?: KanaSessionArtifactStore;
   commitTodoState?: (change: KanaTodoStateChange) => Promise<void> | void;
   resolveTodoState?: () => readonly KanaTodoItem[];
+  resolveGoal?: () => KanaGoalSnapshot | undefined;
+  updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
 };
 
 export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
@@ -121,6 +130,23 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       }),
     ],
   });
+  const resolveGoal = options.resolveGoal;
+  const updateGoal = options.updateGoal;
+  if (resolveGoal && updateGoal) {
+    const resolveGoalTools = (): Tool[] =>
+      resolveGoal()?.status !== "active"
+        ? []
+        : [
+            createUpdateGoalTool({
+              update: updateGoal,
+            }),
+          ];
+    toolSections.push({
+      name: "goal",
+      tools: resolveGoalTools(),
+      resolve: resolveGoalTools,
+    });
+  }
   if (customizationsEnabled && config.memory.enabled) {
     toolSections.push({
       name: "memory",
@@ -161,6 +187,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       skills,
       toolSections,
       resolveTodoState: options.resolveTodoState,
+      resolveGoalState: resolveGoal,
     }),
     maxTurns: config.agent.maxTurns,
     toolDeadlineMs: config.agent.toolDeadlineMs,

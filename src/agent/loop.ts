@@ -17,9 +17,7 @@ import type { AgentEndReason, AgentEvent } from "./events";
 import {
   type AssembledPrompt,
   createRuntimeContextMessage,
-  createRuntimeContextRemovalMessage,
   type PromptContextSnapshot,
-  projectRuntimeContextMessages,
 } from "./prompt-assembly";
 import type { ToolResultPolicy } from "./tool-result-policy";
 import {
@@ -34,10 +32,6 @@ export type AgentContext = {
   system?: string;
   messages: Message[];
   tools?: Tool[];
-};
-
-type RuntimeContextMessage = UserMessage & {
-  provenance: { kind: "runtime_context"; source: string };
 };
 
 export type AgentLoopConfig = {
@@ -135,7 +129,7 @@ export async function runAgentLoop(
     const sourceMessageCount = currentContext.messages.length;
     let prepared: PreparedContext;
     try {
-      prepared = await prepareModelContext(currentContext, config, emit, assembledPrompt.context);
+      prepared = await prepareModelContext(currentContext, config, emit);
     } catch (error) {
       if (config.signal?.aborted) {
         endReason = "aborted";
@@ -155,13 +149,7 @@ export async function runAgentLoop(
       config.contextManager
     ) {
       try {
-        prepared = await prepareModelContext(
-          currentContext,
-          config,
-          emit,
-          assembledPrompt.context,
-          true,
-        );
+        prepared = await prepareModelContext(currentContext, config, emit, true);
       } catch (error) {
         if (config.signal?.aborted) {
           endReason = "aborted";
@@ -281,33 +269,21 @@ async function applyAssembledPrompt(
 ): Promise<void> {
   context.system = prompt.system;
   context.tools = prompt.tools.slice();
-  const activeSources = new Set(prompt.context.map((snapshot) => snapshot.source));
 
   for (const snapshot of prompt.context) {
     throwIfAborted(signal);
-    const message = createRuntimeContextMessage(snapshot);
     const previous = findLatestRuntimeContext(context.messages, snapshot);
+    if (!previous && snapshot.status === "inactive") {
+      continue;
+    }
+
+    const message = createRuntimeContextMessage(snapshot);
     if (previous?.content === message.content) {
       continue;
     }
 
     // Dynamic state becomes visible only after the same logical message is
     // durable, preserving recovery ordering before the model request begins.
-    await commit?.(structuredClone(message));
-    context.messages.push(message);
-    newMessages.push(message);
-  }
-
-  const inactiveSources = findLatestRuntimeContextBySource(context.messages).filter(
-    ({ message }) => !activeSources.has(message.provenance.source),
-  );
-  for (const { message: previous } of inactiveSources) {
-    throwIfAborted(signal);
-    const message = createRuntimeContextRemovalMessage(previous.provenance.source);
-    if (previous.content === message.content) {
-      continue;
-    }
-
     await commit?.(structuredClone(message));
     context.messages.push(message);
     newMessages.push(message);
@@ -335,29 +311,6 @@ function findLatestRuntimeContext(
     }
   }
   return undefined;
-}
-
-function findLatestRuntimeContextBySource(
-  messages: readonly Message[],
-): Array<{ index: number; message: RuntimeContextMessage }> {
-  const latest = new Map<
-    string,
-    {
-      index: number;
-      message: RuntimeContextMessage;
-    }
-  >();
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index];
-    if (message && isRuntimeContextMessage(message)) {
-      latest.set(message.provenance.source, { index, message });
-    }
-  }
-  return [...latest.values()].sort((left, right) => left.index - right.index);
-}
-
-function isRuntimeContextMessage(message: Message): message is RuntimeContextMessage {
-  return message.role === "user" && message.provenance.kind === "runtime_context";
 }
 
 export function assertValidMaxTurns(maxTurns: number | undefined): void {
@@ -486,14 +439,13 @@ async function prepareModelContext(
   context: AgentContext,
   config: AgentLoopConfig,
   emit: AgentEventSink,
-  runtimeContext: readonly PromptContextSnapshot[],
   forceCompaction = false,
 ): Promise<PreparedContext> {
   if (!config.contextManager) {
     return {
       context: {
         system: context.system,
-        messages: structuredClone(projectRuntimeContextMessages(context.messages, runtimeContext)),
+        messages: structuredClone(context.messages),
         tools: context.tools ? [...context.tools] : undefined,
         signal: config.signal,
       },
@@ -511,7 +463,6 @@ async function prepareModelContext(
     {
       signal: config.signal,
       forceCompaction,
-      runtimeContext,
       onCompactionStart: (event) =>
         emit({
           type: "context_compaction_start",

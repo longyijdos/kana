@@ -106,6 +106,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("[model.openai-codex]");
     expect(installedConfigExample).toContain("web_search = true");
     expect(installedConfigExample).toContain("image_input = true");
+    expect(installedConfigExample).toContain("goal_max_rounds = 8");
     expect(installedConfigExample).toContain("tool_deadline_ms = 660000");
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("max_parallel_tool_calls = 4");
@@ -246,6 +247,7 @@ describe("Kana config", () => {
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].maxTokens).toBe(128_000);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].webSearch).toBe(true);
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].imageInput).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.agent.goalMaxRounds).toBe(8);
     expect(DEFAULT_KANA_CONFIG.agent.toolResultArtifacts).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.repeatedToolCalls).toEqual(repeatedToolCalls);
   });
@@ -263,6 +265,7 @@ describe("Kana config", () => {
         "",
         "[agent]",
         "max_turns = 4",
+        "goal_max_rounds = 12",
         "tool_deadline_ms = 120000",
         "parallel_tool_calls = false",
         "max_parallel_tool_calls = 2",
@@ -312,6 +315,7 @@ describe("Kana config", () => {
       },
       agent: {
         maxTurns: 4,
+        goalMaxRounds: 12,
         toolDeadlineMs: 120_000,
         parallelToolCalls: false,
         maxParallelToolCalls: 2,
@@ -541,6 +545,18 @@ describe("Kana config", () => {
 
       expect(() => loadKanaConfig(env)).toThrow(
         "agent.tool_deadline_ms must be a positive integer.",
+      );
+    }
+  });
+
+  test("requires agent.goal_max_rounds to be a positive integer", () => {
+    for (const value of [0, -1, 1.5]) {
+      const env = createTempEnv();
+      const { home } = getKanaConfigPaths(env);
+      writeFileSync(path.join(home, "config.toml"), `[agent]\ngoal_max_rounds = ${value}\n`);
+
+      expect(() => loadKanaConfig(env)).toThrow(
+        "agent.goal_max_rounds must be a positive integer.",
       );
     }
   });
@@ -809,6 +825,7 @@ describe("Kana config", () => {
       expect(prompt.context).toEqual([
         {
           source: "environment",
+          status: "active",
           content: [
             "<environment_context>",
             "  <cwd>/repo</cwd>",

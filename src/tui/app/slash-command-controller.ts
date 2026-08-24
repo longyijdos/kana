@@ -17,6 +17,7 @@ export type SlashCommandControllerOptions = {
   openSkillManager: () => void;
   openMcpServerManager: () => void;
   openScheduledMessageManager: () => void;
+  startGoal?: (objective: string) => void;
   openTodo?: () => void;
   openToolHistory: () => void;
   attachImageFile: (path: string) => void;
@@ -85,6 +86,15 @@ export class SlashCommandController {
         break;
       case "schedule":
         this.runWithoutArguments(command, () => this.options.openScheduledMessageManager());
+        break;
+      case "goal":
+        if (!command.arguments) {
+          this.showUsage(command);
+        } else if (!this.options.startGoal) {
+          this.options.showError(new Error("Goal continuation is unavailable."));
+        } else {
+          this.options.startGoal(command.arguments);
+        }
         break;
       case "todo":
         this.runWithoutArguments(command, () => {

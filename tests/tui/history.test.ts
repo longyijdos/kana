@@ -8,6 +8,28 @@ import { tuiTheme } from "../../src/tui/theme";
 import { messageIdentityForTest } from "../helpers/messages";
 
 describe("tui history transcript", () => {
+  test("renders restored goal continuations without exposing the internal prompt", () => {
+    const transcript = new Transcript();
+
+    addHistoryTimelineToTranscript(
+      transcript,
+      timelineFromMessages([
+        {
+          ...createMessageIdentity({
+            kind: "goal_continuation",
+            goalId: "goal-1",
+            round: 3,
+          }),
+          role: "user",
+          content:
+            "[Goal continuation]\nContinue the active goal using the authoritative runtime context.",
+        },
+      ]),
+    );
+
+    expect(transcript.render(80).map(stripAnsi)).toEqual(["Goal continuation · round 3"]);
+  });
+
   test("preserves LaTeX source in restored messages when rendering is disabled", () => {
     const transcript = new Transcript();
 

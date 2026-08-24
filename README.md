@@ -100,6 +100,7 @@ Useful commands inside the TUI:
 | `/mcp`, `/skills` | Manage active MCP servers and global Skills. |
 | `/memory` | View or consolidate durable project/global memory. |
 | `/schedule` | View, create, refresh, and delete scheduled messages. |
+| `/goal <objective>` | Keep advancing one bounded objective across sequential Agent runs. |
 | `/tools` | Browse every tool call in the session and reopen any detail inspector. |
 | `/approval` | Change tool approval behavior for the current session. |
 | `/usage` | Inspect session, project, or global token usage. |
@@ -113,6 +114,7 @@ See [TUI interaction and rendering](docs/tui.md) for shortcuts, queued input, sc
 kana exec "fix the failing tests"
 printf 'summarize this repository' | kana exec
 kana exec resume <session-id> "continue the task"
+kana exec --goal "finish and verify this task"
 kana exec --json "analyze this project"
 ```
 

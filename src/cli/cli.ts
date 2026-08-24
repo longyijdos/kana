@@ -107,7 +107,7 @@ export function createCli(options: CreateCliOptions): Command {
   const execCommand = addHeadlessOptions(
     program
       .command("exec")
-      .description("Run one complete agent turn without the TUI")
+      .description("Run an agent task without the TUI")
       .argument("[prompt...]", "Prompt to run; reads stdin when omitted"),
   );
   execCommand.action(
@@ -117,6 +117,7 @@ export function createCli(options: CreateCliOptions): Command {
       await applyHeadlessExitCode(
         runHeadless({
           prompt: joinPromptParts(promptParts),
+          ...(commandOptions.goal ? { goal: true } : {}),
           json: commandOptions.json,
           allowAllTools: commandOptions.allowAllTools,
           ...(commandOptions.timeout === undefined ? {} : { timeoutMs: commandOptions.timeout }),
@@ -129,7 +130,7 @@ export function createCli(options: CreateCliOptions): Command {
   addHeadlessOptions(
     execCommand
       .command("resume")
-      .description("Resume a saved session for one complete agent turn")
+      .description("Resume a saved session for an agent task")
       .argument("<sessionId>", "Session id to resume")
       .argument("[prompt...]", "Prompt to run; reads stdin when omitted"),
   ).action(
@@ -145,6 +146,7 @@ export function createCli(options: CreateCliOptions): Command {
         runHeadless({
           prompt: joinPromptParts(promptParts),
           resumeSessionId: sessionId,
+          ...(commandOptions.goal ? { goal: true } : {}),
           json: commandOptions.json,
           allowAllTools: commandOptions.allowAllTools,
           ...(commandOptions.timeout === undefined ? {} : { timeoutMs: commandOptions.timeout }),
@@ -343,6 +345,7 @@ type LaunchCommandOptions = {
 };
 
 type HeadlessCommandOptions = LaunchCommandOptions & {
+  goal?: boolean;
   json?: boolean;
   allowAllTools?: boolean;
   timeout?: number;
@@ -350,14 +353,19 @@ type HeadlessCommandOptions = LaunchCommandOptions & {
 
 function addHeadlessOptions(command: Command): Command {
   return command
+    .option("--goal", "Continue as a bounded Goal until it completes or stops")
     .option("--json", "Write versioned JSONL events to stdout")
-    .option("--timeout <duration>", "Abort the Agent run after a duration such as 30m", (value) => {
-      try {
-        return parseHeadlessTimeout(value);
-      } catch (error) {
-        throw new InvalidArgumentError(error instanceof Error ? error.message : String(error));
-      }
-    })
+    .option(
+      "--timeout <duration>",
+      "Abort the headless run after a duration such as 30m",
+      (value) => {
+        try {
+          return parseHeadlessTimeout(value);
+        } catch (error) {
+          throw new InvalidArgumentError(error instanceof Error ? error.message : String(error));
+        }
+      },
+    )
     .option(
       "--allow-all-tools",
       "Run tool calls without interactive approval (does not enable a sandbox)",

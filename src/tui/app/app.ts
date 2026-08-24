@@ -123,6 +123,7 @@ export type KanaTuiAppOptions = {
   };
   notification: KanaNotificationConfig;
   tuiConfig?: KanaTuiConfig;
+  goalMaxRounds?: number;
   wakeScheduler?: WakeScheduler;
   getLogger?: () => Logger;
   compactMemory: (
@@ -228,6 +229,7 @@ export class KanaTuiApp {
       listSessions: options.listSessions,
       deleteSession: options.deleteSession,
       wakeScheduler: options.wakeScheduler,
+      goalMaxRounds: options.goalMaxRounds,
       canStartQueuedRun: () =>
         !this.running &&
         !this.externalTools.loading &&
@@ -490,6 +492,10 @@ export class KanaTuiApp {
       openScheduledMessageManager: () => {
         this.editor.clear();
         this.openScheduledMessageManager();
+      },
+      startGoal: (objective) => {
+        this.editor.clear();
+        void this.startGoal(objective);
       },
       openTodo: () => {
         this.editor.clear();
@@ -985,6 +991,14 @@ export class KanaTuiApp {
         this.agentEvents.resetRun();
         if (event.source === "user" && event.input) {
           this.transcript.addChild(new UserMessageBlock(event.input));
+        } else if (event.source === "goal" && event.input) {
+          this.transcript.addChild(
+            event.input.provenance.kind === "goal_continuation"
+              ? new TextBlock(`Goal continuation · round ${event.input.provenance.round}`, {
+                  color: tuiTheme.muted,
+                })
+              : new UserMessageBlock(event.input),
+          );
         } else if (event.source === "scheduled" && event.input) {
           this.transcript.addChild(
             new TextBlock(`Scheduled wake: ${formatScheduledWakeContent(event.input.content)}`, {
@@ -1005,7 +1019,7 @@ export class KanaTuiApp {
           this.queuedInputs.deliverTurn(event.event.message);
         }
         this.agentEvents.handle(event.event);
-        if (event.source !== "compaction") {
+        if (event.source !== "compaction" && event.source !== "goal") {
           this.notifications.handleAgentEvent(event.event);
         }
         if (event.event.type === "message_end") {
@@ -1019,6 +1033,9 @@ export class KanaTuiApp {
         break;
 
       case "run_end":
+        if (event.source === "goal" && event.goal?.status === "completed") {
+          this.notifications.agentCompleted();
+        }
         this.finishConversationRun();
         break;
 
@@ -1043,6 +1060,17 @@ export class KanaTuiApp {
 
       case "todo_state_changed":
         this.agentEvents.handleTodoStateChange(event.change);
+        break;
+
+      case "goal_state_changed":
+        if (event.change === "round_limit") {
+          this.transcript.addChild(
+            new TextBlock(`Goal stopped · reached the ${event.goal.maxRounds}-round limit.`, {
+              color: tuiTheme.muted,
+            }),
+          );
+          this.tui.requestRender();
+        }
         break;
     }
   }
@@ -1258,6 +1286,21 @@ export class KanaTuiApp {
       await this.conversation.submit(input);
     } catch {
       // The runtime publishes run_error before rejecting the submit promise.
+    }
+  }
+
+  private async startGoal(objective: string): Promise<void> {
+    if (this.stopping || this.externalTools.loading) {
+      return;
+    }
+
+    const previousGoalId = this.conversation.goal?.id;
+    try {
+      await this.conversation.startGoal(objective);
+    } catch (error) {
+      if (this.conversation.goal?.id === previousGoalId) {
+        this.showError(error);
+      }
     }
   }
 

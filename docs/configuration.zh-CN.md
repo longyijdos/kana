@@ -137,6 +137,7 @@ max_retries = 1
 
 [agent]
 max_turns = -1
+goal_max_rounds = 8
 tool_deadline_ms = 660000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
@@ -229,6 +230,7 @@ Endpoint、鉴权、模型 metadata 和推理能力仍保存在 `providers/custo
 | 表与键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
+| `agent.goal_max_rounds` | 正整数 | `8` | 单个 `/goal` 最多允许的完整 Agent run 数，包含首次 run。 |
 | `agent.tool_deadline_ms` | 正整数 | `660000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
 | `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
 | `agent.max_parallel_tool_calls` | 正整数 | `4` | 一个相邻并行安全组内可同时执行的工具调用 body 上限。 |
@@ -256,7 +258,7 @@ Endpoint、鉴权、模型 metadata 和推理能力仍保存在 `providers/custo
 
 启用 `tool_result_artifacts = true` 时，Kana 从当前模型的 prompt budget 派生唯一的内联字节预算，不再暴露第二个数值阈值。非 `read` 结果超过该预算后，会先完整保存，再把模型可见文本替换为 head/tail 预览；预览包含精确省略的 UTF-8 字节数、绝对 locator，以及用 `read`/`grep` 取回的提示，其 notice 也计入同一预算。顶层 `read` 输出只做有界截断，不再生成 artifact，以免形成取回循环；notice 会明确说明按行分页的限制。存储失败时记录安全诊断并保留原始模型可见 outcome，之后普通上下文保护仍可能将其截断；过大或不可序列化的结构化数据仍会独立排除在持久消息之外。关闭该配置会跳过 artifact 存储并使用普通模型可见内容保护，但结构化数据的持久化边界仍然生效。Clean session 使用进程级临时 artifact 存储；普通 session 使用[会话与记忆](sessions-and-memory.zh-CN.md)所述的持久 session 存储。
 
-`hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`render_latex` 同时作用于实时与恢复的助手消息、Markdown 表格和内存查看器。支持的表达式默认渲染；关闭该配置、遇到不支持或格式错误的语法、或流式分隔符尚未闭合时保留原始 LaTeX。终端宽度只在成功渲染后影响换行，不会触发源码 fallback。`render_mermaid` 同时作用于实时与恢复的助手消息和内存查看器。启用后 Mermaid 代码块会随文本流式生成持续渲染；不支持或格式错误的图、渲染器失败以及宽于终端可用宽度的图会保留为普通代码块。流式阶段可以显示部分解析结果；消息完成后若仍报告丢弃了源码，Kana 会恢复代码块并追加一条 warning。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`collapse_long_pastes` 只影响编辑器的显示与编辑方式，提交、排队和从输入历史恢复时仍使用完整粘贴原文。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls`、`tool_result_artifacts`、供应商 `web_search`/`image_input`、`hyperlinks`、`render_latex`、`render_mermaid`、`smooth_text_streaming` 和 `collapse_long_pastes` 必须是布尔值；`tool_deadline_ms`、`max_parallel_tool_calls`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
+`hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`render_latex` 同时作用于实时与恢复的助手消息、Markdown 表格和内存查看器。支持的表达式默认渲染；关闭该配置、遇到不支持或格式错误的语法、或流式分隔符尚未闭合时保留原始 LaTeX。终端宽度只在成功渲染后影响换行，不会触发源码 fallback。`render_mermaid` 同时作用于实时与恢复的助手消息和内存查看器。启用后 Mermaid 代码块会随文本流式生成持续渲染；不支持或格式错误的图、渲染器失败以及宽于终端可用宽度的图会保留为普通代码块。流式阶段可以显示部分解析结果；消息完成后若仍报告丢弃了源码，Kana 会恢复代码块并追加一条 warning。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`collapse_long_pastes` 只影响编辑器的显示与编辑方式，提交、排队和从输入历史恢复时仍使用完整粘贴原文。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls`、`tool_result_artifacts`、供应商 `web_search`/`image_input`、`hyperlinks`、`render_latex`、`render_mermaid`、`smooth_text_streaming` 和 `collapse_long_pastes` 必须是布尔值；`goal_max_rounds`、`tool_deadline_ms`、`max_parallel_tool_calls`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
 
 ### 上下文预算
 

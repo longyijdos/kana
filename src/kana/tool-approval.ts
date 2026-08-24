@@ -18,7 +18,8 @@ export function shouldRequestToolApproval(
   if (
     toolCall.name === "remember" ||
     toolCall.name === "schedule_wake" ||
-    toolCall.name === "todo_write"
+    toolCall.name === "todo_write" ||
+    toolCall.name === "update_goal"
   ) {
     return false;
   }

@@ -8,6 +8,7 @@ import {
   createWakeScheduler,
   DEFAULT_KANA_CONFIG,
   KANA_BUILT_IN_TOOL_NAMES,
+  type KanaGoalSnapshot,
 } from "@/kana";
 import type { Tool } from "@/tools";
 
@@ -25,11 +26,14 @@ describe("Kana Agent tools", () => {
     const externalTool = createTool("github_create_issue");
 
     try {
+      const goal = createGoal("active");
       const agent = withKanaAgentEnvironment(() =>
         createKanaAgent(visionTestConfig(), {
           additionalTools: [externalTool],
           wakeScheduler,
           sessionId: "session-1",
+          resolveGoal: () => goal,
+          updateGoal: (change) => ({ ...goal, status: change.status }),
         }),
       );
 
@@ -52,6 +56,26 @@ describe("Kana Agent tools", () => {
     expect(enabled.state.tools.some((tool) => tool.name === "view_image")).toBe(true);
     expect(disabledByConfig.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
     expect(unsupportedModel.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
+  });
+
+  test("advertises update_goal only while a goal is active", () => {
+    const activeGoal = createGoal("active");
+    const completedGoal = createGoal("completed");
+    const active = withKanaAgentEnvironment(() =>
+      createKanaAgent(testConfig(), {
+        resolveGoal: () => activeGoal,
+        updateGoal: (change) => ({ ...activeGoal, status: change.status }),
+      }),
+    );
+    const completed = withKanaAgentEnvironment(() =>
+      createKanaAgent(testConfig(), {
+        resolveGoal: () => completedGoal,
+        updateGoal: (change) => ({ ...completedGoal, status: change.status }),
+      }),
+    );
+
+    expect(active.state.tools.map((tool) => tool.name)).toContain("update_goal");
+    expect(completed.state.tools.map((tool) => tool.name)).not.toContain("update_goal");
   });
 
   test("rejects external tool names that collide with built-in tools", () => {
@@ -100,6 +124,17 @@ function createTool(name: string): Tool {
     description: `${name} tool`,
     parameters: Type.Object({}),
     execute: () => ({ content: "ok", result: {} }),
+  };
+}
+
+function createGoal(status: KanaGoalSnapshot["status"]): KanaGoalSnapshot {
+  return {
+    id: "goal-1",
+    objective: "Finish the feature",
+    status,
+    admittedRounds: 1,
+    maxRounds: 8,
+    startedAt: new Date("2026-08-24T00:00:00.000Z"),
   };
 }
 

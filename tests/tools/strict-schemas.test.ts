@@ -74,6 +74,22 @@ function createAgentBuiltInTools(): Tool[] {
       {
         wakeScheduler: scheduler,
         sessionId: "session-a",
+        resolveGoal: () => ({
+          id: "goal-1",
+          objective: "Verify schemas",
+          status: "active",
+          admittedRounds: 1,
+          maxRounds: 8,
+          startedAt: new Date("2026-08-24T00:00:00.000Z"),
+        }),
+        updateGoal: (change) => ({
+          id: "goal-1",
+          objective: "Verify schemas",
+          status: change.status,
+          admittedRounds: 1,
+          maxRounds: 8,
+          startedAt: new Date("2026-08-24T00:00:00.000Z"),
+        }),
       },
     );
     return agent.state.tools;

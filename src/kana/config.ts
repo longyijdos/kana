@@ -9,6 +9,7 @@ import type {
   OpenAICodexReasoningEffort,
   OpenAICodexReasoningSummary,
 } from "@/providers";
+import { DEFAULT_KANA_GOAL_MAX_ROUNDS } from "./conversation/goal-controller";
 import { serializeKanaCustomProviderExample } from "./custom-provider";
 import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval-defaults";
 
@@ -70,6 +71,7 @@ export type KanaRepeatedToolCallsConfig = {
 
 type KanaAgentConfig = {
   maxTurns: number;
+  goalMaxRounds: number;
   toolDeadlineMs: number;
   parallelToolCalls: boolean;
   maxParallelToolCalls: number;
@@ -207,6 +209,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   },
   agent: {
     maxTurns: -1,
+    goalMaxRounds: DEFAULT_KANA_GOAL_MAX_ROUNDS,
     // Keep the outer tool deadline above bash's ten-minute command ceiling so
     // bash can terminate the process tree and report its own timeout result.
     toolDeadlineMs: 11 * 60 * 1000,
@@ -387,6 +390,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
     },
     agent: {
       max_turns: config.agent.maxTurns,
+      goal_max_rounds: config.agent.goalMaxRounds,
       tool_deadline_ms: config.agent.toolDeadlineMs,
       parallel_tool_calls: config.agent.parallelToolCalls,
       max_parallel_tool_calls: config.agent.maxParallelToolCalls,
@@ -446,6 +450,7 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     "",
     "[agent]",
     `max_turns = ${config.agent.maxTurns}`,
+    `goal_max_rounds = ${config.agent.goalMaxRounds}`,
     `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
     `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
     `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
@@ -653,6 +658,11 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
     },
     agent: {
       maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
+      goalMaxRounds: readPositiveInteger(
+        agent.goal_max_rounds,
+        defaults.agent.goalMaxRounds,
+        "agent.goal_max_rounds",
+      ),
       toolDeadlineMs: readPositiveInteger(
         agent.tool_deadline_ms,
         defaults.agent.toolDeadlineMs,

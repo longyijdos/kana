@@ -370,6 +370,7 @@ function findFirstPrompt(messages: Message[]): string | undefined {
   return messages.find(
     (message): message is UserMessage =>
       message.role === "user" &&
+      message.provenance.kind !== "goal_continuation" &&
       message.provenance.kind !== "recovery" &&
       message.provenance.kind !== "tool_result_policy" &&
       message.provenance.kind !== "runtime_context",
@@ -528,6 +529,7 @@ function isUserMessageProvenance(value: unknown): boolean {
   return (
     kind === "user_input" ||
     kind === "scheduled_input" ||
+    kind === "goal_continuation" ||
     kind === "recovery" ||
     kind === "tool_result_policy" ||
     kind === "runtime_context" ||
@@ -552,6 +554,15 @@ function isMessageProvenance(value: unknown): value is MessageProvenance {
   const provenance = value as Record<string, unknown>;
   if (provenance.kind === "scheduled_input") {
     return provenance.origin === "user" || provenance.origin === "agent";
+  }
+  if (provenance.kind === "goal_continuation") {
+    return (
+      typeof provenance.goalId === "string" &&
+      provenance.goalId.length > 0 &&
+      typeof provenance.round === "number" &&
+      Number.isInteger(provenance.round) &&
+      provenance.round > 0
+    );
   }
   if (provenance.kind === "runtime_context" || provenance.kind === "tool_result_policy") {
     return typeof provenance.source === "string" && provenance.source.length > 0;

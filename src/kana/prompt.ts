@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   createPromptAssembly,
   type PromptAssembly,
+  type PromptContextState,
   type PromptSystemSection,
   type PromptToolSection,
 } from "@/agent";
@@ -13,6 +14,7 @@ import {
   collectKanaEnvironmentContext,
   formatKanaEnvironmentContext,
 } from "./context";
+import type { KanaGoalSnapshot } from "./conversation/goal-controller";
 import type { KanaLaunchMode } from "./launch-mode";
 import { formatKanaMemoryForPrompt } from "./memory/prompt";
 import { formatKanaSkillsForPrompt } from "./skills/prompt";
@@ -44,6 +46,7 @@ export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions 
 export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
   toolSections?: readonly PromptToolSection[];
   resolveTodoState?: () => readonly KanaTodoItem[];
+  resolveGoalState?: () => KanaGoalSnapshot | undefined;
 };
 
 function loadKanaSystemSections(options: LoadKanaSystemPromptOptions = {}): PromptSystemSection[] {
@@ -103,7 +106,10 @@ export function buildKanaPromptAssembly(
     context: [
       {
         name: "environment",
-        render: () => formatKanaEnvironmentContext(collectKanaEnvironmentContext(options)),
+        render: () => ({
+          status: "active",
+          content: formatKanaEnvironmentContext(collectKanaEnvironmentContext(options)),
+        }),
       },
       ...(options.resolveTodoState
         ? [
@@ -113,20 +119,58 @@ export function buildKanaPromptAssembly(
             },
           ]
         : []),
+      ...(options.resolveGoalState
+        ? [
+            {
+              name: "goal",
+              render: () => formatKanaGoalRuntimeContext(options.resolveGoalState?.()),
+            },
+          ]
+        : []),
     ],
     tools: options.toolSections,
   });
 }
 
-function formatKanaTodoRuntimeContext(items: readonly KanaTodoItem[]): string | undefined {
-  if (items.length === 0) {
-    return undefined;
+function formatKanaGoalRuntimeContext(goal: KanaGoalSnapshot | undefined): PromptContextState {
+  if (goal?.status !== "active") {
+    return {
+      status: "inactive",
+      content:
+        "No user-authorized goal is currently active. Do not continue an earlier goal automatically.",
+    };
   }
 
-  return [
-    "Current session todo state. todo_write replaces the complete list when updating it.",
-    JSON.stringify({ items }),
-  ].join("\n");
+  return {
+    status: "active",
+    content: [
+      "An explicitly user-authorized goal is active for this process.",
+      "Continue making concrete progress toward the objective.",
+      "Call update_goal with completed only when the objective is achieved, or blocked only when meaningful progress requires user input or an external state change.",
+      JSON.stringify({
+        goal: {
+          objective: goal.objective,
+        },
+      }),
+    ].join("\n"),
+  };
+}
+
+function formatKanaTodoRuntimeContext(items: readonly KanaTodoItem[]): PromptContextState {
+  if (items.length === 0) {
+    return {
+      status: "inactive",
+      content: "The current session todo list is empty.",
+    };
+  }
+
+  return {
+    status: "active",
+    content: [
+      "Current session todo state. todo_write replaces the complete list when updating it.",
+      JSON.stringify({ items }),
+    ].join("\n"),
+  };
 }
 
 function formatAgentsInstructions(scope: "global" | "project", content: string): string {

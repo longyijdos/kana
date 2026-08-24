@@ -80,6 +80,8 @@ function formatUserMessage(message: Extract<Message, { role: "user" }>): string 
   switch (message.provenance.kind) {
     case "scheduled_input":
       return `Scheduled wake: ${message.content.replace(/^\[Scheduled wake event\]\n?/, "")}`;
+    case "goal_continuation":
+      return `Goal continuation · round ${message.provenance.round}`;
     case "recovery":
       return "Previous agent run was interrupted; recorded history was recovered safely.";
     case "user_input":

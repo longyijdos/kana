@@ -26,8 +26,14 @@ describe("PromptAssembly", () => {
         { name: "project", content: "Project rules." },
       ],
       context: [
-        { name: "environment", render: () => environment },
-        { name: "empty", render: () => undefined },
+        {
+          name: "environment",
+          render: () => ({ status: "active", content: environment }),
+        },
+        {
+          name: "empty",
+          render: () => ({ status: "inactive", content: "No optional context is active." }),
+        },
       ],
       tools: [
         {
@@ -39,7 +45,10 @@ describe("PromptAssembly", () => {
     });
     const signal = new AbortController().signal;
 
-    expect(assembly.initialSystem).toBe("Assistant rules.\n\nProject rules.");
+    expect(assembly.initialSystem).toContain("Assistant rules.\n\nProject rules.");
+    expect(assembly.initialSystem).toContain(
+      "For each source, only its latest runtime_context message is authoritative.",
+    );
     expect(assembly.initialTools).toEqual([initialTool]);
     expect(Object.isFrozen(assembly)).toBe(true);
     expect(Object.isFrozen(assembly.systemSections)).toBe(true);
@@ -47,8 +56,15 @@ describe("PromptAssembly", () => {
     expect(Object.isFrozen(assembly.toolSections)).toBe(true);
 
     expect(await assembly.assemble({ signal })).toEqual({
-      system: "Assistant rules.\n\nProject rules.",
-      context: [{ source: "environment", content: "day one" }],
+      system: assembly.initialSystem,
+      context: [
+        { source: "environment", status: "active", content: "day one" },
+        {
+          source: "empty",
+          status: "inactive",
+          content: "No optional context is active.",
+        },
+      ],
       tools: [initialTool],
     });
 
@@ -56,8 +72,15 @@ describe("PromptAssembly", () => {
     tools = [refreshedTool];
 
     expect(await assembly.assemble({ signal })).toEqual({
-      system: "Assistant rules.\n\nProject rules.",
-      context: [{ source: "environment", content: "day two" }],
+      system: assembly.initialSystem,
+      context: [
+        { source: "environment", status: "active", content: "day two" },
+        {
+          source: "empty",
+          status: "inactive",
+          content: "No optional context is active.",
+        },
+      ],
       tools: [refreshedTool],
     });
   });
@@ -66,8 +89,8 @@ describe("PromptAssembly", () => {
     expect(() =>
       createPromptAssembly({
         context: [
-          { name: "environment", render: () => "first" },
-          { name: "environment", render: () => "second" },
+          { name: "environment", render: () => ({ status: "active", content: "first" }) },
+          { name: "environment", render: () => ({ status: "active", content: "second" }) },
         ],
       }),
     ).toThrow("Duplicate prompt context section name: environment.");
@@ -104,7 +127,7 @@ describe("PromptAssembly", () => {
           name: "environment",
           render: () => {
             renders += 1;
-            return "unused";
+            return { status: "active", content: "unused" };
           },
         },
       ],
@@ -114,5 +137,22 @@ describe("PromptAssembly", () => {
 
     await expect(assembly.assemble({ signal: controller.signal })).rejects.toThrow("cancelled");
     expect(renders).toBe(0);
+  });
+
+  test("requires every context source to return an explicit non-empty state", async () => {
+    const signal = new AbortController().signal;
+    const missing = createPromptAssembly({
+      context: [{ name: "missing", render: () => undefined as never }],
+    });
+    const empty = createPromptAssembly({
+      context: [{ name: "empty", render: () => ({ status: "inactive", content: " " }) }],
+    });
+
+    await expect(missing.assemble({ signal })).rejects.toThrow(
+      "Prompt context section missing must return an explicit non-empty state.",
+    );
+    await expect(empty.assemble({ signal })).rejects.toThrow(
+      "Prompt context section empty must return an explicit non-empty state.",
+    );
   });
 });
