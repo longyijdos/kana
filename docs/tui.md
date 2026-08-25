@@ -70,12 +70,12 @@ When resuming, TUI history consumes only the committed session timeline, while t
 
 ## Input and shortcuts
 
-Global input runs before the focused component:
+Global input runs before the focused component for global controls. `Esc` is dispatched through the normal focus path instead:
 
 | Input | Behavior |
 | --- | --- |
 | `Ctrl+C` | Cancel local shell, memory compaction, or Agent while running; while idle with the editor focused, clear a text/image draft on the first press, or begin graceful exit when no draft remains; exit directly while loading external tools; press again during shutdown to force exit. |
-| `Esc` | Close the content viewer first; cancel active work when running. |
+| `Esc` | Let the focused modal, view, picker, or nested prompt handle it first. When the editor is focused, abort the Agent run if one is active; while idle, do nothing. |
 | `Ctrl+O` | Open/close the detail inspector for the newest tool call; `/tools` opens the same inspector from a browsable history of every tool call in the session. While open, `[` / `]` move to the previous or next tool call. |
 | `!<command>` | Run local bash directly without Agent or approval, displayed in the same tool block style. |
 

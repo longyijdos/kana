@@ -61,6 +61,109 @@ describe("information viewers", () => {
     expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
   });
 
+  test("routes escape through a running content viewer before aborting the Agent", () => {
+    const { internal, sendInput, state } = createStartedApp();
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    internal.handleCommand({ name: "help", arguments: "", raw: "/help" });
+
+    sendInput("\x1b");
+
+    expect(internal.contentViewer.active).toBe(false);
+    expect(state.abortCalls).toBe(0);
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
+  });
+
+  test("routes escape through a running /jobs manager before aborting the Agent", () => {
+    const { internal, sendInput, state } = createStartedApp();
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    internal.handleCommand({ name: "jobs", arguments: "", raw: "/jobs" });
+
+    sendInput("\x1b");
+
+    expect(internal.backgroundJobManager.active).toBe(false);
+    expect(internal.running).toBe(true);
+    expect(state.abortCalls).toBe(0);
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
+
+    sendInput("\x1b");
+
+    expect(state.abortCalls).toBe(1);
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Aborted");
+  });
+
+  test("keeps a running schedule flow focused on its own escape semantics", () => {
+    const { internal, sendInput, state } = createStartedApp();
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "responding", running: true });
+    internal.handleCommand({ name: "schedule", arguments: "", raw: "/schedule" });
+
+    sendInput("a");
+    for (let index = 0; index < 4; index += 1) {
+      sendInput("\x1b[B");
+    }
+    sendInput("\r");
+    expect(internal.scheduledMessageManager.active).toBe(true);
+    expect(internal.layout.render(80, 24).map(stripAnsi)).toContain("Custom delay (1m–24h)");
+
+    sendInput("\x1b");
+    expect(internal.scheduledMessageManager.active).toBe(true);
+    expect(internal.layout.render(80, 24).map(stripAnsi)).toContain("Schedule after");
+    expect(state.abortCalls).toBe(0);
+
+    sendInput("\x1b");
+    expect(internal.scheduledMessageManager.active).toBe(true);
+    expect(internal.layout.render(80, 24).map(stripAnsi)).toContain(
+      "Scheduled messages · process only",
+    );
+    expect(state.abortCalls).toBe(0);
+
+    sendInput("\x1b");
+    expect(internal.scheduledMessageManager.active).toBe(false);
+    expect(state.abortCalls).toBe(0);
+  });
+
+  test("routes escape through the running /tools picker without aborting the Agent", () => {
+    const { internal, sendInput, state } = createStartedApp();
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
+
+    sendInput("\x1b");
+
+    expect(internal.toolHistory.active).toBe(false);
+    expect(state.abortCalls).toBe(0);
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
+  });
+
+  test("routes escape through the running /usage scope picker without aborting the Agent", () => {
+    const { internal, sendInput, state } = createStartedApp();
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "responding", running: true });
+    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
+
+    sendInput("\x1b");
+
+    expect(internal.slashCommandOptions.active).toBe(false);
+    expect(state.abortCalls).toBe(0);
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Responding");
+  });
+
+  test("does nothing for escape in the idle editor", () => {
+    const { internal, sendInput, state } = createStartedApp();
+
+    sendInput("\x1b");
+
+    expect(internal.tui.getFocus()).toBe(internal.editor);
+    expect(state.abortCalls).toBe(0);
+  });
+
   test("shows running-unavailable errors without replacing Agent status", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
@@ -448,6 +551,8 @@ function createApp(
   launchMode?: KanaLaunchMode,
   todoState?: KanaTodoItem[],
   backgroundJobs?: BackgroundJobClient,
+  onAbort?: () => void,
+  captureInput?: (onInput: (data: string) => void) => void,
 ): KanaTuiApp {
   return new KanaTuiApp(
     () =>
@@ -463,8 +568,9 @@ function createApp(
             },
           },
         },
+        ...(onAbort ? { abort: onAbort } : {}),
       }) as never,
-    createTerminal(),
+    createTerminal(captureInput),
     {
       launchMode,
       initialSession:
@@ -492,6 +598,36 @@ function createApp(
       loadUsage,
     },
   );
+}
+
+function createStartedApp(): {
+  app: KanaTuiApp;
+  internal: AppInternals;
+  sendInput: (data: string) => void;
+  state: { abortCalls: number };
+} {
+  let sendInput!: (data: string) => void;
+  const state = { abortCalls: 0 };
+  const app = createApp(
+    createUsageSummary,
+    undefined,
+    undefined,
+    undefined,
+    () => {
+      state.abortCalls += 1;
+    },
+    (onInput) => {
+      sendInput = onInput;
+    },
+  );
+  app.start();
+
+  return {
+    app,
+    internal: app as unknown as AppInternals,
+    sendInput,
+    state,
+  };
 }
 
 function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
@@ -528,11 +664,11 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
   };
 }
 
-function createTerminal(): Terminal {
+function createTerminal(captureInput?: (onInput: (data: string) => void) => void): Terminal {
   return {
     columns: 80,
     rows: 24,
-    start: () => {},
+    start: (onInput) => captureInput?.(onInput),
     stop: () => {},
     write: () => {},
     notify: () => {},

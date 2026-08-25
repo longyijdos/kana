@@ -19,6 +19,7 @@ import {
   isCtrlV,
   isDown,
   isEnter,
+  isEscape,
   isPrintable,
   isShiftEnter,
   isTab,
@@ -114,6 +115,7 @@ export class Editor implements Component {
   onSubmit?: (submit: PromptSubmit) => void;
   onQueue?: (submit: PromptSubmit) => void;
   onPasteClipboard?: () => void;
+  onEscape?: () => void;
 
   constructor(options: EditorOptions = {}) {
     this.model = options.model;
@@ -271,6 +273,11 @@ export class Editor implements Component {
       if (paste.remaining) {
         queueMicrotask(() => this.handleInput(paste.remaining));
       }
+      return;
+    }
+
+    if (isEscape(data)) {
+      this.onEscape?.();
       return;
     }
 

@@ -58,7 +58,7 @@ import {
 } from "../components/editor/commands";
 import { stripTerminalControlSequences } from "../render";
 import type { Terminal } from "../runtime";
-import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
+import { isCtrlC, isCtrlO, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { renderTodoState, type ToolApprovalSource } from "../tools";
 import { calculateContextUsedPercent } from "../utils/context-usage";
@@ -591,6 +591,11 @@ export class KanaTuiApp {
     this.editor.onPasteClipboard = () => {
       void this.pasteClipboard();
     };
+    this.editor.onEscape = () => {
+      if (this.running) {
+        this.abort();
+      }
+    };
 
     this.updateStatus("idle");
     this.tui.start();
@@ -754,11 +759,6 @@ export class KanaTuiApp {
       return undefined;
     }
 
-    if (isEscape(data) && this.contentViewer.active) {
-      this.contentViewer.close();
-      return { consume: true };
-    }
-
     if (isCtrlC(data)) {
       if (this.running) {
         this.abort();
@@ -775,11 +775,6 @@ export class KanaTuiApp {
       }
 
       void this.stop();
-      return { consume: true };
-    }
-
-    if (isEscape(data) && this.running) {
-      this.abort();
       return { consume: true };
     }
 
