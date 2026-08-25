@@ -29,6 +29,7 @@ export class ToolApproval implements Component {
       titleColor: tuiTheme.toolActive,
       highlight: highlightOverwriteMarker,
       onSelect: onDecision,
+      onCancel: () => onDecision("no"),
     });
   }
 

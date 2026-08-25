@@ -152,6 +152,27 @@ describe("tool approval", () => {
     expect(rendered.join("")).toContain("--rerun-each 2");
   });
 
+  test("denies with escape", () => {
+    let decision: string | undefined;
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "bash",
+        args: {
+          command: "bun test",
+        },
+      },
+      (nextDecision) => {
+        decision = nextDecision;
+      },
+    );
+
+    approval.handleInput("\x1b");
+
+    expect(decision).toBe("no");
+  });
+
   test("selects no with an arrow key and submits it with enter", () => {
     let decision: string | undefined;
     const approval = new ToolApproval(
