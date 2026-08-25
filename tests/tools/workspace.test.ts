@@ -1054,23 +1054,24 @@ describe("workspace tools", () => {
 
   test("bash keeps raw shell backgrounding inside the foreground process lifetime", async () => {
     const root = await createTempRoot();
+    const sideEffectPath = path.join(root, "escaped.txt");
+    const sideEffectDelaySeconds = 1;
     const bash = createBashTool({ root });
     const result = await bash.execute(
       {
-        command: 'sleep 30 & printf %s "$!"',
+        command: `(sleep ${sideEffectDelaySeconds}; printf escaped > ${shellQuote(sideEffectPath)}) & printf foreground`,
         timeoutMs: 100,
       },
       createToolContext(),
     );
     expectToolResult(result);
-    const pid = Number(result.result.stdout);
 
     expect(result.result).toMatchObject({
       exitCode: null,
       timedOut: true,
     });
-    expect(pid).toBeInteger();
-    await waitForCondition(() => !isProcessRunning(pid));
+    await new Promise((resolve) => setTimeout(resolve, sideEffectDelaySeconds * 1_000 + 100));
+    expect(existsSync(sideEffectPath)).toBe(false);
   });
 
   test("bash cancellation terminates background children in the command process group", async () => {
