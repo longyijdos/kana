@@ -45,7 +45,6 @@ export type BackgroundJobOutputSnapshot = {
   jobId: string;
   status: BackgroundJobStatus;
   chunks: BackgroundJobOutputChunk[];
-  hasMore: boolean;
   droppedBytes: number;
   waitTimedOut: boolean;
   exitCode: number | null;
@@ -493,7 +492,6 @@ export class BackgroundJobManager {
       jobId: job.summary.id,
       status: job.summary.status,
       chunks,
-      hasMore: job.chunks.some((chunk) => chunk.sequence >= job.readSequence),
       droppedBytes,
       waitTimedOut,
       exitCode: job.summary.exitCode,
@@ -666,7 +664,6 @@ function unknownOutputSnapshot(jobId: string): BackgroundJobOutputSnapshot {
     jobId,
     status: "unknown",
     chunks: [],
-    hasMore: false,
     droppedBytes: 0,
     waitTimedOut: false,
     exitCode: null,

@@ -85,7 +85,6 @@ describe("BackgroundJobManager", () => {
         { stream: "stdout", text: "gh" },
         { stream: "stdout", text: "ij" },
       ],
-      hasMore: false,
       droppedBytes: 2,
     });
     // The cursor prevents already-consumed output from being returned again.
@@ -106,7 +105,6 @@ describe("BackgroundJobManager", () => {
         { stream: "stdout", text: "qr" },
         { stream: "stdout", text: "st" },
       ],
-      hasMore: false,
       droppedBytes: 2,
     });
     expect((await jobs.read(job.id)).chunks).toEqual([]);
@@ -141,7 +139,6 @@ describe("BackgroundJobManager", () => {
 
     const read = await jobs.read(job.id);
     expect(read.chunks.map((chunk) => chunk.text).join("")).toBe(text);
-    expect(read.hasMore).toBe(false);
     expect(read.droppedBytes).toBe(0);
     expect((await jobs.read(job.id)).chunks).toEqual([]);
     // Peek is non-consuming and still bounded after the read.
@@ -176,7 +173,6 @@ describe("BackgroundJobManager", () => {
     const read = await jobs.read(job.id);
     expect(read.chunks.map((chunk) => chunk.text).join("")).toBe(text.slice(64 * 1024));
     expect(read.droppedBytes).toBe(64 * 1024);
-    expect(read.hasMore).toBe(false);
     expect((await jobs.read(job.id)).chunks).toEqual([]);
 
     completion.resolve({ status: "completed", exitCode: 0 });

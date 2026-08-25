@@ -108,7 +108,6 @@ function formatJobOutput(snapshot: BackgroundJobOutputSnapshot): string {
     `jobId: ${snapshot.jobId}`,
     `status: ${snapshot.status}`,
     `exitCode: ${snapshot.exitCode}`,
-    `hasMore: ${snapshot.hasMore}`,
     `droppedBytes: ${snapshot.droppedBytes}`,
     `waitTimedOut: ${snapshot.waitTimedOut}`,
     "",

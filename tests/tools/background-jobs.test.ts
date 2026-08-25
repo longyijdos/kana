@@ -33,7 +33,7 @@ describe("Background Job tools", () => {
     expect(first.content).toContain("status: running");
     expect(first.content).toContain("stdout:\nalpha\n");
     expect(first.content).toContain("stderr:\nbeta\n");
-    expect(first.result).toMatchObject({ hasMore: false, waitTimedOut: false });
+    expect(first.result).toMatchObject({ waitTimedOut: false });
     const second = await outputTool.execute({ jobId: job.id }, createToolContext());
     expectToolResult(second);
     expect(second.content).toContain("(no new output)");
