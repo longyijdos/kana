@@ -78,8 +78,8 @@ The final message's `output_text.text` enters Markdown rendering unchanged. Prov
 
 ## Failures, retries, and usage
 
-The first HTTP `401` triggers one credential refresh and retries with the new token. HTTP 408, 429, 5xx, and network failures use bounded exponential-backoff retries; Agent cancellation and inactivity timeout stop immediately. A recognized context-window rejection maps to `ContextWindowExceededError`, allowing one safe Agent compaction recovery when no output has started.
+The first HTTP `401` triggers one credential refresh and retries with the new token. HTTP 408, 429, 5xx, and network failures use bounded exponential-backoff retries; Agent cancellation and inactivity timeout stop immediately. Responses `error` and `response.failed` events with recognized transient overload, server, internal, temporary-unavailability, or rate-limit identities are retried with the same `max_retries` budget, including the exact provider backoff hint when present. A stream retry is allowed only before any assistant content or provider-hosted search activity has been emitted; once output starts, or when the failure is validation/protocol-related, Kana fails without replaying the request. A recognized context-window rejection maps to `ContextWindowExceededError`, allowing one safe Agent compaction recovery when no output has started.
 
-Diagnostics use stable provider-request, authentication-refresh, retry, and failure events. They contain only provider, model, phase, outcome, error type, or HTTP status. Logs never contain tokens, account IDs, headers, prompts, complete tool arguments, or response bodies.
+Diagnostics use stable provider-request, authentication-refresh, retry, and failure events. They contain only provider, model, phase, outcome, error type, stream event type, or HTTP status. Logs never contain tokens, account IDs, headers, prompts, complete tool arguments, or response bodies.
 
 Responses usage maps to input, output, cache-hit/miss, and reasoning tokens. Kana records those values without estimating monetary cost; ChatGPT subscription quota and actual billing remain provider-owned.

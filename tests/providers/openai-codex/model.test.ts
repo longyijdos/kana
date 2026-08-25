@@ -95,10 +95,179 @@ describe("OpenAI Codex model", () => {
       },
     });
   });
+
+  test("retries a transient Responses overload before output starts", async () => {
+    let requestCount = 0;
+    const model = createModel(async () => {
+      requestCount += 1;
+      return requestCount === 1
+        ? sseResponse([overloadEvent()], { "retry-after": "0" })
+        : sseResponse(completedTextEvents("hello"));
+    });
+
+    const message = await model.generate(createInput());
+
+    expect(requestCount).toBe(2);
+    expect(message).toMatchObject({
+      stopReason: "stop",
+      content: [{ type: "text", text: "hello" }],
+    });
+  });
+
+  test("does not retry a transient stream error after assistant output starts", async () => {
+    let requestCount = 0;
+    const model = createModel(async () => {
+      requestCount += 1;
+      return requestCount === 1
+        ? sseResponse([assistantOutputItem(), overloadEvent()], { "retry-after": "0" })
+        : sseResponse(completedTextEvents("duplicate"));
+    });
+
+    await expect(model.generate(createInput())).rejects.toThrow(
+      "Our servers are currently overloaded. Please try again later.",
+    );
+    expect(requestCount).toBe(1);
+  });
+
+  test("does not retry a transient stream error after hosted search starts", async () => {
+    let requestCount = 0;
+    const model = createModel(async () => {
+      requestCount += 1;
+      return requestCount === 1
+        ? sseResponse([hostedSearchItem(), overloadEvent()], { "retry-after": "0" })
+        : sseResponse(completedTextEvents("duplicate"));
+    });
+
+    await expect(model.generate(createInput())).rejects.toThrow(
+      "Our servers are currently overloaded. Please try again later.",
+    );
+    expect(requestCount).toBe(1);
+  });
+
+  test("does not retry non-transient Responses stream errors", async () => {
+    let requestCount = 0;
+    const model = createModel(async () => {
+      requestCount += 1;
+      return sseResponse([
+        {
+          type: "error",
+          error: {
+            code: "invalid_request_error",
+            message: "The request is invalid.",
+          },
+        },
+      ]);
+    });
+
+    await expect(model.generate(createInput())).rejects.toThrow("The request is invalid.");
+    expect(requestCount).toBe(1);
+  });
+
+  test("shares the retry budget between HTTP and stream failures", async () => {
+    let requestCount = 0;
+    const model = createModel(async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response("temporarily unavailable", {
+          status: 503,
+          headers: { "retry-after": "0" },
+        });
+      }
+      return sseResponse([overloadEvent()], { "retry-after": "0" });
+    });
+
+    await expect(model.generate(createInput())).rejects.toThrow(
+      "Our servers are currently overloaded. Please try again later.",
+    );
+    expect(requestCount).toBe(2);
+  });
 });
 
-function sseResponse(events: Record<string, unknown>[]): Response {
+function createModel(
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  maxRetries = 1,
+): OpenAICodexModel {
+  return new OpenAICodexModel({
+    provider: "openai-codex",
+    model: "gpt-5.6-luna",
+    credentialProvider: {
+      async getCredentials() {
+        return { accessToken: "token", accountId: "account-id" };
+      },
+      async refreshCredentials() {
+        return undefined;
+      },
+    },
+    maxRetries,
+    fetch: fetch as typeof globalThis.fetch,
+  });
+}
+
+function createInput() {
+  return {
+    messages: [{ ...messageIdentityForTest("user"), role: "user" as const, content: "hi" }],
+    tools: [],
+    parallelToolCalls: false,
+  };
+}
+
+function overloadEvent(): Record<string, unknown> {
+  return {
+    type: "error",
+    error: {
+      type: "server_error",
+      message: "Our servers are currently overloaded. Please try again later.",
+    },
+  };
+}
+
+function assistantOutputItem(): Record<string, unknown> {
+  return {
+    type: "response.output_item.added",
+    output_index: 0,
+    item: { id: "message-1", type: "message", role: "assistant", content: [] },
+  };
+}
+
+function hostedSearchItem(): Record<string, unknown> {
+  return {
+    type: "response.output_item.added",
+    output_index: 0,
+    item: { id: "search-1", type: "web_search_call", status: "in_progress" },
+  };
+}
+
+function completedTextEvents(text: string): Record<string, unknown>[] {
+  return [
+    assistantOutputItem(),
+    { type: "response.output_text.delta", output_index: 0, delta: text },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: {
+        id: "message-1",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    },
+    {
+      type: "response.completed",
+      response: {
+        status: "completed",
+        output: [],
+        usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 },
+      },
+    },
+  ];
+}
+
+function sseResponse(
+  events: Record<string, unknown>[],
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
-    headers: { "content-type": "text/event-stream" },
+    headers: { "content-type": "text/event-stream", ...extraHeaders },
   });
 }

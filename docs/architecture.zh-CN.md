@@ -97,7 +97,7 @@ Clean 模式下，Host 在 MCP runtime 读取配置前返回空工具快照；TU
 
 请求可由 Agent 中止，也受 `timeoutMs` 无活动超时限制；收到响应头或响应数据会重新计时。HTTP 408、429 和 5xx 会按指数退避重试，最多重试 `maxRetries` 次。模型元数据还提供上下文窗口和最大输出；TUI 用它计算上下文占用，进程累计 token 则来自 provider usage 事件。
 
-`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。视觉工具结果使用与原调用 ID 关联的原生 `function_call_output` 文本/图片输入块。adapter 提供 Codex 专用的请求与 replay 规则，同时复用共享的语义 Responses 处理器组装 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item。它把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次；subscription 用量与其他 provider 一样只记录 token，Kana 不估算金额。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
+`OpenAICodexModel` 使用 Kana 通用 OAuth 状态机提供的 ChatGPT token 与 account ID，向 Codex endpoint 发送 classic `store = false` Responses SSE 请求。instructions、客户端工具与托管工具使用 classic 顶层字段，不发送 Responses Lite header 或 input marker。视觉工具结果使用与原调用 ID 关联的原生 `function_call_output` 文本/图片输入块。adapter 提供 Codex 专用的请求与 replay 规则，同时复用共享的语义 Responses 处理器组装 reasoning summary、provider-hosted `web_search_call`、message 和 function call output item。它把 encrypted reasoning 与完成 item 作为不透明 `providerState` 持久化，供后续回合 replay。托管搜索不会进入本地 ToolRuntime；首个 `401` 会 refresh 并重试一次。HTTP 重试与已识别的 transient Responses 流错误共享同一个 `maxRetries` 预算：overload、server、internal、temporary-unavailability 和 rate-limit 错误只会在助手输出或托管工具活动开始前重试，校验错误与协议错误保持终态。subscription 用量与其他 provider 一样只记录 token，Kana 不估算金额。详见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
 
 ## MCP 协议基础
 
