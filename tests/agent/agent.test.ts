@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
-import { Agent, createPromptAssembly } from "../../src/agent";
+import {
+  Agent,
+  type ContextCheckpoint,
+  createPromptAssembly,
+  estimateContextTokens,
+} from "../../src/agent";
 import type { AgentEvent } from "../../src/agent/events";
 import type { ModelContext } from "../../src/core/context";
 import { type AssistantMessage, createUserMessage, type Message } from "../../src/core/messages";
@@ -463,6 +468,63 @@ describe("Agent", () => {
       role: "assistant",
       usage,
     });
+  });
+
+  test("rehydrates the provider usage anchor when constructed from a resumed session", () => {
+    const checkpoint: ContextCheckpoint = {
+      id: "checkpoint-1",
+      summary: "Earlier conversation.",
+      coveredMessageCount: 2,
+      createdAfterMessageCount: 2,
+      compactedMessageCount: 2,
+      reason: "threshold",
+      beforeTokens: 20_000,
+      estimatedAfterTokens: 1_000,
+      createdAt: "2026-08-25T00:00:00.000Z",
+    };
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Old question" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        usage: {
+          promptTokens: 30_000,
+          completionTokens: 10,
+          totalTokens: 30_010,
+        },
+        content: [{ type: "text", text: "Old answer" }],
+      },
+      { ...messageIdentityForTest("user"), role: "user", content: "Resumed question" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        usage: {
+          promptTokens: 12_000,
+          completionTokens: 20,
+          totalTokens: 12_020,
+        },
+        content: [{ type: "text", text: "Resumed answer" }],
+      },
+    ];
+    const agent = new Agent({
+      model: new TextModel(),
+      messages,
+      context: {
+        contextLimit: 100_000,
+        maxOutputTokens: 10_000,
+        checkpoint,
+      },
+    });
+
+    // The restored estimate must match the provider-anchor-plus-local-delta
+    // value of the latest clean response instead of jumping to a full local
+    // estimate of the replayable projection.
+    expect(agent.state.estimatedContextTokens).toBe(
+      12_000 + estimateContextTokens({ messages: messages.slice(3) }) - 8,
+    );
+    expect(agent.state.estimatedContextTokens).toBeLessThan(30_000);
   });
 
   test("commits prompt and loop messages after agent_end updates state", async () => {

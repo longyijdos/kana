@@ -194,6 +194,10 @@ export class Agent {
           loggerMetadata: this.loggerMetadata,
         })
       : undefined;
+    // Assistant usage survives session replay inside committed messages, so
+    // rebuild the provider anchor that keeps the next-request estimate stable
+    // after resume instead of falling back to a full local estimate.
+    this.contextManager?.rehydrateUsageAnchor(this.stateData.messages);
     this.log("debug", "agent.parallel_tool_calls_configured", {
       requested: parallelToolCallsRequested,
       supported: options.model.metadata.supportsParallelToolCalls,
