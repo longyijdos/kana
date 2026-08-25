@@ -487,6 +487,91 @@ describe("ConversationRuntime", () => {
     await manager.close();
   });
 
+  test("preserves FIFO when a user input separates job completions", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 2 });
+    const completions = [deferredJob(), deferredJob()];
+    const model = new ControlledModel();
+    const sources: string[] = [];
+    const runInputs: UserMessage[] = [];
+    let canStartQueuedRun = false;
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      getBackgroundJobs: () => jobs,
+      canStartQueuedRun: () => canStartQueuedRun,
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    runtime.subscribe((event) => {
+      if (event.type === "run_start") {
+        sources.push(event.source);
+        if (event.input) {
+          runInputs.push(event.input);
+        }
+      }
+    });
+    const started = completions.map((completion, index) =>
+      jobs.start({ kind: "test", label: `job ${index + 1}`, run: () => completion.promise }),
+    );
+
+    completions[0]?.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => runtime.inputQueue.pending.length === 1);
+    const humanInput = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Continue in FIFO order.",
+    };
+    runtime.queueInput(humanInput);
+    completions[1]?.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => runtime.inputQueue.pending.length === 3);
+    expect(runtime.inputQueue.pending.map((input) => input.kind)).toEqual(["job", "queued", "job"]);
+
+    canStartQueuedRun = true;
+    runtime.notifyCanStartQueuedRun();
+    await waitFor(() => model.contexts.length === 1);
+    expect(model.contexts[0]?.messages.at(-1)).toMatchObject({
+      provenance: { kind: "job_completion", jobId: started[0]?.id },
+    });
+    model.finish(0, "Job A handled.");
+
+    await waitFor(() => model.contexts.length === 2);
+    expect(model.contexts[1]?.messages.at(-1)).toEqual(humanInput);
+    model.finish(1, "User input handled.");
+
+    await waitFor(() => model.contexts.length === 3);
+    expect(model.contexts[2]?.messages.at(-1)).toMatchObject({
+      provenance: { kind: "job_completion", jobId: started[1]?.id },
+    });
+    model.finish(2, "Job B handled.");
+    await waitFor(() => !runtime.isRunning);
+
+    expect(sources).toEqual(["job", "user", "job"]);
+    expect(runInputs.map((input) => input.id)).toEqual([
+      expect.any(String),
+      humanInput.id,
+      expect.any(String),
+    ]);
+    expect(runInputs[0]?.provenance).toEqual({
+      kind: "job_completion",
+      jobId: started[0]?.id,
+    });
+    expect(runInputs[1]).toEqual(humanInput);
+    expect(runInputs[2]?.provenance).toEqual({
+      kind: "job_completion",
+      jobId: started[1]?.id,
+    });
+
+    expect(jobs.context()).toEqual([]);
+    await runtime.close();
+    await manager.close();
+  });
+
   test("cancels a queued completion wake when the Job is observed", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });

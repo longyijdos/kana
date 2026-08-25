@@ -283,8 +283,7 @@ export class ConversationRuntime<TConfiguration = never> {
   ): Promise<void> {
     this.assertCanStartRun();
     this.activeSource = source;
-    const adjacentCompletions =
-      source === "job" || isHumanAuthoredInput(input) ? this.takePendingJobCompletionInputs() : [];
+    const adjacentCompletions = source === "job" ? this.takePendingJobCompletionInputs() : [];
     const promptInput =
       adjacentCompletions.length === 0
         ? input
@@ -1125,11 +1124,4 @@ function formatBackgroundJobCompletion(job: BackgroundJobSummary): string {
 
 function shortJobId(jobId: string): string {
   return jobId.startsWith("job_") ? jobId.slice(4, 10) : jobId.slice(0, 6);
-}
-
-function isHumanAuthoredInput(message: UserMessage): boolean {
-  return (
-    message.provenance.kind === "user_input" ||
-    (message.provenance.kind === "scheduled_input" && message.provenance.origin === "user")
-  );
 }
