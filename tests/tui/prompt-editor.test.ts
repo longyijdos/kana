@@ -374,6 +374,20 @@ describe("prompt editor", () => {
     ]);
   });
 
+  test("routes Escape to its callback without changing the draft", () => {
+    const editor = new Editor();
+    let escapeCalls = 0;
+    editor.onEscape = () => {
+      escapeCalls += 1;
+    };
+    editor.setText("draft");
+
+    editor.handleInput("\x1b");
+
+    expect(escapeCalls).toBe(1);
+    expect(editor.getText()).toBe("draft");
+  });
+
   test("uses Ctrl+V only for clipboard images and removes the last image from empty input", () => {
     const editor = new Editor();
     let pasteRequests = 0;
