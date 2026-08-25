@@ -69,6 +69,7 @@ describe("Background Job tools", () => {
     expectToolResult(killed);
     expect(killed.result).toMatchObject({ id: job.id, status: "canceled" });
     expect(killed.isError).toBe(false);
+    expect(jobs.context()).toEqual([]);
 
     const unknown = await outputTool.execute(
       { jobId: "job_missing", waitMs: 0 },

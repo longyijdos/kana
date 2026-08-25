@@ -73,6 +73,7 @@ describe("slash command controller", () => {
     harness.handle("usage");
     harness.handle("image", '"/tmp/image with spaces.png"');
     harness.handle("schedule");
+    harness.handle("jobs");
 
     expect(harness.events).toEqual([
       "help",
@@ -81,6 +82,7 @@ describe("slash command controller", () => {
       "usage",
       'image:"/tmp/image with spaces.png"',
       "schedule",
+      "jobs",
     ]);
   });
 
@@ -94,7 +96,6 @@ describe("slash command controller", () => {
       ["delete"],
       ["skills"],
       ["mcp"],
-      ["jobs"],
       ["goal", "Ship the feature"],
       ["approval"],
       ["model"],

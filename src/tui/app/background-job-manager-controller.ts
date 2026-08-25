@@ -82,11 +82,6 @@ export class BackgroundJobManagerController {
       const jobs = this.jobs?.list() ?? [];
       manager.replaceJobs(jobs, notice ?? (this.jobs ? undefined : "No active session."));
       this.refreshPreview(manager.selectedJob?.id);
-      for (const job of jobs) {
-        if (job.status !== "running" && job.status !== "stopping") {
-          this.jobs?.observe(job.id);
-        }
-      }
     } catch (error) {
       this.options.showError(error);
       manager.replaceJobs([], "Unable to load Background Jobs.");

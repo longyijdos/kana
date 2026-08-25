@@ -384,7 +384,9 @@ export class BackgroundJobManager {
       return unknownSummary(jobId);
     }
     if (!isActive(job.summary.status)) {
-      this.observe(owner, jobId);
+      if (shouldObserveCompletion(options.source)) {
+        this.observe(owner, jobId);
+      }
       return cloneSummary(job.summary);
     }
     if (job.summary.status === "running") {
@@ -398,7 +400,7 @@ export class BackgroundJobManager {
       this.wakeWaiters(job);
     }
     await job.settlement;
-    if (options.source === "tool" || options.source === "tui") {
+    if (shouldObserveCompletion(options.source)) {
       this.observe(owner, jobId);
     }
     return cloneSummary(job.summary);
@@ -648,6 +650,10 @@ function hasUnreadOutput(job: JobRecord): boolean {
 
 function isActive(status: BackgroundJobStatus): status is "running" | "stopping" {
   return status === "running" || status === "stopping";
+}
+
+function shouldObserveCompletion(source: KillBackgroundJobOptions["source"]): boolean {
+  return source === "tool";
 }
 
 function cloneSummary(summary: BackgroundJobSummary): BackgroundJobSummary {

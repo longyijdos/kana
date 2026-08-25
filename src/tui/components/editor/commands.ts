@@ -116,7 +116,7 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   },
   {
     name: "jobs",
-    availability: "idle",
+    availability: "always",
     description: "Manage Background Jobs for this session.",
   },
   {

@@ -118,6 +118,47 @@ describe("BackgroundJobManager", () => {
     await jobs.close();
   });
 
+  test("Agent tool kill observes the canceled completion", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const job = jobs.start({
+      kind: "test",
+      label: "tool cancellation",
+      run: ({ signal }) =>
+        new Promise((resolve) => {
+          signal.addEventListener("abort", () => resolve({ status: "canceled", exitCode: null }), {
+            once: true,
+          });
+        }),
+    });
+
+    const result = await jobs.kill(job.id, { source: "tool" });
+
+    expect(result).toMatchObject({ id: job.id, status: "canceled" });
+    expect(jobs.context()).toEqual([]);
+    await manager.close();
+  });
+
+  test("uses kill source to decide whether a terminal completion is observed", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const job = jobs.start({
+      kind: "test",
+      label: "terminal source",
+      run: async () => ({ status: "completed", exitCode: 0 }),
+    });
+    await waitFor(() => jobs.list()[0]?.status === "completed");
+
+    const tuiResult = await jobs.kill(job.id, { source: "tui" });
+    expect(tuiResult).toMatchObject({ id: job.id, status: "completed" });
+    expect(jobs.context()).toHaveLength(1);
+
+    const toolResult = await jobs.kill(job.id, { source: "tool" });
+    expect(toolResult).toMatchObject({ id: job.id, status: "completed" });
+    expect(jobs.context()).toEqual([]);
+    await manager.close();
+  });
+
   test("publishes completion and observation once, then cancels active work on close", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 2 });
