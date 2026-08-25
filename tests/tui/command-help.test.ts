@@ -6,6 +6,34 @@ import {
 } from "../../src/tui/components/editor/commands";
 
 describe("prompt command help", () => {
+  test("declares the commands available during an Agent run", () => {
+    expect(
+      PROMPT_COMMANDS.filter((command) => command.availability === "always").map(
+        (command) => command.name,
+      ),
+    ).toEqual(["quit", "help", "schedule", "todo", "tools", "image", "usage"]);
+
+    expect(
+      PROMPT_COMMANDS.filter((command) => command.availability === "idle").map(
+        (command) => command.name,
+      ),
+    ).toEqual([
+      "clear",
+      "new",
+      "fork",
+      "resume",
+      "delete",
+      "skills",
+      "mcp",
+      "jobs",
+      "goal",
+      "approval",
+      "model",
+      "memory",
+      "compact",
+    ]);
+  });
+
   test("uses the same syntax for help lines and usage errors", () => {
     const fork = PROMPT_COMMANDS.find((command) => command.name === "fork");
     const memory = PROMPT_COMMANDS.find((command) => command.name === "memory");

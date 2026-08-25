@@ -22,8 +22,11 @@ export type PromptCommandName =
   | "compact"
   | "usage";
 
+type PromptCommandAvailability = "always" | "idle";
+
 export type PromptCommand = {
   name: PromptCommandName;
+  availability: PromptCommandAvailability;
   argumentSyntax?: string;
   description: string;
 };
@@ -61,86 +64,106 @@ export type CommandState = {
 export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "quit",
+    availability: "always",
     description: "Exit Kana.",
   },
   {
     name: "help",
+    availability: "always",
     description: "Show commands and shortcuts.",
   },
   {
     name: "clear",
+    availability: "idle",
     description: "Clear the transcript.",
   },
   {
     name: "new",
+    availability: "idle",
     description: "Start a new session.",
   },
   {
     name: "fork",
+    availability: "idle",
     argumentSyntax: "<prompt>",
     description: "Fork the current session and send a prompt.",
   },
   {
     name: "resume",
+    availability: "idle",
     argumentSyntax: "[id]",
     description: "Switch to a saved session.",
   },
   {
     name: "delete",
+    availability: "idle",
     description: "Delete a saved session.",
   },
   {
     name: "skills",
+    availability: "idle",
     description: "Manage active skills.",
   },
   {
     name: "mcp",
+    availability: "idle",
     description: "Manage active MCP servers.",
   },
   {
     name: "schedule",
+    availability: "always",
     description: "Manage scheduled messages for this session.",
   },
   {
     name: "jobs",
+    availability: "idle",
     description: "Manage Background Jobs for this session.",
   },
   {
     name: "goal",
+    availability: "idle",
     argumentSyntax: "<objective>",
     description: "Run one bounded goal through sequential Agent rounds.",
   },
   {
     name: "todo",
+    availability: "always",
     description: "Show the current session todo list.",
   },
   {
     name: "tools",
+    availability: "always",
     description: "Browse tool calls in this session.",
   },
   {
     name: "image",
+    availability: "always",
     argumentSyntax: "<path>",
     description: "Attach a local image file to the editor.",
   },
   {
     name: "approval",
+    availability: "idle",
     description: "Set tool approval mode for this session.",
   },
   {
     name: "model",
+    availability: "idle",
     description: "Switch provider, model, and reasoning effort.",
   },
   {
     name: "memory",
+    availability: "idle",
     description: "View or compact saved memory.",
   },
   {
     name: "compact",
+    availability: "idle",
     description: "Compact the current conversation context.",
   },
   {
     name: "usage",
+    availability: "always",
     description: "Show session, project, or global API usage.",
   },
 ];

@@ -1,4 +1,8 @@
-import { formatPromptCommandUsage, type PromptSubmit } from "../components/editor/commands";
+import {
+  formatPromptCommandUsage,
+  PROMPT_COMMANDS,
+  type PromptSubmit,
+} from "../components/editor/commands";
 
 export type SlashCommand = Extract<PromptSubmit, { type: "command" }>;
 
@@ -33,7 +37,9 @@ export class SlashCommandController {
   constructor(private readonly options: SlashCommandControllerOptions) {}
 
   handle(command: SlashCommand): void {
-    if (this.options.isRunning() && command.name !== "quit") {
+    const definition = PROMPT_COMMANDS.find((candidate) => candidate.name === command.name);
+    if (this.options.isRunning() && definition?.availability === "idle") {
+      this.options.showError(new Error(`/${command.name} is unavailable while Agent is running.`));
       return;
     }
 

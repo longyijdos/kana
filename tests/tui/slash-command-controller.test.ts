@@ -64,11 +64,56 @@ describe("slash command controller", () => {
     ]);
   });
 
+  test("allows always-available commands while running", () => {
+    const harness = createHarness(true);
+
+    harness.handle("help");
+    harness.handle("todo");
+    harness.handle("tools");
+    harness.handle("usage");
+    harness.handle("image", '"/tmp/image with spaces.png"');
+    harness.handle("schedule");
+
+    expect(harness.events).toEqual([
+      "help",
+      "todo",
+      "tools",
+      "usage",
+      'image:"/tmp/image with spaces.png"',
+      "schedule",
+    ]);
+  });
+
+  test("reports idle-only commands while running without invoking their actions", () => {
+    const harness = createHarness(true);
+    const commands: Array<[SlashCommand["name"], string?]> = [
+      ["clear", "this transcript"],
+      ["new"],
+      ["fork", "Continue here"],
+      ["resume", "session-a"],
+      ["delete"],
+      ["skills"],
+      ["mcp"],
+      ["jobs"],
+      ["goal", "Ship the feature"],
+      ["approval"],
+      ["model"],
+      ["memory"],
+      ["compact"],
+    ];
+
+    for (const [name, arguments_] of commands) {
+      harness.handle(name, arguments_);
+    }
+
+    expect(harness.events).toEqual(
+      commands.map(([name]) => `error:/${name} is unavailable while Agent is running.`),
+    );
+  });
+
   test("preserves message fallbacks and permits quit while running", () => {
     const harness = createHarness(true);
 
-    harness.handle("clear", "this transcript");
-    harness.handle("new");
     harness.handle("quit", "later");
     harness.handle("quit");
 
