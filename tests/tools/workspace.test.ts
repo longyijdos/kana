@@ -1174,7 +1174,7 @@ async function readJobToCompletion(
   for (;;) {
     const snapshot = await jobs.read(jobId, { waitMs: 1_000 });
     output += snapshot.chunks.map((chunk) => chunk.text).join("");
-    if (snapshot.status !== "running" && snapshot.status !== "stopping" && !snapshot.hasMore) {
+    if (snapshot.status !== "running" && snapshot.status !== "stopping") {
       return output;
     }
   }

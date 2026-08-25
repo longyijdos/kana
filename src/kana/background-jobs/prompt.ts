@@ -11,7 +11,7 @@ export function createBackgroundJobPromptSections(jobs: BackgroundJobClient): {
       content: [
         "Use bash with background=true when a command must outlive its initiating tool call.",
         "Do not use raw shell backgrounding to escape Kana ownership.",
-        "Use job_output to consume bounded unseen output, optionally waiting for new output or completion; use job_kill to stop work that is no longer needed.",
+        "Use job_output to consume unseen output, optionally waiting for new output or completion; use job_kill to stop work that is no longer needed.",
         "Do not repeatedly poll a running Job when no new output is expected.",
       ].join(" "),
     },

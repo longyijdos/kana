@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { createNoopLogger, type Logger } from "@/logging";
 
 const DEFAULT_MAX_RETAINED_OUTPUT_BYTES = 1024 * 1024;
-const DEFAULT_MAX_OUTPUT_READ_BYTES = 20 * 1024;
+const MAX_OUTPUT_PEEK_BYTES = 20 * 1024;
+const MAX_OUTPUT_CHUNK_BYTES = 4096;
 const DEFAULT_MAX_RETAINED_TERMINAL_JOBS = 32;
 const MAX_BACKGROUND_JOB_LABEL_BYTES = 512;
 
@@ -44,7 +45,6 @@ export type BackgroundJobOutputSnapshot = {
   jobId: string;
   status: BackgroundJobStatus;
   chunks: BackgroundJobOutputChunk[];
-  hasMore: boolean;
   droppedBytes: number;
   waitTimedOut: boolean;
   exitCode: number | null;
@@ -145,7 +145,6 @@ type BackgroundJobListenerRegistration = {
 
 type BackgroundJobManagerOptions = {
   maxRetainedOutputBytes?: number;
-  maxOutputReadBytes?: number;
   maxRetainedTerminalJobs?: number;
 };
 
@@ -154,7 +153,6 @@ export class BackgroundJobManager {
   private readonly listeners = new Set<BackgroundJobListenerRegistration>();
   private readonly closedOwners = new Set<string>();
   private readonly maxRetainedOutputBytes: number;
-  private readonly maxOutputReadBytes: number;
   private readonly maxRetainedTerminalJobs: number;
   private closePromise?: Promise<void>;
 
@@ -163,11 +161,6 @@ export class BackgroundJobManager {
       options.maxRetainedOutputBytes,
       DEFAULT_MAX_RETAINED_OUTPUT_BYTES,
       "maxRetainedOutputBytes",
-    );
-    this.maxOutputReadBytes = readPositiveInteger(
-      options.maxOutputReadBytes,
-      DEFAULT_MAX_OUTPUT_READ_BYTES,
-      "maxOutputReadBytes",
     );
     this.maxRetainedTerminalJobs = readPositiveInteger(
       options.maxRetainedTerminalJobs,
@@ -355,7 +348,7 @@ export class BackgroundJobManager {
       const chunk = job.chunks[index];
       if (
         !chunk ||
-        (chunks.length > 0 && includedBytes + chunk.byteLength > this.maxOutputReadBytes)
+        (chunks.length > 0 && includedBytes + chunk.byteLength > MAX_OUTPUT_PEEK_BYTES)
       ) {
         break;
       }
@@ -458,7 +451,7 @@ export class BackgroundJobManager {
     if (!text || !isActive(job.summary.status)) {
       return;
     }
-    for (const piece of splitByUtf8Bytes(text, Math.min(4096, this.maxOutputReadBytes))) {
+    for (const piece of splitByUtf8Bytes(text, MAX_OUTPUT_CHUNK_BYTES)) {
       const chunk: OutputChunk = {
         sequence: job.nextSequence,
         stream,
@@ -486,16 +479,11 @@ export class BackgroundJobManager {
 
   private consumeOutput(job: JobRecord, waitTimedOut: boolean): BackgroundJobOutputSnapshot {
     const chunks: BackgroundJobOutputChunk[] = [];
-    let bytes = 0;
     for (const chunk of job.chunks) {
       if (chunk.sequence < job.readSequence) {
         continue;
       }
-      if (chunks.length > 0 && bytes + chunk.byteLength > this.maxOutputReadBytes) {
-        break;
-      }
       chunks.push({ stream: chunk.stream, text: chunk.text });
-      bytes += chunk.byteLength;
       job.readSequence = chunk.sequence + 1;
     }
     const droppedBytes = job.unreadDroppedBytes;
@@ -504,7 +492,6 @@ export class BackgroundJobManager {
       jobId: job.summary.id,
       status: job.summary.status,
       chunks,
-      hasMore: job.chunks.some((chunk) => chunk.sequence >= job.readSequence),
       droppedBytes,
       waitTimedOut,
       exitCode: job.summary.exitCode,
@@ -677,7 +664,6 @@ function unknownOutputSnapshot(jobId: string): BackgroundJobOutputSnapshot {
     jobId,
     status: "unknown",
     chunks: [],
-    hasMore: false,
     droppedBytes: 0,
     waitTimedOut: false,
     exitCode: null,

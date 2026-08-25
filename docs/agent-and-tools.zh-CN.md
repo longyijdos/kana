@@ -171,7 +171,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 | `edit` | `path`、非空 `oldText`、`newText`、可选 `replaceAll` | 对既有 UTF-8 文件做精确替换。默认要求恰好一次匹配；返回替换数、写入字节数及前后文本。 |
 | `bash` | `command`，可选 `cwd`、`timeoutMs`（1–600000）和 `background`（默认 `false`） | 前台执行默认 30000 ms 超时，并返回完整的最终 stdout/stderr。`background: true` 默认不设超时，并立即返回当前 session 所有的 Job ID。 |
 | `job_list` | 无 | 列出当前 session 所有的活动 Job 和最多 32 个近期终态 Job。读取终态条目会确认其完成通知。 |
-| `job_output` | `jobId`，可选 `waitMs`（0–30000，默认 0） | 从 Agent 游标消费下一段有界、尚未读取的输出。它可以等待输出或终态而不停止 Job，并明确报告已丢弃字节数。 |
+| `job_output` | `jobId`，可选 `waitMs`（0–30000，默认 0） | 从 Agent 游标一次性消费全部尚未读取的保留输出。它可以等待输出或终态而不停止 Job，并明确报告已丢弃字节数。 |
 | `job_kill` | `jobId`，可选 `reason` | 停止属于当前 session 的指定 Job，等待其进程组静止，并返回终态。 |
 | `todo_write` | 完整 `items` 数组；每项包含非空 `content` 与 `pending`、`in_progress` 或 `completed` 状态 | 为多步骤工作原子替换当前 session 的 todo 列表。最多一项可为 `in_progress`；空数组显式清空列表。模型可见结果是固定的紧凑确认。 |
 | `remember` | `content`，可选 `scope`、`title`、`reason` | 向每日记忆记录持久信息，返回宿主生成的记忆条目。仅在记忆启用时注册。 |
@@ -179,7 +179,7 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 
 `bash` 的 stdin 始终断开；它把 `sudo` 定义为 `sudo -n`，避免密码提示占用 TUI。前台执行期间 stdout/stderr 约每 100ms 发送部分更新；每个实时快照是每个流最多 20,000 个 JavaScript 字符的有界尾部窗口，长命令展示的是最新输出而不是输出开头。完整的最终输出随后进入统一结果策略，由该策略先按需保存 artifact，再限制模型可见内容和持久化结构化数据。每次命令在独立进程组中运行。前台执行等待整个进程组，而不只是顶层 shell，因此裸 `command &` 不再逃逸：默认或显式超时会终止整组。显式创建另一个进程 session 的 daemon 化仍可能越过 Kana 的进程组边界。非 0 退出码表示命令本身的执行结果，不会将工具结果的 `isError` 标记为 true；超时的退出码记为 `null`，并将结果标为错误。
 
-通用 `BackgroundJobManager` 和 Job 工具不依赖 Kana 的 Agent 构造，其他 host 也可以自行装配。owner 把 Job 绑定到一个 session 实例，执行其并发上限，并在 owner dispose 时移除全部 Job。Job metadata 只保存经过空白规范化、最多 512 UTF-8 字节的 label；原始 Bash command 仍保留在 tool call 中。每个 Job 在内存中只保留最新 1 MiB stdout/stderr。`job_output` 每次从一个隐式 Agent 游标返回最多 20 KiB，因此它是增量输出，而不是到目前为止的全部输出；`hasMore` 表示应继续读取，`droppedBytes` 表示尚未消费就从环形缓冲区淘汰的数据。TUI 预览使用独立的非消费尾部。manager 为每个 owner 最多保留 32 个终态 Job，并裁剪最旧条目；Job manager 状态和保留的输出 buffer 不会持久化，进程退出后也不会恢复。
+通用 `BackgroundJobManager` 和 Job 工具不依赖 Kana 的 Agent 构造，其他 host 也可以自行装配。owner 把 Job 绑定到一个 session 实例，执行其并发上限，并在 owner dispose 时移除全部 Job。Job metadata 只保存经过空白规范化、最多 512 UTF-8 字节的 label；原始 Bash command 仍保留在 tool call 中。每个 Job 在内存中只保留最新 1 MiB stdout/stderr。`job_output` 在一次调用中从隐式 Agent 游标消费全部尚未读取的保留输出，因此已完成的 Job 最多只需读取一次；`droppedBytes` 表示尚未消费就从环形缓冲区淘汰的数据。过大的模型可见输出由共享的 result policy 限界。TUI 预览使用独立的非消费尾部窗口，最多 20 KiB。manager 为每个 owner 最多保留 32 个终态 Job，并裁剪最旧条目；Job manager 状态和保留的输出 buffer 不会持久化，进程退出后也不会恢复。
 
 Kana 在通用层之上增加 runtime context、完成投递、session 清理和 TUI 管理。Runtime context 只包含活动或尚未报告 Job 的身份、有界命令标签、cwd、状态与退出码，从不包含输出；只有状态变化时，Agent 才新增一条 runtime-context 消息。Agent run 活动时，完成事件进入 `next-step`；空闲时进入 `next-turn`，相邻的待处理完成事件会合并到一个 run 中，但不会跨过其他已排队输入。普通输出不会唤醒 Agent，因此持续运行的开发服务器不会反复 wake。通过 `job_list`、`job_output` 或 `/jobs` 观察终态 Job 会确认它，并取消仍在队列中的完成输入。切换 session 和正常退出会先停止所属进程组，再关闭 MCP 等后续 host 资源；强制的第二次中断可能绕过该清理。
 

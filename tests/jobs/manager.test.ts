@@ -46,38 +46,133 @@ describe("BackgroundJobManager", () => {
     await manager.close();
   });
 
-  test("keeps a bounded UTF-8 output ring with an incremental consumer cursor", async () => {
-    const manager = new BackgroundJobManager({
-      maxRetainedOutputBytes: 8,
-      maxOutputReadBytes: 4,
-    });
+  test("keeps a bounded UTF-8 output ring with a fully consuming read cursor", async () => {
+    const manager = new BackgroundJobManager({ maxRetainedOutputBytes: 8 });
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const completion = deferred<ProducerResult>();
+    let writeOutput: ((text: string) => void) | undefined;
     const job = jobs.start({
       kind: "test",
       label: "stream output",
       run: ({ write }) => {
-        write("stdout", "abcdefghij");
+        writeOutput = (text) => write("stdout", text);
+        write("stdout", "ab");
+        write("stdout", "cd");
+        write("stdout", "ef");
+        write("stdout", "gh");
+        write("stdout", "ij");
         return completion.promise;
       },
     });
 
+    // "ab" was evicted while unread, so the peek tail still sees the rest.
     expect(jobs.peek(job.id)).toMatchObject({
       status: "running",
-      chunks: [{ stream: "stdout", text: "ij" }],
+      chunks: [
+        { stream: "stdout", text: "cd" },
+        { stream: "stdout", text: "ef" },
+        { stream: "stdout", text: "gh" },
+        { stream: "stdout", text: "ij" },
+      ],
       truncated: true,
-      droppedBytes: 4,
+      droppedBytes: 2,
     });
+    // One read consumes all currently unread retained output.
     expect(await jobs.read(job.id)).toMatchObject({
-      chunks: [{ stream: "stdout", text: "efgh" }],
-      hasMore: true,
-      droppedBytes: 4,
+      chunks: [
+        { stream: "stdout", text: "cd" },
+        { stream: "stdout", text: "ef" },
+        { stream: "stdout", text: "gh" },
+        { stream: "stdout", text: "ij" },
+      ],
+      droppedBytes: 2,
     });
+    // The cursor prevents already-consumed output from being returned again.
+    expect((await jobs.read(job.id)).chunks).toEqual([]);
+
+    // New output is consumed in full; "kl" is evicted while unread, so the
+    // cursor advances past it and its bytes are reported as dropped, while the
+    // already-read "cd".."ij" eviction is silent.
+    writeOutput?.("kl");
+    writeOutput?.("mn");
+    writeOutput?.("op");
+    writeOutput?.("qr");
+    writeOutput?.("st");
     expect(await jobs.read(job.id)).toMatchObject({
-      chunks: [{ stream: "stdout", text: "ij" }],
-      hasMore: false,
-      droppedBytes: 0,
+      chunks: [
+        { stream: "stdout", text: "mn" },
+        { stream: "stdout", text: "op" },
+        { stream: "stdout", text: "qr" },
+        { stream: "stdout", text: "st" },
+      ],
+      droppedBytes: 2,
     });
+    expect((await jobs.read(job.id)).chunks).toEqual([]);
+
+    completion.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => jobs.list()[0]?.status === "completed");
+    await jobs.read(job.id);
+    expect(jobs.context()).toEqual([]);
+    await manager.close();
+  });
+
+  test("read consumes all retained unread output in one call while peek stays bounded", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const completion = deferred<ProducerResult>();
+    const text = "0123456789abcdef".repeat(44_800); // 716,800 bytes (~700 KiB)
+    const job = jobs.start({
+      kind: "test",
+      label: "large output",
+      run: ({ write }) => {
+        write("stdout", text);
+        return completion.promise;
+      },
+    });
+
+    const peeked = jobs.peek(job.id);
+    expect(peeked.truncated).toBe(true);
+    expect(peeked.droppedBytes).toBe(0);
+    const peekedText = peeked.chunks.map((chunk) => chunk.text).join("");
+    expect(Buffer.byteLength(peekedText)).toBeLessThanOrEqual(20 * 1024);
+    expect(text.endsWith(peekedText)).toBe(true);
+
+    const read = await jobs.read(job.id);
+    expect(read.chunks.map((chunk) => chunk.text).join("")).toBe(text);
+    expect(read.droppedBytes).toBe(0);
+    expect((await jobs.read(job.id)).chunks).toEqual([]);
+    // Peek is non-consuming and still bounded after the read.
+    expect(
+      jobs
+        .peek(job.id)
+        .chunks.map((chunk) => chunk.text)
+        .join(""),
+    ).toBe(peekedText);
+
+    completion.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => jobs.list()[0]?.status === "completed");
+    await jobs.read(job.id);
+    expect(jobs.context()).toEqual([]);
+    await manager.close();
+  });
+
+  test("reports droppedBytes when the 1 MiB ring evicts unread output", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const completion = deferred<ProducerResult>();
+    const text = "y".repeat(1024 * 1024 + 64 * 1024);
+    const job = jobs.start({
+      kind: "test",
+      label: "overflow",
+      run: ({ write }) => {
+        write("stdout", text);
+        return completion.promise;
+      },
+    });
+
+    const read = await jobs.read(job.id);
+    expect(read.chunks.map((chunk) => chunk.text).join("")).toBe(text.slice(64 * 1024));
+    expect(read.droppedBytes).toBe(64 * 1024);
     expect((await jobs.read(job.id)).chunks).toEqual([]);
 
     completion.resolve({ status: "completed", exitCode: 0 });

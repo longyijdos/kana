@@ -9,7 +9,7 @@ type ProducerResult = {
 };
 
 describe("Background Job tools", () => {
-  test("lists Jobs and reads bounded unseen output", async () => {
+  test("lists Jobs and reads all unseen output", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const completion = deferred<ProducerResult>();
@@ -33,7 +33,7 @@ describe("Background Job tools", () => {
     expect(first.content).toContain("status: running");
     expect(first.content).toContain("stdout:\nalpha\n");
     expect(first.content).toContain("stderr:\nbeta\n");
-    expect(first.result).toMatchObject({ hasMore: false, waitTimedOut: false });
+    expect(first.result).toMatchObject({ waitTimedOut: false });
     const second = await outputTool.execute({ jobId: job.id }, createToolContext());
     expectToolResult(second);
     expect(second.content).toContain("(no new output)");
