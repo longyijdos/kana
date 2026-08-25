@@ -6,6 +6,7 @@ import {
   createMessageIdentity,
   type ModelContext,
 } from "@/core";
+import { isRetryableResponsesStreamError, ResponsesStreamError } from "../responses";
 import {
   createOpenAICodexRequestSignal,
   getOpenAICodexRetryDelayMs,
@@ -23,6 +24,12 @@ import type {
   OpenAICodexModelConfig,
   OpenAICodexStreamState,
 } from "./types";
+
+type OpenAICodexRetryState = {
+  credentials: OpenAICodexCredentials;
+  authRefreshed: boolean;
+  attempt: number;
+};
 
 export class OpenAICodexModel extends BaseModel {
   readonly metadata;
@@ -43,9 +50,6 @@ export class OpenAICodexModel extends BaseModel {
       ...createMessageIdentity({ kind: "model_output" }),
       role: "assistant",
       content: [],
-    };
-    const state: OpenAICodexStreamState = {
-      terminalSeen: false,
     };
 
     try {
@@ -69,38 +73,80 @@ export class OpenAICodexModel extends BaseModel {
         );
       }
 
+      const maxRetries = this.config.maxRetries ?? 0;
+      const retryState: OpenAICodexRetryState = {
+        credentials,
+        authRefreshed: false,
+        attempt: 0,
+      };
+      const body = JSON.stringify(
+        buildOpenAICodexRequest(
+          {
+            ...context,
+            parallelToolCalls:
+              context.parallelToolCalls === true && this.metadata.supportsParallelToolCalls,
+          },
+          this.config,
+        ),
+      );
       const requestSignal = createOpenAICodexRequestSignal(this.config, context.signal);
       try {
-        const response = await this.request(
-          JSON.stringify(
-            buildOpenAICodexRequest(
-              {
-                ...context,
-                parallelToolCalls:
-                  context.parallelToolCalls === true && this.metadata.supportsParallelToolCalls,
-              },
-              this.config,
-            ),
-          ),
-          credentials,
-          requestSignal.signal,
-        );
-        requestSignal.refresh();
-        stream.push({
-          type: "start",
-          snapshot: structuredClone(message),
-        });
+        let started = false;
+        let completedState: OpenAICodexStreamState | undefined;
 
-        const processor = new OpenAICodexStreamProcessor(stream, message, state);
-        await readOpenAICodexStream(
-          response,
-          (event) => processor.apply(event),
-          requestSignal.refresh,
-        );
-        if (!state.terminalSeen || state.stopReason === undefined) {
-          throw new Error("OpenAI Codex stream ended before a terminal response event.");
+        for (;;) {
+          const response = await this.request(body, retryState, requestSignal.signal);
+          requestSignal.refresh();
+          if (!started) {
+            stream.push({
+              type: "start",
+              snapshot: structuredClone(message),
+            });
+            started = true;
+          }
+
+          const attemptState: OpenAICodexStreamState = {
+            terminalSeen: false,
+          };
+          const processor = new OpenAICodexStreamProcessor(stream, message, attemptState);
+          try {
+            await readOpenAICodexStream(
+              response,
+              (event) => processor.apply(event),
+              requestSignal.refresh,
+            );
+            if (!attemptState.terminalSeen || attemptState.stopReason === undefined) {
+              throw new Error("OpenAI Codex stream ended before a terminal response event.");
+            }
+            completedState = attemptState;
+            break;
+          } catch (error) {
+            if (
+              !isRetryableResponsesStreamError(error) ||
+              processor.hasStartedOutput ||
+              retryState.attempt >= maxRetries
+            ) {
+              throw error;
+            }
+
+            const delayMs = getOpenAICodexRetryDelayMs(retryState.attempt, response);
+            retryState.attempt += 1;
+            this.config.logger?.warn("provider.retrying", {
+              provider: "openai-codex",
+              phase: "responses_stream",
+              attempt: retryState.attempt,
+              delayMs,
+              errorCode: "RESPONSES_STREAM_TRANSIENT",
+              eventType: error.eventType,
+            });
+            await sleepForOpenAICodexRetry(delayMs, requestSignal.signal);
+          }
         }
 
+        const state = completedState;
+        if (state === undefined || state.stopReason === undefined) {
+          throw new Error("OpenAI Codex stream ended without a completed state.");
+        }
         stream.end({
           type: "done",
           reason: state.stopReason,
@@ -131,14 +177,11 @@ export class OpenAICodexModel extends BaseModel {
 
   private async request(
     body: string,
-    initialCredentials: OpenAICodexCredentials,
+    retryState: OpenAICodexRetryState,
     signal?: AbortSignal,
   ): Promise<Response> {
     const fetch = this.config.fetch ?? globalThis.fetch;
     const maxRetries = this.config.maxRetries ?? 0;
-    let credentials = initialCredentials;
-    let authRefreshed = false;
-    let retryAttempt = 0;
 
     for (;;) {
       let response: Response | undefined;
@@ -153,8 +196,8 @@ export class OpenAICodexModel extends BaseModel {
             ...this.config.headers,
             accept: "text/event-stream",
             "content-type": "application/json",
-            authorization: `Bearer ${credentials.accessToken}`,
-            "chatgpt-account-id": credentials.accountId,
+            authorization: `Bearer ${retryState.credentials.accessToken}`,
+            "chatgpt-account-id": retryState.credentials.accountId,
             originator: "kana",
             "user-agent": "kana",
           },
@@ -165,8 +208,8 @@ export class OpenAICodexModel extends BaseModel {
           return response;
         }
 
-        if (response.status === 401 && !authRefreshed) {
-          authRefreshed = true;
+        if (response.status === 401 && !retryState.authRefreshed) {
+          retryState.authRefreshed = true;
           await response.body?.cancel().catch(() => undefined);
           this.config.logger?.info("provider.authentication_refresh_started", {
             provider: "openai-codex",
@@ -174,7 +217,7 @@ export class OpenAICodexModel extends BaseModel {
           });
           const refreshed = await this.config.credentialProvider.refreshCredentials();
           if (refreshed !== undefined) {
-            credentials = refreshed;
+            retryState.credentials = refreshed;
             this.config.logger?.info("provider.authentication_refresh_ended", {
               provider: "openai-codex",
               outcome: "refreshed",
@@ -193,21 +236,21 @@ export class OpenAICodexModel extends BaseModel {
         if (signal?.aborted) {
           throw signal.reason ?? error;
         }
-        if (response?.status === 401 && authRefreshed) {
+        if (response?.status === 401 && retryState.authRefreshed) {
           throw error;
         }
         failure = error;
       }
 
-      if (!isOpenAICodexRetryable(failure) || retryAttempt >= maxRetries) {
+      if (!isOpenAICodexRetryable(failure) || retryState.attempt >= maxRetries) {
         throw failure;
       }
 
-      const delayMs = getOpenAICodexRetryDelayMs(retryAttempt, response);
-      retryAttempt += 1;
+      const delayMs = getOpenAICodexRetryDelayMs(retryState.attempt, response);
+      retryState.attempt += 1;
       this.config.logger?.warn("provider.retrying", {
         provider: "openai-codex",
-        attempt: retryAttempt,
+        attempt: retryState.attempt,
         delayMs,
         ...(response === undefined ? {} : { status: response.status }),
       });
@@ -243,6 +286,16 @@ function formatProviderFailure(error: unknown, signal?: AbortSignal): Record<str
       aborted,
       status: error.status,
       statusText: error.statusText,
+    };
+  }
+  if (error instanceof ResponsesStreamError) {
+    return {
+      errorName: error.name,
+      aborted,
+      errorCode: error.retryable ? "RESPONSES_STREAM_TRANSIENT" : "RESPONSES_STREAM_ERROR",
+      eventType: error.eventType,
+      ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
+      ...(aborted ? {} : { message: error.message }),
     };
   }
   if (error instanceof Error) {

@@ -15,6 +15,23 @@ export type ResponsesStreamState = {
   usage?: ModelUsage;
 };
 
+export class ResponsesStreamError extends Error {
+  readonly name = "ResponsesStreamError";
+
+  constructor(
+    readonly eventType: "error" | "response.failed",
+    readonly retryable: boolean,
+    message: string,
+    readonly providerCode?: string,
+  ) {
+    super(message);
+  }
+}
+
+export function isRetryableResponsesStreamError(error: unknown): error is ResponsesStreamError {
+  return error instanceof ResponsesStreamError && error.retryable;
+}
+
 export type ResponsesStreamProcessorOptions = {
   provider: string;
   providerLabel: string;
@@ -58,6 +75,7 @@ export class ResponsesStreamProcessor {
   private readonly pendingByIndex = new Map<number, PendingItem>();
   private readonly pendingById = new Map<string, PendingItem>();
   private readonly completedItemIds = new Set<string>();
+  private outputStarted = false;
   private nextSyntheticIndex = 0;
 
   constructor(
@@ -66,6 +84,10 @@ export class ResponsesStreamProcessor {
     private readonly state: ResponsesStreamState,
     private readonly options: ResponsesStreamProcessorOptions,
   ) {}
+
+  get hasStartedOutput(): boolean {
+    return this.outputStarted;
+  }
 
   apply(event: Record<string, unknown>): void {
     const type = readString(event.type);
@@ -99,11 +121,15 @@ export class ResponsesStreamProcessor {
         this.completeResponse(event, type);
         return;
       case "response.failed":
-        throw new Error(
+        throw createResponsesStreamError(
+          event,
+          "response.failed",
           readResponseError(event) ?? `${this.options.providerLabel} response failed.`,
         );
       case "error":
-        throw new Error(
+        throw createResponsesStreamError(
+          event,
+          "error",
           readEventError(event) ?? `${this.options.providerLabel} stream returned an error.`,
         );
       default:
@@ -124,6 +150,15 @@ export class ResponsesStreamProcessor {
 
     const contentIndex = this.message.content.length;
     const type = readString(item.type);
+    if (
+      type !== "reasoning" &&
+      type !== "message" &&
+      type !== "function_call" &&
+      type !== "web_search_call"
+    ) {
+      return;
+    }
+    this.outputStarted = true;
     let pending: PendingItem;
     if (type === "reasoning") {
       const content: ThinkingContent = { type: "thinking", text: "" };
@@ -417,24 +452,33 @@ export async function readResponsesStream(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let completed = false;
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      onActivity?.();
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split(/\r?\n\r?\n/);
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        applySseFrame(frame, onEvent, providerLabel);
+      }
     }
-    onActivity?.();
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split(/\r?\n\r?\n/);
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) {
-      applySseFrame(frame, onEvent, providerLabel);
-    }
-  }
 
-  buffer += decoder.decode();
-  if (buffer) {
-    applySseFrame(buffer, onEvent, providerLabel);
+    buffer += decoder.decode();
+    if (buffer) {
+      applySseFrame(buffer, onEvent, providerLabel);
+    }
+    completed = true;
+  } finally {
+    if (!completed) {
+      await reader.cancel().catch(() => undefined);
+    }
+    reader.releaseLock();
   }
 }
 
@@ -517,6 +561,64 @@ function readResponseError(event: Record<string, unknown>): string | undefined {
   const details =
     response && isRecord(response.incomplete_details) ? response.incomplete_details : undefined;
   return details === undefined ? undefined : readString(details.reason);
+}
+
+function createResponsesStreamError(
+  event: Record<string, unknown>,
+  eventType: "error" | "response.failed",
+  message: string,
+): ResponsesStreamError {
+  const providerCode = readResponsesErrorCode(event);
+  return new ResponsesStreamError(
+    eventType,
+    isTransientResponsesError(message, providerCode),
+    message,
+    providerCode,
+  );
+}
+
+function readResponsesErrorCode(event: Record<string, unknown>): string | undefined {
+  const response = isRecord(event.response) ? event.response : undefined;
+  const responseError = response && isRecord(response.error) ? response.error : undefined;
+  const eventError = isRecord(event.error) ? event.error : undefined;
+  return (
+    (responseError && (readString(responseError.code) ?? readString(responseError.type))) ??
+    (eventError && (readString(eventError.code) ?? readString(eventError.type))) ??
+    readString(event.code)
+  );
+}
+
+const NON_RETRYABLE_RESPONSES_ERROR_CODES = new Set([
+  "invalid_request_error",
+  "invalid_parameter",
+  "invalid_prompt",
+  "unsupported_value",
+  "authentication_error",
+  "permission_error",
+  "model_not_found",
+  "not_found",
+]);
+
+const RETRYABLE_RESPONSES_ERROR_CODES = new Set([
+  "internal_error",
+  "server_error",
+  "temporarily_unavailable",
+  "overloaded",
+  "rate_limit_exceeded",
+]);
+
+function isTransientResponsesError(message: string, code?: string): boolean {
+  const normalizedCode = code
+    ?.trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (normalizedCode !== undefined && NON_RETRYABLE_RESPONSES_ERROR_CODES.has(normalizedCode)) {
+    return false;
+  }
+  return (
+    (normalizedCode !== undefined && RETRYABLE_RESPONSES_ERROR_CODES.has(normalizedCode)) ||
+    /(?:currently\s+)?overloaded|temporarily unavailable|try again later/i.test(message)
+  );
 }
 
 function readEventError(event: Record<string, unknown>): string | undefined {
