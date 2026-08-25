@@ -76,7 +76,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 
 压缩记录的 `reason` 可以是自动阈值触发的 `threshold`、provider 超限恢复的 `provider_limit`，或 `/compact` 触发的 `manual`。记录的物理位置表示压缩何时发生，`coversThroughId` 则指向摘要实际覆盖的最后一条 message，因此两者可以不同。例如 marker 写在 `m4` 后但 `coversThroughId = m2` 时，恢复给模型的 projection 是 `summary + m3 + m4 + 后续消息`。生成摘要时会排除 runtime-context 消息；checkpoint 边界上每个 source 的最后状态只有仍 active 时才会在摘要后重新投影，边界后的全部转换保持原顺序。被覆盖的旧状态和 inactive 转换会与其它被覆盖原始消息一起退出模型输入。所有原始 message 仍留在 JSONL 中，TUI 也能按原顺序显示完整的用户可见历史。
 
-后续压缩会带可选 `baseCompactionId` 指向上一个 checkpoint，并把旧摘要与新覆盖消息合并成一份新的累计摘要。`usage` 可保存该次摘要请求的模型用量。加载时会验证 `coversThroughId` 和 `baseCompactionId` 只引用已出现的记录，然后同时派生完整 `messages`、完整 `timeline` 和最后一个 `contextCheckpoint`：Agent 使用 messages/checkpoint，TUI 历史只消费 timeline。
+后续压缩会带可选 `baseCompactionId` 指向上一个 checkpoint，并把旧摘要与新覆盖消息合并成一份新的累计摘要。`usage` 可保存该次摘要请求的模型用量。加载时会验证 `coversThroughId` 和 `baseCompactionId` 只引用已出现的记录，然后同时派生完整 `messages`、完整 `timeline` 和最后一个 `contextCheckpoint`：Agent 使用 messages/checkpoint，TUI 历史只消费 timeline。assistant 消息会把 provider usage 原样保留在 JSONL 中，因此恢复时 Agent 能从最新一条干净响应重建上下文估算锚点；若该响应早于当前 checkpoint 或包含 hosted tool，则忽略该锚点。
 
 运行时只读取 V5，不包含旧于 V5 的兼容分支。`/fork <prompt>` 创建新会话，将源 session 文件路径写入 header 的 `parentSessionPath`，并把继承的消息、当前累计 checkpoint 与最新 todo 状态的按值副本写成一个已闭合的 snapshot turn。继承消息保留原来的逻辑 `message.id`，只有 fork 中的 journal entry ID 是新生成的。
 

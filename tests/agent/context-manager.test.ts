@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type CompactPolicyInput,
+  type ContextCheckpoint,
   ContextManager,
   createModelCompactPolicy,
   estimateContextTokens,
@@ -549,6 +550,227 @@ describe("ContextManager", () => {
         8,
     );
     expect(next).toBeGreaterThan(anchored);
+  });
+
+  test("reproduces the live estimate after rehydrating from persisted messages", () => {
+    const live = new ContextManager({
+      contextLimit: 100_000,
+      maxOutputTokens: 10_000,
+    });
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Hello" },
+    ];
+    const response: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      stopReason: "stop",
+      usage: {
+        promptTokens: 10_000,
+        completionTokens: 10,
+        totalTokens: 10_010,
+      },
+      content: [{ type: "text", text: "Hello back" }],
+    };
+    live.recordAssistantUsage(response, messages.length);
+    messages.push(response);
+    const liveEstimate = live.estimateContextTokens({ messages });
+
+    // A resumed session restores the same messages but a fresh manager, so the
+    // rehydrated anchor must yield the identical next-request estimate.
+    const resumed = new ContextManager({
+      contextLimit: 100_000,
+      maxOutputTokens: 10_000,
+    });
+    resumed.rehydrateUsageAnchor(messages);
+
+    expect(resumed.estimateContextTokens({ messages })).toBe(liveEstimate);
+    expect(resumed.estimateContextTokens({ messages })).toBe(
+      response.usage!.promptTokens + estimateContextTokens({ messages: messages.slice(1) }) - 8,
+    );
+  });
+
+  test("rehydrates an anchor only from assistant responses after the checkpoint", () => {
+    const checkpoint: ContextCheckpoint = {
+      id: "checkpoint-1",
+      summary: "Earlier conversation.",
+      coveredMessageCount: 2,
+      createdAfterMessageCount: 2,
+      compactedMessageCount: 2,
+      reason: "threshold",
+      beforeTokens: 20_000,
+      estimatedAfterTokens: 1_000,
+      createdAt: "2026-08-25T00:00:00.000Z",
+    };
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Old question" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        usage: {
+          promptTokens: 30_000,
+          completionTokens: 10,
+          totalTokens: 30_010,
+        },
+        content: [{ type: "text", text: "Old answer" }],
+      },
+      { ...messageIdentityForTest("user"), role: "user", content: "Resumed question" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        usage: {
+          promptTokens: 12_000,
+          completionTokens: 20,
+          totalTokens: 12_020,
+        },
+        content: [{ type: "text", text: "Resumed answer" }],
+      },
+    ];
+    const manager = new ContextManager({
+      contextLimit: 100_000,
+      maxOutputTokens: 10_000,
+      checkpoint,
+    });
+
+    manager.rehydrateUsageAnchor(messages);
+
+    expect(manager.estimateContextTokens({ messages })).toBe(
+      12_000 + estimateContextTokens({ messages: messages.slice(3) }) - 8,
+    );
+  });
+
+  test("falls back to the local estimate when every anchor predates the checkpoint", () => {
+    const checkpoint: ContextCheckpoint = {
+      id: "checkpoint-1",
+      summary: "Earlier conversation.",
+      coveredMessageCount: 2,
+      createdAfterMessageCount: 2,
+      compactedMessageCount: 2,
+      reason: "threshold",
+      beforeTokens: 20_000,
+      estimatedAfterTokens: 1_000,
+      createdAt: "2026-08-25T00:00:00.000Z",
+    };
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Old question" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        usage: {
+          promptTokens: 30_000,
+          completionTokens: 10,
+          totalTokens: 30_010,
+        },
+        content: [{ type: "text", text: "Old answer" }],
+      },
+      { ...messageIdentityForTest("user"), role: "user", content: "Resumed question" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Answer without provider usage" }],
+      },
+    ];
+    const createManager = () =>
+      new ContextManager({
+        contextLimit: 100_000,
+        maxOutputTokens: 10_000,
+        checkpoint,
+      });
+
+    const plain = createManager();
+    const hydrated = createManager();
+    hydrated.rehydrateUsageAnchor(messages);
+
+    const fallbackEstimate = plain.estimateContextTokens({ messages });
+    expect(hydrated.estimateContextTokens({ messages })).toBe(fallbackEstimate);
+    // The stale 30k-token pre-checkpoint anchor must not leak into the
+    // post-checkpoint projection estimate.
+    expect(fallbackEstimate).toBeLessThan(30_000);
+  });
+
+  test("never rehydrates an anchor from a hosted-tool response", () => {
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Search for Kana" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        usage: {
+          promptTokens: 90_000,
+          completionTokens: 100,
+          totalTokens: 90_100,
+        },
+        content: [
+          {
+            type: "hosted_tool",
+            id: "search-1",
+            name: "web_search",
+            status: "completed",
+            action: { type: "search", query: "Kana" },
+          },
+          { type: "text", text: "Search result" },
+        ],
+      },
+    ];
+    const manager = new ContextManager({
+      contextLimit: 100_000,
+      maxOutputTokens: 10_000,
+    });
+
+    manager.rehydrateUsageAnchor(messages);
+
+    expect(manager.estimateContextTokens({ messages })).toBe(estimateContextTokens({ messages }));
+  });
+
+  test("keeps a clean persisted anchor when a later hosted-tool response exists", () => {
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "Hello" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        usage: {
+          promptTokens: 10_000,
+          completionTokens: 10,
+          totalTokens: 10_010,
+        },
+        content: [{ type: "text", text: "Hello back" }],
+      },
+      { ...messageIdentityForTest("user"), role: "user", content: "Search" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        usage: {
+          promptTokens: 90_000,
+          completionTokens: 100,
+          totalTokens: 90_100,
+        },
+        content: [
+          {
+            type: "hosted_tool",
+            id: "search-1",
+            name: "web_search",
+            status: "completed",
+            action: { type: "search", query: "Kana" },
+          },
+          { type: "text", text: "Search result" },
+        ],
+      },
+    ];
+    const manager = new ContextManager({
+      contextLimit: 100_000,
+      maxOutputTokens: 10_000,
+    });
+
+    manager.rehydrateUsageAnchor(messages);
+
+    expect(manager.estimateContextTokens({ messages })).toBe(
+      10_000 + estimateContextTokens({ messages: messages.slice(1) }) - 8,
+    );
   });
 
   test("restores the previous checkpoint when summary generation fails", async () => {

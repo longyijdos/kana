@@ -285,6 +285,34 @@ export class ContextManager {
     };
   }
 
+  // A resumed session restores messages and the checkpoint but not the in-memory
+  // usage measurement. Rebuild the anchor from the latest persisted assistant
+  // response, which carries the provider's prompt tokens for that request.
+  rehydrateUsageAnchor(messages: Message[]): void {
+    const checkpoint = this.checkpointData;
+    // An anchor recorded before the current checkpoint was measured against a
+    // different (pre-summary) projection, so it cannot calibrate the next
+    // request. Messages at or after createdAfterMessageCount postdate it.
+    const minimumMessageCount = checkpoint?.createdAfterMessageCount ?? 0;
+
+    for (let index = messages.length - 1; index >= minimumMessageCount; index -= 1) {
+      const message = messages[index];
+      if (message?.role !== "assistant" || !message.usage) {
+        continue;
+      }
+      if (message.content.some((content) => content.type === "hosted_tool")) {
+        continue;
+      }
+      this.usageMeasurement = {
+        checkpointId: checkpoint?.id,
+        messageCount: index,
+        promptTokens: message.usage.promptTokens,
+      };
+      this.log("debug", "context.usage_anchor_hydrated", { messageCount: index });
+      return;
+    }
+  }
+
   limitToolContent(content: string): string {
     return truncateTextToEstimatedTokens(content, this.maxToolContentTokens);
   }
