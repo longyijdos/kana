@@ -427,6 +427,50 @@ describe("ConversationRuntime", () => {
     await manager.close();
   });
 
+  test("holds an idle Job completion behind the active /jobs gate until it closes", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const completion = deferredJob();
+    const model = new ControlledModel();
+    let jobsPanelActive = true;
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      getBackgroundJobs: () => jobs,
+      canStartQueuedRun: () => !jobsPanelActive,
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    const job = jobs.start({
+      kind: "test",
+      label: "gated completion",
+      run: () => completion.promise,
+    });
+
+    completion.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => runtime.inputQueue.pending.some((input) => input.kind === "job"));
+    expect(model.contexts).toEqual([]);
+    expect(jobs.context()).toMatchObject([{ id: job.id, status: "completed" }]);
+
+    jobsPanelActive = false;
+    runtime.notifyCanStartQueuedRun();
+    await waitFor(() => model.contexts.length === 1);
+    expect(model.contexts[0]?.messages.at(-1)).toMatchObject({
+      provenance: { kind: "job_completion", jobId: job.id },
+    });
+    model.finish(0, "Completion handled.");
+    await waitFor(() => jobs.context().length === 0);
+
+    expect(jobs.context()).toEqual([]);
+    await runtime.close();
+    await manager.close();
+  });
+
   test("coalesces adjacent idle completion wakes without blocking queued user input", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 3 });

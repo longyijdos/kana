@@ -7,6 +7,85 @@ import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";
 
 describe("background Job manager controller", () => {
+  test("opens with terminal Jobs without acknowledging their completion", async () => {
+    const jobManager = new BackgroundJobManager();
+    const jobs = jobManager.bind(jobManager.createOwner("session-a"), { maxConcurrent: 1 });
+    const job = jobs.start({
+      kind: "bash",
+      label: "completed build",
+      run: async () => ({ status: "completed", exitCode: 0 }),
+    });
+    await waitFor(() => jobs.list()[0]?.status === "completed");
+
+    const editor = new Editor({ model: "test-model" });
+    const layout = new AppLayout({ main: new Transcript(), bottom: editor });
+    const tui = createTuiStub();
+    const controller = new BackgroundJobManagerController({
+      editor,
+      layout,
+      tui,
+      getJobs: () => jobs,
+      showError: () => {},
+      restoreBottom: (focus) => {
+        layout.showBottom(editor);
+        if (focus) {
+          tui.setFocus(editor);
+        }
+      },
+      onClose: () => {},
+    });
+
+    controller.open();
+
+    const rendered = stripAnsi(tui.getFocus()?.render(100).join("\n") ?? "");
+    expect(rendered).toContain("completed");
+    expect(rendered).toContain("output tail (non-consuming)");
+    expect(jobs.context()).toMatchObject([{ id: job.id, status: "completed" }]);
+
+    controller.close();
+    await jobManager.close();
+  });
+
+  test("refreshes a terminal completion without consuming it while open", async () => {
+    const jobManager = new BackgroundJobManager();
+    const jobs = jobManager.bind(jobManager.createOwner("session-a"), { maxConcurrent: 1 });
+    const completion = deferred<{ status: "completed"; exitCode: number }>();
+    const job = jobs.start({
+      kind: "bash",
+      label: "delayed build",
+      run: () => completion.promise,
+    });
+    const editor = new Editor({ model: "test-model" });
+    const layout = new AppLayout({ main: new Transcript(), bottom: editor });
+    const tui = createTuiStub();
+    const controller = new BackgroundJobManagerController({
+      editor,
+      layout,
+      tui,
+      getJobs: () => jobs,
+      showError: () => {},
+      restoreBottom: (focus) => {
+        layout.showBottom(editor);
+        if (focus) {
+          tui.setFocus(editor);
+        }
+      },
+      onClose: () => {},
+    });
+
+    controller.open();
+    expect(stripAnsi(tui.getFocus()?.render(100).join("\n") ?? "")).toContain("running");
+
+    completion.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() =>
+      stripAnsi(tui.getFocus()?.render(100).join("\n") ?? "").includes("completed"),
+    );
+
+    expect(jobs.context()).toMatchObject([{ id: job.id, status: "completed" }]);
+    controller.close();
+    await jobManager.close();
+  });
+
   test("peeks without consuming output, stops active work, and restores the editor", async () => {
     const jobManager = new BackgroundJobManager();
     const jobs = jobManager.bind(jobManager.createOwner("session-a"), { maxConcurrent: 1 });
@@ -53,6 +132,7 @@ describe("background Job manager controller", () => {
     tui.getFocus()?.handleInput?.("K");
     await waitFor(() => jobs.list()[0]?.status === "canceled");
     expect(stripAnsi(tui.getFocus()?.render(100).join("\n") ?? "")).toContain("canceled");
+    expect(jobs.context()).toMatchObject([{ id: job.id, status: "canceled" }]);
     expect(errors).toEqual([]);
 
     tui.getFocus()?.handleInput?.("\x1b");
@@ -72,6 +152,17 @@ function createTuiStub(): Tui {
       focus = component;
     },
   } as unknown as Tui;
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

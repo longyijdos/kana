@@ -350,7 +350,7 @@ export class KanaTuiApp {
         const sessionId = this.conversation.sessionId;
         return sessionId ? this.options.getBackgroundJobs?.(sessionId) : undefined;
       },
-      showError: (error) => this.showError(error),
+      showError: (error) => this.showInteractionError(error),
       restoreBottom: (focus) => this.restoreBottom(focus),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
@@ -966,10 +966,6 @@ export class KanaTuiApp {
   }
 
   private openBackgroundJobManager(): void {
-    if (this.running) {
-      return;
-    }
-
     this.sessions.close();
     this.contentViewer.close();
     this.skillManager.close();

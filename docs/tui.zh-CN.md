@@ -103,7 +103,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 空闲时 `Enter` 正常提交；Agent 运行中按 `Enter` 会把消息放入 `next-step`，在当前完整 model/tool turn 的 `turn_end` 之后投递，并在同一个 run 中开始下一次模型调用。若中止或 turn limit 使下一 turn 无法开始，Agent 会把同一条带 ID 消息移到 `next-turn` 尾部。Agent 运行中按 `Tab` 会直接加入 `next-turn`，等当前 `agent_end` 后作为新的 run 发送；空闲时普通输入的 `Tab` 不提交消息，slash 面板中的 `Tab` 仍用于补全。队列与到期 wake 按入队顺序共享 FIFO 投递通道。在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入和没有 shell 命令的单独 `!` 作为普通模型消息发送。
 
-后台 Job 完成事件复用同一套排队机制。运行中的完成事件会请求追加一次模型步骤；空闲时的完成事件会请求开启新的 run。相邻的待处理完成事件会合并到一个 run 中，但不会跨过其他已排队输入；仅有输出不会唤醒 Agent。通过 Job 工具或 `/jobs` 观察到终态 Job 时，会取消该 Job 尚未处理的完成通知。
+后台 Job 完成事件复用同一套排队机制。运行中的完成事件会请求追加一次模型步骤；空闲时的完成事件会请求开启新的 run。相邻的待处理完成事件会合并到一个 run 中，但不会跨过其他已排队输入；仅有输出不会唤醒 Agent。Agent 通过 Job 工具收到终态结果后会确认该完成，并取消该 Job 尚未处理的完成通知。`/jobs` 只查看不消耗游标的输出尾部并控制当前 session 的 Job；在 TUI 中查看或停止 Job 不会确认完成，因此 Agent 仍能收到对应事件。
 
 `/goal <目标>` 会启动一个进程内 Goal，并把目标作为首次 Agent run 的输入。只要 Goal 仍为 active，runtime 就会在每次 `agent_end` 后启动下一 run，但已经排队的 Tab 输入、deferred steering 或到期 wake 会优先执行。模型通过权威 runtime context 获得 active 目标，并可调用 `update_goal` 标记 `completed` 或 `blocked`；配置的 run 计数和上限不会暴露给模型。TUI 把续轮显示为弱化 marker，并抑制逐轮完成通知。`Esc` 或 `Ctrl+C` 会取消 active Goal；新建、分叉或恢复 session、Agent 重配置、关闭、run 失败、显式终态更新以及达到 `agent.goal_max_rounds` 上限也会结束它。Goal 控制状态不会从 session 历史恢复；当前进程仍在运行时，自动上下文压缩会重新投影 active 目标。
 
@@ -120,7 +120,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
 | `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
 | `/schedule` | 查看、添加、刷新或删除当前 session 的进程内定时消息。 |
-| `/jobs` | 管理当前 session 拥有的 Job：刷新、查看不消耗游标的输出尾部，以及停止活动 Job。 |
+| `/jobs` | 管理当前 session 拥有的 Job：刷新、查看不消耗游标的输出尾部，以及停止活动 Job。Agent 运行期间同样可用；TUI 查看和停止不会确认终态完成。 |
 | `/goal <目标>` | 在有界的连续 Agent run 中持续推进一个目标。 |
 | `/todo` | 打开当前 session 的 todo 列表和状态计数。 |
 | `/tools` | 浏览当前会话的全部工具调用，并可任意打开其中一个的详情查看器。 |
@@ -143,7 +143,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 - `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有追加式生命周期输出、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
 - `QueuedInputController` 只在本地保留当前 run 的 `next turn` 乐观预览；权威的 `next-step`、`next-turn`、到期 `scheduled` 和未来 wake 状态都投影自 `ConversationRuntime` 快照。输入被接受或 deferred 后，controller 按原有 `MessageId` 对齐该预览，即使正文完全相同也不会混淆。
 - `ScheduledMessageManagerController` 用 `/schedule` 打开当前 session 的定时消息快照。未到期项按时间排列，已到期但尚未发送的项放在底部；只显示 `agent` 或 `you` 来源，不显示 Agent 的替换 key。列表不会随时钟或后台状态自动变化；`R`、添加或删除会重新读取快照。`A` 提供 5/15/30 分钟、1 小时和 `3m`、`90m`、`2h` 形式的自定义相对时间；`D` 确认后按未来输入的稳定 `MessageId` 同时检查 scheduler 与已到期 `next-turn` 项。面板活动期间新的 pending run 不会启动，`Esc` 关闭后恢复 FIFO 投递。
-- `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job、观察终态 Job，并在面板通过 `Esc` 关闭前阻止 pending run 启动。
+- `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job 但不确认终态，并在面板通过 `Esc` 关闭前阻止 pending run 启动。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前读取当前有效审批模式。`/approval` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、bash 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
 - `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和外部工具激活；其内部的 `SessionOverlayController` 用恢复列表或删除确认替换编辑器。
@@ -157,7 +157,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 
-运行期间，`/quit`、`/help`、`/todo`、`/tools`、`/usage`、`/image` 和 `/schedule` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照。`/clear`、`/new`、`/fork`、`/resume`、`/delete`、`/skills`、`/mcp`、`/jobs`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
+运行期间，`/quit`、`/help`、`/todo`、`/tools`、`/usage`、`/image`、`/schedule` 和 `/jobs` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可在 Agent 运行时查看并停止当前 session 的 Job，但不会确认其完成。`/clear`、`/new`、`/fork`、`/resume`、`/delete`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
 
 ## 通知与 Markdown
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { type BackgroundJobClient, BackgroundJobManager } from "@/jobs";
 import type { KanaLaunchMode, KanaTodoItem, KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { ToolCallBlock } from "../../src/tui/components";
@@ -263,6 +264,30 @@ describe("information viewers", () => {
     expect(internal.scheduledMessageManager.active).toBe(false);
   });
 
+  test("opens /jobs while running without replacing Agent status", async () => {
+    const jobManager = new BackgroundJobManager();
+    const jobs = jobManager.bind(jobManager.createOwner("session"), { maxConcurrent: 1 });
+    const app = createApp(createUsageSummary, undefined, undefined, jobs);
+    const internal = app as unknown as AppInternals;
+
+    try {
+      internal.running = true;
+      internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+      internal.handleCommand({ name: "jobs", arguments: "", raw: "/jobs" });
+
+      const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
+      expect(internal.backgroundJobManager.active).toBe(true);
+      expect(rendered).toContain("Background Jobs · current session");
+      expect(rendered).not.toContain("/jobs is unavailable while Agent is running.");
+      expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
+
+      internal.tui.getFocus()?.handleInput?.("\x1b");
+      expect(internal.backgroundJobManager.active).toBe(false);
+    } finally {
+      await jobManager.close();
+    }
+  });
+
   test("opens the current session todo state without adding transcript content", () => {
     const app = createApp(createUsageSummary, undefined, [
       { content: "Implement durable state", status: "in_progress" },
@@ -402,7 +427,7 @@ type AppInternals = {
     updateStatus: (state: { phase: string; running: boolean; activeTool?: string }) => void;
   };
   handleCommand: (command: {
-    name: "help" | "memory" | "todo" | "usage" | "tools" | "schedule" | "model" | "image";
+    name: "help" | "memory" | "todo" | "usage" | "tools" | "schedule" | "jobs" | "model" | "image";
     arguments: string;
     raw: string;
   }) => void;
@@ -413,6 +438,7 @@ type AppInternals = {
   slashCommandOptions: { active: boolean };
   toolHistory: { active: boolean };
   scheduledMessageManager: { active: boolean };
+  backgroundJobManager: { active: boolean };
   tui: { getFocus: () => Component | undefined };
   layout: { render: (width: number, availableHeight?: number) => string[] };
 };
@@ -421,6 +447,7 @@ function createApp(
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary = createUsageSummary,
   launchMode?: KanaLaunchMode,
   todoState?: KanaTodoItem[],
+  backgroundJobs?: BackgroundJobClient,
 ): KanaTuiApp {
   return new KanaTuiApp(
     () =>
@@ -441,10 +468,16 @@ function createApp(
     {
       launchMode,
       initialSession:
-        todoState === undefined
+        todoState === undefined && backgroundJobs === undefined
           ? undefined
-          : { id: "session", messages: [], timeline: [], todoState },
+          : {
+              id: "session",
+              messages: [],
+              timeline: [],
+              ...(todoState === undefined ? {} : { todoState }),
+            },
       getResumeSessionId: () => undefined,
+      getBackgroundJobs: backgroundJobs ? () => backgroundJobs : undefined,
       createNewSession: () => ({ id: "new" }),
       forkSession: () => ({ id: "fork" }),
       listSessions: () => [],
