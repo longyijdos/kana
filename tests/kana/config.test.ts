@@ -112,7 +112,6 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("max_parallel_tool_calls = 4");
     expect(installedConfigExample).toContain("tool_result_artifacts = true");
     expect(installedConfigExample).toContain("[agent.background_jobs]");
-    expect(installedConfigExample).toContain("max_consecutive_completion_wakes = 3");
     expect(installedConfigExample).toContain("[agent.repeated_tool_calls]");
     expect(installedConfigExample).toContain("reminder_thresholds = [3,5,8]");
     expect(installedConfigExample).toContain("excluded_tools = []");
@@ -253,7 +252,6 @@ describe("Kana config", () => {
     expect(DEFAULT_KANA_CONFIG.agent.toolResultArtifacts).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.backgroundJobs).toEqual({
       maxConcurrent: 4,
-      maxConsecutiveCompletionWakes: 3,
     });
     expect(DEFAULT_KANA_CONFIG.agent.repeatedToolCalls).toEqual(repeatedToolCalls);
   });
@@ -280,7 +278,6 @@ describe("Kana config", () => {
         "",
         "[agent.background_jobs]",
         "max_concurrent = 6",
-        "max_consecutive_completion_wakes = 2",
         "",
         "[agent.repeated_tool_calls]",
         "reminder_thresholds = [2, 4]",
@@ -333,7 +330,6 @@ describe("Kana config", () => {
         toolResultArtifacts: false,
         backgroundJobs: {
           maxConcurrent: 6,
-          maxConsecutiveCompletionWakes: 2,
         },
         repeatedToolCalls: {
           reminderThresholds: [2, 4],
@@ -603,13 +599,11 @@ describe("Kana config", () => {
     const { home } = getKanaConfigPaths(env);
     const configPath = path.join(home, "config.toml");
 
-    for (const key of ["max_concurrent", "max_consecutive_completion_wakes"]) {
-      for (const value of [0, -1, 1.5]) {
-        writeFileSync(configPath, `[agent.background_jobs]\n${key} = ${value}\n`);
-        expect(() => loadKanaConfig(env)).toThrow(
-          `agent.background_jobs.${key} must be a positive integer.`,
-        );
-      }
+    for (const value of [0, -1, 1.5]) {
+      writeFileSync(configPath, `[agent.background_jobs]\nmax_concurrent = ${value}\n`);
+      expect(() => loadKanaConfig(env)).toThrow(
+        "agent.background_jobs.max_concurrent must be a positive integer.",
+      );
     }
   });
 

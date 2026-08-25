@@ -36,7 +36,6 @@ describe("Kana config store", () => {
       draft.agent.goalMaxRounds = 12;
       draft.agent.toolResultArtifacts = false;
       draft.agent.backgroundJobs.maxConcurrent = 6;
-      draft.agent.backgroundJobs.maxConsecutiveCompletionWakes = 2;
       draft.agent.repeatedToolCalls.reminderThresholds = [2, 4];
       draft.agent.repeatedToolCalls.excludedTools = ["remember", "status"];
     });
@@ -58,7 +57,6 @@ describe("Kana config store", () => {
         "",
         "[agent.background_jobs]",
         "max_concurrent = 6",
-        "max_consecutive_completion_wakes = 2",
         "",
         "[agent.repeated_tool_calls]",
         "reminder_thresholds = [2,4]",
@@ -75,7 +73,6 @@ describe("Kana config store", () => {
     expect(config.agent.toolResultArtifacts).toBe(false);
     expect(config.agent.backgroundJobs).toEqual({
       maxConcurrent: 6,
-      maxConsecutiveCompletionWakes: 2,
     });
     expect(config.agent.repeatedToolCalls).toEqual({
       reminderThresholds: [2, 4],

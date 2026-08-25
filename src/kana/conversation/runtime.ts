@@ -164,7 +164,6 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   deleteSession?: (sessionId: string) => boolean;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
   backgroundJobCompletionRuns?: boolean;
-  maxConsecutiveCompletionWakes?: number;
   wakeScheduler?: WakeScheduler;
   scheduledRuns?: boolean;
   canStartQueuedRun?: () => boolean;
@@ -191,7 +190,6 @@ export class ConversationRuntime<TConfiguration = never> {
   private activeRunGoalId?: string;
   private terminalEvent?: Extract<AgentEvent, { type: "agent_end" }>;
   private drainingSubmissions = false;
-  private completionWakeCount = 0;
   private changingSession = false;
   private stopping = false;
   private closePromise?: Promise<void>;
@@ -285,13 +283,14 @@ export class ConversationRuntime<TConfiguration = never> {
   ): Promise<void> {
     this.assertCanStartRun();
     this.activeSource = source;
-    if (isHumanAuthoredInput(input)) {
-      this.completionWakeCount = 0;
-    }
-    const prefixedCompletions = isHumanAuthoredInput(input)
-      ? this.takePendingJobCompletionInputs()
-      : [];
-    const promptInput = prefixedCompletions.length > 0 ? [...prefixedCompletions, input] : input;
+    const adjacentCompletions =
+      source === "job" || isHumanAuthoredInput(input) ? this.takePendingJobCompletionInputs() : [];
+    const promptInput =
+      adjacentCompletions.length === 0
+        ? input
+        : source === "job"
+          ? [input, ...adjacentCompletions]
+          : [...adjacentCompletions, input];
     this.activeRunGoalId = this.goalController.active?.id;
     this.terminalEvent = undefined;
     this.emit({
@@ -337,7 +336,7 @@ export class ConversationRuntime<TConfiguration = never> {
       this.log("error", "conversation.run_failed", { source, error });
       throw error;
     } finally {
-      for (const completion of prefixedCompletions) {
+      for (const completion of adjacentCompletions) {
         this.observeJobCompletion(completion);
       }
       if (input.provenance.kind === "job_completion") {
@@ -483,9 +482,6 @@ export class ConversationRuntime<TConfiguration = never> {
       });
       return input.id;
     }
-    if (isHumanAuthoredInput(input)) {
-      this.completionWakeCount = 0;
-    }
     this.agent.enqueueInput(input, "next-turn", { kind: "queued" });
     this.log("info", "conversation.input_queued", {
       source: "user",
@@ -557,10 +553,6 @@ export class ConversationRuntime<TConfiguration = never> {
   async steer(input: UserMessage): Promise<ConversationInputDisposition> {
     if (this.stopping || this.changingSession) {
       return "discarded";
-    }
-
-    if (isHumanAuthoredInput(input)) {
-      this.completionWakeCount = 0;
     }
 
     const sessionId = this.sessionId;
@@ -958,12 +950,6 @@ export class ConversationRuntime<TConfiguration = never> {
         if (next?.delivery.kind === "job" && this.options.backgroundJobCompletionRuns === false) {
           return;
         }
-        if (
-          next?.delivery.kind === "job" &&
-          this.completionWakeCount >= this.maxConsecutiveCompletionWakes
-        ) {
-          return;
-        }
         const submission =
           this.agent.shiftNextTurnInput() ?? this.createGoalContinuationSubmission();
         if (!submission) {
@@ -971,10 +957,6 @@ export class ConversationRuntime<TConfiguration = never> {
         }
 
         const source = this.resolveSubmissionSource(submission.delivery);
-        if (source === "job") {
-          this.completionWakeCount += 1;
-        }
-
         this.log("info", "conversation.queued_input_started", {
           source,
           pendingInputCount: this.agent.inbox.nextTurn.length,
@@ -1065,10 +1047,6 @@ export class ConversationRuntime<TConfiguration = never> {
     if (message.provenance.kind === "job_completion") {
       this.backgroundJobs?.observe(message.provenance.jobId);
     }
-  }
-
-  private get maxConsecutiveCompletionWakes(): number {
-    return this.options.maxConsecutiveCompletionWakes ?? 3;
   }
 
   private emitInputQueueChanged(): void {

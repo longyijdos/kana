@@ -5,6 +5,7 @@ import { createNoopLogger, type Logger } from "@/logging";
 const DEFAULT_MAX_RETAINED_OUTPUT_BYTES = 1024 * 1024;
 const DEFAULT_MAX_OUTPUT_READ_BYTES = 20 * 1024;
 const DEFAULT_MAX_RETAINED_TERMINAL_JOBS = 32;
+const MAX_BACKGROUND_JOB_LABEL_BYTES = 512;
 
 export type BackgroundJobStatus =
   | "running"
@@ -243,7 +244,7 @@ export class BackgroundJobManager {
     const summary: BackgroundJobSummary = {
       id,
       kind: options.kind,
-      label: options.label,
+      label: normalizeBackgroundJobLabel(options.label),
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       status: "running",
       startedAt: new Date(),
@@ -616,6 +617,27 @@ export class BackgroundJobManager {
       }
     }
   }
+}
+
+function normalizeBackgroundJobLabel(value: string): string {
+  const normalized = value.replace(/\s+/gu, " ").trim() || "Background Job";
+  if (Buffer.byteLength(normalized) <= MAX_BACKGROUND_JOB_LABEL_BYTES) {
+    return normalized;
+  }
+
+  const marker = "…";
+  const maxContentBytes = MAX_BACKGROUND_JOB_LABEL_BYTES - Buffer.byteLength(marker);
+  let content = "";
+  let contentBytes = 0;
+  for (const character of normalized) {
+    const characterBytes = Buffer.byteLength(character);
+    if (contentBytes + characterBytes > maxContentBytes) {
+      break;
+    }
+    content += character;
+    contentBytes += characterBytes;
+  }
+  return `${content.trimEnd()}${marker}`;
 }
 
 function hasUnreadOutput(job: JobRecord): boolean {

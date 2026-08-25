@@ -427,17 +427,18 @@ describe("ConversationRuntime", () => {
     await manager.close();
   });
 
-  test("bounds consecutive idle completion wakes until human input resets the counter", async () => {
+  test("coalesces adjacent idle completion wakes without blocking queued user input", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 3 });
     const completions = [deferredJob(), deferredJob(), deferredJob()];
     const model = new ControlledModel();
     const sources: string[] = [];
+    let canStartQueuedRun = false;
     const runtime = new ConversationRuntime({
       ...createRuntimeOptions(),
       initialSession: { id: "session-a", messages: [], timeline: [] },
       getBackgroundJobs: () => jobs,
-      maxConsecutiveCompletionWakes: 2,
+      canStartQueuedRun: () => canStartQueuedRun,
       createAgent: (options) =>
         new Agent({
           model,
@@ -455,36 +456,32 @@ describe("ConversationRuntime", () => {
       jobs.start({ kind: "test", label: `job ${index + 1}`, run: () => completion.promise }),
     );
 
-    completions[0]?.resolve({ status: "completed", exitCode: 0 });
-    await waitFor(() => model.contexts.length === 1);
-    model.finish(0, "First completion handled.");
-    await waitFor(() => !runtime.isRunning);
-
-    completions[1]?.resolve({ status: "completed", exitCode: 0 });
-    await waitFor(() => model.contexts.length === 2);
-    model.finish(1, "Second completion handled.");
-    await waitFor(() => !runtime.isRunning);
-
-    completions[2]?.resolve({ status: "completed", exitCode: 0 });
-    await waitFor(() => runtime.inputQueue.pending.some((input) => input.kind === "job"));
-    expect(model.contexts).toHaveLength(2);
-    expect(runtime.inputQueue.pending).toMatchObject([{ kind: "job", jobId: started[2]?.id }]);
-
+    for (const completion of completions) {
+      completion.resolve({ status: "completed", exitCode: 0 });
+    }
+    await waitFor(() => runtime.inputQueue.pending.length === 3);
     const humanInput = {
       ...messageIdentityForTest("user"),
       role: "user" as const,
       content: "Continue with my new instruction.",
     };
-    const humanRun = runtime.submit(humanInput);
-    await waitFor(() => model.contexts.length === 3);
-    expect(model.contexts[2]?.messages.slice(-2)).toMatchObject([
-      { provenance: { kind: "job_completion", jobId: started[2]?.id } },
-      humanInput,
-    ]);
-    model.finish(2, "Human run done.");
-    await humanRun;
+    runtime.queueInput(humanInput);
+    canStartQueuedRun = true;
+    runtime.notifyCanStartQueuedRun();
 
-    expect(sources).toEqual(["job", "job", "user"]);
+    await waitFor(() => model.contexts.length === 1);
+    expect(model.contexts[0]?.messages.slice(-3)).toMatchObject([
+      { provenance: { kind: "job_completion", jobId: started[0]?.id } },
+      { provenance: { kind: "job_completion", jobId: started[1]?.id } },
+      { provenance: { kind: "job_completion", jobId: started[2]?.id } },
+    ]);
+    model.finish(0, "Completions handled.");
+    await waitFor(() => model.contexts.length === 2);
+    expect(model.contexts[1]?.messages.at(-1)).toMatchObject(humanInput);
+    model.finish(1, "Human run done.");
+    await waitFor(() => !runtime.isRunning);
+
+    expect(sources).toEqual(["job", "user"]);
     expect(jobs.context()).toEqual([]);
     await runtime.close();
     await manager.close();

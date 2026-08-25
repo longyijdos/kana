@@ -103,7 +103,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 空闲时 `Enter` 正常提交；Agent 运行中按 `Enter` 会把消息放入 `next-step`，在当前完整 model/tool turn 的 `turn_end` 之后投递，并在同一个 run 中开始下一次模型调用。若中止或 turn limit 使下一 turn 无法开始，Agent 会把同一条带 ID 消息移到 `next-turn` 尾部。Agent 运行中按 `Tab` 会直接加入 `next-turn`，等当前 `agent_end` 后作为新的 run 发送；空闲时普通输入的 `Tab` 不提交消息，slash 面板中的 `Tab` 仍用于补全。队列与到期 wake 按入队顺序共享 FIFO 投递通道。在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入和没有 shell 命令的单独 `!` 作为普通模型消息发送。
 
-后台 Job 完成事件复用同一套排队机制。运行中的完成事件会请求追加一次模型步骤；空闲时的完成事件会请求开启新的 run。仅有输出不会唤醒 Agent，连续完成唤醒有次数上限，新的人工输入会重置该上限。通过 Job 工具或 `/jobs` 观察到终态 Job 时，会取消该 Job 尚未处理的完成通知。
+后台 Job 完成事件复用同一套排队机制。运行中的完成事件会请求追加一次模型步骤；空闲时的完成事件会请求开启新的 run。相邻的待处理完成事件会合并到一个 run 中，但不会跨过其他已排队输入；仅有输出不会唤醒 Agent。通过 Job 工具或 `/jobs` 观察到终态 Job 时，会取消该 Job 尚未处理的完成通知。
 
 `/goal <目标>` 会启动一个进程内 Goal，并把目标作为首次 Agent run 的输入。只要 Goal 仍为 active，runtime 就会在每次 `agent_end` 后启动下一 run，但已经排队的 Tab 输入、deferred steering 或到期 wake 会优先执行。模型通过权威 runtime context 获得 active 目标，并可调用 `update_goal` 标记 `completed` 或 `blocked`；配置的 run 计数和上限不会暴露给模型。TUI 把续轮显示为弱化 marker，并抑制逐轮完成通知。`Esc` 或 `Ctrl+C` 会取消 active Goal；新建、分叉或恢复 session、Agent 重配置、关闭、run 失败、显式终态更新以及达到 `agent.goal_max_rounds` 上限也会结束它。Goal 控制状态不会从 session 历史恢复；当前进程仍在运行时，自动上下文压缩会重新投影 active 目标。
 

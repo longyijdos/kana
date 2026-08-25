@@ -342,7 +342,6 @@ function createHeadlessRuntime(
     goalMaxRounds: host.config.agent.goalMaxRounds,
     getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
     backgroundJobCompletionRuns,
-    maxConsecutiveCompletionWakes: host.config.agent.backgroundJobs.maxConsecutiveCompletionWakes,
     scheduledRuns: false,
     getLogger: () => host.getLogger(),
   });

@@ -128,7 +128,6 @@ export type KanaTuiAppOptions = {
   goalMaxRounds?: number;
   wakeScheduler?: WakeScheduler;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
-  maxConsecutiveCompletionWakes?: number;
   getLogger?: () => Logger;
   compactMemory: (
     target: MemoryScope,
@@ -236,7 +235,6 @@ export class KanaTuiApp {
       wakeScheduler: options.wakeScheduler,
       goalMaxRounds: options.goalMaxRounds,
       getBackgroundJobs: options.getBackgroundJobs,
-      maxConsecutiveCompletionWakes: options.maxConsecutiveCompletionWakes,
       canStartQueuedRun: () =>
         !this.running &&
         !this.externalTools.loading &&

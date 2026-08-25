@@ -72,11 +72,6 @@ const CONFIG_FIELDS: KanaConfigField[] = [
     (config) => config.agent.backgroundJobs.maxConcurrent,
   ),
   field(
-    "agent.background_jobs",
-    "max_consecutive_completion_wakes",
-    (config) => config.agent.backgroundJobs.maxConsecutiveCompletionWakes,
-  ),
-  field(
     "agent.repeated_tool_calls",
     "reminder_thresholds",
     (config) => config.agent.repeatedToolCalls.reminderThresholds,

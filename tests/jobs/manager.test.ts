@@ -30,6 +30,22 @@ describe("BackgroundJobManager", () => {
     await manager.close();
   });
 
+  test("normalizes and bounds labels stored in Job metadata", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const job = jobs.start({
+      kind: "test",
+      label: `  long\ncommand  ${"界".repeat(300)}  `,
+      run: async () => ({ status: "completed", exitCode: 0 }),
+    });
+
+    expect(job.label.startsWith("long command ")).toBe(true);
+    expect(job.label.endsWith("…")).toBe(true);
+    expect(job.label).not.toContain("\n");
+    expect(Buffer.byteLength(job.label)).toBeLessThanOrEqual(512);
+    await manager.close();
+  });
+
   test("keeps a bounded UTF-8 output ring with an incremental consumer cursor", async () => {
     const manager = new BackgroundJobManager({
       maxRetainedOutputBytes: 8,

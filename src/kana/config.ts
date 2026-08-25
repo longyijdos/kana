@@ -71,7 +71,6 @@ export type KanaRepeatedToolCallsConfig = {
 
 type KanaBackgroundJobsConfig = {
   maxConcurrent: number;
-  maxConsecutiveCompletionWakes: number;
 };
 
 type KanaAgentConfig = {
@@ -225,7 +224,6 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     toolResultArtifacts: true,
     backgroundJobs: {
       maxConcurrent: 4,
-      maxConsecutiveCompletionWakes: 3,
     },
     repeatedToolCalls: {
       reminderThresholds: [3, 5, 8],
@@ -408,7 +406,6 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       tool_result_artifacts: config.agent.toolResultArtifacts,
       background_jobs: {
         max_concurrent: config.agent.backgroundJobs.maxConcurrent,
-        max_consecutive_completion_wakes: config.agent.backgroundJobs.maxConsecutiveCompletionWakes,
       },
       repeated_tool_calls: {
         reminder_thresholds: config.agent.repeatedToolCalls.reminderThresholds,
@@ -473,7 +470,6 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     "",
     "[agent.background_jobs]",
     `max_concurrent = ${config.agent.backgroundJobs.maxConcurrent}`,
-    `max_consecutive_completion_wakes = ${config.agent.backgroundJobs.maxConsecutiveCompletionWakes}`,
     "",
     "[agent.repeated_tool_calls]",
     `reminder_thresholds = ${JSON.stringify(config.agent.repeatedToolCalls.reminderThresholds)}`,
@@ -715,11 +711,6 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           backgroundJobs.max_concurrent,
           defaults.agent.backgroundJobs.maxConcurrent,
           "agent.background_jobs.max_concurrent",
-        ),
-        maxConsecutiveCompletionWakes: readPositiveInteger(
-          backgroundJobs.max_consecutive_completion_wakes,
-          defaults.agent.backgroundJobs.maxConsecutiveCompletionWakes,
-          "agent.background_jobs.max_consecutive_completion_wakes",
         ),
       },
       repeatedToolCalls: {
