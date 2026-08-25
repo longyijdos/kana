@@ -337,7 +337,7 @@ export class KanaTuiApp {
       getQueue: () => this.conversation.inputQueue,
       schedule: (afterMinutes, message) => this.conversation.scheduleInput(afterMinutes, message),
       cancel: (id) => this.conversation.cancelScheduledInput(id),
-      showError: (error) => this.showError(error),
+      showError: (error) => this.showInteractionError(error),
       collapseLongPastes: options.tuiConfig?.collapseLongPastes ?? true,
       restoreBottom: (focus) => this.restoreBottom(focus),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
@@ -375,7 +375,7 @@ export class KanaTuiApp {
         this.restoreBottom(true);
         this.switchModel(selection);
       },
-      showError: (error) => this.showError(error),
+      showError: (error) => this.showInteractionError(error),
       restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.toolApproval = new ToolApprovalController({
@@ -456,7 +456,7 @@ export class KanaTuiApp {
       submitRaw: (raw) => {
         void this.submitPrompt(raw);
       },
-      showError: (error) => this.showError(error),
+      showError: (error) => this.showInteractionError(error),
       showHelp: () => this.showHelp(),
       clear: () => {
         this.contentViewer.close();
@@ -869,7 +869,7 @@ export class KanaTuiApp {
 
   private showUsage(scope: KanaUsageScope): void {
     if (this.options.launchMode === "clean" && scope === "session") {
-      this.showError(new Error("Session usage is unavailable in clean mode."));
+      this.showInteractionError(new Error("Session usage is unavailable in clean mode."));
       return;
     }
     const summary = this.options.loadUsage(scope);
@@ -879,7 +879,9 @@ export class KanaTuiApp {
       title: `Usage · ${summary.scope}`,
       render: (contentWidth) => usage.render(contentWidth),
     });
-    this.updateStatus("idle", { activeTool: undefined });
+    if (!this.running) {
+      this.updateStatus("idle", { activeTool: undefined });
+    }
   }
 
   private showHelp(): void {
@@ -899,9 +901,11 @@ export class KanaTuiApp {
       title: PROMPT_HELP_TITLE,
       render: (contentWidth) => help.render(contentWidth),
     });
-    this.updateStatus("idle", {
-      activeTool: undefined,
-    });
+    if (!this.running) {
+      this.updateStatus("idle", {
+        activeTool: undefined,
+      });
+    }
   }
 
   private async forkSession(prompt: string): Promise<void> {
@@ -952,10 +956,6 @@ export class KanaTuiApp {
   }
 
   private openScheduledMessageManager(): void {
-    if (this.running) {
-      return;
-    }
-
     this.sessions.close();
     this.contentViewer.close();
     this.skillManager.close();
@@ -981,10 +981,6 @@ export class KanaTuiApp {
   }
 
   private openToolHistoryPicker(): void {
-    if (this.running) {
-      return;
-    }
-
     this.sessions.close();
     this.contentViewer.close();
     this.skillManager.close();
@@ -995,10 +991,6 @@ export class KanaTuiApp {
   }
 
   private openTodoViewer(): void {
-    if (this.running) {
-      return;
-    }
-
     this.sessions.close();
     this.skillManager.close();
     this.mcpServerManager?.close();
@@ -1159,12 +1151,23 @@ export class KanaTuiApp {
   }
 
   private showError(error: unknown): void {
+    this.addErrorBlock(error);
+    this.updateStatus("error");
+  }
+
+  private showInteractionError(error: unknown): void {
+    this.addErrorBlock(error);
+    if (!this.running) {
+      this.updateStatus("error");
+    }
+  }
+
+  private addErrorBlock(error: unknown): void {
     this.transcript.addChild(
       new TextBlock(error instanceof Error ? error.message : String(error), {
         color: tuiTheme.error,
       }),
     );
-    this.updateStatus("error");
   }
 
   private async submitPrompt(value: string, images: UserImage[] = []): Promise<void> {
@@ -1175,7 +1178,7 @@ export class KanaTuiApp {
     }
     const imageInputError = this.getImageInputError(images);
     if (imageInputError) {
-      this.showError(imageInputError);
+      this.showInteractionError(imageInputError);
       return;
     }
     const input = createUserMessage({
@@ -1210,7 +1213,7 @@ export class KanaTuiApp {
     }
     const imageInputError = this.getImageInputError(images);
     if (imageInputError) {
-      this.showError(imageInputError);
+      this.showInteractionError(imageInputError);
       return;
     }
     const input = createUserMessage({
@@ -1261,7 +1264,7 @@ export class KanaTuiApp {
       } catch {
         // Clipboard diagnostics must not replace the user-facing failure.
       }
-      this.showError(error);
+      this.showInteractionError(error);
     } finally {
       this.clipboardPasteRunning = false;
       this.tui.requestRender();
@@ -1299,7 +1302,7 @@ export class KanaTuiApp {
       } catch {
         // Image diagnostics must not replace the user-facing failure.
       }
-      this.showError(error);
+      this.showInteractionError(error);
     } finally {
       this.imageFileAttachRunning = false;
       this.tui.requestRender();

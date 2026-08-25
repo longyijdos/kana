@@ -156,7 +156,7 @@ Separate controllers keep `KanaTuiApp` from owning every interaction state machi
 - `LocalShellController` reuses bash Tool presentation but never requests approval.
 - `MemoryCompactController` runs cancellable full memory consolidation and writes a summary into transcript.
 
-While running, slash commands other than `/quit` are ignored to prevent re-entry. Opening a bottom view changes focus; closing restores a waiting approval prompt first and otherwise returns to the editor. Bottom views do not preempt one another when an approval arrives.
+While running, `/quit`, `/help`, `/todo`, `/tools`, `/usage`, `/image`, and `/schedule` remain available. `/help`, `/usage`, and read-only viewers preserve the current Agent run phase; `/image` only attaches to the editor draft for later queued input; `/schedule` manages pending and scheduled input without interrupting the current turn; `/tools` snapshots tool history when it opens. `/clear`, `/new`, `/fork`, `/resume`, `/delete`, `/skills`, `/mcp`, `/jobs`, `/goal`, `/approval`, `/model`, `/memory`, and `/compact` report an unavailable error instead of being silently ignored. Opening a bottom view changes focus; closing restores a waiting approval prompt first and otherwise returns to the editor. Bottom views do not preempt one another when an approval arrives.
 
 `/compact` accepts no arguments. While idle, it forces compaction of the current conversation context without sending a user message.
 

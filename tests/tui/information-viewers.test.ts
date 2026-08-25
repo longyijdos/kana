@@ -48,6 +48,32 @@ describe("information viewers", () => {
     ).toBe(true);
   });
 
+  test("keeps Agent status while opening help during a run", () => {
+    const app = createApp();
+    const internal = app as unknown as AppInternals;
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    internal.handleCommand({ name: "help", arguments: "", raw: "/help" });
+
+    expect(internal.contentViewer.active).toBe(true);
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
+  });
+
+  test("shows running-unavailable errors without replacing Agent status", () => {
+    const app = createApp();
+    const internal = app as unknown as AppInternals;
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    internal.handleCommand({ name: "model", arguments: "", raw: "/model" });
+
+    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
+
+    expect(rendered).toContain("/model is unavailable while Agent is running.");
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
+  });
+
   test("rejects usage arguments from the editor", () => {
     const loadedScopes: KanaUsageScope[] = [];
     const app = createApp((scope) => {
@@ -98,6 +124,62 @@ describe("information viewers", () => {
     expect(viewer).toContain("Usage · project");
   });
 
+  test("keeps Agent status when image attachment fails during a run", async () => {
+    const app = createApp();
+    const internal = app as unknown as AppInternals;
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    internal.handleCommand({
+      name: "image",
+      arguments: "/missing/image.png",
+      raw: "/image /missing/image.png",
+    });
+    await Promise.resolve();
+
+    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
+
+    expect(rendered).toContain("Model test-model does not support image input.");
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
+  });
+
+  test("keeps Agent status while opening usage during a run", () => {
+    const loadedScopes: KanaUsageScope[] = [];
+    const app = createApp((scope) => {
+      loadedScopes.push(scope);
+      return createUsageSummary(scope);
+    });
+    const internal = app as unknown as AppInternals;
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "responding", running: true });
+    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
+    internal.tui.getFocus()?.handleInput?.("\r");
+
+    expect(loadedScopes).toEqual(["session"]);
+    expect(internal.contentViewer.active).toBe(true);
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Responding");
+  });
+
+  test("keeps runtime run_error as a terminal Error status", () => {
+    const app = createApp();
+    const internal = app as unknown as AppInternals;
+
+    internal.running = true;
+    internal.editor.updateStatus({ phase: "responding", running: true });
+    internal.handleConversationEvent({
+      type: "run_error",
+      source: "user",
+      error: new Error("runtime failure"),
+    });
+
+    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
+
+    expect(internal.running).toBe(false);
+    expect(rendered).toContain("runtime failure");
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Error");
+  });
+
   test("cancels the usage scope prompt with escape", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
@@ -130,10 +212,11 @@ describe("information viewers", () => {
     expect(rendered).toContain("Session usage is unavailable in clean mode.");
   });
 
-  test("opens the tool history picker with an empty session state", () => {
+  test("opens the tool history picker with an empty session state while running", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
 
+    internal.running = true;
     internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
 
     const rendered = internal.layout.render(80, 24).map(stripAnsi);
@@ -164,6 +247,22 @@ describe("information viewers", () => {
     expect(rendered).toContain("Usage: /tools");
   });
 
+  test("opens the scheduled message manager while running", () => {
+    const app = createApp();
+    const internal = app as unknown as AppInternals;
+
+    internal.running = true;
+    internal.handleCommand({ name: "schedule", arguments: "", raw: "/schedule" });
+
+    expect(internal.scheduledMessageManager.active).toBe(true);
+    expect(internal.layout.render(80, 24).map(stripAnsi)).toContain(
+      "Scheduled messages · process only",
+    );
+
+    internal.tui.getFocus()?.handleInput?.("\x1b");
+    expect(internal.scheduledMessageManager.active).toBe(false);
+  });
+
   test("opens the current session todo state without adding transcript content", () => {
     const app = createApp(createUsageSummary, undefined, [
       { content: "Implement durable state", status: "in_progress" },
@@ -171,6 +270,7 @@ describe("information viewers", () => {
     ]);
     const internal = app as unknown as AppInternals;
 
+    internal.running = true;
     internal.handleCommand({ name: "todo", arguments: "", raw: "/todo" });
 
     const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
@@ -296,16 +396,23 @@ describe("information viewers", () => {
 });
 
 type AppInternals = {
+  running: boolean;
+  editor: {
+    render: (width: number) => string[];
+    updateStatus: (state: { phase: string; running: boolean; activeTool?: string }) => void;
+  };
   handleCommand: (command: {
-    name: "help" | "memory" | "todo" | "usage" | "tools";
+    name: "help" | "memory" | "todo" | "usage" | "tools" | "schedule" | "model" | "image";
     arguments: string;
     raw: string;
   }) => void;
+  handleConversationEvent: (event: unknown) => void;
   handleGlobalInput: (data: string) => void;
   transcript: { children: unknown[]; addChild: (child: unknown) => void };
   contentViewer: { active: boolean };
   slashCommandOptions: { active: boolean };
   toolHistory: { active: boolean };
+  scheduledMessageManager: { active: boolean };
   tui: { getFocus: () => Component | undefined };
   layout: { render: (width: number, availableHeight?: number) => string[] };
 };
