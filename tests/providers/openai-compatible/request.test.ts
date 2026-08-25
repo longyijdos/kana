@@ -94,7 +94,7 @@ describe("buildOpenAICompatibleRequest", () => {
   test("uses configured max tokens when the turn has no tighter ceiling", () => {
     const request = buildOpenAICompatibleRequest(
       { messages: [] },
-      createConfig({ maxTokens: 4_096 }),
+      createConfig({ maxOutputTokens: 4_096 }),
     );
 
     expect(request.max_tokens).toBe(4_096);

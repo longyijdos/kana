@@ -22,66 +22,39 @@ afterEach(() => {
 });
 
 describe("Kana config store", () => {
-  test("creates only changed overrides when config.toml is absent", () => {
+  test("creates only main Agent selection overrides when config.toml is absent", () => {
     const env = createTempEnv();
     const store = createKanaConfigStore(env);
     const { configPath } = getKanaConfigPaths(env);
 
-    const config = store.update((draft) => {
-      draft.provider.active = "openai-codex";
-      draft.model["openai-codex"].name = "gpt-5.6-luna";
-      draft.model["openai-codex"].reasoningEffort = "max";
-      draft.model["openai-codex"].webSearch = false;
-      draft.model["openai-codex"].imageInput = false;
-      draft.agent.goalMaxRounds = 12;
-      draft.agent.toolResultArtifacts = false;
-      draft.agent.backgroundJobs.maxConcurrent = 6;
-      draft.agent.repeatedToolCalls.reminderThresholds = [2, 4];
-      draft.agent.repeatedToolCalls.excludedTools = ["remember", "status"];
+    const config = store.updateMainAgent({
+      provider: "openai-codex",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "max",
     });
 
     expect(readFileSync(configPath, "utf8")).toBe(
       [
-        "[provider]",
-        'active = "openai-codex"',
-        "",
-        "[model.openai-codex]",
-        'name = "gpt-5.6-luna"',
-        'reasoning_effort = "max"',
-        "web_search = false",
-        "image_input = false",
-        "",
         "[agent]",
-        "goal_max_rounds = 12",
-        "tool_result_artifacts = false",
-        "",
-        "[agent.background_jobs]",
-        "max_concurrent = 6",
-        "",
-        "[agent.repeated_tool_calls]",
-        "reminder_thresholds = [2,4]",
-        'excluded_tools = ["remember","status"]',
+        'provider = "openai-codex"',
+        'model = "gpt-5.6-luna"',
+        'reasoning_effort = "max"',
         "",
       ].join("\n"),
     );
-    expect(config.provider.active).toBe("openai-codex");
-    expect(config.model["openai-codex"].name).toBe("gpt-5.6-luna");
-    expect(config.model["openai-codex"].reasoningEffort).toBe("max");
-    expect(config.model["openai-codex"].webSearch).toBe(false);
-    expect(config.model["openai-codex"].imageInput).toBe(false);
-    expect(config.agent.goalMaxRounds).toBe(12);
-    expect(config.agent.toolResultArtifacts).toBe(false);
-    expect(config.agent.backgroundJobs).toEqual({
-      maxConcurrent: 6,
+    expect(config.agent.model).toMatchObject({
+      provider: "openai-codex",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "max",
     });
-    expect(config.agent.repeatedToolCalls).toEqual({
-      reminderThresholds: [2, 4],
-      excludedTools: ["remember", "status"],
+    expect(config.memory.agent.model).toMatchObject({
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
     });
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
   });
 
-  test("preserves comments and unknown tables while changing known leaves", () => {
+  test("preserves comments, unrelated tables, and inactive overrides", () => {
     const env = createTempEnv();
     const store = createKanaConfigStore(env);
     const { configPath, home } = getKanaConfigPaths(env);
@@ -89,11 +62,11 @@ describe("Kana config store", () => {
       configPath,
       [
         "# keep this comment",
-        "[model.deepseek]",
-        'name = "deepseek-v4-pro"',
-        "",
         "[agent]",
+        'provider = "deepseek"',
+        'model = "deepseek-v4-pro"',
         "context_limit = 200000",
+        'reasoning_summary = "future-codex-value"',
         "",
         "[custom]",
         'value = "untouched"',
@@ -101,88 +74,116 @@ describe("Kana config store", () => {
       ].join("\n"),
     );
 
-    store.update((draft) => {
-      draft.model.deepseek.name = "deepseek-v4-flash";
-      draft.model.deepseek.reasoningEffort = "none";
-      draft.model.deepseek.webSearch = false;
-      draft.model.deepseek.imageInput = false;
-      draft.agent.toolDeadlineMs = 120_000;
-      draft.agent.parallelToolCalls = false;
-      draft.agent.maxParallelToolCalls = 2;
-      draft.agent.contextLimit = undefined;
-      draft.tui.hyperlinks = false;
-      draft.tui.renderLatex = false;
-      draft.tui.renderMermaid = false;
-      draft.tui.smoothTextStreaming = false;
-      draft.tui.collapseLongPastes = false;
+    const config = store.updateMainAgent({
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      reasoningEffort: "none",
     });
 
     const updated = readFileSync(configPath, "utf8");
     expect(updated).toContain("# keep this comment");
-    expect(updated).toContain('name = "deepseek-v4-flash"');
+    expect(updated).toContain('model = "deepseek-v4-flash"');
     expect(updated).toContain('reasoning_effort = "none"');
-    expect(updated).toContain("web_search = false");
-    expect(updated).toContain("image_input = false");
-    expect(updated).toContain("tool_deadline_ms = 120000");
-    expect(updated).toContain("parallel_tool_calls = false");
-    expect(updated).toContain("max_parallel_tool_calls = 2");
-    expect(updated).toContain(
-      "[tui]\nhyperlinks = false\nrender_latex = false\nrender_mermaid = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false",
-    );
-    expect(updated).not.toContain("context_limit");
+    expect(updated).toContain("context_limit = 200000");
+    expect(updated).toContain('reasoning_summary = "future-codex-value"');
     expect(updated).toContain('[custom]\nvalue = "untouched"');
+    expect(config.agent.model).toMatchObject({
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      reasoningEffort: "none",
+    });
     expect(readdirSync(home).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
-  test("persists only the selected Custom model fields", () => {
+  test("selects a Custom model without moving its catalog into config.toml", () => {
     const env = createTempEnv();
+    installCustomProvider(env);
     const store = createKanaConfigStore(env);
     const { configPath } = getKanaConfigPaths(env);
 
-    const config = store.update((draft) => {
-      draft.provider.active = "custom";
-      draft.model.custom.name = "local-model";
-      draft.model.custom.reasoningEffort = "high";
+    const config = store.updateMainAgent({
+      provider: "custom",
+      model: "local-model",
+      reasoningEffort: "high",
     });
 
     expect(readFileSync(configPath, "utf8")).toBe(
       [
-        "[provider]",
-        'active = "custom"',
-        "",
-        "[model.custom]",
-        'name = "local-model"',
+        "[agent]",
+        'provider = "custom"',
+        'model = "local-model"',
         'reasoning_effort = "high"',
         "",
       ].join("\n"),
     );
-    expect(config.model.custom).toEqual({ name: "local-model", reasoningEffort: "high" });
+    expect(config.agent.model).toMatchObject({
+      provider: "custom",
+      model: "local-model",
+      reasoningEffort: "high",
+    });
   });
 
   test("leaves the original document untouched when validation fails", () => {
     const env = createTempEnv();
     const store = createKanaConfigStore(env);
     const { configPath } = getKanaConfigPaths(env);
-    const original = ["# original", "[agent]", "max_turns = 4", ""].join("\n");
+    const original = ["# original", "[agent]", 'provider = "deepseek"', ""].join("\n");
     writeFileSync(configPath, original);
 
     expect(() =>
-      store.update((draft) => {
-        draft.agent.maxTurns = 0;
+      store.updateMainAgent({
+        provider: "openai-codex",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "ultra",
       }),
-    ).toThrow("agent.max_turns must be -1 or a positive integer.");
-
+    ).toThrow("agent.reasoning_effort must be one of: low, medium, high, xhigh, max.");
     expect(readFileSync(configPath, "utf8")).toBe(original);
   });
 
-  test("does not materialize a file when effective values do not change", () => {
+  test("validates the candidate runtime before committing", () => {
+    const env = createTempEnv();
+    const store = createKanaConfigStore(env);
+    const { configPath } = getKanaConfigPaths(env);
+    const original = ["# original", "[agent]", 'provider = "deepseek"', ""].join("\n");
+    writeFileSync(configPath, original);
+
+    expect(() =>
+      store.updateMainAgent(
+        { provider: "deepseek", model: "deepseek-v4-flash" },
+        {
+          beforeCommit: () => {
+            throw new Error("candidate initialization failed");
+          },
+        },
+      ),
+    ).toThrow("candidate initialization failed");
+    expect(readFileSync(configPath, "utf8")).toBe(original);
+  });
+
+  test("keeps clean-mode updates in memory", () => {
     const env = createTempEnv();
     const store = createKanaConfigStore(env);
     const { configPath } = getKanaConfigPaths(env);
 
-    store.update((draft) => {
-      draft.provider.active = "deepseek";
+    store.updateMainAgent(
+      { provider: "deepseek", model: "deepseek-v4-flash", reasoningEffort: "none" },
+      { persist: false },
+    );
+
+    expect(existsSync(configPath)).toBe(false);
+    expect(store.load().agent.model).toMatchObject({
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      reasoningEffort: "none",
     });
+  });
+
+  test("does not materialize a file when the effective selection does not change", () => {
+    const env = createTempEnv();
+    const store = createKanaConfigStore(env);
+    const { configPath } = getKanaConfigPaths(env);
+
+    store.updateMainAgent({ provider: "deepseek", model: "deepseek-v4-pro" });
 
     expect(existsSync(configPath)).toBe(false);
   });
@@ -193,8 +194,25 @@ function createTempEnv(): NodeJS.ProcessEnv {
   tempDirs.push(home);
   const kanaHome = path.join(home, ".kana");
   mkdirSync(kanaHome, { recursive: true });
-  return {
-    HOME: home,
-    KANA_HOME: kanaHome,
-  };
+  return { HOME: home, KANA_HOME: kanaHome };
+}
+
+function installCustomProvider(env: NodeJS.ProcessEnv): void {
+  const { providersDirectory, customProviderPath } = getKanaConfigPaths(env);
+  mkdirSync(providersDirectory, { recursive: true });
+  writeFileSync(
+    customProviderPath,
+    [
+      'base_url = "http://127.0.0.1:11434/v1"',
+      'api_key_env = "CUSTOM_API_KEY"',
+      "",
+      "[[models]]",
+      'name = "local-model"',
+      "context_window = 32768",
+      "max_output_tokens = 4096",
+      'reasoning_efforts = ["low", "high"]',
+      'default_reasoning_effort = "low"',
+      "",
+    ].join("\n"),
+  );
 }

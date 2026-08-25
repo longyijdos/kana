@@ -1,6 +1,6 @@
 import { Agent, type AgentEndReason, type AgentState } from "@/agent";
 import { createNoopLogger, type Logger } from "@/logging";
-import type { KanaConfig } from "../config";
+import type { ResolvedKanaMemoryConfig } from "../config";
 import { createKanaModel } from "../model";
 import { buildMemoryConsolidationPrompt } from "./consolidation-prompt";
 import {
@@ -33,21 +33,17 @@ export type MemoryConsolidationResult = {
 };
 
 export function createMemoryConsolidationAgent(
-  config: KanaConfig,
+  config: ResolvedKanaMemoryConfig,
   options: CreateMemoryConsolidationAgentOptions,
   memory: MemoryConsolidationTransaction = createMemoryConsolidationTransaction(options),
 ): Agent {
-  if (!config.memory.enabled) {
+  if (!config.enabled) {
     throw new Error("Memory is disabled.");
   }
 
   return new Agent({
-    model: createKanaModel(config, options.logger),
-    system: buildMemoryConsolidationPrompt(
-      options.scope,
-      options.mode,
-      config.memory.dailyRetentionDays,
-    ),
+    model: createKanaModel(config.agent.model, options.logger, { env: options.env }),
+    system: buildMemoryConsolidationPrompt(options.scope, options.mode, config.dailyRetentionDays),
     tools: createMemoryConsolidationTools(options, options.mode, memory),
     maxTurns: config.agent.maxTurns,
     toolDeadlineMs: config.agent.toolDeadlineMs,
@@ -104,7 +100,7 @@ export type RunFullMemoryConsolidationOptions = Omit<
 };
 
 export async function runMemoryConsolidation(
-  config: KanaConfig,
+  config: ResolvedKanaMemoryConfig,
   options: RunMemoryConsolidationOptions,
 ): Promise<MemoryConsolidationResult> {
   const logger = options.logger ?? createNoopLogger();
@@ -147,7 +143,7 @@ export async function runMemoryConsolidation(
   }
 
   if (endReason === "stop" && options.mode === "full") {
-    const retentionDays = config.memory.dailyRetentionDays;
+    const retentionDays = config.dailyRetentionDays;
     if (retentionDays !== undefined) {
       pruneKanaDailyMemory(options.scope, {
         cwd: options.cwd,
@@ -177,7 +173,7 @@ export async function runMemoryConsolidation(
 }
 
 export function runFullMemoryConsolidation(
-  config: KanaConfig,
+  config: ResolvedKanaMemoryConfig,
   options: RunFullMemoryConsolidationOptions,
 ): Promise<MemoryConsolidationResult> {
   return runMemoryConsolidation(config, {

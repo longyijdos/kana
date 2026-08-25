@@ -699,13 +699,13 @@ function formatSummaryForModel(summary: string): string {
   ].join("\n");
 }
 
-function truncateTextToEstimatedTokens(text: string, maxTokens: number): string {
-  if (estimateTextTokens(text) <= maxTokens) {
+function truncateTextToEstimatedTokens(text: string, maxEstimatedTokens: number): string {
+  if (estimateTextTokens(text) <= maxEstimatedTokens) {
     return text;
   }
 
   const marker = "\n\n[Tool output truncated for model context]\n\n";
-  const maxBytes = maxTokens * 3;
+  const maxBytes = maxEstimatedTokens * 3;
   const availableBytes = Math.max(0, maxBytes - Buffer.byteLength(marker, "utf8"));
   const prefix = sliceUtf8Prefix(text, Math.floor(availableBytes * 0.7));
   const suffix = sliceUtf8Suffix(text, Math.ceil(availableBytes * 0.3));

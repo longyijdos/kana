@@ -22,13 +22,13 @@ import {
   type KanaSessionArtifactStore,
 } from "../artifacts";
 import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth";
-import {
-  getActiveKanaModelConfig,
-  type KanaConfig,
-  type KanaNotificationConfig,
-  type KanaToolApprovalConfig,
-  type KanaTuiConfig,
-  validateKanaConfig,
+import type {
+  KanaMainAgentModelSelection,
+  KanaNotificationConfig,
+  KanaToolApprovalConfig,
+  KanaTuiConfig,
+  ResolvedKanaConfig,
+  ResolvedKanaMemoryConfig,
 } from "../config";
 import { createKanaConfigStore, type KanaConfigStore } from "../config-store";
 import type { KanaLaunchMode } from "../launch-mode";
@@ -51,6 +51,7 @@ import {
   type MemoryConsolidationScheduler,
   runFullMemoryConsolidation,
 } from "../memory";
+import { getKanaModelManagement, type KanaModelManagement } from "../model-management";
 import { getKanaSessionLogPath } from "../path";
 import {
   createKanaSession,
@@ -94,7 +95,7 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
   env?: NodeJS.ProcessEnv;
   launchMode?: KanaLaunchMode;
   enableScheduledWakeTool?: boolean;
-  applyAgentConfiguration?: (config: KanaConfig, configuration: TConfiguration) => void;
+  resolveAgentConfiguration?: (configuration: TConfiguration) => KanaMainAgentModelSelection;
   onMcpProgress?: (event: KanaMcpRuntimeProgressEvent) => void;
   openMcpOAuthAuthorizationUrl?: (serverId: string, url: string) => Promise<void>;
   onMcpOAuthDiagnostic?: (serverId: string, event: McpOAuthHttpDiagnosticEvent) => void;
@@ -125,18 +126,16 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly configStore: KanaConfigStore;
   private readonly createAgentProduct: typeof createKanaAgent;
   private readonly enableScheduledWakeTool: boolean;
-  private readonly applyAgentConfiguration?: (
-    config: KanaConfig,
+  private readonly resolveAgentConfiguration?: (
     configuration: TConfiguration,
-  ) => void;
+  ) => KanaMainAgentModelSelection;
   private readonly logManager;
   private readonly backgroundJobManager = new BackgroundJobManager();
   private readonly sessions = new Map<string, HostedSession>();
   private readonly memoryConsolidationQueue: MemoryConsolidationQueue;
-  private readonly memoryConsolidationSchedulers = new Set<MemoryConsolidationScheduler>();
   private readonly oauthTokenStore;
   private readonly mcpRuntime: KanaMcpRuntime;
-  private configData: KanaConfig;
+  private configData: ResolvedKanaConfig;
   private memoryConsolidation?: MemoryConsolidationScheduler;
   private mcpTools: Tool[] = [];
   private activeSessionId?: string;
@@ -149,11 +148,11 @@ export class KanaConversationHost<TConfiguration = never> {
     this.configData = this.configStore.load();
     this.createAgentProduct = options.createAgent ?? createKanaAgent;
     this.enableScheduledWakeTool = options.enableScheduledWakeTool ?? true;
-    this.applyAgentConfiguration = options.applyAgentConfiguration;
+    this.resolveAgentConfiguration = options.resolveAgentConfiguration;
     this.logManager = createSessionLogManager({ level: this.configData.logging.level });
     this.toolApprovals = loadKanaToolApprovals(this.env);
     this.memoryConsolidationQueue = createMemoryConsolidationQueue();
-    this.memoryConsolidation = this.createMemoryConsolidation(this.configData);
+    this.memoryConsolidation = this.createMemoryConsolidation(this.configData.memory);
     this.wakeScheduler = createWakeScheduler();
 
     const initialSession = this.loadInitialSession(options.session ?? { type: "new" });
@@ -186,7 +185,7 @@ export class KanaConversationHost<TConfiguration = never> {
     });
   }
 
-  get config(): KanaConfig {
+  get config(): ResolvedKanaConfig {
     return structuredClone(this.configData);
   }
 
@@ -200,6 +199,10 @@ export class KanaConversationHost<TConfiguration = never> {
 
   get tuiConfig(): KanaTuiConfig {
     return structuredClone(this.configData.tui);
+  }
+
+  getModelManagement(): KanaModelManagement {
+    return getKanaModelManagement(this.configData, this.env);
   }
 
   get resumeSessionId(): string | undefined {
@@ -228,35 +231,25 @@ export class KanaConversationHost<TConfiguration = never> {
 
     let agent: Agent;
     if (configuration === undefined) {
-      agent = this.createAgentProduct(this.configData, kanaAgentOptions);
-    } else if (this.launchMode === "clean") {
-      if (!this.applyAgentConfiguration) {
-        throw new Error("This Kana conversation host does not support Agent reconfiguration.");
-      }
-      const nextConfig = structuredClone(this.configData);
-      this.applyAgentConfiguration(nextConfig, configuration);
-      const validatedConfig = validateKanaConfig(nextConfig);
-      // Model changes remain useful within a temporary conversation, but the
-      // clean-mode state boundary must not update the shared config store.
-      agent = this.createAgentProduct(validatedConfig, kanaAgentOptions);
-      this.configData = validatedConfig;
-      this.memoryConsolidation = this.createMemoryConsolidation(validatedConfig);
+      agent = this.createAgentProduct(this.configData.agent, kanaAgentOptions);
     } else {
-      if (!this.applyAgentConfiguration) {
+      if (!this.resolveAgentConfiguration) {
         throw new Error("This Kana conversation host does not support Agent reconfiguration.");
       }
       let nextAgent: Agent | undefined;
-      let nextMemoryConsolidation = this.memoryConsolidation;
-      const nextConfig = this.configStore.update((draft) => {
-        this.applyAgentConfiguration?.(draft, configuration);
-        nextAgent = this.createAgentProduct(draft, kanaAgentOptions);
-        nextMemoryConsolidation = this.createMemoryConsolidation(draft);
-      });
+      const nextConfig = this.configStore.updateMainAgent(
+        this.resolveAgentConfiguration(configuration),
+        {
+          persist: this.launchMode !== "clean",
+          beforeCommit: (resolved) => {
+            nextAgent = this.createAgentProduct(resolved.agent, kanaAgentOptions);
+          },
+        },
+      );
       if (!nextAgent) {
         throw new Error("Kana could not initialize the selected model.");
       }
       this.configData = nextConfig;
-      this.memoryConsolidation = nextMemoryConsolidation;
       agent = nextAgent;
     }
 
@@ -400,16 +393,15 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   async close(): Promise<void> {
-    const schedulers = [...this.memoryConsolidationSchedulers];
+    const memoryConsolidation = this.memoryConsolidation;
     this.memoryConsolidation = undefined;
 
     try {
       await Promise.all([
-        ...schedulers.map((scheduler) => scheduler.close()),
+        memoryConsolidation?.close() ?? Promise.resolve(),
         this.backgroundJobManager.close(),
       ]);
     } finally {
-      this.memoryConsolidationSchedulers.clear();
       await Promise.all(
         [...this.sessions.values()].map(async (session) => {
           try {
@@ -482,7 +474,7 @@ export class KanaConversationHost<TConfiguration = never> {
       scopes.map(async (scope): Promise<KanaMemoryCompactSummary> => {
         try {
           const result = await this.memoryConsolidationQueue.enqueue(scope, () =>
-            runFullMemoryConsolidation(this.configData, {
+            runFullMemoryConsolidation(this.configData.memory, {
               scope,
               cwd: process.cwd(),
               env: this.env,
@@ -802,7 +794,7 @@ export class KanaConversationHost<TConfiguration = never> {
       backgroundJobs: this.backgroundJobManager.bind(
         this.backgroundJobManager.createOwner(data.metadata.id),
         {
-          maxConcurrent: this.configData.agent.backgroundJobs.maxConcurrent,
+          maxConcurrent: this.configData.backgroundJobs.maxConcurrent,
           logger,
         },
       ),
@@ -869,31 +861,27 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   private createSessionMetadata(parentSessionPath?: string, title?: string): KanaSessionMetadata {
-    const modelConfig = getActiveKanaModelConfig(this.configData);
     return createKanaSession({
       env: this.env,
       title,
       model: {
-        provider: this.configData.provider.active,
-        model: modelConfig.name,
+        provider: this.configData.agent.model.provider,
+        model: this.configData.agent.model.model,
       },
       parentSessionPath,
     });
   }
 
-  private createMemoryConsolidation(config: KanaConfig): MemoryConsolidationScheduler | undefined {
+  private createMemoryConsolidation(
+    config: ResolvedKanaMemoryConfig,
+  ): MemoryConsolidationScheduler | undefined {
     const scheduler =
-      this.launchMode !== "clean" && config.memory.enabled
+      this.launchMode !== "clean" && config.enabled
         ? createMemoryConsolidationScheduler(config, {
             env: this.env,
             queue: this.memoryConsolidationQueue,
           })
         : undefined;
-    if (scheduler) {
-      // Model reconfiguration can replace the active scheduler while an older
-      // one still owns work, so the host retains every instance for shutdown.
-      this.memoryConsolidationSchedulers.add(scheduler);
-    }
     return scheduler;
   }
 

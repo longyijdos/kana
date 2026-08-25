@@ -14,15 +14,15 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 | `deepseek-v4-flash-vision-exp` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 支持 |
 | `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 |
 
-构造未知模型会报错；请求 `maxTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与用户的 `web_search` 配置分开记录。TUI 使用元数据计算上下文使用率。DeepSeek metadata 允许 `agent.parallel_tool_calls`，但用户关闭该配置时 ToolRuntime 仍会强制串行执行。Kana 有意不内置 provider 价格，实际费用以 DeepSeek 账单为准。
+构造未知模型会报错；请求 `maxOutputTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与解析后的 `web_search` 设置分开记录。TUI 使用元数据计算上下文使用率。DeepSeek metadata 允许 Agent 并行工具调用，但用户关闭该设置时 ToolRuntime 仍会强制串行执行。Kana 有意不内置 provider 价格，实际费用以 DeepSeek 账单为准。
 
-两个模型都通过通用 reasoning metadata 暴露 `none`、`low`、`high` 和 `max`。`model.deepseek.reasoning_effort = "none"` 会关闭推理；此前独立的 `thinking` 开关不再属于配置或请求约定。
+当前所有模型都通过通用 reasoning metadata 暴露 `none`、`low`、`high` 和 `max`。具体模型或 Agent 的 `reasoning_effort = "none"` override 会关闭推理；此前独立的 `thinking` 开关不再属于配置或请求约定。
 
 ## 请求转换
 
 默认 base URL 为 `https://api.deepseek.com`，当前所有模型都向 `/responses` 发送请求。
 
-图片输入由所选模型的 metadata 和 `model.deepseek.image_input` 配置共同决定。`deepseek-v4-flash-vision-exp` 会把会话中持久化的用户图片作为带自包含 base64 data URL 的 classic Responses `input_image` item 发送，并注册 `view_image`；视觉工具结果会成为与原调用关联的原生多模态 `function_call_output` 内容。纯文本的 V4 Flash 和 V4 Pro 会把已持久化图片替换为明确的省略提示，绝不发送 base64 数据，也不注册 `view_image`。模型 metadata 优先级更高，`model.deepseek.image_input = false` 即使在视觉模型上也会同时禁用图片发送和该工具。
+图片输入由所选模型的 metadata 和解析后的 `image_input` 设置共同决定。`deepseek-v4-flash-vision-exp` 会把会话中持久化的用户图片作为带自包含 base64 data URL 的 classic Responses `input_image` item 发送，并注册 `view_image`；视觉工具结果会成为与原调用关联的原生多模态 `function_call_output` 内容。纯文本的 V4 Flash 和 V4 Pro 会把已持久化图片替换为明确的省略提示，绝不发送 base64 数据，也不注册 `view_image`。模型 metadata 优先级更高，具体模型或 Agent 的 `image_input = false` override 即使在视觉模型上也会同时禁用图片发送和该工具。
 
 ### V4 Responses
 
@@ -44,13 +44,13 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 | Kana / `DeepSeekModelConfig` | 请求字段 |
 | --- | --- |
 | `temperature` | `temperature` |
-| `ModelContext.maxOutputTokens ?? maxTokens` | `max_output_tokens` |
+| `ModelContext.maxOutputTokens ?? maxOutputTokens` | `max_output_tokens` |
 | `topP` | `top_p` |
 | `reasoningEffort` | `reasoning.effort` |
 | `responseFormat` | `text.format` |
 | `userId` | `user` |
 
-逐轮输出上限优先于配置的 `maxTokens`。客户端函数使用扁平的 Responses 工具定义。当模型元数据支持且 `model.deepseek.web_search = true` 时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`；设为 `false` 只会移除该托管工具。默认 `tool_choice` 为 `auto`，Chat Completions 风格的具名选择会转换为扁平 Responses 结构，`strictTools` 会给函数工具加上 `strict: true`。
+逐轮输出上限优先于配置的 `maxOutputTokens`。客户端函数使用扁平的 Responses 工具定义。当模型元数据支持且解析后的 `web_search` 为 true 时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`；false 只会移除该托管工具。默认 `tool_choice` 为 `auto`，Chat Completions 风格的具名选择会转换为扁平 Responses 结构，`strictTools` 会给函数工具加上 `strict: true`。
 
 图片输入同时受模型 metadata 和配置约束：只有 `deepseek-v4-flash-vision-exp` 声明支持图片，且配置不能为 `false`。纯文本模型因此绝不会发送会话中保存的 base64 图片字节，也不会声明 `view_image`，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
 
@@ -70,7 +70,7 @@ HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/
 
 ## 用量
 
-`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / effective context limit`，钳制在 0–100%。该 effective limit 是 `agent.context_limit` 与模型 metadata context window 中较小的一个；未配置上限时直接使用 metadata。摘要请求的 usage 计入主运行累计用量，但不会替换最近正常模型请求的 context 百分比。
+`ModelUsage` 记录 prompt、completion 和 total token，可选记录 cache hit/miss 及 reasoning token。累计用量逐字段相加，context 使用率为最近助手 usage 的 `promptTokens / effective context limit`，钳制在 0–100%。该 effective limit 是解析后的 Agent cap，并钳制到模型 metadata context window。摘要请求的 usage 计入主运行累计用量，但不会替换最近正常模型请求的 context 百分比。
 
 ## 扩展注意点
 

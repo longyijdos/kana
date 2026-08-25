@@ -99,69 +99,44 @@ describe("memory consolidation agent", () => {
 
   test("creates an isolated agent without main-agent tools", () => {
     const env = createTempEnv();
-    const previous = process.env.DEEPSEEK_API_KEY;
-    process.env.DEEPSEEK_API_KEY = "secret";
+    env.DEEPSEEK_API_KEY = "secret";
 
-    try {
-      const agent = createMemoryConsolidationAgent(
-        {
-          ...DEFAULT_KANA_CONFIG,
-          agent: {
-            ...DEFAULT_KANA_CONFIG.agent,
-            toolDeadlineMs: 120_000,
-          },
+    const agent = createMemoryConsolidationAgent(
+      {
+        ...DEFAULT_KANA_CONFIG.memory,
+        agent: {
+          ...DEFAULT_KANA_CONFIG.memory.agent,
+          toolDeadlineMs: 120_000,
         },
-        {
-          scope: "project",
-          mode: "full",
-          env,
-        },
-      );
-      const toolNames = agent.state.tools.map((tool) => tool.name);
+      },
+      { scope: "project", mode: "full", env },
+    );
+    const toolNames = agent.state.tools.map((tool) => tool.name);
 
-      expect(agent.state.toolDeadlineMs).toBe(120_000);
-      expect(toolNames).toContain("list_daily_memory");
-      expect(toolNames).not.toContain("bash");
-      expect(toolNames).not.toContain("remember");
-      expect(agent.state.system).toContain("memory for the current workspace only");
-      expect(agent.state.system).toContain("most important and most recent information");
-    } finally {
-      if (previous === undefined) {
-        delete process.env.DEEPSEEK_API_KEY;
-      } else {
-        process.env.DEEPSEEK_API_KEY = previous;
-      }
-    }
+    expect(agent.state.toolDeadlineMs).toBe(120_000);
+    expect(toolNames).toContain("list_daily_memory");
+    expect(toolNames).not.toContain("bash");
+    expect(toolNames).not.toContain("remember");
+    expect(agent.state.system).toContain("memory for the current workspace only");
+    expect(agent.state.system).toContain("most important and most recent information");
   });
 
   test("tells full consolidation agents about configured daily retention", () => {
     const env = createTempEnv();
-    const previous = process.env.DEEPSEEK_API_KEY;
-    process.env.DEEPSEEK_API_KEY = "secret";
+    env.DEEPSEEK_API_KEY = "secret";
 
-    try {
-      const agent = createMemoryConsolidationAgent(
-        {
-          ...DEFAULT_KANA_CONFIG,
-          memory: {
-            ...DEFAULT_KANA_CONFIG.memory,
-            dailyRetentionDays: 14,
-          },
-        },
-        { scope: "global", mode: "full", env },
-      );
+    const agent = createMemoryConsolidationAgent(
+      {
+        ...DEFAULT_KANA_CONFIG.memory,
+        dailyRetentionDays: 14,
+      },
+      { scope: "global", mode: "full", env },
+    );
 
-      expect(agent.state.system).toContain("retains daily records for 14 calendar days");
-      expect(agent.state.system).toContain(
-        "prunes older records after this run completes successfully",
-      );
-    } finally {
-      if (previous === undefined) {
-        delete process.env.DEEPSEEK_API_KEY;
-      } else {
-        process.env.DEEPSEEK_API_KEY = previous;
-      }
-    }
+    expect(agent.state.system).toContain("retains daily records for 14 calendar days");
+    expect(agent.state.system).toContain(
+      "prunes older records after this run completes successfully",
+    );
   });
 
   test("formats incremental input from only current memory and new entries", () => {

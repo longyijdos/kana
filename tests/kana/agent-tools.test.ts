@@ -146,14 +146,13 @@ function createGoal(status: KanaGoalSnapshot["status"]): KanaGoalSnapshot {
 }
 
 function testConfig() {
+  const model = DEFAULT_KANA_CONFIG.agent.model;
+  if (model.provider !== "deepseek") throw new Error("Expected the default DeepSeek model.");
   return {
-    ...DEFAULT_KANA_CONFIG,
+    ...DEFAULT_KANA_CONFIG.agent,
     model: {
-      ...DEFAULT_KANA_CONFIG.model,
-      deepseek: {
-        ...DEFAULT_KANA_CONFIG.model.deepseek,
-        apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
-      },
+      ...model,
+      apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
     },
   };
 }
@@ -164,11 +163,8 @@ function visionTestConfig(overrides: { imageInput?: boolean } = {}) {
     ...config,
     model: {
       ...config.model,
-      deepseek: {
-        ...config.model.deepseek,
-        name: "deepseek-v4-flash-vision-exp" as const,
-        ...overrides,
-      },
+      model: "deepseek-v4-flash-vision-exp" as const,
+      imageInput: overrides.imageInput ?? true,
     },
   };
 }

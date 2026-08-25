@@ -106,7 +106,7 @@ describe("OpenAICompatibleModel", () => {
     });
 
     try {
-      const model = createModel(server, { maxTokens: 16_384 });
+      const model = createModel(server, { maxOutputTokens: 16_384 });
       await expect(model.generate({ messages: [] })).rejects.toThrow("at most 8192 output tokens");
       expect(requestCount).toBe(0);
     } finally {

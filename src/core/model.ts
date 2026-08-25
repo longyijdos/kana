@@ -8,7 +8,7 @@ export type ModelConfig = {
   apiKey?: string;
   baseUrl?: string;
   temperature?: number;
-  maxTokens?: number;
+  maxOutputTokens?: number;
   headers?: Record<string, string>;
   timeoutMs?: number;
   maxRetries?: number;
@@ -36,7 +36,7 @@ export type ModelMetadata = {
   // provider-specific implementations use null.
   protocol: ModelProtocol | null;
   contextWindow: number;
-  // Provider hard limit for one completion, distinct from request maxTokens.
+  // Provider hard limit for one completion, distinct from the configured cap.
   maxOutputTokens: number;
   // Capability of the concrete model and wire protocol, not only the provider.
   supportsParallelToolCalls: boolean;

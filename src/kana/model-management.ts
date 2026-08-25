@@ -3,8 +3,8 @@ import { DEEPSEEK_MODELS, OPENAI_CODEX_MODELS } from "@/providers";
 import {
   getKanaConfigPaths,
   KANA_MODEL_PROVIDERS,
-  type KanaConfig,
   type KanaModelProvider,
+  type ResolvedKanaConfig,
 } from "./config";
 import {
   type KanaCustomProvider,
@@ -42,8 +42,11 @@ const KANA_MODEL_PROVIDER_OPTIONS = KANA_MODEL_PROVIDERS.map((provider) => ({
     provider === "deepseek" ? "DeepSeek" : provider === "openai-codex" ? "OpenAI Codex" : "Custom",
 }));
 
-export function getKanaModelManagement(config: KanaConfig): KanaModelManagement {
-  const customProviderPath = getKanaConfigPaths().customProviderPath;
+export function getKanaModelManagement(
+  config: ResolvedKanaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): KanaModelManagement {
+  const customProviderPath = getKanaConfigPaths(env).customProviderPath;
   let customProvider: KanaCustomProvider | undefined;
   let customProviderError: string | undefined;
   try {
@@ -67,41 +70,58 @@ export function getKanaModelManagement(config: KanaConfig): KanaModelManagement 
           }
         : {}),
     })) ?? [];
-  const selectedCustomModel = customProvider?.models.find(
-    (model) => model.name === config.model.custom.name,
-  );
-  const customReasoning = selectedCustomModel
-    ? resolveKanaCustomReasoning(selectedCustomModel, config.model.custom.reasoningEffort)
-    : undefined;
+  const active = config.agent.model;
+  const customName = active.provider === "custom" ? active.model : customModels[0]?.name;
+  const selectedCustomModel = customProvider?.models.find((model) => model.name === customName);
+  const customReasoning =
+    active.provider === "custom"
+      ? active.reasoningEffort
+      : selectedCustomModel
+        ? resolveKanaCustomReasoning(selectedCustomModel)
+        : undefined;
+  const deepSeekName =
+    active.provider === "deepseek" ? active.model : (Object.keys(DEEPSEEK_MODELS)[0] ?? "");
+  const openAICodexName =
+    active.provider === "openai-codex" ? active.model : (Object.keys(OPENAI_CODEX_MODELS)[0] ?? "");
+  const deepSeekConfig = config.model.deepseek[deepSeekName];
+  const openAICodexConfig = config.model["openai-codex"][openAICodexName];
 
   return {
-    activeProvider: config.provider.active,
+    activeProvider: active.provider,
     providers: KANA_MODEL_PROVIDER_OPTIONS,
     model: {
       deepseek: {
-        available: toManagedModels(DEEPSEEK_MODELS, config.model.deepseek.reasoningEffort),
-        name: config.model.deepseek.name,
-        reasoningEffort: config.model.deepseek.reasoningEffort,
+        available: toManagedModels(DEEPSEEK_MODELS, config.model.deepseek),
+        name: deepSeekName,
+        reasoningEffort:
+          active.provider === "deepseek" ? active.reasoningEffort : deepSeekConfig?.reasoningEffort,
         imageInputEnabled:
-          DEEPSEEK_MODELS[config.model.deepseek.name as keyof typeof DEEPSEEK_MODELS]
-            ?.supportsImageInput === true && config.model.deepseek.imageInput !== false,
+          active.provider === "deepseek"
+            ? active.imageInput
+            : DEEPSEEK_MODELS[deepSeekName as keyof typeof DEEPSEEK_MODELS]?.supportsImageInput ===
+                true && deepSeekConfig?.imageInput !== false,
       },
       "openai-codex": {
-        available: toManagedModels(
-          OPENAI_CODEX_MODELS,
-          config.model["openai-codex"].reasoningEffort,
-        ),
-        name: config.model["openai-codex"].name,
-        reasoningEffort: config.model["openai-codex"].reasoningEffort,
+        available: toManagedModels(OPENAI_CODEX_MODELS, config.model["openai-codex"]),
+        name: openAICodexName,
+        reasoningEffort:
+          active.provider === "openai-codex"
+            ? active.reasoningEffort
+            : openAICodexConfig?.reasoningEffort,
         imageInputEnabled:
-          OPENAI_CODEX_MODELS[config.model["openai-codex"].name as keyof typeof OPENAI_CODEX_MODELS]
-            ?.supportsImageInput === true && config.model["openai-codex"].imageInput !== false,
+          active.provider === "openai-codex"
+            ? active.imageInput
+            : OPENAI_CODEX_MODELS[openAICodexName as keyof typeof OPENAI_CODEX_MODELS]
+                ?.supportsImageInput === true && openAICodexConfig?.imageInput !== false,
       },
       custom: {
         available: customModels,
-        name: config.model.custom.name || customModels[0]?.name || "",
+        name: customName ?? "",
         reasoningEffort: customReasoning,
-        imageInputEnabled: selectedCustomModel?.metadata.supportsImageInput === true,
+        imageInputEnabled:
+          active.provider === "custom"
+            ? active.imageInput
+            : selectedCustomModel?.metadata.supportsImageInput === true,
         error: customProviderError,
       },
     },
@@ -110,19 +130,23 @@ export function getKanaModelManagement(config: KanaConfig): KanaModelManagement 
 
 function toManagedModels(
   models: Readonly<Record<string, { reasoning?: ModelReasoningMetadata }>>,
-  currentEffort: string,
+  configs: Readonly<Record<string, { reasoningEffort: string }>>,
 ): KanaManagedModel[] {
-  return Object.entries(models).map(([name, metadata]) => ({
-    name,
-    ...(metadata.reasoning
-      ? {
-          reasoning: {
-            ...metadata.reasoning,
-            defaultEffort: metadata.reasoning.efforts.includes(currentEffort)
-              ? currentEffort
-              : metadata.reasoning.efforts[0],
-          },
-        }
-      : {}),
-  }));
+  return Object.entries(models).map(([name, metadata]) => {
+    const effort = configs[name]?.reasoningEffort;
+    return {
+      name,
+      ...(metadata.reasoning
+        ? {
+            reasoning: {
+              ...metadata.reasoning,
+              defaultEffort:
+                effort && metadata.reasoning.efforts.includes(effort)
+                  ? effort
+                  : metadata.reasoning.efforts[0],
+            },
+          }
+        : {}),
+    };
+  });
 }

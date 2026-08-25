@@ -14,9 +14,9 @@ export function buildOpenAICompatibleRequest(
     },
   };
 
-  const maxTokens = context.maxOutputTokens ?? config.maxTokens;
-  if (maxTokens !== undefined) {
-    request.max_tokens = maxTokens;
+  const maxOutputTokens = context.maxOutputTokens ?? config.maxOutputTokens;
+  if (maxOutputTokens !== undefined) {
+    request.max_tokens = maxOutputTokens;
   }
   if (config.reasoningEffort !== undefined) {
     request.reasoning_effort = config.reasoningEffort;

@@ -339,7 +339,7 @@ function createHeadlessRuntime(
       };
     },
     wakeScheduler: host.wakeScheduler,
-    goalMaxRounds: host.config.agent.goalMaxRounds,
+    goalMaxRounds: host.config.goal.maxRounds,
     getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
     backgroundJobCompletionRuns,
     scheduledRuns: false,

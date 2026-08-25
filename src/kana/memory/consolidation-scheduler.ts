@@ -1,6 +1,6 @@
 import type { Message } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
-import type { KanaConfig } from "../config";
+import type { ResolvedKanaMemoryConfig } from "../config";
 import {
   formatIncrementalMemoryConsolidationInput,
   type MemoryConsolidationResult,
@@ -62,7 +62,7 @@ export function createMemoryConsolidationQueue(): MemoryConsolidationQueue {
 }
 
 export function createMemoryConsolidationScheduler(
-  config: KanaConfig,
+  config: ResolvedKanaMemoryConfig,
   options: CreateMemoryConsolidationSchedulerOptions = {},
 ): MemoryConsolidationScheduler {
   const defaultLogger = options.logger ?? createNoopLogger();

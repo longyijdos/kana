@@ -65,16 +65,16 @@ function createAgentBuiltInTools(): Tool[] {
   process.env.KANA_TEST_DEEPSEEK_KEY = "secret";
 
   try {
+    const model = DEFAULT_KANA_CONFIG.agent.model;
+    if (model.provider !== "deepseek") throw new Error("Expected the default DeepSeek model.");
     const agent = createKanaAgent(
       {
-        ...DEFAULT_KANA_CONFIG,
+        ...DEFAULT_KANA_CONFIG.agent,
         model: {
-          ...DEFAULT_KANA_CONFIG.model,
-          deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
-            name: "deepseek-v4-flash-vision-exp" as const,
-            apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
-          },
+          ...model,
+          model: "deepseek-v4-flash-vision-exp" as const,
+          apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
+          imageInput: true,
         },
       },
       {

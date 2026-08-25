@@ -22,7 +22,7 @@ import {
 } from "@/tools";
 import { createKanaToolResultArtifactPolicy, type KanaSessionArtifactStore } from "./artifacts";
 import { createBackgroundJobPromptSections } from "./background-jobs/prompt";
-import { getActiveKanaModelConfig, type KanaConfig } from "./config";
+import type { ResolvedKanaMainAgentConfig } from "./config";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-controller";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
 import type { KanaLaunchMode } from "./launch-mode";
@@ -84,22 +84,17 @@ export type KanaAgentOptions = Pick<
   updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
 };
 
-export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
+export function createKanaAgent(
+  config: ResolvedKanaMainAgentConfig,
+  options: KanaAgentOptions = {},
+): Agent {
   const cwd = process.cwd();
   const customizationsEnabled = options.launchMode !== "clean";
   const skills = customizationsEnabled ? loadKanaSkills({ cwd, env: options.env }).skills : [];
-  const model = createKanaModel(config, options.logger);
-  const modelConfig = getActiveKanaModelConfig(config);
-  const maxOutputTokens =
-    "maxTokens" in modelConfig ? modelConfig.maxTokens : model.metadata.maxOutputTokens;
-  const imageInputEnabled =
-    model.metadata.supportsImageInput === true &&
-    (!("imageInput" in modelConfig) || modelConfig.imageInput !== false);
-  // The shared Agent limit is a cap so switching to a smaller model remains valid.
-  const contextLimit = Math.min(
-    config.agent.contextLimit ?? model.metadata.contextWindow,
-    model.metadata.contextWindow,
-  );
+  const model = createKanaModel(config.model, options.logger, { env: options.env });
+  const maxOutputTokens = config.model.maxOutputTokens;
+  const imageInputEnabled = config.model.imageInput;
+  const contextLimit = config.model.contextLimit;
   const workspaceTools: Tool[] = [
     createListTool({
       root: cwd,
@@ -170,7 +165,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       resolve: resolveGoalTools,
     });
   }
-  if (customizationsEnabled && config.memory.enabled) {
+  if (customizationsEnabled && config.memoryEnabled) {
     toolSections.push({
       name: "memory",
       tools: [
@@ -214,13 +209,13 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       resolveTodoState: options.resolveTodoState,
       resolveGoalState: resolveGoal,
     }),
-    maxTurns: config.agent.maxTurns,
-    toolDeadlineMs: config.agent.toolDeadlineMs,
-    parallelToolCalls: config.agent.parallelToolCalls,
-    maxParallelToolCalls: config.agent.maxParallelToolCalls,
-    repeatedToolCalls: config.agent.repeatedToolCalls,
+    maxTurns: config.maxTurns,
+    toolDeadlineMs: config.toolDeadlineMs,
+    parallelToolCalls: config.parallelToolCalls,
+    maxParallelToolCalls: config.maxParallelToolCalls,
+    repeatedToolCalls: config.repeatedToolCalls,
     toolResultPolicy: createKanaToolResultArtifactPolicy({
-      ...(config.agent.toolResultArtifacts && options.artifactStore
+      ...(config.toolResultArtifacts && options.artifactStore
         ? { store: options.artifactStore }
         : {}),
       logger: options.logger,

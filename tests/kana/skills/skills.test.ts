@@ -411,14 +411,13 @@ describe("Kana skills", () => {
     try {
       process.chdir(cwd);
       const resolvedCwd = process.cwd();
+      const model = DEFAULT_KANA_CONFIG.agent.model;
+      if (model.provider !== "deepseek") throw new Error("Expected the default DeepSeek model.");
       const agent = createKanaAgent({
-        ...DEFAULT_KANA_CONFIG,
+        ...DEFAULT_KANA_CONFIG.agent,
         model: {
-          ...DEFAULT_KANA_CONFIG.model,
-          deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
-            apiKeyEnv: "KANA_DEEPSEEK_KEY",
-          },
+          ...model,
+          apiKeyEnv: "KANA_DEEPSEEK_KEY",
         },
       });
 

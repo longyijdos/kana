@@ -141,11 +141,11 @@ remember 成功
       正常 stop 且有改动时，原子保存 memory.md
 ```
 
-合并 Agent 与主 Agent 使用同一模型配置，但没有 bash、文件工具或 `remember`。增量模式仅提供 `read_memory`、`edit_memory`、`replace_memory`，且输入只包含当前长期记忆和本批新条目。它不扫描历史 daily 文件，避免把未提供的上下文推断进记忆。
+合并 Agent 从 `[memory.agent]` 独立解析 provider、model、调用 override 与运行限制，默认使用 `deepseek/deepseek-v4-flash`；它没有 bash、文件工具或 `remember`。增量模式仅提供 `read_memory`、`edit_memory`、`replace_memory`，且输入只包含当前长期记忆和本批新条目。它不扫描历史 daily 文件，避免把未提供的上下文推断进记忆。
 
 所有 edit/replace 先作用于内存 transaction；每次写入前检查大小限制。仅当 Agent 以 `stop` 正常结束且 transaction 有改动时才 `commit()`。中止、错误、长度截断、`turn_limit` 和未改动都不会覆盖长期记忆。
 
-自动记忆合并属于进程持有的后台工作。TUI 或 headless 关闭时，host 会停止新的自动调度，取消并等待其创建过的全部 scheduler 中正在运行或排队的合并 Agent（包括模型重配后被替换的 scheduler），然后才关闭外部资源。`remember` 已写入 daily 暂存的条目会完整保留；被中止的内存 transaction 不会修改长期 `memory.md`。
+自动记忆合并属于进程持有的后台工作。Host 针对解析后的 memory 配置只持有一个 scheduler；通过 `/model` 修改主 Agent 不会重建它。TUI 或 headless 关闭时，host 会停止新的调度，取消并等待正在运行或排队的合并 Agent，然后才关闭外部资源。`remember` 已写入 daily 暂存的条目会完整保留；被中止的内存 transaction 不会修改长期 `memory.md`。
 
 ## 全量压缩与保留
 

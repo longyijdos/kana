@@ -1,13 +1,12 @@
 import {
   createKanaConversationHost,
-  getKanaModelManagement,
   type KanaLaunchMode,
   loadKanaSkillActivations,
   openKanaOAuthAuthorizationUrl,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
 import { KanaTuiApp } from "./app/app";
-import { applyTuiModelSelection, type TuiModelSelection } from "./app/model-selection";
+import { resolveTuiModelSelection, type TuiModelSelection } from "./app/model-selection";
 import {
   formatMcpLifecycleStatus,
   formatMcpReloadSummary,
@@ -38,7 +37,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       : options.resumeSessionId
         ? { type: "resume", sessionId: options.resumeSessionId }
         : { type: "new" },
-    applyAgentConfiguration: applyTuiModelSelection,
+    resolveAgentConfiguration: resolveTuiModelSelection,
     openMcpOAuthAuthorizationUrl: async (serverId, url) => {
       app?.showMcpOAuthAuthorization(serverId, url);
       await openKanaOAuthAuthorizationUrl(url, {
@@ -139,7 +138,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       },
       notification: host.notificationConfig,
       tuiConfig: host.tuiConfig,
-      goalMaxRounds: host.config.agent.goalMaxRounds,
+      goalMaxRounds: host.config.goal.maxRounds,
       wakeScheduler: host.wakeScheduler,
       getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
       getLogger: () => host.getLogger(),
@@ -148,7 +147,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       loadMemory: (target) => host.loadMemory(target),
       loadUsage: (scope) => host.loadUsage(scope),
       modelManagement: {
-        getSettings: () => getKanaModelManagement(host.config),
+        getSettings: () => host.getModelManagement(),
       },
       // Clean mode must not parse MCP configuration or create external
       // processes, including during later session and Agent rebuilds.

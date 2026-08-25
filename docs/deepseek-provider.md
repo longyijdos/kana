@@ -14,15 +14,15 @@ Current built-in metadata:
 | `deepseek-v4-flash-vision-exp` | Responses | 1,000,000 | 384,000 | Supported | Supported | Supported |
 | `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported |
 
-Constructing an unknown model errors, and a request whose `maxTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the user's `web_search` setting. The TUI uses metadata for context percentage. DeepSeek metadata permits `agent.parallel_tool_calls`, but ToolRuntime still forces serial execution when the user disables that setting. Kana intentionally does not embed provider pricing; actual charges come from DeepSeek billing.
+Constructing an unknown model errors, and a request whose `maxOutputTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from the resolved `web_search` setting. The TUI uses metadata for context percentage. DeepSeek metadata permits Agent parallel tool calls, but ToolRuntime still forces serial execution when the user disables that setting. Kana intentionally does not embed provider pricing; actual charges come from DeepSeek billing.
 
-Both models expose `none`, `low`, `high`, and `max` through common reasoning metadata. `model.deepseek.reasoning_effort = "none"` disables reasoning; the previous separate `thinking` switch is no longer part of the configuration or request contract.
+All current models expose `none`, `low`, `high`, and `max` through common reasoning metadata. A concrete-model or Agent `reasoning_effort = "none"` override disables reasoning; the previous separate `thinking` switch is no longer part of the configuration or request contract.
 
 ## Request conversion
 
 The default base URL is `https://api.deepseek.com`, and all current models send requests to `/responses`.
 
-Image input follows the selected model's metadata and the `model.deepseek.image_input` setting. `deepseek-v4-flash-vision-exp` accepts persisted user images as classic Responses `input_image` items with self-contained base64 data URLs and registers `view_image`. Visual tool results become native multimodal `function_call_output` content tied to the originating call. The text-only V4 Flash and V4 Pro models replace persisted images with an explicit omitted marker, never transmit their base64 data, and do not register `view_image`; model metadata takes precedence, and `model.deepseek.image_input = false` also disables delivery and the tool on the vision model.
+Image input follows the selected model's metadata and resolved `image_input` setting. `deepseek-v4-flash-vision-exp` accepts persisted user images as classic Responses `input_image` items with self-contained base64 data URLs and registers `view_image`. Visual tool results become native multimodal `function_call_output` content tied to the originating call. The text-only V4 Flash and V4 Pro models replace persisted images with an explicit omitted marker, never transmit their base64 data, and do not register `view_image`; model metadata takes precedence, and an `image_input = false` model or Agent override also disables delivery and the tool on the vision model.
 
 ### V4 Responses
 
@@ -44,13 +44,13 @@ Provided optional configuration maps as follows:
 | Kana / `DeepSeekModelConfig` | Request field |
 | --- | --- |
 | `temperature` | `temperature` |
-| `ModelContext.maxOutputTokens ?? maxTokens` | `max_output_tokens` |
+| `ModelContext.maxOutputTokens ?? maxOutputTokens` | `max_output_tokens` |
 | `topP` | `top_p` |
 | `reasoningEffort` | `reasoning.effort` |
 | `responseFormat` | `text.format` |
 | `userId` | `user` |
 
-A per-turn output ceiling takes precedence over configured `maxTokens`. Client functions use flattened Responses tool definitions. When `model.deepseek.web_search = true` and metadata supports it, `{ "type": "web_search" }` is appended to the same `tools` array; `false` removes only the hosted tool. Default `tool_choice` is `auto`, named Chat Completions choices are converted to the flattened Responses shape, and `strictTools` adds `strict: true` to function tools.
+A per-turn output ceiling takes precedence over configured `maxOutputTokens`. Client functions use flattened Responses tool definitions. When resolved `web_search` is true and metadata supports it, `{ "type": "web_search" }` is appended to the same `tools` array; false removes only the hosted tool. Default `tool_choice` is `auto`, named Chat Completions choices are converted to the flattened Responses shape, and `strictTools` adds `strict: true` to function tools.
 
 Image input is gated by both model metadata and configuration: only `deepseek-v4-flash-vision-exp` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes or advertise `view_image`. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
@@ -70,7 +70,7 @@ All V4 models use the shared `src/providers/responses` semantic SSE processor al
 
 ## Usage
 
-`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%. That effective limit is the smaller of `agent.context_limit` and the model metadata context window, or the metadata window when no cap is configured. Summary-request usage contributes to main-run accumulated usage without replacing the latest normal model request's context percentage.
+`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%. The effective limit is the resolved Agent cap clamped to the model metadata context window. Summary-request usage contributes to main-run accumulated usage without replacing the latest normal model request's context percentage.
 
 ## Extension notes
 

@@ -86,7 +86,7 @@ describe("buildOpenAICodexRequest", () => {
         credentialProvider: credentials(),
         reasoningEffort: "medium",
         reasoningSummary: "auto",
-        maxTokens: 32_768,
+        maxOutputTokens: 32_768,
       },
     );
 

@@ -71,11 +71,9 @@ describe("Kana conversation host", () => {
     const seenModels: string[] = [];
     const host = createKanaConversationHost<string>({
       env,
-      applyAgentConfiguration: (config, model) => {
-        config.model.deepseek.name = model;
-      },
+      resolveAgentConfiguration: (model) => ({ provider: "deepseek", model }),
       createAgent: (config, options = {}) => {
-        seenModels.push(config.model.deepseek.name);
+        seenModels.push(config.model.model);
         return new Agent({
           model: new MockModel({ provider: "mock", model: "mock" }),
           messages: options.messages,
@@ -88,7 +86,7 @@ describe("Kana conversation host", () => {
     runtime.reconfigure("deepseek-v4-flash");
 
     expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
-    expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");
+    expect(host.config.agent.model.model).toBe("deepseek-v4-flash");
     await runtime.close();
     await host.close();
   });
@@ -100,11 +98,9 @@ describe("Kana conversation host", () => {
     const host = createKanaConversationHost<string>({
       env,
       launchMode: "clean",
-      applyAgentConfiguration: (config, model) => {
-        config.model.deepseek.name = model;
-      },
+      resolveAgentConfiguration: (model) => ({ provider: "deepseek", model }),
       createAgent: (config, options = {}) => {
-        seenModels.push(config.model.deepseek.name);
+        seenModels.push(config.model.model);
         return new Agent({
           model: new MockModel({ provider: "mock", model: "mock", response: "Complete." }),
           messages: options.messages,
@@ -127,7 +123,7 @@ describe("Kana conversation host", () => {
     });
 
     expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
-    expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");
+    expect(host.config.agent.model.model).toBe("deepseek-v4-flash");
     expect(host.resumeSessionId).toBeUndefined();
     expect(host.listSessions()).toEqual([]);
     expect(() => host.loadSession("saved-session")).toThrow(

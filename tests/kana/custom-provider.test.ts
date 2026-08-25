@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_KANA_CONFIG, getKanaConfigPaths, getKanaModelManagement } from "@/kana";
+import { getKanaConfigPaths, getKanaModelManagement, loadKanaConfig } from "@/kana";
 import {
   getKanaCustomProviderModel,
   parseKanaCustomProvider,
@@ -196,11 +196,19 @@ describe("Kana Custom provider", () => {
           "",
         ].join("\n"),
       );
-      const config = structuredClone(DEFAULT_KANA_CONFIG);
-      config.provider.active = "custom";
-      config.model.custom = { name: "local-model", reasoningEffort: "high" };
+      writeFileSync(
+        paths.configPath,
+        [
+          "[agent]",
+          'provider = "custom"',
+          'model = "local-model"',
+          'reasoning_effort = "high"',
+          "",
+        ].join("\n"),
+      );
+      const config = loadKanaConfig();
       const management = getKanaModelManagement(config);
-      const model = createKanaModel(config);
+      const model = createKanaModel(config.agent.model);
 
       expect(management.model.custom).toMatchObject({
         name: "local-model",

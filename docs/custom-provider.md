@@ -22,14 +22,12 @@ Select one of those model names in the main configuration:
 
 ```toml
 # ~/.kana/config.toml
-[provider]
-active = "custom"
-
-[model.custom]
-name = "local-model"
+[agent]
+provider = "custom"
+model = "local-model"
 ```
 
-`/model` exposes Custom alongside the built-in providers. It reads the model list from this one file, persists only `provider.active`, `model.custom.name`, and an optional selected reasoning effort, and hot-switches through the same candidate-Agent validation used by built-in providers. A missing or invalid file is shown as an explicit error; Kana never falls back to another provider or model.
+`/model` exposes Custom alongside the built-in providers. It reads the model list from this one file, persists only the main `[agent]` provider, model, and optional reasoning effort, and hot-switches through the same candidate-Agent validation used by built-in providers. `[memory.agent]` remains independent and may also select a Custom model explicitly. A missing or invalid file is shown as an explicit error; Kana never falls back to another provider or model.
 
 ## Provider fields
 
@@ -74,7 +72,7 @@ reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
 
-`agent.context_limit` is a provider-independent cap. The effective Agent limit is the smaller of that configured value and the selected model's `context_window`, so switching from a large built-in model to a smaller Custom model remains valid without provider-specific Agent configuration.
+`[agent]` and `[memory.agent]` may override `context_limit`, `max_output_tokens`, `reasoning_effort`, and supported image input. The effective context and output values are bounded by the selected Custom model metadata. Custom transport and catalog defaults stay in this file; `provider.custom` and `model.custom` are not valid main-config tables.
 
 ## Protocol and security boundaries
 

@@ -14,21 +14,23 @@ kana auth logout openai-codex
 
 The provider requires a ChatGPT account ID. Kana reads it from the ID token first, then falls back to the access-token JWT claim. Expiring credentials refresh automatically. The current Codex token endpoint receives refresh grants as JSON while the initial authorization-code exchange remains form encoded. A token response may omit `token_type`; Kana accepts that response as Bearer only at this provider boundary.
 
-Provider-specific configuration activates the adapter:
+Provider transport, concrete-model defaults, and the main Agent selection are configured separately:
 
 ```toml
-[provider]
-active = "openai-codex"
+[provider.openai-codex]
+timeout_ms = 60000
+max_retries = 1
 
-[model.openai-codex]
-name = "gpt-5.6-luna"
+[model.openai-codex."gpt-5.6-luna"]
 reasoning_effort = "medium"
 reasoning_summary = "auto"
 web_search = true
 image_input = true
-max_tokens = 128000
-timeout_ms = 60000
-max_retries = 1
+max_output_tokens = 128000
+
+[agent]
+provider = "openai-codex"
+model = "gpt-5.6-luna"
 ```
 
 See [Configuration and installation](configuration.md) for available models and fields.
@@ -45,7 +47,7 @@ The request follows one complete classic Responses contract:
 - `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
 - `parallel_tool_calls` follows the effective Agent setting after model-capability gating. The current Sol, Terra, and Luna metadata support parallel calls; ToolRuntime still serializes calls when user policy disables parallelism or tool execution metadata does not permit concurrency.
 - Reasoning configuration carries effort and summary type but omits `reasoning.context`, leaving the effective persisted-reasoning mode to the backend. Accepted efforts are `low`, `medium`, `high`, `xhigh`, and `max`; Ultra is a Codex client orchestration mode and Kana does not send it as a request effort.
-- Kana uses configured `max_tokens` and remaining context to calculate each turn's `ModelContext.maxOutputTokens`. The ChatGPT Codex request contract used here does not expose `max_output_tokens`, so the wire request omits it.
+- Kana uses resolved `max_output_tokens` and remaining context to calculate each turn's `ModelContext.maxOutputTokens`. The ChatGPT Codex request contract used here does not expose that field, so the wire request omits it.
 - Kana sends neither the Responses Lite header nor Lite-only input markers. Lite should be reconsidered only after OpenAI stabilizes a hosted-tool-compatible contract; its header and request body must never be enabled independently.
 
 A Codex reasoning summary is not raw chain-of-thought. Kana can stream the summary as thinking events, but the TUI uses those events only for its temporary thinking state and does not render the summary body.

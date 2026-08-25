@@ -22,14 +22,12 @@ max_output_tokens = 4096
 
 ```toml
 # ~/.kana/config.toml
-[provider]
-active = "custom"
-
-[model.custom]
-name = "local-model"
+[agent]
+provider = "custom"
+model = "local-model"
 ```
 
-`/model` 会在内置供应商之外显示 Custom。它从这一个文件读取模型列表，只持久化 `provider.active`、`model.custom.name` 和可选的推理强度，并通过与内置供应商相同的候选 Agent 校验完成热切换。文件缺失或无效时会显示明确错误；Kana 不会静默回退到其他供应商或模型。
+`/model` 会在内置供应商之外显示 Custom。它从这一个文件读取模型列表，只持久化主 `[agent]` 的 provider、model 和可选推理强度，并通过与内置供应商相同的候选 Agent 校验完成热切换。`[memory.agent]` 保持独立，也可以显式选择 Custom 模型。文件缺失或无效时会显示明确错误；Kana 不会静默回退到其他供应商或模型。
 
 ## 供应商字段
 
@@ -74,7 +72,7 @@ reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
 
-`agent.context_limit` 是与供应商无关的上限。Agent 实际使用该配置值与所选模型 `context_window` 中较小的一个，因此从大窗口内置模型切换到较小的 Custom 模型时，不需要额外的供应商专用 Agent 配置。
+`[agent]` 与 `[memory.agent]` 可以覆盖 `context_limit`、`max_output_tokens`、`reasoning_effort` 和受支持的图片输入设置。实际上下文和输出值受所选 Custom 模型 metadata 限制。Custom 的传输与目录默认值保留在本文件中；`provider.custom` 和 `model.custom` 不是有效的主配置表。
 
 ## 协议与安全边界
 

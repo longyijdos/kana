@@ -26,7 +26,7 @@ export function buildDeepSeekRequest(
     request.temperature = config.temperature;
   }
 
-  const maxOutputTokens = context.maxOutputTokens ?? config.maxTokens;
+  const maxOutputTokens = context.maxOutputTokens ?? config.maxOutputTokens;
   if (maxOutputTokens !== undefined) {
     request.max_output_tokens = maxOutputTokens;
   }

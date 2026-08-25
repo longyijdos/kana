@@ -4,167 +4,90 @@ import path from "node:path";
 
 import {
   getKanaConfigPaths,
-  type KanaConfig,
-  loadKanaConfig,
+  type KanaMainAgentModelSelection,
   parseKanaConfig,
-  validateKanaConfig,
+  type ResolvedKanaConfig,
 } from "./config";
 
-type KanaConfigValue =
-  | string
-  | number
-  | boolean
-  | readonly string[]
-  | readonly number[]
-  | undefined;
-
-type KanaConfigField = {
-  section: string;
-  key: string;
-  read(config: KanaConfig): KanaConfigValue;
+type UpdateKanaMainAgentOptions = {
+  persist?: boolean;
+  beforeCommit?(config: ResolvedKanaConfig): void;
 };
 
 export type KanaConfigStore = {
-  load(): KanaConfig;
-  update(mutate: (draft: KanaConfig) => void): KanaConfig;
+  load(): ResolvedKanaConfig;
+  updateMainAgent(
+    selection: KanaMainAgentModelSelection,
+    options?: UpdateKanaMainAgentOptions,
+  ): ResolvedKanaConfig;
 };
 
-// Keep the typed config and its canonical TOML leaves in one registry. Updates
-// can then preserve unknown tables and comments instead of serializing defaults.
-const CONFIG_FIELDS: KanaConfigField[] = [
-  field("provider", "active", (config) => config.provider.active),
-  field("model.deepseek", "name", (config) => config.model.deepseek.name),
-  field("model.deepseek", "api_key_env", (config) => config.model.deepseek.apiKeyEnv),
-  field("model.deepseek", "reasoning_effort", (config) => config.model.deepseek.reasoningEffort),
-  field("model.deepseek", "web_search", (config) => config.model.deepseek.webSearch),
-  field("model.deepseek", "image_input", (config) => config.model.deepseek.imageInput),
-  field("model.deepseek", "max_tokens", (config) => config.model.deepseek.maxTokens),
-  field("model.deepseek", "timeout_ms", (config) => config.model.deepseek.timeoutMs),
-  field("model.deepseek", "max_retries", (config) => config.model.deepseek.maxRetries),
-  field("model.openai-codex", "name", (config) => config.model["openai-codex"].name),
-  field(
-    "model.openai-codex",
-    "reasoning_effort",
-    (config) => config.model["openai-codex"].reasoningEffort,
-  ),
-  field(
-    "model.openai-codex",
-    "reasoning_summary",
-    (config) => config.model["openai-codex"].reasoningSummary,
-  ),
-  field("model.openai-codex", "web_search", (config) => config.model["openai-codex"].webSearch),
-  field("model.openai-codex", "image_input", (config) => config.model["openai-codex"].imageInput),
-  field("model.openai-codex", "max_tokens", (config) => config.model["openai-codex"].maxTokens),
-  field("model.openai-codex", "timeout_ms", (config) => config.model["openai-codex"].timeoutMs),
-  field("model.openai-codex", "max_retries", (config) => config.model["openai-codex"].maxRetries),
-  field("model.custom", "name", (config) => config.model.custom.name || undefined),
-  field("model.custom", "reasoning_effort", (config) => config.model.custom.reasoningEffort),
-  field("agent", "max_turns", (config) => config.agent.maxTurns),
-  field("agent", "goal_max_rounds", (config) => config.agent.goalMaxRounds),
-  field("agent", "tool_deadline_ms", (config) => config.agent.toolDeadlineMs),
-  field("agent", "parallel_tool_calls", (config) => config.agent.parallelToolCalls),
-  field("agent", "max_parallel_tool_calls", (config) => config.agent.maxParallelToolCalls),
-  field("agent", "context_limit", (config) => config.agent.contextLimit),
-  field("agent", "tool_result_artifacts", (config) => config.agent.toolResultArtifacts),
-  field(
-    "agent.background_jobs",
-    "max_concurrent",
-    (config) => config.agent.backgroundJobs.maxConcurrent,
-  ),
-  field(
-    "agent.repeated_tool_calls",
-    "reminder_thresholds",
-    (config) => config.agent.repeatedToolCalls.reminderThresholds,
-  ),
-  field(
-    "agent.repeated_tool_calls",
-    "excluded_tools",
-    (config) => config.agent.repeatedToolCalls.excludedTools,
-  ),
-  field("approval", "mode", (config) => config.approval.mode),
-  field("notification", "backend", (config) => config.notification.backend),
-  field("notification", "on_agent_completed", (config) => config.notification.onAgentCompleted),
-  field("notification", "on_approval_required", (config) => config.notification.onApprovalRequired),
-  field("tui", "hyperlinks", (config) => config.tui.hyperlinks),
-  field("tui", "render_latex", (config) => config.tui.renderLatex),
-  field("tui", "render_mermaid", (config) => config.tui.renderMermaid),
-  field("tui", "smooth_text_streaming", (config) => config.tui.smoothTextStreaming),
-  field("tui", "collapse_long_pastes", (config) => config.tui.collapseLongPastes),
-  field("memory", "enabled", (config) => config.memory.enabled),
-  field("memory", "max_chars", (config) => config.memory.maxChars),
-  field("memory", "daily_retention_days", (config) => config.memory.dailyRetentionDays),
-  field("logging", "level", (config) => config.logging.level),
-];
-
 export function createKanaConfigStore(env: NodeJS.ProcessEnv = process.env): KanaConfigStore {
+  const { configPath, home } = getKanaConfigPaths(env);
+  let transientDocument: string | undefined;
+  const readDocument = (): string =>
+    transientDocument ?? (existsSync(configPath) ? readFileSync(configPath, "utf8") : "");
+
   return {
-    load: () => loadKanaConfig(env),
-    update(mutate) {
-      const current = loadKanaConfig(env);
-      const next = structuredClone(current);
-      mutate(next);
-      const validated = validateKanaConfig(next);
-      const changedFields = CONFIG_FIELDS.filter(
-        (candidate) => !sameConfigValue(candidate.read(current), candidate.read(validated)),
-      );
-      if (changedFields.length === 0) {
-        return current;
-      }
+    load() {
+      return parseDocument(readDocument(), env);
+    },
+    updateMainAgent(selection, options = {}) {
+      const currentDocument = readDocument();
+      const current = parseDocument(currentDocument, env);
+      const modelChanged =
+        current.agent.model.provider !== selection.provider ||
+        current.agent.model.model !== selection.model;
+      let nextDocument = currentDocument;
 
-      const { home, configPath } = getKanaConfigPaths(env);
-      let document = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
-      for (const changedField of changedFields) {
-        document = updateTomlField(
-          document,
-          changedField.section,
-          changedField.key,
-          changedField.read(validated),
+      if (current.agent.model.provider !== selection.provider) {
+        nextDocument = updateTomlField(nextDocument, "agent", "provider", selection.provider);
+      }
+      if (current.agent.model.model !== selection.model) {
+        nextDocument = updateTomlField(nextDocument, "agent", "model", selection.model);
+      }
+      if (
+        selection.reasoningEffort !== undefined &&
+        (modelChanged || current.agent.model.reasoningEffort !== selection.reasoningEffort)
+      ) {
+        nextDocument = updateTomlField(
+          nextDocument,
+          "agent",
+          "reasoning_effort",
+          selection.reasoningEffort,
         );
       }
 
-      const reloaded = parseKanaConfig(Bun.TOML.parse(document) as unknown);
-      // Legacy layouts may shadow a newly added canonical key. Refuse the write
-      // unless parsing the patched document produces the complete candidate.
-      if (!sameKnownConfig(reloaded, validated)) {
+      const resolved = parseDocument(nextDocument, env);
+      if (
+        selection.reasoningEffort !== undefined &&
+        resolved.agent.model.reasoningEffort !== selection.reasoningEffort
+      ) {
         throw new Error(
-          "Kana could not safely update this config.toml layout. Normalize the affected tables and try again.",
+          `${selection.provider}/${selection.model} does not expose reasoning effort ${selection.reasoningEffort}.`,
         );
       }
+      options.beforeCommit?.(resolved);
 
-      mkdirSync(home, { recursive: true });
-      writeConfigAtomically(configPath, document);
-      return reloaded;
+      if (nextDocument === currentDocument) return current;
+      if (options.persist === false) {
+        transientDocument = nextDocument;
+      } else {
+        mkdirSync(home, { recursive: true });
+        writeConfigAtomically(configPath, nextDocument);
+      }
+      return resolved;
     },
   };
 }
 
-function field(section: string, key: string, read: KanaConfigField["read"]): KanaConfigField {
-  return { section, key, read };
+function parseDocument(document: string, env: NodeJS.ProcessEnv): ResolvedKanaConfig {
+  return parseKanaConfig(document ? (Bun.TOML.parse(document) as unknown) : {}, env);
 }
 
-function sameKnownConfig(left: KanaConfig, right: KanaConfig): boolean {
-  return CONFIG_FIELDS.every((candidate) =>
-    sameConfigValue(candidate.read(left), candidate.read(right)),
-  );
-}
-
-function sameConfigValue(left: KanaConfigValue, right: KanaConfigValue): boolean {
-  if (!Array.isArray(left) || !Array.isArray(right)) {
-    return left === right;
-  }
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function updateTomlField(
-  document: string,
-  section: string,
-  key: string,
-  value: KanaConfigValue,
-): string {
+function updateTomlField(document: string, section: string, key: string, value: string): string {
   const lines = document ? document.replace(/\r\n/g, "\n").split("\n") : [];
-  while (lines.at(-1) === "") {
-    lines.pop();
-  }
+  while (lines.at(-1) === "") lines.pop();
 
   const sectionStart = findSection(lines, section);
   const sectionEnd =
@@ -173,15 +96,8 @@ function updateTomlField(
     sectionStart === undefined
       ? undefined
       : findKey(lines, key, sectionStart + 1, sectionEnd ?? lines.length);
+  const assignment = `${key} = ${JSON.stringify(value)}`;
 
-  if (value === undefined) {
-    if (keyIndex !== undefined) {
-      lines.splice(keyIndex, 1);
-    }
-    return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
-  }
-
-  const assignment = `${key} = ${formatTomlValue(value)}`;
   if (keyIndex !== undefined) {
     lines[keyIndex] = assignment;
   } else if (sectionStart !== undefined) {
@@ -191,9 +107,7 @@ function updateTomlField(
     }
     lines.splice(insertionIndex, 0, assignment);
   } else {
-    if (lines.length > 0) {
-      lines.push("");
-    }
+    if (lines.length > 0) lines.push("");
     lines.push(`[${section}]`, assignment);
   }
 
@@ -203,18 +117,14 @@ function updateTomlField(
 function findSection(lines: string[], section: string): number | undefined {
   const pattern = new RegExp(`^\\s*\\[${escapeRegExp(section)}\\]\\s*(?:#.*)?$`);
   for (const [index, line] of lines.entries()) {
-    if (pattern.test(line)) {
-      return index;
-    }
+    if (pattern.test(line)) return index;
   }
   return undefined;
 }
 
 function findNextSection(lines: string[], start: number): number | undefined {
   for (let index = start; index < lines.length; index += 1) {
-    if (/^\s*\[/.test(lines[index] ?? "")) {
-      return index;
-    }
+    if (/^\s*\[/.test(lines[index] ?? "")) return index;
   }
   return undefined;
 }
@@ -222,18 +132,9 @@ function findNextSection(lines: string[], start: number): number | undefined {
 function findKey(lines: string[], key: string, start: number, end: number): number | undefined {
   const pattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`);
   for (let index = start; index < end; index += 1) {
-    if (pattern.test(lines[index] ?? "")) {
-      return index;
-    }
+    if (pattern.test(lines[index] ?? "")) return index;
   }
   return undefined;
-}
-
-function formatTomlValue(value: Exclude<KanaConfigValue, undefined>): string {
-  if (typeof value === "string" || Array.isArray(value)) {
-    return JSON.stringify(value);
-  }
-  return String(value);
 }
 
 function escapeRegExp(value: string): string {

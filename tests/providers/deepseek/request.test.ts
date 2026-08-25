@@ -91,7 +91,7 @@ describe("buildDeepSeekRequest", () => {
         model: "deepseek-v4-flash",
         reasoningEffort: "max",
         webSearch: true,
-        maxTokens: 32_768,
+        maxOutputTokens: 32_768,
         responseFormat: { type: "json_object" },
         userId: "kana-user",
         strictTools: true,

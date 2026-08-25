@@ -1,6 +1,6 @@
 # 无头执行与 JSONL 协议
 
-`kana exec` 在不启动 TUI 的情况下执行 Agent 任务，适合脚本、CI 和评测。默认情况下，它会执行一次完整 Agent run，其中可以包含多次模型调用、工具执行和上下文压缩。使用 `--goal` 后，prompt 会成为一个有界的进程内 Goal；Kana 会连续执行 Agent run，直到模型将其标记为 completed 或 blocked、Goal 被取消，或达到 `agent.goal_max_rounds`。
+`kana exec` 在不启动 TUI 的情况下执行 Agent 任务，适合脚本、CI 和评测。默认情况下，它会执行一次完整 Agent run，其中可以包含多次模型调用、工具执行和上下文压缩。使用 `--goal` 后，prompt 会成为一个有界的进程内 Goal；Kana 会连续执行 Agent run，直到模型将其标记为 completed 或 blocked、Goal 被取消，或达到 `goal.max_rounds`。
 
 ## 命令
 
@@ -50,7 +50,7 @@ conversation runtime 关闭后，headless 退出流程会取消并等待尚未�
 | --- | --- |
 | `kana exec --timeout` | 完整 headless run 的墙钟时间，包含所有 Goal round |
 | `agent.max_turns` | 一次 Agent run 内的模型/工具回合数 |
-| `agent.goal_max_rounds` | 一个 Goal 最多允许的连续完整 Agent run 数 |
+| `goal.max_rounds` | 一个 Goal 最多允许的连续完整 Agent run 数 |
 | Provider 请求 timeout | 单次 provider 请求或无活动窗口 |
 | 外部进程/job timeout | 进程总生命周期的硬限制；可能在优雅清理完成前中断 Kana |
 

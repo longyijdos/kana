@@ -1,6 +1,6 @@
 # Headless execution and the JSONL protocol
 
-`kana exec` runs an Agent task without starting the TUI, for scripts, CI, and evaluations. By default it runs one complete Agent run, which may contain several model calls, tool executions, and context compactions. With `--goal`, the prompt becomes a bounded process-local Goal and Kana continues through sequential Agent runs until the model marks it completed or blocked, it is cancelled, or it reaches `agent.goal_max_rounds`.
+`kana exec` runs an Agent task without starting the TUI, for scripts, CI, and evaluations. By default it runs one complete Agent run, which may contain several model calls, tool executions, and context compactions. With `--goal`, the prompt becomes a bounded process-local Goal and Kana continues through sequential Agent runs until the model marks it completed or blocked, it is cancelled, or it reaches `goal.max_rounds`.
 
 ## Commands
 
@@ -50,7 +50,7 @@ The timeout controls different work from the other limits:
 | --- | --- |
 | `kana exec --timeout` | Wall-clock time for the complete headless run, including every Goal round |
 | `agent.max_turns` | Number of model/tool turns in one Agent run |
-| `agent.goal_max_rounds` | Number of complete sequential Agent runs admitted for one Goal |
+| `goal.max_rounds` | Number of complete sequential Agent runs admitted for one Goal |
 | Provider request timeout | One provider request or inactivity window |
 | An external process/job timeout | Hard process lifetime; may interrupt Kana before graceful cleanup finishes |
 

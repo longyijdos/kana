@@ -2,138 +2,42 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "@/agent";
-import { LOG_LEVELS, type LogLevel } from "@/logging";
-import type {
-  DeepSeekReasoningEffort,
-  OpenAICodexReasoningEffort,
-  OpenAICodexReasoningSummary,
-} from "@/providers";
-import { DEFAULT_KANA_GOAL_MAX_ROUNDS } from "./conversation/goal-controller";
-import { serializeKanaCustomProviderExample } from "./custom-provider";
+import { DEEPSEEK_MODELS, OPENAI_CODEX_MODELS } from "@/providers";
+import {
+  KANA_MODEL_PROVIDERS,
+  type KanaDeepSeekModelConfig,
+  type KanaMainAgentModelSelection,
+  type KanaModelProvider,
+  type KanaNotificationBackend,
+  type KanaNotificationConfig,
+  type KanaOpenAICodexModelConfig,
+  type KanaRepeatedToolCallsConfig,
+  type KanaToolApprovalConfig,
+  type KanaToolApprovalMode,
+  type KanaTuiConfig,
+  type ResolvedKanaConfig,
+  type ResolvedKanaMainAgentConfig,
+  type ResolvedKanaMemoryConfig,
+  type ResolvedKanaModelConfig,
+  resolveKanaConfig,
+} from "./config-resolver";
+import { loadKanaCustomProvider, serializeKanaCustomProviderExample } from "./custom-provider";
 import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval-defaults";
 
-export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex", "custom"] as const;
-
-export type KanaModelProvider = (typeof KANA_MODEL_PROVIDERS)[number];
-
-export const KANA_DEEPSEEK_REASONING_EFFORTS = ["none", "low", "high", "max"] as const;
-
-export const KANA_OPENAI_CODEX_REASONING_EFFORTS = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-] as const;
-
-type KanaProviderConfig = {
-  active: KanaModelProvider;
-};
-
-export type KanaDeepSeekModelConfig = {
-  name: string;
-  apiKeyEnv: string;
-  reasoningEffort: DeepSeekReasoningEffort;
-  webSearch: boolean;
-  imageInput?: boolean;
-  maxTokens: number;
-  timeoutMs: number;
-  maxRetries: number;
-};
-
-export type KanaOpenAICodexModelConfig = {
-  name: string;
-  reasoningEffort: OpenAICodexReasoningEffort;
-  reasoningSummary: OpenAICodexReasoningSummary;
-  webSearch: boolean;
-  imageInput?: boolean;
-  maxTokens: number;
-  timeoutMs: number;
-  maxRetries: number;
-};
-
-type KanaCustomModelConfig = {
-  name: string;
-  reasoningEffort?: string;
-};
-
-export type KanaModelConfigMap = {
-  deepseek: KanaDeepSeekModelConfig;
-  "openai-codex": KanaOpenAICodexModelConfig;
-  custom: KanaCustomModelConfig;
-};
-
-export type KanaRepeatedToolCallsConfig = {
-  reminderThresholds: number[];
-  excludedTools: string[];
-};
-
-type KanaBackgroundJobsConfig = {
-  maxConcurrent: number;
-};
-
-type KanaAgentConfig = {
-  maxTurns: number;
-  goalMaxRounds: number;
-  toolDeadlineMs: number;
-  parallelToolCalls: boolean;
-  maxParallelToolCalls: number;
-  contextLimit?: number;
-  toolResultArtifacts: boolean;
-  backgroundJobs: KanaBackgroundJobsConfig;
-  repeatedToolCalls: KanaRepeatedToolCallsConfig;
-};
-
-const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;
-
-export type KanaToolApprovalMode = (typeof KANA_TOOL_APPROVAL_MODES)[number];
-
-export type KanaToolApprovalConfig = {
-  mode: KanaToolApprovalMode;
-};
-
-const KANA_NOTIFICATION_BACKENDS = ["auto", "off", "bell", "osc9", "osc777", "kitty"] as const;
-
-export type KanaNotificationBackend = (typeof KANA_NOTIFICATION_BACKENDS)[number];
-
-export type KanaNotificationConfig = {
-  backend: KanaNotificationBackend;
-  onAgentCompleted: boolean;
-  onApprovalRequired: boolean;
-};
-
-export type KanaTuiConfig = {
-  hyperlinks: boolean;
-  renderLatex: boolean;
-  renderMermaid?: boolean;
-  smoothTextStreaming: boolean;
-  collapseLongPastes: boolean;
-};
-
-type KanaMemoryConfig = {
-  enabled: boolean;
-  maxChars: number;
-  dailyRetentionDays?: number;
-};
-
-const KANA_LOG_LEVELS = LOG_LEVELS;
-
-type KanaLogLevel = LogLevel;
-
-type KanaLoggingConfig = {
-  level: KanaLogLevel;
-};
-
-export type KanaConfig = {
-  provider: KanaProviderConfig;
-  model: KanaModelConfigMap;
-  agent: KanaAgentConfig;
-  approval: KanaToolApprovalConfig;
-  notification: KanaNotificationConfig;
-  tui: KanaTuiConfig;
-  memory: KanaMemoryConfig;
-  logging: KanaLoggingConfig;
+export { KANA_MODEL_PROVIDERS };
+export type {
+  KanaMainAgentModelSelection,
+  KanaModelProvider,
+  KanaNotificationBackend,
+  KanaNotificationConfig,
+  KanaRepeatedToolCallsConfig,
+  KanaToolApprovalConfig,
+  KanaToolApprovalMode,
+  KanaTuiConfig,
+  ResolvedKanaConfig,
+  ResolvedKanaMainAgentConfig,
+  ResolvedKanaMemoryConfig,
+  ResolvedKanaModelConfig,
 };
 
 export type KanaConfigPaths = {
@@ -182,79 +86,6 @@ export type ResetKanaConfigResult = {
   skillsConfigPath: string;
 };
 
-export const DEFAULT_KANA_CONFIG: KanaConfig = {
-  provider: {
-    active: "deepseek",
-  },
-  model: {
-    deepseek: {
-      name: "deepseek-v4-pro",
-      apiKeyEnv: "DEEPSEEK_API_KEY",
-      reasoningEffort: "high",
-      webSearch: true,
-      imageInput: true,
-      maxTokens: 384_000,
-      timeoutMs: 60_000,
-      maxRetries: 1,
-    },
-    "openai-codex": {
-      name: "gpt-5.6-sol",
-      reasoningEffort: "medium",
-      reasoningSummary: "auto",
-      webSearch: true,
-      imageInput: true,
-      maxTokens: 128_000,
-      timeoutMs: 60_000,
-      maxRetries: 1,
-    },
-    custom: {
-      name: "",
-      reasoningEffort: undefined,
-    },
-  },
-  agent: {
-    maxTurns: -1,
-    goalMaxRounds: DEFAULT_KANA_GOAL_MAX_ROUNDS,
-    // Keep the outer tool deadline above bash's ten-minute command ceiling so
-    // bash can terminate the process tree and report its own timeout result.
-    toolDeadlineMs: 11 * 60 * 1000,
-    parallelToolCalls: true,
-    maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
-    contextLimit: undefined,
-    toolResultArtifacts: true,
-    backgroundJobs: {
-      maxConcurrent: 4,
-    },
-    repeatedToolCalls: {
-      reminderThresholds: [3, 5, 8],
-      excludedTools: [],
-    },
-  },
-  approval: {
-    mode: "unless_trusted",
-  },
-  notification: {
-    backend: "auto",
-    onAgentCompleted: true,
-    onApprovalRequired: true,
-  },
-  tui: {
-    hyperlinks: true,
-    renderLatex: true,
-    renderMermaid: true,
-    smoothTextStreaming: true,
-    collapseLongPastes: true,
-  },
-  memory: {
-    enabled: true,
-    maxChars: 6000,
-    dailyRetentionDays: undefined,
-  },
-  logging: {
-    level: "info",
-  },
-};
-
 export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaConfigPaths {
   const home = env.KANA_HOME ?? path.join(env.HOME ?? homedir(), ".kana");
 
@@ -278,15 +109,26 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
   };
 }
 
-export function loadKanaConfig(env: NodeJS.ProcessEnv = process.env): KanaConfig {
-  const { configPath } = getKanaConfigPaths(env);
+export function parseKanaConfig(
+  rawConfig: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): ResolvedKanaConfig {
+  const { customProviderPath } = getKanaConfigPaths(env);
+  return resolveKanaConfig(rawConfig, {
+    customProviderPath,
+    loadCustomProvider: () => loadKanaCustomProvider(customProviderPath),
+  });
+}
 
+export const DEFAULT_KANA_CONFIG: ResolvedKanaConfig = parseKanaConfig({});
+
+export function loadKanaConfig(env: NodeJS.ProcessEnv = process.env): ResolvedKanaConfig {
+  const { configPath } = getKanaConfigPaths(env);
   if (!existsSync(configPath)) {
     return structuredClone(DEFAULT_KANA_CONFIG);
   }
 
-  const parsed = Bun.TOML.parse(readFileSync(configPath, "utf8")) as unknown;
-  return parseKanaConfig(parsed);
+  return parseKanaConfig(Bun.TOML.parse(readFileSync(configPath, "utf8")) as unknown, env);
 }
 
 export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): InstallKanaConfigResult {
@@ -304,11 +146,9 @@ export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): Install
   mkdirSync(home, { recursive: true });
   mkdirSync(providersDirectory, { recursive: true });
 
-  const configExists = existsSync(configPath);
-
   return {
     configPath,
-    configStatus: configExists ? "exists" : "defaults",
+    configStatus: existsSync(configPath) ? "exists" : "defaults",
     configExamplePath,
     configExampleStatus: writeGeneratedConfigExample(configExamplePath),
     mcpConfigPath,
@@ -339,9 +179,6 @@ export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): Install
 export function resetKanaConfig(env: NodeJS.ProcessEnv = process.env): ResetKanaConfigResult {
   const paths = getKanaConfigPaths(env);
   mkdirSync(paths.home, { recursive: true });
-
-  // Reset touches only the explicit configuration allowlist. User data,
-  // credentials, logs, AGENTS.md, and installed Skill directories stay intact.
   const configRemoved = existsSync(paths.configPath);
   rmSync(paths.configPath, { force: true });
   writeGeneratedConfigExample(paths.configExamplePath);
@@ -361,125 +198,79 @@ export function resetKanaConfig(env: NodeJS.ProcessEnv = process.env): ResetKana
   };
 }
 
-export function parseKanaConfig(rawConfig: unknown): KanaConfig {
-  return mergeKanaConfig(DEFAULT_KANA_CONFIG, rawConfig);
-}
-
-export function validateKanaConfig(config: KanaConfig): KanaConfig {
-  return parseKanaConfig({
-    provider: {
-      active: config.provider.active,
-    },
-    model: {
-      deepseek: {
-        name: config.model.deepseek.name,
-        api_key_env: config.model.deepseek.apiKeyEnv,
-        reasoning_effort: config.model.deepseek.reasoningEffort,
-        web_search: config.model.deepseek.webSearch,
-        image_input: config.model.deepseek.imageInput,
-        max_tokens: config.model.deepseek.maxTokens,
-        timeout_ms: config.model.deepseek.timeoutMs,
-        max_retries: config.model.deepseek.maxRetries,
-      },
-      "openai-codex": {
-        name: config.model["openai-codex"].name,
-        reasoning_effort: config.model["openai-codex"].reasoningEffort,
-        reasoning_summary: config.model["openai-codex"].reasoningSummary,
-        web_search: config.model["openai-codex"].webSearch,
-        image_input: config.model["openai-codex"].imageInput,
-        max_tokens: config.model["openai-codex"].maxTokens,
-        timeout_ms: config.model["openai-codex"].timeoutMs,
-        max_retries: config.model["openai-codex"].maxRetries,
-      },
-      custom: {
-        name: config.model.custom.name || undefined,
-        reasoning_effort: config.model.custom.reasoningEffort,
-      },
-    },
-    agent: {
-      max_turns: config.agent.maxTurns,
-      goal_max_rounds: config.agent.goalMaxRounds,
-      tool_deadline_ms: config.agent.toolDeadlineMs,
-      parallel_tool_calls: config.agent.parallelToolCalls,
-      max_parallel_tool_calls: config.agent.maxParallelToolCalls,
-      context_limit: config.agent.contextLimit,
-      tool_result_artifacts: config.agent.toolResultArtifacts,
-      background_jobs: {
-        max_concurrent: config.agent.backgroundJobs.maxConcurrent,
-      },
-      repeated_tool_calls: {
-        reminder_thresholds: config.agent.repeatedToolCalls.reminderThresholds,
-        excluded_tools: config.agent.repeatedToolCalls.excludedTools,
-      },
-    },
-    approval: {
-      mode: config.approval.mode,
-    },
-    notification: {
-      backend: config.notification.backend,
-      on_agent_completed: config.notification.onAgentCompleted,
-      on_approval_required: config.notification.onApprovalRequired,
-    },
-    tui: {
-      hyperlinks: config.tui.hyperlinks,
-      render_latex: config.tui.renderLatex,
-      render_mermaid: config.tui.renderMermaid,
-      smooth_text_streaming: config.tui.smoothTextStreaming,
-      collapse_long_pastes: config.tui.collapseLongPastes,
-    },
-    memory: {
-      enabled: config.memory.enabled,
-      max_chars: config.memory.maxChars,
-      daily_retention_days: config.memory.dailyRetentionDays,
-    },
-    logging: {
-      level: config.logging.level,
-    },
-  });
-}
-
-function serializeKanaConfigExample(config: KanaConfig): string {
-  return [
+function serializeKanaConfigExample(config: ResolvedKanaConfig): string {
+  const lines = [
     "# Generated configuration reference. Kana does not read this file.",
     "# Copy only the settings you want to override into config.toml.",
     "",
-    "[provider]",
-    `active = "${config.provider.active}"`,
+    "[provider.deepseek]",
+    `api_key_env = ${JSON.stringify(config.provider.deepseek.apiKeyEnv)}`,
+    `timeout_ms = ${config.provider.deepseek.timeoutMs}`,
+    `max_retries = ${config.provider.deepseek.maxRetries}`,
     "",
-    "[model.deepseek]",
-    `name = "${config.model.deepseek.name}"`,
-    ...serializeDeepSeekModel(config.model.deepseek),
+    "[provider.openai-codex]",
+    `timeout_ms = ${config.provider["openai-codex"].timeoutMs}`,
+    `max_retries = ${config.provider["openai-codex"].maxRetries}`,
     "",
-    "[model.openai-codex]",
-    `name = "${config.model["openai-codex"].name}"`,
-    ...serializeOpenAICodexModel(config.model["openai-codex"]),
-    "",
-    "# Custom model definitions live in providers/custom.toml.",
-    "# [model.custom]",
-    '# name = "my-model"',
-    '# reasoning_effort = "medium"',
+  ];
+
+  for (const name of Object.keys(DEEPSEEK_MODELS)) {
+    const model = config.model.deepseek[name];
+    if (!model) continue;
+    lines.push(`[model.deepseek.${JSON.stringify(name)}]`, ...serializeDeepSeekModel(model), "");
+  }
+  for (const name of Object.keys(OPENAI_CODEX_MODELS)) {
+    const model = config.model["openai-codex"][name];
+    if (!model) continue;
+    lines.push(
+      `[model.openai-codex.${JSON.stringify(name)}]`,
+      ...serializeOpenAICodexModel(model),
+      "",
+    );
+  }
+
+  lines.push(
+    "# Custom provider transport, model metadata, and defaults live in providers/custom.toml.",
     "",
     "[agent]",
+    `provider = ${JSON.stringify(config.agent.model.provider)}`,
+    `model = ${JSON.stringify(config.agent.model.model)}`,
     `max_turns = ${config.agent.maxTurns}`,
-    `goal_max_rounds = ${config.agent.goalMaxRounds}`,
     `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
     `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
     `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
     `tool_result_artifacts = ${config.agent.toolResultArtifacts}`,
-    "# context_limit = 200000",
-    "",
-    "[agent.background_jobs]",
-    `max_concurrent = ${config.agent.backgroundJobs.maxConcurrent}`,
+    '# reasoning_effort = "max"',
+    "# web_search = false",
     "",
     "[agent.repeated_tool_calls]",
     `reminder_thresholds = ${JSON.stringify(config.agent.repeatedToolCalls.reminderThresholds)}`,
     `excluded_tools = ${JSON.stringify(config.agent.repeatedToolCalls.excludedTools)}`,
     "",
+    "[memory]",
+    `enabled = ${config.memory.enabled}`,
+    `max_chars = ${config.memory.maxChars}`,
+    "# daily_retention_days = 30",
+    "",
+    "[memory.agent]",
+    `provider = ${JSON.stringify(config.memory.agent.model.provider)}`,
+    `model = ${JSON.stringify(config.memory.agent.model.model)}`,
+    `max_turns = ${config.memory.agent.maxTurns}`,
+    `tool_deadline_ms = ${config.memory.agent.toolDeadlineMs}`,
+    `parallel_tool_calls = ${config.memory.agent.parallelToolCalls}`,
+    `max_parallel_tool_calls = ${config.memory.agent.maxParallelToolCalls}`,
+    "",
+    "[goal]",
+    `max_rounds = ${config.goal.maxRounds}`,
+    "",
+    "[background_jobs]",
+    `max_concurrent = ${config.backgroundJobs.maxConcurrent}`,
+    "",
     "[approval]",
-    `mode = "${config.approval.mode}"`,
+    `mode = ${JSON.stringify(config.approval.mode)}`,
     "",
     "[notification]",
-    `backend = "${config.notification.backend}"`,
+    `backend = ${JSON.stringify(config.notification.backend)}`,
     `on_agent_completed = ${config.notification.onAgentCompleted}`,
     `on_approval_required = ${config.notification.onApprovalRequired}`,
     "",
@@ -490,22 +281,37 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `smooth_text_streaming = ${config.tui.smoothTextStreaming}`,
     `collapse_long_pastes = ${config.tui.collapseLongPastes}`,
     "",
-    "[memory]",
-    `enabled = ${config.memory.enabled}`,
-    `max_chars = ${config.memory.maxChars}`,
-    "# daily_retention_days = 30",
-    "",
     "[logging]",
-    `level = "${config.logging.level}"`,
+    `level = ${JSON.stringify(config.logging.level)}`,
     "",
-  ].join("\n");
+  );
+
+  return lines.join("\n");
+}
+
+function serializeDeepSeekModel(config: KanaDeepSeekModelConfig): string[] {
+  return [
+    `reasoning_effort = ${JSON.stringify(config.reasoningEffort)}`,
+    `web_search = ${config.webSearch}`,
+    `image_input = ${config.imageInput}`,
+    `max_output_tokens = ${config.maxOutputTokens}`,
+    `# context_limit = ${config.contextLimit}`,
+  ];
+}
+
+function serializeOpenAICodexModel(config: KanaOpenAICodexModelConfig): string[] {
+  return [
+    `reasoning_effort = ${JSON.stringify(config.reasoningEffort)}`,
+    `reasoning_summary = ${JSON.stringify(config.reasoningSummary)}`,
+    `web_search = ${config.webSearch}`,
+    `image_input = ${config.imageInput}`,
+    `max_output_tokens = ${config.maxOutputTokens}`,
+    `# context_limit = ${config.contextLimit}`,
+  ];
 }
 
 function installKanaFile(filePath: string, content: string): "created" | "exists" {
-  if (existsSync(filePath)) {
-    return "exists";
-  }
-
+  if (existsSync(filePath)) return "exists";
   writeKanaFile(filePath, content);
   return "created";
 }
@@ -513,8 +319,7 @@ function installKanaFile(filePath: string, content: string): "created" | "exists
 function writeGeneratedConfigExample(
   configExamplePath: string,
 ): InstallKanaConfigResult["configExampleStatus"] {
-  const content = serializeKanaConfigExample(DEFAULT_KANA_CONFIG);
-  return writeGeneratedExample(configExamplePath, content);
+  return writeGeneratedExample(configExamplePath, serializeKanaConfigExample(DEFAULT_KANA_CONFIG));
 }
 
 function writeGeneratedExample(
@@ -525,12 +330,7 @@ function writeGeneratedExample(
     writeKanaFile(filePath, content);
     return "created";
   }
-  if (readFileSync(filePath, "utf8") === content) {
-    return "exists";
-  }
-
-  // The example is generated reference material rather than user configuration,
-  // so refreshing it is safe and keeps upgrades aligned with the current schema.
+  if (readFileSync(filePath, "utf8") === content) return "exists";
   writeKanaFile(filePath, content);
   return "updated";
 }
@@ -542,528 +342,4 @@ function writeKanaFile(filePath: string, content: string): void {
 
 function serializeEmptySkillsConfig(): string {
   return ["[model_invocation]", "enabled = []", ""].join("\n");
-}
-
-function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
-  const raw = asRecord(rawConfig, "config");
-  const provider = raw.provider === undefined ? {} : asRecord(raw.provider, "provider");
-  const model = raw.model === undefined ? {} : asRecord(raw.model, "model");
-  const legacyModel = isLegacyModelConfig(model) ? model : undefined;
-  const activeProvider = readModelProvider(
-    provider.active ?? legacyModel?.provider,
-    defaults.provider.active,
-  );
-  const deepSeekModel =
-    legacyModel?.provider === undefined || legacyModel.provider === "deepseek"
-      ? (legacyModel ?? readModelTable(model, "deepseek"))
-      : readModelTable(model, "deepseek");
-  const openAICodexModel = readModelTable(model, "openai-codex");
-  const customModel = readModelTable(model, "custom");
-  const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
-  const backgroundJobs =
-    agent.background_jobs === undefined
-      ? {}
-      : asRecord(agent.background_jobs, "agent.background_jobs");
-  const repeatedToolCalls =
-    agent.repeated_tool_calls === undefined
-      ? {}
-      : asRecord(agent.repeated_tool_calls, "agent.repeated_tool_calls");
-  const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
-  const notification =
-    raw.notification === undefined ? {} : asRecord(raw.notification, "notification");
-  const tui = raw.tui === undefined ? {} : asRecord(raw.tui, "tui");
-  const memory = raw.memory === undefined ? {} : asRecord(raw.memory, "memory");
-  const logging = raw.logging === undefined ? {} : asRecord(raw.logging, "logging");
-  const customModelName = readOptionalString(
-    customModel.name,
-    defaults.model.custom.name,
-    "model.custom.name",
-  );
-  if (activeProvider === "custom" && !customModelName) {
-    throw new Error("model.custom.name is required when provider.active is custom.");
-  }
-
-  return {
-    provider: {
-      active: activeProvider,
-    },
-    model: {
-      deepseek: {
-        name: readString(deepSeekModel.name, defaults.model.deepseek.name, "model.deepseek.name"),
-        apiKeyEnv: readString(
-          deepSeekModel.api_key_env,
-          defaults.model.deepseek.apiKeyEnv,
-          "model.deepseek.api_key_env",
-        ),
-        reasoningEffort: readDeepSeekReasoningEffort(
-          deepSeekModel.reasoning_effort,
-          defaults.model.deepseek.reasoningEffort,
-        ),
-        webSearch: readBoolean(
-          deepSeekModel.web_search,
-          defaults.model.deepseek.webSearch,
-          "model.deepseek.web_search",
-        ),
-        imageInput: readBoolean(
-          deepSeekModel.image_input,
-          defaults.model.deepseek.imageInput ?? true,
-          "model.deepseek.image_input",
-        ),
-        maxTokens: readPositiveInteger(
-          deepSeekModel.max_tokens,
-          defaults.model.deepseek.maxTokens,
-          "model.deepseek.max_tokens",
-        ),
-        timeoutMs: readNumber(
-          deepSeekModel.timeout_ms,
-          defaults.model.deepseek.timeoutMs,
-          "model.deepseek.timeout_ms",
-        ),
-        maxRetries: readNumber(
-          deepSeekModel.max_retries,
-          defaults.model.deepseek.maxRetries,
-          "model.deepseek.max_retries",
-        ),
-      },
-      "openai-codex": {
-        name: readString(
-          openAICodexModel.name,
-          defaults.model["openai-codex"].name,
-          "model.openai-codex.name",
-        ),
-        reasoningEffort: readOpenAICodexReasoningEffort(
-          openAICodexModel.reasoning_effort,
-          defaults.model["openai-codex"].reasoningEffort,
-        ),
-        reasoningSummary: readOpenAICodexReasoningSummary(
-          openAICodexModel.reasoning_summary,
-          defaults.model["openai-codex"].reasoningSummary,
-        ),
-        webSearch: readBoolean(
-          openAICodexModel.web_search,
-          defaults.model["openai-codex"].webSearch,
-          "model.openai-codex.web_search",
-        ),
-        imageInput: readBoolean(
-          openAICodexModel.image_input,
-          defaults.model["openai-codex"].imageInput ?? true,
-          "model.openai-codex.image_input",
-        ),
-        maxTokens: readPositiveInteger(
-          openAICodexModel.max_tokens,
-          defaults.model["openai-codex"].maxTokens,
-          "model.openai-codex.max_tokens",
-        ),
-        timeoutMs: readNumber(
-          openAICodexModel.timeout_ms,
-          defaults.model["openai-codex"].timeoutMs,
-          "model.openai-codex.timeout_ms",
-        ),
-        maxRetries: readNumber(
-          openAICodexModel.max_retries,
-          defaults.model["openai-codex"].maxRetries,
-          "model.openai-codex.max_retries",
-        ),
-      },
-      custom: {
-        name: customModelName ?? "",
-        reasoningEffort: readOptionalString(
-          customModel.reasoning_effort,
-          defaults.model.custom.reasoningEffort,
-          "model.custom.reasoning_effort",
-        ),
-      },
-    },
-    agent: {
-      maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
-      goalMaxRounds: readPositiveInteger(
-        agent.goal_max_rounds,
-        defaults.agent.goalMaxRounds,
-        "agent.goal_max_rounds",
-      ),
-      toolDeadlineMs: readPositiveInteger(
-        agent.tool_deadline_ms,
-        defaults.agent.toolDeadlineMs,
-        "agent.tool_deadline_ms",
-      ),
-      parallelToolCalls: readBoolean(
-        agent.parallel_tool_calls,
-        defaults.agent.parallelToolCalls,
-        "agent.parallel_tool_calls",
-      ),
-      maxParallelToolCalls: readPositiveInteger(
-        agent.max_parallel_tool_calls,
-        defaults.agent.maxParallelToolCalls,
-        "agent.max_parallel_tool_calls",
-      ),
-      contextLimit: readOptionalPositiveInteger(
-        agent.context_limit,
-        defaults.agent.contextLimit,
-        "agent.context_limit",
-      ),
-      toolResultArtifacts: readBoolean(
-        agent.tool_result_artifacts,
-        defaults.agent.toolResultArtifacts,
-        "agent.tool_result_artifacts",
-      ),
-      backgroundJobs: {
-        maxConcurrent: readPositiveInteger(
-          backgroundJobs.max_concurrent,
-          defaults.agent.backgroundJobs.maxConcurrent,
-          "agent.background_jobs.max_concurrent",
-        ),
-      },
-      repeatedToolCalls: {
-        reminderThresholds: readReminderThresholds(
-          repeatedToolCalls.reminder_thresholds,
-          defaults.agent.repeatedToolCalls.reminderThresholds,
-          "agent.repeated_tool_calls.reminder_thresholds",
-        ),
-        excludedTools: readExcludedToolNames(
-          repeatedToolCalls.excluded_tools,
-          defaults.agent.repeatedToolCalls.excludedTools,
-          "agent.repeated_tool_calls.excluded_tools",
-        ),
-      },
-    },
-    approval: {
-      mode: readToolApprovalMode(approval.mode, defaults.approval.mode),
-    },
-    notification: {
-      backend: readNotificationBackend(notification.backend, defaults.notification.backend),
-      onAgentCompleted: readBoolean(
-        notification.on_agent_completed,
-        defaults.notification.onAgentCompleted,
-        "notification.on_agent_completed",
-      ),
-      onApprovalRequired: readBoolean(
-        notification.on_approval_required,
-        defaults.notification.onApprovalRequired,
-        "notification.on_approval_required",
-      ),
-    },
-    tui: {
-      hyperlinks: readBoolean(tui.hyperlinks, defaults.tui.hyperlinks, "tui.hyperlinks"),
-      renderLatex: readBoolean(tui.render_latex, defaults.tui.renderLatex, "tui.render_latex"),
-      renderMermaid: readBoolean(
-        tui.render_mermaid,
-        defaults.tui.renderMermaid ?? true,
-        "tui.render_mermaid",
-      ),
-      smoothTextStreaming: readBoolean(
-        tui.smooth_text_streaming,
-        defaults.tui.smoothTextStreaming,
-        "tui.smooth_text_streaming",
-      ),
-      collapseLongPastes: readBoolean(
-        tui.collapse_long_pastes,
-        defaults.tui.collapseLongPastes,
-        "tui.collapse_long_pastes",
-      ),
-    },
-    memory: {
-      enabled: readBoolean(memory.enabled, defaults.memory.enabled, "memory.enabled"),
-      maxChars: readPositiveInteger(memory.max_chars, defaults.memory.maxChars, "memory.max_chars"),
-      dailyRetentionDays: readOptionalPositiveInteger(
-        memory.daily_retention_days,
-        defaults.memory.dailyRetentionDays,
-        "memory.daily_retention_days",
-      ),
-    },
-    logging: {
-      level: readLogLevel(logging.level, defaults.logging.level),
-    },
-  };
-}
-
-export function getActiveKanaModelConfig<TProvider extends KanaModelProvider>(
-  config: KanaConfig & { provider: { active: TProvider } },
-): KanaModelConfigMap[TProvider] {
-  return config.model[config.provider.active];
-}
-
-function serializeDeepSeekModel(config: KanaDeepSeekModelConfig): string[] {
-  return [
-    `api_key_env = "${config.apiKeyEnv}"`,
-    `reasoning_effort = "${config.reasoningEffort}"`,
-    `web_search = ${config.webSearch}`,
-    `image_input = ${config.imageInput ?? false}`,
-    `max_tokens = ${config.maxTokens}`,
-    `timeout_ms = ${config.timeoutMs}`,
-    `max_retries = ${config.maxRetries}`,
-  ];
-}
-
-function serializeOpenAICodexModel(config: KanaOpenAICodexModelConfig): string[] {
-  return [
-    `reasoning_effort = "${config.reasoningEffort}"`,
-    `reasoning_summary = "${config.reasoningSummary}"`,
-    `web_search = ${config.webSearch}`,
-    `image_input = ${config.imageInput ?? true}`,
-    `max_tokens = ${config.maxTokens}`,
-    `timeout_ms = ${config.timeoutMs}`,
-    `max_retries = ${config.maxRetries}`,
-  ];
-}
-
-function isLegacyModelConfig(model: Record<string, unknown>): boolean {
-  return (
-    model.provider !== undefined ||
-    model.name !== undefined ||
-    model.api_key_env !== undefined ||
-    model.web_search !== undefined ||
-    model.image_input !== undefined ||
-    model.max_tokens !== undefined
-  );
-}
-
-function readModelTable(
-  model: Record<string, unknown>,
-  provider: KanaModelProvider,
-): Record<string, unknown> {
-  const value = model[provider];
-  return value === undefined ? {} : asRecord(value, `model.${provider}`);
-}
-
-function asRecord(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${name} must be a TOML table.`);
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function readString(value: unknown, fallback: string, name: string): string {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${name} must be a non-empty string.`);
-  }
-
-  return value;
-}
-
-function readOptionalString(
-  value: unknown,
-  fallback: string | undefined,
-  name: string,
-): string | undefined {
-  if (value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${name} must be a non-empty string.`);
-  }
-  return value;
-}
-
-function readBoolean(value: unknown, fallback: boolean, name: string): boolean {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "boolean") {
-    throw new Error(`${name} must be a boolean.`);
-  }
-
-  return value;
-}
-
-function readNumber(value: unknown, fallback: number, name: string): number {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${name} must be a finite number.`);
-  }
-
-  return value;
-}
-
-function readPositiveInteger(value: unknown, fallback: number, name: string): number {
-  const number = readNumber(value, fallback, name);
-
-  if (!Number.isInteger(number) || number <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-
-  return number;
-}
-
-function readAgentMaxTurns(value: unknown, fallback: number, name: string): number {
-  const number = readNumber(value, fallback, name);
-
-  if (number !== -1 && (!Number.isInteger(number) || number <= 0)) {
-    throw new Error(`${name} must be -1 or a positive integer.`);
-  }
-
-  return number;
-}
-
-function readOptionalPositiveInteger(
-  value: unknown,
-  fallback: number | undefined,
-  name: string,
-): number | undefined {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-
-  return value;
-}
-
-function readReminderThresholds(
-  value: unknown,
-  fallback: readonly number[],
-  name: string,
-): number[] {
-  if (value === undefined) {
-    return [...fallback];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error(`${name} must be an array.`);
-  }
-
-  let previous = 1;
-  const thresholds: number[] = [];
-  for (const threshold of value) {
-    if (
-      typeof threshold !== "number" ||
-      !Number.isInteger(threshold) ||
-      threshold < 2 ||
-      threshold <= previous
-    ) {
-      throw new Error(
-        `${name} must contain strictly increasing integers greater than or equal to 2.`,
-      );
-    }
-    thresholds.push(threshold);
-    previous = threshold;
-  }
-  return thresholds;
-}
-
-function readExcludedToolNames(
-  value: unknown,
-  fallback: readonly string[],
-  name: string,
-): string[] {
-  if (value === undefined) {
-    return [...fallback];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error(`${name} must be an array.`);
-  }
-
-  const names = new Set<string>();
-  for (const toolName of value) {
-    if (typeof toolName !== "string" || toolName.length === 0 || toolName !== toolName.trim()) {
-      throw new Error(`${name} must contain non-empty trimmed tool names.`);
-    }
-    if (names.has(toolName)) {
-      throw new Error(`${name} must not contain duplicate tool names.`);
-    }
-    names.add(toolName);
-  }
-  return [...names];
-}
-
-function readModelProvider(value: unknown, fallback: KanaModelProvider): KanaModelProvider {
-  const provider = readString(value, fallback, "provider.active");
-
-  if (!(KANA_MODEL_PROVIDERS as readonly string[]).includes(provider)) {
-    throw new Error(`provider.active must be one of: ${KANA_MODEL_PROVIDERS.join(", ")}.`);
-  }
-
-  return provider as KanaModelProvider;
-}
-
-function readDeepSeekReasoningEffort(
-  value: unknown,
-  fallback: DeepSeekReasoningEffort,
-): DeepSeekReasoningEffort {
-  const effort = readString(value, fallback, "model.deepseek.reasoning_effort");
-
-  if (!(KANA_DEEPSEEK_REASONING_EFFORTS as readonly string[]).includes(effort)) {
-    throw new Error(
-      `model.deepseek.reasoning_effort must be one of: ${KANA_DEEPSEEK_REASONING_EFFORTS.join(", ")}.`,
-    );
-  }
-
-  return effort as DeepSeekReasoningEffort;
-}
-
-function readOpenAICodexReasoningEffort(
-  value: unknown,
-  fallback: OpenAICodexReasoningEffort,
-): OpenAICodexReasoningEffort {
-  const effort = readString(value, fallback, "model.openai-codex.reasoning_effort");
-  if (!(KANA_OPENAI_CODEX_REASONING_EFFORTS as readonly string[]).includes(effort)) {
-    throw new Error(
-      `model.openai-codex.reasoning_effort must be one of: ${KANA_OPENAI_CODEX_REASONING_EFFORTS.join(", ")}.`,
-    );
-  }
-
-  return effort as OpenAICodexReasoningEffort;
-}
-
-function readOpenAICodexReasoningSummary(
-  value: unknown,
-  fallback: OpenAICodexReasoningSummary,
-): OpenAICodexReasoningSummary {
-  const summary = readString(value, fallback, "model.openai-codex.reasoning_summary");
-  const summaries = ["auto", "concise", "detailed"] as const;
-
-  if (!(summaries as readonly string[]).includes(summary)) {
-    throw new Error(
-      `model.openai-codex.reasoning_summary must be one of: ${summaries.join(", ")}.`,
-    );
-  }
-
-  return summary as OpenAICodexReasoningSummary;
-}
-
-function readToolApprovalMode(
-  value: unknown,
-  fallback: KanaToolApprovalMode,
-): KanaToolApprovalMode {
-  const mode = readString(value, fallback, "approval.mode");
-
-  if (!(KANA_TOOL_APPROVAL_MODES as readonly string[]).includes(mode)) {
-    throw new Error(`approval.mode must be one of: ${KANA_TOOL_APPROVAL_MODES.join(", ")}.`);
-  }
-
-  return mode as KanaToolApprovalMode;
-}
-
-function readNotificationBackend(
-  value: unknown,
-  fallback: KanaNotificationBackend,
-): KanaNotificationBackend {
-  const backend = readString(value, fallback, "notification.backend");
-
-  if (!(KANA_NOTIFICATION_BACKENDS as readonly string[]).includes(backend)) {
-    throw new Error(
-      `notification.backend must be one of: ${KANA_NOTIFICATION_BACKENDS.join(", ")}.`,
-    );
-  }
-
-  return backend as KanaNotificationBackend;
-}
-
-function readLogLevel(value: unknown, fallback: KanaLogLevel): KanaLogLevel {
-  const level = readString(value, fallback, "logging.level");
-
-  if (!(KANA_LOG_LEVELS as readonly string[]).includes(level)) {
-    throw new Error(`logging.level must be one of: ${KANA_LOG_LEVELS.join(", ")}.`);
-  }
-
-  return level as KanaLogLevel;
 }

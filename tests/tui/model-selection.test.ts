@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_KANA_CONFIG, getKanaModelManagement } from "@/kana";
 import type { Message } from "../../src/core";
 import { KanaTuiApp } from "../../src/tui/app/app";
-import { applyTuiModelSelection, type TuiModelSelection } from "../../src/tui/app/model-selection";
+import {
+  resolveTuiModelSelection,
+  type TuiModelSelection,
+} from "../../src/tui/app/model-selection";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Terminal } from "../../src/tui/runtime";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
@@ -12,22 +15,18 @@ type AgentFactory = ConstructorParameters<typeof KanaTuiApp>[0];
 type AgentFactoryOptions = Parameters<AgentFactory>[0];
 
 describe("TUI model selection", () => {
-  test("applies a selection only to the active provider fields", () => {
-    const config = structuredClone(DEFAULT_KANA_CONFIG);
-    const deepSeekBefore = structuredClone(config.model.deepseek);
-
-    applyTuiModelSelection(config, {
+  test("passes only the selected main Agent model to the product layer", () => {
+    expect(
+      resolveTuiModelSelection({
+        provider: "openai-codex",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "max",
+      }),
+    ).toEqual({
       provider: "openai-codex",
       model: "gpt-5.6-luna",
       reasoningEffort: "max",
     });
-
-    expect(config.provider.active).toBe("openai-codex");
-    expect(config.model["openai-codex"]).toMatchObject({
-      name: "gpt-5.6-luna",
-      reasoningEffort: "max",
-    });
-    expect(config.model.deepseek).toEqual(deepSeekBefore);
   });
 
   test("offers provider-specific reasoning efforts", () => {

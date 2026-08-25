@@ -17,7 +17,7 @@ describe("memory consolidation scheduler", () => {
       warn: (event) => events.push(event),
       error: (event) => events.push(event),
     };
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, { logger });
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG.memory, { logger });
 
     await scheduler.schedule([
       {
@@ -35,7 +35,7 @@ describe("memory consolidation scheduler", () => {
 
   test("groups successful remember entries by scope", async () => {
     const calls: Array<{ scope: string; entries: string[] }> = [];
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG.memory, {
       runIncremental: async (scope, entries) => {
         calls.push({ scope, entries: entries.map((entry) => entry.id) });
       },
@@ -68,7 +68,7 @@ describe("memory consolidation scheduler", () => {
     const firstRun = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG.memory, {
       runIncremental: async (_scope, entries) => {
         started.push(entries[0].id);
         if (entries[0].id === "mem_first") {
@@ -93,7 +93,7 @@ describe("memory consolidation scheduler", () => {
     const runEvents: string[] = [];
     const scheduledLogger = createLogger(scheduledEvents);
     const laterLogger = createLogger([]);
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG.memory, {
       logger: laterLogger,
       runIncremental: async (_scope, _entries, logger) => {
         logger.info("memory_consolidation.run");
@@ -116,7 +116,7 @@ describe("memory consolidation scheduler", () => {
     const incrementalBlocked = new Promise<void>((resolve) => {
       releaseIncremental = resolve;
     });
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG.memory, {
       queue,
       runIncremental: async () => {
         started.push("incremental");
@@ -146,7 +146,7 @@ describe("memory consolidation scheduler", () => {
     });
     let runSignal: AbortSignal | undefined;
     let runSettled = false;
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG.memory, {
       logger,
       runIncremental: async (_scope, _entries, _logger, signal) => {
         runSignal = signal;

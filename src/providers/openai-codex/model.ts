@@ -58,8 +58,8 @@ export class OpenAICodexModel extends BaseModel {
         model: this.config.model,
       });
       if (
-        this.config.maxTokens !== undefined &&
-        this.config.maxTokens > this.metadata.maxOutputTokens
+        this.config.maxOutputTokens !== undefined &&
+        this.config.maxOutputTokens > this.metadata.maxOutputTokens
       ) {
         throw new Error(
           `OpenAI Codex model "${this.config.model}" supports at most ${this.metadata.maxOutputTokens} output tokens.`,
