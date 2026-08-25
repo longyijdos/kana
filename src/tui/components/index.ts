@@ -1,4 +1,8 @@
 export {
+  BackgroundJobManager,
+  type BackgroundJobManagerAction,
+} from "./background-job-manager";
+export {
   AssistantMessageBlock,
   HostedToolBlock,
   MarkdownBlock,

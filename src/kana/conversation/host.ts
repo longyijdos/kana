@@ -1,5 +1,6 @@
 import type { Agent, ContextCheckpoint } from "@/agent";
 import { addModelUsage, type Message, type ModelUsage } from "@/core";
+import { type BackgroundJobClient, BackgroundJobManager } from "@/jobs";
 import { createNoopLogger, createSessionLogManager, type Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent, McpToolSource } from "@/mcp";
 import type { Tool } from "@/tools";
@@ -105,6 +106,7 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
 type HostedSession = {
   data: LoadKanaSessionResult;
   artifactStore: KanaSessionArtifactStore;
+  backgroundJobs: BackgroundJobClient;
   journal?: KanaSessionJournal;
   logger: Logger;
   persistent: boolean;
@@ -128,6 +130,7 @@ export class KanaConversationHost<TConfiguration = never> {
     configuration: TConfiguration,
   ) => void;
   private readonly logManager;
+  private readonly backgroundJobManager = new BackgroundJobManager();
   private readonly sessions = new Map<string, HostedSession>();
   private readonly memoryConsolidationQueue: MemoryConsolidationQueue;
   private readonly memoryConsolidationSchedulers = new Set<MemoryConsolidationScheduler>();
@@ -207,6 +210,10 @@ export class KanaConversationHost<TConfiguration = never> {
     return this.activeSessionId === undefined
       ? createNoopLogger()
       : (this.sessions.get(this.activeSessionId)?.logger ?? createNoopLogger());
+  }
+
+  getBackgroundJobs(sessionId: string): BackgroundJobClient | undefined {
+    return this.sessions.get(sessionId)?.backgroundJobs;
   }
 
   createAgent(options: KanaConversationHostAgentOptions<TConfiguration>) {
@@ -397,7 +404,10 @@ export class KanaConversationHost<TConfiguration = never> {
     this.memoryConsolidation = undefined;
 
     try {
-      await Promise.all(schedulers.map((scheduler) => scheduler.close()));
+      await Promise.all([
+        ...schedulers.map((scheduler) => scheduler.close()),
+        this.backgroundJobManager.close(),
+      ]);
     } finally {
       this.memoryConsolidationSchedulers.clear();
       await Promise.all(
@@ -575,6 +585,7 @@ export class KanaConversationHost<TConfiguration = never> {
       launchMode: this.launchMode,
       logger: agentLogger,
       artifactStore: hostedSession?.artifactStore,
+      backgroundJobs: hostedSession?.backgroundJobs,
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
       messages: options.messages ?? hostedSession?.data.messages,
       inbox: options.inbox,
@@ -767,6 +778,15 @@ export class KanaConversationHost<TConfiguration = never> {
 
   private registerSession(data: LoadKanaSessionResult): HostedSession {
     const persistent = this.launchMode !== "clean";
+    const logger = persistent
+      ? this.logManager.forSession({
+          path: getKanaSessionLogPath(data.metadata.id, {
+            cwd: data.metadata.cwd,
+            env: this.env,
+          }),
+          sessionId: data.metadata.id,
+        })
+      : createNoopLogger();
     // Temporary sessions keep a normal identity for runtime correlation and
     // scheduled wakes. Their artifact store is lazy, process-scoped temporary
     // storage rather than a resumable session sink.
@@ -779,16 +799,15 @@ export class KanaConversationHost<TConfiguration = never> {
             env: this.env,
           })
         : createTemporaryKanaSessionArtifactStore(),
+      backgroundJobs: this.backgroundJobManager.bind(
+        this.backgroundJobManager.createOwner(data.metadata.id),
+        {
+          maxConcurrent: this.configData.agent.backgroundJobs.maxConcurrent,
+          logger,
+        },
+      ),
       ...(persistent ? { journal: createKanaSessionJournal(data.metadata, data.timeline) } : {}),
-      logger: persistent
-        ? this.logManager.forSession({
-            path: getKanaSessionLogPath(data.metadata.id, {
-              cwd: data.metadata.cwd,
-              env: this.env,
-            }),
-            sessionId: data.metadata.id,
-          })
-        : createNoopLogger(),
+      logger,
       persistent,
     };
     this.sessions.set(hosted.data.metadata.id, hosted);

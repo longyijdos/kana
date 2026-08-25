@@ -82,6 +82,8 @@ function formatUserMessage(message: Extract<Message, { role: "user" }>): string 
       return `Scheduled wake: ${message.content.replace(/^\[Scheduled wake event\]\n?/, "")}`;
     case "goal_continuation":
       return `Goal continuation · round ${message.provenance.round}`;
+    case "job_completion":
+      return message.content.replace(/^\[Background Job completion\]\n?/, "");
     case "recovery":
       return "Previous agent run was interrupted; recorded history was recovered safely.";
     case "user_input":

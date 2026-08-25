@@ -8,6 +8,7 @@ import {
   type ModelMetadata,
   type UserMessage,
 } from "../../../src/core";
+import { BackgroundJobManager } from "../../../src/jobs";
 import {
   ConversationRuntime,
   type ConversationRuntimeEvent,
@@ -162,17 +163,17 @@ describe("ConversationRuntime", () => {
     runtime.reconfigure("alternate-model");
     expect(runtime.state.messages).toEqual([existingMessage]);
 
-    const fork = runtime.forkSession("Continue.");
+    const fork = await runtime.forkSession("Continue.");
     expect(fork.id).toBe("session-fork");
     expect(fork.messages).toEqual([existingMessage]);
     expect(fork.todoState).toEqual(existingTodoState);
     fork.todoState?.splice(0);
     expect(runtime.todoState).toEqual(existingTodoState);
 
-    const resumed = runtime.resumeSession("session-resumed");
+    const resumed = await runtime.resumeSession("session-resumed");
     expect(resumed.messages).toEqual([resumedMessage]);
 
-    const fresh = runtime.startNewSession();
+    const fresh = await runtime.startNewSession();
     expect(fresh).toMatchObject({ id: "session-new", messages: [], timeline: [], todoState: [] });
     expect(creations).toEqual([
       {
@@ -371,6 +372,152 @@ describe("ConversationRuntime", () => {
     expect(sources).toEqual(["user", "user", "scheduled"]);
 
     await runtime.close();
+  });
+
+  test("delivers a Job completion as the next step of an active Agent run", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const completion = deferredJob();
+    const model = new ControlledModel();
+    const sources: string[] = [];
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      getBackgroundJobs: () => jobs,
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    runtime.subscribe((event) => {
+      if (event.type === "run_start") {
+        sources.push(event.source);
+      }
+    });
+    const job = jobs.start({ kind: "test", label: "build", run: () => completion.promise });
+
+    const run = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Start the build.",
+    });
+    await waitFor(() => model.contexts.length === 1);
+    completion.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => runtime.inputQueue.pending.some((input) => input.kind === "job"));
+    expect(runtime.inputQueue.pending).toMatchObject([
+      { kind: "job", jobId: job.id, content: expect.stringContaining("completed") },
+    ]);
+
+    model.finish(0, "Initial turn done.");
+    await waitFor(() => model.contexts.length === 2);
+    expect(model.contexts[1]?.messages.at(-1)).toMatchObject({
+      role: "user",
+      provenance: { kind: "job_completion", jobId: job.id },
+      content: expect.stringContaining("reached completed"),
+    });
+    model.finish(1, "Completion handled.");
+    await run;
+
+    expect(sources).toEqual(["user"]);
+    expect(jobs.context()).toEqual([]);
+    await runtime.close();
+    await manager.close();
+  });
+
+  test("bounds consecutive idle completion wakes until human input resets the counter", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 3 });
+    const completions = [deferredJob(), deferredJob(), deferredJob()];
+    const model = new ControlledModel();
+    const sources: string[] = [];
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      getBackgroundJobs: () => jobs,
+      maxConsecutiveCompletionWakes: 2,
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    runtime.subscribe((event) => {
+      if (event.type === "run_start") {
+        sources.push(event.source);
+      }
+    });
+    const started = completions.map((completion, index) =>
+      jobs.start({ kind: "test", label: `job ${index + 1}`, run: () => completion.promise }),
+    );
+
+    completions[0]?.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => model.contexts.length === 1);
+    model.finish(0, "First completion handled.");
+    await waitFor(() => !runtime.isRunning);
+
+    completions[1]?.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => model.contexts.length === 2);
+    model.finish(1, "Second completion handled.");
+    await waitFor(() => !runtime.isRunning);
+
+    completions[2]?.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => runtime.inputQueue.pending.some((input) => input.kind === "job"));
+    expect(model.contexts).toHaveLength(2);
+    expect(runtime.inputQueue.pending).toMatchObject([{ kind: "job", jobId: started[2]?.id }]);
+
+    const humanInput = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Continue with my new instruction.",
+    };
+    const humanRun = runtime.submit(humanInput);
+    await waitFor(() => model.contexts.length === 3);
+    expect(model.contexts[2]?.messages.slice(-2)).toMatchObject([
+      { provenance: { kind: "job_completion", jobId: started[2]?.id } },
+      humanInput,
+    ]);
+    model.finish(2, "Human run done.");
+    await humanRun;
+
+    expect(sources).toEqual(["job", "job", "user"]);
+    expect(jobs.context()).toEqual([]);
+    await runtime.close();
+    await manager.close();
+  });
+
+  test("cancels a queued completion wake when the Job is observed", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const completion = deferredJob();
+    const model = new ControlledModel();
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      getBackgroundJobs: () => jobs,
+      canStartQueuedRun: () => false,
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    const job = jobs.start({ kind: "test", label: "observed", run: () => completion.promise });
+
+    completion.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => runtime.inputQueue.pending.some((input) => input.kind === "job"));
+    jobs.observe(job.id);
+    await waitFor(() => runtime.inputQueue.pending.length === 0);
+
+    expect(model.contexts).toEqual([]);
+    await runtime.close();
+    await manager.close();
   });
 
   test("creates user scheduled input and cancels future or pending delivery by stable ID", async () => {
@@ -774,7 +921,7 @@ describe("ConversationRuntime", () => {
     runtime.reconfigure("alternate-model");
     expect(runtime.inputQueue.pending.map((input) => input.id)).toEqual([queued.id]);
 
-    runtime.resumeSession("session-b");
+    await runtime.resumeSession("session-b");
     expect(runtime.inputQueue).toEqual({ pending: [], scheduled: [] });
 
     await runtime.close();
@@ -819,6 +966,17 @@ function createRuntimeOptions() {
       timeline: [],
     }),
   };
+}
+
+function deferredJob(): {
+  promise: Promise<{ status: "completed"; exitCode: number }>;
+  resolve(value: { status: "completed"; exitCode: number }): void;
+} {
+  let resolve!: (value: { status: "completed"; exitCode: number }) => void;
+  const promise = new Promise<{ status: "completed"; exitCode: number }>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }
 
 class ControlledModel implements Model {

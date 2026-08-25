@@ -776,6 +776,41 @@ describe("tui transcript", () => {
     expect(doneRendered[0]).toContain(color("[OVERWRITE]", tuiTheme.error));
   });
 
+  test("marks background Bash prominently in running and completed transcript titles", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "call_background",
+      name: "bash",
+      args: {
+        command: "bun run dev",
+        background: true,
+      },
+    });
+
+    block.markExecutionStarted();
+    const runningRendered = block.render(80);
+    expect(runningRendered.map(stripAnsi)[0]).toBe("◆ Running (0s) [BACKGROUND] (Esc to abort)");
+    expect(runningRendered[0]).toContain(color("[BACKGROUND]", tuiTheme.usageWarning));
+
+    block.updateResult(
+      {
+        command: "bun run dev",
+        background: true,
+        jobId: "job_12345678",
+        status: "running",
+        stdout: "",
+        stderr: "",
+      },
+      false,
+    );
+    const doneRendered = block.render(80);
+    expect(doneRendered.map(stripAnsi).slice(0, 2)).toEqual([
+      "◆ Ran [BACKGROUND]",
+      "  └ bun run dev",
+    ]);
+    expect(doneRendered[0]).toContain(color("[BACKGROUND]", tuiTheme.usageWarning));
+  });
+
   test("invalidates tool call cache when partial and final results change", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

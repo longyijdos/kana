@@ -49,7 +49,9 @@ export class SessionLifecycleController {
       listSessions: () => options.conversation.listSessions(),
       deleteSession: (sessionId) => options.conversation.deleteSession(sessionId),
       hasCurrentSession: () => options.conversation.sessionId !== undefined,
-      onResume: (sessionId) => this.resume(sessionId),
+      onResume: (sessionId) => {
+        void this.resume(sessionId);
+      },
       onStop: options.stop,
       updateStatus: (phase) => options.updateStatus(phase),
       restoreBottom: options.restoreBottom,
@@ -80,12 +82,17 @@ export class SessionLifecycleController {
     );
   }
 
-  startNew(): void {
+  async startNew(): Promise<void> {
     if (this.options.isRunning()) {
       return;
     }
 
-    this.options.conversation.startNewSession();
+    try {
+      await this.options.conversation.startNewSession();
+    } catch (error) {
+      this.options.showError(error);
+      return;
+    }
     this.overlay.close();
     this.options.closeContentViewer();
     this.options.resetAgentEvents();
@@ -103,7 +110,13 @@ export class SessionLifecycleController {
       return;
     }
 
-    const session = this.options.conversation.forkSession(prompt);
+    let session: ConversationSessionSnapshot;
+    try {
+      session = await this.options.conversation.forkSession(prompt);
+    } catch (error) {
+      this.options.showError(error);
+      return;
+    }
     this.overlay.close();
     this.options.closeContentViewer();
     this.options.editor.clear();
@@ -141,7 +154,7 @@ export class SessionLifecycleController {
     this.overlay.close();
   }
 
-  resume(sessionId: string): void {
+  async resume(sessionId: string): Promise<void> {
     if (this.options.isRunning()) {
       return;
     }
@@ -149,7 +162,7 @@ export class SessionLifecycleController {
     let session: ConversationSessionSnapshot;
 
     try {
-      session = this.options.conversation.resumeSession(sessionId);
+      session = await this.options.conversation.resumeSession(sessionId);
     } catch (error) {
       this.options.showError(error);
       this.overlay.close();

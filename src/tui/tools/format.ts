@@ -41,9 +41,12 @@ type ToolApprovalText = {
 };
 
 const overwriteMarker = "[OVERWRITE]";
+const backgroundMarker = "[BACKGROUND]";
 
 export function highlightOverwriteMarker(text: string): string {
-  return text.replaceAll(overwriteMarker, color(overwriteMarker, tuiTheme.error));
+  return text
+    .replaceAll(overwriteMarker, color(overwriteMarker, tuiTheme.error))
+    .replaceAll(backgroundMarker, color(backgroundMarker, tuiTheme.usageWarning));
 }
 
 export function formatToolTranscriptTitle(
@@ -475,10 +478,10 @@ function toolText(
       };
     case "bash":
       return {
-        action: `run ${target}`,
-        approvalTitle: "Allow agent to run bash?",
-        doneTitle: `Ran ${target}`,
-        runningActivity: `running ${target}`,
+        action: withBackgroundMarker(`run ${target}`, args),
+        approvalTitle: withBackgroundMarker("Allow agent to run bash?", args),
+        doneTitle: withBackgroundMarker(`Ran ${target}`, args),
+        runningActivity: withBackgroundMarker(`running ${target}`, args),
       };
     case "remember":
       return {
@@ -519,10 +522,17 @@ function withOverwriteMarker(text: string, args: unknown): string {
   return getBooleanProperty(args, "overwrite") ? `${text} ${overwriteMarker}` : text;
 }
 
+function withBackgroundMarker(text: string, args: unknown): string {
+  return getBooleanProperty(args, "background") ? `${text} ${backgroundMarker}` : text;
+}
+
 function formatStatusActivity(activity: string, suffix: string): string {
-  if (!activity.endsWith(` ${overwriteMarker}`)) {
+  const marker = [overwriteMarker, backgroundMarker].find((candidate) =>
+    activity.endsWith(` ${candidate}`),
+  );
+  if (!marker) {
     return `${activity}${suffix}`;
   }
 
-  return `${activity.slice(0, -overwriteMarker.length - 1)}${suffix} ${overwriteMarker}`;
+  return `${activity.slice(0, -marker.length - 1)}${suffix} ${marker}`;
 }

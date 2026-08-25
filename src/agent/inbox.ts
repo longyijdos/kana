@@ -17,6 +17,11 @@ export type AgentInputDelivery =
       goalId: string;
       round: number;
       maxRounds: number;
+    }
+  | {
+      kind: "job";
+      displayContent: string;
+      jobId: string;
     };
 
 export type AgentInboxItem = {

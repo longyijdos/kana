@@ -17,6 +17,7 @@ export type SlashCommandControllerOptions = {
   openSkillManager: () => void;
   openMcpServerManager: () => void;
   openScheduledMessageManager: () => void;
+  openBackgroundJobManager?: () => void;
   startGoal?: (objective: string) => void;
   openTodo?: () => void;
   openToolHistory: () => void;
@@ -86,6 +87,15 @@ export class SlashCommandController {
         break;
       case "schedule":
         this.runWithoutArguments(command, () => this.options.openScheduledMessageManager());
+        break;
+      case "jobs":
+        this.runWithoutArguments(command, () => {
+          if (this.options.openBackgroundJobManager) {
+            this.options.openBackgroundJobManager();
+          } else {
+            this.options.showError(new Error("Background Job management is unavailable."));
+          }
+        });
         break;
       case "goal":
         if (!command.arguments) {

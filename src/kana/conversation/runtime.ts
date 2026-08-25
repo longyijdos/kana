@@ -14,6 +14,11 @@ import {
   readMessageId,
   type UserMessage,
 } from "@/core";
+import type {
+  BackgroundJobClient,
+  BackgroundJobCompletionEvent,
+  BackgroundJobSummary,
+} from "@/jobs";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
@@ -38,7 +43,7 @@ export type ConversationSessionSnapshot = {
   contextCheckpoint?: ContextCheckpoint;
 };
 
-export type ConversationRunSource = "user" | "scheduled" | "goal" | "compaction";
+export type ConversationRunSource = "user" | "scheduled" | "goal" | "job" | "compaction";
 
 export type ConversationInputDisposition = "steered" | "queued" | "discarded";
 
@@ -66,6 +71,13 @@ type ConversationPendingInput =
       goalId: string;
       round: number;
       maxRounds: number;
+    }
+  | {
+      id: MessageId;
+      kind: "job";
+      content: string;
+      jobId: string;
+      imageCount?: number;
     };
 
 export type ConversationInputQueueSnapshot = {
@@ -150,6 +162,9 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   loadSession: (sessionId: string) => ConversationSessionSnapshot;
   listSessions?: () => KanaSessionMetadata[];
   deleteSession?: (sessionId: string) => boolean;
+  getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
+  backgroundJobCompletionRuns?: boolean;
+  maxConsecutiveCompletionWakes?: number;
   wakeScheduler?: WakeScheduler;
   scheduledRuns?: boolean;
   canStartQueuedRun?: () => boolean;
@@ -167,6 +182,8 @@ export class ConversationRuntime<TConfiguration = never> {
   private readonly getLogger: () => Logger;
   private readonly goalController = new KanaGoalController();
   private unsubscribeAgentInbox?: () => void;
+  private unsubscribeBackgroundJobs?: () => void;
+  private backgroundJobs?: BackgroundJobClient;
   private agent: Agent;
   private sessionData?: ConversationSessionSnapshot;
   private beforeToolExecution?: BeforeToolExecutionHook;
@@ -174,7 +191,10 @@ export class ConversationRuntime<TConfiguration = never> {
   private activeRunGoalId?: string;
   private terminalEvent?: Extract<AgentEvent, { type: "agent_end" }>;
   private drainingSubmissions = false;
+  private completionWakeCount = 0;
+  private changingSession = false;
   private stopping = false;
+  private closePromise?: Promise<void>;
 
   constructor(private readonly options: ConversationRuntimeOptions<TConfiguration>) {
     this.sessionData = cloneSession(options.initialSession);
@@ -182,6 +202,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.wakeScheduler = options.wakeScheduler ?? createWakeScheduler();
     this.agent = this.buildAgent(this.sessionData?.messages, this.sessionData?.contextCheckpoint);
     this.observeAgentInbox(this.agent);
+    this.observeBackgroundJobs(this.sessionData?.id);
     this.unsubscribeWakeEvents = this.wakeScheduler.subscribe((event) => {
       this.queueWakeEvent(event);
     });
@@ -221,7 +242,7 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   get isRunning(): boolean {
-    return this.activeSource !== undefined || this.agent.state.isRunning;
+    return this.changingSession || this.activeSource !== undefined || this.agent.state.isRunning;
   }
 
   get canSteer(): boolean {
@@ -264,6 +285,13 @@ export class ConversationRuntime<TConfiguration = never> {
   ): Promise<void> {
     this.assertCanStartRun();
     this.activeSource = source;
+    if (isHumanAuthoredInput(input)) {
+      this.completionWakeCount = 0;
+    }
+    const prefixedCompletions = isHumanAuthoredInput(input)
+      ? this.takePendingJobCompletionInputs()
+      : [];
+    const promptInput = prefixedCompletions.length > 0 ? [...prefixedCompletions, input] : input;
     this.activeRunGoalId = this.goalController.active?.id;
     this.terminalEvent = undefined;
     this.emit({
@@ -274,7 +302,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.log("info", "conversation.run_started", { source });
 
     try {
-      const stream = this.agent.stream(input);
+      const stream = this.agent.stream(promptInput);
       for await (const event of stream) {
         this.handleAgentEvent(event);
       }
@@ -309,6 +337,12 @@ export class ConversationRuntime<TConfiguration = never> {
       this.log("error", "conversation.run_failed", { source, error });
       throw error;
     } finally {
+      for (const completion of prefixedCompletions) {
+        this.observeJobCompletion(completion);
+      }
+      if (input.provenance.kind === "job_completion") {
+        this.observeJobCompletion(input);
+      }
       this.activeSource = undefined;
       this.activeRunGoalId = undefined;
       this.terminalEvent = undefined;
@@ -368,25 +402,23 @@ export class ConversationRuntime<TConfiguration = never> {
     this.log("info", "conversation.agent_reconfigured");
   }
 
-  startNewSession(): ConversationSessionSnapshot {
+  async startNewSession(): Promise<ConversationSessionSnapshot> {
     this.assertIdle("start a new session");
     const created = this.options.createNewSession();
-    this.cancelCurrentSessionInputs();
     const session: ConversationSessionSnapshot = {
       id: created.id,
       messages: [],
       timeline: [],
       todoState: [],
     };
-    this.replaceSession("new", session);
+    await this.replaceSession("new", session);
     return this.session as ConversationSessionSnapshot;
   }
 
-  forkSession(prompt: string): ConversationSessionSnapshot {
+  async forkSession(prompt: string): Promise<ConversationSessionSnapshot> {
     this.assertIdle("fork the session");
     const state = this.agent.state;
     const created = this.options.forkSession(state.messages, state.contextCheckpoint, prompt);
-    this.cancelCurrentSessionInputs();
     const session: ConversationSessionSnapshot = {
       id: created.id,
       messages: state.messages,
@@ -394,15 +426,14 @@ export class ConversationRuntime<TConfiguration = never> {
       todoState: structuredClone(created.todoState ?? this.sessionData?.todoState ?? []),
       contextCheckpoint: state.contextCheckpoint,
     };
-    this.replaceSession("fork", session);
+    await this.replaceSession("fork", session);
     return this.session as ConversationSessionSnapshot;
   }
 
-  resumeSession(sessionId: string): ConversationSessionSnapshot {
+  async resumeSession(sessionId: string): Promise<ConversationSessionSnapshot> {
     this.assertIdle("resume a session");
     const session = this.options.loadSession(sessionId);
-    this.cancelCurrentSessionInputs();
-    this.replaceSession("resume", session);
+    await this.replaceSession("resume", session);
     return this.session as ConversationSessionSnapshot;
   }
 
@@ -446,9 +477,14 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   queueInput(input: UserMessage): MessageId {
-    if (this.stopping) {
-      this.log("warn", "conversation.input_discarded", { reason: "stopping" });
+    if (this.stopping || this.changingSession) {
+      this.log("warn", "conversation.input_discarded", {
+        reason: this.stopping ? "stopping" : "session_changing",
+      });
       return input.id;
+    }
+    if (isHumanAuthoredInput(input)) {
+      this.completionWakeCount = 0;
     }
     this.agent.enqueueInput(input, "next-turn", { kind: "queued" });
     this.log("info", "conversation.input_queued", {
@@ -459,8 +495,10 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   scheduleInput(afterMinutes: number, message: string): WakeEvent {
-    if (this.stopping) {
-      throw new Error("Conversation runtime is stopping.");
+    if (this.stopping || this.changingSession) {
+      throw new Error(
+        this.stopping ? "Conversation runtime is stopping." : "Conversation session is changing.",
+      );
     }
     const sessionId = this.sessionId;
     if (!sessionId) {
@@ -517,8 +555,12 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   async steer(input: UserMessage): Promise<ConversationInputDisposition> {
-    if (this.stopping) {
+    if (this.stopping || this.changingSession) {
       return "discarded";
+    }
+
+    if (isHumanAuthoredInput(input)) {
+      this.completionWakeCount = 0;
     }
 
     const sessionId = this.sessionId;
@@ -536,20 +578,26 @@ export class ConversationRuntime<TConfiguration = never> {
     return "queued";
   }
 
-  async close(): Promise<void> {
-    if (this.stopping) {
-      await this.agent.waitForIdle();
-      return;
+  close(): Promise<void> {
+    if (!this.closePromise) {
+      this.closePromise = this.closeInternal();
     }
+    return this.closePromise;
+  }
 
+  private async closeInternal(): Promise<void> {
     this.stopping = true;
     this.discardActiveGoal("shutdown");
     this.unsubscribeWakeEvents();
     this.unsubscribeWakeState();
     this.unsubscribeAgentInbox?.();
+    this.unsubscribeBackgroundJobs?.();
     this.agent.clearInbox();
     this.agent.abort();
-    await this.agent.waitForIdle();
+    await Promise.all([
+      this.agent.waitForIdle(),
+      this.backgroundJobs?.close("shutdown") ?? Promise.resolve(),
+    ]);
     this.wakeScheduler.dispose();
     this.listeners.clear();
     this.log("info", "conversation.closed");
@@ -616,10 +664,10 @@ export class ConversationRuntime<TConfiguration = never> {
     previousAgent.abort();
   }
 
-  private replaceSession(
+  private async replaceSession(
     action: Extract<ConversationRuntimeEvent, { type: "session_changed" }>["action"],
     session: ConversationSessionSnapshot,
-  ): void {
+  ): Promise<void> {
     // Build against the candidate session before mutating runtime state. A
     // provider/configuration failure must leave the current Agent usable.
     const nextSession = cloneSession(session) as ConversationSessionSnapshot;
@@ -630,9 +678,24 @@ export class ConversationRuntime<TConfiguration = never> {
       nextSession.id,
     );
     const previousAgent = this.agent;
+    const previousJobs = this.backgroundJobs;
+    this.changingSession = true;
+    this.unsubscribeBackgroundJobs?.();
+    try {
+      await previousJobs?.close("session_disposal");
+    } finally {
+      this.changingSession = false;
+    }
+    if (this.stopping) {
+      nextAgent.abort();
+      await this.options.getBackgroundJobs?.(nextSession.id)?.close("shutdown");
+      throw new Error("Conversation runtime stopped while changing sessions.");
+    }
+    this.cancelCurrentSessionInputs();
     this.sessionData = nextSession;
     this.agent = nextAgent;
     this.observeAgentInbox(nextAgent);
+    this.observeBackgroundJobs(nextSession.id);
     previousAgent.abort();
     this.emit({
       type: "session_changed",
@@ -650,6 +713,9 @@ export class ConversationRuntime<TConfiguration = never> {
     }
     if (event.type === "agent_end") {
       this.terminalEvent = structuredClone(event);
+    }
+    if (event.type === "turn_input" && event.message.provenance.kind === "job_completion") {
+      this.observeJobCompletion(event.message);
     }
     this.emit({
       type: "agent_event",
@@ -756,6 +822,9 @@ export class ConversationRuntime<TConfiguration = never> {
     if (delivery.kind === "goal") {
       return "goal";
     }
+    if (delivery.kind === "job") {
+      return "job";
+    }
     return "user";
   }
 
@@ -823,6 +892,18 @@ export class ConversationRuntime<TConfiguration = never> {
     item: AgentInboxSnapshot["nextTurn"][number],
     lane: "next-step" | "next-turn",
   ): ConversationPendingInput {
+    if (item.delivery.kind === "job") {
+      const provenance = item.message.provenance;
+      if (provenance.kind !== "job_completion") {
+        throw new Error("Background Job input is missing completion provenance.");
+      }
+      return {
+        id: item.message.id,
+        kind: "job",
+        content: item.delivery.displayContent,
+        jobId: item.delivery.jobId,
+      };
+    }
     if (item.delivery.kind === "scheduled") {
       const provenance = item.message.provenance;
       if (provenance.kind !== "scheduled_input") {
@@ -873,6 +954,16 @@ export class ConversationRuntime<TConfiguration = never> {
     this.drainingSubmissions = true;
     try {
       while (!this.stopping && !this.isRunning && this.canStartQueuedRun()) {
+        const next = this.agent.inbox.nextTurn[0];
+        if (next?.delivery.kind === "job" && this.options.backgroundJobCompletionRuns === false) {
+          return;
+        }
+        if (
+          next?.delivery.kind === "job" &&
+          this.completionWakeCount >= this.maxConsecutiveCompletionWakes
+        ) {
+          return;
+        }
         const submission =
           this.agent.shiftNextTurnInput() ?? this.createGoalContinuationSubmission();
         if (!submission) {
@@ -880,6 +971,9 @@ export class ConversationRuntime<TConfiguration = never> {
         }
 
         const source = this.resolveSubmissionSource(submission.delivery);
+        if (source === "job") {
+          this.completionWakeCount += 1;
+        }
 
         this.log("info", "conversation.queued_input_started", {
           source,
@@ -916,6 +1010,67 @@ export class ConversationRuntime<TConfiguration = never> {
     });
   }
 
+  private observeBackgroundJobs(sessionId: string | undefined): void {
+    this.unsubscribeBackgroundJobs?.();
+    this.unsubscribeBackgroundJobs = undefined;
+    this.backgroundJobs = sessionId ? this.options.getBackgroundJobs?.(sessionId) : undefined;
+    this.unsubscribeBackgroundJobs = this.backgroundJobs?.subscribe((event) => {
+      this.handleBackgroundJobEvent(event);
+    });
+  }
+
+  private handleBackgroundJobEvent(event: BackgroundJobCompletionEvent): void {
+    if (this.stopping || this.changingSession || event.owner.sessionId !== this.sessionId) {
+      return;
+    }
+    if (event.type === "observed") {
+      for (const item of [...this.agent.inbox.nextStep, ...this.agent.inbox.nextTurn]) {
+        if (item.delivery.kind === "job" && item.delivery.jobId === event.job.id) {
+          this.agent.cancelInput(item.message.id);
+        }
+      }
+      return;
+    }
+
+    const input = createUserMessage({
+      content: formatBackgroundJobCompletion(event.job),
+      provenance: { kind: "job_completion", jobId: event.job.id },
+    });
+    const lane = this.canSteer ? "next-step" : "next-turn";
+    this.agent.enqueueInput(input, lane, {
+      kind: "job",
+      displayContent: `Background Job ${shortJobId(event.job.id)} ${event.job.status}`,
+      jobId: event.job.id,
+    });
+    this.log("info", "conversation.background_job_completion_queued", {
+      jobId: event.job.id,
+      outcome: event.job.status,
+      delivery: lane,
+    });
+  }
+
+  private takePendingJobCompletionInputs(): UserMessage[] {
+    const inputs: UserMessage[] = [];
+    while (this.agent.inbox.nextTurn[0]?.delivery.kind === "job") {
+      const item = this.agent.shiftNextTurnInput();
+      if (!item) {
+        break;
+      }
+      inputs.push(item.message);
+    }
+    return inputs;
+  }
+
+  private observeJobCompletion(message: UserMessage): void {
+    if (message.provenance.kind === "job_completion") {
+      this.backgroundJobs?.observe(message.provenance.jobId);
+    }
+  }
+
+  private get maxConsecutiveCompletionWakes(): number {
+    return this.options.maxConsecutiveCompletionWakes ?? 3;
+  }
+
   private emitInputQueueChanged(): void {
     if (this.stopping) {
       return;
@@ -934,6 +1089,9 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   private assertIdle(operation: string): void {
+    if (this.changingSession) {
+      throw new Error(`Cannot ${operation} while the conversation session is changing.`);
+    }
     if (this.isRunning) {
       throw new Error(`Cannot ${operation} while a conversation run is active.`);
     }
@@ -976,4 +1134,24 @@ function cloneRuntimeEvent(event: ConversationRuntimeEvent): ConversationRuntime
     return { ...event };
   }
   return structuredClone(event);
+}
+
+function formatBackgroundJobCompletion(job: BackgroundJobSummary): string {
+  return [
+    "[Background Job completion]",
+    `Job ${job.id} reached ${job.status}.`,
+    `exitCode: ${job.exitCode}`,
+    "Use job_output to consume any remaining output before deciding the next action.",
+  ].join("\n");
+}
+
+function shortJobId(jobId: string): string {
+  return jobId.startsWith("job_") ? jobId.slice(4, 10) : jobId.slice(0, 6);
+}
+
+function isHumanAuthoredInput(message: UserMessage): boolean {
+  return (
+    message.provenance.kind === "user_input" ||
+    (message.provenance.kind === "scheduled_input" && message.provenance.origin === "user")
+  );
 }

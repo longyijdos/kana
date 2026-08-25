@@ -106,7 +106,10 @@ function isTrustedToolCall(approvals: KanaToolApprovals, toolCall: ToolCallConte
     toolCall.name === "list" ||
     toolCall.name === "glob" ||
     toolCall.name === "grep" ||
-    toolCall.name === "view_image"
+    toolCall.name === "view_image" ||
+    toolCall.name === "job_list" ||
+    toolCall.name === "job_output" ||
+    toolCall.name === "job_kill"
   ) {
     return true;
   }

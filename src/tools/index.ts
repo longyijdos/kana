@@ -1,4 +1,5 @@
 export type { ToolConcurrency } from "@/core";
+export { createJobKillTool, createJobListTool, createJobOutputTool } from "./background-jobs";
 export { createBashTool, DEFAULT_TIMEOUT_MS } from "./bash";
 export { createEditTool } from "./edit";
 export { createGlobTool, DEFAULT_GLOB_LIMIT } from "./glob";

@@ -224,7 +224,7 @@ describe("tool detail inspector controller", () => {
     viewer = tui.getFocusedComponent() as ContentViewer;
     const fresh = viewer.render(80).map(stripAnsi);
 
-    expect(fresh).toContain("Lines 1-18 of 40");
+    expect(fresh).toContain("Lines 1-18 of 43");
     expect(fresh).not.toContain("lines above");
   });
 

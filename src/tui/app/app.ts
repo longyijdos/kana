@@ -13,6 +13,7 @@ import {
   type ToolCallContent,
   type UserImage,
 } from "@/core";
+import type { BackgroundJobClient } from "@/jobs";
 import type {
   KanaLaunchMode,
   KanaMcpServerActivation,
@@ -64,6 +65,7 @@ import { calculateContextUsedPercent } from "../utils/context-usage";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
+import { BackgroundJobManagerController } from "./background-job-manager-controller";
 import { ContentViewerController } from "./content-viewer-controller";
 import {
   ExternalToolsLifecycleController,
@@ -125,6 +127,8 @@ export type KanaTuiAppOptions = {
   tuiConfig?: KanaTuiConfig;
   goalMaxRounds?: number;
   wakeScheduler?: WakeScheduler;
+  getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
+  maxConsecutiveCompletionWakes?: number;
   getLogger?: () => Logger;
   compactMemory: (
     target: MemoryScope,
@@ -169,6 +173,7 @@ export class KanaTuiApp {
   private readonly conversation: ConversationRuntime<TuiModelSelection>;
   private readonly queuedInputs: QueuedInputController;
   private readonly scheduledMessageManager: ScheduledMessageManagerController;
+  private readonly backgroundJobManager: BackgroundJobManagerController;
   private running = false;
   private totalUsage?: ModelUsage;
   private readonly toolApproval: ToolApprovalController;
@@ -230,11 +235,14 @@ export class KanaTuiApp {
       deleteSession: options.deleteSession,
       wakeScheduler: options.wakeScheduler,
       goalMaxRounds: options.goalMaxRounds,
+      getBackgroundJobs: options.getBackgroundJobs,
+      maxConsecutiveCompletionWakes: options.maxConsecutiveCompletionWakes,
       canStartQueuedRun: () =>
         !this.running &&
         !this.externalTools.loading &&
         !this.mcpServerManager?.active &&
         !this.scheduledMessageManager?.active &&
+        !this.backgroundJobManager?.active &&
         !this.stopping,
       getLogger: this.getLogger,
     });
@@ -336,6 +344,18 @@ export class KanaTuiApp {
       restoreBottom: (focus) => this.restoreBottom(focus),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
+    this.backgroundJobManager = new BackgroundJobManagerController({
+      editor: this.editor,
+      layout: this.layout,
+      tui: this.tui,
+      getJobs: () => {
+        const sessionId = this.conversation.sessionId;
+        return sessionId ? this.options.getBackgroundJobs?.(sessionId) : undefined;
+      },
+      showError: (error) => this.showError(error),
+      restoreBottom: (focus) => this.restoreBottom(focus),
+      onClose: () => this.conversation.notifyCanStartQueuedRun(),
+    });
     this.slashCommandOptions = new SlashCommandOptionsController({
       editor: this.editor,
       layout: this.layout,
@@ -411,6 +431,7 @@ export class KanaTuiApp {
       closeOtherOverlays: () => {
         this.skillManager.close();
         this.scheduledMessageManager.close();
+        this.backgroundJobManager.close();
         this.toolHistory.close();
       },
       closeContentViewer: () => this.contentViewer.close(),
@@ -448,7 +469,7 @@ export class KanaTuiApp {
       },
       startNewSession: () => {
         this.editor.clear();
-        this.sessions.startNew();
+        void this.sessions.startNew();
       },
       forkSession: (prompt) => {
         this.editor.clear();
@@ -463,7 +484,7 @@ export class KanaTuiApp {
           this.showSavedSessionsUnavailable();
           return;
         }
-        this.sessions.resume(sessionId);
+        void this.sessions.resume(sessionId);
       },
       openResumePicker: () => {
         this.editor.clear();
@@ -492,6 +513,10 @@ export class KanaTuiApp {
       openScheduledMessageManager: () => {
         this.editor.clear();
         this.openScheduledMessageManager();
+      },
+      openBackgroundJobManager: () => {
+        this.editor.clear();
+        this.openBackgroundJobManager();
       },
       startGoal: (objective) => {
         this.editor.clear();
@@ -657,6 +682,7 @@ export class KanaTuiApp {
     this.localShell.abort();
     this.memoryCompact.abort();
     this.scheduledMessageManager.close();
+    this.backgroundJobManager.close();
     this.mcpServerManager?.close();
     this.unsubscribeConversationEvents();
     this.showShutdownStatus("Shutting down Kana...");
@@ -723,6 +749,7 @@ export class KanaTuiApp {
       // ownership. If no tool opens, the failed toggle leaves the picker active.
       if (this.contentViewer.toggleLatest()) {
         this.toolHistory.relinquish();
+        this.backgroundJobManager.close();
         return { consume: true };
       }
 
@@ -899,6 +926,7 @@ export class KanaTuiApp {
     this.sessions.close();
     this.contentViewer.close();
     this.scheduledMessageManager.close();
+    this.backgroundJobManager.close();
     this.toolHistory.close();
     this.skillManager.open();
   }
@@ -920,6 +948,7 @@ export class KanaTuiApp {
     this.contentViewer.close();
     this.skillManager.close();
     this.scheduledMessageManager.close();
+    this.backgroundJobManager.close();
     this.toolHistory.close();
     this.mcpServerManager.open();
   }
@@ -933,8 +962,24 @@ export class KanaTuiApp {
     this.contentViewer.close();
     this.skillManager.close();
     this.mcpServerManager?.close();
+    this.backgroundJobManager.close();
     this.toolHistory.close();
     this.scheduledMessageManager.open();
+  }
+
+  private openBackgroundJobManager(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.sessions.close();
+    this.contentViewer.close();
+    this.skillManager.close();
+    this.mcpServerManager?.close();
+    this.scheduledMessageManager.close();
+    this.backgroundJobManager.close();
+    this.toolHistory.close();
+    this.backgroundJobManager.open();
   }
 
   private openToolHistoryPicker(): void {
@@ -947,6 +992,7 @@ export class KanaTuiApp {
     this.skillManager.close();
     this.mcpServerManager?.close();
     this.scheduledMessageManager.close();
+    this.backgroundJobManager.close();
     this.toolHistory.open();
   }
 
@@ -959,6 +1005,7 @@ export class KanaTuiApp {
     this.skillManager.close();
     this.mcpServerManager?.close();
     this.scheduledMessageManager.close();
+    this.backgroundJobManager.close();
     this.toolHistory.close();
     this.contentViewer.open({
       title: "Todos",
@@ -1002,6 +1049,12 @@ export class KanaTuiApp {
         } else if (event.source === "scheduled" && event.input) {
           this.transcript.addChild(
             new TextBlock(`Scheduled wake: ${formatScheduledWakeContent(event.input.content)}`, {
+              color: tuiTheme.muted,
+            }),
+          );
+        } else if (event.source === "job" && event.input) {
+          this.transcript.addChild(
+            new TextBlock(formatBackgroundJobWakeContent(event.input.content), {
               color: tuiTheme.muted,
             }),
           );
@@ -1420,6 +1473,10 @@ function formatModelSelection(
 
 function formatScheduledWakeContent(content: string): string {
   return content.replace(/^\[Scheduled wake event\]\n/, "");
+}
+
+function formatBackgroundJobWakeContent(content: string): string {
+  return content.replace(/^\[Background Job completion\]\n?/, "");
 }
 
 function sanitizeLabel(value: string): string {

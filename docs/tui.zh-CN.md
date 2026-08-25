@@ -103,6 +103,8 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 空闲时 `Enter` 正常提交；Agent 运行中按 `Enter` 会把消息放入 `next-step`，在当前完整 model/tool turn 的 `turn_end` 之后投递，并在同一个 run 中开始下一次模型调用。若中止或 turn limit 使下一 turn 无法开始，Agent 会把同一条带 ID 消息移到 `next-turn` 尾部。Agent 运行中按 `Tab` 会直接加入 `next-turn`，等当前 `agent_end` 后作为新的 run 发送；空闲时普通输入的 `Tab` 不提交消息，slash 面板中的 `Tab` 仍用于补全。队列与到期 wake 按入队顺序共享 FIFO 投递通道。在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入和没有 shell 命令的单独 `!` 作为普通模型消息发送。
 
+后台 Job 完成事件复用同一套排队机制。运行中的完成事件会请求追加一次模型步骤；空闲时的完成事件会请求开启新的 run。仅有输出不会唤醒 Agent，连续完成唤醒有次数上限，新的人工输入会重置该上限。通过 Job 工具或 `/jobs` 观察到终态 Job 时，会取消该 Job 尚未处理的完成通知。
+
 `/goal <目标>` 会启动一个进程内 Goal，并把目标作为首次 Agent run 的输入。只要 Goal 仍为 active，runtime 就会在每次 `agent_end` 后启动下一 run，但已经排队的 Tab 输入、deferred steering 或到期 wake 会优先执行。模型通过权威 runtime context 获得 active 目标，并可调用 `update_goal` 标记 `completed` 或 `blocked`；配置的 run 计数和上限不会暴露给模型。TUI 把续轮显示为弱化 marker，并抑制逐轮完成通知。`Esc` 或 `Ctrl+C` 会取消 active Goal；新建、分叉或恢复 session、Agent 重配置、关闭、run 失败、显式终态更新以及达到 `agent.goal_max_rounds` 上限也会结束它。Goal 控制状态不会从 session 历史恢复；当前进程仍在运行时，自动上下文压缩会重新投影 active 目标。
 
 一条输入最多可附加 10 张图片。编辑器只显示附件数量、尺寸和编码后大小，不显示图片字节；输入文本为空时，Backspace 会移除最后附加的图片。在 macOS 上，`Ctrl+V` 从系统剪贴板读取图片；剪贴板没有图片时直接报错，不会退回文本粘贴，因为普通终端文本仍使用 `Cmd+V`。`/image <path>` 是跨平台的路径方案，只附加图片而不立即提交。相对路径从 Kana 当前工作目录解析，也支持带引号路径、`~/…` 和 `file://` URL。路径属于 Kana 实际运行的主机，因此 SSH 场景应填写远端路径；WSL 即使不能读取图片剪贴板，也可以使用 `/mnt/c/Users/me/Pictures/image.png` 这类 Windows 挂载路径。图片会在附加前解码并规范化：最长边最多 2048 像素且不会放大，JPEG/PNG/WebP 保持为供应商可接受的对应格式，其他可解码格式转为 PNG，编码后的结果不能超过 10 MB。
@@ -118,6 +120,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `/skills` | 管理全局 Skills 开关，并重建 Agent 的系统提示词。 |
 | `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
 | `/schedule` | 查看、添加、刷新或删除当前 session 的进程内定时消息。 |
+| `/jobs` | 管理当前 session 拥有的 Job：刷新、查看不消耗游标的输出尾部，以及停止活动 Job。 |
 | `/goal <目标>` | 在有界的连续 Agent run 中持续推进一个目标。 |
 | `/todo` | 打开当前 session 的 todo 列表和状态计数。 |
 | `/tools` | 浏览当前会话的全部工具调用，并可任意打开其中一个的详情查看器。 |
@@ -131,7 +134,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 `/usage` 会让 token 标签、数值和比例条保持稳定列位。Runs 区域和按模型明细会显示 token 总数，并根据当前可见数据动态计算数字列宽，因此更大的次数、token 总数或更长的模型名不会推动相邻数值错位。各类 outcome 仍保持紧凑的单行摘要，底部视图较窄时可能被截断。
 
-Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/goal`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用，其中 `/schedule` 消息和 `/goal` 控制状态仍只存在于当前进程，`/todo` 读取进程内列表，`/model` 不写回配置文件。
+Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/jobs`、`/goal`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用，其中 `/schedule` 消息、Job 和 `/goal` 控制状态仍只存在于当前进程，`/todo` 读取进程内列表，`/model` 不写回配置文件。
 
 ## 控制器与焦点
 
@@ -140,6 +143,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 - `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有追加式生命周期输出、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
 - `QueuedInputController` 只在本地保留当前 run 的 `next turn` 乐观预览；权威的 `next-step`、`next-turn`、到期 `scheduled` 和未来 wake 状态都投影自 `ConversationRuntime` 快照。输入被接受或 deferred 后，controller 按原有 `MessageId` 对齐该预览，即使正文完全相同也不会混淆。
 - `ScheduledMessageManagerController` 用 `/schedule` 打开当前 session 的定时消息快照。未到期项按时间排列，已到期但尚未发送的项放在底部；只显示 `agent` 或 `you` 来源，不显示 Agent 的替换 key。列表不会随时钟或后台状态自动变化；`R`、添加或删除会重新读取快照。`A` 提供 5/15/30 分钟、1 小时和 `3m`、`90m`、`2h` 形式的自定义相对时间；`D` 确认后按未来输入的稳定 `MessageId` 同时检查 scheduler 与已到期 `next-turn` 项。面板活动期间新的 pending run 不会启动，`Esc` 关闭后恢复 FIFO 投递。
+- `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job、观察终态 Job，并在面板通过 `Esc` 关闭前阻止 pending run 启动。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前读取当前有效审批模式。`/approval` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、bash 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。用户拒绝会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
 - `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和外部工具激活；其内部的 `SessionOverlayController` 用恢复列表或删除确认替换编辑器。
@@ -159,7 +163,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 
 通知后端由配置选择。`auto` 依次探测 Kitty、iTerm、Ghostty 和 VTE，最后使用 bell；显式 `off` 不写任何通知。通知文本会移除控制字符、折叠空白，OSC 777 字段额外替换分号。正常 Agent 完成和需要审批可分别配置通知。
 
-助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。配置允许且终端确认支持时，`http:`、`https:` 和 `mailto:` Markdown 链接通过 OSC 8 绑定到可见 label；每条软换行都会独立关闭并重新打开链接。关闭 `tui.hyperlinks`、终端能力未知或目标 scheme/内容不安全时不发送 OSC 8，并以 `label (url)` 保留可读目标；尚未闭合的流式链接按 Markdown 原文显示。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 直接显示 stdout/stderr 文本，不添加退出码或字段标签。bash 返回非 0 退出码时仍按已完成命令渲染；真正的执行错误和超时才使用 failed 样式。用户取消使用独立的弱化 stopped 状态，不显示为工具执行失败；write 审批和工具块会区分新建与覆盖；`Ctrl+O` 打开可滚动的详情查看器，固定短标题（如工具名）加上完整的操作上下文与输出，即使紧凑输出并未标记为可展开也能打开。每个工具块还拥有与视口高度无关的有界紧凑形态：一行标题、一行压平并水平截断而非换行的 target，以及固定的少量预览行预算。只有 Kana 拥有其参数 schema 的内置工具才会解析出 target 行；未知/custom/MCP 工具不会把 `path`、`command` 等参数提升为 target，只以工具名作为身份展示。bash 预览最多保留最后 8 个源行，write 最多保留 7 个（其中一行让位给字节数结果行），edit 最多保留 3 行删除与 3 行新增 diff（replacements 行与两侧各自的省略标记都计入视觉预算），未知/custom/MCP 结果最多保留 pretty JSON 的前 8 行；每个预览行按终端宽度水平截断而非换行，被省略的行用显式的 `... N more lines` 标记说明。这些界限只影响展示：canonical 参数、结果与审批详情保持完整。当紧凑预览省略了行，或截断了宽于终端的行时，该工具块会标记为可展开。查看器与标记无关，任何工具调用都可以打开，长行会软换行到可用宽度而非再次被截断；查看器打开期间按 `[` 和 `]` 可切换到上一个/下一个工具调用。
+助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。配置允许且终端确认支持时，`http:`、`https:` 和 `mailto:` Markdown 链接通过 OSC 8 绑定到可见 label；每条软换行都会独立关闭并重新打开链接。关闭 `tui.hyperlinks`、终端能力未知或目标 scheme/内容不安全时不发送 OSC 8，并以 `label (url)` 保留可读目标；尚未闭合的流式链接按 Markdown 原文显示。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 直接显示 stdout/stderr 文本，不添加退出码或字段标签。后台 Bash 调用会在 transcript 标题中添加琥珀色 `[BACKGROUND]` 标记，前台调用不显示标记。Inspector 会保留实际工具参数，同时显示最终生效的执行模式和超时，以及后台调用启动时的 Job ID 与状态。bash 返回非 0 退出码时仍按已完成命令渲染；真正的执行错误和超时才使用 failed 样式。用户取消使用独立的弱化 stopped 状态，不显示为工具执行失败；write 审批和工具块会区分新建与覆盖；`Ctrl+O` 打开可滚动的详情查看器，固定短标题（如工具名）加上完整的操作上下文与输出，即使紧凑输出并未标记为可展开也能打开。每个工具块还拥有与视口高度无关的有界紧凑形态：一行标题、一行压平并水平截断而非换行的 target，以及固定的少量预览行预算。只有 Kana 拥有其参数 schema 的内置工具才会解析出 target 行；未知/custom/MCP 工具不会把 `path`、`command` 等参数提升为 target，只以工具名作为身份展示。bash 预览最多保留最后 8 个源行，write 最多保留 7 个（其中一行让位给字节数结果行），edit 最多保留 3 行删除与 3 行新增 diff（replacements 行与两侧各自的省略标记都计入视觉预算），未知/custom/MCP 结果最多保留 pretty JSON 的前 8 行；每个预览行按终端宽度水平截断而非换行，被省略的行用显式的 `... N more lines` 标记说明。这些界限只影响展示：canonical 参数、结果与审批详情保持完整。当紧凑预览省略了行，或截断了宽于终端的行时，该工具块会标记为可展开。查看器与标记无关，任何工具调用都可以打开，长行会软换行到可用宽度而非再次被截断；查看器打开期间按 `[` 和 `]` 可切换到上一个/下一个工具调用。
 
 默认开启 `tui.render_latex = true`：`$...$` 与 `\(...\)` 渲染行内公式，独立成块的 `$$...$$` 与 `\[...\]` 渲染 display 公式。这个刻意受限的渲染器会把常见符号、黑板粗体字母、上下标、分数、根式、命名运算符、矩阵、cases 和 display 运算符上下限转换为 Unicode 与字符单元布局。不支持或格式错误的表达式会完整保留源码分隔符；流式表达式在分隔符闭合前始终按字面量显示。行内代码和代码围栏不会解释数学分隔符。display 输出在渲染后按终端可见单元宽度测量和换行，宽度不足不会把有效公式重新切换为源码。设置 `tui.render_latex = false` 可让所有已识别的数学公式保留原始 LaTeX。
 

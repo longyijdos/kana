@@ -56,8 +56,9 @@ export function buildFullToolDetail(
 export function buildToolInspectorContext(
   toolCall: ToolCallContent,
   includeMaterial: boolean,
+  result?: unknown,
 ): ToolDetailSection[] {
-  return buildToolSections(toolCall, includeMaterial);
+  return buildToolSections(toolCall, includeMaterial, result);
 }
 
 // Label row per section, content rows indented, blank row between sections.
@@ -124,22 +125,28 @@ function mcpDetailTitle(source: ToolApprovalSource): string {
 function buildToolSections(
   toolCall: ToolCallContent,
   includeMaterial: boolean,
+  result?: unknown,
 ): ToolDetailSection[] {
   const args = toolCall.args;
   const sections: ToolDetailSection[] = [];
 
   switch (toolCall.name) {
     case "bash": {
+      const background = getBooleanProperty(args, "background") === true;
       pushSection(sections, "Command", getStringProperty(args, "command"));
-      // Final execution semantics: an omitted cwd/timeout use the runtime
-      // defaults, so both are always visible rather than deleted from the
-      // detail when the model happens to omit them.
       pushSection(sections, "Working directory", getStringProperty(args, "cwd") ?? ".");
+      pushSection(sections, "Execution", background ? "Background" : "Foreground");
       pushSection(
         sections,
         "Timeout",
-        formatNumber(getNumberProperty(args, "timeoutMs") ?? DEFAULT_TIMEOUT_MS, " ms"),
+        background && getNumberProperty(args, "timeoutMs") === undefined
+          ? "None"
+          : formatNumber(getNumberProperty(args, "timeoutMs") ?? DEFAULT_TIMEOUT_MS, " ms"),
       );
+      if (background) {
+        pushSection(sections, "Job ID", getStringProperty(result, "jobId"));
+        pushSection(sections, "Launch status", getStringProperty(result, "status"));
+      }
       break;
     }
 

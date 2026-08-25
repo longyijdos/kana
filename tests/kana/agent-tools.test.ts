@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Type } from "typebox";
+import { BackgroundJobManager } from "@/jobs";
 import {
   createKanaAgent,
   createWakeScheduler,
@@ -23,6 +24,11 @@ afterEach(() => {
 describe("Kana Agent tools", () => {
   test("adds external tools after the complete built-in namespace", () => {
     const wakeScheduler = createWakeScheduler();
+    const backgroundJobManager = new BackgroundJobManager();
+    const backgroundJobs = backgroundJobManager.bind(
+      backgroundJobManager.createOwner("session-1"),
+      { maxConcurrent: 4 },
+    );
     const externalTool = createTool("github_create_issue");
 
     try {
@@ -30,6 +36,7 @@ describe("Kana Agent tools", () => {
       const agent = withKanaAgentEnvironment(() =>
         createKanaAgent(visionTestConfig(), {
           additionalTools: [externalTool],
+          backgroundJobs,
           wakeScheduler,
           sessionId: "session-1",
           resolveGoal: () => goal,

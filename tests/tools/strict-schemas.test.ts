@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { BackgroundJobManager } from "../../src/jobs";
 import { createKanaAgent, KANA_BUILT_IN_TOOL_NAMES } from "../../src/kana/agent";
 import { DEFAULT_KANA_CONFIG } from "../../src/kana/config";
 import { createWakeScheduler } from "../../src/kana/conversation/wake-scheduler";
@@ -12,6 +13,11 @@ import {
 import { createRememberTool } from "../../src/kana/tools/remember";
 import { createScheduleWakeTool } from "../../src/kana/tools/schedule-wake";
 import { createTodoWriteTool } from "../../src/kana/tools/todo-write";
+import {
+  createJobKillTool,
+  createJobListTool,
+  createJobOutputTool,
+} from "../../src/tools/background-jobs";
 import { createBashTool } from "../../src/tools/bash";
 import { createEditTool } from "../../src/tools/edit";
 import { createGlobTool } from "../../src/tools/glob";
@@ -72,6 +78,7 @@ function createAgentBuiltInTools(): Tool[] {
         },
       },
       {
+        backgroundJobs,
         wakeScheduler: scheduler,
         sessionId: "session-a",
         resolveGoal: () => ({
@@ -108,6 +115,10 @@ function restoreEnvironment(name: string, value: string | undefined): void {
 }
 
 const scheduler = createWakeScheduler({ setTimeout: () => 1, clearTimeout: () => {} });
+const backgroundJobManager = new BackgroundJobManager();
+const backgroundJobs = backgroundJobManager.bind(backgroundJobManager.createOwner("session-a"), {
+  maxConcurrent: 4,
+});
 const internalMemoryTools = createInternalMemoryTools();
 
 type SchemaCase = {
@@ -171,9 +182,30 @@ const schemaCases: SchemaCase[] = [
   {
     name: "bash",
     tool: createBashTool(),
-    valid: { command: "bun test", cwd: "src", timeoutMs: 1000 },
+    valid: { command: "bun test", cwd: "src", timeoutMs: 1000, background: true },
     invalidArgs: { command: "bun test", path: "src" },
     unexpected: "path",
+  },
+  {
+    name: "job_list",
+    tool: createJobListTool(backgroundJobs),
+    valid: {},
+    invalidArgs: { sessionId: "session-a" },
+    unexpected: "sessionId",
+  },
+  {
+    name: "job_output",
+    tool: createJobOutputTool(backgroundJobs),
+    valid: { jobId: "job-1", waitMs: 1000 },
+    invalidArgs: { jobId: "job-1", offset: 10 },
+    unexpected: "offset",
+  },
+  {
+    name: "job_kill",
+    tool: createJobKillTool(backgroundJobs),
+    valid: { jobId: "job-1", reason: "No longer needed." },
+    invalidArgs: { jobId: "job-1", signal: "SIGKILL" },
+    unexpected: "signal",
   },
   {
     name: "remember",

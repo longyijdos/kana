@@ -69,6 +69,11 @@ export type KanaRepeatedToolCallsConfig = {
   excludedTools: string[];
 };
 
+type KanaBackgroundJobsConfig = {
+  maxConcurrent: number;
+  maxConsecutiveCompletionWakes: number;
+};
+
 type KanaAgentConfig = {
   maxTurns: number;
   goalMaxRounds: number;
@@ -77,6 +82,7 @@ type KanaAgentConfig = {
   maxParallelToolCalls: number;
   contextLimit?: number;
   toolResultArtifacts: boolean;
+  backgroundJobs: KanaBackgroundJobsConfig;
   repeatedToolCalls: KanaRepeatedToolCallsConfig;
 };
 
@@ -217,6 +223,10 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
     contextLimit: undefined,
     toolResultArtifacts: true,
+    backgroundJobs: {
+      maxConcurrent: 4,
+      maxConsecutiveCompletionWakes: 3,
+    },
     repeatedToolCalls: {
       reminderThresholds: [3, 5, 8],
       excludedTools: [],
@@ -396,6 +406,10 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       max_parallel_tool_calls: config.agent.maxParallelToolCalls,
       context_limit: config.agent.contextLimit,
       tool_result_artifacts: config.agent.toolResultArtifacts,
+      background_jobs: {
+        max_concurrent: config.agent.backgroundJobs.maxConcurrent,
+        max_consecutive_completion_wakes: config.agent.backgroundJobs.maxConsecutiveCompletionWakes,
+      },
       repeated_tool_calls: {
         reminder_thresholds: config.agent.repeatedToolCalls.reminderThresholds,
         excluded_tools: config.agent.repeatedToolCalls.excludedTools,
@@ -456,6 +470,10 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
     `tool_result_artifacts = ${config.agent.toolResultArtifacts}`,
     "# context_limit = 200000",
+    "",
+    "[agent.background_jobs]",
+    `max_concurrent = ${config.agent.backgroundJobs.maxConcurrent}`,
+    `max_consecutive_completion_wakes = ${config.agent.backgroundJobs.maxConsecutiveCompletionWakes}`,
     "",
     "[agent.repeated_tool_calls]",
     `reminder_thresholds = ${JSON.stringify(config.agent.repeatedToolCalls.reminderThresholds)}`,
@@ -546,6 +564,10 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const openAICodexModel = readModelTable(model, "openai-codex");
   const customModel = readModelTable(model, "custom");
   const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
+  const backgroundJobs =
+    agent.background_jobs === undefined
+      ? {}
+      : asRecord(agent.background_jobs, "agent.background_jobs");
   const repeatedToolCalls =
     agent.repeated_tool_calls === undefined
       ? {}
@@ -688,6 +710,18 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         defaults.agent.toolResultArtifacts,
         "agent.tool_result_artifacts",
       ),
+      backgroundJobs: {
+        maxConcurrent: readPositiveInteger(
+          backgroundJobs.max_concurrent,
+          defaults.agent.backgroundJobs.maxConcurrent,
+          "agent.background_jobs.max_concurrent",
+        ),
+        maxConsecutiveCompletionWakes: readPositiveInteger(
+          backgroundJobs.max_consecutive_completion_wakes,
+          defaults.agent.backgroundJobs.maxConsecutiveCompletionWakes,
+          "agent.background_jobs.max_consecutive_completion_wakes",
+        ),
+      },
       repeatedToolCalls: {
         reminderThresholds: readReminderThresholds(
           repeatedToolCalls.reminder_thresholds,
