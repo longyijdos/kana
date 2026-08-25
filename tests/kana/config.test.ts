@@ -111,6 +111,7 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("max_parallel_tool_calls = 4");
     expect(installedConfigExample).toContain("tool_result_artifacts = true");
+    expect(installedConfigExample).toContain("[agent.background_jobs]");
     expect(installedConfigExample).toContain("[agent.repeated_tool_calls]");
     expect(installedConfigExample).toContain("reminder_thresholds = [3,5,8]");
     expect(installedConfigExample).toContain("excluded_tools = []");
@@ -249,6 +250,9 @@ describe("Kana config", () => {
     expect(DEFAULT_KANA_CONFIG.model["openai-codex"].imageInput).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.goalMaxRounds).toBe(8);
     expect(DEFAULT_KANA_CONFIG.agent.toolResultArtifacts).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.agent.backgroundJobs).toEqual({
+      maxConcurrent: 4,
+    });
     expect(DEFAULT_KANA_CONFIG.agent.repeatedToolCalls).toEqual(repeatedToolCalls);
   });
 
@@ -271,6 +275,9 @@ describe("Kana config", () => {
         "max_parallel_tool_calls = 2",
         "context_limit = 200000",
         "tool_result_artifacts = false",
+        "",
+        "[agent.background_jobs]",
+        "max_concurrent = 6",
         "",
         "[agent.repeated_tool_calls]",
         "reminder_thresholds = [2, 4]",
@@ -321,6 +328,9 @@ describe("Kana config", () => {
         maxParallelToolCalls: 2,
         contextLimit: 200000,
         toolResultArtifacts: false,
+        backgroundJobs: {
+          maxConcurrent: 6,
+        },
         repeatedToolCalls: {
           reminderThresholds: [2, 4],
           excludedTools: ["remember"],
@@ -580,6 +590,19 @@ describe("Kana config", () => {
 
       expect(() => loadKanaConfig(env)).toThrow(
         "agent.max_parallel_tool_calls must be a positive integer.",
+      );
+    }
+  });
+
+  test("requires Background Job limits to be positive integers", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    const configPath = path.join(home, "config.toml");
+
+    for (const value of [0, -1, 1.5]) {
+      writeFileSync(configPath, `[agent.background_jobs]\nmax_concurrent = ${value}\n`);
+      expect(() => loadKanaConfig(env)).toThrow(
+        "agent.background_jobs.max_concurrent must be a positive integer.",
       );
     }
   });

@@ -141,6 +141,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       tuiConfig: host.tuiConfig,
       goalMaxRounds: host.config.agent.goalMaxRounds,
       wakeScheduler: host.wakeScheduler,
+      getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
       getLogger: () => host.getLogger(),
       compactMemory: (target, userRequest, signal) =>
         host.compactMemory(target, userRequest, signal),

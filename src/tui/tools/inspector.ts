@@ -22,7 +22,11 @@ export function formatToolInspector(
   state: ToolState,
   width: number,
 ): string[] {
-  const sections = buildToolInspectorContext(toolCall, includeMaterial(toolCall, result, state));
+  const sections = buildToolInspectorContext(
+    toolCall,
+    includeMaterial(toolCall, result, state),
+    result,
+  );
   const lines: string[] = [];
 
   if (sections.length > 0) {

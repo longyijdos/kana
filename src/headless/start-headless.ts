@@ -128,7 +128,7 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
       enableScheduledWakeTool: false,
       launchMode: options.launchMode,
     });
-    runtime = createHeadlessRuntime(host);
+    runtime = createHeadlessRuntime(host, options.goal ?? false);
     host.getLogger().info("headless.started", {
       launchMode: options.launchMode ?? "normal",
       outputMode: options.json ? "jsonl" : "human",
@@ -312,6 +312,7 @@ export async function resolveHeadlessPrompt(
 
 function createHeadlessRuntime(
   host: ReturnType<typeof createKanaConversationHost>,
+  backgroundJobCompletionRuns: boolean,
 ): ConversationRuntime {
   return new ConversationRuntime({
     initialSession: host.initialSession
@@ -339,6 +340,8 @@ function createHeadlessRuntime(
     },
     wakeScheduler: host.wakeScheduler,
     goalMaxRounds: host.config.agent.goalMaxRounds,
+    getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
+    backgroundJobCompletionRuns,
     scheduledRuns: false,
     getLogger: () => host.getLogger(),
   });

@@ -16,6 +16,7 @@ describe("slash command controller", () => {
     harness.handle("approval");
     harness.handle("model");
     harness.handle("schedule");
+    harness.handle("jobs");
     harness.handle("goal", "Ship the feature");
     harness.handle("todo");
     harness.handle("tools");
@@ -30,6 +31,7 @@ describe("slash command controller", () => {
       "approval",
       "model",
       "schedule",
+      "jobs",
       "goal:Ship the feature",
       "todo",
       "tools",
@@ -91,6 +93,7 @@ function createHarness(running = false) {
     openSkillManager: () => events.push("skills"),
     openMcpServerManager: () => events.push("mcp"),
     openScheduledMessageManager: () => events.push("schedule"),
+    openBackgroundJobManager: () => events.push("jobs"),
     startGoal: (objective) => events.push(`goal:${objective}`),
     openTodo: () => events.push("todo"),
     openToolHistory: () => events.push("tools"),

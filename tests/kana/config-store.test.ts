@@ -35,6 +35,7 @@ describe("Kana config store", () => {
       draft.model["openai-codex"].imageInput = false;
       draft.agent.goalMaxRounds = 12;
       draft.agent.toolResultArtifacts = false;
+      draft.agent.backgroundJobs.maxConcurrent = 6;
       draft.agent.repeatedToolCalls.reminderThresholds = [2, 4];
       draft.agent.repeatedToolCalls.excludedTools = ["remember", "status"];
     });
@@ -54,6 +55,9 @@ describe("Kana config store", () => {
         "goal_max_rounds = 12",
         "tool_result_artifacts = false",
         "",
+        "[agent.background_jobs]",
+        "max_concurrent = 6",
+        "",
         "[agent.repeated_tool_calls]",
         "reminder_thresholds = [2,4]",
         'excluded_tools = ["remember","status"]',
@@ -67,6 +71,9 @@ describe("Kana config store", () => {
     expect(config.model["openai-codex"].imageInput).toBe(false);
     expect(config.agent.goalMaxRounds).toBe(12);
     expect(config.agent.toolResultArtifacts).toBe(false);
+    expect(config.agent.backgroundJobs).toEqual({
+      maxConcurrent: 6,
+    });
     expect(config.agent.repeatedToolCalls).toEqual({
       reminderThresholds: [2, 4],
       excludedTools: ["remember", "status"],

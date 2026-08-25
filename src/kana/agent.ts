@@ -5,11 +5,15 @@ import {
   createModelCompactPolicy,
   type PromptToolSection,
 } from "@/agent";
+import type { BackgroundJobClient } from "@/jobs";
 import {
   createBashTool,
   createEditTool,
   createGlobTool,
   createGrepTool,
+  createJobKillTool,
+  createJobListTool,
+  createJobOutputTool,
   createListTool,
   createReadTool,
   createViewImageTool,
@@ -17,6 +21,7 @@ import {
   type Tool,
 } from "@/tools";
 import { createKanaToolResultArtifactPolicy, type KanaSessionArtifactStore } from "./artifacts";
+import { createBackgroundJobPromptSections } from "./background-jobs/prompt";
 import { getActiveKanaModelConfig, type KanaConfig } from "./config";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-controller";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
@@ -45,6 +50,9 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
   "write",
   "edit",
   "bash",
+  "job_list",
+  "job_output",
+  "job_kill",
   "todo_write",
   "update_goal",
   "remember",
@@ -69,6 +77,7 @@ export type KanaAgentOptions = Pick<
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
   artifactStore?: KanaSessionArtifactStore;
+  backgroundJobs?: BackgroundJobClient;
   commitTodoState?: (change: KanaTodoStateChange) => Promise<void> | void;
   resolveTodoState?: () => readonly KanaTodoItem[];
   resolveGoal?: () => KanaGoalSnapshot | undefined;
@@ -119,9 +128,23 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     }),
     createBashTool({
       root: cwd,
+      backgroundJobs: options.backgroundJobs,
     }),
   ];
   const toolSections: PromptToolSection[] = [{ name: "workspace", tools: workspaceTools }];
+  const jobPrompt = options.backgroundJobs
+    ? createBackgroundJobPromptSections(options.backgroundJobs)
+    : undefined;
+  if (options.backgroundJobs) {
+    toolSections.push({
+      name: "background-jobs",
+      tools: [
+        createJobListTool(options.backgroundJobs),
+        createJobOutputTool(options.backgroundJobs),
+        createJobKillTool(options.backgroundJobs),
+      ],
+    });
+  }
   toolSections.push({
     name: "collaboration",
     tools: [
@@ -185,6 +208,8 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       env: options.env,
       launchMode: options.launchMode,
       skills,
+      capabilitySystemSections: jobPrompt ? [jobPrompt.system] : [],
+      capabilityContextSections: jobPrompt ? [jobPrompt.context] : [],
       toolSections,
       resolveTodoState: options.resolveTodoState,
       resolveGoalState: resolveGoal,

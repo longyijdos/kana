@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { BackgroundJobManager } from "../../src/jobs";
 import { createBashTool } from "../../src/tools/bash";
 import { createEditTool } from "../../src/tools/edit";
 import { createGlobTool } from "../../src/tools/glob";
@@ -1012,32 +1013,65 @@ describe("workspace tools", () => {
     });
   });
 
-  test("bash returns after its shell exits when a background child keeps output pipes open", async () => {
+  test("bash starts a session-owned background Job and streams its output separately", async () => {
     const root = await createTempRoot();
-    const bash = createBashTool({ root });
-    const startedAt = performance.now();
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const bash = createBashTool({ root, backgroundJobs: jobs });
     const result = await bash.execute(
       {
-        command: 'sleep 30 & printf %s "$!"',
-        timeoutMs: 2_000,
+        command: "printf start; sleep 0.1; printf end",
+        background: true,
       },
       createToolContext(),
     );
     expectToolResult(result);
-    const pid = Number(result.result.stdout);
+    const jobId = result.result.jobId;
 
-    try {
-      expect(result.result).toMatchObject({
-        exitCode: 0,
-        timedOut: false,
-      });
-      expect(pid).toBeInteger();
-      expect(performance.now() - startedAt).toBeLessThan(1_000);
-    } finally {
-      if (Number.isInteger(pid)) {
-        process.kill(pid, "SIGKILL");
-      }
-    }
+    expect(result.result).toMatchObject({
+      background: true,
+      exitCode: null,
+      stdout: "",
+      stderr: "",
+      timedOut: false,
+      status: "running",
+    });
+    expect(jobId).toStartWith("job_");
+    const output = await readJobToCompletion(jobs, jobId ?? "");
+    expect(output).toBe("startend");
+    expect(jobs.list()[0]).toMatchObject({ status: "completed", exitCode: 0 });
+    await manager.close();
+  });
+
+  test("bash rejects background execution without a session Job client", async () => {
+    const root = await createTempRoot();
+    const bash = createBashTool({ root });
+
+    await expect(
+      bash.execute({ command: "sleep 1", background: true }, createToolContext()),
+    ).rejects.toThrow("Background Bash is unavailable without an active session.");
+  });
+
+  test("bash keeps raw shell backgrounding inside the foreground process lifetime", async () => {
+    const root = await createTempRoot();
+    const sideEffectPath = path.join(root, "escaped.txt");
+    const sideEffectDelaySeconds = 1;
+    const bash = createBashTool({ root });
+    const result = await bash.execute(
+      {
+        command: `(sleep ${sideEffectDelaySeconds}; printf escaped > ${shellQuote(sideEffectPath)}) & printf foreground`,
+        timeoutMs: 100,
+      },
+      createToolContext(),
+    );
+    expectToolResult(result);
+
+    expect(result.result).toMatchObject({
+      exitCode: null,
+      timedOut: true,
+    });
+    await new Promise((resolve) => setTimeout(resolve, sideEffectDelaySeconds * 1_000 + 100));
+    expect(existsSync(sideEffectPath)).toBe(false);
   });
 
   test("bash cancellation terminates background children in the command process group", async () => {
@@ -1130,4 +1164,18 @@ function isProcessRunning(pid: number): boolean {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+async function readJobToCompletion(
+  jobs: import("../../src/jobs").BackgroundJobClient,
+  jobId: string,
+): Promise<string> {
+  let output = "";
+  for (;;) {
+    const snapshot = await jobs.read(jobId, { waitMs: 1_000 });
+    output += snapshot.chunks.map((chunk) => chunk.text).join("");
+    if (snapshot.status !== "running" && snapshot.status !== "stopping" && !snapshot.hasMore) {
+      return output;
+    }
+  }
 }

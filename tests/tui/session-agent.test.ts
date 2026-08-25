@@ -8,7 +8,7 @@ import { withAgentInboxForTest } from "../helpers/agent-inbox";
 import { messageIdentityForTest } from "../helpers/messages";
 
 describe("session-scoped agents", () => {
-  test("resets a temporary tool approval mode when the session changes", () => {
+  test("resets a temporary tool approval mode when the session changes", async () => {
     const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), createOptions());
     const internal = app as unknown as {
       handleCommand(command: { name: "new"; arguments: string; raw: string }): void;
@@ -23,7 +23,7 @@ describe("session-scoped agents", () => {
 
     internal.handleCommand({ name: "new", arguments: "", raw: "/new" });
 
-    expect(internal.toolApproval.mode).toBe("unless_trusted");
+    await waitFor(() => internal.toolApproval.mode === "unless_trusted");
   });
 
   test("cancels the active Agent before running host shutdown once", async () => {

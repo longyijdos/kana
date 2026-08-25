@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { BackgroundJobManager } from "../../src/jobs";
+import { createBackgroundJobPromptSections } from "../../src/kana/background-jobs/prompt";
 import type { KanaGoalSnapshot } from "../../src/kana/conversation/goal-controller";
 import { buildKanaPromptAssembly } from "../../src/kana/prompt";
 import type { KanaTodoItem } from "../../src/kana/todo";
@@ -87,4 +89,69 @@ describe("Kana prompt assembly", () => {
         "No user-authorized goal is currently active. Do not continue an earlier goal automatically.",
     });
   });
+
+  test("projects only active or unreported Background Job state without output", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const background = createBackgroundJobPromptSections(jobs);
+    const assembly = buildKanaPromptAssembly({
+      launchMode: "clean",
+      capabilitySystemSections: [background.system],
+      capabilityContextSections: [background.context],
+    });
+    const signal = new AbortController().signal;
+    let finish!: (value: { status: "completed"; exitCode: number }) => void;
+    const completion = new Promise<{ status: "completed"; exitCode: number }>((resolve) => {
+      finish = resolve;
+    });
+
+    const inactive = await assembly.assemble({ signal });
+    expect(inactive.context.find((snapshot) => snapshot.source === "background-jobs")).toEqual({
+      source: "background-jobs",
+      status: "inactive",
+      content: "The current session has no active or unreported Background Jobs.",
+    });
+
+    const job = jobs.start({
+      kind: "bash",
+      label: "bun run dev",
+      cwd: ".",
+      run: ({ write }) => {
+        write("stdout", "secret output that must not enter runtime context");
+        return completion;
+      },
+    });
+    const running = await assembly.assemble({ signal });
+    const runningContent = running.context.find(
+      (snapshot) => snapshot.source === "background-jobs",
+    )?.content;
+    expect(runningContent).toContain(job.id);
+    expect(runningContent).toContain('"status":"running"');
+    expect(runningContent).not.toContain("secret output");
+
+    finish({ status: "completed", exitCode: 0 });
+    await waitFor(() => jobs.list()[0]?.status === "completed");
+    const completed = await assembly.assemble({ signal });
+    expect(
+      completed.context.find((snapshot) => snapshot.source === "background-jobs")?.content,
+    ).toContain('"status":"completed"');
+
+    jobs.observe(job.id);
+    const observed = await assembly.assemble({ signal });
+    expect(observed.context.find((snapshot) => snapshot.source === "background-jobs")?.status).toBe(
+      "inactive",
+    );
+    await manager.close();
+  });
 });
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error("Condition was not met.");
+}

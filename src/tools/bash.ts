@@ -1,5 +1,7 @@
 import path from "node:path";
 import { Type } from "typebox";
+import type { BackgroundJobClient, BackgroundJobStatus } from "@/jobs";
+import { runCommandProcess } from "./command-process";
 import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveWorkspaceDirectory } from "./workspace-path";
@@ -10,10 +12,6 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_PARTIAL_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;
-// A background child can inherit stdout/stderr after its shell exits. Give a
-// normally exiting shell a brief chance to drain its final output, then stop
-// reading so that child cannot keep the tool call open indefinitely.
-const OUTPUT_DRAIN_TIMEOUT_MS = 50;
 // Keep sudo from prompting on the TUI's raw terminal. It exits immediately
 // when credentials are required instead of competing with the editor for input.
 const NON_INTERACTIVE_COMMAND_PREFIX = 'sudo() { command sudo -n "$@"; }\n';
@@ -37,8 +35,15 @@ export const bashParameters = strictObject({
     Type.Integer({
       minimum: 1,
       maximum: MAX_TIMEOUT_MS,
-      default: DEFAULT_TIMEOUT_MS,
-      description: "Command timeout in milliseconds.",
+      description:
+        "Command timeout in milliseconds. Foreground commands default to 30000; background commands have no default timeout.",
+    }),
+  ),
+  background: Type.Optional(
+    Type.Boolean({
+      default: false,
+      description:
+        "Run as a session-owned background Job and return immediately with a stable Job ID.",
     }),
   ),
 });
@@ -50,11 +55,15 @@ export type BashToolResult = {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  background?: boolean;
+  jobId?: string;
+  status?: BackgroundJobStatus;
 };
 
 export type BashToolOptions = {
   root?: string;
   shell?: string;
+  backgroundJobs?: BackgroundJobClient;
 };
 
 export function createBashTool(
@@ -66,7 +75,7 @@ export function createBashTool(
   return {
     name: "bash",
     description:
-      "Run a shell command. Commands execute with the user's shell, requested working directory, timeout, and bounded live output updates.",
+      "Run a shell command. Foreground commands wait for their complete process group; background commands return a session-owned Job ID for job_list, job_output, and job_kill.",
     parameters: bashParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {
@@ -80,23 +89,74 @@ export function createBashTool(
       }
 
       const cwd = await resolveWorkspaceDirectory(root, args.cwd ?? ".");
+      if (context.signal?.aborted) {
+        throw new Error("Command aborted.");
+      }
+      if (args.background) {
+        const jobs = options.backgroundJobs;
+        if (!jobs) {
+          throw new Error("Background Bash is unavailable without an active session.");
+        }
+        const job = jobs.start({
+          kind: "bash",
+          label: command,
+          cwd: cwd.relativePath,
+          run: async ({ signal, write }) => {
+            const result = await runCommandProcess({
+              command,
+              cwd: cwd.absolutePath,
+              shell,
+              prefix: NON_INTERACTIVE_COMMAND_PREFIX,
+              timeoutMs: args.timeoutMs,
+              signal,
+              onOutput: write,
+            });
+            return { status: result.status, exitCode: result.exitCode };
+          },
+        });
+        const toolResult: BashToolResult = {
+          command,
+          cwd: cwd.relativePath,
+          exitCode: null,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          background: true,
+          jobId: job.id,
+          status: job.status,
+        };
+        return {
+          content: formatBashContent(toolResult),
+          result: toolResult,
+        };
+      }
+
       const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const partialEmitter = createBashPartialEmitter((output) => {
         context.update(createBashPartialResult(command, cwd.relativePath, output));
       });
-      let result: Awaited<ReturnType<typeof runCommand>>;
+      const output: BashOutputSnapshot = { stdout: "", stderr: "" };
+      let result: Awaited<ReturnType<typeof runCommandProcess>>;
 
       try {
-        result = await runCommand(
+        result = await runCommandProcess({
           command,
-          cwd.absolutePath,
-          timeoutMs,
+          cwd: cwd.absolutePath,
           shell,
-          context.signal,
-          (output) => partialEmitter.update(output),
-        );
+          prefix: NON_INTERACTIVE_COMMAND_PREFIX,
+          timeoutMs,
+          signal: context.signal,
+          onOutput: (stream, text) => {
+            output[stream] += text;
+            partialEmitter.update(output);
+          },
+        });
       } finally {
         partialEmitter.flush();
+      }
+
+      if (result.aborted) {
+        throw new Error("Command aborted.");
       }
 
       // Final output must reach the shared result policy intact so it can be
@@ -105,193 +165,21 @@ export function createBashTool(
         command,
         cwd: cwd.relativePath,
         exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: output.stdout,
+        stderr: result.timedOut
+          ? output.stderr || `Command timed out after ${timeoutMs}ms.`
+          : output.stderr,
         timedOut: result.timedOut,
+        background: false,
       };
 
       return {
         content: formatBashContent(toolResult),
         result: toolResult,
-        isError: result.timedOut,
+        isError: result.timedOut || result.status === "unknown",
       };
     },
   };
-}
-
-async function runCommand(
-  command: string,
-  cwd: string,
-  timeoutMs: number,
-  shell: string,
-  signal?: AbortSignal,
-  onOutput?: (output: BashOutputSnapshot) => void,
-): Promise<{
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-  timedOut: boolean;
-}> {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const output: BashOutputSnapshot = {
-    stdout: "",
-    stderr: "",
-  };
-  const outputController = new AbortController();
-  let removeAbortListeners: (() => void) | undefined;
-
-  try {
-    const proc = Bun.spawn([shell, "-lc", `${NON_INTERACTIVE_COMMAND_PREFIX}${command}`], {
-      cwd,
-      // Bun's implicit child environment does not include variables added to
-      // process.env after startup, including values loaded from KANA_HOME/.env.
-      env: process.env,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      // On POSIX, this makes the shell the leader of a separate process group
-      // so cancellation can also terminate background children it started.
-      detached: true,
-    });
-    const terminate = () => terminateCommandProcessTree(proc);
-    const abortSignals = [timeoutSignal, signal].filter(
-      (candidate): candidate is AbortSignal => candidate !== undefined,
-    );
-
-    for (const abortSignal of abortSignals) {
-      abortSignal.addEventListener("abort", terminate, { once: true });
-
-      if (abortSignal.aborted) {
-        terminate();
-      }
-    }
-    removeAbortListeners = () => {
-      for (const abortSignal of abortSignals) {
-        abortSignal.removeEventListener("abort", terminate);
-      }
-    };
-
-    const stdoutPromise = readOutputStream(
-      proc.stdout,
-      "stdout",
-      output,
-      onOutput,
-      outputController.signal,
-    );
-    const stderrPromise = readOutputStream(
-      proc.stderr,
-      "stderr",
-      output,
-      onOutput,
-      outputController.signal,
-    );
-    const outputPromise = Promise.all([stdoutPromise, stderrPromise]);
-    const exitCode = await proc.exited;
-
-    await Promise.race([outputPromise, delay(OUTPUT_DRAIN_TIMEOUT_MS)]);
-    outputController.abort();
-    const [stdout, stderr] = await outputPromise;
-
-    removeAbortListeners();
-    removeAbortListeners = undefined;
-
-    const timedOut = timeoutSignal.aborted;
-
-    if (!timedOut && signal?.aborted) {
-      throw new Error("Command aborted.");
-    }
-
-    return {
-      exitCode: timedOut ? null : exitCode,
-      stdout,
-      stderr: timedOut ? stderr || `Command timed out after ${timeoutMs}ms.` : stderr,
-      timedOut,
-    };
-  } catch (error) {
-    removeAbortListeners?.();
-
-    if (timeoutSignal.aborted) {
-      return {
-        exitCode: null,
-        stdout: output.stdout,
-        stderr: output.stderr || `Command timed out after ${timeoutMs}ms.`,
-        timedOut: true,
-      };
-    }
-
-    if (signal?.aborted) {
-      throw new Error("Command aborted.");
-    }
-
-    throw error;
-  }
-}
-
-async function readOutputStream(
-  stream: ReadableStream<Uint8Array>,
-  name: keyof BashOutputSnapshot,
-  output: BashOutputSnapshot,
-  onOutput: ((output: BashOutputSnapshot) => void) | undefined,
-  signal: AbortSignal,
-): Promise<string> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  const cancelReader = () => {
-    void reader.cancel().catch(() => undefined);
-  };
-
-  signal.addEventListener("abort", cancelReader, { once: true });
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      const chunk = decoder.decode(value, { stream: true });
-
-      if (!chunk) {
-        continue;
-      }
-
-      output[name] += chunk;
-      onOutput?.({
-        stdout: output.stdout,
-        stderr: output.stderr,
-      });
-    }
-
-    const remaining = decoder.decode();
-
-    if (remaining) {
-      output[name] += remaining;
-      onOutput?.({
-        stdout: output.stdout,
-        stderr: output.stderr,
-      });
-    }
-
-    return output[name];
-  } finally {
-    signal.removeEventListener("abort", cancelReader);
-    reader.releaseLock();
-  }
-}
-
-function terminateCommandProcessTree(proc: ReturnType<typeof Bun.spawn>): void {
-  try {
-    process.kill(-proc.pid, "SIGKILL");
-  } catch {
-    // The shell may have exited between cancellation and this call. Killing
-    // the direct child is still useful when it remains alive.
-    proc.kill("SIGKILL");
-  }
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function resolveShell(shell: string | undefined): string {
@@ -381,6 +269,15 @@ function createBashPartialEmitter(onOutput: (output: BashOutputSnapshot) => void
 }
 
 function formatBashContent(result: BashToolResult): string {
+  if (result.background) {
+    return [
+      `command: ${result.command}`,
+      `cwd: ${result.cwd}`,
+      "background: true",
+      `jobId: ${result.jobId}`,
+      `status: ${result.status}`,
+    ].join("\n");
+  }
   return [
     `command: ${result.command}`,
     `cwd: ${result.cwd}`,

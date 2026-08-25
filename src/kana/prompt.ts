@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   createPromptAssembly,
   type PromptAssembly,
+  type PromptContextSection,
   type PromptContextState,
   type PromptSystemSection,
   type PromptToolSection,
@@ -44,6 +45,8 @@ export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions 
 };
 
 export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
+  capabilitySystemSections?: readonly PromptSystemSection[];
+  capabilityContextSections?: readonly PromptContextSection[];
   toolSections?: readonly PromptToolSection[];
   resolveTodoState?: () => readonly KanaTodoItem[];
   resolveGoalState?: () => KanaGoalSnapshot | undefined;
@@ -101,6 +104,7 @@ export function buildKanaPromptAssembly(
     system: [
       ...(memoryPrompt ? [{ name: "memory", content: memoryPrompt }] : []),
       ...instructionSections,
+      ...(options.capabilitySystemSections ?? []),
       ...(skillsPrompt ? [{ name: "skills", content: skillsPrompt }] : []),
     ],
     context: [
@@ -111,6 +115,7 @@ export function buildKanaPromptAssembly(
           content: formatKanaEnvironmentContext(collectKanaEnvironmentContext(options)),
         }),
       },
+      ...(options.capabilityContextSections ?? []),
       ...(options.resolveTodoState
         ? [
             {
