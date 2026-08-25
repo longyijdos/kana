@@ -9,7 +9,7 @@ type ProducerResult = {
 };
 
 describe("Background Job tools", () => {
-  test("lists Jobs and reads bounded unseen output", async () => {
+  test("lists Jobs and reads all unseen output", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const completion = deferred<ProducerResult>();
