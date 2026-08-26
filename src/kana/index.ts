@@ -20,8 +20,8 @@ export {
   signOutKanaOpenAICodex,
 } from "./auth";
 export {
+  createKanaConfigStore,
   DEFAULT_KANA_CONFIG,
-  getKanaConfigPaths,
   type InstallKanaConfigResult,
   installKanaConfig,
   type KanaConfig,
@@ -36,7 +36,6 @@ export {
   type ResetKanaConfigResult,
   resetKanaConfig,
 } from "./config";
-export { createKanaConfigStore } from "./config-store";
 export { formatKanaEnvironmentContext } from "./context";
 export {
   type ConversationInputQueueSnapshot,
@@ -88,7 +87,7 @@ export {
   getKanaModelManagement,
   type KanaModelManagement,
 } from "./model-management";
-export { getKanaSessionLogPath } from "./path";
+export { getKanaConfigPaths, getKanaSessionLogPath } from "./path";
 export { buildKanaSystemPrompt } from "./prompt";
 export {
   appendKanaSessionMessages,

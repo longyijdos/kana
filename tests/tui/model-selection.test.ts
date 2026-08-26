@@ -403,6 +403,7 @@ function createOptions() {
     saveEnabledGlobalSkills: () => {},
     toolApproval: { config: {}, approvals: {} } as never,
     notification: {} as never,
+    goalMaxRounds: settings.agent.goalMaxRounds,
     compactMemory: async () => [],
     loadMemory: () => "",
     loadUsage: () => ({

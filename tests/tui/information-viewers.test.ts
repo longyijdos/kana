@@ -593,6 +593,7 @@ function createApp(
       saveEnabledGlobalSkills: () => {},
       toolApproval: { config: {}, approvals: {} } as never,
       notification: {} as never,
+      goalMaxRounds: 8,
       compactMemory: async () => [],
       loadMemory: () => "",
       loadUsage,

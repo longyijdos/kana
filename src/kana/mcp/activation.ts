@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { type KanaOAuthTokenStatus, loadKanaOAuthTokenStatuses } from "../auth/token-store";
-import { getKanaConfigPaths } from "../config";
+import { getKanaConfigPaths } from "../path";
 import { loadKanaMcpConfig } from "./config";
 import { createKanaMcpOAuthStorageKey } from "./oauth";
 

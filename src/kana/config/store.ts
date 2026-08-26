@@ -2,13 +2,10 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import {
-  getKanaConfigPaths,
-  type KanaConfig,
-  loadKanaConfig,
-  parseKanaConfig,
-  validateKanaConfig,
-} from "./config";
+import { getKanaConfigPaths } from "../path";
+import type { KanaConfig } from "./contracts";
+import { parseKanaConfig, validateKanaConfig } from "./parser";
+import { loadKanaConfig } from "./persistence";
 
 type KanaConfigValue =
   | string

@@ -15,8 +15,7 @@ import path from "node:path";
 
 import type { ContextCheckpoint } from "@/agent";
 import type { Message, ToolResultArtifact } from "@/core";
-import { getKanaConfigPaths } from "../config";
-import { encodeKanaWorkspacePath } from "../path";
+import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 import { getKanaSessionArtifactDirectory, getKanaWorkspaceArtifactDirectory } from "./store";
 
 // A fork copies artifacts before its snapshot is journaled. The grace period

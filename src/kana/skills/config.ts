@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { getKanaConfigPaths } from "../config";
+import { getKanaConfigPaths } from "../path";
 import type { LoadKanaSkillsOptions } from "./types";
 
 export function loadEnabledGlobalSkillNames(globalSkillsDir: string): Set<string> {

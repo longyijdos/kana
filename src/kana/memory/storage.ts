@@ -11,8 +11,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-import { getKanaConfigPaths, loadKanaConfig } from "../config";
-import { encodeKanaWorkspacePath } from "../path";
+import { loadKanaConfig } from "../config";
+import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 
 const KANA_MEMORY_SCOPES = ["global", "project"] as const;
 

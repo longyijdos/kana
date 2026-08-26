@@ -1084,6 +1084,7 @@ describe("ConversationRuntime", () => {
 
 function createRuntimeOptions() {
   return {
+    goalMaxRounds: 8,
     createNewSession: () => ({ id: "new" }),
     forkSession: () => ({ id: "fork" }),
     loadSession: (sessionId: string) => ({

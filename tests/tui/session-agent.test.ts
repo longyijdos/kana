@@ -794,6 +794,7 @@ function createOptions() {
       },
     },
     notification: {} as never,
+    goalMaxRounds: 8,
     compactMemory: async () => [],
     loadMemory: () => "",
     loadUsage: () => ({

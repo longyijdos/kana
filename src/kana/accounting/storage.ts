@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { getKanaConfigPaths } from "../config";
-import { encodeKanaWorkspacePath } from "../path";
+import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 import {
   type AppendKanaRunAccountingOptions,
   KANA_ACCOUNTING_VERSION,

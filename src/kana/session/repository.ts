@@ -11,8 +11,7 @@ import path from "node:path";
 
 import type { ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
-import { getKanaConfigPaths } from "../config";
-import { encodeKanaWorkspacePath } from "../path";
+import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 import {
   type AppendKanaSessionMessagesOptions,
   type AppendKanaSessionRunOptions,

@@ -5,8 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { ToolResultArtifact } from "@/core";
-import { getKanaConfigPaths } from "../config";
-import { encodeKanaWorkspacePath } from "../path";
+import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 
 const MAX_SUGGESTED_STEM_LENGTH = 48;
 

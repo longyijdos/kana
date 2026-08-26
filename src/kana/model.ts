@@ -10,16 +10,16 @@ import {
   OpenAICompatibleModel,
 } from "@/providers";
 import { KanaOpenAICodexAuth } from "./auth/openai-codex";
-import {
-  getKanaConfigPaths,
-  type KanaAgentRuntimeConfig,
-  type KanaDeepSeekProviderConfig,
-  type KanaModelConfig,
-  type KanaModelProvider,
-  type KanaOpenAICodexProviderConfig,
-  type KanaProviderConfig,
+import type {
+  KanaAgentRuntimeConfig,
+  KanaDeepSeekProviderConfig,
+  KanaModelConfig,
+  KanaModelProvider,
+  KanaOpenAICodexProviderConfig,
+  KanaProviderConfig,
 } from "./config";
 import { getKanaCustomProviderModel, loadKanaCustomProvider } from "./custom-provider";
+import { getKanaConfigPaths } from "./path";
 
 export type KanaSelectedProviderConfig =
   | { provider: "deepseek"; config: KanaDeepSeekProviderConfig }

@@ -34,6 +34,7 @@ describe("memory viewer", () => {
         saveEnabledGlobalSkills: () => {},
         toolApproval: { config: {}, approvals: {} } as never,
         notification: {} as never,
+        goalMaxRounds: 8,
         compactMemory: async () => [],
         loadMemory: () => longMemory,
         loadUsage: () => ({

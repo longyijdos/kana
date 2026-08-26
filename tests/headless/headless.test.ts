@@ -788,7 +788,7 @@ function createRuntime(options: {
       messages: [],
       timeline: [],
     }),
-    goalMaxRounds: options.goalMaxRounds,
+    goalMaxRounds: options.goalMaxRounds ?? 8,
     scheduledRuns: false,
   };
   return new ConversationRuntime(runtimeOptions);

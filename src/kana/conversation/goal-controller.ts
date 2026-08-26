@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-export const DEFAULT_KANA_GOAL_MAX_ROUNDS = 8;
-
 type KanaGoalStatus = "active" | "completed" | "blocked" | "cancelled" | "round_limit";
 
 export type KanaGoalSnapshot = {

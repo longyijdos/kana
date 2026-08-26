@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "@/logging";
 import type { OAuthStoredToken, OAuthTokenStore } from "@/oauth";
-import { getKanaConfigPaths } from "../config";
+import { getKanaConfigPaths } from "../path";
 
 const TOKEN_FILE_VERSION = 1;
 

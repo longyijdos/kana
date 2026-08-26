@@ -2,8 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { addModelUsage, type ModelUsage } from "@/core";
-import { getKanaConfigPaths } from "../config";
-import { encodeKanaWorkspacePath } from "../path";
+import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 import { getKanaAccountingPath, readKanaRunAccounting } from "./storage";
 import type {
   KanaAccountingOutcome,

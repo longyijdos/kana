@@ -264,6 +264,7 @@ function createRuntime<TConfiguration>(
     listSessions: () => host.listSessions(),
     deleteSession: (sessionId) => host.deleteSession(sessionId),
     wakeScheduler: host.wakeScheduler,
+    goalMaxRounds: host.config.agent.goalMaxRounds,
     getLogger: () => host.getLogger(),
   });
 }

@@ -22,12 +22,7 @@ import type {
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
-import {
-  DEFAULT_KANA_GOAL_MAX_ROUNDS,
-  KanaGoalController,
-  type KanaGoalSnapshot,
-  type KanaGoalUpdate,
-} from "./goal-controller";
+import { KanaGoalController, type KanaGoalSnapshot, type KanaGoalUpdate } from "./goal-controller";
 import {
   createWakeScheduler,
   type WakeEvent,
@@ -167,7 +162,7 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   wakeScheduler?: WakeScheduler;
   scheduledRuns?: boolean;
   canStartQueuedRun?: () => boolean;
-  goalMaxRounds?: number;
+  goalMaxRounds: number;
   getLogger?: () => Logger;
 };
 
@@ -348,10 +343,7 @@ export class ConversationRuntime<TConfiguration = never> {
 
   async startGoal(objective: string): Promise<KanaGoalSnapshot> {
     this.assertCanStartRun();
-    const goal = this.goalController.start(
-      objective,
-      this.options.goalMaxRounds ?? DEFAULT_KANA_GOAL_MAX_ROUNDS,
-    );
+    const goal = this.goalController.start(objective, this.options.goalMaxRounds);
     this.emitGoalChanged("started", goal);
     this.log("info", "conversation.goal_started", {
       goalId: goal.id,

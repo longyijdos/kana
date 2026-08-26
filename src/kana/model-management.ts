@@ -1,12 +1,8 @@
 import type { ModelReasoningMetadata } from "@/core";
 import { DEEPSEEK_MODELS, OPENAI_CODEX_MODELS } from "@/providers";
-import {
-  getKanaConfigPaths,
-  KANA_MODEL_PROVIDERS,
-  type KanaConfig,
-  type KanaModelProvider,
-} from "./config";
+import { KANA_MODEL_PROVIDERS, type KanaConfig, type KanaModelProvider } from "./config";
 import { type KanaCustomProvider, loadOptionalKanaCustomProvider } from "./custom-provider";
+import { getKanaConfigPaths } from "./path";
 
 type KanaManagedModel = {
   name: string;

@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import type { ToolCallContent } from "@/core";
-import { getKanaConfigPaths, type KanaToolApprovalConfig } from "./config";
+import type { KanaToolApprovalConfig } from "./config";
+import { getKanaConfigPaths } from "./path";
 
 export {
   DEFAULT_KANA_TOOL_APPROVALS,

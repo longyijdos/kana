@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import { getKanaConfigPaths } from "../config";
 import { escapeXml } from "../format";
+import { getKanaConfigPaths } from "../path";
 import { loadEnabledGlobalSkillNames } from "./config";
 import { isPathInside } from "./paths";
 import type { KanaSkill } from "./types";

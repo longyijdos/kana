@@ -23,13 +23,14 @@ import {
 } from "../artifacts";
 import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth";
 import {
+  createKanaConfigStore,
   type KanaConfig,
+  type KanaConfigStore,
   type KanaNotificationConfig,
   type KanaToolApprovalConfig,
   type KanaTuiConfig,
   validateKanaConfig,
 } from "../config";
-import { createKanaConfigStore, type KanaConfigStore } from "../config-store";
 import type { KanaLaunchMode } from "../launch-mode";
 import {
   authorizeKanaMcpServer,

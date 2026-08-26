@@ -125,7 +125,7 @@ export type KanaTuiAppOptions = {
   };
   notification: KanaNotificationConfig;
   tuiConfig?: KanaTuiConfig;
-  goalMaxRounds?: number;
+  goalMaxRounds: number;
   wakeScheduler?: WakeScheduler;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
   getLogger?: () => Logger;

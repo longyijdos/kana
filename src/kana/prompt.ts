@@ -10,7 +10,7 @@ import {
   type PromptToolSection,
 } from "@/agent";
 import type { BackgroundJobSummary } from "@/jobs";
-import { getKanaConfigPaths, loadKanaConfig } from "./config";
+import { loadKanaConfig } from "./config";
 import {
   type CollectKanaEnvironmentContextOptions,
   collectKanaEnvironmentContext,
@@ -19,6 +19,7 @@ import {
 import type { KanaGoalSnapshot } from "./conversation/goal-controller";
 import type { KanaLaunchMode } from "./launch-mode";
 import { formatKanaMemoryForPrompt } from "./memory/prompt";
+import { getKanaConfigPaths } from "./path";
 import { formatKanaSkillsForPrompt } from "./skills/prompt";
 import type { KanaSkill } from "./skills/types";
 import type { KanaTodoItem } from "./todo";

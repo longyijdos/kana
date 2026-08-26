@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { parseEnv } from "node:util";
 
-import { getKanaConfigPaths } from "./config";
+import { getKanaConfigPaths } from "./path";
 
 export function loadKanaEnvironment(env: NodeJS.ProcessEnv = process.env): void {
   const { home } = getKanaConfigPaths(env);

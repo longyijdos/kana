@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { getKanaConfigPaths } from "../config";
 import { formatError } from "../format";
+import { getKanaConfigPaths } from "../path";
 
 const execFileAsync = promisify(execFile);
 
