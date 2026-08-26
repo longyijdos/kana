@@ -16,7 +16,7 @@ import { resolveRuntimeContextMessages } from "./prompt-assembly";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
 const DEFAULT_TARGET_RATIO = 0.1;
-const DEFAULT_MAX_TOOL_CONTENT_TOKENS = 16_000;
+const DEFAULT_MAX_TOOL_CONTENT_TOKENS = 8_000;
 const MIN_SUMMARY_TOKENS = 64;
 const MAX_SUMMARY_TOKENS = 8_192;
 

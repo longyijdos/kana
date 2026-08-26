@@ -734,7 +734,7 @@ describe("runAgentLoop", () => {
       content: expect.stringContaining("[Tool output truncated for model context]"),
       result,
     });
-    expect(limitedContentLength).toBe(48_000);
+    expect(limitedContentLength).toBe(24_000);
     expect(model.contexts[1]?.messages.at(-1)).toMatchObject({
       role: "tool",
       content: expect.stringContaining("[Tool output truncated for model context]"),

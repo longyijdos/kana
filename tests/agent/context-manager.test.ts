@@ -366,7 +366,7 @@ describe("ContextManager", () => {
 
     const limited = manager.limitToolContent(content);
 
-    expect(manager.maxToolContentTokens).toBe(16_000);
+    expect(manager.maxToolContentTokens).toBe(8_000);
     expect(estimateTextTokens(limited)).toBeLessThanOrEqual(manager.maxToolContentTokens);
     expect(limited.startsWith("A")).toBe(true);
     expect(limited.endsWith("Z")).toBe(true);
