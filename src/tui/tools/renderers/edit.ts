@@ -10,8 +10,8 @@ import {
 import { tuiTheme } from "../../theme";
 import { highlightCodeSync, inferCodeLanguage } from "../../utils/syntax-highlighter";
 import { COMPACT_DIFF_LINE_LIMIT } from "../compact";
-import type { ToolOutputDetail } from "../format";
 import { getNumberProperty, getStringProperty } from "../properties";
+import type { ToolOutputDetail } from "../types";
 
 export function formatEditOutput(
   result: object,

@@ -1,4 +1,11 @@
-import type { ModelUsage } from "./model";
+export type ModelUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  promptCacheHitTokens?: number;
+  promptCacheMissTokens?: number;
+  reasoningTokens?: number;
+};
 
 export function addModelUsage(current: ModelUsage | undefined, next: ModelUsage): ModelUsage {
   return {

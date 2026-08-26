@@ -1,4 +1,4 @@
-import { EventStream, type ReadableEventStream } from "@/utils";
+import { EventStream, type ReadableEventStream } from "./event-stream";
 import type { AssistantMessageEvent } from "./events";
 import type { AssistantMessage } from "./messages";
 

@@ -223,7 +223,7 @@ describe("ConversationRuntime", () => {
       ...createRuntimeOptions(),
       initialSession: { id: "session-a", messages: [], timeline: [] },
       wakeScheduler,
-      canStartScheduledRun: () => hostReady,
+      canStartQueuedRun: () => hostReady,
       createAgent: (options) =>
         new Agent({
           model,
@@ -257,7 +257,7 @@ describe("ConversationRuntime", () => {
     expect(model.contexts).toHaveLength(1);
 
     hostReady = true;
-    runtime.notifyCanStartScheduledRun();
+    runtime.notifyCanStartQueuedRun();
     await waitFor(() => model.contexts.length === 2);
     expect(model.contexts[1]?.messages.at(-1)).toEqual({
       id: wake.id,

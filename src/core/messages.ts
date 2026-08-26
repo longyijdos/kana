@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ModelUsage } from "./model";
+import type { ModelUsage } from "./usage";
 
 export type Message = UserMessage | AssistantMessage | ToolResultMessage;
 

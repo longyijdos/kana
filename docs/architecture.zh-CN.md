@@ -15,7 +15,8 @@ src/main.ts
                                                               ├─ mcp      MCP JSON-RPC 连接、协议客户端与传输
                                                               ├─ agent    模型—工具循环和事件协议转换
                                                               ├─ tools    可复用的文件与 Shell 工具
-                                                              ├─ core     消息、模型、工具描述、流和用量的共享协议
+                                                              ├─ core     消息、模型、工具、事件流和用量的共享协议
+                                                              ├─ utils    基于 core 图片协议的图片输入规范化
                                                               └─ providers
                                                                   ├─ responses     共享 Responses 语义 SSE 组装
                                                                   ├─ openai-compatible  共享 Chat Completions 适配
@@ -23,7 +24,26 @@ src/main.ts
                                                                   └─ openai-codex  Codex Responses、OAuth 凭据和流式适配
 ```
 
-`core` 是最内层的协议包：不依赖产品配置或前端。Provider-facing 的 `ToolSpec` 属于该层；`tools` 中可执行的 `Tool` 在此基础上增加执行函数。`logging` 是同时提供日志协议、空实现和会话级 JSONL 实现的基础设施模块。`agent` 依赖 `core`、`tools` 以及 `logging` 中的协议和空实现，但不知道日志路径或产品配置，因此可在没有终端界面的情况下运行；具体 session logger 由 Kana 产品层装配。`oauth` 是不感知 MCP、供应商或前端的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 与 `headless` 共享该装配层，且都不直接实现模型协议或持久化格式。
+`core` 是最内层的协议包，不依赖其他顶层源码模块。Provider-facing 的 `ToolSpec`、可复用的 `EventStream` 和 `ModelUsage` 协议属于该层；`tools` 中可执行的 `Tool` 在此基础上增加执行函数。`utils` 负责基于 Bun 的图片加载与规范化，并且只依赖 `core` 中的图片协议。`logging` 是同时提供日志协议、空实现和会话级 JSONL 实现的基础设施模块。`agent` 依赖 `core`、`tools` 以及 `logging` 中的协议和空实现，但不知道日志路径或产品配置，因此可在没有终端界面的情况下运行；具体 session logger 由 Kana 产品层装配。`oauth` 是不感知 MCP、供应商或前端的通用 Authorization Code + PKCE 和 token 生命周期模块；`mcp` 在其上增加 protected-resource discovery 与 Bearer challenge 语义，但仍不依赖 Kana 产品装配或 Agent loop。`kana` 是将这些通用部件变成 Kana 产品的装配层；它从当前工作目录和 `~/.kana`（或 `KANA_HOME`）读取状态。`tui` 与 `headless` 共享该装配层，且都不直接实现模型协议或持久化格式。
+
+顶层源码模块之间允许的直接依赖是显式的：
+
+| 来源 | 可以导入 |
+| --- | --- |
+| `main.ts` | `cli`、`headless`、`kana`、`tui` |
+| `cli` | `headless`、`kana`、`oauth`、`tui`、`version.ts` |
+| `tui` | `agent`、`core`、`jobs`、`kana`、`logging`、`mcp`、`tools`、`utils`、`version.ts` |
+| `headless` | `agent`、`core`、`kana`、`logging`、`mcp` |
+| `kana` | `agent`、`core`、`jobs`、`logging`、`mcp`、`oauth`、`providers`、`tools`、`version.ts` |
+| `agent` | `core`、`logging`、`tools` |
+| `providers` | `core`、`logging` |
+| `mcp` | `oauth`、`tools` |
+| `tools` | `core`、`jobs`、`utils` |
+| `utils` | `core` |
+| `jobs` | `logging` |
+| `oauth`、`logging`、`core`、`version.ts` | 不依赖其他顶层源码模块 |
+
+`bun run check:architecture` 已包含在 `bun run check` 中，会对运行时依赖和 type-only 依赖执行该表。一个顶层源码模块内部必须使用相对导入；跨顶层模块必须使用目标 barrel，例如 `@/core`，不能使用深层 alias 路径。检查会拒绝表外依赖，并分别检测纯运行时文件环和只有加入类型依赖后才闭合的文件环。
 
 这种分层也说明了新增代码应放在哪里：新增供应商放 `providers`，可复用的执行能力放 `tools`，循环控制放 `agent`，Kana 的默认策略和本地状态放 `kana`，交互呈现放 `tui`。
 

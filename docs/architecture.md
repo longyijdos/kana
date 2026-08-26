@@ -15,7 +15,8 @@ src/main.ts
                                                                                                  ├─ mcp      MCP JSON-RPC connections, protocol clients, and transports
                                                                                                  ├─ agent    Model/tool loop and event protocol translation
                                                                                                  ├─ tools    Reusable file and shell tools
-                                                                                                 ├─ core     Shared message, model, tool-description, stream, and usage contracts
+                                                                                                 ├─ core     Shared message, model, tool, event-stream, and usage contracts
+                                                                                                 ├─ utils    Image input normalization built on core image contracts
                                                                                                  └─ providers
                                                                                                      ├─ responses     Shared semantic Responses SSE assembly
                                                                                                      ├─ openai-compatible  Shared Chat Completions adapter
@@ -23,7 +24,26 @@ src/main.ts
                                                                                                      └─ openai-codex  Codex Responses, OAuth credentials, and streaming adapter
 ```
 
-`core` is the innermost protocol package: it has no dependency on product configuration or a frontend. The provider-facing `ToolSpec` belongs to this layer; executable `Tool` values in `tools` add the execution function. `logging` is an infrastructure module that provides the logging contract, its no-op implementation, and session-scoped JSONL storage. `agent` depends on `core`, `tools`, and the contract and no-op implementation from `logging`, but knows nothing about log paths or product configuration, so it can run without a terminal UI; the Kana product layer composes the concrete session logger. `oauth` is a generic Authorization Code + PKCE and token-lifecycle module that knows nothing about MCP, providers, or frontends. `mcp` layers protected-resource discovery and Bearer-challenge semantics on top while remaining independent from Kana product composition and the Agent loop. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` and `headless` share that composition layer and neither implements model protocols or persistence formats directly.
+`core` is the innermost protocol package and has no dependency on another top-level source module. The provider-facing `ToolSpec`, reusable `EventStream`, and `ModelUsage` contract belong to this layer; executable `Tool` values in `tools` add the execution function. `utils` owns Bun-backed image loading and normalization and depends only on the image contracts in `core`. `logging` is an infrastructure module that provides the logging contract, its no-op implementation, and session-scoped JSONL storage. `agent` depends on `core`, `tools`, and the contract and no-op implementation from `logging`, but knows nothing about log paths or product configuration, so it can run without a terminal UI; the Kana product layer composes the concrete session logger. `oauth` is a generic Authorization Code + PKCE and token-lifecycle module that knows nothing about MCP, providers, or frontends. `mcp` layers protected-resource discovery and Bearer-challenge semantics on top while remaining independent from Kana product composition and the Agent loop. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` and `headless` share that composition layer and neither implements model protocols or persistence formats directly.
+
+The allowed direct dependencies between top-level source modules are explicit:
+
+| Source | May import |
+| --- | --- |
+| `main.ts` | `cli`, `headless`, `kana`, `tui` |
+| `cli` | `headless`, `kana`, `oauth`, `tui`, `version.ts` |
+| `tui` | `agent`, `core`, `jobs`, `kana`, `logging`, `mcp`, `tools`, `utils`, `version.ts` |
+| `headless` | `agent`, `core`, `kana`, `logging`, `mcp` |
+| `kana` | `agent`, `core`, `jobs`, `logging`, `mcp`, `oauth`, `providers`, `tools`, `version.ts` |
+| `agent` | `core`, `logging`, `tools` |
+| `providers` | `core`, `logging` |
+| `mcp` | `oauth`, `tools` |
+| `tools` | `core`, `jobs`, `utils` |
+| `utils` | `core` |
+| `jobs` | `logging` |
+| `oauth`, `logging`, `core`, `version.ts` | No other top-level source module |
+
+`bun run check:architecture`, included in `bun run check`, enforces this table for runtime and type-only dependencies. Imports within one top-level source module must be relative; imports across top-level modules must use the target barrel, such as `@/core`, without a deep alias path. The check rejects unlisted edges and detects both runtime-only file cycles and cycles that close only when type dependencies are included.
 
 This layering also indicates where new code belongs: new providers go in `providers`, reusable execution capabilities in `tools`, loop control in `agent`, Kana defaults and local state in `kana`, and interaction presentation in `tui`.
 

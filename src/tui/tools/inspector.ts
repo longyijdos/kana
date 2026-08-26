@@ -1,8 +1,9 @@
 import type { ToolCallContent } from "@/core";
 import { splitLines, wrapPlainText } from "../render";
 import { buildToolInspectorContext, formatFullToolDetail, isBuiltInToolName } from "./detail";
-import { formatToolOutput, type ToolState } from "./format";
+import { formatToolOutput } from "./format";
 import { getStringProperty } from "./properties";
+import type { ToolState } from "./types";
 
 const CONTENT_INDENT = "  ";
 

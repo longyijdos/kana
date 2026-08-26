@@ -2,6 +2,8 @@ import type { ModelContext } from "./context";
 import type { AssistantMessage } from "./messages";
 import type { ReadableAssistantEventStream } from "./stream";
 
+export type { ModelUsage } from "./usage";
+
 export type ModelConfig = {
   provider: string;
   model: string;
@@ -12,15 +14,6 @@ export type ModelConfig = {
   headers?: Record<string, string>;
   timeoutMs?: number;
   maxRetries?: number;
-};
-
-export type ModelUsage = {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  promptCacheHitTokens?: number;
-  promptCacheMissTokens?: number;
-  reasoningTokens?: number;
 };
 
 type ModelProtocol = "chat-completions" | "responses";

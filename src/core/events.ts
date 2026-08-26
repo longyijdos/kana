@@ -4,7 +4,7 @@ import type {
   HostedToolContent,
   ToolCallContent,
 } from "./messages";
-import type { ModelUsage } from "./model";
+import type { ModelUsage } from "./usage";
 
 type StopReason = AssistantStopReason;
 

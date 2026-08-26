@@ -30,15 +30,7 @@ import { formatReadOutput } from "./renderers/read";
 import { formatTodoTarget, renderTodoState } from "./renderers/todo-write";
 import { formatViewImageOutput } from "./renderers/view-image";
 import { formatWriteOutput } from "./renderers/write";
-
-export type ToolState = "running" | "done" | "failed" | "canceled";
-export type ToolOutputDetail = "compact" | "full";
-export type ToolTranscriptTitle = { activity: string; hint?: string; target?: string };
-
-type ToolApprovalText = {
-  title: string;
-  detail: string;
-};
+import type { ToolApprovalText, ToolOutputDetail, ToolState, ToolTranscriptTitle } from "./types";
 
 const overwriteMarker = "[OVERWRITE]";
 const backgroundMarker = "[BACKGROUND]";

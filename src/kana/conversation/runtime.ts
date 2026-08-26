@@ -167,8 +167,6 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   wakeScheduler?: WakeScheduler;
   scheduledRuns?: boolean;
   canStartQueuedRun?: () => boolean;
-  /** @deprecated Use canStartQueuedRun. */
-  canStartScheduledRun?: () => boolean;
   goalMaxRounds?: number;
   getLogger?: () => Logger;
 };
@@ -467,11 +465,6 @@ export class ConversationRuntime<TConfiguration = never> {
 
   notifyCanStartQueuedRun(): void {
     void this.drainPendingSubmissions();
-  }
-
-  /** @deprecated Use notifyCanStartQueuedRun. */
-  notifyCanStartScheduledRun(): void {
-    this.notifyCanStartQueuedRun();
   }
 
   queueInput(input: UserMessage): MessageId {
@@ -970,7 +963,7 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   private canStartQueuedRun(): boolean {
-    return (this.options.canStartQueuedRun ?? this.options.canStartScheduledRun)?.() !== false;
+    return this.options.canStartQueuedRun?.() !== false;
   }
 
   private cancelCurrentSessionInputs(): void {
