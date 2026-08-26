@@ -14,6 +14,7 @@ export const DEEPSEEK_MODELS = {
     supportsImageInput: false,
     reasoning: {
       efforts: ["none", "low", "high", "max"],
+      defaultEffort: "high",
     },
   },
   "deepseek-v4-flash-vision-exp": {
@@ -27,6 +28,7 @@ export const DEEPSEEK_MODELS = {
     supportsImageInput: true,
     reasoning: {
       efforts: ["none", "low", "high", "max"],
+      defaultEffort: "high",
     },
   },
   "deepseek-v4-pro": {
@@ -40,6 +42,7 @@ export const DEEPSEEK_MODELS = {
     supportsImageInput: false,
     reasoning: {
       efforts: ["none", "low", "high", "max"],
+      defaultEffort: "high",
     },
   },
 } as const satisfies Record<string, DeepSeekModelMetadata>;

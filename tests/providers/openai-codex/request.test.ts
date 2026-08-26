@@ -77,6 +77,8 @@ describe("buildOpenAICodexRequest", () => {
             },
           },
         ],
+        webSearch: true,
+        imageInput: true,
         parallelToolCalls: false,
         maxOutputTokens: 12_345,
       },
@@ -86,7 +88,7 @@ describe("buildOpenAICodexRequest", () => {
         credentialProvider: credentials(),
         reasoningEffort: "medium",
         reasoningSummary: "auto",
-        maxTokens: 32_768,
+        maxOutputTokens: 32_768,
       },
     );
 
@@ -166,12 +168,12 @@ describe("buildOpenAICodexRequest", () => {
             },
           },
         ],
+        webSearch: false,
       },
       {
         provider: "openai-codex",
         model: "gpt-5.6-luna",
         credentialProvider: credentials(),
-        webSearch: false,
       },
     );
 
@@ -217,12 +219,12 @@ describe("buildOpenAICodexRequest", () => {
             ],
           },
         ],
+        imageInput: false,
       },
       {
         provider: "openai-codex",
         model: "gpt-5.6-luna",
         credentialProvider: credentials(),
-        imageInput: false,
       },
     );
 
@@ -281,8 +283,8 @@ describe("buildOpenAICodexRequest", () => {
       credentialProvider: credentials(),
     };
 
-    const enabled = buildOpenAICodexRequest(context, config);
-    const disabled = buildOpenAICodexRequest(context, { ...config, imageInput: false });
+    const enabled = buildOpenAICodexRequest({ ...context, imageInput: true }, config);
+    const disabled = buildOpenAICodexRequest({ ...context, imageInput: false }, config);
 
     expect(enabled.input).toEqual([
       {

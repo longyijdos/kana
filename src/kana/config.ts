@@ -4,11 +4,7 @@ import path from "node:path";
 
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "@/agent";
 import { LOG_LEVELS, type LogLevel } from "@/logging";
-import type {
-  DeepSeekReasoningEffort,
-  OpenAICodexReasoningEffort,
-  OpenAICodexReasoningSummary,
-} from "@/providers";
+import type { OpenAICodexReasoningSummary } from "@/providers";
 import { DEFAULT_KANA_GOAL_MAX_ROUNDS } from "./conversation/goal-controller";
 import { serializeKanaCustomProviderExample } from "./custom-provider";
 import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval-defaults";
@@ -17,51 +13,29 @@ export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex", "custom"] as co
 
 export type KanaModelProvider = (typeof KANA_MODEL_PROVIDERS)[number];
 
-export const KANA_DEEPSEEK_REASONING_EFFORTS = ["none", "low", "high", "max"] as const;
-
-export const KANA_OPENAI_CODEX_REASONING_EFFORTS = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-] as const;
-
-type KanaProviderConfig = {
-  active: KanaModelProvider;
-};
-
-export type KanaDeepSeekModelConfig = {
-  name: string;
+export type KanaDeepSeekProviderConfig = {
   apiKeyEnv: string;
-  reasoningEffort: DeepSeekReasoningEffort;
-  webSearch: boolean;
-  imageInput?: boolean;
-  maxTokens: number;
   timeoutMs: number;
   maxRetries: number;
 };
 
-export type KanaOpenAICodexModelConfig = {
-  name: string;
-  reasoningEffort: OpenAICodexReasoningEffort;
+export type KanaOpenAICodexProviderConfig = {
   reasoningSummary: OpenAICodexReasoningSummary;
-  webSearch: boolean;
-  imageInput?: boolean;
-  maxTokens: number;
   timeoutMs: number;
   maxRetries: number;
 };
 
-type KanaCustomModelConfig = {
+export type KanaProviderConfig = {
+  deepseek: KanaDeepSeekProviderConfig;
+  "openai-codex": KanaOpenAICodexProviderConfig;
+};
+
+export type KanaModelConfig = {
+  provider: KanaModelProvider;
   name: string;
   reasoningEffort?: string;
-};
-
-export type KanaModelConfigMap = {
-  deepseek: KanaDeepSeekModelConfig;
-  "openai-codex": KanaOpenAICodexModelConfig;
-  custom: KanaCustomModelConfig;
+  maxOutputTokens?: number;
+  contextLimit?: number;
 };
 
 export type KanaRepeatedToolCallsConfig = {
@@ -73,17 +47,30 @@ type KanaBackgroundJobsConfig = {
   maxConcurrent: number;
 };
 
-type KanaAgentConfig = {
+export type KanaAgentRuntimeConfig = {
+  webSearch: boolean;
+  imageInput: boolean;
   maxTurns: number;
-  goalMaxRounds: number;
   toolDeadlineMs: number;
   parallelToolCalls: boolean;
   maxParallelToolCalls: number;
-  contextLimit?: number;
+};
+
+export type KanaAgentConfig = KanaAgentRuntimeConfig & {
+  model: KanaModelConfig;
+  goalMaxRounds: number;
   toolResultArtifacts: boolean;
   backgroundJobs: KanaBackgroundJobsConfig;
   repeatedToolCalls: KanaRepeatedToolCallsConfig;
 };
+
+type KanaMemoryAgentConfig = KanaAgentRuntimeConfig & {
+  model: KanaModelConfig;
+};
+
+// Keep the outer tool deadline above bash's ten-minute command ceiling so
+// bash can terminate the process tree and report its own timeout result.
+const DEFAULT_KANA_AGENT_TOOL_DEADLINE_MS = 11 * 60 * 1000;
 
 const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;
 
@@ -115,6 +102,7 @@ type KanaMemoryConfig = {
   enabled: boolean;
   maxChars: number;
   dailyRetentionDays?: number;
+  agent: KanaMemoryAgentConfig;
 };
 
 const KANA_LOG_LEVELS = LOG_LEVELS;
@@ -127,7 +115,6 @@ type KanaLoggingConfig = {
 
 export type KanaConfig = {
   provider: KanaProviderConfig;
-  model: KanaModelConfigMap;
   agent: KanaAgentConfig;
   approval: KanaToolApprovalConfig;
   notification: KanaNotificationConfig;
@@ -184,43 +171,32 @@ export type ResetKanaConfigResult = {
 
 export const DEFAULT_KANA_CONFIG: KanaConfig = {
   provider: {
-    active: "deepseek",
-  },
-  model: {
     deepseek: {
-      name: "deepseek-v4-pro",
       apiKeyEnv: "DEEPSEEK_API_KEY",
-      reasoningEffort: "high",
-      webSearch: true,
-      imageInput: true,
-      maxTokens: 384_000,
       timeoutMs: 60_000,
       maxRetries: 1,
     },
     "openai-codex": {
-      name: "gpt-5.6-sol",
-      reasoningEffort: "medium",
       reasoningSummary: "auto",
-      webSearch: true,
-      imageInput: true,
-      maxTokens: 128_000,
       timeoutMs: 60_000,
       maxRetries: 1,
     },
-    custom: {
-      name: "",
-      reasoningEffort: undefined,
-    },
   },
   agent: {
+    webSearch: true,
+    imageInput: true,
     maxTurns: -1,
     goalMaxRounds: DEFAULT_KANA_GOAL_MAX_ROUNDS,
-    // Keep the outer tool deadline above bash's ten-minute command ceiling so
-    // bash can terminate the process tree and report its own timeout result.
-    toolDeadlineMs: 11 * 60 * 1000,
+    toolDeadlineMs: DEFAULT_KANA_AGENT_TOOL_DEADLINE_MS,
     parallelToolCalls: true,
     maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
-    contextLimit: undefined,
+    model: {
+      provider: "deepseek",
+      name: "deepseek-v4-pro",
+      reasoningEffort: undefined,
+      maxOutputTokens: undefined,
+      contextLimit: undefined,
+    },
     toolResultArtifacts: true,
     backgroundJobs: {
       maxConcurrent: 4,
@@ -249,6 +225,21 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     enabled: true,
     maxChars: 6000,
     dailyRetentionDays: undefined,
+    agent: {
+      webSearch: false,
+      imageInput: false,
+      maxTurns: -1,
+      toolDeadlineMs: DEFAULT_KANA_AGENT_TOOL_DEADLINE_MS,
+      parallelToolCalls: true,
+      maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
+      model: {
+        provider: "deepseek",
+        name: "deepseek-v4-flash",
+        reasoningEffort: undefined,
+        maxOutputTokens: undefined,
+        contextLimit: undefined,
+      },
+    },
   },
   logging: {
     level: "info",
@@ -368,42 +359,27 @@ export function parseKanaConfig(rawConfig: unknown): KanaConfig {
 export function validateKanaConfig(config: KanaConfig): KanaConfig {
   return parseKanaConfig({
     provider: {
-      active: config.provider.active,
-    },
-    model: {
       deepseek: {
-        name: config.model.deepseek.name,
-        api_key_env: config.model.deepseek.apiKeyEnv,
-        reasoning_effort: config.model.deepseek.reasoningEffort,
-        web_search: config.model.deepseek.webSearch,
-        image_input: config.model.deepseek.imageInput,
-        max_tokens: config.model.deepseek.maxTokens,
-        timeout_ms: config.model.deepseek.timeoutMs,
-        max_retries: config.model.deepseek.maxRetries,
+        api_key_env: config.provider.deepseek.apiKeyEnv,
+        timeout_ms: config.provider.deepseek.timeoutMs,
+        max_retries: config.provider.deepseek.maxRetries,
       },
       "openai-codex": {
-        name: config.model["openai-codex"].name,
-        reasoning_effort: config.model["openai-codex"].reasoningEffort,
-        reasoning_summary: config.model["openai-codex"].reasoningSummary,
-        web_search: config.model["openai-codex"].webSearch,
-        image_input: config.model["openai-codex"].imageInput,
-        max_tokens: config.model["openai-codex"].maxTokens,
-        timeout_ms: config.model["openai-codex"].timeoutMs,
-        max_retries: config.model["openai-codex"].maxRetries,
-      },
-      custom: {
-        name: config.model.custom.name || undefined,
-        reasoning_effort: config.model.custom.reasoningEffort,
+        reasoning_summary: config.provider["openai-codex"].reasoningSummary,
+        timeout_ms: config.provider["openai-codex"].timeoutMs,
+        max_retries: config.provider["openai-codex"].maxRetries,
       },
     },
     agent: {
+      web_search: config.agent.webSearch,
+      image_input: config.agent.imageInput,
       max_turns: config.agent.maxTurns,
       goal_max_rounds: config.agent.goalMaxRounds,
       tool_deadline_ms: config.agent.toolDeadlineMs,
       parallel_tool_calls: config.agent.parallelToolCalls,
       max_parallel_tool_calls: config.agent.maxParallelToolCalls,
-      context_limit: config.agent.contextLimit,
       tool_result_artifacts: config.agent.toolResultArtifacts,
+      model: toRawModelConfig(config.agent.model),
       background_jobs: {
         max_concurrent: config.agent.backgroundJobs.maxConcurrent,
       },
@@ -431,6 +407,15 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       enabled: config.memory.enabled,
       max_chars: config.memory.maxChars,
       daily_retention_days: config.memory.dailyRetentionDays,
+      agent: {
+        web_search: config.memory.agent.webSearch,
+        image_input: config.memory.agent.imageInput,
+        max_turns: config.memory.agent.maxTurns,
+        tool_deadline_ms: config.memory.agent.toolDeadlineMs,
+        parallel_tool_calls: config.memory.agent.parallelToolCalls,
+        max_parallel_tool_calls: config.memory.agent.maxParallelToolCalls,
+        model: toRawModelConfig(config.memory.agent.model),
+      },
     },
     logging: {
       level: config.logging.level,
@@ -443,30 +428,32 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     "# Generated configuration reference. Kana does not read this file.",
     "# Copy only the settings you want to override into config.toml.",
     "",
-    "[provider]",
-    `active = "${config.provider.active}"`,
+    "[provider.deepseek]",
+    `api_key_env = "${config.provider.deepseek.apiKeyEnv}"`,
+    `timeout_ms = ${config.provider.deepseek.timeoutMs}`,
+    `max_retries = ${config.provider.deepseek.maxRetries}`,
     "",
-    "[model.deepseek]",
-    `name = "${config.model.deepseek.name}"`,
-    ...serializeDeepSeekModel(config.model.deepseek),
-    "",
-    "[model.openai-codex]",
-    `name = "${config.model["openai-codex"].name}"`,
-    ...serializeOpenAICodexModel(config.model["openai-codex"]),
-    "",
-    "# Custom model definitions live in providers/custom.toml.",
-    "# [model.custom]",
-    '# name = "my-model"',
-    '# reasoning_effort = "medium"',
+    "[provider.openai-codex]",
+    `reasoning_summary = "${config.provider["openai-codex"].reasoningSummary}"`,
+    `timeout_ms = ${config.provider["openai-codex"].timeoutMs}`,
+    `max_retries = ${config.provider["openai-codex"].maxRetries}`,
     "",
     "[agent]",
+    `web_search = ${config.agent.webSearch}`,
+    `image_input = ${config.agent.imageInput}`,
     `max_turns = ${config.agent.maxTurns}`,
     `goal_max_rounds = ${config.agent.goalMaxRounds}`,
     `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
     `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
     `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
     `tool_result_artifacts = ${config.agent.toolResultArtifacts}`,
-    "# context_limit = 200000",
+    "",
+    "[agent.model]",
+    ...serializeModelConfig(config.agent.model, {
+      reasoningEffort: "high",
+      maxOutputTokens: 128_000,
+      contextLimit: 500_000,
+    }),
     "",
     "[agent.background_jobs]",
     `max_concurrent = ${config.agent.backgroundJobs.maxConcurrent}`,
@@ -494,6 +481,21 @@ function serializeKanaConfigExample(config: KanaConfig): string {
     `enabled = ${config.memory.enabled}`,
     `max_chars = ${config.memory.maxChars}`,
     "# daily_retention_days = 30",
+    "",
+    "[memory.agent]",
+    `web_search = ${config.memory.agent.webSearch}`,
+    `image_input = ${config.memory.agent.imageInput}`,
+    `max_turns = ${config.memory.agent.maxTurns}`,
+    `tool_deadline_ms = ${config.memory.agent.toolDeadlineMs}`,
+    `parallel_tool_calls = ${config.memory.agent.parallelToolCalls}`,
+    `max_parallel_tool_calls = ${config.memory.agent.maxParallelToolCalls}`,
+    "",
+    "[memory.agent.model]",
+    ...serializeModelConfig(config.memory.agent.model, {
+      reasoningEffort: "low",
+      maxOutputTokens: 64_000,
+      contextLimit: 200_000,
+    }),
     "",
     "[logging]",
     `level = "${config.logging.level}"`,
@@ -547,19 +549,10 @@ function serializeEmptySkillsConfig(): string {
 function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   const raw = asRecord(rawConfig, "config");
   const provider = raw.provider === undefined ? {} : asRecord(raw.provider, "provider");
-  const model = raw.model === undefined ? {} : asRecord(raw.model, "model");
-  const legacyModel = isLegacyModelConfig(model) ? model : undefined;
-  const activeProvider = readModelProvider(
-    provider.active ?? legacyModel?.provider,
-    defaults.provider.active,
-  );
-  const deepSeekModel =
-    legacyModel?.provider === undefined || legacyModel.provider === "deepseek"
-      ? (legacyModel ?? readModelTable(model, "deepseek"))
-      : readModelTable(model, "deepseek");
-  const openAICodexModel = readModelTable(model, "openai-codex");
-  const customModel = readModelTable(model, "custom");
+  const deepSeekProvider = readTable(provider.deepseek, "provider.deepseek");
+  const openAICodexProvider = readTable(provider["openai-codex"], "provider.openai-codex");
   const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
+  const agentModel = readTable(agent.model, "agent.model");
   const backgroundJobs =
     agent.background_jobs === undefined
       ? {}
@@ -573,108 +566,49 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
     raw.notification === undefined ? {} : asRecord(raw.notification, "notification");
   const tui = raw.tui === undefined ? {} : asRecord(raw.tui, "tui");
   const memory = raw.memory === undefined ? {} : asRecord(raw.memory, "memory");
+  const memoryAgent = readTable(memory.agent, "memory.agent");
+  const memoryAgentModel = readTable(memoryAgent.model, "memory.agent.model");
   const logging = raw.logging === undefined ? {} : asRecord(raw.logging, "logging");
-  const customModelName = readOptionalString(
-    customModel.name,
-    defaults.model.custom.name,
-    "model.custom.name",
-  );
-  if (activeProvider === "custom" && !customModelName) {
-    throw new Error("model.custom.name is required when provider.active is custom.");
-  }
 
   return {
     provider: {
-      active: activeProvider,
-    },
-    model: {
       deepseek: {
-        name: readString(deepSeekModel.name, defaults.model.deepseek.name, "model.deepseek.name"),
         apiKeyEnv: readString(
-          deepSeekModel.api_key_env,
-          defaults.model.deepseek.apiKeyEnv,
-          "model.deepseek.api_key_env",
-        ),
-        reasoningEffort: readDeepSeekReasoningEffort(
-          deepSeekModel.reasoning_effort,
-          defaults.model.deepseek.reasoningEffort,
-        ),
-        webSearch: readBoolean(
-          deepSeekModel.web_search,
-          defaults.model.deepseek.webSearch,
-          "model.deepseek.web_search",
-        ),
-        imageInput: readBoolean(
-          deepSeekModel.image_input,
-          defaults.model.deepseek.imageInput ?? true,
-          "model.deepseek.image_input",
-        ),
-        maxTokens: readPositiveInteger(
-          deepSeekModel.max_tokens,
-          defaults.model.deepseek.maxTokens,
-          "model.deepseek.max_tokens",
+          deepSeekProvider.api_key_env,
+          defaults.provider.deepseek.apiKeyEnv,
+          "provider.deepseek.api_key_env",
         ),
         timeoutMs: readNumber(
-          deepSeekModel.timeout_ms,
-          defaults.model.deepseek.timeoutMs,
-          "model.deepseek.timeout_ms",
+          deepSeekProvider.timeout_ms,
+          defaults.provider.deepseek.timeoutMs,
+          "provider.deepseek.timeout_ms",
         ),
         maxRetries: readNumber(
-          deepSeekModel.max_retries,
-          defaults.model.deepseek.maxRetries,
-          "model.deepseek.max_retries",
+          deepSeekProvider.max_retries,
+          defaults.provider.deepseek.maxRetries,
+          "provider.deepseek.max_retries",
         ),
       },
       "openai-codex": {
-        name: readString(
-          openAICodexModel.name,
-          defaults.model["openai-codex"].name,
-          "model.openai-codex.name",
-        ),
-        reasoningEffort: readOpenAICodexReasoningEffort(
-          openAICodexModel.reasoning_effort,
-          defaults.model["openai-codex"].reasoningEffort,
-        ),
         reasoningSummary: readOpenAICodexReasoningSummary(
-          openAICodexModel.reasoning_summary,
-          defaults.model["openai-codex"].reasoningSummary,
-        ),
-        webSearch: readBoolean(
-          openAICodexModel.web_search,
-          defaults.model["openai-codex"].webSearch,
-          "model.openai-codex.web_search",
-        ),
-        imageInput: readBoolean(
-          openAICodexModel.image_input,
-          defaults.model["openai-codex"].imageInput ?? true,
-          "model.openai-codex.image_input",
-        ),
-        maxTokens: readPositiveInteger(
-          openAICodexModel.max_tokens,
-          defaults.model["openai-codex"].maxTokens,
-          "model.openai-codex.max_tokens",
+          openAICodexProvider.reasoning_summary,
+          defaults.provider["openai-codex"].reasoningSummary,
         ),
         timeoutMs: readNumber(
-          openAICodexModel.timeout_ms,
-          defaults.model["openai-codex"].timeoutMs,
-          "model.openai-codex.timeout_ms",
+          openAICodexProvider.timeout_ms,
+          defaults.provider["openai-codex"].timeoutMs,
+          "provider.openai-codex.timeout_ms",
         ),
         maxRetries: readNumber(
-          openAICodexModel.max_retries,
-          defaults.model["openai-codex"].maxRetries,
-          "model.openai-codex.max_retries",
-        ),
-      },
-      custom: {
-        name: customModelName ?? "",
-        reasoningEffort: readOptionalString(
-          customModel.reasoning_effort,
-          defaults.model.custom.reasoningEffort,
-          "model.custom.reasoning_effort",
+          openAICodexProvider.max_retries,
+          defaults.provider["openai-codex"].maxRetries,
+          "provider.openai-codex.max_retries",
         ),
       },
     },
     agent: {
+      webSearch: readBoolean(agent.web_search, defaults.agent.webSearch, "agent.web_search"),
+      imageInput: readBoolean(agent.image_input, defaults.agent.imageInput, "agent.image_input"),
       maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
       goalMaxRounds: readPositiveInteger(
         agent.goal_max_rounds,
@@ -696,11 +630,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         defaults.agent.maxParallelToolCalls,
         "agent.max_parallel_tool_calls",
       ),
-      contextLimit: readOptionalPositiveInteger(
-        agent.context_limit,
-        defaults.agent.contextLimit,
-        "agent.context_limit",
-      ),
+      model: parseModelConfig(agentModel, defaults.agent.model, "agent.model"),
       toolResultArtifacts: readBoolean(
         agent.tool_result_artifacts,
         defaults.agent.toolResultArtifacts,
@@ -769,6 +699,43 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
         defaults.memory.dailyRetentionDays,
         "memory.daily_retention_days",
       ),
+      agent: {
+        webSearch: readBoolean(
+          memoryAgent.web_search,
+          defaults.memory.agent.webSearch,
+          "memory.agent.web_search",
+        ),
+        imageInput: readBoolean(
+          memoryAgent.image_input,
+          defaults.memory.agent.imageInput,
+          "memory.agent.image_input",
+        ),
+        maxTurns: readAgentMaxTurns(
+          memoryAgent.max_turns,
+          defaults.memory.agent.maxTurns,
+          "memory.agent.max_turns",
+        ),
+        toolDeadlineMs: readPositiveInteger(
+          memoryAgent.tool_deadline_ms,
+          defaults.memory.agent.toolDeadlineMs,
+          "memory.agent.tool_deadline_ms",
+        ),
+        parallelToolCalls: readBoolean(
+          memoryAgent.parallel_tool_calls,
+          defaults.memory.agent.parallelToolCalls,
+          "memory.agent.parallel_tool_calls",
+        ),
+        maxParallelToolCalls: readPositiveInteger(
+          memoryAgent.max_parallel_tool_calls,
+          defaults.memory.agent.maxParallelToolCalls,
+          "memory.agent.max_parallel_tool_calls",
+        ),
+        model: parseModelConfig(
+          memoryAgentModel,
+          defaults.memory.agent.model,
+          "memory.agent.model",
+        ),
+      },
     },
     logging: {
       level: readLogLevel(logging.level, defaults.logging.level),
@@ -776,53 +743,67 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   };
 }
 
-export function getActiveKanaModelConfig<TProvider extends KanaModelProvider>(
-  config: KanaConfig & { provider: { active: TProvider } },
-): KanaModelConfigMap[TProvider] {
-  return config.model[config.provider.active];
+function toRawModelConfig(config: KanaModelConfig): Record<string, unknown> {
+  return {
+    provider: config.provider,
+    name: config.name,
+    reasoning_effort: config.reasoningEffort,
+    max_output_tokens: config.maxOutputTokens,
+    context_limit: config.contextLimit,
+  };
 }
 
-function serializeDeepSeekModel(config: KanaDeepSeekModelConfig): string[] {
+function serializeModelConfig(
+  config: KanaModelConfig,
+  examples: {
+    reasoningEffort: string;
+    maxOutputTokens: number;
+    contextLimit: number;
+  },
+): string[] {
   return [
-    `api_key_env = "${config.apiKeyEnv}"`,
-    `reasoning_effort = "${config.reasoningEffort}"`,
-    `web_search = ${config.webSearch}`,
-    `image_input = ${config.imageInput ?? false}`,
-    `max_tokens = ${config.maxTokens}`,
-    `timeout_ms = ${config.timeoutMs}`,
-    `max_retries = ${config.maxRetries}`,
+    `provider = "${config.provider}"`,
+    `name = "${config.name}"`,
+    config.reasoningEffort === undefined
+      ? `# reasoning_effort = "${examples.reasoningEffort}"`
+      : `reasoning_effort = "${config.reasoningEffort}"`,
+    config.maxOutputTokens === undefined
+      ? `# max_output_tokens = ${examples.maxOutputTokens}`
+      : `max_output_tokens = ${config.maxOutputTokens}`,
+    config.contextLimit === undefined
+      ? `# context_limit = ${examples.contextLimit}`
+      : `context_limit = ${config.contextLimit}`,
   ];
 }
 
-function serializeOpenAICodexModel(config: KanaOpenAICodexModelConfig): string[] {
-  return [
-    `reasoning_effort = "${config.reasoningEffort}"`,
-    `reasoning_summary = "${config.reasoningSummary}"`,
-    `web_search = ${config.webSearch}`,
-    `image_input = ${config.imageInput ?? true}`,
-    `max_tokens = ${config.maxTokens}`,
-    `timeout_ms = ${config.timeoutMs}`,
-    `max_retries = ${config.maxRetries}`,
-  ];
-}
-
-function isLegacyModelConfig(model: Record<string, unknown>): boolean {
-  return (
-    model.provider !== undefined ||
-    model.name !== undefined ||
-    model.api_key_env !== undefined ||
-    model.web_search !== undefined ||
-    model.image_input !== undefined ||
-    model.max_tokens !== undefined
-  );
-}
-
-function readModelTable(
+function parseModelConfig(
   model: Record<string, unknown>,
-  provider: KanaModelProvider,
-): Record<string, unknown> {
-  const value = model[provider];
-  return value === undefined ? {} : asRecord(value, `model.${provider}`);
+  defaults: KanaModelConfig,
+  path: string,
+): KanaModelConfig {
+  return {
+    provider: readModelProvider(model.provider, defaults.provider, `${path}.provider`),
+    name: readString(model.name, defaults.name, `${path}.name`),
+    reasoningEffort: readOptionalString(
+      model.reasoning_effort,
+      defaults.reasoningEffort,
+      `${path}.reasoning_effort`,
+    ),
+    maxOutputTokens: readOptionalPositiveInteger(
+      model.max_output_tokens,
+      defaults.maxOutputTokens,
+      `${path}.max_output_tokens`,
+    ),
+    contextLimit: readOptionalPositiveInteger(
+      model.context_limit,
+      defaults.contextLimit,
+      `${path}.context_limit`,
+    ),
+  };
+}
+
+function readTable(value: unknown, name: string): Record<string, unknown> {
+  return value === undefined ? {} : asRecord(value, name);
 }
 
 function asRecord(value: unknown, name: string): Record<string, unknown> {
@@ -975,56 +956,30 @@ function readExcludedToolNames(
   return [...names];
 }
 
-function readModelProvider(value: unknown, fallback: KanaModelProvider): KanaModelProvider {
-  const provider = readString(value, fallback, "provider.active");
+function readModelProvider(
+  value: unknown,
+  fallback: KanaModelProvider,
+  name: string,
+): KanaModelProvider {
+  const provider = readString(value, fallback, name);
 
   if (!(KANA_MODEL_PROVIDERS as readonly string[]).includes(provider)) {
-    throw new Error(`provider.active must be one of: ${KANA_MODEL_PROVIDERS.join(", ")}.`);
+    throw new Error(`${name} must be one of: ${KANA_MODEL_PROVIDERS.join(", ")}.`);
   }
 
   return provider as KanaModelProvider;
-}
-
-function readDeepSeekReasoningEffort(
-  value: unknown,
-  fallback: DeepSeekReasoningEffort,
-): DeepSeekReasoningEffort {
-  const effort = readString(value, fallback, "model.deepseek.reasoning_effort");
-
-  if (!(KANA_DEEPSEEK_REASONING_EFFORTS as readonly string[]).includes(effort)) {
-    throw new Error(
-      `model.deepseek.reasoning_effort must be one of: ${KANA_DEEPSEEK_REASONING_EFFORTS.join(", ")}.`,
-    );
-  }
-
-  return effort as DeepSeekReasoningEffort;
-}
-
-function readOpenAICodexReasoningEffort(
-  value: unknown,
-  fallback: OpenAICodexReasoningEffort,
-): OpenAICodexReasoningEffort {
-  const effort = readString(value, fallback, "model.openai-codex.reasoning_effort");
-  if (!(KANA_OPENAI_CODEX_REASONING_EFFORTS as readonly string[]).includes(effort)) {
-    throw new Error(
-      `model.openai-codex.reasoning_effort must be one of: ${KANA_OPENAI_CODEX_REASONING_EFFORTS.join(", ")}.`,
-    );
-  }
-
-  return effort as OpenAICodexReasoningEffort;
 }
 
 function readOpenAICodexReasoningSummary(
   value: unknown,
   fallback: OpenAICodexReasoningSummary,
 ): OpenAICodexReasoningSummary {
-  const summary = readString(value, fallback, "model.openai-codex.reasoning_summary");
+  const path = "provider.openai-codex.reasoning_summary";
+  const summary = readString(value, fallback, path);
   const summaries = ["auto", "concise", "detailed"] as const;
 
   if (!(summaries as readonly string[]).includes(summary)) {
-    throw new Error(
-      `model.openai-codex.reasoning_summary must be one of: ${summaries.join(", ")}.`,
-    );
+    throw new Error(`${path} must be one of: ${summaries.join(", ")}.`);
   }
 
   return summary as OpenAICodexReasoningSummary;

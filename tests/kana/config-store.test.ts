@@ -28,11 +28,11 @@ describe("Kana config store", () => {
     const { configPath } = getKanaConfigPaths(env);
 
     const config = store.update((draft) => {
-      draft.provider.active = "openai-codex";
-      draft.model["openai-codex"].name = "gpt-5.6-luna";
-      draft.model["openai-codex"].reasoningEffort = "max";
-      draft.model["openai-codex"].webSearch = false;
-      draft.model["openai-codex"].imageInput = false;
+      draft.agent.model.provider = "openai-codex";
+      draft.agent.model.name = "gpt-5.6-luna";
+      draft.agent.model.reasoningEffort = "max";
+      draft.agent.webSearch = false;
+      draft.agent.imageInput = false;
       draft.agent.goalMaxRounds = 12;
       draft.agent.toolResultArtifacts = false;
       draft.agent.backgroundJobs.maxConcurrent = 6;
@@ -42,18 +42,16 @@ describe("Kana config store", () => {
 
     expect(readFileSync(configPath, "utf8")).toBe(
       [
-        "[provider]",
-        'active = "openai-codex"',
-        "",
-        "[model.openai-codex]",
-        'name = "gpt-5.6-luna"',
-        'reasoning_effort = "max"',
+        "[agent]",
         "web_search = false",
         "image_input = false",
-        "",
-        "[agent]",
         "goal_max_rounds = 12",
         "tool_result_artifacts = false",
+        "",
+        "[agent.model]",
+        'provider = "openai-codex"',
+        'name = "gpt-5.6-luna"',
+        'reasoning_effort = "max"',
         "",
         "[agent.background_jobs]",
         "max_concurrent = 6",
@@ -64,11 +62,13 @@ describe("Kana config store", () => {
         "",
       ].join("\n"),
     );
-    expect(config.provider.active).toBe("openai-codex");
-    expect(config.model["openai-codex"].name).toBe("gpt-5.6-luna");
-    expect(config.model["openai-codex"].reasoningEffort).toBe("max");
-    expect(config.model["openai-codex"].webSearch).toBe(false);
-    expect(config.model["openai-codex"].imageInput).toBe(false);
+    expect(config.agent.model).toMatchObject({
+      provider: "openai-codex",
+      name: "gpt-5.6-luna",
+      reasoningEffort: "max",
+    });
+    expect(config.agent.webSearch).toBe(false);
+    expect(config.agent.imageInput).toBe(false);
     expect(config.agent.goalMaxRounds).toBe(12);
     expect(config.agent.toolResultArtifacts).toBe(false);
     expect(config.agent.backgroundJobs).toEqual({
@@ -89,11 +89,11 @@ describe("Kana config store", () => {
       configPath,
       [
         "# keep this comment",
-        "[model.deepseek]",
+        "[agent.model]",
+        'provider = "deepseek"',
         'name = "deepseek-v4-pro"',
-        "",
-        "[agent]",
-        "context_limit = 200000",
+        'reasoning_effort = "high"',
+        "max_output_tokens = 64000",
         "",
         "[custom]",
         'value = "untouched"',
@@ -102,14 +102,14 @@ describe("Kana config store", () => {
     );
 
     store.update((draft) => {
-      draft.model.deepseek.name = "deepseek-v4-flash";
-      draft.model.deepseek.reasoningEffort = "none";
-      draft.model.deepseek.webSearch = false;
-      draft.model.deepseek.imageInput = false;
+      draft.agent.model.name = "deepseek-v4-flash";
+      draft.agent.model.reasoningEffort = "none";
+      draft.agent.model.contextLimit = undefined;
+      draft.agent.webSearch = false;
+      draft.agent.imageInput = false;
       draft.agent.toolDeadlineMs = 120_000;
       draft.agent.parallelToolCalls = false;
       draft.agent.maxParallelToolCalls = 2;
-      draft.agent.contextLimit = undefined;
       draft.tui.hyperlinks = false;
       draft.tui.renderLatex = false;
       draft.tui.renderMermaid = false;
@@ -121,6 +121,7 @@ describe("Kana config store", () => {
     expect(updated).toContain("# keep this comment");
     expect(updated).toContain('name = "deepseek-v4-flash"');
     expect(updated).toContain('reasoning_effort = "none"');
+    expect(updated).toContain("max_output_tokens = 64000");
     expect(updated).toContain("web_search = false");
     expect(updated).toContain("image_input = false");
     expect(updated).toContain("tool_deadline_ms = 120000");
@@ -129,34 +130,53 @@ describe("Kana config store", () => {
     expect(updated).toContain(
       "[tui]\nhyperlinks = false\nrender_latex = false\nrender_mermaid = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false",
     );
-    expect(updated).not.toContain("context_limit");
     expect(updated).toContain('[custom]\nvalue = "untouched"');
     expect(readdirSync(home).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
-  test("persists only the selected Custom model fields", () => {
+  test("switches only the main model and removes inapplicable reasoning", () => {
     const env = createTempEnv();
     const store = createKanaConfigStore(env);
     const { configPath } = getKanaConfigPaths(env);
 
-    const config = store.update((draft) => {
-      draft.provider.active = "custom";
-      draft.model.custom.name = "local-model";
-      draft.model.custom.reasoningEffort = "high";
-    });
-
-    expect(readFileSync(configPath, "utf8")).toBe(
+    writeFileSync(
+      configPath,
       [
-        "[provider]",
-        'active = "custom"',
-        "",
-        "[model.custom]",
-        'name = "local-model"',
+        "[agent.model]",
+        'provider = "deepseek"',
+        'name = "deepseek-v4-pro"',
         'reasoning_effort = "high"',
+        "max_output_tokens = 64000",
+        "context_limit = 200000",
+        "",
+        "[memory.agent.model]",
+        'provider = "deepseek"',
+        'name = "deepseek-v4-flash"',
+        'reasoning_effort = "low"',
         "",
       ].join("\n"),
     );
-    expect(config.model.custom).toEqual({ name: "local-model", reasoningEffort: "high" });
+    const config = store.update((draft) => {
+      draft.agent.model.provider = "custom";
+      draft.agent.model.name = "local-model";
+      draft.agent.model.reasoningEffort = undefined;
+    });
+
+    const updated = readFileSync(configPath, "utf8");
+    expect(updated).toContain('[agent.model]\nprovider = "custom"\nname = "local-model"');
+    expect(updated).not.toContain('reasoning_effort = "high"');
+    expect(updated).toContain("max_output_tokens = 64000");
+    expect(updated).toContain("context_limit = 200000");
+    expect(updated).toContain(
+      '[memory.agent.model]\nprovider = "deepseek"\nname = "deepseek-v4-flash"\nreasoning_effort = "low"',
+    );
+    expect(config.agent.model).toEqual({
+      provider: "custom",
+      name: "local-model",
+      reasoningEffort: undefined,
+      maxOutputTokens: 64_000,
+      contextLimit: 200_000,
+    });
   });
 
   test("leaves the original document untouched when validation fails", () => {
@@ -181,7 +201,7 @@ describe("Kana config store", () => {
     const { configPath } = getKanaConfigPaths(env);
 
     store.update((draft) => {
-      draft.provider.active = "deepseek";
+      draft.agent.model.provider = "deepseek";
     });
 
     expect(existsSync(configPath)).toBe(false);

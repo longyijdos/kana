@@ -94,11 +94,11 @@ describe("DeepSeek model protocol routing", () => {
         apiKey: "test-key",
         baseUrl: `http://127.0.0.1:${server.port}`,
         reasoningEffort: "max",
-        webSearch: true,
         maxRetries: 0,
       });
       const message = await model.generate({
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "What is new?" }],
+        webSearch: true,
         maxOutputTokens: 2_048,
       });
 
@@ -216,11 +216,11 @@ describe("DeepSeek model protocol routing", () => {
         apiKey: "test-key",
         baseUrl: `http://127.0.0.1:${server.port}`,
         reasoningEffort: "low",
-        webSearch: true,
         maxRetries: 0,
       });
       const message = await model.generate({
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "hello" }],
+        webSearch: true,
         maxOutputTokens: 2_048,
       });
 

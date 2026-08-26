@@ -100,49 +100,39 @@ Kana reads `<KANA_HOME>/.env` before parsing CLI commands. Its values override m
 
 ## `config.toml`
 
-When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults; for example, supplying only `[model.deepseek] name` does not remove the other defaults for that provider. Legacy flat `[model]` DeepSeek configuration remains readable, but new configuration should use provider-specific tables.
+When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults. Model selection and Agent policy are static per Agent: `[agent.model]` configures the conversation Agent, while `[memory.agent.model]` independently configures memory consolidation. Provider tables contain only transport and authentication settings. This schema is intentionally breaking; legacy `[provider]` and `[model.*]` selection tables are not read.
 
 The TUI's `/model` command updates `config.toml` through the generic configuration store. It reloads the current file from disk, writes only known fields whose effective values changed, and preserves unrelated tables, unknown fields, and standalone comments. The first change away from defaults therefore creates only the required overrides instead of expanding every default. A candidate document must parse back into the complete target configuration before a sibling temporary file atomically replaces the original; validation or write failures leave the original file untouched. `config.example.toml` is reference-only and may be refreshed by a later `kana install`, so user configuration should not be stored there.
 
 The built-in configuration is equivalent to:
 
 ```toml
-[provider]
-active = "deepseek"
-
-[model.deepseek]
-name = "deepseek-v4-pro"
+[provider.deepseek]
 api_key_env = "DEEPSEEK_API_KEY"
-reasoning_effort = "high"
-web_search = true
-image_input = true
-max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
 
-# Custom model definitions live in providers/custom.toml.
-# [model.custom]
-# name = "my-model"
-# reasoning_effort = "medium"
-
-[model.openai-codex]
-name = "gpt-5.6-sol"
-reasoning_effort = "medium"
+[provider.openai-codex]
 reasoning_summary = "auto"
-web_search = true
-image_input = true
-max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
 
 [agent]
+web_search = true
+image_input = true
 max_turns = -1
 goal_max_rounds = 8
 tool_deadline_ms = 660000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 tool_result_artifacts = true
-# context_limit = 200000
+
+[agent.model]
+provider = "deepseek"
+name = "deepseek-v4-pro"
+# reasoning_effort = "high"
+# max_output_tokens = 128000
+# context_limit = 500000
 
 [agent.background_jobs]
 max_concurrent = 4
@@ -171,30 +161,37 @@ enabled = true
 max_chars = 6000
 # daily_retention_days = 30
 
+[memory.agent]
+web_search = false
+image_input = false
+max_turns = -1
+tool_deadline_ms = 660000
+parallel_tool_calls = true
+max_parallel_tool_calls = 4
+
+[memory.agent.model]
+provider = "deepseek"
+name = "deepseek-v4-flash"
+# reasoning_effort = "low"
+# max_output_tokens = 64000
+# context_limit = 200000
+
 [logging]
 level = "info"
 ```
 
-`model.openai-codex` has independent defaults even when its table is absent, so switching providers requires only the fields being overridden.
+Omitted `reasoning_effort`, `max_output_tokens`, and `context_limit` use the selected model's metadata defaults and hard limits. A configured budget above a hard limit is safely clamped at runtime. `/model` changes only `agent.model.provider`, `name`, and `reasoning_effort`; it preserves the main Agent's budget fields and the complete Memory Agent configuration.
 
-### `[provider]`
-
-| Key | Type and allowed values | Default | Meaning |
-| --- | --- | --- | --- |
-| `active` | `deepseek`, `openai-codex`, or `custom` | `deepseek` | Provider used by the main Agent, memory consolidation, and context compaction. |
-
-### `[model.deepseek]`
+### Provider tables
 
 | Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `name` | Non-empty string | `deepseek-v4-pro` | Model name; runtime rejects names outside DeepSeek's metadata table. |
-| `api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Name of the environment variable holding the API key; the key is not written to TOML. |
-| `reasoning_effort` | `none`, `low`, `high`, or `max` | `high` | DeepSeek Responses reasoning effort. `none` disables reasoning. |
-| `web_search` | Boolean | `true` | Advertises DeepSeek's hosted `web_search` tool when the selected model metadata supports it. All current V4 models use Responses and support this hosted tool; `false` omits only the hosted tool. |
-| `image_input` | Boolean | `true` | Allows user attachments and tool visual observations to be delivered as Responses `input_image` data URLs when the selected model metadata also supports image input; the same effective gate registers `view_image`. Only `deepseek-v4-flash-vision-exp` currently declares image capability; model metadata takes precedence, so this setting cannot enable images or `view_image` on the text-only V4 Flash or V4 Pro. Setting it to `false` retains persisted images but replaces them with an explicit omission marker in model input. |
-| `max_tokens` | Positive integer | `384000` | Allowed per-request output-token ceiling; it cannot exceed the selected model's hard limit. The Agent lowers the value sent for each turn when the current prompt leaves less space. |
-| `timeout_ms` | Finite number | `60000` | Inactivity timeout in milliseconds while waiting for DeepSeek response headers or consecutive response data. |
-| `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
+| `provider.deepseek.api_key_env` | Non-empty string | `DEEPSEEK_API_KEY` | Environment-variable name containing the API key; the key is not written to TOML. |
+| `provider.deepseek.timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for DeepSeek response headers or consecutive data. |
+| `provider.deepseek.max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
+| `provider.openai-codex.reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed. |
+| `provider.openai-codex.timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for Codex response headers or consecutive data. |
+| `provider.openai-codex.max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
 
 Before startup, set the environment variable named by `api_key_env`. The default configuration uses:
 
@@ -202,31 +199,22 @@ Before startup, set the environment variable named by `api_key_env`. The default
 export DEEPSEEK_API_KEY='sk-...'
 ```
 
-### `[model.openai-codex]`
+Before first use of OpenAI Codex, run `kana auth login openai-codex`. Browser authorization stores the access token, refresh token, ID token, and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Credentials refresh before expiry; the model request also refreshes and retries once after its first `401`. `status` reports only authorization state, refreshability, and expiry, never token values. See [OpenAI Codex provider adapter](openai-codex-provider.md) for the complete protocol mapping.
+
+### Agent model tables
 
 | Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `name` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses model. |
-| `reasoning_effort` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` | Requested reasoning effort. |
-| `reasoning_summary` | `auto`, `concise`, `detailed` | `auto` | Requests a streamable reasoning summary; raw chain-of-thought is not exposed through this field. |
-| `web_search` | Boolean | `true` | Advertises the provider-hosted `web_search` tool to Codex Responses. Setting it to `false` omits that top-level tool entirely. |
-| `image_input` | Boolean | `true` | Sends persisted user images and tool visual observations as classic Responses `input_image` data URLs and registers `view_image`. Setting it to `false` omits the tool, retains persisted images in the session, and replaces them with an explicit omission marker in model input. |
-| `max_tokens` | Positive integer | `128000` | Configured ceiling used when Kana calculates a per-turn output limit; the ChatGPT Codex request contract does not expose `max_output_tokens`, so requests do not send it. |
-| `timeout_ms` | Finite number | `60000` | Inactivity timeout while waiting for response headers or consecutive response data. |
-| `max_retries` | Finite number | `1` | Maximum retries after retryable request failures. |
+| `agent.web_search` / `memory.agent.web_search` | Boolean | `true` / `false` | Allows hosted search only when the selected model metadata also supports it. Custom models currently declare no hosted-search capability. |
+| `agent.image_input` / `memory.agent.image_input` | Boolean | `true` / `false` | Allows persisted user/tool images and registers `view_image` only when model metadata also supports images. Disabled or unsupported images remain persisted but become omission markers in model input. |
+| `agent.model.provider` / `memory.agent.model.provider` | `deepseek`, `openai-codex`, `custom` | `deepseek` | Provider selected independently for each Agent. |
+| `agent.model.name` | Provider model name | `deepseek-v4-pro` | Conversation model; built-in names are validated against provider metadata. |
+| `memory.agent.model.name` | Provider model name | `deepseek-v4-flash` | Memory-consolidation model, independent of `/model`. |
+| `*.model.reasoning_effort` | Value advertised by model metadata | Metadata default | Optional override. DeepSeek supports `none`, `low`, `high`, `max`; Codex supports `low`, `medium`, `high`, `xhigh`, `max`; Custom uses `custom.toml` metadata. |
+| `*.model.max_output_tokens` | Optional positive integer | Metadata hard output limit | Agent-level output ceiling, clamped to the selected model's hard limit and lowered per turn when prompt space is tighter. |
+| `*.model.context_limit` | Optional positive integer | Metadata context window | Agent-level context cap, clamped to the selected model's context window. |
 
-Before first use, run `kana auth login openai-codex`. Browser authorization stores the access token, refresh token, ID token, and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Credentials refresh before expiry; the model request also refreshes and retries once after its first `401`. `status` reports only authorization state, refreshability, and expiry, never token values. See [OpenAI Codex provider adapter](openai-codex-provider.md) for the complete protocol mapping.
-
-### `[model.custom]`
-
-The main config stores only the selected Custom model and optional reasoning override:
-
-| Key | Type and allowed values | Default | Meaning |
-| --- | --- | --- | --- |
-| `name` | Non-empty string | Unset | Model selected from `<KANA_HOME>/providers/custom.toml`; required while `provider.active = "custom"`. |
-| `reasoning_effort` | A value advertised by the selected model | Model definition default | Optional override persisted by `/model`. |
-
-Endpoint, authentication, model metadata, and reasoning capabilities remain in `providers/custom.toml`. See [Custom OpenAI-compatible provider](custom-provider.md) for the schema, minimal configuration, protocol, and security rules.
+For Custom, `config.toml` uses the same Agent model shape as built-ins: set `provider = "custom"`, `name`, and optional preferences in either Agent model table. Endpoint, authentication, hard limits, modalities, parallel-tool support, reasoning efforts, and the default reasoning effort remain model metadata in `providers/custom.toml`. See [Custom OpenAI-compatible provider](custom-provider.md).
 
 ### Other tables
 
@@ -238,7 +226,6 @@ Endpoint, authentication, model metadata, and reasoning capabilities remain in `
 | `agent.parallel_tool_calls` | Boolean | `true` | Whether the model may propose and actually execute safe tool calls concurrently; always disabled when selected-model metadata does not support it. |
 | `agent.max_parallel_tool_calls` | Positive integer | `4` | Maximum concurrently executing tool bodies within one adjacent parallel-safe group. |
 | `agent.tool_result_artifacts` | Boolean | `true` | Save oversized non-`read` text results as private session artifacts and give the model a bounded retrievable preview. |
-| `agent.context_limit` | Optional positive integer | model metadata context window | Provider-independent context cap; the Agent uses the smaller of this value and the selected model's context window. |
 | `agent.background_jobs.max_concurrent` | Positive integer | `4` | Maximum active Background Jobs owned by one session instance. Retained terminal Jobs do not count toward the limit. |
 | `agent.repeated_tool_calls.reminder_thresholds` | Strictly increasing integer array; every value is at least 2 | `[3,5,8]` | Consecutive exact-call counts at which the Agent adds escalating advisory context. An empty array disables the policy. |
 | `agent.repeated_tool_calls.excluded_tools` | Unique, non-empty, trimmed tool-name array | `[]` | Tools ignored transparently by repeated-call tracking; excluded calls neither advance nor reset a streak. |
@@ -264,21 +251,21 @@ With `tool_result_artifacts = true`, Kana derives one inline byte budget from th
 
 The Background Job limit applies to process-local execution, not persistence. `max_concurrent` rejects a new `bash` call with `background: true` after the current session reaches the active limit.
 
-`hyperlinks` is permission rather than a force switch: even when it is `true`, Kana emits OSC 8 only for terminals with confirmed support and keeps the URL visible when capability is unknown; `false` always uses the text fallback. `render_latex` applies to live and restored assistant messages, Markdown tables, and the memory viewer. Supported expressions render by default; disabling it, encountering unsupported or malformed syntax, or receiving an unclosed streaming delimiter preserves the original LaTeX. Terminal width affects wrapping after successful rendering and does not cause a source fallback. `render_mermaid` applies to live and restored assistant messages and the memory viewer. Enabled Mermaid code blocks render continuously while streaming; unsupported or malformed diagrams, renderer failures, and diagrams wider than the available terminal width remain ordinary code blocks. A partial parse may render while streaming, but if it still reports dropped source after completion Kana restores the code block and adds one warning. By default, `smooth_text_streaming` changes only visible-text pacing and never backpressures the provider or Agent. When disabled, the TUI still coalesces terminal repaints but no longer subdivides provider text snapshots. `collapse_long_pastes` affects only editor presentation and editing: the complete pasted text is still submitted, queued, and restored from input history. When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. `max_turns` accepts only `-1` or a positive integer; `parallel_tool_calls`, `tool_result_artifacts`, provider `web_search`/`image_input`, `hyperlinks`, `render_latex`, `render_mermaid`, `smooth_text_streaming`, and `collapse_long_pastes` must be Boolean; `goal_max_rounds`, `tool_deadline_ms`, `max_parallel_tool_calls`, `agent.background_jobs.max_concurrent`, `max_tokens`, and optional `context_limit` require positive integers, `timeout_ms` and `max_retries` are validated as finite numbers, and the two `memory` quantity fields require positive integers.
+`hyperlinks` is permission rather than a force switch: even when it is `true`, Kana emits OSC 8 only for terminals with confirmed support and keeps the URL visible when capability is unknown; `false` always uses the text fallback. `render_latex` applies to live and restored assistant messages, Markdown tables, and the memory viewer. Supported expressions render by default; disabling it, encountering unsupported or malformed syntax, or receiving an unclosed streaming delimiter preserves the original LaTeX. Terminal width affects wrapping after successful rendering and does not cause a source fallback. `render_mermaid` applies to live and restored assistant messages and the memory viewer. Enabled Mermaid code blocks render continuously while streaming; unsupported or malformed diagrams, renderer failures, and diagrams wider than the available terminal width remain ordinary code blocks. A partial parse may render while streaming, but if it still reports dropped source after completion Kana restores the code block and adds one warning. By default, `smooth_text_streaming` changes only visible-text pacing and never backpressures the provider or Agent. When disabled, the TUI still coalesces terminal repaints but no longer subdivides provider text snapshots. `collapse_long_pastes` affects only editor presentation and editing: the complete pasted text is still submitted, queued, and restored from input history. When `daily_retention_days` is commented out or omitted, daily memory is not pruned. Logs always write under `<KANA_HOME>/logs`; the directory is not configurable and log output never goes through the terminal, so it cannot disrupt TUI repainting. Agent and Memory Agent `web_search`, `image_input`, and `parallel_tool_calls` must be Boolean. Their `max_turns` accept only `-1` or a positive integer; their `tool_deadline_ms`, `max_parallel_tool_calls`, and optional model `max_output_tokens` and `context_limit` require positive integers. `goal_max_rounds` and `agent.background_jobs.max_concurrent` also require positive integers; provider `timeout_ms` and `max_retries` are finite numbers, and the two `memory` quantity fields require positive integers.
 
 ### Context budget
 
-Kana uses `agent.context_limit` to calculate its automatic context-compaction budget. The effective context limit is `min(agent.context_limit, model context window)`; when omitted it is the selected model metadata's context window. This makes one global cap safe when switching between models with different windows. The effective prompt budget and per-turn output ceiling are:
+Each Agent uses its own `*.model.context_limit` to calculate automatic context-compaction budget. The effective context limit is `min(configured context_limit, model metadata context window)`; when omitted it is the metadata window. The effective prompt budget and per-turn output ceiling are:
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
 promptBudget = contextLimit - safetyReserve
-effectiveMaxTokens = min(activeModel.max_tokens, promptBudget - estimatedPromptTokens)
+effectiveMaxOutputTokens = min(configured-or-metadata max output, promptBudget - estimatedPromptTokens)
 ```
 
-At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Configured `max_tokens` is a ceiling rather than a fixed reserve; as the prompt grows beyond the space available for that ceiling, the Agent lowers the current `ModelContext.maxOutputTokens`. Both current DeepSeek V4 models send it as Responses `max_output_tokens`, and a provider without a corresponding request field may ignore it.
+At least 512 prompt tokens must remain. Compaction starts when estimated input reaches 80% of this budget. Its cutoff lands only after a complete assistant turn or complete tool-call/result group and aims to bring “system prompt + tool definitions + maximum summary placeholder + retained recent messages” down to 10% of `promptBudget`. Configured `max_output_tokens` is a ceiling rather than a fixed reserve; as the prompt grows beyond the space available for that ceiling, the Agent lowers the current `ModelContext.maxOutputTokens`. DeepSeek sends it as Responses `max_output_tokens`; the Codex request contract has no corresponding request field, so that adapter uses it for Agent budgeting but omits it on the wire.
 
-Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Agent construction emits `agent.parallel_tool_calls_configured` with `requested`, `supported`, the final `enabled`, and `maxParallelToolCalls`, plus `agent.repeated_tool_calls_configured` with enablement, thresholds, and excluded-tool count. Parallel groups emit `tool.parallel_pool_started` and `tool.parallel_pool_ended` at `debug`; an aborted or failed drain additionally emits one `tool.parallel_pool_abnormal_drain` at `info` or `warn` with aggregate counts only. Policy failures emit `tool.result_policy_failed` without arguments or result content; successful insertion emits `tool.result_policy_context_committed` with source and count. Artifact save, cleanup, fork, and invalid-reference diagnostics use stable `tool.result_artifact_*` or `session.artifact_*` events with sizes, phases, outcomes, and error types only—never result text or locators. `context.output_limit_adjusted` contains only the configured ceiling, effective per-turn ceiling, and estimated prompt tokens. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
+Default `info` retains only session, TUI, Agent-run, and memory-task summaries; per-turn activity, provider requests, and successful tool execution belong to `debug`. Agent construction emits `agent.parallel_tool_calls_configured` with `requested`, `supported`, the final `enabled`, and `maxParallelToolCalls`; `agent.model_capabilities_configured` with effective web-search and image-input policy; plus `agent.repeated_tool_calls_configured` with enablement, thresholds, and excluded-tool count. Parallel groups emit `tool.parallel_pool_started` and `tool.parallel_pool_ended` at `debug`; an aborted or failed drain additionally emits one `tool.parallel_pool_abnormal_drain` at `info` or `warn` with aggregate counts only. Policy failures emit `tool.result_policy_failed` without arguments or result content; successful insertion emits `tool.result_policy_context_committed` with source and count. Artifact save, cleanup, fork, and invalid-reference diagnostics use stable `tool.result_artifact_*` or `session.artifact_*` events with sizes, phases, outcomes, and error types only—never result text or locators. `context.output_limit_adjusted` contains only the configured ceiling, effective per-turn ceiling, and estimated prompt tokens. Retries and failed tools use `warn`, while runtime and persistence failures use `error`. Error records contain an `Error` name, message, and stack; provider HTTP failures additionally retain status code and status text, never response bodies, authorization headers, prompts, or tokens.
 
 The configuration root and each present section must be a TOML table. Strings cannot be empty, booleans cannot be represented as strings, and unsupported providers, reasoning efforts, approval modes, notification backends, or log levels prevent startup. Kana does not silently ignore invalid known fields; fix the configuration and restart.
 
@@ -421,7 +408,7 @@ This list names the **global** Skills that may be injected into the model system
 This example changes only the model name and notification behavior; every other field retains its default:
 
 ```toml
-[model.deepseek]
+[agent.model]
 name = "deepseek-v4-flash"
 
 [notification]
@@ -432,10 +419,8 @@ on_agent_completed = false
 Switching to an already authorized Codex Luna requires only:
 
 ```toml
-[provider]
-active = "openai-codex"
-
-[model.openai-codex]
+[agent.model]
+provider = "openai-codex"
 name = "gpt-5.6-luna"
 ```
 

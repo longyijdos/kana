@@ -6,9 +6,8 @@ import { DEFAULT_KANA_CONFIG, getKanaConfigPaths, getKanaModelManagement } from 
 import {
   getKanaCustomProviderModel,
   parseKanaCustomProvider,
-  resolveKanaCustomReasoning,
 } from "../../src/kana/custom-provider";
-import { createKanaModel } from "../../src/kana/model";
+import { createKanaModel, selectKanaProviderConfig } from "../../src/kana/model";
 import { messageIdentityForTest } from "../helpers/messages";
 
 const tempDirs: string[] = [];
@@ -87,13 +86,8 @@ describe("Kana Custom provider", () => {
       maxOutputTokens: 8_192,
       supportsParallelToolCalls: true,
       supportsImageInput: true,
-      reasoning: { efforts: ["none", "low", "high"] },
+      reasoning: { efforts: ["none", "low", "high"], defaultEffort: "low" },
     });
-    expect(resolveKanaCustomReasoning(model)).toBe("low");
-    expect(resolveKanaCustomReasoning(model, "high")).toBe("high");
-    expect(() => resolveKanaCustomReasoning(model, "max")).toThrow(
-      'Custom model "reasoning-model" reasoning_effort must be one of: none, low, high.',
-    );
   });
 
   test("rejects unsafe endpoints and inconsistent model definitions", () => {
@@ -197,10 +191,16 @@ describe("Kana Custom provider", () => {
         ].join("\n"),
       );
       const config = structuredClone(DEFAULT_KANA_CONFIG);
-      config.provider.active = "custom";
-      config.model.custom = { name: "local-model", reasoningEffort: "high" };
+      config.agent.model = {
+        provider: "custom",
+        name: "local-model",
+        reasoningEffort: "high",
+      };
       const management = getKanaModelManagement(config);
-      const model = createKanaModel(config);
+      const model = createKanaModel(
+        config.agent.model,
+        selectKanaProviderConfig(config.provider, "custom"),
+      );
 
       expect(management.model.custom).toMatchObject({
         name: "local-model",

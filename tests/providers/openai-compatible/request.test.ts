@@ -94,7 +94,7 @@ describe("buildOpenAICompatibleRequest", () => {
   test("uses configured max tokens when the turn has no tighter ceiling", () => {
     const request = buildOpenAICompatibleRequest(
       { messages: [] },
-      createConfig({ maxTokens: 4_096 }),
+      createConfig({ maxOutputTokens: 4_096 }),
     );
 
     expect(request.max_tokens).toBe(4_096);
@@ -115,7 +115,10 @@ describe("buildOpenAICompatibleRequest", () => {
       ],
     };
 
-    const supported = buildOpenAICompatibleRequest({ messages: [message] }, createConfig({}, true));
+    const supported = buildOpenAICompatibleRequest(
+      { messages: [message], imageInput: true },
+      createConfig({}, true),
+    );
     const unsupported = buildOpenAICompatibleRequest({ messages: [message] }, createConfig());
 
     expect(supported.messages).toEqual([
@@ -186,7 +189,10 @@ describe("buildOpenAICompatibleRequest", () => {
       },
     ];
 
-    const supported = buildOpenAICompatibleRequest({ messages }, createConfig({}, true));
+    const supported = buildOpenAICompatibleRequest(
+      { messages, imageInput: true },
+      createConfig({}, true),
+    );
     const unsupported = buildOpenAICompatibleRequest({ messages }, createConfig());
     if (!Array.isArray(unsupported.messages)) {
       throw new Error("Expected Chat Completions messages.");

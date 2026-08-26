@@ -14,7 +14,9 @@ type AgentFactoryOptions = Parameters<AgentFactory>[0];
 describe("TUI model selection", () => {
   test("applies a selection only to the active provider fields", () => {
     const config = structuredClone(DEFAULT_KANA_CONFIG);
-    const deepSeekBefore = structuredClone(config.model.deepseek);
+    config.agent.model.maxOutputTokens = 64_000;
+    config.agent.model.contextLimit = 200_000;
+    const memoryAgentBefore = structuredClone(config.memory.agent);
 
     applyTuiModelSelection(config, {
       provider: "openai-codex",
@@ -22,12 +24,14 @@ describe("TUI model selection", () => {
       reasoningEffort: "max",
     });
 
-    expect(config.provider.active).toBe("openai-codex");
-    expect(config.model["openai-codex"]).toMatchObject({
+    expect(config.agent.model).toEqual({
+      provider: "openai-codex",
       name: "gpt-5.6-luna",
       reasoningEffort: "max",
+      maxOutputTokens: 64_000,
+      contextLimit: 200_000,
     });
-    expect(config.model.deepseek).toEqual(deepSeekBefore);
+    expect(config.memory.agent).toEqual(memoryAgentBefore);
   });
 
   test("offers provider-specific reasoning efforts", () => {
@@ -69,7 +73,7 @@ describe("TUI model selection", () => {
               ...management.model,
               deepseek: {
                 ...management.model.deepseek,
-                available: [{ name: "product-model" }],
+                available: [{ name: "product-model", supportsImageInput: false }],
               },
             },
           }),
@@ -202,6 +206,7 @@ describe("TUI model selection", () => {
                   {
                     name: "reasoning-model",
                     reasoning: { efforts: ["none", "high"], defaultEffort: "none" },
+                    supportsImageInput: false,
                   },
                 ],
                 name: "reasoning-model",
@@ -252,7 +257,7 @@ describe("TUI model selection", () => {
             model: {
               ...management.model,
               custom: {
-                available: [{ name: "local-model" }],
+                available: [{ name: "local-model", supportsImageInput: false }],
                 name: "local-model",
                 imageInputEnabled: false,
               },

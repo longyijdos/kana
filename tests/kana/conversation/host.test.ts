@@ -72,10 +72,10 @@ describe("Kana conversation host", () => {
     const host = createKanaConversationHost<string>({
       env,
       applyAgentConfiguration: (config, model) => {
-        config.model.deepseek.name = model;
+        config.agent.model.name = model;
       },
       createAgent: (config, options = {}) => {
-        seenModels.push(config.model.deepseek.name);
+        seenModels.push(config.agent.model.name);
         return new Agent({
           model: new MockModel({ provider: "mock", model: "mock" }),
           messages: options.messages,
@@ -88,7 +88,7 @@ describe("Kana conversation host", () => {
     runtime.reconfigure("deepseek-v4-flash");
 
     expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
-    expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");
+    expect(host.config.agent.model.name).toBe("deepseek-v4-flash");
     await runtime.close();
     await host.close();
   });
@@ -101,10 +101,10 @@ describe("Kana conversation host", () => {
       env,
       launchMode: "clean",
       applyAgentConfiguration: (config, model) => {
-        config.model.deepseek.name = model;
+        config.agent.model.name = model;
       },
       createAgent: (config, options = {}) => {
-        seenModels.push(config.model.deepseek.name);
+        seenModels.push(config.agent.model.name);
         return new Agent({
           model: new MockModel({ provider: "mock", model: "mock", response: "Complete." }),
           messages: options.messages,
@@ -127,7 +127,7 @@ describe("Kana conversation host", () => {
     });
 
     expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
-    expect(host.config.model.deepseek.name).toBe("deepseek-v4-flash");
+    expect(host.config.agent.model.name).toBe("deepseek-v4-flash");
     expect(host.resumeSessionId).toBeUndefined();
     expect(host.listSessions()).toEqual([]);
     expect(() => host.loadSession("saved-session")).toThrow(

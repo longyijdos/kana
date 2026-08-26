@@ -1319,7 +1319,7 @@ export class KanaTuiApp {
       return undefined;
     }
     const enabled = settings.model[settings.activeProvider].imageInputEnabled;
-    return enabled ? undefined : new Error("Image input is disabled in the active model config.");
+    return enabled ? undefined : new Error("Image input is disabled by the active Agent policy.");
   }
 
   private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {

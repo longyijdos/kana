@@ -18,6 +18,7 @@ import {
   formatKanaEnvironmentContext,
   getKanaConfigPaths,
   installKanaConfig,
+  type KanaConfig,
   type KanaRepeatedToolCallsConfig,
   loadKanaConfig,
   loadKanaEnvironment,
@@ -102,8 +103,10 @@ describe("Kana config", () => {
     expect(firstInstall.skillsConfigStatus).toBe("created");
     expect(firstInstall.customProviderExampleStatus).toBe("created");
     expect(fileExists(firstInstall.configPath)).toBe(false);
-    expect(installedConfigExample).toContain("[model.deepseek]");
-    expect(installedConfigExample).toContain("[model.openai-codex]");
+    expect(installedConfigExample).toContain("[provider.deepseek]");
+    expect(installedConfigExample).toContain("[provider.openai-codex]");
+    expect(installedConfigExample).toContain("[agent.model]");
+    expect(installedConfigExample).toContain("[memory.agent.model]");
     expect(installedConfigExample).toContain("web_search = true");
     expect(installedConfigExample).toContain("image_input = true");
     expect(installedConfigExample).toContain("goal_max_rounds = 8");
@@ -121,7 +124,8 @@ describe("Kana config", () => {
     expect(installedConfigExample).toContain("smooth_text_streaming = true");
     expect(installedConfigExample).toContain("collapse_long_pastes = true");
     expect(installedConfigExample).toContain("Kana does not read this file.");
-    expect(installedConfigExample).toContain("[model.custom]");
+    expect(installedConfigExample).toContain('provider = "deepseek"');
+    expect(installedConfigExample).toContain("# max_output_tokens = 128000");
     expect(installedCustomProviderExample).toContain('base_url = "https://api.example.com/v1"');
     expect(installedCustomProviderExample).toContain("[[models]]");
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
@@ -202,7 +206,7 @@ describe("Kana config", () => {
     });
     expect(fileExists(paths.configPath)).toBe(false);
     expect(readFileSync(paths.configExamplePath, "utf8")).not.toBe("stale template\n");
-    expect(readFileSync(paths.configExamplePath, "utf8")).toContain("[model.openai-codex]");
+    expect(readFileSync(paths.configExamplePath, "utf8")).toContain("[provider.openai-codex]");
     expect(JSON.parse(readFileSync(paths.mcpConfigPath, "utf8"))).toEqual({ mcpServers: {} });
     expect(JSON.parse(readFileSync(paths.mcpEnabledPath, "utf8"))).toEqual({
       enabledServers: [],
@@ -229,25 +233,33 @@ describe("Kana config", () => {
     expect(secondInstall.configStatus).toBe("defaults");
     expect(secondInstall.configExampleStatus).toBe("updated");
     expect(fileExists(secondInstall.configPath)).toBe(false);
-    expect(readFileSync(secondInstall.configExamplePath, "utf8")).toContain("[model.openai-codex]");
+    expect(readFileSync(secondInstall.configExamplePath, "utf8")).toContain(
+      "[provider.openai-codex]",
+    );
   });
 
   test("loads defaults when config.toml is missing", () => {
     expect(loadKanaConfig(createTempEnv())).toEqual(DEFAULT_KANA_CONFIG);
   });
 
-  test("defaults output ceilings to the provider metadata limits", () => {
+  test("defaults model budgets and reasoning to metadata", () => {
     const repeatedToolCalls: KanaRepeatedToolCallsConfig = {
       reminderThresholds: [3, 5, 8],
       excludedTools: [],
     };
 
-    expect(DEFAULT_KANA_CONFIG.model.deepseek.maxTokens).toBe(384_000);
-    expect(DEFAULT_KANA_CONFIG.model.deepseek.webSearch).toBe(true);
-    expect(DEFAULT_KANA_CONFIG.model.deepseek.imageInput).toBe(true);
-    expect(DEFAULT_KANA_CONFIG.model["openai-codex"].maxTokens).toBe(128_000);
-    expect(DEFAULT_KANA_CONFIG.model["openai-codex"].webSearch).toBe(true);
-    expect(DEFAULT_KANA_CONFIG.model["openai-codex"].imageInput).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.agent.model).toEqual({
+      provider: "deepseek",
+      name: "deepseek-v4-pro",
+      reasoningEffort: undefined,
+      maxOutputTokens: undefined,
+      contextLimit: undefined,
+    });
+    expect(DEFAULT_KANA_CONFIG.agent.webSearch).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.agent.imageInput).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.memory.agent.model.name).toBe("deepseek-v4-flash");
+    expect(DEFAULT_KANA_CONFIG.memory.agent.webSearch).toBe(false);
+    expect(DEFAULT_KANA_CONFIG.memory.agent.imageInput).toBe(false);
     expect(DEFAULT_KANA_CONFIG.agent.goalMaxRounds).toBe(8);
     expect(DEFAULT_KANA_CONFIG.agent.toolResultArtifacts).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.backgroundJobs).toEqual({
@@ -262,19 +274,25 @@ describe("Kana config", () => {
     writeFileSync(
       path.join(home, "config.toml"),
       [
-        "[model]",
-        'name = "deepseek-v4-flash"',
+        "[provider.deepseek]",
         'api_key_env = "KANA_DEEPSEEK_KEY"',
-        "max_tokens = 4096",
         "",
         "[agent]",
+        "web_search = false",
+        "image_input = false",
         "max_turns = 4",
         "goal_max_rounds = 12",
         "tool_deadline_ms = 120000",
         "parallel_tool_calls = false",
         "max_parallel_tool_calls = 2",
-        "context_limit = 200000",
         "tool_result_artifacts = false",
+        "",
+        "[agent.model]",
+        'provider = "deepseek"',
+        'name = "deepseek-v4-flash"',
+        'reasoning_effort = "low"',
+        "max_output_tokens = 4096",
+        "context_limit = 200000",
         "",
         "[agent.background_jobs]",
         "max_concurrent = 6",
@@ -303,6 +321,15 @@ describe("Kana config", () => {
         "max_chars = 8000",
         "daily_retention_days = 14",
         "",
+        "[memory.agent]",
+        "max_turns = 3",
+        "parallel_tool_calls = false",
+        "",
+        "[memory.agent.model]",
+        'provider = "openai-codex"',
+        'name = "gpt-5.6-luna"',
+        "max_output_tokens = 8192",
+        "",
         "[logging]",
         'level = "debug"',
         "",
@@ -311,22 +338,29 @@ describe("Kana config", () => {
 
     expect(loadKanaConfig(env)).toEqual({
       ...DEFAULT_KANA_CONFIG,
-      model: {
-        ...DEFAULT_KANA_CONFIG.model,
+      provider: {
+        ...DEFAULT_KANA_CONFIG.provider,
         deepseek: {
-          ...DEFAULT_KANA_CONFIG.model.deepseek,
-          name: "deepseek-v4-flash",
+          ...DEFAULT_KANA_CONFIG.provider.deepseek,
           apiKeyEnv: "KANA_DEEPSEEK_KEY",
-          maxTokens: 4096,
         },
       },
       agent: {
+        ...DEFAULT_KANA_CONFIG.agent,
+        webSearch: false,
+        imageInput: false,
         maxTurns: 4,
         goalMaxRounds: 12,
         toolDeadlineMs: 120_000,
         parallelToolCalls: false,
         maxParallelToolCalls: 2,
-        contextLimit: 200000,
+        model: {
+          provider: "deepseek",
+          name: "deepseek-v4-flash",
+          reasoningEffort: "low",
+          maxOutputTokens: 4096,
+          contextLimit: 200000,
+        },
         toolResultArtifacts: false,
         backgroundJobs: {
           maxConcurrent: 6,
@@ -352,9 +386,22 @@ describe("Kana config", () => {
         collapseLongPastes: false,
       },
       memory: {
+        ...DEFAULT_KANA_CONFIG.memory,
         enabled: false,
         maxChars: 8000,
         dailyRetentionDays: 14,
+        agent: {
+          ...DEFAULT_KANA_CONFIG.memory.agent,
+          maxTurns: 3,
+          parallelToolCalls: false,
+          model: {
+            provider: "openai-codex",
+            name: "gpt-5.6-luna",
+            reasoningEffort: undefined,
+            maxOutputTokens: 8192,
+            contextLimit: undefined,
+          },
+        },
       },
       logging: {
         level: "debug",
@@ -362,141 +409,107 @@ describe("Kana config", () => {
     });
   });
 
-  test("loads provider-specific DeepSeek feature configuration", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(
-      path.join(home, "config.toml"),
-      "[model.deepseek]\nweb_search = false\nimage_input = true\n",
-    );
-
-    expect(loadKanaConfig(env).model.deepseek).toEqual({
-      ...DEFAULT_KANA_CONFIG.model.deepseek,
-      webSearch: false,
-      imageInput: true,
-    });
-
-    writeFileSync(path.join(home, "config.toml"), '[model.deepseek]\nweb_search = "yes"\n');
-    expect(() => loadKanaConfig(env)).toThrow("model.deepseek.web_search must be a boolean.");
-
-    writeFileSync(path.join(home, "config.toml"), '[model.deepseek]\nimage_input = "yes"\n');
-    expect(() => loadKanaConfig(env)).toThrow("model.deepseek.image_input must be a boolean.");
-  });
-
-  test("accepts DeepSeek reasoning efforts including none", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[model.deepseek]\nreasoning_effort = "low"\n');
-
-    expect(loadKanaConfig(env).model.deepseek.reasoningEffort).toBe("low");
-
-    writeFileSync(path.join(home, "config.toml"), '[model.deepseek]\nreasoning_effort = "none"\n');
-    expect(loadKanaConfig(env).model.deepseek.reasoningEffort).toBe("none");
-
-    writeFileSync(
-      path.join(home, "config.toml"),
-      '[model.deepseek]\nreasoning_effort = "medium"\n',
-    );
-    expect(() => loadKanaConfig(env)).toThrow(
-      "model.deepseek.reasoning_effort must be one of: none, low, high, max.",
-    );
-  });
-
-  test("loads the static Custom provider selection", () => {
+  test("loads static Agent policy and Custom model selection", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
     writeFileSync(
       path.join(home, "config.toml"),
       [
-        "[provider]",
-        'active = "custom"',
+        "[agent]",
+        "web_search = false",
+        "image_input = false",
         "",
-        "[model.custom]",
+        "[agent.model]",
+        'provider = "custom"',
         'name = "local-model"',
         'reasoning_effort = "high"',
+        "max_output_tokens = 16384",
+        "context_limit = 200000",
         "",
       ].join("\n"),
     );
 
-    expect(loadKanaConfig(env)).toMatchObject({
-      provider: { active: "custom" },
-      model: { custom: { name: "local-model", reasoningEffort: "high" } },
+    expect(loadKanaConfig(env).agent).toMatchObject({
+      webSearch: false,
+      imageInput: false,
+      model: {
+        provider: "custom",
+        name: "local-model",
+        reasoningEffort: "high",
+        maxOutputTokens: 16_384,
+        contextLimit: 200_000,
+      },
     });
-
-    writeFileSync(path.join(home, "config.toml"), '[provider]\nactive = "custom"\n');
-    expect(() => loadKanaConfig(env)).toThrow(
-      "model.custom.name is required when provider.active is custom.",
-    );
   });
 
-  test("loads provider-specific OpenAI Codex configuration", () => {
+  test("loads provider-specific OpenAI Codex transport configuration", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
     writeFileSync(
       path.join(home, "config.toml"),
       [
-        "[provider]",
-        'active = "openai-codex"',
-        "",
-        "[model.openai-codex]",
-        'name = "gpt-5.6-luna"',
-        'reasoning_effort = "high"',
+        "[provider.openai-codex]",
         'reasoning_summary = "concise"',
-        "web_search = false",
-        "image_input = false",
-        "max_tokens = 16384",
         "timeout_ms = 90000",
         "max_retries = 2",
         "",
+        "[agent.model]",
+        'provider = "openai-codex"',
+        'name = "gpt-5.6-luna"',
+        "",
       ].join("\n"),
     );
 
-    expect(loadKanaConfig(env)).toEqual({
-      ...DEFAULT_KANA_CONFIG,
-      provider: {
-        active: "openai-codex",
-      },
-      model: {
-        ...DEFAULT_KANA_CONFIG.model,
-        "openai-codex": {
-          name: "gpt-5.6-luna",
-          reasoningEffort: "high",
-          reasoningSummary: "concise",
-          webSearch: false,
-          imageInput: false,
-          maxTokens: 16_384,
-          timeoutMs: 90_000,
-          maxRetries: 2,
-        },
-      },
+    const config = loadKanaConfig(env);
+    expect(config.provider["openai-codex"]).toEqual({
+      reasoningSummary: "concise",
+      timeoutMs: 90_000,
+      maxRetries: 2,
     });
+    expect(config.agent.model).toMatchObject({
+      provider: "openai-codex",
+      name: "gpt-5.6-luna",
+    });
+
+    writeFileSync(
+      path.join(home, "config.toml"),
+      '[provider.openai-codex]\nreasoning_summary = "full"\n',
+    );
+    expect(() => loadKanaConfig(env)).toThrow(
+      "provider.openai-codex.reasoning_summary must be one of: auto, concise, detailed.",
+    );
   });
 
-  test("validates OpenAI Codex reasoning configuration", () => {
+  test("keeps Main and Memory Agent model configuration independent", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-
     writeFileSync(
       path.join(home, "config.toml"),
-      '[model.openai-codex]\nreasoning_effort = "ultra"\n',
-    );
-    expect(() => loadKanaConfig(env)).toThrow(
-      "model.openai-codex.reasoning_effort must be one of: low, medium, high, xhigh, max.",
+      [
+        "[agent.model]",
+        'provider = "openai-codex"',
+        'name = "gpt-5.6-sol"',
+        'reasoning_effort = "high"',
+        "",
+        "[memory.agent.model]",
+        'provider = "deepseek"',
+        'name = "deepseek-v4-flash"',
+        'reasoning_effort = "low"',
+        "",
+      ].join("\n"),
     );
 
-    writeFileSync(
-      path.join(home, "config.toml"),
-      '[model.openai-codex]\nreasoning_summary = "full"\n',
-    );
-    expect(() => loadKanaConfig(env)).toThrow(
-      "model.openai-codex.reasoning_summary must be one of: auto, concise, detailed.",
-    );
-
-    writeFileSync(path.join(home, "config.toml"), '[model.openai-codex]\nweb_search = "yes"\n');
-    expect(() => loadKanaConfig(env)).toThrow("model.openai-codex.web_search must be a boolean.");
-
-    writeFileSync(path.join(home, "config.toml"), '[model.openai-codex]\nimage_input = "yes"\n');
-    expect(() => loadKanaConfig(env)).toThrow("model.openai-codex.image_input must be a boolean.");
+    const config = loadKanaConfig(env);
+    expect(config.agent.model).toMatchObject({
+      provider: "openai-codex",
+      name: "gpt-5.6-sol",
+      reasoningEffort: "high",
+    });
+    expect(config.memory.agent.model).toMatchObject({
+      provider: "deepseek",
+      name: "deepseek-v4-flash",
+      reasoningEffort: "low",
+    });
   });
 
   test("rejects unknown logging.level", () => {
@@ -677,15 +690,23 @@ describe("Kana config", () => {
     expect(() => loadKanaConfig(env)).toThrow("tui.collapse_long_pastes must be a boolean.");
   });
 
-  test("loads and validates the optional agent context limit", () => {
+  test("loads and validates optional model budgets", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), "[agent]\ncontext_limit = 200000\n");
+    writeFileSync(
+      path.join(home, "config.toml"),
+      "[agent.model]\ncontext_limit = 200000\nmax_output_tokens = 4096\n",
+    );
 
-    expect(loadKanaConfig(env).agent.contextLimit).toBe(200_000);
+    expect(loadKanaConfig(env).agent.model).toMatchObject({
+      contextLimit: 200_000,
+      maxOutputTokens: 4096,
+    });
 
-    writeFileSync(path.join(home, "config.toml"), "[agent]\ncontext_limit = 0\n");
-    expect(() => loadKanaConfig(env)).toThrow("agent.context_limit must be a positive integer.");
+    for (const key of ["context_limit", "max_output_tokens"]) {
+      writeFileSync(path.join(home, "config.toml"), `[agent.model]\n${key} = 0\n`);
+      expect(() => loadKanaConfig(env)).toThrow(`agent.model.${key} must be a positive integer.`);
+    }
   });
 
   test("requires agent.tool_result_artifacts to be a boolean", () => {
@@ -696,24 +717,15 @@ describe("Kana config", () => {
     expect(() => loadKanaConfig(env)).toThrow("agent.tool_result_artifacts must be a boolean.");
   });
 
-  test("requires model.max_tokens to be a positive integer", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-
-    for (const value of [0, -1, 1.5]) {
-      writeFileSync(path.join(home, "config.toml"), `[model]\nmax_tokens = ${value}\n`);
-      expect(() => loadKanaConfig(env)).toThrow(
-        "model.deepseek.max_tokens must be a positive integer.",
-      );
-    }
-  });
-
   test("loads the configured API key environment variable name", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[model]\napi_key_env = "KANA_DEEPSEEK_KEY"\n');
+    writeFileSync(
+      path.join(home, "config.toml"),
+      '[provider.deepseek]\napi_key_env = "KANA_DEEPSEEK_KEY"\n',
+    );
 
-    expect(loadKanaConfig(env).model.deepseek.apiKeyEnv).toBe("KANA_DEEPSEEK_KEY");
+    expect(loadKanaConfig(env).provider.deepseek.apiKeyEnv).toBe("KANA_DEEPSEEK_KEY");
   });
 
   test("creates agents by reading the configured API key environment variable", () => {
@@ -721,27 +733,21 @@ describe("Kana config", () => {
     process.env.KANA_DEEPSEEK_KEY = "secret";
 
     try {
-      const enabled = createKanaAgent({
+      const config = {
         ...DEFAULT_KANA_CONFIG,
-        model: {
-          ...DEFAULT_KANA_CONFIG.model,
+        provider: {
+          ...DEFAULT_KANA_CONFIG.provider,
           deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            ...DEFAULT_KANA_CONFIG.provider.deepseek,
             apiKeyEnv: "KANA_DEEPSEEK_KEY",
           },
         },
-      });
-      const disabled = createKanaAgent({
-        ...DEFAULT_KANA_CONFIG,
-        model: {
-          ...DEFAULT_KANA_CONFIG.model,
-          deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
-            apiKeyEnv: "KANA_DEEPSEEK_KEY",
-          },
-        },
+      };
+      const enabled = createAgentFromConfig(config);
+      const disabled = createAgentFromConfig({
+        ...config,
         memory: {
-          ...DEFAULT_KANA_CONFIG.memory,
+          ...config.memory,
           enabled: false,
         },
       });
@@ -758,19 +764,22 @@ describe("Kana config", () => {
     process.env.KANA_DEEPSEEK_KEY = "secret";
 
     try {
-      const agent = createKanaAgent({
+      const agent = createAgentFromConfig({
         ...DEFAULT_KANA_CONFIG,
-        model: {
-          ...DEFAULT_KANA_CONFIG.model,
+        provider: {
+          ...DEFAULT_KANA_CONFIG.provider,
           deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            ...DEFAULT_KANA_CONFIG.provider.deepseek,
             apiKeyEnv: "KANA_DEEPSEEK_KEY",
           },
         },
         agent: {
           ...DEFAULT_KANA_CONFIG.agent,
           toolDeadlineMs: 120_000,
-          contextLimit: 200_000,
+          model: {
+            ...DEFAULT_KANA_CONFIG.agent.model,
+            contextLimit: 200_000,
+          },
         },
       });
 
@@ -786,18 +795,21 @@ describe("Kana config", () => {
     process.env.KANA_DEEPSEEK_KEY = "secret";
 
     try {
-      const agent = createKanaAgent({
+      const agent = createAgentFromConfig({
         ...DEFAULT_KANA_CONFIG,
-        model: {
-          ...DEFAULT_KANA_CONFIG.model,
+        provider: {
+          ...DEFAULT_KANA_CONFIG.provider,
           deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            ...DEFAULT_KANA_CONFIG.provider.deepseek,
             apiKeyEnv: "KANA_DEEPSEEK_KEY",
           },
         },
         agent: {
           ...DEFAULT_KANA_CONFIG.agent,
-          contextLimit: 1_000_001,
+          model: {
+            ...DEFAULT_KANA_CONFIG.agent.model,
+            contextLimit: 1_000_001,
+          },
         },
       });
 
@@ -950,12 +962,12 @@ describe("Kana config", () => {
     writeFileSync(paths.agentsPath, "Custom system prompt.\n");
 
     try {
-      const agent = createKanaAgent({
+      const agent = createAgentFromConfig({
         ...DEFAULT_KANA_CONFIG,
-        model: {
-          ...DEFAULT_KANA_CONFIG.model,
+        provider: {
+          ...DEFAULT_KANA_CONFIG.provider,
           deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            ...DEFAULT_KANA_CONFIG.provider.deepseek,
             apiKeyEnv: "KANA_DEEPSEEK_KEY",
           },
         },
@@ -1041,12 +1053,12 @@ describe("Kana config", () => {
 
     try {
       expect(() =>
-        createKanaAgent({
+        createAgentFromConfig({
           ...DEFAULT_KANA_CONFIG,
-          model: {
-            ...DEFAULT_KANA_CONFIG.model,
+          provider: {
+            ...DEFAULT_KANA_CONFIG.provider,
             deepseek: {
-              ...DEFAULT_KANA_CONFIG.model.deepseek,
+              ...DEFAULT_KANA_CONFIG.provider.deepseek,
               apiKeyEnv: "KANA_DEEPSEEK_KEY",
             },
           },
@@ -1060,10 +1072,10 @@ describe("Kana config", () => {
   test("rejects unsupported providers", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[provider]\nactive = "mock"\n');
+    writeFileSync(path.join(home, "config.toml"), '[agent.model]\nprovider = "mock"\n');
 
     expect(() => loadKanaConfig(env)).toThrow(
-      "provider.active must be one of: deepseek, openai-codex, custom.",
+      "agent.model.provider must be one of: deepseek, openai-codex, custom.",
     );
   });
 
@@ -1077,6 +1089,13 @@ describe("Kana config", () => {
     );
   });
 });
+
+function createAgentFromConfig(config: KanaConfig) {
+  return createKanaAgent(config.agent, {
+    providers: config.provider,
+    memoryEnabled: config.memory.enabled,
+  });
+}
 
 function createTempEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const home = mkdtempSync(path.join(tmpdir(), "kana-config-"));

@@ -132,10 +132,10 @@ export class OpenAICompatibleModel extends BaseModel {
   }
 
   private validateMaxOutputTokens(context: ModelContext): void {
-    const maxOutputTokens = context.maxOutputTokens ?? this.config.maxTokens;
+    const maxOutputTokens = context.maxOutputTokens ?? this.config.maxOutputTokens;
     if (
-      (this.config.maxTokens !== undefined &&
-        this.config.maxTokens > this.metadata.maxOutputTokens) ||
+      (this.config.maxOutputTokens !== undefined &&
+        this.config.maxOutputTokens > this.metadata.maxOutputTokens) ||
       (maxOutputTokens !== undefined && maxOutputTokens > this.metadata.maxOutputTokens)
     ) {
       throw new Error(

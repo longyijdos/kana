@@ -41,6 +41,7 @@ type LoadKanaSystemPromptOptions = {
 export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions & {
   env?: NodeJS.ProcessEnv;
   launchMode?: KanaLaunchMode;
+  memoryEnabled?: boolean;
   skills?: KanaSkill[];
 };
 
@@ -89,7 +90,8 @@ export function buildKanaPromptAssembly(
   options: BuildKanaPromptAssemblyOptions = {},
 ): PromptAssembly {
   const customizationsEnabled = options.launchMode !== "clean";
-  const memoryEnabled = customizationsEnabled && loadKanaConfig(options.env).memory.enabled;
+  const memoryEnabled =
+    customizationsEnabled && (options.memoryEnabled ?? loadKanaConfig(options.env).memory.enabled);
   const memoryPrompt = memoryEnabled ? formatKanaMemoryForPrompt(options) : undefined;
   const instructionSections = loadKanaSystemSections({
     cwd: options.cwd,

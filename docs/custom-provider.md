@@ -22,14 +22,12 @@ Select one of those model names in the main configuration:
 
 ```toml
 # ~/.kana/config.toml
-[provider]
-active = "custom"
-
-[model.custom]
+[agent.model]
+provider = "custom"
 name = "local-model"
 ```
 
-`/model` exposes Custom alongside the built-in providers. It reads the model list from this one file, persists only `provider.active`, `model.custom.name`, and an optional selected reasoning effort, and hot-switches through the same candidate-Agent validation used by built-in providers. A missing or invalid file is shown as an explicit error; Kana never falls back to another provider or model.
+`/model` exposes Custom alongside the built-in providers. It reads the model list from this one file, persists only the main Agent's `provider`, `name`, and optional reasoning effort under `[agent.model]`, and hot-switches through the same candidate-Agent validation used by built-ins. Its configured `max_output_tokens` and `context_limit` remain unchanged, and `[memory.agent.model]` is independent. A missing or invalid file is shown as an explicit error; Kana never falls back to another provider or model.
 
 ## Provider fields
 
@@ -74,7 +72,7 @@ reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
 
-`agent.context_limit` is a provider-independent cap. The effective Agent limit is the smaller of that configured value and the selected model's `context_window`, so switching from a large built-in model to a smaller Custom model remains valid without provider-specific Agent configuration.
+`agent.model.context_limit` is a provider-independent preference. The effective Agent limit is the smaller of that configured value and the selected model's `context_window`, so switching from a large built-in model to a smaller Custom model remains valid without provider-specific Agent configuration. The same rule applies independently to `memory.agent.model`.
 
 ## Protocol and security boundaries
 

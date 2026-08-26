@@ -23,7 +23,6 @@ import {
 } from "../artifacts";
 import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth";
 import {
-  getActiveKanaModelConfig,
   type KanaConfig,
   type KanaNotificationConfig,
   type KanaToolApprovalConfig,
@@ -89,6 +88,8 @@ export type KanaMemoryCompactSummary = {
   error?: string;
 };
 
+type KanaAgentProductFactory = (config: KanaConfig, options?: KanaAgentOptions) => Agent;
+
 export type CreateKanaConversationHostOptions<TConfiguration = never> = {
   session?: KanaConversationHostSession;
   env?: NodeJS.ProcessEnv;
@@ -98,7 +99,7 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
   onMcpProgress?: (event: KanaMcpRuntimeProgressEvent) => void;
   openMcpOAuthAuthorizationUrl?: (serverId: string, url: string) => Promise<void>;
   onMcpOAuthDiagnostic?: (serverId: string, event: McpOAuthHttpDiagnosticEvent) => void;
-  createAgent?: typeof createKanaAgent;
+  createAgent?: KanaAgentProductFactory;
   createConfigStore?: (env: NodeJS.ProcessEnv) => KanaConfigStore;
   createMcpRuntime?: typeof createKanaMcpRuntime;
 };
@@ -123,7 +124,7 @@ export class KanaConversationHost<TConfiguration = never> {
 
   private readonly env: NodeJS.ProcessEnv;
   private readonly configStore: KanaConfigStore;
-  private readonly createAgentProduct: typeof createKanaAgent;
+  private readonly createAgentProduct: KanaAgentProductFactory;
   private readonly enableScheduledWakeTool: boolean;
   private readonly applyAgentConfiguration?: (
     config: KanaConfig,
@@ -147,7 +148,7 @@ export class KanaConversationHost<TConfiguration = never> {
     this.launchMode = options.launchMode ?? "normal";
     this.configStore = (options.createConfigStore ?? createKanaConfigStore)(this.env);
     this.configData = this.configStore.load();
-    this.createAgentProduct = options.createAgent ?? createKanaAgent;
+    this.createAgentProduct = options.createAgent ?? createKanaConversationAgent;
     this.enableScheduledWakeTool = options.enableScheduledWakeTool ?? true;
     this.applyAgentConfiguration = options.applyAgentConfiguration;
     this.logManager = createSessionLogManager({ level: this.configData.logging.level });
@@ -240,23 +241,19 @@ export class KanaConversationHost<TConfiguration = never> {
       // clean-mode state boundary must not update the shared config store.
       agent = this.createAgentProduct(validatedConfig, kanaAgentOptions);
       this.configData = validatedConfig;
-      this.memoryConsolidation = this.createMemoryConsolidation(validatedConfig);
     } else {
       if (!this.applyAgentConfiguration) {
         throw new Error("This Kana conversation host does not support Agent reconfiguration.");
       }
       let nextAgent: Agent | undefined;
-      let nextMemoryConsolidation = this.memoryConsolidation;
       const nextConfig = this.configStore.update((draft) => {
         this.applyAgentConfiguration?.(draft, configuration);
         nextAgent = this.createAgentProduct(draft, kanaAgentOptions);
-        nextMemoryConsolidation = this.createMemoryConsolidation(draft);
       });
       if (!nextAgent) {
         throw new Error("Kana could not initialize the selected model.");
       }
       this.configData = nextConfig;
-      this.memoryConsolidation = nextMemoryConsolidation;
       agent = nextAgent;
     }
 
@@ -869,13 +866,12 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   private createSessionMetadata(parentSessionPath?: string, title?: string): KanaSessionMetadata {
-    const modelConfig = getActiveKanaModelConfig(this.configData);
     return createKanaSession({
       env: this.env,
       title,
       model: {
-        provider: this.configData.provider.active,
-        model: modelConfig.name,
+        provider: this.configData.agent.model.provider,
+        model: this.configData.agent.model.name,
       },
       parentSessionPath,
     });
@@ -950,6 +946,17 @@ export class KanaConversationHost<TConfiguration = never> {
       throw new Error("Forking sessions is unavailable in clean mode.");
     }
   }
+}
+
+function createKanaConversationAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
+  return createKanaAgent(
+    config.agent,
+    {
+      providers: config.provider,
+      memoryEnabled: config.memory.enabled,
+    },
+    options,
+  );
 }
 
 function getErrorType(error: unknown): string {

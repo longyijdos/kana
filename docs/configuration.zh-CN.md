@@ -100,49 +100,39 @@ Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启
 
 ## `config.toml`
 
-配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值；例如只写 `[model.deepseek] name` 不会删除该供应商的其他默认项。旧版扁平 `[model]` DeepSeek 配置仍可读取，但新配置应使用供应商分表。
+配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 独立属于记忆压缩 Agent；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更，不再读取旧 `[provider]` 和 `[model.*]` 选择表。
 
 TUI 的 `/model` 通过通用配置存储更新 `config.toml`：它从磁盘重新读取当前配置，只写本次实际变化的已知字段，并保留无关表、未知字段和独立注释。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。候选文档必须重新解析为完整目标配置后才会通过同目录临时文件原子替换；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
 
 内置默认配置等价于：
 
 ```toml
-[provider]
-active = "deepseek"
-
-[model.deepseek]
-name = "deepseek-v4-pro"
+[provider.deepseek]
 api_key_env = "DEEPSEEK_API_KEY"
-reasoning_effort = "high"
-web_search = true
-image_input = true
-max_tokens = 384000
 timeout_ms = 60000
 max_retries = 1
 
-# Custom 模型定义保存在 providers/custom.toml。
-# [model.custom]
-# name = "my-model"
-# reasoning_effort = "medium"
-
-[model.openai-codex]
-name = "gpt-5.6-sol"
-reasoning_effort = "medium"
+[provider.openai-codex]
 reasoning_summary = "auto"
-web_search = true
-image_input = true
-max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
 
 [agent]
+web_search = true
+image_input = true
 max_turns = -1
 goal_max_rounds = 8
 tool_deadline_ms = 660000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 tool_result_artifacts = true
-# context_limit = 200000
+
+[agent.model]
+provider = "deepseek"
+name = "deepseek-v4-pro"
+# reasoning_effort = "high"
+# max_output_tokens = 128000
+# context_limit = 500000
 
 [agent.background_jobs]
 max_concurrent = 4
@@ -171,30 +161,37 @@ enabled = true
 max_chars = 6000
 # daily_retention_days = 30
 
+[memory.agent]
+web_search = false
+image_input = false
+max_turns = -1
+tool_deadline_ms = 660000
+parallel_tool_calls = true
+max_parallel_tool_calls = 4
+
+[memory.agent.model]
+provider = "deepseek"
+name = "deepseek-v4-flash"
+# reasoning_effort = "low"
+# max_output_tokens = 64000
+# context_limit = 200000
+
 [logging]
 level = "info"
 ```
 
-`model.openai-codex` 即使未写入文件也有独立默认值，因此切换供应商时只需写需要覆盖的字段。
+省略 `reasoning_effort`、`max_output_tokens` 和 `context_limit` 时，使用所选模型 metadata 的默认值与硬上限；配置预算高于硬上限时会在运行时安全钳制。`/model` 只修改 `agent.model.provider`、`name` 和 `reasoning_effort`，保留主 Agent 的预算字段以及完整的 Memory Agent 配置。
 
-### `[provider]`
-
-| 键 | 类型与可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `active` | `deepseek`、`openai-codex` 或 `custom` | `deepseek` | 当前用于主 Agent、记忆压缩和上下文压缩的模型供应商。 |
-
-### `[model.deepseek]`
+### Provider 表
 
 | 键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `name` | 非空字符串 | `deepseek-v4-pro` | 模型名；运行时会拒绝不在 DeepSeek 元数据表中的模型。 |
-| `api_key_env` | 非空字符串 | `DEEPSEEK_API_KEY` | 保存 API key 的环境变量名；key 不写入 TOML。 |
-| `reasoning_effort` | `none`、`low`、`high` 或 `max` | `high` | DeepSeek Responses 推理强度；`none` 表示关闭推理。 |
-| `web_search` | 布尔值 | `true` | 所选模型 metadata 支持时，声明 DeepSeek 托管的 `web_search` 工具。当前所有 V4 模型都使用 Responses 并支持该托管工具；设为 `false` 只会移除托管工具。 |
-| `image_input` | 布尔值 | `true` | 所选模型 metadata 同时支持图片输入时，允许把用户附件和工具视觉观察作为 Responses `input_image` data URL 发送；同一个实际能力开关也控制 `view_image` 的注册。目前只有 `deepseek-v4-flash-vision-exp` 声明支持图片；模型 metadata 优先级更高，因此该配置无法在纯文本的 V4 Flash 或 V4 Pro 上开启图片或 `view_image`。设为 `false` 时仍保留已持久化图片，但模型输入会改为明确的省略提示。 |
-| `max_tokens` | 正整数 | `384000` | 单个请求允许的输出 token 上限；不能超过所选模型的硬上限。Agent 会按当前 prompt 剩余空间逐轮下调实际发送值。 |
-| `timeout_ms` | 有限数字 | `60000` | 等待 DeepSeek 响应头或相邻响应数据的无活动超时毫秒数。 |
-| `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
+| `provider.deepseek.api_key_env` | 非空字符串 | `DEEPSEEK_API_KEY` | 保存 API key 的环境变量名；key 不写入 TOML。 |
+| `provider.deepseek.timeout_ms` | 有限数字 | `60000` | 等待 DeepSeek 响应头或相邻数据的无活动超时。 |
+| `provider.deepseek.max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
+| `provider.openai-codex.reasoning_summary` | `auto`、`concise`、`detailed` | `auto` | 请求可流式返回的 reasoning summary；不会公开原始思维链。 |
+| `provider.openai-codex.timeout_ms` | 有限数字 | `60000` | 等待 Codex 响应头或相邻数据的无活动超时。 |
+| `provider.openai-codex.max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
 
 启动前必须在环境中设置 `api_key_env` 指定的变量。例如默认配置使用：
 
@@ -202,31 +199,22 @@ level = "info"
 export DEEPSEEK_API_KEY='sk-...'
 ```
 
-### `[model.openai-codex]`
+首次使用 OpenAI Codex 前运行 `kana auth login openai-codex`。浏览器授权得到的 access token、refresh token、ID token 与绑定信息保存在权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`；到期前会自动 refresh，模型请求收到首个 `401` 时也会 refresh 并重试一次。`status` 只显示授权状态、是否可刷新和到期时间，不显示 token。完整协议映射见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
+
+### Agent 模型表
 
 | 键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `name` | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` | `gpt-5.6-sol` | Codex Responses 模型。 |
-| `reasoning_effort` | `low`、`medium`、`high`、`xhigh`、`max` | `medium` | 请求的推理强度。 |
-| `reasoning_summary` | `auto`、`concise`、`detailed` | `auto` | 请求可流式返回的 reasoning summary；原始思维链不会作为该字段公开。 |
-| `web_search` | 布尔值 | `true` | 是否向 Codex Responses 请求声明供应商托管的 `web_search` 工具。设为 `false` 时完全省略该顶层工具。 |
-| `image_input` | 布尔值 | `true` | 将会话中持久化的用户图片和工具视觉观察作为 classic Responses `input_image` data URL 发送，并注册 `view_image`。设为 `false` 时移除该工具、仍保留已持久化图片，但模型输入会改为明确的省略提示。 |
-| `max_tokens` | 正整数 | `128000` | Kana 计算逐轮输出上限时使用的配置上限；ChatGPT Codex 请求约定不暴露 `max_output_tokens`，因此请求不会发送该值。 |
-| `timeout_ms` | 有限数字 | `60000` | 等待响应头或相邻响应数据的无活动超时毫秒数。 |
-| `max_retries` | 有限数字 | `1` | 可重试请求失败后的最大重试次数。 |
+| `agent.web_search` / `memory.agent.web_search` | 布尔值 | `true` / `false` | 仅在所选模型 metadata 也支持时允许托管搜索；Custom 模型目前不声明托管搜索能力。 |
+| `agent.image_input` / `memory.agent.image_input` | 布尔值 | `true` / `false` | 仅在 metadata 支持图片时允许已持久化的用户/工具图片并注册 `view_image`；禁用或不支持时，图片仍保留，但模型输入使用省略标记。 |
+| `agent.model.provider` / `memory.agent.model.provider` | `deepseek`、`openai-codex`、`custom` | `deepseek` | 两个 Agent 各自独立选择的 provider。 |
+| `agent.model.name` | Provider 模型名 | `deepseek-v4-pro` | 对话模型；内置模型名按 provider metadata 校验。 |
+| `memory.agent.model.name` | Provider 模型名 | `deepseek-v4-flash` | 独立于 `/model` 的记忆压缩模型。 |
+| `*.model.reasoning_effort` | 模型 metadata 声明的值 | Metadata 默认值 | 可选覆盖。DeepSeek 支持 `none`、`low`、`high`、`max`；Codex 支持 `low`、`medium`、`high`、`xhigh`、`max`；Custom 使用 `custom.toml` metadata。 |
+| `*.model.max_output_tokens` | 可选正整数 | Metadata 输出硬上限 | Agent 级输出上限；先按模型硬上限钳制，prompt 空间更紧时再逐轮降低。 |
+| `*.model.context_limit` | 可选正整数 | Metadata context window | Agent 级上下文上限，按所选模型 context window 钳制。 |
 
-首次使用前运行 `kana auth login openai-codex`。浏览器授权得到的 access token、refresh token、ID token 与绑定信息保存在权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`；到期前会自动 refresh，模型请求收到首个 `401` 时也会 refresh 并重试一次。`status` 只显示授权状态、是否可刷新和到期时间，不显示 token。完整协议映射见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
-
-### `[model.custom]`
-
-主配置只保存所选 Custom 模型和可选的推理覆盖值：
-
-| 键 | 类型与可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `name` | 非空字符串 | 未设置 | 从 `<KANA_HOME>/providers/custom.toml` 选择的模型；`provider.active = "custom"` 时必需。 |
-| `reasoning_effort` | 所选模型声明的值 | 模型定义中的默认值 | `/model` 可持久化的可选覆盖值。 |
-
-Endpoint、鉴权、模型 metadata 和推理能力仍保存在 `providers/custom.toml`。完整 schema、最小配置、协议和安全规则见[自定义 OpenAI-compatible 提供商](custom-provider.zh-CN.md)。
+Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结构：在任一 Agent 模型表中设置 `provider = "custom"`、`name` 和可选偏好。Endpoint、鉴权、硬上限、输入模态、并行工具能力、推理档位和默认推理强度仍作为模型 metadata 保存在 `providers/custom.toml`。详见[自定义 OpenAI-compatible 提供商](custom-provider.zh-CN.md)。
 
 ### 其他配置表
 
@@ -238,7 +226,6 @@ Endpoint、鉴权、模型 metadata 和推理能力仍保存在 `providers/custo
 | `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
 | `agent.max_parallel_tool_calls` | 正整数 | `4` | 一个相邻并行安全组内可同时执行的工具调用 body 上限。 |
 | `agent.tool_result_artifacts` | 布尔值 | `true` | 将超大的非 `read` 文本结果保存为私有 session artifact，并给模型提供有界、可取回的预览。 |
-| `agent.context_limit` | 可选正整数 | 模型 metadata 的 context window | 与供应商无关的上下文上限；Agent 使用该值与所选模型 context window 中较小的一个。 |
 | `agent.background_jobs.max_concurrent` | 正整数 | `4` | 单个 session 实例最多拥有的活动 Background Job 数；已保留的终态 Job 不计入上限。 |
 | `agent.repeated_tool_calls.reminder_thresholds` | 严格递增且每项不小于 2 的整数数组 | `[3,5,8]` | 连续精确重复达到哪些次数时，Agent 插入逐级增强的建议上下文；空数组关闭策略。 |
 | `agent.repeated_tool_calls.excluded_tools` | 唯一、非空、已去除首尾空白的工具名数组 | `[]` | 重复调用统计透明忽略的工具；被排除的调用既不推进也不重置连续计数。 |
@@ -264,21 +251,21 @@ Endpoint、鉴权、模型 metadata 和推理能力仍保存在 `providers/custo
 
 Background Job 上限只作用于进程内执行，不涉及持久化。当前 session 的活动 Job 达到 `max_concurrent` 后，新的 `background: true` `bash` 调用会被拒绝。
 
-`hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`render_latex` 同时作用于实时与恢复的助手消息、Markdown 表格和内存查看器。支持的表达式默认渲染；关闭该配置、遇到不支持或格式错误的语法、或流式分隔符尚未闭合时保留原始 LaTeX。终端宽度只在成功渲染后影响换行，不会触发源码 fallback。`render_mermaid` 同时作用于实时与恢复的助手消息和内存查看器。启用后 Mermaid 代码块会随文本流式生成持续渲染；不支持或格式错误的图、渲染器失败以及宽于终端可用宽度的图会保留为普通代码块。流式阶段可以显示部分解析结果；消息完成后若仍报告丢弃了源码，Kana 会恢复代码块并追加一条 warning。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`collapse_long_pastes` 只影响编辑器的显示与编辑方式，提交、排队和从输入历史恢复时仍使用完整粘贴原文。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。`max_turns` 只接受 `-1` 或正整数；`parallel_tool_calls`、`tool_result_artifacts`、供应商 `web_search`/`image_input`、`hyperlinks`、`render_latex`、`render_mermaid`、`smooth_text_streaming` 和 `collapse_long_pastes` 必须是布尔值；`goal_max_rounds`、`tool_deadline_ms`、`max_parallel_tool_calls`、`agent.background_jobs.max_concurrent`、`max_tokens` 和可选的 `context_limit` 要求正整数，`timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
+`hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`render_latex` 同时作用于实时与恢复的助手消息、Markdown 表格和内存查看器。支持的表达式默认渲染；关闭该配置、遇到不支持或格式错误的语法、或流式分隔符尚未闭合时保留原始 LaTeX。终端宽度只在成功渲染后影响换行，不会触发源码 fallback。`render_mermaid` 同时作用于实时与恢复的助手消息和内存查看器。启用后 Mermaid 代码块会随文本流式生成持续渲染；不支持或格式错误的图、渲染器失败以及宽于终端可用宽度的图会保留为普通代码块。流式阶段可以显示部分解析结果；消息完成后若仍报告丢弃了源码，Kana 会恢复代码块并追加一条 warning。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`collapse_long_pastes` 只影响编辑器的显示与编辑方式，提交、排队和从输入历史恢复时仍使用完整粘贴原文。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。Agent 和 Memory Agent 的 `web_search`、`image_input` 与 `parallel_tool_calls` 必须是布尔值；各自的 `max_turns` 只接受 `-1` 或正整数，`tool_deadline_ms`、`max_parallel_tool_calls` 以及可选模型 `max_output_tokens`、`context_limit` 要求正整数。`goal_max_rounds` 与 `agent.background_jobs.max_concurrent` 也要求正整数；provider `timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
 
 ### 上下文预算
 
-Kana 用 `agent.context_limit` 计算自动上下文压缩预算。实际 context limit 为 `min(agent.context_limit, 模型 context window)`；未配置时使用所选模型 metadata 的 context window。这样在不同窗口模型之间切换时，同一个全局上限仍然有效。实际 prompt 预算和逐轮输出上限为：
+每个 Agent 使用自己的 `*.model.context_limit` 计算自动上下文压缩预算。实际 context limit 为 `min(配置的 context_limit, 模型 metadata context window)`；未配置时使用 metadata window。实际 prompt 预算和逐轮输出上限为：
 
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
 promptBudget = contextLimit - safetyReserve
-effectiveMaxTokens = min(activeModel.max_tokens, promptBudget - estimatedPromptTokens)
+effectiveMaxOutputTokens = min(配置或 metadata 的输出上限, promptBudget - estimatedPromptTokens)
 ```
 
-`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。配置的 `max_tokens` 是输出上限而不是固定预留；prompt 增长到剩余空间不足时，Agent 会降低本轮 `ModelContext.maxOutputTokens`。当前两个 DeepSeek V4 模型都将其发送为 Responses `max_output_tokens`，不支持对应请求字段的 provider 可以忽略它。
+`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。配置的 `max_output_tokens` 是输出上限而不是固定预留；prompt 增长到剩余空间不足时，Agent 会降低本轮 `ModelContext.maxOutputTokens`。DeepSeek 将它作为 Responses `max_output_tokens` 发送；Codex 请求约定没有对应字段，因此该 adapter 只将其用于 Agent 预算，wire request 中省略。
 
-默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。Agent 创建时的 `agent.parallel_tool_calls_configured` 会记录 `requested`、`supported`、最终的 `enabled` 和 `maxParallelToolCalls`，`agent.repeated_tool_calls_configured` 会记录是否启用、阈值和排除工具数量。并行组在 `debug` 级别记录 `tool.parallel_pool_started` 与 `tool.parallel_pool_ended`；中止或失败的 drain 还会以 `info` 或 `warn` 记录一次只含聚合计数的 `tool.parallel_pool_abnormal_drain`。策略失败记录 `tool.result_policy_failed`，但不含参数或结果内容；成功插入上下文时，`tool.result_policy_context_committed` 只记录来源和数量。artifact 保存、清理、fork 和引用无效诊断使用稳定的 `tool.result_artifact_*` 或 `session.artifact_*` 事件，只包含大小、阶段、结果和错误类型，绝不包含结果文本或 locator。`context.output_limit_adjusted` 只记录配置上限、本轮有效上限和估算 prompt tokens。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
+默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。Agent 创建时的 `agent.parallel_tool_calls_configured` 会记录 `requested`、`supported`、最终的 `enabled` 和 `maxParallelToolCalls`；`agent.model_capabilities_configured` 记录实际的网页搜索与图片输入策略；`agent.repeated_tool_calls_configured` 会记录是否启用、阈值和排除工具数量。并行组在 `debug` 级别记录 `tool.parallel_pool_started` 与 `tool.parallel_pool_ended`；中止或失败的 drain 还会以 `info` 或 `warn` 记录一次只含聚合计数的 `tool.parallel_pool_abnormal_drain`。策略失败记录 `tool.result_policy_failed`，但不含参数或结果内容；成功插入上下文时，`tool.result_policy_context_committed` 只记录来源和数量。artifact 保存、清理、fork 和引用无效诊断使用稳定的 `tool.result_artifact_*` 或 `session.artifact_*` 事件，只包含大小、阶段、结果和错误类型，绝不包含结果文本或 locator。`context.output_limit_adjusted` 只记录配置上限、本轮有效上限和估算 prompt tokens。重试和失败工具为 `warn`，运行或持久化失败为 `error`。错误记录包含 `Error` 的名称、消息和堆栈；provider HTTP 失败额外记录状态码和状态文本，但不保存响应体、授权 header、prompt 或 token。
 
 配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
 
@@ -421,7 +408,7 @@ enabled = []
 以下示例只改变模型名和通知，其余字段继续使用默认值：
 
 ```toml
-[model.deepseek]
+[agent.model]
 name = "deepseek-v4-flash"
 
 [notification]
@@ -432,10 +419,8 @@ on_agent_completed = false
 切换到已经授权的 Codex Luna 只需要：
 
 ```toml
-[provider]
-active = "openai-codex"
-
-[model.openai-codex]
+[agent.model]
+provider = "openai-codex"
 name = "gpt-5.6-luna"
 ```
 

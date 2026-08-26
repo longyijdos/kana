@@ -23,7 +23,6 @@ const CUSTOM_MODEL_KEYS = [
 export type KanaCustomProviderModel = {
   name: string;
   metadata: Omit<ModelMetadata, "provider" | "model" | "protocol">;
-  defaultReasoningEffort?: string;
 };
 
 export type KanaCustomProvider = {
@@ -103,27 +102,6 @@ export function getKanaCustomProviderModel(
   return model;
 }
 
-export function resolveKanaCustomReasoning(
-  model: KanaCustomProviderModel,
-  selectedEffort?: string,
-): string | undefined {
-  const reasoning = model.metadata.reasoning;
-  if (!reasoning) {
-    if (selectedEffort !== undefined) {
-      throw new Error(`Custom model "${model.name}" does not expose reasoning controls.`);
-    }
-    return undefined;
-  }
-
-  const effort = selectedEffort ?? model.defaultReasoningEffort;
-  if (!effort || !reasoning.efforts.includes(effort)) {
-    throw new Error(
-      `Custom model "${model.name}" reasoning_effort must be one of: ${reasoning.efforts.join(", ")}.`,
-    );
-  }
-  return effort;
-}
-
 export function serializeKanaCustomProviderExample(): string {
   return [
     "# OpenAI-compatible Custom provider example.",
@@ -177,21 +155,15 @@ function parseCustomModel(rawModel: unknown, index: number): KanaCustomProviderM
         false,
         `${path}.supports_image_input`,
       ),
-      ...(reasoning ? { reasoning: reasoning.metadata } : {}),
+      ...(reasoning ? { reasoning } : {}),
     },
-    ...(reasoning ? { defaultReasoningEffort: reasoning.defaultEffort } : {}),
   };
 }
 
 function readReasoning(
   model: Record<string, unknown>,
   path: string,
-):
-  | {
-      metadata: ModelReasoningMetadata;
-      defaultEffort: string;
-    }
-  | undefined {
+): ModelReasoningMetadata | undefined {
   if (model.reasoning_efforts === undefined) {
     if (model.default_reasoning_effort !== undefined) {
       throw new Error(
@@ -225,9 +197,7 @@ function readReasoning(
   }
 
   return {
-    metadata: {
-      efforts,
-    },
+    efforts,
     defaultEffort,
   };
 }

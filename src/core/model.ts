@@ -8,7 +8,7 @@ export type ModelConfig = {
   apiKey?: string;
   baseUrl?: string;
   temperature?: number;
-  maxTokens?: number;
+  maxOutputTokens?: number;
   headers?: Record<string, string>;
   timeoutMs?: number;
   maxRetries?: number;
@@ -27,6 +27,7 @@ type ModelProtocol = "chat-completions" | "responses";
 
 export type ModelReasoningMetadata = {
   efforts: readonly [string, ...string[]];
+  defaultEffort: string;
 };
 
 export type ModelMetadata = {
@@ -36,13 +37,13 @@ export type ModelMetadata = {
   // provider-specific implementations use null.
   protocol: ModelProtocol | null;
   contextWindow: number;
-  // Provider hard limit for one completion, distinct from request maxTokens.
+  // Provider hard limit for one completion, distinct from the request budget.
   maxOutputTokens: number;
   // Capability of the concrete model and wire protocol, not only the provider.
   supportsParallelToolCalls: boolean;
-  // Provider/model capability only; provider configuration may still disable it.
+  // Provider/model capability only; Agent policy may still disable it.
   supportsHostedWebSearch: boolean;
-  // Input modality capability only; provider configuration may still disable it.
+  // Input modality capability only; Agent policy may still disable it.
   // Omitted capabilities are treated as unsupported for compatibility with
   // in-process models that predate image inputs.
   supportsImageInput?: boolean;

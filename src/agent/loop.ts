@@ -38,6 +38,8 @@ export type AgentLoopConfig = {
   model: Model;
   maxTurns?: number;
   toolDeadlineMs?: number;
+  webSearch?: boolean;
+  imageInput?: boolean;
   parallelToolCalls?: boolean;
   maxParallelToolCalls?: number;
   signal?: AbortSignal;
@@ -73,6 +75,9 @@ export async function runAgentLoop(
 ): Promise<Message[]> {
   assertValidMaxTurns(config.maxTurns);
   const maxParallelToolCalls = resolveMaxParallelToolCalls(config.maxParallelToolCalls);
+  const webSearch = (config.webSearch ?? true) && config.model.metadata.supportsHostedWebSearch;
+  const imageInput =
+    (config.imageInput ?? true) && config.model.metadata.supportsImageInput === true;
   // Resolve once per run so provider advertisement and runtime scheduling
   // cannot diverge, and unsupported models always fail closed to serial use.
   const parallelToolCalls =
@@ -140,6 +145,8 @@ export async function runAgentLoop(
     let assistantTurn = await streamAssistantResponse(
       prepared.context,
       config,
+      webSearch,
+      imageInput,
       parallelToolCalls,
       emit,
     );
@@ -160,6 +167,8 @@ export async function runAgentLoop(
       assistantTurn = await streamAssistantResponse(
         prepared.context,
         config,
+        webSearch,
+        imageInput,
         parallelToolCalls,
         emit,
       );
@@ -322,6 +331,8 @@ export function assertValidMaxTurns(maxTurns: number | undefined): void {
 async function streamAssistantResponse(
   context: ModelContext,
   config: AgentLoopConfig,
+  webSearch: boolean,
+  imageInput: boolean,
   parallelToolCalls: boolean,
   emit: AgentEventSink,
 ): Promise<AssistantTurnResult> {
@@ -329,6 +340,8 @@ async function streamAssistantResponse(
     system: context.system,
     messages: context.messages,
     tools: context.tools,
+    webSearch,
+    imageInput,
     parallelToolCalls,
     maxOutputTokens: context.maxOutputTokens,
     signal: config.signal,
