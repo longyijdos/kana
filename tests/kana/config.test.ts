@@ -828,14 +828,7 @@ describe("Kana config", () => {
         timezone: "Asia/Shanghai",
       }),
     ).toBe(
-      [
-        "<environment_context>",
-        "  <cwd>/repo</cwd>",
-        "  <platform>darwin</platform>",
-        "  <current_date>2026-06-12</current_date>",
-        "  <timezone>Asia/Shanghai</timezone>",
-        "</environment_context>",
-      ].join("\n"),
+      '{"cwd":"/repo","platform":"darwin","currentDate":"2026-06-12","timezone":"Asia/Shanghai"}',
     );
   });
 
@@ -856,19 +849,13 @@ describe("Kana config", () => {
       expect(prompt.system).toContain(
         "You are a concise, practical assistant working in the user's current environment.",
       );
-      expect(prompt.system).not.toContain("<environment_context>");
+      expect(prompt.system).not.toContain('"currentDate":');
       expect(prompt.context).toEqual([
         {
           source: "environment",
           status: "active",
-          content: [
-            "<environment_context>",
-            "  <cwd>/repo</cwd>",
-            "  <platform>darwin</platform>",
-            "  <current_date>2026-06-12</current_date>",
-            "  <timezone>Asia/Shanghai</timezone>",
-            "</environment_context>",
-          ].join("\n"),
+          content:
+            '{"cwd":"/repo","platform":"darwin","currentDate":"2026-06-12","timezone":"Asia/Shanghai"}',
         },
       ]);
     } finally {
@@ -924,7 +911,10 @@ describe("Kana config", () => {
     expect(prompt).toContain(
       "You are a concise, practical assistant working in the user's current environment.",
     );
-    expect(prompt).not.toContain("<environment_context>");
+    expect(prompt.split("\n\n")[0]).toBe(
+      "You are a concise, practical assistant working in the user's current environment.",
+    );
+    expect(prompt).not.toContain('"currentDate":');
     expect(prompt).not.toContain("Global instructions.");
     expect(prompt).not.toContain("Project instructions.");
     expect(prompt).not.toContain("Global memory.");
@@ -985,7 +975,7 @@ describe("Kana config", () => {
           "You are a concise, practical assistant working in the user's current environment.",
         ),
       ).toBeLessThan(system.indexOf("Custom system prompt."));
-      expect(system).not.toContain("<environment_context>");
+      expect(system).not.toContain('"currentDate":');
     } finally {
       restoreEnv("KANA_HOME", previousKanaHome);
       restoreEnv("KANA_DEEPSEEK_KEY", previousKey);
@@ -1022,7 +1012,7 @@ describe("Kana config", () => {
     expect(prompt.indexOf("Global instructions.")).toBeLessThan(
       prompt.indexOf("Project instructions."),
     );
-    expect(prompt).not.toContain("<environment_context>");
+    expect(prompt).not.toContain('"currentDate":');
   });
 
   test("uses project AGENTS.md with the default prompt when global instructions are missing", () => {

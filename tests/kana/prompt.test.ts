@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { BackgroundJobManager } from "../../src/jobs";
-import { createBackgroundJobPromptSections } from "../../src/kana/background-jobs/prompt";
 import type { KanaGoalSnapshot } from "../../src/kana/conversation/goal-controller";
 import { buildKanaPromptAssembly } from "../../src/kana/prompt";
 import type { KanaTodoItem } from "../../src/kana/todo";
@@ -18,7 +17,7 @@ describe("Kana prompt assembly", () => {
     expect(empty.context.find((snapshot) => snapshot.source === "todo")).toEqual({
       source: "todo",
       status: "inactive",
-      content: "The current session todo list is empty.",
+      content: '{"items":[]}',
     });
 
     todoState = [
@@ -29,10 +28,8 @@ describe("Kana prompt assembly", () => {
     expect(active.context.find((snapshot) => snapshot.source === "todo")).toEqual({
       source: "todo",
       status: "active",
-      content: [
-        "Current session todo state. todo_write replaces the complete list when updating it.",
+      content:
         '{"items":[{"content":"Implement durable state","status":"in_progress"},{"content":"Document the behavior","status":"pending"}]}',
-      ].join("\n"),
     });
 
     todoState = [
@@ -49,11 +46,11 @@ describe("Kana prompt assembly", () => {
     expect(cleared.context.find((snapshot) => snapshot.source === "todo")).toEqual({
       source: "todo",
       status: "inactive",
-      content: "The current session todo list is empty.",
+      content: '{"items":[]}',
     });
   });
 
-  test("projects only the active goal objective and terminal guidance", async () => {
+  test("projects only the active goal authorization and objective", async () => {
     let goal: KanaGoalSnapshot | undefined = {
       id: "goal-secret-id",
       objective: "Finish the refactor",
@@ -70,34 +67,27 @@ describe("Kana prompt assembly", () => {
 
     const active = await assembly.assemble({ signal });
     const goalState = active.context.find((snapshot) => snapshot.source === "goal");
-    expect(goalState?.status).toBe("active");
-    const content = goalState?.content;
-    expect(content).toContain('"objective":"Finish the refactor"');
-    expect(content).toContain(
-      "Call update_goal with completed only when the objective is achieved",
-    );
-    expect(content).not.toContain("goal-secret-id");
-    expect(content).not.toContain("Round");
-    expect(content).not.toContain('"maxRounds"');
+    expect(goalState).toEqual({
+      source: "goal",
+      status: "active",
+      content: '{"authorized":true,"objective":"Finish the refactor"}',
+    });
 
     goal = { ...goal, status: "completed", endedAt: new Date("2026-08-24T01:00:00.000Z") };
     const completed = await assembly.assemble({ signal });
     expect(completed.context.find((snapshot) => snapshot.source === "goal")).toEqual({
       source: "goal",
       status: "inactive",
-      content:
-        "No user-authorized goal is currently active. Do not continue an earlier goal automatically.",
+      content: '{"authorized":false}',
     });
   });
 
   test("projects only active or unreported Background Job state without output", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
-    const background = createBackgroundJobPromptSections(jobs);
     const assembly = buildKanaPromptAssembly({
       launchMode: "clean",
-      capabilitySystemSections: [background.system],
-      capabilityContextSections: [background.context],
+      resolveBackgroundJobState: () => jobs.context(),
     });
     const signal = new AbortController().signal;
     let finish!: (value: { status: "completed"; exitCode: number }) => void;
@@ -109,7 +99,7 @@ describe("Kana prompt assembly", () => {
     expect(inactive.context.find((snapshot) => snapshot.source === "background-jobs")).toEqual({
       source: "background-jobs",
       status: "inactive",
-      content: "The current session has no active or unreported Background Jobs.",
+      content: '{"jobs":[]}',
     });
 
     const job = jobs.start({

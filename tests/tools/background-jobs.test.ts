@@ -25,6 +25,8 @@ describe("Background Job tools", () => {
     const listTool = createJobListTool(jobs);
     const outputTool = createJobOutputTool(jobs);
 
+    expect(outputTool.description).toContain("do not repeatedly poll");
+
     const listed = await listTool.execute({}, createToolContext());
     expectToolResult(listed);
     expect(listed.result).toMatchObject([{ id: job.id, status: "running" }]);

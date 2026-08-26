@@ -384,7 +384,7 @@ describe("Kana skills", () => {
       ],
     });
 
-    expect(prompt).not.toContain("<environment_context>");
+    expect(prompt).not.toContain('"currentDate":');
     expect(prompt).toContain("<available_skills>");
     expect(prompt).toContain("<name>test-skill</name>");
   });

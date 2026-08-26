@@ -9,6 +9,7 @@ import {
   type PromptSystemSection,
   type PromptToolSection,
 } from "@/agent";
+import type { BackgroundJobSummary } from "@/jobs";
 import { getKanaConfigPaths, loadKanaConfig } from "./config";
 import {
   type CollectKanaEnvironmentContextOptions,
@@ -22,15 +23,8 @@ import { formatKanaSkillsForPrompt } from "./skills/prompt";
 import type { KanaSkill } from "./skills/types";
 import type { KanaTodoItem } from "./todo";
 
-const DEFAULT_SYSTEM_PROMPT = [
-  "You are a concise, practical assistant working in the user's current environment.",
-  "Use list and glob for file discovery, grep for content search, and read for file contents.",
-  "Use write to create complete files, and set overwrite only when intentionally replacing the whole file.",
-  "Use edit to modify existing files by exact text replacement.",
-  "Use bash when a shell command is the right way to inspect or change local state.",
-  "Use todo_write to keep a whole-list plan synchronized during multi-step work, but skip it for simple tasks.",
-  "Do not claim to have read a file unless you used the read tool or the content was provided directly.",
-].join(" ");
+const DEFAULT_SYSTEM_PROMPT =
+  "You are a concise, practical assistant working in the user's current environment.";
 
 type LoadKanaSystemPromptOptions = {
   cwd?: string;
@@ -46,8 +40,7 @@ export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions 
 };
 
 export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
-  capabilitySystemSections?: readonly PromptSystemSection[];
-  capabilityContextSections?: readonly PromptContextSection[];
+  resolveBackgroundJobState?: () => readonly BackgroundJobSummary[];
   toolSections?: readonly PromptToolSection[];
   resolveTodoState?: () => readonly KanaTodoItem[];
   resolveGoalState?: () => KanaGoalSnapshot | undefined;
@@ -101,65 +94,85 @@ export function buildKanaPromptAssembly(
   const skillsPrompt = customizationsEnabled
     ? formatKanaSkillsForPrompt(options.skills ?? [], { env: options.env })
     : "";
+  const resolveBackgroundJobState = options.resolveBackgroundJobState;
+  const contextSections: PromptContextSection[] = [
+    {
+      name: "environment",
+      render: () => ({
+        status: "active",
+        content: formatKanaEnvironmentContext(collectKanaEnvironmentContext(options)),
+      }),
+    },
+    ...(resolveBackgroundJobState
+      ? [
+          {
+            name: "background-jobs",
+            render: () => formatBackgroundJobContext(resolveBackgroundJobState()),
+          },
+        ]
+      : []),
+    ...(options.resolveTodoState
+      ? [
+          {
+            name: "todo",
+            render: () => formatKanaTodoRuntimeContext(options.resolveTodoState?.() ?? []),
+          },
+        ]
+      : []),
+    ...(options.resolveGoalState
+      ? [
+          {
+            name: "goal",
+            render: () => formatKanaGoalRuntimeContext(options.resolveGoalState?.()),
+          },
+        ]
+      : []),
+  ];
 
   return createPromptAssembly({
     system: [
       ...(memoryPrompt ? [{ name: "memory", content: memoryPrompt }] : []),
       ...instructionSections,
-      ...(options.capabilitySystemSections ?? []),
       ...(skillsPrompt ? [{ name: "skills", content: skillsPrompt }] : []),
     ],
-    context: [
-      {
-        name: "environment",
-        render: () => ({
-          status: "active",
-          content: formatKanaEnvironmentContext(collectKanaEnvironmentContext(options)),
-        }),
-      },
-      ...(options.capabilityContextSections ?? []),
-      ...(options.resolveTodoState
-        ? [
-            {
-              name: "todo",
-              render: () => formatKanaTodoRuntimeContext(options.resolveTodoState?.() ?? []),
-            },
-          ]
-        : []),
-      ...(options.resolveGoalState
-        ? [
-            {
-              name: "goal",
-              render: () => formatKanaGoalRuntimeContext(options.resolveGoalState?.()),
-            },
-          ]
-        : []),
-    ],
+    context: contextSections,
     tools: options.toolSections,
   });
+}
+
+function formatBackgroundJobContext(visible: readonly BackgroundJobSummary[]): PromptContextState {
+  if (visible.length === 0) {
+    return {
+      status: "inactive",
+      content: JSON.stringify({ jobs: [] }),
+    };
+  }
+  return {
+    status: "active",
+    content: JSON.stringify({
+      jobs: visible.map((job) => ({
+        id: job.id,
+        kind: job.kind,
+        label: job.label,
+        cwd: job.cwd,
+        status: job.status,
+        exitCode: job.exitCode,
+      })),
+    }),
+  };
 }
 
 function formatKanaGoalRuntimeContext(goal: KanaGoalSnapshot | undefined): PromptContextState {
   if (goal?.status !== "active") {
     return {
       status: "inactive",
-      content:
-        "No user-authorized goal is currently active. Do not continue an earlier goal automatically.",
+      content: JSON.stringify({ authorized: false }),
     };
   }
 
   return {
     status: "active",
-    content: [
-      "An explicitly user-authorized goal is active for this process.",
-      "Continue making concrete progress toward the objective.",
-      "Call update_goal with completed only when the objective is achieved, or blocked only when meaningful progress requires user input or an external state change.",
-      JSON.stringify({
-        goal: {
-          objective: goal.objective,
-        },
-      }),
-    ].join("\n"),
+    content: JSON.stringify({ authorized: true, objective: goal.objective }),
   };
 }
 
@@ -167,16 +180,13 @@ function formatKanaTodoRuntimeContext(items: readonly KanaTodoItem[]): PromptCon
   if (items.length === 0) {
     return {
       status: "inactive",
-      content: "The current session todo list is empty.",
+      content: JSON.stringify({ items: [] }),
     };
   }
 
   return {
     status: "active",
-    content: [
-      "Current session todo state. todo_write replaces the complete list when updating it.",
-      JSON.stringify({ items }),
-    ].join("\n"),
+    content: JSON.stringify({ items }),
   };
 }
 

@@ -75,7 +75,7 @@ export function createBashTool(
   return {
     name: "bash",
     description:
-      "Run a shell command. Foreground commands wait for their complete process group; background commands return a session-owned Job ID for job_list, job_output, and job_kill.",
+      "Run a shell command when no purpose-built tool directly covers the operation. Foreground commands wait for their complete process group. Use background=true, not raw shell backgrounding, when work must outlive this call.",
     parameters: bashParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {

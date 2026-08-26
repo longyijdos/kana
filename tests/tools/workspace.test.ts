@@ -51,6 +51,10 @@ describe("workspace tools", () => {
     ]);
   });
 
+  test("keeps shell fallback guidance in the bash tool description", () => {
+    expect(createBashTool().description).toContain("no purpose-built tool directly covers");
+  });
+
   test("view_image loads a workspace image as a visual tool observation", async () => {
     const root = await createTempRoot();
     const imagePath = path.join(root, "screenshots", "result.png");

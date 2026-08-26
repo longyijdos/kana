@@ -59,22 +59,17 @@ Visible Skills catalogue
 Runtime-context state-transition protocol
 ```
 
-Before every model step, the Agent resolves dynamic context and tool sections. The environment, session todo state, and process-local Goal state are dynamic sections; workspace, goal control, memory, scheduled-wake, and external/MCP tools are separate capability sections. Every context source must return an explicit non-empty `active` or `inactive` state. `update_goal` is advertised only while the process-local goal is active. The tool objects resolved for a step are both advertised to that model request and used to execute its resulting calls, so a later refresh cannot change the meaning of an in-flight call. The stable system prefix remains unchanged across these steps, allowing provider prompt caches to reuse it.
+Before every model step, the Agent resolves dynamic context and tool sections. Environment, Background Job, session todo, and process-local Goal state are dynamic sections; the Job, todo, and Goal sections receive state through read-only resolver callbacks. Workspace, goal control, memory, scheduled-wake, and external/MCP tools are separate tool sections. Every context source must return an explicit non-empty `active` or `inactive` state. `update_goal` is advertised only while the process-local goal is active. The tool objects resolved for a step are both advertised to that model request and used to execute its resulting calls, so a later refresh cannot change the meaning of an in-flight call. The stable system prefix remains unchanged across these steps, allowing provider prompt caches to reuse it.
 
 `--clean` bypasses global and project Skill discovery, `skills.toml` activation reads, both memory scopes, and both `AGENTS.md` scopes. The stable system prompt then contains the built-in assistant instructions and runtime-context protocol; dynamic environment context remains available. The Agent registers neither `remember` nor external tools. `/skills` and `/memory` report that they are unavailable in clean mode. `.env`, provider/model selection, and other runtime configuration still follow the normal startup path, but a `/model` selection remains local to the temporary process.
 
-Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults, then the project file is appended. When the two AGENTS paths resolve to the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
+Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. The built-in default is one sentence identifying a concise, practical assistant in the current environment; capability-specific invocation guidance belongs to tool descriptions. When the global file exists, it is appended after that default, then the project file is appended. When the two AGENTS paths resolve to the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
 
 The environment block contains the current directory, `process.platform`, a locally time-zone-formatted `YYYY-MM-DD` date, and the time-zone name. It is wrapped in an internal source-tagged runtime-context message:
 
-```xml
+```text
 <runtime_context source="environment">
-<environment_context>
-  <cwd>/workspace</cwd>
-  <platform>darwin</platform>
-  <current_date>2026-06-22</current_date>
-  <timezone>Asia/Shanghai</timezone>
-</environment_context>
+{"cwd":"/workspace","platform":"darwin","currentDate":"2026-06-22","timezone":"Asia/Shanghai"}
 </runtime_context>
 ```
 
@@ -82,7 +77,7 @@ The Agent compares each explicit state with the latest history message having th
 
 Compaction excludes runtime-context messages from summary generation. At the checkpoint boundary, it reprojects the last state for each source only when that state is active, then retains every transition after the boundary. Covered superseded and inactive transitions disappear together with the covered raw history, which is an intentional cache reset at compaction.
 
-An active goal uses its own `goal` runtime-context source. That state contains the objective and terminal-update guidance, but omits the controller ID, admitted-run count, and configured limit so runtime scheduling does not become task semantics. Its required inactive state says that no user-authorized Goal is active and that an earlier Goal must not continue automatically. The transitions may remain in append-only session history, but the authorization and controller are process-local; after resume without an active controller, the next Agent request appends the inactive state and does not recreate the Goal.
+An active goal uses its own `goal` runtime-context source. Its compact JSON state contains `authorized: true` and the objective, while terminal-update guidance belongs to the dynamically advertised `update_goal` description. Controller ID, admitted-run count, and configured limit stay out of model state so runtime scheduling does not become task semantics. The required inactive state contains `authorized: false` and invalidates the earlier objective. These transitions may remain in append-only session history, but authorization and the controller are process-local; after resume without an active controller, the next Agent request appends the inactive state and does not recreate the Goal.
 
 When memory is enabled and its durable file is non-empty, Kana starts the stable system prefix with `<memory>`, containing separate `global` and `project` reference blocks. Memory text is XML-escaped so `<`, `&`, and similar characters cannot alter the host tag structure; it remains untrusted data in model context, and the consolidation prompt directs the model to treat it as data rather than instructions. Memory is captured when an Agent is built instead of being appended after every `remember` call, avoiding repeated copies of a growing memory file. Guidance about when and what to remember lives in the `remember` tool description, so it is advertised only when that capability is available.
 

@@ -169,9 +169,9 @@ MCP 结果不会原样写入会话。适配器对内容项、文本、结构化 
 | `view_image` | `path` | 加载并规范化本地图片，返回确定的路径、格式、尺寸与字节元数据，并把图片作为视觉观察交给同一个活动模型。仅当该模型支持图片且 `image_input` 已启用时注册。 |
 | `write` | `path`、完整 `content`、可选 `overwrite` | 递归创建父目录，并默认以排他创建方式写入新文件；`overwrite: true` 会替换既有文件。返回 UTF-8 字节数。 |
 | `edit` | `path`、非空 `oldText`、`newText`、可选 `replaceAll` | 对既有 UTF-8 文件做精确替换。默认要求恰好一次匹配；返回替换数、写入字节数及前后文本。 |
-| `bash` | `command`，可选 `cwd`、`timeoutMs`（1–600000）和 `background`（默认 `false`） | 前台执行默认 30000 ms 超时，并返回完整的最终 stdout/stderr。`background: true` 默认不设超时，并立即返回当前 session 所有的 Job ID。 |
+| `bash` | `command`，可选 `cwd`、`timeoutMs`（1–600000）和 `background`（默认 `false`） | 仅在没有专用工具直接覆盖操作时使用。前台执行默认 30000 ms 超时，并返回完整的最终 stdout/stderr。`background: true` 默认不设超时，并立即返回当前 session 所有的 Job ID；工作需要在调用结束后继续时，应使用该参数而不是裸 Shell 后台语法。 |
 | `job_list` | 无 | 列出当前 session 所有的活动 Job 和最多 32 个近期终态 Job。读取终态条目会确认其完成通知。 |
-| `job_output` | `jobId`，可选 `waitMs`（0–30000，默认 0） | 从 Agent 游标一次性消费全部尚未读取的保留输出。它可以等待输出或终态而不停止 Job，并明确报告已丢弃字节数。 |
+| `job_output` | `jobId`，可选 `waitMs`（0–30000，默认 0） | 从 Agent 游标一次性消费全部尚未读取的保留输出。它可以等待预期输出或终态而不停止 Job，并明确报告已丢弃字节数；否则 Agent 不应反复轮询正在运行的 Job。 |
 | `job_kill` | `jobId`，可选 `reason` | 停止属于当前 session 的指定 Job，等待其进程组静止，并返回终态。 |
 | `todo_write` | 完整 `items` 数组；每项包含非空 `content` 与 `pending`、`in_progress` 或 `completed` 状态 | 为多步骤工作原子替换当前 session 的 todo 列表。最多一项可为 `in_progress`；空数组显式清空列表。模型可见结果是固定的紧凑确认。 |
 | `remember` | `content`，可选 `scope`、`title`、`reason` | 向每日记忆记录持久信息，返回宿主生成的记忆条目。仅在记忆启用时注册。 |

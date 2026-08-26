@@ -63,7 +63,7 @@ export function createJobOutputTool(
   return {
     name: "job_output",
     description:
-      "Read all currently unseen retained output from a Background Job. Repeated calls continue from the session's Agent cursor.",
+      "Read all currently unseen retained output from a Background Job. Repeated calls continue from the session's Agent cursor. Wait only when new output or completion is expected; otherwise do not repeatedly poll a running Job.",
     parameters: jobOutputParameters,
     execution: { concurrency: "parallel", deadlineMs: MAX_WAIT_MS + 1_000 },
     execute: async (args, context) => {

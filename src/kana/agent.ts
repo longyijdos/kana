@@ -21,7 +21,6 @@ import {
   type Tool,
 } from "@/tools";
 import { createKanaToolResultArtifactPolicy, type KanaSessionArtifactStore } from "./artifacts";
-import { createBackgroundJobPromptSections } from "./background-jobs/prompt";
 import type { KanaAgentConfig, KanaProviderConfig } from "./config";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-controller";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
@@ -95,6 +94,7 @@ export function createKanaAgent(
   options: KanaAgentOptions = {},
 ): Agent {
   const cwd = process.cwd();
+  const backgroundJobs = options.backgroundJobs;
   const customizationsEnabled = options.launchMode !== "clean";
   const skills = customizationsEnabled ? loadKanaSkills({ cwd, env: options.env }).skills : [];
   const runtime = createKanaAgentModelRuntime(config, dependencies.providers, {
@@ -130,20 +130,17 @@ export function createKanaAgent(
     }),
     createBashTool({
       root: cwd,
-      backgroundJobs: options.backgroundJobs,
+      backgroundJobs,
     }),
   ];
   const toolSections: PromptToolSection[] = [{ name: "workspace", tools: workspaceTools }];
-  const jobPrompt = options.backgroundJobs
-    ? createBackgroundJobPromptSections(options.backgroundJobs)
-    : undefined;
-  if (options.backgroundJobs) {
+  if (backgroundJobs) {
     toolSections.push({
       name: "background-jobs",
       tools: [
-        createJobListTool(options.backgroundJobs),
-        createJobOutputTool(options.backgroundJobs),
-        createJobKillTool(options.backgroundJobs),
+        createJobListTool(backgroundJobs),
+        createJobOutputTool(backgroundJobs),
+        createJobKillTool(backgroundJobs),
       ],
     });
   }
@@ -211,8 +208,7 @@ export function createKanaAgent(
       launchMode: options.launchMode,
       memoryEnabled: dependencies.memoryEnabled,
       skills,
-      capabilitySystemSections: jobPrompt ? [jobPrompt.system] : [],
-      capabilityContextSections: jobPrompt ? [jobPrompt.context] : [],
+      resolveBackgroundJobState: backgroundJobs ? () => backgroundJobs.context() : undefined,
       toolSections,
       resolveTodoState: options.resolveTodoState,
       resolveGoalState: resolveGoal,

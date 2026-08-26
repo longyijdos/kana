@@ -59,22 +59,17 @@ enabled = ["release-check", "database-migrations"]
 Runtime-context 状态转换协议
 ```
 
-每次模型调用前，Agent 都会解析动态 context 和工具 section。环境、session todo 状态和进程内 Goal 状态属于动态 section；工作区、Goal 控制、memory、scheduled-wake 和外部/MCP 工具分别属于独立 capability section。每个 context source 都必须返回明确且非空的 `active` 或 `inactive` 状态。`update_goal` 只在进程内 Goal 为 active 时声明。同一步解析出的工具对象既会声明给该次模型请求，也会用于执行该请求产生的调用，因此后续刷新不会改变正在进行中的调用语义。稳定 system 前缀在这些步骤之间保持不变，供应商 prompt cache 可以复用它。
+每次模型调用前，Agent 都会解析动态 context 和工具 section。环境、Background Job、session todo 与进程内 Goal 状态属于动态 section；Job、todo 和 Goal section 通过只读 resolver 回调取得状态。工作区、Goal 控制、memory、scheduled-wake 和外部/MCP 能力分别属于独立工具 section。每个 context source 都必须返回明确且非空的 `active` 或 `inactive` 状态。`update_goal` 只在进程内 Goal 为 active 时声明。同一步解析出的工具对象既会声明给该次模型请求，也会用于执行该请求产生的调用，因此后续刷新不会改变正在进行中的调用语义。稳定 system 前缀在这些步骤之间保持不变，供应商 prompt cache 可以复用它。
 
 `--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时稳定 system 提示词包含默认助手指令和 runtime-context 协议，动态环境上下文仍然可用；Agent 不注册 `remember` 或任何外部工具。TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载，但 `/model` 的选择只保留在当前临时进程中。
 
-全局指令路径是 `<KANA_HOME>/AGENTS.md`，项目指令路径是 `<cwd>/AGENTS.md`。内置默认助手指令始终注入；全局文件存在时会追加到默认指令后，项目文件再追加到后面。若两条 AGENTS 路径解析到同一文件，只注入一次。项目内容处于更后的、更具体的位置，但代码没有把多份指令合并为任何优先级算法，模型仍需根据完整提示词解释它们。
+全局指令路径是 `<KANA_HOME>/AGENTS.md`，项目指令路径是 `<cwd>/AGENTS.md`。内置默认指令只有一句，用于声明当前环境中的简洁、实用助手；具体能力的调用 guidance 位于对应工具 description。全局文件存在时会追加到默认指令后，项目文件再追加到后面。若两条 AGENTS 路径解析到同一文件，只注入一次。项目内容处于更后的、更具体的位置，但代码没有把多份指令合并为任何优先级算法，模型仍需根据完整提示词解释它们。
 
 环境块包含当前目录、`process.platform`、按本地时区格式化的 `YYYY-MM-DD` 日期与时区名，并包装在带内部来源标记的 runtime-context 消息中：
 
-```xml
+```text
 <runtime_context source="environment">
-<environment_context>
-  <cwd>/workspace</cwd>
-  <platform>darwin</platform>
-  <current_date>2026-06-22</current_date>
-  <timezone>Asia/Shanghai</timezone>
-</environment_context>
+{"cwd":"/workspace","platform":"darwin","currentDate":"2026-06-22","timezone":"Asia/Shanghai"}
 </runtime_context>
 ```
 
@@ -82,7 +77,7 @@ Agent 会按 `source` 将每个明确状态与历史中最近的同源消息比�
 
 上下文压缩不会把 runtime-context 消息交给摘要模型。它会在 checkpoint 边界处仅重新投影当时仍 active 的各 source 最后状态，再保留边界之后的全部转换。被覆盖的旧状态和 inactive 转换随原始历史一起退出模型输入；这是 compaction 时有意发生的 cache 重置。
 
-Active Goal 使用独立的 `goal` runtime-context source。其 active 状态包含目标与终态更新 guidance，但省略 controller ID、已允许的 run 计数和配置上限，避免把 runtime 调度误当成任务语义。它必须提供的 inactive 状态会明确说明当前没有用户授权的 Goal，并禁止自动继续旧 Goal。这些转换可以保留在追加式 session 历史中，但授权与 controller 只存在于当前进程；恢复后没有 active controller 时，下一次 Agent 请求会追加 inactive 状态且不会重建 Goal。
+Active Goal 使用独立的 `goal` runtime-context source。其紧凑 JSON 状态包含 `authorized: true` 与目标，终态更新 guidance 则位于动态声明的 `update_goal` description。controller ID、已允许的 run 计数和配置上限不会进入模型状态，避免把 runtime 调度误当成任务语义。必须提供的 inactive 状态包含 `authorized: false`，并作废之前的目标。这些转换可以保留在追加式 session 历史中，但授权与 controller 只存在于当前进程；恢复后没有 active controller 时，下一次 Agent 请求会追加 inactive 状态且不会重建 Goal。
 
 如果 memory 启用且对应长期文件非空，Kana 在稳定 system 前缀开头写入 `<memory>`，内部区分 `global` 与 `project` 引用块。记忆文本会 XML 转义，避免其中的 `<`、`&` 等改变宿主标签结构；但它仍是模型上下文中的不可信数据，记忆合并提示要求将其作为数据而非指令。Memory 在 Agent 构建时读取，而不会在每次 `remember` 后把不断增长的完整文件追加到历史中，从而避免重复 token。何时保存、保存什么的 guidance 位于 `remember` 工具 description，因此只会在该能力可用时声明给模型。
 

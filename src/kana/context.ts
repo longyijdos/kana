@@ -26,14 +26,7 @@ export function collectKanaEnvironmentContext(
 }
 
 export function formatKanaEnvironmentContext(context: KanaEnvironmentContext): string {
-  return [
-    "<environment_context>",
-    `  <cwd>${context.cwd}</cwd>`,
-    `  <platform>${context.platform}</platform>`,
-    `  <current_date>${context.currentDate}</current_date>`,
-    `  <timezone>${context.timezone}</timezone>`,
-    "</environment_context>",
-  ].join("\n");
+  return JSON.stringify(context);
 }
 
 function getLocalTimezone(): string {
