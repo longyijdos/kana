@@ -47,6 +47,7 @@ export function createModelCompactPolicy(
           }),
         ],
         maxOutputTokens: maxSummaryTokens,
+        imageInput: canReadImages,
         signal,
       });
     } catch (error) {

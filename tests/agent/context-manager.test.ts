@@ -882,6 +882,7 @@ describe("model compaction policy", () => {
 
     expect(capturedContext?.tools).toBeUndefined();
     expect(capturedContext?.maxOutputTokens).toBe(256);
+    expect(capturedContext?.imageInput).toBe(false);
     expect(capturedContext?.messages).toHaveLength(1);
     expect(JSON.stringify(capturedContext)).toContain("Previous state.");
     expect(JSON.stringify(capturedContext)).toContain("Visible history");
@@ -969,6 +970,7 @@ describe("model compaction policy", () => {
       maxSummaryTokens: 256,
     });
 
+    expect(capturedContext?.imageInput).toBe(true);
     const compactionRequest = capturedContext?.messages[0];
     expect(compactionRequest?.role).toBe("user");
     if (compactionRequest?.role !== "user") {
@@ -994,6 +996,58 @@ describe("model compaction policy", () => {
     expect(compactionRequest.content).not.toContain("first-image-bytes");
     expect(compactionRequest.content).not.toContain("second-image-bytes");
     expect(result).toEqual({ summary: "Visual summary.", usage: undefined });
+  });
+
+  test("does not enable image input when the Agent compaction policy disables it", async () => {
+    let capturedContext: ModelContext | undefined;
+    const model: Model = {
+      metadata: {
+        ...MODEL_METADATA,
+        supportsImageInput: true,
+      },
+      stream() {
+        throw new Error("stream should not be called directly");
+      },
+      async generate(context) {
+        capturedContext = structuredClone(context);
+        return {
+          ...messageIdentityForTest("assistant"),
+          role: "assistant",
+          stopReason: "stop",
+          content: [{ type: "text", text: "Text-only summary." }],
+        };
+      },
+    };
+    const policy = createModelCompactPolicy(model, { imageInputEnabled: false });
+
+    await policy({
+      messages: [
+        {
+          ...messageIdentityForTest("user"),
+          role: "user",
+          content: "Inspect this image.",
+          images: [
+            {
+              mimeType: "image/png",
+              data: "policy-image-bytes",
+              width: 32,
+              height: 16,
+            },
+          ],
+        },
+      ],
+      maxSummaryTokens: 256,
+    });
+
+    expect(capturedContext?.imageInput).toBe(false);
+    const compactionRequest = capturedContext?.messages[0];
+    expect(compactionRequest?.role).toBe("user");
+    if (compactionRequest?.role !== "user") {
+      throw new Error("Expected a user compaction request.");
+    }
+    expect(compactionRequest.images).toBeUndefined();
+    expect(compactionRequest.content).toContain('"contentOmitted":true');
+    expect(compactionRequest.content).not.toContain("policy-image-bytes");
   });
 });
 
