@@ -14,21 +14,23 @@ kana auth logout openai-codex
 
 供应商需要 ChatGPT account ID。Kana 优先从 ID token 读取，缺失时再从 access token 的 JWT claim 读取。到期 token 会通过 refresh token 自动更新；Codex token endpoint 当前 refresh 请求使用 JSON，而首次 authorization-code exchange 保持表单编码。token response 可以省略 `token_type`，Kana 在这个供应商边界将其按 Bearer 处理。
 
-配置通过供应商分表选择：
+Provider 传输设置与 Agent 模型选择分开配置：
 
 ```toml
-[provider]
-active = "openai-codex"
-
-[model.openai-codex]
-name = "gpt-5.6-luna"
-reasoning_effort = "medium"
+[provider.openai-codex]
 reasoning_summary = "auto"
-web_search = true
-image_input = true
-max_tokens = 128000
 timeout_ms = 60000
 max_retries = 1
+
+[agent]
+web_search = true
+image_input = true
+
+[agent.model]
+provider = "openai-codex"
+name = "gpt-5.6-luna"
+reasoning_effort = "medium"
+max_output_tokens = 128000
 ```
 
 可用模型和字段见[配置与安装](configuration.zh-CN.md)。
@@ -44,8 +46,8 @@ max_retries = 1
 - 用户图片附件会转换为带自包含 data URL 的 classic Responses `input_image` item。同一个实际能力开关会注册 `view_image`，其视觉结果成为与原调用关联的原生多模态 `function_call_output` 内容。上下文压缩会发送用户和工具图片，让摘要把视觉细节保存为文本。`image_input = false` 时会移除该工具、不发送图片字节，并改为追加明确的文本省略提示。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
 - `parallel_tool_calls` 使用经过模型能力判断后的 Agent 有效设置。当前 Sol、Terra 和 Luna metadata 均支持并行调用；用户策略关闭并行，或工具执行 metadata 不允许并发时，ToolRuntime 仍会串行执行。
-- reasoning 设置包含 `effort` 与 summary 类型，但省略 `reasoning.context`，由 backend 决定实际的持久化推理模式。可用 effort 为 `low`、`medium`、`high`、`xhigh` 和 `max`；Ultra 属于 Codex 客户端编排模式，Kana 不会将其作为请求强度发送。
-- Kana 会通过配置的 `max_tokens` 与剩余 context 计算逐轮 `ModelContext.maxOutputTokens`。这里使用的 ChatGPT Codex 请求约定不暴露 `max_output_tokens`，因此 wire request 仍省略该字段。
+- reasoning 设置包含 `effort` 与 summary 类型，但省略 `reasoning.context`，由 backend 决定实际的持久化推理模式。可用 effort 为 `low`、`medium`、`high`、`xhigh` 和 `max`，其中模型 metadata 默认值为 `medium`；Ultra 属于 Codex 客户端编排模式，Kana 不会将其作为请求强度发送。
+- Kana 会通过 Agent 模型配置的 `max_output_tokens` 与剩余 context 计算逐轮 `ModelContext.maxOutputTokens`。这里使用的 ChatGPT Codex 请求约定不暴露 `max_output_tokens`，因此 wire request 仍省略该字段。
 - Kana 既不发送 Responses Lite header，也不发送 Lite-only input marker。只有 OpenAI 稳定提供兼容 hosted tool 的协议后才重新评估 Lite；其 header 与请求体绝不能独立启用。
 
 Codex 的 reasoning summary 不是原始思维链。Kana 可以流式接收 summary 并产生 thinking 事件，但 TUI 只用这些事件显示临时 thinking 状态，不展示摘要正文。

@@ -65,17 +65,28 @@ function createAgentBuiltInTools(): Tool[] {
   process.env.KANA_TEST_DEEPSEEK_KEY = "secret";
 
   try {
-    const agent = createKanaAgent(
-      {
-        ...DEFAULT_KANA_CONFIG,
-        model: {
-          ...DEFAULT_KANA_CONFIG.model,
-          deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
-            name: "deepseek-v4-flash-vision-exp" as const,
-            apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
-          },
+    const config = {
+      ...DEFAULT_KANA_CONFIG,
+      provider: {
+        ...DEFAULT_KANA_CONFIG.provider,
+        deepseek: {
+          ...DEFAULT_KANA_CONFIG.provider.deepseek,
+          apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
         },
+      },
+      agent: {
+        ...DEFAULT_KANA_CONFIG.agent,
+        model: {
+          ...DEFAULT_KANA_CONFIG.agent.model,
+          name: "deepseek-v4-flash-vision-exp" as const,
+        },
+      },
+    };
+    const agent = createKanaAgent(
+      config.agent,
+      {
+        providers: config.provider,
+        memoryEnabled: config.memory.enabled,
       },
       {
         backgroundJobs,

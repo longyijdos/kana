@@ -64,10 +64,10 @@ export class DeepSeekModel extends BaseModel {
         );
       }
 
-      const maxOutputTokens = context.maxOutputTokens ?? this.config.maxTokens;
+      const maxOutputTokens = context.maxOutputTokens ?? this.config.maxOutputTokens;
       if (
-        (this.config.maxTokens !== undefined &&
-          this.config.maxTokens > this.metadata.maxOutputTokens) ||
+        (this.config.maxOutputTokens !== undefined &&
+          this.config.maxOutputTokens > this.metadata.maxOutputTokens) ||
         (maxOutputTokens !== undefined && maxOutputTokens > this.metadata.maxOutputTokens)
       ) {
         throw new Error(
@@ -75,10 +75,14 @@ export class DeepSeekModel extends BaseModel {
         );
       }
 
-      const request = buildDeepSeekRequest(context, {
-        ...this.config,
-        webSearch: this.metadata.supportsHostedWebSearch && this.config.webSearch !== false,
-      });
+      const request = buildDeepSeekRequest(
+        {
+          ...context,
+          webSearch: context.webSearch === true && this.metadata.supportsHostedWebSearch,
+          imageInput: context.imageInput === true && this.metadata.supportsImageInput === true,
+        },
+        this.config,
+      );
       const requestSignal = createRequestSignal(this.config, context.signal);
 
       try {

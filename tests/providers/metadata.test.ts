@@ -37,15 +37,25 @@ describe("provider model metadata", () => {
   });
 
   test("declares model-specific reasoning controls", () => {
-    expect(Object.values(DEEPSEEK_MODELS).map((model) => model.reasoning.efforts)).toEqual([
-      ["none", "low", "high", "max"],
-      ["none", "low", "high", "max"],
-      ["none", "low", "high", "max"],
+    expect(
+      Object.values(DEEPSEEK_MODELS).map((model) => ({
+        efforts: model.reasoning.efforts,
+        defaultEffort: model.reasoning.defaultEffort,
+      })),
+    ).toEqual([
+      { efforts: ["none", "low", "high", "max"], defaultEffort: "high" },
+      { efforts: ["none", "low", "high", "max"], defaultEffort: "high" },
+      { efforts: ["none", "low", "high", "max"], defaultEffort: "high" },
     ]);
-    expect(Object.values(OPENAI_CODEX_MODELS).map((model) => model.reasoning.efforts)).toEqual([
-      ["low", "medium", "high", "xhigh", "max"],
-      ["low", "medium", "high", "xhigh", "max"],
-      ["low", "medium", "high", "xhigh", "max"],
+    expect(
+      Object.values(OPENAI_CODEX_MODELS).map((model) => ({
+        efforts: model.reasoning.efforts,
+        defaultEffort: model.reasoning.defaultEffort,
+      })),
+    ).toEqual([
+      { efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "medium" },
+      { efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "medium" },
+      { efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "medium" },
     ]);
   });
 });

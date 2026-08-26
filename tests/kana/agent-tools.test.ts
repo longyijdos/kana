@@ -34,7 +34,7 @@ describe("Kana Agent tools", () => {
     try {
       const goal = createGoal("active");
       const agent = withKanaAgentEnvironment(() =>
-        createKanaAgent(visionTestConfig(), {
+        createAgentForTest(visionTestConfig(), {
           additionalTools: [externalTool],
           backgroundJobs,
           wakeScheduler,
@@ -54,11 +54,11 @@ describe("Kana Agent tools", () => {
   });
 
   test("enables view_image only when the active model and configuration support images", () => {
-    const enabled = withKanaAgentEnvironment(() => createKanaAgent(visionTestConfig()));
+    const enabled = withKanaAgentEnvironment(() => createAgentForTest(visionTestConfig()));
     const disabledByConfig = withKanaAgentEnvironment(() =>
-      createKanaAgent(visionTestConfig({ imageInput: false })),
+      createAgentForTest(visionTestConfig({ imageInput: false })),
     );
-    const unsupportedModel = withKanaAgentEnvironment(() => createKanaAgent(testConfig()));
+    const unsupportedModel = withKanaAgentEnvironment(() => createAgentForTest(testConfig()));
 
     expect(enabled.state.tools.some((tool) => tool.name === "view_image")).toBe(true);
     expect(disabledByConfig.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
@@ -69,13 +69,13 @@ describe("Kana Agent tools", () => {
     const activeGoal = createGoal("active");
     const completedGoal = createGoal("completed");
     const active = withKanaAgentEnvironment(() =>
-      createKanaAgent(testConfig(), {
+      createAgentForTest(testConfig(), {
         resolveGoal: () => activeGoal,
         updateGoal: (change) => ({ ...activeGoal, status: change.status }),
       }),
     );
     const completed = withKanaAgentEnvironment(() =>
-      createKanaAgent(testConfig(), {
+      createAgentForTest(testConfig(), {
         resolveGoal: () => completedGoal,
         updateGoal: (change) => ({ ...completedGoal, status: change.status }),
       }),
@@ -88,7 +88,7 @@ describe("Kana Agent tools", () => {
   test("rejects external tool names that collide with built-in tools", () => {
     expect(() =>
       withKanaAgentEnvironment(() =>
-        createKanaAgent(testConfig(), {
+        createAgentForTest(testConfig(), {
           additionalTools: [createTool("read")],
         }),
       ),
@@ -100,7 +100,7 @@ describe("Kana Agent tools", () => {
 
     try {
       const agent = withKanaAgentEnvironment(() =>
-        createKanaAgent(testConfig(), {
+        createAgentForTest(testConfig(), {
           additionalTools: [createTool("github_create_issue")],
           launchMode: "clean",
           wakeScheduler,
@@ -148,10 +148,10 @@ function createGoal(status: KanaGoalSnapshot["status"]): KanaGoalSnapshot {
 function testConfig() {
   return {
     ...DEFAULT_KANA_CONFIG,
-    model: {
-      ...DEFAULT_KANA_CONFIG.model,
+    provider: {
+      ...DEFAULT_KANA_CONFIG.provider,
       deepseek: {
-        ...DEFAULT_KANA_CONFIG.model.deepseek,
+        ...DEFAULT_KANA_CONFIG.provider.deepseek,
         apiKeyEnv: "KANA_TEST_DEEPSEEK_KEY",
       },
     },
@@ -162,15 +162,29 @@ function visionTestConfig(overrides: { imageInput?: boolean } = {}) {
   const config = testConfig();
   return {
     ...config,
-    model: {
-      ...config.model,
-      deepseek: {
-        ...config.model.deepseek,
+    agent: {
+      ...config.agent,
+      imageInput: overrides.imageInput ?? config.agent.imageInput,
+      model: {
+        ...config.agent.model,
         name: "deepseek-v4-flash-vision-exp" as const,
-        ...overrides,
       },
     },
   };
+}
+
+function createAgentForTest(
+  config: ReturnType<typeof testConfig>,
+  options: Parameters<typeof createKanaAgent>[2] = {},
+) {
+  return createKanaAgent(
+    config.agent,
+    {
+      providers: config.provider,
+      memoryEnabled: config.memory.enabled,
+    },
+    options,
+  );
 }
 
 function withKanaAgentEnvironment<T>(run: () => T): T {

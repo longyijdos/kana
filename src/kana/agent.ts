@@ -22,11 +22,11 @@ import {
 } from "@/tools";
 import { createKanaToolResultArtifactPolicy, type KanaSessionArtifactStore } from "./artifacts";
 import { createBackgroundJobPromptSections } from "./background-jobs/prompt";
-import { getActiveKanaModelConfig, type KanaConfig } from "./config";
+import type { KanaAgentConfig, KanaProviderConfig } from "./config";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-controller";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
 import type { KanaLaunchMode } from "./launch-mode";
-import { createKanaModel } from "./model";
+import { createKanaAgentModelRuntime } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
 import { loadKanaSkills } from "./skills/loader";
 import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
@@ -84,22 +84,24 @@ export type KanaAgentOptions = Pick<
   updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
 };
 
-export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
+export type KanaAgentDependencies = {
+  providers: KanaProviderConfig;
+  memoryEnabled: boolean;
+};
+
+export function createKanaAgent(
+  config: KanaAgentConfig,
+  dependencies: KanaAgentDependencies,
+  options: KanaAgentOptions = {},
+): Agent {
   const cwd = process.cwd();
   const customizationsEnabled = options.launchMode !== "clean";
   const skills = customizationsEnabled ? loadKanaSkills({ cwd, env: options.env }).skills : [];
-  const model = createKanaModel(config, options.logger);
-  const modelConfig = getActiveKanaModelConfig(config);
-  const maxOutputTokens =
-    "maxTokens" in modelConfig ? modelConfig.maxTokens : model.metadata.maxOutputTokens;
-  const imageInputEnabled =
-    model.metadata.supportsImageInput === true &&
-    (!("imageInput" in modelConfig) || modelConfig.imageInput !== false);
-  // The shared Agent limit is a cap so switching to a smaller model remains valid.
-  const contextLimit = Math.min(
-    config.agent.contextLimit ?? model.metadata.contextWindow,
-    model.metadata.contextWindow,
-  );
+  const runtime = createKanaAgentModelRuntime(config, dependencies.providers, {
+    env: options.env,
+    logger: options.logger,
+  });
+  const { model } = runtime;
   const workspaceTools: Tool[] = [
     createListTool({
       root: cwd,
@@ -113,7 +115,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     createReadTool({
       root: cwd,
     }),
-    ...(imageInputEnabled
+    ...(runtime.imageInput
       ? [
           createViewImageTool({
             root: cwd,
@@ -170,7 +172,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       resolve: resolveGoalTools,
     });
   }
-  if (customizationsEnabled && config.memory.enabled) {
+  if (customizationsEnabled && dependencies.memoryEnabled) {
     toolSections.push({
       name: "memory",
       tools: [
@@ -207,6 +209,7 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       cwd,
       env: options.env,
       launchMode: options.launchMode,
+      memoryEnabled: dependencies.memoryEnabled,
       skills,
       capabilitySystemSections: jobPrompt ? [jobPrompt.system] : [],
       capabilityContextSections: jobPrompt ? [jobPrompt.context] : [],
@@ -214,13 +217,15 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
       resolveTodoState: options.resolveTodoState,
       resolveGoalState: resolveGoal,
     }),
-    maxTurns: config.agent.maxTurns,
-    toolDeadlineMs: config.agent.toolDeadlineMs,
-    parallelToolCalls: config.agent.parallelToolCalls,
-    maxParallelToolCalls: config.agent.maxParallelToolCalls,
-    repeatedToolCalls: config.agent.repeatedToolCalls,
+    maxTurns: config.maxTurns,
+    toolDeadlineMs: config.toolDeadlineMs,
+    webSearch: runtime.webSearch,
+    imageInput: runtime.imageInput,
+    parallelToolCalls: runtime.parallelToolCalls,
+    maxParallelToolCalls: config.maxParallelToolCalls,
+    repeatedToolCalls: config.repeatedToolCalls,
     toolResultPolicy: createKanaToolResultArtifactPolicy({
-      ...(config.agent.toolResultArtifacts && options.artifactStore
+      ...(config.toolResultArtifacts && options.artifactStore
         ? { store: options.artifactStore }
         : {}),
       logger: options.logger,
@@ -234,12 +239,10 @@ export function createKanaAgent(config: KanaConfig, options: KanaAgentOptions = 
     logger: options.logger,
     loggerMetadata: { agentKind: "conversation" },
     context: {
-      contextLimit,
-      maxOutputTokens,
+      contextLimit: runtime.contextLimit,
+      maxOutputTokens: runtime.maxOutputTokens,
       compactPolicy: createModelCompactPolicy(model, {
-        // Capability and configuration are separate: a capable model must not
-        // receive image bytes when the provider setting disables them.
-        imageInputEnabled,
+        imageInputEnabled: runtime.imageInput,
       }),
       checkpoint: options.contextCheckpoint,
     },

@@ -6,7 +6,7 @@ export function buildOpenAICodexRequest(
   config: OpenAICodexModelConfig,
 ): Record<string, unknown> {
   const tools = toOpenAICodexTools(context.tools ?? []);
-  if (config.webSearch !== false) {
+  if (context.webSearch === true) {
     tools.push({ type: "web_search" });
   }
 
@@ -17,7 +17,7 @@ export function buildOpenAICodexRequest(
     store: false,
     stream: true,
     instructions: context.system || "You are a helpful assistant.",
-    input: toOpenAICodexInput(context.messages, config),
+    input: toOpenAICodexInput(context.messages, context.imageInput === true),
     text: {
       verbosity: "low",
     },
@@ -39,14 +39,14 @@ export function buildOpenAICodexRequest(
 
 function toOpenAICodexInput(
   messages: Message[],
-  config: OpenAICodexModelConfig,
+  imageInputEnabled: boolean,
 ): Record<string, unknown>[] {
-  return messages.flatMap((message) => toOpenAICodexMessage(message, config));
+  return messages.flatMap((message) => toOpenAICodexMessage(message, imageInputEnabled));
 }
 
 function toOpenAICodexMessage(
   message: Message,
-  config: OpenAICodexModelConfig,
+  imageInputEnabled: boolean,
 ): Record<string, unknown>[] {
   switch (message.role) {
     case "user":
@@ -54,7 +54,7 @@ function toOpenAICodexMessage(
         {
           type: "message",
           role: "user",
-          content: toOpenAICodexUserContent(message, config),
+          content: toOpenAICodexUserContent(message, imageInputEnabled),
         },
       ];
     case "tool":
@@ -62,7 +62,7 @@ function toOpenAICodexMessage(
         {
           type: "function_call_output",
           call_id: message.toolCallId,
-          output: toOpenAICodexToolOutput(message, config.imageInput !== false),
+          output: toOpenAICodexToolOutput(message, imageInputEnabled),
         },
       ];
     case "assistant":
@@ -95,7 +95,7 @@ function toOpenAICodexToolOutput(
 
 function toOpenAICodexUserContent(
   message: Extract<Message, { role: "user" }>,
-  config: OpenAICodexModelConfig,
+  imageInputEnabled: boolean,
 ): Record<string, unknown>[] {
   const content: Record<string, unknown>[] = [];
 
@@ -103,7 +103,7 @@ function toOpenAICodexUserContent(
     content.push({ type: "input_text", text: message.content });
   }
 
-  if (config.imageInput !== false) {
+  if (imageInputEnabled) {
     for (const image of message.images ?? []) {
       content.push({
         type: "input_image",

@@ -7,16 +7,19 @@ export function buildOpenAICompatibleRequest(
 ): Record<string, unknown> {
   const request: Record<string, unknown> = {
     model: config.model,
-    messages: toMessages(context, config.metadata.supportsImageInput === true),
+    messages: toMessages(
+      context,
+      context.imageInput === true && config.metadata.supportsImageInput === true,
+    ),
     stream: true,
     stream_options: {
       include_usage: true,
     },
   };
 
-  const maxTokens = context.maxOutputTokens ?? config.maxTokens;
-  if (maxTokens !== undefined) {
-    request.max_tokens = maxTokens;
+  const maxOutputTokens = context.maxOutputTokens ?? config.maxOutputTokens;
+  if (maxOutputTokens !== undefined) {
+    request.max_tokens = maxOutputTokens;
   }
   if (config.reasoningEffort !== undefined) {
     request.reasoning_effort = config.reasoningEffort;

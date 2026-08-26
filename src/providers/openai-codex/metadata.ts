@@ -14,6 +14,7 @@ export const OPENAI_CODEX_MODELS = {
     supportsImageInput: true,
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
+      defaultEffort: "medium",
     },
   },
   "gpt-5.6-terra": {
@@ -27,6 +28,7 @@ export const OPENAI_CODEX_MODELS = {
     supportsImageInput: true,
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
+      defaultEffort: "medium",
     },
   },
   "gpt-5.6-luna": {
@@ -40,6 +42,7 @@ export const OPENAI_CODEX_MODELS = {
     supportsImageInput: true,
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
+      defaultEffort: "medium",
     },
   },
 } as const satisfies Record<string, OpenAICodexModelMetadata>;

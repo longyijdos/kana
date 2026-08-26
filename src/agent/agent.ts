@@ -53,6 +53,8 @@ export type AgentConfig = {
   // free of custom stop hooks. Use -1 to run without a turn limit.
   maxTurns?: number;
   toolDeadlineMs?: number;
+  webSearch?: boolean;
+  imageInput?: boolean;
   parallelToolCalls?: boolean;
   maxParallelToolCalls?: number;
   repeatedToolCalls?: RepeatedToolCallPolicyConfig;
@@ -140,6 +142,8 @@ export class Agent {
   private readonly logger: Logger;
   private readonly loggerMetadata?: LogMetadata;
   private readonly contextManager?: ContextManager;
+  private readonly webSearch: boolean;
+  private readonly imageInput: boolean;
   private readonly parallelToolCalls: boolean;
   private readonly maxParallelToolCalls: number;
   private readonly promptAssembly: PromptAssembly;
@@ -151,6 +155,9 @@ export class Agent {
     this.maxParallelToolCalls = resolveMaxParallelToolCalls(options.maxParallelToolCalls);
     this.logger = options.logger ?? createNoopLogger();
     this.loggerMetadata = options.loggerMetadata;
+    this.webSearch = (options.webSearch ?? true) && options.model.metadata.supportsHostedWebSearch;
+    this.imageInput =
+      (options.imageInput ?? true) && options.model.metadata.supportsImageInput === true;
     const parallelToolCallsRequested = options.parallelToolCalls ?? true;
     this.parallelToolCalls =
       parallelToolCallsRequested && options.model.metadata.supportsParallelToolCalls;
@@ -203,6 +210,10 @@ export class Agent {
       supported: options.model.metadata.supportsParallelToolCalls,
       enabled: this.parallelToolCalls,
       maxParallelToolCalls: this.maxParallelToolCalls,
+    });
+    this.log("debug", "agent.model_capabilities_configured", {
+      webSearch: this.webSearch,
+      imageInput: this.imageInput,
     });
     this.log("debug", "agent.repeated_tool_calls_configured", {
       enabled: Boolean(options.repeatedToolCalls?.reminderThresholds.length),
@@ -599,6 +610,8 @@ export class Agent {
       model: this.stateData.model,
       maxTurns: this.stateData.maxTurns,
       toolDeadlineMs: this.stateData.toolDeadlineMs,
+      webSearch: this.webSearch,
+      imageInput: this.imageInput,
       parallelToolCalls: this.parallelToolCalls,
       maxParallelToolCalls: this.maxParallelToolCalls,
       signal,

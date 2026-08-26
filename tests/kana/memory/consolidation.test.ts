@@ -99,6 +99,7 @@ describe("memory consolidation agent", () => {
 
   test("creates an isolated agent without main-agent tools", () => {
     const env = createTempEnv();
+    env.DEEPSEEK_API_KEY = "secret";
     const previous = process.env.DEEPSEEK_API_KEY;
     process.env.DEEPSEEK_API_KEY = "secret";
 
@@ -106,9 +107,12 @@ describe("memory consolidation agent", () => {
       const agent = createMemoryConsolidationAgent(
         {
           ...DEFAULT_KANA_CONFIG,
-          agent: {
-            ...DEFAULT_KANA_CONFIG.agent,
-            toolDeadlineMs: 120_000,
+          memory: {
+            ...DEFAULT_KANA_CONFIG.memory,
+            agent: {
+              ...DEFAULT_KANA_CONFIG.memory.agent,
+              toolDeadlineMs: 120_000,
+            },
           },
         },
         {
@@ -136,6 +140,7 @@ describe("memory consolidation agent", () => {
 
   test("tells full consolidation agents about configured daily retention", () => {
     const env = createTempEnv();
+    env.DEEPSEEK_API_KEY = "secret";
     const previous = process.env.DEEPSEEK_API_KEY;
     process.env.DEEPSEEK_API_KEY = "secret";
 

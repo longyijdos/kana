@@ -7,13 +7,13 @@ export function buildDeepSeekRequest(
   config: DeepSeekModelConfig,
 ): Record<string, unknown> {
   const tools = toDeepSeekResponsesTools(context.tools ?? [], config.strictTools ?? false);
-  if (config.webSearch !== false) {
+  if (context.webSearch === true) {
     tools.push({ type: "web_search" });
   }
 
   const imageInputEnabled =
     getDeepSeekModelMetadata(config.model).supportsImageInput === true &&
-    config.imageInput !== false;
+    context.imageInput === true;
 
   const request: Record<string, unknown> = {
     model: config.model,
@@ -26,7 +26,7 @@ export function buildDeepSeekRequest(
     request.temperature = config.temperature;
   }
 
-  const maxOutputTokens = context.maxOutputTokens ?? config.maxTokens;
+  const maxOutputTokens = context.maxOutputTokens ?? config.maxOutputTokens;
   if (maxOutputTokens !== undefined) {
     request.max_output_tokens = maxOutputTokens;
   }

@@ -84,14 +84,14 @@ describe("buildDeepSeekRequest", () => {
             },
           },
         ],
+        webSearch: true,
         maxOutputTokens: 12_345,
       },
       {
         provider: "deepseek",
         model: "deepseek-v4-flash",
         reasoningEffort: "max",
-        webSearch: true,
-        maxTokens: 32_768,
+        maxOutputTokens: 32_768,
         responseFormat: { type: "json_object" },
         userId: "kana-user",
         strictTools: true,
@@ -207,8 +207,8 @@ describe("buildDeepSeekRequest", () => {
       model: "deepseek-v4-flash-vision-exp" as const,
     };
 
-    const enabled = buildDeepSeekRequest(context, config);
-    const disabled = buildDeepSeekRequest(context, { ...config, imageInput: false });
+    const enabled = buildDeepSeekRequest({ ...context, imageInput: true }, config);
+    const disabled = buildDeepSeekRequest({ ...context, imageInput: false }, config);
 
     expect(enabled.input).toEqual([
       {
@@ -260,12 +260,12 @@ describe("buildDeepSeekRequest", () => {
             parameters: { type: "object", properties: {} },
           },
         ],
+        webSearch: false,
       },
       {
         provider: "deepseek",
         model: "deepseek-v4-flash",
         reasoningEffort: "none",
-        webSearch: false,
         toolChoice: { type: "function", function: { name: "read" } },
       },
     );
@@ -306,6 +306,7 @@ describe("buildDeepSeekRequest", () => {
             ],
           },
         ],
+        imageInput: true,
       },
       {
         provider: "deepseek",
@@ -346,11 +347,11 @@ describe("buildDeepSeekRequest", () => {
             ],
           },
         ],
+        imageInput: false,
       },
       {
         provider: "deepseek",
         model: "deepseek-v4-flash-vision-exp",
-        imageInput: false,
       },
     );
 
@@ -388,11 +389,11 @@ describe("buildDeepSeekRequest", () => {
             ],
           },
         ],
+        imageInput: true,
       },
       {
         provider: "deepseek",
         model: "deepseek-v4-flash",
-        imageInput: true,
       },
     );
 

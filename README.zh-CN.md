@@ -50,8 +50,9 @@ kana auth login openai-codex
 ```
 
 ```toml
-[provider]
-active = "openai-codex"
+[agent.model]
+provider = "openai-codex"
+name = "gpt-5.6-sol"
 ```
 
 之后可随时通过 `/model` 切换供应商、模型和支持的推理强度。本地或托管的兼容 endpoint 可使用静态的[自定义 OpenAI-compatible 提供商](docs/custom-provider.zh-CN.md)槽位。

@@ -38,6 +38,8 @@ class TextModel implements Model {
       system: context.system,
       messages: structuredClone(context.messages),
       tools: context.tools,
+      webSearch: context.webSearch,
+      imageInput: context.imageInput,
       parallelToolCalls: context.parallelToolCalls,
       maxOutputTokens: context.maxOutputTokens,
       signal: context.signal,
@@ -266,6 +268,22 @@ describe("Agent", () => {
     expect(disabledModel.contexts[0]?.parallelToolCalls).toBe(false);
   });
 
+  test("passes only enabled model capabilities to providers", async () => {
+    const model = new TextModel();
+    model.metadata.supportsHostedWebSearch = true;
+    model.metadata.supportsImageInput = true;
+    const agent = new Agent({
+      model,
+      webSearch: false,
+      imageInput: true,
+    });
+
+    await agent.prompt("capabilities");
+
+    expect(model.contexts[0]?.webSearch).toBe(false);
+    expect(model.contexts[0]?.imageInput).toBe(true);
+  });
+
   test("writes lifecycle events without logging message content", async () => {
     const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
     const logger: Logger = {
@@ -284,6 +302,7 @@ describe("Agent", () => {
 
     expect(records.map((record) => record.event)).toEqual([
       "agent.parallel_tool_calls_configured",
+      "agent.model_capabilities_configured",
       "agent.repeated_tool_calls_configured",
       "agent.tool_result_policies_configured",
       "agent.run_started",
@@ -303,6 +322,14 @@ describe("Agent", () => {
       },
     });
     expect(records[1]).toEqual({
+      event: "agent.model_capabilities_configured",
+      metadata: {
+        agentKind: "conversation",
+        webSearch: false,
+        imageInput: false,
+      },
+    });
+    expect(records[2]).toEqual({
       event: "agent.repeated_tool_calls_configured",
       metadata: {
         agentKind: "conversation",
@@ -311,7 +338,7 @@ describe("Agent", () => {
         excludedToolCount: 0,
       },
     });
-    expect(records[2]).toEqual({
+    expect(records[3]).toEqual({
       event: "agent.tool_result_policies_configured",
       metadata: {
         agentKind: "conversation",
@@ -319,7 +346,7 @@ describe("Agent", () => {
         policySources: [],
       },
     });
-    expect(records[3]).toEqual({
+    expect(records[4]).toEqual({
       event: "agent.run_started",
       metadata: { agentKind: "conversation", promptMessageCount: 1 },
     });

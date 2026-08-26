@@ -50,8 +50,9 @@ kana auth login openai-codex
 ```
 
 ```toml
-[provider]
-active = "openai-codex"
+[agent.model]
+provider = "openai-codex"
+name = "gpt-5.6-sol"
 ```
 
 You can switch provider, model, and supported reasoning effort later with `/model`. A static [Custom OpenAI-compatible provider](docs/custom-provider.md) slot is available for local or hosted compatible endpoints.

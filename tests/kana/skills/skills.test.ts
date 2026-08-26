@@ -373,6 +373,7 @@ describe("Kana skills", () => {
   test("builds the system prompt with available skills", () => {
     const prompt = buildKanaSystemPrompt({
       cwd: "/repo",
+      env: createTempEnv(),
       skills: [
         {
           name: "test-skill",
@@ -411,15 +412,19 @@ describe("Kana skills", () => {
     try {
       process.chdir(cwd);
       const resolvedCwd = process.cwd();
-      const agent = createKanaAgent({
+      const config = {
         ...DEFAULT_KANA_CONFIG,
-        model: {
-          ...DEFAULT_KANA_CONFIG.model,
+        provider: {
+          ...DEFAULT_KANA_CONFIG.provider,
           deepseek: {
-            ...DEFAULT_KANA_CONFIG.model.deepseek,
+            ...DEFAULT_KANA_CONFIG.provider.deepseek,
             apiKeyEnv: "KANA_DEEPSEEK_KEY",
           },
         },
+      };
+      const agent = createKanaAgent(config.agent, {
+        providers: config.provider,
+        memoryEnabled: config.memory.enabled,
       });
 
       expect(agent.state.system).toContain("<name>project-skill</name>");

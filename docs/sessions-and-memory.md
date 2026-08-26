@@ -141,7 +141,7 @@ successful remember
       atomically saves memory.md only after normal stop with changes
 ```
 
-The consolidation Agent uses the same model configuration as the main Agent but has no bash, file, or `remember` tools. Incremental mode exposes only `read_memory`, `edit_memory`, and `replace_memory`, and its input contains only current durable memory and the new entries from this batch. It does not scan historical daily files, preventing inference from unprovided history.
+The consolidation Agent uses its independent `[memory.agent]` policy and `[memory.agent.model]` selection, and has no bash, file, or `remember` tools. The default is the cheaper `deepseek-v4-flash` with web search and image input disabled. Incremental mode exposes only `read_memory`, `edit_memory`, and `replace_memory`, and its input contains only current durable memory and the new entries from this batch. It does not scan historical daily files, preventing inference from unprovided history.
 
 Every edit/replace first affects an in-memory transaction and checks the size limit before accepting the change. `commit()` occurs only when the Agent ends normally with `stop` and the transaction changed. Abort, error, length truncation, `turn_limit`, and no-op runs never overwrite durable memory.
 
