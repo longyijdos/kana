@@ -1,6 +1,7 @@
 import {
   createKanaConversationHost,
   getKanaModelManagement,
+  type KanaConversationHostSession,
   type KanaLaunchMode,
   loadKanaSkillActivations,
   openKanaOAuthAuthorizationUrl,
@@ -31,13 +32,14 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   }
   let app: KanaTuiApp | undefined;
   let updateMcpLifecycleStatus: ((status: string) => void) | undefined;
+  const session: KanaConversationHostSession = options.showResumePicker
+    ? { type: "none" }
+    : options.resumeSessionId
+      ? { type: "resume", sessionId: options.resumeSessionId }
+      : { type: "new" };
   const host = createKanaConversationHost<TuiModelSelection>({
     launchMode: options.launchMode,
-    session: options.showResumePicker
-      ? { type: "none" }
-      : options.resumeSessionId
-        ? { type: "resume", sessionId: options.resumeSessionId }
-        : { type: "new" },
+    session,
     applyAgentConfiguration: applyTuiModelSelection,
     openMcpOAuthAuthorizationUrl: async (serverId, url) => {
       app?.showMcpOAuthAuthorization(serverId, url);
@@ -142,6 +144,8 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       goalMaxRounds: host.config.agent.goalMaxRounds,
       wakeScheduler: host.wakeScheduler,
       getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
+      disposeSession: (sessionId, source, foregroundSettled) =>
+        host.disposeSession(sessionId, source, foregroundSettled),
       getLogger: () => host.getLogger(),
       compactMemory: (target, userRequest, signal) =>
         host.compactMemory(target, userRequest, signal),

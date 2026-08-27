@@ -114,7 +114,7 @@ export type KanaTuiAppOptions = {
   ) => { id: string; todoState?: KanaTodoItem[] };
   listSessions: () => KanaSessionMetadata[];
   loadSession: (sessionId: string) => KanaTuiSessionSnapshot;
-  deleteSession: (sessionId: string) => boolean;
+  deleteSession: (sessionId: string) => Promise<boolean> | boolean;
   loadSkills: () => LoadKanaSkillActivationsResult;
   saveEnabledGlobalSkills: (names: string[]) => void;
   startInResumePicker?: boolean;
@@ -128,6 +128,11 @@ export type KanaTuiAppOptions = {
   goalMaxRounds: number;
   wakeScheduler?: WakeScheduler;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
+  disposeSession?: (
+    sessionId: string,
+    source: "session_disposal" | "shutdown",
+    foregroundSettled: Promise<void>,
+  ) => Promise<void>;
   getLogger?: () => Logger;
   compactMemory: (
     target: MemoryScope,
@@ -235,6 +240,7 @@ export class KanaTuiApp {
       wakeScheduler: options.wakeScheduler,
       goalMaxRounds: options.goalMaxRounds,
       getBackgroundJobs: options.getBackgroundJobs,
+      disposeSession: options.disposeSession,
       canStartQueuedRun: () =>
         !this.running &&
         !this.externalTools.loading &&

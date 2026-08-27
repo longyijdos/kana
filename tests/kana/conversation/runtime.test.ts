@@ -131,6 +131,7 @@ describe("ConversationRuntime", () => {
       content: "Resumed context.",
     };
     const existingTodoState = [{ content: "Keep this state", status: "in_progress" as const }];
+    const disposals: Array<{ sessionId: string; source: string }> = [];
     const runtime = new ConversationRuntime<string>({
       ...createRuntimeOptions(),
       initialSession: {
@@ -158,6 +159,10 @@ describe("ConversationRuntime", () => {
         messages: [resumedMessage],
         timeline: [],
       }),
+      disposeSession: async (sessionId, source, foregroundSettled) => {
+        await foregroundSettled;
+        disposals.push({ sessionId, source });
+      },
     });
 
     runtime.reconfigure("alternate-model");
@@ -203,6 +208,44 @@ describe("ConversationRuntime", () => {
       },
     ]);
 
+    await runtime.close();
+    expect(disposals).toEqual([
+      { sessionId: "session-a", source: "session_disposal" },
+      { sessionId: "session-fork", source: "session_disposal" },
+      { sessionId: "session-resumed", source: "session_disposal" },
+      { sessionId: "session-new", source: "shutdown" },
+    ]);
+  });
+
+  test("awaits asynchronous deletion and refuses to delete the active session", async () => {
+    let finishDeletion: (() => void) | undefined;
+    const deletedSessionIds: string[] = [];
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      deleteSession: async (sessionId) => {
+        await new Promise<void>((resolve) => {
+          finishDeletion = resolve;
+        });
+        deletedSessionIds.push(sessionId);
+        return true;
+      },
+      createAgent: (options) =>
+        new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+
+    const deletion = runtime.deleteSession("session-b");
+    await Promise.resolve();
+    expect(deletedSessionIds).toEqual([]);
+    finishDeletion?.();
+
+    expect(await deletion).toBe(true);
+    expect(await runtime.deleteSession("session-a")).toBe(false);
+    expect(deletedSessionIds).toEqual(["session-b"]);
     await runtime.close();
   });
 

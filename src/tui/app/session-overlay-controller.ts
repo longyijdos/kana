@@ -19,10 +19,11 @@ export type SessionOverlayControllerOptions = {
   transcript: Transcript;
   tui: Tui;
   listSessions: () => KanaSessionMetadata[];
-  deleteSession: (sessionId: string) => boolean;
+  deleteSession: (sessionId: string) => Promise<boolean> | boolean;
   hasCurrentSession: () => boolean;
   onResume: (sessionId: string) => void;
   onStop: () => void;
+  onError: (error: unknown) => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
   restoreBottom: (focus: boolean) => void;
 };
@@ -30,6 +31,7 @@ export type SessionOverlayControllerOptions = {
 export class SessionOverlayController {
   private activePicker?: SessionPicker;
   private activeDeleteConfirmation?: DeleteSessionConfirmation;
+  private deletingSession = false;
 
   constructor(private readonly options: SessionOverlayControllerOptions) {}
 
@@ -95,7 +97,7 @@ export class SessionOverlayController {
     this.closeResumePicker();
 
     const confirmation = new DeleteSessionConfirmation(decision.session, (confirmed) => {
-      this.finishDeleteConfirmation(decision.session, confirmed);
+      void this.finishDeleteConfirmation(decision.session, confirmed);
     });
 
     this.activeDeleteConfirmation = confirmation;
@@ -104,13 +106,29 @@ export class SessionOverlayController {
     this.options.tui.requestRender();
   }
 
-  private finishDeleteConfirmation(session: KanaSessionMetadata, confirmed: boolean): void {
+  private async finishDeleteConfirmation(
+    session: KanaSessionMetadata,
+    confirmed: boolean,
+  ): Promise<void> {
+    if (this.deletingSession) {
+      return;
+    }
     if (!confirmed) {
       this.close();
       return;
     }
 
-    const deleted = this.options.deleteSession(session.id);
+    this.deletingSession = true;
+    let deleted: boolean;
+    try {
+      deleted = await this.options.deleteSession(session.id);
+    } catch (error) {
+      this.close();
+      this.options.onError(error);
+      return;
+    } finally {
+      this.deletingSession = false;
+    }
 
     this.options.transcript.addChild(
       new TextBlock(

@@ -38,6 +38,7 @@ describe("session overlay controller", () => {
       hasCurrentSession: () => true,
       onResume: () => {},
       onStop: () => {},
+      onError: () => {},
       updateStatus: () => {},
       restoreBottom,
     });
@@ -53,6 +54,49 @@ describe("session overlay controller", () => {
     expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("Sessions");
     expect(tui.getFocus()).toBe(editor);
     expect(restoreCalls).toEqual([true]);
+  });
+
+  test("waits for asynchronous session disposal before reporting deletion", async () => {
+    const editor = new Editor({ model: "test-model" });
+    const transcript = new Transcript();
+    const layout = new AppLayout({ main: transcript, bottom: editor });
+    const tui = createTuiStub();
+    let resolveDeletion: ((deleted: boolean) => void) | undefined;
+    const deletion = new Promise<boolean>((resolve) => {
+      resolveDeletion = resolve;
+    });
+    const controller = new SessionOverlayController({
+      editor,
+      layout,
+      transcript,
+      tui,
+      listSessions: () => [session],
+      deleteSession: () => deletion,
+      hasCurrentSession: () => true,
+      onResume: () => {},
+      onStop: () => {},
+      onError: () => {},
+      updateStatus: () => {},
+      restoreBottom: (focus) => {
+        layout.showBottom(editor);
+        if (focus) {
+          tui.setFocus(editor);
+        }
+      },
+    });
+
+    controller.openDelete();
+    tui.getFocus()?.handleInput?.("\r");
+    tui.getFocus()?.handleInput?.("\x1b[B");
+    tui.getFocus()?.handleInput?.("\r");
+    expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("Deleted session");
+
+    resolveDeletion?.(true);
+    await deletion;
+    await Promise.resolve();
+
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Deleted session Test session.");
+    expect(tui.getFocus()).toBe(editor);
   });
 });
 

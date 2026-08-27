@@ -27,7 +27,7 @@ Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使�
 
 ## 会话
 
-会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V5 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。
+会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V5 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。独立的 `conversation/hosted-session-registry.ts` 则持有存储外围的活动产品资源：每个托管记录包含 session 内存镜像、journal 追加位置、绑定 logger、artifact store、background-job client 与待写入的 fork snapshot。
 
 会话文件位于：
 
@@ -37,7 +37,7 @@ Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使�
 
 创建会话只在内存中生成 UUID、创建时间、工作目录、可选模型元数据和可选父会话路径。文件在第一次有消息需要追加时才创建；空会话不会出现在 `/resume` 列表中。
 
-Clean 模式不向 session repository 注册 journal：消息和 context checkpoint 只保留在当前 `ConversationRuntime` 中，`/new` 可切换到新的临时会话，但 `/fork`、恢复、列出和删除 session 均不可用，退出后当前会话即丢弃。
+Clean 模式不向 session repository 注册 journal：消息和 context checkpoint 只保留在当前 `ConversationRuntime` 中，`/new` 可切换到新的临时会话，但 `/fork`、恢复、列出和删除 session 均不可用；替换或关闭当前 session 时会释放它的临时资源。
 
 ### JSONL 格式
 
@@ -68,7 +68,7 @@ Clean 模式不向 session repository 注册 journal：消息和 context checkpo
 <KANA_HOME>/artifacts/<encoded-workspace>/<session-id>/<uuid>-<safe-stem>.txt
 ```
 
-artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访问的 `0700`，文件使用不可预测名称、exclusive no-follow 创建和 `0600`；建议文件名会缩减成不能穿越目录的安全 stem。绝对 locator 可直接交给现有 `read` 与 `grep` 工具，同时结构化 artifact 元数据让恢复和生命周期代码无需解析模型可见 notice，就能校验归属与字节长度。恢复后的 TUI 历史也会用这些元数据生成紧凑的已存储输出摘要，只在展开式查看器中显示 locator。artifact 文本可能包含原本会进入 session 的同等敏感工具输出，因此该目录属于私有用户数据，并不是通用文件管理器。Clean 模式使用惰性创建的进程级临时目录，正常关闭时删除，不创建上述持久路径。
+artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访问的 `0700`，文件使用不可预测名称、exclusive no-follow 创建和 `0600`；建议文件名会缩减成不能穿越目录的安全 stem。绝对 locator 可直接交给现有 `read` 与 `grep` 工具，同时结构化 artifact 元数据让恢复和生命周期代码无需解析模型可见 notice，就能校验归属与字节长度。恢复后的 TUI 历史也会用这些元数据生成紧凑的已存储输出摘要，只在展开式查看器中显示 locator。artifact 文本可能包含原本会进入 session 的同等敏感工具输出，因此该目录属于私有用户数据，并不是通用文件管理器。Clean 模式使用惰性创建的进程级临时目录，在该托管 session 被替换或关闭时删除，不创建上述持久路径。
 
 压缩会遵循当前模型实际生效的图片输入能力。模型支持图片且 `image_input` 已启用时，Kana 会把用户附件和工具视觉观察连同有序序号、MIME 类型和尺寸元数据发送给模型，让摘要将相关视觉信息保存为文本；base64 不会写进文本形式的 transcript JSON。图片输入不受支持或被关闭时，压缩只发送这些元数据和 `contentOmitted: true`，不带图片字节并继续执行。这样切换到 DeepSeek 等纯文本模型后不会因历史图片而中断压缩，但尚未在文本中描述的纯视觉细节可能不会进入摘要。原始自包含图片仍保留在 session JSONL 中。
 
@@ -84,6 +84,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 
 ### 生命周期与容错
 
+- `HostedSessionRegistry` 是活动 session 资源的唯一 owner。Runtime 替换 session 或关闭时会携带前台 settlement barrier 请求幂等释放，让后台任务并行停止。替换随后关闭该 session 的 artifact store；shutdown 则保留更宽的 Host 顺序，等待 memory scheduler 后关闭其余 artifact store，最后关闭 MCP。
 - Agent journal 在任何模型 I/O 前写入 `turn_start`、本轮用户消息和所有有变化的 runtime-context 状态转换；完整 assistant 消息在其工具执行前写入，接受的 `todo_write` 会先写 `todo_state` 再写紧凑工具结果。其他工具结果同样在执行结束后独立写入，全部 sibling 结果写完后、下一次模型请求前再写入带来源的工具结果策略上下文。压缩 checkpoint 也在 adopt 前写入。终态 `turn_end` 写入后才运行 `onRunCommitted` 的 accounting/记忆等聚合后处理，随后发布 `agent_end`。手动 `/compact` 同样先写 checkpoint 再 adopt。`waitForIdle()` 不会早于这些写入和后处理完成。
 - 加载发现未闭合 turn 时会直接修复原 JSONL：为每个没有结果的工具调用追加 `status: "unknown"` 的错误结果，明确禁止自动重试，再追加内部 recovery 用户消息和 `outcome: "interrupted"` 的 `turn_end`。若最后一行是未完成的 JSON，则只截断这条未终止尾记录；已完成行中的损坏仍报错。恢复具有幂等性，因此第二次加载不会再次追加。
 - 恢复会重建 journal 中已提交的消息、最后一个 context checkpoint 和最新 todo 状态。Agent inbox 和未来 scheduled wake 仍只存在于当前进程：切换、分叉或恢复 session 以及退出 Kana 都会丢弃它们，不会在恢复时还原。
@@ -92,7 +93,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。
 - `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按 `createdAt` 降序排序。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。
-- 删除按 session ID 找到文件并成功移除 journal 后，会以 best-effort 删除对应 artifact 目录；找不到返回 `false`。
+- 删除按 session ID 找到文件并成功移除 journal 后，会等待已托管的后台任务与 artifact store 释放，再以 best-effort 删除对应持久 artifact 目录，之后才报告成功；找不到返回 `false`。
 - 普通模式启动时执行保守的孤儿清理，并保留 24 小时宽限期：删除没有对应 session journal 的陈旧 artifact 目录，以及其 JSON 编码 locator 不在已有 journal 中的陈旧文件。近期文件、被引用文件、符号链接、异常路径和清理失败不会被冒险删除，只会保留或报告。
 
 会话文件用 `0600` 追加。文件格式中保存完整用户、助手和工具消息，包括内联结果或有界 artifact 元数据；不要把会话目录或 artifact 目录当作无敏感信息的日志位置。

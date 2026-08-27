@@ -19,6 +19,7 @@ export {
   type AgentInputDelivery,
   type AgentInputLane,
 } from "./inbox";
+export type { AgentJournal } from "./journal";
 export { runAgentLoop } from "./loop";
 export { createModelCompactPolicy } from "./model-compact-policy";
 export {

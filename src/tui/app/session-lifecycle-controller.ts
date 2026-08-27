@@ -53,6 +53,7 @@ export class SessionLifecycleController {
         void this.resume(sessionId);
       },
       onStop: options.stop,
+      onError: options.showError,
       updateStatus: (phase) => options.updateStatus(phase),
       restoreBottom: options.restoreBottom,
     });

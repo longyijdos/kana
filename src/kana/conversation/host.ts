@@ -1,7 +1,7 @@
 import type { Agent, ContextCheckpoint } from "@/agent";
 import { addModelUsage, type Message, type ModelUsage } from "@/core";
-import { type BackgroundJobClient, BackgroundJobManager } from "@/jobs";
-import { createNoopLogger, createSessionLogManager, type Logger } from "@/logging";
+import type { BackgroundJobClient } from "@/jobs";
+import type { Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent, McpToolSource } from "@/mcp";
 import type { Tool } from "@/tools";
 import {
@@ -11,16 +11,6 @@ import {
   recordKanaAgentRunAccounting,
 } from "../accounting";
 import { createKanaAgent, KANA_BUILT_IN_TOOL_NAMES, type KanaAgentOptions } from "../agent";
-import {
-  auditKanaSessionArtifacts,
-  cleanupOrphanedKanaSessionArtifacts,
-  createPersistentKanaSessionArtifactStore,
-  createTemporaryKanaSessionArtifactStore,
-  deleteKanaSessionArtifacts,
-  forkKanaSessionArtifacts,
-  type KanaArtifactCleanupResult,
-  type KanaSessionArtifactStore,
-} from "../artifacts";
 import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth";
 import {
   createKanaConfigStore,
@@ -51,20 +41,11 @@ import {
   type MemoryConsolidationScheduler,
   runFullMemoryConsolidation,
 } from "../memory";
-import { getKanaSessionLogPath } from "../path";
-import {
-  createKanaSession,
-  createKanaSessionJournal,
-  deleteKanaSession,
-  type KanaSessionJournal,
-  type KanaSessionMetadata,
-  type LoadKanaSessionResult,
-  listKanaSessions,
-  loadKanaSession,
-} from "../session";
+import type { KanaSessionMetadata, LoadKanaSessionResult } from "../session";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
 import { type KanaToolApprovals, loadKanaToolApprovals } from "../tool-approval";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
+import { type HostedSessionAgentBinding, HostedSessionRegistry } from "./hosted-session-registry";
 import { createWakeScheduler, type WakeScheduler } from "./wake-scheduler";
 
 export type KanaConversationHostSession =
@@ -105,18 +86,6 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
   createMcpRuntime?: typeof createKanaMcpRuntime;
 };
 
-type HostedSession = {
-  data: LoadKanaSessionResult;
-  artifactStore: KanaSessionArtifactStore;
-  backgroundJobs: BackgroundJobClient;
-  journal?: KanaSessionJournal;
-  logger: Logger;
-  persistent: boolean;
-  pendingForkMessages?: Message[];
-  pendingForkCheckpoint?: ContextCheckpoint;
-  pendingForkTodoState?: KanaTodoItem[];
-};
-
 export class KanaConversationHost<TConfiguration = never> {
   readonly initialSession?: LoadKanaSessionResult;
   readonly launchMode: KanaLaunchMode;
@@ -131,9 +100,7 @@ export class KanaConversationHost<TConfiguration = never> {
     config: KanaConfig,
     configuration: TConfiguration,
   ) => void;
-  private readonly logManager;
-  private readonly backgroundJobManager = new BackgroundJobManager();
-  private readonly sessions = new Map<string, HostedSession>();
+  private readonly sessionRegistry: HostedSessionRegistry;
   private readonly memoryConsolidationQueue: MemoryConsolidationQueue;
   private readonly memoryConsolidationSchedulers = new Set<MemoryConsolidationScheduler>();
   private readonly oauthTokenStore;
@@ -141,8 +108,6 @@ export class KanaConversationHost<TConfiguration = never> {
   private configData: KanaConfig;
   private memoryConsolidation?: MemoryConsolidationScheduler;
   private mcpTools: Tool[] = [];
-  private activeSessionId?: string;
-  private resumableSessionId?: string;
 
   constructor(options: CreateKanaConversationHostOptions<TConfiguration> = {}) {
     this.env = { ...(options.env ?? process.env) };
@@ -152,21 +117,22 @@ export class KanaConversationHost<TConfiguration = never> {
     this.createAgentProduct = options.createAgent ?? createKanaConversationAgent;
     this.enableScheduledWakeTool = options.enableScheduledWakeTool ?? true;
     this.applyAgentConfiguration = options.applyAgentConfiguration;
-    this.logManager = createSessionLogManager({ level: this.configData.logging.level });
+    this.sessionRegistry = new HostedSessionRegistry({
+      env: this.env,
+      launchMode: this.launchMode,
+      logLevel: this.configData.logging.level,
+      getSessionModel: () => ({
+        provider: this.configData.agent.model.provider,
+        model: this.configData.agent.model.name,
+      }),
+      getBackgroundJobMaxConcurrent: () => this.configData.agent.backgroundJobs.maxConcurrent,
+    });
     this.toolApprovals = loadKanaToolApprovals(this.env);
     this.memoryConsolidationQueue = createMemoryConsolidationQueue();
     this.memoryConsolidation = this.createMemoryConsolidation(this.configData);
     this.wakeScheduler = createWakeScheduler();
 
-    const initialSession = this.loadInitialSession(options.session ?? { type: "new" });
-    this.initialSession = initialSession?.data;
-    if (this.launchMode !== "clean") {
-      this.logArtifactCleanup(
-        initialSession?.logger,
-        "orphan_cleanup",
-        cleanupOrphanedKanaSessionArtifacts({ cwd: process.cwd(), env: this.env }),
-      );
-    }
+    this.initialSession = this.sessionRegistry.initialize(options.session ?? { type: "new" });
 
     this.oauthTokenStore = createKanaOAuthTokenStore({
       env: this.env,
@@ -205,28 +171,32 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   get resumeSessionId(): string | undefined {
-    return this.resumableSessionId;
+    return this.sessionRegistry.resumeSessionId;
   }
 
   getLogger(): Logger {
-    return this.activeSessionId === undefined
-      ? createNoopLogger()
-      : (this.sessions.get(this.activeSessionId)?.logger ?? createNoopLogger());
+    return this.sessionRegistry.getLogger();
   }
 
   getBackgroundJobs(sessionId: string): BackgroundJobClient | undefined {
-    return this.sessions.get(sessionId)?.backgroundJobs;
+    return this.sessionRegistry.getBackgroundJobs(sessionId);
+  }
+
+  disposeSession(
+    sessionId: string,
+    source: "session_disposal" | "shutdown",
+    foregroundSettled?: Promise<void>,
+  ): Promise<void> {
+    return this.sessionRegistry.disposeSession(sessionId, source, foregroundSettled);
   }
 
   createAgent(options: KanaConversationHostAgentOptions<TConfiguration>) {
-    const hostedSession =
-      options.sessionId === undefined ? undefined : this.sessions.get(options.sessionId);
-    if (options.sessionId !== undefined && !hostedSession) {
-      throw new Error(`Kana conversation host has no session ${options.sessionId}.`);
-    }
-    const agentLogger = hostedSession?.logger ?? createNoopLogger();
-    const { configuration, ...agentOptions } = options;
-    const kanaAgentOptions = this.createKanaAgentOptions(agentOptions, hostedSession, agentLogger);
+    const { configuration, onTodoStateCommitted, ...agentOptions } = options;
+    const sessionBinding = this.sessionRegistry.createAgentBinding(
+      options.sessionId,
+      onTodoStateCommitted,
+    );
+    const kanaAgentOptions = this.createKanaAgentOptions(agentOptions, sessionBinding);
 
     let agent: Agent;
     if (configuration === undefined) {
@@ -260,19 +230,12 @@ export class KanaConversationHost<TConfiguration = never> {
 
     // Session callbacks register candidates before ConversationRuntime builds
     // their Agent. Adopt the candidate only after every constructor succeeds.
-    this.activeSessionId = options.sessionId;
+    this.sessionRegistry.activate(options.sessionId);
     return agent;
   }
 
   createNewSession(): { id: string } {
-    const hosted = this.registerSession({
-      metadata: this.createSessionMetadata(),
-      messages: [],
-      timeline: [],
-      todoState: [],
-    });
-    hosted.logger.info("session.created");
-    return { id: hosted.data.metadata.id };
+    return this.sessionRegistry.createNewSession();
   }
 
   forkSession(
@@ -280,109 +243,19 @@ export class KanaConversationHost<TConfiguration = never> {
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
   ): { id: string; todoState: KanaTodoItem[] } {
-    this.assertForkingAvailable();
-    let source =
-      this.activeSessionId === undefined ? undefined : this.sessions.get(this.activeSessionId);
-    if (!source) {
-      source = this.registerSession({
-        metadata: this.createSessionMetadata(),
-        messages: [],
-        timeline: [],
-        todoState: [],
-      });
-    }
-    const metadata = this.createSessionMetadata(source.data.metadata.path, prompt);
-    let forkedMessages = structuredClone(messages);
-    let forkedCheckpoint = structuredClone(contextCheckpoint);
-    if (source.persistent) {
-      try {
-        const forked = forkKanaSessionArtifacts({
-          messages,
-          contextCheckpoint,
-          sourceSessionId: source.data.metadata.id,
-          targetSessionId: metadata.id,
-          cwd: source.data.metadata.cwd,
-          env: this.env,
-        });
-        forkedMessages = forked.messages;
-        forkedCheckpoint = forked.contextCheckpoint;
-        if (forked.copiedArtifactCount > 0) {
-          source.logger.info("session.artifact_forked", {
-            artifactCount: forked.copiedArtifactCount,
-          });
-        }
-      } catch (error) {
-        source.logger.error("session.artifact_fork_failed", {
-          phase: "copy",
-          errorType: getErrorType(error),
-          errorCode: getErrorCode(error),
-        });
-        throw error;
-      }
-    }
-    const hosted = this.registerSession({
-      metadata,
-      messages: forkedMessages,
-      timeline: [],
-      todoState: structuredClone(source.data.todoState),
-      contextCheckpoint: forkedCheckpoint,
-    });
-    if (hosted.persistent) {
-      hosted.pendingForkMessages = structuredClone(forkedMessages);
-      hosted.pendingForkCheckpoint =
-        forkedCheckpoint === undefined
-          ? undefined
-          : {
-              ...structuredClone(forkedCheckpoint),
-              baseCompactionId: undefined,
-            };
-      hosted.pendingForkTodoState = structuredClone(source.data.todoState);
-    }
-    hosted.logger.info("session.forked", {
-      sourceSessionId: source.data.metadata.id,
-    });
-    return {
-      id: hosted.data.metadata.id,
-      todoState: structuredClone(hosted.data.todoState),
-    };
+    return this.sessionRegistry.forkSession(messages, contextCheckpoint, prompt);
   }
 
   loadSession(sessionId: string): LoadKanaSessionResult {
-    this.assertSavedSessionsAvailable();
-    const hosted = this.registerSession(
-      loadKanaSession(sessionId, { cwd: process.cwd(), env: this.env }),
-    );
-    this.logLoadedSession(hosted, "session.resumed");
-    return structuredClone(hosted.data);
+    return this.sessionRegistry.loadSession(sessionId);
   }
 
   listSessions(): KanaSessionMetadata[] {
-    if (this.launchMode === "clean") {
-      return [];
-    }
-    return listKanaSessions({ cwd: process.cwd(), env: this.env });
+    return this.sessionRegistry.listSessions();
   }
 
-  deleteSession(sessionId: string): boolean {
-    this.assertSavedSessionsAvailable();
-    const hosted = this.sessions.get(sessionId);
-    const deleted = deleteKanaSession(sessionId, {
-      cwd: process.cwd(),
-      env: this.env,
-    });
-    if (deleted) {
-      this.logArtifactCleanup(
-        hosted?.logger ?? this.getLogger(),
-        "session_delete",
-        deleteKanaSessionArtifacts({
-          sessionId,
-          cwd: hosted?.data.metadata.cwd ?? process.cwd(),
-          env: this.env,
-        }),
-      );
-      this.sessions.delete(sessionId);
-    }
-    return deleted;
+  deleteSession(sessionId: string): Promise<boolean> {
+    return this.sessionRegistry.deleteSession(sessionId);
   }
 
   async startMcp(): Promise<KanaMcpRuntimeSnapshot> {
@@ -400,27 +273,14 @@ export class KanaConversationHost<TConfiguration = never> {
   async close(): Promise<void> {
     const schedulers = [...this.memoryConsolidationSchedulers];
     this.memoryConsolidation = undefined;
+    const schedulersSettled = Promise.all(schedulers.map((scheduler) => scheduler.close())).then(
+      () => undefined,
+    );
 
     try {
-      await Promise.all([
-        ...schedulers.map((scheduler) => scheduler.close()),
-        this.backgroundJobManager.close(),
-      ]);
+      await this.sessionRegistry.close(schedulersSettled);
     } finally {
       this.memoryConsolidationSchedulers.clear();
-      await Promise.all(
-        [...this.sessions.values()].map(async (session) => {
-          try {
-            await session.artifactStore.close();
-          } catch (error) {
-            session.logger.warn("session.artifact_cleanup_failed", {
-              phase: "session_close",
-              errorType: getErrorType(error),
-              errorCode: getErrorCode(error),
-            });
-          }
-        }),
-      );
       await this.mcpRuntime.close();
     }
   }
@@ -489,11 +349,11 @@ export class KanaConversationHost<TConfiguration = never> {
               logger,
             }),
           );
-          const activeSession = this.getActiveHostedSession();
+          const activeSession = this.sessionRegistry.getActiveSession();
           if (activeSession) {
             recordKanaAgentRunAccounting({
-              sessionId: activeSession.data.metadata.id,
-              cwd: activeSession.data.metadata.cwd,
+              sessionId: activeSession.id,
+              cwd: activeSession.cwd,
               agentKind: "memory_consolidation",
               outcome: result.outcome,
               messages: result.state.messages,
@@ -524,7 +384,7 @@ export class KanaConversationHost<TConfiguration = never> {
     }
     return loadKanaUsageSummary({
       scope,
-      sessionId: scope === "session" ? this.activeSessionId : undefined,
+      sessionId: scope === "session" ? this.sessionRegistry.activeId : undefined,
       cwd: process.cwd(),
       env: this.env,
     });
@@ -538,149 +398,44 @@ export class KanaConversationHost<TConfiguration = never> {
       | "messages"
       | "contextCheckpoint"
       | "sessionId"
-      | "onTodoStateCommitted"
       | "resolveGoal"
       | "updateGoal"
     >,
-    hostedSession: HostedSession | undefined,
-    agentLogger: Logger,
+    sessionBinding: HostedSessionAgentBinding,
   ): KanaAgentOptions {
-    const journal = hostedSession?.journal;
-    const appendTimeline = (entries: LoadKanaSessionResult["timeline"]): void => {
-      if (!hostedSession) {
-        throw new Error("Cannot update a session journal without an active session.");
-      }
-      hostedSession.data.timeline = [...hostedSession.data.timeline, ...entries];
-    };
-    const writeJournal = <T>(
-      phase: "start" | "message" | "compaction" | "todo" | "end" | "snapshot",
-      operation: () => T,
-    ): T => {
-      try {
-        return operation();
-      } catch (error) {
-        agentLogger.error("session.journal_write_failed", {
-          phase,
-          errorType: getErrorType(error),
-          errorCode: getErrorCode(error),
-        });
-        throw error;
-      }
-    };
-    const { onTodoStateCommitted, ...agentOptions } = options;
+    const session = sessionBinding.session;
+    const logger = sessionBinding.logger;
 
     return {
-      ...agentOptions,
+      ...options,
       additionalTools: this.mcpTools,
       // Prompt assembly reads the host-owned MCP snapshot at each model step;
       // Agent construction still receives the initial list for synchronous state.
       resolveAdditionalTools: () => this.mcpTools,
-      resolveTodoState:
-        hostedSession === undefined
-          ? undefined
-          : () => structuredClone(hostedSession.data.todoState),
+      resolveTodoState: sessionBinding.resolveTodoState,
       env: this.env,
       launchMode: this.launchMode,
-      logger: agentLogger,
-      artifactStore: hostedSession?.artifactStore,
-      backgroundJobs: hostedSession?.backgroundJobs,
+      logger,
+      artifactStore: sessionBinding.artifactStore,
+      backgroundJobs: sessionBinding.backgroundJobs,
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
-      messages: options.messages ?? hostedSession?.data.messages,
+      messages: options.messages ?? sessionBinding.messages,
       inbox: options.inbox,
-      contextCheckpoint: options.contextCheckpoint ?? hostedSession?.data.contextCheckpoint,
-      journal:
-        hostedSession === undefined || journal === undefined
-          ? undefined
-          : {
-              startRun: ({ runId, messages }) => {
-                if (hostedSession.pendingForkMessages) {
-                  const snapshotEntries = writeJournal("snapshot", () =>
-                    journal.appendSnapshot(hostedSession.pendingForkMessages ?? [], {
-                      compactions: hostedSession.pendingForkCheckpoint
-                        ? [hostedSession.pendingForkCheckpoint]
-                        : [],
-                      todoState: hostedSession.pendingForkTodoState,
-                    }),
-                  );
-                  appendTimeline(snapshotEntries);
-                  hostedSession.pendingForkMessages = undefined;
-                  hostedSession.pendingForkCheckpoint = undefined;
-                  hostedSession.pendingForkTodoState = undefined;
-                }
-
-                const entries = writeJournal("start", () => journal.startTurn(runId, messages));
-                appendTimeline(entries);
-                hostedSession.data.messages = [
-                  ...hostedSession.data.messages,
-                  ...structuredClone(messages),
-                ];
-                this.resumableSessionId = hostedSession.data.metadata.id;
-              },
-              appendMessage: ({ runId, message }) => {
-                const entry = writeJournal("message", () => journal.appendMessage(runId, message));
-                appendTimeline([entry]);
-                hostedSession.data.messages = [
-                  ...hostedSession.data.messages,
-                  structuredClone(message),
-                ];
-              },
-              appendCompaction: ({ runId, compaction }) => {
-                const entry = writeJournal("compaction", () =>
-                  journal.appendCompaction(compaction, {
-                    turnId: runId,
-                  }),
-                );
-                appendTimeline([entry]);
-                hostedSession.data.contextCheckpoint = structuredClone(compaction);
-              },
-              endRun: ({ runId, reason }) => {
-                const entry = writeJournal("end", () => journal.endTurn(runId, reason));
-                appendTimeline([entry]);
-              },
-            },
-      commitTodoState: ({ toolCallId, items }) => {
-        if (!hostedSession) {
-          throw new Error("Cannot update todo state without an active session.");
-        }
-        const acceptedItems = structuredClone(items);
-        if (journal) {
-          const turnId = journal.activeTurnId;
-          if (!turnId) {
-            throw new Error("Cannot update todo state outside an active session turn.");
-          }
-          const entry = writeJournal("todo", () =>
-            journal.appendTodoState(turnId, toolCallId, acceptedItems),
-          );
-          appendTimeline([entry]);
-        }
-        hostedSession.data.todoState = structuredClone(acceptedItems);
-        try {
-          onTodoStateCommitted?.({
-            toolCallId,
-            items: structuredClone(acceptedItems),
-          });
-        } catch (error) {
-          agentLogger.warn("session.todo_state_notification_failed", {
-            errorType: getErrorType(error),
-            errorCode: getErrorCode(error),
-          });
-        }
-        agentLogger.debug("session.todo_state_committed", {
-          itemCount: acceptedItems.length,
-        });
-      },
+      contextCheckpoint: options.contextCheckpoint ?? sessionBinding.contextCheckpoint,
+      journal: sessionBinding.journal,
+      commitTodoState: sessionBinding.commitTodoState,
       onRunCommitted: ({ messages, compactions, state, event }) => {
-        if (!hostedSession) {
+        if (!session) {
           throw new Error("Cannot complete an Agent run without an active session.");
         }
-        if (!hostedSession.persistent) {
+        if (!session.persistent) {
           return;
         }
 
         try {
           recordKanaAgentRunAccounting({
-            sessionId: hostedSession.data.metadata.id,
-            cwd: hostedSession.data.metadata.cwd,
+            sessionId: session.id,
+            cwd: session.cwd,
             agentKind: "main",
             outcome: event.reason,
             messages,
@@ -688,19 +443,19 @@ export class KanaConversationHost<TConfiguration = never> {
             additionalUsage: addCompactionUsage(compactions),
           });
         } catch (error) {
-          agentLogger.error("accounting.record_failed", {
+          logger.error("accounting.record_failed", {
             phase: "conversation_run",
             error,
           });
         }
 
         const accountingSession = {
-          id: hostedSession.data.metadata.id,
-          cwd: hostedSession.data.metadata.cwd,
+          id: session.id,
+          cwd: session.cwd,
         };
         void this.memoryConsolidation
           ?.schedule(messages, {
-            logger: agentLogger,
+            logger,
             onCompleted: (scope, result) =>
               recordKanaAgentRunAccounting({
                 sessionId: accountingSession.id,
@@ -713,21 +468,21 @@ export class KanaConversationHost<TConfiguration = never> {
               }),
           })
           .catch((error) => {
-            agentLogger.error("memory_consolidation.failed", { error });
+            logger.error("memory_consolidation.failed", { error });
           });
       },
       onCompactionCommitted: ({ compaction, state }) => {
-        if (!hostedSession) {
+        if (!session) {
           throw new Error("Cannot persist context compaction without an active session.");
         }
-        if (!hostedSession.persistent) {
+        if (!session.persistent) {
           return;
         }
 
         try {
           recordKanaAgentRunAccounting({
-            sessionId: hostedSession.data.metadata.id,
-            cwd: hostedSession.data.metadata.cwd,
+            sessionId: session.id,
+            cwd: session.cwd,
             agentKind: "main",
             outcome: "stop",
             messages: [],
@@ -735,147 +490,13 @@ export class KanaConversationHost<TConfiguration = never> {
             additionalUsage: compaction.usage,
           });
         } catch (error) {
-          agentLogger.error("accounting.record_failed", {
+          logger.error("accounting.record_failed", {
             phase: "manual_compaction",
             error,
           });
         }
       },
     };
-  }
-
-  private loadInitialSession(session: KanaConversationHostSession): HostedSession | undefined {
-    if (session.type === "none") {
-      return undefined;
-    }
-    if (session.type === "resume") {
-      this.assertSavedSessionsAvailable();
-      const hosted = this.registerSession(
-        loadKanaSession(session.sessionId, {
-          cwd: process.cwd(),
-          env: this.env,
-        }),
-      );
-      this.resumableSessionId = hosted.data.metadata.id;
-      this.logLoadedSession(hosted, "session.started", { resumed: true });
-      return hosted;
-    }
-
-    const hosted = this.registerSession({
-      metadata: this.createSessionMetadata(),
-      messages: [],
-      timeline: [],
-      todoState: [],
-    });
-    hosted.logger.info("session.started", {
-      resumed: false,
-      launchMode: this.launchMode,
-    });
-    return hosted;
-  }
-
-  private registerSession(data: LoadKanaSessionResult): HostedSession {
-    const persistent = this.launchMode !== "clean";
-    const logger = persistent
-      ? this.logManager.forSession({
-          path: getKanaSessionLogPath(data.metadata.id, {
-            cwd: data.metadata.cwd,
-            env: this.env,
-          }),
-          sessionId: data.metadata.id,
-        })
-      : createNoopLogger();
-    // Temporary sessions keep a normal identity for runtime correlation and
-    // scheduled wakes. Their artifact store is lazy, process-scoped temporary
-    // storage rather than a resumable session sink.
-    const hosted: HostedSession = {
-      data: structuredClone(data),
-      artifactStore: persistent
-        ? createPersistentKanaSessionArtifactStore({
-            sessionId: data.metadata.id,
-            cwd: data.metadata.cwd,
-            env: this.env,
-          })
-        : createTemporaryKanaSessionArtifactStore(),
-      backgroundJobs: this.backgroundJobManager.bind(
-        this.backgroundJobManager.createOwner(data.metadata.id),
-        {
-          maxConcurrent: this.configData.agent.backgroundJobs.maxConcurrent,
-          logger,
-        },
-      ),
-      ...(persistent ? { journal: createKanaSessionJournal(data.metadata, data.timeline) } : {}),
-      logger,
-      persistent,
-    };
-    this.sessions.set(hosted.data.metadata.id, hosted);
-    if (persistent) {
-      const audit = auditKanaSessionArtifacts({
-        messages: hosted.data.messages,
-        sessionId: hosted.data.metadata.id,
-        cwd: hosted.data.metadata.cwd,
-        env: this.env,
-      });
-      if (audit.missingCount > 0 || audit.invalidCount > 0) {
-        hosted.logger.warn("session.artifact_references_invalid", {
-          artifactCount: audit.artifactCount,
-          missingCount: audit.missingCount,
-          invalidCount: audit.invalidCount,
-        });
-      }
-    }
-    return hosted;
-  }
-
-  private logLoadedSession(
-    hosted: HostedSession,
-    event: string,
-    metadata?: Record<string, unknown>,
-  ): void {
-    hosted.logger.info(event, {
-      ...metadata,
-      launchMode: this.launchMode,
-    });
-    if (hosted.data.recoveredInterruptedTurn) {
-      hosted.logger.warn("session.interrupted_turn_recovered", {
-        unknownToolCallCount: hosted.data.recoveredInterruptedTurn.unknownToolCallCount,
-      });
-    }
-    if (hosted.data.recoveredIncompleteTail) {
-      hosted.logger.warn("session.incomplete_tail_recovered");
-    }
-  }
-
-  private logArtifactCleanup(
-    logger: Logger | undefined,
-    phase: "orphan_cleanup" | "session_delete",
-    result: KanaArtifactCleanupResult,
-  ): void {
-    if (result.removedDirectoryCount > 0 || result.removedFileCount > 0) {
-      logger?.info("session.artifact_cleaned", {
-        phase,
-        directoryCount: result.removedDirectoryCount,
-        fileCount: result.removedFileCount,
-      });
-    }
-    for (const failure of result.failures) {
-      logger?.warn("session.artifact_cleanup_failed", {
-        phase,
-        ...failure,
-      });
-    }
-  }
-
-  private createSessionMetadata(parentSessionPath?: string, title?: string): KanaSessionMetadata {
-    return createKanaSession({
-      env: this.env,
-      title,
-      model: {
-        provider: this.configData.agent.model.provider,
-        model: this.configData.agent.model.name,
-      },
-      parentSessionPath,
-    });
   }
 
   private createMemoryConsolidation(config: KanaConfig): MemoryConsolidationScheduler | undefined {
@@ -926,25 +547,9 @@ export class KanaConversationHost<TConfiguration = never> {
     }
   }
 
-  private getActiveHostedSession(): HostedSession | undefined {
-    return this.activeSessionId === undefined ? undefined : this.sessions.get(this.activeSessionId);
-  }
-
   private assertCustomizationsAvailable(feature: string): void {
     if (this.launchMode === "clean") {
       throw new Error(`${feature} is unavailable in clean mode.`);
-    }
-  }
-
-  private assertSavedSessionsAvailable(): void {
-    if (this.launchMode === "clean") {
-      throw new Error("Saved sessions are unavailable in clean mode.");
-    }
-  }
-
-  private assertForkingAvailable(): void {
-    if (this.launchMode === "clean") {
-      throw new Error("Forking sessions is unavailable in clean mode.");
     }
   }
 }
@@ -958,18 +563,6 @@ function createKanaConversationAgent(config: KanaConfig, options: KanaAgentOptio
     },
     options,
   );
-}
-
-function getErrorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
-function getErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
 }
 
 export function createKanaConversationHost<TConfiguration = never>(

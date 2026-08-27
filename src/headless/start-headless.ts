@@ -341,6 +341,8 @@ function createHeadlessRuntime(
     wakeScheduler: host.wakeScheduler,
     goalMaxRounds: host.config.agent.goalMaxRounds,
     getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
+    disposeSession: (sessionId, source, foregroundSettled) =>
+      host.disposeSession(sessionId, source, foregroundSettled),
     backgroundJobCompletionRuns,
     scheduledRuns: false,
     getLogger: () => host.getLogger(),

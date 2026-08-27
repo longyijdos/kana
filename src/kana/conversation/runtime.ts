@@ -156,8 +156,13 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   ) => { id: string; todoState?: KanaTodoItem[] };
   loadSession: (sessionId: string) => ConversationSessionSnapshot;
   listSessions?: () => KanaSessionMetadata[];
-  deleteSession?: (sessionId: string) => boolean;
+  deleteSession?: (sessionId: string) => Promise<boolean> | boolean;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
+  disposeSession?: (
+    sessionId: string,
+    source: "session_disposal" | "shutdown",
+    foregroundSettled: Promise<void>,
+  ) => Promise<void>;
   backgroundJobCompletionRuns?: boolean;
   wakeScheduler?: WakeScheduler;
   scheduledRuns?: boolean;
@@ -432,11 +437,11 @@ export class ConversationRuntime<TConfiguration = never> {
     );
   }
 
-  deleteSession(sessionId: string): boolean {
+  async deleteSession(sessionId: string): Promise<boolean> {
     if (sessionId === this.sessionId) {
       return false;
     }
-    return this.options.deleteSession?.(sessionId) ?? false;
+    return (await this.options.deleteSession?.(sessionId)) ?? false;
   }
 
   abort(): void {
@@ -570,10 +575,12 @@ export class ConversationRuntime<TConfiguration = never> {
     this.unsubscribeBackgroundJobs?.();
     this.agent.clearInbox();
     this.agent.abort();
-    await Promise.all([
+    await this.disposeHostedSession(
+      this.sessionData?.id,
+      "shutdown",
       this.agent.waitForIdle(),
-      this.backgroundJobs?.close("shutdown") ?? Promise.resolve(),
-    ]);
+      this.backgroundJobs,
+    );
     this.wakeScheduler.dispose();
     this.listeners.clear();
     this.log("info", "conversation.closed");
@@ -655,16 +662,27 @@ export class ConversationRuntime<TConfiguration = never> {
     );
     const previousAgent = this.agent;
     const previousJobs = this.backgroundJobs;
+    const previousSessionId = this.sessionData?.id;
     this.changingSession = true;
     this.unsubscribeBackgroundJobs?.();
     try {
-      await previousJobs?.close("session_disposal");
+      await this.disposeHostedSession(
+        previousSessionId,
+        "session_disposal",
+        previousAgent.waitForIdle(),
+        previousJobs,
+      );
     } finally {
       this.changingSession = false;
     }
     if (this.stopping) {
       nextAgent.abort();
-      await this.options.getBackgroundJobs?.(nextSession.id)?.close("shutdown");
+      await this.disposeHostedSession(
+        nextSession.id,
+        "shutdown",
+        nextAgent.waitForIdle(),
+        this.options.getBackgroundJobs?.(nextSession.id),
+      );
       throw new Error("Conversation runtime stopped while changing sessions.");
     }
     this.cancelCurrentSessionInputs();
@@ -680,6 +698,19 @@ export class ConversationRuntime<TConfiguration = never> {
     });
     this.emitInputQueueChanged();
     this.log("info", "conversation.session_changed", { action });
+  }
+
+  private async disposeHostedSession(
+    sessionId: string | undefined,
+    source: "session_disposal" | "shutdown",
+    foregroundSettled: Promise<void>,
+    backgroundJobs: BackgroundJobClient | undefined,
+  ): Promise<void> {
+    if (sessionId !== undefined && this.options.disposeSession) {
+      await this.options.disposeSession(sessionId, source, foregroundSettled);
+      return;
+    }
+    await Promise.all([foregroundSettled, backgroundJobs?.close(source) ?? Promise.resolve()]);
   }
 
   private handleAgentEvent(event: AgentEvent): void {

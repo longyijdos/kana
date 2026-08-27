@@ -27,7 +27,7 @@ Clean mode still allocates an in-process session ID for runtime state correlatio
 
 ## Sessions
 
-Session persistence lives under `src/kana/session/`: `format.ts` defines and validates V5 records and checkpoint conversion, `journal.ts` owns append ordering and interrupted-turn recovery, and `repository.ts` handles creation, lookup, reading, tail repair, and deletion. Internal and cross-layer callers use these capabilities through the stable `session/index.ts` domain exports.
+Session persistence lives under `src/kana/session/`: `format.ts` defines and validates V5 records and checkpoint conversion, `journal.ts` owns append ordering and interrupted-turn recovery, and `repository.ts` handles creation, lookup, reading, tail repair, and deletion. Internal and cross-layer callers use these capabilities through the stable `session/index.ts` domain exports. The separate `conversation/hosted-session-registry.ts` owns live product resources around that storage: each hosted record keeps the in-memory session mirror, journal append position, bound logger, artifact store, background-job client, and pending fork snapshot.
 
 Session files are located at:
 
@@ -37,7 +37,7 @@ Session files are located at:
 
 Creating a session only creates an in-memory UUID, creation time, working directory, optional model metadata, and optional parent-session path. The file is created only when messages are first appended; empty sessions do not appear in `/resume`.
 
-Clean mode registers no journal with the session repository. Messages and context checkpoints remain only in the current `ConversationRuntime`. `/new` can switch to another temporary session, but `/fork`, resume, listing, and deletion are unavailable; the current session is discarded on exit.
+Clean mode registers no journal with the session repository. Messages and context checkpoints remain only in the current `ConversationRuntime`. `/new` can switch to another temporary session, but `/fork`, resume, listing, and deletion are unavailable; replacing or closing the current session disposes its temporary resources.
 
 ### JSONL format
 
@@ -68,7 +68,7 @@ An oversized text tool result may instead retain a bounded `content` preview plu
 <KANA_HOME>/artifacts/<encoded-workspace>/<session-id>/<uuid>-<safe-stem>.txt
 ```
 
-Artifact roots, workspace directories, and session directories use owner-only `0700`; files use unpredictable names, exclusive no-follow creation, and `0600`. Suggested names are reduced to a traversal-safe stem. The absolute locator is intentionally consumable by the existing `read` and `grep` tools, while artifact metadata lets resume and lifecycle code validate ownership and byte length without parsing the model-facing notice. Restored TUI history also uses that metadata for a compact stored-output summary and exposes the locator only in the tool detail inspector. Artifact text can contain the same sensitive tool output that would otherwise have entered the session, so this directory is private user data rather than a general file manager. Clean mode uses a lazy process-scoped temporary directory and removes it during orderly shutdown instead of creating this durable path.
+Artifact roots, workspace directories, and session directories use owner-only `0700`; files use unpredictable names, exclusive no-follow creation, and `0600`. Suggested names are reduced to a traversal-safe stem. The absolute locator is intentionally consumable by the existing `read` and `grep` tools, while artifact metadata lets resume and lifecycle code validate ownership and byte length without parsing the model-facing notice. Restored TUI history also uses that metadata for a compact stored-output summary and exposes the locator only in the tool detail inspector. Artifact text can contain the same sensitive tool output that would otherwise have entered the session, so this directory is private user data rather than a general file manager. Clean mode uses a lazy process-scoped temporary directory and removes it when that hosted session is replaced or closed instead of creating this durable path.
 
 Compaction follows the selected model's effective image-input capability. When the model supports images and `image_input` is enabled, Kana sends user attachments and tool visual observations with ordered index, MIME, and dimension metadata so the summary can preserve relevant visual information as text; base64 does not appear inside the textual transcript JSON. When image input is unsupported or disabled, compaction sends only that metadata with `contentOmitted: true` and continues without image bytes. This makes switching to a text-only model such as DeepSeek safe, but image-only details that were not already described in text may be absent from the resulting summary. The original self-contained images remain in the session JSONL.
 
@@ -84,6 +84,7 @@ On first write, an explicit title wins. Otherwise Kana uses the first user-role 
 
 ### Lifecycle and resilience
 
+- `HostedSessionRegistry` is the single owner of live session resources. Runtime replacement and shutdown request idempotent disposal with a foreground-settlement barrier, allowing background jobs to stop concurrently. Replacement then closes that session's artifact store; shutdown preserves the broader host order by waiting for memory schedulers before closing all remaining artifact stores and finally MCP.
 - Before any model I/O, the Agent journal writes `turn_start`, this run's user input, and any changed runtime-context state transition. It writes a complete assistant message before executing its tools; an accepted `todo_write` then writes `todo_state` before its compact tool result. Other tool results are likewise written independently after execution, followed by any source-tagged tool-result-policy context before the next model request. Compaction checkpoints are written before adoption. Only after terminal `turn_end` does `onRunCommitted` perform aggregate post-processing such as accounting and memory, followed by final `agent_end` publication. Manual `/compact` likewise writes its checkpoint before adoption. `waitForIdle()` cannot return before these writes and post-processing finish.
 - Loading an open turn repairs the original JSONL: it appends an error result with `status: "unknown"` for every tool call lacking a result, explicitly forbids automatic retry, then appends an internal recovery user message and a `turn_end` with `outcome: "interrupted"`. If the final line is incomplete JSON, only that unterminated tail record is truncated; corruption in a completed line still errors. Recovery is idempotent, so a second load appends nothing.
 - Resume reconstructs committed journal messages, the latest context checkpoint, and the latest todo state. The Agent inbox and future scheduled wakes remain process-local: switching, forking, or resuming a session and exiting Kana discard them rather than restoring them.
@@ -92,7 +93,7 @@ On first write, an explicit title wins. Otherwise Kana uses the first user-role 
 - Resuming looks up sessions in the current working directory; the picker likewise shows only other sessions from that workspace.
 - `listKanaSessions()` without a cwd scans all workspace directories and sorts by descending `createdAt`.
 - Listing skips malformed JSONL files so one bad record does not hide other history; explicitly loading that session still errors.
-- Deletion locates the file by session ID and removes it; after a successful journal deletion, Kana best-effort removes the matching artifact directory. An unknown ID returns `false`.
+- Deletion locates the file by session ID and removes it. After a successful journal deletion, Kana awaits disposal of any hosted background jobs and artifact store, then best-effort removes the matching durable artifact directory before reporting success. An unknown ID returns `false`.
 - Normal-mode startup performs conservative orphan cleanup with a 24-hour grace period. It removes aged artifact directories that have no matching session journal and aged files whose JSON-encoded locator is absent from an existing journal. Recent files, referenced files, symlinks, malformed paths, and cleanup failures are left alone or reported rather than risking broad deletion.
 
 Session files are appended with mode `0600`. They contain complete user, assistant, and tool messages, including inline results or bounded artifact metadata; do not treat either the session or artifact directory as a non-sensitive log location.
