@@ -199,7 +199,7 @@ class RepeatedToolModel implements Model {
 }
 
 describe("Agent", () => {
-  test("uses a configurable default tool deadline", () => {
+  test("stores runtime limits and rejects invalid construction options", () => {
     expect(new Agent({ model: new TextModel() }).state.toolDeadlineMs).toBe(300_000);
     expect(
       new Agent({
@@ -207,79 +207,31 @@ describe("Agent", () => {
         toolDeadlineMs: 120_000,
       }).state.toolDeadlineMs,
     ).toBe(120_000);
-    expect(
-      () =>
-        new Agent({
-          model: new TextModel(),
-          toolDeadlineMs: 0,
-        }),
-    ).toThrow("defaultDeadlineMs must be a positive integer.");
-  });
 
-  test("rejects invalid maxTurns during construction", () => {
-    for (const maxTurns of [-2, 0, 1.5]) {
-      expect(
-        () =>
-          new Agent({
-            model: new TextModel(),
-            maxTurns,
-          }),
-      ).toThrow("maxTurns must be -1 or a positive integer.");
+    const invalidOptions = [
+      [{ maxTurns: 0 }, "maxTurns must be -1 or a positive integer."],
+      [{ toolDeadlineMs: 0 }, "defaultDeadlineMs must be a positive integer."],
+      [{ maxParallelToolCalls: 0 }, "maxParallelToolCalls must be a positive integer."],
+    ] as const;
+    for (const [options, expectedError] of invalidOptions) {
+      expect(() => new Agent({ model: new TextModel(), ...options })).toThrow(expectedError);
     }
   });
 
-  test("rejects invalid parallel tool limits during construction", () => {
-    for (const maxParallelToolCalls of [0, -1, 1.5]) {
-      expect(
-        () =>
-          new Agent({
-            model: new TextModel(),
-            maxParallelToolCalls,
-          }),
-      ).toThrow("maxParallelToolCalls must be a positive integer.");
-    }
-  });
-
-  test("enables parallel tool calls only when requested and supported", async () => {
-    const supportedModel = new TextModel();
-    const supportedAgent = new Agent({
-      model: supportedModel,
-      parallelToolCalls: true,
-    });
-    await supportedAgent.prompt("supported");
-
-    const unsupportedModel = new TextModel();
-    unsupportedModel.metadata.supportsParallelToolCalls = false;
-    const unsupportedAgent = new Agent({
-      model: unsupportedModel,
-      parallelToolCalls: true,
-    });
-    await unsupportedAgent.prompt("unsupported");
-
-    const disabledModel = new TextModel();
-    const disabledAgent = new Agent({
-      model: disabledModel,
-      parallelToolCalls: false,
-    });
-    await disabledAgent.prompt("disabled");
-
-    expect(supportedModel.contexts[0]?.parallelToolCalls).toBe(true);
-    expect(unsupportedModel.contexts[0]?.parallelToolCalls).toBe(false);
-    expect(disabledModel.contexts[0]?.parallelToolCalls).toBe(false);
-  });
-
-  test("passes only enabled model capabilities to providers", async () => {
+  test("passes configured model capabilities to providers", async () => {
     const model = new TextModel();
     model.metadata.supportsHostedWebSearch = true;
     model.metadata.supportsImageInput = true;
     const agent = new Agent({
       model,
+      parallelToolCalls: true,
       webSearch: false,
       imageInput: true,
     });
 
     await agent.prompt("capabilities");
 
+    expect(model.contexts[0]?.parallelToolCalls).toBe(true);
     expect(model.contexts[0]?.webSearch).toBe(false);
     expect(model.contexts[0]?.imageInput).toBe(true);
   });

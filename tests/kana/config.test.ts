@@ -29,6 +29,39 @@ import { buildKanaPromptAssembly } from "../../src/kana/prompt";
 
 const tempDirs: string[] = [];
 
+type InvalidConfigCase = readonly [label: string, config: string, expectedError: string];
+
+const invalidScalarConfigs: InvalidConfigCase[] = [
+  [
+    "logging.level = verbose",
+    '[logging]\nlevel = "verbose"\n',
+    "logging.level must be one of: debug, info, warn, error, off.",
+  ],
+  invalidBooleanConfig("memory", "enabled"),
+  invalidPositiveIntegerConfig("memory", "max_chars", 0),
+  invalidPositiveIntegerConfig("memory", "daily_retention_days", 0),
+  ...[-2, 0, 1.5].map(
+    (value): InvalidConfigCase => [
+      `agent.max_turns = ${value}`,
+      `[agent]\nmax_turns = ${value}\n`,
+      "agent.max_turns must be -1 or a positive integer.",
+    ],
+  ),
+  ...[0, -1, 1.5].flatMap((value) => [
+    invalidPositiveIntegerConfig("agent", "tool_deadline_ms", value),
+    invalidPositiveIntegerConfig("agent", "goal_max_rounds", value),
+    invalidPositiveIntegerConfig("agent", "max_parallel_tool_calls", value),
+    invalidPositiveIntegerConfig("agent.background_jobs", "max_concurrent", value),
+  ]),
+  invalidBooleanConfig("agent", "parallel_tool_calls"),
+  invalidBooleanConfig("agent", "tool_result_artifacts"),
+  invalidBooleanConfig("tui", "smooth_text_streaming"),
+  invalidBooleanConfig("tui", "hyperlinks"),
+  invalidBooleanConfig("tui", "render_latex"),
+  invalidBooleanConfig("tui", "render_mermaid"),
+  invalidBooleanConfig("tui", "collapse_long_pastes"),
+];
+
 afterEach(() => {
   for (const tempDir of tempDirs.splice(0)) {
     rmSync(tempDir, { recursive: true, force: true });
@@ -512,112 +545,12 @@ describe("Kana config", () => {
     });
   });
 
-  test("rejects unknown logging.level", () => {
+  test.each(invalidScalarConfigs)("rejects invalid %s", (_label, config, expectedError) => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[logging]\nlevel = "verbose"\n');
+    writeFileSync(path.join(home, "config.toml"), config);
 
-    expect(() => loadKanaConfig(env)).toThrow(
-      "logging.level must be one of: debug, info, warn, error, off.",
-    );
-  });
-
-  test("rejects non-boolean memory.enabled", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[memory]\nenabled = "yes"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow("memory.enabled must be a boolean.");
-  });
-
-  test("rejects non-positive memory.max_chars", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), "[memory]\nmax_chars = 0\n");
-
-    expect(() => loadKanaConfig(env)).toThrow("memory.max_chars must be a positive integer.");
-  });
-
-  test("rejects non-positive memory.daily_retention_days", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), "[memory]\ndaily_retention_days = 0\n");
-
-    expect(() => loadKanaConfig(env)).toThrow(
-      "memory.daily_retention_days must be a positive integer.",
-    );
-  });
-
-  test("rejects invalid agent.max_turns values", () => {
-    for (const value of [-2, 0, 1.5]) {
-      const env = createTempEnv();
-      const { home } = getKanaConfigPaths(env);
-      writeFileSync(path.join(home, "config.toml"), `[agent]\nmax_turns = ${value}\n`);
-
-      expect(() => loadKanaConfig(env)).toThrow(
-        "agent.max_turns must be -1 or a positive integer.",
-      );
-    }
-  });
-
-  test("requires agent.tool_deadline_ms to be a positive integer", () => {
-    for (const value of [0, -1, 1.5]) {
-      const env = createTempEnv();
-      const { home } = getKanaConfigPaths(env);
-      writeFileSync(path.join(home, "config.toml"), `[agent]\ntool_deadline_ms = ${value}\n`);
-
-      expect(() => loadKanaConfig(env)).toThrow(
-        "agent.tool_deadline_ms must be a positive integer.",
-      );
-    }
-  });
-
-  test("requires agent.goal_max_rounds to be a positive integer", () => {
-    for (const value of [0, -1, 1.5]) {
-      const env = createTempEnv();
-      const { home } = getKanaConfigPaths(env);
-      writeFileSync(path.join(home, "config.toml"), `[agent]\ngoal_max_rounds = ${value}\n`);
-
-      expect(() => loadKanaConfig(env)).toThrow(
-        "agent.goal_max_rounds must be a positive integer.",
-      );
-    }
-  });
-
-  test("requires agent.parallel_tool_calls to be a boolean", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[agent]\nparallel_tool_calls = "yes"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow("agent.parallel_tool_calls must be a boolean.");
-  });
-
-  test("requires agent.max_parallel_tool_calls to be a positive integer", () => {
-    for (const value of [0, -1, 1.5]) {
-      const env = createTempEnv();
-      const { home } = getKanaConfigPaths(env);
-      writeFileSync(
-        path.join(home, "config.toml"),
-        `[agent]\nmax_parallel_tool_calls = ${value}\n`,
-      );
-
-      expect(() => loadKanaConfig(env)).toThrow(
-        "agent.max_parallel_tool_calls must be a positive integer.",
-      );
-    }
-  });
-
-  test("requires Background Job limits to be positive integers", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    const configPath = path.join(home, "config.toml");
-
-    for (const value of [0, -1, 1.5]) {
-      writeFileSync(configPath, `[agent.background_jobs]\nmax_concurrent = ${value}\n`);
-      expect(() => loadKanaConfig(env)).toThrow(
-        "agent.background_jobs.max_concurrent must be a positive integer.",
-      );
-    }
+    expect(() => loadKanaConfig(env)).toThrow(expectedError);
   });
 
   test("loads and validates repeated tool-call policy settings", () => {
@@ -650,46 +583,6 @@ describe("Kana config", () => {
     }
   });
 
-  test("requires tui.smooth_text_streaming to be a boolean", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[tui]\nsmooth_text_streaming = "yes"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow("tui.smooth_text_streaming must be a boolean.");
-  });
-
-  test("requires tui.hyperlinks to be a boolean", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[tui]\nhyperlinks = "yes"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow("tui.hyperlinks must be a boolean.");
-  });
-
-  test("requires tui.render_latex to be a boolean", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[tui]\nrender_latex = "yes"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow("tui.render_latex must be a boolean.");
-  });
-
-  test("requires tui.render_mermaid to be a boolean", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[tui]\nrender_mermaid = "yes"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow("tui.render_mermaid must be a boolean.");
-  });
-
-  test("requires tui.collapse_long_pastes to be a boolean", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[tui]\ncollapse_long_pastes = "yes"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow("tui.collapse_long_pastes must be a boolean.");
-  });
-
   test("loads and validates optional model budgets", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
@@ -707,14 +600,6 @@ describe("Kana config", () => {
       writeFileSync(path.join(home, "config.toml"), `[agent.model]\n${key} = 0\n`);
       expect(() => loadKanaConfig(env)).toThrow(`agent.model.${key} must be a positive integer.`);
     }
-  });
-
-  test("requires agent.tool_result_artifacts to be a boolean", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[agent]\ntool_result_artifacts = "yes"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow("agent.tool_result_artifacts must be a boolean.");
   });
 
   test("loads the configured API key environment variable name", () => {
@@ -1079,6 +964,24 @@ describe("Kana config", () => {
     );
   });
 });
+
+function invalidBooleanConfig(section: string, key: string): InvalidConfigCase {
+  const path = `${section}.${key}`;
+  return [path, `[${section}]\n${key} = "invalid"\n`, `${path} must be a boolean.`];
+}
+
+function invalidPositiveIntegerConfig(
+  section: string,
+  key: string,
+  value: number,
+): InvalidConfigCase {
+  const path = `${section}.${key}`;
+  return [
+    `${path} = ${value}`,
+    `[${section}]\n${key} = ${value}\n`,
+    `${path} must be a positive integer.`,
+  ];
+}
 
 function createAgentFromConfig(config: KanaConfig) {
   return createKanaAgent(config.agent, {
