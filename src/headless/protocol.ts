@@ -164,3 +164,11 @@ export function toKanaExecGoal(goal: KanaGoalSnapshot): KanaExecGoalResult {
     ...(goal.detail === undefined ? {} : { detail: goal.detail }),
   };
 }
+
+export function toKanaExecRunTermination(
+  termination: { reason: "timeout"; timeoutMs: number } | { reason: "sigint" },
+): KanaExecRunTermination {
+  return termination.reason === "timeout"
+    ? { reason: "timeout", timeout_ms: termination.timeoutMs }
+    : { reason: "sigint" };
+}

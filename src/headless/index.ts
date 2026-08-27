@@ -1,7 +1,7 @@
+export type { HeadlessOutputStream } from "./run-output";
+export { runHeadlessConversation } from "./runner";
 export {
-  type HeadlessOutputStream,
   resolveHeadlessPrompt,
-  runHeadlessConversation,
   type StartHeadlessOptions,
   startHeadless,
 } from "./start-headless";

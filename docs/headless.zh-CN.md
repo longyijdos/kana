@@ -36,6 +36,8 @@ kana exec resume <session-id> --timeout 30m 继续任务
 
 新执行和恢复执行都通过 `KanaConversationHost` 与 `ConversationRuntime` 装配，因此与 TUI 共用模型、reasoning 配置、系统提示词、Skills、工作区工具和产品策略。普通模式继续使用 MCP、session V5 journal、accounting、日志和记忆调度。
 
+无头前端把启动、执行、生命周期、投影和协议职责分开。`startHeadless` 解析输入、启动 Host 与 MCP，并按顺序关闭 runtime 和 Host 资源。runner 构造 `ConversationRuntime`、安装 fail-closed 审批并编排单次 turn 或 Goal；其 lifecycle 持有外部取消监听与覆盖完整 run 的软 deadline，并在同一个清理边界移除二者。run-output projector 独自持有终态，并把结果路由为 JSONL 或人类可读输出；`protocol.ts` 则持有公共事件类型、schema 版本和 wire 转换。因此 JSONL 与人类模式从同一 run 结果投影，无需复制执行流程，输出写入或清理失败也仍对调用方可见。
+
 conversation runtime 关闭后，headless 退出流程会取消并等待尚未完成的自动记忆合并，再关闭 MCP。此时 `remember` 条目已经持久化到 daily 暂存；取消会保留该条目，也不会提交未完成的长期记忆 transaction。
 
 `--clean` 创建随本次进程结束即丢弃的临时 session。它仍加载 `config.toml`、`<KANA_HOME>/.env`、provider/model、OAuth 与审批规则，但不读取全局或项目 `AGENTS.md`、记忆、Skills 与 MCP 配置，不连接 MCP server，也不创建 session journal、session log 或 accounting 记录。`exec resume` 与 `--clean` 组合会在启动时以退出码 `1` 失败；JSON 模式会输出相应的 startup `error` 事件。纯净模式不是 sandbox 或隐私边界，内置工具和 provider 仍可能产生外部副作用。
