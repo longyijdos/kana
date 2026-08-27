@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../../src/tui/app/app-layout";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { SkillManagerController } from "../../src/tui/app/skill-manager-controller";
-import { Editor, Transcript } from "../../src/tui/components";
+import { Editor, TextBlock, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";
 
@@ -84,9 +85,7 @@ function createHarness(options: { save?: () => void; refresh?: () => void } = {}
   let refreshCount = 0;
   const controller = new SkillManagerController({
     editor,
-    layout,
-    transcript,
-    tui,
+    bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
     loadSkills: () => ({
       skills: [
         {
@@ -127,13 +126,10 @@ function createHarness(options: { save?: () => void; refresh?: () => void } = {}
       refreshCount += 1;
       options.refresh?.();
     },
-    updateStatus: () => {},
-    restoreBottom: (focus) => {
-      layout.showBottom(editor);
-      if (focus) {
-        tui.setFocus(editor);
-      }
+    showError: (error) => {
+      transcript.addChild(new TextBlock(error instanceof Error ? error.message : String(error)));
     },
+    updateStatus: () => {},
   });
 
   return {

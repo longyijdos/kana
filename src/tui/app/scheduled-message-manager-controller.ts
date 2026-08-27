@@ -13,20 +13,19 @@ import {
 } from "../components";
 import { stripTerminalControlSequences } from "../render";
 import type { Component, Tui } from "../runtime";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 
 type ScheduleDelayChoice = "5m" | "15m" | "30m" | "1h" | "custom";
 
 export type ScheduledMessageManagerControllerOptions = {
   editor: Editor;
-  layout: AppLayout;
+  bottomArea: BottomAreaController;
   tui: Tui;
   getQueue: () => ConversationInputQueueSnapshot;
   schedule: (afterMinutes: number, message: string) => WakeEvent;
   cancel: (id: string) => ConversationScheduledInputCancellation;
   showError: (error: unknown) => void;
   collapseLongPastes?: boolean;
-  restoreBottom: (focus: boolean) => void;
   onClose: () => void;
 };
 
@@ -61,13 +60,12 @@ export class ScheduledMessageManagerController {
     }
 
     const activeBottom = this.activeBottom;
-    const wasVisible = activeBottom ? this.options.layout.isBottom(activeBottom) : false;
-    const restoreFocus = activeBottom ? this.options.tui.getFocus() === activeBottom : false;
+    const restoreFocus = activeBottom ? this.options.bottomArea.hasFocus(activeBottom) : false;
 
     this.manager = undefined;
     this.activeBottom = undefined;
-    if (wasVisible) {
-      this.options.restoreBottom(restoreFocus);
+    if (activeBottom) {
+      this.options.bottomArea.restore(activeBottom, restoreFocus);
     }
     this.options.onClose();
   }
@@ -232,9 +230,7 @@ export class ScheduledMessageManagerController {
       return;
     }
     this.activeBottom = component;
-    this.options.layout.showBottom(component);
-    this.options.tui.setFocus(component);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(component);
   }
 
   private returnToManager(): void {

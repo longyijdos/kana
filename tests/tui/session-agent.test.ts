@@ -62,14 +62,16 @@ describe("session-scoped agents", () => {
       },
       {
         ...createOptions(),
-        onStop: async () => {
-          app.showShutdownStatus("Closing MCP servers... 0/1");
-          shutdownRender = (
-            app as unknown as { layout: { render(width: number): string[] } }
-          ).layout
-            .render(80)
-            .join("\n");
-          events.push("host.stop");
+        lifecycle: {
+          stop: async () => {
+            app.showShutdownStatus("Closing MCP servers... 0/1");
+            shutdownRender = (
+              app as unknown as { layout: { render(width: number): string[] } }
+            ).layout
+              .render(80)
+              .join("\n");
+            events.push("host.stop");
+          },
         },
       },
     );
@@ -111,16 +113,18 @@ describe("session-scoped agents", () => {
       createOptions(),
     );
     const internal = app as unknown as {
-      recordUsage(usage: {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-        promptCacheHitTokens?: number;
-        promptCacheMissTokens?: number;
-      }): void;
+      status: {
+        recordUsage(usage: {
+          promptTokens: number;
+          completionTokens: number;
+          totalTokens: number;
+          promptCacheHitTokens?: number;
+          promptCacheMissTokens?: number;
+        }): void;
+      };
     };
 
-    internal.recordUsage({
+    internal.status.recordUsage({
       promptTokens: 30,
       completionTokens: 10,
       totalTokens: 40,
@@ -150,9 +154,11 @@ describe("session-scoped agents", () => {
       createTerminal(),
       {
         ...createOptions(),
-        loadExternalTools: (onProgress) => {
-          reportProgress = onProgress;
-          return loadResult;
+        externalTools: {
+          load: (onProgress) => {
+            reportProgress = onProgress;
+            return loadResult;
+          },
         },
       },
     );
@@ -204,9 +210,11 @@ describe("session-scoped agents", () => {
       createTerminal(),
       {
         ...createOptions(),
-        loadExternalTools: async () => ({
-          status: "MCP startup complete: 0/0 servers ready · 0 tools",
-        }),
+        externalTools: {
+          load: async () => ({
+            status: "MCP startup complete: 0/0 servers ready · 0 tools",
+          }),
+        },
       },
     );
     const internal = app as unknown as {
@@ -228,8 +236,10 @@ describe("session-scoped agents", () => {
   test("keeps the visible session disabled when required external tools fail", async () => {
     const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
       ...createOptions(),
-      loadExternalTools: async () => {
-        throw new Error("Required MCP servers failed to start: filesystem.");
+      externalTools: {
+        load: async () => {
+          throw new Error("Required MCP servers failed to start: filesystem.");
+        },
       },
     });
     const internal = app as unknown as {
@@ -258,14 +268,20 @@ describe("session-scoped agents", () => {
       path: "/sessions/session-a.jsonl",
     };
     let loadCount = 0;
+    const appOptions = createOptions();
     const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
-      ...createOptions(),
-      startInResumePicker: true,
-      listSessions: () => [session],
-      loadSession: () => ({ id: session.id, messages: [], timeline: [] }),
-      loadExternalTools: async () => {
-        loadCount += 1;
-        return {};
+      ...appOptions,
+      launch: { startInResumePicker: true },
+      conversation: {
+        ...appOptions.conversation,
+        listSessions: () => [session],
+        loadSession: () => ({ id: session.id, messages: [], timeline: [] }),
+      },
+      externalTools: {
+        load: async () => {
+          loadCount += 1;
+          return {};
+        },
       },
     });
     const internal = app as unknown as {
@@ -284,16 +300,22 @@ describe("session-scoped agents", () => {
   test("keeps customization controls and external tools disabled in clean mode", async () => {
     let externalToolLoadCount = 0;
     let forkCount = 0;
+    const appOptions = createOptions();
     const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
-      ...createOptions(),
-      launchMode: "clean",
-      forkSession: () => {
-        forkCount += 1;
-        return { id: "fork" };
+      ...appOptions,
+      launch: { mode: "clean" },
+      conversation: {
+        ...appOptions.conversation,
+        forkSession: () => {
+          forkCount += 1;
+          return { id: "fork" };
+        },
       },
-      loadExternalTools: async () => {
-        externalToolLoadCount += 1;
-        return {};
+      externalTools: {
+        load: async () => {
+          externalToolLoadCount += 1;
+          return {};
+        },
       },
     });
     const internal = app as unknown as {
@@ -343,10 +365,12 @@ describe("session-scoped agents", () => {
     };
     const app = new KanaTuiApp(() => createAgentStub(), terminal, {
       ...createOptions(),
-      loadExternalTools: () => new Promise(() => {}),
-      onStop: () => shutdown,
-      onForceStop: () => {
-        forceStopCount += 1;
+      externalTools: { load: () => new Promise(() => {}) },
+      lifecycle: {
+        stop: () => shutdown,
+        forceStop: () => {
+          forceStopCount += 1;
+        },
       },
     });
     const internal = app as unknown as {
@@ -463,6 +487,7 @@ describe("session-scoped agents", () => {
       },
       clearTimeout: (timer) => timers.delete(timer),
     });
+    const appOptions = createOptions();
     const app = new KanaTuiApp(
       () =>
         withAgentInboxForTest({
@@ -485,9 +510,12 @@ describe("session-scoped agents", () => {
         }) as never,
       createTerminal(),
       {
-        ...createOptions(),
-        initialSession: { id: "session-a", messages: [], timeline: [] },
-        wakeScheduler,
+        ...appOptions,
+        conversation: {
+          ...appOptions.conversation,
+          initialSession: { id: "session-a", messages: [], timeline: [] },
+          wakeScheduler,
+        },
       },
     );
     const internal = app as unknown as { submitPrompt(value: string): Promise<void> };
@@ -525,6 +553,7 @@ describe("session-scoped agents", () => {
       },
       clearTimeout: (timer) => timers.delete(timer),
     });
+    const appOptions = createOptions();
     const app = new KanaTuiApp(
       () =>
         withAgentInboxForTest({
@@ -547,9 +576,12 @@ describe("session-scoped agents", () => {
         }) as never,
       createTerminal(),
       {
-        ...createOptions(),
-        initialSession: { id: "session-a", messages: [], timeline: [] },
-        wakeScheduler,
+        ...appOptions,
+        conversation: {
+          ...appOptions.conversation,
+          initialSession: { id: "session-a", messages: [], timeline: [] },
+          wakeScheduler,
+        },
       },
     );
     const internal = app as unknown as {
@@ -586,6 +618,7 @@ describe("session-scoped agents", () => {
       },
       clearTimeout: (timer) => timers.delete(timer),
     });
+    const appOptions = createOptions();
     const app = new KanaTuiApp(
       () =>
         withAgentInboxForTest({
@@ -608,17 +641,20 @@ describe("session-scoped agents", () => {
         }) as never,
       createTerminal(),
       {
-        ...createOptions(),
-        initialSession: { id: "session-a", messages: [], timeline: [] },
-        wakeScheduler,
+        ...appOptions,
+        conversation: {
+          ...appOptions.conversation,
+          initialSession: { id: "session-a", messages: [], timeline: [] },
+          wakeScheduler,
+        },
       },
     );
     const internal = app as unknown as {
-      running: boolean;
-      clearAuxiliaryRunStatus(): void;
+      status: { startRun(): void };
+      finishAuxiliaryRun(): void;
     };
 
-    internal.running = true;
+    internal.status.startRun();
     wakeScheduler.schedule({
       sessionId: "session-a",
       afterMinutes: 30,
@@ -627,8 +663,7 @@ describe("session-scoped agents", () => {
     timers.get(1)?.();
 
     expect(calls).toHaveLength(0);
-    internal.running = false;
-    internal.clearAuxiliaryRunStatus();
+    internal.finishAuxiliaryRun();
     await waitFor(() => calls.length === 1);
 
     expect(calls[0]?.input).toMatchObject({
@@ -640,6 +675,7 @@ describe("session-scoped agents", () => {
 
   test("updates approximate context from turn_end instead of raw response usage", async () => {
     const calls: AgentEventStream[] = [];
+    const appOptions = createOptions();
     const app = new KanaTuiApp(
       () =>
         withAgentInboxForTest({
@@ -664,8 +700,11 @@ describe("session-scoped agents", () => {
         }) as never,
       createTerminal(),
       {
-        ...createOptions(),
-        initialSession: { id: "session-a", messages: [], timeline: [] },
+        ...appOptions,
+        conversation: {
+          ...appOptions.conversation,
+          initialSession: { id: "session-a", messages: [], timeline: [] },
+        },
       },
     );
     const internal = app as unknown as {
@@ -778,14 +817,20 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 function createOptions() {
   return {
-    getResumeSessionId: () => undefined,
-    createNewSession: () => ({ id: "new" }),
-    forkSession: () => ({ id: "fork" }),
-    listSessions: () => [],
-    loadSession: () => ({ id: "session", messages: [], timeline: [] }),
-    deleteSession: () => false,
-    loadSkills: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
-    saveEnabledGlobalSkills: () => {},
+    launch: {},
+    conversation: {
+      getResumeSessionId: () => undefined,
+      createNewSession: () => ({ id: "new" }),
+      forkSession: () => ({ id: "fork" }),
+      listSessions: () => [],
+      loadSession: () => ({ id: "session", messages: [], timeline: [] }),
+      deleteSession: () => false,
+      goalMaxRounds: 8,
+    },
+    skills: {
+      load: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
+      saveEnabledGlobalNames: () => {},
+    },
     toolApproval: {
       config: { mode: "unless_trusted" as const },
       approvals: {
@@ -793,31 +838,31 @@ function createOptions() {
         bash: { exactCommands: [], readOnlyCommands: [] },
       },
     },
-    notification: {} as never,
-    goalMaxRounds: 8,
-    compactMemory: async () => [],
-    loadMemory: () => "",
-    loadUsage: () => ({
-      scope: "session" as const,
-      runCount: 0,
-      mainRunCount: 0,
-      memoryRunCount: 0,
-      outcomes: {
-        stop: 0,
-        length: 0,
-        aborted: 0,
-        error: 0,
-        turn_limit: 0,
-        updated: 0,
-        unchanged: 0,
-      },
-      agents: {
-        main: { runCount: 0 },
-        memoryAutomatic: { runCount: 0 },
-        memoryManual: { runCount: 0 },
-      },
-      models: [],
-    }),
+    ui: { notification: {} as never },
+    memory: { compact: async () => [], load: () => "" },
+    usage: {
+      load: () => ({
+        scope: "session" as const,
+        runCount: 0,
+        mainRunCount: 0,
+        memoryRunCount: 0,
+        outcomes: {
+          stop: 0,
+          length: 0,
+          aborted: 0,
+          error: 0,
+          turn_limit: 0,
+          updated: 0,
+          unchanged: 0,
+        },
+        agents: {
+          main: { runCount: 0 },
+          memoryAutomatic: { runCount: 0 },
+          memoryManual: { runCount: 0 },
+        },
+        models: [],
+      }),
+    },
   };
 }
 

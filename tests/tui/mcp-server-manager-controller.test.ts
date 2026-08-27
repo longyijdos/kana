@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../../src/tui/app/app-layout";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { McpServerManagerController } from "../../src/tui/app/mcp-server-manager-controller";
-import { Editor, Transcript } from "../../src/tui/components";
+import { Editor, TextBlock, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";
 
@@ -65,7 +66,7 @@ describe("MCP server manager controller", () => {
     });
     const controller = new McpServerManagerController({
       editor,
-      layout,
+      bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
       transcript,
       tui,
       loadServers: () => [
@@ -86,14 +87,11 @@ describe("MCP server manager controller", () => {
         onAuthorizationUrl("https://auth.example.com/authorize?state=temporary");
         return authorization;
       },
+      showError: (error) => {
+        transcript.addChild(new TextBlock(error instanceof Error ? error.message : String(error)));
+      },
       onClose: (changed) => closed.push(changed),
       updateStatus: (phase) => statusPhases.push(phase),
-      restoreBottom: (focus) => {
-        layout.showBottom(editor);
-        if (focus) {
-          tui.setFocus(editor);
-        }
-      },
     });
 
     controller.open();
@@ -124,7 +122,7 @@ function createHarness(save?: (serverIds: string[]) => void) {
   const closed: boolean[] = [];
   const controller = new McpServerManagerController({
     editor,
-    layout,
+    bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
     transcript,
     tui,
     loadServers: () => [
@@ -135,14 +133,11 @@ function createHarness(save?: (serverIds: string[]) => void) {
       saved.push(serverIds);
       save?.(serverIds);
     },
+    showError: (error) => {
+      transcript.addChild(new TextBlock(error instanceof Error ? error.message : String(error)));
+    },
     onClose: (changed) => closed.push(changed),
     updateStatus: () => {},
-    restoreBottom: (focus) => {
-      layout.showBottom(editor);
-      if (focus) {
-        tui.setFocus(editor);
-      }
-    },
   });
 
   return { controller, editor, transcript, layout, tui, saved, closed };

@@ -4,85 +4,34 @@ import type {
   BeforeToolExecutionResult,
   ContextCheckpoint,
 } from "@/agent";
-import {
-  addModelUsage,
-  createUserMessage,
-  type Message,
-  type ModelMetadata,
-  type ModelUsage,
-  type ToolCallContent,
-  type UserImage,
-} from "@/core";
-import type { BackgroundJobClient } from "@/jobs";
-import type {
-  KanaLaunchMode,
-  KanaMcpServerActivation,
-  KanaNotificationConfig,
-  KanaOAuthTokenStatus,
-  KanaSessionMetadata,
-  KanaTodoItem,
-  KanaToolApprovalConfig,
-  KanaToolApprovalMode,
-  KanaToolApprovals,
-  KanaTuiConfig,
-  KanaUsageScope,
-  KanaUsageSummary,
-  LoadKanaSkillActivationsResult,
-  WakeScheduler,
-} from "@/kana";
-import {
-  ConversationRuntime,
-  type ConversationRuntimeEvent,
-  type ConversationSessionSnapshot,
-} from "@/kana";
+import { createUserMessage, type Message, type ToolCallContent, type UserImage } from "@/core";
+import type { KanaToolApprovalMode } from "@/kana";
+import { ConversationRuntime, type ConversationRuntimeEvent } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
-import { loadUserImageFile } from "@/utils";
-import { readClipboardImage } from "../clipboard-image";
-import {
-  Editor,
-  MarkdownBlock,
-  type StatusLineState,
-  TextBlock,
-  Transcript,
-  UsageSummaryBlock,
-  UserMessageBlock,
-} from "../components";
-import {
-  formatPromptCommandHelpLine,
-  formatPromptShortcutHelpLine,
-  PROMPT_COMMANDS,
-  PROMPT_HELP_TITLE,
-  PROMPT_SHORTCUTS,
-  PROMPT_SHORTCUTS_TITLE,
-} from "../components/editor/commands";
-import { stripTerminalControlSequences } from "../render";
+import { Editor, TextBlock, Transcript, UserMessageBlock } from "../components";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
-import { renderTodoState, type ToolApprovalSource } from "../tools";
-import { calculateContextUsedPercent } from "../utils/context-usage";
+import { renderTodoState } from "../tools";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
+import type { KanaTuiAppOptions } from "./app-options";
 import { BackgroundJobManagerController } from "./background-job-manager-controller";
+import { BottomAreaController } from "./bottom-area-controller";
 import { ContentViewerController } from "./content-viewer-controller";
-import {
-  ExternalToolsLifecycleController,
-  type ExternalToolsLoadResult,
-} from "./external-tools-lifecycle-controller";
+import { ContextCompactController } from "./context-compact-controller";
+import { ExternalToolsLifecycleController } from "./external-tools-lifecycle-controller";
+import { ImageAttachmentController } from "./image-attachment-controller";
+import { InformationViewerController } from "./information-viewer-controller";
+import { InteractionErrorReporter } from "./interaction-error-reporter";
 import { LocalShellController } from "./local-shell-controller";
+import { McpOAuthStatusController } from "./mcp-oauth-status-controller";
 import { McpServerManagerController } from "./mcp-server-manager-controller";
-import {
-  MemoryCompactController,
-  type MemoryCompactSummary,
-  type MemoryScope,
-} from "./memory-compact-controller";
-import {
-  formatTuiReasoningSelection,
-  type TuiModelSelection,
-  type TuiModelSettings,
-} from "./model-selection";
+import { MemoryCompactController } from "./memory-compact-controller";
+import type { TuiModelSelection } from "./model-selection";
+import { formatStatusModel, ModelSelectionController } from "./model-selection-controller";
 import { NotificationController } from "./notification-controller";
 import { QueuedInputController } from "./queued-input-controller";
 import { ScheduledMessageManagerController } from "./scheduled-message-manager-controller";
@@ -93,76 +42,11 @@ import {
   formatToolApprovalMode,
   SlashCommandOptionsController,
 } from "./slash-command-options-controller";
-import type { RunPhase } from "./status-phase";
+import { StatusProjectionController } from "./status-projection-controller";
 import { ToolApprovalController } from "./tool-approval-controller";
 import { ToolHistoryController } from "./tool-history-controller";
 
-type KanaTuiSessionSnapshot = ConversationSessionSnapshot;
-
-type KanaTuiExternalToolsLoadResult = ExternalToolsLoadResult;
-
-export type KanaTuiAppOptions = {
-  launchMode?: KanaLaunchMode;
-  initialSession?: KanaTuiSessionSnapshot;
-  initialPrompt?: string;
-  getResumeSessionId: () => string | undefined;
-  createNewSession: () => { id: string };
-  forkSession: (
-    messages: Message[],
-    contextCheckpoint: ContextCheckpoint | undefined,
-    prompt: string,
-  ) => { id: string; todoState?: KanaTodoItem[] };
-  listSessions: () => KanaSessionMetadata[];
-  loadSession: (sessionId: string) => KanaTuiSessionSnapshot;
-  deleteSession: (sessionId: string) => Promise<boolean> | boolean;
-  loadSkills: () => LoadKanaSkillActivationsResult;
-  saveEnabledGlobalSkills: (names: string[]) => void;
-  startInResumePicker?: boolean;
-  toolApproval: {
-    config: KanaToolApprovalConfig;
-    approvals: KanaToolApprovals;
-    resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
-  };
-  notification: KanaNotificationConfig;
-  tuiConfig?: KanaTuiConfig;
-  goalMaxRounds: number;
-  wakeScheduler?: WakeScheduler;
-  getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
-  disposeSession?: (
-    sessionId: string,
-    source: "session_disposal" | "shutdown",
-    foregroundSettled: Promise<void>,
-  ) => Promise<void>;
-  getLogger?: () => Logger;
-  compactMemory: (
-    target: MemoryScope,
-    userRequest: string | undefined,
-    signal: AbortSignal,
-  ) => Promise<MemoryCompactSummary[]>;
-  loadMemory: (target: Exclude<MemoryScope, "both">) => string;
-  loadUsage: (scope: KanaUsageScope) => KanaUsageSummary;
-  modelManagement?: {
-    getSettings: () => TuiModelSettings;
-  };
-  loadExternalTools?: (
-    onProgress: (status: string) => void,
-  ) => Promise<KanaTuiExternalToolsLoadResult>;
-  mcpManagement?: {
-    loadServers: () => KanaMcpServerActivation[];
-    saveEnabledServerIds: (serverIds: string[]) => void;
-    authorizeServer?(
-      serverId: string,
-      onAuthorizationUrl: (url: string) => void,
-      signal: AbortSignal,
-    ): Promise<KanaOAuthTokenStatus>;
-    signOutServer?(serverId: string): Promise<KanaOAuthTokenStatus>;
-    reloadExternalTools: (
-      onProgress: (status: string) => void,
-    ) => Promise<KanaTuiExternalToolsLoadResult>;
-  };
-  onStop?: () => Promise<void> | void;
-  onForceStop?: () => void;
-};
+export type { KanaTuiAppOptions } from "./app-options";
 
 export class KanaTuiApp {
   private readonly tui: Tui;
@@ -170,6 +54,7 @@ export class KanaTuiApp {
   private readonly editor: Editor;
   private readonly shutdownStatus = new TextBlock("", { color: tuiTheme.muted });
   private readonly layout: AppLayout;
+  private readonly bottomArea: BottomAreaController;
   private readonly agentEvents: AgentEventRenderer;
   private readonly sessions: SessionLifecycleController;
   private readonly skillManager: SkillManagerController;
@@ -178,8 +63,8 @@ export class KanaTuiApp {
   private readonly queuedInputs: QueuedInputController;
   private readonly scheduledMessageManager: ScheduledMessageManagerController;
   private readonly backgroundJobManager: BackgroundJobManagerController;
-  private running = false;
-  private totalUsage?: ModelUsage;
+  private readonly status: StatusProjectionController;
+  private readonly errors: InteractionErrorReporter;
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
   private readonly contentViewer: ContentViewerController;
@@ -188,16 +73,17 @@ export class KanaTuiApp {
   private readonly slashCommandOptions: SlashCommandOptionsController;
   private readonly notifications: NotificationController;
   private readonly memoryCompact: MemoryCompactController;
+  private readonly contextCompact: ContextCompactController;
+  private readonly imageAttachments: ImageAttachmentController;
+  private readonly informationViewer: InformationViewerController;
+  private readonly modelSelection: ModelSelectionController;
+  private readonly mcpOAuthStatus: McpOAuthStatusController;
   private readonly externalTools: ExternalToolsLifecycleController;
   private readonly hyperlinks: boolean;
   private readonly renderLatex: boolean;
   private readonly renderMermaid: boolean;
   private readonly getLogger: () => Logger;
   private readonly unsubscribeConversationEvents: () => void;
-  private contextCompactingBlock?: TextBlock;
-  private readonly mcpOAuthBlocks = new Map<string, TextBlock>();
-  private clipboardPasteRunning = false;
-  private imageFileAttachRunning = false;
   private stopping = false;
   private stopPromise?: Promise<void>;
   private resolveStopped!: () => void;
@@ -216,15 +102,15 @@ export class KanaTuiApp {
     terminal: Terminal,
     private readonly options: KanaTuiAppOptions,
   ) {
-    const initialSession = options.initialSession;
-    const cleanMode = options.launchMode === "clean";
-    this.getLogger = options.getLogger ?? createNoopLogger;
+    const initialSession = options.conversation.initialSession;
+    const cleanMode = options.launch.mode === "clean";
+    this.getLogger = options.diagnostics?.getLogger ?? createNoopLogger;
     // The config enables the feature but never forces OSC 8 through a terminal
     // that the runtime could not positively identify as hyperlink-capable.
     this.hyperlinks =
-      (options.tuiConfig?.hyperlinks ?? true) && terminal.supportsHyperlinks === true;
-    this.renderLatex = options.tuiConfig?.renderLatex ?? true;
-    this.renderMermaid = options.tuiConfig?.renderMermaid ?? true;
+      (options.ui.config?.hyperlinks ?? true) && terminal.supportsHyperlinks === true;
+    this.renderLatex = options.ui.config?.renderLatex ?? true;
+    this.renderMermaid = options.ui.config?.renderMermaid ?? true;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       initialSession,
       createAgent: ({ configuration, ...agentOptions }) =>
@@ -232,17 +118,17 @@ export class KanaTuiApp {
           ...agentOptions,
           modelSelection: configuration,
         }),
-      createNewSession: options.createNewSession,
-      forkSession: options.forkSession,
-      loadSession: options.loadSession,
-      listSessions: options.listSessions,
-      deleteSession: options.deleteSession,
-      wakeScheduler: options.wakeScheduler,
-      goalMaxRounds: options.goalMaxRounds,
-      getBackgroundJobs: options.getBackgroundJobs,
-      disposeSession: options.disposeSession,
+      createNewSession: options.conversation.createNewSession,
+      forkSession: options.conversation.forkSession,
+      loadSession: options.conversation.loadSession,
+      listSessions: options.conversation.listSessions,
+      deleteSession: options.conversation.deleteSession,
+      wakeScheduler: options.conversation.wakeScheduler,
+      goalMaxRounds: options.conversation.goalMaxRounds,
+      getBackgroundJobs: options.conversation.getBackgroundJobs,
+      disposeSession: options.conversation.disposeSession,
       canStartQueuedRun: () =>
-        !this.running &&
+        !this.status.running &&
         !this.externalTools.loading &&
         !this.mcpServerManager?.active &&
         !this.scheduledMessageManager?.active &&
@@ -251,13 +137,13 @@ export class KanaTuiApp {
       getLogger: this.getLogger,
     });
     this.tui = new Tui(terminal);
-    this.notifications = new NotificationController(options.notification, terminal);
+    this.notifications = new NotificationController(options.ui.notification, terminal);
     this.editor = new Editor({
-      cleanMode: options.launchMode === "clean",
-      collapseLongPastes: options.tuiConfig?.collapseLongPastes ?? true,
+      cleanMode,
+      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
       model: formatStatusModel(
         this.conversation.state.model.metadata,
-        this.options.modelManagement?.getSettings(),
+        this.options.models?.getSettings(),
       ),
     });
     this.queuedInputs = new QueuedInputController((inputs, scheduled) => {
@@ -270,47 +156,62 @@ export class KanaTuiApp {
       main: this.transcript,
       bottom: this.editor,
     });
+    this.bottomArea = new BottomAreaController({
+      layout: this.layout,
+      tui: this.tui,
+      fallback: this.editor,
+    });
+    this.status = new StatusProjectionController({
+      editor: this.editor,
+      getAgentState: () => this.conversation.state,
+    });
+    this.errors = new InteractionErrorReporter({
+      transcript: this.transcript,
+      tui: this.tui,
+      status: this.status,
+    });
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
       tui: this.tui,
       hyperlinks: this.hyperlinks,
       renderLatex: this.renderLatex,
       renderMermaid: this.renderMermaid,
-      smoothTextStreaming: options.tuiConfig?.smoothTextStreaming ?? true,
+      smoothTextStreaming: options.ui.config?.smoothTextStreaming ?? true,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
     this.externalTools = new ExternalToolsLifecycleController({
       transcript: this.transcript,
       tui: this.tui,
-      load: cleanMode ? undefined : this.options.loadExternalTools,
-      reload: cleanMode ? undefined : this.options.mcpManagement?.reloadExternalTools,
+      load: cleanMode ? undefined : this.options.externalTools?.load,
+      reload: cleanMode ? undefined : this.options.externalTools?.mcp?.reload,
       isStopping: () => this.stopping,
       onToolsChanged: () => this.recreateAgentForExternalTools(),
       onReady: () => this.conversation.notifyCanStartQueuedRun(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
-      focusEditor: () => this.tui.setFocus(this.editor),
+      focusEditor: () => this.bottomArea.showFallback(),
+      clearFocus: () => this.bottomArea.clearFocus(),
     });
     this.skillManager = new SkillManagerController({
       editor: this.editor,
-      layout: this.layout,
-      transcript: this.transcript,
-      tui: this.tui,
-      loadSkills: this.options.loadSkills,
-      saveEnabledGlobalSkills: this.options.saveEnabledGlobalSkills,
+      bottomArea: this.bottomArea,
+      loadSkills: this.options.skills.load,
+      saveEnabledGlobalSkills: this.options.skills.saveEnabledGlobalNames,
       onSkillsChanged: () => this.refreshAgentSystemPrompt(),
+      showError: (error) => this.errors.showOverlayError(error),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
-      restoreBottom: (focus) => this.restoreBottom(focus),
     });
-    if (!cleanMode && this.options.mcpManagement) {
+    if (!cleanMode && this.options.externalTools?.mcp) {
+      const mcp = this.options.externalTools.mcp;
       this.mcpServerManager = new McpServerManagerController({
         editor: this.editor,
-        layout: this.layout,
+        bottomArea: this.bottomArea,
         transcript: this.transcript,
         tui: this.tui,
-        loadServers: this.options.mcpManagement.loadServers,
-        saveEnabledServerIds: this.options.mcpManagement.saveEnabledServerIds,
-        authorizeServer: this.options.mcpManagement.authorizeServer,
-        signOutServer: this.options.mcpManagement.signOutServer,
+        loadServers: mcp.loadServers,
+        saveEnabledServerIds: mcp.saveEnabledServerIds,
+        authorizeServer: mcp.authorizeServer,
+        signOutServer: mcp.signOutServer,
+        showError: (error) => this.errors.showOverlayError(error),
         onClose: (changed) => {
           if (changed) {
             void this.externalTools.reload();
@@ -319,75 +220,88 @@ export class KanaTuiApp {
           }
         },
         updateStatus: (phase, extra) => this.updateStatus(phase, extra),
-        restoreBottom: (focus) => this.restoreBottom(focus),
       });
     }
     this.contentViewer = new ContentViewerController({
-      layout: this.layout,
+      bottomArea: this.bottomArea,
       transcript: this.transcript,
-      tui: this.tui,
-      restoreBottom: (focus) => this.restoreBottom(focus),
+    });
+    this.informationViewer = new InformationViewerController({
+      editor: this.editor,
+      contentViewer: this.contentViewer,
+      status: this.status,
+      cleanMode,
+      hyperlinks: this.hyperlinks,
+      renderLatex: this.renderLatex,
+      renderMermaid: this.renderMermaid,
+      loadMemory: this.options.memory.load,
+      loadUsage: this.options.usage.load,
+      renderTodos: (width) => renderTodoState(this.conversation.todoState, width),
+      showError: (error) => this.showInteractionError(error),
     });
     this.toolHistory = new ToolHistoryController({
       editor: this.editor,
-      layout: this.layout,
+      bottomArea: this.bottomArea,
       transcript: this.transcript,
-      tui: this.tui,
       contentViewer: this.contentViewer,
-      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.scheduledMessageManager = new ScheduledMessageManagerController({
       editor: this.editor,
-      layout: this.layout,
+      bottomArea: this.bottomArea,
       tui: this.tui,
       getQueue: () => this.conversation.inputQueue,
       schedule: (afterMinutes, message) => this.conversation.scheduleInput(afterMinutes, message),
       cancel: (id) => this.conversation.cancelScheduledInput(id),
       showError: (error) => this.showInteractionError(error),
-      collapseLongPastes: options.tuiConfig?.collapseLongPastes ?? true,
-      restoreBottom: (focus) => this.restoreBottom(focus),
+      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
     this.backgroundJobManager = new BackgroundJobManagerController({
       editor: this.editor,
-      layout: this.layout,
+      bottomArea: this.bottomArea,
       tui: this.tui,
       getJobs: () => {
         const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.getBackgroundJobs?.(sessionId) : undefined;
+        return sessionId ? this.options.conversation.getBackgroundJobs?.(sessionId) : undefined;
       },
       showError: (error) => this.showInteractionError(error),
-      restoreBottom: (focus) => this.restoreBottom(focus),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
+    });
+    this.modelSelection = new ModelSelectionController({
+      conversation: this.conversation,
+      editor: this.editor,
+      transcript: this.transcript,
+      tui: this.tui,
+      bottomArea: this.bottomArea,
+      status: this.status,
+      showError: (error) => this.showError(error),
+      getLogger: this.getLogger,
     });
     this.slashCommandOptions = new SlashCommandOptionsController({
       editor: this.editor,
-      layout: this.layout,
-      tui: this.tui,
-      onUsageScope: (scope) => this.showUsage(scope),
-      onMemoryShow: (scope) => this.openMemoryViewer(scope),
+      bottomArea: this.bottomArea,
+      onUsageScope: (scope) => this.informationViewer.openUsage(scope),
+      onMemoryShow: (scope) => this.informationViewer.openMemory(scope),
       onMemoryCompact: (scope, request) => {
-        this.restoreBottom(true);
+        this.bottomArea.showFallback();
         void this.memoryCompact.compact(scope, request);
       },
       getApprovalMode: () => this.toolApproval.mode,
       onApprovalModeSelect: (mode) => {
-        this.restoreBottom(true);
+        this.bottomArea.showFallback();
         this.setToolApprovalMode(mode);
       },
-      collapseLongPastes: options.tuiConfig?.collapseLongPastes ?? true,
-      getModelSettings: this.options.modelManagement?.getSettings,
+      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
+      getModelSettings: this.options.models?.getSettings,
       onModelSelect: (selection) => {
-        this.restoreBottom(true);
-        this.switchModel(selection);
+        this.modelSelection.switch(selection);
       },
       showError: (error) => this.showInteractionError(error),
-      restoreBottom: (focus) => this.restoreBottom(focus),
     });
     this.toolApproval = new ToolApprovalController({
       ...options.toolApproval,
       editor: this.editor,
-      layout: this.layout,
+      bottomArea: this.bottomArea,
       tui: this.tui,
       onApprovalRequired: (toolName) => {
         this.updateStatus("tool", {
@@ -396,6 +310,7 @@ export class KanaTuiApp {
         this.notifications.approvalRequired(toolName);
       },
     });
+    this.bottomArea.setFallback(() => this.toolApproval.activePrompt ?? this.editor);
     this.conversation.setBeforeToolExecution(({ toolCall, signal }) =>
       this.showToolApprovalPrompt(toolCall, signal),
     );
@@ -403,10 +318,8 @@ export class KanaTuiApp {
       editor: this.editor,
       transcript: this.transcript,
       tui: this.tui,
-      setRunning: (running) => {
-        this.running = running;
-      },
-      clearRunStatus: () => this.clearAuxiliaryRunStatus(),
+      onRunStart: () => this.status.startRun(),
+      onRunEnd: () => this.finishAuxiliaryRun(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       getLogger: this.getLogger,
     });
@@ -414,24 +327,40 @@ export class KanaTuiApp {
       editor: this.editor,
       transcript: this.transcript,
       tui: this.tui,
-      compactMemory: this.options.compactMemory,
-      setRunning: (running) => {
-        this.running = running;
-      },
-      clearRunStatus: () => this.clearAuxiliaryRunStatus(),
+      compactMemory: this.options.memory.compact,
+      onRunStart: () => this.status.startRun(),
+      onRunEnd: () => this.finishAuxiliaryRun(),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
       getLogger: this.getLogger,
+    });
+    this.contextCompact = new ContextCompactController({
+      transcript: this.transcript,
+      tui: this.tui,
+      canCompact: () => !this.stopping && !this.externalTools.loading,
+      compact: () => this.conversation.compact(),
+    });
+    this.imageAttachments = new ImageAttachmentController({
+      editor: this.editor,
+      tui: this.tui,
+      getModelMetadata: () => this.conversation.state.model.metadata,
+      getModelSettings: this.options.models?.getSettings,
+      showError: (error) => this.showInteractionError(error),
+      getLogger: this.getLogger,
+    });
+    this.mcpOAuthStatus = new McpOAuthStatusController({
+      transcript: this.transcript,
+      tui: this.tui,
     });
     this.sessions = new SessionLifecycleController({
       conversation: this.conversation,
       editor: this.editor,
-      layout: this.layout,
+      bottomArea: this.bottomArea,
       transcript: this.transcript,
       tui: this.tui,
       hyperlinks: this.hyperlinks,
       renderLatex: this.renderLatex,
       renderMermaid: this.renderMermaid,
-      isRunning: () => this.running,
+      isRunning: () => this.status.running,
       closeOtherOverlays: () => {
         this.skillManager.close();
         this.scheduledMessageManager.close();
@@ -440,10 +369,9 @@ export class KanaTuiApp {
       },
       closeContentViewer: () => this.contentViewer.close(),
       resetAgentEvents: () => this.agentEvents.resetRun(),
-      clearMcpOAuthBlocks: () => this.mcpOAuthBlocks.clear(),
+      clearMcpOAuthBlocks: () => this.mcpOAuthStatus.clear(),
       updateContextUsage: () => this.updateContextUsage(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
-      restoreBottom: (focus) => this.restoreBottom(focus),
       showError: (error) => this.showError(error),
       stop: () => {
         void this.stop();
@@ -455,7 +383,7 @@ export class KanaTuiApp {
       savedSessionsAvailable: !cleanMode,
     });
     this.slashCommands = new SlashCommandController({
-      isRunning: () => this.running,
+      isRunning: () => this.status.running,
       stop: () => {
         void this.stop();
       },
@@ -463,11 +391,11 @@ export class KanaTuiApp {
         void this.submitPrompt(raw);
       },
       showError: (error) => this.showInteractionError(error),
-      showHelp: () => this.showHelp(),
+      showHelp: () => this.informationViewer.openHelp(),
       clear: () => {
         this.contentViewer.close();
         this.transcript.clear();
-        this.mcpOAuthBlocks.clear();
+        this.mcpOAuthStatus.clear();
         this.editor.clear();
         this.tui.requestRender();
       },
@@ -535,14 +463,14 @@ export class KanaTuiApp {
         this.openToolHistoryPicker();
       },
       attachImageFile: (path) => {
-        void this.attachImageFile(path);
+        void this.imageAttachments.attachFile(path);
       },
       openApproval: () => this.slashCommandOptions.openApproval(),
       openModel: () => this.slashCommandOptions.openModel(),
       openMemory: () => this.openMemory(),
       compactContext: () => {
         this.editor.clear();
-        void this.compactContext();
+        void this.contextCompact.compact();
       },
       openUsage: () => this.slashCommandOptions.openUsage(),
     });
@@ -554,7 +482,7 @@ export class KanaTuiApp {
 
   start(): void {
     this.getLogger().info("tui.started", {
-      launchMode: this.options.launchMode ?? "normal",
+      launchMode: this.options.launch.mode ?? "normal",
       resumed: this.conversation.sessionId !== undefined,
     });
     void preloadSyntaxHighlighter().then(
@@ -562,10 +490,10 @@ export class KanaTuiApp {
       () => undefined,
     );
 
-    if (!this.options.startInResumePicker) {
-      this.sessions.initializeTranscript(this.options.initialSession?.timeline ?? []);
+    if (!this.options.launch.startInResumePicker) {
+      this.sessions.initializeTranscript(this.options.conversation.initialSession?.timeline ?? []);
     }
-    if (this.options.launchMode === "clean") {
+    if (this.options.launch.mode === "clean") {
       this.transcript.addChild(
         new TextBlock("Clean mode · temporary session; customizations and saving are disabled.", {
           color: tuiTheme.muted,
@@ -574,7 +502,7 @@ export class KanaTuiApp {
     }
 
     this.tui.addChild(this.layout);
-    this.tui.setFocus(this.editor);
+    this.bottomArea.show(this.editor);
     this.tui.addInputListener((data) => this.handleGlobalInput(data));
     this.editor.onSubmit = (submit) => {
       if (submit.type === "command") {
@@ -595,10 +523,10 @@ export class KanaTuiApp {
       }
     };
     this.editor.onPasteClipboard = () => {
-      void this.pasteClipboard();
+      void this.imageAttachments.pasteClipboard();
     };
     this.editor.onEscape = () => {
-      if (this.running) {
+      if (this.status.running) {
         this.abort();
       }
     };
@@ -606,12 +534,12 @@ export class KanaTuiApp {
     this.updateStatus("idle");
     this.tui.start();
 
-    if (this.options.startInResumePicker) {
+    if (this.options.launch.startInResumePicker) {
       this.sessions.openResume();
       return;
     }
 
-    void this.activateCurrentSession(this.options.initialPrompt);
+    void this.activateCurrentSession(this.options.launch.initialPrompt);
   }
 
   stop(): Promise<void> {
@@ -636,54 +564,23 @@ export class KanaTuiApp {
     }
 
     this.shutdownStatus.setText(
-      this.options.onForceStop === undefined
+      this.options.lifecycle?.forceStop === undefined
         ? status
         : `${status}\nPress Ctrl+C again to force quit.`,
     );
     if (!this.transcript.children.includes(this.shutdownStatus)) {
       this.transcript.addChild(this.shutdownStatus);
     }
-    this.tui.setFocus(undefined);
+    this.bottomArea.clearFocus();
     this.tui.requestRender();
   }
 
   showMcpOAuthAuthorization(serverId: string, authorizationUrl: string): void {
-    const block = this.getMcpOAuthBlock(serverId);
-    block.setText(
-      [
-        `Authorizing MCP server ${sanitizeLabel(serverId)} in your browser.`,
-        "If the browser did not open, use this temporary URL:",
-        authorizationUrl,
-      ].join("\n"),
-    );
-    this.tui.requestRender();
+    this.mcpOAuthStatus.showAuthorization(serverId, authorizationUrl);
   }
 
   handleMcpOAuthDiagnostic(serverId: string, diagnostic: McpOAuthHttpDiagnosticEvent): void {
-    const block = this.mcpOAuthBlocks.get(serverId);
-    if (block === undefined) {
-      return;
-    }
-    if (diagnostic.event === "oauth.authorization_succeeded") {
-      block.setText(`MCP OAuth authorized: ${sanitizeLabel(serverId)}.`);
-      this.tui.requestRender();
-    } else if (diagnostic.event === "oauth.authorization_failed") {
-      block.setText(
-        `MCP OAuth authorization failed: ${sanitizeLabel(serverId)}. See logs for details.`,
-      );
-      this.tui.requestRender();
-    }
-  }
-
-  private getMcpOAuthBlock(serverId: string): TextBlock {
-    const existing = this.mcpOAuthBlocks.get(serverId);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const block = new TextBlock("", { color: tuiTheme.muted });
-    this.mcpOAuthBlocks.set(serverId, block);
-    this.transcript.addChild(block);
-    return block;
+    this.mcpOAuthStatus.handleDiagnostic(serverId, diagnostic);
   }
 
   private async stopInternal(): Promise<void> {
@@ -695,11 +592,10 @@ export class KanaTuiApp {
     this.mcpServerManager?.close();
     this.unsubscribeConversationEvents();
     this.showShutdownStatus("Shutting down Kana...");
-    const resumeSessionId = this.options.getResumeSessionId();
+    const resumeSessionId = this.options.conversation.getResumeSessionId();
+    const totalUsage = this.status.formatTotalUsage();
     const exitLines = [
-      this.totalUsage
-        ? formatExitLine("Token usage", formatModelUsage(this.totalUsage))
-        : undefined,
+      totalUsage ? formatExitLine("Token usage", totalUsage) : undefined,
       resumeSessionId ? formatExitLine("Resume", `kana resume ${resumeSessionId}`) : undefined,
     ].filter((line): line is string => Boolean(line));
 
@@ -713,7 +609,7 @@ export class KanaTuiApp {
     }
 
     try {
-      await this.options.onStop?.();
+      await this.options.lifecycle?.stop?.();
     } catch (error) {
       this.getLogger().error("tui.shutdown_failed", { error });
     }
@@ -741,7 +637,7 @@ export class KanaTuiApp {
     if (this.stopping) {
       if (isCtrlC(data)) {
         this.getLogger().warn("tui.force_stop_requested");
-        this.options.onForceStop?.();
+        this.options.lifecycle?.forceStop?.();
       }
       return { consume: true };
     }
@@ -766,14 +662,14 @@ export class KanaTuiApp {
     }
 
     if (isCtrlC(data)) {
-      if (this.running) {
+      if (this.status.running) {
         this.abort();
         return { consume: true };
       }
 
       if (
-        this.layout.isBottom(this.editor) &&
-        this.tui.getFocus() === this.editor &&
+        this.bottomArea.isShowing(this.editor) &&
+        this.bottomArea.hasFocus(this.editor) &&
         this.editor.hasDraft()
       ) {
         this.editor.clear();
@@ -805,110 +701,6 @@ export class KanaTuiApp {
     this.slashCommands.handle(command);
   }
 
-  private switchModel(selection: TuiModelSelection): void {
-    const reasoning = formatTuiReasoningSelection(selection);
-    const logMetadata = {
-      provider: selection.provider,
-      model: selection.model,
-      ...(reasoning ? { reasoningEffort: reasoning } : {}),
-    };
-    this.getLogger().info("tui.model_switch_started", logMetadata);
-
-    try {
-      this.conversation.reconfigure(selection);
-      this.editor.setModel(formatModelSelection(this.conversation.state.model.metadata, reasoning));
-      this.updateContextUsage();
-      this.transcript.addChild(
-        new TextBlock(
-          `Switched to ${formatModelSelection(
-            this.conversation.state.model.metadata,
-            reasoning,
-            true,
-            true,
-          )}.`,
-          { color: tuiTheme.muted },
-        ),
-      );
-      this.updateStatus("idle", { activeTool: undefined });
-      this.getLogger().info("tui.model_switch_completed", logMetadata);
-    } catch (error) {
-      this.getLogger().error("tui.model_switch_failed", {
-        ...logMetadata,
-        error,
-      });
-      this.showError(error);
-    }
-
-    this.tui.setFocus(this.editor);
-    this.tui.requestRender();
-  }
-
-  private openMemoryViewer(target: MemoryScope): void {
-    const memoryTargets =
-      target === "both" ? (["global", "project"] as const) : ([target] as const);
-    const markdown = new MarkdownBlock(
-      memoryTargets
-        .flatMap((memoryTarget, index) => [
-          ...(index > 0 ? [""] : []),
-          `# ${memoryTarget === "global" ? "Global" : "Project"} memory`,
-          "",
-          this.options.loadMemory(memoryTarget).trim() || "No saved memory.",
-        ])
-        .join("\n"),
-      {
-        hyperlinks: this.hyperlinks,
-        renderLatex: this.renderLatex,
-        renderMermaid: this.renderMermaid,
-      },
-    );
-
-    this.contentViewer.open({
-      title: "Memory",
-      render: (contentWidth) => markdown.render(contentWidth),
-    });
-  }
-
-  private showUsage(scope: KanaUsageScope): void {
-    if (this.options.launchMode === "clean" && scope === "session") {
-      this.showInteractionError(new Error("Session usage is unavailable in clean mode."));
-      return;
-    }
-    const summary = this.options.loadUsage(scope);
-    const usage = new UsageSummaryBlock(summary);
-    this.editor.clear();
-    this.contentViewer.open({
-      title: `Usage · ${summary.scope}`,
-      render: (contentWidth) => usage.render(contentWidth),
-    });
-    if (!this.running) {
-      this.updateStatus("idle", { activeTool: undefined });
-    }
-  }
-
-  private showHelp(): void {
-    const help = new TextBlock(
-      [
-        ...PROMPT_COMMANDS.map(formatPromptCommandHelpLine),
-        "",
-        PROMPT_SHORTCUTS_TITLE,
-        "",
-        ...PROMPT_SHORTCUTS.map(formatPromptShortcutHelpLine),
-      ].join("\n"),
-      { color: tuiTheme.muted },
-    );
-
-    this.editor.clear();
-    this.contentViewer.open({
-      title: PROMPT_HELP_TITLE,
-      render: (contentWidth) => help.render(contentWidth),
-    });
-    if (!this.running) {
-      this.updateStatus("idle", {
-        activeTool: undefined,
-      });
-    }
-  }
-
   private async forkSession(prompt: string): Promise<void> {
     await this.sessions.fork(prompt);
   }
@@ -918,11 +710,11 @@ export class KanaTuiApp {
   }
 
   private openSkillManager(): void {
-    if (this.options.launchMode === "clean") {
+    if (this.options.launch.mode === "clean") {
       this.showError(new Error("Skills are unavailable in clean mode."));
       return;
     }
-    if (this.running) {
+    if (this.status.running) {
       return;
     }
 
@@ -935,11 +727,11 @@ export class KanaTuiApp {
   }
 
   private openMcpServerManager(): void {
-    if (this.options.launchMode === "clean") {
+    if (this.options.launch.mode === "clean") {
       this.showError(new Error("MCP management is unavailable in clean mode."));
       return;
     }
-    if (this.running) {
+    if (this.status.running) {
       return;
     }
     if (!this.mcpServerManager) {
@@ -994,14 +786,11 @@ export class KanaTuiApp {
     this.scheduledMessageManager.close();
     this.backgroundJobManager.close();
     this.toolHistory.close();
-    this.contentViewer.open({
-      title: "Todos",
-      render: (width) => renderTodoState(this.conversation.todoState, width),
-    });
+    this.informationViewer.openTodos();
   }
 
   private openMemory(): void {
-    if (this.options.launchMode === "clean") {
+    if (this.options.launch.mode === "clean") {
       this.editor.clear();
       this.showError(new Error("Memory is unavailable in clean mode."));
       return;
@@ -1021,7 +810,7 @@ export class KanaTuiApp {
   private handleConversationEvent(event: ConversationRuntimeEvent): void {
     switch (event.type) {
       case "run_start":
-        this.running = true;
+        this.status.startRun();
         this.agentEvents.resetRun();
         if (event.source === "user" && event.input) {
           this.transcript.addChild(new UserMessageBlock(event.input));
@@ -1051,9 +840,8 @@ export class KanaTuiApp {
         break;
 
       case "agent_event":
-        if (event.event.type === "context_compacted" && this.contextCompactingBlock !== undefined) {
-          this.transcript.removeChild(this.contextCompactingBlock);
-          this.contextCompactingBlock = undefined;
+        if (event.event.type === "context_compacted") {
+          this.contextCompact.handleCompacted();
         }
         if (event.event.type === "turn_input") {
           this.queuedInputs.deliverTurn(event.event.message);
@@ -1063,12 +851,12 @@ export class KanaTuiApp {
           this.notifications.handleAgentEvent(event.event);
         }
         if (event.event.type === "message_end") {
-          this.recordUsage(event.event.message.usage);
+          this.status.recordUsage(event.event.message.usage);
         } else if (event.event.type === "turn_end") {
           this.updateContextUsage(event.event.estimatedContextTokens);
           this.tui.requestRender();
         } else if (event.event.type === "context_compacted") {
-          this.recordUsage(event.event.usage);
+          this.status.recordUsage(event.event.usage);
         }
         break;
 
@@ -1116,12 +904,7 @@ export class KanaTuiApp {
   }
 
   private finishConversationRun(): void {
-    this.running = false;
-    this.updateContextUsage();
-    this.editor.updateStatus({
-      running: false,
-      activeTool: undefined,
-    });
+    this.status.finishRun(true);
     this.tui.requestRender();
   }
 
@@ -1148,23 +931,11 @@ export class KanaTuiApp {
   }
 
   private showError(error: unknown): void {
-    this.addErrorBlock(error);
-    this.updateStatus("error");
+    this.errors.showRunError(error);
   }
 
   private showInteractionError(error: unknown): void {
-    this.addErrorBlock(error);
-    if (!this.running) {
-      this.updateStatus("error");
-    }
-  }
-
-  private addErrorBlock(error: unknown): void {
-    this.transcript.addChild(
-      new TextBlock(error instanceof Error ? error.message : String(error), {
-        color: tuiTheme.error,
-      }),
-    );
+    this.errors.showInteractionError(error);
   }
 
   private async submitPrompt(value: string, images: UserImage[] = []): Promise<void> {
@@ -1173,7 +944,7 @@ export class KanaTuiApp {
     if (!prompt && images.length === 0) {
       return;
     }
-    const imageInputError = this.getImageInputError(images);
+    const imageInputError = this.imageAttachments.getInputError(images);
     if (imageInputError) {
       this.showInteractionError(imageInputError);
       return;
@@ -1194,7 +965,7 @@ export class KanaTuiApp {
       }
       return;
     }
-    if (this.running) {
+    if (this.status.running) {
       return;
     }
 
@@ -1208,7 +979,7 @@ export class KanaTuiApp {
     if ((!prompt && images.length === 0) || !this.conversation.canSteer) {
       return;
     }
-    const imageInputError = this.getImageInputError(images);
+    const imageInputError = this.imageAttachments.getInputError(images);
     if (imageInputError) {
       this.showInteractionError(imageInputError);
       return;
@@ -1222,110 +993,6 @@ export class KanaTuiApp {
     this.editor.addToHistory(prompt);
     this.editor.clear();
     this.conversation.queueInput(input);
-  }
-
-  private async pasteClipboard(): Promise<void> {
-    if (this.clipboardPasteRunning) {
-      return;
-    }
-
-    this.clipboardPasteRunning = true;
-    try {
-      const image = await readClipboardImage();
-      if (image) {
-        const imageInputError = this.getImageInputError([image]);
-        if (imageInputError) {
-          throw imageInputError;
-        }
-        this.editor.attachImage(image);
-        try {
-          this.getLogger().debug("tui.clipboard_paste_completed", {
-            contentType: "image",
-            mimeType: image.mimeType,
-            width: image.width,
-            height: image.height,
-          });
-        } catch {
-          // Clipboard diagnostics must not change attachment behavior.
-        }
-        return;
-      }
-
-      throw new Error("The clipboard does not contain an image.");
-    } catch (error) {
-      try {
-        this.getLogger().warn("tui.clipboard_paste_failed", {
-          platform: process.platform,
-          errorType: error instanceof Error ? error.name : typeof error,
-        });
-      } catch {
-        // Clipboard diagnostics must not replace the user-facing failure.
-      }
-      this.showInteractionError(error);
-    } finally {
-      this.clipboardPasteRunning = false;
-      this.tui.requestRender();
-    }
-  }
-
-  private async attachImageFile(path: string): Promise<void> {
-    if (this.imageFileAttachRunning) {
-      return;
-    }
-
-    this.imageFileAttachRunning = true;
-    try {
-      const imageInputError = this.getImageInputAvailabilityError();
-      if (imageInputError) {
-        throw imageInputError;
-      }
-      const image = await loadUserImageFile(path);
-      this.editor.attachImage(image);
-      this.editor.setText("");
-      try {
-        this.getLogger().debug("tui.image_file_attach_completed", {
-          mimeType: image.mimeType,
-          width: image.width,
-          height: image.height,
-        });
-      } catch {
-        // Image diagnostics must not change attachment behavior.
-      }
-    } catch (error) {
-      try {
-        this.getLogger().warn("tui.image_file_attach_failed", {
-          errorType: error instanceof Error ? error.name : typeof error,
-        });
-      } catch {
-        // Image diagnostics must not replace the user-facing failure.
-      }
-      this.showInteractionError(error);
-    } finally {
-      this.imageFileAttachRunning = false;
-      this.tui.requestRender();
-    }
-  }
-
-  private getImageInputError(images: readonly UserImage[]): Error | undefined {
-    if (images.length === 0) {
-      return undefined;
-    }
-
-    return this.getImageInputAvailabilityError();
-  }
-
-  private getImageInputAvailabilityError(): Error | undefined {
-    const metadata = this.conversation.state.model.metadata;
-    if (metadata.supportsImageInput !== true) {
-      return new Error(`Model ${metadata.model} does not support image input.`);
-    }
-
-    const settings = this.options.modelManagement?.getSettings();
-    if (!settings || settings.activeProvider !== metadata.provider) {
-      return undefined;
-    }
-    const enabled = settings.model[settings.activeProvider].imageInputEnabled;
-    return enabled ? undefined : new Error("Image input is disabled by the active Agent policy.");
   }
 
   private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {
@@ -1355,46 +1022,18 @@ export class KanaTuiApp {
     }
   }
 
-  private async compactContext(): Promise<void> {
-    if (this.stopping || this.externalTools.loading) {
-      return;
-    }
-
-    const compactingBlock = new TextBlock("Compacting context…", {
-      color: tuiTheme.muted,
-    });
-    this.contextCompactingBlock = compactingBlock;
-    this.transcript.addChild(compactingBlock);
-    this.tui.requestRender();
-
-    try {
-      await this.conversation.compact();
-    } catch {
-      // The runtime publishes run_error before rejecting the compact promise.
-    } finally {
-      this.transcript.removeChild(compactingBlock);
-      if (this.contextCompactingBlock === compactingBlock) {
-        this.contextCompactingBlock = undefined;
-      }
-      this.tui.requestRender();
-    }
-  }
-
   private async submitShellCommand(command: string): Promise<void> {
     const shellCommand = command.trim();
 
-    if (!shellCommand || this.running || this.externalTools.loading) {
+    if (!shellCommand || this.status.running || this.externalTools.loading) {
       return;
     }
 
     await this.localShell.submit(shellCommand);
   }
 
-  private clearAuxiliaryRunStatus(): void {
-    this.editor.updateStatus({
-      running: false,
-      activeTool: undefined,
-    });
+  private finishAuxiliaryRun(): void {
+    this.status.finishRun();
     this.conversation.notifyCanStartQueuedRun();
   }
 
@@ -1406,67 +1045,13 @@ export class KanaTuiApp {
     return this.toolApproval.request(toolCall, signal);
   }
 
-  private restoreBottom(focus: boolean): void {
-    const bottom = this.toolApproval.activePrompt ?? this.editor;
-
-    this.layout.showBottom(bottom);
-    if (focus) {
-      this.tui.setFocus(bottom);
-    }
-    this.tui.requestRender();
-  }
-
-  private updateStatus(phase: RunPhase, extra: Partial<StatusLineState> = {}): void {
-    this.editor.updateStatus({
-      phase,
-      running: this.running,
-      ...extra,
-    });
-  }
-
-  private recordUsage(usage: ModelUsage | undefined): void {
-    if (!usage) {
-      return;
-    }
-
-    this.totalUsage = addModelUsage(this.totalUsage, usage);
+  private updateStatus(...args: Parameters<StatusProjectionController["update"]>): void {
+    this.status.update(...args);
   }
 
   private updateContextUsage(estimatedTokens?: number): void {
-    const state = this.conversation.state;
-    this.editor.updateStatus({
-      contextUsedPercent: calculateContextUsedPercent(
-        estimatedTokens ?? state.estimatedContextTokens,
-        state.contextLimit ?? state.model.metadata.contextWindow,
-      ),
-    });
+    this.status.updateContextUsage(estimatedTokens);
   }
-}
-
-function formatModelName(metadata: ModelMetadata): string {
-  return `${metadata.provider}/${metadata.model}`;
-}
-
-function formatStatusModel(metadata: ModelMetadata, settings?: TuiModelSettings): string {
-  if (!settings || settings.activeProvider !== metadata.provider) {
-    return metadata.model;
-  }
-
-  const model = settings.model[settings.activeProvider];
-  if (model.name !== metadata.model || model.reasoningEffort === undefined) {
-    return metadata.model;
-  }
-  return `${metadata.model} · ${model.reasoningEffort === "none" ? "off" : model.reasoningEffort}`;
-}
-
-function formatModelSelection(
-  metadata: ModelMetadata,
-  reasoning: string | undefined,
-  includeProvider = false,
-  labelReasoning = false,
-): string {
-  const model = includeProvider ? formatModelName(metadata) : metadata.model;
-  return reasoning ? `${model} · ${labelReasoning ? "reasoning " : ""}${reasoning}` : model;
 }
 
 function formatScheduledWakeContent(content: string): string {
@@ -1477,34 +1062,6 @@ function formatBackgroundJobWakeContent(content: string): string {
   return content.replace(/^\[Background Job completion\]\n?/, "");
 }
 
-function sanitizeLabel(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
-}
-
 function formatExitLine(label: string, value: string): string {
   return `${`${label}:`.padEnd(13)}${value}`;
-}
-
-function formatModelUsage(usage: ModelUsage): string {
-  const cachedTokens = usage.promptCacheHitTokens ?? 0;
-  const inputTokens = usage.promptCacheMissTokens ?? Math.max(0, usage.promptTokens - cachedTokens);
-  const totalTokens = usage.totalTokens;
-
-  return [
-    `total=${formatInteger(totalTokens)}`,
-    `input=${formatInteger(inputTokens)}`,
-    cachedTokens > 0 ? `(+ ${formatInteger(cachedTokens)} cached)` : undefined,
-    `output=${formatInteger(usage.completionTokens)}`,
-    usage.reasoningTokens === undefined
-      ? undefined
-      : `(reasoning ${formatInteger(usage.reasoningTokens)})`,
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join(" ");
-}
-
-function formatInteger(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(value);
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../../src/tui/app/app-layout";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { ContentViewerController } from "../../src/tui/app/content-viewer-controller";
 import {
   type ContentViewer,
@@ -263,15 +264,8 @@ describe("tool detail inspector controller", () => {
       bottom: editor,
     });
     const controller = new ContentViewerController({
-      layout,
+      bottomArea: new BottomAreaController({ layout, tui, fallback: prompt }),
       transcript,
-      tui,
-      restoreBottom: (focus) => {
-        layout.showBottom(prompt);
-        if (focus) {
-          tui.setFocus(prompt);
-        }
-      },
     });
 
     expect(controller.openLatest()).toBe(true);
@@ -538,15 +532,8 @@ function createController(transcript: Transcript): {
     bottom: editor,
   });
   const controller = new ContentViewerController({
-    layout,
+    bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
     transcript,
-    tui,
-    restoreBottom: (focus) => {
-      layout.showBottom(editor);
-      if (focus) {
-        tui.setFocus(editor);
-      }
-    },
   });
 
   return {

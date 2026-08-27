@@ -18,6 +18,7 @@ export type ExternalToolsLifecycleControllerOptions = {
   onReady: () => void;
   updateStatus: (phase: RunPhase) => void;
   focusEditor: () => void;
+  clearFocus: () => void;
 };
 
 export class ExternalToolsLifecycleController {
@@ -129,7 +130,7 @@ export class ExternalToolsLifecycleController {
     this.loadingOperation = loadingOperation;
     this.options.transcript.addChild(new TextBlock(message, { color: tuiTheme.muted }));
     this.options.updateStatus("starting");
-    this.options.tui.setFocus(undefined);
+    this.options.clearFocus();
     this.options.tui.requestRender();
     return loadingOperation;
   }

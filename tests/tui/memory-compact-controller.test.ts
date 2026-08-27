@@ -24,8 +24,8 @@ describe("memory compact controller", () => {
       editor,
       transcript: new Transcript(),
       tui: new Tui(new FakeTerminal()),
-      setRunning() {},
-      clearRunStatus() {},
+      onRunStart() {},
+      onRunEnd() {},
       updateStatus() {},
       compactMemory: async (scope, request) => {
         compactCalls.push({ scope, request });

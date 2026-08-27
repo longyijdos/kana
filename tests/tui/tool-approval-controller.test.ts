@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../../src/tui/app/app-layout";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { ContentViewerController } from "../../src/tui/app/content-viewer-controller";
 import { ToolApprovalController } from "../../src/tui/app/tool-approval-controller";
 import { type Editor, Transcript } from "../../src/tui/components";
@@ -23,6 +24,8 @@ describe("tool approval controller", () => {
       main: new LinesComponent(["transcript"]),
       bottom: editor,
     });
+    const tui = createTuiStub();
+    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
     const controller = new ToolApprovalController({
       config: { mode: "unless_trusted" },
       approvals: {
@@ -30,10 +33,11 @@ describe("tool approval controller", () => {
         bash: { exactCommands: [], readOnlyCommands: [] },
       },
       editor,
-      layout,
-      tui: createTuiStub(),
+      bottomArea,
+      tui,
       onApprovalRequired: () => {},
     });
+    bottomArea.setFallback(() => controller.activePrompt ?? editor);
     const trustedRead = {
       type: "tool_call" as const,
       id: "call_read",
@@ -69,6 +73,7 @@ describe("tool approval controller", () => {
       bottom: editor,
     });
     const tui = createTuiStub();
+    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
     const shownTools: string[] = [];
     const controller = new ToolApprovalController({
       config: { mode: "always" },
@@ -80,12 +85,13 @@ describe("tool approval controller", () => {
         },
       },
       editor,
-      layout,
+      bottomArea,
       tui,
       onApprovalRequired: (toolName) => {
         shownTools.push(toolName);
       },
     });
+    bottomArea.setFallback(() => controller.activePrompt ?? editor);
 
     const result = controller.request(createToolCall(), undefined);
 
@@ -108,6 +114,7 @@ describe("tool approval controller", () => {
       bottom: editor,
     });
     const tui = createTuiStub();
+    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
     const shownTools: string[] = [];
     const controller = new ToolApprovalController({
       config: { mode: "always" },
@@ -119,24 +126,16 @@ describe("tool approval controller", () => {
         },
       },
       editor,
-      layout,
+      bottomArea,
       tui,
       onApprovalRequired: (toolName) => {
         shownTools.push(toolName);
       },
     });
+    bottomArea.setFallback(() => controller.activePrompt ?? editor);
     const viewer = new ContentViewerController({
-      layout,
+      bottomArea,
       transcript: new Transcript(),
-      tui,
-      restoreBottom: (focus) => {
-        const bottom = controller.activePrompt ?? editor;
-
-        layout.showBottom(bottom);
-        if (focus) {
-          tui.setFocus(bottom);
-        }
-      },
     });
 
     viewer.open({
@@ -167,6 +166,7 @@ describe("tool approval controller", () => {
       bottom: editor,
     });
     const tui = createTuiStub();
+    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
     const controller = new ToolApprovalController({
       config: { mode: "unless_trusted" },
       approvals: {
@@ -174,7 +174,7 @@ describe("tool approval controller", () => {
         bash: { exactCommands: [], readOnlyCommands: [] },
       },
       editor,
-      layout,
+      bottomArea,
       tui,
       resolveToolSource: (toolName) =>
         toolName === "github_create_issue"
@@ -182,6 +182,7 @@ describe("tool approval controller", () => {
           : undefined,
       onApprovalRequired: () => {},
     });
+    bottomArea.setFallback(() => controller.activePrompt ?? editor);
 
     const result = controller.request(
       {

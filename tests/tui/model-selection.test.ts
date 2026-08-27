@@ -65,7 +65,7 @@ describe("TUI model selection", () => {
       createTerminal(),
       {
         ...createOptions(),
-        modelManagement: {
+        models: {
           getSettings: () => ({
             ...management,
             providers: [{ value: "deepseek", label: "Product DeepSeek" }],
@@ -95,6 +95,7 @@ describe("TUI model selection", () => {
     const calls: AgentFactoryOptions[] = [];
     const agents: AgentStub[] = [];
     const logEvents: string[] = [];
+    const appOptions = createOptions();
     const app = new KanaTuiApp(
       (options) => {
         calls.push(options);
@@ -109,13 +110,16 @@ describe("TUI model selection", () => {
       },
       createTerminal(),
       {
-        ...createOptions(),
-        initialSession: {
-          id: "session",
-          messages,
-          timeline: [],
+        ...appOptions,
+        conversation: {
+          ...appOptions.conversation,
+          initialSession: {
+            id: "session",
+            messages,
+            timeline: [],
+          },
         },
-        getLogger: () => createLogger(logEvents),
+        diagnostics: { getLogger: () => createLogger(logEvents) },
       },
     );
     const internal = app as unknown as AppInternals;
@@ -195,7 +199,7 @@ describe("TUI model selection", () => {
       createTerminal(),
       {
         ...createOptions(),
-        modelManagement: {
+        models: {
           getSettings: () => ({
             ...management,
             providers: [{ value: "custom", label: "Custom" }],
@@ -250,7 +254,7 @@ describe("TUI model selection", () => {
       createTerminal(),
       {
         ...createOptions(),
-        modelManagement: {
+        models: {
           getSettings: () => ({
             ...management,
             providers: [{ value: "custom", label: "Custom" }],
@@ -296,7 +300,7 @@ describe("TUI model selection", () => {
       createTerminal(),
       {
         ...createOptions(),
-        getLogger: () => createLogger(logEvents),
+        diagnostics: { getLogger: () => createLogger(logEvents) },
       },
     );
     const internal = app as unknown as AppInternals;
@@ -393,41 +397,50 @@ function createAgentStub(options: {
 function createOptions() {
   const settings = structuredClone(DEFAULT_KANA_CONFIG);
   return {
-    getResumeSessionId: () => undefined,
-    createNewSession: () => ({ id: "new" }),
-    forkSession: () => ({ id: "fork" }),
-    listSessions: () => [],
-    loadSession: () => ({ id: "session", messages: [], timeline: [] }),
-    deleteSession: () => false,
-    loadSkills: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
-    saveEnabledGlobalSkills: () => {},
+    launch: {},
+    conversation: {
+      getResumeSessionId: () => undefined,
+      createNewSession: () => ({ id: "new" }),
+      forkSession: () => ({ id: "fork" }),
+      listSessions: () => [],
+      loadSession: () => ({ id: "session", messages: [], timeline: [] }),
+      deleteSession: () => false,
+      goalMaxRounds: settings.agent.goalMaxRounds,
+    },
+    skills: {
+      load: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
+      saveEnabledGlobalNames: () => {},
+    },
     toolApproval: { config: {}, approvals: {} } as never,
-    notification: {} as never,
-    goalMaxRounds: settings.agent.goalMaxRounds,
-    compactMemory: async () => [],
-    loadMemory: () => "",
-    loadUsage: () => ({
-      scope: "session" as const,
-      runCount: 0,
-      mainRunCount: 0,
-      memoryRunCount: 0,
-      outcomes: {
-        stop: 0,
-        length: 0,
-        aborted: 0,
-        error: 0,
-        turn_limit: 0,
-        updated: 0,
-        unchanged: 0,
-      },
-      agents: {
-        main: { runCount: 0 },
-        memoryAutomatic: { runCount: 0 },
-        memoryManual: { runCount: 0 },
-      },
-      models: [],
-    }),
-    modelManagement: {
+    ui: { notification: {} as never },
+    memory: {
+      compact: async () => [],
+      load: () => "",
+    },
+    usage: {
+      load: () => ({
+        scope: "session" as const,
+        runCount: 0,
+        mainRunCount: 0,
+        memoryRunCount: 0,
+        outcomes: {
+          stop: 0,
+          length: 0,
+          aborted: 0,
+          error: 0,
+          turn_limit: 0,
+          updated: 0,
+          unchanged: 0,
+        },
+        agents: {
+          main: { runCount: 0 },
+          memoryAutomatic: { runCount: 0 },
+          memoryManual: { runCount: 0 },
+        },
+        models: [],
+      }),
+    },
+    models: {
       getSettings: () => getKanaModelManagement(settings),
     },
   };

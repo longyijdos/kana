@@ -1,12 +1,9 @@
 import { type ContentView, ContentViewer, ToolCallBlock, type Transcript } from "../components";
-import type { Tui } from "../runtime";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 
 export type ContentViewerControllerOptions = {
-  layout: AppLayout;
+  bottomArea: BottomAreaController;
   transcript: Transcript;
-  tui: Tui;
-  restoreBottom: (focus: boolean) => void;
 };
 
 export class ContentViewerController {
@@ -79,19 +76,11 @@ export class ContentViewerController {
     }
 
     const viewer = this.activeViewer;
-    const wasVisible = this.options.layout.isBottom(viewer);
-    const restoreFocus = this.options.tui.getFocus() === viewer;
+    const restoreFocus = this.options.bottomArea.hasFocus(viewer);
 
     this.activeViewer = undefined;
     this.activeToolId = undefined;
-
-    // A viewer that was already replaced must not overwrite the newer bottom view.
-    if (wasVisible) {
-      this.options.restoreBottom(restoreFocus);
-      return;
-    }
-
-    this.options.tui.requestRender();
+    this.options.bottomArea.restore(viewer, restoreFocus);
   }
 
   // Tool-to-tool navigation replaces the bottom viewer directly: the editor
@@ -115,9 +104,7 @@ export class ContentViewerController {
     });
 
     this.activeViewer = viewer;
-    this.options.layout.showBottom(viewer);
-    this.options.tui.setFocus(viewer);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(viewer);
   }
 
   private navigateTool(direction: -1 | 1): boolean {

@@ -6,17 +6,14 @@ import {
   type ToolHistoryPickerDecision,
   type Transcript,
 } from "../components";
-import type { Tui } from "../runtime";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 import type { ContentViewerController } from "./content-viewer-controller";
 
 export type ToolHistoryControllerOptions = {
   editor: Editor;
-  layout: AppLayout;
+  bottomArea: BottomAreaController;
   transcript: Transcript;
-  tui: Tui;
   contentViewer: ContentViewerController;
-  restoreBottom: (focus: boolean) => void;
 };
 
 // /tools: a browsable picker over the current transcript's tool calls. It
@@ -44,9 +41,7 @@ export class ToolHistoryController {
     });
 
     this.activePicker = picker;
-    this.options.layout.showBottom(picker);
-    this.options.tui.setFocus(picker);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(picker);
   }
 
   close(): void {
@@ -54,13 +49,10 @@ export class ToolHistoryController {
       return;
     }
 
-    const wasVisible = this.options.layout.isBottom(this.activePicker);
-    const restoreFocus = this.options.tui.getFocus() === this.activePicker;
+    const restoreFocus = this.options.bottomArea.hasFocus(this.activePicker);
+    const picker = this.activePicker;
     this.activePicker = undefined;
-
-    if (wasVisible) {
-      this.options.restoreBottom(restoreFocus);
-    }
+    this.options.bottomArea.restore(picker, restoreFocus);
   }
 
   private finish(decision: ToolHistoryPickerDecision): void {
@@ -73,12 +65,12 @@ export class ToolHistoryController {
     // editor intermediate frame, no restore-then-replace layout churn. The
     // inspector only gets the stable id; it re-resolves the block itself.
     const picker = this.activePicker;
-    const wasVisible = picker !== undefined && this.options.layout.isBottom(picker);
-    const hadFocus = picker !== undefined && this.options.tui.getFocus() === picker;
+    const wasVisible = picker !== undefined && this.options.bottomArea.isShowing(picker);
+    const hadFocus = picker !== undefined && this.options.bottomArea.hasFocus(picker);
     this.relinquish();
 
-    if (!this.options.contentViewer.openTool(decision.toolCallId) && wasVisible) {
-      this.options.restoreBottom(hadFocus);
+    if (!this.options.contentViewer.openTool(decision.toolCallId) && wasVisible && picker) {
+      this.options.bottomArea.restore(picker, hadFocus);
     }
   }
 

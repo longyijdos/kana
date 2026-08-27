@@ -6,7 +6,7 @@ import type {
 import { type Editor, TextBlock, type Transcript, WelcomeBlock } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 import { addHistoryTimelineToTranscript } from "./history";
 import type { TuiModelSelection } from "./model-selection";
 import { SessionOverlayController } from "./session-overlay-controller";
@@ -16,7 +16,7 @@ import { WELCOME_LOGO_LINES } from "./welcome-logo";
 export type SessionLifecycleControllerOptions = {
   conversation: ConversationRuntime<TuiModelSelection>;
   editor: Editor;
-  layout: AppLayout;
+  bottomArea: BottomAreaController;
   transcript: Transcript;
   tui: Tui;
   hyperlinks?: boolean;
@@ -29,7 +29,6 @@ export type SessionLifecycleControllerOptions = {
   clearMcpOAuthBlocks: () => void;
   updateContextUsage: () => void;
   updateStatus: (phase: RunPhase) => void;
-  restoreBottom: (focus: boolean) => void;
   showError: (error: unknown) => void;
   stop: () => void;
   submitPrompt: (prompt: string) => Promise<void>;
@@ -43,9 +42,8 @@ export class SessionLifecycleController {
   constructor(private readonly options: SessionLifecycleControllerOptions) {
     this.overlay = new SessionOverlayController({
       editor: options.editor,
-      layout: options.layout,
+      bottomArea: options.bottomArea,
       transcript: options.transcript,
-      tui: options.tui,
       listSessions: () => options.conversation.listSessions(),
       deleteSession: (sessionId) => options.conversation.deleteSession(sessionId),
       hasCurrentSession: () => options.conversation.sessionId !== undefined,
@@ -55,7 +53,6 @@ export class SessionLifecycleController {
       onStop: options.stop,
       onError: options.showError,
       updateStatus: (phase) => options.updateStatus(phase),
-      restoreBottom: options.restoreBottom,
     });
   }
 
@@ -167,8 +164,7 @@ export class SessionLifecycleController {
     } catch (error) {
       this.options.showError(error);
       this.overlay.close();
-      this.options.tui.setFocus(this.options.editor);
-      this.options.tui.requestRender();
+      this.options.bottomArea.showFallback();
       return;
     }
 
@@ -181,8 +177,7 @@ export class SessionLifecycleController {
     this.initializeTranscript(session.timeline);
     this.options.updateContextUsage();
     this.options.updateStatus("idle");
-    this.options.tui.setFocus(this.options.editor);
-    this.options.tui.requestRender();
+    this.options.bottomArea.showFallback();
     this.options.activateSession();
   }
 }

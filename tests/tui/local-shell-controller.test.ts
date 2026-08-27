@@ -33,8 +33,8 @@ describe("local shell controller", () => {
       editor,
       transcript,
       tui: new Tui(new FakeTerminal()),
-      setRunning() {},
-      clearRunStatus() {},
+      onRunStart() {},
+      onRunEnd() {},
       updateStatus() {},
     });
 

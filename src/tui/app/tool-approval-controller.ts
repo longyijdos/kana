@@ -11,13 +11,13 @@ import {
 import { type Editor, ToolApproval, type ToolApprovalDecision } from "../components";
 import type { Component, Tui } from "../runtime";
 import type { ToolApprovalSource } from "../tools";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 
 export type ToolApprovalControllerOptions = {
   config: KanaToolApprovalConfig;
   approvals: KanaToolApprovals;
   editor: Editor;
-  layout: AppLayout;
+  bottomArea: BottomAreaController;
   tui: Tui;
   resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
   onApprovalRequired: (toolName: string) => void;
@@ -77,19 +77,13 @@ export class ToolApprovalController {
         const finishedApproval = approval;
 
         if (finishedApproval) {
-          if (this.options.layout.isBottom(finishedApproval)) {
-            this.options.layout.showBottom(this.options.editor);
-          }
+          const restoreFocus = this.options.bottomArea.hasFocus(finishedApproval);
           if (this.activeApproval === finishedApproval) {
             this.activeApproval = undefined;
           }
           approval = undefined;
+          this.options.bottomArea.restore(finishedApproval, restoreFocus);
         }
-
-        if (this.options.tui.getFocus() === finishedApproval) {
-          this.options.tui.setFocus(this.options.editor);
-        }
-        this.options.tui.requestRender();
 
         if (decision === "always" && bashCommand !== undefined) {
           this.approvals = addTrustedBashCommand(bashCommand);
@@ -121,9 +115,8 @@ export class ToolApprovalController {
       });
       this.activeApproval = approval;
       // Keep another bottom view in place; the approval notification announces this pending prompt.
-      if (this.options.layout.isBottom(this.options.editor)) {
-        this.options.layout.showBottom(approval);
-        this.options.tui.setFocus(approval);
+      if (this.options.bottomArea.isShowing(this.options.editor)) {
+        this.options.bottomArea.show(approval);
       }
       signal?.addEventListener("abort", handleAbort, { once: true });
       this.options.onApprovalRequired(toolCall.name);

@@ -138,7 +138,11 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 
 ## 控制器与焦点
 
-独立 controller 保持 `KanaTuiApp` 不必承载每个交互状态机：
+`KanaTuiApp` 是装配和路由层。它的构造契约按启动、对话、Skill、审批、UI、记忆、用量、模型、外部工具、诊断和生命周期能力分组，因此控制器只接收自己使用的边界。独立 controller 持有各自的交互状态机：
+
+- `BottomAreaController` 是改变底部组件与焦点的唯一边界。视图仅在自己仍持有可见底部时恢复动态 fallback，避免过期的关闭操作覆盖更新的视图。fallback 会优先解析为等待中的审批提示，否则才是编辑器。
+- `StatusProjectionController` 持有活动 run 状态、进程用量总计、context 占用和 editor 状态更新。`InteractionErrorReporter` 按运行中或空闲状态投影对应错误，无需各流程重复这些规则。
+- `ContextCompactController`、`ImageAttachmentController`、`McpOAuthStatusController`、`ModelSelectionController` 和 `InformationViewerController` 持有各自的异步或多步 UI 状态，App 只负责启动流程或路由事件。
 
 - `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有追加式生命周期输出、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
 - `QueuedInputController` 只在本地保留当前 run 的 `next turn` 乐观预览；权威的 `next-step`、`next-turn`、到期 `scheduled` 和未来 wake 状态都投影自 `ConversationRuntime` 快照。输入被接受或 deferred 后，controller 按原有 `MessageId` 对齐该预览，即使正文完全相同也不会混淆。

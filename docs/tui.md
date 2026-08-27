@@ -138,7 +138,11 @@ In clean mode, `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, and `/delete` r
 
 ## Controllers and focus
 
-Separate controllers keep `KanaTuiApp` from owning every interaction state machine:
+`KanaTuiApp` is the composition and routing layer. Its constructor contract groups launch, conversation, Skill, approval, UI, memory, usage, model, external-tool, diagnostics, and lifecycle capabilities, so controllers receive only the boundaries they use. Separate controllers own the interaction state machines:
+
+- `BottomAreaController` is the only boundary that changes the bottom component and focus. A view restores the dynamic fallback only if it still owns the visible bottom, preventing a stale close from replacing a newer view. The fallback resolves to a waiting approval prompt before the editor.
+- `StatusProjectionController` owns active-run state, process usage totals, context occupancy, and editor status updates. `InteractionErrorReporter` applies the matching running or idle error projection without making each workflow reproduce those rules.
+- `ContextCompactController`, `ImageAttachmentController`, `McpOAuthStatusController`, `ModelSelectionController`, and `InformationViewerController` own their asynchronous or multi-step UI state while the app only starts them or routes their events.
 
 - `ExternalToolsLifecycleController` handles both initial external-tool loading after the session becomes visible and later MCP reloads. It owns append-only lifecycle output and input disable/restore state, and requests Agent rebuilding through an app callback when the tool set changes.
 - `QueuedInputController` keeps only optimistic previews for current-run `next turn` input. It projects the authoritative `next-step`, `next-turn`, due `scheduled`, and future-wake state from the `ConversationRuntime` snapshot. When an accepted or deferred message appears in that projection, the controller reconciles the preview by its existing `MessageId`, so identical text remains unambiguous.

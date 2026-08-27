@@ -53,8 +53,7 @@ describe("information viewers", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    startRun(internal, "tool");
     internal.handleCommand({ name: "help", arguments: "", raw: "/help" });
 
     expect(internal.contentViewer.active).toBe(true);
@@ -64,8 +63,7 @@ describe("information viewers", () => {
   test("routes escape through a running content viewer before aborting the Agent", () => {
     const { internal, sendInput, state } = createStartedApp();
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    startRun(internal, "tool");
     internal.handleCommand({ name: "help", arguments: "", raw: "/help" });
 
     sendInput("\x1b");
@@ -78,14 +76,13 @@ describe("information viewers", () => {
   test("routes escape through a running /jobs manager before aborting the Agent", () => {
     const { internal, sendInput, state } = createStartedApp();
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    startRun(internal, "tool");
     internal.handleCommand({ name: "jobs", arguments: "", raw: "/jobs" });
 
     sendInput("\x1b");
 
     expect(internal.backgroundJobManager.active).toBe(false);
-    expect(internal.running).toBe(true);
+    expect(internal.status.running).toBe(true);
     expect(state.abortCalls).toBe(0);
     expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
 
@@ -98,8 +95,7 @@ describe("information viewers", () => {
   test("keeps a running schedule flow focused on its own escape semantics", () => {
     const { internal, sendInput, state } = createStartedApp();
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "responding", running: true });
+    startRun(internal, "responding");
     internal.handleCommand({ name: "schedule", arguments: "", raw: "/schedule" });
 
     sendInput("a");
@@ -130,8 +126,7 @@ describe("information viewers", () => {
   test("routes escape through the running /tools picker without aborting the Agent", () => {
     const { internal, sendInput, state } = createStartedApp();
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    startRun(internal, "tool");
     internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
 
     sendInput("\x1b");
@@ -144,8 +139,7 @@ describe("information viewers", () => {
   test("routes escape through the running /usage scope picker without aborting the Agent", () => {
     const { internal, sendInput, state } = createStartedApp();
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "responding", running: true });
+    startRun(internal, "responding");
     internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
 
     sendInput("\x1b");
@@ -168,8 +162,7 @@ describe("information viewers", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    startRun(internal, "tool");
     internal.handleCommand({ name: "model", arguments: "", raw: "/model" });
 
     const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
@@ -232,8 +225,7 @@ describe("information viewers", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+    startRun(internal, "tool");
     internal.handleCommand({
       name: "image",
       arguments: "/missing/image.png",
@@ -255,8 +247,7 @@ describe("information viewers", () => {
     });
     const internal = app as unknown as AppInternals;
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "responding", running: true });
+    startRun(internal, "responding");
     internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
     internal.tui.getFocus()?.handleInput?.("\r");
 
@@ -269,8 +260,7 @@ describe("information viewers", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
 
-    internal.running = true;
-    internal.editor.updateStatus({ phase: "responding", running: true });
+    startRun(internal, "responding");
     internal.handleConversationEvent({
       type: "run_error",
       source: "user",
@@ -279,7 +269,7 @@ describe("information viewers", () => {
 
     const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
 
-    expect(internal.running).toBe(false);
+    expect(internal.status.running).toBe(false);
     expect(rendered).toContain("runtime failure");
     expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Error");
   });
@@ -320,7 +310,7 @@ describe("information viewers", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
 
-    internal.running = true;
+    internal.status.startRun();
     internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
 
     const rendered = internal.layout.render(80, 24).map(stripAnsi);
@@ -355,7 +345,7 @@ describe("information viewers", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
 
-    internal.running = true;
+    internal.status.startRun();
     internal.handleCommand({ name: "schedule", arguments: "", raw: "/schedule" });
 
     expect(internal.scheduledMessageManager.active).toBe(true);
@@ -374,8 +364,7 @@ describe("information viewers", () => {
     const internal = app as unknown as AppInternals;
 
     try {
-      internal.running = true;
-      internal.editor.updateStatus({ phase: "tool", running: true, activeTool: "read" });
+      startRun(internal, "tool");
       internal.handleCommand({ name: "jobs", arguments: "", raw: "/jobs" });
 
       const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
@@ -398,7 +387,7 @@ describe("information viewers", () => {
     ]);
     const internal = app as unknown as AppInternals;
 
-    internal.running = true;
+    internal.status.startRun();
     internal.handleCommand({ name: "todo", arguments: "", raw: "/todo" });
 
     const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
@@ -524,10 +513,13 @@ describe("information viewers", () => {
 });
 
 type AppInternals = {
-  running: boolean;
   editor: {
     render: (width: number) => string[];
-    updateStatus: (state: { phase: string; running: boolean; activeTool?: string }) => void;
+  };
+  status: {
+    running: boolean;
+    startRun: () => void;
+    update: (phase: "responding" | "tool", extra?: { activeTool?: string }) => void;
   };
   handleCommand: (command: {
     name: "help" | "memory" | "todo" | "usage" | "tools" | "schedule" | "jobs" | "model" | "image";
@@ -545,6 +537,11 @@ type AppInternals = {
   tui: { getFocus: () => Component | undefined };
   layout: { render: (width: number, availableHeight?: number) => string[] };
 };
+
+function startRun(internal: AppInternals, phase: "responding" | "tool"): void {
+  internal.status.startRun();
+  internal.status.update(phase, phase === "tool" ? { activeTool: "read" } : undefined);
+}
 
 function createApp(
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary = createUsageSummary,
@@ -572,31 +569,34 @@ function createApp(
       }) as never,
     createTerminal(captureInput),
     {
-      launchMode,
-      initialSession:
-        todoState === undefined && backgroundJobs === undefined
-          ? undefined
-          : {
-              id: "session",
-              messages: [],
-              timeline: [],
-              ...(todoState === undefined ? {} : { todoState }),
-            },
-      getResumeSessionId: () => undefined,
-      getBackgroundJobs: backgroundJobs ? () => backgroundJobs : undefined,
-      createNewSession: () => ({ id: "new" }),
-      forkSession: () => ({ id: "fork" }),
-      listSessions: () => [],
-      loadSession: () => ({ id: "session", messages: [], timeline: [] }),
-      deleteSession: () => false,
-      loadSkills: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
-      saveEnabledGlobalSkills: () => {},
+      launch: { mode: launchMode },
+      conversation: {
+        initialSession:
+          todoState === undefined && backgroundJobs === undefined
+            ? undefined
+            : {
+                id: "session",
+                messages: [],
+                timeline: [],
+                ...(todoState === undefined ? {} : { todoState }),
+              },
+        getResumeSessionId: () => undefined,
+        getBackgroundJobs: backgroundJobs ? () => backgroundJobs : undefined,
+        createNewSession: () => ({ id: "new" }),
+        forkSession: () => ({ id: "fork" }),
+        listSessions: () => [],
+        loadSession: () => ({ id: "session", messages: [], timeline: [] }),
+        deleteSession: () => false,
+        goalMaxRounds: 8,
+      },
+      skills: {
+        load: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
+        saveEnabledGlobalNames: () => {},
+      },
       toolApproval: { config: {}, approvals: {} } as never,
-      notification: {} as never,
-      goalMaxRounds: 8,
-      compactMemory: async () => [],
-      loadMemory: () => "",
-      loadUsage,
+      ui: { notification: {} as never },
+      memory: { compact: async () => [], load: () => "" },
+      usage: { load: loadUsage },
     },
   );
 }

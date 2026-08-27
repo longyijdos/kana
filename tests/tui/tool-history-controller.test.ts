@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../../src/tui/app/app-layout";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { ContentViewerController } from "../../src/tui/app/content-viewer-controller";
 import { ToolHistoryController } from "../../src/tui/app/tool-history-controller";
 import {
@@ -369,31 +370,24 @@ function createHarness(transcript: Transcript): {
 } {
   const editor = new EditorStub(["editor"]);
   const restoreCalls: boolean[] = [];
-  const restoreBottom = (focus: boolean): void => {
-    restoreCalls.push(focus);
-    layout.showBottom(editor);
-    if (focus) {
-      tui.setFocus(editor);
-    }
-  };
   const tui = createTuiStub();
   const layout = new AppLayout({
     main: transcript,
     bottom: editor,
   });
+  const bottomArea = new TrackingBottomAreaController(
+    { layout, tui, fallback: editor },
+    restoreCalls,
+  );
   const contentViewer = new ContentViewerController({
-    layout,
+    bottomArea,
     transcript,
-    tui,
-    restoreBottom,
   });
   const controller = new ToolHistoryController({
     editor: editor as unknown as Editor,
-    layout,
+    bottomArea,
     transcript,
-    tui,
     contentViewer,
-    restoreBottom,
   });
 
   return {
@@ -404,6 +398,20 @@ function createHarness(transcript: Transcript): {
     editor,
     restoreCalls,
   };
+}
+
+class TrackingBottomAreaController extends BottomAreaController {
+  constructor(
+    options: ConstructorParameters<typeof BottomAreaController>[0],
+    private readonly restoreCalls: boolean[],
+  ) {
+    super(options);
+  }
+
+  override restore(component: Component, focus = this.hasFocus(component)): boolean {
+    this.restoreCalls.push(focus);
+    return super.restore(component, focus);
+  }
 }
 
 function pickerLines(

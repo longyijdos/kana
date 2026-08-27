@@ -8,8 +8,8 @@ export type LocalShellControllerOptions = {
   editor: Editor;
   transcript: Transcript;
   tui: Tui;
-  setRunning: (running: boolean) => void;
-  clearRunStatus: () => void;
+  onRunStart: () => void;
+  onRunEnd: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
   getLogger?: () => Logger;
 };
@@ -54,7 +54,7 @@ export class LocalShellController {
     this.options.editor.clear();
     this.options.transcript.addChild(block);
     this.abortController = abortController;
-    this.options.setRunning(true);
+    this.options.onRunStart();
     this.options.updateStatus("tool", {
       activeTool: "bash",
     });
@@ -103,8 +103,7 @@ export class LocalShellController {
       if (this.abortController === abortController) {
         this.abortController = undefined;
       }
-      this.options.setRunning(false);
-      this.options.clearRunStatus();
+      this.options.onRunEnd();
       this.options.tui.requestRender();
     }
   }

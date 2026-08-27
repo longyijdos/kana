@@ -16,8 +16,8 @@ export type MemoryCompactControllerOptions = {
   editor: Editor;
   transcript: Transcript;
   tui: Tui;
-  setRunning: (running: boolean) => void;
-  clearRunStatus: () => void;
+  onRunStart: () => void;
+  onRunEnd: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
   compactMemory: (
     target: MemoryScope,
@@ -57,7 +57,7 @@ export class MemoryCompactController {
         color: tuiTheme.muted,
       }),
     );
-    this.options.setRunning(true);
+    this.options.onRunStart();
     this.options.updateStatus("tool", { activeTool: "memory" });
     this.options.tui.requestRender();
     logger.info("memory_compact.started", { target });
@@ -94,8 +94,7 @@ export class MemoryCompactController {
       if (this.abortController === abortController) {
         this.abortController = undefined;
       }
-      this.options.setRunning(false);
-      this.options.clearRunStatus();
+      this.options.onRunEnd();
       this.options.tui.requestRender();
     }
   }

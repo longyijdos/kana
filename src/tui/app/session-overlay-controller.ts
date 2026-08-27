@@ -8,16 +8,14 @@ import {
   TextBlock,
   type Transcript,
 } from "../components";
-import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 import type { RunPhase } from "./status-phase";
 
 export type SessionOverlayControllerOptions = {
   editor: Editor;
-  layout: AppLayout;
+  bottomArea: BottomAreaController;
   transcript: Transcript;
-  tui: Tui;
   listSessions: () => KanaSessionMetadata[];
   deleteSession: (sessionId: string) => Promise<boolean> | boolean;
   hasCurrentSession: () => boolean;
@@ -25,7 +23,6 @@ export type SessionOverlayControllerOptions = {
   onStop: () => void;
   onError: (error: unknown) => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
-  restoreBottom: (focus: boolean) => void;
 };
 
 export class SessionOverlayController {
@@ -53,14 +50,13 @@ export class SessionOverlayController {
 
   close(): void {
     const activeBottom = this.activeDeleteConfirmation ?? this.activePicker;
-    const wasVisible = activeBottom ? this.options.layout.isBottom(activeBottom) : false;
-    const restoreFocus = activeBottom ? this.options.tui.getFocus() === activeBottom : false;
+    const restoreFocus = activeBottom ? this.options.bottomArea.hasFocus(activeBottom) : false;
 
     this.closeResumePicker();
     this.closeDeleteConfirmation();
 
-    if (wasVisible) {
-      this.options.restoreBottom(restoreFocus);
+    if (activeBottom) {
+      this.options.bottomArea.restore(activeBottom, restoreFocus);
     }
   }
 
@@ -68,9 +64,7 @@ export class SessionOverlayController {
     this.close();
     this.options.editor.clear();
     this.activePicker = picker;
-    this.options.layout.showBottom(picker);
-    this.options.tui.setFocus(picker);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(picker);
   }
 
   private finishResumePicker(decision: SessionPickerDecision): void {
@@ -101,9 +95,7 @@ export class SessionOverlayController {
     });
 
     this.activeDeleteConfirmation = confirmation;
-    this.options.layout.showBottom(confirmation);
-    this.options.tui.setFocus(confirmation);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(confirmation);
   }
 
   private async finishDeleteConfirmation(

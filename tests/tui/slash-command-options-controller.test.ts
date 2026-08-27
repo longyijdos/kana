@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaToolApprovalMode } from "../../src/kana";
 import { AppLayout } from "../../src/tui/app/app-layout";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { SlashCommandOptionsController } from "../../src/tui/app/slash-command-options-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { color, stripAnsi } from "../../src/tui/render";
@@ -180,22 +181,21 @@ function createHarness(collapseLongPastes = true, usageScopeReplacesBottom = fal
   let approvalMode: KanaToolApprovalMode = "unless_trusted";
   const showCalls: string[] = [];
   const restoreCalls: boolean[] = [];
+  const bottomArea = new TrackingBottomAreaController(
+    { layout, tui, fallback: editor },
+    restoreCalls,
+  );
   const restoreBottom = (focus: boolean): void => {
     restoreCalls.push(focus);
-    layout.showBottom(editor);
-    if (focus) {
-      tui.setFocus(editor);
-    }
+    bottomArea.showFallback(focus);
   };
   const controller = new SlashCommandOptionsController({
     editor,
-    layout,
-    tui,
+    bottomArea,
     onUsageScope: () => {
       if (usageScopeReplacesBottom) {
         // Simulates the content viewer replacing the bottom prompt (success path).
-        layout.showBottom(editor);
-        tui.setFocus(editor);
+        bottomArea.show(editor);
       }
     },
     onMemoryShow: (scope) => {
@@ -213,7 +213,6 @@ function createHarness(collapseLongPastes = true, usageScopeReplacesBottom = fal
       restoreBottom(true);
     },
     collapseLongPastes,
-    restoreBottom,
   });
 
   return {
@@ -226,6 +225,20 @@ function createHarness(collapseLongPastes = true, usageScopeReplacesBottom = fal
     render: () => layout.render(80, 24).map(stripAnsi),
     renderRaw: () => layout.render(80, 24),
   };
+}
+
+class TrackingBottomAreaController extends BottomAreaController {
+  constructor(
+    options: ConstructorParameters<typeof BottomAreaController>[0],
+    private readonly restoreCalls: boolean[],
+  ) {
+    super(options);
+  }
+
+  override restore(component: Component, focus = this.hasFocus(component)): boolean {
+    this.restoreCalls.push(focus);
+    return super.restore(component, focus);
+  }
 }
 
 function createTuiStub(): Tui {

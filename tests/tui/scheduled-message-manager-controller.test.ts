@@ -6,6 +6,7 @@ import type {
   WakeEvent,
 } from "../../src/kana";
 import { AppLayout } from "../../src/tui/app/app-layout";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { ScheduledMessageManagerController } from "../../src/tui/app/scheduled-message-manager-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
@@ -127,7 +128,7 @@ function createHarness(initial: WakeEvent[] = [], options: HarnessOptions = {}) 
   let nextId = 0;
   const controller = new ScheduledMessageManagerController({
     editor,
-    layout,
+    bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
     tui,
     getQueue: () => {
       loads += 1;
@@ -155,12 +156,6 @@ function createHarness(initial: WakeEvent[] = [], options: HarnessOptions = {}) 
     },
     showError: (error) => errors.push(error),
     collapseLongPastes: options.collapseLongPastes,
-    restoreBottom: (focus) => {
-      layout.showBottom(editor);
-      if (focus) {
-        tui.setFocus(editor);
-      }
-    },
     onClose: () => {
       closes += 1;
     },

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { BackgroundJobManager } from "@/jobs";
 import { AppLayout } from "../../src/tui/app/app-layout";
 import { BackgroundJobManagerController } from "../../src/tui/app/background-job-manager-controller";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";
@@ -22,16 +23,10 @@ describe("background Job manager controller", () => {
     const tui = createTuiStub();
     const controller = new BackgroundJobManagerController({
       editor,
-      layout,
+      bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
       tui,
       getJobs: () => jobs,
       showError: () => {},
-      restoreBottom: (focus) => {
-        layout.showBottom(editor);
-        if (focus) {
-          tui.setFocus(editor);
-        }
-      },
       onClose: () => {},
     });
 
@@ -60,16 +55,10 @@ describe("background Job manager controller", () => {
     const tui = createTuiStub();
     const controller = new BackgroundJobManagerController({
       editor,
-      layout,
+      bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
       tui,
       getJobs: () => jobs,
       showError: () => {},
-      restoreBottom: (focus) => {
-        layout.showBottom(editor);
-        if (focus) {
-          tui.setFocus(editor);
-        }
-      },
       onClose: () => {},
     });
 
@@ -108,16 +97,10 @@ describe("background Job manager controller", () => {
     let closes = 0;
     const controller = new BackgroundJobManagerController({
       editor,
-      layout,
+      bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
       tui,
       getJobs: () => jobs,
       showError: (error) => errors.push(error),
-      restoreBottom: (focus) => {
-        layout.showBottom(editor);
-        if (focus) {
-          tui.setFocus(editor);
-        }
-      },
       onClose: () => {
         closes += 1;
       },

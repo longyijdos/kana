@@ -1,8 +1,8 @@
 import type { KanaModelProvider, KanaToolApprovalMode, KanaUsageScope } from "@/kana";
 import { ChoicePrompt, type Editor, TextPrompt } from "../components";
-import type { Component, Tui } from "../runtime";
+import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 import type { MemoryScope } from "./memory-compact-controller";
 import type { TuiModelSelection, TuiModelSettings } from "./model-selection";
 
@@ -10,8 +10,7 @@ type MemoryAction = "show" | "compact";
 
 export type SlashCommandOptionsControllerOptions = {
   editor: Editor;
-  layout: AppLayout;
-  tui: Tui;
+  bottomArea: BottomAreaController;
   onUsageScope: (scope: KanaUsageScope) => void;
   onMemoryShow: (scope: MemoryScope) => void;
   onMemoryCompact: (scope: MemoryScope, request: string | undefined) => void;
@@ -21,7 +20,6 @@ export type SlashCommandOptionsControllerOptions = {
   getModelSettings?: () => TuiModelSettings;
   onModelSelect?: (selection: TuiModelSelection) => void;
   showError?: (error: unknown) => void;
-  restoreBottom: (focus: boolean) => void;
 };
 
 export class SlashCommandOptionsController {
@@ -81,17 +79,10 @@ export class SlashCommandOptionsController {
     }
 
     const prompt = this.activePrompt;
-    const wasVisible = this.options.layout.isBottom(prompt);
-    const restoreFocus = this.options.tui.getFocus() === prompt;
+    const restoreFocus = this.options.bottomArea.hasFocus(prompt);
 
     this.activePrompt = undefined;
-
-    if (wasVisible) {
-      this.options.restoreBottom(restoreFocus);
-      return;
-    }
-
-    this.options.tui.requestRender();
+    this.options.bottomArea.restore(prompt, restoreFocus);
   }
 
   private showMemoryAction(defaultValue: MemoryAction = "show"): void {
@@ -281,13 +272,11 @@ export class SlashCommandOptionsController {
 
   private show(prompt: Component): void {
     this.activePrompt = prompt;
-    this.options.layout.showBottom(prompt);
-    this.options.tui.setFocus(prompt);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(prompt);
   }
 
   private replace(prompt: Component, next: () => void): void {
-    if (this.activePrompt !== prompt || !this.options.layout.isBottom(prompt)) {
+    if (this.activePrompt !== prompt || !this.options.bottomArea.isShowing(prompt)) {
       return;
     }
 
@@ -295,7 +284,7 @@ export class SlashCommandOptionsController {
   }
 
   private finish(prompt: Component, action: () => void): void {
-    if (this.activePrompt !== prompt || !this.options.layout.isBottom(prompt)) {
+    if (this.activePrompt !== prompt || !this.options.bottomArea.isShowing(prompt)) {
       return;
     }
 
@@ -305,8 +294,8 @@ export class SlashCommandOptionsController {
     // A terminal action that early-returns without replacing the bottom prompt
     // (for example an unavailable-feature error) must not leave the dismissed
     // prompt on screen and focused, where Esc would be swallowed forever.
-    if (this.options.layout.isBottom(prompt)) {
-      this.options.restoreBottom(this.options.tui.getFocus() === prompt);
+    if (this.options.bottomArea.isShowing(prompt)) {
+      this.options.bottomArea.restore(prompt);
     }
   }
 }

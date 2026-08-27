@@ -1,21 +1,17 @@
 import type { KanaSkillActivation, LoadKanaSkillActivationsResult } from "@/kana";
-import type { Editor, StatusLineState, Transcript } from "../components";
-import { SkillManager, type SkillManagerDecision, TextBlock } from "../components";
-import type { Tui } from "../runtime";
-import { tuiTheme } from "../theme";
-import type { AppLayout } from "./app-layout";
+import type { Editor, StatusLineState } from "../components";
+import { SkillManager, type SkillManagerDecision } from "../components";
+import type { BottomAreaController } from "./bottom-area-controller";
 import type { RunPhase } from "./status-phase";
 
 export type SkillManagerControllerOptions = {
   editor: Editor;
-  layout: AppLayout;
-  transcript: Transcript;
-  tui: Tui;
+  bottomArea: BottomAreaController;
   loadSkills: () => LoadKanaSkillActivationsResult;
   saveEnabledGlobalSkills: (names: string[]) => void;
   onSkillsChanged: () => void;
+  showError: (error: unknown) => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
-  restoreBottom: (focus: boolean) => void;
 };
 
 export class SkillManagerController {
@@ -37,8 +33,8 @@ export class SkillManagerController {
 
       this.skills = result.skills.map((skill) => ({ ...skill }));
     } catch (error) {
-      this.showError(error);
-      this.options.restoreBottom(true);
+      this.options.showError(error);
+      this.options.bottomArea.showFallback();
       return;
     }
 
@@ -47,9 +43,7 @@ export class SkillManagerController {
     });
 
     this.activeManager = manager;
-    this.options.layout.showBottom(manager);
-    this.options.tui.setFocus(manager);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(manager);
   }
 
   close(): void {
@@ -57,13 +51,10 @@ export class SkillManagerController {
       return;
     }
 
-    const wasVisible = this.options.layout.isBottom(this.activeManager);
-    const restoreFocus = this.options.tui.getFocus() === this.activeManager;
+    const manager = this.activeManager;
+    const restoreFocus = this.options.bottomArea.hasFocus(manager);
     this.activeManager = undefined;
-
-    if (wasVisible) {
-      this.options.restoreBottom(restoreFocus);
-    }
+    this.options.bottomArea.restore(manager, restoreFocus);
   }
 
   private finish(decision: SkillManagerDecision): void {
@@ -75,7 +66,7 @@ export class SkillManagerController {
     try {
       this.options.saveEnabledGlobalSkills(decision.enabledGlobalSkillNames);
     } catch (error) {
-      this.showError(error);
+      this.options.showError(error);
       return;
     }
 
@@ -86,18 +77,7 @@ export class SkillManagerController {
     } catch (error) {
       // Persistence already succeeded, so report the refresh error without
       // presenting the saved activation state as an unsaved draft.
-      this.showError(error);
+      this.options.showError(error);
     }
-  }
-
-  private showError(error: unknown): void {
-    this.options.transcript.addChild(
-      new TextBlock(error instanceof Error ? error.message : String(error), {
-        color: tuiTheme.error,
-      }),
-    );
-    this.options.updateStatus("error", {
-      activeTool: undefined,
-    });
   }
 }

@@ -12,12 +12,12 @@ import {
 import { stripTerminalControlSequences } from "../render";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 import type { RunPhase } from "./status-phase";
 
 export type McpServerManagerControllerOptions = {
   editor: Editor;
-  layout: AppLayout;
+  bottomArea: BottomAreaController;
   transcript: Transcript;
   tui: Tui;
   loadServers: () => KanaMcpServerActivation[];
@@ -29,8 +29,8 @@ export type McpServerManagerControllerOptions = {
   ): Promise<KanaOAuthTokenStatus>;
   signOutServer?(serverId: string): Promise<KanaOAuthTokenStatus>;
   onClose: (changed: boolean) => void;
+  showError: (error: unknown) => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
-  restoreBottom: (focus: boolean) => void;
 };
 
 export class McpServerManagerController {
@@ -57,8 +57,8 @@ export class McpServerManagerController {
     try {
       servers = this.options.loadServers();
     } catch (error) {
-      this.showError(error);
-      this.options.restoreBottom(true);
+      this.options.showError(error);
+      this.options.bottomArea.showFallback();
       return;
     }
 
@@ -73,9 +73,7 @@ export class McpServerManagerController {
     this.reloadRequired = false;
     const manager = new McpServerManager(this.servers, (decision) => this.finish(decision));
     this.activeManager = manager;
-    this.options.layout.showBottom(manager);
-    this.options.tui.setFocus(manager);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(manager);
   }
 
   close(): void {
@@ -98,7 +96,7 @@ export class McpServerManagerController {
       try {
         this.options.saveEnabledServerIds(decision.enabledServerIds);
       } catch (error) {
-        this.showError(error);
+        this.options.showError(error);
         return;
       }
     }
@@ -116,9 +114,7 @@ export class McpServerManagerController {
       this.finishAuthAction(serverId, decision),
     );
     this.activeAuthMenu = menu;
-    this.options.layout.showBottom(menu);
-    this.options.tui.setFocus(menu);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(menu);
   }
 
   private finishAuthAction(serverId: string, decision: McpAuthActionMenuDecision): void {
@@ -184,7 +180,7 @@ export class McpServerManagerController {
         this.options.updateStatus("idle", { activeTool: undefined });
       } else {
         this.options.transcript.removeChild(block);
-        this.showError(error);
+        this.options.showError(error);
       }
     } finally {
       if (this.authOperation === operation) {
@@ -241,9 +237,7 @@ export class McpServerManagerController {
       return;
     }
     this.activeAuthMenu = undefined;
-    this.options.layout.showBottom(manager);
-    this.options.tui.setFocus(manager);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(manager);
   }
 
   private closeInternal(changed: boolean): void {
@@ -253,28 +247,17 @@ export class McpServerManagerController {
       return;
     }
 
-    const visible = authMenu && this.options.layout.isBottom(authMenu) ? authMenu : manager;
-    const wasVisible = visible !== undefined && this.options.layout.isBottom(visible);
-    const restoreFocus = visible !== undefined && this.options.tui.getFocus() === visible;
+    const visible = authMenu && this.options.bottomArea.isShowing(authMenu) ? authMenu : manager;
+    const restoreFocus = visible !== undefined && this.options.bottomArea.hasFocus(visible);
     this.activeManager = undefined;
     this.activeAuthMenu = undefined;
     this.authOperation = undefined;
     this.servers = [];
 
-    if (wasVisible) {
-      this.options.restoreBottom(restoreFocus);
+    if (visible) {
+      this.options.bottomArea.restore(visible, restoreFocus);
     }
     this.options.onClose(changed);
-  }
-
-  private showError(error: unknown): void {
-    this.options.transcript.addChild(
-      new TextBlock(error instanceof Error ? error.message : String(error), {
-        color: tuiTheme.error,
-      }),
-    );
-    this.options.updateStatus("error", { activeTool: undefined });
-    this.options.tui.requestRender();
   }
 }
 

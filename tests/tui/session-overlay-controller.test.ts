@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaSessionMetadata } from "@/kana";
 import { AppLayout } from "../../src/tui/app/app-layout";
+import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { SessionOverlayController } from "../../src/tui/app/session-overlay-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
@@ -20,19 +21,10 @@ describe("session overlay controller", () => {
     const transcript = new Transcript();
     const layout = new AppLayout({ main: transcript, bottom: editor });
     const tui = createTuiStub();
-    const restoreCalls: boolean[] = [];
-    const restoreBottom = (focus: boolean): void => {
-      restoreCalls.push(focus);
-      layout.showBottom(editor);
-      if (focus) {
-        tui.setFocus(editor);
-      }
-    };
     const controller = new SessionOverlayController({
       editor,
-      layout,
+      bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
       transcript,
-      tui,
       listSessions: () => [session],
       deleteSession: () => false,
       hasCurrentSession: () => true,
@@ -40,7 +32,6 @@ describe("session overlay controller", () => {
       onStop: () => {},
       onError: () => {},
       updateStatus: () => {},
-      restoreBottom,
     });
 
     controller.openResume();
@@ -53,7 +44,6 @@ describe("session overlay controller", () => {
     expect(stripAnsi(layout.render(80).join("\n"))).toContain("test-model");
     expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("Sessions");
     expect(tui.getFocus()).toBe(editor);
-    expect(restoreCalls).toEqual([true]);
   });
 
   test("waits for asynchronous session disposal before reporting deletion", async () => {
@@ -67,9 +57,8 @@ describe("session overlay controller", () => {
     });
     const controller = new SessionOverlayController({
       editor,
-      layout,
+      bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
       transcript,
-      tui,
       listSessions: () => [session],
       deleteSession: () => deletion,
       hasCurrentSession: () => true,
@@ -77,12 +66,6 @@ describe("session overlay controller", () => {
       onStop: () => {},
       onError: () => {},
       updateStatus: () => {},
-      restoreBottom: (focus) => {
-        layout.showBottom(editor);
-        if (focus) {
-          tui.setFocus(editor);
-        }
-      },
     });
 
     controller.openDelete();

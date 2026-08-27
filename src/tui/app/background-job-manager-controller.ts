@@ -1,15 +1,14 @@
 import type { BackgroundJobClient, BackgroundJobSummary } from "@/jobs";
 import { BackgroundJobManager, type BackgroundJobManagerAction, type Editor } from "../components";
 import type { Tui } from "../runtime";
-import type { AppLayout } from "./app-layout";
+import type { BottomAreaController } from "./bottom-area-controller";
 
 export type BackgroundJobManagerControllerOptions = {
   editor: Editor;
-  layout: AppLayout;
+  bottomArea: BottomAreaController;
   tui: Tui;
   getJobs: () => BackgroundJobClient | undefined;
   showError: (error: unknown) => void;
-  restoreBottom: (focus: boolean) => void;
   onClose: () => void;
 };
 
@@ -34,9 +33,7 @@ export class BackgroundJobManagerController {
     this.manager = new BackgroundJobManager((action) => this.handleAction(action));
     this.unsubscribe = this.jobs?.subscribe(() => this.refresh());
     this.refresh();
-    this.options.layout.showBottom(this.manager);
-    this.options.tui.setFocus(this.manager);
-    this.options.tui.requestRender();
+    this.options.bottomArea.show(this.manager);
   }
 
   close(): void {
@@ -44,15 +41,12 @@ export class BackgroundJobManagerController {
     if (!manager) {
       return;
     }
-    const wasVisible = this.options.layout.isBottom(manager);
-    const restoreFocus = this.options.tui.getFocus() === manager;
+    const restoreFocus = this.options.bottomArea.hasFocus(manager);
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.manager = undefined;
     this.jobs = undefined;
-    if (wasVisible) {
-      this.options.restoreBottom(restoreFocus);
-    }
+    this.options.bottomArea.restore(manager, restoreFocus);
     this.options.onClose();
   }
 

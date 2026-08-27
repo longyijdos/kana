@@ -101,36 +101,47 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       }),
     terminal,
     {
-      launchMode: options.launchMode,
-      initialSession: host.initialSession
-        ? {
-            id: host.initialSession.metadata.id,
-            messages: host.initialSession.messages,
-            timeline: host.initialSession.timeline,
-            todoState: host.initialSession.todoState,
-            contextCheckpoint: host.initialSession.contextCheckpoint,
-          }
-        : undefined,
-      initialPrompt: options.initialPrompt,
-      getResumeSessionId: () => host.resumeSessionId,
-      startInResumePicker: options.showResumePicker,
-      createNewSession: () => host.createNewSession(),
-      forkSession: (messages, contextCheckpoint, prompt) =>
-        host.forkSession(messages, contextCheckpoint, prompt),
-      listSessions: () => host.listSessions(),
-      loadSession: (sessionId) => {
-        const session = host.loadSession(sessionId);
-        return {
-          id: session.metadata.id,
-          messages: session.messages,
-          timeline: session.timeline,
-          todoState: session.todoState,
-          contextCheckpoint: session.contextCheckpoint,
-        };
+      launch: {
+        mode: options.launchMode,
+        initialPrompt: options.initialPrompt,
+        startInResumePicker: options.showResumePicker,
       },
-      deleteSession: (sessionId) => host.deleteSession(sessionId),
-      loadSkills: () => loadKanaSkillActivations({ cwd: process.cwd() }),
-      saveEnabledGlobalSkills: (names) => saveEnabledGlobalSkillNames(names),
+      conversation: {
+        initialSession: host.initialSession
+          ? {
+              id: host.initialSession.metadata.id,
+              messages: host.initialSession.messages,
+              timeline: host.initialSession.timeline,
+              todoState: host.initialSession.todoState,
+              contextCheckpoint: host.initialSession.contextCheckpoint,
+            }
+          : undefined,
+        getResumeSessionId: () => host.resumeSessionId,
+        createNewSession: () => host.createNewSession(),
+        forkSession: (messages, contextCheckpoint, prompt) =>
+          host.forkSession(messages, contextCheckpoint, prompt),
+        listSessions: () => host.listSessions(),
+        loadSession: (sessionId) => {
+          const session = host.loadSession(sessionId);
+          return {
+            id: session.metadata.id,
+            messages: session.messages,
+            timeline: session.timeline,
+            todoState: session.todoState,
+            contextCheckpoint: session.contextCheckpoint,
+          };
+        },
+        deleteSession: (sessionId) => host.deleteSession(sessionId),
+        goalMaxRounds: host.config.agent.goalMaxRounds,
+        wakeScheduler: host.wakeScheduler,
+        getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
+        disposeSession: (sessionId, source, foregroundSettled) =>
+          host.disposeSession(sessionId, source, foregroundSettled),
+      },
+      skills: {
+        load: () => loadKanaSkillActivations({ cwd: process.cwd() }),
+        saveEnabledGlobalNames: (names) => saveEnabledGlobalSkillNames(names),
+      },
       toolApproval: {
         config: host.approvalConfig,
         approvals: host.toolApprovals,
@@ -139,19 +150,18 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
           return source === undefined ? undefined : { kind: "mcp", ...source };
         },
       },
-      notification: host.notificationConfig,
-      tuiConfig: host.tuiConfig,
-      goalMaxRounds: host.config.agent.goalMaxRounds,
-      wakeScheduler: host.wakeScheduler,
-      getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
-      disposeSession: (sessionId, source, foregroundSettled) =>
-        host.disposeSession(sessionId, source, foregroundSettled),
-      getLogger: () => host.getLogger(),
-      compactMemory: (target, userRequest, signal) =>
-        host.compactMemory(target, userRequest, signal),
-      loadMemory: (target) => host.loadMemory(target),
-      loadUsage: (scope) => host.loadUsage(scope),
-      modelManagement: {
+      ui: {
+        notification: host.notificationConfig,
+        config: host.tuiConfig,
+      },
+      memory: {
+        compact: (target, userRequest, signal) => host.compactMemory(target, userRequest, signal),
+        load: (target) => host.loadMemory(target),
+      },
+      usage: {
+        load: (scope) => host.loadUsage(scope),
+      },
+      models: {
         getSettings: () => getKanaModelManagement(host.config),
       },
       // Clean mode must not parse MCP configuration or create external
@@ -159,35 +169,42 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       ...(cleanMode
         ? {}
         : {
-            loadExternalTools: loadMcpTools,
-            mcpManagement: {
-              loadServers: () => host.loadMcpServers(),
-              saveEnabledServerIds: (serverIds: string[]) =>
-                host.saveEnabledMcpServerIds(serverIds),
-              authorizeServer: (
-                serverId: string,
-                onAuthorizationUrl: (url: string) => void,
-                signal: AbortSignal,
-              ) =>
-                host.authorizeMcpServer(
-                  serverId,
-                  async (url) => {
-                    onAuthorizationUrl(url);
-                    await openKanaOAuthAuthorizationUrl(url, {
-                      getLogger: () => host.getLogger(),
-                    });
-                  },
-                  signal,
-                ),
-              signOutServer: (serverId: string) => host.signOutMcpServer(serverId),
-              reloadExternalTools: reloadMcpTools,
+            externalTools: {
+              load: loadMcpTools,
+              mcp: {
+                loadServers: () => host.loadMcpServers(),
+                saveEnabledServerIds: (serverIds: string[]) =>
+                  host.saveEnabledMcpServerIds(serverIds),
+                authorizeServer: (
+                  serverId: string,
+                  onAuthorizationUrl: (url: string) => void,
+                  signal: AbortSignal,
+                ) =>
+                  host.authorizeMcpServer(
+                    serverId,
+                    async (url) => {
+                      onAuthorizationUrl(url);
+                      await openKanaOAuthAuthorizationUrl(url, {
+                        getLogger: () => host.getLogger(),
+                      });
+                    },
+                    signal,
+                  ),
+                signOutServer: (serverId: string) => host.signOutMcpServer(serverId),
+                reload: reloadMcpTools,
+              },
             },
           }),
-      onStop: closeHostRuntime,
-      onForceStop: () => {
-        removeProcessSignals();
-        terminal.stop();
-        process.kill(process.pid, "SIGINT");
+      diagnostics: {
+        getLogger: () => host.getLogger(),
+      },
+      lifecycle: {
+        stop: closeHostRuntime,
+        forceStop: () => {
+          removeProcessSignals();
+          terminal.stop();
+          process.kill(process.pid, "SIGINT");
+        },
       },
     },
   );
