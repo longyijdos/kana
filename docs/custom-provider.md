@@ -80,4 +80,6 @@ The adapter sends streaming `POST <base_url>/chat/completions` requests with `st
 
 `base_url` accepts HTTP and HTTPS endpoints. Prefer HTTPS whenever credentials cross an untrusted network because HTTP sends the Bearer credential without transport encryption. Credentials in the URL, query strings, and fragments are rejected. The configuration also rejects unknown fields, invalid environment-variable names, duplicate model names, invalid token limits, duplicate reasoning values, `off`, and a reasoning default outside the advertised list.
 
+The adapter uses the same provider HTTP and lifecycle primitives as the built-in adapters. Agent cancellation remains distinct from inactivity timeout, and either stops retry admission and pending retry delay. Retained HTTP error bodies are bounded to 16 KiB. Diagnostics use the common provider/model/protocol/phase/outcome envelope plus fixed Kana `errorCode`, safe `errorType`, attempt, and HTTP status where relevant; they never include the configured endpoint, credentials, headers, prompts, error messages, response bodies, or streamed content.
+
 The current slot supports only OpenAI-compatible Chat Completions. Custom Responses, Anthropic Messages, arbitrary JavaScript/TypeScript adapters, dynamic provider IDs, and TOML-defined wire protocols remain out of scope.

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ContextWindowExceededError } from "@/core";
 import { OpenAICompatibleModel, type OpenAICompatibleModelConfig } from "../../../src/providers";
+import { createRecordingLogger, type RecordedLog } from "../../helpers/logging";
 import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("OpenAICompatibleModel", () => {
@@ -8,6 +9,7 @@ describe("OpenAICompatibleModel", () => {
     let requestPath = "";
     let authorization = "";
     let requestBody: Record<string, unknown> = {};
+    const logs: RecordedLog[] = [];
     const server = Bun.serve({
       port: 0,
       async fetch(request) {
@@ -31,7 +33,10 @@ describe("OpenAICompatibleModel", () => {
     });
 
     try {
-      const model = createModel(server, { apiKey: "test-key" });
+      const model = createModel(server, {
+        apiKey: "test-key",
+        logger: createRecordingLogger(logs),
+      });
       const message = await model.generate({
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "hello" }],
         maxOutputTokens: 1_024,
@@ -61,6 +66,31 @@ describe("OpenAICompatibleModel", () => {
           promptCacheMissTokens: 6,
         },
       });
+      expect(logs).toEqual([
+        {
+          level: "debug",
+          event: "provider.request_started",
+          metadata: {
+            provider: "compatible",
+            model: "compatible-model",
+            protocol: "chat-completions",
+            phase: "validation",
+            outcome: "started",
+          },
+        },
+        {
+          level: "debug",
+          event: "provider.request_completed",
+          metadata: {
+            provider: "compatible",
+            model: "compatible-model",
+            protocol: "chat-completions",
+            phase: "response_stream",
+            outcome: "completed",
+            stopReason: "stop",
+          },
+        },
+      ]);
     } finally {
       server.stop(true);
     }

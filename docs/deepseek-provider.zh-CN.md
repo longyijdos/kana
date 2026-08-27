@@ -58,11 +58,11 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 
 模型优先使用构造配置里的 `apiKey`，否则读取 `DEEPSEEK_API_KEY`。Kana 产品层通常先从 `config.toml` 指定的环境变量读 key 并传入配置；直接使用 `DeepSeekModel` 时则适用该回退。请求带有 `Authorization: Bearer <key>`、`content-type: application/json` 和 `accept: text/event-stream`，并可合并自定义 headers。
 
-`createRequestSignal` 将 Agent 的取消信号和可选 `timeoutMs` 合并。`timeoutMs` 是无活动超时：等待响应头时受其限制，收到响应头或任意响应字节后重新计时。因此持续输出的长 reasoning 流可以超过该时长，但连接停止传输达到该时长时仍会中止。结束时会清理定时器和事件监听器。HTTP 408、429 和所有 5xx 响应可重试；其他 HTTP 错误不重试。非 HTTP 异常也会被视为可重试，除非已中止。退避为 1s、2s、4s、8s（之后保持 8s），最多执行 `maxRetries` 次重试。
+`createRequestSignal` 通过共享 provider 无活动 primitive 合并 Agent 的取消信号和可选 `timeoutMs`。`timeoutMs` 限制等待响应头的时间，收到响应头或任意响应字节后重新计时。因此持续输出的长 reasoning 流可以超过该时长，但连接停止传输达到该时长时仍会中止。上游取消保留原始 reason，无活动则使用独立的内部 timeout 类型；两者都会停止重试准入和正在等待的重试延迟。结束时会清理定时器和事件监听器。HTTP 408、429 和所有 5xx 响应可重试；其他 HTTP 错误不重试。非 HTTP 异常也会被视为可重试，除非 combined signal 已中止。退避为 1s、2s、4s、8s（之后保持 8s），最多执行 `maxRetries` 次重试。
 
 任何抛出错误最终都会产生 provider `error` 事件：DOM `AbortError` 或上层 signal 已中止映射为 `aborted`，其余映射为 `error`。事件带有截至失败时已累积的助手消息快照，因此 Agent 能保留可用的部分文本。
 
-HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/window 或 input/prompt token 超限时，才转换为通用 `ContextWindowExceededError`；普通参数错误保持原始 `DeepSeekHttpError`。Agent 仅在还没有任何助手输出时捕获该类型，执行一次安全上下文压缩并重试当前请求一次。provider 失败日志仍只记录错误类型、状态码和状态文本，不记录最多检查 4096 字符的响应消息。
+HTTP 400、413 或 422 只有在错误 code/message 明确匹配 context length/window 或 input/prompt token 超限时，才转换为通用 `ContextWindowExceededError`；普通参数错误保持原始 `DeepSeekHttpError`，其保留的响应体最多为 16 KiB。Agent 仅在还没有任何助手输出时捕获 context 类型，执行一次安全上下文压缩并重试当前请求一次。生命周期诊断使用共享的请求、重试、完成与失败事件，只按需记录 provider identity、phase、outcome、固定 Kana `errorCode`、安全的 `errorType`、attempt 和 HTTP status；绝不记录错误消息、status text、响应体、header、prompt 或流式内容。
 
 ## SSE 解析与内容顺序
 

@@ -1,12 +1,25 @@
+import {
+  boundProviderHttpErrorBody,
+  createProviderRequestSignal,
+  getExponentialBackoffDelayMs,
+  isAbortError,
+  isRetryableProviderHttpStatus,
+  waitForProviderRetry,
+} from "../http";
+import { getProviderErrorType, type ProviderRetryDetails } from "../lifecycle";
 import type { DeepSeekModelConfig } from "./types";
 
 export class DeepSeekHttpError extends Error {
+  readonly body: string;
+
   constructor(
     readonly status: number,
     readonly statusText: string,
-    readonly body: string,
+    body: string,
   ) {
-    super(`DeepSeek API request failed with ${status} ${statusText}: ${body}`);
+    const boundedBody = boundProviderHttpErrorBody(body);
+    super(`DeepSeek API request failed with ${status} ${statusText}: ${boundedBody}`);
+    this.body = boundedBody;
   }
 }
 
@@ -14,7 +27,7 @@ export async function fetchWithRetries(
   url: string,
   init: RequestInit,
   maxRetries: number,
-  onRetry?: (details: { attempt: number; delayMs: number; status?: number }) => void,
+  onRetry?: (details: ProviderRetryDetails) => void,
 ): Promise<Response> {
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -27,17 +40,25 @@ export async function fetchWithRetries(
       const body = await response.text().catch(() => "");
       throw new DeepSeekHttpError(response.status, response.statusText, body);
     } catch (error) {
-      if (isAbortError(error) || !isRetryableError(error) || attempt >= maxRetries) {
+      if (
+        init.signal?.aborted ||
+        isAbortError(error) ||
+        !isRetryableError(error) ||
+        attempt >= maxRetries
+      ) {
         throw error;
       }
 
-      const delayMs = retryDelayMs(attempt);
+      const delayMs = getExponentialBackoffDelayMs(attempt);
       onRetry?.({
         attempt: attempt + 1,
         delayMs,
-        ...(error instanceof DeepSeekHttpError ? { status: error.status } : {}),
+        errorCode:
+          error instanceof DeepSeekHttpError ? "PROVIDER_HTTP_ERROR" : "PROVIDER_NETWORK_ERROR",
+        errorType: getProviderErrorType(error),
+        ...(error instanceof DeepSeekHttpError ? { httpStatus: error.status } : {}),
       });
-      await sleep(delayMs, init.signal);
+      await waitForProviderRetry(delayMs, init.signal);
     }
   }
 }
@@ -50,61 +71,21 @@ export function createRequestSignal(
   refresh(): void;
   dispose(): void;
 } {
-  if (!config.timeoutMs) {
-    return {
-      signal,
-      refresh() {},
-      dispose() {},
-    };
-  }
-
-  const controller = new AbortController();
-  let timeout: ReturnType<typeof setTimeout>;
-  const refresh = (): void => {
-    clearTimeout(timeout);
-
-    if (controller.signal.aborted) {
-      return;
-    }
-
-    // timeoutMs is an inactivity limit. Long reasoning streams may legitimately
-    // exceed it as long as the provider continues sending response bytes.
-    timeout = setTimeout(() => {
-      controller.abort(new Error(`DeepSeek request timed out after ${config.timeoutMs}ms.`));
-    }, config.timeoutMs);
-  };
-  const abort = (): void => {
-    controller.abort(signal?.reason);
-  };
-
-  refresh();
-
-  if (signal?.aborted) {
-    abort();
-  } else {
-    signal?.addEventListener("abort", abort, { once: true });
-  }
-
-  return {
-    signal: controller.signal,
-    refresh,
-    dispose() {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-    },
-  };
+  return createProviderRequestSignal({
+    timeoutMs: config.timeoutMs,
+    signal,
+    timeoutMessage: `DeepSeek request timed out after ${config.timeoutMs}ms.`,
+  });
 }
 
 export function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}${path}`;
 }
 
-export function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
+export { isAbortError };
 
 function shouldRetryStatus(status: number): boolean {
-  return status === 408 || status === 429 || status >= 500;
+  return isRetryableProviderHttpStatus(status);
 }
 
 function isRetryableError(error: unknown): boolean {
@@ -113,31 +94,4 @@ function isRetryableError(error: unknown): boolean {
   }
 
   return true;
-}
-
-function retryDelayMs(attempt: number): number {
-  return Math.min(1000 * 2 ** attempt, 8000);
-}
-
-function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(signal.reason);
-  }
-
-  return new Promise((resolve, reject) => {
-    const cleanup = (): void => {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-    };
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, ms);
-    const abort = (): void => {
-      cleanup();
-      reject(signal?.reason);
-    };
-
-    signal?.addEventListener("abort", abort, { once: true });
-  });
 }

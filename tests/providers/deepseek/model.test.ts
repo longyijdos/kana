@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { DeepSeekModel } from "../../../src/providers/deepseek/model";
+import { createRecordingLogger, type RecordedLog } from "../../helpers/logging";
 import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("DeepSeek model protocol routing", () => {
   test("routes V4 Flash through Responses and maps hosted web search items", async () => {
     let requestPath = "";
     let requestBody: Record<string, unknown> = {};
+    const logs: RecordedLog[] = [];
     const server = Bun.serve({
       port: 0,
       async fetch(request) {
@@ -95,6 +97,7 @@ describe("DeepSeek model protocol routing", () => {
         baseUrl: `http://127.0.0.1:${server.port}`,
         reasoningEffort: "max",
         maxRetries: 0,
+        logger: createRecordingLogger(logs),
       });
       const message = await model.generate({
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "What is new?" }],
@@ -162,6 +165,31 @@ describe("DeepSeek model protocol routing", () => {
           reasoningTokens: 2,
         },
       });
+      expect(logs).toEqual([
+        {
+          level: "debug",
+          event: "provider.request_started",
+          metadata: {
+            provider: "deepseek",
+            model: "deepseek-v4-flash",
+            protocol: "responses",
+            phase: "validation",
+            outcome: "started",
+          },
+        },
+        {
+          level: "debug",
+          event: "provider.request_completed",
+          metadata: {
+            provider: "deepseek",
+            model: "deepseek-v4-flash",
+            protocol: "responses",
+            phase: "response_stream",
+            outcome: "completed",
+            stopReason: "stop",
+          },
+        },
+      ]);
     } finally {
       server.stop(true);
     }

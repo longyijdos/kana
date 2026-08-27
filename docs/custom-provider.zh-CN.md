@@ -80,4 +80,6 @@ default_reasoning_effort = "none"
 
 `base_url` 接受 HTTP 和 HTTPS 端点。凭据经过不可信网络时应优先使用 HTTPS，因为 HTTP 传输 Bearer 凭据时没有传输层加密。URL 中的凭据、query 和 fragment 都会被拒绝。配置还会拒绝未知字段、非法环境变量名、重复模型名、无效 token 上限、重复 reasoning 值、`off`，以及不在声明列表中的 reasoning 默认值。
 
+该 adapter 与内置 adapter 使用相同的 provider HTTP 和生命周期 primitive。Agent 取消与无活动超时保持不同，两者都会停止重试准入和等待中的重试延迟；保留的 HTTP 错误体最多为 16 KiB。诊断使用统一的 provider/model/protocol/phase/outcome envelope，并按需添加固定 Kana `errorCode`、安全的 `errorType`、attempt 和 HTTP status；绝不包含配置的 endpoint、凭据、header、prompt、错误消息、响应体或流式内容。
+
 当前槽位只支持 OpenAI-compatible Chat Completions。Custom Responses、Anthropic Messages、任意 JavaScript/TypeScript adapter、动态 provider ID 和由 TOML 定义 wire protocol 仍不在范围内。

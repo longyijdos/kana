@@ -6,6 +6,16 @@ import {
   createMessageIdentity,
   type ModelContext,
 } from "@/core";
+import { isContextWindowFailure } from "../context-window";
+import { isProviderInactivityTimeout, MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH } from "../http";
+import {
+  createProviderDiagnostics,
+  formatProviderFailure,
+  getProviderErrorType,
+  type ProviderDiagnostics,
+  type ProviderErrorCode,
+  type ProviderRequestPhase,
+} from "../lifecycle";
 import { isRetryableResponsesStreamError, ResponsesStreamError } from "../responses";
 import {
   createOpenAICodexRequestSignal,
@@ -33,10 +43,16 @@ type OpenAICodexRetryState = {
 
 export class OpenAICodexModel extends BaseModel {
   readonly metadata;
+  private readonly diagnostics: ProviderDiagnostics;
 
   constructor(private readonly config: OpenAICodexModelConfig) {
     super();
     this.metadata = getOpenAICodexModelMetadata(config.model);
+    this.diagnostics = createProviderDiagnostics(config.logger, {
+      provider: "openai-codex",
+      model: config.model,
+      protocol: "responses",
+    });
   }
 
   stream(context: ModelContext): AssistantEventStream {
@@ -51,12 +67,10 @@ export class OpenAICodexModel extends BaseModel {
       role: "assistant",
       content: [],
     };
+    let phase: ProviderRequestPhase = "validation";
 
     try {
-      this.config.logger?.debug("provider.request_started", {
-        provider: "openai-codex",
-        model: this.config.model,
-      });
+      this.diagnostics.requestStarted();
       if (
         this.config.maxOutputTokens !== undefined &&
         this.config.maxOutputTokens > this.metadata.maxOutputTokens
@@ -66,6 +80,7 @@ export class OpenAICodexModel extends BaseModel {
         );
       }
 
+      phase = "authentication";
       const credentials = await this.config.credentialProvider.getCredentials();
       if (credentials === undefined) {
         throw new Error(
@@ -79,6 +94,7 @@ export class OpenAICodexModel extends BaseModel {
         authRefreshed: false,
         attempt: 0,
       };
+      phase = "request_build";
       const body = JSON.stringify(
         buildOpenAICodexRequest(
           {
@@ -91,14 +107,27 @@ export class OpenAICodexModel extends BaseModel {
           this.config,
         ),
       );
+      phase = "http_request";
       const requestSignal = createOpenAICodexRequestSignal(this.config, context.signal);
       try {
         let started = false;
         let completedState: OpenAICodexStreamState | undefined;
+        let recovering = false;
 
         for (;;) {
-          const response = await this.request(body, retryState, requestSignal.signal);
+          const response = await this.request(
+            body,
+            retryState,
+            requestSignal.signal,
+            (nextPhase) => {
+              phase = nextPhase;
+            },
+          );
           requestSignal.refresh();
+          if (recovering) {
+            this.diagnostics.streamRecoveryEnded(retryState.attempt);
+            recovering = false;
+          }
           if (!started) {
             stream.push({
               type: "start",
@@ -111,6 +140,7 @@ export class OpenAICodexModel extends BaseModel {
             terminalSeen: false,
           };
           const processor = new OpenAICodexStreamProcessor(stream, message, attemptState);
+          phase = "response_stream";
           try {
             await readOpenAICodexStream(
               response,
@@ -133,13 +163,14 @@ export class OpenAICodexModel extends BaseModel {
 
             const delayMs = getOpenAICodexRetryDelayMs(retryState.attempt, response);
             retryState.attempt += 1;
-            this.config.logger?.warn("provider.retrying", {
-              provider: "openai-codex",
-              phase: "responses_stream",
+            recovering = true;
+            this.diagnostics.streamRecoveryStarted({
               attempt: retryState.attempt,
               delayMs,
-              errorCode: "RESPONSES_STREAM_TRANSIENT",
+              errorCode: "PROVIDER_STREAM_TRANSIENT_ERROR",
+              errorType: getProviderErrorType(error),
               eventType: error.eventType,
+              ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
             });
             await sleepForOpenAICodexRetry(delayMs, requestSignal.signal);
           }
@@ -155,19 +186,27 @@ export class OpenAICodexModel extends BaseModel {
           message: structuredClone(message),
           usage: state.usage,
         });
-        this.config.logger?.debug("provider.request_ended", {
-          provider: "openai-codex",
-          stopReason: state.stopReason,
-        });
+        this.diagnostics.requestCompleted(state.stopReason);
       } finally {
         requestSignal.dispose();
       }
     } catch (error) {
       const normalized = normalizeOpenAICodexError(error);
-      this.config.logger?.error("provider.request_failed", {
-        provider: "openai-codex",
-        ...formatProviderFailure(normalized, context.signal),
-      });
+      this.diagnostics.requestFailed(
+        formatProviderFailure(normalized, {
+          phase,
+          signal: context.signal,
+          timedOut: isProviderInactivityTimeout(error),
+          errorCode: getOpenAICodexErrorCode(error, normalized),
+          ...(error instanceof OpenAICodexHttpError ? { httpStatus: error.status } : {}),
+          ...(error instanceof ResponsesStreamError
+            ? {
+                eventType: error.eventType,
+                ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
+              }
+            : {}),
+        }),
+      );
       stream.error({
         type: "error",
         reason: isAbortError(normalized) || context.signal?.aborted ? "aborted" : "error",
@@ -181,11 +220,13 @@ export class OpenAICodexModel extends BaseModel {
     body: string,
     retryState: OpenAICodexRetryState,
     signal?: AbortSignal,
+    onPhaseChange?: (phase: "http_request" | "authentication") => void,
   ): Promise<Response> {
     const fetch = this.config.fetch ?? globalThis.fetch;
     const maxRetries = this.config.maxRetries ?? 0;
 
     for (;;) {
+      onPhaseChange?.("http_request");
       let response: Response | undefined;
       let failure: unknown;
       try {
@@ -213,23 +254,25 @@ export class OpenAICodexModel extends BaseModel {
         if (response.status === 401 && !retryState.authRefreshed) {
           retryState.authRefreshed = true;
           await response.body?.cancel().catch(() => undefined);
-          this.config.logger?.info("provider.authentication_refresh_started", {
-            provider: "openai-codex",
-            trigger: "http_401",
-          });
-          const refreshed = await this.config.credentialProvider.refreshCredentials();
+          onPhaseChange?.("authentication");
+          this.diagnostics.authenticationRefreshStarted("http_401");
+          let refreshed: OpenAICodexCredentials | undefined;
+          try {
+            refreshed = await this.config.credentialProvider.refreshCredentials();
+          } catch (error) {
+            this.diagnostics.authenticationRefreshEnded({
+              outcome: "failed",
+              errorCode: "PROVIDER_AUTHENTICATION_ERROR",
+              errorType: getProviderErrorType(error),
+            });
+            throw error;
+          }
           if (refreshed !== undefined) {
             retryState.credentials = refreshed;
-            this.config.logger?.info("provider.authentication_refresh_ended", {
-              provider: "openai-codex",
-              outcome: "refreshed",
-            });
+            this.diagnostics.authenticationRefreshEnded({ outcome: "refreshed" });
             continue;
           }
-          this.config.logger?.warn("provider.authentication_refresh_ended", {
-            provider: "openai-codex",
-            outcome: "unauthorized",
-          });
+          this.diagnostics.authenticationRefreshEnded({ outcome: "unauthorized" });
         }
 
         const responseBody = await response.text().catch(() => "");
@@ -250,11 +293,15 @@ export class OpenAICodexModel extends BaseModel {
 
       const delayMs = getOpenAICodexRetryDelayMs(retryState.attempt, response);
       retryState.attempt += 1;
-      this.config.logger?.warn("provider.retrying", {
-        provider: "openai-codex",
+      this.diagnostics.retrying({
         attempt: retryState.attempt,
         delayMs,
-        ...(response === undefined ? {} : { status: response.status }),
+        errorCode:
+          failure instanceof OpenAICodexHttpError
+            ? "PROVIDER_HTTP_ERROR"
+            : "PROVIDER_NETWORK_ERROR",
+        errorType: getProviderErrorType(failure),
+        ...(response === undefined ? {} : { httpStatus: response.status }),
       });
       await sleepForOpenAICodexRetry(delayMs, signal);
     }
@@ -262,7 +309,7 @@ export class OpenAICodexModel extends BaseModel {
 }
 
 function normalizeOpenAICodexError(error: unknown): unknown {
-  if (!(error instanceof OpenAICodexHttpError) || !isContextWindowFailure(error)) {
+  if (!(error instanceof OpenAICodexHttpError) || !isOpenAICodexContextWindowFailure(error)) {
     return error;
   }
   return new ContextWindowExceededError(
@@ -271,41 +318,31 @@ function normalizeOpenAICodexError(error: unknown): unknown {
   );
 }
 
-function isContextWindowFailure(error: OpenAICodexHttpError): boolean {
-  if (![400, 413, 422].includes(error.status)) {
-    return false;
-  }
-  return /context.{0,32}(length|window).{0,32}(exceed|too (?:long|large))|(?:input|prompt).{0,32}(?:token|length).{0,32}(?:exceed|too (?:long|large))/i.test(
-    error.body,
-  );
+function isOpenAICodexContextWindowFailure(error: OpenAICodexHttpError): boolean {
+  return isContextWindowFailure({
+    status: error.status,
+    message: error.body,
+    messageLimit: MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH,
+    includeCommonMessageSignals: false,
+    providerSignal:
+      /context.{0,32}(length|window).{0,32}(exceed|too (?:long|large))|(?:input|prompt).{0,32}(?:token|length).{0,32}(?:exceed|too (?:long|large))/i.test(
+        error.body,
+      ),
+  });
 }
 
-function formatProviderFailure(error: unknown, signal?: AbortSignal): Record<string, unknown> {
-  const aborted = isAbortError(error) || signal?.aborted === true;
+function getOpenAICodexErrorCode(
+  error: unknown,
+  normalized: unknown,
+): ProviderErrorCode | undefined {
+  if (normalized instanceof ContextWindowExceededError) {
+    return "PROVIDER_CONTEXT_WINDOW_EXCEEDED";
+  }
   if (error instanceof OpenAICodexHttpError) {
-    return {
-      errorName: error.name,
-      aborted,
-      status: error.status,
-      statusText: error.statusText,
-    };
+    return "PROVIDER_HTTP_ERROR";
   }
   if (error instanceof ResponsesStreamError) {
-    return {
-      errorName: error.name,
-      aborted,
-      errorCode: error.retryable ? "RESPONSES_STREAM_TRANSIENT" : "RESPONSES_STREAM_ERROR",
-      eventType: error.eventType,
-      ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
-      ...(aborted ? {} : { message: error.message }),
-    };
+    return error.retryable ? "PROVIDER_STREAM_TRANSIENT_ERROR" : "PROVIDER_STREAM_ERROR";
   }
-  if (error instanceof Error) {
-    return {
-      errorName: error.name,
-      aborted,
-      ...(aborted ? {} : { message: error.message }),
-    };
-  }
-  return { errorName: typeof error, aborted };
+  return undefined;
 }

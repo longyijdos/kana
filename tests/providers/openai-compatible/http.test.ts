@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
+import type { ProviderRetryDetails } from "../../../src/providers/lifecycle";
 import {
   createOpenAICompatibleRequestSignal,
   fetchOpenAICompatibleWithRetries,
@@ -42,7 +43,7 @@ describe("OpenAI-compatible HTTP", () => {
     });
 
     try {
-      const retries: Array<{ attempt: number; delayMs: number; status?: number }> = [];
+      const retries: ProviderRetryDetails[] = [];
       const response = await fetchOpenAICompatibleWithRetries(
         `http://127.0.0.1:${server.port}`,
         {},
@@ -52,7 +53,15 @@ describe("OpenAI-compatible HTTP", () => {
 
       expect(await response.text()).toBe("ok");
       expect(requestCount).toBe(2);
-      expect(retries).toEqual([{ attempt: 1, delayMs: 0, status: 429 }]);
+      expect(retries).toEqual([
+        {
+          attempt: 1,
+          delayMs: 0,
+          errorCode: "PROVIDER_HTTP_ERROR",
+          errorType: "OpenAICompatibleHttpError",
+          httpStatus: 429,
+        },
+      ]);
     } finally {
       server.stop(true);
     }

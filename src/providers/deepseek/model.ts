@@ -8,7 +8,17 @@ import {
   type ModelContext,
   type ModelUsage,
 } from "@/core";
+import { isContextWindowFailure, readOpenAIErrorSignals } from "../context-window";
+import { isProviderInactivityTimeout } from "../http";
 import {
+  createProviderDiagnostics,
+  formatProviderFailure,
+  type ProviderDiagnostics,
+  type ProviderErrorCode,
+  type ProviderRequestPhase,
+} from "../lifecycle";
+import {
+  ResponsesStreamError,
   ResponsesStreamProcessor,
   type ResponsesStreamState,
   readResponsesStream,
@@ -28,10 +38,16 @@ const DEFAULT_BASE_URL = "https://api.deepseek.com";
 
 export class DeepSeekModel extends BaseModel {
   readonly metadata;
+  private readonly diagnostics: ProviderDiagnostics;
 
   constructor(private readonly config: DeepSeekModelConfig) {
     super();
     this.metadata = getDeepSeekModelMetadata(config.model);
+    this.diagnostics = createProviderDiagnostics(config.logger, {
+      provider: "deepseek",
+      model: config.model,
+      protocol: this.metadata.protocol,
+    });
   }
 
   stream(context: ModelContext): AssistantEventStream {
@@ -50,12 +66,10 @@ export class DeepSeekModel extends BaseModel {
       role: "assistant",
       content: [],
     };
+    let phase: ProviderRequestPhase = "validation";
     try {
-      this.config.logger?.debug("provider.request_started", {
-        provider: "deepseek",
-        model: this.config.model,
-        protocol: this.metadata.protocol,
-      });
+      this.diagnostics.requestStarted();
+      phase = "authentication";
       const apiKey = this.config.apiKey ?? process.env.DEEPSEEK_API_KEY;
 
       if (!apiKey) {
@@ -64,6 +78,7 @@ export class DeepSeekModel extends BaseModel {
         );
       }
 
+      phase = "validation";
       const maxOutputTokens = context.maxOutputTokens ?? this.config.maxOutputTokens;
       if (
         (this.config.maxOutputTokens !== undefined &&
@@ -75,6 +90,7 @@ export class DeepSeekModel extends BaseModel {
         );
       }
 
+      phase = "request_build";
       const request = buildDeepSeekRequest(
         {
           ...context,
@@ -83,9 +99,13 @@ export class DeepSeekModel extends BaseModel {
         },
         this.config,
       );
+      phase = "http_request";
       const requestSignal = createRequestSignal(this.config, context.signal);
 
       try {
+        phase = "request_build";
+        const body = JSON.stringify(request);
+        phase = "http_request";
         const response = await fetchWithRetries(
           joinUrl(this.config.baseUrl ?? DEFAULT_BASE_URL, "/responses"),
           {
@@ -96,16 +116,11 @@ export class DeepSeekModel extends BaseModel {
               authorization: `Bearer ${apiKey}`,
               ...this.config.headers,
             },
-            body: JSON.stringify(request),
+            body,
             signal: requestSignal.signal,
           },
           this.config.maxRetries ?? 0,
-          (details) =>
-            this.config.logger?.warn("provider.retrying", {
-              provider: "deepseek",
-              protocol: this.metadata.protocol,
-              ...details,
-            }),
+          (details) => this.diagnostics.retrying(details),
         );
         requestSignal.refresh();
 
@@ -114,6 +129,7 @@ export class DeepSeekModel extends BaseModel {
           snapshot: structuredClone(message),
         });
 
+        phase = "response_stream";
         const outcome = await this.consumeResponses(
           response,
           stream,
@@ -127,24 +143,31 @@ export class DeepSeekModel extends BaseModel {
           message: structuredClone(message),
           usage: outcome.usage,
         });
-        this.config.logger?.debug("provider.request_ended", {
-          provider: "deepseek",
-          protocol: this.metadata.protocol,
-          stopReason: outcome.stopReason,
-        });
+        this.diagnostics.requestCompleted(outcome.stopReason);
       } finally {
         requestSignal.dispose();
       }
     } catch (error) {
-      this.config.logger?.error("provider.request_failed", {
-        provider: "deepseek",
-        protocol: this.metadata.protocol,
-        ...formatProviderFailure(error, context.signal),
-      });
+      const normalized = normalizeDeepSeekError(error);
+      this.diagnostics.requestFailed(
+        formatProviderFailure(normalized, {
+          phase,
+          signal: context.signal,
+          timedOut: isProviderInactivityTimeout(error),
+          errorCode: getDeepSeekErrorCode(error, normalized),
+          ...(error instanceof DeepSeekHttpError ? { httpStatus: error.status } : {}),
+          ...(error instanceof ResponsesStreamError
+            ? {
+                eventType: error.eventType,
+                ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
+              }
+            : {}),
+        }),
+      );
       stream.error({
         type: "error",
-        reason: isAbortError(error) || context.signal?.aborted ? "aborted" : "error",
-        error: normalizeDeepSeekError(error),
+        reason: isAbortError(normalized) || context.signal?.aborted ? "aborted" : "error",
+        error: normalized,
         snapshot: structuredClone(message),
       });
     }
@@ -211,7 +234,7 @@ function normalizeDeepSeekHostedToolAction(
 }
 
 function normalizeDeepSeekError(error: unknown): unknown {
-  if (!(error instanceof DeepSeekHttpError) || !isContextWindowFailure(error)) {
+  if (!(error instanceof DeepSeekHttpError) || !isDeepSeekContextWindowFailure(error)) {
     return error;
   }
 
@@ -221,55 +244,22 @@ function normalizeDeepSeekError(error: unknown): unknown {
   );
 }
 
-function isContextWindowFailure(error: DeepSeekHttpError): boolean {
-  if (![400, 413, 422].includes(error.status)) {
-    return false;
-  }
-
-  let code = "";
-  let message = error.body;
-  try {
-    const parsed = JSON.parse(error.body) as {
-      error?: {
-        code?: unknown;
-        message?: unknown;
-      };
-    };
-    code = typeof parsed.error?.code === "string" ? parsed.error.code : "";
-    message = typeof parsed.error?.message === "string" ? parsed.error.message : message;
-  } catch {
-    // Some compatible endpoints return plain-text errors.
-  }
-  message = message.slice(0, 4_096);
-
-  return (
-    /context[_ -]?(length|window)[_ -]?exceeded/i.test(code) ||
-    /(maximum|max).{0,32}context.{0,32}(length|window)|context.{0,32}(length|window).{0,32}(exceed|too (?:long|large))/i.test(
-      message,
-    ) ||
-    /(?:input|prompt).{0,32}(?:token|length).{0,32}(?:exceed|too (?:long|large))/i.test(message)
-  );
+function isDeepSeekContextWindowFailure(error: DeepSeekHttpError): boolean {
+  return isContextWindowFailure({
+    status: error.status,
+    ...readOpenAIErrorSignals(error.body),
+  });
 }
 
-function formatProviderFailure(error: unknown, signal?: AbortSignal): Record<string, unknown> {
-  const aborted = isAbortError(error) || signal?.aborted === true;
-
+function getDeepSeekErrorCode(error: unknown, normalized: unknown): ProviderErrorCode | undefined {
+  if (normalized instanceof ContextWindowExceededError) {
+    return "PROVIDER_CONTEXT_WINDOW_EXCEEDED";
+  }
   if (error instanceof DeepSeekHttpError) {
-    return {
-      errorName: error.name,
-      aborted,
-      status: error.status,
-      statusText: error.statusText,
-    };
+    return "PROVIDER_HTTP_ERROR";
   }
-
-  if (error instanceof Error) {
-    return {
-      errorName: error.name,
-      aborted,
-      ...(aborted ? {} : { message: error.message }),
-    };
+  if (error instanceof ResponsesStreamError) {
+    return error.retryable ? "PROVIDER_STREAM_TRANSIENT_ERROR" : "PROVIDER_STREAM_ERROR";
   }
-
-  return { errorName: typeof error, aborted };
+  return undefined;
 }

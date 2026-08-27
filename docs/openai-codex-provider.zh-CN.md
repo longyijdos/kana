@@ -80,8 +80,8 @@ reader 会保留跨网络分片的不完整 SSE 帧，并在一个 body chunk �
 
 ## 失败、重试与用量
 
-首个 HTTP `401` 会触发一次凭据 refresh，并用新 token 重试请求。HTTP 408、429、5xx 和网络错误按有界指数退避重试；Agent 中止和无活动超时立即停止。Responses 的 `error` 与 `response.failed` event 若带有已识别的 transient overload、server、internal、temporary-unavailability 或 rate-limit 标识，也会使用同一个 `max_retries` 预算重试，并在存在时遵循 provider 给出的退避提示。只有在尚未发出任何助手内容或供应商托管搜索活动时，流重试才安全；一旦输出开始，或错误属于校验/协议错误，Kana 会直接失败而不重放请求。明确的 context-window 拒绝会映射为 `ContextWindowExceededError`，供 Agent 在尚未产生输出时执行一次安全压缩恢复。
+首个 HTTP `401` 会触发一次凭据 refresh，并用新 token 重试请求。HTTP 408、429、5xx 和网络错误按有界指数退避重试；Agent 中止与无活动超时保持不同，并都会立即停止。保留的 HTTP 错误体最多为 16 KiB。Responses 的 `error` 与 `response.failed` event 若带有已识别的 transient overload、server、internal、temporary-unavailability 或 rate-limit 标识，也会使用同一个 `max_retries` 预算重试，并在存在时遵循 provider 给出的退避提示。只有在尚未发出任何助手内容或供应商托管搜索活动时，流重试才安全；一旦输出开始，或错误属于校验/协议错误，Kana 会直接失败而不重放请求。明确的 context-window 拒绝会映射为 `ContextWindowExceededError`，供 Agent 在尚未产生输出时执行一次安全压缩恢复。
 
-诊断日志使用稳定的 provider request、authentication refresh、retry 和 failure 事件，只记录供应商、模型、阶段、结果、错误类型、流事件类型或 HTTP 状态。日志不会记录 token、account ID、header、prompt、完整工具参数或响应体。
+诊断日志使用稳定的请求开始/完成/失败、HTTP retry、authentication refresh 开始/结束和 stream recovery 开始/结束事件。每条记录都包含 provider、model、protocol、phase 与 outcome；重试和失败还会按需添加固定 Kana `errorCode`、安全的 `errorType`、attempt、流事件类型、安全的上游 `providerCode` 或 HTTP status。认证刷新、普通 HTTP 重试和 Responses 流恢复始终是独立生命周期边界，即使 HTTP 与流重试共享同一个预算。日志绝不记录错误消息、流式内容、token、account ID、header、prompt、完整工具参数或响应体。
 
 Responses usage 映射为输入、输出、缓存命中/未命中和 reasoning token。Kana 记录这些值但不估算金额；ChatGPT subscription quota 和实际账单仍由 provider 管理。

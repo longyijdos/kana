@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { ContextWindowExceededError } from "@/core";
-import { createRequestSignal } from "../../../src/providers/deepseek/http";
+import {
+  createRequestSignal,
+  DeepSeekHttpError,
+  fetchWithRetries,
+} from "../../../src/providers/deepseek/http";
 import { DeepSeekModel } from "../../../src/providers/deepseek/model";
+import { MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH } from "../../../src/providers/http";
 
 describe("DeepSeek request timeout", () => {
   afterEach(() => {
@@ -29,6 +34,35 @@ describe("DeepSeek request timeout", () => {
       new Error("DeepSeek request timed out after 100ms."),
     );
     requestSignal.dispose();
+  });
+
+  test("does not retry after a combined signal aborts with a non-DOM reason", async () => {
+    const controller = new AbortController();
+    const reason = new Error("cancelled by caller");
+    controller.abort(reason);
+    const retries: unknown[] = [];
+
+    const error = await fetchWithRetries(
+      "http://127.0.0.1:1",
+      { signal: controller.signal },
+      2,
+      (details) => retries.push(details),
+    ).catch((caught) => caught);
+
+    expect(error).toBe(reason);
+    expect(retries).toEqual([]);
+  });
+
+  test("bounds the error body retained by DeepSeekHttpError", () => {
+    const error = new DeepSeekHttpError(
+      500,
+      "Internal Server Error",
+      `${"x".repeat(MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH)}secret-tail`,
+    );
+
+    expect(error.body).toHaveLength(MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH + 1);
+    expect(error.body.endsWith("…")).toBe(true);
+    expect(error.body).not.toContain("secret-tail");
   });
 });
 

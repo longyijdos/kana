@@ -6,6 +6,15 @@ import {
   createMessageIdentity,
   type ModelContext,
 } from "@/core";
+import { isContextWindowFailure, readOpenAIErrorSignals } from "../context-window";
+import { isProviderInactivityTimeout } from "../http";
+import {
+  createProviderDiagnostics,
+  formatProviderFailure,
+  type ProviderDiagnostics,
+  type ProviderErrorCode,
+  type ProviderRequestPhase,
+} from "../lifecycle";
 import {
   createOpenAICompatibleRequestSignal,
   fetchOpenAICompatibleWithRetries,
@@ -25,6 +34,7 @@ import type { OpenAICompatibleModelConfig, OpenAICompatibleStreamState } from ".
 
 export class OpenAICompatibleModel extends BaseModel {
   readonly metadata;
+  private readonly diagnostics: ProviderDiagnostics;
 
   constructor(private readonly config: OpenAICompatibleModelConfig) {
     super();
@@ -34,6 +44,11 @@ export class OpenAICompatibleModel extends BaseModel {
       model: config.model,
       protocol: "chat-completions" as const,
     };
+    this.diagnostics = createProviderDiagnostics(config.logger, {
+      provider: config.provider,
+      model: config.model,
+      protocol: "chat-completions",
+    });
   }
 
   stream(context: ModelContext): AssistantEventStream {
@@ -48,12 +63,16 @@ export class OpenAICompatibleModel extends BaseModel {
       role: "assistant",
       content: [],
     };
+    let phase: ProviderRequestPhase = "validation";
 
     try {
-      this.config.logger?.debug("provider.request_started", this.logMetadata());
+      this.diagnostics.requestStarted();
       this.validateMaxOutputTokens(context);
       const requestSignal = createOpenAICompatibleRequestSignal(this.config, context.signal);
       try {
+        phase = "request_build";
+        const body = JSON.stringify(buildOpenAICompatibleRequest(context, this.config));
+        phase = "http_request";
         const response = await fetchOpenAICompatibleWithRetries(
           resolveOpenAICompatibleUrl(this.config.baseUrl),
           {
@@ -64,22 +83,19 @@ export class OpenAICompatibleModel extends BaseModel {
               ...this.config.headers,
               ...(this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : {}),
             },
-            body: JSON.stringify(buildOpenAICompatibleRequest(context, this.config)),
+            body,
             signal: requestSignal.signal,
             // Redirects can forward authorization headers to a different
             // origin, so compatible endpoints must expose their final URL.
             redirect: "error",
           },
           this.config.maxRetries ?? 0,
-          (details) =>
-            this.config.logger?.warn("provider.retrying", {
-              ...this.logMetadata(),
-              ...details,
-            }),
+          (details) => this.diagnostics.retrying(details),
         );
         requestSignal.refresh();
         stream.push({ type: "start", snapshot: structuredClone(message) });
 
+        phase = "response_stream";
         const state: OpenAICompatibleStreamState = {
           endedContentIndexes: new Set<number>(),
         };
@@ -110,22 +126,25 @@ export class OpenAICompatibleModel extends BaseModel {
           message: structuredClone(message),
           usage: state.usage,
         });
-        this.config.logger?.debug("provider.request_ended", {
-          ...this.logMetadata(),
-          stopReason,
-        });
+        this.diagnostics.requestCompleted(stopReason);
       } finally {
         requestSignal.dispose();
       }
     } catch (error) {
-      this.config.logger?.error("provider.request_failed", {
-        ...this.logMetadata(),
-        ...formatProviderFailure(error, context.signal),
-      });
+      const normalized = normalizeProviderError(error, this.config.provider);
+      this.diagnostics.requestFailed(
+        formatProviderFailure(normalized, {
+          phase,
+          signal: context.signal,
+          timedOut: isProviderInactivityTimeout(error),
+          errorCode: getOpenAICompatibleErrorCode(error, normalized),
+          ...(error instanceof OpenAICompatibleHttpError ? { httpStatus: error.status } : {}),
+        }),
+      );
       stream.error({
         type: "error",
-        reason: isAbortError(error) || context.signal?.aborted ? "aborted" : "error",
-        error: normalizeProviderError(error, this.config.provider),
+        reason: isAbortError(normalized) || context.signal?.aborted ? "aborted" : "error",
+        error: normalized,
         snapshot: structuredClone(message),
       });
     }
@@ -143,18 +162,10 @@ export class OpenAICompatibleModel extends BaseModel {
       );
     }
   }
-
-  private logMetadata(): Record<string, unknown> {
-    return {
-      provider: this.config.provider,
-      model: this.config.model,
-      protocol: "chat-completions",
-    };
-  }
 }
 
 function normalizeProviderError(error: unknown, provider: string): unknown {
-  if (!(error instanceof OpenAICompatibleHttpError) || !isContextWindowFailure(error)) {
+  if (!(error instanceof OpenAICompatibleHttpError) || !isOpenAIContextWindowFailure(error)) {
     return error;
   }
   return new ContextWindowExceededError(
@@ -163,46 +174,22 @@ function normalizeProviderError(error: unknown, provider: string): unknown {
   );
 }
 
-function isContextWindowFailure(error: OpenAICompatibleHttpError): boolean {
-  if (![400, 413, 422].includes(error.status)) {
-    return false;
-  }
-
-  let code = "";
-  let message = error.body;
-  try {
-    const parsed = JSON.parse(error.body) as {
-      error?: { code?: unknown; message?: unknown };
-    };
-    code = typeof parsed.error?.code === "string" ? parsed.error.code : "";
-    message = typeof parsed.error?.message === "string" ? parsed.error.message : message;
-  } catch {
-    // OpenAI-compatible endpoints may return plain-text errors.
-  }
-  message = message.slice(0, 4_096);
-  return (
-    /context[_ -]?(length|window)[_ -]?exceeded/i.test(code) ||
-    /(maximum|max).{0,32}context.{0,32}(length|window)|context.{0,32}(length|window).{0,32}(exceed|too (?:long|large))/i.test(
-      message,
-    ) ||
-    /(?:input|prompt).{0,32}(?:token|length).{0,32}(?:exceed|too (?:long|large))/i.test(message)
-  );
+function isOpenAIContextWindowFailure(error: OpenAICompatibleHttpError): boolean {
+  return isContextWindowFailure({
+    status: error.status,
+    ...readOpenAIErrorSignals(error.body),
+  });
 }
 
-function formatProviderFailure(error: unknown, signal?: AbortSignal): Record<string, unknown> {
-  const aborted = isAbortError(error) || signal?.aborted === true;
-  if (error instanceof OpenAICompatibleHttpError) {
-    return {
-      errorCode: "OPENAI_COMPATIBLE_HTTP_ERROR",
-      errorType: error.name,
-      aborted,
-      status: error.status,
-      statusText: error.statusText,
-    };
+function getOpenAICompatibleErrorCode(
+  error: unknown,
+  normalized: unknown,
+): ProviderErrorCode | undefined {
+  if (normalized instanceof ContextWindowExceededError) {
+    return "PROVIDER_CONTEXT_WINDOW_EXCEEDED";
   }
-  return {
-    errorCode: aborted ? "OPENAI_COMPATIBLE_ABORTED" : "OPENAI_COMPATIBLE_REQUEST_ERROR",
-    errorType: error instanceof Error ? error.name : typeof error,
-    aborted,
-  };
+  if (error instanceof OpenAICompatibleHttpError) {
+    return "PROVIDER_HTTP_ERROR";
+  }
+  return undefined;
 }
