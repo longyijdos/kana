@@ -136,7 +136,7 @@
 
 ### 3. Session store 按职责拆分
 
-状态：待开始
+状态：已完成
 
 当前文件：`tests/kana/session/store.test.ts`
 
@@ -146,6 +146,8 @@
 - `tests/kana/session/format.test.ts`
 - `tests/kana/session/journal.test.ts`
 
+共享 fixture：`tests/kana/session/session-fixture.ts`
+
 工作内容：
 
 - repository 负责创建、枚举、读取、删除、标题和父 session。
@@ -154,6 +156,16 @@
 - 复核集成测试是否重新验证了 format 的完整错误矩阵。
 
 完成条件：测试结构与 `src/kana/session` 的模块边界一致。
+
+结果：已完成
+
+提交：`refactor(tests): separate session persistence suites`
+
+- 测试文件：1 -> 3，另有 1 个领域 fixture。
+- 测试行数：1,027 -> 1,011。
+- 测试用例：23 -> 23。
+- 删除或合并：移除 repository 对 JSONL header、turn 和 message 结构的 5 组重复断言；有效图片和 usage round-trip 由 format 测试统一负责。
+- 验证：目标测试 23 个通过；`bun run check` 通过，完整套件 1,113 个测试通过。
 
 ### 4. Config 测试重新归属
 
