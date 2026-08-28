@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { ToolCallContent } from "../../src/core";
 import { HostedToolBlock, ToolCallBlock } from "../../src/tui/components";
 import { stripAnsi, visibleWidth } from "../../src/tui/render";
-import { formatToolApproval } from "../../src/tui/tools";
 
 const WIDTH = 80;
 // Compact tool block shape: 1 title row + 1 target row + at most 9 output
@@ -10,7 +9,7 @@ const WIDTH = 80;
 const MAX_TOOL_ROWS = 11;
 
 describe("compact tool transcript bounds", () => {
-  test("keeps a very long Bash command on one target row without changing arguments or approval details", () => {
+  test("keeps a very long Bash target bounded without mutating canonical arguments", () => {
     const command = `python -c '${"print(1);".repeat(20_000)}' > result.json`;
     const toolCall: ToolCallContent = {
       type: "tool_call",
@@ -27,11 +26,14 @@ describe("compact tool transcript bounds", () => {
     expect(compact[1]).toContain("...");
     expect(compact.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
 
-    // Canonical arguments and approval details stay complete.
     expect((toolCall.args as { command: string }).command).toBe(command);
-    expect(formatToolApproval(toolCall).detail).toBe(
-      `Command\n  ${command}\n\nWorking directory\n  .\n\nExecution\n  Foreground\n\nTimeout\n  30000 ms`,
-    );
+
+    block.updateResult({ command, exitCode: 0, stdout: "" }, false);
+    const completed = block.render(WIDTH).map(stripAnsi);
+
+    expect(completed.length).toBe(2);
+    expect(completed[1]).toContain("...");
+    expect(completed.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
   });
 
   test("bounds a one-line multi-megabyte Bash stdout while the full result view keeps it complete", () => {
@@ -207,74 +209,12 @@ describe("compact tool transcript bounds", () => {
     }
   });
 
-  test("identifies unknown MCP tools by name without promoting args to a target row", () => {
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_mcp_path",
-      name: "filesystem_get_file_info",
-      args: {
-        path: "/Users/longyijdos/aiTemp",
-      },
-    });
-
-    block.updateResult(
-      {
-        source: "mcp",
-        serverId: "filesystem",
-        remoteToolName: "get_file_info",
-        content: [{ type: "text", text: "not found", truncated: false }],
-      },
-      true,
-    );
-
-    const failedLines = block.render(100).map(stripAnsi);
-
-    expect(failedLines).toContain("◆ Failed to use filesystem_get_file_info");
-    expect(failedLines.join("\n")).not.toContain("  └ ");
-    expect(block.getToolDetailView().title).toBe("filesystem_get_file_info");
-
-    block.updateResult(
-      {
-        source: "mcp",
-        serverId: "filesystem",
-        remoteToolName: "get_file_info",
-        content: [{ type: "text", text: "ok", truncated: false }],
-      },
-      false,
-    );
-
-    const doneLines = block.render(100).map(stripAnsi);
-
-    expect(doneLines).toContain("◆ Used filesystem_get_file_info");
-    expect(doneLines.join("\n")).not.toContain("  └ ");
-    expect(block.getToolDetailView().title).toBe("filesystem_get_file_info");
-  });
-
-  test("preserves custom tool identity without promoting command to a target row", () => {
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_custom_command",
-      name: "custom_build_tool",
-      args: {
-        command: "make build",
-      },
-    });
-
-    block.updateResult({ command: "make build", status: "ok" }, true);
-
-    const lines = block.render(100).map(stripAnsi);
-
-    expect(lines).toContain("◆ Failed to use custom_build_tool");
-    expect(lines.join("\n")).not.toContain("  └ ");
-    expect(block.getToolDetailView().title).toBe("custom_build_tool");
-  });
-
   test("shows the full tool name for unknown tools in every state without a target row", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_unknown",
       name: "mcp__server__lookup",
-      args: { query: "anything" },
+      args: { path: "/outside/file", command: "make build" },
     });
 
     block.markExecutionStarted();
@@ -293,7 +233,7 @@ describe("compact tool transcript bounds", () => {
       type: "tool_call",
       id: "call_unknown_failed",
       name: "mcp__server__lookup",
-      args: { query: "anything" },
+      args: { path: "/outside/file", command: "make build" },
     });
     failedBlock.updateResult({ error: "boom" }, true);
 
@@ -301,6 +241,7 @@ describe("compact tool transcript bounds", () => {
 
     expect(failed).toContain("◆ Failed to use mcp__server__lookup");
     expect(failed.join("\n")).not.toContain("  └ ");
+    expect(block.getToolDetailView().title).toBe("mcp__server__lookup");
   });
 
   test("keeps target rows for built-in tools", () => {
@@ -337,26 +278,6 @@ describe("compact tool transcript bounds", () => {
 
       expect(lines).toContain(`  └ ${entry.target}`);
     }
-  });
-
-  test("keeps approval details complete for oversized commands", () => {
-    const command = `python -c '${"print(2);".repeat(20_000)}'`;
-    const toolCall: ToolCallContent = {
-      type: "tool_call",
-      id: "approval-long-command",
-      name: "bash",
-      args: { command },
-    };
-
-    expect((toolCall.args as { command: string }).command).toBe(command);
-    expect(formatToolApproval(toolCall).detail).toBe(
-      `Command\n  ${command}\n\nWorking directory\n  .\n\nExecution\n  Foreground\n\nTimeout\n  30000 ms`,
-    );
-
-    const block = new ToolCallBlock(toolCall);
-    block.markExecutionStarted();
-
-    expect(block.render(WIDTH).map(stripAnsi).length).toBe(2);
   });
 
   test("applies the same single-row target bound to hosted provider tools", () => {

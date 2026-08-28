@@ -246,14 +246,16 @@
 
 ### 6. Tool detail、approval 与 result viewer 去重
 
-状态：待开始
+状态：已完成
 
 涉及文件：
 
+- `tests/tui/tool-call-block.test.ts`
 - `tests/tui/tool-detail.test.ts`
 - `tests/tui/tool-approval.test.ts`
 - `tests/tui/tool-result-viewer-controller.test.ts`
-- `tests/tui/transcript.test.ts`
+- `tests/tui/tool-transcript-budget.test.ts`
+- `tests/tui/content-viewer.test.ts`
 
 主要所有者：
 
@@ -263,6 +265,20 @@
 - transcript 负责紧凑的调用状态渲染。
 
 完成条件：同一 tool payload 或状态矩阵不再被三个以上层级重复验证。
+
+结果：已完成
+
+提交：`refactor(tests): clarify tool presentation ownership`
+
+- 测试文件：6 -> 8；新增 `tool-call-rendering.test.ts` 和 `tool-inspector.test.ts` 两个明确所有者。
+- 测试行数：2,943 -> 2,379。
+- 测试用例：110 -> 87。
+- detail 所有权：保留完整参数、默认值、空 payload、Custom/MCP provenance 和 sanitization；删除重复的 search filter 与 Bash timeout 用例。
+- inspector 所有权：用 4 个集中用例覆盖成功输出不重复、write/edit 在 running、failed、canceled 或缺少 diff 时从 args 恢复上下文，以及字段软换行。
+- approval 所有权：删除 7 个重复验证长 write/edit/custom/MCP 参数和空 payload 的用例，只保留选择、标题、布局、sanitization 接线与分页。
+- controller 所有权：22 -> 9 个用例，只保留打开可检查 Tool、运行与取消状态、实时刷新、导航、viewport 重置和焦点恢复。
+- compact 所有权：合并 3 个 unknown/custom/MCP target 用例，删除重复的超长 Bash approval 和 edit diff 截断覆盖；ToolCall 的 912 行大文件拆为 276 行状态套件和 580 行渲染套件。
+- 验证：目标测试 87 个通过；`bun run check` 通过，完整套件 1,086 个测试通过。
 
 ### 7. Responses provider contract
 
