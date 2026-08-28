@@ -125,7 +125,7 @@ describe("input layout", () => {
     });
   });
 
-  test("treats CRLF and CR as line breaks", () => {
+  test("keeps cursor offsets aligned across CRLF and CR line breaks", () => {
     expect(
       createInputLayout({
         value: "a\r\nb\rc",

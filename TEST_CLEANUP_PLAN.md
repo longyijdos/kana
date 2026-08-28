@@ -312,7 +312,7 @@
 
 ### 8. List viewport 与换行语义归属
 
-状态：待开始
+状态：已完成
 
 涉及范围：
 
@@ -327,6 +327,20 @@
 - 换行转换由最低适当层拥有完整矩阵。
 
 完成条件：共享行为在底层有明确所有者，组件测试不再互相复制。
+
+结果：已完成
+
+提交：`refactor(tests): centralize viewport and line semantics`
+
+- 涉及测试文件：5 -> 7；新增 `list-viewport.test.ts` 和 `lines.test.ts` 两个底层所有者。
+- 测试行数：781 -> 779。
+- 测试用例：36 -> 37。
+- ListViewport 所有权：6 个直接用例覆盖移动 clamp、选中项可见、动态 limit、page/scroll、空列表重置和高度换算。
+- 组件接线：SessionPicker、SkillManager、ToolHistoryPicker 各保留一个窗口集成场景；删除 7 个重复的边界、缩高和 resize 用例。
+- ToolHistoryPicker：移除名称声称 wrap、断言实际 clamp 的旧用例；新的组件场景只验证按键、受限窗口和稳定 ID 选择的接线。
+- 换行所有权：`lines.test.ts` 集中覆盖 LF、CRLF、CR 的识别、归一化、拆行、空行映射和 tail 摘要；TextBlock 删除重复矩阵。
+- 输入布局：保留 CRLF/CR 对 grapheme cursor offset 的集成用例；Editor 和 TextPrompt 继续只负责粘贴归一化及显式换行接线。
+- 验证：目标测试 37 个通过；`bun run check` 通过，完整套件 1,086 个测试通过。
 
 ### 9. Agent 测试结构整理
 

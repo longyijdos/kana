@@ -146,45 +146,6 @@ describe("skill manager", () => {
     ]);
   });
 
-  test("shrinks the skill window for a short available height", () => {
-    const manager = new SkillManager(createSkills(5), () => {});
-    const rendered = manager.render(80, 7).map(stripAnsi);
-
-    expect(rendered).toContain("> [ ] skill-1  global");
-    expect(rendered).toContain("  [ ] skill-2  global");
-    expect(rendered).not.toContain("  [ ] skill-3  global");
-    expect(rendered).not.toContain("  [ ] skill-4  global");
-    expect(rendered).toContain("... 3 more skills");
-    expect(rendered).toContain("Enter toggle · Esc apply and close");
-  });
-
-  test("does not wrap selection at list boundaries", () => {
-    const skills = [
-      {
-        name: "first-skill",
-        description: "",
-        scope: "global" as const,
-        enabled: false,
-        mutable: true,
-      },
-      {
-        name: "second-skill",
-        description: "",
-        scope: "global" as const,
-        enabled: false,
-        mutable: true,
-      },
-    ];
-    const manager = new SkillManager(skills, () => {});
-
-    manager.handleInput("\x1b[A");
-    expect(manager.render(80).map(stripAnsi)).toContain("> [ ] first-skill  global");
-
-    manager.handleInput("\x1b[B");
-    manager.handleInput("\x1b[B");
-    expect(manager.render(80).map(stripAnsi)).toContain("> [ ] second-skill  global");
-  });
-
   test("applies an unchanged empty draft with escape", () => {
     let decision: SkillManagerDecision | undefined;
     const manager = new SkillManager([], (nextDecision) => {
