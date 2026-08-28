@@ -96,7 +96,7 @@
 
 ### 2. Workspace tools 按模块拆分
 
-状态：待开始
+状态：已完成
 
 当前文件：`tests/tools/workspace.test.ts`
 
@@ -110,6 +110,10 @@
 - `tests/tools/edit.test.ts`
 - `tests/tools/view-image.test.ts`
 - `tests/tools/bash.test.ts`
+- `tests/tools/workspace-path.test.ts`
+- `tests/tools/execution.test.ts`
+
+共享 fixture：`tests/tools/workspace-fixture.ts`
 
 工作内容：
 
@@ -119,6 +123,16 @@
 - 评估是否需要一个小型 workspace fixture，避免形成通用大 helper。
 
 完成条件：删除 `workspace.test.ts`，每个工具可以独立运行和定位失败。
+
+结果：已完成
+
+提交：`refactor(tests): split workspace tool suites`
+
+- 测试文件：1 -> 10，另有 1 个领域 fixture。
+- 测试行数：1,185 -> 1,225。
+- 测试用例：49 -> 45。
+- 删除或合并：将 read、edit 和 write 中 7 个重复的绝对路径、外部路径及 symlink 用例迁移为 3 个 `workspace-path` 所有者测试，净删除 4 个重复用例。
+- 验证：目标测试 45 个通过；`bun run check` 通过，完整套件 1,113 个测试通过。
 
 ### 3. Session store 按职责拆分
 
