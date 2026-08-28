@@ -169,17 +169,26 @@
 
 ### 4. Config 测试重新归属
 
-状态：待开始
+状态：已完成
 
-当前文件：`tests/kana/config.test.ts`
+原文件：
 
-建议结构：
+- `tests/kana/config.test.ts`
+- `tests/kana/config-store.test.ts`
+- `tests/kana/prompt.test.ts`
 
-- 环境加载测试。
-- parser 和 validation 测试。
-- persistence、install 和 reset 测试。
-- Kana Agent 配置接线测试。
-- prompt、AGENTS 和 memory 拼装测试迁移到 `tests/kana/prompt.test.ts`。
+完成结构：
+
+- `tests/kana/config/environment.test.ts`
+- `tests/kana/config/defaults.test.ts`
+- `tests/kana/config/parser.test.ts`
+- `tests/kana/config/persistence.test.ts`
+- `tests/kana/config/store.test.ts`
+- `tests/kana/agent-configuration.test.ts`
+- `tests/kana/context.test.ts`
+- `tests/kana/prompt.test.ts`
+
+共享 fixture：`tests/kana/config/config-fixture.ts`
 
 重点清理：
 
@@ -188,6 +197,17 @@
 - config 层对模型预算算法的完整重复矩阵。
 
 完成条件：model 层拥有预算和 capability 算法，config 层只验证配置解析和接线。
+
+结果：已完成
+
+提交：`refactor(tests): align config suite ownership`
+
+- 测试文件：3 -> 8，另有 1 个领域 fixture。
+- 测试行数：1,388 -> 1,246。
+- 测试用例：66 -> 63。
+- 删除或合并：删除 Agent 层重复的模型 capability 上限测试；删除已由完整 merge 用例覆盖的 Main/Memory 模型独立解析和 API key 字段解析测试；Prompt 接线只保留一个 Agent 冒烟断言。
+- 结构改进：Config 按 environment、defaults、parser、persistence 和 store 分层；环境上下文纯函数归 `context.test.ts`；AGENTS、memory 和静态 Prompt 拼装归 `prompt.test.ts`；共享 fixture 不再修改进程级环境变量。
+- 验证：目标测试 63 个通过；`bun run check` 通过，完整套件 1,110 个测试通过。
 
 ### 5. Transcript 与消息组件拆分
 
