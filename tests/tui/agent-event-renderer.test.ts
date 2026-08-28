@@ -9,6 +9,44 @@ import type { Tui } from "../../src/tui/runtime";
 import { messageIdentityForTest } from "../helpers/messages";
 
 describe("AgentEventRenderer", () => {
+  test("renders manual context compaction as a persistent transcript marker", () => {
+    const transcript = new TranscriptComponent();
+    const statuses: Array<{ phase: RunPhase; contextUsedPercent?: number }> = [];
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: { requestRender() {} } as unknown as Tui,
+      updateStatus: (phase, extra = {}) => {
+        statuses.push({
+          phase,
+          contextUsedPercent: extra.contextUsedPercent,
+        });
+      },
+    });
+
+    renderer.handle({
+      type: "context_compaction_start",
+      reason: "manual",
+      estimatedTokens: 60_800,
+      contextLimit: 100_000,
+    });
+    renderer.handle({
+      type: "context_compacted",
+      reason: "manual",
+      beforeTokens: 60_800,
+      estimatedAfterTokens: 14_800,
+      compactedMessageCount: 20,
+      contextLimit: 100_000,
+    });
+
+    expect(stripAnsi(transcript.render(80).join("\n"))).toContain(
+      "Context compacted · 60.8k → ~14.8k tokens",
+    );
+    expect(statuses).toEqual([
+      { phase: "compacting", contextUsedPercent: undefined },
+      { phase: "done", contextUsedPercent: 15 },
+    ]);
+  });
+
   test("preserves LaTeX source for live assistant text when rendering is disabled", () => {
     const transcript = new TranscriptComponent();
     const renderer = new AgentEventRenderer({

@@ -1,54 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { type BackgroundJobClient, BackgroundJobManager } from "@/jobs";
-import type { KanaLaunchMode, KanaTodoItem, KanaUsageScope, KanaUsageSummary } from "@/kana";
+import type { KanaTodoItem, KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { ToolCallBlock } from "../../src/tui/components";
-import { color, stripAnsi } from "../../src/tui/render";
+import { stripAnsi } from "../../src/tui/render";
 import type { Component, Terminal } from "../../src/tui/runtime";
-import { tuiTheme } from "../../src/tui/theme";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
 
 describe("information viewers", () => {
-  test("opens help in the bottom viewer without adding transcript content", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({ name: "help", arguments: "", raw: "/help" });
-
-    const rawRendered = internal.layout.render(80, 24);
-    const rendered = rawRendered.map(stripAnsi);
-
-    expect(internal.transcript.children).toHaveLength(0);
-    expect(internal.contentViewer.active).toBe(true);
-    expect(rendered).toContain("Slash commands");
-    expect(rawRendered).toContain(color("Slash commands", tuiTheme.bottomTitle));
-    expect(
-      rendered.some(
-        (line) => line.includes("/help") && line.includes("Show commands and shortcuts"),
-      ),
-    ).toBe(true);
-    expect(
-      rendered.some(
-        (line) => line.includes("/fork <prompt>") && line.includes("Fork the current session"),
-      ),
-    ).toBe(true);
-    expect(rendered).not.toContain("test-model");
-
-    internal.tui.getFocus()?.handleInput?.("\x1b[F");
-    const scrolled = internal.layout.render(80, 24).map(stripAnsi);
-
-    expect(
-      scrolled.some(
-        (line) => line.includes("[ / ]") && line.includes("previous or next tool call"),
-      ),
-    ).toBe(true);
-    expect(
-      scrolled.some(
-        (line) => line.includes("!<command>") && line.includes("Run a local bash command"),
-      ),
-    ).toBe(true);
-  });
-
   test("keeps Agent status while opening help during a run", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
@@ -71,25 +29,6 @@ describe("information viewers", () => {
     expect(internal.contentViewer.active).toBe(false);
     expect(state.abortCalls).toBe(0);
     expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
-  });
-
-  test("routes escape through a running /jobs manager before aborting the Agent", () => {
-    const { internal, sendInput, state } = createStartedApp();
-
-    startRun(internal, "tool");
-    internal.handleCommand({ name: "jobs", arguments: "", raw: "/jobs" });
-
-    sendInput("\x1b");
-
-    expect(internal.backgroundJobManager.active).toBe(false);
-    expect(internal.status.running).toBe(true);
-    expect(state.abortCalls).toBe(0);
-    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
-
-    sendInput("\x1b");
-
-    expect(state.abortCalls).toBe(1);
-    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Aborted");
   });
 
   test("keeps a running schedule flow focused on its own escape semantics", () => {
@@ -123,32 +62,6 @@ describe("information viewers", () => {
     expect(state.abortCalls).toBe(0);
   });
 
-  test("routes escape through the running /tools picker without aborting the Agent", () => {
-    const { internal, sendInput, state } = createStartedApp();
-
-    startRun(internal, "tool");
-    internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
-
-    sendInput("\x1b");
-
-    expect(internal.toolHistory.active).toBe(false);
-    expect(state.abortCalls).toBe(0);
-    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
-  });
-
-  test("routes escape through the running /usage scope picker without aborting the Agent", () => {
-    const { internal, sendInput, state } = createStartedApp();
-
-    startRun(internal, "responding");
-    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
-
-    sendInput("\x1b");
-
-    expect(internal.slashCommandOptions.active).toBe(false);
-    expect(state.abortCalls).toBe(0);
-    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Responding");
-  });
-
   test("does nothing for escape in the idle editor", () => {
     const { internal, sendInput, state } = createStartedApp();
 
@@ -156,69 +69,6 @@ describe("information viewers", () => {
 
     expect(internal.tui.getFocus()).toBe(internal.editor);
     expect(state.abortCalls).toBe(0);
-  });
-
-  test("shows running-unavailable errors without replacing Agent status", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    startRun(internal, "tool");
-    internal.handleCommand({ name: "model", arguments: "", raw: "/model" });
-
-    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
-
-    expect(rendered).toContain("/model is unavailable while Agent is running.");
-    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
-  });
-
-  test("rejects usage arguments from the editor", () => {
-    const loadedScopes: KanaUsageScope[] = [];
-    const app = createApp((scope) => {
-      loadedScopes.push(scope);
-      return createUsageSummary(scope);
-    });
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({ name: "usage", arguments: "global", raw: "/usage global" });
-
-    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
-
-    expect(loadedScopes).toEqual([]);
-    expect(internal.transcript.children).toHaveLength(1);
-    expect(internal.contentViewer.active).toBe(false);
-    expect(internal.slashCommandOptions.active).toBe(false);
-    expect(rendered).toContain("Usage: /usage");
-  });
-
-  test("selects a usage scope from the bottom prompt", () => {
-    const loadedScopes: KanaUsageScope[] = [];
-    const app = createApp((scope) => {
-      loadedScopes.push(scope);
-      return createUsageSummary(scope);
-    });
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
-
-    const prompt = internal.layout.render(80, 24).map(stripAnsi);
-
-    expect(internal.transcript.children).toHaveLength(0);
-    expect(internal.slashCommandOptions.active).toBe(true);
-    expect(internal.contentViewer.active).toBe(false);
-    expect(prompt).toContain("Usage scope");
-    expect(prompt).toContain("> Session");
-    expect(prompt).toContain("  Project");
-    expect(prompt).toContain("  Global");
-
-    internal.tui.getFocus()?.handleInput?.("\x1b[B");
-    internal.tui.getFocus()?.handleInput?.("\r");
-
-    const viewer = internal.layout.render(80, 24).map(stripAnsi);
-
-    expect(loadedScopes).toEqual(["project"]);
-    expect(internal.slashCommandOptions.active).toBe(false);
-    expect(internal.contentViewer.active).toBe(true);
-    expect(viewer).toContain("Usage · project");
   });
 
   test("keeps Agent status when image attachment fails during a run", async () => {
@@ -239,23 +89,6 @@ describe("information viewers", () => {
     expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
   });
 
-  test("keeps Agent status while opening usage during a run", () => {
-    const loadedScopes: KanaUsageScope[] = [];
-    const app = createApp((scope) => {
-      loadedScopes.push(scope);
-      return createUsageSummary(scope);
-    });
-    const internal = app as unknown as AppInternals;
-
-    startRun(internal, "responding");
-    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
-    internal.tui.getFocus()?.handleInput?.("\r");
-
-    expect(loadedScopes).toEqual(["session"]);
-    expect(internal.contentViewer.active).toBe(true);
-    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Responding");
-  });
-
   test("keeps runtime run_error as a terminal Error status", () => {
     const app = createApp();
     const internal = app as unknown as AppInternals;
@@ -274,114 +107,8 @@ describe("information viewers", () => {
     expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Error");
   });
 
-  test("cancels the usage scope prompt with escape", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
-    internal.tui.getFocus()?.handleInput?.("\x1b");
-
-    const rendered = internal.layout.render(80, 24).map(stripAnsi);
-
-    expect(internal.slashCommandOptions.active).toBe(false);
-    expect(rendered.some((line) => line.includes("test-model"))).toBe(true);
-  });
-
-  test("reports session usage as unavailable in clean mode", () => {
-    const loadedScopes: KanaUsageScope[] = [];
-    const app = createApp((scope) => {
-      loadedScopes.push(scope);
-      return createUsageSummary(scope);
-    }, "clean");
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({ name: "usage", arguments: "", raw: "/usage" });
-    internal.tui.getFocus()?.handleInput?.("\r");
-
-    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
-
-    expect(loadedScopes).toEqual([]);
-    expect(internal.slashCommandOptions.active).toBe(false);
-    expect(internal.contentViewer.active).toBe(false);
-    expect(rendered).toContain("Session usage is unavailable in clean mode.");
-  });
-
-  test("opens the tool history picker with an empty session state while running", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    internal.status.startRun();
-    internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
-
-    const rendered = internal.layout.render(80, 24).map(stripAnsi);
-
-    expect(internal.transcript.children).toHaveLength(0);
-    expect(internal.toolHistory.active).toBe(true);
-    expect(internal.contentViewer.active).toBe(false);
-    expect(rendered).toContain("Tool history");
-    expect(rendered).toContain("No tool calls in this session.");
-
-    internal.tui.getFocus()?.handleInput?.("\x1b");
-
-    expect(internal.toolHistory.active).toBe(false);
-    expect(internal.layout.render(80, 24).some((line) => line.includes("test-model"))).toBe(true);
-  });
-
-  test("rejects tool history arguments from the editor", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({ name: "tools", arguments: "something", raw: "/tools something" });
-
-    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
-
-    expect(internal.toolHistory.active).toBe(false);
-    expect(internal.contentViewer.active).toBe(false);
-    expect(internal.transcript.children).toHaveLength(1);
-    expect(rendered).toContain("Usage: /tools");
-  });
-
-  test("opens the scheduled message manager while running", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    internal.status.startRun();
-    internal.handleCommand({ name: "schedule", arguments: "", raw: "/schedule" });
-
-    expect(internal.scheduledMessageManager.active).toBe(true);
-    expect(internal.layout.render(80, 24).map(stripAnsi)).toContain(
-      "Scheduled messages · process only",
-    );
-
-    internal.tui.getFocus()?.handleInput?.("\x1b");
-    expect(internal.scheduledMessageManager.active).toBe(false);
-  });
-
-  test("opens /jobs while running without replacing Agent status", async () => {
-    const jobManager = new BackgroundJobManager();
-    const jobs = jobManager.bind(jobManager.createOwner("session"), { maxConcurrent: 1 });
-    const app = createApp(createUsageSummary, undefined, undefined, jobs);
-    const internal = app as unknown as AppInternals;
-
-    try {
-      startRun(internal, "tool");
-      internal.handleCommand({ name: "jobs", arguments: "", raw: "/jobs" });
-
-      const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
-      expect(internal.backgroundJobManager.active).toBe(true);
-      expect(rendered).toContain("Background Jobs · current session");
-      expect(rendered).not.toContain("/jobs is unavailable while Agent is running.");
-      expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("Tool read");
-
-      internal.tui.getFocus()?.handleInput?.("\x1b");
-      expect(internal.backgroundJobManager.active).toBe(false);
-    } finally {
-      await jobManager.close();
-    }
-  });
-
   test("opens the current session todo state without adding transcript content", () => {
-    const app = createApp(createUsageSummary, undefined, [
+    const app = createApp(createUsageSummary, [
       { content: "Implement durable state", status: "in_progress" },
       { content: "Update documentation", status: "completed" },
     ]);
@@ -397,35 +124,6 @@ describe("information viewers", () => {
     expect(rendered).toContain("1 active · 0 pending · 1 completed");
     expect(rendered).toContain("◉ Implement durable state");
     expect(rendered).toContain("✓ Update documentation");
-  });
-
-  test("opens a tool picked from /tools in the same detail inspector", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call-1",
-      name: "bash",
-      args: { command: "bun test" },
-    });
-    block.updateResult({ command: "bun test", exitCode: 0, stdout: "1 pass" }, false);
-    internal.transcript.addChild(block);
-
-    internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
-
-    const picker = internal.layout.render(80, 24).map(stripAnsi);
-    expect(picker).toContain("Tool history");
-    expect(picker).toContain("> Bash  bun test");
-
-    internal.tui.getFocus()?.handleInput?.("\r");
-
-    const inspector = internal.layout.render(80, 24).map(stripAnsi).join("\n");
-
-    expect(internal.toolHistory.active).toBe(false);
-    expect(internal.contentViewer.active).toBe(true);
-    expect(inspector).toContain("Bash");
-    expect(inspector).toContain("Command");
-    expect(inspector).toContain("bun test");
   });
 
   test("ctrl+o over an open tool history picker replaces it without stale state", () => {
@@ -477,39 +175,6 @@ describe("information viewers", () => {
     internal.tui.getFocus()?.handleInput?.("\x1b");
     expect(internal.toolHistory.active).toBe(false);
   });
-
-  test("opens memory actions in the bottom prompt", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({ name: "memory", arguments: "", raw: "/memory" });
-
-    const rendered = internal.layout.render(80, 24).map(stripAnsi);
-
-    expect(internal.transcript.children).toHaveLength(0);
-    expect(internal.slashCommandOptions.active).toBe(true);
-    expect(rendered).toContain("Memory action");
-    expect(rendered).toContain("> Show");
-    expect(rendered).toContain("  Compact");
-  });
-
-  test("rejects memory arguments from the editor", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({
-      name: "memory",
-      arguments: "show project",
-      raw: "/memory show project",
-    });
-
-    const rendered = internal.layout.render(80, 24).map(stripAnsi).join("\n");
-
-    expect(internal.transcript.children).toHaveLength(1);
-    expect(internal.contentViewer.active).toBe(false);
-    expect(internal.slashCommandOptions.active).toBe(false);
-    expect(rendered).toContain("Usage: /memory");
-  });
 });
 
 type AppInternals = {
@@ -530,10 +195,8 @@ type AppInternals = {
   handleGlobalInput: (data: string) => void;
   transcript: { children: unknown[]; addChild: (child: unknown) => void };
   contentViewer: { active: boolean };
-  slashCommandOptions: { active: boolean };
   toolHistory: { active: boolean };
   scheduledMessageManager: { active: boolean };
-  backgroundJobManager: { active: boolean };
   tui: { getFocus: () => Component | undefined };
   layout: { render: (width: number, availableHeight?: number) => string[] };
 };
@@ -545,9 +208,7 @@ function startRun(internal: AppInternals, phase: "responding" | "tool"): void {
 
 function createApp(
   loadUsage: (scope: KanaUsageScope) => KanaUsageSummary = createUsageSummary,
-  launchMode?: KanaLaunchMode,
   todoState?: KanaTodoItem[],
-  backgroundJobs?: BackgroundJobClient,
   onAbort?: () => void,
   captureInput?: (onInput: (data: string) => void) => void,
 ): KanaTuiApp {
@@ -569,19 +230,13 @@ function createApp(
       }) as never,
     createTerminal(captureInput),
     {
-      launch: { mode: launchMode },
+      launch: {},
       conversation: {
         initialSession:
-          todoState === undefined && backgroundJobs === undefined
+          todoState === undefined
             ? undefined
-            : {
-                id: "session",
-                messages: [],
-                timeline: [],
-                ...(todoState === undefined ? {} : { todoState }),
-              },
+            : { id: "session", messages: [], timeline: [], todoState },
         getResumeSessionId: () => undefined,
-        getBackgroundJobs: backgroundJobs ? () => backgroundJobs : undefined,
         createNewSession: () => ({ id: "new" }),
         forkSession: () => ({ id: "fork" }),
         listSessions: () => [],
@@ -611,8 +266,6 @@ function createStartedApp(): {
   const state = { abortCalls: 0 };
   const app = createApp(
     createUsageSummary,
-    undefined,
-    undefined,
     undefined,
     () => {
       state.abortCalls += 1;

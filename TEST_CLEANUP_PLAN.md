@@ -386,7 +386,7 @@
 
 ### 10. TUI App 集成测试下沉
 
-状态：待开始
+状态：已完成
 
 主要文件：
 
@@ -403,6 +403,21 @@
 - App 层只保留少量跨 controller 接线和用户流程测试。
 
 完成条件：`session-agent.test.ts` 成为小型 App smoke suite，而不是 controller 测试集合。
+
+结果：已完成
+
+提交：`refactor(tests): move TUI behavior to controller suites`
+
+- 涉及测试文件：5 -> 8；新增 external tools、session lifecycle、context compact 和 information viewer 四个 controller 所有者，删除独立但重复的 `memory-viewer.test.ts`。
+- 测试行数：2,338 -> 2,204。
+- 测试用例：55 -> 44。
+- App smoke：`session-agent.test.ts` 由 834 行、15 个用例降至 417 行、6 个用例，只保留 session 切换、resume 启动门、clean mode、wake gate 和 context status 接线。
+- App viewer：`information-viewers.test.ts` 由 677 行、26 个用例降至 330 行、9 个用例，只保留运行中 focus/escape、错误状态、todo 接线和 Ctrl+O 跨 controller 流程。
+- Controller 所有权：外部工具启动/失败、fork 后 UI 流程、临时 compaction block、help/usage/memory/todo viewer 各自拥有直接测试；memory Markdown 换行场景并入 information viewer controller。
+- Lifecycle 所有权：Agent abort、host/terminal shutdown 顺序、退出 usage、二次 Ctrl+C force stop 和 draft-first Ctrl+C 迁入 `process-lifecycle.test.ts`。
+- Compaction 所有权：ContextCompact 负责临时 block 生命周期；AgentEventRenderer 负责持久化 compaction marker 和状态投影。
+- 删除重复：命令参数错误由 slash command controller 拥有；空工具历史、picker 到 inspector 和 relinquish 由 tool history/content viewer controller 拥有；fork 后 Agent 重建由 ConversationRuntime 现有矩阵拥有。
+- 验证：目标测试 44 个通过；`bun run check` 通过，完整套件 1,075 个测试通过。
 
 ### 11. CLI 与 headless 分域整理
 
