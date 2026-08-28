@@ -26,7 +26,7 @@ import { MockModel } from "../../src/providers/mock";
 import type { Tool } from "../../src/tools";
 import { messageIdentityForTest } from "../helpers/messages";
 
-describe("headless execution", () => {
+describe("headless output protocol", () => {
   test("writes only the final answer to human stdout", async () => {
     const stdout = new StringOutput();
     const stderr = new StringOutput();
@@ -96,7 +96,9 @@ describe("headless execution", () => {
     expect(stdout.value).not.toContain('"type":"agent_event"');
     await runtime.close();
   });
+});
 
+describe("headless Goal execution", () => {
   for (const goalCase of [
     { status: "completed" as const, exitCode: 0 },
     { status: "blocked" as const, exitCode: 1 },
@@ -320,7 +322,9 @@ describe("headless execution", () => {
     });
     await runtime.close();
   });
+});
 
+describe("headless timeout", () => {
   test("completes normally before an Agent-run timeout", async () => {
     const stdout = new StringOutput();
     const runtime = createRuntime({
@@ -441,7 +445,9 @@ describe("headless execution", () => {
     expect(() => parseHeadlessTimeout("30")).toThrow("duration such as");
     expect(() => parseHeadlessTimeout("597h")).toThrow("between 1ms");
   });
+});
 
+describe("headless approval", () => {
   test("fails closed when a tool needs approval and can explicitly allow it", async () => {
     let executions = 0;
     const tool: Tool = {
@@ -519,7 +525,9 @@ describe("headless execution", () => {
     ]);
     await allowedRuntime.close();
   });
+});
 
+describe("headless result reporting", () => {
   test("reports physical tool completion before a later journal failure", async () => {
     const commitError = new Error("journal unavailable");
     const tool: Tool = {
@@ -571,7 +579,9 @@ describe("headless execution", () => {
     });
     await runtime.close();
   });
+});
 
+describe("headless input and resume", () => {
   test("reads a missing prompt from stdin and rejects empty interactive input", async () => {
     expect(await resolveHeadlessPrompt(undefined, chunks(["from ", "stdin\n"]))).toBe("from stdin");
     await expect(resolveHeadlessPrompt(undefined, chunks([], { isTTY: true }))).rejects.toThrow(

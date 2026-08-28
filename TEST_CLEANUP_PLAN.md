@@ -421,7 +421,7 @@
 
 ### 11. CLI 与 headless 分域整理
 
-状态：待开始
+状态：已完成
 
 当前文件：
 
@@ -436,6 +436,18 @@
 注意事项：CLI 参数转发与 headless 运行行为属于不同公开边界，不因为输入相似而删除其中一层。
 
 完成条件：文件按命令或协议职责组织，不混合无关 setup。
+
+结果：已完成
+
+提交：`refactor(tests): organize CLI and headless suites`
+
+- 测试文件：2 -> 3；`cli.test.ts` 拆成 `launch.test.ts` 和 `commands.test.ts`，并新增不参与测试发现的 `cli-fixture.ts`。
+- 测试实现行数：1,535 -> 1,565；其中 CLI 测试正文由 728 行降至 671 行，77 行默认依赖和解析入口集中到共享 fixture。
+- 测试用例：42 -> 42；保持 CLI 参数转发与 headless 运行行为两层公开契约，不因输入相似删除任一层。
+- CLI 所有权：launch suite 负责版本、TUI/headless 启动和参数转发；commands suites 分别负责安装、更新、重置、认证和 Skills。
+- Headless 所有权：按 output protocol、Goal execution、timeout、approval、result reporting、input/resume 建立顶层 suite，继续共享同一受控 ConversationRuntime 和协议模型。
+- 结构变化：顶层 suite 由 2 个增至 12 个；失败可直接定位到命令域或 headless 协议阶段，且没有复制默认 CLI 依赖。
+- 验证：目标测试 42 个通过；`bun run check` 通过，完整套件 1,075 个测试通过。
 
 ### 12. 稳定测试 helpers
 
