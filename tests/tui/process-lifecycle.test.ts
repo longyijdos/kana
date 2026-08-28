@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { registerTuiProcessSignals, type TuiSignalProcess } from "../../src/tui/process-lifecycle";
 import { stripAnsi } from "../../src/tui/render";
-import type { Terminal } from "../../src/tui/runtime";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
+import {
+  createTuiAppOptions as createOptions,
+  createTerminalStub as createTerminal,
+} from "./app-fixture";
 
 describe("TUI process lifecycle", () => {
   test("maps the first process signal to one graceful shutdown", () => {
@@ -249,68 +252,6 @@ class FakeSignalProcess implements TuiSignalProcess {
       listener();
     }
   }
-}
-
-function createOptions() {
-  return {
-    launch: {},
-    conversation: {
-      getResumeSessionId: () => undefined,
-      createNewSession: () => ({ id: "new" }),
-      forkSession: () => ({ id: "fork" }),
-      listSessions: () => [],
-      loadSession: () => ({ id: "session", messages: [], timeline: [] }),
-      deleteSession: () => false,
-      goalMaxRounds: 8,
-    },
-    skills: {
-      load: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
-      saveEnabledGlobalNames: () => {},
-    },
-    toolApproval: {
-      config: { mode: "unless_trusted" as const },
-      approvals: {
-        version: 2 as const,
-        bash: { exactCommands: [], readOnlyCommands: [] },
-      },
-    },
-    ui: { notification: {} as never },
-    memory: { compact: async () => [], load: () => "" },
-    usage: {
-      load: () => ({
-        scope: "session" as const,
-        runCount: 0,
-        mainRunCount: 0,
-        memoryRunCount: 0,
-        outcomes: {
-          stop: 0,
-          length: 0,
-          aborted: 0,
-          error: 0,
-          turn_limit: 0,
-          updated: 0,
-          unchanged: 0,
-        },
-        agents: {
-          main: { runCount: 0 },
-          memoryAutomatic: { runCount: 0 },
-          memoryManual: { runCount: 0 },
-        },
-        models: [],
-      }),
-    },
-  };
-}
-
-function createTerminal(): Terminal {
-  return {
-    columns: 80,
-    rows: 24,
-    start: () => {},
-    stop: () => {},
-    write: () => {},
-    notify: () => {},
-  };
 }
 
 function createAgentState() {

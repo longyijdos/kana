@@ -6,6 +6,7 @@ import {
 import { Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Tui } from "../../src/tui/runtime";
+import { deferred } from "../helpers/async-control";
 
 describe("external tools lifecycle controller", () => {
   test("renders startup progress before enabling tools and editor focus", async () => {
@@ -96,16 +97,4 @@ function createHarness(
     events,
     render: () => transcript.render(100).map(stripAnsi).filter(Boolean),
   };
-}
-
-function deferred<T>(): {
-  promise: Promise<T>;
-  resolve(value: T): void;
-} {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-
-  return { promise, resolve };
 }

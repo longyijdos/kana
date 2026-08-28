@@ -3,6 +3,7 @@ import { ContextCompactController } from "../../src/tui/app/context-compact-cont
 import { Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Tui } from "../../src/tui/runtime";
+import { deferred } from "../helpers/async-control";
 
 describe("context compact controller", () => {
   test("owns the temporary compaction block until the operation settles", async () => {
@@ -54,13 +55,4 @@ describe("context compact controller", () => {
 
 function renderTranscript(transcript: Transcript): string {
   return stripAnsi(transcript.render(80).join("\n"));
-}
-
-function deferred(): { promise: Promise<void>; resolve(): void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-
-  return { promise, resolve };
 }

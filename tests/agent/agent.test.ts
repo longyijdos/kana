@@ -13,6 +13,7 @@ import type { Model, ModelMetadata, ModelUsage } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
 import type { Logger } from "../../src/logging";
 import type { Tool } from "../../src/tools/tool";
+import { deferred } from "../helpers/async-control";
 import { messageIdentityForTest } from "../helpers/messages";
 
 class TextModel implements Model {
@@ -1320,21 +1321,6 @@ describe("Agent state isolation and completion", () => {
     });
   });
 });
-
-function deferred(): {
-  promise: Promise<void>;
-  resolve(): void;
-} {
-  let resolve!: () => void;
-  const promise = new Promise<void>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-
-  return {
-    promise,
-    resolve,
-  };
-}
 
 function streamProbeToolCall(stream: AssistantEventStream, callNumber: number): void {
   const message: AssistantMessage = {

@@ -3,8 +3,9 @@ import type { KanaTodoItem, KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { ToolCallBlock } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
-import type { Component, Terminal } from "../../src/tui/runtime";
+import type { Component } from "../../src/tui/runtime";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
+import { createTerminalStub as createTerminal, createTuiAppOptions } from "./app-fixture";
 
 describe("information viewers", () => {
   test("keeps Agent status while opening help during a run", () => {
@@ -212,6 +213,7 @@ function createApp(
   onAbort?: () => void,
   captureInput?: (onInput: (data: string) => void) => void,
 ): KanaTuiApp {
+  const options = createTuiAppOptions();
   return new KanaTuiApp(
     () =>
       withAgentInboxForTest({
@@ -230,27 +232,14 @@ function createApp(
       }) as never,
     createTerminal(captureInput),
     {
-      launch: {},
+      ...options,
       conversation: {
+        ...options.conversation,
         initialSession:
           todoState === undefined
             ? undefined
             : { id: "session", messages: [], timeline: [], todoState },
-        getResumeSessionId: () => undefined,
-        createNewSession: () => ({ id: "new" }),
-        forkSession: () => ({ id: "fork" }),
-        listSessions: () => [],
-        loadSession: () => ({ id: "session", messages: [], timeline: [] }),
-        deleteSession: () => false,
-        goalMaxRounds: 8,
       },
-      skills: {
-        load: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
-        saveEnabledGlobalNames: () => {},
-      },
-      toolApproval: { config: {}, approvals: {} } as never,
-      ui: { notification: {} as never },
-      memory: { compact: async () => [], load: () => "" },
       usage: { load: loadUsage },
     },
   );
@@ -315,16 +304,5 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
       memoryManual: { runCount: 0 },
     },
     models: [],
-  };
-}
-
-function createTerminal(captureInput?: (onInput: (data: string) => void) => void): Terminal {
-  return {
-    columns: 80,
-    rows: 24,
-    start: (onInput) => captureInput?.(onInput),
-    stop: () => {},
-    write: () => {},
-    notify: () => {},
   };
 }

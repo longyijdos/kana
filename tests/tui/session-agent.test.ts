@@ -3,9 +3,13 @@ import { AgentEventStream } from "../../src/agent";
 import { createWakeScheduler, type KanaSessionMetadata } from "../../src/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { stripAnsi } from "../../src/tui/render";
-import type { Component, Terminal } from "../../src/tui/runtime";
+import type { Component } from "../../src/tui/runtime";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
 import { messageIdentityForTest } from "../helpers/messages";
+import {
+  createTuiAppOptions as createOptions,
+  createTerminalStub as createTerminal,
+} from "./app-fixture";
 
 describe("session-scoped agents", () => {
   test("resets a temporary tool approval mode when the session changes", async () => {
@@ -330,68 +334,6 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
 
   throw new Error("Condition was not met.");
-}
-
-function createOptions() {
-  return {
-    launch: {},
-    conversation: {
-      getResumeSessionId: () => undefined,
-      createNewSession: () => ({ id: "new" }),
-      forkSession: () => ({ id: "fork" }),
-      listSessions: () => [],
-      loadSession: () => ({ id: "session", messages: [], timeline: [] }),
-      deleteSession: () => false,
-      goalMaxRounds: 8,
-    },
-    skills: {
-      load: () => ({ skills: [], globalEnabledSkillNames: [], diagnostics: [] }),
-      saveEnabledGlobalNames: () => {},
-    },
-    toolApproval: {
-      config: { mode: "unless_trusted" as const },
-      approvals: {
-        version: 2 as const,
-        bash: { exactCommands: [], readOnlyCommands: [] },
-      },
-    },
-    ui: { notification: {} as never },
-    memory: { compact: async () => [], load: () => "" },
-    usage: {
-      load: () => ({
-        scope: "session" as const,
-        runCount: 0,
-        mainRunCount: 0,
-        memoryRunCount: 0,
-        outcomes: {
-          stop: 0,
-          length: 0,
-          aborted: 0,
-          error: 0,
-          turn_limit: 0,
-          updated: 0,
-          unchanged: 0,
-        },
-        agents: {
-          main: { runCount: 0 },
-          memoryAutomatic: { runCount: 0 },
-          memoryManual: { runCount: 0 },
-        },
-        models: [],
-      }),
-    },
-  };
-}
-
-function createTerminal(): Terminal {
-  return {
-    columns: 80,
-    rows: 24,
-    start: () => {},
-    stop: () => {},
-    write: () => {},
-    notify: () => {},
-  };
 }
 
 function createAgentStub() {

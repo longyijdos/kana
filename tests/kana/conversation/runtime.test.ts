@@ -15,6 +15,7 @@ import {
   type KanaTodoStateChange,
 } from "../../../src/kana";
 import { MockModel } from "../../../src/providers/mock";
+import { deferred } from "../../helpers/async-control";
 import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("ConversationRuntime", () => {
@@ -578,11 +579,7 @@ function deferredJob(): {
   promise: Promise<{ status: "completed"; exitCode: number }>;
   resolve(value: { status: "completed"; exitCode: number }): void;
 } {
-  let resolve!: (value: { status: "completed"; exitCode: number }) => void;
-  const promise = new Promise<{ status: "completed"; exitCode: number }>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
+  return deferred();
 }
 
 class ControlledModel implements Model {

@@ -1,16 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { installKanaSkills, reinstallKanaSkills } from "@/kana";
+import {
+  cleanupTempKanaHomes,
+  createTempKanaHomeEnv as createTempEnv,
+} from "../../helpers/temp-kana-home";
 
-const tempDirs: string[] = [];
-
-afterEach(() => {
-  for (const tempDir of tempDirs.splice(0)) {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupTempKanaHomes);
 
 describe("Kana skill installation", () => {
   test("clones the default skills repository under ~/.kana/skills", async () => {
@@ -122,14 +119,5 @@ function createFakeGit(calls: GitCall[]) {
       args,
       cwd: options.cwd,
     });
-  };
-}
-
-function createTempEnv(): NodeJS.ProcessEnv & { KANA_HOME: string } {
-  const tempDir = mkdtempSync(path.join(tmpdir(), "kana-skill-install-"));
-  tempDirs.push(tempDir);
-
-  return {
-    KANA_HOME: path.join(tempDir, ".kana"),
   };
 }

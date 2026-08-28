@@ -14,6 +14,7 @@ import {
 } from "../../../src/kana/conversation/wake-scheduler";
 import { createNoopLogger } from "../../../src/logging";
 import { MockModel } from "../../../src/providers/mock";
+import { deferred } from "../../helpers/async-control";
 import { messageIdentityForTest, messageIdForTest } from "../../helpers/messages";
 
 describe("ConversationInputCoordinator", () => {
@@ -393,14 +394,6 @@ function completedRun(): ConversationInputRunResult {
     type: "completed",
     event: { type: "agent_end", reason: "stop", messages: [] },
   };
-}
-
-function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
 }
 
 function deferredJob(): {

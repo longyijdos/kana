@@ -451,7 +451,7 @@
 
 ### 12. 稳定测试 helpers
 
-状态：待开始
+状态：已完成
 
 候选重复设施：
 
@@ -469,6 +469,19 @@
 - 不创建集中所有 fixture 的 `test-utils.ts`。
 
 完成条件：减少机械 setup，同时保持每个测试可独立阅读。
+
+结果：已完成
+
+提交：`refactor(tests): centralize stable test fixtures`
+
+- 涉及测试文件：20 个；新增 `async-control.ts`、`temp-kana-home.ts` 和 `app-fixture.ts` 三个职责单一的 helper。
+- 测试实现行数：6,520 -> 6,222，机械 setup 净减少 298 行。
+- 测试用例：149 -> 149；只移动 fixture，不合并或删除行为断言。
+- 异步控制：9 个使用者共享 typed deferred，4 个真实计时轮询共享 `waitFor`；ConversationRuntime/input coordinator 的微任务轮询及 MCP transport 的协议轮询继续原地保留。
+- 临时环境：5 个只要求显式隔离 `KANA_HOME` 的文件共享创建和清理；依赖 HOME 回退、PATH、预建 `.kana` 或多目录布局的 fixture 保持独立。
+- TUI fixture：5 个 App 集成文件共享有效的默认 options 和 80x24 terminal stub；每个测试仍在调用点展开与行为相关的 conversation、model、lifecycle 或 input 覆盖。
+- Controlled model/stream：审查后不提取；现有实现分别编码 tool turn、Goal、abort、usage、journal 和 stream protocol，统一会隐藏关键状态机步骤。
+- 验证：目标测试 149 个通过；`bun run check` 通过，完整套件 1,075 个测试通过。
 
 ### 13. 剩余大文件审查
 

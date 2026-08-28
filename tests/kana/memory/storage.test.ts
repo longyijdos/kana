@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -14,14 +13,12 @@ import {
   saveKanaMemory,
   searchKanaDailyMemory,
 } from "@/kana";
+import {
+  cleanupTempKanaHomes,
+  createTempKanaHomeEnv as createTempEnv,
+} from "../../helpers/temp-kana-home";
 
-const tempDirs: string[] = [];
-
-afterEach(() => {
-  for (const tempDir of tempDirs.splice(0)) {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupTempKanaHomes);
 
 describe("Kana memory storage", () => {
   test("appends a global daily memory entry with host-owned metadata", () => {
@@ -66,8 +63,8 @@ describe("Kana memory storage", () => {
 
   test("defaults to project scope and isolates workspaces", () => {
     const env = createTempEnv();
-    const workspaceA = path.join(tempDirs[0], "workspace-a");
-    const workspaceB = path.join(tempDirs[0], "workspace-b");
+    const workspaceA = path.join(env.KANA_HOME, "workspace-a");
+    const workspaceB = path.join(env.KANA_HOME, "workspace-b");
     const now = new Date(2026, 5, 20, 14, 32);
 
     appendKanaMemory({ content: "A-only detail", cwd: workspaceA, env, now, id: "mem_a" });
@@ -83,7 +80,7 @@ describe("Kana memory storage", () => {
 
   test("uses the same workspace path encoding as sessions", () => {
     const env = createTempEnv();
-    const cwd = path.join(tempDirs[0], "workspace");
+    const cwd = path.join(env.KANA_HOME, "workspace");
     const session = createKanaSession({ cwd, env });
     const memory = getKanaMemoryPaths("project", { cwd, env });
 
@@ -94,7 +91,7 @@ describe("Kana memory storage", () => {
 
   test("atomically saves and loads consolidated memory", () => {
     const env = createTempEnv();
-    const cwd = path.join(tempDirs[0], "workspace");
+    const cwd = path.join(env.KANA_HOME, "workspace");
 
     expect(loadKanaMemory("project", { cwd, env })).toBe("");
 
@@ -178,9 +175,3 @@ describe("Kana memory storage", () => {
     );
   });
 });
-
-function createTempEnv(): NodeJS.ProcessEnv {
-  const home = mkdtempSync(path.join(tmpdir(), "kana-memory-"));
-  tempDirs.push(home);
-  return { KANA_HOME: home };
-}
