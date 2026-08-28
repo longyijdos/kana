@@ -4,6 +4,7 @@ import { registerTuiProcessSignals, type TuiSignalProcess } from "../../src/tui/
 import { stripAnsi } from "../../src/tui/render";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
 import {
+  createTuiAgentStub as createAgentStub,
   createTuiAppOptions as createOptions,
   createTerminalStub as createTerminal,
 } from "./app-fixture";
@@ -266,12 +267,4 @@ function createAgentState() {
       },
     },
   };
-}
-
-function createAgentStub() {
-  return withAgentInboxForTest({
-    state: createAgentState(),
-    abort() {},
-    async waitForIdle() {},
-  }) as never;
 }

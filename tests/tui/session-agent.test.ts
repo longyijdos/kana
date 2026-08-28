@@ -7,6 +7,7 @@ import type { Component } from "../../src/tui/runtime";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
 import { messageIdentityForTest } from "../helpers/messages";
 import {
+  createTuiAgentStub as createAgentStub,
   createTuiAppOptions as createOptions,
   createTerminalStub as createTerminal,
 } from "./app-fixture";
@@ -334,24 +335,6 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
 
   throw new Error("Condition was not met.");
-}
-
-function createAgentStub() {
-  return withAgentInboxForTest({
-    state: {
-      messages: [],
-      model: {
-        metadata: {
-          provider: "test",
-          model: "test-model",
-          contextWindow: 1,
-          maxOutputTokens: 1,
-        },
-      },
-    },
-    abort() {},
-    async waitForIdle() {},
-  }) as never;
 }
 
 function renderTranscript(transcript: { render(width: number): string[] }): string {

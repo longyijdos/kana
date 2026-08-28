@@ -1,7 +1,27 @@
+import type { Agent } from "../../src/agent";
 import type { KanaTuiAppOptions } from "../../src/tui/app/app";
 import type { Terminal } from "../../src/tui/runtime";
+import { withAgentInboxForTest } from "../helpers/agent-inbox";
 
 type TerminalInputHandler = Parameters<Terminal["start"]>[0];
+
+export function createTuiAgentStub(): Agent {
+  return withAgentInboxForTest({
+    state: {
+      messages: [],
+      model: {
+        metadata: {
+          provider: "test",
+          model: "test-model",
+          contextWindow: 1,
+          maxOutputTokens: 1,
+        },
+      },
+    },
+    abort() {},
+    async waitForIdle() {},
+  }) as unknown as Agent;
+}
 
 export function createTuiAppOptions(): KanaTuiAppOptions {
   return {

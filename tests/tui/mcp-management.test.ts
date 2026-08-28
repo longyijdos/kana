@@ -4,8 +4,8 @@ import { createWakeScheduler } from "../../src/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component } from "../../src/tui/runtime";
-import { withAgentInboxForTest } from "../helpers/agent-inbox";
 import {
+  createTuiAgentStub as createAgentStub,
   createTuiAppOptions as createOptions,
   createTerminalStub as createTerminal,
 } from "./app-fixture";
@@ -193,24 +193,6 @@ type AppInternals = {
   tui: { getFocus(): Component | undefined };
   layout: { render(width: number): string[] };
 };
-
-function createAgentStub() {
-  return withAgentInboxForTest({
-    state: {
-      messages: [],
-      model: {
-        metadata: {
-          provider: "test",
-          model: "test-model",
-          contextWindow: 1,
-          maxOutputTokens: 1,
-        },
-      },
-    },
-    abort() {},
-    async waitForIdle() {},
-  });
-}
 
 function renderTranscript(transcript: { render(width: number): string[] }): string {
   return stripAnsi(transcript.render(80).join("\n"));
