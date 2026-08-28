@@ -376,7 +376,7 @@ const addTool = {
   }),
 } satisfies Tool<typeof addParameters, number>;
 
-describe("runAgentLoop", () => {
+describe("runAgentLoop configuration", () => {
   test("rejects invalid maxTurns before emitting lifecycle events", async () => {
     for (const maxTurns of [-2, 0, 1.5]) {
       const model = new ScriptedToolModel();
@@ -419,7 +419,9 @@ describe("runAgentLoop", () => {
 
     expect(model.contexts[0]?.parallelToolCalls).toBe(false);
   });
+});
 
+describe("runAgentLoop tool turns", () => {
   test("streams assistant turns and executes requested tools", async () => {
     const model = new ScriptedToolModel();
     const events: AgentEvent[] = [];
@@ -936,7 +938,9 @@ describe("runAgentLoop", () => {
       isError: false,
     });
   });
+});
 
+describe("runAgentLoop cancellation", () => {
   test("cancels a tool call without executing it or continuing the loop", async () => {
     const model = new ScriptedToolModel();
     const events: AgentEvent[] = [];
@@ -1079,7 +1083,9 @@ describe("runAgentLoop", () => {
       },
     });
   });
+});
 
+describe("runAgentLoop limits", () => {
   test("runs without a turn limit when maxTurns is -1", async () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 }, 10);
 
@@ -1182,7 +1188,9 @@ describe("runAgentLoop", () => {
       reason: "length",
     });
   });
+});
 
+describe("runAgentLoop error recovery", () => {
   test("records aborted assistant turns on the final message", async () => {
     const events: AgentEvent[] = [];
     const messages = await runAgentLoop(

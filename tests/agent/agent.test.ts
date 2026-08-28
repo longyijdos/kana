@@ -198,7 +198,7 @@ class RepeatedToolModel implements Model {
   }
 }
 
-describe("Agent", () => {
+describe("Agent lifecycle", () => {
   test("stores runtime limits and rejects invalid construction options", () => {
     expect(new Agent({ model: new TextModel() }).state.toolDeadlineMs).toBe(300_000);
     expect(
@@ -448,7 +448,9 @@ describe("Agent", () => {
       usage,
     });
   });
+});
 
+describe("Agent context restoration", () => {
   test("rehydrates the provider usage anchor when constructed from a resumed session", () => {
     const checkpoint: ContextCheckpoint = {
       id: "checkpoint-1",
@@ -505,7 +507,9 @@ describe("Agent", () => {
     );
     expect(agent.state.estimatedContextTokens).toBeLessThan(30_000);
   });
+});
 
+describe("Agent journal integration", () => {
   test("commits prompt and loop messages after agent_end updates state", async () => {
     const commits: Array<{
       messages: string[];
@@ -726,7 +730,9 @@ describe("Agent", () => {
       model.contexts[0]?.messages.some((message) => message.provenance.kind === "runtime_context"),
     ).toBe(false);
   });
+});
 
+describe("Agent input coordination", () => {
   test("cancels prompt assembly before starting model I/O", async () => {
     const model = new TextModel("unused");
     const renderStarted = deferred();
@@ -1006,7 +1012,9 @@ describe("Agent", () => {
     expect(model.contexts).toEqual([]);
     expect(agent.state.messages).toEqual([]);
   });
+});
 
+describe("Agent context compaction", () => {
   test("commits context checkpoints with the run and exposes them in state", async () => {
     const model = new TextModel("after compact");
     const commits: Array<{ compactionCount: number; checkpointId?: string }> = [];
@@ -1129,7 +1137,9 @@ describe("Agent", () => {
 
     expect(agent.state.contextCheckpoint).toBeUndefined();
   });
+});
 
+describe("Agent state isolation and completion", () => {
   test("returns state snapshots without exposing mutable message history", async () => {
     const agent = new Agent({
       model: new TextModel("hello"),

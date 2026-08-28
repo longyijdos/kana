@@ -344,7 +344,7 @@
 
 ### 9. Agent 测试结构整理
 
-状态：待开始
+状态：已完成
 
 涉及文件：
 
@@ -368,6 +368,21 @@
 - 复用受控 model/stream fixture，但不隐藏关键状态机步骤。
 
 完成条件：失败可以从文件名和 suite 名直接定位到一个状态机职责。
+
+结果：已完成
+
+提交：`refactor(tests): organize agent behavior suites`
+
+- 测试文件：4 -> 4；保持生产模块对应关系，不为缩短单文件机械拆散共用的受控状态机。
+- 测试行数：5,524 -> 5,556；增加的内容仅为行为域 suite 边界。
+- 测试用例：104 -> 104；原有 6 个顶层 suite 整理为 22 个职责明确的 suite。
+- Agent：划分 lifecycle、context restoration、journal integration、input coordination、context compaction、state isolation/completion。
+- Loop：划分 configuration、tool turns、cancellation、limits 和 error recovery。
+- ToolRuntime：划分 invocation lifecycle、deadline/configuration、parallel scheduling、result policy 和 parallel failure containment。
+- ContextManager：保留 checkpoint 与 usage anchor 完整矩阵，并分离 budgets/checkpoints、model projection、usage anchors、rollback、model policy 和 context-limit recovery。
+- 重复审查：Agent/ContextManager 与 Loop/ToolRuntime 的相似场景分别属于上层接线和底层状态机契约，没有删除跨层代表性集成。
+- Fixture 审查：现有 controlled model/stream 分别编码 usage、abort、tool call 和 truncation 协议，不满足语义一致的提取条件，继续保留在各所有者文件中。
+- 验证：目标测试 104 个通过；`bun run check` 通过，完整套件 1,086 个测试通过。
 
 ### 10. TUI App 集成测试下沉
 
