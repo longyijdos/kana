@@ -485,7 +485,7 @@
 
 ### 13. 剩余大文件审查
 
-状态：待开始
+状态：已完成
 
 重点复核：
 
@@ -500,6 +500,24 @@
 这些文件目前更接近单一状态机或组件。先检查归属和重复，不因文件大而强制拆分。MarkdownBlock 只保留链接、LaTeX、table 等能力的代表性集成测试，纯函数矩阵由已有的专用测试负责。
 
 完成条件：为每个文件记录“保留、拆分或缩减”的明确结论。
+
+结果：已完成
+
+提交：`chore(tests): record remaining suite review`
+
+| 文件 | 结论 | 依据 |
+| --- | --- | --- |
+| `mcp/streamable-http-transport.test.ts` | 保留 | 13 个用例共同验证一个 session/SSE/recovery 状态机，并共享协议服务器、请求记录和 SSE fixture；拆分会复制最复杂的 setup。 |
+| `tui/agent-event-renderer.test.ts` | 保留 | 12 个用例是 Agent event 到 transcript 的直接转换矩阵；与 timer、Markdown 和 tool block 的底层测试属于集成接线而非重复。 |
+| `kana/conversation/runtime.test.ts` | 保留 | 12 个用例只保留 session、wake、Job、steering 和 Goal 的 runtime 代表性集成；详细队列和 Goal policy 已由底层 owner 覆盖。 |
+| `tui/render.test.ts` | 保留 | 已分成 renderer command 与 physical terminal state 两个 suite；FakeTerminal 和 VirtualTerminal 分别验证输出协议及最终屏幕状态。 |
+| `kana/mcp/manager.test.ts` | 保留 | 8 个用例负责 Kana 配置到 stdio/HTTP/OAuth/proxy/logger 的产品编排；通用 manager 生命周期仍由 `tests/mcp/manager.test.ts` 所有。 |
+| `tui/markdown-block.test.ts` | 保留 | 37 个用例验证 Markdown 解析与链接、LaTeX、Mermaid、table、streaming、wrapping 的组合边界；专用测试只拥有 encoder、LaTeX renderer 和 width 纯函数矩阵。 |
+| `kana/skills/skills.test.ts` | 保留 | 16 个用例共享同一文件系统 fixture，覆盖发现、优先级、activation 和 prompt/Agent 接线；install 与 sync 已在独立文件中。 |
+
+- 测试文件：7 -> 7；测试行数：4,344 -> 4,344；测试用例：123 -> 123。
+- 重复审查：没有发现同层同契约的重复测试，因此不为了文件长度拆分或删除覆盖。
+- 验证：目标测试 123 个通过；`bun run check` 通过，完整套件 1,075 个测试通过。
 
 ### 14. 最终复核与长期约束
 
