@@ -211,7 +211,7 @@
 
 ### 5. Transcript 与消息组件拆分
 
-状态：待开始
+状态：已完成
 
 当前文件：`tests/tui/transcript.test.ts`
 
@@ -219,6 +219,8 @@
 
 - `tests/tui/assistant-message-block.test.ts`
 - `tests/tui/tool-call-block.test.ts`
+- `tests/tui/hosted-tool-block.test.ts`
+- `tests/tui/content-viewer.test.ts`
 - 保留精简后的 `tests/tui/transcript.test.ts`
 
 工作内容：
@@ -229,6 +231,18 @@
 - 删除对 tool detail 完整 payload 矩阵的重复验证。
 
 完成条件：Transcript 不再承担子组件和 inspector 的完整测试职责。
+
+结果：已完成
+
+提交：`refactor(tests): split transcript component suites`
+
+- 测试文件：1 -> 5。
+- 测试行数：1,323 -> 1,299。
+- 测试用例：46 -> 45。
+- 删除或合并：将同时比较 Assistant 和 Tool 颜色的跨组件用例合并到两个组件已有的渲染用例中，保留全部颜色断言并删除 1 个综合用例。
+- 结构改进：Transcript 只保留 4 个子组件组合和清理行为；Assistant、Hosted Tool、ToolCall 和 ContentViewer 分别拥有自己的组件测试。原本通过 Transcript 包装检查 tool shortcut 的用例改为直接测试 `ToolCallBlock`。
+- 后续边界：`tool-call-block.test.ts` 中的 tool payload 渲染矩阵留给第 6 项与 detail、approval 和 viewer 一起审查。
+- 验证：目标测试 45 个通过；`bun run check` 通过，完整套件 1,109 个测试通过。
 
 ### 6. Tool detail、approval 与 result viewer 去重
 
