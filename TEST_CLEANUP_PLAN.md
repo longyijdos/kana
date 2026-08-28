@@ -282,7 +282,7 @@
 
 ### 7. Responses provider contract
 
-状态：待开始
+状态：已完成
 
 涉及文件：
 
@@ -297,6 +297,18 @@
 - 不在本任务中顺带重构生产 request builder。
 
 完成条件：删除两组约 30 至 40 行的近似逐行复制测试。
+
+结果：已完成
+
+提交：`refactor(tests): share Responses input contract`
+
+- Provider 测试文件：2 -> 2，新增共享 contract `tests/providers/responses-request-contract.ts`。
+- 测试行数：747 -> 592。
+- 测试用例：10 -> 9。
+- 共享所有权：每个 provider 通过同一 contract 验证用户图片和 tool image 在启用、禁用时的 Responses input wire format，以及禁用时不泄漏图片字节。
+- Provider 差异：DeepSeek 保留 stateless replay、reasoning、strict tool、输出预算和 text-only 模型 capability；OpenAI Codex 保留 encrypted replay state、`store`、parallel tool calls、默认指令和 hosted search 差异。
+- 删除或合并：移除两份逐行相同的 tool image 用例，并把各文件中的用户图片矩阵及主 request 用例里的图片断言收敛到共享 contract。
+- 验证：目标测试 9 个通过；`bun run check` 通过，完整套件 1,085 个测试通过。
 
 ### 8. List viewport 与换行语义归属
 
