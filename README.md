@@ -107,7 +107,7 @@ Useful commands inside the TUI:
 | `/usage` | Inspect session, project, or global token usage. |
 | `!<command>` | Run a local shell command directly, outside the agent loop. |
 
-See [TUI interaction and rendering](docs/tui.md) for shortcuts, queued input, scheduled messages, and the complete command set.
+See [TUI interaction](docs/tui.md) for shortcuts, queued input, scheduled messages, and the complete command set. Rendering internals are documented separately in [Terminal rendering](docs/terminal-rendering.md).
 
 ### Headless automation
 
@@ -170,12 +170,20 @@ Read [Configuration and installation](docs/configuration.md) for the complete se
 
 - [Documentation index](docs/README.md)
 - [Architecture](docs/architecture.md)
-- [Agent and tool execution](docs/agent-and-tools.md)
+- [Conversation runtime](docs/conversation-runtime.md)
+- [Agent runtime](docs/agent-runtime.md)
+- [Tools and execution](docs/tools.md)
+- [Providers](docs/providers.md)
+- [OAuth](docs/oauth.md)
+- [MCP](docs/mcp.md)
 - [Sessions and memory](docs/sessions-and-memory.md)
 - [Skills and system prompt](docs/skills-and-prompt.md)
 - [DeepSeek provider](docs/deepseek-provider.md)
 - [OpenAI Codex provider](docs/openai-codex-provider.md)
 - [Custom OpenAI-compatible provider](docs/custom-provider.md)
+- [TUI interaction](docs/tui.md)
+- [Terminal rendering](docs/terminal-rendering.md)
+- [Headless execution](docs/headless.md)
 - [Terminal-Bench evaluation](docs/terminal-bench.md)
 
 ## Development

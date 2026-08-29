@@ -54,24 +54,19 @@ A per-turn output ceiling takes precedence over configured `maxOutputTokens`. Cl
 
 Image input is gated by both model metadata and configuration: only `deepseek-v4-flash-vision-exp` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes or advertise `view_image`. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
-## Authentication, cancellation, timeout, and retries
+## Authentication and shared request behavior
 
-The model prefers `apiKey` from its config, otherwise reads `DEEPSEEK_API_KEY`. Kana's product layer normally reads the environment variable selected in `config.toml` and passes it in configuration; direct `DeepSeekModel` use gets this fallback. Requests carry `Authorization: Bearer <key>`, `content-type: application/json`, and `accept: text/event-stream`, plus optional custom headers.
+The model prefers `apiKey` from its direct configuration; otherwise it reads `DEEPSEEK_API_KEY`. Kana's product layer normally resolves the environment-variable name from `config.toml`. Requests use Bearer authentication and may include configured custom headers.
 
-`createRequestSignal` combines the Agent cancellation signal with optional `timeoutMs` through the shared provider inactivity primitive. `timeoutMs` limits the wait for response headers and restarts when headers or any response bytes arrive. A long reasoning stream can therefore exceed the configured duration while data continues, but the request is still aborted when the connection stops transferring data for that duration. Upstream cancellation preserves its original reason, while inactivity uses a distinct internal timeout type; either condition stops retry admission and an in-progress retry delay. Completion cleans up the timer and listener. HTTP 408, 429, and all 5xx responses are retryable; other HTTP failures are not. Non-HTTP errors are also retryable unless the combined signal is aborted. Backoff is 1s, 2s, 4s, 8s, then remains 8s, up to `maxRetries` retries.
-
-Any thrown error becomes a provider `error` event: a DOM `AbortError` or an aborted upper signal maps to `aborted`; everything else maps to `error`. The event includes the assistant message snapshot accumulated through failure, letting the Agent retain usable partial text.
-
-An HTTP 400, 413, or 422 is converted to generic `ContextWindowExceededError` only when its error code/message clearly matches a context-length/window or input/prompt-token limit. Ordinary parameter failures remain their original `DeepSeekHttpError`, whose retained response body is bounded to 16 KiB. The Agent catches the context type only before any assistant output, performs one safe context compaction, and retries the current request once. Lifecycle diagnostics use the shared request/retry/completion/failure events and record only provider identity, phase, outcome, fixed Kana `errorCode`, safe `errorType`, attempt, and HTTP status where relevant. They never record error messages, status text, response bodies, headers, prompts, or streamed content.
+Cancellation, inactivity timeout, bounded error bodies, HTTP retry timing, lifecycle diagnostics, and context-window normalization follow the shared provider contract in [Providers](providers.md). DeepSeek additionally recognizes its context-limit error codes and messages before allowing the Agent's one safe compaction recovery.
 
 ## SSE parsing and content order
 
-All V4 models use the shared `src/providers/responses` semantic SSE processor also used by OpenAI Codex. It correlates output items by `output_index` and item ID, preserves reasoning/message/function/search order, maps `web_search_call` to `hosted_tool`, and finishes only after `response.completed`, `response.incomplete`, or `response.failed`. DeepSeek's `ws_call_id` replay marker is removed from semantic search queries and URL fragments before presentation, while the raw output item remains unchanged in `providerState`. Completed items retain `providerState.provider = "deepseek"`; `response.incomplete` maps to `length`, a response containing client function calls maps to `toolUse`, and hosted searches alone still map to `stop`. Responses usage maps input, output, total, cached, and reasoning tokens.
+All V4 models use the shared semantic Responses processor described in [Providers](providers.md). DeepSeek removes its `ws_call_id` replay marker from presented search queries and URL fragments while preserving the raw item in `providerState`; completed state is tagged with `provider = "deepseek"`.
 
 ## Usage
 
-`ModelUsage` records prompt, completion, and total tokens, with optional cache hit/miss and reasoning tokens. Accumulated usage adds each field, while context percentage is the latest assistant usage's `promptTokens / effective context limit`, clamped to 0–100%. That effective limit is the smaller of the Agent's `model.context_limit` and the metadata context window, or the metadata window when no cap is configured. Summary-request usage contributes to main-run accumulated usage without replacing the latest normal model request's context percentage.
-
+DeepSeek maps input, output, total, cached, and reasoning tokens into the common `ModelUsage` fields. Context occupancy and accumulated process usage follow the shared runtime rules.
 ## Extension notes
 
 - Keep provider output in `AssistantMessageEvent` and emit deep-cloned snapshots for every event.

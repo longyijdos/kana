@@ -50,6 +50,14 @@ git push --atomic origin main v0.3.0
 
 Adjust the staged files to match the actual diff. Use annotated tags for every stable release; the tag must point at the release commit, and a published tag must never be moved or reused.
 
+## Distribution and self-update
+
+Directly distributed binaries embed a `direct` installation marker at compile time. Source execution keeps the `source` marker and refuses self-update, preventing Kana from mistaking the Bun runtime or a development entry point for the replacement target.
+
+`kana update` reads the latest stable GitHub Release metadata, selects the current platform asset and SHA-256 digest, and downloads to a sibling temporary path. It verifies size and digest, then runs the candidate's `--version` and idempotent initialization before replacement. Immediately before renaming, it rechecks the target device, inode, modification time, and size so another installer cannot be overwritten after changing the binary during download. The final same-filesystem rename is an atomic POSIX directory-entry replacement.
+
+External I/O, candidate execution, and replacement failures use stable phase error codes and remove the temporary file. Update behavior remains independent of TUI and Agent lifecycle; release assets and their digest files are therefore part of the public distribution contract.
+
 ## Release automation
 
 The repository pins the Bun toolchain in `package.json` and in both the CI and Release workflows. When upgrading Bun, update all three locations to the same version so local tooling, validation, and compiled release runtimes stay aligned.

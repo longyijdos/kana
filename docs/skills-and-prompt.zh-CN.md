@@ -59,7 +59,7 @@ enabled = ["release-check", "database-migrations"]
 Runtime-context 状态转换协议
 ```
 
-每次模型调用前，Agent 都会解析动态 context 和工具 section。环境、Background Job、session todo 与进程内 Goal 状态属于动态 section；Job、todo 和 Goal section 通过只读 resolver 回调取得状态。工作区、Goal 控制、memory、scheduled-wake 和外部/MCP 能力分别属于独立工具 section。每个 context source 都必须返回明确且非空的 `active` 或 `inactive` 状态。`update_goal` 只在进程内 Goal 为 active 时声明。同一步解析出的工具对象既会声明给该次模型请求，也会用于执行该请求产生的调用，因此后续刷新不会改变正在进行中的调用语义。稳定 system 前缀在这些步骤之间保持不变，供应商 prompt cache 可以复用它。
+每次模型调用前，Agent 都会同时解析 Kana 的动态 environment、Job、todo、Goal 上下文和当前可用的能力 section。稳定 system 前缀保持不变，以便 provider prompt cache 复用。动态状态转换见 [Agent 运行时](agent-runtime.zh-CN.md)，Goal 的 runtime 所有权见[对话运行时](conversation-runtime.zh-CN.md)，可执行能力规则见[工具与执行](tools.zh-CN.md)。
 
 `--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时稳定 system 提示词包含默认助手指令和 runtime-context 协议，动态环境上下文仍然可用；Agent 不注册 `remember` 或任何外部工具。TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载，但 `/model` 的选择只保留在当前临时进程中。
 
@@ -73,11 +73,11 @@ Runtime-context 状态转换协议
 </runtime_context>
 ```
 
-Agent 会按 `source` 将每个明确状态与历史中最近的同源消息比较。初始就是 inactive 的 source 不产生消息；激活后，每个有变化的 active 状态或由 source 定义的 inactive 状态都会在模型 I/O 前追加并写入 journal，未变化状态不重复。压缩前的所有转换都会留在模型输入中，让新请求能够延续上一请求的完整消息前缀，而不会因删除旧快照使其后的 prompt cache 失效。稳定 system 协议要求模型只把每个 source 的最后一条消息视为权威状态，并让 `status="inactive"` 作废更早状态。内部消息不会显示在 transcript 中。
+Environment block 是一项已标识的 runtime-context source。变化检测、active/inactive 转换、journal 时序和 transcript 隐藏行为见 [Agent 运行时](agent-runtime.zh-CN.md)。
 
-上下文压缩不会把 runtime-context 消息交给摘要模型。它会在 checkpoint 边界处仅重新投影当时仍 active 的各 source 最后状态，再保留边界之后的全部转换。被覆盖的旧状态和 inactive 转换随原始历史一起退出模型输入；这是 compaction 时有意发生的 cache 重置。
+已标识 runtime context 的压缩投影见 [Agent 运行时](agent-runtime.zh-CN.md)，持久化 checkpoint 表示见[会话与记忆](sessions-and-memory.zh-CN.md)。
 
-Active Goal 使用独立的 `goal` runtime-context source。其紧凑 JSON 状态包含 `authorized: true` 与目标，终态更新 guidance 则位于动态声明的 `update_goal` description。controller ID、已允许的 run 计数和配置上限不会进入模型状态，避免把 runtime 调度误当成任务语义。必须提供的 inactive 状态包含 `authorized: false`，并作废之前的目标。这些转换可以保留在追加式 session 历史中，但授权与 controller 只存在于当前进程；恢复后没有 active controller 时，下一次 Agent 请求会追加 inactive 状态且不会重建 Goal。
+Kana 通过独立的 `goal` source 提供 active Goal 状态，并且只在该能力获得授权时声明 `update_goal`。Goal 接纳与进程内控制状态见[对话运行时](conversation-runtime.zh-CN.md)。
 
 如果 memory 启用且对应长期文件非空，Kana 在稳定 system 前缀开头写入 `<memory>`，内部区分 `global` 与 `project` 引用块。记忆文本会 XML 转义，避免其中的 `<`、`&` 等改变宿主标签结构；但它仍是模型上下文中的不可信数据，记忆合并提示要求将其作为数据而非指令。Memory 在 Agent 构建时读取，而不会在每次 `remember` 后把不断增长的完整文件追加到历史中，从而避免重复 token。何时保存、保存什么的 guidance 位于 `remember` 工具 description，因此只会在该能力可用时声明给模型。
 

@@ -107,7 +107,7 @@ TUI 中的常用命令：
 | `/usage` | 查看 session、project 或 global 范围的 token 用量。 |
 | `!<命令>` | 绕过 Agent loop，直接运行本地 Shell。 |
 
-快捷键、输入排队、定时消息和完整命令集见 [TUI 交互与渲染](docs/tui.zh-CN.md)。
+快捷键、输入排队、定时消息和完整命令集见 [TUI 交互](docs/tui.zh-CN.md)，渲染内部机制另见[终端渲染](docs/terminal-rendering.zh-CN.md)。
 
 ### 无头自动化
 
@@ -168,12 +168,20 @@ kana update
 
 - [文档索引](docs/README.zh-CN.md)
 - [架构总览](docs/architecture.zh-CN.md)
-- [Agent 与工具执行](docs/agent-and-tools.zh-CN.md)
+- [对话运行时](docs/conversation-runtime.zh-CN.md)
+- [Agent 运行时](docs/agent-runtime.zh-CN.md)
+- [工具与执行](docs/tools.zh-CN.md)
+- [供应商](docs/providers.zh-CN.md)
+- [OAuth](docs/oauth.zh-CN.md)
+- [MCP](docs/mcp.zh-CN.md)
 - [会话与记忆](docs/sessions-and-memory.zh-CN.md)
 - [Skills 与系统提示词](docs/skills-and-prompt.zh-CN.md)
 - [DeepSeek 提供商](docs/deepseek-provider.zh-CN.md)
 - [OpenAI Codex 提供商](docs/openai-codex-provider.zh-CN.md)
 - [自定义 OpenAI-compatible 提供商](docs/custom-provider.zh-CN.md)
+- [TUI 交互](docs/tui.zh-CN.md)
+- [终端渲染](docs/terminal-rendering.zh-CN.md)
+- [无头执行](docs/headless.zh-CN.md)
 - [Terminal-Bench 评测](docs/terminal-bench.zh-CN.md)
 
 ## 开发

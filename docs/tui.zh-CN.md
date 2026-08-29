@@ -1,51 +1,22 @@
-# TUI 交互与渲染
+# TUI 交互
 
-Kana 使用自研主屏 TUI，而非 alternate screen。`ProcessTerminal` 负责原始终端 I/O，`Tui` 负责组件、焦点和 ANSI 重绘，`KanaConversationHost` 提供共享的 Kana 产品装配，`ConversationRuntime` 负责 Agent、会话和 wake 生命周期，`KanaTuiApp` 则把其事件与产品控制器连接到界面。
+Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态与 transcript event。Agent、session、wake、Goal 与输入投递属于[对话运行时](conversation-runtime.zh-CN.md)，终端布局和内容渲染属于[终端渲染](terminal-rendering.zh-CN.md)。
 
 ## 运行结构
 
-```text
-ProcessTerminal
-  raw stdin、resize、终端通知、stdout
-    → Tui
-      输入监听器 → 当前焦点组件
-      render(width, availableHeight?) → 差量 ANSI 重绘
-        → AppLayout
-          main（当前为 transcript）
-          严格一个底部组件（高度档位）
-            包含状态栏的 editor
-            或 tool approval
-            或 session / skills / MCP / schedule / slash command 提示
-            或 content viewer
-```
+`KanaTuiApp` 把 `ConversationRuntime` 与 Agent event 投影为 transcript 加一个获得焦点的 bottom component。只有 `BottomAreaController` 可以把 editor 替换为审批、picker、prompt、manager 或 content viewer；各 controller 保留自己的交互状态，并在 editor 之前优先恢复等待中的审批。
 
-`Component` 的最小接口是 `render(width, availableHeight?): string[]`，可选 `handleInput` 和 `invalidate`。该协议不会裁剪输出，但组件可根据高度选择渲染策略。`AppLayout` 为唯一底部组件保留分档区域：终端高度不小于 30 行时使用 15 行，24–29 行使用 12 行，18–23 行使用 9 行，7–17 行使用 7 行；终端不足 7 行时将全部可用高度分给 bottom。剩余高度传给 main。底部区域首行由 layout 统一绘制 main/bottom 分隔线，其余高度传给底部组件；所有底部组件的内容都直接跟在分隔线后。组件输出不足时由 layout 补空行，因此切换底部组件不会带动 main 内容。列表视图会缩小项目窗口并保持选中项可见，编辑器会缩小输入和命令窗口；选择提示用上/下键切换选项，较长的详情可用左/右键或 `PageUp`/`PageDown` 翻页。普通 bottom 标题统一使用 `bottomTitle`，当前选项使用 `user`；工具审批和危险确认分别用 `toolActive` 与 `error` 覆盖标题颜色。`KanaTuiApp` 目前将 transcript 作为 main 传入；Transcript 仍刻意渲染完整历史，交由终端 scrollback 保留。组件本身主要处理呈现和局部键盘输入。
+组件负责展示和本地键盘处理。终端 runtime 负责通用 `Component` 契约、高度分配、可见宽度规范化、cursor 放置和差量输出；这些机制见[终端渲染](terminal-rendering.zh-CN.md)。
+## 应用生命周期
 
-## 终端生命周期与渲染
+终端 runtime 先于 `KanaTuiApp` 启动；底层 raw mode、capability、repaint 和恢复行为属于[终端渲染](terminal-rendering.zh-CN.md)。随后 App 会先显示当前 session，再加载外部工具。MCP 启动期间会移除 editor 焦点，追加不可变的逐 server 结果与 warning，用发现的工具重建 Agent，最后恢复 editor。浏览器授权使用临时 URL block，并在结束后替换为最终状态。必需 server 初次失败时输入保持禁用；显式 reload 失败则会移除过期工具并恢复输入，让用户可以重试。Manager 与协议语义见 [MCP](mcp.zh-CN.md)。
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器取消 editor 焦点，并在 transcript 末尾追加 `Starting MCP servers...`。随后每个选中的服务器完成时都会追加一条不可变的 `[已完成/总数]` 结果行，其中包含结果和过滤后的工具数；可选服务器的错误色 warning 位于最终启动摘要之前。未选择服务器时也走同一路径，只是不产生中间结果行，并以 `0/0` 摘要结束。之后 `ConversationRuntime` 才用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。初次加载时必需服务器失败会显示错误而不是完成摘要，并保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿沿用相同的追加式 transcript 结构，但使用 reload 开始行和摘要；内部 close 阶段不会写入，reload 失败时则用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，关闭并等待 `ConversationRuntime`，再由产品层取消并等待自动记忆合并，然后关闭 MCP manager；manager 的中立进度事件更新同一个关闭 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token 和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
+`KanaTuiApp.stop()` 是幂等边界。它追加关闭状态、移除 bottom 焦点、关闭并等待 `ConversationRuntime`，等待自动记忆合并等产品清理，再关闭 MCP manager；之后才恢复终端，并按需打印累计用量和恢复命令。空闲退出与进程 signal 共用这条路径；优雅关闭中的第二次中断会先恢复终端再强制退出。
 
-使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、new、模型切换和后续 Agent 重建都不会读取或连接 MCP。欢迎面板说明当前会话不会保存，transcript 会显示一次 Clean 模式说明，状态栏持续显示 `Clean`；退出时不会打印恢复命令。
-
-App 和 controller 代码只调用声明式的 `Tui.requestRender()`，终端更新策略完全由 runtime 决定。普通请求会合并到约 16ms 的定时器。每次渲染都会：
-
-1. 调用根组件的 `render(width, height)`；
-2. 取出编辑器插入的内部光标标记；
-3. 根据 ANSI 以及 Unicode 可见宽度规范化行；
-4. 逻辑内容未变化时只更新硬件光标；
-5. 其余情况只重绘可见的最小首尾变化范围，追加内容时使用终端自然滚屏，内容收缩时用 `CSI 2K` 清除可见的尾部残留行；
-6. 首帧、宽高变化、改动位于终端 scrollback、删除后新尾部高于可寻址视口，或无法安全推断光标/视口状态时，回退到全量清屏重绘；
-7. 在同步输出模式下，仅为当前焦点组件移动并显示硬件光标；没有焦点时将光标留在布局末尾并保持隐藏。
-
-它维护已渲染行和可视 viewport 的缓存，避免反复计算未变 transcript 的 CJK 宽度。TUI 使用主屏，不进入 `?1049` alternate screen；这让 transcript 留在用户的终端 scrollback 中。
-
-`/clear` 仍只是清空 transcript/editor 状态后调用 `requestRender()`。如果被移除的内容仍全部可见，renderer 会局部更新保留的布局并清除残留行，不发送 `3J`；如果 transcript 行已经进入 scrollback，受影响的逻辑范围无法寻址，常规全量重绘 fallback 会清除并重新播放剩余 frame。
-
-渲染辅助会去除 ANSI/控制序列计算宽度，使用 `string-width` 和 `Intl.Segmenter` 按 grapheme 换行和截断。因而 CJK、emoji、组合字符和颜色不会错误占用列数。工具输出在显示前会移除不安全的终端控制序列。
-
+使用 `kana --clean` 时，App 不安装外部工具加载器或 MCP controller。Transcript 与状态栏会显示临时模式，不持久化 session，退出时也不打印恢复命令。
 ## App 与 Agent 事件
 
-`ConversationRuntime` 维护当前 Agent、session ID、提交互斥，以及 Agent 自有 inbox 的编排；它把该 inbox 与当前 session 尚未到期的 wake 一并发布为新 run 排序和展示的唯一事实来源，不再维护第二条 pending queue。`KanaTuiApp` 维护累计模型用量和界面运行状态。提交 prompt 时，App 把输入交给 runtime，并订阅它发布的 run 与 Agent 事件；用户消息、到期 wake 和流式 Agent 输出因此走同一个前端事件入口，再由 `AgentEventRenderer` 完成可视映射。Transcript 在每两个有输出的 Block 之间统一插入一个普通空行，Block 只管理自身内部留白；一条助手消息内部有多个有序可见内容块时，`AssistantMessageBlock` 也在相邻块之间使用同样的一行空白。用户键入的消息使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀；显式换行和软换行的后续行与正文对齐。`schedule_wake` 到期事件显示为 `Scheduled wake: …`，而不是用户键入的 prompt；任何运行中的 Agent、本地 Shell、记忆压缩、已打开的 MCP 管理界面或 MCP reload 都会让它留在 `next-turn`，状态结束后 runtime 再按 FIFO 顺序启动 pending run。该工具的成功结果是紧凑工具块，把等待时长和提醒文本压平显示在单行 target 上：
+`KanaTuiApp` 订阅 `ConversationRuntime`，持有累计模型用量和可见运行状态，并把 Agent 事件映射交给 `AgentEventRenderer`。输入排序与投递由[对话运行时](conversation-runtime.zh-CN.md)定义；本文只负责其可见投影。Transcript 会在任意两个输出块之间插入一行普通空行，每个 block 只管理内部间距；同一助手消息含多个有序可见部分时，`AssistantMessageBlock` 也使用相同间距。人工输入使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，续行与正文对齐。到期 wake 显示为 `Scheduled wake: …` 而不是人工输入，成功结果则显示为把延迟和提醒压到一行 target 的紧凑工具块：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
@@ -66,7 +37,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 编辑器内部包含状态栏，它显示模型及可选推理强度（例如 `gpt-5.6-luna · max`；`none` 档位显示为 `off`）、Clean 模式标记、形如 `Context ~N% used` 的下一轮近似上下文、运行阶段、活动工具和 cwd。该百分比用可重放上下文除以 effective context limit，而不是直接展示上一轮 response 的原始 `input_tokens`；因此 system instructions 和工具 schema 会让新 session 带有非零基线。普通 provider usage 用于校准估算；包含托管搜索的响应则保留之前的干净锚点，只增加持久化输出与调用元数据，不计入临时搜索网页。恢复内容未变的会话时会从最新一条已持久化的 assistant 消息重建该干净锚点，因此百分比保持不变，而不是跳到全新的本地估算。数值在每个完整 model/tool `turn_end` 后、上下文压缩后以及 Agent run 结束时刷新。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `Tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `Tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开 slash 命令面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求都会把 provider 原始 usage 原样累计到进程总用量。Kana 不估算金额，实际费用以 provider 账单为准；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
-恢复会话时，TUI 历史只消费 session 中已提交的 timeline，而 Agent 单独接收完整的已提交 messages、最后一个 context checkpoint 和最新 todo 状态。进程内 inbox 输入和未来 wake 会在 session 切换或退出时清空，不会恢复。恢复的历史 `turn_start` 不渲染；`todo_state` 记录只补充对应工具块，不单独增加 transcript 行。实时 `turn_start` 只创建临时 working 活动。`turn_end` 不增加 transcript block，但会把完整回合的 context 估算传给状态栏。恢复过程中追加的内部 user message 显示为 muted 的安全恢复提示，不伪装成用户输入。timeline 中的 `context_compaction` 在其实际发生位置渲染为 muted 的 `Context compacted · 812k → ~430k tokens`；当前运行中的同类 marker 由 `context_compacted` event 立即追加。执行 `/compact` 时，transcript 先显示临时 muted 的 `Compacting context…`，成功后用完成 marker 替换，失败时则移除临时消息并显示错误；普通模式同时将 marker 持久化，Clean 模式只保留进程内 checkpoint。TUI 不保留从 messages 直接渲染历史的第二条兼容路径。
+恢复 session 时，TUI 只渲染已提交的 timeline；Agent 的重建契约见[会话与记忆](sessions-and-memory.zh-CN.md)。历史 `turn_start` 不显示，`todo_state` 只补充匹配工具块而不新增行；实时 `turn_start` 只产生临时工作状态。`turn_end` 不增加 block，只更新状态栏的 context 估算；recovery 输入显示为弱化的安全恢复标记。Timeline 中的 `context_compaction` 会在原位置显示为 `Context compacted · 812k → ~430k tokens`；实时事件追加同样标记。执行 `/compact` 时，临时 `Compacting context…` 会在成功后被替换，失败时先移除再显示错误。TUI 不保留从 messages 直接重建历史的兼容路径。
 
 ## 输入与快捷方式
 
@@ -101,11 +72,11 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 编辑器支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、bracketed paste 和 slash 补全。启用 `tui.collapse_long_pastes` 时，达到 1,000 个 grapheme 的 bracketed paste 会在主编辑器和 slash 命令文本提示中显示为弱化的 `[Pasted N chars]` 原子项，提交内容和历史记录仍保留完整原文。按字符、按词、逻辑行边界和 kill 操作都会保持折叠粘贴块的原子性；kill buffer 同时保留折叠元数据，因此 `Ctrl+Y` 会恢复折叠项，而不是展开它的原始文字。关闭配置后恢复完整显示和逐 grapheme 编辑。
 
-空闲时 `Enter` 正常提交；Agent 运行中按 `Enter` 会把消息放入 `next-step`，在当前完整 model/tool turn 的 `turn_end` 之后投递，并在同一个 run 中开始下一次模型调用。若中止或 turn limit 使下一 turn 无法开始，Agent 会把同一条带 ID 消息移到 `next-turn` 尾部。Agent 运行中按 `Tab` 会直接加入 `next-turn`，等当前 `agent_end` 后作为新的 run 发送；空闲时普通输入的 `Tab` 不提交消息，slash 面板中的 `Tab` 仍用于补全。队列与到期 wake 按入队顺序共享 FIFO 投递通道。在支持增强键盘上报的终端中，`Shift+Enter` 插入显式换行。以 `/` 开头时显示命令面板；面板最多显示 10 条命令，随选中项滚动，且在首尾停止；未知 slash 输入和没有 shell 命令的单独 `!` 作为普通模型消息发送。
+空闲时 `Enter` 正常提交。Run 进行中时，`Enter` 尝试把输入交给当前 run，`Tab` 则排到后续 run；准确的 steering、defer 与 FIFO 规则见[对话运行时](conversation-runtime.zh-CN.md)和 [Agent 运行时](agent-runtime.zh-CN.md)。空闲时普通输入的 Tab 不提交，slash 面板中的 Tab 用于补全命令；支持的终端中，`Shift+Enter` 插入换行。以 `/` 开头会打开最多显示 10 项、随选择滚动的命令面板；未知 slash 输入和单独的 `!` 会作为普通模型消息发送。
 
-后台 Job 完成事件复用同一套排队机制。运行中的完成事件会请求追加一次模型步骤；空闲时的完成事件会请求开启新的 run。相邻的待处理完成事件会合并到一个 run 中，但不会跨过其他已排队输入；仅有输出不会唤醒 Agent。Agent 通过 Job 工具收到终态结果后会确认该完成，并取消该 Job 尚未处理的完成通知。`/jobs` 只查看不消耗游标的输出尾部并控制当前 session 的 Job；在 TUI 中查看或停止 Job 不会确认完成，因此 Agent 仍能收到对应事件。
+Background Job completion 与其它 runtime 输入共用 queued-input 投影；投递、合并与确认语义见[对话运行时](conversation-runtime.zh-CN.md)。`/jobs` 展示不消费状态的输出尾部，并控制当前 session 的 Job。查看或停止 Job 都不会确认其终态 completion，因此 Agent 仍可能收到该通知。
 
-`/goal <目标>` 会启动一个进程内 Goal，并把目标作为首次 Agent run 的输入。只要 Goal 仍为 active，runtime 就会在每次 `agent_end` 后启动下一 run，但已经排队的 Tab 输入、deferred steering 或到期 wake 会优先执行。模型通过权威 runtime context 获得 active 目标，并可调用 `update_goal` 标记 `completed` 或 `blocked`；配置的 run 计数和上限不会暴露给模型。TUI 把续轮显示为弱化 marker，并抑制逐轮完成通知。`Esc` 或 `Ctrl+C` 会取消 active Goal；新建、分叉或恢复 session、Agent 重配置、关闭、run 失败、显式终态更新以及达到 `agent.goal_max_rounds` 上限也会结束它。Goal 控制状态不会从 session 历史恢复；当前进程仍在运行时，自动上下文压缩会重新投影 active 目标。
+`/goal <objective>` 启动进程内 Goal 的第一次 run。TUI 把后续 round 显示为弱化 continuation 标记，不显示逐轮完成通知，并允许用 `Esc` 或 `Ctrl+C` 取消。接纳顺序、终态更新、round 上限、session 切换行为和 runtime-context 投影由[对话运行时](conversation-runtime.zh-CN.md)定义。
 
 一条输入最多可附加 10 张图片。编辑器只显示附件数量、尺寸和编码后大小，不显示图片字节；输入文本为空时，Backspace 会移除最后附加的图片。在 macOS 上，`Ctrl+V` 从系统剪贴板读取图片；剪贴板没有图片时直接报错，不会退回文本粘贴，因为普通终端文本仍使用 `Cmd+V`。`/image <path>` 是跨平台的路径方案，只附加图片而不立即提交。相对路径从 Kana 当前工作目录解析，也支持带引号路径、`~/…` 和 `file://` URL。路径属于 Kana 实际运行的主机，因此 SSH 场景应填写远端路径；WSL 即使不能读取图片剪贴板，也可以使用 `/mnt/c/Users/me/Pictures/image.png` 这类 Windows 挂载路径。图片会在附加前解码并规范化：最长边最多 2048 像素且不会放大，JPEG/PNG/WebP 保持为供应商可接受的对应格式，其他可解码格式转为 PNG，编码后的结果不能超过 10 MB。
 
@@ -145,8 +116,8 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 - `ContextCompactController`、`ImageAttachmentController`、`McpOAuthStatusController`、`ModelSelectionController` 和 `InformationViewerController` 持有各自的异步或多步 UI 状态，App 只负责启动流程或路由事件。
 
 - `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有追加式生命周期输出、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
-- `QueuedInputController` 只在本地保留当前 run 的 `next turn` 乐观预览；权威的 `next-step`、`next-turn`、到期 `scheduled` 和未来 wake 状态都投影自 `ConversationRuntime` 快照。输入被接受或 deferred 后，controller 按原有 `MessageId` 对齐该预览，即使正文完全相同也不会混淆。
-- `ScheduledMessageManagerController` 用 `/schedule` 打开当前 session 的定时消息快照。未到期项按时间排列，已到期但尚未发送的项放在底部；只显示 `agent` 或 `you` 来源，不显示 Agent 的替换 key。列表不会随时钟或后台状态自动变化；`R`、添加或删除会重新读取快照。`A` 提供 5/15/30 分钟、1 小时和 `3m`、`90m`、`2h` 形式的自定义相对时间；`D` 确认后按未来输入的稳定 `MessageId` 同时检查 scheduler 与已到期 `next-turn` 项。面板活动期间新的 pending run 不会启动，`Esc` 关闭后恢复 FIFO 投递。
+- `QueuedInputController` 保存当前 run 输入的 optimistic preview，并用既有 `MessageId` 与权威 runtime snapshot 对齐。它只持有显示标签和 preview 状态；queue lane、投递顺序、scheduled metadata 与取消语义见[对话运行时](conversation-runtime.zh-CN.md)。
+- `ScheduledMessageManagerController` 展示 `/schedule` 的当前 session 快照，以及多步添加、刷新与删除流程。它持有列表排序、标签、快捷键和焦点恢复；timer 身份、取消、到期投递与 queue gate 见[对话运行时](conversation-runtime.zh-CN.md)。
 - `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job 但不确认终态，并在面板通过 `Esc` 关闭前阻止 pending run 启动。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前读取当前有效审批模式。`/approval` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、bash 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。选择“拒绝”或按 `Esc` 都会让该运行中止，选择 always 仅把 bash 命令加入精确白名单。
@@ -163,20 +134,8 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 
 运行期间，`/quit`、`/help`、`/todo`、`/tools`、`/usage`、`/image`、`/schedule` 和 `/jobs` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可在 Agent 运行时查看并停止当前 session 的 Job，但不会确认其完成。`/clear`、`/new`、`/fork`、`/resume`、`/delete`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
 
-## 通知与 Markdown
+## 通知
 
-通知后端由配置选择。`auto` 依次探测 Kitty、iTerm、Ghostty 和 VTE，最后使用 bell；显式 `off` 不写任何通知。通知文本会移除控制字符、折叠空白，OSC 777 字段额外替换分号。正常 Agent 完成和需要审批可分别配置通知。
+配置的 notification backend 决定输出方式。`auto` 依次探测 Kitty、iTerm、Ghostty 和 VTE，最后回退 bell；显式 `off` 不发送通知。通知文本会移除控制字符并折叠空白，OSC 777 还会替换分号。普通 Agent 完成与需要审批可以分别配置。
 
-助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。配置允许且终端确认支持时，`http:`、`https:` 和 `mailto:` Markdown 链接通过 OSC 8 绑定到可见 label；每条软换行都会独立关闭并重新打开链接。关闭 `tui.hyperlinks`、终端能力未知或目标 scheme/内容不安全时不发送 OSC 8，并以 `label (url)` 保留可读目标；尚未闭合的流式链接按 Markdown 原文显示。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 直接显示 stdout/stderr 文本，不添加退出码或字段标签。后台 Bash 调用会在 transcript 标题中添加琥珀色 `[BACKGROUND]` 标记，前台调用不显示标记。Inspector 会保留实际工具参数，同时显示最终生效的执行模式和超时，以及后台调用启动时的 Job ID 与状态。bash 返回非 0 退出码时仍按已完成命令渲染；真正的执行错误和超时才使用 failed 样式。用户取消使用独立的弱化 stopped 状态，不显示为工具执行失败；write 审批和工具块会区分新建与覆盖；`Ctrl+O` 打开可滚动的详情查看器，固定短标题（如工具名）加上完整的操作上下文与输出，即使紧凑输出并未标记为可展开也能打开。每个工具块还拥有与视口高度无关的有界紧凑形态：一行标题、一行压平并水平截断而非换行的 target，以及固定的少量预览行预算。只有 Kana 拥有其参数 schema 的内置工具才会解析出 target 行；未知/custom/MCP 工具不会把 `path`、`command` 等参数提升为 target，只以工具名作为身份展示。bash 预览最多保留最后 8 个源行，write 最多保留 7 个（其中一行让位给字节数结果行），edit 最多保留 3 行删除与 3 行新增 diff（replacements 行与两侧各自的省略标记都计入视觉预算），未知/custom/MCP 结果最多保留 pretty JSON 的前 8 行；每个预览行按终端宽度水平截断而非换行，被省略的行用显式的 `... N more lines` 标记说明。这些界限只影响展示：canonical 参数、结果与审批详情保持完整。当紧凑预览省略了行，或截断了宽于终端的行时，该工具块会标记为可展开。查看器与标记无关，任何工具调用都可以打开，长行会软换行到可用宽度而非再次被截断；查看器打开期间按 `[` 和 `]` 可切换到上一个/下一个工具调用。
-
-默认开启 `tui.render_latex = true`：`$...$` 与 `\(...\)` 渲染行内公式，独立成块的 `$$...$$` 与 `\[...\]` 渲染 display 公式。这个刻意受限的渲染器会把常见符号、黑板粗体字母、上下标、分数、根式、命名运算符、矩阵、cases 和 display 运算符上下限转换为 Unicode 与字符单元布局。不支持或格式错误的表达式会完整保留源码分隔符；流式表达式在分隔符闭合前始终按字面量显示。行内代码和代码围栏不会解释数学分隔符。display 输出在渲染后按终端可见单元宽度测量和换行，宽度不足不会把有效公式重新切换为源码。设置 `tui.render_latex = false` 可让所有已识别的数学公式保留原始 LaTeX。
-
-默认开启 `tui.render_mermaid = true`：语言为 `mermaid` 的代码围栏会持续渲染为使用 Kana 主题的 Unicode 图，源码仍在流式生成时也会尝试更新。终端渲染器支持 `graph`/`flowchart`、`stateDiagram`/`stateDiagram-v2`、`classDiagram`、`erDiagram` 和 `sequenceDiagram`；这是 Mermaid.js 的实用子集，并不等同于浏览器中的完整语法。`:::highlight` 这类 Mermaid 样式类附加语法可以被接受，但不会改变终端颜色；边框、正文、连线和连线标签仍映射到 Kana 的语义主题。不支持或严重格式错误的图、渲染器失败以及宽于 Markdown 可用宽度的图会保留为普通代码块，不追加 warning。流式阶段可以继续显示尽力解析出的部分图；消息完成后若仍有源码无法表达，Kana 会恢复代码块，显示第一条 warning，并汇总其余 warning 的数量。设置 `tui.render_mermaid = false` 可让所有 Mermaid 代码围栏保留为源码。
-
-## 修改渲染时的约束
-
-- 不要直接向 stdout 写组件内容；经 `Tui.requestRender` 让差量渲染维护缓存和光标。
-- 新底部视图必须明确打开/关闭时的焦点恢复。
-- 新工具展示应净化控制序列，并处理部分结果与最终结果。
-- 宽度逻辑必须以可见宽度和 grapheme 为单位，不能直接使用 `string.length`。
-- 改变主屏重绘或终端序列时，更新 `tui-render`、cursor 和 width 测试，避免破坏 scrollback 或 IME 光标。
+Markdown、hyperlink、LaTeX、Mermaid、工具 block、详情渲染、可见宽度规则与重绘约束见[终端渲染](terminal-rendering.zh-CN.md)。
