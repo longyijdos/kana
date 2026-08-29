@@ -1,17 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { createKanaOAuthTokenStore, loadKanaOAuthTokenStatuses } from "../../../src/kana";
 import type { OAuthStoredToken } from "../../../src/oauth";
+import {
+  cleanupTempKanaHomes,
+  createTempKanaHomeEnv as createTempEnv,
+} from "../../helpers/temp-kana-home";
 
-const tempDirs: string[] = [];
-
-afterEach(() => {
-  for (const directory of tempDirs.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupTempKanaHomes);
 
 describe("Kana OAuth token store", () => {
   test("serializes token updates into a private file and reports safe statuses", async () => {
@@ -43,12 +40,6 @@ describe("Kana OAuth token store", () => {
     expect((await store.load("mcp:second"))?.accessToken).toBe("second-access-token");
   });
 });
-
-function createTempEnv(): NodeJS.ProcessEnv {
-  const directory = mkdtempSync(path.join(tmpdir(), "kana-oauth-store-"));
-  tempDirs.push(directory);
-  return { KANA_HOME: path.join(directory, ".kana") };
-}
 
 function token(name: string, expiresAt: number, refreshable: boolean): OAuthStoredToken {
   return {

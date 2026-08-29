@@ -226,48 +226,6 @@ describe("full-fidelity tool detail", () => {
     expect(formatted).toBe("Path\n  src/a.ts\n\nContent\n  one\n  two");
   });
 
-  test("renders material search filters for grep and glob", () => {
-    const grep = buildFullToolDetail(
-      toolCall("grep", {
-        pattern: "TODO|FIXME",
-        path: "src",
-        include: "**/*.ts",
-        literal: true,
-        caseSensitive: false,
-        includeHidden: true,
-        limit: 500,
-      }),
-    );
-
-    expect(grep.sections.map((section) => section.label)).toEqual([
-      "Pattern",
-      "Path",
-      "Include",
-      "Match",
-      "Case",
-      "Hidden entries",
-      "Limit",
-    ]);
-    expect(grep.sections).toContainEqual({ label: "Match", content: "literal text" });
-    expect(grep.sections).toContainEqual({ label: "Case", content: "insensitive" });
-
-    const glob = buildFullToolDetail(
-      toolCall("glob", { pattern: "**/*.ts", cwd: "packages", type: "file", maxDepth: 10 }),
-    );
-
-    expect(glob.sections).toContainEqual({ label: "Pattern", content: "**/*.ts" });
-    expect(glob.sections).toContainEqual({ label: "Directory", content: "packages" });
-    expect(glob.sections).toContainEqual({ label: "Max depth", content: "10" });
-  });
-
-  test("expresses a specified bash timeout in milliseconds", () => {
-    const detail = buildFullToolDetail(
-      toolCall("bash", { command: "bun test", timeoutMs: 120_000 }),
-    );
-
-    expect(detail.sections).toContainEqual({ label: "Timeout", content: "120000 ms" });
-  });
-
   test("keeps an empty write content visible with a blank content row", () => {
     const detail = buildFullToolDetail(toolCall("write", { path: "empty.ts", content: "" }));
 

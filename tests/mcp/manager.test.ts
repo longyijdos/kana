@@ -10,6 +10,7 @@ import {
   type McpTool,
   McpToolNameConflictError,
 } from "../../src/mcp";
+import { deferred } from "../helpers/async-control";
 
 describe("MCP manager", () => {
   test("aggregates tools in registration order and applies remote-name filters", async () => {
@@ -289,7 +290,7 @@ describe("MCP manager", () => {
   });
 
   test("waits for in-flight startup before closing", async () => {
-    const gate = createDeferred<void>();
+    const gate = deferred<void>();
     const client = createFakeClient({ name: "slow", connectGate: gate.promise });
     const manager = new McpManager({
       servers: [{ id: "slow", createClient: () => client }],
@@ -387,15 +388,4 @@ function createFakeClient(options: FakeClientOptions): FakeMcpClient {
 
 function createTool(name: string, inputSchema: JsonObject = { type: "object" }): McpTool {
   return { name, inputSchema };
-}
-
-function createDeferred<T>(): {
-  promise: Promise<T>;
-  resolve(value: T): void;
-} {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolver) => {
-    resolve = resolver;
-  });
-  return { promise, resolve };
 }

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { appendKanaMemory, DEFAULT_KANA_CONFIG, loadKanaMemory, saveKanaMemory } from "@/kana";
@@ -11,19 +10,17 @@ import {
   formatIncrementalMemoryConsolidationInput,
 } from "../../../src/kana/memory";
 import { createMemoryConsolidationTools } from "../../../src/kana/memory/consolidation-tools";
+import {
+  cleanupTempKanaHomes,
+  createTempKanaHomeEnv as createTempEnv,
+} from "../../helpers/temp-kana-home";
 
-const tempDirs: string[] = [];
-
-afterEach(() => {
-  for (const tempDir of tempDirs.splice(0)) {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupTempKanaHomes);
 
 describe("memory consolidation agent", () => {
   test("uses only scope-bound tools for each mode", () => {
     const env = createTempEnv();
-    const cwd = path.join(tempDirs[0], "workspace");
+    const cwd = path.join(env.KANA_HOME, "workspace");
 
     expect(
       createMemoryConsolidationTools(
@@ -189,9 +186,3 @@ describe("memory consolidation agent", () => {
     expect(input).toContain("Prioritize current architecture decisions.");
   });
 });
-
-function createTempEnv(): NodeJS.ProcessEnv {
-  const home = mkdtempSync(path.join(tmpdir(), "kana-consolidation-"));
-  tempDirs.push(home);
-  return { KANA_HOME: home };
-}

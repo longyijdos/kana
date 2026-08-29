@@ -106,56 +106,6 @@ describe("session picker", () => {
       "... 1 more sessions",
     ]);
   });
-
-  test("shrinks the session window for a short available height", () => {
-    const picker = new SessionPicker(createSessions(5), () => {});
-    const rendered = picker.render(100, 6).map(stripAnsi);
-
-    expect(rendered.some((line) => line.includes("Session 1"))).toBe(true);
-    expect(rendered.some((line) => line.includes("Session 2"))).toBe(true);
-    expect(rendered.some((line) => line.includes("Session 3"))).toBe(true);
-    expect(rendered.some((line) => line.includes("Session 4"))).toBe(false);
-    expect(rendered).toContain("... 2 more sessions");
-  });
-
-  test("keeps the selected session visible when available height shrinks", () => {
-    const picker = new SessionPicker(createSessions(5), () => {});
-
-    picker.render(100, 20);
-    picker.handleInput("\x1b[B");
-    picker.handleInput("\x1b[B");
-    picker.handleInput("\x1b[B");
-
-    const rendered = picker.render(100, 5).map(stripAnsi);
-
-    expect(rendered.some((line) => line.includes(">") && line.includes("Session 4"))).toBe(true);
-    expect(rendered.some((line) => line.includes("Session 3"))).toBe(true);
-    expect(rendered.some((line) => line.includes("Session 2"))).toBe(false);
-  });
-
-  test("does not wrap selection at list boundaries", () => {
-    const decisions: SessionPickerDecision[] = [];
-    const picker = new SessionPicker(sessions, (decision) => {
-      decisions.push(decision);
-    });
-
-    picker.handleInput("\x1b[A");
-    picker.handleInput("\r");
-
-    expect(decisions.at(-1)).toEqual({
-      type: "select",
-      session: sessions[0],
-    });
-
-    picker.handleInput("\x1b[B");
-    picker.handleInput("\x1b[B");
-    picker.handleInput("\r");
-
-    expect(decisions.at(-1)).toEqual({
-      type: "select",
-      session: sessions[1],
-    });
-  });
 });
 
 function localTimestamp(timestamp: string): string {

@@ -1,18 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { createRememberTool, getKanaMemoryPaths } from "@/kana";
 import type { ToolResult } from "@/tools";
+import {
+  cleanupTempKanaHomes,
+  createTempKanaHomeEnv as createTempEnv,
+} from "../../helpers/temp-kana-home";
 
-const tempDirs: string[] = [];
-
-afterEach(() => {
-  for (const tempDir of tempDirs.splice(0)) {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupTempKanaHomes);
 
 describe("Kana remember tool", () => {
   test("describes proactive durable-memory use", () => {
@@ -27,7 +24,7 @@ describe("Kana remember tool", () => {
 
   test("records a project memory without exposing its file path", async () => {
     const env = createTempEnv();
-    const cwd = path.join(tempDirs[0], "workspace");
+    const cwd = path.join(env.KANA_HOME, "workspace");
     const tool = createRememberTool({ cwd, env });
 
     const output = await tool.execute(
@@ -80,12 +77,6 @@ describe("Kana remember tool", () => {
     );
   });
 });
-
-function createTempEnv(): NodeJS.ProcessEnv {
-  const home = mkdtempSync(path.join(tmpdir(), "kana-remember-tool-"));
-  tempDirs.push(home);
-  return { KANA_HOME: home };
-}
 
 function createToolContext() {
   return {
