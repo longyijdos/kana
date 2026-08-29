@@ -1,6 +1,33 @@
-## [0.7.0](https://github.com/longyijdos/kana/compare/v0.6.0...v0.7.0) (2026-08-24)
+## [0.8.0](https://github.com/longyijdos/kana/compare/v0.7.0...v0.8.0) (2026-08-29)
 
-Kana v0.7.0 adds full-fidelity tool inspection and history, maintainer-triggered GitHub issue automation, and reliable time-bounded headless execution.
+Kana v0.8.0 adds session-owned background jobs, durable session todos, and bounded agent goal execution, and unifies model selection under a new static configuration format.
+
+### Features
+
+- Run session-owned background jobs alongside the agent and manage them from the TUI while a run is in progress, with per-session lifetime and full output retrieval.
+- Persist session todos durably so checklists survive restarts and session resumes.
+- Bound agent goals with explicit goal rounds and status reporting, including headless goal execution for `kana exec` and opt-in adoption in the Kana GitHub workflow and Harbor Terminal-Bench adapter.
+- Run safe slash commands while the Agent is working instead of waiting for the turn to end.
+- Configure the agent model statically under `agent.model` and give the memory agent its own model under `memory.agent.model`.
+- Cap model-facing tool content at 8k tokens by default.
+
+### Bug Fixes
+
+- Retry transient Responses stream failures instead of aborting the run.
+- Preserve the calibrated context estimate across session resume.
+- Remove the 20 KiB page limit from `job_output`.
+- Route escape through focused TUI components and deny tool approval on escape.
+- Reject unknown arguments for Kana-owned tools, tolerate Kana handoff preambles, include the source issue in Kana follow-ups, and improve Kana agent run reporting.
+- Accept long goal objectives.
+
+### Breaking Changes
+
+- The configuration format changed. The top-level `model` table and `provider.active` are replaced by `agent.model` and `memory.agent.model`; `webSearch` and `imageInput` moved from per-model settings to the agent runtime section; `maxTokens` is renamed `maxOutputTokens`.
+- Old keys are not migrated and do not fail parsing: an upgraded config silently falls back to the default model until it is updated.
+
+### Upgrade
+
+If you customized `model.*` or `provider.active` in `~/.kana/config.json`, run `kana reset` to regenerate the template (back up the old file first) and reapply your settings in the new format. Verify `agent.model` points at the intended provider after upgrading; a stale config starts on `deepseek` with defaults.
 
 ### Features
 

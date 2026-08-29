@@ -94,9 +94,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  Full tool detail inspection"),
-      text("  /tools history picker"),
-      text("  Headless execution timeouts"),
+      text("  Session-owned background jobs"),
+      text("  Durable session todos"),
+      text("  Bounded agent goal execution"),
       muted("  ... /help for more"),
     ];
 
