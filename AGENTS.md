@@ -7,6 +7,7 @@
 * Do not stop for routine approval. Ask for direction only when a missing choice would materially change the result, broaden the scope, or authorize a consequential action.
 * Avoid unnecessary churn. For larger features or refactors, explain the important design tradeoffs and keep related changes together.
 * Do not blindly follow a brittle or overly complex request. Explain the maintenance concern and suggest the simplest durable alternative.
+* Before an unfamiliar or cross-module change, read `docs/architecture.md` and use `docs/README.md` to find the canonical owner; for a narrow change, read only the relevant owner document and avoid loading unrelated documentation.
 
 ## Implementation
 
