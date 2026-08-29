@@ -139,7 +139,7 @@ Kana never asks for approval for `todo_write`, `remember`, `schedule_wake`, or `
 
 ## External and custom tools
 
-MCP and other external tools enter the Agent through the same `Tool` contract. They keep their declared schema behavior, default to exclusive execution, pass through ordinary approval, and receive the same result normalization and content limits. MCP-specific discovery, alias, transport, and result-adaptation behavior remains documented in the architecture and configuration documents until its dedicated protocol document is introduced.
+MCP and other external tools enter the Agent through the same `Tool` contract. They keep their declared schema behavior, default to exclusive execution, pass through ordinary approval, and receive the same result normalization and content limits. MCP-specific discovery, aliases, transports, and result adaptation are documented in [MCP](mcp.md).
 
 For a custom tool:
 

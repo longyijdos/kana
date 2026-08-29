@@ -1,48 +1,19 @@
-# TUI 交互与渲染
+# TUI 交互
 
-Kana 使用自研主屏 TUI，而非 alternate screen。`ProcessTerminal` 负责原始终端 I/O，`Tui` 负责组件、焦点和 ANSI 重绘，`KanaTuiApp` 则把共享产品事件投影到界面。Agent、session、wake、Goal 与输入投递的所有权见[对话运行时](conversation-runtime.zh-CN.md)。
+Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态与 transcript event。Agent、session、wake、Goal 与输入投递属于[对话运行时](conversation-runtime.zh-CN.md)，终端布局和内容渲染属于[终端渲染](terminal-rendering.zh-CN.md)。
 
 ## 运行结构
 
-```text
-ProcessTerminal
-  raw stdin、resize、终端通知、stdout
-    → Tui
-      输入监听器 → 当前焦点组件
-      render(width, availableHeight?) → 差量 ANSI 重绘
-        → AppLayout
-          main（当前为 transcript）
-          严格一个底部组件（高度档位）
-            包含状态栏的 editor
-            或 tool approval
-            或 session / skills / MCP / schedule / slash command 提示
-            或 content viewer
-```
+`KanaTuiApp` 把 `ConversationRuntime` 与 Agent event 投影为 transcript 加一个获得焦点的 bottom component。只有 `BottomAreaController` 可以把 editor 替换为审批、picker、prompt、manager 或 content viewer；各 controller 保留自己的交互状态，并在 editor 之前优先恢复等待中的审批。
 
-`Component` 的最小接口是 `render(width, availableHeight?): string[]`，可选 `handleInput` 和 `invalidate`。该协议不会裁剪输出，但组件可根据高度选择渲染策略。`AppLayout` 为唯一底部组件保留分档区域：终端高度不小于 30 行时使用 15 行，24–29 行使用 12 行，18–23 行使用 9 行，7–17 行使用 7 行；终端不足 7 行时将全部可用高度分给 bottom。剩余高度传给 main。底部区域首行由 layout 统一绘制 main/bottom 分隔线，其余高度传给底部组件；所有底部组件的内容都直接跟在分隔线后。组件输出不足时由 layout 补空行，因此切换底部组件不会带动 main 内容。列表视图会缩小项目窗口并保持选中项可见，编辑器会缩小输入和命令窗口；选择提示用上/下键切换选项，较长的详情可用左/右键或 `PageUp`/`PageDown` 翻页。普通 bottom 标题统一使用 `bottomTitle`，当前选项使用 `user`；工具审批和危险确认分别用 `toolActive` 与 `error` 覆盖标题颜色。`KanaTuiApp` 目前将 transcript 作为 main 传入；Transcript 仍刻意渲染完整历史，交由终端 scrollback 保留。组件本身主要处理呈现和局部键盘输入。
+组件负责展示和本地键盘处理。终端 runtime 负责通用 `Component` 契约、高度分配、可见宽度规范化、cursor 放置和差量输出；这些机制见[终端渲染](terminal-rendering.zh-CN.md)。
+## 应用生命周期
 
-## 终端生命周期与渲染
+终端 runtime 先于 `KanaTuiApp` 启动；底层 raw mode、capability、repaint 和恢复行为属于[终端渲染](terminal-rendering.zh-CN.md)。随后 App 会先显示当前 session，再加载外部工具。MCP 启动期间会移除 editor 焦点，追加不可变的逐 server 结果与 warning，用发现的工具重建 Agent，最后恢复 editor。浏览器授权使用临时 URL block，并在结束后替换为最终状态。必需 server 初次失败时输入保持禁用；显式 reload 失败则会移除过期工具并恢复输入，让用户可以重试。Manager 与协议语义见 [MCP](mcp.zh-CN.md)。
 
-`ProcessTerminal.start()` 要求 stdin/stdout 是 TTY，开启 raw mode、bracketed paste、增强键盘上报和隐藏光标，注册输入与 resize。增强键盘上报用于让支持的终端区分 `Shift+Enter` 与 `Enter`。当前会话显示后，外部工具加载器取消 editor 焦点，并在 transcript 末尾追加 `Starting MCP servers...`。随后每个选中的服务器完成时都会追加一条不可变的 `[已完成/总数]` 结果行，其中包含结果和过滤后的工具数；可选服务器的错误色 warning 位于最终启动摘要之前。未选择服务器时也走同一路径，只是不产生中间结果行，并以 `0/0` 摘要结束。之后 `ConversationRuntime` 才用发现的工具重建 Agent 并恢复 editor。OAuth server 需要浏览器授权时，会另外追加临时授权 URL 块，成功或失败后在原位置替换为最终状态，避免凭据 URL 永久保留。初次加载时必需服务器失败会显示错误而不是完成摘要，并保持禁用输入。`kana resume` 的会话选择器位于加载边界之前，因此仅浏览或退出列表不会启动 MCP。应用有变化的 `/mcp` 草稿沿用相同的追加式 transcript 结构，但使用 reload 开始行和摘要；内部 close 阶段不会写入，reload 失败时则用无过期 MCP 工具的状态重建 Agent 并恢复 editor，用户可以继续重试。`KanaTuiApp.stop()` 是幂等异步边界：在 transcript 末尾追加关闭状态并取消底部组件焦点，关闭并等待 `ConversationRuntime`，再由产品层取消并等待自动记忆合并，然后关闭 MCP manager；manager 的中立进度事件更新同一个关闭 transcript 块，bottom 不会被替换。完成清理后才停止终端、恢复先前 raw 状态、暂停 stdin、显示光标、弹出增强键盘上报、关闭 bracketed paste、清屏和 scrollback，并打印累计 token 和可恢复会话命令（若有）。空闲退出和 `SIGHUP`、`SIGINT`、`SIGTERM` 都走这条路径；优雅关闭期间的第二次 raw-mode `Ctrl+C` 会先恢复终端再向当前进程发送默认 `SIGINT`。首个进程信号同样会移除 Kana 的监听器，使第二个信号按系统默认行为强制终止。
+`KanaTuiApp.stop()` 是幂等边界。它追加关闭状态、移除 bottom 焦点、关闭并等待 `ConversationRuntime`，等待自动记忆合并等产品清理，再关闭 MCP manager；之后才恢复终端，并按需打印累计用量和恢复命令。空闲退出与进程 signal 共用这条路径；优雅关闭中的第二次中断会先恢复终端再强制退出。
 
-使用 `kana --clean` 时，App 不安装外部工具加载器，也不创建 MCP 管理 controller，因此首次显示、new、模型切换和后续 Agent 重建都不会读取或连接 MCP。欢迎面板说明当前会话不会保存，transcript 会显示一次 Clean 模式说明，状态栏持续显示 `Clean`；退出时不会打印恢复命令。
-
-App 和 controller 代码只调用声明式的 `Tui.requestRender()`，终端更新策略完全由 runtime 决定。普通请求会合并到约 16ms 的定时器。每次渲染都会：
-
-1. 调用根组件的 `render(width, height)`；
-2. 取出编辑器插入的内部光标标记；
-3. 根据 ANSI 以及 Unicode 可见宽度规范化行；
-4. 逻辑内容未变化时只更新硬件光标；
-5. 其余情况只重绘可见的最小首尾变化范围，追加内容时使用终端自然滚屏，内容收缩时用 `CSI 2K` 清除可见的尾部残留行；
-6. 首帧、宽高变化、改动位于终端 scrollback、删除后新尾部高于可寻址视口，或无法安全推断光标/视口状态时，回退到全量清屏重绘；
-7. 在同步输出模式下，仅为当前焦点组件移动并显示硬件光标；没有焦点时将光标留在布局末尾并保持隐藏。
-
-它维护已渲染行和可视 viewport 的缓存，避免反复计算未变 transcript 的 CJK 宽度。TUI 使用主屏，不进入 `?1049` alternate screen；这让 transcript 留在用户的终端 scrollback 中。
-
-`/clear` 仍只是清空 transcript/editor 状态后调用 `requestRender()`。如果被移除的内容仍全部可见，renderer 会局部更新保留的布局并清除残留行，不发送 `3J`；如果 transcript 行已经进入 scrollback，受影响的逻辑范围无法寻址，常规全量重绘 fallback 会清除并重新播放剩余 frame。
-
-渲染辅助会去除 ANSI/控制序列计算宽度，使用 `string-width` 和 `Intl.Segmenter` 按 grapheme 换行和截断。因而 CJK、emoji、组合字符和颜色不会错误占用列数。工具输出在显示前会移除不安全的终端控制序列。
-
+使用 `kana --clean` 时，App 不安装外部工具加载器或 MCP controller。Transcript 与状态栏会显示临时模式，不持久化 session，退出时也不打印恢复命令。
 ## App 与 Agent 事件
 
 `KanaTuiApp` 订阅 `ConversationRuntime`，持有累计模型用量和可见运行状态，并把 Agent 事件映射交给 `AgentEventRenderer`。输入排序与投递由[对话运行时](conversation-runtime.zh-CN.md)定义；本文只负责其可见投影。Transcript 会在任意两个输出块之间插入一行普通空行，每个 block 只管理内部间距；同一助手消息含多个有序可见部分时，`AssistantMessageBlock` 也使用相同间距。人工输入使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，续行与正文对齐。到期 wake 显示为 `Scheduled wake: …` 而不是人工输入，成功结果则显示为把延迟和提醒压到一行 target 的紧凑工具块：
@@ -163,20 +134,8 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 
 运行期间，`/quit`、`/help`、`/todo`、`/tools`、`/usage`、`/image`、`/schedule` 和 `/jobs` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可在 Agent 运行时查看并停止当前 session 的 Job，但不会确认其完成。`/clear`、`/new`、`/fork`、`/resume`、`/delete`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
 
-## 通知与 Markdown
+## 通知
 
-通知后端由配置选择。`auto` 依次探测 Kitty、iTerm、Ghostty 和 VTE，最后使用 bell；显式 `off` 不写任何通知。通知文本会移除控制字符、折叠空白，OSC 777 字段额外替换分号。正常 Agent 完成和需要审批可分别配置通知。
+配置的 notification backend 决定输出方式。`auto` 依次探测 Kitty、iTerm、Ghostty 和 VTE，最后回退 bell；显式 `off` 不发送通知。通知文本会移除控制字符并折叠空白，OSC 777 还会替换分号。普通 Agent 完成与需要审批可以分别配置。
 
-助手消息和内存查看器使用轻量 Markdown 渲染：标题、列表、引用、代码围栏、部分 inline 样式、表格、链接/图片文本和有限 HTML 规范化。配置允许且终端确认支持时，`http:`、`https:` 和 `mailto:` Markdown 链接通过 OSC 8 绑定到可见 label；每条软换行都会独立关闭并重新打开链接。关闭 `tui.hyperlinks`、终端能力未知或目标 scheme/内容不安全时不发送 OSC 8，并以 `label (url)` 保留可读目标；尚未闭合的流式链接按 Markdown 原文显示。表格按整块解析，支持可选外侧管道、空单元格、转义管道和列对齐；列宽按终端可见宽度分配并在窄屏下降级为纵向键值记录。流式表格只用已完成行确定列宽，正在增长的尾行先用整行宽度在表格下方预览，并在消息结束时纳入表格定稿。成对 HTML 标签和 void 标签会被移除，`vector<int>` 这类未配对的编程语法会按原文保留。Shiki 语法高亮在后台预加载；未加载时代码以普通文本显示。工具块对 list/glob/grep/read 显示摘要，对 write/edit 显示高亮 diff，对 bash 直接显示 stdout/stderr 文本，不添加退出码或字段标签。后台 Bash 调用会在 transcript 标题中添加琥珀色 `[BACKGROUND]` 标记，前台调用不显示标记。Inspector 会保留实际工具参数，同时显示最终生效的执行模式和超时，以及后台调用启动时的 Job ID 与状态。bash 返回非 0 退出码时仍按已完成命令渲染；真正的执行错误和超时才使用 failed 样式。用户取消使用独立的弱化 stopped 状态，不显示为工具执行失败；write 审批和工具块会区分新建与覆盖；`Ctrl+O` 打开可滚动的详情查看器，固定短标题（如工具名）加上完整的操作上下文与输出，即使紧凑输出并未标记为可展开也能打开。每个工具块还拥有与视口高度无关的有界紧凑形态：一行标题、一行压平并水平截断而非换行的 target，以及固定的少量预览行预算。只有 Kana 拥有其参数 schema 的内置工具才会解析出 target 行；未知/custom/MCP 工具不会把 `path`、`command` 等参数提升为 target，只以工具名作为身份展示。bash 预览最多保留最后 8 个源行，write 最多保留 7 个（其中一行让位给字节数结果行），edit 最多保留 3 行删除与 3 行新增 diff（replacements 行与两侧各自的省略标记都计入视觉预算），未知/custom/MCP 结果最多保留 pretty JSON 的前 8 行；每个预览行按终端宽度水平截断而非换行，被省略的行用显式的 `... N more lines` 标记说明。这些界限只影响展示：canonical 参数、结果与审批详情保持完整。当紧凑预览省略了行，或截断了宽于终端的行时，该工具块会标记为可展开。查看器与标记无关，任何工具调用都可以打开，长行会软换行到可用宽度而非再次被截断；查看器打开期间按 `[` 和 `]` 可切换到上一个/下一个工具调用。
-
-默认开启 `tui.render_latex = true`：`$...$` 与 `\(...\)` 渲染行内公式，独立成块的 `$$...$$` 与 `\[...\]` 渲染 display 公式。这个刻意受限的渲染器会把常见符号、黑板粗体字母、上下标、分数、根式、命名运算符、矩阵、cases 和 display 运算符上下限转换为 Unicode 与字符单元布局。不支持或格式错误的表达式会完整保留源码分隔符；流式表达式在分隔符闭合前始终按字面量显示。行内代码和代码围栏不会解释数学分隔符。display 输出在渲染后按终端可见单元宽度测量和换行，宽度不足不会把有效公式重新切换为源码。设置 `tui.render_latex = false` 可让所有已识别的数学公式保留原始 LaTeX。
-
-默认开启 `tui.render_mermaid = true`：语言为 `mermaid` 的代码围栏会持续渲染为使用 Kana 主题的 Unicode 图，源码仍在流式生成时也会尝试更新。终端渲染器支持 `graph`/`flowchart`、`stateDiagram`/`stateDiagram-v2`、`classDiagram`、`erDiagram` 和 `sequenceDiagram`；这是 Mermaid.js 的实用子集，并不等同于浏览器中的完整语法。`:::highlight` 这类 Mermaid 样式类附加语法可以被接受，但不会改变终端颜色；边框、正文、连线和连线标签仍映射到 Kana 的语义主题。不支持或严重格式错误的图、渲染器失败以及宽于 Markdown 可用宽度的图会保留为普通代码块，不追加 warning。流式阶段可以继续显示尽力解析出的部分图；消息完成后若仍有源码无法表达，Kana 会恢复代码块，显示第一条 warning，并汇总其余 warning 的数量。设置 `tui.render_mermaid = false` 可让所有 Mermaid 代码围栏保留为源码。
-
-## 修改渲染时的约束
-
-- 不要直接向 stdout 写组件内容；经 `Tui.requestRender` 让差量渲染维护缓存和光标。
-- 新底部视图必须明确打开/关闭时的焦点恢复。
-- 新工具展示应净化控制序列，并处理部分结果与最终结果。
-- 宽度逻辑必须以可见宽度和 grapheme 为单位，不能直接使用 `string.length`。
-- 改变主屏重绘或终端序列时，更新 `tui-render`、cursor 和 width 测试，避免破坏 scrollback 或 IME 光标。
+Markdown、hyperlink、LaTeX、Mermaid、工具 block、详情渲染、可见宽度规则与重绘约束见[终端渲染](terminal-rendering.zh-CN.md)。

@@ -50,6 +50,14 @@ git push --atomic origin main v0.3.0
 
 根据实际 diff 调整 `git add` 的文件。正式版本统一使用 annotated tag；tag 必须指向 release commit，且不要修改或重复使用已经发布的 tag。
 
+## 分发与自更新
+
+直接分发的二进制会在编译时注入 `direct` 安装标记。源码执行保留 `source` 标记并拒绝自更新，避免 Kana 把 Bun runtime 或开发入口误认为替换目标。
+
+`kana update` 读取最新稳定 GitHub Release metadata，选择当前平台的 asset 与 SHA-256 digest，并下载到目标旁边的临时路径。它先校验大小和 digest，再运行候选文件的 `--version` 与幂等初始化。Rename 前会再次检查目标的 device、inode、修改时间与大小，避免下载期间另一个 installer 已修改 binary 时仍覆盖新版本。最终在同一文件系统上的 rename 是原子的 POSIX directory-entry replacement。
+
+外部 I/O、候选执行与替换失败使用稳定的 phase error code，并删除临时文件。Update 行为与 TUI、Agent 生命周期分离；release asset 及其 digest 文件因此属于公开分发契约。
+
 ## 发布自动化
 
 仓库会在 `package.json`、CI workflow 和 Release workflow 中固定 Bun 工具链版本。升级 Bun 时，应将这三处同步更新为同一版本，确保本地工具、校验流程和 release 二进制内嵌的运行时保持一致。

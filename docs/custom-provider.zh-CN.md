@@ -76,10 +76,8 @@ default_reasoning_effort = "none"
 
 ## 协议与安全边界
 
-适配器发送流式 `POST <base_url>/chat/completions` 请求，并设置 `stream_options.include_usage = true`；它会转换 system/user/assistant/tool 历史和本地函数定义，并解析流式文本、工具调用、结束原因与 usage。Chat Completions 的 tool-role 消息不能携带图片，因此声明图片能力后，adapter 会保持文本工具结果连续，再为其中的图片追加一条合成的多模态 user observation。流式 `delta.reasoning_content` 会转换成 Kana thinking 事件，使推理内容继续保留在 Core 中。TUI 活动状态与供应商无关：`working` 计时从 `turn_start` 开始，不依赖这个可选字段。为避免 Bearer 凭据被转发到其他 origin，适配器拒绝 redirect。Custom 槽位不支持托管网页搜索和供应商专用 replay state。
+该槽位使用[供应商](providers.zh-CN.md)中记录的共享 OpenAI-compatible Chat Completions 路径，包括流式文本、reasoning delta、本地工具调用、用量、图片观察、取消、无活动超时、重试和安全诊断。它拒绝 redirect，避免把 Bearer 凭据转发到另一个 origin；不支持托管网页搜索和供应商专用 replay 状态。
 
-`base_url` 接受 HTTP 和 HTTPS 端点。凭据经过不可信网络时应优先使用 HTTPS，因为 HTTP 传输 Bearer 凭据时没有传输层加密。URL 中的凭据、query 和 fragment 都会被拒绝。配置还会拒绝未知字段、非法环境变量名、重复模型名、无效 token 上限、重复 reasoning 值、`off`，以及不在声明列表中的 reasoning 默认值。
+`base_url` 接受 HTTP 和 HTTPS，但凭据经过不可信网络时必须使用 HTTPS。URL、query string 与 fragment 中的凭据会被拒绝，未知字段和无效模型元数据也会被拒绝。
 
-该 adapter 与内置 adapter 使用相同的 provider HTTP 和生命周期 primitive。Agent 取消与无活动超时保持不同，两者都会停止重试准入和等待中的重试延迟；保留的 HTTP 错误体最多为 16 KiB。诊断使用统一的 provider/model/protocol/phase/outcome envelope，并按需添加固定 Kana `errorCode`、安全的 `errorType`、attempt 和 HTTP status；绝不包含配置的 endpoint、凭据、header、prompt、错误消息、响应体或流式内容。
-
-当前槽位只支持 OpenAI-compatible Chat Completions。Custom Responses、Anthropic Messages、任意 JavaScript/TypeScript adapter、动态 provider ID 和由 TOML 定义 wire protocol 仍不在范围内。
+当前槽位只支持 OpenAI-compatible Chat Completions。Custom Responses、Anthropic Messages、任意 JavaScript 或 TypeScript adapter、动态 provider ID 和由 TOML 定义的 wire protocol 均不在范围内。

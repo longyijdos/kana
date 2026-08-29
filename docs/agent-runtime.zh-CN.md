@@ -104,6 +104,14 @@ Agent 不会自行从 `next-turn` 启动新 run。Kana 的[对话运行时](conv
 
 Prompt budget 等于 effective context limit 减去有界安全预留，不会完整预留已配置的最大输出。每次请求时，manager 把配置/模型上限与剩余 prompt 空间中的较小值写入 `ModelContext.maxOutputTokens`；provider 决定该通用上限是否以及如何进入 wire 请求。
 
+```text
+safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
+promptBudget = contextLimit - safetyReserve
+effectiveMaxOutputTokens = min(配置或 metadata 的输出上限, promptBudget - estimatedPromptTokens)
+```
+
+`promptBudget` 至少需要保留 512 tokens。Effective context limit 是配置上限与模型 metadata window 的较小值；省略配置时使用 metadata window。
+
 自动压缩在 prompt budget 的 80% 处启动。候选切分点只能位于安全消息边界：无调用的完整 assistant turn 之后，或一组 assistant tool call 的全部结果之后。Manager 从旧到新扫描，选择第一个能让“最大摘要占位 + 边界 active runtime state + 近期原始消息”进入 10% 目标的边界。没有安全边界但 prompt 尚能容纳时延后；无法安全恢复时失败。
 
 Runtime-context 消息永不进入摘要策略输入。在 checkpoint 边界，每个 source 的最后状态只有仍 active 时才紧接摘要重新投影；边界后的全部转换保持原顺序。Tool-result policy context 仍是普通的可摘要对话上下文，除非其 provenance 合同另有定义。

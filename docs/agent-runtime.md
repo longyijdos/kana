@@ -104,6 +104,14 @@ The Agent never starts a new run from `next-turn`. Kana's [conversation runtime]
 
 The prompt budget is the effective context limit minus a bounded safety reserve. It does not reserve the configured maximum output in full. For each request, the manager sets `ModelContext.maxOutputTokens` to the smaller of the configured/model ceiling and remaining prompt space. Providers decide whether and how that generic ceiling appears on the wire.
 
+```text
+safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
+promptBudget = contextLimit - safetyReserve
+effectiveMaxOutputTokens = min(configured-or-metadata max output, promptBudget - estimatedPromptTokens)
+```
+
+At least 512 prompt tokens must remain. The effective context limit is the smaller of the configured limit and model metadata window, or the metadata window when configuration omits it.
+
 Automatic compaction begins at 80% of the prompt budget. Candidate cutoffs are limited to safe message boundaries: after a complete assistant turn without calls, or after every result belonging to one assistant tool-call group. The manager scans oldest to newest and selects the first boundary whose maximum summary placeholder, active boundary runtime state, and recent raw messages fit the 10% target. It defers when no safe boundary exists but the prompt still fits, and fails when safe recovery is impossible.
 
 Runtime-context messages never enter summary-policy input. At the checkpoint boundary, only the last state for each source is reprojected after the summary when that state is active; all later transitions retain original order. Tool-result policy context remains ordinary summarized conversation context unless its own provenance contract says otherwise.

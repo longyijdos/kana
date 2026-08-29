@@ -139,7 +139,7 @@ Kana 永不为 `todo_write`、`remember`、`schedule_wake` 或 `update_goal` 请
 
 ## 外部与自定义工具
 
-MCP 与其它外部工具通过同一个 `Tool` 合同进入 Agent。它们保留自身 schema 行为，默认 exclusive，经过普通审批，并使用相同的结果规范化与 content 上限。MCP 专用 discovery、alias、transport 与结果适配行为在独立协议文档加入前仍由架构和配置文档说明。
+MCP 与其它外部工具通过同一个 `Tool` 契约进入 Agent。它们保留自身 schema 行为，默认 exclusive，经过普通审批，并使用相同的结果规范化与 content 上限。MCP 专用 discovery、alias、transport 与结果适配见 [MCP](mcp.zh-CN.md)。
 
 自定义工具应：
 

@@ -2,9 +2,9 @@
 
 Tracking issue: [#98 — consolidate documentation and prevent append-only growth](https://github.com/longyijdos/kana/issues/98)
 
-Status: Phase 1 is ready for maintainer review; Phases 2–5 have not started.
+Status: Complete. Phase 1 was committed separately; Phases 2–5 were completed after the maintainer explicitly waived intermediate review stops. This plan is retained as the maintenance record for issue #98.
 
-This file coordinates the multi-stage refactor. It is not part of the canonical developer documentation and must not be added to `docs/README.md`. Before the final merge, decide whether to remove it or retain it as a completed maintenance record.
+This file records the multi-stage refactor. It is not part of the canonical developer documentation and is intentionally absent from `docs/README.md`.
 
 ## Objective
 
@@ -21,7 +21,7 @@ This effort changes documentation and contributor guidance only. It does not add
 - Document invariants, lifecycle order, failure semantics, persistence and wire formats, security boundaries, and extension contracts.
 - Leave details that are apparent from local code structure out of the documentation.
 - Keep English and Chinese documents structurally and semantically aligned in every phase.
-- Stop for review after each phase before starting the next one.
+- Use phase checkpoints to audit ownership and consistency; the maintainer may explicitly waive an intermediate stop.
 
 ## Target document set
 
@@ -134,7 +134,7 @@ Review checkpoint:
 
 ### Phase 1 — Runtime and durable state
 
-Implementation status: ready for maintainer review. Do not begin Phase 2 until the review checkpoint is approved.
+Implementation status: complete and committed as `90f25a1`.
 
 Deliverables:
 
@@ -213,14 +213,14 @@ Review checkpoint:
 
 ## Per-phase review checklist
 
-- [ ] English and Chinese files were changed together.
-- [ ] New links resolve and renamed files have no remaining references.
-- [ ] Detailed facts removed from one document exist in exactly one canonical owner.
-- [ ] Cross-references contain only the summary needed by the referring document.
-- [ ] No future design proposal is presented as current behavior.
-- [ ] Code names, paths, formats, versions, defaults, and ordering match the repository.
-- [ ] The phase did not introduce production-code, test, or release-highlight changes.
-- [ ] The maintainer reviewed the phase before the next phase began.
+- [x] English and Chinese files were changed together.
+- [x] New links resolve and renamed files have no remaining canonical references.
+- [x] Detailed facts removed from one document exist in exactly one canonical owner.
+- [x] Cross-references contain only the summary needed by the referring document.
+- [x] No future design proposal is presented as current behavior.
+- [x] Code names, paths, formats, versions, defaults, and ordering match the repository.
+- [x] The phases introduced no production-code, test, or release-highlight changes.
+- [x] The maintainer reviewed Phase 1 and explicitly waived the remaining intermediate review stops.
 
 ## Completion criteria
 

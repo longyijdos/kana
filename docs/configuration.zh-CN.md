@@ -243,35 +243,17 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `memory.daily_retention_days` | 可选正整数 | 未设置 | 全量记忆压缩成功后保留每日暂存记录的天数。 |
 | `logging.level` | `debug`、`info`、`warn`、`error`、`off` | `info` | 运行时 JSONL 日志的最低记录级别；`off` 完全关闭文件日志。 |
 
-`parallel_tool_calls` 是用户策略，最终值为“用户配置且所选模型 metadata 支持”。关闭后 provider 请求不会声明并行能力，且即使模型仍在一个响应中返回多个调用，ToolRuntime 也会按顺序逐个执行；此时 `max_parallel_tool_calls` 不影响调度，但仍会校验，避免以后重新启用并行时暴露潜伏的非法值。打开后仍只有声明 `execution.concurrency = "parallel"` 的相邻工具能够组成并行组。ToolRuntime 按模型顺序启动这些调用，并使用滚动池保证同时在途的调用 body 不超过 `max_parallel_tool_calls`；`exclusive`、未声明、未知或元数据非法的工具仍是屏障。当前 OpenAI Codex 模型使用 classic Responses 并声明支持 parallel tool，因此请求字段会遵循这个有效设置。
+`parallel_tool_calls` 只有在用户策略与模型 metadata 都允许时才生效。重复调用、tool-result artifact、并发、deadline 与 Background Job 字段所配置的行为属于[工具与执行](tools.zh-CN.md)；context limit 与压缩预算由 [Agent 运行时](agent-runtime.zh-CN.md)解释。
 
-重复调用策略比较“工具名 + 规范化 JSON 参数”：对象键会递归排序，数组顺序保持不变。不同的未排除调用会重置连续计数，被排除调用则完全透明。人类 prompt、人工 steering 和 `Agent.reset()` 也会重置；Agent 来源的 scheduled input 不会。达到阈值时写入供下一次模型请求使用的内部建议上下文，但不会阻止工具调用。审批拒绝、取消、参数校验失败、未知工具和执行异常都在结果规范化后参与计数。
+上表仍是 TUI option 字段的 canonical 定义。交互语义属于 [TUI 交互](tui.zh-CN.md)，hyperlink、LaTeX、Mermaid、宽度与 repaint 行为属于[终端渲染](terminal-rendering.zh-CN.md)。Memory retention 与 runtime-log 持久化属于[会话与记忆](sessions-and-memory.zh-CN.md)。
 
-启用 `tool_result_artifacts = true` 时，Kana 从当前模型的 prompt budget 派生唯一的内联字节预算，不再暴露第二个数值阈值。非 `read` 结果超过该预算后，会先完整保存，再把模型可见文本替换为 head/tail 预览；预览包含精确省略的 UTF-8 字节数、绝对 locator，以及用 `read`/`grep` 取回的提示，其 notice 也计入同一预算。顶层 `read` 输出只做有界截断，不再生成 artifact，以免形成取回循环；notice 会明确说明按行分页的限制。存储失败时记录安全诊断并保留原始模型可见 outcome，之后普通上下文保护仍可能将其截断；过大或不可序列化的结构化数据仍会独立排除在持久消息之外。关闭该配置会跳过 artifact 存储并使用普通模型可见内容保护，但结构化数据的持久化边界仍然生效。Clean session 使用进程级临时 artifact 存储；普通 session 使用[会话与记忆](sessions-and-memory.zh-CN.md)所述的持久 session 存储。
+日志固定写入 `<KANA_HOME>/logs`，目录不可配置；所选 log level 会在持久化前过滤记录。Provider 生命周期记录格式见[供应商](providers.zh-CN.md)，其它稳定诊断 event 由各子系统文档拥有。
 
-Background Job 上限只作用于进程内执行，不涉及持久化。当前 session 的活动 Job 达到 `max_concurrent` 后，新的 `background: true` `bash` 调用会被拒绝。
-
-`hyperlinks` 是功能许可而不是强制开关：即使配置为 `true`，Kana 也只对确认支持 OSC 8 的终端启用，无法确认能力时保持可见 URL；配置为 `false` 时始终使用文本 fallback。`render_latex` 同时作用于实时与恢复的助手消息、Markdown 表格和内存查看器。支持的表达式默认渲染；关闭该配置、遇到不支持或格式错误的语法、或流式分隔符尚未闭合时保留原始 LaTeX。终端宽度只在成功渲染后影响换行，不会触发源码 fallback。`render_mermaid` 同时作用于实时与恢复的助手消息和内存查看器。启用后 Mermaid 代码块会随文本流式生成持续渲染；不支持或格式错误的图、渲染器失败以及宽于终端可用宽度的图会保留为普通代码块。流式阶段可以显示部分解析结果；消息完成后若仍报告丢弃了源码，Kana 会恢复代码块并追加一条 warning。`smooth_text_streaming` 默认只调整可见文本的推进节奏，不会向 provider 或 Agent 施加背压；关闭后仍由 TUI 合并终端重绘，但不再拆分 provider 的文本快照。`collapse_long_pastes` 只影响编辑器的显示与编辑方式，提交、排队和从输入历史恢复时仍使用完整粘贴原文。`daily_retention_days` 注释掉或省略时不会清理每日记忆。日志固定写入 `<KANA_HOME>/logs`，不提供目录配置，也不写入终端输出，因而不会干扰 TUI 重绘。Agent 和 Memory Agent 的 `web_search`、`image_input` 与 `parallel_tool_calls` 必须是布尔值；各自的 `max_turns` 只接受 `-1` 或正整数，`tool_deadline_ms`、`max_parallel_tool_calls` 以及可选模型 `max_output_tokens`、`context_limit` 要求正整数。`goal_max_rounds` 与 `agent.background_jobs.max_concurrent` 也要求正整数；provider `timeout_ms` 和 `max_retries` 校验为有限数字，`memory` 的两个数量字段要求正整数。
-
-### 上下文预算
-
-每个 Agent 使用自己的 `*.model.context_limit` 计算自动上下文压缩预算。实际 context limit 为 `min(配置的 context_limit, 模型 metadata context window)`；未配置时使用 metadata window。实际 prompt 预算和逐轮输出上限为：
-
-```text
-safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
-promptBudget = contextLimit - safetyReserve
-effectiveMaxOutputTokens = min(配置或 metadata 的输出上限, promptBudget - estimatedPromptTokens)
-```
-
-`promptBudget` 至少需要 512 tokens。估算输入达到其 80% 时开始压缩，cutoff 会在完整 assistant turn 或完整 tool-call/result 组之后选择，使“系统提示词 + 工具定义 + 最大摘要占位 + 保留的近期消息”尽量降到 `promptBudget` 的 10%。配置的 `max_output_tokens` 是输出上限而不是固定预留；prompt 增长到剩余空间不足时，Agent 会降低本轮 `ModelContext.maxOutputTokens`。DeepSeek 将它作为 Responses `max_output_tokens` 发送；Codex 请求约定没有对应字段，因此该 adapter 只将其用于 Agent 预算，wire request 中省略。
-
-默认 `info` 只保留 session、TUI、Agent run 和记忆任务的摘要；逐回合、provider 请求以及成功工具执行的轨迹属于 `debug`。Agent 创建时的 `agent.parallel_tool_calls_configured` 会记录 `requested`、`supported`、最终的 `enabled` 和 `maxParallelToolCalls`；`agent.model_capabilities_configured` 记录实际的网页搜索与图片输入策略；`agent.repeated_tool_calls_configured` 会记录是否启用、阈值和排除工具数量。并行组在 `debug` 级别记录 `tool.parallel_pool_started` 与 `tool.parallel_pool_ended`；中止或失败的 drain 还会以 `info` 或 `warn` 记录一次只含聚合计数的 `tool.parallel_pool_abnormal_drain`。策略失败记录 `tool.result_policy_failed`，但不含参数或结果内容；成功插入上下文时，`tool.result_policy_context_committed` 只记录来源和数量。artifact 保存、清理、fork 和引用无效诊断使用稳定的 `tool.result_artifact_*` 或 `session.artifact_*` 事件，只包含大小、阶段、结果和错误类型，绝不包含结果文本或 locator。`context.output_limit_adjusted` 只记录配置上限、本轮有效上限和估算 prompt tokens。重试和失败工具为 `warn`，运行或持久化失败为 `error`。非 provider 记录若附带 `Error`，会在清理后保留有界的名称、消息与堆栈。Provider 生命周期诊断则使用固定事件及 provider、model、protocol、phase、outcome、`errorCode`、`errorType`、`httpStatus`、`providerCode` 等安全字段；绝不保留错误消息、响应体、流式内容、授权 header、prompt 或 token。
-
-配置根、每个已出现的表都必须是 TOML table。字符串不能为空，布尔值不能用字符串代替，枚举值之外的提供商、推理强度、审批模式、通知后端和日志级别会导致启动失败。Kana 不会忽略无效的已知字段；应修正配置后重新启动。
+配置根和每个已出现的 section 都必须是 TOML table。字符串不能为空，布尔值不能写成字符串，不支持的 provider、reasoning effort、审批模式、notification backend 或 log level 会阻止启动。Agent 与 Memory Agent capability flag 必须为 Boolean；`max_turns` 只接受 `-1` 或正整数；deadline、并发限制、Job 限制、模型 token limit、context limit 与 memory 数量必须为正整数。Provider retry 与 timeout 必须是有限数字。Kana 不会静默忽略无效的已知字段。
 
 ## `mcp.json` 与 `mcp-enabled.json`
 
-MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA_HOME>/mcp.json`，`<KANA_HOME>/mcp-enabled.json` 则是启用状态的唯一来源。定义文件不存在或省略 `mcpServers` 时等价于未配置服务器；启用文件不存在或省略 `enabledServers` 时等价于未启用任何服务器。Kana 只启动同时存在于定义和 `enabledServers` 中的 ID，过期的未知 ID 会被忽略。当前会话显示后，TUI 才会连接选中的服务器，使用稳定版 `2025-11-25` client 获取工具列表，再把远端工具注入重建后的主 Agent；不带 ID 的 `kana resume` 会先显示会话选择器，选中会话后才开始连接。记忆压缩 Agent 不会获得 MCP 工具。每次发现的工具列表会固定到显式执行下一次 `/mcp` reload 或本次进程结束，不处理运行中的 `notifications/tools/list_changed`。
+MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA_HOME>/mcp.json`，`<KANA_HOME>/mcp-enabled.json` 则是启用状态的唯一来源。定义文件不存在或省略 `mcpServers` 时等价于未配置 server；启用文件不存在或省略 `enabledServers` 时等价于未启用任何 server。Kana 只启动同时存在于定义和 `enabledServers` 中的 ID，过期的未知 ID 会被忽略。运行时与协议行为见 [MCP](mcp.zh-CN.md)。
 
 ```json
 {
@@ -311,7 +293,7 @@ MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA
 }
 ```
 
-Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都会导致启用状态加载失败。`/mcp` 会列出所有已配置 server 的 transport；选中 stdio server 时显示完整命令行（`command` 后拼接 `args`），选中 HTTP server 时显示 URL 和 OAuth 状态，但刻意不显示环境变量、HTTP headers、代理地址或 token。`Enter` 只切换内存中的草稿；OAuth HTTP server 还可按 `A` 打开认证操作，执行首次授权、重新授权或退出登录。`Esc` 一次性应用并关闭；草稿有变化或已启用 server 的认证状态发生变化时，Kana 执行一次 reload。退出登录会同时取消勾选该 server。持久化失败时管理界面保持打开，方便重试。
+Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都会导致加载失败。`/mcp` 交互及其脱敏规则见 [TUI](tui.zh-CN.md)。
 
 省略 `type` 时默认为 `stdio`；Streamable HTTP 必须显式使用 `"type": "http"`。配置字段如下：
 
@@ -332,9 +314,9 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `includeTools` | 未设置 | 按远端原名选择允许暴露的工具。空数组表示不暴露任何工具。 |
 | `excludeTools` | 未设置 | 按远端原名排除工具；同时出现在 include/exclude 时以排除为准。 |
 
-stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并展开后的 `env`。占位符只从 Kana 进程环境读取，因此也能使用 `<KANA_HOME>/.env` 已加载的值，但不会让子进程继承其他未显式配置的变量。`${VAR:-default}` 遵循 shell 的 `:-` 语义：变量未设置或值为空时使用默认值；默认值不递归展开。没有默认值的占位符若无法解析，该 server 会以包含 server ID、env key 和变量名的错误启动失败；可选 server 不影响其他 MCP 或 editor，错误会出现在 transcript 和诊断日志中，且不会记录 secret 值。环境变量名必须符合常规格式，配置值必须是字符串；未知字段、非正整数超时、重复或空工具名都会使配置加载失败。
+stdio 子进程默认只继承已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并展开后的 `env`。占位符从 Kana 进程环境读取，因此也能使用 `<KANA_HOME>/.env`；`${VAR:-default}` 会在变量未设置或为空时使用不递归展开的默认值。缺少必需变量会使该 server 失败。环境变量名必须符合常规格式，配置值必须是字符串，超时必须为正数。
 
-HTTP server 将 `proxy` 设置为 URL 后，其 MCP initialize、工具请求、SSE 恢复、session DELETE、OAuth metadata discovery、token 获取和 refresh 都通过该代理；设置为 `false` 后，同一范围的请求会绕过进程级代理并直连。直连封装只在调用 Bun `fetch` 的同步区间把当前目标主机加入进程内 `NO_PROXY`/`no_proxy`，随即恢复两个变量的原始值；不会永久修改 Kana 进程环境，也不会改变随后启动的其他 MCP 请求，它们仍使用各自的显式代理或原有全局代理。省略 `proxy` 时使用 Bun 的默认 `fetch` 路由，因此继续遵守当前 shell 或 `<KANA_HOME>/.env` 注入的 `HTTP_PROXY`/`HTTPS_PROXY`。系统浏览器中的 OAuth 授权页面不经过 Kana 的 `fetch`，仍使用浏览器自身的网络设置。诊断日志只记录该 server 使用显式代理或绕过代理，不记录代理 URL。
+HTTP server 的 `proxy` 会一致应用于其 MCP 与 OAuth 请求；设为 `false` 时该 server 绕过进程级代理，省略时保留 Bun 默认路由及继承的 `HTTP_PROXY` 或 `HTTPS_PROXY`。浏览器跳转仍使用浏览器自身的网络设置。诊断只记录是否使用显式代理或 bypass，不记录代理 URL。
 
 `auth` 当前只接受 `type: "oauth2"`，子字段如下：
 
@@ -348,11 +330,9 @@ HTTP server 将 `proxy` 设置为 URL 后，其 MCP initialize、工具请求、
 | `authorizationParameters` | `{}` | 追加到浏览器授权请求的提供商参数，例如 `access_type` 或 `prompt`；不能覆盖 OAuth/PKCE/resource 核心参数。 |
 | `callbackTimeoutMs` | `300000` | 等待 loopback callback 的正整数超时。 |
 
-OAuth 启动前先按 MCP protected-resource metadata 和 OAuth/OIDC metadata 发现授权端点，再执行 Authorization Code + PKCE S256。浏览器授权成功后，access token、refresh token、到期时间、scope 和绑定信息写入权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`。可用的 refresh token 会在 access token 到期前自动刷新；授权服务器以 `invalid_grant` 拒绝 refresh 时，Kana 删除旧凭据，并在下次需要时重新打开浏览器。工具调用收到带 scope 的 `401/403` challenge 时，如果配置允许所需 scope，Kana 会增量授权并只重试该 HTTP 请求一次；若服务端要求配置范围之外的 scope，则返回明确错误，不扩大权限。
+MCP 授权把 token 与绑定信息写入权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`。Discovery、PKCE、refresh、challenge 恢复和 scope 边界见 [OAuth](oauth.zh-CN.md) 与 [MCP](mcp.zh-CN.md)。
 
-HTTP transport 只实现 `2025-11-25` Streamable HTTP：POST 响应同时支持 JSON 和 SSE，初始化后支持可选 GET server stream、session header、`Last-Event-ID` 恢复和 DELETE 关闭。不会回退 `2024-11-05` 的独立 HTTP+SSE transport。URL、代理 URL、header 名称和值以及 transport 保留 header 会在启动前校验。OAuth challenge 只使当前请求失败，不会关闭仍然有效的 MCP transport；网络或协议级致命错误仍会关闭连接。关闭期间的 session DELETE 是有界的最佳努力操作，其失败会写日志，但后台清理不会把未处理 Promise 堆栈泄漏到 TUI。
-
-可选服务器启动失败时 Kana 会记录诊断、关闭该服务器并继续，并在最终摘要前留下持久失败警告。初次加载时，必需服务器失败会让当前会话停留在错误状态，不启用 editor；但显式 reload 中遇到配置或必需服务器失败时，会清空已关闭 manager 的工具、用无 MCP 工具的状态重建 Agent、把错误写入 transcript，并恢复 editor，以便再次打开 `/mcp`。连接和 reload 都会依次追加开始行、每个选中服务器的 `[已完成/总数]` 结果行（包含结果和过滤后的工具数）、warning，以及最终启动/reload 摘要。未选择服务器时走同一路径，只是不产生结果行，并显示 `0/0` 摘要；reload 的内部 close 阶段不会记录成加载结果。远端工具默认沿用未知工具的审批策略，在 `unless_trusted` 模式下每次调用都需要确认；审批框显示 server ID、远端工具原名和完整格式化参数，只提供单次允许或拒绝。退出、空闲或加载时按 `Ctrl+C`，以及收到 `SIGHUP`、`SIGINT`、`SIGTERM` 时，Kana 会先进入优雅关闭，并在 transcript 末尾显示逐服务器关闭进度而不替换 bottom；所有 MCP server 关闭后才恢复终端并打印退出信息。优雅关闭等待期间再次按 `Ctrl+C` 会立即强制退出。
+HTTP transport 版本、JSON/SSE session 行为、恢复规则、server 失败隔离、远端工具映射和 manager 生命周期见 [MCP](mcp.zh-CN.md)。用户可见的加载、reload、审批和关闭行为属于 [TUI](tui.zh-CN.md)。
 
 stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 与 `headers` 按 JSON 字面值处理，静态 token 因而会以明文保存在 `mcp.json`；优先使用 OAuth 的 `clientSecretEnv` 和最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建缺失的两个 MCP 文件，`kana reset` 则会在确认后把服务器定义和启用状态重置为空默认值；两者都不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
 

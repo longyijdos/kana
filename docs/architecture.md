@@ -1,32 +1,31 @@
 # Kana Architecture Overview
 
-Kana is a general-purpose terminal agent running on Bun. It keeps model calls, tool execution, and local persistence in one process, with either an interactive custom TUI or one-shot headless execution. This document describes the implemented runtime boundaries and module relationships so contributors can trace a request from the entry point to its concrete responsibilities.
+Kana is a Bun-based terminal agent. Model calls, tool execution, product composition, and local persistence run in one process, exposed through either an interactive TUI or headless execution. This overview maps stable module boundaries and data flow; detailed contracts live in the linked subsystem documents.
 
-## Layers and dependency direction
+## System layers
 
 ```text
-src/main.ts
-  ├─ cli                 Command parsing; starts, resumes, installs, and updates Kana
-  ├─ headless            One-shot execution, JSONL projection, and non-interactive approval ─┐
-  └─ tui                 Terminal interaction, rendering, and user approval ─────────────────┴→ kana
-                                                                                               Product composition: config, prompts, sessions, memory, Skills
-                                                                                                 ├─ logging  Logging contracts and session-scoped JSONL infrastructure
-                                                                                                 ├─ oauth    Generic OAuth discovery, PKCE, callback, token, and refresh state
-                                                                                                 ├─ mcp      MCP JSON-RPC connections, protocol clients, and transports
-                                                                                                 ├─ agent    Model/tool loop and event protocol translation
-                                                                                                 ├─ tools    Reusable file and shell tools
-                                                                                                 ├─ core     Shared message, model, tool, event-stream, and usage contracts
-                                                                                                 ├─ utils    Image input normalization built on core image contracts
-                                                                                                 └─ providers
-                                                                                                     ├─ responses     Shared semantic Responses SSE assembly
-                                                                                                     ├─ openai-compatible  Shared Chat Completions adapter
-                                                                                                     ├─ deepseek      DeepSeek Responses request and streaming adapter
-                                                                                                     └─ openai-codex  Codex Responses, OAuth credentials, and streaming adapter
+src/main.ts → cli
+                ├→ tui ───────┐
+                └→ headless ──┴→ kana (product composition)
+                                  ├→ agent → core
+                                  │    └→ tools → core, jobs, utils
+                                  ├→ providers → core
+                                  ├→ mcp → oauth, tools
+                                  ├→ session / memory / skills / config
+                                  └→ logging
+
+core, logging, oauth, jobs, utils
+  reusable contracts or infrastructure with narrow dependencies
 ```
 
-`core` is the innermost protocol package and has no dependency on another top-level source module. The provider-facing `ToolSpec`, reusable `EventStream`, and `ModelUsage` contract belong to this layer; executable `Tool` values in `tools` add the execution function. `utils` owns Bun-backed image loading and normalization and depends only on the image contracts in `core`. `logging` is an infrastructure module that provides the logging contract, its no-op implementation, and session-scoped JSONL storage. `agent` depends on `core`, `tools`, and the contract and no-op implementation from `logging`, but knows nothing about log paths or product configuration, so it can run without a terminal UI; the Kana product layer composes the concrete session logger. `oauth` is a generic Authorization Code + PKCE and token-lifecycle module that knows nothing about MCP, providers, or frontends. `mcp` layers protected-resource discovery and Bearer-challenge semantics on top while remaining independent from Kana product composition and the Agent loop. `kana` is the composition layer that turns these generic pieces into the Kana product; it reads state from the current workspace and `~/.kana` (or `KANA_HOME`). `tui` and `headless` share that composition layer and neither implements model protocols or persistence formats directly.
+`core` contains provider-neutral messages, model metadata, streams, usage, and tool specifications. `agent` owns the conversation loop and context projection; executable tools add validation and execution around Core specifications. `providers` translates Core model requests to external wire protocols. `oauth` is generic, while `mcp` adds remote-tool protocol behavior.
 
-The allowed direct dependencies between top-level source modules are explicit:
+`kana` is the product layer. It resolves configuration and local paths, composes Agents, owns sessions and memory, activates Skills and MCP, and exposes frontend-neutral conversation operations. `tui` and `headless` consume that layer; neither owns model protocols or persistence formats.
+
+## Enforced dependencies
+
+The allowed direct dependencies between top-level source modules are:
 
 | Source | May import |
 | --- | --- |
@@ -43,207 +42,70 @@ The allowed direct dependencies between top-level source modules are explicit:
 | `jobs` | `logging` |
 | `oauth`, `logging`, `core`, `version.ts` | No other top-level source module |
 
-`bun run check:architecture`, included in `bun run check`, enforces this table for runtime and type-only dependencies. Imports within one top-level source module must be relative; imports across top-level modules must use the target barrel, such as `@/core`, without a deep alias path. The check rejects unlisted edges and detects both runtime-only file cycles and cycles that close only when type dependencies are included.
+`bun run check:architecture` enforces this graph and detects runtime and type-only cycles. Imports within one top-level `src` directory are relative. Cross-directory imports use the target barrel, such as `@/core`, rather than deep aliases.
 
-This layering also indicates where new code belongs: new providers go in `providers`, reusable execution capabilities in `tools`, loop control in `agent`, Kana defaults and local state in `kana`, and interaction presentation in `tui`.
+Inside `src/kana`, domain directories remain distinct: `config`, `conversation`, `session`, `memory`, `skills`, `mcp`, `tools`, `auth`, and `update`. Shared `KANA_HOME` path construction stays at this product layer because several domains consume it.
 
-Inside the Kana product layer, stable domain barrels group related responsibilities. `config/` owns configuration contracts and defaults, parsing and validation, generated reference content, persistence lifecycle, and the mutable store. Configuration defaults are resolved there once and injected into consumers; the conversation runtime does not maintain its own configuration fallbacks. The shared `KANA_HOME` layout remains in `kana/path.ts` because sessions, artifacts, accounting, logs, memory, Skills, MCP, authentication, and configuration persistence all consume it. `auth/` owns product credentials and token storage, `mcp/` owns external-tool configuration and lifecycle, `conversation/` owns the frontend-shared runtime, input coordinator, and wake scheduler, `session/` owns persistence, `memory/` and `skills/` own durable state, `tools/` owns Kana-specific tools, and `update/` isolates self-update. Domain internals use relative imports, while callers in other top-level source areas continue through `@/kana`.
+## Composition roots
 
-`tests/` follows the main source areas with directories such as `agent/`, `core/`, `kana/`, `mcp/`, `oauth/`, `providers/`, `tools/`, and `tui/`; Kana and provider tests are subdivided by their internal domains. Cross-module integration tests live with the primary behavior owner, while non-test inputs remain under `tests/fixtures/`. Bun discovers all of these `*.test.ts` files recursively.
+`src/main.ts` delegates to `runCli`. Commands either perform a bounded operation—installation, reset, authentication, Skills management, update—or launch one of the two conversation frontends. Configuration and command semantics are documented in [Configuration and installation](configuration.md), [Headless execution](headless.md), and [Release process](releasing.md).
 
-## Startup path
+`KanaConversationHost` is the frontend-shared product boundary. It creates or restores hosted sessions, composes model and tool capabilities, binds persistence and logging, and exposes transitions used by `ConversationRuntime`. `createKanaAgent` assembles one selected model, stable prompt sources, effective runtime policy, built-in tools, and the current replaceable external-tool snapshot.
 
-`src/main.ts` calls `runCli`. The CLI has these primary paths:
+The TUI composes controllers over `ConversationRuntime`; headless mode projects the same runtime into text or versioned JSONL. Frontend behavior may differ, but Agent execution, input ordering, Goals, session transitions, and cleanup remain shared. See [Conversation runtime](conversation-runtime.md), [TUI interaction](tui.md), [Terminal rendering](terminal-rendering.md), and [Headless execution](headless.md).
 
-- `kana [--clean] [prompt...]`: starts the TUI; if arguments are supplied, sends the prompt after startup.
-- `kana resume [sessionId]`: restores a session by ID or opens the session picker.
-- `kana exec [--clean] [--goal] [--timeout <duration>] [prompt...]` / `kana exec resume <sessionId> [prompt...]`: runs one complete Agent task without the TUI and exits; `--goal` admits bounded sequential Agent runs, while `--json` writes a versioned JSONL event stream.
-- `kana install`: idempotently creates missing local state and refreshes the generated configuration reference without materializing a default `config.toml` or installing the Skills repository.
-- `kana update [--check]`: checks the latest stable Release; without `--check`, validates a candidate binary and atomically replaces the current direct-distribution executable.
-- `kana reset [--yes]`: after confirmation, deletes `config.toml`, refreshes the configuration reference, and resets MCP, approval, and Skill activation state while preserving credentials, user data, logs, instructions, and installed Skills.
-- `kana auth login|status|logout openai-codex`: manages Codex browser OAuth and local credentials.
-- `kana skills install|reinstall [--yes]`: safely installs or updates the default Skills Git repository, or deletes and reclones it after confirmation.
-- `kana skills sync|resync <target> [--yes]`: copies installed Kana Skills into another agent's Skills directory. Sync skips matching entries; confirmed resync replaces them without cleaning other or stale Skills.
+## Startup and shutdown
 
-Launch entry points pass an explicit `normal | clean` mode into the frontend and `KanaConversationHost`, which forwards it to every created or rebuilt Agent. TUI and Headless reject combining clean mode with resume, while the host retains the same invariant. Clean mode does not simulate isolation by replacing `KANA_HOME` or clearing the process environment, so it still reads `.env`, runtime configuration, authentication, and approvals. The host boundary disables persistence for the session journal, session logger, and accounting, while Agent composition disables AGENTS, memory, Skills, and MCP.
+Normal and clean launches pass an explicit mode through the frontend, host, and every rebuilt Agent. Normal mode may load project instructions, memory, Skills, persistence, accounting, and MCP. Clean mode keeps runtime configuration, environment, authentication, approval, and core tools, but removes durable session resources and optional project capabilities. The complete user-visible contract belongs to [Configuration and installation](configuration.md).
 
-Self-update remains isolated in the `kana/update/self-update.ts` product layer and never enters the TUI or Agent lifecycle. It obtains the version, platform asset, and SHA-256 digest from the GitHub Release API; writes the download to a sibling temporary path; verifies its size and digest; and runs `--version` plus idempotent initialization through the candidate. Before replacement it compares the target's device, inode, mtime, and size again, preventing an update from overwriting a newer binary written by another installer while the download was in flight. The final rename is an atomic POSIX directory-entry replacement on the same filesystem. Source execution defaults to a `source` marker and refuses updating, while every directly installable compile entrypoint injects a `direct` marker at build time so the Bun runtime cannot be mistaken for the update target. Any external I/O, candidate-execution, or replacement failure uses a stable phase error code and removes the temporary file.
+Interactive startup makes the chosen session visible before connecting selected MCP servers, then rebuilds the Agent with discovered tools. Headless startup performs the corresponding host initialization without TUI projection. Both reject clean-mode resume and use the same host invariants.
 
-Interactive launch creates a shared `KanaConversationHost` and `ConversationRuntime`; the host composes product resources, while the runtime owns frontend-neutral execution, input delivery, and session transitions. The TUI remains responsible only for visible interaction and starts external-tool loading after the selected session is visible. See [Conversation runtime](conversation-runtime.md) for the ownership and lifecycle details and [Terminal UI](tui.md) for presentation behavior.
+Shutdown flows from frontend to shared runtime, hosted session resources, background product work, and external-tool managers before the terminal or process completes. Each owner makes its close operation idempotent and prevents queued work from reviving a closed resource. Detailed ordering belongs to [Conversation runtime](conversation-runtime.md), [MCP](mcp.md), and the frontend documents.
 
-`startHeadless` wraps the same host and runtime with prompt resolution, fail-closed approval, signals, a soft deadline, and a stateful output projector. Headless-specific CLI, protocol, and exit semantics are documented in [Headless mode](headless.md); shared execution and Goal orchestration belong to [Conversation runtime](conversation-runtime.md).
-
-In clean mode the host returns an empty tool snapshot before the MCP runtime reads configuration. The TUI omits its external-tool loader, while Headless still passes through the same host boundary without parsing or connecting MCP. These two boundaries prevent later new operations, model switches, or Agent rebuilds from reintroducing external tools; the host separately rejects forks in clean mode.
-
-## How one prompt runs
+## Conversation data flow
 
 ```text
-User input
-  → KanaTuiApp.submitPrompt
-  → ConversationRuntime.submit
-  → Agent.stream
-  → runAgentLoop
-  → PromptAssembly.assemble (stable system + current context/tools)
-  → Model.stream (selected provider SSE)
-  → AssistantMessageEvent
-  → AgentEvent
-  ├─ AgentEventRenderer updates the transcript, tool blocks, and status line
-  └─ In normal mode, the Agent journal incrementally records completed messages
-
-If the model requests tools:
-  Agent validates arguments → beforeToolExecution (TUI approval)
-  → Tool.execute → ToolResultMessage → next model turn
+user or scheduled input
+  → ConversationRuntime
+  → Agent
+  → prompt and context projection
+  → selected Model adapter
+  → ordered assistant events
+  → optional ToolRuntime calls
+  → committed messages and runtime events
+     ├→ session persistence in normal mode
+     ├→ TUI transcript and status
+     └→ headless text or JSONL
 ```
 
-`Message` is the provider-neutral history format shared by Agent execution, persistence, and frontends. Its identity, provenance, content blocks, images, and event-stream contracts are documented in [Agent runtime](agent-runtime.md).
+Core messages and model events are frontend- and provider-neutral. The Agent commits complete messages, coordinates steering and queued input, and delegates tool execution without knowing the frontend. Providers retain their wire-specific replay state behind Core content. Tool results re-enter the same history before the next model step.
 
-Providers emit incremental `AssistantMessageEvent` values that the Agent translates into its higher-level event protocol. Frontends can render deltas while relying on complete snapshots instead of rebuilding messages themselves; see [Agent runtime](agent-runtime.md).
+The detailed owners are [Agent runtime](agent-runtime.md), [Providers](providers.md), and [Tools and execution](tools.md). Checkpoint persistence and recovery belong to [Sessions and memory](sessions-and-memory.md).
 
-`Agent` owns one conversation history, one active run, dynamic prompt context, and the two input lanes used for steering and later runs. Its loop, commit boundary, compaction behavior, and listener isolation are documented in [Agent runtime](agent-runtime.md); durable journal ordering belongs to [Sessions and memory](sessions-and-memory.md).
+## State and trust boundaries
 
-`ContextManager` projects full history into a cumulative summary plus recent messages and maintains the context estimate used for request budgets. Checkpoint and runtime-context semantics belong to [Agent runtime](agent-runtime.md), while their persisted representation belongs to [Sessions and memory](sessions-and-memory.md).
+Normal local state is rooted at `KANA_HOME`, defaulting to `~/.kana`. Configuration owns file names, fields, defaults, and validation. Sessions and memory own durable formats and recovery. OAuth owns generic token-session invariants; Kana supplies the local credential store. MCP configuration can launch local processes or contact remote servers, so server definitions are a code, data, and credential trust boundary.
 
-`runAgentLoop` resolves the current prompt and tools for each model step, then delegates tool calls to `ToolRuntime`. Validation, approval, deadlines, concurrency, cancellation, result ordering, and failure normalization are documented in [Tools and execution](tools.md).
+Tool approval is visible authorization, not an operating-system sandbox. File and shell tools can act outside the startup workspace when given paths that resolve there. Provider endpoints, MCP endpoints, OAuth servers, environment variables, and local plaintext credential files must be treated according to their owning security guidance.
 
-Tool-result policy is a reusable Agent boundary that may replace model-visible result text or append identified policy context after a sibling result group. Its execution contract is documented in [Tools and execution](tools.md), and the resulting context projection in [Agent runtime](agent-runtime.md).
+See [Configuration and installation](configuration.md), [Sessions and memory](sessions-and-memory.md), [OAuth](oauth.md), [MCP](mcp.md), and [Tools and execution](tools.md).
 
-## Model and provider adapters
+## Documentation routing
 
-`core/model.ts` defines `Model`: a provider only needs to provide metadata and `stream(context)`; the base class implements `generate()` by collecting a stream. Common `ModelMetadata.protocol` identifies the generic `responses` or `chat-completions` wire protocol, while `supportsHostedWebSearch`, `supportsImageInput`, hard context/output limits, and optional reasoning efforts plus their default advertise selected-model capabilities independently of user configuration. Per-Agent `ModelContext` carries effective web/image policy and request budgets. Providers can use these fields to select shared codecs without encoding provider-specific routing in `core`. `providers/index.ts` is the centralized built-in factory. Product configuration supports `deepseek`, `openai-codex`, and one static `custom` slot, while `MockModel` exists for tests and uses a null protocol.
+| Change area | Detailed owner |
+| --- | --- |
+| Conversation composition, input delivery, Goals, session transitions | [Conversation runtime](conversation-runtime.md) |
+| Messages, prompt context, Agent loop, compaction | [Agent runtime](agent-runtime.md) |
+| Tool execution, approval hook, Jobs, artifacts | [Tools and execution](tools.md) |
+| Provider lifecycle and shared protocol codecs | [Providers](providers.md) |
+| Adapter-specific requests and replay | [DeepSeek](deepseek-provider.md), [OpenAI Codex](openai-codex-provider.md), or [Custom](custom-provider.md) |
+| Generic token discovery, PKCE, callback, refresh | [OAuth](oauth.md) |
+| MCP transports, client, manager, and reload | [MCP](mcp.md) |
+| Session JSONL, recovery, accounting, memory | [Sessions and memory](sessions-and-memory.md) |
+| Configuration schema, defaults, local files, clean mode | [Configuration and installation](configuration.md) |
+| Skills and system-prompt composition | [Skills and the system prompt](skills-and-prompt.md) |
+| TUI commands, focus, controllers, event projection | [TUI interaction](tui.md) |
+| Layout, repaint, width, Markdown, tool presentation | [Terminal rendering](terminal-rendering.md) |
+| Release automation, distribution, self-update | [Release process](releasing.md) |
 
-Network-backed adapters share only narrow primitives under `src/providers`: `lifecycle.ts` fixes request, retry, authentication-refresh, stream-recovery, completion, and failure diagnostics; `http.ts` owns inactivity signals, abortable delay, retry timing, retryable HTTP status, and bounded error bodies; `context-window.ts` owns common context-limit signals with provider extensions. Every lifecycle record carries provider, model, protocol, phase, and outcome. Retry and failure records add a Kana-defined fixed `errorCode`, safe `errorType`, attempt or HTTP status where relevant, while a safe upstream code remains separate as `providerCode`. These helpers never own a provider retry loop, authentication, request construction, or stream interpretation, and diagnostics never include error messages, response bodies, headers, prompts, or streamed content.
-
-`DeepSeekModel` sends all V4 models through `/responses`. They convert generic history into semantic Responses input, store completed provider items as opaque `providerState` for stateless replay, advertise hosted `web_search` when enabled, and use the shared `src/providers/responses` semantic SSE processor. On the vision model, visual tool results become native `function_call_output` text/image input blocks tied to the original call ID. That processor correlates output by index and item ID and maps reasoning, messages, function calls, hosted searches, terminal status, and usage into ordered core events.
-
-`src/providers/openai-compatible` owns the reusable OpenAI-compatible Chat Completions path. It converts generic messages and local function tools, emits image data URLs only when model metadata enables image input, and omits provider-specific reasoning or hosted-tool state during cross-provider replay. Because Chat Completions tool-role messages cannot carry image content, the adapter retains each contiguous sibling tool-result group and appends one synthetic multimodal user observation containing its tool images. Its SSE reader preserves partial frames, incrementally assembles ordered text and function calls, maps finish reasons and usage, and shares the normal provider lifecycle guarantees for cancellation, inactivity timeout, retries, safe logging, and context-limit normalization. The model is exported directly but is not registered as a standalone `ProviderName`; Kana's static `custom` slot parses `<KANA_HOME>/providers/custom.toml` and instantiates it directly. This deliberately avoids a dynamic provider catalog or arbitrary runtime adapters.
-
-A request can be cancelled by the Agent and is also subject to the `timeoutMs` inactivity timeout, which restarts on response headers or response data. Upstream cancellation and inactivity timeout retain distinct outcomes, and either stops pending retry delay and further requests. HTTP 408, 429, and 5xx responses use exponential-backoff retries up to `maxRetries`; retained HTTP error bodies are bounded to 16 KiB. Model metadata also supplies the context window and output maximum; the TUI uses it to calculate context occupancy, while provider usage events supply process-lifetime token totals.
-
-`OpenAICodexModel` uses the ChatGPT token and account ID supplied by Kana's generic OAuth state machine to send classic `store = false` Responses SSE requests to the Codex endpoint. Instructions and client or hosted tools use classic top-level fields; no Responses Lite header or input markers are sent. Visual tool results use native `function_call_output` text/image input blocks tied to the original call ID. The adapter supplies Codex-specific request and replay rules while reusing the shared semantic Responses processor for reasoning-summary, provider-hosted `web_search_call`, message, and function-call output items. It persists encrypted reasoning and completed items as opaque `providerState` for later replay. Hosted searches never enter the local ToolRuntime. The first `401` refreshes credentials and retries once. HTTP and recognized transient Responses stream retries share one `maxRetries` budget: overload/server/internal/temporary-unavailability/rate-limit failures are retried only before assistant output or hosted-tool activity starts, while validation and protocol failures remain terminal. Subscription usage records tokens like every other provider; Kana does not estimate monetary cost. See [OpenAI Codex provider adapter](openai-codex-provider.md).
-
-## MCP protocol foundation
-
-`src/mcp` implements MCP with the following dependency direction, keeping remote-tool logic out of the Agent loop and provider adapters:
-
-```text
-McpManager (multi-server lifecycle, filtering, conflicts, diagnostics)
-  ├→ McpToolAdapter → Tool
-  └→ McpManagedClient
-      ├→ McpClient (2025-11-25 lifecycle, capabilities, tools/list, tools/call)
-      │  → McpConnection (request IDs, out-of-order responses, timeouts, cancellation, progress, ping)
-      │    → McpTransport (bidirectional JSON-RPC message boundary)
-      │      ├→ StdioTransport (subprocess, line-delimited UTF-8 framing, stderr, shutdown order)
-      │      └→ StreamableHttpTransport (POST, JSON/SSE, sessions, resumption, GET/DELETE)
-      └→ McpOAuthHttpAuthorizer (resource metadata, Bearer challenges, authorization recovery)
-          → OAuthSession (metadata discovery, PKCE, loopback callback, refresh)
-```
-
-`McpConnection` does not initialize sessions or know about version-specific features such as tools. A future stateless protocol client can therefore reuse it without inheriting the `2025-11-25` handshake. Transports only deliver messages and never negotiate versions or capabilities; stdio and Streamable HTTP implement the same boundary independently without sharing process or HTTP session state. The legacy `2024-11-05` HTTP+SSE transport is deliberately deferred as a separate compatibility layer rather than mixed into the single-endpoint Streamable HTTP lifecycle.
-
-The current foundation client strictly follows the published `2025-11-25` lifecycle: `initialize` is the first request, and the client sends `notifications/initialized` after negotiating that same version. It paginates `tools/list` and invokes `tools/call` only when the server declares the tools capability. Every request has a fixed maximum timeout. Normal requests send `notifications/cancelled` after timing out or when aborted through an `AbortSignal`, while `initialize`, which the specification forbids clients from cancelling, does not. Progress tokens are unique among active requests and increasing updates are delivered through caller callbacks.
-
-The stdio transport launches an argument array directly without a shell. stdout accepts only one JSON-RPC message per line and enforces a byte limit. Protocol pollution, invalid UTF-8 or JSON, non-zero exits, and incomplete messages close the connection and reject pending requests. stderr remains separate from the protocol and is forwarded through a protected diagnostic callback. Graceful shutdown closes stdin, waits for the process, sends SIGTERM, and sends SIGKILL after a second timeout.
-
-Streamable HTTP strictly implements the `2025-11-25` single-endpoint transport and does not automatically fall back to legacy HTTP+SSE. Each outbound JSON-RPC message uses a separate POST that accepts either JSON or SSE responses. The shared SSE decoder handles CR/LF framing across chunks, per-event byte limits, `id`, and `retry`. The transport retains an optional session ID from the initialization response, attaches session and protocol-version headers to later requests, attempts a GET server stream after initialization, and resumes an interrupted POST stream carrying event IDs through a `Last-Event-ID` GET without retrying the original request. When the background GET/SSE stream ends normally or suffers a network read failure, it reconnects after the server-provided `retry` or default delay and carries the last completely received event ID. A successful background reconnect records its safe trigger category, reconnect count, whether it resumed from an event, and any fixed-format error identity. Invalid UTF-8, SSE, JSON, or oversized events remain fatal. When a request carrying a session receives HTTP 404, the transport clears the old session and the client coalesces concurrent expiry events for that session before reinitializing without a session header. The triggering request is never replayed automatically; after successful recovery its failure result explicitly tells the Agent that it may call the tool again. If the replacement session expires during the recovery handshake, waiting calls receive a recovery-failed result stating that the client was closed. Cancellation first sends the protocol notification and then aborts the corresponding HTTP request. Shutdown aborts remaining streams and sends a bounded DELETE when a session exists. Endpoint credentials and configured overrides for transport-owned headers are rejected. HTTP transport failure logs include a safe operation phase, error type, and fixed-format error code without recording endpoint URLs, headers, session IDs, event IDs, or request parameters.
-
-Recognized OAuth `401/403` challenges fail only the current request and do not corrupt the transport or MCP session; the authorizer can recover credentials at the same fetch boundary and retry once. Fatal network or protocol errors still start background shutdown. Its Promise immediately receives a rejection handler so a failed session DELETE cannot leak an unhandled stack into the TUI, while explicit close callers can still observe and log the original error. Generic `src/oauth` isolates metadata discovery, authorization URL and PKCE construction, the loopback callback, token exchange, and coalesced refresh; token persistence is injected only through `OAuthTokenStore`. `McpOAuthHttpAuthorizer` owns one `OAuthSession` per protected resource, confines credentials to the exact MCP endpoint, prioritizes explicitly configured scopes, and refuses automatic privilege expansion outside that boundary. The Kana layer supplies the `0600` JSON token store, browser launch, and transcript status, so a future provider can reuse OAuth without depending on MCP configuration or the TUI.
-
-`McpToolAdapter` depends only on the structural `McpToolCaller` interface, not on the stable client or stdio. At discovery time it precompiles the remote `inputSchema`, generates a readable model alias of at most 64 characters from the server ID and remote tool name, and maps MCP progress to `ToolContext.update`. Result adaptation bounds content items, text, structured data, and metadata. Text and embedded text resources may enter model context; resource links become descriptions; images, audio, and blobs retain only MIME and estimated byte counts, never persisted base64. JSON-RPC errors and MCP `isError` results retain distinct structured error semantics.
-
-`McpManager` depends only on the structural `McpManagedClient` interface and does not create a concrete protocol client or transport. It starts servers concurrently but aggregates tools stably in registration order; include/exclude filters match original remote names. A connection, discovery, or schema-adaptation failure from an optional server records diagnostics and closes only that server, while a required-server failure closes every connection and aborts startup. Each server's tools are adapted atomically. Duplicate remote names fail that server; post-sanitization or truncation alias collisions and conflicts with reserved local tools fail the entire aggregation instead of being silently overwritten or assigned order-dependent suffixes. Shutdown is idempotent and closes clients in reverse registration order.
-
-The manager freezes its discovered tool list and does not process `notifications/tools/list_changed`. The `kana` layer parses server definitions from `mcp.json`, reads selected IDs from the separate `mcp-enabled.json`, and creates registrations only for their intersection. This activation boundary is independent of protocol and transport. The factory creates stdio or HTTP registrations from `type`-discriminated server config; an omitted `type` defaults to stdio. It constructs the corresponding transport and stable `McpClient` for each selected server. Stdio inherits only a small baseline environment, resolves required or defaulted placeholders in the server's explicit `env` from Kana's process environment, merges the result into the child, and forwards stderr to the current session logger. An unresolved required placeholder follows the manager's isolated single-server startup-failure path. HTTP uses snapshotted URL and header values. At the product-composition boundary, `kana/mcp/http-proxy` wraps Bun's proxy extension behind the generic fetch interface and injects it into both the transport and OAuth authorizer, keeping MCP lifecycle and OAuth metadata/token requests on the same route. A proxy URL is passed directly to Bun. For `false`, the wrapper appends the target host to `NO_PROXY` and `no_proxy` only while invoking fetch synchronously, then restores both process variables in `finally` before returning the Promise; servers without that policy therefore continue to observe the original environment. With no field, the default fetch and process-wide proxy remain in effect. With OAuth configured, a managed-client wrapper prepares the authorizer before connect, injects its authorized fetch into the transport, and freezes authorization before close so the final session DELETE may still use the access token retained in memory. Client errors, OAuth lifecycle events, and manager errors go to the current logger. Product composition first creates a temporary main Agent with no external tools. After the session is visible it starts the manager and rebuilds the Agent with the discovered tools. The app rejects submissions during loading, so the temporary Agent cannot begin a run; memory-consolidation Agents never receive these external tools. During shutdown, the app first cancels and awaits the active Agent, then product composition closes the manager.
-
-`KanaMcpRuntime` owns the replaceable manager at the product boundary; `McpManager` itself remains deliberately one-shot. The runtime serializes `start`, `reload`, and `close`, and labels low-level progress with the enclosing runtime operation. Reload closes the current manager before rereading definitions and activation state, then creates a fresh manager. This avoids overlapping server processes and keeps transport/protocol lifecycle outside the TUI. A parse or startup failure never leaves tools or source mappings from the closed manager active, while a later `/mcp` reload may recover from corrected files. Once shutdown is requested, queued lifecycle work cannot start another manager.
-
-## Kana product composition
-
-`KanaConversationHost` is the frontend-shared product composition boundary; `ConversationRuntime` consumes its frontend-neutral operations to run one conversation. Together they let interactive and headless frontends share model, prompt, tool, session, and launch-mode policy without owning those mechanisms. See [Conversation runtime](conversation-runtime.md).
-
-`createKanaAgent` composes the selected model, prompt assembly, effective runtime policy, built-in Kana tools, and replaceable external capabilities for one hosted session. Tool contracts and the built-in inventory belong to [Tools and execution](tools.md); Skills and configuration remain documented separately.
-
-The stable system prefix consists of the following sections; the later project-level instructions take precedence:
-
-1. Global/project long-term memory references.
-2. Built-in default assistant instructions.
-3. Global instructions from `~/.kana/AGENTS.md`, if present.
-4. Project instructions from `<cwd>/AGENTS.md`, if present and distinct from the global file.
-5. Names, descriptions, and `SKILL.md` paths for enabled Skills.
-
-Dynamic environment, todo, and Goal state is supplied through identified runtime-context sources, while the stable prefix carries built-in instructions, AGENTS files, memory, and enabled Skills according to launch mode. The projection rules belong to [Agent runtime](agent-runtime.md), and clean-mode composition to [Configuration and installation](configuration.md).
-
-`loadKanaConfig` reads optional `config.toml` and merges every field with built-in defaults. Provider tables own only transport/authentication settings; conversation and memory Agents each own static runtime policy and model selection. Invalid types or enum values raise an error instead of being silently ignored, and the breaking schema has no legacy reader. Install does not materialize the default `config.toml`; it only creates missing mutable state. `config.example.toml` and `providers/custom.example.toml` are Kana-generated references that runtime never reads; install refreshes stale examples, while reset refreshes the main config example and preserves Custom provider files. `KanaConfigStore` gives the TUI and other callers a generic typed mutation boundary: it compares effective configurations, patches only changed canonical TOML leaves, validates the reloaded result, and atomically replaces the file through a sibling temporary file, avoiding full reserialization of unrelated configuration, unknown tables, and comments.
-
-## Local state
-
-Kana state is located under `KANA_HOME`, or `~/.kana` when it is unset:
-
-The table describes normal-mode persistence. A clean session writes none of the session, runtime-log, accounting, or memory entries; Project and Global `/usage` can still read existing accounting aggregates.
-
-| Data | Location and format | Written when |
-| --- | --- | --- |
-| Configuration | `config.toml` | Direct user edits or `/model` changes in normal mode; deleted by `kana reset` |
-| Configuration reference | `config.example.toml` | Created/refreshed by `kana install` or `kana reset`; never read at runtime |
-| Custom provider | `providers/custom.toml` | Direct user edits; preserved by `kana install` and `kana reset` |
-| Custom provider reference | `providers/custom.example.toml` | Created/refreshed by `kana install`; never read at runtime |
-| MCP server definitions | `mcp.json` | `kana install`, `kana reset`, or direct user edits |
-| MCP activation state | `mcp-enabled.json` | `kana install`, `kana reset`, or activation changes |
-| OAuth tokens | `oauth-tokens.json` | Browser authorization, refresh, sign-out, or credential invalidation |
-| Approval allowlist | `approvals.json` | `kana install`, `kana reset`, or selecting “always allow” for a bash command |
-| Sessions | `sessions/<workspace>/*.jsonl` | Appended incrementally in protocol-defined message order within an Agent turn |
-| Runtime logs | `logs/<workspace>/<session-id>.jsonl` | Safe lifecycle events from the TUI, Agent, provider, tools, and memory tasks |
-| Usage accounting | `accounting/<workspace>/<session-id>.jsonl` | Appended after completed main, compaction, or memory runs |
-| Durable memory | `memory/{global,projects/<workspace>}/memory.md` | Atomically replaced after successful memory consolidation |
-| Daily memory | `daily/YYYY-MM-DD.md` in the corresponding directory | Appended after `remember` succeeds |
-| Global Skills config | `skills/skills.toml` | `kana install`, `kana reset`, or TUI global Skill activation changes |
-| Default Skills repository | `skills/kana-skills/` | `kana skills install` or `kana skills reinstall` |
-
-Accounting v2 records the run identity and outcome, provider/model identity, raw token usage, assistant-message count, and memory-run metadata. It deliberately stores no provider pricing or derived monetary cost; actual charges remain the provider billing system's responsibility.
-
-Workspace encoding and the V5 session journal are summarized in the table above. Their format, recovery, compaction records, todo state, forks, and artifact lifecycle belong to [Sessions and memory](sessions-and-memory.md).
-
-Runtime logs are session-scoped JSONL lifecycle records with safe metadata and configurable levels. Their storage and retention belong to [Sessions and memory](sessions-and-memory.md), while logging configuration belongs to [Configuration and installation](configuration.md).
-
-Memory has global and project scopes. `remember` first appends a structured record to that day's staging file; after conversation commit, a scheduler starts one incremental consolidation Agent per scope. Incremental and manual full consolidation share one queue per scope, serializing all read-modify-write jobs for that scope. The consolidation Agent uses its independent `[memory.agent]` runtime policy and model selection, receives only memory tools, and commits its in-memory changes only when the assistant ends normally with `stop`. Choosing Compact in the `/memory` flow starts full consolidation and can prune expired daily memory after success according to `daily_retention_days`.
-
-Skills are discovered recursively from project `.kana/skills`, project `.agents/skills`, and global `~/.kana/skills`. Each `SKILL.md` registers its `name` and `description` frontmatter; the first discovered name wins and a collision emits a diagnostic. Project Skills are always enabled; global Skills are controlled by the list in `skills.toml`.
-
-## Tools, approval, and safety boundaries
-
-The Agent delegates each advertised local or external tool call to `ToolRuntime`, which contains validation, approval, concurrency, cancellation, deadlines, progress, result normalization, and commit ordering. Executable contracts, built-ins, background Jobs, artifacts, and the workspace boundary are documented in [Tools and execution](tools.md).
-
-Approval is visible authorization rather than OS isolation. Its modes, defaults, and allowlist configuration belong to [Configuration and installation](configuration.md); file and Shell tools may operate outside the startup workspace when given paths that resolve there.
-
-## TUI architecture
-
-The TUI subscribes to `ConversationRuntime` and projects its frontend-neutral events and queue snapshots through focused controllers. Runtime execution, input ordering, Goals, cancellation, session transitions, and cleanup belong to [Conversation runtime](conversation-runtime.md); widget, command, transcript, and rendering behavior belong to [Terminal UI](tui.md).
-
-`KanaTuiApp` is the TUI composition boundary: it constructs controllers, subscribes to runtime events, routes global input and commands, and coordinates shutdown. Its options are grouped by product capability instead of exposing one flat constructor contract. Stateful UI workflows remain in dedicated controllers: `StatusProjectionController` owns run and usage projection, `BottomAreaController` owns bottom replacement and focus restoration, and `AgentEventRenderer` owns visible Agent-event mapping.
-
-Clipboard image paste, `/image <path>`, and `view_image` converge on the shared image-input utility. That boundary resolves host paths, decodes and bounds image dimensions/bytes, and returns the same `UserImage` representation; only the macOS clipboard reader is platform-specific.
-
-```text
-ProcessTerminal (raw mode, input, resize, notifications)
-  → Tui (focus, 16ms batching, differential redraw, hardware cursor)
-    → AppLayout
-      ├─ Main (currently Transcript; terminal scrollback)
-      └─ Bottom (exactly one; tiered height)
-         ├─ Editor (input, status line, and queue preview)
-         ├─ ToolApproval
-         ├─ Session / Skills / MCP / Schedule view
-         └─ ContentViewer
-```
-
-`Tui` uses a component's `render(width, availableHeight?): string[]` as its minimal rendering protocol. `AppLayout` converts terminal height into a 15-, 12-, 9-, or 7-row bottom budget; terminals shorter than 7 rows use all available rows. It passes the remainder to main. The layout renders the first bottom row as the main/bottom divider, passes the remaining budget to the bottom component, and pads shorter output to stabilize the boundary. The editor preferentially uses rows below the status line that Layout would otherwise pad for the pending queue plus one future-wake summary row; constrained space prioritizes pending input, truncates details, and the slash palette hides both. Transcript deliberately ignores the remaining-height hint and renders complete history for terminal scrollback. It inserts one blank row between child blocks that render output, while blocks own only their internal spacing. Compact tool blocks are still bounded to a fixed shape that does not depend on the viewport height—one title row, one flattened target row for built-in tools only, and a small preview row budget with per-row horizontal truncation—so a single oversized tool result can never expand the history by thousands of wrapped rows; `Ctrl+O` opens the detail inspector for the newest tool call and `[`/`]` move between tool calls. `Tui` caches the previous output and owns terminal-update strategy; App and controller code only call `requestRender()`. With stable dimensions it uses cursor-only updates for unchanged content, repaints the smallest visible first-to-last changed range, appends through natural terminal scrolling, and clears visible stale tail rows with `CSI 2K` after a shrink. It falls back to a full clear-and-replay when changed content is in scrollback, deletion moves the new tail above the addressable viewport, terminal dimensions change, or cursor/viewport state cannot be inferred safely. The editor places an internal cursor marker in logical lines, which `Tui` removes before terminal output. It moves the hardware cursor to the matching visible-width column only when a component is focused; without focus it keeps the cursor hidden at the layout tail. The rendering layer uses graphemes and `string-width` for CJK, emoji, ANSI color, and line wrapping.
-
-The main controllers handle tool approval, session selection/deletion, global Skill activation, MCP server activation and OAuth actions, scheduled-message management, provider/model selection, local `!` shell commands, memory compaction, and long tool-output viewing. Session, Skill, MCP, Schedule, slash-option, approval, and content views replace the editor as the single bottom component. `BottomAreaController` is the only boundary that changes that component and its focus. A controller restores the dynamic fallback only while it still owns the visible bottom, so a stale close cannot replace a newer view; that fallback resolves to a waiting approval prompt before the editor. `/model` receives available providers, models, reasoning choices, and the current selection from the Kana product layer instead of reading provider implementation directories. It retains messages and the context checkpoint, constructs a candidate Agent before configuration persistence, and replaces the current Agent only after success; failures leave the previous Agent and configuration usable. The Skill and MCP controllers keep checkbox edits local until `Esc`, then persist a changed selection once; Skill changes rebuild the Agent prompt once, while an MCP selection change or authorization change for an enabled server requests one runtime reload. The MCP component receives the server ID, transport, safe OAuth status, and either stdio command/arguments or HTTP URL, but never receives environment values, HTTP headers, or tokens. An authorization URL exists only in a temporary transcript block and is replaced in place when the operation finishes. The Schedule view reads only the current session's in-process snapshot. It neither persists nor displays Agent replacement keys and never deletes by key. Wakes that expire while it is active still enter `next-turn` but cannot start a new run before the panel closes. Scheduled wakes also remain queued while the MCP view, an auth operation, or reload is active. An approval that arrives while another bottom view is active remains pending and sends its configured notification instead of preempting the current view. `Ctrl+C` remains global and cancels the active Agent, local shell, or memory task; it exits when idle. `Esc` belongs to the focused bottom component, so views and nested prompts can close or return to their own previous layer before the editor handles it. With the editor focused, `Esc` aborts an active Agent run and is otherwise a no-op. `Ctrl+O` opens the newest tool detail regardless of expandability: the inspector reuses the full-fidelity detail sections for operation context, appends non-terminal status and the complete output through the existing full renderers, and `[`/`]` move between tool calls by replacing the viewer without restoring the editor.
-
-## Extension checkpoints
-
-- A new provider should implement the `Model` streaming protocol, ensure event snapshots do not share mutable internal messages, and register in the `providers` factory.
-- A new tool should define TypeBox parameters, structured results, and clear error semantics; call `context.update` when it has streaming progress.
-- When adding a tool that can modify the workspace, review the approval policy, TUI tool presentation, and session-persistence result together.
-- A new user-visible command or panel should be coordinated by the app or a dedicated controller, while components retain rendering/input responsibility.
-- Before changing message, event, or session JSONL formats, inspect the DeepSeek request conversion, history rendering, persistence parser, and relevant tests. These are cross-layer contracts.
-
-Subsequent documents can build on this overview with focused coverage of configuration and installation, the Agent/tool protocol, session and memory formats, Skills, and TUI rendering internals.
+Cross-boundary changes should update each affected owner, but repeat only the summary needed to connect those boundaries. The documentation index contains the complete code-to-document lookup map.
