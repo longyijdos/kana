@@ -29,6 +29,10 @@ Kana v0.8.0 adds session-owned background jobs, durable session todos, and bound
 
 If you customized `model.*` or `provider.active` in `~/.kana/config.json`, run `kana reset` to regenerate the template (back up the old file first) and reapply your settings in the new format. Verify `agent.model` points at the intended provider after upgrading; a stale config starts on `deepseek` with defaults.
 
+## [0.7.0](https://github.com/longyijdos/kana/compare/v0.6.0...v0.7.0) (2026-08-24)
+
+Kana v0.7.0 adds full-fidelity tool inspection and history, maintainer-triggered GitHub issue automation, and reliable time-bounded headless execution.
+
 ### Features
 
 - Inspect every tool call with `Ctrl+O`, navigate adjacent calls with `[` and `]`, and review complete commands, paths, arguments, diffs, results, and runtime status without expanding the compact transcript.
