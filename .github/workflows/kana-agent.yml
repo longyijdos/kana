@@ -155,11 +155,6 @@ jobs:
             chmod +x kana-linux-x64
           )
 
-          if ! "$runtime_dir/kana-linux-x64" exec --help | grep -Fq -- '--timeout <duration>'; then
-            echo "Latest stable Kana release $release_tag does not support headless timeouts." >&2
-            exit 1
-          fi
-
           echo "KANA_BIN=$runtime_dir/kana-linux-x64" >> "$GITHUB_ENV"
           printf 'Using Kana runtime `%s` from the latest stable release.\n' "$release_tag" >> "$GITHUB_STEP_SUMMARY"
 
@@ -190,12 +185,14 @@ jobs:
 
           {
             printf '%s\n' \
-              '[model.deepseek]' \
-              'name = "deepseek-v4-flash"' \
-              'reasoning_effort = "max"' \
-              '' \
               '[agent]' \
               'max_turns = -1' \
+              'goal_max_rounds = 3' \
+              '' \
+              '[agent.model]' \
+              'provider = "deepseek"' \
+              'name = "deepseek-v4-flash"' \
+              'reasoning_effort = "max"' \
               '' \
               '[memory]' \
               'enabled = false' \
@@ -255,6 +252,7 @@ jobs:
             printf 'This non-interactive run authorizes both implementation and completion phases: include relevant tests and documentation, run useful checks, and do not pause to request review.\n'
             printf 'Do not commit, push, create or update pull requests, or use GitHub credentials.\n'
             printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n'
+            printf 'Before the final handoff, verify the requested work and call update_goal with completed. Use blocked only when meaningful progress requires user input or an external state change.\n'
             printf '\nYour final response is a handoff consumed by the workflow. Use exactly this shape:\n\n'
             printf 'PR_TITLE: <one Conventional Commit title describing the actual change>\n\n'
             printf '## Summary\n'
@@ -275,7 +273,7 @@ jobs:
           set -euo pipefail
 
           set +e
-          "$KANA_BIN" exec --timeout 30m --json --allow-all-tools \
+          "$KANA_BIN" exec --goal --timeout 30m --json --allow-all-tools \
             < "$RUNNER_TEMP/kana-prompt.txt" \
             > "$RUNNER_TEMP/kana.jsonl"
           exit_code=$?
@@ -287,14 +285,20 @@ jobs:
             "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || true)"
           outcome="$(jq -r '.outcome // empty' <<< "$run_completed" 2>/dev/null || true)"
           termination_reason="$(jq -r '.termination.reason // empty' <<< "$run_completed" 2>/dev/null || true)"
+          goal_status="$(jq -r '.goal.status // empty' <<< "$run_completed" 2>/dev/null || true)"
+          goal_admitted_rounds="$(jq -r '.goal.admitted_rounds // empty' <<< "$run_completed" 2>/dev/null || true)"
+          goal_max_rounds="$(jq -r '.goal.max_rounds // empty' <<< "$run_completed" 2>/dev/null || true)"
+          goal_detail="$(jq -r '.goal.detail // empty' <<< "$run_completed" 2>/dev/null || true)"
 
           result="failed"
-          if [[ -z "$run_failed" && "$outcome" == "stop" && "$exit_code" -eq 0 ]]; then
-            result="completed"
-          elif [[ -z "$run_failed" && "$outcome" == "turn_limit" ]]; then
-            result="turn_limit"
-          elif [[ -z "$run_failed" && "$outcome" == "aborted" && "$termination_reason" == "timeout" && "$exit_code" -eq 124 ]]; then
+          if [[ -z "$run_failed" && "$outcome" == "aborted" && "$termination_reason" == "timeout" && "$exit_code" -eq 124 ]]; then
             result="timeout"
+          elif [[ -z "$run_failed" && "$goal_status" == "completed" && "$exit_code" -eq 0 ]]; then
+            result="completed"
+          elif [[ -z "$run_failed" && "$goal_status" == "blocked" && "$exit_code" -eq 1 ]]; then
+            result="blocked"
+          elif [[ -z "$run_failed" && "$goal_status" == "round_limit" && "$exit_code" -eq 1 ]]; then
+            result="round_limit"
           fi
 
           if ! jq -r -s '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
@@ -331,6 +335,12 @@ jobs:
               "$(format_number "$tool_count")"
             if [[ "$tool_error_count" =~ ^[0-9]+$ && "$tool_error_count" -gt 0 ]]; then
               printf ' · %s tool errors' "$(format_number "$tool_error_count")"
+            fi
+            if [[ -n "$goal_status" ]]; then
+              printf ' · Goal %s (%s/%s rounds)' \
+                "$goal_status" \
+                "${goal_admitted_rounds:-0}" \
+                "${goal_max_rounds:-0}"
             fi
             if [[ "$input_tokens" =~ ^[0-9]+$ && "$output_tokens" =~ ^[0-9]+$ && "$total_tokens" =~ ^[0-9]+$ ]]; then
               printf ' · %s tokens (%s in / %s out' \
@@ -394,6 +404,11 @@ jobs:
             fi
           fi
 
+          if [[ "$result" == "failed" && -z "$failure_detail" && -n "$goal_status" ]]; then
+            failure_event="goal.$goal_status"
+            failure_detail="$goal_detail"
+          fi
+
           if [[ "$result" == "failed" && -z "$failure_detail" ]]; then
             failure_detail="No structured diagnostic was emitted; inspect the workflow run logs."
           fi
@@ -404,10 +419,19 @@ jobs:
           failure_detail="$(printf '%s' "$failure_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
           printf '%s\n' "$failure_detail" > "$RUNNER_TEMP/kana-failure.txt"
 
+          if [[ -n "${DEEPSEEK_API_KEY:-}" && -n "$goal_detail" ]]; then
+            goal_detail="${goal_detail//$DEEPSEEK_API_KEY/[REDACTED]}"
+          fi
+          goal_detail="$(printf '%s' "$goal_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
+          printf '%s\n' "$goal_detail" > "$RUNNER_TEMP/kana-goal-detail.txt"
+
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
           echo "result=$result" >> "$GITHUB_OUTPUT"
           echo "termination_reason=$termination_reason" >> "$GITHUB_OUTPUT"
+          echo "goal_status=$goal_status" >> "$GITHUB_OUTPUT"
+          echo "goal_admitted_rounds=$goal_admitted_rounds" >> "$GITHUB_OUTPUT"
+          echo "goal_max_rounds=$goal_max_rounds" >> "$GITHUB_OUTPUT"
           echo "failure_event=$failure_event" >> "$GITHUB_OUTPUT"
           echo "turn_count=$turn_count" >> "$GITHUB_OUTPUT"
           echo "tool_count=$tool_count" >> "$GITHUB_OUTPUT"
@@ -418,6 +442,14 @@ jobs:
             printf -- '- Result: `%s`\n' "$result"
             printf -- '- Exit code: `%s`\n' "$exit_code"
             printf -- '- Outcome: `%s`\n' "${outcome:-none}"
+            printf -- '- Goal: `%s` (%s/%s rounds)\n' \
+              "${goal_status:-none}" \
+              "${goal_admitted_rounds:-0}" \
+              "${goal_max_rounds:-0}"
+            if [[ -s "$RUNNER_TEMP/kana-goal-detail.txt" ]]; then
+              printf -- '- Goal detail: '
+              jq -Rrsr '@html' "$RUNNER_TEMP/kana-goal-detail.txt"
+            fi
             if [[ -n "$termination_reason" ]]; then
               printf -- '- Termination: `%s`\n' "$termination_reason"
             fi
@@ -536,7 +568,7 @@ jobs:
           fi
 
           if [[ "$handoff_valid" != "true" ]]; then
-            if [[ "$RESULT" == "timeout" || "$RESULT" == "turn_limit" ]]; then
+            if [[ "$RESULT" == "timeout" || "$RESULT" == "blocked" || "$RESULT" == "round_limit" ]]; then
               printf 'chore: preserve partial progress for #%s\n' "$ISSUE_NUMBER" > "$RUNNER_TEMP/change-title.txt"
             else
               printf '%s\n' "$fallback_commit_title" > "$RUNNER_TEMP/change-title.txt"
@@ -599,7 +631,9 @@ jobs:
         if: >-
           steps.context.outputs.active == 'true' &&
           steps.initial_changes.outputs.changed == 'true' &&
-          (steps.run_kana.outputs.result == 'completed' || steps.run_kana.outputs.result == 'turn_limit')
+          (steps.run_kana.outputs.result == 'completed' ||
+           steps.run_kana.outputs.result == 'blocked' ||
+           steps.run_kana.outputs.result == 'round_limit')
         run: |
           set +e
           bun run check:write
@@ -612,7 +646,8 @@ jobs:
         if: >-
           steps.context.outputs.active == 'true' &&
           (steps.run_kana.outputs.result == 'completed' ||
-           steps.run_kana.outputs.result == 'turn_limit' ||
+           steps.run_kana.outputs.result == 'blocked' ||
+           steps.run_kana.outputs.result == 'round_limit' ||
            steps.run_kana.outputs.result == 'timeout')
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
@@ -676,8 +711,15 @@ jobs:
           if [[ "$RESULT" == "timeout" ]]; then
             status_line="⚠️ Kana reached the 30-minute Agent-run timeout; partial progress was preserved."
             check_line="⏭️ Preflight checks were skipped for interrupted work."
-          elif [[ "$RESULT" == "turn_limit" ]]; then
-            status_line="⚠️ Kana reached the configured turn limit; partial progress was preserved."
+          elif [[ "$RESULT" == "round_limit" ]]; then
+            status_line="⚠️ Kana reached the configured Goal round limit; partial progress was preserved."
+            if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+              check_line="✅ Preflight checks passed."
+            else
+              check_line="⚠️ Preflight checks did not pass; review CI before merging."
+            fi
+          elif [[ "$RESULT" == "blocked" ]]; then
+            status_line="⚠️ Kana reported that the Goal is blocked; partial progress was preserved."
             if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
               check_line="✅ Preflight checks passed."
             else
@@ -734,8 +776,10 @@ jobs:
         run: |
           if [[ "$RESULT" == "timeout" ]]; then
             printf 'I preserved partial progress after the 30-minute timeout in a draft PR: %s\n\nMention me in that PR to continue. Preflight checks were skipped for the interrupted work.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
-          elif [[ "$RESULT" == "turn_limit" ]]; then
-            printf 'I preserved partial progress after reaching the configured turn limit in a draft PR: %s\n\nMention me in that PR to continue.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
+          elif [[ "$RESULT" == "round_limit" ]]; then
+            printf 'I preserved partial progress after reaching the configured Goal round limit in a draft PR: %s\n\nMention me in that PR to continue.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
+          elif [[ "$RESULT" == "blocked" ]]; then
+            printf 'I preserved partial progress for a blocked Goal in a draft PR: %s\n\nReview the blocker and mention me in that PR to continue.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
           elif [[ "$PREFLIGHT_STATUS" == "0" ]]; then
             printf 'I opened a draft PR with the completed implementation: %s\n\nPreflight checks passed.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
           else
@@ -755,8 +799,15 @@ jobs:
           if [[ "$RESULT" == "timeout" ]]; then
             status_line="I pushed partial progress after reaching the 30-minute timeout. Mention me again to continue."
             check_line="Preflight checks were skipped for the interrupted work."
-          elif [[ "$RESULT" == "turn_limit" ]]; then
-            status_line="I pushed partial progress after reaching the configured turn limit. Mention me again to continue."
+          elif [[ "$RESULT" == "round_limit" ]]; then
+            status_line="I pushed partial progress after reaching the configured Goal round limit. Mention me again to continue."
+            if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+              check_line="Preflight checks passed."
+            else
+              check_line="Preflight checks did not pass; please check the latest CI run."
+            fi
+          elif [[ "$RESULT" == "blocked" ]]; then
+            status_line="I pushed partial progress for a blocked Goal. Review the blocker and mention me again to continue."
             if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
               check_line="Preflight checks passed."
             else
@@ -794,7 +845,8 @@ jobs:
           steps.context.outputs.active == 'true' &&
           steps.publishable.outputs.changed == 'false' &&
           (steps.run_kana.outputs.result == 'completed' ||
-           steps.run_kana.outputs.result == 'turn_limit' ||
+           steps.run_kana.outputs.result == 'blocked' ||
+           steps.run_kana.outputs.result == 'round_limit' ||
            steps.run_kana.outputs.result == 'timeout')
         env:
           GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
@@ -822,8 +874,10 @@ jobs:
                 printf -- '- Model turns started: `%s`\n' "$TURN_COUNT"
                 printf -- '- Tool calls completed: `%s`\n' "$TOOL_COUNT"
               fi
+            elif [[ "$RESULT" == "round_limit" ]]; then
+              printf 'Kana reached the configured Goal round limit without producing working-tree changes. Mention me again to continue.\n'
             else
-              printf 'Kana reached the configured turn limit without producing working-tree changes. Mention me again to continue.\n'
+              printf 'Kana reported that the Goal is blocked without producing working-tree changes. Review the workflow summary before continuing.\n'
             fi
 
             if [[ "$MODE" == "pr" ]]; then

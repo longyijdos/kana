@@ -1,6 +1,6 @@
 # Terminal-Bench 本地评测
 
-Kana 通过 Harbor custom installed agent 接入 Terminal-Bench。适配器位于 `evals/harbor/kana_agent.py`：Harbor 在宿主机加载它，把已编译的 Kana Linux 二进制上传到任务容器，然后以无头模式执行一次完整 Agent run。该集成面向本地评测，不生成 ATIF；未显式传入 `--upload` 时，Harbor 只把结果保存在本地 jobs 目录。
+Kana 通过 Harbor custom installed agent 接入 Terminal-Bench。适配器位于 `evals/harbor/kana_agent.py`：Harbor 在宿主机加载它，把已编译的 Kana Linux 二进制上传到任务容器，然后以无头模式执行一次完整 Agent run，或执行显式选择的有界 Goal。该集成面向本地评测，不生成 ATIF；未显式传入 `--upload` 时，Harbor 只把结果保存在本地 jobs 目录。
 
 ## 准备环境
 
@@ -34,6 +34,15 @@ bun run build:cli
 ```bash
 export KANA_EVAL_BINARY=/path/to/kana
 ```
+
+适配器默认执行普通单 run，以便现有评测基线保持可比。可以通过 agent kwarg 为单独实验启用有界 Goal continuation：
+
+```bash
+--ak goal=true \
+--ak goal_max_rounds=3
+```
+
+Goal 模式可以在模型过早结束 run 时继续任务，但也可能消耗更多时间与 token。把它设为某个 benchmark 的默认策略前，应对比 verifier reward、Agent error、timeout、usage 和终态 `goal.status`。
 
 ## 运行评测
 
@@ -114,7 +123,7 @@ harbor run \
 1. 上传 Kana 到 `/installed-agent/kana`；
 2. 创建隔离的 `/tmp/kana-home` 并写入本次 DeepSeek model 配置；
 3. 通过临时文件传入任务指令；
-4. 执行 `kana exec --clean --json --allow-all-tools`；
+4. 执行 `kana exec --clean --json --allow-all-tools`，按需附加 `--goal`；
 5. 把 JSONL、stderr 和 token usage 交给 Harbor；
 6. 删除临时指令文件。
 

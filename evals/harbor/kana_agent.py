@@ -35,13 +35,24 @@ class KanaAgent(BaseInstalledAgent):
         "no_proxy",
     )
 
-    def __init__(self, *args, binary_path: str | None = None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        binary_path: str | None = None,
+        goal: bool | str = False,
+        goal_max_rounds: int | str = 3,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         configured_path = binary_path or self._get_env("KANA_EVAL_BINARY")
         self._binary_path = (
             Path(configured_path).expanduser().resolve()
             if configured_path
             else Path(__file__).resolve().parents[2] / "kana"
+        )
+        self._goal = self._parse_bool_kwarg(goal, "goal")
+        self._goal_max_rounds = self._parse_positive_int_kwarg(
+            goal_max_rounds, "goal_max_rounds"
         )
 
     @staticmethod
@@ -50,6 +61,22 @@ class KanaAgent(BaseInstalledAgent):
 
     def get_version_command(self) -> str | None:
         return f"{self._REMOTE_BINARY} --version"
+
+    @staticmethod
+    def _parse_bool_kwarg(value: bool | str, name: str) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.lower() in {"true", "false"}:
+            return value.lower() == "true"
+        raise ValueError(f"{name} must be true or false.")
+
+    @staticmethod
+    def _parse_positive_int_kwarg(value: int | str, name: str) -> int:
+        if isinstance(value, str) and value.isdecimal():
+            value = int(value)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(f"{name} must be a positive integer.")
+        return value
 
     async def install(self, environment: BaseEnvironment) -> None:
         self.logger.info(
@@ -228,12 +255,15 @@ class KanaAgent(BaseInstalledAgent):
 
         config = "\n".join(
             [
-                '[provider]',
-                'active = "deepseek"',
-                '',
-                '[model.deepseek]',
-                f'name = "{model}"',
+                '[provider.deepseek]',
                 'api_key_env = "DEEPSEEK_API_KEY"',
+                '',
+                '[agent]',
+                f'goal_max_rounds = {self._goal_max_rounds}',
+                '',
+                '[agent.model]',
+                'provider = "deepseek"',
+                f'name = "{model}"',
                 '',
             ]
         )
@@ -255,18 +285,21 @@ class KanaAgent(BaseInstalledAgent):
                 "operation": "run",
                 "outcome": "started",
                 "model": self.model_name,
+                "goal": self._goal,
+                "goal_max_rounds": self._goal_max_rounds,
                 "proxy_env_count": len(proxy_env),
             },
         )
         try:
             await self._upload_instruction(instruction, environment)
+            goal_arg = " --goal" if self._goal else ""
             command = (
                 "set -o pipefail; "
                 'install -d -m 700 "$KANA_HOME" && '
                 f"printf '%s' {config_arg} > \"$KANA_HOME/config.toml\" && "
                 'chmod 600 "$KANA_HOME/config.toml" && '
                 f"mkdir -p {agent_dir} && "
-                f"{self._REMOTE_BINARY} exec --clean --json --allow-all-tools "
+                f"{self._REMOTE_BINARY} exec{goal_arg} --clean --json --allow-all-tools "
                 f"< {self._REMOTE_INSTRUCTION} 2> {stderr_path} | tee {output_path}"
             )
             result = await environment.exec(command=command, env=env)

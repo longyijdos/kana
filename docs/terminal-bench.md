@@ -1,6 +1,6 @@
 # Local Terminal-Bench evaluation
 
-Kana integrates with Terminal-Bench through a Harbor custom installed agent. The adapter lives at `evals/harbor/kana_agent.py`: Harbor loads it on the host, uploads a compiled Kana Linux binary to the task container, and runs one complete headless Agent run. This integration targets local evaluation and does not generate ATIF. Unless `--upload` is explicitly supplied, Harbor stores results only in the local jobs directory.
+Kana integrates with Terminal-Bench through a Harbor custom installed agent. The adapter lives at `evals/harbor/kana_agent.py`: Harbor loads it on the host, uploads a compiled Kana Linux binary to the task container, and runs one complete headless Agent run or an explicitly selected bounded Goal. This integration targets local evaluation and does not generate ATIF. Unless `--upload` is explicitly supplied, Harbor stores results only in the local jobs directory.
 
 ## Prerequisites
 
@@ -34,6 +34,15 @@ The adapter reads `./kana` from the repository root by default. An agent kwarg o
 ```bash
 export KANA_EVAL_BINARY=/path/to/kana
 ```
+
+The adapter uses ordinary single-run execution by default so existing evaluation baselines remain comparable. Enable bounded Goal continuation for a separate experiment with agent kwargs:
+
+```bash
+--ak goal=true \
+--ak goal_max_rounds=3
+```
+
+Goal mode can recover from a model ending a run before the task is complete, but it can also consume more time and tokens. Compare verifier reward, Agent errors, timeouts, usage, and the terminal `goal.status` before making it the default for a benchmark.
 
 ## Running evaluations
 
@@ -114,7 +123,7 @@ For each trial, the adapter:
 1. uploads Kana to `/installed-agent/kana`;
 2. creates an isolated `/tmp/kana-home` and writes the selected DeepSeek model configuration;
 3. supplies the task instruction through a temporary file;
-4. runs `kana exec --clean --json --allow-all-tools`;
+4. runs `kana exec --clean --json --allow-all-tools`, adding `--goal` when requested;
 5. exposes JSONL, stderr, and token usage to Harbor;
 6. removes the temporary instruction file.
 
