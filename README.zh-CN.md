@@ -168,7 +168,9 @@ kana update
 
 - [文档索引](docs/README.zh-CN.md)
 - [架构总览](docs/architecture.zh-CN.md)
-- [Agent 与工具执行](docs/agent-and-tools.zh-CN.md)
+- [对话运行时](docs/conversation-runtime.zh-CN.md)
+- [Agent 运行时](docs/agent-runtime.zh-CN.md)
+- [工具与执行](docs/tools.zh-CN.md)
 - [会话与记忆](docs/sessions-and-memory.zh-CN.md)
 - [Skills 与系统提示词](docs/skills-and-prompt.zh-CN.md)
 - [DeepSeek 提供商](docs/deepseek-provider.zh-CN.md)

@@ -170,7 +170,9 @@ Read [Configuration and installation](docs/configuration.md) for the complete se
 
 - [Documentation index](docs/README.md)
 - [Architecture](docs/architecture.md)
-- [Agent and tool execution](docs/agent-and-tools.md)
+- [Conversation runtime](docs/conversation-runtime.md)
+- [Agent runtime](docs/agent-runtime.md)
+- [Tools and execution](docs/tools.md)
 - [Sessions and memory](docs/sessions-and-memory.md)
 - [Skills and system prompt](docs/skills-and-prompt.md)
 - [DeepSeek provider](docs/deepseek-provider.md)

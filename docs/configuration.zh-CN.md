@@ -388,7 +388,7 @@ DEEPSEEK_API_KEY=sk-...
 
 | 模式 | 行为 |
 | --- | --- |
-| `always` | 除 `remember`、`schedule_wake` 和 `todo_write` 外，每个工具调用都请求审批。 |
+| `always` | 除 `remember`、`schedule_wake`、`todo_write` 和 `update_goal` 外，每个工具调用都请求审批。 |
 | `unless_trusted` | `read`、`list`、`glob`、`grep`、精确受信 bash 命令和受信简单只读 bash 命令跳过审批；其余调用请求审批。 |
 | `never` | 所有调用都跳过审批，包括写入和 Shell。 |
 

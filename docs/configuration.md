@@ -388,7 +388,7 @@ Approval modes behave as follows:
 
 | Mode | Behavior |
 | --- | --- |
-| `always` | Requests approval for every tool call except `remember`, `schedule_wake`, and `todo_write`. |
+| `always` | Requests approval for every tool call except `remember`, `schedule_wake`, `todo_write`, and `update_goal`. |
 | `unless_trusted` | Skips approval for `read`, `list`, `glob`, `grep`, exact trusted bash commands, and trusted simple read-only bash commands; asks for everything else. |
 | `never` | Skips approval for all calls, including writes and shell commands. |
 
