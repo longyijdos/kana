@@ -448,7 +448,7 @@ jobs:
               "${goal_max_rounds:-0}"
             if [[ -s "$RUNNER_TEMP/kana-goal-detail.txt" ]]; then
               printf -- '- Goal detail: '
-              jq -Rrsr '@html' "$RUNNER_TEMP/kana-goal-detail.txt"
+              jq -Rrs '@html' "$RUNNER_TEMP/kana-goal-detail.txt"
             fi
             if [[ -n "$termination_reason" ]]; then
               printf -- '- Termination: `%s`\n' "$termination_reason"
