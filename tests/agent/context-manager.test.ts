@@ -30,7 +30,7 @@ const MODEL_METADATA: ModelMetadata = {
   supportsHostedWebSearch: false,
 };
 
-describe("ContextManager", () => {
+describe("ContextManager budgets and checkpoints", () => {
   test("computes prompt, trigger, and target budgets from the context limit", () => {
     const manager = new ContextManager({
       contextLimit: 128_000,
@@ -356,7 +356,9 @@ describe("ContextManager", () => {
     expect(prepared.compaction).toBeUndefined();
     expect(policyCalls).toBe(0);
   });
+});
 
+describe("ContextManager model projection", () => {
   test("bounds model-visible tool content while retaining the structured result elsewhere", () => {
     const manager = new ContextManager({
       contextLimit: 128_000,
@@ -412,7 +414,9 @@ describe("ContextManager", () => {
     expect(estimateContextTokens(createContext("small"))).toBe(47);
     expect(estimateContextTokens(createContext("x".repeat(100_000)))).toBe(47);
   });
+});
 
+describe("ContextManager usage anchors", () => {
   test("keeps a clean usage anchor when hosted tools inflate response input", async () => {
     let policyCalls = 0;
     const manager = new ContextManager({
@@ -772,7 +776,9 @@ describe("ContextManager", () => {
       10_000 + estimateContextTokens({ messages: messages.slice(1) }) - 8,
     );
   });
+});
 
+describe("ContextManager compaction rollback", () => {
   test("restores the previous checkpoint when summary generation fails", async () => {
     const manager = new ContextManager({
       contextLimit: 4_000,

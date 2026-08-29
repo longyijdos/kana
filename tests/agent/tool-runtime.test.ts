@@ -15,7 +15,7 @@ const labeledParameters = Type.Object({
   label: Type.String(),
 });
 
-describe("ToolRuntime", () => {
+describe("ToolRuntime invocation lifecycle", () => {
   test("serializes update events and publishes completion before committing the result", async () => {
     const operations: string[] = [];
     const tool = {
@@ -228,7 +228,9 @@ describe("ToolRuntime", () => {
 
     expect(events).toEqual(["tool_execution_start", "tool_execution_end"]);
   });
+});
 
+describe("ToolRuntime deadlines and configuration", () => {
   test("supplies an invocation signal and records a cooperative deadline as timed out", async () => {
     let receivedSignal: AbortSignal | undefined;
     const tool = {
@@ -518,7 +520,9 @@ describe("ToolRuntime", () => {
       },
     });
   });
+});
 
+describe("ToolRuntime parallel scheduling", () => {
   test("runs adjacent parallel calls together without crossing exclusive barriers", async () => {
     const operations: string[] = [];
     const finishByLabel = new Map<string, () => void>();
@@ -923,7 +927,9 @@ describe("ToolRuntime", () => {
     expect(maximumActiveApprovals).toBe(1);
     expect(result.toolResults).toHaveLength(2);
   });
+});
 
+describe("ToolRuntime result finalization and policy", () => {
   test("finalizes every normalized result exactly once", async () => {
     const finalized: Array<{ name: string; isError: boolean }> = [];
     const success = {
@@ -1302,7 +1308,9 @@ describe("ToolRuntime", () => {
     ]);
     expect(JSON.stringify(logs)).not.toContain("secret");
   });
+});
 
+describe("ToolRuntime parallel failure containment", () => {
   test("stops replenishing immediately and cancels siblings when one invocation reaches deadline", async () => {
     const starts: string[] = [];
     const deadlineTool = {

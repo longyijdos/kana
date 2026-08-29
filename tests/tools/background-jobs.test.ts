@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { BackgroundJobManager, type BackgroundJobTerminalStatus } from "@/jobs";
 import { createJobKillTool, createJobListTool, createJobOutputTool } from "@/tools";
 import type { ToolResult } from "../../src/tools/tool";
+import { deferred, waitFor } from "../helpers/async-control";
 
 type ProducerResult = {
   status: BackgroundJobTerminalStatus;
@@ -96,26 +97,4 @@ function expectToolResult<T>(value: unknown): asserts value is ToolResult<T> {
   expect(value).toBeObject();
   expect(value).toHaveProperty("content");
   expect(value).toHaveProperty("result");
-}
-
-function deferred<T>(): {
-  promise: Promise<T>;
-  resolve(value: T): void;
-} {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
-}
-
-async function waitFor(predicate: () => boolean): Promise<void> {
-  const deadline = Date.now() + 1_000;
-  while (Date.now() < deadline) {
-    if (predicate()) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1));
-  }
-  throw new Error("Condition was not met.");
 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { buildOpenAICodexRequest } from "../../../src/providers/openai-codex/request";
 import { messageIdentityForTest } from "../../helpers/messages";
+import { responsesRequestContract } from "../responses-request-contract";
 
 describe("buildOpenAICodexRequest", () => {
   test("uses the classic Responses contract and preserves provider replay state", () => {
@@ -12,14 +13,6 @@ describe("buildOpenAICodexRequest", () => {
             ...messageIdentityForTest("user"),
             role: "user",
             content: "question",
-            images: [
-              {
-                mimeType: "image/png",
-                data: "aGVsbG8=",
-                width: 2,
-                height: 3,
-              },
-            ],
           },
           {
             ...messageIdentityForTest("assistant"),
@@ -78,7 +71,6 @@ describe("buildOpenAICodexRequest", () => {
           },
         ],
         webSearch: true,
-        imageInput: true,
         parallelToolCalls: false,
         maxOutputTokens: 12_345,
       },
@@ -125,10 +117,7 @@ describe("buildOpenAICodexRequest", () => {
       {
         type: "message",
         role: "user",
-        content: [
-          { type: "input_text", text: "question" },
-          { type: "input_image", image_url: "data:image/png;base64,aGVsbG8=" },
-        ],
+        content: [{ type: "input_text", text: "question" }],
       },
       {
         type: "reasoning",
@@ -200,125 +189,15 @@ describe("buildOpenAICodexRequest", () => {
       tools: expect.anything(),
     });
   });
-
-  test("keeps disabled image attachments explicit without transmitting their bytes", () => {
-    const request = buildOpenAICodexRequest(
-      {
-        messages: [
-          {
-            ...messageIdentityForTest("user"),
-            role: "user",
-            content: "Inspect this.",
-            images: [
-              {
-                mimeType: "image/jpeg",
-                data: "private-image-bytes",
-                width: 32,
-                height: 16,
-              },
-            ],
-          },
-        ],
-        imageInput: false,
-      },
-      {
-        provider: "openai-codex",
-        model: "gpt-5.6-luna",
-        credentialProvider: credentials(),
-      },
-    );
-
-    expect(request.input).toEqual([
-      {
-        type: "message",
-        role: "user",
-        content: [
-          { type: "input_text", text: "Inspect this." },
-          {
-            type: "input_text",
-            text: "[1 image attachment(s) omitted because image input is disabled.]",
-          },
-        ],
-      },
-    ]);
-    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
-  });
-
-  test("encodes tool image observations as native multimodal function outputs", () => {
-    const context = {
-      messages: [
-        {
-          ...messageIdentityForTest("assistant"),
-          role: "assistant" as const,
-          content: [
-            {
-              type: "tool_call" as const,
-              id: "call-view",
-              name: "view_image",
-              args: { path: "screen.png" },
-            },
-          ],
-        },
-        {
-          ...messageIdentityForTest("tool"),
-          role: "tool" as const,
-          toolCallId: "call-view",
-          toolName: "view_image",
-          content: "Viewed screen.png",
-          images: [
-            {
-              mimeType: "image/png" as const,
-              data: "tool-image-bytes",
-              width: 32,
-              height: 16,
-            },
-          ],
-          isError: false,
-        },
-      ],
-    };
-    const config = {
-      provider: "openai-codex" as const,
-      model: "gpt-5.6-luna" as const,
-      credentialProvider: credentials(),
-    };
-
-    const enabled = buildOpenAICodexRequest({ ...context, imageInput: true }, config);
-    const disabled = buildOpenAICodexRequest({ ...context, imageInput: false }, config);
-
-    expect(enabled.input).toEqual([
-      {
-        type: "function_call",
-        call_id: "call-view",
-        name: "view_image",
-        arguments: '{"path":"screen.png"}',
-      },
-      {
-        type: "function_call_output",
-        call_id: "call-view",
-        output: [
-          { type: "input_text", text: "Viewed screen.png" },
-          { type: "input_image", image_url: "data:image/png;base64,tool-image-bytes" },
-        ],
-      },
-    ]);
-    expect(disabled.input).toEqual([
-      {
-        type: "function_call",
-        call_id: "call-view",
-        name: "view_image",
-        arguments: '{"path":"screen.png"}',
-      },
-      {
-        type: "function_call_output",
-        call_id: "call-view",
-        output:
-          "Viewed screen.png\n\n[1 tool image observation(s) omitted because image input is disabled.]",
-      },
-    ]);
-    expect(JSON.stringify(disabled)).not.toContain("tool-image-bytes");
-  });
 });
+
+responsesRequestContract("OpenAI Codex Responses shared input contract", (context) =>
+  buildOpenAICodexRequest(context, {
+    provider: "openai-codex",
+    model: "gpt-5.6-luna",
+    credentialProvider: credentials(),
+  }),
+);
 
 function credentials() {
   return {

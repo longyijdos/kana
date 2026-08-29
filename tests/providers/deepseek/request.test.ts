@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { buildDeepSeekRequest } from "../../../src/providers/deepseek/request";
 import { messageIdentityForTest } from "../../helpers/messages";
+import { responsesRequestContract } from "../responses-request-contract";
 
 describe("buildDeepSeekRequest", () => {
   test("uses the Responses contract and preserves DeepSeek output items for stateless replay", () => {
@@ -12,14 +13,6 @@ describe("buildDeepSeekRequest", () => {
             ...messageIdentityForTest("user"),
             role: "user",
             content: "question",
-            images: [
-              {
-                mimeType: "image/png",
-                data: "private-image-bytes",
-                width: 32,
-                height: 16,
-              },
-            ],
           },
           {
             ...messageIdentityForTest("assistant"),
@@ -129,13 +122,7 @@ describe("buildDeepSeekRequest", () => {
       {
         type: "message",
         role: "user",
-        content: [
-          { type: "input_text", text: "question" },
-          {
-            type: "input_text",
-            text: "[1 image attachment(s) omitted because image input is disabled.]",
-          },
-        ],
+        content: [{ type: "input_text", text: "question" }],
       },
       {
         id: "reasoning-1",
@@ -166,81 +153,6 @@ describe("buildDeepSeekRequest", () => {
         output: "source",
       },
     ]);
-    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
-  });
-
-  test("encodes tool image observations as native multimodal function outputs", () => {
-    const context = {
-      messages: [
-        {
-          ...messageIdentityForTest("assistant"),
-          role: "assistant" as const,
-          content: [
-            {
-              type: "tool_call" as const,
-              id: "call-view",
-              name: "view_image",
-              args: { path: "screen.png" },
-            },
-          ],
-        },
-        {
-          ...messageIdentityForTest("tool"),
-          role: "tool" as const,
-          toolCallId: "call-view",
-          toolName: "view_image",
-          content: "Viewed screen.png",
-          images: [
-            {
-              mimeType: "image/png" as const,
-              data: "tool-image-bytes",
-              width: 32,
-              height: 16,
-            },
-          ],
-          isError: false,
-        },
-      ],
-    };
-    const config = {
-      provider: "deepseek" as const,
-      model: "deepseek-v4-flash-vision-exp" as const,
-    };
-
-    const enabled = buildDeepSeekRequest({ ...context, imageInput: true }, config);
-    const disabled = buildDeepSeekRequest({ ...context, imageInput: false }, config);
-
-    expect(enabled.input).toEqual([
-      {
-        type: "function_call",
-        call_id: "call-view",
-        name: "view_image",
-        arguments: '{"path":"screen.png"}',
-      },
-      {
-        type: "function_call_output",
-        call_id: "call-view",
-        output: [
-          { type: "input_text", text: "Viewed screen.png" },
-          { type: "input_image", image_url: "data:image/png;base64,tool-image-bytes" },
-        ],
-      },
-    ]);
-    expect(disabled.input).toEqual([
-      {
-        type: "function_call",
-        call_id: "call-view",
-        name: "view_image",
-        arguments: '{"path":"screen.png"}',
-      },
-      {
-        type: "function_call_output",
-        call_id: "call-view",
-        output:
-          "Viewed screen.png\n\n[1 tool image observation(s) omitted because image input is disabled.]",
-      },
-    ]);
-    expect(JSON.stringify(disabled)).not.toContain("tool-image-bytes");
   });
 
   test("uses none reasoning and disables hosted search without removing client function tools", () => {
@@ -288,89 +200,6 @@ describe("buildDeepSeekRequest", () => {
     ]);
   });
 
-  test("sends image attachments as input_image for the vision model", () => {
-    const request = buildDeepSeekRequest(
-      {
-        messages: [
-          {
-            ...messageIdentityForTest("user"),
-            role: "user",
-            content: "What is in this screenshot?",
-            images: [
-              {
-                mimeType: "image/png",
-                data: "base64-image-bytes",
-                width: 32,
-                height: 16,
-              },
-            ],
-          },
-        ],
-        imageInput: true,
-      },
-      {
-        provider: "deepseek",
-        model: "deepseek-v4-flash-vision-exp",
-      },
-    );
-
-    expect(request.input).toEqual([
-      {
-        type: "message",
-        role: "user",
-        content: [
-          { type: "input_text", text: "What is in this screenshot?" },
-          {
-            type: "input_image",
-            image_url: "data:image/png;base64,base64-image-bytes",
-          },
-        ],
-      },
-    ]);
-  });
-
-  test("keeps disabled image attachments explicit for the vision model without transmitting their bytes", () => {
-    const request = buildDeepSeekRequest(
-      {
-        messages: [
-          {
-            ...messageIdentityForTest("user"),
-            role: "user",
-            content: "Inspect this.",
-            images: [
-              {
-                mimeType: "image/jpeg",
-                data: "private-image-bytes",
-                width: 32,
-                height: 16,
-              },
-            ],
-          },
-        ],
-        imageInput: false,
-      },
-      {
-        provider: "deepseek",
-        model: "deepseek-v4-flash-vision-exp",
-      },
-    );
-
-    expect(request.input).toEqual([
-      {
-        type: "message",
-        role: "user",
-        content: [
-          { type: "input_text", text: "Inspect this." },
-          {
-            type: "input_text",
-            text: "[1 image attachment(s) omitted because image input is disabled.]",
-          },
-        ],
-      },
-    ]);
-    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
-  });
-
   test("never sends images for text-only models even when image input is enabled", () => {
     const request = buildDeepSeekRequest(
       {
@@ -413,3 +242,10 @@ describe("buildDeepSeekRequest", () => {
     expect(JSON.stringify(request)).not.toContain("private-image-bytes");
   });
 });
+
+responsesRequestContract("DeepSeek Responses shared input contract", (context) =>
+  buildDeepSeekRequest(context, {
+    provider: "deepseek",
+    model: "deepseek-v4-flash-vision-exp",
+  }),
+);

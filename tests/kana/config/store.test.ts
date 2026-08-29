@@ -1,25 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createKanaConfigStore, getKanaConfigPaths } from "@/kana";
+import { cleanupConfigTempDirs, createTempEnv } from "./config-fixture";
 
-const tempDirs: string[] = [];
-
-afterEach(() => {
-  for (const tempDir of tempDirs.splice(0)) {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupConfigTempDirs);
 
 describe("Kana config store", () => {
   test("creates only changed overrides when config.toml is absent", () => {
@@ -207,14 +191,3 @@ describe("Kana config store", () => {
     expect(existsSync(configPath)).toBe(false);
   });
 });
-
-function createTempEnv(): NodeJS.ProcessEnv {
-  const home = mkdtempSync(path.join(tmpdir(), "kana-config-store-"));
-  tempDirs.push(home);
-  const kanaHome = path.join(home, ".kana");
-  mkdirSync(kanaHome, { recursive: true });
-  return {
-    HOME: home,
-    KANA_HOME: kanaHome,
-  };
-}

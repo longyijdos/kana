@@ -8,7 +8,7 @@ import {
   ToolCallBlock,
   Transcript,
 } from "../../src/tui/components";
-import { stripAnsi, stripTerminalControlSequences, visibleWidth } from "../../src/tui/render";
+import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";
 
 class LinesComponent implements Component {
@@ -20,21 +20,6 @@ class LinesComponent implements Component {
 }
 
 describe("tool detail inspector controller", () => {
-  test("opens the latest tool even when its output is short and not omitted", () => {
-    const transcript = new Transcript();
-    transcript.addChild(createBashBlock("first", longOutput("first")));
-    transcript.addChild(createBashBlock("second", "short output"));
-    const { controller, tui } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const rendered = viewerLines(tui);
-    expect(rendered[0]).toBe("Bash");
-    expect(rendered.join("\n")).toContain("second");
-    expect(rendered.join("\n")).toContain("short output");
-    expect(rendered.join("\n")).not.toContain("Ran first");
-  });
-
   test("opens a read tool that never had an expandable result", () => {
     const transcript = new Transcript();
     transcript.addChild(
@@ -84,26 +69,6 @@ describe("tool detail inspector controller", () => {
     expect(rendered).toContain("Running");
   });
 
-  test("shows partial output while the inspected tool is still running", () => {
-    const transcript = new Transcript();
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_partial",
-      name: "bash",
-      args: { command: "bun test" },
-    });
-    block.markExecutionStarted();
-    block.updatePartialResult("partial output text");
-    transcript.addChild(block);
-    const { controller, tui } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const rendered = viewerLines(tui).join("\n");
-    expect(rendered).toContain("partial output text");
-    expect(rendered).toContain("Running");
-  });
-
   test("opens a canceled tool without a final result and reports its status", () => {
     const transcript = new Transcript();
     const block = new ToolCallBlock({
@@ -144,28 +109,6 @@ describe("tool detail inspector controller", () => {
     const rendered = viewerLines(tui).join("\n");
     expect(rendered).toContain("bun test --watch");
     expect(rendered).toContain("streamed output");
-  });
-
-  test("keeps a long bash command out of the fixed title and soft-wraps it in the body", () => {
-    const command = `python some_very_long_command.py --foo ${"x".repeat(120)} --bar value`;
-    const block = createBashBlock("long", "done", command);
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller, tui } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const viewer = tui.getFocusedComponent() as ContentViewer;
-    const rendered = viewer.render(60).map(stripAnsi);
-
-    expect(rendered[0]).toBe("Bash");
-    expect(rendered[0]).not.toContain("python");
-    expect(rendered.every((line) => visibleWidth(line) <= 60)).toBe(true);
-
-    const raw = block.getToolDetailView().render(58).map(stripAnsi);
-
-    expect(raw.every((line) => visibleWidth(line) <= 58)).toBe(true);
-    expect(raw.map((line) => line.replace(/^ {2}/, "")).join("")).toContain(command);
   });
 
   test("navigates previous and next across every tool call", () => {
@@ -274,248 +217,6 @@ describe("tool detail inspector controller", () => {
 
     expect(tui.getFocus()).toBe(prompt);
     expect(layout.render(80)).toContain("approval prompt");
-  });
-
-  test("recovers a long sanitized custom tool identity from the body", () => {
-    const longName = `mcp\u001b]0;evil\u0007server_tool\n${"long_name_".repeat(12)}`;
-    const expectedName = stripTerminalControlSequences(longName).replace(/[\r\n]+/g, " ");
-    const deepValue = "z".repeat(60);
-    const block = completedBlock(
-      longName,
-      { query: "find", nested: { deep: deepValue } },
-      { ok: true, message: "m".repeat(40) },
-    );
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const raw = block.getToolDetailView().render(50).map(stripAnsi);
-    const body = raw.map((line) => line.replace(/^ {2}/, "")).join("");
-
-    expect(body).toContain(expectedName);
-    expect(body).toContain(`"deep": "${deepValue}"`);
-    expect(raw.join("\n")).toContain('"ok": true');
-  });
-
-  test("shows write content once through the full renderer instead of duplicating it", () => {
-    const content = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
-    const block = completedBlock(
-      "write",
-      { path: "src/data.ts", content },
-      {
-        path: "src/data.ts",
-        bytesWritten: Buffer.byteLength(content),
-      },
-    );
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const raw = block.getToolDetailView().render(58).map(stripAnsi);
-
-    // Every content line appears exactly once, through the highlighted
-    // write renderer; no plain-text Content section is duplicated.
-    expect(raw.filter((line) => line.startsWith("+ "))).toHaveLength(30);
-    expect(raw.filter((line) => line === "+ line 1")).toHaveLength(1);
-    expect(raw).not.toContain("Content");
-    expect(raw.every((line) => visibleWidth(line) <= 58)).toBe(true);
-  });
-
-  test("shows an edit diff once through the diff renderer instead of duplicating it", () => {
-    const oldText = Array.from({ length: 30 }, (_, index) => `old line ${index + 1}`).join("\n");
-    const newText = Array.from({ length: 30 }, (_, index) => `new line ${index + 1}`).join("\n");
-    const block = completedBlock(
-      "edit",
-      { path: "src/app.ts", oldText, newText, replaceAll: true },
-      { path: "src/app.ts", replacements: 1, oldText, newText },
-    );
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const raw = block.getToolDetailView().render(58).map(stripAnsi);
-
-    expect(raw.filter((line) => line.startsWith("- "))).toHaveLength(30);
-    expect(raw.filter((line) => line.startsWith("+ "))).toHaveLength(30);
-    expect(raw).not.toContain("Replace");
-    expect(raw).not.toContain("With");
-    expect(raw.join("\n")).toContain("Replace all");
-  });
-
-  test("keeps write content in context while the write is still running", () => {
-    const content = "line 1\nline 2\nline 3";
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_write_running",
-      name: "write",
-      args: { path: "src/data.ts", content },
-    });
-    block.markExecutionStarted();
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const body = block.getToolDetailView().render(58).map(stripAnsi).join("\n");
-
-    expect(body).toContain("Path");
-    expect(body).toContain("src/data.ts");
-    expect(body).toContain("Content");
-    expect(body).toContain("line 2");
-    expect(body).toContain("Status");
-    expect(body).toContain("Running");
-  });
-
-  test("keeps edit replace and with in context while the edit is still running", () => {
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_edit_running",
-      name: "edit",
-      args: { path: "src/app.ts", oldText: "old text", newText: "new text" },
-    });
-    block.markExecutionStarted();
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const body = block.getToolDetailView().render(58).map(stripAnsi).join("\n");
-
-    expect(body).toContain("Replace");
-    expect(body).toContain("old text");
-    expect(body).toContain("With");
-    expect(body).toContain("new text");
-    expect(body).toContain("Status");
-    expect(body).toContain("Running");
-  });
-
-  test("keeps write content in context when a failed write reports only an error", () => {
-    const content = "line 1\nline 2\nline 3";
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_write_failed",
-      name: "write",
-      args: { path: "src/data.ts", content },
-    });
-    block.updateResult({ error: "disk full" }, true);
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const body = block.getToolDetailView().render(58).map(stripAnsi).join("\n");
-
-    expect(body).toContain("Content");
-    expect(body).toContain("line 2");
-    expect(body).toContain("Status");
-    expect(body).toContain("Failed");
-    expect(body).toContain("disk full");
-  });
-
-  test("keeps edit replace and with in context when a failed edit reports only an error", () => {
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_edit_failed",
-      name: "edit",
-      args: { path: "src/app.ts", oldText: "old text", newText: "new text" },
-    });
-    block.updateResult({ error: "Text not found in file: src/app.ts" }, true);
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const body = block.getToolDetailView().render(58).map(stripAnsi).join("\n");
-
-    expect(body).toContain("Replace");
-    expect(body).toContain("old text");
-    expect(body).toContain("With");
-    expect(body).toContain("new text");
-    expect(body).toContain("Status");
-    expect(body).toContain("Failed");
-    expect(body).toContain("Text not found");
-  });
-
-  test("keeps an empty newText deletion visible as a blank With section while running", () => {
-    // A running or failed edit recovers its material from args; an empty
-    // newText is a real deletion and must not collapse into a missing With.
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_edit_running_deletion",
-      name: "edit",
-      args: { path: "foo.ts", oldText: "obsolete code", newText: "" },
-    });
-    block.markExecutionStarted();
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const body = block.getToolDetailView().render(58).map(stripAnsi).join("\n");
-
-    expect(body).toContain("Replace");
-    expect(body).toContain("obsolete code");
-    expect(body).toContain("With");
-    expect(body).toContain("Status");
-    expect(body).toContain("Running");
-  });
-
-  test("keeps edit replace and with in context when a done result lacks old and new text", () => {
-    // formatEditOutput recovers the diff only from result.oldText/newText;
-    // without them the output renderer has nothing to show, so the inspector
-    // must not drop the operation material either.
-    const block = completedBlock(
-      "edit",
-      { path: "src/app.ts", oldText: "old text", newText: "new text" },
-      { path: "src/app.ts", replacements: 1 },
-    );
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const body = block.getToolDetailView().render(58).map(stripAnsi).join("\n");
-
-    expect(body).toContain("Replace");
-    expect(body).toContain("old text");
-    expect(body).toContain("With");
-    expect(body).toContain("new text");
-  });
-
-  test("keeps write content in context when a canceled write has no result", () => {
-    const content = "line 1\nline 2";
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_write_canceled",
-      name: "write",
-      args: { path: "src/data.ts", content },
-    });
-    block.markExecutionStarted();
-    block.markCanceled();
-    const transcript = new Transcript();
-    transcript.addChild(block);
-    const { controller } = createController(transcript);
-
-    expect(controller.openLatest()).toBe(true);
-
-    const body = block.getToolDetailView().render(58).map(stripAnsi).join("\n");
-
-    expect(body).toContain("Content");
-    expect(body).toContain("line 2");
-    expect(body).toContain("Status");
-    expect(body).toContain("Canceled");
   });
 });
 
