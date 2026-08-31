@@ -30,7 +30,7 @@ A protocol, transport, or parsing failure rejects all pending requests and close
 
 ## Stable client lifecycle
 
-`McpClient` implements protocol version `2025-11-25`. `initialize` is the first request, uses a separate startup timeout, and is followed by `notifications/initialized` only after the server returns the same supported version. The client snapshots server identity and capabilities.
+`McpClient` implements protocol version `2025-11-25`. `initialize` is the first request, uses a separate startup timeout, and is followed by `notifications/initialized` only after the server returns the same supported version. Client startup accepts an abort signal; cancelling initialize closes the connection and transport without sending the protocol cancellation notification that initialization forbids. The client snapshots server identity and capabilities.
 
 Tool methods require the server's tools capability. `tools/list` follows pagination, rejects repeated cursors, and has a finite page limit. `tools/call` supports cancellation and progress and validates the returned content envelope. Server notifications are exposed to the integration, but Kana deliberately freezes the startup tool list and logs `notifications/tools/list_changed` without mutating a live Agent.
 
@@ -82,7 +82,7 @@ The common Agent tool-result policy may apply a tighter model-context limit or c
 
 Optional-server failures are isolated, recorded, and closed. Any required-server failure closes all clients and aborts startup. Alias collisions between servers or with reserved Kana tools fail the complete aggregation rather than overwriting a tool or assigning an unstable suffix.
 
-Diagnostics expose copied server identity, required flag, lifecycle status, discovered and retained tool counts, capabilities, and safe error identity. Progress reports completed/total server counts and each terminal startup or close outcome. Listener failures are contained. Close is idempotent and releases clients in reverse registration order.
+Diagnostics expose copied server identity, required flag, lifecycle status, discovered and retained tool counts, capabilities, and safe error identity. Progress reports completed/total server counts and each terminal startup or close outcome. Listener failures are contained. Startup accepts an abort signal and treats cancellation separately from server failure diagnostics. Close is idempotent, requests cancellation when startup is still active, waits for it to unwind, and releases clients in reverse registration order.
 
 ## Kana configuration and activation
 
@@ -94,7 +94,7 @@ HTTP `proxy` is a Kana/Bun composition concern. A URL is passed through Bun's fe
 
 ## Runtime and frontend integration
 
-`KanaMcpRuntime` owns a replaceable one-shot manager. It serializes `start`, `reload`, and `close`; reload closes the old manager before rereading configuration and activation, then publishes a fresh detached tool/diagnostic snapshot. Failure clears stale tools and source mappings, while a later reload can recover. Once close is requested, queued lifecycle work cannot create another manager.
+`KanaMcpRuntime` owns a replaceable one-shot manager. It serializes `start`, `reload`, and `close`; reload closes the old manager before rereading configuration and activation, then publishes a fresh detached tool/diagnostic snapshot. Start and reload accept an operation abort signal. Cancellation clears the operation's tool snapshot and closes its one-shot manager without permanently closing the runtime, so a later reload can recover just as it can after failure. Once runtime close is requested, queued lifecycle work cannot create another manager.
 
 The main conversation initially has no external tools. Interactive startup waits until the selected session is visible before loading MCP and rebuilding the Agent; the resume picker therefore has no server side effects. Headless starts MCP before submitting its run. Clean mode never reads MCP configuration or creates the runtime's external tools. Memory-consolidation Agents never receive MCP tools.
 

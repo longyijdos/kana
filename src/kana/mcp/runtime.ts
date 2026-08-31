@@ -1,4 +1,9 @@
-import type { McpManagerProgressEvent, McpServerDiagnostic, McpToolSource } from "@/mcp";
+import {
+  type McpManagerProgressEvent,
+  McpRequestCancelledError,
+  type McpServerDiagnostic,
+  type McpToolSource,
+} from "@/mcp";
 import type { Tool } from "@/tools";
 
 import { loadKanaMcpActivationState } from "./activation";
@@ -15,6 +20,10 @@ export type KanaMcpRuntimeSnapshot = {
   tools: Tool[];
   diagnostics: McpServerDiagnostic[];
   selectedServerIds: string[];
+};
+
+export type KanaMcpRuntimeStartOptions = {
+  signal?: AbortSignal;
 };
 
 export type CreateKanaMcpRuntimeOptions = Omit<
@@ -81,7 +90,7 @@ export class KanaMcpRuntime {
     return this.manager?.getToolSource(toolName);
   }
 
-  start(): Promise<KanaMcpRuntimeSnapshot> {
+  start(options: KanaMcpRuntimeStartOptions = {}): Promise<KanaMcpRuntimeSnapshot> {
     if (this.startRequested) {
       return Promise.reject(new Error("MCP runtime can only be started once."));
     }
@@ -90,10 +99,10 @@ export class KanaMcpRuntime {
     }
 
     this.startRequested = true;
-    return this.enqueue("start", () => this.replaceManager());
+    return this.enqueue("start", () => this.replaceManager(options.signal));
   }
 
-  reload(): Promise<KanaMcpRuntimeSnapshot> {
+  reload(options: KanaMcpRuntimeStartOptions = {}): Promise<KanaMcpRuntimeSnapshot> {
     if (!this.startRequested) {
       return Promise.reject(new Error("MCP runtime must be started before it can reload."));
     }
@@ -101,7 +110,7 @@ export class KanaMcpRuntime {
       return Promise.reject(new Error("MCP runtime is closing or closed."));
     }
 
-    return this.enqueue("reload", () => this.replaceManager());
+    return this.enqueue("reload", () => this.replaceManager(options.signal));
   }
 
   close(): Promise<void> {
@@ -130,12 +139,13 @@ export class KanaMcpRuntime {
     return result;
   }
 
-  private async replaceManager(): Promise<KanaMcpRuntimeSnapshot> {
+  private async replaceManager(signal?: AbortSignal): Promise<KanaMcpRuntimeSnapshot> {
     if (this.closeRequested) {
       throw new Error("MCP runtime is closing or closed.");
     }
 
     await this.closeCurrentManager();
+    throwIfOperationAborted(signal);
     if (this.closeRequested) {
       throw new Error("MCP runtime is closing or closed.");
     }
@@ -154,10 +164,14 @@ export class KanaMcpRuntime {
     this.manager = manager;
 
     try {
-      this.toolsData = await manager.start();
+      this.toolsData = await manager.start(signal === undefined ? {} : { signal });
+      throwIfOperationAborted(signal);
       return this.snapshot();
     } catch (error) {
       this.toolsData = [];
+      if (signal?.aborted) {
+        await manager.close();
+      }
       throw error;
     }
   }
@@ -181,4 +195,18 @@ export class KanaMcpRuntime {
 
 export function createKanaMcpRuntime(options: CreateKanaMcpRuntimeOptions = {}): KanaMcpRuntime {
   return new KanaMcpRuntime(options);
+}
+
+function throwIfOperationAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) {
+    return;
+  }
+  if (signal.reason instanceof McpRequestCancelledError) {
+    throw signal.reason;
+  }
+  const message =
+    signal.reason instanceof Error && signal.reason.message
+      ? signal.reason.message
+      : "MCP runtime operation was cancelled.";
+  throw new McpRequestCancelledError(message, { cause: signal.reason });
 }

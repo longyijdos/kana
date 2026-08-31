@@ -232,11 +232,13 @@ export class McpOAuthHttpAuthorizer {
         interactiveAuthorization,
       });
     } catch (error) {
-      this.emit({
-        event: "mcp.oauth_preparation_failed",
-        level: "warn",
-        errorIdentity: describeErrorIdentity(error),
-      });
+      if (!this.lifecycle.signal.aborted) {
+        this.emit({
+          event: "mcp.oauth_preparation_failed",
+          level: "warn",
+          errorIdentity: describeErrorIdentity(error),
+        });
+      }
       throw error;
     }
   }

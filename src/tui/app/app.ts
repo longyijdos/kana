@@ -11,7 +11,7 @@ import { createNoopLogger, type Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
 import { Editor, TextBlock, Transcript, UserMessageBlock } from "../components";
 import type { Terminal } from "../runtime";
-import { isCtrlC, isCtrlO, Tui } from "../runtime";
+import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { renderTodoState } from "../tools";
 import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
@@ -548,6 +548,7 @@ export class KanaTuiApp {
     }
 
     this.stopping = true;
+    this.externalTools.cancel();
     this.stopPromise = this.stopInternal().finally(() => {
       this.resolveStopped();
     });
@@ -643,8 +644,8 @@ export class KanaTuiApp {
     }
 
     if (this.externalTools.loading) {
-      if (isCtrlC(data)) {
-        void this.stop();
+      if (isCtrlC(data) || isEscape(data)) {
+        this.externalTools.cancel();
       }
       return { consume: true };
     }

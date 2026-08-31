@@ -9,7 +9,7 @@ Kana's TUI maps shared conversation behavior into commands, focus, controllers, 
 Components own presentation and local keyboard handling. The terminal runtime owns the common `Component` contract, height allocation, visible-width normalization, cursor placement, and differential output; those mechanics are documented in [Terminal rendering](terminal-rendering.md).
 ## Application lifecycle
 
-The terminal runtime starts before `KanaTuiApp`; low-level raw-mode, capability, repaint, and restoration behavior belongs to [Terminal rendering](terminal-rendering.md). The app then makes the current session visible before loading external tools. During MCP startup it removes editor focus, appends immutable per-server results and warnings, rebuilds the Agent with discovered tools, and restores the editor. Browser authorization uses a temporary URL block that is replaced by its final state. Required-server failure keeps initial input disabled; an explicit reload failure instead removes stale tools and restores input so the user can retry. See [MCP](mcp.md) for manager and protocol semantics.
+The terminal runtime starts before `KanaTuiApp`; low-level raw-mode, capability, repaint, and restoration behavior belongs to [Terminal rendering](terminal-rendering.md). The app then makes the current session visible before loading external tools. During MCP startup it removes editor focus, appends immutable per-server results and warnings, rebuilds the Agent with discovered tools, and restores the editor. `Esc` or keyboard `Ctrl+C` cancels startup or reload, appends a muted cancellation result after cleanup, and restores ordinary interaction without closing the reloadable MCP runtime. An initial prompt still runs after startup is skipped this way. Browser authorization uses a temporary URL block that is replaced by its final state. Required-server failure keeps initial input disabled; an explicit reload failure instead removes stale tools and restores input so the user can retry. See [MCP](mcp.md) for manager and protocol semantics.
 
 `KanaTuiApp.stop()` is idempotent. It appends shutdown status, removes bottom focus, closes and awaits `ConversationRuntime`, waits for product cleanup such as automatic memory consolidation, and closes the MCP manager. Only then does it restore the terminal and print accumulated usage plus a resume command when available. Idle exit and process signals share this path; a second interrupt during graceful shutdown forces termination after terminal restoration.
 
@@ -41,12 +41,12 @@ When resuming, the TUI renders only the committed session timeline; the Agent re
 
 ## Input and shortcuts
 
-Global input runs before the focused component for global controls. `Esc` is dispatched through the normal focus path instead:
+Global input runs before the focused component for global controls. `Esc` normally follows the focus path, except while external tools are loading:
 
 | Input | Behavior |
 | --- | --- |
-| `Ctrl+C` | Cancel local shell, memory compaction, or Agent while running; while idle with the editor focused, clear a text/image draft on the first press, or begin graceful exit when no draft remains; exit directly while loading external tools; press again during shutdown to force exit. |
-| `Esc` | Let the focused modal, view, picker, or nested prompt handle it first. Tool approval prompts treat it as Deny. When the editor is focused, abort the Agent run if one is active; while idle, do nothing. |
+| `Ctrl+C` | Cancel MCP startup or reload while external tools are loading; otherwise cancel local shell, memory compaction, or Agent while running. While idle with the editor focused, clear a text/image draft on the first press, or begin graceful exit when no draft remains; press again during shutdown to force exit. |
+| `Esc` | Cancel MCP startup or reload while external tools are loading. Otherwise let the focused modal, view, picker, or nested prompt handle it first. Tool approval prompts treat it as Deny. When the editor is focused, abort the Agent run if one is active; while idle, do nothing. |
 | `Ctrl+O` | Open/close the detail inspector for the newest tool call; `/tools` opens the same inspector from a browsable history of every tool call in the session. While open, `[` / `]` move to the previous or next tool call. |
 | `!<command>` | Run local bash directly without Agent or approval, displayed in the same tool block style. |
 
@@ -115,7 +115,7 @@ In clean mode, `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, and `/delete` r
 - `StatusProjectionController` owns active-run state, process usage totals, context occupancy, and editor status updates. `InteractionErrorReporter` applies the matching running or idle error projection without making each workflow reproduce those rules.
 - `ContextCompactController`, `ImageAttachmentController`, `McpOAuthStatusController`, `ModelSelectionController`, and `InformationViewerController` own their asynchronous or multi-step UI state while the app only starts them or routes their events.
 
-- `ExternalToolsLifecycleController` handles both initial external-tool loading after the session becomes visible and later MCP reloads. It owns append-only lifecycle output and input disable/restore state, and requests Agent rebuilding through an app callback when the tool set changes.
+- `ExternalToolsLifecycleController` handles both initial external-tool loading after the session becomes visible and later MCP reloads. It owns the active operation's cancellation signal, append-only lifecycle output, and input disable/restore state, and requests Agent rebuilding through an app callback when the tool set changes.
 - `QueuedInputController` keeps optimistic previews for current-run input and reconciles them by the existing `MessageId` against the authoritative runtime snapshot. It owns display labels and preview state, while queue lanes, delivery order, scheduled metadata, and cancellation belong to [Conversation runtime](conversation-runtime.md).
 - `ScheduledMessageManagerController` presents `/schedule`'s current-session snapshot and multi-step add, refresh, and delete flow. It owns list ordering, labels, shortcuts, and focus restoration; timer identity, cancellation, due delivery, and the queue gate belong to [Conversation runtime](conversation-runtime.md).
 - `BackgroundJobManagerController` opens `/jobs` and refreshes on Job state changes or `R`. It keeps selection stable, shows a non-consuming output tail, stops active Jobs with `K` without acknowledging terminal Jobs, and prevents a pending run from starting until the panel closes with `Esc`.

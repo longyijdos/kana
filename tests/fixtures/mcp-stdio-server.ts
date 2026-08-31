@@ -35,6 +35,9 @@ for await (const line of lines) {
 
 async function handleMessage(message: RpcMessage): Promise<void> {
   if (message.method === "initialize" && message.id !== undefined) {
+    if (scenario === "hang-initialize") {
+      return;
+    }
     const protocolVersion = scenario === "version-mismatch" ? "2024-11-05" : "2025-11-25";
     await writeMessage(
       {

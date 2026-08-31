@@ -1,3 +1,4 @@
+import { McpRequestCancelledError } from "./errors";
 import type { McpImplementation, McpServerCapabilities, McpTool } from "./protocol";
 import { type AdaptedMcpTool, createMcpToolAdapter, type McpToolCaller } from "./tool-adapter";
 import type { McpToolResultLimits, McpToolSource } from "./tool-result";
@@ -13,10 +14,14 @@ type McpManagerProgressOutcome = "ready" | "failed" | "closed";
 export interface McpManagedClient extends McpToolCaller {
   readonly serverInfo?: McpImplementation;
   readonly serverCapabilities?: McpServerCapabilities;
-  connect(): Promise<unknown>;
-  listTools(): Promise<McpTool[]>;
+  connect(options?: McpManagerStartOptions): Promise<unknown>;
+  listTools(options?: McpManagerStartOptions): Promise<McpTool[]>;
   close(): Promise<void>;
 }
+
+export type McpManagerStartOptions = {
+  signal?: AbortSignal;
+};
 
 export type McpServerRegistration = {
   id: string;
@@ -24,7 +29,7 @@ export type McpServerRegistration = {
   includeTools?: readonly string[];
   excludeTools?: readonly string[];
   resultLimits?: Partial<McpToolResultLimits>;
-  createClient(): McpManagedClient;
+  createClient(options?: McpManagerStartOptions): McpManagedClient;
 };
 
 export type McpManagerErrorEvent = {
@@ -129,6 +134,8 @@ export class McpManager {
   private readonly onProgress?: (event: McpManagerProgressEvent) => void;
   private toolsData: AdaptedMcpTool[] = [];
   private toolSourcesData = new Map<string, McpToolSource>();
+  private readonly startController = new AbortController();
+  private disposeStartSignal?: () => void;
   private startPromise?: Promise<AdaptedMcpTool[]>;
   private closePromise?: Promise<void>;
 
@@ -179,26 +186,49 @@ export class McpManager {
     return source === undefined ? undefined : { ...source };
   }
 
-  start(): Promise<AdaptedMcpTool[]> {
+  start(options: McpManagerStartOptions = {}): Promise<AdaptedMcpTool[]> {
     if (this.stateData !== "idle") {
       return Promise.reject(new Error("MCP manager can only be started once."));
     }
 
     this.stateData = "starting";
+    this.disposeStartSignal = linkAbortSignal(options.signal, this.startController);
     // Defer work by one microtask so startPromise is installed before a
     // synchronous factory failure can invoke diagnostics or close().
-    this.startPromise = Promise.resolve().then(() => this.startInternal());
+    this.startPromise = Promise.resolve()
+      .then(() => this.startInternal())
+      .finally(() => {
+        this.disposeStartSignal?.();
+        this.disposeStartSignal = undefined;
+      });
     return this.startPromise;
   }
 
   close(): Promise<void> {
     if (!this.closePromise) {
+      this.startController.abort(new McpRequestCancelledError("MCP manager is closing."));
       this.closePromise = this.closeInternal();
     }
     return this.closePromise;
   }
 
   private async startInternal(): Promise<AdaptedMcpTool[]> {
+    try {
+      return await this.startServers();
+    } catch (error) {
+      if (!this.startController.signal.aborted) {
+        throw error;
+      }
+
+      if (this.stateData !== "closed") {
+        await this.closeAfterStartFailure();
+      }
+      throw createStartCancellationError(this.startController.signal);
+    }
+  }
+
+  private async startServers(): Promise<AdaptedMcpTool[]> {
+    throwIfStartAborted(this.startController.signal);
     let completedServerCount = 0;
     this.reportProgress({
       operation: "start",
@@ -207,8 +237,11 @@ export class McpManager {
     });
     await Promise.all(
       this.records.map(async (record) => {
-        await this.startServer(record);
+        await this.startServer(record, this.startController.signal);
         completedServerCount += 1;
+        if (this.startController.signal.aborted) {
+          return;
+        }
         this.reportProgress({
           operation: "start",
           completedServerCount,
@@ -219,6 +252,7 @@ export class McpManager {
         });
       }),
     );
+    throwIfStartAborted(this.startController.signal);
 
     const requiredFailures = this.records
       .filter((record) => record.registration.required && record.error)
@@ -244,17 +278,20 @@ export class McpManager {
     return this.tools;
   }
 
-  private async startServer(record: McpServerRecord): Promise<void> {
+  private async startServer(record: McpServerRecord, signal: AbortSignal): Promise<void> {
     record.status = "starting";
 
     try {
-      const client = record.registration.createClient();
+      throwIfStartAborted(signal);
+      const client = record.registration.createClient({ signal });
       record.client = client;
-      await client.connect();
+      await client.connect({ signal });
+      throwIfStartAborted(signal);
       record.serverInfo = client.serverInfo;
       record.serverCapabilities = client.serverCapabilities;
 
-      const remoteTools = await client.listTools();
+      const remoteTools = await client.listTools({ signal });
+      throwIfStartAborted(signal);
       record.discoveredToolCount = remoteTools.length;
       assertUniqueRemoteToolNames(record.registration.id, remoteTools);
 
@@ -284,6 +321,10 @@ export class McpManager {
       }));
       record.status = "ready";
     } catch (error) {
+      if (signal.aborted) {
+        await this.closeClient(record);
+        return;
+      }
       record.error = asError(error);
       record.status = "failed";
       this.reportError(record.registration.id, "start", record.error);
@@ -480,4 +521,35 @@ function formatToolSource(source: McpToolNameSource): string {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function linkAbortSignal(signal: AbortSignal | undefined, controller: AbortController): () => void {
+  if (signal === undefined) {
+    return () => {};
+  }
+  if (signal.aborted) {
+    controller.abort(signal.reason);
+    return () => {};
+  }
+
+  const onAbort = () => controller.abort(signal.reason);
+  signal.addEventListener("abort", onAbort, { once: true });
+  return () => signal.removeEventListener("abort", onAbort);
+}
+
+function throwIfStartAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw createStartCancellationError(signal);
+  }
+}
+
+function createStartCancellationError(signal: AbortSignal): McpRequestCancelledError {
+  if (signal.reason instanceof McpRequestCancelledError) {
+    return signal.reason;
+  }
+  const message =
+    signal.reason instanceof Error && signal.reason.message
+      ? signal.reason.message
+      : "MCP manager startup was cancelled.";
+  return new McpRequestCancelledError(message, { cause: signal.reason });
 }

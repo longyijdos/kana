@@ -309,6 +309,24 @@ describe("MCP client", () => {
     ).toBe(false);
   });
 
+  test("cancels initialization and closes its transport", async () => {
+    const transport = new MemoryTransport();
+    const client = createClient(transport);
+    const controller = new AbortController();
+
+    const connecting = client.connect({ signal: controller.signal });
+    controller.abort(new Error("skip MCP startup"));
+
+    await expect(connecting).rejects.toBeInstanceOf(McpRequestCancelledError);
+    expect(client.connected).toBe(false);
+    expect(transport.closed).toBe(true);
+    expect(
+      transport.sent.some(
+        (message) => "method" in message && message.method === "notifications/cancelled",
+      ),
+    ).toBe(false);
+  });
+
   test("maps AbortSignal cancellation and responds to server requests", async () => {
     const transport = new MemoryTransport();
     respondToInitialize(transport);

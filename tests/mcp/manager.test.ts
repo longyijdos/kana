@@ -7,6 +7,7 @@ import {
   type McpManagerErrorEvent,
   McpManagerStartError,
   type McpProgress,
+  McpRequestCancelledError,
   type McpTool,
   McpToolNameConflictError,
 } from "../../src/mcp";
@@ -289,7 +290,7 @@ describe("MCP manager", () => {
     expect(manager.getToolSource("filesystem_read_file")).toBeUndefined();
   });
 
-  test("waits for in-flight startup before closing", async () => {
+  test("cancels in-flight startup before closing", async () => {
     const gate = deferred<void>();
     const client = createFakeClient({ name: "slow", connectGate: gate.promise });
     const manager = new McpManager({
@@ -297,10 +298,10 @@ describe("MCP manager", () => {
     });
 
     const start = manager.start();
+    await Promise.resolve();
     const close = manager.close();
-    gate.resolve();
 
-    await start;
+    await expect(start).rejects.toBeInstanceOf(McpRequestCancelledError);
     await close;
 
     expect(client.closeCount).toBe(1);
@@ -324,7 +325,7 @@ describe("MCP manager", () => {
       },
     });
 
-    await manager.start();
+    await expect(manager.start()).rejects.toBeInstanceOf(McpRequestCancelledError);
     await requestedClose;
 
     expect(manager.state).toBe("closed");
@@ -350,8 +351,8 @@ class FakeMcpClient implements McpManagedClient {
     this.serverInfo = { name: options.name, version: "1.0.0" };
   }
 
-  async connect(): Promise<void> {
-    await this.options.connectGate;
+  async connect(options: { signal?: AbortSignal } = {}): Promise<void> {
+    await waitForGate(this.options.connectGate, options.signal);
     if (this.options.connectError) {
       throw this.options.connectError;
     }
@@ -380,6 +381,27 @@ class FakeMcpClient implements McpManagedClient {
       throw this.options.closeError;
     }
   }
+}
+
+function waitForGate(
+  gate: Promise<void> | undefined,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason);
+  }
+  if (!gate) {
+    return Promise.resolve();
+  }
+  if (!signal) {
+    return gate;
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    void gate.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
 }
 
 function createFakeClient(options: FakeClientOptions): FakeMcpClient {

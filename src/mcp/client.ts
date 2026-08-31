@@ -96,7 +96,7 @@ export class McpClient {
     return this.initializeResult?.capabilities;
   }
 
-  async connect(): Promise<McpInitializeResult> {
+  async connect(options: McpRequestOptions = {}): Promise<McpInitializeResult> {
     if (this.state !== "idle") {
       throw new McpClientError("MCP client can only be connected once.");
     }
@@ -105,7 +105,7 @@ export class McpClient {
 
     try {
       await this.connection.start();
-      const initializeResult = await this.initializeSession();
+      const initializeResult = await this.initializeSession(options);
 
       if (!this.connection.active) {
         throw new McpConnectionClosedError("MCP transport closed during initialization.");
@@ -186,7 +186,7 @@ export class McpClient {
     return this.options.maxToolListPages ?? DEFAULT_MAX_TOOL_LIST_PAGES;
   }
 
-  private async initializeSession(): Promise<McpInitializeResult> {
+  private async initializeSession(options: McpRequestOptions = {}): Promise<McpInitializeResult> {
     const result = await this.connection.request(
       "initialize",
       {
@@ -197,6 +197,7 @@ export class McpClient {
       {
         timeoutMs: this.options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS,
         cancellable: false,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
     );
     const initializeResult = parseInitializeResult(result);

@@ -10,6 +10,8 @@ import {
   type KanaMcpRuntimeProgressEvent,
   saveKanaMcpActivationState,
 } from "@/kana";
+import { McpRequestCancelledError } from "@/mcp";
+import { waitFor } from "../../helpers/async-control";
 
 const fixturePath = path.resolve("tests/fixtures/mcp-stdio-server.ts");
 const runtimes = new Set<KanaMcpRuntime>();
@@ -100,6 +102,29 @@ describe("Kana MCP runtime", () => {
     ]);
   });
 
+  test("cancels startup, closes its manager, and permits a later reload", async () => {
+    const env = createTempEnv();
+    writeMcpConfig(env, ["alpha"], "hang-initialize");
+    saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
+    const events: KanaMcpRuntimeProgressEvent[] = [];
+    const runtime = createRuntime(env, events);
+    const controller = new AbortController();
+
+    const starting = runtime.start({ signal: controller.signal });
+    await waitFor(() =>
+      events.some((event) => event.runtimeOperation === "start" && event.operation === "start"),
+    );
+    controller.abort(new Error("skip MCP startup"));
+
+    await expect(starting).rejects.toBeInstanceOf(McpRequestCancelledError);
+    expect(runtime.tools).toEqual([]);
+    expect(runtime.diagnostics.every((diagnostic) => diagnostic.status === "closed")).toBe(true);
+
+    writeMcpConfig(env, ["alpha"]);
+    const reloaded = await runtime.reload();
+    expect(reloaded.tools.map((tool) => tool.name)).toEqual(["alpha_echo", "alpha_slow"]);
+  });
+
   test("enforces lifecycle ordering and closes idempotently", async () => {
     const runtime = createRuntime(createTempEnv());
 
@@ -129,7 +154,7 @@ function createRuntime(
   return runtime;
 }
 
-function writeMcpConfig(env: NodeJS.ProcessEnv, serverIds: string[]): void {
+function writeMcpConfig(env: NodeJS.ProcessEnv, serverIds: string[], scenario?: string): void {
   const { home, mcpConfigPath } = getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
   writeFileSync(
@@ -142,6 +167,7 @@ function writeMcpConfig(env: NodeJS.ProcessEnv, serverIds: string[]): void {
             {
               command: process.execPath,
               args: [fixturePath],
+              ...(scenario === undefined ? {} : { env: { KANA_TEST_MCP_SCENARIO: scenario } }),
               startupTimeoutMs: 1_000,
               requestTimeoutMs: 1_000,
             },

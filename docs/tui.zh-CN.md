@@ -9,7 +9,7 @@ Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态
 组件负责展示和本地键盘处理。终端 runtime 负责通用 `Component` 契约、高度分配、可见宽度规范化、cursor 放置和差量输出；这些机制见[终端渲染](terminal-rendering.zh-CN.md)。
 ## 应用生命周期
 
-终端 runtime 先于 `KanaTuiApp` 启动；底层 raw mode、capability、repaint 和恢复行为属于[终端渲染](terminal-rendering.zh-CN.md)。随后 App 会先显示当前 session，再加载外部工具。MCP 启动期间会移除 editor 焦点，追加不可变的逐 server 结果与 warning，用发现的工具重建 Agent，最后恢复 editor。浏览器授权使用临时 URL block，并在结束后替换为最终状态。必需 server 初次失败时输入保持禁用；显式 reload 失败则会移除过期工具并恢复输入，让用户可以重试。Manager 与协议语义见 [MCP](mcp.zh-CN.md)。
+终端 runtime 先于 `KanaTuiApp` 启动；底层 raw mode、capability、repaint 和恢复行为属于[终端渲染](terminal-rendering.zh-CN.md)。随后 App 会先显示当前 session，再加载外部工具。MCP 启动期间会移除 editor 焦点，追加不可变的逐 server 结果与 warning，用发现的工具重建 Agent，最后恢复 editor。`Esc` 或键盘 `Ctrl+C` 会取消 startup 或 reload，在清理完成后追加弱化的取消结果并恢复普通交互，但不会关闭可 reload 的 MCP runtime；以这种方式跳过 startup 后，初始 prompt 仍会运行。浏览器授权使用临时 URL block，并在结束后替换为最终状态。必需 server 初次失败时输入保持禁用；显式 reload 失败则会移除过期工具并恢复输入，让用户可以重试。Manager 与协议语义见 [MCP](mcp.zh-CN.md)。
 
 `KanaTuiApp.stop()` 是幂等边界。它追加关闭状态、移除 bottom 焦点、关闭并等待 `ConversationRuntime`，等待自动记忆合并等产品清理，再关闭 MCP manager；之后才恢复终端，并按需打印累计用量和恢复命令。空闲退出与进程 signal 共用这条路径；优雅关闭中的第二次中断会先恢复终端再强制退出。
 
@@ -41,12 +41,12 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 ## 输入与快捷方式
 
-全局控制输入先于焦点组件处理；`Esc` 则沿正常焦点分发流程传递：
+全局控制输入先于焦点组件处理。`Esc` 通常沿正常焦点分发流程传递，外部工具加载期间除外：
 
 | 输入 | 行为 |
 | --- | --- |
-| `Ctrl+C` | 正在运行时中止本地 Shell、记忆压缩或 Agent；空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；加载外部工具时直接退出；关闭等待期间再次按下会强制退出。 |
-| `Esc` | 先交给当前聚焦的 modal、view、picker 或嵌套 prompt 处理；工具审批提示会将它视为“拒绝”。焦点回到编辑器后，若 Agent 正在运行则中止本次 run；空闲时不产生作用。 |
+| `Ctrl+C` | 外部工具加载期间取消 MCP startup 或 reload；其它情况下，正在运行时中止本地 Shell、记忆压缩或 Agent。空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；关闭等待期间再次按下会强制退出。 |
+| `Esc` | 外部工具加载期间取消 MCP startup 或 reload；其它情况下，先交给当前聚焦的 modal、view、picker 或嵌套 prompt 处理，工具审批提示会将它视为“拒绝”。焦点回到编辑器后，若 Agent 正在运行则中止本次 run；空闲时不产生作用。 |
 | `Ctrl+O` | 打开/关闭最近一项工具调用的详情查看器；`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
@@ -115,7 +115,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 - `StatusProjectionController` 持有活动 run 状态、进程用量总计、context 占用和 editor 状态更新。`InteractionErrorReporter` 按运行中或空闲状态投影对应错误，无需各流程重复这些规则。
 - `ContextCompactController`、`ImageAttachmentController`、`McpOAuthStatusController`、`ModelSelectionController` 和 `InformationViewerController` 持有各自的异步或多步 UI 状态，App 只负责启动流程或路由事件。
 
-- `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有追加式生命周期输出、输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
+- `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有活动操作的取消 signal、追加式生命周期输出以及输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
 - `QueuedInputController` 保存当前 run 输入的 optimistic preview，并用既有 `MessageId` 与权威 runtime snapshot 对齐。它只持有显示标签和 preview 状态；queue lane、投递顺序、scheduled metadata 与取消语义见[对话运行时](conversation-runtime.zh-CN.md)。
 - `ScheduledMessageManagerController` 展示 `/schedule` 的当前 session 快照，以及多步添加、刷新与删除流程。它持有列表排序、标签、快捷键和焦点恢复；timer 身份、取消、到期投递与 queue gate 见[对话运行时](conversation-runtime.zh-CN.md)。
 - `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job 但不确认终态，并在面板通过 `Esc` 关闭前阻止 pending run 启动。

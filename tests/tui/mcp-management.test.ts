@@ -123,6 +123,44 @@ describe("TUI MCP management", () => {
     expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain("MCP servers");
   });
 
+  test("cancels reload without a failure and rebuilds the idle Agent", async () => {
+    const agentStates: string[] = [];
+    const app = new KanaTuiApp(
+      () => {
+        agentStates.push("created");
+        return createAgentStub() as never;
+      },
+      createTerminal(),
+      {
+        ...createOptions(),
+        externalTools: {
+          mcp: {
+            loadServers: () => [
+              { id: "filesystem", type: "stdio", command: "npx", args: [], enabled: false },
+            ],
+            saveEnabledServerIds: () => {},
+            reload: (_onProgress, signal) =>
+              new Promise((_, reject) => {
+                signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+              }),
+          },
+        },
+      },
+    );
+    const internal = app as unknown as AppInternals;
+
+    internal.handleCommand({ name: "mcp", arguments: "", raw: "/mcp" });
+    internal.tui.getFocus()?.handleInput?.("\r");
+    internal.tui.getFocus()?.handleInput?.("\x1b");
+    await waitFor(() => renderTranscript(internal.transcript).includes("Reloading MCP servers..."));
+    internal.handleGlobalInput("\x03");
+    await waitFor(() => renderTranscript(internal.transcript).includes("MCP reload cancelled."));
+
+    expect(agentStates).toEqual(["created", "created"]);
+    expect(renderTranscript(internal.transcript)).not.toContain("Failed to reload MCP servers");
+    expect(internal.tui.getFocus()).toBe(internal.editor);
+  });
+
   test("queues scheduled wakes while the MCP manager is open", async () => {
     const timers = new Map<number | ReturnType<typeof setTimeout>, () => void>();
     const wakeScheduler = createWakeScheduler({
@@ -188,6 +226,7 @@ describe("TUI MCP management", () => {
 
 type AppInternals = {
   handleCommand(command: { name: "mcp"; arguments: string; raw: string }): void;
+  handleGlobalInput(data: string): void;
   transcript: { render(width: number): string[] };
   editor: Component;
   tui: { getFocus(): Component | undefined };

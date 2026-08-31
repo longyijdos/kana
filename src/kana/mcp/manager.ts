@@ -111,8 +111,8 @@ function createRegistration(
     required: config.required,
     ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools }),
     ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools }),
-    createClient() {
-      const { transport, authorizer } = createTransport(serverId, config, context);
+    createClient(options = {}) {
+      const { transport, authorizer } = createTransport(serverId, config, context, options.signal);
 
       const client = new McpClient({
         transport,
@@ -143,9 +143,9 @@ function createRegistration(
         get serverCapabilities() {
           return client.serverCapabilities;
         },
-        async connect() {
+        async connect(connectOptions) {
           await authorizer.prepare();
-          return client.connect();
+          return client.connect(connectOptions);
         },
         listTools: client.listTools.bind(client),
         callTool: client.callTool.bind(client),
@@ -169,6 +169,7 @@ function createTransport(
   serverId: string,
   config: KanaMcpServerConfig,
   context: RegistrationContext,
+  signal?: AbortSignal,
 ): CreatedTransport {
   if (config.type === "http") {
     const authorizer =
@@ -183,6 +184,7 @@ function createTransport(
               tokenStore: context.oauthTokenStore,
               openAuthorizationUrl: (url) => context.openOAuthAuthorizationUrl(serverId, url),
               ...(context.oauthFetch === undefined ? {} : { fetch: context.oauthFetch }),
+              ...(signal === undefined ? {} : { signal }),
               ...(context.onOAuthDiagnostic === undefined
                 ? {}
                 : {
