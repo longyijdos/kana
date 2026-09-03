@@ -43,6 +43,8 @@ bun run check
 - The project **comment-length guard**, which rejects TypeScript comment blocks longer than four
   lines or 320 characters; license headers and explicit `comment-check-ignore: <reason>`
   suppressions are exempt.
+- The **architecture boundary check**, which validates that `src/` modules only import along the
+  allowed dependency directions and that imports stay within the defined layer boundaries.
 - **TypeScript** type checking via `tsc --noEmit`.
 - **Knip** dead-code analysis.
 - The **Bun test suite**.
