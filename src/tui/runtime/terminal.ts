@@ -5,12 +5,21 @@ import {
   resolveNotificationBackend,
   type TerminalNotification,
 } from "./notifications";
+import { StdinBuffer } from "./stdin-buffer";
 import { supportsTerminalHyperlinks } from "./terminal-capabilities";
 
 // Matches crossterm's DISAMBIGUATE_ESCAPE_CODES | REPORT_EVENT_TYPES |
 // REPORT_ALTERNATE_KEYS so terminals can report Shift+Enter separately.
 const ENABLE_KEYBOARD_ENHANCEMENT = "\x1b[>7u";
 const POP_KEYBOARD_ENHANCEMENT = "\x1b[<1u";
+const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
+const SSH_ESCAPE_TIMEOUT_MS = 100;
+
+export function resolveEscapeTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return env.SSH_CONNECTION || env.SSH_CLIENT || env.SSH_TTY
+    ? SSH_ESCAPE_TIMEOUT_MS
+    : DEFAULT_ESCAPE_TIMEOUT_MS;
+}
 
 export interface Terminal {
   start(onInput: (data: string) => void, onResize: () => void): void;
@@ -28,6 +37,8 @@ export class ProcessTerminal implements Terminal {
   private wasRaw = false;
   private stopped = true;
   private notificationId = 0;
+  private stdinBuffer?: StdinBuffer;
+  private readonly escapeTimeoutMs: number;
   private readonly notificationBackend: ReturnType<typeof resolveNotificationBackend>;
   readonly supportsHyperlinks: boolean;
 
@@ -35,6 +46,7 @@ export class ProcessTerminal implements Terminal {
     notificationConfig: Pick<KanaNotificationConfig, "backend"> = { backend: "auto" },
     env: NodeJS.ProcessEnv = process.env,
   ) {
+    this.escapeTimeoutMs = resolveEscapeTimeoutMs(env);
     this.notificationBackend = resolveNotificationBackend(notificationConfig.backend, env);
     this.supportsHyperlinks = supportsTerminalHyperlinks(env);
   }
@@ -52,6 +64,9 @@ export class ProcessTerminal implements Terminal {
     process.stdin.setRawMode(true);
     process.stdin.setEncoding("utf8");
     process.stdin.resume();
+    this.stdinBuffer = new StdinBuffer((data) => this.inputHandler?.(data), {
+      escapeTimeoutMs: this.escapeTimeoutMs,
+    });
     process.stdin.on("data", this.handleInput);
     process.stdout.on("resize", this.handleResize);
 
@@ -66,6 +81,8 @@ export class ProcessTerminal implements Terminal {
     this.stopped = true;
     process.stdin.off("data", this.handleInput);
     process.stdout.off("resize", this.handleResize);
+    this.stdinBuffer?.destroy();
+    this.stdinBuffer = undefined;
     process.stdin.setRawMode(this.wasRaw);
     process.stdin.pause();
 
@@ -99,7 +116,7 @@ export class ProcessTerminal implements Terminal {
   }
 
   private readonly handleInput = (data: string): void => {
-    this.inputHandler?.(data);
+    this.stdinBuffer?.process(data);
   };
 
   private readonly handleResize = (): void => {
