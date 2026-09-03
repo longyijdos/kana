@@ -1,0 +1,18 @@
+[agent]
+max_turns = -1
+goal_max_rounds = 3
+
+[agent.model]
+provider = "custom"
+name = "deepseek/deepseek-v4-flash"
+reasoning_effort = "max"
+max_output_tokens = 128_000
+context_limit = 256_000
+
+[memory]
+enabled = false
+
+[notification]
+backend = "off"
+on_agent_completed = false
+on_approval_required = false

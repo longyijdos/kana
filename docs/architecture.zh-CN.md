@@ -106,6 +106,7 @@ Normal 本地状态以 `KANA_HOME` 为根，未设置时默认为 `~/.kana`。�
 | Skills 与系统 prompt 装配 | [Skills 与系统提示词](skills-and-prompt.zh-CN.md) |
 | TUI 命令、焦点、controller、事件投影 | [TUI 交互](tui.zh-CN.md) |
 | 布局、重绘、宽度、Markdown、工具展示 | [终端渲染](terminal-rendering.zh-CN.md) |
+| Kana Agent GitHub 集成 | [Kana Agent 可复用 workflow](kana-agent-workflow.zh-CN.md) |
 | Release 自动化、分发与自更新 | [发版流程](releasing.zh-CN.md) |
 
 跨边界修改应更新每个受影响 owner，但只重复连接这些边界所需的摘要。文档索引包含完整的代码到文档查找表。

@@ -1,0 +1,13 @@
+base_url = "https://api.commandcode.ai/provider/v1"
+api_key_env = "KANA_MODEL_API_KEY"
+timeout_ms = 120000
+max_retries = 1
+
+[[models]]
+name = "deepseek/deepseek-v4-flash"
+context_window = 1000000
+max_output_tokens = 393216
+supports_parallel_tool_calls = true
+supports_image_input = false
+reasoning_efforts = ["high", "max"]
+default_reasoning_effort = "max"
