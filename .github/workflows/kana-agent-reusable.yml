@@ -162,7 +162,7 @@ jobs:
       - name: Install Kana runtime
         if: steps.context.outputs.active == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
           KANA_VERSION: ${{ inputs.kana-version }}
         run: |
           set -euo pipefail

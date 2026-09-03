@@ -33,9 +33,10 @@ jobs:
       KANA_MODEL_API_KEY: ${{ secrets.KANA_MODEL_API_KEY }}
 ```
 
-`KANA_GITHUB_TOKEN` 是必需 secret。它用于识别 Kana 账号，并在调用仓库中发布分支、draft
-pull request 和评论。该 token 需要 Contents、Issues 与 Pull requests 的读写权限；如果希望
-Kana 发布 workflow 文件变更，还需要更新 workflow 文件的权限。
+`KANA_GITHUB_TOKEN` 是必需 secret。它用于识别 Kana 账号、跨仓库读取 Kana 的公开 release
+metadata 和 assets，并在调用仓库中发布分支、draft pull request 和评论。该 token 需要
+Contents、Issues 与 Pull requests 的读写权限；如果希望 Kana 发布 workflow 文件变更，还需要
+更新 workflow 文件的权限。
 
 只有所选 provider 需要 bearer/API key 时，才必须配置 `KANA_MODEL_API_KEY`。Kana 只通过这个
 provider-neutral 环境变量接收凭据；workflow 会先从 handoff 和失败文本中抹除它，再发布这些

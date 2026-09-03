@@ -34,10 +34,11 @@ jobs:
       KANA_MODEL_API_KEY: ${{ secrets.KANA_MODEL_API_KEY }}
 ```
 
-`KANA_GITHUB_TOKEN` is required. It identifies the Kana account and publishes branches,
-draft pull requests, and comments. Give that token read/write access to Contents, Issues,
-and Pull requests in the caller repository. It also needs permission to update workflow
-files if Kana is expected to publish such changes.
+`KANA_GITHUB_TOKEN` is required. It identifies the Kana account, reads Kana's public
+release metadata and assets across the repository boundary, and publishes branches, draft
+pull requests, and comments. Give that token read/write access to Contents, Issues, and
+Pull requests in the caller repository. It also needs permission to update workflow files
+if Kana is expected to publish such changes.
 
 `KANA_MODEL_API_KEY` is required only when the selected provider needs a bearer/API key.
 It is exposed to Kana under that provider-neutral environment-variable name and is
