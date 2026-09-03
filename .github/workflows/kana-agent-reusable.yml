@@ -1,0 +1,998 @@
+name: Kana Agent Reusable
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: Repository-relative Kana config path.
+        required: true
+        type: string
+      custom-provider-path:
+        description: Optional repository-relative Custom provider config path.
+        required: false
+        default: ""
+        type: string
+      setup-script-path:
+        description: Optional repository-relative setup script run before Kana.
+        required: false
+        default: ""
+        type: string
+      preflight-command:
+        description: Optional command run after Kana changes the checkout.
+        required: false
+        default: ""
+        type: string
+      kana-version:
+        description: Kana release tag to run, or latest.
+        required: false
+        default: latest
+        type: string
+      authorized-maintainer:
+        description: Login allowed to invoke Kana; defaults to the caller repository owner.
+        required: false
+        default: ""
+        type: string
+    secrets:
+      KANA_GITHUB_TOKEN:
+        description: Token for the GitHub account that publishes Kana branches and pull requests.
+        required: true
+      KANA_MODEL_API_KEY:
+        description: Optional model credential named by the repository-local provider config.
+        required: false
+
+concurrency:
+  group: kana-agent-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  kana:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.action == 'created' &&
+      github.event.comment.user.login == (inputs.authorized-maintainer || github.repository_owner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+
+    steps:
+      - name: Identify Kana account
+        id: kana_account
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+
+          login="$(gh api user --jq .login)"
+          id="$(gh api user --jq .id)"
+
+          echo "login=$login" >> "$GITHUB_OUTPUT"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+          if [[ "$COMMENT_BODY" == *"@$login"* ]]; then
+            echo "mentioned=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mentioned=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve task context
+        id: context
+        if: steps.kana_account.outputs.mentioned == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KANA_LOGIN: ${{ steps.kana_account.outputs.login }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          echo "active=false" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "$PR_URL" ]]; then
+            if [[ "$COMMENT_BODY" != *"@$KANA_LOGIN fix"* ]]; then
+              echo "Ignoring: issue tasks must contain '@$KANA_LOGIN fix'." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            jq -r '.issue.title // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-title.txt"
+            jq -r '.issue.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-body.txt"
+            jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-comment.txt"
+
+            echo "mode=issue" >> "$GITHUB_OUTPUT"
+            echo "ref=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "base=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$ISSUE_NUMBER" > "$RUNNER_TEMP/pr.json"
+
+          pr_author="$(jq -r '.user.login' "$RUNNER_TEMP/pr.json")"
+          head_repo="$(jq -r '.head.repo.full_name' "$RUNNER_TEMP/pr.json")"
+          head_ref="$(jq -r '.head.ref' "$RUNNER_TEMP/pr.json")"
+          base_ref="$(jq -r '.base.ref' "$RUNNER_TEMP/pr.json")"
+          state="$(jq -r '.state' "$RUNNER_TEMP/pr.json")"
+
+          if [[ "$pr_author" != "$KANA_LOGIN" || "$head_repo" != "$GITHUB_REPOSITORY" || "$state" != "open" ]]; then
+            echo "Ignoring: PR follow-up is only enabled for open Kana-authored branches in this repository." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [[ ! "$head_ref" =~ ^kana/issue-([1-9][0-9]*)-[0-9]+$ ]]; then
+            echo "Ignoring: the Kana branch name does not identify its source issue." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          source_issue="${BASH_REMATCH[1]}"
+
+          if ! gh api "repos/$GITHUB_REPOSITORY/issues/$source_issue" > "$RUNNER_TEMP/source-issue.json"; then
+            echo "Failed to load source issue #$source_issue for PR follow-up context." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if jq -e 'has("pull_request")' "$RUNNER_TEMP/source-issue.json" >/dev/null; then
+            echo "Refusing PR follow-up because #$source_issue is not an issue." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          jq -r '.title // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/task-title.txt"
+          jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/task-body.txt"
+          jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/task-comment.txt"
+          jq -r '.title // ""' "$RUNNER_TEMP/source-issue.json" > "$RUNNER_TEMP/source-issue-title.txt"
+          jq -r '.body // ""' "$RUNNER_TEMP/source-issue.json" > "$RUNNER_TEMP/source-issue-body.txt"
+
+          echo "mode=pr" >> "$GITHUB_OUTPUT"
+          echo "ref=$head_ref" >> "$GITHUB_OUTPUT"
+          echo "base=$base_ref" >> "$GITHUB_OUTPUT"
+          echo "source_issue=$source_issue" >> "$GITHUB_OUTPUT"
+          echo "active=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.context.outputs.active == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.context.outputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Kana runtime
+        if: steps.context.outputs.active == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          KANA_VERSION: ${{ inputs.kana-version }}
+        run: |
+          set -euo pipefail
+
+          runtime_repository="longyijdos/kana"
+          if [[ "$KANA_VERSION" == "latest" ]]; then
+            release_tag="$(gh api "repos/$runtime_repository/releases/latest" --jq '.tag_name')"
+          else
+            release_tag="$KANA_VERSION"
+          fi
+          runtime_dir="$RUNNER_TEMP/kana-runtime"
+          mkdir -p "$runtime_dir"
+
+          gh release download "$release_tag" \
+            --repo "$runtime_repository" \
+            --pattern 'kana-linux-x64' \
+            --pattern 'kana-linux-x64.sha256' \
+            --dir "$runtime_dir"
+
+          (
+            cd "$runtime_dir"
+            sha256sum --check kana-linux-x64.sha256
+            chmod +x kana-linux-x64
+          )
+
+          echo "KANA_BIN=$runtime_dir/kana-linux-x64" >> "$GITHUB_ENV"
+          printf 'Using Kana runtime `%s` from `%s`.\n' \
+            "$release_tag" "$runtime_repository" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure Kana
+        if: steps.context.outputs.active == 'true'
+        env:
+          CONFIG_PATH: ${{ inputs.config-path }}
+          CUSTOM_PROVIDER_PATH: ${{ inputs.custom-provider-path }}
+          CALLER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          validate_path() {
+            local repository_path="$1"
+            if [[ -z "$repository_path" || "$repository_path" == /* ||
+              "$repository_path" == ".." || "$repository_path" == ../* ||
+              "$repository_path" == */../* || "$repository_path" == */.. ]]; then
+              printf 'Invalid repository-relative path: %s\n' "$repository_path" >&2
+              exit 1
+            fi
+          }
+
+          validate_path "$CONFIG_PATH"
+          if ! git cat-file -e "$CALLER_SHA:$CONFIG_PATH" 2>/dev/null; then
+            printf 'Kana config was not found at %s in caller commit %s.\n' \
+              "$CONFIG_PATH" "$CALLER_SHA" >&2
+            exit 1
+          fi
+
+          kana_home="$RUNNER_TEMP/kana-home"
+          mkdir -p "$kana_home/providers"
+          git show "$CALLER_SHA:$CONFIG_PATH" > "$kana_home/config.toml"
+
+          if [[ -n "$CUSTOM_PROVIDER_PATH" ]]; then
+            validate_path "$CUSTOM_PROVIDER_PATH"
+            if ! git cat-file -e "$CALLER_SHA:$CUSTOM_PROVIDER_PATH" 2>/dev/null; then
+              printf 'Custom provider config was not found at %s in caller commit %s.\n' \
+                "$CUSTOM_PROVIDER_PATH" "$CALLER_SHA" >&2
+              exit 1
+            fi
+            git show "$CALLER_SHA:$CUSTOM_PROVIDER_PATH" > "$kana_home/providers/custom.toml"
+          fi
+
+          echo "KANA_HOME=$kana_home" >> "$GITHUB_ENV"
+
+      - name: Run repository setup
+        if: steps.context.outputs.active == 'true' && inputs.setup-script-path != ''
+        env:
+          SETUP_SCRIPT_PATH: ${{ inputs.setup-script-path }}
+          CALLER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$SETUP_SCRIPT_PATH" == /* || "$SETUP_SCRIPT_PATH" == ".." ||
+            "$SETUP_SCRIPT_PATH" == ../* || "$SETUP_SCRIPT_PATH" == */../* ||
+            "$SETUP_SCRIPT_PATH" == */.. ]]; then
+            printf 'Invalid repository-relative setup script path: %s\n' "$SETUP_SCRIPT_PATH" >&2
+            exit 1
+          fi
+          if ! git cat-file -e "$CALLER_SHA:$SETUP_SCRIPT_PATH" 2>/dev/null; then
+            printf 'Repository setup script was not found at %s in caller commit %s.\n' \
+              "$SETUP_SCRIPT_PATH" "$CALLER_SHA" >&2
+            exit 1
+          fi
+
+          git show "$CALLER_SHA:$SETUP_SCRIPT_PATH" > "$RUNNER_TEMP/kana-setup.sh"
+          set +e
+          bash "$RUNNER_TEMP/kana-setup.sh"
+          setup_status=$?
+          set -e
+
+          if [[ "$setup_status" -ne 0 ]]; then
+            {
+              printf '\n> [!WARNING]\n'
+              printf '> Repository setup failed. Kana will still run so it can inspect and repair the checkout.\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Prepare Kana prompt
+        if: steps.context.outputs.active == 'true'
+        env:
+          MODE: ${{ steps.context.outputs.mode }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          SOURCE_ISSUE: ${{ steps.context.outputs.source_issue }}
+        run: |
+          set -euo pipefail
+
+          {
+            if [[ "$MODE" == "issue" ]]; then
+              printf 'You are implementing GitHub issue #%s in the current repository.\n\n' "$ISSUE_NUMBER"
+              printf 'Issue title:\n'
+            else
+              printf 'You are continuing work on GitHub pull request #%s in the current repository.\n\n' "$ISSUE_NUMBER"
+              printf 'Pull request title:\n'
+            fi
+
+            cat "$RUNNER_TEMP/task-title.txt"
+
+            if [[ "$MODE" == "issue" ]]; then
+              printf '\n\nIssue description:\n'
+            else
+              printf '\n\nPull request description:\n'
+            fi
+
+            cat "$RUNNER_TEMP/task-body.txt"
+
+            if [[ "$MODE" == "pr" ]]; then
+              printf '\n\nOriginal issue #%s:\n\n' "$SOURCE_ISSUE"
+              printf 'Issue title:\n'
+              cat "$RUNNER_TEMP/source-issue-title.txt"
+              printf '\n\nIssue description:\n'
+              cat "$RUNNER_TEMP/source-issue-body.txt"
+            fi
+
+            if [[ "$MODE" == "issue" ]]; then
+              printf '\n\nMaintainer command:\n'
+            else
+              printf '\n\nLatest maintainer instruction:\n'
+            fi
+
+            cat "$RUNNER_TEMP/task-comment.txt"
+
+            printf '\n\nWork directly in the checked-out repository.\n'
+            printf 'Inspect the code before modifying it and keep changes scoped to the requested task.\n'
+            printf 'This non-interactive run authorizes both implementation and completion phases: include relevant tests and documentation, run useful checks, and do not pause to request review.\n'
+            printf 'Do not commit, push, create or update pull requests, or use GitHub credentials.\n'
+            printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n'
+            printf 'Before the final handoff, verify the requested work and call update_goal with completed. Use blocked only when meaningful progress requires user input or an external state change.\n'
+            printf '\nYour final response is a handoff consumed by the workflow. Use exactly this shape:\n\n'
+            printf 'PR_TITLE: <one concise title describing the actual change>\n\n'
+            printf '## Summary\n'
+            printf -- '- <concise user-visible or architectural change>\n'
+            printf -- '- <another material change when useful>\n\n'
+            printf '## Notes\n'
+            printf -- '- <remaining risk, limitation, or follow-up; use "None." when there is none>\n\n'
+            printf 'Use one line for PR_TITLE, keep it at most 120 characters, and follow any title or commit conventions documented in the repository.\n'
+            printf 'Do not add a Validation section; the workflow reports checks independently. Do not mention commit, push, or pull-request restrictions or claim that those operations were or were not performed.\n'
+          } > "$RUNNER_TEMP/kana-prompt.txt"
+
+      - name: Run Kana
+        id: run_kana
+        if: steps.context.outputs.active == 'true'
+        env:
+          KANA_MODEL_API_KEY: ${{ secrets.KANA_MODEL_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          set +e
+          "$KANA_BIN" exec --goal --timeout 30m --json --allow-all-tools \
+            < "$RUNNER_TEMP/kana-prompt.txt" \
+            > "$RUNNER_TEMP/kana.jsonl"
+          exit_code=$?
+          set -e
+
+          run_completed="$(jq -c -s '[.[] | select(.type == "run.completed")] | last // empty' \
+            "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || true)"
+          run_failed="$(jq -c -s '[.[] | select(.type == "run.failed" or .type == "error")] | last // empty' \
+            "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || true)"
+          outcome="$(jq -r '.outcome // empty' <<< "$run_completed" 2>/dev/null || true)"
+          termination_reason="$(jq -r '.termination.reason // empty' <<< "$run_completed" 2>/dev/null || true)"
+          goal_status="$(jq -r '.goal.status // empty' <<< "$run_completed" 2>/dev/null || true)"
+          goal_admitted_rounds="$(jq -r '.goal.admitted_rounds // empty' <<< "$run_completed" 2>/dev/null || true)"
+          goal_max_rounds="$(jq -r '.goal.max_rounds // empty' <<< "$run_completed" 2>/dev/null || true)"
+          goal_detail="$(jq -r '.goal.detail // empty' <<< "$run_completed" 2>/dev/null || true)"
+
+          result="failed"
+          if [[ -z "$run_failed" && "$outcome" == "aborted" && "$termination_reason" == "timeout" && "$exit_code" -eq 124 ]]; then
+            result="timeout"
+          elif [[ -z "$run_failed" && "$goal_status" == "completed" && "$exit_code" -eq 0 ]]; then
+            result="completed"
+          elif [[ -z "$run_failed" && "$goal_status" == "blocked" && "$exit_code" -eq 1 ]]; then
+            result="blocked"
+          elif [[ -z "$run_failed" && "$goal_status" == "round_limit" && "$exit_code" -eq 1 ]]; then
+            result="round_limit"
+          fi
+
+          if ! jq -r -s '[.[] | select(.type == "assistant.completed") | .text] | last // ""' \
+            "$RUNNER_TEMP/kana.jsonl" > "$RUNNER_TEMP/kana-final-response.txt" 2>/dev/null; then
+            : > "$RUNNER_TEMP/kana-final-response.txt"
+          fi
+
+          # The final response may be published on a public PR, including when its
+          # structure is invalid, so redact the provider credential before parsing it.
+          if [[ -n "${KANA_MODEL_API_KEY:-}" && -s "$RUNNER_TEMP/kana-final-response.txt" ]]; then
+            perl -0pi -e 's/\Q$ENV{KANA_MODEL_API_KEY}\E/[REDACTED]/g' "$RUNNER_TEMP/kana-final-response.txt"
+          fi
+
+          turn_count="$(jq -r -s '[.[] | select(.type == "model_turn.started")] | length' \
+            "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || printf '0')"
+          tool_count="$(jq -r -s '[.[] | select(.type == "tool.completed")] | length' \
+            "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || printf '0')"
+          tool_error_count="$(jq -r -s '[.[] | select(.type == "tool.completed" and .is_error == true)] | length' \
+            "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || printf '0')"
+
+          input_tokens="$(jq -r '.usage.input_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+          output_tokens="$(jq -r '.usage.output_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+          total_tokens="$(jq -r '.usage.total_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+          cached_tokens="$(jq -r '.usage.cache_read_input_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+          reasoning_tokens="$(jq -r '.usage.reasoning_tokens // empty' <<< "$run_completed" 2>/dev/null || true)"
+
+          format_number() {
+            printf '%s' "$1" | rev | sed 's/[0-9][0-9][0-9]/&,/g' | rev | sed 's/^,//'
+          }
+
+          {
+            printf '**Run:** %s turns · %s tools' \
+              "$(format_number "$turn_count")" \
+              "$(format_number "$tool_count")"
+            if [[ "$tool_error_count" =~ ^[0-9]+$ && "$tool_error_count" -gt 0 ]]; then
+              printf ' · %s tool errors' "$(format_number "$tool_error_count")"
+            fi
+            if [[ -n "$goal_status" ]]; then
+              printf ' · Goal %s (%s/%s rounds)' \
+                "$goal_status" \
+                "${goal_admitted_rounds:-0}" \
+                "${goal_max_rounds:-0}"
+            fi
+            if [[ "$input_tokens" =~ ^[0-9]+$ && "$output_tokens" =~ ^[0-9]+$ && "$total_tokens" =~ ^[0-9]+$ ]]; then
+              printf ' · %s tokens (%s in / %s out' \
+                "$(format_number "$total_tokens")" \
+                "$(format_number "$input_tokens")" \
+                "$(format_number "$output_tokens")"
+              if [[ "$cached_tokens" =~ ^[0-9]+$ && "$cached_tokens" -gt 0 ]]; then
+                printf '; %s cached' "$(format_number "$cached_tokens")"
+              fi
+              if [[ "$reasoning_tokens" =~ ^[0-9]+$ && "$reasoning_tokens" -gt 0 ]]; then
+                printf '; %s reasoning' "$(format_number "$reasoning_tokens")"
+              fi
+              printf ')'
+            else
+              printf ' · token usage unavailable'
+            fi
+            printf '\n'
+          } > "$RUNNER_TEMP/run-details.md"
+
+          session_id="$(jq -r 'select(.type == "session.started") | .session_id' "$RUNNER_TEMP/kana.jsonl" 2>/dev/null | tail -n 1 || true)"
+          failure_event=""
+          failure_detail=""
+
+          if [[ -n "$run_failed" ]]; then
+            failure_event="$(jq -r '.type // "structured-error"' <<< "$run_failed")"
+            failure_detail="$(jq -r '
+              if (.error | type) == "object" then
+                (.error.message // .error.name // "Structured Kana error")
+              elif .error != null then
+                (.error | tostring)
+              elif .message != null then
+                (.message | tostring)
+              else
+                "Structured Kana error"
+              end
+            ' <<< "$run_failed")"
+          fi
+
+          if [[ "$result" == "failed" && -n "$session_id" ]]; then
+            log_file="$(find "$KANA_HOME/logs" -type f -name "${session_id}.jsonl" -print -quit 2>/dev/null || true)"
+            if [[ -n "$log_file" ]]; then
+              log_failure="$(jq -c 'select(.level == "error")' "$log_file" 2>/dev/null | tail -n 1 || true)"
+              if [[ -n "$log_failure" ]]; then
+                failure_event="$(jq -r '.event // "log.error"' <<< "$log_failure")"
+                failure_detail="$(jq -r '
+                  [
+                    (.metadata.phase // empty),
+                    (.metadata.errorName // empty),
+                    (if .metadata.status != null then
+                      ("HTTP " + (.metadata.status | tostring) +
+                        (if (.metadata.statusText // "") != "" then " " + .metadata.statusText else "" end))
+                     else empty end),
+                    (.metadata.message // empty),
+                    (.metadata.error.message // empty)
+                  ]
+                  | map(select(type == "string" and length > 0))
+                  | unique
+                  | join(": ")
+                ' <<< "$log_failure")"
+              fi
+            fi
+          fi
+
+          if [[ "$result" == "failed" && -z "$failure_detail" && -n "$goal_status" ]]; then
+            failure_event="goal.$goal_status"
+            failure_detail="$goal_detail"
+          fi
+
+          if [[ "$result" == "failed" && -z "$failure_detail" ]]; then
+            failure_detail="No structured diagnostic was emitted; inspect the workflow run logs."
+          fi
+
+          if [[ -n "${KANA_MODEL_API_KEY:-}" && -n "$failure_detail" ]]; then
+            failure_detail="${failure_detail//$KANA_MODEL_API_KEY/[REDACTED]}"
+          fi
+          failure_detail="$(printf '%s' "$failure_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
+          printf '%s\n' "$failure_detail" > "$RUNNER_TEMP/kana-failure.txt"
+
+          if [[ -n "${KANA_MODEL_API_KEY:-}" && -n "$goal_detail" ]]; then
+            goal_detail="${goal_detail//$KANA_MODEL_API_KEY/[REDACTED]}"
+          fi
+          goal_detail="$(printf '%s' "$goal_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
+          printf '%s\n' "$goal_detail" > "$RUNNER_TEMP/kana-goal-detail.txt"
+
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+          echo "termination_reason=$termination_reason" >> "$GITHUB_OUTPUT"
+          echo "goal_status=$goal_status" >> "$GITHUB_OUTPUT"
+          echo "goal_admitted_rounds=$goal_admitted_rounds" >> "$GITHUB_OUTPUT"
+          echo "goal_max_rounds=$goal_max_rounds" >> "$GITHUB_OUTPUT"
+          echo "failure_event=$failure_event" >> "$GITHUB_OUTPUT"
+          echo "turn_count=$turn_count" >> "$GITHUB_OUTPUT"
+          echo "tool_count=$tool_count" >> "$GITHUB_OUTPUT"
+          echo "tool_error_count=$tool_error_count" >> "$GITHUB_OUTPUT"
+
+          {
+            printf '\n### Kana run\n\n'
+            printf -- '- Result: `%s`\n' "$result"
+            printf -- '- Exit code: `%s`\n' "$exit_code"
+            printf -- '- Outcome: `%s`\n' "${outcome:-none}"
+            printf -- '- Goal: `%s` (%s/%s rounds)\n' \
+              "${goal_status:-none}" \
+              "${goal_admitted_rounds:-0}" \
+              "${goal_max_rounds:-0}"
+            if [[ -s "$RUNNER_TEMP/kana-goal-detail.txt" ]]; then
+              printf -- '- Goal detail: '
+              jq -Rrs '@html' "$RUNNER_TEMP/kana-goal-detail.txt"
+            fi
+            if [[ -n "$termination_reason" ]]; then
+              printf -- '- Termination: `%s`\n' "$termination_reason"
+            fi
+            printf -- '- Model turns: `%s`\n' "$turn_count"
+            printf -- '- Completed tools: `%s` (%s reported errors)\n' "$tool_count" "$tool_error_count"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$result" == "failed" ]]; then
+            {
+              printf '### Kana failure\n\n'
+              printf -- '- Exit code: `%s`\n' "$exit_code"
+              printf -- '- Outcome: `%s`\n' "$outcome"
+              if [[ -n "$failure_event" ]]; then
+                printf -- '- Event: `%s`\n' "$failure_event"
+              fi
+              printf '\nDiagnostic:\n\n'
+              sed 's/^/> /' "$RUNNER_TEMP/kana-failure.txt"
+              printf '\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Prepare publication metadata
+        id: handoff
+        if: steps.context.outputs.active == 'true'
+        env:
+          RESULT: ${{ steps.run_kana.outputs.result }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          task_title="$(tr '\r\n' '  ' < "$RUNNER_TEMP/task-title.txt" | sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//' | cut -c1-120)"
+          if [[ -z "$task_title" ]]; then
+            task_title="Address #$ISSUE_NUMBER"
+          fi
+
+          handoff_valid=false
+          : > "$RUNNER_TEMP/kana-handoff.md"
+          : > "$RUNNER_TEMP/kana-handoff-fallback.md"
+          : > "$RUNNER_TEMP/kana-handoff-raw.md"
+          handoff_failures=()
+          if [[ "$RESULT" == "completed" ]]; then
+            tr -d '\r' < "$RUNNER_TEMP/kana-final-response.txt" > "$RUNNER_TEMP/kana-final-response-normalized.txt"
+            if [[ ! -s "$RUNNER_TEMP/kana-final-response-normalized.txt" ]]; then
+              handoff_failures+=("empty_response")
+            else
+              mapfile -t title_markers < <(grep -n '^PR_TITLE:' "$RUNNER_TEMP/kana-final-response-normalized.txt" || true)
+              mapfile -t summary_markers < <(grep -Fnx '## Summary' "$RUNNER_TEMP/kana-final-response-normalized.txt" || true)
+              mapfile -t notes_markers < <(grep -Fnx '## Notes' "$RUNNER_TEMP/kana-final-response-normalized.txt" || true)
+
+              if [[ ${#title_markers[@]} -eq 0 ]]; then
+                handoff_failures+=("missing_pr_title")
+              elif [[ ${#title_markers[@]} -gt 1 ]]; then
+                handoff_failures+=("duplicate_pr_title")
+              fi
+              if [[ ${#summary_markers[@]} -eq 0 ]]; then
+                handoff_failures+=("missing_summary")
+              elif [[ ${#summary_markers[@]} -gt 1 ]]; then
+                handoff_failures+=("duplicate_summary")
+              fi
+              if [[ ${#notes_markers[@]} -eq 0 ]]; then
+                handoff_failures+=("missing_notes")
+              elif [[ ${#notes_markers[@]} -gt 1 ]]; then
+                handoff_failures+=("duplicate_notes")
+              fi
+
+              proposed_title=""
+              if [[ ${#title_markers[@]} -eq 1 ]]; then
+                title_line="${title_markers[0]%%:*}"
+                title_marker="${title_markers[0]#*:}"
+                if [[ "$title_marker" == PR_TITLE:\ * ]]; then
+                  proposed_title="$(printf '%s' "${title_marker#PR_TITLE: }" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+                fi
+                if [[ -z "$proposed_title" ]]; then
+                  handoff_failures+=("empty_title")
+                elif [[ ${#proposed_title} -gt 120 ]]; then
+                  handoff_failures+=("title_too_long")
+                fi
+              fi
+
+              if [[ ${#title_markers[@]} -eq 1 && ${#summary_markers[@]} -eq 1 && ${#notes_markers[@]} -eq 1 ]]; then
+                summary_line="${summary_markers[0]%%:*}"
+                notes_line="${notes_markers[0]%%:*}"
+
+                if [[ "$title_line" -ge "$summary_line" || "$summary_line" -ge "$notes_line" ]]; then
+                  handoff_failures+=("invalid_marker_order")
+                else
+                  if [[ "$summary_line" -gt $((title_line + 1)) ]]; then
+                    content_before_summary="$(sed -n "$((title_line + 1)),$((summary_line - 1))p" "$RUNNER_TEMP/kana-final-response-normalized.txt" | sed '/^[[:space:]]*$/d')"
+                    if [[ -n "$content_before_summary" ]]; then
+                      handoff_failures+=("content_before_summary")
+                    fi
+                  fi
+
+                  sed -n "${summary_line},\$p" "$RUNNER_TEMP/kana-final-response-normalized.txt" > "$RUNNER_TEMP/kana-handoff-candidate.md"
+                  body_size="$(wc -c < "$RUNNER_TEMP/kana-handoff-candidate.md")"
+                  if [[ "$body_size" -gt 12000 ]]; then
+                    handoff_failures+=("body_too_long")
+                  fi
+                fi
+              fi
+
+              if [[ ${#handoff_failures[@]} -eq 0 ]]; then
+                handoff_valid=true
+                printf '%s\n' "$proposed_title" > "$RUNNER_TEMP/change-title.txt"
+                printf '%s\n' "$proposed_title" > "$RUNNER_TEMP/pr-title.txt"
+                cp "$RUNNER_TEMP/kana-handoff-candidate.md" "$RUNNER_TEMP/kana-handoff.md"
+              fi
+            fi
+          fi
+
+          if [[ "$handoff_valid" != "true" ]]; then
+            if [[ "$RESULT" == "timeout" || "$RESULT" == "blocked" || "$RESULT" == "round_limit" ]]; then
+              printf 'Preserve partial progress for #%s\n' "$ISSUE_NUMBER" > "$RUNNER_TEMP/change-title.txt"
+            else
+              printf '%s\n' "$task_title" > "$RUNNER_TEMP/change-title.txt"
+            fi
+            printf '%s\n' "$task_title" > "$RUNNER_TEMP/pr-title.txt"
+
+            if [[ "$RESULT" == "completed" ]]; then
+              handoff_failure_summary=""
+              for failure in "${handoff_failures[@]}"; do
+                if [[ -n "$handoff_failure_summary" ]]; then
+                  handoff_failure_summary+=", "
+                fi
+                handoff_failure_summary+="$failure"
+              done
+
+              {
+                printf '## Summary\n\n'
+                printf -- '- Kana completed the run, but its final handoff could not be parsed; review the diff directly.\n\n'
+                printf '## Notes\n\n'
+                printf -- '- Handoff validation failed: `%s`.\n' "$handoff_failure_summary"
+                printf -- '- PR and commit titles used safe workflow fallbacks.\n'
+              } > "$RUNNER_TEMP/kana-handoff-fallback.md"
+            fi
+          fi
+
+          if [[ "$RESULT" == "completed" && -s "$RUNNER_TEMP/kana-final-response-normalized.txt" ]]; then
+            response_length="$(jq -Rrs 'length' "$RUNNER_TEMP/kana-final-response-normalized.txt")"
+            {
+              printf '<details>\n<summary>Agent handoff</summary>\n\n<pre>'
+              jq -Rrs '.[0:8000] | @html' "$RUNNER_TEMP/kana-final-response-normalized.txt"
+              if [[ "$response_length" -gt 8000 ]]; then
+                printf '\n… [truncated]'
+              fi
+              printf '</pre>\n</details>\n'
+            } > "$RUNNER_TEMP/kana-handoff-raw.md"
+          fi
+
+          echo "valid=$handoff_valid" >> "$GITHUB_OUTPUT"
+
+          {
+            printf '\n### Kana handoff\n\n'
+            printf -- '- Valid: `%s`\n' "$handoff_valid"
+            if [[ "$RESULT" == "completed" && "$handoff_valid" != "true" ]]; then
+              printf -- '- Validation failures: `%s`\n' "$handoff_failure_summary"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Detect changes
+        id: initial_changes
+        if: steps.context.outputs.active == 'true'
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run preflight checks
+        id: preflight
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          steps.initial_changes.outputs.changed == 'true' &&
+          inputs.preflight-command != '' &&
+          (steps.run_kana.outputs.result == 'completed' ||
+           steps.run_kana.outputs.result == 'blocked' ||
+           steps.run_kana.outputs.result == 'round_limit')
+        env:
+          PREFLIGHT_COMMAND: ${{ inputs.preflight-command }}
+        run: |
+          set +e
+          bash -eo pipefail -c "$PREFLIGHT_COMMAND"
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Detect publishable changes
+        id: publishable
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          (steps.run_kana.outputs.result == 'completed' ||
+           steps.run_kana.outputs.result == 'blocked' ||
+           steps.run_kana.outputs.result == 'round_limit' ||
+           steps.run_kana.outputs.result == 'timeout')
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git status --short > "$RUNNER_TEMP/change-files.txt"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            : > "$RUNNER_TEMP/change-files.txt"
+          fi
+
+      - name: Commit changes
+        id: commit
+        if: steps.publishable.outputs.changed == 'true'
+        env:
+          KANA_LOGIN: ${{ steps.kana_account.outputs.login }}
+          KANA_ID: ${{ steps.kana_account.outputs.id }}
+          MODE: ${{ steps.context.outputs.mode }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "$KANA_LOGIN"
+          git config user.email "${KANA_ID}+${KANA_LOGIN}@users.noreply.github.com"
+
+          if [[ "$MODE" == "issue" ]]; then
+            branch="kana/issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}"
+            git switch -c "$branch"
+          else
+            branch="${{ steps.context.outputs.ref }}"
+          fi
+
+          git add -A
+          git commit --no-verify -F "$RUNNER_TEMP/change-title.txt"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Push as Kana
+        if: steps.publishable.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://github.com/$GITHUB_REPOSITORY.git"
+          gh auth setup-git
+          git push --no-verify origin "HEAD:$BRANCH"
+
+      - name: Create draft pull request
+        id: create_pr
+        if: steps.publishable.outputs.changed == 'true' && steps.context.outputs.mode == 'issue'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+          BASE: ${{ steps.context.outputs.base }}
+          RESULT: ${{ steps.run_kana.outputs.result }}
+          HANDOFF_VALID: ${{ steps.handoff.outputs.valid }}
+          PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$RESULT" == "timeout" ]]; then
+            status_line="⚠️ Kana reached the 30-minute Agent-run timeout; partial progress was preserved."
+            check_line="⏭️ Preflight checks were skipped for interrupted work."
+          elif [[ "$RESULT" == "round_limit" ]]; then
+            status_line="⚠️ Kana reached the configured Goal round limit; partial progress was preserved."
+            if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+              check_line="✅ Preflight checks passed."
+            elif [[ -z "$PREFLIGHT_STATUS" ]]; then
+              check_line="⏭️ Preflight checks were not configured."
+            else
+              check_line="⚠️ Preflight checks did not pass; review CI before merging."
+            fi
+          elif [[ "$RESULT" == "blocked" ]]; then
+            status_line="⚠️ Kana reported that the Goal is blocked; partial progress was preserved."
+            if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+              check_line="✅ Preflight checks passed."
+            elif [[ -z "$PREFLIGHT_STATUS" ]]; then
+              check_line="⏭️ Preflight checks were not configured."
+            else
+              check_line="⚠️ Preflight checks did not pass; review CI before merging."
+            fi
+          else
+            status_line="✅ Kana completed the requested work."
+            if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+              check_line="✅ Preflight checks passed."
+            elif [[ -z "$PREFLIGHT_STATUS" ]]; then
+              check_line="⏭️ Preflight checks were not configured."
+            else
+              check_line="⚠️ Preflight checks did not pass; review CI before merging."
+            fi
+          fi
+
+          {
+            printf '%s\n\n%s\n\n' "$status_line" "$check_line"
+            if [[ "$RESULT" == "completed" && "$HANDOFF_VALID" == "true" ]]; then
+              cat "$RUNNER_TEMP/kana-handoff.md"
+            elif [[ "$RESULT" == "completed" ]]; then
+              cat "$RUNNER_TEMP/kana-handoff-fallback.md"
+            else
+              printf '## Partial progress\n\n'
+              printf '## Changed files\n\n```text\n'
+              cat "$RUNNER_TEMP/change-files.txt"
+              printf '```\n'
+            fi
+            if [[ "$RESULT" == "completed" && -s "$RUNNER_TEMP/kana-handoff-raw.md" ]]; then
+              printf '\n\n'
+              cat "$RUNNER_TEMP/kana-handoff-raw.md"
+            fi
+            printf '\n\n'
+            cat "$RUNNER_TEMP/run-details.md"
+            printf '\n\nCloses #%s\n' "$ISSUE_NUMBER"
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          gh pr create \
+            --draft \
+            --base "$BASE" \
+            --head "$BRANCH" \
+            --title "$(cat "$RUNNER_TEMP/pr-title.txt")" \
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            > "$RUNNER_TEMP/pr-url.txt"
+
+          echo "url=$(cat "$RUNNER_TEMP/pr-url.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on issue after creating PR
+        if: steps.create_pr.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PR_URL: ${{ steps.create_pr.outputs.url }}
+          RESULT: ${{ steps.run_kana.outputs.result }}
+          PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
+        run: |
+          if [[ "$RESULT" == "timeout" ]]; then
+            printf 'I preserved partial progress after the 30-minute timeout in a draft PR: %s\n\nMention me in that PR to continue. Preflight checks were skipped for the interrupted work.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
+          elif [[ "$RESULT" == "round_limit" ]]; then
+            printf 'I preserved partial progress after reaching the configured Goal round limit in a draft PR: %s\n\nMention me in that PR to continue.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
+          elif [[ "$RESULT" == "blocked" ]]; then
+            printf 'I preserved partial progress for a blocked Goal in a draft PR: %s\n\nReview the blocker and mention me in that PR to continue.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
+          elif [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+            printf 'I opened a draft PR with the completed implementation: %s\n\nPreflight checks passed.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
+          elif [[ -z "$PREFLIGHT_STATUS" ]]; then
+            printf 'I opened a draft PR with the completed implementation: %s\n\nPreflight checks were not configured.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
+          else
+            printf 'I opened a draft PR with the completed implementation: %s\n\nPreflight checks did not pass; review CI before merging.\n' "$PR_URL" > "$RUNNER_TEMP/comment.md"
+          fi
+          gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
+
+      - name: Comment on updated PR
+        if: steps.publishable.outputs.changed == 'true' && steps.context.outputs.mode == 'pr'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          RESULT: ${{ steps.run_kana.outputs.result }}
+          HANDOFF_VALID: ${{ steps.handoff.outputs.valid }}
+          PREFLIGHT_STATUS: ${{ steps.preflight.outputs.status }}
+        run: |
+          if [[ "$RESULT" == "timeout" ]]; then
+            status_line="I pushed partial progress after reaching the 30-minute timeout. Mention me again to continue."
+            check_line="Preflight checks were skipped for the interrupted work."
+          elif [[ "$RESULT" == "round_limit" ]]; then
+            status_line="I pushed partial progress after reaching the configured Goal round limit. Mention me again to continue."
+            if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+              check_line="Preflight checks passed."
+            elif [[ -z "$PREFLIGHT_STATUS" ]]; then
+              check_line="Preflight checks were not configured."
+            else
+              check_line="Preflight checks did not pass; please check the latest CI run."
+            fi
+          elif [[ "$RESULT" == "blocked" ]]; then
+            status_line="I pushed partial progress for a blocked Goal. Review the blocker and mention me again to continue."
+            if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+              check_line="Preflight checks passed."
+            elif [[ -z "$PREFLIGHT_STATUS" ]]; then
+              check_line="Preflight checks were not configured."
+            else
+              check_line="Preflight checks did not pass; please check the latest CI run."
+            fi
+          else
+            status_line="I pushed the requested follow-up changes."
+            if [[ "$PREFLIGHT_STATUS" == "0" ]]; then
+              check_line="Preflight checks passed."
+            elif [[ -z "$PREFLIGHT_STATUS" ]]; then
+              check_line="Preflight checks were not configured."
+            else
+              check_line="Preflight checks did not pass; please check the latest CI run."
+            fi
+          fi
+
+          {
+            printf '%s\n\n%s\n' "$status_line" "$check_line"
+            if [[ "$RESULT" == "completed" && "$HANDOFF_VALID" == "true" ]]; then
+              printf '\n'
+              cat "$RUNNER_TEMP/kana-handoff.md"
+            elif [[ "$RESULT" == "completed" ]]; then
+              printf '\n'
+              cat "$RUNNER_TEMP/kana-handoff-fallback.md"
+            fi
+            if [[ "$RESULT" == "completed" && -s "$RUNNER_TEMP/kana-handoff-raw.md" ]]; then
+              printf '\n'
+              cat "$RUNNER_TEMP/kana-handoff-raw.md"
+            fi
+            printf '\n'
+            cat "$RUNNER_TEMP/run-details.md"
+          } > "$RUNNER_TEMP/comment.md"
+          gh pr comment "$PR_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
+
+      - name: Report no changes
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          steps.publishable.outputs.changed == 'false' &&
+          (steps.run_kana.outputs.result == 'completed' ||
+           steps.run_kana.outputs.result == 'blocked' ||
+           steps.run_kana.outputs.result == 'round_limit' ||
+           steps.run_kana.outputs.result == 'timeout')
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.issue.number }}
+          MODE: ${{ steps.context.outputs.mode }}
+          RESULT: ${{ steps.run_kana.outputs.result }}
+          HANDOFF_VALID: ${{ steps.handoff.outputs.valid }}
+          TURN_COUNT: ${{ steps.run_kana.outputs.turn_count }}
+          TOOL_COUNT: ${{ steps.run_kana.outputs.tool_count }}
+        run: |
+          {
+            if [[ "$RESULT" == "completed" ]]; then
+              printf 'Kana completed the run, but there were no working-tree changes to publish.\n'
+              if [[ "$HANDOFF_VALID" == "true" ]]; then
+                printf '\n'
+                cat "$RUNNER_TEMP/kana-handoff.md"
+              elif [[ "$MODE" == "pr" ]]; then
+                printf '\n'
+                cat "$RUNNER_TEMP/kana-handoff-fallback.md"
+              fi
+            elif [[ "$RESULT" == "timeout" ]]; then
+              printf 'Kana reached the 30-minute timeout without producing working-tree changes.\n'
+              if [[ "$MODE" != "pr" ]]; then
+                printf '\n'
+                printf -- '- Model turns started: `%s`\n' "$TURN_COUNT"
+                printf -- '- Tool calls completed: `%s`\n' "$TOOL_COUNT"
+              fi
+            elif [[ "$RESULT" == "round_limit" ]]; then
+              printf 'Kana reached the configured Goal round limit without producing working-tree changes. Mention me again to continue.\n'
+            else
+              printf 'Kana reported that the Goal is blocked without producing working-tree changes. Review the workflow summary before continuing.\n'
+            fi
+
+            if [[ "$MODE" == "pr" ]]; then
+              if [[ "$RESULT" == "completed" && -s "$RUNNER_TEMP/kana-handoff-raw.md" ]]; then
+                printf '\n'
+                cat "$RUNNER_TEMP/kana-handoff-raw.md"
+              fi
+              printf '\n'
+              cat "$RUNNER_TEMP/run-details.md"
+            fi
+          } > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$NUMBER" --body-file "$RUNNER_TEMP/comment.md"
+
+      - name: Report Kana failure
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          steps.run_kana.outputs.result == 'failed'
+        env:
+          GH_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.issue.number }}
+          EXIT_CODE: ${{ steps.run_kana.outputs.exit_code }}
+          OUTCOME: ${{ steps.run_kana.outputs.outcome }}
+          FAILURE_EVENT: ${{ steps.run_kana.outputs.failure_event }}
+        run: |
+          {
+            printf 'Kana stopped without publishing changes.\n\n'
+            printf -- '- Exit code: `%s`\n' "$EXIT_CODE"
+            printf -- '- Outcome: `%s`\n' "$OUTCOME"
+            if [[ -n "$FAILURE_EVENT" ]]; then
+              printf -- '- Event: `%s`\n' "$FAILURE_EVENT"
+            fi
+            printf '\nDiagnostic:\n\n'
+            sed 's/^/> /' "$RUNNER_TEMP/kana-failure.txt"
+            printf '\n'
+          } > "$RUNNER_TEMP/comment.md"
+
+          gh issue comment "$NUMBER" --body-file "$RUNNER_TEMP/comment.md"
+
+      - name: Mark Kana failure
+        if: >-
+          steps.context.outputs.active == 'true' &&
+          steps.run_kana.outputs.result == 'failed'
+        run: exit 1

@@ -106,6 +106,7 @@ See [Configuration and installation](configuration.md), [Sessions and memory](se
 | Skills and system-prompt composition | [Skills and the system prompt](skills-and-prompt.md) |
 | TUI commands, focus, controllers, event projection | [TUI interaction](tui.md) |
 | Layout, repaint, width, Markdown, tool presentation | [Terminal rendering](terminal-rendering.md) |
+| Kana Agent GitHub integration | [Kana Agent reusable workflow](kana-agent-workflow.md) |
 | Release automation, distribution, self-update | [Release process](releasing.md) |
 
 Cross-boundary changes should update each affected owner, but repeat only the summary needed to connect those boundaries. The documentation index contains the complete code-to-document lookup map.
