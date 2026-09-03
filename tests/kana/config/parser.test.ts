@@ -82,6 +82,7 @@ describe("Kana config parser", () => {
         "on_approval_required = true",
         "",
         "[tui]",
+        'theme = "tokyo-night"',
         "hyperlinks = false",
         "render_latex = false",
         "render_mermaid = false",
@@ -151,6 +152,7 @@ describe("Kana config parser", () => {
         onApprovalRequired: true,
       },
       tui: {
+        theme: "tokyo-night",
         hyperlinks: false,
         renderLatex: false,
         renderMermaid: false,

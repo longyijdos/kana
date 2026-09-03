@@ -150,6 +150,7 @@ on_agent_completed = true
 on_approval_required = true
 
 [tui]
+theme = "kana"
 hyperlinks = true
 render_latex = true
 render_mermaid = true
@@ -233,6 +234,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 | `notification.backend` | `auto`, `off`, `bell`, `osc9`, `osc777`, `kitty` | `auto` | Terminal-notification output protocol. `auto` detects Kitty, iTerm, Ghostty, then VTE, otherwise falls back to bell. |
 | `notification.on_agent_completed` | Boolean | `true` | Notify when an Agent run completes normally. Aborted, failed, length-truncated, and `turn_limit` runs are not completion. |
 | `notification.on_approval_required` | Boolean | `true` | Notify when a tool-approval prompt is shown. |
+| `tui.theme` | String | `kana` | Active TUI theme name. `kana` is the built-in default; any other name resolves to `<KANA_HOME>/themes/<name>.json` and fails startup with the available theme names when missing or invalid. |
 | `tui.hyperlinks` | Boolean | `true` | Allow the TUI to render Markdown links with OSC 8 when terminal support is confirmed; disabled, unknown, or unsupported terminals show `label (url)`. |
 | `tui.render_latex` | Boolean | `true` | Render supported Markdown math as terminal-friendly Unicode and character-cell layouts; when disabled, preserve the original LaTeX source. |
 | `tui.render_mermaid` | Boolean | `true` | Render supported fenced Mermaid blocks as terminal Unicode diagrams while text streams; when disabled, preserve them as code blocks. |

@@ -79,6 +79,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("notification", "backend", (config) => config.notification.backend),
   field("notification", "on_agent_completed", (config) => config.notification.onAgentCompleted),
   field("notification", "on_approval_required", (config) => config.notification.onApprovalRequired),
+  field("tui", "theme", (config) => config.tui.theme),
   field("tui", "hyperlinks", (config) => config.tui.hyperlinks),
   field("tui", "render_latex", (config) => config.tui.renderLatex),
   field("tui", "render_mermaid", (config) => config.tui.renderMermaid),

@@ -60,6 +60,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       on_approval_required: config.notification.onApprovalRequired,
     },
     tui: {
+      theme: config.tui.theme,
       hyperlinks: config.tui.hyperlinks,
       render_latex: config.tui.renderLatex,
       render_mermaid: config.tui.renderMermaid,
@@ -213,6 +214,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       ),
     },
     tui: {
+      theme: readString(tui.theme, defaults.tui.theme, "tui.theme"),
       hyperlinks: readBoolean(tui.hyperlinks, defaults.tui.hyperlinks, "tui.hyperlinks"),
       renderLatex: readBoolean(tui.render_latex, defaults.tui.renderLatex, "tui.render_latex"),
       renderMermaid: readBoolean(

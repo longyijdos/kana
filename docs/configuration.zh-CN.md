@@ -150,6 +150,7 @@ on_agent_completed = true
 on_approval_required = true
 
 [tui]
+theme = "kana"
 hyperlinks = true
 render_latex = true
 render_mermaid = true
@@ -233,6 +234,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `notification.backend` | `auto`、`off`、`bell`、`osc9`、`osc777`、`kitty` | `auto` | 终端通知输出协议。`auto` 依次识别 Kitty、iTerm、Ghostty、VTE，否则退回 bell。 |
 | `notification.on_agent_completed` | 布尔值 | `true` | 正常完成的 Agent 运行是否通知。中止、错误、长度截断或 `turn_limit` 不会视作完成。 |
 | `notification.on_approval_required` | 布尔值 | `true` | 显示工具审批时是否通知。 |
+| `tui.theme` | 字符串 | `kana` | 当前生效的 TUI 主题名。`kana` 为内置默认主题；其他名字解析到 `<KANA_HOME>/themes/<name>.json`，缺失或非法时启动失败并列出可用主题名。 |
 | `tui.hyperlinks` | 布尔值 | `true` | 是否允许 TUI 在确认终端支持时用 OSC 8 渲染 Markdown 链接；关闭、终端未知或不支持时显示 `label (url)`。 |
 | `tui.render_latex` | 布尔值 | `true` | 是否把支持的 Markdown 数学公式渲染为终端友好的 Unicode 和字符单元布局；关闭时保留原始 LaTeX。 |
 | `tui.render_mermaid` | 布尔值 | `true` | 是否在文本流式生成时把支持的 Mermaid 代码围栏渲染为终端 Unicode 图；关闭时保留为代码块。 |

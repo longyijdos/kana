@@ -139,3 +139,5 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delet
 配置的 notification backend 决定输出方式。`auto` 依次探测 Kitty、iTerm、Ghostty 和 VTE，最后回退 bell；显式 `off` 不发送通知。通知文本会移除控制字符并折叠空白，OSC 777 还会替换分号。普通 Agent 完成与需要审批可以分别配置。
 
 Markdown、hyperlink、LaTeX、Mermaid、工具 block、详情渲染、可见宽度规则与重绘约束见[终端渲染](terminal-rendering.zh-CN.md)。
+
+非品牌 TUI 外观跟随 `config.toml` 的 `[tui].theme` 选中的主题。`kana` 为内置默认主题；其他名字从 `<KANA_HOME>/themes/<name>.json` 加载。主题文件包含 Shiki `syntaxTheme` 以及配置表中语义键的十六进制颜色；非法、不完整或未知主题会让启动失败并列出可用主题名，而不是静默回退。欢迎 logo 像素属于品牌图案，永远不受主题控制。

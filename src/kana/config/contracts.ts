@@ -86,6 +86,7 @@ export type KanaNotificationConfig = {
 };
 
 export type KanaTuiConfig = {
+  theme: string;
   hyperlinks: boolean;
   renderLatex: boolean;
   renderMermaid?: boolean;

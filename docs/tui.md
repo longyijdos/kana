@@ -140,3 +140,5 @@ While running, `/quit`, `/help`, `/todo`, `/tools`, `/usage`, `/image`, `/schedu
 The configured notification backend selects output. `auto` probes Kitty, iTerm, Ghostty, then VTE, then uses bell; explicit `off` emits nothing. Notification text removes control characters and collapses whitespace; OSC 777 additionally replaces semicolons. Normal Agent completion and approval-required notifications are separately configurable.
 
 Markdown, hyperlinks, LaTeX, Mermaid, tool blocks, detail rendering, visible-width rules, and repaint constraints are documented in [Terminal rendering](terminal-rendering.md).
+
+The non-brand TUI appearance follows the active theme selected by `[tui].theme` in `config.toml`. `kana` is the bundled default; every other name loads `<KANA_HOME>/themes/<name>.json`. Theme files describe a Shiki `syntaxTheme` plus hex colors for the semantic keys documented with the configuration table; invalid, incomplete, or unknown themes fail startup with the available theme names instead of silently falling back. The welcome logo pixels are brand artwork and are never theme-controlled.

@@ -17,6 +17,9 @@ import {
 } from "./mcp-lifecycle-status";
 import { registerTuiProcessSignals } from "./process-lifecycle";
 import { ProcessTerminal } from "./runtime";
+import { applyTuiTheme } from "./theme";
+import { resolveTuiTheme } from "./themes/loader";
+import { setSyntaxTheme } from "./utils/syntax-highlighter";
 
 export type StartTuiOptions = {
   initialPrompt?: string;
@@ -216,6 +219,14 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     host.getLogger().info("tui.signal_received", { signal });
     void app?.stop();
   });
+
+  // Resolve the configured TUI theme before the first paint. Palette and
+  // syntax theme are process-lifetime values, so applying them here keeps
+  // every render and the preloaded highlighter consistent. Resolution happens
+  // after the app is constructed so a bad theme name still cleans up the host.
+  const activeTheme = resolveTuiTheme(host.config.tui.theme);
+  applyTuiTheme(activeTheme);
+  setSyntaxTheme(activeTheme.syntaxTheme);
 
   try {
     app.start();
