@@ -169,7 +169,8 @@ owner, which is common for organization-owned repositories.
 The Kana account is resolved from `KANA_GITHUB_TOKEN`, so commands must mention that
 account's login. The reusable workflow retains the existing Goal execution, structured
 result parsing, partial-progress publication, draft PR creation, and follow-up behavior.
-The Agent supplies one `PR_TITLE` for the commit and pull request. The workflow enforces
+Issue-triggered runs publish their changes as draft pull requests. The Agent supplies
+one `PR_TITLE` for the commit and pull request. The workflow enforces
 only a non-empty, single-line, 120-character limit and leaves naming conventions to the
 caller repository's instructions.
 
