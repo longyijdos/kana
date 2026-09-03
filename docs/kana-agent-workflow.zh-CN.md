@@ -157,7 +157,8 @@ maintainer login 与仓库 owner 不同时（组织仓库中很常见），应�
 
 Kana 账号通过 `KANA_GITHUB_TOKEN` 解析，因此命令必须 mention 该账号的 login。可复用
 workflow 保留现有 Goal 执行、结构化结果解析、部分进度发布、draft PR 创建和 follow-up 行为。
-Agent 为 commit 和 pull request 提供同一个 `PR_TITLE`。Workflow 只要求它非空、单行且不超过
+由 issue 触发的运行会把变更作为 draft pull request 发布。Agent 为 commit 和 pull request
+提供同一个 `PR_TITLE`。Workflow 只要求它非空、单行且不超过
 120 个字符，具体命名规范由调用仓库的 instructions 决定。
 
 ## 版本固定与更新
