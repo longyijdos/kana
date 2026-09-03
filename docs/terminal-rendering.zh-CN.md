@@ -30,6 +30,8 @@ Transcript 会有意渲染完整历史，让终端自然滚动保留内容。紧
 
 `ProcessTerminal.start()` 要求 stdin 和 stdout 都是 TTY。它启用 raw mode、bracketed paste、终端支持时的增强键盘上报和隐藏 cursor，然后注册输入与 resize。增强上报让终端能够区分 `Shift+Enter` 与 `Enter` 等输入。
 
+原始 stdin chunk 会先经过有状态 framing buffer，再交给 `Tui`。该 buffer 会分别分发批量到达的按键，重组被拆分的 CSI、SS3、OSC、DCS 与 APC 序列，并把每次 bracketed paste 作为一个完整 event 投递。不完整序列会短暂等待后缀；单独的 `Esc` 在 SSH 环境下使用更长的重组窗口。
+
 关闭时会恢复原始 raw 状态、暂停 stdin、显示 cursor、弹出增强键盘上报、关闭 bracketed paste，并在打印退出信息前清除 Kana 的可见 frame 与 scrollback。应用清理必须在终端恢复前完成；第二次中断强制退出时，也会先恢复终端状态再交回默认 signal 行为。
 
 Kana 从不进入 `?1049` alternate screen。正因为使用主屏幕，已完成的 transcript 内容才能保留在终端 scrollback 中。

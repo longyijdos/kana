@@ -30,6 +30,8 @@ The transcript intentionally renders complete history so natural terminal scroll
 
 `ProcessTerminal.start()` requires TTY stdin and stdout. It enables raw mode, bracketed paste, enhanced keyboard reporting when supported, and a hidden cursor, then registers input and resize handling. Enhanced reporting allows terminals to distinguish inputs such as `Shift+Enter` from `Enter`.
 
+Raw stdin chunks pass through a stateful framing buffer before `Tui` sees them. The buffer dispatches batched keys separately, reassembles fragmented CSI, SS3, OSC, DCS, and APC sequences, and delivers each bracketed paste as one complete event. Incomplete sequences wait briefly for their suffix; a lone `Esc` uses a longer reassembly window under SSH.
+
 Shutdown restores the prior raw state, pauses stdin, shows the cursor, pops enhanced keyboard reporting, disables bracketed paste, and clears Kana's visible frame and scrollback before exit information is printed. Application cleanup completes before this terminal restoration begins. A forced second interrupt also restores terminal state before default signal handling takes over.
 
 Kana never enters the `?1049` alternate screen. The main-screen choice is what makes completed transcript content remain in the terminal's scrollback.
