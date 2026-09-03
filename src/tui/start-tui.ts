@@ -72,10 +72,13 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
   const runMcpRuntimeOperation = async (
     operation: "start" | "reload",
     onProgress: (status: string) => void,
+    signal: AbortSignal,
   ): Promise<{ status?: string; warnings: string[] }> => {
     updateMcpLifecycleStatus = onProgress;
     try {
-      const snapshot = await (operation === "start" ? host.startMcp() : host.reloadMcp());
+      const snapshot = await (operation === "start"
+        ? host.startMcp(signal)
+        : host.reloadMcp(signal));
       return {
         status:
           operation === "start"
@@ -87,10 +90,10 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       updateMcpLifecycleStatus = undefined;
     }
   };
-  const loadMcpTools = (onProgress: (status: string) => void) =>
-    runMcpRuntimeOperation("start", onProgress);
-  const reloadMcpTools = (onProgress: (status: string) => void) =>
-    runMcpRuntimeOperation("reload", onProgress);
+  const loadMcpTools = (onProgress: (status: string) => void, signal: AbortSignal) =>
+    runMcpRuntimeOperation("start", onProgress, signal);
+  const reloadMcpTools = (onProgress: (status: string) => void, signal: AbortSignal) =>
+    runMcpRuntimeOperation("reload", onProgress, signal);
 
   app = await createTuiAppWithCleanup(
     closeHostRuntime,

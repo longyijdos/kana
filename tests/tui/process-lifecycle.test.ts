@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { AgentEventStream } from "../../src/agent";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { registerTuiProcessSignals, type TuiSignalProcess } from "../../src/tui/process-lifecycle";
 import { stripAnsi } from "../../src/tui/render";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
+import { waitFor } from "../helpers/async-control";
 import {
   createTuiAgentStub as createAgentStub,
   createTuiAppOptions as createOptions,
@@ -154,7 +156,6 @@ describe("Kana TUI shutdown", () => {
     };
     const app = new KanaTuiApp(() => createAgentStub(), terminal, {
       ...createOptions(),
-      externalTools: { load: () => new Promise(() => {}) },
       lifecycle: {
         stop: () => shutdown,
         forceStop: () => {
@@ -167,7 +168,7 @@ describe("Kana TUI shutdown", () => {
     };
 
     app.start();
-    handleInput("\x03");
+    void app.stop();
     await Promise.resolve();
 
     expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain(
@@ -180,6 +181,97 @@ describe("Kana TUI shutdown", () => {
 
     releaseShutdown();
     await app.waitForStop();
+  });
+
+  for (const { keyName, input } of [
+    { keyName: "Escape", input: "\x1b" },
+    { keyName: "Ctrl+C", input: "\x03" },
+  ]) {
+    test(`${keyName} cancels MCP startup without exiting`, async () => {
+      let handleInput!: (data: string) => void;
+      let terminalStopCount = 0;
+      const app = new KanaTuiApp(
+        () => createAgentStub(),
+        {
+          ...createTerminal(),
+          start: (onInput: (data: string) => void) => {
+            handleInput = onInput;
+          },
+          stop: () => {
+            terminalStopCount += 1;
+          },
+        },
+        {
+          ...createOptions(),
+          externalTools: {
+            load: (_onProgress, signal) =>
+              new Promise((_, reject) => {
+                signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+              }),
+          },
+        },
+      );
+      const internal = app as unknown as {
+        transcript: { render(width: number): string[] };
+      };
+
+      app.start();
+      handleInput(input);
+      await waitFor(() =>
+        stripAnsi(internal.transcript.render(80).join("\n")).includes("MCP startup cancelled."),
+      );
+
+      expect(terminalStopCount).toBe(0);
+      handleInput("\x03");
+      await app.waitForStop();
+      expect(terminalStopCount).toBe(1);
+    });
+  }
+
+  test("submits the initial prompt after MCP startup is cancelled", async () => {
+    let handleInput!: (data: string) => void;
+    const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
+    const app = new KanaTuiApp(
+      () =>
+        withAgentInboxForTest({
+          state: createAgentState(),
+          abort() {},
+          async waitForIdle() {},
+          stream(input: unknown) {
+            const stream = new AgentEventStream();
+            calls.push({ input, stream });
+            return stream;
+          },
+        }) as never,
+      {
+        ...createTerminal(),
+        start: (onInput: (data: string) => void) => {
+          handleInput = onInput;
+        },
+      },
+      {
+        ...createOptions(),
+        launch: { initialPrompt: "Continue without MCP." },
+        externalTools: {
+          load: (_onProgress, signal) =>
+            new Promise((_, reject) => {
+              signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+            }),
+        },
+      },
+    );
+
+    app.start();
+    handleInput("\x1b");
+    await waitFor(() => calls.length === 1);
+
+    expect(calls[0]?.input).toMatchObject({
+      role: "user",
+      content: "Continue without MCP.",
+      provenance: { kind: "user_input" },
+    });
+    calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+    await app.stop();
   });
 
   test("clears a focused editor draft before idle Ctrl+C exits", async () => {

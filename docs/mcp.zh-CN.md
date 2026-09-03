@@ -30,7 +30,7 @@ KanaMcpRuntime（可 reload 的产品边界）
 
 ## 稳定 Client 生命周期
 
-`McpClient` 实现协议版本 `2025-11-25`。`initialize` 是第一条 request，使用独立 startup timeout；只有 server 返回同一受支持版本后，client 才发送 `notifications/initialized`。Client 会快照 server identity 与 capability。
+`McpClient` 实现协议版本 `2025-11-25`。`initialize` 是第一条 request，使用独立 startup timeout；只有 server 返回同一受支持版本后，client 才发送 `notifications/initialized`。Client startup 接受 abort signal；取消 initialize 会关闭 connection 与 transport，但不会发送协议禁止用于 initialization 的取消 notification。Client 会快照 server identity 与 capability。
 
 Tool method 要求 server 声明 tools capability。`tools/list` 跟随分页、拒绝重复 cursor，并有有限 page 上限。`tools/call` 支持取消与 progress，并校验返回 content envelope。Server notification 会暴露给集成层，但 Kana 刻意固定 startup tool list，只记录 `notifications/tools/list_changed`，不修改活动 Agent。
 
@@ -82,7 +82,7 @@ Adapter 把 invocation abort 与 request timeout 传给 `tools/call`，将递增
 
 可选 server failure 被隔离、记录并关闭；任一必需 server failure 会关闭所有 client 并中止 startup。Server 之间或与保留 Kana tool 的 alias collision 会使完整聚合失败，不会覆盖工具或分配不稳定 suffix。
 
-诊断暴露复制后的 server identity、required 标记、lifecycle status、发现与保留 tool count、capability 与安全 error identity。Progress 报告 completed/total server count 和每个终态 startup/close outcome。Listener failure 被隔离。Close 幂等，并按 registration 逆序释放 client。
+诊断暴露复制后的 server identity、required 标记、lifecycle status、发现与保留 tool count、capability 与安全 error identity。Progress 报告 completed/total server count 和每个终态 startup/close outcome。Listener failure 被隔离。Startup 接受 abort signal，并把取消与 server failure 诊断分开。Close 幂等；若 startup 仍在进行，会先请求取消并等待其完成清理，再按 registration 逆序释放 client。
 
 ## Kana 配置与启用状态
 
@@ -94,7 +94,7 @@ HTTP `proxy` 是 Kana/Bun 装配职责。URL 通过 Bun fetch extension 传入�
 
 ## Runtime 与前端集成
 
-`KanaMcpRuntime` 持有可替换的一次性 manager，并串行执行 `start`、`reload` 与 `close`。Reload 先关闭旧 manager，再重新读取配置和启用状态，随后发布新的 detached tool/diagnostic snapshot。失败会清除旧 tool 与 source mapping，之后仍可再次 reload 恢复。一旦请求 close，排队 lifecycle work 不能再创建 manager。
+`KanaMcpRuntime` 持有可替换的一次性 manager，并串行执行 `start`、`reload` 与 `close`。Reload 先关闭旧 manager，再重新读取配置和启用状态，随后发布新的 detached tool/diagnostic snapshot。Start 与 reload 接受 operation abort signal。取消会清除该操作的 tool snapshot 并关闭其一次性 manager，但不会永久关闭 runtime，因此与失败一样，之后仍可通过 reload 恢复。一旦请求 runtime close，排队 lifecycle work 不能再创建 manager。
 
 主对话最初没有外部工具。交互式 startup 会等所选 session 可见后再加载 MCP 并重建 Agent，因此 resume picker 没有 server side effect。Headless 在提交 run 前启动 MCP。Clean 模式不读取 MCP 配置，也不创建 runtime external tool；memory-consolidation Agent 永远不接收 MCP tool。
 

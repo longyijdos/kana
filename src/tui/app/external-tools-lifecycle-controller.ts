@@ -11,8 +11,14 @@ export type ExternalToolsLoadResult = {
 export type ExternalToolsLifecycleControllerOptions = {
   transcript: Transcript;
   tui: Tui;
-  load?: (onProgress: (status: string) => void) => Promise<ExternalToolsLoadResult>;
-  reload?: (onProgress: (status: string) => void) => Promise<ExternalToolsLoadResult>;
+  load?: (
+    onProgress: (status: string) => void,
+    signal: AbortSignal,
+  ) => Promise<ExternalToolsLoadResult>;
+  reload?: (
+    onProgress: (status: string) => void,
+    signal: AbortSignal,
+  ) => Promise<ExternalToolsLoadResult>;
   isStopping: () => boolean;
   onToolsChanged: () => void;
   onReady: () => void;
@@ -25,6 +31,7 @@ export class ExternalToolsLifecycleController {
   private loaded: boolean;
   private loadPromise?: Promise<boolean>;
   private loadingOperation?: symbol;
+  private loadingController?: AbortController;
   private isLoading = false;
 
   constructor(private readonly options: ExternalToolsLifecycleControllerOptions) {
@@ -33,6 +40,15 @@ export class ExternalToolsLifecycleController {
 
   get loading(): boolean {
     return this.isLoading;
+  }
+
+  cancel(): boolean {
+    if (!this.loadingController || this.loadingController.signal.aborted) {
+      return false;
+    }
+
+    this.loadingController.abort(new Error("MCP loading was cancelled."));
+    return true;
   }
 
   load(): Promise<boolean> {
@@ -44,13 +60,17 @@ export class ExternalToolsLifecycleController {
     }
 
     const loadingOperation = this.beginLoading("Starting MCP servers...");
+    const signal = this.loadingController!.signal;
 
     this.loadPromise = this.options
-      .load((status) => this.updateProgress(loadingOperation, status))
+      .load((status) => this.updateProgress(loadingOperation, status), signal)
       .then((result) => {
         if (this.options.isStopping()) {
           this.endLoading(loadingOperation);
           return false;
+        }
+        if (signal.aborted) {
+          return this.finishCancellation(loadingOperation, "MCP startup cancelled.", true);
         }
 
         this.loaded = true;
@@ -64,6 +84,9 @@ export class ExternalToolsLifecycleController {
         return true;
       })
       .catch((error) => {
+        if (signal.aborted) {
+          return this.finishCancellation(loadingOperation, "MCP startup cancelled.", true);
+        }
         this.endLoading(loadingOperation);
         if (!this.options.isStopping()) {
           this.options.transcript.addChild(
@@ -88,10 +111,18 @@ export class ExternalToolsLifecycleController {
     }
 
     const loadingOperation = this.beginLoading("Reloading MCP servers...");
+    const signal = this.loadingController!.signal;
 
     try {
-      const result = await reload((status) => this.updateProgress(loadingOperation, status));
+      const result = await reload(
+        (status) => this.updateProgress(loadingOperation, status),
+        signal,
+      );
       if (this.options.isStopping()) {
+        return;
+      }
+      if (signal.aborted) {
+        this.finishCancellation(loadingOperation, "MCP reload cancelled.", false);
         return;
       }
 
@@ -102,6 +133,10 @@ export class ExternalToolsLifecycleController {
       this.options.tui.requestRender();
     } catch (error) {
       if (this.options.isStopping()) {
+        return;
+      }
+      if (signal.aborted) {
+        this.finishCancellation(loadingOperation, "MCP reload cancelled.", false);
         return;
       }
 
@@ -117,8 +152,9 @@ export class ExternalToolsLifecycleController {
       this.options.focusEditor();
       this.options.tui.requestRender();
     } finally {
+      const shouldNotifyReady = this.loadingOperation === loadingOperation;
       this.endLoading(loadingOperation);
-      if (!this.options.isStopping()) {
+      if (shouldNotifyReady && !this.options.isStopping()) {
         this.options.onReady();
       }
     }
@@ -126,6 +162,7 @@ export class ExternalToolsLifecycleController {
 
   private beginLoading(message: string): symbol {
     this.isLoading = true;
+    this.loadingController = new AbortController();
     const loadingOperation = Symbol("external-tools-loading");
     this.loadingOperation = loadingOperation;
     this.options.transcript.addChild(new TextBlock(message, { color: tuiTheme.muted }));
@@ -136,7 +173,11 @@ export class ExternalToolsLifecycleController {
   }
 
   private updateProgress(loadingOperation: symbol, status: string): void {
-    if (this.options.isStopping() || this.loadingOperation !== loadingOperation) {
+    if (
+      this.options.isStopping() ||
+      this.loadingOperation !== loadingOperation ||
+      this.loadingController?.signal.aborted
+    ) {
       return;
     }
 
@@ -151,7 +192,30 @@ export class ExternalToolsLifecycleController {
     }
 
     this.loadingOperation = undefined;
+    this.loadingController = undefined;
     this.isLoading = false;
+  }
+
+  private finishCancellation(
+    loadingOperation: symbol,
+    message: string,
+    initialLoad: boolean,
+  ): boolean {
+    this.endLoading(loadingOperation);
+    if (this.options.isStopping()) {
+      return false;
+    }
+
+    if (initialLoad) {
+      this.loaded = true;
+    }
+    this.options.transcript.addChild(new TextBlock(message, { color: tuiTheme.muted }));
+    this.options.onToolsChanged();
+    this.options.updateStatus("idle");
+    this.options.focusEditor();
+    this.options.tui.requestRender();
+    this.options.onReady();
+    return true;
   }
 
   private renderResult(result: ExternalToolsLoadResult): void {

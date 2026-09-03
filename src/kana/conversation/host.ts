@@ -258,12 +258,12 @@ export class KanaConversationHost<TConfiguration = never> {
     return this.sessionRegistry.deleteSession(sessionId);
   }
 
-  async startMcp(): Promise<KanaMcpRuntimeSnapshot> {
-    return this.runMcpOperation("start");
+  async startMcp(signal?: AbortSignal): Promise<KanaMcpRuntimeSnapshot> {
+    return this.runMcpOperation("start", signal);
   }
 
-  async reloadMcp(): Promise<KanaMcpRuntimeSnapshot> {
-    return this.runMcpOperation("reload");
+  async reloadMcp(signal?: AbortSignal): Promise<KanaMcpRuntimeSnapshot> {
+    return this.runMcpOperation("reload", signal);
   }
 
   closeMcp(): Promise<void> {
@@ -515,7 +515,10 @@ export class KanaConversationHost<TConfiguration = never> {
     return scheduler;
   }
 
-  private async runMcpOperation(operation: "start" | "reload"): Promise<KanaMcpRuntimeSnapshot> {
+  private async runMcpOperation(
+    operation: "start" | "reload",
+    signal?: AbortSignal,
+  ): Promise<KanaMcpRuntimeSnapshot> {
     if (this.launchMode === "clean") {
       this.mcpTools = [];
       this.getLogger().info("mcp.skipped", {
@@ -531,8 +534,8 @@ export class KanaConversationHost<TConfiguration = never> {
 
     try {
       const snapshot = await (operation === "start"
-        ? this.mcpRuntime.start()
-        : this.mcpRuntime.reload());
+        ? this.mcpRuntime.start(signal === undefined ? {} : { signal })
+        : this.mcpRuntime.reload(signal === undefined ? {} : { signal }));
       this.mcpTools = snapshot.tools;
       this.getLogger().info(operation === "start" ? "mcp.started" : "mcp.reloaded", {
         configuredServerCount: snapshot.selectedServerIds.length,
@@ -543,6 +546,9 @@ export class KanaConversationHost<TConfiguration = never> {
       return snapshot;
     } catch (error) {
       this.mcpTools = this.mcpRuntime.tools;
+      if (signal?.aborted) {
+        this.getLogger().info("mcp.operation_cancelled", { operation });
+      }
       throw error;
     }
   }

@@ -76,11 +76,17 @@ type KanaTuiMcpManagementCapabilities = {
     signal: AbortSignal,
   ): Promise<KanaOAuthTokenStatus>;
   signOutServer?(serverId: string): Promise<KanaOAuthTokenStatus>;
-  reload: (onProgress: (status: string) => void) => Promise<ExternalToolsLoadResult>;
+  reload: (
+    onProgress: (status: string) => void,
+    signal: AbortSignal,
+  ) => Promise<ExternalToolsLoadResult>;
 };
 
 type KanaTuiExternalToolsCapabilities = {
-  load?: (onProgress: (status: string) => void) => Promise<ExternalToolsLoadResult>;
+  load?: (
+    onProgress: (status: string) => void,
+    signal: AbortSignal,
+  ) => Promise<ExternalToolsLoadResult>;
   mcp?: KanaTuiMcpManagementCapabilities;
 };
 

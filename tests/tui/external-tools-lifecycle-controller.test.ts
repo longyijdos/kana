@@ -71,10 +71,66 @@ describe("external tools lifecycle controller", () => {
       "render",
     ]);
   });
+
+  test("cancels startup without rendering a failure and restores interaction", async () => {
+    let reportProgress!: (status: string) => void;
+    const harness = createHarness((onProgress, signal) => {
+      reportProgress = onProgress;
+      return rejectOnAbort(signal);
+    });
+
+    const loading = harness.controller.load();
+    expect(harness.controller.cancel()).toBe(true);
+    expect(harness.controller.cancel()).toBe(false);
+    expect(harness.controller.loading).toBe(true);
+    reportProgress("stale startup progress");
+
+    await expect(loading).resolves.toBe(true);
+    expect(harness.controller.loading).toBe(false);
+    expect(harness.render()).toEqual(["Starting MCP servers...", "MCP startup cancelled."]);
+    expect(harness.events).toEqual([
+      "status:starting",
+      "focus:clear",
+      "render",
+      "tools:changed",
+      "status:idle",
+      "focus:editor",
+      "render",
+      "ready",
+    ]);
+  });
+
+  test("cancels reload after cleanup settles and restores the editor", async () => {
+    const harness = createHarness(undefined, (_onProgress, signal) => rejectOnAbort(signal));
+
+    const reloading = harness.controller.reload();
+    expect(harness.controller.cancel()).toBe(true);
+    await reloading;
+
+    expect(harness.controller.loading).toBe(false);
+    expect(harness.render()).toEqual(["Reloading MCP servers...", "MCP reload cancelled."]);
+    expect(harness.events).toEqual([
+      "status:starting",
+      "focus:clear",
+      "render",
+      "tools:changed",
+      "status:idle",
+      "focus:editor",
+      "render",
+      "ready",
+    ]);
+  });
 });
 
 function createHarness(
-  load: (onProgress: (status: string) => void) => Promise<ExternalToolsLoadResult>,
+  load?: (
+    onProgress: (status: string) => void,
+    signal: AbortSignal,
+  ) => Promise<ExternalToolsLoadResult>,
+  reload?: (
+    onProgress: (status: string) => void,
+    signal: AbortSignal,
+  ) => Promise<ExternalToolsLoadResult>,
 ) {
   const transcript = new Transcript();
   const events: string[] = [];
@@ -83,7 +139,8 @@ function createHarness(
     tui: {
       requestRender: () => events.push("render"),
     } as unknown as Tui,
-    load,
+    ...(load === undefined ? {} : { load }),
+    ...(reload === undefined ? {} : { reload }),
     isStopping: () => false,
     onToolsChanged: () => events.push("tools:changed"),
     onReady: () => events.push("ready"),
@@ -97,4 +154,10 @@ function createHarness(
     events,
     render: () => transcript.render(100).map(stripAnsi).filter(Boolean),
   };
+}
+
+function rejectOnAbort(signal: AbortSignal): Promise<ExternalToolsLoadResult> {
+  return new Promise((_, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
 }
