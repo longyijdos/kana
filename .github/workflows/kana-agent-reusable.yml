@@ -319,13 +319,13 @@ jobs:
             printf 'Leave all code changes in the working tree for the workflow to publish mechanically after you exit.\n'
             printf 'Before the final handoff, verify the requested work and call update_goal with completed. Use blocked only when meaningful progress requires user input or an external state change.\n'
             printf '\nYour final response is a handoff consumed by the workflow. Use exactly this shape:\n\n'
-            printf 'PR_TITLE: <one Conventional Commit title describing the actual change>\n\n'
+            printf 'PR_TITLE: <one concise title describing the actual change>\n\n'
             printf '## Summary\n'
             printf -- '- <concise user-visible or architectural change>\n'
             printf -- '- <another material change when useful>\n\n'
             printf '## Notes\n'
             printf -- '- <remaining risk, limitation, or follow-up; use "None." when there is none>\n\n'
-            printf 'Use one line for PR_TITLE, keep it at most 120 characters, and start it with feat:, fix:, refactor:, test:, docs:, or chore: (an optional scope and ! are allowed).\n'
+            printf 'Use one line for PR_TITLE, keep it at most 120 characters, and follow any title or commit conventions documented in the repository.\n'
             printf 'Do not add a Validation section; the workflow reports checks independently. Do not mention commit, push, or pull-request restrictions or claim that those operations were or were not performed.\n'
           } > "$RUNNER_TEMP/kana-prompt.txt"
 
@@ -545,16 +545,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          conventional_pattern='^(feat|fix|refactor|test|docs|chore)(\([a-zA-Z0-9._/-]+\))?!?:[[:space:]].+'
           task_title="$(tr '\r\n' '  ' < "$RUNNER_TEMP/task-title.txt" | sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//' | cut -c1-120)"
           if [[ -z "$task_title" ]]; then
             task_title="Address #$ISSUE_NUMBER"
-          fi
-
-          if [[ "$task_title" =~ $conventional_pattern ]]; then
-            fallback_commit_title="$task_title"
-          else
-            fallback_commit_title="fix: address #$ISSUE_NUMBER"
           fi
 
           handoff_valid=false
@@ -592,12 +585,12 @@ jobs:
                 title_line="${title_markers[0]%%:*}"
                 title_marker="${title_markers[0]#*:}"
                 if [[ "$title_marker" == PR_TITLE:\ * ]]; then
-                  proposed_title="${title_marker#PR_TITLE: }"
+                  proposed_title="$(printf '%s' "${title_marker#PR_TITLE: }" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
                 fi
-                if [[ ${#proposed_title} -gt 120 ]]; then
+                if [[ -z "$proposed_title" ]]; then
+                  handoff_failures+=("empty_title")
+                elif [[ ${#proposed_title} -gt 120 ]]; then
                   handoff_failures+=("title_too_long")
-                elif [[ ! "$proposed_title" =~ $conventional_pattern ]]; then
-                  handoff_failures+=("invalid_title")
                 fi
               fi
 
@@ -634,9 +627,9 @@ jobs:
 
           if [[ "$handoff_valid" != "true" ]]; then
             if [[ "$RESULT" == "timeout" || "$RESULT" == "blocked" || "$RESULT" == "round_limit" ]]; then
-              printf 'chore: preserve partial progress for #%s\n' "$ISSUE_NUMBER" > "$RUNNER_TEMP/change-title.txt"
+              printf 'Preserve partial progress for #%s\n' "$ISSUE_NUMBER" > "$RUNNER_TEMP/change-title.txt"
             else
-              printf '%s\n' "$fallback_commit_title" > "$RUNNER_TEMP/change-title.txt"
+              printf '%s\n' "$task_title" > "$RUNNER_TEMP/change-title.txt"
             fi
             printf '%s\n' "$task_title" > "$RUNNER_TEMP/pr-title.txt"
 
