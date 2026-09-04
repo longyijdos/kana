@@ -517,7 +517,7 @@ const RESET_CONFIRMATION_PROMPT = [
   "  - approvals.json",
   "  - skills/skills.toml",
   "",
-  "OAuth tokens, sessions, memory, accounting, logs, AGENTS.md, and installed Skills will be preserved.",
+  "OAuth tokens, sessions, memory, accounting, logs, AGENTS.md, user themes, and installed Skills will be preserved.",
 ].join("\n");
 
 const SKILLS_REINSTALL_CONFIRMATION_PROMPT = [

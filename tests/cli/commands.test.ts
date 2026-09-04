@@ -206,6 +206,7 @@ describe("CLI reset", () => {
     expect(prompts[0]).toContain("skills/skills.toml");
     expect(prompts[0]).toContain("OAuth tokens");
     expect(prompts[0]).toContain("logs");
+    expect(prompts[0]).toContain("user themes");
     expect(prompts[0]).toContain("installed Skills");
     expect(logs).toEqual([
       "Removed config override: /tmp/config.toml",

@@ -62,7 +62,7 @@ kana auth logout openai-codex
 
 `kana update --check` reads version metadata for GitHub's latest stable Release without downloading or modifying the binary. `kana update` selects the asset for the current operating system and architecture, verifies its reported size and SHA-256 digest, and runs both `--version` and the idempotent `kana install` through the candidate binary. Only after the candidate version, support-file initialization, and current executable identity all pass validation does a same-directory temporary file atomically replace the executable. Failure removes the temporary file and preserves the original binary; Kana also refuses to overwrite a target replaced by another installer while the download was in flight. Updating supports macOS/Linux on arm64 and x64, inherits Bun `fetch` handling of `HTTP_PROXY`/`HTTPS_PROXY`, and requires a writable installation directory. Source run directly through Bun has no direct-distribution build marker and therefore refuses self-update; standalone binaries built by `scripts/install.sh`, `bun run build:cli`, and the Release workflow include that marker.
 
-`kana reset` restores the main runtime configuration to its defaults. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `providers/custom.toml`, `providers/custom.example.toml`, `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
+`kana reset` restores the main runtime configuration to its defaults. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `providers/custom.toml`, `providers/custom.example.toml`, `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, user themes, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. `kana skills install` clones it when absent and runs `git pull --ff-only` for an existing Git checkout. An existing non-Git directory fails with a prompt to use `kana skills reinstall`. After confirmation, reinstall deletes only the complete default repository directory and clones it again, preserving the sibling `skills.toml` and all other installed Skills. Non-interactive use requires `--yes`.
 
@@ -89,6 +89,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── artifacts/              # Workspace- and session-scoped oversized tool output
 ├── logs/                   # Workspace- and session-grouped runtime JSONL logs
 ├── memory/                 # Global and project memory
+├── themes/                 # User TUI themes
 └── skills/
     ├── skills.toml         # Enabled global Skills
     └── kana-skills/        # Default repository cloned by `kana skills install`
@@ -150,6 +151,7 @@ on_agent_completed = true
 on_approval_required = true
 
 [tui]
+theme = "kana"
 hyperlinks = true
 render_latex = true
 render_mermaid = true
@@ -233,6 +235,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 | `notification.backend` | `auto`, `off`, `bell`, `osc9`, `osc777`, `kitty` | `auto` | Terminal-notification output protocol. `auto` detects Kitty, iTerm, Ghostty, then VTE, otherwise falls back to bell. |
 | `notification.on_agent_completed` | Boolean | `true` | Notify when an Agent run completes normally. Aborted, failed, length-truncated, and `turn_limit` runs are not completion. |
 | `notification.on_approval_required` | Boolean | `true` | Notify when a tool-approval prompt is shown. |
+| `tui.theme` | Lowercase theme identifier | `kana` | Select the built-in theme or `<KANA_HOME>/themes/<name>.json`; changes take effect on the next TUI launch. |
 | `tui.hyperlinks` | Boolean | `true` | Allow the TUI to render Markdown links with OSC 8 when terminal support is confirmed; disabled, unknown, or unsupported terminals show `label (url)`. |
 | `tui.render_latex` | Boolean | `true` | Render supported Markdown math as terminal-friendly Unicode and character-cell layouts; when disabled, preserve the original LaTeX source. |
 | `tui.render_mermaid` | Boolean | `true` | Render supported fenced Mermaid blocks as terminal Unicode diagrams while text streams; when disabled, preserve them as code blocks. |
@@ -246,6 +249,57 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 `parallel_tool_calls` is effective only when both user policy and model metadata allow it. The repeated-call, tool-result artifact, concurrency, deadline, and Background Job fields configure behavior owned by [Tools and execution](tools.md). Context limits and compaction budgets are interpreted by [Agent runtime](agent-runtime.md).
 
 TUI option fields remain canonical in the table above. Their interaction semantics belong to [TUI interaction](tui.md), while hyperlinks, LaTeX, Mermaid, width, and repaint behavior belong to [Terminal rendering](terminal-rendering.md). Memory retention and runtime-log persistence belong to [Sessions and memory](sessions-and-memory.md).
+
+### TUI themes
+
+The built-in `kana` theme is the default and uses a Tokyo Night-inspired palette together with Shiki's `tokyo-night` syntax theme. A user theme named `ocean` is stored at `<KANA_HOME>/themes/ocean.json` and selected with `theme = "ocean"`. Theme identifiers contain at most 64 lowercase ASCII letters, numbers, underscores, or hyphens, and must start with a letter or number. Built-in names are reserved: a user file such as `kana.json` cannot override the bundled theme.
+
+Kana reads only the selected user-theme file when the TUI starts. The file must be a JSON object with exactly `syntaxTheme` and `colors`. `syntaxTheme` is a theme ID bundled by the installed Shiki version. Every color key below is required, unknown keys are rejected, and values use six-digit `#rrggbb` notation:
+
+```json
+{
+  "syntaxTheme": "tokyo-night",
+  "colors": {
+    "assistant": "#a9b1d6",
+    "markdownText": "#a9b1d6",
+    "markdownHeading": "#7dcfff",
+    "markdownQuote": "#787c99",
+    "markdownRule": "#363b54",
+    "markdownTable": "#a9b1d6",
+    "markdownCodeBlock": "#a9b1d6",
+    "markdownInlineCode": "#e0af68",
+    "user": "#7aa2f7",
+    "userMessageText": "#c0caf5",
+    "shortcutHint": "#bb9af7",
+    "command": "#9d7cd8",
+    "commandSelected": "#bb9af7",
+    "bottomTitle": "#7dcfff",
+    "muted": "#787c99",
+    "model": "#7aa2f7",
+    "contextUsage": "#73daca",
+    "cwd": "#787c99",
+    "toolActive": "#e0af68",
+    "toolSuccess": "#9ece6a",
+    "toolOutput": "#9aa5ce",
+    "error": "#f7768e",
+    "usageInput": "#7aa2f7",
+    "usageCache": "#73daca",
+    "usageOutput": "#9ece6a",
+    "usageReasoning": "#bb9af7",
+    "usageWarning": "#ff9e64",
+    "usageMuted": "#51597d",
+    "statusIdle": "#a9b1d6",
+    "diffDeleteBackground": "#34212b",
+    "diffInsertBackground": "#1f2c38",
+    "welcomeBorder": "#42465d",
+    "welcomeTitle": "#7dcfff",
+    "welcomeMuted": "#787c99",
+    "welcomeText": "#a9b1d6"
+  }
+}
+```
+
+The selected palette and syntax theme remain fixed for the process lifetime. Editing `config.toml` or the JSON file affects the next launch; Kana does not scan, watch, or hot-reload the themes directory. Clean-mode TUI launches still use the configured theme. Headless `kana exec` validates the theme identifier as part of `config.toml` but does not read a theme JSON file.
 
 Logs always write under `<KANA_HOME>/logs`; the directory is not configurable. The selected log level filters records before persistence. Provider lifecycle record shapes are documented in [Providers](providers.md), while each subsystem owns its other stable diagnostic events.
 

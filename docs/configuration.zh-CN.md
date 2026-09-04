@@ -62,7 +62,7 @@ kana auth logout openai-codex
 
 `kana update --check` 读取 GitHub 最新正式 Release 的版本元数据，不下载或修改二进制。`kana update` 根据当前操作系统和架构下载对应资产，检查 Release 元数据中的文件大小和 SHA-256 digest，然后让候选二进制依次执行 `--version` 与幂等的 `kana install`；候选版本、支持文件初始化和当前可执行文件身份全部验证成功后，才通过同目录临时文件原子替换当前二进制。失败会删除临时文件并保留原二进制；如果另一个安装进程在下载期间已经替换目标，也会拒绝覆盖。更新支持 macOS/Linux 的 arm64、x64，沿用 Bun `fetch` 对 `HTTP_PROXY`/`HTTPS_PROXY` 的处理，且要求安装目录可写。直接通过 Bun 运行源码没有 direct distribution 构建标记，因此会拒绝自更新；`scripts/install.sh`、`bun run build:cli` 和正式 Release 构建的独立二进制包含该标记。
 
-`kana reset` 将主运行配置恢复到默认状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `providers/custom.toml`、`providers/custom.example.toml`、`oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
+`kana reset` 将主运行配置恢复到默认状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `providers/custom.toml`、`providers/custom.example.toml`、`oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、用户主题、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。`kana skills install` 在目录不存在时 clone，已有 Git 仓库时执行 `git pull --ff-only`；已有目录不是 Git 仓库时失败并提示使用 `kana skills reinstall`。reinstall 会在确认后只删除整个默认仓库目录并重新 clone，保留相邻的 `skills.toml` 和其它实际 Skills；非交互环境同样要求 `--yes`。
 
@@ -89,6 +89,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── artifacts/              # 按工作区和会话隔离的超大工具输出
 ├── logs/                   # 按工作区和会话分组的运行时 JSONL 日志
 ├── memory/                 # global 与 project 的记忆
+├── themes/                 # 用户 TUI 主题
 └── skills/
     ├── skills.toml         # 全局 Skill 的启用列表
     └── kana-skills/        # `kana skills install` 克隆的默认仓库
@@ -150,6 +151,7 @@ on_agent_completed = true
 on_approval_required = true
 
 [tui]
+theme = "kana"
 hyperlinks = true
 render_latex = true
 render_mermaid = true
@@ -233,6 +235,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `notification.backend` | `auto`、`off`、`bell`、`osc9`、`osc777`、`kitty` | `auto` | 终端通知输出协议。`auto` 依次识别 Kitty、iTerm、Ghostty、VTE，否则退回 bell。 |
 | `notification.on_agent_completed` | 布尔值 | `true` | 正常完成的 Agent 运行是否通知。中止、错误、长度截断或 `turn_limit` 不会视作完成。 |
 | `notification.on_approval_required` | 布尔值 | `true` | 显示工具审批时是否通知。 |
+| `tui.theme` | 小写主题标识符 | `kana` | 选择内置主题或 `<KANA_HOME>/themes/<name>.json`；变更在下次启动 TUI 时生效。 |
 | `tui.hyperlinks` | 布尔值 | `true` | 是否允许 TUI 在确认终端支持时用 OSC 8 渲染 Markdown 链接；关闭、终端未知或不支持时显示 `label (url)`。 |
 | `tui.render_latex` | 布尔值 | `true` | 是否把支持的 Markdown 数学公式渲染为终端友好的 Unicode 和字符单元布局；关闭时保留原始 LaTeX。 |
 | `tui.render_mermaid` | 布尔值 | `true` | 是否在文本流式生成时把支持的 Mermaid 代码围栏渲染为终端 Unicode 图；关闭时保留为代码块。 |
@@ -246,6 +249,57 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 `parallel_tool_calls` 只有在用户策略与模型 metadata 都允许时才生效。重复调用、tool-result artifact、并发、deadline 与 Background Job 字段所配置的行为属于[工具与执行](tools.zh-CN.md)；context limit 与压缩预算由 [Agent 运行时](agent-runtime.zh-CN.md)解释。
 
 上表仍是 TUI option 字段的 canonical 定义。交互语义属于 [TUI 交互](tui.zh-CN.md)，hyperlink、LaTeX、Mermaid、宽度与 repaint 行为属于[终端渲染](terminal-rendering.zh-CN.md)。Memory retention 与 runtime-log 持久化属于[会话与记忆](sessions-and-memory.zh-CN.md)。
+
+### TUI 主题
+
+内置 `kana` 主题是默认值，使用 Tokyo Night 风格的配色和 Shiki 的 `tokyo-night` 语法主题。名为 `ocean` 的用户主题保存在 `<KANA_HOME>/themes/ocean.json`，通过 `theme = "ocean"` 选择。主题标识符最多包含 64 个小写 ASCII 字母、数字、下划线或连字符，并且必须以字母或数字开头。内置名称被保留，因此 `kana.json` 这类用户文件不能覆盖内置主题。
+
+Kana 只在 TUI 启动时读取选中的用户主题文件。文件必须是只包含 `syntaxTheme` 和 `colors` 的 JSON object；`syntaxTheme` 是当前安装的 Shiki 所捆绑的 theme ID。下例中的每个颜色键都必填，未知键会被拒绝，颜色值使用六位 `#rrggbb` 格式：
+
+```json
+{
+  "syntaxTheme": "tokyo-night",
+  "colors": {
+    "assistant": "#a9b1d6",
+    "markdownText": "#a9b1d6",
+    "markdownHeading": "#7dcfff",
+    "markdownQuote": "#787c99",
+    "markdownRule": "#363b54",
+    "markdownTable": "#a9b1d6",
+    "markdownCodeBlock": "#a9b1d6",
+    "markdownInlineCode": "#e0af68",
+    "user": "#7aa2f7",
+    "userMessageText": "#c0caf5",
+    "shortcutHint": "#bb9af7",
+    "command": "#9d7cd8",
+    "commandSelected": "#bb9af7",
+    "bottomTitle": "#7dcfff",
+    "muted": "#787c99",
+    "model": "#7aa2f7",
+    "contextUsage": "#73daca",
+    "cwd": "#787c99",
+    "toolActive": "#e0af68",
+    "toolSuccess": "#9ece6a",
+    "toolOutput": "#9aa5ce",
+    "error": "#f7768e",
+    "usageInput": "#7aa2f7",
+    "usageCache": "#73daca",
+    "usageOutput": "#9ece6a",
+    "usageReasoning": "#bb9af7",
+    "usageWarning": "#ff9e64",
+    "usageMuted": "#51597d",
+    "statusIdle": "#a9b1d6",
+    "diffDeleteBackground": "#34212b",
+    "diffInsertBackground": "#1f2c38",
+    "welcomeBorder": "#42465d",
+    "welcomeTitle": "#7dcfff",
+    "welcomeMuted": "#787c99",
+    "welcomeText": "#a9b1d6"
+  }
+}
+```
+
+所选 palette 与语法主题在进程生命周期内保持不变。修改 `config.toml` 或 JSON 文件只影响下次启动；Kana 不会扫描、监听或热加载 themes 目录。Clean mode 的 TUI 仍使用已配置主题。Headless `kana exec` 会把主题标识符作为 `config.toml` 的一部分进行校验，但不会读取主题 JSON 文件。
 
 日志固定写入 `<KANA_HOME>/logs`，目录不可配置；所选 log level 会在持久化前过滤记录。Provider 生命周期记录格式见[供应商](providers.zh-CN.md)，其它稳定诊断 event 由各子系统文档拥有。
 

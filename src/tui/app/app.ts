@@ -485,7 +485,7 @@ export class KanaTuiApp {
       launchMode: this.options.launch.mode ?? "normal",
       resumed: this.conversation.sessionId !== undefined,
     });
-    void preloadSyntaxHighlighter().then(
+    void preloadSyntaxHighlighter(this.options.ui.syntaxTheme).then(
       () => this.tui.requestRender(),
       () => undefined,
     );

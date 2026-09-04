@@ -58,13 +58,15 @@ Untrusted tool and provider text is sanitized before display. Width-sensitive co
 
 ## Markdown
 
+The TUI resolves `[tui].theme` before constructing the application and keeps its semantic palette fixed until exit. The welcome logo's green pixels remain fixed Kana branding; its surrounding panel uses the active theme.
+
 Assistant messages and the memory viewer share the lightweight Markdown renderer. It supports headings, lists, quotes, fenced code, selected inline styles, tables, link and image text, and limited HTML normalization. Paired and void HTML tags are removed; unmatched programming text such as `vector<int>` remains literal.
 
 When enabled and confirmed by terminal capabilities, safe `http:`, `https:`, and `mailto:` links use OSC 8. Each wrapped row closes and reopens its link. Disabled or unknown support and unsafe targets use the readable `label (url)` fallback; an incomplete streaming link stays as literal Markdown.
 
 Tables accept optional outer pipes, empty cells, escaped pipes, and alignment. Column widths use visible cells; narrow terminals fall back to vertical key/value records. During streaming, complete rows determine widths while the growing tail is previewed separately, then folded into the final table when the message completes.
 
-Shiki syntax highlighting preloads in the background. Fenced code remains plain text until the highlighter is ready.
+The active TUI theme selects the bundled Shiki syntax theme before background preload starts. Fenced code remains plain text until the highlighter is ready.
 
 ## LaTeX and Mermaid
 

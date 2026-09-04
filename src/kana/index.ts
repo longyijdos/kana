@@ -24,6 +24,7 @@ export {
   DEFAULT_KANA_CONFIG,
   type InstallKanaConfigResult,
   installKanaConfig,
+  isKanaTuiThemeName,
   type KanaConfig,
   type KanaModelProvider,
   type KanaNotificationBackend,

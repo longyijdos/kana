@@ -86,12 +86,17 @@ export type KanaNotificationConfig = {
 };
 
 export type KanaTuiConfig = {
+  theme: string;
   hyperlinks: boolean;
   renderLatex: boolean;
   renderMermaid?: boolean;
   smoothTextStreaming: boolean;
   collapseLongPastes: boolean;
 };
+
+export function isKanaTuiThemeName(value: string): boolean {
+  return /^[a-z0-9][a-z0-9_-]{0,63}$/.test(value);
+}
 
 type KanaMemoryConfig = {
   enabled: boolean;

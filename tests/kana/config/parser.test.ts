@@ -35,6 +35,11 @@ const invalidScalarConfigs: InvalidConfigCase[] = [
   invalidBooleanConfig("tui", "render_latex"),
   invalidBooleanConfig("tui", "render_mermaid"),
   invalidBooleanConfig("tui", "collapse_long_pastes"),
+  [
+    "tui.theme",
+    '[tui]\ntheme = "../unsafe"\n',
+    "tui.theme must be a lowercase theme identifier using letters, numbers, underscores, or hyphens (maximum 64 characters).",
+  ],
 ];
 
 afterEach(cleanupConfigTempDirs);
@@ -82,6 +87,7 @@ describe("Kana config parser", () => {
         "on_approval_required = true",
         "",
         "[tui]",
+        'theme = "solarized_dark"',
         "hyperlinks = false",
         "render_latex = false",
         "render_mermaid = false",
@@ -151,6 +157,7 @@ describe("Kana config parser", () => {
         onApprovalRequired: true,
       },
       tui: {
+        theme: "solarized_dark",
         hyperlinks: false,
         renderLatex: false,
         renderMermaid: false,

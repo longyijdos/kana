@@ -94,6 +94,7 @@ describe("Kana config store", () => {
       draft.agent.toolDeadlineMs = 120_000;
       draft.agent.parallelToolCalls = false;
       draft.agent.maxParallelToolCalls = 2;
+      draft.tui.theme = "solarized_dark";
       draft.tui.hyperlinks = false;
       draft.tui.renderLatex = false;
       draft.tui.renderMermaid = false;
@@ -112,7 +113,7 @@ describe("Kana config store", () => {
     expect(updated).toContain("parallel_tool_calls = false");
     expect(updated).toContain("max_parallel_tool_calls = 2");
     expect(updated).toContain(
-      "[tui]\nhyperlinks = false\nrender_latex = false\nrender_mermaid = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false",
+      '[tui]\ntheme = "solarized_dark"\nhyperlinks = false\nrender_latex = false\nrender_mermaid = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false',
     );
     expect(updated).toContain('[custom]\nvalue = "untouched"');
     expect(readdirSync(home).filter((name) => name.endsWith(".tmp"))).toEqual([]);

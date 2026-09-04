@@ -43,6 +43,14 @@ describe("tui markdown block", () => {
     expect(rendered[0]).toContain("\x1b[38;2;");
   });
 
+  test("rejects changing the Shiki theme after preload starts", async () => {
+    await preloadSyntaxHighlighter();
+
+    await expect(preloadSyntaxHighlighter("light-plus")).rejects.toThrow(
+      "Syntax highlighting already uses tokyo-night; it cannot switch to light-plus at runtime.",
+    );
+  });
+
   test("renders Mermaid code blocks as themed Unicode diagrams", () => {
     const rendered = new MarkdownBlock(
       [

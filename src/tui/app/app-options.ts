@@ -1,3 +1,4 @@
+import type { BundledTheme } from "shiki";
 import type { ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
 import type { BackgroundJobClient } from "@/jobs";
@@ -106,6 +107,7 @@ export type KanaTuiAppOptions = {
   ui: {
     notification: KanaNotificationConfig;
     config?: KanaTuiConfig;
+    syntaxTheme?: BundledTheme;
   };
   memory: KanaTuiMemoryCapabilities;
   usage: KanaTuiUsageCapabilities;

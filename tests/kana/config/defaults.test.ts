@@ -26,5 +26,6 @@ describe("Kana config defaults", () => {
       maxConcurrent: 4,
     });
     expect(DEFAULT_KANA_CONFIG.agent.repeatedToolCalls).toEqual(repeatedToolCalls);
+    expect(DEFAULT_KANA_CONFIG.tui.theme).toBe("kana");
   });
 });

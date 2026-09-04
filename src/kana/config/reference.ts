@@ -48,6 +48,7 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
     `on_approval_required = ${config.notification.onApprovalRequired}`,
     "",
     "[tui]",
+    `theme = "${config.tui.theme}"`,
     `hyperlinks = ${config.tui.hyperlinks}`,
     `render_latex = ${config.tui.renderLatex}`,
     `render_mermaid = ${config.tui.renderMermaid}`,

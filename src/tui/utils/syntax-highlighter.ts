@@ -1,4 +1,4 @@
-import type { BundledLanguage, Highlighter, ThemedToken } from "shiki";
+import type { BundledLanguage, BundledTheme, Highlighter, ThemedToken } from "shiki";
 import { createHighlighter } from "shiki";
 
 export type HighlightedCodeLine = Array<{
@@ -6,7 +6,7 @@ export type HighlightedCodeLine = Array<{
   color?: string;
 }>;
 
-const SHIKI_THEME = "dark-plus";
+const DEFAULT_SHIKI_THEME = "tokyo-night";
 // The upstream shell grammar mis-scopes the final character before `>` (for
 // example, `<hash>`). Track jeff-hykin/better-shell-syntax#111 and #130
 // instead of patching Shiki's generated grammar locally.
@@ -42,11 +42,20 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
 
 let highlighter: Highlighter | undefined;
 let highlighterPromise: Promise<void> | undefined;
+let syntaxTheme: BundledTheme | undefined;
 const highlightedCodeCache = new Map<string, HighlightedCodeLine[]>();
 
-export function preloadSyntaxHighlighter(): Promise<void> {
+export function preloadSyntaxHighlighter(theme: BundledTheme = DEFAULT_SHIKI_THEME): Promise<void> {
+  if (syntaxTheme !== undefined && syntaxTheme !== theme) {
+    return Promise.reject(
+      new Error(
+        `Syntax highlighting already uses ${syntaxTheme}; it cannot switch to ${theme} at runtime.`,
+      ),
+    );
+  }
+  syntaxTheme = theme;
   highlighterPromise ??= createHighlighter({
-    themes: [SHIKI_THEME],
+    themes: [theme],
     langs: [...SHIKI_LANGUAGES],
   }).then((nextHighlighter) => {
     highlighter = nextHighlighter;
@@ -80,7 +89,7 @@ export function highlightCodeSync(
     const highlighted = highlighter
       .codeToTokensBase(code, {
         lang: normalizedLanguage,
-        theme: SHIKI_THEME,
+        theme: syntaxTheme ?? DEFAULT_SHIKI_THEME,
       })
       .map((line) => line.map(formatToken));
 

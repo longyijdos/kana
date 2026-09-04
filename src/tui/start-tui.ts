@@ -7,6 +7,7 @@ import {
   openKanaOAuthAuthorizationUrl,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
+import type { Logger } from "@/logging";
 import { KanaTuiApp } from "./app/app";
 import { applyTuiModelSelection, type TuiModelSelection } from "./app/model-selection";
 import {
@@ -17,6 +18,8 @@ import {
 } from "./mcp-lifecycle-status";
 import { registerTuiProcessSignals } from "./process-lifecycle";
 import { ProcessTerminal } from "./runtime";
+import { applyTuiTheme } from "./theme";
+import { loadTuiTheme } from "./themes";
 
 export type StartTuiOptions = {
   initialPrompt?: string;
@@ -62,6 +65,10 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         app?.showShutdownStatus(status);
       }
     },
+  });
+  const theme = await prepareTuiTheme(host.tuiConfig.theme, {
+    logger: host.getLogger(),
+    close: () => host.close(),
   });
   const terminal = new ProcessTerminal(host.notificationConfig);
   let removeProcessSignals = (): void => {};
@@ -156,6 +163,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       ui: {
         notification: host.notificationConfig,
         config: host.tuiConfig,
+        syntaxTheme: theme.syntaxTheme,
       },
       memory: {
         compact: (target, userRequest, signal) => host.compactMemory(target, userRequest, signal),
@@ -224,6 +232,33 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     throw error;
   }
   await app.waitForStop();
+}
+
+export async function prepareTuiTheme(
+  name: string,
+  options: {
+    logger: Pick<Logger, "error" | "info">;
+    close: () => Promise<void>;
+    load?: typeof loadTuiTheme;
+    apply?: typeof applyTuiTheme;
+  },
+): Promise<ReturnType<typeof loadTuiTheme>> {
+  let phase: "apply" | "load" = "load";
+  try {
+    const theme = (options.load ?? loadTuiTheme)(name);
+    phase = "apply";
+    (options.apply ?? applyTuiTheme)(theme);
+    options.logger.info("tui.theme_loaded", {
+      name: theme.name,
+      source: theme.source,
+      syntaxTheme: theme.syntaxTheme,
+    });
+    return theme;
+  } catch (error) {
+    options.logger.error("tui.theme_prepare_failed", { name, phase, error });
+    await options.close();
+    throw error;
+  }
 }
 
 async function createTuiAppWithCleanup(

@@ -58,13 +58,15 @@ Renderer 会缓存规范化文本行和 viewport 状态，并在终端支持时�
 
 ## Markdown
 
+TUI 会在构造应用前解析 `[tui].theme`，并让语义 palette 在退出前保持固定。欢迎 logo 的绿色像素始终是固定的 Kana 品牌色，logo 外围 panel 则使用当前主题。
+
 助手消息与 memory viewer 共用轻量 Markdown renderer，支持标题、列表、引用、代码围栏、部分 inline 样式、表格、链接与图片文本，以及有限 HTML 规范化。成对标签和 void 标签会被移除，`vector<int>` 这类未配对的编程文本保持原样。
 
 配置允许且终端确认支持时，安全的 `http:`、`https:` 与 `mailto:` 链接使用 OSC 8；每个换行后的 row 会单独关闭并重新打开链接。关闭或无法确认支持、以及不安全目标都会使用可读的 `label (url)` fallback；未完成的流式链接保持 Markdown 原文。
 
 表格接受可选外侧管道、空单元格、转义管道和对齐。列宽按可见 cell 计算，窄终端会降级为纵向键值记录。流式过程中只有完整行参与列宽计算，正在增长的尾行单独预览，并在消息完成后合入最终表格。
 
-Shiki 语法高亮在后台预加载；highlighter 就绪前，代码围栏使用普通文本。
+当前 TUI 主题会在后台预加载开始前选定 Shiki 捆绑的语法主题；highlighter 就绪前，代码围栏使用普通文本。
 
 ## LaTeX 与 Mermaid
 
