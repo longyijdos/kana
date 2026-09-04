@@ -492,8 +492,8 @@ describe("tool call rendering", () => {
 
     expect(trimmedLines).toContain("- old line");
     expect(trimmedLines).toContain("+ new line");
-    expect(rendered.some((line) => line.includes("\x1b[48;2;70;24;24"))).toBe(true);
-    expect(rendered.some((line) => line.includes("\x1b[48;2;18;70;38"))).toBe(true);
+    expect(rendered.some((line) => line.includes("\x1b[48;2;52;33;43"))).toBe(true);
+    expect(rendered.some((line) => line.includes("\x1b[48;2;31;44;56"))).toBe(true);
     expect(
       rendered
         .filter((line) => stripAnsi(line).startsWith("- ") || stripAnsi(line).startsWith("+ "))

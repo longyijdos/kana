@@ -252,7 +252,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 
 ### TUI 主题
 
-内置 `kana` 主题是默认值，保持 Kana 的标准配色，并使用 Shiki 的 `tokyo-night` 主题进行语法高亮。名为 `ocean` 的用户主题保存在 `<KANA_HOME>/themes/ocean.json`，通过 `theme = "ocean"` 选择。主题标识符最多包含 64 个小写 ASCII 字母、数字、下划线或连字符，并且必须以字母或数字开头。内置名称被保留，因此 `kana.json` 这类用户文件不能覆盖内置主题。
+内置 `kana` 主题是默认值，使用 Tokyo Night 风格的配色和 Shiki 的 `tokyo-night` 语法主题。名为 `ocean` 的用户主题保存在 `<KANA_HOME>/themes/ocean.json`，通过 `theme = "ocean"` 选择。主题标识符最多包含 64 个小写 ASCII 字母、数字、下划线或连字符，并且必须以字母或数字开头。内置名称被保留，因此 `kana.json` 这类用户文件不能覆盖内置主题。
 
 Kana 只在 TUI 启动时读取选中的用户主题文件。文件必须是只包含 `syntaxTheme` 和 `colors` 的 JSON object；`syntaxTheme` 是当前安装的 Shiki 所捆绑的 theme ID。下例中的每个颜色键都必填，未知键会被拒绝，颜色值使用六位 `#rrggbb` 格式：
 
@@ -260,41 +260,41 @@ Kana 只在 TUI 启动时读取选中的用户主题文件。文件必须是只�
 {
   "syntaxTheme": "tokyo-night",
   "colors": {
-    "assistant": "#dee2e6",
-    "markdownText": "#dee2e6",
-    "markdownHeading": "#69d0c4",
-    "markdownQuote": "#8b949e",
-    "markdownRule": "#4b5563",
-    "markdownTable": "#cdd5df",
-    "markdownCodeBlock": "#cdd5df",
-    "markdownInlineCode": "#e5b567",
-    "user": "#7ea6ff",
-    "userMessageText": "#dee2e6",
-    "shortcutHint": "#c099e0",
-    "command": "#c099e0",
-    "commandSelected": "#d5b0f5",
-    "bottomTitle": "#69d0c4",
-    "muted": "#8b949e",
-    "model": "#7ea6ff",
-    "contextUsage": "#69d0c4",
-    "cwd": "#8b949e",
-    "toolActive": "#e5b567",
-    "toolSuccess": "#89d185",
-    "toolOutput": "#9ca6b2",
-    "error": "#f47067",
-    "usageInput": "#7ea6ff",
-    "usageCache": "#69d0c4",
-    "usageOutput": "#89d185",
-    "usageReasoning": "#c099e0",
-    "usageWarning": "#f0ab56",
-    "usageMuted": "#5c6674",
-    "statusIdle": "#cdd5df",
-    "diffDeleteBackground": "#461818",
-    "diffInsertBackground": "#124626",
-    "welcomeBorder": "#4b5563",
-    "welcomeTitle": "#69d0c4",
-    "welcomeMuted": "#8b949e",
-    "welcomeText": "#dee2e6"
+    "assistant": "#a9b1d6",
+    "markdownText": "#a9b1d6",
+    "markdownHeading": "#7dcfff",
+    "markdownQuote": "#787c99",
+    "markdownRule": "#363b54",
+    "markdownTable": "#a9b1d6",
+    "markdownCodeBlock": "#a9b1d6",
+    "markdownInlineCode": "#e0af68",
+    "user": "#7aa2f7",
+    "userMessageText": "#c0caf5",
+    "shortcutHint": "#bb9af7",
+    "command": "#9d7cd8",
+    "commandSelected": "#bb9af7",
+    "bottomTitle": "#7dcfff",
+    "muted": "#787c99",
+    "model": "#7aa2f7",
+    "contextUsage": "#73daca",
+    "cwd": "#787c99",
+    "toolActive": "#e0af68",
+    "toolSuccess": "#9ece6a",
+    "toolOutput": "#9aa5ce",
+    "error": "#f7768e",
+    "usageInput": "#7aa2f7",
+    "usageCache": "#73daca",
+    "usageOutput": "#9ece6a",
+    "usageReasoning": "#bb9af7",
+    "usageWarning": "#ff9e64",
+    "usageMuted": "#51597d",
+    "statusIdle": "#a9b1d6",
+    "diffDeleteBackground": "#34212b",
+    "diffInsertBackground": "#1f2c38",
+    "welcomeBorder": "#42465d",
+    "welcomeTitle": "#7dcfff",
+    "welcomeMuted": "#787c99",
+    "welcomeText": "#a9b1d6"
   }
 }
 ```

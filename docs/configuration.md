@@ -252,7 +252,7 @@ TUI option fields remain canonical in the table above. Their interaction semanti
 
 ### TUI themes
 
-The built-in `kana` theme is the default, preserves Kana's standard palette, and uses Shiki's `tokyo-night` theme for syntax highlighting. A user theme named `ocean` is stored at `<KANA_HOME>/themes/ocean.json` and selected with `theme = "ocean"`. Theme identifiers contain at most 64 lowercase ASCII letters, numbers, underscores, or hyphens, and must start with a letter or number. Built-in names are reserved: a user file such as `kana.json` cannot override the bundled theme.
+The built-in `kana` theme is the default and uses a Tokyo Night-inspired palette together with Shiki's `tokyo-night` syntax theme. A user theme named `ocean` is stored at `<KANA_HOME>/themes/ocean.json` and selected with `theme = "ocean"`. Theme identifiers contain at most 64 lowercase ASCII letters, numbers, underscores, or hyphens, and must start with a letter or number. Built-in names are reserved: a user file such as `kana.json` cannot override the bundled theme.
 
 Kana reads only the selected user-theme file when the TUI starts. The file must be a JSON object with exactly `syntaxTheme` and `colors`. `syntaxTheme` is a theme ID bundled by the installed Shiki version. Every color key below is required, unknown keys are rejected, and values use six-digit `#rrggbb` notation:
 
@@ -260,41 +260,41 @@ Kana reads only the selected user-theme file when the TUI starts. The file must 
 {
   "syntaxTheme": "tokyo-night",
   "colors": {
-    "assistant": "#dee2e6",
-    "markdownText": "#dee2e6",
-    "markdownHeading": "#69d0c4",
-    "markdownQuote": "#8b949e",
-    "markdownRule": "#4b5563",
-    "markdownTable": "#cdd5df",
-    "markdownCodeBlock": "#cdd5df",
-    "markdownInlineCode": "#e5b567",
-    "user": "#7ea6ff",
-    "userMessageText": "#dee2e6",
-    "shortcutHint": "#c099e0",
-    "command": "#c099e0",
-    "commandSelected": "#d5b0f5",
-    "bottomTitle": "#69d0c4",
-    "muted": "#8b949e",
-    "model": "#7ea6ff",
-    "contextUsage": "#69d0c4",
-    "cwd": "#8b949e",
-    "toolActive": "#e5b567",
-    "toolSuccess": "#89d185",
-    "toolOutput": "#9ca6b2",
-    "error": "#f47067",
-    "usageInput": "#7ea6ff",
-    "usageCache": "#69d0c4",
-    "usageOutput": "#89d185",
-    "usageReasoning": "#c099e0",
-    "usageWarning": "#f0ab56",
-    "usageMuted": "#5c6674",
-    "statusIdle": "#cdd5df",
-    "diffDeleteBackground": "#461818",
-    "diffInsertBackground": "#124626",
-    "welcomeBorder": "#4b5563",
-    "welcomeTitle": "#69d0c4",
-    "welcomeMuted": "#8b949e",
-    "welcomeText": "#dee2e6"
+    "assistant": "#a9b1d6",
+    "markdownText": "#a9b1d6",
+    "markdownHeading": "#7dcfff",
+    "markdownQuote": "#787c99",
+    "markdownRule": "#363b54",
+    "markdownTable": "#a9b1d6",
+    "markdownCodeBlock": "#a9b1d6",
+    "markdownInlineCode": "#e0af68",
+    "user": "#7aa2f7",
+    "userMessageText": "#c0caf5",
+    "shortcutHint": "#bb9af7",
+    "command": "#9d7cd8",
+    "commandSelected": "#bb9af7",
+    "bottomTitle": "#7dcfff",
+    "muted": "#787c99",
+    "model": "#7aa2f7",
+    "contextUsage": "#73daca",
+    "cwd": "#787c99",
+    "toolActive": "#e0af68",
+    "toolSuccess": "#9ece6a",
+    "toolOutput": "#9aa5ce",
+    "error": "#f7768e",
+    "usageInput": "#7aa2f7",
+    "usageCache": "#73daca",
+    "usageOutput": "#9ece6a",
+    "usageReasoning": "#bb9af7",
+    "usageWarning": "#ff9e64",
+    "usageMuted": "#51597d",
+    "statusIdle": "#a9b1d6",
+    "diffDeleteBackground": "#34212b",
+    "diffInsertBackground": "#1f2c38",
+    "welcomeBorder": "#42465d",
+    "welcomeTitle": "#7dcfff",
+    "welcomeMuted": "#787c99",
+    "welcomeText": "#a9b1d6"
   }
 }
 ```
