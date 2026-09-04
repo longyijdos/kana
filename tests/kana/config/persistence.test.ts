@@ -28,6 +28,7 @@ describe("Kana config persistence", () => {
       logsPath: "/home/kana/.kana/logs",
       accountingPath: "/home/kana/.kana/accounting",
       approvalsPath: "/home/kana/.kana/approvals.json",
+      themesDirectory: "/home/kana/.kana/themes",
       skillsConfigPath: "/home/kana/.kana/skills/skills.toml",
       providersDirectory: "/home/kana/.kana/providers",
       customProviderPath: "/home/kana/.kana/providers/custom.toml",
@@ -71,6 +72,7 @@ describe("Kana config persistence", () => {
     expect(installedConfigExample).toContain("[agent.repeated_tool_calls]");
     expect(installedConfigExample).toContain("reminder_thresholds = [3,5,8]");
     expect(installedConfigExample).toContain("excluded_tools = []");
+    expect(installedConfigExample).toContain('theme = "kana"');
     expect(installedConfigExample).toContain("hyperlinks = true");
     expect(installedConfigExample).toContain("render_latex = true");
     expect(installedConfigExample).toContain("render_mermaid = true");
@@ -138,6 +140,7 @@ describe("Kana config persistence", () => {
       [path.join(paths.memoryDirectory, "memory.md"), "memory"],
       [path.join(paths.accountingPath, "usage.jsonl"), "accounting"],
       [path.join(paths.logsPath, "session.jsonl"), "logs"],
+      [path.join(paths.themesDirectory, "ocean.json"), "theme"],
       [path.join(paths.home, "skills", "kana-skills", "SKILL.md"), "default repository"],
       [path.join(paths.home, "skills", "personal", "SKILL.md"), "personal skill"],
     ]);

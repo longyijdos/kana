@@ -1,39 +1,13 @@
-import type { Color } from "./render";
+import { KANA_TUI_THEME } from "./themes/builtins";
+import type { TuiPalette, TuiTheme } from "./themes/types";
 
-export const tuiTheme = {
-  assistant: [222, 226, 230],
-  markdownText: [222, 226, 230],
-  markdownHeading: [105, 208, 196],
-  markdownQuote: [139, 148, 158],
-  markdownRule: [75, 85, 99],
-  markdownTable: [205, 213, 223],
-  markdownCodeBlock: [205, 213, 223],
-  markdownInlineCode: [229, 181, 103],
-  user: [126, 166, 255],
-  userMessageText: [222, 226, 230],
-  shortcutHint: [192, 153, 224],
-  command: [192, 153, 224],
-  commandSelected: [213, 176, 245],
-  bottomTitle: [105, 208, 196],
-  muted: [139, 148, 158],
-  model: [126, 166, 255],
-  contextUsage: [105, 208, 196],
-  cwd: [139, 148, 158],
-  toolActive: [229, 181, 103],
-  toolSuccess: [137, 209, 133],
-  toolOutput: [156, 166, 178],
-  error: [244, 112, 103],
-  usageInput: [126, 166, 255],
-  usageCache: [105, 208, 196],
-  usageOutput: [137, 209, 133],
-  usageReasoning: [192, 153, 224],
-  usageWarning: [240, 171, 86],
-  usageMuted: [92, 102, 116],
-  statusIdle: [205, 213, 223],
-  diffDeleteBackground: [70, 24, 24],
-  diffInsertBackground: [18, 70, 38],
-  welcomeBorder: [75, 85, 99],
-  welcomeTitle: [105, 208, 196],
-  welcomeMuted: [139, 148, 158],
-  welcomeText: [222, 226, 230],
-} satisfies Record<string, Color>;
+export let tuiTheme: TuiPalette = KANA_TUI_THEME.colors;
+let configured = false;
+
+export function applyTuiTheme(theme: TuiTheme): void {
+  if (configured) {
+    throw new Error("The TUI theme is already fixed for this process.");
+  }
+  configured = true;
+  tuiTheme = theme.colors;
+}

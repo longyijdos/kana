@@ -1,4 +1,5 @@
 export {
+  isKanaTuiThemeName,
   KANA_MODEL_PROVIDERS,
   type KanaAgentConfig,
   type KanaAgentRuntimeConfig,

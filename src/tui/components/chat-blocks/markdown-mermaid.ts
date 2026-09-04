@@ -46,12 +46,12 @@ export function renderMarkdownMermaid(
   };
 }
 
-const MERMAID_SPAN_COLORS = {
-  border: tuiTheme.markdownRule,
-  edge: tuiTheme.markdownHeading,
-  edgeLabel: tuiTheme.markdownQuote,
-  title: tuiTheme.markdownHeading,
-} satisfies Record<Exclude<Cls, "none" | "text">, Color>;
+const MERMAID_SPAN_COLOR_KEYS = {
+  border: "markdownRule",
+  edge: "markdownHeading",
+  edgeLabel: "markdownQuote",
+  title: "markdownHeading",
+} as const satisfies Record<Exclude<Cls, "none" | "text">, keyof typeof tuiTheme>;
 
 function styleMermaidSpan(span: Span, textColor: Color | undefined): string {
   if (span.cls === "none") {
@@ -60,7 +60,9 @@ function styleMermaidSpan(span: Span, textColor: Color | undefined): string {
 
   const styled = color(
     span.text,
-    span.cls === "text" ? (textColor ?? tuiTheme.markdownText) : MERMAID_SPAN_COLORS[span.cls],
+    span.cls === "text"
+      ? (textColor ?? tuiTheme.markdownText)
+      : tuiTheme[MERMAID_SPAN_COLOR_KEYS[span.cls]],
   );
 
   return span.cls === "title" ? bold(styled) : styled;

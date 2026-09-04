@@ -29,6 +29,16 @@ afterEach(() => {
 });
 
 describe("Kana conversation host", () => {
+  test("carries TUI theme configuration without resolving theme files", async () => {
+    const env = createTempEnv();
+    writeFileSync(path.join(env.KANA_HOME ?? "", "config.toml"), '[tui]\ntheme = "ocean"\n');
+
+    const host = createKanaConversationHost({ env, session: { type: "none" } });
+
+    expect(host.tuiConfig.theme).toBe("ocean");
+    await host.close();
+  });
+
   test("shares Agent construction, journal persistence, accounting, and session logging", async () => {
     const env = createTempEnv();
     process.env.KANA_HOME = env.KANA_HOME;

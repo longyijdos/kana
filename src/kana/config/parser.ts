@@ -1,6 +1,7 @@
 import { LOG_LEVELS } from "@/logging";
 import type { OpenAICodexReasoningSummary } from "@/providers";
 import {
+  isKanaTuiThemeName,
   KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,
   KANA_TOOL_APPROVAL_MODES,
@@ -60,6 +61,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       on_approval_required: config.notification.onApprovalRequired,
     },
     tui: {
+      theme: config.tui.theme,
       hyperlinks: config.tui.hyperlinks,
       render_latex: config.tui.renderLatex,
       render_mermaid: config.tui.renderMermaid,
@@ -213,6 +215,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       ),
     },
     tui: {
+      theme: readThemeName(tui.theme, defaults.tui.theme),
       hyperlinks: readBoolean(tui.hyperlinks, defaults.tui.hyperlinks, "tui.hyperlinks"),
       renderLatex: readBoolean(tui.render_latex, defaults.tui.renderLatex, "tui.render_latex"),
       renderMermaid: readBoolean(
@@ -341,6 +344,16 @@ function readString(value: unknown, fallback: string, name: string): string {
   }
 
   return value;
+}
+
+function readThemeName(value: unknown, fallback: string): string {
+  const name = readString(value, fallback, "tui.theme");
+  if (!isKanaTuiThemeName(name)) {
+    throw new Error(
+      "tui.theme must be a lowercase theme identifier using letters, numbers, underscores, or hyphens (maximum 64 characters).",
+    );
+  }
+  return name;
 }
 
 function readOptionalString(
