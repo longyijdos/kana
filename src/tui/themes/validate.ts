@@ -1,39 +1,11 @@
 import { bundledThemes } from "shiki";
+import { compileTuiTheme } from "./spec";
+import type { TuiSyntaxTheme, TuiTheme, TuiThemeHexColors } from "./types";
+import { isValidThemeName } from "./types";
 
-import type { RgbTuple, TuiSyntaxTheme, TuiTheme, TuiThemeColors } from "./types";
-import { TUI_THEME_COLOR_KEYS } from "./types";
-
-// Theme files (built-in specs and user JSON) describe colors as "#rrggbb"
-// strings. compileTuiTheme is the single conversion path into the RGB tuples
-// the renderer consumes, so built-in and user themes share one validator.
-
-export type TuiThemeSpec = {
-  name: string;
-  syntaxTheme: TuiSyntaxTheme;
-  colors: Record<string, string>;
-};
-
-export function compileTuiTheme(spec: TuiThemeSpec): TuiTheme {
-  if (spec.name.trim() === "") {
-    throw new Error("Theme name must be a non-empty string.");
-  }
-
-  const colors = {} as TuiThemeColors;
-
-  for (const key of TUI_THEME_COLOR_KEYS) {
-    const hex = spec.colors[key];
-    if (typeof hex !== "string") {
-      throw new Error(`Theme "${spec.name}" is missing color "${key}".`);
-    }
-    colors[key] = parseHexColor(hex, `Theme "${spec.name}" color "${key}"`);
-  }
-
-  return {
-    name: spec.name,
-    syntaxTheme: spec.syntaxTheme,
-    colors,
-  };
-}
+// User theme files are untrusted JSON and go through this module before
+// compilation. Built-in theme specs skip runtime syntax-theme validation
+// because their syntaxTheme is compile-time narrowed to BundledTheme.
 
 export function parseUserThemeJson(name: string, source: string): TuiTheme {
   let parsed: unknown;
@@ -41,6 +13,12 @@ export function parseUserThemeJson(name: string, source: string): TuiTheme {
     parsed = JSON.parse(source);
   } catch {
     throw new Error(`Theme file "${name}.json" is not valid JSON.`);
+  }
+
+  if (!isValidThemeName(name)) {
+    throw new Error(
+      `Invalid theme file name "${name}"; theme names may only contain letters, digits, ".", "_", and "-".`,
+    );
   }
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -63,7 +41,7 @@ export function parseUserThemeJson(name: string, source: string): TuiTheme {
   return compileTuiTheme({
     name,
     syntaxTheme: parseSyntaxTheme(spec.syntaxTheme, name),
-    colors: colors as Record<string, string>,
+    colors: colors as TuiThemeHexColors,
   });
 }
 
@@ -84,15 +62,3 @@ function isSupportedSyntaxTheme(value: string): value is TuiSyntaxTheme {
 }
 
 const BUNDLED_SYNTAX_THEMES = Object.keys(bundledThemes);
-
-function parseHexColor(value: string, path: string): RgbTuple {
-  if (!/^#[0-9a-fA-F]{6}$/.test(value)) {
-    throw new Error(`${path} must be a "#rrggbb" hex color.`);
-  }
-
-  const red = Number.parseInt(value.slice(1, 3), 16);
-  const green = Number.parseInt(value.slice(3, 5), 16);
-  const blue = Number.parseInt(value.slice(5, 7), 16);
-
-  return [red, green, blue] as const;
-}

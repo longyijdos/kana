@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 
 import { applyTuiTheme, tuiTheme } from "../../src/tui/theme";
-import { getBuiltInTheme, listUserThemeNames, resolveTuiTheme } from "../../src/tui/themes/loader";
+import { getBuiltInTheme } from "../../src/tui/themes/builtins";
+import {
+  availableThemeNames,
+  listUserThemeNames,
+  resolveTuiTheme,
+} from "../../src/tui/themes/loader";
 import { TUI_THEME_COLOR_KEYS } from "../../src/tui/themes/types";
 import { parseUserThemeJson } from "../../src/tui/themes/validate";
 
@@ -27,7 +32,7 @@ beforeEach(() => {
 
 afterEach(() => {
   Bun.spawnSync(["rm", "-rf", tempHome]);
-  applyTuiTheme(getBuiltInTheme());
+  applyTuiTheme(getBuiltInTheme("kana"));
 });
 
 const VALID_THEME = (name: string, syntaxTheme = "dark-plus"): string =>
@@ -64,13 +69,6 @@ describe("TUI theme resolution", () => {
 
     applyTuiTheme(theme);
     expect(tuiTheme.assistant).toEqual([18, 52, 86]);
-  });
-
-  test("lists built-in and user themes", () => {
-    writeTheme(tempHome, "catppuccin", VALID_THEME("catppuccin", "catppuccin-mocha"));
-    writeTheme(tempHome, "invalid", "{ nope");
-
-    expect(listUserThemeNames(tempHome)).toEqual(["catppuccin", "invalid"]);
   });
 
   test("rejects an unknown theme with available names", () => {
@@ -119,6 +117,41 @@ describe("TUI theme resolution", () => {
   });
 
   test("getBuiltInTheme returns the same compiled theme", () => {
-    expect(getBuiltInTheme()).toBe(getBuiltInTheme());
+    expect(getBuiltInTheme("kana")).toBe(getBuiltInTheme("kana"));
+  });
+});
+
+describe("TUI theme names", () => {
+  test("rejects names that could escape the themes directory", () => {
+    for (const name of ["../escape", "..", "a/b", "a\\b", "", "  "]) {
+      expect(() => resolveTuiTheme(name, makeEnv(tempHome))).toThrow(/Invalid theme name/);
+    }
+  });
+
+  test("accepts dotted, dashed, and underscored names", () => {
+    writeTheme(tempHome, "my.theme-v2_x", VALID_THEME("my.theme-v2_x"));
+    expect(resolveTuiTheme("my.theme-v2_x", makeEnv(tempHome)).name).toBe("my.theme-v2_x");
+  });
+});
+
+describe("available user themes", () => {
+  test("lists only themes that load and validate", () => {
+    writeTheme(tempHome, "valid", VALID_THEME("valid", "tokyo-night"));
+    writeTheme(tempHome, "broken-json", "{ nope");
+    writeTheme(tempHome, "bad-name", VALID_THEME("other-name"));
+    writeTheme(tempHome, "not-a-theme.txt", "{}");
+
+    expect(listUserThemeNames(tempHome)).toEqual(["valid"]);
+  });
+
+  test("availableThemeNames combines built-ins with valid user themes", () => {
+    writeTheme(tempHome, "valid", VALID_THEME("valid", "tokyo-night"));
+    writeTheme(tempHome, "broken-json", "{ nope");
+
+    expect(availableThemeNames(tempHome)).toEqual(["kana", "valid"]);
+  });
+
+  test("empty themes directory yields only built-ins", () => {
+    expect(availableThemeNames(tempHome)).toEqual(["kana"]);
   });
 });

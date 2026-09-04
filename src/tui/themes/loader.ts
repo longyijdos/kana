@@ -3,42 +3,68 @@ import path from "node:path";
 
 import { getKanaConfigPaths } from "@/kana";
 
+import { BUILT_IN_THEME_NAMES, getBuiltInTheme } from "./builtins";
 import type { TuiTheme } from "./types";
-import { compileTuiTheme, parseUserThemeJson, type TuiThemeSpec } from "./validate";
+import { isValidThemeName } from "./types";
+import { parseUserThemeJson } from "./validate";
 
-// Built-in themes are embedded as compiled specs in this module. User themes
-// live in ~/.kana/themes/<name>.json and share the same validation path, so
-// both sources produce the same TuiTheme shape.
+// Theme loading and resolution. Built-in themes come from builtins.ts; user
+// themes live in <KANA_HOME>/themes/<name>.json and are validated on load.
 
-export function listUserThemeNames(home: string): string[] {
-  const directory = path.join(home, "themes");
+const USER_THEMES_DIRECTORY = "themes";
+
+// Listing resolves every candidate so "available" only ever means valid,
+// loadable themes. Resolution of a single theme stays lazy and reports the
+// specific file error instead of silently treating it as missing.
+function listUserThemes(home: string): TuiTheme[] {
+  const directory = path.join(home, USER_THEMES_DIRECTORY);
 
   if (!existsSync(directory)) {
     return [];
   }
 
-  const names: string[] = [];
+  const themes: TuiTheme[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.isFile() && entry.name.endsWith(".json")) {
-      const name = entry.name.slice(0, -".json".length);
-      if (name.trim() !== "") {
-        names.push(name);
-      }
+    if (!entry.isFile() || !entry.name.endsWith(".json")) {
+      continue;
+    }
+
+    const name = entry.name.slice(0, -".json".length);
+    if (!isValidThemeName(name)) {
+      continue;
+    }
+
+    try {
+      themes.push(loadUserTheme(name, path.join(directory, entry.name)));
+    } catch {
+      // A malformed theme file is not an available theme.
     }
   }
 
-  return names.sort();
+  return themes.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function listUserThemeNames(home: string): string[] {
+  return listUserThemes(home).map((theme) => theme.name);
+}
+
+export function availableThemeNames(home: string): string[] {
+  return [...BUILT_IN_THEME_NAMES, ...listUserThemeNames(home)];
 }
 
 export function resolveTuiTheme(name: string, env: NodeJS.ProcessEnv = process.env): TuiTheme {
-  const builtIn = BUILT_IN_THEMES[name];
+  if (!isValidThemeName(name)) {
+    throw new Error(
+      `Invalid theme name "${name}"; theme names may only contain letters, digits, ".", "_", and "-".`,
+    );
+  }
 
-  if (builtIn !== undefined) {
-    return builtIn;
+  if (BUILT_IN_THEME_NAMES.includes(name)) {
+    return getBuiltInTheme(name);
   }
 
   const { home } = getKanaConfigPaths(env);
-  const userFilePath = path.join(home, "themes", `${name}.json`);
+  const userFilePath = path.join(home, USER_THEMES_DIRECTORY, `${name}.json`);
   if (existsSync(userFilePath)) {
     return loadUserTheme(name, userFilePath);
   }
@@ -48,67 +74,6 @@ export function resolveTuiTheme(name: string, env: NodeJS.ProcessEnv = process.e
   );
 }
 
-function availableThemeNames(home: string): string[] {
-  return [...Object.keys(BUILT_IN_THEMES), ...listUserThemeNames(home)];
-}
-
 function loadUserTheme(name: string, filePath: string): TuiTheme {
   return parseUserThemeJson(name, readFileSync(filePath, "utf8"));
-}
-
-// Keep the current Kana appearance as the default theme. The spec is compiled
-// through the same path as user themes so a palette typo would be caught
-// identically in both sources.
-const KANA_THEME_SPEC: TuiThemeSpec = {
-  name: "kana",
-  syntaxTheme: "dark-plus",
-  colors: {
-    assistant: "#dee2e6",
-    markdownText: "#dee2e6",
-    markdownHeading: "#69d0c4",
-    markdownQuote: "#8b949e",
-    markdownRule: "#4b5563",
-    markdownTable: "#cdd5df",
-    markdownCodeBlock: "#cdd5df",
-    markdownInlineCode: "#e5b367",
-    user: "#7ea6ff",
-    userMessageText: "#dee2e6",
-    shortcutHint: "#c099e0",
-    command: "#c099e0",
-    commandSelected: "#d5b0f5",
-    bottomTitle: "#69d0c4",
-    muted: "#8b949e",
-    model: "#7ea6ff",
-    contextUsage: "#69d0c4",
-    cwd: "#8b949e",
-    toolActive: "#e5b367",
-    toolSuccess: "#89d185",
-    toolOutput: "#9ca6b2",
-    error: "#f47067",
-    usageInput: "#7ea6ff",
-    usageCache: "#69d0c4",
-    usageOutput: "#89d185",
-    usageReasoning: "#c099e0",
-    usageWarning: "#f0ab56",
-    usageMuted: "#5c6674",
-    statusIdle: "#cdd5df",
-    diffDeleteBackground: "#461818",
-    diffInsertBackground: "#124626",
-    welcomeBorder: "#4b5563",
-    welcomeTitle: "#69d0c4",
-    welcomeMuted: "#8b949e",
-    welcomeText: "#dee2e6",
-  },
-};
-
-const BUILT_IN_THEMES: Readonly<Record<string, TuiTheme>> = Object.freeze({
-  kana: compileTuiTheme(KANA_THEME_SPEC),
-});
-
-export function getBuiltInTheme(name = "kana"): TuiTheme {
-  const theme = BUILT_IN_THEMES[name];
-  if (theme === undefined) {
-    throw new Error(`Unknown built-in TUI theme "${name}".`);
-  }
-  return theme;
 }

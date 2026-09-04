@@ -220,15 +220,14 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     void app?.stop();
   });
 
-  // Resolve the configured TUI theme before the first paint. Palette and
-  // syntax theme are process-lifetime values, so applying them here keeps
-  // every render and the preloaded highlighter consistent. Resolution happens
-  // after the app is constructed so a bad theme name still cleans up the host.
-  const activeTheme = resolveTuiTheme(host.config.tui.theme);
-  applyTuiTheme(activeTheme);
-  setSyntaxTheme(activeTheme.syntaxTheme);
-
   try {
+    // Resolve the configured TUI theme before the first paint; palette and
+    // syntax theme stay fixed for the process. Resolution runs under this
+    // guard so an invalid theme aborts startup through app.stop() cleanup.
+    const activeTheme = resolveTuiTheme(host.config.tui.theme);
+    applyTuiTheme(activeTheme);
+    setSyntaxTheme(activeTheme.syntaxTheme);
+
     app.start();
   } catch (error) {
     await app.stop();

@@ -1,9 +1,9 @@
-import { getBuiltInTheme } from "./themes/loader";
+import { getBuiltInTheme } from "./themes/builtins";
 import { TUI_THEME_COLOR_KEYS, type TuiTheme, type TuiThemeColors } from "./themes/types";
 
 function createDefaultPalette(): TuiThemeColors {
   const palette = {} as TuiThemeColors;
-  const builtIn = getBuiltInTheme();
+  const builtIn = getBuiltInTheme("kana");
 
   for (const key of TUI_THEME_COLOR_KEYS) {
     palette[key] = builtIn.colors[key];

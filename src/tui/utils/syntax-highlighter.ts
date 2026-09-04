@@ -44,13 +44,13 @@ let highlighter: Highlighter | undefined;
 let highlighterPromise: Promise<void> | undefined;
 const highlightedCodeCache = new Map<string, HighlightedCodeLine[]>();
 
-// The syntax theme is fixed for the process lifetime: startup resolves the
-// configured TUI theme and calls setSyntaxTheme before preloadSyntaxHighlighter
-// creates the highlighter. Static use keeps the highlighted-code cache valid.
+// The syntax theme is fixed once the highlighter is created. Startup resolves
+// the configured TUI theme and calls setSyntaxTheme before preload, so cached
+// tokens stay valid for the process lifetime without invalidation.
 let activeSyntaxTheme: TuiSyntaxTheme = "dark-plus";
 
 export function setSyntaxTheme(theme: TuiSyntaxTheme): void {
-  if (highlighter) {
+  if (highlighter || highlighterPromise) {
     throw new Error("setSyntaxTheme must run before preloadSyntaxHighlighter.");
   }
   activeSyntaxTheme = theme;
