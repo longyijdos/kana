@@ -11,7 +11,7 @@ import { addHistoryTimelineToTranscript } from "./history";
 import type { TuiModelSelection } from "./model-selection";
 import { SessionOverlayController } from "./session-overlay-controller";
 import type { RunPhase } from "./status-phase";
-import { WELCOME_LOGO_LINES } from "./welcome-logo";
+import { renderWelcomeLogoLines } from "./welcome-logo";
 
 export type SessionLifecycleControllerOptions = {
   conversation: ConversationRuntime<TuiModelSelection>;
@@ -73,7 +73,7 @@ export class SessionLifecycleController {
 
     this.options.transcript.addChild(
       new WelcomeBlock({
-        logoLines: WELCOME_LOGO_LINES,
+        logoLines: renderWelcomeLogoLines(),
         recentSessions: this.options.conversation.listSessions(),
         savedSessionsAvailable: this.options.savedSessionsAvailable,
       }),

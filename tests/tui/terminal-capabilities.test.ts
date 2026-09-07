@@ -1,5 +1,27 @@
 import { describe, expect, test } from "bun:test";
-import { supportsTerminalHyperlinks } from "../../src/tui/runtime";
+import { detectTerminalColorMode, supportsTerminalHyperlinks } from "../../src/tui/runtime";
+
+describe("terminal color capabilities", () => {
+  test("uses a reported terminal color depth when available", () => {
+    expect(detectTerminalColorMode({}, { getColorDepth: () => 24 })).toBe("truecolor");
+    expect(detectTerminalColorMode({}, { getColorDepth: () => 8 })).toBe("ansi256");
+    expect(detectTerminalColorMode({}, { getColorDepth: () => 4 })).toBe("uncolored");
+  });
+
+  test("uses conservative environment hints when color depth is unavailable", () => {
+    expect(detectTerminalColorMode({ COLORTERM: "truecolor" }, {})).toBe("truecolor");
+    expect(detectTerminalColorMode({ TERM_PROGRAM: "ghostty" }, {})).toBe("truecolor");
+    expect(detectTerminalColorMode({ TERM: "xterm-256color" }, {})).toBe("ansi256");
+    expect(detectTerminalColorMode({ TERM: "xterm" }, {})).toBe("uncolored");
+  });
+
+  test("honors explicit no-color and dumb terminal signals", () => {
+    expect(detectTerminalColorMode({ NO_COLOR: "1" }, { getColorDepth: () => 24 })).toBe(
+      "uncolored",
+    );
+    expect(detectTerminalColorMode({ TERM: "dumb", COLORTERM: "truecolor" }, {})).toBe("uncolored");
+  });
+});
 
 describe("terminal hyperlink capabilities", () => {
   test("detects terminals with stable hyperlink support markers", () => {

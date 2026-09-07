@@ -6,7 +6,7 @@ export type HighlightedCodeLine = Array<{
   color?: string;
 }>;
 
-const DEFAULT_SHIKI_THEME = "tokyo-night";
+const DEFAULT_SHIKI_THEME = "github-dark-default";
 // The upstream shell grammar mis-scopes the final character before `>` (for
 // example, `<hash>`). Track jeff-hykin/better-shell-syntax#111 and #130
 // instead of patching Shiki's generated grammar locally.

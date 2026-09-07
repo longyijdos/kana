@@ -1,11 +1,15 @@
 export {
+  backgroundColor,
   bold,
   type Color,
   color,
   dim,
+  getTerminalColorMode,
   type HighlightedLineToken,
   italic,
   renderHighlightedLine,
+  rgbToXterm256,
+  setTerminalColorMode,
   strikethrough,
 } from "./ansi";
 export { graphemeSegments } from "./graphemes";

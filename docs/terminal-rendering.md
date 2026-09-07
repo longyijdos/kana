@@ -30,6 +30,8 @@ The transcript intentionally renders complete history so natural terminal scroll
 
 `ProcessTerminal.start()` requires TTY stdin and stdout. It enables raw mode, bracketed paste, enhanced keyboard reporting when supported, and a hidden cursor, then registers input and resize handling. Enhanced reporting allows terminals to distinguish inputs such as `Shift+Enter` from `Enter`.
 
+`ProcessTerminal` resolves terminal color output independently from the selected light or dark theme. It uses the TTY color depth when available, then conservative environment hints, and chooses `truecolor`, `ansi256`, or `uncolored`. The ANSI layer preserves RGB in truecolor mode, converts it to the nearest xterm-256 color in ANSI256 mode, and leaves foregrounds and backgrounds at terminal defaults in uncolored mode. No terminal query or startup wait is involved.
+
 Raw stdin chunks pass through a stateful framing buffer before `Tui` sees them. The buffer dispatches batched keys separately, reassembles fragmented CSI, SS3, OSC, DCS, and APC sequences, and delivers each bracketed paste as one complete event. Incomplete sequences wait briefly for their suffix; a lone `Esc` uses a longer reassembly window under SSH.
 
 Shutdown restores the prior raw state, pauses stdin, shows the cursor, pops enhanced keyboard reporting, disables bracketed paste, and clears Kana's visible frame and scrollback before exit information is printed. Application cleanup completes before this terminal restoration begins. A forced second interrupt also restores terminal state before default signal handling takes over.
@@ -58,7 +60,7 @@ Untrusted tool and provider text is sanitized before display. Width-sensitive co
 
 ## Markdown
 
-The TUI resolves `[tui].theme` before constructing the application and keeps its semantic palette fixed until exit. The welcome logo's green pixels remain fixed Kana branding; its surrounding panel uses the active theme.
+The TUI resolves `[tui].theme` before constructing the application and keeps its semantic palette fixed until exit. `kana-dark` and `kana-light` use paired GitHub Default palettes and matching Shiki syntax themes; selection is explicit because Kana does not detect terminal background appearance. The welcome logo's green pixels remain fixed Kana branding and fall back to visible block characters in uncolored mode; its surrounding panel uses the active theme.
 
 Assistant messages and the memory viewer share the lightweight Markdown renderer. It supports headings, lists, quotes, fenced code, selected inline styles, tables, link and image text, and limited HTML normalization. Paired and void HTML tags are removed; unmatched programming text such as `vector<int>` remains literal.
 

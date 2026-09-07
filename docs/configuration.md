@@ -151,7 +151,7 @@ on_agent_completed = true
 on_approval_required = true
 
 [tui]
-theme = "kana"
+theme = "kana-dark"
 hyperlinks = true
 render_latex = true
 render_mermaid = true
@@ -235,7 +235,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 | `notification.backend` | `auto`, `off`, `bell`, `osc9`, `osc777`, `kitty` | `auto` | Terminal-notification output protocol. `auto` detects Kitty, iTerm, Ghostty, then VTE, otherwise falls back to bell. |
 | `notification.on_agent_completed` | Boolean | `true` | Notify when an Agent run completes normally. Aborted, failed, length-truncated, and `turn_limit` runs are not completion. |
 | `notification.on_approval_required` | Boolean | `true` | Notify when a tool-approval prompt is shown. |
-| `tui.theme` | Lowercase theme identifier | `kana` | Select the built-in theme or `<KANA_HOME>/themes/<name>.json`; changes take effect on the next TUI launch. |
+| `tui.theme` | Lowercase theme identifier | `kana-dark` | Select `kana-dark`, `kana-light`, or `<KANA_HOME>/themes/<name>.json`; changes take effect on the next TUI launch. |
 | `tui.hyperlinks` | Boolean | `true` | Allow the TUI to render Markdown links with OSC 8 when terminal support is confirmed; disabled, unknown, or unsupported terminals show `label (url)`. |
 | `tui.render_latex` | Boolean | `true` | Render supported Markdown math as terminal-friendly Unicode and character-cell layouts; when disabled, preserve the original LaTeX source. |
 | `tui.render_mermaid` | Boolean | `true` | Render supported fenced Mermaid blocks as terminal Unicode diagrams while text streams; when disabled, preserve them as code blocks. |
@@ -252,49 +252,49 @@ TUI option fields remain canonical in the table above. Their interaction semanti
 
 ### TUI themes
 
-The built-in `kana` theme is the default and uses a Tokyo Night-inspired palette together with Shiki's `tokyo-night` syntax theme. A user theme named `ocean` is stored at `<KANA_HOME>/themes/ocean.json` and selected with `theme = "ocean"`. Theme identifiers contain at most 64 lowercase ASCII letters, numbers, underscores, or hyphens, and must start with a letter or number. Built-in names are reserved: a user file such as `kana.json` cannot override the bundled theme.
+The built-in `kana-dark` theme is the default; `kana-light` is selected explicitly for light terminal backgrounds. They pair GitHub Default palettes with Shiki's `github-dark-default` and `github-light-default` syntax themes. Kana does not detect the terminal background or change themes automatically. A user theme named `ocean` is stored at `<KANA_HOME>/themes/ocean.json` and selected with `theme = "ocean"`. Theme identifiers contain at most 64 lowercase ASCII letters, numbers, underscores, or hyphens, and must start with a letter or number. Built-in names are reserved and cannot be overridden by user files.
 
 Kana reads only the selected user-theme file when the TUI starts. The file must be a JSON object with exactly `syntaxTheme` and `colors`. `syntaxTheme` is a theme ID bundled by the installed Shiki version. Every color key below is required, unknown keys are rejected, and values use six-digit `#rrggbb` notation:
 
 ```json
 {
-  "syntaxTheme": "tokyo-night",
+  "syntaxTheme": "github-dark-default",
   "colors": {
-    "assistant": "#a9b1d6",
-    "markdownText": "#a9b1d6",
-    "markdownHeading": "#7dcfff",
-    "markdownQuote": "#787c99",
-    "markdownRule": "#363b54",
-    "markdownTable": "#a9b1d6",
-    "markdownCodeBlock": "#a9b1d6",
-    "markdownInlineCode": "#e0af68",
-    "user": "#7aa2f7",
-    "userMessageText": "#c0caf5",
-    "shortcutHint": "#bb9af7",
-    "command": "#9d7cd8",
-    "commandSelected": "#bb9af7",
-    "bottomTitle": "#7dcfff",
-    "muted": "#787c99",
-    "model": "#7aa2f7",
-    "contextUsage": "#73daca",
-    "cwd": "#787c99",
-    "toolActive": "#e0af68",
-    "toolSuccess": "#9ece6a",
-    "toolOutput": "#9aa5ce",
-    "error": "#f7768e",
-    "usageInput": "#7aa2f7",
-    "usageCache": "#73daca",
-    "usageOutput": "#9ece6a",
-    "usageReasoning": "#bb9af7",
-    "usageWarning": "#ff9e64",
-    "usageMuted": "#51597d",
-    "statusIdle": "#a9b1d6",
-    "diffDeleteBackground": "#34212b",
-    "diffInsertBackground": "#1f2c38",
-    "welcomeBorder": "#42465d",
-    "welcomeTitle": "#7dcfff",
-    "welcomeMuted": "#787c99",
-    "welcomeText": "#a9b1d6"
+    "assistant": "#e6edf3",
+    "markdownText": "#e6edf3",
+    "markdownHeading": "#79c0ff",
+    "markdownQuote": "#8b949e",
+    "markdownRule": "#30363d",
+    "markdownTable": "#b1bac4",
+    "markdownCodeBlock": "#e6edf3",
+    "markdownInlineCode": "#d2a8ff",
+    "user": "#58a6ff",
+    "userMessageText": "#e6edf3",
+    "shortcutHint": "#d2a8ff",
+    "command": "#bc8cff",
+    "commandSelected": "#d2a8ff",
+    "bottomTitle": "#79c0ff",
+    "muted": "#8b949e",
+    "model": "#58a6ff",
+    "contextUsage": "#39c5cf",
+    "cwd": "#8b949e",
+    "toolActive": "#d29922",
+    "toolSuccess": "#3fb950",
+    "toolOutput": "#b1bac4",
+    "error": "#ff7b72",
+    "usageInput": "#58a6ff",
+    "usageCache": "#39c5cf",
+    "usageOutput": "#3fb950",
+    "usageReasoning": "#bc8cff",
+    "usageWarning": "#e3b341",
+    "usageMuted": "#6e7681",
+    "statusIdle": "#e6edf3",
+    "diffDeleteBackground": "#563132",
+    "diffInsertBackground": "#1c4428",
+    "welcomeBorder": "#30363d",
+    "welcomeTitle": "#79c0ff",
+    "welcomeMuted": "#8b949e",
+    "welcomeText": "#e6edf3"
   }
 }
 ```

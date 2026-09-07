@@ -17,6 +17,7 @@ import {
   formatMcpStartupWarnings,
 } from "./mcp-lifecycle-status";
 import { registerTuiProcessSignals } from "./process-lifecycle";
+import { setTerminalColorMode } from "./render";
 import { ProcessTerminal } from "./runtime";
 import { applyTuiTheme } from "./theme";
 import { loadTuiTheme } from "./themes";
@@ -66,11 +67,12 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       }
     },
   });
+  const terminal = new ProcessTerminal(host.notificationConfig);
+  setTerminalColorMode(terminal.colorMode);
   const theme = await prepareTuiTheme(host.tuiConfig.theme, {
     logger: host.getLogger(),
     close: () => host.close(),
   });
-  const terminal = new ProcessTerminal(host.notificationConfig);
   let removeProcessSignals = (): void => {};
   const closeHostRuntime = async (): Promise<void> => {
     removeProcessSignals();

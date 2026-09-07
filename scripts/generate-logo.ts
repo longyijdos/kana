@@ -10,16 +10,14 @@ const SVG_PATH = path.join(OUT_DIR, "kana-logo.svg");
 
 type PixelColor = keyof typeof LOGO_COLORS;
 
-function ansiToHex(ansi: string): string {
-  // LOGO_COLORS values are "48;2;R;G;B" (ANSI 24-bit background color)
-  const [, , r, g, b] = ansi.split(";").map(Number);
-  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+function rgbToHex(rgb: readonly [number, number, number]): string {
+  return `#${rgb.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
 const HEX_COLORS: Record<PixelColor, string> = {
-  l: ansiToHex(LOGO_COLORS.l),
-  h: ansiToHex(LOGO_COLORS.h),
-  s: ansiToHex(LOGO_COLORS.s),
+  l: rgbToHex(LOGO_COLORS.l),
+  h: rgbToHex(LOGO_COLORS.h),
+  s: rgbToHex(LOGO_COLORS.s),
 };
 
 function escapeXml(value: string): string {
