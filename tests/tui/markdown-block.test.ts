@@ -47,7 +47,7 @@ describe("tui markdown block", () => {
     await preloadSyntaxHighlighter();
 
     await expect(preloadSyntaxHighlighter("light-plus")).rejects.toThrow(
-      "Syntax highlighting already uses tokyo-night; it cannot switch to light-plus at runtime.",
+      "Syntax highlighting already uses github-dark-default; it cannot switch to light-plus at runtime.",
     );
   });
 

@@ -51,7 +51,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     onApprovalRequired: true,
   },
   tui: {
-    theme: "kana",
+    theme: "kana-dark",
     hyperlinks: true,
     renderLatex: true,
     renderMermaid: true,

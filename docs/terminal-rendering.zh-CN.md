@@ -30,6 +30,8 @@ Transcript 会有意渲染完整历史，让终端自然滚动保留内容。紧
 
 `ProcessTerminal.start()` 要求 stdin 和 stdout 都是 TTY。它启用 raw mode、bracketed paste、终端支持时的增强键盘上报和隐藏 cursor，然后注册输入与 resize。增强上报让终端能够区分 `Shift+Enter` 与 `Enter` 等输入。
 
+`ProcessTerminal` 对终端色彩输出与所选深浅主题分别进行解析。它优先使用 TTY 提供的色深，否则读取保守的环境提示，并选择 `truecolor`、`ansi256` 或 `uncolored`。ANSI 层在 truecolor 模式保留 RGB，在 ANSI256 模式转换到最近的 xterm-256 色，在 uncolored 模式则使用终端默认前景与背景。这个过程不查询终端，也不会增加启动等待。
+
 原始 stdin chunk 会先经过有状态 framing buffer，再交给 `Tui`。该 buffer 会分别分发批量到达的按键，重组被拆分的 CSI、SS3、OSC、DCS 与 APC 序列，并把每次 bracketed paste 作为一个完整 event 投递。不完整序列会短暂等待后缀；单独的 `Esc` 在 SSH 环境下使用更长的重组窗口。
 
 关闭时会恢复原始 raw 状态、暂停 stdin、显示 cursor、弹出增强键盘上报、关闭 bracketed paste，并在打印退出信息前清除 Kana 的可见 frame 与 scrollback。应用清理必须在终端恢复前完成；第二次中断强制退出时，也会先恢复终端状态再交回默认 signal 行为。
@@ -58,7 +60,7 @@ Renderer 会缓存规范化文本行和 viewport 状态，并在终端支持时�
 
 ## Markdown
 
-TUI 会在构造应用前解析 `[tui].theme`，并让语义 palette 在退出前保持固定。欢迎 logo 的绿色像素始终是固定的 Kana 品牌色，logo 外围 panel 则使用当前主题。
+TUI 会在构造应用前解析 `[tui].theme`，并让语义 palette 在退出前保持固定。`kana-dark` 与 `kana-light` 使用成对的 GitHub Default palette 及对应 Shiki 语法主题；Kana 不探测终端背景，因此需要显式选择。欢迎 logo 的绿色像素始终是固定的 Kana 品牌色，在 uncolored 模式下回退为可见块字符；logo 外围 panel 则使用当前主题。
 
 助手消息与 memory viewer 共用轻量 Markdown renderer，支持标题、列表、引用、代码围栏、部分 inline 样式、表格、链接与图片文本，以及有限 HTML 规范化。成对标签和 void 标签会被移除，`vector<int>` 这类未配对的编程文本保持原样。
 

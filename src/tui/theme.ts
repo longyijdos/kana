@@ -1,7 +1,7 @@
-import { KANA_TUI_THEME } from "./themes/builtins";
+import { KANA_DARK_TUI_THEME } from "./themes/builtins";
 import type { TuiPalette, TuiTheme } from "./themes/types";
 
-export let tuiTheme: TuiPalette = KANA_TUI_THEME.colors;
+export let tuiTheme: TuiPalette = KANA_DARK_TUI_THEME.colors;
 let configured = false;
 
 export function applyTuiTheme(theme: TuiTheme): void {

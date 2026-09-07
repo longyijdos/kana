@@ -72,7 +72,7 @@ describe("Kana config persistence", () => {
     expect(installedConfigExample).toContain("[agent.repeated_tool_calls]");
     expect(installedConfigExample).toContain("reminder_thresholds = [3,5,8]");
     expect(installedConfigExample).toContain("excluded_tools = []");
-    expect(installedConfigExample).toContain('theme = "kana"');
+    expect(installedConfigExample).toContain('theme = "kana-dark"');
     expect(installedConfigExample).toContain("hyperlinks = true");
     expect(installedConfigExample).toContain("render_latex = true");
     expect(installedConfigExample).toContain("render_mermaid = true");

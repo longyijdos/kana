@@ -151,7 +151,7 @@ on_agent_completed = true
 on_approval_required = true
 
 [tui]
-theme = "kana"
+theme = "kana-dark"
 hyperlinks = true
 render_latex = true
 render_mermaid = true
@@ -235,7 +235,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `notification.backend` | `auto`、`off`、`bell`、`osc9`、`osc777`、`kitty` | `auto` | 终端通知输出协议。`auto` 依次识别 Kitty、iTerm、Ghostty、VTE，否则退回 bell。 |
 | `notification.on_agent_completed` | 布尔值 | `true` | 正常完成的 Agent 运行是否通知。中止、错误、长度截断或 `turn_limit` 不会视作完成。 |
 | `notification.on_approval_required` | 布尔值 | `true` | 显示工具审批时是否通知。 |
-| `tui.theme` | 小写主题标识符 | `kana` | 选择内置主题或 `<KANA_HOME>/themes/<name>.json`；变更在下次启动 TUI 时生效。 |
+| `tui.theme` | 小写主题标识符 | `kana-dark` | 选择 `kana-dark`、`kana-light` 或 `<KANA_HOME>/themes/<name>.json`；变更在下次启动 TUI 时生效。 |
 | `tui.hyperlinks` | 布尔值 | `true` | 是否允许 TUI 在确认终端支持时用 OSC 8 渲染 Markdown 链接；关闭、终端未知或不支持时显示 `label (url)`。 |
 | `tui.render_latex` | 布尔值 | `true` | 是否把支持的 Markdown 数学公式渲染为终端友好的 Unicode 和字符单元布局；关闭时保留原始 LaTeX。 |
 | `tui.render_mermaid` | 布尔值 | `true` | 是否在文本流式生成时把支持的 Mermaid 代码围栏渲染为终端 Unicode 图；关闭时保留为代码块。 |
@@ -252,49 +252,49 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 
 ### TUI 主题
 
-内置 `kana` 主题是默认值，使用 Tokyo Night 风格的配色和 Shiki 的 `tokyo-night` 语法主题。名为 `ocean` 的用户主题保存在 `<KANA_HOME>/themes/ocean.json`，通过 `theme = "ocean"` 选择。主题标识符最多包含 64 个小写 ASCII 字母、数字、下划线或连字符，并且必须以字母或数字开头。内置名称被保留，因此 `kana.json` 这类用户文件不能覆盖内置主题。
+内置 `kana-dark` 是默认主题；浅色终端背景需要显式选择 `kana-light`。两者分别使用 GitHub Default 深浅 palette，以及 Shiki 的 `github-dark-default` 和 `github-light-default` 语法主题。Kana 不探测终端背景，也不会自动切换主题。名为 `ocean` 的用户主题保存在 `<KANA_HOME>/themes/ocean.json`，通过 `theme = "ocean"` 选择。主题标识符最多包含 64 个小写 ASCII 字母、数字、下划线或连字符，并且必须以字母或数字开头。内置名称被保留，不能由用户文件覆盖。
 
 Kana 只在 TUI 启动时读取选中的用户主题文件。文件必须是只包含 `syntaxTheme` 和 `colors` 的 JSON object；`syntaxTheme` 是当前安装的 Shiki 所捆绑的 theme ID。下例中的每个颜色键都必填，未知键会被拒绝，颜色值使用六位 `#rrggbb` 格式：
 
 ```json
 {
-  "syntaxTheme": "tokyo-night",
+  "syntaxTheme": "github-dark-default",
   "colors": {
-    "assistant": "#a9b1d6",
-    "markdownText": "#a9b1d6",
-    "markdownHeading": "#7dcfff",
-    "markdownQuote": "#787c99",
-    "markdownRule": "#363b54",
-    "markdownTable": "#a9b1d6",
-    "markdownCodeBlock": "#a9b1d6",
-    "markdownInlineCode": "#e0af68",
-    "user": "#7aa2f7",
-    "userMessageText": "#c0caf5",
-    "shortcutHint": "#bb9af7",
-    "command": "#9d7cd8",
-    "commandSelected": "#bb9af7",
-    "bottomTitle": "#7dcfff",
-    "muted": "#787c99",
-    "model": "#7aa2f7",
-    "contextUsage": "#73daca",
-    "cwd": "#787c99",
-    "toolActive": "#e0af68",
-    "toolSuccess": "#9ece6a",
-    "toolOutput": "#9aa5ce",
-    "error": "#f7768e",
-    "usageInput": "#7aa2f7",
-    "usageCache": "#73daca",
-    "usageOutput": "#9ece6a",
-    "usageReasoning": "#bb9af7",
-    "usageWarning": "#ff9e64",
-    "usageMuted": "#51597d",
-    "statusIdle": "#a9b1d6",
-    "diffDeleteBackground": "#34212b",
-    "diffInsertBackground": "#1f2c38",
-    "welcomeBorder": "#42465d",
-    "welcomeTitle": "#7dcfff",
-    "welcomeMuted": "#787c99",
-    "welcomeText": "#a9b1d6"
+    "assistant": "#e6edf3",
+    "markdownText": "#e6edf3",
+    "markdownHeading": "#79c0ff",
+    "markdownQuote": "#8b949e",
+    "markdownRule": "#30363d",
+    "markdownTable": "#b1bac4",
+    "markdownCodeBlock": "#e6edf3",
+    "markdownInlineCode": "#d2a8ff",
+    "user": "#58a6ff",
+    "userMessageText": "#e6edf3",
+    "shortcutHint": "#d2a8ff",
+    "command": "#bc8cff",
+    "commandSelected": "#d2a8ff",
+    "bottomTitle": "#79c0ff",
+    "muted": "#8b949e",
+    "model": "#58a6ff",
+    "contextUsage": "#39c5cf",
+    "cwd": "#8b949e",
+    "toolActive": "#d29922",
+    "toolSuccess": "#3fb950",
+    "toolOutput": "#b1bac4",
+    "error": "#ff7b72",
+    "usageInput": "#58a6ff",
+    "usageCache": "#39c5cf",
+    "usageOutput": "#3fb950",
+    "usageReasoning": "#bc8cff",
+    "usageWarning": "#e3b341",
+    "usageMuted": "#6e7681",
+    "statusIdle": "#e6edf3",
+    "diffDeleteBackground": "#563132",
+    "diffInsertBackground": "#1c4428",
+    "welcomeBorder": "#30363d",
+    "welcomeTitle": "#79c0ff",
+    "welcomeMuted": "#8b949e",
+    "welcomeText": "#e6edf3"
   }
 }
 ```

@@ -6,7 +6,11 @@ import {
   type TerminalNotification,
 } from "./notifications";
 import { StdinBuffer } from "./stdin-buffer";
-import { supportsTerminalHyperlinks } from "./terminal-capabilities";
+import {
+  detectTerminalColorMode,
+  supportsTerminalHyperlinks,
+  type TerminalColorMode,
+} from "./terminal-capabilities";
 
 // Matches crossterm's DISAMBIGUATE_ESCAPE_CODES | REPORT_EVENT_TYPES |
 // REPORT_ALTERNATE_KEYS so terminals can report Shift+Enter separately.
@@ -26,6 +30,7 @@ export interface Terminal {
   stop(): void;
   write(data: string): void;
   notify(notification: TerminalNotification): void;
+  readonly colorMode?: TerminalColorMode;
   readonly supportsHyperlinks?: boolean;
   readonly columns: number;
   readonly rows: number;
@@ -40,6 +45,7 @@ export class ProcessTerminal implements Terminal {
   private stdinBuffer?: StdinBuffer;
   private readonly escapeTimeoutMs: number;
   private readonly notificationBackend: ReturnType<typeof resolveNotificationBackend>;
+  readonly colorMode: TerminalColorMode;
   readonly supportsHyperlinks: boolean;
 
   constructor(
@@ -48,6 +54,7 @@ export class ProcessTerminal implements Terminal {
   ) {
     this.escapeTimeoutMs = resolveEscapeTimeoutMs(env);
     this.notificationBackend = resolveNotificationBackend(notificationConfig.backend, env);
+    this.colorMode = detectTerminalColorMode(env);
     this.supportsHyperlinks = supportsTerminalHyperlinks(env);
   }
 

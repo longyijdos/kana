@@ -27,5 +27,8 @@ export {
 } from "./keys";
 export type { TerminalNotification } from "./notifications";
 export { ProcessTerminal, type Terminal } from "./terminal";
-export { supportsTerminalHyperlinks } from "./terminal-capabilities";
+export {
+  detectTerminalColorMode,
+  supportsTerminalHyperlinks,
+} from "./terminal-capabilities";
 export { extractCursorPosition, Tui } from "./tui";

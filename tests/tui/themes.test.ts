@@ -4,7 +4,8 @@ import path from "node:path";
 import { getKanaConfigPaths } from "@/kana";
 import { applyTuiTheme, tuiTheme } from "../../src/tui/theme";
 import {
-  KANA_TUI_THEME,
+  KANA_DARK_TUI_THEME,
+  KANA_LIGHT_TUI_THEME,
   loadTuiTheme,
   parseUserTuiTheme,
   TUI_THEME_COLOR_KEYS,
@@ -14,56 +15,36 @@ import { cleanupTempKanaHomes, createTempKanaHomeEnv } from "../helpers/temp-kan
 afterEach(cleanupTempKanaHomes);
 
 describe("TUI themes", () => {
-  test("uses the Tokyo Night palette and syntax highlighting by default", () => {
-    expect(KANA_TUI_THEME).toEqual({
-      name: "kana",
+  test("provides paired GitHub Default themes", () => {
+    expect(KANA_DARK_TUI_THEME).toMatchObject({
+      name: "kana-dark",
       source: "built-in",
-      syntaxTheme: "tokyo-night",
+      syntaxTheme: "github-dark-default",
       colors: {
-        assistant: [169, 177, 214],
-        markdownText: [169, 177, 214],
-        markdownHeading: [125, 207, 255],
-        markdownQuote: [120, 124, 153],
-        markdownRule: [54, 59, 84],
-        markdownTable: [169, 177, 214],
-        markdownCodeBlock: [169, 177, 214],
-        markdownInlineCode: [224, 175, 104],
-        user: [122, 162, 247],
-        userMessageText: [192, 202, 245],
-        shortcutHint: [187, 154, 247],
-        command: [157, 124, 216],
-        commandSelected: [187, 154, 247],
-        bottomTitle: [125, 207, 255],
-        muted: [120, 124, 153],
-        model: [122, 162, 247],
-        contextUsage: [115, 218, 202],
-        cwd: [120, 124, 153],
-        toolActive: [224, 175, 104],
-        toolSuccess: [158, 206, 106],
-        toolOutput: [154, 165, 206],
-        error: [247, 118, 142],
-        usageInput: [122, 162, 247],
-        usageCache: [115, 218, 202],
-        usageOutput: [158, 206, 106],
-        usageReasoning: [187, 154, 247],
-        usageWarning: [255, 158, 100],
-        usageMuted: [81, 89, 125],
-        statusIdle: [169, 177, 214],
-        diffDeleteBackground: [52, 33, 43],
-        diffInsertBackground: [31, 44, 56],
-        welcomeBorder: [66, 70, 93],
-        welcomeTitle: [125, 207, 255],
-        welcomeMuted: [120, 124, 153],
-        welcomeText: [169, 177, 214],
+        assistant: [230, 237, 243],
+        user: [88, 166, 255],
+        toolSuccess: [63, 185, 80],
+        error: [255, 123, 114],
+      },
+    });
+    expect(KANA_LIGHT_TUI_THEME).toMatchObject({
+      name: "kana-light",
+      source: "built-in",
+      syntaxTheme: "github-light-default",
+      colors: {
+        assistant: [31, 35, 40],
+        user: [9, 105, 218],
+        toolSuccess: [26, 127, 55],
+        error: [207, 34, 46],
       },
     });
   });
 
   test("fixes the active palette after startup application", () => {
-    applyTuiTheme(KANA_TUI_THEME);
+    applyTuiTheme(KANA_DARK_TUI_THEME);
 
-    expect(tuiTheme).toBe(KANA_TUI_THEME.colors);
-    expect(() => applyTuiTheme(KANA_TUI_THEME)).toThrow(
+    expect(tuiTheme).toBe(KANA_DARK_TUI_THEME.colors);
+    expect(() => applyTuiTheme(KANA_LIGHT_TUI_THEME)).toThrow(
       "The TUI theme is already fixed for this process.",
     );
   });
@@ -90,9 +71,10 @@ describe("TUI themes", () => {
     const env = createTempKanaHomeEnv();
     const { themesDirectory } = getKanaConfigPaths(env);
     mkdirSync(themesDirectory, { recursive: true });
-    writeFileSync(path.join(themesDirectory, "kana.json"), "{");
+    writeFileSync(path.join(themesDirectory, "kana-light.json"), "{");
 
-    expect(loadTuiTheme("kana", env)).toBe(KANA_TUI_THEME);
+    expect(loadTuiTheme("kana-dark", env)).toBe(KANA_DARK_TUI_THEME);
+    expect(loadTuiTheme("kana-light", env)).toBe(KANA_LIGHT_TUI_THEME);
   });
 
   test("does not confuse object prototype names with built-in themes", () => {

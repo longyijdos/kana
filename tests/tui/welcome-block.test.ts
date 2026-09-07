@@ -1,8 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { KanaSessionMetadata } from "../../src/kana";
-import { WELCOME_LOGO_LINES } from "../../src/tui/app/welcome-logo";
+import { renderWelcomeLogoLines } from "../../src/tui/app/welcome-logo";
 import { WelcomeBlock } from "../../src/tui/components";
-import { stripAnsi, visibleWidth } from "../../src/tui/render";
+import { setTerminalColorMode, stripAnsi, visibleWidth } from "../../src/tui/render";
 import { KANA_VERSION } from "../../src/version";
 
 const LOGO = ["\x1b[48;2;0;120;0m    \x1b[0m"];
@@ -22,6 +22,8 @@ const SESSIONS: KanaSessionMetadata[] = [
     path: "/sessions/b.jsonl",
   },
 ];
+
+afterEach(() => setTerminalColorMode("truecolor"));
 
 describe("tui welcome block", () => {
   test("renders a boxed welcome panel at desktop widths", () => {
@@ -115,7 +117,20 @@ describe("tui welcome block", () => {
   });
 
   test("keeps the default logo compact within the welcome panel", () => {
-    expect(WELCOME_LOGO_LINES).toHaveLength(7);
-    expect(Math.max(...WELCOME_LOGO_LINES.map(visibleWidth))).toBeLessThanOrEqual(22);
+    const lines = renderWelcomeLogoLines();
+
+    expect(lines).toHaveLength(7);
+    expect(Math.max(...lines.map(visibleWidth))).toBeLessThanOrEqual(22);
+    expect(lines.join("\n")).toContain("\x1b[48;2;");
+  });
+
+  test("keeps the logo visible without color support", () => {
+    setTerminalColorMode("uncolored");
+
+    const lines = renderWelcomeLogoLines();
+
+    expect(lines.join("\n")).not.toContain("\x1b[");
+    expect(lines.join("\n")).toContain("██");
+    expect(lines.map(visibleWidth)).toEqual(Array(7).fill(22));
   });
 });

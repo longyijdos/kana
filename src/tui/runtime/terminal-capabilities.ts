@@ -1,3 +1,60 @@
+export type TerminalColorMode = "truecolor" | "ansi256" | "uncolored";
+
+type ColorDepthStream = {
+  getColorDepth?(env?: Record<string, string | undefined>): number;
+};
+
+export function detectTerminalColorMode(
+  env: NodeJS.ProcessEnv = process.env,
+  stream: ColorDepthStream = process.stdout,
+): TerminalColorMode {
+  if (env.NO_COLOR !== undefined || env.TERM?.toLowerCase() === "dumb") {
+    return "uncolored";
+  }
+
+  const reportedDepth = stream.getColorDepth?.(env);
+  if (reportedDepth !== undefined) {
+    if (reportedDepth >= 24) {
+      return "truecolor";
+    }
+    if (reportedDepth >= 8) {
+      return "ansi256";
+    }
+    return "uncolored";
+  }
+
+  const colorTerm = env.COLORTERM?.toLowerCase();
+  if (colorTerm === "truecolor" || colorTerm === "24bit") {
+    return "truecolor";
+  }
+
+  const term = env.TERM?.toLowerCase() ?? "";
+  if (env.TMUX || term.startsWith("tmux") || term.startsWith("screen")) {
+    return term.includes("256color") ? "ansi256" : "uncolored";
+  }
+
+  const termProgram = env.TERM_PROGRAM?.toLowerCase();
+  if (
+    env.KITTY_WINDOW_ID ||
+    env.ITERM_SESSION_ID ||
+    env.WEZTERM_PANE ||
+    env.WARP_SESSION_ID ||
+    env.WT_SESSION ||
+    env.GHOSTTY_RESOURCES_DIR ||
+    termProgram === "ghostty" ||
+    termProgram === "iterm.app" ||
+    termProgram === "wezterm" ||
+    termProgram === "vscode" ||
+    termProgram === "alacritty" ||
+    termProgram === "warpterminal" ||
+    env.TERMINAL_EMULATOR?.toLowerCase() === "jetbrains-jediterm"
+  ) {
+    return "truecolor";
+  }
+
+  return term.includes("256color") ? "ansi256" : "uncolored";
+}
+
 export function supportsTerminalHyperlinks(env: NodeJS.ProcessEnv = process.env): boolean {
   const term = env.TERM?.toLowerCase();
 

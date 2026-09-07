@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { prepareTuiTheme, startTui } from "../../src/tui/start-tui";
-import { KANA_TUI_THEME } from "../../src/tui/themes";
+import { KANA_DARK_TUI_THEME } from "../../src/tui/themes";
 
 describe("TUI startup", () => {
   test("rejects saved-session entry points in clean mode", async () => {
@@ -44,7 +44,7 @@ describe("TUI startup", () => {
     const events: string[] = [];
     let applied = false;
 
-    const theme = await prepareTuiTheme("kana", {
+    const theme = await prepareTuiTheme("kana-dark", {
       logger: {
         info(event) {
           events.push(event);
@@ -56,13 +56,13 @@ describe("TUI startup", () => {
       close: async () => {
         throw new Error("must not close");
       },
-      load: () => KANA_TUI_THEME,
+      load: () => KANA_DARK_TUI_THEME,
       apply: () => {
         applied = true;
       },
     });
 
-    expect(theme).toBe(KANA_TUI_THEME);
+    expect(theme).toBe(KANA_DARK_TUI_THEME);
     expect(applied).toBe(true);
     expect(events).toEqual(["tui.theme_loaded"]);
   });
