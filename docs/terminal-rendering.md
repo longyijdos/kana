@@ -62,7 +62,7 @@ Untrusted tool and provider text is sanitized before display. Width-sensitive co
 
 The TUI resolves `[tui].theme` before constructing the application and keeps its semantic palette fixed until exit. `kana-dark` and `kana-light` use paired GitHub Default palettes and matching Shiki syntax themes; selection is explicit because Kana does not detect terminal background appearance. The welcome logo's green pixels remain fixed Kana branding and fall back to visible block characters in uncolored mode; its surrounding panel uses the active theme.
 
-Assistant messages and the memory viewer share the lightweight Markdown renderer. It supports headings, lists, quotes, fenced code, selected inline styles, tables, link and image text, and limited HTML normalization. Paired and void HTML tags are removed; unmatched programming text such as `vector<int>` remains literal.
+Assistant messages and the memory viewer share the lightweight Markdown renderer. It supports headings, lists, quotes, fenced code, selected inline styles, tables, link and image text. HTML and XML-like tags are not interpreted as formatting: tags are kept as visible plain text, so paired tags such as `<think>...</think>` and lone programming text such as `vector<int>` render faithfully. Content inside inline code spans, including values like `</think>`, is always kept literal. Terminal control sequences from untrusted text remain sanitized independently of Markdown parsing.
 
 When enabled and confirmed by terminal capabilities, safe `http:`, `https:`, and `mailto:` links use OSC 8. Each wrapped row closes and reopens its link. Disabled or unknown support and unsafe targets use the readable `label (url)` fallback; an incomplete streaming link stays as literal Markdown.
 

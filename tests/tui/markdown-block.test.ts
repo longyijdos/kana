@@ -169,7 +169,7 @@ describe("tui markdown block", () => {
     expect(plain[3]).toBe("----------------------------------------");
   });
 
-  test("renders table rows, links, images, and inline html as terminal text", () => {
+  test("renders table rows, links, and images as terminal text", () => {
     const rendered = new MarkdownBlock(
       [
         "| 语言 | 类型 |",
@@ -190,8 +190,8 @@ describe("tui markdown block", () => {
       " Rust    系统级",
       "链接 (https://example.com)",
       "[image: 占位图] https://example.com/image.png",
-      "[Ctrl] + [C]",
-      "inline HTMLnext",
+      "<kbd>Ctrl</kbd> + <kbd>C</kbd>",
+      "<span>inline HTML</span><br>next",
     ]);
   });
 
@@ -507,6 +507,25 @@ describe("tui markdown block", () => {
       .map(stripAnsi);
 
     expect(rendered).toEqual(["| Name | Status |", "| --- |"]);
+  });
+
+  test("preserves HTML and XML-like tags as visible plain text", () => {
+    const source = [
+      "② 思考长度适中 —— 前提是 `</think>` 存在。",
+      "<think>reasoning</think>",
+      "```xml",
+      "<tool_call>ls -la</tool_call>",
+      "```",
+      'self-closing: <br/> then <custom attr="1">pair</custom> and void <hr> end.',
+    ].join("\n");
+    const rendered = new MarkdownBlock(source).render(80).map(stripAnsi);
+
+    expect(rendered).toEqual([
+      "② 思考长度适中 —— 前提是 </think> 存在。",
+      "<think>reasoning</think>",
+      "    <tool_call>ls -la</tool_call>",
+      'self-closing: <br/> then <custom attr="1">pair</custom> and void <hr> end.',
+    ]);
   });
 
   test("preserves angle-bracketed programming type syntax", () => {

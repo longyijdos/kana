@@ -62,7 +62,7 @@ Renderer 会缓存规范化文本行和 viewport 状态，并在终端支持时�
 
 TUI 会在构造应用前解析 `[tui].theme`，并让语义 palette 在退出前保持固定。`kana-dark` 与 `kana-light` 使用成对的 GitHub Default palette 及对应 Shiki 语法主题；Kana 不探测终端背景，因此需要显式选择。欢迎 logo 的绿色像素始终是固定的 Kana 品牌色，在 uncolored 模式下回退为可见块字符；logo 外围 panel 则使用当前主题。
 
-助手消息与 memory viewer 共用轻量 Markdown renderer，支持标题、列表、引用、代码围栏、部分 inline 样式、表格、链接与图片文本，以及有限 HTML 规范化。成对标签和 void 标签会被移除，`vector<int>` 这类未配对的编程文本保持原样。
+助手消息与 memory viewer 共用轻量 Markdown renderer，支持标题、列表、引用、代码围栏、部分 inline 样式、表格、链接与图片文本。HTML 与 XML 风格标签不会按格式解释：标签会作为可见纯文本保留，因此 `<think>...</think>` 这类成对标签与 `vector<int>` 这类孤立的编程文本都能忠实显示。inline code span 内的内容（包括 `</think>` 这类值）始终按字面保留。来自不可信文本的终端控制序列仍独立于 Markdown 解析进行清理。
 
 配置允许且终端确认支持时，安全的 `http:`、`https:` 与 `mailto:` 链接使用 OSC 8；每个换行后的 row 会单独关闭并重新打开链接。关闭或无法确认支持、以及不安全目标都会使用可读的 `label (url)` fallback；未完成的流式链接保持 Markdown 原文。
 
