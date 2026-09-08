@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_KANA_CONFIG, type KanaRepeatedToolCallsConfig } from "@/kana";
+import {
+  DEFAULT_KANA_CONFIG,
+  KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES,
+  type KanaRepeatedToolCallsConfig,
+} from "@/kana";
 
 describe("Kana config defaults", () => {
   test("defines stable default policies", () => {
@@ -17,6 +21,7 @@ describe("Kana config defaults", () => {
     });
     expect(DEFAULT_KANA_CONFIG.agent.webSearch).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.imageInput).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.agent.tools).toEqual([...KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES]);
     expect(DEFAULT_KANA_CONFIG.memory.agent.model.name).toBe("deepseek-v4-flash");
     expect(DEFAULT_KANA_CONFIG.memory.agent.webSearch).toBe(false);
     expect(DEFAULT_KANA_CONFIG.memory.agent.imageInput).toBe(false);

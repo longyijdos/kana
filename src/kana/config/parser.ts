@@ -1,6 +1,10 @@
 import { LOG_LEVELS } from "@/logging";
 import type { OpenAICodexReasoningSummary } from "@/providers";
 import {
+  KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES,
+  type KanaConfigurableBuiltInToolName,
+} from "../tool-names";
+import {
   isKanaTuiThemeName,
   KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,
@@ -35,6 +39,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       },
     },
     agent: {
+      tools: config.agent.tools,
       web_search: config.agent.webSearch,
       image_input: config.agent.imageInput,
       max_turns: config.agent.maxTurns,
@@ -149,6 +154,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       },
     },
     agent: {
+      tools: readAgentTools(agent.tools, defaults.agent.tools),
       webSearch: readBoolean(agent.web_search, defaults.agent.webSearch, "agent.web_search"),
       imageInput: readBoolean(agent.image_input, defaults.agent.imageInput, "agent.image_input"),
       maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
@@ -482,6 +488,34 @@ function readExcludedToolNames(
       throw new Error(`${name} must not contain duplicate tool names.`);
     }
     names.add(toolName);
+  }
+  return [...names];
+}
+
+function readAgentTools(
+  value: unknown,
+  fallback: readonly KanaConfigurableBuiltInToolName[],
+): KanaConfigurableBuiltInToolName[] {
+  if (value === undefined) {
+    return [...fallback];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("agent.tools must be an array.");
+  }
+
+  const supported = new Set<string>(KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES);
+  const names = new Set<KanaConfigurableBuiltInToolName>();
+  for (const toolName of value) {
+    if (typeof toolName !== "string" || !supported.has(toolName)) {
+      throw new Error(
+        `agent.tools must contain only supported built-in tools: ${KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES.join(", ")}.`,
+      );
+    }
+    const name = toolName as KanaConfigurableBuiltInToolName;
+    if (names.has(name)) {
+      throw new Error("agent.tools must not contain duplicate tool names.");
+    }
+    names.add(name);
   }
   return [...names];
 }

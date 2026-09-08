@@ -56,7 +56,7 @@ kana auth logout openai-codex
 
 `kana exec` uses the same product composition as the TUI and exits after one complete Agent turn. Human mode writes only the final answer to stdout, while `--json` provides a versioned JSONL event stream. See [Headless execution and the JSONL protocol](headless.md) for non-interactive approval, exit codes, and the complete protocol.
 
-`--clean` applies only to a new TUI or `exec` session; combining it with `resume` or `exec resume` fails at the corresponding frontend startup boundary. It creates a temporary session that exists only in the current process: no session journal, session logger, or accounting record is created, and the session never appears in the resume list. Clean mode does not read global or project `AGENTS.md`, global/project memory, global or project Skills, or MCP definitions and activation state; it does not register `remember`, start memory consolidation, or connect to MCP servers. Kana still loads `<KANA_HOME>/.env` and `config.toml`, retaining the current provider/model, Agent runtime settings, OAuth credentials, approval rules, and notifications. Core file/Shell tools, `todo_write`, and the TUI's in-process `schedule_wake` remain available. `/todo` shows the temporary session's current todo state; `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable in the TUI. `/model` validates and switches the current Agent without writing `config.toml`. Clean mode is not a file/process sandbox: built-in tools, providers, approval flows, and authentication flows can still produce their normal external side effects.
+`--clean` applies only to a new TUI or `exec` session; combining it with `resume` or `exec resume` fails at the corresponding frontend startup boundary. It creates a temporary session that exists only in the current process: no session journal, session logger, or accounting record is created, and the session never appears in the resume list. Clean mode does not read global or project `AGENTS.md`, global/project memory, global or project Skills, or MCP definitions and activation state; it does not register `remember`, start memory consolidation, or connect to MCP servers. Kana still loads `<KANA_HOME>/.env` and `config.toml`, retaining the current provider/model, Agent runtime settings, tool selection, OAuth credentials, approval rules, and notifications. Selected core file/Shell tools, `todo_write`, and the TUI's in-process `schedule_wake` remain available when their corresponding tools are selected. `/todo` shows the temporary session's current todo state; `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable in the TUI. `/model` validates and switches the current Agent without writing `config.toml`. Clean mode is not a file/process sandbox: built-in tools, providers, approval flows, and authentication flows can still produce their normal external side effects.
 
 `kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` and `providers/custom.example.toml` are Kana-managed generated references: install compares them with the current schema and creates or refreshes them only when missing or stale. Runtime never reads either example, so copy only fields being overridden into `config.toml` and copy the Custom example to `providers/custom.toml` before editing it. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
 
@@ -119,6 +119,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
+tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","todo_write","remember","schedule_wake"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -222,6 +223,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 
 | Table and key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
+| `agent.tools` | Unique array of built-in tool names | All configurable built-in tools | Selects which built-in tools the conversation Agent may call. An empty array disables them all. `update_goal`, external/MCP tools, provider capabilities, and direct TUI operations are outside this selection. |
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
 | `agent.goal_max_rounds` | Positive integer | `8` | Maximum complete Agent runs admitted for one `/goal`, including its initial run. |
 | `agent.tool_deadline_ms` | Positive integer | `660000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
@@ -247,6 +249,8 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 | `logging.level` | `debug`, `info`, `warn`, `error`, `off` | `info` | Minimum level written to runtime JSONL logs; `off` disables file logging entirely. |
 
 `parallel_tool_calls` is effective only when both user policy and model metadata allow it. The repeated-call, tool-result artifact, concurrency, deadline, and Background Job fields configure behavior owned by [Tools and execution](tools.md). Context limits and compaction budgets are interpreted by [Agent runtime](agent-runtime.md).
+
+`agent.tools` is also constrained by runtime capabilities. Selecting `view_image`, `remember`, `schedule_wake`, or a `job_*` tool does not enable its underlying image, memory, scheduling, or Background Job capability when that capability is otherwise unavailable. The selection controls only the Agent tool surface; commands such as `/jobs`, `/schedule`, and `/todo` continue to operate through the TUI's direct session controls.
 
 TUI option fields remain canonical in the table above. Their interaction semantics belong to [TUI interaction](tui.md), while hyperlinks, LaTeX, Mermaid, width, and repaint behavior belong to [Terminal rendering](terminal-rendering.md). Memory retention and runtime-log persistence belong to [Sessions and memory](sessions-and-memory.md).
 

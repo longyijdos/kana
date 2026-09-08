@@ -60,6 +60,7 @@ describe("Kana config persistence", () => {
     expect(installedConfigExample).toContain("[provider.deepseek]");
     expect(installedConfigExample).toContain("[provider.openai-codex]");
     expect(installedConfigExample).toContain("[agent.model]");
+    expect(installedConfigExample).toContain('tools = ["list","glob","grep","read"');
     expect(installedConfigExample).toContain("[memory.agent.model]");
     expect(installedConfigExample).toContain("web_search = true");
     expect(installedConfigExample).toContain("image_input = true");

@@ -55,6 +55,7 @@ describe("Kana config parser", () => {
         'api_key_env = "KANA_DEEPSEEK_KEY"',
         "",
         "[agent]",
+        'tools = ["read", "bash", "job_start"]',
         "web_search = false",
         "image_input = false",
         "max_turns = 4",
@@ -125,6 +126,7 @@ describe("Kana config parser", () => {
       },
       agent: {
         ...DEFAULT_KANA_CONFIG.agent,
+        tools: ["read", "bash", "job_start"],
         webSearch: false,
         imageInput: false,
         maxTurns: 4,
@@ -294,6 +296,23 @@ describe("Kana config parser", () => {
     for (const value of ['"invalid"', '[""]', '[" remember"]', '["read", "read"]']) {
       writeFileSync(configPath, `[agent.repeated_tool_calls]\nexcluded_tools = ${value}\n`);
       expect(() => loadKanaConfig(env)).toThrow();
+    }
+  });
+
+  test("loads and validates the built-in tool selection", () => {
+    const env = createTempEnv();
+    const { home } = getKanaConfigPaths(env);
+    const configPath = path.join(home, "config.toml");
+
+    writeFileSync(configPath, '[agent]\ntools = ["read", "bash", "job_start"]\n');
+    expect(loadKanaConfig(env).agent.tools).toEqual(["read", "bash", "job_start"]);
+
+    writeFileSync(configPath, "[agent]\ntools = []\n");
+    expect(loadKanaConfig(env).agent.tools).toEqual([]);
+
+    for (const value of ['"read"', '["unknown"]', '["update_goal"]', '["read", "read"]']) {
+      writeFileSync(configPath, `[agent]\ntools = ${value}\n`);
+      expect(() => loadKanaConfig(env)).toThrow("agent.tools");
     }
   });
 

@@ -16,6 +16,7 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
     `max_retries = ${config.provider["openai-codex"].maxRetries}`,
     "",
     "[agent]",
+    `tools = ${JSON.stringify(config.agent.tools)}`,
     `web_search = ${config.agent.webSearch}`,
     `image_input = ${config.agent.imageInput}`,
     `max_turns = ${config.agent.maxTurns}`,

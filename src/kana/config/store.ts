@@ -47,6 +47,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
     "max_retries",
     (config) => config.provider["openai-codex"].maxRetries,
   ),
+  field("agent", "tools", (config) => config.agent.tools),
   field("agent", "web_search", (config) => config.agent.webSearch),
   field("agent", "image_input", (config) => config.agent.imageInput),
   field("agent", "max_turns", (config) => config.agent.maxTurns),
