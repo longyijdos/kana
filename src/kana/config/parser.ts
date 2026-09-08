@@ -52,6 +52,9 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       background_jobs: {
         max_concurrent: config.agent.backgroundJobs.maxConcurrent,
       },
+      subagents: {
+        max_live: config.agent.subagents.maxLive,
+      },
       repeated_tool_calls: {
         reminder_thresholds: config.agent.repeatedToolCalls.reminderThresholds,
         excluded_tools: config.agent.repeatedToolCalls.excludedTools,
@@ -104,6 +107,8 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
     agent.background_jobs === undefined
       ? {}
       : asRecord(agent.background_jobs, "agent.background_jobs");
+  const subagents =
+    agent.subagents === undefined ? {} : asRecord(agent.subagents, "agent.subagents");
   const repeatedToolCalls =
     agent.repeated_tool_calls === undefined
       ? {}
@@ -189,6 +194,13 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           backgroundJobs.max_concurrent,
           defaults.agent.backgroundJobs.maxConcurrent,
           "agent.background_jobs.max_concurrent",
+        ),
+      },
+      subagents: {
+        maxLive: readPositiveInteger(
+          subagents.max_live,
+          defaults.agent.subagents.maxLive,
+          "agent.subagents.max_live",
         ),
       },
       repeatedToolCalls: {

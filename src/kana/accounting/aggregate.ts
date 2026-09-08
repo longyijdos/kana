@@ -34,10 +34,12 @@ function summarize(
   let usage: ModelUsage | undefined;
   let mainRunCount = 0;
   let memoryRunCount = 0;
+  let subagentRunCount = 0;
   const agents = {
     main: { runCount: 0, usage: undefined as ModelUsage | undefined },
     memoryAutomatic: { runCount: 0, usage: undefined as ModelUsage | undefined },
     memoryManual: { runCount: 0, usage: undefined as ModelUsage | undefined },
+    subagent: { runCount: 0, usage: undefined as ModelUsage | undefined },
   };
   const models = new Map<
     string,
@@ -47,13 +49,16 @@ function summarize(
     usage = record.usage ? addModelUsage(usage, record.usage) : usage;
     outcomes[record.outcome] += 1;
     if (record.agentKind === "main") mainRunCount += 1;
+    else if (record.agentKind === "subagent") subagentRunCount += 1;
     else memoryRunCount += 1;
     const agent =
       record.agentKind === "main"
         ? agents.main
-        : record.memoryOrigin === "manual"
-          ? agents.memoryManual
-          : agents.memoryAutomatic;
+        : record.agentKind === "subagent"
+          ? agents.subagent
+          : record.memoryOrigin === "manual"
+            ? agents.memoryManual
+            : agents.memoryAutomatic;
     agent.runCount += 1;
     agent.usage = record.usage ? addModelUsage(agent.usage, record.usage) : agent.usage;
     const key = `${record.model.provider}/${record.model.model}`;
@@ -67,6 +72,7 @@ function summarize(
     runCount: records.length,
     mainRunCount,
     memoryRunCount,
+    subagentRunCount,
     usage,
     outcomes,
     agents,

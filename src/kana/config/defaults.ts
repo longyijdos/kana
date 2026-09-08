@@ -39,6 +39,9 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     backgroundJobs: {
       maxConcurrent: 4,
     },
+    subagents: {
+      maxLive: 4,
+    },
     repeatedToolCalls: {
       reminderThresholds: [3, 5, 8],
       excludedTools: [],

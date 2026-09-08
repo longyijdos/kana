@@ -30,6 +30,7 @@ describe("Kana config defaults", () => {
     expect(DEFAULT_KANA_CONFIG.agent.backgroundJobs).toEqual({
       maxConcurrent: 4,
     });
+    expect(DEFAULT_KANA_CONFIG.agent.subagents).toEqual({ maxLive: 4 });
     expect(DEFAULT_KANA_CONFIG.agent.repeatedToolCalls).toEqual(repeatedToolCalls);
     expect(DEFAULT_KANA_CONFIG.tui.theme).toBe("kana-dark");
   });

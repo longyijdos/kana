@@ -25,24 +25,28 @@ describe("Kana accounting", () => {
       env,
       cwd: workspace,
     });
+    appendKanaRunAccounting(record("session-one", "subagent", 5), { env, cwd: workspace });
     appendKanaRunAccounting(record("elsewhere", "main", 30), { env, cwd: "/work/two" });
 
     expect(
       loadKanaUsageSummary({ scope: "session", sessionId: "session-one", env, cwd: workspace }),
     ).toMatchObject({
-      runCount: 1,
-      mainRunCount: 1,
-      memoryRunCount: 0,
-      usage: { totalTokens: 10 },
-    });
-    expect(loadKanaUsageSummary({ scope: "project", env, cwd: workspace })).toMatchObject({
       runCount: 2,
       mainRunCount: 1,
+      subagentRunCount: 1,
+      memoryRunCount: 0,
+      usage: { totalTokens: 15 },
+      agents: { main: { runCount: 1 }, subagent: { runCount: 1 } },
+    });
+    expect(loadKanaUsageSummary({ scope: "project", env, cwd: workspace })).toMatchObject({
+      runCount: 3,
+      mainRunCount: 1,
+      subagentRunCount: 1,
       memoryRunCount: 1,
-      usage: { totalTokens: 30 },
+      usage: { totalTokens: 35 },
     });
     const globalSummary = loadKanaUsageSummary({ scope: "global", env, cwd: workspace });
-    expect(globalSummary).toMatchObject({ runCount: 3, usage: { totalTokens: 60 } });
+    expect(globalSummary).toMatchObject({ runCount: 4, usage: { totalTokens: 65 } });
   });
 
   test("writes token-only version 2 records", () => {
@@ -141,7 +145,11 @@ describe("Kana accounting", () => {
   });
 });
 
-function record(sessionId: string, agentKind: "main" | "memory_consolidation", tokens: number) {
+function record(
+  sessionId: string,
+  agentKind: "main" | "memory_consolidation" | "subagent",
+  tokens: number,
+) {
   return {
     sessionId,
     agentKind,

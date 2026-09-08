@@ -21,6 +21,7 @@
 - [OAuth](oauth.zh-CN.md)：discovery、PKCE、callback、token exchange、refresh 协调与持久化边界。
 - [MCP](mcp.zh-CN.md)：JSON-RPC、transport、client、远端工具、manager 生命周期、授权与 reload。
 - [Skills 与系统提示词](skills-and-prompt.zh-CN.md)：发现、启用、项目指令与 prompt 装配。
+- [Subagent](subagents.zh-CN.md)：角色卡 profile、委派生命周期、能力边界、持久化与 TUI 管理。
 
 ## 状态、前端与运维
 
@@ -47,6 +48,7 @@
 | `src/kana/session`、`src/kana/memory`、session-bound logging 与 accounting | [会话与记忆](sessions-and-memory.zh-CN.md) |
 | `src/kana/config`、launch mode、审批配置 | [配置与安装](configuration.zh-CN.md) |
 | `src/kana/skills`、prompt 装配 | [Skills 与系统提示词](skills-and-prompt.zh-CN.md) |
+| `src/kana/subagents`、委派 Agent 构造与生命周期 | [Subagent](subagents.zh-CN.md) |
 | `src/tui/app`、TUI 进程生命周期 | [TUI 交互](tui.zh-CN.md) |
 | `src/tui/runtime`、`src/tui/render`、展示组件与工具 renderer | [终端渲染](terminal-rendering.zh-CN.md) |
 | `src/headless` | [无头执行](headless.zh-CN.md) |

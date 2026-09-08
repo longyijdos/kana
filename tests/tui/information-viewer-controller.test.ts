@@ -135,6 +135,7 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
     scope,
     runCount: 0,
     mainRunCount: 0,
+    subagentRunCount: 0,
     memoryRunCount: 0,
     outcomes: {
       stop: 0,
@@ -147,6 +148,7 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
     },
     agents: {
       main: { runCount: 0 },
+      subagent: { runCount: 0 },
       memoryAutomatic: { runCount: 0 },
       memoryManual: { runCount: 0 },
     },

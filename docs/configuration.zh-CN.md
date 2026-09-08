@@ -56,13 +56,13 @@ kana auth logout openai-codex
 
 `kana exec` 使用与 TUI 相同的产品装配并在一次完整 Agent turn 后退出。默认模式只把最终答案写到 stdout，`--json` 提供版本化 JSONL 事件；非交互工具审批、退出码和完整协议见[无头执行与 JSONL 协议](headless.zh-CN.md)。
 
-`--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、工具选择、OAuth 凭据、审批规则与通知。选中的核心文件/Shell 工具、`todo_write` 和 TUI 的进程内 `schedule_wake` 会在对应工具入选时保持可用。`/todo` 会显示临时 session 的当前 todo 状态；TUI 中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume`、`/delete` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
+`--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills、用户 subagent 角色卡，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、工具选择、OAuth 凭据、审批规则与通知。选中的核心文件/Shell 工具、`todo_write`、内置 subagent profile 和 TUI 的进程内 `schedule_wake` 会在对应工具入选时保持可用；clean-mode child 状态只保存在内存。`/todo` 会显示临时 session 的当前 todo 状态；TUI 中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume`、`/delete` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
 
 `kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 和 `providers/custom.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取这两个 example，需要覆盖默认值时只把相应字段复制到 `config.toml`，并在编辑前把 Custom example 复制为 `providers/custom.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
 
 `kana update --check` 读取 GitHub 最新正式 Release 的版本元数据，不下载或修改二进制。`kana update` 根据当前操作系统和架构下载对应资产，检查 Release 元数据中的文件大小和 SHA-256 digest，然后让候选二进制依次执行 `--version` 与幂等的 `kana install`；候选版本、支持文件初始化和当前可执行文件身份全部验证成功后，才通过同目录临时文件原子替换当前二进制。失败会删除临时文件并保留原二进制；如果另一个安装进程在下载期间已经替换目标，也会拒绝覆盖。更新支持 macOS/Linux 的 arm64、x64，沿用 Bun `fetch` 对 `HTTP_PROXY`/`HTTPS_PROXY` 的处理，且要求安装目录可写。直接通过 Bun 运行源码没有 direct distribution 构建标记，因此会拒绝自更新；`scripts/install.sh`、`bun run build:cli` 和正式 Release 构建的独立二进制包含该标记。
 
-`kana reset` 将主运行配置恢复到默认状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `providers/custom.toml`、`providers/custom.example.toml`、`oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、用户主题、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
+`kana reset` 将主运行配置恢复到默认状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `providers/custom.toml`、`providers/custom.example.toml`、`oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、用户 subagent 角色卡、用户主题、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。`kana skills install` 在目录不存在时 clone，已有 Git 仓库时执行 `git pull --ff-only`；已有目录不是 Git 仓库时失败并提示使用 `kana skills reinstall`。reinstall 会在确认后只删除整个默认仓库目录并重新 clone，保留相邻的 `skills.toml` 和其它实际 Skills；非交互环境同样要求 `--yes`。
 
@@ -85,6 +85,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── oauth-tokens.json       # 浏览器授权后创建的 OAuth 凭据
 ├── approvals.json          # bash 信任规则
 ├── AGENTS.md               # 可选：全局系统指令，不由 install 创建
+├── agents/                 # 可选的用户自定义 subagent 角色卡
 ├── sessions/               # 按工作区分组的 JSONL 会话
 ├── artifacts/              # 按工作区和会话隔离的超大工具输出
 ├── logs/                   # 按工作区和会话分组的运行时 JSONL 日志
@@ -119,7 +120,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","todo_write","remember","schedule_wake"]
+tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -138,6 +139,9 @@ name = "deepseek-v4-pro"
 
 [agent.background_jobs]
 max_concurrent = 4
+
+[agent.subagents]
+max_live = 4
 
 [agent.repeated_tool_calls]
 reminder_thresholds = [3,5,8]
@@ -231,6 +235,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `agent.max_parallel_tool_calls` | 正整数 | `4` | 一个相邻并行安全组内可同时执行的工具调用 body 上限。 |
 | `agent.tool_result_artifacts` | 布尔值 | `true` | 将超大的非 `read` 文本结果保存为私有 session artifact，并给模型提供有界、可取回的预览。 |
 | `agent.background_jobs.max_concurrent` | 正整数 | `4` | 单个 session 实例最多拥有的活动 Background Job 数；已保留的终态 Job 不计入上限。 |
+| `agent.subagents.max_live` | 正整数 | `4` | 单个 session 实例最多拥有的运行中 subagent 数；已保留的终态 child 不计入上限。 |
 | `agent.repeated_tool_calls.reminder_thresholds` | 严格递增且每项不小于 2 的整数数组 | `[3,5,8]` | 连续精确重复达到哪些次数时，Agent 插入逐级增强的建议上下文；空数组关闭策略。 |
 | `agent.repeated_tool_calls.excluded_tools` | 唯一、非空、已去除首尾空白的工具名数组 | `[]` | 重复调用统计透明忽略的工具；被排除的调用既不推进也不重置连续计数。 |
 | `approval.mode` | `always`、`unless_trusted`、`never` | `unless_trusted` | 工具调用是否进入 TUI 审批。 |
@@ -250,7 +255,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 
 `parallel_tool_calls` 只有在用户策略与模型 metadata 都允许时才生效。重复调用、tool-result artifact、并发、deadline 与 Background Job 字段所配置的行为属于[工具与执行](tools.zh-CN.md)；context limit 与压缩预算由 [Agent 运行时](agent-runtime.zh-CN.md)解释。
 
-`agent.tools` 仍受运行时能力约束。选择 `view_image`、`remember`、`schedule_wake` 或某个 `job_*` 工具，不会在对应图片、记忆、调度或 Background Job 能力原本不可用时将其开启。该选择只控制 Agent 的工具面；`/jobs`、`/schedule`、`/todo` 等命令继续通过 TUI 的 session 直接控制工作。
+`agent.tools` 仍受运行时能力约束。选择 `view_image`、`remember`、`schedule_wake`、某个 `job_*` 或 `*_subagent` 工具，不会在对应底层能力原本不可用时将其开启。该选择只控制 Agent 的工具面；`/agents`、`/jobs`、`/schedule`、`/todo` 等命令继续通过 TUI 的 session 直接控制工作。角色卡配置见 [Subagent](subagents.zh-CN.md)。
 
 上表仍是 TUI option 字段的 canonical 定义。交互语义属于 [TUI 交互](tui.zh-CN.md)，hyperlink、LaTeX、Mermaid、宽度与 repaint 行为属于[终端渲染](terminal-rendering.zh-CN.md)。Memory retention 与 runtime-log 持久化属于[会话与记忆](sessions-and-memory.zh-CN.md)。
 

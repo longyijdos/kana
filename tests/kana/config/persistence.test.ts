@@ -22,6 +22,7 @@ describe("Kana config persistence", () => {
       mcpConfigPath: "/home/kana/.kana/mcp.json",
       mcpEnabledPath: "/home/kana/.kana/mcp-enabled.json",
       agentsPath: "/home/kana/.kana/AGENTS.md",
+      agentsDirectory: "/home/kana/.kana/agents",
       memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
       artifactsPath: "/home/kana/.kana/artifacts",

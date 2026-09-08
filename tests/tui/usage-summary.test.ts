@@ -15,10 +15,11 @@ describe("tui usage summary", () => {
     expect(barStarts).toEqual([barStarts[0], barStarts[0], barStarts[0], barStarts[0]]);
 
     const runsStart = rendered.indexOf("Runs");
-    const runRows = rendered.slice(runsStart + 1, runsStart + 4);
+    const runRows = rendered.slice(runsStart + 1, runsStart + 5);
     expect(new Set(runRows.map((line) => line.indexOf("tokens"))).size).toBe(1);
     expect(runRows).toEqual([
       "Main          2296  150,000,000 tokens",
+      "Subagents       12      500,000 tokens",
       "Memory auto     57    7,000,000 tokens",
       "Memory manual    8      633,440 tokens",
     ]);
@@ -35,6 +36,7 @@ function createUsageSummary(): KanaUsageSummary {
     scope: "global",
     runCount: 2355,
     mainRunCount: 2296,
+    subagentRunCount: 12,
     memoryRunCount: 65,
     usage: {
       promptTokens: 155_462_545,
@@ -57,6 +59,10 @@ function createUsageSummary(): KanaUsageSummary {
       main: {
         runCount: 2296,
         usage: { promptTokens: 148_000_000, completionTokens: 2_000_000, totalTokens: 150_000_000 },
+      },
+      subagent: {
+        runCount: 12,
+        usage: { promptTokens: 450_000, completionTokens: 50_000, totalTokens: 500_000 },
       },
       memoryAutomatic: {
         runCount: 57,

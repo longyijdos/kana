@@ -278,6 +278,7 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
     scope,
     runCount: 1,
     mainRunCount: 1,
+    subagentRunCount: 0,
     memoryRunCount: 0,
     usage: {
       promptTokens: 30,
@@ -300,6 +301,7 @@ function createUsageSummary(scope: KanaUsageScope): KanaUsageSummary {
         runCount: 1,
         usage: { promptTokens: 30, completionTokens: 10, totalTokens: 40 },
       },
+      subagent: { runCount: 0 },
       memoryAutomatic: { runCount: 0 },
       memoryManual: { runCount: 0 },
     },

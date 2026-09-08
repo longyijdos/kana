@@ -3,6 +3,7 @@ import {
   type AgentConfig,
   type ContextCheckpoint,
   createModelCompactPolicy,
+  createPromptAssembly,
   type PromptToolSection,
 } from "@/agent";
 import type { BackgroundJobClient } from "@/jobs";
@@ -29,13 +30,22 @@ import type { KanaLaunchMode } from "./launch-mode";
 import { createKanaAgentModelRuntime } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
 import { loadKanaSkills } from "./skills/loader";
+import type {
+  KanaSubagentClient,
+  KanaSubagentProfile,
+  KanaSubagentRunContext,
+  KanaSubagentRunResult,
+} from "./subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
 import { KANA_BUILT_IN_TOOL_NAMES } from "./tool-names";
 import {
+  createCancelSubagentTool,
   createRememberTool,
   createScheduleWakeTool,
+  createSpawnSubagentTool,
   createTodoWriteTool,
   createUpdateGoalTool,
+  createWaitSubagentTool,
 } from "./tools";
 
 // Reserve the complete built-in namespace, including tools that are enabled
@@ -67,6 +77,10 @@ export type KanaAgentOptions = Pick<
   resolveTodoState?: () => readonly KanaTodoItem[];
   resolveGoal?: () => KanaGoalSnapshot | undefined;
   updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
+  subagentProfile?: KanaSubagentProfile;
+  subagents?: KanaSubagentClient;
+  resolveSubagentProfiles?: () => readonly KanaSubagentProfile[];
+  runSubagent?: (context: KanaSubagentRunContext) => Promise<KanaSubagentRunResult>;
 };
 
 export type KanaAgentDependencies = {
@@ -81,8 +95,13 @@ export function createKanaAgent(
 ): Agent {
   const cwd = process.cwd();
   const backgroundJobs = options.backgroundJobs;
+  const subagentProfile = options.subagentProfile;
+  const subagents = options.subagents;
   const customizationsEnabled = options.launchMode !== "clean";
-  const skills = customizationsEnabled ? loadKanaSkills({ cwd, env: options.env }).skills : [];
+  const skills =
+    customizationsEnabled && !subagentProfile
+      ? loadKanaSkills({ cwd, env: options.env }).skills
+      : [];
   const runtime = createKanaAgentModelRuntime(config, dependencies.providers, {
     env: options.env,
     logger: options.logger,
@@ -90,7 +109,11 @@ export function createKanaAgent(
   const { model } = runtime;
   const enabledTools = new Set<string>(config.tools);
   const selectEnabledTools = (tools: Tool[]): Tool[] =>
-    tools.filter((tool) => enabledTools.has(tool.name));
+    tools.filter(
+      (tool) =>
+        enabledTools.has(tool.name) &&
+        (subagentProfile === undefined || subagentProfile.tools.includes(tool.name)),
+    );
   const workspaceTools: Tool[] = selectEnabledTools([
     createListTool({
       root: cwd,
@@ -122,7 +145,7 @@ export function createKanaAgent(
     }),
   ]);
   const toolSections: PromptToolSection[] = [{ name: "workspace", tools: workspaceTools }];
-  if (backgroundJobs) {
+  if (backgroundJobs && !subagentProfile) {
     toolSections.push({
       name: "background-jobs",
       tools: selectEnabledTools([
@@ -133,17 +156,36 @@ export function createKanaAgent(
       ]),
     });
   }
-  toolSections.push({
-    name: "collaboration",
-    tools: selectEnabledTools([
-      createTodoWriteTool({
-        commit: options.commitTodoState,
-      }),
-    ]),
-  });
+  if (!subagentProfile && subagents && options.resolveSubagentProfiles && options.runSubagent) {
+    const resolveTools = (): Tool[] => {
+      const profiles = options.resolveSubagentProfiles?.() ?? [];
+      return selectEnabledTools([
+        createSpawnSubagentTool({
+          subagents,
+          profiles,
+          run: options.runSubagent as (
+            context: KanaSubagentRunContext,
+          ) => Promise<KanaSubagentRunResult>,
+        }),
+        createWaitSubagentTool(subagents),
+        createCancelSubagentTool(subagents),
+      ]);
+    };
+    toolSections.push({ name: "subagents", tools: resolveTools(), resolve: resolveTools });
+  }
+  if (!subagentProfile) {
+    toolSections.push({
+      name: "collaboration",
+      tools: selectEnabledTools([
+        createTodoWriteTool({
+          commit: options.commitTodoState,
+        }),
+      ]),
+    });
+  }
   const resolveGoal = options.resolveGoal;
   const updateGoal = options.updateGoal;
-  if (resolveGoal && updateGoal) {
+  if (!subagentProfile && resolveGoal && updateGoal) {
     const resolveGoalTools = (): Tool[] =>
       resolveGoal()?.status !== "active"
         ? []
@@ -158,7 +200,7 @@ export function createKanaAgent(
       resolve: resolveGoalTools,
     });
   }
-  if (customizationsEnabled && dependencies.memoryEnabled) {
+  if (!subagentProfile && customizationsEnabled && dependencies.memoryEnabled) {
     toolSections.push({
       name: "memory",
       tools: selectEnabledTools([
@@ -169,7 +211,7 @@ export function createKanaAgent(
       ]),
     });
   }
-  if (options.wakeScheduler && options.sessionId) {
+  if (!subagentProfile && options.wakeScheduler && options.sessionId) {
     toolSections.push({
       name: "scheduled-wake",
       tools: selectEnabledTools([
@@ -181,7 +223,14 @@ export function createKanaAgent(
     });
   }
   if (customizationsEnabled) {
-    const additionalTools = options.additionalTools ?? [];
+    const filterAdditionalTools = (tools: readonly Tool[]): Tool[] =>
+      tools.filter(
+        (tool) =>
+          subagentProfile === undefined ||
+          subagentProfile.tools.includes("mcp:*") ||
+          subagentProfile.tools.includes(tool.name),
+      );
+    const additionalTools = filterAdditionalTools(options.additionalTools ?? []);
     const resolveAdditionalTools = options.resolveAdditionalTools;
     assertAdditionalToolNames(additionalTools);
     toolSections.push({
@@ -189,7 +238,7 @@ export function createKanaAgent(
       tools: additionalTools,
       resolve: resolveAdditionalTools
         ? async () => {
-            const tools = await resolveAdditionalTools();
+            const tools = filterAdditionalTools(await resolveAdditionalTools());
             assertAdditionalToolNames(tools);
             return tools;
           }
@@ -197,20 +246,32 @@ export function createKanaAgent(
     });
   }
   assertUniqueToolNames(toolSections.flatMap((section) => section.tools));
+  const promptAssembly = subagentProfile
+    ? createPromptAssembly({
+        system: [
+          {
+            name: `subagent:${subagentProfile.name}`,
+            content: subagentProfile.instructions,
+          },
+        ],
+        tools: toolSections,
+      })
+    : buildKanaPromptAssembly({
+        cwd,
+        env: options.env,
+        launchMode: options.launchMode,
+        memoryEnabled: dependencies.memoryEnabled,
+        skills,
+        resolveBackgroundJobState: backgroundJobs ? () => backgroundJobs.context() : undefined,
+        toolSections,
+        resolveTodoState: options.resolveTodoState,
+        resolveGoalState: resolveGoal,
+        resolveSubagentState: subagents ? () => subagents.context() : undefined,
+      });
 
   return new Agent({
     model,
-    promptAssembly: buildKanaPromptAssembly({
-      cwd,
-      env: options.env,
-      launchMode: options.launchMode,
-      memoryEnabled: dependencies.memoryEnabled,
-      skills,
-      resolveBackgroundJobState: backgroundJobs ? () => backgroundJobs.context() : undefined,
-      toolSections,
-      resolveTodoState: options.resolveTodoState,
-      resolveGoalState: resolveGoal,
-    }),
+    promptAssembly,
     maxTurns: config.maxTurns,
     toolDeadlineMs: config.toolDeadlineMs,
     webSearch: runtime.webSearch,
@@ -226,19 +287,19 @@ export function createKanaAgent(
     }),
     beforeToolExecution: options.beforeToolExecution,
     inbox: options.inbox,
-    messages: options.messages,
+    messages: subagentProfile ? undefined : options.messages,
     onRunCommitted: options.onRunCommitted,
     onCompactionCommitted: options.onCompactionCommitted,
     journal: options.journal,
     logger: options.logger,
-    loggerMetadata: { agentKind: "conversation" },
+    loggerMetadata: { agentKind: subagentProfile ? "subagent" : "conversation" },
     context: {
       contextLimit: runtime.contextLimit,
       maxOutputTokens: runtime.maxOutputTokens,
       compactPolicy: createModelCompactPolicy(model, {
         imageInputEnabled: runtime.imageInput,
       }),
-      checkpoint: options.contextCheckpoint,
+      checkpoint: subagentProfile ? undefined : options.contextCheckpoint,
     },
   });
 }

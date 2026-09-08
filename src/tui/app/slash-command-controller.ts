@@ -22,6 +22,7 @@ export type SlashCommandControllerOptions = {
   openMcpServerManager: () => void;
   openScheduledMessageManager: () => void;
   openBackgroundJobManager?: () => void;
+  openSubagentManager?: () => void;
   startGoal?: (objective: string) => void;
   openTodo?: () => void;
   openToolHistory: () => void;
@@ -100,6 +101,15 @@ export class SlashCommandController {
             this.options.openBackgroundJobManager();
           } else {
             this.options.showError(new Error("Background Job management is unavailable."));
+          }
+        });
+        break;
+      case "agents":
+        this.runWithoutArguments(command, () => {
+          if (this.options.openSubagentManager) {
+            this.options.openSubagentManager();
+          } else {
+            this.options.showError(new Error("Subagent management is unavailable."));
           }
         });
         break;

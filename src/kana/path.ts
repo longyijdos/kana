@@ -15,6 +15,7 @@ export type KanaConfigPaths = {
   accountingPath: string;
   approvalsPath: string;
   themesDirectory: string;
+  agentsDirectory: string;
   skillsConfigPath: string;
   providersDirectory: string;
   customProviderPath: string;
@@ -38,6 +39,7 @@ export function getKanaConfigPaths(env: NodeJS.ProcessEnv = process.env): KanaCo
     accountingPath: path.join(home, "accounting"),
     approvalsPath: path.join(home, "approvals.json"),
     themesDirectory: path.join(home, "themes"),
+    agentsDirectory: path.join(home, "agents"),
     skillsConfigPath: path.join(home, "skills", "skills.toml"),
     providersDirectory: path.join(home, "providers"),
     customProviderPath: path.join(home, "providers", "custom.toml"),

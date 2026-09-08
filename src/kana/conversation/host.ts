@@ -42,10 +42,20 @@ import {
   runFullMemoryConsolidation,
 } from "../memory";
 import type { KanaSessionMetadata, LoadKanaSessionResult } from "../session";
+import {
+  createKanaSubagentJournal,
+  finalOutput,
+  type KanaSubagentClient,
+  type KanaSubagentRunContext,
+  type KanaSubagentRunResult,
+  type LoadKanaSubagentProfilesResult,
+  loadKanaSubagentProfiles,
+} from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
 import { type KanaToolApprovals, loadKanaToolApprovals } from "../tool-approval";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import { type HostedSessionAgentBinding, HostedSessionRegistry } from "./hosted-session-registry";
+import type { ConversationAgentIdentity } from "./runtime";
 import { createWakeScheduler, type WakeScheduler } from "./wake-scheduler";
 
 export type KanaConversationHostSession =
@@ -57,6 +67,9 @@ export type KanaConversationHostAgentOptions<TConfiguration> = Pick<
   KanaAgentOptions,
   "beforeToolExecution" | "inbox" | "messages" | "contextCheckpoint"
 > & {
+  bindBeforeToolExecution?: (
+    agent: ConversationAgentIdentity,
+  ) => KanaAgentOptions["beforeToolExecution"];
   sessionId?: string;
   configuration?: TConfiguration;
   onTodoStateCommitted?: (change: KanaTodoStateChange) => void;
@@ -126,6 +139,7 @@ export class KanaConversationHost<TConfiguration = never> {
         model: this.configData.agent.model.name,
       }),
       getBackgroundJobMaxConcurrent: () => this.configData.agent.backgroundJobs.maxConcurrent,
+      getSubagentMaxLive: () => this.configData.agent.subagents.maxLive,
     });
     this.toolApprovals = loadKanaToolApprovals(this.env);
     this.memoryConsolidationQueue = createMemoryConsolidationQueue();
@@ -182,6 +196,17 @@ export class KanaConversationHost<TConfiguration = never> {
     return this.sessionRegistry.getBackgroundJobs(sessionId);
   }
 
+  getSubagents(sessionId: string): KanaSubagentClient | undefined {
+    return this.sessionRegistry.getSubagents(sessionId);
+  }
+
+  loadSubagentProfiles(): LoadKanaSubagentProfilesResult {
+    return loadKanaSubagentProfiles({
+      env: this.env,
+      builtinsOnly: this.launchMode === "clean",
+    });
+  }
+
   disposeSession(
     sessionId: string,
     source: "session_disposal" | "shutdown",
@@ -196,11 +221,15 @@ export class KanaConversationHost<TConfiguration = never> {
       options.sessionId,
       onTodoStateCommitted,
     );
-    const kanaAgentOptions = this.createKanaAgentOptions(agentOptions, sessionBinding);
+    const createAgent = (config: KanaConfig): Agent =>
+      this.createAgentProduct(
+        config,
+        this.createKanaAgentOptions(agentOptions, sessionBinding, config),
+      );
 
     let agent: Agent;
     if (configuration === undefined) {
-      agent = this.createAgentProduct(this.configData, kanaAgentOptions);
+      agent = createAgent(this.configData);
     } else if (this.launchMode === "clean") {
       if (!this.applyAgentConfiguration) {
         throw new Error("This Kana conversation host does not support Agent reconfiguration.");
@@ -210,7 +239,7 @@ export class KanaConversationHost<TConfiguration = never> {
       const validatedConfig = validateKanaConfig(nextConfig);
       // Model changes remain useful within a temporary conversation, but the
       // clean-mode state boundary must not update the shared config store.
-      agent = this.createAgentProduct(validatedConfig, kanaAgentOptions);
+      agent = createAgent(validatedConfig);
       this.configData = validatedConfig;
     } else {
       if (!this.applyAgentConfiguration) {
@@ -219,7 +248,7 @@ export class KanaConversationHost<TConfiguration = never> {
       let nextAgent: Agent | undefined;
       const nextConfig = this.configStore.update((draft) => {
         this.applyAgentConfiguration?.(draft, configuration);
-        nextAgent = this.createAgentProduct(draft, kanaAgentOptions);
+        nextAgent = createAgent(draft);
       });
       if (!nextAgent) {
         throw new Error("Kana could not initialize the selected model.");
@@ -394,6 +423,7 @@ export class KanaConversationHost<TConfiguration = never> {
     options: Pick<
       KanaConversationHostAgentOptions<TConfiguration>,
       | "beforeToolExecution"
+      | "bindBeforeToolExecution"
       | "inbox"
       | "messages"
       | "contextCheckpoint"
@@ -402,12 +432,15 @@ export class KanaConversationHost<TConfiguration = never> {
       | "updateGoal"
     >,
     sessionBinding: HostedSessionAgentBinding,
+    config: KanaConfig,
   ): KanaAgentOptions {
     const session = sessionBinding.session;
     const logger = sessionBinding.logger;
+    const { bindBeforeToolExecution, ...agentOptions } = options;
+    const bindToolExecution = bindBeforeToolExecution ?? (() => agentOptions.beforeToolExecution);
 
     return {
-      ...options,
+      ...agentOptions,
       additionalTools: this.mcpTools,
       // Prompt assembly reads the host-owned MCP snapshot at each model step;
       // Agent construction still receives the initial list for synchronous state.
@@ -418,6 +451,9 @@ export class KanaConversationHost<TConfiguration = never> {
       logger,
       artifactStore: sessionBinding.artifactStore,
       backgroundJobs: sessionBinding.backgroundJobs,
+      subagents: sessionBinding.subagents,
+      resolveSubagentProfiles: () => this.loadSubagentProfiles().profiles,
+      runSubagent: (context) => this.runSubagent(context, bindToolExecution, config, logger),
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
       messages: options.messages ?? sessionBinding.messages,
       inbox: options.inbox,
@@ -497,6 +533,114 @@ export class KanaConversationHost<TConfiguration = never> {
         }
       },
     };
+  }
+
+  private async runSubagent(
+    context: KanaSubagentRunContext,
+    bindBeforeToolExecution: (
+      agent: ConversationAgentIdentity,
+    ) => KanaAgentOptions["beforeToolExecution"],
+    parentConfig: KanaConfig,
+    logger: Logger,
+  ): Promise<KanaSubagentRunResult> {
+    const config = structuredClone(parentConfig);
+    if (context.profile.model) {
+      config.agent.model = {
+        provider: context.profile.model.provider,
+        name: context.profile.model.name,
+        reasoningEffort: context.profile.model.reasoningEffort,
+        maxOutputTokens: undefined,
+        contextLimit: undefined,
+      };
+    }
+    config.agent.toolResultArtifacts = false;
+    let terminalReason: KanaSubagentRunResult["terminalReason"];
+    const journal = createKanaSubagentJournal({
+      agentId: context.agentId,
+      owner: context.owner,
+      profile: context.profile,
+      task: context.task,
+      spawnToolCallId: context.spawnToolCallId,
+      model: {
+        provider: config.agent.model.provider,
+        model: config.agent.model.name,
+      },
+      env: this.env,
+    });
+    const agent = this.createAgentProduct(config, {
+      env: this.env,
+      launchMode: this.launchMode,
+      logger,
+      additionalTools: this.mcpTools,
+      resolveAdditionalTools: () => this.mcpTools,
+      subagentProfile: context.profile,
+      journal,
+      beforeToolExecution: bindBeforeToolExecution({
+        id: context.agentId,
+        label: `${context.profile.name} · ${shortAgentId(context.agentId)}`,
+        kind: "subagent",
+      }),
+      onRunCommitted: ({ messages, compactions, state, event }) => {
+        terminalReason = event.reason;
+        if (!context.owner.persistent) return;
+        try {
+          recordKanaAgentRunAccounting({
+            sessionId: context.owner.sessionId,
+            cwd: context.owner.cwd,
+            agentKind: "subagent",
+            outcome: event.reason,
+            messages,
+            model: state.model.metadata,
+            additionalUsage: addCompactionUsage(compactions),
+          });
+        } catch (error) {
+          logger.error("accounting.record_failed", {
+            phase: "subagent_run",
+            agentId: context.agentId,
+            error,
+          });
+        }
+      },
+    });
+    const abort = (): void => agent.abort();
+    context.signal.addEventListener("abort", abort, { once: true });
+    if (context.signal.aborted) agent.abort();
+    try {
+      await agent.prompt(context.task);
+      const messages = agent.state.messages;
+      return {
+        status:
+          context.signal.aborted || terminalReason === "aborted"
+            ? "cancelled"
+            : terminalReason === "error"
+              ? "errored"
+              : "completed",
+        output: finalOutput(messages),
+        messages,
+        model: {
+          provider: agent.state.model.metadata.provider,
+          model: agent.state.model.metadata.model,
+        },
+        terminalReason,
+      };
+    } catch (error) {
+      const messages = agent.state.messages;
+      return {
+        status: context.signal.aborted ? "cancelled" : "errored",
+        output: finalOutput(messages),
+        messages,
+        model: {
+          provider: agent.state.model.metadata.provider,
+          model: agent.state.model.metadata.model,
+        },
+        terminalReason,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      context.signal.removeEventListener("abort", abort);
+      agent.abort();
+      await agent.waitForIdle();
+    }
   }
 
   private createMemoryConsolidation(config: KanaConfig): MemoryConsolidationScheduler | undefined {
@@ -582,4 +726,8 @@ function addCompactionUsage(compactions: ContextCheckpoint[]): ModelUsage | unde
     (total, compaction) => (compaction.usage ? addModelUsage(total, compaction.usage) : total),
     undefined,
   );
+}
+
+function shortAgentId(agentId: string): string {
+  return agentId.startsWith("agent_") ? agentId.slice(6, 14) : agentId.slice(0, 8);
 }

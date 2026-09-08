@@ -10,6 +10,7 @@ import {
   createMemoryConsolidationTools,
   createMemoryConsolidationTransaction,
 } from "../../src/kana/memory/consolidation-tools";
+import { KanaSubagentManager } from "../../src/kana/subagents";
 import { createRememberTool } from "../../src/kana/tools/remember";
 import { createScheduleWakeTool } from "../../src/kana/tools/schedule-wake";
 import { createTodoWriteTool } from "../../src/kana/tools/todo-write";
@@ -91,6 +92,18 @@ function createAgentBuiltInTools(): Tool[] {
       },
       {
         backgroundJobs,
+        subagents,
+        resolveSubagentProfiles: () => [
+          {
+            name: "explorer",
+            description: "Explore",
+            instructions: "Inspect only.",
+            tools: ["read"],
+            source: "builtin",
+            digest: "profile-digest",
+          },
+        ],
+        runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
         wakeScheduler: scheduler,
         sessionId: "session-a",
         resolveGoal: () => ({
@@ -131,6 +144,15 @@ const backgroundJobManager = new BackgroundJobManager();
 const backgroundJobs = backgroundJobManager.bind(backgroundJobManager.createOwner("session-a"), {
   maxConcurrent: 4,
 });
+const subagentManager = new KanaSubagentManager();
+const subagents = subagentManager.bind(
+  subagentManager.createOwner({
+    sessionId: "session-a",
+    cwd: process.cwd(),
+    persistent: false,
+  }),
+  { maxLive: 4 },
+);
 const internalMemoryTools = createInternalMemoryTools();
 
 type SchemaCase = {

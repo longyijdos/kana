@@ -40,6 +40,7 @@ export {
 } from "./config";
 export { formatKanaEnvironmentContext } from "./context";
 export {
+  type ConversationAgentIdentity,
   type ConversationInputQueueSnapshot,
   ConversationRuntime,
   type ConversationRuntimeEvent,
@@ -119,6 +120,15 @@ export {
   saveEnabledGlobalSkillNames,
   syncKanaSkills,
 } from "./skills";
+export {
+  type KanaSubagentClient,
+  type KanaSubagentInspection,
+  type KanaSubagentProfile,
+  type KanaSubagentSnapshot,
+  type KanaSubagentSummary,
+  type LoadKanaSubagentProfilesResult,
+  loadKanaSubagentProfiles,
+} from "./subagents";
 export {
   countKanaTodos,
   type KanaTodoItem,

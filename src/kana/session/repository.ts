@@ -45,6 +45,7 @@ export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaS
     cwd,
     model: options.model,
     parentSessionPath: options.parentSessionPath,
+    subagent: options.subagent,
   };
 
   return headerToMetadata(header, filePath);
@@ -103,6 +104,10 @@ export function deleteKanaSession(
   }
 
   rmSync(metadata.path, { force: true });
+  rmSync(path.join(getKanaSessionDir(metadata.cwd, options.env), ".subagents", metadata.id), {
+    recursive: true,
+    force: true,
+  });
   return true;
 }
 
@@ -135,14 +140,17 @@ function findKanaSession(
   return listKanaSessions(options).find((session) => session.id === sessionId);
 }
 
-function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
+export function loadKanaSessionFile(
+  filePath: string,
+  options: { recoverInterruptedTurn?: boolean } = {},
+): LoadKanaSessionResult {
   let parsed = readKanaSessionFile(filePath);
   const recoveredIncompleteTail = parsed.recoveredIncompleteTail;
   let recoveredInterruptedTurn: LoadKanaSessionResult["recoveredInterruptedTurn"];
 
   const initialMetadata = headerToMetadata(parsed.header, filePath);
   const initialJournal = createKanaSessionJournal(initialMetadata, parsed.timeline);
-  if (initialJournal.activeTurnId) {
+  if (initialJournal.activeTurnId && options.recoverInterruptedTurn !== false) {
     const recovered = initialJournal.recoverInterruptedTurn();
     recoveredInterruptedTurn = {
       turnId: recovered.turnId,

@@ -2,6 +2,7 @@ import type { BeforeToolExecutionResult } from "@/agent";
 import type { ToolCallContent } from "@/core";
 import {
   addTrustedBashCommand,
+  type ConversationAgentIdentity,
   getBashCommand,
   type KanaToolApprovalConfig,
   type KanaToolApprovalMode,
@@ -20,7 +21,17 @@ export type ToolApprovalControllerOptions = {
   bottomArea: BottomAreaController;
   tui: Tui;
   resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
-  onApprovalRequired: (toolName: string) => void;
+  onApprovalRequired: (toolName: string, agent: ConversationAgentIdentity) => void;
+};
+
+type PendingApproval = {
+  toolCall: ToolCallContent;
+  signal?: AbortSignal;
+  agent: ConversationAgentIdentity;
+  resolve: (result: BeforeToolExecutionResult) => void;
+  settled: boolean;
+  onAbort: () => void;
+  component?: ToolApproval;
 };
 
 export class ToolApprovalController {
@@ -34,7 +45,7 @@ export class ToolApprovalController {
   }
 
   get activePrompt(): Component | undefined {
-    return this.activeApproval;
+    return this.active?.component;
   }
 
   get mode(): KanaToolApprovalMode {
@@ -51,76 +62,84 @@ export class ToolApprovalController {
     return previousMode;
   }
 
-  private activeApproval?: ToolApproval;
+  private readonly pending: PendingApproval[] = [];
+  private active?: PendingApproval;
 
   request(
     toolCall: ToolCallContent,
     signal: AbortSignal | undefined,
+    agent: ConversationAgentIdentity = { id: "main", label: "main", kind: "main" },
   ): Promise<BeforeToolExecutionResult> {
     if (!shouldRequestToolApproval({ mode: this.mode }, this.approvals, toolCall)) {
       return Promise.resolve({ type: "continue" });
     }
 
     return new Promise((resolve) => {
-      let approval: ToolApproval | undefined;
-      let settled = false;
-      const bashCommand = getBashCommand(toolCall);
-      const source = this.options.resolveToolSource?.(toolCall.name);
-
-      const finish = (decision: ToolApprovalDecision): void => {
-        if (settled) {
-          return;
-        }
-
-        settled = true;
-        signal?.removeEventListener("abort", handleAbort);
-        const finishedApproval = approval;
-
-        if (finishedApproval) {
-          const restoreFocus = this.options.bottomArea.hasFocus(finishedApproval);
-          if (this.activeApproval === finishedApproval) {
-            this.activeApproval = undefined;
-          }
-          approval = undefined;
-          this.options.bottomArea.restore(finishedApproval, restoreFocus);
-        }
-
-        if (decision === "always" && bashCommand !== undefined) {
-          this.approvals = addTrustedBashCommand(bashCommand);
-        }
-
-        resolve(
-          decision === "yes" || decision === "always"
-            ? { type: "continue" }
-            : {
-                type: "cancel",
-                abortRun: true,
-                message: "Tool call rejected by user.",
-              },
-        );
-      };
-
-      const handleAbort = (): void => {
-        finish("no");
-      };
-
+      const pending = {
+        toolCall: structuredClone(toolCall),
+        signal,
+        agent: { ...agent },
+        resolve,
+        settled: false,
+        onAbort: () => {},
+      } satisfies PendingApproval;
+      pending.onAbort = () => this.finish(pending, "no");
       if (signal?.aborted) {
-        handleAbort();
+        this.finish(pending, "no");
         return;
       }
-
-      approval = new ToolApproval(toolCall, finish, {
-        allowAlways: bashCommand !== undefined,
-        ...(source === undefined ? {} : { source }),
-      });
-      this.activeApproval = approval;
-      // Keep another bottom view in place; the approval notification announces this pending prompt.
-      if (this.options.bottomArea.isShowing(this.options.editor)) {
-        this.options.bottomArea.show(approval);
-      }
-      signal?.addEventListener("abort", handleAbort, { once: true });
-      this.options.onApprovalRequired(toolCall.name);
-      this.options.tui.requestRender();
+      this.pending.push(pending);
+      signal?.addEventListener("abort", pending.onAbort, { once: true });
+      this.activateNext();
+      this.options.onApprovalRequired(toolCall.name, agent);
     });
+  }
+
+  private activateNext(): void {
+    if (this.active || this.pending.length === 0) return;
+    const pending = this.pending[0] as PendingApproval;
+    const bashCommand = getBashCommand(pending.toolCall);
+    const source = this.options.resolveToolSource?.(pending.toolCall.name);
+    pending.component = new ToolApproval(
+      pending.toolCall,
+      (decision) => this.finish(pending, decision),
+      {
+        allowAlways: bashCommand !== undefined,
+        requesterLabel: pending.agent.kind === "subagent" ? pending.agent.label : undefined,
+        ...(source === undefined ? {} : { source }),
+      },
+    );
+    this.active = pending;
+    if (this.options.bottomArea.isShowing(this.options.editor)) {
+      this.options.bottomArea.show(pending.component);
+    }
+    this.options.tui.requestRender();
+  }
+
+  private finish(pending: PendingApproval, decision: ToolApprovalDecision): void {
+    if (pending.settled) return;
+    pending.settled = true;
+    pending.signal?.removeEventListener("abort", pending.onAbort);
+    const index = this.pending.indexOf(pending);
+    if (index >= 0) this.pending.splice(index, 1);
+    const wasActive = this.active === pending;
+    const component = pending.component;
+    const restoreFocus = component ? this.options.bottomArea.hasFocus(component) : false;
+    if (wasActive) {
+      this.active = undefined;
+      this.activateNext();
+      if (component) this.options.bottomArea.restore(component, restoreFocus);
+    }
+
+    const bashCommand = getBashCommand(pending.toolCall);
+    if (decision === "always" && bashCommand !== undefined) {
+      this.approvals = addTrustedBashCommand(bashCommand);
+    }
+    pending.resolve(
+      decision === "yes" || decision === "always"
+        ? { type: "continue" }
+        : { type: "cancel", abortRun: true, message: "Tool call rejected by user." },
+    );
+    this.options.tui.requestRender();
   }
 }

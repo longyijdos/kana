@@ -89,8 +89,19 @@ export type ConversationRuntimeEvent =
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
 
+export type ConversationAgentIdentity = {
+  id: string;
+  label: string;
+  kind: "main" | "subagent";
+};
+
+type ConversationBeforeToolExecutionHook = (
+  request: Parameters<BeforeToolExecutionHook>[0] & { agent: ConversationAgentIdentity },
+) => ReturnType<BeforeToolExecutionHook>;
+
 type CreateConversationAgentOptions<TConfiguration> = {
   beforeToolExecution: BeforeToolExecutionHook;
+  bindBeforeToolExecution: (agent: ConversationAgentIdentity) => BeforeToolExecutionHook;
   messages?: Message[];
   inbox?: AgentInboxSnapshot;
   sessionId?: string;
@@ -133,7 +144,7 @@ export class ConversationRuntime<TConfiguration = never> {
   private readonly inputCoordinator: ConversationInputCoordinator;
   private agent: Agent;
   private sessionData?: ConversationSessionSnapshot;
-  private beforeToolExecution?: BeforeToolExecutionHook;
+  private beforeToolExecution?: ConversationBeforeToolExecutionHook;
   private activeSource?: ConversationRunSource;
   private activeRunGoalId?: string;
   private terminalEvent?: Extract<AgentEvent, { type: "agent_end" }>;
@@ -216,7 +227,7 @@ export class ConversationRuntime<TConfiguration = never> {
     return this.inputCoordinator.queue;
   }
 
-  setBeforeToolExecution(hook: BeforeToolExecutionHook): void {
+  setBeforeToolExecution(hook: ConversationBeforeToolExecutionHook): void {
     this.beforeToolExecution = hook;
   }
 
@@ -385,13 +396,22 @@ export class ConversationRuntime<TConfiguration = never> {
     sessionId = this.sessionData?.id,
     inbox?: AgentInboxSnapshot,
   ): Agent {
-    return this.options.createAgent({
-      beforeToolExecution: (request) =>
-        this.beforeToolExecution?.(request) ?? {
+    const bindBeforeToolExecution =
+      (agent: ConversationAgentIdentity): BeforeToolExecutionHook =>
+      (request) =>
+        this.beforeToolExecution?.({ ...request, agent }) ?? {
           type: "cancel",
           abortRun: true,
           message: "Tool approval is unavailable.",
-        },
+        };
+    const mainAgent = {
+      id: sessionId === undefined ? "main:temporary" : `main:${sessionId}`,
+      label: "main",
+      kind: "main",
+    } satisfies ConversationAgentIdentity;
+    return this.options.createAgent({
+      beforeToolExecution: bindBeforeToolExecution(mainAgent),
+      bindBeforeToolExecution,
       messages,
       inbox,
       sessionId,

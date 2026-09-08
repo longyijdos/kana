@@ -5,7 +5,7 @@ import type { KanaAccountingOutcome } from "./types";
 export function recordKanaAgentRunAccounting(options: {
   sessionId: string;
   cwd: string;
-  agentKind: "main" | "memory_consolidation";
+  agentKind: "main" | "memory_consolidation" | "subagent";
   outcome: KanaAccountingOutcome;
   messages: Message[];
   model: ModelMetadata;

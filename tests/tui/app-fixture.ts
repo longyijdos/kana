@@ -59,6 +59,7 @@ export function createTuiAppOptions(): KanaTuiAppOptions {
         scope,
         runCount: 0,
         mainRunCount: 0,
+        subagentRunCount: 0,
         memoryRunCount: 0,
         outcomes: {
           stop: 0,
@@ -71,6 +72,7 @@ export function createTuiAppOptions(): KanaTuiAppOptions {
         },
         agents: {
           main: { runCount: 0 },
+          subagent: { runCount: 0 },
           memoryAutomatic: { runCount: 0 },
           memoryManual: { runCount: 0 },
         },

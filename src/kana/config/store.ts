@@ -66,6 +66,7 @@ const CONFIG_FIELDS: KanaConfigField[] = [
     "max_concurrent",
     (config) => config.agent.backgroundJobs.maxConcurrent,
   ),
+  field("agent.subagents", "max_live", (config) => config.agent.subagents.maxLive),
   field(
     "agent.repeated_tool_calls",
     "reminder_thresholds",

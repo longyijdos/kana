@@ -5,7 +5,7 @@ import type {
   ContextCheckpoint,
 } from "@/agent";
 import { createUserMessage, type Message, type ToolCallContent, type UserImage } from "@/core";
-import type { KanaToolApprovalMode } from "@/kana";
+import type { ConversationAgentIdentity, KanaToolApprovalMode } from "@/kana";
 import { ConversationRuntime, type ConversationRuntimeEvent } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
@@ -43,6 +43,7 @@ import {
   SlashCommandOptionsController,
 } from "./slash-command-options-controller";
 import { StatusProjectionController } from "./status-projection-controller";
+import { SubagentManagerController } from "./subagent-manager-controller";
 import { ToolApprovalController } from "./tool-approval-controller";
 import { ToolHistoryController } from "./tool-history-controller";
 
@@ -63,6 +64,7 @@ export class KanaTuiApp {
   private readonly queuedInputs: QueuedInputController;
   private readonly scheduledMessageManager: ScheduledMessageManagerController;
   private readonly backgroundJobManager: BackgroundJobManagerController;
+  private readonly subagentManager: SubagentManagerController;
   private readonly status: StatusProjectionController;
   private readonly errors: InteractionErrorReporter;
   private readonly toolApproval: ToolApprovalController;
@@ -94,6 +96,7 @@ export class KanaTuiApp {
   constructor(
     createAgent: (options: {
       beforeToolExecution: BeforeToolExecutionHook;
+      bindBeforeToolExecution: (agent: ConversationAgentIdentity) => BeforeToolExecutionHook;
       messages?: Message[];
       sessionId?: string;
       contextCheckpoint?: ContextCheckpoint;
@@ -133,6 +136,7 @@ export class KanaTuiApp {
         !this.mcpServerManager?.active &&
         !this.scheduledMessageManager?.active &&
         !this.backgroundJobManager?.active &&
+        !this.subagentManager?.active &&
         !this.stopping,
       getLogger: this.getLogger,
     });
@@ -267,6 +271,28 @@ export class KanaTuiApp {
       showError: (error) => this.showInteractionError(error),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
+    this.subagentManager = new SubagentManagerController({
+      editor: this.editor,
+      bottomArea: this.bottomArea,
+      tui: this.tui,
+      getSubagents: () => {
+        const sessionId = this.conversation.sessionId;
+        return sessionId ? this.options.conversation.getSubagents?.(sessionId) : undefined;
+      },
+      loadProfiles: () =>
+        this.options.conversation.loadSubagentProfiles?.() ?? {
+          profiles: [],
+          diagnostics: [],
+        },
+      inspect: (inspection) => {
+        this.contentViewer.open({
+          title: `Subagent ${inspection.profile} · ${shortSubagentId(inspection.id)}`,
+          render: () => formatSubagentInspection(inspection),
+        });
+      },
+      showError: (error) => this.showInteractionError(error),
+      onClose: () => this.conversation.notifyCanStartQueuedRun(),
+    });
     this.modelSelection = new ModelSelectionController({
       conversation: this.conversation,
       editor: this.editor,
@@ -303,16 +329,20 @@ export class KanaTuiApp {
       editor: this.editor,
       bottomArea: this.bottomArea,
       tui: this.tui,
-      onApprovalRequired: (toolName) => {
-        this.updateStatus("tool", {
-          activeTool: toolName,
-        });
-        this.notifications.approvalRequired(toolName);
+      onApprovalRequired: (toolName, agent) => {
+        if (agent.kind === "main") {
+          this.updateStatus("tool", {
+            activeTool: toolName,
+          });
+        }
+        this.notifications.approvalRequired(
+          agent.kind === "subagent" ? `${agent.label} · ${toolName}` : toolName,
+        );
       },
     });
     this.bottomArea.setFallback(() => this.toolApproval.activePrompt ?? this.editor);
-    this.conversation.setBeforeToolExecution(({ toolCall, signal }) =>
-      this.showToolApprovalPrompt(toolCall, signal),
+    this.conversation.setBeforeToolExecution(({ toolCall, signal, agent }) =>
+      this.showToolApprovalPrompt(toolCall, signal, agent),
     );
     this.localShell = new LocalShellController({
       editor: this.editor,
@@ -365,6 +395,7 @@ export class KanaTuiApp {
         this.skillManager.close();
         this.scheduledMessageManager.close();
         this.backgroundJobManager.close();
+        this.subagentManager.close();
         this.toolHistory.close();
       },
       closeContentViewer: () => this.contentViewer.close(),
@@ -449,6 +480,10 @@ export class KanaTuiApp {
       openBackgroundJobManager: () => {
         this.editor.clear();
         this.openBackgroundJobManager();
+      },
+      openSubagentManager: () => {
+        this.editor.clear();
+        this.openSubagentManager();
       },
       startGoal: (objective) => {
         this.editor.clear();
@@ -590,6 +625,7 @@ export class KanaTuiApp {
     this.memoryCompact.abort();
     this.scheduledMessageManager.close();
     this.backgroundJobManager.close();
+    this.subagentManager.close();
     this.mcpServerManager?.close();
     this.unsubscribeConversationEvents();
     this.showShutdownStatus("Shutting down Kana...");
@@ -723,6 +759,7 @@ export class KanaTuiApp {
     this.contentViewer.close();
     this.scheduledMessageManager.close();
     this.backgroundJobManager.close();
+    this.subagentManager.close();
     this.toolHistory.close();
     this.skillManager.open();
   }
@@ -745,6 +782,7 @@ export class KanaTuiApp {
     this.skillManager.close();
     this.scheduledMessageManager.close();
     this.backgroundJobManager.close();
+    this.subagentManager.close();
     this.toolHistory.close();
     this.mcpServerManager.open();
   }
@@ -755,6 +793,7 @@ export class KanaTuiApp {
     this.skillManager.close();
     this.mcpServerManager?.close();
     this.backgroundJobManager.close();
+    this.subagentManager.close();
     this.toolHistory.close();
     this.scheduledMessageManager.open();
   }
@@ -766,8 +805,20 @@ export class KanaTuiApp {
     this.mcpServerManager?.close();
     this.scheduledMessageManager.close();
     this.backgroundJobManager.close();
+    this.subagentManager.close();
     this.toolHistory.close();
     this.backgroundJobManager.open();
+  }
+
+  private openSubagentManager(): void {
+    this.sessions.close();
+    this.contentViewer.close();
+    this.skillManager.close();
+    this.mcpServerManager?.close();
+    this.scheduledMessageManager.close();
+    this.backgroundJobManager.close();
+    this.toolHistory.close();
+    this.subagentManager.open();
   }
 
   private openToolHistoryPicker(): void {
@@ -777,6 +828,7 @@ export class KanaTuiApp {
     this.mcpServerManager?.close();
     this.scheduledMessageManager.close();
     this.backgroundJobManager.close();
+    this.subagentManager.close();
     this.toolHistory.open();
   }
 
@@ -786,6 +838,7 @@ export class KanaTuiApp {
     this.mcpServerManager?.close();
     this.scheduledMessageManager.close();
     this.backgroundJobManager.close();
+    this.subagentManager.close();
     this.toolHistory.close();
     this.informationViewer.openTodos();
   }
@@ -1041,9 +1094,10 @@ export class KanaTuiApp {
   private showToolApprovalPrompt(
     toolCall: ToolCallContent,
     signal: AbortSignal | undefined,
+    agent: ConversationAgentIdentity,
   ): Promise<BeforeToolExecutionResult> {
-    this.agentEvents.prepareForToolInteraction();
-    return this.toolApproval.request(toolCall, signal);
+    if (agent.kind === "main") this.agentEvents.prepareForToolInteraction();
+    return this.toolApproval.request(toolCall, signal, agent);
   }
 
   private updateStatus(...args: Parameters<StatusProjectionController["update"]>): void {
@@ -1057,6 +1111,41 @@ export class KanaTuiApp {
 
 function formatScheduledWakeContent(content: string): string {
   return content.replace(/^\[Scheduled wake event\]\n/, "");
+}
+
+function shortSubagentId(id: string): string {
+  return id.startsWith("agent_") ? id.slice(6, 14) : id.slice(0, 8);
+}
+
+function formatSubagentInspection(inspection: import("@/kana").KanaSubagentInspection): string[] {
+  const lines = [
+    `Status: ${inspection.status}`,
+    `Profile: ${inspection.profile}`,
+    `Agent ID: ${inspection.id}`,
+    `Task: ${inspection.task}`,
+    "",
+  ];
+  for (const message of inspection.messages) {
+    lines.push(message.role.toUpperCase());
+    if (message.role === "user") {
+      lines.push(message.content, "");
+      continue;
+    }
+    if (message.role === "tool") {
+      lines.push(`${message.toolName} (${message.toolCallId})`, message.content, "");
+      continue;
+    }
+    for (const content of message.content) {
+      if (content.type === "text" || content.type === "thinking") lines.push(content.text);
+      else if (content.type === "tool_call") {
+        lines.push(`${content.name} (${content.id})`, JSON.stringify(content.args, null, 2));
+      } else {
+        lines.push(`${content.name} (${content.status})`);
+      }
+    }
+    lines.push("");
+  }
+  return lines;
 }
 
 function formatBackgroundJobWakeContent(content: string): string {

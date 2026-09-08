@@ -33,6 +33,12 @@ export class UsageSummaryBlock implements Component {
         tone: tuiTheme.usageInput,
       },
       {
+        label: "Subagents",
+        runCount: this.summary.agents.subagent.runCount,
+        tokenCount: this.summary.agents.subagent.usage?.totalTokens ?? 0,
+        tone: tuiTheme.usageOutput,
+      },
+      {
         label: "Memory auto",
         runCount: this.summary.agents.memoryAutomatic.runCount,
         tokenCount: this.summary.agents.memoryAutomatic.usage?.totalTokens ?? 0,

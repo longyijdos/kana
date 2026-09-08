@@ -212,12 +212,55 @@ describe("tool approval controller", () => {
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });
   });
+
+  test("queues concurrent requests in order and keeps their subagent identity", async () => {
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({
+      main: new LinesComponent(["transcript"]),
+      bottom: editor,
+    });
+    const tui = createTuiStub();
+    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
+    const controller = new ToolApprovalController({
+      config: { mode: "always" },
+      approvals: {
+        version: 2,
+        bash: { exactCommands: [], readOnlyCommands: [] },
+      },
+      editor,
+      bottomArea,
+      tui,
+      onApprovalRequired: () => {},
+    });
+    bottomArea.setFallback(() => controller.activePrompt ?? editor);
+
+    const first = controller.request(createToolCall("call_first"), undefined, {
+      id: "agent_first",
+      label: "explorer · first",
+      kind: "subagent",
+    });
+    const second = controller.request(createToolCall("call_second"), undefined, {
+      id: "agent_second",
+      label: "worker · second",
+      kind: "subagent",
+    });
+
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("explorer · first");
+    expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("worker · second");
+    controller.activePrompt?.handleInput?.("\r");
+    await expect(first).resolves.toEqual({ type: "continue" });
+
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("worker · second");
+    controller.activePrompt?.handleInput?.("\r");
+    await expect(second).resolves.toEqual({ type: "continue" });
+    expect(tui.getFocus()).toBe(editor);
+  });
 });
 
-function createToolCall() {
+function createToolCall(id = "call_1") {
   return {
     type: "tool_call" as const,
-    id: "call_1",
+    id,
     name: "bash",
     args: {
       command: "rm notes.txt",

@@ -2,7 +2,7 @@ import type { ModelUsage } from "@/core";
 
 export const KANA_ACCOUNTING_VERSION = 2;
 
-type KanaAccountingAgentKind = "main" | "memory_consolidation";
+type KanaAccountingAgentKind = "main" | "memory_consolidation" | "subagent";
 export type KanaAccountingOutcome =
   | "stop"
   | "length"
@@ -45,10 +45,11 @@ export type KanaUsageSummary = {
   runCount: number;
   mainRunCount: number;
   memoryRunCount: number;
+  subagentRunCount: number;
   usage?: ModelUsage;
   outcomes: Record<KanaAccountingOutcome, number>;
   agents: Record<
-    "main" | "memoryAutomatic" | "memoryManual",
+    "main" | "memoryAutomatic" | "memoryManual" | "subagent",
     { runCount: number; usage?: ModelUsage }
   >;
   models: Array<{
