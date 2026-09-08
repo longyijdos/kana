@@ -29,6 +29,8 @@ Review the delegated migration. Report correctness risks with file references.
 Do not modify files.
 ```
 
+`kana install` 会创建 `<KANA_HOME>/agents/profile.md.example`，作为使用相同 schema 的生成参考。它的文件名不以 `.md` 结尾，因此 profile loader 会忽略它。Install 可在升级时刷新这个 example，但绝不会覆盖用户创建的 `agents/*.md` 角色卡。
+
 `description` 和非空指令正文是必填项，`tools` 也可以写成 inline array。`model` 可选，默认 `inherit`；显式值采用 `<provider>/<model>`。只有显式指定 model 时才能设置 `reasoning_effort`。未知 frontmatter 字段或无效值会让整张角色卡失效。
 
 同名用户文件会遮蔽内置 profile。如果文件无效，该名称保持不可用，不会静默回退到权限或行为不同的内置版本。主 Agent 装配动态工具面以及 `/agents` 刷新时会重新加载 profile。Spawn 会快照所选角色卡的完整内容与 digest，因此后续文件修改不会改变正在运行的 child 或其 journal。
@@ -64,8 +66,8 @@ Parent runtime context 只投影活动和未观察终态 child 的身份、profi
 <KANA_HOME>/sessions/<encoded-workspace>/.subagents/<parent-session-id>/<child-id>.jsonl
 ```
 
-它复用 session turn record 格式，但 header 额外包含 parent ID、spawn tool-call ID 与完整 profile 快照。这些文件不是普通可恢复 session，永远不会出现在 `/resume`。启动后查看一个未闭合 child turn 时会把它报告为 `interrupted`，但不会修复或恢复执行。Fork parent 不复制 child；删除 parent 会移除完整 child-journal 目录。
+它复用 session turn record 格式，但 header 额外包含 parent ID、spawn tool-call ID 与完整 profile 快照。这些文件是用于调试、审计、accounting 与未来历史浏览的持久化日志；它们不是 runtime manager state、普通可恢复 session，也不会出现在 `/resume`。新的 Kana 进程绝不会把这些文件恢复进 `KanaSubagentManager`。Fork parent 不复制 child；删除 parent 会移除完整 child-journal 目录。
 
-主 Agent 运行期间也可使用 `/agents`。面板显示有效 profile 和当前 session 的活动或归档 run；方向键选择，`Enter` 打开 transcript，`K` 取消活动 child 但不确认其 completion，`R` 重新加载，`Esc` 关闭。无效 profile 的诊断也会显示在面板中。
+主 Agent 运行期间也可使用 `/agents`。面板显示有效 profile，以及当前 hosted session instance 中活动和仍被保留的终态 record；方向键选择，`Enter` 打开当前进程内保留的 transcript，`K` 取消活动 child 但不确认其 completion，`R` 重新加载，`Esc` 关闭。无效 profile 的诊断也会显示在面板中。退出 Kana 会丢弃这些 runtime state；以后恢复 parent session 时不会从 child journal 重新填充。
 
 Child run 使用独立的 `subagent` accounting kind，并与 main、memory run 分开显示。其 usage 只向 aggregate 和 per-model 总数贡献一次，不复制进 parent run usage。Clean mode 只暴露内置 profile，child 状态仅保存在内存中，也不写 child journal 或 accounting record。

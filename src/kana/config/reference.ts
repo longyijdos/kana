@@ -85,6 +85,26 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
   ].join("\n");
 }
 
+export function serializeKanaSubagentProfileExample(): string {
+  return [
+    "---",
+    "description: Review database migrations",
+    "tools:",
+    "  - list",
+    "  - grep",
+    "  - read",
+    "  - bash",
+    "# model: openai-codex/gpt-5.6-terra",
+    "# reasoning_effort: high",
+    "---",
+    "",
+    "Review the delegated task.",
+    "Report correctness risks with concrete file references.",
+    "Do not modify files.",
+    "",
+  ].join("\n");
+}
+
 function serializeModelConfig(
   config: KanaModelConfig,
   examples: {

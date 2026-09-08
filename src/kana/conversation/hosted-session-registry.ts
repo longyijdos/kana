@@ -24,11 +24,7 @@ import {
   listKanaSessions,
   loadKanaSession,
 } from "../session";
-import {
-  type KanaSubagentClient,
-  KanaSubagentManager,
-  loadKanaSubagentInspections,
-} from "../subagents";
+import { type KanaSubagentClient, KanaSubagentManager } from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
 
 type HostedSessionSelection =
@@ -84,7 +80,7 @@ type HostedSession = {
 export class HostedSessionRegistry {
   private readonly logManager;
   private readonly backgroundJobManager = new BackgroundJobManager();
-  private readonly subagentManager: KanaSubagentManager;
+  private readonly subagentManager = new KanaSubagentManager();
   private readonly sessions = new Map<string, HostedSession>();
   private readonly hostedSessions = new Set<HostedSession>();
   private readonly pendingDisposals = new Map<string, HostedSession[]>();
@@ -93,9 +89,6 @@ export class HostedSessionRegistry {
 
   constructor(private readonly options: HostedSessionRegistryOptions) {
     this.logManager = createSessionLogManager({ level: options.logLevel });
-    this.subagentManager = new KanaSubagentManager({
-      loadArchived: (owner) => loadKanaSubagentInspections(owner, this.options.env),
-    });
   }
 
   get resumeSessionId(): string | undefined {

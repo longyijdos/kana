@@ -59,6 +59,8 @@ export function defaultInstallResult(): ReturnType<CreateCliOptions["installKana
     approvalsStatus: "created",
     skillsConfigPath: "/tmp/skills.toml",
     skillsConfigStatus: "created",
+    subagentProfileExamplePath: "/tmp/agents/profile.md.example",
+    subagentProfileExampleStatus: "created",
     customProviderExamplePath: "/tmp/providers/custom.example.toml",
     customProviderExampleStatus: "created",
   };

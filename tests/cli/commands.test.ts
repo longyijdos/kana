@@ -25,6 +25,8 @@ describe("CLI installation", () => {
         approvalsStatus: "exists",
         skillsConfigPath: "/tmp/skills.toml",
         skillsConfigStatus: "created",
+        subagentProfileExamplePath: "/tmp/agents/profile.md.example",
+        subagentProfileExampleStatus: "created",
         customProviderExamplePath: "/tmp/providers/custom.example.toml",
         customProviderExampleStatus: "created",
       }),
@@ -39,6 +41,7 @@ describe("CLI installation", () => {
       "Created MCP activation state: /tmp/mcp-enabled.json",
       "Approvals already exists: /tmp/approvals.json",
       "Created skills config: /tmp/skills.toml",
+      "Created subagent profile example: /tmp/agents/profile.md.example",
       "Created Custom provider example: /tmp/providers/custom.example.toml",
     ]);
   });

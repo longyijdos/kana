@@ -1,16 +1,10 @@
-import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import type { AgentEndReason, AgentJournal } from "@/agent";
+import type { AgentJournal } from "@/agent";
 import type { Message } from "@/core";
 import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
-import {
-  createKanaSessionJournal,
-  type KanaSessionMetadata,
-  type KanaSessionTurnOutcome,
-  loadKanaSessionFile,
-} from "../session";
-import type { KanaSubagentInspection, KanaSubagentOwner } from "./manager";
+import { createKanaSessionJournal, type KanaSessionMetadata } from "../session";
+import type { KanaSubagentOwner } from "./manager";
 import type { KanaSubagentProfile } from "./profiles";
 
 export function createKanaSubagentJournal(options: {
@@ -59,53 +53,6 @@ export function createKanaSubagentJournal(options: {
   };
 }
 
-export function loadKanaSubagentInspections(
-  owner: KanaSubagentOwner,
-  env: NodeJS.ProcessEnv = process.env,
-): KanaSubagentInspection[] {
-  if (!owner.persistent) return [];
-  const directory = getKanaSubagentDirectory(owner.cwd, owner.sessionId, env);
-  if (!existsSync(directory)) return [];
-  const inspections: KanaSubagentInspection[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
-    try {
-      const loaded = loadKanaSessionFile(path.join(directory, entry.name), {
-        recoverInterruptedTurn: false,
-      });
-      const identity = loaded.metadata.subagent;
-      if (!identity || identity.parentSessionId !== owner.sessionId) continue;
-      const end = [...loaded.timeline].reverse().find((item) => item.type === "turn_end");
-      const outcome = end?.type === "turn_end" ? end.outcome : "interrupted";
-      inspections.push({
-        id: loaded.metadata.id,
-        profile: identity.profile.name,
-        label: loaded.metadata.title,
-        status: statusFromOutcome(outcome),
-        startedAt: new Date(loaded.metadata.createdAt),
-        ...(end === undefined ? {} : { finishedAt: new Date(end.timestamp) }),
-        ...(loaded.metadata.model === undefined
-          ? {}
-          : {
-              model: {
-                provider: loaded.metadata.model.provider,
-                model: loaded.metadata.model.model,
-              },
-            }),
-        ...(isAgentEndReason(outcome) ? { terminalReason: outcome } : {}),
-        output: finalOutput(loaded.messages),
-        ...(outcome === "error" ? { error: "Subagent run failed." } : {}),
-        waitTimedOut: false,
-        task: loaded.messages.find((message) => message.role === "user")?.content ?? "",
-        messages: loaded.messages,
-      });
-    } catch {
-      // A malformed child journal does not hide the remaining session records.
-    }
-  }
-  return inspections.sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
-}
-
 export function getKanaSubagentDirectory(
   cwd: string,
   parentSessionId: string,
@@ -127,17 +74,6 @@ export function finalOutput(messages: readonly Message[]): string {
     .map((content) => content.text)
     .join("")
     .trim();
-}
-
-function statusFromOutcome(outcome: KanaSessionTurnOutcome | "interrupted") {
-  if (outcome === "interrupted") return "interrupted" as const;
-  if (outcome === "aborted") return "cancelled" as const;
-  if (outcome === "error") return "errored" as const;
-  return "completed" as const;
-}
-
-function isAgentEndReason(value: KanaSessionTurnOutcome): value is AgentEndReason {
-  return value !== "interrupted" && value !== "snapshot";
 }
 
 function safeTimestamp(timestamp: string): string {

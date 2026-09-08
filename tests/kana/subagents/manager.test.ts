@@ -5,6 +5,7 @@ import {
   type KanaSubagentProfile,
   type KanaSubagentRunResult,
 } from "../../../src/kana/subagents";
+import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("Kana subagent manager", () => {
   test("starts immediately, enforces the live limit, and supports bounded waiting", async () => {
@@ -36,13 +37,27 @@ describe("Kana subagent manager", () => {
       waitTimedOut: true,
     });
 
-    run.resolve(result("parser result"));
+    const transcript = [
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant" as const,
+        stopReason: "stop" as const,
+        content: [{ type: "text" as const, text: "parser result" }],
+      },
+    ];
+    run.resolve({ ...result("parser result"), messages: transcript });
     await expect(client.wait(started.id, { waitMs: 100 })).resolves.toMatchObject({
       status: "completed",
       output: "parser result",
       waitTimedOut: false,
     });
     expect(client.context()).toEqual([]);
+    expect(client.list()).toMatchObject([{ id: started.id, status: "completed" }]);
+    expect(client.inspect(started.id)).toMatchObject({
+      task: "Inspect the parser",
+      output: "parser result",
+      messages: transcript,
+    });
   });
 
   test("keeps waiters pending until explicit cancellation settles and isolates owners", async () => {

@@ -8,13 +8,7 @@ import type { KanaSubagentProfile } from "./profiles";
 const DEFAULT_MAX_RETAINED_TERMINAL_SUBAGENTS = 32;
 const MAX_LABEL_LENGTH = 160;
 
-type KanaSubagentStatus =
-  | "running"
-  | "completed"
-  | "errored"
-  | "cancelled"
-  | "interrupted"
-  | "unknown";
+type KanaSubagentStatus = "running" | "completed" | "errored" | "cancelled" | "unknown";
 
 export type KanaSubagentOwner = Readonly<{
   sessionId: string;
@@ -46,7 +40,7 @@ export type KanaSubagentInspection = KanaSubagentSnapshot & {
 };
 
 export type KanaSubagentRunResult = {
-  status: Exclude<KanaSubagentStatus, "running" | "interrupted" | "unknown">;
+  status: Exclude<KanaSubagentStatus, "running" | "unknown">;
   output: string;
   messages: Message[];
   model?: { provider: string; model: string };
@@ -123,7 +117,6 @@ type ListenerRegistration = {
 
 export type KanaSubagentManagerOptions = {
   maxRetainedTerminalSubagents?: number;
-  loadArchived?: (owner: KanaSubagentOwner) => KanaSubagentInspection[];
 };
 
 export class KanaSubagentManager {
@@ -133,7 +126,7 @@ export class KanaSubagentManager {
   private readonly maxRetainedTerminalSubagents: number;
   private closePromise?: Promise<void>;
 
-  constructor(private readonly options: KanaSubagentManagerOptions = {}) {
+  constructor(options: KanaSubagentManagerOptions = {}) {
     this.maxRetainedTerminalSubagents = readPositiveInteger(
       options.maxRetainedTerminalSubagents,
       DEFAULT_MAX_RETAINED_TERMINAL_SUBAGENTS,
@@ -256,16 +249,10 @@ export class KanaSubagentManager {
   }
 
   private list(owner: KanaSubagentOwner): KanaSubagentSummary[] {
-    const current = [...this.records.values()]
+    return [...this.records.values()]
       .filter((record) => record.owner.instanceId === owner.instanceId)
-      .map((record) => cloneSummary(record.summary));
-    const ids = new Set(current.map((summary) => summary.id));
-    const archived = this.loadArchived(owner)
-      .filter((inspection) => !ids.has(inspection.id))
-      .map(cloneSummary);
-    return [...archived, ...current].sort(
-      (left, right) => left.startedAt.getTime() - right.startedAt.getTime(),
-    );
+      .map((record) => cloneSummary(record.summary))
+      .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
   }
 
   private context(owner: KanaSubagentOwner): KanaSubagentSummary[] {
@@ -285,10 +272,7 @@ export class KanaSubagentManager {
     options: WaitKanaSubagentOptions = {},
   ): Promise<KanaSubagentSnapshot> {
     const record = this.findOwned(owner, agentId);
-    if (!record) {
-      const archived = this.inspect(owner, agentId);
-      return archived ?? unknownSnapshot(agentId);
-    }
+    if (!record) return unknownSnapshot(agentId);
     const waitMs = readNonNegativeInteger(options.waitMs, 0, "waitMs");
     let waitTimedOut = false;
     if (record.summary.status === "running" && waitMs > 0) {
@@ -308,7 +292,7 @@ export class KanaSubagentManager {
         messages: structuredClone(record.messages),
       };
     }
-    return this.loadArchived(owner).find((inspection) => inspection.id === agentId);
+    return undefined;
   }
 
   private async cancel(
@@ -444,15 +428,6 @@ export class KanaSubagentManager {
     return record?.owner.instanceId === owner.instanceId ? record : undefined;
   }
 
-  private loadArchived(owner: KanaSubagentOwner): KanaSubagentInspection[] {
-    if (!owner.persistent) return [];
-    try {
-      return this.options.loadArchived?.(owner).map(cloneInspection) ?? [];
-    } catch {
-      return [];
-    }
-  }
-
   private emit(event: KanaSubagentEvent): void {
     for (const registration of this.listeners) {
       if (registration.ownerInstanceId !== event.owner.instanceId) continue;
@@ -503,17 +478,6 @@ function cloneSummary(summary: KanaSubagentSummary): KanaSubagentSummary {
     startedAt: new Date(summary.startedAt),
     ...(summary.finishedAt === undefined ? {} : { finishedAt: new Date(summary.finishedAt) }),
     ...(summary.model === undefined ? {} : { model: { ...summary.model } }),
-  };
-}
-
-function cloneInspection(value: KanaSubagentInspection): KanaSubagentInspection {
-  return {
-    ...cloneSummary(value),
-    output: value.output,
-    error: value.error,
-    waitTimedOut: value.waitTimedOut,
-    task: value.task,
-    messages: structuredClone(value.messages),
   };
 }
 

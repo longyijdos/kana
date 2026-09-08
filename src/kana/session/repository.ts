@@ -140,17 +140,14 @@ function findKanaSession(
   return listKanaSessions(options).find((session) => session.id === sessionId);
 }
 
-export function loadKanaSessionFile(
-  filePath: string,
-  options: { recoverInterruptedTurn?: boolean } = {},
-): LoadKanaSessionResult {
+function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
   let parsed = readKanaSessionFile(filePath);
   const recoveredIncompleteTail = parsed.recoveredIncompleteTail;
   let recoveredInterruptedTurn: LoadKanaSessionResult["recoveredInterruptedTurn"];
 
   const initialMetadata = headerToMetadata(parsed.header, filePath);
   const initialJournal = createKanaSessionJournal(initialMetadata, parsed.timeline);
-  if (initialJournal.activeTurnId && options.recoverInterruptedTurn !== false) {
+  if (initialJournal.activeTurnId) {
     const recovered = initialJournal.recoverInterruptedTurn();
     recoveredInterruptedTurn = {
       turnId: recovered.turnId,

@@ -3,13 +3,17 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { AgentJournal } from "@/agent";
 import type { Message } from "@/core";
-import { appendKanaSessionMessages, createKanaSession, deleteKanaSession } from "@/kana";
+import {
+  appendKanaSessionMessages,
+  createKanaConversationHost,
+  createKanaSession,
+  deleteKanaSession,
+} from "@/kana";
 import {
   createKanaSubagentJournal,
   getKanaSubagentDirectory,
   type KanaSubagentOwner,
   type KanaSubagentProfile,
-  loadKanaSubagentInspections,
 } from "../../../src/kana/subagents";
 import { messageIdentityForTest } from "../../helpers/messages";
 import { createSessionFixture } from "../session/session-fixture";
@@ -30,33 +34,41 @@ describe("Kana subagent journal repository", () => {
     journal.startRun({ runId: "run-1", messages: [user] });
     journal.appendMessage({ runId: "run-1", message: assistant });
     journal.endRun({ runId: "run-1", reason: "stop" });
+    const directory = getKanaSubagentDirectory(cwd, owner.sessionId, env);
+    const records = readFileSync(path.join(directory, fileName(directory)), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const header = records[0];
+    const messages = records
+      .filter((record) => record.type === "message")
+      .map((record) => record.message);
 
-    expect(loadKanaSubagentInspections(owner, env)).toEqual([
-      expect.objectContaining({
-        id: "agent_complete",
-        profile: "explorer",
-        status: "completed",
-        task: "Inspect the parser",
-        output: "The parser is correct.",
-        messages: [user, assistant],
-      }),
-    ]);
+    expect(header?.subagent).toMatchObject({
+      parentSessionId: "session-1",
+      spawnToolCallId: "call-spawn",
+      profile: { name: "explorer", tools: ["read"] },
+    });
+    expect(messages).toEqual([user, assistant]);
   });
 
-  test("reports an incomplete child as interrupted without repairing its journal", () => {
+  test("does not restore child journals into a new hosted session instance", async () => {
     const env = createTempEnv();
-    const cwd = path.join(env.HOME ?? "", "repo");
+    const cwd = process.cwd();
+    const parent = createKanaSession({ cwd, env, id: "session-1" });
+    appendKanaSessionMessages(parent, [userMessage("Persist the parent")]);
     const owner = createOwner(cwd);
-    const journal = createJournal(owner, env, "agent_interrupted");
-    journal.startRun({ runId: "run-1", messages: [userMessage("Keep this open")] });
-    const directory = getKanaSubagentDirectory(cwd, owner.sessionId, env);
-    const filePath = path.join(directory, fileName(directory));
-    const before = readFileSync(filePath, "utf8");
+    const journal = createJournal(owner, env, "agent_previous");
+    journal.startRun({ runId: "run-1", messages: [userMessage("Previous run")] });
+    journal.endRun({ runId: "run-1", reason: "stop" });
+    const host = createKanaConversationHost({
+      env,
+      session: { type: "resume", sessionId: parent.id },
+    });
 
-    const [inspection] = loadKanaSubagentInspections(owner, env);
-
-    expect(inspection?.status).toBe("interrupted");
-    expect(readFileSync(filePath, "utf8")).toBe(before);
+    expect(host.getSubagents(parent.id)?.list()).toEqual([]);
+    expect(host.getSubagents(parent.id)?.inspect("agent_previous")).toBeUndefined();
+    await host.close();
   });
 
   test("deleting a parent session removes its child journals", () => {

@@ -18,5 +18,4 @@ export {
   createKanaSubagentJournal,
   finalOutput,
   getKanaSubagentDirectory,
-  loadKanaSubagentInspections,
 } from "./repository";
