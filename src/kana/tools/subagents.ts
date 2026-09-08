@@ -50,6 +50,7 @@ const cancelParameters = Type.Object(
 export type CreateKanaSubagentToolsOptions = {
   subagents: KanaSubagentClient;
   profiles: readonly KanaSubagentProfile[];
+  availableTools(profile: KanaSubagentProfile): readonly string[];
   run(context: KanaSubagentRunContext): Promise<KanaSubagentRunResult>;
 };
 
@@ -63,7 +64,10 @@ export function createSpawnSubagentTool(
       "Start one configured, session-owned one-shot subagent and return immediately with its stable ID.",
       "The child receives only its profile instructions and the task argument, so make the task self-contained.",
       "Choose only from these profiles:",
-      ...options.profiles.map((profile) => `- ${profile.name}: ${profile.description}`),
+      ...options.profiles.map((profile) => {
+        const tools = options.availableTools(profile);
+        return `- ${profile.name}: ${profile.description} Available tools: ${tools.length > 0 ? tools.join(", ") : "none"}.`;
+      }),
     ].join("\n"),
     parameters: spawnParameters,
     execution: { concurrency: "parallel" },

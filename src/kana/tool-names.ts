@@ -1,4 +1,4 @@
-const KANA_WORKSPACE_TOOL_NAMES = [
+export const KANA_WORKSPACE_TOOL_NAMES = [
   "list",
   "glob",
   "grep",

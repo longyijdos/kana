@@ -78,6 +78,45 @@ describe("Kana Agent tools", () => {
     expect(unsupportedModel.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
   });
 
+  test("advertises each subagent profile's effective tools", () => {
+    const config = testConfig();
+    const subagentManager = new KanaSubagentManager();
+    const subagents = subagentManager.bind(
+      subagentManager.createOwner({
+        sessionId: "session-1",
+        cwd: process.cwd(),
+        persistent: false,
+      }),
+      { maxLive: 4 },
+    );
+    const profile: KanaSubagentProfile = {
+      ...subagentProfile(),
+      tools: ["read", "view_image", "bash", "github_create_issue"],
+    };
+    const agent = withKanaAgentEnvironment(() =>
+      createKanaAgent(
+        {
+          ...config.agent,
+          tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent"],
+        },
+        {
+          providers: config.provider,
+          memoryEnabled: config.memory.enabled,
+        },
+        {
+          additionalTools: [createTool("github_create_issue")],
+          subagents,
+          resolveSubagentProfiles: () => [profile],
+          runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
+        },
+      ),
+    );
+
+    expect(agent.state.tools.find((tool) => tool.name === "spawn_subagent")?.description).toContain(
+      "- explorer: Explore the repository Available tools: read, github_create_issue.",
+    );
+  });
+
   test("filters configurable built-in tools without affecting external tools or update_goal", async () => {
     const goal = createGoal("active");
     const config = testConfig();
