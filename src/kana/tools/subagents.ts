@@ -72,6 +72,7 @@ export function createSpawnSubagentTool(
     parameters: spawnParameters,
     execution: { concurrency: "parallel" },
     execute: (args, context) => {
+      if (context.signal?.aborted) throw new Error("Subagent spawn was cancelled.");
       const profile = profiles.get(args.profile);
       if (!profile) throw new Error(`Unknown subagent profile: ${args.profile}`);
       const task = args.task.trim();
@@ -80,7 +81,6 @@ export function createSpawnSubagentTool(
         profile,
         task,
         spawnToolCallId: context.toolCallId,
-        parentSignal: context.signal,
         run: options.run,
       });
       const result = {

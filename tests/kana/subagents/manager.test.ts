@@ -45,7 +45,7 @@ describe("Kana subagent manager", () => {
     expect(client.context()).toEqual([]);
   });
 
-  test("routes parent cancellation to the owned child and isolates owners", async () => {
+  test("keeps waiters pending until explicit cancellation settles and isolates owners", async () => {
     const manager = new KanaSubagentManager();
     const firstOwner = manager.createOwner({
       sessionId: "session-1",
@@ -59,28 +59,50 @@ describe("Kana subagent manager", () => {
     });
     const first = manager.bind(firstOwner, { maxLive: 1 });
     const second = manager.bind(secondOwner, { maxLive: 1 });
-    const parent = new AbortController();
+    const abortObserved = deferred<void>();
+    const drained = deferred<KanaSubagentRunResult>();
     const started = first.start({
       profile: profile(),
       task: "Wait for cancellation",
       spawnToolCallId: "call-spawn",
-      parentSignal: parent.signal,
       run: ({ signal }) =>
         new Promise((resolve) => {
-          signal.addEventListener("abort", () => resolve(result("cancelled late")), {
-            once: true,
-          });
+          signal.addEventListener(
+            "abort",
+            () => {
+              abortObserved.resolve(undefined);
+              void drained.promise.then(resolve);
+            },
+            { once: true },
+          );
         }),
     });
+    await Promise.resolve();
 
     expect(second.inspect(started.id)).toBeUndefined();
     await expect(second.wait(started.id)).resolves.toMatchObject({ status: "unknown" });
 
-    parent.abort();
-    await expect(first.wait(started.id, { waitMs: 100 })).resolves.toMatchObject({
+    let waitSettled = false;
+    const waiting = first.wait(started.id, { waitMs: 100 });
+    void waiting.then(() => {
+      waitSettled = true;
+    });
+    const cancelling = first.cancel(started.id, {
+      source: "tui",
+      reason: "Stop from the TUI.",
+    });
+    await abortObserved.promise;
+    await Promise.resolve();
+
+    expect(waitSettled).toBe(false);
+    expect(first.inspect(started.id)?.status).toBe("running");
+
+    drained.resolve(result("cancelled after drain"));
+    await expect(waiting).resolves.toMatchObject({
       status: "cancelled",
       waitTimedOut: false,
     });
+    await expect(cancelling).resolves.toMatchObject({ status: "cancelled" });
   });
 
   test("publishes TUI cancellation until the completion is observed", async () => {

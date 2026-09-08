@@ -54,7 +54,7 @@ Host 从 conversation 的已校验 Agent 配置中派生 child 的模型和能�
 | `wait_subagent(agentId, timeoutMs?)` | 返回当前或终态状态与输出；每次最多等待 30 秒，超时不会取消。 |
 | `cancel_subagent(agentId, reason?)` | 中止一个所属的活动 child，并等待它结算。 |
 
-Parent runtime context 只投影活动和未观察终态 child 的身份、profile 与状态，不包含任务正文或输出。完成、报错和取消会像 Background Job completion 一样为 parent 排入一条有界通知；parent 使用 `wait_subagent` 消费结果。返回终态的 `wait_subagent` 会确认 completion，并移除仍在等待的通知。`cancel_subagent` 也会确认结果，而 TUI 发起的取消不会确认。Child 失败会产生 `errored` 结果，不会自动让 parent 失败。中止 parent turn 会取消该 turn spawn 的 child。Session 替换、删除与 shutdown 会取消待释放 session 实例拥有的所有 child，并等待它们结算。
+Parent runtime context 只投影活动和未观察终态 child 的身份、profile 与状态，不包含任务正文或输出。完成、报错和取消会像 Background Job completion 一样为 parent 排入一条有界通知；parent 使用 `wait_subagent` 消费结果。返回终态的 `wait_subagent` 会确认 completion，并移除仍在等待的通知。`cancel_subagent` 也会确认结果，而 TUI 发起的取消不会确认。Child 失败会产生 `errored` 结果，不会自动让 parent 失败。Spawn 成功后，child 与发起 spawn 的 tool invocation 和 parent turn 相互独立；它会继续运行，直到自然结束、被显式取消、session 被替换或删除，或者进程 shutdown。Session disposal 会等待其拥有的全部 child 结算。
 
 ## 持久化、TUI 与 accounting
 

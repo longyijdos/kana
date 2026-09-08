@@ -67,7 +67,6 @@ type StartKanaSubagentOptions = {
   profile: KanaSubagentProfile;
   task: string;
   spawnToolCallId: string;
-  parentSignal?: AbortSignal;
   run(context: KanaSubagentRunContext): Promise<KanaSubagentRunResult>;
 };
 
@@ -78,7 +77,7 @@ type WaitKanaSubagentOptions = {
 
 type CancelKanaSubagentOptions = {
   reason?: string;
-  source: "tool" | "tui" | "parent_turn" | "session_disposal" | "shutdown";
+  source: "tool" | "tui" | "session_disposal" | "shutdown";
 };
 
 export type KanaSubagentEvent = {
@@ -113,8 +112,6 @@ type SubagentRecord = {
   messages: Message[];
   error?: string;
   waiters: Set<() => void>;
-  parentSignal?: AbortSignal;
-  onParentAbort?: () => void;
   completionObserved: boolean;
   completionPublished: boolean;
 };
@@ -194,7 +191,6 @@ export class KanaSubagentManager {
     if (this.closePromise || this.closedOwners.has(owner.instanceId)) {
       throw new Error("Subagents are unavailable while the session is closing.");
     }
-    if (options.parentSignal?.aborted) throw new Error("Subagent spawn was cancelled.");
     const liveCount = [...this.records.values()].filter(
       (record) =>
         record.owner.instanceId === owner.instanceId && record.summary.status === "running",
@@ -228,19 +224,9 @@ export class KanaSubagentManager {
       output: "",
       messages: [],
       waiters: new Set(),
-      parentSignal: options.parentSignal,
       completionObserved: false,
       completionPublished: false,
     };
-    if (options.parentSignal) {
-      record.onParentAbort = () => {
-        void this.cancel(owner, id, {
-          source: "parent_turn",
-          reason: "Parent Agent turn was cancelled.",
-        });
-      };
-      options.parentSignal.addEventListener("abort", record.onParentAbort, { once: true });
-    }
     this.records.set(id, record);
     logger.info("subagent.started", { agentId: id, profile: options.profile.name });
     this.emit({ type: "started", owner, subagent: cloneSummary(summary) });
@@ -344,7 +330,6 @@ export class KanaSubagentManager {
       source: options.source,
     });
     record.controller.abort(options.reason ?? "Subagent cancellation requested.");
-    this.wakeWaiters(record);
     await record.settlement;
     if (shouldObserveCompletion(options.source)) this.observe(owner, agentId);
     return cloneSummary(record.summary);
@@ -401,9 +386,6 @@ export class KanaSubagentManager {
     record.output = result.output;
     record.messages = structuredClone(result.messages);
     record.error = result.error;
-    if (record.parentSignal && record.onParentAbort) {
-      record.parentSignal.removeEventListener("abort", record.onParentAbort);
-    }
     record.resolveSettlement();
     this.wakeWaiters(record);
     const level = result.status === "errored" ? "warn" : "info";
