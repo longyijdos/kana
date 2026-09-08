@@ -340,6 +340,13 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       return command ?? toolCall.name;
     }
 
+    case "job_start": {
+      const command =
+        getStringProperty(result, "command") ?? getStringProperty(toolCall.args, "command");
+
+      return command ?? toolCall.name;
+    }
+
     case "todo_write":
       return formatTodoTarget(getTodoItems(result) ?? []);
 
@@ -468,12 +475,19 @@ function toolText(
         doneTitle: `Edited ${target}`,
         runningActivity: `editing ${target}`,
       };
+    case "job_start":
+      return {
+        action: `run ${target} ${backgroundMarker}`,
+        approvalTitle: `Allow agent to start background job? ${backgroundMarker}`,
+        doneTitle: `Ran ${target} ${backgroundMarker}`,
+        runningActivity: `running ${target} ${backgroundMarker}`,
+      };
     case "bash":
       return {
-        action: withBackgroundMarker(`run ${target}`, args),
-        approvalTitle: withBackgroundMarker("Allow agent to run bash?", args),
-        doneTitle: withBackgroundMarker(`Ran ${target}`, args),
-        runningActivity: withBackgroundMarker(`running ${target}`, args),
+        action: `run ${target}`,
+        approvalTitle: "Allow agent to run bash?",
+        doneTitle: `Ran ${target}`,
+        runningActivity: `running ${target}`,
       };
     case "remember":
       return {
@@ -512,10 +526,6 @@ function toolText(
 
 function withOverwriteMarker(text: string, args: unknown): string {
   return getBooleanProperty(args, "overwrite") ? `${text} ${overwriteMarker}` : text;
-}
-
-function withBackgroundMarker(text: string, args: unknown): string {
-  return getBooleanProperty(args, "background") ? `${text} ${backgroundMarker}` : text;
 }
 
 function formatStatusActivity(activity: string, suffix: string): string {

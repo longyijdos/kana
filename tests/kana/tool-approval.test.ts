@@ -6,6 +6,7 @@ import type { ToolCallContent } from "@/core";
 import {
   addTrustedBashCommand,
   DEFAULT_KANA_TOOL_APPROVALS,
+  getBashCommand,
   getKanaConfigPaths,
   type KanaToolApprovals,
   loadKanaToolApprovals,
@@ -21,6 +22,17 @@ afterEach(() => {
 });
 
 describe("Kana tool approval", () => {
+  test("job_start does not inherit Bash command trust", () => {
+    const rules = approvals({ exactCommands: ["bun run dev"], readOnlyCommands: ["pwd"] });
+    for (const mode of ["always", "never", "unless_trusted"] as const) {
+      for (const command of ["bun run dev", "pwd", "touch output.txt"]) {
+        const call = toolCall("job_start", { command });
+        expect(shouldRequestToolApproval({ mode }, rules, call)).toBe(mode !== "never");
+        expect(getBashCommand(call)).toBeUndefined();
+      }
+    }
+  });
+
   test("always mode requests approval for trusted tools", () => {
     expect(
       shouldRequestToolApproval(

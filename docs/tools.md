@@ -96,7 +96,8 @@ The live structured result remains available to `tool_execution_end`. Oversized,
 | `view_image` | `path` | Normalizes a local image and returns metadata plus a visual observation; registered only when effective image input is enabled. |
 | `write` | `path`, complete `content`, optional `overwrite` | Creates parent directories and exclusively creates a file by default; explicit overwrite replaces one. |
 | `edit` | `path`, non-empty `oldText`, `newText`, optional `replaceAll` | Performs exact UTF-8 replacement; one match is required by default. |
-| `bash` | `command`; optional `cwd`, `timeoutMs`, `background` | Executes through the user's shell with detached stdin and a managed process group. |
+| `bash` | `command`; optional `cwd`, `timeoutMs` | Executes through the user's shell with detached stdin and a managed process group. |
+| `job_start` | `command`; optional `cwd`, `timeoutMs` | Starts a session-owned background shell command and immediately returns its Job ID and launch status. |
 | `job_list` | None | Lists active and up to 32 recent terminal Jobs for the current session and acknowledges listed terminal completions. |
 | `job_output` | `jobId`, optional `waitMs` | Consumes all currently unread retained output from the Agent cursor and reports dropped bytes. |
 | `job_kill` | `jobId`, optional `reason` | Stops an owned Job and waits for its process group to settle. |
@@ -119,7 +120,7 @@ Each command runs in its own process group. Foreground execution waits for the g
 
 ## Background Jobs
 
-`background: true` launches the same Bash execution under `BackgroundJobManager`, returns a session-owned Job ID immediately, and has no default command timeout. Use it when work must outlive one tool call; raw shell background syntax does not provide the same ownership and cleanup.
+`job_start` launches the same Bash execution under `BackgroundJobManager`, returns a session-owned Job ID immediately, and has no default command timeout. Use it when work must outlive one tool call; raw shell background syntax does not provide the same ownership and cleanup.
 
 The generic manager is independent of Kana Agent construction. An owner binds Jobs to one session instance, enforces its concurrent-Job limit, and stops all owned process groups during disposal. Each Job retains at most the latest 1 MiB of combined stdout/stderr in memory. Metadata stores only a whitespace-normalized command label bounded to 512 UTF-8 bytes; the original command stays in the tool call.
 
@@ -135,7 +136,7 @@ Kana projects active or unreported Job identity, bounded label, cwd, state, and 
 
 `schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. It and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `todo_write`, `remember`, `schedule_wake`, or `update_goal`. Other calls follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `todo_write`, `remember`, `schedule_wake`, or `update_goal`. Other calls follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Bash allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
 
 ## External and custom tools
 

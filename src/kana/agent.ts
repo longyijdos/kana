@@ -14,6 +14,7 @@ import {
   createJobKillTool,
   createJobListTool,
   createJobOutputTool,
+  createJobStartTool,
   createListTool,
   createReadTool,
   createViewImageTool,
@@ -49,6 +50,7 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
   "write",
   "edit",
   "bash",
+  "job_start",
   "job_list",
   "job_output",
   "job_kill",
@@ -130,7 +132,6 @@ export function createKanaAgent(
     }),
     createBashTool({
       root: cwd,
-      backgroundJobs,
     }),
   ];
   const toolSections: PromptToolSection[] = [{ name: "workspace", tools: workspaceTools }];
@@ -138,6 +139,7 @@ export function createKanaAgent(
     toolSections.push({
       name: "background-jobs",
       tools: [
+        createJobStartTool(backgroundJobs, { root: cwd }),
         createJobListTool(backgroundJobs),
         createJobOutputTool(backgroundJobs),
         createJobKillTool(backgroundJobs),

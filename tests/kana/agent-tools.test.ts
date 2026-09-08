@@ -119,6 +119,7 @@ describe("Kana Agent tools", () => {
         "todo_write",
         "schedule_wake",
       ]);
+      expect(agent.state.tools.some((tool) => tool.name === "job_start")).toBe(false);
     } finally {
       wakeScheduler.dispose();
     }

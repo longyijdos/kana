@@ -29,14 +29,13 @@ describe("full-fidelity tool detail", () => {
     );
 
     expect(detail.title).toBe("Bash");
-    expect(sectionsOf(detail)).toHaveLength(4);
+    expect(sectionsOf(detail)).toHaveLength(3);
     expect(detail.sections[0]).toEqual({ label: "Command", content: LONG_COMMAND });
     expect(detail.sections[1]).toEqual({
       label: "Working directory",
       content: "deeply/nested/working/directory/for/tests",
     });
-    expect(detail.sections[2]).toEqual({ label: "Execution", content: "Foreground" });
-    expect(detail.sections[3]).toEqual({ label: "Timeout", content: "30000 ms" });
+    expect(detail.sections[2]).toEqual({ label: "Timeout", content: "30000 ms" });
 
     const formatted = formatFullToolDetail(detail);
     expect(formatted).toContain(LONG_COMMAND);
@@ -47,7 +46,6 @@ describe("full-fidelity tool detail", () => {
     const detail = buildFullToolDetail(toolCall("bash", { command: "bun test" }));
 
     expect(detail.sections).toContainEqual({ label: "Working directory", content: "." });
-    expect(detail.sections).toContainEqual({ label: "Execution", content: "Foreground" });
     expect(detail.sections).toContainEqual({ label: "Timeout", content: "30000 ms" });
 
     const explicit = buildFullToolDetail(
@@ -60,18 +58,16 @@ describe("full-fidelity tool detail", () => {
     expect(explicit.sections).toContainEqual({ label: "Timeout", content: "60000 ms" });
   });
 
-  test("shows effective background Bash parameters and launch result in the inspector", () => {
-    const call = toolCall("bash", {
+  test("shows effective job_start parameters and launch result in the inspector", () => {
+    const call = toolCall("job_start", {
       command: "bun run dev",
       cwd: "apps/web",
-      background: true,
     });
     const lines = formatToolInspector(
       call,
       {
         command: "bun run dev",
         cwd: "apps/web",
-        background: true,
         jobId: "job_12345678",
         status: "running",
         stdout: "",
@@ -83,7 +79,6 @@ describe("full-fidelity tool detail", () => {
     );
     const text = stripTerminalControlSequences(lines.join("\n"));
 
-    expect(text).toContain("Execution\n  Background");
     expect(text).toContain("Timeout\n  None");
     expect(text).toContain("Job ID\n  job_12345678");
     expect(text).toContain("Launch status\n  running");

@@ -204,14 +204,13 @@ describe("tool call rendering", () => {
     expect(doneRendered[0]).toContain(color("[OVERWRITE]", tuiTheme.error));
   });
 
-  test("marks background Bash prominently in running and completed transcript titles", () => {
+  test("marks job_start prominently in running and completed transcript titles", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_background",
-      name: "bash",
+      name: "job_start",
       args: {
         command: "bun run dev",
-        background: true,
       },
     });
 
@@ -223,7 +222,6 @@ describe("tool call rendering", () => {
     block.updateResult(
       {
         command: "bun run dev",
-        background: true,
         jobId: "job_12345678",
         status: "running",
         stdout: "",
