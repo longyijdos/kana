@@ -1,3 +1,4 @@
+export { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tool-names";
 export {
   isKanaTuiThemeName,
   KANA_MODEL_PROVIDERS,

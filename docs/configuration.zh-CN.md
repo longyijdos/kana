@@ -56,7 +56,7 @@ kana auth logout openai-codex
 
 `kana exec` 使用与 TUI 相同的产品装配并在一次完整 Agent turn 后退出。默认模式只把最终答案写到 stdout，`--json` 提供版本化 JSONL 事件；非交互工具审批、退出码和完整协议见[无头执行与 JSONL 协议](headless.zh-CN.md)。
 
-`--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、OAuth 凭据、审批规则与通知，也继续提供核心文件/Shell 工具、`todo_write` 和 TUI 的进程内 `schedule_wake`。`/todo` 会显示临时 session 的当前 todo 状态；TUI 中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume`、`/delete` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
+`--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、工具选择、OAuth 凭据、审批规则与通知。选中的核心文件/Shell 工具、`todo_write` 和 TUI 的进程内 `schedule_wake` 会在对应工具入选时保持可用。`/todo` 会显示临时 session 的当前 todo 状态；TUI 中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume`、`/delete` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
 
 `kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml` 和 `providers/custom.example.toml` 是 Kana 管理的生成参考，install 会比较当前版本应有的内容，只在缺失或内容落后时创建或刷新；运行时不会读取这两个 example，需要覆盖默认值时只把相应字段复制到 `config.toml`，并在编辑前把 Custom example 复制为 `providers/custom.toml`。install 不安装 Skills 仓库，也不会创建 `~/.kana/AGENTS.md`。
 
@@ -97,7 +97,7 @@ ${KANA_HOME:-$HOME/.kana}/
 
 安装和应用写入的配置文件均以 `0600` 模式创建或写入。该权限是文件模式请求；实际效果仍受操作系统和文件系统 umask/权限模型影响。
 
-Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启动进程继承的同名环境变量，并成为 Kana 当前进程环境的一部分。内置 `bash` 工具和 TUI 的 `!` 本地 Shell 会继承这些值，因此该文件中的 secret 对它们执行的命令可见。MCP stdio 子进程仍使用独立的受限环境；需要通过 server 的 `env` 显式传入值或引用 `${VAR_NAME}` 占位符。
+Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启动进程继承的同名环境变量，并成为 Kana 当前进程环境的一部分。内置 `bash`、`job_start` 工具和 TUI 的 `!` 本地 Shell 会继承这些值，因此该文件中的 secret 对它们执行的命令可见。MCP stdio 子进程仍使用独立的受限环境；需要通过 server 的 `env` 显式传入值或引用 `${VAR_NAME}` 占位符。
 
 ## `config.toml`
 
@@ -119,6 +119,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
+tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","todo_write","remember","schedule_wake"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -222,6 +223,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 
 | 表与键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
+| `agent.tools` | 唯一内置工具名数组 | 全部可配置内置工具 | 选择 conversation Agent 可以调用的内置工具；空数组禁用全部可配置工具。`update_goal`、外部/MCP 工具、provider 能力和 TUI 直接操作不在此选择范围内。 |
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
 | `agent.goal_max_rounds` | 正整数 | `8` | 单个 `/goal` 最多允许的完整 Agent run 数，包含首次 run。 |
 | `agent.tool_deadline_ms` | 正整数 | `660000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
@@ -247,6 +249,8 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `logging.level` | `debug`、`info`、`warn`、`error`、`off` | `info` | 运行时 JSONL 日志的最低记录级别；`off` 完全关闭文件日志。 |
 
 `parallel_tool_calls` 只有在用户策略与模型 metadata 都允许时才生效。重复调用、tool-result artifact、并发、deadline 与 Background Job 字段所配置的行为属于[工具与执行](tools.zh-CN.md)；context limit 与压缩预算由 [Agent 运行时](agent-runtime.zh-CN.md)解释。
+
+`agent.tools` 仍受运行时能力约束。选择 `view_image`、`remember`、`schedule_wake` 或某个 `job_*` 工具，不会在对应图片、记忆、调度或 Background Job 能力原本不可用时将其开启。该选择只控制 Agent 的工具面；`/jobs`、`/schedule`、`/todo` 等命令继续通过 TUI 的 session 直接控制工作。
 
 上表仍是 TUI option 字段的 canonical 定义。交互语义属于 [TUI 交互](tui.zh-CN.md)，hyperlink、LaTeX、Mermaid、宽度与 repaint 行为属于[终端渲染](terminal-rendering.zh-CN.md)。Memory retention 与 runtime-log 持久化属于[会话与记忆](sessions-and-memory.zh-CN.md)。
 

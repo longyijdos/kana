@@ -1,5 +1,6 @@
 import type { LogLevel } from "@/logging";
 import type { OpenAICodexReasoningSummary } from "@/providers";
+import type { KanaConfigurableBuiltInToolName } from "../tool-names";
 
 export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex", "custom"] as const;
 
@@ -50,6 +51,7 @@ export type KanaAgentRuntimeConfig = {
 
 export type KanaAgentConfig = KanaAgentRuntimeConfig & {
   model: KanaModelConfig;
+  tools: KanaConfigurableBuiltInToolName[];
   goalMaxRounds: number;
   toolResultArtifacts: boolean;
   backgroundJobs: KanaBackgroundJobsConfig;

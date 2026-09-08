@@ -1,7 +1,6 @@
 import path from "node:path";
 import { Type } from "typebox";
-import type { BackgroundJobClient, BackgroundJobStatus } from "@/jobs";
-import { runCommandProcess } from "./command-process";
+import { NON_INTERACTIVE_COMMAND_PREFIX, resolveShell, runCommandProcess } from "./command-process";
 import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveWorkspaceDirectory } from "./workspace-path";
@@ -12,9 +11,6 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_PARTIAL_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;
-// Keep sudo from prompting on the TUI's raw terminal. It exits immediately
-// when credentials are required instead of competing with the editor for input.
-const NON_INTERACTIVE_COMMAND_PREFIX = 'sudo() { command sudo -n "$@"; }\n';
 
 type BashOutputSnapshot = {
   stdout: string;
@@ -35,15 +31,7 @@ export const bashParameters = strictObject({
     Type.Integer({
       minimum: 1,
       maximum: MAX_TIMEOUT_MS,
-      description:
-        "Command timeout in milliseconds. Foreground commands default to 30000; background commands have no default timeout.",
-    }),
-  ),
-  background: Type.Optional(
-    Type.Boolean({
-      default: false,
-      description:
-        "Run as a session-owned background Job and return immediately with a stable Job ID.",
+      description: "Command timeout in milliseconds. Defaults to 30000.",
     }),
   ),
 });
@@ -55,15 +43,11 @@ export type BashToolResult = {
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  background?: boolean;
-  jobId?: string;
-  status?: BackgroundJobStatus;
 };
 
 export type BashToolOptions = {
   root?: string;
   shell?: string;
-  backgroundJobs?: BackgroundJobClient;
 };
 
 export function createBashTool(
@@ -75,7 +59,7 @@ export function createBashTool(
   return {
     name: "bash",
     description:
-      "Run a shell command when no purpose-built tool directly covers the operation. Foreground commands wait for their complete process group. Use background=true, not raw shell backgrounding, when work must outlive this call.",
+      "Run a foreground shell command when no purpose-built tool directly covers the operation. Waits for the complete process group and returns stdout, stderr, and exit status.",
     parameters: bashParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {
@@ -91,44 +75,6 @@ export function createBashTool(
       const cwd = await resolveWorkspaceDirectory(root, args.cwd ?? ".");
       if (context.signal?.aborted) {
         throw new Error("Command aborted.");
-      }
-      if (args.background) {
-        const jobs = options.backgroundJobs;
-        if (!jobs) {
-          throw new Error("Background Bash is unavailable without an active session.");
-        }
-        const job = jobs.start({
-          kind: "bash",
-          label: command,
-          cwd: cwd.relativePath,
-          run: async ({ signal, write }) => {
-            const result = await runCommandProcess({
-              command,
-              cwd: cwd.absolutePath,
-              shell,
-              prefix: NON_INTERACTIVE_COMMAND_PREFIX,
-              timeoutMs: args.timeoutMs,
-              signal,
-              onOutput: write,
-            });
-            return { status: result.status, exitCode: result.exitCode };
-          },
-        });
-        const toolResult: BashToolResult = {
-          command,
-          cwd: cwd.relativePath,
-          exitCode: null,
-          stdout: "",
-          stderr: "",
-          timedOut: false,
-          background: true,
-          jobId: job.id,
-          status: job.status,
-        };
-        return {
-          content: formatBashContent(toolResult),
-          result: toolResult,
-        };
       }
 
       const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -170,7 +116,6 @@ export function createBashTool(
           ? output.stderr || `Command timed out after ${timeoutMs}ms.`
           : output.stderr,
         timedOut: result.timedOut,
-        background: false,
       };
 
       return {
@@ -180,12 +125,6 @@ export function createBashTool(
       };
     },
   };
-}
-
-function resolveShell(shell: string | undefined): string {
-  const value = shell ?? process.env.SHELL;
-
-  return value?.trim() ? value : "bash";
 }
 
 // Live updates are transient bounded trailing snapshots for presentation, not a
@@ -269,15 +208,6 @@ function createBashPartialEmitter(onOutput: (output: BashOutputSnapshot) => void
 }
 
 function formatBashContent(result: BashToolResult): string {
-  if (result.background) {
-    return [
-      `command: ${result.command}`,
-      `cwd: ${result.cwd}`,
-      "background: true",
-      `jobId: ${result.jobId}`,
-      `status: ${result.status}`,
-    ].join("\n");
-  }
   return [
     `command: ${result.command}`,
     `cwd: ${result.cwd}`,

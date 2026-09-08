@@ -14,6 +14,7 @@ import {
   createJobKillTool,
   createJobListTool,
   createJobOutputTool,
+  createJobStartTool,
   createListTool,
   createReadTool,
   createViewImageTool,
@@ -29,6 +30,7 @@ import { createKanaAgentModelRuntime } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
 import { loadKanaSkills } from "./skills/loader";
 import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
+import { KANA_BUILT_IN_TOOL_NAMES } from "./tool-names";
 import {
   createRememberTool,
   createScheduleWakeTool,
@@ -40,23 +42,7 @@ import {
 // only for particular configurations or session states. MCP discovery happens
 // before those states can change, so reserving only the first Agent's tools
 // could let a later session recreation introduce a collision.
-export const KANA_BUILT_IN_TOOL_NAMES = [
-  "list",
-  "glob",
-  "grep",
-  "read",
-  "view_image",
-  "write",
-  "edit",
-  "bash",
-  "job_list",
-  "job_output",
-  "job_kill",
-  "todo_write",
-  "update_goal",
-  "remember",
-  "schedule_wake",
-] as const;
+export { KANA_BUILT_IN_TOOL_NAMES } from "./tool-names";
 
 export type KanaAgentOptions = Pick<
   AgentConfig,
@@ -102,7 +88,10 @@ export function createKanaAgent(
     logger: options.logger,
   });
   const { model } = runtime;
-  const workspaceTools: Tool[] = [
+  const enabledTools = new Set<string>(config.tools);
+  const selectEnabledTools = (tools: Tool[]): Tool[] =>
+    tools.filter((tool) => enabledTools.has(tool.name));
+  const workspaceTools: Tool[] = selectEnabledTools([
     createListTool({
       root: cwd,
     }),
@@ -130,27 +119,27 @@ export function createKanaAgent(
     }),
     createBashTool({
       root: cwd,
-      backgroundJobs,
     }),
-  ];
+  ]);
   const toolSections: PromptToolSection[] = [{ name: "workspace", tools: workspaceTools }];
   if (backgroundJobs) {
     toolSections.push({
       name: "background-jobs",
-      tools: [
+      tools: selectEnabledTools([
+        createJobStartTool(backgroundJobs, { root: cwd }),
         createJobListTool(backgroundJobs),
         createJobOutputTool(backgroundJobs),
         createJobKillTool(backgroundJobs),
-      ],
+      ]),
     });
   }
   toolSections.push({
     name: "collaboration",
-    tools: [
+    tools: selectEnabledTools([
       createTodoWriteTool({
         commit: options.commitTodoState,
       }),
-    ],
+    ]),
   });
   const resolveGoal = options.resolveGoal;
   const updateGoal = options.updateGoal;
@@ -172,30 +161,39 @@ export function createKanaAgent(
   if (customizationsEnabled && dependencies.memoryEnabled) {
     toolSections.push({
       name: "memory",
-      tools: [
+      tools: selectEnabledTools([
         createRememberTool({
           cwd,
           env: options.env,
         }),
-      ],
+      ]),
     });
   }
   if (options.wakeScheduler && options.sessionId) {
     toolSections.push({
       name: "scheduled-wake",
-      tools: [
+      tools: selectEnabledTools([
         createScheduleWakeTool({
           scheduler: options.wakeScheduler,
           sessionId: options.sessionId,
         }),
-      ],
+      ]),
     });
   }
   if (customizationsEnabled) {
+    const additionalTools = options.additionalTools ?? [];
+    const resolveAdditionalTools = options.resolveAdditionalTools;
+    assertAdditionalToolNames(additionalTools);
     toolSections.push({
       name: "external",
-      tools: options.additionalTools ?? [],
-      resolve: options.resolveAdditionalTools,
+      tools: additionalTools,
+      resolve: resolveAdditionalTools
+        ? async () => {
+            const tools = await resolveAdditionalTools();
+            assertAdditionalToolNames(tools);
+            return tools;
+          }
+        : undefined,
     });
   }
   assertUniqueToolNames(toolSections.flatMap((section) => section.tools));
@@ -248,6 +246,16 @@ export function createKanaAgent(
 function assertUniqueToolNames(tools: readonly Tool[]): void {
   const names = new Set<string>();
 
+  for (const tool of tools) {
+    if (names.has(tool.name)) {
+      throw new Error(`Duplicate Kana Agent tool name: ${tool.name}.`);
+    }
+    names.add(tool.name);
+  }
+}
+
+function assertAdditionalToolNames(tools: readonly Tool[]): void {
+  const names = new Set<string>(KANA_BUILT_IN_TOOL_NAMES);
   for (const tool of tools) {
     if (names.has(tool.name)) {
       throw new Error(`Duplicate Kana Agent tool name: ${tool.name}.`);

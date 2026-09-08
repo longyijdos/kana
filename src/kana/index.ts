@@ -25,6 +25,7 @@ export {
   type InstallKanaConfigResult,
   installKanaConfig,
   isKanaTuiThemeName,
+  KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES,
   type KanaConfig,
   type KanaModelProvider,
   type KanaNotificationBackend,

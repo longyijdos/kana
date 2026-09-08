@@ -105,6 +105,7 @@ export function isBuiltInToolName(toolName: string): boolean {
 
 const BUILT_IN_TOOL_TITLES = new Map<string, string>([
   ["bash", "Bash"],
+  ["job_start", "Background Job"],
   ["list", "List"],
   ["glob", "Glob"],
   ["grep", "Grep"],
@@ -132,21 +133,27 @@ function buildToolSections(
 
   switch (toolCall.name) {
     case "bash": {
-      const background = getBooleanProperty(args, "background") === true;
       pushSection(sections, "Command", getStringProperty(args, "command"));
       pushSection(sections, "Working directory", getStringProperty(args, "cwd") ?? ".");
-      pushSection(sections, "Execution", background ? "Background" : "Foreground");
       pushSection(
         sections,
         "Timeout",
-        background && getNumberProperty(args, "timeoutMs") === undefined
-          ? "None"
-          : formatNumber(getNumberProperty(args, "timeoutMs") ?? DEFAULT_TIMEOUT_MS, " ms"),
+        formatNumber(getNumberProperty(args, "timeoutMs") ?? DEFAULT_TIMEOUT_MS, " ms"),
       );
-      if (background) {
-        pushSection(sections, "Job ID", getStringProperty(result, "jobId"));
-        pushSection(sections, "Launch status", getStringProperty(result, "status"));
-      }
+      break;
+    }
+
+    case "job_start": {
+      pushSection(sections, "Command", getStringProperty(args, "command"));
+      pushSection(sections, "Working directory", getStringProperty(args, "cwd") ?? ".");
+      const timeoutMs = getNumberProperty(args, "timeoutMs");
+      pushSection(
+        sections,
+        "Timeout",
+        timeoutMs === undefined ? "None" : formatNumber(timeoutMs, " ms"),
+      );
+      pushSection(sections, "Job ID", getStringProperty(result, "jobId"));
+      pushSection(sections, "Launch status", getStringProperty(result, "status"));
       break;
     }
 

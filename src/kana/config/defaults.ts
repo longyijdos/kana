@@ -1,4 +1,5 @@
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "@/agent";
+import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tool-names";
 import type { KanaConfig } from "./contracts";
 
 // Keep the outer tool deadline above bash's ten-minute command ceiling so
@@ -19,6 +20,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     },
   },
   agent: {
+    tools: [...KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES],
     webSearch: true,
     imageInput: true,
     maxTurns: -1,

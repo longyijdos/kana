@@ -65,6 +65,48 @@ describe("Kana Agent tools", () => {
     expect(unsupportedModel.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
   });
 
+  test("filters configurable built-in tools without affecting external tools or update_goal", async () => {
+    const goal = createGoal("active");
+    const config = testConfig();
+    const wakeScheduler = createWakeScheduler();
+    const backgroundJobManager = new BackgroundJobManager();
+    const backgroundJobs = backgroundJobManager.bind(
+      backgroundJobManager.createOwner("session-1"),
+      { maxConcurrent: 4 },
+    );
+    try {
+      const agent = withKanaAgentEnvironment(() =>
+        createKanaAgent(
+          {
+            ...config.agent,
+            tools: ["read"],
+          },
+          {
+            providers: config.provider,
+            memoryEnabled: config.memory.enabled,
+          },
+          {
+            additionalTools: [createTool("github_create_issue")],
+            backgroundJobs,
+            wakeScheduler,
+            sessionId: "session-1",
+            resolveGoal: () => goal,
+            updateGoal: (change) => ({ ...goal, status: change.status }),
+          },
+        ),
+      );
+
+      expect(agent.state.tools.map((tool) => tool.name)).toEqual([
+        "read",
+        "update_goal",
+        "github_create_issue",
+      ]);
+    } finally {
+      wakeScheduler.dispose();
+      await backgroundJobManager.close();
+    }
+  });
+
   test("advertises update_goal only while a goal is active", () => {
     const activeGoal = createGoal("active");
     const completedGoal = createGoal("completed");
@@ -86,11 +128,14 @@ describe("Kana Agent tools", () => {
   });
 
   test("rejects external tool names that collide with built-in tools", () => {
+    const config = testConfig();
     expect(() =>
       withKanaAgentEnvironment(() =>
-        createAgentForTest(testConfig(), {
-          additionalTools: [createTool("read")],
-        }),
+        createKanaAgent(
+          { ...config.agent, tools: [] },
+          { providers: config.provider, memoryEnabled: config.memory.enabled },
+          { additionalTools: [createTool("read")] },
+        ),
       ),
     ).toThrow("Duplicate Kana Agent tool name: read.");
   });
@@ -119,6 +164,7 @@ describe("Kana Agent tools", () => {
         "todo_write",
         "schedule_wake",
       ]);
+      expect(agent.state.tools.some((tool) => tool.name === "job_start")).toBe(false);
     } finally {
       wakeScheduler.dispose();
     }

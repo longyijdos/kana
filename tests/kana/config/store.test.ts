@@ -17,6 +17,7 @@ describe("Kana config store", () => {
       draft.agent.model.reasoningEffort = "max";
       draft.agent.webSearch = false;
       draft.agent.imageInput = false;
+      draft.agent.tools = ["read", "bash"];
       draft.agent.goalMaxRounds = 12;
       draft.agent.toolResultArtifacts = false;
       draft.agent.backgroundJobs.maxConcurrent = 6;
@@ -27,6 +28,7 @@ describe("Kana config store", () => {
     expect(readFileSync(configPath, "utf8")).toBe(
       [
         "[agent]",
+        'tools = ["read","bash"]',
         "web_search = false",
         "image_input = false",
         "goal_max_rounds = 12",
@@ -53,6 +55,7 @@ describe("Kana config store", () => {
     });
     expect(config.agent.webSearch).toBe(false);
     expect(config.agent.imageInput).toBe(false);
+    expect(config.agent.tools).toEqual(["read", "bash"]);
     expect(config.agent.goalMaxRounds).toBe(12);
     expect(config.agent.toolResultArtifacts).toBe(false);
     expect(config.agent.backgroundJobs).toEqual({

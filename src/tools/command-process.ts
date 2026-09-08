@@ -5,6 +5,15 @@ const TERMINATE_GRACE_MS = 500;
 const KILL_GRACE_MS = 1_000;
 const OUTPUT_DRAIN_MS = 100;
 
+// Keep sudo from prompting on the TUI's raw terminal. It exits immediately
+// when credentials are required instead of competing with the editor for input.
+export const NON_INTERACTIVE_COMMAND_PREFIX = 'sudo() { command sudo -n "$@"; }\n';
+
+export function resolveShell(shell: string | undefined): string {
+  const value = shell ?? process.env.SHELL;
+  return value?.trim() ? value : "bash";
+}
+
 export type CommandProcessResult = {
   status: BackgroundJobTerminalStatus;
   exitCode: number | null;

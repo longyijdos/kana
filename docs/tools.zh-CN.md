@@ -96,7 +96,8 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 | `view_image` | `path` | 规范化本地图片并返回 metadata 与视觉观察；只在有效图片输入启用时注册。 |
 | `write` | `path`、完整 `content`、可选 `overwrite` | 创建父目录，默认排他创建文件；显式 overwrite 才替换。 |
 | `edit` | `path`、非空 `oldText`、`newText`、可选 `replaceAll` | 精确替换 UTF-8 内容；默认要求一次匹配。 |
-| `bash` | `command`；可选 `cwd`、`timeoutMs`、`background` | 通过用户 shell 执行，stdin 断开并使用受管进程组。 |
+| `bash` | `command`；可选 `cwd`、`timeoutMs` | 通过用户 shell 执行，stdin 断开并使用受管进程组。 |
+| `job_start` | `command`；可选 `cwd`、`timeoutMs` | 启动 session-owned 后台 shell 命令，立即返回 Job ID 与启动状态。 |
 | `job_list` | 无 | 列出当前 session 活动 Job 与最多 32 个近期终态 Job，并确认列出的终态完成。 |
 | `job_output` | `jobId`、可选 `waitMs` | 从 Agent cursor 消费全部当前未读保留输出，并报告丢弃字节数。 |
 | `job_kill` | `jobId`、可选 `reason` | 停止所属 Job 并等待其进程组静止。 |
@@ -119,7 +120,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 ## 后台 Jobs
 
-`background: true` 在 `BackgroundJobManager` 下启动同一 Bash 执行，立即返回 session-owned Job ID，并且默认没有 command timeout。需要工作跨越一次工具调用时应使用它；裸 shell 后台语法不提供相同的 owner 与清理语义。
+`job_start` 在 `BackgroundJobManager` 下启动同一 Bash 执行，立即返回 session-owned Job ID，并且默认没有 command timeout。需要工作跨越一次工具调用时应使用它；裸 shell 后台语法不提供相同的 owner 与清理语义。
 
 通用 manager 不依赖 Kana Agent 构造。Owner 把 Job 绑定到一个 session 实例，执行并发上限，并在 dispose 时停止全部所属进程组。每个 Job 在内存中最多保留最新 1 MiB stdout/stderr。Metadata 只保存空白规范化且不超过 512 UTF-8 字节的命令 label；原始命令仍在 tool call 中。
 
@@ -135,7 +136,7 @@ Kana 把活动或尚未报告 Job 的身份、有界 label、cwd、状态和 exi
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `todo_write`、`remember`、`schedule_wake` 或 `update_goal` 请求审批。其它调用遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `todo_write`、`remember`、`schedule_wake` 或 `update_goal` 请求审批。其它调用遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
 ## 外部与自定义工具
 

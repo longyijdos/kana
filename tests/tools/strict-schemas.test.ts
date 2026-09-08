@@ -22,6 +22,7 @@ import { createBashTool } from "../../src/tools/bash";
 import { createEditTool } from "../../src/tools/edit";
 import { createGlobTool } from "../../src/tools/glob";
 import { createGrepTool } from "../../src/tools/grep";
+import { createJobStartTool } from "../../src/tools/job-start";
 import { createListTool } from "../../src/tools/list";
 import { createReadTool } from "../../src/tools/read";
 import type { Tool } from "../../src/tools/tool";
@@ -193,9 +194,16 @@ const schemaCases: SchemaCase[] = [
   {
     name: "bash",
     tool: createBashTool(),
-    valid: { command: "bun test", cwd: "src", timeoutMs: 1000, background: true },
-    invalidArgs: { command: "bun test", path: "src" },
-    unexpected: "path",
+    valid: { command: "bun test", cwd: "src", timeoutMs: 1000 },
+    invalidArgs: { command: "bun test", background: true },
+    unexpected: "background",
+  },
+  {
+    name: "job_start",
+    tool: createJobStartTool(backgroundJobs),
+    valid: { command: "bun test", cwd: "src", timeoutMs: 1000 },
+    invalidArgs: { command: "bun test", background: true },
+    unexpected: "background",
   },
   {
     name: "job_list",

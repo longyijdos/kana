@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { BackgroundJobManager } from "../../src/jobs";
 import { createBashTool } from "../../src/tools/bash";
 import {
   createToolContext,
@@ -331,45 +330,6 @@ describe("bash tool", () => {
     });
   });
 
-  test("starts a session-owned background Job and streams its output separately", async () => {
-    const root = await createTempRoot();
-    const manager = new BackgroundJobManager();
-    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
-    const bash = createBashTool({ root, backgroundJobs: jobs });
-    const result = await bash.execute(
-      {
-        command: "printf start; sleep 0.1; printf end",
-        background: true,
-      },
-      createToolContext(),
-    );
-    expectToolResult(result);
-    const jobId = result.result.jobId;
-
-    expect(result.result).toMatchObject({
-      background: true,
-      exitCode: null,
-      stdout: "",
-      stderr: "",
-      timedOut: false,
-      status: "running",
-    });
-    expect(jobId).toStartWith("job_");
-    const output = await readJobToCompletion(jobs, jobId ?? "");
-    expect(output).toBe("startend");
-    expect(jobs.list()[0]).toMatchObject({ status: "completed", exitCode: 0 });
-    await manager.close();
-  });
-
-  test("rejects background execution without a session Job client", async () => {
-    const root = await createTempRoot();
-    const bash = createBashTool({ root });
-
-    await expect(
-      bash.execute({ command: "sleep 1", background: true }, createToolContext()),
-    ).rejects.toThrow("Background Bash is unavailable without an active session.");
-  });
-
   test("keeps raw shell backgrounding inside the foreground process lifetime", async () => {
     const root = await createTempRoot();
     const sideEffectPath = path.join(root, "escaped.txt");
@@ -460,18 +420,4 @@ function isProcessRunning(pid: number): boolean {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-async function readJobToCompletion(
-  jobs: import("../../src/jobs").BackgroundJobClient,
-  jobId: string,
-): Promise<string> {
-  let output = "";
-  for (;;) {
-    const snapshot = await jobs.read(jobId, { waitMs: 1_000 });
-    output += snapshot.chunks.map((chunk) => chunk.text).join("");
-    if (snapshot.status !== "running" && snapshot.status !== "stopping") {
-      return output;
-    }
-  }
 }
