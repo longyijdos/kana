@@ -14,7 +14,7 @@ guidance and is not the primary human contribution guide.
 ## Prerequisites
 
 - [Git](https://git-scm.com/).
-- [Bun](https://bun.sh/), matching the repository's pinned version `1.3.14` (see the
+- [Bun](https://bun.sh/), matching the repository's pinned version `1.4.2` (see the
   `packageManager` field in `package.json`; CI uses the same version). Use a version manager or
   Bun's version-specific installer if you need to switch versions.
 
