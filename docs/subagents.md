@@ -54,7 +54,7 @@ Each hosted session instance owns a `KanaSubagentClient`. `agent.subagents.max_l
 | `wait_subagent(agentId, timeoutMs?)` | Returns current or terminal state and output; waits at most 30 seconds per call and never cancels on timeout. |
 | `cancel_subagent(agentId, reason?)` | Aborts an owned live child and waits for settlement. |
 
-Live child identity, profile, and state are projected into the parent runtime context, but task text and output are not. Child failures become an `errored` result rather than failing the parent automatically. Aborting the parent turn cancels children spawned by that turn. Session replacement, deletion, and shutdown cancel all children owned by the disposed session instance and wait for them to settle.
+Live and unobserved terminal child identity, profile, and state are projected into the parent runtime context, but task text and output are not. Completion, error, and cancellation enqueue a bounded notification for the parent like a Background Job completion; the parent uses `wait_subagent` to consume the result. A terminal `wait_subagent` call acknowledges the completion and removes a still-pending notification. `cancel_subagent` also acknowledges the result, while cancellation from the TUI does not. Child failures become an `errored` result rather than failing the parent automatically. Aborting the parent turn cancels children spawned by that turn. Session replacement, deletion, and shutdown cancel all children owned by the disposed session instance and wait for them to settle.
 
 ## Persistence, TUI, and accounting
 
@@ -66,6 +66,6 @@ In normal mode every child has an independent internal journal:
 
 It uses the session turn record format but includes the parent ID, spawning tool-call ID, and complete profile snapshot in its header. These files are not ordinary resumable sessions and never appear in `/resume`. Startup inspection reports an open child turn as `interrupted` without repairing or resuming it. Forking a parent does not copy children. Deleting the parent removes its complete child-journal directory.
 
-`/agents` is available while the main Agent runs. It shows valid profiles and current-session live or archived runs; arrows select, `Enter` opens the transcript, `K` cancels a live child, `R` reloads, and `Esc` closes. Invalid profile diagnostics appear in the panel.
+`/agents` is available while the main Agent runs. It shows valid profiles and current-session live or archived runs; arrows select, `Enter` opens the transcript, `K` cancels a live child without acknowledging its completion, `R` reloads, and `Esc` closes. Invalid profile diagnostics appear in the panel.
 
 Child runs are recorded under the `subagent` accounting kind and displayed separately from main and memory runs. Their usage contributes once to aggregate and per-model totals; it is not copied into the parent run's usage. Clean mode exposes only built-in profiles, keeps child state in memory, and writes neither child journals nor accounting records.

@@ -22,6 +22,11 @@ export type AgentInputDelivery =
       kind: "job";
       displayContent: string;
       jobId: string;
+    }
+  | {
+      kind: "subagent";
+      displayContent: string;
+      agentId: string;
     };
 
 export type AgentInboxItem = {

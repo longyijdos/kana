@@ -12,6 +12,7 @@ import type {
   BackgroundJobSummary,
 } from "@/jobs";
 import type { Logger } from "@/logging";
+import type { KanaSubagentClient, KanaSubagentEvent, KanaSubagentSummary } from "../subagents";
 import {
   type KanaGoalContinuationAdmission,
   KanaGoalController,
@@ -20,7 +21,7 @@ import {
 } from "./goal-controller";
 import type { WakeEvent, WakeEventOrigin, WakeScheduler } from "./wake-scheduler";
 
-export type ConversationInputRunSource = "user" | "scheduled" | "goal" | "job";
+export type ConversationInputRunSource = "user" | "scheduled" | "goal" | "job" | "subagent";
 
 export type ConversationInputDisposition = "steered" | "queued" | "discarded";
 
@@ -54,6 +55,13 @@ type ConversationPendingInput =
       kind: "job";
       content: string;
       jobId: string;
+      imageCount?: number;
+    }
+  | {
+      id: MessageId;
+      kind: "subagent";
+      content: string;
+      agentId: string;
       imageCount?: number;
     };
 
@@ -94,7 +102,9 @@ type ConversationInputCoordinatorOptions = {
   goalMaxRounds: number;
   scheduledRuns?: boolean;
   backgroundJobCompletionRuns?: boolean;
+  subagentCompletionRuns?: boolean;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
+  getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
   isRunActive: () => boolean;
   canSteer: () => boolean;
   canStartQueuedRun?: () => boolean;
@@ -110,10 +120,12 @@ export class ConversationInputCoordinator {
   private agent!: Agent;
   private sessionId?: string;
   private backgroundJobs?: BackgroundJobClient;
+  private subagents?: KanaSubagentClient;
   private unsubscribeWakeEvents?: () => void;
   private unsubscribeWakeState?: () => void;
   private unsubscribeAgentInbox?: () => void;
   private unsubscribeBackgroundJobs?: () => void;
+  private unsubscribeSubagents?: () => void;
   private draining = false;
   private settlingRun = false;
   private changingSession = false;
@@ -128,6 +140,7 @@ export class ConversationInputCoordinator {
     this.sessionId = sessionId;
     this.observeAgentInbox();
     this.observeBackgroundJobs();
+    this.observeSubagents();
     this.unsubscribeWakeEvents = this.wakeScheduler.subscribe((event) => {
       this.queueWakeEvent(event);
     });
@@ -162,11 +175,19 @@ export class ConversationInputCoordinator {
     return this.backgroundJobs;
   }
 
+  get subagentClient(): KanaSubagentClient | undefined {
+    return this.subagents;
+  }
+
   async submit(
     input: UserMessage,
     source: ConversationInputRunSource,
   ): Promise<ConversationInputRunResult> {
-    const adjacentCompletions = source === "job" ? this.takePendingJobCompletionInputs() : [];
+    const completionKind =
+      source === "job" ? "job" : source === "subagent" ? "subagent" : undefined;
+    const adjacentCompletions = completionKind
+      ? this.takePendingCompletionInputs(completionKind)
+      : [];
     const prompt = adjacentCompletions.length === 0 ? input : [input, ...adjacentCompletions];
     this.settlingRun = true;
 
@@ -175,9 +196,9 @@ export class ConversationInputCoordinator {
     } finally {
       try {
         for (const completion of adjacentCompletions) {
-          this.observeJobCompletion(completion);
+          this.observeCompletion(completion);
         }
-        this.observeJobCompletion(input);
+        this.observeCompletion(input);
       } finally {
         this.settlingRun = false;
         this.notifyRunSettled();
@@ -362,7 +383,7 @@ export class ConversationInputCoordinator {
 
   observeAgentEvent(event: AgentEvent): void {
     if (event.type === "turn_input") {
-      this.observeJobCompletion(event.message);
+      this.observeCompletion(event.message);
     }
   }
 
@@ -375,6 +396,7 @@ export class ConversationInputCoordinator {
   beginSessionChange(): void {
     this.changingSession = true;
     this.pauseBackgroundJobObservation();
+    this.pauseSubagentObservation();
   }
 
   cancelSessionChange(): void {
@@ -384,6 +406,11 @@ export class ConversationInputCoordinator {
   pauseBackgroundJobObservation(): void {
     this.unsubscribeBackgroundJobs?.();
     this.unsubscribeBackgroundJobs = undefined;
+  }
+
+  pauseSubagentObservation(): void {
+    this.unsubscribeSubagents?.();
+    this.unsubscribeSubagents = undefined;
   }
 
   cancelCurrentSessionInputs(): void {
@@ -398,6 +425,7 @@ export class ConversationInputCoordinator {
     this.sessionId = sessionId;
     this.replaceAgent(agent);
     this.observeBackgroundJobs();
+    this.observeSubagents();
     this.changingSession = false;
   }
 
@@ -412,6 +440,7 @@ export class ConversationInputCoordinator {
     this.unsubscribeWakeState?.();
     this.unsubscribeAgentInbox?.();
     this.pauseBackgroundJobObservation();
+    this.pauseSubagentObservation();
     this.agent.clearInbox();
   }
 
@@ -519,6 +548,9 @@ export class ConversationInputCoordinator {
     if (delivery.kind === "job") {
       return "job";
     }
+    if (delivery.kind === "subagent") {
+      return "subagent";
+    }
     return "user";
   }
 
@@ -543,7 +575,10 @@ export class ConversationInputCoordinator {
         this.canStartQueuedRun()
       ) {
         const next = this.agent.inbox.nextTurn[0];
-        if (next?.delivery.kind === "job" && this.options.backgroundJobCompletionRuns === false) {
+        if (
+          (next?.delivery.kind === "job" && this.options.backgroundJobCompletionRuns === false) ||
+          (next?.delivery.kind === "subagent" && this.options.subagentCompletionRuns === false)
+        ) {
           return;
         }
         const submission =
@@ -615,9 +650,52 @@ export class ConversationInputCoordinator {
     });
   }
 
-  private takePendingJobCompletionInputs(): UserMessage[] {
+  private observeSubagents(): void {
+    this.pauseSubagentObservation();
+    this.subagents = this.sessionId ? this.options.getSubagents?.(this.sessionId) : undefined;
+    this.unsubscribeSubagents = this.subagents?.subscribe((event) => {
+      this.handleSubagentEvent(event);
+    });
+  }
+
+  private handleSubagentEvent(event: KanaSubagentEvent): void {
+    if (
+      this.stopping ||
+      this.changingSession ||
+      event.owner.sessionId !== this.sessionId ||
+      event.type === "started"
+    ) {
+      return;
+    }
+    if (event.type === "observed") {
+      for (const item of [...this.agent.inbox.nextStep, ...this.agent.inbox.nextTurn]) {
+        if (item.delivery.kind === "subagent" && item.delivery.agentId === event.subagent.id) {
+          this.agent.cancelInput(item.message.id);
+        }
+      }
+      return;
+    }
+
+    const input = createUserMessage({
+      content: formatSubagentCompletion(event.subagent),
+      provenance: { kind: "subagent_completion", agentId: event.subagent.id },
+    });
+    const lane = this.options.canSteer() ? "next-step" : "next-turn";
+    this.agent.enqueueInput(input, lane, {
+      kind: "subagent",
+      displayContent: `Subagent ${shortSubagentId(event.subagent.id)} ${event.subagent.status}`,
+      agentId: event.subagent.id,
+    });
+    this.log("info", "conversation.subagent_completion_queued", {
+      agentId: event.subagent.id,
+      outcome: event.subagent.status,
+      delivery: lane,
+    });
+  }
+
+  private takePendingCompletionInputs(kind: "job" | "subagent"): UserMessage[] {
     const inputs: UserMessage[] = [];
-    while (this.agent.inbox.nextTurn[0]?.delivery.kind === "job") {
+    while (this.agent.inbox.nextTurn[0]?.delivery.kind === kind) {
       const item = this.agent.shiftNextTurnInput();
       if (!item) {
         break;
@@ -627,9 +705,11 @@ export class ConversationInputCoordinator {
     return inputs;
   }
 
-  private observeJobCompletion(message: UserMessage): void {
+  private observeCompletion(message: UserMessage): void {
     if (message.provenance.kind === "job_completion") {
       this.backgroundJobs?.observe(message.provenance.jobId);
+    } else if (message.provenance.kind === "subagent_completion") {
+      this.subagents?.observe(message.provenance.agentId);
     }
   }
 
@@ -653,6 +733,18 @@ export class ConversationInputCoordinator {
         kind: "job",
         content: item.delivery.displayContent,
         jobId: item.delivery.jobId,
+      };
+    }
+    if (item.delivery.kind === "subagent") {
+      const provenance = item.message.provenance;
+      if (provenance.kind !== "subagent_completion") {
+        throw new Error("Subagent input is missing completion provenance.");
+      }
+      return {
+        id: item.message.id,
+        kind: "subagent",
+        content: item.delivery.displayContent,
+        agentId: item.delivery.agentId,
       };
     }
     if (item.delivery.kind === "scheduled") {
@@ -719,6 +811,18 @@ function formatBackgroundJobCompletion(job: BackgroundJobSummary): string {
   ].join("\n");
 }
 
+function formatSubagentCompletion(subagent: KanaSubagentSummary): string {
+  return [
+    "[Subagent completion]",
+    `Subagent ${subagent.id} (${subagent.profile}) reached ${subagent.status}.`,
+    "Use wait_subagent to consume its final result before deciding the next action.",
+  ].join("\n");
+}
+
 function shortJobId(jobId: string): string {
   return jobId.startsWith("job_") ? jobId.slice(4, 10) : jobId.slice(0, 6);
+}
+
+function shortSubagentId(agentId: string): string {
+  return agentId.startsWith("agent_") ? agentId.slice(6, 14) : agentId.slice(0, 8);
 }

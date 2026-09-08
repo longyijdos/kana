@@ -74,7 +74,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 空闲时 `Enter` 正常提交。Run 进行中时，`Enter` 尝试把输入交给当前 run，`Tab` 则排到后续 run；准确的 steering、defer 与 FIFO 规则见[对话运行时](conversation-runtime.zh-CN.md)和 [Agent 运行时](agent-runtime.zh-CN.md)。空闲时普通输入的 Tab 不提交，slash 面板中的 Tab 用于补全命令；支持的终端中，`Shift+Enter` 插入换行。以 `/` 开头会打开最多显示 10 项、随选择滚动的命令面板；未知 slash 输入和单独的 `!` 会作为普通模型消息发送。
 
-Background Job completion 与其它 runtime 输入共用 queued-input 投影；投递、合并与确认语义见[对话运行时](conversation-runtime.zh-CN.md)。`/jobs` 展示不消费状态的输出尾部，并控制当前 session 的 Job。查看或停止 Job 都不会确认其终态 completion，因此 Agent 仍可能收到该通知。
+Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-input 投影；投递、合并与确认语义见[对话运行时](conversation-runtime.zh-CN.md)。`/jobs` 展示不消费状态的输出尾部并控制当前 session 的 Job；`/agents` 同样只查看或取消 child，不确认终态 completion，因此 Agent 仍可能收到这两类通知。
 
 `/goal <objective>` 启动进程内 Goal 的第一次 run。TUI 把后续 round 显示为弱化 continuation 标记，不显示逐轮完成通知，并允许用 `Esc` 或 `Ctrl+C` 取消。接纳顺序、终态更新、round 上限、session 切换行为和 runtime-context 投影由[对话运行时](conversation-runtime.zh-CN.md)定义。
 

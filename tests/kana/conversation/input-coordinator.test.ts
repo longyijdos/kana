@@ -12,6 +12,11 @@ import {
   createWakeScheduler,
   type WakeScheduler,
 } from "../../../src/kana/conversation/wake-scheduler";
+import {
+  type KanaSubagentClient,
+  KanaSubagentManager,
+  type KanaSubagentRunResult,
+} from "../../../src/kana/subagents";
 import { createNoopLogger } from "../../../src/logging";
 import { MockModel } from "../../../src/providers/mock";
 import { deferred } from "../../helpers/async-control";
@@ -298,6 +303,43 @@ describe("ConversationInputCoordinator", () => {
     harness.close();
     await manager.close();
   });
+
+  test("queues active Subagent completion for steering and removes it when observed", async () => {
+    const manager = new KanaSubagentManager();
+    const subagents = manager.bind(
+      manager.createOwner({ sessionId: "session-a", cwd: process.cwd(), persistent: false }),
+      { maxLive: 1 },
+    );
+    const completion = deferred<KanaSubagentRunResult>();
+    const harness = createHarness({
+      getSubagents: () => subagents,
+      canSteer: () => true,
+    });
+    const subagent = subagents.start({
+      profile: subagentProfile(),
+      task: "Inspect the parser",
+      spawnToolCallId: "call-spawn",
+      run: () => completion.promise,
+    });
+
+    completion.resolve(subagentResult("Parser inspected."));
+    await waitFor(() => harness.coordinator.queue.pending.length === 1);
+
+    expect(harness.agent.inbox.nextStep).toHaveLength(1);
+    expect(harness.coordinator.queue.pending).toMatchObject([
+      {
+        kind: "subagent",
+        agentId: subagent.id,
+        content: expect.stringContaining("completed"),
+      },
+    ]);
+
+    subagents.observe(subagent.id);
+    await waitFor(() => harness.coordinator.queue.pending.length === 0);
+
+    harness.close();
+    await manager.close();
+  });
 });
 
 type HarnessOptions = {
@@ -307,6 +349,8 @@ type HarnessOptions = {
   scheduledRuns?: boolean;
   backgroundJobCompletionRuns?: boolean;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
+  subagentCompletionRuns?: boolean;
+  getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
   isRunActive?: () => boolean;
   canSteer?: () => boolean;
   canStartQueuedRun?: () => boolean;
@@ -327,6 +371,8 @@ function createHarness(options: HarnessOptions = {}) {
     scheduledRuns: options.scheduledRuns,
     backgroundJobCompletionRuns: options.backgroundJobCompletionRuns,
     getBackgroundJobs: options.getBackgroundJobs,
+    subagentCompletionRuns: options.subagentCompletionRuns,
+    getSubagents: options.getSubagents,
     isRunActive: options.isRunActive ?? (() => false),
     canSteer: options.canSteer ?? (() => false),
     canStartQueuedRun: options.canStartQueuedRun ?? (() => false),
@@ -401,6 +447,21 @@ function deferredJob(): {
   resolve(value: { status: "completed"; exitCode: number }): void;
 } {
   return deferred();
+}
+
+function subagentProfile() {
+  return {
+    name: "explorer",
+    description: "Explore",
+    instructions: "Inspect only.",
+    tools: ["read"],
+    source: "builtin" as const,
+    digest: "profile-digest",
+  };
+}
+
+function subagentResult(output: string): KanaSubagentRunResult {
+  return { status: "completed", output, messages: [], terminalReason: "stop" };
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

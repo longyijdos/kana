@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  type KanaSubagentEvent,
   KanaSubagentManager,
   type KanaSubagentProfile,
   type KanaSubagentRunResult,
@@ -41,6 +42,7 @@ describe("Kana subagent manager", () => {
       output: "parser result",
       waitTimedOut: false,
     });
+    expect(client.context()).toEqual([]);
   });
 
   test("routes parent cancellation to the owned child and isolates owners", async () => {
@@ -79,6 +81,39 @@ describe("Kana subagent manager", () => {
       status: "cancelled",
       waitTimedOut: false,
     });
+  });
+
+  test("publishes TUI cancellation until the completion is observed", async () => {
+    const manager = new KanaSubagentManager();
+    const client = manager.bind(
+      manager.createOwner({ sessionId: "session-1", cwd: process.cwd(), persistent: false }),
+      { maxLive: 1 },
+    );
+    const events: KanaSubagentEvent[] = [];
+    client.subscribe((event) => events.push(event));
+    const started = client.start({
+      profile: profile(),
+      task: "Cancel from the TUI",
+      spawnToolCallId: "call-spawn",
+      run: ({ signal }) =>
+        new Promise((resolve) => {
+          signal.addEventListener("abort", () => resolve(result("cancelled")), { once: true });
+        }),
+    });
+    await Promise.resolve();
+
+    await expect(
+      client.cancel(started.id, { source: "tui", reason: "Stopped from /agents." }),
+    ).resolves.toMatchObject({ status: "cancelled" });
+    await Promise.resolve();
+
+    expect(events.map((event) => event.type)).toEqual(["started", "settled"]);
+    expect(client.context()).toMatchObject([{ id: started.id, status: "cancelled" }]);
+
+    client.observe(started.id);
+    expect(events.map((event) => event.type)).toEqual(["started", "settled", "observed"]);
+    expect(client.context()).toEqual([]);
+    await manager.close();
   });
 });
 

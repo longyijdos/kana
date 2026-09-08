@@ -129,6 +129,7 @@ export class KanaTuiApp {
       wakeScheduler: options.conversation.wakeScheduler,
       goalMaxRounds: options.conversation.goalMaxRounds,
       getBackgroundJobs: options.conversation.getBackgroundJobs,
+      getSubagents: options.conversation.getSubagents,
       disposeSession: options.conversation.disposeSession,
       canStartQueuedRun: () =>
         !this.status.running &&
@@ -888,6 +889,12 @@ export class KanaTuiApp {
               color: tuiTheme.muted,
             }),
           );
+        } else if (event.source === "subagent" && event.input) {
+          this.transcript.addChild(
+            new TextBlock(formatSubagentWakeContent(event.input.content), {
+              color: tuiTheme.muted,
+            }),
+          );
         }
         this.updateStatus(event.source === "compaction" ? "compacting" : "starting");
         this.tui.requestRender();
@@ -1150,6 +1157,10 @@ function formatSubagentInspection(inspection: import("@/kana").KanaSubagentInspe
 
 function formatBackgroundJobWakeContent(content: string): string {
   return content.replace(/^\[Background Job completion\]\n?/, "");
+}
+
+function formatSubagentWakeContent(content: string): string {
+  return content.replace(/^\[Subagent completion\]\n?/, "");
 }
 
 function formatExitLine(label: string, value: string): string {

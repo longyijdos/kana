@@ -14,6 +14,7 @@ import {
   createWakeScheduler,
   type KanaTodoStateChange,
 } from "../../../src/kana";
+import { KanaSubagentManager, type KanaSubagentRunResult } from "../../../src/kana/subagents";
 import { MockModel } from "../../../src/providers/mock";
 import { deferred } from "../../helpers/async-control";
 import { messageIdentityForTest } from "../../helpers/messages";
@@ -364,6 +365,81 @@ describe("ConversationRuntime", () => {
 
     expect(sources).toEqual(["user"]);
     expect(jobs.context()).toEqual([]);
+    await runtime.close();
+    await manager.close();
+  });
+
+  test("delivers a Subagent completion as the next step of an active Agent run", async () => {
+    const manager = new KanaSubagentManager();
+    const subagents = manager.bind(
+      manager.createOwner({ sessionId: "session-a", cwd: process.cwd(), persistent: false }),
+      { maxLive: 1 },
+    );
+    const completion = deferred<KanaSubagentRunResult>();
+    const model = new ControlledModel();
+    const sources: string[] = [];
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      getSubagents: () => subagents,
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+        }),
+    });
+    runtime.subscribe((event) => {
+      if (event.type === "run_start") sources.push(event.source);
+    });
+    const subagent = subagents.start({
+      profile: {
+        name: "explorer",
+        description: "Explore",
+        instructions: "Inspect only.",
+        tools: ["read"],
+        source: "builtin",
+        digest: "profile-digest",
+      },
+      task: "Inspect the parser",
+      spawnToolCallId: "call-spawn",
+      run: () => completion.promise,
+    });
+
+    const run = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Delegate the inspection.",
+    });
+    await waitFor(() => model.contexts.length === 1);
+    completion.resolve({
+      status: "completed",
+      output: "Parser inspected.",
+      messages: [],
+      terminalReason: "stop",
+    });
+    await waitFor(() => runtime.inputQueue.pending.some((input) => input.kind === "subagent"));
+    expect(runtime.inputQueue.pending).toMatchObject([
+      {
+        kind: "subagent",
+        agentId: subagent.id,
+        content: expect.stringContaining("completed"),
+      },
+    ]);
+
+    model.finish(0, "Initial turn done.");
+    await waitFor(() => model.contexts.length === 2);
+    expect(model.contexts[1]?.messages.at(-1)).toMatchObject({
+      role: "user",
+      provenance: { kind: "subagent_completion", agentId: subagent.id },
+      content: expect.stringContaining("reached completed"),
+    });
+    model.finish(1, "Completion handled.");
+    await run;
+
+    expect(sources).toEqual(["user"]);
+    expect(subagents.context()).toEqual([]);
     await runtime.close();
     await manager.close();
   });

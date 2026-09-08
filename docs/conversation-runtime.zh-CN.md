@@ -26,11 +26,11 @@ TUI / Headless
 
 `HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client 与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
 
-`ConversationRuntime` 持有当前 Agent 与 session 快照。它下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal 与后台 Job 完成事件，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
+`ConversationRuntime` 持有当前 Agent 与 session 快照。它下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal、后台 Job 完成事件与 subagent 结算，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
 
 ## Run 生命周期与事件
 
-Runtime run 的来源只能是 `user`、`scheduled`、`goal`、`job` 或 `compaction`。另一 run 或 session 切换活动时，runtime 会拒绝新 run、session 切换与 Agent 重配置。它发布事件的副本，listener 无法修改内部状态：
+Runtime run 的来源只能是 `user`、`scheduled`、`goal`、`job`、`subagent` 或 `compaction`。另一 run 或 session 切换活动时，runtime 会拒绝新 run、session 切换与 Agent 重配置。它发布事件的副本，listener 无法修改内部状态：
 
 ```text
 run_start
@@ -77,6 +77,10 @@ Session 切换会取消旧 session 的 timer 并清空 inbox。Shutdown 则在�
 每个托管 session 都获得一个绑定的 `BackgroundJobClient`。完成投递只包含有界 Job 身份与状态，不包含缓存输出。Agent run 仍可接受 steering 时，完成事件进入 `next-step`；否则进入 `next-turn`。位于 `next-turn` 队首的相邻 Job 完成事件会合并提交，但不会跨过更早的人类、scheduled 或 Goal 输入。
 
 通过 Agent Job 工具观察终态 Job 时，会确认该 Job，并取消仍在等待且 Job ID 相同的完成消息。TUI Job 管理使用独立的非消费视图，不会确认 completion。普通 Job 输出不会唤醒 Agent。Job 的执行与保留行为归[工具与执行](tools.zh-CN.md)所有。
+
+## Subagent 完成投递
+
+Subagent 结算沿用 Background Job 的投递 lane 与顺序。通知只包含 child ID、profile 和终态；`wait_subagent` 仍是消费结果的边界。返回终态的 wait 或工具发起的取消会确认 child，并移除待投递通知；`/agents` 查看和 TUI 取消不会确认。位于 `next-turn` 队首的相邻 Subagent 通知会合并提交，但不会跨过其他类型输入。
 
 ## Goals
 

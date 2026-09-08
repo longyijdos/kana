@@ -26,11 +26,11 @@ TUI / Headless
 
 `HostedSessionRegistry` owns the live resources associated with each session instance. A hosted record binds the session's in-memory mirror, optional journal, logger, artifact store, background-job client, subagent client, and pending fork snapshot. `ConversationRuntime` selects and executes against those resources through host callbacks rather than opening storage or background processes itself.
 
-`ConversationRuntime` owns the current Agent and session snapshot. `ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, and background-job completions, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
+`ConversationRuntime` owns the current Agent and session snapshot. `ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, background-job completions, and subagent settlements, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
 
 ## Run lifecycle and events
 
-A runtime run has one source: `user`, `scheduled`, `goal`, `job`, or `compaction`. The runtime rejects a new run, session transition, or Agent reconfiguration while another run or transition is active. It publishes cloned events so listeners cannot mutate internal state:
+A runtime run has one source: `user`, `scheduled`, `goal`, `job`, `subagent`, or `compaction`. The runtime rejects a new run, session transition, or Agent reconfiguration while another run or transition is active. It publishes cloned events so listeners cannot mutate internal state:
 
 ```text
 run_start
@@ -77,6 +77,10 @@ Session changes cancel the previous session's timers and clear its inbox. Shutdo
 Each hosted session receives a bound `BackgroundJobClient`. Completion delivery contains bounded Job identity and status, never buffered output. When an Agent run can still accept steering, a completion enters `next-step`; otherwise it enters `next-turn`. Adjacent Job completions at the front of `next-turn` are submitted together without crossing earlier human, scheduled, or Goal input.
 
 Observing a terminal Job through an Agent Job tool acknowledges it and cancels any still-pending completion message with the same Job ID. TUI Job management uses a separate non-consuming view and does not acknowledge completion. Ordinary Job output does not wake the Agent. The execution and retention behavior of Jobs belongs to [Tools and execution](tools.md).
+
+## Subagent completion
+
+Subagent settlement follows the same delivery lanes and ordering as Background Jobs. The notification contains only the child ID, profile, and terminal status; `wait_subagent` remains the result-consumption boundary. A terminal wait or tool-driven cancellation acknowledges the child and removes a pending notification, while `/agents` inspection and TUI cancellation do not. Adjacent Subagent notifications at the front of `next-turn` are submitted together without crossing other input kinds.
 
 ## Goals
 

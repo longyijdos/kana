@@ -1,5 +1,6 @@
 export {
   type KanaSubagentClient,
+  type KanaSubagentEvent,
   type KanaSubagentInspection,
   KanaSubagentManager,
   type KanaSubagentOwner,

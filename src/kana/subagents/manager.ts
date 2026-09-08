@@ -81,8 +81,8 @@ type CancelKanaSubagentOptions = {
   source: "tool" | "tui" | "parent_turn" | "session_disposal" | "shutdown";
 };
 
-type KanaSubagentEvent = {
-  type: "started" | "settled";
+export type KanaSubagentEvent = {
+  type: "started" | "settled" | "observed";
   owner: KanaSubagentOwner;
   subagent: KanaSubagentSummary;
 };
@@ -95,6 +95,7 @@ export type KanaSubagentClient = {
   wait(agentId: string, options?: WaitKanaSubagentOptions): Promise<KanaSubagentSnapshot>;
   inspect(agentId: string): KanaSubagentInspection | undefined;
   cancel(agentId: string, options: CancelKanaSubagentOptions): Promise<KanaSubagentSummary>;
+  observe(agentId: string): void;
   subscribe(listener: (event: KanaSubagentEvent) => void): () => void;
   close(source?: "session_disposal" | "shutdown"): Promise<void>;
 };
@@ -114,6 +115,8 @@ type SubagentRecord = {
   waiters: Set<() => void>;
   parentSignal?: AbortSignal;
   onParentAbort?: () => void;
+  completionObserved: boolean;
+  completionPublished: boolean;
 };
 
 type ListenerRegistration = {
@@ -164,6 +167,7 @@ export class KanaSubagentManager {
       wait: (agentId, waitOptions) => this.wait(owner, agentId, waitOptions),
       inspect: (agentId) => this.inspect(owner, agentId),
       cancel: (agentId, cancelOptions) => this.cancel(owner, agentId, cancelOptions),
+      observe: (agentId) => this.observe(owner, agentId),
       subscribe: (listener) => this.subscribe(owner, listener),
       close: (source = "session_disposal") => this.closeOwner(owner, source),
     });
@@ -225,6 +229,8 @@ export class KanaSubagentManager {
       messages: [],
       waiters: new Set(),
       parentSignal: options.parentSignal,
+      completionObserved: false,
+      completionPublished: false,
     };
     if (options.parentSignal) {
       record.onParentAbort = () => {
@@ -278,7 +284,11 @@ export class KanaSubagentManager {
 
   private context(owner: KanaSubagentOwner): KanaSubagentSummary[] {
     return [...this.records.values()]
-      .filter((record) => record.owner.instanceId === owner.instanceId)
+      .filter(
+        (record) =>
+          record.owner.instanceId === owner.instanceId &&
+          (record.summary.status === "running" || !record.completionObserved),
+      )
       .map((record) => cloneSummary(record.summary))
       .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
   }
@@ -298,7 +308,9 @@ export class KanaSubagentManager {
     if (record.summary.status === "running" && waitMs > 0) {
       waitTimedOut = !(await this.waitForSettlement(record, waitMs, options.signal));
     }
-    return snapshotRecord(record, waitTimedOut);
+    const snapshot = snapshotRecord(record, waitTimedOut);
+    if (snapshot.status !== "running") this.observe(owner, agentId);
+    return snapshot;
   }
 
   private inspect(owner: KanaSubagentOwner, agentId: string): KanaSubagentInspection | undefined {
@@ -322,7 +334,10 @@ export class KanaSubagentManager {
     if (!record) {
       return this.inspect(owner, agentId) ?? unknownSummary(agentId);
     }
-    if (record.summary.status !== "running") return cloneSummary(record.summary);
+    if (record.summary.status !== "running") {
+      if (shouldObserveCompletion(options.source)) this.observe(owner, agentId);
+      return cloneSummary(record.summary);
+    }
     record.logger.info("subagent.cancellation_requested", {
       agentId,
       profile: record.profile.name,
@@ -331,7 +346,16 @@ export class KanaSubagentManager {
     record.controller.abort(options.reason ?? "Subagent cancellation requested.");
     this.wakeWaiters(record);
     await record.settlement;
+    if (shouldObserveCompletion(options.source)) this.observe(owner, agentId);
     return cloneSummary(record.summary);
+  }
+
+  private observe(owner: KanaSubagentOwner, agentId: string): void {
+    const record = this.findOwned(owner, agentId);
+    if (!record || record.summary.status === "running" || record.completionObserved) return;
+    record.completionObserved = true;
+    this.emit({ type: "observed", owner, subagent: cloneSummary(record.summary) });
+    this.prune(owner);
   }
 
   private subscribe(
@@ -389,8 +413,12 @@ export class KanaSubagentManager {
       status: result.status,
       terminalReason: result.terminalReason,
     });
-    this.emit({ type: "settled", owner: record.owner, subagent: cloneSummary(record.summary) });
-    this.prune(record.owner);
+    queueMicrotask(() => {
+      if (record.completionObserved || record.completionPublished) return;
+      record.completionPublished = true;
+      this.emit({ type: "settled", owner: record.owner, subagent: cloneSummary(record.summary) });
+      this.prune(record.owner);
+    });
   }
 
   private waitForSettlement(
@@ -465,6 +493,14 @@ export class KanaSubagentManager {
           (left.summary.finishedAt?.getTime() ?? 0) - (right.summary.finishedAt?.getTime() ?? 0),
       );
     for (const record of terminal.slice(0, -this.maxRetainedTerminalSubagents)) {
+      if (!record.completionObserved) {
+        record.completionObserved = true;
+        this.emit({
+          type: "observed",
+          owner: record.owner,
+          subagent: cloneSummary(record.summary),
+        });
+      }
       this.records.delete(record.summary.id);
     }
   }
@@ -535,6 +571,10 @@ function readNonNegativeInteger(value: number | undefined, fallback: number, nam
   if (!Number.isInteger(resolved) || resolved < 0)
     throw new Error(`${name} must be a non-negative integer.`);
   return resolved;
+}
+
+function shouldObserveCompletion(source: CancelKanaSubagentOptions["source"]): boolean {
+  return source === "tool";
 }
 
 function uniqueOwners(owners: KanaSubagentOwner[]): KanaSubagentOwner[] {
