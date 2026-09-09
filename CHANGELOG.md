@@ -1,3 +1,21 @@
+## [0.9.0](https://github.com/longyijdos/kana/compare/v0.8.0...v0.9.0) (2026-09-09)
+
+Kana v0.9.0 adds profile-based asynchronous subagents, configurable built-in Agent tools, and dark, light, and custom TUI themes. It also makes the reusable Kana Agent workflow portable across repositories and providers.
+
+### Features
+
+- Delegate bounded work to asynchronous subagents selected from built-in or user-defined profiles, with independent transcripts, approvals, accounting, completion notifications, and `/agents` management.
+- Configure the built-in tool surface exposed to the main Agent.
+- Select the built-in dark or light TUI theme, or load a custom semantic color theme.
+- Cancel MCP startup and reload from the TUI without exiting Kana.
+- Run the reusable Kana Agent GitHub workflow across repositories and supported providers with repository-local configuration.
+
+### Bug Fixes
+
+- Frame streamed terminal input consistently with submitted user messages.
+- Preserve visible HTML/XML-like tags in Markdown instead of stripping them.
+- Correct option handling in the Kana Agent workflow.
+
 ## [0.8.0](https://github.com/longyijdos/kana/compare/v0.7.0...v0.8.0) (2026-08-29)
 
 Kana v0.8.0 adds session-owned background jobs, durable session todos, and bounded agent goal execution, and unifies model selection under a new static configuration format.

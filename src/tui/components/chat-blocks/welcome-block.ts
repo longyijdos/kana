@@ -94,9 +94,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  Session-owned background jobs"),
-      text("  Durable session todos"),
-      text("  Bounded agent goal execution"),
+      text("  Profile-based asynchronous subagents"),
+      text("  Dark, light, and custom TUI themes"),
+      text("  Configurable built-in agent tools"),
       muted("  ... /help for more"),
     ];
 
