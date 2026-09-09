@@ -17,6 +17,7 @@ describe("slash command controller", () => {
     harness.handle("model");
     harness.handle("schedule");
     harness.handle("jobs");
+    harness.handle("agents");
     harness.handle("goal", "Ship the feature");
     harness.handle("todo");
     harness.handle("tools");
@@ -32,6 +33,7 @@ describe("slash command controller", () => {
       "model",
       "schedule",
       "jobs",
+      "agents",
       "goal:Ship the feature",
       "todo",
       "tools",
@@ -74,6 +76,7 @@ describe("slash command controller", () => {
     harness.handle("image", '"/tmp/image with spaces.png"');
     harness.handle("schedule");
     harness.handle("jobs");
+    harness.handle("agents");
 
     expect(harness.events).toEqual([
       "help",
@@ -83,6 +86,7 @@ describe("slash command controller", () => {
       'image:"/tmp/image with spaces.png"',
       "schedule",
       "jobs",
+      "agents",
     ]);
   });
 
@@ -140,6 +144,7 @@ function createHarness(running = false) {
     openMcpServerManager: () => events.push("mcp"),
     openScheduledMessageManager: () => events.push("schedule"),
     openBackgroundJobManager: () => events.push("jobs"),
+    openSubagentManager: () => events.push("agents"),
     startGoal: (objective) => events.push(`goal:${objective}`),
     openTodo: () => events.push("todo"),
     openToolHistory: () => events.push("tools"),

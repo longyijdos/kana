@@ -12,6 +12,7 @@ export type PromptCommandName =
   | "mcp"
   | "schedule"
   | "jobs"
+  | "agents"
   | "goal"
   | "todo"
   | "tools"
@@ -118,6 +119,11 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
     name: "jobs",
     availability: "always",
     description: "Manage Background Jobs for this session.",
+  },
+  {
+    name: "agents",
+    availability: "always",
+    description: "View subagent profiles and manage runs for this session.",
   },
   {
     name: "goal",

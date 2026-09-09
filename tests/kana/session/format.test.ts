@@ -77,6 +77,29 @@ describe("Kana session format", () => {
     expect(header).toMatchObject({ version: 5, id: "byte-layout" });
   });
 
+  test("round-trips Subagent completion input without using it as the session title", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "subagent-completion" });
+    const completion = {
+      ...createMessageIdentity({ kind: "subagent_completion" as const, agentId: "agent-1" }),
+      role: "user" as const,
+      content: "[Subagent completion]\nSubagent agent-1 reached completed.",
+    };
+    const user = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Continue the implementation.",
+    };
+
+    appendKanaSessionMessages(session, [completion, user]);
+
+    expect(loadKanaSession(session.id, { env, cwd }).messages).toEqual([completion, user]);
+    expect(listKanaSessions({ env, cwd })).toMatchObject([
+      { id: session.id, title: "Continue the implementation." },
+    ]);
+  });
+
   test("round-trips images and usage without duplicating tool images in result metadata", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");

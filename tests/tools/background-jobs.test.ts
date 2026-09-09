@@ -26,7 +26,8 @@ describe("Background Job tools", () => {
     const listTool = createJobListTool(jobs);
     const outputTool = createJobOutputTool(jobs);
 
-    expect(outputTool.description).toContain("do not repeatedly poll");
+    expect(outputTool.description.toLowerCase()).toContain("notify the parent agent automatically");
+    expect(outputTool.description.toLowerCase()).toContain("solely to detect completion");
 
     const listed = await listTool.execute({}, createToolContext());
     expectToolResult(listed);

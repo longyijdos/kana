@@ -24,6 +24,7 @@ import {
   listKanaSessions,
   loadKanaSession,
 } from "../session";
+import { type KanaSubagentClient, KanaSubagentManager } from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
 
 type HostedSessionSelection =
@@ -44,6 +45,7 @@ export type HostedSessionAgentBinding = {
   contextCheckpoint?: ContextCheckpoint;
   artifactStore?: KanaSessionArtifactStore;
   backgroundJobs?: BackgroundJobClient;
+  subagents?: KanaSubagentClient;
   journal?: AgentJournal;
   resolveTodoState?: () => readonly KanaTodoItem[];
   commitTodoState: (change: KanaTodoStateChange) => void;
@@ -57,12 +59,14 @@ type HostedSessionRegistryOptions = {
   logLevel: LogLevel;
   getSessionModel: () => Pick<ModelMetadata, "provider" | "model">;
   getBackgroundJobMaxConcurrent: () => number;
+  getSubagentMaxLive: () => number;
 };
 
 type HostedSession = {
   data: LoadKanaSessionResult;
   artifactStore: KanaSessionArtifactStore;
   backgroundJobs: BackgroundJobClient;
+  subagents: KanaSubagentClient;
   journal?: KanaSessionJournal;
   logger: Logger;
   persistent: boolean;
@@ -76,6 +80,7 @@ type HostedSession = {
 export class HostedSessionRegistry {
   private readonly logManager;
   private readonly backgroundJobManager = new BackgroundJobManager();
+  private readonly subagentManager = new KanaSubagentManager();
   private readonly sessions = new Map<string, HostedSession>();
   private readonly hostedSessions = new Set<HostedSession>();
   private readonly pendingDisposals = new Map<string, HostedSession[]>();
@@ -114,6 +119,10 @@ export class HostedSessionRegistry {
     return this.sessions.get(sessionId)?.backgroundJobs;
   }
 
+  getSubagents(sessionId: string): KanaSubagentClient | undefined {
+    return this.sessions.get(sessionId)?.subagents;
+  }
+
   getActiveSession(): HostedSessionIdentity | undefined {
     return this.activeSession === undefined ? undefined : createSessionIdentity(this.activeSession);
   }
@@ -143,6 +152,7 @@ export class HostedSessionRegistry {
       contextCheckpoint: hostedSession.data.contextCheckpoint,
       artifactStore: hostedSession.artifactStore,
       backgroundJobs: hostedSession.backgroundJobs,
+      subagents: hostedSession.subagents,
       journal:
         hostedSession.journal === undefined
           ? undefined
@@ -338,7 +348,11 @@ export class HostedSessionRegistry {
   async close(foregroundSettled: Promise<void> = Promise.resolve()): Promise<void> {
     const sessions = [...this.hostedSessions];
     try {
-      await Promise.all([this.backgroundJobManager.close(), foregroundSettled]);
+      await Promise.all([
+        this.backgroundJobManager.close(),
+        this.subagentManager.close(),
+        foregroundSettled,
+      ]);
     } finally {
       await Promise.all(sessions.map((session) => this.cleanupArtifactStore(session, "shutdown")));
     }
@@ -400,6 +414,17 @@ export class HostedSessionRegistry {
         this.backgroundJobManager.createOwner(data.metadata.id),
         {
           maxConcurrent: this.options.getBackgroundJobMaxConcurrent(),
+          logger,
+        },
+      ),
+      subagents: this.subagentManager.bind(
+        this.subagentManager.createOwner({
+          sessionId: data.metadata.id,
+          cwd: data.metadata.cwd,
+          persistent,
+        }),
+        {
+          maxLive: this.options.getSubagentMaxLive(),
           logger,
         },
       ),
@@ -544,6 +569,7 @@ export class HostedSessionRegistry {
   ): Promise<void> {
     const settlements = await Promise.allSettled([
       session.backgroundJobs.close(source),
+      session.subagents.close(source),
       foregroundSettled,
     ]);
     const failure = settlements.find((settlement) => settlement.status === "rejected");

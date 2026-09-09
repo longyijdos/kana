@@ -6,7 +6,7 @@ import { DEFAULT_KANA_TOOL_APPROVALS } from "../tool-approval-defaults";
 import type { KanaConfig } from "./contracts";
 import { DEFAULT_KANA_CONFIG } from "./defaults";
 import { parseKanaConfig } from "./parser";
-import { serializeKanaConfigExample } from "./reference";
+import { serializeKanaConfigExample, serializeKanaSubagentProfileExample } from "./reference";
 
 export type InstallKanaConfigResult = {
   configPath: string;
@@ -21,6 +21,8 @@ export type InstallKanaConfigResult = {
   approvalsStatus: "created" | "exists";
   skillsConfigPath: string;
   skillsConfigStatus: "created" | "exists";
+  subagentProfileExamplePath: string;
+  subagentProfileExampleStatus: "created" | "exists" | "updated";
   customProviderExamplePath: string;
   customProviderExampleStatus: "created" | "exists" | "updated";
 };
@@ -55,10 +57,13 @@ export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): Install
     mcpEnabledPath,
     approvalsPath,
     skillsConfigPath,
+    agentsDirectory,
+    subagentProfileExamplePath,
     providersDirectory,
     customProviderExamplePath,
   } = getKanaConfigPaths(env);
   mkdirSync(home, { recursive: true });
+  mkdirSync(agentsDirectory, { recursive: true });
   mkdirSync(providersDirectory, { recursive: true });
 
   const configExists = existsSync(configPath);
@@ -85,6 +90,11 @@ export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): Install
     ),
     skillsConfigPath,
     skillsConfigStatus: installKanaFile(skillsConfigPath, serializeEmptySkillsConfig()),
+    subagentProfileExamplePath,
+    subagentProfileExampleStatus: writeGeneratedExample(
+      subagentProfileExamplePath,
+      serializeKanaSubagentProfileExample(),
+    ),
     customProviderExamplePath,
     customProviderExampleStatus: writeGeneratedExample(
       customProviderExamplePath,

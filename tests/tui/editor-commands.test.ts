@@ -68,6 +68,9 @@ describe("prompt commands", () => {
           name: "jobs",
         },
         {
+          name: "agents",
+        },
+        {
           name: "goal",
         },
         {

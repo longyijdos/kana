@@ -22,6 +22,7 @@ import { formatKanaMemoryForPrompt } from "./memory/prompt";
 import { getKanaConfigPaths } from "./path";
 import { formatKanaSkillsForPrompt } from "./skills/prompt";
 import type { KanaSkill } from "./skills/types";
+import type { KanaSubagentSummary } from "./subagents";
 import type { KanaTodoItem } from "./todo";
 
 const DEFAULT_SYSTEM_PROMPT =
@@ -45,6 +46,7 @@ export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
   toolSections?: readonly PromptToolSection[];
   resolveTodoState?: () => readonly KanaTodoItem[];
   resolveGoalState?: () => KanaGoalSnapshot | undefined;
+  resolveSubagentState?: () => readonly KanaSubagentSummary[];
 };
 
 function loadKanaSystemSections(options: LoadKanaSystemPromptOptions = {}): PromptSystemSection[] {
@@ -96,6 +98,7 @@ export function buildKanaPromptAssembly(
     ? formatKanaSkillsForPrompt(options.skills ?? [], { env: options.env })
     : "";
   const resolveBackgroundJobState = options.resolveBackgroundJobState;
+  const resolveSubagentState = options.resolveSubagentState;
   const contextSections: PromptContextSection[] = [
     {
       name: "environment",
@@ -109,6 +112,14 @@ export function buildKanaPromptAssembly(
           {
             name: "background-jobs",
             render: () => formatBackgroundJobContext(resolveBackgroundJobState()),
+          },
+        ]
+      : []),
+    ...(resolveSubagentState
+      ? [
+          {
+            name: "subagents",
+            render: () => formatSubagentContext(resolveSubagentState()),
           },
         ]
       : []),
@@ -139,6 +150,23 @@ export function buildKanaPromptAssembly(
     context: contextSections,
     tools: options.toolSections,
   });
+}
+
+function formatSubagentContext(visible: readonly KanaSubagentSummary[]): PromptContextState {
+  if (visible.length === 0) {
+    return { status: "inactive", content: JSON.stringify({ subagents: [] }) };
+  }
+  return {
+    status: "active",
+    content: JSON.stringify({
+      subagents: visible.map((subagent) => ({
+        id: subagent.id,
+        profile: subagent.profile,
+        status: subagent.status,
+        terminalReason: subagent.terminalReason,
+      })),
+    }),
+  };
 }
 
 function formatBackgroundJobContext(visible: readonly BackgroundJobSummary[]): PromptContextState {

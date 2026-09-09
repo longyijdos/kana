@@ -21,6 +21,7 @@ These documents describe the current implementation. They are organized by stabl
 - [OAuth](oauth.md): discovery, PKCE, callback, token exchange, refresh coordination, and persistence boundary.
 - [MCP](mcp.md): JSON-RPC, transports, client, remote tools, manager lifecycle, authorization, and reload.
 - [Skills and the system prompt](skills-and-prompt.md): discovery, activation, project instructions, and prompt composition.
+- [Subagents](subagents.md): role-card profiles, delegated lifecycle, capability boundaries, persistence, and TUI management.
 
 ## State, frontends, and operations
 
@@ -47,6 +48,7 @@ Use the narrowest owner that contains the changed contract. Cross-boundary behav
 | `src/kana/session`, `src/kana/memory`, session-bound logging and accounting | [Sessions and memory](sessions-and-memory.md) |
 | `src/kana/config`, launch mode, approval configuration | [Configuration and installation](configuration.md) |
 | `src/kana/skills`, prompt composition | [Skills and the system prompt](skills-and-prompt.md) |
+| `src/kana/subagents`, delegated Agent construction and lifecycle | [Subagents](subagents.md) |
 | `src/tui/app`, TUI process lifecycle | [TUI interaction](tui.md) |
 | `src/tui/runtime`, `src/tui/render`, presentation components and tool renderers | [Terminal rendering](terminal-rendering.md) |
 | `src/headless` | [Headless execution](headless.md) |

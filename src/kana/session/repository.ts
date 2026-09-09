@@ -45,6 +45,7 @@ export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaS
     cwd,
     model: options.model,
     parentSessionPath: options.parentSessionPath,
+    subagent: options.subagent,
   };
 
   return headerToMetadata(header, filePath);
@@ -103,6 +104,10 @@ export function deleteKanaSession(
   }
 
   rmSync(metadata.path, { force: true });
+  rmSync(path.join(getKanaSessionDir(metadata.cwd, options.env), ".subagents", metadata.id), {
+    recursive: true,
+    force: true,
+  });
   return true;
 }
 

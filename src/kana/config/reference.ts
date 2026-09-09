@@ -36,6 +36,9 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
     "[agent.background_jobs]",
     `max_concurrent = ${config.agent.backgroundJobs.maxConcurrent}`,
     "",
+    "[agent.subagents]",
+    `max_live = ${config.agent.subagents.maxLive}`,
+    "",
     "[agent.repeated_tool_calls]",
     `reminder_thresholds = ${JSON.stringify(config.agent.repeatedToolCalls.reminderThresholds)}`,
     `excluded_tools = ${JSON.stringify(config.agent.repeatedToolCalls.excludedTools)}`,
@@ -78,6 +81,26 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
     "",
     "[logging]",
     `level = "${config.logging.level}"`,
+    "",
+  ].join("\n");
+}
+
+export function serializeKanaSubagentProfileExample(): string {
+  return [
+    "---",
+    "description: Review database migrations",
+    "tools:",
+    "  - list",
+    "  - grep",
+    "  - read",
+    "  - bash",
+    "# model: openai-codex/gpt-5.6-terra",
+    "# reasoning_effort: high",
+    "---",
+    "",
+    "Review the delegated task.",
+    "Report correctness risks with concrete file references.",
+    "Do not modify files.",
     "",
   ].join("\n");
 }

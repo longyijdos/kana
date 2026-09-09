@@ -1,4 +1,4 @@
-const KANA_WORKSPACE_TOOL_NAMES = [
+export const KANA_WORKSPACE_TOOL_NAMES = [
   "list",
   "glob",
   "grep",
@@ -11,9 +11,12 @@ const KANA_WORKSPACE_TOOL_NAMES = [
 
 const KANA_BACKGROUND_JOB_TOOL_NAMES = ["job_start", "job_list", "job_output", "job_kill"] as const;
 
+const KANA_SUBAGENT_TOOL_NAMES = ["spawn_subagent", "wait_subagent", "cancel_subagent"] as const;
+
 export const KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES = [
   ...KANA_WORKSPACE_TOOL_NAMES,
   ...KANA_BACKGROUND_JOB_TOOL_NAMES,
+  ...KANA_SUBAGENT_TOOL_NAMES,
   "todo_write",
   "remember",
   "schedule_wake",
@@ -25,6 +28,7 @@ export type KanaConfigurableBuiltInToolName =
 export const KANA_BUILT_IN_TOOL_NAMES = [
   ...KANA_WORKSPACE_TOOL_NAMES,
   ...KANA_BACKGROUND_JOB_TOOL_NAMES,
+  ...KANA_SUBAGENT_TOOL_NAMES,
   "todo_write",
   "update_goal",
   "remember",

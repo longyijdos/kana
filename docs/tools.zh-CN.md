@@ -101,12 +101,15 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 | `job_list` | 无 | 列出当前 session 活动 Job 与最多 32 个近期终态 Job，并确认列出的终态完成。 |
 | `job_output` | `jobId`、可选 `waitMs` | 从 Agent cursor 消费全部当前未读保留输出，并报告丢弃字节数。 |
 | `job_kill` | `jobId`、可选 `reason` | 停止所属 Job 并等待其进程组静止。 |
+| `spawn_subagent` | `profile`、`task` | 启动一个预定义的 session-owned child，并立即返回 Agent ID。 |
+| `wait_subagent` | `agentId`、可选 `timeoutMs` | 读取或短暂等待所属 child 的状态与最终输出。 |
+| `cancel_subagent` | `agentId`、可选 `reason` | 取消所属 child 并等待结算。 |
 | `todo_write` | 完整 todo item 数组 | 原子替换或显式清空 session todo 状态。 |
 | `remember` | `content`；可选 scope/title/reason | 记忆启用时追加长期记忆暂存记录。 |
 | `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
 
-`list`、`glob`、`grep`、`read` 与 `view_image` 声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
+`list`、`glob`、`grep`、`read`、`view_image` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
 
 ## 文件与 Shell 边界
 
@@ -128,6 +131,8 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 Kana 把活动或尚未报告 Job 的身份、有界 label、cwd、状态和 exit code 投影到 runtime context，永不包含输出。完成 steering、排队 run 投递、确认与 session 切换顺序归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
+Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。其能力交集、异步生命周期、持久化与 TUI 行为归 [Subagent](subagents.zh-CN.md)所有。
+
 ## Kana 自有状态工具
 
 `todo_write` trim 每项内容，拒绝空白或重复内容和未知字段，最多允许一项 `in_progress`，并确保校验失败后不部分修改。完整接受列表属于当前 session；只有显式空数组才清空。最新状态会在压缩、resume 与 fork 后重新投影，工具结果保持固定紧凑确认。Journal 表示归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
@@ -136,7 +141,7 @@ Kana 把活动或尚未报告 Job 的身份、有界 label、cwd、状态和 exi
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `todo_write`、`remember`、`schedule_wake` 或 `update_goal` 请求审批。其它调用遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake` 或 `update_goal` 请求审批。其它调用遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
 ## 外部与自定义工具
 

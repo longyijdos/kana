@@ -16,20 +16,21 @@ TUI / Headless
   → KanaConversationHost
       ├→ HostedSessionRegistry
       ├→ Agent product factory
+      ├→ subagent product factory
       ├→ configuration and approvals
       ├→ memory consolidation
       └→ MCP runtime
 ```
 
-`KanaConversationHost` 是产品装配边界。它加载运行配置与审批状态，初始化选中的 session，持有共享 wake scheduler 和 MCP runtime，并使用当前模型、prompt、内置工具、外部工具、logger、journal、artifact store、background-job client、todo 状态与记忆回调构造每个主 Agent。它只返回与前端无关的操作和数据，不渲染 TUI 组件，也不投影 headless 输出。
+`KanaConversationHost` 是产品装配边界。它加载运行配置与审批状态，初始化选中的 session，持有共享 wake scheduler 和 MCP runtime，并使用当前模型、prompt、内置工具、外部工具、logger、journal、artifact store、background-job client、subagent client、todo 状态与记忆回调构造每个主 Agent；同时根据已校验角色卡构造一次性 child Agent。它只返回与前端无关的操作和数据，不渲染 TUI 组件，也不投影 headless 输出。委派契约归 [Subagent](subagents.zh-CN.md)所有。
 
-`HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client 与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
+`HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client 与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
 
-`ConversationRuntime` 持有当前 Agent 与 session 快照。它下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal 与后台 Job 完成事件，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
+`ConversationRuntime` 持有当前 Agent 与 session 快照。它下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal、后台 Job 完成事件与 subagent 结算，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
 
 ## Run 生命周期与事件
 
-Runtime run 的来源只能是 `user`、`scheduled`、`goal`、`job` 或 `compaction`。另一 run 或 session 切换活动时，runtime 会拒绝新 run、session 切换与 Agent 重配置。它发布事件的副本，listener 无法修改内部状态：
+Runtime run 的来源只能是 `user`、`scheduled`、`goal`、`job`、`subagent` 或 `compaction`。另一 run 或 session 切换活动时，runtime 会拒绝新 run、session 切换与 Agent 重配置。它发布事件的副本，listener 无法修改内部状态：
 
 ```text
 run_start
@@ -77,6 +78,10 @@ Session 切换会取消旧 session 的 timer 并清空 inbox。Shutdown 则在�
 
 通过 Agent Job 工具观察终态 Job 时，会确认该 Job，并取消仍在等待且 Job ID 相同的完成消息。TUI Job 管理使用独立的非消费视图，不会确认 completion。普通 Job 输出不会唤醒 Agent。Job 的执行与保留行为归[工具与执行](tools.zh-CN.md)所有。
 
+## Subagent 完成投递
+
+Subagent 结算沿用 Background Job 的投递 lane 与顺序。通知只包含 child ID、profile 和终态；`wait_subagent` 仍是消费结果的边界。返回终态的 wait 或工具发起的取消会确认 child，并移除待投递通知；`/agents` 查看和 TUI 取消不会确认。位于 `next-turn` 队首的相邻 Subagent 通知会合并提交，但不会跨过其他类型输入。
+
 ## Goals
 
 Goal 是进程内控制状态，不是 session 历史。启动时会校验目标，快照当前正整数 `goal_max_rounds`，创建第一轮普通用户 run，并通过 runtime context 暴露活动 Goal。模型可以调用 `update_goal` 将其结束为 `completed` 或 `blocked`。
@@ -92,7 +97,7 @@ Agent 替换与 session 替换是两个不同操作：
 - 重配置保留当前 session、messages、context checkpoint 与 Agent inbox；候选 Agent 构造成功后才替换旧 Agent，并丢弃活动 Goal 控制状态。
 - New、fork 与 resume 会创建或加载候选 session，并在修改当前 runtime 状态前构造其 Agent；构造失败时当前 Agent 与 session 仍可使用。
 
-Session 切换期间 coordinator 会关闭 drain gate 并暂停 background-job 观察。Runtime 把前台 Agent 的 `waitForIdle()` promise 作为 settlement barrier，请求 Host 释放旧 session。只有释放成功后，它才取消旧 session 的 wake 与 inbox，采用新 session 和 Agent，连接新 Job client，发布 `session_changed` 并恢复队列观察。
+Session 切换期间 coordinator 会关闭 drain gate 并暂停 background-job 观察。Runtime 把前台 Agent 的 `waitForIdle()` promise 作为 settlement barrier，请求 Host 释放旧 session；hosted registry 同时取消并结算该 session 实例的 Job 与 subagent。只有释放成功后，它才取消旧 session 的 wake 与 inbox，采用新 session 和 Agent，连接新 Job client，发布 `session_changed` 并恢复队列观察。
 
 Fork 把当前 messages 与 context checkpoint 交给 Host；resume 获得已提交 messages、timeline、checkpoint 与 todo state。它们的持久格式与恢复规则归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
 
@@ -100,7 +105,7 @@ Fork 把当前 messages 与 context checkpoint 交给 Host；resume 获得已提
 
 Normal 与 clean 启动模式使用同一套 runtime 类型。Clean 模式下，Host 注册普通的进程内 session 身份，但不提供 journal，使用 no-op logger 与临时 artifact store；它不会创建记忆合并任务或激活 MCP，模型切换只更新经过校验的进程内配置。用户可见能力矩阵归[配置与安装](configuration.zh-CN.md)所有。
 
-`ConversationRuntime.close()` 是幂等的。它阻止新工作、丢弃 Goal 状态、停止 wake/inbox/Job 观察、清空 pending input、中止 Agent，并请求 Host 一并等待前台 Agent 与活动 session 的后台 Job。之后再释放 wake scheduler 和 listener。
+`ConversationRuntime.close()` 是幂等的。它阻止新工作、丢弃 Goal 状态、停止 wake/inbox/Job 观察、清空 pending input、中止 Agent，并请求 Host 一并等待前台 Agent、活动 session 的后台 Job 与 subagent。之后再释放 wake scheduler 和 listener。
 
 前端先关闭 runtime，再关闭 Host。Host shutdown 会停止新的记忆调度并等待所有 memory scheduler，让 registry 完成 background-job 与 artifact 清理，最后关闭 MCP。Session 替换会在前台与 Job barrier 结束后立即清理该 session 的 artifact store；shutdown 则把 artifact 清理留到更宽的 Host barrier，以免仍持有资源的记忆任务提前失去依赖。
 

@@ -56,13 +56,13 @@ kana auth logout openai-codex
 
 `kana exec` uses the same product composition as the TUI and exits after one complete Agent turn. Human mode writes only the final answer to stdout, while `--json` provides a versioned JSONL event stream. See [Headless execution and the JSONL protocol](headless.md) for non-interactive approval, exit codes, and the complete protocol.
 
-`--clean` applies only to a new TUI or `exec` session; combining it with `resume` or `exec resume` fails at the corresponding frontend startup boundary. It creates a temporary session that exists only in the current process: no session journal, session logger, or accounting record is created, and the session never appears in the resume list. Clean mode does not read global or project `AGENTS.md`, global/project memory, global or project Skills, or MCP definitions and activation state; it does not register `remember`, start memory consolidation, or connect to MCP servers. Kana still loads `<KANA_HOME>/.env` and `config.toml`, retaining the current provider/model, Agent runtime settings, tool selection, OAuth credentials, approval rules, and notifications. Selected core file/Shell tools, `todo_write`, and the TUI's in-process `schedule_wake` remain available when their corresponding tools are selected. `/todo` shows the temporary session's current todo state; `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable in the TUI. `/model` validates and switches the current Agent without writing `config.toml`. Clean mode is not a file/process sandbox: built-in tools, providers, approval flows, and authentication flows can still produce their normal external side effects.
+`--clean` applies only to a new TUI or `exec` session; combining it with `resume` or `exec resume` fails at the corresponding frontend startup boundary. It creates a temporary session that exists only in the current process: no session journal, session logger, or accounting record is created, and the session never appears in the resume list. Clean mode does not read global or project `AGENTS.md`, global/project memory, global or project Skills, user subagent cards, or MCP definitions and activation state; it does not register `remember`, start memory consolidation, or connect to MCP servers. Kana still loads `<KANA_HOME>/.env` and `config.toml`, retaining the current provider/model, Agent runtime settings, tool selection, OAuth credentials, approval rules, and notifications. Selected core file/Shell tools, `todo_write`, the built-in subagent profiles, and the TUI's in-process `schedule_wake` remain available when their corresponding tools are selected. Clean-mode child state stays in memory. `/todo` shows the temporary session's current todo state; `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable in the TUI. `/model` validates and switches the current Agent without writing `config.toml`. Clean mode is not a file/process sandbox: built-in tools, providers, approval flows, and authentication flows can still produce their normal external side effects.
 
-`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml` and `providers/custom.example.toml` are Kana-managed generated references: install compares them with the current schema and creates or refreshes them only when missing or stale. Runtime never reads either example, so copy only fields being overridden into `config.toml` and copy the Custom example to `providers/custom.toml` before editing it. Install neither installs the Skills repository nor creates `~/.kana/AGENTS.md`.
+`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml`, `providers/custom.example.toml`, and `agents/profile.md.example` are Kana-managed generated references: install creates their parent directories, compares them with the current schema, and creates or refreshes them only when missing or stale. Runtime ignores these examples. Copy only fields being overridden into `config.toml`, copy the Custom example to `providers/custom.toml` before editing it, and copy or rename the subagent example to an `agents/<profile-name>.md` file before use. Install never overwrites a real user profile, installs the Skills repository, or creates `~/.kana/AGENTS.md`.
 
 `kana update --check` reads version metadata for GitHub's latest stable Release without downloading or modifying the binary. `kana update` selects the asset for the current operating system and architecture, verifies its reported size and SHA-256 digest, and runs both `--version` and the idempotent `kana install` through the candidate binary. Only after the candidate version, support-file initialization, and current executable identity all pass validation does a same-directory temporary file atomically replace the executable. Failure removes the temporary file and preserves the original binary; Kana also refuses to overwrite a target replaced by another installer while the download was in flight. Updating supports macOS/Linux on arm64 and x64, inherits Bun `fetch` handling of `HTTP_PROXY`/`HTTPS_PROXY`, and requires a writable installation directory. Source run directly through Bun has no direct-distribution build marker and therefore refuses self-update; standalone binaries built by `scripts/install.sh`, `bun run build:cli`, and the Release workflow include that marker.
 
-`kana reset` restores the main runtime configuration to its defaults. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `providers/custom.toml`, `providers/custom.example.toml`, `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, user themes, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
+`kana reset` restores the main runtime configuration to its defaults. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `providers/custom.toml`, generated provider/subagent examples, `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, user subagent cards, user themes, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. `kana skills install` clones it when absent and runs `git pull --ff-only` for an existing Git checkout. An existing non-Git directory fails with a prompt to use `kana skills reinstall`. After confirmation, reinstall deletes only the complete default repository directory and clones it again, preserving the sibling `skills.toml` and all other installed Skills. Non-interactive use requires `--yes`.
 
@@ -85,6 +85,9 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── oauth-tokens.json       # OAuth credentials created after browser authorization
 ├── approvals.json          # bash trust rules
 ├── AGENTS.md               # Optional global system instructions; not created by install
+├── agents/
+│   ├── profile.md.example  # Install-generated subagent profile reference; never loaded
+│   └── <name>.md           # Optional user-defined subagent role card
 ├── sessions/               # Workspace-grouped JSONL sessions
 ├── artifacts/              # Workspace- and session-scoped oversized tool output
 ├── logs/                   # Workspace- and session-grouped runtime JSONL logs
@@ -119,7 +122,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","todo_write","remember","schedule_wake"]
+tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -138,6 +141,9 @@ name = "deepseek-v4-pro"
 
 [agent.background_jobs]
 max_concurrent = 4
+
+[agent.subagents]
+max_live = 4
 
 [agent.repeated_tool_calls]
 reminder_thresholds = [3,5,8]
@@ -231,6 +237,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 | `agent.max_parallel_tool_calls` | Positive integer | `4` | Maximum concurrently executing tool bodies within one adjacent parallel-safe group. |
 | `agent.tool_result_artifacts` | Boolean | `true` | Save oversized non-`read` text results as private session artifacts and give the model a bounded retrievable preview. |
 | `agent.background_jobs.max_concurrent` | Positive integer | `4` | Maximum active Background Jobs owned by one session instance. Retained terminal Jobs do not count toward the limit. |
+| `agent.subagents.max_live` | Positive integer | `4` | Maximum running subagents owned by one session instance. Retained terminal children do not count toward the limit. |
 | `agent.repeated_tool_calls.reminder_thresholds` | Strictly increasing integer array; every value is at least 2 | `[3,5,8]` | Consecutive exact-call counts at which the Agent adds escalating advisory context. An empty array disables the policy. |
 | `agent.repeated_tool_calls.excluded_tools` | Unique, non-empty, trimmed tool-name array | `[]` | Tools ignored transparently by repeated-call tracking; excluded calls neither advance nor reset a streak. |
 | `approval.mode` | `always`, `unless_trusted`, `never` | `unless_trusted` | Whether tool calls enter the TUI approval flow. |
@@ -250,7 +257,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 
 `parallel_tool_calls` is effective only when both user policy and model metadata allow it. The repeated-call, tool-result artifact, concurrency, deadline, and Background Job fields configure behavior owned by [Tools and execution](tools.md). Context limits and compaction budgets are interpreted by [Agent runtime](agent-runtime.md).
 
-`agent.tools` is also constrained by runtime capabilities. Selecting `view_image`, `remember`, `schedule_wake`, or a `job_*` tool does not enable its underlying image, memory, scheduling, or Background Job capability when that capability is otherwise unavailable. The selection controls only the Agent tool surface; commands such as `/jobs`, `/schedule`, and `/todo` continue to operate through the TUI's direct session controls.
+`agent.tools` is also constrained by runtime capabilities. Selecting `view_image`, `remember`, `schedule_wake`, a `job_*`, or a `*_subagent` tool does not enable its underlying capability when that capability is otherwise unavailable. The selection controls only the Agent tool surface; commands such as `/agents`, `/jobs`, `/schedule`, and `/todo` continue to operate through the TUI's direct session controls. Role-card configuration is documented in [Subagents](subagents.md).
 
 TUI option fields remain canonical in the table above. Their interaction semantics belong to [TUI interaction](tui.md), while hyperlinks, LaTeX, Mermaid, width, and repaint behavior belong to [Terminal rendering](terminal-rendering.md). Memory retention and runtime-log persistence belong to [Sessions and memory](sessions-and-memory.md).
 

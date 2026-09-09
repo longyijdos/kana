@@ -12,6 +12,7 @@ import {
   type KanaGoalSnapshot,
 } from "@/kana";
 import type { Tool } from "@/tools";
+import { KanaSubagentManager, type KanaSubagentProfile } from "../../src/kana/subagents";
 
 const tempDirs: string[] = [];
 
@@ -29,6 +30,15 @@ describe("Kana Agent tools", () => {
       backgroundJobManager.createOwner("session-1"),
       { maxConcurrent: 4 },
     );
+    const subagentManager = new KanaSubagentManager();
+    const subagents = subagentManager.bind(
+      subagentManager.createOwner({
+        sessionId: "session-1",
+        cwd: process.cwd(),
+        persistent: false,
+      }),
+      { maxLive: 4 },
+    );
     const externalTool = createTool("github_create_issue");
 
     try {
@@ -39,6 +49,9 @@ describe("Kana Agent tools", () => {
           backgroundJobs,
           wakeScheduler,
           sessionId: "session-1",
+          subagents,
+          resolveSubagentProfiles: () => [subagentProfile()],
+          runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
           resolveGoal: () => goal,
           updateGoal: (change) => ({ ...goal, status: change.status }),
         }),
@@ -63,6 +76,45 @@ describe("Kana Agent tools", () => {
     expect(enabled.state.tools.some((tool) => tool.name === "view_image")).toBe(true);
     expect(disabledByConfig.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
     expect(unsupportedModel.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
+  });
+
+  test("advertises each subagent profile's effective tools", () => {
+    const config = testConfig();
+    const subagentManager = new KanaSubagentManager();
+    const subagents = subagentManager.bind(
+      subagentManager.createOwner({
+        sessionId: "session-1",
+        cwd: process.cwd(),
+        persistent: false,
+      }),
+      { maxLive: 4 },
+    );
+    const profile: KanaSubagentProfile = {
+      ...subagentProfile(),
+      tools: ["read", "view_image", "bash", "github_create_issue"],
+    };
+    const agent = withKanaAgentEnvironment(() =>
+      createKanaAgent(
+        {
+          ...config.agent,
+          tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent"],
+        },
+        {
+          providers: config.provider,
+          memoryEnabled: config.memory.enabled,
+        },
+        {
+          additionalTools: [createTool("github_create_issue")],
+          subagents,
+          resolveSubagentProfiles: () => [profile],
+          runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
+        },
+      ),
+    );
+
+    expect(agent.state.tools.find((tool) => tool.name === "spawn_subagent")?.description).toContain(
+      "- explorer: Explore the repository Available tools: read, github_create_issue.",
+    );
   });
 
   test("filters configurable built-in tools without affecting external tools or update_goal", async () => {
@@ -169,6 +221,31 @@ describe("Kana Agent tools", () => {
       wakeScheduler.dispose();
     }
   });
+
+  test("restricts a child to its role-card tools and excludes orchestration tools", () => {
+    const profile: KanaSubagentProfile = {
+      ...subagentProfile(),
+      instructions: "Inspect only and report evidence.",
+      tools: [
+        "read",
+        "job_start",
+        "todo_write",
+        "remember",
+        "schedule_wake",
+        "spawn_subagent",
+        "github_create_issue",
+      ],
+    };
+    const agent = withKanaAgentEnvironment(() =>
+      createAgentForTest(testConfig(), {
+        subagentProfile: profile,
+        additionalTools: [createTool("github_create_issue"), createTool("slack_send")],
+      }),
+    );
+
+    expect(agent.state.tools.map((tool) => tool.name)).toEqual(["read", "github_create_issue"]);
+    expect(agent.state.system).toBe("Inspect only and report evidence.");
+  });
 });
 
 function createTool(name: string): Tool {
@@ -188,6 +265,17 @@ function createGoal(status: KanaGoalSnapshot["status"]): KanaGoalSnapshot {
     admittedRounds: 1,
     maxRounds: 8,
     startedAt: new Date("2026-08-24T00:00:00.000Z"),
+  };
+}
+
+function subagentProfile(): KanaSubagentProfile {
+  return {
+    name: "explorer",
+    description: "Explore the repository",
+    instructions: "Inspect only.",
+    tools: ["read"],
+    source: "builtin",
+    digest: "profile-digest",
   };
 }
 

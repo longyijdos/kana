@@ -101,12 +101,15 @@ The live structured result remains available to `tool_execution_end`. Oversized,
 | `job_list` | None | Lists active and up to 32 recent terminal Jobs for the current session and acknowledges listed terminal completions. |
 | `job_output` | `jobId`, optional `waitMs` | Consumes all currently unread retained output from the Agent cursor and reports dropped bytes. |
 | `job_kill` | `jobId`, optional `reason` | Stops an owned Job and waits for its process group to settle. |
+| `spawn_subagent` | `profile`, `task` | Starts a predefined session-owned child and immediately returns its Agent ID. |
+| `wait_subagent` | `agentId`, optional `timeoutMs` | Reads or briefly waits for an owned child's state and final output. |
+| `cancel_subagent` | `agentId`, optional `reason` | Cancels an owned child and waits for settlement. |
 | `todo_write` | Complete todo-item array | Atomically replaces or explicitly clears the session todo state. |
 | `remember` | `content`; optional scope/title/reason | Appends a durable-memory staging entry when memory is enabled. |
 | `schedule_wake` | `afterMinutes`, `message`, optional `key` | Creates a process-local future input for the active session. |
 | `update_goal` | `status`, optional `detail` | Ends the authorized active Goal as completed or blocked. |
 
-`list`, `glob`, `grep`, `read`, and `view_image` declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
+`list`, `glob`, `grep`, `read`, `view_image`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
 
 ## File and shell boundaries
 
@@ -128,6 +131,8 @@ The generic manager is independent of Kana Agent construction. An owner binds Jo
 
 Kana projects active or unreported Job identity, bounded label, cwd, state, and exit code into runtime context—never output. Completion steering, queued-run delivery, acknowledgement, and session-change ordering belong to [Conversation runtime](conversation-runtime.md).
 
+Subagent control tools expose only predefined role cards and return stable child IDs. Their capability intersection, asynchronous lifecycle, persistence, and TUI behavior belong to [Subagents](subagents.md).
+
 ## Kana-owned state tools
 
 `todo_write` trims every item, rejects blank or duplicate content and unknown fields, allows at most one `in_progress` item, and never partially mutates state after validation failure. The complete accepted list belongs to the current session; only an explicit empty array clears it. The latest state is reprojected after compaction, resume, and fork, while the tool result remains a compact fixed acknowledgement. Its journal representation belongs to [Sessions and memory](sessions-and-memory.md).
@@ -136,7 +141,7 @@ Kana projects active or unreported Job identity, bounded label, cwd, state, and 
 
 `schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. It and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `todo_write`, `remember`, `schedule_wake`, or `update_goal`. Other calls follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Bash allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, or `update_goal`. Other calls follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Bash allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
 
 ## External and custom tools
 

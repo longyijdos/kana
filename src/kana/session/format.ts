@@ -10,6 +10,7 @@ import {
   type ModelUsage,
   type UserMessage,
 } from "@/core";
+import type { KanaSubagentProfile } from "../subagents/profiles";
 import { isKanaTodoItems, type KanaTodoItem } from "../todo";
 
 export const SESSION_VERSION = 5;
@@ -27,6 +28,13 @@ export type KanaSessionMetadata = {
   path: string;
   model?: KanaSessionModelMetadata;
   parentSessionPath?: string;
+  subagent?: KanaSubagentSessionIdentity;
+};
+
+type KanaSubagentSessionIdentity = {
+  parentSessionId: string;
+  spawnToolCallId: string;
+  profile: KanaSubagentProfile;
 };
 
 export type KanaSessionHeader = {
@@ -38,6 +46,7 @@ export type KanaSessionHeader = {
   cwd: string;
   model?: KanaSessionModelMetadata;
   parentSessionPath?: string;
+  subagent?: KanaSubagentSessionIdentity;
 };
 
 type KanaSessionTurnKind = "agent" | "snapshot";
@@ -110,6 +119,7 @@ export type CreateKanaSessionOptions = {
   title?: string;
   model?: KanaSessionModelMetadata;
   parentSessionPath?: string;
+  subagent?: KanaSubagentSessionIdentity;
 };
 
 export type FindKanaSessionOptions = {
@@ -159,6 +169,7 @@ export function headerToMetadata(header: KanaSessionHeader, filePath: string): K
     path: filePath,
     model: header.model,
     parentSessionPath: header.parentSessionPath,
+    subagent: header.subagent,
   };
 }
 
@@ -172,6 +183,7 @@ export function metadataToHeader(metadata: KanaSessionMetadata): KanaSessionHead
     cwd: metadata.cwd,
     model: metadata.model,
     parentSessionPath: metadata.parentSessionPath,
+    subagent: metadata.subagent,
   };
 }
 
@@ -304,8 +316,47 @@ export function parseHeader(line: string, filePath: string): KanaSessionHeader {
   if (parsed.parentSessionPath !== undefined && typeof parsed.parentSessionPath !== "string") {
     throw new Error(`Invalid Kana session parent path: ${filePath}`);
   }
+  if (parsed.subagent !== undefined && !isSubagentSessionIdentity(parsed.subagent)) {
+    throw new Error(`Invalid Kana subagent session identity: ${filePath}`);
+  }
 
   return parsed as KanaSessionHeader;
+}
+
+function isSubagentSessionIdentity(value: unknown): value is KanaSubagentSessionIdentity {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const identity = value as Record<string, unknown>;
+  return (
+    typeof identity.parentSessionId === "string" &&
+    identity.parentSessionId.length > 0 &&
+    typeof identity.spawnToolCallId === "string" &&
+    identity.spawnToolCallId.length > 0 &&
+    isSubagentProfile(identity.profile)
+  );
+}
+
+function isSubagentProfile(value: unknown): value is KanaSubagentProfile {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const profile = value as Record<string, unknown>;
+  const model = profile.model;
+  return (
+    typeof profile.name === "string" &&
+    typeof profile.description === "string" &&
+    typeof profile.instructions === "string" &&
+    Array.isArray(profile.tools) &&
+    profile.tools.every((tool) => typeof tool === "string") &&
+    (profile.source === "builtin" || profile.source === "user") &&
+    (profile.sourcePath === undefined || typeof profile.sourcePath === "string") &&
+    typeof profile.digest === "string" &&
+    (model === undefined ||
+      (typeof model === "object" &&
+        model !== null &&
+        !Array.isArray(model) &&
+        typeof (model as Record<string, unknown>).provider === "string" &&
+        typeof (model as Record<string, unknown>).name === "string" &&
+        ((model as Record<string, unknown>).reasoningEffort === undefined ||
+          typeof (model as Record<string, unknown>).reasoningEffort === "string")))
+  );
 }
 
 export function parseTimelineEntry(
@@ -372,6 +423,7 @@ function findFirstPrompt(messages: Message[]): string | undefined {
       message.role === "user" &&
       message.provenance.kind !== "goal_continuation" &&
       message.provenance.kind !== "job_completion" &&
+      message.provenance.kind !== "subagent_completion" &&
       message.provenance.kind !== "recovery" &&
       message.provenance.kind !== "tool_result_policy" &&
       message.provenance.kind !== "runtime_context",
@@ -532,6 +584,7 @@ function isUserMessageProvenance(value: unknown): boolean {
     kind === "scheduled_input" ||
     kind === "goal_continuation" ||
     kind === "job_completion" ||
+    kind === "subagent_completion" ||
     kind === "recovery" ||
     kind === "tool_result_policy" ||
     kind === "runtime_context" ||
@@ -568,6 +621,9 @@ function isMessageProvenance(value: unknown): value is MessageProvenance {
   }
   if (provenance.kind === "job_completion") {
     return typeof provenance.jobId === "string" && provenance.jobId.length > 0;
+  }
+  if (provenance.kind === "subagent_completion") {
+    return typeof provenance.agentId === "string" && provenance.agentId.length > 0;
   }
   if (provenance.kind === "runtime_context" || provenance.kind === "tool_result_policy") {
     return typeof provenance.source === "string" && provenance.source.length > 0;

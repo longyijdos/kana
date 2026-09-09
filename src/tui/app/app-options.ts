@@ -9,6 +9,7 @@ import type {
   KanaNotificationConfig,
   KanaOAuthTokenStatus,
   KanaSessionMetadata,
+  KanaSubagentClient,
   KanaTodoItem,
   KanaToolApprovalConfig,
   KanaToolApprovals,
@@ -16,6 +17,7 @@ import type {
   KanaUsageScope,
   KanaUsageSummary,
   LoadKanaSkillActivationsResult,
+  LoadKanaSubagentProfilesResult,
   WakeScheduler,
 } from "@/kana";
 import type { Logger } from "@/logging";
@@ -39,6 +41,8 @@ type KanaTuiConversationCapabilities = {
   goalMaxRounds: number;
   wakeScheduler?: WakeScheduler;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
+  getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
+  loadSubagentProfiles?: () => LoadKanaSubagentProfilesResult;
   disposeSession?: (
     sessionId: string,
     source: "session_disposal" | "shutdown",

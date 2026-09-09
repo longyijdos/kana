@@ -16,20 +16,21 @@ TUI / Headless
   → KanaConversationHost
       ├→ HostedSessionRegistry
       ├→ Agent product factory
+      ├→ subagent product factory
       ├→ configuration and approvals
       ├→ memory consolidation
       └→ MCP runtime
 ```
 
-`KanaConversationHost` is the product composition boundary. It loads runtime configuration and approval state, initializes the selected session, owns the shared wake scheduler and MCP runtime, and creates every main Agent with the current model, prompt, built-in tools, external tools, logger, journal, artifact store, background-job client, todo state, and memory callbacks. It returns frontend-neutral operations and data; it does not render TUI components or project headless output.
+`KanaConversationHost` is the product composition boundary. It loads runtime configuration and approval state, initializes the selected session, owns the shared wake scheduler and MCP runtime, and creates every main Agent with the current model, prompt, built-in tools, external tools, logger, journal, artifact store, background-job client, subagent client, todo state, and memory callbacks. It also constructs one-shot child Agents from validated role cards. It returns frontend-neutral operations and data; it does not render TUI components or project headless output. The delegated contract belongs to [Subagents](subagents.md).
 
-`HostedSessionRegistry` owns the live resources associated with each session instance. A hosted record binds the session's in-memory mirror, optional journal, logger, artifact store, background-job client, and pending fork snapshot. `ConversationRuntime` selects and executes against those resources through host callbacks rather than opening storage or background processes itself.
+`HostedSessionRegistry` owns the live resources associated with each session instance. A hosted record binds the session's in-memory mirror, optional journal, logger, artifact store, background-job client, subagent client, and pending fork snapshot. `ConversationRuntime` selects and executes against those resources through host callbacks rather than opening storage or background processes itself.
 
-`ConversationRuntime` owns the current Agent and session snapshot. `ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, and background-job completions, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
+`ConversationRuntime` owns the current Agent and session snapshot. `ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, background-job completions, and subagent settlements, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
 
 ## Run lifecycle and events
 
-A runtime run has one source: `user`, `scheduled`, `goal`, `job`, or `compaction`. The runtime rejects a new run, session transition, or Agent reconfiguration while another run or transition is active. It publishes cloned events so listeners cannot mutate internal state:
+A runtime run has one source: `user`, `scheduled`, `goal`, `job`, `subagent`, or `compaction`. The runtime rejects a new run, session transition, or Agent reconfiguration while another run or transition is active. It publishes cloned events so listeners cannot mutate internal state:
 
 ```text
 run_start
@@ -77,6 +78,10 @@ Each hosted session receives a bound `BackgroundJobClient`. Completion delivery 
 
 Observing a terminal Job through an Agent Job tool acknowledges it and cancels any still-pending completion message with the same Job ID. TUI Job management uses a separate non-consuming view and does not acknowledge completion. Ordinary Job output does not wake the Agent. The execution and retention behavior of Jobs belongs to [Tools and execution](tools.md).
 
+## Subagent completion
+
+Subagent settlement follows the same delivery lanes and ordering as Background Jobs. The notification contains only the child ID, profile, and terminal status; `wait_subagent` remains the result-consumption boundary. A terminal wait or tool-driven cancellation acknowledges the child and removes a pending notification, while `/agents` inspection and TUI cancellation do not. Adjacent Subagent notifications at the front of `next-turn` are submitted together without crossing other input kinds.
+
 ## Goals
 
 A Goal is process-local control state, not session history. Starting one validates the objective, snapshots the configured positive `goal_max_rounds`, creates the first ordinary user run, and exposes the active Goal through runtime context. The model can finish it through `update_goal` as `completed` or `blocked`.
@@ -92,7 +97,7 @@ Agent replacement and session replacement are separate operations:
 - Reconfiguration keeps the current session, messages, context checkpoint, and Agent inbox. It builds the candidate Agent before replacing the old one and discards active Goal control state.
 - New, fork, and resume create or load a candidate session and build its Agent before mutating current runtime state. Construction failure leaves the current Agent and session usable.
 
-During a session transition, the coordinator closes its drain gate and pauses background-job observation. The runtime asks the host to dispose the previous session with the foreground Agent's `waitForIdle()` promise as a settlement barrier. Only after disposal succeeds does it cancel the previous session's wakes and inbox, adopt the new session and Agent, attach the new Job client, publish `session_changed`, and reopen queue observation.
+During a session transition, the coordinator closes its drain gate and pauses background-job observation. The runtime asks the host to dispose the previous session with the foreground Agent's `waitForIdle()` promise as a settlement barrier; the hosted registry also cancels and settles that session instance's Jobs and subagents. Only after disposal succeeds does it cancel the previous session's wakes and inbox, adopt the new session and Agent, attach the new Job client, publish `session_changed`, and reopen queue observation.
 
 Fork supplies the current messages and context checkpoint to the host; resume receives committed messages, timeline, checkpoint, and todo state. Their durable formats and recovery rules belong to [Sessions and memory](sessions-and-memory.md).
 
@@ -100,7 +105,7 @@ Fork supplies the current messages and context checkpoint to the host; resume re
 
 Normal and clean launch modes use the same runtime types. In clean mode the host registers an ordinary in-process session identity with no journal, a no-op logger, and a temporary artifact store. It does not create memory consolidation or activate MCP, and model changes update only validated in-process configuration. The user-visible capability matrix belongs to [Configuration and installation](configuration.md).
 
-`ConversationRuntime.close()` is idempotent. It prevents new work, discards Goal state, stops wake/inbox/Job observation, clears pending input, aborts the Agent, and asks the host to settle the foreground Agent together with the active session's background Jobs. It then disposes the wake scheduler and listeners.
+`ConversationRuntime.close()` is idempotent. It prevents new work, discards Goal state, stops wake/inbox/Job observation, clears pending input, aborts the Agent, and asks the host to settle the foreground Agent together with the active session's background Jobs and subagents. It then disposes the wake scheduler and listeners.
 
 The frontend closes the runtime before closing the host. Host shutdown stops new memory scheduling and waits for every memory scheduler, lets the registry finish background-job and artifact cleanup, and finally closes MCP. A session replacement cleans that session's artifact store immediately after its foreground and Job barrier; shutdown retains artifact cleanup until the broader host barrier so memory work cannot lose resources it still owns.
 

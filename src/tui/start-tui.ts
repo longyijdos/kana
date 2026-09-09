@@ -147,6 +147,8 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         goalMaxRounds: host.config.agent.goalMaxRounds,
         wakeScheduler: host.wakeScheduler,
         getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
+        getSubagents: (sessionId) => host.getSubagents(sessionId),
+        loadSubagentProfiles: () => host.loadSubagentProfiles(),
         disposeSession: (sessionId, source, foregroundSettled) =>
           host.disposeSession(sessionId, source, foregroundSettled),
       },

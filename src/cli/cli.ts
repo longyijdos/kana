@@ -185,6 +185,13 @@ export function createCli(options: CreateCliOptions): Command {
       );
       log(
         formatInstallMessage(
+          "subagent profile example",
+          result.subagentProfileExamplePath,
+          result.subagentProfileExampleStatus,
+        ),
+      );
+      log(
+        formatInstallMessage(
           "Custom provider example",
           result.customProviderExamplePath,
           result.customProviderExampleStatus,

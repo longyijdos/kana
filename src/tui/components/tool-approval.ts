@@ -9,6 +9,7 @@ export type ToolApprovalDecision = "yes" | "always" | "no";
 export type ToolApprovalOptions = {
   allowAlways?: boolean;
   source?: ToolApprovalSource;
+  requesterLabel?: string;
 };
 
 export class ToolApproval implements Component {
@@ -22,7 +23,7 @@ export class ToolApproval implements Component {
     const text = formatToolApproval(toolCall, options.source);
 
     this.prompt = new ChoicePrompt({
-      title: text.title,
+      title: options.requesterLabel ? `${text.title} · ${options.requesterLabel}` : text.title,
       detail: text.detail,
       options: createOptions(options),
       defaultValue: "yes",

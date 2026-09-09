@@ -9,6 +9,7 @@ import type { Message, MessageId, UserMessage } from "@/core";
 import type { BackgroundJobClient } from "@/jobs";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
+import type { KanaSubagentClient } from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import {
@@ -89,8 +90,19 @@ export type ConversationRuntimeEvent =
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
 
+export type ConversationAgentIdentity = {
+  id: string;
+  label: string;
+  kind: "main" | "subagent";
+};
+
+type ConversationBeforeToolExecutionHook = (
+  request: Parameters<BeforeToolExecutionHook>[0] & { agent: ConversationAgentIdentity },
+) => ReturnType<BeforeToolExecutionHook>;
+
 type CreateConversationAgentOptions<TConfiguration> = {
   beforeToolExecution: BeforeToolExecutionHook;
+  bindBeforeToolExecution: (agent: ConversationAgentIdentity) => BeforeToolExecutionHook;
   messages?: Message[];
   inbox?: AgentInboxSnapshot;
   sessionId?: string;
@@ -114,12 +126,14 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   listSessions?: () => KanaSessionMetadata[];
   deleteSession?: (sessionId: string) => Promise<boolean> | boolean;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
+  getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
   disposeSession?: (
     sessionId: string,
     source: "session_disposal" | "shutdown",
     foregroundSettled: Promise<void>,
   ) => Promise<void>;
   backgroundJobCompletionRuns?: boolean;
+  subagentCompletionRuns?: boolean;
   wakeScheduler?: WakeScheduler;
   scheduledRuns?: boolean;
   canStartQueuedRun?: () => boolean;
@@ -133,7 +147,7 @@ export class ConversationRuntime<TConfiguration = never> {
   private readonly inputCoordinator: ConversationInputCoordinator;
   private agent: Agent;
   private sessionData?: ConversationSessionSnapshot;
-  private beforeToolExecution?: BeforeToolExecutionHook;
+  private beforeToolExecution?: ConversationBeforeToolExecutionHook;
   private activeSource?: ConversationRunSource;
   private activeRunGoalId?: string;
   private terminalEvent?: Extract<AgentEvent, { type: "agent_end" }>;
@@ -149,7 +163,9 @@ export class ConversationRuntime<TConfiguration = never> {
       goalMaxRounds: options.goalMaxRounds,
       scheduledRuns: options.scheduledRuns,
       backgroundJobCompletionRuns: options.backgroundJobCompletionRuns,
+      subagentCompletionRuns: options.subagentCompletionRuns,
       getBackgroundJobs: options.getBackgroundJobs,
+      getSubagents: options.getSubagents,
       isRunActive: () => this.isRunning,
       canSteer: () => this.canSteer,
       canStartQueuedRun: options.canStartQueuedRun,
@@ -216,7 +232,7 @@ export class ConversationRuntime<TConfiguration = never> {
     return this.inputCoordinator.queue;
   }
 
-  setBeforeToolExecution(hook: BeforeToolExecutionHook): void {
+  setBeforeToolExecution(hook: ConversationBeforeToolExecutionHook): void {
     this.beforeToolExecution = hook;
   }
 
@@ -365,6 +381,7 @@ export class ConversationRuntime<TConfiguration = never> {
   private async closeInternal(): Promise<void> {
     this.stopping = true;
     const backgroundJobs = this.inputCoordinator.backgroundJobClient;
+    const subagents = this.inputCoordinator.subagentClient;
     this.inputCoordinator.prepareForShutdown();
     this.agent.abort();
     await this.disposeHostedSession(
@@ -372,6 +389,7 @@ export class ConversationRuntime<TConfiguration = never> {
       "shutdown",
       this.agent.waitForIdle(),
       backgroundJobs,
+      subagents,
     );
     this.inputCoordinator.finishShutdown();
     this.listeners.clear();
@@ -385,13 +403,22 @@ export class ConversationRuntime<TConfiguration = never> {
     sessionId = this.sessionData?.id,
     inbox?: AgentInboxSnapshot,
   ): Agent {
-    return this.options.createAgent({
-      beforeToolExecution: (request) =>
-        this.beforeToolExecution?.(request) ?? {
+    const bindBeforeToolExecution =
+      (agent: ConversationAgentIdentity): BeforeToolExecutionHook =>
+      (request) =>
+        this.beforeToolExecution?.({ ...request, agent }) ?? {
           type: "cancel",
           abortRun: true,
           message: "Tool approval is unavailable.",
-        },
+        };
+    const mainAgent = {
+      id: sessionId === undefined ? "main:temporary" : `main:${sessionId}`,
+      label: "main",
+      kind: "main",
+    } satisfies ConversationAgentIdentity;
+    return this.options.createAgent({
+      beforeToolExecution: bindBeforeToolExecution(mainAgent),
+      bindBeforeToolExecution,
       messages,
       inbox,
       sessionId,
@@ -454,6 +481,7 @@ export class ConversationRuntime<TConfiguration = never> {
     );
     const previousAgent = this.agent;
     const previousJobs = this.inputCoordinator.backgroundJobClient;
+    const previousSubagents = this.inputCoordinator.subagentClient;
     const previousSessionId = this.sessionData?.id;
     this.changingSession = true;
     this.inputCoordinator.beginSessionChange();
@@ -463,6 +491,7 @@ export class ConversationRuntime<TConfiguration = never> {
         "session_disposal",
         previousAgent.waitForIdle(),
         previousJobs,
+        previousSubagents,
       );
     } catch (error) {
       this.inputCoordinator.cancelSessionChange();
@@ -477,6 +506,7 @@ export class ConversationRuntime<TConfiguration = never> {
         "shutdown",
         nextAgent.waitForIdle(),
         this.options.getBackgroundJobs?.(nextSession.id),
+        this.options.getSubagents?.(nextSession.id),
       );
       throw new Error("Conversation runtime stopped while changing sessions.");
     }
@@ -499,12 +529,17 @@ export class ConversationRuntime<TConfiguration = never> {
     source: "session_disposal" | "shutdown",
     foregroundSettled: Promise<void>,
     backgroundJobs: BackgroundJobClient | undefined,
+    subagents: KanaSubagentClient | undefined,
   ): Promise<void> {
     if (sessionId !== undefined && this.options.disposeSession) {
       await this.options.disposeSession(sessionId, source, foregroundSettled);
       return;
     }
-    await Promise.all([foregroundSettled, backgroundJobs?.close(source) ?? Promise.resolve()]);
+    await Promise.all([
+      foregroundSettled,
+      backgroundJobs?.close(source) ?? Promise.resolve(),
+      subagents?.close(source) ?? Promise.resolve(),
+    ]);
   }
 
   private async executeRun(

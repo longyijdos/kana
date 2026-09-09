@@ -20,7 +20,10 @@ export function shouldRequestToolApproval(
     toolCall.name === "remember" ||
     toolCall.name === "schedule_wake" ||
     toolCall.name === "todo_write" ||
-    toolCall.name === "update_goal"
+    toolCall.name === "update_goal" ||
+    toolCall.name === "spawn_subagent" ||
+    toolCall.name === "wait_subagent" ||
+    toolCall.name === "cancel_subagent"
   ) {
     return false;
   }

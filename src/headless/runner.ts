@@ -97,7 +97,7 @@ export async function runHeadlessConversation(
 
 export function createHeadlessRuntime(
   host: ReturnType<typeof createKanaConversationHost>,
-  backgroundJobCompletionRuns: boolean,
+  backgroundCompletionRuns: boolean,
 ): ConversationRuntime {
   return new ConversationRuntime({
     initialSession: host.initialSession
@@ -126,9 +126,11 @@ export function createHeadlessRuntime(
     wakeScheduler: host.wakeScheduler,
     goalMaxRounds: host.config.agent.goalMaxRounds,
     getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
+    getSubagents: (sessionId) => host.getSubagents(sessionId),
     disposeSession: (sessionId, source, foregroundSettled) =>
       host.disposeSession(sessionId, source, foregroundSettled),
-    backgroundJobCompletionRuns,
+    backgroundJobCompletionRuns: backgroundCompletionRuns,
+    subagentCompletionRuns: backgroundCompletionRuns,
     scheduledRuns: false,
     getLogger: () => host.getLogger(),
   });

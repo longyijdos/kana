@@ -40,6 +40,10 @@ type KanaBackgroundJobsConfig = {
   maxConcurrent: number;
 };
 
+type KanaSubagentsConfig = {
+  maxLive: number;
+};
+
 export type KanaAgentRuntimeConfig = {
   webSearch: boolean;
   imageInput: boolean;
@@ -55,6 +59,7 @@ export type KanaAgentConfig = KanaAgentRuntimeConfig & {
   goalMaxRounds: number;
   toolResultArtifacts: boolean;
   backgroundJobs: KanaBackgroundJobsConfig;
+  subagents: KanaSubagentsConfig;
   repeatedToolCalls: KanaRepeatedToolCallsConfig;
 };
 
