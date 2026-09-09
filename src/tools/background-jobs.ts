@@ -63,7 +63,7 @@ export function createJobOutputTool(
   return {
     name: "job_output",
     description:
-      "Read all currently unseen retained output from a Background Job. Repeated calls continue from the session's Agent cursor. Wait only when new output or completion is expected; otherwise do not repeatedly poll a running Job.",
+      "Read all currently unseen retained output from a Background Job. Repeated calls continue from the session's Agent cursor. Completed Jobs notify the parent Agent automatically, so do not repeatedly poll a running Job solely to detect completion. Use waitMs only when explicitly blocking for new output or a result is useful.",
     parameters: jobOutputParameters,
     execution: { concurrency: "parallel", deadlineMs: MAX_WAIT_MS + 1_000 },
     execute: async (args, context) => {

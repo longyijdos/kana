@@ -62,6 +62,7 @@ export function createSpawnSubagentTool(
     name: "spawn_subagent",
     description: [
       "Start one configured, session-owned one-shot subagent and return immediately with its stable ID.",
+      "The child continues independently after this call returns. Completion is delivered back to the parent Agent automatically; do not poll wait_subagent solely to detect completion.",
       "The child receives only its profile instructions and the task argument, so make the task self-contained.",
       "Choose only from these profiles:",
       ...options.profiles.map((profile) => {
@@ -97,7 +98,7 @@ export function createWaitSubagentTool(subagents: KanaSubagentClient): Tool<type
   return {
     name: "wait_subagent",
     description:
-      "Read a subagent's current or terminal result, optionally waiting for a bounded time. A timeout does not cancel the subagent.",
+      "Read a subagent's current or terminal result, optionally waiting for a bounded time. Completed subagents notify the parent Agent automatically, so normally wait for that notification instead of repeatedly polling a running subagent. Use timeoutMs only when explicitly blocking for a result is useful. A timeout does not cancel the subagent.",
     parameters: waitParameters,
     execution: { concurrency: "parallel", deadlineMs: MAX_WAIT_MS + 1_000 },
     execute: async (args, context) => {

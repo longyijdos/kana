@@ -17,6 +17,8 @@ describe("job_start tool", () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const start = createJobStartTool(jobs, { root });
+    expect(start.description.toLowerCase()).toContain("completion is delivered");
+    expect(start.description.toLowerCase()).toContain("do not poll job_output solely");
     const result = await start.execute(
       {
         command: "printf start; sleep 0.1; printf end",

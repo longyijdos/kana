@@ -1,12 +1,18 @@
 import type { KanaSubagentProfile, KanaSubagentSnapshot, KanaSubagentSummary } from "@/kana";
-import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
+import {
+  color,
+  dim,
+  stripTerminalControlSequences,
+  truncateToWidth,
+  visibleWidth,
+} from "../render";
 import type { Component } from "../runtime";
 import { isDown, isEnter, isEscape, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
 const VISIBLE_LIMIT = 5;
-const RESERVED_ROWS = 10;
+const FIXED_ROWS = 4;
 
 export type SubagentManagerAction =
   | { type: "close" }
@@ -80,30 +86,16 @@ export class SubagentManager implements Component {
   }
 
   render(width: number, availableHeight?: number): string[] {
-    const lines = [color("Agents · profiles and current session runs", tuiTheme.bottomTitle)];
-    lines.push(dim("Profiles"));
-    if (this.profiles.length === 0) {
-      lines.push(dim("  No valid subagent profiles."));
-    } else {
-      for (const profile of this.profiles) {
-        lines.push(
-          truncateToWidth(
-            dim(`  ${profile.name} (${profile.source}) · ${singleLine(profile.description)}`),
-            width,
-            "",
-          ),
-        );
-      }
-    }
+    const lines = [color("Agents · current session", tuiTheme.bottomTitle)];
+    lines.push(dim(renderProfileSummary(this.profiles, width)));
     lines.push(dim("Runs"));
     if (this.subagents.length === 0) {
       lines.push(dim("  No subagent runs for this session."));
     } else {
-      this.viewport.setVisibleLimit(
-        visibleLimitForHeight(VISIBLE_LIMIT, availableHeight, RESERVED_ROWS + this.profiles.length),
-        this.subagents.length,
-      );
-      const window = this.viewport.window(this.subagents.length);
+      const window = this.configureViewport(availableHeight);
+      if (window.hiddenBefore > 0) {
+        lines.push(dim(`... ${window.hiddenBefore} earlier runs`));
+      }
       for (let index = window.start; index < window.end; index += 1) {
         const subagent = this.subagents[index] as KanaSubagentSummary;
         const selected = index === this.viewport.selectedIndex;
@@ -112,7 +104,10 @@ export class SubagentManager implements Component {
           truncateToWidth(color(line, selected ? tuiTheme.user : tuiTheme.muted), width, ""),
         );
       }
-      lines.push(...this.renderPreview(width));
+      if (window.hiddenAfter > 0) {
+        lines.push(dim(`... ${window.hiddenAfter} more runs`));
+      }
+      lines.push(...this.renderPreview(width, availableHeight, lines.length));
     }
     if (this.notice) lines.push(truncateToWidth(dim(this.notice), width, "..."));
     lines.push(dim("Enter transcript · K cancel · R refresh · ↑/↓ select · Esc close"));
@@ -128,15 +123,71 @@ export class SubagentManager implements Component {
     }
   }
 
-  private renderPreview(width: number): string[] {
+  private configureViewport(availableHeight: number | undefined) {
+    const reservedRows = FIXED_ROWS + (this.notice ? 1 : 0);
+    let visibleLimit = visibleLimitForHeight(VISIBLE_LIMIT, availableHeight, reservedRows);
+    this.viewport.setVisibleLimit(visibleLimit, this.subagents.length);
+
+    if (availableHeight === undefined || !Number.isFinite(availableHeight)) {
+      return this.viewport.window(this.subagents.length);
+    }
+
+    const availableRows = Math.max(1, Math.floor(availableHeight) - reservedRows);
+    while (visibleLimit > 1) {
+      const window = this.viewport.window(this.subagents.length);
+      const indicatorRows = Number(window.hiddenBefore > 0) + Number(window.hiddenAfter > 0);
+      if (window.end - window.start + indicatorRows <= availableRows) return window;
+      visibleLimit -= 1;
+      this.viewport.setVisibleLimit(visibleLimit, this.subagents.length);
+    }
+    return this.viewport.window(this.subagents.length);
+  }
+
+  private renderPreview(
+    width: number,
+    availableHeight: number | undefined,
+    usedRows: number,
+  ): string[] {
+    const maximum =
+      availableHeight === undefined
+        ? 3
+        : Math.max(
+            0,
+            Math.min(3, Math.floor(availableHeight) - usedRows - 1 - (this.notice ? 1 : 0)),
+          );
+    if (maximum === 0) return [];
+
     const selected = this.selectedSubagent;
     const preview = this.preview;
     if (!selected || !preview || preview.id !== selected.id) return [dim("(loading result)")];
     const text = stripTerminalControlSequences(preview.error ?? preview.output);
-    const lines = text.split(/\r?\n/).filter(Boolean).slice(-3);
-    if (lines.length === 0) return [dim("(no final output)")];
-    return lines.map((line) => truncateToWidth(dim(line), width, ""));
+    const outputLines = text.split(/\r?\n/).filter(Boolean);
+    const visible = outputLines
+      .slice(-maximum)
+      .map((line) => truncateToWidth(dim(line), width, ""));
+    if (visible.length === 0) return [dim("(no final output)")];
+    if (outputLines.length === visible.length) return visible;
+    return maximum === 1 ? [dim("…")] : [dim("…"), ...visible.slice(-(maximum - 1))];
   }
+}
+
+function renderProfileSummary(profiles: readonly KanaSubagentProfile[], width: number): string {
+  const names = profiles.map((profile) => singleLine(profile.name));
+  if (names.length === 0) return truncateToWidth("Profiles · none", width, "");
+
+  const complete = `Profiles · ${names.join(" · ")}`;
+  if (visibleWidth(complete) <= width) return complete;
+
+  for (let visibleCount = names.length - 1; visibleCount > 0; visibleCount -= 1) {
+    const candidate = `Profiles · ${names.slice(0, visibleCount).join(" · ")} · +${names.length - visibleCount} more`;
+    if (visibleWidth(candidate) <= width) return candidate;
+  }
+
+  const hidden = `+${names.length} more`;
+  const separator = " · ";
+  const prefixWidth = width - visibleWidth(separator) - visibleWidth(hidden);
+  if (prefixWidth <= 0) return truncateToWidth(hidden, width, "");
+  return `${truncateToWidth("Profiles", prefixWidth, "…")}${separator}${hidden}`;
 }
 
 function cloneSummary(summary: KanaSubagentSummary): KanaSubagentSummary {

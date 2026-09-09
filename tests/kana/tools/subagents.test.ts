@@ -4,7 +4,7 @@ import {
   type KanaSubagentProfile,
   type KanaSubagentRunResult,
 } from "../../../src/kana/subagents";
-import { createSpawnSubagentTool } from "../../../src/kana/tools";
+import { createSpawnSubagentTool, createWaitSubagentTool } from "../../../src/kana/tools";
 import { createToolContext, expectToolResult } from "../../tools/workspace-fixture";
 
 describe("subagent tools", () => {
@@ -21,6 +21,11 @@ describe("subagent tools", () => {
       availableTools: () => ["read"],
       run: () => run.promise,
     });
+    const wait = createWaitSubagentTool(client);
+    expect(spawn.description.toLowerCase()).toContain("completion is delivered");
+    expect(spawn.description.toLowerCase()).toContain("do not poll wait_subagent solely");
+    expect(wait.description.toLowerCase()).toContain("notify the parent agent automatically");
+    expect(wait.description.toLowerCase()).toContain("instead of repeatedly polling");
     const invocation = new AbortController();
     const started = await spawn.execute(
       { profile: "explorer", task: "Inspect the parser" },

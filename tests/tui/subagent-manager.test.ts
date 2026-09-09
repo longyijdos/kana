@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaSubagentProfile, KanaSubagentSummary } from "@/kana";
 import { SubagentManager, type SubagentManagerAction } from "../../src/tui/components";
-import { stripAnsi } from "../../src/tui/render";
+import { stripAnsi, visibleWidth } from "../../src/tui/render";
 
 describe("subagent manager", () => {
   test("shows configured profiles and routes run actions", () => {
@@ -17,11 +17,13 @@ describe("subagent manager", () => {
     });
 
     const rendered = stripAnsi(manager.render(100).join("\n"));
-    expect(rendered).toContain("explorer (builtin) · Explore the repository");
+    expect(rendered).toContain("Profiles · explorer");
     expect(rendered).toContain("complete · explorer · completed");
     expect(rendered).toContain("review\ncomplete");
 
     manager.handleInput("K");
+    manager.handleInput("\x1b[B");
+    manager.handleInput("\x1b[A");
     manager.handleInput("\x1b[B");
     manager.handleInput("K");
     manager.handleInput("\r");
@@ -30,17 +32,80 @@ describe("subagent manager", () => {
 
     expect(actions).toEqual([
       { type: "select", subagent: running },
+      { type: "select", subagent: completed },
+      { type: "select", subagent: running },
       { type: "cancel", subagent: running },
       { type: "inspect", subagent: running },
       { type: "refresh" },
       { type: "close" },
     ]);
   });
+
+  test("keeps profiles on one line and reports names omitted by the terminal width", () => {
+    const manager = new SubagentManager(() => {});
+    manager.replace(
+      [profile("explorer"), profile("reviewer"), profile("worker"), profile("auditor")],
+      [],
+    );
+
+    const wide = manager.render(100).map(stripAnsi);
+    expect(wide.filter((line) => line.startsWith("Profiles"))).toEqual([
+      "Profiles · explorer · reviewer · worker · auditor",
+    ]);
+    expect(wide.join("\n")).not.toContain("builtin");
+    expect(wide.join("\n")).not.toContain("Explore the repository");
+
+    const narrow = manager.render(36).map(stripAnsi);
+    const summary = narrow.find((line) => line.startsWith("Profiles"));
+    expect(summary).toContain("explorer");
+    expect(summary).toContain("+3 more");
+    expect(visibleWidth(summary ?? "")).toBeLessThanOrEqual(36);
+    expect(narrow.filter((line) => line.startsWith("Profiles"))).toHaveLength(1);
+  });
+
+  test("shows runs hidden before and after the viewport", () => {
+    const manager = new SubagentManager(() => {});
+    const runs = Array.from({ length: 7 }, (_, index) =>
+      subagent(`agent_run0000${index}`, "running"),
+    );
+    manager.replace([profile()], runs);
+
+    expect(stripAnsi(manager.render(100, 9).join("\n"))).toContain("... 3 more runs");
+
+    for (let index = 0; index < 4; index += 1) manager.handleInput("\x1b[B");
+    const scrolled = stripAnsi(manager.render(100, 9).join("\n"));
+    expect(scrolled).toContain("... 2 earlier runs");
+    expect(scrolled).toContain("... 2 more runs");
+  });
+
+  test("gives multiple runs priority and shrinks a truncated result preview", () => {
+    const manager = new SubagentManager(() => {});
+    const completed = subagent("agent_complete", "completed");
+    manager.replace(
+      [profile()],
+      [
+        completed,
+        subagent("agent_running1", "running"),
+        subagent("agent_running2", "running"),
+        subagent("agent_running3", "running"),
+      ],
+    );
+    manager.replacePreview({
+      ...completed,
+      output: "line one\nline two\nline three\nline four",
+      waitTimedOut: false,
+    });
+
+    const rendered = manager.render(100, 9).map(stripAnsi);
+    expect(rendered.filter((line) => line.includes(" · explorer · "))).toHaveLength(4);
+    expect(rendered).toContain("…");
+    expect(rendered).toHaveLength(9);
+  });
 });
 
-function profile(): KanaSubagentProfile {
+function profile(name = "explorer"): KanaSubagentProfile {
   return {
-    name: "explorer",
+    name,
     description: "Explore the repository",
     instructions: "Inspect only.",
     tools: ["read"],

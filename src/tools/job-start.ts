@@ -39,7 +39,7 @@ export function createJobStartTool(
   return {
     name: "job_start",
     description:
-      "Start a session-owned background shell command and return immediately with its Job ID and launch status. The command continues running after this call returns.",
+      "Start a session-owned background shell command and return immediately with its Job ID and launch status. The command continues running after this call returns. Completion is delivered back to the parent Agent automatically. Do not poll job_output solely to detect completion.",
     parameters: jobStartParameters,
     execute: async (args, context) => {
       if (context.signal?.aborted) {
