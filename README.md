@@ -23,7 +23,7 @@
   <img src="assets/kana-demo.gif" alt="Kana analyzes a repository, fixes a failing test, and verifies the result">
 </p>
 
-Kana is an open-source, terminal-native agent for coding and other tool-driven work. Its interactive TUI keeps reasoning, tool calls, approvals, diffs, and results in one focused interface, while `kana exec` exposes the same runtime to scripts and CI.
+Kana is an open-source, terminal-native agent for coding and other tool-driven work. Its interactive TUI keeps reasoning, tool calls, approvals, diffs, delegated work, and results in one focused interface, while `kana exec` exposes the same runtime to scripts and CI.
 
 Configuration, sessions, memory, logs, and usage records stay on your machine. Model requests go only to the provider you select.
 
@@ -61,22 +61,23 @@ You can switch provider, model, and supported reasoning effort later with `/mode
 
 | | Capability | What it gives you |
 | --- | --- | --- |
-| 🛠️ | Work directly in your repository | Built-in file search, reading, writing, editing, and shell tools, with visible progress and approvals. |
-| 🧠 | Keep context across work | Resumable and forkable sessions, interrupted-run recovery, automatic context compaction, and durable project/global memory. |
-| 🔌 | Bring your own tools | Project instructions through `AGENTS.md`, reusable Skills, and MCP servers over stdio or Streamable HTTP with OAuth. |
+| 🛠️ | Work directly in your repository | Built-in file and image inspection, writing, editing, shell commands, background jobs, visible approvals, and complete oversized results stored as artifacts. |
+| 🧠 | Keep context across work | Resumable and forkable sessions, interrupted-run recovery, automatic context compaction, durable project/global memory, session todos, and bounded Goals. |
+| 🧩 | Delegate focused work | Asynchronous subagents selected from built-in or user-defined role profiles, with scoped tools, optional models, independent transcripts, and usage. |
+| 🔌 | Bring your own tools | Project instructions through `AGENTS.md`, reusable Skills, a configurable built-in tool surface, and MCP servers over stdio or Streamable HTTP with OAuth. |
 | 🤖 | Choose your model | DeepSeek API and OpenAI Codex OAuth, custom OpenAI-compatible endpoints, live model switching, configurable reasoning effort, image prompts on supported models, and hosted web search. |
-| ⌨️ | Stay in the terminal | A custom TUI with streaming Markdown, terminal-native Mermaid and LaTeX rendering, syntax-highlighted diffs, queued input, scheduled messages, notifications, and terminal hyperlinks. |
-| ⚙️ | Automate the same runtime | One-shot and resumable `kana exec` runs, plus a versioned JSONL event stream for scripts, CI, and evaluations. |
+| ⌨️ | Stay in the terminal | Dark, light, and custom themes; streaming Markdown; terminal-native Mermaid and LaTeX; full tool history; syntax-highlighted diffs; queued and scheduled input; notifications; and hyperlinks. |
+| ⚙️ | Automate the same runtime | One-shot, resumable, time-bounded, or Goal-driven `kana exec` runs; a versioned JSONL stream; and a reusable GitHub issue-to-draft-PR workflow. |
 
 ## Built for control, not as an SDK wrapper
 
 Kana keeps its critical path in this repository instead of delegating product behavior to an agent framework. It has no agent, TUI, MCP, OAuth, or model-provider SDK; Kana implements its own:
 
-- **Agent runtime** — the model/tool loop, parallel tool scheduling, deadlines, cancellation, context compaction, lifecycle events, and usage accounting.
-- **Terminal UI** — raw terminal lifecycle, input handling, streaming Markdown, syntax highlighting, responsive tables, and differential rendering.
+- **Agent runtime** — the model/tool loop, parallel tool scheduling, deadlines, cancellation, context compaction, tool-result policies, lifecycle events, and usage accounting.
+- **Terminal UI** — raw terminal lifecycle, input handling, themes, streaming Markdown, semantic tool blocks and inspectors, syntax highlighting, responsive tables, and differential rendering.
 - **Protocol stack** — MCP JSON-RPC, stdio, Streamable HTTP, SSE, OAuth 2.0/OIDC discovery, and PKCE.
 - **Provider adapters** — request conversion, streaming, retries, usage, and context-error recovery for DeepSeek, OpenAI Codex, and custom OpenAI-compatible endpoints.
-- **Local state** — incremental session journals, recovery, forks, memory, logs, and accounting.
+- **Local state** — incremental session and subagent journals, recovery, forks, todos, artifacts, memory, logs, and accounting.
 
 The goal is not zero dependencies. Kana uses focused libraries where they help, while keeping the behavior that defines reliability, safety, and the user experience readable and changeable.
 
@@ -99,6 +100,8 @@ Useful commands inside the TUI:
 | `/model` | Switch provider, model, and reasoning effort when supported. |
 | `/resume`, `/fork <task>` | Resume or branch from earlier work. |
 | `/mcp`, `/skills` | Manage active MCP servers and global Skills. |
+| `/agents` | View subagent profiles, inspect child transcripts, and manage current-session runs. |
+| `/jobs`, `/todo` | Manage session-owned background jobs and inspect the durable session checklist. |
 | `/memory` | View or consolidate durable project/global memory. |
 | `/schedule` | View, create, refresh, and delete scheduled messages. |
 | `/goal <objective>` | Keep advancing one bounded objective across sequential Agent runs. |
@@ -109,6 +112,12 @@ Useful commands inside the TUI:
 
 See [TUI interaction](docs/tui.md) for shortcuts, queued input, scheduled messages, and the complete command set. Rendering internals are documented separately in [Terminal rendering](docs/terminal-rendering.md).
 
+### Delegation and long-running work
+
+Kana can start session-owned background commands and bounded subagents without blocking the main Agent. Built-in `explorer`, `worker`, and `reviewer` profiles cover common delegation patterns; Markdown role cards under `~/.kana/agents` can further restrict tools or select another configured model. Child runs keep independent transcripts and accounting, while `/agents` lets you inspect or cancel them during the parent run.
+
+Session todos persist across resume and fork. `/goal` drives a bounded sequence of Agent runs toward one objective, while `/jobs` keeps long-running shell work attached to the current session. See [Subagents](docs/subagents.md), [Tools and execution](docs/tools.md), and [Conversation runtime](docs/conversation-runtime.md).
+
 ### Headless automation
 
 ```bash
@@ -116,6 +125,7 @@ kana exec "fix the failing tests"
 printf 'summarize this repository' | kana exec
 kana exec resume <session-id> "continue the task"
 kana exec --goal "finish and verify this task"
+kana exec --timeout 30m "complete this change"
 kana exec --json "analyze this project"
 ```
 
@@ -124,6 +134,10 @@ kana exec --json "analyze this project"
 By default, the final answer goes to stdout and progress goes to stderr. `--json` emits versioned JSONL events. `--allow-all-tools` skips interactive approval for controlled automation; it does not create a sandbox.
 
 See [Headless execution and the JSONL protocol](docs/headless.md) for event schemas and exit codes.
+
+### GitHub automation
+
+The reusable Kana Agent workflow can run scoped work from maintainer-authored issues and continue on Kana-owned pull requests. It uses repository-local model configuration, preserves partial progress, and opens draft PRs for review. See [Kana Agent reusable workflow](docs/kana-agent-workflow.md).
 
 ### Skills and MCP
 
@@ -134,7 +148,7 @@ kana skills install
 kana skills sync codex
 ```
 
-Kana discovers project Skills from `.kana/skills` and `.agents/skills`, reads project instructions from `AGENTS.md`, and can connect to local or remote MCP servers. MCP definitions and activation state live under `~/.kana/`; the TUI provides runtime server selection and OAuth flows.
+Kana discovers project Skills from `.kana/skills` and `.agents/skills`, reads project instructions from `AGENTS.md`, and can connect to local or remote MCP servers. The main Agent's built-in tool set is selectable through `agent.tools`. MCP definitions and activation state live under `~/.kana/`; the TUI provides runtime server selection, cancellable startup and reload, and OAuth flows.
 
 See [Configuration and installation](docs/configuration.md) for the MCP schema, proxy settings, OAuth, approvals, and every configuration option.
 
@@ -169,6 +183,7 @@ Read [Configuration and installation](docs/configuration.md) for the complete se
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [Configuration and installation](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Conversation runtime](docs/conversation-runtime.md)
 - [Agent runtime](docs/agent-runtime.md)
@@ -178,12 +193,14 @@ Read [Configuration and installation](docs/configuration.md) for the complete se
 - [MCP](docs/mcp.md)
 - [Sessions and memory](docs/sessions-and-memory.md)
 - [Skills and system prompt](docs/skills-and-prompt.md)
+- [Subagents](docs/subagents.md)
 - [DeepSeek provider](docs/deepseek-provider.md)
 - [OpenAI Codex provider](docs/openai-codex-provider.md)
 - [Custom OpenAI-compatible provider](docs/custom-provider.md)
 - [TUI interaction](docs/tui.md)
 - [Terminal rendering](docs/terminal-rendering.md)
 - [Headless execution](docs/headless.md)
+- [Kana Agent reusable workflow](docs/kana-agent-workflow.md)
 - [Terminal-Bench evaluation](docs/terminal-bench.md)
 
 ## Development
