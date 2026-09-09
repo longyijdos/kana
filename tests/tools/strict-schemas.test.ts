@@ -18,12 +18,12 @@ import {
   createJobKillTool,
   createJobListTool,
   createJobOutputTool,
+  createJobStartTool,
 } from "../../src/tools/background-jobs";
 import { createBashTool } from "../../src/tools/bash";
 import { createEditTool } from "../../src/tools/edit";
 import { createGlobTool } from "../../src/tools/glob";
 import { createGrepTool } from "../../src/tools/grep";
-import { createJobStartTool } from "../../src/tools/job-start";
 import { createListTool } from "../../src/tools/list";
 import { createReadTool } from "../../src/tools/read";
 import type { Tool } from "../../src/tools/tool";

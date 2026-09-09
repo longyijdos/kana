@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { BackgroundJobManager } from "../../src/jobs";
-import { createJobStartTool } from "../../src/tools/job-start";
+import { createJobStartTool } from "../../src/tools/background-jobs";
 import {
   createToolContext,
   createWorkspaceToolFixture,
