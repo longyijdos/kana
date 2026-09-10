@@ -1,14 +1,52 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import type { AssistantMessage } from "../../src/core";
+import { type AssistantMessage, createMessageIdentity, type UserMessage } from "../../src/core";
 import { AgentEventRenderer } from "../../src/tui/app/agent-event-renderer";
 import type { RunPhase } from "../../src/tui/app/status-phase";
 import type { StatusLineState, Transcript } from "../../src/tui/components";
 import { Transcript as TranscriptComponent } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Tui } from "../../src/tui/runtime";
+import { tuiTheme } from "../../src/tui/theme";
 import { messageIdentityForTest } from "../helpers/messages";
 
 describe("AgentEventRenderer", () => {
+  test.each([
+    [
+      "Background Job",
+      {
+        ...createMessageIdentity({ kind: "job_completion" as const, jobId: "job-1" }),
+        role: "user" as const,
+        content: "[Background Job completion]\nJob finished.",
+      },
+      "Job finished.",
+    ],
+    [
+      "Subagent",
+      {
+        ...createMessageIdentity({ kind: "subagent_completion" as const, agentId: "agent-1" }),
+        role: "user" as const,
+        content: "[Subagent completion]\nSubagent finished.",
+      },
+      "Subagent finished.",
+    ],
+  ] satisfies Array<[string, UserMessage, string]>)(
+    "renders live %s completion as muted automatic input",
+    (_label, message, expected) => {
+      const transcript = new TranscriptComponent();
+      const renderer = new AgentEventRenderer({
+        transcript,
+        tui: { requestRender() {} } as unknown as Tui,
+        updateStatus() {},
+      });
+
+      renderer.handle({ type: "turn_input", message });
+
+      const rendered = transcript.render(80);
+      expect(rendered.map(stripAnsi)).toEqual([expected]);
+      expect(rendered[0]).toContain(`\x1b[38;2;${tuiTheme.muted.join(";")}m`);
+    },
+  );
+
   test("renders manual context compaction as a persistent transcript marker", () => {
     const transcript = new TranscriptComponent();
     const statuses: Array<{ phase: RunPhase; contextUsedPercent?: number }> = [];

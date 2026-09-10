@@ -10,7 +10,7 @@ import {
 } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
-import { formatContextCompaction } from "./history";
+import { formatContextCompaction, formatUserMessage } from "./history";
 import {
   phaseForAgentEndReason,
   phaseForAssistantMessage,
@@ -113,7 +113,11 @@ export class AgentEventRenderer {
       case "turn_end":
         break;
       case "turn_input":
-        this.options.transcript.addChild(new UserMessageBlock(event.message));
+        this.options.transcript.addChild(
+          event.message.provenance.kind === "user_input"
+            ? new UserMessageBlock(event.message)
+            : new TextBlock(formatUserMessage(event.message), { color: tuiTheme.muted }),
+        );
         break;
       case "context_compaction_start":
         // Keep the compaction summary before the eventual assistant block.

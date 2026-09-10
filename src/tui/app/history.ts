@@ -76,7 +76,7 @@ function addHistoryMessage(
   }
 }
 
-function formatUserMessage(message: Extract<Message, { role: "user" }>): string {
+export function formatUserMessage(message: Extract<Message, { role: "user" }>): string {
   switch (message.provenance.kind) {
     case "scheduled_input":
       return `Scheduled wake: ${message.content.replace(/^\[Scheduled wake event\]\n?/, "")}`;
