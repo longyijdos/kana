@@ -1,3 +1,4 @@
+import type { Token, Tokens } from "marked";
 import {
   type Color,
   color,
@@ -9,9 +10,15 @@ import {
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 import { type HighlightedCodeLine, highlightCodeSync } from "../../utils/syntax-highlighter";
-import { renderWrappedInline, styleSpans, wrapPlainLine, wrapSpans } from "./markdown-inline";
-import { type BlockLatexToken, readBlockLatex } from "./markdown-latex";
+import {
+  renderWrappedInline,
+  renderWrappedInlineTokens,
+  styleSpans,
+  wrapPlainLine,
+  wrapSpans,
+} from "./markdown-inline";
 import { renderMarkdownMermaid } from "./markdown-mermaid";
+import { lexMarkdown, type MarkdownBlockLatexToken } from "./markdown-parser";
 import { parseMarkdownTable, renderMarkdownTable } from "./markdown-table";
 
 type MarkdownBlockOptions = {
@@ -49,62 +56,14 @@ export class MarkdownBlock implements Component {
       return this.cachedLines;
     }
 
-    const lines: string[] = [];
-    let codeBlock: { language?: string; lines: string[] } | undefined;
-
-    const sourceLines = splitLines(this.text);
     const lastLineComplete =
       this.options.complete !== false ||
       this.options.trailingLineComplete === true ||
       /(?:\r\n|\r|\n)$/.test(this.text);
-
-    for (let index = 0; index < sourceLines.length; index += 1) {
-      const rawLine = sourceLines[index] ?? "";
-      const fence = rawLine.match(/^\s*```([\w-]+)?\s*$/);
-
-      if (fence) {
-        if (codeBlock) {
-          lines.push(...this.renderCodeBlock(codeBlock.lines, width, codeBlock.language));
-          codeBlock = undefined;
-        } else {
-          codeBlock = {
-            language: fence[1],
-            lines: [],
-          };
-        }
-        continue;
-      }
-
-      if (codeBlock) {
-        codeBlock.lines.push(rawLine);
-        continue;
-      }
-
-      const latexBlock = readBlockLatex(sourceLines, index);
-      if (latexBlock) {
-        lines.push(...this.renderLatexBlock(latexBlock, width));
-        index = latexBlock.nextLine - 1;
-        continue;
-      }
-
-      const table = parseMarkdownTable(sourceLines, index, lastLineComplete);
-      if (table) {
-        lines.push(
-          ...renderMarkdownTable(table.table, width, {
-            color: this.options.color,
-            hyperlinks: this.options.hyperlinks,
-            renderLatex: this.options.renderLatex,
-          }),
-        );
-        index = table.nextLine - 1;
-        continue;
-      }
-
-      lines.push(...this.renderMarkdownLine(rawLine, width));
-    }
-
-    if (codeBlock) {
-      lines.push(...this.renderCodeBlock(codeBlock.lines, width, codeBlock.language));
+    const tokens = lexMarkdown(this.text);
+    const lines = this.renderMarkdownTokens(tokens, width, lastLineComplete);
+    if (tokens.at(-1)?.type !== "space" && /(?:\r\n|\r|\n)$/.test(this.text)) {
+      lines.push("");
     }
 
     const rendered = lines.length ? lines : [""];
@@ -114,6 +73,238 @@ export class MarkdownBlock implements Component {
     this.cachedLines = rendered;
 
     return rendered;
+  }
+
+  private renderMarkdownTokens(
+    tokens: readonly Token[],
+    width: number,
+    lastLineComplete: boolean,
+    defaultColor: Color = this.options.color ?? tuiTheme.markdownText,
+  ): string[] {
+    const lines: string[] = [];
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index]!;
+      if (token.type === "space") {
+        const lineBreaks = token.raw.match(/\r\n|\r|\n/g)?.length ?? 0;
+        // Adjacent blocks already own the two endpoint lines; a leading or
+        // trailing whitespace token owns its otherwise missing endpoint.
+        const adjoiningBlocks = Number(index > 0) + Number(index + 1 < tokens.length);
+        lines.push(
+          ...Array.from({ length: Math.max(0, lineBreaks + 1 - adjoiningBlocks) }, () => ""),
+        );
+        continue;
+      }
+
+      lines.push(
+        ...this.renderMarkdownToken(
+          token,
+          width,
+          lastLineComplete,
+          index === tokens.length - 1,
+          defaultColor,
+        ),
+      );
+    }
+
+    return lines;
+  }
+
+  private renderMarkdownToken(
+    token: Token,
+    width: number,
+    lastLineComplete: boolean,
+    isLast: boolean,
+    defaultColor: Color,
+  ): string[] {
+    switch (token.type) {
+      case "paragraph":
+        return renderWrappedInlineTokens((token as Tokens.Paragraph).tokens, width, {
+          defaultColor,
+          hyperlinks: this.options.hyperlinks,
+          renderLatex: this.options.renderLatex,
+        });
+
+      case "text": {
+        const text = token as Tokens.Text;
+        return text.tokens
+          ? renderWrappedInlineTokens(text.tokens, width, {
+              defaultColor,
+              hyperlinks: this.options.hyperlinks,
+              renderLatex: this.options.renderLatex,
+            })
+          : renderWrappedInline(text.text, width, {
+              defaultColor,
+              hyperlinks: this.options.hyperlinks,
+              renderLatex: this.options.renderLatex,
+            });
+      }
+
+      case "heading": {
+        const heading = token as Tokens.Heading;
+        return renderWrappedInlineTokens(heading.tokens, width, {
+          defaultColor: this.options.color ?? tuiTheme.markdownHeading,
+          forceBold: true,
+          hyperlinks: this.options.hyperlinks,
+          renderLatex: this.options.renderLatex,
+        });
+      }
+
+      case "hr":
+        return [color("-".repeat(Math.min(Math.max(1, width), 40)), tuiTheme.markdownRule)];
+
+      case "code": {
+        const code = token as Tokens.Code;
+        if (code.codeBlockStyle === "indented") {
+          // Kana historically recognizes indented headings, quotes, lists,
+          // and rules instead of treating the whole region as a code block.
+          return splitLines(code.raw.replace(/(?:\r\n|\r|\n)$/, "")).flatMap((line) =>
+            this.renderMarkdownLine(line, width),
+          );
+        }
+        return this.renderCodeBlock(splitLines(code.text), width, code.lang);
+      }
+
+      case "list":
+        return this.renderList(token as Tokens.List, width, "", lastLineComplete, defaultColor);
+
+      case "blockquote": {
+        const quote = token as Tokens.Blockquote;
+        const contentWidth = Math.max(1, width - 2);
+        const content = this.renderMarkdownTokens(
+          quote.tokens,
+          contentWidth,
+          lastLineComplete,
+          tuiTheme.markdownQuote,
+        );
+        return content.map((line) => truncateToWidth(`> ${line}`, width, ""));
+      }
+
+      case "table": {
+        const tableLines = splitLines(token.raw.replace(/(?:\r\n|\r|\n)$/, ""));
+        const parsed = parseMarkdownTable(tableLines, 0, lastLineComplete || !isLast);
+        if (!parsed) {
+          return this.renderLiteralBlock(token.raw, width, defaultColor);
+        }
+
+        const rendered = renderMarkdownTable(parsed.table, width, {
+          color: defaultColor,
+          hyperlinks: this.options.hyperlinks,
+          renderLatex: this.options.renderLatex,
+        });
+        // GFM tables accept pipe-less body rows. Kana ends a table there, so
+        // re-lex any suffix that Marked included in the table token.
+        const remainder = tableLines.slice(parsed.nextLine).join("\n");
+        return remainder
+          ? [
+              ...rendered,
+              ...this.renderMarkdownTokens(
+                lexMarkdown(remainder),
+                width,
+                lastLineComplete,
+                defaultColor,
+              ),
+            ]
+          : rendered;
+      }
+
+      case "latexBlock":
+        return this.renderLatexBlock(token as MarkdownBlockLatexToken, width);
+
+      case "html":
+        return this.renderLiteralBlock(token.raw, width, defaultColor);
+
+      case "def":
+        return [];
+
+      default:
+        return this.renderLiteralBlock(token.raw, width, defaultColor);
+    }
+  }
+
+  private renderList(
+    token: Tokens.List,
+    width: number,
+    baseIndent: string,
+    lastLineComplete: boolean,
+    defaultColor: Color,
+  ): string[] {
+    const lines: string[] = [];
+
+    for (const [itemIndex, item] of token.items.entries()) {
+      const sourceIndent = item.raw.match(/^\s*/)?.[0] ?? "";
+      const indent = baseIndent || sourceIndent;
+      const orderedMarker = item.raw.match(/^\s*(\d+[.)])(?:\s+|$)/)?.[1];
+      const bullet = token.ordered
+        ? `${orderedMarker ?? `${Number(token.start) + itemIndex}.`} `
+        : "- ";
+      const marker = item.task
+        ? token.ordered
+          ? `${bullet}[${item.checked ? "x" : " "}] `
+          : `[${item.checked ? "x" : " "}] `
+        : bullet;
+      const firstPrefix = `${indent}${marker}`;
+      const continuationPrefix = `${indent}${" ".repeat(visibleWidth(marker))}`;
+      const itemWidth = Math.max(1, width - visibleWidth(firstPrefix));
+      let renderedAnyLine = false;
+
+      for (const [tokenIndex, itemToken] of item.tokens.entries()) {
+        if (itemToken.type === "checkbox") {
+          continue;
+        }
+
+        if (itemToken.type === "list") {
+          lines.push(
+            ...this.renderList(
+              itemToken as Tokens.List,
+              width,
+              continuationPrefix,
+              lastLineComplete,
+              defaultColor,
+            ),
+          );
+          renderedAnyLine = true;
+          continue;
+        }
+
+        const itemLines =
+          itemToken.type === "space"
+            ? [""]
+            : this.renderMarkdownToken(
+                itemToken,
+                itemWidth,
+                lastLineComplete,
+                itemIndex === token.items.length - 1 && tokenIndex === item.tokens.length - 1,
+                defaultColor,
+              );
+        for (const line of itemLines) {
+          if (!line) {
+            lines.push("");
+            continue;
+          }
+          lines.push(`${renderedAnyLine ? continuationPrefix : firstPrefix}${line}`);
+          renderedAnyLine = true;
+        }
+      }
+
+      if (!renderedAnyLine) {
+        lines.push(firstPrefix);
+      }
+      if (token.loose && itemIndex + 1 < token.items.length && lines.at(-1) !== "") {
+        lines.push("");
+      }
+    }
+
+    return lines;
+  }
+
+  private renderLiteralBlock(raw: string, width: number, defaultColor: Color): string[] {
+    const source = raw.replace(/(?:\r\n|\r|\n)$/, "");
+    return splitLines(source).flatMap((line) =>
+      wrapPlainLine(line, Math.max(1, width)).map((wrapped) =>
+        truncateToWidth(color(wrapped, defaultColor), width, ""),
+      ),
+    );
   }
 
   private renderMarkdownLine(line: string, width: number): string[] {
@@ -200,7 +391,7 @@ export class MarkdownBlock implements Component {
     });
   }
 
-  private renderLatexBlock(token: BlockLatexToken, width: number): string[] {
+  private renderLatexBlock(token: MarkdownBlockLatexToken, width: number): string[] {
     const safeWidth = Math.max(1, width);
     const rendered =
       token.pending || this.options.renderLatex === false

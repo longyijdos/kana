@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { MarkdownBlock } from "../../src/tui/components";
-import { CLOSE_TERMINAL_HYPERLINK, color, stripAnsi, visibleWidth } from "../../src/tui/render";
+import {
+  bold,
+  CLOSE_TERMINAL_HYPERLINK,
+  color,
+  italic,
+  stripAnsi,
+  visibleWidth,
+} from "../../src/tui/render";
 import { tuiTheme } from "../../src/tui/theme";
 import { preloadSyntaxHighlighter } from "../../src/tui/utils/syntax-highlighter";
 
@@ -26,6 +33,12 @@ describe("tui markdown block", () => {
     const lines = new MarkdownBlock("- abcdef", { color: "white" }).render(5).map(stripAnsi);
 
     expect(lines).toEqual(["- abc", "  def"]);
+  });
+
+  test("renders task markers once", () => {
+    const lines = new MarkdownBlock("- [x] done\n- [ ] todo").render(80).map(stripAnsi);
+
+    expect(lines).toEqual(["[x] done", "[ ] todo"]);
   });
 
   test("renders unclosed fenced code blocks during streaming", () => {
@@ -129,6 +142,43 @@ describe("tui markdown block", () => {
     expect(rendered[0]).toContain("\x1b[3m");
   });
 
+  test("inherits emphasis across nested inline code", () => {
+    const cases = [
+      {
+        expected: bold(color("bar", tuiTheme.markdownInlineCode)),
+        source: "**foo `bar` baz**",
+      },
+      {
+        expected: italic(color("bar", tuiTheme.markdownInlineCode)),
+        source: "*foo `bar` baz*",
+      },
+      {
+        expected: italic(bold(color("bar", tuiTheme.markdownInlineCode))),
+        source: "***foo `bar` baz***",
+      },
+    ];
+
+    for (const { expected, source } of cases) {
+      const rendered = new MarkdownBlock(source, { color: "white" }).render(80);
+
+      expect(rendered.map(stripAnsi)).toEqual(["foo bar baz"]);
+      expect(rendered[0]).toContain(expected);
+    }
+  });
+
+  test("uses standard delimiter, escape, and code-span semantics", () => {
+    const rendered = new MarkdownBlock(
+      "Keep foo_bar_baz and \\*literal* beside ``foo `bar` baz``.",
+      { color: "white" },
+    ).render(120);
+
+    expect(rendered.map(stripAnsi)).toEqual([
+      "Keep foo_bar_baz and *literal* beside foo `bar` baz.",
+    ]);
+    expect(rendered[0]).not.toContain("\x1b[3m");
+    expect(rendered[0]).toContain(color("foo `bar` baz", tuiTheme.markdownInlineCode));
+  });
+
   test("renders strikethrough without changing visible text", () => {
     const rendered = new MarkdownBlock("这是~~删除线~~。", {
       color: "white",
@@ -167,6 +217,18 @@ describe("tui markdown block", () => {
     expect(plain[1]).toBe("> > 嵌套引用");
     expect(plain[2]).toBe("    [x] 已完成任务");
     expect(plain[3]).toBe("----------------------------------------");
+  });
+
+  test("keeps source line breaks and thematic rules", () => {
+    const rendered = new MarkdownBlock("first\nsecond\n\nthird\n---").render(80).map(stripAnsi);
+
+    expect(rendered).toEqual([
+      "first",
+      "second",
+      "",
+      "third",
+      "----------------------------------------",
+    ]);
   });
 
   test("renders table rows, links, and images as terminal text", () => {

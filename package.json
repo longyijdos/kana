@@ -30,6 +30,7 @@
   "dependencies": {
     "commander": "^15.0.0",
     "grok-mermaid": "0.2.3",
+    "marked": "^18.0.12",
     "shiki": "^4.2.0",
     "string-width": "^8.2.1",
     "typebox": "^1.1.38"
