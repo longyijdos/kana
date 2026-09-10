@@ -30,7 +30,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
     model: {
       provider: "deepseek",
-      name: "deepseek-v4-pro",
+      name: "deepseek-flash",
       reasoningEffort: undefined,
       maxOutputTokens: undefined,
       contextLimit: undefined,
@@ -76,7 +76,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
       model: {
         provider: "deepseek",
-        name: "deepseek-v4-flash",
+        name: "deepseek-flash",
         reasoningEffort: undefined,
         maxOutputTokens: undefined,
         contextLimit: undefined,

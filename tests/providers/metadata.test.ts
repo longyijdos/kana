@@ -6,7 +6,6 @@ describe("provider model metadata", () => {
     expect(Object.values(DEEPSEEK_MODELS).map((model) => model.supportsParallelToolCalls)).toEqual([
       true,
       true,
-      true,
     ]);
     expect(
       Object.values(OPENAI_CODEX_MODELS).map((model) => model.supportsParallelToolCalls),
@@ -20,7 +19,6 @@ describe("provider model metadata", () => {
         supportsHostedWebSearch: model.supportsHostedWebSearch,
       })),
     ).toEqual([
-      { protocol: "responses", supportsHostedWebSearch: true },
       { protocol: "responses", supportsHostedWebSearch: true },
       { protocol: "responses", supportsHostedWebSearch: true },
     ]);
@@ -43,7 +41,6 @@ describe("provider model metadata", () => {
         defaultEffort: model.reasoning.defaultEffort,
       })),
     ).toEqual([
-      { efforts: ["none", "low", "high", "max"], defaultEffort: "high" },
       { efforts: ["none", "low", "high", "max"], defaultEffort: "high" },
       { efforts: ["none", "low", "high", "max"], defaultEffort: "high" },
     ]);

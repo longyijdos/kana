@@ -82,7 +82,7 @@ function createUsageSummary(): KanaUsageSummary {
       },
       {
         provider: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         runCount: 389,
         usage: { promptTokens: 26_000_000, completionTokens: 1_000_000, totalTokens: 27_000_000 },
       },

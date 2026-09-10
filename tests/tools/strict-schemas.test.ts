@@ -80,7 +80,7 @@ function createAgentBuiltInTools(): Tool[] {
         ...DEFAULT_KANA_CONFIG.agent,
         model: {
           ...DEFAULT_KANA_CONFIG.agent.model,
-          name: "deepseek-v4-flash-vision-exp" as const,
+          name: "deepseek-flash" as const,
         },
       },
     };

@@ -14,7 +14,7 @@ describe("Kana config defaults", () => {
 
     expect(DEFAULT_KANA_CONFIG.agent.model).toEqual({
       provider: "deepseek",
-      name: "deepseek-v4-pro",
+      name: "deepseek-flash",
       reasoningEffort: undefined,
       maxOutputTokens: undefined,
       contextLimit: undefined,
@@ -22,7 +22,7 @@ describe("Kana config defaults", () => {
     expect(DEFAULT_KANA_CONFIG.agent.webSearch).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.imageInput).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.tools).toEqual([...KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES]);
-    expect(DEFAULT_KANA_CONFIG.memory.agent.model.name).toBe("deepseek-v4-flash");
+    expect(DEFAULT_KANA_CONFIG.memory.agent.model.name).toBe("deepseek-flash");
     expect(DEFAULT_KANA_CONFIG.memory.agent.webSearch).toBe(false);
     expect(DEFAULT_KANA_CONFIG.memory.agent.imageInput).toBe(false);
     expect(DEFAULT_KANA_CONFIG.agent.goalMaxRounds).toBe(8);

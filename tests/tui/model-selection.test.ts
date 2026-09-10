@@ -176,11 +176,11 @@ describe("TUI model selection", () => {
     expect(selections).toEqual([
       {
         provider: "deepseek",
-        model: "deepseek-v4-pro",
+        model: "deepseek-flash",
         reasoningEffort: "none",
       },
     ]);
-    expect(renderLayout(internal)).toContain("deepseek-v4-pro · off | Idle");
+    expect(renderLayout(internal)).toContain("deepseek-flash · off | Idle");
   });
 
   test("offers configured reasoning efforts for a Custom model", () => {
@@ -286,7 +286,7 @@ describe("TUI model selection", () => {
     const firstAgent = createAgentStub({
       messages: [],
       provider: "deepseek",
-      model: "deepseek-v4-pro",
+      model: "deepseek-flash",
     });
     const logEvents: string[] = [];
     let createCount = 0;
@@ -311,7 +311,7 @@ describe("TUI model selection", () => {
 
     expect(createCount).toBe(2);
     expect(firstAgent.abortCount).toBe(0);
-    expect(renderLayout(internal)).toContain("deepseek-v4-pro · high | Error");
+    expect(renderLayout(internal)).toContain("deepseek-flash · high | Error");
     expect(renderTranscript(internal)).toContain("provider unavailable");
     expect(logEvents).toEqual(["tui.model_switch_started", "tui.model_switch_failed"]);
   });
@@ -322,7 +322,7 @@ describe("TUI model selection", () => {
         createAgentStub({
           messages: [],
           provider: "deepseek",
-          model: "deepseek-v4-pro",
+          model: "deepseek-flash",
         }) as never,
       createTerminal(),
       createOptions(),
@@ -341,7 +341,7 @@ describe("TUI model selection", () => {
     press(internal, "\x1b");
 
     expect(internal.slashCommandOptions.active).toBe(false);
-    expect(renderLayout(internal)).toContain("deepseek-v4-pro · high | Idle");
+    expect(renderLayout(internal)).toContain("deepseek-flash · high | Idle");
   });
 });
 

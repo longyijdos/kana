@@ -10,8 +10,7 @@ Current built-in metadata:
 
 | Model | Protocol | Context window | Max output | Parallel tool calls | Hosted web search | Image input |
 | --- | --- | ---: | ---: | --- | --- | --- |
-| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported |
-| `deepseek-v4-flash-vision-exp` | Responses | 1,000,000 | 384,000 | Supported | Supported | Supported |
+| `deepseek-flash` | Responses | 1,000,000 | 384,000 | Supported | Supported | Supported |
 | `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | Supported | Supported | Not supported |
 
 Constructing an unknown model errors, and a direct request whose `maxOutputTokens` exceeds the model hard output limit errors before network I/O. Common `ModelMetadata.protocol` selects the protocol codec, while `supportsHostedWebSearch` records capability separately from each Agent's `web_search` policy. The TUI uses metadata for context percentage. DeepSeek metadata permits parallel tool calls, but ToolRuntime still forces serial execution when that Agent disables them. Kana intentionally does not embed provider pricing; actual charges come from DeepSeek billing.
@@ -22,7 +21,7 @@ All V4 models expose `none`, `low`, `high`, and `max` through common reasoning m
 
 The default base URL is `https://api.deepseek.com`, and all current models send requests to `/responses`.
 
-Image input follows the selected model's metadata and the current Agent's `image_input` policy. `deepseek-v4-flash-vision-exp` accepts persisted user images as classic Responses `input_image` items with self-contained base64 data URLs and registers `view_image`. Visual tool results become native multimodal `function_call_output` content tied to the originating call. The text-only V4 Flash and V4 Pro models replace persisted images with an explicit omitted marker, never transmit their base64 data, and do not register `view_image`; model metadata takes precedence, and `image_input = false` also disables delivery and the tool on the vision model.
+Image input follows the selected model's metadata and the current Agent's `image_input` policy. `deepseek-flash` accepts persisted user images as classic Responses `input_image` items with self-contained base64 data URLs and registers `view_image`. Visual tool results become native multimodal `function_call_output` content tied to the originating call. The text-only `deepseek-v4-pro` replaces persisted images with an explicit omitted marker, never transmits their base64 data, and does not register `view_image`; model metadata takes precedence, and `image_input = false` also disables delivery and the tool on the flash model.
 
 ### V4 Responses
 
@@ -52,7 +51,7 @@ Provided optional configuration maps as follows:
 
 A per-turn output ceiling takes precedence over configured `maxOutputTokens`. Client functions use flattened Responses tool definitions. When the Agent's `web_search = true` and metadata supports it, `{ "type": "web_search" }` is appended to the same `tools` array; `false` removes only the hosted tool. Default `tool_choice` is `auto`, named Chat Completions choices are converted to the flattened Responses shape, and `strictTools` adds `strict: true` to function tools.
 
-Image input is gated by both model metadata and configuration: only `deepseek-v4-flash-vision-exp` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes or advertise `view_image`. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
+Image input is gated by both model metadata and configuration: only `deepseek-flash` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes or advertise `view_image`. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
 ## Authentication and shared request behavior
 

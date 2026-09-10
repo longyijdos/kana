@@ -95,10 +95,10 @@ describe("Kana conversation host", () => {
     });
     const runtime = createRuntime(host);
 
-    runtime.reconfigure("deepseek-v4-flash");
+    runtime.reconfigure("deepseek-v4-pro");
 
-    expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
-    expect(host.config.agent.model.name).toBe("deepseek-v4-flash");
+    expect(seenModels).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
+    expect(host.config.agent.model.name).toBe("deepseek-v4-pro");
     await runtime.close();
     await host.close();
   });
@@ -129,15 +129,15 @@ describe("Kana conversation host", () => {
     const runtime = createRuntime(host);
     runtime.setBeforeToolExecution(() => ({ type: "continue" }));
 
-    runtime.reconfigure("deepseek-v4-flash");
+    runtime.reconfigure("deepseek-v4-pro");
     await runtime.submit({
       ...messageIdentityForTest("user"),
       role: "user",
       content: "Run the task.",
     });
 
-    expect(seenModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
-    expect(host.config.agent.model.name).toBe("deepseek-v4-flash");
+    expect(seenModels).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
+    expect(host.config.agent.model.name).toBe("deepseek-v4-pro");
     expect(host.resumeSessionId).toBeUndefined();
     expect(host.listSessions()).toEqual([]);
     expect(() => host.loadSession("saved-session")).toThrow(

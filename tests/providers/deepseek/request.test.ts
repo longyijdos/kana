@@ -82,7 +82,7 @@ describe("buildDeepSeekRequest", () => {
       },
       {
         provider: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         reasoningEffort: "max",
         maxOutputTokens: 32_768,
         responseFormat: { type: "json_object" },
@@ -92,7 +92,7 @@ describe("buildDeepSeekRequest", () => {
     );
 
     expect(request).toMatchObject({
-      model: "deepseek-v4-flash",
+      model: "deepseek-flash",
       instructions: "system",
       stream: true,
       max_output_tokens: 12_345,
@@ -176,7 +176,7 @@ describe("buildDeepSeekRequest", () => {
       },
       {
         provider: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         reasoningEffort: "none",
         toolChoice: { type: "function", function: { name: "read" } },
       },
@@ -222,7 +222,7 @@ describe("buildDeepSeekRequest", () => {
       },
       {
         provider: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-v4-pro",
       },
     );
 
@@ -246,6 +246,6 @@ describe("buildDeepSeekRequest", () => {
 responsesRequestContract("DeepSeek Responses shared input contract", (context) =>
   buildDeepSeekRequest(context, {
     provider: "deepseek",
-    model: "deepseek-v4-flash-vision-exp",
+    model: "deepseek-flash",
   }),
 );

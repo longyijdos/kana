@@ -68,7 +68,7 @@ describe("Kana config parser", () => {
         "",
         "[agent.model]",
         'provider = "deepseek"',
-        'name = "deepseek-v4-flash"',
+        'name = "deepseek-flash"',
         'reasoning_effort = "low"',
         "max_output_tokens = 4096",
         "context_limit = 200000",
@@ -140,7 +140,7 @@ describe("Kana config parser", () => {
         maxParallelToolCalls: 2,
         model: {
           provider: "deepseek",
-          name: "deepseek-v4-flash",
+          name: "deepseek-flash",
           reasoningEffort: "low",
           maxOutputTokens: 4096,
           contextLimit: 200000,

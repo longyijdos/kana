@@ -134,7 +134,7 @@ tool_result_artifacts = true
 
 [agent.model]
 provider = "deepseek"
-name = "deepseek-v4-pro"
+name = "deepseek-flash"
 # reasoning_effort = "high"
 # max_output_tokens = 128000
 # context_limit = 500000
@@ -180,7 +180,7 @@ max_parallel_tool_calls = 4
 
 [memory.agent.model]
 provider = "deepseek"
-name = "deepseek-v4-flash"
+name = "deepseek-flash"
 # reasoning_effort = "low"
 # max_output_tokens = 64000
 # context_limit = 200000
@@ -217,8 +217,8 @@ export DEEPSEEK_API_KEY='sk-...'
 | `agent.web_search` / `memory.agent.web_search` | 布尔值 | `true` / `false` | 仅在所选模型 metadata 也支持时允许托管搜索；Custom 模型目前不声明托管搜索能力。 |
 | `agent.image_input` / `memory.agent.image_input` | 布尔值 | `true` / `false` | 仅在 metadata 支持图片时允许已持久化的用户/工具图片并注册 `view_image`；禁用或不支持时，图片仍保留，但模型输入使用省略标记。 |
 | `agent.model.provider` / `memory.agent.model.provider` | `deepseek`、`openai-codex`、`custom` | `deepseek` | 两个 Agent 各自独立选择的 provider。 |
-| `agent.model.name` | Provider 模型名 | `deepseek-v4-pro` | 对话模型；内置模型名按 provider metadata 校验。 |
-| `memory.agent.model.name` | Provider 模型名 | `deepseek-v4-flash` | 独立于 `/model` 的记忆压缩模型。 |
+| `agent.model.name` | Provider 模型名 | `deepseek-flash` | 对话模型；内置模型名按 provider metadata 校验。 |
+| `memory.agent.model.name` | Provider 模型名 | `deepseek-flash` | 独立于 `/model` 的记忆压缩模型。 |
 | `*.model.reasoning_effort` | 模型 metadata 声明的值 | Metadata 默认值 | 可选覆盖。DeepSeek 支持 `none`、`low`、`high`、`max`；Codex 支持 `low`、`medium`、`high`、`xhigh`、`max`；Custom 使用 `custom.toml` metadata。 |
 | `*.model.max_output_tokens` | 可选正整数 | Metadata 输出硬上限 | Agent 级输出上限；先按模型硬上限钳制，prompt 空间更紧时再逐轮降低。 |
 | `*.model.context_limit` | 可选正整数 | Metadata context window | Agent 级上下文上限，按所选模型 context window 钳制。 |
@@ -454,7 +454,7 @@ enabled = []
 
 ```toml
 [agent.model]
-name = "deepseek-v4-flash"
+name = "deepseek-flash"
 
 [notification]
 backend = "bell"

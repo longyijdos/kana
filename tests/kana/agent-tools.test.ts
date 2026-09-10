@@ -44,7 +44,7 @@ describe("Kana Agent tools", () => {
     try {
       const goal = createGoal("active");
       const agent = withKanaAgentEnvironment(() =>
-        createAgentForTest(visionTestConfig(), {
+        createAgentForTest(modelTestConfig(), {
           additionalTools: [externalTool],
           backgroundJobs,
           wakeScheduler,
@@ -67,11 +67,13 @@ describe("Kana Agent tools", () => {
   });
 
   test("enables view_image only when the active model and configuration support images", () => {
-    const enabled = withKanaAgentEnvironment(() => createAgentForTest(visionTestConfig()));
+    const enabled = withKanaAgentEnvironment(() => createAgentForTest(modelTestConfig()));
     const disabledByConfig = withKanaAgentEnvironment(() =>
-      createAgentForTest(visionTestConfig({ imageInput: false })),
+      createAgentForTest(modelTestConfig({ imageInput: false })),
     );
-    const unsupportedModel = withKanaAgentEnvironment(() => createAgentForTest(testConfig()));
+    const unsupportedModel = withKanaAgentEnvironment(() =>
+      createAgentForTest(modelTestConfig({ model: "deepseek-v4-pro" })),
+    );
 
     expect(enabled.state.tools.some((tool) => tool.name === "view_image")).toBe(true);
     expect(disabledByConfig.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
@@ -210,6 +212,7 @@ describe("Kana Agent tools", () => {
         "glob",
         "grep",
         "read",
+        "view_image",
         "write",
         "edit",
         "bash",
@@ -292,7 +295,9 @@ function testConfig() {
   };
 }
 
-function visionTestConfig(overrides: { imageInput?: boolean } = {}) {
+function modelTestConfig(
+  overrides: { imageInput?: boolean; model?: "deepseek-flash" | "deepseek-v4-pro" } = {},
+) {
   const config = testConfig();
   return {
     ...config,
@@ -301,7 +306,7 @@ function visionTestConfig(overrides: { imageInput?: boolean } = {}) {
       imageInput: overrides.imageInput ?? config.agent.imageInput,
       model: {
         ...config.agent.model,
-        name: "deepseek-v4-flash-vision-exp" as const,
+        name: overrides.model ?? "deepseek-flash",
       },
     },
   };

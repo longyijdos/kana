@@ -60,7 +60,7 @@ goal_max_rounds = 3
 
 [agent.model]
 provider = "deepseek"
-name = "deepseek-v4-flash"
+name = "deepseek-flash"
 reasoning_effort = "max"
 
 [memory]

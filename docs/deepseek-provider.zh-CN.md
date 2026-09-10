@@ -10,8 +10,7 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 
 | 模型 | 协议 | 上下文窗口 | 最大输出 | 并行工具调用 | 托管网页搜索 | 图片输入 |
 | --- | --- | ---: | ---: | --- | --- | --- |
-| `deepseek-v4-flash` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 |
-| `deepseek-v4-flash-vision-exp` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 支持 |
+| `deepseek-flash` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 支持 |
 | `deepseek-v4-pro` | Responses | 1,000,000 | 384,000 | 支持 | 支持 | 不支持 |
 
 构造未知模型会报错；直接请求的 `maxOutputTokens` 超过模型硬输出限制也会在发请求前报错。通用 `ModelMetadata.protocol` 选择协议 codec，`supportsHostedWebSearch` 则把模型能力与各 Agent 的 `web_search` 策略分开记录。TUI 使用元数据计算上下文使用率。DeepSeek metadata 允许并行工具调用，但对应 Agent 关闭时 ToolRuntime 仍会强制串行执行。Kana 有意不内置 provider 价格，实际费用以 DeepSeek 账单为准。
@@ -22,7 +21,7 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 
 默认 base URL 为 `https://api.deepseek.com`，当前所有模型都向 `/responses` 发送请求。
 
-图片输入由所选模型的 metadata 和当前 Agent 的 `image_input` 策略共同决定。`deepseek-v4-flash-vision-exp` 会把会话中持久化的用户图片作为带自包含 base64 data URL 的 classic Responses `input_image` item 发送，并注册 `view_image`；视觉工具结果会成为与原调用关联的原生多模态 `function_call_output` 内容。纯文本的 V4 Flash 和 V4 Pro 会把已持久化图片替换为明确的省略提示，绝不发送 base64 数据，也不注册 `view_image`。模型 metadata 优先级更高，`image_input = false` 即使在视觉模型上也会同时禁用图片发送和该工具。
+图片输入由所选模型的 metadata 和当前 Agent 的 `image_input` 策略共同决定。`deepseek-flash` 会把会话中持久化的用户图片作为带自包含 base64 data URL 的 classic Responses `input_image` item 发送，并注册 `view_image`；视觉工具结果会成为与原调用关联的原生多模态 `function_call_output` 内容。纯文本的 `deepseek-v4-pro` 会把已持久化图片替换为明确的省略提示，绝不发送 base64 数据，也不注册 `view_image`。模型 metadata 优先级更高，`image_input = false` 即使在支持图片的模型上也会同时禁用图片发送和该工具。
 
 ### V4 Responses
 
@@ -52,7 +51,7 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 
 逐轮输出上限优先于配置的 `maxOutputTokens`。客户端函数使用扁平的 Responses 工具定义。当模型 metadata 支持且 Agent 的 `web_search = true` 时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`；设为 `false` 只会移除该托管工具。默认 `tool_choice` 为 `auto`，Chat Completions 风格的具名选择会转换为扁平 Responses 结构，`strictTools` 会给函数工具加上 `strict: true`。
 
-图片输入同时受模型 metadata 和配置约束：只有 `deepseek-v4-flash-vision-exp` 声明支持图片，且配置不能为 `false`。纯文本模型因此绝不会发送会话中保存的 base64 图片字节，也不会声明 `view_image`，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
+图片输入同时受模型 metadata 和配置约束：只有 `deepseek-flash` 声明支持图片，且配置不能为 `false`。纯文本模型因此绝不会发送会话中保存的 base64 图片字节，也不会声明 `view_image`，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
 
 ## 认证与共享请求行为
 

@@ -3,23 +3,9 @@ import type { ModelMetadata } from "@/core";
 export type DeepSeekModelMetadata = ModelMetadata & { protocol: "responses" };
 
 export const DEEPSEEK_MODELS = {
-  "deepseek-v4-flash": {
+  "deepseek-flash": {
     provider: "deepseek",
-    model: "deepseek-v4-flash",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 384_000,
-    supportsParallelToolCalls: true,
-    protocol: "responses",
-    supportsHostedWebSearch: true,
-    supportsImageInput: false,
-    reasoning: {
-      efforts: ["none", "low", "high", "max"],
-      defaultEffort: "high",
-    },
-  },
-  "deepseek-v4-flash-vision-exp": {
-    provider: "deepseek",
-    model: "deepseek-v4-flash-vision-exp",
+    model: "deepseek-flash",
     contextWindow: 1_000_000,
     maxOutputTokens: 384_000,
     supportsParallelToolCalls: true,

@@ -9,6 +9,7 @@ describe("Kana model runtime", () => {
         ...DEFAULT_KANA_CONFIG.agent,
         model: {
           ...DEFAULT_KANA_CONFIG.agent.model,
+          name: "deepseek-v4-pro",
           maxOutputTokens: 500_000,
           contextLimit: 2_000_000,
         },

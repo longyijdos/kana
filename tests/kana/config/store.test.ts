@@ -89,7 +89,7 @@ describe("Kana config store", () => {
     );
 
     store.update((draft) => {
-      draft.agent.model.name = "deepseek-v4-flash";
+      draft.agent.model.name = "deepseek-flash";
       draft.agent.model.reasoningEffort = "none";
       draft.agent.model.contextLimit = undefined;
       draft.agent.webSearch = false;
@@ -107,7 +107,7 @@ describe("Kana config store", () => {
 
     const updated = readFileSync(configPath, "utf8");
     expect(updated).toContain("# keep this comment");
-    expect(updated).toContain('name = "deepseek-v4-flash"');
+    expect(updated).toContain('name = "deepseek-flash"');
     expect(updated).toContain('reasoning_effort = "none"');
     expect(updated).toContain("max_output_tokens = 64000");
     expect(updated).toContain("web_search = false");
@@ -139,7 +139,7 @@ describe("Kana config store", () => {
         "",
         "[memory.agent.model]",
         'provider = "deepseek"',
-        'name = "deepseek-v4-flash"',
+        'name = "deepseek-flash"',
         'reasoning_effort = "low"',
         "",
       ].join("\n"),
@@ -156,7 +156,7 @@ describe("Kana config store", () => {
     expect(updated).toContain("max_output_tokens = 64000");
     expect(updated).toContain("context_limit = 200000");
     expect(updated).toContain(
-      '[memory.agent.model]\nprovider = "deepseek"\nname = "deepseek-v4-flash"\nreasoning_effort = "low"',
+      '[memory.agent.model]\nprovider = "deepseek"\nname = "deepseek-flash"\nreasoning_effort = "low"',
     );
     expect(config.agent.model).toEqual({
       provider: "custom",

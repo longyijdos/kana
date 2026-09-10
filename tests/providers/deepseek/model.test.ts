@@ -92,7 +92,7 @@ describe("DeepSeek model protocol routing", () => {
     try {
       const model = new DeepSeekModel({
         provider: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         apiKey: "test-key",
         baseUrl: `http://127.0.0.1:${server.port}`,
         reasoningEffort: "max",
@@ -107,7 +107,7 @@ describe("DeepSeek model protocol routing", () => {
 
       expect(requestPath).toBe("/responses");
       expect(requestBody).toMatchObject({
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         stream: true,
         max_output_tokens: 2_048,
         reasoning: { effort: "max" },
@@ -171,7 +171,7 @@ describe("DeepSeek model protocol routing", () => {
           event: "provider.request_started",
           metadata: {
             provider: "deepseek",
-            model: "deepseek-v4-flash",
+            model: "deepseek-flash",
             protocol: "responses",
             phase: "validation",
             outcome: "started",
@@ -182,7 +182,7 @@ describe("DeepSeek model protocol routing", () => {
           event: "provider.request_completed",
           metadata: {
             provider: "deepseek",
-            model: "deepseek-v4-flash",
+            model: "deepseek-flash",
             protocol: "responses",
             phase: "response_stream",
             outcome: "completed",

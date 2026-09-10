@@ -134,7 +134,7 @@ tool_result_artifacts = true
 
 [agent.model]
 provider = "deepseek"
-name = "deepseek-v4-pro"
+name = "deepseek-flash"
 # reasoning_effort = "high"
 # max_output_tokens = 128000
 # context_limit = 500000
@@ -180,7 +180,7 @@ max_parallel_tool_calls = 4
 
 [memory.agent.model]
 provider = "deepseek"
-name = "deepseek-v4-flash"
+name = "deepseek-flash"
 # reasoning_effort = "low"
 # max_output_tokens = 64000
 # context_limit = 200000
@@ -217,8 +217,8 @@ Before first use of OpenAI Codex, run `kana auth login openai-codex`. Browser au
 | `agent.web_search` / `memory.agent.web_search` | Boolean | `true` / `false` | Allows hosted search only when the selected model metadata also supports it. Custom models currently declare no hosted-search capability. |
 | `agent.image_input` / `memory.agent.image_input` | Boolean | `true` / `false` | Allows persisted user/tool images and registers `view_image` only when model metadata also supports images. Disabled or unsupported images remain persisted but become omission markers in model input. |
 | `agent.model.provider` / `memory.agent.model.provider` | `deepseek`, `openai-codex`, `custom` | `deepseek` | Provider selected independently for each Agent. |
-| `agent.model.name` | Provider model name | `deepseek-v4-pro` | Conversation model; built-in names are validated against provider metadata. |
-| `memory.agent.model.name` | Provider model name | `deepseek-v4-flash` | Memory-consolidation model, independent of `/model`. |
+| `agent.model.name` | Provider model name | `deepseek-flash` | Conversation model; built-in names are validated against provider metadata. |
+| `memory.agent.model.name` | Provider model name | `deepseek-flash` | Memory-consolidation model, independent of `/model`. |
 | `*.model.reasoning_effort` | Value advertised by model metadata | Metadata default | Optional override. DeepSeek supports `none`, `low`, `high`, `max`; Codex supports `low`, `medium`, `high`, `xhigh`, `max`; Custom uses `custom.toml` metadata. |
 | `*.model.max_output_tokens` | Optional positive integer | Metadata hard output limit | Agent-level output ceiling, clamped to the selected model's hard limit and lowered per turn when prompt space is tighter. |
 | `*.model.context_limit` | Optional positive integer | Metadata context window | Agent-level context cap, clamped to the selected model's context window. |
@@ -454,7 +454,7 @@ This example changes only the model name and notification behavior; every other 
 
 ```toml
 [agent.model]
-name = "deepseek-v4-flash"
+name = "deepseek-flash"
 
 [notification]
 backend = "bell"
