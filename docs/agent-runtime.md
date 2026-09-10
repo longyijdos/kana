@@ -108,6 +108,7 @@ The prompt budget is the effective context limit minus a bounded safety reserve.
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
 promptBudget = contextLimit - safetyReserve
 effectiveMaxOutputTokens = min(configured-or-metadata max output, promptBudget - estimatedPromptTokens)
+maxSummaryTokens = min(agent max output, promptBudget × 10%, targetTokens × 50%)
 ```
 
 At least 512 prompt tokens must remain. The effective context limit is the smaller of the configured limit and model metadata window, or the metadata window when configuration omits it.
@@ -116,7 +117,7 @@ Automatic compaction begins at 80% of the prompt budget. Candidate cutoffs are l
 
 Runtime-context messages never enter summary-policy input. At the checkpoint boundary, only the last state for each source is reprojected after the summary when that state is active; all later transitions retain original order. Tool-result policy context remains ordinary summarized conversation context unless its own provenance contract says otherwise.
 
-An injected `CompactPolicy` produces the summary. Kana calls the main Agent's current Model once with `generate()` and no tools rather than starting another Agent loop. It supplies the previous cumulative summary plus newly covered messages, omitting assistant thinking, assistant usage, and structured host results while retaining model-visible tool content, errors, and eligible visual observations. The response must end with `stop` and fit the summary budget; otherwise the preceding checkpoint remains active.
+An injected `CompactPolicy` produces the summary. Kana calls the main Agent's current Model once with `generate()` and no tools rather than starting another Agent loop. The generation request uses the Agent model's output ceiling, leaving reasoning models the same completion capacity as a normal Agent request, while the visible summary remains bounded by the context target. It supplies the previous cumulative summary plus newly covered messages, omitting assistant thinking, assistant usage, and structured host results while retaining model-visible tool content, errors, and eligible visual observations. The response must end with `stop` and fit the summary budget; otherwise the preceding checkpoint remains active.
 
 Image observations follow the effective model and Agent image policy. Supported requests receive structured images and metadata so the summary can preserve visual facts as text. Unsupported or disabled image input receives omission metadata without base64 and can still complete compaction.
 

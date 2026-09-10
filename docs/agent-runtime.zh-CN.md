@@ -108,6 +108,7 @@ Prompt budget 等于 effective context limit 减去有界安全预留，不会�
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
 promptBudget = contextLimit - safetyReserve
 effectiveMaxOutputTokens = min(配置或 metadata 的输出上限, promptBudget - estimatedPromptTokens)
+maxSummaryTokens = min(Agent 输出上限, promptBudget × 10%, targetTokens × 50%)
 ```
 
 `promptBudget` 至少需要保留 512 tokens。Effective context limit 是配置上限与模型 metadata window 的较小值；省略配置时使用 metadata window。
@@ -116,7 +117,7 @@ effectiveMaxOutputTokens = min(配置或 metadata 的输出上限, promptBudget 
 
 Runtime-context 消息永不进入摘要策略输入。在 checkpoint 边界，每个 source 的最后状态只有仍 active 时才紧接摘要重新投影；边界后的全部转换保持原顺序。Tool-result policy context 仍是普通的可摘要对话上下文，除非其 provenance 合同另有定义。
 
-注入的 `CompactPolicy` 生成实际摘要。Kana 用主 Agent 当前 Model 执行一次无工具 `generate()`，而不是启动另一个 Agent loop。输入包含上一份累计摘要与本次新覆盖消息；assistant thinking、assistant usage 和结构化 host result 被省略，模型可见的工具内容、错误与符合条件的视觉观察保留。响应必须以 `stop` 完成并进入摘要预算，否则继续使用此前 checkpoint。
+注入的 `CompactPolicy` 生成实际摘要。Kana 用主 Agent 当前 Model 执行一次无工具 `generate()`，而不是启动另一个 Agent loop。生成请求使用 Agent 模型的输出上限，让推理模型拥有与普通 Agent 请求相同的 completion 容量，可见摘要仍受 context target 约束。输入包含上一份累计摘要与本次新覆盖消息；assistant thinking、assistant usage 和结构化 host result 被省略，模型可见的工具内容、错误与符合条件的视觉观察保留。响应必须以 `stop` 完成并进入摘要预算，否则继续使用此前 checkpoint。
 
 图片观察遵循当前有效的模型与 Agent 图片策略。支持图片的请求会收到结构化图片和元数据，让摘要把视觉事实保留为文本；图片输入不受支持或被关闭时只接收 omission metadata，不带 base64，但压缩仍可完成。
 

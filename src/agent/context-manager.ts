@@ -17,8 +17,6 @@ import { resolveRuntimeContextMessages } from "./prompt-assembly";
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
 const DEFAULT_TARGET_RATIO = 0.1;
 const DEFAULT_MAX_TOOL_CONTENT_TOKENS = 8_000;
-const MIN_SUMMARY_TOKENS = 64;
-const MAX_SUMMARY_TOKENS = 8_192;
 
 export type ContextCompactionReason = "threshold" | "provider_limit" | "manual";
 
@@ -51,6 +49,7 @@ export type CompactPolicyInput = {
   previousSummary?: string;
   messages: Message[];
   maxSummaryTokens: number;
+  maxOutputTokens: number;
   signal?: AbortSignal;
 };
 
@@ -143,13 +142,10 @@ export class ContextManager {
     this.promptBudget = promptBudget;
     this.triggerTokens = Math.floor(promptBudget * compactAtRatio);
     this.targetTokens = Math.floor(promptBudget * targetRatio);
-    this.maxSummaryTokens = Math.max(
-      MIN_SUMMARY_TOKENS,
-      Math.min(
-        MAX_SUMMARY_TOKENS,
-        Math.floor(promptBudget * 0.1),
-        Math.floor(this.targetTokens * 0.5),
-      ),
+    this.maxSummaryTokens = Math.min(
+      this.maxOutputTokens,
+      Math.floor(promptBudget * 0.1),
+      Math.floor(this.targetTokens * 0.5),
     );
     this.maxToolContentTokens = Math.min(
       DEFAULT_MAX_TOOL_CONTENT_TOKENS,
@@ -362,6 +358,7 @@ export class ContextManager {
           .filter((message) => !isRuntimeContextMessage(message))
           .map(messageForCompaction),
         maxSummaryTokens: this.maxSummaryTokens,
+        maxOutputTokens: this.maxOutputTokens,
         signal: options.signal,
       });
       const summary = result.summary.trim();

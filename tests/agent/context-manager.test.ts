@@ -41,6 +41,43 @@ describe("ContextManager budgets and checkpoints", () => {
     expect(manager.promptBudget).toBe(121_600);
     expect(manager.triggerTokens).toBe(97_280);
     expect(manager.targetTokens).toBe(12_160);
+    expect(manager.maxSummaryTokens).toBe(6_080);
+  });
+
+  test("does not impose a minimum summary budget", () => {
+    const manager = new ContextManager({
+      contextLimit: 1_000,
+      maxOutputTokens: 500,
+    });
+
+    expect(manager.maxSummaryTokens).toBe(37);
+  });
+
+  test("uses the Agent output ceiling for compaction generation", async () => {
+    let policyInput: CompactPolicyInput | undefined;
+    const manager = new ContextManager({
+      contextLimit: 256_000,
+      maxOutputTokens: 128_000,
+      compactPolicy: (input) => {
+        policyInput = structuredClone(input);
+        return { summary: "Earlier work is complete." };
+      },
+    });
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "x".repeat(700_000) },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "done" }],
+      },
+    ];
+
+    await manager.prepareForModel({ messages });
+
+    expect(manager.maxSummaryTokens).toBe(12_390);
+    expect(policyInput?.maxSummaryTokens).toBe(12_390);
+    expect(policyInput?.maxOutputTokens).toBe(128_000);
   });
 
   test("treats configured output tokens as a per-request ceiling", async () => {
@@ -884,10 +921,11 @@ describe("model compaction policy", () => {
         },
       ],
       maxSummaryTokens: 256,
+      maxOutputTokens: 500,
     });
 
     expect(capturedContext?.tools).toBeUndefined();
-    expect(capturedContext?.maxOutputTokens).toBe(256);
+    expect(capturedContext?.maxOutputTokens).toBe(500);
     expect(capturedContext?.imageInput).toBe(false);
     expect(capturedContext?.messages).toHaveLength(1);
     expect(JSON.stringify(capturedContext)).toContain("Previous state.");
@@ -974,6 +1012,7 @@ describe("model compaction policy", () => {
         },
       ],
       maxSummaryTokens: 256,
+      maxOutputTokens: 500,
     });
 
     expect(capturedContext?.imageInput).toBe(true);
@@ -1043,6 +1082,7 @@ describe("model compaction policy", () => {
         },
       ],
       maxSummaryTokens: 256,
+      maxOutputTokens: 500,
     });
 
     expect(capturedContext?.imageInput).toBe(false);
