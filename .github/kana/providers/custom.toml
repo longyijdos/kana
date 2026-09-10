@@ -4,10 +4,10 @@ timeout_ms = 120000
 max_retries = 1
 
 [[models]]
-name = "deepseek/deepseek-v4-flash"
+name = "deepseek/deepseek-v4.1-flash"
 context_window = 1000000
-max_output_tokens = 393216
+max_output_tokens = 384000
 supports_parallel_tool_calls = true
-supports_image_input = false
-reasoning_efforts = ["high", "max"]
-default_reasoning_effort = "max"
+supports_image_input = true
+reasoning_efforts = ["low", "high", "max"]
+default_reasoning_effort = "high"

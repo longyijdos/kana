@@ -4,7 +4,7 @@ goal_max_rounds = 3
 
 [agent.model]
 provider = "custom"
-name = "deepseek/deepseek-v4-flash"
+name = "deepseek/deepseek-v4.1-flash"
 reasoning_effort = "max"
 max_output_tokens = 128_000
 context_limit = 256_000
