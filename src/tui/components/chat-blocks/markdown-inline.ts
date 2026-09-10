@@ -1,3 +1,4 @@
+import type { Token, Tokens } from "marked";
 import {
   bold,
   type Color,
@@ -14,7 +15,7 @@ import {
   visibleWidth,
 } from "../../render";
 import { tuiTheme } from "../../theme";
-import { readInlineLatex } from "./markdown-latex";
+import { lexMarkdownInline, type MarkdownLatexToken } from "./markdown-parser";
 
 type InlineStyle = {
   bold?: boolean;
@@ -50,15 +51,35 @@ export function renderWrappedInline(
     continuationPrefix?: string;
   },
 ): string[] {
+  return renderWrappedInlineTokens(lexMarkdownInline(value), width, options);
+}
+
+export function renderWrappedInlineTokens(
+  tokens: readonly Token[],
+  width: number,
+  options: {
+    defaultColor?: Color;
+    dim?: boolean;
+    forceBold?: boolean;
+    hyperlinks?: boolean;
+    prefix?: string;
+    renderLatex?: boolean;
+    continuationPrefix?: string;
+  },
+): string[] {
   const prefix = options.prefix ?? "";
   const continuationPrefix = options.continuationPrefix ?? "";
   const firstWidth = Math.max(1, width - visibleWidth(prefix));
   const restWidth = Math.max(1, width - visibleWidth(continuationPrefix));
   const spans = resolveInlineLinks(
-    parseInline(value, { renderLatex: options.renderLatex }),
+    inlineTokensToSpans(tokens, {}, { renderLatex: options.renderLatex }),
     options.hyperlinks === true,
   );
-  const lines = wrapSpans(spans, firstWidth, restWidth);
+  const lines: InlineSpan[][] = [];
+
+  for (const logicalLine of splitSpanLines(spans)) {
+    lines.push(...wrapSpans(logicalLine, lines.length === 0 ? firstWidth : restWidth, restWidth));
+  }
 
   return lines.map((line, index) => {
     const linePrefix = index === 0 ? prefix : continuationPrefix;
@@ -66,6 +87,24 @@ export function renderWrappedInline(
 
     return truncateToWidth(`${linePrefix}${styled}`, width, "");
   });
+}
+
+function splitSpanLines(spans: InlineSpan[]): InlineSpan[][] {
+  const lines: InlineSpan[][] = [[]];
+
+  for (const span of spans) {
+    const segments = span.text.split("\n");
+    for (const [index, segment] of segments.entries()) {
+      if (segment) {
+        lines.at(-1)?.push({ ...span, text: segment });
+      }
+      if (index + 1 < segments.length) {
+        lines.push([]);
+      }
+    }
+  }
+
+  return lines;
 }
 
 export function wrapSpans(
@@ -188,7 +227,7 @@ export function wrapPlainLine(value: string, width: number): string[] {
 }
 
 export function parseInline(value: string, options: { renderLatex?: boolean } = {}): InlineSpan[] {
-  return parseInlineWithStyle(normalizeInlineImages(value), {}, options);
+  return inlineTokensToSpans(lexMarkdownInline(value), {}, options);
 }
 
 export function resolveInlineLinks(spans: InlineSpan[], hyperlinks: boolean): InlineSpan[] {
@@ -221,324 +260,190 @@ export function resolveInlineLinks(spans: InlineSpan[], hyperlinks: boolean): In
   return resolved;
 }
 
-function parseInlineWithStyle(
-  value: string,
+function inlineTokensToSpans(
+  tokens: readonly Token[],
   activeStyle: InlineStyle,
   options: { renderLatex?: boolean },
 ): InlineSpan[] {
   const spans: InlineSpan[] = [];
-  let plain = "";
-  let index = 0;
 
-  const flushPlain = (): void => {
-    if (plain) {
-      spans.push({
-        text: plain,
-        style: styleOrUndefined(activeStyle),
-      });
-      plain = "";
-    }
-  };
-
-  while (index < value.length) {
-    if (value[index] === "[" && value[index - 1] !== "!") {
-      // Streamed partial links remain literal until every closing delimiter is
-      // present, avoiding transient or unterminated OSC state.
-      const link = readInlineLink(value, index);
-
-      if (link) {
-        flushPlain();
-        const destination = sanitizeTerminalHyperlinkDestination(link.destination);
-        const labelSpans = parseInlineWithStyle(link.label, activeStyle, options);
-
-        if (destination) {
-          const inlineLink: InlineLink = {
-            destination,
-            fallbackDestination: link.destination,
-          };
-          spans.push(...labelSpans.map((span) => ({ ...span, link: inlineLink })));
-        } else {
-          spans.push(...labelSpans);
-          const readableDestination = stripTerminalControlSequences(link.destination).replace(
-            /[\u0000-\u001f\u007f-\u009f]/g,
-            "",
-          );
-          if (readableDestination) {
-            spans.push({ text: ` (${readableDestination})` });
-          }
-        }
-        index = link.end;
-        continue;
-      }
-    }
-
-    if (value[index] === "`") {
-      const end = value.indexOf("`", index + 1);
-
-      if (end > index + 1) {
-        flushPlain();
-        spans.push({
-          text: value.slice(index + 1, end),
-          style: { code: true },
-        });
-        index = end + 1;
-        continue;
-      }
-    }
-
-    const latex = readInlineLatex(value, index);
-    if (latex) {
-      flushPlain();
-      const rendered =
-        latex.pending || options.renderLatex === false ? undefined : renderLatex(latex.text);
-      spans.push({
-        // Multi-line environments cannot participate in Kana's inline span
-        // wrapping without corrupting line boundaries, so keep those literal.
-        text: rendered !== undefined && !/[\r\n]/.test(rendered) ? rendered : latex.raw,
-        style: styleOrUndefined(activeStyle),
-      });
-      index = latex.end;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    const unsafeLinkEnd = appendUnsafeLinkFallback(spans, tokens, index, activeStyle, options);
+    if (unsafeLinkEnd !== undefined) {
+      index = unsafeLinkEnd;
       continue;
     }
 
-    if (value.startsWith("***", index)) {
-      const end = value.indexOf("***", index + 3);
+    switch (token.type) {
+      case "text":
+      case "escape": {
+        const textToken = token as Tokens.Text | Tokens.Escape;
+        spans.push({ text: textToken.text, style: styleOrUndefined(activeStyle) });
+        break;
+      }
 
-      if (end > index + 3) {
-        flushPlain();
+      case "html":
+        spans.push({ text: token.raw, style: styleOrUndefined(activeStyle) });
+        break;
+
+      case "strong":
         spans.push(
-          ...parseInlineWithStyle(
-            value.slice(index + 3, end),
-            {
-              ...activeStyle,
-              bold: true,
-              italic: true,
-            },
+          ...inlineTokensToSpans(
+            (token as Tokens.Strong).tokens,
+            { ...activeStyle, bold: true },
             options,
           ),
         );
-        index = end + 3;
-        continue;
-      }
-    }
+        break;
 
-    if (value.startsWith("~~", index)) {
-      const end = value.indexOf("~~", index + 2);
-
-      if (end > index + 2) {
-        flushPlain();
+      case "em":
         spans.push(
-          ...parseInlineWithStyle(
-            value.slice(index + 2, end),
-            {
-              ...activeStyle,
-              strike: true,
-            },
+          ...inlineTokensToSpans(
+            (token as Tokens.Em).tokens,
+            { ...activeStyle, italic: true },
             options,
           ),
         );
-        index = end + 2;
-        continue;
-      }
-    }
+        break;
 
-    if (value.startsWith("**", index)) {
-      const end = value.indexOf("**", index + 2);
-
-      if (end > index + 2) {
-        flushPlain();
+      case "del":
         spans.push(
-          ...parseInlineWithStyle(
-            value.slice(index + 2, end),
-            {
-              ...activeStyle,
-              bold: true,
-            },
+          ...inlineTokensToSpans(
+            (token as Tokens.Del).tokens,
+            { ...activeStyle, strike: true },
             options,
           ),
         );
-        index = end + 2;
-        continue;
+        break;
+
+      case "codespan":
+        spans.push({
+          text: (token as Tokens.Codespan).text,
+          style: styleOrUndefined({ ...activeStyle, code: true }),
+        });
+        break;
+
+      case "link":
+        appendLinkSpans(spans, token as Tokens.Link, activeStyle, options);
+        break;
+
+      case "image":
+        appendImageSpan(spans, token as Tokens.Image, activeStyle);
+        break;
+
+      case "latex": {
+        const latex = token as MarkdownLatexToken;
+        const rendered =
+          latex.pending || options.renderLatex === false ? undefined : renderLatex(latex.text);
+        spans.push({
+          // Multi-line environments cannot participate in Kana's inline span
+          // wrapping without corrupting line boundaries, so keep those literal.
+          text: rendered !== undefined && !/[\r\n]/.test(rendered) ? rendered : latex.raw,
+          style: styleOrUndefined(activeStyle),
+        });
+        break;
       }
+
+      case "br":
+        spans.push({ text: "\n", style: styleOrUndefined(activeStyle) });
+        break;
+
+      default:
+        spans.push({ text: token.raw, style: styleOrUndefined(activeStyle) });
     }
-
-    const marker = value[index];
-    if ((marker === "*" || marker === "_") && value[index + 1] !== marker) {
-      const end = value.indexOf(marker, index + 1);
-
-      if (end > index + 1 && value[end + 1] !== marker) {
-        flushPlain();
-        spans.push(
-          ...parseInlineWithStyle(
-            value.slice(index + 1, end),
-            {
-              ...activeStyle,
-              italic: true,
-            },
-            options,
-          ),
-        );
-        index = end + 1;
-        continue;
-      }
-    }
-
-    plain += value[index];
-    index += 1;
   }
-
-  flushPlain();
 
   return spans;
 }
 
-function normalizeInlineImages(value: string): string {
-  return value.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, alt, url) =>
-    alt ? `[image: ${alt}] ${url}` : `[image] ${url}`,
-  );
-}
-
-function readInlineLink(
-  value: string,
-  start: number,
-): { destination: string; end: number; label: string } | undefined {
-  const labelEnd = findClosingBracket(value, start);
-  if (labelEnd === undefined || labelEnd === start + 1 || value[labelEnd + 1] !== "(") {
+function appendUnsafeLinkFallback(
+  spans: InlineSpan[],
+  tokens: readonly Token[],
+  index: number,
+  activeStyle: InlineStyle,
+  options: { renderLatex?: boolean },
+): number | undefined {
+  // A terminal control inside a destination makes Marked split the link into
+  // text/autolink/text tokens. Recover only that unsafe shape so it degrades
+  // to Kana's inert label-and-destination fallback.
+  const opening = tokens[index];
+  const destination = tokens[index + 1];
+  const closing = tokens[index + 2];
+  if (opening?.type !== "text" || destination?.type !== "link" || closing?.type !== "text") {
     return undefined;
   }
 
-  let index = labelEnd + 2;
-  while (isInlineWhitespace(value[index])) {
-    index += 1;
-  }
-
-  const destination = readLinkDestination(value, index);
-  if (!destination) {
-    return undefined;
-  }
-  index = destination.end;
-
-  while (isInlineWhitespace(value[index])) {
-    index += 1;
-  }
-
-  if (value[index] === '"' || value[index] === "'") {
-    const titleEnd = findClosingQuote(value, index, value[index]!);
-    if (titleEnd === undefined) {
-      return undefined;
-    }
-    index = titleEnd + 1;
-    while (isInlineWhitespace(value[index])) {
-      index += 1;
-    }
-  }
-
-  if (value[index] !== ")") {
+  const link = destination as Tokens.Link;
+  const match = (opening as Tokens.Text).text.match(/^(.*)\[([^\]\n]+)\]\($/);
+  const readableDestination = readableTerminalText(link.raw);
+  if (
+    !link.autolink ||
+    !match ||
+    !closing.raw.startsWith(")") ||
+    readableDestination === link.raw
+  ) {
     return undefined;
   }
 
-  return {
-    destination: unescapeMarkdownDestination(destination.value),
-    end: index + 1,
-    label: value.slice(start + 1, labelEnd),
-  };
-}
-
-function findClosingBracket(value: string, start: number): number | undefined {
-  let depth = 0;
-
-  for (let index = start + 1; index < value.length; index += 1) {
-    if (isMarkdownEscape(value, index)) {
-      index += 1;
-      continue;
-    }
-    if (value[index] === "[") {
-      depth += 1;
-      continue;
-    }
-    if (value[index] === "]") {
-      if (depth === 0) {
-        return index;
-      }
-      depth -= 1;
-    }
+  if (match[1]) {
+    spans.push({ text: match[1], style: styleOrUndefined(activeStyle) });
+  }
+  spans.push(...inlineTokensToSpans(lexMarkdownInline(match[2] ?? ""), activeStyle, options));
+  if (readableDestination) {
+    spans.push({ text: ` (${readableDestination})` });
+  }
+  if (closing.raw.length > 1) {
+    spans.push({ text: closing.raw.slice(1), style: styleOrUndefined(activeStyle) });
   }
 
-  return undefined;
+  return index + 2;
 }
 
-function readLinkDestination(
-  value: string,
-  start: number,
-): { end: number; value: string } | undefined {
-  if (value[start] === "<") {
-    for (let index = start + 1; index < value.length; index += 1) {
-      if (isMarkdownEscape(value, index)) {
-        index += 1;
-        continue;
-      }
-      if (value[index] === ">") {
-        return { end: index + 1, value: value.slice(start + 1, index) };
-      }
-      if (value[index] === "\n" || value[index] === "\r") {
-        return undefined;
-      }
-    }
-    return undefined;
+function appendLinkSpans(
+  spans: InlineSpan[],
+  token: Tokens.Link,
+  activeStyle: InlineStyle,
+  options: { renderLatex?: boolean },
+): void {
+  if (token.autolink) {
+    spans.push({
+      text: readableTerminalText(token.raw),
+      style: styleOrUndefined(activeStyle),
+    });
+    return;
   }
 
-  let depth = 0;
-  for (let index = start; index < value.length; index += 1) {
-    const character = value[index];
-    if (isMarkdownEscape(value, index)) {
-      index += 1;
-      continue;
-    }
-    if (character === "(") {
-      depth += 1;
-      continue;
-    }
-    if (character === ")") {
-      if (depth === 0) {
-        return index === start ? undefined : { end: index, value: value.slice(start, index) };
-      }
-      depth -= 1;
-      continue;
-    }
-    if (isInlineWhitespace(character) && depth === 0) {
-      return index === start ? undefined : { end: index, value: value.slice(start, index) };
-    }
+  const labelSpans = inlineTokensToSpans(token.tokens, activeStyle, options);
+  const destination = sanitizeTerminalHyperlinkDestination(token.href);
+  if (destination) {
+    const inlineLink: InlineLink = {
+      destination,
+      fallbackDestination: token.href,
+    };
+    spans.push(...labelSpans.map((span) => ({ ...span, link: inlineLink })));
+    return;
   }
 
-  return undefined;
-}
-
-function findClosingQuote(value: string, start: number, quote: string): number | undefined {
-  for (let index = start + 1; index < value.length; index += 1) {
-    if (isMarkdownEscape(value, index)) {
-      index += 1;
-      continue;
-    }
-    if (value[index] === quote) {
-      return index;
-    }
+  spans.push(...labelSpans);
+  const readableDestination = readableTerminalText(token.href);
+  if (readableDestination) {
+    spans.push({ text: ` (${readableDestination})` });
   }
-
-  return undefined;
 }
 
-function isInlineWhitespace(value: string | undefined): boolean {
-  return value === " " || value === "\t";
+function appendImageSpan(spans: InlineSpan[], token: Tokens.Image, activeStyle: InlineStyle): void {
+  const label = readableTerminalText(token.text);
+  const destination = readableTerminalText(token.href);
+  const description = label ? `[image: ${label}]` : "[image]";
+  spans.push({
+    text: destination ? `${description} ${destination}` : description,
+    style: styleOrUndefined(activeStyle),
+  });
 }
 
-function isMarkdownEscape(value: string, index: number): boolean {
-  // ESC \ terminates an OSC string; treating that backslash as Markdown
-  // escaping could leave a hostile destination outside link sanitization.
-  return value[index] === "\\" && value[index - 1] !== "\x1b";
-}
-
-function unescapeMarkdownDestination(value: string): string {
-  return value.replace(/\\([\\()[\]<>])/g, "$1");
+function readableTerminalText(value: string): string {
+  return stripTerminalControlSequences(value).replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
 }
 
 function sameStyle(left: InlineStyle | undefined, right: InlineStyle | undefined): boolean {
