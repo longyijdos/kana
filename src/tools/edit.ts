@@ -7,7 +7,8 @@ import { resolveExistingWorkspaceFile } from "./workspace-path";
 
 export const editParameters = strictObject({
   path: Type.String({
-    description: "Existing file path to edit, relative to the workspace root or absolute.",
+    description:
+      "Existing file path to edit, relative to the workspace root or absolute. A leading `~` or `~/` expands to the home directory.",
   }),
   oldText: Type.String({
     minLength: 1,

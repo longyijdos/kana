@@ -12,7 +12,8 @@ export const listParameters = strictObject({
   path: Type.Optional(
     Type.String({
       default: ".",
-      description: "Directory path to list, relative to the workspace root or absolute.",
+      description:
+        "Directory path to list, relative to the workspace root or absolute. A leading `~` or `~/` expands to the home directory.",
     }),
   ),
   includeHidden: Type.Optional(

@@ -14,7 +14,8 @@ export const globParameters = strictObject({
   cwd: Type.Optional(
     Type.String({
       default: ".",
-      description: "Directory to search from, relative to the workspace root or absolute.",
+      description:
+        "Directory to search from, relative to the workspace root or absolute. A leading `~` or `~/` expands to the home directory.",
     }),
   ),
   pattern: Type.String({

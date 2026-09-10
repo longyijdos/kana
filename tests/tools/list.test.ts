@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { createListTool } from "../../src/tools/list";
 import {
@@ -63,5 +65,21 @@ describe("list tool", () => {
     expect(result.result.entries).toEqual([
       expect.objectContaining({ name: "a.txt", path: "a.txt", type: "file" }),
     ]);
+  });
+
+  test("resolves a leading tilde to the home directory instead of the workspace", async () => {
+    const root = await createTempRoot();
+    const home = await realpath(homedir());
+    const list = createListTool({ root });
+    const result = await list.execute(
+      {
+        path: "~",
+      },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result.path).toBe(path.relative(await realpath(root), home));
+    expect(existsSync(path.join(root, "~"))).toBe(false);
   });
 });

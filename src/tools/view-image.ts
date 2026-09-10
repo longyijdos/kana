@@ -9,7 +9,8 @@ import { resolveExistingWorkspaceFile } from "./workspace-path";
 
 export const viewImageParameters = strictObject({
   path: Type.String({
-    description: "Image path to inspect, relative to the workspace root or absolute.",
+    description:
+      "Image path to inspect, relative to the workspace root or absolute. A leading `~` or `~/` expands to the home directory.",
   }),
 });
 

@@ -7,7 +7,8 @@ import { resolveNewWorkspaceFile } from "./workspace-path";
 
 export const writeParameters = strictObject({
   path: Type.String({
-    description: "New file path to create, relative to the workspace root or absolute.",
+    description:
+      "New file path to create, relative to the workspace root or absolute. A leading `~` or `~/` expands to the home directory.",
   }),
   content: Type.String({
     description: "Complete file content to write.",
