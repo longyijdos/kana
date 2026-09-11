@@ -1,5 +1,6 @@
 import { lstat, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { expandHomePath } from "@/utils";
 
 export type WorkspacePath = {
   absolutePath: string;
@@ -166,7 +167,11 @@ function isValidInputPath(inputPath: string): boolean {
 }
 
 function resolveInputPath(rootPath: string, inputPath: string): string {
-  return path.isAbsolute(inputPath) ? path.resolve(inputPath) : path.resolve(rootPath, inputPath);
+  const expandedPath = expandHomePath(inputPath);
+
+  return path.isAbsolute(expandedPath)
+    ? path.resolve(expandedPath)
+    : path.resolve(rootPath, expandedPath);
 }
 
 async function canonicalizeNewPath(absolutePath: string): Promise<string> {

@@ -113,7 +113,7 @@ The live structured result remains available to `tool_execution_end`. Oversized,
 
 ## File and shell boundaries
 
-File tools and `bash` resolve relative paths against their configured root, which Kana sets to the startup working directory. They also accept absolute paths. This is path normalization, not a workspace sandbox: relative paths may leave the root, symlinks may resolve outside it, and `bash.cwd`, `glob.cwd`, and `grep.path` may name external locations.
+File tools and `bash` resolve relative paths against their configured root, which Kana sets to the startup working directory. They also accept absolute paths. A leading `~` or `~/` in a path argument expands to the user's home directory, so `~/notes.md` never becomes a literal `~` directory inside the root; a `~` that appears after the first segment stays literal, and `glob.pattern` and `grep.include` are relative glob patterns rather than paths. This is path normalization, not a workspace sandbox: relative paths may leave the root, symlinks may resolve outside it, and `bash.cwd`, `glob.cwd`, and `grep.path` may name external locations.
 
 `view_image` shares the user-attachment decoder and size limits. Supported encoded JPEG, PNG, and WebP remain provider-ready; other decoded formats become static PNG, and animated input uses its decoded first frame.
 

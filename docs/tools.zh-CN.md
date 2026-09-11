@@ -113,7 +113,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 ## 文件与 Shell 边界
 
-文件工具和 `bash` 把相对路径解析到配置 root；Kana 将其设为启动工作目录。它们也接受绝对路径。这是路径规范化，不是 workspace sandbox：相对路径可以离开 root，符号链接可能解析到外部，`bash.cwd`、`glob.cwd` 与 `grep.path` 也可以指定外部位置。
+文件工具和 `bash` 把相对路径解析到配置 root；Kana 将其设为启动工作目录。它们也接受绝对路径。path 参数开头的 `~` 或 `~/` 会展开为用户的 home 目录，因此 `~/notes.md` 不会再变成 root 内的字面量 `~` 目录；出现在首段之后的 `~` 仍保持字面量，而 `glob.pattern` 与 `grep.include` 是相对 glob 而非路径。这是路径规范化，不是 workspace sandbox：相对路径可以离开 root，符号链接可能解析到外部，`bash.cwd`、`glob.cwd` 与 `grep.path` 也可以指定外部位置。
 
 `view_image` 与用户附件共用 decoder 和大小限制。支持的 JPEG、PNG 与 WebP 保持 provider-ready；其它解码格式变成静态 PNG，动画输入使用解码后的首帧。
 

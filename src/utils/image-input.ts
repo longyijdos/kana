@@ -1,7 +1,7 @@
-import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { UserImage, UserImageMimeType } from "@/core";
+import { expandHomePath } from "./home-path";
 
 const MAX_IMAGE_INPUT_BYTES = 10 * 1024 * 1024;
 
@@ -62,13 +62,7 @@ function resolveUserImagePath(value: string): string {
       throw new Error(`Invalid image file URL: ${value}`, { cause: error });
     }
   }
-  if (path === "~") {
-    return homedir();
-  }
-  if (path.startsWith("~/")) {
-    path = resolve(homedir(), path.slice(2));
-  }
-  return resolve(path);
+  return resolve(expandHomePath(path));
 }
 
 function selectOutputFormat(image: Bun.Image, format: Bun.Image.Format): UserImageMimeType {
