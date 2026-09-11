@@ -17,8 +17,7 @@ export const grepParameters = strictObject({
   path: Type.Optional(
     Type.String({
       default: ".",
-      description:
-        "File or directory path to search, relative to the workspace root or absolute. A leading `~` or `~/` expands to the home directory.",
+      description: "File or directory path to search, relative to the workspace root or absolute.",
     }),
   ),
   include: Type.Optional(

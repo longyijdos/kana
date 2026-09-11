@@ -21,8 +21,7 @@ const jobStartParameters = strictObject({
   cwd: Type.Optional(
     Type.String({
       default: ".",
-      description:
-        "Working directory, relative to the workspace root or absolute. A leading `~` or `~/` expands to the home directory.",
+      description: "Working directory, relative to the workspace root or absolute.",
     }),
   ),
   timeoutMs: Type.Optional(

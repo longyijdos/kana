@@ -14,7 +14,7 @@ function readHomeRemainder(inputPath: string): string | undefined {
     return "";
   }
 
-  // Windows accepts both separators, while POSIX treats `\` as a filename character.
+  // `~\` counts only where the platform separator is `\`; POSIX treats `\` as a filename character.
   if (inputPath.startsWith("~/") || (path.sep === "\\" && inputPath.startsWith("~\\"))) {
     return inputPath.slice(2);
   }

@@ -10,8 +10,7 @@ const MAX_READ_LIMIT = 2000;
 
 export const readParameters = strictObject({
   path: Type.String({
-    description:
-      "File path to read, relative to the workspace root or absolute. A leading `~` or `~/` expands to the home directory.",
+    description: "File path to read, relative to the workspace root or absolute.",
   }),
   offset: Type.Optional(
     Type.Integer({
