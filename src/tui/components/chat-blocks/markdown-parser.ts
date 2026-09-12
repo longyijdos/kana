@@ -1,4 +1,5 @@
 import { Marked, type Token, Tokenizer, type TokenizerExtension, type Tokens } from "marked";
+import markedCjkFriendly from "marked-cjk-friendly";
 import { readBlockLatex, readInlineLatex } from "./markdown-latex";
 
 const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/;
@@ -86,6 +87,8 @@ const blockLatexExtension: TokenizerExtension = {
 
 const markdownParser = new Marked();
 markdownParser.setOptions({ tokenizer: new KanaMarkdownTokenizer() });
+const cjkFriendlyTokenizer = markedCjkFriendly().tokenizer as Pick<Tokenizer, "emStrong">;
+markdownParser.use({ tokenizer: { emStrong: cjkFriendlyTokenizer.emStrong } });
 markdownParser.use({ extensions: [blockLatexExtension, inlineLatexExtension] });
 
 export function lexMarkdown(value: string): Token[] {

@@ -132,6 +132,13 @@ describe("tui markdown block", () => {
     expect(rendered[0]).toContain(color("bun test", tuiTheme.markdownInlineCode));
   });
 
+  test("renders strong emphasis before adjacent CJK text", () => {
+    const rendered = new MarkdownBlock("**内容。**后续", { color: "white" }).render(80);
+
+    expect(stripAnsi(rendered[0] ?? "")).toBe("内容。后续");
+    expect(rendered[0]).toContain(bold(color("内容。", "white")));
+  });
+
   test("renders combined and nested emphasis", () => {
     const rendered = new MarkdownBlock("这是***粗斜体***，还有：**前面粗体*里面斜体*后面粗体**", {
       color: "white",
@@ -179,12 +186,12 @@ describe("tui markdown block", () => {
     expect(rendered[0]).toContain(color("foo `bar` baz", tuiTheme.markdownInlineCode));
   });
 
-  test("renders strikethrough without changing visible text", () => {
-    const rendered = new MarkdownBlock("这是~~删除线~~。", {
+  test("renders only strict double-marker strikethrough", () => {
+    const rendered = new MarkdownBlock("这是~~删除线~~，不是~普通文本~。", {
       color: "white",
     }).render(80);
 
-    expect(stripAnsi(rendered[0] ?? "")).toBe("这是删除线。");
+    expect(stripAnsi(rendered[0] ?? "")).toBe("这是删除线，不是~普通文本~。");
     expect(rendered[0]).toContain("\x1b[9m");
   });
 
