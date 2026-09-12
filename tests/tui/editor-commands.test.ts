@@ -6,11 +6,12 @@ import {
   getCommandState,
   PROMPT_COMMANDS,
   PROMPT_SHORTCUTS,
+  PROMPT_TEMPLATE_SHORTCUT,
 } from "../../src/tui/components/editor/commands";
 
 describe("prompt commands", () => {
   test("creates prompt placeholders from help command entries", () => {
-    const helpEntryCount = PROMPT_COMMANDS.length + PROMPT_SHORTCUTS.length;
+    const helpEntryCount = PROMPT_COMMANDS.length + PROMPT_SHORTCUTS.length + 1;
 
     expect(createRandomPromptPlaceholder(() => 0)).toBe("Try /quit — Exit Kana.");
     expect(
@@ -23,6 +24,9 @@ describe("prompt commands", () => {
     );
     expect(createRandomPromptPlaceholder(() => 0, "Try /quit — Exit Kana.")).toBe(
       "Try /help — Show commands and shortcuts.",
+    );
+    expect(createRandomPromptPlaceholder(() => PROMPT_COMMANDS.length / helpEntryCount)).toBe(
+      `Try ${PROMPT_TEMPLATE_SHORTCUT.input} — ${PROMPT_TEMPLATE_SHORTCUT.description}`,
     );
     expect(createRandomPromptPlaceholder(() => 6 / helpEntryCount)).toBe(
       "Try /delete — Delete a saved session.",

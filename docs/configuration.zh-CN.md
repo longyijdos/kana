@@ -58,11 +58,11 @@ kana auth logout openai-codex
 
 `--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills、用户 subagent 角色卡，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、工具选择、OAuth 凭据、审批规则与通知。选中的核心文件/Shell 工具、`todo_write`、内置 subagent profile 和 TUI 的进程内 `schedule_wake` 会在对应工具入选时保持可用；clean-mode child 状态只保存在内存。`/todo` 会显示临时 session 的当前 todo 状态；TUI 中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume`、`/delete` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
 
-`kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml`、`providers/custom.example.toml` 和 `agents/profile.md.example` 是 Kana 管理的生成参考；install 会创建其父目录、与当前 schema 比较，并且只在文件缺失或内容落后时创建或刷新。运行时忽略这些 example。需要覆盖默认值时，只把相应字段复制到 `config.toml`；编辑 Custom 配置前把对应 example 复制为 `providers/custom.toml`；使用 subagent template 前则把它复制或重命名为 `agents/<profile-name>.md`。install 不会覆盖真正的用户 profile、安装 Skills 仓库或创建 `~/.kana/AGENTS.md`。
+`kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml`、`providers/custom.example.toml`、`agents/profile.md.example` 和 `prompts/template.md.example` 是 Kana 管理的生成参考；install 会创建其父目录、与当前 schema 比较，并且只在文件缺失或内容落后时创建或刷新。运行时忽略这些 example。需要覆盖默认值时，只把相应字段复制到 `config.toml`；编辑 Custom 配置前把对应 example 复制为 `providers/custom.toml`；使用 subagent template 前把它复制或重命名为 `agents/<profile-name>.md`；使用 prompt template 前则复制为 `prompts/<template-name>.md`。install 不会覆盖真正的用户 profile 或 prompt template、安装 Skills 仓库或创建 `~/.kana/AGENTS.md`。
 
 `kana update --check` 读取 GitHub 最新正式 Release 的版本元数据，不下载或修改二进制。`kana update` 根据当前操作系统和架构下载对应资产，检查 Release 元数据中的文件大小和 SHA-256 digest，然后让候选二进制依次执行 `--version` 与幂等的 `kana install`；候选版本、支持文件初始化和当前可执行文件身份全部验证成功后，才通过同目录临时文件原子替换当前二进制。失败会删除临时文件并保留原二进制；如果另一个安装进程在下载期间已经替换目标，也会拒绝覆盖。更新支持 macOS/Linux 的 arm64、x64，沿用 Bun `fetch` 对 `HTTP_PROXY`/`HTTPS_PROXY` 的处理，且要求安装目录可写。直接通过 Bun 运行源码没有 direct distribution 构建标记，因此会拒绝自更新；`scripts/install.sh`、`bun run build:cli` 和正式 Release 构建的独立二进制包含该标记。
 
-`kana reset` 将主运行配置恢复到默认状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `providers/custom.toml`、生成的 provider/subagent example、`oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、用户 subagent 角色卡、用户主题、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
+`kana reset` 将主运行配置恢复到默认状态：删除 `config.toml`，刷新 `config.example.toml`，并把 MCP 定义、MCP 启用状态、审批规则和全局 Skill 启用列表重置为空默认值。它不会删除 `providers/custom.toml`、生成的 provider/subagent/prompt-template example、`oauth-tokens.json`、sessions、memory、accounting、logs、`AGENTS.md`、用户 subagent 角色卡、用户 prompt template、用户主题、默认 Skills 仓库或其它实际 Skills。该命令默认显示 `[y/N]` 确认；非交互环境会拒绝执行并提示显式传入 `--yes`。确认文案会列出全部重置项和主要保留项。
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。`kana skills install` 在目录不存在时 clone，已有 Git 仓库时执行 `git pull --ff-only`；已有目录不是 Git 仓库时失败并提示使用 `kana skills reinstall`。reinstall 会在确认后只删除整个默认仓库目录并重新 clone，保留相邻的 `skills.toml` 和其它实际 Skills；非交互环境同样要求 `--yes`。
 
@@ -88,6 +88,9 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── agents/
 │   ├── profile.md.example  # install 生成的 subagent profile 参考；永远不会加载
 │   └── <name>.md           # 可选的用户自定义 subagent 角色卡
+├── prompts/
+│   ├── template.md.example # install 生成的 prompt template 参考；永远不会加载
+│   └── <name>.md           # 可选的可复用 prompt template
 ├── sessions/               # 按工作区分组的 JSONL 会话
 ├── artifacts/              # 按工作区和会话隔离的超大工具输出
 ├── logs/                   # 按工作区和会话分组的运行时 JSONL 日志
@@ -101,6 +104,25 @@ ${KANA_HOME:-$HOME/.kana}/
 安装和应用写入的配置文件均以 `0600` 模式创建或写入。该权限是文件模式请求；实际效果仍受操作系统和文件系统 umask/权限模型影响。
 
 Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启动进程继承的同名环境变量，并成为 Kana 当前进程环境的一部分。内置 `bash`、`job_start` 工具和 TUI 的 `!` 本地 Shell 会继承这些值，因此该文件中的 secret 对它们执行的命令可见。MCP stdio 子进程仍使用独立的受限环境；需要通过 server 的 `env` 显式传入值或引用 `${VAR_NAME}` 占位符。
+
+## Prompt templates
+
+TUI 启动时会加载 `<KANA_HOME>/prompts` 直属的 `.md` 文件作为可复用 prompt template。`kana install` 会在该目录创建或刷新 `template.md.example`；loader 会忽略这份生成示例，编辑前应先把它复制成真正的 `.md` 文件。隐藏文件、嵌套目录和非 Markdown 文件也会被忽略。`squash-cleanup.md` 会注册为 `:squash-cleanup`，名称必须是最长 64 个字符的小写连字符标识符。
+
+每个文件都必须包含仅有 `description` 字段的 frontmatter，以及非空 prompt 正文：
+
+```md
+---
+description: Clean up a squash-merged branch and worktree
+---
+
+The PR was squash merged. Switch back to {{base=main}}, fast-forward it,
+then clean up {{branch=the merged branch}} and its related worktree if safe.
+```
+
+`{{name}}` 声明必填具名参数；`{{name=default value}}` 提供默认值，`{{name=}}` 表示默认值为空。同名占位符必须使用相同的默认值声明。调用格式是 `:<name>` 后跟可选的 `name=value` 赋值；单引号或双引号可以保留空格，引号内可用 `\` 转义同类引号或反斜杠。缺失必填值、未知或重复赋值、引号格式错误、默认值不一致以及无效元数据都会拒绝本次调用或文件并产生诊断；无效文件不会影响其它有效模板。
+
+编辑器会在提交或排队前展开有效调用，再把结果交给普通用户消息链路。因此，展开后的 prompt 直接复用现有 history、steering、queue 和 session 行为，模板名称和参数不会引入新的持久化执行类型。无法匹配模板的冒号开头输入仍作为普通用户消息发送。
 
 ## `config.toml`
 

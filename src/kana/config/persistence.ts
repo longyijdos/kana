@@ -6,7 +6,11 @@ import { DEFAULT_KANA_TOOL_APPROVALS } from "../tool-approval-defaults";
 import type { KanaConfig } from "./contracts";
 import { DEFAULT_KANA_CONFIG } from "./defaults";
 import { parseKanaConfig } from "./parser";
-import { serializeKanaConfigExample, serializeKanaSubagentProfileExample } from "./reference";
+import {
+  serializeKanaConfigExample,
+  serializeKanaPromptTemplateExample,
+  serializeKanaSubagentProfileExample,
+} from "./reference";
 
 export type InstallKanaConfigResult = {
   configPath: string;
@@ -23,6 +27,8 @@ export type InstallKanaConfigResult = {
   skillsConfigStatus: "created" | "exists";
   subagentProfileExamplePath: string;
   subagentProfileExampleStatus: "created" | "exists" | "updated";
+  promptTemplateExamplePath: string;
+  promptTemplateExampleStatus: "created" | "exists" | "updated";
   customProviderExamplePath: string;
   customProviderExampleStatus: "created" | "exists" | "updated";
 };
@@ -59,6 +65,7 @@ export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): Install
     skillsConfigPath,
     agentsDirectory,
     subagentProfileExamplePath,
+    promptTemplateExamplePath,
     providersDirectory,
     customProviderExamplePath,
   } = getKanaConfigPaths(env);
@@ -94,6 +101,11 @@ export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): Install
     subagentProfileExampleStatus: writeGeneratedExample(
       subagentProfileExamplePath,
       serializeKanaSubagentProfileExample(),
+    ),
+    promptTemplateExamplePath,
+    promptTemplateExampleStatus: writeGeneratedExample(
+      promptTemplateExamplePath,
+      serializeKanaPromptTemplateExample(),
     ),
     customProviderExamplePath,
     customProviderExampleStatus: writeGeneratedExample(

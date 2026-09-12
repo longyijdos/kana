@@ -3,6 +3,7 @@ import {
   getKanaModelManagement,
   type KanaConversationHostSession,
   type KanaLaunchMode,
+  loadKanaPromptTemplates,
   loadKanaSkillActivations,
   openKanaOAuthAuthorizationUrl,
   saveEnabledGlobalSkillNames,
@@ -73,6 +74,14 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
     logger: host.getLogger(),
     close: () => host.close(),
   });
+  const promptTemplateResult = loadKanaPromptTemplates();
+  for (const diagnostic of promptTemplateResult.diagnostics) {
+    host.getLogger().warn("tui.prompt_template_load_failed", {
+      code: diagnostic.code,
+      path: diagnostic.path,
+      error: diagnostic.message,
+    });
+  }
   let removeProcessSignals = (): void => {};
   const closeHostRuntime = async (): Promise<void> => {
     removeProcessSignals();
@@ -167,6 +176,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       ui: {
         notification: host.notificationConfig,
         config: host.tuiConfig,
+        promptTemplates: promptTemplateResult.templates,
         syntaxTheme: theme.syntaxTheme,
       },
       memory: {

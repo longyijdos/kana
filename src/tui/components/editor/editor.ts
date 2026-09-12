@@ -1,4 +1,5 @@
 import type { UserImage } from "@/core";
+import type { KanaPromptTemplate } from "@/kana";
 
 import {
   color,
@@ -29,11 +30,13 @@ import { tuiTheme } from "../../theme";
 import { BracketedPasteBuffer } from "../../utils/bracketed-paste";
 import { ListViewport, visibleLimitForHeight } from "../../utils/list-viewport";
 import {
+  type CommandState,
   completeCommand,
   createCommandSubmit,
   createRandomPromptPlaceholder,
   formatPromptCommandHelpLine,
   getCommandState,
+  type PromptCommand,
   type PromptSubmit,
 } from "./commands";
 import { resolveEditorInputAction } from "./input-actions";
@@ -55,6 +58,13 @@ import {
   splitEditorDisplayRange,
 } from "./state";
 import { renderStatusLine, type StatusLineState } from "./status-line";
+import {
+  completePromptTemplate,
+  createPromptTemplateSubmit,
+  formatPromptTemplateHelpLine,
+  getPromptTemplateState,
+  type PromptTemplateState,
+} from "./templates";
 
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
@@ -67,6 +77,7 @@ export type EditorOptions = {
   cleanMode?: boolean;
   commandPaletteVisibleLimit?: number;
   collapseLongPastes?: boolean;
+  promptTemplates?: readonly KanaPromptTemplate[];
 };
 
 export type EditorQueuedInput = {
@@ -85,6 +96,17 @@ type EditorHistoryEntry = {
   collapsedPastes: CollapsedPaste[];
 };
 
+type EditorPaletteState =
+  | ({ kind: "command" } & CommandState)
+  | ({ kind: "template" } & PromptTemplateState)
+  | {
+      kind: "none";
+      isCommandMode: false;
+      showPalette: false;
+      query: "";
+      suggestions: [];
+    };
+
 export class Editor implements Component {
   private state: EditorTextState = {
     value: "",
@@ -93,10 +115,11 @@ export class Editor implements Component {
   };
   private history: EditorHistoryEntry[] = [];
   private historyIndex = -1;
-  private readonly commandViewport: ListViewport;
-  private readonly maximumVisibleCommands: number;
+  private readonly paletteViewport: ListViewport;
+  private readonly maximumVisibleSuggestions: number;
   private readonly collapseLongPastes: boolean;
-  private lastCommandQuery = "";
+  private readonly promptTemplates: readonly KanaPromptTemplate[];
+  private lastPaletteKey = "";
   private readonly bracketedPaste = new BracketedPasteBuffer();
   private model?: string;
   private inputColumns = 80;
@@ -116,14 +139,16 @@ export class Editor implements Component {
   onQueue?: (submit: PromptSubmit) => void;
   onPasteClipboard?: () => void;
   onEscape?: () => void;
+  onError?: (error: unknown) => void;
 
   constructor(options: EditorOptions = {}) {
     this.model = options.model;
     this.statusState.cleanMode = options.cleanMode;
-    this.maximumVisibleCommands =
+    this.maximumVisibleSuggestions =
       options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT;
     this.collapseLongPastes = options.collapseLongPastes ?? true;
-    this.commandViewport = new ListViewport(this.maximumVisibleCommands);
+    this.promptTemplates = structuredClone(options.promptTemplates ?? []);
+    this.paletteViewport = new ListViewport(this.maximumVisibleSuggestions);
   }
 
   getText(): string {
@@ -142,7 +167,7 @@ export class Editor implements Component {
     };
     this.inputViewportStartLine = undefined;
     this.historyIndex = -1;
-    this.syncCommandSelection();
+    this.syncPaletteSelection();
   }
 
   clear(): void {
@@ -198,12 +223,12 @@ export class Editor implements Component {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
     const inputColumns = Math.max(1, contentWidth - visibleWidth(PROMPT));
-    const commandState = getCommandState(this.state.value);
+    const paletteState = this.getPaletteState();
     const showStatus =
-      !commandState.showPalette && (availableHeight === undefined || availableHeight >= 5);
+      !paletteState.showPalette && (availableHeight === undefined || availableHeight >= 5);
     const imageRows = this.images.length > 0 ? 1 : 0;
     const inputReservedRows =
-      2 + imageRows + (showStatus ? 1 : 0) + (commandState.showPalette ? 3 : 0);
+      2 + imageRows + (showStatus ? 1 : 0) + (paletteState.showPalette ? 3 : 0);
     const maximumInputLines = visibleLimitForHeight(
       MAX_INPUT_LINES,
       availableHeight,
@@ -243,14 +268,14 @@ export class Editor implements Component {
       availableHeight === undefined
         ? undefined
         : Math.max(1, Math.floor(availableHeight) - lines.length);
-    lines.push(...this.renderCommandPalette(frameWidth, commandPaletteHeight));
+    lines.push(...this.renderSuggestionPalette(frameWidth, commandPaletteHeight));
 
     if (showStatus) {
       lines.push(renderStatusLine(width, this.model, this.statusState));
     }
 
     if (
-      !commandState.showPalette &&
+      !paletteState.showPalette &&
       (this.queuedInputs.length > 0 || this.scheduledInputSummary !== undefined)
     ) {
       const queuedInputHeight =
@@ -293,11 +318,26 @@ export class Editor implements Component {
 
     if (isEnter(data)) {
       this.placeholder = createRandomPromptPlaceholder(Math.random, this.placeholder);
-      const commandState = getCommandState(this.state.value);
-      const submit = createCommandSubmit(
-        this.state.value,
-        commandState.suggestions[this.commandViewport.selectedIndex],
-      );
+      const paletteState = this.getPaletteState();
+      let submit: PromptSubmit | undefined;
+      try {
+        submit =
+          paletteState.kind === "template"
+            ? createPromptTemplateSubmit(
+                this.state.value,
+                paletteState.suggestions[this.paletteViewport.selectedIndex],
+                this.promptTemplates,
+              )
+            : createCommandSubmit(
+                this.state.value,
+                paletteState.kind === "command"
+                  ? paletteState.suggestions[this.paletteViewport.selectedIndex]
+                  : undefined,
+              );
+      } catch (error) {
+        this.onError?.(error);
+        return;
+      }
 
       if (submit) {
         this.onSubmit?.(this.withImages(submit));
@@ -318,11 +358,11 @@ export class Editor implements Component {
     const historyUp = isCtrlKey(data, "p");
     const historyDown = isCtrlKey(data, "n");
     if (isUp(data) || isDown(data) || historyUp || historyDown) {
-      const commandState = getCommandState(this.state.value);
+      const paletteState = this.getPaletteState();
       const direction = isUp(data) || historyUp ? -1 : 1;
 
-      if (commandState.showPalette && commandState.suggestions.length > 0) {
-        this.commandViewport.move(direction, commandState.suggestions.length);
+      if (paletteState.showPalette && paletteState.suggestions.length > 0) {
+        this.paletteViewport.move(direction, paletteState.suggestions.length);
         return;
       }
 
@@ -338,15 +378,37 @@ export class Editor implements Component {
     }
 
     if (isTab(data)) {
-      const commandState = getCommandState(this.state.value);
-      const command = commandState.suggestions[this.commandViewport.selectedIndex];
+      const paletteState = this.getPaletteState();
+      const suggestion = paletteState.suggestions[this.paletteViewport.selectedIndex];
 
-      if (commandState.showPalette && command) {
-        this.setText(completeCommand(command));
+      if (paletteState.showPalette && suggestion) {
+        this.setText(
+          paletteState.kind === "template"
+            ? completePromptTemplate(suggestion as KanaPromptTemplate)
+            : completeCommand(suggestion as PromptCommand),
+        );
         return;
       }
 
-      const submit = createCommandSubmit(this.state.value, command);
+      let submit: PromptSubmit | undefined;
+      try {
+        submit =
+          paletteState.kind === "template"
+            ? createPromptTemplateSubmit(
+                this.state.value,
+                suggestion as KanaPromptTemplate | undefined,
+                this.promptTemplates,
+              )
+            : createCommandSubmit(
+                this.state.value,
+                paletteState.kind === "command"
+                  ? (suggestion as PromptCommand | undefined)
+                  : undefined,
+              );
+      } catch (error) {
+        this.onError?.(error);
+        return;
+      }
       if (submit) {
         this.onQueue?.(this.withImages(submit));
       }
@@ -398,16 +460,16 @@ export class Editor implements Component {
       (segment) =>
         segment.collapsedPaste
           ? [{ text: segment.text, color: tuiTheme.muted }]
-          : this.renderCommandInputTokens(segment.text, segment.startOffset, display.value),
+          : this.renderSpecialInputTokens(segment.text, segment.startOffset, display.value),
     );
   }
 
-  private renderCommandInputTokens(
+  private renderSpecialInputTokens(
     text: string,
     absoluteStart: number,
     displayValue: string,
   ): HighlightedLineToken[] {
-    const commandEnd = commandTokenEnd(displayValue);
+    const commandEnd = specialInputTokenEnd(displayValue);
 
     if (commandEnd === undefined || !text) {
       return text ? [{ text, color: tuiTheme.userMessageText }] : [];
@@ -429,42 +491,54 @@ export class Editor implements Component {
     ];
   }
 
-  private renderCommandPalette(width: number, availableHeight?: number): string[] {
-    const commandState = getCommandState(this.state.value);
+  private renderSuggestionPalette(width: number, availableHeight?: number): string[] {
+    const paletteState = this.getPaletteState();
 
-    if (!commandState.showPalette) {
+    if (!paletteState.showPalette) {
       return [];
     }
 
-    if (commandState.suggestions.length === 0) {
-      return [color("No matching commands", tuiTheme.error)];
+    if (paletteState.suggestions.length === 0) {
+      return [
+        color(
+          paletteState.kind === "template"
+            ? "No matching prompt templates"
+            : "No matching commands",
+          tuiTheme.error,
+        ),
+      ];
     }
 
-    this.commandViewport.setVisibleLimit(
-      visibleLimitForHeight(this.maximumVisibleCommands, availableHeight, 2),
-      commandState.suggestions.length,
+    this.paletteViewport.setVisibleLimit(
+      visibleLimitForHeight(this.maximumVisibleSuggestions, availableHeight, 2),
+      paletteState.suggestions.length,
     );
-    const viewport = this.commandViewport.window(commandState.suggestions.length);
+    const viewport = this.paletteViewport.window(paletteState.suggestions.length);
     const lines: string[] = [];
+    const label = paletteState.kind === "template" ? "templates" : "commands";
 
     if (viewport.hiddenBefore > 0) {
-      lines.push(dim(`... ${viewport.hiddenBefore} earlier commands`));
+      lines.push(dim(`... ${viewport.hiddenBefore} earlier ${label}`));
     }
 
     for (let index = viewport.start; index < viewport.end; index += 1) {
-      const command = commandState.suggestions[index];
-      const prefix = index === this.commandViewport.selectedIndex ? "> " : "  ";
-      const line = `${prefix}${formatPromptCommandHelpLine(command)}`;
+      const suggestion = paletteState.suggestions[index];
+      const prefix = index === this.paletteViewport.selectedIndex ? "> " : "  ";
+      const helpLine =
+        paletteState.kind === "template"
+          ? formatPromptTemplateHelpLine(suggestion as KanaPromptTemplate, this.promptTemplates)
+          : formatPromptCommandHelpLine(suggestion as PromptCommand);
+      const line = `${prefix}${helpLine}`;
 
       lines.push(
-        index === this.commandViewport.selectedIndex
+        index === this.paletteViewport.selectedIndex
           ? color(truncateToWidth(line, width, ""), tuiTheme.commandSelected)
           : truncateToWidth(line, width, ""),
       );
     }
 
     if (viewport.hiddenAfter > 0) {
-      lines.push(dim(`... ${viewport.hiddenAfter} more commands`));
+      lines.push(dim(`... ${viewport.hiddenAfter} more ${label}`));
     }
 
     return lines;
@@ -583,7 +657,7 @@ export class Editor implements Component {
     if (this.state.value !== previousValue) {
       this.historyIndex = -1;
     }
-    this.syncCommandSelection();
+    this.syncPaletteSelection();
   }
 
   private withImages(submit: PromptSubmit): PromptSubmit {
@@ -617,7 +691,7 @@ export class Editor implements Component {
       ...this.state,
       cursorOffset: displayOffsetToSourceOffset(display, displayCursorOffset),
     };
-    this.syncCommandSelection();
+    this.syncPaletteSelection();
 
     return true;
   }
@@ -647,7 +721,7 @@ export class Editor implements Component {
               this.inputVisibleLines +
               1,
           );
-    this.syncCommandSelection();
+    this.syncPaletteSelection();
 
     return true;
   }
@@ -711,18 +785,37 @@ export class Editor implements Component {
     return { value, collapsedPastes };
   }
 
-  private syncCommandSelection(): void {
+  private getPaletteState(): EditorPaletteState {
     const commandState = getCommandState(this.state.value);
+    if (commandState.isCommandMode) {
+      return { kind: "command", ...commandState };
+    }
+    const templateState = getPromptTemplateState(this.state.value, this.promptTemplates);
+    if (templateState.isTemplateMode) {
+      return { kind: "template", ...templateState };
+    }
+    return {
+      kind: "none",
+      isCommandMode: false,
+      showPalette: false,
+      query: "",
+      suggestions: [],
+    };
+  }
 
-    if (commandState.query !== this.lastCommandQuery) {
-      this.commandViewport.moveTo(0, commandState.suggestions.length);
-      this.lastCommandQuery = commandState.query;
+  private syncPaletteSelection(): void {
+    const paletteState = this.getPaletteState();
+    const paletteKey = `${paletteState.kind}:${paletteState.query}`;
+
+    if (paletteKey !== this.lastPaletteKey) {
+      this.paletteViewport.moveTo(0, paletteState.suggestions.length);
+      this.lastPaletteKey = paletteKey;
       return;
     }
 
-    this.commandViewport.moveTo(
-      this.commandViewport.selectedIndex,
-      commandState.suggestions.length,
+    this.paletteViewport.moveTo(
+      this.paletteViewport.selectedIndex,
+      paletteState.suggestions.length,
     );
   }
 }
@@ -752,11 +845,11 @@ function formatByteSize(bytes: number): string {
     : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-function commandTokenEnd(value: string): number | undefined {
-  if (!value.startsWith("/")) {
+function specialInputTokenEnd(value: string): number | undefined {
+  if (!value.startsWith("/") && !value.startsWith(":")) {
     return undefined;
   }
 
-  const match = /^\/\S*/.exec(value);
+  const match = /^[/:]\S*/.exec(value);
   return match?.[0].length;
 }

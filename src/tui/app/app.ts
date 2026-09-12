@@ -146,6 +146,7 @@ export class KanaTuiApp {
     this.editor = new Editor({
       cleanMode,
       collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
+      promptTemplates: options.ui.promptTemplates,
       model: formatStatusModel(
         this.conversation.state.model.metadata,
         this.options.models?.getSettings(),
@@ -565,6 +566,9 @@ export class KanaTuiApp {
       if (this.status.running) {
         this.abort();
       }
+    };
+    this.editor.onError = (error) => {
+      this.showInteractionError(error);
     };
 
     this.updateStatus("idle");

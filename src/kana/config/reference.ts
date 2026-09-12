@@ -105,6 +105,20 @@ export function serializeKanaSubagentProfileExample(): string {
   ].join("\n");
 }
 
+export function serializeKanaPromptTemplateExample(): string {
+  return [
+    "---",
+    "# Copy this file to prompts/squash-cleanup.md, then invoke :squash-cleanup.",
+    "# Override defaults with arguments such as base=develop.",
+    "description: Clean up a squash-merged branch and worktree",
+    "---",
+    "",
+    "The PR was squash merged. Switch back to {{base=main}}, fast-forward it,",
+    "then clean up {{branch=the merged branch}} and its related worktree if safe.",
+    "",
+  ].join("\n");
+}
+
 function serializeModelConfig(
   config: KanaModelConfig,
   examples: {

@@ -27,6 +27,8 @@ describe("CLI installation", () => {
         skillsConfigStatus: "created",
         subagentProfileExamplePath: "/tmp/agents/profile.md.example",
         subagentProfileExampleStatus: "created",
+        promptTemplateExamplePath: "/tmp/prompts/template.md.example",
+        promptTemplateExampleStatus: "created",
         customProviderExamplePath: "/tmp/providers/custom.example.toml",
         customProviderExampleStatus: "created",
       }),
@@ -42,6 +44,7 @@ describe("CLI installation", () => {
       "Approvals already exists: /tmp/approvals.json",
       "Created skills config: /tmp/skills.toml",
       "Created subagent profile example: /tmp/agents/profile.md.example",
+      "Created prompt template example: /tmp/prompts/template.md.example",
       "Created Custom provider example: /tmp/providers/custom.example.toml",
     ]);
   });

@@ -19,8 +19,11 @@ describe("information viewer controller", () => {
     expect(harness.transcript.children).toHaveLength(0);
     expect(harness.contentViewer.active).toBe(true);
     expect(harness.editor.getText()).toBe("");
-    expect(harness.render()).toContain("Slash commands");
-    expect(harness.render().some((line) => line.includes("/fork <prompt>"))).toBe(true);
+    const rendered = harness.render();
+    expect(rendered.some((line) => line.includes("Prompt templates"))).toBe(true);
+    expect(rendered.some((line) => line.includes(":<name> [name=value ...]"))).toBe(true);
+    expect(rendered.some((line) => line.includes("Slash commands"))).toBe(true);
+    expect(rendered.some((line) => line.includes("/quit"))).toBe(true);
   });
 
   test("loads the selected usage scope into the content viewer", () => {

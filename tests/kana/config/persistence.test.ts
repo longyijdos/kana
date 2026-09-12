@@ -24,6 +24,8 @@ describe("Kana config persistence", () => {
       mcpEnabledPath: "/home/kana/.kana/mcp-enabled.json",
       agentsPath: "/home/kana/.kana/AGENTS.md",
       agentsDirectory: "/home/kana/.kana/agents",
+      promptTemplatesDirectory: "/home/kana/.kana/prompts",
+      promptTemplateExamplePath: "/home/kana/.kana/prompts/template.md.example",
       memoryDirectory: "/home/kana/.kana/memory",
       sessionsPath: "/home/kana/.kana/sessions",
       artifactsPath: "/home/kana/.kana/artifacts",
@@ -55,6 +57,10 @@ describe("Kana config persistence", () => {
       firstInstall.subagentProfileExamplePath,
       "utf8",
     );
+    const installedPromptTemplateExample = readFileSync(
+      firstInstall.promptTemplateExamplePath,
+      "utf8",
+    );
 
     expect(firstInstall.configStatus).toBe("defaults");
     expect(firstInstall.configExampleStatus).toBe("created");
@@ -63,6 +69,7 @@ describe("Kana config persistence", () => {
     expect(firstInstall.approvalsStatus).toBe("created");
     expect(firstInstall.skillsConfigStatus).toBe("created");
     expect(firstInstall.subagentProfileExampleStatus).toBe("created");
+    expect(firstInstall.promptTemplateExampleStatus).toBe("created");
     expect(firstInstall.customProviderExampleStatus).toBe("created");
     expect(existsSync(firstInstall.configPath)).toBe(false);
     expect(installedConfigExample).toContain("[provider.deepseek]");
@@ -93,6 +100,8 @@ describe("Kana config persistence", () => {
     expect(installedCustomProviderExample).toContain('base_url = "https://api.example.com/v1"');
     expect(installedCustomProviderExample).toContain("[[models]]");
     expect(installedSubagentProfileExample).toContain("description: Review database migrations");
+    expect(installedPromptTemplateExample).toContain(":squash-cleanup");
+    expect(installedPromptTemplateExample).toContain("{{base=main}}");
     expect(installedSubagentProfileExample).toContain("# model: openai-codex/gpt-5.6-terra");
     expect(loadKanaSubagentProfiles({ env }).profiles.map((profile) => profile.name)).toEqual([
       "explorer",
@@ -133,6 +142,8 @@ describe("Kana config persistence", () => {
       skillsConfigStatus: "exists",
       subagentProfileExamplePath: firstInstall.subagentProfileExamplePath,
       subagentProfileExampleStatus: "exists",
+      promptTemplateExamplePath: firstInstall.promptTemplateExamplePath,
+      promptTemplateExampleStatus: "exists",
       customProviderExamplePath: firstInstall.customProviderExamplePath,
       customProviderExampleStatus: "exists",
     });
@@ -167,6 +178,7 @@ describe("Kana config persistence", () => {
       [path.join(paths.themesDirectory, "ocean.json"), "theme"],
       [path.join(paths.agentsDirectory, "database-reviewer.md"), "user profile"],
       [paths.subagentProfileExamplePath, readFileSync(paths.subagentProfileExamplePath, "utf8")],
+      [paths.promptTemplateExamplePath, readFileSync(paths.promptTemplateExamplePath, "utf8")],
       [path.join(paths.home, "skills", "kana-skills", "SKILL.md"), "default repository"],
       [path.join(paths.home, "skills", "personal", "SKILL.md"), "personal skill"],
     ]);
@@ -210,18 +222,23 @@ describe("Kana config persistence", () => {
     const firstInstall = installKanaConfig(env);
     writeFileSync(firstInstall.configExamplePath, "custom example\n");
     writeFileSync(firstInstall.subagentProfileExamplePath, "stale profile example\n");
+    writeFileSync(firstInstall.promptTemplateExamplePath, "stale prompt example\n");
 
     const secondInstall = installKanaConfig(env);
 
     expect(secondInstall.configStatus).toBe("defaults");
     expect(secondInstall.configExampleStatus).toBe("updated");
     expect(secondInstall.subagentProfileExampleStatus).toBe("updated");
+    expect(secondInstall.promptTemplateExampleStatus).toBe("updated");
     expect(existsSync(secondInstall.configPath)).toBe(false);
     expect(readFileSync(secondInstall.configExamplePath, "utf8")).toContain(
       "[provider.openai-codex]",
     );
     expect(readFileSync(secondInstall.subagentProfileExamplePath, "utf8")).toContain(
       "description: Review database migrations",
+    );
+    expect(readFileSync(secondInstall.promptTemplateExamplePath, "utf8")).toContain(
+      "{{branch=the merged branch}}",
     );
   });
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { KanaPromptTemplate } from "@/kana";
 import { Editor } from "../../src/tui/components/editor";
 import {
   createRandomPromptPlaceholder,
@@ -231,6 +232,85 @@ describe("Editor", () => {
   });
 
   describe("input and submissions", () => {
+    test("discovers, completes, expands, and queues prompt templates separately", () => {
+      const promptTemplates: KanaPromptTemplate[] = [
+        {
+          name: "cleanup",
+          description: "Clean a merged branch",
+          body: "Clean {{branch}} from {{base=main}}.",
+          arguments: [{ name: "branch" }, { name: "base", defaultValue: "main" }],
+          sourcePath: "/tmp/cleanup.md",
+        },
+        {
+          name: "review",
+          description: "Review the current change",
+          body: "Review the current change.",
+          arguments: [],
+          sourcePath: "/tmp/review.md",
+        },
+      ];
+      const editor = new Editor({ promptTemplates });
+      const submissions: unknown[] = [];
+      const queued: unknown[] = [];
+      editor.onSubmit = (submit) => submissions.push(submit);
+      editor.onQueue = (submit) => queued.push(submit);
+
+      editor.setText(":");
+      const palette = stripAnsi(editor.render(80).join("\n"));
+      expect(palette).toContain(":cleanup");
+      expect(palette).toContain("Clean a merged branch");
+      expect(palette).not.toContain("/quit");
+
+      editor.setText(":cl");
+      editor.handleInput("\t");
+      expect(editor.getText()).toBe(":cleanup ");
+
+      editor.setText(':cleanup branch="feature login"');
+      editor.handleInput("\r");
+      expect(submissions).toEqual([{ type: "message", content: "Clean feature login from main." }]);
+
+      editor.setText(":cleanup branch=feature base=develop");
+      editor.handleInput("\t");
+      expect(queued).toEqual([{ type: "message", content: "Clean feature from develop." }]);
+    });
+
+    test("keeps invalid and unmatched template input in the ordinary editor flow", () => {
+      const editor = new Editor({
+        promptTemplates: [
+          {
+            name: "cleanup",
+            description: "Clean a merged branch",
+            body: "Clean {{branch}}.",
+            arguments: [{ name: "branch" }],
+            sourcePath: "/tmp/cleanup.md",
+          },
+        ],
+      });
+      const submissions: unknown[] = [];
+      const errors: unknown[] = [];
+      editor.onSubmit = (submit) => submissions.push(submit);
+      editor.onError = (error) => errors.push(error);
+
+      editor.setText(":cleanup");
+      editor.handleInput("\r");
+      expect(errors).toEqual([
+        expect.objectContaining({ message: expect.stringContaining("branch") }),
+      ]);
+      expect(submissions).toEqual([]);
+      expect(editor.getText()).toBe(":cleanup");
+
+      editor.setText(":unknown value");
+      editor.handleInput("\r");
+      expect(submissions).toEqual([{ type: "message", content: ":unknown value" }]);
+
+      editor.setText(":cl branch=feature");
+      editor.handleInput("\r");
+      expect(submissions.at(-1)).toEqual({
+        type: "message",
+        content: ":cl branch=feature",
+      });
+    });
+
     test("attaches images to submissions and renders only their summary", () => {
       const editor = new Editor();
       const submissions: unknown[] = [];

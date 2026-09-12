@@ -61,6 +61,8 @@ export function defaultInstallResult(): ReturnType<CreateCliOptions["installKana
     skillsConfigStatus: "created",
     subagentProfileExamplePath: "/tmp/agents/profile.md.example",
     subagentProfileExampleStatus: "created",
+    promptTemplateExamplePath: "/tmp/prompts/template.md.example",
+    promptTemplateExampleStatus: "created",
     customProviderExamplePath: "/tmp/providers/custom.example.toml",
     customProviderExampleStatus: "created",
   };

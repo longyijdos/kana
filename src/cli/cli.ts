@@ -192,6 +192,13 @@ export function createCli(options: CreateCliOptions): Command {
       );
       log(
         formatInstallMessage(
+          "prompt template example",
+          result.promptTemplateExamplePath,
+          result.promptTemplateExampleStatus,
+        ),
+      );
+      log(
+        formatInstallMessage(
           "Custom provider example",
           result.customProviderExamplePath,
           result.customProviderExampleStatus,

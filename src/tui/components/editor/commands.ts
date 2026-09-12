@@ -174,8 +174,14 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   },
 ];
 
-export const PROMPT_HELP_TITLE = "Slash commands";
+export const PROMPT_HELP_TITLE = "Help";
+export const PROMPT_COMMANDS_TITLE = "Slash commands";
+export const PROMPT_TEMPLATES_TITLE = "Prompt templates";
 export const PROMPT_SHORTCUTS_TITLE = "Input and shortcuts";
+export const PROMPT_TEMPLATE_SHORTCUT: PromptShortcut = {
+  input: ":<name> [name=value ...]",
+  description: "Expand a reusable prompt template.",
+};
 export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   {
     input: "Enter",
@@ -183,7 +189,7 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "Tab",
-    description: "Complete slash commands; queue for next run in an Agent run.",
+    description: "Complete suggestions; queue for next run in an Agent run.",
   },
   {
     input: "Shift+Enter",
@@ -310,6 +316,7 @@ export function createRandomPromptPlaceholder(random = Math.random, previous?: s
     ...PROMPT_COMMANDS.map(
       (command) => `Try ${formatPromptCommandSyntax(command)} — ${command.description}`,
     ),
+    `Try ${PROMPT_TEMPLATE_SHORTCUT.input} — ${PROMPT_TEMPLATE_SHORTCUT.description}`,
     ...PROMPT_SHORTCUTS.map((shortcut) => `Try ${shortcut.input} — ${shortcut.description}`),
   ];
   const candidates =

@@ -94,6 +94,11 @@ export {
 export { getKanaConfigPaths, getKanaSessionLogPath } from "./path";
 export { buildKanaSystemPrompt } from "./prompt";
 export {
+  expandKanaPromptTemplate,
+  type KanaPromptTemplate,
+  loadKanaPromptTemplates,
+} from "./prompts";
+export {
   appendKanaSessionMessages,
   appendKanaSessionRun,
   createKanaSession,

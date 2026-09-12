@@ -58,11 +58,11 @@ kana auth logout openai-codex
 
 `--clean` applies only to a new TUI or `exec` session; combining it with `resume` or `exec resume` fails at the corresponding frontend startup boundary. It creates a temporary session that exists only in the current process: no session journal, session logger, or accounting record is created, and the session never appears in the resume list. Clean mode does not read global or project `AGENTS.md`, global/project memory, global or project Skills, user subagent cards, or MCP definitions and activation state; it does not register `remember`, start memory consolidation, or connect to MCP servers. Kana still loads `<KANA_HOME>/.env` and `config.toml`, retaining the current provider/model, Agent runtime settings, tool selection, OAuth credentials, approval rules, and notifications. Selected core file/Shell tools, `todo_write`, the built-in subagent profiles, and the TUI's in-process `schedule_wake` remain available when their corresponding tools are selected. Clean-mode child state stays in memory. `/todo` shows the temporary session's current todo state; `/skills`, `/mcp`, `/memory`, `/fork`, `/resume`, `/delete`, and the Session scope of `/usage` are unavailable in the TUI. `/model` validates and switches the current Agent without writing `config.toml`. Clean mode is not a file/process sandbox: built-in tools, providers, approval flows, and authentication flows can still produce their normal external side effects.
 
-`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml`, `providers/custom.example.toml`, and `agents/profile.md.example` are Kana-managed generated references: install creates their parent directories, compares them with the current schema, and creates or refreshes them only when missing or stale. Runtime ignores these examples. Copy only fields being overridden into `config.toml`, copy the Custom example to `providers/custom.toml` before editing it, and copy or rename the subagent example to an `agents/<profile-name>.md` file before use. Install never overwrites a real user profile, installs the Skills repository, or creates `~/.kana/AGENTS.md`.
+`kana install` is idempotent initialization. It does not create `config.toml` merely to materialize built-in defaults, so Kana uses those defaults directly while the file is absent. It creates `mcp.json`, `mcp-enabled.json`, `approvals.json`, and `skills/skills.toml` only when missing and never overwrites their existing content. `config.example.toml`, `providers/custom.example.toml`, `agents/profile.md.example`, and `prompts/template.md.example` are Kana-managed generated references: install creates their parent directories, compares them with the current schema, and creates or refreshes them only when missing or stale. Runtime ignores these examples. Copy only fields being overridden into `config.toml`, copy the Custom example to `providers/custom.toml` before editing it, copy or rename the subagent example to `agents/<profile-name>.md`, and copy the prompt example to `prompts/<template-name>.md` before use. Install never overwrites a real user profile or prompt template, installs the Skills repository, or creates `~/.kana/AGENTS.md`.
 
 `kana update --check` reads version metadata for GitHub's latest stable Release without downloading or modifying the binary. `kana update` selects the asset for the current operating system and architecture, verifies its reported size and SHA-256 digest, and runs both `--version` and the idempotent `kana install` through the candidate binary. Only after the candidate version, support-file initialization, and current executable identity all pass validation does a same-directory temporary file atomically replace the executable. Failure removes the temporary file and preserves the original binary; Kana also refuses to overwrite a target replaced by another installer while the download was in flight. Updating supports macOS/Linux on arm64 and x64, inherits Bun `fetch` handling of `HTTP_PROXY`/`HTTPS_PROXY`, and requires a writable installation directory. Source run directly through Bun has no direct-distribution build marker and therefore refuses self-update; standalone binaries built by `scripts/install.sh`, `bun run build:cli`, and the Release workflow include that marker.
 
-`kana reset` restores the main runtime configuration to its defaults. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `providers/custom.toml`, generated provider/subagent examples, `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, user subagent cards, user themes, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
+`kana reset` restores the main runtime configuration to its defaults. It deletes `config.toml`, refreshes `config.example.toml`, and resets MCP definitions, MCP activation, approval rules, and global Skill activation to empty defaults. It preserves `providers/custom.toml`, generated provider/subagent/prompt-template examples, `oauth-tokens.json`, sessions, memory, accounting, logs, `AGENTS.md`, user subagent cards, user prompt templates, user themes, the default Skills repository, and all other installed Skills. The command shows a `[y/N]` confirmation by default. A non-interactive environment refuses to proceed unless `--yes` is explicit, and the confirmation lists every reset item and the primary preserved data.
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. `kana skills install` clones it when absent and runs `git pull --ff-only` for an existing Git checkout. An existing non-Git directory fails with a prompt to use `kana skills reinstall`. After confirmation, reinstall deletes only the complete default repository directory and clones it again, preserving the sibling `skills.toml` and all other installed Skills. Non-interactive use requires `--yes`.
 
@@ -88,6 +88,9 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── agents/
 │   ├── profile.md.example  # Install-generated subagent profile reference; never loaded
 │   └── <name>.md           # Optional user-defined subagent role card
+├── prompts/
+│   ├── template.md.example # Install-generated prompt template reference; never loaded
+│   └── <name>.md           # Optional reusable prompt template
 ├── sessions/               # Workspace-grouped JSONL sessions
 ├── artifacts/              # Workspace- and session-scoped oversized tool output
 ├── logs/                   # Workspace- and session-grouped runtime JSONL logs
@@ -101,6 +104,25 @@ ${KANA_HOME:-$HOME/.kana}/
 Files written by installation and the application are created or written with mode `0600`. This is the requested file mode; its effective result remains subject to the operating system, filesystem, and umask.
 
 Kana reads `<KANA_HOME>/.env` before parsing CLI commands. Its values override matching variables inherited by the startup process and become part of Kana's current process environment. The built-in `bash` and `job_start` tools and the TUI's `!` local Shell inherit these values, so commands they run can access secrets stored in this file. MCP stdio children continue to use a separate restricted environment; pass values explicitly through the server's `env` or reference `${VAR_NAME}` placeholders there.
+
+## Prompt templates
+
+The TUI loads reusable prompt templates from direct `.md` children of `<KANA_HOME>/prompts` at startup. `kana install` creates or refreshes `template.md.example` in that directory; copy it to a real `.md` filename before editing because the loader ignores the generated example. Hidden files, nested directories, and non-Markdown files are also ignored. A filename such as `squash-cleanup.md` registers `:squash-cleanup`; names must be lowercase, hyphenated identifiers no longer than 64 characters.
+
+Each file contains required frontmatter with one `description` field followed by a non-empty prompt body:
+
+```md
+---
+description: Clean up a squash-merged branch and worktree
+---
+
+The PR was squash merged. Switch back to {{base=main}}, fast-forward it,
+then clean up {{branch=the merged branch}} and its related worktree if safe.
+```
+
+`{{name}}` declares a required named argument. `{{name=default value}}` supplies a default, including an empty default written as `{{name=}}`. Repeated placeholders must use the same default declaration. Invoke a template with `:<name>` followed by optional `name=value` assignments; single or double quotes preserve spaces, and a quoted matching quote or backslash may be escaped with `\`. Missing required values, unknown or duplicate assignments, malformed quoting, inconsistent defaults, and invalid metadata reject the invocation or file with a diagnostic. Invalid files do not hide valid siblings.
+
+The editor expands a valid invocation before submission or queueing and passes the result through the ordinary user-message path. The expanded prompt therefore uses existing history, steering, queue, and session behavior; the template name and arguments do not introduce a persisted execution type. An unknown colon-prefixed input remains an ordinary user message.
 
 ## `config.toml`
 

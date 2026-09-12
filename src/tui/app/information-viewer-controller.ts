@@ -4,9 +4,12 @@ import {
   formatPromptCommandHelpLine,
   formatPromptShortcutHelpLine,
   PROMPT_COMMANDS,
+  PROMPT_COMMANDS_TITLE,
   PROMPT_HELP_TITLE,
   PROMPT_SHORTCUTS,
   PROMPT_SHORTCUTS_TITLE,
+  PROMPT_TEMPLATE_SHORTCUT,
+  PROMPT_TEMPLATES_TITLE,
 } from "../components/editor/commands";
 import { tuiTheme } from "../theme";
 import type { ContentViewerController } from "./content-viewer-controller";
@@ -74,6 +77,12 @@ export class InformationViewerController {
   openHelp(): void {
     const help = new TextBlock(
       [
+        PROMPT_TEMPLATES_TITLE,
+        "",
+        formatPromptShortcutHelpLine(PROMPT_TEMPLATE_SHORTCUT),
+        "",
+        PROMPT_COMMANDS_TITLE,
+        "",
         ...PROMPT_COMMANDS.map(formatPromptCommandHelpLine),
         "",
         PROMPT_SHORTCUTS_TITLE,

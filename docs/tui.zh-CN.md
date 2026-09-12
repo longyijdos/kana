@@ -35,7 +35,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 助手正文的协议状态与可视进度彼此分离：provider 和 Agent 仍会立即处理完整事件与消息，`StreamingTextPresenter` 只维护 Markdown 块当前可见的 `text` 前缀。稀疏文本 delta 会立即出现；当一次网络读取带来一批 SSE 事件时，积压内容约每 16ms 推进一次，并按 backlog 在每帧 1–12 个 grapheme 之间有界加速，消息完成后只额外提升一级用于收尾。工具调用开始、`toolUse` 消息完成、审批显示和实际执行前会先追平已经收到的正文，保证后续工具状态不会越过仍在展开的文本，同时不延迟 Agent 或 ToolRuntime。新消息或运行 reset 也会先 flush 剩余正文，因此持久化的 session 和 Agent 状态始终使用完整消息，而不是动画中的中间快照。配置 `tui.smooth_text_streaming = false` 会完全绕过该节奏控制，直接显示 provider 的最新流式快照；working 活动、Core thinking 事件、工具调用、工具结果、错误和状态阶段始终不参与文本节奏控制。
 
-编辑器内部包含状态栏，它显示模型及可选推理强度（例如 `gpt-5.6-luna · max`；`none` 档位显示为 `off`）、Clean 模式标记、形如 `Context ~N% used` 的下一轮近似上下文、运行阶段、活动工具和 cwd。该百分比用可重放上下文除以 effective context limit，而不是直接展示上一轮 response 的原始 `input_tokens`；因此 system instructions 和工具 schema 会让新 session 带有非零基线。普通 provider usage 用于校准估算；包含托管搜索的响应则保留之前的干净锚点，只增加持久化输出与调用元数据，不计入临时搜索网页。恢复内容未变的会话时会从最新一条已持久化的 assistant 消息重建该干净锚点，因此百分比保持不变，而不是跳到全新的本地估算。数值在每个完整 model/tool `turn_end` 后、上下文压缩后以及 Agent run 结束时刷新。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `Tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `Tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开 slash 命令面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求都会把 provider 原始 usage 原样累计到进程总用量。Kana 不估算金额，实际费用以 provider 账单为准；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
+编辑器内部包含状态栏，它显示模型及可选推理强度（例如 `gpt-5.6-luna · max`；`none` 档位显示为 `off`）、Clean 模式标记、形如 `Context ~N% used` 的下一轮近似上下文、运行阶段、活动工具和 cwd。该百分比用可重放上下文除以 effective context limit，而不是直接展示上一轮 response 的原始 `input_tokens`；因此 system instructions 和工具 schema 会让新 session 带有非零基线。普通 provider usage 用于校准估算；包含托管搜索的响应则保留之前的干净锚点，只增加持久化输出与调用元数据，不计入临时搜索网页。恢复内容未变的会话时会从最新一条已持久化的 assistant 消息重建该干净锚点，因此百分比保持不变，而不是跳到全新的本地估算。数值在每个完整 model/tool `turn_end` 后、上下文压缩后以及 Agent run 结束时刷新。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `Tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `Tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。打开任一建议面板时会同时隐藏状态栏和两类队列预览；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求都会把 provider 原始 usage 原样累计到进程总用量。Kana 不估算金额，实际费用以 provider 账单为准；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
 
 恢复 session 时，TUI 只渲染已提交的 timeline；Agent 的重建契约见[会话与记忆](sessions-and-memory.zh-CN.md)。历史 `turn_start` 不显示，`todo_state` 只补充匹配工具块而不新增行；实时 `turn_start` 只产生临时工作状态。`turn_end` 不增加 block，只更新状态栏的 context 估算；recovery 输入显示为弱化的安全恢复标记。Timeline 中的 `context_compaction` 会在原位置显示为 `Context compacted · 812k → ~430k tokens`；实时事件追加同样标记。执行 `/compact` 时，临时 `Compacting context…` 会在成功后被替换，失败时先移除再显示错误。TUI 不保留从 messages 直接重建历史的兼容路径。
 
@@ -50,7 +50,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `Ctrl+O` | 打开/关闭最近一项工具调用的详情查看器；`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
-编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后。输入为空时，它会从 `/help` 的 slash 命令和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。命令面板、placeholder、`/help` 和 usage 错误共同读取同一份命令语法与描述。`/help` 的快捷键区涵盖编辑器提交与排队、多行输入、Readline 风格编辑、图片粘贴、中止、工具输出切换和本地 Shell 输入。
+编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后。输入为空时，它会从 `/help` 的 slash 命令、prompt template 调用和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。`/help` 把 prompt template 与 slash 命令显示为独立小节，面板、placeholder 和 usage 错误则复用相应的语法与描述目录。快捷键区涵盖编辑器提交与排队、多行输入、Readline 风格编辑、图片粘贴、中止、工具输出切换和本地 Shell 输入。
 
 编辑器的移动与编辑快捷键如下：
 
@@ -60,7 +60,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `Home` / `End`、`Ctrl+A` / `Ctrl+E` | 移动到当前显式逻辑行的行首/行尾。 |
 | `Alt+B` / `Alt+F`、`Alt+Left` / `Alt+Right`、`Ctrl+Left` / `Ctrl+Right` | 按一个 Unicode 单词向前/向后移动。 |
 | `Up` / `Down` | 先在软换行或显式换行之间移动，到输入边界后再进入历史记录。 |
-| `Ctrl+P` / `Ctrl+N` | 选择上一/下一条 slash 建议，或直接浏览输入历史。 |
+| `Ctrl+P` / `Ctrl+N` | 选择当前面板的上一/下一条建议，或直接浏览输入历史。 |
 | `Backspace` / `Delete`、`Ctrl+H` / `Ctrl+D` | 删除前一个/后一个 grapheme。 |
 | `Alt+Backspace`、`Ctrl+Backspace` | 删除前一个 Unicode 单词并保存到 kill buffer。 |
 | `Ctrl+W` | 按空白分隔删除前一个词并保存到 kill buffer。 |
@@ -70,9 +70,9 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 在 macOS 上，`Option` 是物理上的 `Alt` 键。终端将 Option 作为 Alt/Meta 上报（传统 `Esc` 前缀或增强键盘协议）时这些快捷键可用；如果终端直接把 Option 组合转换成可打印 Unicode 字符，Kana 会继续把它当作普通文字输入。
 
-编辑器支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、bracketed paste 和 slash 补全。启用 `tui.collapse_long_pastes` 时，达到 1,000 个 grapheme 的 bracketed paste 会在主编辑器和 slash 命令文本提示中显示为弱化的 `[Pasted N chars]` 原子项，提交内容和历史记录仍保留完整原文。按字符、按词、逻辑行边界和 kill 操作都会保持折叠粘贴块的原子性；kill buffer 同时保留折叠元数据，因此 `Ctrl+Y` 会恢复折叠项，而不是展开它的原始文字。关闭配置后恢复完整显示和逐 grapheme 编辑。
+编辑器支持多行输入、最多 5 个可见行、历史记录（最多 100 条）、bracketed paste、slash 补全和 prompt template 补全。启用 `tui.collapse_long_pastes` 时，达到 1,000 个 grapheme 的 bracketed paste 会在主编辑器和 slash 命令文本提示中显示为弱化的 `[Pasted N chars]` 原子项，提交内容和历史记录仍保留完整原文。按字符、按词、逻辑行边界和 kill 操作都会保持折叠粘贴块的原子性；kill buffer 同时保留折叠元数据，因此 `Ctrl+Y` 会恢复折叠项，而不是展开它的原始文字。关闭配置后恢复完整显示和逐 grapheme 编辑。
 
-空闲时 `Enter` 正常提交。Run 进行中时，`Enter` 尝试把输入交给当前 run，`Tab` 则排到后续 run；准确的 steering、defer 与 FIFO 规则见[对话运行时](conversation-runtime.zh-CN.md)和 [Agent 运行时](agent-runtime.zh-CN.md)。空闲时普通输入的 Tab 不提交，slash 面板中的 Tab 用于补全命令；支持的终端中，`Shift+Enter` 插入换行。以 `/` 开头会打开最多显示 10 项、随选择滚动的命令面板；未知 slash 输入和单独的 `!` 会作为普通模型消息发送。
+空闲时 `Enter` 正常提交。Run 进行中时，`Enter` 尝试把输入交给当前 run，`Tab` 则排到后续 run；准确的 steering、defer 与 FIFO 规则见[对话运行时](conversation-runtime.zh-CN.md)和 [Agent 运行时](agent-runtime.zh-CN.md)。空闲时普通输入的 Tab 不提交，打开建议面板时则补全选中项；支持的终端中，`Shift+Enter` 插入换行。以 `/` 开头会打开内置命令面板，以 `:` 开头则打开类型独立的 prompt template 面板；两者最多显示 10 项并随选择滚动。完整的模板调用会在进入普通消息、history 和 queue 链路前展开。未知 slash、未知冒号输入和单独的 `!` 会作为普通模型消息发送。模板文件格式与参数规则见[配置与安装](configuration.zh-CN.md#prompt-templates)。
 
 Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-input 投影；投递、合并与确认语义见[对话运行时](conversation-runtime.zh-CN.md)。`/jobs` 展示不消费状态的输出尾部并控制当前 session 的 Job；`/agents` 同样只查看或取消 child，不确认终态 completion，因此 Agent 仍可能收到这两类通知。
 

@@ -8,6 +8,7 @@ import type {
   KanaMcpServerActivation,
   KanaNotificationConfig,
   KanaOAuthTokenStatus,
+  KanaPromptTemplate,
   KanaSessionMetadata,
   KanaSubagentClient,
   KanaTodoItem,
@@ -111,6 +112,7 @@ export type KanaTuiAppOptions = {
   ui: {
     notification: KanaNotificationConfig;
     config?: KanaTuiConfig;
+    promptTemplates?: KanaPromptTemplate[];
     syntaxTheme?: BundledTheme;
   };
   memory: KanaTuiMemoryCapabilities;
