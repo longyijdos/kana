@@ -126,9 +126,9 @@ then clean up {{branch=the merged branch}} and its related worktree if safe.
 
 ## `config.toml`
 
-配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 独立属于记忆压缩 Agent；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更，不再读取旧 `[provider]` 和 `[model.*]` 选择表。
+配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。Kana 在进程启动时只加载一次有效配置；直接编辑文件需要重启才会生效，通过当前前端修改配置则会立即更新进程内快照。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 独立属于记忆压缩 Agent；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更，不再读取旧 `[provider]` 和 `[model.*]` 选择表。
 
-TUI 的 `/model` 通过通用配置存储更新 `config.toml`：它从磁盘重新读取当前配置，只写本次实际变化的已知字段，并保留无关表、未知字段和独立注释。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。候选文档必须重新解析为完整目标配置后才会通过同目录临时文件原子替换；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
+TUI 的 `/model` 通过通用配置存储更新 `config.toml`：写入前，存储会锁定文件、读取磁盘上的最新内容，再只补丁当前运行时快照中实际变化的已知字段。无关的外部修改、未知字段、表和独立注释会保留在磁盘上，但不会进入当前进程。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。变更字段必须重新解析为目标值后，才会通过同目录临时文件原子替换原文件；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
 
 内置默认配置等价于：
 

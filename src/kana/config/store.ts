@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
-
 import { getKanaConfigPaths } from "../path";
 import type { KanaConfig } from "./contracts";
+import {
+  readOptionalConfigFile,
+  withLockedConfigFile,
+  writeConfigFileAtomically,
+} from "./file-storage";
 import { parseKanaConfig, validateKanaConfig } from "./parser";
 import { loadKanaConfig } from "./persistence";
 
@@ -117,10 +118,12 @@ const CONFIG_FIELDS: KanaConfigField[] = [
 ];
 
 export function createKanaConfigStore(env: NodeJS.ProcessEnv = process.env): KanaConfigStore {
+  let snapshot = loadKanaConfig(env);
+
   return {
-    load: () => loadKanaConfig(env),
+    load: () => structuredClone(snapshot),
     update(mutate) {
-      const current = loadKanaConfig(env);
+      const current = structuredClone(snapshot);
       const next = structuredClone(current);
       mutate(next);
       const validated = validateKanaConfig(next);
@@ -128,44 +131,43 @@ export function createKanaConfigStore(env: NodeJS.ProcessEnv = process.env): Kan
         (candidate) => !sameConfigValue(candidate.read(current), candidate.read(validated)),
       );
       if (changedFields.length === 0) {
-        return current;
+        return structuredClone(current);
       }
 
-      const { home, configPath } = getKanaConfigPaths(env);
-      let document = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
-      for (const changedField of changedFields) {
-        document = updateTomlField(
-          document,
-          changedField.section,
-          changedField.key,
-          changedField.read(validated),
-        );
-      }
+      const { configPath } = getKanaConfigPaths(env);
+      withLockedConfigFile(configPath, () => {
+        let document = readOptionalConfigFile(configPath) ?? "";
+        for (const changedField of changedFields) {
+          document = updateTomlField(
+            document,
+            changedField.section,
+            changedField.key,
+            changedField.read(validated),
+          );
+        }
 
-      const reloaded = parseKanaConfig(Bun.TOML.parse(document) as unknown);
-      // Legacy layouts may shadow a newly added canonical key. Refuse the write
-      // unless parsing the patched document produces the complete candidate.
-      if (!sameKnownConfig(reloaded, validated)) {
-        throw new Error(
-          "Kana could not safely update this config.toml layout. Normalize the affected tables and try again.",
-        );
-      }
+        const persisted = parseKanaConfig(Bun.TOML.parse(document) as unknown);
+        if (
+          changedFields.some(
+            (changedField) =>
+              !sameConfigValue(changedField.read(persisted), changedField.read(validated)),
+          )
+        ) {
+          throw new Error(
+            "Kana could not safely update this config.toml layout. Normalize the affected tables and try again.",
+          );
+        }
 
-      mkdirSync(home, { recursive: true });
-      writeConfigAtomically(configPath, document);
-      return reloaded;
+        writeConfigFileAtomically(configPath, document);
+      });
+      snapshot = validated;
+      return structuredClone(snapshot);
     },
   };
 }
 
 function field(section: string, key: string, read: KanaConfigField["read"]): KanaConfigField {
   return { section, key, read };
-}
-
-function sameKnownConfig(left: KanaConfig, right: KanaConfig): boolean {
-  return CONFIG_FIELDS.every((candidate) =>
-    sameConfigValue(candidate.read(left), candidate.read(right)),
-  );
 }
 
 function sameConfigValue(left: KanaConfigValue, right: KanaConfigValue): boolean {
@@ -258,19 +260,4 @@ function formatTomlValue(value: Exclude<KanaConfigValue, undefined>): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function writeConfigAtomically(configPath: string, content: string): void {
-  // A sibling temporary file keeps rename atomic on the target filesystem.
-  const temporaryPath = path.join(
-    path.dirname(configPath),
-    `.${path.basename(configPath)}.${process.pid}.${randomUUID()}.tmp`,
-  );
-  try {
-    writeFileSync(temporaryPath, content, { encoding: "utf8", mode: 0o600 });
-    renameSync(temporaryPath, configPath);
-  } catch (error) {
-    rmSync(temporaryPath, { force: true });
-    throw error;
-  }
 }

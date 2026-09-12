@@ -70,7 +70,6 @@ describe("Kana config store", () => {
 
   test("preserves comments and unknown tables while changing known leaves", () => {
     const env = createTempEnv();
-    const store = createKanaConfigStore(env);
     const { configPath, home } = getKanaConfigPaths(env);
     writeFileSync(
       configPath,
@@ -87,6 +86,7 @@ describe("Kana config store", () => {
         "",
       ].join("\n"),
     );
+    const store = createKanaConfigStore(env);
 
     store.update((draft) => {
       draft.agent.model.name = "deepseek-flash";
@@ -124,7 +124,6 @@ describe("Kana config store", () => {
 
   test("switches only the main model and removes inapplicable reasoning", () => {
     const env = createTempEnv();
-    const store = createKanaConfigStore(env);
     const { configPath } = getKanaConfigPaths(env);
 
     writeFileSync(
@@ -144,6 +143,7 @@ describe("Kana config store", () => {
         "",
       ].join("\n"),
     );
+    const store = createKanaConfigStore(env);
     const config = store.update((draft) => {
       draft.agent.model.provider = "custom";
       draft.agent.model.name = "local-model";
@@ -165,6 +165,41 @@ describe("Kana config store", () => {
       maxOutputTokens: 64_000,
       contextLimit: 200_000,
     });
+  });
+
+  test("merges writes into the latest file without reloading unrelated runtime settings", () => {
+    const env = createTempEnv();
+    const { configPath } = getKanaConfigPaths(env);
+    writeFileSync(
+      configPath,
+      ["[agent.model]", 'name = "deepseek-flash"', "", "[tui]", 'theme = "dark"', ""].join("\n"),
+    );
+    const store = createKanaConfigStore(env);
+
+    writeFileSync(
+      configPath,
+      [
+        "# external edit",
+        "[agent.model]",
+        'name = "deepseek-flash"',
+        "",
+        "[tui]",
+        'theme = "ocean"',
+        "",
+      ].join("\n"),
+    );
+
+    const updated = store.update((draft) => {
+      draft.agent.model.name = "deepseek-v4-pro";
+    });
+
+    const persisted = readFileSync(configPath, "utf8");
+    expect(persisted).toContain("# external edit");
+    expect(persisted).toContain('theme = "ocean"');
+    expect(persisted).toContain('name = "deepseek-v4-pro"');
+    expect(updated.tui.theme).toBe("dark");
+    expect(store.load().tui.theme).toBe("dark");
+    expect(createKanaConfigStore(env).load().tui.theme).toBe("ocean");
   });
 
   test("leaves the original document untouched when validation fails", () => {
