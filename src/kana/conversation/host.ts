@@ -1,4 +1,4 @@
-import type { Agent, ContextCheckpoint } from "@/agent";
+import type { Agent, ContextCheckpoint, PromptSystemSection } from "@/agent";
 import { addModelUsage, type Message, type ModelUsage } from "@/core";
 import type { BackgroundJobClient } from "@/jobs";
 import type { Logger } from "@/logging";
@@ -48,6 +48,7 @@ import {
 } from "../memory";
 import { getKanaModelManagement, type KanaModelManagement } from "../model-management";
 import { getKanaConfigPaths } from "../path";
+import { loadKanaInstructionSections } from "../prompt";
 import type { KanaSessionMetadata, LoadKanaSessionResult } from "../session";
 import {
   createKanaSkillStore,
@@ -131,6 +132,7 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly oauthTokenStore;
   private readonly customProviderSnapshot: KanaCustomProviderSnapshot;
   private readonly subagentProfileSnapshot: LoadKanaSubagentProfilesResult;
+  private readonly instructionSections: readonly PromptSystemSection[];
   private readonly mcpRuntime: KanaMcpRuntime;
   private configData: KanaConfig;
   private memoryConsolidation?: MemoryConsolidationScheduler;
@@ -153,6 +155,11 @@ export class KanaConversationHost<TConfiguration = never> {
     this.subagentProfileSnapshot = loadKanaSubagentProfiles({
       env: this.env,
       builtinsOnly: this.launchMode === "clean",
+    });
+    this.instructionSections = loadKanaInstructionSections({
+      cwd: process.cwd(),
+      env: this.env,
+      launchMode: this.launchMode,
     });
     this.createAgentProduct = options.createAgent ?? createKanaConversationAgent;
     this.enableScheduledWakeTool = options.enableScheduledWakeTool ?? true;
@@ -510,6 +517,7 @@ export class KanaConversationHost<TConfiguration = never> {
               .load()
               .skills.filter((skill) => skill.enabled),
       customProviderSnapshot: this.customProviderSnapshot,
+      instructionSections: structuredClone(this.instructionSections),
       runSubagent: (context) => this.runSubagent(context, bindToolExecution, config, logger),
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
       messages: options.messages ?? sessionBinding.messages,

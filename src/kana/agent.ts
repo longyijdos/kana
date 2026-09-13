@@ -4,6 +4,7 @@ import {
   type ContextCheckpoint,
   createModelCompactPolicy,
   createPromptAssembly,
+  type PromptSystemSection,
   type PromptToolSection,
 } from "@/agent";
 import type { BackgroundJobClient } from "@/jobs";
@@ -85,6 +86,7 @@ export type KanaAgentOptions = Pick<
   runSubagent?: (context: KanaSubagentRunContext) => Promise<KanaSubagentRunResult>;
   skills?: readonly KanaSkill[];
   customProviderSnapshot?: KanaCustomProviderSnapshot;
+  instructionSections?: readonly PromptSystemSection[];
 };
 
 export type KanaAgentDependencies = {
@@ -322,6 +324,7 @@ export function createKanaAgent(
         launchMode: options.launchMode,
         memoryEnabled: dependencies.memoryEnabled,
         skills,
+        instructionSections: options.instructionSections,
         resolveBackgroundJobState: backgroundJobs ? () => backgroundJobs.context() : undefined,
         toolSections,
         resolveTodoState: options.resolveTodoState,

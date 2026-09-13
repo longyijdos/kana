@@ -435,7 +435,7 @@ DEEPSEEK_API_KEY=sk-...
 
 `.env` 路径使用加载前的 `KANA_HOME` 确定；未设置时为 `$HOME/.kana/.env`。
 
-全局 `AGENTS.md` 位于 `<KANA_HOME>/AGENTS.md`。内置默认助手指令始终注入；全局文件存在时追加到默认指令后。项目根目录的 `AGENTS.md` 也会被读取，并追加在全局内容后，因此拥有更具体的后置位置。详见[架构总览](architecture.zh-CN.md)中的提示词装配说明。
+全局 `AGENTS.md` 位于 `<KANA_HOME>/AGENTS.md`。普通启动只加载一次它与项目根目录的 `AGENTS.md`；直接编辑需要重启才会生效。内置默认助手指令始终注入；全局内容追加到默认指令后，项目内容再追加在全局内容后，因此项目文件拥有更具体的后置位置。详见[架构总览](architecture.zh-CN.md)中的提示词装配说明。
 
 ## 审批文件：`approvals.json`
 

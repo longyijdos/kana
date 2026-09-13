@@ -39,6 +39,7 @@ export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions 
   launchMode?: KanaLaunchMode;
   memoryEnabled?: boolean;
   skills?: readonly KanaSkill[];
+  instructionSections?: readonly PromptSystemSection[];
 };
 
 export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
@@ -49,14 +50,18 @@ export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
   resolveSubagentState?: () => readonly KanaSubagentSummary[];
 };
 
-function loadKanaSystemSections(options: LoadKanaSystemPromptOptions = {}): PromptSystemSection[] {
+export function loadKanaInstructionSections(
+  options: LoadKanaSystemPromptOptions = {},
+): PromptSystemSection[] {
   const cwd = options.cwd ?? process.cwd();
-  const customizationsEnabled = options.launchMode !== "clean";
+  if (options.launchMode === "clean") {
+    return [];
+  }
   const { agentsPath } = getKanaConfigPaths(options.env);
   const projectAgentsPath = path.join(cwd, "AGENTS.md");
-  const sections: PromptSystemSection[] = [{ name: "assistant", content: DEFAULT_SYSTEM_PROMPT }];
+  const sections: PromptSystemSection[] = [];
 
-  if (customizationsEnabled && existsSync(agentsPath)) {
+  if (existsSync(agentsPath)) {
     sections.push({
       name: "agents:global",
       content: formatAgentsInstructions("global", readFileSync(agentsPath, "utf8")),
@@ -66,7 +71,7 @@ function loadKanaSystemSections(options: LoadKanaSystemPromptOptions = {}): Prom
   // AGENTS.md files refine the built-in operating rules. Project instructions
   // are appended after global instructions so local repository conventions have
   // the more specific, later position.
-  if (customizationsEnabled && path.resolve(projectAgentsPath) !== path.resolve(agentsPath)) {
+  if (path.resolve(projectAgentsPath) !== path.resolve(agentsPath)) {
     if (existsSync(projectAgentsPath)) {
       sections.push({
         name: "agents:project",
@@ -89,11 +94,13 @@ export function buildKanaPromptAssembly(
   const memoryEnabled =
     customizationsEnabled && (options.memoryEnabled ?? loadKanaConfig(options.env).memory.enabled);
   const memoryPrompt = memoryEnabled ? formatKanaMemoryForPrompt(options) : undefined;
-  const instructionSections = loadKanaSystemSections({
-    cwd: options.cwd,
-    env: options.env,
-    launchMode: options.launchMode,
-  });
+  const instructionSections = customizationsEnabled
+    ? (options.instructionSections ??
+      loadKanaInstructionSections({
+        cwd: options.cwd,
+        env: options.env,
+      }))
+    : [];
   const skillsPrompt = customizationsEnabled ? formatKanaSkillsForPrompt(options.skills ?? []) : "";
   const resolveBackgroundJobState = options.resolveBackgroundJobState;
   const resolveSubagentState = options.resolveSubagentState;
@@ -142,6 +149,7 @@ export function buildKanaPromptAssembly(
   return createPromptAssembly({
     system: [
       ...(memoryPrompt ? [{ name: "memory", content: memoryPrompt }] : []),
+      { name: "assistant", content: DEFAULT_SYSTEM_PROMPT },
       ...instructionSections,
       ...(skillsPrompt ? [{ name: "skills", content: skillsPrompt }] : []),
     ],

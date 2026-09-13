@@ -39,6 +39,40 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
+  test("keeps the startup AGENTS.md instruction snapshot", async () => {
+    const env = createTempEnv();
+    const agentsPath = path.join(env.KANA_HOME ?? "", "AGENTS.md");
+    writeFileSync(agentsPath, "Initial global instructions.\n");
+    const seenInstructions: string[][] = [];
+    const host = createKanaConversationHost({
+      env,
+      createAgent: (_config, options = {}) => {
+        seenInstructions.push(options.instructionSections?.map((section) => section.content) ?? []);
+        return new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+        });
+      },
+    });
+    const sessionId = host.initialSession?.metadata.id;
+
+    writeFileSync(agentsPath, "Updated global instructions.\n");
+    host.createAgent({ sessionId });
+    writeFileSync(agentsPath, "Updated again.\n");
+    host.createAgent({ sessionId });
+
+    expect(seenInstructions).toHaveLength(2);
+    for (const instructions of seenInstructions) {
+      expect(instructions.some((content) => content.includes("Initial global instructions."))).toBe(
+        true,
+      );
+      expect(instructions.some((content) => content.includes("Updated global instructions."))).toBe(
+        false,
+      );
+    }
+    await host.close();
+  });
+
   test("shares Agent construction, journal persistence, accounting, and session logging", async () => {
     const env = createTempEnv();
     process.env.KANA_HOME = env.KANA_HOME;

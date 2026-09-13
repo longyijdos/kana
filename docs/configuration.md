@@ -435,7 +435,7 @@ DEEPSEEK_API_KEY=sk-...
 
 The `.env` path is resolved from `KANA_HOME` before the file is loaded; when `KANA_HOME` is unset, the path is `$HOME/.kana/.env`.
 
-The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults. A project-root `AGENTS.md` is also read and appended after global content, so it occupies the more specific, later position. See the prompt-composition section of the [architecture overview](architecture.md).
+The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Normal startup loads it and the project-root `AGENTS.md` once; direct edits require a restart. Built-in default assistant instructions are always injected; global content is appended after the defaults and project content after that, so the project file occupies the more specific, later position. See the prompt-composition section of the [architecture overview](architecture.md).
 
 ## Approval file: `approvals.json`
 
