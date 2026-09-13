@@ -1,17 +1,26 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import {
+  mergeConfigStringSet,
+  readOptionalConfigFile,
+  withLockedConfigFile,
+  writeConfigFileAtomically,
+} from "../config/file-storage";
 import { getKanaConfigPaths } from "../path";
 import type { LoadKanaSkillsOptions } from "./types";
 
 export function loadEnabledGlobalSkillNames(globalSkillsDir: string): Set<string> {
   const configPath = path.join(globalSkillsDir, "skills.toml");
 
-  if (!existsSync(configPath)) {
+  return parseEnabledGlobalSkillNames(readOptionalConfigFile(configPath));
+}
+
+function parseEnabledGlobalSkillNames(content: string | undefined): Set<string> {
+  if (content === undefined) {
     return new Set();
   }
 
-  const parsed = Bun.TOML.parse(readFileSync(configPath, "utf8")) as unknown;
+  const parsed = Bun.TOML.parse(content) as unknown;
   const raw = asRecord(parsed, "skills config");
   const modelInvocation =
     raw.model_invocation === undefined ? {} : asRecord(raw.model_invocation, "model_invocation");
@@ -43,11 +52,20 @@ export function saveEnabledGlobalSkillNames(
   const { home } = getKanaConfigPaths(options.env);
   const globalSkillsDir = path.join(home, "skills");
   const configPath = path.join(globalSkillsDir, "skills.toml");
+  const previous = [...loadEnabledGlobalSkillNames(globalSkillsDir)];
 
-  mkdirSync(globalSkillsDir, { recursive: true });
-  writeFileSync(configPath, serializeSkillsConfig([...names]), {
-    encoding: "utf8",
-    mode: 0o600,
+  persistEnabledGlobalSkillNames(configPath, previous, [...names]);
+}
+
+export function persistEnabledGlobalSkillNames(
+  configPath: string,
+  previousSnapshot: readonly string[],
+  nextSnapshot: readonly string[],
+): void {
+  withLockedConfigFile(configPath, () => {
+    const persisted = [...parseEnabledGlobalSkillNames(readOptionalConfigFile(configPath))];
+    const merged = mergeConfigStringSet(persisted, previousSnapshot, nextSnapshot);
+    writeConfigFileAtomically(configPath, serializeSkillsConfig(merged));
   });
 }
 

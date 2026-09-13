@@ -4,6 +4,7 @@ import {
   type ContextCheckpoint,
   createModelCompactPolicy,
   createPromptAssembly,
+  type PromptSystemSection,
   type PromptToolSection,
 } from "@/agent";
 import type { BackgroundJobClient } from "@/jobs";
@@ -26,10 +27,12 @@ import { createKanaToolResultArtifactPolicy, type KanaSessionArtifactStore } fro
 import type { KanaAgentConfig, KanaProviderConfig } from "./config";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-controller";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
+import type { KanaCustomProviderSnapshot } from "./custom-provider";
 import type { KanaLaunchMode } from "./launch-mode";
 import { createKanaAgentModelRuntime } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
-import { loadKanaSkills } from "./skills/loader";
+import { loadKanaSkillActivations } from "./skills/loader";
+import type { KanaSkill } from "./skills/types";
 import type {
   KanaSubagentClient,
   KanaSubagentProfile,
@@ -79,8 +82,11 @@ export type KanaAgentOptions = Pick<
   updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
   subagentProfile?: KanaSubagentProfile;
   subagents?: KanaSubagentClient;
-  resolveSubagentProfiles?: () => readonly KanaSubagentProfile[];
+  subagentProfiles?: readonly KanaSubagentProfile[];
   runSubagent?: (context: KanaSubagentRunContext) => Promise<KanaSubagentRunResult>;
+  skills?: readonly KanaSkill[];
+  customProviderSnapshot?: KanaCustomProviderSnapshot;
+  instructionSections?: readonly PromptSystemSection[];
 };
 
 export type KanaAgentDependencies = {
@@ -100,11 +106,13 @@ export function createKanaAgent(
   const customizationsEnabled = options.launchMode !== "clean";
   const skills =
     customizationsEnabled && !subagentProfile
-      ? loadKanaSkills({ cwd, env: options.env }).skills
+      ? (options.skills ??
+        loadKanaSkillActivations({ cwd, env: options.env }).skills.filter((skill) => skill.enabled))
       : [];
   const runtime = createKanaAgentModelRuntime(config, dependencies.providers, {
     env: options.env,
     logger: options.logger,
+    customProviderSnapshot: options.customProviderSnapshot,
   });
   const { model } = runtime;
   const enabledTools = new Set<string>(config.tools);
@@ -157,7 +165,7 @@ export function createKanaAgent(
       ]),
     });
   }
-  if (!subagentProfile && subagents && options.resolveSubagentProfiles && options.runSubagent) {
+  if (!subagentProfile && subagents && options.subagentProfiles && options.runSubagent) {
     const resolveSubagentImageInput = (profile: KanaSubagentProfile): boolean => {
       if (!profile.model) return runtime.imageInput;
       const cached = subagentImageInput.get(profile.digest);
@@ -174,7 +182,11 @@ export function createKanaAgent(
             },
           },
           dependencies.providers,
-          { env: options.env, logger: options.logger },
+          {
+            env: options.env,
+            logger: options.logger,
+            customProviderSnapshot: options.customProviderSnapshot,
+          },
         ).imageInput;
       } catch {
         supported = false;
@@ -199,11 +211,10 @@ export function createKanaAgent(
         : []),
     ];
     const createSubagentTools = (additionalTools: readonly Tool[]): Tool[] => {
-      const profiles = options.resolveSubagentProfiles?.() ?? [];
       return selectEnabledTools([
         createSpawnSubagentTool({
           subagents,
-          profiles,
+          profiles: options.subagentProfiles ?? [],
           availableTools: (profile) => availableTools(profile, additionalTools),
           run: options.runSubagent as (
             context: KanaSubagentRunContext,
@@ -312,6 +323,7 @@ export function createKanaAgent(
         launchMode: options.launchMode,
         memoryEnabled: dependencies.memoryEnabled,
         skills,
+        instructionSections: options.instructionSections,
         resolveBackgroundJobState: backgroundJobs ? () => backgroundJobs.context() : undefined,
         toolSections,
         resolveTodoState: options.resolveTodoState,

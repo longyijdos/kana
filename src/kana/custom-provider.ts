@@ -33,6 +33,23 @@ export type KanaCustomProvider = {
   models: readonly KanaCustomProviderModel[];
 };
 
+export type KanaCustomProviderSnapshot =
+  | { provider: KanaCustomProvider; error?: never }
+  | { provider?: never; error: Error };
+
+export function loadKanaCustomProviderSnapshot(filePath: string): KanaCustomProviderSnapshot {
+  try {
+    return { provider: loadKanaCustomProvider(filePath) };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error
+          : new Error("Could not load Custom provider configuration.", { cause: error }),
+    };
+  }
+}
+
 export function loadKanaCustomProvider(filePath: string): KanaCustomProvider {
   if (!existsSync(filePath)) {
     throw new Error(
@@ -50,10 +67,6 @@ export function loadKanaCustomProvider(filePath: string): KanaCustomProvider {
   }
 
   return parseKanaCustomProvider(parsed);
-}
-
-export function loadOptionalKanaCustomProvider(filePath: string): KanaCustomProvider | undefined {
-  return existsSync(filePath) ? loadKanaCustomProvider(filePath) : undefined;
 }
 
 export function parseKanaCustomProvider(rawConfig: unknown): KanaCustomProvider {

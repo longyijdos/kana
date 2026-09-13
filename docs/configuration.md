@@ -126,9 +126,9 @@ The editor expands a valid invocation before submission or queueing and passes t
 
 ## `config.toml`
 
-When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults. Model selection and Agent policy are static per Agent: `[agent.model]` configures the conversation Agent, while `[memory.agent.model]` independently configures memory consolidation. Provider tables contain only transport and authentication settings. This schema is intentionally breaking; legacy `[provider]` and `[model.*]` selection tables are not read.
+When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults. Kana loads this effective configuration once when the process starts; direct file edits require a restart, while configuration changed through the running frontend updates its in-memory snapshot immediately. Model selection and Agent policy are static per Agent: `[agent.model]` configures the conversation Agent, while `[memory.agent.model]` independently configures memory consolidation. Provider tables contain only transport and authentication settings. This schema is intentionally breaking; legacy `[provider]` and `[model.*]` selection tables are not read.
 
-The TUI's `/model` command updates `config.toml` through the generic configuration store. It reloads the current file from disk, writes only known fields whose effective values changed, and preserves unrelated tables, unknown fields, and standalone comments. The first change away from defaults therefore creates only the required overrides instead of expanding every default. A candidate document must parse back into the complete target configuration before a sibling temporary file atomically replaces the original; validation or write failures leave the original file untouched. `config.example.toml` is reference-only and may be refreshed by a later `kana install`, so user configuration should not be stored there.
+The TUI's `/model` command updates `config.toml` through the generic configuration store. Before writing, the store locks the file, reads its latest contents, and patches only known fields changed in the running snapshot. Unrelated external edits, unknown fields, tables, and standalone comments remain on disk without entering the current process. The first change away from defaults therefore creates only the required overrides instead of expanding every default. The changed fields must parse back to their target values before a sibling temporary file atomically replaces the original; validation or write failures leave the original file untouched. `config.example.toml` is reference-only and may be refreshed by a later `kana install`, so user configuration should not be stored there.
 
 The built-in configuration is equivalent to:
 
@@ -342,6 +342,8 @@ The configuration root and every present section must be a TOML table. Strings c
 
 MCP servers are not stored in `config.toml`. Claude Code-style definitions live in `<KANA_HOME>/mcp.json`, while `<KANA_HOME>/mcp-enabled.json` is the sole source of activation state. A missing definitions file or omitted `mcpServers` means no servers are configured; a missing activation file or omitted `enabledServers` means none are enabled. Only configured IDs listed in `enabledServers` start, and stale unknown IDs are ignored. Runtime and protocol behavior is documented in [MCP](mcp.md).
 
+Normal TUI and headless startup load both files once into the product Host. Direct edits require a restart; MCP reload reconnects from the Host snapshot rather than rereading either file. A `/mcp` activation change updates that snapshot immediately. Before persisting it, Kana locks `mcp-enabled.json`, reads the latest file, merges only the activation delta made by this process, and atomically replaces the file, so an unrelated concurrent addition is not overwritten.
+
 ```json
 {
   "mcpServers": {
@@ -433,7 +435,7 @@ DEEPSEEK_API_KEY=sk-...
 
 The `.env` path is resolved from `KANA_HOME` before the file is loaded; when `KANA_HOME` is unset, the path is `$HOME/.kana/.env`.
 
-The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Built-in default assistant instructions are always injected; when the global file exists, it is appended after the defaults. A project-root `AGENTS.md` is also read and appended after global content, so it occupies the more specific, later position. See the prompt-composition section of the [architecture overview](architecture.md).
+The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Normal startup loads it and the project-root `AGENTS.md` once; direct edits require a restart. Built-in default assistant instructions are always injected; global content is appended after the defaults and project content after that, so the project file occupies the more specific, later position. See the prompt-composition section of the [architecture overview](architecture.md).
 
 ## Approval file: `approvals.json`
 
@@ -450,6 +452,8 @@ The default file is:
 ```
 
 `exactCommands` holds complete bash commands after trimming surrounding whitespace. Choosing “Always allow this command” in the TUI appends that command. `readOnlyCommands` can contain only executable names without whitespace or `/`; a command is automatically trusted only when its first word is one of these names and it is a single simple command. Bash commands with `;`, `|`, redirection, command substitution, backticks, backslashes, or newlines are never treated as read-only.
+
+The Host loads approval rules once at startup. Direct edits therefore apply on the next launch. When the TUI trusts an exact command, it adds only that command to the Host snapshot. Persistence separately locks `approvals.json`, rereads the latest rules, appends the command without changing either existing list, and atomically replaces the file. Rules found only in that latest disk version do not enter the running process.
 
 Approval modes behave as follows:
 
@@ -468,7 +472,7 @@ The TUI's `/approval` command can temporarily override the mode for the currentl
 enabled = []
 ```
 
-This list names the **global** Skills that may be injected into the model system prompt. Skills in project `.kana/skills` and `.agents/skills` are always enabled and cannot be disabled through this file. The TUI's `/skills` command changes only this global activation list: `Enter` edits a draft, while `Esc` writes and refreshes once only when the final selection changed.
+This list names the **global** Skills that may be injected into the model system prompt. Skills in project `.kana/skills` and `.agents/skills` are always enabled and cannot be disabled through this file. Normal startup discovers Skill files and loads activation once; direct file additions, removals, or edits require a restart. The TUI's `/skills` command changes only the in-memory global activation snapshot: `Enter` edits a draft, while `Esc` persists and rebuilds the Agent once only when the final selection changed. Persistence locks `skills.toml`, rereads the latest activation list, merges only the current process's selection delta, and atomically replaces the file.
 
 ## Recommended minimal configuration
 

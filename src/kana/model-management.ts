@@ -1,7 +1,7 @@
 import type { ModelReasoningMetadata } from "@/core";
 import { DEEPSEEK_MODELS, OPENAI_CODEX_MODELS } from "@/providers";
 import { KANA_MODEL_PROVIDERS, type KanaConfig, type KanaModelProvider } from "./config";
-import { type KanaCustomProvider, loadOptionalKanaCustomProvider } from "./custom-provider";
+import { type KanaCustomProviderSnapshot, loadKanaCustomProviderSnapshot } from "./custom-provider";
 import { getKanaConfigPaths } from "./path";
 
 type KanaManagedModel = {
@@ -36,26 +36,18 @@ const KANA_MODEL_PROVIDER_OPTIONS = KANA_MODEL_PROVIDERS.map((provider) => ({
 export function getKanaModelManagement(
   config: KanaConfig,
   env: NodeJS.ProcessEnv = process.env,
+  customProviderSnapshot?: KanaCustomProviderSnapshot,
 ): KanaModelManagement {
   const customProviderPath = getKanaConfigPaths(env).customProviderPath;
-  let customProvider: KanaCustomProvider | undefined;
-  let customProviderError: string | undefined;
-  try {
-    customProvider = loadOptionalKanaCustomProvider(customProviderPath);
-    if (!customProvider) {
-      customProviderError = `Custom provider configuration was not found at ${customProviderPath}. Copy custom.example.toml to custom.toml and configure it.`;
-    }
-  } catch (error) {
-    customProviderError =
-      error instanceof Error ? error.message : "Could not load Custom provider configuration.";
-  }
+  const customProvider =
+    customProviderSnapshot ?? loadKanaCustomProviderSnapshot(customProviderPath);
 
   const selection = config.agent.model;
   const models: Record<KanaModelProvider, KanaManagedModel[]> = {
     deepseek: toManagedModels(DEEPSEEK_MODELS),
     "openai-codex": toManagedModels(OPENAI_CODEX_MODELS),
     custom:
-      customProvider?.models.map((model) => ({
+      customProvider.provider?.models.map((model) => ({
         name: model.name,
         reasoning: model.metadata.reasoning,
         supportsImageInput: model.metadata.supportsImageInput === true,
@@ -68,7 +60,7 @@ export function getKanaModelManagement(
     model: {
       deepseek: createManagedProvider("deepseek", models.deepseek, config),
       "openai-codex": createManagedProvider("openai-codex", models["openai-codex"], config),
-      custom: createManagedProvider("custom", models.custom, config, customProviderError),
+      custom: createManagedProvider("custom", models.custom, config, customProvider.error?.message),
     },
   };
 }

@@ -27,7 +27,7 @@ provider = "custom"
 name = "local-model"
 ```
 
-`/model` 会在内置供应商之外显示 Custom。它从这一个文件读取模型列表，只在 `[agent.model]` 下持久化主 Agent 的 `provider`、`name` 和可选推理强度，并通过与内置供应商相同的候选 Agent 校验完成热切换。已有 `max_output_tokens` 和 `context_limit` 保持不变，`[memory.agent.model]` 也完全独立。文件缺失或无效时会显示明确错误；Kana 不会静默回退到其他供应商或模型。
+`/model` 会在内置供应商之外显示 Custom。Kana 在进程启动时只加载一次该文件，`/model`、对话 Agent 和记忆压缩 Agent 共用这份快照；直接编辑需要重启才会生效。该命令只在 `[agent.model]` 下持久化主 Agent 的 `provider`、`name` 和可选推理强度，并通过与内置供应商相同的候选 Agent 校验完成热切换。已有 `max_output_tokens` 和 `context_limit` 保持不变，`[memory.agent.model]` 也完全独立。启动快照缺失或无效时会显示明确错误；Kana 不会静默回退到其他供应商或模型。
 
 ## 供应商字段
 

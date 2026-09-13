@@ -44,11 +44,11 @@ Skills in project directories are always enabled. Skills under `<KANA_HOME>/skil
 enabled = ["release-check", "database-migrations"]
 ```
 
-When the file is absent or `enabled` is missing, no global Skills enter the model prompt. `/skills` opens the manager: project entries are locked, while `Enter` toggles global entries in a local draft. `Esc` applies and closes the draft; if its final set changed, Kana rewrites the list once and rebuilds the Agent system prompt once. An unchanged draft performs neither operation, while a persistence failure leaves the manager open. The manager determines scope by whether a Skill file resides under the global Skills directory.
+When the file is absent or `enabled` is missing, no global Skills enter the model prompt. The product Host discovers Skills and loads this activation list once at normal startup; direct file changes require a restart. `/skills` opens the manager from that snapshot: project entries are locked, while `Enter` toggles global entries in a local draft. `Esc` applies and closes the draft; if its final set changed, Kana persists the activation delta, updates the snapshot, and rebuilds the Agent system prompt once. An unchanged draft performs neither operation, while a persistence failure leaves the manager open. The manager determines scope by whether a Skill file resides under the global Skills directory.
 
 ## Prompt composition
 
-`createKanaAgent` loads Skills from the current working directory and builds an immutable prompt assembly. Its stable system prefix uses this order:
+The product Host passes its Skill snapshot when `createKanaAgent` builds an immutable prompt assembly; standalone callers that omit it load Skills directly. Its stable system prefix uses this order:
 
 ```text
 Available global/project durable memory (when enabled and non-empty)
@@ -63,7 +63,7 @@ Before every model step, the Agent resolves Kana's dynamic environment, Job, tod
 
 `--clean` bypasses global and project Skill discovery, `skills.toml` activation reads, both memory scopes, and both `AGENTS.md` scopes. The stable system prompt then contains the built-in assistant instructions and runtime-context protocol; dynamic environment context remains available. The Agent registers neither `remember` nor external tools. `/skills` and `/memory` report that they are unavailable in clean mode. `.env`, provider/model selection, and other runtime configuration still follow the normal startup path, but a `/model` selection remains local to the temporary process.
 
-Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. The built-in default is one sentence identifying a concise, practical assistant in the current environment; capability-specific invocation guidance belongs to tool descriptions. When the global file exists, it is appended after that default, then the project file is appended. When the two AGENTS paths resolve to the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
+Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. The product Host loads both once at startup, so direct edits require a restart and Agent rebuilds reuse the same instruction snapshot. Standalone prompt or Agent callers that do not provide a snapshot still load the files directly. The built-in default is one sentence identifying a concise, practical assistant in the current environment; capability-specific invocation guidance belongs to tool descriptions. When the global file exists, it is appended after that default, then the project file is appended. When the two AGENTS paths resolve to the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
 
 The environment block contains the current directory, `process.platform`, a locally time-zone-formatted `YYYY-MM-DD` date, and the time-zone name. It is wrapped in an internal source-tagged runtime-context message:
 

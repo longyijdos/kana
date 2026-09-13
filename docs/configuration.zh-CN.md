@@ -126,9 +126,9 @@ then clean up {{branch=the merged branch}} and its related worktree if safe.
 
 ## `config.toml`
 
-配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 独立属于记忆压缩 Agent；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更，不再读取旧 `[provider]` 和 `[model.*]` 选择表。
+配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。Kana 在进程启动时只加载一次有效配置；直接编辑文件需要重启才会生效，通过当前前端修改配置则会立即更新进程内快照。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 独立属于记忆压缩 Agent；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更，不再读取旧 `[provider]` 和 `[model.*]` 选择表。
 
-TUI 的 `/model` 通过通用配置存储更新 `config.toml`：它从磁盘重新读取当前配置，只写本次实际变化的已知字段，并保留无关表、未知字段和独立注释。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。候选文档必须重新解析为完整目标配置后才会通过同目录临时文件原子替换；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
+TUI 的 `/model` 通过通用配置存储更新 `config.toml`：写入前，存储会锁定文件、读取磁盘上的最新内容，再只补丁当前运行时快照中实际变化的已知字段。无关的外部修改、未知字段、表和独立注释会保留在磁盘上，但不会进入当前进程。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。变更字段必须重新解析为目标值后，才会通过同目录临时文件原子替换原文件；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
 
 内置默认配置等价于：
 
@@ -342,6 +342,8 @@ Kana 只在 TUI 启动时读取选中的用户主题文件。文件必须是只�
 
 MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA_HOME>/mcp.json`，`<KANA_HOME>/mcp-enabled.json` 则是启用状态的唯一来源。定义文件不存在或省略 `mcpServers` 时等价于未配置 server；启用文件不存在或省略 `enabledServers` 时等价于未启用任何 server。Kana 只启动同时存在于定义和 `enabledServers` 中的 ID，过期的未知 ID 会被忽略。运行时与协议行为见 [MCP](mcp.zh-CN.md)。
 
+普通 TUI 和 headless 启动时会把两个文件各加载一次到产品 Host。直接编辑需要重启才会生效；MCP reload 使用 Host 快照重新连接，不会重读任一文件。通过 `/mcp` 修改启用状态会立即更新该快照。持久化前，Kana 会锁定 `mcp-enabled.json`、读取磁盘上的最新文件，只合并当前进程产生的启用状态差量，再原子替换文件，因此不会覆盖其它进程无关的新增项。
+
 ```json
 {
   "mcpServers": {
@@ -433,7 +435,7 @@ DEEPSEEK_API_KEY=sk-...
 
 `.env` 路径使用加载前的 `KANA_HOME` 确定；未设置时为 `$HOME/.kana/.env`。
 
-全局 `AGENTS.md` 位于 `<KANA_HOME>/AGENTS.md`。内置默认助手指令始终注入；全局文件存在时追加到默认指令后。项目根目录的 `AGENTS.md` 也会被读取，并追加在全局内容后，因此拥有更具体的后置位置。详见[架构总览](architecture.zh-CN.md)中的提示词装配说明。
+全局 `AGENTS.md` 位于 `<KANA_HOME>/AGENTS.md`。普通启动只加载一次它与项目根目录的 `AGENTS.md`；直接编辑需要重启才会生效。内置默认助手指令始终注入；全局内容追加到默认指令后，项目内容再追加在全局内容后，因此项目文件拥有更具体的后置位置。详见[架构总览](architecture.zh-CN.md)中的提示词装配说明。
 
 ## 审批文件：`approvals.json`
 
@@ -450,6 +452,8 @@ DEEPSEEK_API_KEY=sk-...
 ```
 
 `exactCommands` 是去掉首尾空白后的完整 bash 命令列表。TUI 中选择“Always allow this command”会把该命令追加到这里。`readOnlyCommands` 只能包含没有空白和 `/` 的可执行文件名；只有简单单命令的首个单词在此列表中时才被自动信任。含有 `;`、`|`、重定向、命令替换、反引号、反斜杠或换行的 bash 命令不会被当作只读。
+
+Host 在启动时只加载一次审批规则，因此直接编辑要到下次启动才生效。TUI 信任精确命令时，只会把该命令加入 Host 快照；持久化则单独锁定 `approvals.json`、重读最新规则，在不改变两个已有列表的前提下追加命令并原子替换文件。只存在于最新磁盘版本中的规则不会进入当前进程。
 
 审批模式的效果：
 
@@ -468,7 +472,7 @@ TUI 的 `/approval` 可以临时覆盖当前所选 session 的模式；选择 `N
 enabled = []
 ```
 
-该列表列出允许注入模型系统提示词的**全局** Skill 名称。项目 `.kana/skills` 和 `.agents/skills` 下的 Skills 始终启用，不能从该文件关闭。TUI 的 `/skills` 只修改这份全局启用列表：`Enter` 修改草稿，`Esc` 仅在最终选择变化时写入并刷新一次。
+该列表列出允许注入模型系统提示词的**全局** Skill 名称。项目 `.kana/skills` 和 `.agents/skills` 下的 Skills 始终启用，不能从该文件关闭。普通启动只发现一次 Skill 文件并加载一次启用状态；直接新增、删除或编辑文件需要重启才会生效。TUI 的 `/skills` 只修改内存中的全局启用快照：`Enter` 修改草稿，`Esc` 仅在最终选择变化时持久化并重建一次 Agent。持久化会锁定 `skills.toml`、重读最新启用列表，只合并当前进程的选择差量，再原子替换文件。
 
 ## 推荐的最小配置
 

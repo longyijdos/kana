@@ -27,7 +27,7 @@ provider = "custom"
 name = "local-model"
 ```
 
-`/model` exposes Custom alongside the built-in providers. It reads the model list from this one file, persists only the main Agent's `provider`, `name`, and optional reasoning effort under `[agent.model]`, and hot-switches through the same candidate-Agent validation used by built-ins. Its configured `max_output_tokens` and `context_limit` remain unchanged, and `[memory.agent.model]` is independent. A missing or invalid file is shown as an explicit error; Kana never falls back to another provider or model.
+`/model` exposes Custom alongside the built-in providers. Kana loads this file once at process startup, and `/model`, conversation Agents, and memory-consolidation Agents share that snapshot; direct edits require a restart. The command persists only the main Agent's `provider`, `name`, and optional reasoning effort under `[agent.model]`, and hot-switches through the same candidate-Agent validation used by built-ins. Its configured `max_output_tokens` and `context_limit` remain unchanged, and `[memory.agent.model]` is independent. A missing or invalid startup snapshot is shown as an explicit error; Kana never falls back to another provider or model.
 
 ## Provider fields
 

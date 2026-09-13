@@ -1,22 +1,8 @@
-import path from "node:path";
-
 import { escapeXml } from "../format";
-import { getKanaConfigPaths } from "../path";
-import { loadEnabledGlobalSkillNames } from "./config";
-import { isPathInside } from "./paths";
 import type { KanaSkill } from "./types";
 
-export type FormatKanaSkillsForPromptOptions = {
-  env?: NodeJS.ProcessEnv;
-};
-
-export function formatKanaSkillsForPrompt(
-  skills: KanaSkill[],
-  options: FormatKanaSkillsForPromptOptions = {},
-): string {
-  const visibleSkills = selectSkillsForPrompt(skills, options);
-
-  if (visibleSkills.length === 0) {
+export function formatKanaSkillsForPrompt(skills: readonly KanaSkill[]): string {
+  if (skills.length === 0) {
     return "";
   }
 
@@ -26,7 +12,7 @@ export function formatKanaSkillsForPrompt(
     "When a skill file references a relative path, resolve it against the skill directory, which is the parent directory of SKILL.md.",
     "",
     "<available_skills>",
-    ...visibleSkills.flatMap((skill) => [
+    ...skills.flatMap((skill) => [
       "  <skill>",
       `    <name>${escapeXml(skill.name)}</name>`,
       `    <description>${escapeXml(skill.description)}</description>`,
@@ -35,21 +21,4 @@ export function formatKanaSkillsForPrompt(
     ]),
     "</available_skills>",
   ].join("\n");
-}
-
-function selectSkillsForPrompt(
-  skills: KanaSkill[],
-  options: FormatKanaSkillsForPromptOptions,
-): KanaSkill[] {
-  const { home } = getKanaConfigPaths(options.env);
-  const globalSkillsDir = path.join(home, "skills");
-  const enabledGlobalSkills = loadEnabledGlobalSkillNames(globalSkillsDir);
-
-  return skills.filter((skill) => {
-    if (!isPathInside(skill.filePath, globalSkillsDir)) {
-      return true;
-    }
-
-    return enabledGlobalSkills.has(skill.name);
-  });
 }

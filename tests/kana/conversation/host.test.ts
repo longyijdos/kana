@@ -39,6 +39,40 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
+  test("keeps the startup AGENTS.md instruction snapshot", async () => {
+    const env = createTempEnv();
+    const agentsPath = path.join(env.KANA_HOME ?? "", "AGENTS.md");
+    writeFileSync(agentsPath, "Initial global instructions.\n");
+    const seenInstructions: string[][] = [];
+    const host = createKanaConversationHost({
+      env,
+      createAgent: (_config, options = {}) => {
+        seenInstructions.push(options.instructionSections?.map((section) => section.content) ?? []);
+        return new Agent({
+          model: new MockModel({ provider: "mock", model: "mock" }),
+          messages: options.messages,
+        });
+      },
+    });
+    const sessionId = host.initialSession?.metadata.id;
+
+    writeFileSync(agentsPath, "Updated global instructions.\n");
+    host.createAgent({ sessionId });
+    writeFileSync(agentsPath, "Updated again.\n");
+    host.createAgent({ sessionId });
+
+    expect(seenInstructions).toHaveLength(2);
+    for (const instructions of seenInstructions) {
+      expect(instructions.some((content) => content.includes("Initial global instructions."))).toBe(
+        true,
+      );
+      expect(instructions.some((content) => content.includes("Updated global instructions."))).toBe(
+        false,
+      );
+    }
+    await host.close();
+  });
+
   test("shares Agent construction, journal persistence, accounting, and session logging", async () => {
     const env = createTempEnv();
     process.env.KANA_HOME = env.KANA_HOME;
@@ -100,6 +134,29 @@ describe("Kana conversation host", () => {
     expect(seenModels).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
     expect(host.config.agent.model.name).toBe("deepseek-v4-pro");
     await runtime.close();
+    await host.close();
+  });
+
+  test("keeps the startup subagent profile snapshot", async () => {
+    const env = createTempEnv();
+    const agentsDirectory = path.join(env.KANA_HOME ?? "", "agents");
+    mkdirSync(agentsDirectory, { recursive: true });
+    const profilePath = path.join(agentsDirectory, "focused.md");
+    writeFileSync(profilePath, subagentProfile("Initial instructions."));
+    const host = createKanaConversationHost({ env, session: { type: "none" } });
+
+    const first = host.loadSubagentProfiles();
+    const focused = first.profiles.find((profile) => profile.name === "focused");
+    if (focused) focused.instructions = "Changed returned snapshot.";
+    writeFileSync(profilePath, subagentProfile("Updated on disk."));
+    writeFileSync(path.join(agentsDirectory, "later.md"), subagentProfile("Added later."));
+
+    const second = host.loadSubagentProfiles();
+
+    expect(second.profiles.find((profile) => profile.name === "focused")?.instructions).toBe(
+      "Initial instructions.",
+    );
+    expect(second.profiles.map((profile) => profile.name)).not.toContain("later");
     await host.close();
   });
 
@@ -417,4 +474,8 @@ function createTempEnv(): NodeJS.ProcessEnv {
     HOME: home,
     KANA_HOME: kanaHome,
   };
+}
+
+function subagentProfile(instructions: string): string {
+  return ["---", "description: Focused work", "tools: [read]", "---", instructions, ""].join("\n");
 }

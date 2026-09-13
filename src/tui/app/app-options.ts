@@ -107,6 +107,7 @@ export type KanaTuiAppOptions = {
   toolApproval: {
     config: KanaToolApprovalConfig;
     approvals: KanaToolApprovals;
+    addTrustedBashCommand: (command: string) => KanaToolApprovals;
     resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
   };
   ui: {

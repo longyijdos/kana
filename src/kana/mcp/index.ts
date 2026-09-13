@@ -4,6 +4,7 @@ export {
   loadKanaMcpActivationState,
   loadKanaMcpServerActivations,
   parseKanaMcpActivationState,
+  resolveKanaMcpServerActivations,
   saveKanaMcpActivationState,
 } from "./activation";
 export {
@@ -16,6 +17,10 @@ export {
   parseKanaMcpConfig,
   resolveKanaMcpOAuth2Client,
 } from "./config";
+export {
+  createKanaMcpConfigurationStore,
+  type KanaMcpConfigurationStore,
+} from "./configuration-store";
 export { createKanaMcpManager } from "./manager";
 export {
   authorizeKanaMcpServer,

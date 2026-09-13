@@ -11,6 +11,7 @@ import {
   parseKanaMcpActivationState,
   saveKanaMcpActivationState,
 } from "@/kana";
+import { createKanaMcpConfigurationStore } from "../../../src/kana/mcp/configuration-store";
 
 const tempDirs: string[] = [];
 
@@ -96,6 +97,36 @@ describe("Kana MCP activation state", () => {
       ),
     );
     expect(statSync(mcpEnabledPath).mode & 0o777).toBe(0o600);
+  });
+
+  test("keeps startup snapshots and merges activation writes with the latest file", () => {
+    const env = createTempEnv();
+    const { mcpConfigPath, mcpEnabledPath } = getKanaConfigPaths(env);
+    writeFileSync(
+      mcpConfigPath,
+      `${JSON.stringify({
+        mcpServers: {
+          alpha: { command: "alpha" },
+          beta: { command: "beta" },
+          gamma: { command: "gamma" },
+        },
+      })}\n`,
+    );
+    saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
+    const store = createKanaMcpConfigurationStore(env);
+
+    writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: {} })}\n`);
+    writeFileSync(mcpEnabledPath, `${JSON.stringify({ enabledServers: ["alpha", "beta"] })}\n`);
+
+    expect(Object.keys(store.getConfig().mcpServers)).toEqual(["alpha", "beta", "gamma"]);
+    expect(store.getActivationState()).toEqual({ enabledServers: ["alpha"] });
+
+    store.saveActivationState({ enabledServers: ["gamma"] });
+
+    expect(JSON.parse(readFileSync(mcpEnabledPath, "utf8"))).toEqual({
+      enabledServers: ["beta", "gamma"],
+    });
+    expect(store.getActivationState()).toEqual({ enabledServers: ["gamma"] });
   });
 
   test("rejects invalid activation state", () => {

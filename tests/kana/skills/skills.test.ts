@@ -13,6 +13,7 @@ import {
   loadKanaSkillsFromDir,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
+import { createKanaSkillStore } from "../../../src/kana/skills/store";
 
 const tempDirs: string[] = [];
 
@@ -226,28 +227,18 @@ describe("Kana skills", () => {
     });
   });
 
-  test("formats allowlisted global skills for the system prompt", () => {
+  test("formats the supplied skills for the system prompt", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);
-    writeSkillConfig(home, ["[model_invocation]", 'enabled = ["visible-skill"]', ""].join("\n"));
 
-    const prompt = formatKanaSkillsForPrompt(
-      [
-        {
-          name: "visible-skill",
-          description: 'Handles <xml> & "quotes".',
-          filePath: path.join(home, "skills", "visible-skill", "SKILL.md"),
-          baseDir: path.join(home, "skills", "visible-skill"),
-        },
-        {
-          name: "hidden-skill",
-          description: "Not allowlisted.",
-          filePath: path.join(home, "skills", "hidden-skill", "SKILL.md"),
-          baseDir: path.join(home, "skills", "hidden-skill"),
-        },
-      ],
-      { env },
-    );
+    const prompt = formatKanaSkillsForPrompt([
+      {
+        name: "visible-skill",
+        description: 'Handles <xml> & "quotes".',
+        filePath: path.join(home, "skills", "visible-skill", "SKILL.md"),
+        baseDir: path.join(home, "skills", "visible-skill"),
+      },
+    ]);
 
     expect(prompt).toContain("<available_skills>");
     expect(prompt).toContain("<name>visible-skill</name>");
@@ -255,41 +246,22 @@ describe("Kana skills", () => {
     expect(prompt).toContain(
       `<location>${path.join(home, "skills", "visible-skill", "SKILL.md")}</location>`,
     );
-    expect(prompt).not.toContain("hidden-skill");
   });
 
-  test("hides global skills when the allowlist is missing", () => {
-    const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    const prompt = formatKanaSkillsForPrompt(
-      [
-        {
-          name: "global-skill",
-          description: "Global skill.",
-          filePath: path.join(home, "skills", "global-skill", "SKILL.md"),
-          baseDir: path.join(home, "skills", "global-skill"),
-        },
-      ],
-      { env },
-    );
-
-    expect(prompt).toBe("");
+  test("returns an empty prompt when no skills are supplied", () => {
+    expect(formatKanaSkillsForPrompt([])).toBe("");
   });
 
   test("does not require project skills to be allowlisted", () => {
-    const env = createTempEnv();
     const cwd = createTempDir();
-    const prompt = formatKanaSkillsForPrompt(
-      [
-        {
-          name: "project-skill",
-          description: "Project-local skill.",
-          filePath: path.join(cwd, ".kana", "skills", "project-skill", "SKILL.md"),
-          baseDir: path.join(cwd, ".kana", "skills", "project-skill"),
-        },
-      ],
-      { env },
-    );
+    const prompt = formatKanaSkillsForPrompt([
+      {
+        name: "project-skill",
+        description: "Project-local skill.",
+        filePath: path.join(cwd, ".kana", "skills", "project-skill", "SKILL.md"),
+        baseDir: path.join(cwd, ".kana", "skills", "project-skill"),
+      },
+    ]);
 
     expect(prompt).toContain("<name>project-skill</name>");
   });
@@ -368,6 +340,33 @@ describe("Kana skills", () => {
     expect(readFileSync(path.join(home, "skills", "skills.toml"), "utf8")).toBe(
       ["[model_invocation]", 'enabled = ["second", "first"]', ""].join("\n"),
     );
+  });
+
+  test("keeps a startup snapshot and merges writes with the latest activation file", () => {
+    const env = createTempEnv();
+    const cwd = createTempDir();
+    const { home } = getKanaConfigPaths(env);
+    for (const name of ["first", "second", "third"]) {
+      writeSkill(
+        path.join(home, "skills", name, "SKILL.md"),
+        ["---", `name: ${name}`, `description: ${name} skill.`, "---", `Use ${name}.`, ""].join(
+          "\n",
+        ),
+      );
+    }
+    writeSkillConfig(home, ["[model_invocation]", 'enabled = ["first"]', ""].join("\n"));
+    const store = createKanaSkillStore({ cwd, env });
+
+    writeSkillConfig(home, ["[model_invocation]", 'enabled = ["first", "second"]', ""].join("\n"));
+
+    expect(enabledSkillNames(store.load())).toEqual(["first"]);
+
+    store.saveEnabledGlobalNames(["third"]);
+
+    expect(readFileSync(path.join(home, "skills", "skills.toml"), "utf8")).toBe(
+      ["[model_invocation]", 'enabled = ["second", "third"]', ""].join("\n"),
+    );
+    expect(enabledSkillNames(store.load())).toEqual(["third"]);
   });
 
   test("builds the system prompt with available skills", () => {
@@ -489,6 +488,10 @@ function writeSkill(filePath: string, content: string): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, content);
   expect(readFileSync(filePath, "utf8")).toBe(content);
+}
+
+function enabledSkillNames(result: ReturnType<ReturnType<typeof createKanaSkillStore>["load"]>) {
+  return result.skills.filter((skill) => skill.enabled).map((skill) => skill.name);
 }
 
 function restoreEnv(name: string, value: string | undefined): void {

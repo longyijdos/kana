@@ -11,6 +11,7 @@ export {
   loadKanaSkillsFromDir,
 } from "./loader";
 export { formatKanaSkillsForPrompt } from "./prompt";
+export { createKanaSkillStore, type KanaSkillStore } from "./store";
 export {
   resyncKanaSkills,
   type SyncKanaSkillsResult,

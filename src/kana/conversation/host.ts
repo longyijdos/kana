@@ -1,4 +1,4 @@
-import type { Agent, ContextCheckpoint } from "@/agent";
+import type { Agent, ContextCheckpoint, PromptSystemSection } from "@/agent";
 import { addModelUsage, type Message, type ModelUsage } from "@/core";
 import type { BackgroundJobClient } from "@/jobs";
 import type { Logger } from "@/logging";
@@ -21,16 +21,21 @@ import {
   type KanaTuiConfig,
   validateKanaConfig,
 } from "../config";
+import {
+  type KanaCustomProviderSnapshot,
+  loadKanaCustomProviderSnapshot,
+} from "../custom-provider";
 import type { KanaLaunchMode } from "../launch-mode";
 import {
   authorizeKanaMcpServer,
+  createKanaMcpConfigurationStore,
   createKanaMcpRuntime,
+  type KanaMcpConfigurationStore,
   type KanaMcpRuntime,
   type KanaMcpRuntimeProgressEvent,
   type KanaMcpRuntimeSnapshot,
   type KanaMcpServerActivation,
-  loadKanaMcpServerActivations,
-  saveKanaMcpActivationState,
+  resolveKanaMcpServerActivations,
   signOutKanaMcpServer,
 } from "../mcp";
 import {
@@ -41,7 +46,15 @@ import {
   type MemoryConsolidationScheduler,
   runFullMemoryConsolidation,
 } from "../memory";
+import { getKanaModelManagement, type KanaModelManagement } from "../model-management";
+import { getKanaConfigPaths } from "../path";
+import { loadKanaInstructionSections } from "../prompt";
 import type { KanaSessionMetadata, LoadKanaSessionResult } from "../session";
+import {
+  createKanaSkillStore,
+  type KanaSkillStore,
+  type LoadKanaSkillActivationsResult,
+} from "../skills";
 import {
   createKanaSubagentJournal,
   finalOutput,
@@ -52,7 +65,11 @@ import {
   loadKanaSubagentProfiles,
 } from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
-import { type KanaToolApprovals, loadKanaToolApprovals } from "../tool-approval";
+import {
+  createKanaToolApprovalStore,
+  type KanaToolApprovalStore,
+  type KanaToolApprovals,
+} from "../tool-approval";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import { type HostedSessionAgentBinding, HostedSessionRegistry } from "./hosted-session-registry";
 import type { ConversationAgentIdentity } from "./runtime";
@@ -103,10 +120,10 @@ export class KanaConversationHost<TConfiguration = never> {
   readonly initialSession?: LoadKanaSessionResult;
   readonly launchMode: KanaLaunchMode;
   readonly wakeScheduler: WakeScheduler;
-  readonly toolApprovals: KanaToolApprovals;
 
   private readonly env: NodeJS.ProcessEnv;
   private readonly configStore: KanaConfigStore;
+  private readonly toolApprovalStore: KanaToolApprovalStore;
   private readonly createAgentProduct: KanaAgentProductFactory;
   private readonly enableScheduledWakeTool: boolean;
   private readonly applyAgentConfiguration?: (
@@ -117,9 +134,14 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly memoryConsolidationQueue: MemoryConsolidationQueue;
   private readonly memoryConsolidationSchedulers = new Set<MemoryConsolidationScheduler>();
   private readonly oauthTokenStore;
+  private readonly customProviderSnapshot: KanaCustomProviderSnapshot;
+  private readonly subagentProfileSnapshot: LoadKanaSubagentProfilesResult;
+  private readonly instructionSections: readonly PromptSystemSection[];
   private readonly mcpRuntime: KanaMcpRuntime;
   private configData: KanaConfig;
   private memoryConsolidation?: MemoryConsolidationScheduler;
+  private mcpConfigurationStore?: KanaMcpConfigurationStore;
+  private skillStore?: KanaSkillStore;
   private mcpTools: Tool[] = [];
 
   constructor(options: CreateKanaConversationHostOptions<TConfiguration> = {}) {
@@ -127,6 +149,23 @@ export class KanaConversationHost<TConfiguration = never> {
     this.launchMode = options.launchMode ?? "normal";
     this.configStore = (options.createConfigStore ?? createKanaConfigStore)(this.env);
     this.configData = this.configStore.load();
+    this.toolApprovalStore = createKanaToolApprovalStore(this.env);
+    this.customProviderSnapshot = loadKanaCustomProviderSnapshot(
+      getKanaConfigPaths(this.env).customProviderPath,
+    );
+    if (this.launchMode !== "clean") {
+      this.mcpConfigurationStore = createKanaMcpConfigurationStore(this.env);
+      this.skillStore = createKanaSkillStore({ cwd: process.cwd(), env: this.env });
+    }
+    this.subagentProfileSnapshot = loadKanaSubagentProfiles({
+      env: this.env,
+      builtinsOnly: this.launchMode === "clean",
+    });
+    this.instructionSections = loadKanaInstructionSections({
+      cwd: process.cwd(),
+      env: this.env,
+      launchMode: this.launchMode,
+    });
     this.createAgentProduct = options.createAgent ?? createKanaConversationAgent;
     this.enableScheduledWakeTool = options.enableScheduledWakeTool ?? true;
     this.applyAgentConfiguration = options.applyAgentConfiguration;
@@ -141,7 +180,6 @@ export class KanaConversationHost<TConfiguration = never> {
       getBackgroundJobMaxConcurrent: () => this.configData.agent.backgroundJobs.maxConcurrent,
       getSubagentMaxLive: () => this.configData.agent.subagents.maxLive,
     });
-    this.toolApprovals = loadKanaToolApprovals(this.env);
     this.memoryConsolidationQueue = createMemoryConsolidationQueue();
     this.memoryConsolidation = this.createMemoryConsolidation(this.configData);
     this.wakeScheduler = createWakeScheduler();
@@ -154,6 +192,10 @@ export class KanaConversationHost<TConfiguration = never> {
     });
     this.mcpRuntime = (options.createMcpRuntime ?? createKanaMcpRuntime)({
       env: this.env,
+      configurationSource: {
+        getConfig: () => this.getMcpConfigurationStore().getConfig(),
+        getActivationState: () => this.getMcpConfigurationStore().getActivationState(),
+      },
       reservedToolNames: KANA_BUILT_IN_TOOL_NAMES,
       getLogger: () => this.getLogger(),
       oauthTokenStore: this.oauthTokenStore,
@@ -184,6 +226,14 @@ export class KanaConversationHost<TConfiguration = never> {
     return structuredClone(this.configData.tui);
   }
 
+  get toolApprovals(): KanaToolApprovals {
+    return this.toolApprovalStore.load();
+  }
+
+  getModelManagement(): KanaModelManagement {
+    return getKanaModelManagement(this.configData, this.env, this.customProviderSnapshot);
+  }
+
   get resumeSessionId(): string | undefined {
     return this.sessionRegistry.resumeSessionId;
   }
@@ -201,10 +251,21 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadSubagentProfiles(): LoadKanaSubagentProfilesResult {
-    return loadKanaSubagentProfiles({
-      env: this.env,
-      builtinsOnly: this.launchMode === "clean",
-    });
+    return structuredClone(this.subagentProfileSnapshot);
+  }
+
+  loadSkills(): LoadKanaSkillActivationsResult {
+    this.assertCustomizationsAvailable("Skills");
+    return this.getSkillStore().load();
+  }
+
+  saveEnabledGlobalSkillNames(names: readonly string[]): void {
+    this.assertCustomizationsAvailable("Skills");
+    this.getSkillStore().saveEnabledGlobalNames(names);
+  }
+
+  addTrustedBashCommand(command: string): KanaToolApprovals {
+    return this.toolApprovalStore.addTrustedBashCommand(command);
   }
 
   disposeSession(
@@ -323,12 +384,17 @@ export class KanaConversationHost<TConfiguration = never> {
       return [];
     }
 
-    return loadKanaMcpServerActivations(this.env);
+    const configuration = this.getMcpConfigurationStore();
+    return resolveKanaMcpServerActivations(
+      configuration.getConfig(),
+      configuration.getActivationState(),
+      this.env,
+    );
   }
 
   saveEnabledMcpServerIds(serverIds: string[]): void {
     this.assertCustomizationsAvailable("MCP management");
-    saveKanaMcpActivationState({ enabledServers: serverIds }, this.env);
+    this.getMcpConfigurationStore().saveActivationState({ enabledServers: serverIds });
   }
 
   authorizeMcpServer(
@@ -341,6 +407,7 @@ export class KanaConversationHost<TConfiguration = never> {
       env: this.env,
       getLogger: () => this.getLogger(),
       tokenStore: this.oauthTokenStore,
+      config: this.getMcpConfigurationStore().getConfig(),
       signal,
       openAuthorizationUrl,
     });
@@ -352,6 +419,7 @@ export class KanaConversationHost<TConfiguration = never> {
       env: this.env,
       getLogger: () => this.getLogger(),
       tokenStore: this.oauthTokenStore,
+      config: this.getMcpConfigurationStore().getConfig(),
     });
   }
 
@@ -373,6 +441,7 @@ export class KanaConversationHost<TConfiguration = never> {
               scope,
               cwd: process.cwd(),
               env: this.env,
+              customProviderSnapshot: this.customProviderSnapshot,
               userRequest,
               signal,
               logger,
@@ -452,7 +521,15 @@ export class KanaConversationHost<TConfiguration = never> {
       artifactStore: sessionBinding.artifactStore,
       backgroundJobs: sessionBinding.backgroundJobs,
       subagents: sessionBinding.subagents,
-      resolveSubagentProfiles: () => this.loadSubagentProfiles().profiles,
+      subagentProfiles: structuredClone(this.subagentProfileSnapshot.profiles),
+      skills:
+        this.launchMode === "clean"
+          ? []
+          : this.getSkillStore()
+              .load()
+              .skills.filter((skill) => skill.enabled),
+      customProviderSnapshot: this.customProviderSnapshot,
+      instructionSections: structuredClone(this.instructionSections),
       runSubagent: (context) => this.runSubagent(context, bindToolExecution, config, logger),
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
       messages: options.messages ?? sessionBinding.messages,
@@ -574,6 +651,7 @@ export class KanaConversationHost<TConfiguration = never> {
       additionalTools: this.mcpTools,
       resolveAdditionalTools: () => this.mcpTools,
       subagentProfile: context.profile,
+      customProviderSnapshot: this.customProviderSnapshot,
       journal,
       beforeToolExecution: bindBeforeToolExecution({
         id: context.agentId,
@@ -648,6 +726,7 @@ export class KanaConversationHost<TConfiguration = never> {
       this.launchMode !== "clean" && config.memory.enabled
         ? createMemoryConsolidationScheduler(config, {
             env: this.env,
+            customProviderSnapshot: this.customProviderSnapshot,
             queue: this.memoryConsolidationQueue,
           })
         : undefined;
@@ -701,6 +780,18 @@ export class KanaConversationHost<TConfiguration = never> {
     if (this.launchMode === "clean") {
       throw new Error(`${feature} is unavailable in clean mode.`);
     }
+  }
+
+  private getMcpConfigurationStore(): KanaMcpConfigurationStore {
+    this.assertCustomizationsAvailable("MCP configuration");
+    this.mcpConfigurationStore ??= createKanaMcpConfigurationStore(this.env);
+    return this.mcpConfigurationStore;
+  }
+
+  private getSkillStore(): KanaSkillStore {
+    this.assertCustomizationsAvailable("Skills");
+    this.skillStore ??= createKanaSkillStore({ cwd: process.cwd(), env: this.env });
+    return this.skillStore;
   }
 }
 

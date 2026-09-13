@@ -50,7 +50,7 @@ describe("Kana Agent tools", () => {
           wakeScheduler,
           sessionId: "session-1",
           subagents,
-          resolveSubagentProfiles: () => [subagentProfile()],
+          subagentProfiles: [subagentProfile()],
           runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
           resolveGoal: () => goal,
           updateGoal: (change) => ({ ...goal, status: change.status }),
@@ -108,7 +108,7 @@ describe("Kana Agent tools", () => {
         {
           additionalTools: [createTool("github_create_issue")],
           subagents,
-          resolveSubagentProfiles: () => [profile],
+          subagentProfiles: [profile],
           runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
         },
       ),

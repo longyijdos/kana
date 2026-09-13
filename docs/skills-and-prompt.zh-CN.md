@@ -44,11 +44,11 @@ frontmatter 仅识别 `name` 和 `description`；未知字段被忽略。支持�
 enabled = ["release-check", "database-migrations"]
 ```
 
-文件不存在或 `enabled` 缺失时，全局 Skills 均不注入模型提示词。`/skills` 打开管理界面：project 项显示为 locked，`Enter` 只在本地草稿中切换 global 项。`Esc` 应用并关闭草稿；最终集合有变化时，Kana 只重写一次列表并重建一次 Agent 系统提示词，未变化时两项操作都不执行，持久化失败时管理界面保持打开。管理界面显示的 scope 根据 Skill 文件是否位于全局 Skills 目录内决定。
+文件不存在或 `enabled` 缺失时，全局 Skills 均不注入模型提示词。产品 Host 会在普通启动时发现一次 Skills 并加载一次启用列表；直接修改文件需要重启才会生效。`/skills` 从该快照打开管理界面：project 项显示为 locked，`Enter` 只在本地草稿中切换 global 项。`Esc` 应用并关闭草稿；最终集合有变化时，Kana 会持久化启用差量、更新快照，并只重建一次 Agent 系统提示词；未变化时两项操作都不执行，持久化失败时管理界面保持打开。管理界面显示的 scope 根据 Skill 文件是否位于全局 Skills 目录内决定。
 
 ## 提示词的组成
 
-`createKanaAgent` 在当前工作目录加载 Skills，并构造一份不可变的 prompt assembly。稳定 system 前缀按以下顺序组成：
+产品 Host 在 `createKanaAgent` 构造不可变 prompt assembly 时传入自己的 Skill 快照；未传快照的独立调用方仍会直接加载 Skills。稳定 system 前缀按以下顺序组成：
 
 ```text
 可用的 global/project 长期记忆（若启用且非空）
@@ -63,7 +63,7 @@ Runtime-context 状态转换协议
 
 `--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时稳定 system 提示词包含默认助手指令和 runtime-context 协议，动态环境上下文仍然可用；Agent 不注册 `remember` 或任何外部工具。TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载，但 `/model` 的选择只保留在当前临时进程中。
 
-全局指令路径是 `<KANA_HOME>/AGENTS.md`，项目指令路径是 `<cwd>/AGENTS.md`。内置默认指令只有一句，用于声明当前环境中的简洁、实用助手；具体能力的调用 guidance 位于对应工具 description。全局文件存在时会追加到默认指令后，项目文件再追加到后面。若两条 AGENTS 路径解析到同一文件，只注入一次。项目内容处于更后的、更具体的位置，但代码没有把多份指令合并为任何优先级算法，模型仍需根据完整提示词解释它们。
+全局指令路径是 `<KANA_HOME>/AGENTS.md`，项目指令路径是 `<cwd>/AGENTS.md`。产品 Host 在启动时只加载一次两者，因此直接编辑需要重启才会生效，Agent 重建会复用同一份指令快照。未提供快照的独立 prompt 或 Agent 调用方仍会直接加载文件。内置默认指令只有一句，用于声明当前环境中的简洁、实用助手；具体能力的调用 guidance 位于对应工具 description。全局文件存在时会追加到默认指令后，项目文件再追加到后面。若两条 AGENTS 路径解析到同一文件，只注入一次。项目内容处于更后的、更具体的位置，但代码没有把多份指令合并为任何优先级算法，模型仍需根据完整提示词解释它们。
 
 环境块包含当前目录、`process.platform`、按本地时区格式化的 `YYYY-MM-DD` 日期与时区名，并包装在带内部来源标记的 runtime-context 消息中：
 
