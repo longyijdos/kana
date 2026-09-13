@@ -14,6 +14,11 @@ export {
 
 import { DEFAULT_KANA_TOOL_APPROVALS, type KanaToolApprovals } from "./tool-approval-defaults";
 
+export type KanaToolApprovalStore = {
+  load(): KanaToolApprovals;
+  addTrustedBashCommand(command: string): KanaToolApprovals;
+};
+
 export function shouldRequestToolApproval(
   config: KanaToolApprovalConfig,
   approvals: KanaToolApprovals,
@@ -81,6 +86,32 @@ export function addTrustedBashCommand(
     writeConfigFileAtomically(approvalsPath, `${JSON.stringify(nextApprovals, null, 2)}\n`);
     return nextApprovals;
   });
+}
+
+export function createKanaToolApprovalStore(
+  env: NodeJS.ProcessEnv = process.env,
+): KanaToolApprovalStore {
+  let snapshot = loadKanaToolApprovals(env);
+
+  return {
+    load: () => structuredClone(snapshot),
+    addTrustedBashCommand(command) {
+      const normalized = normalizeBashCommand(command);
+      if (!normalized || snapshot.bash.exactCommands.includes(normalized)) {
+        return structuredClone(snapshot);
+      }
+
+      addTrustedBashCommand(normalized, env);
+      snapshot = {
+        ...snapshot,
+        bash: {
+          ...snapshot.bash,
+          exactCommands: [...snapshot.bash.exactCommands, normalized],
+        },
+      };
+      return structuredClone(snapshot);
+    },
+  };
 }
 
 export function loadKanaToolApprovals(env: NodeJS.ProcessEnv = process.env): KanaToolApprovals {

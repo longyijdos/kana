@@ -65,7 +65,11 @@ import {
   loadKanaSubagentProfiles,
 } from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
-import { type KanaToolApprovals, loadKanaToolApprovals } from "../tool-approval";
+import {
+  createKanaToolApprovalStore,
+  type KanaToolApprovalStore,
+  type KanaToolApprovals,
+} from "../tool-approval";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import { type HostedSessionAgentBinding, HostedSessionRegistry } from "./hosted-session-registry";
 import type { ConversationAgentIdentity } from "./runtime";
@@ -116,10 +120,10 @@ export class KanaConversationHost<TConfiguration = never> {
   readonly initialSession?: LoadKanaSessionResult;
   readonly launchMode: KanaLaunchMode;
   readonly wakeScheduler: WakeScheduler;
-  readonly toolApprovals: KanaToolApprovals;
 
   private readonly env: NodeJS.ProcessEnv;
   private readonly configStore: KanaConfigStore;
+  private readonly toolApprovalStore: KanaToolApprovalStore;
   private readonly createAgentProduct: KanaAgentProductFactory;
   private readonly enableScheduledWakeTool: boolean;
   private readonly applyAgentConfiguration?: (
@@ -145,6 +149,7 @@ export class KanaConversationHost<TConfiguration = never> {
     this.launchMode = options.launchMode ?? "normal";
     this.configStore = (options.createConfigStore ?? createKanaConfigStore)(this.env);
     this.configData = this.configStore.load();
+    this.toolApprovalStore = createKanaToolApprovalStore(this.env);
     this.customProviderSnapshot = loadKanaCustomProviderSnapshot(
       getKanaConfigPaths(this.env).customProviderPath,
     );
@@ -175,7 +180,6 @@ export class KanaConversationHost<TConfiguration = never> {
       getBackgroundJobMaxConcurrent: () => this.configData.agent.backgroundJobs.maxConcurrent,
       getSubagentMaxLive: () => this.configData.agent.subagents.maxLive,
     });
-    this.toolApprovals = loadKanaToolApprovals(this.env);
     this.memoryConsolidationQueue = createMemoryConsolidationQueue();
     this.memoryConsolidation = this.createMemoryConsolidation(this.configData);
     this.wakeScheduler = createWakeScheduler();
@@ -222,6 +226,10 @@ export class KanaConversationHost<TConfiguration = never> {
     return structuredClone(this.configData.tui);
   }
 
+  get toolApprovals(): KanaToolApprovals {
+    return this.toolApprovalStore.load();
+  }
+
   getModelManagement(): KanaModelManagement {
     return getKanaModelManagement(this.configData, this.env, this.customProviderSnapshot);
   }
@@ -254,6 +262,10 @@ export class KanaConversationHost<TConfiguration = never> {
   saveEnabledGlobalSkillNames(names: readonly string[]): void {
     this.assertCustomizationsAvailable("Skills");
     this.getSkillStore().saveEnabledGlobalNames(names);
+  }
+
+  addTrustedBashCommand(command: string): KanaToolApprovals {
+    return this.toolApprovalStore.addTrustedBashCommand(command);
   }
 
   disposeSession(
@@ -509,7 +521,7 @@ export class KanaConversationHost<TConfiguration = never> {
       artifactStore: sessionBinding.artifactStore,
       backgroundJobs: sessionBinding.backgroundJobs,
       subagents: sessionBinding.subagents,
-      resolveSubagentProfiles: () => this.loadSubagentProfiles().profiles,
+      subagentProfiles: structuredClone(this.subagentProfileSnapshot.profiles),
       skills:
         this.launchMode === "clean"
           ? []

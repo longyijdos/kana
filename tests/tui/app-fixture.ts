@@ -45,6 +45,10 @@ export function createTuiAppOptions(): KanaTuiAppOptions {
         version: 2,
         bash: { exactCommands: [], readOnlyCommands: [] },
       },
+      addTrustedBashCommand: (command) => ({
+        version: 2,
+        bash: { exactCommands: [command], readOnlyCommands: [] },
+      }),
     },
     ui: {
       notification: {

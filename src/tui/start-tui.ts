@@ -165,6 +165,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       toolApproval: {
         config: host.approvalConfig,
         approvals: host.toolApprovals,
+        addTrustedBashCommand: (command) => host.addTrustedBashCommand(command),
         resolveToolSource: (toolName) => {
           const source = host.getMcpToolSource(toolName);
           return source === undefined ? undefined : { kind: "mcp", ...source };

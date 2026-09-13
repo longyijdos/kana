@@ -82,7 +82,7 @@ export type KanaAgentOptions = Pick<
   updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
   subagentProfile?: KanaSubagentProfile;
   subagents?: KanaSubagentClient;
-  resolveSubagentProfiles?: () => readonly KanaSubagentProfile[];
+  subagentProfiles?: readonly KanaSubagentProfile[];
   runSubagent?: (context: KanaSubagentRunContext) => Promise<KanaSubagentRunResult>;
   skills?: readonly KanaSkill[];
   customProviderSnapshot?: KanaCustomProviderSnapshot;
@@ -165,7 +165,7 @@ export function createKanaAgent(
       ]),
     });
   }
-  if (!subagentProfile && subagents && options.resolveSubagentProfiles && options.runSubagent) {
+  if (!subagentProfile && subagents && options.subagentProfiles && options.runSubagent) {
     const resolveSubagentImageInput = (profile: KanaSubagentProfile): boolean => {
       if (!profile.model) return runtime.imageInput;
       const cached = subagentImageInput.get(profile.digest);
@@ -211,11 +211,10 @@ export function createKanaAgent(
         : []),
     ];
     const createSubagentTools = (additionalTools: readonly Tool[]): Tool[] => {
-      const profiles = options.resolveSubagentProfiles?.() ?? [];
       return selectEnabledTools([
         createSpawnSubagentTool({
           subagents,
-          profiles,
+          profiles: options.subagentProfiles ?? [],
           availableTools: (profile) => availableTools(profile, additionalTools),
           run: options.runSubagent as (
             context: KanaSubagentRunContext,

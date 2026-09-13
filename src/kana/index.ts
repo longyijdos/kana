@@ -141,6 +141,7 @@ export {
 } from "./todo";
 export {
   addTrustedBashCommand,
+  createKanaToolApprovalStore,
   DEFAULT_KANA_TOOL_APPROVALS,
   getBashCommand,
   type KanaToolApprovals,

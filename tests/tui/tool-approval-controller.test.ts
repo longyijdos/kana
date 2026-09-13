@@ -32,6 +32,7 @@ describe("tool approval controller", () => {
         version: 2,
         bash: { exactCommands: [], readOnlyCommands: [] },
       },
+      addTrustedBashCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -84,6 +85,7 @@ describe("tool approval controller", () => {
           readOnlyCommands: [],
         },
       },
+      addTrustedBashCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -125,6 +127,7 @@ describe("tool approval controller", () => {
           readOnlyCommands: [],
         },
       },
+      addTrustedBashCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -173,6 +176,7 @@ describe("tool approval controller", () => {
         version: 2,
         bash: { exactCommands: [], readOnlyCommands: [] },
       },
+      addTrustedBashCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -227,6 +231,7 @@ describe("tool approval controller", () => {
         version: 2,
         bash: { exactCommands: [], readOnlyCommands: [] },
       },
+      addTrustedBashCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -255,7 +260,55 @@ describe("tool approval controller", () => {
     await expect(second).resolves.toEqual({ type: "continue" });
     expect(tui.getFocus()).toBe(editor);
   });
+
+  test("uses a persisted local trust decision for later requests", async () => {
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({
+      main: new LinesComponent(["transcript"]),
+      bottom: editor,
+    });
+    const tui = createTuiStub();
+    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
+    const savedCommands: string[] = [];
+    const controller = new ToolApprovalController({
+      config: { mode: "unless_trusted" },
+      approvals: {
+        version: 2,
+        bash: { exactCommands: [], readOnlyCommands: [] },
+      },
+      addTrustedBashCommand: (command) => {
+        savedCommands.push(command);
+        return {
+          version: 2,
+          bash: { exactCommands: [...savedCommands], readOnlyCommands: [] },
+        };
+      },
+      editor,
+      bottomArea,
+      tui,
+      onApprovalRequired: () => {},
+    });
+    bottomArea.setFallback(() => controller.activePrompt ?? editor);
+
+    const first = controller.request(createToolCall(), undefined);
+    controller.activePrompt?.handleInput?.("\x1b[B");
+    controller.activePrompt?.handleInput?.("\r");
+
+    await expect(first).resolves.toEqual({ type: "continue" });
+    expect(savedCommands).toEqual(["rm notes.txt"]);
+    await expect(controller.request(createToolCall("call_2"), undefined)).resolves.toEqual({
+      type: "continue",
+    });
+    expect(controller.activePrompt).toBeUndefined();
+  });
 });
+
+function createTrustedCommandAdder() {
+  return (command: string) => ({
+    version: 2 as const,
+    bash: { exactCommands: [command], readOnlyCommands: [] },
+  });
+}
 
 function createToolCall(id = "call_1") {
   return {

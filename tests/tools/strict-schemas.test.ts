@@ -93,7 +93,7 @@ function createAgentBuiltInTools(): Tool[] {
       {
         backgroundJobs,
         subagents,
-        resolveSubagentProfiles: () => [
+        subagentProfiles: [
           {
             name: "explorer",
             description: "Explore",

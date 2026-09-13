@@ -1,7 +1,6 @@
 import type { BeforeToolExecutionResult } from "@/agent";
 import type { ToolCallContent } from "@/core";
 import {
-  addTrustedBashCommand,
   type ConversationAgentIdentity,
   getBashCommand,
   type KanaToolApprovalConfig,
@@ -17,6 +16,7 @@ import type { BottomAreaController } from "./bottom-area-controller";
 export type ToolApprovalControllerOptions = {
   config: KanaToolApprovalConfig;
   approvals: KanaToolApprovals;
+  addTrustedBashCommand: (command: string) => KanaToolApprovals;
   editor: Editor;
   bottomArea: BottomAreaController;
   tui: Tui;
@@ -133,7 +133,7 @@ export class ToolApprovalController {
 
     const bashCommand = getBashCommand(pending.toolCall);
     if (decision === "always" && bashCommand !== undefined) {
-      this.approvals = addTrustedBashCommand(bashCommand);
+      this.approvals = this.options.addTrustedBashCommand(bashCommand);
     }
     pending.resolve(
       decision === "yes" || decision === "always"

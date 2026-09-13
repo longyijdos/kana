@@ -453,7 +453,7 @@ The default file is:
 
 `exactCommands` holds complete bash commands after trimming surrounding whitespace. Choosing “Always allow this command” in the TUI appends that command. `readOnlyCommands` can contain only executable names without whitespace or `/`; a command is automatically trusted only when its first word is one of these names and it is a single simple command. Bash commands with `;`, `|`, redirection, command substitution, backticks, backslashes, or newlines are never treated as read-only.
 
-The Host loads approval rules once at startup. Direct edits therefore apply on the next launch. When the TUI persists an exact command, Kana locks `approvals.json`, rereads the latest rules, appends the command without changing either existing list, atomically replaces the file, and updates the frontend's in-memory rules from that result.
+The Host loads approval rules once at startup. Direct edits therefore apply on the next launch. When the TUI trusts an exact command, it adds only that command to the Host snapshot. Persistence separately locks `approvals.json`, rereads the latest rules, appends the command without changing either existing list, and atomically replaces the file. Rules found only in that latest disk version do not enter the running process.
 
 Approval modes behave as follows:
 

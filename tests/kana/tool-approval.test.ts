@@ -5,6 +5,7 @@ import path from "node:path";
 import type { ToolCallContent } from "@/core";
 import {
   addTrustedBashCommand,
+  createKanaToolApprovalStore,
   DEFAULT_KANA_TOOL_APPROVALS,
   getBashCommand,
   getKanaConfigPaths,
@@ -268,6 +269,47 @@ describe("Kana tool approval", () => {
       bash: {
         exactCommands: ["external command", "git status"],
         readOnlyCommands: ["ls", "rg"],
+      },
+    });
+  });
+
+  test("keeps a startup snapshot while merging trusted commands into the latest file", () => {
+    const env = createTempEnv();
+    saveApprovals(
+      {
+        version: 2,
+        bash: {
+          exactCommands: ["startup command"],
+          readOnlyCommands: ["ls"],
+        },
+      },
+      env,
+    );
+    const store = createKanaToolApprovalStore(env);
+
+    saveApprovals(
+      {
+        version: 2,
+        bash: {
+          exactCommands: ["external command"],
+          readOnlyCommands: ["rg"],
+        },
+      },
+      env,
+    );
+
+    expect(store.addTrustedBashCommand("local command")).toEqual({
+      version: 2,
+      bash: {
+        exactCommands: ["startup command", "local command"],
+        readOnlyCommands: ["ls"],
+      },
+    });
+    expect(loadKanaToolApprovals(env)).toEqual({
+      version: 2,
+      bash: {
+        exactCommands: ["external command", "local command"],
+        readOnlyCommands: ["rg"],
       },
     });
   });
