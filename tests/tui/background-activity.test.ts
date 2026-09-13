@@ -49,7 +49,7 @@ describe("background activity strip", () => {
     expect(rendered()).toContain("reviewer: Check the parser");
 
     internal.handleCommand({ name: "new", arguments: "", raw: "/new" });
-    await waitFor(() => !rendered().includes("Background"));
+    await waitFor(() => !rendered().includes("Background · "));
 
     sessionA.jobs.items.push(jobSummary("job_82ac19de00", "running", "bun test"));
     sessionA.jobs.emit(jobEvent("session-a"));

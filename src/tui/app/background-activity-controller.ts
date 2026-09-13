@@ -38,6 +38,10 @@ export class BackgroundActivityController {
     this.unsubscribeSubagents = undefined;
     this.jobs = undefined;
     this.subagents = undefined;
+    // Without clients the projection can no longer be kept accurate, so the
+    // strip is released together with its binding.
+    this.options.editor.setBackgroundActivity([]);
+    this.options.tui.requestRender();
   }
 
   refresh(): void {

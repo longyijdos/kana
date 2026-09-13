@@ -304,6 +304,36 @@ describe("ConversationInputCoordinator", () => {
     await manager.close();
   });
 
+  test("delivers only Job settlement while ignoring start and stop broadcasts", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const harness = createHarness({ getBackgroundJobs: () => jobs });
+    const completion = deferred<{ status: "canceled"; exitCode: null }>();
+    const job = jobs.start({ kind: "test", label: "lifecycle", run: () => completion.promise });
+
+    expect(harness.coordinator.queue.pending).toEqual([]);
+    expect(harness.agent.inbox.nextTurn).toEqual([]);
+
+    const cancellation = jobs.kill(job.id, { source: "tui" });
+    expect(harness.coordinator.queue.pending).toEqual([]);
+
+    completion.resolve({ status: "canceled", exitCode: null });
+    await cancellation;
+    await waitFor(() => harness.coordinator.queue.pending.length === 1);
+
+    expect(harness.coordinator.queue.pending).toMatchObject([
+      { kind: "job", jobId: job.id, content: expect.stringContaining("canceled") },
+    ]);
+    expect(harness.agent.inbox.nextTurn[0]?.message.content).toContain("reached canceled");
+    expect(harness.agent.inbox.nextTurn).toHaveLength(1);
+
+    jobs.observe(job.id);
+    await waitFor(() => harness.coordinator.queue.pending.length === 0);
+
+    harness.close();
+    await manager.close();
+  });
+
   test("queues active Subagent completion for steering and removes it when observed", async () => {
     const manager = new KanaSubagentManager();
     const subagents = manager.bind(

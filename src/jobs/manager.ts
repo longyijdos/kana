@@ -64,13 +64,13 @@ type BackgroundJobProducerResult = {
   exitCode: number | null;
 };
 
-export type BackgroundJobCompletionEvent = {
-  type: "completed" | "observed";
+export type BackgroundJobEvent = {
+  type: "started" | "stopping" | "settled" | "observed";
   owner: BackgroundJobOwner;
   job: BackgroundJobSummary;
 };
 
-type BackgroundJobEventListener = (event: BackgroundJobCompletionEvent) => void;
+type BackgroundJobEventListener = (event: BackgroundJobEvent) => void;
 
 type BackgroundJobProducerContext = {
   signal: AbortSignal;
@@ -266,6 +266,7 @@ export class BackgroundJobManager {
     };
     this.jobs.set(id, record);
     logger.info("background_job.started", { jobId: id, producer: options.kind });
+    this.emit({ type: "started", owner, job: cloneSummary(summary) });
 
     let producer: Promise<BackgroundJobProducerResult>;
     try {
@@ -391,6 +392,7 @@ export class BackgroundJobManager {
       });
       job.controller.abort(options.reason ?? "Background Job cancellation requested.");
       this.wakeWaiters(job);
+      this.emit({ type: "stopping", owner, job: cloneSummary(job.summary) });
     }
     await job.settlement;
     if (shouldObserveCompletion(options.source)) {
@@ -554,7 +556,7 @@ export class BackgroundJobManager {
         return;
       }
       job.completionPublished = true;
-      this.emit({ type: "completed", owner: job.owner, job: cloneSummary(job.summary) });
+      this.emit({ type: "settled", owner: job.owner, job: cloneSummary(job.summary) });
       this.pruneTerminalJobs(job.owner);
     });
   }
@@ -586,7 +588,7 @@ export class BackgroundJobManager {
     }
   }
 
-  private emit(event: BackgroundJobCompletionEvent): void {
+  private emit(event: BackgroundJobEvent): void {
     for (const registration of [...this.listeners]) {
       if (registration.ownerInstanceId !== event.owner.instanceId) {
         continue;

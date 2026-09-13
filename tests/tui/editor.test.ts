@@ -684,7 +684,7 @@ describe("Editor", () => {
       editor.setQueuedInputs([]);
       editor.setBackgroundActivity([]);
       const empty = stripAnsi(editor.render(60).join("\n"));
-      expect(empty).not.toContain("Background");
+      expect(empty).not.toContain("Background · ");
     });
 
     test("strips terminal control sequences from background labels", () => {

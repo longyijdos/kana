@@ -255,7 +255,36 @@ describe("BackgroundJobManager", () => {
     await manager.close();
   });
 
-  test("publishes completion and observation once, then cancels active work on close", async () => {
+  test("publishes started, stopping, settled, and observed transitions for one Job", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const events: string[] = [];
+    jobs.subscribe((event) => events.push(`${event.type}:${event.job.status}`));
+    const completion = deferred<ProducerResult>();
+
+    const job = jobs.start({ kind: "test", label: "lifecycle", run: () => completion.promise });
+    expect(events).toEqual(["started:running"]);
+
+    const cancellation = jobs.kill(job.id, { source: "tui" });
+    expect(events).toEqual(["started:running", "stopping:stopping"]);
+
+    completion.resolve({ status: "canceled", exitCode: null });
+    await cancellation;
+    await waitFor(() => events.includes("settled:canceled"));
+    expect(events).toEqual(["started:running", "stopping:stopping", "settled:canceled"]);
+
+    jobs.observe(job.id);
+    jobs.observe(job.id);
+    expect(events).toEqual([
+      "started:running",
+      "stopping:stopping",
+      "settled:canceled",
+      "observed:canceled",
+    ]);
+    await manager.close();
+  });
+
+  test("publishes settlement and observation once, then cancels active work on close", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 2 });
     const events: string[] = [];
@@ -278,10 +307,15 @@ describe("BackgroundJobManager", () => {
     });
 
     completion.resolve({ status: "completed", exitCode: 0 });
-    await waitFor(() => events.includes("completed:completed"));
+    await waitFor(() => events.includes("settled:completed"));
     jobs.observe(completed.id);
     jobs.observe(completed.id);
-    expect(events).toEqual(["completed:completed", "observed:completed"]);
+    expect(events).toEqual([
+      "started:running",
+      "started:running",
+      "settled:completed",
+      "observed:completed",
+    ]);
 
     await jobs.close();
     expect(jobs.list()).toEqual([]);

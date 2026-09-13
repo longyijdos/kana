@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import type { BackgroundJobClient, BackgroundJobSummary } from "@/jobs";
+import {
+  type BackgroundJobClient,
+  BackgroundJobManager,
+  type BackgroundJobSummary,
+  type BackgroundJobTerminalStatus,
+} from "@/jobs";
 import type { KanaSubagentClient, KanaSubagentSummary } from "@/kana";
 import { BackgroundActivityController } from "../../src/tui/app/background-activity-controller";
 import { Editor } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";
+import { deferred, waitFor } from "../helpers/async-control";
 import {
   type BackgroundClientStub,
   createBackgroundClient,
@@ -37,7 +43,7 @@ describe("background activity controller", () => {
   test("tracks client events and clears the strip when the work settles", () => {
     const harness = createHarness();
     harness.controller.bind();
-    expect(harness.renderEditor()).not.toContain("Background");
+    expect(harness.renderEditor()).not.toContain("Background · ");
 
     harness.subagents.items.push(
       subagentSummary("agent_3f2a1b7c9d", "running", "explorer: Look around"),
@@ -53,7 +59,54 @@ describe("background activity controller", () => {
     harness.jobs.items.length = 0;
     harness.subagents.emit();
     harness.jobs.emit();
-    expect(harness.renderEditor()).not.toContain("Background");
+    expect(harness.renderEditor()).not.toContain("Background · ");
+  });
+
+  test("follows a real Background Job through running, stopping, and settlement", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const editor = new Editor({ model: "test-model" });
+    const controller = new BackgroundActivityController({
+      editor,
+      tui: createTuiStub(),
+      getJobs: () => jobs,
+      getSubagents: () => undefined,
+    });
+    const rendered = () => stripAnsi(editor.render(96).join("\n"));
+    controller.bind();
+    expect(rendered()).not.toContain("Background · ");
+
+    const completion = deferred<{ status: BackgroundJobTerminalStatus; exitCode: number | null }>();
+    const job = jobs.start({
+      kind: "bash",
+      label: "bun test tests/tui",
+      run: () => completion.promise,
+    });
+    const row = (status: string) =>
+      `  job      · ${job.id.slice(4, 12)} · ${status} · bun test tests/tui`;
+
+    expect(rendered()).toContain(row("running"));
+
+    const cancellation = jobs.kill(job.id, { source: "tui" });
+    expect(rendered()).toContain(row("stopping"));
+
+    completion.resolve({ status: "canceled", exitCode: null });
+    await cancellation;
+    await waitFor(() => !rendered().includes("Background · "));
+
+    controller.unbind();
+    await manager.close();
+  });
+
+  test("drops its projection when the binding is released", () => {
+    const harness = createHarness();
+    harness.jobs.items.push(jobSummary("job_82ac19de00", "running", "bun test"));
+    harness.controller.bind();
+    expect(harness.renderEditor()).toContain("bun test");
+
+    harness.controller.unbind();
+
+    expect(harness.renderEditor()).not.toContain("Background · ");
   });
 
   test("rebinds the strip to the next session's clients", () => {

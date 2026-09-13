@@ -6,11 +6,7 @@ import type {
   AgentInputDelivery,
 } from "@/agent";
 import { createUserMessage, type MessageId, readMessageId, type UserMessage } from "@/core";
-import type {
-  BackgroundJobClient,
-  BackgroundJobCompletionEvent,
-  BackgroundJobSummary,
-} from "@/jobs";
+import type { BackgroundJobClient, BackgroundJobEvent, BackgroundJobSummary } from "@/jobs";
 import type { Logger } from "@/logging";
 import type { KanaSubagentClient, KanaSubagentEvent, KanaSubagentSummary } from "../subagents";
 import {
@@ -620,8 +616,14 @@ export class ConversationInputCoordinator {
     });
   }
 
-  private handleBackgroundJobEvent(event: BackgroundJobCompletionEvent): void {
-    if (this.stopping || this.changingSession || event.owner.sessionId !== this.sessionId) {
+  private handleBackgroundJobEvent(event: BackgroundJobEvent): void {
+    if (
+      this.stopping ||
+      this.changingSession ||
+      event.owner.sessionId !== this.sessionId ||
+      event.type === "started" ||
+      event.type === "stopping"
+    ) {
       return;
     }
     if (event.type === "observed") {
