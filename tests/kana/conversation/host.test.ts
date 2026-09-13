@@ -103,6 +103,29 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
+  test("keeps the startup subagent profile snapshot", async () => {
+    const env = createTempEnv();
+    const agentsDirectory = path.join(env.KANA_HOME ?? "", "agents");
+    mkdirSync(agentsDirectory, { recursive: true });
+    const profilePath = path.join(agentsDirectory, "focused.md");
+    writeFileSync(profilePath, subagentProfile("Initial instructions."));
+    const host = createKanaConversationHost({ env, session: { type: "none" } });
+
+    const first = host.loadSubagentProfiles();
+    const focused = first.profiles.find((profile) => profile.name === "focused");
+    if (focused) focused.instructions = "Changed returned snapshot.";
+    writeFileSync(profilePath, subagentProfile("Updated on disk."));
+    writeFileSync(path.join(agentsDirectory, "later.md"), subagentProfile("Added later."));
+
+    const second = host.loadSubagentProfiles();
+
+    expect(second.profiles.find((profile) => profile.name === "focused")?.instructions).toBe(
+      "Initial instructions.",
+    );
+    expect(second.profiles.map((profile) => profile.name)).not.toContain("later");
+    await host.close();
+  });
+
   test("keeps clean sessions and model changes in memory", async () => {
     const env = createTempEnv();
     process.env.KANA_HOME = env.KANA_HOME;
@@ -417,4 +440,8 @@ function createTempEnv(): NodeJS.ProcessEnv {
     HOME: home,
     KANA_HOME: kanaHome,
   };
+}
+
+function subagentProfile(instructions: string): string {
+  return ["---", "description: Focused work", "tools: [read]", "---", instructions, ""].join("\n");
 }

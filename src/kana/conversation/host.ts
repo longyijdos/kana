@@ -130,6 +130,7 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly memoryConsolidationSchedulers = new Set<MemoryConsolidationScheduler>();
   private readonly oauthTokenStore;
   private readonly customProviderSnapshot: KanaCustomProviderSnapshot;
+  private readonly subagentProfileSnapshot: LoadKanaSubagentProfilesResult;
   private readonly mcpRuntime: KanaMcpRuntime;
   private configData: KanaConfig;
   private memoryConsolidation?: MemoryConsolidationScheduler;
@@ -149,6 +150,10 @@ export class KanaConversationHost<TConfiguration = never> {
       this.mcpConfigurationStore = createKanaMcpConfigurationStore(this.env);
       this.skillStore = createKanaSkillStore({ cwd: process.cwd(), env: this.env });
     }
+    this.subagentProfileSnapshot = loadKanaSubagentProfiles({
+      env: this.env,
+      builtinsOnly: this.launchMode === "clean",
+    });
     this.createAgentProduct = options.createAgent ?? createKanaConversationAgent;
     this.enableScheduledWakeTool = options.enableScheduledWakeTool ?? true;
     this.applyAgentConfiguration = options.applyAgentConfiguration;
@@ -231,10 +236,7 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadSubagentProfiles(): LoadKanaSubagentProfilesResult {
-    return loadKanaSubagentProfiles({
-      env: this.env,
-      builtinsOnly: this.launchMode === "clean",
-    });
+    return structuredClone(this.subagentProfileSnapshot);
   }
 
   loadSkills(): LoadKanaSkillActivationsResult {
