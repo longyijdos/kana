@@ -626,6 +626,88 @@ describe("Editor", () => {
     });
   });
 
+  describe("background activity previews", () => {
+    test("renders running session work below the queued previews and hides it for slash commands", () => {
+      const editor = new Editor({ model: "test-model" });
+      editor.setQueuedInputs([{ delivery: "run", content: "Check types after this run." }]);
+      editor.setBackgroundActivity([
+        {
+          kind: "subagent",
+          id: "3f2a1b7c",
+          status: "running",
+          label: "reviewer: Check the parser",
+        },
+        { kind: "job", id: "82ac19de", status: "stopping", label: "bun test" },
+      ]);
+
+      const rendered = editor.render(72, 16).map(stripAnsi);
+
+      expect(rendered).toContain("Background · 2");
+      expect(rendered).toContain("  subagent · 3f2a1b7c · running · reviewer: Check the parser");
+      expect(rendered).toContain("  job      · 82ac19de · stopping · bun test");
+      expect(rendered.indexOf("Background · 2")).toBeGreaterThan(
+        rendered.indexOf("Queued inputs · 1"),
+      );
+      expect(rendered.length).toBeLessThanOrEqual(16);
+
+      editor.setText("/");
+      const slashRendered = stripAnsi(editor.render(72, 16).join("\n"));
+      expect(slashRendered).not.toContain("Background · 2");
+    });
+
+    test("collapses overflowing background rows and drops them before the pending queue", () => {
+      const editor = new Editor();
+      editor.setBackgroundActivity(
+        Array.from({ length: 6 }, (_value, index) => ({
+          kind: "job" as const,
+          id: `job-${index}`,
+          status: "running",
+          label: `Job ${index}`,
+        })),
+      );
+
+      const unbounded = editor.render(60).map(stripAnsi);
+      expect(unbounded).toContain("Background · 6");
+      expect(unbounded).toContain("  … 3 more");
+      expect(unbounded).not.toContain("Job 5");
+
+      editor.setQueuedInputs(
+        Array.from({ length: 5 }, (_value, index) => ({
+          delivery: "run" as const,
+          content: `Queued ${index}`,
+        })),
+      );
+      const constrained = stripAnsi(editor.render(60, 10).join("\n"));
+      expect(constrained).toContain("Queued inputs · 5");
+      expect(constrained).not.toContain("Background · 6");
+
+      editor.setQueuedInputs([]);
+      editor.setBackgroundActivity([]);
+      const empty = stripAnsi(editor.render(60).join("\n"));
+      expect(empty).not.toContain("Background");
+    });
+
+    test("strips terminal control sequences from background labels", () => {
+      const editor = new Editor();
+      editor.setBackgroundActivity([
+        {
+          kind: "job",
+          id: "82ac19de",
+          status: "running",
+          label: "CSI\x1b[2J OSC\x1b]0;owned\x07 C0\x00\x08",
+        },
+      ]);
+
+      const rendered = editor.render(60).join("\n");
+
+      expect(stripAnsi(rendered)).toContain("running · CSI OSC C0");
+      expect(rendered).not.toContain("\x1b[2J");
+      expect(rendered).not.toContain("\x1b]0;owned\x07");
+      expect(rendered).not.toContain("\x00");
+      expect(rendered).not.toContain("\x08");
+    });
+  });
+
   describe("vertical navigation and history", () => {
     test("moves up within multiline input before switching history", () => {
       const editor = new Editor();

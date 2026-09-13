@@ -18,6 +18,7 @@ export { type ContentView, ContentViewer } from "./content-viewer";
 export { DeleteSessionConfirmation } from "./delete-session-confirmation";
 export {
   Editor,
+  type EditorBackgroundActivityItem,
   type EditorQueuedInput,
   type EditorScheduledInputSummary,
   type StatusLineState,

@@ -1,5 +1,6 @@
 export {
   Editor,
+  type EditorBackgroundActivityItem,
   type EditorQueuedInput,
   type EditorScheduledInputSummary,
 } from "./editor";

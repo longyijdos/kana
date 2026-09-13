@@ -76,6 +76,7 @@ import {
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
 const QUEUED_INPUT_VISIBLE_LIMIT = 5;
+const BACKGROUND_ACTIVITY_VISIBLE_LIMIT = 4;
 const MAX_INPUT_IMAGES = 10;
 const PROMPT = "> ";
 
@@ -97,6 +98,13 @@ export type EditorQueuedInput = {
 export type EditorScheduledInputSummary = {
   count: number;
   nextAt: Date;
+};
+
+export type EditorBackgroundActivityItem = {
+  kind: "subagent" | "job";
+  id: string;
+  status: string;
+  label: string;
 };
 
 type EditorHistoryEntry = {
@@ -141,6 +149,7 @@ export class Editor implements Component {
   };
   private queuedInputs: EditorQueuedInput[] = [];
   private scheduledInputSummary?: EditorScheduledInputSummary;
+  private backgroundActivity: EditorBackgroundActivityItem[] = [];
   private images: UserImage[] = [];
   // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
   private placeholder = createRandomPromptPlaceholder();
@@ -230,6 +239,10 @@ export class Editor implements Component {
     this.scheduledInputSummary = summary === undefined ? undefined : structuredClone(summary);
   }
 
+  setBackgroundActivity(items: EditorBackgroundActivityItem[]): void {
+    this.backgroundActivity = structuredClone(items);
+  }
+
   render(width: number, availableHeight?: number): string[] {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
@@ -287,13 +300,15 @@ export class Editor implements Component {
 
     if (
       !paletteState.showPalette &&
-      (this.queuedInputs.length > 0 || this.scheduledInputSummary !== undefined)
+      (this.queuedInputs.length > 0 ||
+        this.scheduledInputSummary !== undefined ||
+        this.backgroundActivity.length > 0)
     ) {
-      const queuedInputHeight =
+      const previewHeight =
         availableHeight === undefined
           ? undefined
           : Math.max(0, Math.floor(availableHeight) - lines.length);
-      lines.push(...this.renderInputQueue(width, queuedInputHeight));
+      lines.push(...this.renderInputPreviews(width, previewHeight));
     }
 
     return lines.map((line) => truncateToWidth(line, width, ""));
@@ -583,21 +598,18 @@ export class Editor implements Component {
       availableHeight === undefined
         ? QUEUED_INPUT_VISIBLE_LIMIT + 1
         : Math.max(0, Math.floor(availableHeight));
-    if (maximumRows === 0) {
+    const window = resolvePreviewWindow(
+      this.queuedInputs.length,
+      maximumRows,
+      QUEUED_INPUT_VISIBLE_LIMIT,
+    );
+    if (!window) {
       return [];
     }
 
-    const header = color(`Queued inputs · ${this.queuedInputs.length}`, tuiTheme.command);
-    if (maximumRows === 1) {
-      return [header];
-    }
+    const lines = [color(`Queued inputs · ${this.queuedInputs.length}`, tuiTheme.command)];
 
-    const detailRows = Math.min(maximumRows - 1, QUEUED_INPUT_VISIBLE_LIMIT);
-    const needsOverflow = this.queuedInputs.length > detailRows;
-    const visibleCount = needsOverflow && detailRows > 1 ? detailRows - 1 : detailRows;
-    const lines = [header];
-
-    for (const input of this.queuedInputs.slice(0, visibleCount)) {
+    for (const input of this.queuedInputs.slice(0, window.visibleCount)) {
       const delivery =
         input.delivery === "turn"
           ? "next turn"
@@ -618,13 +630,47 @@ export class Editor implements Component {
       );
     }
 
-    if (needsOverflow && detailRows > 1) {
-      lines.push(dim(`  … ${this.queuedInputs.length - visibleCount} more`));
+    if (window.overflow) {
+      lines.push(dim(`  … ${this.queuedInputs.length - window.visibleCount} more`));
     }
     return lines;
   }
 
-  private renderInputQueue(width: number, availableHeight?: number): string[] {
+  private renderBackgroundActivity(width: number, availableHeight?: number): string[] {
+    const maximumRows =
+      availableHeight === undefined
+        ? BACKGROUND_ACTIVITY_VISIBLE_LIMIT + 1
+        : Math.max(0, Math.floor(availableHeight));
+    const window = resolvePreviewWindow(
+      this.backgroundActivity.length,
+      maximumRows,
+      BACKGROUND_ACTIVITY_VISIBLE_LIMIT,
+    );
+    if (!window) {
+      return [];
+    }
+
+    const lines = [color(`Background · ${this.backgroundActivity.length}`, tuiTheme.command)];
+
+    for (const item of this.backgroundActivity.slice(0, window.visibleCount)) {
+      const label = stripTerminalControlSequences(item.label).replace(/\s+/g, " ").trim();
+      const meta = `  ${item.kind.padEnd(8)} · ${item.id} · ${item.status} · `;
+      lines.push(
+        truncateToWidth(
+          `${color(meta, tuiTheme.muted)}${color(label, tuiTheme.userMessageText)}`,
+          width,
+          "…",
+        ),
+      );
+    }
+
+    if (window.overflow) {
+      lines.push(dim(`  … ${this.backgroundActivity.length - window.visibleCount} more`));
+    }
+    return lines;
+  }
+
+  private renderInputPreviews(width: number, availableHeight?: number): string[] {
     if (availableHeight !== undefined && availableHeight <= 0) {
       return [];
     }
@@ -654,6 +700,12 @@ export class Editor implements Component {
           "…",
         ),
       );
+    }
+
+    if (this.backgroundActivity.length > 0) {
+      const backgroundHeight =
+        availableHeight === undefined ? undefined : Math.max(0, availableHeight - lines.length);
+      lines.push(...this.renderBackgroundActivity(width, backgroundHeight));
     }
     return lines;
   }
@@ -860,6 +912,33 @@ export class Editor implements Component {
 
 function formatClockTime(value: Date): string {
   return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
+}
+
+type PreviewSectionWindow = {
+  visibleCount: number;
+  overflow: boolean;
+};
+
+// Both preview sections share the same row budget rules: keep one header row,
+// reserve one detail row for the overflow marker, and never assume extra space.
+function resolvePreviewWindow(
+  total: number,
+  maximumRows: number,
+  visibleLimit: number,
+): PreviewSectionWindow | undefined {
+  if (maximumRows <= 0) {
+    return undefined;
+  }
+  if (maximumRows === 1) {
+    return { visibleCount: 0, overflow: false };
+  }
+
+  const detailRows = Math.min(maximumRows - 1, visibleLimit);
+  const overflow = total > detailRows && detailRows > 1;
+  return {
+    visibleCount: overflow ? detailRows - 1 : detailRows,
+    overflow,
+  };
 }
 
 function formatImageSummary(images: UserImage[]): string {

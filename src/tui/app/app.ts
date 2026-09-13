@@ -18,6 +18,7 @@ import { preloadSyntaxHighlighter } from "../utils/syntax-highlighter";
 import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
 import type { KanaTuiAppOptions } from "./app-options";
+import { BackgroundActivityController } from "./background-activity-controller";
 import { BackgroundJobManagerController } from "./background-job-manager-controller";
 import { BottomAreaController } from "./bottom-area-controller";
 import { ContentViewerController } from "./content-viewer-controller";
@@ -65,6 +66,7 @@ export class KanaTuiApp {
   private readonly scheduledMessageManager: ScheduledMessageManagerController;
   private readonly backgroundJobManager: BackgroundJobManagerController;
   private readonly subagentManager: SubagentManagerController;
+  private readonly backgroundActivity: BackgroundActivityController;
   private readonly status: StatusProjectionController;
   private readonly errors: InteractionErrorReporter;
   private readonly toolApproval: ToolApprovalController;
@@ -296,6 +298,19 @@ export class KanaTuiApp {
       showError: (error) => this.showInteractionError(error),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
+    this.backgroundActivity = new BackgroundActivityController({
+      editor: this.editor,
+      tui: this.tui,
+      getJobs: () => {
+        const sessionId = this.conversation.sessionId;
+        return sessionId ? this.options.conversation.getBackgroundJobs?.(sessionId) : undefined;
+      },
+      getSubagents: () => {
+        const sessionId = this.conversation.sessionId;
+        return sessionId ? this.options.conversation.getSubagents?.(sessionId) : undefined;
+      },
+    });
+    this.backgroundActivity.bind();
     this.modelSelection = new ModelSelectionController({
       conversation: this.conversation,
       editor: this.editor,
@@ -633,6 +648,7 @@ export class KanaTuiApp {
     this.backgroundJobManager.close();
     this.subagentManager.close();
     this.mcpServerManager?.close();
+    this.backgroundActivity.unbind();
     this.unsubscribeConversationEvents();
     this.showShutdownStatus("Shutting down Kana...");
     const resumeSessionId = this.options.conversation.getResumeSessionId();
@@ -940,6 +956,7 @@ export class KanaTuiApp {
 
       case "session_changed":
         this.queuedInputs.clear();
+        this.backgroundActivity.bind();
         if (this.toolApproval.resetTemporaryMode() !== undefined) {
           this.getLogger().info("tui.tool_approval_mode_reset", {
             action: event.action,
