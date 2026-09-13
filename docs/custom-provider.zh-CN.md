@@ -54,10 +54,13 @@ api_key_env = "LOCAL_MODEL_API_KEY"
 | `max_output_tokens` | 是 | — | 单次请求的正整数输出上限；不能超过 `context_window`。 |
 | `supports_parallel_tool_calls` | 否 | `false` | Kana 是否可以声明并实际并发执行安全工具调用。 |
 | `supports_image_input` | 否 | `false` | 是否可以把用户和工具图片作为 Chat Completions image data URL 发送。设为 true 时 Kana 也会注册 `view_image`。 |
+| `assistant_replay_fields` | 否 | 未设置 | 需要为同一 endpoint 和模型保留并回放的流式 assistant delta 字段非空列表。 |
 | `reasoning_efforts` | 否 | 未设置 | `reasoning_effort` 支持的非空请求值列表。 |
 | `default_reasoning_effort` | 配置 `reasoning_efforts` 时 | — | 默认值；必须出现在 `reasoning_efforts` 中。 |
 
 推理控制属于能力 metadata，不是对所有供应商的统一假设。模型没有可选择的控制时，应同时省略两个 reasoning 字段；`/model` 会跳过这一步，请求也不会发送 `reasoning_effort`。配置后，Kana 会把选择值作为 Chat Completions 顶层 `reasoning_effort` 发送。关闭档位使用 `none`，而不是 `off`；TUI 会把 `none` 显示为 `Off`。
+
+部分兼容 endpoint 要求在后续 assistant 历史中回传流式响应的额外字段。`assistant_replay_fields` 显式列出这些 `choice.delta` 顶层字段。Kana 会聚合其流式 JSON 值、作为不透明 provider state 保存，并且仅在来源仍是同一 Custom endpoint 和模型且配置仍启用对应字段时回放。除非 endpoint 明确要求，否则应省略此设置。`role`、`content` 和 `tool_calls` 由 Kana 管理，不能列入其中。
 
 例如：
 
@@ -68,6 +71,7 @@ context_window = 32768
 max_output_tokens = 8192
 supports_parallel_tool_calls = true
 supports_image_input = false
+assistant_replay_fields = ["reasoning", "reasoning_details"]
 reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
@@ -76,7 +80,7 @@ default_reasoning_effort = "none"
 
 ## 协议与安全边界
 
-该槽位使用[供应商](providers.zh-CN.md)中记录的共享 OpenAI-compatible Chat Completions 路径，包括流式文本、reasoning delta、本地工具调用、用量、图片观察、取消、无活动超时、重试和安全诊断。它拒绝 redirect，避免把 Bearer 凭据转发到另一个 origin；不支持托管网页搜索和供应商专用 replay 状态。
+该槽位使用[供应商](providers.zh-CN.md)中记录的共享 OpenAI-compatible Chat Completions 路径，包括流式文本、reasoning delta、已配置的 assistant replay 字段、本地工具调用、用量、图片观察、取消、无活动超时、重试和安全诊断。它拒绝 redirect，避免把 Bearer 凭据转发到另一个 origin；仍不支持托管网页搜索。
 
 `base_url` 接受 HTTP 和 HTTPS，但凭据经过不可信网络时必须使用 HTTPS。URL、query string 与 fragment 中的凭据会被拒绝，未知字段和无效模型元数据也会被拒绝。
 

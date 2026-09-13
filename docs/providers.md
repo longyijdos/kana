@@ -70,7 +70,7 @@ Adapters may extend the recognized signal set, but must not turn ambiguous serve
 
 User images become data-URL `image_url` parts only when model metadata enables image input. Chat Completions tool-role messages cannot carry images, so contiguous tool results remain in place and their images are appended afterward as one synthetic multimodal user observation. A text-only model receives explicit omission text instead of image bytes.
 
-Cross-provider replay sends visible assistant text and local function calls. Provider-owned reasoning and hosted-tool state is not reinterpreted for a generic Chat Completions endpoint.
+Configured assistant replay fields are accumulated from `choice.delta`, retained as opaque provider state, and restored only for the same provider, endpoint, and model. Cross-provider replay still sends only visible assistant text and local function calls; provider-owned fields and hosted-tool state are not reinterpreted.
 
 The SSE reader preserves partial frames across network chunks, ignores heartbeat-only frames, incrementally assembles ordered reasoning text, visible text, and tool calls, and maps `stop`, `length`, and `tool_calls` to core stop reasons. Extra completion choices are ignored because Kana requests one assistant message. Incomplete or contradictory tool-call termination is a protocol failure rather than guessed output.
 

@@ -9,5 +9,6 @@ context_window = 1000000
 max_output_tokens = 384000
 supports_parallel_tool_calls = true
 supports_image_input = true
+assistant_replay_fields = ["reasoning", "reasoning_details"]
 reasoning_efforts = ["low", "high", "max"]
 default_reasoning_effort = "high"

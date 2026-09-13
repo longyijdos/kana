@@ -1,10 +1,12 @@
 import type { AssistantEventStream, AssistantMessage, ToolCallContent } from "@/core";
 import type {
   OpenAICompatibleChunk,
+  OpenAICompatibleDelta,
   OpenAICompatibleStreamState,
   OpenAICompatibleToolCallDelta,
   PendingOpenAICompatibleToolCall,
 } from "./types";
+import { OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE } from "./types";
 
 export async function readOpenAICompatibleStream(
   response: Response,
@@ -70,6 +72,7 @@ export function applyOpenAICompatibleChunk(
       continue;
     }
 
+    captureAssistantReplayDelta(state, choice.delta);
     if (choice.delta?.reasoning_content) {
       applyThinkingDelta(stream, message, state, choice.delta.reasoning_content);
     }
@@ -88,6 +91,29 @@ export function applyOpenAICompatibleChunk(
       }
     }
   }
+}
+
+export function finishOpenAICompatibleAssistantReplay(
+  message: AssistantMessage,
+  state: OpenAICompatibleStreamState,
+): void {
+  const replay = state.assistantReplay;
+  const carrier = message.content[0];
+  if (!replay || replay.values.size === 0 || !carrier) {
+    return;
+  }
+
+  carrier.providerState = {
+    provider: replay.provider,
+    value: {
+      type: OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE,
+      model: replay.model,
+      baseUrl: replay.baseUrl,
+      fields: Object.fromEntries(
+        [...replay.values].map(([field, value]) => [field, structuredClone(value)]),
+      ),
+    },
+  };
 }
 
 export function finishOpenAICompatibleContent(
@@ -146,6 +172,73 @@ function parseSseData(part: string): string | undefined {
     .filter((line) => line.startsWith("data:"))
     .map((line) => line.slice("data:".length).trimStart());
   return dataLines.length ? dataLines.join("\n") : undefined;
+}
+
+function captureAssistantReplayDelta(
+  state: OpenAICompatibleStreamState,
+  delta: OpenAICompatibleDelta | undefined,
+): void {
+  const replay = state.assistantReplay;
+  if (!replay || !delta) {
+    return;
+  }
+
+  for (const field of replay.fields) {
+    const value = delta[field];
+    if (value === undefined || value === null) {
+      continue;
+    }
+    replay.values.set(field, mergeAssistantReplayDelta(replay.values.get(field), value, field));
+  }
+}
+
+function mergeAssistantReplayDelta(current: unknown, delta: unknown, key: string): unknown {
+  if (current === undefined) {
+    return structuredClone(delta);
+  }
+  if (typeof current === "string" && typeof delta === "string") {
+    return isStableReplayMetadataKey(key) ? delta : current + delta;
+  }
+  if (Array.isArray(current) && Array.isArray(delta)) {
+    const merged = structuredClone(current);
+    for (const item of delta) {
+      const index = readReplayIndex(item);
+      if (index === undefined) {
+        merged.push(structuredClone(item));
+        continue;
+      }
+      const position = merged.findIndex((candidate) => readReplayIndex(candidate) === index);
+      if (position === -1) {
+        merged.push(structuredClone(item));
+      } else {
+        merged[position] = mergeAssistantReplayDelta(merged[position], item, key);
+      }
+    }
+    return merged;
+  }
+  if (isRecord(current) && isRecord(delta)) {
+    const merged = structuredClone(current);
+    for (const [field, value] of Object.entries(delta)) {
+      merged[field] = mergeAssistantReplayDelta(merged[field], value, field);
+    }
+    return merged;
+  }
+  return structuredClone(delta);
+}
+
+function readReplayIndex(value: unknown): number | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return typeof value.index === "number" && Number.isInteger(value.index) ? value.index : undefined;
+}
+
+function isStableReplayMetadataKey(key: string): boolean {
+  return key === "type" || key === "format" || key === "role" || key === "id";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function applyThinkingDelta(

@@ -8,14 +8,17 @@ export type OpenAICompatibleModelConfig = Omit<ModelConfig, "baseUrl"> & {
   logger?: Logger;
 };
 
+export type OpenAICompatibleDelta = {
+  [key: string]: unknown;
+  content?: string | null;
+  reasoning_content?: string | null;
+  tool_calls?: OpenAICompatibleToolCallDelta[];
+};
+
 export type OpenAICompatibleChunk = {
   choices?: Array<{
     index?: number;
-    delta?: {
-      content?: string | null;
-      reasoning_content?: string | null;
-      tool_calls?: OpenAICompatibleToolCallDelta[];
-    };
+    delta?: OpenAICompatibleDelta;
     finish_reason?: string | null;
   }>;
   usage?: {
@@ -32,6 +35,16 @@ export type OpenAICompatibleChunk = {
   error?: unknown;
 };
 
+export const OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE = "chat_completions_assistant_replay";
+
+type OpenAICompatibleAssistantReplayState = {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  fields: ReadonlySet<string>;
+  values: Map<string, unknown>;
+};
+
 export type OpenAICompatibleToolCallDelta = {
   index?: number;
   id?: string;
@@ -45,6 +58,7 @@ export type OpenAICompatibleToolCallDelta = {
 export type OpenAICompatibleStreamState = {
   finishReason?: string;
   endedContentIndexes: Set<number>;
+  assistantReplay?: OpenAICompatibleAssistantReplayState;
   usage?: ModelUsage;
 };
 

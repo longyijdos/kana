@@ -69,6 +69,7 @@ describe("Kana Custom provider", () => {
           max_output_tokens: 8_192,
           supports_parallel_tool_calls: true,
           supports_image_input: true,
+          assistant_replay_fields: ["reasoning", "reasoning_details"],
           reasoning_efforts: ["none", "low", "high"],
           default_reasoning_effort: "low",
         },
@@ -87,6 +88,7 @@ describe("Kana Custom provider", () => {
       maxOutputTokens: 8_192,
       supportsParallelToolCalls: true,
       supportsImageInput: true,
+      assistantReplayFields: ["reasoning", "reasoning_details"],
       reasoning: { efforts: ["none", "low", "high"], defaultEffort: "low" },
     });
   });
@@ -140,6 +142,20 @@ describe("Kana Custom provider", () => {
           models: [{ ...validModel, reasoning_efforts: ["off"] }],
         },
         message: 'models[0].reasoning_efforts uses "none" rather than "off"',
+      },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          models: [{ ...validModel, assistant_replay_fields: ["reasoning", "reasoning"] }],
+        },
+        message: "models[0].assistant_replay_fields must not contain duplicates.",
+      },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          models: [{ ...validModel, assistant_replay_fields: ["content"] }],
+        },
+        message: 'models[0].assistant_replay_fields cannot include Kana-managed field "content".',
       },
     ];
 

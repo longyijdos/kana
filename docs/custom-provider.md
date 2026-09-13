@@ -54,10 +54,13 @@ api_key_env = "LOCAL_MODEL_API_KEY"
 | `max_output_tokens` | Yes | — | Positive per-request output ceiling; cannot exceed `context_window`. |
 | `supports_parallel_tool_calls` | No | `false` | Whether Kana may advertise and execute safe tool calls in parallel. |
 | `supports_image_input` | No | `false` | Whether user and tool images may be sent as Chat Completions image data URLs. When true, Kana also registers `view_image`. |
+| `assistant_replay_fields` | No | Unset | Non-empty list of streamed assistant delta fields to preserve and replay for the same endpoint and model. |
 | `reasoning_efforts` | No | Unset | Non-empty list of request values supported by `reasoning_effort`. |
 | `default_reasoning_effort` | With `reasoning_efforts` | — | Default value; it must appear in `reasoning_efforts`. |
 
 Reasoning controls are capability metadata rather than a universal provider assumption. Omit both reasoning fields when the model has no selectable control; `/model` then skips that step and requests omit `reasoning_effort`. When configured, Kana sends the selected value as the top-level Chat Completions `reasoning_effort`. Use `none`, not `off`, for a disabled level; the TUI presents `none` as `Off`.
+
+Some compatible endpoints require extra fields from a streamed assistant response to be echoed in later assistant history. `assistant_replay_fields` explicitly names those top-level `choice.delta` fields. Kana accumulates their streamed JSON values, stores them as opaque provider state, and replays only fields that came from the same Custom endpoint and model and remain enabled in its configuration. Omit the setting unless the endpoint documents this requirement. `role`, `content`, and `tool_calls` are managed by Kana and cannot be listed.
 
 For example:
 
@@ -68,6 +71,7 @@ context_window = 32768
 max_output_tokens = 8192
 supports_parallel_tool_calls = true
 supports_image_input = false
+assistant_replay_fields = ["reasoning", "reasoning_details"]
 reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
@@ -76,7 +80,7 @@ default_reasoning_effort = "none"
 
 ## Protocol and security boundaries
 
-The slot uses the shared OpenAI-compatible Chat Completions path documented in [Providers](providers.md), including streaming text, reasoning deltas, local tool calls, usage, image observations, cancellation, inactivity, retries, and safe diagnostics. It rejects redirects so a Bearer credential cannot be forwarded to another origin. Hosted web search and provider-specific replay state are unsupported.
+The slot uses the shared OpenAI-compatible Chat Completions path documented in [Providers](providers.md), including streaming text, reasoning deltas, configured assistant replay fields, local tool calls, usage, image observations, cancellation, inactivity, retries, and safe diagnostics. It rejects redirects so a Bearer credential cannot be forwarded to another origin. Hosted web search remains unsupported.
 
 `base_url` accepts HTTP and HTTPS, but HTTPS is required to protect credentials across an untrusted network. Credentials in URLs, query strings, and fragments are rejected, as are unknown fields and invalid model metadata.
 
