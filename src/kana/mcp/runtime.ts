@@ -6,8 +6,10 @@ import {
 } from "@/mcp";
 import type { Tool } from "@/tools";
 
-import { loadKanaMcpActivationState } from "./activation";
-import { loadKanaMcpConfig } from "./config";
+import {
+  createKanaMcpConfigurationStore,
+  type KanaMcpConfigurationSource,
+} from "./configuration-store";
 import { type CreateKanaMcpManagerOptions, createKanaMcpManager } from "./manager";
 
 export type KanaMcpRuntimeOperation = "start" | "reload" | "close";
@@ -30,12 +32,14 @@ export type CreateKanaMcpRuntimeOptions = Omit<
   CreateKanaMcpManagerOptions,
   "enabledServerIds" | "onProgress"
 > & {
+  configurationSource?: KanaMcpConfigurationSource;
   onProgress?(event: KanaMcpRuntimeProgressEvent): void;
 };
 
 export class KanaMcpRuntime {
   private readonly env: NodeJS.ProcessEnv;
   private readonly managerOptions: Omit<CreateKanaMcpManagerOptions, "enabledServerIds">;
+  private configurationSource?: KanaMcpConfigurationSource;
   private manager?: ReturnType<typeof createKanaMcpManager>;
   private toolsData: Tool[] = [];
   private selectedServerIdsData: string[] = [];
@@ -47,6 +51,7 @@ export class KanaMcpRuntime {
 
   constructor(options: CreateKanaMcpRuntimeOptions = {}) {
     this.env = { ...(options.env ?? process.env) };
+    this.configurationSource = options.configurationSource;
     // Runtime reloads reuse these values. Snapshot iterable and object options
     // so a one-shot generator or later caller mutation cannot change behavior.
     this.managerOptions = {
@@ -150,8 +155,9 @@ export class KanaMcpRuntime {
       throw new Error("MCP runtime is closing or closed.");
     }
 
-    const config = loadKanaMcpConfig(this.env);
-    const activationState = loadKanaMcpActivationState(this.env);
+    const configuration = this.getConfigurationSource();
+    const config = configuration.getConfig();
+    const activationState = configuration.getActivationState();
     const enabledServerIds = new Set(activationState.enabledServers);
     this.selectedServerIdsData = Object.keys(config.mcpServers).filter((serverId) =>
       enabledServerIds.has(serverId),
@@ -190,6 +196,11 @@ export class KanaMcpRuntime {
       diagnostics: this.diagnostics,
       selectedServerIds: this.selectedServerIds,
     };
+  }
+
+  private getConfigurationSource(): KanaMcpConfigurationSource {
+    this.configurationSource ??= createKanaMcpConfigurationStore(this.env);
+    return this.configurationSource;
   }
 }
 

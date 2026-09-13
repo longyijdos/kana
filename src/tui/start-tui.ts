@@ -1,12 +1,9 @@
 import {
   createKanaConversationHost,
-  getKanaModelManagement,
   type KanaConversationHostSession,
   type KanaLaunchMode,
   loadKanaPromptTemplates,
-  loadKanaSkillActivations,
   openKanaOAuthAuthorizationUrl,
-  saveEnabledGlobalSkillNames,
 } from "@/kana";
 import type { Logger } from "@/logging";
 import { KanaTuiApp } from "./app/app";
@@ -162,8 +159,8 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
           host.disposeSession(sessionId, source, foregroundSettled),
       },
       skills: {
-        load: () => loadKanaSkillActivations({ cwd: process.cwd() }),
-        saveEnabledGlobalNames: (names) => saveEnabledGlobalSkillNames(names),
+        load: () => host.loadSkills(),
+        saveEnabledGlobalNames: (names) => host.saveEnabledGlobalSkillNames(names),
       },
       toolApproval: {
         config: host.approvalConfig,
@@ -187,7 +184,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         load: (scope) => host.loadUsage(scope),
       },
       models: {
-        getSettings: () => getKanaModelManagement(host.config),
+        getSettings: () => host.getModelManagement(),
       },
       // Clean mode must not parse MCP configuration or create external
       // processes, including during later session and Agent rebuilds.

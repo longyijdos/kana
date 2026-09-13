@@ -44,11 +44,11 @@ frontmatter 仅识别 `name` 和 `description`；未知字段被忽略。支持�
 enabled = ["release-check", "database-migrations"]
 ```
 
-文件不存在或 `enabled` 缺失时，全局 Skills 均不注入模型提示词。`/skills` 打开管理界面：project 项显示为 locked，`Enter` 只在本地草稿中切换 global 项。`Esc` 应用并关闭草稿；最终集合有变化时，Kana 只重写一次列表并重建一次 Agent 系统提示词，未变化时两项操作都不执行，持久化失败时管理界面保持打开。管理界面显示的 scope 根据 Skill 文件是否位于全局 Skills 目录内决定。
+文件不存在或 `enabled` 缺失时，全局 Skills 均不注入模型提示词。产品 Host 会在普通启动时发现一次 Skills 并加载一次启用列表；直接修改文件需要重启才会生效。`/skills` 从该快照打开管理界面：project 项显示为 locked，`Enter` 只在本地草稿中切换 global 项。`Esc` 应用并关闭草稿；最终集合有变化时，Kana 会持久化启用差量、更新快照，并只重建一次 Agent 系统提示词；未变化时两项操作都不执行，持久化失败时管理界面保持打开。管理界面显示的 scope 根据 Skill 文件是否位于全局 Skills 目录内决定。
 
 ## 提示词的组成
 
-`createKanaAgent` 在当前工作目录加载 Skills，并构造一份不可变的 prompt assembly。稳定 system 前缀按以下顺序组成：
+产品 Host 在 `createKanaAgent` 构造不可变 prompt assembly 时传入自己的 Skill 快照；未传快照的独立调用方仍会直接加载 Skills。稳定 system 前缀按以下顺序组成：
 
 ```text
 可用的 global/project 长期记忆（若启用且非空）

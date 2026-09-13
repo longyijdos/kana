@@ -26,10 +26,12 @@ import { createKanaToolResultArtifactPolicy, type KanaSessionArtifactStore } fro
 import type { KanaAgentConfig, KanaProviderConfig } from "./config";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-controller";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
+import type { KanaCustomProviderSnapshot } from "./custom-provider";
 import type { KanaLaunchMode } from "./launch-mode";
 import { createKanaAgentModelRuntime } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
-import { loadKanaSkills } from "./skills/loader";
+import { loadKanaSkillActivations } from "./skills/loader";
+import type { KanaSkill } from "./skills/types";
 import type {
   KanaSubagentClient,
   KanaSubagentProfile,
@@ -81,6 +83,8 @@ export type KanaAgentOptions = Pick<
   subagents?: KanaSubagentClient;
   resolveSubagentProfiles?: () => readonly KanaSubagentProfile[];
   runSubagent?: (context: KanaSubagentRunContext) => Promise<KanaSubagentRunResult>;
+  skills?: readonly KanaSkill[];
+  customProviderSnapshot?: KanaCustomProviderSnapshot;
 };
 
 export type KanaAgentDependencies = {
@@ -100,11 +104,13 @@ export function createKanaAgent(
   const customizationsEnabled = options.launchMode !== "clean";
   const skills =
     customizationsEnabled && !subagentProfile
-      ? loadKanaSkills({ cwd, env: options.env }).skills
+      ? (options.skills ??
+        loadKanaSkillActivations({ cwd, env: options.env }).skills.filter((skill) => skill.enabled))
       : [];
   const runtime = createKanaAgentModelRuntime(config, dependencies.providers, {
     env: options.env,
     logger: options.logger,
+    customProviderSnapshot: options.customProviderSnapshot,
   });
   const { model } = runtime;
   const enabledTools = new Set<string>(config.tools);
@@ -174,7 +180,11 @@ export function createKanaAgent(
             },
           },
           dependencies.providers,
-          { env: options.env, logger: options.logger },
+          {
+            env: options.env,
+            logger: options.logger,
+            customProviderSnapshot: options.customProviderSnapshot,
+          },
         ).imageInput;
       } catch {
         supported = false;

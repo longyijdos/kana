@@ -4,6 +4,7 @@ import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
 import { openKanaOAuthAuthorizationUrl } from "../auth/browser";
 import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth/token-store";
 import {
+  type KanaMcpConfig,
   type KanaMcpHttpServerConfig,
   type KanaMcpOAuth2Config,
   loadKanaMcpConfig,
@@ -27,6 +28,7 @@ export type CreateKanaMcpOAuthAuthorizerOptions = {
 
 export type RunKanaMcpOAuthOptions = {
   env?: NodeJS.ProcessEnv;
+  config?: KanaMcpConfig;
   getLogger?: () => Logger;
   tokenStore?: OAuthTokenStore;
   openAuthorizationUrl?(url: string): Promise<void>;
@@ -73,7 +75,7 @@ export async function authorizeKanaMcpServer(
   options: RunKanaMcpOAuthOptions = {},
 ): Promise<KanaOAuthTokenStatus> {
   const context = createOperationContext(options);
-  const server = requireOAuthServer(serverId, context.env);
+  const server = requireOAuthServer(serverId, context.env, options.config);
   const authorizer = createKanaMcpOAuthAuthorizer(serverId, server, {
     ...context,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
@@ -99,7 +101,7 @@ export async function signOutKanaMcpServer(
   options: RunKanaMcpOAuthOptions = {},
 ): Promise<KanaOAuthTokenStatus> {
   const context = createOperationContext(options);
-  requireOAuthServer(serverId, context.env);
+  requireOAuthServer(serverId, context.env, options.config);
   await context.tokenStore.delete(createKanaMcpOAuthStorageKey(serverId));
   try {
     context.getLogger().info("mcp.oauth_signed_out", { serverId });
@@ -127,8 +129,12 @@ function createOperationContext(options: RunKanaMcpOAuthOptions): {
   };
 }
 
-function requireOAuthServer(serverId: string, env: NodeJS.ProcessEnv): KanaMcpOAuthServerConfig {
-  const server = loadKanaMcpConfig(env).mcpServers[serverId];
+function requireOAuthServer(
+  serverId: string,
+  env: NodeJS.ProcessEnv,
+  config?: KanaMcpConfig,
+): KanaMcpOAuthServerConfig {
+  const server = (config ?? loadKanaMcpConfig(env)).mcpServers[serverId];
   if (server === undefined) {
     throw new Error(`MCP server ${serverId} is not configured.`);
   }

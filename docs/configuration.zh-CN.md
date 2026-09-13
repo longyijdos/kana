@@ -342,6 +342,8 @@ Kana 只在 TUI 启动时读取选中的用户主题文件。文件必须是只�
 
 MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA_HOME>/mcp.json`，`<KANA_HOME>/mcp-enabled.json` 则是启用状态的唯一来源。定义文件不存在或省略 `mcpServers` 时等价于未配置 server；启用文件不存在或省略 `enabledServers` 时等价于未启用任何 server。Kana 只启动同时存在于定义和 `enabledServers` 中的 ID，过期的未知 ID 会被忽略。运行时与协议行为见 [MCP](mcp.zh-CN.md)。
 
+普通 TUI 和 headless 启动时会把两个文件各加载一次到产品 Host。直接编辑需要重启才会生效；MCP reload 使用 Host 快照重新连接，不会重读任一文件。通过 `/mcp` 修改启用状态会立即更新该快照。持久化前，Kana 会锁定 `mcp-enabled.json`、读取磁盘上的最新文件，只合并当前进程产生的启用状态差量，再原子替换文件，因此不会覆盖其它进程无关的新增项。
+
 ```json
 {
   "mcpServers": {
@@ -451,6 +453,8 @@ DEEPSEEK_API_KEY=sk-...
 
 `exactCommands` 是去掉首尾空白后的完整 bash 命令列表。TUI 中选择“Always allow this command”会把该命令追加到这里。`readOnlyCommands` 只能包含没有空白和 `/` 的可执行文件名；只有简单单命令的首个单词在此列表中时才被自动信任。含有 `;`、`|`、重定向、命令替换、反引号、反斜杠或换行的 bash 命令不会被当作只读。
 
+Host 在启动时只加载一次审批规则，因此直接编辑要到下次启动才生效。TUI 持久化精确命令时，Kana 会锁定 `approvals.json`、重读最新规则，在不改变两个已有列表的前提下追加命令，原子替换文件，并用结果更新前端的内存规则。
+
 审批模式的效果：
 
 | 模式 | 行为 |
@@ -468,7 +472,7 @@ TUI 的 `/approval` 可以临时覆盖当前所选 session 的模式；选择 `N
 enabled = []
 ```
 
-该列表列出允许注入模型系统提示词的**全局** Skill 名称。项目 `.kana/skills` 和 `.agents/skills` 下的 Skills 始终启用，不能从该文件关闭。TUI 的 `/skills` 只修改这份全局启用列表：`Enter` 修改草稿，`Esc` 仅在最终选择变化时写入并刷新一次。
+该列表列出允许注入模型系统提示词的**全局** Skill 名称。项目 `.kana/skills` 和 `.agents/skills` 下的 Skills 始终启用，不能从该文件关闭。普通启动只发现一次 Skill 文件并加载一次启用状态；直接新增、删除或编辑文件需要重启才会生效。TUI 的 `/skills` 只修改内存中的全局启用快照：`Enter` 修改草稿，`Esc` 仅在最终选择变化时持久化并重建一次 Agent。持久化会锁定 `skills.toml`、重读最新启用列表，只合并当前进程的选择差量，再原子替换文件。
 
 ## 推荐的最小配置
 

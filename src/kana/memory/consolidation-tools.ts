@@ -17,6 +17,7 @@ export type MemoryConsolidationToolOptions = {
   scope: KanaMemoryScope;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  maxChars?: number;
 };
 
 export type MemoryConsolidationTransaction = {

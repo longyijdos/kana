@@ -5,6 +5,7 @@ import path from "node:path";
 import { DEFAULT_KANA_CONFIG, getKanaConfigPaths, getKanaModelManagement } from "@/kana";
 import {
   getKanaCustomProviderModel,
+  loadKanaCustomProviderSnapshot,
   parseKanaCustomProvider,
 } from "../../src/kana/custom-provider";
 import { createKanaModel, selectKanaProviderConfig } from "../../src/kana/model";
@@ -239,7 +240,45 @@ describe("Kana Custom provider", () => {
       server.stop(true);
     }
   });
+
+  test("uses one Custom provider snapshot for model management and creation", () => {
+    const env = { KANA_HOME: createTempDir() };
+    const paths = getKanaConfigPaths(env);
+    mkdirSync(paths.providersDirectory, { recursive: true });
+    writeFileSync(paths.customProviderPath, customProviderToml("startup-model"));
+    const snapshot = loadKanaCustomProviderSnapshot(paths.customProviderPath);
+    writeFileSync(paths.customProviderPath, customProviderToml("later-model"));
+    const config = structuredClone(DEFAULT_KANA_CONFIG);
+    config.agent.model = {
+      provider: "custom",
+      name: "startup-model",
+    };
+
+    const management = getKanaModelManagement(config, env, snapshot);
+    const model = createKanaModel(
+      config.agent.model,
+      selectKanaProviderConfig(config.provider, "custom"),
+      { env, customProviderSnapshot: snapshot },
+    );
+
+    expect(management.model.custom.available.map((candidate) => candidate.name)).toEqual([
+      "startup-model",
+    ]);
+    expect(model.metadata.model).toBe("startup-model");
+  });
 });
+
+function customProviderToml(model: string): string {
+  return [
+    'base_url = "http://127.0.0.1:8080/v1"',
+    "",
+    "[[models]]",
+    `name = "${model}"`,
+    "context_window = 32768",
+    "max_output_tokens = 4096",
+    "",
+  ].join("\n");
+}
 
 function createTempDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "kana-custom-provider-"));

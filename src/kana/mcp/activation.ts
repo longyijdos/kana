@@ -1,8 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-
 import { type KanaOAuthTokenStatus, loadKanaOAuthTokenStatuses } from "../auth/token-store";
+import {
+  mergeConfigStringSet,
+  readOptionalConfigFile,
+  withLockedConfigFile,
+  writeConfigFileAtomically,
+} from "../config/file-storage";
 import { getKanaConfigPaths } from "../path";
-import { loadKanaMcpConfig } from "./config";
+import { type KanaMcpConfig, loadKanaMcpConfig } from "./config";
 import { createKanaMcpOAuthStorageKey } from "./oauth";
 
 export type KanaMcpActivationState = {
@@ -38,13 +42,14 @@ export function loadKanaMcpActivationState(
   env: NodeJS.ProcessEnv = process.env,
 ): KanaMcpActivationState {
   const { mcpEnabledPath } = getKanaConfigPaths(env);
-  if (!existsSync(mcpEnabledPath)) {
+  const content = readOptionalConfigFile(mcpEnabledPath);
+  if (content === undefined) {
     return { enabledServers: [] };
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(mcpEnabledPath, "utf8"));
+    parsed = JSON.parse(content);
   } catch (error) {
     throw new Error(`Failed to parse MCP activation state: ${mcpEnabledPath}`, { cause: error });
   }
@@ -56,7 +61,16 @@ export function loadKanaMcpServerActivations(
   env: NodeJS.ProcessEnv = process.env,
 ): KanaMcpServerActivation[] {
   const config = loadKanaMcpConfig(env);
-  const enabledServerIds = new Set(loadKanaMcpActivationState(env).enabledServers);
+  const activationState = loadKanaMcpActivationState(env);
+  return resolveKanaMcpServerActivations(config, activationState, env);
+}
+
+export function resolveKanaMcpServerActivations(
+  config: KanaMcpConfig,
+  activationState: KanaMcpActivationState,
+  env: NodeJS.ProcessEnv = process.env,
+): KanaMcpServerActivation[] {
+  const enabledServerIds = new Set(activationState.enabledServers);
   const oauthServerIds = Object.entries(config.mcpServers)
     .filter(([, server]) => server.type === "http" && server.auth !== undefined)
     .map(([id]) => id);
@@ -118,13 +132,26 @@ export function saveKanaMcpActivationState(
   state: KanaMcpActivationState,
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  const parsed = parseKanaMcpActivationState(state);
-  const { home, mcpEnabledPath } = getKanaConfigPaths(env);
+  const previous = loadKanaMcpActivationState(env);
+  persistKanaMcpActivationState(previous, state, env);
+}
 
-  mkdirSync(home, { recursive: true });
-  writeFileSync(mcpEnabledPath, `${JSON.stringify(parsed, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
+export function persistKanaMcpActivationState(
+  previousSnapshot: KanaMcpActivationState,
+  nextSnapshot: KanaMcpActivationState,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const parsed = parseKanaMcpActivationState(nextSnapshot);
+  const { mcpEnabledPath } = getKanaConfigPaths(env);
+
+  withLockedConfigFile(mcpEnabledPath, () => {
+    const persisted = loadKanaMcpActivationState(env);
+    const enabledServers = mergeConfigStringSet(
+      persisted.enabledServers,
+      previousSnapshot.enabledServers,
+      parsed.enabledServers,
+    );
+    writeConfigFileAtomically(mcpEnabledPath, `${JSON.stringify({ enabledServers }, null, 2)}\n`);
   });
 }
 

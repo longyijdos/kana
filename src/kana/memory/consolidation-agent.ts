@@ -1,6 +1,7 @@
 import { Agent, type AgentEndReason, type AgentState, createModelCompactPolicy } from "@/agent";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaConfig } from "../config";
+import type { KanaCustomProviderSnapshot } from "../custom-provider";
 import { createKanaAgentModelRuntime } from "../model";
 import { buildMemoryConsolidationPrompt } from "./consolidation-prompt";
 import {
@@ -23,6 +24,7 @@ export type CreateMemoryConsolidationAgentOptions = {
   env?: NodeJS.ProcessEnv;
   now?: Date;
   logger?: Logger;
+  customProviderSnapshot?: KanaCustomProviderSnapshot;
 };
 
 type MemoryConsolidationOutcome = "updated" | "unchanged" | "aborted" | "length" | "turn_limit";
@@ -35,7 +37,10 @@ export type MemoryConsolidationResult = {
 export function createMemoryConsolidationAgent(
   config: KanaConfig,
   options: CreateMemoryConsolidationAgentOptions,
-  memory: MemoryConsolidationTransaction = createMemoryConsolidationTransaction(options),
+  memory: MemoryConsolidationTransaction = createMemoryConsolidationTransaction({
+    ...options,
+    maxChars: config.memory.maxChars,
+  }),
 ): Agent {
   if (!config.memory.enabled) {
     throw new Error("Memory is disabled.");
@@ -43,6 +48,7 @@ export function createMemoryConsolidationAgent(
   const runtime = createKanaAgentModelRuntime(config.memory.agent, config.provider, {
     env: options.env,
     logger: options.logger,
+    customProviderSnapshot: options.customProviderSnapshot,
   });
 
   return new Agent({
@@ -122,7 +128,10 @@ export async function runMemoryConsolidation(
 ): Promise<MemoryConsolidationResult> {
   const logger = options.logger ?? createNoopLogger();
   logger.info("memory_consolidation.started", { scope: options.scope, mode: options.mode });
-  const memory = createMemoryConsolidationTransaction(options);
+  const memory = createMemoryConsolidationTransaction({
+    ...options,
+    maxChars: config.memory.maxChars,
+  });
   const agent = createMemoryConsolidationAgent(config, options, memory);
   const abort = () => agent.abort();
 

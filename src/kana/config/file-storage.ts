@@ -37,6 +37,27 @@ export function writeConfigFileAtomically(filePath: string, content: string): vo
   }
 }
 
+export function mergeConfigStringSet(
+  persisted: readonly string[],
+  previousSnapshot: readonly string[],
+  nextSnapshot: readonly string[],
+): string[] {
+  const previous = new Set(previousSnapshot);
+  const next = new Set(nextSnapshot);
+  const removed = new Set(previousSnapshot.filter((value) => !next.has(value)));
+  const merged = persisted.filter((value) => !removed.has(value));
+  const mergedSet = new Set(merged);
+
+  for (const value of nextSnapshot) {
+    if (!previous.has(value) && !mergedSet.has(value)) {
+      merged.push(value);
+      mergedSet.add(value);
+    }
+  }
+
+  return merged;
+}
+
 function acquireConfigFileLock(filePath: string): () => void {
   for (let attempt = 1; attempt <= LOCK_ATTEMPTS; attempt += 1) {
     try {

@@ -255,7 +255,7 @@ describe("Kana tool approval", () => {
       {
         version: 2,
         bash: {
-          exactCommands: [],
+          exactCommands: ["external command"],
           readOnlyCommands: ["ls", "rg"],
         },
       },
@@ -266,7 +266,7 @@ describe("Kana tool approval", () => {
     expect(loadKanaToolApprovals(env)).toEqual({
       version: 2,
       bash: {
-        exactCommands: ["git status"],
+        exactCommands: ["external command", "git status"],
         readOnlyCommands: ["ls", "rg"],
       },
     });

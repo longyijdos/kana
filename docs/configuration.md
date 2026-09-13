@@ -342,6 +342,8 @@ The configuration root and every present section must be a TOML table. Strings c
 
 MCP servers are not stored in `config.toml`. Claude Code-style definitions live in `<KANA_HOME>/mcp.json`, while `<KANA_HOME>/mcp-enabled.json` is the sole source of activation state. A missing definitions file or omitted `mcpServers` means no servers are configured; a missing activation file or omitted `enabledServers` means none are enabled. Only configured IDs listed in `enabledServers` start, and stale unknown IDs are ignored. Runtime and protocol behavior is documented in [MCP](mcp.md).
 
+Normal TUI and headless startup load both files once into the product Host. Direct edits require a restart; MCP reload reconnects from the Host snapshot rather than rereading either file. A `/mcp` activation change updates that snapshot immediately. Before persisting it, Kana locks `mcp-enabled.json`, reads the latest file, merges only the activation delta made by this process, and atomically replaces the file, so an unrelated concurrent addition is not overwritten.
+
 ```json
 {
   "mcpServers": {
@@ -451,6 +453,8 @@ The default file is:
 
 `exactCommands` holds complete bash commands after trimming surrounding whitespace. Choosing “Always allow this command” in the TUI appends that command. `readOnlyCommands` can contain only executable names without whitespace or `/`; a command is automatically trusted only when its first word is one of these names and it is a single simple command. Bash commands with `;`, `|`, redirection, command substitution, backticks, backslashes, or newlines are never treated as read-only.
 
+The Host loads approval rules once at startup. Direct edits therefore apply on the next launch. When the TUI persists an exact command, Kana locks `approvals.json`, rereads the latest rules, appends the command without changing either existing list, atomically replaces the file, and updates the frontend's in-memory rules from that result.
+
 Approval modes behave as follows:
 
 | Mode | Behavior |
@@ -468,7 +472,7 @@ The TUI's `/approval` command can temporarily override the mode for the currentl
 enabled = []
 ```
 
-This list names the **global** Skills that may be injected into the model system prompt. Skills in project `.kana/skills` and `.agents/skills` are always enabled and cannot be disabled through this file. The TUI's `/skills` command changes only this global activation list: `Enter` edits a draft, while `Esc` writes and refreshes once only when the final selection changed.
+This list names the **global** Skills that may be injected into the model system prompt. Skills in project `.kana/skills` and `.agents/skills` are always enabled and cannot be disabled through this file. Normal startup discovers Skill files and loads activation once; direct file additions, removals, or edits require a restart. The TUI's `/skills` command changes only the in-memory global activation snapshot: `Enter` edits a draft, while `Esc` persists and rebuilds the Agent once only when the final selection changed. Persistence locks `skills.toml`, rereads the latest activation list, merges only the current process's selection delta, and atomically replaces the file.
 
 ## Recommended minimal configuration
 

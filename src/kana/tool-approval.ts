@@ -1,7 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-
 import type { ToolCallContent } from "@/core";
 import type { KanaToolApprovalConfig } from "./config";
+import {
+  readOptionalConfigFile,
+  withLockedConfigFile,
+  writeConfigFileAtomically,
+} from "./config/file-storage";
 import { getKanaConfigPaths } from "./path";
 
 export {
@@ -60,48 +63,30 @@ export function addTrustedBashCommand(
     return loadKanaToolApprovals(env);
   }
 
-  const approvals = loadKanaToolApprovals(env);
+  const { approvalsPath } = getKanaConfigPaths(env);
+  return withLockedConfigFile(approvalsPath, () => {
+    const approvals = readApprovalsFile(readOptionalConfigFile(approvalsPath));
 
-  if (approvals.bash.exactCommands.includes(normalized)) {
-    return approvals;
-  }
+    if (approvals.bash.exactCommands.includes(normalized)) {
+      return approvals;
+    }
 
-  const nextApprovals: KanaToolApprovals = {
-    ...approvals,
-    bash: {
-      ...approvals.bash,
-      exactCommands: [...approvals.bash.exactCommands, normalized],
-    },
-  };
-
-  saveKanaToolApprovals(nextApprovals, env);
-
-  return nextApprovals;
+    const nextApprovals: KanaToolApprovals = {
+      ...approvals,
+      bash: {
+        ...approvals.bash,
+        exactCommands: [...approvals.bash.exactCommands, normalized],
+      },
+    };
+    writeConfigFileAtomically(approvalsPath, `${JSON.stringify(nextApprovals, null, 2)}\n`);
+    return nextApprovals;
+  });
 }
 
 export function loadKanaToolApprovals(env: NodeJS.ProcessEnv = process.env): KanaToolApprovals {
   const { approvalsPath } = getKanaConfigPaths(env);
 
-  if (!existsSync(approvalsPath)) {
-    return structuredClone(DEFAULT_KANA_TOOL_APPROVALS);
-  }
-
-  const parsed = JSON.parse(readFileSync(approvalsPath, "utf8")) as unknown;
-
-  return readKanaToolApprovals(parsed);
-}
-
-function saveKanaToolApprovals(
-  approvals: KanaToolApprovals,
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  const { home, approvalsPath } = getKanaConfigPaths(env);
-
-  mkdirSync(home, { recursive: true });
-  writeFileSync(approvalsPath, `${JSON.stringify(approvals, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  return readApprovalsFile(readOptionalConfigFile(approvalsPath));
 }
 
 function isTrustedToolCall(approvals: KanaToolApprovals, toolCall: ToolCallContent): boolean {
@@ -188,6 +173,12 @@ function readKanaToolApprovals(rawApprovals: unknown): KanaToolApprovals {
       ).map((command) => readBashExecutableName(command, "approvals.bash.readOnlyCommands")),
     },
   };
+}
+
+function readApprovalsFile(content: string | undefined): KanaToolApprovals {
+  return content === undefined
+    ? structuredClone(DEFAULT_KANA_TOOL_APPROVALS)
+    : readKanaToolApprovals(JSON.parse(content) as unknown);
 }
 
 function readBashExecutableName(value: string, name: string): string {

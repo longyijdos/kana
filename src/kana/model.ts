@@ -18,7 +18,11 @@ import type {
   KanaOpenAICodexProviderConfig,
   KanaProviderConfig,
 } from "./config";
-import { getKanaCustomProviderModel, loadKanaCustomProvider } from "./custom-provider";
+import {
+  getKanaCustomProviderModel,
+  type KanaCustomProviderSnapshot,
+  loadKanaCustomProvider,
+} from "./custom-provider";
 import { getKanaConfigPaths } from "./path";
 
 export type KanaSelectedProviderConfig =
@@ -30,6 +34,7 @@ export type CreateKanaModelOptions = {
   env?: NodeJS.ProcessEnv;
   logger?: Logger;
   openAICodexCredentialProvider?: OpenAICodexCredentialProvider;
+  customProviderSnapshot?: KanaCustomProviderSnapshot;
 };
 
 export type KanaAgentModelRuntime = {
@@ -153,7 +158,9 @@ export function createKanaModel(
     case "custom": {
       const paths = getKanaConfigPaths(env);
       try {
-        const provider = loadKanaCustomProvider(paths.customProviderPath);
+        const provider = options.customProviderSnapshot
+          ? requireCustomProvider(options.customProviderSnapshot)
+          : loadKanaCustomProvider(paths.customProviderPath);
         const model = getKanaCustomProviderModel(provider, modelConfig.name);
         const reasoningEffort = resolveKanaModelReasoning(
           model.metadata.reasoning,
@@ -189,6 +196,13 @@ export function createKanaModel(
       }
     }
   }
+}
+
+function requireCustomProvider(snapshot: KanaCustomProviderSnapshot) {
+  if (snapshot.error) {
+    throw snapshot.error;
+  }
+  return snapshot.provider;
 }
 
 export function resolveKanaModelReasoning(

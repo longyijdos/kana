@@ -38,7 +38,7 @@ export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions 
   env?: NodeJS.ProcessEnv;
   launchMode?: KanaLaunchMode;
   memoryEnabled?: boolean;
-  skills?: KanaSkill[];
+  skills?: readonly KanaSkill[];
 };
 
 export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
@@ -94,9 +94,7 @@ export function buildKanaPromptAssembly(
     env: options.env,
     launchMode: options.launchMode,
   });
-  const skillsPrompt = customizationsEnabled
-    ? formatKanaSkillsForPrompt(options.skills ?? [], { env: options.env })
-    : "";
+  const skillsPrompt = customizationsEnabled ? formatKanaSkillsForPrompt(options.skills ?? []) : "";
   const resolveBackgroundJobState = options.resolveBackgroundJobState;
   const resolveSubagentState = options.resolveSubagentState;
   const contextSections: PromptContextSection[] = [

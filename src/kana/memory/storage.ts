@@ -60,6 +60,10 @@ export type KanaMemoryPathOptions = {
   now?: Date;
 };
 
+export type KanaMemoryWriteOptions = Omit<KanaMemoryPathOptions, "now"> & {
+  maxChars?: number;
+};
+
 export type KanaDailyMemoryRangeOptions = Omit<KanaMemoryPathOptions, "now"> & {
   startDate?: string;
   endDate?: string;
@@ -128,7 +132,7 @@ export function loadKanaMemory(
 export function saveKanaMemory(
   scope: KanaMemoryScope,
   content: string,
-  options: Omit<KanaMemoryPathOptions, "now"> = {},
+  options: KanaMemoryWriteOptions = {},
 ): void {
   const { memoryPath } = getKanaMemoryPaths(scope, options);
   const normalized = assertKanaMemoryContentSize(content, options);
@@ -144,10 +148,10 @@ export function saveKanaMemory(
 
 export function assertKanaMemoryContentSize(
   content: string,
-  options: Omit<KanaMemoryPathOptions, "now"> = {},
+  options: KanaMemoryWriteOptions = {},
 ): string {
   const normalized = content.trim();
-  const maxChars = loadKanaConfig(options.env).memory.maxChars;
+  const maxChars = options.maxChars ?? loadKanaConfig(options.env).memory.maxChars;
   const characterCount = countCharacters(normalized);
 
   if (characterCount > maxChars) {

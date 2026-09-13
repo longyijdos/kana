@@ -11,6 +11,10 @@ import {
   saveKanaMcpActivationState,
 } from "@/kana";
 import { McpRequestCancelledError } from "@/mcp";
+import {
+  createKanaMcpConfigurationStore,
+  type KanaMcpConfigurationSource,
+} from "../../../src/kana/mcp/configuration-store";
 import { waitFor } from "../../helpers/async-control";
 
 const fixturePath = path.resolve("tests/fixtures/mcp-stdio-server.ts");
@@ -31,7 +35,8 @@ describe("Kana MCP runtime", () => {
     writeMcpConfig(env, ["alpha", "beta"]);
     saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
     const events: KanaMcpRuntimeProgressEvent[] = [];
-    const runtime = createRuntime(env, events);
+    const configuration = createKanaMcpConfigurationStore(env);
+    const runtime = createRuntime(env, events, configuration);
 
     const initial = await runtime.start();
 
@@ -42,7 +47,7 @@ describe("Kana MCP runtime", () => {
       remoteToolName: "echo",
     });
 
-    saveKanaMcpActivationState({ enabledServers: ["beta"] }, env);
+    configuration.saveActivationState({ enabledServers: ["beta"] });
     const reloaded = await runtime.reload();
 
     expect(reloaded.selectedServerIds).toEqual(["beta"]);
@@ -60,7 +65,7 @@ describe("Kana MCP runtime", () => {
     expect(runtime.getToolSource("beta_echo")).toBeUndefined();
   });
 
-  test("leaves no stale tools after a reload configuration error and can recover", async () => {
+  test("reloads from the startup configuration snapshot", async () => {
     const env = createTempEnv();
     writeMcpConfig(env, ["alpha"]);
     saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
@@ -69,14 +74,9 @@ describe("Kana MCP runtime", () => {
 
     writeFileSync(getKanaConfigPaths(env).mcpConfigPath, "{");
 
-    await expect(runtime.reload()).rejects.toThrow("Failed to parse MCP config:");
-    expect(runtime.tools).toEqual([]);
-    expect(runtime.diagnostics).toEqual([]);
-    expect(runtime.getToolSource("alpha_echo")).toBeUndefined();
+    const reloaded = await runtime.reload();
 
-    writeMcpConfig(env, ["alpha"]);
-    const recovered = await runtime.reload();
-    expect(recovered.tools.map((tool) => tool.name)).toEqual(["alpha_echo", "alpha_slow"]);
+    expect(reloaded.tools.map((tool) => tool.name)).toEqual(["alpha_echo", "alpha_slow"]);
   });
 
   test("serializes concurrent reloads and labels manager progress by runtime operation", async () => {
@@ -84,7 +84,8 @@ describe("Kana MCP runtime", () => {
     writeMcpConfig(env, ["alpha"]);
     saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
     const events: KanaMcpRuntimeProgressEvent[] = [];
-    const runtime = createRuntime(env, events);
+    const configuration = createKanaMcpConfigurationStore(env);
+    const runtime = createRuntime(env, events, configuration);
     await runtime.start();
     events.length = 0;
 
@@ -107,7 +108,8 @@ describe("Kana MCP runtime", () => {
     writeMcpConfig(env, ["alpha"], "hang-initialize");
     saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
     const events: KanaMcpRuntimeProgressEvent[] = [];
-    const runtime = createRuntime(env, events);
+    const configuration = createKanaMcpConfigurationStore(env);
+    const runtime = createRuntime(env, events, configuration);
     const controller = new AbortController();
 
     const starting = runtime.start({ signal: controller.signal });
@@ -120,9 +122,9 @@ describe("Kana MCP runtime", () => {
     expect(runtime.tools).toEqual([]);
     expect(runtime.diagnostics.every((diagnostic) => diagnostic.status === "closed")).toBe(true);
 
-    writeMcpConfig(env, ["alpha"]);
+    configuration.saveActivationState({ enabledServers: [] });
     const reloaded = await runtime.reload();
-    expect(reloaded.tools.map((tool) => tool.name)).toEqual(["alpha_echo", "alpha_slow"]);
+    expect(reloaded.tools).toEqual([]);
   });
 
   test("enforces lifecycle ordering and closes idempotently", async () => {
@@ -144,9 +146,11 @@ describe("Kana MCP runtime", () => {
 function createRuntime(
   env: NodeJS.ProcessEnv,
   events?: KanaMcpRuntimeProgressEvent[],
+  configurationSource?: KanaMcpConfigurationSource,
 ): KanaMcpRuntime {
   const runtime = createKanaMcpRuntime({
     env,
+    configurationSource,
     clientInfo: { name: "kana-runtime-test", version: "1.0.0" },
     ...(events === undefined ? {} : { onProgress: (event) => events.push(event) }),
   });

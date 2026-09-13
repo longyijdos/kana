@@ -94,7 +94,7 @@ HTTP `proxy` 是 Kana/Bun 装配职责。URL 通过 Bun fetch extension 传入�
 
 ## Runtime 与前端集成
 
-`KanaMcpRuntime` 持有可替换的一次性 manager，并串行执行 `start`、`reload` 与 `close`。Reload 先关闭旧 manager，再重新读取配置和启用状态，随后发布新的 detached tool/diagnostic snapshot。Start 与 reload 接受 operation abort signal。取消会清除该操作的 tool snapshot 并关闭其一次性 manager，但不会永久关闭 runtime，因此与失败一样，之后仍可通过 reload 恢复。一旦请求 runtime close，排队 lifecycle work 不能再创建 manager。
+`KanaMcpRuntime` 持有可替换的一次性 manager，并串行执行 `start`、`reload` 与 `close`。Reload 先关闭旧 manager，再使用 Host 的启动时 server 定义快照和当前内存启用快照重新连接，随后发布新的 detached tool/diagnostic snapshot。直接编辑任一 MCP 文件都需要重启才会生效，`/mcp` 则会先更新内存启用状态再请求 reload。Start 与 reload 接受 operation abort signal。取消会清除该操作的 tool snapshot 并关闭其一次性 manager，但不会永久关闭 runtime，因此与失败一样，之后仍可通过 reload 恢复。一旦请求 runtime close，排队 lifecycle work 不能再创建 manager。
 
 主对话最初没有外部工具。交互式 startup 会等所选 session 可见后再加载 MCP 并重建 Agent，因此 resume picker 没有 server side effect。Headless 在提交 run 前启动 MCP。Clean 模式不读取 MCP 配置，也不创建 runtime external tool；memory-consolidation Agent 永远不接收 MCP tool。
 

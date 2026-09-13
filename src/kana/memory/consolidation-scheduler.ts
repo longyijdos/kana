@@ -1,6 +1,7 @@
 import type { Message } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaConfig } from "../config";
+import type { KanaCustomProviderSnapshot } from "../custom-provider";
 import {
   formatIncrementalMemoryConsolidationInput,
   type MemoryConsolidationResult,
@@ -35,6 +36,7 @@ export type CreateMemoryConsolidationSchedulerOptions = {
     signal: AbortSignal,
   ) => Promise<MemoryConsolidationResult | undefined>;
   logger?: Logger;
+  customProviderSnapshot?: KanaCustomProviderSnapshot;
 };
 
 export function createMemoryConsolidationQueue(): MemoryConsolidationQueue {
@@ -83,6 +85,7 @@ export function createMemoryConsolidationScheduler(
         mode: "incremental",
         cwd: options.cwd,
         env: options.env,
+        customProviderSnapshot: options.customProviderSnapshot,
         input: formatIncrementalMemoryConsolidationInput(scope, entries, options),
         logger,
         signal,
