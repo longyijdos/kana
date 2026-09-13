@@ -16,6 +16,7 @@ const CUSTOM_MODEL_KEYS = [
   "max_output_tokens",
   "supports_parallel_tool_calls",
   "supports_image_input",
+  "assistant_replay_fields",
   "reasoning_efforts",
   "default_reasoning_effort",
 ] as const;
@@ -130,6 +131,7 @@ export function serializeKanaCustomProviderExample(): string {
     "max_output_tokens = 8192",
     "supports_parallel_tool_calls = true",
     "supports_image_input = false",
+    '# assistant_replay_fields = ["reasoning_content"]',
     'reasoning_efforts = ["none", "low", "medium", "high"]',
     'default_reasoning_effort = "medium"',
     "",
@@ -152,6 +154,7 @@ function parseCustomModel(rawModel: unknown, index: number): KanaCustomProviderM
   }
 
   const reasoning = readReasoning(model, path);
+  const assistantReplayFields = readAssistantReplayFields(model, path);
   return {
     name,
     metadata: {
@@ -168,9 +171,36 @@ function parseCustomModel(rawModel: unknown, index: number): KanaCustomProviderM
         false,
         `${path}.supports_image_input`,
       ),
+      ...(assistantReplayFields ? { assistantReplayFields } : {}),
       ...(reasoning ? { reasoning } : {}),
     },
   };
+}
+
+function readAssistantReplayFields(
+  model: Record<string, unknown>,
+  path: string,
+): string[] | undefined {
+  if (model.assistant_replay_fields === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(model.assistant_replay_fields) || model.assistant_replay_fields.length === 0) {
+    throw new Error(`${path}.assistant_replay_fields must be a non-empty array of strings.`);
+  }
+
+  const fields = model.assistant_replay_fields.map((field, index) =>
+    readRequiredString(field, `${path}.assistant_replay_fields[${index}]`),
+  );
+  if (new Set(fields).size !== fields.length) {
+    throw new Error(`${path}.assistant_replay_fields must not contain duplicates.`);
+  }
+  const managedField = fields.find((field) => ["role", "content", "tool_calls"].includes(field));
+  if (managedField !== undefined) {
+    throw new Error(
+      `${path}.assistant_replay_fields cannot include Kana-managed field "${managedField}".`,
+    );
+  }
+  return fields;
 }
 
 function readReasoning(

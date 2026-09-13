@@ -40,6 +40,9 @@ export type ModelMetadata = {
   // Omitted capabilities are treated as unsupported for compatibility with
   // in-process models that predate image inputs.
   supportsImageInput?: boolean;
+  // Extra streamed assistant fields that the owning Chat Completions adapter
+  // may preserve and replay for the same endpoint and model.
+  assistantReplayFields?: readonly string[];
   // User-configurable reasoning controls. Omission does not imply that the
   // model cannot reason internally; it means Kana must not expose controls.
   reasoning?: ModelReasoningMetadata;

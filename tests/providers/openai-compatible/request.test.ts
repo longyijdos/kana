@@ -100,6 +100,70 @@ describe("buildOpenAICompatibleRequest", () => {
     expect(request.max_tokens).toBe(4_096);
   });
 
+  test("replays configured assistant fields only to their source endpoint and model", () => {
+    const config = createConfig();
+    config.metadata.assistantReplayFields = ["reasoning", "reasoning_details"];
+    const assistant = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant" as const,
+      content: [
+        {
+          type: "tool_call" as const,
+          id: "call-1",
+          name: "read",
+          args: {},
+          providerState: {
+            provider: "compatible",
+            value: {
+              type: "chat_completions_assistant_replay",
+              model: "compatible-model",
+              baseUrl: "https://example.com/v1",
+              fields: {
+                reasoning: "plan steps",
+                reasoning_details: [{ index: 0, type: "reasoning.text", text: "plan steps" }],
+              },
+            },
+          },
+        },
+      ],
+    };
+
+    const request = buildOpenAICompatibleRequest({ messages: [assistant] }, config);
+    expect(request.messages).toEqual([
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call-1",
+            type: "function",
+            function: { name: "read", arguments: "{}" },
+          },
+        ],
+        reasoning: "plan steps",
+        reasoning_details: [{ index: 0, type: "reasoning.text", text: "plan steps" }],
+      },
+    ]);
+
+    const otherEndpoint = buildOpenAICompatibleRequest(
+      { messages: [assistant] },
+      { ...config, baseUrl: "https://other.example.com/v1" },
+    );
+    expect(otherEndpoint.messages).toEqual([
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call-1",
+            type: "function",
+            function: { name: "read", arguments: "{}" },
+          },
+        ],
+      },
+    ]);
+  });
+
   test("sends data URLs only when image input is supported", () => {
     const message = {
       ...messageIdentityForTest("user"),

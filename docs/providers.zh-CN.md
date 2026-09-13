@@ -70,7 +70,7 @@ Adapter 可以扩展识别信号，但不能把模糊 server failure 变成自�
 
 只有模型 metadata 开启图片输入时，用户图片才变成 data URL `image_url` part。Chat Completions 的 tool-role 消息不能携带图片，因此连续工具结果保持原位，随后用一条合成多模态 user observation 承载其图片。纯文本模型得到明确省略提示，不接收图片字节。
 
-跨 provider replay 只发送可见助手文本和本地 function call；不会为通用 Chat Completions endpoint 重新解释 provider 自有 reasoning 或 hosted-tool 状态。
+已配置的 assistant replay 字段会从 `choice.delta` 聚合、作为不透明 provider state 保存，并且仅向同一 provider、endpoint 和模型恢复。跨 provider replay 仍只发送可见助手文本和本地 function call；不会重新解释 provider 自有字段或 hosted-tool 状态。
 
 SSE reader 会保留跨网络 chunk 的不完整 frame，忽略只有 heartbeat 的 frame，增量装配有序 reasoning text、可见文本与工具调用，并把 `stop`、`length`、`tool_calls` 映射为 core stop reason。Kana 只请求一条助手消息，因此额外 choice 会被忽略。工具调用终止不完整或互相矛盾时按协议失败处理，不猜测输出。
 

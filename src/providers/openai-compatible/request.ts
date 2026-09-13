@@ -1,5 +1,6 @@
 import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
 import type { OpenAICompatibleModelConfig } from "./types";
+import { OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE } from "./types";
 
 export function buildOpenAICompatibleRequest(
   context: ModelContext,
@@ -7,10 +8,7 @@ export function buildOpenAICompatibleRequest(
 ): Record<string, unknown> {
   const request: Record<string, unknown> = {
     model: config.model,
-    messages: toMessages(
-      context,
-      context.imageInput === true && config.metadata.supportsImageInput === true,
-    ),
+    messages: toMessages(context, config),
     stream: true,
     stream_options: {
       include_usage: true,
@@ -37,10 +35,12 @@ export function buildOpenAICompatibleRequest(
 
 function toMessages(
   context: ModelContext,
-  supportsImageInput: boolean,
+  config: OpenAICompatibleModelConfig,
 ): Array<Record<string, unknown>> {
   const messages: Array<Record<string, unknown>> = [];
   const pendingToolImageMessages: Array<Extract<Message, { role: "tool" }>> = [];
+  const supportsImageInput =
+    context.imageInput === true && config.metadata.supportsImageInput === true;
   if (context.system) {
     // The system role remains the most widely implemented instruction shape
     // across OpenAI-compatible Chat Completions endpoints.
@@ -50,7 +50,7 @@ function toMessages(
     if (message.role !== "tool") {
       appendToolImageObservation(messages, pendingToolImageMessages);
     }
-    messages.push(toMessage(message, supportsImageInput));
+    messages.push(toMessage(message, supportsImageInput, config));
     if (message.role === "tool" && supportsImageInput && message.images?.length) {
       pendingToolImageMessages.push(message);
     }
@@ -59,7 +59,11 @@ function toMessages(
   return messages;
 }
 
-function toMessage(message: Message, supportsImageInput: boolean): Record<string, unknown> {
+function toMessage(
+  message: Message,
+  supportsImageInput: boolean,
+  config: OpenAICompatibleModelConfig,
+): Record<string, unknown> {
   switch (message.role) {
     case "user":
       return {
@@ -73,7 +77,7 @@ function toMessage(message: Message, supportsImageInput: boolean): Record<string
         tool_call_id: message.toolCallId,
       };
     case "assistant":
-      return toAssistantMessage(message.content);
+      return toAssistantMessage(message.content, config);
   }
 }
 
@@ -142,21 +146,67 @@ function toUserContent(
   ];
 }
 
-function toAssistantMessage(content: AssistantContent[]): Record<string, unknown> {
+function toAssistantMessage(
+  content: AssistantContent[],
+  config: OpenAICompatibleModelConfig,
+): Record<string, unknown> {
   const text = content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("");
   const toolCalls = content.filter((block) => block.type === "tool_call").map(toToolCall);
+  const replayFields = readAssistantReplayFields(content, config);
 
-  // Reasoning and hosted-tool state belong to the provider that produced them.
-  // A generic Chat Completions endpoint receives only replayable visible text
-  // and local function calls when a conversation changes providers.
   return {
     role: "assistant",
     content: text || null,
     ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+    ...replayFields,
   };
+}
+
+function readAssistantReplayFields(
+  content: AssistantContent[],
+  config: OpenAICompatibleModelConfig,
+): Record<string, unknown> {
+  const configuredFields = config.metadata.assistantReplayFields;
+  if (!configuredFields?.length) {
+    return {};
+  }
+
+  for (const block of content) {
+    const state = block.providerState;
+    if (state?.provider !== config.provider || !isRecord(state.value)) {
+      continue;
+    }
+    const value = state.value;
+    if (
+      value.type !== OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE ||
+      value.model !== config.model ||
+      value.baseUrl !== config.baseUrl ||
+      !isRecord(value.fields)
+    ) {
+      continue;
+    }
+    const storedFields = value.fields;
+
+    return Object.fromEntries(
+      configuredFields.flatMap((field) =>
+        isManagedAssistantField(field) || !Object.hasOwn(storedFields, field)
+          ? []
+          : [[field, structuredClone(storedFields[field])]],
+      ),
+    );
+  }
+  return {};
+}
+
+function isManagedAssistantField(field: string): boolean {
+  return field === "role" || field === "content" || field === "tool_calls";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toToolCall(content: ToolCallContent): Record<string, unknown> {

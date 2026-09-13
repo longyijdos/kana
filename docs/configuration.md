@@ -245,7 +245,7 @@ Before first use of OpenAI Codex, run `kana auth login openai-codex`. Browser au
 | `*.model.max_output_tokens` | Optional positive integer | Metadata hard output limit | Agent-level output ceiling, clamped to the selected model's hard limit and lowered per turn when prompt space is tighter. |
 | `*.model.context_limit` | Optional positive integer | Metadata context window | Agent-level context cap, clamped to the selected model's context window. |
 
-For Custom, `config.toml` uses the same Agent model shape as built-ins: set `provider = "custom"`, `name`, and optional preferences in either Agent model table. Endpoint, authentication, hard limits, modalities, parallel-tool support, reasoning efforts, and the default reasoning effort remain model metadata in `providers/custom.toml`. See [Custom OpenAI-compatible provider](custom-provider.md).
+For Custom, `config.toml` uses the same Agent model shape as built-ins: set `provider = "custom"`, `name`, and optional preferences in either Agent model table. Endpoint, authentication, hard limits, modalities, parallel-tool support, assistant replay fields, reasoning efforts, and the default reasoning effort remain model metadata in `providers/custom.toml`. See [Custom OpenAI-compatible provider](custom-provider.md).
 
 ### Other tables
 

@@ -245,7 +245,7 @@ export DEEPSEEK_API_KEY='sk-...'
 | `*.model.max_output_tokens` | 可选正整数 | Metadata 输出硬上限 | Agent 级输出上限；先按模型硬上限钳制，prompt 空间更紧时再逐轮降低。 |
 | `*.model.context_limit` | 可选正整数 | Metadata context window | Agent 级上下文上限，按所选模型 context window 钳制。 |
 
-Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结构：在任一 Agent 模型表中设置 `provider = "custom"`、`name` 和可选偏好。Endpoint、鉴权、硬上限、输入模态、并行工具能力、推理档位和默认推理强度仍作为模型 metadata 保存在 `providers/custom.toml`。详见[自定义 OpenAI-compatible 提供商](custom-provider.zh-CN.md)。
+Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结构：在任一 Agent 模型表中设置 `provider = "custom"`、`name` 和可选偏好。Endpoint、鉴权、硬上限、输入模态、并行工具能力、assistant replay 字段、推理档位和默认推理强度仍作为模型 metadata 保存在 `providers/custom.toml`。详见[自定义 OpenAI-compatible 提供商](custom-provider.zh-CN.md)。
 
 ### 其他配置表
 

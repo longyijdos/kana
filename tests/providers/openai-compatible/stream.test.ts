@@ -3,6 +3,7 @@ import type { AssistantMessage } from "../../../src/core";
 import { AssistantEventStream } from "../../../src/core";
 import {
   applyOpenAICompatibleChunk,
+  finishOpenAICompatibleAssistantReplay,
   finishOpenAICompatibleContent,
   finishOpenAICompatibleToolCalls,
   getOpenAICompatibleDoneReason,
@@ -135,6 +136,74 @@ describe("OpenAI-compatible stream parsing", () => {
     expect(message.content).toEqual([
       { type: "thinking", text: "plan steps" },
       { type: "text", text: "answer" },
+    ]);
+  });
+
+  test("preserves configured assistant fields with streamed delta semantics", () => {
+    const stream = new AssistantEventStream();
+    const message = createMessage();
+    const state: OpenAICompatibleStreamState = {
+      endedContentIndexes: new Set<number>(),
+      assistantReplay: {
+        provider: "custom",
+        model: "reasoning-model",
+        baseUrl: "https://example.com/v1",
+        fields: new Set(["reasoning", "reasoning_details"]),
+        values: new Map(),
+      },
+    };
+
+    applyOpenAICompatibleChunk(stream, message, state, {
+      choices: [
+        {
+          delta: {
+            reasoning: "plan ",
+            reasoning_details: [
+              { index: 0, type: "reasoning.text", format: "unknown", text: "plan " },
+            ],
+            tool_calls: [{ index: 0, id: "call_1", function: { name: "read", arguments: "{}" } }],
+          },
+        },
+      ],
+    });
+    applyOpenAICompatibleChunk(stream, message, state, {
+      choices: [
+        {
+          delta: {
+            reasoning: "steps",
+            reasoning_details: [
+              { index: 0, type: "reasoning.text", format: "unknown", text: "steps" },
+            ],
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+    });
+    finishOpenAICompatibleToolCalls(stream, message, state);
+    finishOpenAICompatibleAssistantReplay(message, state);
+
+    expect(message.content).toEqual([
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "read",
+        rawArgs: "{}",
+        args: {},
+        providerState: {
+          provider: "custom",
+          value: {
+            type: "chat_completions_assistant_replay",
+            model: "reasoning-model",
+            baseUrl: "https://example.com/v1",
+            fields: {
+              reasoning: "plan steps",
+              reasoning_details: [
+                { index: 0, type: "reasoning.text", format: "unknown", text: "plan steps" },
+              ],
+            },
+          },
+        },
+      },
     ]);
   });
 

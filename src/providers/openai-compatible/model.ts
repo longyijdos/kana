@@ -25,6 +25,7 @@ import {
 import { buildOpenAICompatibleRequest } from "./request";
 import {
   applyOpenAICompatibleChunk,
+  finishOpenAICompatibleAssistantReplay,
   finishOpenAICompatibleContent,
   finishOpenAICompatibleToolCalls,
   getOpenAICompatibleDoneReason,
@@ -98,6 +99,17 @@ export class OpenAICompatibleModel extends BaseModel {
         phase = "response_stream";
         const state: OpenAICompatibleStreamState = {
           endedContentIndexes: new Set<number>(),
+          ...(this.config.metadata.assistantReplayFields?.length
+            ? {
+                assistantReplay: {
+                  provider: this.config.provider,
+                  model: this.config.model,
+                  baseUrl: this.config.baseUrl,
+                  fields: new Set(this.config.metadata.assistantReplayFields),
+                  values: new Map<string, unknown>(),
+                },
+              }
+            : {}),
         };
         await readOpenAICompatibleStream(
           response,
@@ -119,6 +131,7 @@ export class OpenAICompatibleModel extends BaseModel {
             `OpenAI-compatible provider returned tool calls with finish reason ${finishReason}.`,
           );
         }
+        finishOpenAICompatibleAssistantReplay(message, state);
         const stopReason = getOpenAICompatibleDoneReason(finishReason);
         stream.end({
           type: "done",
