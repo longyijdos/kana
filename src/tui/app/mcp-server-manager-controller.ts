@@ -170,14 +170,12 @@ export class McpServerManagerController {
         this.reloadRequired ||= server.enabled;
         block.setText(`MCP OAuth authorized: ${sanitizeLabel(serverId)}.`);
       }
-      this.options.updateStatus("idle", { activeTool: undefined });
     } catch (error) {
       if (this.authOperation !== operation) {
         return;
       }
       if (controller.signal.aborted) {
         block.setText(`MCP OAuth authorization cancelled: ${sanitizeLabel(serverId)}.`);
-        this.options.updateStatus("idle", { activeTool: undefined });
       } else {
         this.options.transcript.removeChild(block);
         this.options.showError(error);
@@ -186,6 +184,7 @@ export class McpServerManagerController {
       if (this.authOperation === operation) {
         this.authOperation = undefined;
         menu.setOperation(undefined);
+        this.options.updateStatus("idle", { activeTool: undefined });
         this.returnToManager();
       }
     }

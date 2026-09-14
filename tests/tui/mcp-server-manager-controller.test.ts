@@ -111,6 +111,47 @@ describe("MCP server manager controller", () => {
     expect(closed).toEqual([true]);
     expect(tui.getFocus()).toBe(editor);
   });
+
+  test("restores idle when MCP OAuth authorization fails", async () => {
+    const editor = new Editor({ model: "test-model" });
+    const transcript = new Transcript();
+    const layout = new AppLayout({ main: transcript, bottom: editor });
+    const tui = createTuiStub();
+    const statusPhases: string[] = [];
+    const controller = new McpServerManagerController({
+      editor,
+      bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
+      transcript,
+      tui,
+      loadServers: () => [
+        {
+          id: "github",
+          type: "http",
+          url: "https://example.com/mcp",
+          enabled: true,
+          oauth: { type: "oauth2", state: "unauthorized", refreshable: false },
+        },
+      ],
+      saveEnabledServerIds: () => {},
+      authorizeServer: async () => {
+        throw new Error("authorization failed");
+      },
+      showError: (error) => {
+        transcript.addChild(new TextBlock(error instanceof Error ? error.message : String(error)));
+      },
+      onClose: () => {},
+      updateStatus: (phase) => statusPhases.push(phase),
+    });
+
+    controller.open();
+    tui.getFocus()?.handleInput?.("A");
+    tui.getFocus()?.handleInput?.("\r");
+
+    await waitFor(() => statusPhases.length >= 2);
+
+    expect(statusPhases).toEqual(["starting", "idle"]);
+    expect(stripAnsi(transcript.render(100).join("\n"))).toContain("authorization failed");
+  });
 });
 
 function createHarness(save?: (serverIds: string[]) => void) {
