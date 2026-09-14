@@ -132,9 +132,9 @@ export class SessionOverlayController {
         },
       ),
     );
-    this.options.updateStatus(deleted ? "idle" : "error", {
-      activeTool: undefined,
-    });
+    if (deleted) {
+      this.options.updateStatus("idle", { activeTool: undefined });
+    }
     this.close();
   }
 

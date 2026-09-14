@@ -311,7 +311,7 @@ describe("TUI model selection", () => {
 
     expect(createCount).toBe(2);
     expect(firstAgent.abortCount).toBe(0);
-    expect(renderLayout(internal)).toContain("deepseek-flash · high | Error");
+    expect(renderLayout(internal)).toContain("deepseek-flash · high | Idle");
     expect(renderTranscript(internal)).toContain("provider unavailable");
     expect(logEvents).toEqual(["tui.model_switch_started", "tui.model_switch_failed"]);
   });

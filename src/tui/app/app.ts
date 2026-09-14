@@ -176,7 +176,6 @@ export class KanaTuiApp {
     });
     this.errors = new InteractionErrorReporter({
       transcript: this.transcript,
-      tui: this.tui,
       status: this.status,
     });
     this.agentEvents = new AgentEventRenderer({
@@ -206,7 +205,7 @@ export class KanaTuiApp {
       loadSkills: this.options.skills.load,
       saveEnabledGlobalSkills: this.options.skills.saveEnabledGlobalNames,
       onSkillsChanged: () => this.refreshAgentSystemPrompt(),
-      showError: (error) => this.errors.showOverlayError(error),
+      showError: (error) => this.showInteractionError(error),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
     if (!cleanMode && this.options.externalTools?.mcp) {
@@ -220,7 +219,7 @@ export class KanaTuiApp {
         saveEnabledServerIds: mcp.saveEnabledServerIds,
         authorizeServer: mcp.authorizeServer,
         signOutServer: mcp.signOutServer,
-        showError: (error) => this.errors.showOverlayError(error),
+        showError: (error) => this.showInteractionError(error),
         onClose: (changed) => {
           if (changed) {
             void this.externalTools.reload();
@@ -318,7 +317,7 @@ export class KanaTuiApp {
       tui: this.tui,
       bottomArea: this.bottomArea,
       status: this.status,
-      showError: (error) => this.showError(error),
+      showError: (error) => this.showInteractionError(error),
       getLogger: this.getLogger,
     });
     this.slashCommandOptions = new SlashCommandOptionsController({
@@ -421,7 +420,7 @@ export class KanaTuiApp {
       clearMcpOAuthBlocks: () => this.mcpOAuthStatus.clear(),
       updateContextUsage: () => this.updateContextUsage(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
-      showError: (error) => this.showError(error),
+      showError: (error) => this.showInteractionError(error),
       stop: () => {
         void this.stop();
       },
@@ -770,7 +769,7 @@ export class KanaTuiApp {
 
   private openSkillManager(): void {
     if (this.options.launch.mode === "clean") {
-      this.showError(new Error("Skills are unavailable in clean mode."));
+      this.showInteractionError(new Error("Skills are unavailable in clean mode."));
       return;
     }
     if (this.status.running) {
@@ -788,14 +787,14 @@ export class KanaTuiApp {
 
   private openMcpServerManager(): void {
     if (this.options.launch.mode === "clean") {
-      this.showError(new Error("MCP management is unavailable in clean mode."));
+      this.showInteractionError(new Error("MCP management is unavailable in clean mode."));
       return;
     }
     if (this.status.running) {
       return;
     }
     if (!this.mcpServerManager) {
-      this.showError(new Error("MCP management is unavailable."));
+      this.showInteractionError(new Error("MCP management is unavailable."));
       return;
     }
 
@@ -834,7 +833,7 @@ export class KanaTuiApp {
 
   private openSubagentManager(): void {
     if (this.options.launch.mode === "clean") {
-      this.showError(new Error("Subagents are unavailable in clean mode."));
+      this.showInteractionError(new Error("Subagents are unavailable in clean mode."));
       return;
     }
     this.sessions.close();
@@ -872,7 +871,7 @@ export class KanaTuiApp {
   private openMemory(): void {
     if (this.options.launch.mode === "clean") {
       this.editor.clear();
-      this.showError(new Error("Memory is unavailable in clean mode."));
+      this.showInteractionError(new Error("Memory is unavailable in clean mode."));
       return;
     }
 
@@ -880,11 +879,11 @@ export class KanaTuiApp {
   }
 
   private showSavedSessionsUnavailable(): void {
-    this.showError(new Error("Saved sessions are unavailable in clean mode."));
+    this.showInteractionError(new Error("Saved sessions are unavailable in clean mode."));
   }
 
   private showForkingUnavailable(): void {
-    this.showError(new Error("Forking sessions is unavailable in clean mode."));
+    this.showInteractionError(new Error("Forking sessions is unavailable in clean mode."));
   }
 
   private handleConversationEvent(event: ConversationRuntimeEvent): void {
@@ -954,7 +953,7 @@ export class KanaTuiApp {
         break;
 
       case "run_error":
-        this.showError(event.error);
+        this.showRunError(event.error);
         this.finishConversationRun();
         break;
 
@@ -1017,7 +1016,7 @@ export class KanaTuiApp {
     this.tui.requestRender();
   }
 
-  private showError(error: unknown): void {
+  private showRunError(error: unknown): void {
     this.errors.showRunError(error);
   }
 
@@ -1110,7 +1109,7 @@ export class KanaTuiApp {
       await this.conversation.startGoal(objective);
     } catch (error) {
       if (this.conversation.goal?.id === previousGoalId) {
-        this.showError(error);
+        this.showInteractionError(error);
       }
     }
   }
