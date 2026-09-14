@@ -62,4 +62,4 @@ Parent runtime context 只投影活动和未观察终态 child 的身份、profi
 
 主 Agent 运行期间也可使用 `/agents`。面板显示启动时 profile 快照，以及当前 hosted session instance 中活动和仍被保留的终态 record；方向键选择，`Enter` 打开当前进程内保留的 transcript，`K` 取消活动 child 但不确认其 completion，`R` 刷新内存视图，`Esc` 关闭。启动时的无效 profile 诊断也会显示在面板中。退出 Kana 会丢弃这些 runtime state；以后恢复 parent session 时不会从 child journal 重新填充。
 
-Child run 使用独立的 `subagent` accounting kind，并与 main、memory run 分开显示。其 usage 只向 aggregate 和 per-model 总数贡献一次，不复制进 parent run usage。Clean mode 不加载任何 profile，因此 subagent 工具不会注册；child 状态仅保存在内存中，也不写 child journal 或 accounting record。
+Child run 使用独立的 `subagent` accounting kind，并与 main、memory run 分开显示。其 usage 只向 aggregate 和 per-model 总数贡献一次，不复制进 parent run usage。Clean mode 不加载任何 profile：subagent 工具不会注册，`/agents` 也会报告 subagent 不可用。由于不会有 child 启动，clean mode 不写 child journal 或 accounting record。

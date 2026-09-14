@@ -92,7 +92,7 @@ describe("session-scoped agents", () => {
     });
     const internal = app as unknown as {
       handleCommand(command: {
-        name: "skills" | "mcp" | "memory" | "fork" | "resume" | "delete";
+        name: "skills" | "mcp" | "memory" | "agents" | "fork" | "resume" | "delete";
         arguments: string;
         raw: string;
       }): void;
@@ -104,6 +104,7 @@ describe("session-scoped agents", () => {
     internal.handleCommand({ name: "skills", arguments: "", raw: "/skills" });
     internal.handleCommand({ name: "mcp", arguments: "", raw: "/mcp" });
     internal.handleCommand({ name: "memory", arguments: "", raw: "/memory" });
+    internal.handleCommand({ name: "agents", arguments: "", raw: "/agents" });
     internal.handleCommand({ name: "fork", arguments: "Try another path.", raw: "/fork" });
     internal.handleCommand({ name: "resume", arguments: "saved-session", raw: "/resume" });
     internal.handleCommand({ name: "delete", arguments: "", raw: "/delete" });
@@ -117,6 +118,7 @@ describe("session-scoped agents", () => {
     expect(transcript).toContain("Skills are unavailable in clean mode.");
     expect(transcript).toContain("MCP management is unavailable in clean mode.");
     expect(transcript).toContain("Memory is unavailable in clean mode.");
+    expect(transcript).toContain("Subagents are unavailable in clean mode.");
     expect(transcript).toContain("Forking sessions is unavailable in clean mode.");
     expect(transcript.match(/Saved sessions are unavailable in clean mode\./g)).toHaveLength(2);
     expect(stripAnsi(internal.layout.render(120).join("\n"))).toContain("clean");

@@ -833,6 +833,10 @@ export class KanaTuiApp {
   }
 
   private openSubagentManager(): void {
+    if (this.options.launch.mode === "clean") {
+      this.showError(new Error("Subagents are unavailable in clean mode."));
+      return;
+    }
     this.sessions.close();
     this.contentViewer.close();
     this.skillManager.close();
