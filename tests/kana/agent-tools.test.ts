@@ -119,6 +119,38 @@ describe("Kana Agent tools", () => {
     );
   });
 
+  test("omits subagent tools while no profile is configured", () => {
+    const config = testConfig();
+    const subagentManager = new KanaSubagentManager();
+    const subagents = subagentManager.bind(
+      subagentManager.createOwner({
+        sessionId: "session-1",
+        cwd: process.cwd(),
+        persistent: false,
+      }),
+      { maxLive: 4 },
+    );
+    const agent = withKanaAgentEnvironment(() =>
+      createKanaAgent(
+        {
+          ...config.agent,
+          tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent"],
+        },
+        {
+          providers: config.provider,
+          memoryEnabled: config.memory.enabled,
+        },
+        {
+          subagents,
+          subagentProfiles: [],
+          runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
+        },
+      ),
+    );
+
+    expect(agent.state.tools.map((tool) => tool.name)).toEqual(["read"]);
+  });
+
   test("filters configurable built-in tools without affecting external tools or update_goal", async () => {
     const goal = createGoal("active");
     const config = testConfig();
@@ -277,7 +309,6 @@ function subagentProfile(): KanaSubagentProfile {
     description: "Explore the repository",
     instructions: "Inspect only.",
     tools: ["read"],
-    source: "builtin",
     digest: "profile-digest",
   };
 }

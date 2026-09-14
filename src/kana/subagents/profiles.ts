@@ -20,7 +20,6 @@ export type KanaSubagentProfile = {
     name: string;
     reasoningEffort?: string;
   };
-  source: "builtin" | "user";
   sourcePath?: string;
   digest: string;
 };
@@ -43,46 +42,14 @@ type ParsedFrontmatter = {
   reasoningEffort?: string;
 };
 
-const BUILT_IN_PROFILES: ReadonlyArray<Omit<KanaSubagentProfile, "digest">> = [
-  {
-    name: "explorer",
-    description: "Investigate a codebase and return evidence without modifying files.",
-    instructions:
-      "You are a repository explorer. Investigate the delegated task thoroughly, cite concrete file paths and symbols, and return a concise evidence-backed result. Do not modify files.",
-    tools: ["list", "glob", "grep", "read", "view_image"],
-    source: "builtin",
-  },
-  {
-    name: "worker",
-    description: "Implement a bounded change using workspace and configured external tools.",
-    instructions:
-      "You are an implementation worker. Complete only the delegated task, follow repository instructions, make cohesive changes, and report the result and relevant verification.",
-    tools: ["list", "glob", "grep", "read", "view_image", "write", "edit", "bash", "mcp:*"],
-    source: "builtin",
-  },
-  {
-    name: "reviewer",
-    description: "Review existing changes for correctness, regressions, and missing coverage.",
-    instructions:
-      "You are a code reviewer. Inspect the delegated change, prioritize concrete correctness and regression risks, and report findings with file references. Do not modify files.",
-    tools: ["list", "glob", "grep", "read", "view_image", "bash"],
-    source: "builtin",
-  },
-];
-
 export function loadKanaSubagentProfiles(
-  options: { env?: NodeJS.ProcessEnv; builtinsOnly?: boolean } = {},
+  options: { env?: NodeJS.ProcessEnv } = {},
 ): LoadKanaSubagentProfilesResult {
-  const profiles = new Map(
-    BUILT_IN_PROFILES.map((profile) => [profile.name, withDigest(profile)] as const),
-  );
+  const profiles = new Map<string, KanaSubagentProfile>();
   const diagnostics: KanaSubagentProfileDiagnostic[] = [];
-  if (options.builtinsOnly) {
-    return { profiles: sortedProfiles(profiles), diagnostics };
-  }
   const directory = getKanaConfigPaths(options.env).agentsDirectory;
   if (!existsSync(directory)) {
-    return { profiles: sortedProfiles(profiles), diagnostics };
+    return { profiles: [], diagnostics };
   }
 
   let entries: string[];
@@ -95,7 +62,7 @@ export function loadKanaSubagentProfiles(
       .sort();
   } catch (error) {
     return {
-      profiles: sortedProfiles(profiles),
+      profiles: [],
       diagnostics: [{ code: "read_failed", message: formatError(error), path: directory }],
     };
   }
@@ -103,9 +70,6 @@ export function loadKanaSubagentProfiles(
   for (const entry of entries) {
     const name = path.basename(entry, ".md");
     const filePath = path.join(directory, entry);
-    // A user file deliberately shadows a built-in of the same name. Invalid
-    // overrides stay unavailable instead of silently changing permissions.
-    profiles.delete(name);
     try {
       const content = readFileSync(filePath, "utf8");
       if (Buffer.byteLength(content) > MAX_PROFILE_BYTES) {
@@ -114,6 +78,7 @@ export function loadKanaSubagentProfiles(
       const profile = parseProfile(name, content, filePath);
       profiles.set(profile.name, profile);
     } catch (error) {
+      // A card never loads partially: an invalid file stays unavailable.
       diagnostics.push({ code: "invalid_profile", message: formatError(error), path: filePath });
     }
   }
@@ -162,7 +127,6 @@ function parseProfile(name: string, content: string, filePath: string): KanaSuba
     instructions,
     tools: [...new Set(tools)],
     ...(model === undefined ? {} : { model }),
-    source: "user",
     sourcePath: filePath,
   });
 }

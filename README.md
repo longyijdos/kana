@@ -114,7 +114,7 @@ See [TUI interaction](docs/tui.md) for shortcuts, queued input, scheduled messag
 
 ### Delegation and long-running work
 
-Kana can start session-owned background commands and bounded subagents without blocking the main Agent. Built-in `explorer`, `worker`, and `reviewer` profiles cover common delegation patterns; Markdown role cards under `~/.kana/agents` can further restrict tools or select another configured model. Child runs keep independent transcripts and accounting, while `/agents` lets you inspect or cancel them during the parent run.
+Kana can start session-owned background commands and bounded subagents without blocking the main Agent. Markdown role cards under `~/.kana/agents` define each delegation role, restrict its tools, and can select another configured model; `kana install` writes a `profile.md.example` to copy from. Child runs keep independent transcripts and accounting, while `/agents` lets you inspect or cancel them during the parent run.
 
 Session todos persist across resume and fork. `/goal` drives a bounded sequence of Agent runs toward one objective, while `/jobs` keeps long-running shell work attached to the current session. See [Subagents](docs/subagents.md), [Tools and execution](docs/tools.md), and [Conversation runtime](docs/conversation-runtime.md).
 

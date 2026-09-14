@@ -153,6 +153,7 @@ export function createKanaAgent(
       root: cwd,
     }),
   ]);
+  const subagentProfiles = options.subagentProfiles ?? [];
   const toolSections: PromptToolSection[] = [{ name: "workspace", tools: workspaceTools }];
   if (backgroundJobs && !subagentProfile) {
     toolSections.push({
@@ -165,7 +166,7 @@ export function createKanaAgent(
       ]),
     });
   }
-  if (!subagentProfile && subagents && options.subagentProfiles && options.runSubagent) {
+  if (!subagentProfile && subagents && subagentProfiles.length > 0 && options.runSubagent) {
     const resolveSubagentImageInput = (profile: KanaSubagentProfile): boolean => {
       if (!profile.model) return runtime.imageInput;
       const cached = subagentImageInput.get(profile.digest);
@@ -214,7 +215,7 @@ export function createKanaAgent(
       return selectEnabledTools([
         createSpawnSubagentTool({
           subagents,
-          profiles: options.subagentProfiles ?? [],
+          profiles: subagentProfiles,
           availableTools: (profile) => availableTools(profile, additionalTools),
           run: options.runSubagent as (
             context: KanaSubagentRunContext,

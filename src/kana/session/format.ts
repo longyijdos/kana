@@ -345,7 +345,6 @@ function isSubagentProfile(value: unknown): value is KanaSubagentProfile {
     typeof profile.instructions === "string" &&
     Array.isArray(profile.tools) &&
     profile.tools.every((tool) => typeof tool === "string") &&
-    (profile.source === "builtin" || profile.source === "user") &&
     (profile.sourcePath === undefined || typeof profile.sourcePath === "string") &&
     typeof profile.digest === "string" &&
     (model === undefined ||

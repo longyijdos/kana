@@ -173,7 +173,9 @@ export class SubagentManager implements Component {
 
 function renderProfileSummary(profiles: readonly KanaSubagentProfile[], width: number): string {
   const names = profiles.map((profile) => singleLine(profile.name));
-  if (names.length === 0) return truncateToWidth("Profiles · none", width, "");
+  if (names.length === 0) {
+    return truncateToWidth("Profiles · none · add <KANA_HOME>/agents/<name>.md", width, "");
+  }
 
   const complete = `Profiles · ${names.join(" · ")}`;
   if (visibleWidth(complete) <= width) return complete;

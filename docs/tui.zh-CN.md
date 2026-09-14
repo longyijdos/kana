@@ -106,7 +106,7 @@ Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-inp
 
 `/usage` 会让 token 标签、数值和比例条保持稳定列位。Runs 区域把 main、subagent 和自动/手动 memory usage 分开；按模型明细会显示 token 总数，并根据当前可见数据动态计算数字列宽，因此更大的次数、token 总数或更长的模型名不会推动相邻数值错位。各类 outcome 仍保持紧凑的单行摘要，底部视图较窄时可能被截断。
 
-Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。Skill 发现被完全绕过，因此以 `@` 开头不会出现匹配建议或调用展开。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/jobs`、`/agents`、`/goal`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用。`/agents` 只暴露内置 profile 和进程内 child 状态；`/schedule` 消息、Job 与 `/goal` 控制状态也只存在于当前进程。`/todo` 读取进程内列表，`/model` 不写回配置文件。
+Clean 模式中 `/skills`、`/mcp`、`/memory`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。Skill 发现被完全绕过，因此以 `@` 开头不会出现匹配建议或调用展开。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/jobs`、`/agents`、`/goal`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用。`/agents` 不提供任何 profile，只显示进程内 child 状态；`/schedule` 消息、Job 与 `/goal` 控制状态也只存在于当前进程。`/todo` 读取进程内列表，`/model` 不写回配置文件。
 
 ## 控制器与焦点
 

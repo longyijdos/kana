@@ -160,7 +160,6 @@ function profile(): KanaSubagentProfile {
     description: "Explore",
     instructions: "Inspect only.",
     tools: ["read"],
-    source: "builtin",
     digest: "profile-digest",
   };
 }

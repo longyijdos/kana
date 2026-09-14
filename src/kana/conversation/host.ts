@@ -157,10 +157,10 @@ export class KanaConversationHost<TConfiguration = never> {
       this.mcpConfigurationStore = createKanaMcpConfigurationStore(this.env);
       this.skillStore = createKanaSkillStore({ cwd: process.cwd(), env: this.env });
     }
-    this.subagentProfileSnapshot = loadKanaSubagentProfiles({
-      env: this.env,
-      builtinsOnly: this.launchMode === "clean",
-    });
+    this.subagentProfileSnapshot =
+      this.launchMode === "clean"
+        ? { profiles: [], diagnostics: [] }
+        : loadKanaSubagentProfiles({ env: this.env });
     this.instructionSections = loadKanaInstructionSections({
       cwd: process.cwd(),
       env: this.env,

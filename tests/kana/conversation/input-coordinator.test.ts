@@ -485,7 +485,6 @@ function subagentProfile() {
     description: "Explore",
     instructions: "Inspect only.",
     tools: ["read"],
-    source: "builtin" as const,
     digest: "profile-digest",
   };
 }

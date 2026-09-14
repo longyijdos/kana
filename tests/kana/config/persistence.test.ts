@@ -103,11 +103,7 @@ describe("Kana config persistence", () => {
     expect(installedPromptTemplateExample).toContain(":squash-cleanup");
     expect(installedPromptTemplateExample).toContain("{{base=main}}");
     expect(installedSubagentProfileExample).toContain("# model: openai-codex/gpt-5.6-terra");
-    expect(loadKanaSubagentProfiles({ env }).profiles.map((profile) => profile.name)).toEqual([
-      "explorer",
-      "reviewer",
-      "worker",
-    ]);
+    expect(loadKanaSubagentProfiles({ env }).profiles).toEqual([]);
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
     expect(statSync(firstInstall.mcpEnabledPath).mode & 0o777).toBe(0o600);

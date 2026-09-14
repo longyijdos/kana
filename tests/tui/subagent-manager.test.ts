@@ -52,7 +52,6 @@ describe("subagent manager", () => {
     expect(wide.filter((line) => line.startsWith("Profiles"))).toEqual([
       "Profiles · explorer · reviewer · worker · auditor",
     ]);
-    expect(wide.join("\n")).not.toContain("builtin");
     expect(wide.join("\n")).not.toContain("Explore the repository");
 
     const narrow = manager.render(36).map(stripAnsi);
@@ -61,6 +60,14 @@ describe("subagent manager", () => {
     expect(summary).toContain("+3 more");
     expect(visibleWidth(summary ?? "")).toBeLessThanOrEqual(36);
     expect(narrow.filter((line) => line.startsWith("Profiles"))).toHaveLength(1);
+  });
+
+  test("points at the role-card directory when no profile is configured", () => {
+    const manager = new SubagentManager(() => {});
+    manager.replace([], []);
+
+    const rendered = stripAnsi(manager.render(100).join("\n"));
+    expect(rendered).toContain("Profiles · none · add <KANA_HOME>/agents/<name>.md");
   });
 
   test("shows runs hidden before and after the viewport", () => {
@@ -109,7 +116,6 @@ function profile(name = "explorer"): KanaSubagentProfile {
     description: "Explore the repository",
     instructions: "Inspect only.",
     tools: ["read"],
-    source: "builtin",
     digest: "digest",
   };
 }

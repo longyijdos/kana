@@ -114,7 +114,7 @@ TUI 中的常用命令：
 
 ### 委派与长时间运行的工作
 
-Kana 可以启动归属于当前 session 的后台命令和有界 subagent，而不会阻塞主 Agent。内置的 `explorer`、`worker` 和 `reviewer` 角色卡覆盖常见委派方式；也可以在 `~/.kana/agents` 下编写 Markdown 角色卡，进一步收窄工具或选择另一个已配置模型。Child run 拥有独立 transcript 与用量记录，主 Agent 运行期间也可以通过 `/agents` 检查或取消它们。
+Kana 可以启动归属于当前 session 的后台命令和有界 subagent，而不会阻塞主 Agent。委派角色由 `~/.kana/agents` 下的 Markdown 角色卡定义，可进一步收窄工具或选择另一个已配置模型；`kana install` 会写入一份 `profile.md.example` 作为起点。Child run 拥有独立 transcript 与用量记录，主 Agent 运行期间也可以通过 `/agents` 检查或取消它们。
 
 Session todo 会随恢复和分叉保留；`/goal` 用有界的连续 Agent run 推进一个目标，`/jobs` 则把长时间运行的 Shell 工作绑定到当前 session。详见 [Subagent](docs/subagents.zh-CN.md)、[工具与执行](docs/tools.zh-CN.md)和[对话运行时](docs/conversation-runtime.zh-CN.md)。
 

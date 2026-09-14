@@ -399,7 +399,6 @@ describe("ConversationRuntime", () => {
         description: "Explore",
         instructions: "Inspect only.",
         tools: ["read"],
-        source: "builtin",
         digest: "profile-digest",
       },
       task: "Inspect the parser",

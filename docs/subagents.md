@@ -1,18 +1,10 @@
 # Subagents
 
-Kana supports bounded asynchronous one-shot subagents selected from predefined role-card profiles. The conversation Agent can delegate a task, continue working, and later inspect or wait for the child result. Arbitrary prompts cannot create an unrestricted role: every spawn must name a currently valid built-in or user profile.
+Kana supports bounded asynchronous one-shot subagents selected from predefined role-card profiles. The conversation Agent can delegate a task, continue working, and later inspect or wait for the child result. Arbitrary prompts cannot create an unrestricted role: every spawn must name a currently valid profile from the user's role cards.
 
 ## Profiles
 
-Kana always provides `explorer`, `worker`, and `reviewer`. Their default capabilities are:
-
-| Profile | Tools | Purpose |
-| --- | --- | --- |
-| `explorer` | `list`, `glob`, `grep`, `read`, `view_image` | Read-only repository investigation. |
-| `worker` | Workspace tools plus `mcp:*` | A bounded implementation task. |
-| `reviewer` | Read-only workspace tools plus `bash` | Review changes without editing files. |
-
-User profiles are direct Markdown children of `<KANA_HOME>/agents`, normally `~/.kana/agents`. The lowercase hyphenated filename without `.md` is the profile name. Each file is at most 64 KiB and uses this format:
+Kana ships no profiles of its own: each profile is a Markdown role card under `<KANA_HOME>/agents`, normally `~/.kana/agents`. Delegation is opt-in, so the subagent tools exist only while at least one valid card does. The lowercase hyphenated filename without `.md` is the profile name. Each file is at most 64 KiB and uses this format:
 
 ```markdown
 ---
@@ -33,7 +25,7 @@ Do not modify files.
 
 `description` and a non-empty instruction body are required. `tools` may also be an inline array. `model` is optional and defaults to `inherit`; an explicit value is `<provider>/<model>`. `reasoning_effort` is valid only with an explicit model. Unknown frontmatter fields and invalid values reject the complete card.
 
-A user file shadows a built-in with the same name. If that file is invalid, the name stays unavailable instead of silently falling back to broader or different built-in permissions. The product Host loads profiles and diagnostics once at startup; the main Agent's dynamic tool surface and `/agents` reuse that snapshot, so direct profile edits require a restart. A spawn also records the complete selected card and digest, so its journal retains the exact role used by the child.
+An invalid card never loads: Kana reports a diagnostic, keeps that name unavailable, and leaves other cards unaffected. The product Host loads profiles and diagnostics once at startup; the main Agent's dynamic tool surface and `/agents` reuse that snapshot, so direct profile edits require a restart. A spawn also records the complete selected card and digest, so its journal retains the exact role used by the child.
 
 ## Capability and approval boundaries
 
@@ -70,4 +62,4 @@ It uses the session turn record format but includes the parent ID, spawning tool
 
 `/agents` is available while the main Agent runs. It shows the startup profile snapshot and only the current hosted session instance's running and retained terminal records. Arrows select, `Enter` opens a retained in-process transcript, `K` cancels a live child without acknowledging its completion, `R` refreshes the in-memory view, and `Esc` closes. Startup profile diagnostics appear in the panel. Exiting Kana discards this runtime state; resuming the parent session in a later process does not repopulate it from child journals.
 
-Child runs are recorded under the `subagent` accounting kind and displayed separately from main and memory runs. Their usage contributes once to aggregate and per-model totals; it is not copied into the parent run's usage. Clean mode exposes only built-in profiles, keeps child state in memory, and writes neither child journals nor accounting records.
+Child runs are recorded under the `subagent` accounting kind and displayed separately from main and memory runs. Their usage contributes once to aggregate and per-model totals; it is not copied into the parent run's usage. Clean mode loads no profiles, so the subagent tools stay unregistered; it keeps child state in memory and writes neither child journals nor accounting records.

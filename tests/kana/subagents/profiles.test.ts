@@ -7,20 +7,13 @@ import { cleanupConfigTempDirs, createTempEnv } from "../config/config-fixture";
 afterEach(cleanupConfigTempDirs);
 
 describe("Kana subagent profiles", () => {
-  test("loads the built-in profiles when no user directory exists", () => {
+  test("returns an empty snapshot when the agents directory does not exist", () => {
     const loaded = loadKanaSubagentProfiles({ env: createTempEnv() });
 
-    expect(loaded.diagnostics).toEqual([]);
-    expect(loaded.profiles.map((profile) => profile.name)).toEqual([
-      "explorer",
-      "reviewer",
-      "worker",
-    ]);
-    expect(loaded.profiles.every((profile) => profile.source === "builtin")).toBe(true);
-    expect(loaded.profiles.every((profile) => profile.digest.length === 64)).toBe(true);
+    expect(loaded).toEqual({ profiles: [], diagnostics: [] });
   });
 
-  test("loads user role cards and lets a valid card shadow a built-in", () => {
+  test("loads user role cards with tools, model preferences, and a digest", () => {
     const env = createTempEnv();
     const directory = getKanaConfigPaths(env).agentsDirectory;
     mkdirSync(directory, { recursive: true });
@@ -44,18 +37,19 @@ describe("Kana subagent profiles", () => {
     const worker = loaded.profiles.find((profile) => profile.name === "worker");
 
     expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.profiles.map((profile) => profile.name)).toEqual(["worker"]);
     expect(worker).toMatchObject({
       name: "worker",
       description: "A focused custom worker",
       instructions: "Follow the delegated task and return evidence.",
       tools: ["read", "github_create_issue"],
       model: { provider: "custom", name: "local-worker", reasoningEffort: "high" },
-      source: "user",
       sourcePath: path.join(directory, "worker.md"),
     });
+    expect(worker?.digest).toHaveLength(64);
   });
 
-  test("keeps an invalid user override unavailable instead of falling back to the built-in", () => {
+  test("keeps an invalid card unavailable and reports a diagnostic", () => {
     const env = createTempEnv();
     const directory = getKanaConfigPaths(env).agentsDirectory;
     mkdirSync(directory, { recursive: true });
@@ -63,31 +57,12 @@ describe("Kana subagent profiles", () => {
 
     const loaded = loadKanaSubagentProfiles({ env });
 
-    expect(loaded.profiles.map((profile) => profile.name)).not.toContain("explorer");
+    expect(loaded.profiles).toEqual([]);
     expect(loaded.diagnostics).toEqual([
       expect.objectContaining({
         code: "invalid_profile",
         path: path.join(directory, "explorer.md"),
       }),
     ]);
-  });
-
-  test("ignores user cards when only built-ins are requested", () => {
-    const env = createTempEnv();
-    const directory = getKanaConfigPaths(env).agentsDirectory;
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(
-      path.join(directory, "custom.md"),
-      "---\ndescription: Custom\ntools: [read]\n---\nCustom instructions.\n",
-    );
-
-    const loaded = loadKanaSubagentProfiles({ env, builtinsOnly: true });
-
-    expect(loaded.profiles.map((profile) => profile.name)).toEqual([
-      "explorer",
-      "reviewer",
-      "worker",
-    ]);
-    expect(loaded.diagnostics).toEqual([]);
   });
 });
