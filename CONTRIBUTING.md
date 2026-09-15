@@ -7,8 +7,8 @@ guidance and is not the primary human contribution guide.
 
 ## Before you start
 
-- For large features or architectural changes, open an issue or discuss the approach first so
-  maintainers can weigh in before you invest time in an implementation.
+- For large features, architectural changes, and your first non-trivial contribution, open or claim
+  an issue so maintainers can weigh in on the approach before you implement it.
 - Check existing issues and pull requests to avoid duplicating work.
 
 ## Prerequisites
@@ -67,6 +67,19 @@ When your change affects documented behavior, architecture, configuration, persi
 provider behavior, tools, Skills, or TUI interactions, update the corresponding documentation
 under `docs/` in the same change. Keep the English and Chinese versions in sync when both exist,
 and update `docs/README.md` and `docs/README.zh-CN.md` when the document set changes.
+
+## Automated and AI-assisted contributions
+
+AI-assisted contributions are welcome, including changes drafted with a coding agent, but
+contributors are responsible for everything they submit: review the complete diff, test the change,
+understand it, and be able to explain why the approach is right for this repository.
+
+Unsolicited automated or bulk pull requests are not accepted. Do not point bots or agents at the
+repository to scan it and open pull requests, and do not open several independent pull requests
+without discussing the plan with maintainers first.
+
+Pull requests that look like automated spam, mass-generated changes, or work submitted without
+meaningful human review may be closed without review, and repeated abuse may result in a block.
 
 ## Commits and pull requests
 
