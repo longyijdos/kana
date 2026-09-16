@@ -151,6 +151,29 @@ describe("skill manager", () => {
     ]);
   });
 
+  test("pages by a full window and jumps to the ends", () => {
+    const skills = createSkills(10);
+    const manager = new SkillManager(skills, () => {}, 3);
+
+    manager.handleInput("\x1b[6~");
+    expect(selectedSkill(manager)).toBe("> [ ] skill-4  global");
+
+    manager.handleInput("\x1b[C");
+    expect(selectedSkill(manager)).toBe("> [ ] skill-7  global");
+
+    manager.handleInput("\x1b[4~");
+    expect(selectedSkill(manager)).toBe("> [ ] skill-10  global");
+
+    manager.handleInput("\x1b[D");
+    expect(selectedSkill(manager)).toBe("> [ ] skill-7  global");
+
+    manager.handleInput("\x1b[1~");
+    expect(selectedSkill(manager)).toBe("> [ ] skill-1  global");
+
+    manager.handleInput("\x1b[5~");
+    expect(selectedSkill(manager)).toBe("> [ ] skill-1  global");
+  });
+
   test("applies an unchanged empty draft with escape", () => {
     let decision: SkillManagerDecision | undefined;
     const manager = new SkillManager([], (nextDecision) => {
@@ -166,6 +189,13 @@ describe("skill manager", () => {
     });
   });
 });
+
+function selectedSkill(manager: SkillManager): string | undefined {
+  return manager
+    .render(80)
+    .map(stripAnsi)
+    .find((line) => line.startsWith("> "));
+}
 
 function createSkills(length: number) {
   return Array.from({ length }, (_, index) => ({

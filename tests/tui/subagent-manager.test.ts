@@ -41,6 +41,33 @@ describe("subagent manager", () => {
     ]);
   });
 
+  test("pages the selection by one window and reports each landed run once", () => {
+    const actions: SubagentManagerAction[] = [];
+    const manager = new SubagentManager((action) => actions.push(action));
+    const runs = Array.from({ length: 8 }, (_, index) =>
+      subagent(`agent_page${index}`, "completed"),
+    );
+    manager.replace([profile()], runs);
+
+    manager.handleInput("\x1b[6~");
+    expect(manager.selectedSubagent?.id).toBe("agent_page3");
+
+    manager.handleInput("\x1b[4~");
+    expect(manager.selectedSubagent?.id).toBe("agent_page7");
+
+    manager.handleInput("\x1b[C");
+    expect(manager.selectedSubagent?.id).toBe("agent_page7");
+
+    manager.handleInput("\x1b[1~");
+    expect(manager.selectedSubagent?.id).toBe("agent_page0");
+
+    expect(actions).toEqual([
+      { type: "select", subagent: runs[3] },
+      { type: "select", subagent: runs[7] },
+      { type: "select", subagent: runs[0] },
+    ]);
+  });
+
   test("keeps profiles on one line and reports names omitted by the terminal width", () => {
     const manager = new SubagentManager(() => {});
     manager.replace(

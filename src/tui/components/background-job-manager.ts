@@ -1,7 +1,17 @@
 import type { BackgroundJobPeekSnapshot, BackgroundJobSummary } from "@/jobs";
 import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import { isDown, isEscape, isUp } from "../runtime";
+import {
+  isDown,
+  isEnd,
+  isEscape,
+  isHome,
+  isLeft,
+  isPageDown,
+  isPageUp,
+  isRight,
+  isUp,
+} from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -66,11 +76,32 @@ export class BackgroundJobManager implements Component {
       return;
     }
     if (isUp(data)) {
-      this.moveSelection(-1);
+      this.moveBy(() => this.viewport.move(-1, this.jobs.length));
       return;
     }
+
     if (isDown(data)) {
-      this.moveSelection(1);
+      this.moveBy(() => this.viewport.move(1, this.jobs.length));
+      return;
+    }
+
+    if (isLeft(data) || isPageUp(data)) {
+      this.moveBy(() => this.viewport.movePage(-1, this.jobs.length));
+      return;
+    }
+
+    if (isRight(data) || isPageDown(data)) {
+      this.moveBy(() => this.viewport.movePage(1, this.jobs.length));
+      return;
+    }
+
+    if (isHome(data)) {
+      this.moveBy(() => this.viewport.moveTo(0, this.jobs.length));
+      return;
+    }
+
+    if (isEnd(data)) {
+      this.moveBy(() => this.viewport.moveTo(this.jobs.length - 1, this.jobs.length));
     }
   }
 
@@ -111,13 +142,13 @@ export class BackgroundJobManager implements Component {
     if (this.notice) {
       lines.push(truncateToWidth(dim(this.notice), width, "..."));
     }
-    lines.push(dim("K stop · R refresh · ↑/↓ select · Esc close"));
+    lines.push(dim("↑/↓ select · ←/→ page · K stop · R refresh · Esc close"));
     return lines;
   }
 
-  private moveSelection(delta: number): void {
+  private moveBy(apply: () => void): void {
     const previous = this.viewport.selectedIndex;
-    this.viewport.move(delta, this.jobs.length);
+    apply();
     if (this.viewport.selectedIndex !== previous) {
       const job = this.selectedJob;
       if (job) {

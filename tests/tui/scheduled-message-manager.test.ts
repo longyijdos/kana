@@ -47,7 +47,40 @@ describe("scheduled message manager", () => {
       { type: "close" },
     ]);
   });
+
+  test("pages by a full window and jumps to the ends", () => {
+    const actions: ScheduledMessageManagerAction[] = [];
+    const manager = new ScheduledMessageManager((action) => actions.push(action), 3);
+    const messages = Array.from({ length: 8 }, (_, index) =>
+      item(`id-${index + 1}`, "future", "agent", `Message ${index + 1}`, 14, index, 0),
+    );
+    manager.replaceItems(messages);
+
+    manager.handleInput("\x1b[6~");
+    expect(selectedMessage(manager)).toContain("Message 4");
+
+    manager.handleInput("\x1b[4~");
+    expect(selectedMessage(manager)).toContain("Message 8");
+
+    manager.handleInput("\x1b[D");
+    expect(selectedMessage(manager)).toContain("Message 5");
+
+    manager.handleInput("\x1b[1~");
+    expect(selectedMessage(manager)).toContain("Message 1");
+
+    manager.handleInput("\x1b[5~");
+    manager.handleInput("D");
+
+    expect(actions).toEqual([{ type: "delete", item: messages[0] }]);
+  });
 });
+
+function selectedMessage(manager: ScheduledMessageManager): string | undefined {
+  return manager
+    .render(100)
+    .map(stripAnsi)
+    .find((line) => line.startsWith("> "));
+}
 
 function item(
   id: string,

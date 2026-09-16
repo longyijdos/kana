@@ -1,6 +1,17 @@
 import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import { isDown, isEnter, isEscape, isUp } from "../runtime";
+import {
+  isDown,
+  isEnd,
+  isEnter,
+  isEscape,
+  isHome,
+  isLeft,
+  isPageDown,
+  isPageUp,
+  isRight,
+  isUp,
+} from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -97,6 +108,26 @@ export class McpServerManager implements Component {
 
     if (isDown(data)) {
       this.viewport.move(1, this.servers.length);
+      return;
+    }
+
+    if (isLeft(data) || isPageUp(data)) {
+      this.viewport.movePage(-1, this.servers.length);
+      return;
+    }
+
+    if (isRight(data) || isPageDown(data)) {
+      this.viewport.movePage(1, this.servers.length);
+      return;
+    }
+
+    if (isHome(data)) {
+      this.viewport.moveTo(0, this.servers.length);
+      return;
+    }
+
+    if (isEnd(data)) {
+      this.viewport.moveTo(this.servers.length - 1, this.servers.length);
     }
   }
 

@@ -106,7 +106,49 @@ describe("session picker", () => {
       "... 1 more sessions",
     ]);
   });
+
+  test("pages by a full window and jumps to the ends", () => {
+    const manySessions = createSessions(12);
+    const decisions: SessionPickerDecision[] = [];
+    const picker = new SessionPicker(manySessions, (decision) => decisions.push(decision), 3);
+
+    picker.handleInput("\x1b[6~");
+
+    expect(picker.render(100).map(stripAnsi)).toEqual([
+      "Sessions",
+      "... 3 earlier sessions",
+      `> ${localTimestamp(manySessions[3].createdAt)}  session-  Session 4  Unknown model`,
+      `  ${localTimestamp(manySessions[4].createdAt)}  session-  Session 5  Unknown model`,
+      `  ${localTimestamp(manySessions[5].createdAt)}  session-  Session 6  Unknown model`,
+      "... 6 more sessions",
+    ]);
+
+    picker.handleInput("\x1b[C");
+    expect(selectedSession(picker)).toContain("Session 7");
+
+    picker.handleInput("\x1b[4~");
+    expect(selectedSession(picker)).toContain("Session 12");
+
+    picker.handleInput("\x1b[D");
+    expect(selectedSession(picker)).toContain("Session 9");
+
+    picker.handleInput("\x1b[1~");
+    expect(selectedSession(picker)).toContain("Session 1");
+
+    picker.handleInput("\x1b[5~");
+    expect(selectedSession(picker)).toContain("Session 1");
+
+    picker.handleInput("\r");
+    expect(decisions).toEqual([{ type: "select", session: manySessions[0] }]);
+  });
 });
+
+function selectedSession(picker: SessionPicker): string {
+  return picker
+    .render(100)
+    .map(stripAnsi)
+    .find((line) => line.startsWith("> ")) as string;
+}
 
 function localTimestamp(timestamp: string): string {
   const date = new Date(timestamp);

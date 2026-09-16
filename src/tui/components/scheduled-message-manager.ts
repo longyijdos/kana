@@ -1,7 +1,17 @@
 import type { WakeEventOrigin } from "@/kana";
 import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import { isDown, isEscape, isUp } from "../runtime";
+import {
+  isDown,
+  isEnd,
+  isEscape,
+  isHome,
+  isLeft,
+  isPageDown,
+  isPageUp,
+  isRight,
+  isUp,
+} from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -86,6 +96,26 @@ export class ScheduledMessageManager implements Component {
 
     if (isDown(data)) {
       this.viewport.move(1, this.items.length);
+      return;
+    }
+
+    if (isLeft(data) || isPageUp(data)) {
+      this.viewport.movePage(-1, this.items.length);
+      return;
+    }
+
+    if (isRight(data) || isPageDown(data)) {
+      this.viewport.movePage(1, this.items.length);
+      return;
+    }
+
+    if (isHome(data)) {
+      this.viewport.moveTo(0, this.items.length);
+      return;
+    }
+
+    if (isEnd(data)) {
+      this.viewport.moveTo(this.items.length - 1, this.items.length);
     }
   }
 

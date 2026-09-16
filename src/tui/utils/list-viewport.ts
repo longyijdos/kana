@@ -41,6 +41,31 @@ export class ListViewport {
     this.ensureSelectedVisible(length);
   }
 
+  // Paging moves the visible window by one page and carries the selection along on
+  // the same row. A window already parked at an end cannot move, so the selection
+  // falls through to that end instead of staying put.
+  movePage(delta: number, length: number): void {
+    if (length === 0) {
+      this.selectedIndex = 0;
+      this.start = 0;
+      return;
+    }
+
+    const visibleLimit = Math.max(1, this.visibleLimit);
+    const maxStart = Math.max(0, length - visibleLimit);
+    const previousStart = this.start;
+
+    this.start = clamp(this.start + delta * visibleLimit, 0, maxStart);
+
+    const advanced = this.start - previousStart;
+    this.selectedIndex = clamp(
+      this.selectedIndex + (advanced === 0 ? delta * visibleLimit : advanced),
+      0,
+      length - 1,
+    );
+    this.ensureSelectedVisible(length);
+  }
+
   page(delta: number, length: number): void {
     if (length === 0) {
       this.selectedIndex = 0;

@@ -7,7 +7,18 @@ import {
   visibleWidth,
 } from "../render";
 import type { Component } from "../runtime";
-import { isDown, isEnter, isEscape, isUp } from "../runtime";
+import {
+  isDown,
+  isEnd,
+  isEnter,
+  isEscape,
+  isHome,
+  isLeft,
+  isPageDown,
+  isPageUp,
+  isRight,
+  isUp,
+} from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -79,10 +90,28 @@ export class SubagentManager implements Component {
       return;
     }
     if (isUp(data)) {
-      this.move(-1);
+      this.moveBy(() => this.viewport.move(-1, this.subagents.length));
       return;
     }
-    if (isDown(data)) this.move(1);
+    if (isDown(data)) {
+      this.moveBy(() => this.viewport.move(1, this.subagents.length));
+      return;
+    }
+    if (isLeft(data) || isPageUp(data)) {
+      this.moveBy(() => this.viewport.movePage(-1, this.subagents.length));
+      return;
+    }
+    if (isRight(data) || isPageDown(data)) {
+      this.moveBy(() => this.viewport.movePage(1, this.subagents.length));
+      return;
+    }
+    if (isHome(data)) {
+      this.moveBy(() => this.viewport.moveTo(0, this.subagents.length));
+      return;
+    }
+    if (isEnd(data)) {
+      this.moveBy(() => this.viewport.moveTo(this.subagents.length - 1, this.subagents.length));
+    }
   }
 
   render(width: number, availableHeight?: number): string[] {
@@ -110,13 +139,13 @@ export class SubagentManager implements Component {
       lines.push(...this.renderPreview(width, availableHeight, lines.length));
     }
     if (this.notice) lines.push(truncateToWidth(dim(this.notice), width, "..."));
-    lines.push(dim("Enter transcript · K cancel · R refresh · ↑/↓ select · Esc close"));
+    lines.push(dim("Enter transcript · ↑/↓ select · ←/→ page · K cancel · R refresh · Esc close"));
     return lines;
   }
 
-  private move(delta: number): void {
+  private moveBy(apply: () => void): void {
     const previous = this.viewport.selectedIndex;
-    this.viewport.move(delta, this.subagents.length);
+    apply();
     if (previous !== this.viewport.selectedIndex) {
       const subagent = this.selectedSubagent;
       if (subagent) this.onAction({ type: "select", subagent });
