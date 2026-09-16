@@ -83,6 +83,34 @@ describe("tool history picker", () => {
     expect(decisions).toEqual([{ type: "select", toolCallId: "call_4" }]);
   });
 
+  test("pages by a full window and jumps to the ends", () => {
+    const decisions: ToolHistoryPickerDecision[] = [];
+    const many = Array.from({ length: 7 }, (_, index) => ({
+      toolCallId: `call_${index}`,
+      title: `Tool ${index}`,
+    }));
+    const picker = new ToolHistoryPicker(many, (decision) => decisions.push(decision), 3);
+
+    picker.handleInput("\x1b[6~");
+    expect(selectedEntry(picker)).toBe("> Tool 3");
+
+    picker.handleInput("\x1b[C");
+    expect(selectedEntry(picker)).toBe("> Tool 4");
+
+    picker.handleInput("\x1b[D");
+    expect(selectedEntry(picker)).toBe("> Tool 1");
+
+    picker.handleInput("\x1b[1~");
+    expect(selectedEntry(picker)).toBe("> Tool 0");
+
+    picker.handleInput("\x1b[5~");
+    expect(selectedEntry(picker)).toBe("> Tool 0");
+
+    picker.handleInput("\x1b[4~");
+    picker.handleInput("\r");
+    expect(decisions).toEqual([{ type: "select", toolCallId: "call_6" }]);
+  });
+
   test("keeps a long command and a long custom name on one truncated row", () => {
     const long = entries.map((entry) => ({
       ...entry,
@@ -100,3 +128,10 @@ describe("tool history picker", () => {
     }
   });
 });
+
+function selectedEntry(picker: ToolHistoryPicker): string | undefined {
+  return picker
+    .render(80)
+    .map(stripAnsi)
+    .find((line) => line.startsWith("> "));
+}

@@ -39,6 +39,33 @@ describe("background Job manager", () => {
       { type: "close" },
     ]);
   });
+
+  test("pages the selection by one window and reports each landed Job once", () => {
+    const actions: BackgroundJobManagerAction[] = [];
+    const manager = new BackgroundJobManager((action) => actions.push(action));
+    const jobs = Array.from({ length: 8 }, (_, index) =>
+      job(`job_page${index}`, "completed", `build ${index}`),
+    );
+    manager.replaceJobs(jobs);
+
+    manager.handleInput("\x1b[6~");
+    expect(manager.selectedJob?.id).toBe("job_page3");
+
+    manager.handleInput("\x1b[6~");
+    expect(manager.selectedJob?.id).toBe("job_page7");
+
+    manager.handleInput("\x1b[6~");
+    expect(manager.selectedJob?.id).toBe("job_page7");
+
+    manager.handleInput("\x1b[1~");
+    expect(manager.selectedJob?.id).toBe("job_page0");
+
+    expect(actions).toEqual([
+      { type: "select", job: jobs[3] },
+      { type: "select", job: jobs[7] },
+      { type: "select", job: jobs[0] },
+    ]);
+  });
 });
 
 function job(

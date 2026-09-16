@@ -50,6 +50,8 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `Ctrl+O` | 打开/关闭最近一项工具调用的详情查看器；`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
+可选列表共用一套导航约定：`Up` / `Down` 移动一项，`Left` / `Right` 与 `PageUp` / `PageDown` 把可见窗口移动一屏并让选中项保持在同一行，`Home` / `End` 跳到首项或末项；适用于 session 选择器、`/skills`、`/mcp`、`/tools`、`/schedule`、`/jobs` 与 `/agents`。窗口已经停在端点时无法继续移动，此时翻页会把选中项落到末项或首项。只读查看器翻动的是内容：`Up` / `Down` 滚动，`Left` / `Right` 移动一屏详情。
+
 编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后。输入为空时，它会从 `/help` 的 slash 命令、显式 Skill 调用、prompt template 调用和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。`/help` 把 Skill、prompt template 与 slash 命令显示为独立小节，面板、placeholder 和 usage 错误则复用相应的语法与描述目录。快捷键区涵盖编辑器提交与排队、多行输入、Readline 风格编辑、图片粘贴、中止、工具输出切换和本地 Shell 输入。
 
 编辑器的移动与编辑快捷键如下：

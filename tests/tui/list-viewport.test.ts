@@ -69,6 +69,65 @@ describe("list viewport", () => {
     expect(viewport.start).toBe(0);
   });
 
+  test("pages the window and carries the selection along on the same row", () => {
+    const viewport = new ListViewport(3);
+
+    viewport.movePage(1, 10);
+    expect(viewport.selectedIndex).toBe(3);
+    expect(viewport.window(10)).toEqual({
+      start: 3,
+      end: 6,
+      hiddenBefore: 3,
+      hiddenAfter: 4,
+    });
+
+    viewport.moveTo(4, 10);
+    viewport.movePage(1, 10);
+    expect(viewport.selectedIndex).toBe(7);
+    expect(viewport.window(10)).toEqual({
+      start: 6,
+      end: 9,
+      hiddenBefore: 6,
+      hiddenAfter: 1,
+    });
+
+    viewport.moveTo(5, 10);
+    viewport.movePage(1, 10);
+    expect(viewport.selectedIndex).toBe(7);
+    expect(viewport.start).toBe(7);
+
+    viewport.movePage(1, 10);
+    expect(viewport.selectedIndex).toBe(9);
+    expect(viewport.start).toBe(7);
+
+    viewport.movePage(1, 10);
+    expect(viewport.selectedIndex).toBe(9);
+    expect(viewport.start).toBe(7);
+
+    viewport.movePage(-1, 10);
+    expect(viewport.selectedIndex).toBe(6);
+    expect(viewport.start).toBe(4);
+
+    viewport.moveTo(0, 10);
+    viewport.movePage(-1, 10);
+    expect(viewport.selectedIndex).toBe(0);
+    expect(viewport.start).toBe(0);
+
+    viewport.movePage(1, 0);
+    expect(viewport.selectedIndex).toBe(0);
+    expect(viewport.start).toBe(0);
+  });
+
+  test("lands on the last item when the whole list already fits the window", () => {
+    const viewport = new ListViewport(10);
+
+    viewport.movePage(1, 3);
+    expect(viewport.selectedIndex).toBe(2);
+
+    viewport.movePage(-1, 3);
+    expect(viewport.selectedIndex).toBe(0);
+  });
+
   test("resets selection and window state for an empty list", () => {
     const viewport = new ListViewport(2);
 

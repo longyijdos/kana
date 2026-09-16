@@ -99,6 +99,35 @@ describe("MCP server manager", () => {
     ]);
   });
 
+  test("pages by a full window and jumps to the ends", () => {
+    const servers = Array.from({ length: 9 }, (_, index) => ({
+      id: `server-${index + 1}`,
+      type: "stdio" as const,
+      command: "mcp",
+      args: [] as string[],
+      enabled: false,
+    }));
+    const manager = new McpServerManager(servers, () => {}, 3);
+
+    manager.handleInput("\x1b[6~");
+    expect(selectedServer(manager)).toBe("> [ ] server-4  stdio");
+
+    manager.handleInput("\x1b[C");
+    expect(selectedServer(manager)).toBe("> [ ] server-7  stdio");
+
+    manager.handleInput("\x1b[4~");
+    expect(selectedServer(manager)).toBe("> [ ] server-9  stdio");
+
+    manager.handleInput("\x1b[D");
+    expect(selectedServer(manager)).toBe("> [ ] server-6  stdio");
+
+    manager.handleInput("\x1b[1~");
+    expect(selectedServer(manager)).toBe("> [ ] server-1  stdio");
+
+    manager.handleInput("\x1b[5~");
+    expect(selectedServer(manager)).toBe("> [ ] server-1  stdio");
+  });
+
   test("reports an unchanged draft and renders an empty configuration", () => {
     let decision: McpServerManagerDecision | undefined;
     const manager = new McpServerManager([], (nextDecision) => {
@@ -115,3 +144,10 @@ describe("MCP server manager", () => {
     expect(decision).toEqual({ type: "apply", enabledServerIds: [], changed: false });
   });
 });
+
+function selectedServer(manager: McpServerManager): string | undefined {
+  return manager
+    .render(80)
+    .map(stripAnsi)
+    .find((line) => line.startsWith("> "));
+}
