@@ -16,7 +16,12 @@ export {
   type McpServerRegistration,
   type McpToolRegistry,
 } from "./manager";
-export { McpOAuthHttpAuthorizer, type McpOAuthHttpDiagnosticEvent } from "./oauth-http-authorizer";
+export {
+  type McpOAuthClientRegistration,
+  type McpOAuthClientStore,
+  McpOAuthHttpAuthorizer,
+  type McpOAuthHttpDiagnosticEvent,
+} from "./oauth-http-authorizer";
 export type {
   JsonObject,
   JsonRpcMessage,

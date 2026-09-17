@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { createKanaOAuthTokenStore, loadKanaOAuthTokenStatuses } from "../../../src/kana";
+import type { McpOAuthClientRegistration } from "../../../src/mcp";
 import type { OAuthStoredToken } from "../../../src/oauth";
 import {
   cleanupTempKanaHomes,
@@ -14,7 +15,18 @@ describe("Kana OAuth token store", () => {
   test("serializes token updates into a private file and reports safe statuses", async () => {
     const env = createTempEnv();
     const store = createKanaOAuthTokenStore({ env });
+    const registration: McpOAuthClientRegistration = {
+      issuer: "https://auth.example.com",
+      resource: "https://api.example.com/mcp",
+      redirectUri: "http://127.0.0.1:12345/oauth/callback",
+      client: {
+        clientId: "registered-client",
+        clientSecret: "registered-secret",
+        tokenEndpointAuthMethod: "client_secret_post",
+      },
+    };
     await Promise.all([
+      store.saveClient("mcp:first", registration),
       store.save("mcp:first", token("first", 2_000, true)),
       store.save("mcp:second", token("second", 500, false)),
     ]);
@@ -23,6 +35,8 @@ describe("Kana OAuth token store", () => {
     expect(statSync(filePath).mode & 0o777).toBe(0o600);
     const persisted = JSON.parse(readFileSync(filePath, "utf8"));
     expect(persisted.version).toBe(1);
+    const restoredStore = createKanaOAuthTokenStore({ env });
+    expect(await restoredStore.loadClient("mcp:first")).toEqual(registration);
     expect(Object.keys(persisted.tokens).sort()).toEqual(["mcp:first", "mcp:second"]);
     expect(
       loadKanaOAuthTokenStatuses(["mcp:first", "mcp:second", "mcp:missing"], {
@@ -36,6 +50,9 @@ describe("Kana OAuth token store", () => {
     });
 
     await store.delete("mcp:first");
+    expect(await store.loadClient("mcp:first")).toEqual(registration);
+    await store.deleteClient("mcp:first");
+    expect(await store.loadClient("mcp:first")).toBeUndefined();
     expect(await store.load("mcp:first")).toBeUndefined();
     expect((await store.load("mcp:second"))?.accessToken).toBe("second-access-token");
   });

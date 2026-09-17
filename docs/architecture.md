@@ -99,7 +99,7 @@ See [Configuration and installation](configuration.md), [Sessions and memory](se
 | Tool execution, approval hook, Jobs, artifacts | [Tools and execution](tools.md) |
 | Provider lifecycle and shared protocol codecs | [Providers](providers.md) |
 | Adapter-specific requests and replay | [DeepSeek](deepseek-provider.md), [OpenAI Codex](openai-codex-provider.md), or [Custom](custom-provider.md) |
-| Generic token discovery, PKCE, callback, refresh | [OAuth](oauth.md) |
+| Provider token lifecycle, PKCE, shared callback and persistence | [OAuth](oauth.md) |
 | MCP transports, client, manager, and reload | [MCP](mcp.md) |
 | Session JSONL, recovery, accounting, memory | [Sessions and memory](sessions-and-memory.md) |
 | Configuration schema, defaults, local files, clean mode | [Configuration and installation](configuration.md) |

@@ -358,6 +358,11 @@ Normal TUI and headless startup load both files once into the product Host. Dire
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxx"
       }
     },
+    "cloudflare": {
+      "type": "http",
+      "url": "https://mcp.cloudflare.com/mcp",
+      "auth": { "type": "oauth2" }
+    },
     "remote": {
       "type": "http",
       "url": "https://example.com/mcp",
@@ -396,7 +401,7 @@ Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type"
 | `url` | Required for HTTP | Single Streamable HTTP endpoint; it must be an absolute `http`/`https` URL without credentials or a fragment. |
 | `proxy` | HTTP: Unset | An absolute `http`/`https` URL routes only this server through that proxy; `false` ignores process-wide proxies and forces direct connections. URLs cannot contain credentials or fragments. |
 | `headers` | HTTP: `{}` | String headers sent with every HTTP request; transport-owned content, session, protocol, and SSE headers cannot be overridden. |
-| `auth` | Unset | HTTP OAuth 2.0 configuration. When set, `url` must use HTTPS and `headers` cannot also set `Authorization`. |
+| `auth` | Unset | Explicitly enables HTTP OAuth 2.0. Without it, Kana uses an ordinary HTTP connection and does not start OAuth. When set, `url` must use HTTPS and `headers` cannot also set `Authorization`. |
 | `description` | Server-provided description, if any | Capability summary shown in the model-facing MCP catalog. |
 | `required` | `false` | Whether a startup failure prevents the whole MCP manager from becoming ready. |
 | `startupTimeoutMs` | `10000` | Timeout for each MCP negotiation or initialization request during startup. |
@@ -412,15 +417,15 @@ An HTTP server's `proxy` applies consistently to its MCP and OAuth requests. `fa
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `clientId` | Required | Registered OAuth client ID. It is not a secret and may be stored directly in `mcp.json`. |
+| `clientId` | Dynamic registration | Optional registered OAuth client ID. When omitted, the SDK registers a public client with the server; the server must support registration. It is required when a client secret or secret-based authentication method is configured. |
 | `clientSecretEnv` | Unset | Environment variable from which Kana reads the client secret, for example via `<KANA_HOME>/.env`; the secret is not stored in `mcp.json`. |
-| `redirectUri` | Dynamic loopback | Optional fixed `http://localhost:<port>/path`, `127.0.0.1`, or `::1` callback. When omitted, Kana selects a free port on `127.0.0.1` and uses `/oauth/callback`. |
+| `redirectUri` | Dynamic loopback | Optional fixed `http://localhost:<port>/path`, `127.0.0.1`, or `::1` callback. When omitted, Kana selects a free port on `127.0.0.1` and uses `/oauth/callback`; dynamically registered clients persist and reuse that URI. |
 | `scopes` | Unset | Explicit least-privilege boundary. Kana never requests a scope outside this list. When unset, challenge scopes take precedence, followed by protected-resource metadata. |
 | `tokenEndpointAuthMethod` | Automatic | `none`, `client_secret_basic`, or `client_secret_post`; it must agree with server metadata and the presence of a secret. |
 | `authorizationParameters` | `{}` | Provider parameters appended to the browser request, such as `access_type` or `prompt`; OAuth, PKCE, and resource parameters cannot be overridden. |
 | `callbackTimeoutMs` | `300000` | Positive timeout for the loopback callback. |
 
-MCP authorization stores tokens and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Discovery, PKCE, refresh, challenge recovery, and scope-boundary behavior are documented in [OAuth](oauth.md) and [MCP](mcp.md).
+MCP authorization stores tokens, binding metadata, and dynamic client registrations in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. The existing version-1 token format remains readable; optional `clients` entries contain registration credentials and their issuer, resource, and callback URI. Discovery, registration, PKCE, refresh, challenge recovery, and scope-boundary behavior are documented in [MCP](mcp.md); provider sessions are documented in [OAuth](oauth.md).
 
 The HTTP transport version, JSON/SSE session behavior, recovery rules, server-failure isolation, remote-tool mapping, and manager lifecycle are documented in [MCP](mcp.md). User-visible loading, reload, approval, and shutdown behavior belongs to [TUI](tui.md).
 

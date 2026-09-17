@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "@/logging";
+import type { McpOAuthClientRegistration, McpOAuthClientStore } from "@/mcp";
 import type { OAuthStoredToken, OAuthTokenStore } from "@/oauth";
 import { getKanaConfigPaths } from "../path";
 
@@ -10,6 +11,7 @@ const TOKEN_FILE_VERSION = 1;
 type KanaOAuthTokenFile = {
   version: typeof TOKEN_FILE_VERSION;
   tokens: Record<string, OAuthStoredToken>;
+  clients?: Record<string, McpOAuthClientRegistration>;
 };
 
 export type CreateKanaOAuthTokenStoreOptions = {
@@ -30,7 +32,7 @@ export type LoadKanaOAuthTokenStatusesOptions = {
 
 export function createKanaOAuthTokenStore(
   options: CreateKanaOAuthTokenStoreOptions = {},
-): OAuthTokenStore {
+): OAuthTokenStore & McpOAuthClientStore {
   const filePath = getOAuthTokenFilePath(options.env);
   return new KanaOAuthTokenStore(filePath, options.getLogger);
 }
@@ -63,7 +65,7 @@ export function loadKanaOAuthTokenStatuses(
   );
 }
 
-class KanaOAuthTokenStore implements OAuthTokenStore {
+class KanaOAuthTokenStore implements OAuthTokenStore, McpOAuthClientStore {
   private operationTail: Promise<void> = Promise.resolve();
 
   constructor(
@@ -94,6 +96,31 @@ class KanaOAuthTokenStore implements OAuthTokenStore {
         return;
       }
       delete file.tokens[key];
+      await this.writeFile(file);
+    });
+  }
+
+  loadClient(key: string): Promise<McpOAuthClientRegistration | undefined> {
+    return this.enqueue(async () => {
+      const registration = (await this.readFile()).clients?.[key];
+      return registration === undefined ? undefined : structuredClone(registration);
+    });
+  }
+
+  saveClient(key: string, registration: McpOAuthClientRegistration): Promise<void> {
+    return this.enqueue(async () => {
+      const file = await this.readFile();
+      file.clients ??= {};
+      file.clients[key] = structuredClone(registration);
+      await this.writeFile(file);
+    });
+  }
+
+  deleteClient(key: string): Promise<void> {
+    return this.enqueue(async () => {
+      const file = await this.readFile();
+      if (file.clients?.[key] === undefined) return;
+      delete file.clients[key];
       await this.writeFile(file);
     });
   }
@@ -166,7 +193,42 @@ function parseTokenFile(value: unknown): KanaOAuthTokenFile {
     }
     tokens[key] = parseStoredToken(rawToken, key);
   }
-  return { version: TOKEN_FILE_VERSION, tokens };
+  const clients =
+    file.clients === undefined
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(asRecord(file.clients, "OAuth client registrations")).map(
+            ([key, value]) => [key, parseClientRegistration(value, key)],
+          ),
+        );
+  return { version: TOKEN_FILE_VERSION, tokens, ...(clients === undefined ? {} : { clients }) };
+}
+
+function parseClientRegistration(value: unknown, key: string): McpOAuthClientRegistration {
+  const name = `OAuth client registration ${key}`;
+  const registration = asRecord(value, name);
+  const client = asRecord(registration.client, `${name}.client`);
+  const method = client.tokenEndpointAuthMethod;
+  if (
+    method !== undefined &&
+    method !== "none" &&
+    method !== "client_secret_basic" &&
+    method !== "client_secret_post"
+  ) {
+    throw new Error(`${name}.client.tokenEndpointAuthMethod is invalid.`);
+  }
+  return {
+    issuer: readNonEmptyString(registration.issuer, `${name}.issuer`),
+    resource: readNonEmptyString(registration.resource, `${name}.resource`),
+    redirectUri: readNonEmptyString(registration.redirectUri, `${name}.redirectUri`),
+    client: {
+      clientId: readNonEmptyString(client.clientId, `${name}.client.clientId`),
+      ...(client.clientSecret === undefined
+        ? {}
+        : { clientSecret: readNonEmptyString(client.clientSecret, `${name}.client.clientSecret`) }),
+      ...(method === undefined ? {} : { tokenEndpointAuthMethod: method }),
+    },
+  };
 }
 
 function parseStoredToken(value: unknown, key: string): OAuthStoredToken {

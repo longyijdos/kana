@@ -5,13 +5,6 @@ export class OAuthError extends Error {
   }
 }
 
-export class OAuthDiscoveryError extends OAuthError {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "OAuthDiscoveryError";
-  }
-}
-
 export class OAuthProtocolError extends OAuthError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);

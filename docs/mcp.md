@@ -12,7 +12,7 @@ KanaMcpRuntime (reloadable registry capability)
       ├→ RegisteredMcpTool (compiled schema and remote execution)
       └→ McpClient → official SDK Client
           ├→ SDK StdioClientTransport | StreamableHTTPClientTransport
-          └→ optional McpOAuthHttpAuthorizer → OAuthSession
+          └→ optional McpOAuthHttpAuthorizer → SDK OAuthClientProvider + auth
 ```
 
 `McpClient` is a small adapter over `@modelcontextprotocol/client`. The SDK owns JSON-RPC parsing and correlation, version negotiation, initialization, tool-list pagination, request timeouts, cancellation, progress, and transport framing. Kana translates protocol errors and distinguishes caller cancellation from timeout for its ordinary tool pipeline.
@@ -61,11 +61,13 @@ SDK stdio launches a command and argument array without a shell, frames stdout a
 
 The SDK Streamable HTTP transport owns JSON/SSE handling, session and protocol headers, stream resumption, and reconnection. Kana validates endpoint configuration and transport-owned headers and injects its per-server proxy and authorization fetch boundary. For legacy HTTP sessions, close attempts SDK session deletion with a five-second bound before closing local transport resources. Kana does not implement a separate session-expiry reinitialization state machine; session errors reach the Agent, and explicit runtime reload can reconnect servers.
 
-`McpOAuthHttpAuthorizer` uses SDK helpers for Bearer challenges and protected-resource discovery, then verifies resource binding, authorization-server availability, and header-based Bearer support. Generic [OAuth](oauth.md) owns authorization-server discovery, PKCE, browser callback, token exchange, refresh, and token-session storage contracts. Kana retains the exact-resource credential boundary and registered-client configuration.
+`McpOAuthHttpAuthorizer` uses the official SDK for Bearer challenges, protected-resource and authorization-server discovery, client registration, PKCE, token exchange, and refresh. Its `OAuthClientProvider` adapter supplies local storage and browser hand-off. Kana retains the exact-resource credential boundary, explicit scope policy, and shared loopback callback with `state` validation; the callback's optional `iss` is passed to the SDK for issuer validation. Provider authentication continues to use the generic [OAuth](oauth.md) session separately.
 
 Preparation first tries stored or refreshed credentials and performs interactive authorization before MCP negotiation when needed. If metadata is available only from a challenge, an idempotent HEAD probe obtains it before the protocol startup timeout. A request challenge may recover once; a second challenge is returned to the caller. Explicit configured scopes remain the privilege boundary, and automatic expansion beyond them is rejected. Close freezes new authorization and refresh; DELETE can use only the last token retained in memory.
 
-Credentials are stored under `mcp:<server-id>`. Kana supplies browser opening and owner-only token persistence, and routes OAuth metadata/token calls through the same proxy policy as MCP requests. Proxy URLs and credentials never enter diagnostic metadata.
+OAuth is enabled only by an explicit HTTP `auth` field. A configured client ID uses an already registered client; without one, the SDK dynamically registers a public client when the server supports registration. Tokens and registrations are stored under `mcp:<server-id>` in the shared credential file. Registrations retain their issuer, exact resource, and callback URI so subsequent authorization reuses the registered callback. Sign-out deletes both the token and dynamic registration.
+
+Kana supplies browser opening and owner-only credential persistence, and routes OAuth discovery, registration, and token calls through the same proxy policy as MCP requests. Proxy URLs and credentials never enter diagnostic metadata.
 
 ## Manager and runtime lifecycle
 

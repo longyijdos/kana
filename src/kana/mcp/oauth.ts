@@ -1,5 +1,9 @@
 import { createNoopLogger, type Logger } from "@/logging";
-import { McpOAuthHttpAuthorizer, type McpOAuthHttpDiagnosticEvent } from "@/mcp";
+import {
+  type McpOAuthClientStore,
+  McpOAuthHttpAuthorizer,
+  type McpOAuthHttpDiagnosticEvent,
+} from "@/mcp";
 import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
 import { openKanaOAuthAuthorizationUrl } from "../auth/browser";
 import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth/token-store";
@@ -20,6 +24,7 @@ export type CreateKanaMcpOAuthAuthorizerOptions = {
   env: NodeJS.ProcessEnv;
   getLogger: () => Logger;
   tokenStore: OAuthTokenStore;
+  clientStore: McpOAuthClientStore;
   openAuthorizationUrl(url: string): Promise<void>;
   fetch?: OAuthFetch;
   signal?: AbortSignal;
@@ -31,6 +36,7 @@ export type RunKanaMcpOAuthOptions = {
   config?: KanaMcpConfig;
   getLogger?: () => Logger;
   tokenStore?: OAuthTokenStore;
+  clientStore?: McpOAuthClientStore;
   openAuthorizationUrl?(url: string): Promise<void>;
   fetch?: OAuthFetch;
   signal?: AbortSignal;
@@ -59,6 +65,7 @@ export function createKanaMcpOAuthAuthorizer(
     storageKey: createKanaMcpOAuthStorageKey(serverId),
     client: resolveKanaMcpOAuth2Client(config.auth, options.env),
     tokenStore: options.tokenStore,
+    clientStore: options.clientStore,
     openAuthorizationUrl: options.openAuthorizationUrl,
     ...(config.auth.redirectUri === undefined ? {} : { redirectUri: config.auth.redirectUri }),
     ...(config.auth.scopes === undefined ? {} : { scopes: config.auth.scopes }),
@@ -103,6 +110,7 @@ export async function signOutKanaMcpServer(
   const context = createOperationContext(options);
   requireOAuthServer(serverId, context.env, options.config);
   await context.tokenStore.delete(createKanaMcpOAuthStorageKey(serverId));
+  await context.clientStore.deleteClient(createKanaMcpOAuthStorageKey(serverId));
   try {
     context.getLogger().info("mcp.oauth_signed_out", { serverId });
   } catch {
@@ -115,14 +123,17 @@ function createOperationContext(options: RunKanaMcpOAuthOptions): {
   env: NodeJS.ProcessEnv;
   getLogger: () => Logger;
   tokenStore: OAuthTokenStore;
+  clientStore: McpOAuthClientStore;
   openAuthorizationUrl(url: string): Promise<void>;
 } {
   const env = { ...(options.env ?? process.env) };
   const getLogger = options.getLogger ?? createNoopLogger;
+  const store = createKanaOAuthTokenStore({ env, getLogger });
   return {
     env,
     getLogger,
-    tokenStore: options.tokenStore ?? createKanaOAuthTokenStore({ env, getLogger }),
+    tokenStore: options.tokenStore ?? store,
+    clientStore: options.clientStore ?? store,
     openAuthorizationUrl:
       options.openAuthorizationUrl ??
       ((url: string) => openKanaOAuthAuthorizationUrl(url, { getLogger })),

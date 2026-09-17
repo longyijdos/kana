@@ -183,6 +183,40 @@ describe("Kana MCP config", () => {
     );
   });
 
+  test("opts into dynamic OAuth registration without requiring a client ID", () => {
+    const config = parseKanaMcpConfig({
+      mcpServers: {
+        cloudflare: {
+          type: "http",
+          url: "https://mcp.cloudflare.com/mcp",
+          auth: { type: "oauth2" },
+        },
+        deepwiki: { type: "http", url: "https://mcp.deepwiki.com/mcp" },
+      },
+    });
+    const server = config.mcpServers.cloudflare;
+    if (server.type !== "http" || server.auth === undefined)
+      throw new Error("Expected OAuth config.");
+    expect(server.auth).toEqual({
+      type: "oauth2",
+      authorizationParameters: {},
+      callbackTimeoutMs: 300_000,
+    });
+    expect(resolveKanaMcpOAuth2Client(server.auth)).toBeUndefined();
+    expect(config.mcpServers.deepwiki).not.toHaveProperty("auth");
+    expect(() =>
+      parseKanaMcpConfig({
+        mcpServers: {
+          remote: {
+            type: "http",
+            url: "https://api.example.com/mcp",
+            auth: { type: "oauth2", clientSecretEnv: "CLIENT_SECRET" },
+          },
+        },
+      }),
+    ).toThrow("clientId is required when client credentials are configured");
+  });
+
   test("defaults an omitted mcpServers object to empty", () => {
     expect(parseKanaMcpConfig({})).toEqual({ mcpServers: {} });
   });

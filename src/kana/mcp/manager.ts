@@ -5,6 +5,7 @@ import {
   type McpManagedClient,
   McpManager,
   type McpManagerProgressEvent,
+  type McpOAuthClientStore,
   type McpOAuthHttpAuthorizer,
   type McpOAuthHttpDiagnosticEvent,
   type McpServerRegistration,
@@ -44,6 +45,7 @@ export type CreateKanaMcpManagerOptions = {
   clientInfo?: McpImplementation;
   oauthFetch?: OAuthFetch;
   oauthTokenStore?: OAuthTokenStore;
+  oauthClientStore?: McpOAuthClientStore;
   openOAuthAuthorizationUrl?(serverId: string, url: string): Promise<void>;
   onOAuthDiagnostic?(serverId: string, event: McpOAuthHttpDiagnosticEvent): void;
   onProgress?(event: McpManagerProgressEvent): void;
@@ -56,7 +58,9 @@ export function createKanaMcpManager(
   const env = { ...(options.env ?? process.env) };
   const clientInfo = { ...(options.clientInfo ?? DEFAULT_CLIENT_INFO) };
   const getLogger = options.getLogger ?? createNoopLogger;
-  const oauthTokenStore = options.oauthTokenStore ?? createKanaOAuthTokenStore({ env, getLogger });
+  const credentialStore = createKanaOAuthTokenStore({ env, getLogger });
+  const oauthTokenStore = options.oauthTokenStore ?? credentialStore;
+  const oauthClientStore = options.oauthClientStore ?? credentialStore;
   const openOAuthAuthorizationUrl =
     options.openOAuthAuthorizationUrl ??
     ((_serverId: string, url: string) => openKanaOAuthAuthorizationUrl(url, { getLogger }));
@@ -69,6 +73,7 @@ export function createKanaMcpManager(
         clientInfo,
         getLogger,
         oauthTokenStore,
+        oauthClientStore,
         openOAuthAuthorizationUrl,
         ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
         ...(options.onOAuthDiagnostic === undefined
@@ -95,6 +100,7 @@ type RegistrationContext = {
   getLogger: () => Logger;
   oauthFetch?: OAuthFetch;
   oauthTokenStore: OAuthTokenStore;
+  oauthClientStore: McpOAuthClientStore;
   openOAuthAuthorizationUrl(serverId: string, url: string): Promise<void>;
   onOAuthDiagnostic?(serverId: string, event: McpOAuthHttpDiagnosticEvent): void;
 };
@@ -176,6 +182,7 @@ function createTransport(
               env: context.env,
               getLogger: context.getLogger,
               tokenStore: context.oauthTokenStore,
+              clientStore: context.oauthClientStore,
               openAuthorizationUrl: (url) => context.openOAuthAuthorizationUrl(serverId, url),
               ...(context.oauthFetch === undefined ? {} : { fetch: context.oauthFetch }),
               ...(signal === undefined ? {} : { signal }),

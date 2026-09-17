@@ -54,29 +54,7 @@ export type OAuthTokenStore = {
   delete(key: string): Promise<void>;
 };
 
-export type OAuthDiscoveryMethod = "oauth_authorization_server" | "openid_configuration";
-
 export type OAuthDiagnosticEvent =
-  | {
-      event: "oauth.metadata_discovery_attempted";
-      level: "debug";
-      attempt: number;
-      method: OAuthDiscoveryMethod;
-    }
-  | {
-      event: "oauth.metadata_discovery_failed";
-      level: "debug";
-      attempt: number;
-      method: OAuthDiscoveryMethod;
-      status?: number;
-      errorIdentity?: string;
-    }
-  | {
-      event: "oauth.metadata_discovery_succeeded";
-      level: "info";
-      attempt: number;
-      method: OAuthDiscoveryMethod;
-    }
   | {
       event: "oauth.token_request_failed";
       level: "warn";

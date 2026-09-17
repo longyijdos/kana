@@ -6,7 +6,7 @@
 
 ```text
 Product integration
-  → discover authorization-server metadata
+  → supply authorization-server metadata
   → OAuthSession
       ├→ loopback callback server
       ├→ authorization request + PKCE/state
@@ -17,15 +17,13 @@ Product integration
 
 Stateless functions own protocol parsing and request construction. `OAuthSession` owns mutable credentials for one issuer/client/resource binding and serializes interactive authorization, refresh, persistence, invalidation, and shutdown.
 
-OpenAI Codex and MCP add their own product-specific discovery or token-request differences outside this generic boundary; see [OpenAI Codex provider](openai-codex-provider.md) and [MCP](mcp.md).
+OpenAI Codex adds its product-specific token-request differences outside this generic boundary; see [OpenAI Codex provider](openai-codex-provider.md). [MCP](mcp.md) delegates its OAuth protocol to the official SDK and reuses the loopback callback and product credential store rather than `OAuthSession`.
 
-## Authorization-server discovery
+## Authorization-server metadata
 
-Discovery requires an absolute HTTPS issuer without credentials, query, or fragment. It tries the OAuth authorization-server well-known URL first, then OpenID configuration forms. A non-root issuer also receives the path-suffixed OpenID candidate. Attempts are ordered and independently diagnosed.
+Provider integrations supply authorization-server metadata to `OAuthSession`. OpenAI Codex uses fixed authorization and token endpoints; the generic provider flow performs no metadata discovery. MCP discovery belongs to the official SDK.
 
-Successful metadata must be a bounded JSON object whose `issuer` matches the requested issuer. Only equivalent root URLs may differ by a trailing slash. Authorization, token, optional registration, and revocation endpoints must use HTTPS and contain no credentials or fragment. Optional capability arrays and booleans are validated rather than ignored when malformed.
-
-Fetch redirects are rejected. The default maximum metadata or token response is 256 KiB, decoded as strict UTF-8 and then parsed as JSON. Empty, oversized, invalid UTF-8, and invalid JSON responses fail as protocol errors.
+Token requests reject fetch redirects. The default maximum token response is 256 KiB, decoded as strict UTF-8 and then parsed as JSON. Empty, oversized, invalid UTF-8, and invalid JSON responses fail as protocol errors.
 
 ## Authorization request and PKCE
 
@@ -71,10 +69,10 @@ Authorization preserves an existing ID token, refresh token, or scopes when a su
 
 The generic layer never chooses a file. `OAuthTokenStore` supplies asynchronous load, save, and delete by storage key. Kana's product store writes `<KANA_HOME>/oauth-tokens.json` with owner-only permissions and binds provider or MCP-specific keys; those path and UI decisions remain outside `src/oauth`.
 
-MCP additionally discovers protected-resource metadata and Bearer challenges before creating an `OAuthSession`. OpenAI Codex supplies its fixed client, callback, endpoint behavior, and ChatGPT account binding. Neither integration may expose tokens to Agent messages, sessions, transcript blocks, or diagnostics.
+MCP uses the SDK's `OAuthClientProvider` and `auth` flow with Kana's shared loopback callback and credential store. Its callback passes the optional authorization-response `iss` to the SDK for issuer validation after checking `state`. OpenAI Codex uses `OAuthSession` with its fixed client, callback, endpoint behavior, and ChatGPT account binding. Neither integration may expose tokens to Agent messages, sessions, transcript blocks, or diagnostics.
 
 ## Diagnostics and failure containment
 
-Generic diagnostics cover metadata attempts, token request success/failure, authorization start/callback/success/failure, and token invalidation. Events contain counts, method, status, safe OAuth identity, expiry/refresh-token presence, or a fixed invalidation reason; they never contain URLs, codes, verifiers, state, client secrets, access/refresh/ID tokens, or response bodies.
+Generic diagnostics cover token request success/failure, authorization start/callback/success/failure, and token invalidation. Events contain counts, method, status, safe OAuth identity, expiry/refresh-token presence, or a fixed invalidation reason; they never contain URLs, codes, verifiers, state, client secrets, access/refresh/ID tokens, or response bodies.
 
 Diagnostic handler failures are contained. Cancellation preserves the caller's reason, transport and protocol errors retain typed identities, and cleanup still runs if browser opening, callback handling, token exchange, persistence, or diagnostic delivery fails.

@@ -1,10 +1,20 @@
 import {
-  discoverOAuthAuthorizationServer,
+  auth,
+  discoverAuthorizationServerMetadata,
+  type OAuthClientInformationContext,
+  type OAuthClientProvider,
+  type OAuthDiscoveryState,
+  type StoredOAuthClientInformation,
+  type StoredOAuthTokens,
+} from "@modelcontextprotocol/client";
+import {
+  type OAuthCallbackServer,
   type OAuthClientCredentials,
   type OAuthDiagnosticEvent,
   type OAuthFetch,
-  OAuthSession,
+  type OAuthStoredToken,
   type OAuthTokenStore,
+  startOAuthCallbackServer,
 } from "@/oauth";
 import {
   canonicalizeMcpResource,
@@ -14,57 +24,37 @@ import {
   type McpAuthorizationDiagnosticEvent,
   type McpBearerChallenge,
   type McpProtectedResourceMetadata,
-  selectMcpAuthorizationScopes,
 } from "./authorization";
 import { McpAuthorizationError } from "./errors";
 
-type McpOAuthHttpLifecycleDiagnosticEvent =
-  | {
-      event: "mcp.oauth_preparation_started";
-      level: "info";
-    }
+export type McpOAuthClientRegistration = {
+  issuer: string;
+  resource: string;
+  redirectUri: string;
+  client: OAuthClientCredentials;
+};
+
+export type McpOAuthClientStore = {
+  loadClient(key: string): Promise<McpOAuthClientRegistration | undefined>;
+  saveClient(key: string, registration: McpOAuthClientRegistration): Promise<void>;
+  deleteClient(key: string): Promise<void>;
+};
+
+export type McpOAuthHttpDiagnosticEvent =
+  | OAuthDiagnosticEvent
+  | McpAuthorizationDiagnosticEvent
+  | { event: "mcp.oauth_preparation_started"; level: "info" }
   | {
       event: "mcp.oauth_preparation_succeeded";
       level: "info";
       interactiveAuthorization: boolean;
     }
-  | {
-      event: "mcp.oauth_preparation_failed";
-      level: "warn";
-      errorIdentity: string;
-    }
-  | {
-      event: "mcp.oauth_challenge_probe_started";
-      level: "debug";
-    }
-  | {
-      event: "mcp.oauth_challenge_probe_succeeded";
-      level: "info";
-      status: 401 | 403;
-    }
-  | {
-      event: "mcp.oauth_challenge_probe_failed";
-      level: "debug";
-      status?: number;
-      errorIdentity?: string;
-    }
-  | {
-      event: "mcp.oauth_challenge_received";
-      level: "info";
-      status: 401 | 403;
-      kind: "authorization_required" | "insufficient_scope";
-      requestHadCredentials: boolean;
-    }
+  | { event: "mcp.oauth_preparation_failed"; level: "warn"; errorIdentity: string }
+  | { event: "mcp.oauth_client_registered"; level: "info" }
   | {
       event: "mcp.oauth_request_retried";
       level: "info";
       recovery: "stored_token" | "refreshed_token" | "interactive_authorization";
-    }
-  | {
-      event: "mcp.oauth_retry_rejected";
-      level: "warn";
-      status: 401 | 403;
-      kind: "authorization_required" | "insufficient_scope";
     }
   | {
       event: "mcp.oauth_scope_challenge_blocked";
@@ -74,15 +64,11 @@ type McpOAuthHttpLifecycleDiagnosticEvent =
       missingScopeCount: number;
     };
 
-export type McpOAuthHttpDiagnosticEvent =
-  | McpOAuthHttpLifecycleDiagnosticEvent
-  | McpAuthorizationDiagnosticEvent
-  | OAuthDiagnosticEvent;
-
 export type McpOAuthHttpAuthorizerOptions = {
   resource: string;
   storageKey: string;
-  client: OAuthClientCredentials;
+  client?: OAuthClientCredentials;
+  clientStore?: McpOAuthClientStore;
   tokenStore: OAuthTokenStore;
   openAuthorizationUrl(url: string): Promise<void>;
   redirectUri?: string;
@@ -94,444 +80,516 @@ export type McpOAuthHttpAuthorizerOptions = {
   onDiagnostic?(event: McpOAuthHttpDiagnosticEvent): void;
 };
 
-type AuthorizationRecovery = {
-  token: string;
-  recovery: "stored_token" | "refreshed_token" | "interactive_authorization";
-};
-
-// This adapter owns OAuth state for one MCP protected resource. It exposes a
-// fetch-compatible boundary to Streamable HTTP so transport framing, MCP
-// sessions, and OAuth token rotation remain independent state machines.
+// The SDK owns OAuth discovery, registration, PKCE, exchange, and refresh.
+// Kana keeps the callback, credential binding, scope policy, and HTTP boundary
+// so browser authorization finishes before MCP negotiation starts.
 export class McpOAuthHttpAuthorizer {
   private readonly endpoint: URL;
   private readonly resource: string;
   private readonly rawFetch: OAuthFetch;
-  private readonly lifecycle: AbortController;
-  private readonly disposeExternalSignal: () => void;
-  private protectedResource?: McpProtectedResourceMetadata;
-  private session?: OAuthSession;
-  private sessionPromise?: Promise<OAuthSession>;
-  private recoveryPromise?: Promise<AuthorizationRecovery>;
+  private readonly lifecycle = new AbortController();
+  private readonly signal: AbortSignal;
+  private discovery?: OAuthDiscoveryState;
+  private discoveryPromise?: Promise<void>;
+  private clientInformation?: StoredOAuthClientInformation;
+  private registration?: McpOAuthClientRegistration;
+  private token?: OAuthStoredToken;
+  private authorizationPromise?: Promise<void>;
   private preparationPromise?: Promise<void>;
+  private callbackServer?: OAuthCallbackServer;
+  private callbackPromise?: ReturnType<OAuthCallbackServer["waitForCallback"]>;
+  private verifier?: string;
+  private interactiveAuthorization = false;
+  private authorizationScopes?: string[];
   private lastAccessToken?: string;
   private closing = false;
   private closed = false;
 
   constructor(private readonly options: McpOAuthHttpAuthorizerOptions) {
-    this.endpoint = parseEndpoint(options.resource);
+    this.endpoint = new URL(options.resource);
     this.resource = canonicalizeMcpResource(options.resource);
     this.rawFetch = options.fetch ?? globalThis.fetch;
-    const linked = createLinkedAbortController(options.signal);
-    this.lifecycle = linked.controller;
-    this.disposeExternalSignal = linked.dispose;
+    this.signal = AbortSignal.any([
+      this.lifecycle.signal,
+      ...(options.signal === undefined ? [] : [options.signal]),
+    ]);
     if (!options.storageKey) {
       throw new Error("MCP OAuth storage key cannot be empty.");
     }
+    if (options.client === undefined && options.clientStore === undefined) {
+      throw new Error("MCP dynamic OAuth registration requires a client store.");
+    }
+  }
+
+  private readonly provider = this.createProvider();
+
+  private createProvider(): OAuthClientProvider {
+    const authorizer = this;
+    return {
+      get redirectUrl() {
+        return authorizer.redirectUri;
+      },
+      get clientMetadata() {
+        return {
+          client_name: "Kana",
+          redirect_uris: [authorizer.redirectUri],
+          token_endpoint_auth_method: "none",
+          scope: authorizer.options.scopes?.join(" "),
+        };
+      },
+      state: async () => {
+        await this.ensureCallbackServer();
+        return crypto.randomUUID();
+      },
+      clientInformation: (ctx) =>
+        this.clientInformation?.issuer === ctx?.issuer ? this.clientInformation : undefined,
+      saveClientInformation: async (information, ctx) => {
+        this.assertOpen();
+        const method =
+          "token_endpoint_auth_method" in information
+            ? information.token_endpoint_auth_method
+            : undefined;
+        if (
+          method !== undefined &&
+          method !== "none" &&
+          method !== "client_secret_basic" &&
+          method !== "client_secret_post"
+        ) {
+          throw new McpAuthorizationError(
+            "MCP OAuth registration returned an unsupported client authentication method.",
+          );
+        }
+        const registration: McpOAuthClientRegistration = {
+          issuer: this.requireIssuer(ctx),
+          resource: this.resource,
+          redirectUri: this.redirectUri,
+          client: {
+            clientId: information.client_id,
+            ...(information.client_secret === undefined
+              ? {}
+              : { clientSecret: information.client_secret }),
+            ...(method === undefined ? {} : { tokenEndpointAuthMethod: method }),
+          },
+        };
+        await this.options.clientStore!.saveClient(this.options.storageKey, registration);
+        this.clientInformation = information;
+        this.registration = registration;
+        this.emit({ event: "mcp.oauth_client_registered", level: "info" });
+      },
+      tokens: (ctx) => {
+        if (this.token === undefined || (ctx !== undefined && this.token.issuer !== ctx.issuer)) {
+          return undefined;
+        }
+        return {
+          access_token: this.token.accessToken,
+          token_type: this.token.tokenType,
+          issuer: this.token.issuer,
+          ...(this.token.refreshToken === undefined
+            ? {}
+            : { refresh_token: this.token.refreshToken }),
+          ...(this.token.expiresAt === undefined
+            ? {}
+            : { expires_in: Math.max(0, Math.floor((this.token.expiresAt - Date.now()) / 1_000)) }),
+          ...(this.token.scopes === undefined ? {} : { scope: this.token.scopes.join(" ") }),
+        };
+      },
+      saveTokens: (tokens, ctx) => this.saveTokens(tokens, ctx),
+      redirectToAuthorization: async (url) => {
+        this.assertScopes(url.searchParams.get("scope") ?? "");
+        this.authorizationScopes = (url.searchParams.get("scope") ?? "")
+          .split(/\s+/)
+          .filter(Boolean);
+        for (const [key, value] of Object.entries(
+          this.options.additionalAuthorizationParameters ?? {},
+        )) {
+          url.searchParams.set(key, value);
+        }
+        this.interactiveAuthorization = true;
+        this.emit({
+          event: "oauth.authorization_started",
+          level: "info",
+          scopeCount: (url.searchParams.get("scope") ?? "").split(/\s+/).filter(Boolean).length,
+        });
+        this.callbackPromise = this.callbackServer!.waitForCallback(
+          url.searchParams.get("state")!,
+          { signal: this.signal },
+        );
+        void this.callbackPromise.catch(() => undefined);
+        await this.options.openAuthorizationUrl(url.href);
+      },
+      saveCodeVerifier: (verifier) => {
+        this.verifier = verifier;
+      },
+      codeVerifier: () => {
+        if (this.verifier === undefined)
+          throw new McpAuthorizationError("MCP OAuth has no pending PKCE verifier.");
+        return this.verifier;
+      },
+      validateResourceURL: async (_url, resource) => {
+        if (resource !== undefined && canonicalizeMcpResource(resource) !== this.resource) {
+          throw new McpAuthorizationError(
+            "MCP protected resource metadata does not match the configured resource.",
+          );
+        }
+        return new URL(this.resource);
+      },
+      discoveryState: () => this.discovery,
+      saveDiscoveryState: (state) => {
+        this.discovery = state;
+      },
+      invalidateCredentials: async (scope) => {
+        this.assertOpen();
+        if (scope === "all" || scope === "tokens") {
+          this.token = undefined;
+          await this.options.tokenStore.delete(this.options.storageKey);
+        }
+        if (scope === "all" || scope === "client") {
+          this.clientInformation = undefined;
+          this.registration = undefined;
+          await this.options.clientStore?.deleteClient(this.options.storageKey);
+          if (this.options.client !== undefined)
+            this.clientInformation = this.registeredClient(this.options.client);
+          else await this.ensureCallbackServer();
+        }
+        if (scope === "all" || scope === "verifier") this.verifier = undefined;
+        if (scope === "all" || scope === "discovery") this.discovery = undefined;
+      },
+    };
   }
 
   readonly fetch: OAuthFetch = async (input, init) => {
-    const request = this.createRequestTemplate(input, init);
-    const method = request.method.toUpperCase();
-    if (this.closed || (this.closing && method !== "DELETE")) {
-      throw new McpAuthorizationError("MCP OAuth authorizer is closing or closed.");
+    const request = new Request(input, init);
+    if (new URL(request.url).href !== this.endpoint.href) {
+      throw new McpAuthorizationError(
+        "MCP OAuth authorizer refused to send credentials to a different endpoint.",
+      );
     }
-    const accessToken = this.closing ? this.lastAccessToken : await this.session?.getAccessToken();
-    if (accessToken !== undefined) {
-      this.lastAccessToken = accessToken;
-    }
-    const response = await this.rawFetch(this.createAttempt(request, accessToken));
-    const challenge = await readAuthorizationChallenge(response);
-    if (challenge === undefined || method === "DELETE") {
-      return response;
-    }
-
-    this.emit({
-      event: "mcp.oauth_challenge_received",
-      level: "info",
-      status: challenge.status,
-      kind: challenge.kind,
-      requestHadCredentials: accessToken !== undefined,
-    });
-    await response.body?.cancel().catch(() => undefined);
-
-    const recovery = await this.recoverAuthorization(challenge, accessToken !== undefined);
-    this.lastAccessToken = recovery.token;
+    const deleting = request.method === "DELETE";
+    if (this.closed) throw new McpAuthorizationError("MCP OAuth authorizer is closed.");
+    if (!deleting) this.assertOpen();
+    let accessToken = this.closing ? this.lastAccessToken : await this.getAccessToken();
+    if (accessToken !== undefined) this.lastAccessToken = accessToken;
+    const attempt = () => {
+      const headers = new Headers(request.headers);
+      if (accessToken !== undefined) headers.set("Authorization", `Bearer ${accessToken}`);
+      return new Request(request.clone(), {
+        headers,
+        signal: deleting ? request.signal : AbortSignal.any([request.signal, this.signal]),
+      });
+    };
+    const response = await this.rawFetch(attempt());
+    const challenge = createMcpAuthorizationChallengeError(response);
+    if (challenge === undefined || deleting) return response;
+    await response.body?.cancel();
+    this.assertScopes(challenge.challenge.scopes?.join(" ") ?? "", challenge);
+    const previous = this.token?.accessToken;
+    await this.authenticate(challenge.kind === "insufficient_scope", challenge.challenge);
+    accessToken = this.token?.accessToken;
+    this.lastAccessToken = accessToken;
     this.emit({
       event: "mcp.oauth_request_retried",
       level: "info",
-      recovery: recovery.recovery,
+      recovery: this.interactiveAuthorization
+        ? "interactive_authorization"
+        : previous === this.lastAccessToken
+          ? "stored_token"
+          : "refreshed_token",
     });
-    const retried = await this.rawFetch(this.createAttempt(request, recovery.token));
-    const retryChallenge = await readAuthorizationChallenge(retried);
-    if (retryChallenge !== undefined) {
-      this.emit({
-        event: "mcp.oauth_retry_rejected",
-        level: "warn",
-        status: retryChallenge.status,
-        kind: retryChallenge.kind,
-      });
-    }
-    return retried;
+    return this.rawFetch(attempt());
   };
 
   prepare(): Promise<void> {
     this.assertOpen();
-    if (this.preparationPromise !== undefined) {
-      return this.preparationPromise;
-    }
-
-    const promise = this.prepareInternal();
-    this.preparationPromise = promise;
-    return promise;
+    this.preparationPromise ??= this.prepareInternal();
+    return this.preparationPromise;
   }
 
-  async authorize(): Promise<void> {
+  authorize(): Promise<void> {
     this.assertOpen();
-    const session = await this.ensurePreparationSession();
-    this.lastAccessToken = await session.authorize({ scopes: this.selectScopes() });
+    return this.authenticate(true);
   }
 
   beginClose(): void {
-    if (this.closing || this.closed) {
-      return;
-    }
+    if (this.closing) return;
     this.closing = true;
-    if (this.session === undefined) {
-      this.lifecycle.abort(new McpAuthorizationError("MCP OAuth authorizer is closing."));
-    } else {
-      this.session.cancelPending(new McpAuthorizationError("MCP OAuth authorizer is closing."));
-    }
+    this.lifecycle.abort(new McpAuthorizationError("MCP OAuth authorizer is closing."));
   }
 
   close(): void {
-    if (this.closed) {
-      return;
-    }
     this.beginClose();
     this.closed = true;
-    this.lifecycle.abort(new McpAuthorizationError("MCP OAuth authorizer closed."));
-    this.session?.close();
     this.lastAccessToken = undefined;
-    this.disposeExternalSignal();
+    this.token = undefined;
+    this.clientInformation = undefined;
+    this.registration = undefined;
+  }
+
+  private get redirectUri(): string {
+    return (
+      this.callbackServer?.redirectUri ??
+      this.options.redirectUri ??
+      this.registration?.redirectUri ??
+      "http://127.0.0.1:0/oauth/callback"
+    );
   }
 
   private async prepareInternal(): Promise<void> {
     this.emit({ event: "mcp.oauth_preparation_started", level: "info" });
     try {
-      const session = await this.ensurePreparationSession();
-      const existingToken = await session.getAccessToken();
-      const interactiveAuthorization = existingToken === undefined;
-      if (existingToken === undefined) {
-        this.lastAccessToken = await session.authorize({ scopes: this.selectScopes() });
-      } else {
-        this.lastAccessToken = existingToken;
-      }
+      if ((await this.getAccessToken()) === undefined) await this.authenticate(false);
+      this.lastAccessToken = this.token?.accessToken;
       this.emit({
         event: "mcp.oauth_preparation_succeeded",
         level: "info",
-        interactiveAuthorization,
+        interactiveAuthorization: this.interactiveAuthorization,
       });
     } catch (error) {
-      if (!this.lifecycle.signal.aborted) {
+      if (!this.signal.aborted)
         this.emit({
           event: "mcp.oauth_preparation_failed",
           level: "warn",
-          errorIdentity: describeErrorIdentity(error),
+          errorIdentity: error instanceof Error ? error.name : "Error",
         });
-      }
       throw error;
     }
   }
 
-  private async ensurePreparationSession(): Promise<OAuthSession> {
-    try {
-      return await this.ensureSession();
-    } catch (discoveryError) {
-      // A server may publish resource metadata only through its Bearer
-      // challenge. Probe with an idempotent method before MCP initialize so
-      // interactive authorization is not constrained by initialize timeout.
-      if (this.protectedResource !== undefined) {
-        throw discoveryError;
-      }
-      const challenge = await this.probeAuthorizationChallenge(discoveryError);
-      return this.ensureSession(challenge);
+  private async getAccessToken(): Promise<string | undefined> {
+    await this.ensureDiscovery();
+    if (this.token === undefined) return undefined;
+    if (this.token.expiresAt !== undefined && this.token.expiresAt <= Date.now() + 60_000) {
+      if (this.token.refreshToken === undefined) return undefined;
+      await this.authenticate(false);
     }
+    return this.token?.accessToken;
   }
 
-  private async probeAuthorizationChallenge(discoveryError: unknown): Promise<McpBearerChallenge> {
-    this.emit({ event: "mcp.oauth_challenge_probe_started", level: "debug" });
-    let response: Response;
+  private ensureDiscovery(challenge?: McpBearerChallenge): Promise<void> {
+    this.assertOpen();
+    if (this.discoveryPromise !== undefined) return this.discoveryPromise;
+    if (this.discovery !== undefined) return Promise.resolve();
+    this.discoveryPromise ??= this.discover(challenge).finally(() => {
+      this.discoveryPromise = undefined;
+    });
+    return this.discoveryPromise;
+  }
+
+  private async discover(challenge?: McpBearerChallenge): Promise<void> {
+    let protectedResource: McpProtectedResourceMetadata;
     try {
-      response = await this.rawFetch(this.endpoint, {
-        method: "HEAD",
-        headers: { Accept: "application/json, text/event-stream" },
-        redirect: "error",
-        signal: this.lifecycle.signal,
+      protectedResource = await discoverMcpProtectedResource(this.resource, {
+        challenge,
+        fetch: this.sdkFetch,
+        signal: this.signal,
+        onDiagnostic: (event) => this.emit(event),
       });
     } catch (error) {
-      this.emit({
-        event: "mcp.oauth_challenge_probe_failed",
-        level: "debug",
-        errorIdentity: describeErrorIdentity(error),
+      if (challenge !== undefined || this.signal.aborted) throw error;
+      const response = await this.sdkFetch(this.endpoint, {
+        method: "HEAD",
+        headers: { Accept: "application/json, text/event-stream" },
       });
-      throw discoveryError;
+      const probe = createMcpAuthorizationChallengeError(response);
+      await response.body?.cancel();
+      if (probe === undefined) throw error;
+      protectedResource = await discoverMcpProtectedResource(this.resource, {
+        challenge: probe.challenge,
+        fetch: this.sdkFetch,
+        signal: this.signal,
+        onDiagnostic: (event) => this.emit(event),
+      });
     }
+    const issuer = protectedResource.authorizationServers[0]!;
+    const metadata = await discoverAuthorizationServerMetadata(issuer, { fetchFn: this.sdkFetch });
+    if (metadata === undefined)
+      throw new McpAuthorizationError("MCP OAuth authorization-server metadata is unavailable.");
+    this.assertOpen();
+    this.registration = await this.options.clientStore?.loadClient(this.options.storageKey);
+    if (
+      this.registration !== undefined &&
+      (this.registration.issuer !== metadata.issuer ||
+        this.registration.resource !== this.resource ||
+        (this.options.redirectUri !== undefined &&
+          this.registration.redirectUri !== this.options.redirectUri))
+    ) {
+      this.registration = undefined;
+      await this.options.clientStore!.deleteClient(this.options.storageKey);
+    }
+    this.discovery = {
+      authorizationServerUrl: issuer,
+      authorizationServerMetadata: metadata,
+      resourceMetadata: {
+        resource: protectedResource.resource,
+        authorization_servers: protectedResource.authorizationServers,
+        scopes_supported: this.options.scopes?.slice() ?? protectedResource.scopesSupported,
+      },
+    };
+    const client = this.options.client ?? this.registration?.client;
+    if (client !== undefined) this.clientInformation = this.registeredClient(client);
+    this.token = await this.options.tokenStore.load(this.options.storageKey);
+    if (
+      this.token !== undefined &&
+      (this.token.issuer !== metadata.issuer ||
+        this.token.resource !== this.resource ||
+        this.token.clientId !== client?.clientId)
+    ) {
+      this.token = undefined;
+      await this.options.tokenStore.delete(this.options.storageKey);
+    }
+  }
 
-    const challengeError = await readAuthorizationChallenge(response);
-    await response.body?.cancel().catch(() => undefined);
-    if (challengeError === undefined) {
-      this.emit({
-        event: "mcp.oauth_challenge_probe_failed",
-        level: "debug",
-        status: response.status,
-      });
-      throw discoveryError;
-    }
-    this.emit({
-      event: "mcp.oauth_challenge_probe_succeeded",
-      level: "info",
-      status: challengeError.status,
+  private readonly sdkFetch: OAuthFetch = (input, init) => {
+    this.assertOpen();
+    return this.rawFetch(input, {
+      ...init,
+      signal: AbortSignal.any([this.signal, ...(init?.signal ? [init.signal] : [])]),
     });
-    return challengeError.challenge;
+  };
+
+  private registeredClient(client: OAuthClientCredentials): StoredOAuthClientInformation {
+    return {
+      client_id: client.clientId,
+      issuer: this.discovery!.authorizationServerMetadata!.issuer,
+      ...(client.clientSecret === undefined ? {} : { client_secret: client.clientSecret }),
+      ...(client.tokenEndpointAuthMethod === undefined
+        ? {}
+        : { token_endpoint_auth_method: client.tokenEndpointAuthMethod }),
+    };
   }
 
-  private async recoverAuthorization(
-    challenge: McpAuthorizationChallengeError,
-    requestHadCredentials: boolean,
-  ): Promise<AuthorizationRecovery> {
-    if (this.recoveryPromise !== undefined) {
-      return this.recoveryPromise;
-    }
+  private authenticate(
+    forceReauthorization: boolean,
+    challenge?: McpBearerChallenge,
+  ): Promise<void> {
+    this.assertOpen();
+    this.authorizationPromise ??= this.runAuthorization(forceReauthorization, challenge).finally(
+      () => {
+        this.authorizationPromise = undefined;
+      },
+    );
+    return this.authorizationPromise;
+  }
 
-    const promise = this.recoverAuthorizationInternal(challenge, requestHadCredentials);
-    this.recoveryPromise = promise;
+  private async runAuthorization(
+    forceReauthorization: boolean,
+    challenge?: McpBearerChallenge,
+  ): Promise<void> {
     try {
-      return await promise;
-    } finally {
-      if (this.recoveryPromise === promise) {
-        this.recoveryPromise = undefined;
+      await this.ensureDiscovery(challenge);
+      if (this.clientInformation === undefined) await this.ensureCallbackServer();
+      this.interactiveAuthorization = false;
+      const scope = this.options.scopes?.join(" ") ?? challenge?.scopes?.join(" ");
+      const result = await auth(this.provider, {
+        serverUrl: this.resource,
+        scope,
+        forceReauthorization,
+        fetchFn: this.sdkFetch,
+      });
+      if (result === "REDIRECT") {
+        const callback = await this.callbackPromise!;
+        this.emit({ event: "oauth.authorization_callback_received", level: "debug" });
+        await auth(this.provider, {
+          serverUrl: this.resource,
+          authorizationCode: callback.code,
+          iss: callback.iss,
+          scope,
+          fetchFn: this.sdkFetch,
+        });
+        this.emit({
+          event: "oauth.authorization_succeeded",
+          level: "info",
+          scopeCount: this.token?.scopes?.length ?? 0,
+          refreshTokenAvailable: this.token?.refreshToken !== undefined,
+        });
       }
+    } catch (error) {
+      if (!this.signal.aborted)
+        this.emit({
+          event: "oauth.authorization_failed",
+          level: "warn",
+          errorIdentity: error instanceof Error ? error.name : "Error",
+        });
+      throw error;
+    } finally {
+      await this.callbackServer?.close();
+      this.callbackServer = undefined;
+      this.callbackPromise = undefined;
+      this.verifier = undefined;
     }
   }
 
-  private async recoverAuthorizationInternal(
-    challenge: McpAuthorizationChallengeError,
-    requestHadCredentials: boolean,
-  ): Promise<AuthorizationRecovery> {
-    const missingConfiguredScopes = this.findMissingConfiguredScopes(challenge.challenge);
-    if (missingConfiguredScopes.length > 0) {
-      this.emit({
-        event: "mcp.oauth_scope_challenge_blocked",
-        level: "warn",
-        configuredScopeCount: this.options.scopes?.length ?? 0,
-        challengedScopeCount: challenge.challenge.scopes?.length ?? 0,
-        missingScopeCount: missingConfiguredScopes.length,
-      });
+  private async ensureCallbackServer(): Promise<void> {
+    if (this.callbackServer !== undefined) return;
+    this.callbackServer = await startOAuthCallbackServer({
+      redirectUri: this.options.redirectUri ?? this.registration?.redirectUri,
+      timeoutMs: this.options.callbackTimeoutMs,
+    });
+    this.assertOpen();
+  }
+
+  private async saveTokens(
+    tokens: StoredOAuthTokens,
+    ctx?: OAuthClientInformationContext,
+  ): Promise<void> {
+    this.assertOpen();
+    const scopes =
+      tokens.scope?.split(/\s+/).filter(Boolean) ??
+      (this.interactiveAuthorization ? this.authorizationScopes : this.token?.scopes);
+    const token: OAuthStoredToken = {
+      accessToken: tokens.access_token,
+      tokenType: "Bearer",
+      issuer: this.requireIssuer(ctx),
+      clientId: this.clientInformation!.client_id,
+      resource: this.resource,
+      ...((tokens.refresh_token ?? this.token?.refreshToken)
+        ? { refreshToken: tokens.refresh_token ?? this.token?.refreshToken }
+        : {}),
+      ...(tokens.expires_in === undefined
+        ? {}
+        : { expiresAt: Date.now() + tokens.expires_in * 1_000 }),
+      ...(scopes === undefined ? {} : { scopes: scopes.slice() }),
+    };
+    await this.options.tokenStore.save(this.options.storageKey, token);
+    this.token = token;
+    this.lastAccessToken = token.accessToken;
+  }
+
+  private requireIssuer(ctx?: OAuthClientInformationContext): string {
+    return ctx?.issuer ?? this.discovery!.authorizationServerMetadata!.issuer;
+  }
+
+  private assertScopes(scope: string, challenge?: McpAuthorizationChallengeError): void {
+    if (this.options.scopes === undefined) return;
+    const scopes = scope.split(/\s+/).filter(Boolean);
+    const missing = scopes.filter((value) => !this.options.scopes!.includes(value));
+    if (missing.length === 0) return;
+    this.emit({
+      event: "mcp.oauth_scope_challenge_blocked",
+      level: "warn",
+      configuredScopeCount: this.options.scopes.length,
+      challengedScopeCount: scopes.length,
+      missingScopeCount: missing.length,
+    });
+    const message = `MCP HTTP authorization requires scopes that are not included in the configured OAuth scopes: ${missing.join(" ")}.`;
+    if (challenge !== undefined)
       throw new McpAuthorizationChallengeError(
         challenge.status,
         challenge.kind,
         challenge.challenge,
-        `MCP HTTP authorization requires scopes that are not included in the configured OAuth scopes: ${missingConfiguredScopes.join(" ")}.`,
+        message,
       );
-    }
-
-    const session = await this.ensureSession(challenge.challenge);
-
-    if (!requestHadCredentials) {
-      const storedToken = await session.getAccessToken();
-      if (storedToken !== undefined) {
-        return { token: storedToken, recovery: "stored_token" };
-      }
-    } else if (challenge.kind === "authorization_required") {
-      const refreshed = await session.refresh();
-      if (refreshed !== undefined) {
-        return { token: refreshed.accessToken, recovery: "refreshed_token" };
-      }
-    }
-
-    const token = await session.authorize({ scopes: this.selectScopes(challenge.challenge) });
-    return { token, recovery: "interactive_authorization" };
-  }
-
-  private findMissingConfiguredScopes(challenge: McpBearerChallenge): string[] {
-    if (this.options.scopes === undefined || challenge.scopes === undefined) {
-      return [];
-    }
-    const configured = new Set(this.options.scopes);
-    return challenge.scopes.filter((scope) => !configured.has(scope));
-  }
-
-  private async ensureSession(challenge?: McpBearerChallenge): Promise<OAuthSession> {
-    if (this.session !== undefined) {
-      return this.session;
-    }
-    if (this.sessionPromise !== undefined) {
-      return this.sessionPromise;
-    }
-
-    const promise = this.createSession(challenge);
-    this.sessionPromise = promise;
-    try {
-      return await promise;
-    } finally {
-      if (this.sessionPromise === promise) {
-        this.sessionPromise = undefined;
-      }
-    }
-  }
-
-  private async createSession(challenge?: McpBearerChallenge): Promise<OAuthSession> {
-    const protectedResource = await discoverMcpProtectedResource(this.resource, {
-      ...(challenge === undefined ? {} : { challenge }),
-      fetch: this.rawFetch,
-      onDiagnostic: (event) => this.emit(event),
-      signal: this.lifecycle.signal,
-    });
-    this.protectedResource = protectedResource;
-    const issuer = protectedResource.authorizationServers[0];
-    if (issuer === undefined) {
-      throw new McpAuthorizationError(
-        "MCP protected resource metadata did not provide an authorization server.",
-      );
-    }
-    const metadata = await discoverOAuthAuthorizationServer(issuer, {
-      fetch: this.rawFetch,
-      onDiagnostic: (event) => this.emit(event),
-      signal: this.lifecycle.signal,
-    });
-    this.assertOpen();
-    const session = new OAuthSession({
-      storageKey: this.options.storageKey,
-      metadata,
-      client: this.options.client,
-      tokenStore: this.options.tokenStore,
-      openAuthorizationUrl: this.options.openAuthorizationUrl,
-      ...(this.options.redirectUri === undefined ? {} : { redirectUri: this.options.redirectUri }),
-      scopes: this.selectScopes(undefined, protectedResource),
-      resource: protectedResource.resource,
-      ...(this.options.additionalAuthorizationParameters === undefined
-        ? {}
-        : { additionalAuthorizationParameters: this.options.additionalAuthorizationParameters }),
-      ...(this.options.callbackTimeoutMs === undefined
-        ? {}
-        : { callbackTimeoutMs: this.options.callbackTimeoutMs }),
-      fetch: this.rawFetch,
-      onDiagnostic: (event) => this.emit(event),
-      signal: this.lifecycle.signal,
-    });
-    this.session = session;
-    return session;
-  }
-
-  private selectScopes(
-    challenge?: McpBearerChallenge,
-    protectedResource = this.protectedResource,
-  ): string[] {
-    // Explicit host configuration is a permission boundary. Only use
-    // challenge or resource metadata scopes when the host did not choose a
-    // scope set, following MCP's generic-client fallback strategy.
-    const selected =
-      this.options.scopes ??
-      (protectedResource === undefined
-        ? undefined
-        : selectMcpAuthorizationScopes(challenge, protectedResource));
-    return [...new Set(selected ?? [])];
-  }
-
-  private createRequestTemplate(input: string | URL | Request, init?: RequestInit): Request {
-    const request = new Request(input, init);
-    if (new URL(request.url).toString() !== this.endpoint.toString()) {
-      throw new McpAuthorizationError(
-        "MCP OAuth authorizer refused to send credentials to a different endpoint.",
-      );
-    }
-    return request;
-  }
-
-  private createAttempt(request: Request, accessToken: string | undefined): Request {
-    const attempt = request.clone();
-    if (accessToken === undefined) {
-      return attempt;
-    }
-    const headers = new Headers(attempt.headers);
-    headers.set("Authorization", `Bearer ${accessToken}`);
-    return new Request(attempt, { headers });
+    throw new McpAuthorizationError(message);
   }
 
   private assertOpen(): void {
-    if (this.closing || this.closed) {
-      throw new McpAuthorizationError("MCP OAuth authorizer is closing or closed.");
-    }
+    this.signal.throwIfAborted();
   }
 
   private emit(event: McpOAuthHttpDiagnosticEvent): void {
     try {
       this.options.onDiagnostic?.(event);
     } catch {
-      // Diagnostic consumers cannot alter authorization or request delivery.
+      // Diagnostics cannot change authorization control flow.
     }
   }
-}
-
-async function readAuthorizationChallenge(
-  response: Response,
-): Promise<McpAuthorizationChallengeError | undefined> {
-  try {
-    return createMcpAuthorizationChallengeError(response);
-  } catch (error) {
-    await response.body?.cancel().catch(() => undefined);
-    throw error;
-  }
-}
-
-function parseEndpoint(value: string): URL {
-  let endpoint: URL;
-  try {
-    endpoint = new URL(value);
-  } catch (error) {
-    throw new McpAuthorizationError("MCP OAuth endpoint must be an absolute URL.", {
-      cause: error,
-    });
-  }
-  if (endpoint.protocol !== "https:") {
-    throw new McpAuthorizationError("MCP OAuth endpoint must use HTTPS.");
-  }
-  if (endpoint.username || endpoint.password || endpoint.hash) {
-    throw new McpAuthorizationError("MCP OAuth endpoint cannot contain credentials or a fragment.");
-  }
-  return endpoint;
-}
-
-function describeErrorIdentity(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return `thrown_${typeof error}`;
-  }
-  const code = (error as Error & { code?: unknown }).code;
-  const safeCode =
-    (typeof code === "string" || typeof code === "number") &&
-    /^[a-zA-Z0-9_.-]{1,64}$/.test(String(code))
-      ? String(code)
-      : undefined;
-  return safeCode === undefined ? error.name || "Error" : `${error.name || "Error"}/${safeCode}`;
-}
-
-function createLinkedAbortController(signal: AbortSignal | undefined): {
-  controller: AbortController;
-  dispose(): void;
-} {
-  const controller = new AbortController();
-  if (signal?.aborted) {
-    controller.abort(signal.reason);
-    return { controller, dispose() {} };
-  }
-  if (signal === undefined) {
-    return { controller, dispose() {} };
-  }
-
-  const onAbort = () => controller.abort(signal.reason);
-  signal.addEventListener("abort", onAbort, { once: true });
-  return {
-    controller,
-    dispose: () => signal.removeEventListener("abort", onAbort),
-  };
 }

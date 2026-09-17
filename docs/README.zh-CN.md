@@ -18,7 +18,7 @@
 - [DeepSeek 提供商](deepseek-provider.zh-CN.md)：DeepSeek 专用 metadata、请求、replay 与错误。
 - [OpenAI Codex 提供商](openai-codex-provider.zh-CN.md)：Codex 认证、classic Responses、replay、托管搜索与账号行为。
 - [自定义 OpenAI-compatible 提供商](custom-provider.zh-CN.md)：Custom 配置、模型 metadata、兼容行为与安全边界。
-- [OAuth](oauth.zh-CN.md)：discovery、PKCE、callback、token exchange、refresh 协调与持久化边界。
+- [OAuth](oauth.zh-CN.md)：provider PKCE、callback、token exchange、refresh 协调与共享持久化边界。
 - [MCP](mcp.zh-CN.md)：JSON-RPC、transport、client、远端工具、manager 生命周期、授权与 reload。
 - [Skills 与系统提示词](skills-and-prompt.zh-CN.md)：发现、启用、项目指令与 prompt 装配。
 - [Subagent](subagents.zh-CN.md)：角色卡 profile、委派生命周期、能力边界、持久化与 TUI 管理。

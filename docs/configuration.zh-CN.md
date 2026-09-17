@@ -358,6 +358,11 @@ MCP server 不写入 `config.toml`。Claude Code 风格的定义保存在 `<KANA
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxx"
       }
     },
+    "cloudflare": {
+      "type": "http",
+      "url": "https://mcp.cloudflare.com/mcp",
+      "auth": { "type": "oauth2" }
+    },
     "remote": {
       "type": "http",
       "url": "https://example.com/mcp",
@@ -396,7 +401,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `url` | HTTP 必填 | Streamable HTTP 单端点 URL；必须为绝对 `http`/`https` URL，不能包含 credentials 或 fragment。 |
 | `proxy` | HTTP: 未设置 | 绝对 `http`/`https` 代理 URL 表示仅该 server 使用指定代理；`false` 表示忽略进程级代理并强制直连。URL 不能包含 credentials 或 fragment。 |
 | `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
-| `auth` | 未设置 | HTTP OAuth 2.0 配置；设置后 `url` 必须为 HTTPS，且 `headers` 不能再设置 `Authorization`。 |
+| `auth` | 未设置 | 显式启用 HTTP OAuth 2.0。省略时 Kana 使用普通 HTTP 连接，不启动 OAuth。设置后 `url` 必须为 HTTPS，且 `headers` 不能再设置 `Authorization`。 |
 | `description` | server 自身简介（若有） | 模型所见 MCP 目录中的能力简介。 |
 | `required` | `false` | 启动失败是否阻止 MCP manager 整体就绪。 |
 | `startupTimeoutMs` | `10000` | 启动期间每个 MCP 协商或初始化请求的超时。 |
@@ -412,15 +417,15 @@ HTTP server 的 `proxy` 会一致应用于其 MCP 与 OAuth 请求；设为 `fal
 
 | 键 | 默认值 | 含义 |
 | --- | --- | --- |
-| `clientId` | 必填 | 已注册 OAuth client ID；它不是 secret，可直接保存在 `mcp.json`。 |
+| `clientId` | 动态注册 | 可选的已注册 OAuth client ID。省略时 SDK 向服务端注册 public client，服务端必须支持注册。配置 client secret 或基于 secret 的认证方式时必填。 |
 | `clientSecretEnv` | 未设置 | 从 Kana 进程环境读取 client secret 的变量名，例如放在 `<KANA_HOME>/.env`；secret 不写入 `mcp.json`。 |
-| `redirectUri` | 动态 loopback | 可选的固定 `http://localhost:<port>/path`、`127.0.0.1` 或 `::1` callback。省略时 Kana 在 `127.0.0.1` 上选择空闲端口并使用 `/oauth/callback`。 |
+| `redirectUri` | 动态 loopback | 可选的固定 `http://localhost:<port>/path`、`127.0.0.1` 或 `::1` callback。省略时 Kana 在 `127.0.0.1` 上选择空闲端口并使用 `/oauth/callback`；动态注册的 client 会保存并复用这个 URI。 |
 | `scopes` | 未设置 | 显式最小权限边界。设置后不会自动申请列表外的 scope；未设置时优先使用 `WWW-Authenticate` challenge 的 scope，再回退 protected-resource metadata。 |
 | `tokenEndpointAuthMethod` | 自动选择 | `none`、`client_secret_basic` 或 `client_secret_post`；必须与服务端 metadata 和是否提供 secret 一致。 |
 | `authorizationParameters` | `{}` | 追加到浏览器授权请求的提供商参数，例如 `access_type` 或 `prompt`；不能覆盖 OAuth/PKCE/resource 核心参数。 |
 | `callbackTimeoutMs` | `300000` | 等待 loopback callback 的正整数超时。 |
 
-MCP 授权把 token 与绑定信息写入权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`。Discovery、PKCE、refresh、challenge 恢复和 scope 边界见 [OAuth](oauth.zh-CN.md) 与 [MCP](mcp.zh-CN.md)。
+MCP 授权把 token、绑定信息与动态 client 注册信息写入权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`。已有 version-1 token 格式保持可读；可选的 `clients` 条目保存注册凭据及其 issuer、resource 和 callback URI。Discovery、registration、PKCE、refresh、challenge 恢复和 scope 边界见 [MCP](mcp.zh-CN.md)；provider session 见 [OAuth](oauth.zh-CN.md)。
 
 HTTP transport 版本、JSON/SSE session 行为、恢复规则、server 失败隔离、远端工具映射和 manager 生命周期见 [MCP](mcp.zh-CN.md)。用户可见的加载、reload、审批和关闭行为属于 [TUI](tui.zh-CN.md)。
 

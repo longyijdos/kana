@@ -23,7 +23,7 @@ export type KanaMcpStdioServerConfig = KanaMcpCommonServerConfig & {
 
 export type KanaMcpOAuth2Config = {
   type: "oauth2";
-  clientId: string;
+  clientId?: string;
   clientSecretEnv?: string;
   redirectUri?: string;
   scopes?: string[];
@@ -185,7 +185,10 @@ function parseHttpServer(name: string, server: Record<string, unknown>): KanaMcp
 export function resolveKanaMcpOAuth2Client(
   config: KanaMcpOAuth2Config,
   env: NodeJS.ProcessEnv = process.env,
-): OAuthClientCredentials {
+): OAuthClientCredentials | undefined {
+  if (config.clientId === undefined) {
+    return undefined;
+  }
   const clientSecret =
     config.clientSecretEnv === undefined ? undefined : env[config.clientSecretEnv];
   if (config.clientSecretEnv !== undefined && !clientSecret) {
@@ -387,10 +390,18 @@ function readOptionalOAuth2Config(value: unknown, name: string): KanaMcpOAuth2Co
     auth.tokenEndpointAuthMethod,
     `${name}.tokenEndpointAuthMethod`,
   );
+  const clientId = readOptionalNonBlankString(auth.clientId, `${name}.clientId`);
+  if (
+    clientId === undefined &&
+    (clientSecretEnv !== undefined ||
+      (tokenEndpointAuthMethod !== undefined && tokenEndpointAuthMethod !== "none"))
+  ) {
+    throw new Error(`${name}.clientId is required when client credentials are configured.`);
+  }
 
   return {
     type: "oauth2",
-    clientId: readRequiredNonBlankString(auth.clientId, `${name}.clientId`),
+    ...(clientId === undefined ? {} : { clientId }),
     ...(clientSecretEnv === undefined ? {} : { clientSecretEnv }),
     ...readOptionalOAuthRedirectUri(auth.redirectUri, `${name}.redirectUri`),
     ...(scopes === undefined ? {} : { scopes }),

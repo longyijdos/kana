@@ -18,7 +18,7 @@ These documents describe the current implementation. They are organized by stabl
 - [DeepSeek provider](deepseek-provider.md): DeepSeek-specific metadata, requests, replay, and errors.
 - [OpenAI Codex provider](openai-codex-provider.md): Codex authentication, classic Responses, replay, hosted search, and account behavior.
 - [Custom OpenAI-compatible provider](custom-provider.md): Custom configuration, model metadata, compatible behavior, and security.
-- [OAuth](oauth.md): discovery, PKCE, callback, token exchange, refresh coordination, and persistence boundary.
+- [OAuth](oauth.md): provider PKCE, callback, token exchange, refresh coordination, and shared persistence boundary.
 - [MCP](mcp.md): JSON-RPC, transports, client, remote tools, manager lifecycle, authorization, and reload.
 - [Skills and the system prompt](skills-and-prompt.md): discovery, activation, project instructions, and prompt composition.
 - [Subagents](subagents.md): role-card profiles, delegated lifecycle, capability boundaries, persistence, and TUI management.

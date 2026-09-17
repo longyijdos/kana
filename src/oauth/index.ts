@@ -1,4 +1,4 @@
-export { discoverOAuthAuthorizationServer } from "./discovery";
+export { type OAuthCallbackServer, startOAuthCallbackServer } from "./callback-server";
 export {
   OAuthSession,
   type OAuthSessionStatus,

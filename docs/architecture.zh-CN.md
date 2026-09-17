@@ -99,7 +99,7 @@ Normal 本地状态以 `KANA_HOME` 为根，未设置时默认为 `~/.kana`。�
 | 工具执行、审批 hook、Job、artifact | [工具与执行](tools.zh-CN.md) |
 | 供应商生命周期与共享协议 codec | [供应商](providers.zh-CN.md) |
 | Adapter 专用请求与 replay | [DeepSeek](deepseek-provider.zh-CN.md)、[OpenAI Codex](openai-codex-provider.zh-CN.md)或 [Custom](custom-provider.zh-CN.md) |
-| 通用 token discovery、PKCE、callback、refresh | [OAuth](oauth.zh-CN.md) |
+| Provider token 生命周期、PKCE、共享 callback 与持久化 | [OAuth](oauth.zh-CN.md) |
 | MCP transport、client、manager 与 reload | [MCP](mcp.zh-CN.md) |
 | Session JSONL、恢复、accounting、memory | [会话与记忆](sessions-and-memory.zh-CN.md) |
 | 配置 schema、默认值、本地文件、clean mode | [配置与安装](configuration.zh-CN.md) |

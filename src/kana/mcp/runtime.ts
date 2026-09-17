@@ -59,6 +59,9 @@ export class KanaMcpRuntime {
       ...(options.oauthTokenStore === undefined
         ? {}
         : { oauthTokenStore: options.oauthTokenStore }),
+      ...(options.oauthClientStore === undefined
+        ? {}
+        : { oauthClientStore: options.oauthClientStore }),
       ...(options.openOAuthAuthorizationUrl === undefined
         ? {}
         : { openOAuthAuthorizationUrl: options.openOAuthAuthorizationUrl }),

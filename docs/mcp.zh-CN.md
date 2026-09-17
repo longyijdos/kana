@@ -12,7 +12,7 @@ KanaMcpRuntime（可 reload 的 registry 能力）
       ├→ RegisteredMcpTool（编译后的 schema 与远端执行）
       └→ McpClient → 官方 SDK Client
           ├→ SDK StdioClientTransport | StreamableHTTPClientTransport
-          └→ 可选 McpOAuthHttpAuthorizer → OAuthSession
+          └→ 可选 McpOAuthHttpAuthorizer → SDK OAuthClientProvider + auth
 ```
 
 `McpClient` 是 `@modelcontextprotocol/client` 的薄适配层。SDK 处理 JSON-RPC 解析与请求关联、版本协商、初始化、工具目录分页、请求超时、取消、进度和 transport framing。Kana 为普通工具管线转换协议错误，并区分调用方取消与超时。
@@ -61,11 +61,13 @@ SDK stdio 直接启动 command 与参数数组，不经过 shell；它处理 std
 
 SDK Streamable HTTP transport 处理 JSON/SSE、session 与协议 header、stream resumption 和重连。Kana 校验 endpoint 配置及 transport-owned header，注入逐 server 的代理与授权 fetch 边界。旧版 HTTP session 关闭时先通过 SDK 尝试删除会话，限时五秒，再关闭本地 transport 资源。Kana 不再实现独立的 session 过期重初始化状态机；session 错误返回 Agent，显式 runtime reload 可重新连接 server。
 
-`McpOAuthHttpAuthorizer` 使用 SDK helper 解析 Bearer challenge 与发现 protected-resource metadata，再校验 resource 绑定、authorization server 可用性和 header Bearer 支持。通用 [OAuth](oauth.zh-CN.md) 处理 authorization-server discovery、PKCE、浏览器回调、token exchange、refresh 与 token-session storage 契约。Kana 保留精确 resource 凭据边界与已注册 client 配置。
+`McpOAuthHttpAuthorizer` 使用官方 SDK 处理 Bearer challenge、protected-resource 与 authorization-server discovery、client registration、PKCE、token exchange 和 refresh。它的 `OAuthClientProvider` 适配器提供本地存储与浏览器交接。Kana 保留精确 resource 凭据边界、显式 scope 策略，并复用带 `state` 校验的 loopback callback；callback 中可选的 `iss` 交给 SDK 校验 issuer。Provider 认证继续独立使用通用 [OAuth](oauth.zh-CN.md) session。
 
 Prepare 先尝试存储或刷新的凭据，必要时在 MCP 协商前完成交互授权。仅 challenge 提供 metadata 时，通过幂等 HEAD probe 在协议启动超时前取得它。请求 challenge 最多恢复一次，第二次 challenge 返回调用方。显式配置 scopes 始终是权限边界，不允许自动扩大到边界之外。Close 冻结新授权与 refresh；DELETE 只能使用内存中已保留的最后 token。
 
-凭据存储 key 为 `mcp:<server-id>`。Kana 提供浏览器打开与 owner-only token 持久化，并将 OAuth metadata/token 请求和 MCP 请求应用相同代理策略。代理 URL 和凭据不会进入诊断 metadata。
+只有 HTTP 配置显式提供 `auth` 字段才启用 OAuth。配置 client ID 时使用已注册 client；省略时，SDK 在服务端支持注册的情况下动态注册 public client。Token 与注册信息以 `mcp:<server-id>` 为 key 存入共享凭据文件。注册信息保留 issuer、精确 resource 和 callback URI，后续授权复用已注册 callback。退出登录同时删除 token 与动态注册信息。
+
+Kana 提供浏览器打开与 owner-only 凭据持久化，并对 OAuth discovery、registration、token 请求和 MCP 请求应用相同代理策略。代理 URL 和凭据不会进入诊断 metadata。
 
 ## Manager 与 runtime 生命周期
 

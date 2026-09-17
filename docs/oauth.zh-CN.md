@@ -6,7 +6,7 @@
 
 ```text
 产品集成
-  → 发现 authorization-server metadata
+  → 提供 authorization-server metadata
   → OAuthSession
       ├→ loopback callback server
       ├→ authorization request + PKCE/state
@@ -17,15 +17,13 @@
 
 无状态函数负责协议解析与 request 构造；`OAuthSession` 持有一个 issuer/client/resource 绑定的可变凭据，并串行处理交互授权、refresh、持久化、失效和 shutdown。
 
-OpenAI Codex 与 MCP 在此通用边界之外增加各自的 discovery 或 token-request 差异；见 [OpenAI Codex provider](openai-codex-provider.zh-CN.md)和 [MCP](mcp.zh-CN.md)。
+OpenAI Codex 在通用边界之外增加自身的 token-request 差异，见 [OpenAI Codex provider](openai-codex-provider.zh-CN.md)。[MCP](mcp.zh-CN.md) 将 OAuth 协议交给官方 SDK，复用 loopback callback 与产品凭据 store，而不使用 `OAuthSession`。
 
-## Authorization-server discovery
+## Authorization-server metadata
 
-Discovery 要求 issuer 是不含凭据、query 或 fragment 的绝对 HTTPS URL。它先尝试 OAuth authorization-server well-known URL，再尝试 OpenID configuration 形式；非根 issuer 还会增加 path-suffixed OpenID candidate。尝试顺序固定，并各自发送诊断。
+Provider 集成层向 `OAuthSession` 提供 authorization-server metadata。OpenAI Codex 使用固定 authorization 与 token endpoint；通用 provider 流程不执行 metadata discovery。MCP discovery 由官方 SDK 处理。
 
-成功 metadata 必须是有界 JSON object，且 `issuer` 与请求值匹配；只有等价根 URL 可以只在尾部斜杠上不同。Authorization、token 以及可选 registration、revocation endpoint 必须使用 HTTPS，且不含凭据或 fragment。可选 capability array 和 boolean 格式错误时会失败，不会静默忽略。
-
-Fetch 拒绝 redirect。Metadata 与 token response 默认最大 256 KiB，先以严格 UTF-8 解码，再解析 JSON；空 body、超限、非法 UTF-8 和非法 JSON 都按协议错误处理。
+Token 请求拒绝 fetch redirect。Token response 默认最大 256 KiB，先以严格 UTF-8 解码，再解析 JSON；空 body、超限、非法 UTF-8 和非法 JSON 都按协议错误处理。
 
 ## Authorization request 与 PKCE
 
@@ -71,10 +69,10 @@ Authorization 成功但 response 未替换 ID token、refresh token 或 scopes �
 
 通用层不选择任何文件。`OAuthTokenStore` 按 storage key 提供异步 load、save 与 delete。Kana 产品 store 以 owner-only 权限写入 `<KANA_HOME>/oauth-tokens.json`，并绑定 provider 或 MCP 专属 key；路径与 UI 决策不属于 `src/oauth`。
 
-MCP 会先发现 protected-resource metadata 与 Bearer challenge，再创建 `OAuthSession`。OpenAI Codex 提供固定 client、callback、endpoint 行为与 ChatGPT account 绑定。两种集成都不能把 token 暴露给 Agent message、session、transcript block 或诊断。
+MCP 使用 SDK 的 `OAuthClientProvider` 和 `auth` 流程，结合 Kana 共享的 loopback callback 与凭据 store。Callback 在检查 `state` 后，将授权响应中可选的 `iss` 交给 SDK 校验 issuer。OpenAI Codex 使用 `OAuthSession`，提供固定 client、callback、endpoint 行为与 ChatGPT account 绑定。两种集成都不能把 token 暴露给 Agent message、session、transcript block 或诊断。
 
 ## 诊断与失败隔离
 
-通用诊断覆盖 metadata 尝试、token request 成功/失败、authorization start/callback/success/failure 和 token invalidation。Event 只包含计数、method、status、安全 OAuth identity、expiry/refresh-token 是否存在或固定失效原因；绝不包含 URL、code、verifier、state、client secret、access/refresh/ID token 或 response body。
+通用诊断覆盖 token request 成功/失败、authorization start/callback/success/failure 和 token invalidation。Event 只包含计数、method、status、安全 OAuth identity、expiry/refresh-token 是否存在或固定失效原因；绝不包含 URL、code、verifier、state、client secret、access/refresh/ID token 或 response body。
 
 Diagnostic handler failure 会被隔离。取消保留调用方 reason，transport 与 protocol error 保留 typed identity；即使浏览器打开、callback、token exchange、持久化或诊断投递失败，cleanup 仍会执行。

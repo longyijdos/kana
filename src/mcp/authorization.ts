@@ -125,13 +125,6 @@ export async function discoverMcpProtectedResource(
   }
 }
 
-export function selectMcpAuthorizationScopes(
-  challenge: McpBearerChallenge | undefined,
-  metadata: McpProtectedResourceMetadata,
-): string[] | undefined {
-  return (challenge?.scopes ?? metadata.scopesSupported)?.slice();
-}
-
 export function canonicalizeMcpResource(value: string): string {
   const resource = new URL(value);
   if (resource.protocol !== "https:" || resource.username || resource.password || resource.hash) {
