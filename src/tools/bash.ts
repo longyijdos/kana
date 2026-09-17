@@ -6,9 +6,8 @@ import type { Tool } from "./tool";
 import { resolveWorkspaceDirectory } from "./workspace-path";
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
-// Builds and benchmark workloads can legitimately run for several minutes, while
-// retaining a ceiling prevents a single model-issued command from running forever.
-const MAX_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_TIMEOUT_MS = 2 * 60 * 1000;
+const EXECUTION_DEADLINE_MS = MAX_TIMEOUT_MS + 1_000;
 const MAX_PARTIAL_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;
 
@@ -61,6 +60,7 @@ export function createBashTool(
     description:
       "Run a foreground shell command when no purpose-built tool directly covers the operation. Waits for the complete process group and returns stdout, stderr, and exit status.",
     parameters: bashParameters,
+    execution: { deadlineMs: EXECUTION_DEADLINE_MS },
     execute: async (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Command aborted.");

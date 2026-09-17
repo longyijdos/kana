@@ -59,7 +59,7 @@ Kana 自有对象 schema 使用 `additionalProperties: false`，未声明参数�
 
 每个并行组使用有界滚动池。调用按模型顺序 claim 并串行进入审批，同时运行的调用 body 不超过 `maxParallelToolCalls`。Start、update 和 end event 都按 `toolCallId` 关联并遵循物理时间，因此后面的快速调用可能先显示完成。独立 result slot 会等待模型顺序后才写入 journal 并进入下一请求，保证 replay 确定性。
 
-有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 默认 300000 ms；Kana 通过 `agent.tool_deadline_ms` 默认配置为 660000 ms。`bash.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
+有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 默认 300000 ms；Kana 通过 `agent.tool_deadline_ms` 使用相同的 300000 ms 默认值。`bash.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。Bash 声明 121000 ms 的 execution deadline，以便其两分钟 command timeout 能结束并报告。
 
 Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补充并中止活动 sibling signal。尚未启动的调用获得 canceled 结果；已启动调用获得有限取消宽限期。宽限期内结束会成为 `canceled` 或 `timed_out`，之后迟到的 return 不能覆盖该结果。
 

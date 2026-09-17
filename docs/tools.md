@@ -59,7 +59,7 @@ Parallel execution requires both Agent policy and model metadata to enable paral
 
 Each parallel group uses a bounded rolling pool. Calls are claimed and enter serial approval in model order, while at most `maxParallelToolCalls` invocation bodies run at once. Start, update, and end events remain correlated by `toolCallId` and follow physical timing, so a later fast call may visibly finish first. Independent result slots wait for model order before journal commit and the next request, keeping replay deterministic.
 
-The effective deadline comes from `tool.execution.deadlineMs`, then the Agent default. The reusable runtime defaults to 300000 ms; Kana defaults to 660000 ms through `agent.tool_deadline_ms`. A call-specific argument such as `bash.timeoutMs` may impose a narrower operation limit inside that outer boundary.
+The effective deadline comes from `tool.execution.deadlineMs`, then the Agent default. The reusable runtime defaults to 300000 ms; Kana uses the same 300000 ms default through `agent.tool_deadline_ms`. A call-specific argument such as `bash.timeoutMs` may impose a narrower operation limit inside that outer boundary. Bash declares a 121000 ms execution deadline so its two-minute command timeout can finish and report.
 
 Run abort, a tool deadline, or an internal scheduler failure immediately stops pool replenishment and aborts active sibling signals. Calls not yet started receive canceled results. Started calls receive a finite cancellation grace period. Settlement within it becomes `canceled` or `timed_out`; a later return cannot replace that outcome.
 

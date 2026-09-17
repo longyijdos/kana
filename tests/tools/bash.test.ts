@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createBashTool } from "../../src/tools/bash";
+import { validateToolArguments } from "../../src/tools/validation";
 import {
   createToolContext,
   createWorkspaceToolFixture,
@@ -16,6 +17,19 @@ describe("bash tool", () => {
 
   test("keeps shell fallback guidance in the bash tool description", () => {
     expect(createBashTool().description).toContain("no purpose-built tool directly covers");
+  });
+
+  test("uses a dedicated execution deadline above the two-minute command ceiling", () => {
+    expect(createBashTool().execution).toEqual({ deadlineMs: 121_000 });
+  });
+
+  test("rejects command timeouts above two minutes", () => {
+    expect(() =>
+      validateToolArguments(createBashTool(), {
+        command: "sleep 1",
+        timeoutMs: 120_001,
+      }),
+    ).toThrow("timeoutMs");
   });
 
   test("runs a command inside the workspace", async () => {
