@@ -63,23 +63,11 @@ name = "gpt-5.6-sol"
 | --- | --- | --- |
 | 🛠️ | 直接在仓库中工作 | 内置文件与图片检查、写入、编辑、Shell 和后台任务工具，提供可见审批，并把超大结果完整保存为 artifact。 |
 | 🧠 | 在多次工作间延续上下文 | 可恢复、可分叉的会话，中断恢复，自动上下文压缩，project/global 两级长期记忆，session todo 与有界 Goal。 |
-| 🧩 | 委派聚焦任务 | 从内置或用户角色卡中选择异步 subagent，并分别限定工具与模型、保存独立 transcript 和用量。 |
+| 🧩 | 委派聚焦任务 | 通过自定义 Markdown 角色卡委派异步 subagent，可限定工具、选择模型，并保存独立 transcript 与用量记录。 |
 | 🔌 | 接入自己的工具 | 通过 `AGENTS.md` 提供项目指令，使用可复用 Skills，配置内置工具面，并通过 stdio 或带 OAuth 的 Streamable HTTP 连接 MCP server。 |
 | 🤖 | 自由选择模型 | 支持 DeepSeek API、OpenAI Codex OAuth 与自定义 OpenAI-compatible endpoint，运行时模型切换、可配置推理强度、受支持模型上的图片输入和托管网页搜索。 |
 | ⌨️ | 始终留在终端 | 深色、浅色与自定义主题，流式 Markdown，终端原生 Mermaid 与 LaTeX，完整工具历史，语法高亮 diff，输入排队与定时投递、通知和超链接。 |
 | ⚙️ | 自动化同一套运行时 | 一次性、可恢复、有时限或由 Goal 驱动的 `kana exec`，版本化 JSONL 事件流，以及可复用的 GitHub issue 到草稿 PR 工作流。 |
-
-## 核心链路自研，而不是 SDK 外壳
-
-Kana 把关键行为留在这个仓库中，而不是交给上游 Agent 框架。它没有使用 Agent、TUI、MCP、OAuth 或模型供应商 SDK，而是自行实现：
-
-- **Agent runtime**：模型—工具循环、并行工具调度、deadline、取消、上下文压缩、工具结果策略、生命周期事件和用量统计。
-- **Terminal UI**：raw terminal 生命周期、输入处理、主题、流式 Markdown、语义化工具块与详情检查器、语法高亮、响应式表格和差量渲染。
-- **Protocol stack**：MCP JSON-RPC、stdio、Streamable HTTP、SSE、OAuth 2.0/OIDC discovery 与 PKCE。
-- **Provider adapters**：DeepSeek、OpenAI Codex 与自定义 OpenAI-compatible endpoint 的请求转换、流式传输、重试、用量和上下文错误恢复。
-- **Local state**：增量 session 与 subagent 日志、中断恢复、会话分叉、todo、artifact、长期记忆、运行日志和用量账本。
-
-目标不是追求“零依赖”。Kana 会在合适的地方使用专注的小型库，同时把决定可靠性、安全边界和用户体验的行为保持为可读、可改的本地代码。
 
 ## 使用 Kana
 

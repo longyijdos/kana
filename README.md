@@ -63,23 +63,11 @@ You can switch provider, model, and supported reasoning effort later with `/mode
 | --- | --- | --- |
 | 🛠️ | Work directly in your repository | Built-in file and image inspection, writing, editing, shell commands, background jobs, visible approvals, and complete oversized results stored as artifacts. |
 | 🧠 | Keep context across work | Resumable and forkable sessions, interrupted-run recovery, automatic context compaction, durable project/global memory, session todos, and bounded Goals. |
-| 🧩 | Delegate focused work | Asynchronous subagents selected from built-in or user-defined role profiles, with scoped tools, optional models, independent transcripts, and usage. |
+| 🧩 | Delegate focused work | Asynchronous subagents defined by your Markdown role cards, with scoped tools, configurable models, independent transcripts, and usage accounting. |
 | 🔌 | Bring your own tools | Project instructions through `AGENTS.md`, reusable Skills, a configurable built-in tool surface, and MCP servers over stdio or Streamable HTTP with OAuth. |
 | 🤖 | Choose your model | DeepSeek API and OpenAI Codex OAuth, custom OpenAI-compatible endpoints, live model switching, configurable reasoning effort, image prompts on supported models, and hosted web search. |
 | ⌨️ | Stay in the terminal | Dark, light, and custom themes; streaming Markdown; terminal-native Mermaid and LaTeX; full tool history; syntax-highlighted diffs; queued and scheduled input; notifications; and hyperlinks. |
 | ⚙️ | Automate the same runtime | One-shot, resumable, time-bounded, or Goal-driven `kana exec` runs; a versioned JSONL stream; and a reusable GitHub issue-to-draft-PR workflow. |
-
-## Built for control, not as an SDK wrapper
-
-Kana keeps its critical path in this repository instead of delegating product behavior to an agent framework. It has no agent, TUI, MCP, OAuth, or model-provider SDK; Kana implements its own:
-
-- **Agent runtime** — the model/tool loop, parallel tool scheduling, deadlines, cancellation, context compaction, tool-result policies, lifecycle events, and usage accounting.
-- **Terminal UI** — raw terminal lifecycle, input handling, themes, streaming Markdown, semantic tool blocks and inspectors, syntax highlighting, responsive tables, and differential rendering.
-- **Protocol stack** — MCP JSON-RPC, stdio, Streamable HTTP, SSE, OAuth 2.0/OIDC discovery, and PKCE.
-- **Provider adapters** — request conversion, streaming, retries, usage, and context-error recovery for DeepSeek, OpenAI Codex, and custom OpenAI-compatible endpoints.
-- **Local state** — incremental session and subagent journals, recovery, forks, todos, artifacts, memory, logs, and accounting.
-
-The goal is not zero dependencies. Kana uses focused libraries where they help, while keeping the behavior that defines reliability, safety, and the user experience readable and changeable.
 
 ## Use Kana
 
