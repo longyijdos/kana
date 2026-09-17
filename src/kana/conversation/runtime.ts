@@ -190,6 +190,10 @@ export class ConversationRuntime<TConfiguration = never> {
     return this.agent.state;
   }
 
+  getStableContext(): ReturnType<Agent["getStableContext"]> {
+    return this.agent.getStableContext();
+  }
+
   get sessionId(): string | undefined {
     return this.sessionData?.id;
   }

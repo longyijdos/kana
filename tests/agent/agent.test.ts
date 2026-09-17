@@ -1101,6 +1101,7 @@ describe("Agent context compaction", () => {
     expect(model.contexts).toHaveLength(0);
     expect(commits).toEqual([{ reason: "manual", checkpointId: checkpoint.id }]);
     expect(agent.state.contextCheckpoint?.id).toBe(checkpoint.id);
+    expect(agent.getStableContext().contextCheckpoint?.id).toBe(checkpoint.id);
     expect(events).toEqual(["context_compaction_start", "context_compacted"]);
 
     await agent.prompt("Continue");
@@ -1137,6 +1138,7 @@ describe("Agent context compaction", () => {
     await expect(agent.compact()).rejects.toThrow("persist failed");
 
     expect(agent.state.contextCheckpoint).toBeUndefined();
+    expect(agent.getStableContext().contextCheckpoint).toBeUndefined();
   });
 });
 

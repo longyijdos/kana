@@ -51,6 +51,7 @@ export type AgentLoopConfig = {
   loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   onCompactionCommitted?: (compaction: ContextCheckpoint) => Promise<void> | void;
+  onStableContext?: (context: Pick<AgentContext, "system" | "messages">) => void;
   consumeTurnInputs?: () => Promise<UserMessage[]>;
   assemblePrompt?: () => Promise<AssembledPrompt>;
 };
@@ -192,6 +193,9 @@ export async function runAgentLoop(
 
     if (assistantTurn.isError || config.signal?.aborted) {
       endReason = config.signal?.aborted ? "aborted" : endReasonForAssistantTurn(assistantTurn);
+      if (!assistantHistoryMessage || getToolCalls(assistantHistoryMessage).length === 0) {
+        publishStableContext(currentContext, config);
+      }
       await emit({
         type: "turn_end",
         turn,
@@ -235,6 +239,12 @@ export async function runAgentLoop(
       newMessages.push(additionalMessage);
     }
 
+    // A truncated response may retain calls that were never executed and
+    // therefore cannot be inherited as a complete context boundary.
+    const isStableTurn = toolCalls.length > 0 || getToolCalls(assistantTurn.message).length === 0;
+    if (isStableTurn) {
+      publishStableContext(currentContext, config);
+    }
     await emit({
       type: "turn_end",
       turn,
@@ -255,6 +265,9 @@ export async function runAgentLoop(
     for (const input of turnInputs ?? []) {
       currentContext.messages.push(input);
       newMessages.push(input);
+      if (isStableTurn) {
+        publishStableContext(currentContext, config);
+      }
       await emit({ type: "turn_input", message: input });
     }
 
@@ -267,6 +280,13 @@ export async function runAgentLoop(
   await emit({ type: "agent_end", reason: endReason, messages: newMessages });
 
   return newMessages;
+}
+
+function publishStableContext(context: AgentContext, config: AgentLoopConfig): void {
+  config.onStableContext?.({
+    system: context.system,
+    messages: structuredClone(context.messages),
+  });
 }
 
 async function applyAssembledPrompt(

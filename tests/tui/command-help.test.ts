@@ -11,7 +11,18 @@ describe("prompt command help", () => {
       PROMPT_COMMANDS.filter((command) => command.availability === "always").map(
         (command) => command.name,
       ),
-    ).toEqual(["quit", "help", "schedule", "jobs", "agents", "todo", "tools", "image", "usage"]);
+    ).toEqual([
+      "quit",
+      "help",
+      "btw",
+      "schedule",
+      "jobs",
+      "agents",
+      "todo",
+      "tools",
+      "image",
+      "usage",
+    ]);
 
     expect(
       PROMPT_COMMANDS.filter((command) => command.availability === "idle").map(

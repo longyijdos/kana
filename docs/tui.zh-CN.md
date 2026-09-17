@@ -85,6 +85,7 @@ Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-inp
 | Slash 命令 | 行为 |
 | --- | --- |
 | `/help` | 在底部只读视图中打开命令和快捷方式。 |
+| `/btw [question]` | 发起临时旁路提问；不带问题时重开最近一次运行中或已完成的回答。 |
 | `/clear` | 清空 transcript 与编辑器，不删除会话。 |
 | `/new` | 新建空会话并重建 Agent。 |
 | `/fork <prompt>` | 从当前 Agent 历史创建分叉会话后发送 prompt。 |
@@ -109,6 +110,14 @@ Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-inp
 `/usage` 会让 token 标签、数值和比例条保持稳定列位。Runs 区域把 main、subagent 和自动/手动 memory usage 分开；按模型明细会显示 token 总数，并根据当前可见数据动态计算数字列宽，因此更大的次数、token 总数或更长的模型名不会推动相邻数值错位。各类 outcome 仍保持紧凑的单行摘要，底部视图较窄时可能被截断。
 
 Clean 模式中 `/skills`、`/mcp`、`/memory`、`/agents`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。Skill 发现被完全绕过，因此以 `@` 开头不会出现匹配建议或调用展开。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/jobs`、`/goal`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用。`/schedule` 消息、Job 与 `/goal` 控制状态也只存在于当前进程。`/todo` 读取进程内列表，`/model` 不写回配置文件。
+
+## 临时旁路提问
+
+`/btw <question>` 使用主 Agent 最新的稳定上下文、模型、system 指令、图片输入策略和上下文／输出上限发起一次临时查询。它使用裸 Agent，没有工具、hosted web search、inbox 投递、journal、session 绑定或产品提交回调。追加的 system 指令要求直接回答，把此前工具调用和 runtime state 视为参考上下文，并禁止继续主任务或模拟工具执行，包括输出 DSML 工具调用标记。它复用主 Agent 已有的 checkpoint 或摘要，不生成新摘要，也不会改变主消息或 checkpoint、写入 session transcript，或 steer 当前 run。Clean 模式支持相同交互。
+
+BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更新。Up/Down 滚动，Left/Right 与 PageUp/PageDown 翻页，Home/End 跳转。输出默认跟随底部；Up、Left、PageUp 或 Home 暂停跟随，End 恢复。Esc 隐藏查看器但不取消请求，`/btw` 重开同一查看器并保留滚动状态。同一时间只能运行一个 BTW 请求；运行中拒绝新问题，结束后新问题替换原 slot。请求错误留在 BTW 查看器内。切换 session 会清空 slot 并取消请求；关闭应用时也会等待取消完成。
+
+审批保留现有焦点策略：BTW 可见时审批等待。Esc 优先恢复待审批视图，其次恢复编辑器；处理审批后通过 `/btw` 手动重开 BTW。
 
 ## 控制器与焦点
 
@@ -137,7 +146,7 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/agents`、`/fork`、`/resume`
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 
-运行期间，`/quit`、`/help`、`/todo`、`/tools`、`/usage`、`/image`、`/schedule`、`/jobs` 和 `/agents` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可查看并停止当前 session 的 Job，但不会确认其完成；`/agents` 可查看或取消 session-owned child。`/clear`、`/new`、`/fork`、`/resume`、`/delete`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
+运行期间，`/quit`、`/help`、`/btw`、`/todo`、`/tools`、`/usage`、`/image`、`/schedule`、`/jobs` 和 `/agents` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可查看并停止当前 session 的 Job，但不会确认其完成；`/agents` 可查看或取消 session-owned child。`/clear`、`/new`、`/fork`、`/resume`、`/delete`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
 
 ## 通知
 

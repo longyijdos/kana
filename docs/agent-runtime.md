@@ -98,6 +98,8 @@ The Agent never starts a new run from `next-turn`. Kana's [conversation runtime]
 
 `Agent.state` exposes detached snapshots of the model, assembled system prompt and tools, history, inbox, current run state, streaming assistant message, pending tool-call IDs, context checkpoint, and final error. `waitForIdle()` covers journal closure and injected post-processing, not only provider and tool execution.
 
+`Agent.getStableContext()` exposes detached messages, their matching context checkpoint, the assembled system prompt, and the current model, image-input policy, and context/output limits. It advances after initial run input is accepted, before each complete `turn_end`, and before each consumed `turn_input`. Streaming and individual tool commits do not advance it; unexecuted calls in failed or truncated responses do not establish a complete boundary. The loop supplies complete context independently of journal-backed history updates. Construction, reset, and successful idle manual compaction initialize or refresh the snapshot.
+
 ## Context budgeting and compaction
 
 `ContextManager` creates a separate model projection from complete Agent history before every model request. Compaction never deletes the Agent's raw `messages`; it replaces only the older portion of the projection with one cumulative summary plus retained recent messages.

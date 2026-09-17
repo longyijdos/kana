@@ -12,6 +12,7 @@ export type SlashCommandControllerOptions = {
   submitRaw: (raw: string) => void;
   showError: (error: Error) => void;
   showHelp: () => void;
+  openBtw: (question: string) => void;
   clear: () => void;
   startNewSession: () => void;
   forkSession: (prompt: string) => void;
@@ -54,6 +55,9 @@ export class SlashCommandController {
         break;
       case "help":
         this.runWithoutArguments(command, () => this.options.showHelp());
+        break;
+      case "btw":
+        this.options.openBtw(command.arguments);
         break;
       case "clear":
         if (command.arguments) {

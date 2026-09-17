@@ -3,6 +3,27 @@ import { ContentViewer } from "../../src/tui/components";
 import { stripAnsi, visibleWidth } from "../../src/tui/render";
 
 describe("content viewer", () => {
+  test("follows streaming content until scrolling up, and End resumes following", () => {
+    let length = 5;
+    const viewer = new ContentViewer(
+      {
+        title: "Streaming answer",
+        render: () => Array.from({ length }, (_, index) => `line ${index + 1}`),
+      },
+      { onClose: () => {}, visibleLimit: 3, followTail: true },
+    );
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 3-5 of 5");
+    length = 7;
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 5-7 of 7");
+    viewer.handleInput("\x1b[A");
+    length = 8;
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 4-6 of 8");
+    viewer.handleInput("\x1b[F");
+    length = 9;
+    expect(viewer.render(80).map(stripAnsi)).toContain("Lines 7-9 of 9");
+    expect(viewer.render(80, 7).map(stripAnsi)).toContain("Lines 8-9 of 9");
+  });
+
   test("tool result viewer scrolls and pages with arrow keys", () => {
     const decisions: string[] = [];
     const viewer = new ContentViewer(

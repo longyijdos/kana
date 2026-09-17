@@ -10,6 +10,8 @@ describe("slash command controller", () => {
     const harness = createHarness();
 
     harness.handle("help");
+    harness.handle("btw", "Side question");
+    harness.handle("btw");
     harness.handle("fork", "Continue here");
     harness.handle("resume", "session-a");
     harness.handle("resume");
@@ -26,6 +28,8 @@ describe("slash command controller", () => {
 
     expect(harness.events).toEqual([
       "help",
+      "btw:Side question",
+      "btw:",
       "fork:Continue here",
       "resume:session-a",
       "resume-picker",
@@ -70,6 +74,7 @@ describe("slash command controller", () => {
     const harness = createHarness(true);
 
     harness.handle("help");
+    harness.handle("btw", "Side question");
     harness.handle("todo");
     harness.handle("tools");
     harness.handle("usage");
@@ -80,6 +85,7 @@ describe("slash command controller", () => {
 
     expect(harness.events).toEqual([
       "help",
+      "btw:Side question",
       "todo",
       "tools",
       "usage",
@@ -134,6 +140,7 @@ function createHarness(running = false) {
     submitRaw: (raw) => events.push(`submit:${raw}`),
     showError: (error) => events.push(`error:${error.message}`),
     showHelp: () => events.push("help"),
+    openBtw: (question) => events.push(`btw:${question}`),
     clear: () => events.push("clear"),
     startNewSession: () => events.push("new"),
     forkSession: (prompt) => events.push(`fork:${prompt}`),

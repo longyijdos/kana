@@ -27,12 +27,14 @@ export type ContentViewerOptions = {
   onPrevious?: () => void;
   onNext?: () => void;
   visibleLimit?: number;
+  followTail?: boolean;
 };
 
 export class ContentViewer implements Component {
   private readonly viewport: ListViewport;
   private readonly maximumVisibleLines: number;
   private contentLength = 0;
+  private followingTail: boolean;
 
   constructor(
     private readonly view: ContentView,
@@ -40,6 +42,7 @@ export class ContentViewer implements Component {
   ) {
     this.maximumVisibleLines = options.visibleLimit ?? TOOL_RESULT_VIEWER_VISIBLE_LIMIT;
     this.viewport = new ListViewport(this.maximumVisibleLines);
+    this.followingTail = options.followTail ?? false;
   }
 
   handleInput(data: string): void {
@@ -49,6 +52,7 @@ export class ContentViewer implements Component {
     }
 
     if (isUp(data)) {
+      this.followingTail = false;
       this.viewport.scroll(-1, this.contentLength);
       return;
     }
@@ -59,6 +63,7 @@ export class ContentViewer implements Component {
     }
 
     if (isPageUp(data) || isLeft(data)) {
+      this.followingTail = false;
       this.viewport.page(-1, this.contentLength);
       return;
     }
@@ -69,11 +74,13 @@ export class ContentViewer implements Component {
     }
 
     if (isHome(data)) {
+      this.followingTail = false;
       this.viewport.moveTo(0, this.contentLength);
       return;
     }
 
     if (isEnd(data)) {
+      this.followingTail = this.options.followTail ?? false;
       this.viewport.moveTo(this.contentLength - 1, this.contentLength);
       return;
     }
@@ -102,6 +109,9 @@ export class ContentViewer implements Component {
       ),
       content.length,
     );
+    if (this.followingTail) {
+      this.viewport.moveTo(content.length - 1, content.length);
+    }
     const window = this.viewport.window(content.length);
     const title = truncateToWidth(
       color(summarizeText(this.view.title), tuiTheme.bottomTitle),
