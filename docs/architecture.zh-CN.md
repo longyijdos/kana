@@ -58,7 +58,7 @@ TUI 在 `ConversationRuntime` 上装配 controller；headless 则把同一个 ru
 
 Normal 和 clean 启动都会把显式模式传过前端、host 和每个重建的 Agent。Normal 模式可以加载项目指令、memory、Skills、持久化、accounting 与 MCP；clean 模式保留 runtime 配置、环境、认证、审批和核心工具，但移除持久 session 资源及可选项目能力。完整用户契约属于[配置与安装](configuration.zh-CN.md)。
 
-交互式启动先显示选中的 session，再连接已启用 MCP server，再用 `mcp_activate` 与 `mcp_call` 重建 Agent；远端 schema 保留在内部目录。无头启动执行对应的 host 初始化，但不产生 TUI 投影。两者都会拒绝 clean-mode resume，并共享同一组 host invariant。
+交互式启动先显示选中的 session，再连接已启用 MCP server，再用 `mcp_list_tools` 与 `mcp_call` 重建 Agent；远端 schema 保留在内部目录。无头启动执行对应的 host 初始化，但不产生 TUI 投影。两者都会拒绝 clean-mode resume，并共享同一组 host invariant。
 
 关闭从前端依次流向共享 runtime、hosted session 资源、后台产品任务和 MCP runtime，最后才完成终端或进程退出。每个 owner 都让 close 幂等，并防止排队工作重新激活已关闭资源。具体顺序属于[对话运行时](conversation-runtime.zh-CN.md)、[MCP](mcp.zh-CN.md)和对应前端文档。
 

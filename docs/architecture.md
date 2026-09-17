@@ -58,7 +58,7 @@ The TUI composes controllers over `ConversationRuntime`; headless mode projects 
 
 Normal and clean launches pass an explicit mode through the frontend, host, and every rebuilt Agent. Normal mode may load project instructions, memory, Skills, persistence, accounting, and MCP. Clean mode keeps runtime configuration, environment, authentication, approval, and core tools, but removes durable session resources and optional project capabilities. The complete user-visible contract belongs to [Configuration and installation](configuration.md).
 
-Interactive startup makes the chosen session visible before connecting selected MCP servers, then rebuilds the Agent with `mcp_activate` and `mcp_call`; remote schemas remain in the internal catalog. Headless startup performs the corresponding host initialization without TUI projection. Both reject clean-mode resume and use the same host invariants.
+Interactive startup makes the chosen session visible before connecting selected MCP servers, then rebuilds the Agent with `mcp_list_tools` and `mcp_call`; remote schemas remain in the internal catalog. Headless startup performs the corresponding host initialization without TUI projection. Both reject clean-mode resume and use the same host invariants.
 
 Shutdown flows from frontend to shared runtime, hosted session resources, background product work, and the MCP runtime before the terminal or process completes. Each owner makes its close operation idempotent and prevents queued work from reviving a closed resource. Detailed ordering belongs to [Conversation runtime](conversation-runtime.md), [MCP](mcp.md), and the frontend documents.
 

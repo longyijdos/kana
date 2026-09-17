@@ -55,7 +55,8 @@ describe("Kana MCP composition", () => {
       logger,
     );
 
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("fixture");
     const result = normalizeToolResult(
       await tools[0]!.execute({ text: "hello" }, { toolCallId: "call-1", update() {} }),
     );
@@ -108,7 +109,8 @@ describe("Kana MCP composition", () => {
       },
     );
 
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("fixture");
     const result = normalizeToolResult(
       await tools[0]!.execute({ text: "hello" }, { toolCallId: "call-1", update() {} }),
     );
@@ -140,7 +142,8 @@ describe("Kana MCP composition", () => {
     const message =
       "MCP stdio server fixture env.REQUIRED_SECRET references missing environment variable MISSING_SECRET.";
 
-    await expect(manager.start()).resolves.toEqual([]);
+    await expect(manager.start()).resolves.toBeUndefined();
+    expect(manager.listTools("fixture")).toEqual([]);
 
     expect(manager.diagnostics).toEqual([
       {
@@ -176,7 +179,8 @@ describe("Kana MCP composition", () => {
         PATH: process.env.PATH,
       },
     );
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("slow");
 
     await expect(
       tools[0]!.execute({}, { toolCallId: "call-1", update() {} }),
@@ -266,7 +270,8 @@ describe("Kana MCP composition", () => {
       createCapturingLogger(logs),
     );
 
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("remote");
     const result = normalizeToolResult(
       await tools[0]!.execute({}, { toolCallId: "call-http", update() {} }),
     );
@@ -428,7 +433,8 @@ describe("Kana MCP composition", () => {
     );
     managers.add(manager);
 
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("remote");
     await tools[0]!.execute({}, { toolCallId: "call-proxy", update() {} });
 
     expect(requests.length).toBeGreaterThan(4);
@@ -465,8 +471,8 @@ describe("Kana MCP composition", () => {
     );
     managers.add(disabledAll);
 
-    await expect(disabledAll.start()).resolves.toEqual([]);
-    await expect(unselectedServer.start()).resolves.toEqual([]);
+    await expect(disabledAll.start()).resolves.toBeUndefined();
+    await expect(unselectedServer.start()).resolves.toBeUndefined();
     expect(disabledAll.diagnostics).toEqual([]);
     expect(unselectedServer.diagnostics).toEqual([]);
   });
@@ -486,7 +492,8 @@ describe("Kana MCP composition", () => {
     managers.add(manager);
     logger = createCapturingLogger(secondLogs);
 
-    await expect(manager.start()).resolves.toEqual([]);
+    await expect(manager.start()).resolves.toBeUndefined();
+    expect(manager.listTools("missing")).toEqual([]);
 
     expect(firstLogs).toEqual([]);
     expect(secondLogs.some((record) => record.event === "mcp.server_start_failed")).toBe(true);

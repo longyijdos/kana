@@ -10,7 +10,7 @@ import {
   KANA_BUILT_IN_TOOL_NAMES,
   type KanaGoalSnapshot,
 } from "@/kana";
-import { createMcpToolAdapter, type McpToolRegistry } from "@/mcp";
+import { createRegisteredMcpTool, type McpToolRegistry } from "@/mcp";
 import { KanaSubagentManager, type KanaSubagentProfile } from "../../src/kana/subagents";
 
 const tempDirs: string[] = [];
@@ -206,7 +206,7 @@ describe("Kana Agent tools", () => {
 
   test("requires both MCP availability and global gateway selection", () => {
     for (const enabled of [true, false]) {
-      for (const tools of [[], ["read"], ["read", "mcp_activate", "mcp_call"]] as const) {
+      for (const tools of [[], ["read"], ["read", "mcp_list_tools", "mcp_call"]] as const) {
         const config = testConfig();
         const agent = withKanaAgentEnvironment(() =>
           createAgentForTest(
@@ -266,7 +266,7 @@ describe("Kana Agent tools", () => {
         "remember",
         "schedule_wake",
         "spawn_subagent",
-        "mcp_activate",
+        "mcp_list_tools",
         "mcp_call",
       ],
     };
@@ -279,7 +279,7 @@ describe("Kana Agent tools", () => {
 
     expect(agent.state.tools.map((tool) => tool.name)).toEqual([
       "read",
-      "mcp_activate",
+      "mcp_list_tools",
       "mcp_call",
     ]);
     expect(agent.state.system).toBe("Inspect only and report evidence.");
@@ -288,18 +288,18 @@ describe("Kana Agent tools", () => {
       createAgentForTest(
         {
           ...config,
-          agent: { ...config.agent, tools: ["read", "mcp_activate"] },
+          agent: { ...config.agent, tools: ["read", "mcp_list_tools"] },
         },
         { subagentProfile: profile, resolveMcp: () => createMcpRegistry() },
       ),
     );
-    expect(restricted.state.tools.map((tool) => tool.name)).toEqual(["read", "mcp_activate"]);
+    expect(restricted.state.tools.map((tool) => tool.name)).toEqual(["read", "mcp_list_tools"]);
   });
 });
 
 function createMcpRegistry(): McpToolRegistry {
   const tools = ["read", "mcp_call"].map((name) =>
-    createMcpToolAdapter({
+    createRegisteredMcpTool({
       serverId: "fixture",
       tool: { name, inputSchema: { type: "object" } },
       caller: {
@@ -311,7 +311,7 @@ function createMcpRegistry(): McpToolRegistry {
   );
   return {
     catalog: [{ name: "fixture", description: "Fixture MCP." }],
-    tools,
+    listTools: (serverId) => tools.filter((tool) => tool.source.serverId === serverId),
     getTool: (serverId, name) =>
       tools.find((tool) => tool.source.serverId === serverId && tool.name === name),
   };

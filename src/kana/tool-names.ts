@@ -13,7 +13,7 @@ const KANA_BACKGROUND_JOB_TOOL_NAMES = ["job_start", "job_list", "job_output", "
 
 const KANA_SUBAGENT_TOOL_NAMES = ["spawn_subagent", "wait_subagent", "cancel_subagent"] as const;
 
-const KANA_MCP_TOOL_NAMES = ["mcp_activate", "mcp_call"] as const;
+const KANA_MCP_TOOL_NAMES = ["mcp_list_tools", "mcp_call"] as const;
 
 export const KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES = [
   ...KANA_WORKSPACE_TOOL_NAMES,

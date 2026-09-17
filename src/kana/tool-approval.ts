@@ -25,7 +25,7 @@ export function shouldRequestToolApproval(
   toolCall: ToolCallContent,
 ): boolean {
   if (
-    toolCall.name === "mcp_activate" ||
+    toolCall.name === "mcp_list_tools" ||
     toolCall.name === "remember" ||
     toolCall.name === "schedule_wake" ||
     toolCall.name === "todo_write" ||

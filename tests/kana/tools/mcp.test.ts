@@ -15,7 +15,7 @@ describe("MCP gateway tools", () => {
   test("loads filtered, paginated schemas repeatedly without changing provider tools", async () => {
     const schema = { type: "object", properties: { text: { type: "string" } }, required: ["text"] };
     const tools: McpTool[] = [
-      { name: "read", inputSchema: schema },
+      { name: "read", description: "Read a file.", inputSchema: schema },
       { name: "mcp_call", inputSchema: { type: "object" } },
       { name: "hidden", inputSchema: { type: "object" } },
     ];
@@ -29,27 +29,29 @@ describe("MCP gateway tools", () => {
       { id: "beta", createClient: () => client([tools[0]!]) },
     ]);
     const gateways = createMcpTools(manager);
-    const [activate] = gateways;
+    const [listTools] = gateways;
     const specs = JSON.stringify(gateways);
-    expect(gateways.map((tool) => tool.name)).toEqual(["mcp_activate", "mcp_call"]);
-    expect(activate!.description).toContain("- alpha: GitHub issues.");
-    expect(activate!.description).toContain("- beta: Server-provided summary.");
+    expect(gateways.map((tool) => tool.name)).toEqual(["mcp_list_tools", "mcp_call"]);
+    expect(listTools!.description).toContain("- alpha: GitHub issues.");
+    expect(listTools!.description).toContain("- beta: Server-provided summary.");
 
-    const firstPage = await activate!.execute({ name: "alpha", limit: 1 }, context);
+    const firstPage = await listTools!.execute({ name: "alpha", limit: 1 }, context);
     expect(firstPage).toMatchObject({
       server: "alpha",
-      tools: [{ name: "read", inputSchema: schema }],
+      tools: [{ name: "read", description: "Read a file.", inputSchema: schema }],
       nextOffset: 1,
     });
-    expect(await activate!.execute({ name: "alpha", offset: 1, limit: 1 }, context)).toMatchObject({
-      tools: [{ name: "mcp_call" }],
-    });
-    expect(await activate!.execute({ name: "alpha", limit: 1 }, context)).toEqual(firstPage);
+    expect(await listTools!.execute({ name: "alpha", offset: 1, limit: 1 }, context)).toMatchObject(
+      {
+        tools: [{ name: "mcp_call" }],
+      },
+    );
+    expect(await listTools!.execute({ name: "alpha", limit: 1 }, context)).toEqual(firstPage);
     expect(JSON.stringify(gateways)).toBe(specs);
-    expect(await activate!.execute({ name: "alpha" }, context)).toMatchObject({
+    expect(await listTools!.execute({ name: "alpha" }, context)).toMatchObject({
       tools: [{ name: "read" }, { name: "mcp_call" }],
     });
-    expect(() => activate!.execute({ name: "missing" }, context)).toThrow("not available");
+    expect(() => listTools!.execute({ name: "missing" }, context)).toThrow("not available");
   });
 
   test("validates the remote schema and resolves calls by server and original name", async () => {

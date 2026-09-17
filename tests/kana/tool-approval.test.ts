@@ -29,7 +29,7 @@ describe("Kana tool approval", () => {
         shouldRequestToolApproval(
           { mode },
           approvals(),
-          toolCall("mcp_activate", { name: "github" }),
+          toolCall("mcp_list_tools", { name: "github" }),
         ),
       ).toBe(false);
       expect(

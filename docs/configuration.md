@@ -144,7 +144,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake","mcp_activate","mcp_call"]
+tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake","mcp_list_tools","mcp_call"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -251,7 +251,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 
 | Table and key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `agent.tools` | Unique array of built-in tool names | All configurable built-in tools | Selects which built-in tools the conversation Agent may call. An empty array disables them all. The MCP gateways `mcp_activate` and `mcp_call` follow this selection. `update_goal`, provider capabilities, and direct TUI operations are outside it. |
+| `agent.tools` | Unique array of built-in tool names | All configurable built-in tools | Selects which built-in tools the conversation Agent may call. An empty array disables them all. The MCP gateways `mcp_list_tools` and `mcp_call` follow this selection. `update_goal`, provider capabilities, and direct TUI operations are outside it. |
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
 | `agent.goal_max_rounds` | Positive integer | `8` | Maximum complete Agent runs admitted for one `/goal`, including its initial run. |
 | `agent.tool_deadline_ms` | Positive integer | `660000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
@@ -279,7 +279,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 
 `parallel_tool_calls` is effective only when both user policy and model metadata allow it. The repeated-call, tool-result artifact, concurrency, deadline, and Background Job fields configure behavior owned by [Tools and execution](tools.md). Context limits and compaction budgets are interpreted by [Agent runtime](agent-runtime.md).
 
-`agent.tools` is also constrained by runtime capabilities. Selecting `view_image`, `remember`, `schedule_wake`, `mcp_activate`, `mcp_call`, a `job_*`, or a `*_subagent` tool does not enable its underlying capability when that capability is otherwise unavailable. The selection controls only the Agent tool surface; commands such as `/agents`, `/jobs`, `/schedule`, `/todo`, and `/mcp` continue to operate through the TUI's direct session controls. Role-card configuration is documented in [Subagents](subagents.md).
+`agent.tools` is also constrained by runtime capabilities. Selecting `view_image`, `remember`, `schedule_wake`, `mcp_list_tools`, `mcp_call`, a `job_*`, or a `*_subagent` tool does not enable its underlying capability when that capability is otherwise unavailable. The selection controls only the Agent tool surface; commands such as `/agents`, `/jobs`, `/schedule`, `/todo`, and `/mcp` continue to operate through the TUI's direct session controls. Role-card configuration is documented in [Subagents](subagents.md).
 
 TUI option fields remain canonical in the table above. Their interaction semantics belong to [TUI interaction](tui.md), while hyperlinks, LaTeX, Mermaid, width, and repaint behavior belong to [Terminal rendering](terminal-rendering.md). Memory retention and runtime-log persistence belong to [Sessions and memory](sessions-and-memory.md).
 

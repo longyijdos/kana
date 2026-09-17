@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  createMcpToolAdapter,
+  createRegisteredMcpTool,
   type JsonObject,
   McpResponseError,
   type McpToolCaller,
@@ -9,7 +9,7 @@ import {
 } from "../../src/mcp";
 import { validateToolArguments } from "../../src/tools";
 
-describe("MCP tool adapter", () => {
+describe("Registered MCP tools", () => {
   test("validates arguments, calls the remote name, and maps progress", async () => {
     const calls: Array<{ name: string; args: JsonObject | undefined; signal?: AbortSignal }> = [];
     const updates: unknown[] = [];
@@ -28,7 +28,7 @@ describe("MCP tool adapter", () => {
         };
       },
     };
-    const tool = createMcpToolAdapter({
+    const tool = createRegisteredMcpTool({
       serverId: "github",
       caller,
       tool: {
@@ -50,7 +50,8 @@ describe("MCP tool adapter", () => {
     });
 
     expect(tool.name).toBe("create.issue");
-    expect(tool.description).toContain("MCP server: github; remote tool: create.issue.");
+    expect(tool.description).toBe("Create an issue.");
+    expect(tool.source).toEqual({ serverId: "github", remoteToolName: "create.issue" });
     expect(calls).toEqual([
       { name: "create.issue", args: { count: 2 }, signal: controller.signal },
     ]);
@@ -70,7 +71,7 @@ describe("MCP tool adapter", () => {
 
   test("rejects input schemas that cannot be compiled", () => {
     expect(() =>
-      createMcpToolAdapter({
+      createRegisteredMcpTool({
         serverId: "broken",
         caller: createStaticCaller(),
         tool: {
@@ -185,7 +186,7 @@ describe("MCP tool adapter", () => {
         throw new McpResponseError(-32602, "Unknown tool", { detail: "x".repeat(100) });
       },
     };
-    const tool = createMcpToolAdapter({
+    const tool = createRegisteredMcpTool({
       serverId: "errors",
       caller,
       resultLimits: { maxStructuredCharacters: 20 },
@@ -197,6 +198,7 @@ describe("MCP tool adapter", () => {
 
     const result = await tool.execute({}, { toolCallId: "call-1", update() {} });
 
+    expect(tool.description).toBe("");
     expect(result.isError).toBe(true);
     expect(result.content).toBe("MCP server returned JSON-RPC error -32602: Unknown tool");
     expect(result.result.protocolError?.code).toBe(-32602);

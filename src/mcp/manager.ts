@@ -1,9 +1,22 @@
 import { McpRequestCancelledError } from "./errors";
 import type { McpImplementation, McpServerCapabilities, McpTool } from "./protocol";
-import { type AdaptedMcpTool, createMcpToolAdapter, type McpToolCaller } from "./tool-adapter";
+import {
+  createRegisteredMcpTool,
+  type McpToolCaller,
+  type RegisteredMcpTool,
+} from "./registered-tool";
 import type { McpToolResultLimits } from "./tool-result";
 
-export type McpToolRegistry = Pick<McpManager, "catalog" | "tools" | "getTool">;
+export type McpServerCatalogEntry = {
+  name: string;
+  description: string;
+};
+
+export interface McpToolRegistry {
+  readonly catalog: readonly McpServerCatalogEntry[];
+  listTools(serverId: string): readonly RegisteredMcpTool[];
+  getTool(serverId: string, remoteToolName: string): RegisteredMcpTool | undefined;
+}
 
 export type McpManagerState = "idle" | "starting" | "ready" | "closing" | "closed";
 type McpServerStatus = "idle" | "starting" | "ready" | "failed" | "closed";
@@ -89,22 +102,21 @@ type McpServerRecord = {
   status: McpServerStatus;
   client?: McpManagedClient;
   clientClosed: boolean;
-  tools: AdaptedMcpTool[];
+  tools: RegisteredMcpTool[];
   discoveredToolCount: number;
   serverInfo?: McpImplementation;
   serverCapabilities?: McpServerCapabilities;
   error?: Error;
 };
 
-export class McpManager {
+export class McpManager implements McpToolRegistry {
   private stateData: McpManagerState = "idle";
   private readonly records: McpServerRecord[];
   private readonly onError?: (event: McpManagerErrorEvent) => void;
   private readonly onProgress?: (event: McpManagerProgressEvent) => void;
-  private toolsData: AdaptedMcpTool[] = [];
   private readonly startController = new AbortController();
   private disposeStartSignal?: () => void;
-  private startPromise?: Promise<AdaptedMcpTool[]>;
+  private startPromise?: Promise<void>;
   private closePromise?: Promise<void>;
 
   constructor(options: McpManagerOptions) {
@@ -126,10 +138,6 @@ export class McpManager {
     return this.stateData;
   }
 
-  get tools(): AdaptedMcpTool[] {
-    return this.toolsData.slice();
-  }
-
   get diagnostics(): McpServerDiagnostic[] {
     return this.records.map((record) => ({
       id: record.registration.id,
@@ -147,7 +155,7 @@ export class McpManager {
     }));
   }
 
-  get catalog(): Array<{ name: string; description: string }> {
+  get catalog(): McpServerCatalogEntry[] {
     return this.records
       .filter((record) => record.status === "ready")
       .map((record) => ({
@@ -156,13 +164,19 @@ export class McpManager {
       }));
   }
 
-  getTool(serverId: string, remoteToolName: string): AdaptedMcpTool | undefined {
-    return this.toolsData.find(
-      (tool) => tool.source.serverId === serverId && tool.source.remoteToolName === remoteToolName,
+  listTools(serverId: string): readonly RegisteredMcpTool[] {
+    if (this.stateData !== "ready") return [];
+    const record = this.records.find(
+      (record) => record.registration.id === serverId && record.status === "ready",
     );
+    return record?.tools ?? [];
   }
 
-  start(options: McpManagerStartOptions = {}): Promise<AdaptedMcpTool[]> {
+  getTool(serverId: string, remoteToolName: string): RegisteredMcpTool | undefined {
+    return this.listTools(serverId).find((tool) => tool.name === remoteToolName);
+  }
+
+  start(options: McpManagerStartOptions = {}): Promise<void> {
     if (this.stateData !== "idle") {
       return Promise.reject(new Error("MCP manager can only be started once."));
     }
@@ -188,9 +202,9 @@ export class McpManager {
     return this.closePromise;
   }
 
-  private async startInternal(): Promise<AdaptedMcpTool[]> {
+  private async startInternal(): Promise<void> {
     try {
-      return await this.startServers();
+      await this.startServers();
     } catch (error) {
       if (!this.startController.signal.aborted) {
         throw error;
@@ -203,7 +217,7 @@ export class McpManager {
     }
   }
 
-  private async startServers(): Promise<AdaptedMcpTool[]> {
+  private async startServers(): Promise<void> {
     throwIfStartAborted(this.startController.signal);
     let completedServerCount = 0;
     this.reportProgress({
@@ -243,12 +257,7 @@ export class McpManager {
       throw error;
     }
 
-    this.toolsData = this.records
-      .filter((record) => record.status === "ready")
-      .flatMap((record) => record.tools);
-
     this.stateData = "ready";
-    return this.tools;
   }
 
   private async startServer(record: McpServerRecord, signal: AbortSignal): Promise<void> {
@@ -279,10 +288,10 @@ export class McpManager {
           !excludeTools.has(tool.name),
       );
 
-      // Adapt a server atomically. A malformed schema cannot leave a silently
+      // Compile a server catalog atomically. A malformed schema cannot leave a silently
       // partial tool set whose contents depend on discovery order.
       record.tools = selectedTools.map((tool) =>
-        createMcpToolAdapter({
+        createRegisteredMcpTool({
           serverId: record.registration.id,
           caller: client,
           tool,
@@ -318,14 +327,12 @@ export class McpManager {
 
     this.stateData = "closing";
     await this.closeClients();
-    this.toolsData = [];
     this.stateData = "closed";
   }
 
   private async closeAfterStartFailure(): Promise<void> {
     this.stateData = "closing";
     await this.closeClients();
-    this.toolsData = [];
     this.stateData = "closed";
   }
 

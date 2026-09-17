@@ -193,7 +193,7 @@ export class KanaTuiApp {
       load: cleanMode ? undefined : this.options.mcp?.load,
       reload: cleanMode ? undefined : this.options.mcp?.management?.reload,
       isStopping: () => this.stopping,
-      onToolsChanged: () => this.recreateAgentForMcp(),
+      onMcpChanged: () => this.recreateAgentForMcp(),
       onReady: () => this.conversation.notifyCanStartQueuedRun(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
       focusEditor: () => this.bottomArea.showFallback(),

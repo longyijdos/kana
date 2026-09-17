@@ -13,7 +13,7 @@ import {
 import { deferred } from "../helpers/async-control";
 
 describe("MCP manager", () => {
-  test("aggregates tools in registration order and applies remote-name filters", async () => {
+  test("keeps server catalogs in registration order and applies remote-name filters", async () => {
     const alpha = createFakeClient({
       name: "alpha-server",
       tools: [createTool("keep"), createTool("denied"), createTool("not-included")],
@@ -34,9 +34,13 @@ describe("MCP manager", () => {
       ],
     });
 
-    const tools = await manager.start();
+    expect(manager.listTools("alpha")).toEqual([]);
+    await expect(manager.start()).resolves.toBeUndefined();
 
-    expect(tools.map((tool) => tool.name)).toEqual(["keep", "second"]);
+    expect(manager.catalog.map((server) => server.name)).toEqual(["alpha", "beta"]);
+    expect(manager.listTools("alpha").map((tool) => tool.name)).toEqual(["keep"]);
+    expect(manager.listTools("beta").map((tool) => tool.name)).toEqual(["second"]);
+    expect(manager.listTools("missing")).toEqual([]);
     expect(manager.getTool("alpha", "keep")?.source).toEqual({
       serverId: "alpha",
       remoteToolName: "keep",
@@ -80,9 +84,10 @@ describe("MCP manager", () => {
       onError: (event) => events.push(event),
     });
 
-    const tools = await manager.start();
+    await manager.start();
 
-    expect(tools.map((tool) => tool.name)).toEqual(["search"]);
+    expect(manager.listTools("unavailable")).toEqual([]);
+    expect(manager.listTools("healthy").map((tool) => tool.name)).toEqual(["search"]);
     expect(unavailable.closeCount).toBe(1);
     expect(manager.diagnostics[0]).toEqual({
       id: "unavailable",
@@ -125,7 +130,8 @@ describe("MCP manager", () => {
     ]);
     expect([first.closeCount, required.closeCount, last.closeCount]).toEqual([1, 1, 1]);
     expect(manager.state).toBe("closed");
-    expect(manager.tools).toEqual([]);
+    expect(manager.listTools("first")).toEqual([]);
+    expect(manager.getTool("first", "one")).toBeUndefined();
   });
 
   test("keeps same-named remote tools separate without reserving local names", async () => {
@@ -141,7 +147,8 @@ describe("MCP manager", () => {
       ],
     });
     await manager.start();
-    expect(manager.tools.map((tool) => tool.name)).toEqual(["read", "mcp_call", "read"]);
+    expect(manager.listTools("first").map((tool) => tool.name)).toEqual(["read", "mcp_call"]);
+    expect(manager.listTools("second").map((tool) => tool.name)).toEqual(["read"]);
     expect(manager.getTool("first", "read")?.source.serverId).toBe("first");
     expect(manager.getTool("second", "read")?.source.serverId).toBe("second");
     await manager.close();
@@ -162,7 +169,8 @@ describe("MCP manager", () => {
       servers: [{ id: "invalid", createClient: () => invalid }],
     });
 
-    await expect(manager.start()).resolves.toEqual([]);
+    await expect(manager.start()).resolves.toBeUndefined();
+    expect(manager.listTools("invalid")).toEqual([]);
     expect(manager.diagnostics[0]).toMatchObject({
       status: "failed",
       discoveredToolCount: 2,
@@ -185,7 +193,9 @@ describe("MCP manager", () => {
       ],
     });
 
-    await expect(manager.start()).resolves.toMatchObject([{ name: "unique" }]);
+    await manager.start();
+    expect(manager.listTools("duplicate")).toEqual([]);
+    expect(manager.listTools("healthy")).toMatchObject([{ name: "unique" }]);
     expect(manager.diagnostics[0]).toMatchObject({
       status: "failed",
       error: { message: "MCP server duplicate returned duplicate tool name same." },
@@ -265,6 +275,7 @@ describe("MCP manager", () => {
       },
     ]);
     expect(manager.getTool("filesystem", "read_file")).toBeUndefined();
+    expect(manager.listTools("filesystem")).toEqual([]);
   });
 
   test("cancels in-flight startup before closing", async () => {

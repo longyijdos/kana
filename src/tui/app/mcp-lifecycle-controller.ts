@@ -14,7 +14,7 @@ export type McpLifecycleControllerOptions = {
   load?: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>;
   reload?: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>;
   isStopping: () => boolean;
-  onToolsChanged: () => void;
+  onMcpChanged: () => void;
   onReady: () => void;
   updateStatus: (phase: RunPhase) => void;
   focusEditor: () => void;
@@ -70,7 +70,7 @@ export class McpLifecycleController {
         this.loaded = true;
         this.endLoading(loadingOperation);
         this.renderResult(result);
-        this.options.onToolsChanged();
+        this.options.onMcpChanged();
         this.options.updateStatus("idle");
         this.options.focusEditor();
         this.options.tui.requestRender();
@@ -121,7 +121,7 @@ export class McpLifecycleController {
       }
 
       this.renderResult(result);
-      this.options.onToolsChanged();
+      this.options.onMcpChanged();
       this.options.updateStatus("idle");
       this.options.focusEditor();
       this.options.tui.requestRender();
@@ -139,9 +139,9 @@ export class McpLifecycleController {
           color: tuiTheme.error,
         }),
       );
-      // Runtime failure clears its tool set. Recreate the idle Agent so it
-      // cannot keep calling tools backed by the manager that was just closed.
-      this.options.onToolsChanged();
+      // Runtime failure clears the registry. Recreate the idle Agent so its
+      // gateways cannot retain the manager that was just closed.
+      this.options.onMcpChanged();
       this.options.updateStatus("error");
       this.options.focusEditor();
       this.options.tui.requestRender();
@@ -204,7 +204,7 @@ export class McpLifecycleController {
       this.loaded = true;
     }
     this.options.transcript.addChild(new TextBlock(message, { color: tuiTheme.muted }));
-    this.options.onToolsChanged();
+    this.options.onMcpChanged();
     this.options.updateStatus("idle");
     this.options.focusEditor();
     this.options.tui.requestRender();

@@ -144,7 +144,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake","mcp_activate","mcp_call"]
+tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake","mcp_list_tools","mcp_call"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -251,7 +251,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 
 | 表与键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `agent.tools` | 唯一内置工具名数组 | 全部可配置内置工具 | 选择 conversation Agent 可以调用的内置工具；空数组禁用全部可配置工具。MCP 入口 `mcp_activate` 与 `mcp_call` 也受此选择控制；`update_goal`、provider 能力和 TUI 直接操作不在范围内。 |
+| `agent.tools` | 唯一内置工具名数组 | 全部可配置内置工具 | 选择 conversation Agent 可以调用的内置工具；空数组禁用全部可配置工具。MCP 入口 `mcp_list_tools` 与 `mcp_call` 也受此选择控制；`update_goal`、provider 能力和 TUI 直接操作不在范围内。 |
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
 | `agent.goal_max_rounds` | 正整数 | `8` | 单个 `/goal` 最多允许的完整 Agent run 数，包含首次 run。 |
 | `agent.tool_deadline_ms` | 正整数 | `660000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
@@ -279,7 +279,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 
 `parallel_tool_calls` 只有在用户策略与模型 metadata 都允许时才生效。重复调用、tool-result artifact、并发、deadline 与 Background Job 字段所配置的行为属于[工具与执行](tools.zh-CN.md)；context limit 与压缩预算由 [Agent 运行时](agent-runtime.zh-CN.md)解释。
 
-`agent.tools` 仍受运行时能力约束。选择 `view_image`、`remember`、`schedule_wake`、`mcp_activate`、`mcp_call`、某个 `job_*` 或 `*_subagent` 工具，不会在对应底层能力原本不可用时将其开启。该选择只控制 Agent 的工具面；`/agents`、`/jobs`、`/schedule`、`/todo`、`/mcp` 等命令继续通过 TUI 的 session 直接控制工作。角色卡配置见 [Subagent](subagents.zh-CN.md)。
+`agent.tools` 仍受运行时能力约束。选择 `view_image`、`remember`、`schedule_wake`、`mcp_list_tools`、`mcp_call`、某个 `job_*` 或 `*_subagent` 工具，不会在对应底层能力原本不可用时将其开启。该选择只控制 Agent 的工具面；`/agents`、`/jobs`、`/schedule`、`/todo`、`/mcp` 等命令继续通过 TUI 的 session 直接控制工作。角色卡配置见 [Subagent](subagents.zh-CN.md)。
 
 上表仍是 TUI option 字段的 canonical 定义。交互语义属于 [TUI 交互](tui.zh-CN.md)，hyperlink、LaTeX、Mermaid、宽度与 repaint 行为属于[终端渲染](terminal-rendering.zh-CN.md)。Memory retention 与 runtime-log 持久化属于[会话与记忆](sessions-and-memory.zh-CN.md)。
 

@@ -25,5 +25,9 @@ export type {
   McpProgress,
   McpTool,
 } from "./protocol";
-export { createMcpToolAdapter, type McpToolCaller, McpToolSchemaError } from "./tool-adapter";
+export {
+  createRegisteredMcpTool,
+  type McpToolCaller,
+  McpToolSchemaError,
+} from "./registered-tool";
 export { type McpToolSource, normalizeMcpToolResult } from "./tool-result";

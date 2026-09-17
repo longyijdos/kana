@@ -313,13 +313,13 @@ describe("Kana config parser", () => {
 
     writeFileSync(
       configPath,
-      '[agent]\ntools = ["read", "bash", "job_start", "mcp_activate", "mcp_call"]\n',
+      '[agent]\ntools = ["read", "bash", "job_start", "mcp_list_tools", "mcp_call"]\n',
     );
     expect(loadKanaConfig(env).agent.tools).toEqual([
       "read",
       "bash",
       "job_start",
-      "mcp_activate",
+      "mcp_list_tools",
       "mcp_call",
     ]);
 
