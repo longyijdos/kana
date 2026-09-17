@@ -9,11 +9,11 @@ Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态
 组件负责展示和本地键盘处理。终端 runtime 负责通用 `Component` 契约、高度分配、可见宽度规范化、cursor 放置和差量输出；这些机制见[终端渲染](terminal-rendering.zh-CN.md)。
 ## 应用生命周期
 
-终端 runtime 先于 `KanaTuiApp` 启动；底层 raw mode、capability、repaint 和恢复行为属于[终端渲染](terminal-rendering.zh-CN.md)。随后 App 会先显示当前 session，再加载外部工具。MCP 启动期间会移除 editor 焦点，追加不可变的逐 server 结果与 warning，用发现的工具重建 Agent，最后恢复 editor。`Esc` 或键盘 `Ctrl+C` 会取消 startup 或 reload，在清理完成后追加弱化的取消结果并恢复普通交互，但不会关闭可 reload 的 MCP runtime；以这种方式跳过 startup 后，初始 prompt 仍会运行。浏览器授权使用临时 URL block，并在结束后替换为最终状态。必需 server 初次失败时输入保持禁用；显式 reload 失败则会移除过期工具并恢复输入，让用户可以重试。Manager 与协议语义见 [MCP](mcp.zh-CN.md)。
+终端 runtime 先于 `KanaTuiApp` 启动；底层 raw mode、capability、repaint 和恢复行为属于[终端渲染](terminal-rendering.zh-CN.md)。随后 App 会先显示当前 session，再连接 MCP server。MCP 启动期间会移除 editor 焦点，追加不可变的逐 server 结果与 warning，用 MCP 入口重建 Agent，最后恢复 editor。`Esc` 或键盘 `Ctrl+C` 会取消 startup 或 reload，在清理完成后追加弱化的取消结果并恢复普通交互，但不会关闭可 reload 的 MCP runtime；以这种方式跳过 startup 后，初始 prompt 仍会运行。浏览器授权使用临时 URL block，并在结束后替换为最终状态。必需 server 初次失败时输入保持禁用；显式 reload 失败则会移除过期工具并恢复输入，让用户可以重试。Manager 与协议语义见 [MCP](mcp.zh-CN.md)。
 
 `KanaTuiApp.stop()` 是幂等边界。它追加关闭状态、移除 bottom 焦点、关闭并等待 `ConversationRuntime`，等待自动记忆合并等产品清理，再关闭 MCP manager；之后才恢复终端，并按需打印累计用量和恢复命令。空闲退出与进程 signal 共用这条路径；优雅关闭中的第二次中断会先恢复终端再强制退出。
 
-使用 `kana --clean` 时，App 不安装外部工具加载器或 MCP controller。Transcript 与状态栏会显示临时模式，不持久化 session，退出时也不打印恢复命令。
+使用 `kana --clean` 时，App 不安装 MCP 生命周期或管理 controller。Transcript 与状态栏会显示临时模式，不持久化 session，退出时也不打印恢复命令。
 ## App 与 Agent 事件
 
 `KanaTuiApp` 订阅 `ConversationRuntime`，持有累计模型用量和可见运行状态，并把 Agent 事件映射交给 `AgentEventRenderer`。输入排序与投递由[对话运行时](conversation-runtime.zh-CN.md)定义；本文只负责其可见投影。Transcript 会在任意两个输出块之间插入一行普通空行，每个 block 只管理内部间距；同一助手消息含多个有序可见部分时，`AssistantMessageBlock` 也使用相同间距。人工输入使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，续行与正文对齐。到期 wake 显示为 `Scheduled wake: …` 而不是人工输入，成功结果则显示为把延迟和提醒压到一行 target 的紧凑工具块：
@@ -41,12 +41,12 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 ## 输入与快捷方式
 
-全局控制输入先于焦点组件处理。`Esc` 通常沿正常焦点分发流程传递，外部工具加载期间除外：
+全局控制输入先于焦点组件处理。`Esc` 通常沿正常焦点分发流程传递，MCP startup 或 reload 期间除外：
 
 | 输入 | 行为 |
 | --- | --- |
-| `Ctrl+C` | 外部工具加载期间取消 MCP startup 或 reload；其它情况下，正在运行时中止本地 Shell、记忆压缩或 Agent。空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；关闭等待期间再次按下会强制退出。 |
-| `Esc` | 外部工具加载期间取消 MCP startup 或 reload；其它情况下，先交给当前聚焦的 modal、view、picker 或嵌套 prompt 处理，工具审批提示会将它视为“拒绝”。焦点回到编辑器后，若 Agent 正在运行则中止本次 run；空闲时不产生作用。 |
+| `Ctrl+C` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，正在运行时中止本地 Shell、记忆压缩或 Agent。空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；关闭等待期间再次按下会强制退出。 |
+| `Esc` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，先交给当前聚焦的 modal、view、picker 或嵌套 prompt 处理，工具审批提示会将它视为“拒绝”。焦点回到编辑器后，若 Agent 正在运行则中止本次 run；空闲时不产生作用。 |
 | `Ctrl+O` | 打开/关闭最近一项工具调用的详情查看器；`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
@@ -112,21 +112,21 @@ Clean 模式中 `/skills`、`/mcp`、`/memory`、`/agents`、`/fork`、`/resume`
 
 ## 控制器与焦点
 
-`KanaTuiApp` 是装配和路由层。它的构造契约按启动、对话、Skill、审批、UI、记忆、用量、模型、外部工具、诊断和生命周期能力分组，因此控制器只接收自己使用的边界。独立 controller 持有各自的交互状态机：
+`KanaTuiApp` 是装配和路由层。它的构造契约按启动、对话、Skill、审批、UI、记忆、用量、模型、MCP、诊断和生命周期能力分组，因此控制器只接收自己使用的边界。独立 controller 持有各自的交互状态机：
 
 - `BottomAreaController` 是改变底部组件与焦点的唯一边界。视图仅在自己仍持有可见底部时恢复动态 fallback，避免过期的关闭操作覆盖更新的视图。fallback 会优先解析为等待中的审批提示，否则才是编辑器。
 - `StatusProjectionController` 持有活动 run 状态、进程用量总计、context 占用和 editor 状态更新。`InteractionErrorReporter` 只把交互错误追加到 transcript，不改动状态阶段；对话 run 和辅助执行流程各自持有自己的终态阶段（包括 `Error`）。
 - `ContextCompactController`、`ImageAttachmentController`、`McpOAuthStatusController`、`ModelSelectionController` 和 `InformationViewerController` 持有各自的异步或多步 UI 状态，App 只负责启动流程或路由事件。
 
-- `ExternalToolsLifecycleController` 统一处理会话可见后的首次外部工具加载和后续 MCP reload，持有活动操作的取消 signal、追加式生命周期输出以及输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
+- `McpLifecycleController` 统一处理会话可见后的首次 MCP startup和后续 MCP reload，持有活动操作的取消 signal、追加式生命周期输出以及输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
 - `QueuedInputController` 保存当前 run 输入的 optimistic preview，并用既有 `MessageId` 与权威 runtime snapshot 对齐。它只持有显示标签和 preview 状态；queue lane、投递顺序、scheduled metadata 与取消语义见[对话运行时](conversation-runtime.zh-CN.md)。
 - `ScheduledMessageManagerController` 展示 `/schedule` 的当前 session 快照，以及多步添加、刷新与删除流程。它持有列表排序、标签、快捷键和焦点恢复；timer 身份、取消、到期投递与 queue gate 见[对话运行时](conversation-runtime.zh-CN.md)。
 - `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job 但不确认终态，并在面板通过 `Esc` 关闭前阻止 pending run 启动。
 - `SubagentManagerController` 用 `/agents` 打开面板，重新加载 profile 诊断、保持 run 选中项稳定、预览最终输出、用 `Enter` 打开独立持久化的 child transcript，并用 `K` 取消活动 child。Child 状态变化会刷新视图，但不消费结果。
 - `BackgroundActivityController` 绑定当前 session 的 Background Job 与 Subagent client，把 `running`、`stopping` 记录投影为编辑器的 `Background` 预览。它在 session 切换时重新绑定，无活动任务时不渲染任何行，也绝不确认、取消或改变所显示的任务。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
-- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前读取当前有效审批模式。`/approval` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。同时到达的 main 与 child 请求会带准确 Agent 身份进入一条 FIFO 队列；child 提示包含 profile 和短 ID，取消时只移除对应请求。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、bash 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。MCP 工具通过产品层别名解析器显示 server ID、远端工具原名和格式化完整参数，长参数沿用详情分页；它们不提供持久信任选项。选择“拒绝”或按 `Esc` 会中止发起请求的 run，选择 always 仅把 bash 命令加入精确白名单。
-- `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和外部工具激活；其内部的 `SessionOverlayController` 用恢复列表或删除确认替换编辑器。
+- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前读取当前有效审批模式。`/approval` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。同时到达的 main 与 child 请求会带准确 Agent 身份进入一条 FIFO 队列；child 提示包含 profile 和短 ID，取消时只移除对应请求。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、bash 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。`mcp_call` 审批从入口 envelope 读取 server ID 与远端工具原名，并显示格式化完整嵌套参数，长参数沿用详情分页；它们不提供持久信任选项。选择“拒绝”或按 `Esc` 会中止发起请求的 run，选择 always 仅把 bash 命令加入精确白名单。
+- `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和 MCP 能力刷新；其内部的 `SessionOverlayController` 用恢复列表或删除确认替换编辑器。
 - `SkillManagerController` 用 global Skill 列表替换编辑器。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次，并用原消息历史重建一次 Agent，未变化则直接关闭。持久化失败时视图保持打开。
 - `McpServerManagerController` 用已配置 MCP server 的 checkbox 替换 editor。`Enter` 只修改本地草稿；选中 OAuth HTTP server 时，`A` 打开认证子菜单，可授权、重新授权或退出登录，进行中的浏览器授权可用 `Esc` 中止。授权 URL、成功、失败或取消状态写入 transcript；退出登录会禁用该 server。返回列表后，主 `Esc` 才应用草稿；选择或已启用 server 的凭据发生变化时只触发一次完整 runtime reload。持久化失败时视图保持打开。组件显示 server ID、transport、OAuth 状态，以及 stdio 的完整命令行（`command` 加 `args`）或 HTTP URL，但不会接收环境变量、HTTP headers 或 token。
 - `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request；`/approval` 可选择 Always ask、Ask unless trusted 或 Never ask，最后一项使用与删除会话相同的默认否定二次确认；`/model` 先选择 provider 与 model，再显示该模型 metadata 声明的 reasoning efforts。没有 reasoning metadata 的模型会跳过最后一步，`none` 显示为 `Off`。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。

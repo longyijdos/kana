@@ -11,7 +11,7 @@ type RpcMessage = {
 
 const scenario = process.env.KANA_TEST_MCP_SCENARIO ?? "normal";
 const lines = createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
-let initialized = false;
+let initialized = scenario === "modern";
 
 process.stderr.write("fake MCP server started\n");
 
@@ -34,11 +34,33 @@ for await (const line of lines) {
 }
 
 async function handleMessage(message: RpcMessage): Promise<void> {
+  if (message.method === "server/discover" && message.id !== undefined) {
+    await writeMessage({
+      jsonrpc: "2.0",
+      id: message.id,
+      ...(scenario === "modern"
+        ? {
+            result: {
+              supportedVersions: ["2026-07-28"],
+              capabilities: { tools: {} },
+              _meta: {
+                "io.modelcontextprotocol/serverInfo": {
+                  name: "fake-server",
+                  version: "1.0.0",
+                  description: "Fixture tools.",
+                },
+              },
+            },
+          }
+        : { error: { code: -32601, message: "Method not found" } }),
+    });
+    return;
+  }
   if (message.method === "initialize" && message.id !== undefined) {
     if (scenario === "hang-initialize") {
       return;
     }
-    const protocolVersion = scenario === "version-mismatch" ? "2024-11-05" : "2025-11-25";
+    const protocolVersion = scenario === "legacy-2024" ? "2024-11-05" : "2025-11-25";
     await writeMessage(
       {
         jsonrpc: "2.0",
@@ -131,6 +153,7 @@ async function handleMessage(message: RpcMessage): Promise<void> {
           params: { progressToken, progress: 2, total: 2, message: "finished" },
         })}\n`,
       );
+      await new Promise((resolve) => setTimeout(resolve, 5));
     }
 
     const structuredContent =
@@ -182,7 +205,20 @@ async function handleMessage(message: RpcMessage): Promise<void> {
 }
 
 async function writeMessage(message: RpcMessage, chunked = false): Promise<void> {
-  const encoded = `${JSON.stringify(message)}\n`;
+  const encoded = `${JSON.stringify(
+    scenario === "modern" && message.result
+      ? {
+          ...message,
+          result: {
+            ...message.result,
+            resultType: "complete",
+            ...("tools" in message.result || "supportedVersions" in message.result
+              ? { ttlMs: 60_000, cacheScope: "private" }
+              : {}),
+          },
+        }
+      : message,
+  )}\n`;
 
   if (!chunked) {
     await writeRaw(encoded);

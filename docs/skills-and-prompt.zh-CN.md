@@ -61,7 +61,7 @@ Runtime-context 状态转换协议
 
 每次模型调用前，Agent 都会同时解析 Kana 的动态 environment、Job、todo、Goal 上下文和当前可用的能力 section。稳定 system 前缀保持不变，以便 provider prompt cache 复用。动态状态转换见 [Agent 运行时](agent-runtime.zh-CN.md)，Goal 的 runtime 所有权见[对话运行时](conversation-runtime.zh-CN.md)，可执行能力规则见[工具与执行](tools.zh-CN.md)。
 
-`--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时稳定 system 提示词包含默认助手指令和 runtime-context 协议，动态环境上下文仍然可用；Agent 不注册 `remember` 或任何外部工具。TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载，但 `/model` 的选择只保留在当前临时进程中。
+`--clean` 会完全绕过全局和项目 Skills 发现、`skills.toml` 激活读取、两级 memory 与两级 `AGENTS.md`。此时稳定 system 提示词包含默认助手指令和 runtime-context 协议，动态环境上下文仍然可用；Agent 不注册 `remember` 或 MCP 入口。TUI 的 `/skills` 和 `/memory` 也会报告在 Clean 模式下不可用。`.env`、provider/model 和其它运行配置仍按普通启动流程加载，但 `/model` 的选择只保留在当前临时进程中。
 
 全局指令路径是 `<KANA_HOME>/AGENTS.md`，项目指令路径是 `<cwd>/AGENTS.md`。产品 Host 在启动时只加载一次两者，因此直接编辑需要重启才会生效，Agent 重建会复用同一份指令快照。未提供快照的独立 prompt 或 Agent 调用方仍会直接加载文件。内置默认指令只有一句，用于声明当前环境中的简洁、实用助手；具体能力的调用 guidance 位于对应工具 description。全局文件存在时会追加到默认指令后，项目文件再追加到后面。若两条 AGENTS 路径解析到同一文件，只注入一次。项目内容处于更后的、更具体的位置，但代码没有把多份指令合并为任何优先级算法，模型仍需根据完整提示词解释它们。
 

@@ -44,26 +44,21 @@ export function formatMcpStartupWarnings(diagnostics: readonly McpServerDiagnost
   });
 }
 
-export function formatMcpStartupSummary(
-  diagnostics: readonly McpServerDiagnostic[],
-  toolCount: number,
-): string {
-  return formatMcpSummary("startup", diagnostics, toolCount);
+export function formatMcpStartupSummary(diagnostics: readonly McpServerDiagnostic[]): string {
+  return formatMcpSummary("startup", diagnostics);
 }
 
-export function formatMcpReloadSummary(
-  diagnostics: readonly McpServerDiagnostic[],
-  toolCount: number,
-): string {
-  return formatMcpSummary("reload", diagnostics, toolCount);
+export function formatMcpReloadSummary(diagnostics: readonly McpServerDiagnostic[]): string {
+  return formatMcpSummary("reload", diagnostics);
 }
 
 function formatMcpSummary(
   operation: "startup" | "reload",
   diagnostics: readonly McpServerDiagnostic[],
-  toolCount: number,
 ): string {
-  const readyServerCount = diagnostics.filter((diagnostic) => diagnostic.status === "ready").length;
+  const readyServers = diagnostics.filter((diagnostic) => diagnostic.status === "ready");
+  const readyServerCount = readyServers.length;
+  const toolCount = readyServers.reduce((count, diagnostic) => count + diagnostic.toolCount, 0);
   const toolLabel = toolCount === 1 ? "tool" : "tools";
 
   return `MCP ${operation} complete: ${readyServerCount}/${diagnostics.length} servers ready · ${toolCount} ${toolLabel}`;

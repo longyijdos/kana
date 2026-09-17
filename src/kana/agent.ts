@@ -8,6 +8,7 @@ import {
   type PromptToolSection,
 } from "@/agent";
 import type { BackgroundJobClient } from "@/jobs";
+import type { McpToolRegistry } from "@/mcp";
 import {
   createBashTool,
   createEditTool,
@@ -40,9 +41,10 @@ import type {
   KanaSubagentRunResult,
 } from "./subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
-import { KANA_BUILT_IN_TOOL_NAMES, KANA_WORKSPACE_TOOL_NAMES } from "./tool-names";
+import { KANA_WORKSPACE_TOOL_NAMES } from "./tool-names";
 import {
   createCancelSubagentTool,
+  createMcpTools,
   createRememberTool,
   createScheduleWakeTool,
   createSpawnSubagentTool,
@@ -51,10 +53,6 @@ import {
   createWaitSubagentTool,
 } from "./tools";
 
-// Reserve the complete built-in namespace, including tools that are enabled
-// only for particular configurations or session states. MCP discovery happens
-// before those states can change, so reserving only the first Agent's tools
-// could let a later session recreation introduce a collision.
 export { KANA_BUILT_IN_TOOL_NAMES } from "./tool-names";
 
 export type KanaAgentOptions = Pick<
@@ -67,8 +65,7 @@ export type KanaAgentOptions = Pick<
   | "journal"
   | "logger"
 > & {
-  additionalTools?: readonly Tool[];
-  resolveAdditionalTools?: () => Promise<readonly Tool[]> | readonly Tool[];
+  resolveMcp?: () => McpToolRegistry | undefined;
   env?: NodeJS.ProcessEnv;
   launchMode?: KanaLaunchMode;
   wakeScheduler?: WakeScheduler;
@@ -123,6 +120,10 @@ export function createKanaAgent(
         enabledTools.has(tool.name) &&
         (subagentProfile === undefined || subagentProfile.tools.includes(tool.name)),
     );
+  const resolveMcpTools = (): Tool[] => {
+    const registry = customizationsEnabled ? options.resolveMcp?.() : undefined;
+    return registry?.catalog.length ? selectEnabledTools(createMcpTools(registry)) : [];
+  };
   const workspaceTools: Tool[] = selectEnabledTools([
     createListTool({
       root: cwd,
@@ -195,28 +196,23 @@ export function createKanaAgent(
       subagentImageInput.set(profile.digest, supported);
       return supported;
     };
-    const availableTools = (
-      profile: KanaSubagentProfile,
-      additionalTools: readonly Tool[],
-    ): string[] => [
+    const availableTools = (profile: KanaSubagentProfile): string[] => [
       ...KANA_WORKSPACE_TOOL_NAMES.filter(
         (name) =>
           enabledTools.has(name) &&
           profile.tools.includes(name) &&
           (name !== "view_image" || resolveSubagentImageInput(profile)),
       ),
-      ...(customizationsEnabled
-        ? additionalTools
-            .filter((tool) => profile.tools.includes("mcp:*") || profile.tools.includes(tool.name))
-            .map((tool) => tool.name)
-        : []),
+      ...resolveMcpTools()
+        .filter((tool) => profile.tools.includes(tool.name))
+        .map((tool) => tool.name),
     ];
-    const createSubagentTools = (additionalTools: readonly Tool[]): Tool[] => {
-      return selectEnabledTools([
+    const createSubagentTools = (): Tool[] =>
+      selectEnabledTools([
         createSpawnSubagentTool({
           subagents,
           profiles: subagentProfiles,
-          availableTools: (profile) => availableTools(profile, additionalTools),
+          availableTools,
           run: options.runSubagent as (
             context: KanaSubagentRunContext,
           ) => Promise<KanaSubagentRunResult>,
@@ -224,15 +220,10 @@ export function createKanaAgent(
         createWaitSubagentTool(subagents),
         createCancelSubagentTool(subagents),
       ]);
-    };
-    const initialAdditionalTools = options.additionalTools ?? [];
-    const resolveAdditionalTools = options.resolveAdditionalTools;
     toolSections.push({
       name: "subagents",
-      tools: createSubagentTools(initialAdditionalTools),
-      resolve: resolveAdditionalTools
-        ? async () => createSubagentTools(await resolveAdditionalTools())
-        : () => createSubagentTools(initialAdditionalTools),
+      tools: createSubagentTools(),
+      resolve: createSubagentTools,
     });
   }
   if (!subagentProfile) {
@@ -284,30 +275,13 @@ export function createKanaAgent(
       ]),
     });
   }
-  if (customizationsEnabled) {
-    const filterAdditionalTools = (tools: readonly Tool[]): Tool[] =>
-      tools.filter(
-        (tool) =>
-          subagentProfile === undefined ||
-          subagentProfile.tools.includes("mcp:*") ||
-          subagentProfile.tools.includes(tool.name),
-      );
-    const additionalTools = filterAdditionalTools(options.additionalTools ?? []);
-    const resolveAdditionalTools = options.resolveAdditionalTools;
-    assertAdditionalToolNames(additionalTools);
+  if (customizationsEnabled && options.resolveMcp) {
     toolSections.push({
-      name: "external",
-      tools: additionalTools,
-      resolve: resolveAdditionalTools
-        ? async () => {
-            const tools = filterAdditionalTools(await resolveAdditionalTools());
-            assertAdditionalToolNames(tools);
-            return tools;
-          }
-        : undefined,
+      name: "mcp",
+      tools: resolveMcpTools(),
+      resolve: resolveMcpTools,
     });
   }
-  assertUniqueToolNames(toolSections.flatMap((section) => section.tools));
   const promptAssembly = subagentProfile
     ? createPromptAssembly({
         system: [
@@ -365,25 +339,4 @@ export function createKanaAgent(
       checkpoint: subagentProfile ? undefined : options.contextCheckpoint,
     },
   });
-}
-
-function assertUniqueToolNames(tools: readonly Tool[]): void {
-  const names = new Set<string>();
-
-  for (const tool of tools) {
-    if (names.has(tool.name)) {
-      throw new Error(`Duplicate Kana Agent tool name: ${tool.name}.`);
-    }
-    names.add(tool.name);
-  }
-}
-
-function assertAdditionalToolNames(tools: readonly Tool[]): void {
-  const names = new Set<string>(KANA_BUILT_IN_TOOL_NAMES);
-  for (const tool of tools) {
-    if (names.has(tool.name)) {
-      throw new Error(`Duplicate Kana Agent tool name: ${tool.name}.`);
-    }
-    names.add(tool.name);
-  }
 }

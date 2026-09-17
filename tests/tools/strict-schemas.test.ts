@@ -92,6 +92,11 @@ function createAgentBuiltInTools(): Tool[] {
       },
       {
         backgroundJobs,
+        resolveMcp: () => ({
+          catalog: [{ name: "fixture", description: "Schema fixture." }],
+          listTools: () => [],
+          getTool: () => undefined,
+        }),
         subagents,
         subagentProfiles: [
           {

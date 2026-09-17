@@ -144,7 +144,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake"]
+tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake","mcp_list_tools","mcp_call"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -251,7 +251,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 
 | Table and key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `agent.tools` | Unique array of built-in tool names | All configurable built-in tools | Selects which built-in tools the conversation Agent may call. An empty array disables them all. `update_goal`, external/MCP tools, provider capabilities, and direct TUI operations are outside this selection. |
+| `agent.tools` | Unique array of built-in tool names | All configurable built-in tools | Selects which built-in tools the conversation Agent may call. An empty array disables them all. The MCP gateways `mcp_list_tools` and `mcp_call` follow this selection. `update_goal`, provider capabilities, and direct TUI operations are outside it. |
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
 | `agent.goal_max_rounds` | Positive integer | `8` | Maximum complete Agent runs admitted for one `/goal`, including its initial run. |
 | `agent.tool_deadline_ms` | Positive integer | `660000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
@@ -279,7 +279,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 
 `parallel_tool_calls` is effective only when both user policy and model metadata allow it. The repeated-call, tool-result artifact, concurrency, deadline, and Background Job fields configure behavior owned by [Tools and execution](tools.md). Context limits and compaction budgets are interpreted by [Agent runtime](agent-runtime.md).
 
-`agent.tools` is also constrained by runtime capabilities. Selecting `view_image`, `remember`, `schedule_wake`, a `job_*`, or a `*_subagent` tool does not enable its underlying capability when that capability is otherwise unavailable. The selection controls only the Agent tool surface; commands such as `/agents`, `/jobs`, `/schedule`, and `/todo` continue to operate through the TUI's direct session controls. Role-card configuration is documented in [Subagents](subagents.md).
+`agent.tools` is also constrained by runtime capabilities. Selecting `view_image`, `remember`, `schedule_wake`, `mcp_list_tools`, `mcp_call`, a `job_*`, or a `*_subagent` tool does not enable its underlying capability when that capability is otherwise unavailable. The selection controls only the Agent tool surface; commands such as `/agents`, `/jobs`, `/schedule`, `/todo`, and `/mcp` continue to operate through the TUI's direct session controls. Role-card configuration is documented in [Subagents](subagents.md).
 
 TUI option fields remain canonical in the table above. Their interaction semantics belong to [TUI interaction](tui.md), while hyperlinks, LaTeX, Mermaid, width, and repaint behavior belong to [Terminal rendering](terminal-rendering.md). Memory retention and runtime-log persistence belong to [Sessions and memory](sessions-and-memory.md).
 
@@ -397,13 +397,14 @@ Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type"
 | `proxy` | HTTP: Unset | An absolute `http`/`https` URL routes only this server through that proxy; `false` ignores process-wide proxies and forces direct connections. URLs cannot contain credentials or fragments. |
 | `headers` | HTTP: `{}` | String headers sent with every HTTP request; transport-owned content, session, protocol, and SSE headers cannot be overridden. |
 | `auth` | Unset | HTTP OAuth 2.0 configuration. When set, `url` must use HTTPS and `headers` cannot also set `Authorization`. |
+| `description` | Server-provided description, if any | Capability summary shown in the model-facing MCP catalog. |
 | `required` | `false` | Whether a startup failure prevents the whole MCP manager from becoming ready. |
-| `startupTimeoutMs` | `10000` | Timeout for completing the MCP initialization handshake. |
+| `startupTimeoutMs` | `10000` | Timeout for each MCP negotiation or initialization request during startup. |
 | `requestTimeoutMs` | `60000` | Default timeout for ordinary MCP requests. |
 | `includeTools` | Unset | Allowlist matched against original remote tool names. An empty array exposes no tools. |
 | `excludeTools` | Unset | Denylist matched against original remote names; exclusion wins when a name appears in both lists. |
 
-The stdio child inherits only defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges expanded `env`. Placeholders read from Kana's process environment, including `<KANA_HOME>/.env`; `${VAR:-default}` uses its non-recursive default when the variable is unset or empty. Missing required variables fail that server. Environment names must use conventional syntax, configured values must be strings, and timeouts must be positive.
+Kana supplies defined values among `HOME`, `PATH`, `TMPDIR`, `TMP`, `TEMP`, `LANG`, `LC_ALL`, and `LC_CTYPE`, then merges expanded `env`; the official SDK also adds its platform-specific safe environment defaults. Placeholders read from Kana's process environment, including `<KANA_HOME>/.env`; `${VAR:-default}` uses its non-recursive default when the variable is unset or empty. Missing required variables fail that server. Environment names must use conventional syntax, configured values must be strings, and timeouts must be positive.
 
 An HTTP server's `proxy` applies consistently to its MCP and OAuth requests. `false` bypasses process-wide proxies for that server; omission preserves Bun's default routing and inherited `HTTP_PROXY` or `HTTPS_PROXY`. Browser navigation keeps the browser's own network settings. Diagnostics record only whether an explicit proxy or bypass is active, never the proxy URL.
 

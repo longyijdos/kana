@@ -73,14 +73,21 @@ describe("MCP lifecycle status", () => {
     ).toEqual(["MCP server filesystem spoofed failed to start: process exited"]);
   });
 
-  test("summarizes the final ready-server and tool counts", () => {
+  test("summarizes retained remote tools from ready servers rather than gateway tools", () => {
     const diagnostics = [
+      {
+        id: "playwright",
+        required: false,
+        status: "ready" as const,
+        discoveredToolCount: 28,
+        toolCount: 26,
+      },
       {
         id: "filesystem",
         required: false,
         status: "ready" as const,
-        discoveredToolCount: 2,
-        toolCount: 2,
+        discoveredToolCount: 1,
+        toolCount: 1,
       },
       {
         id: "optional",
@@ -91,18 +98,19 @@ describe("MCP lifecycle status", () => {
       },
     ];
 
-    expect(formatMcpStartupSummary(diagnostics, 2)).toBe(
-      "MCP startup complete: 1/2 servers ready · 2 tools",
+    expect(formatMcpStartupSummary(diagnostics)).toBe(
+      "MCP startup complete: 2/3 servers ready · 27 tools",
     );
-    expect(formatMcpStartupSummary(diagnostics.slice(0, 1), 1)).toBe(
+    expect(formatMcpStartupSummary(diagnostics.slice(1, 2))).toBe(
       "MCP startup complete: 1/1 servers ready · 1 tool",
     );
-    expect(formatMcpReloadSummary(diagnostics.slice(0, 1), 1)).toBe(
+    expect(formatMcpReloadSummary(diagnostics.slice(1, 2))).toBe(
       "MCP reload complete: 1/1 servers ready · 1 tool",
     );
-    expect(formatMcpStartupSummary([], 0)).toBe(
-      "MCP startup complete: 0/0 servers ready · 0 tools",
+    expect(formatMcpReloadSummary(diagnostics.slice(0, 1))).toBe(
+      "MCP reload complete: 1/1 servers ready · 26 tools",
     );
-    expect(formatMcpReloadSummary([], 0)).toBe("MCP reload complete: 0/0 servers ready · 0 tools");
+    expect(formatMcpStartupSummary([])).toBe("MCP startup complete: 0/0 servers ready · 0 tools");
+    expect(formatMcpReloadSummary([])).toBe("MCP reload complete: 0/0 servers ready · 0 tools");
   });
 });

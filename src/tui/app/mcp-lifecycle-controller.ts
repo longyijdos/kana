@@ -3,38 +3,32 @@ import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { RunPhase } from "./status-phase";
 
-export type ExternalToolsLoadResult = {
+export type McpLoadResult = {
   status?: string;
   warnings?: readonly string[];
 };
 
-export type ExternalToolsLifecycleControllerOptions = {
+export type McpLifecycleControllerOptions = {
   transcript: Transcript;
   tui: Tui;
-  load?: (
-    onProgress: (status: string) => void,
-    signal: AbortSignal,
-  ) => Promise<ExternalToolsLoadResult>;
-  reload?: (
-    onProgress: (status: string) => void,
-    signal: AbortSignal,
-  ) => Promise<ExternalToolsLoadResult>;
+  load?: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>;
+  reload?: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>;
   isStopping: () => boolean;
-  onToolsChanged: () => void;
+  onMcpChanged: () => void;
   onReady: () => void;
   updateStatus: (phase: RunPhase) => void;
   focusEditor: () => void;
   clearFocus: () => void;
 };
 
-export class ExternalToolsLifecycleController {
+export class McpLifecycleController {
   private loaded: boolean;
   private loadPromise?: Promise<boolean>;
   private loadingOperation?: symbol;
   private loadingController?: AbortController;
   private isLoading = false;
 
-  constructor(private readonly options: ExternalToolsLifecycleControllerOptions) {
+  constructor(private readonly options: McpLifecycleControllerOptions) {
     this.loaded = options.load === undefined;
   }
 
@@ -76,7 +70,7 @@ export class ExternalToolsLifecycleController {
         this.loaded = true;
         this.endLoading(loadingOperation);
         this.renderResult(result);
-        this.options.onToolsChanged();
+        this.options.onMcpChanged();
         this.options.updateStatus("idle");
         this.options.focusEditor();
         this.options.tui.requestRender();
@@ -91,7 +85,7 @@ export class ExternalToolsLifecycleController {
         if (!this.options.isStopping()) {
           this.options.transcript.addChild(
             new TextBlock(
-              `Failed to load external tools: ${formatError(error)}\nPress Ctrl+C to exit.`,
+              `Failed to start MCP servers: ${formatError(error)}\nPress Ctrl+C to exit.`,
               { color: tuiTheme.error },
             ),
           );
@@ -127,7 +121,7 @@ export class ExternalToolsLifecycleController {
       }
 
       this.renderResult(result);
-      this.options.onToolsChanged();
+      this.options.onMcpChanged();
       this.options.updateStatus("idle");
       this.options.focusEditor();
       this.options.tui.requestRender();
@@ -145,9 +139,9 @@ export class ExternalToolsLifecycleController {
           color: tuiTheme.error,
         }),
       );
-      // Runtime failure clears its tool set. Recreate the idle Agent so it
-      // cannot keep calling tools backed by the manager that was just closed.
-      this.options.onToolsChanged();
+      // Runtime failure clears the registry. Recreate the idle Agent so its
+      // gateways cannot retain the manager that was just closed.
+      this.options.onMcpChanged();
       this.options.updateStatus("error");
       this.options.focusEditor();
       this.options.tui.requestRender();
@@ -163,7 +157,7 @@ export class ExternalToolsLifecycleController {
   private beginLoading(message: string): symbol {
     this.isLoading = true;
     this.loadingController = new AbortController();
-    const loadingOperation = Symbol("external-tools-loading");
+    const loadingOperation = Symbol("mcp-loading");
     this.loadingOperation = loadingOperation;
     this.options.transcript.addChild(new TextBlock(message, { color: tuiTheme.muted }));
     this.options.updateStatus("starting");
@@ -210,7 +204,7 @@ export class ExternalToolsLifecycleController {
       this.loaded = true;
     }
     this.options.transcript.addChild(new TextBlock(message, { color: tuiTheme.muted }));
-    this.options.onToolsChanged();
+    this.options.onMcpChanged();
     this.options.updateStatus("idle");
     this.options.focusEditor();
     this.options.tui.requestRender();
@@ -218,7 +212,7 @@ export class ExternalToolsLifecycleController {
     return true;
   }
 
-  private renderResult(result: ExternalToolsLoadResult): void {
+  private renderResult(result: McpLoadResult): void {
     for (const warning of result.warnings ?? []) {
       this.options.transcript.addChild(new TextBlock(warning, { color: tuiTheme.error }));
     }

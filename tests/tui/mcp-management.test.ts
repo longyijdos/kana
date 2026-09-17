@@ -28,8 +28,8 @@ describe("TUI MCP management", () => {
       createTerminal(),
       {
         ...createOptions(),
-        externalTools: {
-          mcp: {
+        mcp: {
+          management: {
             loadServers: () => [
               { id: "filesystem", type: "stdio", command: "npx", args: ["-y"], enabled: false },
             ],
@@ -88,8 +88,8 @@ describe("TUI MCP management", () => {
       createTerminal(),
       {
         ...createOptions(),
-        externalTools: {
-          mcp: {
+        mcp: {
+          management: {
             loadServers: () => [
               {
                 id: "required",
@@ -133,8 +133,8 @@ describe("TUI MCP management", () => {
       createTerminal(),
       {
         ...createOptions(),
-        externalTools: {
-          mcp: {
+        mcp: {
+          management: {
             loadServers: () => [
               { id: "filesystem", type: "stdio", command: "npx", args: [], enabled: false },
             ],
@@ -193,8 +193,8 @@ describe("TUI MCP management", () => {
           initialSession: { id: "session-a", messages: [], timeline: [] },
           wakeScheduler,
         },
-        externalTools: {
-          mcp: {
+        mcp: {
+          management: {
             loadServers: () => [],
             saveEnabledServerIds: () => {},
             reload: async () => ({}),

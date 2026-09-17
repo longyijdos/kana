@@ -23,6 +23,29 @@ afterEach(() => {
 });
 
 describe("Kana tool approval", () => {
+  test("MCP catalogs are readable while calls follow the approval policy", () => {
+    for (const mode of ["always", "unless_trusted", "never"] as const) {
+      expect(
+        shouldRequestToolApproval(
+          { mode },
+          approvals(),
+          toolCall("mcp_list_tools", { name: "github" }),
+        ),
+      ).toBe(false);
+      expect(
+        shouldRequestToolApproval(
+          { mode },
+          approvals(),
+          toolCall("mcp_call", {
+            server: "github",
+            tool: "read",
+            arguments: {},
+          }),
+        ),
+      ).toBe(mode !== "never");
+    }
+  });
+
   test("job_start does not inherit Bash command trust", () => {
     const rules = approvals({ exactCommands: ["bun run dev"], readOnlyCommands: ["pwd"] });
     for (const mode of ["always", "never", "unless_trusted"] as const) {

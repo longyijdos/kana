@@ -22,7 +22,7 @@ TUI / Headless
       └→ MCP runtime
 ```
 
-`KanaConversationHost` is the product composition boundary. It loads runtime configuration and approval state, initializes the selected session, owns the shared wake scheduler and MCP runtime, and creates every main Agent with the current model, prompt, built-in tools, external tools, logger, journal, artifact store, background-job client, subagent client, todo state, and memory callbacks. It also constructs one-shot child Agents from validated role cards. It returns frontend-neutral operations and data; it does not render TUI components or project headless output. The delegated contract belongs to [Subagents](subagents.md).
+`KanaConversationHost` is the product composition boundary. It loads runtime configuration and approval state, initializes the selected session, owns the shared wake scheduler and MCP runtime, and creates every main Agent with the current model, prompt, built-in tools, MCP registry access, logger, journal, artifact store, background-job client, subagent client, todo state, and memory callbacks. It also constructs one-shot child Agents from validated role cards. It returns frontend-neutral operations and data; it does not render TUI components or project headless output. The delegated contract belongs to [Subagents](subagents.md).
 
 `HostedSessionRegistry` owns the live resources associated with each session instance. A hosted record binds the session's in-memory mirror, optional journal, logger, artifact store, background-job client, subagent client, and pending fork snapshot. `ConversationRuntime` selects and executes against those resources through host callbacks rather than opening storage or background processes itself.
 

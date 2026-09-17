@@ -32,7 +32,7 @@ Do not modify files.
 Host 从 conversation 的已校验 Agent 配置中派生 child 的模型和能力上限，但不传递 prompt 内容。角色卡显式指定 model 时只替换模型选择，否则继承当前模型。角色卡工具列表只能缩小有效能力：
 
 - 工作区工具必须同时被 `agent.tools` 和角色卡允许；
-- 外部工具精确名称只授权该工具，`mcp:*` 授权当前活动的 MCP 工具集合；
+- MCP 入口必须同时被 `agent.tools` 与角色卡允许；`mcp_list_tools` 与 `mcp_call` 覆盖全部当前已启用、经过过滤的 MCP 能力，不提供逐 server 或逐远端工具权限；
 - child Agent 永远不会获得 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、Background Job、todo、Goal、memory 或 scheduled-wake 工具；
 - 过大的 child 结果不会转存进 parent-session artifact。
 

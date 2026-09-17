@@ -55,12 +55,13 @@ describe("Kana MCP composition", () => {
       logger,
     );
 
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("fixture");
     const result = normalizeToolResult(
       await tools[0]!.execute({ text: "hello" }, { toolCallId: "call-1", update() {} }),
     );
 
-    expect(tools.map((tool) => tool.name)).toEqual(["fixture_echo"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["echo"]);
     expect(result.result).toMatchObject({
       structuredContent: {
         cwd: realpathSync(cwd),
@@ -108,7 +109,8 @@ describe("Kana MCP composition", () => {
       },
     );
 
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("fixture");
     const result = normalizeToolResult(
       await tools[0]!.execute({ text: "hello" }, { toolCallId: "call-1", update() {} }),
     );
@@ -140,7 +142,8 @@ describe("Kana MCP composition", () => {
     const message =
       "MCP stdio server fixture env.REQUIRED_SECRET references missing environment variable MISSING_SECRET.";
 
-    await expect(manager.start()).resolves.toEqual([]);
+    await expect(manager.start()).resolves.toBeUndefined();
+    expect(manager.listTools("fixture")).toEqual([]);
 
     expect(manager.diagnostics).toEqual([
       {
@@ -157,7 +160,7 @@ describe("Kana MCP composition", () => {
       event: "mcp.server_start_failed",
       metadata: {
         serverId: "fixture",
-        error: expect.objectContaining({ message }),
+        errorType: "Error",
       },
     });
   });
@@ -176,7 +179,8 @@ describe("Kana MCP composition", () => {
         PATH: process.env.PATH,
       },
     );
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("slow");
 
     await expect(
       tools[0]!.execute({}, { toolCallId: "call-1", update() {} }),
@@ -185,12 +189,15 @@ describe("Kana MCP composition", () => {
 
   test("creates Streamable HTTP clients with configured headers and tools", async () => {
     const authorizations: Array<string | null> = [];
+    const methods: string[] = [];
     const logs: Array<{ level: string; event: string; metadata?: LogMetadata }> = [];
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
       async fetch(request) {
         authorizations.push(request.headers.get("Authorization"));
+        methods.push(request.method);
+        if (request.method === "DELETE") return new Response(null, { status: 204 });
         if (request.method === "GET") {
           return new Response(null, { status: 405 });
         }
@@ -202,16 +209,26 @@ describe("Kana MCP composition", () => {
         if (!("method" in message) || !("id" in message)) {
           return new Response(null, { status: 202 });
         }
-        if (message.method === "initialize") {
+        if (message.method === "server/discover") {
           return jsonResponse({
             jsonrpc: "2.0",
             id: message.id,
-            result: {
-              protocolVersion: "2025-11-25",
-              capabilities: { tools: {} },
-              serverInfo: { name: "fake-http-server", version: "1.0.0" },
-            },
+            error: { code: -32601, message: "Method not found" },
           });
+        }
+        if (message.method === "initialize") {
+          return jsonResponse(
+            {
+              jsonrpc: "2.0",
+              id: message.id,
+              result: {
+                protocolVersion: "2025-11-25",
+                capabilities: { tools: {} },
+                serverInfo: { name: "fake-http-server", version: "1.0.0" },
+              },
+            },
+            { "Mcp-Session-Id": "fixture-session" },
+          );
         }
         if (message.method === "tools/list") {
           return jsonResponse({
@@ -253,12 +270,15 @@ describe("Kana MCP composition", () => {
       createCapturingLogger(logs),
     );
 
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("remote");
     const result = normalizeToolResult(
       await tools[0]!.execute({}, { toolCallId: "call-http", update() {} }),
     );
 
-    expect(tools.map((tool) => tool.name)).toEqual(["remote_echo"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["echo"]);
+    await manager.close();
+    expect(methods.filter((method) => method === "DELETE")).toHaveLength(1);
     expect(result.result).toMatchObject({ structuredContent: { transport: "http" } });
     expect(authorizations).toContain("Bearer remote-token");
     expect(logs).toContainEqual({
@@ -345,6 +365,13 @@ describe("Kana MCP composition", () => {
       if (!("method" in message) || !("id" in message)) {
         return new Response(null, { status: 202 });
       }
+      if (message.method === "server/discover") {
+        return jsonResponse({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "Method not found" },
+        });
+      }
       if (message.method === "initialize") {
         return jsonResponse({
           jsonrpc: "2.0",
@@ -406,7 +433,8 @@ describe("Kana MCP composition", () => {
     );
     managers.add(manager);
 
-    const tools = await manager.start();
+    await manager.start();
+    const tools = manager.listTools("remote");
     await tools[0]!.execute({}, { toolCallId: "call-proxy", update() {} });
 
     expect(requests.length).toBeGreaterThan(4);
@@ -443,8 +471,8 @@ describe("Kana MCP composition", () => {
     );
     managers.add(disabledAll);
 
-    await expect(disabledAll.start()).resolves.toEqual([]);
-    await expect(unselectedServer.start()).resolves.toEqual([]);
+    await expect(disabledAll.start()).resolves.toBeUndefined();
+    await expect(unselectedServer.start()).resolves.toBeUndefined();
     expect(disabledAll.diagnostics).toEqual([]);
     expect(unselectedServer.diagnostics).toEqual([]);
   });
@@ -464,7 +492,8 @@ describe("Kana MCP composition", () => {
     managers.add(manager);
     logger = createCapturingLogger(secondLogs);
 
-    await expect(manager.start()).resolves.toEqual([]);
+    await expect(manager.start()).resolves.toBeUndefined();
+    expect(manager.listTools("missing")).toEqual([]);
 
     expect(firstLogs).toEqual([]);
     expect(secondLogs.some((record) => record.event === "mcp.server_start_failed")).toBe(true);
@@ -528,9 +557,6 @@ function createCapturingLogger(
   };
 }
 
-function jsonResponse(value: unknown): Response {
-  return new Response(JSON.stringify(value), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+function jsonResponse(value: unknown, headers?: HeadersInit): Response {
+  return Response.json(value, { headers });
 }

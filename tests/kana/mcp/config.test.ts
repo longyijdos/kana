@@ -33,6 +33,7 @@ describe("Kana MCP config", () => {
         },
         github: {
           type: "stdio",
+          description: "GitHub issues and pull requests.",
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-github"],
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_xxxx" },
@@ -59,6 +60,7 @@ describe("Kana MCP config", () => {
         },
         github: {
           type: "stdio",
+          description: "GitHub issues and pull requests.",
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-github"],
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_xxxx" },
@@ -78,6 +80,7 @@ describe("Kana MCP config", () => {
         mcpServers: {
           remote: {
             type: "http",
+            description: "Remote workspace tools.",
             url: "https://example.com/mcp?workspace=kana",
             proxy: "http://127.0.0.1:7890",
             headers: {
@@ -95,6 +98,7 @@ describe("Kana MCP config", () => {
       mcpServers: {
         remote: {
           type: "http",
+          description: "Remote workspace tools.",
           url: "https://example.com/mcp?workspace=kana",
           proxy: "http://127.0.0.1:7890",
           headers: {

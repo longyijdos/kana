@@ -1,5 +1,5 @@
 import type { Static, TSchema } from "typebox";
-import { precompileToolParameters, type Tool, type ToolContext, type ToolResult } from "@/tools";
+import { precompileToolParameters, type ToolContext, type ToolResult } from "@/tools";
 import { McpResponseError } from "./errors";
 import {
   isJsonObject,
@@ -8,7 +8,6 @@ import {
   type McpProgress,
   type McpTool,
 } from "./protocol";
-import { createMcpToolAlias } from "./tool-name";
 import {
   type McpNormalizedToolResult,
   type McpToolResultLimits,
@@ -23,8 +22,6 @@ type McpToolCallOptions = {
   onProgress?(progress: McpProgress): void;
 };
 
-// The adapter depends on this structural interface rather than McpClient so a
-// future protocol client can expose tools without inheriting the stable lifecycle.
 export interface McpToolCaller {
   callTool(
     name: string,
@@ -33,14 +30,18 @@ export interface McpToolCaller {
   ): Promise<McpCallToolResult>;
 }
 
-export type McpToolAdapterOptions = {
+export type RegisteredMcpToolOptions = {
   serverId: string;
   caller: McpToolCaller;
   tool: McpTool;
   resultLimits?: Partial<McpToolResultLimits>;
 };
 
-export type AdaptedMcpTool = Omit<Tool<TSchema, McpNormalizedToolResult>, "execute"> & {
+export type RegisteredMcpTool = {
+  name: string;
+  description: string;
+  parameters: TSchema;
+  source: McpToolSource;
   execute(
     args: Static<TSchema>,
     context: ToolContext,
@@ -61,7 +62,7 @@ export class McpToolSchemaError extends Error {
   }
 }
 
-export function createMcpToolAdapter(options: McpToolAdapterOptions): AdaptedMcpTool {
+export function createRegisteredMcpTool(options: RegisteredMcpToolOptions): RegisteredMcpTool {
   if (!options.serverId.trim()) {
     throw new Error("MCP server ID cannot be empty.");
   }
@@ -83,8 +84,9 @@ export function createMcpToolAdapter(options: McpToolAdapterOptions): AdaptedMcp
   }
 
   return {
-    name: createMcpToolAlias(options.serverId, options.tool.name),
-    description: createDescription(options.serverId, options.tool),
+    name: options.tool.name,
+    source,
+    description: options.tool.description ?? "",
     parameters,
     async execute(args, context): Promise<ToolResult<McpNormalizedToolResult>> {
       if (!isJsonObject(args)) {
@@ -117,9 +119,4 @@ export function createMcpToolAdapter(options: McpToolAdapterOptions): AdaptedMcp
       }
     },
   };
-}
-
-function createDescription(serverId: string, tool: McpTool): string {
-  const source = `MCP server: ${serverId}; remote tool: ${tool.name}.`;
-  return tool.description ? `${tool.description}\n\n${source}` : source;
 }

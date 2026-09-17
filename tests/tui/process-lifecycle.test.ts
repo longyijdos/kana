@@ -203,7 +203,7 @@ describe("Kana TUI shutdown", () => {
         },
         {
           ...createOptions(),
-          externalTools: {
+          mcp: {
             load: (_onProgress, signal) =>
               new Promise((_, reject) => {
                 signal.addEventListener("abort", () => reject(signal.reason), { once: true });
@@ -252,7 +252,7 @@ describe("Kana TUI shutdown", () => {
       {
         ...createOptions(),
         launch: { initialPrompt: "Continue without MCP." },
-        externalTools: {
+        mcp: {
           load: (_onProgress, signal) =>
             new Promise((_, reject) => {
               signal.addEventListener("abort", () => reject(signal.reason), { once: true });

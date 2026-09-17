@@ -16,7 +16,7 @@ import {
   type McpProtectedResourceMetadata,
   selectMcpAuthorizationScopes,
 } from "./authorization";
-import { McpTransportError } from "./transport";
+import { McpAuthorizationError } from "./errors";
 
 type McpOAuthHttpLifecycleDiagnosticEvent =
   | {
@@ -133,7 +133,7 @@ export class McpOAuthHttpAuthorizer {
     const request = this.createRequestTemplate(input, init);
     const method = request.method.toUpperCase();
     if (this.closed || (this.closing && method !== "DELETE")) {
-      throw new McpTransportError("MCP OAuth authorizer is closing or closed.");
+      throw new McpAuthorizationError("MCP OAuth authorizer is closing or closed.");
     }
     const accessToken = this.closing ? this.lastAccessToken : await this.session?.getAccessToken();
     if (accessToken !== undefined) {
@@ -197,9 +197,9 @@ export class McpOAuthHttpAuthorizer {
     }
     this.closing = true;
     if (this.session === undefined) {
-      this.lifecycle.abort(new McpTransportError("MCP OAuth authorizer is closing."));
+      this.lifecycle.abort(new McpAuthorizationError("MCP OAuth authorizer is closing."));
     } else {
-      this.session.cancelPending(new McpTransportError("MCP OAuth authorizer is closing."));
+      this.session.cancelPending(new McpAuthorizationError("MCP OAuth authorizer is closing."));
     }
   }
 
@@ -209,7 +209,7 @@ export class McpOAuthHttpAuthorizer {
     }
     this.beginClose();
     this.closed = true;
-    this.lifecycle.abort(new McpTransportError("MCP OAuth authorizer closed."));
+    this.lifecycle.abort(new McpAuthorizationError("MCP OAuth authorizer closed."));
     this.session?.close();
     this.lastAccessToken = undefined;
     this.disposeExternalSignal();
@@ -390,7 +390,7 @@ export class McpOAuthHttpAuthorizer {
     this.protectedResource = protectedResource;
     const issuer = protectedResource.authorizationServers[0];
     if (issuer === undefined) {
-      throw new McpTransportError(
+      throw new McpAuthorizationError(
         "MCP protected resource metadata did not provide an authorization server.",
       );
     }
@@ -441,7 +441,7 @@ export class McpOAuthHttpAuthorizer {
   private createRequestTemplate(input: string | URL | Request, init?: RequestInit): Request {
     const request = new Request(input, init);
     if (new URL(request.url).toString() !== this.endpoint.toString()) {
-      throw new McpTransportError(
+      throw new McpAuthorizationError(
         "MCP OAuth authorizer refused to send credentials to a different endpoint.",
       );
     }
@@ -460,7 +460,7 @@ export class McpOAuthHttpAuthorizer {
 
   private assertOpen(): void {
     if (this.closing || this.closed) {
-      throw new McpTransportError("MCP OAuth authorizer is closing or closed.");
+      throw new McpAuthorizationError("MCP OAuth authorizer is closing or closed.");
     }
   }
 
@@ -489,13 +489,15 @@ function parseEndpoint(value: string): URL {
   try {
     endpoint = new URL(value);
   } catch (error) {
-    throw new McpTransportError("MCP OAuth endpoint must be an absolute URL.", { cause: error });
+    throw new McpAuthorizationError("MCP OAuth endpoint must be an absolute URL.", {
+      cause: error,
+    });
   }
   if (endpoint.protocol !== "https:") {
-    throw new McpTransportError("MCP OAuth endpoint must use HTTPS.");
+    throw new McpAuthorizationError("MCP OAuth endpoint must use HTTPS.");
   }
   if (endpoint.username || endpoint.password || endpoint.hash) {
-    throw new McpTransportError("MCP OAuth endpoint cannot contain credentials or a fragment.");
+    throw new McpAuthorizationError("MCP OAuth endpoint cannot contain credentials or a fragment.");
   }
   return endpoint;
 }

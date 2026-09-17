@@ -47,7 +47,7 @@ type ToolContext = {
 6. 规范化物理结果并发出 `tool_execution_end`。
 7. 应用结果策略，再通过按模型顺序排列的 slot 提交 sibling 结果，之后才能开始下一模型请求。
 
-Kana 自有对象 schema 使用 `additionalProperties: false`，未声明参数会带属性名失败，而不是被忽略。序列化后失去库 metadata 的 TypeBox schema 仍会先补充兼容基础类型转换，再交给同一 compiler 校验。第三方和 MCP schema 保留自身声明的额外属性行为。
+Kana 自有对象 schema 使用 `additionalProperties: false`，未声明参数会带属性名失败，而不是被忽略。序列化后失去库 metadata 的 TypeBox schema 仍会先补充兼容基础类型转换，再交给同一 compiler 校验。第三方和 MCP schema 保留自身声明的额外属性行为。`mcp_call` 在这条管线中校验入口 envelope，再在入口内部、远端调用前校验嵌套远端参数。
 
 校验错误、审批拒绝、取消、deadline 到期与工具异常都会成为 `isError: true` 结果，不会抛出 turn loop。审批取消默认中止 run，并为同一 assistant 消息中后续调用补充 canceled 结果，而不执行它们。
 
@@ -109,7 +109,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 | `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
 
-`list`、`glob`、`grep`、`read`、`view_image` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
+`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
 
 ## 文件与 Shell 边界
 
@@ -143,11 +143,11 @@ Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake` 或 `update_goal` 请求审批。其它调用遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal` 或 `mcp_list_tools` 请求审批。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
-## 外部与自定义工具
+## MCP 与自定义工具
 
-MCP 与其它外部工具通过同一个 `Tool` 契约进入 Agent。它们保留自身 schema 行为，默认 exclusive，经过普通审批，并使用相同的结果规范化与 content 上限。MCP 专用 discovery、alias、transport 与结果适配见 [MCP](mcp.zh-CN.md)。
+全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 只暴露 `mcp_list_tools`（parallel 目录读取）和 `mcp_call`（exclusive、普通审批）。远端 schema 通过工具结果加载，并在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
 
 自定义工具应：
 

@@ -1,11 +1,11 @@
+export {
+  StreamableHTTPClientTransport,
+  type Transport as McpTransport,
+} from "@modelcontextprotocol/client";
+export { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 export { McpAuthorizationChallengeError } from "./authorization";
 export { McpClient } from "./client";
-export {
-  McpConnectionClosedError,
-  McpRequestCancelledError,
-  McpRequestTimeoutError,
-  McpResponseError,
-} from "./errors";
+export { McpRequestCancelledError, McpRequestTimeoutError, McpResponseError } from "./errors";
 export {
   type McpManagedClient,
   McpManager,
@@ -14,44 +14,20 @@ export {
   McpManagerStartError,
   type McpServerDiagnostic,
   type McpServerRegistration,
-  McpToolNameConflictError,
+  type McpToolRegistry,
 } from "./manager";
-export {
-  McpOAuthHttpAuthorizer,
-  type McpOAuthHttpDiagnosticEvent,
-} from "./oauth-http-authorizer";
-export {
-  type JsonObject,
-  type JsonRpcMessage,
-  type JsonRpcNotification,
-  type JsonRpcRequest,
-  type McpCallToolResult,
-  type McpImplementation,
-  type McpProgress,
-  McpProtocolError,
-  type McpTool,
+export { McpOAuthHttpAuthorizer, type McpOAuthHttpDiagnosticEvent } from "./oauth-http-authorizer";
+export type {
+  JsonObject,
+  JsonRpcMessage,
+  McpCallToolResult,
+  McpImplementation,
+  McpProgress,
+  McpTool,
 } from "./protocol";
 export {
-  StdioTransport,
-  type StdioTransportOptions,
-} from "./stdio-transport";
-export {
-  type StreamableHttpFetch,
-  StreamableHttpTransport,
-  type StreamableHttpTransportOptions,
-} from "./streamable-http-transport";
-export {
-  createMcpToolAdapter,
+  createRegisteredMcpTool,
   type McpToolCaller,
   McpToolSchemaError,
-} from "./tool-adapter";
-export { createMcpToolAlias } from "./tool-name";
-export {
-  type McpToolSource,
-  normalizeMcpToolResult,
-} from "./tool-result";
-export type {
-  McpTransport,
-  McpTransportHandlers,
-  McpTransportReconnected,
-} from "./transport";
+} from "./registered-tool";
+export { type McpToolSource, normalizeMcpToolResult } from "./tool-result";

@@ -41,28 +41,21 @@ describe("Kana MCP runtime", () => {
     const initial = await runtime.start();
 
     expect(initial.selectedServerIds).toEqual(["alpha"]);
-    expect(initial.tools.map((tool) => tool.name)).toEqual(["alpha_echo", "alpha_slow"]);
-    expect(runtime.getToolSource("alpha_echo")).toEqual({
-      serverId: "alpha",
-      remoteToolName: "echo",
-    });
+    expect(runtime.registry?.catalog.map((server) => server.name)).toEqual(["alpha"]);
+    expect(runtime.registry?.getTool("alpha", "echo")).toBeDefined();
 
     configuration.saveActivationState({ enabledServers: ["beta"] });
     const reloaded = await runtime.reload();
 
     expect(reloaded.selectedServerIds).toEqual(["beta"]);
-    expect(reloaded.tools.map((tool) => tool.name)).toEqual(["beta_echo", "beta_slow"]);
-    expect(runtime.getToolSource("alpha_echo")).toBeUndefined();
-    expect(runtime.getToolSource("beta_echo")).toEqual({
-      serverId: "beta",
-      remoteToolName: "echo",
-    });
+    expect(runtime.registry?.catalog.map((server) => server.name)).toEqual(["beta"]);
+    expect(runtime.registry?.getTool("beta", "echo")).toBeDefined();
+    expect(runtime.registry?.getTool("alpha", "echo")).toBeUndefined();
     expect(events.some((event) => event.runtimeOperation === "reload")).toBe(true);
 
     await runtime.close();
-    expect(runtime.tools).toEqual([]);
+    expect(runtime.registry).toBeUndefined();
     expect(runtime.selectedServerIds).toEqual([]);
-    expect(runtime.getToolSource("beta_echo")).toBeUndefined();
   });
 
   test("reloads from the startup configuration snapshot", async () => {
@@ -76,7 +69,8 @@ describe("Kana MCP runtime", () => {
 
     const reloaded = await runtime.reload();
 
-    expect(reloaded.tools.map((tool) => tool.name)).toEqual(["alpha_echo", "alpha_slow"]);
+    expect(reloaded.selectedServerIds).toEqual(["alpha"]);
+    expect(runtime.registry?.catalog.map((server) => server.name)).toEqual(["alpha"]);
   });
 
   test("serializes concurrent reloads and labels manager progress by runtime operation", async () => {
@@ -119,12 +113,13 @@ describe("Kana MCP runtime", () => {
     controller.abort(new Error("skip MCP startup"));
 
     await expect(starting).rejects.toBeInstanceOf(McpRequestCancelledError);
-    expect(runtime.tools).toEqual([]);
+    expect(runtime.registry).toBeUndefined();
     expect(runtime.diagnostics.every((diagnostic) => diagnostic.status === "closed")).toBe(true);
 
     configuration.saveActivationState({ enabledServers: [] });
     const reloaded = await runtime.reload();
-    expect(reloaded.tools).toEqual([]);
+    expect(reloaded.selectedServerIds).toEqual([]);
+    expect(runtime.registry?.catalog).toEqual([]);
   });
 
   test("enforces lifecycle ordering and closes idempotently", async () => {

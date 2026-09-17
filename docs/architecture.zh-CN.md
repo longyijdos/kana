@@ -50,7 +50,7 @@ core、logging、oauth、jobs、utils
 
 `src/main.ts` 把控制权交给 `runCli`。命令要么执行安装、reset、认证、Skills 管理、update 等有界操作，要么启动两个对话前端之一。配置与命令语义见[配置与安装](configuration.zh-CN.md)、[无头执行](headless.zh-CN.md)和[发版流程](releasing.zh-CN.md)。
 
-`KanaConversationHost` 是前端共享的产品边界。它创建或恢复 hosted session、装配模型与工具能力、绑定持久化与日志，并暴露 `ConversationRuntime` 使用的切换操作。`createKanaAgent` 为一个 Agent 装配所选模型、稳定 prompt 来源、实际 runtime 策略、内置工具和当前可替换的外部工具快照。
+`KanaConversationHost` 是前端共享的产品边界。它创建或恢复 hosted session、装配模型与工具能力、绑定持久化与日志，并暴露 `ConversationRuntime` 使用的切换操作。`createKanaAgent` 为一个 Agent 装配所选模型、稳定 prompt 来源、实际 runtime 策略、内置工具和当前 MCP registry 能力。
 
 TUI 在 `ConversationRuntime` 上装配 controller；headless 则把同一个 runtime 投影为文本或版本化 JSONL。前端行为可以不同，但 Agent 执行、输入顺序、Goal、session 切换与清理保持共享。详见[对话运行时](conversation-runtime.zh-CN.md)、[TUI 交互](tui.zh-CN.md)、[终端渲染](terminal-rendering.zh-CN.md)与[无头执行](headless.zh-CN.md)。
 
@@ -58,9 +58,9 @@ TUI 在 `ConversationRuntime` 上装配 controller；headless 则把同一个 ru
 
 Normal 和 clean 启动都会把显式模式传过前端、host 和每个重建的 Agent。Normal 模式可以加载项目指令、memory、Skills、持久化、accounting 与 MCP；clean 模式保留 runtime 配置、环境、认证、审批和核心工具，但移除持久 session 资源及可选项目能力。完整用户契约属于[配置与安装](configuration.zh-CN.md)。
 
-交互式启动先显示选中的 session，再连接已启用 MCP server，并用发现的工具重建 Agent。无头启动执行对应的 host 初始化，但不产生 TUI 投影。两者都会拒绝 clean-mode resume，并共享同一组 host invariant。
+交互式启动先显示选中的 session，再连接已启用 MCP server，再用 `mcp_list_tools` 与 `mcp_call` 重建 Agent；远端 schema 保留在内部目录。无头启动执行对应的 host 初始化，但不产生 TUI 投影。两者都会拒绝 clean-mode resume，并共享同一组 host invariant。
 
-关闭从前端依次流向共享 runtime、hosted session 资源、后台产品任务和外部工具 manager，最后才完成终端或进程退出。每个 owner 都让 close 幂等，并防止排队工作重新激活已关闭资源。具体顺序属于[对话运行时](conversation-runtime.zh-CN.md)、[MCP](mcp.zh-CN.md)和对应前端文档。
+关闭从前端依次流向共享 runtime、hosted session 资源、后台产品任务和 MCP runtime，最后才完成终端或进程退出。每个 owner 都让 close 幂等，并防止排队工作重新激活已关闭资源。具体顺序属于[对话运行时](conversation-runtime.zh-CN.md)、[MCP](mcp.zh-CN.md)和对应前端文档。
 
 ## 对话数据流
 

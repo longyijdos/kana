@@ -32,7 +32,7 @@ An invalid card never loads: Kana reports a diagnostic, keeps that name unavaila
 The host derives the child model and capability limits from the conversation's validated Agent configuration, but does not carry prompt content across. An explicit card model replaces only the model selection; otherwise the child inherits the current model. The card's tool list can only reduce effective capabilities:
 
 - workspace tools must be enabled by both `agent.tools` and the card;
-- an exact external tool name grants only that tool, while `mcp:*` grants the currently active MCP tool set;
+- MCP gateways must be allowed by both `agent.tools` and the role card; `mcp_list_tools` and `mcp_call` cover all currently enabled, filtered MCP capabilities, without per-server or per-remote-tool permissions;
 - child Agents never receive `spawn_subagent`, `wait_subagent`, `cancel_subagent`, Background Job, todo, Goal, memory, or scheduled-wake tools;
 - oversized child results are not moved into parent-session artifacts.
 

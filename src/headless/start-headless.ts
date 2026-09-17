@@ -74,7 +74,9 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
       readyServerCount: mcpSnapshot.diagnostics.filter(
         (diagnostic) => diagnostic.status === "ready",
       ).length,
-      toolCount: mcpSnapshot.tools.length,
+      toolCount: mcpSnapshot.diagnostics
+        .filter((diagnostic) => diagnostic.status === "ready")
+        .reduce((count, diagnostic) => count + diagnostic.toolCount, 0),
     });
     if (controller.signal.aborted) {
       host.getLogger().info("headless.interrupted", { phase: "mcp_startup" });

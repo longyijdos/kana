@@ -413,6 +413,24 @@ function toolText(
   runningActivity: string;
 } {
   switch (toolName) {
+    case "mcp_call": {
+      const name = `${getStringProperty(args, "server") ?? "?"}/${getStringProperty(args, "tool") ?? "?"}`;
+      return {
+        action: `call MCP ${name}`,
+        approvalTitle: "Allow MCP tool?",
+        doneTitle: `Called MCP ${name}`,
+        runningActivity: `calling MCP ${name}`,
+      };
+    }
+    case "mcp_list_tools": {
+      const name = getStringProperty(args, "name") ?? "?";
+      return {
+        action: `list MCP tools for ${name}`,
+        approvalTitle: "Allow MCP catalog reading?",
+        doneTitle: `Listed MCP tools for ${name}`,
+        runningActivity: `listing MCP tools for ${name}`,
+      };
+    }
     case "list":
       return {
         action: `list ${target}`,

@@ -180,8 +180,8 @@ describe("tool approval controller", () => {
       editor,
       bottomArea,
       tui,
-      resolveToolSource: (toolName) =>
-        toolName === "github_create_issue"
+      resolveToolSource: (call) =>
+        call.name === "mcp_call"
           ? { kind: "mcp", serverId: "github", remoteToolName: "create_issue" }
           : undefined,
       onApprovalRequired: () => {},
@@ -192,8 +192,8 @@ describe("tool approval controller", () => {
       {
         type: "tool_call",
         id: "call_2",
-        name: "github_create_issue",
-        args: { title: "Bug" },
+        name: "mcp_call",
+        args: { server: "github", tool: "create_issue", arguments: { title: "Bug" } },
       },
       undefined,
     );

@@ -28,6 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
     "commander": "^15.0.0",
     "grok-mermaid": "0.2.3",
     "marked": "^18.0.12",

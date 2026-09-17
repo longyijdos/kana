@@ -20,7 +20,7 @@ export type ToolApprovalControllerOptions = {
   editor: Editor;
   bottomArea: BottomAreaController;
   tui: Tui;
-  resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
+  resolveToolSource?: (toolCall: ToolCallContent) => ToolApprovalSource | undefined;
   onApprovalRequired: (toolName: string, agent: ConversationAgentIdentity) => void;
 };
 
@@ -99,7 +99,7 @@ export class ToolApprovalController {
     if (this.active || this.pending.length === 0) return;
     const pending = this.pending[0] as PendingApproval;
     const bashCommand = getBashCommand(pending.toolCall);
-    const source = this.options.resolveToolSource?.(pending.toolCall.name);
+    const source = this.options.resolveToolSource?.(pending.toolCall);
     pending.component = new ToolApproval(
       pending.toolCall,
       (decision) => this.finish(pending, decision),

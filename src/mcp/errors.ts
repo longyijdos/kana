@@ -1,21 +1,14 @@
-export class McpClientError extends Error {
+export class McpAuthorizationError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "McpAuthorizationError";
+  }
+}
+
+class McpClientError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "McpClientError";
-  }
-}
-
-export class McpConnectionClosedError extends McpClientError {
-  constructor(message: string) {
-    super(message);
-    this.name = "McpConnectionClosedError";
-  }
-}
-
-export class McpCapabilityError extends McpClientError {
-  constructor(message: string) {
-    super(message);
-    this.name = "McpCapabilityError";
   }
 }
 
