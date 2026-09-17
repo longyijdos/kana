@@ -9,8 +9,8 @@ import {
   type McpOAuthHttpDiagnosticEvent,
   type McpServerRegistration,
   type McpTransport,
-  StdioTransport,
-  StreamableHttpTransport,
+  StdioClientTransport,
+  StreamableHTTPClientTransport,
 } from "@/mcp";
 import type { OAuthFetch, OAuthTokenStore } from "@/oauth";
 import { KANA_VERSION } from "@/version";
@@ -40,7 +40,6 @@ const ENVIRONMENT_PLACEHOLDER_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]
 export type CreateKanaMcpManagerOptions = {
   enabledServerIds: Iterable<string>;
   env?: NodeJS.ProcessEnv;
-  reservedToolNames?: Iterable<string>;
   getLogger?: () => Logger;
   clientInfo?: McpImplementation;
   oauthFetch?: OAuthFetch;
@@ -80,12 +79,11 @@ export function createKanaMcpManager(
 
   return new McpManager({
     servers,
-    reservedToolNames: options.reservedToolNames,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
     onError: ({ serverId, phase, error }) => {
       getLogger().warn(phase === "start" ? "mcp.server_start_failed" : "mcp.server_close_failed", {
         serverId,
-        error,
+        errorType: error.name,
       });
     },
   });
@@ -108,6 +106,7 @@ function createRegistration(
 ): McpServerRegistration {
   return {
     id: serverId,
+    ...(config.description === undefined ? {} : { description: config.description }),
     required: config.required,
     ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools }),
     ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools }),
@@ -120,15 +119,10 @@ function createRegistration(
         initializeTimeoutMs: config.startupTimeoutMs,
         requestTimeoutMs: config.requestTimeoutMs,
         onError: (error) => {
-          context.getLogger().warn("mcp.client_error", { serverId, error });
+          context.getLogger().warn("mcp.client_error", { serverId, errorType: error.name });
         },
-        onTransportReconnect: (event) => {
-          context.getLogger().info("mcp.transport_reconnected", { serverId, ...event });
-        },
-        onNotification: (notification) => {
-          if (notification.method === "notifications/tools/list_changed") {
-            context.getLogger().debug("mcp.tools_list_changed_ignored", { serverId });
-          }
+        onToolsChanged: () => {
+          context.getLogger().debug("mcp.tools_list_changed_ignored", { serverId });
         },
       });
       if (authorizer === undefined) {
@@ -208,25 +202,38 @@ function createTransport(
         // Diagnostic logging cannot prevent a configured server from starting.
       }
     }
+    const fetch = transportFetch ?? globalThis.fetch;
     return {
-      transport: new StreamableHttpTransport({
-        url: config.url,
-        headers: config.headers,
-        ...(transportFetch === undefined ? {} : { fetch: transportFetch }),
+      transport: new StreamableHTTPClientTransport(new URL(config.url), {
+        requestInit: { headers: config.headers },
+        fetch: (input, init) =>
+          fetch(
+            input,
+            init?.method === "DELETE"
+              ? {
+                  ...init,
+                  signal: AbortSignal.any([
+                    AbortSignal.timeout(5_000),
+                    ...(init.signal ? [init.signal] : []),
+                  ]),
+                }
+              : init,
+          ),
       }),
       ...(authorizer === undefined ? {} : { authorizer }),
     };
   }
 
-  return {
-    transport: new StdioTransport({
-      command: config.command,
-      args: config.args,
-      ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
-      env: createChildEnvironment(serverId, context.env, config.env),
-      onStderr: createStderrLogger(serverId, context.getLogger),
-    }),
-  };
+  const transport = new StdioClientTransport({
+    command: config.command,
+    args: config.args,
+    ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
+    env: createChildEnvironment(serverId, context.env, config.env),
+    stderr: "pipe",
+  });
+  const logStderr = createStderrLogger(serverId, context.getLogger);
+  transport.stderr?.on("data", (content: Buffer) => logStderr(content.toString("utf8")));
+  return { transport };
 }
 
 function createChildEnvironment(

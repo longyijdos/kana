@@ -9,7 +9,6 @@ import {
   type McpProgress,
   McpRequestCancelledError,
   type McpTool,
-  McpToolNameConflictError,
 } from "../../src/mcp";
 import { deferred } from "../helpers/async-control";
 
@@ -37,12 +36,12 @@ describe("MCP manager", () => {
 
     const tools = await manager.start();
 
-    expect(tools.map((tool) => tool.name)).toEqual(["alpha_keep", "beta_second"]);
-    expect(manager.getToolSource("alpha_keep")).toEqual({
+    expect(tools.map((tool) => tool.name)).toEqual(["keep", "second"]);
+    expect(manager.getTool("alpha", "keep")?.source).toEqual({
       serverId: "alpha",
       remoteToolName: "keep",
     });
-    expect(manager.getToolSource("list")).toBeUndefined();
+    expect(manager.getTool("alpha", "denied")).toBeUndefined();
     expect(manager.state).toBe("ready");
     expect(manager.diagnostics).toEqual([
       {
@@ -83,7 +82,7 @@ describe("MCP manager", () => {
 
     const tools = await manager.start();
 
-    expect(tools.map((tool) => tool.name)).toEqual(["healthy_search"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["search"]);
     expect(unavailable.closeCount).toBe(1);
     expect(manager.diagnostics[0]).toEqual({
       id: "unavailable",
@@ -129,45 +128,23 @@ describe("MCP manager", () => {
     expect(manager.tools).toEqual([]);
   });
 
-  test("rejects aliases that collide after normalization", async () => {
-    const dotted = createFakeClient({ name: "dotted", tools: [createTool("read.file")] });
-    const underscored = createFakeClient({
-      name: "underscored",
-      tools: [createTool("read_file")],
+  test("keeps same-named remote tools separate without reserving local names", async () => {
+    const first = createFakeClient({
+      name: "first",
+      tools: [createTool("read"), createTool("mcp_call")],
     });
+    const second = createFakeClient({ name: "second", tools: [createTool("read")] });
     const manager = new McpManager({
       servers: [
-        { id: "foo.bar", createClient: () => dotted },
-        { id: "foo_bar", createClient: () => underscored },
+        { id: "first", createClient: () => first },
+        { id: "second", createClient: () => second },
       ],
     });
-
-    let error: unknown;
-    try {
-      await manager.start();
-    } catch (caught) {
-      error = caught;
-    }
-
-    expect(error).toBeInstanceOf(McpToolNameConflictError);
-    expect(error).toMatchObject({
-      toolName: "foo_bar_read_file",
-      first: { kind: "mcp", serverId: "foo.bar", remoteToolName: "read.file" },
-      second: { kind: "mcp", serverId: "foo_bar", remoteToolName: "read_file" },
-    });
-    expect([dotted.closeCount, underscored.closeCount]).toEqual([1, 1]);
-    expect(manager.state).toBe("closed");
-  });
-
-  test("rejects MCP aliases that collide with local reserved tools", async () => {
-    const client = createFakeClient({ name: "github", tools: [createTool("create.issue")] });
-    const manager = new McpManager({
-      servers: [{ id: "github", createClient: () => client }],
-      reservedToolNames: ["github_create_issue"],
-    });
-
-    await expect(manager.start()).rejects.toBeInstanceOf(McpToolNameConflictError);
-    expect(client.closeCount).toBe(1);
+    await manager.start();
+    expect(manager.tools.map((tool) => tool.name)).toEqual(["read", "mcp_call", "read"]);
+    expect(manager.getTool("first", "read")?.source.serverId).toBe("first");
+    expect(manager.getTool("second", "read")?.source.serverId).toBe("second");
+    await manager.close();
   });
 
   test("fails an optional server atomically when one tool schema is invalid", async () => {
@@ -208,7 +185,7 @@ describe("MCP manager", () => {
       ],
     });
 
-    await expect(manager.start()).resolves.toMatchObject([{ name: "healthy_unique" }]);
+    await expect(manager.start()).resolves.toMatchObject([{ name: "unique" }]);
     expect(manager.diagnostics[0]).toMatchObject({
       status: "failed",
       error: { message: "MCP server duplicate returned duplicate tool name same." },
@@ -287,7 +264,7 @@ describe("MCP manager", () => {
         outcome: "closed",
       },
     ]);
-    expect(manager.getToolSource("filesystem_read_file")).toBeUndefined();
+    expect(manager.getTool("filesystem", "read_file")).toBeUndefined();
   });
 
   test("cancels in-flight startup before closing", async () => {
@@ -370,7 +347,7 @@ class FakeMcpClient implements McpManagedClient {
     _args?: JsonObject,
     options?: { signal?: AbortSignal; onProgress?(progress: McpProgress): void },
   ): Promise<McpCallToolResult> {
-    options?.onProgress?.({ progressToken: name, progress: 1 });
+    options?.onProgress?.({ progress: 1 });
     return { content: [{ type: "text", text: name }] };
   }
 

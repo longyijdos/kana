@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Type } from "typebox";
 import { BackgroundJobManager } from "@/jobs";
 import {
   createKanaAgent,
@@ -11,7 +10,7 @@ import {
   KANA_BUILT_IN_TOOL_NAMES,
   type KanaGoalSnapshot,
 } from "@/kana";
-import type { Tool } from "@/tools";
+import { createMcpToolAdapter, type McpToolRegistry } from "@/mcp";
 import { KanaSubagentManager, type KanaSubagentProfile } from "../../src/kana/subagents";
 
 const tempDirs: string[] = [];
@@ -23,7 +22,7 @@ afterEach(() => {
 });
 
 describe("Kana Agent tools", () => {
-  test("adds external tools after the complete built-in namespace", () => {
+  test("creates all available built-ins including the MCP gateways", () => {
     const wakeScheduler = createWakeScheduler();
     const backgroundJobManager = new BackgroundJobManager();
     const backgroundJobs = backgroundJobManager.bind(
@@ -39,13 +38,12 @@ describe("Kana Agent tools", () => {
       }),
       { maxLive: 4 },
     );
-    const externalTool = createTool("github_create_issue");
 
     try {
       const goal = createGoal("active");
       const agent = withKanaAgentEnvironment(() =>
         createAgentForTest(modelTestConfig(), {
-          additionalTools: [externalTool],
+          resolveMcp: () => createMcpRegistry(),
           backgroundJobs,
           wakeScheduler,
           sessionId: "session-1",
@@ -57,10 +55,7 @@ describe("Kana Agent tools", () => {
         }),
       );
 
-      expect(agent.state.tools.map((tool) => tool.name)).toEqual([
-        ...KANA_BUILT_IN_TOOL_NAMES,
-        "github_create_issue",
-      ]);
+      expect(agent.state.tools.map((tool) => tool.name)).toEqual([...KANA_BUILT_IN_TOOL_NAMES]);
     } finally {
       wakeScheduler.dispose();
     }
@@ -93,20 +88,20 @@ describe("Kana Agent tools", () => {
     );
     const profile: KanaSubagentProfile = {
       ...subagentProfile(),
-      tools: ["read", "view_image", "bash", "github_create_issue"],
+      tools: ["read", "view_image", "bash", "mcp_call"],
     };
     const agent = withKanaAgentEnvironment(() =>
       createKanaAgent(
         {
           ...config.agent,
-          tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent"],
+          tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent", "mcp_call"],
         },
         {
           providers: config.provider,
           memoryEnabled: config.memory.enabled,
         },
         {
-          additionalTools: [createTool("github_create_issue")],
+          resolveMcp: () => createMcpRegistry(),
           subagents,
           subagentProfiles: [profile],
           runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
@@ -115,7 +110,7 @@ describe("Kana Agent tools", () => {
     );
 
     expect(agent.state.tools.find((tool) => tool.name === "spawn_subagent")?.description).toContain(
-      "- explorer: Explore the repository Available tools: read, github_create_issue.",
+      "- explorer: Explore the repository Available tools: read, mcp_call.",
     );
   });
 
@@ -151,7 +146,7 @@ describe("Kana Agent tools", () => {
     expect(agent.state.tools.map((tool) => tool.name)).toEqual(["read"]);
   });
 
-  test("filters configurable built-in tools without affecting external tools or update_goal", async () => {
+  test("filters MCP gateways with built-ins while keeping active update_goal available", async () => {
     const goal = createGoal("active");
     const config = testConfig();
     const wakeScheduler = createWakeScheduler();
@@ -172,7 +167,7 @@ describe("Kana Agent tools", () => {
             memoryEnabled: config.memory.enabled,
           },
           {
-            additionalTools: [createTool("github_create_issue")],
+            resolveMcp: () => createMcpRegistry(),
             backgroundJobs,
             wakeScheduler,
             sessionId: "session-1",
@@ -182,11 +177,7 @@ describe("Kana Agent tools", () => {
         ),
       );
 
-      expect(agent.state.tools.map((tool) => tool.name)).toEqual([
-        "read",
-        "update_goal",
-        "github_create_issue",
-      ]);
+      expect(agent.state.tools.map((tool) => tool.name)).toEqual(["read", "update_goal"]);
     } finally {
       wakeScheduler.dispose();
       await backgroundJobManager.close();
@@ -213,17 +204,24 @@ describe("Kana Agent tools", () => {
     expect(completed.state.tools.map((tool) => tool.name)).not.toContain("update_goal");
   });
 
-  test("rejects external tool names that collide with built-in tools", () => {
-    const config = testConfig();
-    expect(() =>
-      withKanaAgentEnvironment(() =>
-        createKanaAgent(
-          { ...config.agent, tools: [] },
-          { providers: config.provider, memoryEnabled: config.memory.enabled },
-          { additionalTools: [createTool("read")] },
-        ),
-      ),
-    ).toThrow("Duplicate Kana Agent tool name: read.");
+  test("requires both MCP availability and global gateway selection", () => {
+    for (const enabled of [true, false]) {
+      for (const tools of [[], ["read"], ["read", "mcp_activate", "mcp_call"]] as const) {
+        const config = testConfig();
+        const agent = withKanaAgentEnvironment(() =>
+          createAgentForTest(
+            {
+              ...config,
+              agent: { ...config.agent, tools: [...tools] },
+            },
+            { resolveMcp: () => (enabled ? createMcpRegistry() : undefined) },
+          ),
+        );
+        expect(agent.state.tools.map((tool) => tool.name)).toEqual(
+          tools.filter((name) => enabled || !name.startsWith("mcp_")),
+        );
+      }
+    }
   });
 
   test("keeps only core session tools and scheduled wakes in clean mode", () => {
@@ -232,7 +230,7 @@ describe("Kana Agent tools", () => {
     try {
       const agent = withKanaAgentEnvironment(() =>
         createAgentForTest(testConfig(), {
-          additionalTools: [createTool("github_create_issue")],
+          resolveMcp: () => createMcpRegistry(),
           launchMode: "clean",
           wakeScheduler,
           sessionId: "session-1",
@@ -268,27 +266,54 @@ describe("Kana Agent tools", () => {
         "remember",
         "schedule_wake",
         "spawn_subagent",
-        "github_create_issue",
+        "mcp_activate",
+        "mcp_call",
       ],
     };
     const agent = withKanaAgentEnvironment(() =>
       createAgentForTest(testConfig(), {
         subagentProfile: profile,
-        additionalTools: [createTool("github_create_issue"), createTool("slack_send")],
+        resolveMcp: () => createMcpRegistry(),
       }),
     );
 
-    expect(agent.state.tools.map((tool) => tool.name)).toEqual(["read", "github_create_issue"]);
+    expect(agent.state.tools.map((tool) => tool.name)).toEqual([
+      "read",
+      "mcp_activate",
+      "mcp_call",
+    ]);
     expect(agent.state.system).toBe("Inspect only and report evidence.");
+    const config = testConfig();
+    const restricted = withKanaAgentEnvironment(() =>
+      createAgentForTest(
+        {
+          ...config,
+          agent: { ...config.agent, tools: ["read", "mcp_activate"] },
+        },
+        { subagentProfile: profile, resolveMcp: () => createMcpRegistry() },
+      ),
+    );
+    expect(restricted.state.tools.map((tool) => tool.name)).toEqual(["read", "mcp_activate"]);
   });
 });
 
-function createTool(name: string): Tool {
+function createMcpRegistry(): McpToolRegistry {
+  const tools = ["read", "mcp_call"].map((name) =>
+    createMcpToolAdapter({
+      serverId: "fixture",
+      tool: { name, inputSchema: { type: "object" } },
+      caller: {
+        async callTool() {
+          return { content: [] };
+        },
+      },
+    }),
+  );
   return {
-    name,
-    description: `${name} tool`,
-    parameters: Type.Object({}),
-    execute: () => ({ content: "ok", result: {} }),
+    catalog: [{ name: "fixture", description: "Fixture MCP." }],
+    tools,
+    getTool: (serverId, name) =>
+      tools.find((tool) => tool.source.serverId === serverId && tool.name === name),
   };
 }
 

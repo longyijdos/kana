@@ -311,8 +311,17 @@ describe("Kana config parser", () => {
     const { home } = getKanaConfigPaths(env);
     const configPath = path.join(home, "config.toml");
 
-    writeFileSync(configPath, '[agent]\ntools = ["read", "bash", "job_start"]\n');
-    expect(loadKanaConfig(env).agent.tools).toEqual(["read", "bash", "job_start"]);
+    writeFileSync(
+      configPath,
+      '[agent]\ntools = ["read", "bash", "job_start", "mcp_activate", "mcp_call"]\n',
+    );
+    expect(loadKanaConfig(env).agent.tools).toEqual([
+      "read",
+      "bash",
+      "job_start",
+      "mcp_activate",
+      "mcp_call",
+    ]);
 
     writeFileSync(configPath, "[agent]\ntools = []\n");
     expect(loadKanaConfig(env).agent.tools).toEqual([]);

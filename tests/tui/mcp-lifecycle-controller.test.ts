@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
-  ExternalToolsLifecycleController,
-  type ExternalToolsLoadResult,
-} from "../../src/tui/app/external-tools-lifecycle-controller";
+  McpLifecycleController,
+  type McpLoadResult,
+} from "../../src/tui/app/mcp-lifecycle-controller";
 import { Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Tui } from "../../src/tui/runtime";
 import { deferred } from "../helpers/async-control";
 
-describe("external tools lifecycle controller", () => {
+describe("MCP lifecycle controller", () => {
   test("renders startup progress before enabling tools and editor focus", async () => {
-    const pending = deferred<ExternalToolsLoadResult>();
+    const pending = deferred<McpLoadResult>();
     let reportProgress: ((status: string) => void) | undefined;
     const harness = createHarness((onProgress) => {
       reportProgress = onProgress;
@@ -60,7 +60,7 @@ describe("external tools lifecycle controller", () => {
     expect(harness.controller.loading).toBe(false);
     expect(harness.render()).toEqual([
       "Starting MCP servers...",
-      "Failed to load external tools: Required MCP servers failed to start: filesystem.",
+      "Failed to start MCP servers: Required MCP servers failed to start: filesystem.",
       "Press Ctrl+C to exit.",
     ]);
     expect(harness.events).toEqual([
@@ -123,18 +123,12 @@ describe("external tools lifecycle controller", () => {
 });
 
 function createHarness(
-  load?: (
-    onProgress: (status: string) => void,
-    signal: AbortSignal,
-  ) => Promise<ExternalToolsLoadResult>,
-  reload?: (
-    onProgress: (status: string) => void,
-    signal: AbortSignal,
-  ) => Promise<ExternalToolsLoadResult>,
+  load?: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>,
+  reload?: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>,
 ) {
   const transcript = new Transcript();
   const events: string[] = [];
-  const controller = new ExternalToolsLifecycleController({
+  const controller = new McpLifecycleController({
     transcript,
     tui: {
       requestRender: () => events.push("render"),
@@ -156,7 +150,7 @@ function createHarness(
   };
 }
 
-function rejectOnAbort(signal: AbortSignal): Promise<ExternalToolsLoadResult> {
+function rejectOnAbort(signal: AbortSignal): Promise<McpLoadResult> {
   return new Promise((_, reject) => {
     signal.addEventListener("abort", () => reject(signal.reason), { once: true });
   });

@@ -8,7 +8,6 @@ import {
   type McpProgress,
   type McpTool,
 } from "./protocol";
-import { createMcpToolAlias } from "./tool-name";
 import {
   type McpNormalizedToolResult,
   type McpToolResultLimits,
@@ -23,8 +22,6 @@ type McpToolCallOptions = {
   onProgress?(progress: McpProgress): void;
 };
 
-// The adapter depends on this structural interface rather than McpClient so a
-// future protocol client can expose tools without inheriting the stable lifecycle.
 export interface McpToolCaller {
   callTool(
     name: string,
@@ -41,6 +38,7 @@ export type McpToolAdapterOptions = {
 };
 
 export type AdaptedMcpTool = Omit<Tool<TSchema, McpNormalizedToolResult>, "execute"> & {
+  source: McpToolSource;
   execute(
     args: Static<TSchema>,
     context: ToolContext,
@@ -83,7 +81,8 @@ export function createMcpToolAdapter(options: McpToolAdapterOptions): AdaptedMcp
   }
 
   return {
-    name: createMcpToolAlias(options.serverId, options.tool.name),
+    name: options.tool.name,
+    source,
     description: createDescription(options.serverId, options.tool),
     parameters,
     async execute(args, context): Promise<ToolResult<McpNormalizedToolResult>> {

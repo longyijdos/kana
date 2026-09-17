@@ -22,7 +22,7 @@ TUI / Headless
       └→ MCP runtime
 ```
 
-`KanaConversationHost` 是产品装配边界。它加载运行配置与审批状态，初始化选中的 session，持有共享 wake scheduler 和 MCP runtime，并使用当前模型、prompt、内置工具、外部工具、logger、journal、artifact store、background-job client、subagent client、todo 状态与记忆回调构造每个主 Agent；同时根据已校验角色卡构造一次性 child Agent。它只返回与前端无关的操作和数据，不渲染 TUI 组件，也不投影 headless 输出。委派契约归 [Subagent](subagents.zh-CN.md)所有。
+`KanaConversationHost` 是产品装配边界。它加载运行配置与审批状态，初始化选中的 session，持有共享 wake scheduler 和 MCP runtime，并使用当前模型、prompt、内置工具、MCP registry 访问能力、logger、journal、artifact store、background-job client、subagent client、todo 状态与记忆回调构造每个主 Agent；同时根据已校验角色卡构造一次性 child Agent。它只返回与前端无关的操作和数据，不渲染 TUI 组件，也不投影 headless 输出。委派契约归 [Subagent](subagents.zh-CN.md)所有。
 
 `HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client 与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
 

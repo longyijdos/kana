@@ -31,7 +31,7 @@ describe("session-scoped agents", () => {
     await waitFor(() => internal.toolApproval.mode === "unless_trusted");
   });
 
-  test("defers external-tool loading until a resume-picker session is selected", async () => {
+  test("defers MCP startup until a resume-picker session is selected", async () => {
     const session: KanaSessionMetadata = {
       id: "session-a",
       createdAt: "2026-07-20T00:00:00.000Z",
@@ -49,7 +49,7 @@ describe("session-scoped agents", () => {
         listSessions: () => [session],
         loadSession: () => ({ id: session.id, messages: [], timeline: [] }),
       },
-      externalTools: {
+      mcp: {
         load: async () => {
           loadCount += 1;
           return {};
@@ -69,8 +69,8 @@ describe("session-scoped agents", () => {
     expect(loadCount).toBe(1);
   });
 
-  test("keeps customization controls and external tools disabled in clean mode", async () => {
-    let externalToolLoadCount = 0;
+  test("keeps customization controls and MCP disabled in clean mode", async () => {
+    let mcpStartCount = 0;
     let forkCount = 0;
     const appOptions = createOptions();
     const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
@@ -83,9 +83,9 @@ describe("session-scoped agents", () => {
           return { id: "fork" };
         },
       },
-      externalTools: {
+      mcp: {
         load: async () => {
-          externalToolLoadCount += 1;
+          mcpStartCount += 1;
           return {};
         },
       },
@@ -110,7 +110,7 @@ describe("session-scoped agents", () => {
     internal.handleCommand({ name: "delete", arguments: "", raw: "/delete" });
 
     const transcript = renderTranscript(internal.transcript);
-    expect(externalToolLoadCount).toBe(0);
+    expect(mcpStartCount).toBe(0);
     expect(forkCount).toBe(0);
     expect(transcript).toContain(
       "Clean mode · temporary session; customizations and saving are disabled.",

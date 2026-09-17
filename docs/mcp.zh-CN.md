@@ -1,111 +1,86 @@
 # Model Context Protocol
 
-Kana 把 MCP 实现为相互独立的 JSON-RPC、client lifecycle、transport、authorization、tool adaptation、multi-server 与产品 runtime 边界。远端工具通过普通 `Tool` 合同进入 Agent；Agent loop 和 provider adapter 都不了解 MCP。
+Kana 为已启用 MCP server 创建两个依赖运行时能力的内置工具：`mcp_activate` 读取 server 工具目录，`mcp_call` 调用远端工具。官方 TypeScript client SDK 持有协议和 transport。Agent loop 和 provider adapter 都不感知 MCP。
 
 ## 分层
 
 ```text
-KanaMcpRuntime（可 reload 的产品边界）
-  → McpManager（多 server 启动、过滤、冲突与诊断）
-      ├→ McpToolAdapter → Tool
-      └→ McpManagedClient
-          ├→ McpClient（稳定 2025-11-25 lifecycle 与 tool method）
-          │   → McpConnection（JSON-RPC 关联、timeout、取消与 progress）
-          │       → StdioTransport | StreamableHttpTransport
-          └→ 可选 McpOAuthHttpAuthorizer
-              → protected-resource discovery → OAuthSession
+createKanaAgent → mcp_activate + mcp_call
+                      ↓
+KanaMcpRuntime（可 reload 的 registry 能力）
+  → McpManager（启动、过滤、目录与诊断）
+      ├→ McpToolAdapter（远端 schema 校验与结果适配）
+      └→ McpClient → 官方 SDK Client
+          ├→ SDK StdioClientTransport | StreamableHTTPClientTransport
+          └→ 可选 McpOAuthHttpAuthorizer → OAuthSession
 ```
 
-`McpConnection` 和 transport 与版本无关；`McpClient` 持有稳定协议 lifecycle。`McpManager` 依赖结构化 managed-client interface，而不是具体 client，因此可以引入另一协议版本而无需改变工具聚合。
+`McpClient` 是 `@modelcontextprotocol/client` 的薄适配层。SDK 处理 JSON-RPC 解析与请求关联、版本协商、初始化、工具目录分页、请求超时、取消、进度和 transport framing。Kana 为普通工具管线转换协议错误，并区分调用方取消与超时。
 
-## JSON-RPC connection
+Client 使用 SDK 自动协商现代与旧版协议。协议版本由 SDK 维护，不作为任意配置字符串暴露。Kana 支持 Streamable HTTP 和 stdio，不配置旧版独立端点 HTTP+SSE transport。
 
-协议 parser 接受 JSON-RPC 2.0 request、notification 和 response，ID 可以是 string 或 integer。Request 与 notification 要求 object 参数；response 必须且只能包含 object result 或结构化 error。格式错误或有歧义的消息属于协议失败。
+## 渐进式工具目录
 
-`McpConnection` 分配 request ID、关联乱序 response，并拒绝未知或重复 ID；只有属于本地已取消 request 的有界 ID 集合例外。每个 request 有配置或默认 timeout。Abort 或 timeout 会移除关联状态、拒绝调用方，并通常发送 `notifications/cancelled`；initialize 等协议禁止取消的操作可显式标记为 non-cancellable。
+启动时连接已启用 server，并在内部缓存过滤后的工具定义。模型最初只看到 `mcp_activate` description 中的 server 名称与简介，以及两个入口的 schema。可选 server `description` 覆盖 server 自身提供的简介；两者都缺省时，目录仍包含 server 名称。
 
-带 progress callback 的 request 会在 `_meta` 获得唯一 progress token。`notifications/progress` 必须为活动 token 提供 finite 且严格递增的值。Callback failure 会报告，但不会破坏 request。Connection 会响应 server `ping` request，其它 server request 返回 method-not-found。
+```text
+mcp_activate({ name: "github" })
+  → { server: "github", tools: [{ name, description, inputSchema }, ...] }
 
-协议、transport 或解析失败会拒绝全部 pending request 并关闭 transport。显式 close 幂等，并且会先拒绝 pending work，再等待 transport cleanup。
+mcp_call({
+  server: "github",
+  tool: "get_issue",
+  arguments: { owner: "longyijdos", repo: "kana", issue_number: 138 }
+})
+  → 规范化的远端结果
+```
 
-## 稳定 Client 生命周期
+`mcp_activate` 读取缓存目录，不连接额外 server、不改变用户启用状态、不授予权限，也不修改 provider-facing tools 数组。完整 schema 作为普通工具结果追加到对话历史。因此读取目录期间工具定义保持稳定；provider 缓存仍取决于请求其余部分。
 
-`McpClient` 实现协议版本 `2025-11-25`。`initialize` 是第一条 request，使用独立 startup timeout；只有 server 返回同一受支持版本后，client 才发送 `notifications/initialized`。Client startup 接受 abort signal；取消 initialize 会关闭 connection 与 transport，但不会发送协议禁止用于 initialization 的取消 notification。Client 会快照 server identity 与 capability。
+目录通过可选 `offset` 与 `limit` 分页，默认每页 20 个工具，最多 50 个。返回 `nextOffset` 表示还有下一页。普通 Agent content 上限与 artifact 策略仍适用；结果转存 artifact 后，模型需读取文件取得完整 schema。目录可以重复读取，包括 context compaction 之后。不存在会在历史压缩后阻碍重新发现或调用的临时激活标记。
 
-Tool method 要求 server 声明 tools capability。`tools/list` 跟随分页、拒绝重复 cursor，并有有限 page 上限。`tools/call` 支持取消与 progress，并校验返回 content envelope。Server notification 会暴露给集成层，但 Kana 刻意固定 startup tool list，只记录 `notifications/tools/list_changed`，不修改活动 Agent。
+Agent 装配读取当前 MCP registry，仅当 server 目录非空时创建入口。要暴露两种能力，需在 `agent.tools` 中同时选择两个入口名；都不选择时会禁用 Agent 访问，但不改变 server 启用状态或 `/mcp` 管理。MCP runtime 不向 Agent 注入远端工具或入口实例。
 
-Streamable HTTP 报告活动 session 过期时，client 会按该 session generation 合并恢复，并重新 initialize，但不会 replay 触发操作。恢复成功后的错误会告诉 Agent 可以显式再次调用；若替换 session 在恢复期间再次过期，client 会关闭，等待中的操作失败。工具可能已经产生副作用，因此禁止自动 replay。
+只有 ready server 以及 `includeTools`/`excludeTools` 保留的工具可用。`mcp_call` 按 `(server, 远端工具原名)` 定位，并在远端调用前，使用缓存的远端 JSON Schema 校验嵌套 `arguments`。Provider 只校验入口 envelope，具体远端 schema 由 Kana 执行校验，不依赖原生逐工具约束解码。
 
-## Stdio transport
+远端名称不会加入 Agent registry。不同 server 可使用相同工具名，也可与 Kana 内置工具或入口名称相同。无需 alias、provider 名称净化或跨 server 保留名称聚合。同一 server 内的重复名称仍无效，因为它们使分发产生歧义。
 
-`StdioTransport` 通过 Bun 直接启动参数数组，不经过 shell，并把 server 放入独立 process group。Stdout 使用 newline-delimited UTF-8 JSON-RPC，默认 message 上限 4 MiB。非法 UTF-8/JSON、超限或不完整消息、协议污染与意外进程退出都会使 transport 失败。
+## 调用与结果
 
-Stderr 与协议 framing 分离，进入受保护诊断 callback。Send 即使有一次失败也保持串行。优雅 close 会等待排队写入、关闭 stdin、等待 shutdown timeout，再向进程组发送 SIGTERM；第二段 timeout 后发送 SIGKILL。Monitor 与 close callback 只报告一次。
+`mcp_activate` 是 parallel 目录读取，永不请求审批。`mcp_call` 默认 exclusive，遵循普通审批策略。TUI 审批显示 server、远端工具原名与完整嵌套参数，不提供持久 MCP 信任选项。
 
-Kana 的 stdio 装配只继承少量基础环境。显式 `env` 值支持从 Kana 进程环境解析 `${NAME}` 与 `${NAME:-fallback}`；缺少必需值会使该 server 失败。Server stderr 有界后写入当前 session logger。
+入口通过 adapter 将调用 abort signal 和进度更新传给 SDK。配置的请求超时与普通 Agent deadline 仍适用。JSON-RPC 错误变成结构化工具错误，远端 `isError` 保持独立结果语义。调用方 abort 保留取消原因。
 
-## Streamable HTTP transport
+发现时使用 Kana 工具校验器预编译选中 input schema。不受支持的 schema 会让该 server 原子失败。结果规范化分别限制 item 数、自然文本、结构化 JSON、模型 content 与 metadata。文本及内嵌文本资源可进入模型 content，resource link 转成描述。Image、audio 与 blob 只保留类型、MIME 和估算字节数，不把远端 binary 复制进 session 作为视觉观察。
 
-`StreamableHttpTransport` 实现 `2025-11-25` 单 endpoint transport。它拒绝 endpoint 凭据、fragment，以及对 transport 自有 header 的配置覆盖。每条 JSON-RPC message 用独立 POST，接受 JSON 或 SSE；`202` 只对 notification 合法。Initialize 会读取可选 `Mcp-Session-Id`，后续操作携带该 ID 与协商协议版本。
+普通 Agent 结果策略可继续收紧 context 上限或生成文本 artifact，见[工具与执行](tools.zh-CN.md)。
 
-共享 SSE decoder 处理跨 chunk CR/LF framing、严格 UTF-8、event byte 上限、event ID 与 retry value。Response stream 在收到 request response 前结束但已有 event ID 时，会通过 `Last-Event-ID` GET 恢复，而不是 replay POST。Initialize 后还会尝试独立 GET server stream；普通 EOF 或网络读取失败会在 server 指定或默认延迟后，用最后完成 event ID 重连。
+## Transport 与授权
 
-非法 UTF-8、SSE、JSON、不支持 content type、超限 event、错误 response ID 和其它协议失败都是 fatal。带 session ID 的 request 收到 HTTP `404` 时，会把该 session 标为过期并交给 client 层恢复。可识别 OAuth `401/403` challenge 只影响当前 request，authorization 可以恢复而不破坏 transport state。
+SDK stdio 直接启动 command 与参数数组，不经过 shell；它处理 stdout MCP framing 与子进程清理。Kana 提供受限基础环境和展开后的显式 `env`，SDK 另包含平台相关的安全默认变量。`${NAME}` 与 `${NAME:-fallback}` 从 Kana 进程环境解析；缺少必需变量会使该 server 失败。Server stderr 与协议消息分开，并在写入诊断日志前限制长度。
 
-取消会先发送协议 notification，再中止匹配 HTTP operation。Shutdown 停止重连、中止剩余 stream、在有界时间内等待活动 operation，并在存在 session 时发送有界 DELETE。Legacy `2024-11-05` HTTP+SSE transport 不会被自动检测或混入这套状态机。
+SDK Streamable HTTP transport 处理 JSON/SSE、session 与协议 header、stream resumption 和重连。Kana 校验 endpoint 配置及 transport-owned header，注入逐 server 的代理与授权 fetch 边界。旧版 HTTP session 关闭时先通过 SDK 尝试删除会话，限时五秒，再关闭本地 transport 资源。Kana 不再实现独立的 session 过期重初始化状态机；session 错误返回 Agent，显式 runtime reload 可重新连接 server。
 
-## HTTP authorization
+`McpOAuthHttpAuthorizer` 使用 SDK helper 解析 Bearer challenge 与发现 protected-resource metadata，再校验 resource 绑定、authorization server 可用性和 header Bearer 支持。通用 [OAuth](oauth.zh-CN.md) 处理 authorization-server discovery、PKCE、浏览器回调、token exchange、refresh 与 token-session storage 契约。Kana 保留精确 resource 凭据边界与已注册 client 配置。
 
-`McpOAuthHttpAuthorizer` 为一个 protected resource 包装 fetch 边界。它规范化 HTTPS resource，从 Bearer challenge 或 well-known URL 发现 protected-resource metadata，验证返回 resource，要求 authorization-server issuer，并拒绝不支持 Authorization-header Bearer token 的 metadata。
+Prepare 先尝试存储或刷新的凭据，必要时在 MCP 协商前完成交互授权。仅 challenge 提供 metadata 时，通过幂等 HEAD probe 在协议启动超时前取得它。请求 challenge 最多恢复一次，第二次 challenge 返回调用方。显式配置 scopes 始终是权限边界，不允许自动扩大到边界之外。Close 冻结新授权与 refresh；DELETE 只能使用内存中已保留的最后 token。
 
-Authorizer 使用通用 [OAuth](oauth.zh-CN.md) 完成 authorization-server discovery、PKCE、callback、token exchange、refresh 与注入式 token storage。它为准确 resource 持有一个 session，并把凭据限制在 origin 和 path 都仍属于该 endpoint 的 request。
+凭据存储 key 为 `mcp:<server-id>`。Kana 提供浏览器打开与 owner-only token 持久化，并将 OAuth metadata/token 请求和 MCP 请求应用相同代理策略。代理 URL 和凭据不会进入诊断 metadata。
 
-Preparation 先尝试持久或 refresh 后的凭据，需要时在 MCP initialize 前完成交互 authorization。若 metadata 只能通过 challenge 获得，会在 initialize timeout 开始前用幂等 HEAD probe 获取。Request challenge 最多通过持久 token、refresh 或交互 authorization 恢复一次；第二次 challenge 返回调用方。
+## Manager 与 runtime 生命周期
 
-显式配置 scopes 优先。如果 challenge 请求集合之外的 scope，automatic privilege expansion 会被拒绝并记录诊断。Retry 使用 request 副本，不复用已消费 body。Close 期间 DELETE 只能使用内存里最后保留的 token；transport 删除 session 前会冻结新 authorization 与 refresh。
+`McpManager` 快照 registration，并发启动 server，按 registration 顺序保留成功目录。过滤器匹配远端原名。每个 server 原子适配：重复远端名称或一个选中 schema 无效都会使该 server 失败，不暴露部分工具集。
 
-Kana 用 `mcp:<server-id>` 保存凭据，提供浏览器打开和 owner-only token 持久化，并让 OAuth metadata/token request 与 MCP transport 使用同一 proxy 策略。
+可选 server 失败会被诊断、关闭与隔离。必需 server 失败会关闭全部 client 并中止启动。Diagnostic 包含复制的 server identity、生命周期状态、capability、发现与保留工具数及错误身份。Progress 报告 completed/total 数与终态结果。Startup 接受 abort signal，取消与 server 失败区分。Close 幂等，等待 startup 退出，并按 registration 逆序释放 client。
 
-## 远端工具适配
+每个 manager generation 的目录固定。`notifications/tools/list_changed` 只诊断，不修改当前入口目录。`KanaMcpRuntime` 串行处理 start、reload 与 close。Reload 关闭旧 manager，从 Host 的定义和启用快照重新连接，再发布 ready registry 与 diagnostic。取消或失败会使 registry 不可用，并允许之后 reload；已关闭 runtime 不能复活。
 
-Discovery 时，`McpToolAdapter` 预编译远端 JSON Schema，并创建普通 Kana `Tool`。Provider 可见 alias 是 server ID 与远端名称的确定性清理组合，最长 64 字符；原始 remote name 与 server identity 继续用于调用、诊断、审批展示和结果 metadata。
+## 配置与前端集成
 
-Adapter 把 invocation abort 与 request timeout 传给 `tools/call`，将递增 MCP progress 映射为有界 `ToolContext.update()`。JSON-RPC response error 会成为结构化工具错误，不会逃出 Agent loop。
+`<KANA_HOME>/mcp.json` 保存 server 定义，`<KANA_HOME>/mcp-enabled.json` 保存启用 ID。只有同时出现在两者中的 server 才启动。用户的 `/mcp` 操作改变启用状态；模型的 `mcp_activate` 仅读取目录。直接修改文件需要重启。完整配置字段见[配置与安装](configuration.zh-CN.md)。
 
-结果规范化会独立限制 item 数、自然文本、结构化 JSON、模型可见 content 与 metadata。Text 与嵌入 text resource 可以进入模型 content，resource link 变成说明。Image、audio 与 blob payload 只保留安全 type、MIME 和估算 byte metadata；远端 binary 不会作为视觉观察复制进 session。MCP `isError` 与 JSON-RPC error 语义在结构化结果中保持不同。
+主对话初始无 MCP 入口。交互启动先显示所选 session，再加载 MCP 并用两个入口重建 Agent。Headless 在提交 run 前初始化 MCP，并要求交互 OAuth 已提前完成。Clean mode 不创建 MCP 工具。Memory-consolidation Agent 永不获得 MCP 工具。
 
-之后仍可应用通用 Agent tool-result policy，收紧 model-context 上限或创建 text artifact；见[工具与执行](tools.zh-CN.md)。
+Subagent 角色卡通过列出 `mcp_activate` 与 `mcp_call` 获得 MCP 能力。全局 `agent.tools` 选择仍是这些权限的上限。它们覆盖全部当前已启用、经过过滤的 MCP 能力，不表达逐 server 或逐远端工具权限。不支持旧远端 alias 与 `mcp:*`。见 [Subagent](subagents.zh-CN.md)。
 
-## Multi-server manager
-
-`McpManager` 快照 registration，并发启动 server，并按 registration 顺序聚合成功工具。`includeTools` 与 `excludeTools` 匹配原始远端名称。每个 server 原子适配：重复 remote name 或一个已选择 schema 非法都会使该 server 失败，而不会暴露一组不完整、依赖顺序的工具。
-
-可选 server failure 被隔离、记录并关闭；任一必需 server failure 会关闭所有 client 并中止 startup。Server 之间或与保留 Kana tool 的 alias collision 会使完整聚合失败，不会覆盖工具或分配不稳定 suffix。
-
-诊断暴露复制后的 server identity、required 标记、lifecycle status、发现与保留 tool count、capability 与安全 error identity。Progress 报告 completed/total server count 和每个终态 startup/close outcome。Listener failure 被隔离。Startup 接受 abort signal，并把取消与 server failure 诊断分开。Close 幂等；若 startup 仍在进行，会先请求取消并等待其完成清理，再按 registration 逆序释放 client。
-
-## Kana 配置与启用状态
-
-`<KANA_HOME>/mcp.json` 保存已校验 server 定义；`<KANA_HOME>/mcp-enabled.json` 只保存选中 ID。文件不存在时分别视为空定义或空启用状态。只有 ID 同时出现在两者中时，配置 server 才启动。准确字段与示例见[配置与安装](configuration.zh-CN.md)。
-
-省略 server `type` 表示 stdio，HTTP 必须显式声明。产品工厂为所选 server 构造 transport、稳定 client、可选 OAuth authorizer、filter、request timeout、logger callback 与保留 tool-name 集合。Config 与可变集合会在异步 startup 前快照。
-
-HTTP `proxy` 是 Kana/Bun 装配职责。URL 通过 Bun fetch extension 传入；`false` 只在同步调用 fetch 期间把目标 hostname 加入 `NO_PROXY` 与 `no_proxy`，yield 前恢复两项变量；省略时保留默认进程路由。同一 fetch wrapper 注入 MCP 与 OAuth。
-
-## Runtime 与前端集成
-
-`KanaMcpRuntime` 持有可替换的一次性 manager，并串行执行 `start`、`reload` 与 `close`。Reload 先关闭旧 manager，再使用 Host 的启动时 server 定义快照和当前内存启用快照重新连接，随后发布新的 detached tool/diagnostic snapshot。直接编辑任一 MCP 文件都需要重启才会生效，`/mcp` 则会先更新内存启用状态再请求 reload。Start 与 reload 接受 operation abort signal。取消会清除该操作的 tool snapshot 并关闭其一次性 manager，但不会永久关闭 runtime，因此与失败一样，之后仍可通过 reload 恢复。一旦请求 runtime close，排队 lifecycle work 不能再创建 manager。
-
-主对话最初没有外部工具。交互式 startup 会等所选 session 可见后再加载 MCP 并重建 Agent，因此 resume picker 没有 server side effect。Headless 在提交 run 前启动 MCP。Clean 模式不读取 MCP 配置，也不创建 runtime external tool；memory-consolidation Agent 永远不接收 MCP tool。
-
-TUI 负责 selection draft、OAuth action、lifecycle transcript block、focus 与 retry 交互，不负责协议或 transport state。Headless 不会打开浏览器，需要预先通过 TUI 完成交互 OAuth。共享 conversation shutdown 先结算 Agent，再由产品 Host 关闭 MCP；见[对话运行时](conversation-runtime.zh-CN.md)。
-
-## 安全与扩展约束
-
-- 把 MCP tool 视为不可信外部能力；它们走普通审批，默认 exclusive 执行。
-- 不记录 header、token、endpoint URL、session/event/progress ID、request 参数、工具参数或完整结果。
-- 保持 transport framing 与版本协商、feature method 分离。
-- 新稳定协议版本应使用独立 client lifecycle，不在 runtime 猜测版本。
-- 不自动 replay timeout、cancelled、session-expired 或 authorization-challenged tool call。
-- 把配置解析和 proxy 行为留在 Kana composition，而不是通用 MCP package。
-- 保持 manager 一次性合同；live replacement 通过 `KanaMcpRuntime` 实现。
+TUI 持有选择、授权操作、生命周期展示、焦点与重试交互。共享对话 shutdown 先结算 Agent，再由 Host 关闭 MCP。见 [TUI](tui.zh-CN.md) 与[对话运行时](conversation-runtime.zh-CN.md)。

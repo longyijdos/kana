@@ -1,6 +1,6 @@
 import type { BundledTheme } from "shiki";
 import type { ContextCheckpoint } from "@/agent";
-import type { Message } from "@/core";
+import type { Message, ToolCallContent } from "@/core";
 import type { BackgroundJobClient } from "@/jobs";
 import type {
   ConversationSessionSnapshot,
@@ -23,7 +23,7 @@ import type {
 } from "@/kana";
 import type { Logger } from "@/logging";
 import type { ToolApprovalSource } from "../tools";
-import type { ExternalToolsLoadResult } from "./external-tools-lifecycle-controller";
+import type { McpLoadResult } from "./mcp-lifecycle-controller";
 import type { MemoryCompactSummary, MemoryScope } from "./memory-compact-controller";
 import type { TuiModelSettings } from "./model-selection";
 
@@ -82,18 +82,12 @@ type KanaTuiMcpManagementCapabilities = {
     signal: AbortSignal,
   ): Promise<KanaOAuthTokenStatus>;
   signOutServer?(serverId: string): Promise<KanaOAuthTokenStatus>;
-  reload: (
-    onProgress: (status: string) => void,
-    signal: AbortSignal,
-  ) => Promise<ExternalToolsLoadResult>;
+  reload: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>;
 };
 
-type KanaTuiExternalToolsCapabilities = {
-  load?: (
-    onProgress: (status: string) => void,
-    signal: AbortSignal,
-  ) => Promise<ExternalToolsLoadResult>;
-  mcp?: KanaTuiMcpManagementCapabilities;
+type KanaTuiMcpCapabilities = {
+  load?: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>;
+  management?: KanaTuiMcpManagementCapabilities;
 };
 
 export type KanaTuiAppOptions = {
@@ -108,7 +102,7 @@ export type KanaTuiAppOptions = {
     config: KanaToolApprovalConfig;
     approvals: KanaToolApprovals;
     addTrustedBashCommand: (command: string) => KanaToolApprovals;
-    resolveToolSource?: (toolName: string) => ToolApprovalSource | undefined;
+    resolveToolSource?: (toolCall: ToolCallContent) => ToolApprovalSource | undefined;
   };
   ui: {
     notification: KanaNotificationConfig;
@@ -119,7 +113,7 @@ export type KanaTuiAppOptions = {
   memory: KanaTuiMemoryCapabilities;
   usage: KanaTuiUsageCapabilities;
   models?: KanaTuiModelCapabilities;
-  externalTools?: KanaTuiExternalToolsCapabilities;
+  mcp?: KanaTuiMcpCapabilities;
   diagnostics?: {
     getLogger: () => Logger;
   };

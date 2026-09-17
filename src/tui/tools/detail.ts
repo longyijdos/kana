@@ -45,7 +45,14 @@ export function buildFullToolDetail(
       sections: [
         buildSection("Server", sanitizeToolDetailLabel(source.serverId)),
         buildSection("Tool", sanitizeToolDetailLabel(source.remoteToolName)),
-        buildSection("Arguments", formatSanitizedArguments(toolCall.args ?? {}) ?? "{}"),
+        buildSection(
+          "Arguments",
+          formatSanitizedArguments(
+            toolCall.name === "mcp_call"
+              ? (toolCall.args as { arguments: unknown }).arguments
+              : (toolCall.args ?? {}),
+          ) ?? "{}",
+        ),
       ],
     };
   }

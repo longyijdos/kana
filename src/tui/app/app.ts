@@ -23,11 +23,11 @@ import { BackgroundJobManagerController } from "./background-job-manager-control
 import { BottomAreaController } from "./bottom-area-controller";
 import { ContentViewerController } from "./content-viewer-controller";
 import { ContextCompactController } from "./context-compact-controller";
-import { ExternalToolsLifecycleController } from "./external-tools-lifecycle-controller";
 import { ImageAttachmentController } from "./image-attachment-controller";
 import { InformationViewerController } from "./information-viewer-controller";
 import { InteractionErrorReporter } from "./interaction-error-reporter";
 import { LocalShellController } from "./local-shell-controller";
+import { McpLifecycleController } from "./mcp-lifecycle-controller";
 import { McpOAuthStatusController } from "./mcp-oauth-status-controller";
 import { McpServerManagerController } from "./mcp-server-manager-controller";
 import { MemoryCompactController } from "./memory-compact-controller";
@@ -82,7 +82,7 @@ export class KanaTuiApp {
   private readonly informationViewer: InformationViewerController;
   private readonly modelSelection: ModelSelectionController;
   private readonly mcpOAuthStatus: McpOAuthStatusController;
-  private readonly externalTools: ExternalToolsLifecycleController;
+  private readonly mcpLifecycle: McpLifecycleController;
   private readonly hyperlinks: boolean;
   private readonly renderLatex: boolean;
   private readonly renderMermaid: boolean;
@@ -135,7 +135,7 @@ export class KanaTuiApp {
       disposeSession: options.conversation.disposeSession,
       canStartQueuedRun: () =>
         !this.status.running &&
-        !this.externalTools.loading &&
+        !this.mcpLifecycle.loading &&
         !this.mcpServerManager?.active &&
         !this.scheduledMessageManager?.active &&
         !this.backgroundJobManager?.active &&
@@ -187,13 +187,13 @@ export class KanaTuiApp {
       smoothTextStreaming: options.ui.config?.smoothTextStreaming ?? true,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
-    this.externalTools = new ExternalToolsLifecycleController({
+    this.mcpLifecycle = new McpLifecycleController({
       transcript: this.transcript,
       tui: this.tui,
-      load: cleanMode ? undefined : this.options.externalTools?.load,
-      reload: cleanMode ? undefined : this.options.externalTools?.mcp?.reload,
+      load: cleanMode ? undefined : this.options.mcp?.load,
+      reload: cleanMode ? undefined : this.options.mcp?.management?.reload,
       isStopping: () => this.stopping,
-      onToolsChanged: () => this.recreateAgentForExternalTools(),
+      onToolsChanged: () => this.recreateAgentForMcp(),
       onReady: () => this.conversation.notifyCanStartQueuedRun(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
       focusEditor: () => this.bottomArea.showFallback(),
@@ -208,8 +208,8 @@ export class KanaTuiApp {
       showError: (error) => this.showInteractionError(error),
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
-    if (!cleanMode && this.options.externalTools?.mcp) {
-      const mcp = this.options.externalTools.mcp;
+    if (!cleanMode && this.options.mcp?.management) {
+      const mcp = this.options.mcp.management;
       this.mcpServerManager = new McpServerManagerController({
         editor: this.editor,
         bottomArea: this.bottomArea,
@@ -222,7 +222,7 @@ export class KanaTuiApp {
         showError: (error) => this.showInteractionError(error),
         onClose: (changed) => {
           if (changed) {
-            void this.externalTools.reload();
+            void this.mcpLifecycle.reload();
           } else {
             this.conversation.notifyCanStartQueuedRun();
           }
@@ -383,7 +383,7 @@ export class KanaTuiApp {
     this.contextCompact = new ContextCompactController({
       transcript: this.transcript,
       tui: this.tui,
-      canCompact: () => !this.stopping && !this.externalTools.loading,
+      canCompact: () => !this.stopping && !this.mcpLifecycle.loading,
       compact: () => this.conversation.compact(),
     });
     this.imageAttachments = new ImageAttachmentController({
@@ -603,7 +603,7 @@ export class KanaTuiApp {
     }
 
     this.stopping = true;
-    this.externalTools.cancel();
+    this.mcpLifecycle.cancel();
     this.stopPromise = this.stopInternal().finally(() => {
       this.resolveStopped();
     });
@@ -676,14 +676,14 @@ export class KanaTuiApp {
   }
 
   private async activateCurrentSession(initialPrompt?: string): Promise<void> {
-    const ready = await this.externalTools.load();
+    const ready = await this.mcpLifecycle.load();
 
     if (ready && initialPrompt && !this.stopping) {
       await this.submitPrompt(initialPrompt);
     }
   }
 
-  private recreateAgentForExternalTools(): void {
+  private recreateAgentForMcp(): void {
     // The editor is unfocused before initial load or reload begins, and the
     // MCP manager menu cannot open during a run, so replacement is race-free.
     this.conversation.reconfigure();
@@ -700,9 +700,9 @@ export class KanaTuiApp {
       return { consume: true };
     }
 
-    if (this.externalTools.loading) {
+    if (this.mcpLifecycle.loading) {
       if (isCtrlC(data) || isEscape(data)) {
-        this.externalTools.cancel();
+        this.mcpLifecycle.cancel();
       }
       return { consume: true };
     }
@@ -1088,7 +1088,7 @@ export class KanaTuiApp {
   }
 
   private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {
-    if (this.stopping || this.externalTools.loading) {
+    if (this.stopping || this.mcpLifecycle.loading) {
       return;
     }
 
@@ -1100,7 +1100,7 @@ export class KanaTuiApp {
   }
 
   private async startGoal(objective: string): Promise<void> {
-    if (this.stopping || this.externalTools.loading) {
+    if (this.stopping || this.mcpLifecycle.loading) {
       return;
     }
 
@@ -1117,7 +1117,7 @@ export class KanaTuiApp {
   private async submitShellCommand(command: string): Promise<void> {
     const shellCommand = command.trim();
 
-    if (!shellCommand || this.status.running || this.externalTools.loading) {
+    if (!shellCommand || this.status.running || this.mcpLifecycle.loading) {
       return;
     }
 

@@ -115,7 +115,7 @@ function parseProfile(name: string, content: string, filePath: string): KanaSuba
   }
   const tools = frontmatter.tools ?? [];
   for (const tool of tools) {
-    if (tool !== "mcp:*" && !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/.test(tool)) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/.test(tool)) {
       throw new Error(`invalid tool name: ${tool}`);
     }
   }

@@ -1,16 +1,15 @@
 import type { Agent, ContextCheckpoint, PromptSystemSection } from "@/agent";
-import { addModelUsage, type Message, type ModelUsage } from "@/core";
+import { addModelUsage, type Message, type ModelUsage, type ToolCallContent } from "@/core";
 import type { BackgroundJobClient } from "@/jobs";
 import type { Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent, McpToolSource } from "@/mcp";
-import type { Tool } from "@/tools";
 import {
   type KanaUsageScope,
   type KanaUsageSummary,
   loadKanaUsageSummary,
   recordKanaAgentRunAccounting,
 } from "../accounting";
-import { createKanaAgent, KANA_BUILT_IN_TOOL_NAMES, type KanaAgentOptions } from "../agent";
+import { createKanaAgent, type KanaAgentOptions } from "../agent";
 import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth";
 import {
   createKanaConfigStore,
@@ -142,7 +141,6 @@ export class KanaConversationHost<TConfiguration = never> {
   private memoryConsolidation?: MemoryConsolidationScheduler;
   private mcpConfigurationStore?: KanaMcpConfigurationStore;
   private skillStore?: KanaSkillStore;
-  private mcpTools: Tool[] = [];
 
   constructor(options: CreateKanaConversationHostOptions<TConfiguration> = {}) {
     this.env = { ...(options.env ?? process.env) };
@@ -196,7 +194,6 @@ export class KanaConversationHost<TConfiguration = never> {
         getConfig: () => this.getMcpConfigurationStore().getConfig(),
         getActivationState: () => this.getMcpConfigurationStore().getActivationState(),
       },
-      reservedToolNames: KANA_BUILT_IN_TOOL_NAMES,
       getLogger: () => this.getLogger(),
       oauthTokenStore: this.oauthTokenStore,
       openOAuthAuthorizationUrl: async (serverId, url) => {
@@ -375,8 +372,12 @@ export class KanaConversationHost<TConfiguration = never> {
     }
   }
 
-  getMcpToolSource(toolName: string): McpToolSource | undefined {
-    return this.mcpRuntime.getToolSource(toolName);
+  getMcpToolSource(call: ToolCallContent): McpToolSource | undefined {
+    if (call.name !== "mcp_call" || !call.args || typeof call.args !== "object") return undefined;
+    const { server, tool } = call.args as Record<string, unknown>;
+    return typeof server === "string" && typeof tool === "string"
+      ? { serverId: server, remoteToolName: tool }
+      : undefined;
   }
 
   loadMcpServers(): KanaMcpServerActivation[] {
@@ -510,10 +511,7 @@ export class KanaConversationHost<TConfiguration = never> {
 
     return {
       ...agentOptions,
-      additionalTools: this.mcpTools,
-      // Prompt assembly reads the host-owned MCP snapshot at each model step;
-      // Agent construction still receives the initial list for synchronous state.
-      resolveAdditionalTools: () => this.mcpTools,
+      resolveMcp: () => this.mcpRuntime.registry,
       resolveTodoState: sessionBinding.resolveTodoState,
       env: this.env,
       launchMode: this.launchMode,
@@ -648,8 +646,7 @@ export class KanaConversationHost<TConfiguration = never> {
       env: this.env,
       launchMode: this.launchMode,
       logger,
-      additionalTools: this.mcpTools,
-      resolveAdditionalTools: () => this.mcpTools,
+      resolveMcp: () => this.mcpRuntime.registry,
       subagentProfile: context.profile,
       customProviderSnapshot: this.customProviderSnapshot,
       journal,
@@ -743,13 +740,11 @@ export class KanaConversationHost<TConfiguration = never> {
     signal?: AbortSignal,
   ): Promise<KanaMcpRuntimeSnapshot> {
     if (this.launchMode === "clean") {
-      this.mcpTools = [];
       this.getLogger().info("mcp.skipped", {
         operation,
         reason: "clean_mode",
       });
       return {
-        tools: [],
         diagnostics: [],
         selectedServerIds: [],
       };
@@ -759,16 +754,16 @@ export class KanaConversationHost<TConfiguration = never> {
       const snapshot = await (operation === "start"
         ? this.mcpRuntime.start(signal === undefined ? {} : { signal })
         : this.mcpRuntime.reload(signal === undefined ? {} : { signal }));
-      this.mcpTools = snapshot.tools;
       this.getLogger().info(operation === "start" ? "mcp.started" : "mcp.reloaded", {
         configuredServerCount: snapshot.selectedServerIds.length,
         readyServerCount: snapshot.diagnostics.filter((diagnostic) => diagnostic.status === "ready")
           .length,
-        toolCount: this.mcpTools.length,
+        toolCount: snapshot.diagnostics
+          .filter((diagnostic) => diagnostic.status === "ready")
+          .reduce((count, diagnostic) => count + diagnostic.toolCount, 0),
       });
       return snapshot;
     } catch (error) {
-      this.mcpTools = this.mcpRuntime.tools;
       if (signal?.aborted) {
         this.getLogger().info("mcp.operation_cancelled", { operation });
       }

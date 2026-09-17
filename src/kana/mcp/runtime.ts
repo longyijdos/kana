@@ -2,9 +2,8 @@ import {
   type McpManagerProgressEvent,
   McpRequestCancelledError,
   type McpServerDiagnostic,
-  type McpToolSource,
+  type McpToolRegistry,
 } from "@/mcp";
-import type { Tool } from "@/tools";
 
 import {
   createKanaMcpConfigurationStore,
@@ -19,7 +18,6 @@ export type KanaMcpRuntimeProgressEvent = McpManagerProgressEvent & {
 };
 
 export type KanaMcpRuntimeSnapshot = {
-  tools: Tool[];
   diagnostics: McpServerDiagnostic[];
   selectedServerIds: string[];
 };
@@ -41,7 +39,6 @@ export class KanaMcpRuntime {
   private readonly managerOptions: Omit<CreateKanaMcpManagerOptions, "enabledServerIds">;
   private configurationSource?: KanaMcpConfigurationSource;
   private manager?: ReturnType<typeof createKanaMcpManager>;
-  private toolsData: Tool[] = [];
   private selectedServerIdsData: string[] = [];
   private operationTail: Promise<void> = Promise.resolve();
   private activeOperation?: KanaMcpRuntimeOperation;
@@ -56,9 +53,6 @@ export class KanaMcpRuntime {
     // so a one-shot generator or later caller mutation cannot change behavior.
     this.managerOptions = {
       env: this.env,
-      ...(options.reservedToolNames === undefined
-        ? {}
-        : { reservedToolNames: [...options.reservedToolNames] }),
       ...(options.getLogger === undefined ? {} : { getLogger: options.getLogger }),
       ...(options.clientInfo === undefined ? {} : { clientInfo: { ...options.clientInfo } }),
       ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
@@ -79,8 +73,8 @@ export class KanaMcpRuntime {
     };
   }
 
-  get tools(): Tool[] {
-    return this.toolsData.slice();
+  get registry(): McpToolRegistry | undefined {
+    return this.manager?.state === "ready" ? this.manager : undefined;
   }
 
   get diagnostics(): McpServerDiagnostic[] {
@@ -89,10 +83,6 @@ export class KanaMcpRuntime {
 
   get selectedServerIds(): string[] {
     return this.selectedServerIdsData.slice();
-  }
-
-  getToolSource(toolName: string): McpToolSource | undefined {
-    return this.manager?.getToolSource(toolName);
   }
 
   start(options: KanaMcpRuntimeStartOptions = {}): Promise<KanaMcpRuntimeSnapshot> {
@@ -170,11 +160,10 @@ export class KanaMcpRuntime {
     this.manager = manager;
 
     try {
-      this.toolsData = await manager.start(signal === undefined ? {} : { signal });
+      await manager.start(signal === undefined ? {} : { signal });
       throwIfOperationAborted(signal);
       return this.snapshot();
     } catch (error) {
-      this.toolsData = [];
       if (signal?.aborted) {
         await manager.close();
       }
@@ -185,14 +174,12 @@ export class KanaMcpRuntime {
   private async closeCurrentManager(): Promise<void> {
     const manager = this.manager;
     this.manager = undefined;
-    this.toolsData = [];
     this.selectedServerIdsData = [];
     await manager?.close();
   }
 
   private snapshot(): KanaMcpRuntimeSnapshot {
     return {
-      tools: this.tools,
       diagnostics: this.diagnostics,
       selectedServerIds: this.selectedServerIds,
     };

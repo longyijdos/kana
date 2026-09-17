@@ -97,17 +97,17 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       return {
         status:
           operation === "start"
-            ? formatMcpStartupSummary(snapshot.diagnostics, snapshot.tools.length)
-            : formatMcpReloadSummary(snapshot.diagnostics, snapshot.tools.length),
+            ? formatMcpStartupSummary(snapshot.diagnostics)
+            : formatMcpReloadSummary(snapshot.diagnostics),
         warnings: formatMcpStartupWarnings(snapshot.diagnostics),
       };
     } finally {
       updateMcpLifecycleStatus = undefined;
     }
   };
-  const loadMcpTools = (onProgress: (status: string) => void, signal: AbortSignal) =>
+  const startMcp = (onProgress: (status: string) => void, signal: AbortSignal) =>
     runMcpRuntimeOperation("start", onProgress, signal);
-  const reloadMcpTools = (onProgress: (status: string) => void, signal: AbortSignal) =>
+  const restartMcp = (onProgress: (status: string) => void, signal: AbortSignal) =>
     runMcpRuntimeOperation("reload", onProgress, signal);
 
   app = await createTuiAppWithCleanup(
@@ -166,8 +166,8 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         config: host.approvalConfig,
         approvals: host.toolApprovals,
         addTrustedBashCommand: (command) => host.addTrustedBashCommand(command),
-        resolveToolSource: (toolName) => {
-          const source = host.getMcpToolSource(toolName);
+        resolveToolSource: (toolCall) => {
+          const source = host.getMcpToolSource(toolCall);
           return source === undefined ? undefined : { kind: "mcp", ...source };
         },
       },
@@ -192,9 +192,9 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       ...(cleanMode
         ? {}
         : {
-            externalTools: {
-              load: loadMcpTools,
-              mcp: {
+            mcp: {
+              load: startMcp,
+              management: {
                 loadServers: () => host.loadMcpServers(),
                 saveEnabledServerIds: (serverIds: string[]) =>
                   host.saveEnabledMcpServerIds(serverIds),
@@ -214,7 +214,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
                     signal,
                   ),
                 signOutServer: (serverId: string) => host.signOutMcpServer(serverId),
-                reload: reloadMcpTools,
+                reload: restartMcp,
               },
             },
           }),

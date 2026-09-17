@@ -47,7 +47,7 @@ Every proposed call follows one contained pipeline:
 6. Normalize the physical outcome and emit `tool_execution_end`.
 7. Apply result policies, then commit sibling results through model-ordered slots before the next model request.
 
-Kana-owned object schemas use `additionalProperties: false`, so an undeclared argument fails with its property name instead of being ignored. Serialized TypeBox schemas that have lost library metadata still receive compatible primitive conversion before the same compiler validates them. Third-party and MCP schemas keep their own declared additional-property behavior.
+Kana-owned object schemas use `additionalProperties: false`, so an undeclared argument fails with its property name instead of being ignored. Serialized TypeBox schemas that have lost library metadata still receive compatible primitive conversion before the same compiler validates them. Third-party and MCP schemas keep their own declared additional-property behavior. `mcp_call` validates its gateway envelope in this pipeline and validates nested remote arguments inside the gateway before remote invocation.
 
 Validation errors, approval denial, cancellation, deadline expiry, and tool exceptions become `isError: true` results. They do not throw the turn loop. Approval cancellation aborts the run by default and gives later calls from the same assistant message canceled results without invoking them.
 
@@ -109,7 +109,7 @@ The live structured result remains available to `tool_execution_end`. Oversized,
 | `schedule_wake` | `afterMinutes`, `message`, optional `key` | Creates a process-local future input for the active session. |
 | `update_goal` | `status`, optional `detail` | Ends the authorized active Goal as completed or blocked. |
 
-`list`, `glob`, `grep`, `read`, `view_image`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
+`list`, `glob`, `grep`, `read`, `view_image`, `mcp_activate`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
 
 ## File and shell boundaries
 
@@ -143,11 +143,11 @@ Subagent control tools expose only predefined role cards and return stable child
 
 `schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. It and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, or `update_goal`. Other calls follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Bash allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, or `mcp_activate`. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Bash allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
 
-## External and custom tools
+## MCP and custom tools
 
-MCP and other external tools enter the Agent through the same `Tool` contract. They keep their declared schema behavior, default to exclusive execution, pass through ordinary approval, and receive the same result normalization and content limits. MCP-specific discovery, aliases, transports, and result adaptation are documented in [MCP](mcp.md).
+All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes only `mcp_activate` (parallel catalog reads) and `mcp_call` (exclusive, ordinary approval). Remote schemas are loaded through tool results and enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
 
 For a custom tool:
 

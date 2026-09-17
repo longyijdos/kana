@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   createMcpToolAdapter,
-  createMcpToolAlias,
   type JsonObject,
   McpResponseError,
   type McpToolCaller,
@@ -11,16 +10,6 @@ import {
 import { validateToolArguments } from "../../src/tools";
 
 describe("MCP tool adapter", () => {
-  test("creates readable provider-safe aliases", () => {
-    const alias = createMcpToolAlias("GitHub Server", "admin.tools/create issue");
-
-    expect(alias).toBe("github_server_admin_tools_create_issue");
-    expect(alias).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
-    expect(alias).toBe(createMcpToolAlias("GitHub Server", "admin.tools/create issue"));
-    expect(alias).not.toBe(createMcpToolAlias("another-server", "admin.tools/create issue"));
-    expect(createMcpToolAlias("s".repeat(200), "t".repeat(200)).length).toBeLessThanOrEqual(64);
-  });
-
   test("validates arguments, calls the remote name, and maps progress", async () => {
     const calls: Array<{ name: string; args: JsonObject | undefined; signal?: AbortSignal }> = [];
     const updates: unknown[] = [];
@@ -29,7 +18,6 @@ describe("MCP tool adapter", () => {
       async callTool(name, args, options) {
         calls.push({ name, args, signal: options?.signal });
         options?.onProgress?.({
-          progressToken: "remote-token",
           progress: 1,
           total: 2,
           message: "working",
@@ -61,7 +49,7 @@ describe("MCP tool adapter", () => {
       update: (partial) => updates.push(partial),
     });
 
-    expect(tool.name).toBe("github_create_issue");
+    expect(tool.name).toBe("create.issue");
     expect(tool.description).toContain("MCP server: github; remote tool: create.issue.");
     expect(calls).toEqual([
       { name: "create.issue", args: { count: 2 }, signal: controller.signal },

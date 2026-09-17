@@ -1,11 +1,6 @@
 import type { ToolResult } from "@/tools";
 import type { McpResponseError } from "./errors";
-import {
-  isJsonObject,
-  type JsonObject,
-  type McpCallToolResult,
-  type McpToolContent,
-} from "./protocol";
+import { isJsonObject, type McpCallToolResult, type McpToolContent } from "./protocol";
 
 export type McpToolSource = {
   serverId: string;
@@ -71,7 +66,7 @@ export type McpNormalizedToolResult = McpToolSource & {
   content: McpNormalizedContent[];
   omittedContentItems: number;
   contentTruncated: boolean;
-  structuredContent?: JsonObject;
+  structuredContent?: unknown;
   structuredContentPreview?: string;
   structuredContentTruncated?: boolean;
   protocolError?: {
@@ -359,9 +354,9 @@ function invalidContent(contentType: string, reason: string): NormalizedContentI
 }
 
 function normalizeStructuredContent(
-  value: JsonObject | undefined,
+  value: unknown,
   limits: McpToolResultLimits,
-): { value?: JsonObject; preview: string; truncated: boolean } | undefined {
+): { value?: unknown; preview: string; truncated: boolean } | undefined {
   if (value === undefined) {
     return undefined;
   }

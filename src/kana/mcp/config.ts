@@ -5,6 +5,7 @@ import { getKanaConfigPaths } from "../path";
 const KANA_MCP_SERVER_TYPES = ["stdio", "http"] as const;
 
 type KanaMcpCommonServerConfig = {
+  description?: string;
   required: boolean;
   startupTimeoutMs: number;
   requestTimeoutMs: number;
@@ -53,6 +54,7 @@ export const DEFAULT_KANA_MCP_CONFIG: KanaMcpConfig = {
 
 const ROOT_KEYS = new Set(["mcpServers"]);
 const STDIO_SERVER_KEYS = new Set([
+  "description",
   "type",
   "command",
   "args",
@@ -65,6 +67,7 @@ const STDIO_SERVER_KEYS = new Set([
   "excludeTools",
 ]);
 const HTTP_SERVER_KEYS = new Set([
+  "description",
   "type",
   "url",
   "proxy",
@@ -202,10 +205,12 @@ function parseCommonServerConfig(
   name: string,
   server: Record<string, unknown>,
 ): KanaMcpCommonServerConfig {
+  const description = readOptionalNonBlankString(server.description, `${name}.description`);
   const includeTools = readOptionalToolNames(server.includeTools, `${name}.includeTools`);
   const excludeTools = readOptionalToolNames(server.excludeTools, `${name}.excludeTools`);
 
   return {
+    ...(description === undefined ? {} : { description }),
     required: readBoolean(server.required, false, `${name}.required`),
     startupTimeoutMs: readPositiveInteger(
       server.startupTimeoutMs,

@@ -50,7 +50,7 @@ Inside `src/kana`, domain directories remain distinct: `config`, `conversation`,
 
 `src/main.ts` delegates to `runCli`. Commands either perform a bounded operation—installation, reset, authentication, Skills management, update—or launch one of the two conversation frontends. Configuration and command semantics are documented in [Configuration and installation](configuration.md), [Headless execution](headless.md), and [Release process](releasing.md).
 
-`KanaConversationHost` is the frontend-shared product boundary. It creates or restores hosted sessions, composes model and tool capabilities, binds persistence and logging, and exposes transitions used by `ConversationRuntime`. `createKanaAgent` assembles one selected model, stable prompt sources, effective runtime policy, built-in tools, and the current replaceable external-tool snapshot.
+`KanaConversationHost` is the frontend-shared product boundary. It creates or restores hosted sessions, composes model and tool capabilities, binds persistence and logging, and exposes transitions used by `ConversationRuntime`. `createKanaAgent` assembles one selected model, stable prompt sources, effective runtime policy, built-in tools, and the current MCP registry capability.
 
 The TUI composes controllers over `ConversationRuntime`; headless mode projects the same runtime into text or versioned JSONL. Frontend behavior may differ, but Agent execution, input ordering, Goals, session transitions, and cleanup remain shared. See [Conversation runtime](conversation-runtime.md), [TUI interaction](tui.md), [Terminal rendering](terminal-rendering.md), and [Headless execution](headless.md).
 
@@ -58,9 +58,9 @@ The TUI composes controllers over `ConversationRuntime`; headless mode projects 
 
 Normal and clean launches pass an explicit mode through the frontend, host, and every rebuilt Agent. Normal mode may load project instructions, memory, Skills, persistence, accounting, and MCP. Clean mode keeps runtime configuration, environment, authentication, approval, and core tools, but removes durable session resources and optional project capabilities. The complete user-visible contract belongs to [Configuration and installation](configuration.md).
 
-Interactive startup makes the chosen session visible before connecting selected MCP servers, then rebuilds the Agent with discovered tools. Headless startup performs the corresponding host initialization without TUI projection. Both reject clean-mode resume and use the same host invariants.
+Interactive startup makes the chosen session visible before connecting selected MCP servers, then rebuilds the Agent with `mcp_activate` and `mcp_call`; remote schemas remain in the internal catalog. Headless startup performs the corresponding host initialization without TUI projection. Both reject clean-mode resume and use the same host invariants.
 
-Shutdown flows from frontend to shared runtime, hosted session resources, background product work, and external-tool managers before the terminal or process completes. Each owner makes its close operation idempotent and prevents queued work from reviving a closed resource. Detailed ordering belongs to [Conversation runtime](conversation-runtime.md), [MCP](mcp.md), and the frontend documents.
+Shutdown flows from frontend to shared runtime, hosted session resources, background product work, and the MCP runtime before the terminal or process completes. Each owner makes its close operation idempotent and prevents queued work from reviving a closed resource. Detailed ordering belongs to [Conversation runtime](conversation-runtime.md), [MCP](mcp.md), and the frontend documents.
 
 ## Conversation data flow
 

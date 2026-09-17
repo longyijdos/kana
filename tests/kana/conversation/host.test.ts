@@ -230,16 +230,15 @@ describe("Kana conversation host", () => {
         });
       },
       createMcpRuntime: (() => ({
-        tools: [],
+        registry: undefined,
         diagnostics: [],
         selectedServerIds: [],
         start: async () => {
           mcpStartCount += 1;
-          return { tools: [], diagnostics: [], selectedServerIds: [] };
+          return { diagnostics: [], selectedServerIds: [] };
         },
-        reload: async () => ({ tools: [], diagnostics: [], selectedServerIds: [] }),
+        reload: async () => ({ diagnostics: [], selectedServerIds: [] }),
         close: async () => {},
-        getToolSource: () => undefined,
       })) as never,
     });
     const sessionId = host.initialSession?.metadata.id;
@@ -249,7 +248,7 @@ describe("Kana conversation host", () => {
 
     expect(seenLaunchModes).toEqual(["clean"]);
     expect(mcpStartCount).toBe(0);
-    expect(mcpSnapshot).toEqual({ tools: [], diagnostics: [], selectedServerIds: [] });
+    expect(mcpSnapshot).toEqual({ diagnostics: [], selectedServerIds: [] });
     expect(host.loadMcpServers()).toEqual([]);
     expect(() => host.loadMemory("global")).toThrow("Memory is unavailable in clean mode.");
     await expect(
