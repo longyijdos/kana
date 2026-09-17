@@ -59,7 +59,7 @@ Kana 自有对象 schema 使用 `additionalProperties: false`，未声明参数�
 
 每个并行组使用有界滚动池。调用按模型顺序 claim 并串行进入审批，同时运行的调用 body 不超过 `maxParallelToolCalls`。Start、update 和 end event 都按 `toolCallId` 关联并遵循物理时间，因此后面的快速调用可能先显示完成。独立 result slot 会等待模型顺序后才写入 journal 并进入下一请求，保证 replay 确定性。
 
-有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 默认 300000 ms；Kana 通过 `agent.tool_deadline_ms` 默认配置为 660000 ms。`bash.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
+有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 与 Kana 的 `agent.tool_deadline_ms` 均默认 300000 ms；`bash` 自行声明 121000 ms deadline，使其两分钟的 command ceiling 仍通过 bash 自身的超时处理结束。`bash.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
 
 Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补充并中止活动 sibling signal。尚未启动的调用获得 canceled 结果；已启动调用获得有限取消宽限期。宽限期内结束会成为 `canceled` 或 `timed_out`，之后迟到的 return 不能覆盖该结果。
 
@@ -119,7 +119,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 `view_image` 与用户附件共用 decoder 和大小限制。支持的 JPEG、PNG 与 WebP 保持 provider-ready；其它解码格式变成静态 PNG，动画输入使用解码后的首帧。
 
-`bash` 断开 stdin，并把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入。前台调用默认 command timeout 为 30000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整最终 stream 仍进入通用结果策略。
+`bash` 断开 stdin，并把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入。前台调用默认 command timeout 为 30000 ms，最大接受 120000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整最终 stream 仍进入通用结果策略。
 
 每条命令在独立进程组中运行。前台执行等待整个进程组，而不只是顶层 shell，因此裸 `command &` 不会逃过正常取消或 timeout；显式 daemonize 到另一个 process session 仍可能离开该边界。非 0 exit code 是已完成命令结果，不是工具基础设施错误；timeout 使用 `null` exit code 与 `isError: true`。
 

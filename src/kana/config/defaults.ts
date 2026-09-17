@@ -2,9 +2,9 @@ import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "@/agent";
 import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tool-names";
 import type { KanaConfig } from "./contracts";
 
-// Keep the outer tool deadline above bash's ten-minute command ceiling so
-// bash can terminate the process tree and report its own timeout result.
-const DEFAULT_KANA_AGENT_TOOL_DEADLINE_MS = 11 * 60 * 1000;
+// Tools that own a longer runtime, such as bash, declare their own
+// execution.deadlineMs, so this only bounds tools without one.
+const DEFAULT_KANA_AGENT_TOOL_DEADLINE_MS = 5 * 60 * 1000;
 
 export const DEFAULT_KANA_CONFIG: KanaConfig = {
   provider: {

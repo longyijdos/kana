@@ -59,7 +59,7 @@ Parallel execution requires both Agent policy and model metadata to enable paral
 
 Each parallel group uses a bounded rolling pool. Calls are claimed and enter serial approval in model order, while at most `maxParallelToolCalls` invocation bodies run at once. Start, update, and end events remain correlated by `toolCallId` and follow physical timing, so a later fast call may visibly finish first. Independent result slots wait for model order before journal commit and the next request, keeping replay deterministic.
 
-The effective deadline comes from `tool.execution.deadlineMs`, then the Agent default. The reusable runtime defaults to 300000 ms; Kana defaults to 660000 ms through `agent.tool_deadline_ms`. A call-specific argument such as `bash.timeoutMs` may impose a narrower operation limit inside that outer boundary.
+The effective deadline comes from `tool.execution.deadlineMs`, then the Agent default. The reusable runtime and Kana's `agent.tool_deadline_ms` both default to 300000 ms; `bash` declares its own 121000 ms deadline so its two-minute command ceiling terminates through bash's own timeout handling. A call-specific argument such as `bash.timeoutMs` may impose a narrower operation limit inside that outer boundary.
 
 Run abort, a tool deadline, or an internal scheduler failure immediately stops pool replenishment and aborts active sibling signals. Calls not yet started receive canceled results. Started calls receive a finite cancellation grace period. Settlement within it becomes `canceled` or `timed_out`; a later return cannot replace that outcome.
 
@@ -119,7 +119,7 @@ File tools and `bash` resolve relative paths against their configured root, whic
 
 `view_image` shares the user-attachment decoder and size limits. Supported encoded JPEG, PNG, and WebP remain provider-ready; other decoded formats become static PNG, and animated input uses its decoded first frame.
 
-`bash` disconnects stdin and shadows `sudo` with `sudo -n` so password prompts cannot take TUI input. Foreground calls default to a 30000 ms command timeout and publish bounded trailing stdout/stderr snapshots roughly every 100 ms. Complete final streams still enter the common result policy.
+`bash` disconnects stdin and shadows `sudo` with `sudo -n` so password prompts cannot take TUI input. Foreground calls default to a 30000 ms command timeout, accept at most 120000 ms, and publish bounded trailing stdout/stderr snapshots roughly every 100 ms. Complete final streams still enter the common result policy.
 
 Each command runs in its own process group. Foreground execution waits for the group rather than only the top-level shell, so raw `command &` does not escape normal cancellation or timeout. Explicit daemonization into another process session may leave that boundary. A non-zero exit code is a completed command result, not a tool infrastructure error; timeout records a `null` exit code and `isError: true`.
 
