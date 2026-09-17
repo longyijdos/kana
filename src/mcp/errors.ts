@@ -1,3 +1,10 @@
+export class McpAuthorizationError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "McpAuthorizationError";
+  }
+}
+
 class McpClientError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);

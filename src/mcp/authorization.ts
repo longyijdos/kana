@@ -3,7 +3,7 @@ import {
   extractWWWAuthenticateParams,
 } from "@modelcontextprotocol/client";
 import type { OAuthFetch } from "@/oauth";
-import { McpTransportError } from "./transport";
+import { McpAuthorizationError } from "./errors";
 
 export type McpBearerChallenge = {
   resourceMetadataUrl?: string;
@@ -11,7 +11,7 @@ export type McpBearerChallenge = {
   error?: string;
 };
 
-export class McpAuthorizationChallengeError extends McpTransportError {
+export class McpAuthorizationChallengeError extends McpAuthorizationError {
   constructor(
     public readonly status: 401 | 403,
     public readonly kind: "authorization_required" | "insufficient_scope",
@@ -88,12 +88,12 @@ export async function discoverMcpProtectedResource(
       },
     );
     if (canonicalizeMcpResource(metadata.resource) !== canonical) {
-      throw new McpTransportError(
+      throw new McpAuthorizationError(
         "MCP protected resource metadata does not match the configured resource.",
       );
     }
     if (!metadata.authorization_servers?.length) {
-      throw new McpTransportError(
+      throw new McpAuthorizationError(
         "MCP protected resource metadata did not provide an authorization server.",
       );
     }
@@ -101,7 +101,7 @@ export async function discoverMcpProtectedResource(
       metadata.bearer_methods_supported &&
       !metadata.bearer_methods_supported.includes("header")
     ) {
-      throw new McpTransportError("MCP OAuth requires Authorization-header Bearer tokens.");
+      throw new McpAuthorizationError("MCP OAuth requires Authorization-header Bearer tokens.");
     }
     options.onDiagnostic?.({
       event: "mcp.authorization_metadata_discovery_succeeded",
@@ -135,7 +135,7 @@ export function selectMcpAuthorizationScopes(
 export function canonicalizeMcpResource(value: string): string {
   const resource = new URL(value);
   if (resource.protocol !== "https:" || resource.username || resource.password || resource.hash) {
-    throw new McpTransportError(
+    throw new McpAuthorizationError(
       "MCP OAuth resource must use HTTPS without credentials or a fragment.",
     );
   }
