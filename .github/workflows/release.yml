@@ -18,7 +18,7 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
       - uses: oven-sh/setup-bun@v2
@@ -63,7 +63,7 @@ jobs:
           - asset: kana-linux-x64
             target: bun-linux-x64-baseline
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
       - uses: oven-sh/setup-bun@v2
@@ -72,7 +72,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun build --compile --define __KANA_DISTRIBUTION__='"direct"' --target=${{ matrix.target }} --outfile=dist/${{ matrix.asset }} src/main.ts
       - run: cd dist && sha256sum ${{ matrix.asset }} > ${{ matrix.asset }}.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           path: |
@@ -88,10 +88,10 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
