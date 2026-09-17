@@ -149,7 +149,7 @@ web_search = true
 image_input = true
 max_turns = -1
 goal_max_rounds = 8
-tool_deadline_ms = 660000
+tool_deadline_ms = 300000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 tool_result_artifacts = true
@@ -196,7 +196,7 @@ max_chars = 6000
 web_search = false
 image_input = false
 max_turns = -1
-tool_deadline_ms = 660000
+tool_deadline_ms = 300000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 
@@ -254,7 +254,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `agent.tools` | 唯一内置工具名数组 | 全部可配置内置工具 | 选择 conversation Agent 可以调用的内置工具；空数组禁用全部可配置工具。MCP 入口 `mcp_list_tools` 与 `mcp_call` 也受此选择控制；`update_goal`、provider 能力和 TUI 直接操作不在范围内。 |
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
 | `agent.goal_max_rounds` | 正整数 | `8` | 单个 `/goal` 最多允许的完整 Agent run 数，包含首次 run。 |
-| `agent.tool_deadline_ms` | 正整数 | `660000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
+| `agent.tool_deadline_ms` | 正整数 | `300000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
 | `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
 | `agent.max_parallel_tool_calls` | 正整数 | `4` | 一个相邻并行安全组内可同时执行的工具调用 body 上限。 |
 | `agent.tool_result_artifacts` | 布尔值 | `true` | 将超大的非 `read` 文本结果保存为私有 session artifact，并给模型提供有界、可取回的预览。 |

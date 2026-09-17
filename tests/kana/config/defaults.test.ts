@@ -26,6 +26,8 @@ describe("Kana config defaults", () => {
     expect(DEFAULT_KANA_CONFIG.memory.agent.webSearch).toBe(false);
     expect(DEFAULT_KANA_CONFIG.memory.agent.imageInput).toBe(false);
     expect(DEFAULT_KANA_CONFIG.agent.goalMaxRounds).toBe(8);
+    expect(DEFAULT_KANA_CONFIG.agent.toolDeadlineMs).toBe(300_000);
+    expect(DEFAULT_KANA_CONFIG.memory.agent.toolDeadlineMs).toBe(300_000);
     expect(DEFAULT_KANA_CONFIG.agent.toolResultArtifacts).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.backgroundJobs).toEqual({
       maxConcurrent: 4,

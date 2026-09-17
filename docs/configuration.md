@@ -149,7 +149,7 @@ web_search = true
 image_input = true
 max_turns = -1
 goal_max_rounds = 8
-tool_deadline_ms = 660000
+tool_deadline_ms = 300000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 tool_result_artifacts = true
@@ -196,7 +196,7 @@ max_chars = 6000
 web_search = false
 image_input = false
 max_turns = -1
-tool_deadline_ms = 660000
+tool_deadline_ms = 300000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 
@@ -254,7 +254,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 | `agent.tools` | Unique array of built-in tool names | All configurable built-in tools | Selects which built-in tools the conversation Agent may call. An empty array disables them all. The MCP gateways `mcp_list_tools` and `mcp_call` follow this selection. `update_goal`, provider capabilities, and direct TUI operations are outside it. |
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
 | `agent.goal_max_rounds` | Positive integer | `8` | Maximum complete Agent runs admitted for one `/goal`, including its initial run. |
-| `agent.tool_deadline_ms` | Positive integer | `660000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
+| `agent.tool_deadline_ms` | Positive integer | `300000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |
 | `agent.parallel_tool_calls` | Boolean | `true` | Whether the model may propose and actually execute safe tool calls concurrently; always disabled when selected-model metadata does not support it. |
 | `agent.max_parallel_tool_calls` | Positive integer | `4` | Maximum concurrently executing tool bodies within one adjacent parallel-safe group. |
 | `agent.tool_result_artifacts` | Boolean | `true` | Save oversized non-`read` text results as private session artifacts and give the model a bounded retrievable preview. |
