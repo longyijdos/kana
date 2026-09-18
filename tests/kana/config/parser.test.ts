@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import {
-  DEFAULT_KANA_CONFIG,
-  getKanaConfigPaths,
-  loadKanaConfig,
-  resolveKanaMemoryAgentConfig,
-} from "@/kana";
+import { DEFAULT_KANA_CONFIG, getKanaConfigPaths, loadKanaConfig } from "@/kana";
+import { resolveKanaMemoryAgentConfig } from "@/kana/config";
 import { cleanupConfigTempDirs, createTempEnv } from "./config-fixture";
 
 type InvalidConfigCase = readonly [label: string, config: string, expectedError: string];

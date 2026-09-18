@@ -9,7 +9,6 @@ import {
   KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,
   KANA_TOOL_APPROVAL_MODES,
-  type KanaAgentRuntimeConfig,
   type KanaConfig,
   type KanaLogLevel,
   type KanaModelConfig,
@@ -96,25 +95,6 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       level: config.logging.level,
     },
   });
-}
-
-// Memory consolidation declares only the model fields it overrides; every other
-// field follows the conversation Agent's model.
-export function resolveKanaMemoryAgentConfig(
-  config: KanaConfig,
-): KanaAgentRuntimeConfig & { model: KanaModelConfig } {
-  const { model } = config.memory.agent;
-
-  return {
-    ...config.memory.agent,
-    model: {
-      provider: model.provider ?? config.agent.model.provider,
-      name: model.name ?? config.agent.model.name,
-      reasoningEffort: model.reasoningEffort ?? config.agent.model.reasoningEffort,
-      maxOutputTokens: model.maxOutputTokens ?? config.agent.model.maxOutputTokens,
-      contextLimit: model.contextLimit ?? config.agent.model.contextLimit,
-    },
-  };
 }
 
 function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {

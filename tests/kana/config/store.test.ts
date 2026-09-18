@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { createKanaConfigStore, getKanaConfigPaths, resolveKanaMemoryAgentConfig } from "@/kana";
+import { createKanaConfigStore, getKanaConfigPaths } from "@/kana";
+import { resolveKanaMemoryAgentConfig } from "@/kana/config";
 import { cleanupConfigTempDirs, createTempEnv } from "./config-fixture";
 
 afterEach(cleanupConfigTempDirs);

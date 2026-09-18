@@ -37,7 +37,6 @@ export {
   loadKanaConfig,
   type ResetKanaConfigResult,
   resetKanaConfig,
-  resolveKanaMemoryAgentConfig,
 } from "./config";
 export { formatKanaEnvironmentContext } from "./context";
 export {
