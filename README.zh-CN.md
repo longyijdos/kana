@@ -86,7 +86,7 @@ TUI 中的常用命令：
 | 命令 | 作用 |
 | --- | --- |
 | `/model` | 切换供应商、模型以及模型支持的推理强度。 |
-| `/resume`、`/fork <任务>` | 恢复旧会话，或从当前上下文分叉。 |
+| `/resume`、`/fork <任务>` | 恢复、分叉或删除旧会话。 |
 | `/mcp`、`/skills` | 管理当前启用的 MCP server 和全局 Skills。 |
 | `/agents` | 查看 subagent 角色卡、检查 child transcript，并管理当前 session 的运行。 |
 | `/jobs`、`/todo` | 管理 session 后台任务，并查看持久化的 session checklist。 |

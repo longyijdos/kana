@@ -89,8 +89,7 @@ Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-inp
 | `/clear` | 清空 transcript 与编辑器，不删除会话。 |
 | `/new` | 新建空会话并重建 Agent。 |
 | `/fork <prompt>` | 从当前 Agent 历史创建分叉会话后发送 prompt。 |
-| `/resume [id]` | 恢复指定会话或打开选择器。 |
-| `/delete` | 选择并确认删除会话。 |
+| `/resume [id]` | 恢复或删除已保存的会话。 |
 | `/skills` | 管理全局 Skill 的自动发现状态并重建 Agent 系统提示词；所有 Skill 仍可通过 `@` 显式调用。 |
 | `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
 | `/schedule` | 查看、添加、刷新或删除当前 session 的进程内定时消息。 |
@@ -109,7 +108,7 @@ Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-inp
 
 `/usage` 会让 token 标签、数值和比例条保持稳定列位。Runs 区域把 main、subagent 和自动/手动 memory usage 分开；按模型明细会显示 token 总数，并根据当前可见数据动态计算数字列宽，因此更大的次数、token 总数或更长的模型名不会推动相邻数值错位。各类 outcome 仍保持紧凑的单行摘要，底部视图较窄时可能被截断。
 
-Clean 模式中 `/skills`、`/mcp`、`/memory`、`/agents`、`/fork`、`/resume` 和 `/delete` 保留为可发现命令，但执行时会显示明确的不可用错误。Skill 发现被完全绕过，因此以 `@` 开头不会出现匹配建议或调用展开。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/jobs`、`/goal`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用。`/schedule` 消息、Job 与 `/goal` 控制状态也只存在于当前进程。`/todo` 读取进程内列表，`/model` 不写回配置文件。
+Clean 模式中 `/skills`、`/mcp`、`/memory`、`/agents`、`/fork` 和 `/resume` 保留为可发现命令，但执行时会显示明确的不可用错误。Skill 发现被完全绕过，因此以 `@` 开头不会出现匹配建议或调用展开。`/usage` 仍显示 Session、Project 和 Global 三个选项；选择 Session 会显示不可用错误，另外两个范围仍可读取历史汇总。`/new`、`/schedule`、`/jobs`、`/goal`、`/todo`、`/image`、`/approval`、`/compact`、`/model` 和本地 Shell 可在临时会话内使用。`/schedule` 消息、Job 与 `/goal` 控制状态也只存在于当前进程。`/todo` 读取进程内列表，`/model` 不写回配置文件。
 
 ## 临时旁路提问
 
@@ -135,7 +134,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 - `BackgroundActivityController` 绑定当前 session 的 Background Job 与 Subagent client，把 `running`、`stopping` 记录投影为编辑器的 `Background` 预览。它在 session 切换时重新绑定，无活动任务时不渲染任何行，也绝不确认、取消或改变所显示的任务。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前读取当前有效审批模式。`/approval` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。同时到达的 main 与 child 请求会带准确 Agent 身份进入一条 FIFO 队列；child 提示包含 profile 和短 ID，取消时只移除对应请求。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、bash 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。`mcp_call` 审批从入口 envelope 读取 server ID 与远端工具原名，并显示格式化完整嵌套参数，长参数沿用详情分页；它们不提供持久信任选项。选择“拒绝”或按 `Esc` 会中止发起请求的 run，选择 always 仅把 bash 命令加入精确白名单。
-- `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和 MCP 能力刷新；其内部的 `SessionOverlayController` 用恢复列表或删除确认替换编辑器。
+- `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和 MCP 能力刷新；其内部的 `SessionOverlayController` 持有会话列表，删除通过 `DeleteSessionConfirmation` 完成。
 - `SkillManagerController` 用 global Skill 列表替换编辑器。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次，并用原消息历史重建一次 Agent，未变化则直接关闭。持久化失败时视图保持打开。
 - `McpServerManagerController` 用已配置 MCP server 的 checkbox 替换 editor。`Enter` 只修改本地草稿；选中 OAuth HTTP server 时，`A` 打开认证子菜单，可授权、重新授权或退出登录，进行中的浏览器授权可用 `Esc` 中止。授权 URL、成功、失败或取消状态写入 transcript；退出登录会禁用该 server。返回列表后，主 `Esc` 才应用草稿；选择或已启用 server 的凭据发生变化时只触发一次完整 runtime reload。持久化失败时视图保持打开。组件显示 server ID、transport、OAuth 状态，以及 stdio 的完整命令行（`command` 加 `args`）或 HTTP URL，但不会接收环境变量、HTTP headers 或 token。
 - `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request；`/approval` 可选择 Always ask、Ask unless trusted 或 Never ask，最后一项使用与删除会话相同的默认否定二次确认；`/model` 先选择 provider 与 model，再显示该模型 metadata 声明的 reasoning efforts。没有 reasoning metadata 的模型会跳过最后一步，`none` 显示为 `Off`。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
@@ -146,7 +145,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 
-运行期间，`/quit`、`/help`、`/btw`、`/todo`、`/tools`、`/usage`、`/image`、`/schedule`、`/jobs` 和 `/agents` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可查看并停止当前 session 的 Job，但不会确认其完成；`/agents` 可查看或取消 session-owned child。`/clear`、`/new`、`/fork`、`/resume`、`/delete`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
+运行期间，`/quit`、`/help`、`/btw`、`/todo`、`/tools`、`/usage`、`/image`、`/schedule`、`/jobs` 和 `/agents` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可查看并停止当前 session 的 Job，但不会确认其完成；`/agents` 可查看或取消 session-owned child。`/clear`、`/new`、`/fork`、`/resume`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
 
 ## 通知
 

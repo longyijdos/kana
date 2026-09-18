@@ -18,7 +18,6 @@ export type SlashCommandControllerOptions = {
   forkSession: (prompt: string) => void;
   resumeSession: (sessionId: string) => void;
   openResumePicker: () => void;
-  openDeletePicker: () => void;
   openSkillManager: () => void;
   openMcpServerManager: () => void;
   openScheduledMessageManager: () => void;
@@ -86,9 +85,6 @@ export class SlashCommandController {
         } else {
           this.options.openResumePicker();
         }
-        break;
-      case "delete":
-        this.runWithoutArguments(command, () => this.options.openDeletePicker());
         break;
       case "skills":
         this.runWithoutArguments(command, () => this.options.openSkillManager());

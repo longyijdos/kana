@@ -8,7 +8,6 @@ export type PromptCommandName =
   | "new"
   | "fork"
   | "resume"
-  | "delete"
   | "skills"
   | "mcp"
   | "schedule"
@@ -101,12 +100,7 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
     name: "resume",
     availability: "idle",
     argumentSyntax: "[id]",
-    description: "Switch to a saved session.",
-  },
-  {
-    name: "delete",
-    availability: "idle",
-    description: "Delete a saved session.",
+    description: "Resume or delete a saved session.",
   },
   {
     name: "skills",

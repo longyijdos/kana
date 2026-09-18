@@ -491,14 +491,6 @@ export class KanaTuiApp {
         }
         this.sessions.openResume();
       },
-      openDeletePicker: () => {
-        this.editor.clear();
-        if (cleanMode) {
-          this.showSavedSessionsUnavailable();
-          return;
-        }
-        this.sessions.openDelete();
-      },
       openSkillManager: () => {
         this.editor.clear();
         this.openSkillManager();
