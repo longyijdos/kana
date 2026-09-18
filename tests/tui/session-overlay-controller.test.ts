@@ -139,8 +139,16 @@ describe("session overlay controller", () => {
     expect(harness.tui.getFocus()).not.toBe(harness.editor);
   });
 
-  test("keeps the picker open when the session is already gone", async () => {
-    const harness = createHarness({ sessions: [session], deleteSession: () => false });
+  test("refreshes the picker when the deletion reports no match", async () => {
+    const sessions = [session, secondSession];
+    const harness = createHarness({
+      sessions,
+      deleteSession: () => {
+        // Another process removed the session before this attempt resolved.
+        sessions.splice(0, 1);
+        return false;
+      },
+    });
 
     harness.controller.openResume();
     harness.press("K");
@@ -148,7 +156,11 @@ describe("session overlay controller", () => {
     harness.press("\r");
     await flush();
 
-    expect(harness.focused()).toContain("Sessions");
+    const picker = harness.focused();
+
+    expect(picker).toContain("Sessions");
+    expect(picker).not.toContain("Test session");
+    expect(selectedLine(picker)).toContain("Second session");
     expect(stripAnsi(harness.transcript.render(80).join("\n"))).toContain(
       "Session not found: session-1",
     );

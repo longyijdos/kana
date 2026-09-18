@@ -127,8 +127,8 @@ export class SessionOverlayController {
     );
     if (deleted) {
       this.options.updateStatus("idle", { activeTool: undefined });
-      picker?.replaceSessions(this.options.listSessions());
     }
+    picker?.replaceSessions(this.options.listSessions());
     this.restorePicker(picker);
   }
 
