@@ -1,6 +1,7 @@
 export {
   Agent,
   type AgentConfig,
+  type AgentStableContext,
   type AgentState,
 } from "./agent";
 export {

@@ -85,6 +85,16 @@ export type AgentState = {
   readonly estimatedContextTokens?: number;
 };
 
+export type AgentStableContext = {
+  model: Model;
+  system?: string;
+  messages: Message[];
+  imageInput: boolean;
+  contextLimit?: number;
+  maxOutputTokens?: number;
+  contextCheckpoint?: ContextCheckpoint;
+};
+
 type WritableAgentState = Omit<
   AgentState,
   | "isRunning"
@@ -148,6 +158,7 @@ export class Agent {
   private readonly maxParallelToolCalls: number;
   private readonly promptAssembly: PromptAssembly;
   private readonly toolResultPolicies: readonly ToolResultPolicy[];
+  private stableContextData: Pick<AgentStableContext, "system" | "messages" | "contextCheckpoint">;
 
   constructor(options: AgentConfig) {
     assertValidMaxTurns(options.maxTurns);
@@ -205,6 +216,11 @@ export class Agent {
     // rebuild the provider anchor that keeps the next-request estimate stable
     // after resume instead of falling back to a full local estimate.
     this.contextManager?.rehydrateUsageAnchor(this.stateData.messages);
+    this.stableContextData = {
+      system: this.stateData.system,
+      messages: structuredClone(this.stateData.messages),
+      contextCheckpoint: this.contextManager?.checkpoint,
+    };
     this.log("debug", "agent.parallel_tool_calls_configured", {
       requested: parallelToolCallsRequested,
       supported: options.model.metadata.supportsParallelToolCalls,
@@ -249,6 +265,16 @@ export class Agent {
         messages: this.stateData.messages,
         tools: this.stateData.tools,
       }),
+    };
+  }
+
+  getStableContext(): AgentStableContext {
+    return {
+      model: this.stateData.model,
+      imageInput: this.imageInput,
+      contextLimit: this.contextManager?.contextLimit,
+      maxOutputTokens: this.contextManager?.maxOutputTokens,
+      ...structuredClone(this.stableContextData),
     };
   }
 
@@ -330,6 +356,7 @@ export class Agent {
         });
         this.contextManager?.adopt(runContextManager);
       }
+      this.updateStableContext(this.createContextSnapshot(), this.contextManager);
       await this.processEvent({
         type: "context_compacted",
         reason: committed.reason,
@@ -411,6 +438,7 @@ export class Agent {
         );
         journalStarted = true;
         this.stateData.messages = [...this.stateData.messages, ...structuredClone(promptMessages)];
+        this.updateStableContext(this.createContextSnapshot(), this.contextManager);
         this.resetToolResultPolicyFor(promptMessages);
         this.log("info", "agent.run_started", {
           promptMessageCount: promptMessages.length,
@@ -436,6 +464,7 @@ export class Agent {
               }
             },
             consumeTurnInputs: () => this.consumeSteeringInputs(commitMessage),
+            onStableContext: (context) => this.updateStableContext(context, runContextManager),
           }),
           async (event) => {
             if (event.type === "agent_end") {
@@ -588,6 +617,18 @@ export class Agent {
     this.clearInbox();
     this.resetToolResultPolicy();
     this.contextManager?.reset();
+    this.updateStableContext(this.createContextSnapshot(), this.contextManager);
+  }
+
+  private updateStableContext(
+    context: Pick<AgentContext, "system" | "messages">,
+    contextManager: ContextManager | undefined,
+  ): void {
+    this.stableContextData = {
+      system: context.system,
+      messages: context.messages,
+      contextCheckpoint: contextManager?.checkpoint,
+    };
   }
 
   private createContextSnapshot(): AgentContext {
@@ -603,7 +644,7 @@ export class Agent {
     contextManager: ContextManager | undefined,
     hooks: Pick<
       AgentLoopConfig,
-      "onMessageCommitted" | "onCompactionCommitted" | "consumeTurnInputs"
+      "onMessageCommitted" | "onCompactionCommitted" | "consumeTurnInputs" | "onStableContext"
     > = {},
   ): AgentLoopConfig {
     return {

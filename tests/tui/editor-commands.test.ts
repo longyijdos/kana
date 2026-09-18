@@ -32,9 +32,11 @@ describe("prompt commands", () => {
     expect(createRandomPromptPlaceholder(() => (PROMPT_COMMANDS.length + 1) / helpEntryCount)).toBe(
       `Try ${PROMPT_TEMPLATE_SHORTCUT.input} — ${PROMPT_TEMPLATE_SHORTCUT.description}`,
     );
-    expect(createRandomPromptPlaceholder(() => 6 / helpEntryCount)).toBe(
-      "Try /delete — Delete a saved session.",
-    );
+    expect(
+      createRandomPromptPlaceholder(
+        () => PROMPT_COMMANDS.findIndex((command) => command.name === "delete") / helpEntryCount,
+      ),
+    ).toBe("Try /delete — Delete a saved session.");
   });
   test("lists commands after slash", () => {
     expect(getCommandState("/")).toMatchObject({
@@ -47,6 +49,9 @@ describe("prompt commands", () => {
         },
         {
           name: "help",
+        },
+        {
+          name: "btw",
         },
         {
           name: "clear",
@@ -140,6 +145,18 @@ describe("prompt commands", () => {
       name: "help",
       arguments: "",
       raw: "/help",
+    });
+    expect(createCommandSubmit("/btw", undefined)).toEqual({
+      type: "command",
+      name: "btw",
+      arguments: "",
+      raw: "/btw",
+    });
+    expect(createCommandSubmit("/btw Why this approach?", undefined)).toEqual({
+      type: "command",
+      name: "btw",
+      arguments: "Why this approach?",
+      raw: "/btw Why this approach?",
     });
     expect(createCommandSubmit("/new", undefined)).toEqual({
       type: "command",

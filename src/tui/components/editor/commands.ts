@@ -3,6 +3,7 @@ import type { UserImage } from "@/core";
 export type PromptCommandName =
   | "quit"
   | "help"
+  | "btw"
   | "clear"
   | "new"
   | "fork"
@@ -73,6 +74,12 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
     name: "help",
     availability: "always",
     description: "Show commands and shortcuts.",
+  },
+  {
+    name: "btw",
+    availability: "always",
+    argumentSyntax: "[question]",
+    description: "Ask a temporary side question or reopen its answer.",
   },
   {
     name: "clear",

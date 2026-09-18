@@ -85,6 +85,7 @@ An input can contain up to 10 images. The editor renders attachment count, dimen
 | Slash command | Behavior |
 | --- | --- |
 | `/help` | Open commands and shortcuts in a read-only bottom view. |
+| `/btw [question]` | Ask a temporary side question, or reopen the latest running/completed answer when no question is supplied. |
 | `/clear` | Clear transcript and editor without deleting the session. |
 | `/new` | Create an empty session and rebuild the Agent. |
 | `/fork <prompt>` | Create a fork from current Agent history, then send the prompt. |
@@ -109,6 +110,14 @@ An input can contain up to 10 images. The editor renders attachment count, dimen
 The `/usage` view keeps token labels, values, and proportional bars in stable columns. The Runs section separates main, subagent, and automatic/manual memory usage; the per-model breakdown shows token totals and sizes its numeric columns from the visible data, so larger counts, token totals, or model names do not shift neighboring values. Outcome counters remain a compact inline summary and may be truncated in a narrow bottom view.
 
 In clean mode, `/skills`, `/mcp`, `/memory`, `/agents`, `/fork`, `/resume`, and `/delete` remain discoverable commands but report an explicit unavailable error when invoked. Skill discovery is bypassed, so a leading `@` has no matching suggestions or invocation expansion. `/usage` still presents Session, Project, and Global; choosing Session reports that it is unavailable, while the other two scopes can still read historical aggregates. `/new`, `/schedule`, `/jobs`, `/goal`, `/todo`, `/image`, `/approval`, `/compact`, `/model`, and the local Shell remain usable inside the temporary conversation. `/schedule` messages, Jobs, and `/goal` control state likewise exist only in the current process. `/todo` reads the in-process list, and `/model` leaves the configuration file unchanged.
+
+## Temporary side questions
+
+`/btw <question>` starts one ephemeral query using the main Agent's latest stable context, model, system instructions, image-input policy, and context/output limits. Its bare Agent has no tools, hosted web search, inbox delivery, journal, session binding, or product commit callbacks. Additional system instructions require a direct answer, treat prior tool calls and runtime state as reference context, and prohibit continuing the main task or simulating tool execution, including DSML tool-call markup. It reuses an existing main checkpoint or summary without generating a new summary, and never changes the main messages or checkpoint, writes the session transcript, or steers the active run. Clean mode supports the same interaction.
+
+BTW replaces the editor with a streaming `ContentViewer` while the main transcript continues updating above it. Up/Down scroll, Left/Right and PageUp/PageDown page, and Home/End jump. Output follows the bottom until Up, Left, PageUp, or Home pauses following; End resumes it. Esc hides the viewer without canceling the request, and `/btw` reopens the same viewer with its scroll state intact. Only one BTW request may run; a new question is rejected until it settles, then replaces the previous slot. Request errors remain inside the BTW viewer. Session changes clear the slot and cancel its request; shutdown also awaits cancellation.
+
+Approval retains the existing focus policy: it waits while BTW is visible. Esc restores the waiting approval before the editor; after answering it, `/btw` reopens BTW manually.
 
 ## Controllers and focus
 
@@ -136,7 +145,7 @@ In clean mode, `/skills`, `/mcp`, `/memory`, `/agents`, `/fork`, `/resume`, and 
 - `LocalShellController` reuses bash Tool presentation but never requests approval.
 - `MemoryCompactController` runs cancellable full memory consolidation and writes a summary into transcript.
 
-While running, `/quit`, `/help`, `/todo`, `/tools`, `/usage`, `/image`, `/schedule`, `/jobs`, and `/agents` remain available. `/help`, `/usage`, and read-only viewers preserve the current Agent run phase; `/image` only attaches to the editor draft for later queued input; `/schedule` manages pending and scheduled input without interrupting the current turn; `/tools` snapshots tool history when it opens; `/jobs` inspects and stops session-owned Jobs without acknowledging their completion; `/agents` inspects or cancels session-owned children. `/clear`, `/new`, `/fork`, `/resume`, `/delete`, `/skills`, `/mcp`, `/goal`, `/approval`, `/model`, `/memory`, and `/compact` report an unavailable error instead of being silently ignored. Opening a bottom view changes focus; closing restores a waiting approval prompt first and otherwise returns to the editor. Bottom views do not preempt one another when an approval arrives.
+While running, `/quit`, `/help`, `/btw`, `/todo`, `/tools`, `/usage`, `/image`, `/schedule`, `/jobs`, and `/agents` remain available. `/help`, `/usage`, and read-only viewers preserve the current Agent run phase; `/image` only attaches to the editor draft for later queued input; `/schedule` manages pending and scheduled input without interrupting the current turn; `/tools` snapshots tool history when it opens; `/jobs` inspects and stops session-owned Jobs without acknowledging their completion; `/agents` inspects or cancels session-owned children. `/clear`, `/new`, `/fork`, `/resume`, `/delete`, `/skills`, `/mcp`, `/goal`, `/approval`, `/model`, `/memory`, and `/compact` report an unavailable error instead of being silently ignored. Opening a bottom view changes focus; closing restores a waiting approval prompt first and otherwise returns to the editor. Bottom views do not preempt one another when an approval arrives.
 
 `/compact` accepts no arguments. While idle, it forces compaction of the current conversation context without sending a user message.
 

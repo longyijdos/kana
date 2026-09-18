@@ -98,6 +98,8 @@ Agent 不会自行从 `next-turn` 启动新 run。Kana 的[对话运行时](conv
 
 `Agent.state` 暴露模型、已装配 system prompt 与工具、历史、inbox、当前运行状态、流式 assistant message、pending tool-call ID、context checkpoint 和最终错误的分离快照。`waitForIdle()` 覆盖 journal closure 与注入的后处理，不只等待 provider 和工具执行。
 
+`Agent.getStableContext()` 返回分离的消息、与消息配套的 context checkpoint、已装配 system prompt，以及当前模型、图片输入策略和上下文／输出上限。快照在初始 run 输入接受后、每次完整 `turn_end` 发布前，以及已消费的 `turn_input` 发布前推进。流式输出与单项工具提交不会推进快照；失败或截断响应中未执行的工具调用不能构成完整边界。Loop 独立于 journal-backed history 更新提供完整上下文。构造、reset 和成功的空闲手动压缩会初始化或刷新快照。
+
 ## 上下文预算与压缩
 
 `ContextManager` 在每次模型请求前从完整 Agent 历史创建独立 model projection。压缩不会删除 Agent 的原始 `messages`；它只把 projection 中较旧部分替换为一份累计摘要与保留的近期消息。

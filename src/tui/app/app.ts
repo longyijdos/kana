@@ -21,6 +21,7 @@ import type { KanaTuiAppOptions } from "./app-options";
 import { BackgroundActivityController } from "./background-activity-controller";
 import { BackgroundJobManagerController } from "./background-job-manager-controller";
 import { BottomAreaController } from "./bottom-area-controller";
+import { BtwController } from "./btw-controller";
 import { ContentViewerController } from "./content-viewer-controller";
 import { ContextCompactController } from "./context-compact-controller";
 import { ImageAttachmentController } from "./image-attachment-controller";
@@ -72,6 +73,7 @@ export class KanaTuiApp {
   private readonly toolApproval: ToolApprovalController;
   private readonly localShell: LocalShellController;
   private readonly contentViewer: ContentViewerController;
+  private readonly btw: BtwController;
   private readonly toolHistory: ToolHistoryController;
   private readonly slashCommands: SlashCommandController;
   private readonly slashCommandOptions: SlashCommandOptionsController;
@@ -233,6 +235,16 @@ export class KanaTuiApp {
     this.contentViewer = new ContentViewerController({
       bottomArea: this.bottomArea,
       transcript: this.transcript,
+    });
+    this.btw = new BtwController({
+      bottomArea: this.bottomArea,
+      getContext: () => this.conversation.getStableContext(),
+      requestRender: () => this.tui.requestRender(),
+      showError: (error) => this.showInteractionError(error),
+      getLogger: this.getLogger,
+      hyperlinks: this.hyperlinks,
+      renderLatex: this.renderLatex,
+      renderMermaid: this.renderMermaid,
     });
     this.informationViewer = new InformationViewerController({
       editor: this.editor,
@@ -440,6 +452,11 @@ export class KanaTuiApp {
       },
       showError: (error) => this.showInteractionError(error),
       showHelp: () => this.informationViewer.openHelp(),
+      openBtw: (question) => {
+        this.editor.clear();
+        this.contentViewer.close();
+        this.btw.handle(question);
+      },
       clear: () => {
         this.contentViewer.close();
         this.transcript.clear();
@@ -641,6 +658,7 @@ export class KanaTuiApp {
 
   private async stopInternal(): Promise<void> {
     this.getLogger().info("tui.stopped");
+    const btwSettled = this.btw.dispose();
     this.localShell.abort();
     this.memoryCompact.abort();
     this.scheduledMessageManager.close();
@@ -661,7 +679,7 @@ export class KanaTuiApp {
     // closed. Otherwise shutdown can turn a normal abort into an unrelated
     // connection error and leave the server uncertain about cancellation.
     try {
-      await this.conversation.close();
+      await Promise.all([this.conversation.close(), btwSettled]);
     } catch (error) {
       this.getLogger().error("tui.agent_shutdown_failed", { error });
     }
@@ -958,6 +976,7 @@ export class KanaTuiApp {
         break;
 
       case "session_changed":
+        void this.btw.dispose();
         this.queuedInputs.clear();
         this.backgroundActivity.bind();
         if (this.toolApproval.resetTemporaryMode() !== undefined) {
