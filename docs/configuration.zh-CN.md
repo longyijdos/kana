@@ -201,8 +201,6 @@ parallel_tool_calls = true
 max_parallel_tool_calls = 4
 
 [memory.agent.model]
-provider = "deepseek"
-name = "deepseek-flash"
 # Inherits [agent.model]. Uncomment a field to override it.
 # provider = "deepseek"
 # name = "deepseek-flash"

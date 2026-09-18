@@ -63,13 +63,7 @@ export type KanaAgentConfig = KanaAgentRuntimeConfig & {
   repeatedToolCalls: KanaRepeatedToolCallsConfig;
 };
 
-export type KanaMemoryModelConfig = {
-  provider?: KanaModelProvider;
-  name?: string;
-  reasoningEffort?: string;
-  maxOutputTokens?: number;
-  contextLimit?: number;
-};
+export type KanaMemoryModelConfig = Partial<KanaModelConfig>;
 
 type KanaMemoryAgentConfig = KanaAgentRuntimeConfig & {
   model: KanaMemoryModelConfig;
