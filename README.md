@@ -86,7 +86,7 @@ Useful commands inside the TUI:
 | Command | Action |
 | --- | --- |
 | `/model` | Switch provider, model, and reasoning effort when supported. |
-| `/resume`, `/fork <task>` | Resume or branch from earlier work. |
+| `/resume`, `/fork <task>` | Resume, branch, or delete earlier work. |
 | `/mcp`, `/skills` | Manage active MCP servers and global Skills. |
 | `/agents` | View subagent profiles, inspect child transcripts, and manage current-session runs. |
 | `/jobs`, `/todo` | Manage session-owned background jobs and inspect the durable session checklist. |

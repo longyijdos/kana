@@ -17,11 +17,16 @@ import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
 const SESSION_PICKER_VISIBLE_LIMIT = 10;
-const SESSION_PICKER_RESERVED_ROWS = 3;
+const SESSION_PICKER_RESERVED_ROWS = 4;
+const SESSION_PICKER_HELP = "Enter resume · ↑/↓ select · ←/→ page · K delete · Esc close";
 
 export type SessionPickerDecision =
   | {
       type: "select";
+      session: KanaSessionMetadata;
+    }
+  | {
+      type: "delete";
       session: KanaSessionMetadata;
     }
   | {
@@ -33,7 +38,7 @@ export class SessionPicker implements Component {
   private readonly maximumVisibleSessions: number;
 
   constructor(
-    private readonly sessions: KanaSessionMetadata[],
+    private sessions: KanaSessionMetadata[],
     private readonly finish: (decision: SessionPickerDecision) => void,
     visibleLimit = SESSION_PICKER_VISIBLE_LIMIT,
   ) {
@@ -44,6 +49,15 @@ export class SessionPicker implements Component {
   handleInput(data: string): void {
     if (isEscape(data)) {
       this.finish({ type: "cancel" });
+      return;
+    }
+
+    if (data === "k" || data === "K") {
+      const session = this.sessions[this.viewport.selectedIndex];
+
+      if (session) {
+        this.finish({ type: "delete", session });
+      }
       return;
     }
 
@@ -89,11 +103,17 @@ export class SessionPicker implements Component {
     }
   }
 
+  replaceSessions(sessions: KanaSessionMetadata[]): void {
+    this.sessions = sessions;
+    this.viewport.moveTo(this.viewport.selectedIndex, sessions.length);
+  }
+
   render(width: number, availableHeight?: number): string[] {
     const lines = [color("Sessions", tuiTheme.bottomTitle)];
 
     if (this.sessions.length === 0) {
       lines.push(dim("No saved sessions for this workspace."));
+      lines.push(dim(SESSION_PICKER_HELP));
       return lines;
     }
 
@@ -127,6 +147,7 @@ export class SessionPicker implements Component {
       lines.push(dim(`... ${viewport.hiddenAfter} more sessions`));
     }
 
+    lines.push(dim(SESSION_PICKER_HELP));
     return lines;
   }
 

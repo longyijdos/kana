@@ -34,9 +34,9 @@ describe("prompt commands", () => {
     );
     expect(
       createRandomPromptPlaceholder(
-        () => PROMPT_COMMANDS.findIndex((command) => command.name === "delete") / helpEntryCount,
+        () => PROMPT_COMMANDS.findIndex((command) => command.name === "resume") / helpEntryCount,
       ),
-    ).toBe("Try /delete — Delete a saved session.");
+    ).toBe("Try /resume [id] — Resume or delete a saved session.");
   });
   test("lists commands after slash", () => {
     expect(getCommandState("/")).toMatchObject({
@@ -64,9 +64,6 @@ describe("prompt commands", () => {
         },
         {
           name: "resume",
-        },
-        {
-          name: "delete",
         },
         {
           name: "skills",
@@ -176,11 +173,14 @@ describe("prompt commands", () => {
       arguments: "",
       raw: "/resume",
     });
+  });
+
+  test("treats the removed delete command as a normal message", () => {
+    expect(PROMPT_COMMANDS.map((command) => command.name as string)).not.toContain("delete");
+    expect(getCommandState("/delete").suggestions).toEqual([]);
     expect(createCommandSubmit("/delete", undefined)).toEqual({
-      type: "command",
-      name: "delete",
-      arguments: "",
-      raw: "/delete",
+      type: "message",
+      content: "/delete",
     });
   });
 

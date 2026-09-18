@@ -491,14 +491,6 @@ export class KanaTuiApp {
         }
         this.sessions.openResume();
       },
-      openDeletePicker: () => {
-        this.editor.clear();
-        if (cleanMode) {
-          this.showSavedSessionsUnavailable();
-          return;
-        }
-        this.sessions.openDelete();
-      },
       openSkillManager: () => {
         this.editor.clear();
         this.openSkillManager();
@@ -726,15 +718,12 @@ export class KanaTuiApp {
     }
 
     if (isCtrlO(data)) {
-      // A successful toggle replaces the bottom view, so an open picker must relinquish
-      // ownership. If no tool opens, the failed toggle leaves the picker active.
-      if (this.contentViewer.toggleLatest()) {
-        this.toolHistory.relinquish();
-        this.backgroundJobManager.close();
-        return { consume: true };
+      // Ctrl+O only opens the newest tool detail from the normal editor state. It is
+      // never a toggle, and any other bottom view keeps the key untouched.
+      if (this.bottomArea.isShowing(this.editor)) {
+        this.contentViewer.openLatest();
       }
-
-      return undefined;
+      return { consume: true };
     }
 
     if (isCtrlC(data)) {

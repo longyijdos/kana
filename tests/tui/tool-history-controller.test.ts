@@ -347,7 +347,7 @@ describe("tool history controller", () => {
     // The picker is still the bottom view; the caller decides the replacement.
     expect(layout.isBottom(tui.getFocusedComponent() as Component)).toBe(true);
 
-    // The Ctrl+O takeover then opens the latest tool directly, still
+    // The explicit /tools transition then opens the latest tool directly, still
     // without any editor restore in between.
     expect(contentViewer.openLatest()).toBe(true);
     expect(restoreCalls).toEqual([]);

@@ -34,15 +34,7 @@ export class SessionOverlayController {
 
   openResume(): void {
     const picker = new SessionPicker(this.options.listSessions(), (decision) => {
-      this.finishResumePicker(decision);
-    });
-
-    this.openPicker(picker);
-  }
-
-  openDelete(): void {
-    const picker = new SessionPicker(this.options.listSessions(), (decision) => {
-      this.finishDeletePicker(decision);
+      this.handlePickerDecision(decision);
     });
 
     this.openPicker(picker);
@@ -52,8 +44,8 @@ export class SessionOverlayController {
     const activeBottom = this.activeDeleteConfirmation ?? this.activePicker;
     const restoreFocus = activeBottom ? this.options.bottomArea.hasFocus(activeBottom) : false;
 
-    this.closeResumePicker();
-    this.closeDeleteConfirmation();
+    this.activePicker = undefined;
+    this.activeDeleteConfirmation = undefined;
 
     if (activeBottom) {
       this.options.bottomArea.restore(activeBottom, restoreFocus);
@@ -67,37 +59,36 @@ export class SessionOverlayController {
     this.options.bottomArea.show(picker);
   }
 
-  private finishResumePicker(decision: SessionPickerDecision): void {
-    this.close();
-
+  private handlePickerDecision(decision: SessionPickerDecision): void {
     if (decision.type === "cancel") {
+      this.close();
+
       if (!this.options.hasCurrentSession()) {
         this.options.onStop();
-        return;
       }
-
       return;
     }
 
+    if (decision.type === "delete") {
+      this.openDeleteConfirmation(decision.session);
+      return;
+    }
+
+    this.close();
     this.options.onResume(decision.session.id);
   }
 
-  private finishDeletePicker(decision: SessionPickerDecision): void {
-    if (decision.type === "cancel") {
-      this.close();
-      return;
-    }
-
-    this.closeResumePicker();
-
-    const confirmation = new DeleteSessionConfirmation(decision.session, (confirmed) => {
-      void this.finishDeleteConfirmation(decision.session, confirmed);
+  private openDeleteConfirmation(session: KanaSessionMetadata): void {
+    const confirmation = new DeleteSessionConfirmation(session, (confirmed) => {
+      void this.finishDeleteConfirmation(session, confirmed);
     });
 
     this.activeDeleteConfirmation = confirmation;
     this.options.bottomArea.show(confirmation);
   }
 
+  // The picker instance survives deletion so its selection stays on the item that
+  // takes the deleted slot; only the visible bottom swaps to the confirmation.
   private async finishDeleteConfirmation(
     session: KanaSessionMetadata,
     confirmed: boolean,
@@ -105,8 +96,10 @@ export class SessionOverlayController {
     if (this.deletingSession) {
       return;
     }
+
+    const picker = this.activePicker;
     if (!confirmed) {
-      this.close();
+      this.restorePicker(picker);
       return;
     }
 
@@ -115,7 +108,7 @@ export class SessionOverlayController {
     try {
       deleted = await this.options.deleteSession(session.id);
     } catch (error) {
-      this.close();
+      this.restorePicker(picker);
       this.options.onError(error);
       return;
     } finally {
@@ -135,22 +128,18 @@ export class SessionOverlayController {
     if (deleted) {
       this.options.updateStatus("idle", { activeTool: undefined });
     }
-    this.close();
+    picker?.replaceSessions(this.options.listSessions());
+    this.restorePicker(picker);
   }
 
-  private closeResumePicker(): void {
-    if (!this.activePicker) {
-      return;
-    }
-
-    this.activePicker = undefined;
-  }
-
-  private closeDeleteConfirmation(): void {
-    if (!this.activeDeleteConfirmation) {
-      return;
-    }
-
+  private restorePicker(picker: SessionPicker | undefined): void {
     this.activeDeleteConfirmation = undefined;
+
+    if (picker && this.activePicker === picker) {
+      this.options.bottomArea.show(picker);
+      return;
+    }
+
+    this.close();
   }
 }

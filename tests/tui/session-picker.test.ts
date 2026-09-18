@@ -8,6 +8,8 @@ import {
 import { color, stripAnsi } from "../../src/tui/render";
 import { tuiTheme } from "../../src/tui/theme";
 
+const HELP_LINE = "Enter resume · ↑/↓ select · ←/→ page · K delete · Esc close";
+
 const sessions: KanaSessionMetadata[] = [
   {
     id: "alpha-session",
@@ -42,6 +44,7 @@ describe("session picker", () => {
       "Sessions",
       `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  Explain lazy sessions  deepseek/deepseek-v4-pro`,
       `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  Add fork prompt titles  Unknown model`,
+      HELP_LINE,
     ]);
     expect(rendered[0]).toBe(color("Sessions", tuiTheme.bottomTitle));
 
@@ -54,6 +57,33 @@ describe("session picker", () => {
         session: sessions[1],
       },
     ]);
+  });
+
+  test("requests deletion with k or K instead of resuming", () => {
+    const decisions: SessionPickerDecision[] = [];
+    const picker = new SessionPicker(sessions, (decision) => decisions.push(decision));
+
+    picker.handleInput("\x1b[B");
+    picker.handleInput("K");
+
+    expect(decisions).toEqual([{ type: "delete", session: sessions[1] }]);
+
+    picker.handleInput("\x1b[A");
+    picker.handleInput("k");
+
+    expect(decisions).toEqual([
+      { type: "delete", session: sessions[1] },
+      { type: "delete", session: sessions[0] },
+    ]);
+  });
+
+  test("ignores deletion when no session is selected", () => {
+    const decisions: SessionPickerDecision[] = [];
+    const picker = new SessionPicker([], (decision) => decisions.push(decision));
+
+    picker.handleInput("K");
+
+    expect(decisions).toEqual([]);
   });
 
   test("uses danger only for the delete confirmation title", () => {
@@ -81,6 +111,32 @@ describe("session picker", () => {
     ]);
   });
 
+  test("keeps the selection on a nearby session after the list is replaced", () => {
+    const manySessions = createSessions(3);
+    const picker = new SessionPicker(manySessions, () => {}, 2);
+
+    picker.handleInput("\x1b[B");
+
+    expect(selectedSession(picker)).toContain("Session 2");
+
+    picker.replaceSessions([manySessions[0], manySessions[2]]);
+
+    expect(picker.render(100).map(stripAnsi)).toEqual([
+      "Sessions",
+      `  ${localTimestamp(manySessions[0].createdAt)}  session-  Session 1  Unknown model`,
+      `> ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  Unknown model`,
+      HELP_LINE,
+    ]);
+
+    picker.replaceSessions([]);
+
+    expect(picker.render(100).map(stripAnsi)).toEqual([
+      "Sessions",
+      "No saved sessions for this workspace.",
+      HELP_LINE,
+    ]);
+  });
+
   test("renders only the visible session window", () => {
     const manySessions = createSessions(5);
     const picker = new SessionPicker(manySessions, () => {}, 3);
@@ -91,6 +147,7 @@ describe("session picker", () => {
       `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  Unknown model`,
       `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  Unknown model`,
       "... 2 more sessions",
+      HELP_LINE,
     ]);
 
     picker.handleInput("\x1b[B");
@@ -104,6 +161,7 @@ describe("session picker", () => {
       `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  Unknown model`,
       `> ${localTimestamp(manySessions[3].createdAt)}  session-  Session 4  Unknown model`,
       "... 1 more sessions",
+      HELP_LINE,
     ]);
   });
 
@@ -121,6 +179,7 @@ describe("session picker", () => {
       `  ${localTimestamp(manySessions[4].createdAt)}  session-  Session 5  Unknown model`,
       `  ${localTimestamp(manySessions[5].createdAt)}  session-  Session 6  Unknown model`,
       "... 6 more sessions",
+      HELP_LINE,
     ]);
 
     picker.handleInput("\x1b[C");

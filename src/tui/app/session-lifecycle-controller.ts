@@ -138,16 +138,6 @@ export class SessionLifecycleController {
     this.overlay.openResume();
   }
 
-  openDelete(): void {
-    if (this.options.isRunning()) {
-      return;
-    }
-
-    this.options.closeOtherOverlays();
-    this.options.closeContentViewer();
-    this.overlay.openDelete();
-  }
-
   close(): void {
     this.overlay.close();
   }

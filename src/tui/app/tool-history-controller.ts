@@ -61,9 +61,9 @@ export class ToolHistoryController {
       return;
     }
 
-    // The picker relinquishes the bottom directly to the inspector: no
-    // editor intermediate frame, no restore-then-replace layout churn. The
-    // inspector only gets the stable id; it re-resolves the block itself.
+    // The picker relinquishes the bottom directly to the inspector: no editor
+    // restore in between, so the explicit /tools transition never flashes the
+    // editor. The inspector only gets the stable id; it re-resolves the block.
     const picker = this.activePicker;
     const wasVisible = picker !== undefined && this.options.bottomArea.isShowing(picker);
     const hadFocus = picker !== undefined && this.options.bottomArea.hasFocus(picker);
@@ -75,9 +75,9 @@ export class ToolHistoryController {
   }
 
   // Clears picker ownership without restoring the bottom or touching focus.
-  // Used whenever another view replaces the picker directly — the inspector
-  // via Enter, or a Ctrl+O takeover — so the controller never tracks a
-  // bottom view it no longer owns. The caller keeps the bottom and focus.
+  // Used when the inspector replaces the picker directly via Enter, so the
+  // controller never tracks a bottom view it no longer owns. The caller keeps
+  // the bottom and focus.
   relinquish(): void {
     this.activePicker = undefined;
   }

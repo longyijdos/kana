@@ -18,15 +18,6 @@ export class ContentViewerController {
     return this.activeViewer !== undefined;
   }
 
-  toggleLatest(): boolean {
-    if (this.activeViewer) {
-      this.close();
-      return true;
-    }
-
-    return this.openLatest();
-  }
-
   // Opens the newest ToolCallBlock in the transcript. Any tool is eligible:
   // short output, missing results, running/canceled tools, read, and
   // custom/unknown tools all open, without consulting expandability or width.

@@ -33,7 +33,6 @@ describe("prompt command help", () => {
       "new",
       "fork",
       "resume",
-      "delete",
       "skills",
       "mcp",
       "goal",
