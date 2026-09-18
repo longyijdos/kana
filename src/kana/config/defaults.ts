@@ -74,13 +74,8 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       toolDeadlineMs: DEFAULT_KANA_AGENT_TOOL_DEADLINE_MS,
       parallelToolCalls: true,
       maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
-      model: {
-        provider: "deepseek",
-        name: "deepseek-flash",
-        reasoningEffort: undefined,
-        maxOutputTokens: undefined,
-        contextLimit: undefined,
-      },
+      // Unset fields inherit the conversation Agent's model.
+      model: {},
     },
   },
   logging: {

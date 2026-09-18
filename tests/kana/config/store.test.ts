@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { createKanaConfigStore, getKanaConfigPaths } from "@/kana";
+import { createKanaConfigStore, getKanaConfigPaths, resolveKanaMemoryAgentConfig } from "@/kana";
 import { cleanupConfigTempDirs, createTempEnv } from "./config-fixture";
 
 afterEach(cleanupConfigTempDirs);
@@ -164,6 +164,41 @@ describe("Kana config store", () => {
       reasoningEffort: undefined,
       maxOutputTokens: 64_000,
       contextLimit: 200_000,
+    });
+    expect(resolveKanaMemoryAgentConfig(config).model).toEqual({
+      provider: "deepseek",
+      name: "deepseek-flash",
+      reasoningEffort: "low",
+      maxOutputTokens: 64_000,
+      contextLimit: 200_000,
+    });
+  });
+
+  test("keeps memory model inheritance out of the persisted file", () => {
+    const env = createTempEnv();
+    const { configPath } = getKanaConfigPaths(env);
+    const store = createKanaConfigStore(env);
+
+    const config = store.update((draft) => {
+      draft.agent.model.provider = "openai-codex";
+      draft.agent.model.name = "gpt-5.6-luna";
+      draft.agent.model.reasoningEffort = "max";
+    });
+
+    expect(readFileSync(configPath, "utf8")).toBe(
+      [
+        "[agent.model]",
+        'provider = "openai-codex"',
+        'name = "gpt-5.6-luna"',
+        'reasoning_effort = "max"',
+        "",
+      ].join("\n"),
+    );
+    expect(config.memory.agent.model).toEqual({});
+    expect(resolveKanaMemoryAgentConfig(config).model).toMatchObject({
+      provider: "openai-codex",
+      name: "gpt-5.6-luna",
+      reasoningEffort: "max",
     });
   });
 

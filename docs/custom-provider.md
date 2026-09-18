@@ -27,7 +27,7 @@ provider = "custom"
 name = "local-model"
 ```
 
-`/model` exposes Custom alongside the built-in providers. Kana loads this file once at process startup, and `/model`, conversation Agents, and memory-consolidation Agents share that snapshot; direct edits require a restart. The command persists only the main Agent's `provider`, `name`, and optional reasoning effort under `[agent.model]`, and hot-switches through the same candidate-Agent validation used by built-ins. Its configured `max_output_tokens` and `context_limit` remain unchanged, and `[memory.agent.model]` is independent. A missing or invalid startup snapshot is shown as an explicit error; Kana never falls back to another provider or model.
+`/model` exposes Custom alongside the built-in providers. Kana loads this file once at process startup, and `/model`, conversation Agents, and memory-consolidation Agents share that snapshot; direct edits require a restart. The command persists only the main Agent's `provider`, `name`, and optional reasoning effort under `[agent.model]`, and hot-switches through the same candidate-Agent validation used by built-ins. Its configured `max_output_tokens` and `context_limit` remain unchanged, and `[memory.agent.model]` keeps overriding only the fields it sets, so memory consolidation otherwise follows the new selection. A missing or invalid startup snapshot is shown as an explicit error; Kana never falls back to another provider or model.
 
 ## Provider fields
 
@@ -76,7 +76,7 @@ reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
 
-`agent.model.context_limit` is a provider-independent preference. The effective Agent limit is the smaller of that configured value and the selected model's `context_window`, so switching from a large built-in model to a smaller Custom model remains valid without provider-specific Agent configuration. The same rule applies independently to `memory.agent.model`.
+`agent.model.context_limit` is a provider-independent preference. The effective Agent limit is the smaller of that configured value and the selected model's `context_window`, so switching from a large built-in model to a smaller Custom model remains valid without provider-specific Agent configuration. `memory.agent.model` follows the same rule for each field it overrides and otherwise inherits `agent.model.context_limit`.
 
 ## Protocol and security boundaries
 

@@ -18,7 +18,7 @@ export {
   type KanaTuiConfig,
 } from "./contracts";
 export { DEFAULT_KANA_CONFIG } from "./defaults";
-export { validateKanaConfig } from "./parser";
+export { resolveKanaMemoryAgentConfig, validateKanaConfig } from "./parser";
 export {
   type InstallKanaConfigResult,
   installKanaConfig,

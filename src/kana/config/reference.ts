@@ -1,4 +1,4 @@
-import type { KanaConfig, KanaModelConfig } from "./contracts";
+import type { KanaConfig, KanaMemoryModelConfig } from "./contracts";
 
 export function serializeKanaConfigExample(config: KanaConfig): string {
   return [
@@ -73,10 +73,13 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
     `max_parallel_tool_calls = ${config.memory.agent.maxParallelToolCalls}`,
     "",
     "[memory.agent.model]",
+    "# Inherits [agent.model]. Uncomment a field to override it.",
     ...serializeModelConfig(config.memory.agent.model, {
-      reasoningEffort: "low",
-      maxOutputTokens: 64_000,
-      contextLimit: 200_000,
+      provider: config.agent.model.provider,
+      name: config.agent.model.name,
+      reasoningEffort: config.agent.model.reasoningEffort,
+      maxOutputTokens: config.agent.model.maxOutputTokens,
+      contextLimit: config.agent.model.contextLimit,
     }),
     "",
     "[logging]",
@@ -120,24 +123,29 @@ export function serializeKanaPromptTemplateExample(): string {
 }
 
 function serializeModelConfig(
-  config: KanaModelConfig,
-  examples: {
-    reasoningEffort: string;
-    maxOutputTokens: number;
-    contextLimit: number;
-  },
+  config: KanaMemoryModelConfig,
+  hints: KanaMemoryModelConfig,
 ): string[] {
   return [
-    `provider = "${config.provider}"`,
-    `name = "${config.name}"`,
-    config.reasoningEffort === undefined
-      ? `# reasoning_effort = "${examples.reasoningEffort}"`
-      : `reasoning_effort = "${config.reasoningEffort}"`,
-    config.maxOutputTokens === undefined
-      ? `# max_output_tokens = ${examples.maxOutputTokens}`
-      : `max_output_tokens = ${config.maxOutputTokens}`,
-    config.contextLimit === undefined
-      ? `# context_limit = ${examples.contextLimit}`
-      : `context_limit = ${config.contextLimit}`,
-  ];
+    modelLine("provider", config.provider, hints.provider),
+    modelLine("name", config.name, hints.name),
+    modelLine("reasoning_effort", config.reasoningEffort, hints.reasoningEffort),
+    modelLine("max_output_tokens", config.maxOutputTokens, hints.maxOutputTokens),
+    modelLine("context_limit", config.contextLimit, hints.contextLimit),
+  ].filter((line): line is string => line !== undefined);
+}
+
+function modelLine(
+  key: string,
+  value: string | number | undefined,
+  hint: string | number | undefined,
+): string | undefined {
+  if (value !== undefined) {
+    return `${key} = ${formatModelValue(value)}`;
+  }
+  return hint === undefined ? undefined : `# ${key} = ${formatModelValue(hint)}`;
+}
+
+function formatModelValue(value: string | number): string {
+  return typeof value === "string" ? `"${value}"` : `${value}`;
 }

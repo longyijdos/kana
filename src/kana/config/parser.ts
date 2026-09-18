@@ -9,8 +9,10 @@ import {
   KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,
   KANA_TOOL_APPROVAL_MODES,
+  type KanaAgentRuntimeConfig,
   type KanaConfig,
   type KanaLogLevel,
+  type KanaMemoryModelConfig,
   type KanaModelConfig,
   type KanaModelProvider,
   type KanaNotificationBackend,
@@ -94,6 +96,25 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
       level: config.logging.level,
     },
   });
+}
+
+// Memory consolidation declares only the model fields it overrides; every other
+// field follows the conversation Agent's model.
+export function resolveKanaMemoryAgentConfig(
+  config: KanaConfig,
+): KanaAgentRuntimeConfig & { model: KanaModelConfig } {
+  const { model } = config.memory.agent;
+
+  return {
+    ...config.memory.agent,
+    model: {
+      provider: model.provider ?? config.agent.model.provider,
+      name: model.name ?? config.agent.model.name,
+      reasoningEffort: model.reasoningEffort ?? config.agent.model.reasoningEffort,
+      maxOutputTokens: model.maxOutputTokens ?? config.agent.model.maxOutputTokens,
+      contextLimit: model.contextLimit ?? config.agent.model.contextLimit,
+    },
+  };
 }
 
 function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
@@ -291,7 +312,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           defaults.memory.agent.maxParallelToolCalls,
           "memory.agent.max_parallel_tool_calls",
         ),
-        model: parseModelConfig(
+        model: parseMemoryModelConfig(
           memoryAgentModel,
           defaults.memory.agent.model,
           "memory.agent.model",
@@ -304,7 +325,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   };
 }
 
-function toRawModelConfig(config: KanaModelConfig): Record<string, unknown> {
+function toRawModelConfig(config: KanaMemoryModelConfig): Record<string, unknown> {
   return {
     provider: config.provider,
     name: config.name,
@@ -322,6 +343,28 @@ function parseModelConfig(
   return {
     provider: readModelProvider(model.provider, defaults.provider, `${path}.provider`),
     name: readString(model.name, defaults.name, `${path}.name`),
+    ...parseModelPreferences(model, defaults, path),
+  };
+}
+
+function parseMemoryModelConfig(
+  model: Record<string, unknown>,
+  defaults: KanaMemoryModelConfig,
+  path: string,
+): KanaMemoryModelConfig {
+  return {
+    provider: readOptionalModelProvider(model.provider, defaults.provider, `${path}.provider`),
+    name: readOptionalString(model.name, defaults.name, `${path}.name`),
+    ...parseModelPreferences(model, defaults, path),
+  };
+}
+
+function parseModelPreferences(
+  model: Record<string, unknown>,
+  defaults: KanaMemoryModelConfig,
+  path: string,
+): Pick<KanaModelConfig, "reasoningEffort" | "maxOutputTokens" | "contextLimit"> {
+  return {
     reasoningEffort: readOptionalString(
       model.reasoning_effort,
       defaults.reasoningEffort,
@@ -537,13 +580,23 @@ function readModelProvider(
   fallback: KanaModelProvider,
   name: string,
 ): KanaModelProvider {
-  const provider = readString(value, fallback, name);
+  return readOptionalModelProvider(value, fallback, name) as KanaModelProvider;
+}
 
-  if (!(KANA_MODEL_PROVIDERS as readonly string[]).includes(provider)) {
+function readOptionalModelProvider(
+  value: unknown,
+  fallback: KanaModelProvider | undefined,
+  name: string,
+): KanaModelProvider | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== "string" || !(KANA_MODEL_PROVIDERS as readonly string[]).includes(value)) {
     throw new Error(`${name} must be one of: ${KANA_MODEL_PROVIDERS.join(", ")}.`);
   }
 
-  return provider as KanaModelProvider;
+  return value as KanaModelProvider;
 }
 
 function readOpenAICodexReasoningSummary(

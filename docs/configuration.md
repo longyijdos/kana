@@ -126,7 +126,7 @@ The editor expands a valid invocation before submission or queueing and passes t
 
 ## `config.toml`
 
-When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults. Kana loads this effective configuration once when the process starts; direct file edits require a restart, while configuration changed through the running frontend updates its in-memory snapshot immediately. Model selection and Agent policy are static per Agent: `[agent.model]` configures the conversation Agent, while `[memory.agent.model]` independently configures memory consolidation. Provider tables contain only transport and authentication settings. This schema is intentionally breaking; legacy `[provider]` and `[model.*]` selection tables are not read.
+When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults. Kana loads this effective configuration once when the process starts; direct file edits require a restart, while configuration changed through the running frontend updates its in-memory snapshot immediately. Model selection and Agent policy are static per Agent: `[agent.model]` configures the conversation Agent, while `[memory.agent.model]` overrides individual fields of that selection for memory consolidation and inherits every field it leaves unset. Provider tables contain only transport and authentication settings. This schema is intentionally breaking; legacy `[provider]` and `[model.*]` selection tables are not read.
 
 The TUI's `/model` command updates `config.toml` through the generic configuration store. Before writing, the store locks the file, reads its latest contents, and patches only known fields changed in the running snapshot. Unrelated external edits, unknown fields, tables, and standalone comments remain on disk without entering the current process. The first change away from defaults therefore creates only the required overrides instead of expanding every default. The changed fields must parse back to their target values before a sibling temporary file atomically replaces the original; validation or write failures leave the original file untouched. `config.example.toml` is reference-only and may be refreshed by a later `kana install`, so user configuration should not be stored there.
 
@@ -201,17 +201,15 @@ parallel_tool_calls = true
 max_parallel_tool_calls = 4
 
 [memory.agent.model]
-provider = "deepseek"
-name = "deepseek-flash"
-# reasoning_effort = "low"
-# max_output_tokens = 64000
-# context_limit = 200000
+# Inherits [agent.model]. Uncomment a field to override it.
+# provider = "deepseek"
+# name = "deepseek-flash"
 
 [logging]
 level = "info"
 ```
 
-Omitted `reasoning_effort`, `max_output_tokens`, and `context_limit` use the selected model's metadata defaults and hard limits. A configured budget above a hard limit is safely clamped at runtime. `/model` changes only `agent.model.provider`, `name`, and `reasoning_effort`; it preserves the main Agent's budget fields and the complete Memory Agent configuration.
+Omitted `reasoning_effort`, `max_output_tokens`, and `context_limit` use the selected model's metadata defaults and hard limits. A configured budget above a hard limit is safely clamped at runtime. `/model` changes only `agent.model.provider`, `name`, and `reasoning_effort`; it preserves the main Agent's budget fields and never writes to `[memory.agent]`. Memory consolidation therefore follows a `/model` switch for every model field it does not override itself.
 
 ### Provider tables
 
@@ -238,9 +236,9 @@ Before first use of OpenAI Codex, run `kana auth login openai-codex`. Browser au
 | --- | --- | --- | --- |
 | `agent.web_search` / `memory.agent.web_search` | Boolean | `true` / `false` | Allows hosted search only when the selected model metadata also supports it. Custom models currently declare no hosted-search capability. |
 | `agent.image_input` / `memory.agent.image_input` | Boolean | `true` / `false` | Allows persisted user/tool images and registers `view_image` only when model metadata also supports images. Disabled or unsupported images remain persisted but become omission markers in model input. |
-| `agent.model.provider` / `memory.agent.model.provider` | `deepseek`, `openai-codex`, `custom` | `deepseek` | Provider selected independently for each Agent. |
+| `agent.model.provider` | `deepseek`, `openai-codex`, `custom` | `deepseek` | Provider selected for the conversation Agent. |
 | `agent.model.name` | Provider model name | `deepseek-flash` | Conversation model; built-in names are validated against provider metadata. |
-| `memory.agent.model.name` | Provider model name | `deepseek-flash` | Memory-consolidation model, independent of `/model`. |
+| `memory.agent.model.*` | Same fields as `agent.model` | Inherited from `agent.model` | Field-level override for memory consolidation. Unset fields keep following the conversation Agent, including across `/model` switches. |
 | `*.model.reasoning_effort` | Value advertised by model metadata | Metadata default | Optional override. DeepSeek supports `none`, `low`, `high`, `max`; Codex supports `low`, `medium`, `high`, `xhigh`, `max`; Custom uses `custom.toml` metadata. |
 | `*.model.max_output_tokens` | Optional positive integer | Metadata hard output limit | Agent-level output ceiling, clamped to the selected model's hard limit and lowered per turn when prompt space is tighter. |
 | `*.model.context_limit` | Optional positive integer | Metadata context window | Agent-level context cap, clamped to the selected model's context window. |
