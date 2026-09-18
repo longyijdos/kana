@@ -36,7 +36,9 @@ export const KANA_DARK_TUI_THEME = {
     statusIdle: [230, 237, 243],
     diffDeleteBackground: [86, 49, 50],
     diffInsertBackground: [28, 68, 40],
-    welcomeBorder: [48, 54, 61],
+    // The panel border is ASCII dashes on otherwise empty rows, so it needs more contrast
+    // than markdownRule, which always sits next to text.
+    welcomeBorder: [72, 79, 88],
     welcomeTitle: [121, 192, 255],
     welcomeMuted: [139, 148, 158],
     welcomeText: [230, 237, 243],
@@ -79,7 +81,9 @@ export const KANA_LIGHT_TUI_THEME = {
     statusIdle: [31, 35, 40],
     diffDeleteBackground: [255, 235, 233],
     diffInsertBackground: [218, 251, 225],
-    welcomeBorder: [208, 215, 222],
+    // Mirrors the dark theme: one step past the palette's default border gray, which
+    // lands at the same contrast the dark panel border reaches on a dark background.
+    welcomeBorder: [175, 184, 193],
     welcomeTitle: [9, 105, 218],
     welcomeMuted: [110, 119, 129],
     welcomeText: [31, 35, 40],
