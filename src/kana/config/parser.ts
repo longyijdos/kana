@@ -305,7 +305,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   };
 }
 
-function toRawModelConfig(config: KanaModelConfigOverride): Record<string, unknown> {
+function toRawModelConfig(config: Readonly<Partial<KanaModelConfig>>): Record<string, unknown> {
   return {
     provider: config.provider,
     name: config.name,
@@ -341,7 +341,7 @@ function parseModelConfigOverride(
 
 function parseModelPreferences(
   model: Record<string, unknown>,
-  defaults: KanaModelConfigOverride,
+  defaults: Readonly<Partial<KanaModelConfig>>,
   path: string,
 ): Pick<KanaModelConfig, "reasoningEffort" | "maxOutputTokens" | "contextLimit"> {
   return {
