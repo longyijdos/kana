@@ -126,7 +126,7 @@ then clean up {{branch=the merged branch}} and its related worktree if safe.
 
 ## `config.toml`
 
-配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。Kana 在进程启动时只加载一次有效配置；直接编辑文件需要重启才会生效，通过当前前端修改配置则会立即更新进程内快照。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 独立属于记忆压缩 Agent；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更，不再读取旧 `[provider]` 和 `[model.*]` 选择表。
+配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。Kana 在进程启动时只加载一次有效配置；直接编辑文件需要重启才会生效，通过当前前端修改配置则会立即更新进程内快照。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 则为记忆压缩 Agent 覆盖该选择中的个别字段，未填写的字段全部继承；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更，不再读取旧 `[provider]` 和 `[model.*]` 选择表。
 
 TUI 的 `/model` 通过通用配置存储更新 `config.toml`：写入前，存储会锁定文件、读取磁盘上的最新内容，再只补丁当前运行时快照中实际变化的已知字段。无关的外部修改、未知字段、表和独立注释会保留在磁盘上，但不会进入当前进程。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。变更字段必须重新解析为目标值后，才会通过同目录临时文件原子替换原文件；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
 
@@ -201,17 +201,15 @@ parallel_tool_calls = true
 max_parallel_tool_calls = 4
 
 [memory.agent.model]
-provider = "deepseek"
-name = "deepseek-flash"
-# reasoning_effort = "low"
-# max_output_tokens = 64000
-# context_limit = 200000
+# Inherits [agent.model]. Uncomment a field to override it.
+# provider = "deepseek"
+# name = "deepseek-flash"
 
 [logging]
 level = "info"
 ```
 
-省略 `reasoning_effort`、`max_output_tokens` 和 `context_limit` 时，使用所选模型 metadata 的默认值与硬上限；配置预算高于硬上限时会在运行时安全钳制。`/model` 只修改 `agent.model.provider`、`name` 和 `reasoning_effort`，保留主 Agent 的预算字段以及完整的 Memory Agent 配置。
+省略 `reasoning_effort`、`max_output_tokens` 和 `context_limit` 时，使用所选模型 metadata 的默认值与硬上限；配置预算高于硬上限时会在运行时安全钳制。`/model` 只修改 `agent.model.provider`、`name` 和 `reasoning_effort`，保留主 Agent 的预算字段，并且从不写入 `[memory.agent]`。因此记忆压缩在自身未覆盖的模型字段上会跟随 `/model` 切换。
 
 ### Provider 表
 
@@ -238,9 +236,9 @@ export DEEPSEEK_API_KEY='sk-...'
 | --- | --- | --- | --- |
 | `agent.web_search` / `memory.agent.web_search` | 布尔值 | `true` / `false` | 仅在所选模型 metadata 也支持时允许托管搜索；Custom 模型目前不声明托管搜索能力。 |
 | `agent.image_input` / `memory.agent.image_input` | 布尔值 | `true` / `false` | 仅在 metadata 支持图片时允许已持久化的用户/工具图片并注册 `view_image`；禁用或不支持时，图片仍保留，但模型输入使用省略标记。 |
-| `agent.model.provider` / `memory.agent.model.provider` | `deepseek`、`openai-codex`、`custom` | `deepseek` | 两个 Agent 各自独立选择的 provider。 |
+| `agent.model.provider` | `deepseek`、`openai-codex`、`custom` | `deepseek` | 为对话 Agent 选择的 provider。 |
 | `agent.model.name` | Provider 模型名 | `deepseek-flash` | 对话模型；内置模型名按 provider metadata 校验。 |
-| `memory.agent.model.name` | Provider 模型名 | `deepseek-flash` | 独立于 `/model` 的记忆压缩模型。 |
+| `memory.agent.model.*` | 与 `agent.model` 相同字段 | 继承 `agent.model` | 记忆压缩的字段级覆盖；未填写的字段继续跟随对话 Agent，包括 `/model` 切换之后。 |
 | `*.model.reasoning_effort` | 模型 metadata 声明的值 | Metadata 默认值 | 可选覆盖。DeepSeek 支持 `none`、`low`、`high`、`max`；Codex 支持 `low`、`medium`、`high`、`xhigh`、`max`；Custom 使用 `custom.toml` metadata。 |
 | `*.model.max_output_tokens` | 可选正整数 | Metadata 输出硬上限 | Agent 级输出上限；先按模型硬上限钳制，prompt 空间更紧时再逐轮降低。 |
 | `*.model.context_limit` | 可选正整数 | Metadata context window | Agent 级上下文上限，按所选模型 context window 钳制。 |

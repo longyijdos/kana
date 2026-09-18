@@ -27,7 +27,7 @@ provider = "custom"
 name = "local-model"
 ```
 
-`/model` 会在内置供应商之外显示 Custom。Kana 在进程启动时只加载一次该文件，`/model`、对话 Agent 和记忆压缩 Agent 共用这份快照；直接编辑需要重启才会生效。该命令只在 `[agent.model]` 下持久化主 Agent 的 `provider`、`name` 和可选推理强度，并通过与内置供应商相同的候选 Agent 校验完成热切换。已有 `max_output_tokens` 和 `context_limit` 保持不变，`[memory.agent.model]` 也完全独立。启动快照缺失或无效时会显示明确错误；Kana 不会静默回退到其他供应商或模型。
+`/model` 会在内置供应商之外显示 Custom。Kana 在进程启动时只加载一次该文件，`/model`、对话 Agent 和记忆压缩 Agent 共用这份快照；直接编辑需要重启才会生效。该命令只在 `[agent.model]` 下持久化主 Agent 的 `provider`、`name` 和可选推理强度，并通过与内置供应商相同的候选 Agent 校验完成热切换。已有 `max_output_tokens` 和 `context_limit` 保持不变，`[memory.agent.model]` 只覆盖自身填写的字段，其余随新选择变化。启动快照缺失或无效时会显示明确错误；Kana 不会静默回退到其他供应商或模型。
 
 ## 供应商字段
 
@@ -76,7 +76,7 @@ reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
 
-`agent.model.context_limit` 是与供应商无关的偏好。Agent 实际使用该配置值与所选模型 `context_window` 中较小的一个，因此从大窗口内置模型切换到较小的 Custom 模型时，不需要额外的供应商专用 Agent 配置；`memory.agent.model` 独立应用相同规则。
+`agent.model.context_limit` 是与供应商无关的偏好。Agent 实际使用该配置值与所选模型 `context_window` 中较小的一个，因此从大窗口内置模型切换到较小的 Custom 模型时，不需要额外的供应商专用 Agent 配置；`memory.agent.model` 对自己覆盖的字段应用相同规则，未覆盖时继承 `agent.model.context_limit`。
 
 ## 协议与安全边界
 

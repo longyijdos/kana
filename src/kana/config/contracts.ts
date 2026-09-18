@@ -63,8 +63,10 @@ export type KanaAgentConfig = KanaAgentRuntimeConfig & {
   repeatedToolCalls: KanaRepeatedToolCallsConfig;
 };
 
+export type KanaModelConfigOverride = Partial<KanaModelConfig>;
+
 type KanaMemoryAgentConfig = KanaAgentRuntimeConfig & {
-  model: KanaModelConfig;
+  model: KanaModelConfigOverride;
 };
 
 export const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;

@@ -12,6 +12,7 @@ import {
   type KanaConfig,
   type KanaLogLevel,
   type KanaModelConfig,
+  type KanaModelConfigOverride,
   type KanaModelProvider,
   type KanaNotificationBackend,
   type KanaToolApprovalMode,
@@ -291,7 +292,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           defaults.memory.agent.maxParallelToolCalls,
           "memory.agent.max_parallel_tool_calls",
         ),
-        model: parseModelConfig(
+        model: parseModelConfigOverride(
           memoryAgentModel,
           defaults.memory.agent.model,
           "memory.agent.model",
@@ -304,7 +305,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   };
 }
 
-function toRawModelConfig(config: KanaModelConfig): Record<string, unknown> {
+function toRawModelConfig(config: Readonly<Partial<KanaModelConfig>>): Record<string, unknown> {
   return {
     provider: config.provider,
     name: config.name,
@@ -322,6 +323,28 @@ function parseModelConfig(
   return {
     provider: readModelProvider(model.provider, defaults.provider, `${path}.provider`),
     name: readString(model.name, defaults.name, `${path}.name`),
+    ...parseModelPreferences(model, defaults, path),
+  };
+}
+
+function parseModelConfigOverride(
+  model: Record<string, unknown>,
+  defaults: KanaModelConfigOverride,
+  path: string,
+): KanaModelConfigOverride {
+  return {
+    provider: readOptionalModelProvider(model.provider, defaults.provider, `${path}.provider`),
+    name: readOptionalString(model.name, defaults.name, `${path}.name`),
+    ...parseModelPreferences(model, defaults, path),
+  };
+}
+
+function parseModelPreferences(
+  model: Record<string, unknown>,
+  defaults: Readonly<Partial<KanaModelConfig>>,
+  path: string,
+): Pick<KanaModelConfig, "reasoningEffort" | "maxOutputTokens" | "contextLimit"> {
+  return {
     reasoningEffort: readOptionalString(
       model.reasoning_effort,
       defaults.reasoningEffort,
@@ -537,13 +560,23 @@ function readModelProvider(
   fallback: KanaModelProvider,
   name: string,
 ): KanaModelProvider {
-  const provider = readString(value, fallback, name);
+  return readOptionalModelProvider(value, fallback, name) as KanaModelProvider;
+}
 
-  if (!(KANA_MODEL_PROVIDERS as readonly string[]).includes(provider)) {
+function readOptionalModelProvider(
+  value: unknown,
+  fallback: KanaModelProvider | undefined,
+  name: string,
+): KanaModelProvider | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== "string" || !(KANA_MODEL_PROVIDERS as readonly string[]).includes(value)) {
     throw new Error(`${name} must be one of: ${KANA_MODEL_PROVIDERS.join(", ")}.`);
   }
 
-  return provider as KanaModelProvider;
+  return value as KanaModelProvider;
 }
 
 function readOpenAICodexReasoningSummary(

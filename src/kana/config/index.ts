@@ -26,4 +26,5 @@ export {
   type ResetKanaConfigResult,
   resetKanaConfig,
 } from "./persistence";
+export { resolveKanaMemoryAgentConfig } from "./resolver";
 export { createKanaConfigStore, type KanaConfigStore } from "./store";

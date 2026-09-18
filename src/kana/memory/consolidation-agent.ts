@@ -1,6 +1,6 @@
 import { Agent, type AgentEndReason, type AgentState, createModelCompactPolicy } from "@/agent";
 import { createNoopLogger, type Logger } from "@/logging";
-import type { KanaConfig } from "../config";
+import { type KanaConfig, resolveKanaMemoryAgentConfig } from "../config";
 import type { KanaCustomProviderSnapshot } from "../custom-provider";
 import { createKanaAgentModelRuntime } from "../model";
 import { buildMemoryConsolidationPrompt } from "./consolidation-prompt";
@@ -45,7 +45,8 @@ export function createMemoryConsolidationAgent(
   if (!config.memory.enabled) {
     throw new Error("Memory is disabled.");
   }
-  const runtime = createKanaAgentModelRuntime(config.memory.agent, config.provider, {
+  const memoryAgent = resolveKanaMemoryAgentConfig(config);
+  const runtime = createKanaAgentModelRuntime(memoryAgent, config.provider, {
     env: options.env,
     logger: options.logger,
     customProviderSnapshot: options.customProviderSnapshot,
@@ -59,12 +60,12 @@ export function createMemoryConsolidationAgent(
       config.memory.dailyRetentionDays,
     ),
     tools: createMemoryConsolidationTools(options, options.mode, memory),
-    maxTurns: config.memory.agent.maxTurns,
-    toolDeadlineMs: config.memory.agent.toolDeadlineMs,
+    maxTurns: memoryAgent.maxTurns,
+    toolDeadlineMs: memoryAgent.toolDeadlineMs,
     webSearch: runtime.webSearch,
     imageInput: runtime.imageInput,
     parallelToolCalls: runtime.parallelToolCalls,
-    maxParallelToolCalls: config.memory.agent.maxParallelToolCalls,
+    maxParallelToolCalls: memoryAgent.maxParallelToolCalls,
     logger: options.logger,
     loggerMetadata: {
       agentKind: "memory_consolidation",
