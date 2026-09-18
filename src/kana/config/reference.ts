@@ -1,4 +1,4 @@
-import type { KanaConfig, KanaMemoryModelConfig } from "./contracts";
+import type { KanaConfig, KanaModelConfig } from "./contracts";
 
 export function serializeKanaConfigExample(config: KanaConfig): string {
   return [
@@ -123,8 +123,8 @@ export function serializeKanaPromptTemplateExample(): string {
 }
 
 function serializeModelConfig(
-  config: KanaMemoryModelConfig,
-  hints: KanaMemoryModelConfig,
+  config: Readonly<Partial<KanaModelConfig>>,
+  hints: Readonly<Partial<KanaModelConfig>>,
 ): string[] {
   return [
     modelLine("provider", config.provider, hints.provider),

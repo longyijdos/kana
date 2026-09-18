@@ -12,8 +12,8 @@ import {
   type KanaAgentRuntimeConfig,
   type KanaConfig,
   type KanaLogLevel,
-  type KanaMemoryModelConfig,
   type KanaModelConfig,
+  type KanaModelConfigOverride,
   type KanaModelProvider,
   type KanaNotificationBackend,
   type KanaToolApprovalMode,
@@ -312,7 +312,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
           defaults.memory.agent.maxParallelToolCalls,
           "memory.agent.max_parallel_tool_calls",
         ),
-        model: parseMemoryModelConfig(
+        model: parseModelConfigOverride(
           memoryAgentModel,
           defaults.memory.agent.model,
           "memory.agent.model",
@@ -325,7 +325,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
   };
 }
 
-function toRawModelConfig(config: KanaMemoryModelConfig): Record<string, unknown> {
+function toRawModelConfig(config: KanaModelConfigOverride): Record<string, unknown> {
   return {
     provider: config.provider,
     name: config.name,
@@ -347,11 +347,11 @@ function parseModelConfig(
   };
 }
 
-function parseMemoryModelConfig(
+function parseModelConfigOverride(
   model: Record<string, unknown>,
-  defaults: KanaMemoryModelConfig,
+  defaults: KanaModelConfigOverride,
   path: string,
-): KanaMemoryModelConfig {
+): KanaModelConfigOverride {
   return {
     provider: readOptionalModelProvider(model.provider, defaults.provider, `${path}.provider`),
     name: readOptionalString(model.name, defaults.name, `${path}.name`),
@@ -361,7 +361,7 @@ function parseMemoryModelConfig(
 
 function parseModelPreferences(
   model: Record<string, unknown>,
-  defaults: KanaMemoryModelConfig,
+  defaults: KanaModelConfigOverride,
   path: string,
 ): Pick<KanaModelConfig, "reasoningEffort" | "maxOutputTokens" | "contextLimit"> {
   return {
