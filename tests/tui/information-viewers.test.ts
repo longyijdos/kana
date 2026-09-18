@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaTodoItem, KanaUsageScope, KanaUsageSummary } from "@/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
-import { ToolCallBlock } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component } from "../../src/tui/runtime";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
@@ -126,56 +125,6 @@ describe("information viewers", () => {
     expect(rendered).toContain("◉ Implement durable state");
     expect(rendered).toContain("✓ Update documentation");
   });
-
-  test("ctrl+o over an open tool history picker replaces it without stale state", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call-latest",
-      name: "bash",
-      args: { command: "bun test" },
-    });
-    block.updateResult({ command: "bun test", exitCode: 0, stdout: "1 pass" }, false);
-    internal.transcript.addChild(block);
-
-    internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
-    expect(internal.toolHistory.active).toBe(true);
-
-    internal.handleGlobalInput("\x0f");
-
-    expect(internal.toolHistory.active).toBe(false);
-    expect(internal.contentViewer.active).toBe(true);
-    const inspector = internal.layout.render(80, 24).map(stripAnsi).join("\n");
-    expect(inspector).not.toContain("Tool history");
-    expect(inspector).toContain("Command");
-    expect(inspector).toContain("bun test");
-
-    internal.tui.getFocus()?.handleInput?.("\x1b");
-
-    expect(internal.contentViewer.active).toBe(false);
-    expect(internal.toolHistory.active).toBe(false);
-    expect(internal.layout.render(80, 24).some((line) => line.includes("test-model"))).toBe(true);
-  });
-
-  test("ctrl+o with no tools keeps an open tool history picker usable", () => {
-    const app = createApp();
-    const internal = app as unknown as AppInternals;
-
-    internal.handleCommand({ name: "tools", arguments: "", raw: "/tools" });
-    expect(internal.toolHistory.active).toBe(true);
-
-    internal.handleGlobalInput("\x0f");
-
-    expect(internal.toolHistory.active).toBe(true);
-    expect(internal.contentViewer.active).toBe(false);
-    const rendered = internal.layout.render(80, 24).map(stripAnsi);
-    expect(rendered).toContain("Tool history");
-    expect(rendered).toContain("No tool calls in this session.");
-
-    internal.tui.getFocus()?.handleInput?.("\x1b");
-    expect(internal.toolHistory.active).toBe(false);
-  });
 });
 
 type AppInternals = {
@@ -193,10 +142,8 @@ type AppInternals = {
     raw: string;
   }) => void;
   handleConversationEvent: (event: unknown) => void;
-  handleGlobalInput: (data: string) => void;
   transcript: { children: unknown[]; addChild: (child: unknown) => void };
   contentViewer: { active: boolean };
-  toolHistory: { active: boolean };
   scheduledMessageManager: { active: boolean };
   tui: { getFocus: () => Component | undefined };
   layout: { render: (width: number, availableHeight?: number) => string[] };

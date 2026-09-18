@@ -252,7 +252,7 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "Ctrl+O",
-    description: "Open/close the newest tool detail inspector.",
+    description: "Open the newest tool detail inspector.",
   },
   {
     input: "[ / ]",

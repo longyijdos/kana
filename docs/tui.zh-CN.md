@@ -47,7 +47,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | --- | --- |
 | `Ctrl+C` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，正在运行时中止本地 Shell、记忆压缩或 Agent。空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；关闭等待期间再次按下会强制退出。 |
 | `Esc` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，先交给当前聚焦的 modal、view、picker 或嵌套 prompt 处理，工具审批提示会将它视为“拒绝”。焦点回到编辑器后，若 Agent 正在运行则中止本次 run；空闲时不产生作用。 |
-| `Ctrl+O` | 打开/关闭最近一项工具调用的详情查看器；`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用。 |
+| `Ctrl+O` | 在普通编辑器状态下打开最近一项工具调用的详情查看器；其它底部视图会消耗该输入并保持原样。`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用，`Esc` 关闭。 |
 | `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
 
 可选列表共用一套导航约定：`Up` / `Down` 移动一项，`Left` / `Right` 与 `PageUp` / `PageDown` 把可见窗口移动一屏并让选中项保持在同一行，`Home` / `End` 跳到首项或末项；适用于 session 选择器、`/skills`、`/mcp`、`/tools`、`/schedule`、`/jobs` 与 `/agents`。窗口已经停在端点时无法继续移动，此时翻页会把选中项落到末项或首项。只读查看器翻动的是内容：`Up` / `Down` 滚动，`Left` / `Right` 移动一屏详情。
@@ -140,7 +140,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 - `SlashCommandOptionsController` 用可取消的多步提示收集 slash command 选项。`/usage` 可选择 session、project 或 global；`/memory` 依次选择操作和 scope，Compact 再使用独立 `TextPrompt` 接收可选 request；`/approval` 可选择 Always ask、Ask unless trusted 或 Never ask，最后一项使用与删除会话相同的默认否定二次确认；`/model` 先选择 provider 与 model，再显示该模型 metadata 声明的 reasoning efforts。没有 reasoning metadata 的模型会跳过最后一步，`none` 显示为 `Off`。选项不通过 editor 参数传入，嵌套步骤中的 `Esc` 返回上一步。
 - `/model` 只在空闲时完成切换。Kana 保留当前消息和 context checkpoint，先根据新的 `[agent.model]` 选择构造候选对话 Agent；普通模式再只原子保存有变化的 provider、name 和可选推理强度，已有 `max_output_tokens` 与 `context_limit` 保持不变。Clean 模式只更新当前 Host 的已校验进程内配置。全部成功后才替换当前 Agent，并同步状态栏中的模型和推理强度。构造或持久化失败会保留旧 Agent 和旧配置并在 transcript 显示错误。`/model` 永远不会修改独立的 `[memory.agent]` 配置或其 scheduler。普通模式的选择会成为后续新建、分叉和恢复对话会话的配置；Clean 模式只覆盖当前进程中的后续对话 Agent，且不产生逐次 accounting 记录。
 - `/compact` 不接受参数；它只在空闲时强制压缩当前对话上下文，不发送用户消息。
-- `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具详情；transcript 仍保持渲染。工具查看器打开最近一次工具调用，且任意 ToolCallBlock 都可以打开——输出很短、没有 result、正在运行/已取消、read，以及 custom/unknown 工具一律可查看，不依赖 expandability 或宽度。`[` 和 `]` 在上一个/下一个工具调用之间切换；导航直接在底部原位替换查看器，保持焦点、不触碰编辑器，每个工具都获得一个从顶部开始的新视口。关闭时优先恢复正在等待的审批，否则恢复编辑器。
+- `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具详情；transcript 仍保持渲染。工具查看器在编辑器状态下打开最近一次工具调用，且任意 ToolCallBlock 都可以打开——输出很短、没有 result、正在运行/已取消、read，以及 custom/unknown 工具一律可查看，不依赖 expandability 或宽度。`[` 和 `]` 在上一个/下一个工具调用之间切换；导航直接在底部原位替换查看器，保持焦点、不触碰编辑器，每个工具都获得一个从顶部开始的新视口。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `ToolHistoryController` 支撑 `/tools`：把当前 transcript 中的每个 ToolCallBlock 快照成一个小型选择器，最新在前（每个工具一行：标题加 schema 已知的摘要）。成员资格不依赖 expandability、终端宽度、紧凑渲染状态或 resize——列表在打开时固定，选择始终落在同一个稳定 `toolCall.id` 上。`Enter` 直接把底部交给 `Ctrl+O` 快路径使用的同一个工具详情查看器，中间不恢复编辑器；`[` / `]` 导航保持 transcript 时间线顺序，从选中哪个工具开始都成立。`Esc` 关闭选择器回到编辑器。只浏览当前会话，不存在跨会话历史。
 - `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
