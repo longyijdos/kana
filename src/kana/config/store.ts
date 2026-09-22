@@ -29,7 +29,7 @@ export type KanaConfigStore = {
 };
 
 // Keep the typed config and its canonical TOML leaves in one registry. Updates
-// can then preserve unknown tables and comments instead of serializing defaults.
+// can then preserve comments instead of serializing defaults.
 const CONFIG_FIELDS: KanaConfigField[] = [
   field("provider.deepseek", "api_key_env", (config) => config.provider.deepseek.apiKeyEnv),
   field("provider.deepseek", "timeout_ms", (config) => config.provider.deepseek.timeoutMs),

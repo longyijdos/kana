@@ -20,9 +20,35 @@ import {
 import { DEFAULT_KANA_CONFIG } from "./defaults";
 
 const KANA_LOG_LEVELS = LOG_LEVELS;
+const KANA_CONFIG_SCHEMA = toRawKanaConfig(DEFAULT_KANA_CONFIG);
 
 export function parseKanaConfig(rawConfig: unknown): KanaConfig {
+  assertKnownConfigFields(rawConfig, KANA_CONFIG_SCHEMA);
   return mergeKanaConfig(DEFAULT_KANA_CONFIG, rawConfig);
+}
+
+export function assertKnownKanaConfigPath(path: string): void {
+  let schema: unknown = KANA_CONFIG_SCHEMA;
+  for (const key of path.split(".")) {
+    if (typeof schema !== "object" || schema === null || !Object.hasOwn(schema, key)) {
+      throw new Error(`Unknown config field: ${path}.`);
+    }
+    schema = (schema as Record<string, unknown>)[key];
+  }
+}
+
+function assertKnownConfigFields(raw: unknown, schema: Record<string, unknown>, prefix = ""): void {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+  for (const [key, value] of Object.entries(raw)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (!Object.hasOwn(schema, key)) {
+      throw new Error(`Unknown config field: ${path}.`);
+    }
+    const expected = schema[key];
+    if (typeof expected === "object" && expected !== null && !Array.isArray(expected)) {
+      assertKnownConfigFields(value, expected as Record<string, unknown>, path);
+    }
+  }
 }
 
 export function validateKanaConfig(config: KanaConfig): KanaConfig {

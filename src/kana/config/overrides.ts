@@ -1,5 +1,5 @@
 import type { KanaConfig } from "./contracts";
-import { parseKanaConfig, toRawKanaConfig } from "./parser";
+import { assertKnownKanaConfigPath, parseKanaConfig, toRawKanaConfig } from "./parser";
 
 export function applyKanaConfigOverrides(
   config: KanaConfig,
@@ -13,6 +13,7 @@ export function applyKanaConfigOverrides(
     if (separator < 0 || !/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/.test(path)) {
       throw new Error("Config override must use a dotted path=value assignment.");
     }
+    assertKnownKanaConfigPath(path);
     let parsed: Record<string, unknown>;
     try {
       parsed = Bun.TOML.parse(`value = ${override.slice(separator + 1)}`) as Record<

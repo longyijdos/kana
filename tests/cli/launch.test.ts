@@ -8,7 +8,7 @@ import { defaultCliOptions, parseCli } from "./cli-fixture";
 describe("CLI launch", () => {
   test("forwards repeated raw overrides through every launch entry", async () => {
     const calls: Array<StartTuiOptions | StartHeadlessOptions | undefined> = [];
-    const overrides = ["agent.max_turns=50", 'unknown.field="a=b"'];
+    const overrides = ["agent.max_turns=50", 'agent.model.name="a=b"'];
     for (const command of [
       [],
       ["resume", "session-1"],

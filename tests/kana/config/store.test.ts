@@ -46,16 +46,12 @@ describe("Kana config store", () => {
       'agent.model={ provider="custom", name="a=b" }',
       'provider.openai-codex.reasoning_summary="detailed"',
       "memory.agent.model.context_limit=8000",
-      "unknown.field=true",
-      "agent.unknown=42",
-      "__proto__.polluted=true",
     ]);
     expect(store.load().agent).toMatchObject({
       maxTurns: 50,
       model: { provider: "custom", name: "a=b" },
     });
     expect(store.load().memory.agent.model.contextLimit).toBe(8000);
-    expect(Object.hasOwn({}, "polluted")).toBe(false);
     expect(existsSync(getKanaConfigPaths(env).configPath)).toBe(false);
   });
 
@@ -67,8 +63,13 @@ describe("Kana config store", () => {
     ["agent.max_turns=0", "agent.max_turns"],
     ['agent.web_search="false"', "agent.web_search"],
     ["agent.tools=[1]", "agent.tools"],
-    ["agent.max_turns.child=1", "non-table"],
-    ["unknown.field=unquoted", "single valid TOML value"],
+    ["agent.max_turns.child=1", "Unknown config field: agent.max_turns.child"],
+    ["unknown.field=unquoted", "Unknown config field: unknown.field"],
+    ["unknown.field=true", "Unknown config field: unknown.field"],
+    ["agent.unknown=42", "Unknown config field: agent.unknown"],
+    ["agent.model.nam=42", "Unknown config field: agent.model.nam"],
+    ['agent.model={nam="wrong"}', "Unknown config field: agent.model.nam"],
+    ["__proto__.polluted=true", "Unknown config field: __proto__.polluted"],
   ])("rejects invalid startup override %s", (override, error) => {
     expect(() => createKanaConfigStore(createTempEnv(), [override])).toThrow(error);
   });
@@ -141,7 +142,7 @@ describe("Kana config store", () => {
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
   });
 
-  test("preserves comments and unknown tables while changing known leaves", () => {
+  test("preserves comments while changing known leaves", () => {
     const env = createTempEnv();
     const { configPath, home } = getKanaConfigPaths(env);
     writeFileSync(
@@ -153,9 +154,6 @@ describe("Kana config store", () => {
         'name = "deepseek-v4-pro"',
         'reasoning_effort = "high"',
         "max_output_tokens = 64000",
-        "",
-        "[custom]",
-        'value = "untouched"',
         "",
       ].join("\n"),
     );
@@ -191,7 +189,6 @@ describe("Kana config store", () => {
     expect(updated).toContain(
       '[tui]\ntheme = "solarized_dark"\nhyperlinks = false\nrender_latex = false\nrender_mermaid = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false',
     );
-    expect(updated).toContain('[custom]\nvalue = "untouched"');
     expect(readdirSync(home).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
