@@ -6,6 +6,30 @@ import { KANA_VERSION } from "../../src/version";
 import { defaultCliOptions, parseCli } from "./cli-fixture";
 
 describe("CLI launch", () => {
+  test("forwards repeated raw overrides through every launch entry", async () => {
+    const calls: Array<StartTuiOptions | StartHeadlessOptions | undefined> = [];
+    const overrides = ["agent.max_turns=50", 'unknown.field="a=b"'];
+    for (const command of [
+      [],
+      ["resume", "session-1"],
+      ["exec", "inspect"],
+      ["exec", "resume", "session-1", "continue"],
+    ]) {
+      await parseCli(["node", "kana", "--set", overrides[0]!, ...command, "--set", overrides[1]!], {
+        startTui: (options) => {
+          calls.push(options);
+        },
+        startHeadless: async (options) => {
+          calls.push(options);
+          return 0;
+        },
+      });
+    }
+    expect(calls.map((options) => options?.configOverrides)).toEqual(
+      Array.from({ length: 4 }, () => overrides),
+    );
+  });
+
   test("uses the shared application version", () => {
     expect(createCli(defaultCliOptions()).version()).toBe(KANA_VERSION);
   });

@@ -115,6 +115,7 @@ describe("Kana conversation host", () => {
     const seenModels: string[] = [];
     const host = createKanaConversationHost<string>({
       env,
+      configOverrides: ['agent.model.name="startup-model"', "agent.max_turns=50"],
       applyAgentConfiguration: (config, model) => {
         config.agent.model.name = model;
       },
@@ -131,8 +132,9 @@ describe("Kana conversation host", () => {
 
     runtime.reconfigure("deepseek-v4-pro");
 
-    expect(seenModels).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
+    expect(seenModels).toEqual(["startup-model", "deepseek-v4-pro"]);
     expect(host.config.agent.model.name).toBe("deepseek-v4-pro");
+    expect(host.config.agent.maxTurns).toBe(50);
     await runtime.close();
     await host.close();
   });

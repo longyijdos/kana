@@ -5,6 +5,7 @@ import {
   withLockedConfigFile,
   writeConfigFileAtomically,
 } from "./file-storage";
+import { applyKanaConfigOverrides } from "./overrides";
 import { parseKanaConfig, validateKanaConfig } from "./parser";
 import { loadKanaConfig } from "./persistence";
 
@@ -117,8 +118,11 @@ const CONFIG_FIELDS: KanaConfigField[] = [
   field("logging", "level", (config) => config.logging.level),
 ];
 
-export function createKanaConfigStore(env: NodeJS.ProcessEnv = process.env): KanaConfigStore {
-  let snapshot = loadKanaConfig(env);
+export function createKanaConfigStore(
+  env: NodeJS.ProcessEnv = process.env,
+  overrides: readonly string[] = [],
+): KanaConfigStore {
+  let snapshot = applyKanaConfigOverrides(loadKanaConfig(env), overrides);
 
   return {
     load: () => structuredClone(snapshot),

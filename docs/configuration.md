@@ -128,6 +128,15 @@ The editor expands a valid invocation before submission or queueing and passes t
 
 When the configuration file is absent, Kana uses built-in defaults. When it exists, every supplied field overrides its default and omitted fields retain their defaults. Kana loads this effective configuration once when the process starts; direct file edits require a restart, while configuration changed through the running frontend updates its in-memory snapshot immediately. Model selection and Agent policy are static per Agent: `[agent.model]` configures the conversation Agent, while `[memory.agent.model]` overrides individual fields of that selection for memory consolidation and inherits every field it leaves unset. Provider tables contain only transport and authentication settings. This schema is intentionally breaking; legacy `[provider]` and `[model.*]` selection tables are not read.
 
+Repeatable `--set <path=value>` overrides the startup configuration for the current process in TUI, `resume`, `exec`, and `exec resume`, including clean launches. Paths use dot-separated TOML bare keys, and each value must be valid TOML; strings need TOML quotes preserved by the shell. Overrides apply in order, with the last assignment winning; arrays and inline tables replace the value at their path. Unknown fields are ignored just as in `config.toml`, while malformed assignments and invalid known values fail startup. The file is validated before overrides, so overrides cannot repair an invalid file.
+
+```bash
+kana --set agent.max_turns=50 --set agent.web_search=false
+kana exec --set agent.model.name='"custom"' --set agent.tools='["bash","read"]' inspect
+```
+
+Startup overrides initialize only the in-memory configuration snapshot and never write or create `config.toml`. Later `/model` selections retain their normal persistence behavior: only fields changed by that selection are written, while other temporary overrides remain in memory.
+
 The TUI's `/model` command updates `config.toml` through the generic configuration store. Before writing, the store locks the file, reads its latest contents, and patches only known fields changed in the running snapshot. Unrelated external edits, unknown fields, tables, and standalone comments remain on disk without entering the current process. The first change away from defaults therefore creates only the required overrides instead of expanding every default. The changed fields must parse back to their target values before a sibling temporary file atomically replaces the original; validation or write failures leave the original file untouched. `config.example.toml` is reference-only and may be refreshed by a later `kana install`, so user configuration should not be stored there.
 
 The built-in configuration is equivalent to:

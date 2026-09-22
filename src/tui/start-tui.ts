@@ -25,6 +25,7 @@ export type StartTuiOptions = {
   resumeSessionId?: string;
   showResumePicker?: boolean;
   launchMode?: KanaLaunchMode;
+  configOverrides?: readonly string[];
 };
 
 export async function startTui(options: StartTuiOptions = {}): Promise<void> {
@@ -41,6 +42,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       : { type: "new" };
   const host = createKanaConversationHost<TuiModelSelection>({
     launchMode: options.launchMode,
+    configOverrides: options.configOverrides,
     session,
     applyAgentConfiguration: applyTuiModelSelection,
     openMcpOAuthAuthorizationUrl: async (serverId, url) => {

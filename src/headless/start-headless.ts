@@ -9,6 +9,7 @@ export type StartHeadlessOptions = {
   prompt?: string;
   resumeSessionId?: string;
   launchMode?: KanaLaunchMode;
+  configOverrides?: readonly string[];
   goal?: boolean;
   json?: boolean;
   allowAllTools?: boolean;
@@ -57,6 +58,7 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
       // A one-shot process cannot honor a future process-local wake after exit.
       enableScheduledWakeTool: false,
       launchMode: options.launchMode,
+      configOverrides: options.configOverrides,
     });
     runtime = createHeadlessRuntime(host, options.goal ?? false);
     host.getLogger().info("headless.started", {

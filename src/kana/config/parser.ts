@@ -26,7 +26,11 @@ export function parseKanaConfig(rawConfig: unknown): KanaConfig {
 }
 
 export function validateKanaConfig(config: KanaConfig): KanaConfig {
-  return parseKanaConfig({
+  return parseKanaConfig(toRawKanaConfig(config));
+}
+
+export function toRawKanaConfig(config: KanaConfig): Record<string, unknown> {
+  return {
     provider: {
       deepseek: {
         api_key_env: config.provider.deepseek.apiKeyEnv,
@@ -94,7 +98,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
     logging: {
       level: config.logging.level,
     },
-  });
+  };
 }
 
 function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
