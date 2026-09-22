@@ -63,13 +63,16 @@ describe("Kana config store", () => {
     ["agent.max_turns=0", "agent.max_turns"],
     ['agent.web_search="false"', "agent.web_search"],
     ["agent.tools=[1]", "agent.tools"],
-    ["agent.max_turns.child=1", "Unknown config field: agent.max_turns.child"],
-    ["unknown.field=unquoted", "Unknown config field: unknown.field"],
-    ["unknown.field=true", "Unknown config field: unknown.field"],
+    [
+      "agent.max_turns.child=1",
+      "Config override agent.max_turns.child traverses a non-table value",
+    ],
+    ["unknown.field=unquoted", "single valid TOML value"],
+    ["unknown.field=true", "Unknown config field: unknown."],
     ["agent.unknown=42", "Unknown config field: agent.unknown"],
     ["agent.model.nam=42", "Unknown config field: agent.model.nam"],
     ['agent.model={nam="wrong"}', "Unknown config field: agent.model.nam"],
-    ["__proto__.polluted=true", "Unknown config field: __proto__.polluted"],
+    ["__proto__.polluted=true", "Unknown config field: __proto__."],
   ])("rejects invalid startup override %s", (override, error) => {
     expect(() => createKanaConfigStore(createTempEnv(), [override])).toThrow(error);
   });

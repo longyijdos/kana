@@ -27,16 +27,6 @@ export function parseKanaConfig(rawConfig: unknown): KanaConfig {
   return mergeKanaConfig(DEFAULT_KANA_CONFIG, rawConfig);
 }
 
-export function assertKnownKanaConfigPath(path: string): void {
-  let schema: unknown = KANA_CONFIG_SCHEMA;
-  for (const key of path.split(".")) {
-    if (typeof schema !== "object" || schema === null || !Object.hasOwn(schema, key)) {
-      throw new Error(`Unknown config field: ${path}.`);
-    }
-    schema = (schema as Record<string, unknown>)[key];
-  }
-}
-
 function assertKnownConfigFields(raw: unknown, schema: Record<string, unknown>, prefix = ""): void {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
   for (const [key, value] of Object.entries(raw)) {
