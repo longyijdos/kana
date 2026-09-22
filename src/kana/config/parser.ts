@@ -20,13 +20,33 @@ import {
 import { DEFAULT_KANA_CONFIG } from "./defaults";
 
 const KANA_LOG_LEVELS = LOG_LEVELS;
+const KANA_CONFIG_SCHEMA = toRawKanaConfig(DEFAULT_KANA_CONFIG);
 
 export function parseKanaConfig(rawConfig: unknown): KanaConfig {
+  assertKnownConfigFields(rawConfig, KANA_CONFIG_SCHEMA);
   return mergeKanaConfig(DEFAULT_KANA_CONFIG, rawConfig);
 }
 
+function assertKnownConfigFields(raw: unknown, schema: Record<string, unknown>, prefix = ""): void {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+  for (const [key, value] of Object.entries(raw)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (!Object.hasOwn(schema, key)) {
+      throw new Error(`Unknown config field: ${path}.`);
+    }
+    const expected = schema[key];
+    if (typeof expected === "object" && expected !== null && !Array.isArray(expected)) {
+      assertKnownConfigFields(value, expected as Record<string, unknown>, path);
+    }
+  }
+}
+
 export function validateKanaConfig(config: KanaConfig): KanaConfig {
-  return parseKanaConfig({
+  return parseKanaConfig(toRawKanaConfig(config));
+}
+
+export function toRawKanaConfig(config: KanaConfig): Record<string, unknown> {
+  return {
     provider: {
       deepseek: {
         api_key_env: config.provider.deepseek.apiKeyEnv,
@@ -94,7 +114,7 @@ export function validateKanaConfig(config: KanaConfig): KanaConfig {
     logging: {
       level: config.logging.level,
     },
-  });
+  };
 }
 
 function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {

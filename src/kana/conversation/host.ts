@@ -105,13 +105,14 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
   session?: KanaConversationHostSession;
   env?: NodeJS.ProcessEnv;
   launchMode?: KanaLaunchMode;
+  configOverrides?: readonly string[];
   enableScheduledWakeTool?: boolean;
   applyAgentConfiguration?: (config: KanaConfig, configuration: TConfiguration) => void;
   onMcpProgress?: (event: KanaMcpRuntimeProgressEvent) => void;
   openMcpOAuthAuthorizationUrl?: (serverId: string, url: string) => Promise<void>;
   onMcpOAuthDiagnostic?: (serverId: string, event: McpOAuthHttpDiagnosticEvent) => void;
   createAgent?: KanaAgentProductFactory;
-  createConfigStore?: (env: NodeJS.ProcessEnv) => KanaConfigStore;
+  createConfigStore?: (env: NodeJS.ProcessEnv, overrides?: readonly string[]) => KanaConfigStore;
   createMcpRuntime?: typeof createKanaMcpRuntime;
 };
 
@@ -145,7 +146,10 @@ export class KanaConversationHost<TConfiguration = never> {
   constructor(options: CreateKanaConversationHostOptions<TConfiguration> = {}) {
     this.env = { ...(options.env ?? process.env) };
     this.launchMode = options.launchMode ?? "normal";
-    this.configStore = (options.createConfigStore ?? createKanaConfigStore)(this.env);
+    this.configStore = (options.createConfigStore ?? createKanaConfigStore)(
+      this.env,
+      options.configOverrides,
+    );
     this.configData = this.configStore.load();
     this.toolApprovalStore = createKanaToolApprovalStore(this.env);
     this.customProviderSnapshot = loadKanaCustomProviderSnapshot(

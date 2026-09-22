@@ -69,14 +69,20 @@ export function createCli(options: CreateCliOptions): Command {
     .description("Personal TypeScript/Bun agent runtime")
     .version(KANA_VERSION)
     .option("--clean", "Start a temporary session without custom context or session persistence")
+    .option(
+      "--set <path=value>",
+      "Temporarily override a config.toml value (repeatable; values use TOML syntax)",
+      (value: string, previous: string[] = []) => [...previous, value],
+    )
     .argument("[prompt...]", "Prompt to send after opening the TUI")
     .action(async (promptParts: string[] = [], actionOptions: LaunchCommandOptions) => {
       const prompt = promptParts.join(" ").trim();
       const launchMode = getLaunchMode(actionOptions);
 
-      if (prompt || launchMode) {
+      if (prompt || launchMode || actionOptions.set) {
         await runTui({
           ...(prompt ? { initialPrompt: prompt } : {}),
+          ...(actionOptions.set ? { configOverrides: actionOptions.set } : {}),
           ...(launchMode ? { launchMode } : {}),
         });
         return;
@@ -95,10 +101,12 @@ export function createCli(options: CreateCliOptions): Command {
         _actionOptions: LaunchCommandOptions,
         command: Command,
       ) => {
-        const launchMode = getLaunchMode(command.optsWithGlobals<LaunchCommandOptions>());
+        const commandOptions = command.optsWithGlobals<LaunchCommandOptions>();
+        const launchMode = getLaunchMode(commandOptions);
         await runTui({
           resumeSessionId: sessionId,
           showResumePicker: sessionId === undefined,
+          ...(commandOptions.set ? { configOverrides: commandOptions.set } : {}),
           ...(launchMode ? { launchMode } : {}),
         });
       },
@@ -117,6 +125,7 @@ export function createCli(options: CreateCliOptions): Command {
       await applyHeadlessExitCode(
         runHeadless({
           prompt: joinPromptParts(promptParts),
+          ...(commandOptions.set ? { configOverrides: commandOptions.set } : {}),
           ...(commandOptions.goal ? { goal: true } : {}),
           json: commandOptions.json,
           allowAllTools: commandOptions.allowAllTools,
@@ -145,6 +154,7 @@ export function createCli(options: CreateCliOptions): Command {
       await applyHeadlessExitCode(
         runHeadless({
           prompt: joinPromptParts(promptParts),
+          ...(commandOptions.set ? { configOverrides: commandOptions.set } : {}),
           resumeSessionId: sessionId,
           ...(commandOptions.goal ? { goal: true } : {}),
           json: commandOptions.json,
@@ -356,6 +366,7 @@ export function createCli(options: CreateCliOptions): Command {
 
 type LaunchCommandOptions = {
   clean?: boolean;
+  set?: string[];
 };
 
 type HeadlessCommandOptions = LaunchCommandOptions & {

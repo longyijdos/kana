@@ -306,6 +306,19 @@ describe("Kana config parser", () => {
     }
   });
 
+  test.each([
+    ["top-level key", "agnent = true\n", "agnent"],
+    ["top-level table", "[agnent]\nmax_turns = 5\n", "agnent"],
+    ["nested table", '[agent.modle]\nname = "typo"\n', "agent.modle"],
+    ["nested field", '[agent.model]\nnam = "typo"\n', "agent.model.nam"],
+    ["inline table field", '[agent]\nmodel = { nam = "typo" }\n', "agent.model.nam"],
+    ["memory agent field", "[memory.agent]\nweb_serch = true\n", "memory.agent.web_serch"],
+  ])("rejects unknown %s in config.toml", (_label, document, field) => {
+    const env = createTempEnv();
+    writeFileSync(getKanaConfigPaths(env).configPath, document);
+    expect(() => loadKanaConfig(env)).toThrow(`Unknown config field: ${field}.`);
+  });
+
   test("loads and validates the built-in tool selection", () => {
     const env = createTempEnv();
     const { home } = getKanaConfigPaths(env);

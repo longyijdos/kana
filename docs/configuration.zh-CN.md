@@ -126,9 +126,18 @@ then clean up {{branch=the merged branch}} and its related worktree if safe.
 
 ## `config.toml`
 
-配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。Kana 在进程启动时只加载一次有效配置；直接编辑文件需要重启才会生效，通过当前前端修改配置则会立即更新进程内快照。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 则为记忆压缩 Agent 覆盖该选择中的个别字段，未填写的字段全部继承；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更，不再读取旧 `[provider]` 和 `[model.*]` 选择表。
+配置文件不存在时，Kana 直接使用内置默认值。文件存在时，各个已提供字段覆盖默认值，未提供字段仍继承默认值。Kana 在进程启动时只加载一次有效配置；直接编辑文件需要重启才会生效，通过当前前端修改配置则会立即更新进程内快照。模型选择和 Agent 策略按 Agent 静态配置：`[agent.model]` 属于对话 Agent，`[memory.agent.model]` 则为记忆压缩 Agent 覆盖该选择中的个别字段，未填写的字段全部继承；provider 表只保存传输和鉴权设置。这是有意的破坏性 schema 变更；旧 `[provider]` 和 `[model.*]` 选择表会作为未知字段报错。
 
-TUI 的 `/model` 通过通用配置存储更新 `config.toml`：写入前，存储会锁定文件、读取磁盘上的最新内容，再只补丁当前运行时快照中实际变化的已知字段。无关的外部修改、未知字段、表和独立注释会保留在磁盘上，但不会进入当前进程。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。变更字段必须重新解析为目标值后，才会通过同目录临时文件原子替换原文件；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
+可重复指定的 `--set <path=value>` 为 TUI、`resume`、`exec` 和 `exec resume`（包括 clean 启动）覆盖当前进程的启动配置。路径使用点分隔的 TOML 裸键，值必须是合法 TOML；字符串需要通过 Shell 引号保留 TOML 引号。覆盖按传入顺序应用，同一路径最后一次赋值生效；数组和内联表替换对应路径的值。未知字段、赋值格式错误或已知字段的非法值都会导致启动失败。文件会先于覆盖进行校验，因此不能用覆盖修复非法文件配置。
+
+```bash
+kana --set agent.max_turns=50 --set agent.web_search=false
+kana exec --set agent.model.name='"custom"' --set agent.tools='["bash","read"]' inspect
+```
+
+启动覆盖只初始化内存中的配置快照，不会写入或创建 `config.toml`。之后 `/model` 选择仍按原有语义持久化：只写入本次选择实际改变的字段，其余临时覆盖继续保留在内存中。
+
+TUI 的 `/model` 通过通用配置存储更新 `config.toml`：写入前，存储会锁定文件、读取磁盘上的最新内容，再只补丁当前运行时快照中实际变化的已知字段。无关的合法外部修改和独立注释会保留在磁盘上，但不会进入当前进程；最新文件中的未知字段会导致校验失败。首次修改默认配置时只会创建必要的 override，不会展开所有默认值。变更字段必须重新解析为目标值后，才会通过同目录临时文件原子替换原文件；验证或写入失败时原文件保持不变。`config.example.toml` 只用于查阅，后续 `kana install` 可能刷新它，因此不应在其中保存用户配置。
 
 内置默认配置等价于：
 
@@ -334,7 +343,7 @@ Kana 只在 TUI 启动时读取选中的用户主题文件。文件必须是只�
 
 日志固定写入 `<KANA_HOME>/logs`，目录不可配置；所选 log level 会在持久化前过滤记录。Provider 生命周期记录格式见[供应商](providers.zh-CN.md)，其它稳定诊断 event 由各子系统文档拥有。
 
-配置根和每个已出现的 section 都必须是 TOML table。字符串不能为空，布尔值不能写成字符串，不支持的 provider、reasoning effort、审批模式、notification backend 或 log level 会阻止启动。Agent 与 Memory Agent capability flag 必须为 Boolean；`max_turns` 只接受 `-1` 或正整数；deadline、并发限制、Job 限制、模型 token limit、context limit 与 memory 数量必须为正整数。Provider retry 与 timeout 必须是有限数字。Kana 不会静默忽略无效的已知字段。
+配置根和每个已出现的 section 都必须是 TOML table。字符串不能为空，布尔值不能写成字符串，不支持的 provider、reasoning effort、审批模式、notification backend 或 log level 会阻止启动。Agent 与 Memory Agent capability flag 必须为 Boolean；`max_turns` 只接受 `-1` 或正整数；deadline、并发限制、Job 限制、模型 token limit、context limit 与 memory 数量必须为正整数。Provider retry 与 timeout 必须是有限数字。Kana 会拒绝未知字段和已知字段的非法值，并指出对应路径。
 
 ## `mcp.json` 与 `mcp-enabled.json`
 

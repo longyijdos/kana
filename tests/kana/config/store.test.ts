@@ -7,6 +7,82 @@ import { cleanupConfigTempDirs, createTempEnv } from "./config-fixture";
 afterEach(cleanupConfigTempDirs);
 
 describe("Kana config store", () => {
+  test("keeps startup overrides in memory while persisting only later model changes", () => {
+    const env = createTempEnv();
+    const { configPath } = getKanaConfigPaths(env);
+    const document = '# preserved\n[agent]\nmax_turns = 10\n[agent.model]\nname = "disk-model"\n';
+    writeFileSync(configPath, document);
+    const store = createKanaConfigStore(env, [
+      "agent.max_turns=50",
+      "agent.web_search=false",
+      'agent.tools=["bash", "read"]',
+      'agent.model.name="temporary-model"',
+      "agent.model.max_output_tokens=4096",
+    ]);
+    expect(store.load().agent).toMatchObject({
+      maxTurns: 50,
+      webSearch: false,
+      tools: ["bash", "read"],
+      model: { name: "temporary-model", maxOutputTokens: 4096 },
+    });
+    expect(readFileSync(configPath, "utf8")).toBe(document);
+    const updated = store.update((draft) => {
+      draft.agent.model.provider = "custom";
+      draft.agent.model.name = "selected-model";
+      draft.agent.model.reasoningEffort = undefined;
+    });
+    expect(updated.agent.maxTurns).toBe(50);
+    expect(updated.agent.model.maxOutputTokens).toBe(4096);
+    expect(readFileSync(configPath, "utf8")).toBe(
+      '# preserved\n[agent]\nmax_turns = 10\n[agent.model]\nname = "selected-model"\nprovider = "custom"\n',
+    );
+  });
+
+  test("applies ordered TOML overrides without creating a missing config file", () => {
+    const env = createTempEnv();
+    const store = createKanaConfigStore(env, [
+      "agent.max_turns=20",
+      "agent.max_turns=50",
+      'agent.model={ provider="custom", name="a=b" }',
+      'provider.openai-codex.reasoning_summary="detailed"',
+      "memory.agent.model.context_limit=8000",
+    ]);
+    expect(store.load().agent).toMatchObject({
+      maxTurns: 50,
+      model: { provider: "custom", name: "a=b" },
+    });
+    expect(store.load().memory.agent.model.contextLimit).toBe(8000);
+    expect(existsSync(getKanaConfigPaths(env).configPath)).toBe(false);
+  });
+
+  test.each([
+    ["agent.max_turns", "path=value"],
+    ["agent..max_turns=50", "path=value"],
+    ["agent.model.name=unquoted", "single valid TOML value"],
+    ["agent.max_turns=50\nextra=1", "single valid TOML value"],
+    ["agent.max_turns=0", "agent.max_turns"],
+    ['agent.web_search="false"', "agent.web_search"],
+    ["agent.tools=[1]", "agent.tools"],
+    [
+      "agent.max_turns.child=1",
+      "Config override agent.max_turns.child traverses a non-table value",
+    ],
+    ["unknown.field=unquoted", "single valid TOML value"],
+    ["unknown.field=true", "Unknown config field: unknown."],
+    ["agent.unknown=42", "Unknown config field: agent.unknown"],
+    ["agent.model.nam=42", "Unknown config field: agent.model.nam"],
+    ['agent.model={nam="wrong"}', "Unknown config field: agent.model.nam"],
+    ["__proto__.polluted=true", "Unknown config field: __proto__."],
+  ])("rejects invalid startup override %s", (override, error) => {
+    expect(() => createKanaConfigStore(createTempEnv(), [override])).toThrow(error);
+  });
+
+  test("does not hide invalid file configuration with a startup override", () => {
+    const env = createTempEnv();
+    writeFileSync(getKanaConfigPaths(env).configPath, "[agent]\nmax_turns = 0\n");
+    expect(() => createKanaConfigStore(env, ["agent.max_turns=50"])).toThrow("agent.max_turns");
+  });
+
   test("creates only changed overrides when config.toml is absent", () => {
     const env = createTempEnv();
     const store = createKanaConfigStore(env);
@@ -69,7 +145,7 @@ describe("Kana config store", () => {
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
   });
 
-  test("preserves comments and unknown tables while changing known leaves", () => {
+  test("preserves comments while changing known leaves", () => {
     const env = createTempEnv();
     const { configPath, home } = getKanaConfigPaths(env);
     writeFileSync(
@@ -81,9 +157,6 @@ describe("Kana config store", () => {
         'name = "deepseek-v4-pro"',
         'reasoning_effort = "high"',
         "max_output_tokens = 64000",
-        "",
-        "[custom]",
-        'value = "untouched"',
         "",
       ].join("\n"),
     );
@@ -119,7 +192,6 @@ describe("Kana config store", () => {
     expect(updated).toContain(
       '[tui]\ntheme = "solarized_dark"\nhyperlinks = false\nrender_latex = false\nrender_mermaid = false\nsmooth_text_streaming = false\ncollapse_long_pastes = false',
     );
-    expect(updated).toContain('[custom]\nvalue = "untouched"');
     expect(readdirSync(home).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
