@@ -182,7 +182,7 @@ describe("Kana static prompt", () => {
     const prompt = await assembly.assemble({ signal: new AbortController().signal });
 
     expect(prompt.system).toContain(
-      "You are a concise, practical assistant working in the user's current environment.",
+      "You are Kana, a concise, practical assistant working in the user's current environment.",
     );
     expect(prompt.system).not.toContain('"currentDate":');
     expect(prompt.context).toEqual([
@@ -241,10 +241,10 @@ describe("Kana static prompt", () => {
     });
 
     expect(prompt).toContain(
-      "You are a concise, practical assistant working in the user's current environment.",
+      "You are Kana, a concise, practical assistant working in the user's current environment.",
     );
     expect(prompt.split("\n\n")[0]).toBe(
-      "You are a concise, practical assistant working in the user's current environment.",
+      "You are Kana, a concise, practical assistant working in the user's current environment.",
     );
     expect(prompt).not.toContain('"currentDate":');
     expect(prompt).not.toContain("Global instructions.");
@@ -298,7 +298,7 @@ describe("Kana static prompt", () => {
     );
     expect(
       prompt.indexOf(
-        "You are a concise, practical assistant working in the user's current environment.",
+        "You are Kana, a concise, practical assistant working in the user's current environment.",
       ),
     ).toBeLessThan(prompt.indexOf("Global instructions."));
     expect(prompt.indexOf("Global instructions.")).toBeLessThan(
@@ -322,7 +322,7 @@ describe("Kana static prompt", () => {
     });
 
     expect(prompt).toContain(
-      "You are a concise, practical assistant working in the user's current environment.",
+      "You are Kana, a concise, practical assistant working in the user's current environment.",
     );
     expect(prompt).toContain(
       '<agents_instructions scope="project">\nProject-only instructions.\n</agents_instructions>',

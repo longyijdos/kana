@@ -30,6 +30,26 @@ describe("tool approval", () => {
     expect(rawRendered.find((line) => line.includes("Allow once"))).toBe(
       color("> Allow once", tuiTheme.user),
     );
+    expect(rawRendered.find((line) => line.includes("bun test"))).toContain("\x1b[2m");
+  });
+
+  test("shows a task invitation with readable full-brightness content", () => {
+    const approval = new ToolApproval(
+      {
+        type: "tool_call",
+        id: "call_task",
+        name: "delegate_user_task",
+        args: { task: "Check whether the labels are readable.\u001b]0;owned\u0007" },
+      },
+      () => {},
+    );
+
+    const rendered = approval.render(80);
+    expect(rendered[0]).toBe(color("Kana has a task for you", tuiTheme.user));
+    expect(rendered).toContain("Check whether the labels are readable.");
+    expect(rendered.join("\n")).not.toContain("owned");
+    expect(rendered.map(stripAnsi)).toContain("> Let Kana handle it");
+    expect(rendered.map(stripAnsi)).toContain("  Accept task");
   });
 
   test("renders the always allow option when enabled", () => {

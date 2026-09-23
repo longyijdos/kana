@@ -27,7 +27,7 @@ import type { KanaTodoItem } from "./todo";
 import type { KanaUserTask } from "./user-tasks";
 
 const DEFAULT_SYSTEM_PROMPT =
-  "You are a concise, practical assistant working in the user's current environment.";
+  "You are Kana, a concise, practical assistant working in the user's current environment.";
 
 type LoadKanaSystemPromptOptions = {
   cwd?: string;
