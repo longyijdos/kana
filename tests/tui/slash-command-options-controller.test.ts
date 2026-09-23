@@ -9,12 +9,28 @@ import type { Component, Tui } from "../../src/tui/runtime";
 import { tuiTheme } from "../../src/tui/theme";
 
 describe("slash command options controller", () => {
+  test("keeps an empty task list open until Esc", () => {
+    const harness = createHarness();
+
+    harness.controller.openTask();
+    expect(harness.render().join("\n")).toContain("No pending tasks. Press Esc to close.");
+    expect(harness.render().join("\n")).not.toContain("> No pending tasks");
+
+    harness.input("\r");
+    expect(harness.controller.active).toBe(true);
+    expect(harness.render().join("\n")).toContain("No pending tasks.");
+
+    harness.input("\x1b");
+    expect(harness.controller.active).toBe(false);
+  });
+
   test("submits and returns delegated tasks through /task", () => {
     const harness = createHarness();
     const completed = harness.userTasks.create("Check the labels");
 
     harness.controller.openTask();
     harness.input("\r");
+    harness.input("\x1b[B");
     harness.input("\r");
     harness.input("Labels are clear.");
     harness.input("\r");
@@ -24,12 +40,51 @@ describe("slash command options controller", () => {
     harness.controller.openTask();
     harness.input("\r");
     harness.input("\x1b[B");
+    harness.input("\x1b[B");
     harness.input("\r");
     harness.input("\r");
     expect(harness.userTasks.list()).toMatchObject([
       { id: completed.id, status: "done" },
       { id: returned.id, status: "returned" },
     ]);
+  });
+
+  test("opens the full task in a paged viewer from the action menu", () => {
+    const harness = createHarness();
+    harness.userTasks.create("Short task");
+    const description = [
+      "detail line 1",
+      "x".repeat(160),
+      ...Array.from({ length: 29 }, (_, index) => `detail line ${index + 2}`),
+    ].join("\n");
+    const task = harness.userTasks.create(description);
+
+    harness.controller.openTask();
+    harness.input("\x1b[B");
+    const list = harness.render().join("\n");
+    expect(list).toContain(`> ${task.id.slice(5, 13)} · detail line 1`);
+    expect(list).toContain("...");
+    expect(list).not.toContain("detail line 30");
+
+    harness.input("\r");
+    expect(harness.render()).toContain("> View full task");
+    expect(harness.render()).toContain("  Submit completed result");
+    expect(harness.render()).toContain("  Return to agent");
+
+    harness.input("\r");
+    const firstPage = harness.render().join("\n");
+    expect(firstPage).toContain("detail line 1");
+    expect(firstPage.match(/x/g)).toHaveLength(160);
+    expect(firstPage).toContain("Left/Right page");
+    expect(firstPage).not.toContain("Continue");
+
+    for (let index = 0; index < 10; index += 1) harness.input("\x1b[C");
+    expect(harness.render().join("\n")).toContain("detail line 30");
+
+    harness.input("\x1b");
+    expect(harness.render()).toContain("> View full task");
+    harness.input("\x1b");
+    expect(harness.render().join("\n")).toContain(`> ${task.id.slice(5, 13)} · detail line 1`);
   });
 
   test("collects a memory compact scope and optional request", () => {

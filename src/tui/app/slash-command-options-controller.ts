@@ -4,7 +4,8 @@ import type {
   KanaUsageScope,
   KanaUserTaskManager,
 } from "@/kana";
-import { ChoicePrompt, type Editor, TextPrompt } from "../components";
+import { ChoicePrompt, ContentViewer, type Editor, TextPrompt } from "../components";
+import { summarizeText, wrapPlainText } from "../render";
 import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { BottomAreaController } from "./bottom-area-controller";
@@ -68,7 +69,7 @@ export class SlashCommandOptionsController {
     this.showApprovalMode();
   }
 
-  openTask(): void {
+  openTask(defaultTaskId?: string): void {
     this.close();
     this.options.editor.clear();
     const tasks =
@@ -78,35 +79,53 @@ export class SlashCommandOptionsController {
         .filter((task) => task.status === "pending") ?? [];
     const prompt = new ChoicePrompt<string>({
       title: "Your tasks",
-      options: tasks.length
-        ? tasks.map((task) => ({
-            value: task.id,
-            label: `${task.id.slice(5, 13)} · ${task.task}`,
-          }))
-        : [{ value: "", label: "No pending tasks" }],
-      defaultValue: tasks[0]?.id ?? "",
-      onSelect: (taskId) =>
-        taskId ? this.replace(prompt, () => this.showTaskAction(taskId)) : this.close(),
+      detail: tasks.length === 0 ? "No pending tasks. Press Esc to close." : undefined,
+      options: tasks.map((task) => ({
+        value: task.id,
+        label: `${task.id.slice(5, 13)} · ${summarizeText(task.task, 64)}`,
+      })),
+      defaultValue: defaultTaskId ?? tasks[0]?.id ?? "",
+      onSelect: (taskId) => {
+        const task = tasks.find((item) => item.id === taskId);
+        if (task) this.replace(prompt, () => this.showTaskAction(task.id, task.task));
+      },
       onCancel: () => this.close(),
     });
     this.show(prompt);
   }
 
-  private showTaskAction(taskId: string): void {
-    const prompt = new ChoicePrompt<"done" | "return">({
+  private showTaskDetail(taskId: string, description: string): void {
+    const viewer = new ContentViewer(
+      {
+        title: `Task ${taskId.slice(5, 13)}`,
+        render: (width) => wrapPlainText(description, width),
+      },
+      { onClose: () => this.replace(viewer, () => this.showTaskAction(taskId, description)) },
+    );
+    this.show(viewer);
+  }
+
+  private showTaskAction(taskId: string, description: string): void {
+    const prompt = new ChoicePrompt<"view" | "done" | "return">({
       title: `Task ${taskId.slice(5, 13)}`,
       options: [
+        { value: "view", label: "View full task" },
         { value: "done", label: "Submit completed result" },
         { value: "return", label: "Return to agent" },
       ],
-      defaultValue: "done",
-      onSelect: (action) => this.replace(prompt, () => this.showTaskResponse(taskId, action)),
-      onCancel: () => this.openTask(),
+      defaultValue: "view",
+      onSelect: (action) =>
+        this.replace(prompt, () =>
+          action === "view"
+            ? this.showTaskDetail(taskId, description)
+            : this.showTaskResponse(taskId, description, action),
+        ),
+      onCancel: () => this.openTask(taskId),
     });
     this.show(prompt);
   }
 
-  private showTaskResponse(taskId: string, action: "done" | "return"): void {
+  private showTaskResponse(taskId: string, description: string, action: "done" | "return"): void {
     const prompt = new TextPrompt({
       title: action === "done" ? "Your result (required)" : "Reason for returning (optional)",
       collapseLongPastes: this.options.collapseLongPastes,
@@ -121,7 +140,7 @@ export class SlashCommandOptionsController {
           this.options.showError?.(error);
         }
       },
-      onCancel: () => this.showTaskAction(taskId),
+      onCancel: () => this.showTaskAction(taskId, description),
     });
     this.show(prompt);
   }
