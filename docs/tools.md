@@ -41,17 +41,19 @@ Every proposed call follows one contained pipeline:
 
 1. Resolve the tool by name; a missing tool becomes an error result.
 2. Deep-clone arguments, apply compatible primitive conversion, and validate them with a cached TypeBox compiler.
-3. Invoke `beforeToolExecution`. Approval hooks always enter serially and may allow or cancel the call.
-4. Check run cancellation, emit `tool_execution_start`, create the invocation signal, and start its effective deadline.
+3. Invoke `beforeToolExecution`. Hooks enter serially and may continue, cancel, or return a normal result without executing the tool.
+4. For calls that continue, check run cancellation, emit `tool_execution_start`, create the invocation signal, and start its effective deadline.
 5. Serialize `context.update()` notifications and wait for each listener before terminal publication.
-6. Normalize the physical outcome and emit `tool_execution_end`.
+6. Normalize the result and emit `tool_execution_end`.
 7. Apply result policies, then commit sibling results through model-ordered slots before the next model request.
 
 Kana-owned object schemas use `additionalProperties: false`, so an undeclared argument fails with its property name instead of being ignored. Serialized TypeBox schemas that have lost library metadata still receive compatible primitive conversion before the same compiler validates them. Third-party and MCP schemas keep their own declared additional-property behavior. `mcp_call` validates its gateway envelope in this pipeline and validates nested remote arguments inside the gateway before remote invocation.
 
 Validation errors, approval denial, cancellation, deadline expiry, and tool exceptions become `isError: true` results. They do not throw the turn loop. Approval cancellation aborts the run by default and gives later calls from the same assistant message canceled results without invoking them.
 
-`tool_execution_end` describes physical completion, cancellation, or an explicit unknown outcome. It does not promise that the result reached the journal. A successful Agent run is the durability boundary; see [Sessions and memory](sessions-and-memory.md) for commit and recovery order.
+A hook's `return` supplies a normal `ToolResult` and skips `execute` and its deadline; `cancel` supplies a canceled error result, even with `abortRun: false`. Both paths still publish `tool_execution_end`, apply result policies, and commit a tool result.
+
+`tool_execution_end` describes completion, cancellation, a hook-supplied result, or an explicit unknown outcome. It does not promise that the result reached the journal. A successful Agent run is the durability boundary; see [Sessions and memory](sessions-and-memory.md) for commit and recovery order.
 
 ## Concurrency, cancellation, and deadlines
 

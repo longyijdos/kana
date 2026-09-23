@@ -952,13 +952,29 @@ describe("ToolRuntime result finalization and policy", () => {
       parameters: labeledParameters,
       execute: () => "unexpected",
     } satisfies Tool<typeof labeledParameters, string>;
+    const handled = {
+      name: "handled",
+      description: "Return from the hook.",
+      parameters: labeledParameters,
+      execute: () => {
+        throw new Error("hook result should skip execution");
+      },
+    } satisfies Tool<typeof labeledParameters, string>;
     const runtime = new ToolRuntime(
       {
-        tools: [success, failure, denied],
-        beforeToolExecution: ({ tool }) =>
-          tool.name === "denied"
-            ? { type: "cancel", abortRun: false, message: "Approval denied." }
-            : { type: "continue" },
+        tools: [success, failure, denied, handled],
+        beforeToolExecution: ({ tool }) => {
+          if (tool.name === "denied") {
+            return { type: "cancel", abortRun: false, message: "Approval denied." };
+          }
+          if (tool.name === "handled") {
+            return {
+              type: "return",
+              result: { content: "Handled before execution.", result: { handled: true } },
+            };
+          }
+          return { type: "continue" };
+        },
         toolResultPolicy: {
           source: "recording",
           finalize: ({ toolCall, isError }) => {
@@ -975,6 +991,7 @@ describe("ToolRuntime result finalization and policy", () => {
       { type: "tool_call", id: "missing", name: "missing", args: {} },
       { type: "tool_call", id: "failure", name: "failure", args: { label: "bad" } },
       { type: "tool_call", id: "denied", name: "denied", args: { label: "no" } },
+      { type: "tool_call", id: "handled", name: "handled", args: { label: "skip" } },
     ]);
 
     expect(finalized).toEqual([
@@ -983,8 +1000,14 @@ describe("ToolRuntime result finalization and policy", () => {
       { name: "missing", isError: true },
       { name: "failure", isError: true },
       { name: "denied", isError: true },
+      { name: "handled", isError: false },
     ]);
-    expect(result.toolResults).toHaveLength(5);
+    expect(result.toolResults).toHaveLength(6);
+    expect(result.toolResults[5]).toMatchObject({
+      content: "Handled before execution.",
+      result: { handled: true },
+      isError: false,
+    });
     expect(result.abortRun).toBe(false);
   });
 
