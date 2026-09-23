@@ -107,6 +107,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 | `wait_subagent` | `agentId`、可选 `timeoutMs` | 读取或短暂等待所属 child 的状态与最终输出。 |
 | `cancel_subagent` | `agentId`、可选 `reason` | 取消所属 child 并等待结算。 |
 | `todo_write` | 完整 todo item 数组 | 原子替换或显式清空 session todo 状态。 |
+| `delegate_user_task` | 具体的 `task` 文本 | 邀请用户并行处理任务；接受后创建进程内任务 ID。 |
 | `remember` | `content`；可选 scope/title/reason | 记忆启用时追加长期记忆暂存记录。 |
 | `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
@@ -145,7 +146,7 @@ Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal` 或 `mcp_list_tools` 请求审批。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal` 或 `mcp_list_tools` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 

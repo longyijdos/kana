@@ -107,6 +107,7 @@ The live structured result remains available to `tool_execution_end`. Oversized,
 | `wait_subagent` | `agentId`, optional `timeoutMs` | Reads or briefly waits for an owned child's state and final output. |
 | `cancel_subagent` | `agentId`, optional `reason` | Cancels an owned child and waits for settlement. |
 | `todo_write` | Complete todo-item array | Atomically replaces or explicitly clears the session todo state. |
+| `delegate_user_task` | Concrete `task` text | Invites the user to work in parallel; acceptance creates a process-local task ID. |
 | `remember` | `content`; optional scope/title/reason | Appends a durable-memory staging entry when memory is enabled. |
 | `schedule_wake` | `afterMinutes`, `message`, optional `key` | Creates a process-local future input for the active session. |
 | `update_goal` | `status`, optional `detail` | Ends the authorized active Goal as completed or blocked. |
@@ -145,7 +146,7 @@ Subagent control tools expose only predefined role cards and return stable child
 
 `schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. It and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, or `mcp_list_tools`. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Bash allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, or `mcp_list_tools`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Bash allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
 
 ## MCP and custom tools
 

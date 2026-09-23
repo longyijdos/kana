@@ -44,6 +44,7 @@ import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
 import { KANA_WORKSPACE_TOOL_NAMES } from "./tool-names";
 import {
   createCancelSubagentTool,
+  createDelegateUserTaskTool,
   createMcpTools,
   createRememberTool,
   createScheduleWakeTool,
@@ -52,6 +53,7 @@ import {
   createUpdateGoalTool,
   createWaitSubagentTool,
 } from "./tools";
+import type { KanaUserTaskManager } from "./user-tasks";
 
 export { KANA_BUILT_IN_TOOL_NAMES } from "./tool-names";
 
@@ -79,6 +81,7 @@ export type KanaAgentOptions = Pick<
   updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
   subagentProfile?: KanaSubagentProfile;
   subagents?: KanaSubagentClient;
+  userTasks?: KanaUserTaskManager;
   subagentProfiles?: readonly KanaSubagentProfile[];
   runSubagent?: (context: KanaSubagentRunContext) => Promise<KanaSubagentRunResult>;
   skills?: readonly KanaSkill[];
@@ -233,6 +236,7 @@ export function createKanaAgent(
         createTodoWriteTool({
           commit: options.commitTodoState,
         }),
+        ...(options.userTasks ? [createDelegateUserTaskTool(options.userTasks)] : []),
       ]),
     });
   }
@@ -302,6 +306,9 @@ export function createKanaAgent(
         resolveBackgroundJobState: backgroundJobs ? () => backgroundJobs.context() : undefined,
         toolSections,
         resolveTodoState: options.resolveTodoState,
+        resolveUserTaskState: options.userTasks
+          ? () => options.userTasks?.context() ?? []
+          : undefined,
         resolveGoalState: resolveGoal,
         resolveSubagentState: subagents ? () => subagents.context() : undefined,
       });

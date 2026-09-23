@@ -1,4 +1,9 @@
-import type { KanaModelProvider, KanaToolApprovalMode, KanaUsageScope } from "@/kana";
+import type {
+  KanaModelProvider,
+  KanaToolApprovalMode,
+  KanaUsageScope,
+  KanaUserTaskManager,
+} from "@/kana";
 import { ChoicePrompt, type Editor, TextPrompt } from "../components";
 import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -16,6 +21,7 @@ export type SlashCommandOptionsControllerOptions = {
   onMemoryCompact: (scope: MemoryScope, request: string | undefined) => void;
   getApprovalMode: () => KanaToolApprovalMode;
   onApprovalModeSelect: (mode: KanaToolApprovalMode) => void;
+  getUserTasks?: () => KanaUserTaskManager | undefined;
   collapseLongPastes?: boolean;
   getModelSettings?: () => TuiModelSettings;
   onModelSelect?: (selection: TuiModelSelection) => void;
@@ -60,6 +66,64 @@ export class SlashCommandOptionsController {
     this.close();
     this.options.editor.clear();
     this.showApprovalMode();
+  }
+
+  openTask(): void {
+    this.close();
+    this.options.editor.clear();
+    const tasks =
+      this.options
+        .getUserTasks?.()
+        ?.list()
+        .filter((task) => task.status === "pending") ?? [];
+    const prompt = new ChoicePrompt<string>({
+      title: "Your tasks",
+      options: tasks.length
+        ? tasks.map((task) => ({
+            value: task.id,
+            label: `${task.id.slice(5, 13)} · ${task.task}`,
+          }))
+        : [{ value: "", label: "No pending tasks" }],
+      defaultValue: tasks[0]?.id ?? "",
+      onSelect: (taskId) =>
+        taskId ? this.replace(prompt, () => this.showTaskAction(taskId)) : this.close(),
+      onCancel: () => this.close(),
+    });
+    this.show(prompt);
+  }
+
+  private showTaskAction(taskId: string): void {
+    const prompt = new ChoicePrompt<"done" | "return">({
+      title: `Task ${taskId.slice(5, 13)}`,
+      options: [
+        { value: "done", label: "Submit completed result" },
+        { value: "return", label: "Return to agent" },
+      ],
+      defaultValue: "done",
+      onSelect: (action) => this.replace(prompt, () => this.showTaskResponse(taskId, action)),
+      onCancel: () => this.openTask(),
+    });
+    this.show(prompt);
+  }
+
+  private showTaskResponse(taskId: string, action: "done" | "return"): void {
+    const prompt = new TextPrompt({
+      title: action === "done" ? "Your result (required)" : "Reason for returning (optional)",
+      collapseLongPastes: this.options.collapseLongPastes,
+      onSubmit: (value) => {
+        try {
+          const tasks = this.options.getUserTasks?.();
+          if (!tasks) throw new Error("User tasks are unavailable.");
+          if (action === "done") tasks.done(taskId, value);
+          else tasks.returnToAgent(taskId, value);
+          this.finish(prompt, () => {});
+        } catch (error) {
+          this.options.showError?.(error);
+        }
+      },
+      onCancel: () => this.showTaskAction(taskId),
+    });
+    this.show(prompt);
   }
 
   openModel(): boolean {
@@ -126,7 +190,8 @@ export class SlashCommandOptionsController {
   private showNeverAskConfirmation(): void {
     const prompt = new ChoicePrompt<"yes" | "no">({
       title: "Disable tool approvals?",
-      detail: "All Agent tool calls will run without approval for the current session.",
+      detail:
+        "Ordinary Agent tools will run without approval for this session. User task invitations still ask.",
       options: [
         { value: "no", label: "No, keep current mode" },
         { value: "yes", label: "Yes, never ask" },

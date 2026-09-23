@@ -56,7 +56,7 @@ kana auth logout openai-codex
 
 `kana exec` 使用与 TUI 相同的产品装配并在一次完整 Agent turn 后退出。默认模式只把最终答案写到 stdout，`--json` 提供版本化 JSONL 事件；非交互工具审批、退出码和完整协议见[无头执行与 JSONL 协议](headless.zh-CN.md)。
 
-`--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills、用户 subagent 角色卡，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、工具选择、OAuth 凭据、审批规则与通知。选中的核心文件/Shell 工具、`todo_write` 和 TUI 的进程内 `schedule_wake` 会在对应工具入选时保持可用。Clean mode 不加载任何 subagent profile，因此 subagent 工具不会注册；clean-mode child 状态只保存在内存。`/todo` 会显示临时 session 的当前 todo 状态；TUI 中 `/skills`、`/mcp`、`/memory`、`/agents`、`/fork`、`/resume` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
+`--clean` 只用于新建 TUI 或 `exec` 会话；与 `resume` 或 `exec resume` 组合会在相应前端启动边界失败。它创建只存在于当前进程的临时 session：不创建 session journal、session logger 或 accounting 记录，也不会出现在恢复列表中。Clean 模式不读取全局或项目 `AGENTS.md`、global/project memory、全局或项目 Skills、用户 subagent 角色卡，以及 MCP 定义和启用状态；不会注册 `remember`、启动记忆合并或连接 MCP server。它继续加载 `<KANA_HOME>/.env` 和 `config.toml`，沿用当前 provider/model、Agent 运行参数、工具选择、OAuth 凭据、审批规则与通知。选中的核心文件/Shell 工具、`todo_write` 和 TUI 的进程内 `schedule_wake`、`delegate_user_task` 会在对应工具入选时保持可用。Clean mode 不加载任何 subagent profile，因此 subagent 工具不会注册；clean-mode child 状态只保存在内存。`/todo` 会显示临时 session 的当前 todo 状态；TUI 中 `/skills`、`/mcp`、`/memory`、`/agents`、`/fork`、`/resume` 与 `/usage` 的 Session 范围不可用；`/model` 会校验并切换当前 Agent，但不写回 `config.toml`。Clean 模式不是文件/进程沙箱：内置工具、provider、审批或认证流程仍可能产生其本来的外部副作用。
 
 `kana install` 是幂等初始化：它不会为了表达内置默认值而创建 `config.toml`，缺少该文件时 Kana 直接使用默认配置；对 `mcp.json`、`mcp-enabled.json`、`approvals.json` 和 `skills/skills.toml` 也只创建缺失文件，不覆盖已有内容。`config.example.toml`、`providers/custom.example.toml`、`agents/profile.md.example` 和 `prompts/template.md.example` 是 Kana 管理的生成参考；install 会创建其父目录、与当前 schema 比较，并且只在文件缺失或内容落后时创建或刷新。运行时忽略这些 example。需要覆盖默认值时，只把相应字段复制到 `config.toml`；编辑 Custom 配置前把对应 example 复制为 `providers/custom.toml`；使用 subagent template 前把它复制或重命名为 `agents/<profile-name>.md`；使用 prompt template 前则复制为 `prompts/<template-name>.md`。install 不会覆盖真正的用户 profile 或 prompt template、安装 Skills 仓库或创建 `~/.kana/AGENTS.md`。
 
@@ -153,7 +153,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","remember","schedule_wake","mcp_list_tools","mcp_call"]
+tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","mcp_list_tools","mcp_call"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -269,7 +269,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `agent.subagents.max_live` | 正整数 | `4` | 单个 session 实例最多拥有的运行中 subagent 数；已保留的终态 child 不计入上限。 |
 | `agent.repeated_tool_calls.reminder_thresholds` | 严格递增且每项不小于 2 的整数数组 | `[3,5,8]` | 连续精确重复达到哪些次数时，Agent 插入逐级增强的建议上下文；空数组关闭策略。 |
 | `agent.repeated_tool_calls.excluded_tools` | 唯一、非空、已去除首尾空白的工具名数组 | `[]` | 重复调用统计透明忽略的工具；被排除的调用既不推进也不重置连续计数。 |
-| `approval.mode` | `always`、`unless_trusted`、`never` | `unless_trusted` | 工具调用是否进入 TUI 审批。 |
+| `approval.mode` | `always`、`unless_trusted`、`never` | `unless_trusted` | 普通工具调用是否进入 TUI 审批；用户任务邀请始终询问。 |
 | `notification.backend` | `auto`、`off`、`bell`、`osc9`、`osc777`、`kitty` | `auto` | 终端通知输出协议。`auto` 依次识别 Kitty、iTerm、Ghostty、VTE，否则退回 bell。 |
 | `notification.on_agent_completed` | 布尔值 | `true` | 正常完成的 Agent 运行是否通知。中止、错误、长度截断或 `turn_limit` 不会视作完成。 |
 | `notification.on_approval_required` | 布尔值 | `true` | 显示工具审批时是否通知。 |
@@ -286,7 +286,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 
 `parallel_tool_calls` 只有在用户策略与模型 metadata 都允许时才生效。重复调用、tool-result artifact、并发、deadline 与 Background Job 字段所配置的行为属于[工具与执行](tools.zh-CN.md)；context limit 与压缩预算由 [Agent 运行时](agent-runtime.zh-CN.md)解释。
 
-`agent.tools` 仍受运行时能力约束。选择 `view_image`、`remember`、`schedule_wake`、`mcp_list_tools`、`mcp_call`、某个 `job_*` 或 `*_subagent` 工具，不会在对应底层能力原本不可用时将其开启。该选择只控制 Agent 的工具面；`/agents`、`/jobs`、`/schedule`、`/todo`、`/mcp` 等命令继续通过 TUI 的 session 直接控制工作。角色卡配置见 [Subagent](subagents.zh-CN.md)。
+`agent.tools` 仍受运行时能力约束。选择 `view_image`、`remember`、`schedule_wake`、`delegate_user_task`、`mcp_list_tools`、`mcp_call`、某个 `job_*` 或 `*_subagent` 工具，不会在对应底层能力原本不可用时将其开启。该选择只控制 Agent 的工具面；`/agents`、`/jobs`、`/schedule`、`/todo`、`/task`、`/mcp` 等命令继续通过 TUI 的 session 直接控制工作。角色卡配置见 [Subagent](subagents.zh-CN.md)。
 
 上表仍是 TUI option 字段的 canonical 定义。交互语义属于 [TUI 交互](tui.zh-CN.md)，hyperlink、LaTeX、Mermaid、宽度与 repaint 行为属于[终端渲染](terminal-rendering.zh-CN.md)。Memory retention 与 runtime-log 持久化属于[会话与记忆](sessions-and-memory.zh-CN.md)。
 
@@ -472,9 +472,9 @@ Host 在启动时只加载一次审批规则，因此直接编辑要到下次启
 
 | 模式 | 行为 |
 | --- | --- |
-| `always` | 除 `remember`、`schedule_wake`、`todo_write` 和 `update_goal` 外，每个工具调用都请求审批。 |
+| `always` | 普通工具调用全部请求审批；所有模式共享的例外见[工具](tools.zh-CN.md)。 |
 | `unless_trusted` | `read`、`list`、`glob`、`grep`、精确受信 bash 命令和受信简单只读 bash 命令跳过审批；其余调用请求审批。 |
-| `never` | 所有调用都跳过审批，包括写入和 Shell。 |
+| `never` | 普通调用跳过审批，包括写入和 Shell；`delegate_user_task` 仍会询问用户。 |
 
 TUI 的 `/approval` 可以临时覆盖当前所选 session 的模式；选择 `Never ask` 需要二次确认。该覆盖不会写入 `config.toml`、session journal 或 `approvals.json`，并在 new、fork、resume 或进程退出时恢复这里配置的模式。
 

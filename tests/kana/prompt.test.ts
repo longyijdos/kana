@@ -6,12 +6,39 @@ import { BackgroundJobManager } from "../../src/jobs";
 import type { KanaGoalSnapshot } from "../../src/kana/conversation/goal-controller";
 import { buildKanaPromptAssembly } from "../../src/kana/prompt";
 import type { KanaTodoItem } from "../../src/kana/todo";
+import { KanaUserTaskManager } from "../../src/kana/user-tasks";
 import { waitFor } from "../helpers/async-control";
 import { cleanupConfigTempDirs, createTempDir, createTempEnv } from "./config/config-fixture";
 
 afterEach(cleanupConfigTempDirs);
 
 describe("Kana prompt assembly", () => {
+  test("projects pending user tasks and becomes inactive after a settled task is observed", async () => {
+    const tasks = new KanaUserTaskManager();
+    const assembly = buildKanaPromptAssembly({
+      launchMode: "clean",
+      resolveUserTaskState: () => tasks.context(),
+    });
+    const signal = new AbortController().signal;
+
+    const task = tasks.create("Check the labels");
+    const pending = await assembly.assemble({ signal });
+    expect(pending.context.find((snapshot) => snapshot.source === "user-tasks")).toEqual({
+      source: "user-tasks",
+      status: "active",
+      content: JSON.stringify({ tasks: [{ id: task.id, task: task.task, status: "pending" }] }),
+    });
+
+    tasks.done(task.id, "Labels are clear.");
+    tasks.observe(task.id);
+    const observed = await assembly.assemble({ signal });
+    expect(observed.context.find((snapshot) => snapshot.source === "user-tasks")).toEqual({
+      source: "user-tasks",
+      status: "inactive",
+      content: '{"tasks":[]}',
+    });
+  });
+
   test("projects explicit active and inactive durable todo states", async () => {
     let todoState: KanaTodoItem[] = [];
     const assembly = buildKanaPromptAssembly({

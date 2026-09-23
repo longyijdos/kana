@@ -20,13 +20,24 @@ export class ToolApproval implements Component {
     onDecision: (decision: ToolApprovalDecision) => void,
     options: ToolApprovalOptions = {},
   ) {
-    const text = formatToolApproval(toolCall, options.source);
+    const userTask = toolCall.name === "delegate_user_task";
+    const text = userTask
+      ? {
+          title: "Accept a task from the agent?",
+          detail: readUserTaskDescription(toolCall.args),
+        }
+      : formatToolApproval(toolCall, options.source);
 
     this.prompt = new ChoicePrompt({
       title: options.requesterLabel ? `${text.title} · ${options.requesterLabel}` : text.title,
       detail: text.detail,
-      options: createOptions(options),
-      defaultValue: "yes",
+      options: userTask
+        ? [
+            { value: "yes" as const, label: "Accept task" },
+            { value: "no" as const, label: "Let agent handle it" },
+          ]
+        : createOptions(options),
+      defaultValue: userTask ? "no" : "yes",
       titleColor: tuiTheme.toolActive,
       highlight: highlightOverwriteMarker,
       onSelect: onDecision,
@@ -41,6 +52,11 @@ export class ToolApproval implements Component {
   handleInput(data: string): void {
     this.prompt.handleInput(data);
   }
+}
+
+function readUserTaskDescription(args: unknown): string {
+  if (typeof args !== "object" || args === null || !("task" in args)) return "";
+  return typeof args.task === "string" ? args.task : "";
 }
 
 function createOptions(

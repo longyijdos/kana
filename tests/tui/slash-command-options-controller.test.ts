@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { KanaToolApprovalMode } from "../../src/kana";
+import { type KanaToolApprovalMode, KanaUserTaskManager } from "../../src/kana";
 import { AppLayout } from "../../src/tui/app/app-layout";
 import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
 import { SlashCommandOptionsController } from "../../src/tui/app/slash-command-options-controller";
@@ -9,6 +9,29 @@ import type { Component, Tui } from "../../src/tui/runtime";
 import { tuiTheme } from "../../src/tui/theme";
 
 describe("slash command options controller", () => {
+  test("submits and returns delegated tasks through /task", () => {
+    const harness = createHarness();
+    const completed = harness.userTasks.create("Check the labels");
+
+    harness.controller.openTask();
+    harness.input("\r");
+    harness.input("\r");
+    harness.input("Labels are clear.");
+    harness.input("\r");
+    expect(harness.userTasks.list()).toMatchObject([{ id: completed.id, status: "done" }]);
+
+    const returned = harness.userTasks.create("Inspect the layout");
+    harness.controller.openTask();
+    harness.input("\r");
+    harness.input("\x1b[B");
+    harness.input("\r");
+    harness.input("\r");
+    expect(harness.userTasks.list()).toMatchObject([
+      { id: completed.id, status: "done" },
+      { id: returned.id, status: "returned" },
+    ]);
+  });
+
   test("collects a memory compact scope and optional request", () => {
     const harness = createHarness();
 
@@ -178,6 +201,7 @@ function createHarness(collapseLongPastes = true, usageScopeReplacesBottom = fal
   const tui = createTuiStub();
   const compactCalls: Array<{ scope: string; request: string | undefined }> = [];
   const approvalCalls: string[] = [];
+  const userTasks = new KanaUserTaskManager();
   let approvalMode: KanaToolApprovalMode = "unless_trusted";
   const showCalls: string[] = [];
   const restoreCalls: boolean[] = [];
@@ -207,6 +231,7 @@ function createHarness(collapseLongPastes = true, usageScopeReplacesBottom = fal
       restoreBottom(true);
     },
     getApprovalMode: () => approvalMode,
+    getUserTasks: () => userTasks,
     onApprovalModeSelect: (mode) => {
       approvalMode = mode;
       approvalCalls.push(mode);
@@ -221,6 +246,7 @@ function createHarness(collapseLongPastes = true, usageScopeReplacesBottom = fal
     controller,
     restoreCalls,
     showCalls,
+    userTasks,
     input: (data: string) => tui.getFocus()?.handleInput?.(data),
     render: () => layout.render(80, 24).map(stripAnsi),
     renderRaw: () => layout.render(80, 24),

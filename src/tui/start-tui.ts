@@ -42,6 +42,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       : { type: "new" };
   const host = createKanaConversationHost<TuiModelSelection>({
     launchMode: options.launchMode,
+    enableUserTasks: true,
     configOverrides: options.configOverrides,
     session,
     applyAgentConfiguration: applyTuiModelSelection,
@@ -156,6 +157,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         wakeScheduler: host.wakeScheduler,
         getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
         getSubagents: (sessionId) => host.getSubagents(sessionId),
+        getUserTasks: (sessionId) => host.getUserTasks(sessionId),
         loadSubagentProfiles: () => host.loadSubagentProfiles(),
         disposeSession: (sessionId, source, foregroundSettled) =>
           host.disposeSession(sessionId, source, foregroundSettled),

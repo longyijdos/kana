@@ -42,7 +42,7 @@ Conversation runtime 关闭后，共享 Host 清理会先等待自动记忆任�
 
 `--clean` 创建随本次进程结束即丢弃的临时 session。它仍加载 `config.toml`、`<KANA_HOME>/.env`、provider/model、OAuth 与审批规则，但不读取全局或项目 `AGENTS.md`、记忆、Skills 与 MCP 配置，不连接 MCP server，也不创建 session journal、session log 或 accounting 记录。`exec resume` 与 `--clean` 组合会在启动时以退出码 `1` 失败；JSON 模式会输出相应的 startup `error` 事件。纯净模式不是 sandbox 或隐私边界，内置工具和 provider 仍可能产生外部副作用。
 
-唯一刻意省略的内置工具是 `schedule_wake`：它依赖当前进程中的定时器，而无头进程会在当前 run 或 Goal 结束后退出，无法兑现未来的 wake。其它内置工具继续使用相同的并发策略、deadline 和结果语义。普通模式会在执行开始前加载 MCP；可选 server 失败会产生 warning，必需 server 失败会使启动失败。纯净模式完全跳过这一步。无头模式不会打开浏览器完成 MCP OAuth，因此需要交互授权的 server 应预先在 TUI 中授权。
+无头模式省略 `schedule_wake` 和 `delegate_user_task`。前者依赖退出后无法兑现的进程内定时器；后者需要用户在 TUI 接受并随后完成任务。`--allow-all-tools` 不会启用这两种省略的能力。其它内置工具继续使用相同的并发策略、deadline 和结果语义。普通模式会在执行开始前加载 MCP；可选 server 失败会产生 warning，必需 server 失败会使启动失败。纯净模式完全跳过这一步。无头模式不会打开浏览器完成 MCP OAuth，因此需要交互授权的 server 应预先在 TUI 中授权。
 
 `--timeout <duration>` 接受正整数加 `ms`、`s`、`m` 或 `h` 单位，默认不启用。计时从普通 Agent run 提交或 Goal 启动时开始，不包括此前的 prompt 解析、Host/session 装配和 MCP 启动；Goal 模式下，它会持续覆盖所有已允许的 Agent run。正常的 runtime、记忆、MCP 与 Host 清理也不计入 deadline。到时后，Kana 会优雅取消活动 Goal、Agent 及其工具，等待正常的 run 与清理边界，并保留已经写入工作区和 session journal 的工作。因此它是软 deadline：不响应取消的外部操作或清理流程可能让进程晚于指定时长才返回。
 

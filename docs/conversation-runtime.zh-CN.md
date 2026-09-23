@@ -11,7 +11,8 @@ TUI / Headless
       │   ├→ Agent-owned inbox
       │   ├→ WakeScheduler
       │   ├→ KanaGoalController
-      │   └→ session BackgroundJobClient
+      │   ├→ session BackgroundJobClient
+      │   └→ session 用户任务
       └→ Agent
   → KanaConversationHost
       ├→ HostedSessionRegistry
@@ -24,13 +25,13 @@ TUI / Headless
 
 `KanaConversationHost` 是产品装配边界。它加载运行配置与审批状态，初始化选中的 session，持有共享 wake scheduler 和 MCP runtime，并使用当前模型、prompt、内置工具、MCP registry 访问能力、logger、journal、artifact store、background-job client、subagent client、todo 状态与记忆回调构造每个主 Agent；同时根据已校验角色卡构造一次性 child Agent。它只返回与前端无关的操作和数据，不渲染 TUI 组件，也不投影 headless 输出。委派契约归 [Subagent](subagents.zh-CN.md)所有。
 
-`HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client 与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
+`HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client、用户任务管理器与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
 
-`ConversationRuntime` 持有当前 Agent 与 session 快照。它下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal、后台 Job 完成事件与 subagent 结算，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
+`ConversationRuntime` 持有当前 Agent 与 session 快照。它下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal、后台 Job 完成事件、subagent 结算与用户任务更新，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
 
 ## Run 生命周期与事件
 
-Runtime run 的来源只能是 `user`、`scheduled`、`goal`、`job`、`subagent` 或 `compaction`。另一 run 或 session 切换活动时，runtime 会拒绝新 run、session 切换与 Agent 重配置。它发布事件的副本，listener 无法修改内部状态：
+Runtime run 的来源只能是 `user`、`scheduled`、`goal`、`job`、`subagent`、`user_task` 或 `compaction`。另一 run 或 session 切换活动时，runtime 会拒绝新 run、session 切换与 Agent 重配置。它发布事件的副本，listener 无法修改内部状态：
 
 ```text
 run_start
@@ -83,6 +84,12 @@ Session 切换会取消旧 session 的 timer 并清空 inbox。Shutdown 则在�
 Subagent 结算沿用 Background Job 的投递 lane 与顺序。通知只包含 child ID、profile 和终态；`wait_subagent` 仍是消费结果的边界。返回终态的 wait 或工具发起的取消会确认 child，并移除待投递通知；`/agents` 查看和 TUI 取消不会确认。位于 `next-turn` 队首的相邻 Subagent 通知会合并提交，但不会跨过其他类型输入。
 
 完成通知在 Agent 输入提交后确认：`next-step` 在 `turn_input` 时确认；`next-turn` 在新 run 的 prompt 写入 journal 后，于 `agent_start` 时确认，包括同批相邻通知。已确认的终态记录会在下一次模型请求前退出 runtime context，因此通知与其 inactive 状态会一起进入模型上下文。工具也可以提前确认终态结果，并移除尚未投递的通知。
+
+## 用户任务
+
+TUI 的 `delegate_user_task` 工具询问用户是否接受一个可并行处理的小任务。拒绝会返回正常结果且不创建状态；接受后立即创建当前 session 的进程内任务并返回 ID，Agent 可继续自己的工作。即使 Agent 工具被取消选择，`/task` 仍可使用；用户可以提交结果或将待处理任务返还给 Agent。只有这两种用户操作会投递通知，沿用 Job 和 Subagent 完成事件的 `next-step`／`next-turn` 选择规则。位于 `next-turn` 队首的相邻任务通知会一起提交。
+
+通知包含任务 ID 和完整用户回复。已接受的任务及尚未 observe 的终态任务由独立 runtime-context source 投影；在 `turn_input` 或已提交的 `agent_start` 时 observe 后，终态任务退出投影，空列表变为 inactive。Resume 和 fork 不恢复任务管理器，但已接受的工具结果和已投递的通知仍保留在普通 session 历史中。Headless Agent 不获得委派工具。Goal 续轮策略保持现状。
 
 ## Goals
 

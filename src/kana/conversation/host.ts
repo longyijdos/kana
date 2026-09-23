@@ -69,6 +69,7 @@ import {
   type KanaToolApprovalStore,
   type KanaToolApprovals,
 } from "../tool-approval";
+import type { KanaUserTaskManager } from "../user-tasks";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import { type HostedSessionAgentBinding, HostedSessionRegistry } from "./hosted-session-registry";
 import type { ConversationAgentIdentity } from "./runtime";
@@ -107,6 +108,7 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
   launchMode?: KanaLaunchMode;
   configOverrides?: readonly string[];
   enableScheduledWakeTool?: boolean;
+  enableUserTasks?: boolean;
   applyAgentConfiguration?: (config: KanaConfig, configuration: TConfiguration) => void;
   onMcpProgress?: (event: KanaMcpRuntimeProgressEvent) => void;
   openMcpOAuthAuthorizationUrl?: (serverId: string, url: string) => Promise<void>;
@@ -126,6 +128,7 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly toolApprovalStore: KanaToolApprovalStore;
   private readonly createAgentProduct: KanaAgentProductFactory;
   private readonly enableScheduledWakeTool: boolean;
+  private readonly enableUserTasks: boolean;
   private readonly applyAgentConfiguration?: (
     config: KanaConfig,
     configuration: TConfiguration,
@@ -170,6 +173,7 @@ export class KanaConversationHost<TConfiguration = never> {
     });
     this.createAgentProduct = options.createAgent ?? createKanaConversationAgent;
     this.enableScheduledWakeTool = options.enableScheduledWakeTool ?? true;
+    this.enableUserTasks = options.enableUserTasks ?? false;
     this.applyAgentConfiguration = options.applyAgentConfiguration;
     this.sessionRegistry = new HostedSessionRegistry({
       env: this.env,
@@ -249,6 +253,10 @@ export class KanaConversationHost<TConfiguration = never> {
 
   getSubagents(sessionId: string): KanaSubagentClient | undefined {
     return this.sessionRegistry.getSubagents(sessionId);
+  }
+
+  getUserTasks(sessionId: string): KanaUserTaskManager | undefined {
+    return this.sessionRegistry.getUserTasks(sessionId);
   }
 
   loadSubagentProfiles(): LoadKanaSubagentProfilesResult {
@@ -523,6 +531,7 @@ export class KanaConversationHost<TConfiguration = never> {
       artifactStore: sessionBinding.artifactStore,
       backgroundJobs: sessionBinding.backgroundJobs,
       subagents: sessionBinding.subagents,
+      userTasks: this.enableUserTasks ? sessionBinding.userTasks : undefined,
       subagentProfiles: structuredClone(this.subagentProfileSnapshot.profiles),
       skills:
         this.launchMode === "clean"

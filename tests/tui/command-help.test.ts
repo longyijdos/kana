@@ -19,6 +19,7 @@ describe("prompt command help", () => {
       "jobs",
       "agents",
       "todo",
+      "task",
       "tools",
       "image",
       "usage",

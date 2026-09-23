@@ -77,7 +77,7 @@ describe("Kana session format", () => {
     expect(header).toMatchObject({ version: 5, id: "byte-layout" });
   });
 
-  test("round-trips Subagent completion input without using it as the session title", () => {
+  test("round-trips completion inputs without using them as the session title", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "subagent-completion" });
@@ -86,15 +86,24 @@ describe("Kana session format", () => {
       role: "user" as const,
       content: "[Subagent completion]\nSubagent agent-1 reached completed.",
     };
+    const userTask = {
+      ...createMessageIdentity({ kind: "user_task_completion" as const, taskId: "task-1" }),
+      role: "user" as const,
+      content: "[User task update]\nTask task-1 was done by the user.",
+    };
     const user = {
       ...messageIdentityForTest("user"),
       role: "user" as const,
       content: "Continue the implementation.",
     };
 
-    appendKanaSessionMessages(session, [completion, user]);
+    appendKanaSessionMessages(session, [completion, userTask, user]);
 
-    expect(loadKanaSession(session.id, { env, cwd }).messages).toEqual([completion, user]);
+    expect(loadKanaSession(session.id, { env, cwd }).messages).toEqual([
+      completion,
+      userTask,
+      user,
+    ]);
     expect(listKanaSessions({ env, cwd })).toMatchObject([
       { id: session.id, title: "Continue the implementation." },
     ]);

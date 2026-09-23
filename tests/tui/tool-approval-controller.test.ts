@@ -18,6 +18,45 @@ class LinesComponent implements Component {
 }
 
 describe("tool approval controller", () => {
+  test("offers user tasks in never mode and returns a normal declined result", async () => {
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({ main: new LinesComponent(["transcript"]), bottom: editor });
+    const tui = createTuiStub();
+    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
+    const controller = new ToolApprovalController({
+      config: { mode: "never" },
+      approvals: { version: 2, bash: { exactCommands: [], readOnlyCommands: [] } },
+      addTrustedBashCommand: createTrustedCommandAdder(),
+      editor,
+      bottomArea,
+      tui,
+      onApprovalRequired: () => {},
+    });
+    bottomArea.setFallback(() => controller.activePrompt ?? editor);
+    const call = {
+      type: "tool_call" as const,
+      id: "task-call",
+      name: "delegate_user_task",
+      args: { task: "Check the screenshot." },
+    };
+
+    const declined = controller.request(call, undefined);
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Accept task");
+    controller.activePrompt?.handleInput?.("\r");
+    await expect(declined).resolves.toEqual({
+      type: "return",
+      result: {
+        content: "User declined the task. Complete it yourself.",
+        result: { status: "declined" },
+      },
+    });
+
+    const accepted = controller.request(call, undefined);
+    controller.activePrompt?.handleInput?.("\x1b[A");
+    controller.activePrompt?.handleInput?.("\r");
+    await expect(accepted).resolves.toEqual({ type: "continue" });
+  });
+
   test("temporarily overrides and resets the configured mode", async () => {
     const editor = new LinesComponent(["editor"]) as unknown as Editor;
     const layout = new AppLayout({

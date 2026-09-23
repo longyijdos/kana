@@ -11,9 +11,11 @@ import {
   createMemoryConsolidationTransaction,
 } from "../../src/kana/memory/consolidation-tools";
 import { KanaSubagentManager } from "../../src/kana/subagents";
+import { createDelegateUserTaskTool } from "../../src/kana/tools/delegate-user-task";
 import { createRememberTool } from "../../src/kana/tools/remember";
 import { createScheduleWakeTool } from "../../src/kana/tools/schedule-wake";
 import { createTodoWriteTool } from "../../src/kana/tools/todo-write";
+import { KanaUserTaskManager } from "../../src/kana/user-tasks";
 import {
   createJobKillTool,
   createJobListTool,
@@ -98,6 +100,7 @@ function createAgentBuiltInTools(): Tool[] {
           getTool: () => undefined,
         }),
         subagents,
+        userTasks,
         subagentProfiles: [
           {
             name: "explorer",
@@ -157,6 +160,7 @@ const subagents = subagentManager.bind(
   }),
   { maxLive: 4 },
 );
+const userTasks = new KanaUserTaskManager();
 const internalMemoryTools = createInternalMemoryTools();
 
 type SchemaCase = {
@@ -275,6 +279,13 @@ const schemaCases: SchemaCase[] = [
     valid: { items: [{ content: "Implement it", status: "in_progress" }] },
     invalidArgs: { items: [], append: true },
     unexpected: "append",
+  },
+  {
+    name: "delegate_user_task",
+    tool: createDelegateUserTaskTool(userTasks),
+    valid: { task: "Review the screenshot." },
+    invalidArgs: { task: "Review the screenshot.", assignedTo: "user" },
+    unexpected: "assignedTo",
   },
   {
     name: "read_memory",

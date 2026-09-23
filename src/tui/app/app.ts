@@ -134,6 +134,7 @@ export class KanaTuiApp {
       goalMaxRounds: options.conversation.goalMaxRounds,
       getBackgroundJobs: options.conversation.getBackgroundJobs,
       getSubagents: options.conversation.getSubagents,
+      getUserTasks: options.conversation.getUserTasks,
       disposeSession: options.conversation.disposeSession,
       canStartQueuedRun: () =>
         !this.status.running &&
@@ -342,6 +343,10 @@ export class KanaTuiApp {
         void this.memoryCompact.compact(scope, request);
       },
       getApprovalMode: () => this.toolApproval.mode,
+      getUserTasks: () => {
+        const sessionId = this.conversation.sessionId;
+        return sessionId ? this.options.conversation.getUserTasks?.(sessionId) : undefined;
+      },
       onApprovalModeSelect: (mode) => {
         this.bottomArea.showFallback();
         this.setToolApprovalMode(mode);
@@ -519,6 +524,7 @@ export class KanaTuiApp {
         this.editor.clear();
         this.openTodoViewer();
       },
+      openTask: () => this.slashCommandOptions.openTask(),
       openToolHistory: () => {
         this.editor.clear();
         this.openToolHistoryPicker();

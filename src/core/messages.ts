@@ -14,6 +14,7 @@ export type MessageProvenance =
   | { kind: "goal_continuation"; goalId: string; round: number }
   | { kind: "job_completion"; jobId: string }
   | { kind: "subagent_completion"; agentId: string }
+  | { kind: "user_task_completion"; taskId: string }
   | { kind: "recovery" }
   | { kind: "model_output" }
   | { kind: "tool_result" }
@@ -29,6 +30,7 @@ export type UserMessageProvenance = Extract<
   | { kind: "goal_continuation" }
   | { kind: "job_completion" }
   | { kind: "subagent_completion" }
+  | { kind: "user_task_completion" }
   | { kind: "recovery" }
   | { kind: "tool_result_policy" }
   | { kind: "runtime_context" }

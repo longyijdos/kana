@@ -27,6 +27,11 @@ export type AgentInputDelivery =
       kind: "subagent";
       displayContent: string;
       agentId: string;
+    }
+  | {
+      kind: "user_task";
+      displayContent: string;
+      taskId: string;
     };
 
 export type AgentInboxItem = {

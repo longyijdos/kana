@@ -25,6 +25,7 @@ export type SlashCommandControllerOptions = {
   openSubagentManager?: () => void;
   startGoal?: (objective: string) => void;
   openTodo?: () => void;
+  openTask?: () => void;
   openToolHistory: () => void;
   attachImageFile: (path: string) => void;
   openApproval: () => void;
@@ -130,6 +131,9 @@ export class SlashCommandController {
             this.options.showError(new Error("Todo viewer is unavailable."));
           }
         });
+        break;
+      case "task":
+        this.runWithoutArguments(command, () => this.options.openTask?.());
         break;
       case "tools":
         this.runWithoutArguments(command, () => this.options.openToolHistory());

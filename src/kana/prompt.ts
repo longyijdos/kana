@@ -24,6 +24,7 @@ import { formatKanaSkillsForPrompt } from "./skills/prompt";
 import type { KanaSkill } from "./skills/types";
 import type { KanaSubagentSummary } from "./subagents";
 import type { KanaTodoItem } from "./todo";
+import type { KanaUserTask } from "./user-tasks";
 
 const DEFAULT_SYSTEM_PROMPT =
   "You are a concise, practical assistant working in the user's current environment.";
@@ -46,6 +47,7 @@ export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
   resolveBackgroundJobState?: () => readonly BackgroundJobSummary[];
   toolSections?: readonly PromptToolSection[];
   resolveTodoState?: () => readonly KanaTodoItem[];
+  resolveUserTaskState?: () => readonly KanaUserTask[];
   resolveGoalState?: () => KanaGoalSnapshot | undefined;
   resolveSubagentState?: () => readonly KanaSubagentSummary[];
 };
@@ -136,6 +138,14 @@ export function buildKanaPromptAssembly(
           },
         ]
       : []),
+    ...(options.resolveUserTaskState
+      ? [
+          {
+            name: "user-tasks",
+            render: () => formatUserTaskContext(options.resolveUserTaskState?.() ?? []),
+          },
+        ]
+      : []),
     ...(options.resolveGoalState
       ? [
           {
@@ -222,6 +232,18 @@ function formatKanaTodoRuntimeContext(items: readonly KanaTodoItem[]): PromptCon
   return {
     status: "active",
     content: JSON.stringify({ items }),
+  };
+}
+
+function formatUserTaskContext(tasks: readonly KanaUserTask[]): PromptContextState {
+  if (tasks.length === 0) {
+    return { status: "inactive", content: JSON.stringify({ tasks: [] }) };
+  }
+  return {
+    status: "active",
+    content: JSON.stringify({
+      tasks: tasks.map(({ id, task, status }) => ({ id, task, status })),
+    }),
   };
 }
 
