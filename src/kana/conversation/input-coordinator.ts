@@ -190,15 +190,8 @@ export class ConversationInputCoordinator {
     try {
       return await this.options.requestRun({ source, input, prompt });
     } finally {
-      try {
-        for (const completion of adjacentCompletions) {
-          this.observeCompletion(completion);
-        }
-        this.observeCompletion(input);
-      } finally {
-        this.settlingRun = false;
-        this.notifyRunSettled();
-      }
+      this.settlingRun = false;
+      this.notifyRunSettled();
     }
   }
 
@@ -380,6 +373,12 @@ export class ConversationInputCoordinator {
   observeAgentEvent(event: AgentEvent): void {
     if (event.type === "turn_input") {
       this.observeCompletion(event.message);
+    }
+  }
+
+  observeRunInputs(prompt: UserMessage | UserMessage[]): void {
+    for (const input of Array.isArray(prompt) ? prompt : [prompt]) {
+      this.observeCompletion(input);
     }
   }
 

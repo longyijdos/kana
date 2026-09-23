@@ -82,6 +82,8 @@ Observing a terminal Job through an Agent Job tool acknowledges it and cancels a
 
 Subagent settlement follows the same delivery lanes and ordering as Background Jobs. The notification contains only the child ID, profile, and terminal status; `wait_subagent` remains the result-consumption boundary. A terminal wait or tool-driven cancellation acknowledges the child and removes a pending notification, while `/agents` inspection and TUI cancellation do not. Adjacent Subagent notifications at the front of `next-turn` are submitted together without crossing other input kinds.
 
+Completion notifications are acknowledged when their Agent input is committed: at `turn_input` for `next-step`, or at `agent_start` after the new run's prompt is journaled for `next-turn`, including adjacent completions. Observed terminal records leave runtime context before the next model request, so the notification and its inactive state are visible together. A tool may acknowledge a terminal result earlier and remove its still-pending notification.
+
 ## Goals
 
 A Goal is process-local control state, not session history. Starting one validates the objective, snapshots the configured positive `goal_max_rounds`, creates the first ordinary user run, and exposes the active Goal through runtime context. The model can finish it through `update_goal` as `completed` or `blocked`.

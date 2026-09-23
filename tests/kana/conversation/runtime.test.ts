@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Agent } from "../../../src/agent";
+import { Agent, createPromptAssembly } from "../../../src/agent";
 import {
   AssistantEventStream,
   type AssistantMessage,
@@ -443,6 +443,116 @@ describe("ConversationRuntime", () => {
     await manager.close();
   });
 
+  test("observes queued Job and Subagent completions before their first model steps", async () => {
+    const jobManager = new BackgroundJobManager();
+    const jobs = jobManager.bind(jobManager.createOwner("session-a"), { maxConcurrent: 1 });
+    const subagentManager = new KanaSubagentManager();
+    const subagents = subagentManager.bind(
+      subagentManager.createOwner({
+        sessionId: "session-a",
+        cwd: process.cwd(),
+        persistent: false,
+      }),
+      { maxLive: 1 },
+    );
+    const jobCompletion = deferredJob();
+    const subagentCompletion = deferred<KanaSubagentRunResult>();
+    const model = new ControlledModel();
+    let canStartQueuedRun = false;
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      getBackgroundJobs: () => jobs,
+      getSubagents: () => subagents,
+      canStartQueuedRun: () => canStartQueuedRun,
+      createAgent: (options) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          inbox: options.inbox,
+          beforeToolExecution: options.beforeToolExecution,
+          promptAssembly: createPromptAssembly({
+            context: [
+              {
+                name: "background-jobs",
+                render: () => ({
+                  status: jobs.context().length ? "active" : "inactive",
+                  content: JSON.stringify({ jobs: jobs.context() }),
+                }),
+              },
+              {
+                name: "subagents",
+                render: () => ({
+                  status: subagents.context().length ? "active" : "inactive",
+                  content: JSON.stringify({ subagents: subagents.context() }),
+                }),
+              },
+            ],
+          }),
+        }),
+    });
+    const job = jobs.start({ kind: "test", label: "build", run: () => jobCompletion.promise });
+    const subagent = subagents.start({
+      profile: {
+        name: "explorer",
+        description: "Explore",
+        instructions: "Inspect only.",
+        tools: ["read"],
+        digest: "profile-digest",
+      },
+      task: "Inspect the parser",
+      spawnToolCallId: "call-spawn",
+      run: () => subagentCompletion.promise,
+    });
+
+    const initialRun = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Start both tasks.",
+    });
+    await waitFor(() => model.contexts.length === 1);
+    model.finish(0, "Waiting for completions.");
+    await initialRun;
+
+    jobCompletion.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => runtime.inputQueue.pending.length === 1);
+    subagentCompletion.resolve({
+      status: "completed",
+      output: "Parser inspected.",
+      messages: [],
+      terminalReason: "stop",
+    });
+    await waitFor(() => runtime.inputQueue.pending.length === 2);
+    expect(jobs.context().map((item) => item.id)).toEqual([job.id]);
+    expect(subagents.context().map((item) => item.id)).toEqual([subagent.id]);
+
+    canStartQueuedRun = true;
+    runtime.notifyCanStartQueuedRun();
+    await waitFor(() => model.contexts.length === 2);
+    expect(model.contexts[1]?.messages).toContainEqual(
+      expect.objectContaining({ provenance: { kind: "job_completion", jobId: job.id } }),
+    );
+    expect(latestRuntimeContext(model.contexts[1], "background-jobs")).toContain(
+      'status="inactive"',
+    );
+    expect(jobs.context()).toEqual([]);
+    model.finish(1, "Job acknowledged.");
+
+    await waitFor(() => model.contexts.length === 3);
+    expect(model.contexts[2]?.messages).toContainEqual(
+      expect.objectContaining({
+        provenance: { kind: "subagent_completion", agentId: subagent.id },
+      }),
+    );
+    expect(latestRuntimeContext(model.contexts[2], "subagents")).toContain('status="inactive"');
+    expect(subagents.context()).toEqual([]);
+    model.finish(2, "Subagent acknowledged.");
+    await runtime.waitForIdle();
+    await runtime.close();
+    await jobManager.close();
+    await subagentManager.close();
+  });
+
   test("steers input into the active run after its current turn", async () => {
     const model = new ControlledModel();
     const events: ConversationRuntimeEvent[] = [];
@@ -648,6 +758,21 @@ function createRuntimeOptions() {
       timeline: [],
     }),
   };
+}
+
+function latestRuntimeContext(
+  context: ModelContext | undefined,
+  source: string,
+): string | undefined {
+  const latest = context?.messages
+    .filter(
+      (message) =>
+        message.role === "user" &&
+        message.provenance.kind === "runtime_context" &&
+        message.provenance.source === source,
+    )
+    .at(-1);
+  return latest?.role === "user" ? latest.content : undefined;
 }
 
 function deferredJob(): {

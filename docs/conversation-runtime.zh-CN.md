@@ -82,6 +82,8 @@ Session 切换会取消旧 session 的 timer 并清空 inbox。Shutdown 则在�
 
 Subagent 结算沿用 Background Job 的投递 lane 与顺序。通知只包含 child ID、profile 和终态；`wait_subagent` 仍是消费结果的边界。返回终态的 wait 或工具发起的取消会确认 child，并移除待投递通知；`/agents` 查看和 TUI 取消不会确认。位于 `next-turn` 队首的相邻 Subagent 通知会合并提交，但不会跨过其他类型输入。
 
+完成通知在 Agent 输入提交后确认：`next-step` 在 `turn_input` 时确认；`next-turn` 在新 run 的 prompt 写入 journal 后，于 `agent_start` 时确认，包括同批相邻通知。已确认的终态记录会在下一次模型请求前退出 runtime context，因此通知与其 inactive 状态会一起进入模型上下文。工具也可以提前确认终态结果，并移除尚未投递的通知。
+
 ## Goals
 
 Goal 是进程内控制状态，不是 session 历史。启动时会校验目标，快照当前正整数 `goal_max_rounds`，创建第一轮普通用户 run，并通过 runtime context 暴露活动 Goal。模型可以调用 `update_goal` 将其结束为 `completed` 或 `blocked`。

@@ -279,6 +279,29 @@ describe("ConversationInputCoordinator", () => {
     await manager.close();
   });
 
+  test("keeps a completion unobserved when its run fails before accepting input", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const completion = deferredJob();
+    const harness = createHarness({
+      getBackgroundJobs: () => jobs,
+      requestRun: async () => ({ type: "failed", error: new Error("Run did not start.") }),
+    });
+    const job = jobs.start({ kind: "test", label: "build", run: () => completion.promise });
+
+    completion.resolve({ status: "completed", exitCode: 0 });
+    await waitFor(() => harness.coordinator.queue.pending.length === 1);
+    const input = harness.agent.shiftNextTurnInput()?.message;
+    expect(input?.provenance).toEqual({ kind: "job_completion", jobId: job.id });
+    if (!input) throw new Error("Missing Job completion input.");
+
+    expect(await harness.coordinator.submit(input, "job")).toMatchObject({ type: "failed" });
+    expect(jobs.context().map((item) => item.id)).toEqual([job.id]);
+
+    harness.close();
+    await manager.close();
+  });
+
   test("queues active Job completion for steering and removes it when observed", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
@@ -395,7 +418,8 @@ type HarnessOptions = {
 function createHarness(options: HarnessOptions = {}) {
   const requests: ConversationInputRunRequest[] = [];
   const agent = createAgent();
-  const coordinator = new ConversationInputCoordinator({
+  let coordinator: ConversationInputCoordinator;
+  coordinator = new ConversationInputCoordinator({
     wakeScheduler: options.wakeScheduler ?? createWakeScheduler(),
     goalMaxRounds: options.goalMaxRounds ?? 3,
     scheduledRuns: options.scheduledRuns,
@@ -409,6 +433,9 @@ function createHarness(options: HarnessOptions = {}) {
     requestRun: async (request) => {
       const requestIndex = requests.length;
       requests.push(structuredClone(request));
+      if (!options.requestRun) {
+        coordinator.observeRunInputs(request.prompt);
+      }
       return options.requestRun?.(request, requestIndex) ?? completedRun();
     },
     onQueueChanged: options.onQueueChanged ?? (() => undefined),

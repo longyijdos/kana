@@ -561,6 +561,16 @@ export class ConversationRuntime<TConfiguration = never> {
     });
     this.log("info", "conversation.run_started", { source });
 
+    // Agent awaits listeners before assembling the next prompt; consuming its
+    // event stream here could acknowledge completion after model I/O starts.
+    const unsubscribeCommittedInputs = this.agent.subscribe((event) => {
+      if (event.type === "agent_start") {
+        this.inputCoordinator.observeRunInputs(prompt);
+      } else {
+        this.inputCoordinator.observeAgentEvent(event);
+      }
+    });
+
     try {
       const stream = this.agent.stream(prompt);
       for await (const event of stream) {
@@ -598,6 +608,7 @@ export class ConversationRuntime<TConfiguration = never> {
       this.log("error", "conversation.run_failed", { source, error });
       return { type: "failed", error };
     } finally {
+      unsubscribeCommittedInputs();
       this.activeSource = undefined;
       this.activeRunGoalId = undefined;
       this.terminalEvent = undefined;
@@ -612,7 +623,6 @@ export class ConversationRuntime<TConfiguration = never> {
     if (event.type === "agent_end") {
       this.terminalEvent = structuredClone(event);
     }
-    this.inputCoordinator.observeAgentEvent(event);
     this.emit({
       type: "agent_event",
       source,
