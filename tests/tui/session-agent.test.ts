@@ -35,6 +35,7 @@ describe("session-scoped agents", () => {
     const session: KanaSessionMetadata = {
       id: "session-a",
       createdAt: "2026-07-20T00:00:00.000Z",
+      updatedAt: "2026-07-20T00:00:00.000Z",
       title: "Existing session",
       cwd: "/repo",
       path: "/sessions/session-a.jsonl",

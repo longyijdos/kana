@@ -108,7 +108,6 @@ function createJournal(
     profile: profile(),
     task: "Inspect the parser",
     spawnToolCallId: "call-spawn",
-    model: { provider: "deepseek", model: "deepseek-v4-pro" },
     env,
   });
   if (!journal) throw new Error("Expected a persistent journal.");

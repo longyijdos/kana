@@ -43,12 +43,11 @@ export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaS
     createdAt,
     title: options.title === undefined ? "" : normalizeSessionTitle(options.title),
     cwd,
-    model: options.model,
     parentSessionPath: options.parentSessionPath,
     subagent: options.subagent,
   };
 
-  return headerToMetadata(header, filePath);
+  return headerToMetadata(header, filePath, createdAt);
 }
 
 export function loadKanaSession(
@@ -90,7 +89,7 @@ export function listKanaSessions(options: FindKanaSessionOptions = {}): KanaSess
     }
   }
 
-  return sessions.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  return sessions.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
 
 export function deleteKanaSession(
@@ -145,7 +144,11 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
   const recoveredIncompleteTail = parsed.recoveredIncompleteTail;
   let recoveredInterruptedTurn: LoadKanaSessionResult["recoveredInterruptedTurn"];
 
-  const initialMetadata = headerToMetadata(parsed.header, filePath);
+  const initialMetadata = headerToMetadata(
+    parsed.header,
+    filePath,
+    deriveUpdatedAt(parsed.timeline, parsed.header.createdAt),
+  );
   const initialJournal = createKanaSessionJournal(initialMetadata, parsed.timeline);
   if (initialJournal.activeTurnId) {
     const recovered = initialJournal.recoverInterruptedTurn();
@@ -156,7 +159,11 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
     parsed = readKanaSessionFile(filePath);
   }
 
-  const metadata = headerToMetadata(parsed.header, filePath);
+  const metadata = headerToMetadata(
+    parsed.header,
+    filePath,
+    deriveUpdatedAt(parsed.timeline, parsed.header.createdAt),
+  );
   // Validate ordering and references before exposing any recovered state.
   createKanaSessionJournal(metadata, parsed.timeline);
   const messages: Message[] = [];
@@ -207,8 +214,42 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
 }
 
 function loadKanaSessionMetadata(filePath: string): KanaSessionMetadata {
-  const [line] = readSessionLines(filePath).lines;
-  return headerToMetadata(parseHeader(line, filePath), filePath);
+  const { lines } = readSessionLines(filePath);
+  const header = parseHeader(lines[0], filePath);
+  return headerToMetadata(header, filePath, readLastEntryTimestamp(lines) ?? header.createdAt);
+}
+
+function deriveUpdatedAt(timeline: readonly KanaSessionTimelineEntry[], createdAt: string): string {
+  return timeline.at(-1)?.timestamp ?? createdAt;
+}
+
+// Only complete records count as activity: an unterminated or malformed tail
+// must not reorder sessions in the picker.
+function readLastEntryTimestamp(lines: readonly string[]): string | undefined {
+  for (let index = lines.length - 1; index >= 1; index -= 1) {
+    const timestamp = readRecordTimestamp(lines[index]);
+
+    if (timestamp !== undefined) {
+      return timestamp;
+    }
+  }
+
+  return undefined;
+}
+
+function readRecordTimestamp(line: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(line);
+
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return undefined;
+    }
+
+    const timestamp = (parsed as { timestamp?: unknown }).timestamp;
+    return typeof timestamp === "string" ? timestamp : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function readKanaSessionFile(filePath: string): {
