@@ -24,6 +24,7 @@ import { BottomAreaController } from "./bottom-area-controller";
 import { BtwController } from "./btw-controller";
 import { ContentViewerController } from "./content-viewer-controller";
 import { ContextCompactController } from "./context-compact-controller";
+import { formatUserMessage } from "./history";
 import { ImageAttachmentController } from "./image-attachment-controller";
 import { InformationViewerController } from "./information-viewer-controller";
 import { InteractionErrorReporter } from "./interaction-error-reporter";
@@ -931,6 +932,10 @@ export class KanaTuiApp {
             new TextBlock(formatSubagentWakeContent(event.input.content), {
               color: tuiTheme.muted,
             }),
+          );
+        } else if (event.source === "user_task" && event.input) {
+          this.transcript.addChild(
+            new TextBlock(formatUserMessage(event.input), { color: tuiTheme.muted }),
           );
         }
         this.updateStatus(event.source === "compaction" ? "compacting" : "starting");

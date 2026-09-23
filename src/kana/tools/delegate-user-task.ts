@@ -17,7 +17,7 @@ export function createDelegateUserTaskTool(
   return {
     name: "delegate_user_task",
     description:
-      "Invite the user to take a small, concrete task in parallel with your work. The user may decline; then do that task yourself. If accepted, continue your own work without waiting for the user. The user will later submit a result or return the task through /task, which will notify you.",
+      "Invite the user to take a small, concrete task in parallel with your work. The user may decline; then do that task yourself. If accepted, continue your own work without waiting. You will receive a separate update when the user completes or returns the task.",
     parameters: delegateUserTaskParameters,
     execution: { concurrency: "exclusive" },
     execute: ({ task }) => {
