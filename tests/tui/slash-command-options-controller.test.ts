@@ -69,7 +69,7 @@ describe("slash command options controller", () => {
     harness.input("\r");
     expect(harness.render()).toContain("> View full task");
     expect(harness.render()).toContain("  Submit completed result");
-    expect(harness.render()).toContain("  Return to agent");
+    expect(harness.render()).toContain("  Return to Kana");
 
     harness.input("\r");
     const firstPage = harness.render().join("\n");

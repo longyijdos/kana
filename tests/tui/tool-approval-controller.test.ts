@@ -139,7 +139,7 @@ describe("tool approval controller", () => {
     expect(tui.getFocus()).toBe(controller.activePrompt);
     expect(controller.activePrompt).toBeDefined();
     expect(shownTools).toEqual(["bash"]);
-    expect(layout.render(80).join("\n")).toContain("Allow agent to run bash?");
+    expect(layout.render(80).join("\n")).toContain("Allow Kana to run bash?");
     expect(layout.render(80)).not.toContain("editor");
 
     controller.activePrompt?.handleInput?.("\r");
@@ -189,12 +189,12 @@ describe("tool approval controller", () => {
     expect(controller.activePrompt).toBeDefined();
     expect(shownTools).toEqual(["bash"]);
     expect(layout.render(80).join("\n")).toContain("tool result viewer");
-    expect(layout.render(80).join("\n")).not.toContain("Allow agent to run bash?");
+    expect(layout.render(80).join("\n")).not.toContain("Allow Kana to run bash?");
 
     viewer.close();
 
     expect(tui.getFocus()).toBe(controller.activePrompt);
-    expect(layout.render(80).join("\n")).toContain("Allow agent to run bash?");
+    expect(layout.render(80).join("\n")).toContain("Allow Kana to run bash?");
 
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });
@@ -238,7 +238,7 @@ describe("tool approval controller", () => {
     );
     const rendered = layout.render(80).map(stripAnsi).join("\n");
 
-    expect(rendered).toContain("Allow MCP tool?");
+    expect(rendered).toContain("Allow Kana to use MCP tool?");
     expect(rendered).toContain("Server");
     expect(rendered).toContain("  github");
     expect(rendered).toContain("Tool");
@@ -282,19 +282,21 @@ describe("tool approval controller", () => {
       id: "agent_first",
       label: "explorer · first",
       kind: "subagent",
+      profileName: "explorer",
     });
     const second = controller.request(createToolCall("call_second"), undefined, {
       id: "agent_second",
       label: "worker · second",
       kind: "subagent",
+      profileName: "worker",
     });
 
-    expect(stripAnsi(layout.render(80).join("\n"))).toContain("explorer · first");
-    expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("worker · second");
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Allow explorer to run bash?");
+    expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("Allow worker to run bash?");
     controller.activePrompt?.handleInput?.("\r");
     await expect(first).resolves.toEqual({ type: "continue" });
 
-    expect(stripAnsi(layout.render(80).join("\n"))).toContain("worker · second");
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Allow worker to run bash?");
     controller.activePrompt?.handleInput?.("\r");
     await expect(second).resolves.toEqual({ type: "continue" });
     expect(tui.getFocus()).toBe(editor);

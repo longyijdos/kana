@@ -667,6 +667,7 @@ export class KanaConversationHost<TConfiguration = never> {
         id: context.agentId,
         label: `${context.profile.name} · ${shortAgentId(context.agentId)}`,
         kind: "subagent",
+        profileName: context.profile.name,
       }),
       onRunCommitted: ({ messages, compactions, state, event }) => {
         terminalReason = event.reason;

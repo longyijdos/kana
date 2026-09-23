@@ -105,7 +105,7 @@ export class ToolApprovalController {
       (decision) => this.finish(pending, decision),
       {
         allowAlways: bashCommand !== undefined,
-        requesterLabel: pending.agent.kind === "subagent" ? pending.agent.label : undefined,
+        requesterName: pending.agent.kind === "subagent" ? pending.agent.profileName : "Kana",
         ...(source === undefined ? {} : { source }),
       },
     );

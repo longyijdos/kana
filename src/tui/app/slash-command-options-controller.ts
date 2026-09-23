@@ -111,7 +111,7 @@ export class SlashCommandOptionsController {
       options: [
         { value: "view", label: "View full task" },
         { value: "done", label: "Submit completed result" },
-        { value: "return", label: "Return to agent" },
+        { value: "return", label: "Return to Kana" },
       ],
       defaultValue: "view",
       onSelect: (action) =>

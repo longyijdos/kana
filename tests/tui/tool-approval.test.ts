@@ -21,12 +21,12 @@ describe("tool approval", () => {
     const rawRendered = approval.render(80);
     const rendered = rawRendered.map(stripAnsi);
 
-    expect(rendered).toContain("Allow agent to run bash?");
+    expect(rendered).toContain("Allow Kana to run bash?");
     expect(rendered).toContain("Command");
     expect(rendered).toContain("  bun test");
     expect(rendered).toContain("> Allow once");
     expect(rendered).toContain("  Deny");
-    expect(rawRendered[0]).toBe(color("Allow agent to run bash?", tuiTheme.toolActive));
+    expect(rawRendered[0]).toBe(color("Allow Kana to run bash?", tuiTheme.toolActive));
     expect(rawRendered.find((line) => line.includes("Allow once"))).toBe(
       color("> Allow once", tuiTheme.user),
     );
@@ -94,7 +94,7 @@ describe("tool approval", () => {
     );
 
     const rendered = approval.render(80).map(stripAnsi);
-    expect(rendered).toContain("Allow MCP tool?");
+    expect(rendered).toContain("Allow Kana to use MCP tool?");
     expect(rendered).toContain("Server");
     expect(rendered).toContain("  github");
     expect(rendered).toContain("Tool");
@@ -124,7 +124,7 @@ describe("tool approval", () => {
     const rendered = approval.render(80).map(stripAnsi);
     const rawRendered = approval.render(80).join("\n");
 
-    expect(rendered).toContain("Allow agent to create file? [OVERWRITE]");
+    expect(rendered).toContain("Allow Kana to create file? [OVERWRITE]");
     expect(rendered).toContain("Path");
     expect(rendered).toContain("  notes.txt");
     expect(rendered).toContain("Content");
@@ -134,7 +134,7 @@ describe("tool approval", () => {
     // The overwrite marker lives only in the approval title, never inside
     // the full-fidelity detail body.
     expect(rendered.filter((line) => line.includes("[OVERWRITE]"))).toEqual([
-      "Allow agent to create file? [OVERWRITE]",
+      "Allow Kana to create file? [OVERWRITE]",
     ]);
     expect(rawRendered).toContain(color("[OVERWRITE]", tuiTheme.error));
   });
@@ -220,7 +220,7 @@ describe("tool approval", () => {
     const rendered = approval.render(120).map(stripAnsi);
 
     expect(rendered.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
-    expect(rendered).toContain("Allow agent to run bash?");
+    expect(rendered).toContain("Allow Kana to run bash?");
     expect(rendered).toContain("Command");
     expect(rendered).toContain('  git commit -m "feat: add something');
     expect(rendered).toContain('  Co-authored-by: Name <email@example.com>"');
@@ -239,7 +239,7 @@ describe("tool approval", () => {
     // The fixed approval title is one row truncated to the viewport width,
     // so the complete name cannot appear anywhere in the narrow render.
     const narrow = approval.render(30).map(stripAnsi);
-    const titleLine = narrow.find((line) => line.startsWith("Allow agent to use"));
+    const titleLine = narrow.find((line) => line.startsWith("Allow Kana to use"));
     expect(titleLine).toBeDefined();
     expect((titleLine ?? "").length).toBeLessThanOrEqual(30);
     expect(narrow.join("\n")).not.toContain(toolName);
@@ -270,7 +270,7 @@ describe("tool approval", () => {
     const rendered = approval.render(80).map(stripAnsi);
     const output = rendered.join("\n");
 
-    expect(rendered).toContain("Allow agent to use eviltool name?");
+    expect(rendered).toContain("Allow Kana to use eviltool name?");
     expect(output).toContain("  eviltool name");
     expect(output).toContain('"value": "safered"');
     expect(output).not.toContain("\u001b");

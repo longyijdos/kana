@@ -10,7 +10,7 @@ export type ToolApprovalDecision = "yes" | "always" | "no";
 export type ToolApprovalOptions = {
   allowAlways?: boolean;
   source?: ToolApprovalSource;
-  requesterLabel?: string;
+  requesterName?: string;
 };
 
 export class ToolApproval implements Component {
@@ -27,10 +27,10 @@ export class ToolApproval implements Component {
           title: "Kana has a task for you",
           detail: readUserTaskDescription(toolCall.args),
         }
-      : formatToolApproval(toolCall, options.source);
+      : formatToolApproval(toolCall, options.source, options.requesterName);
 
     this.prompt = new ChoicePrompt({
-      title: options.requesterLabel ? `${text.title} · ${options.requesterLabel}` : text.title,
+      title: text.title,
       detail: text.detail,
       dimDetail: !userTask,
       options: userTask

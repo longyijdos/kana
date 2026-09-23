@@ -91,11 +91,9 @@ export type ConversationRuntimeEvent =
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
 
-export type ConversationAgentIdentity = {
-  id: string;
-  label: string;
-  kind: "main" | "subagent";
-};
+export type ConversationAgentIdentity =
+  | { id: string; label: string; kind: "main" }
+  | { id: string; label: string; kind: "subagent"; profileName: string };
 
 type ConversationBeforeToolExecutionHook = (
   request: Parameters<BeforeToolExecutionHook>[0] & { agent: ConversationAgentIdentity },

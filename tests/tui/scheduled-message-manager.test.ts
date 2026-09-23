@@ -21,7 +21,7 @@ describe("scheduled message manager", () => {
     const rendered = stripAnsi(manager.render(100).join("\n"));
 
     expect(rendered.indexOf("Agent reminder")).toBeLessThan(rendered.indexOf("User reminder"));
-    expect(rendered).toContain("14:32:18 · agent · Agent reminder");
+    expect(rendered).toContain("14:32:18 · Kana · Agent reminder");
     expect(rendered).toContain("due · you · User reminder");
     expect(rendered).not.toContain("agent-internal-key");
   });

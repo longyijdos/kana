@@ -147,7 +147,7 @@ export class ScheduledMessageManager implements Component {
       const selected = index === this.viewport.selectedIndex;
       const marker = selected ? "> " : "  ";
       const state = item.state === "pending" ? "due" : formatDueAt(item.dueAt, this.snapshotAt);
-      const origin = item.origin === "agent" ? "agent" : "you";
+      const origin = item.origin === "agent" ? "Kana" : "you";
       const label = `${marker}${state} · ${origin} · ${formatSingleLine(item.message)}`;
 
       lines.push(
