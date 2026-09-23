@@ -190,16 +190,8 @@ export class ConversationInputCoordinator {
     try {
       return await this.options.requestRun({ source, input, prompt });
     } finally {
-      try {
-        // Keep the fallback for runs that fail before agent_start is published.
-        for (const completion of adjacentCompletions) {
-          this.observeCompletion(completion);
-        }
-        this.observeCompletion(input);
-      } finally {
-        this.settlingRun = false;
-        this.notifyRunSettled();
-      }
+      this.settlingRun = false;
+      this.notifyRunSettled();
     }
   }
 
