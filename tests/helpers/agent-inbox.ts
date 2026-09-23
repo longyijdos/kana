@@ -1,4 +1,5 @@
 import {
+  type AgentEvent,
   AgentInbox,
   type AgentInboxItem,
   type AgentInboxSnapshot,
@@ -9,6 +10,7 @@ import type { MessageId, UserMessage } from "@/core";
 
 type AgentInboxStub = {
   readonly inbox: AgentInbox["snapshot"];
+  subscribe(listener: (event: AgentEvent, signal: AbortSignal) => Promise<void> | void): () => void;
   subscribeInbox(listener: (snapshot: AgentInboxSnapshot) => void): () => void;
   enqueueInput(input: UserMessage, lane: AgentInputLane, delivery: AgentInputDelivery): void;
   shiftNextTurnInput(): AgentInboxItem | undefined;
@@ -32,6 +34,9 @@ export function withAgentInboxForTest<T extends object>(agent: T): T & AgentInbo
     get: () => inbox.snapshot,
   });
   return Object.assign(agent, {
+    subscribe(_listener: (event: AgentEvent, signal: AbortSignal) => Promise<void> | void) {
+      return () => {};
+    },
     subscribeInbox(listener: (snapshot: AgentInboxSnapshot) => void) {
       listeners.add(listener);
       return () => {

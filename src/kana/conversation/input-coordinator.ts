@@ -191,6 +191,7 @@ export class ConversationInputCoordinator {
       return await this.options.requestRun({ source, input, prompt });
     } finally {
       try {
+        // Keep the fallback for runs that fail before agent_start is published.
         for (const completion of adjacentCompletions) {
           this.observeCompletion(completion);
         }
@@ -380,6 +381,12 @@ export class ConversationInputCoordinator {
   observeAgentEvent(event: AgentEvent): void {
     if (event.type === "turn_input") {
       this.observeCompletion(event.message);
+    }
+  }
+
+  observeRunInputs(prompt: UserMessage | UserMessage[]): void {
+    for (const input of Array.isArray(prompt) ? prompt : [prompt]) {
+      this.observeCompletion(input);
     }
   }
 
