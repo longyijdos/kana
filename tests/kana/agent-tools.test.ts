@@ -12,6 +12,7 @@ import {
 } from "@/kana";
 import { createRegisteredMcpTool, type McpToolRegistry } from "@/mcp";
 import { KanaSubagentManager, type KanaSubagentProfile } from "../../src/kana/subagents";
+import { KanaUserTaskManager } from "../../src/kana/user-tasks";
 
 const tempDirs: string[] = [];
 
@@ -52,6 +53,7 @@ describe("Kana Agent tools", () => {
           runSubagent: async () => ({ status: "completed", output: "", messages: [] }),
           resolveGoal: () => goal,
           updateGoal: (change) => ({ ...goal, status: change.status }),
+          userTasks: new KanaUserTaskManager(),
         }),
       );
 
@@ -73,6 +75,30 @@ describe("Kana Agent tools", () => {
     expect(enabled.state.tools.some((tool) => tool.name === "view_image")).toBe(true);
     expect(disabledByConfig.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
     expect(unsupportedModel.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
+  });
+
+  test("offers user-task delegation only with a task manager and tool selection", () => {
+    const tasks = new KanaUserTaskManager();
+    const config = testConfig();
+    const withoutManager = withKanaAgentEnvironment(() => createAgentForTest(config));
+    const enabled = withKanaAgentEnvironment(() =>
+      createAgentForTest(config, { userTasks: tasks }),
+    );
+    const disabledByConfig = withKanaAgentEnvironment(() =>
+      createAgentForTest(
+        {
+          ...config,
+          agent: { ...config.agent, tools: ["read"] },
+        },
+        { userTasks: tasks },
+      ),
+    );
+
+    expect(withoutManager.state.tools.some((tool) => tool.name === "delegate_user_task")).toBe(
+      false,
+    );
+    expect(enabled.state.tools.some((tool) => tool.name === "delegate_user_task")).toBe(true);
+    expect(disabledByConfig.state.tools.map((tool) => tool.name)).toEqual(["read"]);
   });
 
   test("advertises each subagent profile's effective tools", () => {

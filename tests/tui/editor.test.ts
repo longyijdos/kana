@@ -627,9 +627,10 @@ describe("Editor", () => {
   });
 
   describe("background activity previews", () => {
-    test("renders running session work below the queued previews and hides it for slash commands", () => {
+    test("renders user tasks before background work and hides previews for slash commands", () => {
       const editor = new Editor({ model: "test-model" });
       editor.setQueuedInputs([{ delivery: "run", content: "Check types after this run." }]);
+      editor.setPendingUserTasks([{ id: "9a8b7c6d", label: "Review the screenshot" }]);
       editor.setBackgroundActivity([
         {
           kind: "subagent",
@@ -642,16 +643,22 @@ describe("Editor", () => {
 
       const rendered = editor.render(72, 16).map(stripAnsi);
 
+      expect(rendered).toContain("Your tasks · 1 · /task");
+      expect(rendered).toContain("  9a8b7c6d · Review the screenshot");
       expect(rendered).toContain("Background · 2");
       expect(rendered).toContain("  subagent · 3f2a1b7c · running · reviewer: Check the parser");
       expect(rendered).toContain("  job      · 82ac19de · stopping · bun test");
-      expect(rendered.indexOf("Background · 2")).toBeGreaterThan(
+      expect(rendered.indexOf("Your tasks · 1 · /task")).toBeGreaterThan(
         rendered.indexOf("Queued inputs · 1"),
+      );
+      expect(rendered.indexOf("Background · 2")).toBeGreaterThan(
+        rendered.indexOf("Your tasks · 1 · /task"),
       );
       expect(rendered.length).toBeLessThanOrEqual(16);
 
       editor.setText("/");
       const slashRendered = stripAnsi(editor.render(72, 16).join("\n"));
+      expect(slashRendered).not.toContain("Your tasks · ");
       expect(slashRendered).not.toContain("Background · 2");
     });
 

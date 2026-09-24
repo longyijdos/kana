@@ -89,12 +89,16 @@ function flattenToolTargetText(target: string): string {
 export function formatToolApproval(
   toolCall: ToolCallContent,
   source?: ToolApprovalSource,
+  requesterName = "Kana",
 ): ToolApprovalText {
   return {
     // The title stays approval-specific UI wording; the paged detail below
     // reuses the full-fidelity representation so approval never pre-summarizes
     // material data before it reaches the ChoicePrompt viewport.
-    title: source?.kind === "mcp" ? "Allow MCP tool?" : formatToolApprovalTitle(toolCall),
+    title:
+      source?.kind === "mcp"
+        ? `Allow ${requesterName} to use MCP tool?`
+        : formatToolApprovalTitle(toolCall, requesterName),
     detail: formatFullToolDetail(buildFullToolDetail(toolCall, source)),
   };
 }
@@ -391,8 +395,8 @@ function getTodoItems(
   return parsed.length === items.length ? parsed : undefined;
 }
 
-function formatToolApprovalTitle(toolCall: ToolCallContent): string {
-  return toolText(toolCall.name, toolCall.name, toolCall.args).approvalTitle;
+function formatToolApprovalTitle(toolCall: ToolCallContent, requesterName: string): string {
+  return toolText(toolCall.name, toolCall.name, toolCall.args, requesterName).approvalTitle;
 }
 
 function sanitizeToolCallOutput(toolCall: ToolCallContent): ToolCallContent {
@@ -406,6 +410,7 @@ function toolText(
   toolName: string,
   target: string | undefined,
   args?: unknown,
+  requesterName = "Kana",
 ): {
   action: string;
   approvalTitle: string;
@@ -417,7 +422,7 @@ function toolText(
       const name = `${getStringProperty(args, "server") ?? "?"}/${getStringProperty(args, "tool") ?? "?"}`;
       return {
         action: `call MCP ${name}`,
-        approvalTitle: "Allow MCP tool?",
+        approvalTitle: `Allow ${requesterName} to use MCP tool?`,
         doneTitle: `Called MCP ${name}`,
         runningActivity: `calling MCP ${name}`,
       };
@@ -426,7 +431,7 @@ function toolText(
       const name = getStringProperty(args, "name") ?? "?";
       return {
         action: `list MCP tools for ${name}`,
-        approvalTitle: "Allow MCP catalog reading?",
+        approvalTitle: `Allow ${requesterName} to read MCP catalog?`,
         doneTitle: `Listed MCP tools for ${name}`,
         runningActivity: `listing MCP tools for ${name}`,
       };
@@ -434,84 +439,84 @@ function toolText(
     case "list":
       return {
         action: `list ${target}`,
-        approvalTitle: "Allow agent to list directory?",
+        approvalTitle: `Allow ${requesterName} to list directory?`,
         doneTitle: `Listed ${target}`,
         runningActivity: `listing ${target}`,
       };
     case "glob":
       return {
         action: `match ${target}`,
-        approvalTitle: "Allow agent to find paths?",
+        approvalTitle: `Allow ${requesterName} to find paths?`,
         doneTitle: `Matched ${target}`,
         runningActivity: `matching ${target}`,
       };
     case "grep":
       return {
         action: `search ${target}`,
-        approvalTitle: "Allow agent to search files?",
+        approvalTitle: `Allow ${requesterName} to search files?`,
         doneTitle: `Searched ${target}`,
         runningActivity: `searching ${target}`,
       };
     case "read":
       return {
         action: `read ${target}`,
-        approvalTitle: "Allow agent to read file?",
+        approvalTitle: `Allow ${requesterName} to read file?`,
         doneTitle: `Read ${target}`,
         runningActivity: `reading ${target}`,
       };
     case "view_image":
       return {
         action: `view ${target}`,
-        approvalTitle: "Allow agent to view image?",
+        approvalTitle: `Allow ${requesterName} to view image?`,
         doneTitle: `Viewed ${target}`,
         runningActivity: `viewing ${target}`,
       };
     case "write":
       return {
         action: withOverwriteMarker(`create ${target}`, args),
-        approvalTitle: withOverwriteMarker("Allow agent to create file?", args),
+        approvalTitle: withOverwriteMarker(`Allow ${requesterName} to create file?`, args),
         doneTitle: withOverwriteMarker(`Created ${target}`, args),
         runningActivity: withOverwriteMarker(`creating ${target}`, args),
       };
     case "edit":
       return {
         action: `edit ${target}`,
-        approvalTitle: "Allow agent to edit file?",
+        approvalTitle: `Allow ${requesterName} to edit file?`,
         doneTitle: `Edited ${target}`,
         runningActivity: `editing ${target}`,
       };
     case "job_start":
       return {
         action: `run ${target} ${backgroundMarker}`,
-        approvalTitle: `Allow agent to start background job? ${backgroundMarker}`,
+        approvalTitle: `Allow ${requesterName} to start background job? ${backgroundMarker}`,
         doneTitle: `Ran ${target} ${backgroundMarker}`,
         runningActivity: `running ${target} ${backgroundMarker}`,
       };
     case "bash":
       return {
         action: `run ${target}`,
-        approvalTitle: "Allow agent to run bash?",
+        approvalTitle: `Allow ${requesterName} to run bash?`,
         doneTitle: `Ran ${target}`,
         runningActivity: `running ${target}`,
       };
     case "remember":
       return {
         action: "save memory",
-        approvalTitle: "Allow agent to save memory?",
+        approvalTitle: `Allow ${requesterName} to save memory?`,
         doneTitle: `Saved ${target} memory`,
         runningActivity: `saving ${target} memory`,
       };
     case "schedule_wake":
       return {
         action: "schedule wake",
-        approvalTitle: "Allow agent to schedule a wake?",
+        approvalTitle: `Allow ${requesterName} to schedule a wake?`,
         doneTitle: `Scheduled wake ${target}`,
         runningActivity: `scheduling wake ${target}`,
       };
     case "update_goal":
       return {
         action: "update goal",
-        approvalTitle: "Allow agent to update the goal?",
+        approvalTitle: `Allow ${requesterName} to update the goal?`,
         doneTitle: target === "completed" ? "Completed goal" : "Blocked goal",
         runningActivity: "updating goal",
       };
@@ -522,7 +527,7 @@ function toolText(
         // approval title sanitizes the identity because it renders on a
         // fixed row. Transcript action/done/running wording keeps the raw
         // name so compact rendering stays unchanged.
-        approvalTitle: `Allow agent to use ${sanitizeToolDetailLabel(toolName)}?`,
+        approvalTitle: `Allow ${requesterName} to use ${sanitizeToolDetailLabel(toolName)}?`,
         doneTitle: `Used ${toolName}`,
         runningActivity: `using ${toolName}`,
       };

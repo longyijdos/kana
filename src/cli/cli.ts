@@ -66,7 +66,7 @@ export function createCli(options: CreateCliOptions): Command {
 
   program
     .name("kana")
-    .description("Personal TypeScript/Bun agent runtime")
+    .description("Kana, a terminal AI agent built with TypeScript and Bun")
     .version(KANA_VERSION)
     .option("--clean", "Start a temporary session without custom context or session persistence")
     .option(
@@ -93,7 +93,7 @@ export function createCli(options: CreateCliOptions): Command {
 
   program
     .command("resume")
-    .description("Resume a saved agent session")
+    .description("Resume a saved Kana session")
     .argument("[sessionId]", "Session id to resume")
     .action(
       async (
@@ -115,7 +115,7 @@ export function createCli(options: CreateCliOptions): Command {
   const execCommand = addHeadlessOptions(
     program
       .command("exec")
-      .description("Run an agent task without the TUI")
+      .description("Run a task with Kana without the TUI")
       .argument("[prompt...]", "Prompt to run; reads stdin when omitted"),
   );
   execCommand.action(
@@ -139,7 +139,7 @@ export function createCli(options: CreateCliOptions): Command {
   addHeadlessOptions(
     execCommand
       .command("resume")
-      .description("Resume a saved session for an agent task")
+      .description("Resume a saved Kana session and run a task")
       .argument("<sessionId>", "Session id to resume")
       .argument("[prompt...]", "Prompt to run; reads stdin when omitted"),
   ).action(

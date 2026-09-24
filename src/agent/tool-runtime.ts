@@ -31,6 +31,10 @@ export type BeforeToolExecutionResult =
       type: "cancel";
       abortRun?: boolean;
       message?: string;
+    }
+  | {
+      type: "return";
+      result: ToolResult & { isError?: false };
     };
 
 export type BeforeToolExecutionHook = (request: {
@@ -518,6 +522,15 @@ export class ToolRuntime {
           result: createCanceledToolResult("Tool call canceled before execution."),
           isError: true,
           abortRun: true,
+        };
+      }
+
+      if (beforeResult.type === "return") {
+        const result = normalizeToolResult(beforeResult.result);
+        return {
+          toolCall,
+          result,
+          isError: result.isError ?? false,
         };
       }
 

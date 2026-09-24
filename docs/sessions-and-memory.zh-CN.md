@@ -89,7 +89,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 - 活动资源释放与 host shutdown 顺序见[对话运行时](conversation-runtime.zh-CN.md)；本节只描述会留下持久结果的 journal 与 artifact 行为。
 - Agent journal 在任何模型 I/O 前写入 `turn_start`、本轮用户消息和所有有变化的 runtime-context 状态转换；完整 assistant 消息在其工具执行前写入，接受的 `todo_write` 会先写 `todo_state` 再写紧凑工具结果。其他工具结果同样在执行结束后独立写入，全部 sibling 结果写完后、下一次模型请求前再写入带来源的工具结果策略上下文。压缩 checkpoint 也在 adopt 前写入。终态 `turn_end` 写入后才运行 `onRunCommitted` 的 accounting/记忆等聚合后处理，随后发布 `agent_end`。手动 `/compact` 同样先写 checkpoint 再 adopt。`waitForIdle()` 不会早于这些写入和后处理完成。
 - 加载发现未闭合 turn 时会直接修复原 JSONL：为每个没有结果的工具调用追加 `status: "unknown"` 的错误结果，明确禁止自动重试，再追加内部 recovery 用户消息和 `outcome: "interrupted"` 的 `turn_end`。若最后一行是未完成的 JSON，则只截断这条未终止尾记录；已完成行中的损坏仍报错。恢复具有幂等性，因此第二次加载不会再次追加。
-- 恢复会重建 journal 中已提交的消息、最后一个 context checkpoint 和最新 todo 状态。进程内的 inbox、wake 与 Goal 状态不属于 session 格式，详见[对话运行时](conversation-runtime.zh-CN.md)。
+- 恢复会重建 journal 中已提交的消息、最后一个 context checkpoint 和最新 todo 状态。进程内的 inbox、wake、Goal 与用户任务状态不属于 session 格式，详见[对话运行时](conversation-runtime.zh-CN.md)。
 - 恢复会检查每个保留 artifact 是否位于该 session 的受管目录、是否为普通文件，以及大小是否与记录字节数一致。引用缺失或无效时记录安全诊断，但不会让 journal 无法读取，也不会修改其中的有界预览。
 - fork 会在注册 snapshot 前把所有保留 artifact 复制到目标 session 的私有目录，再重写继承工具消息与累计 checkpoint 摘要中的 locator。因此源 session 与 fork 可以独立删除。Subagent journal 属于内部 child 而非对话历史，不会被复制。复制或重写失败会中止 fork，并以 best-effort 回滚目标目录。
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。

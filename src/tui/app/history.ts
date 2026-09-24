@@ -86,6 +86,8 @@ export function formatUserMessage(message: Extract<Message, { role: "user" }>): 
       return message.content.replace(/^\[Background Job completion\]\n?/, "");
     case "subagent_completion":
       return message.content.replace(/^\[Subagent completion\]\n?/, "");
+    case "user_task_completion":
+      return message.content.replace(/^\[User task update\]\n?/, "");
     case "recovery":
       return "Previous agent run was interrupted; recorded history was recovered safely.";
     case "user_input":

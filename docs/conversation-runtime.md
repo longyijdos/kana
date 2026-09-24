@@ -11,7 +11,8 @@ TUI / Headless
       │   ├→ Agent-owned inbox
       │   ├→ WakeScheduler
       │   ├→ KanaGoalController
-      │   └→ session BackgroundJobClient
+      │   ├→ session BackgroundJobClient
+      │   └→ session user tasks
       └→ Agent
   → KanaConversationHost
       ├→ HostedSessionRegistry
@@ -24,13 +25,13 @@ TUI / Headless
 
 `KanaConversationHost` is the product composition boundary. It loads runtime configuration and approval state, initializes the selected session, owns the shared wake scheduler and MCP runtime, and creates every main Agent with the current model, prompt, built-in tools, MCP registry access, logger, journal, artifact store, background-job client, subagent client, todo state, and memory callbacks. It also constructs one-shot child Agents from validated role cards. It returns frontend-neutral operations and data; it does not render TUI components or project headless output. The delegated contract belongs to [Subagents](subagents.md).
 
-`HostedSessionRegistry` owns the live resources associated with each session instance. A hosted record binds the session's in-memory mirror, optional journal, logger, artifact store, background-job client, subagent client, and pending fork snapshot. `ConversationRuntime` selects and executes against those resources through host callbacks rather than opening storage or background processes itself.
+`HostedSessionRegistry` owns the live resources associated with each session instance. A hosted record binds the session's in-memory mirror, optional journal, logger, artifact store, background-job client, subagent client, user-task manager, and pending fork snapshot. `ConversationRuntime` selects and executes against those resources through host callbacks rather than opening storage or background processes itself.
 
-`ConversationRuntime` owns the current Agent and session snapshot. `ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, background-job completions, and subagent settlements, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
+`ConversationRuntime` owns the current Agent and session snapshot. `ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, background-job completions, subagent settlements, and user-task updates, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
 
 ## Run lifecycle and events
 
-A runtime run has one source: `user`, `scheduled`, `goal`, `job`, `subagent`, or `compaction`. The runtime rejects a new run, session transition, or Agent reconfiguration while another run or transition is active. It publishes cloned events so listeners cannot mutate internal state:
+A runtime run has one source: `user`, `scheduled`, `goal`, `job`, `subagent`, `user_task`, or `compaction`. The runtime rejects a new run, session transition, or Agent reconfiguration while another run or transition is active. It publishes cloned events so listeners cannot mutate internal state:
 
 ```text
 run_start
@@ -83,6 +84,12 @@ Observing a terminal Job through an Agent Job tool acknowledges it and cancels a
 Subagent settlement follows the same delivery lanes and ordering as Background Jobs. The notification contains only the child ID, profile, and terminal status; `wait_subagent` remains the result-consumption boundary. A terminal wait or tool-driven cancellation acknowledges the child and removes a pending notification, while `/agents` inspection and TUI cancellation do not. Adjacent Subagent notifications at the front of `next-turn` are submitted together without crossing other input kinds.
 
 Completion notifications are acknowledged when their Agent input is committed: at `turn_input` for `next-step`, or at `agent_start` after the new run's prompt is journaled for `next-turn`, including adjacent completions. Observed terminal records leave runtime context before the next model request, so the notification and its inactive state are visible together. A tool may acknowledge a terminal result earlier and remove its still-pending notification.
+
+## User tasks
+
+The TUI's `delegate_user_task` tool asks the user to accept a small parallel task. Declining returns a normal result without creating state. Acceptance creates a session-owned process-local task and immediately returns its ID, leaving the Agent free to continue. `/task` remains available even if the Agent tool is deselected; it lets the user submit a result or return a pending task to the Agent. Only those user actions queue a notification, using the same `next-step` or `next-turn` rule as Job and Subagent completions. Adjacent task notifications at the front of `next-turn` are submitted together.
+
+The notification carries the task ID, original task description, and full user response, so it does not depend on earlier history that may have been compacted. Accepted tasks and unobserved terminal tasks appear in a separate runtime-context source; observation at `turn_input` or committed `agent_start` removes terminal tasks and projects the source inactive when empty. The task manager is not restored on resume or fork, though accepted tool results and delivered notifications remain in ordinary session history. Headless Agents do not receive the delegation tool. Goal continuation keeps its existing policy.
 
 ## Goals
 

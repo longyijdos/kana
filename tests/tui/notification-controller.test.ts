@@ -25,7 +25,7 @@ describe("notification controller", () => {
     controller.handleAgentEvent({ type: "agent_end", reason: "stop", messages: [] });
 
     expect(terminal.notifications).toEqual([
-      { title: "Kana", body: "Agent completed.", urgency: "normal" },
+      { title: "Kana", body: "Kana completed.", urgency: "normal" },
     ]);
   });
 

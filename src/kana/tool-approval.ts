@@ -14,6 +14,8 @@ export {
 
 import { DEFAULT_KANA_TOOL_APPROVALS, type KanaToolApprovals } from "./tool-approval-defaults";
 
+const ALWAYS_APPROVAL_TOOLS = new Set<string>(["delegate_user_task"]);
+
 export type KanaToolApprovalStore = {
   load(): KanaToolApprovals;
   addTrustedBashCommand(command: string): KanaToolApprovals;
@@ -24,6 +26,9 @@ export function shouldRequestToolApproval(
   approvals: KanaToolApprovals,
   toolCall: ToolCallContent,
 ): boolean {
+  if (ALWAYS_APPROVAL_TOOLS.has(toolCall.name)) {
+    return true;
+  }
   if (
     toolCall.name === "mcp_list_tools" ||
     toolCall.name === "remember" ||

@@ -26,6 +26,7 @@ import {
 } from "../session";
 import { type KanaSubagentClient, KanaSubagentManager } from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
+import { KanaUserTaskManager } from "../user-tasks";
 
 type HostedSessionSelection =
   | { type: "new" }
@@ -46,6 +47,7 @@ export type HostedSessionAgentBinding = {
   artifactStore?: KanaSessionArtifactStore;
   backgroundJobs?: BackgroundJobClient;
   subagents?: KanaSubagentClient;
+  userTasks?: KanaUserTaskManager;
   journal?: AgentJournal;
   resolveTodoState?: () => readonly KanaTodoItem[];
   commitTodoState: (change: KanaTodoStateChange) => void;
@@ -66,6 +68,7 @@ type HostedSession = {
   artifactStore: KanaSessionArtifactStore;
   backgroundJobs: BackgroundJobClient;
   subagents: KanaSubagentClient;
+  userTasks: KanaUserTaskManager;
   journal?: KanaSessionJournal;
   logger: Logger;
   persistent: boolean;
@@ -122,6 +125,10 @@ export class HostedSessionRegistry {
     return this.sessions.get(sessionId)?.subagents;
   }
 
+  getUserTasks(sessionId: string): KanaUserTaskManager | undefined {
+    return this.sessions.get(sessionId)?.userTasks;
+  }
+
   getActiveSession(): HostedSessionIdentity | undefined {
     return this.activeSession === undefined ? undefined : createSessionIdentity(this.activeSession);
   }
@@ -152,6 +159,7 @@ export class HostedSessionRegistry {
       artifactStore: hostedSession.artifactStore,
       backgroundJobs: hostedSession.backgroundJobs,
       subagents: hostedSession.subagents,
+      userTasks: hostedSession.userTasks,
       journal:
         hostedSession.journal === undefined
           ? undefined
@@ -353,6 +361,7 @@ export class HostedSessionRegistry {
         foregroundSettled,
       ]);
     } finally {
+      for (const session of sessions) session.userTasks.close();
       await Promise.all(sessions.map((session) => this.cleanupArtifactStore(session, "shutdown")));
     }
   }
@@ -427,6 +436,7 @@ export class HostedSessionRegistry {
           logger,
         },
       ),
+      userTasks: new KanaUserTaskManager(),
       ...(persistent ? { journal: createKanaSessionJournal(data.metadata, data.timeline) } : {}),
       logger,
       persistent,
@@ -571,6 +581,7 @@ export class HostedSessionRegistry {
       session.subagents.close(source),
       foregroundSettled,
     ]);
+    session.userTasks.close();
     const failure = settlements.find((settlement) => settlement.status === "rejected");
     if (failure?.status === "rejected") {
       throw failure.reason;

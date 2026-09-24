@@ -23,7 +23,7 @@ export class NotificationController {
 
     this.terminal.notify({
       title: "Kana",
-      body: "Agent completed.",
+      body: "Kana completed.",
       urgency: "normal",
     });
   }

@@ -5,7 +5,7 @@ import {
   type BackgroundJobSummary,
   type BackgroundJobTerminalStatus,
 } from "@/jobs";
-import type { KanaSubagentClient, KanaSubagentSummary } from "@/kana";
+import { type KanaSubagentClient, type KanaSubagentSummary, KanaUserTaskManager } from "@/kana";
 import { BackgroundActivityController } from "../../src/tui/app/background-activity-controller";
 import { Editor } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
@@ -62,6 +62,25 @@ describe("background activity controller", () => {
     expect(harness.renderEditor()).not.toContain("Background · ");
   });
 
+  test("shows accepted user tasks until they are completed or returned", () => {
+    const harness = createHarness();
+    harness.controller.bind();
+
+    const first = harness.userTasks.create("Review the screenshot");
+    const second = harness.userTasks.create("Check the wording");
+    const rendered = harness.renderEditor();
+    expect(rendered).toContain("Your tasks · 2 · /task");
+    expect(rendered).toContain(`  ${first.id.slice(5, 13)} · Review the screenshot`);
+    expect(rendered).toContain(`  ${second.id.slice(5, 13)} · Check the wording`);
+
+    harness.userTasks.done(first.id, "The labels look good.");
+    expect(harness.renderEditor()).not.toContain("Review the screenshot");
+    expect(harness.renderEditor()).toContain("Check the wording");
+
+    harness.userTasks.returnToAgent(second.id);
+    expect(harness.renderEditor()).not.toContain("Your tasks · ");
+  });
+
   test("follows a real Background Job through running, stopping, and settlement", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
@@ -71,6 +90,7 @@ describe("background activity controller", () => {
       tui: createTuiStub(),
       getJobs: () => jobs,
       getSubagents: () => undefined,
+      getUserTasks: () => undefined,
     });
     const rendered = () => stripAnsi(editor.render(96).join("\n"));
     controller.bind();
@@ -111,6 +131,7 @@ describe("background activity controller", () => {
 
   test("rebinds the strip to the next session's clients", () => {
     const harness = createHarness();
+    harness.userTasks.create("First session task");
     harness.subagents.items.push(
       subagentSummary("agent_3f2a1b7c9d", "running", "explorer: First session"),
     );
@@ -122,14 +143,20 @@ describe("background activity controller", () => {
       subagentSummary("agent_dd0e5511aa", "running", "worker: Second session"),
     );
     const nextJobs = createBackgroundClient<BackgroundJobSummary>();
+    const nextUserTasks = new KanaUserTaskManager();
+    nextUserTasks.create("Second session task");
     harness.session.subagents = nextSubagents;
     harness.session.jobs = nextJobs;
+    harness.session.userTasks = nextUserTasks;
 
     harness.controller.bind();
 
     expect(harness.subagents.listenerCount()).toBe(0);
     expect(harness.renderEditor()).toContain("Second session");
     expect(harness.renderEditor()).not.toContain("First session");
+
+    harness.userTasks.create("Stale task");
+    expect(harness.renderEditor()).not.toContain("Stale task");
 
     harness.subagents.items.push(subagentSummary("agent_0000000000", "running", "Stale event"));
     harness.subagents.emit();
@@ -138,6 +165,7 @@ describe("background activity controller", () => {
     harness.controller.unbind();
     expect(nextSubagents.listenerCount()).toBe(0);
     expect(nextJobs.listenerCount()).toBe(0);
+    expect(harness.renderEditor()).not.toContain("Your tasks · ");
   });
 });
 
@@ -147,15 +175,18 @@ function createHarness() {
   const session: {
     subagents: BackgroundClientStub<KanaSubagentSummary>;
     jobs: BackgroundClientStub<BackgroundJobSummary>;
+    userTasks: KanaUserTaskManager;
   } = {
     subagents: createBackgroundClient<KanaSubagentSummary>(),
     jobs: createBackgroundClient<BackgroundJobSummary>(),
+    userTasks: new KanaUserTaskManager(),
   };
   const controller = new BackgroundActivityController({
     editor,
     tui,
     getJobs: () => session.jobs as unknown as BackgroundJobClient,
     getSubagents: () => session.subagents as unknown as KanaSubagentClient,
+    getUserTasks: () => session.userTasks,
   });
 
   return {
@@ -163,6 +194,7 @@ function createHarness() {
     session,
     subagents: session.subagents,
     jobs: session.jobs,
+    userTasks: session.userTasks,
     renderEditor: () => stripAnsi(editor.render(96).join("\n")),
   };
 }

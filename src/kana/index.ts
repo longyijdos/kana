@@ -161,3 +161,4 @@ export {
   type UpdateKanaOptions,
   updateKana,
 } from "./update";
+export { KanaUserTaskManager } from "./user-tasks";

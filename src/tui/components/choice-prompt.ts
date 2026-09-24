@@ -12,6 +12,7 @@ export type ChoicePromptOption<T extends string> = {
 export type ChoicePromptOptions<T extends string> = {
   title: string;
   detail?: string;
+  dimDetail?: boolean;
   options: ChoicePromptOption<T>[];
   defaultValue: T;
   titleColor?: Color;
@@ -39,7 +40,9 @@ export class ChoicePrompt<T extends string> implements Component {
     const highlight = this.options.highlight ?? ((line: string) => line);
     const titleLines = mapLines(this.options.title, (line) => highlight(color(line, titleColor)));
     const detailLines = this.options.detail
-      ? wrapPlainText(this.options.detail, width).map((line) => highlight(dim(line)))
+      ? wrapPlainText(this.options.detail, width).map((line) =>
+          highlight(this.options.dimDetail === false ? line : dim(line)),
+        )
       : [];
     const optionLines = this.options.options.map((option, index) =>
       this.renderOption(option, index, selectionColor),

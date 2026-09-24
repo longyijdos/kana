@@ -48,7 +48,7 @@ describe("local shell controller", () => {
     expect(lines.join("\n")).not.toContain("exit 0");
     expect(lines.join("\n")).not.toContain("stdout:");
     expect(lines.join("\n")).not.toContain("stderr:");
-    expect(lines).not.toContain("Allow agent to run bash?");
+    expect(lines).not.toContain("Allow Kana to run bash?");
 
     editor.render(80);
     editor.handleInput("\x1b[A");

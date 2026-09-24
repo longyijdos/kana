@@ -173,7 +173,7 @@ export class ScheduledMessageManagerController {
     const prompt = new ChoicePrompt<"no" | "yes">({
       title: "Delete scheduled message?",
       detail: [
-        `${formatLocalTimestamp(item.dueAt)} · ${item.origin === "agent" ? "agent" : "you"}`,
+        `${formatLocalTimestamp(item.dueAt)} · ${item.origin === "agent" ? "Kana" : "you"}`,
         formatSingleLine(item.message),
       ].join("\n"),
       options: [

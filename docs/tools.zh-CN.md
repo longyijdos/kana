@@ -41,17 +41,19 @@ type ToolContext = {
 
 1. 按名称解析工具；找不到时生成错误结果。
 2. 深拷贝参数，应用兼容的基础类型转换，再使用缓存的 TypeBox compiler 校验。
-3. 调用 `beforeToolExecution`；审批 hook 始终串行进入，并可允许或取消调用。
-4. 检查 run cancellation，发出 `tool_execution_start`，创建调用 signal 并启动有效 deadline。
+3. 调用 `beforeToolExecution`；hook 始终串行进入，可继续、取消，或不执行工具而直接返回正常结果。
+4. 对继续执行的调用，检查 run cancellation，发出 `tool_execution_start`，创建调用 signal 并启动有效 deadline。
 5. 串行发布 `context.update()`，并在终态前等待每个 listener。
-6. 规范化物理结果并发出 `tool_execution_end`。
+6. 规范化结果并发出 `tool_execution_end`。
 7. 应用结果策略，再通过按模型顺序排列的 slot 提交 sibling 结果，之后才能开始下一模型请求。
 
 Kana 自有对象 schema 使用 `additionalProperties: false`，未声明参数会带属性名失败，而不是被忽略。序列化后失去库 metadata 的 TypeBox schema 仍会先补充兼容基础类型转换，再交给同一 compiler 校验。第三方和 MCP schema 保留自身声明的额外属性行为。`mcp_call` 在这条管线中校验入口 envelope，再在入口内部、远端调用前校验嵌套远端参数。
 
 校验错误、审批拒绝、取消、deadline 到期与工具异常都会成为 `isError: true` 结果，不会抛出 turn loop。审批取消默认中止 run，并为同一 assistant 消息中后续调用补充 canceled 结果，而不执行它们。
 
-`tool_execution_end` 描述物理完成、取消或明确 unknown 终态，不保证结果已进入 journal。成功的 Agent run 才是持久边界；提交和恢复顺序见[会话与记忆](sessions-and-memory.zh-CN.md)。
+hook 返回 `return` 时提供正常 `ToolResult`，跳过 `execute` 及其 deadline；返回 `cancel` 时生成 canceled 错误结果，即使设置 `abortRun: false` 也是如此。两条路径仍会发布 `tool_execution_end`、应用结果策略并提交工具结果。
+
+`tool_execution_end` 描述完成、取消、hook 提供的结果或明确 unknown 终态，不保证结果已进入 journal。成功的 Agent run 才是持久边界；提交和恢复顺序见[会话与记忆](sessions-and-memory.zh-CN.md)。
 
 ## 并发、取消与 deadline
 
@@ -105,6 +107,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 | `wait_subagent` | `agentId`、可选 `timeoutMs` | 读取或短暂等待所属 child 的状态与最终输出。 |
 | `cancel_subagent` | `agentId`、可选 `reason` | 取消所属 child 并等待结算。 |
 | `todo_write` | 完整 todo item 数组 | 原子替换或显式清空 session todo 状态。 |
+| `delegate_user_task` | 具体的 `task` 文本 | 邀请用户并行处理任务；接受后创建进程内任务 ID。 |
 | `remember` | `content`；可选 scope/title/reason | 记忆启用时追加长期记忆暂存记录。 |
 | `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
@@ -143,7 +146,7 @@ Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal` 或 `mcp_list_tools` 请求审批。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal` 或 `mcp_list_tools` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 

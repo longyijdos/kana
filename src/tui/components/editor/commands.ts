@@ -15,6 +15,7 @@ export type PromptCommandName =
   | "agents"
   | "goal"
   | "todo"
+  | "task"
   | "tools"
   | "image"
   | "approval"
@@ -137,6 +138,11 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
     name: "todo",
     availability: "always",
     description: "Show the current session todo list.",
+  },
+  {
+    name: "task",
+    availability: "always",
+    description: "Review and complete tasks delegated to you.",
   },
   {
     name: "tools",

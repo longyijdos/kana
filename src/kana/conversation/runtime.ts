@@ -11,6 +11,7 @@ import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaSessionMetadata, KanaSessionTimelineEntry } from "../session";
 import type { KanaSubagentClient } from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
+import type { KanaUserTaskManager } from "../user-tasks";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import {
   ConversationInputCoordinator,
@@ -90,11 +91,9 @@ export type ConversationRuntimeEvent =
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
 
-export type ConversationAgentIdentity = {
-  id: string;
-  label: string;
-  kind: "main" | "subagent";
-};
+export type ConversationAgentIdentity =
+  | { id: string; label: string; kind: "main" }
+  | { id: string; label: string; kind: "subagent"; profileName: string };
 
 type ConversationBeforeToolExecutionHook = (
   request: Parameters<BeforeToolExecutionHook>[0] & { agent: ConversationAgentIdentity },
@@ -127,6 +126,7 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   deleteSession?: (sessionId: string) => Promise<boolean> | boolean;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
   getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
+  getUserTasks?: (sessionId: string) => KanaUserTaskManager | undefined;
   disposeSession?: (
     sessionId: string,
     source: "session_disposal" | "shutdown",
@@ -166,6 +166,7 @@ export class ConversationRuntime<TConfiguration = never> {
       subagentCompletionRuns: options.subagentCompletionRuns,
       getBackgroundJobs: options.getBackgroundJobs,
       getSubagents: options.getSubagents,
+      getUserTasks: options.getUserTasks,
       isRunActive: () => this.isRunning,
       canSteer: () => this.canSteer,
       canStartQueuedRun: options.canStartQueuedRun,

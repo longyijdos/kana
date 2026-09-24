@@ -105,7 +105,7 @@ export class ToolApprovalController {
       (decision) => this.finish(pending, decision),
       {
         allowAlways: bashCommand !== undefined,
-        requesterLabel: pending.agent.kind === "subagent" ? pending.agent.label : undefined,
+        requesterName: pending.agent.kind === "subagent" ? pending.agent.profileName : "Kana",
         ...(source === undefined ? {} : { source }),
       },
     );
@@ -138,7 +138,15 @@ export class ToolApprovalController {
     pending.resolve(
       decision === "yes" || decision === "always"
         ? { type: "continue" }
-        : { type: "cancel", abortRun: true, message: "Tool call rejected by user." },
+        : pending.toolCall.name === "delegate_user_task"
+          ? {
+              type: "return",
+              result: {
+                content: "User declined the task. Complete it yourself.",
+                result: { status: "declined" },
+              },
+            }
+          : { type: "cancel", abortRun: true, message: "Tool call rejected by user." },
     );
     this.options.tui.requestRender();
   }

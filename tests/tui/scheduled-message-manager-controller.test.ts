@@ -91,6 +91,7 @@ describe("scheduled message manager controller", () => {
     harness.controller.open();
 
     harness.press("D");
+    expect(harness.renderFocus()).toContain(" · Kana");
     harness.press("\x1b[B");
     harness.press("\r");
 

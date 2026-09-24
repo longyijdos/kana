@@ -420,6 +420,7 @@ function findFirstPrompt(messages: Message[]): string | undefined {
       message.provenance.kind !== "goal_continuation" &&
       message.provenance.kind !== "job_completion" &&
       message.provenance.kind !== "subagent_completion" &&
+      message.provenance.kind !== "user_task_completion" &&
       message.provenance.kind !== "recovery" &&
       message.provenance.kind !== "tool_result_policy" &&
       message.provenance.kind !== "runtime_context",
@@ -571,6 +572,7 @@ function isUserMessageProvenance(value: unknown): boolean {
     kind === "goal_continuation" ||
     kind === "job_completion" ||
     kind === "subagent_completion" ||
+    kind === "user_task_completion" ||
     kind === "recovery" ||
     kind === "tool_result_policy" ||
     kind === "runtime_context" ||
@@ -610,6 +612,9 @@ function isMessageProvenance(value: unknown): value is MessageProvenance {
   }
   if (provenance.kind === "subagent_completion") {
     return typeof provenance.agentId === "string" && provenance.agentId.length > 0;
+  }
+  if (provenance.kind === "user_task_completion") {
+    return typeof provenance.taskId === "string" && provenance.taskId.length > 0;
   }
   if (provenance.kind === "runtime_context" || provenance.kind === "tool_result_policy") {
     return typeof provenance.source === "string" && provenance.source.length > 0;

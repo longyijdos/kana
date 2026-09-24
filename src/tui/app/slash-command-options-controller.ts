@@ -1,5 +1,11 @@
-import type { KanaModelProvider, KanaToolApprovalMode, KanaUsageScope } from "@/kana";
-import { ChoicePrompt, type Editor, TextPrompt } from "../components";
+import type {
+  KanaModelProvider,
+  KanaToolApprovalMode,
+  KanaUsageScope,
+  KanaUserTaskManager,
+} from "@/kana";
+import { ChoicePrompt, ContentViewer, type Editor, TextPrompt } from "../components";
+import { summarizeText, wrapPlainText } from "../render";
 import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { BottomAreaController } from "./bottom-area-controller";
@@ -16,6 +22,7 @@ export type SlashCommandOptionsControllerOptions = {
   onMemoryCompact: (scope: MemoryScope, request: string | undefined) => void;
   getApprovalMode: () => KanaToolApprovalMode;
   onApprovalModeSelect: (mode: KanaToolApprovalMode) => void;
+  getUserTasks?: () => KanaUserTaskManager | undefined;
   collapseLongPastes?: boolean;
   getModelSettings?: () => TuiModelSettings;
   onModelSelect?: (selection: TuiModelSelection) => void;
@@ -60,6 +67,82 @@ export class SlashCommandOptionsController {
     this.close();
     this.options.editor.clear();
     this.showApprovalMode();
+  }
+
+  openTask(defaultTaskId?: string): void {
+    this.close();
+    this.options.editor.clear();
+    const tasks =
+      this.options
+        .getUserTasks?.()
+        ?.list()
+        .filter((task) => task.status === "pending") ?? [];
+    const prompt = new ChoicePrompt<string>({
+      title: "Your tasks",
+      detail: tasks.length === 0 ? "No pending tasks. Press Esc to close." : undefined,
+      options: tasks.map((task) => ({
+        value: task.id,
+        label: `${task.id.slice(5, 13)} · ${summarizeText(task.task, 64)}`,
+      })),
+      defaultValue: defaultTaskId ?? tasks[0]?.id ?? "",
+      onSelect: (taskId) => {
+        const task = tasks.find((item) => item.id === taskId);
+        if (task) this.replace(prompt, () => this.showTaskAction(task.id, task.task));
+      },
+      onCancel: () => this.close(),
+    });
+    this.show(prompt);
+  }
+
+  private showTaskDetail(taskId: string, description: string): void {
+    const viewer = new ContentViewer(
+      {
+        title: `Task ${taskId.slice(5, 13)}`,
+        render: (width) => wrapPlainText(description, width),
+      },
+      { onClose: () => this.replace(viewer, () => this.showTaskAction(taskId, description)) },
+    );
+    this.show(viewer);
+  }
+
+  private showTaskAction(taskId: string, description: string): void {
+    const prompt = new ChoicePrompt<"view" | "done" | "return">({
+      title: `Task ${taskId.slice(5, 13)}`,
+      options: [
+        { value: "view", label: "View full task" },
+        { value: "done", label: "Submit completed result" },
+        { value: "return", label: "Return to Kana" },
+      ],
+      defaultValue: "view",
+      onSelect: (action) =>
+        this.replace(prompt, () =>
+          action === "view"
+            ? this.showTaskDetail(taskId, description)
+            : this.showTaskResponse(taskId, description, action),
+        ),
+      onCancel: () => this.openTask(taskId),
+    });
+    this.show(prompt);
+  }
+
+  private showTaskResponse(taskId: string, description: string, action: "done" | "return"): void {
+    const prompt = new TextPrompt({
+      title: action === "done" ? "Your result (required)" : "Reason for returning (optional)",
+      collapseLongPastes: this.options.collapseLongPastes,
+      onSubmit: (value) => {
+        try {
+          const tasks = this.options.getUserTasks?.();
+          if (!tasks) throw new Error("User tasks are unavailable.");
+          if (action === "done") tasks.done(taskId, value);
+          else tasks.returnToAgent(taskId, value);
+          this.finish(prompt, () => {});
+        } catch (error) {
+          this.options.showError?.(error);
+        }
+      },
+      onCancel: () => this.showTaskAction(taskId, description),
+    });
+    this.show(prompt);
   }
 
   openModel(): boolean {
@@ -126,7 +209,8 @@ export class SlashCommandOptionsController {
   private showNeverAskConfirmation(): void {
     const prompt = new ChoicePrompt<"yes" | "no">({
       title: "Disable tool approvals?",
-      detail: "All Agent tool calls will run without approval for the current session.",
+      detail:
+        "Ordinary Agent tools will run without approval for this session. User task invitations still ask.",
       options: [
         { value: "no", label: "No, keep current mode" },
         { value: "yes", label: "Yes, never ask" },

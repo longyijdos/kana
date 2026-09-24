@@ -23,6 +23,18 @@ afterEach(() => {
 });
 
 describe("Kana tool approval", () => {
+  test("always requests a user task decision, including in never mode", () => {
+    for (const mode of ["always", "unless_trusted", "never"] as const) {
+      expect(
+        shouldRequestToolApproval(
+          { mode },
+          approvals(),
+          toolCall("delegate_user_task", { task: "Check the screenshot." }),
+        ),
+      ).toBe(true);
+    }
+  });
+
   test("MCP catalogs are readable while calls follow the approval policy", () => {
     for (const mode of ["always", "unless_trusted", "never"] as const) {
       expect(

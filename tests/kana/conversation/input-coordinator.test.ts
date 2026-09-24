@@ -17,12 +17,68 @@ import {
   KanaSubagentManager,
   type KanaSubagentRunResult,
 } from "../../../src/kana/subagents";
+import { KanaUserTaskManager } from "../../../src/kana/user-tasks";
 import { createNoopLogger } from "../../../src/logging";
 import { MockModel } from "../../../src/providers/mock";
 import { deferred } from "../../helpers/async-control";
 import { messageIdentityForTest, messageIdForTest } from "../../helpers/messages";
 
 describe("ConversationInputCoordinator", () => {
+  test("queues a user task update and observes it when the next run accepts its prompt", async () => {
+    const tasks = new KanaUserTaskManager();
+    let canStart = false;
+    const harness = createHarness({
+      getUserTasks: () => tasks,
+      canStartQueuedRun: () => canStart,
+    });
+    const task = tasks.create("Check the screenshot");
+
+    tasks.done(task.id, "The labels look good.");
+    expect(harness.coordinator.queue.pending).toMatchObject([
+      { kind: "user_task", taskId: task.id },
+    ]);
+    expect(tasks.context()).toMatchObject([{ id: task.id, status: "done" }]);
+
+    canStart = true;
+    harness.coordinator.notifyCanStartRun();
+    await waitFor(() => harness.requests.length === 1);
+    expect(harness.requests[0]?.source).toBe("user_task");
+    expect(harness.requests[0]?.input.content).toBe(
+      [
+        "[User task update]",
+        `Task ${task.id} was done by the user.`,
+        "Task:\nCheck the screenshot",
+        "User response:\nThe labels look good.",
+      ].join("\n"),
+    );
+    expect(tasks.context()).toEqual([]);
+    harness.close();
+  });
+
+  test("steers a returned user task into the active run and observes it at turn input", () => {
+    const tasks = new KanaUserTaskManager();
+    const harness = createHarness({ getUserTasks: () => tasks, canSteer: () => true });
+    const task = tasks.create("Inspect the layout");
+
+    tasks.returnToAgent(task.id, "I cannot check this screen.");
+    const queued = harness.agent.inbox.nextStep[0];
+    expect(queued?.delivery).toMatchObject({ kind: "user_task", taskId: task.id });
+    expect(queued?.message.content).toBe(
+      [
+        "[User task update]",
+        `Task ${task.id} was returned by the user.`,
+        "Task:\nInspect the layout",
+        "User response:\nI cannot check this screen.",
+      ].join("\n"),
+    );
+    expect(tasks.context()).toMatchObject([{ id: task.id, status: "returned" }]);
+
+    if (!queued) throw new Error("Missing user task update.");
+    harness.coordinator.observeRunInputs(queued.message);
+    expect(tasks.context()).toEqual([]);
+    harness.close();
+  });
+
   test("projects detached queue snapshots and clears process-local state on session change", () => {
     const { scheduler } = createTimerWakeScheduler([messageIdForTest("scheduled-input")]);
     let canStartQueuedRun = false;
@@ -404,6 +460,7 @@ type HarnessOptions = {
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
   subagentCompletionRuns?: boolean;
   getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
+  getUserTasks?: (sessionId: string) => KanaUserTaskManager | undefined;
   isRunActive?: () => boolean;
   canSteer?: () => boolean;
   canStartQueuedRun?: () => boolean;
@@ -427,6 +484,7 @@ function createHarness(options: HarnessOptions = {}) {
     getBackgroundJobs: options.getBackgroundJobs,
     subagentCompletionRuns: options.subagentCompletionRuns,
     getSubagents: options.getSubagents,
+    getUserTasks: options.getUserTasks,
     isRunActive: options.isRunActive ?? (() => false),
     canSteer: options.canSteer ?? (() => false),
     canStartQueuedRun: options.canStartQueuedRun ?? (() => false),

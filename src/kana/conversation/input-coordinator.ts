@@ -9,6 +9,7 @@ import { createUserMessage, type MessageId, readMessageId, type UserMessage } fr
 import type { BackgroundJobClient, BackgroundJobEvent, BackgroundJobSummary } from "@/jobs";
 import type { Logger } from "@/logging";
 import type { KanaSubagentClient, KanaSubagentEvent, KanaSubagentSummary } from "../subagents";
+import type { KanaUserTaskManager, KanaUserTaskSettlement } from "../user-tasks";
 import {
   type KanaGoalContinuationAdmission,
   KanaGoalController,
@@ -17,7 +18,13 @@ import {
 } from "./goal-controller";
 import type { WakeEvent, WakeEventOrigin, WakeScheduler } from "./wake-scheduler";
 
-export type ConversationInputRunSource = "user" | "scheduled" | "goal" | "job" | "subagent";
+export type ConversationInputRunSource =
+  | "user"
+  | "scheduled"
+  | "goal"
+  | "job"
+  | "subagent"
+  | "user_task";
 
 export type ConversationInputDisposition = "steered" | "queued" | "discarded";
 
@@ -58,6 +65,13 @@ type ConversationPendingInput =
       kind: "subagent";
       content: string;
       agentId: string;
+      imageCount?: number;
+    }
+  | {
+      id: MessageId;
+      kind: "user_task";
+      content: string;
+      taskId: string;
       imageCount?: number;
     };
 
@@ -101,6 +115,7 @@ type ConversationInputCoordinatorOptions = {
   subagentCompletionRuns?: boolean;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
   getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
+  getUserTasks?: (sessionId: string) => KanaUserTaskManager | undefined;
   isRunActive: () => boolean;
   canSteer: () => boolean;
   canStartQueuedRun?: () => boolean;
@@ -117,11 +132,13 @@ export class ConversationInputCoordinator {
   private sessionId?: string;
   private backgroundJobs?: BackgroundJobClient;
   private subagents?: KanaSubagentClient;
+  private userTasks?: KanaUserTaskManager;
   private unsubscribeWakeEvents?: () => void;
   private unsubscribeWakeState?: () => void;
   private unsubscribeAgentInbox?: () => void;
   private unsubscribeBackgroundJobs?: () => void;
   private unsubscribeSubagents?: () => void;
+  private unsubscribeUserTasks?: () => void;
   private draining = false;
   private settlingRun = false;
   private changingSession = false;
@@ -137,6 +154,7 @@ export class ConversationInputCoordinator {
     this.observeAgentInbox();
     this.observeBackgroundJobs();
     this.observeSubagents();
+    this.observeUserTasks();
     this.unsubscribeWakeEvents = this.wakeScheduler.subscribe((event) => {
       this.queueWakeEvent(event);
     });
@@ -180,7 +198,7 @@ export class ConversationInputCoordinator {
     source: ConversationInputRunSource,
   ): Promise<ConversationInputRunResult> {
     const completionKind =
-      source === "job" ? "job" : source === "subagent" ? "subagent" : undefined;
+      source === "job" || source === "subagent" || source === "user_task" ? source : undefined;
     const adjacentCompletions = completionKind
       ? this.takePendingCompletionInputs(completionKind)
       : [];
@@ -392,6 +410,7 @@ export class ConversationInputCoordinator {
     this.changingSession = true;
     this.pauseBackgroundJobObservation();
     this.pauseSubagentObservation();
+    this.pauseUserTaskObservation();
   }
 
   cancelSessionChange(): void {
@@ -408,6 +427,11 @@ export class ConversationInputCoordinator {
     this.unsubscribeSubagents = undefined;
   }
 
+  pauseUserTaskObservation(): void {
+    this.unsubscribeUserTasks?.();
+    this.unsubscribeUserTasks = undefined;
+  }
+
   cancelCurrentSessionInputs(): void {
     if (this.sessionId) {
       this.wakeScheduler.cancelSession(this.sessionId);
@@ -421,6 +445,7 @@ export class ConversationInputCoordinator {
     this.replaceAgent(agent);
     this.observeBackgroundJobs();
     this.observeSubagents();
+    this.observeUserTasks();
     this.changingSession = false;
   }
 
@@ -436,6 +461,7 @@ export class ConversationInputCoordinator {
     this.unsubscribeAgentInbox?.();
     this.pauseBackgroundJobObservation();
     this.pauseSubagentObservation();
+    this.pauseUserTaskObservation();
     this.agent.clearInbox();
   }
 
@@ -545,6 +571,9 @@ export class ConversationInputCoordinator {
     }
     if (delivery.kind === "subagent") {
       return "subagent";
+    }
+    if (delivery.kind === "user_task") {
+      return "user_task";
     }
     return "user";
   }
@@ -694,7 +723,39 @@ export class ConversationInputCoordinator {
     });
   }
 
-  private takePendingCompletionInputs(kind: "job" | "subagent"): UserMessage[] {
+  private observeUserTasks(): void {
+    this.pauseUserTaskObservation();
+    this.userTasks = this.sessionId ? this.options.getUserTasks?.(this.sessionId) : undefined;
+    this.unsubscribeUserTasks = this.userTasks?.subscribe((event) => {
+      this.handleUserTaskSettlement(event);
+    });
+  }
+
+  private handleUserTaskSettlement(event: KanaUserTaskSettlement): void {
+    if (this.stopping || this.changingSession) return;
+    const input = createUserMessage({
+      content: [
+        "[User task update]",
+        `Task ${event.task.id} was ${event.task.status} by the user.`,
+        `Task:\n${event.task.task}`,
+        event.response ? `User response:\n${event.response}` : "The user returned the task to you.",
+      ].join("\n"),
+      provenance: { kind: "user_task_completion", taskId: event.task.id },
+    });
+    const lane = this.options.canSteer() ? "next-step" : "next-turn";
+    this.agent.enqueueInput(input, lane, {
+      kind: "user_task",
+      displayContent: `User task ${event.task.id.slice(5, 13)} ${event.task.status}`,
+      taskId: event.task.id,
+    });
+    this.log("info", "conversation.user_task_completion_queued", {
+      taskId: event.task.id,
+      outcome: event.task.status,
+      delivery: lane,
+    });
+  }
+
+  private takePendingCompletionInputs(kind: "job" | "subagent" | "user_task"): UserMessage[] {
     const inputs: UserMessage[] = [];
     while (this.agent.inbox.nextTurn[0]?.delivery.kind === kind) {
       const item = this.agent.shiftNextTurnInput();
@@ -711,6 +772,8 @@ export class ConversationInputCoordinator {
       this.backgroundJobs?.observe(message.provenance.jobId);
     } else if (message.provenance.kind === "subagent_completion") {
       this.subagents?.observe(message.provenance.agentId);
+    } else if (message.provenance.kind === "user_task_completion") {
+      this.userTasks?.observe(message.provenance.taskId);
     }
   }
 
@@ -746,6 +809,18 @@ export class ConversationInputCoordinator {
         kind: "subagent",
         content: item.delivery.displayContent,
         agentId: item.delivery.agentId,
+      };
+    }
+    if (item.delivery.kind === "user_task") {
+      const provenance = item.message.provenance;
+      if (provenance.kind !== "user_task_completion") {
+        throw new Error("User task input is missing completion provenance.");
+      }
+      return {
+        id: item.message.id,
+        kind: "user_task",
+        content: item.delivery.displayContent,
+        taskId: item.delivery.taskId,
       };
     }
     if (item.delivery.kind === "scheduled") {

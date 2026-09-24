@@ -17,6 +17,7 @@ import type {
   KanaTuiConfig,
   KanaUsageScope,
   KanaUsageSummary,
+  KanaUserTaskManager,
   LoadKanaSkillActivationsResult,
   LoadKanaSubagentProfilesResult,
   WakeScheduler,
@@ -43,6 +44,7 @@ type KanaTuiConversationCapabilities = {
   wakeScheduler?: WakeScheduler;
   getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
   getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
+  getUserTasks?: (sessionId: string) => KanaUserTaskManager | undefined;
   loadSubagentProfiles?: () => LoadKanaSubagentProfilesResult;
   disposeSession?: (
     sessionId: string,

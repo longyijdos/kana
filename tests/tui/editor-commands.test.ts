@@ -87,6 +87,9 @@ describe("prompt commands", () => {
           name: "todo",
         },
         {
+          name: "task",
+        },
+        {
           name: "tools",
         },
         {
