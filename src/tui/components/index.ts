@@ -21,6 +21,7 @@ export {
   type EditorBackgroundActivityItem,
   type EditorQueuedInput,
   type EditorScheduledInputSummary,
+  type EditorUserTaskItem,
   type StatusLineState,
 } from "./editor";
 export {

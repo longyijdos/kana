@@ -77,6 +77,7 @@ const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
 const QUEUED_INPUT_VISIBLE_LIMIT = 5;
 const BACKGROUND_ACTIVITY_VISIBLE_LIMIT = 4;
+const USER_TASK_VISIBLE_LIMIT = 4;
 const MAX_INPUT_IMAGES = 10;
 const PROMPT = "> ";
 
@@ -104,6 +105,11 @@ export type EditorBackgroundActivityItem = {
   kind: "subagent" | "job";
   id: string;
   status: string;
+  label: string;
+};
+
+export type EditorUserTaskItem = {
+  id: string;
   label: string;
 };
 
@@ -150,6 +156,7 @@ export class Editor implements Component {
   private queuedInputs: EditorQueuedInput[] = [];
   private scheduledInputSummary?: EditorScheduledInputSummary;
   private backgroundActivity: EditorBackgroundActivityItem[] = [];
+  private pendingUserTasks: EditorUserTaskItem[] = [];
   private images: UserImage[] = [];
   // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
   private placeholder = createRandomPromptPlaceholder();
@@ -243,6 +250,10 @@ export class Editor implements Component {
     this.backgroundActivity = structuredClone(items);
   }
 
+  setPendingUserTasks(items: EditorUserTaskItem[]): void {
+    this.pendingUserTasks = structuredClone(items);
+  }
+
   render(width: number, availableHeight?: number): string[] {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
@@ -302,6 +313,7 @@ export class Editor implements Component {
       !paletteState.showPalette &&
       (this.queuedInputs.length > 0 ||
         this.scheduledInputSummary !== undefined ||
+        this.pendingUserTasks.length > 0 ||
         this.backgroundActivity.length > 0)
     ) {
       const previewHeight =
@@ -670,6 +682,35 @@ export class Editor implements Component {
     return lines;
   }
 
+  private renderPendingUserTasks(width: number, availableHeight?: number): string[] {
+    const maximumRows =
+      availableHeight === undefined
+        ? USER_TASK_VISIBLE_LIMIT + 1
+        : Math.max(0, Math.floor(availableHeight));
+    const window = resolvePreviewWindow(
+      this.pendingUserTasks.length,
+      maximumRows,
+      USER_TASK_VISIBLE_LIMIT,
+    );
+    if (!window) return [];
+
+    const lines = [color(`Your tasks · ${this.pendingUserTasks.length} · /task`, tuiTheme.command)];
+    for (const task of this.pendingUserTasks.slice(0, window.visibleCount)) {
+      const label = stripTerminalControlSequences(task.label).replace(/\s+/g, " ").trim();
+      lines.push(
+        truncateToWidth(
+          `${color(`  ${task.id} · `, tuiTheme.muted)}${color(label, tuiTheme.userMessageText)}`,
+          width,
+          "…",
+        ),
+      );
+    }
+    if (window.overflow) {
+      lines.push(dim(`  … ${this.pendingUserTasks.length - window.visibleCount} more`));
+    }
+    return lines;
+  }
+
   private renderInputPreviews(width: number, availableHeight?: number): string[] {
     if (availableHeight !== undefined && availableHeight <= 0) {
       return [];
@@ -700,6 +741,12 @@ export class Editor implements Component {
           "…",
         ),
       );
+    }
+
+    if (this.pendingUserTasks.length > 0) {
+      const taskHeight =
+        availableHeight === undefined ? undefined : Math.max(0, availableHeight - lines.length);
+      lines.push(...this.renderPendingUserTasks(width, taskHeight));
     }
 
     if (this.backgroundActivity.length > 0) {

@@ -322,6 +322,10 @@ export class KanaTuiApp {
         const sessionId = this.conversation.sessionId;
         return sessionId ? this.options.conversation.getSubagents?.(sessionId) : undefined;
       },
+      getUserTasks: () => {
+        const sessionId = this.conversation.sessionId;
+        return sessionId ? this.options.conversation.getUserTasks?.(sessionId) : undefined;
+      },
     });
     this.backgroundActivity.bind();
     this.modelSelection = new ModelSelectionController({

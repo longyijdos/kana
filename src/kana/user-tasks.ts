@@ -18,6 +18,7 @@ export type KanaUserTaskSettlement = {
 export class KanaUserTaskManager {
   private readonly tasks = new Map<string, KanaUserTask>();
   private readonly listeners = new Set<(settlement: KanaUserTaskSettlement) => void>();
+  private readonly changeListeners = new Set<() => void>();
 
   create(task: string): KanaUserTask {
     const description = task.trim();
@@ -31,6 +32,7 @@ export class KanaUserTaskManager {
       createdAt: new Date(),
     };
     this.tasks.set(created.id, created);
+    this.emitChange();
     return structuredClone(created);
   }
 
@@ -62,9 +64,19 @@ export class KanaUserTaskManager {
     return () => this.listeners.delete(listener);
   }
 
+  subscribeChanges(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
   close(): void {
     this.listeners.clear();
+    this.changeListeners.clear();
     this.tasks.clear();
+  }
+
+  private emitChange(): void {
+    for (const listener of this.changeListeners) listener();
   }
 
   private settle(taskId: string, status: "done" | "returned", response: string): KanaUserTask {
@@ -83,6 +95,7 @@ export class KanaUserTaskManager {
     this.tasks.set(taskId, settled);
     const event: KanaUserTaskSettlement = { task: structuredClone(settled), response: normalized };
     for (const listener of this.listeners) listener(structuredClone(event));
+    this.emitChange();
     return structuredClone(settled);
   }
 }
