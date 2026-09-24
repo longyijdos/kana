@@ -13,7 +13,6 @@ export function createKanaSubagentJournal(options: {
   profile: KanaSubagentProfile;
   task: string;
   spawnToolCallId: string;
-  model: { provider: string; model: string };
   env?: NodeJS.ProcessEnv;
 }): AgentJournal | undefined {
   if (!options.owner.persistent) return undefined;
@@ -26,10 +25,10 @@ export function createKanaSubagentJournal(options: {
   const metadata: KanaSessionMetadata = {
     id: options.agentId,
     createdAt,
+    updatedAt: createdAt,
     title: `${options.profile.name}: ${singleLine(options.task)}`,
     cwd: options.owner.cwd,
     path: path.join(directory, `${safeTimestamp(createdAt)}_${options.agentId}.jsonl`),
-    model: options.model,
     subagent: {
       parentSessionId: options.owner.sessionId,
       spawnToolCallId: options.spawnToolCallId,

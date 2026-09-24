@@ -15,6 +15,7 @@ const CTRL_O = "\x0f";
 const session: KanaSessionMetadata = {
   id: "session-1",
   createdAt: "2026-07-19T00:00:00.000Z",
+  updatedAt: "2026-07-19T00:00:00.000Z",
   title: "Test session",
   cwd: "/repo",
   path: "/sessions/session-1.jsonl",

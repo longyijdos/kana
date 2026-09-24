@@ -12,6 +12,7 @@ const HELP_LINE = "Enter resume · ↑/↓ select · ←/→ page · K delete ·
 const session: KanaSessionMetadata = {
   id: "session-1",
   createdAt: "2026-07-19T00:00:00.000Z",
+  updatedAt: "2026-07-19T00:00:00.000Z",
   title: "Test session",
   cwd: "/repo",
   path: "/sessions/session-1.jsonl",
@@ -20,6 +21,7 @@ const session: KanaSessionMetadata = {
 const secondSession: KanaSessionMetadata = {
   id: "session-2",
   createdAt: "2026-07-20T00:00:00.000Z",
+  updatedAt: "2026-07-20T00:00:00.000Z",
   title: "Second session",
   cwd: "/repo",
   path: "/sessions/session-2.jsonl",

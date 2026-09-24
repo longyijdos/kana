@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Message } from "@/core";
 import {
@@ -32,15 +32,7 @@ describe("Kana session repository", () => {
   test("creates a JSONL session on first append and reloads it by id", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
-    const session = createKanaSession({
-      cwd,
-      env,
-      id: "session-1",
-      model: {
-        provider: "deepseek",
-        model: "deepseek-v4-pro",
-      },
-    });
+    const session = createKanaSession({ cwd, env, id: "session-1" });
     const messages: Message[] = [
       { ...messageIdentityForTest("user"), role: "user", content: "hi" },
       {
@@ -56,9 +48,18 @@ describe("Kana session repository", () => {
     });
 
     const loaded = loadKanaSession("session-1", { env, cwd });
+    const header = JSON.parse(readFileSync(session.path, "utf8").split("\n")[0] ?? "{}") as Record<
+      string,
+      unknown
+    >;
 
     expect(existsSync(session.path)).toBe(true);
-    expect(loaded.metadata).toEqual(session);
+    expect(header).toMatchObject({ type: "session", version: 6, id: "session-1" });
+    expect(header.model).toBeUndefined();
+    expect(loaded.metadata).toEqual({
+      ...session,
+      updatedAt: "2026-06-12T00:00:00.000Z",
+    });
     expect(loaded.messages).toEqual(messages);
     expect(loaded.timeline.map((entry) => entry.type)).toEqual([
       "turn_start",
@@ -140,6 +141,60 @@ describe("Kana session repository", () => {
       new Set([first.id, second.id]),
     );
     expect(getKanaConfigPaths(env).sessionsPath).toContain(".kana/sessions");
+  });
+
+  test("orders sessions by last persisted activity rather than creation time", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const first = createKanaSession({ cwd, env, id: "first" });
+    const second = createKanaSession({ cwd, env, id: "second" });
+
+    appendKanaSessionMessages(first, [userMessage("first")], {
+      timestamp: "2026-06-10T00:00:00.000Z",
+    });
+    appendKanaSessionMessages(second, [userMessage("second")], {
+      timestamp: "2026-06-11T00:00:00.000Z",
+    });
+
+    expect(sessionIds(env, cwd)).toEqual(["second", "first"]);
+
+    // Loading only reads: an untouched resume must not reorder the list.
+    loadKanaSession("first", { env, cwd });
+
+    expect(sessionIds(env, cwd)).toEqual(["second", "first"]);
+
+    appendKanaSessionMessages(first, [userMessage("more")], {
+      timestamp: "2026-06-12T00:00:00.000Z",
+    });
+
+    expect(sessionIds(env, cwd)).toEqual(["first", "second"]);
+    expect(listKanaSessions({ env, cwd })[0]?.updatedAt).toBe("2026-06-12T00:00:00.000Z");
+  });
+
+  test("ignores an incomplete crash tail when deriving activity", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const interrupted = createKanaSession({ cwd, env, id: "interrupted" });
+    const complete = createKanaSession({ cwd, env, id: "complete" });
+
+    appendKanaSessionMessages(interrupted, [userMessage("interrupted")], {
+      timestamp: "2026-06-10T00:00:00.000Z",
+    });
+    appendKanaSessionMessages(complete, [userMessage("complete")], {
+      timestamp: "2026-06-11T00:00:00.000Z",
+    });
+    appendFileSync(
+      interrupted.path,
+      '{"type":"message","id":"crash-tail","timestamp":"2026-06-20T00:00:00.000Z"',
+    );
+
+    const sessions = listKanaSessions({ env, cwd });
+
+    expect(sessions.map((session) => session.id)).toEqual(["complete", "interrupted"]);
+    expect(sessions.map((session) => session.updatedAt)).toEqual([
+      "2026-06-11T00:00:00.000Z",
+      "2026-06-10T00:00:00.000Z",
+    ]);
   });
 
   test("records parent session paths when a session is first appended", () => {
@@ -244,3 +299,11 @@ describe("Kana session repository", () => {
     );
   });
 });
+
+function userMessage(content: string): Message {
+  return { ...messageIdentityForTest("user"), role: "user", content };
+}
+
+function sessionIds(env: NodeJS.ProcessEnv, cwd: string): string[] {
+  return listKanaSessions({ env, cwd }).map((session) => session.id);
+}

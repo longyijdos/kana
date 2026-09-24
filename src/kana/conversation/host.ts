@@ -179,10 +179,6 @@ export class KanaConversationHost<TConfiguration = never> {
       env: this.env,
       launchMode: this.launchMode,
       logLevel: this.configData.logging.level,
-      getSessionModel: () => ({
-        provider: this.configData.agent.model.provider,
-        model: this.configData.agent.model.name,
-      }),
       getBackgroundJobMaxConcurrent: () => this.configData.agent.backgroundJobs.maxConcurrent,
       getSubagentMaxLive: () => this.configData.agent.subagents.maxLive,
     });
@@ -649,10 +645,6 @@ export class KanaConversationHost<TConfiguration = never> {
       profile: context.profile,
       task: context.task,
       spawnToolCallId: context.spawnToolCallId,
-      model: {
-        provider: config.agent.model.provider,
-        model: config.agent.model.name,
-      },
       env: this.env,
     });
     const agent = this.createAgentProduct(config, {

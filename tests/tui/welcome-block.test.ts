@@ -10,6 +10,7 @@ const SESSIONS: KanaSessionMetadata[] = [
   {
     id: "alpha-session",
     createdAt: "2026-06-13T00:00:00.000Z",
+    updatedAt: "2026-06-13T00:00:00.000Z",
     title: "Wire recent sessions",
     cwd: "/tmp/kana",
     path: "/sessions/a.jsonl",
@@ -17,6 +18,7 @@ const SESSIONS: KanaSessionMetadata[] = [
   {
     id: "bravo-session",
     createdAt: "2026-06-12T00:00:00.000Z",
+    updatedAt: "2026-06-12T00:00:00.000Z",
     title: "Trim welcome panel",
     cwd: "/tmp/kana",
     path: "/sessions/b.jsonl",

@@ -18,7 +18,7 @@ const { cleanupTempDirs, createTempEnv } = createSessionFixture();
 describe("Kana session format", () => {
   afterEach(cleanupTempDirs);
 
-  test("keeps the V5 JSONL byte layout stable", () => {
+  test("keeps the V6 JSONL byte layout stable", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "byte-layout" });
@@ -41,7 +41,7 @@ describe("Kana session format", () => {
       `${[
         {
           type: "session",
-          version: 5,
+          version: 6,
           id: "byte-layout",
           createdAt: session.createdAt,
           title: "Byte layout",
@@ -74,7 +74,7 @@ describe("Kana session format", () => {
         .map((record) => JSON.stringify(record))
         .join("\n")}\n`,
     );
-    expect(header).toMatchObject({ version: 5, id: "byte-layout" });
+    expect(header).toMatchObject({ version: 6, id: "byte-layout" });
   });
 
   test("round-trips completion inputs without using them as the session title", () => {
@@ -372,10 +372,10 @@ describe("Kana session format", () => {
     expect(loaded.contextCheckpoint).toEqual(secondCheckpoint);
   });
 
-  test("does not list or load pre-V5 sessions", () => {
+  test("does not list or load pre-V6 sessions", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
-    for (const version of [1, 2, 3, 4]) {
+    for (const version of [1, 2, 3, 4, 5]) {
       const session = createKanaSession({ cwd, env, id: `legacy-v${version}` });
       mkdirSync(path.dirname(session.path), { recursive: true });
       writeFileSync(
@@ -393,7 +393,7 @@ describe("Kana session format", () => {
     }
 
     expect(listKanaSessions({ env, cwd })).toEqual([]);
-    for (const version of [1, 2, 3, 4]) {
+    for (const version of [1, 2, 3, 4, 5]) {
       expect(() => loadKanaSession(`legacy-v${version}`, { env, cwd })).toThrow(
         `Kana session not found: legacy-v${version}`,
       );

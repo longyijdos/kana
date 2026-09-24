@@ -1,5 +1,5 @@
 import type { AgentJournal, ContextCheckpoint } from "@/agent";
-import type { Message, ModelMetadata } from "@/core";
+import type { Message } from "@/core";
 import { type BackgroundJobClient, BackgroundJobManager } from "@/jobs";
 import { createNoopLogger, createSessionLogManager, type Logger, type LogLevel } from "@/logging";
 import {
@@ -59,7 +59,6 @@ type HostedSessionRegistryOptions = {
   env: NodeJS.ProcessEnv;
   launchMode: KanaLaunchMode;
   logLevel: LogLevel;
-  getSessionModel: () => Pick<ModelMetadata, "provider" | "model">;
   getBackgroundJobMaxConcurrent: () => number;
   getSubagentMaxLive: () => number;
 };
@@ -657,7 +656,6 @@ export class HostedSessionRegistry {
     return createKanaSession({
       env: this.options.env,
       title,
-      model: this.options.getSessionModel(),
       parentSessionPath,
     });
   }

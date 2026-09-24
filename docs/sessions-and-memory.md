@@ -29,7 +29,7 @@ Clean mode still allocates an in-process session ID for runtime state correlatio
 
 ## Sessions
 
-Session persistence lives under `src/kana/session/`: `format.ts` defines and validates V5 records and checkpoint conversion, `journal.ts` owns append ordering and interrupted-turn recovery, and `repository.ts` handles creation, lookup, reading, tail repair, and deletion. Internal and cross-layer callers use these capabilities through the stable `session/index.ts` domain exports. Live product resources around this storage belong to the hosted-session registry described in [Conversation runtime](conversation-runtime.md).
+Session persistence lives under `src/kana/session/`: `format.ts` defines and validates V6 records and checkpoint conversion, `journal.ts` owns append ordering and interrupted-turn recovery, and `repository.ts` handles creation, lookup, reading, tail repair, and deletion. Internal and cross-layer callers use these capabilities through the stable `session/index.ts` domain exports. Live product resources around this storage belong to the hosted-session registry described in [Conversation runtime](conversation-runtime.md).
 
 Session files are located at:
 
@@ -37,16 +37,16 @@ Session files are located at:
 <KANA_HOME>/sessions/<encoded-workspace>/<safe-created-at>_<uuid>.jsonl
 ```
 
-Creating a session only creates an in-memory UUID, creation time, working directory, optional model metadata, and optional parent-session path. The file is created only when messages are first appended; empty sessions do not appear in `/resume`.
+Creating a session only creates an in-memory UUID, creation time, working directory, and optional parent-session path. The file is created only when messages are first appended; empty sessions do not appear in `/resume`. Provider and model stay runtime state: a session may switch models while it is alive, so the header records neither.
 
 Clean mode registers no journal with the session repository, so the current conversation remains in memory and no session file is created. Its command availability and temporary-resource lifecycle are documented in [Configuration and installation](configuration.md) and [Conversation runtime](conversation-runtime.md).
 
 ### JSONL format
 
-New sessions start with a version-5 header followed by a turn journal with explicit boundaries. Normal runs use `kind: "agent"`; inherited fork history and internal batch imports use `kind: "snapshot"`:
+New sessions start with a version-6 header followed by a turn journal with explicit boundaries. Normal runs use `kind: "agent"`; inherited fork history and internal batch imports use `kind: "snapshot"`:
 
 ```json
-{"type":"session","version":5,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
+{"type":"session","version":6,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo"}
 {"type":"turn_start","id":"…","parentId":null,"timestamp":"2026-06-22T…Z","turnId":"…","kind":"agent"}
 {"type":"message","id":"entry-u1","parentId":"…","timestamp":"2026-06-22T…Z","message":{"id":"message-u1","role":"user","provenance":{"kind":"user_input"},"content":"Fix parser"}}
 {"type":"message","id":"entry-c1","parentId":"entry-u1","timestamp":"2026-06-22T…Z","message":{"id":"message-c1","role":"user","provenance":{"kind":"runtime_context","source":"environment"},"content":"<runtime_context source=\"environment\">…</runtime_context>"}}
@@ -80,7 +80,7 @@ A compaction reason is `threshold` for automatic budget-triggered work, `provide
 
 Later compactions may carry `baseCompactionId` to the preceding checkpoint and combine its summary with newly covered messages into one cumulative replacement summary. Optional `usage` stores the summary request's model usage. Loading validates that `coversThroughId` and `baseCompactionId` reference earlier entries, then derives full `messages`, full `timeline`, and the latest `contextCheckpoint`: the Agent consumes messages/checkpoint, while restored TUI history consumes only timeline. Assistant messages keep their provider usage in JSONL, so the Agent can rebuild its context-estimate anchor from the latest clean response on resume; the anchor is ignored when it predates the current checkpoint or the response contained hosted tools.
 
-The runtime reads V5 only and contains no pre-V5 compatibility path. `/fork <prompt>` creates a new session, records the source file in header `parentSessionPath`, and writes inherited messages, the current cumulative checkpoint, and a by-value copy of the latest todo state as one closed snapshot turn. Inherited messages preserve their logical `message.id` values; only the fork's journal entry IDs are new.
+The runtime reads V6 only and contains no pre-V6 compatibility path. `/fork <prompt>` creates a new session, records the source file in header `parentSessionPath`, and writes inherited messages, the current cumulative checkpoint, and a by-value copy of the latest todo state as one closed snapshot turn. Inherited messages preserve their logical `message.id` values; only the fork's journal entry IDs are new.
 
 On first write, an explicit title wins. Otherwise Kana uses the first user-role message that is neither recovery, runtime context, nor tool-result-policy context, then collapses whitespace and truncates it to at most 80 JavaScript characters. With no usable text, the title is `Untitled session`.
 
@@ -93,7 +93,7 @@ On first write, an explicit title wins. Otherwise Kana uses the first user-role 
 - Resume audits every retained artifact against that session's managed directory, regular-file type, and recorded byte length. Missing or invalid references produce safe diagnostics but do not make the journal unreadable or alter its bounded preview.
 - Fork copies every retained artifact into the target session's private directory before the snapshot is registered, then rewrites locators in inherited tool messages and the cumulative checkpoint summary. Source and fork therefore remain independently deletable. Subagent journals are internal children rather than conversation history and are not copied. A copy or rewrite failure aborts the fork and rolls back the target directory best-effort.
 - Resuming looks up sessions in the current working directory; the picker likewise shows only other sessions from that workspace.
-- `listKanaSessions()` without a cwd scans all workspace directories and sorts by descending `createdAt`.
+- `listKanaSessions()` without a cwd scans all workspace directories and sorts by descending activity time. Each listed session derives `updatedAt` as the last complete timeline entry's timestamp, or `createdAt` when it has none. The value is never written back into the header, so opening or resuming a session without new journal entries leaves its position unchanged; an unterminated crash tail is not activity.
 - Listing skips malformed JSONL files so one bad record does not hide other history; explicitly loading that session still errors.
 - Deletion locates the file by session ID and removes it together with `.subagents/<session-id>`. After a successful journal deletion, Kana awaits disposal of any hosted background jobs, subagents, and artifact store, then best-effort removes the matching durable artifact directory before reporting success. An unknown ID returns `false`. The child journal contract is documented in [Subagents](subagents.md).
 - Normal-mode startup performs conservative orphan cleanup with a 24-hour grace period. It removes aged artifact directories that have no matching session journal and aged files whose JSON-encoded locator is absent from an existing journal. Recent files, referenced files, symlinks, malformed paths, and cleanup failures are left alone or reported rather than risking broad deletion.

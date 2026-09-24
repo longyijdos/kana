@@ -29,7 +29,7 @@ Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使�
 
 ## 会话
 
-会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V5 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。存储外围的活动产品资源由[对话运行时](conversation-runtime.zh-CN.md)所述的 hosted-session registry 持有。
+会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V6 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。存储外围的活动产品资源由[对话运行时](conversation-runtime.zh-CN.md)所述的 hosted-session registry 持有。
 
 会话文件位于：
 
@@ -37,16 +37,16 @@ Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使�
 <KANA_HOME>/sessions/<encoded-workspace>/<safe-created-at>_<uuid>.jsonl
 ```
 
-创建会话只在内存中生成 UUID、创建时间、工作目录、可选模型元数据和可选父会话路径。文件在第一次有消息需要追加时才创建；空会话不会出现在 `/resume` 列表中。
+创建会话只在内存中生成 UUID、创建时间、工作目录和可选父会话路径。文件在第一次有消息需要追加时才创建；空会话不会出现在 `/resume` 列表中。provider 与 model 始终是运行时状态：会话存活期间可以切换模型，因此 header 不记录二者。
 
 Clean 模式不向 session repository 注册 journal，因此当前对话只保留在内存中，也不会创建 session 文件。其命令可用性与临时资源生命周期见[配置与安装](configuration.zh-CN.md)和[对话运行时](conversation-runtime.zh-CN.md)。
 
 ### JSONL 格式
 
-新 session 的第一行是版本为 5 的 header，后续是带明确边界的 turn journal。正常运行使用 `kind: "agent"`；分叉初始历史和内部批量导入使用 `kind: "snapshot"`：
+新 session 的第一行是版本为 6 的 header，后续是带明确边界的 turn journal。正常运行使用 `kind: "agent"`；分叉初始历史和内部批量导入使用 `kind: "snapshot"`：
 
 ```json
-{"type":"session","version":5,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo","model":{"provider":"deepseek","model":"deepseek-v4-pro"}}
+{"type":"session","version":6,"id":"…","createdAt":"2026-06-22T…Z","title":"Fix parser","cwd":"/repo"}
 {"type":"turn_start","id":"…","parentId":null,"timestamp":"2026-06-22T…Z","turnId":"…","kind":"agent"}
 {"type":"message","id":"entry-u1","parentId":"…","timestamp":"2026-06-22T…Z","message":{"id":"message-u1","role":"user","provenance":{"kind":"user_input"},"content":"Fix parser"}}
 {"type":"message","id":"entry-c1","parentId":"entry-u1","timestamp":"2026-06-22T…Z","message":{"id":"message-c1","role":"user","provenance":{"kind":"runtime_context","source":"environment"},"content":"<runtime_context source=\"environment\">…</runtime_context>"}}
@@ -80,7 +80,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 
 后续压缩会带可选 `baseCompactionId` 指向上一个 checkpoint，并把旧摘要与新覆盖消息合并成一份新的累计摘要。`usage` 可保存该次摘要请求的模型用量。加载时会验证 `coversThroughId` 和 `baseCompactionId` 只引用已出现的记录，然后同时派生完整 `messages`、完整 `timeline` 和最后一个 `contextCheckpoint`：Agent 使用 messages/checkpoint，TUI 历史只消费 timeline。assistant 消息会把 provider usage 原样保留在 JSONL 中，因此恢复时 Agent 能从最新一条干净响应重建上下文估算锚点；若该响应早于当前 checkpoint 或包含 hosted tool，则忽略该锚点。
 
-运行时只读取 V5，不包含旧于 V5 的兼容分支。`/fork <prompt>` 创建新会话，将源 session 文件路径写入 header 的 `parentSessionPath`，并把继承的消息、当前累计 checkpoint 与最新 todo 状态的按值副本写成一个已闭合的 snapshot turn。继承消息保留原来的逻辑 `message.id`，只有 fork 中的 journal entry ID 是新生成的。
+运行时只读取 V6，不包含旧于 V6 的兼容分支。`/fork <prompt>` 创建新会话，将源 session 文件路径写入 header 的 `parentSessionPath`，并把继承的消息、当前累计 checkpoint 与最新 todo 状态的按值副本写成一个已闭合的 snapshot turn。继承消息保留原来的逻辑 `message.id`，只有 fork 中的 journal entry ID 是新生成的。
 
 首次写入时，标题优先使用显式标题；否则使用第一条既不是 recovery、runtime context，也不是工具结果策略上下文的 user-role 消息，再折叠所有空白并截断为最多 80 个 JavaScript 字符。没有可用文本时使用 `Untitled session`。
 
@@ -93,7 +93,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 - 恢复会检查每个保留 artifact 是否位于该 session 的受管目录、是否为普通文件，以及大小是否与记录字节数一致。引用缺失或无效时记录安全诊断，但不会让 journal 无法读取，也不会修改其中的有界预览。
 - fork 会在注册 snapshot 前把所有保留 artifact 复制到目标 session 的私有目录，再重写继承工具消息与累计 checkpoint 摘要中的 locator。因此源 session 与 fork 可以独立删除。Subagent journal 属于内部 child 而非对话历史，不会被复制。复制或重写失败会中止 fork，并以 best-effort 回滚目标目录。
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。
-- `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按 `createdAt` 降序排序。
+- `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按活动时间降序排序。每个列出的会话以最后一条完整 timeline entry 的 timestamp 作为派生的 `updatedAt`，没有条目时回退到 `createdAt`。该值不会写回 header，因此打开或恢复会话但未追加新 journal 条目时，其位置保持不变；未终止的崩溃尾部记录不算活动。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。
 - 删除按 session ID 找到文件，并一并移除 `.subagents/<session-id>`。成功删除 journal 后，会等待已托管的后台 Job、subagent 与 artifact store 释放，再以 best-effort 删除对应持久 artifact 目录，之后才报告成功；找不到返回 `false`。Child journal 契约见 [Subagent](subagents.zh-CN.md)。
 - 普通模式启动时执行保守的孤儿清理，并保留 24 小时宽限期：删除没有对应 session journal 的陈旧 artifact 目录，以及其 JSON 编码 locator 不在已有 journal 中的陈旧文件。近期文件、被引用文件、符号链接、异常路径和清理失败不会被冒险删除，只会保留或报告。
