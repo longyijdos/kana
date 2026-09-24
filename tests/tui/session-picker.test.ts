@@ -9,22 +9,21 @@ import { color, stripAnsi } from "../../src/tui/render";
 import { tuiTheme } from "../../src/tui/theme";
 
 const HELP_LINE = "Enter resume · ↑/↓ select · ←/→ page · K delete · Esc close";
+const NOW = Date.parse("2026-09-23T12:00:00.000Z");
 
 const sessions: KanaSessionMetadata[] = [
   {
     id: "alpha-session",
     createdAt: "2026-06-12T00:00:00.000Z",
+    updatedAt: "2026-09-23T11:58:00.000Z",
     title: "Explain lazy sessions",
     cwd: "/repo",
     path: "/sessions/a.jsonl",
-    model: {
-      provider: "deepseek",
-      model: "deepseek-v4-pro",
-    },
   },
   {
     id: "bravo-session",
     createdAt: "2026-06-13T00:00:00.000Z",
+    updatedAt: "2026-09-20T12:00:00.000Z",
     title: "Add fork prompt titles",
     cwd: "/repo",
     path: "/sessions/b.jsonl",
@@ -34,7 +33,7 @@ const sessions: KanaSessionMetadata[] = [
 describe("session picker", () => {
   test("renders sessions and selects with enter", () => {
     const decisions: SessionPickerDecision[] = [];
-    const picker = new SessionPicker(sessions, (decision) => {
+    const picker = createPicker(sessions, (decision) => {
       decisions.push(decision);
     });
 
@@ -42,8 +41,8 @@ describe("session picker", () => {
 
     expect(rendered.map(stripAnsi)).toEqual([
       "Sessions",
-      `> ${localTimestamp(sessions[0].createdAt)}  alpha-se  Explain lazy sessions  deepseek/deepseek-v4-pro`,
-      `  ${localTimestamp(sessions[1].createdAt)}  bravo-se  Add fork prompt titles  Unknown model`,
+      "> 2m ago       alpha-se  Explain lazy sessions",
+      "  3d ago       bravo-se  Add fork prompt titles",
       HELP_LINE,
     ]);
     expect(rendered[0]).toBe(color("Sessions", tuiTheme.bottomTitle));
@@ -59,9 +58,35 @@ describe("session picker", () => {
     ]);
   });
 
+  test("formats recent activity as relative time and older activity as a date", () => {
+    const activitySessions = [
+      activitySession("seconds", "2026-09-23T11:59:30.000Z"),
+      activitySession("minutes", "2026-09-23T11:48:00.000Z"),
+      activitySession("hours", "2026-09-23T09:00:00.000Z"),
+      activitySession("days", "2026-09-19T12:00:00.000Z"),
+      activitySession("this-year", localNoon(2026, 8, 12)),
+      activitySession("last-year", localNoon(2025, 11, 18)),
+    ];
+
+    expect(
+      createPicker(activitySessions, () => {})
+        .render(100)
+        .map(stripAnsi),
+    ).toEqual([
+      "Sessions",
+      "> just now     seconds  Session seconds",
+      "  12m ago      minutes  Session minutes",
+      "  3h ago       hours  Session hours",
+      "  4d ago       days  Session days",
+      "  Sep 12       this-yea  Session this-year",
+      "  2025-12-18   last-yea  Session last-year",
+      HELP_LINE,
+    ]);
+  });
+
   test("requests deletion with k or K instead of resuming", () => {
     const decisions: SessionPickerDecision[] = [];
-    const picker = new SessionPicker(sessions, (decision) => decisions.push(decision));
+    const picker = createPicker(sessions, (decision) => decisions.push(decision));
 
     picker.handleInput("\x1b[B");
     picker.handleInput("K");
@@ -79,7 +104,7 @@ describe("session picker", () => {
 
   test("ignores deletion when no session is selected", () => {
     const decisions: SessionPickerDecision[] = [];
-    const picker = new SessionPicker([], (decision) => decisions.push(decision));
+    const picker = createPicker([], (decision) => decisions.push(decision));
 
     picker.handleInput("K");
 
@@ -98,7 +123,7 @@ describe("session picker", () => {
 
   test("cancels with escape", () => {
     const decisions: SessionPickerDecision[] = [];
-    const picker = new SessionPicker(sessions, (decision) => {
+    const picker = createPicker(sessions, (decision) => {
       decisions.push(decision);
     });
 
@@ -113,7 +138,7 @@ describe("session picker", () => {
 
   test("keeps the selection on a nearby session after the list is replaced", () => {
     const manySessions = createSessions(3);
-    const picker = new SessionPicker(manySessions, () => {}, 2);
+    const picker = createPicker(manySessions, () => {}, 2);
 
     picker.handleInput("\x1b[B");
 
@@ -123,8 +148,8 @@ describe("session picker", () => {
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
-      `  ${localTimestamp(manySessions[0].createdAt)}  session-  Session 1  Unknown model`,
-      `> ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  Unknown model`,
+      `  ${expectedRow(manySessions[0])}`,
+      `> ${expectedRow(manySessions[2])}`,
       HELP_LINE,
     ]);
 
@@ -139,13 +164,13 @@ describe("session picker", () => {
 
   test("renders only the visible session window", () => {
     const manySessions = createSessions(5);
-    const picker = new SessionPicker(manySessions, () => {}, 3);
+    const picker = createPicker(manySessions, () => {}, 3);
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
-      `> ${localTimestamp(manySessions[0].createdAt)}  session-  Session 1  Unknown model`,
-      `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  Unknown model`,
-      `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  Unknown model`,
+      `> ${expectedRow(manySessions[0])}`,
+      `  ${expectedRow(manySessions[1])}`,
+      `  ${expectedRow(manySessions[2])}`,
       "... 2 more sessions",
       HELP_LINE,
     ]);
@@ -157,9 +182,9 @@ describe("session picker", () => {
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
       "... 1 earlier sessions",
-      `  ${localTimestamp(manySessions[1].createdAt)}  session-  Session 2  Unknown model`,
-      `  ${localTimestamp(manySessions[2].createdAt)}  session-  Session 3  Unknown model`,
-      `> ${localTimestamp(manySessions[3].createdAt)}  session-  Session 4  Unknown model`,
+      `  ${expectedRow(manySessions[1])}`,
+      `  ${expectedRow(manySessions[2])}`,
+      `> ${expectedRow(manySessions[3])}`,
       "... 1 more sessions",
       HELP_LINE,
     ]);
@@ -168,16 +193,16 @@ describe("session picker", () => {
   test("pages by a full window and jumps to the ends", () => {
     const manySessions = createSessions(12);
     const decisions: SessionPickerDecision[] = [];
-    const picker = new SessionPicker(manySessions, (decision) => decisions.push(decision), 3);
+    const picker = createPicker(manySessions, (decision) => decisions.push(decision), 3);
 
     picker.handleInput("\x1b[6~");
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
       "... 3 earlier sessions",
-      `> ${localTimestamp(manySessions[3].createdAt)}  session-  Session 4  Unknown model`,
-      `  ${localTimestamp(manySessions[4].createdAt)}  session-  Session 5  Unknown model`,
-      `  ${localTimestamp(manySessions[5].createdAt)}  session-  Session 6  Unknown model`,
+      `> ${expectedRow(manySessions[3])}`,
+      `  ${expectedRow(manySessions[4])}`,
+      `  ${expectedRow(manySessions[5])}`,
       "... 6 more sessions",
       HELP_LINE,
     ]);
@@ -202,6 +227,14 @@ describe("session picker", () => {
   });
 });
 
+function createPicker(
+  sessions: KanaSessionMetadata[],
+  finish: (decision: SessionPickerDecision) => void,
+  visibleLimit?: number,
+): SessionPicker {
+  return new SessionPicker(sessions, finish, visibleLimit, () => NOW);
+}
+
 function selectedSession(picker: SessionPicker): string {
   return picker
     .render(100)
@@ -209,24 +242,35 @@ function selectedSession(picker: SessionPicker): string {
     .find((line) => line.startsWith("> ")) as string;
 }
 
-function localTimestamp(timestamp: string): string {
-  const date = new Date(timestamp);
-
-  return `${[date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join("-")} ${[
-    pad(date.getHours()),
-    pad(date.getMinutes()),
-    pad(date.getSeconds()),
-  ].join(":")}`;
+// The focused tests above pin the exact column layout; window and paging
+// assertions only need each row to stay identifiable, so their fixtures share
+// one relative activity label that reads the same in every timezone.
+function expectedRow(session: KanaSessionMetadata): string {
+  return `${"30m ago".padEnd(13)}${session.id.slice(0, 8)}  ${session.title}`;
 }
 
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
+function activitySession(id: string, updatedAt: string): KanaSessionMetadata {
+  return {
+    id,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt,
+    title: `Session ${id}`,
+    cwd: "/repo",
+    path: `/sessions/${id}.jsonl`,
+  };
+}
+
+// Absolute activity labels are rendered in local time, so these cases are built
+// from local noon to keep the expected dates timezone-independent.
+function localNoon(year: number, monthIndex: number, day: number): string {
+  return new Date(year, monthIndex, day, 12, 0, 0).toISOString();
 }
 
 function createSessions(length: number): KanaSessionMetadata[] {
   return Array.from({ length }, (_, index) => ({
     id: `session-${index + 1}`,
-    createdAt: `2026-06-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-09-23T11:30:00.000Z",
     title: `Session ${index + 1}`,
     cwd: "/repo",
     path: `/sessions/${index + 1}.jsonl`,

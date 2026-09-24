@@ -6,27 +6,26 @@ import {
   isUserImage,
   type Message,
   type MessageProvenance,
-  type ModelMetadata,
   type ModelUsage,
   type UserMessage,
 } from "@/core";
 import type { KanaSubagentProfile } from "../subagents/profiles";
 import { isKanaTodoItems, type KanaTodoItem } from "../todo";
 
-export const SESSION_VERSION = 5;
+export const SESSION_VERSION = 6;
 const CONTEXT_SUMMARY_FORMAT = "kana-context-summary-v1";
 const DEFAULT_SESSION_TITLE = "Untitled session";
 const MAX_SESSION_TITLE_LENGTH = 80;
 
-type KanaSessionModelMetadata = Pick<ModelMetadata, "provider" | "model">;
-
 export type KanaSessionMetadata = {
   id: string;
   createdAt: string;
+  // Derived from the last persisted timeline entry on list/load and never
+  // written back into the append-only header.
+  updatedAt: string;
   title: string;
   cwd: string;
   path: string;
-  model?: KanaSessionModelMetadata;
   parentSessionPath?: string;
   subagent?: KanaSubagentSessionIdentity;
 };
@@ -44,7 +43,6 @@ export type KanaSessionHeader = {
   createdAt: string;
   title: string;
   cwd: string;
-  model?: KanaSessionModelMetadata;
   parentSessionPath?: string;
   subagent?: KanaSubagentSessionIdentity;
 };
@@ -117,7 +115,6 @@ export type CreateKanaSessionOptions = {
   env?: NodeJS.ProcessEnv;
   id?: string;
   title?: string;
-  model?: KanaSessionModelMetadata;
   parentSessionPath?: string;
   subagent?: KanaSubagentSessionIdentity;
 };
@@ -160,14 +157,18 @@ export function createEntryId(): string {
   return randomUUID();
 }
 
-export function headerToMetadata(header: KanaSessionHeader, filePath: string): KanaSessionMetadata {
+export function headerToMetadata(
+  header: KanaSessionHeader,
+  filePath: string,
+  updatedAt: string,
+): KanaSessionMetadata {
   return {
     id: header.id,
     createdAt: header.createdAt,
+    updatedAt,
     title: header.title,
     cwd: header.cwd,
     path: filePath,
-    model: header.model,
     parentSessionPath: header.parentSessionPath,
     subagent: header.subagent,
   };
@@ -181,7 +182,6 @@ export function metadataToHeader(metadata: KanaSessionMetadata): KanaSessionHead
     createdAt: metadata.createdAt,
     title: metadata.title,
     cwd: metadata.cwd,
-    model: metadata.model,
     parentSessionPath: metadata.parentSessionPath,
     subagent: metadata.subagent,
   };
@@ -310,9 +310,6 @@ export function parseHeader(line: string, filePath: string): KanaSessionHeader {
     throw new Error(`Invalid or unsupported Kana session header: ${filePath}`);
   }
 
-  if (parsed.model !== undefined && !isSessionModelMetadata(parsed.model)) {
-    throw new Error(`Invalid Kana session model metadata: ${filePath}`);
-  }
   if (parsed.parentSessionPath !== undefined && typeof parsed.parentSessionPath !== "string") {
     throw new Error(`Invalid Kana session parent path: ${filePath}`);
   }
@@ -499,16 +496,6 @@ function isTurnOutcome(value: unknown): value is KanaSessionTurnOutcome {
     value === "turn_limit" ||
     value === "interrupted" ||
     value === "snapshot"
-  );
-}
-
-function isSessionModelMetadata(value: unknown): value is KanaSessionModelMetadata {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    typeof (value as Record<string, unknown>).provider === "string" &&
-    typeof (value as Record<string, unknown>).model === "string"
   );
 }
 
