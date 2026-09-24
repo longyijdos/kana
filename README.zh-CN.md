@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/kana-demo.gif" alt="Kana 分析仓库、修复失败测试并验证结果">
+  <img src="assets/kana-demo.gif" alt="Kana 在修复超时问题时向用户委派任务，并验证修复结果">
 </p>
 
 Kana 是一个开源、单二进制的终端原生 AI Agent，专为编程、系统运维与各类工具驱动的高效工作流而生。无论是在沉浸专注的交互式 TUI 中，还是在面向自动化与 CI 的 `kana exec` 无头运行中，Kana 都能提供毫秒级冷启的丝滑体验。

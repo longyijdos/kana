@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/kana-demo.gif" alt="Kana analyzes a repository, fixes a failing test, and verifies the result">
+  <img src="assets/kana-demo.gif" alt="Kana delegates a task to the user while fixing a timeout bug, then verifies the result">
 </p>
 
 Kana is an open-source, single-binary, terminal-native AI agent built for coding, system workflows, and tool-driven productivity. From a focused interactive TUI that keeps reasoning, diffs, and execution in flow, to headless `kana exec` powering scripts and CI pipelines, it delivers a razor-sharp runtime with instant cold starts.
