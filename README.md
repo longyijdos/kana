@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>A lightweight, untracked, and deeply personal terminal AI companion.</strong><br>
-  Instant single binary, zero network leaks beyond your model and MCP. Transparent pairing ends black-box waiting, durable memory stops the amnesia loop, and self-authored templates and subagents evolve alongside your workflow.
+  Instant single binary, zero telemetry. Transparent pairing ends black-box waiting, durable memory stops the amnesia loop, and reusable templates and subagents evolve alongside your workflow.
 </p>
 
 <p align="center">
@@ -29,9 +29,9 @@ Unlike rigid black-box runners, Kana is a companion that **evolves alongside you
 
 - **Transparent pairing & shared growth**: Break away from opaque spinners and passive waiting. With streamed reasoning, syntax-highlighted diffs, and visible traces, Kana doesn't just divide parallel work with you—it demystifies complex problems, helping you master system nuances and grow as you build together;
 - **Durable memory, built-in intuition**: Put an end to the frustrating amnesia loop where every new session starts from scratch. Powered by a two-tier local memory architecture, Kana distills your architectural rules, habits, and past edge cases—turning every past correction into lasting intuition;
-- **Self-evolving capability**: It doesn't just execute instructions—it actively detects recurring workflows to forge reusable `:prompt` templates, and even authors dedicated **Subagent role cards** for complex domains. The more you use it, the more it shapes itself into your personal toolkit.
+- **Self-evolving capability**: It doesn't just execute instructions—Kana can turn recurring workflows into reusable `:prompt` templates and author dedicated **Subagent role cards** as your needs evolve. The more you use it, the more it shapes itself into your personal toolkit.
 
-**Sovereign, private, and untracked.** Your configs, sessions, memory, artifacts, and logs stay strictly on your machine. Beyond your chosen model provider and explicitly configured MCP servers, Kana makes zero network requests and collects zero telemetry—keeping your terminal truly yours.
+**Sovereign, private, and untracked.** Kana sends no telemetry. During normal agent execution, network access is strictly limited to your configured model providers and MCP servers; explicit features such as updates, authentication, or installs access only their respective services. Your configs, sessions, memory, artifacts, and logs stay strictly on your machine.
 
 ## Quick start
 
@@ -75,8 +75,8 @@ Once inside, switch providers, models, or reasoning efforts on the fly with `/mo
 | --- | --- | --- |
 | 🧠 | **Durable Memory & Intuition** | **End the amnesia loop**. Two-tier persistent memory (workspace & global) automatically consolidates your architectural habits, conventions, and past edge cases—turning corrections into lasting intuition across sessions. |
 | 🤝 | **Transparent Synergy & Delegation** | **No more black-box waiting**. Streamed reasoning traces and syntax-highlighted diffs keep execution transparent. Bidirectional delegation lets agent and human tackle complex tasks in parallel. |
-| 🧬 | **Self-Evolving Capability** | **Grows around your workflow**. Detects recurring patterns to forge reusable `:prompt` templates, and even authors specialized Markdown Subagent role cards for complex domains—shaping itself to your needs. |
-| 🛡️ | **Zero Telemetry & Local Sovereignty** | **Pure single binary, instant launch**. Zero network leaks or telemetry beyond your chosen model API and MCP servers; sessions, memory, and artifacts are strictly isolated on your disk with `0600`/`0700` permissions. |
+| 🧬 | **Self-Evolving Capability** | **Grows around your workflow**. Turns recurring workflows into reusable `:prompt` templates and authors specialized Markdown Subagent role cards as your needs evolve—shaping itself around your craft. |
+| 🛡️ | **Zero Telemetry & Local Sovereignty** | **Pure single binary, instant launch**. Zero telemetry, with normal execution strictly limited to your chosen models and MCP servers; sessions, memory, and artifacts are strictly isolated on your disk with `0600`/`0700` permissions. |
 | ⌨️ | **Terminal-Native Craftsmanship** | **Tailored for terminal purists**. Native streaming rendering for Mermaid charts and LaTeX formulas, full syntax diffs, background activity preview strips, input queueing, and pure Readline keyboard flow. |
 | 🔌 | **Open Ecosystem & Model Freedom** | **No platform lock-in**. Out-of-the-box support for DeepSeek, OpenAI Codex browser OAuth, and local Ollama/vLLM endpoints; extensible via `AGENTS.md`, reusable Skills, and MCP servers. |
 | ⚙️ | **Deterministic Automation & Issue Solving** | **From interactive terminal to headless workflows**. `kana exec` delivers versioned JSONL event streams and Goal-driven autonomous execution—powering custom automation and resolving repository issues end-to-end. |
