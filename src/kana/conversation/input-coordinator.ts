@@ -737,6 +737,7 @@ export class ConversationInputCoordinator {
       content: [
         "[User task update]",
         `Task ${event.task.id} was ${event.task.status} by the user.`,
+        `Task:\n${event.task.task}`,
         event.response ? `User response:\n${event.response}` : "The user returned the task to you.",
       ].join("\n"),
       provenance: { kind: "user_task_completion", taskId: event.task.id },

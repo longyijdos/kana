@@ -89,7 +89,7 @@ Subagent 结算沿用 Background Job 的投递 lane 与顺序。通知只包含 
 
 TUI 的 `delegate_user_task` 工具询问用户是否接受一个可并行处理的小任务。拒绝会返回正常结果且不创建状态；接受后立即创建当前 session 的进程内任务并返回 ID，Agent 可继续自己的工作。即使 Agent 工具被取消选择，`/task` 仍可使用；用户可以提交结果或将待处理任务返还给 Agent。只有这两种用户操作会投递通知，沿用 Job 和 Subagent 完成事件的 `next-step`／`next-turn` 选择规则。位于 `next-turn` 队首的相邻任务通知会一起提交。
 
-通知包含任务 ID 和完整用户回复。已接受的任务及尚未 observe 的终态任务由独立 runtime-context source 投影；在 `turn_input` 或已提交的 `agent_start` 时 observe 后，终态任务退出投影，空列表变为 inactive。Resume 和 fork 不恢复任务管理器，但已接受的工具结果和已投递的通知仍保留在普通 session 历史中。Headless Agent 不获得委派工具。Goal 续轮策略保持现状。
+通知包含任务 ID、原始任务描述和完整用户回复，因此不依赖可能已被压缩的早期历史。已接受的任务及尚未 observe 的终态任务由独立 runtime-context source 投影；在 `turn_input` 或已提交的 `agent_start` 时 observe 后，终态任务退出投影，空列表变为 inactive。Resume 和 fork 不恢复任务管理器，但已接受的工具结果和已投递的通知仍保留在普通 session 历史中。Headless Agent 不获得委派工具。Goal 续轮策略保持现状。
 
 ## Goals
 

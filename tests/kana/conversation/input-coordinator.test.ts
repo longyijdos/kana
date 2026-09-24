@@ -43,7 +43,14 @@ describe("ConversationInputCoordinator", () => {
     harness.coordinator.notifyCanStartRun();
     await waitFor(() => harness.requests.length === 1);
     expect(harness.requests[0]?.source).toBe("user_task");
-    expect(harness.requests[0]?.input.content).toContain("The labels look good.");
+    expect(harness.requests[0]?.input.content).toBe(
+      [
+        "[User task update]",
+        `Task ${task.id} was done by the user.`,
+        "Task:\nCheck the screenshot",
+        "User response:\nThe labels look good.",
+      ].join("\n"),
+    );
     expect(tasks.context()).toEqual([]);
     harness.close();
   });
@@ -56,7 +63,14 @@ describe("ConversationInputCoordinator", () => {
     tasks.returnToAgent(task.id, "I cannot check this screen.");
     const queued = harness.agent.inbox.nextStep[0];
     expect(queued?.delivery).toMatchObject({ kind: "user_task", taskId: task.id });
-    expect(queued?.message.content).toContain("I cannot check this screen.");
+    expect(queued?.message.content).toBe(
+      [
+        "[User task update]",
+        `Task ${task.id} was returned by the user.`,
+        "Task:\nInspect the layout",
+        "User response:\nI cannot check this screen.",
+      ].join("\n"),
+    );
     expect(tasks.context()).toMatchObject([{ id: task.id, status: "returned" }]);
 
     if (!queued) throw new Error("Missing user task update.");
