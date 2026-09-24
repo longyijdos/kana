@@ -94,9 +94,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  Explicit skill invocation"),
-      text("  Reusable prompt templates"),
-      text("  Improved Markdown rendering"),
+      text("  Share tasks with Kana"),
+      text("  /btw side questions"),
+      text("  Live background activity"),
       muted("  ... /help for more"),
     ];
 

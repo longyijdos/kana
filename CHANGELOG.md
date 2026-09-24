@@ -1,3 +1,32 @@
+## [0.11.0](https://github.com/longyijdos/kana/compare/v0.10.0...v0.11.0) (2026-09-24)
+
+Kana v0.11.0 lets you share work with Kana through user tasks and ask side questions with `/btw` while the main task continues. It also improves background-work visibility, session navigation, configuration, and MCP access. This release changes the session format and several tool contracts; read the upgrade notes before updating.
+
+### Features
+
+- Kana can invite you to take a focused task in the TUI while it continues its own work. Accept or decline the invitation, inspect pending work with `/task`, and submit findings or return the task. Completion notifications include the original task, and pending tasks appear below the editor. User tasks are process-local and are not restored on resume.
+- Ask an ephemeral side question with `/btw` without changing the main conversation or interrupting an active run. The editor also previews running Background Jobs and Subagents.
+- Browse `/resume` by latest persisted session activity, delete sessions from the same picker, and navigate long TUI lists by page.
+- Override startup configuration for one process with repeatable `--set path=value` arguments. The memory agent now inherits the main Agent's model selection unless individual fields are overridden under `[memory.agent.model]`.
+- Apply multiple exact, non-overlapping replacements to one file atomically with the `edit` tool.
+- Discover MCP tools through the stable `mcp_list_tools` and `mcp_call` gateways. The official MCP SDK now handles transports and OAuth, including dynamic public-client registration when an HTTP server supports it.
+
+### Bug Fixes
+
+- Observe queued Job, Subagent, and user-task completions before the next model request, so completion messages arrive with an up-to-date runtime-context projection.
+- Keep the TUI status phase intact after interaction errors and improve the welcome panel border contrast.
+
+### Breaking Changes
+
+- Session journals now use V6. Kana does not list or load V5 and earlier sessions, and it does not migrate them automatically. The session header no longer stores model metadata.
+- The `edit` tool now takes `path` and an `edits` array of `{oldText, newText}` pairs. The previous top-level `oldText`, `newText`, and `replaceAll` arguments are no longer accepted.
+- Kana no longer ships built-in Subagent profiles. The Subagent tools appear only when at least one valid user role card exists under `<KANA_HOME>/agents`.
+- MCP server tools are exposed to the Agent through `mcp_list_tools` and `mcp_call` rather than as individual Agent tools. An explicit `agent.tools` selection must include both gateways to retain full MCP access.
+
+### Upgrade
+
+Back up `<KANA_HOME>/sessions` before updating if you need its history. Keep an older Kana binary to open pre-V6 sessions; v0.11.0 has no built-in migration path. Update any direct `edit` tool calls to the `edits` array, add `mcp_list_tools` and `mcp_call` to custom `agent.tools` selections, and create a role card from `<KANA_HOME>/agents/profile.md.example` if you used a built-in Subagent profile. Existing `[memory.agent.model]` fields continue to override the inherited main model.
+
 ## [0.10.0](https://github.com/longyijdos/kana/compare/v0.9.0...v0.10.0) (2026-09-13)
 
 Kana v0.10.0 adds explicit Skill invocation and reusable prompt templates to the editor, reworks Markdown rendering in the TUI, and updates the built-in DeepSeek model registry.
