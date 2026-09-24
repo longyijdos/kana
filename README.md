@@ -5,8 +5,8 @@
 <h1 align="center">Kana</h1>
 
 <p align="center">
-  <strong>A local-first terminal AI agent that works inside your repository.</strong><br>
-  Inspect code, edit files, run commands, and carry context across sessions—with DeepSeek or OpenAI Codex.
+  <strong>A lightweight, untracked, and deeply personal terminal AI companion.</strong><br>
+  Instant single binary, zero network leaks beyond your model and MCP. Transparent pairing ends black-box waiting, durable memory stops the amnesia loop, and self-authored templates and subagents evolve alongside your workflow.
 </p>
 
 <p align="center">
@@ -23,19 +23,27 @@
   <img src="assets/kana-demo.gif" alt="Kana analyzes a repository, fixes a failing test, and verifies the result">
 </p>
 
-Kana is an open-source, terminal-native agent for coding and other tool-driven work. Its interactive TUI keeps reasoning, tool calls, approvals, diffs, delegated work, and results in one focused interface, while `kana exec` exposes the same runtime to scripts and CI.
+Kana is an open-source, single-binary, terminal-native AI agent built for coding, system workflows, and tool-driven productivity. From a focused interactive TUI that keeps reasoning, diffs, and execution in flow, to headless `kana exec` powering scripts and CI pipelines, it delivers a razor-sharp runtime with instant cold starts.
 
-Configuration, sessions, memory, logs, and usage records stay on your machine. Model requests go only to the provider you select.
+Unlike rigid black-box runners, Kana is a companion that **evolves alongside you**:
+
+- **Transparent pairing & shared growth**: Break away from opaque spinners and passive waiting. With streamed reasoning, syntax-highlighted diffs, and visible traces, Kana doesn't just divide parallel work with you—it demystifies complex problems, helping you master system nuances and grow as you build together;
+- **Durable memory, built-in intuition**: Put an end to the frustrating amnesia loop where every new session starts from scratch. Powered by a two-tier local memory architecture, Kana distills your architectural rules, habits, and past edge cases—turning every past correction into lasting intuition;
+- **Self-evolving capability**: It doesn't just execute instructions—it actively detects recurring workflows to forge reusable `:prompt` templates, and even authors dedicated **Subagent role cards** for complex domains. The more you use it, the more it shapes itself into your personal toolkit.
+
+**Sovereign, private, and untracked.** Your configs, sessions, memory, artifacts, and logs stay strictly on your machine. Beyond your chosen model provider and explicitly configured MCP servers, Kana makes zero network requests and collects zero telemetry—keeping your terminal truly yours.
 
 ## Quick start
 
-Prebuilt binaries are available for macOS and Linux on arm64 and x64:
+Single binary with zero runtime dependencies—no Node.js or Python required. Prebuilt for macOS and Linux on arm64 and x64:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/longyijdos/kana/main/scripts/install.sh | bash
 ```
 
-DeepSeek is the default provider. Add your API key and launch Kana inside a project:
+### 1. Launch with DeepSeek (Default)
+
+No account registration needed. Just export your API key and launch Kana inside any project directory:
 
 ```bash
 export DEEPSEEK_API_KEY="sk-..."
@@ -43,11 +51,15 @@ cd your-project
 kana
 ```
 
-Prefer OpenAI Codex? Complete browser authentication, then select it in `~/.kana/config.toml`:
+### 2. Or connect OpenAI Codex
+
+Authenticate seamlessly through your browser:
 
 ```bash
 kana auth login openai-codex
 ```
+
+Set it in `~/.kana/config.toml`, or switch directly inside the TUI anytime using `/model`:
 
 ```toml
 [agent.model]
@@ -55,94 +67,93 @@ provider = "openai-codex"
 name = "gpt-5.6-sol"
 ```
 
-You can switch provider, model, and supported reasoning effort later with `/model`. A static [Custom OpenAI-compatible provider](docs/custom-provider.md) slot is available for local or hosted compatible endpoints.
+Once inside, switch providers, models, or reasoning efforts on the fly with `/model`. For local endpoints (Ollama, vLLM) or hosted gateways, connect via the [Custom OpenAI-compatible provider](docs/custom-provider.md).
 
 ## Why Kana
 
-| | Capability | What it gives you |
+| | Capability | What Makes It Different |
 | --- | --- | --- |
-| 🛠️ | Work directly in your repository | Built-in file and image inspection, writing, editing, shell commands, background jobs, visible approvals, and complete oversized results stored as artifacts. |
-| 🧠 | Keep context across work | Resumable and forkable sessions, interrupted-run recovery, automatic context compaction, durable project/global memory, session todos, and bounded Goals. |
-| 🧩 | Delegate focused work | Asynchronous subagents defined by your Markdown role cards, with scoped tools, configurable models, independent transcripts, and usage accounting. |
-| 🔌 | Bring your own tools | Project instructions through `AGENTS.md`, reusable Skills, a configurable built-in tool surface, and MCP servers over stdio or Streamable HTTP with OAuth. |
-| 🤖 | Choose your model | DeepSeek API and OpenAI Codex OAuth, custom OpenAI-compatible endpoints, live model switching, configurable reasoning effort, image prompts on supported models, and hosted web search. |
-| ⌨️ | Stay in the terminal | Dark, light, and custom themes; streaming Markdown; terminal-native Mermaid and LaTeX; full tool history; syntax-highlighted diffs; queued and scheduled input; notifications; and hyperlinks. |
-| ⚙️ | Automate the same runtime | One-shot, resumable, time-bounded, or Goal-driven `kana exec` runs; a versioned JSONL stream; and a reusable GitHub issue-to-draft-PR workflow. |
+| 🧠 | **Durable Memory & Intuition** | **End the amnesia loop**. Two-tier persistent memory (workspace & global) automatically consolidates your architectural habits, conventions, and past edge cases—turning corrections into lasting intuition across sessions. |
+| 🤝 | **Transparent Synergy & Delegation** | **No more black-box waiting**. Streamed reasoning traces and syntax-highlighted diffs keep execution transparent. Bidirectional delegation lets agent and human tackle complex tasks in parallel. |
+| 🧬 | **Self-Evolving Capability** | **Grows around your workflow**. Detects recurring patterns to forge reusable `:prompt` templates, and even authors specialized Markdown Subagent role cards for complex domains—shaping itself to your needs. |
+| 🛡️ | **Zero Telemetry & Local Sovereignty** | **Pure single binary, instant launch**. Zero network leaks or telemetry beyond your chosen model API and MCP servers; sessions, memory, and artifacts are strictly isolated on your disk with `0600`/`0700` permissions. |
+| ⌨️ | **Terminal-Native Craftsmanship** | **Tailored for terminal purists**. Native streaming rendering for Mermaid charts and LaTeX formulas, full syntax diffs, background activity preview strips, input queueing, and pure Readline keyboard flow. |
+| 🔌 | **Open Ecosystem & Model Freedom** | **No platform lock-in**. Out-of-the-box support for DeepSeek, OpenAI Codex browser OAuth, and local Ollama/vLLM endpoints; extensible via `AGENTS.md`, reusable Skills, and MCP servers. |
+| ⚙️ | **Deterministic Automation & Issue Solving** | **From interactive terminal to headless workflows**. `kana exec` delivers versioned JSONL event streams and Goal-driven autonomous execution—powering custom automation and resolving repository issues end-to-end. |
 
 ## Use Kana
 
-### Interactive sessions
+### 1. Interactive pairing in the TUI
+
+Once your model is ready, launch Kana inside any project directory:
 
 ```bash
-kana                                      # Start an empty session
-kana "analyze this repository"            # Start with a task
-kana resume                               # Pick a saved session
-kana resume <session-id>                  # Resume a specific session
-kana --clean                              # Start a temporary, unsaved session
+kana                          # Start an empty pairing session
+kana "diagnose failing tests" # Launch directly with an initial task
+kana resume                   # Interactively resume or prune saved sessions
+kana --clean                  # Launch an ephemeral, unsaved session
 ```
 
-Useful commands inside the TUI:
+Inside the TUI, everything flows naturally through pure keyboard shortcuts and visible cues:
+- Type `/` to open the **command palette** (`/model` to switch models, `/memory` to inspect memory, `/tools` for call history, `/goal` for bounded objectives);
+- Type `:` to open the **reusable prompt template palette** to expand distilled workflows instantly;
+- Type `@` to open the **Skill palette** and inject specialized guidance on demand;
+- Type `!<command>` to run local shell commands directly outside the agent loop;
+- **Non-blocking parallelism**: Active subagents and background jobs stream in the `Background · N` strip, while tasks delegated back to you appear in `Your tasks`, keeping your main flow uninterrupted.
 
-| Command | Action |
-| --- | --- |
-| `/model` | Switch provider, model, and reasoning effort when supported. |
-| `/resume`, `/fork <task>` | Resume, branch, or delete earlier work. |
-| `/mcp`, `/skills` | Manage active MCP servers and global Skills. |
-| `/agents` | View subagent profiles, inspect child transcripts, and manage current-session runs. |
-| `/jobs`, `/todo` | Manage session-owned background jobs and inspect the durable session checklist. |
-| `/memory` | View or consolidate durable project/global memory. |
-| `/schedule` | View, create, refresh, and delete scheduled messages. |
-| `/goal <objective>` | Keep advancing one bounded objective across sequential Agent runs. |
-| `/tools` | Browse every tool call in the session and reopen any detail inspector. |
-| `/approval` | Change tool approval behavior for the current session. |
-| `/usage` | Inspect session, project, or global token usage. |
-| `!<command>` | Run a local shell command directly, outside the agent loop. |
+See [TUI interaction](docs/tui.md) for shortcuts, queued inputs, and complete controls.
 
-See [TUI interaction](docs/tui.md) for shortcuts, queued input, scheduled messages, and the complete command set. Rendering internals are documented separately in [Terminal rendering](docs/terminal-rendering.md).
+### 2. Self-evolution: Memory, prompts, and specialized subagents
 
-### Delegation and long-running work
+Kana shapes itself around your habits as you work:
 
-Kana can start session-owned background commands and bounded subagents without blocking the main Agent. Markdown role cards under `~/.kana/agents` define each delegation role, restrict its tools, and can select another configured model; `kana install` writes a `profile.md.example` to copy from. Child runs keep independent transcripts and accounting, while `/agents` lets you inspect or cancel them during the parent run.
+- **Two-tier durable memory**: When correcting conventions or defining constraints, Kana records durable facts (inspect or consolidate anytime via `/memory`), retaining them across sessions separated by workspace and global scopes;
+- **Reusable prompt templates**: Crystallize recurring routines into `~/.kana/prompts/<name>.md`, then trigger them instantly in the editor with `:<name>`;
+- **Dedicated subagents**: Define focused role cards under `~/.kana/agents/<role>.md` with restricted tools or alternative models. The main agent spawns them asynchronously for deep audits or migrations while keeping the parent run responsive—auditable anytime via `/agents`.
 
-Session todos persist across resume and fork. `/goal` drives a bounded sequence of Agent runs toward one objective, while `/jobs` keeps long-running shell work attached to the current session. See [Subagents](docs/subagents.md), [Tools and execution](docs/tools.md), and [Conversation runtime](docs/conversation-runtime.md).
+See [Subagents](docs/subagents.md) and [Sessions and memory](docs/sessions-and-memory.md) for details.
 
-### Headless automation
+### 3. Headless automation and scripting
+
+`kana exec` exposes the exact same runtime to scripts and automated pipelines:
 
 ```bash
-kana exec "fix the failing tests"
-printf 'summarize this repository' | kana exec
-kana exec resume <session-id> "continue the task"
-kana exec --goal "finish and verify this task"
-kana exec --timeout 30m "complete this change"
-kana exec --json "analyze this project"
+kana exec "fix failing tests and verify"
+printf 'summarize this codebase' | kana exec
+kana exec resume <session-id> "continue this task"
+kana exec --goal "resolve issue #42 end-to-end"
+kana exec --timeout 30m "refactor this module"
+kana exec --json "profile bottlenecks"
 ```
 
-`kana exec` suits CI and scripted automation.
+Emits the final answer to stdout and progress to stderr by default; `--json` produces versioned JSONL event streams. Power custom automation, or resolve issues into Pull Requests end-to-end using the [Kana Agent reusable workflow](docs/kana-agent-workflow.md). See [Headless execution](docs/headless.md).
 
-By default, the final answer goes to stdout and progress goes to stderr. `--json` emits versioned JSONL events. `--allow-all-tools` skips interactive approval for controlled automation; it does not create a sandbox.
+### 4. Extensibility: Skills and MCP
 
-See [Headless execution and the JSONL protocol](docs/headless.md) for event schemas and exit codes.
-
-### GitHub automation
-
-The reusable Kana Agent workflow can run scoped work from maintainer-authored issues and continue on Kana-owned pull requests. It uses repository-local model configuration, preserves partial progress, and opens draft PRs for review. See [Kana Agent reusable workflow](docs/kana-agent-workflow.md).
-
-### Skills and MCP
-
-Install or update the default Skills repository, then optionally share those Skills with Codex:
+Install curated skills or sync them across other agent environments:
 
 ```bash
 kana skills install
-kana skills sync codex
+kana skills sync codex                               # Sync to Codex
+kana skills sync --target-dir ~/.other-agent/skills  # Sync to any third-party agent
 ```
 
-Kana discovers project Skills from `.kana/skills` and `.agents/skills`, reads project instructions from `AGENTS.md`, and can connect to local or remote MCP servers. The main Agent's built-in tool set is selectable through `agent.tools`. MCP definitions and activation state live under `~/.kana/`; the TUI provides runtime server selection, cancellable startup and reload, and OAuth flows.
+Kana auto-discovers project skills from `.kana/skills` and `.agents/skills`, reads project instructions from `AGENTS.md`, and connects to stdio or remote MCP servers. See [Configuration and installation](docs/configuration.md).
 
-See [Configuration and installation](docs/configuration.md) for the MCP schema, proxy settings, OAuth, approvals, and every configuration option.
+## Updates and source install
 
-## Install from source
+### Check and self-update
 
-Kana requires Bun and Git when building locally:
+Installed release binaries can update themselves directly:
+
+```bash
+kana update --check
+kana update
+```
+
+### Install from source
+
+Building from source requires [Bun](https://bun.sh) and Git:
 
 ```bash
 git clone https://github.com/longyijdos/kana.git
@@ -151,60 +162,39 @@ bun install --frozen-lockfile
 ./scripts/install.sh
 ```
 
-Installed release binaries can update themselves:
+## Security and trust boundaries
 
-```bash
-kana update --check
-kana update
-```
+Kana respects your local environment while keeping its boundaries transparent:
 
-## Local-first, with explicit trust boundaries
+- **Approvals are not a sandbox**: Built-in tools and `bash` execute directly in your host environment. File tools can inspect paths outside the workspace, and shell commands run with your user privileges; never skip approvals in untrusted codebases.
+- **Pre-execution MCP trust**: Stdio MCP servers spawn as local subprocesses before individual tool approvals; configure only trusted server binaries.
+- **Local sensitive data**: Configurations, credentials, logs, and sessions live under `~/.kana/` (configurable via `KANA_HOME`) with restricted permissions. Sessions contain full execution history and should be treated as private data.
 
-- Kana stores configuration, OAuth credentials, sessions, logs, memory, and usage data under `~/.kana/` by default. Set `KANA_HOME` to use another location.
-- Model requests include the conversation and tool definitions needed by the selected provider.
-- Tool approval is a confirmation layer, not a filesystem or process sandbox. File tools can access paths outside the workspace, and `bash` runs real commands.
-- Stdio MCP servers start before individual tool approvals, so configure only programs you trust.
-- Session files contain full conversations and tool results; treat them as sensitive data.
-
-Read [Configuration and installation](docs/configuration.md) for the complete security and credential model.
+See [Configuration and installation](docs/configuration.md) for the complete security model.
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Configuration and installation](docs/configuration.md)
-- [Architecture](docs/architecture.md)
-- [Conversation runtime](docs/conversation-runtime.md)
-- [Agent runtime](docs/agent-runtime.md)
-- [Tools and execution](docs/tools.md)
-- [Providers](docs/providers.md)
-- [OAuth](docs/oauth.md)
-- [MCP](docs/mcp.md)
-- [Sessions and memory](docs/sessions-and-memory.md)
-- [Skills and system prompt](docs/skills-and-prompt.md)
-- [Subagents](docs/subagents.md)
-- [DeepSeek provider](docs/deepseek-provider.md)
-- [OpenAI Codex provider](docs/openai-codex-provider.md)
-- [Custom OpenAI-compatible provider](docs/custom-provider.md)
-- [TUI interaction](docs/tui.md)
-- [Terminal rendering](docs/terminal-rendering.md)
-- [Headless execution](docs/headless.md)
-- [Kana Agent reusable workflow](docs/kana-agent-workflow.md)
-- [Terminal-Bench evaluation](docs/terminal-bench.md)
+See the [Documentation index](docs/README.md) for architectural contracts, document sets, and routing guidance.
+
+- **Architecture & Setup**: [Architecture](docs/architecture.md) · [Configuration and installation](docs/configuration.md) · [Release process](docs/releasing.md)
+- **Core Runtime**: [Conversation runtime](docs/conversation-runtime.md) · [Agent runtime](docs/agent-runtime.md) · [Tools and execution](docs/tools.md) · [Sessions and memory](docs/sessions-and-memory.md)
+- **Models & Extensions**: [Providers](docs/providers.md) · [DeepSeek](docs/deepseek-provider.md) · [OpenAI Codex](docs/openai-codex-provider.md) · [Custom provider](docs/custom-provider.md) · [OAuth](docs/oauth.md) · [MCP](docs/mcp.md) · [Skills & system prompt](docs/skills-and-prompt.md) · [Subagents](docs/subagents.md)
+- **Frontend & Workflows**: [TUI interaction](docs/tui.md) · [Terminal rendering](docs/terminal-rendering.md) · [Headless execution](docs/headless.md) · [Kana Agent workflow](docs/kana-agent-workflow.md) · [Terminal-Bench evaluation](docs/terminal-bench.md)
 
 ## Development
+
+Build from source and run the full verification suite:
 
 ```bash
 bun install --frozen-lockfile
 bun run check
 ```
 
-`bun run check` runs Biome, the project comment-length guard, TypeScript, Knip dead-code analysis,
-and the Bun test suite. The guard rejects TypeScript comment blocks longer than four lines or 320
-characters; license headers and explicit `comment-check-ignore: <reason>` suppressions are exempt.
-Run `bun run knip:fix` separately when intentionally cleaning unused exports or dependencies so
-its changes can be reviewed before committing.
+`bun run check` runs Biome, TypeScript type checks, project style constraints, Knip dead-code analysis, and the Bun test suite.
 
-Kana is under active development before `1.0`; CLI behavior, protocols, and persistence formats may evolve between minor releases. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute; [AGENTS.md](AGENTS.md) contains coding-agent workflow and implementation guidance and is not the primary human contribution guide. See the [release process](docs/releasing.md) for versioning and release details.
+Kana is actively evolving toward `1.0`; see the [Release process](docs/releasing.md) for versioning details. Contributions are warmly welcomed:
+- **For human contributors**: Consult [CONTRIBUTING.md](CONTRIBUTING.md) for PR guidelines and development workflows;
+- **For coding agents**: Consult [AGENTS.md](AGENTS.md) for agent-specific constraints and context.
 
 ## License
 
