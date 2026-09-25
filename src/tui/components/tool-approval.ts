@@ -73,14 +73,15 @@ function readUserTaskDescription(args: unknown): string {
 function createOptions(
   options: ToolApprovalOptions,
 ): Array<{ value: ToolApprovalDecision; label: string }> {
-  const allowOnce = { value: "yes" as const, label: "Allow once" };
-
   if (!options.allowAlways) {
-    return [allowOnce, { value: "no", label: "Deny" }];
+    return [
+      { value: "yes", label: "Allow once" },
+      { value: "no", label: "Deny" },
+    ];
   }
 
   return [
-    allowOnce,
+    { value: "yes", label: "Allow once" },
     { value: "always", label: "Always allow this command" },
     { value: "no", label: "Deny" },
   ];

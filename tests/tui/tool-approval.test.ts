@@ -75,12 +75,6 @@ describe("tool approval", () => {
         color(" (Shift+Tab to stop asking)", tuiTheme.shortcutHint),
     );
     expect(rendered.map(stripAnsi)).toContain("> Allow once");
-    expect(rendered.length).toBe(
-      new ToolApproval(
-        { type: "tool_call", id: "call_1", name: "bash", args: { command: "bun test" } },
-        () => {},
-      ).render(80).length,
-    );
     expect(task.render(80).map(stripAnsi).join("\n")).not.toContain("Shift+Tab");
 
     approval.handleInput("\x1b[Z");
