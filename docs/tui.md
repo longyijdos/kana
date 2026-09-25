@@ -47,7 +47,7 @@ Global input runs before the focused component for global controls. `Esc` normal
 | --- | --- |
 | `Ctrl+C` | Cancel MCP startup or reload during MCP startup or reload; otherwise cancel local shell, memory compaction, or Agent while running. While idle with the editor focused, clear a text/image draft on the first press, or begin graceful exit when no draft remains; press again during shutdown to force exit. |
 | `Esc` | Cancel MCP startup or reload during MCP startup or reload. Otherwise let the focused modal, view, picker, or nested prompt handle it first. Tool approval prompts treat it as Deny. When the editor is focused, abort the Agent run if one is active; while idle, do nothing. |
-| `Shift+Tab` | Shown beside Allow once in ordinary tool approvals. Allow the current call and use Never ask for this session without confirmation. Queued ordinary approvals continue automatically; user-task invitations still require a choice. |
+| `Shift+Tab` | Shown beside the title in ordinary tool approvals. Allow the current call and use Never ask for this session without confirmation. Queued ordinary approvals continue automatically; user-task invitations still require a choice. |
 | `Ctrl+O` | Open the detail inspector for the newest tool call from the normal editor state; any other bottom view consumes the input and stays as it is. `/tools` opens the same inspector from a browsable history of every tool call in the session. While open, `[` / `]` move to the previous or next tool call, and `Esc` closes it. |
 | `!<command>` | Run local bash directly without Agent or approval, displayed in the same tool block style. |
 

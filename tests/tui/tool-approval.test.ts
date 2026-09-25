@@ -69,11 +69,12 @@ describe("tool approval", () => {
     );
 
     const rendered = approval.render(80);
-    expect(rendered.map(stripAnsi)).toContain("> Allow once (Shift+Tab to stop asking)");
-    expect(rendered.find((line) => line.includes("Allow once"))).toBe(
-      color("> Allow once", tuiTheme.user) +
+    expect(rendered.map(stripAnsi)).toContain("Allow Kana to run bash? (Shift+Tab to stop asking)");
+    expect(rendered[0]).toBe(
+      color("Allow Kana to run bash?", tuiTheme.toolActive) +
         color(" (Shift+Tab to stop asking)", tuiTheme.shortcutHint),
     );
+    expect(rendered.map(stripAnsi)).toContain("> Allow once");
     expect(rendered.length).toBe(
       new ToolApproval(
         { type: "tool_call", id: "call_1", name: "bash", args: { command: "bun test" } },

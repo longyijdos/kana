@@ -34,6 +34,7 @@ export class ToolApproval implements Component {
 
     this.prompt = new ChoicePrompt({
       title: text.title,
+      titleHint: this.onNeverAsk ? "Shift+Tab to stop asking" : undefined,
       detail: text.detail,
       dimDetail: !userTask,
       options: userTask
@@ -71,12 +72,8 @@ function readUserTaskDescription(args: unknown): string {
 
 function createOptions(
   options: ToolApprovalOptions,
-): Array<{ value: ToolApprovalDecision; label: string; hint?: string }> {
-  const allowOnce = {
-    value: "yes" as const,
-    label: "Allow once",
-    ...(options.onNeverAsk ? { hint: "Shift+Tab to stop asking" } : {}),
-  };
+): Array<{ value: ToolApprovalDecision; label: string }> {
+  const allowOnce = { value: "yes" as const, label: "Allow once" };
 
   if (!options.allowAlways) {
     return [allowOnce, { value: "no", label: "Deny" }];
