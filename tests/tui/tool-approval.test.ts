@@ -69,10 +69,12 @@ describe("tool approval", () => {
     );
 
     const rendered = approval.render(80);
-    expect(rendered.map(stripAnsi)).toContain("Allow Kana to run bash? (Shift+Tab to stop asking)");
+    expect(rendered.map(stripAnsi)).toContain(
+      "Allow Kana to run bash? (Shift+Tab to skip approvals)",
+    );
     expect(rendered[0]).toBe(
       color("Allow Kana to run bash?", tuiTheme.toolActive) +
-        color(" (Shift+Tab to stop asking)", tuiTheme.shortcutHint),
+        color(" (Shift+Tab to skip approvals)", tuiTheme.shortcutHint),
     );
     expect(rendered.map(stripAnsi)).toContain("> Allow once");
     expect(task.render(80).map(stripAnsi).join("\n")).not.toContain("Shift+Tab");

@@ -210,7 +210,7 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "Shift+Tab",
-    description: "Allow this tool and stop asking for permission this session.",
+    description: "Allow this tool and skip further tool approvals this session.",
   },
   {
     input: "←/→ · Ctrl+B/F",

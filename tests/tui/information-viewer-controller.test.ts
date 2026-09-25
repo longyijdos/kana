@@ -32,7 +32,7 @@ describe("information viewer controller", () => {
       harness.tui.getFocus()?.handleInput?.("\x1b[6~");
     }
     expect(shortcutHelp).toContain("Shift+Tab");
-    expect(shortcutHelp).toContain("Allow this tool and stop asking for permission this session.");
+    expect(shortcutHelp).toContain("Allow this tool and skip further tool approvals this session.");
   });
 
   test("loads the selected usage scope into the content viewer", () => {

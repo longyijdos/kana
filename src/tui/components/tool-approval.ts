@@ -34,7 +34,7 @@ export class ToolApproval implements Component {
 
     this.prompt = new ChoicePrompt({
       title: text.title,
-      titleHint: this.onNeverAsk ? "Shift+Tab to stop asking" : undefined,
+      titleHint: this.onNeverAsk ? "Shift+Tab to skip approvals" : undefined,
       detail: text.detail,
       dimDetail: !userTask,
       options: userTask
