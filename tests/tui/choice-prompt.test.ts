@@ -28,6 +28,25 @@ describe("choice prompt", () => {
     expect(rendered[2]).toBe(color("> No, keep it", tuiTheme.user));
   });
 
+  test("colors a title hint separately and truncates the whole title line", () => {
+    const prompt = new ChoicePrompt({
+      title: "Allow tool?",
+      titleHint: "Shift+Tab to stop asking",
+      options: [
+        { value: "yes", label: "Allow once" },
+        { value: "no", label: "Deny" },
+      ],
+      defaultValue: "yes",
+      onSelect: () => {},
+    });
+
+    expect(prompt.render(80)[0]).toBe(
+      color("Allow tool?", tuiTheme.bottomTitle) +
+        color(" (Shift+Tab to stop asking)", tuiTheme.shortcutHint),
+    );
+    expect(stripAnsi(prompt.render(20)[0] ?? "")).toBe("Allow tool? (Shift+T");
+  });
+
   test("wraps detail text instead of truncating it", () => {
     const prompt = new ChoicePrompt({
       title: "Run command?",

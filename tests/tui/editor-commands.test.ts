@@ -17,7 +17,8 @@ describe("prompt commands", () => {
     expect(createRandomPromptPlaceholder(() => 0)).toBe("Try /quit — Exit Kana.");
     expect(
       createRandomPromptPlaceholder(
-        () => PROMPT_COMMANDS.findIndex((command) => command.name === "usage") / helpEntryCount,
+        () =>
+          (PROMPT_COMMANDS.findIndex((command) => command.name === "usage") + 0.5) / helpEntryCount,
       ),
     ).toBe("Try /usage — Show session, project, or global API usage.");
     expect(createRandomPromptPlaceholder(() => 0.999)).toBe(
@@ -26,15 +27,17 @@ describe("prompt commands", () => {
     expect(createRandomPromptPlaceholder(() => 0, "Try /quit — Exit Kana.")).toBe(
       "Try /help — Show commands and shortcuts.",
     );
-    expect(createRandomPromptPlaceholder(() => PROMPT_COMMANDS.length / helpEntryCount)).toBe(
-      `Try ${PROMPT_SKILL_SHORTCUT.input} — ${PROMPT_SKILL_SHORTCUT.description}`,
-    );
-    expect(createRandomPromptPlaceholder(() => (PROMPT_COMMANDS.length + 1) / helpEntryCount)).toBe(
-      `Try ${PROMPT_TEMPLATE_SHORTCUT.input} — ${PROMPT_TEMPLATE_SHORTCUT.description}`,
-    );
+    expect(
+      createRandomPromptPlaceholder(() => (PROMPT_COMMANDS.length + 0.5) / helpEntryCount),
+    ).toBe(`Try ${PROMPT_SKILL_SHORTCUT.input} — ${PROMPT_SKILL_SHORTCUT.description}`);
+    expect(
+      createRandomPromptPlaceholder(() => (PROMPT_COMMANDS.length + 1.5) / helpEntryCount),
+    ).toBe(`Try ${PROMPT_TEMPLATE_SHORTCUT.input} — ${PROMPT_TEMPLATE_SHORTCUT.description}`);
     expect(
       createRandomPromptPlaceholder(
-        () => PROMPT_COMMANDS.findIndex((command) => command.name === "resume") / helpEntryCount,
+        () =>
+          (PROMPT_COMMANDS.findIndex((command) => command.name === "resume") + 0.5) /
+          helpEntryCount,
       ),
     ).toBe("Try /resume [id] — Resume or delete a saved session.");
   });
