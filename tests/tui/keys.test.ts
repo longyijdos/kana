@@ -16,6 +16,7 @@ import {
   isPageUp,
   isRight,
   isShiftEnter,
+  isShiftTab,
   isUp,
 } from "../../src/tui/runtime";
 
@@ -25,6 +26,16 @@ describe("tui key parsing", () => {
     expect(isShiftEnter("\x1b[13;2:1u")).toBe(true);
     expect(isShiftEnter("\x1b[27;2;13~")).toBe(true);
     expect(isEnter("\x1b[13;2u")).toBe(false);
+  });
+
+  test("recognizes Shift+Tab without accepting other modifiers or key releases", () => {
+    expect(isShiftTab("\x1b[Z")).toBe(true);
+    expect(isShiftTab("\x1b[9;2u")).toBe(true);
+    expect(isShiftTab("\x1b[9;2:2u")).toBe(true);
+    expect(isShiftTab("\x1b[27;2;9~")).toBe(true);
+    expect(isShiftTab("\t")).toBe(false);
+    expect(isShiftTab("\x1b[9;4u")).toBe(false);
+    expect(isShiftTab("\x1b[9;2:3u")).toBe(false);
   });
 
   test("recognizes unmodified Enter and Escape in legacy and CSI-u formats", () => {

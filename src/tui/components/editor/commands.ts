@@ -209,6 +209,10 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
     description: "Insert a newline in supported terminals.",
   },
   {
+    input: "Shift+Tab",
+    description: "Allow this tool and stop asking for permission this session.",
+  },
+  {
     input: "←/→ · Ctrl+B/F",
     description: "Move left or right by one character.",
   },

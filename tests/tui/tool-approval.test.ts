@@ -52,6 +52,41 @@ describe("tool approval", () => {
     expect(rendered.map(stripAnsi)).toContain("  Accept task");
   });
 
+  test("shows and handles the session shortcut only for ordinary tool approvals", () => {
+    let neverAskCount = 0;
+    const onNeverAsk = () => {
+      neverAskCount += 1;
+    };
+    const approval = new ToolApproval(
+      { type: "tool_call", id: "call_1", name: "bash", args: { command: "bun test" } },
+      () => {},
+      { onNeverAsk },
+    );
+    const task = new ToolApproval(
+      { type: "tool_call", id: "task", name: "delegate_user_task", args: { task: "Review" } },
+      () => {},
+      { onNeverAsk },
+    );
+
+    const rendered = approval.render(80);
+    expect(rendered.map(stripAnsi)).toContain("> Allow once (Shift+Tab to stop asking)");
+    expect(rendered.find((line) => line.includes("Allow once"))).toBe(
+      color("> Allow once", tuiTheme.user) +
+        color(" (Shift+Tab to stop asking)", tuiTheme.shortcutHint),
+    );
+    expect(rendered.length).toBe(
+      new ToolApproval(
+        { type: "tool_call", id: "call_1", name: "bash", args: { command: "bun test" } },
+        () => {},
+      ).render(80).length,
+    );
+    expect(task.render(80).map(stripAnsi).join("\n")).not.toContain("Shift+Tab");
+
+    approval.handleInput("\x1b[Z");
+    task.handleInput("\x1b[Z");
+    expect(neverAskCount).toBe(1);
+  });
+
   test("renders the always allow option when enabled", () => {
     const approval = new ToolApproval(
       {

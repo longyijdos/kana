@@ -302,6 +302,56 @@ describe("tool approval controller", () => {
     expect(tui.getFocus()).toBe(editor);
   });
 
+  test("Shift+Tab allows the current call and queued ordinary calls but still asks about user tasks", async () => {
+    const editor = new LinesComponent(["editor"]) as unknown as Editor;
+    const layout = new AppLayout({ main: new LinesComponent(["transcript"]), bottom: editor });
+    const tui = createTuiStub();
+    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
+    const savedCommands: string[] = [];
+    const controller = new ToolApprovalController({
+      config: { mode: "always" },
+      approvals: { version: 2, bash: { exactCommands: [], readOnlyCommands: [] } },
+      addTrustedBashCommand: (command) => {
+        savedCommands.push(command);
+        return createTrustedCommandAdder()(command);
+      },
+      editor,
+      bottomArea,
+      tui,
+      onApprovalRequired: () => {},
+    });
+    bottomArea.setFallback(() => controller.activePrompt ?? editor);
+
+    const first = controller.request(createToolCall("first"), undefined);
+    const second = controller.request(createToolCall("second"), undefined);
+    const task = controller.request(
+      {
+        type: "tool_call",
+        id: "task",
+        name: "delegate_user_task",
+        args: { task: "Review the result." },
+      },
+      undefined,
+    );
+    const fourth = controller.request(createToolCall("fourth"), undefined);
+
+    controller.activePrompt?.handleInput?.("\x1b[Z");
+    await expect(first).resolves.toEqual({ type: "continue" });
+    await expect(second).resolves.toEqual({ type: "continue" });
+    expect(controller.mode).toBe("never");
+    expect(savedCommands).toEqual([]);
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Review the result.");
+    expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("Shift+Tab");
+
+    controller.activePrompt?.handleInput?.("\x1b[Z");
+    expect(controller.activePrompt).toBeDefined();
+    controller.activePrompt?.handleInput?.("\r");
+    await expect(task).resolves.toMatchObject({ type: "return" });
+    await expect(fourth).resolves.toEqual({ type: "continue" });
+    expect(controller.activePrompt).toBeUndefined();
+    expect(tui.getFocus()).toBe(editor);
+  });
+
   test("uses a persisted local trust decision for later requests", async () => {
     const editor = new LinesComponent(["editor"]) as unknown as Editor;
     const layout = new AppLayout({

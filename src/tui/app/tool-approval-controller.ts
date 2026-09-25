@@ -96,24 +96,36 @@ export class ToolApprovalController {
   }
 
   private activateNext(): void {
-    if (this.active || this.pending.length === 0) return;
-    const pending = this.pending[0] as PendingApproval;
-    const bashCommand = getBashCommand(pending.toolCall);
-    const source = this.options.resolveToolSource?.(pending.toolCall);
-    pending.component = new ToolApproval(
-      pending.toolCall,
-      (decision) => this.finish(pending, decision),
-      {
-        allowAlways: bashCommand !== undefined,
-        requesterName: pending.agent.kind === "subagent" ? pending.agent.profileName : "Kana",
-        ...(source === undefined ? {} : { source }),
-      },
-    );
-    this.active = pending;
-    if (this.options.bottomArea.isShowing(this.options.editor)) {
-      this.options.bottomArea.show(pending.component);
+    if (this.active) return;
+    while (this.pending.length > 0) {
+      const pending = this.pending[0] as PendingApproval;
+      if (!shouldRequestToolApproval({ mode: this.mode }, this.approvals, pending.toolCall)) {
+        this.finish(pending, "yes");
+        continue;
+      }
+
+      const bashCommand = getBashCommand(pending.toolCall);
+      const source = this.options.resolveToolSource?.(pending.toolCall);
+      pending.component = new ToolApproval(
+        pending.toolCall,
+        (decision) => this.finish(pending, decision),
+        {
+          allowAlways: bashCommand !== undefined,
+          requesterName: pending.agent.kind === "subagent" ? pending.agent.profileName : "Kana",
+          onNeverAsk: () => {
+            this.setTemporaryMode("never");
+            this.finish(pending, "yes");
+          },
+          ...(source === undefined ? {} : { source }),
+        },
+      );
+      this.active = pending;
+      if (this.options.bottomArea.isShowing(this.options.editor)) {
+        this.options.bottomArea.show(pending.component);
+      }
+      this.options.tui.requestRender();
+      return;
     }
-    this.options.tui.requestRender();
   }
 
   private finish(pending: PendingApproval, decision: ToolApprovalDecision): void {

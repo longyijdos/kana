@@ -25,6 +25,14 @@ describe("information viewer controller", () => {
     expect(rendered.some((line) => line.includes("@<name> <request>"))).toBe(true);
     expect(rendered.some((line) => line.includes("Slash commands"))).toBe(true);
     expect(rendered.some((line) => line.includes("/quit"))).toBe(true);
+    let shortcutHelp = "";
+    for (let page = 0; page < 8; page += 1) {
+      shortcutHelp = harness.render().join("\n");
+      if (shortcutHelp.includes("Shift+Tab")) break;
+      harness.tui.getFocus()?.handleInput?.("\x1b[6~");
+    }
+    expect(shortcutHelp).toContain("Shift+Tab");
+    expect(shortcutHelp).toContain("Allow this tool and stop asking for permission this session.");
   });
 
   test("loads the selected usage scope into the content viewer", () => {
@@ -129,6 +137,7 @@ function createHarness(cleanMode = false, memoryContent?: string) {
     errors,
     memoryTargets,
     transcript,
+    tui,
     usageScopes,
     render: (width = 100) => layout.render(width, 40).map(stripAnsi),
   };

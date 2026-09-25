@@ -1,6 +1,6 @@
 import type { ToolCallContent } from "@/core";
 import { stripTerminalControlSequences } from "../render";
-import type { Component } from "../runtime";
+import { type Component, isShiftTab } from "../runtime";
 import { tuiTheme } from "../theme";
 import { formatToolApproval, highlightOverwriteMarker, type ToolApprovalSource } from "../tools";
 import { ChoicePrompt } from "./choice-prompt";
@@ -11,10 +11,12 @@ export type ToolApprovalOptions = {
   allowAlways?: boolean;
   source?: ToolApprovalSource;
   requesterName?: string;
+  onNeverAsk?: () => void;
 };
 
 export class ToolApproval implements Component {
   private readonly prompt: ChoicePrompt<ToolApprovalDecision>;
+  private readonly onNeverAsk?: () => void;
 
   constructor(
     toolCall: ToolCallContent,
@@ -22,6 +24,7 @@ export class ToolApproval implements Component {
     options: ToolApprovalOptions = {},
   ) {
     const userTask = toolCall.name === "delegate_user_task";
+    this.onNeverAsk = userTask ? undefined : options.onNeverAsk;
     const text = userTask
       ? {
           title: "Kana has a task for you",
@@ -52,6 +55,11 @@ export class ToolApproval implements Component {
   }
 
   handleInput(data: string): void {
+    if (this.onNeverAsk && isShiftTab(data)) {
+      this.onNeverAsk();
+      return;
+    }
+
     this.prompt.handleInput(data);
   }
 }
@@ -63,16 +71,19 @@ function readUserTaskDescription(args: unknown): string {
 
 function createOptions(
   options: ToolApprovalOptions,
-): Array<{ value: ToolApprovalDecision; label: string }> {
+): Array<{ value: ToolApprovalDecision; label: string; hint?: string }> {
+  const allowOnce = {
+    value: "yes" as const,
+    label: "Allow once",
+    ...(options.onNeverAsk ? { hint: "Shift+Tab to stop asking" } : {}),
+  };
+
   if (!options.allowAlways) {
-    return [
-      { value: "yes", label: "Allow once" },
-      { value: "no", label: "Deny" },
-    ];
+    return [allowOnce, { value: "no", label: "Deny" }];
   }
 
   return [
-    { value: "yes", label: "Allow once" },
+    allowOnce,
     { value: "always", label: "Always allow this command" },
     { value: "no", label: "Deny" },
   ];

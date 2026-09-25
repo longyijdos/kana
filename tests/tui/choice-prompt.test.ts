@@ -28,6 +28,28 @@ describe("choice prompt", () => {
     expect(rendered[2]).toBe(color("> No, keep it", tuiTheme.user));
   });
 
+  test("colors an option hint separately from its selection", () => {
+    const prompt = new ChoicePrompt({
+      title: "Allow tool?",
+      options: [
+        { value: "yes", label: "Allow once", hint: "Shift+Tab: never ask this session" },
+        { value: "no", label: "Deny" },
+      ],
+      defaultValue: "yes",
+      onSelect: () => {},
+    });
+
+    expect(prompt.render(80)[1]).toBe(
+      color("> Allow once", tuiTheme.user) +
+        color(" (Shift+Tab: never ask this session)", tuiTheme.shortcutHint),
+    );
+
+    prompt.handleInput("\x1b[B");
+    expect(prompt.render(80)[1]).toBe(
+      `  Allow once${color(" (Shift+Tab: never ask this session)", tuiTheme.shortcutHint)}`,
+    );
+  });
+
   test("wraps detail text instead of truncating it", () => {
     const prompt = new ChoicePrompt({
       title: "Run command?",

@@ -7,6 +7,7 @@ import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 export type ChoicePromptOption<T extends string> = {
   value: T;
   label: string;
+  hint?: string;
 };
 
 export type ChoicePromptOptions<T extends string> = {
@@ -107,8 +108,8 @@ export class ChoicePrompt<T extends string> implements Component {
   ): string {
     const selected = index === this.selectedIndex;
     const line = `${selected ? "> " : "  "}${option.label}`;
-
-    return selected ? color(line, selectionColor) : line;
+    const label = selected ? color(line, selectionColor) : line;
+    return option.hint ? `${label}${color(` (${option.hint})`, tuiTheme.shortcutHint)}` : label;
   }
 
   private renderDetail(
