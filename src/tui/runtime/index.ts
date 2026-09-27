@@ -22,6 +22,7 @@ export {
   isPrintable,
   isRight,
   isShiftEnter,
+  isShiftTab,
   isTab,
   isUp,
 } from "./keys";

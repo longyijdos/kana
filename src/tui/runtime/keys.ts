@@ -140,6 +140,17 @@ export function isTab(data: string): boolean {
   return data === "\t";
 }
 
+export function isShiftTab(data: string): boolean {
+  if (data === "\x1b[Z") return true;
+
+  const key = parseModifiedKey(data);
+  return (
+    keyMatchesCode(key, 9) &&
+    isPressOrRepeat(key) &&
+    hasOnlyModifiers(key.modifierBits, MODIFIER_SHIFT)
+  );
+}
+
 export function isUp(data: string): boolean {
   return isCursorKey(data, "up");
 }
