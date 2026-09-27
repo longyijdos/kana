@@ -34,7 +34,7 @@ export type RunCommandProcessOptions = {
 export async function runCommandProcess(
   options: RunCommandProcessOptions,
 ): Promise<CommandProcessResult> {
-  const proc = Bun.spawn([options.shell, "-lc", `${options.prefix ?? ""}${options.command}`], {
+  const proc = Bun.spawn([options.shell, "-c", `${options.prefix ?? ""}${options.command}`], {
     cwd: options.cwd,
     env: process.env,
     stdin: "ignore",
