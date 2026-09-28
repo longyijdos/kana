@@ -10,7 +10,7 @@ describe("tool approval", () => {
       {
         type: "tool_call",
         id: "call_1",
-        name: "bash",
+        name: "shell",
         args: {
           command: "bun test",
         },
@@ -21,12 +21,12 @@ describe("tool approval", () => {
     const rawRendered = approval.render(80);
     const rendered = rawRendered.map(stripAnsi);
 
-    expect(rendered).toContain("Allow Kana to run bash?");
+    expect(rendered).toContain("Allow Kana to run shell?");
     expect(rendered).toContain("Command");
     expect(rendered).toContain("  bun test");
     expect(rendered).toContain("> Allow once");
     expect(rendered).toContain("  Deny");
-    expect(rawRendered[0]).toBe(color("Allow Kana to run bash?", tuiTheme.toolActive));
+    expect(rawRendered[0]).toBe(color("Allow Kana to run shell?", tuiTheme.toolActive));
     expect(rawRendered.find((line) => line.includes("Allow once"))).toBe(
       color("> Allow once", tuiTheme.user),
     );
@@ -58,7 +58,7 @@ describe("tool approval", () => {
       neverAskCount += 1;
     };
     const approval = new ToolApproval(
-      { type: "tool_call", id: "call_1", name: "bash", args: { command: "bun test" } },
+      { type: "tool_call", id: "call_1", name: "shell", args: { command: "bun test" } },
       () => {},
       { onNeverAsk },
     );
@@ -70,10 +70,10 @@ describe("tool approval", () => {
 
     const rendered = approval.render(80);
     expect(rendered.map(stripAnsi)).toContain(
-      "Allow Kana to run bash? (Shift+Tab to skip approvals)",
+      "Allow Kana to run shell? (Shift+Tab to skip approvals)",
     );
     expect(rendered[0]).toBe(
-      color("Allow Kana to run bash?", tuiTheme.toolActive) +
+      color("Allow Kana to run shell?", tuiTheme.toolActive) +
         color(" (Shift+Tab to skip approvals)", tuiTheme.shortcutHint),
     );
     expect(rendered.map(stripAnsi)).toContain("> Allow once");
@@ -89,7 +89,7 @@ describe("tool approval", () => {
       {
         type: "tool_call",
         id: "call_1",
-        name: "bash",
+        name: "shell",
         args: {
           command: "bun test",
         },
@@ -171,13 +171,13 @@ describe("tool approval", () => {
     expect(rawRendered).toContain(color("[OVERWRITE]", tuiTheme.error));
   });
 
-  test("wraps long bash command details for review", () => {
+  test("wraps long shell command details for review", () => {
     const command = "bun test tests/tui-tool-approval.test.ts --timeout 30000 --rerun-each 2";
     const approval = new ToolApproval(
       {
         type: "tool_call",
         id: "call_1",
-        name: "bash",
+        name: "shell",
         args: {
           command,
         },
@@ -198,7 +198,7 @@ describe("tool approval", () => {
       {
         type: "tool_call",
         id: "call_1",
-        name: "bash",
+        name: "shell",
         args: {
           command: "bun test",
         },
@@ -219,7 +219,7 @@ describe("tool approval", () => {
       {
         type: "tool_call",
         id: "call_1",
-        name: "bash",
+        name: "shell",
         args: {
           command: "bun test",
         },
@@ -235,12 +235,12 @@ describe("tool approval", () => {
     expect(decision).toBe("no");
   });
 
-  test("renders multiline bash commands as separate logical lines", () => {
+  test("renders multiline shell commands as separate logical lines", () => {
     const approval = new ToolApproval(
       {
         type: "tool_call",
         id: "call_1",
-        name: "bash",
+        name: "shell",
         args: {
           command:
             'git commit -m "feat: add something\n\nCo-authored-by: Name <email@example.com>"',
@@ -252,7 +252,7 @@ describe("tool approval", () => {
     const rendered = approval.render(120).map(stripAnsi);
 
     expect(rendered.every((line) => !line.includes("\n") && !line.includes("\r"))).toBe(true);
-    expect(rendered).toContain("Allow Kana to run bash?");
+    expect(rendered).toContain("Allow Kana to run shell?");
     expect(rendered).toContain("Command");
     expect(rendered).toContain('  git commit -m "feat: add something');
     expect(rendered).toContain('  Co-authored-by: Name <email@example.com>"');

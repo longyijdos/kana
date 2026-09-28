@@ -5,13 +5,14 @@ export {
   createJobOutputTool,
   createJobStartTool,
 } from "./background-jobs";
-export { createBashTool, DEFAULT_TIMEOUT_MS } from "./bash";
+export { resolveShell } from "./command-process";
 export { createEditTool } from "./edit";
 export { createGlobTool, DEFAULT_GLOB_LIMIT } from "./glob";
 export { createGrepTool, DEFAULT_GREP_INCLUDE, DEFAULT_GREP_LIMIT } from "./grep";
 export { createListTool, DEFAULT_LIST_LIMIT } from "./list";
 export { createReadTool, DEFAULT_READ_LIMIT } from "./read";
 export { normalizeToolResult } from "./result";
+export { createShellTool, DEFAULT_TIMEOUT_MS } from "./shell";
 export { strictObject } from "./strict-object";
 export type {
   Tool,

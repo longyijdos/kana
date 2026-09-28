@@ -13,7 +13,7 @@ tools:
   - list
   - grep
   - read
-  - bash
+  - shell
 model: openai-codex/gpt-5.6-terra
 reasoning_effort: high
 ---
@@ -36,7 +36,7 @@ The host derives the child model and capability limits from the conversation's v
 - child Agents never receive `spawn_subagent`, `wait_subagent`, `cancel_subagent`, Background Job, todo, Goal, memory, or scheduled-wake tools;
 - oversized child results are not moved into parent-session artifacts.
 
-The card body is the child's complete system prompt, and the task is its user message. Its runtime-context section list is empty: it receives no default Kana prompt, environment context, AGENTS.md content, memory, Skills, live host state, parent conversation messages, or inherited checkpoint. The main Agent must include every task-specific fact, constraint, path, and expected result in the `task` argument. The child uses the ordinary approval hook, so cards cannot weaken `approval.mode` or Bash/MCP approval rules. The TUI serializes simultaneous main/child approval requests in FIFO order and labels child prompts with their exact profile and short Agent identity.
+The card body is the child's complete system prompt, and the task is its user message. Its runtime-context section list is empty: it receives no default Kana prompt, environment context, AGENTS.md content, memory, Skills, live host state, parent conversation messages, or inherited checkpoint. The main Agent must include every task-specific fact, constraint, path, and expected result in the `task` argument. The child uses the ordinary approval hook, so cards cannot weaken `approval.mode` or Shell/MCP approval rules. The TUI serializes simultaneous main/child approval requests in FIFO order and labels child prompts with their exact profile and short Agent identity.
 
 ## Lifecycle and tools
 

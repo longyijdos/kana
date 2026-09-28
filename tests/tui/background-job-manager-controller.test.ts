@@ -13,7 +13,7 @@ describe("background Job manager controller", () => {
     const jobManager = new BackgroundJobManager();
     const jobs = jobManager.bind(jobManager.createOwner("session-a"), { maxConcurrent: 1 });
     const job = jobs.start({
-      kind: "bash",
+      kind: "shell",
       label: "completed build",
       run: async () => ({ status: "completed", exitCode: 0 }),
     });
@@ -47,7 +47,7 @@ describe("background Job manager controller", () => {
     const jobs = jobManager.bind(jobManager.createOwner("session-a"), { maxConcurrent: 1 });
     const completion = deferred<{ status: "completed"; exitCode: number }>();
     const job = jobs.start({
-      kind: "bash",
+      kind: "shell",
       label: "delayed build",
       run: () => completion.promise,
     });
@@ -80,7 +80,7 @@ describe("background Job manager controller", () => {
     const jobManager = new BackgroundJobManager();
     const jobs = jobManager.bind(jobManager.createOwner("session-a"), { maxConcurrent: 1 });
     const job = jobs.start({
-      kind: "bash",
+      kind: "shell",
       label: "bun run dev",
       run: ({ signal, write }) => {
         write("stdout", "server ready\n");

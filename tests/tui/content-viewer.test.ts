@@ -85,7 +85,7 @@ describe("content viewer", () => {
     const decisions: string[] = [];
     const viewer = new ContentViewer(
       {
-        title: "Bash",
+        title: "Shell",
         render: () => ["one", "two", "three", "four", "five"],
       },
       {

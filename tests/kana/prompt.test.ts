@@ -137,7 +137,7 @@ describe("Kana prompt assembly", () => {
     });
 
     const job = jobs.start({
-      kind: "bash",
+      kind: "shell",
       label: "bun run dev",
       cwd: ".",
       run: ({ write }) => {
@@ -178,6 +178,7 @@ describe("Kana static prompt", () => {
       now: new Date("2026-06-11T16:30:00.000Z"),
       platform: "darwin",
       timezone: "Asia/Shanghai",
+      shell: "/bin/zsh",
     });
     const prompt = await assembly.assemble({ signal: new AbortController().signal });
 
@@ -190,7 +191,7 @@ describe("Kana static prompt", () => {
         source: "environment",
         status: "active",
         content:
-          '{"cwd":"/repo","platform":"darwin","currentDate":"2026-06-12","timezone":"Asia/Shanghai"}',
+          '{"cwd":"/repo","platform":"darwin","currentDate":"2026-06-12","timezone":"Asia/Shanghai","currentShell":"/bin/zsh"}',
       },
     ]);
   });

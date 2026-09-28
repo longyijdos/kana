@@ -75,7 +75,7 @@ function job(
 ): BackgroundJobSummary {
   return {
     id,
-    kind: "bash",
+    kind: "shell",
     label,
     cwd: ".",
     status,

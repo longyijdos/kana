@@ -69,7 +69,7 @@ Exit codes:
 | `124` | `--timeout` elapsed; the active Goal and Agent were cancelled first |
 | `130` | `SIGINT` was received; the active Goal and Agent are cancelled first |
 
-Headless mode has no approval UI. By default it executes tools trusted by `approval.mode` and `approvals.json`. If a tool still needs interactive approval, the run ends as `aborted` without executing that tool. `--allow-all-tools` unconditionally authorizes the agent to execute every available tool: file tools retain the current user's real filesystem permissions, and `bash` still runs real system commands. The option does not isolate files or processes and should be used only in a controlled environment.
+Headless mode has no approval UI. By default it executes tools trusted by `approval.mode` and `approvals.json`. If a tool still needs interactive approval, the run ends as `aborted` without executing that tool. `--allow-all-tools` unconditionally authorizes the agent to execute every available tool: file tools retain the current user's real filesystem permissions, and `shell` still runs real system commands. The option does not isolate files or processes and should be used only in a controlled environment.
 
 ## The `--json` protocol
 

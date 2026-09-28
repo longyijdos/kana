@@ -4,7 +4,7 @@ import { getStringProperty } from "../properties";
  * Returns the complete joined stdout/stderr text. Bounding and truncation are
  * applied at the compact-rendering boundary in `format.ts`.
  */
-export function formatBashOutput(result: object): string {
+export function formatShellOutput(result: object): string {
   const stdout = getStringProperty(result, "stdout");
   const stderr = getStringProperty(result, "stderr");
 

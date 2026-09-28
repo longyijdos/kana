@@ -30,7 +30,7 @@ class EditorStub extends LinesComponent {
 describe("tool history controller", () => {
   test("lists every ToolCallBlock: short output, read, failed, and custom tools", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("short", "short output", "echo short"));
+    transcript.addChild(createShellBlock("short", "short output", "echo short"));
     transcript.addChild(
       completedBlock(
         "read",
@@ -38,7 +38,7 @@ describe("tool history controller", () => {
         { path: "src/read.ts", content: "line", startLine: 1, endLine: 1, totalLines: 1 },
       ),
     );
-    const failed = createBashBlock("failed", "boom", "boom");
+    const failed = createShellBlock("failed", "boom", "boom");
     failed.updateResult({ error: "command crashed" }, true);
     transcript.addChild(failed);
     transcript.addChild(completedBlock("custom_lookup", { query: "x" }, { ok: true }));
@@ -51,9 +51,9 @@ describe("tool history controller", () => {
     expect(lines).toEqual([
       "Tool history",
       "> custom_lookup",
-      "  Bash  boom",
+      "  Shell  boom",
       "  Read  src/read.ts",
-      "  Bash  echo short",
+      "  Shell  echo short",
     ]);
   });
 
@@ -63,29 +63,29 @@ describe("tool history controller", () => {
     transcript.addChild(
       new TextBlock("a text block that must stay hidden", { color: tuiTheme.muted }),
     );
-    transcript.addChild(createBashBlock("only", "out", "echo only"));
+    transcript.addChild(createShellBlock("only", "out", "echo only"));
     const { controller, tui } = createHarness(transcript);
 
     controller.open();
 
     const lines = pickerLines(tui);
 
-    expect(lines).toEqual(["Tool history", "> Bash  echo only"]);
+    expect(lines).toEqual(["Tool history", "> Shell  echo only"]);
     expect(lines.join("\n")).not.toContain("must stay hidden");
   });
 
   test("orders newest first with the newest selected by default", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("a", "a", "cmd-a"));
-    transcript.addChild(createBashBlock("b", "b", "cmd-b"));
-    transcript.addChild(createBashBlock("c", "c", "cmd-c"));
+    transcript.addChild(createShellBlock("a", "a", "cmd-a"));
+    transcript.addChild(createShellBlock("b", "b", "cmd-b"));
+    transcript.addChild(createShellBlock("c", "c", "cmd-c"));
     const { controller, tui } = createHarness(transcript);
 
     controller.open();
 
     const lines = pickerLines(tui);
 
-    expect(lines).toEqual(["Tool history", "> Bash  cmd-c", "  Bash  cmd-b", "  Bash  cmd-a"]);
+    expect(lines).toEqual(["Tool history", "> Shell  cmd-c", "  Shell  cmd-b", "  Shell  cmd-a"]);
   });
 
   test("uses the schema-owned summary for built-ins and none for unknown tools", () => {
@@ -121,8 +121,8 @@ describe("tool history controller", () => {
 
   test("enter opens the same tool detail inspector on the selected tool", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("a", "a", "cmd-a"));
-    transcript.addChild(createBashBlock("b", "b", "cmd-b"));
+    transcript.addChild(createShellBlock("a", "a", "cmd-a"));
+    transcript.addChild(createShellBlock("b", "b", "cmd-b"));
     const { controller, tui, contentViewer, restoreCalls } = createHarness(transcript);
 
     controller.open();
@@ -133,14 +133,14 @@ describe("tool history controller", () => {
     expect(restoreCalls).toEqual([]);
 
     const rendered = viewerLines(tui);
-    expect(rendered[0]).toBe("Bash");
+    expect(rendered[0]).toBe("Shell");
     expect(rendered.join("\n")).toContain("cmd-b");
     expect(rendered.join("\n")).not.toContain("cmd-a");
   });
 
   test("selecting a non-latest entry keeps bracket navigation in transcript order", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("a", "a", "cmd-a"));
+    transcript.addChild(createShellBlock("a", "a", "cmd-a"));
     transcript.addChild(
       completedBlock(
         "read",
@@ -159,7 +159,7 @@ describe("tool history controller", () => {
 
     // [ moves back through transcript chronology: B -> A
     viewer(tui).handleInput("[");
-    expect(viewerTitle(tui)).toBe("Bash");
+    expect(viewerTitle(tui)).toBe("Shell");
     expect(viewerLines(tui).join("\n")).toContain("cmd-a");
 
     // ] moves forward again: A -> B -> C
@@ -171,7 +171,7 @@ describe("tool history controller", () => {
 
   test("picker to inspector never restores the editor in between", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("a", "a", "cmd-a"));
+    transcript.addChild(createShellBlock("a", "a", "cmd-a"));
     const { controller, tui, layout, editor, restoreCalls } = createHarness(transcript);
 
     controller.open();
@@ -191,7 +191,7 @@ describe("tool history controller", () => {
 
   test("esc closes the picker and restores the editor", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("a", "a", "cmd-a"));
+    transcript.addChild(createShellBlock("a", "a", "cmd-a"));
     const { controller, tui, layout, editor, restoreCalls } = createHarness(transcript);
 
     controller.open();
@@ -223,11 +223,11 @@ describe("tool history controller", () => {
 
   test("resize does not change membership, order, or the selected tool", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("a", "a", "cmd-a"));
-    transcript.addChild(createBashBlock("b", "b", "cmd-b"));
-    transcript.addChild(createBashBlock("c", "c", "cmd-c"));
-    transcript.addChild(createBashBlock("d", "d", "cmd-d"));
-    transcript.addChild(createBashBlock("e", "e", "cmd-e"));
+    transcript.addChild(createShellBlock("a", "a", "cmd-a"));
+    transcript.addChild(createShellBlock("b", "b", "cmd-b"));
+    transcript.addChild(createShellBlock("c", "c", "cmd-c"));
+    transcript.addChild(createShellBlock("d", "d", "cmd-d"));
+    transcript.addChild(createShellBlock("e", "e", "cmd-e"));
     const { controller, tui } = createHarness(transcript);
 
     controller.open();
@@ -240,27 +240,27 @@ describe("tool history controller", () => {
 
     for (const lines of [wide, narrow, tiny]) {
       const selected = lines.find((line) => line.startsWith("> "));
-      expect(selected).toBe("> Bash  cmd-c");
+      expect(selected).toBe("> Shell  cmd-c");
     }
 
     // Visible rows always follow the same newest-first order; a short
     // height only bounds the window, it never reorders or re-selects.
     const narrowRows = narrow.filter((line) => line.startsWith("> ") || line.startsWith("  "));
     expect(narrowRows).toEqual([
-      "  Bash  cmd-e",
-      "  Bash  cmd-d",
-      "> Bash  cmd-c",
-      "  Bash  cmd-b",
-      "  Bash  cmd-a",
+      "  Shell  cmd-e",
+      "  Shell  cmd-d",
+      "> Shell  cmd-c",
+      "  Shell  cmd-b",
+      "  Shell  cmd-a",
     ]);
     const tinyRows = tiny.filter((line) => line.startsWith("> ") || line.startsWith("  "));
-    expect(tinyRows).toEqual(["  Bash  cmd-d", "> Bash  cmd-c"]);
+    expect(tinyRows).toEqual(["  Shell  cmd-d", "> Shell  cmd-c"]);
   });
 
   test("keeps a long command and a long custom name on one truncated picker row", () => {
     const command = `python very_long_script.py --flag ${"x".repeat(150)}`;
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("long", "done", command));
+    transcript.addChild(createShellBlock("long", "done", command));
     const longName = `custom_${"y".repeat(120)}`;
     transcript.addChild(completedBlock(longName, { query: "q" }, { ok: true }));
     const { controller, tui } = createHarness(transcript);
@@ -274,7 +274,7 @@ describe("tool history controller", () => {
     }
     expect(pickerRows).toHaveLength(3);
 
-    // Inspect the older bash entry; its full command must be recoverable.
+    // Inspect the older shell entry; its full command must be recoverable.
     picker(tui).handleInput("\x1b[B");
     pressEnter(tui);
 
@@ -290,7 +290,7 @@ describe("tool history controller", () => {
     const path = `src/\u001b[31mx\u001b[0m\nline\u0007.ts`;
     const pattern = `**/*\u001b]0;pwn\u0007`;
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("evil", "out", command));
+    transcript.addChild(createShellBlock("evil", "out", command));
     transcript.addChild(
       completedBlock(
         "read",
@@ -318,11 +318,11 @@ describe("tool history controller", () => {
       "Tool history",
       "> Glob  **/*",
       "  Read  src/x line.ts",
-      "  Bash  echo saferedtail",
+      "  Shell  echo saferedtail",
     ]);
 
     // The inspector keeps its own full-detail sanitization for the same data.
-    // Newest-first selection starts on Glob; navigate down to the Bash row.
+    // Newest-first selection starts on Glob; navigate down to the Shell row.
     picker(tui).handleInput("\x1b[B");
     picker(tui).handleInput("\x1b[B");
     pressEnter(tui);
@@ -334,7 +334,7 @@ describe("tool history controller", () => {
 
   test("relinquish clears picker ownership without restoring the bottom", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("only", "short output", "echo short"));
+    transcript.addChild(createShellBlock("only", "short output", "echo short"));
     const { controller, tui, contentViewer, layout, restoreCalls } = createHarness(transcript);
 
     controller.open();
@@ -447,11 +447,11 @@ function viewerLines(
   return viewer(tui).render(width).map(stripAnsi);
 }
 
-function createBashBlock(id: string, stdout: string, command = id): ToolCallBlock {
+function createShellBlock(id: string, stdout: string, command = id): ToolCallBlock {
   const block = new ToolCallBlock({
     type: "tool_call",
     id: `call_${id}`,
-    name: "bash",
+    name: "shell",
     args: { command },
   });
   block.updateResult({ command, exitCode: 0, stdout }, false);

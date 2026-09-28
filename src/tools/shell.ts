@@ -8,19 +8,19 @@ import { resolveWorkspaceDirectory } from "./workspace-path";
 export const DEFAULT_TIMEOUT_MS = 30_000;
 // Builds and benchmark workloads can legitimately run for minutes, while a ceiling
 // keeps one model-issued command from occupying the foreground indefinitely.
-const MAX_TIMEOUT_MS = 2 * 60 * 1000;
-// Bash owns a deadline just above its ceiling so it can terminate the process group
+const MAX_TIMEOUT_MS = 5 * 60 * 1000;
+// Shell owns a deadline just above its ceiling so it can terminate the process group
 // and report its own timeout result instead of being canceled by ToolRuntime.
 const TOOL_DEADLINE_MS = MAX_TIMEOUT_MS + 1_000;
 const MAX_PARTIAL_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;
 
-type BashOutputSnapshot = {
+type ShellOutputSnapshot = {
   stdout: string;
   stderr: string;
 };
 
-export const bashParameters = strictObject({
+export const shellParameters = strictObject({
   command: Type.String({
     description: "Command to execute.",
   }),
@@ -34,12 +34,12 @@ export const bashParameters = strictObject({
     Type.Integer({
       minimum: 1,
       maximum: MAX_TIMEOUT_MS,
-      description: "Command timeout in milliseconds. Defaults to 30000.",
+      description: "Command timeout in milliseconds. Defaults to 30000; maximum 300000.",
     }),
   ),
 });
 
-export type BashToolResult = {
+export type ShellToolResult = {
   command: string;
   cwd: string;
   exitCode: number | null;
@@ -48,22 +48,22 @@ export type BashToolResult = {
   timedOut: boolean;
 };
 
-export type BashToolOptions = {
+export type ShellToolOptions = {
   root?: string;
   shell?: string;
 };
 
-export function createBashTool(
-  options: BashToolOptions = {},
-): Tool<typeof bashParameters, BashToolResult> {
+export function createShellTool(
+  options: ShellToolOptions = {},
+): Tool<typeof shellParameters, ShellToolResult> {
   const root = path.resolve(options.root ?? process.cwd());
   const shell = resolveShell(options.shell);
 
   return {
-    name: "bash",
+    name: "shell",
     description:
-      "Run a foreground shell command when no purpose-built tool directly covers the operation. Waits for the complete process group and returns stdout, stderr, and exit status.",
-    parameters: bashParameters,
+      "Run a foreground command with the current shell. Waits for the complete process group and returns stdout, stderr, and exit status.",
+    parameters: shellParameters,
     execution: { deadlineMs: TOOL_DEADLINE_MS },
     execute: async (args, context) => {
       if (context.signal?.aborted) {
@@ -82,10 +82,10 @@ export function createBashTool(
       }
 
       const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      const partialEmitter = createBashPartialEmitter((output) => {
-        context.update(createBashPartialResult(command, cwd.relativePath, output));
+      const partialEmitter = createShellPartialEmitter((output) => {
+        context.update(createShellPartialResult(command, cwd.relativePath, output));
       });
-      const output: BashOutputSnapshot = { stdout: "", stderr: "" };
+      const output: ShellOutputSnapshot = { stdout: "", stderr: "" };
       let result: Awaited<ReturnType<typeof runCommandProcess>>;
 
       try {
@@ -111,7 +111,7 @@ export function createBashTool(
 
       // Final output must reach the shared result policy intact so it can be
       // stored as an artifact before model and session views are bounded.
-      const toolResult: BashToolResult = {
+      const toolResult: ShellToolResult = {
         command,
         cwd: cwd.relativePath,
         exitCode: result.exitCode,
@@ -123,7 +123,7 @@ export function createBashTool(
       };
 
       return {
-        content: formatBashContent(toolResult),
+        content: formatShellContent(toolResult),
         result: toolResult,
         isError: result.timedOut || result.status === "unknown",
       };
@@ -142,11 +142,11 @@ function tailPartialOutput(content: string): string {
   return content.slice(-MAX_PARTIAL_OUTPUT_CHARS);
 }
 
-function createBashPartialResult(
+function createShellPartialResult(
   command: string,
   cwd: string,
-  output: BashOutputSnapshot,
-): Partial<BashToolResult> {
+  output: ShellOutputSnapshot,
+): Partial<ShellToolResult> {
   return {
     command,
     cwd,
@@ -155,11 +155,11 @@ function createBashPartialResult(
   };
 }
 
-function createBashPartialEmitter(onOutput: (output: BashOutputSnapshot) => void): {
-  update(output: BashOutputSnapshot): void;
+function createShellPartialEmitter(onOutput: (output: ShellOutputSnapshot) => void): {
+  update(output: ShellOutputSnapshot): void;
   flush(): void;
 } {
-  let latest: BashOutputSnapshot | undefined;
+  let latest: ShellOutputSnapshot | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastEmittedAt = 0;
 
@@ -211,7 +211,7 @@ function createBashPartialEmitter(onOutput: (output: BashOutputSnapshot) => void
   };
 }
 
-function formatBashContent(result: BashToolResult): string {
+function formatShellContent(result: ShellToolResult): string {
   return [
     `command: ${result.command}`,
     `cwd: ${result.cwd}`,

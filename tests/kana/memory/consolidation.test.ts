@@ -122,7 +122,7 @@ describe("memory consolidation agent", () => {
 
       expect(agent.state.toolDeadlineMs).toBe(120_000);
       expect(toolNames).toContain("list_daily_memory");
-      expect(toolNames).not.toContain("bash");
+      expect(toolNames).not.toContain("shell");
       expect(toolNames).not.toContain("remember");
       expect(agent.state.system).toContain("memory for the current workspace only");
       expect(agent.state.system).toContain("most important and most recent information");

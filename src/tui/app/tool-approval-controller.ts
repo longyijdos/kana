@@ -2,7 +2,7 @@ import type { BeforeToolExecutionResult } from "@/agent";
 import type { ToolCallContent } from "@/core";
 import {
   type ConversationAgentIdentity,
-  getBashCommand,
+  getShellCommand,
   type KanaToolApprovalConfig,
   type KanaToolApprovalMode,
   type KanaToolApprovals,
@@ -16,7 +16,7 @@ import type { BottomAreaController } from "./bottom-area-controller";
 export type ToolApprovalControllerOptions = {
   config: KanaToolApprovalConfig;
   approvals: KanaToolApprovals;
-  addTrustedBashCommand: (command: string) => KanaToolApprovals;
+  addTrustedShellCommand: (command: string) => KanaToolApprovals;
   editor: Editor;
   bottomArea: BottomAreaController;
   tui: Tui;
@@ -104,13 +104,13 @@ export class ToolApprovalController {
         continue;
       }
 
-      const bashCommand = getBashCommand(pending.toolCall);
+      const shellCommand = getShellCommand(pending.toolCall);
       const source = this.options.resolveToolSource?.(pending.toolCall);
       pending.component = new ToolApproval(
         pending.toolCall,
         (decision) => this.finish(pending, decision),
         {
-          allowAlways: bashCommand !== undefined,
+          allowAlways: shellCommand !== undefined,
           requesterName: pending.agent.kind === "subagent" ? pending.agent.profileName : "Kana",
           onNeverAsk: () => {
             this.setTemporaryMode("never");
@@ -143,9 +143,9 @@ export class ToolApprovalController {
       if (component) this.options.bottomArea.restore(component, restoreFocus);
     }
 
-    const bashCommand = getBashCommand(pending.toolCall);
-    if (decision === "always" && bashCommand !== undefined) {
-      this.approvals = this.options.addTrustedBashCommand(bashCommand);
+    const shellCommand = getShellCommand(pending.toolCall);
+    if (decision === "always" && shellCommand !== undefined) {
+      this.approvals = this.options.addTrustedShellCommand(shellCommand);
     }
     pending.resolve(
       decision === "yes" || decision === "always"

@@ -54,7 +54,7 @@ describe("notification controller", () => {
     );
 
     controller.handleAgentEvent({ type: "agent_end", reason: "stop", messages: [] });
-    controller.approvalRequired("bash");
+    controller.approvalRequired("shell");
 
     expect(terminal.notifications).toEqual([]);
   });
@@ -63,10 +63,10 @@ describe("notification controller", () => {
     const terminal = new NotificationTerminal();
     const controller = new NotificationController(ENABLED_NOTIFICATION_CONFIG, terminal);
 
-    controller.approvalRequired("bash");
+    controller.approvalRequired("shell");
 
     expect(terminal.notifications).toEqual([
-      { title: "Kana", body: "Approval required for bash.", urgency: "critical" },
+      { title: "Kana", body: "Approval required for shell.", urgency: "critical" },
     ]);
   });
 });

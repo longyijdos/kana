@@ -23,12 +23,15 @@ function sectionsOf(detail: ToolDetail): ToolDetailSection[] {
 }
 
 describe("full-fidelity tool detail", () => {
-  test("keeps a long bash command and cwd complete without summarizing", () => {
+  test("keeps a long shell command and cwd complete without summarizing", () => {
     const detail = buildFullToolDetail(
-      toolCall("bash", { command: LONG_COMMAND, cwd: "deeply/nested/working/directory/for/tests" }),
+      toolCall("shell", {
+        command: LONG_COMMAND,
+        cwd: "deeply/nested/working/directory/for/tests",
+      }),
     );
 
-    expect(detail.title).toBe("Bash");
+    expect(detail.title).toBe("Shell");
     expect(sectionsOf(detail)).toHaveLength(3);
     expect(detail.sections[0]).toEqual({ label: "Command", content: LONG_COMMAND });
     expect(detail.sections[1]).toEqual({
@@ -42,14 +45,14 @@ describe("full-fidelity tool detail", () => {
     expect(formatted).not.toContain("...");
   });
 
-  test("expresses bash working-directory and timeout runtime defaults when omitted", () => {
-    const detail = buildFullToolDetail(toolCall("bash", { command: "bun test" }));
+  test("expresses shell working-directory and timeout runtime defaults when omitted", () => {
+    const detail = buildFullToolDetail(toolCall("shell", { command: "bun test" }));
 
     expect(detail.sections).toContainEqual({ label: "Working directory", content: "." });
     expect(detail.sections).toContainEqual({ label: "Timeout", content: "30000 ms" });
 
     const explicit = buildFullToolDetail(
-      toolCall("bash", { command: "bun test", cwd: "packages/cli", timeoutMs: 60_000 }),
+      toolCall("shell", { command: "bun test", cwd: "packages/cli", timeoutMs: 60_000 }),
     );
     expect(explicit.sections).toContainEqual({
       label: "Working directory",
@@ -291,6 +294,7 @@ describe("full-fidelity tool detail", () => {
     expect(defaults.sections).toContainEqual({ label: "Path", content: "." });
     expect(defaults.sections).toContainEqual({ label: "Include", content: "**/*" });
     expect(defaults.sections).toContainEqual({ label: "Limit", content: "100" });
+    expect(defaults.sections).toContainEqual({ label: "Context", content: "0" });
 
     const overrides = buildFullToolDetail(
       toolCall("grep", {
@@ -299,6 +303,7 @@ describe("full-fidelity tool detail", () => {
         caseSensitive: false,
         includeHidden: true,
         limit: 25,
+        context: 3,
       }),
     );
 
@@ -306,6 +311,7 @@ describe("full-fidelity tool detail", () => {
     expect(overrides.sections).toContainEqual({ label: "Case", content: "insensitive" });
     expect(overrides.sections).toContainEqual({ label: "Hidden entries", content: "included" });
     expect(overrides.sections).toContainEqual({ label: "Limit", content: "25" });
+    expect(overrides.sections).toContainEqual({ label: "Context", content: "3" });
   });
 
   test("expresses list hidden-entry and limit semantics for defaults and overrides", () => {

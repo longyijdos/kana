@@ -65,11 +65,11 @@ Before every model step, the Agent resolves Kana's dynamic environment, Job, tod
 
 Global instructions are `<KANA_HOME>/AGENTS.md`; project instructions are `<cwd>/AGENTS.md`. The product Host loads both once at startup, so direct edits require a restart and Agent rebuilds reuse the same instruction snapshot. Standalone prompt or Agent callers that do not provide a snapshot still load the files directly. The built-in default is one sentence identifying Kana as a concise, practical assistant in the current environment; capability-specific invocation guidance belongs to tool descriptions. When the global file exists, it is appended after that default, then the project file is appended. When the two AGENTS paths resolve to the same file, it is injected only once. Project content has the later, more specific position, but the code does not merge instructions through a priority algorithm; the model still interprets the complete prompt.
 
-The environment block contains the current directory, `process.platform`, a locally time-zone-formatted `YYYY-MM-DD` date, and the time-zone name. It is wrapped in an internal source-tagged runtime-context message:
+The environment block contains the current directory, `process.platform`, a locally time-zone-formatted `YYYY-MM-DD` date, the time-zone name, and `currentShell`, the shell used for command execution (`$SHELL`, falling back to `bash` when unset or blank). It is wrapped in an internal source-tagged runtime-context message:
 
 ```text
 <runtime_context source="environment">
-{"cwd":"/workspace","platform":"darwin","currentDate":"2026-06-22","timezone":"Asia/Shanghai"}
+{"cwd":"/workspace","platform":"darwin","currentDate":"2026-06-22","timezone":"Asia/Shanghai","currentShell":"/bin/zsh"}
 </runtime_context>
 ```
 

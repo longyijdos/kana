@@ -96,7 +96,7 @@ export function serializeKanaSubagentProfileExample(): string {
     "  - list",
     "  - grep",
     "  - read",
-    "  - bash",
+    "  - shell",
     "# model: openai-codex/gpt-5.6-terra",
     "# reasoning_effort: high",
     "---",

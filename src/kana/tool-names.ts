@@ -6,7 +6,7 @@ export const KANA_WORKSPACE_TOOL_NAMES = [
   "view_image",
   "write",
   "edit",
-  "bash",
+  "shell",
 ] as const;
 
 const KANA_BACKGROUND_JOB_TOOL_NAMES = ["job_start", "job_list", "job_output", "job_kill"] as const;

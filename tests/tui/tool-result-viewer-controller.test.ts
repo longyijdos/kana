@@ -53,7 +53,7 @@ describe("tool detail inspector controller", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_running",
-      name: "bash",
+      name: "shell",
       args: { command: "bun test --watch" },
     });
     block.markExecutionStarted();
@@ -74,7 +74,7 @@ describe("tool detail inspector controller", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_canceled",
-      name: "bash",
+      name: "shell",
       args: { command: "bun test" },
     });
     block.markExecutionStarted();
@@ -94,7 +94,7 @@ describe("tool detail inspector controller", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_live",
-      name: "bash",
+      name: "shell",
       args: { command: "bun test" },
     });
     block.markExecutionStarted();
@@ -113,7 +113,7 @@ describe("tool detail inspector controller", () => {
 
   test("navigates previous and next across every tool call", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("alpha", "a output", "echo alpha"));
+    transcript.addChild(createShellBlock("alpha", "a output", "echo alpha"));
     transcript.addChild(
       completedBlock(
         "read",
@@ -132,12 +132,12 @@ describe("tool detail inspector controller", () => {
     expect(viewerLines(tui).join("\n")).toContain("beta.txt");
 
     expect(controller.showPreviousTool()).toBe(true);
-    expect(viewerTitle(tui)).toBe("Bash");
+    expect(viewerTitle(tui)).toBe("Shell");
     expect(viewerLines(tui).join("\n")).toContain("echo alpha");
 
     // Oldest boundary: no wrap-around.
     expect(controller.showPreviousTool()).toBe(false);
-    expect(viewerTitle(tui)).toBe("Bash");
+    expect(viewerTitle(tui)).toBe("Shell");
 
     expect(controller.showNextTool()).toBe(true);
     expect(viewerTitle(tui)).toBe("Read");
@@ -150,8 +150,8 @@ describe("tool detail inspector controller", () => {
 
   test("starts each navigated tool from the top with a fresh viewport", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("alpha", longOutput("alpha", 30)));
-    transcript.addChild(createBashBlock("beta", longOutput("beta", 40)));
+    transcript.addChild(createShellBlock("alpha", longOutput("alpha", 30)));
+    transcript.addChild(createShellBlock("beta", longOutput("beta", 40)));
     const { controller, tui } = createController(transcript);
 
     expect(controller.openLatest()).toBe(true);
@@ -182,7 +182,7 @@ describe("tool detail inspector controller", () => {
 
   test("does not steal focus back from a newer prompt when closing", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("first", longOutput("first")));
+    transcript.addChild(createShellBlock("first", longOutput("first")));
     const { controller, tui, layout } = createController(transcript);
     const prompt = new LinesComponent(["approval prompt"]);
 
@@ -198,7 +198,7 @@ describe("tool detail inspector controller", () => {
 
   test("focuses a waiting prompt after closing the active viewer", () => {
     const transcript = new Transcript();
-    transcript.addChild(createBashBlock("first", longOutput("first")));
+    transcript.addChild(createShellBlock("first", longOutput("first")));
     const prompt = new LinesComponent(["approval prompt"]);
     const editor = new LinesComponent(["editor"]) as unknown as Editor;
     const tui = createTuiStub();
@@ -253,11 +253,11 @@ function viewerLines(tui: Tui & { getFocusedComponent: () => Component | undefin
   return (tui.getFocusedComponent() as ContentViewer).render(80).map(stripAnsi);
 }
 
-function createBashBlock(id: string, stdout: string, command = id): ToolCallBlock {
+function createShellBlock(id: string, stdout: string, command = id): ToolCallBlock {
   const block = new ToolCallBlock({
     type: "tool_call",
     id: `call_${id}`,
-    name: "bash",
+    name: "shell",
     args: {
       command,
     },

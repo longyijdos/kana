@@ -16,12 +16,12 @@ import {
   type ToolApprovalSource,
 } from "./detail";
 import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
-import { formatBashOutput } from "./renderers/bash";
 import { formatEditOutput, hasExpandableEditOutput } from "./renderers/edit";
 import { formatGlobOutput } from "./renderers/glob";
 import { formatGrepOutput } from "./renderers/grep";
 import { formatListOutput } from "./renderers/list";
 import { formatReadOutput } from "./renderers/read";
+import { formatShellOutput } from "./renderers/shell";
 import { formatTodoTarget, renderTodoState } from "./renderers/todo-write";
 import { formatViewImageOutput } from "./renderers/view-image";
 import { formatWriteOutput } from "./renderers/write";
@@ -153,9 +153,9 @@ export function formatToolOutput(
       return formatWriteOutput(sanitizedToolCall, sanitizedResult, detail, width);
     case "edit":
       return formatEditOutput(sanitizedToolCall, sanitizedResult, detail, width);
-    case "bash": {
+    case "shell": {
       // Preserve the old tail-style compact preview ("... N more lines").
-      const output = formatBashOutput(sanitizedResult);
+      const output = formatShellOutput(sanitizedResult);
       return detail === "full"
         ? renderText(output, width, tuiTheme.toolOutput, detail)
         : renderCompactText(output, width, tuiTheme.toolOutput, "tail");
@@ -243,8 +243,8 @@ export function hasExpandableToolOutput(
       );
     }
 
-    case "bash":
-      return hasOmittedContent(formatBashOutput(result), width);
+    case "shell":
+      return hasOmittedContent(formatShellOutput(result), width);
 
     case "edit": {
       return hasExpandableEditOutput(toolCall, width);
@@ -324,7 +324,7 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       return path ?? toolCall.name;
     }
 
-    case "bash": {
+    case "shell": {
       const command =
         getStringProperty(result, "command") ?? getStringProperty(toolCall.args, "command");
 
@@ -492,10 +492,10 @@ function toolText(
         doneTitle: `Ran ${target} ${backgroundMarker}`,
         runningActivity: `running ${target} ${backgroundMarker}`,
       };
-    case "bash":
+    case "shell":
       return {
         action: `run ${target}`,
-        approvalTitle: `Allow ${requesterName} to run bash?`,
+        approvalTitle: `Allow ${requesterName} to run shell?`,
         doneTitle: `Ran ${target}`,
         runningActivity: `running ${target}`,
       };

@@ -56,7 +56,7 @@ describe("Kana config parser", () => {
         'api_key_env = "KANA_DEEPSEEK_KEY"',
         "",
         "[agent]",
-        'tools = ["read", "bash", "job_start"]',
+        'tools = ["read", "shell", "job_start"]',
         "web_search = false",
         "image_input = false",
         "max_turns = 4",
@@ -130,7 +130,7 @@ describe("Kana config parser", () => {
       },
       agent: {
         ...DEFAULT_KANA_CONFIG.agent,
-        tools: ["read", "bash", "job_start"],
+        tools: ["read", "shell", "job_start"],
         webSearch: false,
         imageInput: false,
         maxTurns: 4,
@@ -326,11 +326,11 @@ describe("Kana config parser", () => {
 
     writeFileSync(
       configPath,
-      '[agent]\ntools = ["read", "bash", "job_start", "mcp_list_tools", "mcp_call"]\n',
+      '[agent]\ntools = ["read", "shell", "job_start", "mcp_list_tools", "mcp_call"]\n',
     );
     expect(loadKanaConfig(env).agent.tools).toEqual([
       "read",
-      "bash",
+      "shell",
       "job_start",
       "mcp_list_tools",
       "mcp_call",

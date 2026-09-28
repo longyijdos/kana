@@ -14,6 +14,7 @@ import { AssistantEventStream } from "../../src/core/stream";
 import type { Logger } from "../../src/logging";
 import type { Tool } from "../../src/tools/tool";
 import { deferred } from "../helpers/async-control";
+import { createRecordingLogger, type RecordedLog } from "../helpers/logging";
 import { messageIdentityForTest } from "../helpers/messages";
 
 class TextModel implements Model {
@@ -303,6 +304,37 @@ describe("Agent lifecycle", () => {
       event: "agent.run_started",
       metadata: { agentKind: "conversation", promptMessageCount: 1 },
     });
+    expect(JSON.stringify(records)).not.toContain("secret");
+  });
+
+  test("records a failed tool once", async () => {
+    const records: RecordedLog[] = [];
+    const agent = new Agent({
+      model: new RepeatedToolModel(),
+      tools: [
+        {
+          name: "probe",
+          description: "Fail.",
+          parameters: Type.Object({ path: Type.String() }),
+          execute: () => {
+            throw new TypeError("secret failure");
+          },
+        },
+      ],
+      logger: createRecordingLogger(records),
+    });
+
+    await agent.prompt("secret prompt");
+
+    expect(records.filter((record) => record.event === "tool.execution_failed")).toEqual([
+      {
+        level: "warn",
+        event: "tool.execution_failed",
+        metadata: {
+          toolName: "probe",
+        },
+      },
+    ]);
     expect(JSON.stringify(records)).not.toContain("secret");
   });
 

@@ -13,7 +13,7 @@ tools:
   - list
   - grep
   - read
-  - bash
+  - shell
 model: openai-codex/gpt-5.6-terra
 reasoning_effort: high
 ---
@@ -36,7 +36,7 @@ Host 从 conversation 的已校验 Agent 配置中派生 child 的模型和能�
 - child Agent 永远不会获得 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、Background Job、todo、Goal、memory 或 scheduled-wake 工具；
 - 过大的 child 结果不会转存进 parent-session artifact。
 
-角色卡正文是 child 的完整 system prompt，任务是它的 user message。它的 runtime-context section 列表为空：不会接收 Kana 默认 prompt、环境上下文、AGENTS.md、memory、Skills、Host 实时状态、parent 对话消息或继承 checkpoint。主 Agent 必须通过 `task` 参数提供任务所需的全部事实、约束、路径和预期结果。Child 使用普通审批 hook，因此角色卡不能弱化 `approval.mode` 或 Bash/MCP 审批规则。TUI 按 FIFO 串行处理同时到达的 main/child 审批请求，并用准确的 profile 与短 Agent 身份标记 child 提示。
+角色卡正文是 child 的完整 system prompt，任务是它的 user message。它的 runtime-context section 列表为空：不会接收 Kana 默认 prompt、环境上下文、AGENTS.md、memory、Skills、Host 实时状态、parent 对话消息或继承 checkpoint。主 Agent 必须通过 `task` 参数提供任务所需的全部事实、约束、路径和预期结果。Child 使用普通审批 hook，因此角色卡不能弱化 `approval.mode` 或 Shell/MCP 审批规则。TUI 按 FIFO 串行处理同时到达的 main/child 审批请求，并用准确的 profile 与短 Agent 身份标记 child 提示。
 
 ## 生命周期与工具
 

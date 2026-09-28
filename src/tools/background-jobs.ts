@@ -87,7 +87,7 @@ export function createJobStartTool(
         throw new Error("Command aborted.");
       }
       const job = jobs.start({
-        kind: "bash",
+        kind: "shell",
         label: command,
         cwd: cwd.relativePath,
         run: async ({ signal, write }) => {

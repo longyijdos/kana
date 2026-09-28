@@ -78,8 +78,7 @@ export function createGlobTool(
 
   return {
     name: "glob",
-    description:
-      "Find file and directory paths with a relative glob pattern. Prefer this over bash find for file discovery.",
+    description: "Find file and directory paths with a relative glob pattern.",
     parameters: globParameters,
     execution: {
       concurrency: "parallel",

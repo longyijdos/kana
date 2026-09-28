@@ -269,8 +269,8 @@ export class KanaConversationHost<TConfiguration = never> {
     this.getSkillStore().saveEnabledGlobalNames(names);
   }
 
-  addTrustedBashCommand(command: string): KanaToolApprovals {
-    return this.toolApprovalStore.addTrustedBashCommand(command);
+  addTrustedShellCommand(command: string): KanaToolApprovals {
+    return this.toolApprovalStore.addTrustedShellCommand(command);
   }
 
   disposeSession(

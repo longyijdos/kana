@@ -84,7 +84,7 @@ Tool blocks use schema-owned renderers for built-in tools and a generic represen
 | --- | --- |
 | Identity | One title row |
 | Built-in target | One flattened, horizontally truncated row |
-| Bash | Last 8 source rows |
+| Shell | Last 8 source rows |
 | Write | Up to 7 preview rows, including the byte-count result |
 | Edit | Up to 3 removed and 3 inserted rows, including omission markers |
 | Unknown, Custom, or MCP | First 8 rows of pretty JSON |

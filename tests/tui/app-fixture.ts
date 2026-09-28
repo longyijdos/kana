@@ -43,11 +43,11 @@ export function createTuiAppOptions(): KanaTuiAppOptions {
       config: { mode: "unless_trusted" },
       approvals: {
         version: 2,
-        bash: { exactCommands: [], readOnlyCommands: [] },
+        shell: { exactCommands: [], readOnlyCommands: [] },
       },
-      addTrustedBashCommand: (command) => ({
+      addTrustedShellCommand: (command) => ({
         version: 2,
-        bash: { exactCommands: [command], readOnlyCommands: [] },
+        shell: { exactCommands: [command], readOnlyCommands: [] },
       }),
     },
     ui: {

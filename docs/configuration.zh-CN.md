@@ -83,7 +83,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── mcp.json                # MCP server 定义
 ├── mcp-enabled.json        # 已启用的 MCP server ID
 ├── oauth-tokens.json       # 浏览器授权后创建的 OAuth 凭据
-├── approvals.json          # bash 信任规则
+├── approvals.json          # shell 信任规则
 ├── AGENTS.md               # 可选：全局系统指令，不由 install 创建
 ├── agents/
 │   ├── profile.md.example  # install 生成的 subagent profile 参考；永远不会加载
@@ -103,7 +103,7 @@ ${KANA_HOME:-$HOME/.kana}/
 
 安装和应用写入的配置文件均以 `0600` 模式创建或写入。该权限是文件模式请求；实际效果仍受操作系统和文件系统 umask/权限模型影响。
 
-Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启动进程继承的同名环境变量，并成为 Kana 当前进程环境的一部分。内置 `bash`、`job_start` 工具和 TUI 的 `!` 本地 Shell 会继承这些值，因此该文件中的 secret 对它们执行的命令可见。MCP stdio 子进程仍使用独立的受限环境；需要通过 server 的 `env` 显式传入值或引用 `${VAR_NAME}` 占位符。
+Kana 会在解析 CLI 命令前读取 `<KANA_HOME>/.env`，其中的值覆盖启动进程继承的同名环境变量，并成为 Kana 当前进程环境的一部分。内置 `shell`、`job_start` 工具和 TUI 的 `!` 本地 Shell 会继承这些值，因此该文件中的 secret 对它们执行的命令可见。MCP stdio 子进程仍使用独立的受限环境；需要通过 server 的 `env` 显式传入值或引用 `${VAR_NAME}` 占位符。
 
 ## Prompt templates
 
@@ -132,7 +132,7 @@ then clean up {{branch=the merged branch}} and its related worktree if safe.
 
 ```bash
 kana --set agent.max_turns=50 --set agent.web_search=false
-kana exec --set agent.model.name='"custom"' --set agent.tools='["bash","read"]' inspect
+kana exec --set agent.model.name='"custom"' --set agent.tools='["shell","read"]' inspect
 ```
 
 启动覆盖只初始化内存中的配置快照，不会写入或创建 `config.toml`。之后 `/model` 选择仍按原有语义持久化：只写入本次选择实际改变的字段，其余临时覆盖继续保留在内存中。
@@ -153,7 +153,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","mcp_list_tools","mcp_call"]
+tools = ["list","glob","grep","read","view_image","write","edit","shell","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","mcp_list_tools","mcp_call"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -457,14 +457,14 @@ DEEPSEEK_API_KEY=sk-...
 ```json
 {
   "version": 2,
-  "bash": {
+  "shell": {
     "exactCommands": [],
     "readOnlyCommands": ["ls", "grep", "rg", "cat", "head", "tail", "wc", "pwd", "stat", "file"]
   }
 }
 ```
 
-`exactCommands` 是去掉首尾空白后的完整 bash 命令列表。TUI 中选择“Always allow this command”会把该命令追加到这里。`readOnlyCommands` 只能包含没有空白和 `/` 的可执行文件名；只有简单单命令的首个单词在此列表中时才被自动信任。含有 `;`、`|`、重定向、命令替换、反引号、反斜杠或换行的 bash 命令不会被当作只读。
+`exactCommands` 是去掉首尾空白后的完整 shell 命令列表。TUI 中选择“Always allow this command”会把该命令追加到这里。`readOnlyCommands` 只能包含没有空白和 `/` 的可执行文件名；只有简单单命令的首个单词在此列表中时才被自动信任。含有 `;`、`|`、重定向、命令替换、反引号、反斜杠或换行的 shell 命令不会被当作只读。
 
 Host 在启动时只加载一次审批规则，因此直接编辑要到下次启动才生效。TUI 信任精确命令时，只会把该命令加入 Host 快照；持久化则单独锁定 `approvals.json`、重读最新规则，在不改变两个已有列表的前提下追加命令并原子替换文件。只存在于最新磁盘版本中的规则不会进入当前进程。
 
@@ -473,7 +473,7 @@ Host 在启动时只加载一次审批规则，因此直接编辑要到下次启
 | 模式 | 行为 |
 | --- | --- |
 | `always` | 普通工具调用全部请求审批；所有模式共享的例外见[工具](tools.zh-CN.md)。 |
-| `unless_trusted` | `read`、`list`、`glob`、`grep`、精确受信 bash 命令和受信简单只读 bash 命令跳过审批；其余调用请求审批。 |
+| `unless_trusted` | `read`、`list`、`glob`、`grep`、精确受信 shell 命令和受信简单只读 shell 命令跳过审批；其余调用请求审批。 |
 | `never` | 普通调用跳过审批，包括写入和 Shell；`delegate_user_task` 仍会询问用户。 |
 
 TUI 的 `/approval` 可以临时覆盖当前所选 session 的模式；选择 `Never ask` 需要二次确认。该覆盖不会写入 `config.toml`、session journal 或 `approvals.json`，并在 new、fork、resume 或进程退出时恢复这里配置的模式。

@@ -22,12 +22,12 @@ import {
   createJobOutputTool,
   createJobStartTool,
 } from "../../src/tools/background-jobs";
-import { createBashTool } from "../../src/tools/bash";
 import { createEditTool } from "../../src/tools/edit";
 import { createGlobTool } from "../../src/tools/glob";
 import { createGrepTool } from "../../src/tools/grep";
 import { createListTool } from "../../src/tools/list";
 import { createReadTool } from "../../src/tools/read";
+import { createShellTool } from "../../src/tools/shell";
 import type { Tool } from "../../src/tools/tool";
 import { validateToolArguments } from "../../src/tools/validation";
 import { createViewImageTool } from "../../src/tools/view-image";
@@ -189,7 +189,7 @@ const schemaCases: SchemaCase[] = [
   {
     name: "grep",
     tool: createGrepTool(),
-    valid: { pattern: "commander", path: "src", include: "**/*.ts", literal: true },
+    valid: { pattern: "commander", path: "src", include: "**/*.ts", literal: true, context: 2 },
     invalidArgs: { pattern: "foo", cwd: "src" },
     unexpected: "cwd",
   },
@@ -225,8 +225,8 @@ const schemaCases: SchemaCase[] = [
     unexpected: "replaceAll",
   },
   {
-    name: "bash",
-    tool: createBashTool(),
+    name: "shell",
+    tool: createShellTool(),
     valid: { command: "bun test", cwd: "src", timeoutMs: 1000 },
     invalidArgs: { command: "bun test", background: true },
     unexpected: "background",

@@ -45,6 +45,13 @@ export const grepParameters = strictObject({
       description: "Whether to include dotfiles and files under dot-directories.",
     }),
   ),
+  context: Type.Optional(
+    Type.Integer({
+      minimum: 0,
+      default: 0,
+      description: "Number of lines before and after each match to include.",
+    }),
+  ),
   limit: Type.Optional(
     Type.Integer({
       minimum: 1,
@@ -60,6 +67,8 @@ type GrepToolMatch = {
   line: number;
   column: number;
   text: string;
+  before?: string[];
+  after?: string[];
 };
 
 export type GrepToolResult = {
@@ -89,8 +98,7 @@ export function createGrepTool(
 
   return {
     name: "grep",
-    description:
-      "Search text file contents with a regular expression. Prefer this over bash grep or grep piped to head for content search.",
+    description: "Search text file contents with a regular expression.",
     parameters: grepParameters,
     execution: {
       concurrency: "parallel",
@@ -100,6 +108,7 @@ export function createGrepTool(
       const pattern = args.pattern.trim();
       const literal = args.literal ?? false;
       const caseSensitive = args.caseSensitive ?? true;
+      const contextLines = args.context ?? 0;
       const limit = clampLimit(args.limit ?? DEFAULT_GREP_LIMIT, MAX_GREP_LIMIT);
       const includeHidden = args.includeHidden ?? false;
       const include = target.type === "directory" ? readRelativeGlob(args.include) : undefined;
@@ -124,7 +133,7 @@ export function createGrepTool(
 
         filesSearched += 1;
 
-        for (const match of searchFile(file.relativePath, content, matcher)) {
+        for (const match of searchFile(file.relativePath, content, matcher, contextLines)) {
           matches.push(match);
 
           if (matches.length > limit) {
@@ -236,23 +245,33 @@ function createMatcher(
   }
 }
 
-function searchFile(relativePath: string, content: string, matcher: RegExp): GrepToolMatch[] {
-  return splitLines(content).flatMap((line, index) => {
+function* searchFile(
+  relativePath: string,
+  content: string,
+  matcher: RegExp,
+  context: number,
+): Generator<GrepToolMatch> {
+  const lines = splitLines(content);
+  for (const [index, line] of lines.entries()) {
     const match = matcher.exec(line);
 
     if (!match) {
-      return [];
+      continue;
     }
 
-    return [
-      {
-        path: relativePath,
-        line: index + 1,
-        column: match.index + 1,
-        text: line,
-      },
-    ];
-  });
+    yield {
+      path: relativePath,
+      line: index + 1,
+      column: match.index + 1,
+      text: line,
+      ...(context > 0
+        ? {
+            before: lines.slice(Math.max(0, index - context), index),
+            after: lines.slice(index + 1, index + 1 + context),
+          }
+        : {}),
+    };
+  }
 }
 
 function splitLines(content: string): string[] {
@@ -300,7 +319,16 @@ function formatGrepContent(result: GrepToolResult): string {
     `filesSearched: ${result.filesSearched}`,
     `truncated: ${result.truncated}`,
     "",
-    ...result.matches.map((match) => `${match.path}:${match.line}:${match.column}:${match.text}`),
+    ...result.matches.flatMap((match) => [
+      ...(match.before ?? []).map(
+        (text, index) =>
+          `${match.path}-${match.line - (match.before?.length ?? 0) + index}-${text}`,
+      ),
+      `${match.path}:${match.line}:${match.column}:${match.text}`,
+      ...(match.after ?? []).map(
+        (text, index) => `${match.path}-${match.line + index + 1}-${text}`,
+      ),
+    ]),
   ]
     .filter((line): line is string => line !== undefined)
     .join("\n");

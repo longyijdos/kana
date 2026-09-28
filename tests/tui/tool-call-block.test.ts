@@ -32,7 +32,7 @@ describe("tool call block", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_artifact",
-      name: "bash",
+      name: "shell",
       args: { command: "generate lots of output" },
     });
     const locator = "/tmp/kana-artifacts/session/large-output.txt";
@@ -210,7 +210,7 @@ describe("tool call block", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
-      name: "bash",
+      name: "shell",
       args: {
         command: "bun test",
       },
@@ -236,7 +236,7 @@ describe("tool call block", () => {
     const first = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
-      name: "bash",
+      name: "shell",
       args: {
         command: "first",
       },
@@ -244,7 +244,7 @@ describe("tool call block", () => {
     const second = new ToolCallBlock({
       type: "tool_call",
       id: "call_2",
-      name: "bash",
+      name: "shell",
       args: {
         command: "second",
       },

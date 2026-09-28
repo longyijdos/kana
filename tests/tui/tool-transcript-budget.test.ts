@@ -9,12 +9,12 @@ const WIDTH = 80;
 const MAX_TOOL_ROWS = 11;
 
 describe("compact tool transcript bounds", () => {
-  test("keeps a very long Bash target bounded without mutating canonical arguments", () => {
+  test("keeps a very long Shell target bounded without mutating canonical arguments", () => {
     const command = `python -c '${"print(1);".repeat(20_000)}' > result.json`;
     const toolCall: ToolCallContent = {
       type: "tool_call",
-      id: "long-bash-target",
-      name: "bash",
+      id: "long-shell-target",
+      name: "shell",
       args: { command },
     };
     const block = new ToolCallBlock(toolCall);
@@ -36,10 +36,10 @@ describe("compact tool transcript bounds", () => {
     expect(completed.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
   });
 
-  test("bounds a one-line multi-megabyte Bash stdout while the full result view keeps it complete", () => {
+  test("bounds a one-line multi-megabyte Shell stdout while the full result view keeps it complete", () => {
     const stdout = "x".repeat(2 * 1_024 * 1_024);
     const block = completedBlock(
-      "bash",
+      "shell",
       { command: "generate" },
       { command: "generate", exitCode: 0, stdout },
     );
@@ -54,10 +54,10 @@ describe("compact tool transcript bounds", () => {
     expect(full).toContain(stdout);
   }, 20_000);
 
-  test("marks omitted multi-line Bash output with an explicit old-style indicator", () => {
+  test("marks omitted multi-line Shell output with an explicit old-style indicator", () => {
     const stdout = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
     const block = completedBlock(
-      "bash",
+      "shell",
       { command: "count" },
       { command: "count", exitCode: 0, stdout },
     );
@@ -285,7 +285,7 @@ describe("compact tool transcript bounds", () => {
   test("keeps target rows for built-in tools", () => {
     const cases = [
       {
-        name: "bash",
+        name: "shell",
         args: { command: "npm test" },
         result: { command: "npm test", exitCode: 0, stdout: "" },
         target: "npm test",

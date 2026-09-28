@@ -6,7 +6,7 @@ import { Type } from "typebox";
 
 import type { Message } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
-import { createBashTool, createGrepTool, createReadTool, type Tool } from "@/tools";
+import { createGrepTool, createReadTool, createShellTool, type Tool } from "@/tools";
 import { ToolRuntime } from "../../../src/agent/tool-runtime";
 import {
   createKanaToolResultArtifactPolicy,
@@ -40,7 +40,7 @@ describe("Kana tool-result artifacts", () => {
       toolCall: {
         type: "tool_call",
         id: "call-1",
-        name: "bash",
+        name: "shell",
         args: { path: "../../unsafe output.log" },
       },
       content,
@@ -90,20 +90,20 @@ describe("Kana tool-result artifacts", () => {
     expect(statSync(artifact.locator).mode & 0o777).toBe(0o600);
   });
 
-  test("stores complete bash output after live updates have been bounded", async () => {
+  test("stores complete shell output after live updates have been bounded", async () => {
     const kanaHome = createTempDirectory();
     const cwd = path.join(kanaHome, "workspace");
     mkdirSync(cwd);
     const store = createPersistentKanaSessionArtifactStore({
-      sessionId: "session-bash",
+      sessionId: "session-shell",
       cwd,
       env: { KANA_HOME: kanaHome },
     });
-    const bash = createBashTool({ root: cwd });
+    const shell = createShellTool({ root: cwd });
     let liveResult: unknown;
     const runtime = new ToolRuntime(
       {
-        tools: [bash],
+        tools: [shell],
         toolContentByteLimit: 1_024,
         toolResultPolicy: createKanaToolResultArtifactPolicy({ store }),
       },
@@ -117,8 +117,8 @@ describe("Kana tool-result artifacts", () => {
     const result = await runtime.execute([
       {
         type: "tool_call",
-        id: "call-bash",
-        name: "bash",
+        id: "call-shell",
+        name: "shell",
         args: { command: `awk 'BEGIN { for (i = 0; i < 25000; i++) printf "x" }'` },
       },
     ]);
@@ -133,7 +133,7 @@ describe("Kana tool-result artifacts", () => {
     expect(toolResult?.artifact).toBeDefined();
     const locator = toolResult?.artifact?.locator;
     if (!locator) {
-      throw new Error("Expected complete bash output to be stored as an artifact.");
+      throw new Error("Expected complete shell output to be stored as an artifact.");
     }
     const stored = readFileSync(locator, "utf8");
     expect(stored).toContain("x".repeat(25_000));
@@ -180,7 +180,7 @@ describe("Kana tool-result artifacts", () => {
     });
 
     const result = await policy.finalize({
-      toolCall: { type: "tool_call", id: "call-1", name: "bash", args: {} },
+      toolCall: { type: "tool_call", id: "call-1", name: "shell", args: {} },
       content: "secret content".repeat(100),
       isError: false,
       resultByteLength: 2_000,
@@ -192,7 +192,7 @@ describe("Kana tool-result artifacts", () => {
       {
         event: "tool.result_artifact_save_failed",
         metadata: {
-          toolName: "bash",
+          toolName: "shell",
           phase: "write",
           errorType: "Error",
           errorCode: "ENOSPC",
@@ -276,7 +276,7 @@ describe("Kana tool-result artifacts", () => {
     const content = "unspilled output".repeat(100);
 
     const result = await policy.finalize({
-      toolCall: { type: "tool_call", id: "call-1", name: "bash", args: {} },
+      toolCall: { type: "tool_call", id: "call-1", name: "shell", args: {} },
       content,
       isError: false,
       resultByteLength: 2_000,

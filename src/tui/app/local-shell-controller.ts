@@ -1,5 +1,5 @@
 import { createNoopLogger, type Logger } from "@/logging";
-import { createBashTool, normalizeToolResult } from "@/tools";
+import { createShellTool, normalizeToolResult } from "@/tools";
 import { type Editor, type StatusLineState, ToolCallBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
 import type { RunPhase } from "./status-phase";
@@ -40,11 +40,11 @@ export class LocalShellController {
     }
 
     const abortController = new AbortController();
-    const tool = createBashTool({ root: process.cwd() });
+    const tool = createShellTool({ root: process.cwd() });
     const toolCall = {
       type: "tool_call",
       id: `local_shell_${++this.runId}`,
-      name: "bash",
+      name: "shell",
       args: {
         command: shellCommand,
       },
@@ -56,7 +56,7 @@ export class LocalShellController {
     this.abortController = abortController;
     this.options.onRunStart();
     this.options.updateStatus("tool", {
-      activeTool: "bash",
+      activeTool: "shell",
     });
     this.options.tui.requestRender();
     logger.debug("local_shell.started");

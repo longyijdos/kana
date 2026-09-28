@@ -241,7 +241,7 @@ describe("tool call rendering", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
-      name: "bash",
+      name: "shell",
       args: {
         command: "printf unsafe",
       },
@@ -269,12 +269,12 @@ describe("tool call rendering", () => {
     expect(full).not.toContain("\x1b[3J");
   });
 
-  test("sanitizes terminal control sequences in a bash command target row", () => {
+  test("sanitizes terminal control sequences in a shell command target row", () => {
     const command = `echo safe\u001b[31mred\u001b[0m\u001b]0;owned\u0007tail`;
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
-      name: "bash",
+      name: "shell",
       args: { command },
     });
     block.updateResult({ command, exitCode: 0, stdout: "ok" }, false);
@@ -367,11 +367,11 @@ describe("tool call rendering", () => {
     expect(rendered.every((line) => visibleWidth(line) <= 80)).toBe(true);
   });
 
-  test("renders non-zero bash output as a completed command without structured result metadata", () => {
+  test("renders non-zero shell output as a completed command without structured result metadata", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
-      name: "bash",
+      name: "shell",
       args: {
         command: "printf before; printf failure >&2; false",
       },
@@ -555,11 +555,11 @@ describe("tool call rendering", () => {
     ).toBe(true);
   });
 
-  test("keeps failed multiline bash command titles on one flattened target row", () => {
+  test("keeps failed multiline shell command titles on one flattened target row", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
       id: "call_1",
-      name: "bash",
+      name: "shell",
       args: {
         command: 'git commit -m "feat: add something\n\nCo-authored-by: Name <email@example.com>"',
       },
