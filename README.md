@@ -166,7 +166,7 @@ bun install --frozen-lockfile
 
 Kana respects your local environment while keeping its boundaries transparent:
 
-- **Approvals are not a sandbox**: Built-in tools and `bash` execute directly in your host environment. File tools can inspect paths outside the workspace, and shell commands run with your user privileges; never skip approvals in untrusted codebases.
+- **Approvals are not a sandbox**: Built-in tools and `shell` execute directly in your host environment. File tools can inspect paths outside the workspace, and shell commands run with your user privileges; never skip approvals in untrusted codebases.
 - **Pre-execution MCP trust**: Stdio MCP servers spawn as local subprocesses before individual tool approvals; configure only trusted server binaries.
 - **Local sensitive data**: Configurations, credentials, logs, and sessions live under `~/.kana/` (configurable via `KANA_HOME`) with restricted permissions. Sessions contain full execution history and should be treated as private data.
 

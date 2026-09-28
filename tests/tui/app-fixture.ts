@@ -42,12 +42,12 @@ export function createTuiAppOptions(): KanaTuiAppOptions {
     toolApproval: {
       config: { mode: "unless_trusted" },
       approvals: {
-        version: 2,
-        bash: { exactCommands: [], readOnlyCommands: [] },
+        version: 3,
+        shell: { exactCommands: [], readOnlyCommands: [] },
       },
-      addTrustedBashCommand: (command) => ({
-        version: 2,
-        bash: { exactCommands: [command], readOnlyCommands: [] },
+      addTrustedShellCommand: (command) => ({
+        version: 3,
+        shell: { exactCommands: [command], readOnlyCommands: [] },
       }),
     },
     ui: {

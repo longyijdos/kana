@@ -270,7 +270,7 @@ export const PROMPT_SHORTCUTS: PromptShortcut[] = [
   },
   {
     input: "!<command>",
-    description: "Run a local bash command.",
+    description: "Run a local shell command.",
   },
 ];
 

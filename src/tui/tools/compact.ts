@@ -1,7 +1,7 @@
 import { type Color, color, splitLines, tailLines, truncateToWidth, visibleWidth } from "../render";
 
 /** Shared preview budgets keep compact tool-block height independent of terminal width. */
-// Default preview budget for bash and generic/MCP/primitive results.
+// Default preview budget for shell and generic/MCP/primitive results.
 const COMPACT_OUTPUT_LINE_LIMIT = 8;
 // Write reserves one row for the `N bytes` result line, so its content
 // budget is one row smaller than the shared output limit.

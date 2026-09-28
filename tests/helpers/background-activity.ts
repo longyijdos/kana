@@ -54,7 +54,7 @@ export function jobSummary(
 ): BackgroundJobSummary {
   return {
     id,
-    kind: "bash",
+    kind: "shell",
     label,
     status,
     startedAt: new Date(Date.UTC(2026, 8, 13, 10, 0, 0)),

@@ -61,7 +61,7 @@ hook 返回 `return` 时提供正常 `ToolResult`，跳过 `execute` 及其 dead
 
 每个并行组使用有界滚动池。调用按模型顺序 claim 并串行进入审批，同时运行的调用 body 不超过 `maxParallelToolCalls`。Start、update 和 end event 都按 `toolCallId` 关联并遵循物理时间，因此后面的快速调用可能先显示完成。独立 result slot 会等待模型顺序后才写入 journal 并进入下一请求，保证 replay 确定性。
 
-有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 与 Kana 的 `agent.tool_deadline_ms` 均默认 300000 ms；`bash` 自行声明 121000 ms deadline，使其两分钟的 command ceiling 仍通过 bash 自身的超时处理结束。`bash.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
+有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 与 Kana 的 `agent.tool_deadline_ms` 均默认 300000 ms；`shell` 自行声明 301000 ms deadline，使其五分钟的 command ceiling 仍通过 shell 自身的超时处理结束。`shell.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
 
 Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补充并中止活动 sibling signal。尚未启动的调用获得 canceled 结果；已启动调用获得有限取消宽限期。宽限期内结束会成为 `canceled` 或 `timed_out`，之后迟到的 return 不能覆盖该结果。
 
@@ -93,12 +93,12 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 | --- | --- | --- |
 | `list` | 可选 `path`、`includeHidden`、`limit` | 列出目录一层内容，提供稳定排序与截断 metadata。 |
 | `glob` | `pattern`；可选 `cwd`、type/depth/hidden/limit filter | 用相对 glob pattern 查找路径；拒绝绝对 pattern 和 `..` 段。 |
-| `grep` | `pattern`；可选 path/include/literal/case/hidden/limit | 用 JavaScript 正则或字面量搜索 UTF-8 文本并返回匹配位置。 |
+| `grep` | `pattern`；可选 path/include/literal/case/hidden/context/limit | 用 JavaScript 正则或字面量搜索 UTF-8 文本并返回匹配位置。 |
 | `read` | `path`；可选从 1 开始的 `offset` 与 `limit` | 读取 UTF-8 行区间并报告总行数与截断。 |
 | `view_image` | `path` | 规范化本地图片并返回 metadata 与视觉观察；只在有效图片输入启用时注册。 |
 | `write` | `path`、完整 `content`、可选 `overwrite` | 创建父目录，默认排他创建文件；显式 overwrite 才替换。 |
 | `edit` | `path`、由 `oldText`/`newText` 对组成的非空 `edits` 数组 | 原子应用精确且互不重叠的 UTF-8 替换。 |
-| `bash` | `command`；可选 `cwd`、`timeoutMs` | 通过用户 shell 执行，stdin 断开并使用受管进程组。 |
+| `shell` | `command`；可选 `cwd`、`timeoutMs` | 通过用户 shell 执行，stdin 断开并使用受管进程组。 |
 | `job_start` | `command`；可选 `cwd`、`timeoutMs` | 启动 session-owned 后台 shell 命令，立即返回 Job ID 与启动状态。 |
 | `job_list` | 无 | 列出当前 session 活动 Job 与最多 32 个近期终态 Job，并确认列出的终态完成。 |
 | `job_output` | `jobId`、可选 `waitMs` | 从 Agent cursor 消费全部当前未读保留输出，并报告丢弃字节数。 |
@@ -116,19 +116,21 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 ## 文件与 Shell 边界
 
-文件工具和 `bash` 把相对路径解析到配置 root；Kana 将其设为启动工作目录。它们也接受绝对路径。path 参数开头的 `~` 或 `~/` 会展开为用户的 home 目录，因此 `~/notes.md` 不会再变成 root 内的字面量 `~` 目录；出现在首段之后的 `~` 仍保持字面量，而 `glob.pattern` 与 `grep.include` 是相对 glob 而非路径。这是路径规范化，不是 workspace sandbox：相对路径可以离开 root，符号链接可能解析到外部，`bash.cwd`、`glob.cwd` 与 `grep.path` 也可以指定外部位置。
+文件工具和 `shell` 把相对路径解析到配置 root；Kana 将其设为启动工作目录。它们也接受绝对路径。path 参数开头的 `~` 或 `~/` 会展开为用户的 home 目录，因此 `~/notes.md` 不会再变成 root 内的字面量 `~` 目录；出现在首段之后的 `~` 仍保持字面量，而 `glob.pattern` 与 `grep.include` 是相对 glob 而非路径。这是路径规范化，不是 workspace sandbox：相对路径可以离开 root，符号链接可能解析到外部，`shell.cwd`、`glob.cwd` 与 `grep.path` 也可以指定外部位置。
+
+`grep.context` 是非负整数，默认 0，无上限。每条匹配独立输出前后指定行数，文件边界处截断，重叠上下文不合并。匹配行保留 `path:line:column:text`，上下文行为 `path-line-text`；`limit` 只计算匹配行，通用结果大小限制仍然适用。
 
 `edit` 会在同一份原始文件内容上分别对每个 `edits[].oldText` 做一次精确唯一匹配。文本缺失、匹配不唯一或替换区间重叠时，整次调用都会在不写文件的情况下失败；否则全部替换通过一次写入提交。
 
 `view_image` 与用户附件共用 decoder 和大小限制。支持的 JPEG、PNG 与 WebP 保持 provider-ready；其它解码格式变成静态 PNG，动画输入使用解码后的首帧。
 
-`bash` 断开 stdin，并把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入。前台调用默认 command timeout 为 30000 ms，最大接受 120000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整最终 stream 仍进入通用结果策略。
+`shell` 接受文件名为 `sh`、`bash` 或 `zsh` 的可执行程序名称或路径。`$SHELL` 在支持范围内时使用它，否则回退到 `bash`。这些 shell 支持注入的函数语法，用于把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入；stdin 断开。前台调用默认 command timeout 为 30000 ms，最大接受 300000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整最终 stream 仍进入通用结果策略。
 
 每条命令在独立进程组中运行。前台执行等待整个进程组，而不只是顶层 shell，因此裸 `command &` 不会逃过正常取消或 timeout；显式 daemonize 到另一个 process session 仍可能离开该边界。非 0 exit code 是已完成命令结果，不是工具基础设施错误；timeout 使用 `null` exit code 与 `isError: true`。
 
 ## 后台 Jobs
 
-`job_start` 在 `BackgroundJobManager` 下启动同一 Bash 执行，立即返回 session-owned Job ID，并且默认没有 command timeout。需要工作跨越一次工具调用时应使用它；裸 shell 后台语法不提供相同的 owner 与清理语义。
+`job_start` 在 `BackgroundJobManager` 下启动同一 Shell 执行，立即返回 session-owned Job ID，并且默认没有 command timeout。需要工作跨越一次工具调用时应使用它；裸 shell 后台语法不提供相同的 owner 与清理语义。
 
 通用 manager 不依赖 Kana Agent 构造。Owner 把 Job 绑定到一个 session 实例，执行并发上限，并在 dispose 时停止全部所属进程组。每个 Job 在内存中最多保留最新 1 MiB stdout/stderr。Metadata 只保存空白规范化且不超过 512 UTF-8 字节的命令 label；原始命令仍在 tool call 中。
 
@@ -146,7 +148,7 @@ Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal` 或 `mcp_list_tools` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Bash 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Bash allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal` 或 `mcp_list_tools` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Shell allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 

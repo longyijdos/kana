@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { BackgroundJobOutputStream, BackgroundJobTerminalStatus } from "@/jobs";
 
 const PROCESS_GROUP_POLL_MS = 25;
@@ -11,7 +12,7 @@ export const NON_INTERACTIVE_COMMAND_PREFIX = 'sudo() { command sudo -n "$@"; }\
 
 export function resolveShell(shell: string | undefined): string {
   const value = shell ?? process.env.SHELL;
-  return value?.trim() ? value : "bash";
+  return value && ["sh", "bash", "zsh"].includes(path.basename(value)) ? value : "bash";
 }
 
 export type CommandProcessResult = {

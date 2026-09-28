@@ -83,7 +83,7 @@ ${KANA_HOME:-$HOME/.kana}/
 ├── mcp.json                # MCP server definitions
 ├── mcp-enabled.json        # Enabled MCP server IDs
 ├── oauth-tokens.json       # OAuth credentials created after browser authorization
-├── approvals.json          # bash trust rules
+├── approvals.json          # shell trust rules
 ├── AGENTS.md               # Optional global system instructions; not created by install
 ├── agents/
 │   ├── profile.md.example  # Install-generated subagent profile reference; never loaded
@@ -103,7 +103,7 @@ ${KANA_HOME:-$HOME/.kana}/
 
 Files written by installation and the application are created or written with mode `0600`. This is the requested file mode; its effective result remains subject to the operating system, filesystem, and umask.
 
-Kana reads `<KANA_HOME>/.env` before parsing CLI commands. Its values override matching variables inherited by the startup process and become part of Kana's current process environment. The built-in `bash` and `job_start` tools and the TUI's `!` local Shell inherit these values, so commands they run can access secrets stored in this file. MCP stdio children continue to use a separate restricted environment; pass values explicitly through the server's `env` or reference `${VAR_NAME}` placeholders there.
+Kana reads `<KANA_HOME>/.env` before parsing CLI commands. Its values override matching variables inherited by the startup process and become part of Kana's current process environment. The built-in `shell` and `job_start` tools and the TUI's `!` local Shell inherit these values, so commands they run can access secrets stored in this file. MCP stdio children continue to use a separate restricted environment; pass values explicitly through the server's `env` or reference `${VAR_NAME}` placeholders there.
 
 ## Prompt templates
 
@@ -132,7 +132,7 @@ Repeatable `--set <path=value>` overrides the startup configuration for the curr
 
 ```bash
 kana --set agent.max_turns=50 --set agent.web_search=false
-kana exec --set agent.model.name='"custom"' --set agent.tools='["bash","read"]' inspect
+kana exec --set agent.model.name='"custom"' --set agent.tools='["shell","read"]' inspect
 ```
 
 Startup overrides initialize only the in-memory configuration snapshot and never write or create `config.toml`. Later `/model` selections retain their normal persistence behavior: only fields changed by that selection are written, while other temporary overrides remain in memory.
@@ -153,7 +153,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","bash","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","mcp_list_tools","mcp_call"]
+tools = ["list","glob","grep","read","view_image","write","edit","shell","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","mcp_list_tools","mcp_call"]
 web_search = true
 image_input = true
 max_turns = -1
@@ -452,19 +452,21 @@ The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Normal startup loads it and t
 
 ## Approval file: `approvals.json`
 
+Only version 3 is accepted. Unsupported versions fail with `approvals.version must be 3.` and are not automatically migrated.
+
 The default file is:
 
 ```json
 {
-  "version": 2,
-  "bash": {
+  "version": 3,
+  "shell": {
     "exactCommands": [],
     "readOnlyCommands": ["ls", "grep", "rg", "cat", "head", "tail", "wc", "pwd", "stat", "file"]
   }
 }
 ```
 
-`exactCommands` holds complete bash commands after trimming surrounding whitespace. Choosing “Always allow this command” in the TUI appends that command. `readOnlyCommands` can contain only executable names without whitespace or `/`; a command is automatically trusted only when its first word is one of these names and it is a single simple command. Bash commands with `;`, `|`, redirection, command substitution, backticks, backslashes, or newlines are never treated as read-only.
+`exactCommands` holds complete shell commands after trimming surrounding whitespace. Choosing “Always allow this command” in the TUI appends that command. `readOnlyCommands` can contain only executable names without whitespace or `/`; a command is automatically trusted only when its first word is one of these names and it is a single simple command. Shell commands with `;`, `|`, redirection, command substitution, backticks, backslashes, or newlines are never treated as read-only.
 
 The Host loads approval rules once at startup. Direct edits therefore apply on the next launch. When the TUI trusts an exact command, it adds only that command to the Host snapshot. Persistence separately locks `approvals.json`, rereads the latest rules, appends the command without changing either existing list, and atomically replaces the file. Rules found only in that latest disk version do not enter the running process.
 
@@ -473,7 +475,7 @@ Approval modes behave as follows:
 | Mode | Behavior |
 | --- | --- |
 | `always` | Requests approval for every ordinary tool call; the exceptions shared by all modes are listed in [Tools](tools.md). |
-| `unless_trusted` | Skips approval for `read`, `list`, `glob`, `grep`, exact trusted bash commands, and trusted simple read-only bash commands; asks for everything else. |
+| `unless_trusted` | Skips approval for `read`, `list`, `glob`, `grep`, exact trusted shell commands, and trusted simple read-only shell commands; asks for everything else. |
 | `never` | Skips approval for ordinary calls, including writes and shell commands; `delegate_user_task` still asks the user. |
 
 The TUI's `/approval` command can temporarily override the mode for the currently selected session; selecting `Never ask` requires confirmation. The override does not write `config.toml`, the session journal, or `approvals.json`, and new, fork, resume, or process exit restores the configured mode above.

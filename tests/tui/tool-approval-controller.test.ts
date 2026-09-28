@@ -25,8 +25,8 @@ describe("tool approval controller", () => {
     const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
     const controller = new ToolApprovalController({
       config: { mode: "never" },
-      approvals: { version: 2, bash: { exactCommands: [], readOnlyCommands: [] } },
-      addTrustedBashCommand: createTrustedCommandAdder(),
+      approvals: { version: 3, shell: { exactCommands: [], readOnlyCommands: [] } },
+      addTrustedShellCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -68,10 +68,10 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "unless_trusted" },
       approvals: {
-        version: 2,
-        bash: { exactCommands: [], readOnlyCommands: [] },
+        version: 3,
+        shell: { exactCommands: [], readOnlyCommands: [] },
       },
-      addTrustedBashCommand: createTrustedCommandAdder(),
+      addTrustedShellCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -118,13 +118,13 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "always" },
       approvals: {
-        version: 2,
-        bash: {
+        version: 3,
+        shell: {
           exactCommands: [],
           readOnlyCommands: [],
         },
       },
-      addTrustedBashCommand: createTrustedCommandAdder(),
+      addTrustedShellCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -138,8 +138,8 @@ describe("tool approval controller", () => {
 
     expect(tui.getFocus()).toBe(controller.activePrompt);
     expect(controller.activePrompt).toBeDefined();
-    expect(shownTools).toEqual(["bash"]);
-    expect(layout.render(80).join("\n")).toContain("Allow Kana to run bash?");
+    expect(shownTools).toEqual(["shell"]);
+    expect(layout.render(80).join("\n")).toContain("Allow Kana to run shell?");
     expect(layout.render(80)).not.toContain("editor");
 
     controller.activePrompt?.handleInput?.("\r");
@@ -160,13 +160,13 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "always" },
       approvals: {
-        version: 2,
-        bash: {
+        version: 3,
+        shell: {
           exactCommands: [],
           readOnlyCommands: [],
         },
       },
-      addTrustedBashCommand: createTrustedCommandAdder(),
+      addTrustedShellCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -187,14 +187,14 @@ describe("tool approval controller", () => {
     const result = controller.request(createToolCall(), undefined);
 
     expect(controller.activePrompt).toBeDefined();
-    expect(shownTools).toEqual(["bash"]);
+    expect(shownTools).toEqual(["shell"]);
     expect(layout.render(80).join("\n")).toContain("tool result viewer");
-    expect(layout.render(80).join("\n")).not.toContain("Allow Kana to run bash?");
+    expect(layout.render(80).join("\n")).not.toContain("Allow Kana to run shell?");
 
     viewer.close();
 
     expect(tui.getFocus()).toBe(controller.activePrompt);
-    expect(layout.render(80).join("\n")).toContain("Allow Kana to run bash?");
+    expect(layout.render(80).join("\n")).toContain("Allow Kana to run shell?");
 
     controller.activePrompt?.handleInput?.("\r");
     await expect(result).resolves.toEqual({ type: "continue" });
@@ -212,10 +212,10 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "unless_trusted" },
       approvals: {
-        version: 2,
-        bash: { exactCommands: [], readOnlyCommands: [] },
+        version: 3,
+        shell: { exactCommands: [], readOnlyCommands: [] },
       },
-      addTrustedBashCommand: createTrustedCommandAdder(),
+      addTrustedShellCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -267,10 +267,10 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "always" },
       approvals: {
-        version: 2,
-        bash: { exactCommands: [], readOnlyCommands: [] },
+        version: 3,
+        shell: { exactCommands: [], readOnlyCommands: [] },
       },
-      addTrustedBashCommand: createTrustedCommandAdder(),
+      addTrustedShellCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
       tui,
@@ -291,12 +291,12 @@ describe("tool approval controller", () => {
       profileName: "worker",
     });
 
-    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Allow explorer to run bash?");
-    expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("Allow worker to run bash?");
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Allow explorer to run shell?");
+    expect(stripAnsi(layout.render(80).join("\n"))).not.toContain("Allow worker to run shell?");
     controller.activePrompt?.handleInput?.("\r");
     await expect(first).resolves.toEqual({ type: "continue" });
 
-    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Allow worker to run bash?");
+    expect(stripAnsi(layout.render(80).join("\n"))).toContain("Allow worker to run shell?");
     controller.activePrompt?.handleInput?.("\r");
     await expect(second).resolves.toEqual({ type: "continue" });
     expect(tui.getFocus()).toBe(editor);
@@ -310,8 +310,8 @@ describe("tool approval controller", () => {
     const savedCommands: string[] = [];
     const controller = new ToolApprovalController({
       config: { mode: "always" },
-      approvals: { version: 2, bash: { exactCommands: [], readOnlyCommands: [] } },
-      addTrustedBashCommand: (command) => {
+      approvals: { version: 3, shell: { exactCommands: [], readOnlyCommands: [] } },
+      addTrustedShellCommand: (command) => {
         savedCommands.push(command);
         return createTrustedCommandAdder()(command);
       },
@@ -364,14 +364,14 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "unless_trusted" },
       approvals: {
-        version: 2,
-        bash: { exactCommands: [], readOnlyCommands: [] },
+        version: 3,
+        shell: { exactCommands: [], readOnlyCommands: [] },
       },
-      addTrustedBashCommand: (command) => {
+      addTrustedShellCommand: (command) => {
         savedCommands.push(command);
         return {
-          version: 2,
-          bash: { exactCommands: [...savedCommands], readOnlyCommands: [] },
+          version: 3,
+          shell: { exactCommands: [...savedCommands], readOnlyCommands: [] },
         };
       },
       editor,
@@ -396,8 +396,8 @@ describe("tool approval controller", () => {
 
 function createTrustedCommandAdder() {
   return (command: string) => ({
-    version: 2 as const,
-    bash: { exactCommands: [command], readOnlyCommands: [] },
+    version: 3 as const,
+    shell: { exactCommands: [command], readOnlyCommands: [] },
   });
 }
 
@@ -405,7 +405,7 @@ function createToolCall(id = "call_1") {
   return {
     type: "tool_call" as const,
     id,
-    name: "bash",
+    name: "shell",
     args: {
       command: "rm notes.txt",
     },

@@ -312,7 +312,7 @@ describe("Kana conversation host", () => {
       createAgent: (_config, options = {}) => {
         if (options.artifactStore) {
           const artifactStore = options.artifactStore;
-          saveArtifact = () => artifactStore.saveText("temporary output", "bash");
+          saveArtifact = () => artifactStore.saveText("temporary output", "shell");
         }
         return new Agent({
           model: new MockModel({ provider: "mock", model: "mock" }),

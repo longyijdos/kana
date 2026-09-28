@@ -1,8 +1,11 @@
+import { resolveShell } from "@/tools";
+
 export type KanaEnvironmentContext = {
   cwd: string;
   platform: NodeJS.Platform;
   currentDate: string;
   timezone: string;
+  currentShell: string;
 };
 
 export type CollectKanaEnvironmentContextOptions = {
@@ -10,6 +13,7 @@ export type CollectKanaEnvironmentContextOptions = {
   now?: Date;
   platform?: NodeJS.Platform;
   timezone?: string;
+  shell?: string;
 };
 
 export function collectKanaEnvironmentContext(
@@ -22,6 +26,7 @@ export function collectKanaEnvironmentContext(
     platform: options.platform ?? process.platform,
     currentDate: formatDateInTimezone(options.now ?? new Date(), timezone),
     timezone,
+    currentShell: resolveShell(options.shell),
   };
 }
 

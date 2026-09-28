@@ -20,7 +20,7 @@ const TOOL_HISTORY_PICKER_RESERVED_ROWS = 3;
 
 // Picker rows are tool-agnostic: title plus an optional one-line summary.
 // Tool-specific composition happens in ToolCallBlock / tools formatting, so
-// this component never needs to understand Bash/Edit/Write schemas.
+// this component never needs to understand Shell/Edit/Write schemas.
 export type ToolHistoryEntry = {
   toolCallId: string;
   title: string;

@@ -192,7 +192,7 @@ describe("Kana session format", () => {
       ...messageIdentityForTest("tool"),
       role: "tool",
       toolCallId: "call-large",
-      toolName: "bash",
+      toolName: "shell",
       content: `Bounded preview\nFull output locator: ${locator}`,
       artifact: { kind: "text", locator, byteLength: 50_000 },
       isError: false,

@@ -616,7 +616,7 @@ describe("AgentEventRenderer", () => {
     const toolCall = {
       type: "tool_call" as const,
       id: "call-approval-freeze",
-      name: "bash",
+      name: "shell",
       args: { command: "pwd" },
     };
     const message: AssistantMessage = {

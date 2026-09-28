@@ -69,7 +69,7 @@ Conversation runtime 关闭后，共享 Host 清理会先等待自动记忆任�
 | `124` | `--timeout` 到时；活动 Goal 和 Agent 会先收到取消信号 |
 | `130` | 收到 `SIGINT`；活动 Goal 和 Agent 会先收到取消信号 |
 
-无头模式没有审批界面。它默认执行 `approval.mode` 与 `approvals.json` 已信任的工具；若某个工具仍需交互审批，本次 run 会以 `aborted` 结束且不会执行该工具。`--allow-all-tools` 会无条件授权 Agent 执行所有可用工具：文件工具仍使用当前用户的真实文件权限，`bash` 仍会执行真实系统命令。该选项不会隔离文件或进程，只应在受控环境中使用。
+无头模式没有审批界面。它默认执行 `approval.mode` 与 `approvals.json` 已信任的工具；若某个工具仍需交互审批，本次 run 会以 `aborted` 结束且不会执行该工具。`--allow-all-tools` 会无条件授权 Agent 执行所有可用工具：文件工具仍使用当前用户的真实文件权限，`shell` 仍会执行真实系统命令。该选项不会隔离文件或进程，只应在受控环境中使用。
 
 ## `--json` 协议
 

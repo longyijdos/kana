@@ -58,8 +58,7 @@ export function createListTool(
 
   return {
     name: "list",
-    description:
-      "List the direct children of a directory. Prefer this over bash ls for file exploration.",
+    description: "List the direct children of a directory.",
     parameters: listParameters,
     execution: {
       concurrency: "parallel",

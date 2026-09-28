@@ -116,7 +116,7 @@ export function isBuiltInToolName(toolName: string): boolean {
 }
 
 const BUILT_IN_TOOL_TITLES = new Map<string, string>([
-  ["bash", "Bash"],
+  ["shell", "Shell"],
   ["job_start", "Background Job"],
   ["list", "List"],
   ["glob", "Glob"],
@@ -144,7 +144,7 @@ function buildToolSections(
   const sections: ToolDetailSection[] = [];
 
   switch (toolCall.name) {
-    case "bash": {
+    case "shell": {
       pushSection(sections, "Command", getStringProperty(args, "command"));
       pushSection(sections, "Working directory", getStringProperty(args, "cwd") ?? ".");
       pushSection(
@@ -272,6 +272,7 @@ function buildToolSections(
         "Limit",
         formatNumber(getNumberProperty(args, "limit") ?? DEFAULT_GREP_LIMIT),
       );
+      pushSection(sections, "Context", formatNumber(getNumberProperty(args, "context") ?? 0));
       break;
     }
 

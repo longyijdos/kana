@@ -169,7 +169,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
       toolApproval: {
         config: host.approvalConfig,
         approvals: host.toolApprovals,
-        addTrustedBashCommand: (command) => host.addTrustedBashCommand(command),
+        addTrustedShellCommand: (command) => host.addTrustedShellCommand(command),
         resolveToolSource: (toolCall) => {
           const source = host.getMcpToolSource(toolCall);
           return source === undefined ? undefined : { kind: "mcp", ...source };

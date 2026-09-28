@@ -41,7 +41,7 @@ describe("Kana session artifact lifecycle", () => {
       cwd,
       env,
     });
-    const artifact = await sourceStore.saveText("complete forked output", "bash");
+    const artifact = await sourceStore.saveText("complete forked output", "shell");
     const messages = [createArtifactMessage(artifact)];
     const checkpoint = createCheckpoint(`Retained locator: ${artifact.locator}`);
 
@@ -105,14 +105,14 @@ describe("Kana session artifact lifecycle", () => {
       cwd,
       env,
     });
-    const referenced = await referencedStore.saveText("referenced", "bash");
-    const unreferenced = await referencedStore.saveText("unreferenced", "bash");
+    const referenced = await referencedStore.saveText("referenced", "shell");
+    const unreferenced = await referencedStore.saveText("unreferenced", "shell");
     const orphanStore = createPersistentKanaSessionArtifactStore({
       sessionId: "orphan-session",
       cwd,
       env,
     });
-    const orphan = await orphanStore.saveText("orphaned", "bash");
+    const orphan = await orphanStore.saveText("orphaned", "shell");
     const sessionDirectory = path.join(
       getKanaConfigPaths(env).sessionsPath,
       encodeKanaWorkspacePath(cwd),
@@ -147,13 +147,13 @@ describe("Kana session artifact lifecycle", () => {
       cwd,
       env,
     });
-    const sourceArtifact = await sourceStore.saveText("source", "bash");
+    const sourceArtifact = await sourceStore.saveText("source", "shell");
     const targetStore = createPersistentKanaSessionArtifactStore({
       sessionId: "target-session",
       cwd,
       env,
     });
-    const existingTargetArtifact = await targetStore.saveText("keep me", "bash");
+    const existingTargetArtifact = await targetStore.saveText("keep me", "shell");
 
     expect(() =>
       forkKanaSessionArtifacts({
@@ -182,7 +182,7 @@ function createArtifactMessage(artifact: ToolResultArtifact): Message {
     ...messageIdentityForTest("tool"),
     role: "tool",
     toolCallId: "call-1",
-    toolName: "bash",
+    toolName: "shell",
     content: `Preview\nFull output locator: ${artifact.locator}`,
     artifact: structuredClone(artifact),
     isError: false,

@@ -96,7 +96,7 @@ describe("tool inspector", () => {
   test("wraps long detail fields within the inspector width", () => {
     const command = `python command.py --foo ${"x".repeat(120)} --bar value`;
     const rendered = formatToolInspector(
-      toolCall("bash", { command }),
+      toolCall("shell", { command }),
       undefined,
       false,
       "running",

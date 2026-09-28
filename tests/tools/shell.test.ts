@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createBashTool } from "../../src/tools/bash";
+import { createShellTool } from "../../src/tools/shell";
 import { validateToolArguments } from "../../src/tools/validation";
 import {
   createToolContext,
@@ -12,31 +12,27 @@ import {
 
 const { cleanupTempRoots, createTempRoot } = createWorkspaceToolFixture();
 
-describe("bash tool", () => {
+describe("shell tool", () => {
   afterEach(cleanupTempRoots);
 
-  test("keeps shell fallback guidance in the bash tool description", () => {
-    expect(createBashTool().description).toContain("no purpose-built tool directly covers");
-  });
-
   test("bounds command timeouts inside its own execution deadline", () => {
-    const bash = createBashTool();
-    const deadlineMs = bash.execution?.deadlineMs;
+    const shell = createShellTool();
+    const deadlineMs = shell.execution?.deadlineMs;
 
-    expect(deadlineMs).toBe(121_000);
-    expect(() => validateToolArguments(bash, { command: "echo hi", timeoutMs: 121_000 })).toThrow(
-      "must be <= 120000",
+    expect(deadlineMs).toBe(301_000);
+    expect(() => validateToolArguments(shell, { command: "echo hi", timeoutMs: 301_000 })).toThrow(
+      "must be <= 300000",
     );
-    expect(validateToolArguments(bash, { command: "echo hi", timeoutMs: 120_000 })).toMatchObject({
-      timeoutMs: 120_000,
+    expect(validateToolArguments(shell, { command: "echo hi", timeoutMs: 300_000 })).toMatchObject({
+      timeoutMs: 300_000,
     });
   });
 
   test("runs a command inside the workspace", async () => {
     const root = await createTempRoot();
     await writeFile(path.join(root, "notes.txt"), "hello\n");
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "cat notes.txt",
       },
@@ -57,8 +53,8 @@ describe("bash tool", () => {
 
   test("preserves non-zero command exits without marking the tool as an error", async () => {
     const root = await createTempRoot();
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "printf command-failed >&2; exit 7",
       },
@@ -77,10 +73,10 @@ describe("bash tool", () => {
   test("streams stdout before the command completes", async () => {
     const root = await createTempRoot();
     const updates: unknown[] = [];
-    const bash = createBashTool({ root });
+    const shell = createShellTool({ root });
     let completed = false;
     const execution = Promise.resolve(
-      bash.execute(
+      shell.execute(
         {
           command: "printf start; sleep 1; printf end",
         },
@@ -113,8 +109,8 @@ describe("bash tool", () => {
   test("streams stderr output", async () => {
     const root = await createTempRoot();
     const updates: unknown[] = [];
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "printf problem >&2",
       },
@@ -131,9 +127,9 @@ describe("bash tool", () => {
   test("preserves complete final output and bounds live updates to a trailing snapshot", async () => {
     const root = await createTempRoot();
     const updates: unknown[] = [];
-    const bash = createBashTool({ root });
+    const shell = createShellTool({ root });
     const fullStdout = `prefix-${"x".repeat(25_000)}-suffix`;
-    const result = await bash.execute(
+    const result = await shell.execute(
       {
         command: `printf %s ${shellQuote(fullStdout)}`,
       },
@@ -153,8 +149,8 @@ describe("bash tool", () => {
 
   test("runs commands with stdin disconnected", async () => {
     const root = await createTempRoot();
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: 'if read -t 1 value; then printf "read:%s" "$value"; else printf no-stdin; fi',
       },
@@ -178,8 +174,8 @@ describe("bash tool", () => {
       ),
     );
     await chmod(sudoPath, 0o755);
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: `PATH=${shellQuote(root)}:$PATH sudo id`,
       },
@@ -196,7 +192,7 @@ describe("bash tool", () => {
 
   test("can run commands through a configured shell", async () => {
     const root = await createTempRoot();
-    const shellPath = path.join(root, "custom-shell");
+    const shellPath = path.join(root, "bash");
     await writeFile(
       shellPath,
       [
@@ -207,8 +203,8 @@ describe("bash tool", () => {
       ].join("\n"),
     );
     await chmod(shellPath, 0o755);
-    const bash = createBashTool({ root, shell: shellPath });
-    const result = await bash.execute(
+    const shell = createShellTool({ root, shell: shellPath });
+    const result = await shell.execute(
       {
         command: 'printf %s "$KANA_CUSTOM_SHELL"',
       },
@@ -222,15 +218,39 @@ describe("bash tool", () => {
     });
   });
 
+  test("runs with bash when SHELL selects an unsupported interpreter", async () => {
+    const root = await createTempRoot();
+    const previousShell = process.env.SHELL;
+    try {
+      process.env.SHELL = "/usr/bin/fish";
+      const shell = createShellTool({ root });
+      const result = await shell.execute(
+        { command: 'printf %s "$BASH_VERSION"' },
+        createToolContext(),
+      );
+
+      expectToolResult(result);
+      expect(result.result.exitCode).toBe(0);
+      expect(result.result.stdout).toMatch(/^\d+\./);
+      expect(result.isError).toBe(false);
+    } finally {
+      if (previousShell === undefined) {
+        delete process.env.SHELL;
+      } else {
+        process.env.SHELL = previousShell;
+      }
+    }
+  });
+
   test("inherits environment variables added after process startup", async () => {
     const root = await createTempRoot();
-    const envName = `KANA_TEST_BASH_RUNTIME_${process.pid}`;
+    const envName = `KANA_TEST_SHELL_RUNTIME_${process.pid}`;
     const previous = process.env[envName];
     process.env[envName] = "from-runtime";
 
     try {
-      const bash = createBashTool({ root });
-      const result = await bash.execute(
+      const shell = createShellTool({ root });
+      const result = await shell.execute(
         {
           command: `printf %s "$${envName}"`,
         },
@@ -255,8 +275,8 @@ describe("bash tool", () => {
     const root = await createTempRoot();
     await mkdir(path.join(root, "src"), { recursive: true });
     await writeFile(path.join(root, "src", "notes.txt"), "hello\n");
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "cat notes.txt",
         cwd: "src",
@@ -274,8 +294,8 @@ describe("bash tool", () => {
   test("allows shell control operators", async () => {
     const root = await createTempRoot();
     await writeFile(path.join(root, "notes.txt"), "hello\n");
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "cat notes.txt; printf done",
       },
@@ -293,8 +313,8 @@ describe("bash tool", () => {
     const root = await createTempRoot();
     const filePath = path.join(root, "notes.txt");
     await writeFile(filePath, "hello\n");
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "rm notes.txt",
       },
@@ -310,8 +330,8 @@ describe("bash tool", () => {
 
   test("allows git history-changing commands", async () => {
     const root = await createTempRoot();
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "git reset --hard",
       },
@@ -328,8 +348,8 @@ describe("bash tool", () => {
     const root = await createTempRoot();
     const outside = await createTempRoot();
     await writeFile(path.join(outside, "notes.txt"), "outside\n");
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "cat notes.txt",
         cwd: outside,
@@ -348,8 +368,8 @@ describe("bash tool", () => {
     const root = await createTempRoot();
     const sideEffectPath = path.join(root, "escaped.txt");
     const sideEffectDelaySeconds = 1;
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: `(sleep ${sideEffectDelaySeconds}; printf escaped > ${shellQuote(sideEffectPath)}) & printf foreground`,
         timeoutMs: 100,
@@ -369,9 +389,9 @@ describe("bash tool", () => {
   test("cancellation terminates background children in the command process group", async () => {
     const root = await createTempRoot();
     const pidPath = path.join(root, "background.pid");
-    const bash = createBashTool({ root });
+    const shell = createShellTool({ root });
     const controller = new AbortController();
-    const execution = bash.execute(
+    const execution = shell.execute(
       {
         command: `sleep 30 & printf %s "$!" > ${shellQuote(pidPath)}; wait`,
       },
@@ -391,8 +411,8 @@ describe("bash tool", () => {
 
   test("reports timeouts", async () => {
     const root = await createTempRoot();
-    const bash = createBashTool({ root });
-    const result = await bash.execute(
+    const shell = createShellTool({ root });
+    const result = await shell.execute(
       {
         command: "find .",
         timeoutMs: 1,

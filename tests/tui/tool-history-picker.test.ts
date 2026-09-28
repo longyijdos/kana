@@ -7,7 +7,7 @@ import {
 import { stripAnsi, visibleWidth } from "../../src/tui/render";
 
 const entries: ToolHistoryEntry[] = [
-  { toolCallId: "call_c", title: "Bash", summary: "bun test tests/tui/..." },
+  { toolCallId: "call_c", title: "Shell", summary: "bun test tests/tui/..." },
   { toolCallId: "call_b", title: "Edit", summary: "src/tui/tools/format.ts" },
   { toolCallId: "call_a", title: "custom_lookup" },
 ];
@@ -19,7 +19,7 @@ describe("tool history picker", () => {
     const lines = picker.render(80).map(stripAnsi);
 
     expect(lines[0]).toBe("Tool history");
-    expect(lines[1]).toBe("> Bash  bun test tests/tui/...");
+    expect(lines[1]).toBe("> Shell  bun test tests/tui/...");
     expect(lines[2]).toBe("  Edit  src/tui/tools/format.ts");
     expect(lines[3]).toBe("  custom_lookup");
     expect(lines).toHaveLength(4);

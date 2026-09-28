@@ -61,7 +61,7 @@ Parallel execution requires both Agent policy and model metadata to enable paral
 
 Each parallel group uses a bounded rolling pool. Calls are claimed and enter serial approval in model order, while at most `maxParallelToolCalls` invocation bodies run at once. Start, update, and end events remain correlated by `toolCallId` and follow physical timing, so a later fast call may visibly finish first. Independent result slots wait for model order before journal commit and the next request, keeping replay deterministic.
 
-The effective deadline comes from `tool.execution.deadlineMs`, then the Agent default. The reusable runtime and Kana's `agent.tool_deadline_ms` both default to 300000 ms; `bash` declares its own 121000 ms deadline so its two-minute command ceiling terminates through bash's own timeout handling. A call-specific argument such as `bash.timeoutMs` may impose a narrower operation limit inside that outer boundary.
+The effective deadline comes from `tool.execution.deadlineMs`, then the Agent default. The reusable runtime and Kana's `agent.tool_deadline_ms` both default to 300000 ms; `shell` declares its own 301000 ms deadline so its five-minute command ceiling terminates through shell's own timeout handling. A call-specific argument such as `shell.timeoutMs` may impose a narrower operation limit inside that outer boundary.
 
 Run abort, a tool deadline, or an internal scheduler failure immediately stops pool replenishment and aborts active sibling signals. Calls not yet started receive canceled results. Started calls receive a finite cancellation grace period. Settlement within it becomes `canceled` or `timed_out`; a later return cannot replace that outcome.
 
@@ -93,12 +93,12 @@ The live structured result remains available to `tool_execution_end`. Oversized,
 | --- | --- | --- |
 | `list` | Optional `path`, `includeHidden`, `limit` | Lists one directory level with stable sorting and truncation metadata. |
 | `glob` | `pattern`; optional `cwd`, type/depth/hidden/limit filters | Finds paths using a relative glob pattern; absolute patterns and `..` segments are rejected. |
-| `grep` | `pattern`; optional path/include/literal/case/hidden/limit fields | Searches UTF-8 text with a JavaScript regular expression or literal and returns matching locations. |
+| `grep` | `pattern`; optional path/include/literal/case/hidden/context/limit fields | Searches UTF-8 text with a JavaScript regular expression or literal and returns matching locations. |
 | `read` | `path`; optional 1-based `offset` and `limit` | Reads a UTF-8 line range and reports total lines and truncation. |
 | `view_image` | `path` | Normalizes a local image and returns metadata plus a visual observation; registered only when effective image input is enabled. |
 | `write` | `path`, complete `content`, optional `overwrite` | Creates parent directories and exclusively creates a file by default; explicit overwrite replaces one. |
 | `edit` | `path`, non-empty `edits` array of `oldText`/`newText` pairs | Atomically applies exact, non-overlapping UTF-8 replacements. |
-| `bash` | `command`; optional `cwd`, `timeoutMs` | Executes through the user's shell with detached stdin and a managed process group. |
+| `shell` | `command`; optional `cwd`, `timeoutMs` | Executes through the user's shell with detached stdin and a managed process group. |
 | `job_start` | `command`; optional `cwd`, `timeoutMs` | Starts a session-owned background shell command and immediately returns its Job ID and launch status. |
 | `job_list` | None | Lists active and up to 32 recent terminal Jobs for the current session and acknowledges listed terminal completions. |
 | `job_output` | `jobId`, optional `waitMs` | Consumes all currently unread retained output from the Agent cursor and reports dropped bytes. |
@@ -116,19 +116,21 @@ The live structured result remains available to `tool_execution_end`. Oversized,
 
 ## File and shell boundaries
 
-File tools and `bash` resolve relative paths against their configured root, which Kana sets to the startup working directory. They also accept absolute paths. A leading `~` or `~/` in a path argument expands to the user's home directory, so `~/notes.md` never becomes a literal `~` directory inside the root; a `~` that appears after the first segment stays literal, and `glob.pattern` and `grep.include` are relative glob patterns rather than paths. This is path normalization, not a workspace sandbox: relative paths may leave the root, symlinks may resolve outside it, and `bash.cwd`, `glob.cwd`, and `grep.path` may name external locations.
+File tools and `shell` resolve relative paths against their configured root, which Kana sets to the startup working directory. They also accept absolute paths. A leading `~` or `~/` in a path argument expands to the user's home directory, so `~/notes.md` never becomes a literal `~` directory inside the root; a `~` that appears after the first segment stays literal, and `glob.pattern` and `grep.include` are relative glob patterns rather than paths. This is path normalization, not a workspace sandbox: relative paths may leave the root, symlinks may resolve outside it, and `shell.cwd`, `glob.cwd`, and `grep.path` may name external locations.
+
+`grep.context` is a nonnegative integer, defaults to 0, and has no upper bound. Each match independently includes the requested number of preceding and following lines, clipped at file boundaries; overlapping context is repeated. Match lines retain `path:line:column:text`, and context lines use `path-line-text`. `limit` counts only matching lines, and the common result-size budget still applies.
 
 `edit` matches every `edits[].oldText` exactly once against the same original file content. Missing or ambiguous text and overlapping ranges reject the entire call without writing; otherwise all replacements are committed in one write.
 
 `view_image` shares the user-attachment decoder and size limits. Supported encoded JPEG, PNG, and WebP remain provider-ready; other decoded formats become static PNG, and animated input uses its decoded first frame.
 
-`bash` disconnects stdin and shadows `sudo` with `sudo -n` so password prompts cannot take TUI input. Foreground calls default to a 30000 ms command timeout, accept at most 120000 ms, and publish bounded trailing stdout/stderr snapshots roughly every 100 ms. Complete final streams still enter the common result policy.
+`shell` accepts executable names or paths whose basename is `sh`, `bash`, or `zsh`. It uses `$SHELL` when supported, otherwise falling back to `bash`. These shells support the injected function syntax that shadows `sudo` with `sudo -n` so password prompts cannot take TUI input. Stdin is disconnected. Foreground calls default to a 30000 ms command timeout, accept at most 300000 ms, and publish bounded trailing stdout/stderr snapshots roughly every 100 ms. Complete final streams still enter the common result policy.
 
 Each command runs in its own process group. Foreground execution waits for the group rather than only the top-level shell, so raw `command &` does not escape normal cancellation or timeout. Explicit daemonization into another process session may leave that boundary. A non-zero exit code is a completed command result, not a tool infrastructure error; timeout records a `null` exit code and `isError: true`.
 
 ## Background Jobs
 
-`job_start` launches the same Bash execution under `BackgroundJobManager`, returns a session-owned Job ID immediately, and has no default command timeout. Use it when work must outlive one tool call; raw shell background syntax does not provide the same ownership and cleanup.
+`job_start` launches the same Shell execution under `BackgroundJobManager`, returns a session-owned Job ID immediately, and has no default command timeout. Use it when work must outlive one tool call; raw shell background syntax does not provide the same ownership and cleanup.
 
 The generic manager is independent of Kana Agent construction. An owner binds Jobs to one session instance, enforces its concurrent-Job limit, and stops all owned process groups during disposal. Each Job retains at most the latest 1 MiB of combined stdout/stderr in memory. Metadata stores only a whitespace-normalized command label bounded to 512 UTF-8 bytes; the original command stays in the tool call.
 
@@ -146,7 +148,7 @@ Subagent control tools expose only predefined role cards and return stable child
 
 `schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. It and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, or `mcp_list_tools`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Bash commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Bash allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, or `mcp_list_tools`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Shell allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
 
 ## MCP and custom tools
 

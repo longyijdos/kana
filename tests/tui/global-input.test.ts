@@ -165,7 +165,7 @@ function createHarness(options?: { tools?: string[]; sessions?: KanaSessionMetad
     const block = new ToolCallBlock({
       type: "tool_call",
       id: `call-${index + 1}`,
-      name: "bash",
+      name: "shell",
       args: { command },
     });
     block.updateResult({ command, exitCode: 0, stdout: "1 pass" }, false);

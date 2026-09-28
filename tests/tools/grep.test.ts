@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createGrepTool } from "../../src/tools/grep";
+import { validateToolArguments } from "../../src/tools/validation";
 import {
   createToolContext,
   createWorkspaceToolFixture,
@@ -58,6 +59,61 @@ describe("grep tool", () => {
       },
     ]);
     expect(result.content).toContain("query.ts:1:7:const autocompact = true;");
+    expect(
+      await grep.execute(
+        { path: "query.ts", pattern: "autocompact|\\.compact\\b", limit: 20, context: 0 },
+        createToolContext(),
+      ),
+    ).toEqual(result);
+  });
+
+  test("expands each match independently and clips context at file boundaries", async () => {
+    const root = await createTempRoot();
+    await writeFile(
+      path.join(root, "notes.txt"),
+      "hit first\r\nnear\r\nhit second\r\nafter\r\nhit last\r\n",
+    );
+    const grep = createGrepTool({ root });
+    const result = await grep.execute(
+      { path: "notes.txt", pattern: "hit", context: 1 },
+      createToolContext(),
+    );
+
+    expectToolResult(result);
+    expect(result.result.matches).toHaveLength(3);
+    expect(result.result.truncated).toBe(false);
+    expect(result.content.split("\n\n")[1]).toBe(
+      [
+        "notes.txt:1:1:hit first",
+        "notes.txt-2-near",
+        "notes.txt-2-near",
+        "notes.txt:3:1:hit second",
+        "notes.txt-4-after",
+        "notes.txt-4-after",
+        "notes.txt:5:1:hit last",
+      ].join("\n"),
+    );
+  });
+
+  test("accepts unbounded context while the limit still counts only matches", async () => {
+    const root = await createTempRoot();
+    await writeFile(path.join(root, "notes.txt"), "before\nhit first\nhit second\nafter\n");
+    const grep = createGrepTool({ root });
+    const args = { path: "notes.txt", pattern: "hit", context: 100_000, limit: 1 };
+    const result = await grep.execute(validateToolArguments(grep, args), createToolContext());
+
+    expectToolResult(result);
+    expect(result.result.matches).toHaveLength(1);
+    expect(result.result.truncated).toBe(true);
+    expect(result.content.split("\n\n")[1]).toBe(
+      [
+        "notes.txt-1-before",
+        "notes.txt:2:1:hit first",
+        "notes.txt-3-hit second",
+        "notes.txt-4-after",
+      ].join("\n"),
+    );
+    expect(() => validateToolArguments(grep, { ...args, context: -1 })).toThrow();
   });
 
   test("searches directories with include patterns and hidden filtering", async () => {

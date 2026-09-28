@@ -10,7 +10,6 @@ import {
 import type { BackgroundJobClient } from "@/jobs";
 import type { McpToolRegistry } from "@/mcp";
 import {
-  createBashTool,
   createEditTool,
   createGlobTool,
   createGrepTool,
@@ -20,6 +19,7 @@ import {
   createJobStartTool,
   createListTool,
   createReadTool,
+  createShellTool,
   createViewImageTool,
   createWriteTool,
   type Tool,
@@ -153,7 +153,7 @@ export function createKanaAgent(
     createEditTool({
       root: cwd,
     }),
-    createBashTool({
+    createShellTool({
       root: cwd,
     }),
   ]);

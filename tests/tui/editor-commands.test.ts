@@ -22,7 +22,7 @@ describe("prompt commands", () => {
       ),
     ).toBe("Try /usage — Show session, project, or global API usage.");
     expect(createRandomPromptPlaceholder(() => 0.999)).toBe(
-      "Try !<command> — Run a local bash command.",
+      "Try !<command> — Run a local shell command.",
     );
     expect(createRandomPromptPlaceholder(() => 0, "Try /quit — Exit Kana.")).toBe(
       "Try /help — Show commands and shortcuts.",

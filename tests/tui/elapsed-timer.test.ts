@@ -62,7 +62,7 @@ describe("tui elapsed timer", () => {
       {
         type: "tool_call",
         id: "call_1",
-        name: "bash",
+        name: "shell",
         args: { command: "pwd" },
       },
       () => now,

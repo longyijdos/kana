@@ -187,7 +187,7 @@ describe("tui history transcript", () => {
           {
             type: "tool_call",
             id: "call-artifact",
-            name: "bash",
+            name: "shell",
             args: { command: "generate lots of output" },
           },
         ],
@@ -196,7 +196,7 @@ describe("tui history transcript", () => {
         ...messageIdentityForTest("tool"),
         role: "tool",
         toolCallId: "call-artifact",
-        toolName: "bash",
+        toolName: "shell",
         content: "MODEL_FACING_ARTIFACT_PREVIEW_SHOULD_NOT_RENDER",
         artifact: {
           kind: "text",
@@ -254,7 +254,7 @@ describe("tui history transcript", () => {
           ...messageIdentityForTest("tool"),
           role: "tool",
           toolCallId: "call_missing",
-          toolName: "bash",
+          toolName: "shell",
           content: "Tool call failed: no call",
           result: {
             error: "no call",
@@ -267,7 +267,7 @@ describe("tui history transcript", () => {
     const lines = transcript.render(100).map(stripAnsi);
 
     expect(lines).toContain("◆ Failed to run");
-    expect(lines).toContain("  └ bash");
+    expect(lines).toContain("  └ shell");
     expect(lines).toContain("no call");
   });
 

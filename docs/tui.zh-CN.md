@@ -23,7 +23,7 @@ Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态
 | `turn_start` | 立即创建一个临时的 `Working (Ns)` 块，并把状态阶段设为 `working`。这段与供应商无关的活动覆盖可见正文、工具或 hosted 动作开始前的时间。 |
 | `message_start` / `message_update` / `message_end` | 创建、更新、完成有序助手内容块；Markdown 文本与 provider-hosted 动作保留供应商顺序。Core thinking 事件会让既有 `working` 活动继续计时；正文、工具或 hosted tool 开始时，transcript 活动和状态栏会一起切换到对应阶段。Provider 流式生成一个或多个本地工具调用及其参数时，TUI 只显示一个共享的 `Preparing tools` 计时，而不是为每个调用提前创建工具块；助手消息结束时冻结该计时。 |
 | `tool_execution_start` | 移除共享的准备活动，创建对应的单工具块，并从零开始显示 running 耗时；并行调用仍按 `toolCallId` 独立维护，并随各自的 start 事件依次出现。 |
-| `tool_execution_update` | 更新 bash 等工具的部分输出。 |
+| `tool_execution_update` | 更新 shell 等工具的部分输出。 |
 | `tool_execution_end` | 写入结构化结果并标记成功、失败或取消。用户中止的调用显示为已取消，而不是工具失败。 |
 | `todo_state_changed` | 把完整接受快照关联到对应的实时 `todo_write` 工具块，并更新 `/todo` 使用的 session 状态。 |
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
@@ -49,7 +49,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 | `Esc` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，先交给当前聚焦的 modal、view、picker 或嵌套 prompt 处理，工具审批提示会将它视为“拒绝”。焦点回到编辑器后，若 Agent 正在运行则中止本次 run；空闲时不产生作用。 |
 | `Shift+Tab` | 提示显示在普通工具审批的标题后。在无需二次确认的情况下允许当前调用，并把当前 session 设为 Never ask。队列中的普通工具审批随后自动通过；用户任务邀请仍需选择。 |
 | `Ctrl+O` | 在普通编辑器状态下打开最近一项工具调用的详情查看器；其它底部视图会消耗该输入并保持原样。`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用，`Esc` 关闭。 |
-| `!<command>` | 不经过 Agent 或工具审批，直接运行本地 bash，并显示同样的工具块。 |
+| `!<command>` | 不经过 Agent 或工具审批，直接运行本地 shell，并显示同样的工具块。 |
 
 可选列表共用一套导航约定：`Up` / `Down` 移动一项，`Left` / `Right` 与 `PageUp` / `PageDown` 把可见窗口移动一屏并让选中项保持在同一行，`Home` / `End` 跳到首项或末项；适用于 session 选择器、`/skills`、`/mcp`、`/tools`、`/schedule`、`/jobs` 与 `/agents`。窗口已经停在端点时无法继续移动，此时翻页会把选中项落到末项或首项。只读查看器翻动的是内容：`Up` / `Down` 滚动，`Left` / `Right` 移动一屏详情。
 
@@ -135,7 +135,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 - `SubagentManagerController` 用 `/agents` 打开面板，重新加载 profile 诊断、保持 run 选中项稳定、预览最终输出、用 `Enter` 打开独立持久化的 child transcript，并用 `K` 取消活动 child。Child 状态变化会刷新视图，但不消费结果。
 - `BackgroundActivityController` 绑定当前 session 的 Background Job、Subagent 与用户任务管理器，把待处理用户任务投影为 `Your tasks`，把运行中或停止中的 Job 与 Subagent 投影为 `Background`，并在任务开始或结束时刷新。它在 session 切换时重新绑定，无活动任务时不渲染任何行，也绝不确认、取消或改变所显示的任务。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
-- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前及每个排队请求显示前读取当前有效审批模式。`/approval` 或审批界面 `Shift+Tab` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。在普通审批中按 `Shift+Tab` 会设置 Never ask 并允许当前调用，队列中的普通调用随后自动通过。同时到达的 main 与 child 请求会带准确 Agent 身份进入一条 FIFO 队列；child 审批标题使用对应的 profile 名，取消时只移除对应请求。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、bash 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。`mcp_call` 审批从入口 envelope 读取 server ID 与远端工具原名，并显示格式化完整嵌套参数，长参数沿用详情分页；它们不提供持久信任选项。普通工具选择“拒绝”或按 `Esc` 会中止发起请求的 run，选择 always 仅把 bash 命令加入精确白名单。用户任务邀请在 Never ask 模式下仍会询问，且不显示或响应 `Shift+Tab` 快捷键；拒绝或按 `Esc` 会把任务交还 Agent，不会中止 run。
+- `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前及每个排队请求显示前读取当前有效审批模式。`/approval` 或审批界面 `Shift+Tab` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。在普通审批中按 `Shift+Tab` 会设置 Never ask 并允许当前调用，队列中的普通调用随后自动通过。同时到达的 main 与 child 请求会带准确 Agent 身份进入一条 FIFO 队列；child 审批标题使用对应的 profile 名，取消时只移除对应请求。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、shell 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。`mcp_call` 审批从入口 envelope 读取 server ID 与远端工具原名，并显示格式化完整嵌套参数，长参数沿用详情分页；它们不提供持久信任选项。普通工具选择“拒绝”或按 `Esc` 会中止发起请求的 run，选择 always 仅把 shell 命令加入精确白名单。用户任务邀请在 Never ask 模式下仍会询问，且不显示或响应 `Shift+Tab` 快捷键；拒绝或按 `Esc` 会把任务交还 Agent，不会中止 run。
 - `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和 MCP 能力刷新；其内部的 `SessionOverlayController` 持有会话列表，删除通过 `DeleteSessionConfirmation` 完成。picker 按活动时间由新到旧列出当前工作区的其他会话，每行显示最近活动时间，而不再显示创建时间或模型。
 - `SkillManagerController` 用 global Skill 列表替换编辑器。`Enter` 只修改本地草稿，`Esc` 才应用；有变化的草稿只持久化一次，并用原消息历史重建一次 Agent，未变化则直接关闭。持久化失败时视图保持打开。
 - `McpServerManagerController` 用已配置 MCP server 的 checkbox 替换 editor。`Enter` 只修改本地草稿；选中 OAuth HTTP server 时，`A` 打开认证子菜单，可授权、重新授权或退出登录，进行中的浏览器授权可用 `Esc` 中止。授权 URL、成功、失败或取消状态写入 transcript；退出登录会禁用该 server。返回列表后，主 `Esc` 才应用草稿；选择或已启用 server 的凭据发生变化时只触发一次完整 runtime reload。持久化失败时视图保持打开。组件显示 server ID、transport、OAuth 状态，以及 stdio 的完整命令行（`command` 加 `args`）或 HTTP URL，但不会接收环境变量、HTTP headers 或 token。
@@ -144,7 +144,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 - `/compact` 不接受参数；它只在空闲时强制压缩当前对话上下文，不发送用户消息。
 - `ContentViewerController` 用可滚动的只读内容替换底部组件，包括帮助、用量、记忆和工具详情；transcript 仍保持渲染。工具查看器在编辑器状态下打开最近一次工具调用，且任意 ToolCallBlock 都可以打开——输出很短、没有 result、正在运行/已取消、read，以及 custom/unknown 工具一律可查看，不依赖 expandability 或宽度。`[` 和 `]` 在上一个/下一个工具调用之间切换；导航直接在底部原位替换查看器，保持焦点、不触碰编辑器，每个工具都获得一个从顶部开始的新视口。关闭时优先恢复正在等待的审批，否则恢复编辑器。
 - `ToolHistoryController` 支撑 `/tools`：把当前 transcript 中的每个 ToolCallBlock 快照成一个小型选择器，最新在前（每个工具一行：标题加 schema 已知的摘要）。成员资格不依赖 expandability、终端宽度、紧凑渲染状态或 resize——列表在打开时固定，选择始终落在同一个稳定 `toolCall.id` 上。`Enter` 直接把底部交给 `Ctrl+O` 快路径使用的同一个工具详情查看器，中间不恢复编辑器；`[` / `]` 导航保持 transcript 时间线顺序，从选中哪个工具开始都成立。`Esc` 关闭选择器回到编辑器。只浏览当前会话，不存在跨会话历史。
-- `LocalShellController` 复用 bash Tool 显示逻辑，但不会触发审批。
+- `LocalShellController` 复用 shell Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 
 运行期间，`/quit`、`/help`、`/btw`、`/todo`、`/task`、`/tools`、`/usage`、`/image`、`/schedule`、`/jobs` 和 `/agents` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可查看并停止当前 session 的 Job，但不会确认其完成；`/agents` 可查看或取消 session-owned child。`/clear`、`/new`、`/fork`、`/resume`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。

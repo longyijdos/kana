@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ToolCallContent } from "@/core";
 import {
-  addTrustedBashCommand,
+  addTrustedShellCommand,
   createKanaToolApprovalStore,
   DEFAULT_KANA_TOOL_APPROVALS,
-  getBashCommand,
   getKanaConfigPaths,
+  getShellCommand,
   type KanaToolApprovals,
   loadKanaToolApprovals,
   shouldRequestToolApproval,
@@ -58,13 +58,13 @@ describe("Kana tool approval", () => {
     }
   });
 
-  test("job_start does not inherit Bash command trust", () => {
+  test("job_start does not inherit Shell command trust", () => {
     const rules = approvals({ exactCommands: ["bun run dev"], readOnlyCommands: ["pwd"] });
     for (const mode of ["always", "never", "unless_trusted"] as const) {
       for (const command of ["bun run dev", "pwd", "touch output.txt"]) {
         const call = toolCall("job_start", { command });
         expect(shouldRequestToolApproval({ mode }, rules, call)).toBe(mode !== "never");
-        expect(getBashCommand(call)).toBeUndefined();
+        expect(getShellCommand(call)).toBeUndefined();
       }
     }
   });
@@ -120,7 +120,7 @@ describe("Kana tool approval", () => {
       shouldRequestToolApproval(
         { mode: "always" },
         approvals({ exactCommands: ["git status"] }),
-        toolCall("bash", { command: "git status" }),
+        toolCall("shell", { command: "git status" }),
       ),
     ).toBe(true);
   });
@@ -135,7 +135,7 @@ describe("Kana tool approval", () => {
     ).toBe(false);
   });
 
-  test("unless trusted mode skips read-only tools and exact bash commands", () => {
+  test("unless trusted mode skips read-only tools and exact shell commands", () => {
     const trusted = approvals({ exactCommands: ["git status"] });
 
     expect(
@@ -177,14 +177,14 @@ describe("Kana tool approval", () => {
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: " git status " }),
+        toolCall("shell", { command: " git status " }),
       ),
     ).toBe(false);
     expect(
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: "git status --short" }),
+        toolCall("shell", { command: "git status --short" }),
       ),
     ).toBe(true);
     expect(
@@ -196,61 +196,61 @@ describe("Kana tool approval", () => {
     ).toBe(true);
   });
 
-  test("unless trusted mode skips simple configured read-only bash commands", () => {
+  test("unless trusted mode skips simple configured read-only shell commands", () => {
     const trusted = approvals({ readOnlyCommands: ["ls", "grep", "rg"] });
 
     expect(
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: "ls -la src" }),
+        toolCall("shell", { command: "ls -la src" }),
       ),
     ).toBe(false);
     expect(
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: 'rg -n "approval mode" src' }),
+        toolCall("shell", { command: 'rg -n "approval mode" src' }),
       ),
     ).toBe(false);
     expect(
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: "grep -R 'approval' src" }),
+        toolCall("shell", { command: "grep -R 'approval' src" }),
       ),
     ).toBe(false);
   });
 
-  test("unless trusted mode requests approval for composed read-only bash commands", () => {
+  test("unless trusted mode requests approval for composed read-only shell commands", () => {
     const trusted = approvals({ readOnlyCommands: ["rg"] });
 
     expect(
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: "rg approval src > matches.txt" }),
+        toolCall("shell", { command: "rg approval src > matches.txt" }),
       ),
     ).toBe(true);
     expect(
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: "rg approval src; rm notes.txt" }),
+        toolCall("shell", { command: "rg approval src; rm notes.txt" }),
       ),
     ).toBe(true);
     expect(
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: "rg $(rm notes.txt) src" }),
+        toolCall("shell", { command: "rg $(rm notes.txt) src" }),
       ),
     ).toBe(true);
     expect(
       shouldRequestToolApproval(
         { mode: "unless_trusted" },
         trusted,
-        toolCall("bash", { command: "./rg approval src" }),
+        toolCall("shell", { command: "./rg approval src" }),
       ),
     ).toBe(true);
   });
@@ -262,46 +262,61 @@ describe("Kana tool approval", () => {
     expect(existsSync(getKanaConfigPaths(env).approvalsPath)).toBe(false);
   });
 
-  test("persists trusted bash commands under the Kana home directory", () => {
+  test("rejects version 2 approval files without rewriting them", () => {
+    const env = createTempEnv();
+    const approvalsPath = getKanaConfigPaths(env).approvalsPath;
+    const legacyContent = JSON.stringify({
+      version: 2,
+      bash: { exactCommands: ["git status"], readOnlyCommands: ["ls"] },
+    });
+    mkdirSync(path.dirname(approvalsPath), { recursive: true });
+    writeFileSync(approvalsPath, legacyContent);
+
+    expect(() => loadKanaToolApprovals(env)).toThrow("approvals.version must be 3.");
+    expect(() => addTrustedShellCommand("git diff", env)).toThrow("approvals.version must be 3.");
+    expect(readFileSync(approvalsPath, "utf8")).toBe(legacyContent);
+  });
+
+  test("persists trusted shell commands under the Kana home directory", () => {
     const env = createTempEnv();
 
-    addTrustedBashCommand(" git status ", env);
-    addTrustedBashCommand("git status", env);
-    addTrustedBashCommand("rg approval src", env);
+    addTrustedShellCommand(" git status ", env);
+    addTrustedShellCommand("git status", env);
+    addTrustedShellCommand("rg approval src", env);
 
     const approvalsPath = getKanaConfigPaths(env).approvalsPath;
 
     expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual({
-      version: 2,
-      bash: {
+      version: 3,
+      shell: {
         exactCommands: ["git status", "rg approval src"],
-        readOnlyCommands: DEFAULT_KANA_TOOL_APPROVALS.bash.readOnlyCommands,
+        readOnlyCommands: DEFAULT_KANA_TOOL_APPROVALS.shell.readOnlyCommands,
       },
     });
-    expect(loadKanaToolApprovals(env).bash.exactCommands).toEqual([
+    expect(loadKanaToolApprovals(env).shell.exactCommands).toEqual([
       "git status",
       "rg approval src",
     ]);
   });
 
-  test("preserves manually configured read-only bash commands when adding exact commands", () => {
+  test("preserves manually configured read-only shell commands when adding exact commands", () => {
     const env = createTempEnv();
 
     saveApprovals(
       {
-        version: 2,
-        bash: {
+        version: 3,
+        shell: {
           exactCommands: ["external command"],
           readOnlyCommands: ["ls", "rg"],
         },
       },
       env,
     );
-    addTrustedBashCommand("git status", env);
+    addTrustedShellCommand("git status", env);
 
     expect(loadKanaToolApprovals(env)).toEqual({
-      version: 2,
-      bash: {
+      version: 3,
+      shell: {
         exactCommands: ["external command", "git status"],
         readOnlyCommands: ["ls", "rg"],
       },
@@ -312,8 +327,8 @@ describe("Kana tool approval", () => {
     const env = createTempEnv();
     saveApprovals(
       {
-        version: 2,
-        bash: {
+        version: 3,
+        shell: {
           exactCommands: ["startup command"],
           readOnlyCommands: ["ls"],
         },
@@ -324,8 +339,8 @@ describe("Kana tool approval", () => {
 
     saveApprovals(
       {
-        version: 2,
-        bash: {
+        version: 3,
+        shell: {
           exactCommands: ["external command"],
           readOnlyCommands: ["rg"],
         },
@@ -333,29 +348,29 @@ describe("Kana tool approval", () => {
       env,
     );
 
-    expect(store.addTrustedBashCommand("local command")).toEqual({
-      version: 2,
-      bash: {
+    expect(store.addTrustedShellCommand("local command")).toEqual({
+      version: 3,
+      shell: {
         exactCommands: ["startup command", "local command"],
         readOnlyCommands: ["ls"],
       },
     });
     expect(loadKanaToolApprovals(env)).toEqual({
-      version: 2,
-      bash: {
+      version: 3,
+      shell: {
         exactCommands: ["external command", "local command"],
         readOnlyCommands: ["rg"],
       },
     });
   });
 
-  test("rejects read-only bash command entries with arguments or paths", () => {
+  test("rejects read-only shell command entries with arguments or paths", () => {
     const env = createTempEnv();
 
     saveApprovals(
       {
-        version: 2,
-        bash: {
+        version: 3,
+        shell: {
           exactCommands: [],
           readOnlyCommands: ["rg src"],
         },
@@ -364,13 +379,13 @@ describe("Kana tool approval", () => {
     );
 
     expect(() => loadKanaToolApprovals(env)).toThrow(
-      "approvals.bash.readOnlyCommands entries must be executable names.",
+      "approvals.shell.readOnlyCommands entries must be executable names.",
     );
 
     saveApprovals(
       {
-        version: 2,
-        bash: {
+        version: 3,
+        shell: {
           exactCommands: [],
           readOnlyCommands: ["./rg"],
         },
@@ -379,17 +394,17 @@ describe("Kana tool approval", () => {
     );
 
     expect(() => loadKanaToolApprovals(env)).toThrow(
-      "approvals.bash.readOnlyCommands entries must be executable names.",
+      "approvals.shell.readOnlyCommands entries must be executable names.",
     );
   });
 });
 
-function approvals(bash: Partial<KanaToolApprovals["bash"]> = {}): KanaToolApprovals {
+function approvals(shell: Partial<KanaToolApprovals["shell"]> = {}): KanaToolApprovals {
   return {
-    version: 2,
-    bash: {
-      exactCommands: bash.exactCommands ?? [],
-      readOnlyCommands: bash.readOnlyCommands ?? [],
+    version: 3,
+    shell: {
+      exactCommands: shell.exactCommands ?? [],
+      readOnlyCommands: shell.readOnlyCommands ?? [],
     },
   };
 }

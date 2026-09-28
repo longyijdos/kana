@@ -141,10 +141,10 @@ export {
   type KanaTodoStateChange,
 } from "./todo";
 export {
-  addTrustedBashCommand,
+  addTrustedShellCommand,
   createKanaToolApprovalStore,
   DEFAULT_KANA_TOOL_APPROVALS,
-  getBashCommand,
+  getShellCommand,
   type KanaToolApprovals,
   loadKanaToolApprovals,
   shouldRequestToolApproval,

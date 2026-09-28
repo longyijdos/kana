@@ -98,7 +98,7 @@ describe("background activity controller", () => {
 
     const completion = deferred<{ status: BackgroundJobTerminalStatus; exitCode: number | null }>();
     const job = jobs.start({
-      kind: "bash",
+      kind: "shell",
       label: "bun test tests/tui",
       run: () => completion.promise,
     });

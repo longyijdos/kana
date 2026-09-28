@@ -114,7 +114,7 @@ describe("Kana Agent tools", () => {
     );
     const profile: KanaSubagentProfile = {
       ...subagentProfile(),
-      tools: ["read", "view_image", "bash", "mcp_call"],
+      tools: ["read", "view_image", "shell", "mcp_call"],
     };
     const agent = withKanaAgentEnvironment(() =>
       createKanaAgent(
@@ -271,7 +271,7 @@ describe("Kana Agent tools", () => {
         "view_image",
         "write",
         "edit",
-        "bash",
+        "shell",
         "todo_write",
         "schedule_wake",
       ]);

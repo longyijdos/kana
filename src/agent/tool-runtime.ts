@@ -641,10 +641,6 @@ export class ToolRuntime {
       };
     } catch (error) {
       acceptsUpdates = false;
-      this.log("warn", "tool.execution_failed", {
-        toolName: tool.name,
-        errorType: getErrorType(error),
-      });
       try {
         await this.events.drain();
       } catch (updateError) {
