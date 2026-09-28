@@ -17,11 +17,13 @@ describe("Kana environment context", () => {
     );
   });
 
-  test("reports SHELL and falls back to bash when it is unset or blank", () => {
+  test("reports the selected execution shell", () => {
     const previousShell = process.env.SHELL;
     try {
       process.env.SHELL = "/bin/zsh";
       expect(collectKanaEnvironmentContext().currentShell).toBe("/bin/zsh");
+      process.env.SHELL = "/usr/bin/fish";
+      expect(collectKanaEnvironmentContext().currentShell).toBe("bash");
       delete process.env.SHELL;
       expect(collectKanaEnvironmentContext().currentShell).toBe("bash");
       process.env.SHELL = " ";

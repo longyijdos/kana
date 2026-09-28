@@ -192,7 +192,7 @@ describe("shell tool", () => {
 
   test("can run commands through a configured shell", async () => {
     const root = await createTempRoot();
-    const shellPath = path.join(root, "custom-shell");
+    const shellPath = path.join(root, "bash");
     await writeFile(
       shellPath,
       [
@@ -216,6 +216,30 @@ describe("shell tool", () => {
       exitCode: 0,
       stdout: "from-custom-shell",
     });
+  });
+
+  test("runs with bash when SHELL selects an unsupported interpreter", async () => {
+    const root = await createTempRoot();
+    const previousShell = process.env.SHELL;
+    try {
+      process.env.SHELL = "/usr/bin/fish";
+      const shell = createShellTool({ root });
+      const result = await shell.execute(
+        { command: 'printf %s "$BASH_VERSION"' },
+        createToolContext(),
+      );
+
+      expectToolResult(result);
+      expect(result.result.exitCode).toBe(0);
+      expect(result.result.stdout).toMatch(/^\d+\./);
+      expect(result.isError).toBe(false);
+    } finally {
+      if (previousShell === undefined) {
+        delete process.env.SHELL;
+      } else {
+        process.env.SHELL = previousShell;
+      }
+    }
   });
 
   test("inherits environment variables added after process startup", async () => {

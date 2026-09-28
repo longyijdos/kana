@@ -124,7 +124,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 `view_image` 与用户附件共用 decoder 和大小限制。支持的 JPEG、PNG 与 WebP 保持 provider-ready；其它解码格式变成静态 PNG，动画输入使用解码后的首帧。
 
-`shell` 使用 `$SHELL`，未设置或为空白时使用 `bash`。它断开 stdin，并把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入。前台调用默认 command timeout 为 30000 ms，最大接受 300000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整最终 stream 仍进入通用结果策略。
+`shell` 接受文件名为 `sh`、`bash` 或 `zsh` 的可执行程序名称或路径。`$SHELL` 在支持范围内时使用它，否则回退到 `bash`。这些 shell 支持注入的函数语法，用于把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入；stdin 断开。前台调用默认 command timeout 为 30000 ms，最大接受 300000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整最终 stream 仍进入通用结果策略。
 
 每条命令在独立进程组中运行。前台执行等待整个进程组，而不只是顶层 shell，因此裸 `command &` 不会逃过正常取消或 timeout；显式 daemonize 到另一个 process session 仍可能离开该边界。非 0 exit code 是已完成命令结果，不是工具基础设施错误；timeout 使用 `null` exit code 与 `isError: true`。
 

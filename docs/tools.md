@@ -124,7 +124,7 @@ File tools and `shell` resolve relative paths against their configured root, whi
 
 `view_image` shares the user-attachment decoder and size limits. Supported encoded JPEG, PNG, and WebP remain provider-ready; other decoded formats become static PNG, and animated input uses its decoded first frame.
 
-`shell` uses `$SHELL`, falling back to `bash` when it is unset or blank. It disconnects stdin and shadows `sudo` with `sudo -n` so password prompts cannot take TUI input. Foreground calls default to a 30000 ms command timeout, accept at most 300000 ms, and publish bounded trailing stdout/stderr snapshots roughly every 100 ms. Complete final streams still enter the common result policy.
+`shell` accepts executable names or paths whose basename is `sh`, `bash`, or `zsh`. It uses `$SHELL` when supported, otherwise falling back to `bash`. These shells support the injected function syntax that shadows `sudo` with `sudo -n` so password prompts cannot take TUI input. Stdin is disconnected. Foreground calls default to a 30000 ms command timeout, accept at most 300000 ms, and publish bounded trailing stdout/stderr snapshots roughly every 100 ms. Complete final streams still enter the common result policy.
 
 Each command runs in its own process group. Foreground execution waits for the group rather than only the top-level shell, so raw `command &` does not escape normal cancellation or timeout. Explicit daemonization into another process session may leave that boundary. A non-zero exit code is a completed command result, not a tool infrastructure error; timeout records a `null` exit code and `isError: true`.
 
