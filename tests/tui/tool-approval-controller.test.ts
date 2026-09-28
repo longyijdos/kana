@@ -25,7 +25,7 @@ describe("tool approval controller", () => {
     const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
     const controller = new ToolApprovalController({
       config: { mode: "never" },
-      approvals: { version: 2, shell: { exactCommands: [], readOnlyCommands: [] } },
+      approvals: { version: 3, shell: { exactCommands: [], readOnlyCommands: [] } },
       addTrustedShellCommand: createTrustedCommandAdder(),
       editor,
       bottomArea,
@@ -68,7 +68,7 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "unless_trusted" },
       approvals: {
-        version: 2,
+        version: 3,
         shell: { exactCommands: [], readOnlyCommands: [] },
       },
       addTrustedShellCommand: createTrustedCommandAdder(),
@@ -118,7 +118,7 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "always" },
       approvals: {
-        version: 2,
+        version: 3,
         shell: {
           exactCommands: [],
           readOnlyCommands: [],
@@ -160,7 +160,7 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "always" },
       approvals: {
-        version: 2,
+        version: 3,
         shell: {
           exactCommands: [],
           readOnlyCommands: [],
@@ -212,7 +212,7 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "unless_trusted" },
       approvals: {
-        version: 2,
+        version: 3,
         shell: { exactCommands: [], readOnlyCommands: [] },
       },
       addTrustedShellCommand: createTrustedCommandAdder(),
@@ -267,7 +267,7 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "always" },
       approvals: {
-        version: 2,
+        version: 3,
         shell: { exactCommands: [], readOnlyCommands: [] },
       },
       addTrustedShellCommand: createTrustedCommandAdder(),
@@ -310,7 +310,7 @@ describe("tool approval controller", () => {
     const savedCommands: string[] = [];
     const controller = new ToolApprovalController({
       config: { mode: "always" },
-      approvals: { version: 2, shell: { exactCommands: [], readOnlyCommands: [] } },
+      approvals: { version: 3, shell: { exactCommands: [], readOnlyCommands: [] } },
       addTrustedShellCommand: (command) => {
         savedCommands.push(command);
         return createTrustedCommandAdder()(command);
@@ -364,13 +364,13 @@ describe("tool approval controller", () => {
     const controller = new ToolApprovalController({
       config: { mode: "unless_trusted" },
       approvals: {
-        version: 2,
+        version: 3,
         shell: { exactCommands: [], readOnlyCommands: [] },
       },
       addTrustedShellCommand: (command) => {
         savedCommands.push(command);
         return {
-          version: 2,
+          version: 3,
           shell: { exactCommands: [...savedCommands], readOnlyCommands: [] },
         };
       },
@@ -396,7 +396,7 @@ describe("tool approval controller", () => {
 
 function createTrustedCommandAdder() {
   return (command: string) => ({
-    version: 2 as const,
+    version: 3 as const,
     shell: { exactCommands: [command], readOnlyCommands: [] },
   });
 }

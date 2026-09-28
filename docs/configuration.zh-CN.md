@@ -452,11 +452,13 @@ DEEPSEEK_API_KEY=sk-...
 
 ## 审批文件：`approvals.json`
 
+仅接受 version 3。不支持的版本会报 `approvals.version must be 3.`，不会自动迁移。
+
 默认内容：
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "shell": {
     "exactCommands": [],
     "readOnlyCommands": ["ls", "grep", "rg", "cat", "head", "tail", "wc", "pwd", "stat", "file"]

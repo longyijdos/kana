@@ -262,6 +262,21 @@ describe("Kana tool approval", () => {
     expect(existsSync(getKanaConfigPaths(env).approvalsPath)).toBe(false);
   });
 
+  test("rejects version 2 approval files without rewriting them", () => {
+    const env = createTempEnv();
+    const approvalsPath = getKanaConfigPaths(env).approvalsPath;
+    const legacyContent = JSON.stringify({
+      version: 2,
+      bash: { exactCommands: ["git status"], readOnlyCommands: ["ls"] },
+    });
+    mkdirSync(path.dirname(approvalsPath), { recursive: true });
+    writeFileSync(approvalsPath, legacyContent);
+
+    expect(() => loadKanaToolApprovals(env)).toThrow("approvals.version must be 3.");
+    expect(() => addTrustedShellCommand("git diff", env)).toThrow("approvals.version must be 3.");
+    expect(readFileSync(approvalsPath, "utf8")).toBe(legacyContent);
+  });
+
   test("persists trusted shell commands under the Kana home directory", () => {
     const env = createTempEnv();
 
@@ -272,7 +287,7 @@ describe("Kana tool approval", () => {
     const approvalsPath = getKanaConfigPaths(env).approvalsPath;
 
     expect(JSON.parse(readFileSync(approvalsPath, "utf8"))).toEqual({
-      version: 2,
+      version: 3,
       shell: {
         exactCommands: ["git status", "rg approval src"],
         readOnlyCommands: DEFAULT_KANA_TOOL_APPROVALS.shell.readOnlyCommands,
@@ -289,7 +304,7 @@ describe("Kana tool approval", () => {
 
     saveApprovals(
       {
-        version: 2,
+        version: 3,
         shell: {
           exactCommands: ["external command"],
           readOnlyCommands: ["ls", "rg"],
@@ -300,7 +315,7 @@ describe("Kana tool approval", () => {
     addTrustedShellCommand("git status", env);
 
     expect(loadKanaToolApprovals(env)).toEqual({
-      version: 2,
+      version: 3,
       shell: {
         exactCommands: ["external command", "git status"],
         readOnlyCommands: ["ls", "rg"],
@@ -312,7 +327,7 @@ describe("Kana tool approval", () => {
     const env = createTempEnv();
     saveApprovals(
       {
-        version: 2,
+        version: 3,
         shell: {
           exactCommands: ["startup command"],
           readOnlyCommands: ["ls"],
@@ -324,7 +339,7 @@ describe("Kana tool approval", () => {
 
     saveApprovals(
       {
-        version: 2,
+        version: 3,
         shell: {
           exactCommands: ["external command"],
           readOnlyCommands: ["rg"],
@@ -334,14 +349,14 @@ describe("Kana tool approval", () => {
     );
 
     expect(store.addTrustedShellCommand("local command")).toEqual({
-      version: 2,
+      version: 3,
       shell: {
         exactCommands: ["startup command", "local command"],
         readOnlyCommands: ["ls"],
       },
     });
     expect(loadKanaToolApprovals(env)).toEqual({
-      version: 2,
+      version: 3,
       shell: {
         exactCommands: ["external command", "local command"],
         readOnlyCommands: ["rg"],
@@ -354,7 +369,7 @@ describe("Kana tool approval", () => {
 
     saveApprovals(
       {
-        version: 2,
+        version: 3,
         shell: {
           exactCommands: [],
           readOnlyCommands: ["rg src"],
@@ -369,7 +384,7 @@ describe("Kana tool approval", () => {
 
     saveApprovals(
       {
-        version: 2,
+        version: 3,
         shell: {
           exactCommands: [],
           readOnlyCommands: ["./rg"],
@@ -386,7 +401,7 @@ describe("Kana tool approval", () => {
 
 function approvals(shell: Partial<KanaToolApprovals["shell"]> = {}): KanaToolApprovals {
   return {
-    version: 2,
+    version: 3,
     shell: {
       exactCommands: shell.exactCommands ?? [],
       readOnlyCommands: shell.readOnlyCommands ?? [],

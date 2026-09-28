@@ -189,14 +189,14 @@ function readSimpleShellExecutable(command: string): string | undefined {
 
 function readKanaToolApprovals(rawApprovals: unknown): KanaToolApprovals {
   const raw = asRecord(rawApprovals, "approvals");
+
+  if (raw.version !== 3) {
+    throw new Error("approvals.version must be 3.");
+  }
   const shell = raw.shell === undefined ? {} : asRecord(raw.shell, "approvals.shell");
 
-  if (raw.version !== 2) {
-    throw new Error("approvals.version must be 2.");
-  }
-
   return {
-    version: 2,
+    version: 3,
     shell: {
       exactCommands: readStringArray(
         shell.exactCommands,

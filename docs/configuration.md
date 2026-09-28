@@ -452,11 +452,13 @@ The global `AGENTS.md` is `<KANA_HOME>/AGENTS.md`. Normal startup loads it and t
 
 ## Approval file: `approvals.json`
 
+Only version 3 is accepted. Unsupported versions fail with `approvals.version must be 3.` and are not automatically migrated.
+
 The default file is:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "shell": {
     "exactCommands": [],
     "readOnlyCommands": ["ls", "grep", "rg", "cat", "head", "tail", "wc", "pwd", "stat", "file"]
