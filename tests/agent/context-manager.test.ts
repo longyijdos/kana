@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Type } from "typebox";
 import {
   type CompactPolicyInput,
   type ContextCheckpoint,
@@ -205,6 +206,105 @@ describe("ContextManager budgets and checkpoints", () => {
     });
     expect(JSON.stringify(policyInput)).not.toContain("private chain of thought");
     expect(JSON.stringify(policyInput)).not.toContain("structured host result");
+  });
+
+  test("retains recent raw messages independently of fixed prompt overhead", async () => {
+    let policyInput: CompactPolicyInput | undefined;
+    const manager = new ContextManager({
+      contextLimit: 4_000,
+      maxOutputTokens: 500,
+      compactPolicy: (input) => {
+        policyInput = structuredClone(input);
+        return { summary: "Earlier conversation." };
+      },
+    });
+    const coveredRuntimeContext = createRuntimeContextMessage({
+      source: "environment",
+      status: "active",
+      content: "e".repeat(1_500),
+    });
+    const recentRuntimeContext = createRuntimeContextMessage({
+      source: "background-jobs",
+      status: "active",
+      content: "j".repeat(1_500),
+    });
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "x".repeat(9_000) },
+      coveredRuntimeContext,
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Old answer" }],
+      },
+      recentRuntimeContext,
+      { ...messageIdentityForTest("user"), role: "user", content: "Recent question" },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Recent answer" }],
+      },
+    ];
+    const context: ModelContext = {
+      system: "s".repeat(1_500),
+      tools: [
+        {
+          name: "read",
+          description: "Read a file",
+          parameters: Type.Object({
+            path: Type.String({ description: "p".repeat(1_500) }),
+          }),
+        },
+      ],
+      messages,
+    };
+
+    const prepared = await manager.prepareForModel(context);
+
+    expect(prepared.compaction).toMatchObject({
+      reason: "threshold",
+      coveredMessageCount: 3,
+      compactedMessageCount: 3,
+      estimatedAfterTokens: prepared.estimatedTokens,
+    });
+    expect(policyInput?.messages).toEqual([messages[0], messages[2]]);
+    expect(prepared.context.messages).toEqual([
+      expect.objectContaining({ provenance: { kind: "context_summary" } }),
+      coveredRuntimeContext,
+      ...messages.slice(3),
+    ]);
+    expect(prepared.context.system).toBe(context.system);
+    expect(prepared.context.tools).toEqual(context.tools);
+    expect(prepared.estimatedTokens).toBe(estimateContextTokens(prepared.context));
+    expect(prepared.estimatedTokens).toBeGreaterThan(manager.targetTokens);
+    expect(prepared.estimatedTokens).toBeLessThan(manager.promptBudget);
+    expect(prepared.context.maxOutputTokens).toBe(manager.maxOutputTokens);
+  });
+
+  test("uses the last safe boundary when an unfinished tail exceeds the target", async () => {
+    const manager = new ContextManager({
+      contextLimit: 4_000,
+      maxOutputTokens: 500,
+      compactPolicy: () => ({ summary: "Earlier conversation." }),
+    });
+    const messages: Message[] = [
+      { ...messageIdentityForTest("user"), role: "user", content: "x".repeat(9_000) },
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Old answer" }],
+      },
+      { ...messageIdentityForTest("user"), role: "user", content: "y".repeat(1_500) },
+    ];
+
+    const prepared = await manager.prepareForModel({ messages });
+
+    expect(prepared.compaction?.coveredMessageCount).toBe(2);
+    expect(prepared.context.messages.slice(1)).toEqual(messages.slice(2));
+    expect(prepared.estimatedTokens).toBeGreaterThan(manager.targetTokens);
+    expect(prepared.estimatedTokens).toBeLessThan(manager.promptBudget);
   });
 
   test("keeps runtime context out of summaries and reprojects covered snapshots", async () => {
@@ -816,6 +916,36 @@ describe("ContextManager usage anchors", () => {
 });
 
 describe("ContextManager compaction rollback", () => {
+  test("rejects compaction when the full projection leaves no output capacity", async () => {
+    const manager = new ContextManager({
+      contextLimit: 4_000,
+      maxOutputTokens: 500,
+      compactPolicy: () => ({ summary: "Earlier conversation." }),
+    });
+
+    await expect(
+      manager.prepareForModel({
+        system: "s".repeat(12_000),
+        messages: [
+          { ...messageIdentityForTest("user"), role: "user", content: "Old question" },
+          {
+            ...messageIdentityForTest("assistant"),
+            role: "assistant",
+            stopReason: "stop",
+            content: [{ type: "text", text: "Old answer" }],
+          },
+          { ...messageIdentityForTest("user"), role: "user", content: "Recent question" },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      name: "ContextCompactionError",
+      cause: expect.objectContaining({
+        message: expect.stringContaining("leaving no output capacity"),
+      }),
+    });
+    expect(manager.checkpoint).toBeUndefined();
+  });
+
   test("restores the previous checkpoint when summary generation fails", async () => {
     const manager = new ContextManager({
       contextLimit: 4_000,

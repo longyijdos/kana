@@ -109,13 +109,16 @@ The prompt budget is the effective context limit minus a bounded safety reserve.
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
 promptBudget = contextLimit - safetyReserve
+targetTokens = floor(promptBudget × 10%)
 effectiveMaxOutputTokens = min(configured-or-metadata max output, promptBudget - estimatedPromptTokens)
 maxSummaryTokens = min(agent max output, promptBudget × 10%, targetTokens × 50%)
 ```
 
 At least 512 prompt tokens must remain. The effective context limit is the smaller of the configured limit and model metadata window, or the metadata window when configuration omits it.
 
-Automatic compaction begins at 80% of the prompt budget. Candidate cutoffs are limited to safe message boundaries: after a complete assistant turn without calls, or after every result belonging to one assistant tool-call group. The manager scans oldest to newest and selects the first boundary whose maximum summary placeholder, active boundary runtime state, and recent raw messages fit the 10% target. It defers when no safe boundary exists but the prompt still fits, and fails when safe recovery is impossible.
+Automatic compaction begins at 80% of the prompt budget. Candidate cutoffs are limited to safe message boundaries: after a complete assistant turn without calls, or after every result belonging to one assistant tool-call group. The manager scans oldest to newest and selects the first boundary whose maximum summary placeholder plus recent non-runtime raw messages fit the 10% conversation target. System text, tool schemas, and all runtime-context messages are excluded from this cutoff target; they still count toward the trigger and complete projected prompt budget.
+
+With default ratios and sufficient Agent output capacity, the maximum summary allocation is 5% of the prompt budget, leaving at most approximately 5% for recent raw messages. A shorter generated summary does not expand the retained tail. If no candidate meets the target, the manager uses the last safe boundary, allowing the conversation portion to exceed the target. It defers when no safe boundary exists but the prompt still fits, and fails when safe recovery is impossible. The complete post-compaction projection must still fit the prompt budget and leave output capacity.
 
 Runtime-context messages never enter summary-policy input. At the checkpoint boundary, only the last state for each source is reprojected after the summary when that state is active; all later transitions retain original order. Tool-result policy context remains ordinary summarized conversation context unless its own provenance contract says otherwise.
 

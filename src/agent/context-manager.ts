@@ -486,18 +486,14 @@ export class ContextManager {
       }
       lastValidBoundary = boundary;
 
-      const tailContext: ModelContext = {
-        system: context.system,
-        messages: [
-          createUserMessage({
-            content: formatSummaryForModel("x".repeat(this.maxSummaryTokens * 3)),
-            provenance: { kind: "context_summary" },
-          }),
-          ...projectRuntimeContextForBoundary(context.messages, boundary),
-        ],
-        tools: context.tools,
-      };
-      if (estimateContextTokens(tailContext) <= this.targetTokens) {
+      const tailMessages: Message[] = [
+        createUserMessage({
+          content: formatSummaryForModel("x".repeat(this.maxSummaryTokens * 3)),
+          provenance: { kind: "context_summary" },
+        }),
+        ...context.messages.slice(boundary).filter((message) => !isRuntimeContextMessage(message)),
+      ];
+      if (estimateMessagesTokens(tailMessages) <= this.targetTokens) {
         return boundary;
       }
     }
@@ -529,18 +525,6 @@ export class ContextManager {
 
 function isRuntimeContextMessage(message: Message): message is UserMessage {
   return message.role === "user" && message.provenance.kind === "runtime_context";
-}
-
-function projectRuntimeContextForBoundary(
-  messages: readonly Message[],
-  boundary: number,
-): Message[] {
-  return [
-    ...resolveRuntimeContextMessages(messages, boundary).map(({ message }) =>
-      structuredClone(message),
-    ),
-    ...structuredClone(messages.slice(boundary)),
-  ];
 }
 
 function messageForCompaction(message: Message): Message {

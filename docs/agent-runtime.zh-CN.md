@@ -109,13 +109,16 @@ Prompt budget 等于 effective context limit 减去有界安全预留，不会�
 ```text
 safetyReserve = clamp(floor(contextLimit × 5%), 256, 8192)
 promptBudget = contextLimit - safetyReserve
+targetTokens = floor(promptBudget × 10%)
 effectiveMaxOutputTokens = min(配置或 metadata 的输出上限, promptBudget - estimatedPromptTokens)
 maxSummaryTokens = min(Agent 输出上限, promptBudget × 10%, targetTokens × 50%)
 ```
 
 `promptBudget` 至少需要保留 512 tokens。Effective context limit 是配置上限与模型 metadata window 的较小值；省略配置时使用 metadata window。
 
-自动压缩在 prompt budget 的 80% 处启动。候选切分点只能位于安全消息边界：无调用的完整 assistant turn 之后，或一组 assistant tool call 的全部结果之后。Manager 从旧到新扫描，选择第一个能让“最大摘要占位 + 边界 active runtime state + 近期原始消息”进入 10% 目标的边界。没有安全边界但 prompt 尚能容纳时延后；无法安全恢复时失败。
+自动压缩在 prompt budget 的 80% 处启动。候选切分点只能位于安全消息边界：无调用的完整 assistant turn 之后，或一组 assistant tool call 的全部结果之后。Manager 从旧到新扫描，选择第一个能让“最大摘要占位 + 近期非 runtime 原始消息”进入 10% 对话目标的边界。System 文本、工具 schema 和全部 runtime-context 消息不参与该切分目标，但仍计入触发阈值和完整投影后的 prompt budget。
+
+默认比例且 Agent 输出上限足够时，最大摘要预算为 prompt budget 的 5%，近期原始消息最多使用约 5%。实际摘要更短时，不会扩大保留的原文尾部。没有候选边界满足目标时，manager 使用最后一个安全边界，允许对话部分超过目标。没有安全边界但 prompt 尚能容纳时延后；无法安全恢复时失败。压缩后的完整投影仍须进入 prompt budget 并保留输出空间。
 
 Runtime-context 消息永不进入摘要策略输入。在 checkpoint 边界，每个 source 的最后状态只有仍 active 时才紧接摘要重新投影；边界后的全部转换保持原顺序。Tool-result policy context 仍是普通的可摘要对话上下文，除非其 provenance 合同另有定义。
 
