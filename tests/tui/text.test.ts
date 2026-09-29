@@ -13,6 +13,13 @@ describe("tui text helpers", () => {
     expect(summarizeText("abcdefghij", 10)).toBe("abcdefghij");
   });
 
+  test("summarizeText truncates complex emoji and graphemes without splitting", () => {
+    expect(summarizeText("👩‍💻👨‍👩‍👧‍👦hello", 3)).toBe("👩‍💻👨‍👩‍👧‍👦…");
+    expect(summarizeText("🇨🇳🇺🇸🇯🇵", 2)).toBe("🇨🇳…");
+    expect(summarizeText("👩‍💻a", 1)).toBe("…");
+    expect(summarizeText("👩‍💻", 1)).toBe("👩‍💻");
+  });
+
   test("capitalize capitalizes first letter", () => {
     expect(capitalize("hello")).toBe("Hello");
     expect(capitalize("")).toBe("");
