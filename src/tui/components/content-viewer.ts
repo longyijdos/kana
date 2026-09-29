@@ -131,7 +131,7 @@ export class ContentViewer implements Component {
     }
 
     for (let index = window.start; index < window.end; index += 1) {
-      lines.push(truncateToWidth(`  ${content[index] ?? ""}`, width));
+      lines.push(truncateToWidth(`  ${content[index] ?? ""}`, width, ""));
     }
 
     if (window.hiddenAfter > 0) {

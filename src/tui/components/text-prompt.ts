@@ -86,7 +86,7 @@ export class TextPrompt implements Component {
     });
     this.inputViewportStartLine = layout.startLine;
     const lines = [
-      color(summarizeText(this.options.title), tuiTheme.bottomTitle),
+      truncateToWidth(color(summarizeText(this.options.title), tuiTheme.bottomTitle), width),
       `+${"-".repeat(frameWidth - 2)}+`,
     ];
 

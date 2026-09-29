@@ -126,9 +126,7 @@ export class BackgroundJobManager implements Component {
       const selected = index === this.viewport.selectedIndex;
       const marker = selected ? "> " : "  ";
       const label = `${marker}${shortJobId(job.id)} · ${job.status} · ${singleLine(job.label)}`;
-      lines.push(
-        truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width, ""),
-      );
+      lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
     }
     if (viewport.hiddenAfter > 0) {
       lines.push(dim(`... ${viewport.hiddenAfter} more Jobs`));
@@ -140,7 +138,7 @@ export class BackgroundJobManager implements Component {
       lines.push(...this.renderPreview(width, availableHeight, lines.length));
     }
     if (this.notice) {
-      lines.push(truncateToWidth(dim(this.notice), width, "..."));
+      lines.push(truncateToWidth(dim(this.notice), width));
     }
     lines.push(dim("↑/↓ select · ←/→ page · K stop · R refresh · Esc close"));
     return lines;
@@ -175,9 +173,7 @@ export class BackgroundJobManager implements Component {
       availableHeight === undefined
         ? 4
         : Math.max(1, Math.min(4, Math.floor(availableHeight) - usedRows - 1));
-    const visible = outputLines
-      .slice(-maximum)
-      .map((line) => truncateToWidth(dim(line), width, ""));
+    const visible = outputLines.slice(-maximum).map((line) => truncateToWidth(dim(line), width));
     const truncated = preview.truncated || outputLines.length > visible.length;
     if (visible.length === 0) {
       return [dim("(no output)")];

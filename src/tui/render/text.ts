@@ -1,9 +1,16 @@
+import { graphemeSegments } from "./graphemes";
+
 export function summarizeText(value: string, maxLength = 80): string {
   const normalized = value.trim().replace(/\s+/g, " ");
+  const segments = graphemeSegments(normalized);
 
-  return normalized.length > maxLength
-    ? `${normalized.slice(0, Math.max(0, maxLength - 3))}...`
-    : normalized;
+  if (segments.length <= maxLength) {
+    return normalized;
+  }
+
+  const keepCount = Math.max(0, maxLength - 1);
+  const endOffset = segments[keepCount]?.index ?? 0;
+  return `${normalized.slice(0, endOffset)}…`;
 }
 
 export function capitalize(value: string): string {

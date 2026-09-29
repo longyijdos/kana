@@ -56,6 +56,8 @@ The renderer caches normalized lines and viewport state. Synchronized output wra
 
 Rendering helpers strip ANSI and terminal control sequences before measurement, then use `string-width` and `Intl.Segmenter` to wrap and truncate by grapheme. CJK text, emoji, combining marks, and ANSI color therefore consume their terminal columns without splitting user-perceived characters.
 
+Single-line content truncation uses `…` by default to indicate omitted text. Already-wrapped content and final layout guards use an explicit empty suffix for hard clipping. A standalone `…` in output previews indicates omitted rows; a trailing `…` indicates horizontal truncation.
+
 Untrusted tool and provider text is sanitized before display. Width-sensitive code must work in visible cells rather than JavaScript string length, and ANSI styles must be closed at line boundaries so repainting cannot leak presentation into later rows.
 
 ## Markdown

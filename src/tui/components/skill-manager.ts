@@ -105,7 +105,6 @@ export class SkillManager implements Component {
       truncateToWidth(
         dim("Disabled Skills are manual-only; all Skills remain available through @."),
         width,
-        "...",
       ),
     ];
 
@@ -140,10 +139,10 @@ export class SkillManager implements Component {
         ? color(label, skill.mutable ? tuiTheme.user : tuiTheme.muted)
         : color(label, tuiTheme.muted);
 
-      lines.push(truncateToWidth(rendered, width, ""));
+      lines.push(truncateToWidth(rendered, width));
 
       if (selected && skill.description.trim()) {
-        lines.push(truncateToWidth(dim(`  ${formatDescription(skill.description)}`), width, "..."));
+        lines.push(truncateToWidth(dim(`  ${formatDescription(skill.description)}`), width));
       }
     }
 
@@ -151,7 +150,7 @@ export class SkillManager implements Component {
       lines.push(dim(`... ${viewport.hiddenAfter} more skills`));
     }
 
-    lines.push(truncateToWidth(dim("Enter toggle automatic use · Esc apply and close"), width, ""));
+    lines.push(truncateToWidth(dim("Enter toggle automatic use · Esc apply and close"), width));
     return lines;
   }
 

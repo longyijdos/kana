@@ -9,6 +9,28 @@ import {
 } from "../../src/tui/render";
 
 describe("tui width helpers", () => {
+  test.each([
+    ["abcdef", 4, "abc…"],
+    ["abcdef", 2, "a…"],
+    ["abcdef", 1, "…"],
+    ["abcdef", 0, ""],
+    ["abcdef", -1, ""],
+    ["abcdef", 6, "abcdef"],
+    ["你好abcdef", 4, "你…"],
+    ["👩‍💻abcdef", 3, "👩‍💻…"],
+  ])("truncates %s to width %i with the default ellipsis", (value, width, expected) => {
+    expect(truncateToWidth(value, width)).toBe(expected);
+  });
+
+  test("preserves ansi styling and wide characters with the default ellipsis", () => {
+    const rendered = truncateToWidth(color("目前src", [238, 238, 238]), 6);
+
+    expect(stripAnsi(rendered)).toBe("目前s…");
+    expect(visibleWidth(rendered)).toBe(6);
+    expect(rendered).toContain("\x1b[38;2;238;238;238m");
+    expect(rendered.endsWith("\x1b[0m")).toBe(true);
+  });
+
   test("preserves ansi styling when truncating colored text", () => {
     const rendered = truncateToWidth(color("abcdef", [238, 238, 238]), 3, "");
 

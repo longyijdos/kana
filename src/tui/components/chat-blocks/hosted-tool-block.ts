@@ -79,7 +79,7 @@ export class HostedToolBlock implements Component {
     const activity = `${title.activity}${elapsedSeconds === undefined ? "" : ` (${elapsedSeconds}s)`}`;
     const hint =
       inProgress && this.timer.active ? color(" (Esc to abort)", tuiTheme.shortcutHint) : "";
-    const lines = [`${bold(color(`◆ ${activity}`, titleColor))}${hint}`];
+    const lines = [truncateToWidth(`${bold(color(`◆ ${activity}`, titleColor))}${hint}`, width)];
     const prefix = "  └ ";
 
     if (title.target) {
@@ -88,7 +88,7 @@ export class HostedToolBlock implements Component {
       lines.push(`${prefix}${formatToolTargetLine(title.target, width - visibleWidth(prefix))}`);
     }
 
-    const rendered = lines.map((line) => truncateToWidth(line, width));
+    const rendered = lines.map((line) => truncateToWidth(line, width, ""));
     this.cachedWidth = width;
     this.cachedVersion = this.renderVersion;
     this.cachedElapsedSeconds = elapsedSeconds;

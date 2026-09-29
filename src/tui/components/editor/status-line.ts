@@ -25,7 +25,7 @@ export function renderStatusLine(
     color(formatCwd(process.cwd()), tuiTheme.cwd),
   ].filter((part): part is string => Boolean(part));
 
-  return truncateToWidth(parts.join(dim(" | ")), width, "");
+  return truncateToWidth(parts.join(dim(" | ")), width);
 }
 
 function phaseText(phase: string): string {

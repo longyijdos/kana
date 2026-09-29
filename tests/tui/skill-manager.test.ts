@@ -75,7 +75,7 @@ describe("skill manager", () => {
 
     const rendered = manager.render(20).map(stripAnsi);
 
-    expect(rendered).toContain("  A long descript...");
+    expect(rendered).toContain("  A long descriptio…");
   });
 
   test("keeps mutable global skill toggles as a draft until escape applies once", () => {

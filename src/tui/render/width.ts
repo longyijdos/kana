@@ -26,7 +26,7 @@ export function padRightAnsi(value: string, width: number): string {
   return value + " ".repeat(Math.max(0, width - visibleWidth(value)));
 }
 
-export function truncateToWidth(value: string, width: number, suffix = "..."): string {
+export function truncateToWidth(value: string, width: number, suffix = "…"): string {
   if (width <= 0) {
     return "";
   }
