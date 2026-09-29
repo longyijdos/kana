@@ -63,7 +63,7 @@ describe("slash command options controller", () => {
     harness.input("\x1b[B");
     const list = harness.render().join("\n");
     expect(list).toContain(`> ${task.id.slice(5, 13)} · detail line 1`);
-    expect(list).toContain("...");
+    expect(list).toContain("…");
     expect(list).not.toContain("detail line 30");
 
     harness.input("\r");
