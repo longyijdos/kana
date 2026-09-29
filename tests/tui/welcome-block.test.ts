@@ -75,7 +75,7 @@ describe("tui welcome block", () => {
     const sessionColumn = sessionLine?.split("|")[2];
 
     expect(sessionLine).toBeDefined();
-    expect(sessionColumn?.trimEnd().endsWith("...")).toBe(true);
+    expect(sessionColumn?.trimEnd().endsWith("…")).toBe(true);
     expect(sessionLine).not.toContain(title);
   });
 

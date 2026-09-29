@@ -284,7 +284,7 @@ export class Editor implements Component {
 
     if (this.images.length > 0) {
       const summary = color(formatImageSummary(this.images), tuiTheme.command);
-      lines.push(`| ${padRightAnsi(truncateToWidth(summary, contentWidth, "…"), contentWidth)} |`);
+      lines.push(`| ${padRightAnsi(truncateToWidth(summary, contentWidth), contentWidth)} |`);
     }
 
     for (const [index, line] of layout.lines.entries()) {
@@ -484,7 +484,7 @@ export class Editor implements Component {
     if (!this.state.value) {
       return [
         { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
-        { text: truncateToWidth(this.placeholder, this.inputColumns, ""), color: tuiTheme.muted },
+        { text: truncateToWidth(this.placeholder, this.inputColumns), color: tuiTheme.muted },
       ];
     }
 
@@ -593,8 +593,8 @@ export class Editor implements Component {
 
       lines.push(
         index === this.paletteViewport.selectedIndex
-          ? color(truncateToWidth(line, width, ""), tuiTheme.commandSelected)
-          : truncateToWidth(line, width, ""),
+          ? color(truncateToWidth(line, width), tuiTheme.commandSelected)
+          : truncateToWidth(line, width),
       );
     }
 
@@ -637,7 +637,6 @@ export class Editor implements Component {
         truncateToWidth(
           `${color(prefix, tuiTheme.muted)}${color(preview, tuiTheme.userMessageText)}`,
           width,
-          "…",
         ),
       );
     }
@@ -671,7 +670,6 @@ export class Editor implements Component {
         truncateToWidth(
           `${color(meta, tuiTheme.muted)}${color(label, tuiTheme.userMessageText)}`,
           width,
-          "…",
         ),
       );
     }
@@ -701,7 +699,6 @@ export class Editor implements Component {
         truncateToWidth(
           `${color(`  ${task.id} · `, tuiTheme.muted)}${color(label, tuiTheme.userMessageText)}`,
           width,
-          "…",
         ),
       );
     }
@@ -738,7 +735,6 @@ export class Editor implements Component {
             tuiTheme.command,
           ),
           width,
-          "…",
         ),
       );
     }

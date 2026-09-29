@@ -40,6 +40,26 @@ describe("background Job manager", () => {
     ]);
   });
 
+  test("marks omitted output rows and horizontally truncated preview lines", () => {
+    const manager = new BackgroundJobManager(() => {});
+    const completed = job("job_completed", "completed", "long build label ".repeat(5));
+    manager.replaceJobs([completed]);
+    manager.replacePreview({
+      jobId: completed.id,
+      status: "completed",
+      chunks: [{ stream: "stdout", text: `one\ntwo\nthree\n${"x".repeat(80)}\nlast` }],
+      truncated: false,
+      droppedBytes: 0,
+      exitCode: 0,
+    });
+
+    const rendered = manager.render(32).map(stripAnsi);
+    expect(rendered.find((line) => line.startsWith("> "))?.endsWith("…")).toBe(true);
+    expect(rendered).toContain("…");
+    expect(rendered).toContain(`${"x".repeat(31)}…`);
+    expect(rendered).toContain("last");
+  });
+
   test("pages the selection by one window and reports each landed Job once", () => {
     const actions: BackgroundJobManagerAction[] = [];
     const manager = new BackgroundJobManager((action) => actions.push(action));

@@ -131,7 +131,7 @@ export class ToolHistoryPicker implements Component {
           ? color(label, tuiTheme.user)
           : color(label, tuiTheme.muted);
 
-      lines.push(truncateToWidth(rendered, width, ""));
+      lines.push(truncateToWidth(rendered, width));
     }
 
     if (viewport.hiddenAfter > 0) {

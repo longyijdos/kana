@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { KanaUsageSummary } from "@/kana";
 import { UsageSummaryBlock } from "../../src/tui/components";
-import { stripAnsi } from "../../src/tui/render";
+import { stripAnsi, visibleWidth } from "../../src/tui/render";
 
 describe("tui usage summary", () => {
   test("keeps token bars and usage columns aligned across variable-width values", () => {
@@ -28,6 +28,18 @@ describe("tui usage summary", () => {
     expect(modelRows).toHaveLength(3);
     expect(new Set(modelRows.map((line) => line.indexOf("runs"))).size).toBe(1);
     expect(new Set(modelRows.map((line) => line.indexOf("tokens"))).size).toBe(1);
+  });
+
+  test("truncates colored usage rows by visible width without splitting graphemes", () => {
+    const summary = createUsageSummary();
+    summary.models[0]!.model = "中文👩‍💻model";
+    const rendered = new UsageSummaryBlock(summary).render(16);
+    const modelRow = rendered.find((line) => stripAnsi(line).startsWith("deepseek/中文"));
+
+    expect(rendered.map(stripAnsi)).toContain("Main          2…");
+    expect(stripAnsi(modelRow ?? "")).toBe("deepseek/中文👩‍💻…");
+    expect(modelRow?.endsWith("\x1b[0m")).toBe(true);
+    expect(rendered.every((line) => visibleWidth(line) <= 16)).toBe(true);
   });
 });
 

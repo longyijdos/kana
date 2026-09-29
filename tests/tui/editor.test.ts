@@ -953,7 +953,7 @@ describe("Editor", () => {
   });
 
   describe("placeholder rendering", () => {
-    test("keeps every prompt placeholder inside input frames of different widths", () => {
+    test("keeps prompt placeholders inside input frames and marks truncated text", () => {
       const helpEntryCount = PROMPT_COMMANDS.length + PROMPT_SHORTCUTS.length + 2;
       const placeholders = Array.from({ length: helpEntryCount }, (_, index) =>
         createRandomPromptPlaceholder(() => index / helpEntryCount),
@@ -976,6 +976,12 @@ describe("Editor", () => {
       }
 
       expect(invalidFrames).toEqual([]);
+
+      editorInternal.placeholder = "abcdefg";
+      const truncated = editor.render(12).find((line) => line.includes(CURSOR_MARKER));
+      const complete = editor.render(13).find((line) => line.includes(CURSOR_MARKER));
+      expect(stripAnsi(truncated ?? "")).toBe("| > abcde… |");
+      expect(stripAnsi(complete ?? "")).toBe("| > abcdefg |");
     });
   });
 });

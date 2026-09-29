@@ -150,16 +150,14 @@ export class ScheduledMessageManager implements Component {
       const origin = item.origin === "agent" ? "Kana" : "you";
       const label = `${marker}${state} · ${origin} · ${formatSingleLine(item.message)}`;
 
-      lines.push(
-        truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width, ""),
-      );
+      lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
     }
 
     if (viewport.hiddenAfter > 0) {
       lines.push(dim(`... ${viewport.hiddenAfter} more messages`));
     }
     if (this.notice) {
-      lines.push(truncateToWidth(dim(this.notice), width, "..."));
+      lines.push(truncateToWidth(dim(this.notice), width));
     }
     lines.push(dim("A add · D delete · R refresh · Esc close"));
     return lines;

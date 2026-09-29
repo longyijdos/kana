@@ -55,7 +55,7 @@ export class WelcomeBlock implements Component {
     return [
       title("Kana"),
       ...this.options.logoLines.filter((line) => visibleWidth(line) <= width),
-      truncateToWidth(text("Plan, act, and follow through from here."), width, ""),
+      truncateToWidth(text("Plan, act, and follow through from here."), width),
     ];
   }
 
@@ -66,7 +66,7 @@ export class WelcomeBlock implements Component {
 
     return [
       "",
-      truncateToWidth(text(greeting), width, ""),
+      truncateToWidth(text(greeting), width),
       "",
       ...this.options.logoLines.map((line) => `${logoIndent}${line}`),
       "",

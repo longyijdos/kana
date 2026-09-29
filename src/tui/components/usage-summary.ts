@@ -1,5 +1,5 @@
 import type { KanaUsageSummary } from "@/kana";
-import { color, visibleWidth } from "../render";
+import { color, truncateToWidth, visibleWidth } from "../render";
 import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
 
@@ -105,7 +105,7 @@ export class UsageSummaryBlock implements Component {
       ),
     ]
       .filter((value): value is string => value !== undefined)
-      .map((value) => (visibleWidth(value) > width ? value.slice(0, width) : value));
+      .map((value) => truncateToWidth(value, width));
   }
 }
 

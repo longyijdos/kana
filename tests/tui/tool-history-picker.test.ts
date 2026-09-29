@@ -122,6 +122,8 @@ describe("tool history picker", () => {
     const lines = picker.render(48).map(stripAnsi);
 
     expect(lines.length).toBe(5);
+    expect(lines[1]?.endsWith("…")).toBe(true);
+    expect(lines.at(-1)?.endsWith("…")).toBe(true);
     for (const line of lines) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(48);
       expect(line).not.toContain("\n");

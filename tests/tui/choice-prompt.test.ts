@@ -44,7 +44,7 @@ describe("choice prompt", () => {
       color("Allow tool?", tuiTheme.bottomTitle) +
         color(" (Shift+Tab to stop asking)", tuiTheme.shortcutHint),
     );
-    expect(stripAnsi(prompt.render(20)[0] ?? "")).toBe("Allow tool? (Shift+T");
+    expect(stripAnsi(prompt.render(20)[0] ?? "")).toBe("Allow tool? (Shift+…");
   });
 
   test("wraps detail text instead of truncating it", () => {

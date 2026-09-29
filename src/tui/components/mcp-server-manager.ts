@@ -160,12 +160,10 @@ export class McpServerManager implements Component {
       const checkbox = server.enabled ? "[x]" : "[ ]";
       const label = `${marker}${checkbox} ${formatSingleLine(server.id)}  ${server.type}`;
 
-      lines.push(
-        truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width, ""),
-      );
+      lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
 
       if (selected) {
-        lines.push(truncateToWidth(dim(formatServerDetail(server)), width, "..."));
+        lines.push(truncateToWidth(dim(formatServerDetail(server)), width));
       }
     }
 

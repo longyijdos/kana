@@ -129,16 +129,14 @@ export class SubagentManager implements Component {
         const subagent = this.subagents[index] as KanaSubagentSummary;
         const selected = index === this.viewport.selectedIndex;
         const line = `${selected ? "> " : "  "}${shortId(subagent.id)} · ${subagent.profile} · ${subagent.status} · ${singleLine(subagent.label)}`;
-        lines.push(
-          truncateToWidth(color(line, selected ? tuiTheme.user : tuiTheme.muted), width, ""),
-        );
+        lines.push(truncateToWidth(color(line, selected ? tuiTheme.user : tuiTheme.muted), width));
       }
       if (window.hiddenAfter > 0) {
         lines.push(dim(`... ${window.hiddenAfter} more runs`));
       }
       lines.push(...this.renderPreview(width, availableHeight, lines.length));
     }
-    if (this.notice) lines.push(truncateToWidth(dim(this.notice), width, "..."));
+    if (this.notice) lines.push(truncateToWidth(dim(this.notice), width));
     lines.push(dim("Enter transcript · ↑/↓ select · ←/→ page · K cancel · R refresh · Esc close"));
     return lines;
   }
@@ -191,9 +189,7 @@ export class SubagentManager implements Component {
     if (!selected || !preview || preview.id !== selected.id) return [dim("(loading result)")];
     const text = stripTerminalControlSequences(preview.error ?? preview.output);
     const outputLines = text.split(/\r?\n/).filter(Boolean);
-    const visible = outputLines
-      .slice(-maximum)
-      .map((line) => truncateToWidth(dim(line), width, ""));
+    const visible = outputLines.slice(-maximum).map((line) => truncateToWidth(dim(line), width));
     if (visible.length === 0) return [dim("(no final output)")];
     if (outputLines.length === visible.length) return visible;
     return maximum === 1 ? [dim("…")] : [dim("…"), ...visible.slice(-(maximum - 1))];
@@ -203,7 +199,7 @@ export class SubagentManager implements Component {
 function renderProfileSummary(profiles: readonly KanaSubagentProfile[], width: number): string {
   const names = profiles.map((profile) => singleLine(profile.name));
   if (names.length === 0) {
-    return truncateToWidth("Profiles · none · add <KANA_HOME>/agents/<name>.md", width, "");
+    return truncateToWidth("Profiles · none · add <KANA_HOME>/agents/<name>.md", width);
   }
 
   const complete = `Profiles · ${names.join(" · ")}`;
@@ -217,8 +213,8 @@ function renderProfileSummary(profiles: readonly KanaSubagentProfile[], width: n
   const hidden = `+${names.length} more`;
   const separator = " · ";
   const prefixWidth = width - visibleWidth(separator) - visibleWidth(hidden);
-  if (prefixWidth <= 0) return truncateToWidth(hidden, width, "");
-  return `${truncateToWidth("Profiles", prefixWidth, "…")}${separator}${hidden}`;
+  if (prefixWidth <= 0) return truncateToWidth(hidden, width);
+  return `${truncateToWidth("Profiles", prefixWidth)}${separator}${hidden}`;
 }
 
 function cloneSummary(summary: KanaSubagentSummary): KanaSubagentSummary {

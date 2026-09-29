@@ -128,7 +128,7 @@ export class ToolCallBlock implements Component {
       lines.push(...this.renderOutput(width, "compact"));
     }
 
-    const rendered = lines.map((line) => truncateToWidth(line, width));
+    const rendered = lines.map((line) => truncateToWidth(line, width, ""));
 
     this.cachedWidth = width;
     this.cachedVersion = this.renderVersion;
@@ -236,7 +236,12 @@ export class ToolCallBlock implements Component {
       this.presentationResult(),
       elapsedSeconds,
     );
-    const lines = [colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor)];
+    const lines = [
+      truncateToWidth(
+        colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor),
+        width,
+      ),
+    ];
     const prefix = "  └ ";
 
     if (title.target) {

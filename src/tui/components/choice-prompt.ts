@@ -39,20 +39,20 @@ export class ChoicePrompt<T extends string> implements Component {
     const titleColor = this.options.titleColor ?? tuiTheme.bottomTitle;
     const selectionColor = this.options.selectionColor ?? tuiTheme.user;
     const highlight = this.options.highlight ?? ((line: string) => line);
-    const titleLines = mapLines(this.options.title, (line) =>
-      highlight(color(line, titleColor)),
-    ).map((line, index, lines) =>
-      index === lines.length - 1 && this.options.titleHint
-        ? `${line}${color(` (${this.options.titleHint})`, tuiTheme.shortcutHint)}`
-        : line,
-    );
+    const titleLines = mapLines(this.options.title, (line) => highlight(color(line, titleColor)))
+      .map((line, index, lines) =>
+        index === lines.length - 1 && this.options.titleHint
+          ? `${line}${color(` (${this.options.titleHint})`, tuiTheme.shortcutHint)}`
+          : line,
+      )
+      .map((line) => truncateToWidth(line, width));
     const detailLines = this.options.detail
       ? wrapPlainText(this.options.detail, width).map((line) =>
           highlight(this.options.dimDetail === false ? line : dim(line)),
         )
       : [];
     const optionLines = this.options.options.map((option, index) =>
-      this.renderOption(option, index, selectionColor),
+      truncateToWidth(this.renderOption(option, index, selectionColor), width),
     );
     const lines = [
       ...titleLines,

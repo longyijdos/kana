@@ -140,7 +140,7 @@ describe("content viewer", () => {
     const title = stripAnsi(rendered[0] ?? "");
 
     expect(title.startsWith("Ran printf table | 01")).toBe(true);
-    expect(title.endsWith("...")).toBe(true);
+    expect(title.endsWith("…")).toBe(true);
     expect(title).not.toContain("\n");
     expect(visibleWidth(rendered[0] ?? "")).toBeLessThanOrEqual(32);
   });

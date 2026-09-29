@@ -74,7 +74,7 @@ export class McpAuthActionMenu implements Component {
 
     if (this.operation !== undefined) {
       lines.push(color(this.operation, tuiTheme.user), dim("Esc cancel"));
-      return lines.map((line) => truncateToWidth(line, width, ""));
+      return lines.map((line) => truncateToWidth(line, width));
     }
 
     for (const [index, action] of this.actions.entries()) {
@@ -82,7 +82,7 @@ export class McpAuthActionMenu implements Component {
       lines.push(index === this.selectedIndex ? color(line, tuiTheme.user) : line);
     }
     lines.push(dim("Enter select · Esc back"));
-    return lines.map((line) => truncateToWidth(line, width, ""));
+    return lines.map((line) => truncateToWidth(line, width));
   }
 
   private move(delta: number): void {

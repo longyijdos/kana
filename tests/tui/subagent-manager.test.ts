@@ -126,7 +126,7 @@ describe("subagent manager", () => {
     );
     manager.replacePreview({
       ...completed,
-      output: "line one\nline two\nline three\nline four",
+      output: `line one\nline two\nline three\n${"x".repeat(80)}`,
       waitTimedOut: false,
     });
 
@@ -134,6 +134,10 @@ describe("subagent manager", () => {
     expect(rendered.filter((line) => line.includes(" · explorer · "))).toHaveLength(4);
     expect(rendered).toContain("…");
     expect(rendered).toHaveLength(9);
+
+    const narrow = manager.render(32).map(stripAnsi);
+    expect(narrow).toContain("…");
+    expect(narrow).toContain(`${"x".repeat(31)}…`);
   });
 });
 

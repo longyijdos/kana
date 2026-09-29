@@ -23,7 +23,7 @@ describe("compact tool transcript bounds", () => {
     const compact = block.render(WIDTH).map(stripAnsi);
 
     expect(compact.length).toBe(2);
-    expect(compact[1]).toContain("...");
+    expect(compact[1]).toContain("…");
     expect(compact.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
 
     expect((toolCall.args as { command: string }).command).toBe(command);
@@ -32,7 +32,7 @@ describe("compact tool transcript bounds", () => {
     const completed = block.render(WIDTH).map(stripAnsi);
 
     expect(completed.length).toBe(2);
-    expect(completed[1]).toContain("...");
+    expect(completed[1]).toContain("…");
     expect(completed.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
   });
 
@@ -194,7 +194,7 @@ describe("compact tool transcript bounds", () => {
     const compact = block.render(WIDTH).map(stripAnsi);
 
     expect(compact.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
-    expect(compact.some((line) => line.startsWith("- ") && line.endsWith("..."))).toBe(true);
+    expect(compact.some((line) => line.startsWith("- ") && line.endsWith("…"))).toBe(true);
     expect(block.hasExpandableOutput()).toBe(true);
 
     const full = block.getToolDetailView().render(WIDTH).map(stripAnsi);
@@ -329,7 +329,7 @@ describe("compact tool transcript bounds", () => {
     const compact = block.render(WIDTH).map(stripAnsi);
 
     expect(compact.length).toBeLessThanOrEqual(2);
-    expect(compact.join("\n")).toContain("...");
+    expect(compact.join("\n")).toContain("…");
     expect(compact.every((line) => visibleWidth(line) <= WIDTH)).toBe(true);
   });
 });
