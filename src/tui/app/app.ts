@@ -573,6 +573,10 @@ export class KanaTuiApp {
       );
     }
 
+    if (this.options.launch.initialPrompt) {
+      this.editor.setText(this.options.launch.initialPrompt);
+    }
+
     this.tui.addChild(this.layout);
     this.bottomArea.show(this.editor);
     this.tui.addInputListener((data) => this.handleGlobalInput(data));

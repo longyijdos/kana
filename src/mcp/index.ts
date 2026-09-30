@@ -11,7 +11,6 @@ export {
   McpManager,
   type McpManagerErrorEvent,
   type McpManagerProgressEvent,
-  McpManagerStartError,
   type McpServerDiagnostic,
   type McpServerRegistration,
   type McpToolRegistry,

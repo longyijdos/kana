@@ -75,7 +75,7 @@ Kana 提供浏览器打开与 owner-only 凭据持久化，并对 OAuth discover
 
 `start()` 在启动完成时 resolve。Registry 通过 `catalog` 提供 server 简介，通过 `listTools(serverId)` 提供过滤后的定义，通过 `getTool(serverId, toolName)` 提供远端执行入口。已注册条目包含编译后的 input schema、远端执行与结构化来源 metadata；description 保留远端原文。
 
-可选 server 失败会被诊断、关闭与隔离。必需 server 失败会关闭全部 client 并中止启动。Diagnostic 包含复制的 server identity、生命周期状态、capability、发现与保留工具数及错误身份。Progress 报告 completed/total 数与终态结果。Startup 接受 abort signal，取消与 server 失败区分。Close 幂等，等待 startup 退出，并按 registration 逆序释放 client。
+Server 失败会被诊断、关闭并隔离，不关闭成功连接的 client。即使没有 server 连接成功，startup 仍会进入 ready。Diagnostics 包含复制的 server identity、生命周期状态、capability、发现与保留工具数及错误身份。Progress 报告 completed/total 数与终态结果。Startup 接受 abort signal，取消与 server 失败区分。Close 幂等，等待 startup 退出，并按 registration 逆序释放 client。
 
 每个 manager generation 的目录固定。`notifications/tools/list_changed` 只诊断，不修改当前入口目录。`KanaMcpRuntime` 串行处理 start、reload 与 close。Reload 关闭旧 manager，从 Host 的定义和启用快照重新连接，再发布 ready registry 与 diagnostic。取消或失败会使 registry 不可用，并允许之后 reload；已关闭 runtime 不能复活。
 

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { AgentEventStream } from "../../src/agent";
 import { KanaTuiApp } from "../../src/tui/app/app";
+import type { Editor } from "../../src/tui/components";
 import { registerTuiProcessSignals, type TuiSignalProcess } from "../../src/tui/process-lifecycle";
 import { stripAnsi } from "../../src/tui/render";
+import type { Tui } from "../../src/tui/runtime";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
-import { waitFor } from "../helpers/async-control";
+import { deferred, waitFor } from "../helpers/async-control";
 import {
   createTuiAgentStub as createAgentStub,
   createTuiAppOptions as createOptions,
@@ -228,7 +230,84 @@ describe("Kana TUI shutdown", () => {
     });
   }
 
-  test("submits the initial prompt after MCP startup is cancelled", async () => {
+  for (const outcome of ["ready", "failed"] as const) {
+    test(`shows the initial prompt with the editor disabled until MCP startup is ${outcome}`, async () => {
+      let handleInput!: (data: string) => void;
+      const pending = deferred();
+      const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
+      const app = new KanaTuiApp(
+        () => {
+          const agent = createAgentStub();
+          agent.stream = (input) => {
+            const stream = new AgentEventStream();
+            calls.push({ input, stream });
+            return stream;
+          };
+          return agent;
+        },
+        createTerminal((onInput) => {
+          handleInput = onInput;
+        }),
+        {
+          ...createOptions(),
+          launch: { initialPrompt: "Initial task." },
+          mcp: {
+            load: async () => {
+              await pending.promise;
+              if (outcome === "failed") {
+                throw new Error("MCP runtime initialization failed.");
+              }
+              return {};
+            },
+          },
+        },
+      );
+      const internal = app as unknown as {
+        editor: Editor;
+        tui: Tui;
+        transcript: { render(width: number): string[] };
+        layout: { render(width: number): string[] };
+      };
+
+      app.start();
+
+      expect(internal.editor.getText()).toBe("Initial task.");
+      expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain("Initial task.");
+      expect(internal.tui.getFocus()).toBeUndefined();
+      for (const input of ["ignored", "\x7f", "\r", "\t", "\x0f"]) {
+        handleInput(input);
+      }
+      expect(internal.editor.getText()).toBe("Initial task.");
+      expect(calls).toEqual([]);
+
+      pending.resolve();
+      if (outcome === "failed") {
+        await waitFor(() =>
+          stripAnsi(internal.transcript.render(80).join("\n")).includes(
+            "Failed to start MCP servers: MCP runtime initialization failed.",
+          ),
+        );
+        expect(internal.tui.getFocus()).toBe(internal.editor);
+        expect(internal.editor.getText()).toBe("Initial task.");
+        expect(calls).toEqual([]);
+        handleInput(" Retry.");
+        handleInput("\r");
+      }
+      await waitFor(() => calls.length === 1);
+
+      expect(calls[0]?.input).toMatchObject({
+        role: "user",
+        content: outcome === "ready" ? "Initial task." : "Initial task. Retry.",
+        provenance: { kind: "user_input" },
+      });
+      expect(internal.editor.getText()).toBe("");
+      expect(internal.tui.getFocus()).toBe(internal.editor);
+      calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
+      await app.stop();
+    });
+  }
+
+  test("submits the displayed initial prompt after MCP startup is cancelled", async () => {
     let handleInput!: (data: string) => void;
     const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
     const app = new KanaTuiApp(
@@ -260,8 +339,11 @@ describe("Kana TUI shutdown", () => {
         },
       },
     );
+    const internal = app as unknown as { editor: Editor; tui: Tui };
 
     app.start();
+    expect(internal.editor.getText()).toBe("Continue without MCP.");
+    expect(internal.tui.getFocus()).toBeUndefined();
     handleInput("\x1b");
     await waitFor(() => calls.length === 1);
 
@@ -270,6 +352,7 @@ describe("Kana TUI shutdown", () => {
       content: "Continue without MCP.",
       provenance: { kind: "user_input" },
     });
+    expect(internal.editor.getText()).toBe("");
     calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
     await app.stop();
   });

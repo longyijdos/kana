@@ -92,16 +92,16 @@ describe("TUI MCP management", () => {
           management: {
             loadServers: () => [
               {
-                id: "required",
+                id: "filesystem",
                 type: "stdio",
-                command: "required-mcp",
+                command: "filesystem-mcp",
                 args: [],
                 enabled: false,
               },
             ],
             saveEnabledServerIds: () => {},
             reload: async () => {
-              throw new Error("Required MCP servers failed to start: required.");
+              throw new Error("MCP runtime initialization failed.");
             },
           },
         },
@@ -115,7 +115,7 @@ describe("TUI MCP management", () => {
     await waitFor(() => agentToolStates.length === 2);
 
     expect(renderTranscript(internal.transcript)).toContain(
-      "Failed to reload MCP servers: Required MCP servers failed to start: required.",
+      "Failed to reload MCP servers: MCP runtime initialization failed.",
     );
     expect(internal.tui.getFocus()).toBe(internal.editor);
 

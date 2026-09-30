@@ -84,12 +84,12 @@ export class McpLifecycleController {
         this.endLoading(loadingOperation);
         if (!this.options.isStopping()) {
           this.options.transcript.addChild(
-            new TextBlock(
-              `Failed to start MCP servers: ${formatError(error)}\nPress Ctrl+C to exit.`,
-              { color: tuiTheme.error },
-            ),
+            new TextBlock(`Failed to start MCP servers: ${formatError(error)}`, {
+              color: tuiTheme.error,
+            }),
           );
           this.options.updateStatus("error");
+          this.options.focusEditor();
           this.options.tui.requestRender();
         }
         return false;

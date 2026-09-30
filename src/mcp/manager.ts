@@ -39,7 +39,6 @@ export type McpManagerStartOptions = {
 export type McpServerRegistration = {
   id: string;
   description?: string;
-  required?: boolean;
   includeTools?: readonly string[];
   excludeTools?: readonly string[];
   resultLimits?: Partial<McpToolResultLimits>;
@@ -69,7 +68,6 @@ export type McpManagerOptions = {
 
 export type McpServerDiagnostic = {
   id: string;
-  required: boolean;
   status: McpServerStatus;
   discoveredToolCount: number;
   toolCount: number;
@@ -80,22 +78,6 @@ export type McpServerDiagnostic = {
     message: string;
   };
 };
-
-export type McpServerStartFailure = {
-  serverId: string;
-  error: Error;
-};
-
-export class McpManagerStartError extends Error {
-  readonly failures: readonly McpServerStartFailure[];
-
-  constructor(failures: readonly McpServerStartFailure[]) {
-    const serverIds = failures.map((failure) => failure.serverId).join(", ");
-    super(`Required MCP servers failed to start: ${serverIds}.`);
-    this.name = "McpManagerStartError";
-    this.failures = failures.slice();
-  }
-}
 
 type McpServerRecord = {
   registration: McpServerRegistration;
@@ -141,7 +123,6 @@ export class McpManager implements McpToolRegistry {
   get diagnostics(): McpServerDiagnostic[] {
     return this.records.map((record) => ({
       id: record.registration.id,
-      required: record.registration.required ?? false,
       status: record.status,
       discoveredToolCount: record.discoveredToolCount,
       toolCount: record.tools.length,
@@ -244,19 +225,6 @@ export class McpManager implements McpToolRegistry {
     );
     throwIfStartAborted(this.startController.signal);
 
-    const requiredFailures = this.records
-      .filter((record) => record.registration.required && record.error)
-      .map((record) => ({
-        serverId: record.registration.id,
-        error: record.error!,
-      }));
-
-    if (requiredFailures.length > 0) {
-      const error = new McpManagerStartError(requiredFailures);
-      await this.closeAfterStartFailure();
-      throw error;
-    }
-
     this.stateData = "ready";
   }
 
@@ -318,7 +286,7 @@ export class McpManager implements McpToolRegistry {
       try {
         await this.startPromise;
       } catch {
-        // startInternal already closes every client when startup fails.
+        // Startup cancellation already closes all clients.
       }
     }
     if (this.stateData === "closed") {
@@ -405,7 +373,6 @@ function copyRegistration(registration: McpServerRegistration): McpServerRegistr
   return {
     id: registration.id,
     ...(registration.description === undefined ? {} : { description: registration.description }),
-    ...(registration.required === undefined ? {} : { required: registration.required }),
     ...(registration.includeTools === undefined
       ? {}
       : { includeTools: registration.includeTools.slice() }),

@@ -6,7 +6,6 @@ const KANA_MCP_SERVER_TYPES = ["stdio", "http"] as const;
 
 type KanaMcpCommonServerConfig = {
   description?: string;
-  required: boolean;
   startupTimeoutMs: number;
   requestTimeoutMs: number;
   includeTools?: string[];
@@ -60,7 +59,6 @@ const STDIO_SERVER_KEYS = new Set([
   "args",
   "cwd",
   "env",
-  "required",
   "startupTimeoutMs",
   "requestTimeoutMs",
   "includeTools",
@@ -73,7 +71,6 @@ const HTTP_SERVER_KEYS = new Set([
   "proxy",
   "headers",
   "auth",
-  "required",
   "startupTimeoutMs",
   "requestTimeoutMs",
   "includeTools",
@@ -214,7 +211,6 @@ function parseCommonServerConfig(
 
   return {
     ...(description === undefined ? {} : { description }),
-    required: readBoolean(server.required, false, `${name}.required`),
     startupTimeoutMs: readPositiveInteger(
       server.startupTimeoutMs,
       10_000,
@@ -323,16 +319,6 @@ function readOptionalHttpProxyUrl(value: unknown, name: string): string | false 
     throw new Error(`${name} cannot contain a fragment.`);
   }
   return raw;
-}
-
-function readBoolean(value: unknown, fallback: boolean, name: string): boolean {
-  if (value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== "boolean") {
-    throw new Error(`${name} must be a boolean.`);
-  }
-  return value;
 }
 
 function readPositiveInteger(value: unknown, fallback: number, name: string): number {

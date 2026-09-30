@@ -56,7 +56,6 @@ describe("MCP lifecycle status", () => {
       formatMcpStartupWarnings([
         {
           id: "filesystem\nspoofed",
-          required: false,
           status: "failed",
           discoveredToolCount: 0,
           toolCount: 0,
@@ -64,7 +63,6 @@ describe("MCP lifecycle status", () => {
         },
         {
           id: "github",
-          required: false,
           status: "ready",
           discoveredToolCount: 2,
           toolCount: 2,
@@ -77,21 +75,18 @@ describe("MCP lifecycle status", () => {
     const diagnostics = [
       {
         id: "playwright",
-        required: false,
         status: "ready" as const,
         discoveredToolCount: 28,
         toolCount: 26,
       },
       {
         id: "filesystem",
-        required: false,
         status: "ready" as const,
         discoveredToolCount: 1,
         toolCount: 1,
       },
       {
         id: "optional",
-        required: false,
         status: "failed" as const,
         discoveredToolCount: 0,
         toolCount: 0,
