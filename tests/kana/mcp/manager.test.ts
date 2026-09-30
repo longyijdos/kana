@@ -148,7 +148,6 @@ describe("Kana MCP composition", () => {
     expect(manager.diagnostics).toEqual([
       {
         id: "fixture",
-        required: false,
         status: "failed",
         discoveredToolCount: 0,
         toolCount: 0,
@@ -524,7 +523,6 @@ function createHttpServerConfig(
     type: "http",
     url: "https://example.com/mcp",
     headers: {},
-    required: false,
     startupTimeoutMs: 1_000,
     requestTimeoutMs: 1_000,
     ...overrides,
@@ -539,7 +537,6 @@ function createServerConfig(
     command: process.execPath,
     args: [fixturePath],
     env: {},
-    required: false,
     startupTimeoutMs: 1_000,
     requestTimeoutMs: 1_000,
     ...overrides,

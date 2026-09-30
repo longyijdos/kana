@@ -410,7 +410,6 @@ Omitting `type` defaults to `stdio`; Streamable HTTP must explicitly use `"type"
 | `headers` | HTTP: `{}` | String headers sent with every HTTP request; transport-owned content, session, protocol, and SSE headers cannot be overridden. |
 | `auth` | Unset | Explicitly enables HTTP OAuth 2.0. Without it, Kana uses an ordinary HTTP connection and does not start OAuth. When set, `url` must use HTTPS and `headers` cannot also set `Authorization`. |
 | `description` | Server-provided description, if any | Capability summary shown in the model-facing MCP catalog. |
-| `required` | `false` | Whether a startup failure prevents the whole MCP manager from becoming ready. |
 | `startupTimeoutMs` | `10000` | Timeout for each MCP negotiation or initialization request during startup. |
 | `requestTimeoutMs` | `60000` | Default timeout for ordinary MCP requests. |
 | `includeTools` | Unset | Allowlist matched against original remote tool names. An empty array exposes no tools. |

@@ -5,7 +5,6 @@ import {
   type McpManagedClient,
   McpManager,
   type McpManagerErrorEvent,
-  McpManagerStartError,
   type McpProgress,
   McpRequestCancelledError,
   type McpTool,
@@ -50,7 +49,6 @@ describe("MCP manager", () => {
     expect(manager.diagnostics).toEqual([
       {
         id: "alpha",
-        required: false,
         status: "ready",
         discoveredToolCount: 3,
         toolCount: 1,
@@ -59,7 +57,6 @@ describe("MCP manager", () => {
       },
       {
         id: "beta",
-        required: false,
         status: "ready",
         discoveredToolCount: 1,
         toolCount: 1,
@@ -69,7 +66,7 @@ describe("MCP manager", () => {
     ]);
   });
 
-  test("isolates optional startup failures and reports diagnostics", async () => {
+  test("isolates startup failures and keeps healthy clients available", async () => {
     const events: McpManagerErrorEvent[] = [];
     const unavailable = createFakeClient({
       name: "unavailable",
@@ -89,9 +86,11 @@ describe("MCP manager", () => {
     expect(manager.listTools("unavailable")).toEqual([]);
     expect(manager.listTools("healthy").map((tool) => tool.name)).toEqual(["search"]);
     expect(unavailable.closeCount).toBe(1);
+    expect(healthy.closeCount).toBe(0);
+    expect(manager.state).toBe("ready");
+    expect(manager.catalog.map((server) => server.name)).toEqual(["healthy"]);
     expect(manager.diagnostics[0]).toEqual({
       id: "unavailable",
-      required: false,
       status: "failed",
       discoveredToolCount: 0,
       toolCount: 0,
@@ -102,34 +101,25 @@ describe("MCP manager", () => {
     ]);
   });
 
-  test("fails startup when a required server fails and closes every client", async () => {
-    const first = createFakeClient({ name: "first", tools: [createTool("one")] });
-    const required = createFakeClient({
-      name: "required",
-      connectError: new Error("handshake failed"),
-    });
-    const last = createFakeClient({ name: "last", tools: [createTool("three")] });
+  test("completes startup when every server fails", async () => {
+    const first = createFakeClient({ name: "first", connectError: new Error("not installed") });
+    const last = createFakeClient({ name: "last", connectError: new Error("handshake failed") });
     const manager = new McpManager({
       servers: [
         { id: "first", createClient: () => first },
-        { id: "required", required: true, createClient: () => required },
         { id: "last", createClient: () => last },
       ],
     });
 
-    let error: unknown;
-    try {
-      await manager.start();
-    } catch (caught) {
-      error = caught;
-    }
+    await expect(manager.start()).resolves.toBeUndefined();
 
-    expect(error).toBeInstanceOf(McpManagerStartError);
-    expect((error as McpManagerStartError).failures).toEqual([
-      { serverId: "required", error: expect.any(Error) },
+    expect([first.closeCount, last.closeCount]).toEqual([1, 1]);
+    expect(manager.state).toBe("ready");
+    expect(manager.catalog).toEqual([]);
+    expect(manager.diagnostics.map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: "first", status: "failed" },
+      { id: "last", status: "failed" },
     ]);
-    expect([first.closeCount, required.closeCount, last.closeCount]).toEqual([1, 1, 1]);
-    expect(manager.state).toBe("closed");
     expect(manager.listTools("first")).toEqual([]);
     expect(manager.getTool("first", "one")).toBeUndefined();
   });
@@ -154,7 +144,7 @@ describe("MCP manager", () => {
     await manager.close();
   });
 
-  test("fails an optional server atomically when one tool schema is invalid", async () => {
+  test("fails a server atomically when one tool schema is invalid", async () => {
     const invalid = createFakeClient({
       name: "invalid",
       tools: [
@@ -180,7 +170,7 @@ describe("MCP manager", () => {
     expect(invalid.closeCount).toBe(1);
   });
 
-  test("fails only the offending optional server when discovery repeats a remote name", async () => {
+  test("fails only the offending server when discovery repeats a remote name", async () => {
     const duplicate = createFakeClient({
       name: "duplicate",
       tools: [createTool("same"), createTool("same")],

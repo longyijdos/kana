@@ -50,9 +50,9 @@ describe("MCP lifecycle controller", () => {
     ]);
   });
 
-  test("keeps interaction disabled when required tools fail to load", async () => {
+  test("restores interaction when MCP startup fails", async () => {
     const harness = createHarness(async () => {
-      throw new Error("Required MCP servers failed to start: filesystem.");
+      throw new Error("MCP runtime initialization failed.");
     });
 
     await expect(harness.controller.load()).resolves.toBe(false);
@@ -60,14 +60,14 @@ describe("MCP lifecycle controller", () => {
     expect(harness.controller.loading).toBe(false);
     expect(harness.render()).toEqual([
       "Starting MCP servers...",
-      "Failed to start MCP servers: Required MCP servers failed to start: filesystem.",
-      "Press Ctrl+C to exit.",
+      "Failed to start MCP servers: MCP runtime initialization failed.",
     ]);
     expect(harness.events).toEqual([
       "status:starting",
       "focus:clear",
       "render",
       "status:error",
+      "focus:editor",
       "render",
     ]);
   });

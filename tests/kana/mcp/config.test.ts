@@ -37,7 +37,6 @@ describe("Kana MCP config", () => {
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-github"],
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_xxxx" },
-          required: true,
           startupTimeoutMs: 5_000,
           requestTimeoutMs: 30_000,
           includeTools: ["create_issue", "list_issues"],
@@ -54,7 +53,6 @@ describe("Kana MCP config", () => {
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/projects"],
           env: {},
-          required: false,
           startupTimeoutMs: 10_000,
           requestTimeoutMs: 60_000,
         },
@@ -64,7 +62,6 @@ describe("Kana MCP config", () => {
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-github"],
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_xxxx" },
-          required: true,
           startupTimeoutMs: 5_000,
           requestTimeoutMs: 30_000,
           includeTools: ["create_issue", "list_issues"],
@@ -87,7 +84,6 @@ describe("Kana MCP config", () => {
               Authorization: "Bearer test-token",
               "X-Tenant": "kana",
             },
-            required: true,
             startupTimeoutMs: 5_000,
             requestTimeoutMs: 30_000,
             includeTools: ["search"],
@@ -105,7 +101,6 @@ describe("Kana MCP config", () => {
             Authorization: "Bearer test-token",
             "X-Tenant": "kana",
           },
-          required: true,
           startupTimeoutMs: 5_000,
           requestTimeoutMs: 30_000,
           includeTools: ["search"],
@@ -159,7 +154,6 @@ describe("Kana MCP config", () => {
         authorizationParameters: { access_type: "offline", prompt: "consent" },
         callbackTimeoutMs: 300_000,
       },
-      required: false,
       startupTimeoutMs: 10_000,
       requestTimeoutMs: 60_000,
     });
@@ -301,6 +295,14 @@ describe("Kana MCP config", () => {
         },
       }),
     ).toThrow("mcpServers.legacy contains unknown field enabled.");
+    for (const server of [
+      { command: "mcp-server", required: true },
+      { type: "http", url: "https://example.com/mcp", required: true },
+    ]) {
+      expect(() => parseKanaMcpConfig({ mcpServers: { legacy: server } })).toThrow(
+        "mcpServers.legacy contains unknown field required.",
+      );
+    }
   });
 
   test("rejects invalid environment values", () => {

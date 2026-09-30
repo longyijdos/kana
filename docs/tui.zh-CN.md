@@ -9,7 +9,7 @@ Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态
 组件负责展示和本地键盘处理。终端 runtime 负责通用 `Component` 契约、高度分配、可见宽度规范化、cursor 放置和差量输出；这些机制见[终端渲染](terminal-rendering.zh-CN.md)。
 ## 应用生命周期
 
-终端 runtime 先于 `KanaTuiApp` 启动；底层 raw mode、capability、repaint 和恢复行为属于[终端渲染](terminal-rendering.zh-CN.md)。随后 App 会先显示当前 session，再连接 MCP server。MCP 启动期间会移除 editor 焦点，追加不可变的逐 server 结果与 warning，用 MCP 入口重建 Agent，最后恢复 editor。`Esc` 或键盘 `Ctrl+C` 会取消 startup 或 reload，在清理完成后追加弱化的取消结果并恢复普通交互，但不会关闭可 reload 的 MCP runtime；以这种方式跳过 startup 后，初始 prompt 仍会运行。浏览器授权使用临时 URL block，并在结束后替换为最终状态。必需 server 初次失败时输入保持禁用；显式 reload 失败则会移除过期工具并恢复输入，让用户可以重试。Manager 与协议语义见 [MCP](mcp.zh-CN.md)。
+终端 runtime 先于 `KanaTuiApp` 启动；底层 raw mode、capability、repaint 和恢复行为属于[终端渲染](terminal-rendering.zh-CN.md)。App 会先在 editor 中显示初始启动 prompt，再连接 MCP server。MCP startup 和 reload 期间会启用 editor 的 [loading 显示](terminal-rendering.zh-CN.md#组件与布局)，输入为空时也会显示，移除 editor 焦点，追加不可变的逐 server 结果与 warning，用 MCP 入口重建 Agent，最后恢复正常的 editor 显示与焦点。Startup 完成后会自动提交初始 prompt。`Esc` 或键盘 `Ctrl+C` 会取消 startup 或 reload，在清理完成后追加弱化的取消结果并恢复普通交互，但不会关闭可 reload 的 MCP runtime；以这种方式跳过 startup 后，初始 prompt 仍会运行。浏览器授权使用临时 URL block，并在结束后替换为最终状态。Startup 出错时会恢复 editor 焦点，保留已显示的 prompt，供用户手动编辑与提交；显式 reload 失败则会移除过期工具并恢复输入，让用户可以重试。Manager 与协议语义见 [MCP](mcp.zh-CN.md)。
 
 `KanaTuiApp.stop()` 是幂等边界。它追加关闭状态、移除 bottom 焦点、关闭并等待 `ConversationRuntime`，等待自动记忆合并等产品清理，再关闭 MCP manager；之后才恢复终端，并按需打印累计用量和恢复命令。空闲退出与进程 signal 共用这条路径；优雅关闭中的第二次中断会先恢复终端再强制退出。
 

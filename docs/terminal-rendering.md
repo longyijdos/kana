@@ -26,6 +26,8 @@ The minimum `Component` contract is `render(width, availableHeight?): string[]`,
 
 The transcript intentionally renders complete history so natural terminal scrolling retains it. Compact blocks bound their own height; long detail is opened in the bottom viewer instead of expanding the main history indefinitely.
 
+The editor has a presentation-only loading state. It renders input in `muted`, appends `(Loading...)` in `shortcutHint`, and hides the cursor and `/`, `:`, and `@` suggestion palettes. Empty input shows only the hint instead of the normal placeholder. The hint participates in input wrapping, and the visible window follows its end without changing the stored prompt or actual cursor position. The application controls loading transitions, focus, input blocking, and submission.
+
 ## Terminal lifecycle
 
 `ProcessTerminal.start()` requires TTY stdin and stdout. It enables raw mode, bracketed paste, enhanced keyboard reporting when supported, and a hidden cursor, then registers input and resize handling. Enhanced reporting allows terminals to distinguish inputs such as `Shift+Enter` from `Enter`.

@@ -113,7 +113,6 @@ function createRegistration(
   return {
     id: serverId,
     ...(config.description === undefined ? {} : { description: config.description }),
-    required: config.required,
     ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools }),
     ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools }),
     createClient(options = {}) {

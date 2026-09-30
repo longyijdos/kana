@@ -55,6 +55,7 @@ describe("TUI MCP management", () => {
     expect(saved).toEqual([["filesystem"]]);
     expect(internal.tui.getFocus()).toBeUndefined();
     expect(renderTranscript(internal.transcript)).toContain("Reloading MCP servers...");
+    expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("> (Loading...)");
 
     reportProgress("[1/1] MCP server filesystem ready · 2 tools.");
     expect(renderTranscript(internal.transcript)).toContain(
@@ -76,6 +77,7 @@ describe("TUI MCP management", () => {
       "MCP server optional failed to start: unavailable",
     );
     expect(internal.tui.getFocus()).toBe(internal.editor);
+    expect(internal.editor.render(80).join("\n")).not.toContain("(Loading...)");
   });
 
   test("recovers the editor with a rebuilt Agent after reload fails", async () => {
@@ -92,16 +94,16 @@ describe("TUI MCP management", () => {
           management: {
             loadServers: () => [
               {
-                id: "required",
+                id: "filesystem",
                 type: "stdio",
-                command: "required-mcp",
+                command: "filesystem-mcp",
                 args: [],
                 enabled: false,
               },
             ],
             saveEnabledServerIds: () => {},
             reload: async () => {
-              throw new Error("Required MCP servers failed to start: required.");
+              throw new Error("MCP runtime initialization failed.");
             },
           },
         },
@@ -115,9 +117,10 @@ describe("TUI MCP management", () => {
     await waitFor(() => agentToolStates.length === 2);
 
     expect(renderTranscript(internal.transcript)).toContain(
-      "Failed to reload MCP servers: Required MCP servers failed to start: required.",
+      "Failed to reload MCP servers: MCP runtime initialization failed.",
     );
     expect(internal.tui.getFocus()).toBe(internal.editor);
+    expect(internal.editor.render(80).join("\n")).not.toContain("(Loading...)");
 
     internal.handleCommand({ name: "mcp", arguments: "", raw: "/mcp" });
     expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain("MCP servers");
@@ -159,6 +162,7 @@ describe("TUI MCP management", () => {
     expect(agentStates).toEqual(["created", "created"]);
     expect(renderTranscript(internal.transcript)).not.toContain("Failed to reload MCP servers");
     expect(internal.tui.getFocus()).toBe(internal.editor);
+    expect(internal.editor.render(80).join("\n")).not.toContain("(Loading...)");
   });
 
   test("queues scheduled wakes while the MCP manager is open", async () => {

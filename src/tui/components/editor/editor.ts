@@ -149,6 +149,7 @@ export class Editor implements Component {
   private inputColumns = 80;
   private inputVisibleLines = MAX_INPUT_LINES;
   private inputViewportStartLine: number | undefined;
+  private loading = false;
   private statusState: StatusLineState = {
     phase: "idle",
     running: false,
@@ -200,6 +201,10 @@ export class Editor implements Component {
   clear(): void {
     this.setText("");
     this.images = [];
+  }
+
+  setLoading(loading: boolean): void {
+    this.loading = loading;
   }
 
   hasDraft(): boolean {
@@ -259,11 +264,10 @@ export class Editor implements Component {
     const contentWidth = Math.max(1, frameWidth - 4);
     const inputColumns = Math.max(1, contentWidth - visibleWidth(PROMPT));
     const paletteState = this.getPaletteState();
-    const showStatus =
-      !paletteState.showPalette && (availableHeight === undefined || availableHeight >= 5);
+    const showPalette = !this.loading && paletteState.showPalette;
+    const showStatus = !showPalette && (availableHeight === undefined || availableHeight >= 5);
     const imageRows = this.images.length > 0 ? 1 : 0;
-    const inputReservedRows =
-      2 + imageRows + (showStatus ? 1 : 0) + (paletteState.showPalette ? 3 : 0);
+    const inputReservedRows = 2 + imageRows + (showStatus ? 1 : 0) + (showPalette ? 3 : 0);
     const maximumInputLines = visibleLimitForHeight(
       MAX_INPUT_LINES,
       availableHeight,
@@ -272,9 +276,12 @@ export class Editor implements Component {
     this.inputColumns = inputColumns;
     this.inputVisibleLines = maximumInputLines;
     const display = createEditorDisplayState(this.state);
+    const inputValue = this.loading
+      ? `${display.value}${display.value ? " " : ""}(Loading...)`
+      : display.value;
     const layout = createInputLayout({
-      value: display.value,
-      cursorOffset: display.cursorOffset,
+      value: inputValue,
+      cursorOffset: this.loading ? inputValue.length : display.cursorOffset,
       columns: inputColumns,
       maxLines: maximumInputLines,
       preferredStartLine: this.inputViewportStartLine,
@@ -289,10 +296,16 @@ export class Editor implements Component {
 
     for (const [index, line] of layout.lines.entries()) {
       const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));
-      const tokens: HighlightedLineToken[] = [
-        ...(linePrompt ? [{ text: linePrompt, color: tuiTheme.user }] : []),
-        ...this.renderLine(line, index === layout.cursor.line, display),
-      ];
+      const promptEnd = Math.max(0, display.value.length - line.startOffset);
+      const tokens: HighlightedLineToken[] = this.loading
+        ? [
+            { text: linePrompt + line.text.slice(0, promptEnd), color: tuiTheme.muted },
+            { text: line.text.slice(promptEnd), color: tuiTheme.shortcutHint },
+          ]
+        : [
+            ...(linePrompt ? [{ text: linePrompt, color: tuiTheme.user }] : []),
+            ...this.renderLine(line, index === layout.cursor.line, display),
+          ];
       const content = renderHighlightedLine(tokens);
 
       lines.push(`| ${padRightAnsi(content, contentWidth)} |`);
@@ -303,14 +316,16 @@ export class Editor implements Component {
       availableHeight === undefined
         ? undefined
         : Math.max(1, Math.floor(availableHeight) - lines.length);
-    lines.push(...this.renderSuggestionPalette(frameWidth, commandPaletteHeight));
+    if (showPalette) {
+      lines.push(...this.renderSuggestionPalette(frameWidth, commandPaletteHeight));
+    }
 
     if (showStatus) {
       lines.push(renderStatusLine(width, this.model, this.statusState));
     }
 
     if (
-      !paletteState.showPalette &&
+      !showPalette &&
       (this.queuedInputs.length > 0 ||
         this.scheduledInputSummary !== undefined ||
         this.pendingUserTasks.length > 0 ||

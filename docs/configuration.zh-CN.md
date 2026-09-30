@@ -410,7 +410,6 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
 | `auth` | 未设置 | 显式启用 HTTP OAuth 2.0。省略时 Kana 使用普通 HTTP 连接，不启动 OAuth。设置后 `url` 必须为 HTTPS，且 `headers` 不能再设置 `Authorization`。 |
 | `description` | server 自身简介（若有） | 模型所见 MCP 目录中的能力简介。 |
-| `required` | `false` | 启动失败是否阻止 MCP manager 整体就绪。 |
 | `startupTimeoutMs` | `10000` | 启动期间每个 MCP 协商或初始化请求的超时。 |
 | `requestTimeoutMs` | `60000` | 普通 MCP 请求的默认超时。 |
 | `includeTools` | 未设置 | 按远端原名选择允许暴露的工具。空数组表示不暴露任何工具。 |
