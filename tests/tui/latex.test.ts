@@ -23,7 +23,43 @@ describe("terminal LaTeX renderer", () => {
       "⎛ 1    │ 200 ⎞\n⎝ 3000 │ 4   ⎠",
     );
     expect(renderLatex(String.raw`\begin{cases}a & x<0 \\ b & \text{otherwise}\end{cases}`)).toBe(
-      "⎧ a if x < 0\n⎩ b otherwise",
+      "⎧ a if x < 0\n⎨\n⎩ b otherwise",
+    );
+    expect(
+      renderLatex(
+        String.raw`f(x)=\begin{cases}a & x<0 \\ b & \text{if }x=0 \\ c & \text{otherwise}\end{cases}`,
+      ),
+    ).toBe("       ⎧ a if x < 0\nf(x) = ⎨ b if x = 0\n       ⎩ c otherwise");
+  });
+
+  test("renders relational algebra join symbols", () => {
+    expect(renderLatex(String.raw`R \bowtie S \quad R \Join S`)).toBe("R ⋈ S R ⋈ S");
+    expect(renderLatex(String.raw`R \ltimes S \quad R \rtimes S`)).toBe("R ⋉ S R ⋊ S");
+    expect(
+      renderLatex(
+        String.raw`R \leftouterjoin S \quad R \rightouterjoin S \quad R \fullouterjoin S`,
+      ),
+    ).toBe("R ⟕ S R ⟖ S R ⟗ S");
+  });
+
+  test("supports font switch commands", () => {
+    expect(
+      renderLatex(
+        String.raw`\textnormal{hello}+{\rm roman}+{\bf bold}+{\it italic}+{\sf sans}+{\tt mono}+{\cal calligraphic}+{\sl slanted}`,
+      ),
+    ).toBe("hello+roman+bold+italic+sans+mono+calligraphic+slanted");
+  });
+
+  test("lays out complex and nested scripts in display mode", () => {
+    expect(
+      renderLatex(String.raw`\partial_tU_2(t,0)=Aj_*(1-t)^{-A-1}.\qquad x^{n^2}+x_{i_j}`, {
+        display: true,
+      }),
+    ).toBe(
+      "                            2\n                    -A-1   n\n∂ₜU₂(t,0) = Aj (1-t)    . x  +x\n              *                i\n                                j",
+    );
+    expect(renderLatex(String.raw`e^{\frac{1}{2}}+\tfrac{1}{2}`, { display: true })).toBe(
+      "e^(1/2)+1/2",
     );
   });
 
