@@ -200,8 +200,14 @@ export class KanaTuiApp {
       onMcpChanged: () => this.recreateAgentForMcp(),
       onReady: () => this.conversation.notifyCanStartQueuedRun(),
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
-      focusEditor: () => this.bottomArea.showFallback(),
-      clearFocus: () => this.bottomArea.clearFocus(),
+      focusEditor: () => {
+        this.editor.setLoading(false);
+        this.bottomArea.showFallback();
+      },
+      clearFocus: () => {
+        this.editor.setLoading(true);
+        this.bottomArea.clearFocus();
+      },
     });
     this.skillManager = new SkillManagerController({
       editor: this.editor,

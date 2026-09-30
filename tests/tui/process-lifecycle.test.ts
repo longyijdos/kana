@@ -214,16 +214,19 @@ describe("Kana TUI shutdown", () => {
         },
       );
       const internal = app as unknown as {
+        editor: Editor;
         transcript: { render(width: number): string[] };
       };
 
       app.start();
+      expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("> (Loading...)");
       handleInput(input);
       await waitFor(() =>
         stripAnsi(internal.transcript.render(80).join("\n")).includes("MCP startup cancelled."),
       );
 
       expect(terminalStopCount).toBe(0);
+      expect(internal.editor.render(80).join("\n")).not.toContain("(Loading...)");
       handleInput("\x03");
       await app.waitForStop();
       expect(terminalStopCount).toBe(1);
@@ -272,7 +275,9 @@ describe("Kana TUI shutdown", () => {
       app.start();
 
       expect(internal.editor.getText()).toBe("Initial task.");
-      expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain("Initial task.");
+      expect(stripAnsi(internal.layout.render(80).join("\n"))).toContain(
+        "Initial task. (Loading...)",
+      );
       expect(internal.tui.getFocus()).toBeUndefined();
       for (const input of ["ignored", "\x7f", "\r", "\t", "\x0f"]) {
         handleInput(input);
@@ -289,6 +294,7 @@ describe("Kana TUI shutdown", () => {
         );
         expect(internal.tui.getFocus()).toBe(internal.editor);
         expect(internal.editor.getText()).toBe("Initial task.");
+        expect(internal.editor.render(80).join("\n")).not.toContain("(Loading...)");
         expect(calls).toEqual([]);
         handleInput(" Retry.");
         handleInput("\r");
@@ -302,6 +308,7 @@ describe("Kana TUI shutdown", () => {
       });
       expect(internal.editor.getText()).toBe("");
       expect(internal.tui.getFocus()).toBe(internal.editor);
+      expect(internal.editor.render(80).join("\n")).not.toContain("(Loading...)");
       calls[0]?.stream.end({ type: "agent_end", reason: "stop", messages: [] });
       await app.stop();
     });

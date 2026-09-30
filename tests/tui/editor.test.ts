@@ -94,6 +94,117 @@ describe("Editor", () => {
       expect(rendered).toContain(`${command}/quit${text} later`);
     });
 
+    test("replaces the empty placeholder with a loading hint and restores it afterward", () => {
+      const editor = new Editor();
+      const normal = editor.render(80);
+
+      editor.setLoading(true);
+      const loading = editor.render(80).join("\n");
+
+      expect(stripAnsi(loading)).toContain("> (Loading...)");
+      expect(stripAnsi(loading)).not.toContain("Try ");
+      expect(loading).not.toContain(CURSOR_MARKER);
+      expect(editor.getText()).toBe("");
+      expect(editor.hasDraft()).toBe(false);
+
+      editor.setLoading(false);
+      expect(editor.render(80)).toEqual(normal);
+    });
+
+    test("shows muted input with an inline loading hint without changing the prompt or cursor", () => {
+      const editor = new Editor();
+      editor.setText("hello");
+      editor.handleInput("\x1b[D");
+      const normal = editor.render(80);
+      const muted = `\x1b[38;2;${tuiTheme.muted.join(";")}m`;
+      const hint = `\x1b[38;2;${tuiTheme.shortcutHint.join(";")}m`;
+
+      editor.setLoading(true);
+      const loading = editor.render(80);
+
+      expect(loading).toHaveLength(normal.length);
+      expect(loading[1]).toContain(`${muted}> hello${hint} (Loading...)`);
+      expect(loading.join("\n")).not.toContain(CURSOR_MARKER);
+      expect(editor.getText()).toBe("hello");
+
+      editor.setLoading(false);
+      expect(editor.render(80)).toEqual(normal);
+
+      const submissions: unknown[] = [];
+      editor.onSubmit = (submit) => submissions.push(submit);
+      editor.handleInput("\r");
+      expect(submissions).toEqual([{ type: "message", content: "hello" }]);
+    });
+
+    test("keeps the loading hint visible when long CJK input wraps within a limited height", () => {
+      const editor = new Editor();
+      const text = "first\nsecond\nthird\nfourth\nfifth🙂\n最后一行中文";
+      editor.setText(text);
+      editor.setLoading(true);
+
+      const lines = editor.render(18, 5);
+      const input = lines
+        .map(stripAnsi)
+        .filter((line) => line.startsWith("| "))
+        .map((line) => line.slice(4, -2))
+        .join("")
+        .trimEnd();
+
+      expect(lines.length).toBeLessThanOrEqual(5);
+      expect(lines.every((line) => visibleWidth(line) <= 18)).toBe(true);
+      expect(input).toEndWith("(Loading...)");
+      expect(lines.join("\n")).not.toContain(CURSOR_MARKER);
+      expect(editor.getText()).toBe(text);
+    });
+
+    for (const { value, label } of [
+      {
+        value: "/help",
+        label: formatPromptCommandHelpLine(
+          PROMPT_COMMANDS.find((command) => command.name === "help")!,
+        ),
+      },
+      { value: ":review", label: "Template palette entry" },
+      { value: "@review", label: "Skill palette entry" },
+    ]) {
+      test(`hides the ${value[0]} suggestion palette while loading and restores it afterward`, () => {
+        const editor = new Editor({
+          promptTemplates: [
+            {
+              name: "review",
+              description: "Template palette entry",
+              body: "Review the change.",
+              arguments: [],
+              sourcePath: "/tmp/review.md",
+            },
+          ],
+          skills: [
+            {
+              name: "review",
+              description: "Skill palette entry",
+              filePath: "/tmp/review/SKILL.md",
+              baseDir: "/tmp/review",
+              scope: "project",
+              enabled: false,
+              mutable: true,
+            },
+          ],
+        });
+        editor.setText(value);
+        const normal = editor.render(80);
+        expect(stripAnsi(normal.join("\n"))).toContain(label);
+
+        editor.setLoading(true);
+        const loading = editor.render(80).join("\n");
+        expect(stripAnsi(loading)).toContain(`${value} (Loading...)`);
+        expect(stripAnsi(loading)).not.toContain(label);
+        expect(loading).not.toContain(CURSOR_MARKER);
+
+        editor.setLoading(false);
+        expect(editor.render(80)).toEqual(normal);
+      });
+    }
+
     test("paginates slash commands and stops selection at the list boundaries", () => {
       const editor = new Editor({ commandPaletteVisibleLimit: 3 });
       const submissions: unknown[] = [];

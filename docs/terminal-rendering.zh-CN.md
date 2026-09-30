@@ -26,6 +26,8 @@ ProcessTerminal
 
 Transcript 会有意渲染完整历史，让终端自然滚动保留内容。紧凑 block 自己限制高度，长详情在 bottom viewer 中打开，不让主历史无限扩张。
 
+Editor 的 loading 状态只负责呈现：输入使用 `muted`，末尾追加 `shortcutHint` 颜色的 `(Loading...)`，并隐藏 cursor 和 `/`、`:`、`@` 建议面板。输入为空时只显示提示，替换普通 placeholder。提示参与输入换行，可见窗口跟随其末尾，但不会改变保存的 prompt 或实际 cursor 位置。应用负责切换 loading、管理焦点、拦截输入和提交。
+
 ## 终端生命周期
 
 `ProcessTerminal.start()` 要求 stdin 和 stdout 都是 TTY。它启用 raw mode、bracketed paste、终端支持时的增强键盘上报和隐藏 cursor，然后注册输入与 resize。增强上报让终端能够区分 `Shift+Enter` 与 `Enter` 等输入。
