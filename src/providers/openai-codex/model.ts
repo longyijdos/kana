@@ -23,6 +23,7 @@ import {
   isAbortError,
   isOpenAICodexRetryable,
   OpenAICodexHttpError,
+  recoveryHint,
   resolveOpenAICodexUrl,
   sleepForOpenAICodexRetry,
 } from "./http";
@@ -153,6 +154,12 @@ export class OpenAICodexModel extends BaseModel {
             completedState = attemptState;
             break;
           } catch (error) {
+            if (error instanceof ResponsesStreamError) {
+              error.requestId =
+                response.headers.get("x-request-id") ??
+                response.headers.get("openai-request-id") ??
+                undefined;
+            }
             if (
               !isRetryableResponsesStreamError(error) ||
               processor.hasStartedOutput ||
@@ -228,11 +235,9 @@ export class OpenAICodexModel extends BaseModel {
     for (;;) {
       onPhaseChange?.("http_request");
       let response: Response | undefined;
+      let responseBody: string | undefined;
       let failure: unknown;
       try {
-        // TODO: Re-evaluate Responses Lite after OpenAI stabilizes its hosted-tool
-        // contract. Lite requires a distinct body and transport marker, so the
-        // header and request builder must always switch together.
         response = await fetch(resolveOpenAICodexUrl(this.config.baseUrl), {
           method: "POST",
           headers: {
@@ -240,7 +245,6 @@ export class OpenAICodexModel extends BaseModel {
             accept: "text/event-stream",
             "content-type": "application/json",
             authorization: `Bearer ${retryState.credentials.accessToken}`,
-            "chatgpt-account-id": retryState.credentials.accountId,
             originator: "kana",
             "user-agent": "kana",
           },
@@ -253,7 +257,7 @@ export class OpenAICodexModel extends BaseModel {
 
         if (response.status === 401 && !retryState.authRefreshed) {
           retryState.authRefreshed = true;
-          await response.body?.cancel().catch(() => undefined);
+          responseBody = await response.text().catch(() => "");
           onPhaseChange?.("authentication");
           this.diagnostics.authenticationRefreshStarted("http_401");
           let refreshed: OpenAICodexCredentials | undefined;
@@ -275,8 +279,15 @@ export class OpenAICodexModel extends BaseModel {
           this.diagnostics.authenticationRefreshEnded({ outcome: "unauthorized" });
         }
 
-        const responseBody = await response.text().catch(() => "");
-        failure = new OpenAICodexHttpError(response.status, response.statusText, responseBody);
+        responseBody ??= await response.text().catch(() => "");
+        failure = new OpenAICodexHttpError(
+          response.status,
+          response.statusText,
+          responseBody,
+          response.headers.get("x-request-id") ??
+            response.headers.get("openai-request-id") ??
+            undefined,
+        );
       } catch (error) {
         if (signal?.aborted) {
           throw signal.reason ?? error;
@@ -309,6 +320,13 @@ export class OpenAICodexModel extends BaseModel {
 }
 
 function normalizeOpenAICodexError(error: unknown): unknown {
+  if (error instanceof ResponsesStreamError) {
+    const hint = recoveryHint(error.providerCode);
+    if (hint) error.message += hint;
+    if (error.providerParam) error.message += ` Parameter: ${error.providerParam}.`;
+    if (error.requestId) error.message += ` Request ID: ${error.requestId}.`;
+    return error;
+  }
   if (!(error instanceof OpenAICodexHttpError) || !isOpenAICodexContextWindowFailure(error)) {
     return error;
   }

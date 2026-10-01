@@ -50,6 +50,7 @@ kana exec resume <session-id> 继续完成任务
 
 # 管理 OpenAI Codex OAuth
 kana auth login openai-codex
+kana auth login openai-codex --new-account
 kana auth status openai-codex
 kana auth logout openai-codex
 ```
@@ -237,7 +238,7 @@ level = "info"
 export DEEPSEEK_API_KEY='sk-...'
 ```
 
-首次使用 OpenAI Codex 前运行 `kana auth login openai-codex`。浏览器授权得到的 access token、refresh token、ID token 与绑定信息保存在权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`；到期前会自动 refresh，模型请求收到首个 `401` 时也会 refresh 并重试一次。`status` 只显示授权状态、是否可刷新和到期时间，不显示 token。完整协议映射见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
+首次使用 OpenAI Codex 前运行 `kana auth login openai-codex`。浏览器授权得到的 access token、refresh token、ID token 与绑定信息保存在权限为 `0600` 的 `<KANA_HOME>/oauth-tokens.json`；到期前会自动 refresh，模型请求收到首个 `401` 时也会 refresh 并重试一次。`status` 显示安全的账户信息、ChatGPT 套餐授权状态、是否可刷新和到期时间，不显示 token。`login --new-account` 只有在 SIWC 身份验证成功后才替换当前唯一账户；普通登录复用已保存的注册信息。完整协议映射见 [OpenAI Codex 提供商适配](openai-codex-provider.zh-CN.md)。
 
 ### Agent 模型表
 

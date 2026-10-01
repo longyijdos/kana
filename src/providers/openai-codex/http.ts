@@ -11,15 +11,27 @@ import type { OpenAICodexModelConfig } from "./types";
 
 export class OpenAICodexHttpError extends Error {
   readonly body: string;
+  readonly providerCode?: string;
+  readonly param?: string;
+  readonly requestId?: string;
 
   constructor(
     readonly status: number,
     readonly statusText: string,
     body: string,
+    requestId?: string,
   ) {
     const truncatedBody = boundProviderHttpErrorBody(body);
-    super(`OpenAI Codex request failed with ${status} ${statusText}: ${truncatedBody}`);
+    const details = readErrorDetails(body);
+    super(
+      `OpenAI Codex request failed with ${status} ${statusText}: ${truncatedBody}` +
+        recoveryHint(details.code) +
+        (requestId ? ` Request ID: ${requestId}.` : ""),
+    );
     this.body = truncatedBody;
+    this.providerCode = details.code;
+    this.param = details.param;
+    this.requestId = requestId;
   }
 }
 
@@ -39,18 +51,16 @@ export function createOpenAICodexRequestSignal(
 }
 
 export function resolveOpenAICodexUrl(baseUrl?: string): string {
-  const normalized = (baseUrl ?? "https://chatgpt.com/backend-api").replace(/\/+$/, "");
-  if (normalized.endsWith("/codex/responses")) {
+  const normalized = (baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+  if (normalized.endsWith("/responses")) {
     return normalized;
   }
-  if (normalized.endsWith("/codex")) {
-    return `${normalized}/responses`;
-  }
-  return `${normalized}/codex/responses`;
+  return `${normalized}/responses`;
 }
 
 export function isOpenAICodexRetryable(error: unknown): boolean {
   if (error instanceof OpenAICodexHttpError) {
+    if (error.providerCode === "subscription_sharing_usage_limit_exceeded") return false;
     return isRetryableProviderHttpStatus(error.status);
   }
   return !isAbortError(error);
@@ -68,3 +78,33 @@ export function sleepForOpenAICodexRetry(
 }
 
 export { isAbortError };
+
+function readErrorDetails(body: string): { code?: string; param?: string } {
+  try {
+    const value = JSON.parse(body);
+    return {
+      ...(typeof value?.error?.code === "string" ? { code: value.error.code } : {}),
+      ...(typeof value?.error?.param === "string" ? { param: value.error.param } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+export function recoveryHint(code?: string): string {
+  switch (code) {
+    case "subscription_sharing_usage_limit_exceeded":
+      return " ChatGPT plan usage limit reached. Manage usage: https://chatgpt.com/settings/usage.";
+    case "subscription_sharing_user_not_eligible":
+      return " ChatGPT plan usage is unavailable for this account or workspace.";
+    case "subscription_sharing_unsupported_capability":
+      return " This capability is unsupported for ChatGPT plan usage; check error.param.";
+    case "subscription_sharing_route_not_supported":
+      return " ChatGPT plan usage requires POST /v1/responses.";
+    case "chatpass_v2_scope_not_authorized":
+    case "chatpass_v2_invalid_authorization_context":
+      return " Check the saved client registration and granted ChatGPT plan permissions.";
+    default:
+      return "";
+  }
+}

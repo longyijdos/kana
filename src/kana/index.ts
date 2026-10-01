@@ -15,6 +15,7 @@ export {
   getKanaOpenAICodexAuthStatus,
   type KanaOAuthTokenStatus,
   KanaOpenAICodexAuth,
+  type KanaOpenAICodexAuthStatus,
   loadKanaOAuthTokenStatuses,
   openKanaOAuthAuthorizationUrl,
   signOutKanaOpenAICodex,

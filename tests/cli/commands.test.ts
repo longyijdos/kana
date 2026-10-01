@@ -263,6 +263,33 @@ describe("CLI reset", () => {
 });
 
 describe("CLI authentication", () => {
+  test("passes explicit account registration and reports plan permission separately", async () => {
+    let newAccount: boolean | undefined;
+    const logs: string[] = [];
+    await parse(["node", "kana", "auth", "login", "openai-codex", "--new-account"], {
+      authorizeOpenAICodex: async (options) => {
+        newAccount = options?.newAccount;
+        return undefined;
+      },
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+    expect(newAccount).toBe(true);
+    expect(logs[0]).toContain("plan usage is disabled");
+    await parse(["node", "kana", "auth", "status", "openai-codex"], {
+      getOpenAICodexAuthStatus: async () => ({
+        state: "authorized",
+        refreshable: true,
+        planUsage: false,
+        email: "user@example.com",
+      }),
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+    expect(logs[1]).toContain("user@example.com, ChatGPT plan usage disabled");
+  });
   test("manages OpenAI Codex authentication", async () => {
     const calls: string[] = [];
     const logs: string[] = [];

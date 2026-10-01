@@ -8,6 +8,7 @@ const SAFE_OAUTH_ERROR = /^[a-zA-Z0-9_.-]{1,64}$/;
 
 type OAuthAuthorizationCallback = {
   code: string;
+  clientId?: string;
   iss?: string;
 };
 
@@ -203,7 +204,12 @@ class LoopbackOAuthCallbackServer implements OAuthCallbackServer {
 
     respond(response, 200, "Authorization complete. You can return to Kana.");
     const iss = requestUrl.searchParams.get("iss");
-    this.resolvePending({ code, ...(iss === null ? {} : { iss }) });
+    const clientId = requestUrl.searchParams.get("client_id");
+    this.resolvePending({
+      code,
+      ...(iss === null ? {} : { iss }),
+      ...(clientId === null ? {} : { clientId }),
+    });
   }
 
   private resolvePending(value: OAuthAuthorizationCallback): void {

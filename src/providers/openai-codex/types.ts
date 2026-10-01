@@ -10,7 +10,6 @@ export type OpenAICodexReasoningSummary = "auto" | "concise" | "detailed";
 
 export type OpenAICodexCredentials = {
   accessToken: string;
-  accountId: string;
 };
 
 export type OpenAICodexCredentialProvider = {

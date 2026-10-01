@@ -4,9 +4,34 @@ import {
   OAuthSession,
   type OAuthStoredToken,
   type OAuthTokenStore,
+  startOAuthCallbackServer,
 } from "../../src/oauth";
 
 const NOW = 1_000_000;
+
+test("loopback callback validates state and returns the issued SIWC client", async () => {
+  const callback = await startOAuthCallbackServer({});
+  try {
+    const result = callback.waitForCallback("expected-state");
+    const url = new URL(callback.redirectUri);
+    url.search = new URLSearchParams({
+      code: "code",
+      state: "wrong-state",
+      client_id: "oaiapp_kana",
+    }).toString();
+    expect((await fetch(url)).status).toBe(400);
+    url.searchParams.set("state", "expected-state");
+    url.searchParams.set("iss", "https://auth.openai.com");
+    expect((await fetch(url)).status).toBe(200);
+    expect(await result).toEqual({
+      code: "code",
+      clientId: "oaiapp_kana",
+      iss: "https://auth.openai.com",
+    });
+  } finally {
+    await callback.close();
+  }
+});
 
 describe("OAuth session", () => {
   test("coalesces refresh, rotates the access token, and preserves the refresh token", async () => {

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import lockfile from "proper-lockfile";
 import type { Logger } from "@/logging";
 import type { McpOAuthClientRegistration, McpOAuthClientStore } from "@/mcp";
 import type { OAuthStoredToken, OAuthTokenStore } from "@/oauth";
@@ -12,6 +13,19 @@ type KanaOAuthTokenFile = {
   version: typeof TOKEN_FILE_VERSION;
   tokens: Record<string, OAuthStoredToken>;
   clients?: Record<string, McpOAuthClientRegistration>;
+  openaiCodex?: KanaOpenAICodexAuthState;
+};
+
+export type KanaOpenAICodexAuthState = {
+  hostId: string;
+  registration?: { clientId: string; subject: string; email?: string };
+  pendingClientId?: string;
+};
+
+export type KanaOpenAICodexAuthStore = OAuthTokenStore & {
+  loadOpenAICodexState(): Promise<KanaOpenAICodexAuthState | undefined>;
+  saveOpenAICodexState(state: KanaOpenAICodexAuthState, token?: OAuthStoredToken): Promise<void>;
+  withOpenAICodexLock<T>(operation: () => Promise<T>): Promise<T>;
 };
 
 export type CreateKanaOAuthTokenStoreOptions = {
@@ -32,7 +46,7 @@ export type LoadKanaOAuthTokenStatusesOptions = {
 
 export function createKanaOAuthTokenStore(
   options: CreateKanaOAuthTokenStoreOptions = {},
-): OAuthTokenStore & McpOAuthClientStore {
+): KanaOpenAICodexAuthStore & McpOAuthClientStore {
   const filePath = getOAuthTokenFilePath(options.env);
   return new KanaOAuthTokenStore(filePath, options.getLogger);
 }
@@ -65,7 +79,7 @@ export function loadKanaOAuthTokenStatuses(
   );
 }
 
-class KanaOAuthTokenStore implements OAuthTokenStore, McpOAuthClientStore {
+class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientStore {
   private operationTail: Promise<void> = Promise.resolve();
 
   constructor(
@@ -98,6 +112,35 @@ class KanaOAuthTokenStore implements OAuthTokenStore, McpOAuthClientStore {
       delete file.tokens[key];
       await this.writeFile(file);
     });
+  }
+
+  loadOpenAICodexState(): Promise<KanaOpenAICodexAuthState | undefined> {
+    return this.enqueue(async () => {
+      const state = (await this.readFile()).openaiCodex;
+      return state === undefined ? undefined : structuredClone(state);
+    });
+  }
+
+  saveOpenAICodexState(state: KanaOpenAICodexAuthState, token?: OAuthStoredToken): Promise<void> {
+    return this.enqueue(async () => {
+      const file = await this.readFile();
+      file.openaiCodex = structuredClone(state);
+      if (token !== undefined) file.tokens["provider:openai-codex"] = copyStoredToken(token);
+      await this.writeFile(file);
+    });
+  }
+
+  async withOpenAICodexLock<T>(operation: () => Promise<T>): Promise<T> {
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+    const release = await lockfile.lock(`${this.filePath}.openai-codex`, {
+      realpath: false,
+      retries: { retries: 10, minTimeout: 100, maxTimeout: 1_000 },
+    });
+    try {
+      return await operation();
+    } finally {
+      await release();
+    }
   }
 
   loadClient(key: string): Promise<McpOAuthClientRegistration | undefined> {
@@ -201,7 +244,41 @@ function parseTokenFile(value: unknown): KanaOAuthTokenFile {
             ([key, value]) => [key, parseClientRegistration(value, key)],
           ),
         );
-  return { version: TOKEN_FILE_VERSION, tokens, ...(clients === undefined ? {} : { clients }) };
+  return {
+    version: TOKEN_FILE_VERSION,
+    tokens,
+    ...(clients === undefined ? {} : { clients }),
+    ...(file.openaiCodex === undefined
+      ? {}
+      : { openaiCodex: parseOpenAICodexState(file.openaiCodex) }),
+  };
+}
+
+function parseOpenAICodexState(value: unknown): KanaOpenAICodexAuthState {
+  const state = asRecord(value, "OpenAI Codex registration");
+  const registration =
+    state.registration === undefined
+      ? undefined
+      : asRecord(state.registration, "OpenAI Codex account");
+  return {
+    hostId: readNonEmptyString(state.hostId, "OpenAI Codex host ID"),
+    ...(state.pendingClientId === undefined
+      ? {}
+      : {
+          pendingClientId: readNonEmptyString(state.pendingClientId, "OpenAI Codex pending client"),
+        }),
+    ...(registration === undefined
+      ? {}
+      : {
+          registration: {
+            clientId: readNonEmptyString(registration.clientId, "OpenAI Codex client ID"),
+            subject: readNonEmptyString(registration.subject, "OpenAI Codex subject"),
+            ...(registration.email === undefined
+              ? {}
+              : { email: readNonEmptyString(registration.email, "OpenAI Codex email") }),
+          },
+        }),
+  };
 }
 
 function parseClientRegistration(value: unknown, key: string): McpOAuthClientRegistration {

@@ -50,6 +50,7 @@ kana exec resume <session-id> continue the task
 
 # Manage OpenAI Codex OAuth
 kana auth login openai-codex
+kana auth login openai-codex --new-account
 kana auth status openai-codex
 kana auth logout openai-codex
 ```
@@ -237,7 +238,7 @@ Before startup, set the environment variable named by `api_key_env`. The default
 export DEEPSEEK_API_KEY='sk-...'
 ```
 
-Before first use of OpenAI Codex, run `kana auth login openai-codex`. Browser authorization stores the access token, refresh token, ID token, and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Credentials refresh before expiry; the model request also refreshes and retries once after its first `401`. `status` reports only authorization state, refreshability, and expiry, never token values. See [OpenAI Codex provider adapter](openai-codex-provider.md) for the complete protocol mapping.
+Before first use of OpenAI Codex, run `kana auth login openai-codex`. Browser authorization stores the access token, refresh token, ID token, and binding metadata in `<KANA_HOME>/oauth-tokens.json` with mode `0600`. Credentials refresh before expiry; the model request also refreshes and retries once after its first `401`. `status` reports safe account information, ChatGPT plan permission, refreshability, and expiry, never token values. `login --new-account` replaces the single active account only after successful SIWC identity validation; ordinary login reuses the saved registration. See [OpenAI Codex provider adapter](openai-codex-provider.md) for the complete protocol mapping.
 
 ### Agent model tables
 

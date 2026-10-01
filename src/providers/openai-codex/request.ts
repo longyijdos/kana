@@ -5,12 +5,22 @@ export function buildOpenAICodexRequest(
   context: ModelContext,
   config: OpenAICodexModelConfig,
 ): Record<string, unknown> {
-  const tools = toOpenAICodexTools(context.tools ?? []);
+  const functions = toOpenAICodexTools(context.tools ?? []);
+  const tools: Record<string, unknown>[] = functions.length
+    ? [
+        {
+          type: "namespace",
+          name: "kana",
+          description: "Tools executed by Kana on the user's machine.",
+          tools: functions,
+        },
+      ]
+    : [];
   if (context.webSearch === true) {
     tools.push({ type: "web_search" });
   }
 
-  // The ChatGPT Codex request contract does not expose max_output_tokens, so
+  // The SIWC preview contract does not expose max_output_tokens, so
   // configured and per-request output ceilings stay local to Kana.
   const request: Record<string, unknown> = {
     model: config.model,
@@ -156,6 +166,7 @@ function toOpenAICodexFunctionCall(content: ToolCallContent): Record<string, unk
     type: "function_call",
     call_id: content.id,
     name: content.name,
+    namespace: "kana",
     arguments: content.rawArgs ?? JSON.stringify(content.args),
   };
 }
@@ -179,6 +190,7 @@ function readOpenAICodexResponseItem(
   // store=false means response item IDs must not reference server-side state.
   const item = structuredClone(state.value);
   delete item.id;
+  if (type === "function_call") item.namespace = "kana";
   return item;
 }
 
@@ -188,6 +200,7 @@ function toOpenAICodexTools(tools: ToolSpec[]): Record<string, unknown>[] {
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
+    strict: false,
   }));
 }
 

@@ -12,6 +12,23 @@ import {
 afterEach(cleanupTempKanaHomes);
 
 describe("Kana OAuth token store", () => {
+  test("commits verified Codex registration and credentials together while preserving MCP", async () => {
+    const env = createTempEnv();
+    const store = createKanaOAuthTokenStore({ env });
+    await store.save("mcp:existing", token("mcp", 2_000, true));
+    const state = {
+      hostId: "urn:uuid:host",
+      registration: { clientId: "oaiapp_kana", subject: "user" },
+    };
+    await store.saveOpenAICodexState(state, token("codex", 3_000, true));
+    const restored = createKanaOAuthTokenStore({ env });
+    expect(await restored.loadOpenAICodexState()).toEqual(state);
+    expect((await restored.load("provider:openai-codex"))?.accessToken).toBe("codex-access-token");
+    expect((await restored.load("mcp:existing"))?.accessToken).toBe("mcp-access-token");
+    expect(statSync(path.join(env.KANA_HOME!, "oauth-tokens.json")).mode & 0o777).toBe(0o600);
+    await restored.delete("provider:openai-codex");
+    expect(await restored.loadOpenAICodexState()).toEqual(state);
+  });
   test("serializes token updates into a private file and reports safe statuses", async () => {
     const env = createTempEnv();
     const store = createKanaOAuthTokenStore({ env });

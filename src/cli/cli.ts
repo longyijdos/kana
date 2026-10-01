@@ -4,6 +4,7 @@ import { parseHeadlessTimeout, type StartHeadlessOptions } from "@/headless";
 import type {
   InstallKanaConfigResult,
   InstallKanaSkillsResult,
+  KanaOpenAICodexAuthStatus,
   KanaUpdateProgressEvent,
   KanaUpdateResult,
   ReinstallKanaSkillsResult,
@@ -18,7 +19,6 @@ import {
   signOutKanaOpenAICodex,
   updateKana as updateKanaBinary,
 } from "@/kana";
-import type { OAuthSessionStatus } from "@/oauth";
 import type { StartTuiOptions } from "@/tui";
 import { KANA_VERSION } from "@/version";
 
@@ -262,10 +262,17 @@ export function createCli(options: CreateCliOptions): Command {
     .command("login")
     .description("Sign in to a model provider")
     .argument("<provider>", "Provider name")
-    .action(async (provider: string) => {
+    .option("--new-account", "Register a different ChatGPT account or workspace")
+    .action(async (provider: string, commandOptions: { newAccount?: boolean }) => {
       requireOpenAICodexProvider(provider);
-      await authorizeCodex();
-      log("Authorized openai-codex.");
+      const credentials = await authorizeCodex(
+        commandOptions.newAccount ? { newAccount: true } : undefined,
+      );
+      log(
+        credentials === undefined
+          ? "Signed in to openai-codex; ChatGPT plan usage is disabled. Run login again to enable it."
+          : "Authorized openai-codex.",
+      );
     });
 
   authCommand
@@ -430,7 +437,7 @@ function requireOpenAICodexProvider(provider: string): void {
   }
 }
 
-function formatOAuthStatus(provider: string, status: OAuthSessionStatus): string {
+function formatOAuthStatus(provider: string, status: KanaOpenAICodexAuthStatus): string {
   if (status.state === "unauthorized") {
     return `${provider}: unauthorized`;
   }
@@ -438,7 +445,12 @@ function formatOAuthStatus(provider: string, status: OAuthSessionStatus): string
   const expiresAt =
     status.expiresAt === undefined ? "" : `, expires ${new Date(status.expiresAt).toISOString()}`;
   const refreshable = status.refreshable ? ", refreshable" : "";
-  return `${provider}: ${status.state}${refreshable}${expiresAt}`;
+  const planUsage =
+    status.planUsage === undefined
+      ? ""
+      : `, ChatGPT plan usage ${status.planUsage ? "enabled" : "disabled"}`;
+  const account = status.email === undefined ? "" : `, ${status.email}`;
+  return `${provider}: ${status.state}${account}${planUsage}${refreshable}${expiresAt}`;
 }
 
 function formatInstallSkillsMessage(
