@@ -54,8 +54,11 @@ export function formatToolTranscriptTitle(
 
   if (state === "running") {
     return {
-      activity: formatStatusActivity(runningActivity, ` (${elapsedSeconds ?? 0}s)`),
-      hint: "Esc to abort",
+      activity:
+        elapsedSeconds === undefined
+          ? runningActivity
+          : formatStatusActivity(runningActivity, ` (${elapsedSeconds}s)`),
+      hint: elapsedSeconds === undefined ? undefined : "Esc to abort",
       target,
     };
   }
@@ -354,8 +357,11 @@ function formatTodoTranscriptTitle(
   const items = getTodoItems(result);
   if (state === "running") {
     return {
-      activity: formatStatusActivity("Updating todos", ` (${elapsedSeconds ?? 0}s)`),
-      hint: "Esc to abort",
+      activity:
+        elapsedSeconds === undefined
+          ? "Updating todos"
+          : formatStatusActivity("Updating todos", ` (${elapsedSeconds}s)`),
+      hint: elapsedSeconds === undefined ? undefined : "Esc to abort",
     };
   }
   if (state === "failed") {

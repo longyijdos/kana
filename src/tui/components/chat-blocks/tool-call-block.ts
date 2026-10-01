@@ -37,6 +37,7 @@ export class ToolCallBlock implements Component {
   constructor(
     private readonly toolCall: ToolCallContent,
     now: Clock = Date.now,
+    private readonly options: { summaryOnly?: boolean } = {},
   ) {
     this.phaseTimer = new ElapsedTimer(now);
   }
@@ -48,7 +49,7 @@ export class ToolCallBlock implements Component {
 
   markExecutionStarted(): void {
     this.canceled = false;
-    this.phaseTimer.start();
+    if (!this.options.summaryOnly) this.phaseTimer.start();
     this.invalidate();
   }
 
@@ -104,7 +105,10 @@ export class ToolCallBlock implements Component {
 
   render(width: number, _availableHeight?: number): string[] {
     const state = this.currentState();
-    const elapsedSeconds = state === "running" ? this.phaseTimer.elapsedSeconds() : undefined;
+    const elapsedSeconds =
+      state === "running" && !this.options.summaryOnly
+        ? this.phaseTimer.elapsedSeconds()
+        : undefined;
 
     if (
       this.cachedLines &&
@@ -124,7 +128,7 @@ export class ToolCallBlock implements Component {
             ? tuiTheme.toolSuccess
             : tuiTheme.toolActive;
     const lines = this.renderTitle(width, titleColor, elapsedSeconds);
-    if (state !== "canceled") {
+    if (state !== "canceled" && !this.options.summaryOnly) {
       lines.push(...this.renderOutput(width, "compact"));
     }
 

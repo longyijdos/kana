@@ -9,7 +9,14 @@ import type { ConversationAgentIdentity, KanaToolApprovalMode } from "@/kana";
 import { ConversationRuntime, type ConversationRuntimeEvent } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
-import { ChoicePrompt, Editor, TextBlock, Transcript, UserMessageBlock } from "../components";
+import {
+  ChoicePrompt,
+  createSubagentInspectionView,
+  Editor,
+  TextBlock,
+  Transcript,
+  UserMessageBlock,
+} from "../components";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -313,10 +320,18 @@ export class KanaTuiApp {
           diagnostics: [],
         },
       inspect: (inspection) => {
-        this.contentViewer.open({
-          title: `Subagent ${inspection.profile} · ${shortSubagentId(inspection.id)}`,
-          render: () => formatSubagentInspection(inspection),
-        });
+        this.contentViewer.open(
+          createSubagentInspectionView(inspection, {
+            hyperlinks: this.hyperlinks,
+            renderLatex: this.renderLatex,
+            renderMermaid: this.renderMermaid,
+          }),
+        );
+      },
+      renderOptions: {
+        hyperlinks: this.hyperlinks,
+        renderLatex: this.renderLatex,
+        renderMermaid: this.renderMermaid,
       },
       showError: (error) => this.showInteractionError(error),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
@@ -1239,41 +1254,6 @@ export class KanaTuiApp {
 
 function formatScheduledWakeContent(content: string): string {
   return content.replace(/^\[Scheduled wake event\]\n/, "");
-}
-
-function shortSubagentId(id: string): string {
-  return id.startsWith("agent_") ? id.slice(6, 14) : id.slice(0, 8);
-}
-
-function formatSubagentInspection(inspection: import("@/kana").KanaSubagentInspection): string[] {
-  const lines = [
-    `Status: ${inspection.status}`,
-    `Profile: ${inspection.profile}`,
-    `Agent ID: ${inspection.id}`,
-    `Task: ${inspection.task}`,
-    "",
-  ];
-  for (const message of inspection.messages) {
-    lines.push(message.role.toUpperCase());
-    if (message.role === "user") {
-      lines.push(message.content, "");
-      continue;
-    }
-    if (message.role === "tool") {
-      lines.push(`${message.toolName} (${message.toolCallId})`, message.content, "");
-      continue;
-    }
-    for (const content of message.content) {
-      if (content.type === "text" || content.type === "thinking") lines.push(content.text);
-      else if (content.type === "tool_call") {
-        lines.push(`${content.name} (${content.id})`, JSON.stringify(content.args, null, 2));
-      } else {
-        lines.push(`${content.name} (${content.status})`);
-      }
-    }
-    lines.push("");
-  }
-  return lines;
 }
 
 function formatBackgroundJobWakeContent(content: string): string {

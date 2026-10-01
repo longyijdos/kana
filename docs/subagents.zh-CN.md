@@ -60,6 +60,8 @@ Parent runtime context 只投影活动和未观察终态 child 的身份、profi
 
 它复用 session turn record 格式，但 header 额外包含 parent ID、spawn tool-call ID 与完整 profile 快照。这些文件是用于调试、审计、accounting 与未来历史浏览的持久化日志；它们不是 runtime manager state、普通可恢复 session，也不会出现在 `/resume`。新的 Kana 进程绝不会把这些文件恢复进 `KanaSubagentManager`。Fork parent 不复制 child；删除 parent 会移除完整 child-journal 目录。
 
-主 Agent 运行期间也可使用 `/agents`。面板显示启动时 profile 快照，以及当前 hosted session instance 中活动和仍被保留的终态 record；方向键选择，`Enter` 打开当前进程内保留的 transcript，`K` 取消活动 child 但不确认其 completion，`R` 刷新内存视图，`Esc` 关闭。启动时的无效 profile 诊断也会显示在面板中。退出 Kana 会丢弃这些 runtime state；以后恢复 parent session 时不会从 child journal 重新填充。
+主 Agent 运行期间也可使用 `/agents`。面板显示启动时 profile 快照，以及当前 hosted session instance 中活动和仍被保留的终态 record；方向键选择，`Enter` 打开当前进程内的最新进展快照，`K` 取消活动 child 但不确认其 completion，`R` 刷新选中 child 的预览，`Esc` 关闭。启动时的无效 profile 诊断也会显示在面板中。退出 Kana 会丢弃这些 runtime state；以后恢复 parent session 时不会从 child journal 重新填充。
+
+打开面板、选择 child、刷新或进入详情时，都会按需读取一次快照。运行中的 child 直接从内存提供 Agent 已提交的消息和正在生成的 assistant 消息；已结算的 child 使用保留的最终 transcript。现有 child 生命周期事件仍会刷新打开的面板，但没有逐 token 更新或轮询。详情与预览复用现有 Markdown 和工具组件：隐藏 thinking，工具只显示状态和目标，省略参数与输出。快照中的工具行不显示实时计时或中止快捷键。预览显示这份进展视图的最后几行可见内容。查看 child 不会确认其 completion，也不会改变 `wait_subagent` 的输出。
 
 Child run 使用独立的 `subagent` accounting kind，并与 main、memory run 分开显示。其 usage 只向 aggregate 和 per-model 总数贡献一次，不复制进 parent run usage。Clean mode 不加载任何 profile：subagent 工具不会注册，`/agents` 也会报告 subagent 不可用。由于不会有 child 启动，clean mode 不写 child journal 或 accounting record。

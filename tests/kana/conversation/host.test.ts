@@ -13,6 +13,7 @@ import {
   type MemoryConsolidationActivity,
   type MemoryConsolidationEvent,
 } from "../../../src/kana";
+import type { KanaAgentOptions } from "../../../src/kana/agent";
 import { createRememberTool } from "../../../src/kana/tools";
 import { MockModel } from "../../../src/providers/mock";
 import { waitFor } from "../../helpers/async-control";
@@ -229,6 +230,98 @@ describe("Kana conversation host", () => {
     );
     expect(second.profiles.map((profile) => profile.name)).not.toContain("later");
     await host.close();
+  });
+
+  test("inspects committed child messages together with its current streaming reply", async () => {
+    const env = createTempEnv();
+    process.env.KANA_HOME = env.KANA_HOME;
+    const agentsDirectory = path.join(env.KANA_HOME ?? "", "agents");
+    mkdirSync(agentsDirectory, { recursive: true });
+    writeFileSync(path.join(agentsDirectory, "focused.md"), subagentProfile("Inspect the parser."));
+    const model = new ControlledModel();
+    let runSubagent: KanaAgentOptions["runSubagent"];
+    let child: Agent | undefined;
+    const host = createKanaConversationHost({
+      env,
+      createAgent: (_config, options = {}) => {
+        if (!options.subagentProfile) runSubagent = options.runSubagent;
+        const agent = new Agent({
+          model: options.subagentProfile
+            ? model
+            : new MockModel({ provider: "mock", model: "mock" }),
+          journal: options.journal,
+          onRunCommitted: options.onRunCommitted,
+          tools: [
+            {
+              name: "read",
+              description: "Read a file",
+              parameters: { type: "object", properties: {} },
+              execute: () => ({ content: "Parser contents", result: { path: "src/parser.ts" } }),
+            },
+          ],
+        });
+        if (options.subagentProfile) child = agent;
+        return agent;
+      },
+    });
+    try {
+      const sessionId = host.initialSession?.metadata.id ?? "";
+      host.createAgent({ sessionId });
+      const client = host.getSubagents(sessionId);
+      const profile = host
+        .loadSubagentProfiles()
+        .profiles.find((entry) => entry.name === "focused");
+      if (!client || !profile || !runSubagent) throw new Error("Missing subagent binding.");
+      const started = client.start({
+        profile,
+        task: "Inspect the parser",
+        spawnToolCallId: "call-spawn",
+        run: runSubagent,
+      });
+      await waitFor(() => model.requests.length === 1);
+      model.requests[0]!.complete(
+        [
+          { type: "thinking", text: "Reading the parser first" },
+          { type: "tool_call", id: "read-parser", name: "read", args: { path: "src/parser.ts" } },
+        ],
+        "toolUse",
+      );
+      await waitFor(() => model.requests.length === 2);
+      model.requests[1]!.update("Partial parser review");
+      await waitFor(
+        () =>
+          child?.state.streamingMessage?.content.some(
+            (content) => content.type === "text" && content.text === "Partial parser review",
+          ) === true,
+      );
+
+      const inspection = client.inspect(started.id);
+      expect(inspection?.status).toBe("running");
+      expect(inspection?.messages.map((message) => message.role)).toEqual([
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+      ]);
+      expect(inspection?.messages.at(-1)).toMatchObject({
+        content: [{ type: "text", text: "Partial parser review" }],
+      });
+      expect(inspection?.model).toEqual({ provider: "test", model: "controlled" });
+
+      model.requests[1]!.complete("Final parser review");
+      await expect(client.wait(started.id, { waitMs: 100 })).resolves.toMatchObject({
+        status: "completed",
+        output: "Final parser review",
+      });
+      expect(client.inspect(started.id)?.messages.at(-1)).toMatchObject({
+        content: [{ type: "text", text: "Final parser review" }],
+      });
+      expect(inspection?.messages.at(-1)).toMatchObject({
+        content: [{ type: "text", text: "Partial parser review" }],
+      });
+    } finally {
+      await host.close();
+    }
   });
 
   test("keeps clean sessions and model changes in memory", async () => {

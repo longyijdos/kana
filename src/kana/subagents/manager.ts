@@ -55,6 +55,7 @@ export type KanaSubagentRunContext = {
   task: string;
   spawnToolCallId: string;
   owner: KanaSubagentOwner;
+  setLiveSnapshot(read: () => Pick<KanaSubagentRunResult, "messages" | "model">): void;
 };
 
 type StartKanaSubagentOptions = {
@@ -104,6 +105,7 @@ type SubagentRecord = {
   resolveSettlement(): void;
   output: string;
   messages: Message[];
+  readLiveSnapshot?: () => Pick<KanaSubagentRunResult, "messages" | "model">;
   error?: string;
   waiters: Set<() => void>;
   completionObserved: boolean;
@@ -233,6 +235,9 @@ export class KanaSubagentManager {
           task: options.task,
           spawnToolCallId: options.spawnToolCallId,
           owner,
+          setLiveSnapshot: (read) => {
+            record.readLiveSnapshot = read;
+          },
         }),
       )
       .then(
@@ -286,10 +291,12 @@ export class KanaSubagentManager {
   private inspect(owner: KanaSubagentOwner, agentId: string): KanaSubagentInspection | undefined {
     const record = this.findOwned(owner, agentId);
     if (record) {
+      const live = record.summary.status === "running" ? record.readLiveSnapshot?.() : undefined;
       return {
         ...snapshotRecord(record, false),
+        ...(live?.model ? { model: { ...live.model } } : {}),
         task: record.task,
-        messages: structuredClone(record.messages),
+        messages: structuredClone(live?.messages ?? record.messages),
       };
     }
     return undefined;
@@ -369,6 +376,7 @@ export class KanaSubagentManager {
     record.summary.terminalReason = result.terminalReason;
     record.output = result.output;
     record.messages = structuredClone(result.messages);
+    record.readLiveSnapshot = undefined;
     record.error = result.error;
     record.resolveSettlement();
     this.wakeWaiters(record);

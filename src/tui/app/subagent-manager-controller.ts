@@ -5,7 +5,12 @@ import type {
   KanaSubagentSummary,
   LoadKanaSubagentProfilesResult,
 } from "@/kana";
-import { type Editor, SubagentManager, type SubagentManagerAction } from "../components";
+import {
+  type Editor,
+  type SubagentInspectionOptions,
+  SubagentManager,
+  type SubagentManagerAction,
+} from "../components";
 import type { Tui } from "../runtime";
 import type { BottomAreaController } from "./bottom-area-controller";
 
@@ -18,6 +23,7 @@ export type SubagentManagerControllerOptions = {
   inspect: (inspection: KanaSubagentInspection) => void;
   showError: (error: unknown) => void;
   onClose: () => void;
+  renderOptions?: SubagentInspectionOptions;
 };
 
 export class SubagentManagerController {
@@ -36,7 +42,7 @@ export class SubagentManagerController {
     if (this.manager) return;
     this.options.editor.clear();
     this.subagents = this.options.getSubagents();
-    this.manager = new SubagentManager((action) => this.handle(action));
+    this.manager = new SubagentManager((action) => this.handle(action), this.options.renderOptions);
     this.unsubscribe = this.subagents?.subscribe(() => this.refresh());
     this.refresh();
     this.options.bottomArea.show(this.manager);

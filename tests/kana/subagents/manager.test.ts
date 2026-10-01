@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Message } from "@/core";
 import {
   type KanaSubagentEvent,
   KanaSubagentManager,
@@ -8,6 +9,71 @@ import {
 import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("Kana subagent manager", () => {
+  test("pulls detached live inspections on demand and retains the settled transcript", async () => {
+    const manager = new KanaSubagentManager();
+    const client = manager.bind(
+      manager.createOwner({ sessionId: "session-1", cwd: process.cwd(), persistent: false }),
+      { maxLive: 1 },
+    );
+    const run = deferred<KanaSubagentRunResult>();
+    const liveMessages: Message[] = [
+      {
+        ...messageIdentityForTest("assistant"),
+        role: "assistant",
+        content: [{ type: "text", text: "Partial reply" }],
+      },
+    ];
+    let reads = 0;
+    const started = client.start({
+      profile: profile(),
+      task: "Inspect the parser",
+      spawnToolCallId: "call-spawn",
+      run: ({ setLiveSnapshot }) => {
+        setLiveSnapshot(() => {
+          reads += 1;
+          return { messages: liveMessages, model: { provider: "test", model: "live" } };
+        });
+        return run.promise;
+      },
+    });
+    expect(client.inspect(started.id)?.messages).toEqual([]);
+    await Promise.resolve();
+
+    client.list();
+    client.context();
+    expect(await client.wait(started.id)).toMatchObject({ status: "running", output: "" });
+    expect(reads).toBe(0);
+
+    const first = client.inspect(started.id);
+    expect(first).toMatchObject({
+      messages: liveMessages,
+      model: { provider: "test", model: "live" },
+    });
+    const latest: Message = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      content: [{ type: "thinking", text: "Current thinking" }],
+    };
+    liveMessages.push(latest);
+    expect(first?.messages).toHaveLength(1);
+    const second = client.inspect(started.id);
+    expect(second?.messages).toEqual(liveMessages);
+    second?.messages.pop();
+    expect(liveMessages).toHaveLength(2);
+    expect(reads).toBe(2);
+
+    const finalized = [{ ...latest, content: [{ type: "text" as const, text: "Final reply" }] }];
+    run.resolve({ ...result("Final reply"), messages: finalized });
+    await client.wait(started.id, { waitMs: 100 });
+    expect(client.inspect(started.id)).toMatchObject({
+      status: "completed",
+      output: "Final reply",
+      messages: finalized,
+    });
+    expect(reads).toBe(2);
+    await manager.close();
+  });
+
   test("starts immediately, enforces the live limit, and supports bounded waiting", async () => {
     const manager = new KanaSubagentManager();
     const client = manager.bind(

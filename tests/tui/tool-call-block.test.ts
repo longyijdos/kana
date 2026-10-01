@@ -3,6 +3,24 @@ import { ToolCallBlock } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 
 describe("tool call block", () => {
+  test("renders snapshot summaries without output, timers, or foreground shortcuts", () => {
+    let now = 0;
+    const block = new ToolCallBlock(
+      { type: "tool_call", id: "call-summary", name: "shell", args: { command: "bun test" } },
+      () => now,
+      { summaryOnly: true },
+    );
+    block.markExecutionStarted();
+    now = 5_000;
+    expect(block.hasActiveTimer()).toBe(false);
+    expect(block.render(80).map(stripAnsi)).toEqual(["◆ Running", "  └ bun test"]);
+
+    block.updateResult({ stdout: "Full tool output", exitCode: 0 }, false);
+    expect(block.render(80).map(stripAnsi)).toEqual(["◆ Ran", "  └ bun test"]);
+    block.updateResult({ error: "Full failure details" }, true);
+    expect(block.render(80).map(stripAnsi)).toEqual(["◆ Failed to run", "  └ bun test"]);
+  });
+
   test("renders user-canceled local tools separately from failures", () => {
     const block = new ToolCallBlock({
       type: "tool_call",

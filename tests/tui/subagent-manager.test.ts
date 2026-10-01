@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { KanaSubagentProfile, KanaSubagentSummary } from "@/kana";
-import { SubagentManager, type SubagentManagerAction } from "../../src/tui/components";
+import type { Message } from "@/core";
+import type { KanaSubagentInspection, KanaSubagentProfile, KanaSubagentSummary } from "@/kana";
+import {
+  createSubagentInspectionView,
+  SubagentManager,
+  type SubagentManagerAction,
+} from "../../src/tui/components";
 import { stripAnsi, visibleWidth } from "../../src/tui/render";
+import { messageIdentityForTest } from "../helpers/messages";
 
 describe("subagent manager", () => {
   test("shows configured profiles and routes run actions", () => {
@@ -14,6 +20,8 @@ describe("subagent manager", () => {
       ...completed,
       output: "review\ncomplete",
       waitTimedOut: false,
+      task: "Inspect the parser",
+      messages: [reply("review\ncomplete")],
     });
 
     const rendered = stripAnsi(manager.render(100).join("\n"));
@@ -128,6 +136,8 @@ describe("subagent manager", () => {
       ...completed,
       output: `line one\nline two\nline three\n${"x".repeat(80)}`,
       waitTimedOut: false,
+      task: "Inspect the parser",
+      messages: [reply(`line one\nline two\nline three\n${"x".repeat(80)}`)],
     });
 
     const rendered = manager.render(100, 9).map(stripAnsi);
@@ -137,9 +147,125 @@ describe("subagent manager", () => {
 
     const narrow = manager.render(32).map(stripAnsi);
     expect(narrow).toContain("…");
-    expect(narrow).toContain(`${"x".repeat(31)}…`);
+    expect(narrow.some((line) => /^x+$/.test(line))).toBe(true);
+    expect(narrow.slice(-4, -1).every((line) => visibleWidth(line) <= 32)).toBe(true);
+  });
+
+  test("shares ordered tool summaries and Markdown replies between detail and preview", () => {
+    const inspection: KanaSubagentInspection = {
+      ...subagent("agent_live", "running"),
+      task: "Inspect the parser",
+      output: "",
+      waitTimedOut: false,
+      messages: [
+        {
+          ...messageIdentityForTest("assistant"),
+          role: "assistant",
+          content: [
+            { type: "thinking", text: "Private thinking" },
+            { type: "text", text: "**Checking** the parser." },
+            { type: "tool_call", id: "read-1", name: "read", args: { path: "src/parser.ts" } },
+            {
+              type: "tool_call",
+              id: "shell-1",
+              name: "shell",
+              args: { command: "bun test", extra: "Hidden argument" },
+            },
+            {
+              type: "tool_call",
+              id: "mcp-1",
+              name: "mcp_call",
+              args: { server: "docs", tool: "lookup" },
+            },
+          ],
+        },
+        {
+          ...messageIdentityForTest("tool"),
+          role: "tool",
+          toolCallId: "read-1",
+          toolName: "read",
+          content: "File body",
+          result: {
+            path: "src/parser.ts",
+            content: "File body",
+            startLine: 1,
+            endLine: 10,
+            totalLines: 10,
+          },
+          isError: false,
+        },
+        {
+          ...messageIdentityForTest("tool"),
+          role: "tool",
+          toolCallId: "shell-1",
+          toolName: "shell",
+          content: "Failure output",
+          result: { error: "Failure output" },
+          isError: true,
+        },
+      ],
+    };
+    const view = createSubagentInspectionView(inspection);
+    expect(view.title).toBe("Subagent explorer · running");
+    const detail = view.render(100);
+    expect(detail.map(stripAnsi)).toEqual([
+      "Task: Inspect the parser",
+      "",
+      "Checking the parser.",
+      "",
+      "◆ Read",
+      "  └ src/parser.ts",
+      "",
+      "◆ Failed to run",
+      "  └ bun test",
+      "",
+      "◆ Calling MCP docs/lookup",
+    ]);
+    expect(detail.join("\n")).not.toContain("**Checking**");
+    const manager = new SubagentManager(() => {});
+    manager.replace([profile()], [inspection]);
+    manager.replacePreview(inspection);
+    const preview = manager.render(100).map(stripAnsi);
+    expect(preview.slice(-4, -1)).toEqual(["…", "  └ bun test", "◆ Calling MCP docs/lookup"]);
+  });
+
+  test("keeps hosted tool snapshots static and marks unfinished terminal calls canceled", () => {
+    const inspection: KanaSubagentInspection = {
+      ...subagent("agent_cancelled", "cancelled"),
+      task: "Inspect",
+      output: "",
+      waitTimedOut: false,
+      messages: [
+        {
+          ...messageIdentityForTest("assistant"),
+          role: "assistant",
+          content: [
+            { type: "hosted_tool", id: "web-1", name: "web_search", status: "in_progress" },
+            { type: "tool_call", id: "read-1", name: "read", args: { path: "src/parser.ts" } },
+          ],
+        },
+      ],
+    };
+    const lines = createSubagentInspectionView(inspection).render(80).map(stripAnsi);
+    expect(lines).toEqual([
+      "Task: Inspect",
+      "",
+      "◆ Searching the web",
+      "",
+      "◆ Canceled reading",
+      "  └ src/parser.ts",
+    ]);
   });
 });
+
+function reply(text: string): Message {
+  return {
+    ...messageIdentityForTest("assistant"),
+    role: "assistant",
+    stopReason: "stop",
+    content: [{ type: "text", text }],
+  };
+}
 
 function profile(name = "explorer"): KanaSubagentProfile {
   return {
