@@ -7,6 +7,9 @@ export {
 export {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
+  type MemoryConsolidationActivity,
+  type MemoryConsolidationActivitySource,
+  type MemoryConsolidationEvent,
   type MemoryConsolidationQueue,
   type MemoryConsolidationScheduler,
 } from "./consolidation-scheduler";

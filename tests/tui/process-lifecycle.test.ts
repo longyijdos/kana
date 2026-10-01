@@ -70,6 +70,13 @@ describe("Kana TUI shutdown", () => {
       },
       {
         ...createOptions(),
+        memory: {
+          ...createOptions().memory,
+          activity: {
+            getActivity: () => [{ scope: "project", status: "organizing" }],
+            subscribe: () => () => {},
+          },
+        },
         lifecycle: {
           stop: async () => {
             app.showShutdownStatus("Closing MCP servers... 0/1");
@@ -96,6 +103,7 @@ describe("Kana TUI shutdown", () => {
     );
     expect(stopping).toContain("Shutting down Kana...");
     expect(stopping).toContain("test-model");
+    expect(stopping).not.toContain("Memory is still being organized.");
 
     releaseIdle();
     await firstStop;
@@ -407,6 +415,98 @@ describe("Kana TUI shutdown", () => {
     await app.waitForStop();
 
     expect(terminalStopCount).toBe(1);
+  });
+
+  for (const trigger of ["/quit", "Ctrl+C"] as const) {
+    test(`${trigger} confirms active memory, defaults to Cancel, and supports Quit now`, async () => {
+      let handleInput!: (data: string) => void;
+      let terminalStopCount = 0;
+      const options = createOptions();
+      options.memory.activity = {
+        getActivity: () => [{ scope: "project", status: "organizing" }],
+        subscribe: () => () => {},
+      };
+      const app = new KanaTuiApp(
+        () => createAgentStub(),
+        {
+          ...createTerminal((input) => {
+            handleInput = input;
+          }),
+          stop: () => {
+            terminalStopCount += 1;
+          },
+        },
+        options,
+      );
+      const internal = app as unknown as {
+        editor: Editor;
+        layout: { render(width: number): string[] };
+      };
+      const render = () => stripAnsi(internal.layout.render(96).join("\n"));
+      const requestExit = () => {
+        if (trigger === "/quit") {
+          internal.editor.setText("/quit");
+          handleInput("\r");
+        } else {
+          handleInput("\x03");
+        }
+      };
+      app.start();
+      requestExit();
+      expect(render()).toContain("Memory is still being organized.");
+      expect(render()).toContain("> Cancel");
+      expect(render()).not.toContain("Wait and quit");
+      expect(terminalStopCount).toBe(0);
+
+      handleInput("\x1b");
+      expect(render()).toContain("Memory · organizing project");
+      requestExit();
+      handleInput("\r");
+      expect(render()).not.toContain("Memory is still being organized.");
+      expect(terminalStopCount).toBe(0);
+
+      requestExit();
+      handleInput("\x1b[B");
+      handleInput("\r");
+      await app.waitForStop();
+      expect(terminalStopCount).toBe(1);
+    });
+  }
+
+  test("forces exit on the second Ctrl+C while memory confirmation is open", async () => {
+    let handleInput!: (data: string) => void;
+    let forced = 0;
+    let stopped = 0;
+    const options = createOptions();
+    options.memory.activity = {
+      getActivity: () => [{ scope: "global", status: "queued" }],
+      subscribe: () => () => {},
+    };
+    options.lifecycle = {
+      stop: () => {
+        stopped += 1;
+      },
+      forceStop: () => {
+        forced += 1;
+      },
+    };
+    const app = new KanaTuiApp(
+      () => createAgentStub(),
+      createTerminal((input) => {
+        handleInput = input;
+      }),
+      options,
+    );
+    app.start();
+
+    handleInput("\x03");
+    expect(forced).toBe(0);
+    expect(stopped).toBe(0);
+    handleInput("\x03");
+    expect(forced).toBe(1);
+    expect(stopped).toBe(0);
+
+    await app.stop();
   });
 });
 

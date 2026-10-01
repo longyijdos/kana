@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { MemoryConsolidationEvent } from "@/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { InteractionErrorReporter } from "../../src/tui/app/interaction-error-reporter";
 import type { StatusProjectionController } from "../../src/tui/app/status-projection-controller";
@@ -37,6 +38,28 @@ describe("interaction error reporting", () => {
 
     expect(stripAnsi(transcript.render(120).join("\n"))).toContain("runtime failure");
     expect(phases).toEqual(["error"]);
+  });
+
+  test("adds background memory failures through the interaction error path", async () => {
+    let publish!: (event: MemoryConsolidationEvent) => void;
+    const options = createTuiAppOptions();
+    options.memory.activity = {
+      getActivity: () => [],
+      subscribe: (listener) => {
+        publish = listener;
+        return () => {};
+      },
+    };
+    const app = new KanaTuiApp(() => createTuiAgentStub(), createTerminal(), options);
+    const internal = app as unknown as AppInternals;
+    app.start();
+    publish({ type: "failed", scope: "global", error: "Provider unavailable" });
+
+    expect(renderTranscript(internal)).toContain(
+      "Memory consolidation failed · global · Provider unavailable",
+    );
+    expect(renderStatusLine(internal)).toContain("Idle");
+    await app.stop();
   });
 
   test("keeps the idle phase when a clean-mode command is unavailable", () => {

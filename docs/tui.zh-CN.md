@@ -14,6 +14,9 @@ Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态
 `KanaTuiApp.stop()` 是幂等边界。它追加关闭状态、移除 bottom 焦点、关闭并等待 `ConversationRuntime`，等待自动记忆合并等产品清理，再关闭 MCP manager；之后才恢复终端，并按需打印累计用量和恢复命令。空闲退出与进程 signal 共用这条路径；优雅关闭中的第二次中断会先恢复终端再强制退出。
 
 使用 `kana --clean` 时，App 不安装 MCP 生命周期或管理 controller。Transcript 与状态栏会显示临时模式，不持久化 session，退出时也不打印恢复命令。
+
+通过 `/quit` 或空闲时的 `Ctrl+C` 发起交互退出，会在关闭前检查自动记忆活动。存在排队或整理中的任务时，显示 `Cancel` / `Quit now` 确认，默认选中 `Cancel`。按 `Esc` 或选择 `Cancel` 返回 TUI；确认框中按 `Ctrl+C` 会立即强制退出。`Quit now` 沿用现有取消并等待收尾的关闭流程，保留 daily 条目，不等待合并成功。进程信号和直接调用 `stop()` 不经过交互确认。
+
 ## App 与 Agent 事件
 
 `KanaTuiApp` 订阅 `ConversationRuntime`，持有累计模型用量和可见运行状态，并把 Agent 事件映射交给 `AgentEventRenderer`。输入排序与投递由[对话运行时](conversation-runtime.zh-CN.md)定义；本文只负责其可见投影。Transcript 会在任意两个输出块之间插入一行普通空行，每个 block 只管理内部间距；同一助手消息含多个有序可见部分时，`AssistantMessageBlock` 也使用相同间距。人工输入使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，续行与正文对齐。到期 wake 显示为 `Scheduled wake: …` 而不是人工输入，成功结果则显示为把延迟和提醒压到一行 target 的紧凑工具块：
@@ -35,7 +38,9 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 助手正文的协议状态与可视进度彼此分离：provider 和 Agent 仍会立即处理完整事件与消息，`StreamingTextPresenter` 只维护 Markdown 块当前可见的 `text` 前缀。稀疏文本 delta 会立即出现；当一次网络读取带来一批 SSE 事件时，积压内容约每 16ms 推进一次，并按 backlog 在每帧 1–12 个 grapheme 之间有界加速，消息完成后只额外提升一级用于收尾。工具调用开始、`toolUse` 消息完成、审批显示和实际执行前会先追平已经收到的正文，保证后续工具状态不会越过仍在展开的文本，同时不延迟 Agent 或 ToolRuntime。新消息或运行 reset 也会先 flush 剩余正文，因此持久化的 session 和 Agent 状态始终使用完整消息，而不是动画中的中间快照。配置 `tui.smooth_text_streaming = false` 会完全绕过该节奏控制，直接显示 provider 的最新流式快照；working 活动、Core thinking 事件、工具调用、工具结果、错误和状态阶段始终不参与文本节奏控制。
 
-编辑器内部包含状态栏，它显示模型及可选推理强度（例如 `gpt-5.6-luna · max`；`none` 档位显示为 `off`）、Clean 模式标记、形如 `Context ~N% used` 的下一轮近似上下文、运行阶段、活动工具和 cwd。该阶段跟随 Agent run 活动以及本地执行流程（本地 Shell、memory compaction、MCP 加载）；命令和其他交互错误只向 transcript 追加错误，不改变阶段。该百分比用可重放上下文除以 effective context limit，而不是直接展示上一轮 response 的原始 `input_tokens`；因此 system instructions 和工具 schema 会让新 session 带有非零基线。普通 provider usage 用于校准估算；包含托管搜索的响应则保留之前的干净锚点，只增加持久化输出与调用元数据，不计入临时搜索网页。恢复内容未变的会话时会从最新一条已持久化的 assistant 消息重建该干净锚点，因此百分比保持不变，而不是跳到全新的本地估算。数值在每个完整 model/tool `turn_end` 后、上下文压缩后以及 Agent run 结束时刷新。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `Tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `Tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，空间不足时优先保留 pending 队列并截断明细。待处理的用户任务单独显示在 `Your tasks · N · /task` 预览中，短 ID 与单行描述位于 `Background` 上方；完成或返还后立即消失。处于 `running` 或 `stopping` 的 Background Job 与 subagent 会在这些预览下方渲染为 `Background · N` 行，格式为 `subagent · <短 ID> · <状态> · <标签>` 或 `job · <短 ID> · <状态> · <标签>`；终态记录只在 `/jobs` 与 `/agents` 中保留，空间不足时该区块先于 pending 队列被丢弃。打开任一建议面板时会同时隐藏状态栏和所有预览行；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求都会把 provider 原始 usage 原样累计到进程总用量。Kana 不估算金额，实际费用以 provider 账单为准；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
+编辑器内部包含状态栏，它显示模型及可选推理强度（例如 `gpt-5.6-luna · max`；`none` 档位显示为 `off`）、Clean 模式标记、形如 `Context ~N% used` 的下一轮近似上下文、运行阶段、活动工具和 cwd。该阶段跟随 Agent run 活动以及本地执行流程（本地 Shell、memory compaction、MCP 加载）；命令和其他交互错误只向 transcript 追加错误，不改变阶段。该百分比用可重放上下文除以 effective context limit，而不是直接展示上一轮 response 的原始 `input_tokens`；因此 system instructions 和工具 schema 会让新 session 带有非零基线。普通 provider usage 用于校准估算；包含托管搜索的响应则保留之前的干净锚点，只增加持久化输出与调用元数据，不计入临时搜索网页。恢复内容未变的会话时会从最新一条已持久化的 assistant 消息重建该干净锚点，因此百分比保持不变，而不是跳到全新的本地估算。数值在每个完整 model/tool `turn_end` 后、上下文压缩后以及 Agent run 结束时刷新。provider-hosted 网页搜索使用 `searching` 阶段，但不会出现在本地 `Tool …` 活动名称中。多个本地工具并行时，活动项压缩为第一个名称加剩余数量，例如 `Tool read +2`；任一调用失败后错误阶段会保留到该组全部结束，同时已完成的调用不会清除仍在运行的名称。上下文摘要生成期间阶段为 `compacting`，完成后立即用 checkpoint 估算更新百分比。运行中存在排队输入时，编辑器使用状态栏下方原本会被 Layout 补空的行显示 `Queued inputs`，并用 `next turn`、`next run` 或 `scheduled` 标出投递时机；`scheduled` 明细只表示已经到期并正在等待的新 run。尚未到期的 wake 不展开消息内容，只显示 `Scheduled · N · next HH:mm` 摘要。多行内容折叠为一行，在预留活动 Memory 行后，空间不足时优先保留 pending 队列并截断明细。待处理的用户任务单独显示在 `Your tasks · N · /task` 预览中，短 ID 与单行描述位于 `Background` 上方；完成或返还后立即消失。处于 `running` 或 `stopping` 的 Background Job 与 subagent 会在这些预览下方渲染为 `Background · N` 行，格式为 `subagent · <短 ID> · <状态> · <标签>` 或 `job · <短 ID> · <状态> · <标签>`；终态记录只在 `/jobs` 与 `/agents` 中保留，空间不足时该区块先于 pending 队列被丢弃。打开任一建议面板时会同时隐藏状态栏和所有预览行；其他底部组件替换编辑器时，输入区、状态栏和预览一起隐藏。每条完成助手消息和摘要请求都会把 provider 原始 usage 原样累计到进程总用量。Kana 不估算金额，实际费用以 provider 账单为准；`/usage` 将回合上限终止与正常完成、输出截断、中止和失败分开统计。
+
+自动记忆合并在状态栏正下方显示单独一行 `Memory`，位于 queued input、用户任务和 Background 预览之前。它显示 `queued project`、`organizing project`，两个 scope 用 ` + ` 连接；混合状态显示为 `Memory · organizing project · queued global`。同一 scope 只要还有批次正在执行，就保持 organizing，即使其他批次仍在排队。结束的 scope 立即消失，不保留成功或失败行。异常和未正常完成的 run 直接向 transcript 追加 `Memory consolidation failed · <scope> · <reason>`，不改变前台 phase；关闭导致的取消不报错。该行跟随进程持有的任务跨 session 切换，随编辑器或建议面板隐藏，空间不足时优先于其他预览保留。
 
 恢复 session 时，TUI 只渲染已提交的 timeline；Agent 的重建契约见[会话与记忆](sessions-and-memory.zh-CN.md)。历史 `turn_start` 不显示，`todo_state` 只补充匹配工具块而不新增行；实时 `turn_start` 只产生临时工作状态。`turn_end` 不增加 block，只更新状态栏的 context 估算；recovery 输入显示为弱化的安全恢复标记。Timeline 中的 `context_compaction` 会在原位置显示为 `Context compacted · 812k → ~430k tokens`；实时事件追加同样标记。执行 `/compact` 时，临时 `Compacting context…` 会在成功后被替换，失败时先移除再显示错误。TUI 不保留从 messages 直接重建历史的兼容路径。
 
@@ -45,7 +50,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 | 输入 | 行为 |
 | --- | --- |
-| `Ctrl+C` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，正在运行时中止本地 Shell、记忆压缩或 Agent。空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才开始优雅退出；关闭等待期间再次按下会强制退出。 |
+| `Ctrl+C` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，正在运行时中止本地 Shell、记忆压缩或 Agent。空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才发起退出；存在自动记忆任务时需要确认，确认框或关闭等待期间再次按下会强制退出。 |
 | `Esc` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，先交给当前聚焦的 modal、view、picker 或嵌套 prompt 处理，工具审批提示会将它视为“拒绝”。焦点回到编辑器后，若 Agent 正在运行则中止本次 run；空闲时不产生作用。 |
 | `Shift+Tab` | 提示显示在普通工具审批的标题后。在无需二次确认的情况下允许当前调用，并把当前 session 设为 Never ask。队列中的普通工具审批随后自动通过；用户任务邀请仍需选择。 |
 | `Ctrl+O` | 在普通编辑器状态下打开最近一项工具调用的详情查看器；其它底部视图会消耗该输入并保持原样。`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用，`Esc` 关闭。 |
@@ -106,7 +111,7 @@ Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-inp
 | `/memory` | 在底部选择操作和 scope；具体语义见[会话与记忆](sessions-and-memory.zh-CN.md)。 |
 | `/compact` | 不发送用户消息，直接压缩当前对话上下文。 |
 | `/usage` | 在底部选择统计范围，再打开对应的 API 用量。 |
-| `/quit` | 无参数时退出；带参数时作为普通 prompt。 |
+| `/quit` | 无参数时发起退出，存在自动记忆任务时需要确认；带参数时作为普通 prompt。 |
 
 `/usage` 会让 token 标签、数值和比例条保持稳定列位。Runs 区域把 main、subagent 和自动/手动 memory usage 分开；按模型明细会显示 token 总数，并根据当前可见数据动态计算数字列宽，因此更大的次数、token 总数或更长的模型名不会推动相邻数值错位。各类 outcome 仍保持紧凑的单行摘要，底部视图较窄时可能被截断。
 
@@ -134,6 +139,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 - `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job 但不确认终态，并在面板通过 `Esc` 关闭前阻止 pending run 启动。
 - `SubagentManagerController` 用 `/agents` 打开面板，重新加载 profile 诊断、保持 run 选中项稳定、预览最终输出、用 `Enter` 打开独立持久化的 child transcript，并用 `K` 取消活动 child。Child 状态变化会刷新视图，但不消费结果。
 - `BackgroundActivityController` 绑定当前 session 的 Background Job、Subagent 与用户任务管理器，把待处理用户任务投影为 `Your tasks`，把运行中或停止中的 Job 与 Subagent 投影为 `Background`，并在任务开始或结束时刷新。它在 session 切换时重新绑定，无活动任务时不渲染任何行，也绝不确认、取消或改变所显示的任务。
+- `MemoryActivityController` 只订阅一次 host 范围的自动记忆活动源，把排队和整理中的批次投影到编辑器，并通过交互错误通路显示失败；它不随 session 切换重新绑定，也不改变 scheduler 行为。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
 - `ToolApprovalController` 调用 Agent 的 `beforeToolExecution` 钩子，并在每次调用前及每个排队请求显示前读取当前有效审批模式。`/approval` 或审批界面 `Shift+Tab` 设置的临时覆盖只作用于当前选中的 session；new、fork、resume 或进程退出会恢复 `config.toml`，且不会写入 session journal 或审批文件。在普通审批中按 `Shift+Tab` 会设置 Never ask 并允许当前调用，队列中的普通调用随后自动通过。同时到达的 main 与 child 请求会带准确 Agent 身份进入一条 FIFO 队列；child 审批标题使用对应的 profile 名，取消时只移除对应请求。编辑器可见时，审批选择框会替换它；如果另一个底部视图正在显示，审批会保持等待并仍触发配置的审批通知，关闭该视图后再显示审批。审批提示复用全保真工具详情，因此 write 内容、edit 的替换前后文本、shell 命令和 MCP/自定义工具参数都会完整保留，并通过详情分页恢复，而不是在渲染前被摘要化。`mcp_call` 审批从入口 envelope 读取 server ID 与远端工具原名，并显示格式化完整嵌套参数，长参数沿用详情分页；它们不提供持久信任选项。普通工具选择“拒绝”或按 `Esc` 会中止发起请求的 run，选择 always 仅把 shell 命令加入精确白名单。用户任务邀请在 Never ask 模式下仍会询问，且不显示或响应 `Shift+Tab` 快捷键；拒绝或按 `Esc` 会把任务交还 Agent，不会中止 run。
 - `SessionLifecycleController` 统一协调 new、fork、resume 后的 transcript、焦点、context 状态和 MCP 能力刷新；其内部的 `SessionOverlayController` 持有会话列表，删除通过 `DeleteSessionConfirmation` 完成。picker 按活动时间由新到旧列出当前工作区的其他会话，每行显示最近活动时间，而不再显示创建时间或模型。

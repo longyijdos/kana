@@ -41,6 +41,8 @@ import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
   loadKanaMemory,
+  type MemoryConsolidationActivity,
+  type MemoryConsolidationEvent,
   type MemoryConsolidationQueue,
   type MemoryConsolidationScheduler,
   runFullMemoryConsolidation,
@@ -136,6 +138,7 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly sessionRegistry: HostedSessionRegistry;
   private readonly memoryConsolidationQueue: MemoryConsolidationQueue;
   private readonly memoryConsolidationSchedulers = new Set<MemoryConsolidationScheduler>();
+  private readonly memoryActivityListeners = new Set<(event: MemoryConsolidationEvent) => void>();
   private readonly oauthTokenStore;
   private readonly customProviderSnapshot: KanaCustomProviderSnapshot;
   private readonly subagentProfileSnapshot: LoadKanaSubagentProfilesResult;
@@ -365,6 +368,15 @@ export class KanaConversationHost<TConfiguration = never> {
     return this.mcpRuntime.close();
   }
 
+  getMemoryActivity(): MemoryConsolidationActivity[] {
+    return [...this.memoryConsolidationSchedulers].flatMap((scheduler) => scheduler.getActivity());
+  }
+
+  subscribeMemoryActivity(listener: (event: MemoryConsolidationEvent) => void): () => void {
+    this.memoryActivityListeners.add(listener);
+    return () => this.memoryActivityListeners.delete(listener);
+  }
+
   async close(): Promise<void> {
     const schedulers = [...this.memoryConsolidationSchedulers];
     this.memoryConsolidation = undefined;
@@ -376,6 +388,7 @@ export class KanaConversationHost<TConfiguration = never> {
       await this.sessionRegistry.close(schedulersSettled);
     } finally {
       this.memoryConsolidationSchedulers.clear();
+      this.memoryActivityListeners.clear();
       await this.mcpRuntime.close();
     }
   }
@@ -737,6 +750,9 @@ export class KanaConversationHost<TConfiguration = never> {
       // Model reconfiguration can replace the active scheduler while an older
       // one still owns work, so the host retains every instance for shutdown.
       this.memoryConsolidationSchedulers.add(scheduler);
+      scheduler.subscribe((event) => {
+        for (const listener of this.memoryActivityListeners) listener(event);
+      });
     }
     return scheduler;
   }

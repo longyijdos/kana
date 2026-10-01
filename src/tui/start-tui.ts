@@ -182,6 +182,10 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         syntaxTheme: theme.syntaxTheme,
       },
       memory: {
+        activity: {
+          getActivity: () => host.getMemoryActivity(),
+          subscribe: (listener) => host.subscribeMemoryActivity(listener),
+        },
         compact: (target, userRequest, signal) => host.compactMemory(target, userRequest, signal),
         load: (target) => host.loadMemory(target),
       },

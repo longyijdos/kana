@@ -10,8 +10,13 @@ import {
   createKanaSessionJournal,
   type KanaTodoItem,
   loadKanaSession,
+  type MemoryConsolidationActivity,
+  type MemoryConsolidationEvent,
 } from "../../../src/kana";
+import { createRememberTool } from "../../../src/kana/tools";
 import { MockModel } from "../../../src/providers/mock";
+import { waitFor } from "../../helpers/async-control";
+import { ControlledModel } from "../../helpers/controlled-model";
 import { messageIdentityForTest } from "../../helpers/messages";
 
 const temporaryHomes: string[] = [];
@@ -135,6 +140,70 @@ describe("Kana conversation host", () => {
     expect(seenModels).toEqual(["startup-model", "deepseek-v4-pro"]);
     expect(host.config.agent.model.name).toBe("deepseek-v4-pro");
     expect(host.config.agent.maxTurns).toBe(50);
+    await runtime.close();
+    await host.close();
+  });
+
+  test("exposes automatic memory activity and failures after a committed remember", async () => {
+    const env = createTempEnv();
+    process.env.KANA_HOME = env.KANA_HOME;
+    const model = new ControlledModel();
+    const host = createKanaConversationHost({
+      env,
+      configOverrides: [
+        'memory.agent.model.provider="custom"',
+        'memory.agent.model.name="missing-model"',
+      ],
+      createAgent: (_config, options = {}) =>
+        new Agent({
+          model,
+          tools: [createRememberTool({ env })],
+          messages: options.messages,
+          beforeToolExecution: options.beforeToolExecution,
+          journal: options.journal,
+          logger: options.logger,
+          onRunCommitted: options.onRunCommitted,
+        }),
+    });
+    const snapshots: MemoryConsolidationActivity[][] = [];
+    const failures: MemoryConsolidationEvent[] = [];
+    host.subscribeMemoryActivity((event) => {
+      if (event.type === "activity_changed") snapshots.push(host.getMemoryActivity());
+      else failures.push(event);
+    });
+    const runtime = createRuntime(host);
+    runtime.setBeforeToolExecution(() => ({ type: "continue" }));
+    const run = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Remember this preference.",
+    });
+    await waitFor(() => model.requests.length === 1);
+    model.requests[0]!.complete(
+      [
+        {
+          type: "tool_call",
+          id: "remember-preference",
+          name: "remember",
+          args: { scope: "project", content: "Use Bun." },
+        },
+      ],
+      "toolUse",
+    );
+    await waitFor(() => model.requests.length === 2);
+    model.requests[1]!.complete("Saved.");
+    await run;
+    await waitFor(() => failures.length === 1 && host.getMemoryActivity().length === 0);
+
+    expect(snapshots).toEqual([
+      [{ scope: "project", status: "queued" }],
+      [{ scope: "project", status: "organizing" }],
+      [],
+    ]);
+    expect(failures[0]).toMatchObject({ type: "failed", scope: "project" });
+    expect((failures[0] as Extract<MemoryConsolidationEvent, { type: "failed" }>).error).toContain(
+      "Custom provider configuration was not found",
+    );
     await runtime.close();
     await host.close();
   });
