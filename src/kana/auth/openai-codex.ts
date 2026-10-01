@@ -182,8 +182,12 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
       if (clientId === undefined) additionalParameters.agent_name_hint = "kana";
       if (previous?.idToken) {
         additionalParameters.id_token_hint = previous.idToken;
-        if (state.registration?.email) additionalParameters.login_hint = state.registration.email;
-        if (!previous.scopes?.includes(DIRECT_SCOPE)) additionalParameters.prompt = "consent";
+      }
+      if (state.registration?.email) {
+        additionalParameters.login_hint = state.registration.email;
+      }
+      if (previous && !previous.scopes?.includes(DIRECT_SCOPE)) {
+        additionalParameters.prompt = "consent";
       }
       listener = await (this.options.startCallbackServer ?? startOAuthCallbackServer)({
         redirectUri: "http://127.0.0.1:1455/auth/callback",

@@ -129,6 +129,19 @@ describe("Kana Sign in with ChatGPT", () => {
     fixture.auth.close();
   });
 
+  test("requests plan consent without requiring a retained ID token", async () => {
+    const fixture = setup({ callbackClientId: null });
+    const previous = token();
+    delete previous.idToken;
+    previous.scopes = ["openid", "profile", "email"];
+    await fixture.store.saveOpenAICodexState(state(), previous);
+    await fixture.auth.authorize();
+    expect(fixture.urls[0]?.searchParams.has("id_token_hint")).toBe(false);
+    expect(fixture.urls[0]?.searchParams.get("login_hint")).toBe("user@example.com");
+    expect(fixture.urls[0]?.searchParams.get("prompt")).toBe("consent");
+    fixture.auth.close();
+  });
+
   test("failed reauthorization preserves active credentials and its registration", async () => {
     const fixture = setup({ callbackClientId: null, exchangeError: "invalid_grant" });
     await fixture.store.saveOpenAICodexState(state(), token());
@@ -219,6 +232,8 @@ describe("Kana Sign in with ChatGPT", () => {
     expect(fixture.urls[0]?.searchParams.get("ext_agent_host_id")).toBe("urn:uuid:host");
     expect(fixture.urls[0]?.searchParams.has("agent_name_hint")).toBe(false);
     expect(fixture.urls[0]?.searchParams.has("id_token_hint")).toBe(false);
+    expect(fixture.urls[0]?.searchParams.get("login_hint")).toBe("user@example.com");
+    expect(fixture.urls[0]?.searchParams.has("prompt")).toBe(false);
     expect(await fixture.auth.getCredentials()).toEqual({ accessToken: "new-access" });
     fixture.auth.close();
   });
