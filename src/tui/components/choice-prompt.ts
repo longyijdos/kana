@@ -60,7 +60,7 @@ export class ChoicePrompt<T extends string> implements Component {
       ...optionLines,
     ];
 
-    return lines.map((line) => truncateToWidth(line, width, ""));
+    return lines.map((line) => truncateToWidth(line, width));
   }
 
   handleInput(data: string): void {

@@ -6,6 +6,7 @@ import {
   terminalHyperlink,
   truncateToWidth,
   visibleWidth,
+  wrapAnsiText,
 } from "../../src/tui/render";
 
 describe("tui width helpers", () => {
@@ -63,5 +64,54 @@ describe("tui width helpers", () => {
     expect(visibleWidth(rendered)).toBe(4);
     expect(rendered).toContain(`ab${CLOSE_TERMINAL_HYPERLINK}..`);
     expect(rendered.endsWith("\x1b[0m")).toBe(true);
+  });
+});
+
+describe("ANSI text wrapping", () => {
+  test.each([
+    ["abcdef", 2, ["ab", "cd", "ef"]],
+    ["abcdef", 6, ["abcdef"]],
+    ["", 4, [""]],
+    ["ab\r\n\r\ncd\r", 2, ["ab", "", "cd", ""]],
+    ["a\tb", 3, ["a  ", " b"]],
+    ["你👩‍💻é好", 4, ["你👩‍💻", "é好"]],
+  ])("wraps %s to width %i without losing graphemes", (value, width, expected) => {
+    expect(wrapAnsiText(value, width)).toEqual(expected);
+  });
+
+  test("closes and restores colors and hyperlinks across wrapped and explicit lines", () => {
+    const destination = "https://example.com/a-long-destination";
+    const tone = [238, 238, 238] as const;
+    const rendered = wrapAnsiText(color(terminalHyperlink("abcd\nef", destination), tone), 2);
+
+    expect(rendered).toEqual(
+      ["ab", "cd", "ef"].map((line) => color(terminalHyperlink(line, destination), tone)),
+    );
+    expect(rendered.every((line) => visibleWidth(line) === 2)).toBe(true);
+  });
+
+  test("preserves partial style resets and stops restoring styles after a full reset", () => {
+    const rendered = wrapAnsiText("\x1b[31mab\x1b[39mcd\x1b[0mef", 2);
+
+    expect(rendered.map(stripAnsi)).toEqual(["ab", "cd", "ef"]);
+    expect(rendered[0]).toContain("\x1b[31mab");
+    expect(rendered[1]).toContain("\x1b[39mcd");
+    expect(rendered[2]).toBe("ef");
+  });
+
+  test("preserves combining marks immediately after an ANSI sequence", () => {
+    const rendered = wrapAnsiText("e\x1b[0m\u0301x", 1);
+
+    expect(rendered.map(stripAnsi)).toEqual(["é", "x"]);
+  });
+
+  test("closes unfinished styles and hyperlinks at the last row", () => {
+    const rendered = wrapAnsiText("\x1b]8;;https://example.com\x07\x1b[31mabcd", 2);
+
+    expect(rendered.map(stripAnsi)).toEqual(["ab", "cd"]);
+    expect(rendered.every((line) => line.endsWith(`${CLOSE_TERMINAL_HYPERLINK}\x1b[0m`))).toBe(
+      true,
+    );
+    expect(rendered[1]).toContain("\x1b]8;;https://example.com\x07");
   });
 });

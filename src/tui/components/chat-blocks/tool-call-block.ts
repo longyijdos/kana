@@ -128,7 +128,7 @@ export class ToolCallBlock implements Component {
       lines.push(...this.renderOutput(width, "compact"));
     }
 
-    const rendered = lines.map((line) => truncateToWidth(line, width, ""));
+    const rendered = lines.map((line) => truncateToWidth(line, width));
 
     this.cachedWidth = width;
     this.cachedVersion = this.renderVersion;

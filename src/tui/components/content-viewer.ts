@@ -1,4 +1,4 @@
-import { color, dim, mapLines, summarizeText, truncateToWidth } from "../render";
+import { color, dim, summarizeText, truncateToWidth, wrapAnsiText } from "../render";
 import type { Component } from "../runtime";
 import {
   isDown,
@@ -99,7 +99,7 @@ export class ContentViewer implements Component {
     const contentWidth = Math.max(1, width - 2);
     const content = this.view
       .render(contentWidth)
-      .flatMap((line) => mapLines(line, (part) => part));
+      .flatMap((line) => wrapAnsiText(line, contentWidth));
     this.contentLength = content.length;
     this.viewport.setVisibleLimit(
       visibleLimitForHeight(
@@ -131,7 +131,7 @@ export class ContentViewer implements Component {
     }
 
     for (let index = window.start; index < window.end; index += 1) {
-      lines.push(truncateToWidth(`  ${content[index] ?? ""}`, width, ""));
+      lines.push(truncateToWidth(`  ${content[index] ?? ""}`, width));
     }
 
     if (window.hiddenAfter > 0) {

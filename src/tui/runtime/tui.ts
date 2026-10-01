@@ -395,7 +395,7 @@ export function extractCursorPosition(
 }
 
 function normalizeLine(line: string, width: number): string {
-  const truncated = visibleWidth(line) > width ? truncateToWidth(line, width, "") : line;
+  const truncated = visibleWidth(line) > width ? truncateToWidth(line, width) : line;
 
   return `${truncated}\x1b[0m`;
 }
