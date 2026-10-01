@@ -133,6 +133,8 @@ reason: "可选原因"
 
 一次对话成功提交后，调度器从本轮 `remember` 的成功工具结果中按 scope 收集条目。每个 scope 的任务独立，但增量合并和手动全量合并会共享同一 scope 的 promise 队列串行运行，避免并发的读—改—写覆盖。
 
+`MemoryConsolidationScheduler` 为自动批次暴露只读活动快照以及变更/失败事件。批次在共享 scope 队列启动它之前保持 `queued`，启动后保持 `organizing` 直到结束。`KanaConversationHost` 汇总全部 scheduler 的活动，独立于当前选择的 session。这些观察接口不改变调度或 headless 输出。
+
 ```text
 remember 成功
   → 当天 daily 文件追加

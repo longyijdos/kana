@@ -738,6 +738,38 @@ describe("Editor", () => {
   });
 
   describe("background activity previews", () => {
+    test("keeps memory immediately below status, combines scopes, and hides it with palettes", () => {
+      const editor = new Editor({ model: "test-model" });
+      editor.updateStatus({ phase: "working", running: true });
+      editor.setQueuedInputs([{ delivery: "run", content: "Next request" }]);
+      editor.setPendingUserTasks([{ id: "9a8b7c6d", label: "Review" }]);
+      editor.setMemoryActivity([
+        { scope: "project", status: "organizing" },
+        { scope: "project", status: "queued" },
+        { scope: "global", status: "queued" },
+      ]);
+
+      const rendered = editor.render(96, 14).map(stripAnsi);
+      const memoryIndex = rendered.indexOf("Memory · organizing project · queued global");
+      expect(memoryIndex).toBeGreaterThan(0);
+      expect(rendered[memoryIndex - 1]).toContain("Working");
+      expect(rendered.indexOf("Queued inputs · 1")).toBeGreaterThan(memoryIndex);
+      expect(rendered.indexOf("Your tasks · 1 · /task")).toBeGreaterThan(memoryIndex);
+
+      editor.setMemoryActivity([
+        { scope: "global", status: "organizing" },
+        { scope: "project", status: "organizing" },
+      ]);
+      expect(editor.render(96, 5).map(stripAnsi)).toContain("Memory · organizing project + global");
+      expect(editor.render(96, 5)).toHaveLength(5);
+
+      editor.setText("/");
+      expect(stripAnsi(editor.render(96, 14).join("\n"))).not.toContain("Memory · ");
+      editor.clear();
+      editor.setMemoryActivity([]);
+      expect(stripAnsi(editor.render(96).join("\n"))).not.toContain("Memory · ");
+    });
+
     test("renders user tasks before background work and hides previews for slash commands", () => {
       const editor = new Editor({ model: "test-model" });
       editor.setQueuedInputs([{ delivery: "run", content: "Check types after this run." }]);

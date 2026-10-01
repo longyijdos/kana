@@ -9,7 +9,7 @@ import type { ConversationAgentIdentity, KanaToolApprovalMode } from "@/kana";
 import { ConversationRuntime, type ConversationRuntimeEvent } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
-import { Editor, TextBlock, Transcript, UserMessageBlock } from "../components";
+import { ChoicePrompt, Editor, TextBlock, Transcript, UserMessageBlock } from "../components";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -32,6 +32,7 @@ import { LocalShellController } from "./local-shell-controller";
 import { McpLifecycleController } from "./mcp-lifecycle-controller";
 import { McpOAuthStatusController } from "./mcp-oauth-status-controller";
 import { McpServerManagerController } from "./mcp-server-manager-controller";
+import { MemoryActivityController } from "./memory-activity-controller";
 import { MemoryCompactController } from "./memory-compact-controller";
 import type { TuiModelSelection } from "./model-selection";
 import { formatStatusModel, ModelSelectionController } from "./model-selection-controller";
@@ -69,6 +70,7 @@ export class KanaTuiApp {
   private readonly backgroundJobManager: BackgroundJobManagerController;
   private readonly subagentManager: SubagentManagerController;
   private readonly backgroundActivity: BackgroundActivityController;
+  private readonly memoryActivity: MemoryActivityController;
   private readonly status: StatusProjectionController;
   private readonly errors: InteractionErrorReporter;
   private readonly toolApproval: ToolApprovalController;
@@ -92,6 +94,7 @@ export class KanaTuiApp {
   private readonly getLogger: () => Logger;
   private readonly unsubscribeConversationEvents: () => void;
   private stopping = false;
+  private quitConfirmation?: ChoicePrompt<"quit" | "cancel">;
   private stopPromise?: Promise<void>;
   private resolveStopped!: () => void;
   private readonly stoppedPromise = new Promise<void>((resolve) => {
@@ -144,6 +147,7 @@ export class KanaTuiApp {
         !this.scheduledMessageManager?.active &&
         !this.backgroundJobManager?.active &&
         !this.subagentManager?.active &&
+        !this.quitConfirmation &&
         !this.stopping,
       getLogger: this.getLogger,
     });
@@ -334,6 +338,13 @@ export class KanaTuiApp {
       },
     });
     this.backgroundActivity.bind();
+    this.memoryActivity = new MemoryActivityController({
+      source: this.options.memory.activity,
+      editor: this.editor,
+      tui: this.tui,
+      showError: (error) => this.showInteractionError(error),
+    });
+    this.memoryActivity.bind();
     this.modelSelection = new ModelSelectionController({
       conversation: this.conversation,
       editor: this.editor,
@@ -450,7 +461,7 @@ export class KanaTuiApp {
       updateStatus: (phase) => this.updateStatus(phase, { activeTool: undefined }),
       showError: (error) => this.showInteractionError(error),
       stop: () => {
-        void this.stop();
+        this.requestExit();
       },
       submitPrompt: (prompt) => this.submitPrompt(prompt),
       activateSession: () => {
@@ -461,7 +472,7 @@ export class KanaTuiApp {
     this.slashCommands = new SlashCommandController({
       isRunning: () => this.status.running,
       stop: () => {
-        void this.stop();
+        this.requestExit();
       },
       submitRaw: (raw) => {
         void this.submitPrompt(raw);
@@ -644,6 +655,41 @@ export class KanaTuiApp {
     return this.stoppedPromise;
   }
 
+  private requestExit(): void {
+    if (!this.memoryActivity.active) {
+      void this.stop();
+      return;
+    }
+
+    this.editor.clear();
+    const prompt = new ChoicePrompt<"quit" | "cancel">({
+      title: "Memory is still being organized.",
+      detail: "Quit now will cancel it. Daily entries are saved.",
+      options: [
+        { value: "cancel", label: "Cancel" },
+        { value: "quit", label: "Quit now" },
+      ],
+      defaultValue: "cancel",
+      onSelect: (decision) => {
+        if (decision === "quit") {
+          void this.stop();
+        } else {
+          this.cancelExit();
+        }
+      },
+      onCancel: () => this.cancelExit(),
+    });
+    this.quitConfirmation = prompt;
+    this.bottomArea.show(prompt);
+  }
+
+  private cancelExit(): void {
+    const prompt = this.quitConfirmation;
+    this.quitConfirmation = undefined;
+    if (prompt) this.bottomArea.restore(prompt);
+    this.conversation.notifyCanStartQueuedRun();
+  }
+
   showShutdownStatus(status: string): void {
     if (!this.stopping) {
       return;
@@ -671,6 +717,7 @@ export class KanaTuiApp {
 
   private async stopInternal(): Promise<void> {
     this.getLogger().info("tui.stopped");
+    this.quitConfirmation = undefined;
     const btwSettled = this.btw.dispose();
     this.localShell.abort();
     this.memoryCompact.abort();
@@ -679,6 +726,7 @@ export class KanaTuiApp {
     this.subagentManager.close();
     this.mcpServerManager?.close();
     this.backgroundActivity.unbind();
+    this.memoryActivity.unbind();
     this.unsubscribeConversationEvents();
     this.showShutdownStatus("Shutting down Kana...");
     const resumeSessionId = this.options.conversation.getResumeSessionId();
@@ -731,6 +779,15 @@ export class KanaTuiApp {
       return { consume: true };
     }
 
+    if (this.quitConfirmation) {
+      if (isCtrlC(data)) {
+        this.getLogger().warn("tui.force_stop_requested");
+        this.options.lifecycle?.forceStop?.();
+        return { consume: true };
+      }
+      return undefined;
+    }
+
     if (this.mcpLifecycle.loading) {
       if (isCtrlC(data) || isEscape(data)) {
         this.mcpLifecycle.cancel();
@@ -762,7 +819,7 @@ export class KanaTuiApp {
         return { consume: true };
       }
 
-      void this.stop();
+      this.requestExit();
       return { consume: true };
     }
 

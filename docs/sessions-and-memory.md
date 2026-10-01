@@ -133,6 +133,8 @@ The host generates metadata and quotes field values as JSON strings. The date is
 
 After a conversation is successfully committed, a scheduler collects successful `remember` tool results from that run by scope. Jobs for different scopes are independent, but incremental and manual full-compaction jobs in the same scope share one promise queue, avoiding concurrent read-modify-write overwrites.
 
+`MemoryConsolidationScheduler` exposes read-only activity snapshots and change/failure events for automatic batches. A batch stays `queued` until the shared scope queue starts it, then `organizing` until it settles. `KanaConversationHost` aggregates activity from every scheduler independently of the selected session. These observations do not change scheduling or headless output.
+
 ```text
 successful remember
   → append today's daily file

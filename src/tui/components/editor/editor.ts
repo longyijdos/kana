@@ -1,5 +1,5 @@
 import type { UserImage } from "@/core";
-import type { KanaPromptTemplate, KanaSkillActivation } from "@/kana";
+import type { KanaPromptTemplate, KanaSkillActivation, MemoryConsolidationActivity } from "@/kana";
 
 import {
   color,
@@ -158,6 +158,7 @@ export class Editor implements Component {
   private scheduledInputSummary?: EditorScheduledInputSummary;
   private backgroundActivity: EditorBackgroundActivityItem[] = [];
   private pendingUserTasks: EditorUserTaskItem[] = [];
+  private memoryActivity: MemoryConsolidationActivity[] = [];
   private images: UserImage[] = [];
   // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
   private placeholder = createRandomPromptPlaceholder();
@@ -259,6 +260,10 @@ export class Editor implements Component {
     this.pendingUserTasks = structuredClone(items);
   }
 
+  setMemoryActivity(items: MemoryConsolidationActivity[]): void {
+    this.memoryActivity = structuredClone(items);
+  }
+
   render(width: number, availableHeight?: number): string[] {
     const frameWidth = Math.max(width, 8);
     const contentWidth = Math.max(1, frameWidth - 4);
@@ -267,7 +272,12 @@ export class Editor implements Component {
     const showPalette = !this.loading && paletteState.showPalette;
     const showStatus = !showPalette && (availableHeight === undefined || availableHeight >= 5);
     const imageRows = this.images.length > 0 ? 1 : 0;
-    const inputReservedRows = 2 + imageRows + (showStatus ? 1 : 0) + (showPalette ? 3 : 0);
+    const showMemory =
+      showStatus &&
+      this.memoryActivity.length > 0 &&
+      (availableHeight === undefined || availableHeight >= 5 + imageRows);
+    const inputReservedRows =
+      2 + imageRows + (showStatus ? 1 : 0) + (showPalette ? 3 : 0) + (showMemory ? 1 : 0);
     const maximumInputLines = visibleLimitForHeight(
       MAX_INPUT_LINES,
       availableHeight,
@@ -322,6 +332,10 @@ export class Editor implements Component {
 
     if (showStatus) {
       lines.push(renderStatusLine(width, this.model, this.statusState));
+    }
+
+    if (showMemory) {
+      lines.push(this.renderMemoryActivity());
     }
 
     if (
@@ -721,6 +735,24 @@ export class Editor implements Component {
       lines.push(dim(`  … ${this.pendingUserTasks.length - window.visibleCount} more`));
     }
     return lines;
+  }
+
+  private renderMemoryActivity(): string {
+    const organizing = ["project", "global"].filter((scope) =>
+      this.memoryActivity.some((item) => item.scope === scope && item.status === "organizing"),
+    );
+    const queued = ["project", "global"].filter(
+      (scope) =>
+        !organizing.includes(scope) && this.memoryActivity.some((item) => item.scope === scope),
+    );
+    return color(
+      [
+        "Memory",
+        ...(organizing.length > 0 ? [`organizing ${organizing.join(" + ")}`] : []),
+        ...(queued.length > 0 ? [`queued ${queued.join(" + ")}`] : []),
+      ].join(" · "),
+      tuiTheme.command,
+    );
   }
 
   private renderInputPreviews(width: number, availableHeight?: number): string[] {

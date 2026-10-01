@@ -9,7 +9,21 @@ import {
 } from "./consolidation-agent";
 import type { KanaMemoryEntry, KanaMemoryScope } from "./storage";
 
-export type MemoryConsolidationScheduler = {
+export type MemoryConsolidationActivity = {
+  scope: KanaMemoryScope;
+  status: "queued" | "organizing";
+};
+
+export type MemoryConsolidationEvent =
+  | { type: "activity_changed" }
+  | { type: "failed"; scope: KanaMemoryScope; error: string };
+
+export type MemoryConsolidationActivitySource = {
+  getActivity(): MemoryConsolidationActivity[];
+  subscribe(listener: (event: MemoryConsolidationEvent) => void): () => void;
+};
+
+export type MemoryConsolidationScheduler = MemoryConsolidationActivitySource & {
   schedule(messages: Message[], options?: ScheduleMemoryConsolidationOptions): Promise<void>;
   close(): Promise<void>;
 };
@@ -71,6 +85,11 @@ export function createMemoryConsolidationScheduler(
   const queue = options.queue ?? createMemoryConsolidationQueue();
   const shutdown = new AbortController();
   const activeSchedules = new Map<Promise<void>, Logger>();
+  const activities = new Set<MemoryConsolidationActivity>();
+  const listeners = new Set<(event: MemoryConsolidationEvent) => void>();
+  const publish = (event: MemoryConsolidationEvent): void => {
+    for (const listener of listeners) listener(event);
+  };
   let closePromise: Promise<void> | undefined;
   const runIncremental =
     options.runIncremental ??
@@ -93,6 +112,11 @@ export function createMemoryConsolidationScheduler(
     });
 
   return {
+    getActivity: () => [...activities].map((activity) => ({ ...activity })),
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     schedule(messages, scheduleOptions = {}) {
       const entriesByScope = collectRememberedEntries(messages);
       if (entriesByScope.size === 0) {
@@ -120,18 +144,51 @@ export function createMemoryConsolidationScheduler(
         ),
       });
       const jobs = [...entriesByScope].map(([scope, entries]) => {
+        const activity: MemoryConsolidationActivity = { scope, status: "queued" };
+        activities.add(activity);
+        publish({ type: "activity_changed" });
         return queue.enqueue(scope, async () => {
-          const result = await runIncremental(scope, entries, logger, shutdown.signal);
-          if (result) scheduleOptions.onCompleted?.(scope, result);
+          activity.status = "organizing";
+          publish({ type: "activity_changed" });
+          try {
+            let result: MemoryConsolidationResult | undefined;
+            try {
+              result = await runIncremental(scope, entries, logger, shutdown.signal);
+            } catch (error) {
+              if (!shutdown.signal.aborted) {
+                publish({
+                  type: "failed",
+                  scope,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
+              throw error;
+            }
+            if (result) {
+              if (
+                result.outcome !== "updated" &&
+                result.outcome !== "unchanged" &&
+                !shutdown.signal.aborted
+              ) {
+                publish({
+                  type: "failed",
+                  scope,
+                  error: `Consolidation ended with ${result.outcome}.`,
+                });
+              }
+              scheduleOptions.onCompleted?.(scope, result);
+            }
+          } finally {
+            activities.delete(activity);
+            publish({ type: "activity_changed" });
+          }
         });
       });
       const schedule = Promise.all(jobs).then(() => undefined);
+      const settlement = Promise.allSettled(jobs).then(() => undefined);
 
-      activeSchedules.set(schedule, logger);
-      void schedule.then(
-        () => activeSchedules.delete(schedule),
-        () => activeSchedules.delete(schedule),
-      );
+      activeSchedules.set(settlement, logger);
+      void settlement.then(() => activeSchedules.delete(settlement));
 
       return schedule;
     },

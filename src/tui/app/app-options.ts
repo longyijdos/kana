@@ -20,6 +20,7 @@ import type {
   KanaUserTaskManager,
   LoadKanaSkillActivationsResult,
   LoadKanaSubagentProfilesResult,
+  MemoryConsolidationActivitySource,
   WakeScheduler,
 } from "@/kana";
 import type { Logger } from "@/logging";
@@ -59,6 +60,7 @@ type KanaTuiSkillCapabilities = {
 };
 
 type KanaTuiMemoryCapabilities = {
+  activity?: MemoryConsolidationActivitySource;
   compact: (
     target: MemoryScope,
     userRequest: string | undefined,
