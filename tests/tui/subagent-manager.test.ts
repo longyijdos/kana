@@ -229,6 +229,28 @@ describe("subagent manager", () => {
     expect(preview.slice(-4, -1)).toEqual(["…", "  └ bun test", "◆ Calling MCP docs/lookup"]);
   });
 
+  for (const messages of [[], [reply("Partial parser review")]]) {
+    test(`shows runtime errors in detail and preview with ${messages.length ? "partial" : "empty"} transcripts`, () => {
+      const inspection: KanaSubagentInspection = {
+        ...subagent("agent_failed", "errored"),
+        task: "Inspect the parser",
+        output: "",
+        error: "Provider unavailable",
+        waitTimedOut: false,
+        messages,
+      };
+      const detail = createSubagentInspectionView(inspection).render(100).map(stripAnsi);
+      expect(detail.at(-1)).toBe("Error: Provider unavailable");
+      if (messages.length) expect(detail).toContain("Partial parser review");
+
+      const manager = new SubagentManager(() => {});
+      manager.replace([profile()], [inspection]);
+      manager.replacePreview(inspection);
+      const preview = manager.render(100).map(stripAnsi);
+      expect(preview.at(-2)).toBe("Error: Provider unavailable");
+    });
+  }
+
   test("keeps hosted tool snapshots static and marks unfinished terminal calls canceled", () => {
     const inspection: KanaSubagentInspection = {
       ...subagent("agent_cancelled", "cancelled"),

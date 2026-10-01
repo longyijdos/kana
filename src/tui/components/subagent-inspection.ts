@@ -1,6 +1,13 @@
 import type { Message } from "@/core";
 import type { KanaSubagentInspection } from "@/kana";
-import { HostedToolBlock, MarkdownBlock, ToolCallBlock, Transcript } from "./chat-blocks";
+import { tuiTheme } from "../theme";
+import {
+  HostedToolBlock,
+  MarkdownBlock,
+  TextBlock,
+  ToolCallBlock,
+  Transcript,
+} from "./chat-blocks";
 import type { ContentView } from "./content-viewer";
 
 export type SubagentInspectionOptions = {
@@ -38,6 +45,12 @@ export function createSubagentInspectionView(
         transcript.addChild(block);
       }
     }
+  }
+
+  if (inspection.error) {
+    transcript.addChild(
+      new TextBlock(inspection.error, { color: tuiTheme.error, prefix: "Error: " }),
+    );
   }
 
   return {
