@@ -185,12 +185,10 @@ export function createMemoryConsolidationScheduler(
         });
       });
       const schedule = Promise.all(jobs).then(() => undefined);
+      const settlement = Promise.allSettled(jobs).then(() => undefined);
 
-      activeSchedules.set(schedule, logger);
-      void schedule.then(
-        () => activeSchedules.delete(schedule),
-        () => activeSchedules.delete(schedule),
-      );
+      activeSchedules.set(settlement, logger);
+      void settlement.then(() => activeSchedules.delete(settlement));
 
       return schedule;
     },

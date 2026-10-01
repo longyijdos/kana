@@ -109,12 +109,14 @@ describe("memory consolidation scheduler", () => {
     expect(scheduler.getActivity()).toEqual([]);
   });
 
-  test("reports a failed scope while independent work remains active", async () => {
+  test("reports a failed scope and awaits remaining work when subsequently closed", async () => {
     const globalRun = deferred();
+    let globalSignal: AbortSignal | undefined;
     const events: MemoryConsolidationEvent[] = [];
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-      runIncremental: async (scope) => {
+      runIncremental: async (scope, _entries, _logger, signal) => {
         if (scope === "project") throw new Error("Provider unavailable");
+        globalSignal = signal;
         await globalRun.promise;
       },
     });
@@ -134,9 +136,57 @@ describe("memory consolidation scheduler", () => {
 
     unsubscribe();
     const eventCount = events.length;
+    let closed = false;
+    const shutdown = scheduler.close().then(() => {
+      closed = true;
+    });
+    expect(globalSignal?.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(closed).toBe(false);
     globalRun.resolve();
-    await waitFor(() => scheduler.getActivity().length === 0);
+    await shutdown;
+    expect(scheduler.getActivity()).toEqual([]);
     expect(events).toHaveLength(eventCount);
+  });
+
+  test("awaits all scopes when one rejects after shutdown has started", async () => {
+    const started = deferred();
+    const projectRun = deferred();
+    const globalCleanup = deferred();
+    const globalAborted = deferred();
+    const failure = new Error("Provider unavailable");
+    let startedCount = 0;
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+      runIncremental: async (scope, _entries, _logger, signal) => {
+        if (++startedCount === 2) started.resolve();
+        if (scope === "project") {
+          await projectRun.promise;
+          throw failure;
+        }
+        signal.addEventListener("abort", () => globalAborted.resolve(), { once: true });
+        await globalCleanup.promise;
+        return consolidationResult("aborted");
+      },
+    });
+    const rejection = scheduler
+      .schedule([rememberResult("project", "mem_project"), rememberResult("global", "mem_global")])
+      .catch((error) => error);
+    await started.promise;
+
+    let closed = false;
+    const shutdown = scheduler.close().then(() => {
+      closed = true;
+    });
+    await globalAborted.promise;
+    projectRun.resolve();
+    expect(await rejection).toBe(failure);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(closed).toBe(false);
+    expect(scheduler.getActivity()).toEqual([{ scope: "global", status: "organizing" }]);
+    globalCleanup.resolve();
+    await shutdown;
+    expect(scheduler.getActivity()).toEqual([]);
   });
 
   test("reports unfinished outcomes without treating normal completion as failure", async () => {
