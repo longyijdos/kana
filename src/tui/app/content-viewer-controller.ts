@@ -55,10 +55,15 @@ export class ContentViewerController {
     return this.navigateTool(1);
   }
 
-  open(view: ContentView): void {
+  open(view: ContentView, onClose?: () => void): void {
     this.close();
     this.activeToolId = undefined;
-    this.showViewer(view);
+    this.showViewer(view, {
+      onClose: () => {
+        this.close();
+        onClose?.();
+      },
+    });
   }
 
   close(): void {
@@ -87,7 +92,7 @@ export class ContentViewerController {
 
   private showViewer(
     view: ContentView,
-    options?: { onPrevious?: () => void; onNext?: () => void },
+    options?: { onClose?: () => void; onPrevious?: () => void; onNext?: () => void },
   ): void {
     const viewer = new ContentViewer(view, {
       onClose: () => this.close(),

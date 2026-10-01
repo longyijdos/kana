@@ -20,7 +20,7 @@ export type SubagentManagerControllerOptions = {
   tui: Tui;
   getSubagents: () => KanaSubagentClient | undefined;
   loadProfiles: () => LoadKanaSubagentProfilesResult;
-  inspect: (inspection: KanaSubagentInspection) => void;
+  inspect: (inspection: KanaSubagentInspection, onBack: () => void) => void;
   showError: (error: unknown) => void;
   onClose: () => void;
   renderOptions?: SubagentInspectionOptions;
@@ -39,11 +39,15 @@ export class SubagentManagerController {
   }
 
   open(): void {
-    if (this.manager) return;
-    this.options.editor.clear();
-    this.subagents = this.options.getSubagents();
-    this.manager = new SubagentManager((action) => this.handle(action), this.options.renderOptions);
-    this.unsubscribe = this.subagents?.subscribe(() => this.refresh());
+    if (!this.manager) {
+      this.options.editor.clear();
+      this.subagents = this.options.getSubagents();
+      this.manager = new SubagentManager(
+        (action) => this.handle(action),
+        this.options.renderOptions,
+      );
+      this.unsubscribe = this.subagents?.subscribe(() => this.refresh());
+    }
     this.refresh();
     this.options.bottomArea.show(this.manager);
   }
@@ -77,8 +81,7 @@ export class SubagentManagerController {
       case "inspect": {
         const inspection = this.subagents?.inspect(action.subagent.id);
         if (inspection) {
-          this.close();
-          this.options.inspect(inspection);
+          this.options.inspect(inspection, () => this.open());
         }
         break;
       }

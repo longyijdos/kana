@@ -319,13 +319,14 @@ export class KanaTuiApp {
           profiles: [],
           diagnostics: [],
         },
-      inspect: (inspection) => {
+      inspect: (inspection, onBack) => {
         this.contentViewer.open(
           createSubagentInspectionView(inspection, {
             hyperlinks: this.hyperlinks,
             renderLatex: this.renderLatex,
             renderMermaid: this.renderMermaid,
           }),
+          onBack,
         );
       },
       renderOptions: {
