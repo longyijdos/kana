@@ -13,6 +13,11 @@ export class OpenAICodexStreamProcessor extends ResponsesStreamProcessor {
       providerLabel: "OpenAI Codex",
     });
   }
+
+  override apply(event: Record<string, unknown>): void {
+    if (event.type === "response.done") return;
+    super.apply(event);
+  }
 }
 
 export function readOpenAICodexStream(

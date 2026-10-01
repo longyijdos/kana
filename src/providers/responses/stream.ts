@@ -23,6 +23,8 @@ export class ResponsesStreamError extends Error {
     readonly retryable: boolean,
     message: string,
     readonly providerCode?: string,
+    readonly providerParam?: string,
+    public requestId?: string,
   ) {
     super(message);
   }
@@ -569,11 +571,19 @@ function createResponsesStreamError(
   message: string,
 ): ResponsesStreamError {
   const providerCode = readResponsesErrorCode(event);
+  const response = isRecord(event.response) ? event.response : undefined;
+  const error =
+    response && isRecord(response.error)
+      ? response.error
+      : isRecord(event.error)
+        ? event.error
+        : event;
   return new ResponsesStreamError(
     eventType,
     isTransientResponsesError(message, providerCode),
     message,
     providerCode,
+    readString(error.param),
   );
 }
 
@@ -608,6 +618,17 @@ const RETRYABLE_RESPONSES_ERROR_CODES = new Set([
 ]);
 
 function isTransientResponsesError(message: string, code?: string): boolean {
+  if (
+    code === "subscription_sharing_usage_limit_exceeded" ||
+    code === "subscription_sharing_user_not_eligible" ||
+    code === "subscription_sharing_unsupported_capability"
+  )
+    return false;
+  if (
+    code === "subscription_sharing_usage_unavailable" ||
+    code === "subscription_sharing_user_unavailable"
+  )
+    return true;
   const normalizedCode = code
     ?.trim()
     .toLowerCase()

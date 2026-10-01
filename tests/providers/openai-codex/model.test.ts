@@ -5,6 +5,94 @@ import { createRecordingLogger, type RecordedLog } from "../../helpers/logging";
 import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("OpenAI Codex model", () => {
+  test("does not retry a ChatGPT plan limit and preserves HTTP diagnostic details", async () => {
+    let attempts = 0;
+    const model = createModel(async () => {
+      attempts += 1;
+      return Response.json(
+        {
+          error: {
+            code: "subscription_sharing_usage_limit_exceeded",
+            message: "App limit reached",
+            param: "model",
+          },
+        },
+        { status: 429, headers: { "x-request-id": "request-limit" } },
+      );
+    }, 2);
+    try {
+      await model.generate(createInput());
+      throw new Error("Expected a usage-limit failure");
+    } catch (error) {
+      expect(error).toMatchObject({
+        status: 429,
+        providerCode: "subscription_sharing_usage_limit_exceeded",
+        param: "model",
+        requestId: "request-limit",
+      });
+      expect(String(error)).toContain("https://chatgpt.com/settings/usage");
+    }
+    expect(attempts).toBe(1);
+  });
+
+  test("reports a plan limit after streaming starts instead of accepting partial text", async () => {
+    const model = createModel(async () =>
+      sseResponse(
+        [
+          assistantOutputItem(),
+          { type: "response.output_text.delta", output_index: 0, delta: "partial" },
+          {
+            type: "response.failed",
+            response: {
+              error: {
+                code: "subscription_sharing_usage_limit_exceeded",
+                message: "Try again later",
+                param: "model",
+              },
+            },
+          },
+        ],
+        { "x-request-id": "request-stream" },
+      ),
+    );
+    await expect(model.generate(createInput())).rejects.toMatchObject({
+      providerCode: "subscription_sharing_usage_limit_exceeded",
+      providerParam: "model",
+      requestId: "request-stream",
+    });
+  });
+
+  test("retries temporary ChatGPT usage-check failures before output", async () => {
+    let attempts = 0;
+    const model = createModel(async () => {
+      attempts += 1;
+      return attempts === 1
+        ? sseResponse(
+            [
+              {
+                type: "response.failed",
+                response: {
+                  error: {
+                    code: "subscription_sharing_usage_unavailable",
+                    message: "Usage check failed",
+                  },
+                },
+              },
+            ],
+            { "retry-after": "0" },
+          )
+        : sseResponse(completedTextEvents("hello"));
+    }, 1);
+    expect((await model.generate(createInput())).stopReason).toBe("stop");
+    expect(attempts).toBe(2);
+  });
+
+  test("requires the public Responses terminal event", async () => {
+    const model = createModel(async () =>
+      sseResponse([{ type: "response.done", response: { status: "completed", output: [] } }]),
+    );
+    await expect(model.generate(createInput())).rejects.toThrow("terminal response event");
+  });
   test("refreshes once after a 401 and streams the retried response", async () => {
     const authorizationHeaders: string[] = [];
     const accountHeaders: string[] = [];
@@ -29,6 +117,7 @@ describe("OpenAI Codex model", () => {
       maxRetries: 0,
       logger: createRecordingLogger(logs),
       fetch: (async (_input, init) => {
+        expect(String(_input)).toBe("https://api.openai.com/v1/responses");
         const headers = new Headers(init?.headers);
         authorizationHeaders.push(headers.get("authorization") ?? "");
         accountHeaders.push(headers.get("chatgpt-account-id") ?? "");
@@ -79,7 +168,7 @@ describe("OpenAI Codex model", () => {
 
     expect(refreshCount).toBe(1);
     expect(authorizationHeaders).toEqual(["Bearer expired-token", "Bearer refreshed-token"]);
-    expect(accountHeaders).toEqual(["account-id", "account-id"]);
+    expect(accountHeaders).toEqual(["", ""]);
     expect(responsesLiteHeaders).toEqual([null, null]);
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({

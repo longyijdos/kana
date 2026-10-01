@@ -3,6 +3,7 @@ export {
   authorizeKanaOpenAICodex,
   getKanaOpenAICodexAuthStatus,
   KanaOpenAICodexAuth,
+  type KanaOpenAICodexAuthStatus,
   signOutKanaOpenAICodex,
 } from "./openai-codex";
 export {

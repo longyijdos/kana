@@ -4,7 +4,11 @@ import { messageIdentityForTest } from "../helpers/messages";
 
 type BuildResponsesRequest = (context: ModelContext) => Record<string, unknown>;
 
-export function responsesRequestContract(label: string, buildRequest: BuildResponsesRequest): void {
+export function responsesRequestContract(
+  label: string,
+  buildRequest: BuildResponsesRequest,
+  functionNamespace?: string,
+): void {
   describe(label, () => {
     test("encodes enabled and disabled user image attachments", () => {
       const context: ModelContext = {
@@ -100,6 +104,7 @@ export function responsesRequestContract(label: string, buildRequest: BuildRespo
           call_id: "call-view",
           name: "view_image",
           arguments: '{"path":"screen.png"}',
+          ...(functionNamespace === undefined ? {} : { namespace: functionNamespace }),
         },
         {
           type: "function_call_output",
@@ -116,6 +121,7 @@ export function responsesRequestContract(label: string, buildRequest: BuildRespo
           call_id: "call-view",
           name: "view_image",
           arguments: '{"path":"screen.png"}',
+          ...(functionNamespace === undefined ? {} : { namespace: functionNamespace }),
         },
         {
           type: "function_call_output",

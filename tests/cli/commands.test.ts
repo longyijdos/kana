@@ -263,6 +263,38 @@ describe("CLI reset", () => {
 });
 
 describe("CLI authentication", () => {
+  test("reports plan permission separately from identity sign-in", async () => {
+    const logs: string[] = [];
+    await parse(["node", "kana", "auth", "login", "openai-codex"], {
+      authorizeOpenAICodex: async () => undefined,
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+    expect(logs[0]).toContain("plan usage is disabled");
+    await parse(["node", "kana", "auth", "status", "openai-codex"], {
+      getOpenAICodexAuthStatus: async () => ({
+        state: "authorized",
+        refreshable: true,
+        planUsage: false,
+        email: "user@example.com",
+      }),
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+    expect(logs[1]).toContain("user@example.com, ChatGPT plan usage disabled");
+  });
+
+  test("does not offer automatic account replacement", async () => {
+    const program = createCli(defaultCliOptions());
+    const auth = program.commands.find((command) => command.name() === "auth");
+    const login = auth?.commands.find((command) => command.name() === "login");
+    login?.exitOverride().configureOutput({ writeErr: () => {} });
+    await expect(
+      program.parseAsync(["node", "kana", "auth", "login", "openai-codex", "--new-account"]),
+    ).rejects.toThrow("unknown option '--new-account'");
+  });
   test("manages OpenAI Codex authentication", async () => {
     const calls: string[] = [];
     const logs: string[] = [];

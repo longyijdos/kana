@@ -17,11 +17,11 @@
 
 无状态函数负责协议解析与 request 构造；`OAuthSession` 持有一个 issuer/client/resource 绑定的可变凭据，并串行处理交互授权、refresh、持久化、失效和 shutdown。
 
-OpenAI Codex 在通用边界之外增加自身的 token-request 差异，见 [OpenAI Codex provider](openai-codex-provider.zh-CN.md)。[MCP](mcp.zh-CN.md) 将 OAuth 协议交给官方 SDK，复用 loopback callback 与产品凭据 store，而不使用 `OAuthSession`。
+OpenAI Codex 在通用边界之外组合无状态协议函数与 SIWC 注册、身份生命周期，见 [OpenAI Codex provider](openai-codex-provider.zh-CN.md)。[MCP](mcp.zh-CN.md) 将 OAuth 协议交给官方 SDK，复用 loopback callback 与产品凭据 store，而不使用 `OAuthSession`。
 
 ## Authorization-server metadata
 
-Provider 集成层向 `OAuthSession` 提供 authorization-server metadata。OpenAI Codex 使用固定 authorization 与 token endpoint；通用 provider 流程不执行 metadata discovery。MCP discovery 由官方 SDK 处理。
+集成层向协议函数或 `OAuthSession` 提供 authorization-server metadata。OpenAI Codex 使用固定的 SIWC authorization、token 与 JWKS endpoint；退出时查询 revocation endpoint。通用 OAuth 层不执行 metadata discovery。MCP discovery 由官方 SDK 处理。
 
 Token 请求拒绝 fetch redirect。Token response 默认最大 256 KiB，先以严格 UTF-8 解码，再解析 JSON；空 body、超限、非法 UTF-8 和非法 JSON 都按协议错误处理。
 
@@ -69,7 +69,9 @@ Authorization 成功但 response 未替换 ID token、refresh token 或 scopes �
 
 通用层不选择任何文件。`OAuthTokenStore` 按 storage key 提供异步 load、save 与 delete。Kana 产品 store 以 owner-only 权限写入 `<KANA_HOME>/oauth-tokens.json`，并绑定 provider 或 MCP 专属 key；路径与 UI 决策不属于 `src/oauth`。
 
-MCP 使用 SDK 的 `OAuthClientProvider` 和 `auth` 流程，结合 Kana 共享的 loopback callback 与凭据 store。Callback 在检查 `state` 后，将授权响应中可选的 `iss` 交给 SDK 校验 issuer。OpenAI Codex 使用 `OAuthSession`，提供固定 client、callback、endpoint 行为与 ChatGPT account 绑定。两种集成都不能把 token 暴露给 Agent message、session、transcript block 或诊断。
+产品 store 的每次修改都获取共享文件锁，重新读取最新文件，应用更新后原子替换文件。Provider token、Codex 注册状态、MCP token 与 client 的写入因此在不同 store 实例和进程之间串行执行。独立的 Codex 生命周期锁覆盖 refresh、revocation 及其网络请求。文件修改可在生命周期锁内执行，但文件锁不会跨越网络 I/O，也不会获取生命周期锁。
+
+MCP 使用 SDK 的 `OAuthClientProvider` 和 `auth` 流程，结合 Kana 共享的 loopback callback 与凭据 store。共享 callback 还会返回 SIWC 动态注册签发的可选 `client_id`。MCP 在检查 `state` 后，将授权响应中可选的 `iss` 交给 SDK 校验 issuer。OpenAI Codex 将无状态 OAuth 请求和 callback listener 与 SIWC 动态注册、OIDC 身份验证、受保护的注册 store 和 host 锁内的 token 轮换结合。两种集成都不能把 token 暴露给 Agent message、session、transcript block 或诊断。
 
 ## 诊断与失败隔离
 

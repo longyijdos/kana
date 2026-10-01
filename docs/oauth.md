@@ -17,11 +17,11 @@ Product integration
 
 Stateless functions own protocol parsing and request construction. `OAuthSession` owns mutable credentials for one issuer/client/resource binding and serializes interactive authorization, refresh, persistence, invalidation, and shutdown.
 
-OpenAI Codex adds its product-specific token-request differences outside this generic boundary; see [OpenAI Codex provider](openai-codex-provider.md). [MCP](mcp.md) delegates its OAuth protocol to the official SDK and reuses the loopback callback and product credential store rather than `OAuthSession`.
+OpenAI Codex composes stateless protocol functions with its SIWC registration and identity lifecycle outside this generic boundary; see [OpenAI Codex provider](openai-codex-provider.md). [MCP](mcp.md) delegates its OAuth protocol to the official SDK and reuses the loopback callback and product credential store rather than `OAuthSession`.
 
 ## Authorization-server metadata
 
-Provider integrations supply authorization-server metadata to `OAuthSession`. OpenAI Codex uses fixed authorization and token endpoints; the generic provider flow performs no metadata discovery. MCP discovery belongs to the official SDK.
+Integrations supply authorization-server metadata to the protocol functions or `OAuthSession`. OpenAI Codex uses fixed SIWC authorization, token, and JWKS endpoints; logout discovers the revocation endpoint. The generic OAuth layer performs no metadata discovery. MCP discovery belongs to the official SDK.
 
 Token requests reject fetch redirects. The default maximum token response is 256 KiB, decoded as strict UTF-8 and then parsed as JSON. Empty, oversized, invalid UTF-8, and invalid JSON responses fail as protocol errors.
 
@@ -69,7 +69,9 @@ Authorization preserves an existing ID token, refresh token, or scopes when a su
 
 The generic layer never chooses a file. `OAuthTokenStore` supplies asynchronous load, save, and delete by storage key. Kana's product store writes `<KANA_HOME>/oauth-tokens.json` with owner-only permissions and binds provider or MCP-specific keys; those path and UI decisions remain outside `src/oauth`.
 
-MCP uses the SDK's `OAuthClientProvider` and `auth` flow with Kana's shared loopback callback and credential store. Its callback passes the optional authorization-response `iss` to the SDK for issuer validation after checking `state`. OpenAI Codex uses `OAuthSession` with its fixed client, callback, endpoint behavior, and ChatGPT account binding. Neither integration may expose tokens to Agent messages, sessions, transcript blocks, or diagnostics.
+Every product-store mutation takes a shared file lock, rereads the latest file, applies its update, and atomically replaces the file. This serializes provider tokens, Codex registration state, and MCP tokens and clients across store instances and processes. A separate Codex lifecycle lock covers refresh and revocation, including their network requests. File mutations can run inside that lifecycle lock, but the file lock never spans network I/O or acquires the lifecycle lock.
+
+MCP uses the SDK's `OAuthClientProvider` and `auth` flow with Kana's shared loopback callback and credential store. The shared callback also returns an optional issued `client_id` for SIWC dynamic registration. MCP passes the optional authorization-response `iss` to the SDK for issuer validation after checking `state`. OpenAI Codex composes the stateless OAuth requests and callback listener with its SIWC dynamic registration, OIDC identity verification, protected registration store, and host-locked token rotation. Neither integration may expose tokens to Agent messages, sessions, transcript blocks, or diagnostics.
 
 ## Diagnostics and failure containment
 

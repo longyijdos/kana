@@ -4,7 +4,47 @@ import { messageIdentityForTest } from "../../helpers/messages";
 import { responsesRequestContract } from "../responses-request-contract";
 
 describe("buildOpenAICodexRequest", () => {
-  test("uses the classic Responses contract and preserves provider replay state", () => {
+  test("replays pre-migration function calls through the kana namespace", () => {
+    const request = buildOpenAICodexRequest(
+      {
+        messages: [
+          {
+            ...messageIdentityForTest("assistant"),
+            role: "assistant",
+            content: [
+              {
+                type: "tool_call",
+                id: "call-read",
+                name: "read",
+                args: { path: "README.md" },
+                providerState: {
+                  provider: "openai-codex",
+                  value: {
+                    id: "server-id",
+                    type: "function_call",
+                    call_id: "call-read",
+                    name: "read",
+                    arguments: '{"path":"README.md"}',
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      { provider: "openai-codex", model: "gpt-5.6-luna", credentialProvider: credentials() },
+    );
+    expect(request.input).toEqual([
+      {
+        type: "function_call",
+        call_id: "call-read",
+        namespace: "kana",
+        name: "read",
+        arguments: '{"path":"README.md"}',
+      },
+    ]);
+  });
+  test("groups local tools in a namespace and preserves provider replay state", () => {
     const request = buildOpenAICodexRequest(
       {
         system: "system",
@@ -99,14 +139,20 @@ describe("buildOpenAICodexRequest", () => {
       parallel_tool_calls: false,
       tools: [
         {
-          type: "function",
-          name: "read",
-          description: "Read a file",
-          parameters: {
-            type: "object",
-            properties: { path: { type: "string" } },
-            required: ["path"],
-          },
+          type: "namespace",
+          name: "kana",
+          tools: [
+            {
+              type: "function",
+              name: "read",
+              description: "Read a file",
+              parameters: {
+                type: "object",
+                properties: { path: { type: "string" } },
+                required: ["path"],
+              },
+            },
+          ],
         },
         { type: "web_search" },
       ],
@@ -171,14 +217,20 @@ describe("buildOpenAICodexRequest", () => {
       input: [],
       tools: [
         {
-          type: "function",
-          name: "read",
-          description: "Read a file",
-          parameters: {
-            type: "object",
-            properties: { path: { type: "string" } },
-            required: ["path"],
-          },
+          type: "namespace",
+          name: "kana",
+          tools: [
+            {
+              type: "function",
+              name: "read",
+              description: "Read a file",
+              parameters: {
+                type: "object",
+                properties: { path: { type: "string" } },
+                required: ["path"],
+              },
+            },
+          ],
         },
       ],
     });
@@ -191,12 +243,15 @@ describe("buildOpenAICodexRequest", () => {
   });
 });
 
-responsesRequestContract("OpenAI Codex Responses shared input contract", (context) =>
-  buildOpenAICodexRequest(context, {
-    provider: "openai-codex",
-    model: "gpt-5.6-luna",
-    credentialProvider: credentials(),
-  }),
+responsesRequestContract(
+  "OpenAI Codex Responses shared input contract",
+  (context) =>
+    buildOpenAICodexRequest(context, {
+      provider: "openai-codex",
+      model: "gpt-5.6-luna",
+      credentialProvider: credentials(),
+    }),
+  "kana",
 );
 
 function credentials() {
