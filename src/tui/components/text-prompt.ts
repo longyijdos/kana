@@ -102,7 +102,7 @@ export class TextPrompt implements Component {
 
     lines.push(`+${"-".repeat(frameWidth - 2)}+`);
 
-    return lines.map((line) => truncateToWidth(line, width, ""));
+    return lines.map((line) => truncateToWidth(line, width));
   }
 
   handleInput(data: string): void {

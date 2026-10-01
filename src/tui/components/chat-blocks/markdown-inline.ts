@@ -85,7 +85,7 @@ export function renderWrappedInlineTokens(
     const linePrefix = index === 0 ? prefix : continuationPrefix;
     const styled = styleSpans(line, options);
 
-    return truncateToWidth(`${linePrefix}${styled}`, width, "");
+    return truncateToWidth(`${linePrefix}${styled}`, width);
   });
 }
 

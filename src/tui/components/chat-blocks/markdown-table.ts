@@ -356,7 +356,7 @@ function renderGridRow(
       }
     }
 
-    rendered.push(truncateToWidth(line, rowWidth, ""));
+    rendered.push(truncateToWidth(line, rowWidth));
   }
 
   return rendered;
@@ -423,7 +423,6 @@ function renderPendingRow(
         defaultColor: options.color ?? tuiTheme.markdownTable,
       }),
       width,
-      "",
     ),
   );
 }
@@ -446,7 +445,6 @@ function renderRecordCell(
         forceBold,
       })}`,
       width,
-      "",
     ),
   );
 }

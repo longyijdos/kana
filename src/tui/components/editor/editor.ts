@@ -352,7 +352,7 @@ export class Editor implements Component {
       lines.push(...this.renderInputPreviews(width, previewHeight));
     }
 
-    return lines.map((line) => truncateToWidth(line, width, ""));
+    return lines.map((line) => truncateToWidth(line, width));
   }
 
   handleInput(data: string): void {

@@ -88,7 +88,7 @@ export class HostedToolBlock implements Component {
       lines.push(`${prefix}${formatToolTargetLine(title.target, width - visibleWidth(prefix))}`);
     }
 
-    const rendered = lines.map((line) => truncateToWidth(line, width, ""));
+    const rendered = lines.map((line) => truncateToWidth(line, width));
     this.cachedWidth = width;
     this.cachedVersion = this.renderVersion;
     this.cachedElapsedSeconds = elapsedSeconds;

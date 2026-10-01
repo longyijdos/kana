@@ -1,8 +1,53 @@
 import { describe, expect, test } from "bun:test";
 import { ContentViewer } from "../../src/tui/components";
-import { stripAnsi, visibleWidth } from "../../src/tui/render";
+import { color, stripAnsi, truncateToWidth, visibleWidth } from "../../src/tui/render";
 
 describe("content viewer", () => {
+  test("wraps raw content before paging and recalculates rows after resizing", () => {
+    const viewer = new ContentViewer(
+      { title: "Task", render: () => ["abcdefghijklmnop"] },
+      { onClose: () => {}, visibleLimit: 2 },
+    );
+
+    const firstPage = viewer.render(8).map(stripAnsi);
+    expect(firstPage).toContain("Lines 1-2 of 3");
+    expect(firstPage).toContain("  abcdef");
+    expect(firstPage).toContain("  ghijkl");
+
+    viewer.handleInput("\x1b[C");
+    const secondPage = viewer.render(8).map(stripAnsi);
+    expect(secondPage).toContain("Lines 2-3 of 3");
+    expect(secondPage).toContain("  mnop");
+
+    const resized = viewer.render(10).map(stripAnsi);
+    expect(resized).toContain("Lines 1-2 of 2");
+    expect(resized).toContain("  abcdefgh");
+    expect(resized).toContain("  ijklmnop");
+  });
+
+  test("keeps a scrolled continuation row styled independently", () => {
+    const tone = [238, 238, 238] as const;
+    const viewer = new ContentViewer(
+      { title: "Output", render: () => [color("abcdef", tone)] },
+      { onClose: () => {}, visibleLimit: 1 },
+    );
+
+    expect(viewer.render(4)).toContain(`  ${color("ab", tone)}`);
+    viewer.handleInput("\x1b[B");
+    expect(viewer.render(4)).toContain(`  ${color("cd", tone)}`);
+  });
+
+  test("keeps rows intentionally truncated by the caller on one line", () => {
+    const viewer = new ContentViewer(
+      { title: "Layout", render: (width) => [truncateToWidth("abcdefghij", width)] },
+      { onClose: () => {} },
+    );
+
+    const rendered = viewer.render(6).map(stripAnsi);
+    expect(rendered).toContain("Lines 1-1 of 1");
+    expect(rendered).toContain("  abc…");
+  });
+
   test("follows streaming content until scrolling up, and End resumes following", () => {
     let length = 5;
     const viewer = new ContentViewer(

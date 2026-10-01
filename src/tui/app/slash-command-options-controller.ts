@@ -5,7 +5,7 @@ import type {
   KanaUserTaskManager,
 } from "@/kana";
 import { ChoicePrompt, ContentViewer, type Editor, TextPrompt } from "../components";
-import { summarizeText, wrapPlainText } from "../render";
+import { summarizeText } from "../render";
 import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { BottomAreaController } from "./bottom-area-controller";
@@ -98,7 +98,7 @@ export class SlashCommandOptionsController {
     const viewer = new ContentViewer(
       {
         title: `Task ${taskId.slice(5, 13)}`,
-        render: (width) => wrapPlainText(description, width),
+        render: () => [description],
       },
       { onClose: () => this.replace(viewer, () => this.showTaskAction(taskId, description)) },
     );

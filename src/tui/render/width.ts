@@ -2,7 +2,7 @@ import stringWidth from "string-width";
 import { stripCursorMarker } from "../runtime/cursor";
 import { type HighlightedLineToken, RESET } from "./ansi";
 import { CLOSE_TERMINAL_HYPERLINK, terminalHyperlinkState } from "./hyperlink";
-import { splitLines } from "./lines";
+import { isLineBreak, splitLines } from "./lines";
 
 const ANSI_PATTERN =
   // OSC strings terminate with BEL, ESC \, or C1 ST. Matching the whole
@@ -86,6 +86,58 @@ export function truncateToWidth(value: string, width: number, suffix = "…"): s
   // suffix to prevent either it or later terminal output from becoming linked.
   const hyperlinkClose = hyperlinkOpen ? CLOSE_TERMINAL_HYPERLINK : "";
   return `${result}${hyperlinkClose}${suffix}${RESET}`;
+}
+
+export function wrapAnsiText(value: string, width: number): string[] {
+  const columns = Math.max(1, width);
+  const source = value.replace(/\t/g, "   ");
+  const lines: string[] = [];
+  let line = "";
+  let lineWidth = 0;
+  let index = 0;
+  let styles = "";
+  let hyperlink = "";
+
+  const finishLine = () => {
+    lines.push(`${line}${hyperlink ? CLOSE_TERMINAL_HYPERLINK : ""}${styles ? RESET : ""}`);
+    line = `${styles}${hyperlink}`;
+    lineWidth = 0;
+  };
+
+  const appendText = (text: string) => {
+    for (const { segment } of graphemeSegments(text)) {
+      if (isLineBreak(segment)) {
+        finishLine();
+        continue;
+      }
+
+      const segmentWidth = visibleWidth(segment);
+      if (lineWidth > 0 && lineWidth + segmentWidth > columns) {
+        finishLine();
+      }
+      line += segment;
+      lineWidth += segmentWidth;
+    }
+  };
+
+  for (const ansi of source.matchAll(new RegExp(ANSI_PATTERN))) {
+    appendText(source.slice(index, ansi.index));
+    const sequence = ansi[0];
+    line += sequence;
+    index = ansi.index + sequence.length;
+    if (/^(?:\x1b\[|\x9b)[\d;:]*m$/.test(sequence)) {
+      // Replay SGR changes since the last full reset, including partial resets.
+      styles = /^(?:\x1b\[|\x9b)(?:0)?m$/.test(sequence) ? "" : styles + sequence;
+    }
+    const hyperlinkState = terminalHyperlinkState(sequence);
+    if (hyperlinkState !== undefined) {
+      hyperlink = hyperlinkState === "open" ? sequence : "";
+    }
+  }
+
+  appendText(source.slice(index));
+  finishLine();
+  return lines;
 }
 
 export function wrapPlainText(value: string, width: number): string[] {

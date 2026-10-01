@@ -177,7 +177,7 @@ export class MarkdownBlock implements Component {
           lastLineComplete,
           tuiTheme.markdownQuote,
         );
-        return content.map((line) => truncateToWidth(`> ${line}`, width, ""));
+        return content.map((line) => truncateToWidth(`> ${line}`, width));
       }
 
       case "table": {
@@ -302,7 +302,7 @@ export class MarkdownBlock implements Component {
     const source = raw.replace(/(?:\r\n|\r|\n)$/, "");
     return splitLines(source).flatMap((line) =>
       wrapPlainLine(line, Math.max(1, width)).map((wrapped) =>
-        truncateToWidth(color(wrapped, defaultColor), width, ""),
+        truncateToWidth(color(wrapped, defaultColor), width),
       ),
     );
   }
@@ -401,7 +401,7 @@ export class MarkdownBlock implements Component {
 
     return splitLines(output).flatMap((line) =>
       wrapPlainLine(line, safeWidth).map((wrapped) =>
-        truncateToWidth(color(wrapped, this.options.color ?? tuiTheme.markdownText), safeWidth, ""),
+        truncateToWidth(color(wrapped, this.options.color ?? tuiTheme.markdownText), safeWidth),
       ),
     );
   }
@@ -452,11 +452,7 @@ export class MarkdownBlock implements Component {
       for (const [index, wrappedLine] of wrapped.entries()) {
         const codePrefix = index === 0 ? prefix : " ".repeat(visibleWidth(prefix));
         rendered.push(
-          truncateToWidth(
-            `${codePrefix}${color(wrappedLine, tuiTheme.markdownCodeBlock)}`,
-            width,
-            "",
-          ),
+          truncateToWidth(`${codePrefix}${color(wrappedLine, tuiTheme.markdownCodeBlock)}`, width),
         );
       }
     }
@@ -468,7 +464,7 @@ export class MarkdownBlock implements Component {
     const safeWidth = Math.max(1, width);
 
     return wrapPlainLine(warning, safeWidth).map((line) =>
-      truncateToWidth(color(line, tuiTheme.usageWarning), safeWidth, ""),
+      truncateToWidth(color(line, tuiTheme.usageWarning), safeWidth),
     );
   }
 
@@ -492,7 +488,7 @@ export class MarkdownBlock implements Component {
 
       for (const [index, wrappedLine] of wrapped.entries()) {
         const codePrefix = index === 0 ? prefix : " ".repeat(visibleWidth(prefix));
-        rendered.push(truncateToWidth(`${codePrefix}${styleSpans(wrappedLine, {})}`, width, ""));
+        rendered.push(truncateToWidth(`${codePrefix}${styleSpans(wrappedLine, {})}`, width));
       }
     }
 

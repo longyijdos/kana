@@ -35,7 +35,7 @@ export class TextBlock implements Component {
 
     for (const [index, line] of wrapPlainText(this.text, contentWidth).entries()) {
       const styled = style(`${index === 0 ? prefix : ""}${line}`, this.options);
-      lines.push(truncateToWidth(styled, width, ""));
+      lines.push(truncateToWidth(styled, width));
     }
 
     const rendered = lines.length ? lines : [""];

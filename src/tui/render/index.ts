@@ -33,6 +33,7 @@ export {
   stripTerminalControlSequences,
   truncateToWidth,
   visibleWidth,
+  wrapAnsiText,
   wrapHighlightedLine,
   wrapPlainText,
 } from "./width";
