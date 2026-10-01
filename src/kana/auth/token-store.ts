@@ -96,21 +96,19 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
   }
 
   save(key: string, token: OAuthStoredToken): Promise<void> {
-    return this.enqueue(async () => {
-      const file = await this.readFile();
+    return this.mutate((file) => {
       file.tokens[key] = copyStoredToken(token);
-      await this.writeFile(file);
+      return true;
     });
   }
 
   delete(key: string): Promise<void> {
-    return this.enqueue(async () => {
-      const file = await this.readFile();
+    return this.mutate((file) => {
       if (!(key in file.tokens)) {
-        return;
+        return false;
       }
       delete file.tokens[key];
-      await this.writeFile(file);
+      return true;
     });
   }
 
@@ -122,25 +120,15 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
   }
 
   saveOpenAICodexState(state: KanaOpenAICodexAuthState, token?: OAuthStoredToken): Promise<void> {
-    return this.enqueue(async () => {
-      const file = await this.readFile();
+    return this.mutate((file) => {
       file.openaiCodex = structuredClone(state);
       if (token !== undefined) file.tokens["provider:openai-codex"] = copyStoredToken(token);
-      await this.writeFile(file);
+      return true;
     });
   }
 
-  async withOpenAICodexLock<T>(operation: () => Promise<T>): Promise<T> {
-    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
-    const release = await lockfile.lock(`${this.filePath}.openai-codex`, {
-      realpath: false,
-      retries: { retries: 10, minTimeout: 100, maxTimeout: 1_000 },
-    });
-    try {
-      return await operation();
-    } finally {
-      await release();
-    }
+  withOpenAICodexLock<T>(operation: () => Promise<T>): Promise<T> {
+    return this.withLock(`${this.filePath}.openai-codex`, operation);
   }
 
   loadClient(key: string): Promise<McpOAuthClientRegistration | undefined> {
@@ -151,21 +139,49 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
   }
 
   saveClient(key: string, registration: McpOAuthClientRegistration): Promise<void> {
-    return this.enqueue(async () => {
-      const file = await this.readFile();
+    return this.mutate((file) => {
       file.clients ??= {};
       file.clients[key] = structuredClone(registration);
-      await this.writeFile(file);
+      return true;
     });
   }
 
   deleteClient(key: string): Promise<void> {
-    return this.enqueue(async () => {
-      const file = await this.readFile();
-      if (file.clients?.[key] === undefined) return;
+    return this.mutate((file) => {
+      if (file.clients?.[key] === undefined) return false;
       delete file.clients[key];
-      await this.writeFile(file);
+      return true;
     });
+  }
+
+  private mutate(update: (file: KanaOAuthTokenFile) => boolean): Promise<void> {
+    return this.enqueue(() =>
+      this.withLock(this.filePath, async () => {
+        const file = await this.readFile();
+        if (update(file)) await this.writeFile(file);
+      }),
+    );
+  }
+
+  private async withLock<T>(target: string, operation: () => Promise<T>): Promise<T> {
+    // Codex lifecycle operations may acquire the file lock; file mutations
+    // never acquire the lifecycle lock or hold the file lock across network I/O.
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+    let release: () => Promise<void>;
+    try {
+      release = await lockfile.lock(target, {
+        realpath: false,
+        retries: { retries: 10, minTimeout: 100, maxTimeout: 1_000 },
+      });
+    } catch (error) {
+      this.logFailure("oauth.token_store_lock_failed", error);
+      throw new Error("Failed to lock the OAuth token store.", { cause: error });
+    }
+    try {
+      return await operation();
+    } finally {
+      await release();
+    }
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {

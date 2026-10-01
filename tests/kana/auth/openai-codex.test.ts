@@ -129,12 +129,12 @@ describe("Kana Sign in with ChatGPT", () => {
     fixture.auth.close();
   });
 
-  test("a failed account switch preserves active credentials and its registration", async () => {
-    const fixture = setup({ newAccount: true, exchangeError: "invalid_grant" });
+  test("failed reauthorization preserves active credentials and its registration", async () => {
+    const fixture = setup({ callbackClientId: null, exchangeError: "invalid_grant" });
     await fixture.store.saveOpenAICodexState(state(), token());
     await expect(fixture.auth.authorize()).rejects.toThrow();
-    expect(fixture.urls[0]?.searchParams.get("client_id")).toBe("dynamic_agent_client");
-    expect(fixture.urls[0]?.searchParams.has("id_token_hint")).toBe(false);
+    expect(fixture.urls[0]?.searchParams.get("client_id")).toBe(CLIENT_ID);
+    expect(fixture.urls[0]?.searchParams.get("id_token_hint")).toBe("retained-id-token");
     expect(await fixture.store.load("provider:openai-codex")).toEqual(token());
     expect((await fixture.store.loadOpenAICodexState())?.registration).toEqual(
       state().registration,
@@ -213,6 +213,13 @@ describe("Kana Sign in with ChatGPT", () => {
     expect(fixture.revocations[0]?.get("token_type_hint")).toBe("refresh_token");
     expect(await fixture.store.loadOpenAICodexState()).toEqual(state());
     expect(await fixture.auth.getCredentials()).toBeUndefined();
+    fixture.options.callbackClientId = null;
+    await fixture.auth.authorize();
+    expect(fixture.urls[0]?.searchParams.get("client_id")).toBe(CLIENT_ID);
+    expect(fixture.urls[0]?.searchParams.get("ext_agent_host_id")).toBe("urn:uuid:host");
+    expect(fixture.urls[0]?.searchParams.has("agent_name_hint")).toBe(false);
+    expect(fixture.urls[0]?.searchParams.has("id_token_hint")).toBe(false);
+    expect(await fixture.auth.getCredentials()).toEqual({ accessToken: "new-access" });
     fixture.auth.close();
   });
 
@@ -233,7 +240,6 @@ describe("Kana Sign in with ChatGPT", () => {
 });
 
 type FixtureOptions = {
-  newAccount?: boolean;
   callbackClientId?: string | null;
   failure?: "signature" | "nonce" | "issuer" | "audience" | "expiry" | "subject";
   scope?: string | null;
@@ -253,7 +259,6 @@ function setup(options: FixtureOptions = {}) {
   const auth = new KanaOpenAICodexAuth({
     env,
     tokenStore: store,
-    newAccount: options.newAccount,
     startCallbackServer: async ({ redirectUri }) => ({
       redirectUri,
       waitForCallback: (state) => {

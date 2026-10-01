@@ -69,6 +69,8 @@ Authorization preserves an existing ID token, refresh token, or scopes when a su
 
 The generic layer never chooses a file. `OAuthTokenStore` supplies asynchronous load, save, and delete by storage key. Kana's product store writes `<KANA_HOME>/oauth-tokens.json` with owner-only permissions and binds provider or MCP-specific keys; those path and UI decisions remain outside `src/oauth`.
 
+Every product-store mutation takes a shared file lock, rereads the latest file, applies its update, and atomically replaces the file. This serializes provider tokens, Codex registration state, and MCP tokens and clients across store instances and processes. A separate Codex lifecycle lock covers refresh and revocation, including their network requests. File mutations can run inside that lifecycle lock, but the file lock never spans network I/O or acquires the lifecycle lock.
+
 MCP uses the SDK's `OAuthClientProvider` and `auth` flow with Kana's shared loopback callback and credential store. The shared callback also returns an optional issued `client_id` for SIWC dynamic registration. MCP passes the optional authorization-response `iss` to the SDK for issuer validation after checking `state`. OpenAI Codex composes the stateless OAuth requests and callback listener with its SIWC dynamic registration, OIDC identity verification, protected registration store, and host-locked token rotation. Neither integration may expose tokens to Agent messages, sessions, transcript blocks, or diagnostics.
 
 ## Diagnostics and failure containment

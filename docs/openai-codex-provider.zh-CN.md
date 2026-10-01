@@ -6,18 +6,19 @@ Kana 的 `openai-codex` adapter 位于 `src/providers/openai-codex`。它使用 
 
 ```bash
 kana auth login openai-codex
-kana auth login openai-codex --new-account
 kana auth status openai-codex
 kana auth logout openai-codex
 ```
 
-`login` 使用 Authorization Code、PKCE S256、state 和每次新生成的 OIDC nonce，在 `http://127.0.0.1:1455/auth/callback` 接收浏览器回调。首次登录发送 `client_id=dynamic_agent_client`、`agent_name_hint=kana` 与持久化 UUID host ID；签发的 client ID 在换码前保存，换码失败后可复用这条待完成注册。再次登录复用签发的 client ID 及保留的 ID token、邮箱提示。`--new-account` 注册其他账户或工作区，只有身份验证成功后才替换当前唯一连接。
+Kana 只管理一个账户注册。`login` 使用 Authorization Code、PKCE S256、state 和每次新生成的 OIDC nonce，在 `http://127.0.0.1:1455/auth/callback` 接收浏览器回调。没有已保存的 client ID 时，登录发送 `client_id=dynamic_agent_client`、`agent_name_hint=kana` 与持久化 UUID host ID；签发的 client ID 在换码前保存，换码失败后，下次 `login` 复用这条待完成注册。再次登录复用签发的 client ID 及保留的 ID token、邮箱提示。
 
 Access token、ID token、轮换 refresh token、实际获批 scopes、到期时间及绑定信息保存在 `<KANA_HOME>/oauth-tokens.json` 的 `provider:openai-codex` 条目。文件的 `openaiCodex` 字段保存 `hostId`、已验证的 `registration`（`clientId`、`subject`、可选 `email`）及可选的 `pendingClientId`。已验证注册与凭据以 `0600` 权限原子写入。旧 Codex 凭据不会发送到新 API，只有新登录成功后才被替换。`kana install`、重新构建或替换二进制都不会删除凭据。
 
 Kana 使用 OpenAI JWKS 验证 ID token 签名，并校验 issuer、签发 client 对应的 audience、到期时间、nonce 与再次登录账户的 subject。推理需要实际获批的 `chatgpt.tokens.use.direct` scope；只有身份授权的登录仍被保存，但套餐使用标记为关闭。之后用户显式执行 `login` 时，若缺少这项权限，会请求重新同意。换码和刷新均向 `https://auth.openai.com/api/accounts/oauth/token` 发送表单编码请求，并指定 `resource=https://api.openai.com/v1`。刷新省略 `scope`，保留未返回的替换字段，在 host 锁内重新读取凭据，避免多个进程同时轮换 token。终止性刷新错误只清除 token，保留注册信息。
 
 `status` 显示安全的账户信息与套餐使用授权状态。`logout` 使用 OpenAI discovery document 提供的端点尝试撤销 refresh token，然后清除本地 token，保留 client 注册与 host ID；无法确认远程撤销时，会说明本地退出已完成并引导用户前往 ChatGPT 设置。模型名称及能力 metadata 继续由 Kana 静态维护。
+
+切换账户或工作区需手动操作：先运行 `logout`，按需备份注册信息，再从 `oauth-tokens.json` 删除 `openaiCodex.registration`、`openaiCodex.pendingClientId` 和 `tokens["provider:openai-codex"]`。保留 `openaiCodex.hostId`、其他 token 和 MCP client 注册信息。下次 `login` 会创建新注册。是否在 ChatGPT 设置中断开旧应用注册由用户自行决定；logout 撤销的是会话，不会删除该注册。
 
 Provider 传输设置与 Agent 模型选择分开配置：
 

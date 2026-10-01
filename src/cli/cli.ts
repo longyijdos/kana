@@ -262,12 +262,9 @@ export function createCli(options: CreateCliOptions): Command {
     .command("login")
     .description("Sign in to a model provider")
     .argument("<provider>", "Provider name")
-    .option("--new-account", "Register a different ChatGPT account or workspace")
-    .action(async (provider: string, commandOptions: { newAccount?: boolean }) => {
+    .action(async (provider: string) => {
       requireOpenAICodexProvider(provider);
-      const credentials = await authorizeCodex(
-        commandOptions.newAccount ? { newAccount: true } : undefined,
-      );
+      const credentials = await authorizeCodex();
       log(
         credentials === undefined
           ? "Signed in to openai-codex; ChatGPT plan usage is disabled. Run login again to enable it."

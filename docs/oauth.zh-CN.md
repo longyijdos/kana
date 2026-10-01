@@ -69,6 +69,8 @@ Authorization 成功但 response 未替换 ID token、refresh token 或 scopes �
 
 通用层不选择任何文件。`OAuthTokenStore` 按 storage key 提供异步 load、save 与 delete。Kana 产品 store 以 owner-only 权限写入 `<KANA_HOME>/oauth-tokens.json`，并绑定 provider 或 MCP 专属 key；路径与 UI 决策不属于 `src/oauth`。
 
+产品 store 的每次修改都获取共享文件锁，重新读取最新文件，应用更新后原子替换文件。Provider token、Codex 注册状态、MCP token 与 client 的写入因此在不同 store 实例和进程之间串行执行。独立的 Codex 生命周期锁覆盖 refresh、revocation 及其网络请求。文件修改可在生命周期锁内执行，但文件锁不会跨越网络 I/O，也不会获取生命周期锁。
+
 MCP 使用 SDK 的 `OAuthClientProvider` 和 `auth` 流程，结合 Kana 共享的 loopback callback 与凭据 store。共享 callback 还会返回 SIWC 动态注册签发的可选 `client_id`。MCP 在检查 `state` 后，将授权响应中可选的 `iss` 交给 SDK 校验 issuer。OpenAI Codex 将无状态 OAuth 请求和 callback listener 与 SIWC 动态注册、OIDC 身份验证、受保护的注册 store 和 host 锁内的 token 轮换结合。两种集成都不能把 token 暴露给 Agent message、session、transcript block 或诊断。
 
 ## 诊断与失败隔离

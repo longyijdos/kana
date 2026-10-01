@@ -51,7 +51,6 @@ export type CreateKanaOpenAICodexAuthOptions = {
   openAuthorizationUrl?(url: string): Promise<void>;
   fetch?: OAuthFetch;
   signal?: AbortSignal;
-  newAccount?: boolean;
   startCallbackServer?(options: { redirectUri: string }): Promise<OAuthCallbackServer>;
 };
 
@@ -173,9 +172,7 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
         await this.store.saveOpenAICodexState(saved);
         return saved;
       });
-      const clientId = this.options.newAccount
-        ? state.pendingClientId
-        : (state.registration?.clientId ?? state.pendingClientId);
+      const clientId = state.registration?.clientId ?? state.pendingClientId;
       const previous = await this.loadToken();
       const nonce = crypto.randomUUID();
       const additionalParameters: Record<string, string> = {
@@ -183,7 +180,7 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
         nonce,
       };
       if (clientId === undefined) additionalParameters.agent_name_hint = "kana";
-      if (!this.options.newAccount && previous?.idToken) {
+      if (previous?.idToken) {
         additionalParameters.id_token_hint = previous.idToken;
         if (state.registration?.email) additionalParameters.login_hint = state.registration.email;
         if (!previous.scopes?.includes(DIRECT_SCOPE)) additionalParameters.prompt = "consent";
@@ -248,11 +245,7 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
       if (payload.nonce !== nonce || typeof payload.sub !== "string" || !payload.sub) {
         throw new Error("ChatGPT sign-in identity or nonce did not match.");
       }
-      if (
-        !this.options.newAccount &&
-        state.registration?.subject !== undefined &&
-        payload.sub !== state.registration.subject
-      ) {
+      if (state.registration?.subject !== undefined && payload.sub !== state.registration.subject) {
         throw new Error("ChatGPT sign-in returned a different account.");
       }
       const subject = payload.sub;

@@ -6,18 +6,19 @@ Kana's `openai-codex` adapter lives in `src/providers/openai-codex`. It uses Sig
 
 ```bash
 kana auth login openai-codex
-kana auth login openai-codex --new-account
 kana auth status openai-codex
 kana auth logout openai-codex
 ```
 
-`login` uses Authorization Code, PKCE S256, state, and a fresh OIDC nonce, with the browser callback at `http://127.0.0.1:1455/auth/callback`. First sign-in sends `client_id=dynamic_agent_client`, `agent_name_hint=kana`, and a persistent UUID host ID. The issued client ID is retained before code exchange; a failed exchange can reuse that pending registration. Returning sign-in reuses the issued client ID and retained ID-token/email hints. `--new-account` registers a different account or workspace and replaces the single active connection only after identity validation.
+Kana manages one account registration. `login` uses Authorization Code, PKCE S256, state, and a fresh OIDC nonce, with the browser callback at `http://127.0.0.1:1455/auth/callback`. Without a saved client ID, sign-in sends `client_id=dynamic_agent_client`, `agent_name_hint=kana`, and a persistent UUID host ID. The issued client ID is retained before code exchange; after a failed exchange, the next `login` reuses that pending registration. Returning sign-in reuses the issued client ID and retained ID-token/email hints.
 
 The access token, ID token, rotating refresh token, granted scopes, expiry, and binding metadata are stored under `provider:openai-codex` in `<KANA_HOME>/oauth-tokens.json`. Its `openaiCodex` record holds `hostId`, the verified `registration` (`clientId`, `subject`, optional `email`), and an optional `pendingClientId`. Verified registration and credentials are written atomically with mode `0600`. Legacy Codex credentials are not sent to the new API and remain untouched until successful sign-in replaces them. `kana install`, rebuilding Kana, and replacing its binary do not delete credentials.
 
 Kana verifies ID-token signatures against OpenAI's JWKS and checks issuer, issued-client audience, expiration, nonce, and the returning account's subject. Inference requires the granted `chatgpt.tokens.use.direct` scope; identity-only sign-in remains saved with plan usage disabled. An explicit later `login` requests consent when that permission is absent. Both token exchanges and refresh grants use form encoding at `https://auth.openai.com/api/accounts/oauth/token` with `resource=https://api.openai.com/v1`. Refresh omits `scope`, preserves omitted replacement fields, and reloads credentials under a host lock to serialize rotating tokens across processes. Terminal refresh errors clear tokens while retaining registration.
 
 `status` shows safe account information and whether ChatGPT plan usage is enabled. `logout` attempts refresh-token revocation using OpenAI's discovery document, clears local tokens, and keeps the client registration and host ID. If remote revocation cannot be confirmed, it reports that local sign-out completed and directs the user to ChatGPT settings. Model names and capability metadata remain statically maintained in Kana.
+
+Account or workspace changes are manual: run `logout`, back up the saved registration if needed, then remove `openaiCodex.registration`, `openaiCodex.pendingClientId`, and `tokens["provider:openai-codex"]` from `oauth-tokens.json`. Retain `openaiCodex.hostId` and the other tokens and MCP client registrations. The next `login` creates a new registration. Disconnecting the old application registration in ChatGPT settings is a separate, user-managed action; logout revokes the session rather than deleting that registration.
 
 Provider transport and Agent selection are configured separately:
 
