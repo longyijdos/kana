@@ -6,7 +6,6 @@ export {
   type KanaSubagentOwner,
   type KanaSubagentRunContext,
   type KanaSubagentRunResult,
-  type KanaSubagentSnapshot,
   type KanaSubagentSummary,
 } from "./manager";
 export {

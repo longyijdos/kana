@@ -47,6 +47,10 @@ export {
   SkillManager,
   type SkillManagerDecision,
 } from "./skill-manager";
+export {
+  createSubagentInspectionView,
+  type SubagentInspectionOptions,
+} from "./subagent-inspection";
 export { SubagentManager, type SubagentManagerAction } from "./subagent-manager";
 export { TextPrompt } from "./text-prompt";
 export { ToolApproval, type ToolApprovalDecision } from "./tool-approval";

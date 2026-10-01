@@ -20,6 +20,34 @@ class LinesComponent implements Component {
 }
 
 describe("tool detail inspector controller", () => {
+  test("calls a view's return action only when Esc closes it", () => {
+    const { controller, tui, layout, editor } = createController(new Transcript());
+    const list = new LinesComponent(["list"]);
+    const view = { title: "Detail", render: () => ["Detail content"] };
+    let returns = 0;
+    const onBack = () => {
+      returns += 1;
+      layout.showBottom(list);
+      tui.setFocus(list);
+    };
+    controller.open(view, onBack);
+    tui.getFocus()?.handleInput?.("\x1b");
+    expect(returns).toBe(1);
+    expect(tui.getFocus()).toBe(list);
+    expect(controller.active).toBe(false);
+
+    controller.open(view, onBack);
+    controller.close();
+    expect(returns).toBe(1);
+    expect(tui.getFocus()).toBe(editor);
+
+    controller.open(view, onBack);
+    controller.open({ title: "Replacement", render: () => ["Replacement content"] });
+    tui.getFocus()?.handleInput?.("\x1b");
+    expect(returns).toBe(1);
+    expect(tui.getFocus()).toBe(editor);
+  });
+
   test("opens a read tool that never had an expandable result", () => {
     const transcript = new Transcript();
     transcript.addChild(

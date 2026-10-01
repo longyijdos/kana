@@ -134,7 +134,6 @@ export {
   type KanaSubagentClient,
   type KanaSubagentInspection,
   type KanaSubagentProfile,
-  type KanaSubagentSnapshot,
   type KanaSubagentSummary,
   type LoadKanaSubagentProfilesResult,
   loadKanaSubagentProfiles,

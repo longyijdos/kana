@@ -23,9 +23,10 @@ export class HostedToolBlock implements Component {
   constructor(
     private content: HostedToolContent,
     now: Clock = Date.now,
+    private readonly options: { summaryOnly?: boolean } = {},
   ) {
     this.timer = new ElapsedTimer(now);
-    if (content.status === "in_progress") {
+    if (content.status === "in_progress" && !this.options.summaryOnly) {
       this.timer.start();
     }
   }
@@ -34,7 +35,7 @@ export class HostedToolBlock implements Component {
     this.content = structuredClone(content);
     if (content.status !== "in_progress") {
       this.timer.stop();
-    } else if (!this.timer.active) {
+    } else if (!this.timer.active && !this.options.summaryOnly) {
       this.timer.start();
     }
     this.invalidate();
@@ -59,7 +60,8 @@ export class HostedToolBlock implements Component {
 
   render(width: number, _availableHeight?: number): string[] {
     const inProgress = this.content.status === "in_progress";
-    const elapsedSeconds = inProgress ? this.timer.elapsedSeconds() : undefined;
+    const elapsedSeconds =
+      inProgress && !this.options.summaryOnly ? this.timer.elapsedSeconds() : undefined;
     if (
       this.cachedLines &&
       this.cachedWidth === width &&

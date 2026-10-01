@@ -696,6 +696,13 @@ export class KanaConversationHost<TConfiguration = never> {
         }
       },
     });
+    context.setLiveSnapshot(() => {
+      const state = agent.state;
+      return {
+        messages: [...state.messages, ...(state.streamingMessage ? [state.streamingMessage] : [])],
+        model: { provider: state.model.metadata.provider, model: state.model.metadata.model },
+      };
+    });
     const abort = (): void => agent.abort();
     context.signal.addEventListener("abort", abort, { once: true });
     if (context.signal.aborted) agent.abort();

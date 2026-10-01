@@ -1,4 +1,4 @@
-import type { KanaSubagentProfile, KanaSubagentSnapshot, KanaSubagentSummary } from "@/kana";
+import type { KanaSubagentInspection, KanaSubagentProfile, KanaSubagentSummary } from "@/kana";
 import {
   color,
   dim,
@@ -21,6 +21,11 @@ import {
 } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
+import type { ContentView } from "./content-viewer";
+import {
+  createSubagentInspectionView,
+  type SubagentInspectionOptions,
+} from "./subagent-inspection";
 
 const VISIBLE_LIMIT = 5;
 const FIXED_ROWS = 4;
@@ -36,10 +41,13 @@ export class SubagentManager implements Component {
   private readonly viewport = new ListViewport(VISIBLE_LIMIT);
   private profiles: KanaSubagentProfile[] = [];
   private subagents: KanaSubagentSummary[] = [];
-  private preview?: KanaSubagentSnapshot;
+  private preview?: { id: string; view: ContentView };
   private notice?: string;
 
-  constructor(private readonly onAction: (action: SubagentManagerAction) => void) {}
+  constructor(
+    private readonly onAction: (action: SubagentManagerAction) => void,
+    private readonly renderOptions: SubagentInspectionOptions = {},
+  ) {}
 
   get selectedSubagent(): KanaSubagentSummary | undefined {
     const value = this.subagents[this.viewport.selectedIndex];
@@ -66,8 +74,10 @@ export class SubagentManager implements Component {
     if (this.preview?.id !== this.selectedSubagent?.id) this.preview = undefined;
   }
 
-  replacePreview(preview: KanaSubagentSnapshot | undefined): void {
-    this.preview = preview === undefined ? undefined : cloneSnapshot(preview);
+  replacePreview(preview: KanaSubagentInspection | undefined): void {
+    this.preview = preview
+      ? { id: preview.id, view: createSubagentInspectionView(preview, this.renderOptions) }
+      : undefined;
   }
 
   handleInput(data: string): void {
@@ -187,10 +197,12 @@ export class SubagentManager implements Component {
     const selected = this.selectedSubagent;
     const preview = this.preview;
     if (!selected || !preview || preview.id !== selected.id) return [dim("(loading result)")];
-    const text = stripTerminalControlSequences(preview.error ?? preview.output);
-    const outputLines = text.split(/\r?\n/).filter(Boolean);
+    const outputLines = preview.view
+      .render(width)
+      .flatMap((line) => stripTerminalControlSequences(line).split(/\r?\n/))
+      .filter(Boolean);
     const visible = outputLines.slice(-maximum).map((line) => truncateToWidth(dim(line), width));
-    if (visible.length === 0) return [dim("(no final output)")];
+    if (visible.length === 0) return [dim("(no visible activity)")];
     if (outputLines.length === visible.length) return visible;
     return maximum === 1 ? [dim("…")] : [dim("…"), ...visible.slice(-(maximum - 1))];
   }
@@ -223,15 +235,6 @@ function cloneSummary(summary: KanaSubagentSummary): KanaSubagentSummary {
     startedAt: new Date(summary.startedAt),
     ...(summary.finishedAt === undefined ? {} : { finishedAt: new Date(summary.finishedAt) }),
     ...(summary.model === undefined ? {} : { model: { ...summary.model } }),
-  };
-}
-
-function cloneSnapshot(snapshot: KanaSubagentSnapshot): KanaSubagentSnapshot {
-  return {
-    ...cloneSummary(snapshot),
-    output: snapshot.output,
-    error: snapshot.error,
-    waitTimedOut: snapshot.waitTimedOut,
   };
 }
 

@@ -137,7 +137,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 - `QueuedInputController` 保存当前 run 输入的 optimistic preview，并用既有 `MessageId` 与权威 runtime snapshot 对齐。它只持有显示标签和 preview 状态；queue lane、投递顺序、scheduled metadata 与取消语义见[对话运行时](conversation-runtime.zh-CN.md)。
 - `ScheduledMessageManagerController` 展示 `/schedule` 的当前 session 快照，以及多步添加、刷新与删除流程。它持有列表排序、标签、快捷键和焦点恢复；timer 身份、取消、到期投递与 queue gate 见[对话运行时](conversation-runtime.zh-CN.md)。
 - `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job 但不确认终态，并在面板通过 `Esc` 关闭前阻止 pending run 启动。
-- `SubagentManagerController` 用 `/agents` 打开面板，重新加载 profile 诊断、保持 run 选中项稳定、预览最终输出、用 `Enter` 打开独立持久化的 child transcript，并用 `K` 取消活动 child。Child 状态变化会刷新视图，但不消费结果。
+- `SubagentManagerController` 用 `/agents` 打开面板，重新加载 profile 诊断、保持 run 选中项稳定、预览当前进展、用 `Enter` 按需打开 child 快照，并用 `K` 取消活动 child。详情与预览共用 Markdown 回复和工具状态/目标行，省略 thinking 与工具输出；快照生命周期见[子代理](subagents.zh-CN.md)。Child 状态变化会刷新视图，但不消费结果。
 - `BackgroundActivityController` 绑定当前 session 的 Background Job、Subagent 与用户任务管理器，把待处理用户任务投影为 `Your tasks`，把运行中或停止中的 Job 与 Subagent 投影为 `Background`，并在任务开始或结束时刷新。它在 session 切换时重新绑定，无活动任务时不渲染任何行，也绝不确认、取消或改变所显示的任务。
 - `MemoryActivityController` 只订阅一次 host 范围的自动记忆活动源，把排队和整理中的批次投影到编辑器，并通过交互错误通路显示失败；它不随 session 切换重新绑定，也不改变 scheduler 行为。
 - `SlashCommandController` 统一完成 slash command 路由和参数校验；需要多步输入的命令再交给 `SlashCommandOptionsController`，App 不维护命令分发表。
