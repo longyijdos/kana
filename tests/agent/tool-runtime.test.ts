@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
-import type { ToolResultPolicy, ToolResultPolicyInput } from "../../src/agent";
+import type { AgentEvent, ToolResultPolicy, ToolResultPolicyInput } from "../../src/agent";
 import {
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   DEFAULT_TOOL_DEADLINE_MS,
@@ -648,6 +648,7 @@ describe("ToolRuntime deadlines and configuration", () => {
 describe("ToolRuntime nested invocations", () => {
   test("only run_code receives the nested invocation context", async () => {
     let ordinaryCalls = 0;
+    const events: AgentEvent[] = [];
     const ordinary = {
       name: "ordinary",
       description: "Use the normal tool context.",
@@ -655,6 +656,7 @@ describe("ToolRuntime nested invocations", () => {
       execute(_args, context) {
         expect(context).not.toHaveProperty("invokeTool");
         ordinaryCalls += 1;
+        context.update("progress");
         return "ordinary result";
       },
     } satisfies Tool<typeof parameters, string>;
@@ -667,7 +669,9 @@ describe("ToolRuntime nested invocations", () => {
         return (await context.invokeTool("ordinary", {})).result;
       },
     } satisfies Tool;
-    const runtime = new ToolRuntime({ tools: [ordinary, codemode] }, () => {});
+    const runtime = new ToolRuntime({ tools: [ordinary, codemode] }, (event) => {
+      events.push(event);
+    });
 
     const result = await runtime.execute([
       { type: "tool_call", id: "ordinary", name: "ordinary", args: {} },
@@ -679,6 +683,22 @@ describe("ToolRuntime nested invocations", () => {
       "ordinary result",
       "ordinary result",
     ]);
+    const executionEvents = events.filter(
+      (event) =>
+        event.type === "tool_execution_start" ||
+        event.type === "tool_execution_update" ||
+        event.type === "tool_execution_end",
+    );
+    expect(
+      executionEvents
+        .filter((event) => event.parentToolCallId === "code")
+        .map((event) => event.type),
+    ).toEqual(["tool_execution_start", "tool_execution_update", "tool_execution_end"]);
+    for (const event of executionEvents.filter(
+      (event) => event.toolCallId === "ordinary" || event.toolCallId === "code",
+    )) {
+      expect(event).not.toHaveProperty("parentToolCallId");
+    }
   });
 
   test.each([true, false])(

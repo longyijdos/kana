@@ -356,6 +356,42 @@ describe("AgentEventRenderer", () => {
     });
   });
 
+  test("hides nested tool events without changing the outer block or error status", () => {
+    const transcript = new TranscriptComponent();
+    const statuses: Array<{ phase: RunPhase; activeTool?: string }> = [];
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: { requestRender() {} } as unknown as Tui,
+      updateStatus: (phase, extra = {}) => statuses.push({ phase, activeTool: extra.activeTool }),
+    });
+    renderer.handle(toolStart("outer", "run_code"));
+    renderer.handle({ ...toolStart("inner", "read"), parentToolCallId: "outer" });
+    renderer.handle({
+      type: "tool_execution_update",
+      toolCallId: "inner",
+      parentToolCallId: "outer",
+      toolName: "read",
+      args: {},
+      partialResult: "hidden partial output",
+    });
+    renderer.handle({ ...toolEnd("inner", "read", true), parentToolCallId: "outer" });
+    expect(transcript.children).toHaveLength(1);
+    expect(statuses).toEqual([{ phase: "tool", activeTool: "run_code" }]);
+    expect(stripAnsi(transcript.render(80).join("\n"))).not.toContain("hidden partial output");
+
+    renderer.handle(toolEnd("outer", "run_code", false));
+    const completed = transcript.render(80);
+    renderer.handle({ ...toolStart("late", "shell"), parentToolCallId: "outer" });
+    renderer.handle({ ...toolEnd("late", "shell", true), parentToolCallId: "outer" });
+    expect(transcript.render(80)).toEqual(completed);
+    expect(statuses.at(-1)).toEqual({ phase: "tool", activeTool: undefined });
+
+    renderer.handle(toolStart("direct", "read"));
+    renderer.handle(toolEnd("direct", "read", false));
+    expect(transcript.children).toHaveLength(2);
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
   test("renders hosted web search as provider activity without a local tool block", () => {
     const transcript = new TranscriptComponent();
     const statuses: RunPhase[] = [];

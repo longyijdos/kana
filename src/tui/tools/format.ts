@@ -21,6 +21,7 @@ import { formatGlobOutput } from "./renderers/glob";
 import { formatGrepOutput } from "./renderers/grep";
 import { formatListOutput } from "./renderers/list";
 import { formatReadOutput } from "./renderers/read";
+import { formatRunCodeOutput, isRunCodeResult } from "./renderers/run-code";
 import { formatShellOutput } from "./renderers/shell";
 import { formatTodoTarget, renderTodoState } from "./renderers/todo-write";
 import { formatViewImageOutput } from "./renderers/view-image";
@@ -70,6 +71,10 @@ export function formatToolTranscriptTitle(
     };
   }
 
+  if (toolCall.name === "run_code" && isRunCodeResult(result)) {
+    const count = result.calls.length;
+    return { activity: `Ran code · ${count} ${count === 1 ? "call" : "calls"}` };
+  }
   return { activity: target ? text.doneTitle.replace(` ${target}`, "") : text.doneTitle, target };
 }
 
@@ -142,6 +147,16 @@ export function formatToolOutput(
   const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
 
   switch (toolCall.name) {
+    case "run_code":
+      if (isRunCodeResult(sanitizedResult)) {
+        return renderText(
+          formatRunCodeOutput(sanitizedResult),
+          width,
+          isError ? tuiTheme.error : tuiTheme.toolOutput,
+          detail,
+        );
+      }
+      break;
     case "list":
       return renderText(formatListOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "glob":
@@ -222,6 +237,11 @@ export function hasExpandableToolOutput(
   }
 
   switch (toolCall.name) {
+    case "run_code":
+      if (isRunCodeResult(result)) {
+        return hasOmittedContent(formatRunCodeOutput(result), width);
+      }
+      break;
     case "list":
     case "glob":
     case "grep":
@@ -424,6 +444,13 @@ function toolText(
   runningActivity: string;
 } {
   switch (toolName) {
+    case "run_code":
+      return {
+        action: "run code",
+        approvalTitle: `Allow ${requesterName} to run code?`,
+        doneTitle: "Ran code",
+        runningActivity: "running code",
+      };
     case "mcp_call": {
       const name = `${getStringProperty(args, "server") ?? "?"}/${getStringProperty(args, "tool") ?? "?"}`;
       return {

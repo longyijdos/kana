@@ -150,13 +150,16 @@ export class AgentEventRenderer {
         this.handleAssistantEnd(event.message);
         break;
       case "tool_execution_start":
+        if (event.parentToolCallId !== undefined) return;
         this.handleToolStart(event.toolCallId, event.toolName, event.args);
         break;
       case "tool_execution_update":
+        if (event.parentToolCallId !== undefined) return;
         this.toolCallBlocks.updatePartialResult(event.toolCallId, event.partialResult);
         this.updateToolStatus();
         break;
       case "tool_execution_end":
+        if (event.parentToolCallId !== undefined) return;
         this.toolCallBlocks.updateResult(event.toolCallId, event.result, event.isError);
         this.activeTools.delete(event.toolCallId);
         this.toolErrorCount += event.isError ? 1 : 0;

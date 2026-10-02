@@ -169,15 +169,16 @@ export class ToolRuntime {
 
   async invoke(
     toolCall: ToolCallContent,
-    options: { signal?: AbortSignal; onAbortRun?: () => void } = {},
+    options: { signal?: AbortSignal; onAbortRun?: () => void; parentToolCallId?: string } = {},
   ): Promise<ExecutedToolCall> {
     const executed = await this.executeToolCall(
       structuredClone(toolCall),
       options.signal ?? new AbortController().signal,
       options.onAbortRun,
       this.config.callableTools ?? this.config.tools,
+      options.parentToolCallId,
     );
-    await this.publishExecutionEnd(executed);
+    await this.publishExecutionEnd(executed, options.parentToolCallId);
     return executed;
   }
 
@@ -511,6 +512,7 @@ export class ToolRuntime {
     groupSignal: AbortSignal,
     onAbortRun?: () => void,
     tools = this.config.tools,
+    parentToolCallId?: string,
   ): Promise<ExecutedToolCall> {
     const tool = tools?.find((candidate) => candidate.name === toolCall.name);
 
@@ -568,6 +570,7 @@ export class ToolRuntime {
         toolCallId: toolCall.id,
         toolName: toolCall.name,
         args,
+        ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
       });
 
       acceptsUpdates = true;
@@ -587,6 +590,7 @@ export class ToolRuntime {
             toolName: toolCall.name,
             args,
             partialResult,
+            ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
           });
         },
       );
@@ -742,8 +746,10 @@ export class ToolRuntime {
           update,
           ...(tool.name === "run_code"
             ? {
-                invokeTool: this.createNestedToolInvoker(invocationController.signal, () =>
-                  interrupt({ reason: "run_aborted" }),
+                invokeTool: this.createNestedToolInvoker(
+                  toolCall.id,
+                  invocationController.signal,
+                  () => interrupt({ reason: "run_aborted" }),
                 ),
               }
             : {}),
@@ -775,6 +781,7 @@ export class ToolRuntime {
   }
 
   private createNestedToolInvoker(
+    parentToolCallId: string,
     parentSignal: AbortSignal,
     onAbortRun: () => void,
   ): CodemodeToolContext["invokeTool"] {
@@ -793,6 +800,7 @@ export class ToolRuntime {
         exclusiveActive = next.concurrency === "exclusive";
         void this.invoke(next.toolCall, {
           signal: next.signal,
+          parentToolCallId,
           onAbortRun: () => {
             // The sandbox also cancels unawaited calls after normal script completion.
             if (!next.signal.aborted) onAbortRun();
@@ -948,13 +956,17 @@ export class ToolRuntime {
     };
   }
 
-  private async publishExecutionEnd(executed: ExecutedToolCall): Promise<void> {
+  private async publishExecutionEnd(
+    executed: ExecutedToolCall,
+    parentToolCallId?: string,
+  ): Promise<void> {
     await this.events.emit({
       type: "tool_execution_end",
       toolCallId: executed.toolCall.id,
       toolName: executed.toolCall.name,
       result: executed.result.result,
       isError: executed.isError,
+      ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
     });
   }
 

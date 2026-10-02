@@ -42,7 +42,7 @@ type ToolContext = {
 
 `ToolRuntime.invoke(toolCall, { signal?, onAbortRun? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
 
-只有名为 `run_code` 的工具收到 `CodemodeToolContext`，它在普通 context 的基础上增加 `invokeTool(name, args, { signal? })`。普通工具的 context 类型和运行时对象均没有这个字段。内部调用通过 `invoke()` 返回完整的规范化 `ToolResult`，不生成历史消息。每个 codemode 调用持有自己的队列，遵守 runtime 的并发开关和数量上限，exclusive 调用形成 barrier。内部调用的审批共用 runtime 的串行 hook 队列。内部调用要求 `abortRun` 时会中断 codemode；仅取消子调用的 signal 不会。内部调用发布通常的执行事件，但不会成为独立的历史工具消息。
+只有名为 `run_code` 的工具收到 `CodemodeToolContext`，它在普通 context 的基础上增加 `invokeTool(name, args, { signal? })`。普通工具的 context 类型和运行时对象均没有这个字段。内部调用通过 `invoke()` 返回完整的规范化 `ToolResult`，不生成历史消息。每个 codemode 调用持有自己的队列，遵守 runtime 的并发开关和数量上限，exclusive 调用形成 barrier。内部调用的审批共用 runtime 的串行 hook 队列。内部调用要求 `abortRun` 时会中断 codemode；仅取消子调用的 signal 不会。内部调用发布通常的执行事件，并用 `parentToolCallId` 标明外层调用，但不会成为独立的历史工具消息。`invoke()` 接受这个可选事件字段；普通调用不带该字段。TUI 渲染工具 block 和状态时跳过这些内部事件，审批保持原有行为。
 
 每个调用都进入同一条受控管线：
 
@@ -108,7 +108,7 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 
 `AgentConfig.codemode` 默认为 `off`。`mixed` 向模型提供普通工具和 `run_code`；`only` 只提供 `run_code`。Agent 同时保存模型可见的 `tools` 和脚本内部的 `callableTools`，每次组装 prompt 时一起刷新。普通 `execute()` 只查找已公开的工具；内部 `invoke()` 查找 `callableTools`。Kana 根据 `agent.codemode` 自动提供 `run_code`，而 `agent.tools` 和子 Agent 角色卡继续限制脚本能调用的工具。子 Agent 继承父模式；记忆整理保留现有工具方式。Provider 原生 web search 等能力仍按各自配置生效。
 
-源码执行会加载本地 Worker 和 WASM。Bun 可执行文件构建将 Worker 列为额外入口，通过静态 file import 嵌入 WASM；沙箱执行不依赖 binary 旁边的外部包文件。
+源码执行会加载本地 Worker 和 WASM。Bun 可执行文件构建将 Worker 列为额外入口，通过静态 file import 嵌入 WASM；沙箱执行不依赖 binary 旁边的外部包文件。 构建显式使用项目根目录（`--root .`），使嵌入的 Worker 路径与运行时使用的源码路径一致。
 
 ## 内置工具
 
