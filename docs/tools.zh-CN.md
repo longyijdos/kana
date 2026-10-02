@@ -89,6 +89,16 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 实时 result 仍可通过 `tool_execution_end` 获得。ToolRuntime 将能复制且能 JSON 序列化、序列化后 UTF-8 大小不超过 128 KiB（131072 字节）的 result 完整保存在持久消息中。超限或无法序列化的 result 会整份省略；自定义策略也可显式关闭保存。这个持久化上限独立于模型上下文预算、content 上限和 artifact 创建，不截断实时 result。模型只收到 content 与 images，不收到保存的 result。恢复后的 TUI 历史和子代理查看面板依次选择 `result`、`artifact`、`content`。保留 result 时，实时与恢复后的界面使用相同结果；result 被省略时，artifact 提供已存储输出摘要。Artifact 存储路径、权限、审计、fork 与清理归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
 
+## Codemode 沙箱
+
+`createCodemodeSandbox({ tools, timeoutMs? })` 封装独立的 `@earendil-works/pi-codemode` 包。每次执行都会在 Worker 中创建新的 QuickJS WASM 实例来运行 JavaScript。默认 deadline 为 300000 ms，包含等待所提供工具的时间；VM heap 上限为 256 MiB。调用方可以向 `execute()` 传入 abort signal，并须在所属对象释放时关闭沙箱。取消和 timeout 会中断 VM，并中止待完成 host 工具的 signal。
+
+脚本沿用包提供的接口：`tools`、`ALL_TOOLS`、`text`、`image`、`console`、`exit`、`store`、`load`、顶层 `await` 和 `return`。脚本无法使用 host 的文件系统、网络、进程或模块 API。注册的 host 函数通过 JSON 与脚本交换值；参数校验、审批和历史处理由调用方负责。
+
+Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回 `ok`、`value`、`output`、`calls` 和 `storeWrites`；失败时返回 `ok: false`、`error`、`output` 和 `calls`。Store 改动仅报告给调用方，不会自动持久化。这个 host API 不会注册模型可见工具。
+
+源码执行会加载本地 Worker 和 WASM。Bun 可执行文件构建会嵌入 Worker 入口和 WASM asset；沙箱执行不依赖 binary 旁边的外部包文件。
+
 ## 内置工具
 
 | 工具 | 主要参数 | 行为 |

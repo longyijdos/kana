@@ -5,6 +5,7 @@ export {
   createJobOutputTool,
   createJobStartTool,
 } from "./background-jobs";
+export { createCodemodeSandbox } from "./codemode";
 export { resolveShell } from "./command-process";
 export { createEditTool } from "./edit";
 export { createGlobTool, DEFAULT_GLOB_LIMIT } from "./glob";
