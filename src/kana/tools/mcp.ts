@@ -46,10 +46,17 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
         if (!tool) {
           throw new Error(`MCP tool "${server}/${name}" is not available.`);
         }
-        return {
+        const definition = {
           server,
           name: tool.name,
           inputSchema: tool.parameters,
+        };
+        return {
+          content: JSON.stringify(definition),
+          result: {
+            ...definition,
+            ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema }),
+          },
         };
       },
     },

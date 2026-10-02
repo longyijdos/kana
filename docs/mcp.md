@@ -28,7 +28,8 @@ mcp_list_tools({ name: "github" })
   → { server: "github", tools: [{ name, description }, ...] }
 
 mcp_describe_tool({ server: "github", tool: "get_issue" })
-  → { server, name, inputSchema }
+  → content: { server, name, inputSchema }
+  → result:  { server, name, inputSchema, outputSchema? }
 
 mcp_call({
   server: "github",
@@ -38,7 +39,7 @@ mcp_call({
   → { content: formatted text, result: structuredContent or formatted text, isError }
 ```
 
-`mcp_list_tools` and `mcp_describe_tool` read the cached catalog. They do not connect additional servers, change the user's activation state, grant permissions, or modify the provider-facing tool array. The list contains only names and descriptions. A schema lookup returns the server, tool name, and full input schema, with the same fields in content and result. Optional output schemas remain in the internal catalog and are not exposed by this ordinary query. MCP output schema describes `structuredContent`; it does not describe the remote content array or the formatted-text fallback. This keeps the tool definitions stable while metadata is loaded; provider caching still depends on the rest of the request.
+`mcp_list_tools` and `mcp_describe_tool` read the cached catalog. They do not connect additional servers, change the user's activation state, grant permissions, or modify the provider-facing tool array. The list contains only names and descriptions. A schema lookup returns the server, tool name, and full input schema in content and result. Its result additionally includes the remote output schema when provided; content omits that field, keeping ordinary model input focused on invocation parameters. MCP output schema describes `structuredContent`; it does not describe the remote content array or the formatted-text fallback. This keeps the tool definitions stable while metadata is loaded; provider caching still depends on the rest of the request.
 
 Lists are paginated with optional `offset` and `limit` (default 20, maximum 50). A result with `nextOffset` has another page. Normal Agent content limits and artifact policies apply to both queries; if description content is saved to an artifact, the model must read it for the complete input schema. Queries are repeatable, including after context compaction. There is no transient activation flag that prevents rediscovery or invocation when earlier history is compacted.
 

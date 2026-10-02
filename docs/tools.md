@@ -152,7 +152,7 @@ Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_suba
 
 ## MCP and custom tools
 
-All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes `mcp_list_tools` (parallel name and description listing), `mcp_describe_tool` (parallel single-tool schema lookup), and `mcp_call` (exclusive, ordinary approval). The schema lookup returns the server, tool name, and input schema in both content and result; optional output schema remains internal. Remote input schemas are enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
+All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes `mcp_list_tools` (parallel name and description listing), `mcp_describe_tool` (parallel single-tool schema lookup), and `mcp_call` (exclusive, ordinary approval). The schema lookup returns the server, tool name, and input schema in both content and result; result additionally includes optional output schema, while content omits it. Remote input schemas are enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
 
 For a custom tool:
 

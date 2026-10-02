@@ -71,7 +71,7 @@ describe("MCP gateway tools", () => {
       inputSchema: schema,
     };
     expect(JSON.parse(described.content)).toEqual(description);
-    expect(described.result).toEqual(description);
+    expect(described.result).toEqual({ ...description, outputSchema });
     expect(manager.getTool("alpha", "read")?.outputSchema).toEqual(outputSchema);
     const withoutOutputSchema = normalizeToolResult(
       await describeTool!.execute({ server: "alpha", tool: "mcp_call" }, context),

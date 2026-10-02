@@ -152,7 +152,7 @@ Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_wr
 
 ## MCP 与自定义工具
 
-全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_describe_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 server、工具名称和 input schema；可选 output schema 只保留在内部。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
+全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_describe_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 server、工具名称和 input schema；result 额外包含可选 output schema，content 不包含它。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
 
 自定义工具应：
 
