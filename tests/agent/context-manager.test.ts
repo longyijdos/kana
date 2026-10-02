@@ -19,6 +19,7 @@ import {
   type ModelMetadata,
 } from "@/core";
 import { createRuntimeContextMessage } from "../../src/agent/prompt-assembly";
+import type { Tool } from "../../src/tools/tool";
 import { messageIdentityForTest } from "../helpers/messages";
 
 const MODEL_METADATA: ModelMetadata = {
@@ -496,6 +497,28 @@ describe("ContextManager budgets and checkpoints", () => {
 });
 
 describe("ContextManager model projection", () => {
+  test("estimates tool declarations without executable or output-schema metadata", () => {
+    const parameters = Type.Object({ outputSchema: Type.String() });
+    const tool = {
+      name: "read",
+      description: "Read a file.",
+      parameters,
+      outputSchema: Type.Object({ payload: Type.String({ description: "x".repeat(10_000) }) }),
+      execution: { concurrency: "parallel" },
+      execute: () => "data",
+    } satisfies Tool<typeof parameters, string>;
+    const declaration = { name: tool.name, description: tool.description, parameters };
+    expect(estimateContextTokens({ messages: [], tools: [tool] })).toBe(
+      estimateContextTokens({ messages: [], tools: [declaration] }),
+    );
+    expect(estimateContextTokens({ messages: [], tools: [tool] })).toBeGreaterThan(
+      estimateContextTokens({
+        messages: [],
+        tools: [{ ...declaration, parameters: Type.Object({}) }],
+      }),
+    );
+  });
+
   test("bounds model-visible tool content while retaining the structured result elsewhere", () => {
     const manager = new ContextManager({
       contextLimit: 128_000,

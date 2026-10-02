@@ -718,7 +718,8 @@ describe("ToolRuntime nested invocations", () => {
       } satisfies Tool<typeof parameters, unknown[]>;
       const runtime = new ToolRuntime(
         {
-          tools: [outer, makeTool("parallel", "parallel"), makeTool("exclusive", "exclusive")],
+          tools: [outer],
+          callableTools: [makeTool("parallel", "parallel"), makeTool("exclusive", "exclusive")],
           parallelToolCalls,
           maxParallelToolCalls: 2,
         },

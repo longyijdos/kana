@@ -23,6 +23,29 @@ describe("codemode tool", () => {
     execute: () => ({ content: "formatted preview", result: canonicalResult }),
   } satisfies Tool<typeof parameters, typeof canonicalResult>;
 
+  test("renders output types in mixed mode and complete declarations in only mode", () => {
+    const tool = {
+      ...read,
+      parameters: Type.Object({ path: Type.String() }),
+      outputSchema: Type.Object({ payload: Type.String() }),
+    };
+    const unknown = { ...read, name: "custom" };
+    const mixed = createCodemodeTool({ tools: [tool, unknown] });
+    const only = createCodemodeTool({ tools: [tool, unknown], mode: "only" });
+
+    expect(mixed.description).toContain("read: { payload: string; };");
+    expect(mixed.description).toContain("custom: unknown;");
+    expect(mixed.description).not.toContain(tool.description);
+    expect(mixed.description).not.toContain("path: string");
+    expect(only.description).toContain(tool.description);
+    expect(only.description).toContain(
+      "read(args: { path: string; }): Promise<{ payload: string; }>;",
+    );
+    expect(only.description).toContain(
+      "custom(args: { [key: string]: unknown; }): Promise<unknown>;",
+    );
+  });
+
   test("uses complete results through approval and commits only the script output", async () => {
     const approvals: string[] = [];
     const completions: string[] = [];
@@ -30,7 +53,8 @@ describe("codemode tool", () => {
     const codemode = createCodemodeTool({ tools: [read] });
     const runtime = new ToolRuntime(
       {
-        tools: [codemode, read],
+        tools: [codemode],
+        callableTools: [read],
         beforeToolExecution: ({ tool }) => {
           approvals.push(tool.name);
           return { type: "continue" };
@@ -63,6 +87,39 @@ describe("codemode tool", () => {
       isError: false,
       result: { ok: true, value: 200_000, calls: [{ name: "read", status: "ok" }] },
     });
+
+    const direct = await runtime.execute([
+      { type: "tool_call", id: "hidden", name: "read", args: {} },
+    ]);
+    expect(direct.toolResults[0]).toMatchObject({
+      isError: true,
+      result: { error: 'Tool "read" not found' },
+    });
+  });
+
+  test("forwards tool images while scripts receive only the structured result", async () => {
+    const image = {
+      data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      mimeType: "image/png" as const,
+      width: 1,
+      height: 1,
+    };
+    const codemode = createCodemodeTool({ tools: [{ ...read, name: "view_image" }], mode: "only" });
+    const result = await codemode.execute(
+      { code: "return await tools.view_image({});" },
+      {
+        toolCallId: "code",
+        update() {},
+        invokeTool: async () => ({
+          content: "image metadata",
+          result: { width: 1 },
+          images: [image],
+        }),
+      },
+    );
+    expect(result.content).toBe('{"width":1}');
+    expect(result.images).toEqual([image]);
+    expect(result.result).toMatchObject({ ok: true, value: { width: 1 } });
   });
 
   test("maps native output, images, store writes, and catchable tool failures", async () => {

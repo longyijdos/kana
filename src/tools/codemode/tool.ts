@@ -1,4 +1,10 @@
-import type { CodemodeResult } from "@earendil-works/pi-codemode";
+import {
+  type CodemodeJsonSchema,
+  type CodemodeResult,
+  renderToolOutputType,
+  renderToolSample,
+  toCodemodeIdentifier,
+} from "@earendil-works/pi-codemode";
 import { type Static, Type } from "typebox";
 import type { UserImage } from "@/core";
 import { strictObject } from "../strict-object";
@@ -11,24 +17,49 @@ export type CodemodeToolContext = ToolContext & {
   invokeTool(name: string, args: unknown, options?: { signal?: AbortSignal }): Promise<ToolResult>;
 };
 
-export function createCodemodeTool(options: { tools: readonly Tool[] }) {
+export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mixed" | "only" }) {
   const tools = options.tools.filter((tool) => tool.name !== "run_code");
+  const definitions = tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.parameters as unknown as CodemodeJsonSchema,
+    outputSchema: tool.outputSchema as CodemodeJsonSchema | undefined,
+  }));
+  const declarations =
+    options.mode === "only"
+      ? definitions.map((tool) => renderToolSample(tool)).join("\n\n")
+      : [
+          "```ts",
+          "type ToolResults = {",
+          ...definitions.map(
+            (tool) =>
+              `  ${toCodemodeIdentifier(tool.name)}: ${renderToolOutputType(tool.outputSchema)};`,
+          ),
+          "};",
+          "```",
+        ].join("\n");
 
   return {
     name: "run_code",
-    description:
-      "Run JavaScript that calls tools with await tools.<name>(args). Output with text(), image(), or return. ALL_TOOLS lists available tools. Host filesystem, network, and module APIs are unavailable.",
+    description: [
+      "Run JavaScript that calls tools with await tools.<name>(args). Calls resolve to each tool's structured result and failures throw an Error. Output with text(), image(), or return. Tool images are forwarded automatically. ALL_TOOLS lists available tools. Host filesystem, network, and module APIs are unavailable.",
+      options.mode === "only"
+        ? "The TypeScript declarations below describe the API; write JavaScript in code."
+        : "The TypeScript declarations below describe each tool's return value; write JavaScript in code. ToolResults entries correspond to tools with the same names.",
+      declarations,
+    ].join("\n\n"),
     parameters: codemodeParameters,
     execution: { concurrency: "exclusive" },
     async execute({ code }: Static<typeof codemodeParameters>, context: CodemodeToolContext) {
       const invokeTool = context.invokeTool;
+      const images: UserImage[] = [];
       const sandbox = createCodemodeSandbox({
         timeoutMs: Infinity,
-        tools: tools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
+        tools: definitions.map((tool) => ({
+          ...tool,
           async execute(args, { signal }) {
             const result = await invokeTool(tool.name, args, { signal });
+            if (result.images) images.push(...result.images);
             if (result.isError) {
               throw new Error(result.content);
             }
@@ -40,7 +71,6 @@ export function createCodemodeTool(options: { tools: readonly Tool[] }) {
       try {
         const result = await sandbox.execute(code, { signal: context.signal });
         const text: string[] = [];
-        const images: UserImage[] = [];
         for (const item of result.output) {
           if (item.type === "text") {
             text.push(item.text);

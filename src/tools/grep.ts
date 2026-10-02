@@ -100,6 +100,25 @@ export function createGrepTool(
     name: "grep",
     description: "Search text file contents with a regular expression.",
     parameters: grepParameters,
+    outputSchema: Type.Object({
+      path: Type.String(),
+      pattern: Type.String(),
+      literal: Type.Boolean(),
+      caseSensitive: Type.Boolean(),
+      include: Type.Optional(Type.String()),
+      matches: Type.Array(
+        Type.Object({
+          path: Type.String(),
+          line: Type.Number(),
+          column: Type.Number(),
+          text: Type.String(),
+          before: Type.Optional(Type.Array(Type.String())),
+          after: Type.Optional(Type.Array(Type.String())),
+        }),
+      ),
+      filesSearched: Type.Number(),
+      truncated: Type.Boolean(),
+    }),
     execution: {
       concurrency: "parallel",
     },

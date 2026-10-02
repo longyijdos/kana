@@ -1,6 +1,6 @@
 # Tools and execution
 
-The core `ToolSpec` is the provider-facing name, description, and JSON Schema. The executable `Tool` extends it with an `execute` function and optional execution metadata. `ToolRuntime` receives exactly the tool objects advertised for one model step and turns every proposed call into a normalized, observable result without letting ordinary tool failures escape the Agent loop.
+The core `ToolSpec` is the provider-facing name, description, and input JSON Schema. The executable `Tool` adds `execute`, optional result schema, and execution metadata. `ToolRuntime` receives model-visible tools and an optional separate callable set for scripts, turning calls into normalized, observable results without letting ordinary tool failures escape the Agent loop.
 
 ## Tool and result contracts
 
@@ -9,6 +9,7 @@ type Tool = {
   name: string;
   description: string;
   parameters: TSchema;
+  outputSchema?: TSchema;
   execution?: {
     concurrency?: "parallel" | "exclusive";
     deadlineMs?: number;
@@ -24,6 +25,8 @@ type ToolContext = {
 ```
 
 Omitted concurrency defaults to `exclusive`. `ToolRuntime` always supplies an invocation-level abort signal; a direct embedder calling `execute` may omit it. Long-running implementations should observe the signal and use `update` for useful bounded progress.
+
+Each tool implementation owns its optional `outputSchema`, describing the successful canonical `result` after JSON transport. Dates become ISO strings. This metadata does not appear in ordinary provider tool declarations and is not used for runtime result validation. Codemode renders it in `run_code`'s description; an absent schema becomes `unknown`.
 
 A normalized result has distinct audiences:
 
@@ -99,9 +102,11 @@ Scripts retain the package's interfaces: `tools`, `ALL_TOOLS`, `text`, `image`, 
 
 The factory returns the package's sandbox without changing its result format. Successful execution returns `ok`, `value`, `output`, `calls`, and `storeWrites`; failed execution returns `ok: false`, `error`, `output`, and `calls`. Store changes are reported to the caller rather than persisted automatically. This host API does not register a model-facing tool.
 
-`createCodemodeTool({ tools })` creates an exclusive tool named `run_code` with `{ code: string }` input. Its script tools use `context.invokeTool()` and resolve to the complete canonical `result`; failed calls reject inside the script. The outer tool does not request Kana approval, while nested calls follow their own rules. The Agent invocation deadline controls the whole script through its signal; the sandbox's separate timer is disabled for this tool. The script cannot call `tools.run_code()`.
+`createCodemodeTool({ tools, mode? })` creates an exclusive tool named `run_code` with `{ code: string }` input. Its description uses Pi's TypeScript renderer: `mixed` (the factory default) lists result types, while `only` includes tool descriptions and input and result types. External MCP definitions remain available through `mcp_describe_tool`'s structured result. Its script tools use `context.invokeTool()` and resolve to the complete canonical `result`; failed calls reject inside the script. The outer tool does not request Kana approval, while nested calls follow their own rules. The Agent invocation deadline controls the whole script through its signal; the sandbox's separate timer is disabled for this tool. The script cannot call `tools.run_code()`.
 
-The tool's `content` contains explicit text output followed by its JSON-encoded return value or script error; `image()` output becomes visual observations with decoded dimensions. Its structured `result` retains the package's `CodemodeResult`, including call names, statuses, durations, and successful store writes. Store writes are not automatically reused by later executions. Live frontends receive nested execution events; history and resumed transcripts retain only the outer result, subject to the ordinary result-retention limit. The factory does not automatically add `run_code` to a Kana Agent's configured tools.
+The tool's `content` contains explicit text output followed by its JSON-encoded return value or script error. Nested tool images are automatically forwarded to the outer `images`, and explicit `image()` output becomes visual observations with decoded dimensions. Its structured `result` retains the package's `CodemodeResult`, including call names, statuses, durations, and successful store writes. Store writes are not automatically reused by later executions. Live frontends receive nested execution events; history and resumed transcripts retain only the outer result, subject to the ordinary result-retention limit.
+
+`AgentConfig.codemode` defaults to `off`. `mixed` advertises ordinary tools plus `run_code`; `only` advertises `run_code` alone. Agent retains both model-visible `tools` and internal `callableTools`, refreshing them together at each prompt assembly. Ordinary `execute()` resolves only advertised tools; internal `invoke()` resolves `callableTools`. Kana automatically supplies `run_code` according to `agent.codemode`, while `agent.tools` and child role cards still restrict script capabilities. Children inherit the parent's mode; memory consolidation keeps its existing tool surface. Provider-native capabilities such as hosted web search retain their own settings.
 
 Source execution loads the local Worker and WASM. Bun executable builds list the Worker as an additional entrypoint and embed WASM through its static file import; sandbox execution does not require external package files beside the binary.
 

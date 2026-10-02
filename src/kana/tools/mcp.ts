@@ -10,6 +10,16 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
   return [
     {
       name: "mcp_list_tools",
+      outputSchema: Type.Object({
+        server: Type.String(),
+        tools: Type.Array(
+          Type.Object({
+            name: Type.String(),
+            description: Type.String(),
+          }),
+        ),
+        nextOffset: Type.Optional(Type.Number()),
+      }),
       description: `List tool names and descriptions for an enabled MCP server.\n\nAvailable MCP servers:\n${catalog}`,
       parameters: strictObject({
         name: Type.String({ description: "MCP server name from the catalog." }),
@@ -35,6 +45,12 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
     },
     {
       name: "mcp_describe_tool",
+      outputSchema: Type.Object({
+        server: Type.String(),
+        name: Type.String(),
+        inputSchema: Type.Record(Type.String(), Type.Unknown()),
+        outputSchema: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+      }),
       description: "Get a tool's input schema from an enabled MCP server.",
       parameters: strictObject({
         server: Type.String(),

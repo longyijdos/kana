@@ -48,6 +48,7 @@ export type BeforeToolExecutionHook = (request: {
 
 export type ToolRuntimeConfig = {
   tools?: readonly Tool[];
+  callableTools?: readonly Tool[];
   parallelToolCalls?: boolean;
   maxParallelToolCalls?: number;
   signal?: AbortSignal;
@@ -174,6 +175,7 @@ export class ToolRuntime {
       structuredClone(toolCall),
       options.signal ?? new AbortController().signal,
       options.onAbortRun,
+      this.config.callableTools ?? this.config.tools,
     );
     await this.publishExecutionEnd(executed);
     return executed;
@@ -260,8 +262,11 @@ export class ToolRuntime {
     return toolCalls.slice(startIndex, endIndex);
   }
 
-  private readToolConcurrency(toolCall: ToolCallContent): ToolConcurrency {
-    const tool = this.config.tools?.find((candidate) => candidate.name === toolCall.name);
+  private readToolConcurrency(
+    toolCall: ToolCallContent,
+    tools = this.config.tools,
+  ): ToolConcurrency {
+    const tool = tools?.find((candidate) => candidate.name === toolCall.name);
     try {
       return tool ? resolveToolConcurrency(tool) : "exclusive";
     } catch {
@@ -505,8 +510,9 @@ export class ToolRuntime {
     toolCall: ToolCallContent,
     groupSignal: AbortSignal,
     onAbortRun?: () => void,
+    tools = this.config.tools,
   ): Promise<ExecutedToolCall> {
-    const tool = this.config.tools?.find((candidate) => candidate.name === toolCall.name);
+    const tool = tools?.find((candidate) => candidate.name === toolCall.name);
 
     if (!tool) {
       return {
@@ -813,7 +819,10 @@ export class ToolRuntime {
         queue.push({
           toolCall,
           signal: combineAbortSignals(parentSignal, options.signal) as AbortSignal,
-          concurrency: this.readToolConcurrency(toolCall),
+          concurrency: this.readToolConcurrency(
+            toolCall,
+            this.config.callableTools ?? this.config.tools,
+          ),
           resolve,
           reject,
         });

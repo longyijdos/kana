@@ -9,7 +9,7 @@ import {
   type UserMessage,
 } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
-import type { Tool } from "@/tools";
+import { createCodemodeTool, type Tool } from "@/tools";
 import {
   type ContextCheckpoint,
   ContextManager,
@@ -49,6 +49,7 @@ export type AgentConfig = {
   messages?: Message[];
   inbox?: AgentInboxSnapshot;
   tools?: Tool[];
+  codemode?: "off" | "mixed" | "only";
   // Prevent accidental infinite tool loops while keeping the first version
   // free of custom stop hooks. Use -1 to run without a turn limit.
   maxTurns?: number;
@@ -157,6 +158,8 @@ export class Agent {
   private readonly parallelToolCalls: boolean;
   private readonly maxParallelToolCalls: number;
   private readonly promptAssembly: PromptAssembly;
+  private readonly codemode: NonNullable<AgentConfig["codemode"]>;
+  private callableTools: Tool[];
   private readonly toolResultPolicies: readonly ToolResultPolicy[];
   private stableContextData: Pick<AgentStableContext, "system" | "messages" | "contextCheckpoint">;
 
@@ -181,10 +184,12 @@ export class Agent {
         system: options.system === undefined ? [] : [{ name: "agent", content: options.system }],
         tools: options.tools === undefined ? [] : [{ name: "agent", tools: options.tools }],
       });
+    this.codemode = options.codemode ?? "off";
+    this.callableTools = this.promptAssembly.initialTools.slice();
     this.stateData = createWritableAgentState({
       ...options,
       system: this.promptAssembly.initialSystem,
-      tools: this.promptAssembly.initialTools.slice(),
+      tools: this.modelTools(this.callableTools),
       toolDeadlineMs,
     });
     this.inboxData = new AgentInbox(options.inbox);
@@ -636,7 +641,14 @@ export class Agent {
       system: this.stateData.system,
       messages: structuredClone(this.stateData.messages),
       tools: this.stateData.tools.slice(),
+      callableTools: this.callableTools.slice(),
     };
+  }
+
+  private modelTools(tools: Tool[]): Tool[] {
+    if (this.codemode === "off") return tools;
+    const runCode = createCodemodeTool({ tools, mode: this.codemode });
+    return this.codemode === "mixed" ? [...tools, runCode] : [runCode];
   }
 
   private createLoopConfig(
@@ -665,8 +677,13 @@ export class Agent {
         try {
           const prompt = await this.promptAssembly.assemble({ signal });
           this.stateData.system = prompt.system;
-          this.stateData.tools = prompt.tools;
-          return prompt;
+          this.callableTools = prompt.tools;
+          this.stateData.tools = this.modelTools(this.callableTools);
+          return {
+            ...prompt,
+            tools: this.stateData.tools,
+            callableTools: this.callableTools,
+          };
         } catch (error) {
           if (signal.aborted) {
             throw error;

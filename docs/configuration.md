@@ -154,6 +154,7 @@ max_retries = 1
 
 [agent]
 tools = ["list","glob","grep","read","view_image","write","edit","shell","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","mcp_list_tools","mcp_describe_tool","mcp_call"]
+codemode = "off"
 web_search = true
 image_input = true
 max_turns = -1
@@ -258,7 +259,8 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 
 | Table and key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `agent.tools` | Unique array of built-in tool names | All configurable built-in tools | Selects which built-in tools the conversation Agent may call. An empty array disables them all. The MCP gateways `mcp_list_tools`, `mcp_describe_tool`, and `mcp_call` follow this selection. `update_goal`, provider capabilities, and direct TUI operations are outside it. |
+| `agent.tools` | Unique array of built-in tool names | All configurable built-in tools | Selects which built-in tools the conversation Agent may call. An empty array disables them all. The MCP gateways `mcp_list_tools`, `mcp_describe_tool`, and `mcp_call` follow this selection. Automatically supplied `run_code`, `update_goal`, provider capabilities, and direct TUI operations are outside it. |
+| `agent.codemode` | `off`, `mixed`, or `only` | `off` | `off` advertises ordinary tools; `mixed` adds `run_code`; `only` advertises `run_code` alone. `agent.tools` still controls script capabilities. Children inherit the mode within role-card limits; memory consolidation does not use this setting. Provider-native capabilities retain their own settings. |
 | `agent.max_turns` | `-1` or a positive integer | `-1` | Maximum model/tool turns in one user run; a run that still needs to continue ends with `turn_limit`. |
 | `agent.goal_max_rounds` | Positive integer | `8` | Maximum complete Agent runs admitted for one `/goal`, including its initial run. |
 | `agent.tool_deadline_ms` | Positive integer | `300000` | Default per-invocation deadline in milliseconds for tools without `execution.deadlineMs`; a tool declaration takes precedence. |

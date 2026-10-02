@@ -60,6 +60,7 @@ export function toRawKanaConfig(config: KanaConfig): Record<string, unknown> {
       },
     },
     agent: {
+      codemode: config.agent.codemode,
       tools: config.agent.tools,
       web_search: config.agent.webSearch,
       image_input: config.agent.imageInput,
@@ -180,6 +181,7 @@ function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
       },
     },
     agent: {
+      codemode: readCodemode(agent.codemode, defaults.agent.codemode),
       tools: readAgentTools(agent.tools, defaults.agent.tools),
       webSearch: readBoolean(agent.web_search, defaults.agent.webSearch, "agent.web_search"),
       imageInput: readBoolean(agent.image_input, defaults.agent.imageInput, "agent.image_input"),
@@ -612,6 +614,17 @@ function readOpenAICodexReasoningSummary(
   }
 
   return summary as OpenAICodexReasoningSummary;
+}
+
+function readCodemode(
+  value: unknown,
+  fallback: KanaConfig["agent"]["codemode"],
+): KanaConfig["agent"]["codemode"] {
+  const mode = readString(value, fallback, "agent.codemode");
+  if (mode !== "off" && mode !== "mixed" && mode !== "only") {
+    throw new Error("agent.codemode must be one of: off, mixed, only.");
+  }
+  return mode;
 }
 
 function readToolApprovalMode(

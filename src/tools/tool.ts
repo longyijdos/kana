@@ -20,6 +20,7 @@ export type ToolResult<TResult = unknown> = {
 };
 
 export type Tool<T extends TSchema = TSchema, TResult = unknown> = ToolSpec<T> & {
+  outputSchema?: TSchema;
   execute(
     args: Static<T>,
     context: ToolContext,

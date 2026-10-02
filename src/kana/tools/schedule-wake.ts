@@ -43,6 +43,11 @@ export function createScheduleWakeTool(
     description:
       "Schedule one in-process reminder that starts a new agent turn after a delay. Use it to revisit long-running work while Kana remains open. The reminder is lost if Kana exits.",
     parameters: scheduleWakeParameters,
+    outputSchema: Type.Object({
+      id: Type.String(),
+      dueAt: Type.String(),
+      key: Type.Optional(Type.String()),
+    }),
     execute: (args) => {
       const event = options.scheduler.schedule({
         sessionId: options.sessionId,

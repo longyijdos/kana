@@ -154,6 +154,7 @@ max_retries = 1
 
 [agent]
 tools = ["list","glob","grep","read","view_image","write","edit","shell","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","mcp_list_tools","mcp_describe_tool","mcp_call"]
+codemode = "off"
 web_search = true
 image_input = true
 max_turns = -1
@@ -258,7 +259,8 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 
 | 表与键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `agent.tools` | 唯一内置工具名数组 | 全部可配置内置工具 | 选择 conversation Agent 可以调用的内置工具；空数组禁用全部可配置工具。MCP 入口 `mcp_list_tools`、`mcp_describe_tool` 与 `mcp_call` 也受此选择控制；`update_goal`、provider 能力和 TUI 直接操作不在范围内。 |
+| `agent.tools` | 唯一内置工具名数组 | 全部可配置内置工具 | 选择 conversation Agent 可以调用的内置工具；空数组禁用全部可配置工具。MCP 入口 `mcp_list_tools`、`mcp_describe_tool` 与 `mcp_call` 也受此选择控制；自动提供的 `run_code`、`update_goal`、provider 能力和 TUI 直接操作不在范围内。 |
+| `agent.codemode` | `off`、`mixed` 或 `only` | `off` | `off` 提供普通工具；`mixed` 增加 `run_code`；`only` 只向模型提供 `run_code`。`agent.tools` 继续控制脚本内部可用工具。子 Agent 继承模式并受角色卡限制；记忆整理 Agent 不使用此配置。Provider 原生能力仍按原设置生效。 |
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
 | `agent.goal_max_rounds` | 正整数 | `8` | 单个 `/goal` 最多允许的完整 Agent run 数，包含首次 run。 |
 | `agent.tool_deadline_ms` | 正整数 | `300000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
