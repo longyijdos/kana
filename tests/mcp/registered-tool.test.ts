@@ -66,7 +66,7 @@ describe("Registered MCP tools", () => {
       },
     ]);
     expect(result.content).toBe("done");
-    expect(result.result.structuredContent).toEqual({ count: 2 });
+    expect(result.result).toEqual({ count: 2 });
   });
 
   test("rejects input schemas that cannot be compiled", () => {
@@ -90,97 +90,80 @@ describe("Registered MCP tools", () => {
   test("normalizes resources and omits binary payloads", () => {
     const encodedImage = "aGVsbG8=";
     const encodedBlob = "AAEC";
-    const normalized = normalizeMcpToolResult(
-      {
-        content: [
-          { type: "text", text: "hello" },
-          {
-            type: "resource_link",
-            uri: "file:///project/report.md",
-            name: "report.md",
-            mimeType: "text/markdown",
+    const normalized = normalizeMcpToolResult({
+      content: [
+        { type: "text", text: "hello" },
+        {
+          type: "resource_link",
+          uri: "file:///project/report.md",
+          name: "report.md",
+          mimeType: "text/markdown",
+        },
+        {
+          type: "resource",
+          resource: {
+            uri: "file:///project/data.bin",
+            mimeType: "application/octet-stream",
+            blob: encodedBlob,
           },
-          {
-            type: "resource",
-            resource: {
-              uri: "file:///project/data.bin",
-              mimeType: "application/octet-stream",
-              blob: encodedBlob,
-            },
-          },
-          { type: "image", data: encodedImage, mimeType: "image/png" },
-          { type: "future_content", secret: encodedImage },
-        ],
-        structuredContent: { ok: true },
-      },
-      { serverId: "files", remoteToolName: "inspect" },
-    );
+        },
+        { type: "image", data: encodedImage, mimeType: "image/png" },
+        { type: "future_content", secret: encodedImage },
+      ],
+      structuredContent: { ok: true },
+    });
 
     expect(normalized.content).toContain("hello");
     expect(normalized.content).toContain("MCP resource link");
     expect(normalized.content).toContain("MCP image omitted: image/png, 5 bytes");
-    expect(normalized.result.content).toContainEqual({
-      type: "binary",
-      contentType: "image",
-      mimeType: "image/png",
-      bytes: 5,
-      omitted: true,
-    });
-    expect(normalized.result.content).toContainEqual({
-      type: "resource",
-      uri: "file:///project/data.bin",
-      mimeType: "application/octet-stream",
-      blobBytes: 3,
-    });
+    expect(normalized.content).toContain(
+      "MCP binary resource omitted: file:///project/data.bin: application/octet-stream, 3 bytes",
+    );
+    expect(normalized.result).toEqual({ ok: true });
     expect(JSON.stringify(normalized.result)).not.toContain(encodedImage);
     expect(JSON.stringify(normalized.result)).not.toContain(encodedBlob);
   });
 
-  test("bounds text, item count, structured content, and model content", () => {
-    const normalized = normalizeMcpToolResult(
-      {
-        content: [
-          { type: "text", text: "abcdefgh" },
-          { type: "text", text: "second" },
-          { type: "text", text: "omitted" },
-        ],
-        structuredContent: { long: "structured value" },
-      },
-      { serverId: "limited", remoteToolName: "large" },
-      {
-        maxContentItems: 2,
-        maxTextCharacters: 5,
-        maxStructuredCharacters: 10,
-        maxModelContentCharacters: 30,
-        maxMetadataCharacters: 8,
-      },
-    );
-
-    expect(normalized.content.length).toBeLessThanOrEqual(30);
-    expect(normalized.result.omittedContentItems).toBe(1);
-    expect(normalized.result.contentTruncated).toBe(true);
-    expect(normalized.result.content[0]).toEqual({
-      type: "text",
-      text: "abcd…",
-      truncated: true,
+  test("preserves all text, content items, metadata and structured data before common finalization", () => {
+    const text = "x".repeat(50_000);
+    const metadata = "m".repeat(600);
+    const structuredContent = {
+      entries: Array.from({ length: 100 }, (_, index) => ({ index, text })),
+    };
+    const normalized = normalizeMcpToolResult({
+      content: [
+        { type: "text", text },
+        ...Array.from({ length: 70 }, (_, index) => ({ type: "text", text: `item-${index}` })),
+        { type: "resource_link", uri: "file:///report", name: metadata, description: metadata },
+        { type: "resource", resource: { uri: "file:///text", text } },
+      ],
+      structuredContent,
     });
-    expect(normalized.result.content[1]).toEqual({ type: "text", text: "", truncated: true });
-    expect(normalized.result.structuredContent).toBeUndefined();
-    expect(normalized.result.structuredContentPreview?.length).toBeLessThanOrEqual(10);
-    expect(normalized.result.structuredContentTruncated).toBe(true);
+
+    expect(normalized.content).toStartWith(text);
+    expect(normalized.content).toContain("item-69");
+    expect(normalized.content).toContain(metadata);
+    expect(normalized.content).toEndWith(text);
+    expect(normalized.result).toEqual(structuredContent);
+  });
+
+  test("uses formatted text as the result without structured content", () => {
+    const text = "x".repeat(50_000);
+    const normalized = normalizeMcpToolResult({ content: [{ type: "text", text }] });
+    expect(normalized).toEqual({ content: text, result: text, isError: false });
+    const empty = normalizeMcpToolResult({ content: [] });
+    expect(empty.result).toBe(empty.content);
   });
 
   test("adds structured-only results to model content", () => {
-    const normalized = normalizeMcpToolResult(
-      { content: [], structuredContent: { answer: 42 } },
-      { serverId: "data", remoteToolName: "answer" },
-    );
+    const normalized = normalizeMcpToolResult({ content: [], structuredContent: { answer: 42 } });
 
     expect(normalized.content).toContain("Structured content:");
     expect(normalized.content).toContain('"answer": 42');
+    expect(normalized.result).toEqual({ answer: 42 });
   });
 
-  test("converts JSON-RPC errors into safe error tool results", async () => {
+  test("converts JSON-RPC errors into formatted error results without truncating data", async () => {
     const caller: McpToolCaller = {
       async callTool() {
         throw new McpResponseError(-32602, "Unknown tool", { detail: "x".repeat(100) });
@@ -189,7 +172,6 @@ describe("Registered MCP tools", () => {
     const tool = createRegisteredMcpTool({
       serverId: "errors",
       caller,
-      resultLimits: { maxStructuredCharacters: 20 },
       tool: {
         name: "missing",
         inputSchema: { type: "object" },
@@ -200,10 +182,9 @@ describe("Registered MCP tools", () => {
 
     expect(tool.description).toBe("");
     expect(result.isError).toBe(true);
-    expect(result.content).toBe("MCP server returned JSON-RPC error -32602: Unknown tool");
-    expect(result.result.protocolError?.code).toBe(-32602);
-    expect(result.result.protocolError?.dataPreview?.length).toBeLessThanOrEqual(20);
-    expect(result.result.protocolError?.dataTruncated).toBe(true);
+    expect(result.content).toStartWith("MCP server returned JSON-RPC error -32602: Unknown tool");
+    expect(result.content).toContain("x".repeat(100));
+    expect(result.result).toBe(result.content);
   });
 });
 

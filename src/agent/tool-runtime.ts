@@ -20,6 +20,7 @@ import type { AgentEvent } from "./events";
 import type { ToolResultPolicy, ToolResultPolicyResult } from "./tool-result-policy";
 
 const DEFAULT_CANCELLATION_GRACE_MS = 1_000;
+const MAX_PERSISTED_TOOL_RESULT_BYTES = 128 * 1_024;
 export const DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4;
 export const DEFAULT_TOOL_DEADLINE_MS = 300_000;
 
@@ -796,10 +797,11 @@ export class ToolRuntime {
 
   private async finalizeResult(executed: ExecutedToolCall): Promise<AppliedToolResultPolicies> {
     let content = executed.result.content;
-    let persistResult = true;
     let artifact: ToolResultArtifact | undefined;
     const additionalMessages: UserMessage[] = [];
     const durableResult = createDurableResultSnapshot(executed.result.result);
+    let persistResult =
+      durableResult !== undefined && durableResult.byteLength <= MAX_PERSISTED_TOOL_RESULT_BYTES;
 
     // Policies form one ordered finalization pipeline. Each policy observes the
     // previous policy's provider-facing text, while persistence can only become
@@ -1094,8 +1096,8 @@ function parseToolResultPolicyResult(value: unknown): ToolResultPolicyResult | u
   if (persistResult !== undefined && persistResult !== false) {
     throw new Error("Tool result policy persistResult can only be false.");
   }
-  if (artifact !== undefined && (!isToolResultArtifact(artifact) || persistResult !== false)) {
-    throw new Error("Tool result policy artifacts require valid metadata and persistResult false.");
+  if (artifact !== undefined && !isToolResultArtifact(artifact)) {
+    throw new Error("Tool result policy artifacts require valid metadata.");
   }
   let additionalContext: string[] | undefined;
   if (contextValue !== undefined) {
@@ -1131,7 +1133,6 @@ function createDurableResultSnapshot(value: unknown): DurableResultSnapshot | un
     };
   } catch {
     // A non-serializable canonical result cannot safely enter a JSON journal.
-    // Product policies can use the missing measurement to omit it.
     return undefined;
   }
 }

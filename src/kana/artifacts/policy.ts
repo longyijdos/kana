@@ -9,8 +9,6 @@ const TOOL_RESULT_ARTIFACT_POLICY_SOURCE = "session_artifact";
 const HEAD_RATIO = 0.7;
 
 export type KanaToolResultArtifactPolicyOptions = {
-  // An absent store disables spilling but retains the independent durable
-  // structured-result boundary.
   store?: KanaSessionArtifactStore;
   logger?: Logger;
 };
@@ -26,31 +24,8 @@ export function createKanaToolResultArtifactPolicy(
       }
       const byteLimit = input.contentByteLimit;
       const contentByteLength = Buffer.byteLength(input.content, "utf8");
-      const resultExceedsLimit =
-        input.resultByteLength === undefined || input.resultByteLength > byteLimit;
-
-      if (contentByteLength <= byteLimit) {
-        if (!resultExceedsLimit) {
-          return undefined;
-        }
-        log(options.logger, "info", "tool.result_persistence_bounded", {
-          toolName: input.toolCall.name,
-          reason: input.resultByteLength === undefined ? "not_serializable" : "result_oversized",
-          inlineByteLimit: byteLimit,
-        });
-        return { persistResult: false };
-      }
-
-      if (!options.store) {
-        if (!resultExceedsLimit) {
-          return undefined;
-        }
-        log(options.logger, "info", "tool.result_persistence_bounded", {
-          toolName: input.toolCall.name,
-          reason: input.resultByteLength === undefined ? "not_serializable" : "result_oversized",
-          inlineByteLimit: byteLimit,
-        });
-        return { persistResult: false };
+      if (contentByteLength <= byteLimit || !options.store) {
+        return undefined;
       }
 
       if (input.toolCall.name === "read") {
@@ -62,7 +37,6 @@ export function createKanaToolResultArtifactPolicy(
         );
         return {
           content,
-          ...(resultExceedsLimit ? { persistResult: false as const } : {}),
         };
       }
 
@@ -87,7 +61,6 @@ export function createKanaToolResultArtifactPolicy(
         return {
           content,
           artifact: savedArtifact,
-          persistResult: false,
         };
       } catch (error) {
         if (artifact) {
@@ -105,9 +78,7 @@ export function createKanaToolResultArtifactPolicy(
           errorType: getErrorType(error),
           errorCode: getErrorCode(error),
         });
-        // Storage is advisory for model-facing text, but a failed spill must
-        // not reopen the independent structured-result persistence boundary.
-        return resultExceedsLimit ? { persistResult: false } : undefined;
+        return undefined;
       }
     },
   };

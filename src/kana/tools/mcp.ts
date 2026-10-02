@@ -10,7 +10,7 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
   return [
     {
       name: "mcp_list_tools",
-      description: `List the available tools and full input schemas for an enabled MCP server. This only reads the catalog; it does not enable servers or grant permissions. Read again whenever schemas are needed, including after context compaction. Follow nextOffset to read more tools; read any saved artifact to obtain complete schemas.\n\nAvailable MCP servers:\n${catalog}`,
+      description: `List tool names and descriptions for an enabled MCP server.\n\nAvailable MCP servers:\n${catalog}`,
       parameters: strictObject({
         name: Type.String({ description: "MCP server name from the catalog." }),
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -28,16 +28,34 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
           tools: tools.slice(offset, nextOffset).map((tool) => ({
             name: tool.name,
             description: tool.description,
-            inputSchema: tool.parameters,
           })),
           ...(nextOffset < tools.length ? { nextOffset } : {}),
         };
       },
     },
     {
+      name: "mcp_describe_tool",
+      description: "Get a tool's input schema from an enabled MCP server.",
+      parameters: strictObject({
+        server: Type.String(),
+        tool: Type.String(),
+      }),
+      execution: { concurrency: "parallel" },
+      execute({ server, tool: name }) {
+        const tool = registry.getTool(server, name);
+        if (!tool) {
+          throw new Error(`MCP tool "${server}/${name}" is not available.`);
+        }
+        return {
+          server,
+          name: tool.name,
+          inputSchema: tool.parameters,
+        };
+      },
+    },
+    {
       name: "mcp_call",
-      description:
-        "Call a tool on an enabled MCP server. Use mcp_list_tools to read the tool's input schema before calling it. The arguments object must satisfy that schema. Loading a catalog does not change the available servers or tools.",
+      description: "Call a tool on an enabled MCP server. Arguments must match its input schema.",
       parameters: strictObject({
         server: Type.String(),
         tool: Type.String(),

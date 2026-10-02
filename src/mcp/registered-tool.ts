@@ -9,12 +9,9 @@ import {
   type McpTool,
 } from "./protocol";
 import {
-  type McpNormalizedToolResult,
-  type McpToolResultLimits,
   type McpToolSource,
   normalizeMcpResponseError,
   normalizeMcpToolResult,
-  resolveMcpToolResultLimits,
 } from "./tool-result";
 
 type McpToolCallOptions = {
@@ -34,18 +31,15 @@ export type RegisteredMcpToolOptions = {
   serverId: string;
   caller: McpToolCaller;
   tool: McpTool;
-  resultLimits?: Partial<McpToolResultLimits>;
 };
 
 export type RegisteredMcpTool = {
   name: string;
   description: string;
   parameters: TSchema;
+  outputSchema?: McpTool["outputSchema"];
   source: McpToolSource;
-  execute(
-    args: Static<TSchema>,
-    context: ToolContext,
-  ): Promise<ToolResult<McpNormalizedToolResult>>;
+  execute(args: Static<TSchema>, context: ToolContext): Promise<ToolResult>;
 };
 
 type McpToolProgressResult = McpToolSource & {
@@ -75,7 +69,6 @@ export function createRegisteredMcpTool(options: RegisteredMcpToolOptions): Regi
     remoteToolName: options.tool.name,
   };
   const parameters = options.tool.inputSchema as unknown as TSchema;
-  const resultLimits = resolveMcpToolResultLimits(options.resultLimits);
 
   try {
     precompileToolParameters(parameters);
@@ -88,7 +81,8 @@ export function createRegisteredMcpTool(options: RegisteredMcpToolOptions): Regi
     source,
     description: options.tool.description ?? "",
     parameters,
-    async execute(args, context): Promise<ToolResult<McpNormalizedToolResult>> {
+    ...(options.tool.outputSchema === undefined ? {} : { outputSchema: options.tool.outputSchema }),
+    async execute(args, context): Promise<ToolResult> {
       if (!isJsonObject(args)) {
         throw new Error(
           `MCP tool ${options.serverId}/${options.tool.name} requires object arguments.`,
@@ -110,10 +104,10 @@ export function createRegisteredMcpTool(options: RegisteredMcpToolOptions): Regi
           },
         });
 
-        return normalizeMcpToolResult(response, source, resultLimits);
+        return normalizeMcpToolResult(response);
       } catch (error) {
         if (error instanceof McpResponseError) {
-          return normalizeMcpResponseError(error, source, resultLimits);
+          return normalizeMcpResponseError(error);
         }
         throw error;
       }

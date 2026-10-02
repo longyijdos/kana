@@ -232,7 +232,11 @@ describe("Kana Agent tools", () => {
 
   test("requires both MCP availability and global gateway selection", () => {
     for (const enabled of [true, false]) {
-      for (const tools of [[], ["read"], ["read", "mcp_list_tools", "mcp_call"]] as const) {
+      for (const tools of [
+        [],
+        ["read"],
+        ["read", "mcp_list_tools", "mcp_describe_tool", "mcp_call"],
+      ] as const) {
         const config = testConfig();
         const agent = withKanaAgentEnvironment(() =>
           createAgentForTest(

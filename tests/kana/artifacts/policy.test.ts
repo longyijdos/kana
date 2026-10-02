@@ -49,7 +49,7 @@ describe("Kana tool-result artifacts", () => {
       contentByteLimit,
     });
 
-    expect(result?.persistResult).toBe(false);
+    expect(result?.persistResult).toBeUndefined();
     expect(result?.artifact).toBeDefined();
     const artifact = result?.artifact;
     if (!artifact || !result?.content) {
@@ -129,7 +129,7 @@ describe("Kana tool-result artifacts", () => {
     expect(liveResult).not.toHaveProperty("stdoutTruncated");
     expect(liveResult).not.toHaveProperty("stderrTruncated");
     const toolResult = result.toolResults[0];
-    expect(toolResult).not.toHaveProperty("result");
+    expect(toolResult?.result).toEqual(liveResult);
     expect(toolResult?.artifact).toBeDefined();
     const locator = toolResult?.artifact?.locator;
     if (!locator) {
@@ -162,12 +162,12 @@ describe("Kana tool-result artifacts", () => {
 
     expect(saveCount).toBe(0);
     expect(result?.artifact).toBeUndefined();
-    expect(result?.persistResult).toBe(false);
+    expect(result?.persistResult).toBeUndefined();
     expect(Buffer.byteLength(result?.content ?? "", "utf8")).toBeLessThanOrEqual(768);
     expect(result?.content).toContain("cannot page within one very long line");
   });
 
-  test("keeps structured persistence bounded and logs safe diagnostics when storage fails", async () => {
+  test("leaves result persistence unchanged and logs safe diagnostics when storage fails", async () => {
     const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
     const error = Object.assign(new Error("secret output must not be logged"), {
       code: "ENOSPC",
@@ -187,7 +187,7 @@ describe("Kana tool-result artifacts", () => {
       contentByteLimit: 768,
     });
 
-    expect(result).toEqual({ persistResult: false });
+    expect(result).toBeUndefined();
     expect(logs).toEqual([
       {
         event: "tool.result_artifact_save_failed",
@@ -250,7 +250,7 @@ describe("Kana tool-result artifacts", () => {
     expect(committed).toEqual(result.toolResults);
   });
 
-  test("drops an oversized structured result without spilling inline text", async () => {
+  test("preserves oversized structured results without spilling inline text", async () => {
     let saveCount = 0;
     const policy = createKanaToolResultArtifactPolicy({
       store: createRecordingStore(async () => {
@@ -268,10 +268,10 @@ describe("Kana tool-result artifacts", () => {
     });
 
     expect(saveCount).toBe(0);
-    expect(result).toEqual({ persistResult: false });
+    expect(result).toBeUndefined();
   });
 
-  test("bounds oversized structured persistence when artifact storage is disabled", async () => {
+  test("preserves oversized structured results when artifact storage is disabled", async () => {
     const policy = createKanaToolResultArtifactPolicy({});
     const content = "unspilled output".repeat(100);
 
@@ -283,7 +283,7 @@ describe("Kana tool-result artifacts", () => {
       contentByteLimit: 768,
     });
 
-    expect(result).toEqual({ persistResult: false });
+    expect(result).toBeUndefined();
   });
 });
 

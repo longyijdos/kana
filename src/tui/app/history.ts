@@ -139,9 +139,7 @@ function addToolResult(
     todoStates.delete(message.toolCallId);
   }
 
-  // Artifact previews are model-facing context, not restored transcript
-  // presentation. Keep history compact and expose retrieval metadata instead.
-  block.updateResult(message.artifact ?? message.result ?? message.content, message.isError);
+  block.updateResult(message.result ?? message.artifact ?? message.content, message.isError);
   transcript.addChild(block);
 }
 

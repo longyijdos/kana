@@ -1094,7 +1094,7 @@ describe("ToolRuntime result finalization and policy", () => {
     ]);
   });
 
-  test("keeps canonical results live while omitting artifact-backed results from durable messages", async () => {
+  test("keeps canonical results live and durable when content is stored as an artifact", async () => {
     const canonicalResult = { payload: "large structured result" };
     const locator = "/tmp/kana-artifact.txt";
     let executionEndResult: unknown;
@@ -1121,7 +1121,6 @@ describe("ToolRuntime result finalization and policy", () => {
             return {
               content: "bounded preview",
               artifact: { kind: "text", locator, byteLength: 10_000 },
-              persistResult: false,
             };
           },
         },
@@ -1141,9 +1140,53 @@ describe("ToolRuntime result finalization and policy", () => {
     expect(result.toolResults[0]).toMatchObject({
       content: "bounded preview",
       artifact: { kind: "text", locator, byteLength: 10_000 },
+      result: canonicalResult,
     });
-    expect(result.toolResults[0]).not.toHaveProperty("result");
   });
+
+  test.each([128 * 1_024 - 1, 128 * 1_024, 128 * 1_024 + 1])(
+    "bounds persisted results at 128 KiB without changing live data (%i serialized bytes)",
+    async (byteLength) => {
+      const payloadBytes = byteLength - Buffer.byteLength(JSON.stringify({ payload: "" }), "utf8");
+      const canonicalResult = {
+        payload: "中".repeat(Math.floor(payloadBytes / 3)) + "x".repeat(payloadBytes % 3),
+      };
+      const committed: Message[] = [];
+      let executionEndResult: unknown;
+      const tool = {
+        name: "large_result",
+        description: "Return structured data with short content.",
+        parameters,
+        execute: () => ({ content: "short output", result: canonicalResult }),
+      } satisfies Tool<typeof parameters, typeof canonicalResult>;
+      const runtime = new ToolRuntime(
+        {
+          tools: [tool],
+          toolContentByteLimit: 32,
+          onMessageCommitted: (message) => {
+            committed.push(message);
+          },
+        },
+        (event) => {
+          if (event.type === "tool_execution_end") executionEndResult = event.result;
+        },
+      );
+
+      const result = await runtime.execute([
+        { type: "tool_call", id: "call-large", name: "large_result", args: {} },
+      ]);
+
+      expect(Buffer.byteLength(JSON.stringify(canonicalResult), "utf8")).toBe(byteLength);
+      expect(executionEndResult).toBe(canonicalResult);
+      expect(result.toolResults[0]).toMatchObject({ content: "short output", isError: false });
+      expect(committed).toEqual(result.toolResults);
+      if (byteLength <= 128 * 1_024) {
+        expect(result.toolResults[0]?.result).toEqual(canonicalResult);
+      } else {
+        expect(result.toolResults[0]).not.toHaveProperty("result");
+      }
+    },
+  );
 
   test("detaches validated policy output from getters before leaving containment", async () => {
     let contentReads = 0;
@@ -1262,7 +1305,7 @@ describe("ToolRuntime result finalization and policy", () => {
       contentByteLimit: undefined,
     });
     expect(result.toolResults[0]?.content).toBe("policy saw: original content");
-    expect(result.toolResults[0]?.result).toBe(structuredResult);
+    expect(result.toolResults[0]).not.toHaveProperty("result");
   });
 
   test("contains policy failures and protects the model-authored call and result", async () => {

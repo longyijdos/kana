@@ -177,43 +177,54 @@ describe("tui history transcript", () => {
     expect(lines.join("\n")).not.toContain('"byteSize"');
   });
 
-  test("renders artifact-backed restored results as compact metadata", () => {
-    const transcript = new Transcript();
-    const messages: Message[] = [
-      {
-        ...messageIdentityForTest("assistant"),
-        role: "assistant",
-        content: [
-          {
-            type: "tool_call",
-            id: "call-artifact",
-            name: "shell",
-            args: { command: "generate lots of output" },
-          },
-        ],
-      },
-      {
-        ...messageIdentityForTest("tool"),
-        role: "tool",
-        toolCallId: "call-artifact",
-        toolName: "shell",
-        content: "MODEL_FACING_ARTIFACT_PREVIEW_SHOULD_NOT_RENDER",
-        artifact: {
-          kind: "text",
-          locator: "/tmp/kana-artifacts/session/large-output.txt",
-          byteLength: 83 * 1_024,
+  test.each(["result", "artifact", "content"] as const)(
+    "renders restored tool output with %s as the preferred available source",
+    (source) => {
+      const transcript = new Transcript();
+      const messages: Message[] = [
+        {
+          ...messageIdentityForTest("assistant"),
+          role: "assistant",
+          content: [
+            {
+              type: "tool_call",
+              id: "call-artifact",
+              name: "shell",
+              args: { command: "generate lots of output" },
+            },
+          ],
         },
-        isError: false,
-      },
-    ];
+        {
+          ...messageIdentityForTest("tool"),
+          role: "tool",
+          toolCallId: "call-artifact",
+          toolName: "shell",
+          content: "MODEL_FACING_CONTENT_FALLBACK",
+          ...(source === "result"
+            ? { result: { stdout: "SAVED_RESULT_OUTPUT", exitCode: 0 } }
+            : {}),
+          ...(source !== "content"
+            ? {
+                artifact: {
+                  kind: "text" as const,
+                  locator: "/tmp/kana-artifacts/session/large-output.txt",
+                  byteLength: 83 * 1_024,
+                },
+              }
+            : {}),
+          isError: false,
+        },
+      ];
 
-    addHistoryTimelineToTranscript(transcript, timelineFromMessages(messages));
+      addHistoryTimelineToTranscript(transcript, timelineFromMessages(messages));
 
-    const rendered = transcript.render(100).map(stripAnsi).join("\n");
-    expect(rendered).toContain("Output stored · 83 KB");
-    expect(rendered).not.toContain("MODEL_FACING_ARTIFACT_PREVIEW_SHOULD_NOT_RENDER");
-    expect(rendered).not.toContain("/tmp/kana-artifacts/session/large-output.txt");
-  });
+      const rendered = transcript.render(100).map(stripAnsi).join("\n");
+      expect(rendered.includes("SAVED_RESULT_OUTPUT")).toBe(source === "result");
+      expect(rendered.includes("Output stored · 83 KB")).toBe(source === "artifact");
+      expect(rendered.includes("MODEL_FACING_CONTENT_FALLBACK")).toBe(source === "content");
+      expect(rendered).not.toContain("/tmp/kana-artifacts/session/large-output.txt");
+    },
+  );
 
   test("uses distinct colors for user input and Markdown headings", () => {
     const transcript = new Transcript();

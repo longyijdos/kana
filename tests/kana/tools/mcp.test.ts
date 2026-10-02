@@ -12,10 +12,15 @@ afterEach(async () => {
 });
 
 describe("MCP gateway tools", () => {
-  test("loads filtered, paginated schemas repeatedly without changing provider tools", async () => {
+  test("lists names and descriptions and describes cached schemas without changing provider tools", async () => {
     const schema = { type: "object", properties: { text: { type: "string" } }, required: ["text"] };
+    const outputSchema: McpTool["outputSchema"] = {
+      type: "object",
+      properties: { text: { type: "string" } },
+    };
+    const remoteCall = mock<McpManagedClient["callTool"]>(async () => ({ content: [] }));
     const tools: McpTool[] = [
-      { name: "read", description: "Read a file.", inputSchema: schema },
+      { name: "read", description: "Read a file.", inputSchema: schema, outputSchema },
       { name: "mcp_call", inputSchema: { type: "object" } },
       { name: "hidden", inputSchema: { type: "object" } },
     ];
@@ -24,21 +29,25 @@ describe("MCP gateway tools", () => {
         id: "alpha",
         description: "GitHub issues.",
         excludeTools: ["hidden"],
-        createClient: () => client(tools),
+        createClient: () => client(tools, remoteCall),
       },
       { id: "beta", createClient: () => client([tools[0]!]) },
     ]);
     const gateways = createMcpTools(manager);
-    const [listTools] = gateways;
+    const [listTools, describeTool] = gateways;
     const specs = JSON.stringify(gateways);
-    expect(gateways.map((tool) => tool.name)).toEqual(["mcp_list_tools", "mcp_call"]);
+    expect(gateways.map((tool) => tool.name)).toEqual([
+      "mcp_list_tools",
+      "mcp_describe_tool",
+      "mcp_call",
+    ]);
     expect(listTools!.description).toContain("- alpha: GitHub issues.");
     expect(listTools!.description).toContain("- beta: Server-provided summary.");
 
     const firstPage = await listTools!.execute({ name: "alpha", limit: 1 }, context);
-    expect(firstPage).toMatchObject({
+    expect(firstPage).toEqual({
       server: "alpha",
-      tools: [{ name: "read", description: "Read a file.", inputSchema: schema }],
+      tools: [{ name: "read", description: "Read a file." }],
       nextOffset: 1,
     });
     expect(await listTools!.execute({ name: "alpha", offset: 1, limit: 1 }, context)).toMatchObject(
@@ -52,6 +61,30 @@ describe("MCP gateway tools", () => {
       tools: [{ name: "read" }, { name: "mcp_call" }],
     });
     expect(() => listTools!.execute({ name: "missing" }, context)).toThrow("not available");
+
+    const described = normalizeToolResult(
+      await describeTool!.execute({ server: "alpha", tool: "read" }, context),
+    );
+    const description = {
+      server: "alpha",
+      name: "read",
+      inputSchema: schema,
+    };
+    expect(JSON.parse(described.content)).toEqual(description);
+    expect(described.result).toEqual(description);
+    expect(manager.getTool("alpha", "read")?.outputSchema).toEqual(outputSchema);
+    const withoutOutputSchema = normalizeToolResult(
+      await describeTool!.execute({ server: "alpha", tool: "mcp_call" }, context),
+    );
+    expect(withoutOutputSchema.result).not.toHaveProperty("outputSchema");
+    expect(() => describeTool!.execute({ server: "alpha", tool: "hidden" }, context)).toThrow(
+      "not available",
+    );
+    expect(() => describeTool!.execute({ server: "missing", tool: "read" }, context)).toThrow(
+      "not available",
+    );
+    expect(remoteCall).not.toHaveBeenCalled();
+    expect(JSON.stringify(gateways)).toBe(specs);
   });
 
   test("validates the remote schema and resolves calls by server and original name", async () => {
@@ -74,7 +107,7 @@ describe("MCP gateway tools", () => {
       { id: "alpha", createClient: () => client([remoteTool], alphaCall) },
       { id: "beta", createClient: () => client([remoteTool], betaCall) },
     ]);
-    const call = createMcpTools(manager)[1]!;
+    const call = createMcpTools(manager)[2]!;
 
     await expect(
       call.execute({ server: "alpha", tool: "read", arguments: {} }, context),
@@ -112,7 +145,7 @@ describe("MCP gateway tools", () => {
       },
     ]);
     const result = normalizeToolResult(
-      await createMcpTools(manager)[1]!.execute(
+      await createMcpTools(manager)[2]!.execute(
         {
           server: "alpha",
           tool: "read",
@@ -127,11 +160,7 @@ describe("MCP gateway tools", () => {
     ]);
     expect(result.isError).toBe(true);
     expect(result.content).toContain('"error": "Failed"');
-    expect(result.result).toMatchObject({
-      serverId: "alpha",
-      remoteToolName: "read",
-      structuredContent: [{ error: "Failed" }],
-    });
+    expect(result.result).toEqual([{ error: "Failed" }]);
   });
 });
 

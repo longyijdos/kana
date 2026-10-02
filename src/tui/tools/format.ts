@@ -433,6 +433,15 @@ function toolText(
         runningActivity: `calling MCP ${name}`,
       };
     }
+    case "mcp_describe_tool": {
+      const name = `${getStringProperty(args, "server") ?? "?"}/${getStringProperty(args, "tool") ?? "?"}`;
+      return {
+        action: `describe MCP ${name}`,
+        approvalTitle: `Allow ${requesterName} to read MCP tool details?`,
+        doneTitle: `Described MCP ${name}`,
+        runningActivity: `describing MCP ${name}`,
+      };
+    }
     case "mcp_list_tools": {
       const name = getStringProperty(args, "name") ?? "?";
       return {

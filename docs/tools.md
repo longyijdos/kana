@@ -85,7 +85,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 The final byte guard uses three UTF-8 bytes per estimated token. With `tool_result_artifacts` enabled, oversized non-`read` text is saved completely before a bounded roughly 70% head / 30% tail preview is built. The retrieval notice, exact omitted-byte count, and locator fit inside the same guard. Top-level `read` is bounded without recursively creating another artifact and explains that pagination cannot split one very long line.
 
-The live structured result remains available to `tool_execution_end`. Oversized, non-serializable, or artifact-backed structured data is omitted from durable messages independently of the model-facing text. Artifact storage paths, permissions, audit, fork, and cleanup belong to [Sessions and memory](sessions-and-memory.md).
+The live result remains available to `tool_execution_end`. ToolRuntime saves a cloneable, JSON-serializable result completely in durable messages when its serialized UTF-8 size is at most 128 KiB (131072 bytes). Oversized or non-serializable results are omitted as a whole; a custom policy may also explicitly disable retention. This persistence limit is independent of model-context budgets, content limits, and artifact creation; it does not truncate the live result. The model receives content and images, not this stored result. Restored TUI history and subagent inspection prefer `result`, then `artifact`, then `content`. When result is retained, live and restored views use the same result; when result was omitted, an artifact provides the stored-output summary. Artifact storage paths, permissions, audit, fork, and cleanup belong to [Sessions and memory](sessions-and-memory.md).
 
 ## Built-in tools
 
@@ -112,7 +112,7 @@ The live structured result remains available to `tool_execution_end`. Oversized,
 | `schedule_wake` | `afterMinutes`, `message`, optional `key` | Creates a process-local future input for the active session. |
 | `update_goal` | `status`, optional `detail` | Ends the authorized active Goal as completed or blocked. |
 
-`list`, `glob`, `grep`, `read`, `view_image`, `mcp_list_tools`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
+`list`, `glob`, `grep`, `read`, `view_image`, `mcp_list_tools`, `mcp_describe_tool`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
 
 ## File and shell boundaries
 
@@ -148,11 +148,11 @@ Subagent control tools expose only predefined role cards and return stable child
 
 `schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. It and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, or `mcp_list_tools`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Shell allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, `mcp_list_tools`, or `mcp_describe_tool`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Shell allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
 
 ## MCP and custom tools
 
-All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes only `mcp_list_tools` (parallel catalog reads) and `mcp_call` (exclusive, ordinary approval). Remote schemas are loaded through tool results and enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
+All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes `mcp_list_tools` (parallel name and description listing), `mcp_describe_tool` (parallel single-tool schema lookup), and `mcp_call` (exclusive, ordinary approval). The schema lookup returns the server, tool name, and input schema in both content and result; optional output schema remains internal. Remote input schemas are enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
 
 For a custom tool:
 

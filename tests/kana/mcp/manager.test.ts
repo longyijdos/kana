@@ -63,17 +63,15 @@ describe("Kana MCP composition", () => {
 
     expect(tools.map((tool) => tool.name)).toEqual(["echo"]);
     expect(result.result).toMatchObject({
-      structuredContent: {
-        cwd: realpathSync(cwd),
-        argv: ["marker"],
-        env: {
-          HOME: "/safe-home",
-          ALLOWED_SECRET: "visible",
-        },
+      cwd: realpathSync(cwd),
+      argv: ["marker"],
+      env: {
+        HOME: "/safe-home",
+        ALLOWED_SECRET: "visible",
       },
     });
     expect(result.result).not.toMatchObject({
-      structuredContent: { env: { BLOCKED_SECRET: "hidden" } },
+      env: { BLOCKED_SECRET: "hidden" },
     });
     expect(logs).toContainEqual({
       level: "debug",
@@ -116,14 +114,12 @@ describe("Kana MCP composition", () => {
     );
 
     expect(result.result).toMatchObject({
-      structuredContent: {
-        env: {
-          SUBSTITUTED_VAR: "resolved-value",
-          MULTI_SUB_VAR: "prefix_resolved-value_suffix",
-          DEFAULTED_VAR: "fallback-value",
-          EMPTY_DEFAULTED_VAR: "empty-fallback",
-          EMPTY_PRESERVED_VAR: "",
-        },
+      env: {
+        SUBSTITUTED_VAR: "resolved-value",
+        MULTI_SUB_VAR: "prefix_resolved-value_suffix",
+        DEFAULTED_VAR: "fallback-value",
+        EMPTY_DEFAULTED_VAR: "empty-fallback",
+        EMPTY_PRESERVED_VAR: "",
       },
     });
   });
@@ -278,7 +274,7 @@ describe("Kana MCP composition", () => {
     expect(tools.map((tool) => tool.name)).toEqual(["echo"]);
     await manager.close();
     expect(methods.filter((method) => method === "DELETE")).toHaveLength(1);
-    expect(result.result).toMatchObject({ structuredContent: { transport: "http" } });
+    expect(result.result).toMatchObject({ transport: "http" });
     expect(authorizations).toContain("Bearer remote-token");
     expect(logs).toContainEqual({
       level: "debug",

@@ -1,15 +1,15 @@
 # Model Context Protocol
 
-Kana 为已启用 MCP server 创建两个依赖运行时能力的内置工具：`mcp_list_tools` 读取 server 工具目录，`mcp_call` 调用远端工具。官方 TypeScript client SDK 持有协议和 transport。Agent loop 和 provider adapter 都不感知 MCP。
+Kana 为已启用 MCP server 创建三个依赖运行时能力的内置工具：`mcp_list_tools` 列出名称和描述，`mcp_describe_tool` 查询单个工具的 input schema，`mcp_call` 调用远端工具。官方 TypeScript client SDK 持有协议和 transport。Agent loop 和 provider adapter 都不感知 MCP。
 
 ## 分层
 
 ```text
-createKanaAgent → mcp_list_tools + mcp_call
+createKanaAgent → mcp_list_tools + mcp_describe_tool + mcp_call
                       ↓
 KanaMcpRuntime（可 reload 的 registry 能力）
   → McpManager（启动、过滤、目录与诊断）
-      ├→ RegisteredMcpTool（编译后的 schema 与远端执行）
+      ├→ RegisteredMcpTool（编译后的 input schema、可选 output schema 与远端执行）
       └→ McpClient → 官方 SDK Client
           ├→ SDK StdioClientTransport | StreamableHTTPClientTransport
           └→ 可选 McpOAuthHttpAuthorizer → SDK OAuthClientProvider + auth
@@ -21,39 +21,42 @@ Client 使用 SDK 自动协商现代与旧版协议。协议版本由 SDK 维护
 
 ## 渐进式工具目录
 
-启动时连接已启用 server，并在内部缓存过滤后的工具定义。模型最初只看到 `mcp_list_tools` description 中的 server 名称与简介，以及两个入口的 schema。可选 server `description` 覆盖 server 自身提供的简介；两者都缺省时，目录仍包含 server 名称。
+启动时连接已启用 server，并在内部缓存过滤后的工具定义，包括 input schema 和可选 output schema。模型最初只看到 `mcp_list_tools` description 中的 server 名称与简介，以及三个入口的 schema。可选 server `description` 覆盖 server 自身提供的简介；两者都缺省时，目录仍包含 server 名称。
 
 ```text
 mcp_list_tools({ name: "github" })
-  → { server: "github", tools: [{ name, description, inputSchema }, ...] }
+  → { server: "github", tools: [{ name, description }, ...] }
+
+mcp_describe_tool({ server: "github", tool: "get_issue" })
+  → { server, name, inputSchema }
 
 mcp_call({
   server: "github",
   tool: "get_issue",
   arguments: { owner: "longyijdos", repo: "kana", issue_number: 138 }
 })
-  → 规范化的远端结果
+  → { content: 格式化文本, result: structuredContent 或格式化文本, isError }
 ```
 
-`mcp_list_tools` 读取缓存目录，不连接额外 server、不改变用户启用状态、不授予权限，也不修改 provider-facing tools 数组。完整 schema 作为普通工具结果追加到对话历史。因此读取目录期间工具定义保持稳定；provider 缓存仍取决于请求其余部分。
+`mcp_list_tools` 与 `mcp_describe_tool` 读取缓存目录，不连接额外 server、不改变用户启用状态、不授予权限，也不修改 provider-facing tools 数组。列表只包含名称和描述。Schema 查询返回 server、工具名称和完整 input schema，content 与 result 包含相同字段。可选 output schema 保留在内部目录，不通过普通查询暴露。MCP 的 output schema 描述 `structuredContent`，不描述远端 content 数组或格式化文本兜底。因此加载元数据期间工具定义保持稳定；provider 缓存仍取决于请求其余部分。
 
-目录通过可选 `offset` 与 `limit` 分页，默认每页 20 个工具，最多 50 个。返回 `nextOffset` 表示还有下一页。普通 Agent content 上限与 artifact 策略仍适用；结果转存 artifact 后，模型需读取文件取得完整 schema。目录可以重复读取，包括 context compaction 之后。不存在会在历史压缩后阻碍重新发现或调用的临时激活标记。
+列表通过可选 `offset` 与 `limit` 分页，默认每页 20 个工具，最多 50 个。返回 `nextOffset` 表示还有下一页。普通 Agent content 上限与 artifact 策略对两个查询工具都适用；详情 content 转存 artifact 后，模型需读取文件取得完整 input schema。查询可以重复执行，包括 context compaction 之后。不存在会在历史压缩后阻碍重新发现或调用的临时激活标记。
 
-Agent 装配读取当前 MCP registry，仅当 server 目录非空时创建入口。要暴露两种能力，需在 `agent.tools` 中同时选择两个入口名；都不选择时会禁用 Agent 访问，但不改变 server 启用状态或 `/mcp` 管理。MCP runtime 不向 Agent 注入远端工具或入口实例。
+Agent 装配读取当前 MCP registry，仅当 server 目录非空时创建入口。每个入口都需在 `agent.tools` 中被选中，才会暴露对应能力；全部不选时会禁用 Agent 访问，但不改变 server 启用状态或 `/mcp` 管理。MCP runtime 不向 Agent 注入远端工具或入口实例。
 
-只有 ready server 以及 `includeTools`/`excludeTools` 保留的工具可用。`mcp_call` 按 `(server, 远端工具原名)` 定位，并在远端调用前，使用缓存的远端 JSON Schema 校验嵌套 `arguments`。Provider 只校验入口 envelope，具体远端 schema 由 Kana 执行校验，不依赖原生逐工具约束解码。
+只有 ready server 以及 `includeTools`/`excludeTools` 保留的工具可被查询和调用。`mcp_call` 按 `(server, 远端工具原名)` 定位，并在远端调用前，使用缓存的远端 JSON Schema 校验嵌套 `arguments`。Provider 只校验入口 envelope，具体远端 schema 由 Kana 执行校验，不依赖原生逐工具约束解码。
 
 远端名称不会加入 Agent registry。不同 server 可使用相同工具名，也可与 Kana 内置工具或入口名称相同。无需 alias、provider 名称净化或跨 server 保留名称聚合。同一 server 内的重复名称仍无效，因为它们使分发产生歧义。
 
 ## 调用与结果
 
-`mcp_list_tools` 是 parallel 目录读取，永不请求审批。`mcp_call` 默认 exclusive，遵循普通审批策略。TUI 审批显示 server、远端工具原名与完整嵌套参数，不提供持久 MCP 信任选项。
+`mcp_list_tools` 与 `mcp_describe_tool` 是 parallel 目录读取，永不请求审批。`mcp_call` 默认 exclusive，遵循普通审批策略。TUI 审批显示 server、远端工具原名与完整嵌套参数，不提供持久 MCP 信任选项。
 
-入口通过已注册工具将调用 abort signal 和进度更新传给 SDK。配置的请求超时与普通 Agent deadline 仍适用。JSON-RPC 错误变成结构化工具错误，远端 `isError` 保持独立结果语义。调用方 abort 保留取消原因。
+入口通过已注册工具将调用 abort signal 和进度更新传给 SDK。配置的请求超时与普通 Agent deadline 仍适用。JSON-RPC 错误变成包含 code、message 和可选 data 的格式化文本错误结果；远端 `isError` 保持独立结果语义。调用方 abort 保留取消原因。
 
-发现时使用 Kana 工具校验器预编译选中 input schema。不受支持的 schema 会让该 server 原子失败。结果规范化分别限制 item 数、自然文本、结构化 JSON、模型 content 与 metadata。文本及内嵌文本资源可进入模型 content，resource link 转成描述。Image、audio 与 blob 只保留类型、MIME 和估算字节数，不把远端 binary 复制进 session 作为视觉观察。
+发现时使用 Kana 工具校验器预编译选中 input schema。不受支持的 input schema 会让该 server 原子失败。可选 output schema 按原样保留。结果适配处理全部 content 项，不再单独截断文本、条数、结构化数据或 metadata。文本及内嵌文本 resource 转成 content，resource link 转成描述。Image、audio 与 blob 转成包含类型、MIME 和估算字节数的文本提示，不把远端 binary 复制进 session 作为视觉观察。
 
-普通 Agent 结果策略可继续收紧 context 上限或生成文本 artifact，见[工具与执行](tools.zh-CN.md)。
+Kana 的 `result` 在远端提供 `structuredContent` 时使用其完整值，否则使用完整格式化文本，不再包装远端 MCP 响应。仅有结构化数据的响应也会将其 JSON 放进 content，供模型直接读取。统一 Agent 处理负责限制模型可见 content，并可生成文本 artifact；这些处理与完整 result 的保存无关，见[工具与执行](tools.zh-CN.md)。
 
 ## Transport 与授权
 
@@ -85,6 +88,6 @@ Server 失败会被诊断、关闭并隔离，不关闭成功连接的 client。
 
 主对话初始无 MCP 入口。交互启动先显示所选 session，再加载 MCP 并用两个入口重建 Agent。Headless 在提交 run 前初始化 MCP，并要求交互 OAuth 已提前完成。Clean mode 不创建 MCP 工具。Memory-consolidation Agent 永不获得 MCP 工具。
 
-Subagent 角色卡通过列出 `mcp_list_tools` 与 `mcp_call` 获得 MCP 能力。全局 `agent.tools` 选择仍是这些权限的上限。它们覆盖全部当前已启用、经过过滤的 MCP 能力，不表达逐 server 或逐远端工具权限。不支持旧远端 alias 与 `mcp:*`。见 [Subagent](subagents.zh-CN.md)。
+Subagent 角色卡通过列出 `mcp_list_tools`、`mcp_describe_tool` 与 `mcp_call` 获得 MCP 能力。全局 `agent.tools` 选择仍是这些权限的上限。它们覆盖全部当前已启用、经过过滤的 MCP 能力，不表达逐 server 或逐远端工具权限。不支持旧远端 alias 与 `mcp:*`。见 [Subagent](subagents.zh-CN.md)。
 
 TUI 持有选择、授权操作、生命周期展示、焦点与重试交互。共享对话 shutdown 先结算 Agent，再由 Host 关闭 MCP。见 [TUI](tui.zh-CN.md) 与[对话运行时](conversation-runtime.zh-CN.md)。

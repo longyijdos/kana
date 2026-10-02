@@ -85,7 +85,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 最终字节保护按每个估算 token 三个 UTF-8 字节计算。启用 `tool_result_artifacts` 后，过大的非 `read` 文本会先完整保存，再构建大约 70% head / 30% tail 的有界预览；取回 notice、精确省略字节数和 locator 也必须进入同一上限。顶层 `read` 只做有界输出，不递归创建 artifact，并说明分页无法拆分单个超长行。
 
-实时结构化 result 仍可通过 `tool_execution_end` 获得。过大、不可序列化或 artifact-backed 的结构化数据会独立从持久消息中省略。Artifact 存储路径、权限、审计、fork 与清理归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
+实时 result 仍可通过 `tool_execution_end` 获得。ToolRuntime 将能复制且能 JSON 序列化、序列化后 UTF-8 大小不超过 128 KiB（131072 字节）的 result 完整保存在持久消息中。超限或无法序列化的 result 会整份省略；自定义策略也可显式关闭保存。这个持久化上限独立于模型上下文预算、content 上限和 artifact 创建，不截断实时 result。模型只收到 content 与 images，不收到保存的 result。恢复后的 TUI 历史和子代理查看面板依次选择 `result`、`artifact`、`content`。保留 result 时，实时与恢复后的界面使用相同结果；result 被省略时，artifact 提供已存储输出摘要。Artifact 存储路径、权限、审计、fork 与清理归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
 
 ## 内置工具
 
@@ -112,7 +112,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 | `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
 
-`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
+`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools`、`mcp_describe_tool` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
 
 ## 文件与 Shell 边界
 
@@ -148,11 +148,11 @@ Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal` 或 `mcp_list_tools` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Shell allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_describe_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Shell allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 
-全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 只暴露 `mcp_list_tools`（parallel 目录读取）和 `mcp_call`（exclusive、普通审批）。远端 schema 通过工具结果加载，并在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
+全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_describe_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 server、工具名称和 input schema；可选 output schema 只保留在内部。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
 
 自定义工具应：
 

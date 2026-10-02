@@ -183,7 +183,7 @@ describe("Kana session format", () => {
     expect(JSON.stringify(persistedToolMessage.result)).not.toContain("dG9vbC1pbWFnZS1ieXRlcw==");
   });
 
-  test("round-trips bounded tool-result artifact metadata without a structured result", () => {
+  test("round-trips bounded artifact metadata alongside a complete oversized structured result", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "tool-artifact" });
@@ -195,6 +195,7 @@ describe("Kana session format", () => {
       toolName: "shell",
       content: `Bounded preview\nFull output locator: ${locator}`,
       artifact: { kind: "text", locator, byteLength: 50_000 },
+      result: { stdout: "x".repeat(50_000), exitCode: 0 },
       isError: false,
     };
 
@@ -202,7 +203,9 @@ describe("Kana session format", () => {
 
     const loaded = loadKanaSession(session.id, { env, cwd });
     expect(loaded.messages).toEqual([message]);
-    expect(loaded.messages[0]).not.toHaveProperty("result");
+    expect(loaded.messages[0]).toMatchObject({
+      result: { stdout: "x".repeat(50_000), exitCode: 0 },
+    });
   });
 
   test("round-trips internal context without using it as the session title", () => {

@@ -5,7 +5,6 @@ import {
   type McpToolCaller,
   type RegisteredMcpTool,
 } from "./registered-tool";
-import type { McpToolResultLimits } from "./tool-result";
 
 export type McpServerCatalogEntry = {
   name: string;
@@ -41,7 +40,6 @@ export type McpServerRegistration = {
   description?: string;
   includeTools?: readonly string[];
   excludeTools?: readonly string[];
-  resultLimits?: Partial<McpToolResultLimits>;
   createClient(options?: McpManagerStartOptions): McpManagedClient;
 };
 
@@ -263,9 +261,6 @@ export class McpManager implements McpToolRegistry {
           serverId: record.registration.id,
           caller: client,
           tool,
-          ...(record.registration.resultLimits === undefined
-            ? {}
-            : { resultLimits: record.registration.resultLimits }),
         }),
       );
       record.status = "ready";
@@ -379,9 +374,6 @@ function copyRegistration(registration: McpServerRegistration): McpServerRegistr
     ...(registration.excludeTools === undefined
       ? {}
       : { excludeTools: registration.excludeTools.slice() }),
-    ...(registration.resultLimits === undefined
-      ? {}
-      : { resultLimits: { ...registration.resultLimits } }),
     createClient: registration.createClient,
   };
 }
