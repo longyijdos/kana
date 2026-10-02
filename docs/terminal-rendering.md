@@ -102,6 +102,8 @@ The detail inspector can open every tool call, regardless of compact expandabili
 
 `run_code` shows one outer block in both live and restored transcripts. Its title shows the running timer or completed call count; its preview contains script output and the return value, or the error message on failure. Nested tool events do not create blocks or affect the status line. `Ctrl+O` shows the full code, text output, return value or error stack, and nested tool names, statuses, and durations. Nested approvals still use the ordinary approval UI.
 
+The `run_code` elapsed display follows runtime pause and resume events, excluding inner approval waits and retaining the time already spent executing.
+
 ## Change checklist
 
 - Route component changes through `requestRender()`; direct stdout content invalidates frame and cursor state.

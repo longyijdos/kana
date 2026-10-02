@@ -16,18 +16,22 @@ export class ElapsedTimer {
     this.stoppedElapsedMs = 0;
   }
 
+  resume(): void {
+    this.startedAt ??= this.now();
+  }
+
   stop(): void {
     if (this.startedAt === undefined) {
       return;
     }
 
-    this.stoppedElapsedMs = this.now() - this.startedAt;
+    this.stoppedElapsedMs += this.now() - this.startedAt;
     this.startedAt = undefined;
   }
 
   elapsedSeconds(): number {
     const elapsedMs =
-      this.startedAt === undefined ? this.stoppedElapsedMs : this.now() - this.startedAt;
+      this.stoppedElapsedMs + (this.startedAt === undefined ? 0 : this.now() - this.startedAt);
 
     return Math.max(0, Math.floor(elapsedMs / 1_000));
   }

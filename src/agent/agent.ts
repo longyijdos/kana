@@ -874,6 +874,16 @@ export class Agent {
       case "tool_execution_start":
         this.log("debug", "tool.execution_started", { toolName: event.toolName });
         break;
+      case "tool_execution_pause":
+      case "tool_execution_resume":
+        this.log(
+          "debug",
+          event.type === "tool_execution_pause"
+            ? "tool.execution_paused"
+            : "tool.execution_resumed",
+          { toolName: event.toolName, reason: event.reason },
+        );
+        break;
       case "tool_execution_end":
         if (event.isError) {
           this.log("warn", "tool.execution_failed", { toolName: event.toolName });

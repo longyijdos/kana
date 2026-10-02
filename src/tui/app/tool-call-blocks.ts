@@ -70,6 +70,14 @@ export class ToolCallBlocks {
     this.preparationBlock?.stopTimer();
   }
 
+  pauseTimer(toolCallId: string): void {
+    this.pendingTools.get(toolCallId)?.stopTimer();
+  }
+
+  resumeTimer(toolCallId: string): void {
+    this.pendingTools.get(toolCallId)?.resumeTimer();
+  }
+
   markPreparationPrepared(): void {
     this.preparationBlock?.markPrepared();
   }

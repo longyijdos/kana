@@ -356,6 +356,45 @@ describe("AgentEventRenderer", () => {
     });
   });
 
+  test("pauses and resumes run_code elapsed time using runtime approval events", () => {
+    let now = 0;
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    const transcript = new TranscriptComponent();
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: { requestRender() {} } as unknown as Tui,
+      updateStatus() {},
+    });
+    const pause = {
+      type: "tool_execution_pause" as const,
+      toolCallId: "outer",
+      toolName: "run_code",
+      reason: "approval" as const,
+    };
+    try {
+      renderer.handle(toolStart("outer", "run_code"));
+      now = 2_000;
+      renderer.handle(pause);
+      now = 15_000;
+      expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (2s) (Esc to abort)");
+      renderer.handle({ ...pause, type: "tool_execution_resume" });
+      now = 16_000;
+      expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (3s) (Esc to abort)");
+      renderer.handle(pause);
+      now = 30_000;
+      expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (3s) (Esc to abort)");
+      renderer.handle(toolEnd("outer", "run_code", false));
+      const completed = transcript.render(80);
+      renderer.handle({ ...pause, type: "tool_execution_resume" });
+      now = 60_000;
+      expect(transcript.render(80)).toEqual(completed);
+      expect(transcript.children).toHaveLength(1);
+    } finally {
+      renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+      clock.mockRestore();
+    }
+  });
+
   test("hides nested tool events without changing the outer block or error status", () => {
     const transcript = new TranscriptComponent();
     const statuses: Array<{ phase: RunPhase; activeTool?: string }> = [];

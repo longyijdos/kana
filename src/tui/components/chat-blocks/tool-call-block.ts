@@ -80,6 +80,10 @@ export class ToolCallBlock implements Component {
     this.phaseTimer.stop();
   }
 
+  resumeTimer(): void {
+    if (!this.options.summaryOnly) this.phaseTimer.resume();
+  }
+
   markCanceled(): void {
     if (this.hasResult) {
       return;

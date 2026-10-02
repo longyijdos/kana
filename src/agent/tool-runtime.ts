@@ -147,6 +147,7 @@ type RunningParallelPool = {
 export class ToolRuntime {
   private readonly events: SerialEventQueue;
   private readonly approvals = new SerialTaskQueue();
+  private readonly approvalWaitHandlers = new Map<string, (waiting: boolean) => void>();
   private readonly cancellationGraceMs: number;
   private readonly defaultDeadlineMs: number;
   private readonly maxParallelToolCalls: number;
@@ -531,7 +532,13 @@ export class ToolRuntime {
       const deadlineMs = resolveInvocationDeadlineMs(tool, this.defaultDeadlineMs);
       const args = validateToolArguments(tool, toolCall.args);
       const executionSignal = combineAbortSignals(this.config.signal, groupSignal);
-      const beforeResult = await this.runBeforeToolExecution(toolCall, tool, args, executionSignal);
+      const beforeResult = await this.runBeforeToolExecution(
+        toolCall,
+        tool,
+        args,
+        executionSignal,
+        parentToolCallId,
+      );
 
       if (beforeResult.type === "cancel") {
         const shouldAbortRun = beforeResult.abortRun ?? true;
@@ -734,10 +741,45 @@ export class ToolRuntime {
     if (runSignals.some((signal) => signal.aborted)) {
       onRunAbort();
     }
-    const deadlineTimer =
-      deadlineMs === undefined
+    let remainingDeadlineMs = deadlineMs;
+    let deadlineStartedAt: number;
+    const startDeadline = (): ReturnType<typeof setTimeout> | undefined => {
+      deadlineStartedAt = performance.now();
+      return deadlineMs === undefined
         ? undefined
-        : setTimeout(() => interrupt({ reason: "deadline", deadlineMs }), deadlineMs);
+        : setTimeout(() => interrupt({ reason: "deadline", deadlineMs }), remainingDeadlineMs);
+    };
+    let deadlineTimer = startDeadline();
+    if (tool.name === "run_code") {
+      let waitingApprovals = 0;
+      this.approvalWaitHandlers.set(toolCall.id, (waiting) => {
+        if (invocationController.signal.aborted) return;
+        waitingApprovals += waiting ? 1 : -1;
+        if (waiting && waitingApprovals === 1) {
+          if (deadlineTimer !== undefined) {
+            clearTimeout(deadlineTimer);
+            deadlineTimer = undefined;
+          }
+          if (remainingDeadlineMs !== undefined) {
+            remainingDeadlineMs -= performance.now() - deadlineStartedAt;
+          }
+          this.events.push({
+            type: "tool_execution_pause",
+            toolCallId: toolCall.id,
+            toolName: tool.name,
+            reason: "approval",
+          });
+        } else if (!waiting && waitingApprovals === 0) {
+          deadlineTimer = startDeadline();
+          this.events.push({
+            type: "tool_execution_resume",
+            toolCallId: toolCall.id,
+            toolName: tool.name,
+            reason: "approval",
+          });
+        }
+      });
+    }
     const settlement = Promise.resolve()
       .then(() =>
         tool.execute(args, {
@@ -769,7 +811,8 @@ export class ToolRuntime {
     return {
       settlement,
       interruption,
-      dispose() {
+      dispose: () => {
+        this.approvalWaitHandlers.delete(toolCall.id);
         for (const signal of runSignals) {
           signal.removeEventListener("abort", onRunAbort);
         }
@@ -843,6 +886,7 @@ export class ToolRuntime {
     tool: Tool,
     args: unknown,
     signal: AbortSignal | undefined,
+    parentToolCallId?: string,
   ): Promise<BeforeToolExecutionResult> {
     const hook = this.config.beforeToolExecution;
     if (!hook) {
@@ -851,22 +895,31 @@ export class ToolRuntime {
       };
     }
 
-    return this.approvals.run(() => {
-      if (signal?.aborted) {
-        return {
-          type: "cancel",
-          abortRun: true,
-          message: "Tool call canceled before approval.",
-        };
-      }
+    if (parentToolCallId !== undefined) {
+      this.approvalWaitHandlers.get(parentToolCallId)?.(true);
+    }
+    try {
+      return await this.approvals.run(() => {
+        if (signal?.aborted) {
+          return {
+            type: "cancel",
+            abortRun: true,
+            message: "Tool call canceled before approval.",
+          };
+        }
 
-      return hook({
-        toolCall: structuredClone(toolCall),
-        tool,
-        args: structuredClone(args),
-        signal,
+        return hook({
+          toolCall: structuredClone(toolCall),
+          tool,
+          args: structuredClone(args),
+          signal,
+        });
       });
-    });
+    } finally {
+      if (parentToolCallId !== undefined) {
+        this.approvalWaitHandlers.get(parentToolCallId)?.(false);
+      }
+    }
   }
 
   private async commitResult(executed: ExecutedToolCall): Promise<FinalizedToolResult> {

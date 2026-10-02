@@ -198,7 +198,7 @@ describe("codemode tool", () => {
     expect(afterCount).toBe(0);
   });
 
-  test("the Agent deadline terminates a running script", async () => {
+  test("owns a 15-minute deadline and terminates a running script through the runtime", async () => {
     let started = false;
     const ready = {
       ...read,
@@ -209,7 +209,12 @@ describe("codemode tool", () => {
       },
     };
     const codemode = createCodemodeTool({ tools: [ready] });
-    const runtime = new ToolRuntime({ tools: [codemode, ready], defaultDeadlineMs: 200 }, () => {});
+    expect(codemode.execution.deadlineMs).toBe(900_000);
+    codemode.execution.deadlineMs = 200;
+    const runtime = new ToolRuntime(
+      { tools: [codemode, ready], defaultDeadlineMs: 1_000 },
+      () => {},
+    );
     const result = await runtime.execute([
       {
         type: "tool_call",
@@ -220,7 +225,10 @@ describe("codemode tool", () => {
     ]);
     expect(started).toBe(true);
     expect(result.abortRun).toBe(true);
-    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "timed_out" } });
+    expect(result.toolResults[0]).toMatchObject({
+      isError: true,
+      result: { status: "timed_out", deadlineMs: 200 },
+    });
   });
 });
 

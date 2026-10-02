@@ -158,6 +158,12 @@ export class AgentEventRenderer {
         this.toolCallBlocks.updatePartialResult(event.toolCallId, event.partialResult);
         this.updateToolStatus();
         break;
+      case "tool_execution_pause":
+        this.toolCallBlocks.pauseTimer(event.toolCallId);
+        break;
+      case "tool_execution_resume":
+        this.toolCallBlocks.resumeTimer(event.toolCallId);
+        break;
       case "tool_execution_end":
         if (event.parentToolCallId !== undefined) return;
         this.toolCallBlocks.updateResult(event.toolCallId, event.result, event.isError);

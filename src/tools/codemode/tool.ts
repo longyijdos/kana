@@ -49,7 +49,7 @@ export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mi
       declarations,
     ].join("\n\n"),
     parameters: codemodeParameters,
-    execution: { concurrency: "exclusive" },
+    execution: { concurrency: "exclusive", deadlineMs: 15 * 60 * 1000 },
     async execute({ code }: Static<typeof codemodeParameters>, context: CodemodeToolContext) {
       const invokeTool = context.invokeTool;
       const images: UserImage[] = [];

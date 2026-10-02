@@ -85,4 +85,10 @@ export type AgentEvent =
       toolName: string;
       result: unknown;
       isError: boolean;
+    }
+  | {
+      type: "tool_execution_pause" | "tool_execution_resume";
+      toolCallId: string;
+      toolName: string;
+      reason: "approval";
     };
