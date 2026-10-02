@@ -37,6 +37,8 @@ A plain string return becomes `content`; another ordinary value is JSON-serializ
 
 ## Invocation pipeline
 
+`ToolRuntime.invoke(toolCall, { signal?, onAbortRun? })` executes one call through the same validation, approval, cancellation, deadline, normalization, and event pipeline as model-proposed calls. It returns `{ toolCall, result, isError, abortRun? }`, where `result` is the complete normalized `ToolResult`. It does not apply result policies, limit content, create artifacts, or commit messages. `ToolRuntime.execute()` owns batch scheduling and history preparation; callers of `invoke()` own scheduling and must handle `abortRun` or supply `onAbortRun` for immediate notification.
+
 Every proposed call follows one contained pipeline:
 
 1. Resolve the tool by name; a missing tool becomes an error result.

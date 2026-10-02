@@ -16,6 +16,128 @@ const labeledParameters = Type.Object({
 });
 
 describe("ToolRuntime invocation lifecycle", () => {
+  test("invokes with complete results and live events without preparing history", async () => {
+    const operations: string[] = [];
+    const canonicalResult = { payload: "x".repeat(128 * 1_024 + 1) };
+    const content = "complete model-facing output";
+    const tool = {
+      name: "full_result",
+      description: "Return complete data.",
+      parameters: labeledParameters,
+      execute: ({ label }, context) => {
+        operations.push(`execute:${label}`);
+        context.update("progress");
+        return { content, result: canonicalResult };
+      },
+    } satisfies Tool<typeof labeledParameters, typeof canonicalResult>;
+    const call = toolCall("call-full", tool.name);
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: ({ toolCall: approvedCall }) => {
+          operations.push("approve");
+          (approvedCall.args as { label: string }).label = "changed by approval";
+          return { type: "continue" };
+        },
+        limitToolContent: () => {
+          operations.push("limit");
+          return "limited";
+        },
+        toolResultPolicy: {
+          source: "history_policy",
+          finalize: () => {
+            operations.push("finalize");
+            return { content: "preview", persistResult: false };
+          },
+        },
+        onMessageCommitted: () => {
+          operations.push("commit");
+        },
+      },
+      (event) => {
+        operations.push(event.type);
+        if (event.type === "tool_execution_end") {
+          expect(event.result).toBe(canonicalResult);
+        }
+      },
+    );
+
+    const invoked = await runtime.invoke(call);
+
+    expect(operations).toEqual([
+      "approve",
+      "tool_execution_start",
+      "execute:call-full",
+      "tool_execution_update",
+      "tool_execution_end",
+    ]);
+    expect(invoked.toolCall).toEqual(call);
+    expect(invoked.toolCall).not.toBe(call);
+    expect(invoked.result.content).toBe(content);
+    expect(invoked.result.result).toBe(canonicalResult);
+    expect(invoked.isError).toBe(false);
+    expect(invoked.abortRun ?? false).toBe(false);
+  });
+
+  test("invokes through validation and approval cancellation with the caller's signal", async () => {
+    const controller = new AbortController();
+    const completions: string[] = [];
+    let approvalCount = 0;
+    let executionCount = 0;
+    let abortCount = 0;
+    const tool = {
+      name: "denied",
+      description: "Require approval.",
+      parameters: labeledParameters,
+      execute: () => {
+        executionCount += 1;
+        return "unexpected";
+      },
+    } satisfies Tool<typeof labeledParameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: ({ signal }) => {
+          approvalCount += 1;
+          expect(signal).toBe(controller.signal);
+          return { type: "cancel", message: "Approval denied." };
+        },
+      },
+      (event) => {
+        expect(event.type).toBe("tool_execution_end");
+        if (event.type === "tool_execution_end") completions.push(event.toolCallId);
+      },
+    );
+    const options = {
+      signal: controller.signal,
+      onAbortRun: () => {
+        abortCount += 1;
+      },
+    };
+
+    const invalid = await runtime.invoke(
+      { type: "tool_call", id: "invalid", name: tool.name, args: {} },
+      options,
+    );
+    const denied = await runtime.invoke(toolCall("denied", tool.name), options);
+
+    expect(invalid.isError).toBe(true);
+    expect(invalid.result.content).toContain("label");
+    expect(denied).toMatchObject({
+      result: {
+        content: "Approval denied.",
+        result: { error: "Approval denied.", canceled: true },
+        isError: true,
+      },
+      isError: true,
+      abortRun: true,
+    });
+    expect(approvalCount).toBe(1);
+    expect(executionCount).toBe(0);
+    expect(abortCount).toBe(1);
+    expect(completions).toEqual(["invalid", "denied"]);
+  });
+
   test("serializes update events and publishes completion before committing the result", async () => {
     const operations: string[] = [];
     const tool = {

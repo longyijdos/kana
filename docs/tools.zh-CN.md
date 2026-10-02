@@ -37,6 +37,8 @@ type ToolContext = {
 
 ## 调用管线
 
+`ToolRuntime.invoke(toolCall, { signal?, onAbortRun? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
+
 每个调用都进入同一条受控管线：
 
 1. 按名称解析工具；找不到时生成错误结果。

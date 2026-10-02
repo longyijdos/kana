@@ -157,6 +157,19 @@ export class ToolRuntime {
     assertValidToolResultPolicies(this.toolResultPolicies);
   }
 
+  async invoke(
+    toolCall: ToolCallContent,
+    options: { signal?: AbortSignal; onAbortRun?: () => void } = {},
+  ): Promise<ExecutedToolCall> {
+    const executed = await this.executeToolCall(
+      structuredClone(toolCall),
+      options.signal ?? new AbortController().signal,
+      options.onAbortRun,
+    );
+    await this.publishExecutionEnd(executed);
+    return executed;
+  }
+
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
     // Capture the model output once. Approval hooks and policies receive
     // separate clones so they cannot rewrite the durable call description.
