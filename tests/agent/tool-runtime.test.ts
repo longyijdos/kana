@@ -8,6 +8,7 @@ import {
 } from "../../src/agent/tool-runtime";
 import type { Message } from "../../src/core";
 import type { Logger, LogMetadata } from "../../src/logging";
+import type { CodemodeToolContext } from "../../src/tools";
 import type { Tool } from "../../src/tools/tool";
 
 const parameters = Type.Object({});
@@ -641,6 +642,226 @@ describe("ToolRuntime deadlines and configuration", () => {
         error: 'Tool "invalid" execution.deadlineMs must be a positive integer.',
       },
     });
+  });
+});
+
+describe("ToolRuntime nested invocations", () => {
+  test("only run_code receives the nested invocation context", async () => {
+    let ordinaryCalls = 0;
+    const ordinary = {
+      name: "ordinary",
+      description: "Use the normal tool context.",
+      parameters,
+      execute(_args, context) {
+        expect(context).not.toHaveProperty("invokeTool");
+        ordinaryCalls += 1;
+        return "ordinary result";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const codemode = {
+      name: "run_code",
+      description: "Use the orchestration context.",
+      parameters,
+      async execute(_args, context: CodemodeToolContext) {
+        expect(typeof context.invokeTool).toBe("function");
+        return (await context.invokeTool("ordinary", {})).result;
+      },
+    } satisfies Tool;
+    const runtime = new ToolRuntime({ tools: [ordinary, codemode] }, () => {});
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "ordinary", name: "ordinary", args: {} },
+      { type: "tool_call", id: "code", name: "run_code", args: {} },
+    ]);
+
+    expect(ordinaryCalls).toBe(2);
+    expect(result.toolResults.map((message) => message.content)).toEqual([
+      "ordinary result",
+      "ordinary result",
+    ]);
+  });
+
+  test.each([true, false])(
+    "bounds parallel calls and preserves exclusive barriers (parallel=%s)",
+    async (parallelToolCalls) => {
+      const starts: string[] = [];
+      const finish = new Map<string, () => void>();
+      const makeTool = (name: string, concurrency: "parallel" | "exclusive") =>
+        ({
+          name,
+          description: name,
+          parameters: labeledParameters,
+          execution: { concurrency },
+          execute: ({ label }) =>
+            new Promise<string>((resolve) => {
+              starts.push(label);
+              finish.set(label, () => resolve(label));
+            }),
+        }) satisfies Tool<typeof labeledParameters, string>;
+      const outer = {
+        name: "run_code",
+        description: "Invoke a group of nested calls.",
+        parameters,
+        async execute(_args, { invokeTool }: CodemodeToolContext) {
+          const calls = [
+            ["parallel", "p1"],
+            ["parallel", "p2"],
+            ["parallel", "p3"],
+            ["exclusive", "barrier"],
+            ["parallel", "p4"],
+          ];
+          const results = await Promise.all(
+            calls.map(([name, label]) => invokeTool(name!, { label })),
+          );
+          return results.map((result) => result.result);
+        },
+      } satisfies Tool<typeof parameters, unknown[]>;
+      const runtime = new ToolRuntime(
+        {
+          tools: [outer, makeTool("parallel", "parallel"), makeTool("exclusive", "exclusive")],
+          parallelToolCalls,
+          maxParallelToolCalls: 2,
+        },
+        () => {},
+      );
+      const execution = runtime.execute([
+        { type: "tool_call", id: "outer", name: "run_code", args: {} },
+      ]);
+
+      await waitFor(() => finish.has(parallelToolCalls ? "p2" : "p1"));
+      expect(starts).toEqual(parallelToolCalls ? ["p1", "p2"] : ["p1"]);
+      finish.get("p1")!();
+      await waitFor(() => finish.has(parallelToolCalls ? "p3" : "p2"));
+      expect(starts).toEqual(parallelToolCalls ? ["p1", "p2", "p3"] : ["p1", "p2"]);
+      finish.get("p2")!();
+      await waitFor(() => finish.has("p3"));
+      expect(finish.has("barrier")).toBe(false);
+      finish.get("p3")!();
+      await waitFor(() => finish.has("barrier"));
+      expect(finish.has("p4")).toBe(false);
+      finish.get("barrier")!();
+      await waitFor(() => finish.has("p4"));
+      finish.get("p4")!();
+
+      expect((await execution).toolResults[0]?.result).toEqual(["p1", "p2", "p3", "barrier", "p4"]);
+    },
+  );
+
+  test("serializes nested approval hooks", async () => {
+    const approvals: string[] = [];
+    const approve: Array<() => void> = [];
+    const child = {
+      name: "child",
+      description: "Require approval.",
+      parameters: labeledParameters,
+      execution: { concurrency: "parallel" },
+      execute: ({ label }) => label,
+    } satisfies Tool<typeof labeledParameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Invoke two tools.",
+      parameters,
+      execute: async (_args, { invokeTool }: CodemodeToolContext) => {
+        await Promise.all([
+          invokeTool("child", { label: "a" }),
+          invokeTool("child", { label: "b" }),
+        ]);
+        return "done";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [outer, child],
+        beforeToolExecution: ({ tool, args }) => {
+          if (tool.name === "run_code") return { type: "continue" };
+          approvals.push((args as { label: string }).label);
+          return new Promise((resolve) => approve.push(() => resolve({ type: "continue" })));
+        },
+      },
+      () => {},
+    );
+    const execution = runtime.execute([
+      { type: "tool_call", id: "outer", name: "run_code", args: {} },
+    ]);
+    await waitFor(() => approve.length === 1);
+    expect(approvals).toEqual(["a"]);
+    approve[0]!();
+    await waitFor(() => approve.length === 2);
+    expect(approvals).toEqual(["a", "b"]);
+    approve[1]!();
+    expect((await execution).abortRun).toBe(false);
+  });
+
+  test("canceling a child signal does not abort its parent", async () => {
+    const childController = new AbortController();
+    let started = false;
+    const child = {
+      name: "child",
+      description: "Wait for cancellation.",
+      parameters,
+      async execute(_args, { signal }) {
+        started = true;
+        await new Promise((resolve) => signal!.addEventListener("abort", resolve, { once: true }));
+        return "stopped";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Cancel a nested call.",
+      parameters,
+      async execute(_args, { invokeTool }: CodemodeToolContext) {
+        const pending = invokeTool("child", {}, { signal: childController.signal });
+        await waitFor(() => started);
+        childController.abort();
+        expect((await pending).isError).toBe(true);
+        return "done";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime({ tools: [outer, child] }, () => {});
+    const result = await runtime.execute([
+      { type: "tool_call", id: "outer", name: "run_code", args: {} },
+    ]);
+    expect(result.abortRun).toBe(false);
+    expect(result.toolResults[0]).toMatchObject({ content: "done", isError: false });
+  });
+
+  test("a nested deadline interrupts the parent and cancels queued calls", async () => {
+    let laterCount = 0;
+    const child = {
+      name: "child",
+      description: "Exceed a deadline.",
+      parameters,
+      execution: { deadlineMs: 5 },
+      execute: (_args, { signal }) =>
+        new Promise<string>((resolve) => {
+          signal!.addEventListener("abort", () => resolve("stopped"), { once: true });
+        }),
+    } satisfies Tool<typeof parameters, string>;
+    const later = {
+      name: "later",
+      description: "Stay queued.",
+      parameters,
+      execute: () => {
+        laterCount += 1;
+        return "unexpected";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Invoke two tools.",
+      parameters,
+      execute: async (_args, { invokeTool }: CodemodeToolContext) => {
+        await Promise.all([invokeTool("child", {}), invokeTool("later", {})]);
+        return "finished";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime({ tools: [outer, child, later] }, () => {});
+    const result = await runtime.execute([
+      { type: "tool_call", id: "outer", name: "run_code", args: {} },
+    ]);
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "canceled" } });
+    expect(laterCount).toBe(0);
   });
 });
 

@@ -23,6 +23,18 @@ afterEach(() => {
 });
 
 describe("Kana tool approval", () => {
+  test("run_code itself does not request approval", () => {
+    for (const mode of ["always", "unless_trusted", "never"] as const) {
+      expect(
+        shouldRequestToolApproval(
+          { mode },
+          approvals(),
+          toolCall("run_code", { code: "return 1" }),
+        ),
+      ).toBe(false);
+    }
+  });
+
   test("always requests a user task decision, including in never mode", () => {
     for (const mode of ["always", "unless_trusted", "never"] as const) {
       expect(

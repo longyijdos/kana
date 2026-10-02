@@ -10,6 +10,7 @@ import {
 } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
 import {
+  type CodemodeToolContext,
   normalizeToolResult,
   type Tool,
   type ToolConcurrency,
@@ -93,6 +94,14 @@ type ExecutedToolCall = {
   result: ToolResult;
   isError: boolean;
   abortRun?: boolean;
+};
+
+type NestedToolCall = {
+  toolCall: ToolCallContent;
+  signal: AbortSignal;
+  concurrency: ToolConcurrency;
+  resolve(result: ToolResult): void;
+  reject(error: unknown): void;
 };
 
 type ToolInterruption =
@@ -725,6 +734,13 @@ export class ToolRuntime {
           toolCallId: toolCall.id,
           signal: invocationController.signal,
           update,
+          ...(tool.name === "run_code"
+            ? {
+                invokeTool: this.createNestedToolInvoker(invocationController.signal, () =>
+                  interrupt({ reason: "run_aborted" }),
+                ),
+              }
+            : {}),
         }),
       )
       .then(
@@ -750,6 +766,59 @@ export class ToolRuntime {
         }
       },
     };
+  }
+
+  private createNestedToolInvoker(
+    parentSignal: AbortSignal,
+    onAbortRun: () => void,
+  ): CodemodeToolContext["invokeTool"] {
+    const queue: NestedToolCall[] = [];
+    const limit = this.config.parallelToolCalls === false ? 1 : this.maxParallelToolCalls;
+    let activeCount = 0;
+    let exclusiveActive = false;
+
+    const drain = (): void => {
+      if (exclusiveActive) return;
+      while (queue.length > 0 && activeCount < limit) {
+        const next = queue[0] as NestedToolCall;
+        if (next.concurrency === "exclusive" && activeCount > 0) return;
+        queue.shift();
+        activeCount += 1;
+        exclusiveActive = next.concurrency === "exclusive";
+        void this.invoke(next.toolCall, {
+          signal: next.signal,
+          onAbortRun: () => {
+            // The sandbox also cancels unawaited calls after normal script completion.
+            if (!next.signal.aborted) onAbortRun();
+          },
+        })
+          .then((executed) => next.resolve(executed.result), next.reject)
+          .finally(() => {
+            activeCount -= 1;
+            exclusiveActive = false;
+            drain();
+          });
+        if (exclusiveActive) return;
+      }
+    };
+
+    return (name, args, options = {}) =>
+      new Promise<ToolResult>((resolve, reject) => {
+        const toolCall: ToolCallContent = {
+          type: "tool_call",
+          id: crypto.randomUUID(),
+          name,
+          args,
+        };
+        queue.push({
+          toolCall,
+          signal: combineAbortSignals(parentSignal, options.signal) as AbortSignal,
+          concurrency: this.readToolConcurrency(toolCall),
+          resolve,
+          reject,
+        });
+        drain();
+      });
   }
 
   private async runBeforeToolExecution(

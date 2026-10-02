@@ -39,6 +39,8 @@ A plain string return becomes `content`; another ordinary value is JSON-serializ
 
 `ToolRuntime.invoke(toolCall, { signal?, onAbortRun? })` executes one call through the same validation, approval, cancellation, deadline, normalization, and event pipeline as model-proposed calls. It returns `{ toolCall, result, isError, abortRun? }`, where `result` is the complete normalized `ToolResult`. It does not apply result policies, limit content, create artifacts, or commit messages. `ToolRuntime.execute()` owns batch scheduling and history preparation; callers of `invoke()` own scheduling and must handle `abortRun` or supply `onAbortRun` for immediate notification.
 
+Only the tool named `run_code` receives `CodemodeToolContext`, which extends the ordinary context with `invokeTool(name, args, { signal? })`. Ordinary tools have no such field in either their context type or runtime object. Nested invocation returns the full normalized `ToolResult` through `invoke()` without preparing history. Each codemode invocation owns a queue that follows the runtime's parallel-call switch and concurrency limit, with exclusive calls acting as barriers. Nested approvals share the runtime's serial hook queue. A nested `abortRun` interrupts codemode; cancellation of a child signal alone does not. Inner calls publish the usual execution events but do not become separate historical tool messages.
+
 Every proposed call follows one contained pipeline:
 
 1. Resolve the tool by name; a missing tool becomes an error result.
@@ -97,7 +99,11 @@ Scripts retain the package's interfaces: `tools`, `ALL_TOOLS`, `text`, `image`, 
 
 The factory returns the package's sandbox without changing its result format. Successful execution returns `ok`, `value`, `output`, `calls`, and `storeWrites`; failed execution returns `ok: false`, `error`, `output`, and `calls`. Store changes are reported to the caller rather than persisted automatically. This host API does not register a model-facing tool.
 
-Source execution loads the local Worker and WASM. Bun executable builds embed the Worker entrypoint and WASM asset; sandbox execution does not require external package files beside the binary.
+`createCodemodeTool({ tools })` creates an exclusive tool named `run_code` with `{ code: string }` input. Its script tools use `context.invokeTool()` and resolve to the complete canonical `result`; failed calls reject inside the script. The outer tool does not request Kana approval, while nested calls follow their own rules. The Agent invocation deadline controls the whole script through its signal; the sandbox's separate timer is disabled for this tool. The script cannot call `tools.run_code()`.
+
+The tool's `content` contains explicit text output followed by its JSON-encoded return value or script error; `image()` output becomes visual observations with decoded dimensions. Its structured `result` retains the package's `CodemodeResult`, including call names, statuses, durations, and successful store writes. Store writes are not automatically reused by later executions. Live frontends receive nested execution events; history and resumed transcripts retain only the outer result, subject to the ordinary result-retention limit. The factory does not automatically add `run_code` to a Kana Agent's configured tools.
+
+Source execution loads the local Worker and WASM. Bun executable builds list the Worker as an additional entrypoint and embed WASM through its static file import; sandbox execution does not require external package files beside the binary.
 
 ## Built-in tools
 

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { createCodemodeSandbox } from "../../src/tools";
-import { createWorkspaceToolFixture } from "./workspace-fixture";
+import { Type } from "typebox";
+import { ToolRuntime } from "../../src/agent/tool-runtime";
+import { createCodemodeSandbox, createCodemodeTool, type Tool } from "../../src/tools";
+import { createWorkspaceToolFixture, expectToolResult } from "./workspace-fixture";
 
 const sandboxes: ReturnType<typeof createCodemodeSandbox>[] = [];
 const { createTempRoot, cleanupTempRoots } = createWorkspaceToolFixture();
@@ -9,6 +11,160 @@ const { createTempRoot, cleanupTempRoots } = createWorkspaceToolFixture();
 afterEach(async () => {
   await Promise.all(sandboxes.splice(0).map((sandbox) => sandbox.close()));
   await cleanupTempRoots();
+});
+
+describe("codemode tool", () => {
+  const parameters = Type.Object({});
+  const canonicalResult = { payload: "x".repeat(200_000) };
+  const read = {
+    name: "read",
+    description: "Return a complete result.",
+    parameters,
+    execute: () => ({ content: "formatted preview", result: canonicalResult }),
+  } satisfies Tool<typeof parameters, typeof canonicalResult>;
+
+  test("uses complete results through approval and commits only the script output", async () => {
+    const approvals: string[] = [];
+    const completions: string[] = [];
+    const commits: string[] = [];
+    const codemode = createCodemodeTool({ tools: [read] });
+    const runtime = new ToolRuntime(
+      {
+        tools: [codemode, read],
+        beforeToolExecution: ({ tool }) => {
+          approvals.push(tool.name);
+          return { type: "continue" };
+        },
+        onMessageCommitted: (message) => {
+          if (message.role === "tool") commits.push(message.toolName);
+        },
+      },
+      (event) => {
+        if (event.type === "tool_execution_end") completions.push(event.toolName);
+      },
+    );
+    const execution = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "code",
+        name: "run_code",
+        args: {
+          code: 'const data = await tools.read({}); text("selected"); return data.payload.length;',
+        },
+      },
+    ]);
+
+    expect(approvals).toEqual(["run_code", "read"]);
+    expect(completions).toEqual(["read", "run_code"]);
+    expect(commits).toEqual(["run_code"]);
+    expect(execution.toolResults).toHaveLength(1);
+    expect(execution.toolResults[0]).toMatchObject({
+      content: "selected\n200000",
+      isError: false,
+      result: { ok: true, value: 200_000, calls: [{ name: "read", status: "ok" }] },
+    });
+  });
+
+  test("maps native output, images, store writes, and catchable tool failures", async () => {
+    const codemode = createCodemodeTool({ tools: [read, { ...read, name: "run_code" }] });
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    const result = await codemode.execute(
+      {
+        code: `
+          try { await tools.read({}); } catch (error) { text(error.message); }
+          image("data:image/png;base64,${png}");
+          store("key", { value: 1 });
+          return { value: load("key"), nestedCodemode: "run_code" in tools };
+        `,
+      },
+      {
+        toolCallId: "code",
+        update() {},
+        invokeTool: async () => ({ content: "operation failed", result: {}, isError: true }),
+      },
+    );
+    expectToolResult(result);
+    expect(result.content).toBe('operation failed\n{"value":{"value":1},"nestedCodemode":false}');
+    expect(result.images).toEqual([{ data: png, mimeType: "image/png", width: 1, height: 1 }]);
+    expect(result.result).toMatchObject({
+      ok: true,
+      calls: [{ name: "read", status: "error" }],
+      storeWrites: { set: { key: { value: 1 } }, delete: [] },
+    });
+  });
+
+  test("retains output before a script error", async () => {
+    const codemode = createCodemodeTool({ tools: [] });
+    const result = await codemode.execute(
+      { code: 'text("before"); throw new Error("script failed");' },
+      { toolCallId: "code", update() {}, invokeTool: async () => read.execute() },
+    );
+    expectToolResult(result);
+    expect(result.content).toContain("before\nError: script failed");
+    expect(result.isError).toBe(true);
+    expect(result.result).toMatchObject({ ok: false, error: { kind: "script" } });
+  });
+
+  test("approval denial aborts the script even when its code catches tool errors", async () => {
+    let afterCount = 0;
+    const after = {
+      ...read,
+      name: "after",
+      execute: () => {
+        afterCount += 1;
+        return "unexpected";
+      },
+    };
+    const codemode = createCodemodeTool({ tools: [read, after] });
+    const runtime = new ToolRuntime(
+      {
+        tools: [codemode, read, after],
+        beforeToolExecution: ({ tool }) =>
+          tool.name === "read"
+            ? { type: "cancel", message: "Approval denied." }
+            : { type: "continue" },
+      },
+      () => {},
+    );
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "code",
+        name: "run_code",
+        args: { code: "try { await tools.read({}); } catch {} await tools.after({});" },
+      },
+      { type: "tool_call", id: "after", name: "after", args: {} },
+    ]);
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults.map((message) => message.isError)).toEqual([true, true]);
+    expect(afterCount).toBe(0);
+  });
+
+  test("the Agent deadline terminates a running script", async () => {
+    let started = false;
+    const ready = {
+      ...read,
+      name: "ready",
+      execute: () => {
+        started = true;
+        return true;
+      },
+    };
+    const codemode = createCodemodeTool({ tools: [ready] });
+    const runtime = new ToolRuntime({ tools: [codemode, ready], defaultDeadlineMs: 200 }, () => {});
+    const result = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "code",
+        name: "run_code",
+        args: { code: "await tools.ready({}); while (true) {}" },
+      },
+    ]);
+    expect(started).toBe(true);
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "timed_out" } });
+  });
 });
 
 function createSandbox(options: Parameters<typeof createCodemodeSandbox>[0]) {
@@ -122,7 +278,6 @@ describe("codemode sandbox", () => {
       entrypoints: [
         path.join(projectRoot, "tests/fixtures/codemode-sandbox.ts"),
         path.join(projectRoot, "src/tools/codemode/worker.ts"),
-        path.join(projectRoot, "node_modules/quickjs-wasi/quickjs.wasm"),
       ],
       compile: { outfile: binary },
     });

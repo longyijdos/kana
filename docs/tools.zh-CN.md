@@ -39,6 +39,8 @@ type ToolContext = {
 
 `ToolRuntime.invoke(toolCall, { signal?, onAbortRun? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
 
+只有名为 `run_code` 的工具收到 `CodemodeToolContext`，它在普通 context 的基础上增加 `invokeTool(name, args, { signal? })`。普通工具的 context 类型和运行时对象均没有这个字段。内部调用通过 `invoke()` 返回完整的规范化 `ToolResult`，不生成历史消息。每个 codemode 调用持有自己的队列，遵守 runtime 的并发开关和数量上限，exclusive 调用形成 barrier。内部调用的审批共用 runtime 的串行 hook 队列。内部调用要求 `abortRun` 时会中断 codemode；仅取消子调用的 signal 不会。内部调用发布通常的执行事件，但不会成为独立的历史工具消息。
+
 每个调用都进入同一条受控管线：
 
 1. 按名称解析工具；找不到时生成错误结果。
@@ -97,7 +99,11 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回 `ok`、`value`、`output`、`calls` 和 `storeWrites`；失败时返回 `ok: false`、`error`、`output` 和 `calls`。Store 改动仅报告给调用方，不会自动持久化。这个 host API 不会注册模型可见工具。
 
-源码执行会加载本地 Worker 和 WASM。Bun 可执行文件构建会嵌入 Worker 入口和 WASM asset；沙箱执行不依赖 binary 旁边的外部包文件。
+`createCodemodeTool({ tools })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。Agent 调用的 deadline 通过 signal 控制整个脚本；这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
+
+工具的 `content` 包含显式文本输出，以及随后以 JSON 编码的返回值或脚本错误；`image()` 输出转为带解码尺寸的视觉观察。结构化 `result` 保留包提供的 `CodemodeResult`，包括调用名称、状态、耗时和成功时的 store 改动。Store 改动不会自动用于后续执行。实时前端收到内部执行事件；历史和 resume 后的 transcript 只保留外层结果，并遵守普通 result 保存上限。Factory 不会自动把 `run_code` 加入 Kana Agent 的配置工具。
+
+源码执行会加载本地 Worker 和 WASM。Bun 可执行文件构建将 Worker 列为额外入口，通过静态 file import 嵌入 WASM；沙箱执行不依赖 binary 旁边的外部包文件。
 
 ## 内置工具
 
