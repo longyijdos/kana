@@ -85,7 +85,7 @@ Server 失败会被诊断、关闭并隔离，不关闭成功连接的 client。
 
 ## 配置与前端集成
 
-`<KANA_HOME>/mcp.json` 保存 server 定义，`<KANA_HOME>/mcp-enabled.json` 保存启用 ID。只有同时出现在两者中的 server 才启动。用户的 `/mcp` 操作改变启用状态；模型的 `mcp_list_tools` 仅读取目录。直接修改文件需要重启。完整配置字段见[配置与安装](configuration.zh-CN.md)。
+`<KANA_HOME>/mcp.json` 保存 server 定义，`<KANA_HOME>/mcp-enabled.json` 保存启用 ID。只有同时出现在两者中的 server 才启动。用户的 `/mcp` 操作改变启用状态；模型的 `mcp_list_tools` 与 `mcp_get_tool` 仅读取缓存目录。直接修改文件需要重启。完整配置字段见[配置与安装](configuration.zh-CN.md)。
 
 主对话初始无 MCP 入口。交互启动先显示所选 session，再加载 MCP 并用三个入口重建 Agent。Headless 在提交 run 前初始化 MCP，并要求交互 OAuth 已提前完成。Clean mode 不创建 MCP 工具。Memory-consolidation Agent 永不获得 MCP 工具。
 
