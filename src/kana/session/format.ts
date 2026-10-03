@@ -538,6 +538,10 @@ function isMessage(value: unknown): value is Message {
     typeof message.toolCallId === "string" &&
     typeof message.toolName === "string" &&
     typeof message.content === "string" &&
+    (message.durationMs === undefined ||
+      (typeof message.durationMs === "number" &&
+        Number.isFinite(message.durationMs) &&
+        message.durationMs >= 0)) &&
     (message.images === undefined ||
       (Array.isArray(message.images) && message.images.every(isUserImage))) &&
     (message.artifact === undefined || isToolResultArtifact(message.artifact)) &&

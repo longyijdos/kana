@@ -38,7 +38,11 @@ export function createSubagentInspectionView(
         const block = new ToolCallBlock(content, Date.now, { summaryOnly: true });
         const result = results.get(content.id);
         if (result) {
-          block.updateResult(result.result ?? result.artifact ?? result.content, result.isError);
+          block.updateResult(
+            result.result ?? result.artifact ?? result.content,
+            result.isError,
+            result.durationMs,
+          );
         } else if (inspection.status !== "running") {
           block.markCanceled();
         }

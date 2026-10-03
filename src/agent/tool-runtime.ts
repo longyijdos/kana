@@ -94,6 +94,7 @@ type ExecutedToolCall = {
   toolCall: ToolCallContent;
   result: ToolResult;
   isError: boolean;
+  durationMs: number;
   abortRun?: boolean;
 };
 
@@ -101,6 +102,7 @@ type NestedToolCall = {
   toolCall: ToolCallContent;
   signal: AbortSignal;
   concurrency: ToolConcurrency;
+  onExecutionEnd?: (durationMs: number) => void;
   resolve(result: ToolResult): void;
   reject(error: unknown): void;
 };
@@ -170,7 +172,12 @@ export class ToolRuntime {
 
   async invoke(
     toolCall: ToolCallContent,
-    options: { signal?: AbortSignal; onAbortRun?: () => void; parentToolCallId?: string } = {},
+    options: {
+      signal?: AbortSignal;
+      onAbortRun?: () => void;
+      parentToolCallId?: string;
+      onExecutionEnd?: (durationMs: number) => void;
+    } = {},
   ): Promise<ExecutedToolCall> {
     const executed = await this.executeToolCall(
       structuredClone(toolCall),
@@ -178,6 +185,7 @@ export class ToolRuntime {
       options.onAbortRun,
       this.config.callableTools ?? this.config.tools,
       options.parentToolCallId,
+      options.onExecutionEnd,
     );
     await this.publishExecutionEnd(executed, options.parentToolCallId);
     return executed;
@@ -390,6 +398,7 @@ export class ToolRuntime {
               "internal_scheduler_failure",
             ),
             isError: true,
+            durationMs: 0,
             abortRun: true,
           };
         }
@@ -441,6 +450,7 @@ export class ToolRuntime {
             ? createUnknownToolResult(message, "internal_scheduler_failure")
             : createCanceledToolResult(message),
           isError: true,
+          durationMs: 0,
         };
         outcomes[index] = executed;
         try {
@@ -500,6 +510,7 @@ export class ToolRuntime {
         toolCall,
         result: createCanceledToolResult(message),
         isError: true,
+        durationMs: 0,
       } satisfies ExecutedToolCall;
       await this.publishExecutionEnd(executed);
       const finalized = await this.commitResult(executed);
@@ -514,7 +525,9 @@ export class ToolRuntime {
     onAbortRun?: () => void,
     tools = this.config.tools,
     parentToolCallId?: string,
+    onExecutionEnd?: (durationMs: number) => void,
   ): Promise<ExecutedToolCall> {
+    let durationMs = 0;
     const tool = tools?.find((candidate) => candidate.name === toolCall.name);
 
     if (!tool) {
@@ -522,6 +535,7 @@ export class ToolRuntime {
         toolCall,
         result: createErrorToolResult(`Tool "${toolCall.name}" not found`),
         isError: true,
+        durationMs,
       };
     }
 
@@ -549,6 +563,7 @@ export class ToolRuntime {
           toolCall,
           result: createCanceledToolResult(beforeResult.message),
           isError: true,
+          durationMs,
           abortRun: shouldAbortRun,
         };
       }
@@ -559,6 +574,7 @@ export class ToolRuntime {
           toolCall,
           result: createCanceledToolResult("Tool call canceled before execution."),
           isError: true,
+          durationMs,
           abortRun: true,
         };
       }
@@ -569,6 +585,7 @@ export class ToolRuntime {
           toolCall,
           result,
           isError: result.isError ?? false,
+          durationMs,
         };
       }
 
@@ -599,6 +616,10 @@ export class ToolRuntime {
             partialResult,
             ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
           });
+        },
+        (elapsedMs) => {
+          durationMs = elapsedMs;
+          onExecutionEnd?.(elapsedMs);
         },
       );
       const firstOutcome = await Promise.race([
@@ -635,6 +656,7 @@ export class ToolRuntime {
             toolCall,
             result: createInterruptedToolResult(firstOutcome.interruption, false),
             isError: true,
+            durationMs,
             abortRun: true,
           };
         }
@@ -662,6 +684,7 @@ export class ToolRuntime {
             this.cancellationGraceMs,
           ),
           isError: true,
+          durationMs,
           abortRun: true,
         };
       }
@@ -678,6 +701,7 @@ export class ToolRuntime {
         toolCall,
         result,
         isError: result.isError ?? false,
+        durationMs,
       };
     } catch (error) {
       acceptsUpdates = false;
@@ -688,6 +712,7 @@ export class ToolRuntime {
           toolCall,
           result: createErrorToolResult(formatError(updateError)),
           isError: true,
+          durationMs,
           abortRun,
         };
       }
@@ -695,6 +720,7 @@ export class ToolRuntime {
         toolCall,
         result: createErrorToolResult(formatError(error)),
         isError: true,
+        durationMs,
         abortRun,
       };
     }
@@ -707,6 +733,7 @@ export class ToolRuntime {
     deadlineMs: number | undefined,
     groupSignal: AbortSignal,
     update: (partialResult: unknown) => void,
+    onExecutionEnd: (durationMs: number) => void,
   ): {
     settlement: Promise<ToolExecutionSettlement>;
     interruption: Promise<ToolInterruption>;
@@ -718,12 +745,27 @@ export class ToolRuntime {
     const interruption = new Promise<ToolInterruption>((resolve) => {
       resolveInterruption = resolve;
     });
+    let executionStartedAt: number | undefined;
+    let executionEndedAt: number | undefined;
+    let approvalStartedAt: number | undefined;
+    let approvalWaitMs = 0;
+    const finishExecution = (): void => {
+      if (executionEndedAt !== undefined) return;
+      executionEndedAt = performance.now();
+      const waitingMs =
+        approvalWaitMs +
+        (approvalStartedAt === undefined ? 0 : executionEndedAt - approvalStartedAt);
+      onExecutionEnd(
+        executionStartedAt === undefined ? 0 : executionEndedAt - executionStartedAt - waitingMs,
+      );
+    };
     const interrupt = (value: ToolInterruption): void => {
       if (interruptionValue) {
         return;
       }
 
       interruptionValue = value;
+      finishExecution();
       this.log("warn", "tool.execution_cancellation_requested", {
         toolName: tool.name,
         reason: value.reason,
@@ -756,6 +798,7 @@ export class ToolRuntime {
         if (invocationController.signal.aborted) return;
         waitingApprovals += waiting ? 1 : -1;
         if (waiting && waitingApprovals === 1) {
+          approvalStartedAt = performance.now();
           if (deadlineTimer !== undefined) {
             clearTimeout(deadlineTimer);
             deadlineTimer = undefined;
@@ -770,6 +813,8 @@ export class ToolRuntime {
             reason: "approval",
           });
         } else if (!waiting && waitingApprovals === 0) {
+          approvalWaitMs += performance.now() - approvalStartedAt!;
+          approvalStartedAt = undefined;
           deadlineTimer = startDeadline();
           this.events.push({
             type: "tool_execution_resume",
@@ -781,8 +826,9 @@ export class ToolRuntime {
       });
     }
     const settlement = Promise.resolve()
-      .then(() =>
-        tool.execute(args, {
+      .then(() => {
+        executionStartedAt = performance.now();
+        return tool.execute(args, {
           toolCallId: toolCall.id,
           signal: invocationController.signal,
           update,
@@ -795,17 +841,17 @@ export class ToolRuntime {
                 ),
               }
             : {}),
-        }),
-      )
+        });
+      })
       .then(
-        (value): ToolExecutionSettlement => ({
-          type: "fulfilled",
-          value,
-        }),
-        (error): ToolExecutionSettlement => ({
-          type: "rejected",
-          error,
-        }),
+        (value): ToolExecutionSettlement => {
+          finishExecution();
+          return { type: "fulfilled", value };
+        },
+        (error): ToolExecutionSettlement => {
+          finishExecution();
+          return { type: "rejected", error };
+        },
       );
 
     return {
@@ -844,6 +890,7 @@ export class ToolRuntime {
         void this.invoke(next.toolCall, {
           signal: next.signal,
           parentToolCallId,
+          onExecutionEnd: next.onExecutionEnd,
           onAbortRun: () => {
             // The sandbox also cancels unawaited calls after normal script completion.
             if (!next.signal.aborted) onAbortRun();
@@ -874,6 +921,7 @@ export class ToolRuntime {
             toolCall,
             this.config.callableTools ?? this.config.tools,
           ),
+          onExecutionEnd: options.onExecutionEnd,
           resolve,
           reject,
         });
@@ -930,6 +978,7 @@ export class ToolRuntime {
       toolCallId: executed.toolCall.id,
       toolName: executed.toolCall.name,
       content: this.config.limitToolContent?.(finalized.content) ?? finalized.content,
+      durationMs: executed.durationMs,
       ...(executed.result.images?.length
         ? { images: structuredClone(executed.result.images) }
         : {}),
@@ -1020,6 +1069,7 @@ export class ToolRuntime {
       result: executed.result.result,
       isError: executed.isError,
       ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
+      durationMs: executed.durationMs,
     });
   }
 

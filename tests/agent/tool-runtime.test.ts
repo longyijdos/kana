@@ -16,6 +16,113 @@ const labeledParameters = Type.Object({
   label: Type.String(),
 });
 
+describe("ToolRuntime execution duration", () => {
+  test.each([false, true])("records execution time after approval (throws=%s)", async (throws) => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const events: AgentEvent[] = [];
+    const tool = {
+      name: "timed",
+      description: "Measure execution only.",
+      parameters,
+      execute() {
+        now += 25;
+        if (throws) throw new Error("failed");
+        return { value: "done" };
+      },
+    } satisfies Tool;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: () => {
+          now += 1_000;
+          return { type: "continue" };
+        },
+      },
+      (event) => {
+        events.push(event);
+        now += 100;
+      },
+    );
+    try {
+      const execution = await runtime.execute([
+        { type: "tool_call", id: "timed", name: "timed", args: {} },
+      ]);
+      expect(execution.toolResults[0]).toMatchObject({ durationMs: 25, isError: throws });
+      expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
+        durationMs: 25,
+      });
+      expect(execution.toolResults[0]?.result).not.toHaveProperty("durationMs");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("records zero when execution is skipped", async () => {
+    let executions = 0;
+    const tool = {
+      name: "skipped",
+      description: "Never execute.",
+      parameters: labeledParameters,
+      execute() {
+        executions += 1;
+        return "unexpected";
+      },
+    } satisfies Tool;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: ({ args }) =>
+          (args as { label: string }).label === "denied"
+            ? { type: "cancel", abortRun: false }
+            : { type: "return", result: { content: "cached", result: "cached" } },
+      },
+      () => {},
+    );
+    const execution = await runtime.execute([
+      toolCall("missing", "missing"),
+      { ...toolCall("invalid", "skipped"), args: {} },
+      toolCall("denied", "skipped"),
+      toolCall("cached", "skipped"),
+    ]);
+    expect(executions).toBe(0);
+    expect(execution.toolResults.map((result) => result.durationMs)).toEqual([0, 0, 0, 0]);
+  });
+
+  test("stops timing at cancellation before cleanup settles", async () => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const controller = new AbortController();
+    let finish: (() => void) | undefined;
+    const durations: number[] = [];
+    const tool = {
+      name: "canceled",
+      description: "Wait for cleanup.",
+      parameters,
+      execute: () =>
+        new Promise((resolve) => {
+          finish = () => resolve("done");
+        }),
+    } satisfies Tool;
+    const runtime = new ToolRuntime({ tools: [tool] }, () => {});
+    try {
+      const execution = runtime.invoke(
+        { type: "tool_call", id: "cancel", name: "canceled", args: {} },
+        { signal: controller.signal, onExecutionEnd: (durationMs) => durations.push(durationMs) },
+      );
+      await waitFor(() => finish !== undefined);
+      now = 25;
+      controller.abort();
+      now = 100;
+      finish!();
+      expect(await execution).toMatchObject({ durationMs: 25, isError: true });
+      expect(durations).toEqual([25]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+});
+
 describe("ToolRuntime invocation lifecycle", () => {
   test("invokes with complete results and live events without preparing history", async () => {
     const operations: string[] = [];
@@ -646,6 +753,70 @@ describe("ToolRuntime deadlines and configuration", () => {
 });
 
 describe("ToolRuntime nested invocations", () => {
+  test("excludes scheduling and approval waits from nested and outer durations", async () => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const finishes = new Map<string, (elapsedMs: number) => void>();
+    const durations: number[] = [];
+    const child = {
+      name: "child",
+      description: "Wait for completion.",
+      parameters: labeledParameters,
+      execution: { concurrency: "parallel" },
+      execute: ({ label }) =>
+        new Promise<string>((resolve) => {
+          finishes.set(label, (elapsedMs) => {
+            now += elapsedMs;
+            resolve(label);
+          });
+        }),
+    } satisfies Tool<typeof labeledParameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Queue two calls.",
+      parameters,
+      execute: (_args, { invokeTool }: CodemodeToolContext) =>
+        Promise.all(
+          ["a", "b"].map((label, index) =>
+            invokeTool(
+              "child",
+              { label },
+              {
+                onExecutionEnd: (durationMs) => {
+                  durations[index] = durationMs;
+                },
+              },
+            ),
+          ),
+        ),
+    } satisfies Tool;
+    const runtime = new ToolRuntime(
+      {
+        tools: [outer, child],
+        maxParallelToolCalls: 1,
+        beforeToolExecution: () => {
+          now += 700;
+          return { type: "continue" };
+        },
+      },
+      () => {},
+    );
+    try {
+      const execution = runtime.execute([
+        { type: "tool_call", id: "outer", name: "run_code", args: {} },
+      ]);
+      await waitFor(() => finishes.has("a"));
+      expect(finishes.has("b")).toBe(false);
+      finishes.get("a")!(25);
+      await waitFor(() => finishes.has("b"));
+      finishes.get("b")!(45);
+      expect((await execution).toolResults[0]?.durationMs).toBe(70);
+      expect(durations).toEqual([25, 45]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("only run_code receives the nested invocation context", async () => {
     let ordinaryCalls = 0;
     const events: AgentEvent[] = [];

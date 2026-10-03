@@ -14,7 +14,11 @@ import { createCodemodeSandbox } from "./index";
 const codemodeParameters = strictObject({ code: Type.String() });
 
 export type CodemodeToolContext = ToolContext & {
-  invokeTool(name: string, args: unknown, options?: { signal?: AbortSignal }): Promise<ToolResult>;
+  invokeTool(
+    name: string,
+    args: unknown,
+    options?: { signal?: AbortSignal; onExecutionEnd?: (durationMs: number) => void },
+  ): Promise<ToolResult>;
 };
 
 export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mixed" | "only" }) {
@@ -53,12 +57,19 @@ export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mi
     async execute({ code }: Static<typeof codemodeParameters>, context: CodemodeToolContext) {
       const invokeTool = context.invokeTool;
       const images: UserImage[] = [];
+      const durations: number[] = [];
       const sandbox = createCodemodeSandbox({
         timeoutMs: Infinity,
         tools: definitions.map((tool) => ({
           ...tool,
           async execute(args, { signal }) {
-            const result = await invokeTool(tool.name, args, { signal });
+            const index = durations.push(0) - 1;
+            const result = await invokeTool(tool.name, args, {
+              signal,
+              onExecutionEnd: (durationMs) => {
+                durations[index] = durationMs;
+              },
+            });
             if (result.images) images.push(...result.images);
             if (result.isError) {
               throw new Error(result.content);
@@ -70,6 +81,11 @@ export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mi
 
       try {
         const result = await sandbox.execute(code, { signal: context.signal });
+        // Pi records calls in the order these wrappers are entered, even when
+        // concurrent calls to the same tool finish in a different order.
+        result.calls.forEach((call, index) => {
+          call.durationMs = durations[index]!;
+        });
         const text: string[] = [];
         for (const item of result.output) {
           if (item.type === "text") {

@@ -383,8 +383,9 @@ describe("AgentEventRenderer", () => {
       renderer.handle(pause);
       now = 30_000;
       expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (3s) (Esc to abort)");
-      renderer.handle(toolEnd("outer", "run_code", false));
+      renderer.handle({ ...toolEnd("outer", "run_code", false), durationMs: 3_200 });
       const completed = transcript.render(80);
+      expect(stripAnsi(completed[0]!)).toContain("3200 ms");
       renderer.handle({ ...pause, type: "tool_execution_resume" });
       now = 60_000;
       expect(transcript.render(80)).toEqual(completed);

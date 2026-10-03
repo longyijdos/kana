@@ -64,6 +64,8 @@ A `todo_state` entry stores one complete accepted list and, for a tool-driven up
 
 Tool-result policies may append another internal user-role message with `provenance.kind: "tool_result_policy"` and a non-empty policy `source`. It is journaled after the complete sibling tool-result group and replayed before the next model request. Session resume preserves it for model continuity, while restored TUI history and automatic session-title selection hide it because it is not human input.
 
+Tool messages may also carry `durationMs`, a finite, non-negative execution duration recorded by Runtime, independently of structured-result retention. Older messages without this field remain valid. The timing boundary is defined in [Tools](tools.md#invocation-pipeline).
+
 Oversized text tool results retain a bounded `content` preview and `artifact: { kind: "text", locator, byteLength }` in the message. A cloneable, JSON-serializable `result` is saved completely and independently in the same JSONL message when its serialized UTF-8 size is at most 128 KiB (131072 bytes). Oversized or non-serializable results, and results explicitly excluded by a custom policy, are omitted as a whole. Complete UTF-8 text lives at:
 
 ```text

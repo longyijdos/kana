@@ -40,9 +40,11 @@ type ToolContext = {
 
 ## 调用管线
 
-`ToolRuntime.invoke(toolCall, { signal?, onAbortRun? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
+`ToolRuntime.invoke(toolCall, { signal?, onAbortRun?, onExecutionEnd? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, durationMs, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
 
-只有名为 `run_code` 的工具收到 `CodemodeToolContext`，它在普通 context 的基础上增加 `invokeTool(name, args, { signal? })`。普通工具的 context 类型和运行时对象均没有这个字段。内部调用通过 `invoke()` 返回完整的规范化 `ToolResult`，不生成历史消息。每个 codemode 调用持有自己的队列，遵守 runtime 的并发开关和数量上限，exclusive 调用形成 barrier。内部调用的审批共用 runtime 的串行 hook 队列。内部调用要求 `abortRun` 时会中断 codemode；仅取消子调用的 signal 不会。内部调用发布通常的执行事件，并用 `parentToolCallId` 标明外层调用，但不会成为独立的历史工具消息。`invoke()` 接受这个可选事件字段；普通调用不带该字段。TUI 渲染工具 block 和状态时跳过这些内部事件，审批保持原有行为。
+Runtime 从进入工具的 `execute()` 开始计算 `durationMs`，在执行结束或 Runtime 中断调用时停止。调度、校验、审批、结果处理，以及中断后的取消清理均不计入；未执行的调用记录为零。耗时作为执行元数据放在 `tool_execution_end` 和历史工具消息上，与工具的业务 `result` 分开。可选的 `onExecutionEnd` 回调在执行结束或中断时立即收到耗时，早于结果发布。
+
+只有名为 `run_code` 的工具收到 `CodemodeToolContext`，它在普通 context 的基础上增加 `invokeTool(name, args, { signal?, onExecutionEnd? })`。普通工具的 context 类型和运行时对象均没有这个字段。内部调用通过 `invoke()` 返回完整的规范化 `ToolResult`，不生成历史消息。每个 codemode 调用持有自己的队列，遵守 runtime 的并发开关和数量上限，exclusive 调用形成 barrier。内部调用的审批共用 runtime 的串行 hook 队列。内部调用要求 `abortRun` 时会中断 codemode；仅取消子调用的 signal 不会。内部调用发布通常的执行事件，并用 `parentToolCallId` 标明外层调用，但不会成为独立的历史工具消息。`invoke()` 接受这个可选事件字段；普通调用不带该字段。TUI 渲染工具 block 和状态时跳过这些内部事件，审批保持原有行为。
 
 每个调用都进入同一条受控管线：
 
@@ -70,7 +72,7 @@ hook 返回 `return` 时提供正常 `ToolResult`，跳过 `execute` 及其 dead
 
 有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 与 Kana 的 `agent.tool_deadline_ms` 均默认 300000 ms；`shell` 自行声明 301000 ms deadline，使其五分钟的 command ceiling 仍通过 shell 自身的超时处理结束。`shell.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
 
-普通工具在审批结束后才启动 deadline。对于 `run_code`，等待内部 `beforeToolExecution` hook（包括串行审批队列）时，暂停外层 deadline 和显示计时。多个审批等待重叠时共用一次暂停；最后一个等待结束后，外层 deadline 按剩余额度恢复。已经执行的内部工具仍使用各自的 deadline。Runtime 为外层调用发布 `tool_execution_pause` 和 `tool_execution_resume`，并标记 `reason: "approval"`；这些事件不创建历史消息。
+普通工具在审批结束后才启动 deadline。对于 `run_code`，等待内部 `beforeToolExecution` hook（包括串行审批队列）时，暂停外层 deadline、显示计时和记录的执行耗时。多个审批等待重叠时共用一次暂停；最后一个等待结束后，外层 deadline 按剩余额度恢复。已经执行的内部工具仍使用各自的 deadline。Runtime 为外层调用发布 `tool_execution_pause` 和 `tool_execution_resume`，并标记 `reason: "approval"`；这些事件不创建历史消息。
 
 Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补充并中止活动 sibling signal。尚未启动的调用获得 canceled 结果；已启动调用获得有限取消宽限期。宽限期内结束会成为 `canceled` 或 `timed_out`，之后迟到的 return 不能覆盖该结果。
 
@@ -106,7 +108,7 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 
 `createCodemodeTool({ tools, mode? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。外部 MCP 定义仍通过 `mcp_get_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 自行声明 900000 ms（15 分钟）的调用 deadline，排除内部审批等待；runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
 
-工具的 `content` 包含显式文本输出，以及随后以 JSON 编码的返回值或脚本错误。内部工具返回的图片自动加入外层 `images`；显式 `image()` 输出转为带解码尺寸的视觉观察。结构化 `result` 保留包提供的 `CodemodeResult`，包括调用名称、状态、耗时和成功时的 store 改动。Store 改动不会自动用于后续执行。实时前端收到内部执行事件；历史和 resume 后的 transcript 只保留外层结果，并遵守普通 result 保存上限。
+工具的 `content` 包含显式文本输出，以及随后以 JSON 编码的返回值或脚本错误。内部工具返回的图片自动加入外层 `images`；显式 `image()` 输出转为带解码尺寸的视觉观察。结构化 `result` 保留包提供的 `CodemodeResult`，包括调用名称、状态和成功时的 store 改动；调用耗时替换为 Runtime 记录的执行耗时。Store 改动不会自动用于后续执行。实时前端收到内部执行事件；历史和 resume 后的 transcript 只保留外层结果，并遵守普通 result 保存上限。
 
 `AgentConfig.codemode` 默认为 `off`。`mixed` 向模型提供普通工具和 `run_code`；`only` 只提供 `run_code`。Agent 同时保存模型可见的 `tools` 和脚本内部的 `callableTools`，每次组装 prompt 时一起刷新。普通 `execute()` 只查找已公开的工具；内部 `invoke()` 查找 `callableTools`。Kana 根据 `agent.codemode` 自动提供 `run_code`，而 `agent.tools` 和子 Agent 角色卡继续限制脚本能调用的工具。子 Agent 继承父模式；记忆整理保留现有工具方式。Provider 原生 web search 等能力仍按各自配置生效。
 

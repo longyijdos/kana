@@ -85,6 +85,7 @@ export type AgentEvent =
       toolName: string;
       result: unknown;
       isError: boolean;
+      durationMs?: number;
     }
   | {
       type: "tool_execution_pause" | "tool_execution_resume";

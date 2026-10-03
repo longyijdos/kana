@@ -166,7 +166,12 @@ export class AgentEventRenderer {
         break;
       case "tool_execution_end":
         if (event.parentToolCallId !== undefined) return;
-        this.toolCallBlocks.updateResult(event.toolCallId, event.result, event.isError);
+        this.toolCallBlocks.updateResult(
+          event.toolCallId,
+          event.result,
+          event.isError,
+          event.durationMs,
+        );
         this.activeTools.delete(event.toolCallId);
         this.toolErrorCount += event.isError ? 1 : 0;
         this.updateToolStatus();

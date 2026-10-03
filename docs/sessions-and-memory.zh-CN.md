@@ -64,6 +64,8 @@ Clean 模式不向 session repository 注册 journal，因此当前对话只保�
 
 工具结果策略可以追加另一类内部 user-role 消息，其 `provenance.kind` 为 `"tool_result_policy"`，并带有非空的策略 `source`。它在完整 sibling 工具结果组之后写入 journal，并在下一次模型请求前重放。恢复 session 时会保留它以维持模型上下文连续性；由于它不是人类输入，恢复后的 TUI 历史和自动 session 标题都会忽略它。
 
+工具消息还可以带 `durationMs`，保存 Runtime 记录的有限、非负执行耗时，不受结构化 result 保存策略影响。没有该字段的旧消息仍然有效。计时边界见 [工具](tools.zh-CN.md#调用管线)。
+
 超大的文本工具结果在消息中保留有界 `content` 预览和 `artifact: { kind: "text", locator, byteLength }`。能复制且能 JSON 序列化、序列化后 UTF-8 大小不超过 128 KiB（131072 字节）的 `result` 会完整、独立地保存在同一条 JSONL 消息中。超限、无法序列化或被自定义策略显式排除的 result 会整份省略。完整 UTF-8 文本位于：
 
 ```text

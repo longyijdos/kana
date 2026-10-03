@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
 import { Type } from "typebox";
 import { ToolRuntime } from "../../src/agent/tool-runtime";
@@ -122,6 +122,96 @@ describe("codemode tool", () => {
     expect(result.result).toMatchObject({ ok: true, value: { width: 1 } });
   });
 
+  test("matches runtime durations to concurrent calls to the same tool", async () => {
+    let finishFirst: (() => void) | undefined;
+    const completed: string[] = [];
+    const codemode = createCodemodeTool({ tools: [read] });
+    const result = await codemode.execute(
+      {
+        code: 'return await Promise.all([tools.read({ label: "a" }), tools.read({ label: "b" })]);',
+      },
+      {
+        toolCallId: "code",
+        update() {},
+        invokeTool: (_name, args, options) => {
+          const label = (args as { label: string }).label;
+          if (label === "a") {
+            return new Promise((resolve) => {
+              finishFirst = () => {
+                completed.push(label);
+                options!.onExecutionEnd!(11.5);
+                resolve({ content: label, result: label });
+              };
+            });
+          }
+          completed.push(label);
+          options!.onExecutionEnd!(22.5);
+          setTimeout(() => finishFirst!(), 5);
+          return Promise.resolve({ content: label, result: label });
+        },
+      },
+    );
+    expect(completed).toEqual(["b", "a"]);
+    expect(result.result).toMatchObject({
+      ok: true,
+      value: ["a", "b"],
+      calls: [
+        { name: "read", status: "ok", durationMs: 11.5 },
+        { name: "read", status: "ok", durationMs: 22.5 },
+      ],
+    });
+  });
+
+  test("preserves execution duration when the script cancels an unawaited tool", async () => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const slow = {
+      name: "slow",
+      description: "Wait for cancellation.",
+      parameters,
+      execution: { concurrency: "parallel" },
+      execute: (_args, { signal }) =>
+        new Promise((resolve) => {
+          signal!.addEventListener("abort", () => resolve("stopped"), { once: true });
+        }),
+    } satisfies Tool;
+    const finish = {
+      name: "finish",
+      description: "Finish the script.",
+      parameters,
+      execution: { concurrency: "parallel" },
+      execute: () => {
+        now = 25;
+        return "done";
+      },
+    } satisfies Tool;
+    const codemode = createCodemodeTool({ tools: [slow, finish] });
+    const runtime = new ToolRuntime({ tools: [codemode], callableTools: [slow, finish] }, () => {});
+    try {
+      const execution = await runtime.execute([
+        {
+          type: "tool_call",
+          id: "code",
+          name: "run_code",
+          args: { code: 'tools.slow({}); await tools.finish({}); return "done";' },
+        },
+      ]);
+      expect(execution.toolResults[0]).toMatchObject({
+        durationMs: 25,
+        isError: false,
+        result: {
+          ok: true,
+          calls: [
+            { name: "slow", status: "cancelled", durationMs: 25 },
+            { name: "finish", status: "ok", durationMs: 25 },
+          ],
+        },
+      });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("maps native output, images, store writes, and catchable tool failures", async () => {
     const codemode = createCodemodeTool({ tools: [read, { ...read, name: "run_code" }] });
     const png =
@@ -138,7 +228,10 @@ describe("codemode tool", () => {
       {
         toolCallId: "code",
         update() {},
-        invokeTool: async () => ({ content: "operation failed", result: {}, isError: true }),
+        invokeTool: async (_name, _args, options) => {
+          options!.onExecutionEnd!(12.5);
+          return { content: "operation failed", result: {}, isError: true };
+        },
       },
     );
     expectToolResult(result);
@@ -146,7 +239,7 @@ describe("codemode tool", () => {
     expect(result.images).toEqual([{ data: png, mimeType: "image/png", width: 1, height: 1 }]);
     expect(result.result).toMatchObject({
       ok: true,
-      calls: [{ name: "read", status: "error" }],
+      calls: [{ name: "read", status: "error", durationMs: 12.5 }],
       storeWrites: { set: { key: { value: 1 } }, delete: [] },
     });
   });
