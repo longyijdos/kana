@@ -100,6 +100,7 @@ export type KanaSessionTodoStateEntry = {
   parentId: string | null;
   timestamp: string;
   toolCallId?: string;
+  parentToolCallId?: string;
   items: KanaTodoItem[];
 };
 
@@ -392,6 +393,10 @@ export function parseTimelineEntry(
       !hasTimelineIdentity(parsed) ||
       (parsed.toolCallId !== undefined &&
         (typeof parsed.toolCallId !== "string" || parsed.toolCallId.length === 0)) ||
+      (parsed.parentToolCallId !== undefined &&
+        (typeof parsed.parentToolCallId !== "string" ||
+          parsed.parentToolCallId.length === 0 ||
+          parsed.toolCallId === undefined)) ||
       !isKanaTodoItems(parsed.items)
     ) {
       throw new Error(`Invalid Kana session todo state: ${filePath}:${lineNumber}`);

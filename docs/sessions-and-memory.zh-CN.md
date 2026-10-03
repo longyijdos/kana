@@ -60,7 +60,7 @@ Clean 模式不向 session repository 注册 journal，因此当前对话只保�
 
 动态 prompt 状态以内部 user-role 消息持久化，`provenance.kind` 为 `"runtime_context"`，并带有非空 `source`。每次变化后的已标识状态都会追加写入 JSONL；恢复后的 TUI 历史会隐藏这些内部消息。Active/inactive 转换与模型上下文投影见 [Agent 运行时](agent-runtime.zh-CN.md)。
 
-每条 `todo_state` 保存一次完整接受列表；由工具更新时还记录所属 `toolCallId`。Journal 会在 `todo_write` 校验通过后、紧凑工具结果写入前同步保存它，因此崩溃不会留下“已确认但未持久化”的更新。加载器扫描这些记录重建最新列表；空 `items` 显式清空，全部为 `completed` 或出现新的 human turn 都不会自动清空。如果中断发生在状态记录之后、结果之前，恢复会补写确定的成功确认，而不会把该调用降级为 unknown。Clean 模式维持相同的内存状态变化，但不写 JSONL。
+每条 `todo_state` 保存一次完整接受列表；由工具更新时记录 `toolCallId`。内部更新还记录 `parentToolCallId`，journal 据此校验外层 `run_code` 调用，无需在对话历史中找到内部调用。Journal 会在 `todo_write` 校验通过后、紧凑工具结果写入前同步保存它，因此崩溃不会留下“已确认但未持久化”的更新。加载器扫描这些记录重建最新列表；空 `items` 显式清空，全部为 `completed` 或出现新的 human turn 都不会自动清空。普通 `todo_write` 在状态记录之后、结果之前被中断时，恢复会补写确定的成功确认。外层 `run_code` 未完成时，已接受的 todo 状态仍会保留，但外层调用恢复为 unknown，不补写内部工具消息。Clean 模式维持相同的内存状态变化，但不写 JSONL。
 
 工具结果策略可以追加另一类内部 user-role 消息，其 `provenance.kind` 为 `"tool_result_policy"`，并带有非空的策略 `source`。它在完整 sibling 工具结果组之后写入 journal，并在下一次模型请求前重放。恢复 session 时会保留它以维持模型上下文连续性；由于它不是人类输入，恢复后的 TUI 历史和自动 session 标题都会忽略它。
 
@@ -133,7 +133,7 @@ reason: "可选原因"
 
 ## 记忆合并
 
-一次对话成功提交后，调度器从本轮 `remember` 的成功工具结果中按 scope 收集条目。每个 scope 的任务独立，但增量合并和手动全量合并会共享同一 scope 的 promise 队列串行运行，避免并发的读—改—写覆盖。
+Host 从工具结束事件收集有效且成功的 `remember` 结果，包括内部调用，并在本轮提交后把条目交给调度器。这一收集过程不依赖对话历史或脚本选取的输出，因此脚本后续报错也不会丢弃已经成功写入的记忆条目。调度器再按 scope 分组。每个 scope 的任务独立，但增量合并和手动全量合并会共享同一 scope 的 promise 队列串行运行，避免并发的读—改—写覆盖。
 
 `MemoryConsolidationScheduler` 为自动批次暴露只读活动快照以及变更/失败事件。批次在共享 scope 队列启动它之前保持 `queued`，启动后保持 `organizing` 直到结束。`KanaConversationHost` 汇总全部 scheduler 的活动，独立于当前选择的 session。这些观察接口不改变调度或 headless 输出。
 

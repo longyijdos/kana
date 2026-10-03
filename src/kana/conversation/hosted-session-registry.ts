@@ -515,7 +515,7 @@ export class HostedSessionRegistry {
 
   private commitTodoState(
     hostedSession: HostedSession,
-    { toolCallId, items }: KanaTodoStateChange,
+    { toolCallId, parentToolCallId, items }: KanaTodoStateChange,
     onTodoStateCommitted?: (change: KanaTodoStateChange) => void,
   ): void {
     const acceptedItems = structuredClone(items);
@@ -526,7 +526,7 @@ export class HostedSessionRegistry {
         throw new Error("Cannot update todo state outside an active session turn.");
       }
       const entry = this.writeJournal(hostedSession, "todo", () =>
-        journal.appendTodoState(turnId, toolCallId, acceptedItems),
+        journal.appendTodoState(turnId, toolCallId, acceptedItems, { parentToolCallId }),
       );
       this.appendTimeline(hostedSession, [entry]);
     }
@@ -534,6 +534,7 @@ export class HostedSessionRegistry {
     try {
       onTodoStateCommitted?.({
         toolCallId,
+        ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
         items: structuredClone(acceptedItems),
       });
     } catch (error) {

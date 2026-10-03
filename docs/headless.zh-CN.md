@@ -95,6 +95,8 @@ Conversation runtime 关闭后，共享 Host 清理会先等待自动记忆任�
 
 Schema v2 将 `tool.completed` 从提交确认改为执行生命周期事件。它跟随物理完成、取消或明确的 unknown 终态，不表示工具结果已经进入 journal。因此即使已经出现一个或多个 `tool.completed`，之后的 journal 或后处理失败仍会发出 `run.failed`；需要完整持久 run 的调用方必须等待 `run.completed`。
 
+Code Mode 只发布外层 `run_code` 的工具生命周期和结果。内部 start、update 和 end 事件在文本与 JSONL 输出中均被过滤；中间结果保留在脚本内，除非脚本选取它作为输出。
+
 Goal 模式仍只发出一个公共 `run.started`，以及一个终态 `run.completed` 或 `run.failed`。所有内部 Agent run 的模型、助手、工具和压缩事件都位于这两个边界之间；`model_turn.*.turn` 只在各自 Agent run 内计数，因此可能重新从 `1` 开始。Goal 终态事件会在状态可用时包含 `goal`，其中有 `status`、`admitted_rounds`、`max_rounds` 和可选的 `detail`。`run.completed.outcome` 仍表示最后一次内部 Agent 结果，而 Goal 模式的进程成功状态由 `goal.status` 决定：只有 `completed` 对应退出码 `0`。
 
 当取消由无头前端发起时，终态 run 事件会包含 `termination`。超时对应 `{ "reason": "timeout", "timeout_ms": 1800000 }`，`SIGINT` 对应 `{ "reason": "sigint" }`。成功取消的超时通常以 `run.completed`、`outcome: "aborted"` 和退出码 `124` 结束。如果 run 在取消过程中发生失败，`run.failed` 仍按失败处理，进程退出码为 `1`，但 `termination` 会记录同时发生的取消来源。

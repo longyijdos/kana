@@ -87,7 +87,7 @@ The catalog is fixed for each manager generation. `notifications/tools/list_chan
 
 `<KANA_HOME>/mcp.json` contains server definitions, and `<KANA_HOME>/mcp-enabled.json` contains enabled IDs. A configured server starts only when its ID appears in both sets. The user-facing `/mcp` operation changes enabled state; model-facing `mcp_list_tools` and `mcp_get_tool` only read the cached catalog. Direct file edits require a restart. Exact configuration fields belong to [Configuration and installation](configuration.md).
 
-The main conversation initially has no MCP gateways. Interactive startup waits until the chosen session is visible before loading MCP and rebuilding the Agent with the gateways. Headless initializes MCP before submitting its run and requires interactive OAuth to have been completed earlier. Clean mode creates no MCP tools. Memory-consolidation Agents never receive MCP tools.
+The main conversation initially has no MCP gateways. Interactive startup waits until the chosen session is visible before loading MCP and rebuilding the Agent with the three gateways. Headless initializes MCP before submitting its run and requires interactive OAuth to have been completed earlier. Clean mode creates no MCP tools. Memory-consolidation Agents never receive MCP tools.
 
 Subagent role cards grant MCP access by listing `mcp_list_tools`, `mcp_get_tool`, and `mcp_call`. The global `agent.tools` selection remains the ceiling for these permissions. They cover all currently enabled and filtered MCP capabilities; they do not express per-server or per-remote-tool access. Old remote aliases and `mcp:*` are not supported. See [Subagents](subagents.md).
 

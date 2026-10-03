@@ -163,6 +163,7 @@ export class AgentEventRenderer {
         break;
       case "tool_execution_resume":
         this.toolCallBlocks.resumeTimer(event.toolCallId);
+        this.updateToolStatus();
         break;
       case "tool_execution_end":
         if (event.parentToolCallId !== undefined) return;

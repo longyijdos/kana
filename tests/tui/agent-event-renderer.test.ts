@@ -356,14 +356,17 @@ describe("AgentEventRenderer", () => {
     });
   });
 
-  test("pauses and resumes run_code elapsed time using runtime approval events", () => {
+  test("resumes run_code elapsed time and status after nested approval", () => {
     let now = 0;
     const clock = spyOn(Date, "now").mockImplementation(() => now);
     const transcript = new TranscriptComponent();
+    let activeTool: string | undefined;
     const renderer = new AgentEventRenderer({
       transcript,
       tui: { requestRender() {} } as unknown as Tui,
-      updateStatus() {},
+      updateStatus: (_phase, extra = {}) => {
+        activeTool = extra.activeTool;
+      },
     });
     const pause = {
       type: "tool_execution_pause" as const,
@@ -375,9 +378,11 @@ describe("AgentEventRenderer", () => {
       renderer.handle(toolStart("outer", "run_code"));
       now = 2_000;
       renderer.handle(pause);
+      activeTool = "shell";
       now = 15_000;
       expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (2s) (Esc to abort)");
       renderer.handle({ ...pause, type: "tool_execution_resume" });
+      expect(activeTool).toBe("run_code");
       now = 16_000;
       expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (3s) (Esc to abort)");
       renderer.handle(pause);
@@ -389,6 +394,7 @@ describe("AgentEventRenderer", () => {
       renderer.handle({ ...pause, type: "tool_execution_resume" });
       now = 60_000;
       expect(transcript.render(80)).toEqual(completed);
+      expect(activeTool).toBeUndefined();
       expect(transcript.children).toHaveLength(1);
     } finally {
       renderer.handle({ type: "agent_end", reason: "stop", messages: [] });

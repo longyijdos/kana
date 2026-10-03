@@ -87,7 +87,7 @@ Server 失败会被诊断、关闭并隔离，不关闭成功连接的 client。
 
 `<KANA_HOME>/mcp.json` 保存 server 定义，`<KANA_HOME>/mcp-enabled.json` 保存启用 ID。只有同时出现在两者中的 server 才启动。用户的 `/mcp` 操作改变启用状态；模型的 `mcp_list_tools` 仅读取目录。直接修改文件需要重启。完整配置字段见[配置与安装](configuration.zh-CN.md)。
 
-主对话初始无 MCP 入口。交互启动先显示所选 session，再加载 MCP 并用两个入口重建 Agent。Headless 在提交 run 前初始化 MCP，并要求交互 OAuth 已提前完成。Clean mode 不创建 MCP 工具。Memory-consolidation Agent 永不获得 MCP 工具。
+主对话初始无 MCP 入口。交互启动先显示所选 session，再加载 MCP 并用三个入口重建 Agent。Headless 在提交 run 前初始化 MCP，并要求交互 OAuth 已提前完成。Clean mode 不创建 MCP 工具。Memory-consolidation Agent 永不获得 MCP 工具。
 
 Subagent 角色卡通过列出 `mcp_list_tools`、`mcp_get_tool` 与 `mcp_call` 获得 MCP 能力。全局 `agent.tools` 选择仍是这些权限的上限。它们覆盖全部当前已启用、经过过滤的 MCP 能力，不表达逐 server 或逐远端工具权限。不支持旧远端 alias 与 `mcp:*`。见 [Subagent](subagents.zh-CN.md)。
 

@@ -621,6 +621,7 @@ export class ToolRuntime {
           durationMs = elapsedMs;
           onExecutionEnd?.(elapsedMs);
         },
+        parentToolCallId,
       );
       const firstOutcome = await Promise.race([
         invocation.settlement.then((settlement) => ({
@@ -734,6 +735,7 @@ export class ToolRuntime {
     groupSignal: AbortSignal,
     update: (partialResult: unknown) => void,
     onExecutionEnd: (durationMs: number) => void,
+    parentToolCallId?: string,
   ): {
     settlement: Promise<ToolExecutionSettlement>;
     interruption: Promise<ToolInterruption>;
@@ -830,6 +832,7 @@ export class ToolRuntime {
         executionStartedAt = performance.now();
         return tool.execute(args, {
           toolCallId: toolCall.id,
+          ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
           signal: invocationController.signal,
           update,
           ...(tool.name === "run_code"

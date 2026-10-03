@@ -19,6 +19,7 @@ type Tool = {
 
 type ToolContext = {
   toolCallId: string;
+  parentToolCallId?: string;
   signal?: AbortSignal;
   update(partialResult: unknown): void;
 };
@@ -45,6 +46,8 @@ type ToolContext = {
 Runtime 从进入工具的 `execute()` 开始计算 `durationMs`，在执行结束或 Runtime 中断调用时停止。调度、校验、审批、结果处理，以及中断后的取消清理均不计入；未执行的调用记录为零。耗时作为执行元数据放在 `tool_execution_end` 和历史工具消息上，与工具的业务 `result` 分开。可选的 `onExecutionEnd` 回调在执行结束或中断时立即收到耗时，早于结果发布。
 
 只有名为 `run_code` 的工具收到 `CodemodeToolContext`，它在普通 context 的基础上增加 `invokeTool(name, args, { signal?, onExecutionEnd? })`。普通工具的 context 类型和运行时对象均没有这个字段。内部调用通过 `invoke()` 返回完整的规范化 `ToolResult`，不生成历史消息。每个 codemode 调用持有自己的队列，遵守 runtime 的并发开关和数量上限，exclusive 调用形成 barrier。内部调用的审批共用 runtime 的串行 hook 队列。内部调用要求 `abortRun` 时会中断 codemode；仅取消子调用的 signal 不会。内部调用发布通常的执行事件，并用 `parentToolCallId` 标明外层调用，但不会成为独立的历史工具消息。`invoke()` 接受这个可选事件字段；普通调用不带该字段。TUI 渲染工具 block 和状态时跳过这些内部事件，审批保持原有行为。
+
+内部调用还会收到 `ToolContext.parentToolCallId`，指向外层 `run_code`；普通调用不带这个字段。业务状态可以据此把内部更新关联到已写入 journal 的外层调用，无需向对话历史添加内部工具消息。
 
 每个调用都进入同一条受控管线：
 

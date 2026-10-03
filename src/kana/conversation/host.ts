@@ -40,6 +40,8 @@ import {
 import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
+  isKanaMemoryEntry,
+  type KanaMemoryEntry,
   loadKanaMemory,
   type MemoryConsolidationActivity,
   type MemoryConsolidationEvent,
@@ -290,11 +292,25 @@ export class KanaConversationHost<TConfiguration = never> {
       options.sessionId,
       onTodoStateCommitted,
     );
-    const createAgent = (config: KanaConfig): Agent =>
-      this.createAgentProduct(
+    const createAgent = (config: KanaConfig): Agent => {
+      const rememberedEntries: KanaMemoryEntry[] = [];
+      const agent = this.createAgentProduct(
         config,
-        this.createKanaAgentOptions(agentOptions, sessionBinding, config),
+        this.createKanaAgentOptions(agentOptions, sessionBinding, config, rememberedEntries),
       );
+      agent.subscribe((event) => {
+        if (event.type === "agent_start") rememberedEntries.length = 0;
+        if (
+          event.type === "tool_execution_end" &&
+          event.toolName === "remember" &&
+          !event.isError &&
+          isKanaMemoryEntry(event.result)
+        ) {
+          rememberedEntries.push(event.result);
+        }
+      });
+      return agent;
+    };
 
     let agent: Agent;
     if (configuration === undefined) {
@@ -524,6 +540,7 @@ export class KanaConversationHost<TConfiguration = never> {
     >,
     sessionBinding: HostedSessionAgentBinding,
     config: KanaConfig,
+    rememberedEntries: KanaMemoryEntry[],
   ): KanaAgentOptions {
     const session = sessionBinding.session;
     const logger = sessionBinding.logger;
@@ -587,7 +604,7 @@ export class KanaConversationHost<TConfiguration = never> {
           cwd: session.cwd,
         };
         void this.memoryConsolidation
-          ?.schedule(messages, {
+          ?.schedule(rememberedEntries.splice(0), {
             logger,
             onCompleted: (scope, result) =>
               recordKanaAgentRunAccounting({

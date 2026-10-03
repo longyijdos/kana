@@ -19,6 +19,7 @@ type Tool = {
 
 type ToolContext = {
   toolCallId: string;
+  parentToolCallId?: string;
   signal?: AbortSignal;
   update(partialResult: unknown): void;
 };
@@ -45,6 +46,8 @@ A plain string return becomes `content`; another ordinary value is JSON-serializ
 Runtime measures `durationMs` from entering the tool's `execute()` until it settles or Runtime interrupts it. Scheduling, validation, approval, result processing, and cancellation cleanup after interruption are excluded. Skipped execution records zero. Duration is execution metadata on `tool_execution_end` and the historical tool message, separate from the tool's business `result`. The optional `onExecutionEnd` callback receives the duration as soon as execution ends or is interrupted, before result publication.
 
 Only the tool named `run_code` receives `CodemodeToolContext`, which extends the ordinary context with `invokeTool(name, args, { signal?, onExecutionEnd? })`. Ordinary tools have no such field in either their context type or runtime object. Nested invocation returns the full normalized `ToolResult` through `invoke()` without preparing history. Each codemode invocation owns a queue that follows the runtime's parallel-call switch and concurrency limit, with exclusive calls acting as barriers. Nested approvals share the runtime's serial hook queue. A nested `abortRun` interrupts codemode; cancellation of a child signal alone does not. Inner calls publish the usual execution events with the outer call's `parentToolCallId` but do not become separate historical tool messages. `invoke()` accepts this optional event field; ordinary calls omit it. The TUI skips these inner events when rendering tool blocks and status, while approvals retain their normal behavior.
+
+Nested calls also receive `ToolContext.parentToolCallId`, identifying the enclosing `run_code`. Ordinary calls omit it. Product state can associate a nested update with the journaled outer call without adding an inner tool message to conversation history.
 
 Every proposed call follows one contained pipeline:
 

@@ -4,6 +4,7 @@ import type { ToolSpec, UserImage } from "@/core";
 
 export type ToolContext = {
   toolCallId: string;
+  parentToolCallId?: string;
   signal?: AbortSignal;
   update(partialResult: unknown): void;
 };
