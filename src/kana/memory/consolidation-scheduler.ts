@@ -1,4 +1,3 @@
-import type { Message } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { KanaConfig } from "../config";
 import type { KanaCustomProviderSnapshot } from "../custom-provider";
@@ -24,7 +23,10 @@ export type MemoryConsolidationActivitySource = {
 };
 
 export type MemoryConsolidationScheduler = MemoryConsolidationActivitySource & {
-  schedule(messages: Message[], options?: ScheduleMemoryConsolidationOptions): Promise<void>;
+  schedule(
+    entries: readonly KanaMemoryEntry[],
+    options?: ScheduleMemoryConsolidationOptions,
+  ): Promise<void>;
   close(): Promise<void>;
 };
 
@@ -117,8 +119,8 @@ export function createMemoryConsolidationScheduler(
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    schedule(messages, scheduleOptions = {}) {
-      const entriesByScope = collectRememberedEntries(messages);
+    schedule(entries, scheduleOptions = {}) {
+      const entriesByScope = collectRememberedEntries(entries);
       if (entriesByScope.size === 0) {
         return Promise.resolve();
       }
@@ -223,28 +225,21 @@ export function createMemoryConsolidationScheduler(
   };
 }
 
-function collectRememberedEntries(messages: Message[]): Map<KanaMemoryScope, KanaMemoryEntry[]> {
+function collectRememberedEntries(
+  entries: readonly KanaMemoryEntry[],
+): Map<KanaMemoryScope, KanaMemoryEntry[]> {
   const entriesByScope = new Map<KanaMemoryScope, KanaMemoryEntry[]>();
 
-  for (const message of messages) {
-    if (
-      message.role !== "tool" ||
-      message.toolName !== "remember" ||
-      message.isError ||
-      !isKanaMemoryEntry(message.result)
-    ) {
-      continue;
-    }
-
-    const entries = entriesByScope.get(message.result.scope) ?? [];
-    entries.push(message.result);
-    entriesByScope.set(message.result.scope, entries);
+  for (const entry of entries) {
+    const group = entriesByScope.get(entry.scope) ?? [];
+    group.push(entry);
+    entriesByScope.set(entry.scope, group);
   }
 
   return entriesByScope;
 }
 
-function isKanaMemoryEntry(value: unknown): value is KanaMemoryEntry {
+export function isKanaMemoryEntry(value: unknown): value is KanaMemoryEntry {
   if (!value || typeof value !== "object") {
     return false;
   }

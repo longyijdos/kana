@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   appendKanaSessionMessages,
@@ -124,6 +124,79 @@ describe("Kana session journal", () => {
       content: "Todo list cleared.",
       result: { status: "cleared" },
     });
+  });
+
+  test("retains nested todo state while recovering the unfinished outer script", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "interrupted-nested-todo" });
+    const journal = createKanaSessionJournal(session);
+    journal.startTurn("turn-code", [
+      { ...messageIdentityForTest("user"), role: "user", content: "Track the work" },
+    ]);
+    journal.appendMessage("turn-code", {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      stopReason: "toolUse",
+      content: [{ type: "tool_call", id: "outer", name: "run_code", args: { code: "" } }],
+    });
+    journal.appendTodoState("turn-code", "inner-1", [{ content: "Draft", status: "pending" }], {
+      parentToolCallId: "outer",
+    });
+    const items: KanaTodoItem[] = [{ content: "Resume safely", status: "in_progress" }];
+    journal.appendTodoState("turn-code", "inner-2", items, { parentToolCallId: "outer" });
+    expect(() =>
+      journal.appendTodoState("turn-code", "inner-2", [], { parentToolCallId: "outer" }),
+    ).toThrow("already been persisted");
+
+    const loaded = loadKanaSession(session.id, { env, cwd });
+    expect(loaded.todoState).toEqual(items);
+    expect(loaded.recoveredInterruptedTurn).toEqual({
+      turnId: "turn-code",
+      unknownToolCallCount: 1,
+    });
+    const results = loaded.messages.filter((message) => message.role === "tool");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      toolCallId: "outer",
+      toolName: "run_code",
+      isError: true,
+      result: { status: "unknown" },
+    });
+    expect(loadKanaSession(session.id, { env, cwd }).todoState).toEqual(items);
+  });
+
+  test("validates the outer run_code owner when writing and loading nested todo state", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "invalid-nested-todo-owner" });
+    const journal = createKanaSessionJournal(session);
+    journal.startTurn("turn-code", [
+      { ...messageIdentityForTest("user"), role: "user", content: "Track the work" },
+    ]);
+    journal.appendMessage("turn-code", {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      stopReason: "toolUse",
+      content: [
+        { type: "tool_call", id: "outer", name: "run_code", args: { code: "" } },
+        { type: "tool_call", id: "ordinary", name: "read", args: {} },
+      ],
+    });
+    for (const parentToolCallId of ["missing", "ordinary"]) {
+      expect(() => journal.appendTodoState("turn-code", "inner", [], { parentToolCallId })).toThrow(
+        `unknown run_code call ${parentToolCallId}`,
+      );
+    }
+    journal.appendTodoState("turn-code", "inner", [], { parentToolCallId: "outer" });
+    const lines = readFileSync(session.path, "utf8").trim().split("\n");
+    const entry = JSON.parse(lines.at(-1)!);
+    entry.parentToolCallId = "ordinary";
+    lines[lines.length - 1] = JSON.stringify(entry);
+    writeFileSync(session.path, `${lines.join("\n")}\n`);
+    expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
+      "unknown run_code call ordinary",
+    );
   });
 
   test("recovers a durably accepted todo call without downgrading it to unknown", () => {

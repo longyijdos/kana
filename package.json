@@ -8,8 +8,8 @@
   },
   "scripts": {
     "bench:tui-render": "bun scripts/bench-tui-render.ts",
-    "build:cli": "bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --outfile=kana src/main.ts",
-    "build:release": "bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-darwin-arm64 --outfile=dist/kana-darwin-arm64 src/main.ts && bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-darwin-x64 --outfile=dist/kana-darwin-x64 src/main.ts && bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-linux-arm64 --outfile=dist/kana-linux-arm64 src/main.ts && bun build --compile --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-linux-x64-baseline --outfile=dist/kana-linux-x64 src/main.ts",
+    "build:cli": "bun build --compile --root . --define __KANA_DISTRIBUTION__='\"direct\"' --outfile=kana src/main.ts src/tools/codemode/worker.ts",
+    "build:release": "bun build --compile --root . --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-darwin-arm64 --outfile=dist/kana-darwin-arm64 src/main.ts src/tools/codemode/worker.ts && bun build --compile --root . --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-darwin-x64 --outfile=dist/kana-darwin-x64 src/main.ts src/tools/codemode/worker.ts && bun build --compile --root . --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-linux-arm64 --outfile=dist/kana-linux-arm64 src/main.ts src/tools/codemode/worker.ts && bun build --compile --root . --define __KANA_DISTRIBUTION__='\"direct\"' --target=bun-linux-x64-baseline --outfile=dist/kana-linux-x64 src/main.ts src/tools/codemode/worker.ts",
     "changelog": "conventional-changelog -p conventionalcommits",
     "check": "biome check --error-on-warnings . && bun run check:comments && bun run check:architecture && bun run typecheck && bun run knip && bun test",
     "check:architecture": "bun scripts/check-source-boundaries.ts",
@@ -28,6 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@earendil-works/pi-codemode": "1.0.0",
     "@modelcontextprotocol/client": "2.0.0",
     "commander": "^15.0.0",
     "grok-mermaid": "0.2.3",
@@ -35,6 +36,7 @@
     "marked": "^18.0.12",
     "marked-cjk-friendly": "0.1.1",
     "proper-lockfile": "4.1.2",
+    "quickjs-wasi": "3.6.2",
     "shiki": "^4.2.0",
     "string-width": "^8.2.1",
     "typebox": "^1.1.38"

@@ -4,6 +4,7 @@ import type { ToolSpec, UserImage } from "@/core";
 
 export type ToolContext = {
   toolCallId: string;
+  parentToolCallId?: string;
   signal?: AbortSignal;
   update(partialResult: unknown): void;
 };
@@ -20,6 +21,7 @@ export type ToolResult<TResult = unknown> = {
 };
 
 export type Tool<T extends TSchema = TSchema, TResult = unknown> = ToolSpec<T> & {
+  outputSchema?: TSchema;
   execute(
     args: Static<T>,
     context: ToolContext,

@@ -50,7 +50,7 @@ agent_start
 
 ## Prompt assembly 与 runtime context
 
-`PromptAssembly` 分离稳定 system prefix、动态 context 和按 capability 持有的工具。构造后它保持不可变，但会在每次 model step 前解析所有 context 与 tool renderer。解析出的工具集合同时提供给该请求和对应的工具执行边界，因此只有后续 model step 能看到 capability 变化。
+`PromptAssembly` 分离稳定 system prefix、动态 context 和按 capability 持有的工具。构造后它保持不可变，但会在每次 model step 前解析所有 context 与 tool renderer。Agent 根据 `codemode` 确定模型可见的工具：`off` 保留普通工具，`mixed` 增加 `run_code`，`only` 只公开 `run_code`。解析出的工具仍可在脚本内部调用；普通执行只查找模型可见的工具。两份列表在同一个 step 边界刷新，因此只有后续 model step 才能观察到 capability 变化。上下文估算只计入模型可见的名称、描述和输入 schema，包括 `run_code` 描述中的类型说明，不再单独计算返回 schema metadata。
 
 每个 runtime-context renderer 必须返回带稳定 source、明确且非空的 `active` 或 `inactive` 状态。初始就是 inactive 的 source 不产生消息；激活后，每次变化都会成为内部 user message，并与普通 run 输入一样遵循“先写入、后调用模型”；未变化状态不会重复。
 

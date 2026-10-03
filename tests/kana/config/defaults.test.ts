@@ -20,6 +20,7 @@ describe("Kana config defaults", () => {
       contextLimit: undefined,
     });
     expect(DEFAULT_KANA_CONFIG.agent.webSearch).toBe(true);
+    expect(DEFAULT_KANA_CONFIG.agent.codemode).toBe("off");
     expect(DEFAULT_KANA_CONFIG.agent.imageInput).toBe(true);
     expect(DEFAULT_KANA_CONFIG.agent.tools).toEqual([...KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES]);
     expect(DEFAULT_KANA_CONFIG.memory.agent.model).toEqual({});

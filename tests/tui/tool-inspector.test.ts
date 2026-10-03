@@ -4,6 +4,62 @@ import { stripAnsi, visibleWidth } from "../../src/tui/render";
 import { formatToolInspector } from "../../src/tui/tools";
 
 describe("tool inspector", () => {
+  test("separates run_code source, output, return value, and nested call results", () => {
+    const call = toolCall("run_code", { code: "text('ready');\nreturn false;" });
+    const rendered = renderInspector(
+      call,
+      {
+        ok: true,
+        value: false,
+        output: [
+          { type: "text", text: "ready\ncomplete" },
+          { type: "image", data: "hidden image payload", mimeType: "image/png" },
+        ],
+        calls: [
+          { name: "read", status: "error", durationMs: 8.2 },
+          { name: "shell", status: "ok", durationMs: 15 },
+        ],
+        storeWrites: { set: {}, delete: [] },
+      },
+      false,
+      "done",
+    );
+    expect(rendered).toEqual([
+      "Code",
+      "  text('ready');",
+      "  return false;",
+      "",
+      "Output",
+      "  ready",
+      "  complete",
+      "",
+      "Return value",
+      "  false",
+      "",
+      "Tool calls",
+      "  read · error · 8 ms",
+      "  shell · ok · 15 ms",
+    ]);
+    const failed = renderInspector(
+      call,
+      {
+        ok: false,
+        error: { kind: "script", message: "failed", stack: "Error: failed\n  at script:2" },
+        output: [],
+        calls: [{ name: "shell", status: "cancelled", durationMs: 3 }],
+      },
+      true,
+      "failed",
+    );
+    expect(failed).toContain("  Failed");
+    expect(failed).toContain("Error");
+    expect(failed).toContain("    at script:2");
+    expect(failed).toContain("  shell · cancelled · 3 ms");
+    const running = renderInspector(call, undefined, false, "running");
+    expect(running).toContain("  return false;");
+    expect(running).toContain("  Running");
+  });
+
   test("renders successful write and edit payloads once through specialized output", () => {
     const write = renderInspector(
       toolCall("write", { path: "src/data.ts", content: "line 1\nline 2" }),

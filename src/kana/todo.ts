@@ -7,6 +7,7 @@ export type KanaTodoItem = {
 
 export type KanaTodoStateChange = {
   toolCallId: string;
+  parentToolCallId?: string;
   items: KanaTodoItem[];
 };
 

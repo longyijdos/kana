@@ -11,6 +11,32 @@ const MAX_WAIT_MS = 30_000;
 const MAX_TASK_CHARS = 50_000;
 const MAX_CANCEL_REASON_CHARS = 500;
 
+const subagentStatusSchema = Type.Union([
+  Type.Literal("running"),
+  Type.Literal("completed"),
+  Type.Literal("errored"),
+  Type.Literal("cancelled"),
+  Type.Literal("unknown"),
+]);
+const subagentSummaryProperties = {
+  id: Type.String(),
+  profile: Type.String(),
+  label: Type.String(),
+  status: subagentStatusSchema,
+  startedAt: Type.String({ format: "date-time" }),
+  finishedAt: Type.Optional(Type.String({ format: "date-time" })),
+  model: Type.Optional(Type.Object({ provider: Type.String(), model: Type.String() })),
+  terminalReason: Type.Optional(
+    Type.Union([
+      Type.Literal("stop"),
+      Type.Literal("length"),
+      Type.Literal("aborted"),
+      Type.Literal("error"),
+      Type.Literal("turn_limit"),
+    ]),
+  ),
+};
+
 const spawnParameters = Type.Object(
   {
     profile: Type.String({ minLength: 1, description: "Name of a configured subagent profile." }),
@@ -71,6 +97,11 @@ export function createSpawnSubagentTool(
       }),
     ].join("\n"),
     parameters: spawnParameters,
+    outputSchema: Type.Object({
+      agentId: Type.String(),
+      profile: Type.String(),
+      status: subagentStatusSchema,
+    }),
     execution: { concurrency: "parallel" },
     execute: (args, context) => {
       if (context.signal?.aborted) throw new Error("Subagent spawn was cancelled.");
@@ -100,6 +131,12 @@ export function createWaitSubagentTool(subagents: KanaSubagentClient): Tool<type
     description:
       "Read a subagent's current or terminal result, optionally waiting for a bounded time. Completed subagents notify the parent Agent automatically, so normally wait for that notification instead of repeatedly polling a running subagent. Use timeoutMs only when explicitly blocking for a result is useful. A timeout does not cancel the subagent.",
     parameters: waitParameters,
+    outputSchema: Type.Object({
+      ...subagentSummaryProperties,
+      output: Type.String(),
+      error: Type.Optional(Type.String()),
+      waitTimedOut: Type.Boolean(),
+    }),
     execution: { concurrency: "parallel", deadlineMs: MAX_WAIT_MS + 1_000 },
     execute: async (args, context) => {
       const result = await subagents.wait(args.agentId, {
@@ -122,6 +159,7 @@ export function createCancelSubagentTool(
     name: "cancel_subagent",
     description: "Cancel one live subagent and wait for its owned work to settle.",
     parameters: cancelParameters,
+    outputSchema: Type.Object(subagentSummaryProperties),
     execution: { concurrency: "parallel" },
     execute: async (args) => {
       const result = await subagents.cancel(args.agentId, {

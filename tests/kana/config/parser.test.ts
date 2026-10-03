@@ -8,6 +8,11 @@ type InvalidConfigCase = readonly [label: string, config: string, expectedError:
 
 const invalidScalarConfigs: InvalidConfigCase[] = [
   [
+    "agent.codemode = enabled",
+    '[agent]\ncodemode = "enabled"\n',
+    "agent.codemode must be one of: off, mixed, only.",
+  ],
+  [
     "logging.level = verbose",
     '[logging]\nlevel = "verbose"\n',
     "logging.level must be one of: debug, info, warn, error, off.",
@@ -57,6 +62,7 @@ describe("Kana config parser", () => {
         "",
         "[agent]",
         'tools = ["read", "shell", "job_start"]',
+        'codemode = "mixed"',
         "web_search = false",
         "image_input = false",
         "max_turns = 4",
@@ -131,6 +137,7 @@ describe("Kana config parser", () => {
       agent: {
         ...DEFAULT_KANA_CONFIG.agent,
         tools: ["read", "shell", "job_start"],
+        codemode: "mixed",
         webSearch: false,
         imageInput: false,
         maxTurns: 4,

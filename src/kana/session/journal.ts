@@ -169,7 +169,7 @@ export class KanaSessionJournal {
     turnId: string,
     toolCallId: string,
     items: readonly KanaTodoItem[],
-    options: AppendKanaSessionMessagesOptions = {},
+    options: AppendKanaSessionMessagesOptions & { parentToolCallId?: string } = {},
   ): KanaSessionTodoStateEntry {
     this.assertActiveTurn(turnId);
     if (!toolCallId) {
@@ -178,8 +178,10 @@ export class KanaSessionJournal {
     if (this.state.todoToolCallIds.has(toolCallId)) {
       throw new Error(`Todo state for tool call ${toolCallId} has already been persisted.`);
     }
-    if (!findToolCall(this.state.activeTurnMessages, toolCallId, "todo_write")) {
-      throw new Error(`Todo state references unknown todo_write call ${toolCallId}.`);
+    const ownerId = options.parentToolCallId ?? toolCallId;
+    const ownerName = options.parentToolCallId === undefined ? "todo_write" : "run_code";
+    if (!findToolCall(this.state.activeTurnMessages, ownerId, ownerName)) {
+      throw new Error(`Todo state references unknown ${ownerName} call ${ownerId}.`);
     }
 
     const entry: KanaSessionTodoStateEntry = {
@@ -188,6 +190,9 @@ export class KanaSessionJournal {
       parentId: this.state.tailId,
       timestamp: options.timestamp ?? new Date().toISOString(),
       toolCallId,
+      ...(options.parentToolCallId === undefined
+        ? {}
+        : { parentToolCallId: options.parentToolCallId }),
       items: normalizeKanaTodoItems(items),
     };
     this.appendEntries([entry]);
@@ -537,9 +542,11 @@ export class KanaSessionJournal {
           if (this.state.todoToolCallIds.has(entry.toolCallId)) {
             throw new Error(`Duplicate Kana todo tool call id: ${entry.toolCallId}`);
           }
-          if (!findToolCall(this.state.activeTurnMessages, entry.toolCallId, "todo_write")) {
+          const ownerId = entry.parentToolCallId ?? entry.toolCallId;
+          const ownerName = entry.parentToolCallId === undefined ? "todo_write" : "run_code";
+          if (!findToolCall(this.state.activeTurnMessages, ownerId, ownerName)) {
             throw new Error(
-              `Kana session todo state ${entry.id} references unknown todo_write call ${entry.toolCallId}.`,
+              `Kana session todo state ${entry.id} references unknown ${ownerName} call ${ownerId}.`,
             );
           }
           this.state.todoToolCallIds.add(entry.toolCallId);

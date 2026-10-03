@@ -316,6 +316,7 @@ export function createKanaAgent(
   return new Agent({
     model,
     promptAssembly,
+    codemode: config.codemode,
     maxTurns: config.maxTurns,
     toolDeadlineMs: config.toolDeadlineMs,
     webSearch: runtime.webSearch,

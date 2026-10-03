@@ -1,20 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import type { ToolResultMessage } from "@/core";
 import { DEFAULT_KANA_CONFIG } from "@/kana";
 import type { Logger } from "@/logging";
 import { Agent } from "../../../src/agent";
 import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
+  type KanaMemoryEntry,
   type MemoryConsolidationEvent,
 } from "../../../src/kana/memory";
 import type { MemoryConsolidationResult } from "../../../src/kana/memory/consolidation-agent";
 import { MockModel } from "../../../src/providers/mock";
 import { deferred, waitFor } from "../../helpers/async-control";
-import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("memory consolidation scheduler", () => {
-  test("does not log or schedule when no successful remember entries exist", async () => {
+  test("does not log or schedule when there are no entries", async () => {
     const events: string[] = [];
     const logger: Logger = {
       debug: (event) => events.push(event),
@@ -24,16 +23,7 @@ describe("memory consolidation scheduler", () => {
     };
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, { logger });
 
-    await scheduler.schedule([
-      {
-        ...messageIdentityForTest("tool"),
-        role: "tool",
-        toolCallId: "call_read",
-        toolName: "read",
-        content: "",
-        isError: false,
-      },
-    ]);
+    await scheduler.schedule([]);
 
     expect(events).toEqual([]);
   });
@@ -47,18 +37,9 @@ describe("memory consolidation scheduler", () => {
     });
 
     await scheduler.schedule([
-      rememberResult("project", "mem_project_1"),
-      rememberResult("project", "mem_project_2"),
-      rememberResult("global", "mem_global"),
-      { ...rememberResult("project", "mem_failed"), isError: true },
-      {
-        ...messageIdentityForTest("tool"),
-        role: "tool",
-        toolCallId: "call_read",
-        toolName: "read",
-        content: "",
-        isError: false,
-      },
+      memoryEntry("project", "mem_project_1"),
+      memoryEntry("project", "mem_project_2"),
+      memoryEntry("global", "mem_global"),
     ]);
 
     expect(calls).toEqual([
@@ -85,8 +66,8 @@ describe("memory consolidation scheduler", () => {
       },
     });
 
-    const first = scheduler.schedule([rememberResult("project", "mem_first")]);
-    const second = scheduler.schedule([rememberResult("project", "mem_second")]);
+    const first = scheduler.schedule([memoryEntry("project", "mem_first")]);
+    const second = scheduler.schedule([memoryEntry("project", "mem_second")]);
 
     expect(scheduler.getActivity()).toEqual([
       { scope: "project", status: "queued" },
@@ -124,8 +105,8 @@ describe("memory consolidation scheduler", () => {
 
     await expect(
       scheduler.schedule([
-        rememberResult("project", "mem_project"),
-        rememberResult("global", "mem_global"),
+        memoryEntry("project", "mem_project"),
+        memoryEntry("global", "mem_global"),
       ]),
     ).rejects.toThrow("Provider unavailable");
 
@@ -169,7 +150,7 @@ describe("memory consolidation scheduler", () => {
       },
     });
     const rejection = scheduler
-      .schedule([rememberResult("project", "mem_project"), rememberResult("global", "mem_global")])
+      .schedule([memoryEntry("project", "mem_project"), memoryEntry("global", "mem_global")])
       .catch((error) => error);
     await started.promise;
 
@@ -198,7 +179,7 @@ describe("memory consolidation scheduler", () => {
       scheduler.subscribe((event) => {
         if (event.type === "failed") failures.push(event);
       });
-      await scheduler.schedule([rememberResult("project", `mem_${outcome}`)]);
+      await scheduler.schedule([memoryEntry("project", `mem_${outcome}`)]);
       expect(scheduler.getActivity()).toEqual([]);
     }
 
@@ -224,7 +205,7 @@ describe("memory consolidation scheduler", () => {
       },
     });
 
-    await scheduler.schedule([rememberResult("project", "mem_project")], {
+    await scheduler.schedule([memoryEntry("project", "mem_project")], {
       logger: scheduledLogger,
     });
 
@@ -247,7 +228,7 @@ describe("memory consolidation scheduler", () => {
       },
     });
 
-    const incremental = scheduler.schedule([rememberResult("project", "mem_project")]);
+    const incremental = scheduler.schedule([memoryEntry("project", "mem_project")]);
     const full = queue.enqueue("project", async () => {
       started.push("full");
     });
@@ -288,7 +269,7 @@ describe("memory consolidation scheduler", () => {
     });
     scheduler.subscribe((event) => activityEvents.push(event));
 
-    const scheduled = scheduler.schedule([rememberResult("project", "mem_project")]);
+    const scheduled = scheduler.schedule([memoryEntry("project", "mem_project")]);
     await started;
 
     const shutdown = scheduler.close();
@@ -305,7 +286,7 @@ describe("memory consolidation scheduler", () => {
       "memory_consolidation.shutdown_ended",
     ]);
 
-    await scheduler.schedule([rememberResult("project", "mem_after_shutdown")]);
+    await scheduler.schedule([memoryEntry("project", "mem_after_shutdown")]);
     expect(events.at(-1)).toBe("memory_consolidation.schedule_skipped");
   });
 });
@@ -328,19 +309,11 @@ function createLogger(events: string[]): Logger {
   };
 }
 
-function rememberResult(scope: "global" | "project", id: string): ToolResultMessage {
+function memoryEntry(scope: "global" | "project", id: string): KanaMemoryEntry {
   return {
-    ...messageIdentityForTest("tool"),
-    role: "tool",
-    toolCallId: `call_${id}`,
-    toolName: "remember",
-    content: `Memory recorded in ${scope} scope.`,
-    result: {
-      id,
-      createdAt: "2026-06-20T00:00:00.000Z",
-      scope,
-      content: `Content for ${id}`,
-    },
-    isError: false,
+    id,
+    createdAt: "2026-06-20T00:00:00.000Z",
+    scope,
+    content: `Content for ${id}`,
   };
 }

@@ -10,6 +10,7 @@ import {
 } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
 import {
+  type CodemodeToolContext,
   normalizeToolResult,
   type Tool,
   type ToolConcurrency,
@@ -47,6 +48,7 @@ export type BeforeToolExecutionHook = (request: {
 
 export type ToolRuntimeConfig = {
   tools?: readonly Tool[];
+  callableTools?: readonly Tool[];
   parallelToolCalls?: boolean;
   maxParallelToolCalls?: number;
   signal?: AbortSignal;
@@ -92,7 +94,17 @@ type ExecutedToolCall = {
   toolCall: ToolCallContent;
   result: ToolResult;
   isError: boolean;
+  durationMs: number;
   abortRun?: boolean;
+};
+
+type NestedToolCall = {
+  toolCall: ToolCallContent;
+  signal: AbortSignal;
+  concurrency: ToolConcurrency;
+  onExecutionEnd?: (durationMs: number) => void;
+  resolve(result: ToolResult): void;
+  reject(error: unknown): void;
 };
 
 type ToolInterruption =
@@ -137,6 +149,7 @@ type RunningParallelPool = {
 export class ToolRuntime {
   private readonly events: SerialEventQueue;
   private readonly approvals = new SerialTaskQueue();
+  private readonly approvalWaitHandlers = new Map<string, (waiting: boolean) => void>();
   private readonly cancellationGraceMs: number;
   private readonly defaultDeadlineMs: number;
   private readonly maxParallelToolCalls: number;
@@ -155,6 +168,27 @@ export class ToolRuntime {
       ...(config.toolResultPolicies ?? []),
     ];
     assertValidToolResultPolicies(this.toolResultPolicies);
+  }
+
+  async invoke(
+    toolCall: ToolCallContent,
+    options: {
+      signal?: AbortSignal;
+      onAbortRun?: () => void;
+      parentToolCallId?: string;
+      onExecutionEnd?: (durationMs: number) => void;
+    } = {},
+  ): Promise<ExecutedToolCall> {
+    const executed = await this.executeToolCall(
+      structuredClone(toolCall),
+      options.signal ?? new AbortController().signal,
+      options.onAbortRun,
+      this.config.callableTools ?? this.config.tools,
+      options.parentToolCallId,
+      options.onExecutionEnd,
+    );
+    await this.publishExecutionEnd(executed, options.parentToolCallId);
+    return executed;
   }
 
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
@@ -238,8 +272,11 @@ export class ToolRuntime {
     return toolCalls.slice(startIndex, endIndex);
   }
 
-  private readToolConcurrency(toolCall: ToolCallContent): ToolConcurrency {
-    const tool = this.config.tools?.find((candidate) => candidate.name === toolCall.name);
+  private readToolConcurrency(
+    toolCall: ToolCallContent,
+    tools = this.config.tools,
+  ): ToolConcurrency {
+    const tool = tools?.find((candidate) => candidate.name === toolCall.name);
     try {
       return tool ? resolveToolConcurrency(tool) : "exclusive";
     } catch {
@@ -361,6 +398,7 @@ export class ToolRuntime {
               "internal_scheduler_failure",
             ),
             isError: true,
+            durationMs: 0,
             abortRun: true,
           };
         }
@@ -412,6 +450,7 @@ export class ToolRuntime {
             ? createUnknownToolResult(message, "internal_scheduler_failure")
             : createCanceledToolResult(message),
           isError: true,
+          durationMs: 0,
         };
         outcomes[index] = executed;
         try {
@@ -471,6 +510,7 @@ export class ToolRuntime {
         toolCall,
         result: createCanceledToolResult(message),
         isError: true,
+        durationMs: 0,
       } satisfies ExecutedToolCall;
       await this.publishExecutionEnd(executed);
       const finalized = await this.commitResult(executed);
@@ -483,14 +523,19 @@ export class ToolRuntime {
     toolCall: ToolCallContent,
     groupSignal: AbortSignal,
     onAbortRun?: () => void,
+    tools = this.config.tools,
+    parentToolCallId?: string,
+    onExecutionEnd?: (durationMs: number) => void,
   ): Promise<ExecutedToolCall> {
-    const tool = this.config.tools?.find((candidate) => candidate.name === toolCall.name);
+    let durationMs = 0;
+    const tool = tools?.find((candidate) => candidate.name === toolCall.name);
 
     if (!tool) {
       return {
         toolCall,
         result: createErrorToolResult(`Tool "${toolCall.name}" not found`),
         isError: true,
+        durationMs,
       };
     }
 
@@ -501,7 +546,13 @@ export class ToolRuntime {
       const deadlineMs = resolveInvocationDeadlineMs(tool, this.defaultDeadlineMs);
       const args = validateToolArguments(tool, toolCall.args);
       const executionSignal = combineAbortSignals(this.config.signal, groupSignal);
-      const beforeResult = await this.runBeforeToolExecution(toolCall, tool, args, executionSignal);
+      const beforeResult = await this.runBeforeToolExecution(
+        toolCall,
+        tool,
+        args,
+        executionSignal,
+        parentToolCallId,
+      );
 
       if (beforeResult.type === "cancel") {
         const shouldAbortRun = beforeResult.abortRun ?? true;
@@ -512,6 +563,7 @@ export class ToolRuntime {
           toolCall,
           result: createCanceledToolResult(beforeResult.message),
           isError: true,
+          durationMs,
           abortRun: shouldAbortRun,
         };
       }
@@ -522,6 +574,7 @@ export class ToolRuntime {
           toolCall,
           result: createCanceledToolResult("Tool call canceled before execution."),
           isError: true,
+          durationMs,
           abortRun: true,
         };
       }
@@ -532,6 +585,7 @@ export class ToolRuntime {
           toolCall,
           result,
           isError: result.isError ?? false,
+          durationMs,
         };
       }
 
@@ -540,6 +594,7 @@ export class ToolRuntime {
         toolCallId: toolCall.id,
         toolName: toolCall.name,
         args,
+        ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
       });
 
       acceptsUpdates = true;
@@ -559,8 +614,14 @@ export class ToolRuntime {
             toolName: toolCall.name,
             args,
             partialResult,
+            ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
           });
         },
+        (elapsedMs) => {
+          durationMs = elapsedMs;
+          onExecutionEnd?.(elapsedMs);
+        },
+        parentToolCallId,
       );
       const firstOutcome = await Promise.race([
         invocation.settlement.then((settlement) => ({
@@ -596,6 +657,7 @@ export class ToolRuntime {
             toolCall,
             result: createInterruptedToolResult(firstOutcome.interruption, false),
             isError: true,
+            durationMs,
             abortRun: true,
           };
         }
@@ -623,6 +685,7 @@ export class ToolRuntime {
             this.cancellationGraceMs,
           ),
           isError: true,
+          durationMs,
           abortRun: true,
         };
       }
@@ -639,6 +702,7 @@ export class ToolRuntime {
         toolCall,
         result,
         isError: result.isError ?? false,
+        durationMs,
       };
     } catch (error) {
       acceptsUpdates = false;
@@ -649,6 +713,7 @@ export class ToolRuntime {
           toolCall,
           result: createErrorToolResult(formatError(updateError)),
           isError: true,
+          durationMs,
           abortRun,
         };
       }
@@ -656,6 +721,7 @@ export class ToolRuntime {
         toolCall,
         result: createErrorToolResult(formatError(error)),
         isError: true,
+        durationMs,
         abortRun,
       };
     }
@@ -668,6 +734,8 @@ export class ToolRuntime {
     deadlineMs: number | undefined,
     groupSignal: AbortSignal,
     update: (partialResult: unknown) => void,
+    onExecutionEnd: (durationMs: number) => void,
+    parentToolCallId?: string,
   ): {
     settlement: Promise<ToolExecutionSettlement>;
     interruption: Promise<ToolInterruption>;
@@ -679,12 +747,27 @@ export class ToolRuntime {
     const interruption = new Promise<ToolInterruption>((resolve) => {
       resolveInterruption = resolve;
     });
+    let executionStartedAt: number | undefined;
+    let executionEndedAt: number | undefined;
+    let approvalStartedAt: number | undefined;
+    let approvalWaitMs = 0;
+    const finishExecution = (): void => {
+      if (executionEndedAt !== undefined) return;
+      executionEndedAt = performance.now();
+      const waitingMs =
+        approvalWaitMs +
+        (approvalStartedAt === undefined ? 0 : executionEndedAt - approvalStartedAt);
+      onExecutionEnd(
+        executionStartedAt === undefined ? 0 : executionEndedAt - executionStartedAt - waitingMs,
+      );
+    };
     const interrupt = (value: ToolInterruption): void => {
       if (interruptionValue) {
         return;
       }
 
       interruptionValue = value;
+      finishExecution();
       this.log("warn", "tool.execution_cancellation_requested", {
         toolName: tool.name,
         reason: value.reason,
@@ -702,33 +785,83 @@ export class ToolRuntime {
     if (runSignals.some((signal) => signal.aborted)) {
       onRunAbort();
     }
-    const deadlineTimer =
-      deadlineMs === undefined
+    let remainingDeadlineMs = deadlineMs;
+    let deadlineStartedAt: number;
+    const startDeadline = (): ReturnType<typeof setTimeout> | undefined => {
+      deadlineStartedAt = performance.now();
+      return deadlineMs === undefined
         ? undefined
-        : setTimeout(() => interrupt({ reason: "deadline", deadlineMs }), deadlineMs);
+        : setTimeout(() => interrupt({ reason: "deadline", deadlineMs }), remainingDeadlineMs);
+    };
+    let deadlineTimer = startDeadline();
+    if (tool.name === "run_code") {
+      let waitingApprovals = 0;
+      this.approvalWaitHandlers.set(toolCall.id, (waiting) => {
+        if (invocationController.signal.aborted) return;
+        waitingApprovals += waiting ? 1 : -1;
+        if (waiting && waitingApprovals === 1) {
+          approvalStartedAt = performance.now();
+          if (deadlineTimer !== undefined) {
+            clearTimeout(deadlineTimer);
+            deadlineTimer = undefined;
+          }
+          if (remainingDeadlineMs !== undefined) {
+            remainingDeadlineMs -= performance.now() - deadlineStartedAt;
+          }
+          this.events.push({
+            type: "tool_execution_pause",
+            toolCallId: toolCall.id,
+            toolName: tool.name,
+            reason: "approval",
+          });
+        } else if (!waiting && waitingApprovals === 0) {
+          approvalWaitMs += performance.now() - approvalStartedAt!;
+          approvalStartedAt = undefined;
+          deadlineTimer = startDeadline();
+          this.events.push({
+            type: "tool_execution_resume",
+            toolCallId: toolCall.id,
+            toolName: tool.name,
+            reason: "approval",
+          });
+        }
+      });
+    }
     const settlement = Promise.resolve()
-      .then(() =>
-        tool.execute(args, {
+      .then(() => {
+        executionStartedAt = performance.now();
+        return tool.execute(args, {
           toolCallId: toolCall.id,
+          ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
           signal: invocationController.signal,
           update,
-        }),
-      )
+          ...(tool.name === "run_code"
+            ? {
+                invokeTool: this.createNestedToolInvoker(
+                  toolCall.id,
+                  invocationController.signal,
+                  () => interrupt({ reason: "run_aborted" }),
+                ),
+              }
+            : {}),
+        });
+      })
       .then(
-        (value): ToolExecutionSettlement => ({
-          type: "fulfilled",
-          value,
-        }),
-        (error): ToolExecutionSettlement => ({
-          type: "rejected",
-          error,
-        }),
+        (value): ToolExecutionSettlement => {
+          finishExecution();
+          return { type: "fulfilled", value };
+        },
+        (error): ToolExecutionSettlement => {
+          finishExecution();
+          return { type: "rejected", error };
+        },
       );
 
     return {
       settlement,
       interruption,
-      dispose() {
+      dispose: () => {
+        this.approvalWaitHandlers.delete(toolCall.id);
         for (const signal of runSignals) {
           signal.removeEventListener("abort", onRunAbort);
         }
@@ -739,11 +872,72 @@ export class ToolRuntime {
     };
   }
 
+  private createNestedToolInvoker(
+    parentToolCallId: string,
+    parentSignal: AbortSignal,
+    onAbortRun: () => void,
+  ): CodemodeToolContext["invokeTool"] {
+    const queue: NestedToolCall[] = [];
+    const limit = this.config.parallelToolCalls === false ? 1 : this.maxParallelToolCalls;
+    let activeCount = 0;
+    let exclusiveActive = false;
+
+    const drain = (): void => {
+      if (exclusiveActive) return;
+      while (queue.length > 0 && activeCount < limit) {
+        const next = queue[0] as NestedToolCall;
+        if (next.concurrency === "exclusive" && activeCount > 0) return;
+        queue.shift();
+        activeCount += 1;
+        exclusiveActive = next.concurrency === "exclusive";
+        void this.invoke(next.toolCall, {
+          signal: next.signal,
+          parentToolCallId,
+          onExecutionEnd: next.onExecutionEnd,
+          onAbortRun: () => {
+            // The sandbox also cancels unawaited calls after normal script completion.
+            if (!next.signal.aborted) onAbortRun();
+          },
+        })
+          .then((executed) => next.resolve(executed.result), next.reject)
+          .finally(() => {
+            activeCount -= 1;
+            exclusiveActive = false;
+            drain();
+          });
+        if (exclusiveActive) return;
+      }
+    };
+
+    return (name, args, options = {}) =>
+      new Promise<ToolResult>((resolve, reject) => {
+        const toolCall: ToolCallContent = {
+          type: "tool_call",
+          id: crypto.randomUUID(),
+          name,
+          args,
+        };
+        queue.push({
+          toolCall,
+          signal: combineAbortSignals(parentSignal, options.signal) as AbortSignal,
+          concurrency: this.readToolConcurrency(
+            toolCall,
+            this.config.callableTools ?? this.config.tools,
+          ),
+          onExecutionEnd: options.onExecutionEnd,
+          resolve,
+          reject,
+        });
+        drain();
+      });
+  }
+
   private async runBeforeToolExecution(
     toolCall: ToolCallContent,
     tool: Tool,
     args: unknown,
     signal: AbortSignal | undefined,
+    parentToolCallId?: string,
   ): Promise<BeforeToolExecutionResult> {
     const hook = this.config.beforeToolExecution;
     if (!hook) {
@@ -752,22 +946,31 @@ export class ToolRuntime {
       };
     }
 
-    return this.approvals.run(() => {
-      if (signal?.aborted) {
-        return {
-          type: "cancel",
-          abortRun: true,
-          message: "Tool call canceled before approval.",
-        };
-      }
+    if (parentToolCallId !== undefined) {
+      this.approvalWaitHandlers.get(parentToolCallId)?.(true);
+    }
+    try {
+      return await this.approvals.run(() => {
+        if (signal?.aborted) {
+          return {
+            type: "cancel",
+            abortRun: true,
+            message: "Tool call canceled before approval.",
+          };
+        }
 
-      return hook({
-        toolCall: structuredClone(toolCall),
-        tool,
-        args: structuredClone(args),
-        signal,
+        return hook({
+          toolCall: structuredClone(toolCall),
+          tool,
+          args: structuredClone(args),
+          signal,
+        });
       });
-    });
+    } finally {
+      if (parentToolCallId !== undefined) {
+        this.approvalWaitHandlers.get(parentToolCallId)?.(false);
+      }
+    }
   }
 
   private async commitResult(executed: ExecutedToolCall): Promise<FinalizedToolResult> {
@@ -778,6 +981,7 @@ export class ToolRuntime {
       toolCallId: executed.toolCall.id,
       toolName: executed.toolCall.name,
       content: this.config.limitToolContent?.(finalized.content) ?? finalized.content,
+      durationMs: executed.durationMs,
       ...(executed.result.images?.length
         ? { images: structuredClone(executed.result.images) }
         : {}),
@@ -857,13 +1061,18 @@ export class ToolRuntime {
     };
   }
 
-  private async publishExecutionEnd(executed: ExecutedToolCall): Promise<void> {
+  private async publishExecutionEnd(
+    executed: ExecutedToolCall,
+    parentToolCallId?: string,
+  ): Promise<void> {
     await this.events.emit({
       type: "tool_execution_end",
       toolCallId: executed.toolCall.id,
       toolName: executed.toolCall.name,
       result: executed.result.result,
       isError: executed.isError,
+      ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
+      durationMs: executed.durationMs,
     });
   }
 

@@ -58,6 +58,9 @@ describe("Kana Agent tools", () => {
       );
 
       expect(agent.state.tools.map((tool) => tool.name)).toEqual([...KANA_BUILT_IN_TOOL_NAMES]);
+      for (const tool of agent.state.tools) {
+        if (tool.name !== "mcp_call") expect(tool.outputSchema).toBeDefined();
+      }
     } finally {
       wakeScheduler.dispose();
     }
@@ -76,6 +79,29 @@ describe("Kana Agent tools", () => {
     expect(disabledByConfig.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
     expect(unsupportedModel.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
   });
+
+  test.each(["mixed", "only"] as const)(
+    "applies %s mode within configured and role-card tool limits",
+    (codemode) => {
+      const config = testConfig();
+      config.agent = { ...config.agent, codemode, tools: ["read", "shell"] };
+      const parent = withKanaAgentEnvironment(() => createAgentForTest(config));
+      const child = withKanaAgentEnvironment(() =>
+        createAgentForTest(config, { subagentProfile: subagentProfile() }),
+      );
+
+      expect(parent.state.tools.map((tool) => tool.name)).toEqual(
+        codemode === "mixed" ? ["read", "shell", "run_code"] : ["run_code"],
+      );
+      expect(child.state.tools.map((tool) => tool.name)).toEqual(
+        codemode === "mixed" ? ["read", "run_code"] : ["run_code"],
+      );
+      const description = child.state.tools.find((tool) => tool.name === "run_code")!.description;
+      expect(description).toContain("read");
+      expect(description).not.toContain("shell:");
+      expect(description).not.toContain("shell(args:");
+    },
+  );
 
   test("offers user-task delegation only with a task manager and tool selection", () => {
     const tasks = new KanaUserTaskManager();
@@ -235,7 +261,7 @@ describe("Kana Agent tools", () => {
       for (const tools of [
         [],
         ["read"],
-        ["read", "mcp_list_tools", "mcp_describe_tool", "mcp_call"],
+        ["read", "mcp_list_tools", "mcp_get_tool", "mcp_call"],
       ] as const) {
         const config = testConfig();
         const agent = withKanaAgentEnvironment(() =>

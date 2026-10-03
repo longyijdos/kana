@@ -1,6 +1,6 @@
 # Tools and execution
 
-The core `ToolSpec` is the provider-facing name, description, and JSON Schema. The executable `Tool` extends it with an `execute` function and optional execution metadata. `ToolRuntime` receives exactly the tool objects advertised for one model step and turns every proposed call into a normalized, observable result without letting ordinary tool failures escape the Agent loop.
+The core `ToolSpec` is the provider-facing name, description, and input JSON Schema. The executable `Tool` adds `execute`, optional result schema, and execution metadata. `ToolRuntime` receives model-visible tools and an optional separate callable set for scripts, turning calls into normalized, observable results without letting ordinary tool failures escape the Agent loop.
 
 ## Tool and result contracts
 
@@ -9,6 +9,7 @@ type Tool = {
   name: string;
   description: string;
   parameters: TSchema;
+  outputSchema?: TSchema;
   execution?: {
     concurrency?: "parallel" | "exclusive";
     deadlineMs?: number;
@@ -18,12 +19,15 @@ type Tool = {
 
 type ToolContext = {
   toolCallId: string;
+  parentToolCallId?: string;
   signal?: AbortSignal;
   update(partialResult: unknown): void;
 };
 ```
 
 Omitted concurrency defaults to `exclusive`. `ToolRuntime` always supplies an invocation-level abort signal; a direct embedder calling `execute` may omit it. Long-running implementations should observe the signal and use `update` for useful bounded progress.
+
+Each tool implementation owns its optional `outputSchema`, describing the successful canonical `result` after JSON transport. Dates become ISO strings. This metadata does not appear in ordinary provider tool declarations and is not used for runtime result validation. Codemode renders it in `run_code`'s description; an absent schema becomes `unknown`.
 
 A normalized result has distinct audiences:
 
@@ -36,6 +40,14 @@ A normalized result has distinct audiences:
 A plain string return becomes `content`; another ordinary value is JSON-serialized for content and retained as the live structured result. Malformed explicit result fields become a safe tool failure before message commit.
 
 ## Invocation pipeline
+
+`ToolRuntime.invoke(toolCall, { signal?, onAbortRun?, onExecutionEnd? })` executes one call through the same validation, approval, cancellation, deadline, normalization, and event pipeline as model-proposed calls. It returns `{ toolCall, result, isError, durationMs, abortRun? }`, where `result` is the complete normalized `ToolResult`. It does not apply result policies, limit content, create artifacts, or commit messages. `ToolRuntime.execute()` owns batch scheduling and history preparation; callers of `invoke()` own scheduling and must handle `abortRun` or supply `onAbortRun` for immediate notification.
+
+Runtime measures `durationMs` from entering the tool's `execute()` until it settles or Runtime interrupts it. Scheduling, validation, approval, result processing, and cancellation cleanup after interruption are excluded. Skipped execution records zero. Duration is execution metadata on `tool_execution_end` and the historical tool message, separate from the tool's business `result`. The optional `onExecutionEnd` callback receives the duration as soon as execution ends or is interrupted, before result publication.
+
+Only the tool named `run_code` receives `CodemodeToolContext`, which extends the ordinary context with `invokeTool(name, args, { signal?, onExecutionEnd? })`. Ordinary tools have no such field in either their context type or runtime object. Nested invocation returns the full normalized `ToolResult` through `invoke()` without preparing history. Each codemode invocation owns a queue that follows the runtime's parallel-call switch and concurrency limit, with exclusive calls acting as barriers. Nested approvals share the runtime's serial hook queue. A nested `abortRun` interrupts codemode; cancellation of a child signal alone does not. Inner calls publish the usual execution events with the outer call's `parentToolCallId` but do not become separate historical tool messages. `invoke()` accepts this optional event field; ordinary calls omit it. The TUI skips these inner events when rendering tool blocks and status, while approvals retain their normal behavior.
+
+Nested calls also receive `ToolContext.parentToolCallId`, identifying the enclosing `run_code`. Ordinary calls omit it. Product state can associate a nested update with the journaled outer call without adding an inner tool message to conversation history.
 
 Every proposed call follows one contained pipeline:
 
@@ -63,6 +75,8 @@ Each parallel group uses a bounded rolling pool. Calls are claimed and enter ser
 
 The effective deadline comes from `tool.execution.deadlineMs`, then the Agent default. The reusable runtime and Kana's `agent.tool_deadline_ms` both default to 300000 ms; `shell` declares its own 301000 ms deadline so its five-minute command ceiling terminates through shell's own timeout handling. A call-specific argument such as `shell.timeoutMs` may impose a narrower operation limit inside that outer boundary.
 
+Approval precedes an ordinary tool's deadline. For `run_code`, waiting for an inner `beforeToolExecution` hook, including its serial approval queue, pauses the outer deadline, elapsed display, and recorded execution duration. Overlapping approval waits share one pause; the outer deadline resumes its remaining budget after the last wait finishes. Already executing inner tools retain their own deadlines. The runtime publishes `tool_execution_pause` and `tool_execution_resume` for the outer call with `reason: "approval"`; these events do not create history messages.
+
 Run abort, a tool deadline, or an internal scheduler failure immediately stops pool replenishment and aborts active sibling signals. Calls not yet started receive canceled results. Started calls receive a finite cancellation grace period. Settlement within it becomes `canceled` or `timed_out`; a later return cannot replace that outcome.
 
 If a call ignores cancellation past the grace period, ToolRuntime stops accepting updates, fixes its result as `status: "unknown"`, and ends the Agent run. The result forbids automatic retry because the detached operation may still have side effects. Late settlement produces only safe lifecycle diagnostics without arguments or output.
@@ -86,6 +100,22 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 The final byte guard uses three UTF-8 bytes per estimated token. With `tool_result_artifacts` enabled, oversized non-`read` text is saved completely before a bounded roughly 70% head / 30% tail preview is built. The retrieval notice, exact omitted-byte count, and locator fit inside the same guard. Top-level `read` is bounded without recursively creating another artifact and explains that pagination cannot split one very long line.
 
 The live result remains available to `tool_execution_end`. ToolRuntime saves a cloneable, JSON-serializable result completely in durable messages when its serialized UTF-8 size is at most 128 KiB (131072 bytes). Oversized or non-serializable results are omitted as a whole; a custom policy may also explicitly disable retention. This persistence limit is independent of model-context budgets, content limits, and artifact creation; it does not truncate the live result. The model receives content and images, not this stored result. Restored TUI history and subagent inspection prefer `result`, then `artifact`, then `content`. When result is retained, live and restored views use the same result; when result was omitted, an artifact provides the stored-output summary. Artifact storage paths, permissions, audit, fork, and cleanup belong to [Sessions and memory](sessions-and-memory.md).
+
+## Codemode sandbox
+
+`createCodemodeSandbox({ tools, timeoutMs? })` wraps the independent `@earendil-works/pi-codemode` package. Each execution runs JavaScript in a fresh QuickJS WASM instance inside a Worker. The default deadline is 300000 ms, including time spent in supplied tools, and the VM heap limit is 256 MiB. Callers can pass an abort signal to `execute()` and must close the sandbox when its owner is disposed. Cancellation and timeout interrupt the VM and abort pending host-tool signals.
+
+Scripts retain the package's interfaces: `tools`, `ALL_TOOLS`, `text`, `image`, `console`, `exit`, `store`, `load`, top-level `await`, and `return`. Host filesystem, networking, process, and module APIs are unavailable. Registered host functions exchange JSON values with the script; callers own their validation, approval, and history handling.
+
+The factory returns the package's sandbox without changing its result format. Successful execution returns `ok`, `value`, `output`, `calls`, and `storeWrites`; failed execution returns `ok: false`, `error`, `output`, and `calls`. Store changes are reported to the caller rather than persisted automatically. This host API does not register a model-facing tool.
+
+`createCodemodeTool({ tools, mode? })` creates an exclusive tool named `run_code` with `{ code: string }` input. Its description uses Pi's TypeScript renderer: `mixed` (the factory default) lists result types, while `only` includes tool descriptions and input and result types. External MCP definitions remain available through `mcp_get_tool`'s structured result. Its script tools use `context.invokeTool()` and resolve to the complete canonical `result`; failed calls reject inside the script. The outer tool does not request Kana approval, while nested calls follow their own rules. `run_code` declares its own 900000 ms (15-minute) invocation deadline, excluding inner approval waits; the runtime controls the whole script through its signal. The sandbox's separate timer is disabled for this tool. The script cannot call `tools.run_code()`.
+
+The tool's `content` contains explicit text output followed by its JSON-encoded return value or script error. Nested tool images are automatically forwarded to the outer `images`, and explicit `image()` output becomes visual observations with decoded dimensions. Its structured `result` retains the package's `CodemodeResult`, including call names, statuses, and successful store writes; call durations are replaced with Runtime execution durations. Store writes are not automatically reused by later executions. Live frontends receive nested execution events; history and resumed transcripts retain only the outer result, subject to the ordinary result-retention limit.
+
+`AgentConfig.codemode` defaults to `off`. `mixed` advertises ordinary tools plus `run_code`; `only` advertises `run_code` alone. Agent retains both model-visible `tools` and internal `callableTools`, refreshing them together at each prompt assembly. Ordinary `execute()` resolves only advertised tools; internal `invoke()` resolves `callableTools`. Kana automatically supplies `run_code` according to `agent.codemode`, while `agent.tools` and child role cards still restrict script capabilities. Children inherit the parent's mode; memory consolidation keeps its existing tool surface. Provider-native capabilities such as hosted web search retain their own settings.
+
+Source execution loads the local Worker and WASM. Bun executable builds list the Worker as an additional entrypoint and embed WASM through its static file import; sandbox execution does not require external package files beside the binary. Builds explicitly use the project root (`--root .`) so the embedded Worker path matches the runtime source path.
 
 ## Built-in tools
 
@@ -112,7 +142,7 @@ The live result remains available to `tool_execution_end`. ToolRuntime saves a c
 | `schedule_wake` | `afterMinutes`, `message`, optional `key` | Creates a process-local future input for the active session. |
 | `update_goal` | `status`, optional `detail` | Ends the authorized active Goal as completed or blocked. |
 
-`list`, `glob`, `grep`, `read`, `view_image`, `mcp_list_tools`, `mcp_describe_tool`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
+`list`, `glob`, `grep`, `read`, `view_image`, `mcp_list_tools`, `mcp_get_tool`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
 
 ## File and shell boundaries
 
@@ -148,11 +178,11 @@ Subagent control tools expose only predefined role cards and return stable child
 
 `schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. It and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, `mcp_list_tools`, or `mcp_describe_tool`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Shell allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, `mcp_list_tools`, or `mcp_get_tool`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `job_start` does not use the Shell allowlist and requires approval unless the policy is `never`. Approval is interactive authorization, not filesystem or process isolation.
 
 ## MCP and custom tools
 
-All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes `mcp_list_tools` (parallel name and description listing), `mcp_describe_tool` (parallel single-tool schema lookup), and `mcp_call` (exclusive, ordinary approval). The schema lookup returns the server, tool name, and input schema in both content and result; result additionally includes optional output schema, while content omits it. Remote input schemas are enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
+All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes `mcp_list_tools` (parallel name and description listing), `mcp_get_tool` (parallel single-tool schema lookup), and `mcp_call` (exclusive, ordinary approval). The schema lookup returns the server, tool name, and input schema in both content and result; result additionally includes optional output schema, while content omits it. Remote input schemas are enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
 
 For a custom tool:
 

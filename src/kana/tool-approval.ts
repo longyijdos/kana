@@ -30,8 +30,9 @@ export function shouldRequestToolApproval(
     return true;
   }
   if (
+    toolCall.name === "run_code" ||
     toolCall.name === "mcp_list_tools" ||
-    toolCall.name === "mcp_describe_tool" ||
+    toolCall.name === "mcp_get_tool" ||
     toolCall.name === "remember" ||
     toolCall.name === "schedule_wake" ||
     toolCall.name === "todo_write" ||

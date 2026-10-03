@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Type } from "typebox";
-import type { ToolResultPolicy, ToolResultPolicyInput } from "../../src/agent";
+import type { AgentEvent, ToolResultPolicy, ToolResultPolicyInput } from "../../src/agent";
 import {
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   DEFAULT_TOOL_DEADLINE_MS,
@@ -8,6 +8,7 @@ import {
 } from "../../src/agent/tool-runtime";
 import type { Message } from "../../src/core";
 import type { Logger, LogMetadata } from "../../src/logging";
+import type { CodemodeToolContext } from "../../src/tools";
 import type { Tool } from "../../src/tools/tool";
 
 const parameters = Type.Object({});
@@ -15,7 +16,236 @@ const labeledParameters = Type.Object({
   label: Type.String(),
 });
 
+describe("ToolRuntime execution duration", () => {
+  test.each([false, true])("records execution time after approval (throws=%s)", async (throws) => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const events: AgentEvent[] = [];
+    const tool = {
+      name: "timed",
+      description: "Measure execution only.",
+      parameters,
+      execute() {
+        now += 25;
+        if (throws) throw new Error("failed");
+        return { value: "done" };
+      },
+    } satisfies Tool;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: () => {
+          now += 1_000;
+          return { type: "continue" };
+        },
+      },
+      (event) => {
+        events.push(event);
+        now += 100;
+      },
+    );
+    try {
+      const execution = await runtime.execute([
+        { type: "tool_call", id: "timed", name: "timed", args: {} },
+      ]);
+      expect(execution.toolResults[0]).toMatchObject({ durationMs: 25, isError: throws });
+      expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
+        durationMs: 25,
+      });
+      expect(execution.toolResults[0]?.result).not.toHaveProperty("durationMs");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("records zero when execution is skipped", async () => {
+    let executions = 0;
+    const tool = {
+      name: "skipped",
+      description: "Never execute.",
+      parameters: labeledParameters,
+      execute() {
+        executions += 1;
+        return "unexpected";
+      },
+    } satisfies Tool;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: ({ args }) =>
+          (args as { label: string }).label === "denied"
+            ? { type: "cancel", abortRun: false }
+            : { type: "return", result: { content: "cached", result: "cached" } },
+      },
+      () => {},
+    );
+    const execution = await runtime.execute([
+      toolCall("missing", "missing"),
+      { ...toolCall("invalid", "skipped"), args: {} },
+      toolCall("denied", "skipped"),
+      toolCall("cached", "skipped"),
+    ]);
+    expect(executions).toBe(0);
+    expect(execution.toolResults.map((result) => result.durationMs)).toEqual([0, 0, 0, 0]);
+  });
+
+  test("stops timing at cancellation before cleanup settles", async () => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const controller = new AbortController();
+    let finish: (() => void) | undefined;
+    const durations: number[] = [];
+    const tool = {
+      name: "canceled",
+      description: "Wait for cleanup.",
+      parameters,
+      execute: () =>
+        new Promise((resolve) => {
+          finish = () => resolve("done");
+        }),
+    } satisfies Tool;
+    const runtime = new ToolRuntime({ tools: [tool] }, () => {});
+    try {
+      const execution = runtime.invoke(
+        { type: "tool_call", id: "cancel", name: "canceled", args: {} },
+        { signal: controller.signal, onExecutionEnd: (durationMs) => durations.push(durationMs) },
+      );
+      await waitFor(() => finish !== undefined);
+      now = 25;
+      controller.abort();
+      now = 100;
+      finish!();
+      expect(await execution).toMatchObject({ durationMs: 25, isError: true });
+      expect(durations).toEqual([25]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+});
+
 describe("ToolRuntime invocation lifecycle", () => {
+  test("invokes with complete results and live events without preparing history", async () => {
+    const operations: string[] = [];
+    const canonicalResult = { payload: "x".repeat(128 * 1_024 + 1) };
+    const content = "complete model-facing output";
+    const tool = {
+      name: "full_result",
+      description: "Return complete data.",
+      parameters: labeledParameters,
+      execute: ({ label }, context) => {
+        operations.push(`execute:${label}`);
+        context.update("progress");
+        return { content, result: canonicalResult };
+      },
+    } satisfies Tool<typeof labeledParameters, typeof canonicalResult>;
+    const call = toolCall("call-full", tool.name);
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: ({ toolCall: approvedCall }) => {
+          operations.push("approve");
+          (approvedCall.args as { label: string }).label = "changed by approval";
+          return { type: "continue" };
+        },
+        limitToolContent: () => {
+          operations.push("limit");
+          return "limited";
+        },
+        toolResultPolicy: {
+          source: "history_policy",
+          finalize: () => {
+            operations.push("finalize");
+            return { content: "preview", persistResult: false };
+          },
+        },
+        onMessageCommitted: () => {
+          operations.push("commit");
+        },
+      },
+      (event) => {
+        operations.push(event.type);
+        if (event.type === "tool_execution_end") {
+          expect(event.result).toBe(canonicalResult);
+        }
+      },
+    );
+
+    const invoked = await runtime.invoke(call);
+
+    expect(operations).toEqual([
+      "approve",
+      "tool_execution_start",
+      "execute:call-full",
+      "tool_execution_update",
+      "tool_execution_end",
+    ]);
+    expect(invoked.toolCall).toEqual(call);
+    expect(invoked.toolCall).not.toBe(call);
+    expect(invoked.result.content).toBe(content);
+    expect(invoked.result.result).toBe(canonicalResult);
+    expect(invoked.isError).toBe(false);
+    expect(invoked.abortRun ?? false).toBe(false);
+  });
+
+  test("invokes through validation and approval cancellation with the caller's signal", async () => {
+    const controller = new AbortController();
+    const completions: string[] = [];
+    let approvalCount = 0;
+    let executionCount = 0;
+    let abortCount = 0;
+    const tool = {
+      name: "denied",
+      description: "Require approval.",
+      parameters: labeledParameters,
+      execute: () => {
+        executionCount += 1;
+        return "unexpected";
+      },
+    } satisfies Tool<typeof labeledParameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [tool],
+        beforeToolExecution: ({ signal }) => {
+          approvalCount += 1;
+          expect(signal).toBe(controller.signal);
+          return { type: "cancel", message: "Approval denied." };
+        },
+      },
+      (event) => {
+        expect(event.type).toBe("tool_execution_end");
+        if (event.type === "tool_execution_end") completions.push(event.toolCallId);
+      },
+    );
+    const options = {
+      signal: controller.signal,
+      onAbortRun: () => {
+        abortCount += 1;
+      },
+    };
+
+    const invalid = await runtime.invoke(
+      { type: "tool_call", id: "invalid", name: tool.name, args: {} },
+      options,
+    );
+    const denied = await runtime.invoke(toolCall("denied", tool.name), options);
+
+    expect(invalid.isError).toBe(true);
+    expect(invalid.result.content).toContain("label");
+    expect(denied).toMatchObject({
+      result: {
+        content: "Approval denied.",
+        result: { error: "Approval denied.", canceled: true },
+        isError: true,
+      },
+      isError: true,
+      abortRun: true,
+    });
+    expect(approvalCount).toBe(1);
+    expect(executionCount).toBe(0);
+    expect(abortCount).toBe(1);
+    expect(completions).toEqual(["invalid", "denied"]);
+  });
+
   test("serializes update events and publishes completion before committing the result", async () => {
     const operations: string[] = [];
     const tool = {
@@ -519,6 +749,468 @@ describe("ToolRuntime deadlines and configuration", () => {
         error: 'Tool "invalid" execution.deadlineMs must be a positive integer.',
       },
     });
+  });
+});
+
+describe("ToolRuntime nested invocations", () => {
+  test("excludes scheduling and approval waits from nested and outer durations", async () => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const finishes = new Map<string, (elapsedMs: number) => void>();
+    const durations: number[] = [];
+    const child = {
+      name: "child",
+      description: "Wait for completion.",
+      parameters: labeledParameters,
+      execution: { concurrency: "parallel" },
+      execute: ({ label }) =>
+        new Promise<string>((resolve) => {
+          finishes.set(label, (elapsedMs) => {
+            now += elapsedMs;
+            resolve(label);
+          });
+        }),
+    } satisfies Tool<typeof labeledParameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Queue two calls.",
+      parameters,
+      execute: (_args, { invokeTool }: CodemodeToolContext) =>
+        Promise.all(
+          ["a", "b"].map((label, index) =>
+            invokeTool(
+              "child",
+              { label },
+              {
+                onExecutionEnd: (durationMs) => {
+                  durations[index] = durationMs;
+                },
+              },
+            ),
+          ),
+        ),
+    } satisfies Tool;
+    const runtime = new ToolRuntime(
+      {
+        tools: [outer, child],
+        maxParallelToolCalls: 1,
+        beforeToolExecution: () => {
+          now += 700;
+          return { type: "continue" };
+        },
+      },
+      () => {},
+    );
+    try {
+      const execution = runtime.execute([
+        { type: "tool_call", id: "outer", name: "run_code", args: {} },
+      ]);
+      await waitFor(() => finishes.has("a"));
+      expect(finishes.has("b")).toBe(false);
+      finishes.get("a")!(25);
+      await waitFor(() => finishes.has("b"));
+      finishes.get("b")!(45);
+      expect((await execution).toolResults[0]?.durationMs).toBe(70);
+      expect(durations).toEqual([25, 45]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("only run_code receives the nested invocation context", async () => {
+    let ordinaryCalls = 0;
+    const events: AgentEvent[] = [];
+    const ordinary = {
+      name: "ordinary",
+      description: "Use the normal tool context.",
+      parameters,
+      execute(_args, context) {
+        expect(context).not.toHaveProperty("invokeTool");
+        ordinaryCalls += 1;
+        context.update("progress");
+        return "ordinary result";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const codemode = {
+      name: "run_code",
+      description: "Use the orchestration context.",
+      parameters,
+      async execute(_args, context: CodemodeToolContext) {
+        expect(typeof context.invokeTool).toBe("function");
+        return (await context.invokeTool("ordinary", {})).result;
+      },
+    } satisfies Tool;
+    const runtime = new ToolRuntime({ tools: [ordinary, codemode] }, (event) => {
+      events.push(event);
+    });
+
+    const result = await runtime.execute([
+      { type: "tool_call", id: "ordinary", name: "ordinary", args: {} },
+      { type: "tool_call", id: "code", name: "run_code", args: {} },
+    ]);
+
+    expect(ordinaryCalls).toBe(2);
+    expect(result.toolResults.map((message) => message.content)).toEqual([
+      "ordinary result",
+      "ordinary result",
+    ]);
+    const executionEvents = events.filter(
+      (event) =>
+        event.type === "tool_execution_start" ||
+        event.type === "tool_execution_update" ||
+        event.type === "tool_execution_end",
+    );
+    expect(
+      executionEvents
+        .filter((event) => event.parentToolCallId === "code")
+        .map((event) => event.type),
+    ).toEqual(["tool_execution_start", "tool_execution_update", "tool_execution_end"]);
+    for (const event of executionEvents.filter(
+      (event) => event.toolCallId === "ordinary" || event.toolCallId === "code",
+    )) {
+      expect(event).not.toHaveProperty("parentToolCallId");
+    }
+  });
+
+  test.each([true, false])(
+    "bounds parallel calls and preserves exclusive barriers (parallel=%s)",
+    async (parallelToolCalls) => {
+      const starts: string[] = [];
+      const finish = new Map<string, () => void>();
+      const makeTool = (name: string, concurrency: "parallel" | "exclusive") =>
+        ({
+          name,
+          description: name,
+          parameters: labeledParameters,
+          execution: { concurrency },
+          execute: ({ label }) =>
+            new Promise<string>((resolve) => {
+              starts.push(label);
+              finish.set(label, () => resolve(label));
+            }),
+        }) satisfies Tool<typeof labeledParameters, string>;
+      const outer = {
+        name: "run_code",
+        description: "Invoke a group of nested calls.",
+        parameters,
+        async execute(_args, { invokeTool }: CodemodeToolContext) {
+          const calls = [
+            ["parallel", "p1"],
+            ["parallel", "p2"],
+            ["parallel", "p3"],
+            ["exclusive", "barrier"],
+            ["parallel", "p4"],
+          ];
+          const results = await Promise.all(
+            calls.map(([name, label]) => invokeTool(name!, { label })),
+          );
+          return results.map((result) => result.result);
+        },
+      } satisfies Tool<typeof parameters, unknown[]>;
+      const runtime = new ToolRuntime(
+        {
+          tools: [outer],
+          callableTools: [makeTool("parallel", "parallel"), makeTool("exclusive", "exclusive")],
+          parallelToolCalls,
+          maxParallelToolCalls: 2,
+        },
+        () => {},
+      );
+      const execution = runtime.execute([
+        { type: "tool_call", id: "outer", name: "run_code", args: {} },
+      ]);
+
+      await waitFor(() => finish.has(parallelToolCalls ? "p2" : "p1"));
+      expect(starts).toEqual(parallelToolCalls ? ["p1", "p2"] : ["p1"]);
+      finish.get("p1")!();
+      await waitFor(() => finish.has(parallelToolCalls ? "p3" : "p2"));
+      expect(starts).toEqual(parallelToolCalls ? ["p1", "p2", "p3"] : ["p1", "p2"]);
+      finish.get("p2")!();
+      await waitFor(() => finish.has("p3"));
+      expect(finish.has("barrier")).toBe(false);
+      finish.get("p3")!();
+      await waitFor(() => finish.has("barrier"));
+      expect(finish.has("p4")).toBe(false);
+      finish.get("barrier")!();
+      await waitFor(() => finish.has("p4"));
+      finish.get("p4")!();
+
+      expect((await execution).toolResults[0]?.result).toEqual(["p1", "p2", "p3", "barrier", "p4"]);
+    },
+  );
+
+  test("serializes nested approval hooks", async () => {
+    const approvals: string[] = [];
+    const approve: Array<() => void> = [];
+    const events: AgentEvent[] = [];
+    let parentSignal: AbortSignal | undefined;
+    const child = {
+      name: "child",
+      description: "Require approval.",
+      parameters: labeledParameters,
+      execution: { concurrency: "parallel" },
+      execute: ({ label }) => label,
+    } satisfies Tool<typeof labeledParameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Invoke two tools.",
+      parameters,
+      execution: { deadlineMs: 100 },
+      execute: async (_args, { invokeTool, signal }: CodemodeToolContext) => {
+        parentSignal = signal;
+        await Promise.all([
+          invokeTool("child", { label: "a" }),
+          invokeTool("child", { label: "b" }),
+        ]);
+        return "done";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [outer, child],
+        beforeToolExecution: ({ tool, args }) => {
+          if (tool.name === "run_code") return { type: "continue" };
+          approvals.push((args as { label: string }).label);
+          return new Promise((resolve) => approve.push(() => resolve({ type: "continue" })));
+        },
+      },
+      (event) => {
+        events.push(event);
+      },
+    );
+    const execution = runtime.execute([
+      { type: "tool_call", id: "outer", name: "run_code", args: {} },
+    ]);
+    await waitFor(() => approve.length === 1);
+    expect(approvals).toEqual(["a"]);
+    await Bun.sleep(120);
+    expect(parentSignal?.aborted).toBe(false);
+    approve[0]!();
+    await waitFor(() => approve.length === 2);
+    expect(approvals).toEqual(["a", "b"]);
+    expect(events.filter((event) => event.type === "tool_execution_resume")).toHaveLength(0);
+    await Bun.sleep(120);
+    expect(parentSignal?.aborted).toBe(false);
+    approve[1]!();
+    expect((await execution).abortRun).toBe(false);
+    expect(
+      events
+        .filter(
+          (
+            event,
+          ): event is Extract<
+            AgentEvent,
+            { type: "tool_execution_pause" | "tool_execution_resume" }
+          > => event.type === "tool_execution_pause" || event.type === "tool_execution_resume",
+        )
+        .map((event) => ({ type: event.type, toolCallId: event.toolCallId, reason: event.reason })),
+    ).toEqual([
+      { type: "tool_execution_pause", toolCallId: "outer", reason: "approval" },
+      { type: "tool_execution_resume", toolCallId: "outer", reason: "approval" },
+    ]);
+  });
+
+  test("restores the remaining parent deadline after an approval longer than its budget", async () => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const timers = spyOn(globalThis, "setTimeout");
+    const controller = new AbortController();
+    let startChild: (() => void) | undefined;
+    let approveChild: (() => void) | undefined;
+    let parentSignal: AbortSignal | undefined;
+    const child = {
+      name: "child",
+      description: "Wait until canceled.",
+      parameters,
+      execution: { deadlineMs: 1_000 },
+      execute: (_args, { signal }) =>
+        new Promise<string>((resolve) => {
+          signal!.addEventListener("abort", () => resolve("stopped"), { once: true });
+        }),
+    } satisfies Tool<typeof parameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Spend part of the budget before approval.",
+      parameters,
+      execution: { deadlineMs: 100 },
+      async execute(_args, { invokeTool, signal }: CodemodeToolContext) {
+        parentSignal = signal;
+        await new Promise<void>((resolve) => {
+          startChild = resolve;
+        });
+        await invokeTool("child", {});
+        return "done";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [outer, child],
+        signal: controller.signal,
+        beforeToolExecution: ({ tool }) =>
+          tool.name === "run_code"
+            ? { type: "continue" }
+            : new Promise((resolve) => {
+                approveChild = () => resolve({ type: "continue" });
+              }),
+      },
+      () => {},
+    );
+    try {
+      const execution = runtime.execute([
+        { type: "tool_call", id: "outer", name: "run_code", args: {} },
+      ]);
+      await waitFor(() => startChild !== undefined);
+      now = 70;
+      startChild!();
+      await waitFor(() => approveChild !== undefined);
+      await Bun.sleep(120);
+      expect(parentSignal?.aborted).toBe(false);
+      now = 10_000;
+      approveChild!();
+      const result = await execution;
+      expect(
+        timers.mock.calls.map((args) => args[1]).filter((delay) => delay === 100 || delay === 30),
+      ).toEqual([100, 30]);
+      expect(result.toolResults[0]).toMatchObject({
+        isError: true,
+        result: { status: "timed_out", deadlineMs: 100 },
+      });
+    } finally {
+      controller.abort();
+      approveChild?.();
+      timers.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  test("a running child's deadline remains active while another child awaits approval", async () => {
+    const events: AgentEvent[] = [];
+    const running = {
+      name: "running",
+      description: "Reach its own deadline.",
+      parameters,
+      execution: { concurrency: "parallel", deadlineMs: 30 },
+      execute: (_args, { signal }) =>
+        new Promise<string>((resolve) => {
+          signal!.addEventListener("abort", () => resolve("stopped"), { once: true });
+        }),
+    } satisfies Tool<typeof parameters, string>;
+    const waiting = {
+      name: "waiting",
+      description: "Remain in approval.",
+      parameters,
+      execution: { concurrency: "parallel" },
+      execute: () => "unexpected",
+    } satisfies Tool<typeof parameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Run a tool while another needs approval.",
+      parameters,
+      execute: async (_args, { invokeTool }: CodemodeToolContext) => {
+        await Promise.all([invokeTool("running", {}), invokeTool("waiting", {})]);
+        return "done";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime(
+      {
+        tools: [outer, running, waiting],
+        beforeToolExecution: ({ tool, signal }) =>
+          tool.name !== "waiting"
+            ? { type: "continue" }
+            : new Promise((resolve) =>
+                signal!.addEventListener("abort", () => resolve({ type: "cancel" }), {
+                  once: true,
+                }),
+              ),
+      },
+      (event) => {
+        events.push(event);
+      },
+    );
+    const result = await runtime.execute([
+      { type: "tool_call", id: "outer", name: "run_code", args: {} },
+    ]);
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "canceled" } });
+    expect(
+      events.find((event) => event.type === "tool_execution_end" && event.toolName === "running"),
+    ).toMatchObject({
+      result: { status: "timed_out", deadlineMs: 30 },
+    });
+    expect(events.filter((event) => event.type === "tool_execution_pause")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "tool_execution_resume")).toHaveLength(0);
+  });
+
+  test("canceling a child signal does not abort its parent", async () => {
+    const childController = new AbortController();
+    let started = false;
+    const child = {
+      name: "child",
+      description: "Wait for cancellation.",
+      parameters,
+      async execute(_args, { signal }) {
+        started = true;
+        await new Promise((resolve) => signal!.addEventListener("abort", resolve, { once: true }));
+        return "stopped";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Cancel a nested call.",
+      parameters,
+      async execute(_args, { invokeTool }: CodemodeToolContext) {
+        const pending = invokeTool("child", {}, { signal: childController.signal });
+        await waitFor(() => started);
+        childController.abort();
+        expect((await pending).isError).toBe(true);
+        return "done";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime({ tools: [outer, child] }, () => {});
+    const result = await runtime.execute([
+      { type: "tool_call", id: "outer", name: "run_code", args: {} },
+    ]);
+    expect(result.abortRun).toBe(false);
+    expect(result.toolResults[0]).toMatchObject({ content: "done", isError: false });
+  });
+
+  test("a nested deadline interrupts the parent and cancels queued calls", async () => {
+    let laterCount = 0;
+    const child = {
+      name: "child",
+      description: "Exceed a deadline.",
+      parameters,
+      execution: { deadlineMs: 5 },
+      execute: (_args, { signal }) =>
+        new Promise<string>((resolve) => {
+          signal!.addEventListener("abort", () => resolve("stopped"), { once: true });
+        }),
+    } satisfies Tool<typeof parameters, string>;
+    const later = {
+      name: "later",
+      description: "Stay queued.",
+      parameters,
+      execute: () => {
+        laterCount += 1;
+        return "unexpected";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const outer = {
+      name: "run_code",
+      description: "Invoke two tools.",
+      parameters,
+      execute: async (_args, { invokeTool }: CodemodeToolContext) => {
+        await Promise.all([invokeTool("child", {}), invokeTool("later", {})]);
+        return "finished";
+      },
+    } satisfies Tool<typeof parameters, string>;
+    const runtime = new ToolRuntime({ tools: [outer, child, later] }, () => {});
+    const result = await runtime.execute([
+      { type: "tool_call", id: "outer", name: "run_code", args: {} },
+    ]);
+    expect(result.abortRun).toBe(true);
+    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "canceled" } });
+    expect(laterCount).toBe(0);
   });
 });
 

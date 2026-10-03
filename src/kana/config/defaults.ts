@@ -20,6 +20,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     },
   },
   agent: {
+    codemode: "off",
     tools: [...KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES],
     webSearch: true,
     imageInput: true,

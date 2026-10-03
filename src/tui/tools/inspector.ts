@@ -1,8 +1,14 @@
 import type { ToolCallContent } from "@/core";
 import { splitLines, wrapPlainText } from "../render";
-import { buildToolInspectorContext, formatFullToolDetail, isBuiltInToolName } from "./detail";
+import {
+  buildToolInspectorContext,
+  formatFullToolDetail,
+  isBuiltInToolName,
+  sanitizeToolOutput,
+} from "./detail";
 import { formatToolOutput } from "./format";
 import { getArrayProperty } from "./properties";
+import { buildRunCodeResultSections, isRunCodeResult } from "./renderers/run-code";
 import type { ToolState } from "./types";
 
 const CONTENT_INDENT = "  ";
@@ -40,6 +46,23 @@ export function formatToolInspector(
     }
     lines.push("Status");
     lines.push(`${CONTENT_INDENT}${TOOL_STATUS_LABELS[state]}`);
+  }
+
+  if (toolCall.name === "run_code") {
+    const sanitizedResult = sanitizeToolOutput(result);
+    if (isRunCodeResult(sanitizedResult)) {
+      const resultSections = buildRunCodeResultSections(sanitizedResult);
+      if (resultSections.length > 0) {
+        if (lines.length > 0) lines.push("");
+        lines.push(
+          ...renderContextSections(
+            formatFullToolDetail({ title: "", sections: resultSections }),
+            width,
+          ),
+        );
+      }
+      return lines;
+    }
   }
 
   // Full output rows already soft-wrap to the viewer content width.

@@ -38,7 +38,7 @@ describe("MCP gateway tools", () => {
     const specs = JSON.stringify(gateways);
     expect(gateways.map((tool) => tool.name)).toEqual([
       "mcp_list_tools",
-      "mcp_describe_tool",
+      "mcp_get_tool",
       "mcp_call",
     ]);
     expect(listTools!.description).toContain("- alpha: GitHub issues.");

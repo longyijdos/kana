@@ -226,6 +226,7 @@ export class HeadlessRunOutputProjector {
         return;
       }
       case "tool_execution_start":
+        if (event.parentToolCallId !== undefined) return;
         this.emit(
           createKanaExecEvent({
             type: "tool.started",
@@ -237,6 +238,7 @@ export class HeadlessRunOutputProjector {
         );
         return;
       case "tool_execution_update":
+        if (event.parentToolCallId !== undefined) return;
         this.emit(
           createKanaExecEvent({
             type: "tool.updated",
@@ -247,6 +249,7 @@ export class HeadlessRunOutputProjector {
         );
         return;
       case "tool_execution_end":
+        if (event.parentToolCallId !== undefined) return;
         this.emit(
           createKanaExecEvent({
             type: "tool.completed",

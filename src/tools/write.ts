@@ -40,6 +40,7 @@ export function createWriteTool(
     description:
       "Write a complete text file. Creates new files by default; set overwrite to true to replace an existing file.",
     parameters: writeParameters,
+    outputSchema: Type.Object({ path: Type.String(), bytesWritten: Type.Number() }),
     execute: async (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Write aborted.");

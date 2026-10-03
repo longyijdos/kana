@@ -19,6 +19,7 @@ export function createDelegateUserTaskTool(
     description:
       "Invite the user to take a small, concrete task in parallel with your work. The user may decline; then do that task yourself. If accepted, continue your own work without waiting. You will receive a separate update when the user completes or returns the task.",
     parameters: delegateUserTaskParameters,
+    outputSchema: Type.Object({ status: Type.Literal("accepted"), taskId: Type.String() }),
     execution: { concurrency: "exclusive" },
     execute: ({ task }) => {
       const created = tasks.create(task);

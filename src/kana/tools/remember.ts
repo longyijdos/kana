@@ -44,6 +44,14 @@ export function createRememberTool(
     description:
       "Proactively save non-sensitive durable information that will help future conversations, including user preferences, recurring constraints, relevant background, confirmed decisions, meaningful milestones, and unfinished work. Record it even when the current response already handles the request. Default to project scope; use global only for information that applies across projects. Do not save secrets, sensitive personal information, transient progress, or facts available directly from the workspace.",
     parameters: rememberParameters,
+    outputSchema: Type.Object({
+      id: Type.String(),
+      createdAt: Type.String(),
+      scope: Type.Union([Type.Literal("global"), Type.Literal("project")]),
+      title: Type.Optional(Type.String()),
+      reason: Type.Optional(Type.String()),
+      content: Type.String(),
+    }),
     execute: (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Remember aborted.");

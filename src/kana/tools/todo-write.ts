@@ -44,6 +44,9 @@ export function createTodoWriteTool(
     description:
       "Replace the complete session todo list for multi-step work. Keep at most one item in_progress, include every still-relevant item on each call, and pass an empty list to clear it. Do not use this tool for simple single-step work.",
     parameters: todoWriteParameters,
+    outputSchema: Type.Object({
+      status: Type.Union([Type.Literal("updated"), Type.Literal("cleared")]),
+    }),
     execution: {
       concurrency: "exclusive",
     },
@@ -51,6 +54,9 @@ export function createTodoWriteTool(
       const items: KanaTodoItem[] = normalizeKanaTodoItems(args.items);
       await options.commit?.({
         toolCallId: context.toolCallId,
+        ...(context.parentToolCallId === undefined
+          ? {}
+          : { parentToolCallId: context.parentToolCallId }),
         items: structuredClone(items),
       });
 

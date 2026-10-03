@@ -93,11 +93,18 @@ Tool blocks use schema-owned renderers for built-in tools and a generic represen
 | Shell | Last 8 source rows |
 | Write | Up to 7 preview rows, including the byte-count result |
 | Edit | Up to 3 removed and 3 inserted rows, including omission markers |
+| Run code | First 8 rows of script text output and JSON return value |
 | Unknown, Custom, or MCP | First 8 rows of pretty JSON |
 
 Only built-ins with a Kana-owned parameter schema promote fields into a target row. Omitted rows receive an explicit count, and over-wide preview rows are truncated rather than wrapped. These limits affect presentation only; canonical arguments, results, and approval details remain complete.
 
 The detail inspector can open every tool call, regardless of compact expandability. It uses full renderers, soft-wraps long lines, includes effective execution metadata, and supports moving between calls without changing transcript history. Control sequences remain sanitized in both compact and detailed forms.
+
+Local tool titles retain a running timer during execution and show the Runtime execution duration in rounded milliseconds after completion. Live and restored blocks use the same saved duration; older messages without it retain their previous titles.
+
+`run_code` shows one outer block in both live and restored transcripts. Its title shows the running timer or completed call count and execution duration; its preview contains script output and the return value, or the error message on failure. Nested tool events do not create blocks or affect the status line. `Ctrl+O` shows the full code, text output, return value or error stack, and nested tool names, statuses, and durations. Nested approvals still use the ordinary approval UI.
+
+The `run_code` elapsed display follows runtime pause and resume events, excluding inner approval waits and retaining the time already spent executing.
 
 ## Change checklist
 

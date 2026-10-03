@@ -64,6 +64,14 @@ export function createShellTool(
     description:
       "Run a foreground command with the current shell. Waits for the complete process group and returns stdout, stderr, and exit status.",
     parameters: shellParameters,
+    outputSchema: Type.Object({
+      command: Type.String(),
+      cwd: Type.String(),
+      exitCode: Type.Union([Type.Number(), Type.Null()]),
+      stdout: Type.String(),
+      stderr: Type.String(),
+      timedOut: Type.Boolean(),
+    }),
     execution: { deadlineMs: TOOL_DEADLINE_MS },
     execute: async (args, context) => {
       if (context.signal?.aborted) {

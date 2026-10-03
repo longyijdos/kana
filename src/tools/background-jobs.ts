@@ -16,6 +16,25 @@ import { resolveWorkspaceDirectory } from "./workspace-path";
 const MAX_WAIT_MS = 30_000;
 const MAX_KILL_REASON_CHARS = 500;
 
+const jobStatusSchema = Type.Union([
+  Type.Literal("running"),
+  Type.Literal("stopping"),
+  Type.Literal("completed"),
+  Type.Literal("failed"),
+  Type.Literal("canceled"),
+  Type.Literal("unknown"),
+]);
+const jobSummarySchema = Type.Object({
+  id: Type.String(),
+  kind: Type.String(),
+  label: Type.String(),
+  cwd: Type.Optional(Type.String()),
+  status: jobStatusSchema,
+  startedAt: Type.String({ format: "date-time" }),
+  finishedAt: Type.Optional(Type.String({ format: "date-time" })),
+  exitCode: Type.Union([Type.Number(), Type.Null()]),
+});
+
 const jobStartParameters = strictObject({
   command: Type.String({ description: "Command to execute in the background." }),
   cwd: Type.Optional(
@@ -74,6 +93,12 @@ export function createJobStartTool(
     description:
       "Start a session-owned background shell command and return immediately with its Job ID and launch status. The command continues running after this call returns. Completion is delivered back to the parent Agent automatically. Do not poll job_output solely to detect completion.",
     parameters: jobStartParameters,
+    outputSchema: Type.Object({
+      command: Type.String(),
+      cwd: Type.String(),
+      jobId: Type.String(),
+      status: jobStatusSchema,
+    }),
     execute: async (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Command aborted.");
@@ -122,6 +147,7 @@ export function createJobListTool(
     description:
       "List Background Jobs owned by the current session, including active and recently completed Jobs.",
     parameters: jobListParameters,
+    outputSchema: Type.Array(jobSummarySchema),
     execution: { concurrency: "parallel" },
     execute: () => {
       const result = jobs.list();
@@ -143,6 +169,19 @@ export function createJobOutputTool(
     description:
       "Read all currently unseen retained output from a Background Job. Repeated calls continue from the session's Agent cursor. Completed Jobs notify the parent Agent automatically, so do not repeatedly poll a running Job solely to detect completion. Use waitMs only when explicitly blocking for new output or a result is useful.",
     parameters: jobOutputParameters,
+    outputSchema: Type.Object({
+      jobId: Type.String(),
+      status: jobStatusSchema,
+      chunks: Type.Array(
+        Type.Object({
+          stream: Type.Union([Type.Literal("stdout"), Type.Literal("stderr")]),
+          text: Type.String(),
+        }),
+      ),
+      droppedBytes: Type.Number(),
+      waitTimedOut: Type.Boolean(),
+      exitCode: Type.Union([Type.Number(), Type.Null()]),
+    }),
     execution: { concurrency: "parallel", deadlineMs: MAX_WAIT_MS + 1_000 },
     execute: async (args, context) => {
       const result = await jobs.read(args.jobId, {
@@ -166,6 +205,7 @@ export function createJobKillTool(
     description:
       "Stop a Background Job owned by the current session and wait for its process group to become quiescent.",
     parameters: jobKillParameters,
+    outputSchema: jobSummarySchema,
     execute: async (args) => {
       const result = await jobs.kill(args.jobId, {
         source: "tool",

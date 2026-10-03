@@ -148,6 +148,7 @@ export type ToolResultMessage = MessageIdentity<
   toolCallId: string;
   toolName: string;
   content: string;
+  durationMs?: number;
   images?: UserImage[];
   // Artifact references are durable presentation metadata. The original host
   // result can remain execution-local while resume and session lifecycle code

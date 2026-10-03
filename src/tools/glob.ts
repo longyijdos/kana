@@ -80,6 +80,25 @@ export function createGlobTool(
     name: "glob",
     description: "Find file and directory paths with a relative glob pattern.",
     parameters: globParameters,
+    outputSchema: Type.Object({
+      cwd: Type.String(),
+      pattern: Type.String(),
+      type: Type.Union([Type.Literal("file"), Type.Literal("directory"), Type.Literal("any")]),
+      matches: Type.Array(
+        Type.Object({
+          path: Type.String(),
+          type: Type.Union([
+            Type.Literal("file"),
+            Type.Literal("directory"),
+            Type.Literal("symlink"),
+            Type.Literal("other"),
+          ]),
+          size: Type.Number(),
+        }),
+      ),
+      totalMatches: Type.Number(),
+      truncated: Type.Boolean(),
+    }),
     execution: {
       concurrency: "parallel",
     },

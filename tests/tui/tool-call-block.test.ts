@@ -3,6 +3,20 @@ import { ToolCallBlock } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 
 describe("tool call block", () => {
+  test("shows the runtime duration after completion instead of the live timer", () => {
+    let now = 0;
+    const block = new ToolCallBlock(
+      { type: "tool_call", id: "timed", name: "read", args: { path: "a.ts" } },
+      () => now,
+    );
+    block.markExecutionStarted();
+    now = 5_000;
+    block.updateResult("done", false, 125.6);
+    expect(block.render(80).map(stripAnsi)[0]).toBe("◆ Read · 126 ms");
+    now = 10_000;
+    expect(block.render(80).map(stripAnsi)[0]).toBe("◆ Read · 126 ms");
+  });
+
   test("renders snapshot summaries without output, timers, or foreground shortcuts", () => {
     let now = 0;
     const block = new ToolCallBlock(

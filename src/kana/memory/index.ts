@@ -7,6 +7,7 @@ export {
 export {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
+  isKanaMemoryEntry,
   type MemoryConsolidationActivity,
   type MemoryConsolidationActivitySource,
   type MemoryConsolidationEvent,
