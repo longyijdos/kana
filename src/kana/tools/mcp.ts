@@ -44,7 +44,7 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
       },
     },
     {
-      name: "mcp_describe_tool",
+      name: "mcp_get_tool",
       outputSchema: Type.Object({
         server: Type.String(),
         name: Type.String(),

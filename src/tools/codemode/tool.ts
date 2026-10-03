@@ -42,7 +42,7 @@ export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mi
   return {
     name: "run_code",
     description: [
-      "Run JavaScript that calls tools with await tools.<name>(args). Calls resolve to each tool's structured result and failures throw an Error. Output with text(), image(), or return. Tool images are forwarded automatically. ALL_TOOLS lists available tools. Host filesystem, network, and module APIs are unavailable.",
+      "Run JavaScript that calls tools with await tools.<name>(args). Calls resolve to each tool's structured result and failures throw an Error. Output with text(), image(), or return. Tool images are forwarded automatically. ALL_TOOLS lists available tools. Host filesystem, network, module APIs, and timers are unavailable.",
       options.mode === "only"
         ? "The TypeScript declarations below describe the API; write JavaScript in code."
         : "The TypeScript declarations below describe each tool's return value; write JavaScript in code. ToolResults entries correspond to tools with the same names.",

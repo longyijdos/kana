@@ -261,7 +261,7 @@ describe("Kana Agent tools", () => {
       for (const tools of [
         [],
         ["read"],
-        ["read", "mcp_list_tools", "mcp_describe_tool", "mcp_call"],
+        ["read", "mcp_list_tools", "mcp_get_tool", "mcp_call"],
       ] as const) {
         const config = testConfig();
         const agent = withKanaAgentEnvironment(() =>

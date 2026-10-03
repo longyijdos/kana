@@ -460,7 +460,7 @@ function toolText(
         runningActivity: `calling MCP ${name}`,
       };
     }
-    case "mcp_describe_tool": {
+    case "mcp_get_tool": {
       const name = `${getStringProperty(args, "server") ?? "?"}/${getStringProperty(args, "tool") ?? "?"}`;
       return {
         action: `describe MCP ${name}`,

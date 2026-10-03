@@ -104,7 +104,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回 `ok`、`value`、`output`、`calls` 和 `storeWrites`；失败时返回 `ok: false`、`error`、`output` 和 `calls`。Store 改动仅报告给调用方，不会自动持久化。这个 host API 不会注册模型可见工具。
 
-`createCodemodeTool({ tools, mode? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。外部 MCP 定义仍通过 `mcp_describe_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 自行声明 900000 ms（15 分钟）的调用 deadline，排除内部审批等待；runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
+`createCodemodeTool({ tools, mode? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。外部 MCP 定义仍通过 `mcp_get_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 自行声明 900000 ms（15 分钟）的调用 deadline，排除内部审批等待；runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
 
 工具的 `content` 包含显式文本输出，以及随后以 JSON 编码的返回值或脚本错误。内部工具返回的图片自动加入外层 `images`；显式 `image()` 输出转为带解码尺寸的视觉观察。结构化 `result` 保留包提供的 `CodemodeResult`，包括调用名称、状态、耗时和成功时的 store 改动。Store 改动不会自动用于后续执行。实时前端收到内部执行事件；历史和 resume 后的 transcript 只保留外层结果，并遵守普通 result 保存上限。
 
@@ -137,7 +137,7 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 | `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
 
-`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools`、`mcp_describe_tool` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
+`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools`、`mcp_get_tool` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
 
 ## 文件与 Shell 边界
 
@@ -173,11 +173,11 @@ Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_describe_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Shell allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_get_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Shell allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 
-全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_describe_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 server、工具名称和 input schema；result 额外包含可选 output schema，content 不包含它。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
+全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_get_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 server、工具名称和 input schema；result 额外包含可选 output schema，content 不包含它。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
 
 自定义工具应：
 

@@ -60,7 +60,7 @@ describe("Kana tool approval", () => {
         shouldRequestToolApproval(
           { mode },
           approvals(),
-          toolCall("mcp_describe_tool", { server: "github", tool: "read" }),
+          toolCall("mcp_get_tool", { server: "github", tool: "read" }),
         ),
       ).toBe(false);
       expect(
