@@ -39,6 +39,8 @@ A normalized result has distinct audiences:
 
 A plain string return becomes `content`; another ordinary value is JSON-serialized for content and retained as the live structured result. Malformed explicit result fields become a safe tool failure before message commit.
 
+For Kana built-ins, `args` carries operation intent, payload, and selection; public `result` carries observations, confirmed effects, and generated identifiers. Model-visible `content` describes the outcome without repeating operation arguments. Results may retain normalized resource locators such as file paths and resource identities when listing existing resources. Access to an already selected resource need not repeat its supplied ID. Tools project public results at their boundary while managers and controllers retain their complete internal records. Presentation combines the original call's `args` with `result` at the UI boundary.
+
 ## Invocation pipeline
 
 `ToolRuntime.invoke(toolCall, { signal?, onAbortRun?, onExecutionEnd? })` executes one call through the same validation, approval, cancellation, deadline, normalization, and event pipeline as model-proposed calls. It returns `{ toolCall, result, isError, durationMs, abortRun? }`, where `result` is the complete normalized `ToolResult`. It does not apply result policies, limit content, create artifacts, or commit messages. `ToolRuntime.execute()` owns batch scheduling and history preparation; callers of `invoke()` own scheduling and must handle `abortRun` or supply `onAbortRun` for immediate notification.
@@ -141,8 +143,41 @@ Source execution loads the local Worker and WASM. Bun executable builds list the
 | `remember` | `content`; optional scope/title/reason | Appends a durable-memory staging entry when memory is enabled. |
 | `schedule_wake` | `afterMinutes`, `message`, optional `key` | Creates a process-local future input for the active session. |
 | `update_goal` | `status`, optional `detail` | Ends the authorized active Goal as completed or blocked. |
+| `mcp_list_tools` | Server `name`; optional `offset`, `limit` | Lists names and descriptions from an enabled MCP server's cached catalog. |
+| `mcp_get_tool` | `server`, `tool` | Reads a remote tool's cached input and optional output schemas. |
+| `mcp_call` | `server`, `tool`, `arguments` | Validates the remote input schema and invokes the selected tool. |
 
 `list`, `glob`, `grep`, `read`, `view_image`, `mcp_list_tools`, `mcp_get_tool`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
+
+The following table describes the successful public result contracts of all built-in business tools. Registration depends on tool configuration and available capabilities. Codemode dynamically generates `run_code`; its result contract is described in the Codemode section above.
+
+| Tool | Structured result |
+| --- | --- |
+| `list` | `{ path, entries, totalEntries, truncated }` |
+| `glob` | `{ matches, totalMatches, truncated }`; match paths are relative to the workspace root. |
+| `grep` | `{ path, matches, filesSearched, truncated }`; `path` is the resolved search locator. |
+| `read` | `{ path, content, startLine, endLine, totalLines, truncated }` |
+| `view_image` | `{ path, mimeType, width, height, byteSize }`; the normalized image is returned separately in `images`. |
+| `write` | `{ path, bytesWritten }` |
+| `edit` | `{ path, replacements, bytesWritten }` |
+| `shell` | `{ exitCode, stdout, stderr, timedOut }`; live updates contain only bounded `stdout` and `stderr`. |
+| `job_start` | `{ jobId, status }` |
+| `job_list` | `BackgroundJobSummary[]`; each summary contains `{ id, kind, label, cwd?, status, startedAt, finishedAt?, exitCode }`. |
+| `job_output` | `{ status, chunks, droppedBytes, waitTimedOut, exitCode }` |
+| `job_kill` | `{ status, exitCode }` |
+| `spawn_subagent` | `{ agentId, status }` |
+| `wait_subagent` | `{ status, output, error?, terminalReason?, waitTimedOut }` |
+| `cancel_subagent` | `{ status, terminalReason? }` |
+| `todo_write` | `{ status: "updated" \| "cleared" }` |
+| `delegate_user_task` | `{ status: "accepted", taskId }` |
+| `remember` | `{ id, scope }` |
+| `schedule_wake` | `{ id, dueAt }` |
+| `update_goal` | `{ status: "completed" \| "blocked" }` |
+| `mcp_list_tools` | `{ tools, nextOffset? }`; each tool contains `{ name, description }`. |
+| `mcp_get_tool` | `{ inputSchema, outputSchema? }` |
+| `mcp_call` | The remote tool's complete `structuredContent` when present, otherwise its complete formatted text. |
+
+File-tool `path` fields are resolved resource locators. `job_list` returns complete public Job summaries because it lists existing resources. MCP gateway discovery, schema semantics, and remote result adaptation are detailed in [MCP](mcp.md).
 
 ## File and shell boundaries
 
@@ -168,7 +203,7 @@ The generic manager is independent of Kana Agent construction. An owner binds Jo
 
 Kana projects active or unreported Job identity, bounded label, cwd, state, and exit code into runtime context—never output. Completion steering, queued-run delivery, acknowledgement, and session-change ordering belong to [Conversation runtime](conversation-runtime.md).
 
-Subagent control tools expose only predefined role cards and return stable child IDs. Their capability intersection, asynchronous lifecycle, persistence, and TUI behavior belong to [Subagents](subagents.md).
+Subagent spawning selects a predefined role card and returns a stable child ID; waiting and cancellation return the selected child's operation outcome. Their capability intersection, asynchronous lifecycle, persistence, and TUI behavior belong to [Subagents](subagents.md).
 
 ## Kana-owned state tools
 
@@ -182,7 +217,7 @@ Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_suba
 
 ## MCP and custom tools
 
-All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes `mcp_list_tools` (parallel name and description listing), `mcp_get_tool` (parallel single-tool schema lookup), and `mcp_call` (exclusive, ordinary approval). The schema lookup returns the server, tool name, and input schema in both content and result; result additionally includes optional output schema, while content omits it. Remote input schemas are enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
+All tools use the ordinary `Tool` contract. Kana creates MCP gateways as built-ins when the current registry is available and `agent.tools` selects them. MCP exposes `mcp_list_tools` (parallel name and description listing), `mcp_get_tool` (parallel single-tool schema lookup), and `mcp_call` (exclusive, ordinary approval). The schema lookup returns the input schema in both content and result; result additionally includes optional output schema, while content omits it. Remote input schemas are enforced inside the call gateway. Invocation results receive the same normalization and content limits. MCP catalogs, SDK transports, and result adaptation are documented in [MCP](mcp.md).
 
 For a custom tool:
 

@@ -324,18 +324,8 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       return getStringProperty(toolCall.args, "status");
 
     case "glob":
-      return (
-        getStringProperty(result, "pattern") ??
-        getStringProperty(toolCall.args, "pattern") ??
-        "glob"
-      );
-
     case "grep":
-      return (
-        getStringProperty(result, "pattern") ??
-        getStringProperty(toolCall.args, "pattern") ??
-        "grep"
-      );
+      return getStringProperty(toolCall.args, "pattern") ?? toolCall.name;
 
     case "list":
     case "read":
@@ -347,19 +337,9 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       return path ?? toolCall.name;
     }
 
-    case "shell": {
-      const command =
-        getStringProperty(result, "command") ?? getStringProperty(toolCall.args, "command");
-
-      return command ?? toolCall.name;
-    }
-
-    case "job_start": {
-      const command =
-        getStringProperty(result, "command") ?? getStringProperty(toolCall.args, "command");
-
-      return command ?? toolCall.name;
-    }
+    case "shell":
+    case "job_start":
+      return getStringProperty(toolCall.args, "command") ?? toolCall.name;
 
     case "todo_write":
       return formatTodoTarget(getTodoItems(result) ?? []);

@@ -93,7 +93,7 @@ describe("tui elapsed timer", () => {
     now = 7_000;
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Running (2s) (Esc to abort)");
 
-    block.updateResult({ command: "pwd", exitCode: 0, stdout: "/tmp" }, false);
+    block.updateResult({ exitCode: 0, stdout: "/tmp" }, false);
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Ran");
   });
 });

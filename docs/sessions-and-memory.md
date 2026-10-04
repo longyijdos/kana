@@ -133,7 +133,7 @@ The host generates metadata and quotes field values as JSON strings. The date is
 
 ## Memory consolidation
 
-The Host collects valid successful `remember` results from execution-end events, including nested calls, and passes those entries to the scheduler after the run commits. Collection is independent of conversation history and the script's selected output, so a later script error does not discard an already successful memory entry. The scheduler groups entries by scope. Jobs for different scopes are independent, but incremental and manual full-compaction jobs in the same scope share one promise queue, avoiding concurrent read-modify-write overwrites.
+After appending a daily entry, `remember` passes the complete entry to the Host through a recording callback and returns only `{ id, scope }` publicly. The Host collects entries from direct and nested calls and passes them to the scheduler after the run commits. Collection is independent of tool-result events, conversation history, and the script's selected output, so a later script error does not discard an already successful memory entry. The scheduler groups entries by scope. Jobs for different scopes are independent, but incremental and manual full-compaction jobs in the same scope share one promise queue, avoiding concurrent read-modify-write overwrites.
 
 `MemoryConsolidationScheduler` exposes read-only activity snapshots and change/failure events for automatic batches. A batch stays `queued` until the shared scope queue starts it, then `organizing` until it settles. `KanaConversationHost` aggregates activity from every scheduler independently of the selected session. These observations do not change scheduling or headless output.
 

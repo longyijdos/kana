@@ -40,8 +40,6 @@ export const shellParameters = strictObject({
 });
 
 export type ShellToolResult = {
-  command: string;
-  cwd: string;
   exitCode: number | null;
   stdout: string;
   stderr: string;
@@ -65,8 +63,6 @@ export function createShellTool(
       "Run a foreground command with the current shell. Waits for the complete process group and returns stdout, stderr, and exit status.",
     parameters: shellParameters,
     outputSchema: Type.Object({
-      command: Type.String(),
-      cwd: Type.String(),
       exitCode: Type.Union([Type.Number(), Type.Null()]),
       stdout: Type.String(),
       stderr: Type.String(),
@@ -91,7 +87,7 @@ export function createShellTool(
 
       const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const partialEmitter = createShellPartialEmitter((output) => {
-        context.update(createShellPartialResult(command, cwd.relativePath, output));
+        context.update(createShellPartialResult(output));
       });
       const output: ShellOutputSnapshot = { stdout: "", stderr: "" };
       let result: Awaited<ReturnType<typeof runCommandProcess>>;
@@ -120,8 +116,6 @@ export function createShellTool(
       // Final output must reach the shared result policy intact so it can be
       // stored as an artifact before model and session views are bounded.
       const toolResult: ShellToolResult = {
-        command,
-        cwd: cwd.relativePath,
         exitCode: result.exitCode,
         stdout: output.stdout,
         stderr: result.timedOut
@@ -150,14 +144,8 @@ function tailPartialOutput(content: string): string {
   return content.slice(-MAX_PARTIAL_OUTPUT_CHARS);
 }
 
-function createShellPartialResult(
-  command: string,
-  cwd: string,
-  output: ShellOutputSnapshot,
-): Partial<ShellToolResult> {
+function createShellPartialResult(output: ShellOutputSnapshot): ShellOutputSnapshot {
   return {
-    command,
-    cwd,
     stdout: tailPartialOutput(output.stdout),
     stderr: tailPartialOutput(output.stderr),
   };
@@ -221,8 +209,6 @@ function createShellPartialEmitter(onOutput: (output: ShellOutputSnapshot) => vo
 
 function formatShellContent(result: ShellToolResult): string {
   return [
-    `command: ${result.command}`,
-    `cwd: ${result.cwd}`,
     `exitCode: ${result.exitCode}`,
     `timedOut: ${result.timedOut}`,
     "",

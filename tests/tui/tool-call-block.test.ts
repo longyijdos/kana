@@ -90,7 +90,6 @@ describe("tool call block", () => {
     block.updateResult(
       {
         id: "mem_123",
-        createdAt: "2026-06-20T14:32:00.000Z",
         scope: "global",
       },
       false,
@@ -284,7 +283,6 @@ describe("tool call block", () => {
 
     first.updateResult(
       {
-        command: "first",
         exitCode: 0,
         stdout: Array.from({ length: 10 }, (_, index) => `first line ${index + 1}`).join("\n"),
       },
@@ -292,7 +290,6 @@ describe("tool call block", () => {
     );
     second.updateResult(
       {
-        command: "second",
         exitCode: 0,
         stdout: Array.from({ length: 10 }, (_, index) => `second line ${index + 1}`).join("\n"),
       },

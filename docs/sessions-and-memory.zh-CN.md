@@ -133,7 +133,7 @@ reason: "可选原因"
 
 ## 记忆合并
 
-Host 从工具结束事件收集有效且成功的 `remember` 结果，包括内部调用，并在本轮提交后把条目交给调度器。这一收集过程不依赖对话历史或脚本选取的输出，因此脚本后续报错也不会丢弃已经成功写入的记忆条目。调度器再按 scope 分组。每个 scope 的任务独立，但增量合并和手动全量合并会共享同一 scope 的 promise 队列串行运行，避免并发的读—改—写覆盖。
+`remember` 追加 daily 条目后，通过记录 callback 把完整条目交给 Host，公开结果只返回 `{ id, scope }`。Host 收集直接调用和内部调用写入的条目，并在本轮提交后交给调度器。这一收集过程不依赖工具结果事件、对话历史或脚本选取的输出，因此脚本后续报错也不会丢弃已经成功写入的记忆条目。调度器再按 scope 分组。每个 scope 的任务独立，但增量合并和手动全量合并会共享同一 scope 的 promise 队列串行运行，避免并发的读—改—写覆盖。
 
 `MemoryConsolidationScheduler` 为自动批次暴露只读活动快照以及变更/失败事件。批次在共享 scope 队列启动它之前保持 `queued`，启动后保持 `organizing` 直到结束。`KanaConversationHost` 汇总全部 scheduler 的活动，独立于当前选择的 session。这些观察接口不改变调度或 headless 输出。
 

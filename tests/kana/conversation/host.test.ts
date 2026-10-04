@@ -166,7 +166,7 @@ describe("Kana conversation host", () => {
           new Agent({
             model,
             codemode: config.agent.codemode,
-            tools: [createRememberTool({ env })],
+            tools: [createRememberTool({ env, onRecorded: options.onMemoryRecorded })],
             messages: options.messages,
             beforeToolExecution: options.beforeToolExecution,
             journal: options.journal,

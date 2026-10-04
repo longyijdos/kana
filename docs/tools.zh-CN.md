@@ -39,6 +39,8 @@ type ToolContext = {
 
 工具直接返回字符串时，它成为 `content`；其它普通值会 JSON 序列化为 content，并保留为实时结构化结果。显式结果字段格式错误时，会在消息提交前变成安全工具失败。
 
+Kana 内置工具的 `args` 承载操作意图、输入正文和选择条件；公开 `result` 承载观察、已确认的效果和新生成的标识。模型可见 `content` 描述执行结果，不重复操作参数。结果可以保留文件路径等规范化资源定位符，以及列举已有资源时的资源身份；访问已经选定的资源不必重复输入 ID。工具在边界处投影公开结果，manager 和 controller 保留完整内部记录。展示层在 UI 边界组合原始调用的 `args` 与 `result`。
+
 ## 调用管线
 
 `ToolRuntime.invoke(toolCall, { signal?, onAbortRun?, onExecutionEnd? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, durationMs, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
@@ -141,8 +143,41 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 | `remember` | `content`；可选 scope/title/reason | 记忆启用时追加长期记忆暂存记录。 |
 | `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
+| `mcp_list_tools` | Server `name`；可选 `offset`、`limit` | 从已启用 MCP server 的缓存目录列出工具名称和描述。 |
+| `mcp_get_tool` | `server`、`tool` | 读取远端工具缓存的 input schema 与可选 output schema。 |
+| `mcp_call` | `server`、`tool`、`arguments` | 校验远端 input schema 并调用所选工具。 |
 
 `list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools`、`mcp_get_tool` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
+
+下表列出全部内置业务工具成功调用的公开结果契约。实际注册取决于工具配置与可用能力。`run_code` 由 codemode 动态生成，其结果契约见上文 Codemode 章节。
+
+| 工具 | 结构化结果 |
+| --- | --- |
+| `list` | `{ path, entries, totalEntries, truncated }` |
+| `glob` | `{ matches, totalMatches, truncated }`；匹配路径相对于 workspace root。 |
+| `grep` | `{ path, matches, filesSearched, truncated }`；`path` 是解析后的搜索定位符。 |
+| `read` | `{ path, content, startLine, endLine, totalLines, truncated }` |
+| `view_image` | `{ path, mimeType, width, height, byteSize }`；规范化后的图片通过独立的 `images` 返回。 |
+| `write` | `{ path, bytesWritten }` |
+| `edit` | `{ path, replacements, bytesWritten }` |
+| `shell` | `{ exitCode, stdout, stderr, timedOut }`；实时更新只包含有界 `stdout` 和 `stderr`。 |
+| `job_start` | `{ jobId, status }` |
+| `job_list` | `BackgroundJobSummary[]`；每个 summary 包含 `{ id, kind, label, cwd?, status, startedAt, finishedAt?, exitCode }`。 |
+| `job_output` | `{ status, chunks, droppedBytes, waitTimedOut, exitCode }` |
+| `job_kill` | `{ status, exitCode }` |
+| `spawn_subagent` | `{ agentId, status }` |
+| `wait_subagent` | `{ status, output, error?, terminalReason?, waitTimedOut }` |
+| `cancel_subagent` | `{ status, terminalReason? }` |
+| `todo_write` | `{ status: "updated" \| "cleared" }` |
+| `delegate_user_task` | `{ status: "accepted", taskId }` |
+| `remember` | `{ id, scope }` |
+| `schedule_wake` | `{ id, dueAt }` |
+| `update_goal` | `{ status: "completed" \| "blocked" }` |
+| `mcp_list_tools` | `{ tools, nextOffset? }`；每个工具包含 `{ name, description }`。 |
+| `mcp_get_tool` | `{ inputSchema, outputSchema? }` |
+| `mcp_call` | 远端工具提供 `structuredContent` 时返回其完整值，否则返回完整的格式化文本。 |
+
+文件工具的 `path` 字段是解析后的资源定位符。`job_list` 列举已有资源，因此返回完整的公开 Job summary。MCP 入口的发现、schema 语义与远端结果适配详见 [MCP](mcp.zh-CN.md)。
 
 ## 文件与 Shell 边界
 
@@ -168,7 +203,7 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 
 Kana 把活动或尚未报告 Job 的身份、有界 label、cwd、状态和 exit code 投影到 runtime context，永不包含输出。完成 steering、排队 run 投递、确认与 session 切换顺序归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。其能力交集、异步生命周期、持久化与 TUI 行为归 [Subagent](subagents.zh-CN.md)所有。
+Subagent 启动时选择预定义角色卡并返回稳定 child ID；等待和取消返回所选 child 的操作结果。其能力交集、异步生命周期、持久化与 TUI 行为见 [Subagent](subagents.zh-CN.md)。
 
 ## Kana 自有状态工具
 
@@ -182,7 +217,7 @@ Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_wr
 
 ## MCP 与自定义工具
 
-全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_get_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 server、工具名称和 input schema；result 额外包含可选 output schema，content 不包含它。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
+全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_get_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 input schema；result 额外包含可选 output schema，content 不包含它。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
 
 自定义工具应：
 

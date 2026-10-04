@@ -11,7 +11,6 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
     {
       name: "mcp_list_tools",
       outputSchema: Type.Object({
-        server: Type.String(),
         tools: Type.Array(
           Type.Object({
             name: Type.String(),
@@ -34,7 +33,6 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
         const tools = registry.listTools(name);
         const nextOffset = offset + limit;
         return {
-          server: name,
           tools: tools.slice(offset, nextOffset).map((tool) => ({
             name: tool.name,
             description: tool.description,
@@ -46,8 +44,6 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
     {
       name: "mcp_get_tool",
       outputSchema: Type.Object({
-        server: Type.String(),
-        name: Type.String(),
         inputSchema: Type.Record(Type.String(), Type.Unknown()),
         outputSchema: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
       }),
@@ -63,8 +59,6 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
           throw new Error(`MCP tool "${server}/${name}" is not available.`);
         }
         const definition = {
-          server,
-          name: tool.name,
           inputSchema: tool.parameters,
         };
         return {

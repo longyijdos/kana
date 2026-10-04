@@ -40,7 +40,6 @@ import {
 import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
-  isKanaMemoryEntry,
   type KanaMemoryEntry,
   loadKanaMemory,
   type MemoryConsolidationActivity,
@@ -300,14 +299,6 @@ export class KanaConversationHost<TConfiguration = never> {
       );
       agent.subscribe((event) => {
         if (event.type === "agent_start") rememberedEntries.length = 0;
-        if (
-          event.type === "tool_execution_end" &&
-          event.toolName === "remember" &&
-          !event.isError &&
-          isKanaMemoryEntry(event.result)
-        ) {
-          rememberedEntries.push(event.result);
-        }
       });
       return agent;
     };
@@ -552,6 +543,7 @@ export class KanaConversationHost<TConfiguration = never> {
       resolveMcp: () => this.mcpRuntime.registry,
       resolveTodoState: sessionBinding.resolveTodoState,
       env: this.env,
+      onMemoryRecorded: (entry) => rememberedEntries.push(entry),
       launchMode: this.launchMode,
       logger,
       artifactStore: sessionBinding.artifactStore,

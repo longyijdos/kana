@@ -22,41 +22,30 @@ export type UpdateGoalToolOptions = {
   update: (change: KanaGoalUpdate) => KanaGoalSnapshot;
 };
 
+type UpdateGoalToolResult = Pick<KanaGoalUpdate, "status">;
+
 export function createUpdateGoalTool(
   options: UpdateGoalToolOptions,
-): Tool<typeof updateGoalParameters, KanaGoalSnapshot> {
+): Tool<typeof updateGoalParameters, UpdateGoalToolResult> {
   return {
     name: "update_goal",
     description:
       "End the active goal continuation. Mark it completed only when the objective is actually achieved, or blocked only when meaningful progress cannot continue without user input or an external state change. Do not call this while you can still make meaningful progress.",
     parameters: updateGoalParameters,
     outputSchema: Type.Object({
-      id: Type.String(),
-      objective: Type.String(),
-      status: Type.Union([
-        Type.Literal("active"),
-        Type.Literal("completed"),
-        Type.Literal("blocked"),
-        Type.Literal("cancelled"),
-        Type.Literal("round_limit"),
-      ]),
-      admittedRounds: Type.Number(),
-      maxRounds: Type.Number(),
-      startedAt: Type.String({ format: "date-time" }),
-      endedAt: Type.Optional(Type.String({ format: "date-time" })),
-      detail: Type.Optional(Type.String()),
+      status: Type.Union([Type.Literal("completed"), Type.Literal("blocked")]),
     }),
     execution: {
       concurrency: "exclusive",
     },
     execute: (args) => {
-      const goal = options.update({
+      options.update({
         status: args.status,
         ...(args.detail === undefined ? {} : { detail: args.detail }),
       });
       return {
-        content: `Goal marked ${goal.status}.`,
-        result: goal,
+        content: `Goal marked ${args.status}.`,
+        result: { status: args.status },
       };
     },
   };

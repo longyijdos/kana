@@ -32,7 +32,6 @@ export type ScheduleWakeToolOptions = {
 export type ScheduleWakeToolResult = {
   id: string;
   dueAt: string;
-  key?: string;
 };
 
 export function createScheduleWakeTool(
@@ -46,7 +45,6 @@ export function createScheduleWakeTool(
     outputSchema: Type.Object({
       id: Type.String(),
       dueAt: Type.String(),
-      key: Type.Optional(Type.String()),
     }),
     execute: (args) => {
       const event = options.scheduler.schedule({
@@ -59,7 +57,6 @@ export function createScheduleWakeTool(
       const result = {
         id: event.id,
         dueAt: event.dueAt.toISOString(),
-        key: event.key,
       } satisfies ScheduleWakeToolResult;
 
       return {

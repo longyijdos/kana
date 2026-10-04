@@ -29,9 +29,9 @@ describe("Kana update_goal tool", () => {
     );
 
     expect(updates).toEqual([{ status: "blocked", detail: "Needs user credentials." }]);
-    expect(output).toMatchObject({
+    expect(output).toEqual({
       content: "Goal marked blocked.",
-      result: { id: "goal-1", status: "blocked" },
+      result: { status: "blocked" },
     });
     if (!("content" in output)) {
       throw new Error("Expected a wrapped tool result.");

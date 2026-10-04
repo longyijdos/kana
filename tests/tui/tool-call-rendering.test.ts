@@ -188,9 +188,6 @@ describe("tool call rendering", () => {
 
     block.updateResult(
       {
-        cwd: ".",
-        pattern: "**/*.ts",
-        type: "file",
         matches: [{ path: "src/main.ts", type: "file", size: 100 }],
         totalMatches: 2,
         truncated: true,
@@ -202,7 +199,7 @@ describe("tool call rendering", () => {
 
     expect(lines[0]).toBe("◆ Matched");
     expect(lines[1]).toBe("  └ **/*.ts");
-    expect(lines).toContain("**/*.ts: 1 of 2 matches (truncated)");
+    expect(lines).toContain("1 of 2 matches (truncated)");
     expect(lines.join("\n")).not.toContain('"matches"');
   });
 
@@ -220,10 +217,6 @@ describe("tool call rendering", () => {
     block.updateResult(
       {
         path: "src/query.ts",
-        pattern: "autocompact|\\.compact\\b",
-        literal: false,
-        caseSensitive: true,
-        include: undefined,
         matches: [
           {
             path: "src/query.ts",
@@ -242,7 +235,7 @@ describe("tool call rendering", () => {
 
     expect(lines[0]).toBe("◆ Searched");
     expect(lines[1]).toBe("  └ autocompact|\\.compact\\b");
-    expect(lines).toContain("src/query.ts: 1 matches in 1 files for autocompact|\\.compact\\b");
+    expect(lines).toContain("src/query.ts: 1 matches in 1 files");
     expect(lines.join("\n")).not.toContain('"matches"');
   });
 
@@ -292,11 +285,8 @@ describe("tool call rendering", () => {
 
     block.updateResult(
       {
-        command: "bun run dev",
         jobId: "job_12345678",
         status: "running",
-        stdout: "",
-        stderr: "",
       },
       false,
     );
@@ -320,7 +310,6 @@ describe("tool call rendering", () => {
 
     block.updateResult(
       {
-        command: "printf unsafe",
         exitCode: 0,
         stdout: "before \x1b[31mred\x1b[0m\x1b[2J\x1b[3J after\rhidden\u0007",
       },
@@ -348,7 +337,7 @@ describe("tool call rendering", () => {
       name: "shell",
       args: { command },
     });
-    block.updateResult({ command, exitCode: 0, stdout: "ok" }, false);
+    block.updateResult({ exitCode: 0, stdout: "ok" }, false);
 
     const rendered = block.render(80);
     const raw = rendered.join("\n");
@@ -450,8 +439,6 @@ describe("tool call rendering", () => {
 
     block.updateResult(
       {
-        command: "printf before; printf failure >&2; false",
-        cwd: ".",
         exitCode: 2,
         stdout: "before\n",
         stderr: "failure\n",

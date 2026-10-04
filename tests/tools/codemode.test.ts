@@ -2,7 +2,12 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
 import { Type } from "typebox";
 import { ToolRuntime } from "../../src/agent/tool-runtime";
-import { createCodemodeSandbox, createCodemodeTool, type Tool } from "../../src/tools";
+import {
+  createCodemodeSandbox,
+  createCodemodeTool,
+  createShellTool,
+  type Tool,
+} from "../../src/tools";
 import { createWorkspaceToolFixture, expectToolResult } from "./workspace-fixture";
 
 const sandboxes: ReturnType<typeof createCodemodeSandbox>[] = [];
@@ -95,6 +100,33 @@ describe("codemode tool", () => {
       isError: true,
       result: { error: 'Tool "read" not found' },
     });
+  });
+
+  test("exposes the shell outcome through its declarations and script return value", async () => {
+    const shell = createShellTool({ root: await createTempRoot() });
+    const codemode = createCodemodeTool({ tools: [shell] });
+    expect(codemode.description).toContain("shell: { exitCode:");
+    expect(codemode.description).not.toContain("command:");
+    expect(codemode.description).not.toContain("cwd:");
+    const runtime = new ToolRuntime({ tools: [codemode], callableTools: [shell] }, () => {});
+    const execution = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "code",
+        name: "run_code",
+        args: { code: 'return await tools.shell({ command: "printf clean" });' },
+      },
+    ]);
+    expect(execution.toolResults[0]).toMatchObject({
+      isError: false,
+      result: {
+        ok: true,
+        value: { exitCode: 0, stdout: "clean", stderr: "", timedOut: false },
+        calls: [{ name: "shell", status: "ok" }],
+      },
+    });
+    const outcome = JSON.parse(execution.toolResults[0]!.content);
+    expect(Object.keys(outcome).sort()).toEqual(["exitCode", "stderr", "stdout", "timedOut"]);
   });
 
   test("forwards tool images while scripts receive only the structured result", async () => {

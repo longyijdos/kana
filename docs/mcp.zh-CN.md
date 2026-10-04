@@ -25,11 +25,11 @@ Client 使用 SDK 自动协商现代与旧版协议。协议版本由 SDK 维护
 
 ```text
 mcp_list_tools({ name: "github" })
-  → { server: "github", tools: [{ name, description }, ...] }
+  → { tools: [{ name, description }, ...] }
 
 mcp_get_tool({ server: "github", tool: "get_issue" })
-  → content: { server, name, inputSchema }
-  → result:  { server, name, inputSchema, outputSchema? }
+  → content: { inputSchema }
+  → result:  { inputSchema, outputSchema? }
 
 mcp_call({
   server: "github",
@@ -39,7 +39,7 @@ mcp_call({
   → { content: 格式化文本, result: structuredContent 或格式化文本, isError }
 ```
 
-`mcp_list_tools` 与 `mcp_get_tool` 读取缓存目录，不连接额外 server、不改变用户启用状态、不授予权限，也不修改 provider-facing tools 数组。列表只包含名称和描述。Schema 查询的 content 与 result 都返回 server、工具名称和完整 input schema。远端提供 output schema 时，额外放进 result；content 不包含该字段，让普通模型输入只包含调用参数信息。MCP 的 output schema 描述 `structuredContent`，不描述远端 content 数组或格式化文本兜底。因此加载元数据期间工具定义保持稳定；provider 缓存仍取决于请求其余部分。
+`mcp_list_tools` 与 `mcp_get_tool` 读取缓存目录，不连接额外 server、不改变用户启用状态、不授予权限，也不修改 provider-facing tools 数组。列表只包含名称和描述。Schema 查询的 content 与 result 都返回完整 input schema。远端提供 output schema 时，额外放进 result；content 不包含该字段，让普通模型输入只包含调用参数信息。两个查询都不会在结果中重复所选 server 或工具名称。MCP 的 output schema 描述 `structuredContent`，不描述远端 content 数组或格式化文本兜底。因此加载元数据期间工具定义保持稳定；provider 缓存仍取决于请求其余部分。
 
 列表通过可选 `offset` 与 `limit` 分页，默认每页 20 个工具，最多 50 个。返回 `nextOffset` 表示还有下一页。普通 Agent content 上限与 artifact 策略对两个查询工具都适用；详情 content 转存 artifact 后，模型需读取文件取得完整 input schema。查询可以重复执行，包括 context compaction 之后。不存在会在历史压缩后阻碍重新发现或调用的临时激活标记。
 

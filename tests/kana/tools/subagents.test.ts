@@ -4,7 +4,11 @@ import {
   type KanaSubagentProfile,
   type KanaSubagentRunResult,
 } from "../../../src/kana/subagents";
-import { createSpawnSubagentTool, createWaitSubagentTool } from "../../../src/kana/tools";
+import {
+  createCancelSubagentTool,
+  createSpawnSubagentTool,
+  createWaitSubagentTool,
+} from "../../../src/kana/tools";
 import { createToolContext, expectToolResult } from "../../tools/workspace-fixture";
 
 describe("subagent tools", () => {
@@ -32,16 +36,39 @@ describe("subagent tools", () => {
       { ...createToolContext(), signal: invocation.signal },
     );
     expectToolResult<{ agentId: string }>(started);
+    expect(started.result).toEqual({ agentId: expect.any(String), status: "running" });
+    expect(JSON.parse(started.content)).toEqual(started.result);
 
     invocation.abort();
     await Promise.resolve();
     expect(client.inspect(started.result.agentId)?.status).toBe("running");
 
+    const running = await wait.execute({ agentId: started.result.agentId }, createToolContext());
+    expectToolResult(running);
+    expect(running.result).toEqual({ status: "running", output: "", waitTimedOut: false });
+    expect(running.content).not.toContain("agentId:");
+    expect(running.content).not.toContain("profile:");
+
     run.resolve(result("done"));
-    await expect(client.wait(started.result.agentId, { waitMs: 100 })).resolves.toMatchObject({
+    const completed = await wait.execute(
+      { agentId: started.result.agentId, timeoutMs: 100 },
+      createToolContext(),
+    );
+    expectToolResult(completed);
+    expect(completed.result).toEqual({
       status: "completed",
       output: "done",
+      terminalReason: "stop",
+      waitTimedOut: false,
     });
+    const cancel = createCancelSubagentTool(client);
+    const cancelled = await cancel.execute(
+      { agentId: started.result.agentId },
+      createToolContext(),
+    );
+    expectToolResult(cancelled);
+    expect(cancelled.result).toEqual({ status: "completed", terminalReason: "stop" });
+    expect(JSON.parse(cancelled.content)).toEqual(cancelled.result);
 
     const cancelledInvocation = new AbortController();
     cancelledInvocation.abort();

@@ -46,7 +46,6 @@ describe("MCP gateway tools", () => {
 
     const firstPage = await listTools!.execute({ name: "alpha", limit: 1 }, context);
     expect(firstPage).toEqual({
-      server: "alpha",
       tools: [{ name: "read", description: "Read a file." }],
       nextOffset: 1,
     });
@@ -66,8 +65,6 @@ describe("MCP gateway tools", () => {
       await describeTool!.execute({ server: "alpha", tool: "read" }, context),
     );
     const description = {
-      server: "alpha",
-      name: "read",
       inputSchema: schema,
     };
     expect(JSON.parse(described.content)).toEqual(description);

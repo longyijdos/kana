@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import type { Tool } from "@/tools";
 import { strictObject } from "@/tools";
-import { appendKanaMemory, type KanaMemoryEntry } from "../memory/storage";
+import { appendKanaMemory, type KanaMemoryEntry, type KanaMemoryScope } from "../memory/storage";
 
 export const rememberParameters = strictObject({
   content: Type.String({
@@ -29,11 +29,15 @@ export const rememberParameters = strictObject({
   ),
 });
 
-export type RememberToolResult = KanaMemoryEntry;
+export type RememberToolResult = {
+  id: string;
+  scope: KanaMemoryScope;
+};
 
 export type RememberToolOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  onRecorded?: (entry: KanaMemoryEntry) => void;
 };
 
 export function createRememberTool(
@@ -46,11 +50,7 @@ export function createRememberTool(
     parameters: rememberParameters,
     outputSchema: Type.Object({
       id: Type.String(),
-      createdAt: Type.String(),
       scope: Type.Union([Type.Literal("global"), Type.Literal("project")]),
-      title: Type.Optional(Type.String()),
-      reason: Type.Optional(Type.String()),
-      content: Type.String(),
     }),
     execute: (args, context) => {
       if (context.signal?.aborted) {
@@ -65,9 +65,10 @@ export function createRememberTool(
         cwd: options.cwd,
         env: options.env,
       });
+      options.onRecorded?.(entry);
       return {
         content: `Memory recorded in ${entry.scope} scope.`,
-        result: entry satisfies RememberToolResult,
+        result: { id: entry.id, scope: entry.scope } satisfies RememberToolResult,
       };
     },
   };

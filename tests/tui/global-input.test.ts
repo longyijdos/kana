@@ -168,7 +168,7 @@ function createHarness(options?: { tools?: string[]; sessions?: KanaSessionMetad
       name: "shell",
       args: { command },
     });
-    block.updateResult({ command, exitCode: 0, stdout: "1 pass" }, false);
+    block.updateResult({ exitCode: 0, stdout: "1 pass" }, false);
     internal.transcript.addChild(block);
   }
 

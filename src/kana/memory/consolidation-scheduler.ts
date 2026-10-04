@@ -238,17 +238,3 @@ function collectRememberedEntries(
 
   return entriesByScope;
 }
-
-export function isKanaMemoryEntry(value: unknown): value is KanaMemoryEntry {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const entry = value as Partial<KanaMemoryEntry>;
-  return (
-    typeof entry.id === "string" &&
-    typeof entry.createdAt === "string" &&
-    (entry.scope === "global" || entry.scope === "project") &&
-    typeof entry.content === "string"
-  );
-}
