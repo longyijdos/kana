@@ -81,7 +81,7 @@ describe("Kana MCP config", () => {
             url: "https://example.com/mcp?workspace=kana",
             proxy: "http://127.0.0.1:7890",
             headers: {
-              Authorization: "Bearer test-token",
+              Authorization: `Bearer \${MCP_TOKEN}`,
               "X-Tenant": "kana",
             },
             startupTimeoutMs: 5_000,
@@ -98,7 +98,7 @@ describe("Kana MCP config", () => {
           url: "https://example.com/mcp?workspace=kana",
           proxy: "http://127.0.0.1:7890",
           headers: {
-            Authorization: "Bearer test-token",
+            Authorization: `Bearer \${MCP_TOKEN}`,
             "X-Tenant": "kana",
           },
           startupTimeoutMs: 5_000,

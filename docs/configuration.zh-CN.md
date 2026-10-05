@@ -409,7 +409,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `env` | stdio: `{}` | 显式加入子进程环境的字符串键值。`${VAR_NAME}` 从当前进程展开，缺失时该 server 启动失败；`${VAR_NAME:-default}` 在变量缺失或为空时使用默认值。配置值覆盖同名基础环境变量。 |
 | `url` | HTTP 必填 | Streamable HTTP 单端点 URL；必须为绝对 `http`/`https` URL，不能包含 credentials 或 fragment。 |
 | `proxy` | HTTP: 未设置 | 绝对 `http`/`https` 代理 URL 表示仅该 server 使用指定代理；`false` 表示忽略进程级代理并强制直连。URL 不能包含 credentials 或 fragment。 |
-| `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers；不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
+| `headers` | HTTP: `{}` | 每个 HTTP 请求附带的字符串 headers。值支持 `${VAR_NAME}` 和 `${VAR_NAME:-default}`，语义与 stdio `env` 相同；展开后的值必须是合法 HTTP header。不能覆盖 transport 管理的 content、session、protocol 或 SSE headers。 |
 | `auth` | 未设置 | 显式启用 HTTP OAuth 2.0。省略时 Kana 使用普通 HTTP 连接，不启动 OAuth。设置后 `url` 必须为 HTTPS，且 `headers` 不能再设置 `Authorization`。 |
 | `description` | server 自身简介（若有） | 模型所见 MCP 目录中的能力简介。 |
 | `startupTimeoutMs` | `10000` | 启动期间每个 MCP 协商或初始化请求的超时。 |
@@ -417,7 +417,7 @@ Server ID 必须非空且不能重复。未知字段、无效值或重复 ID 都
 | `includeTools` | 未设置 | 按远端原名选择允许暴露的工具。空数组表示不暴露任何工具。 |
 | `excludeTools` | 未设置 | 按远端原名排除工具；同时出现在 include/exclude 时以排除为准。 |
 
-Kana 提供已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并展开后的 `env`；官方 SDK 另添加平台相关的安全默认环境变量。占位符从 Kana 进程环境读取，因此也能使用 `<KANA_HOME>/.env`；`${VAR:-default}` 会在变量未设置或为空时使用不递归展开的默认值。缺少必需变量会使该 server 失败。环境变量名必须符合常规格式，配置值必须是字符串，超时必须为正数。
+Kana 提供已存在的 `HOME`、`PATH`、`TMPDIR`、`TMP`、`TEMP`、`LANG`、`LC_ALL` 和 `LC_CTYPE`，然后合并展开后的 `env`；官方 SDK 另添加平台相关的安全默认环境变量。只有 stdio `env` 的值和 HTTP `headers` 的值支持占位符，key 与其他 MCP 字段保持字面值。展开在选中的 server 启动时进行，从 Kana 进程环境读取，因此也能使用 `<KANA_HOME>/.env`；`${VAR:-default}` 会在变量未设置或为空时使用默认值。替换得到的值与默认值都不会递归展开。缺少必需变量或展开后的 header 无效时，只有该 server 会失败。环境变量名必须符合常规格式，配置值必须是字符串，超时必须为正数。
 
 HTTP server 的 `proxy` 会一致应用于其 MCP 与 OAuth 请求；设为 `false` 时该 server 绕过进程级代理，省略时保留 Bun 默认路由及继承的 `HTTP_PROXY` 或 `HTTPS_PROXY`。浏览器跳转仍使用浏览器自身的网络设置。诊断只记录是否使用显式代理或 bypass，不记录代理 URL。
 
@@ -437,7 +437,7 @@ MCP 授权把 token、绑定信息与动态 client 注册信息写入权限为 `
 
 HTTP transport 版本、JSON/SSE session 行为、恢复规则、server 失败隔离、远端工具映射和 manager 生命周期见 [MCP](mcp.zh-CN.md)。用户可见的加载、reload、审批和关闭行为属于 [TUI](tui.zh-CN.md)。
 
-stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 与 `headers` 按 JSON 字面值处理，静态 token 因而会以明文保存在 `mcp.json`；优先使用 OAuth 的 `clientSecretEnv` 和最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建缺失的两个 MCP 文件，`kana reset` 则会在确认后把服务器定义和启用状态重置为空默认值；两者都不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
+stdio server 配置是本地代码执行的信任边界：Kana 在 MCP 工具审批之前就必须启动 `command`，所以只应配置可信程序。HTTP endpoint 与 OAuth 授权服务器同样属于远端数据、工具和凭据的信任边界。`env` 或 `headers` 中直接填写的静态 token 仍会以明文保存在 `mcp.json`；这些值应使用环境变量占位符，OAuth client secret 使用 `clientSecretEnv`，并使用最小权限 scopes，不要提交或分享配置与 token 文件。Kana 的 OAuth token store 是本地明文凭据文件，只通过文件权限保护。`kana install` 会以 `0600` 创建缺失的两个 MCP 文件，`kana reset` 则会在确认后把服务器定义和启用状态重置为空默认值；两者都不会删除 OAuth token store。协议版本由代码维护，不提供任意字符串配置。
 
 ## API key 与项目指令
 

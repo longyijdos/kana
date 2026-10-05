@@ -171,6 +171,18 @@ function createTransport(
   signal?: AbortSignal,
 ): CreatedTransport {
   if (config.type === "http") {
+    const headers = Object.fromEntries(
+      Object.entries(config.headers).map(([name, value]) => {
+        const source = `MCP HTTP server ${serverId} headers.${name}`;
+        const resolved = expandEnvironmentVariables(value, context.env, source);
+        try {
+          new Headers([[name, resolved]]);
+        } catch {
+          throw new Error(`${source} contains an invalid HTTP header value.`);
+        }
+        return [name, resolved];
+      }),
+    );
     const authorizer =
       config.auth === undefined
         ? undefined
@@ -211,7 +223,7 @@ function createTransport(
     const fetch = transportFetch ?? globalThis.fetch;
     return {
       transport: new StreamableHTTPClientTransport(new URL(config.url), {
-        requestInit: { headers: config.headers },
+        requestInit: { headers },
         fetch: (input, init) =>
           fetch(
             input,
@@ -258,22 +270,10 @@ function createChildEnvironment(
 
   const resolved: Record<string, string> = {};
   for (const [key, value] of Object.entries(configured)) {
-    resolved[key] = value.replace(
-      ENVIRONMENT_PLACEHOLDER_PATTERN,
-      (_placeholder, varName: string, fallback: string | undefined) => {
-        const inherited = env[varName];
-        // Follow shell `:-` semantics: a fallback applies when the inherited
-        // variable is either unset or present with an empty value.
-        if (inherited !== undefined && (fallback === undefined || inherited !== "")) {
-          return inherited;
-        }
-        if (fallback !== undefined) {
-          return fallback;
-        }
-        throw new Error(
-          `MCP stdio server ${serverId} env.${key} references missing environment variable ${varName}.`,
-        );
-      },
+    resolved[key] = expandEnvironmentVariables(
+      value,
+      env,
+      `MCP stdio server ${serverId} env.${key}`,
     );
   }
 
@@ -281,6 +281,24 @@ function createChildEnvironment(
     ...Object.fromEntries(entries),
     ...resolved,
   };
+}
+
+function expandEnvironmentVariables(value: string, env: NodeJS.ProcessEnv, source: string): string {
+  return value.replace(
+    ENVIRONMENT_PLACEHOLDER_PATTERN,
+    (_placeholder, varName: string, fallback: string | undefined) => {
+      const inherited = env[varName];
+      // Follow shell `:-` semantics: a fallback applies when the inherited
+      // variable is either unset or present with an empty value.
+      if (inherited !== undefined && (fallback === undefined || inherited !== "")) {
+        return inherited;
+      }
+      if (fallback !== undefined) {
+        return fallback;
+      }
+      throw new Error(`${source} references missing environment variable ${varName}.`);
+    },
+  );
 }
 
 function createStderrLogger(serverId: string, getLogger: () => Logger): (content: string) => void {

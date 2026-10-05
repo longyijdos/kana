@@ -182,15 +182,20 @@ describe("Kana MCP composition", () => {
     ).rejects.toBeInstanceOf(McpRequestTimeoutError);
   });
 
-  test("creates Streamable HTTP clients with configured headers and tools", async () => {
-    const authorizations: Array<string | null> = [];
+  test("creates Streamable HTTP clients with expanded headers and tools", async () => {
+    const receivedHeaders: Array<Record<string, string | null>> = [];
     const methods: string[] = [];
     const logs: Array<{ level: string; event: string; metadata?: LogMetadata }> = [];
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
       async fetch(request) {
-        authorizations.push(request.headers.get("Authorization"));
+        receivedHeaders.push({
+          authorization: request.headers.get("Authorization"),
+          tenant: request.headers.get("X-Tenant"),
+          literal: request.headers.get("X-Literal"),
+          static: request.headers.get("X-Static"),
+        });
         methods.push(request.method);
         if (request.method === "DELETE") return new Response(null, { status: 204 });
         if (request.method === "GET") {
@@ -258,10 +263,15 @@ describe("Kana MCP composition", () => {
         remote: createHttpServerConfig({
           url: `http://127.0.0.1:${server.port}/mcp`,
           proxy: false,
-          headers: { Authorization: "Bearer remote-token" },
+          headers: {
+            Authorization: `Bearer \${MCP_TOKEN}`,
+            "X-Tenant": `\${MCP_TENANT:-kana}`,
+            "X-Literal": `\${LITERAL_TOKEN}`,
+            "X-Static": "literal-value",
+          },
         }),
       },
-      {},
+      { MCP_TOKEN: "remote-token", MCP_TENANT: "", LITERAL_TOKEN: `\${MISSING_NESTED}` },
       createCapturingLogger(logs),
     );
 
@@ -275,11 +285,60 @@ describe("Kana MCP composition", () => {
     await manager.close();
     expect(methods.filter((method) => method === "DELETE")).toHaveLength(1);
     expect(result.result).toMatchObject({ transport: "http" });
-    expect(authorizations).toContain("Bearer remote-token");
+    expect(receivedHeaders.length).toBeGreaterThan(0);
+    for (const headers of receivedHeaders) {
+      expect(headers).toEqual({
+        authorization: "Bearer remote-token",
+        tenant: "kana",
+        literal: `\${MISSING_NESTED}`,
+        static: "literal-value",
+      });
+    }
     expect(logs).toContainEqual({
       level: "debug",
       event: "mcp.http_proxy_bypassed",
       metadata: { serverId: "remote" },
+    });
+  });
+
+  test.each([
+    {
+      reason: "missing environment variables",
+      token: undefined,
+      message:
+        "MCP HTTP server broken headers.Authorization references missing environment variable MCP_TOKEN.",
+    },
+    {
+      reason: "invalid expanded header values",
+      token: "private-token\r\nInjected: secret",
+      message:
+        "MCP HTTP server broken headers.Authorization contains an invalid HTTP header value.",
+    },
+  ])("fails only the HTTP server with $reason", async ({ token, message }) => {
+    const logs: Array<{ level: string; event: string; metadata?: LogMetadata }> = [];
+    const manager = createManager(
+      {
+        broken: createHttpServerConfig({ headers: { Authorization: `Bearer \${MCP_TOKEN}` } }),
+        healthy: createServerConfig({ includeTools: ["echo"] }),
+      },
+      { MCP_TOKEN: token, PATH: process.env.PATH },
+      createCapturingLogger(logs),
+    );
+
+    await expect(manager.start()).resolves.toBeUndefined();
+    expect(manager.listTools("broken")).toEqual([]);
+    expect(manager.listTools("healthy").map((tool) => tool.name)).toEqual(["echo"]);
+    expect(manager.diagnostics).toContainEqual({
+      id: "broken",
+      status: "failed",
+      discoveredToolCount: 0,
+      toolCount: 0,
+      error: { name: "Error", message },
+    });
+    expect(logs).toContainEqual({
+      level: "warn",
+      event: "mcp.server_start_failed",
+      metadata: { serverId: "broken", errorType: "Error" },
     });
   });
 
@@ -459,6 +518,7 @@ describe("Kana MCP composition", () => {
     const unselectedServer = createManager(
       {
         broken: createServerConfig({ command: "/does/not/exist" }),
+        brokenHttp: createHttpServerConfig({ headers: { Authorization: `\${MISSING_TOKEN}` } }),
       },
       {},
       undefined,
