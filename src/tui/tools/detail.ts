@@ -125,6 +125,7 @@ const BUILT_IN_TOOL_TITLES = new Map<string, string>([
   ["write", "Write"],
   ["edit", "Edit"],
   ["view_image", "View image"],
+  ["run_code", "Run code"],
   ["remember", "Remember"],
   ["schedule_wake", "Schedule wake"],
   ["todo_write", "Todos"],
@@ -144,6 +145,10 @@ function buildToolSections(
   const sections: ToolDetailSection[] = [];
 
   switch (toolCall.name) {
+    case "run_code": {
+      pushSection(sections, "Code", getStringProperty(args, "code"), { preserveEmpty: true });
+      break;
+    }
     case "shell": {
       pushSection(sections, "Command", getStringProperty(args, "command"));
       pushSection(sections, "Working directory", getStringProperty(args, "cwd") ?? ".");

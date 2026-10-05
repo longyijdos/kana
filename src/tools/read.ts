@@ -51,6 +51,14 @@ export function createReadTool(
     name: "read",
     description: "Read a text file. Use offset and limit to inspect large files in chunks.",
     parameters: readParameters,
+    outputSchema: Type.Object({
+      path: Type.String(),
+      content: Type.String(),
+      startLine: Type.Number(),
+      endLine: Type.Number(),
+      totalLines: Type.Number(),
+      truncated: Type.Boolean(),
+    }),
     execution: {
       concurrency: "parallel",
     },

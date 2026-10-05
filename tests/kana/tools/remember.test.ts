@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { createRememberTool, getKanaMemoryPaths } from "@/kana";
 import type { ToolResult } from "@/tools";
+import type { KanaMemoryEntry } from "../../../src/kana/memory";
 import {
   cleanupTempKanaHomes,
   createTempKanaHomeEnv as createTempEnv,
@@ -25,7 +26,8 @@ describe("Kana remember tool", () => {
   test("records a project memory without exposing its file path", async () => {
     const env = createTempEnv();
     const cwd = path.join(env.KANA_HOME, "workspace");
-    const tool = createRememberTool({ cwd, env });
+    const recorded: KanaMemoryEntry[] = [];
+    const tool = createRememberTool({ cwd, env, onRecorded: (entry) => recorded.push(entry) });
 
     const output = await tool.execute(
       {
@@ -36,16 +38,24 @@ describe("Kana remember tool", () => {
       createToolContext(),
     );
 
-    expectToolResult(output);
-    expect(output).toMatchObject({
+    expectToolResult<{ id: string }>(output);
+    expect(output).toEqual({
       content: "Memory recorded in project scope.",
       result: {
+        id: expect.any(String),
+        scope: "project",
+      },
+    });
+    expect(recorded).toEqual([
+      {
+        id: output.result.id,
+        createdAt: expect.any(String),
         scope: "project",
         content: "The project uses Bun.",
         title: "Package manager",
         reason: "Confirmed in package.json.",
       },
-    });
+    ]);
     expect(output.content).not.toContain(".kana");
     expect(readFileSync(getKanaMemoryPaths("project", { cwd, env }).dailyPath, "utf8")).toContain(
       "The project uses Bun.",
@@ -65,11 +75,11 @@ describe("Kana remember tool", () => {
     );
 
     expectToolResult(output);
-    expect(output).toMatchObject({
+    expect(output).toEqual({
       content: "Memory recorded in global scope.",
       result: {
+        id: expect.any(String),
         scope: "global",
-        content: "Use Chinese by default.",
       },
     });
     expect(readFileSync(getKanaMemoryPaths("global", { env }).dailyPath, "utf8")).toContain(
@@ -85,7 +95,7 @@ function createToolContext() {
   };
 }
 
-function expectToolResult(value: unknown): asserts value is ToolResult {
+function expectToolResult<T>(value: unknown): asserts value is ToolResult<T> {
   expect(value).toBeObject();
   expect(value).toHaveProperty("content");
   expect(value).toHaveProperty("result");

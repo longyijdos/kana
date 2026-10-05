@@ -1,6 +1,6 @@
 # 工具与执行
 
-核心 `ToolSpec` 是 provider 可见的名称、描述和 JSON Schema。可执行 `Tool` 在此基础上增加 `execute` 与可选执行 metadata。`ToolRuntime` 接收一次 model step 实际公开的工具对象，把模型提出的每个调用转换成规范化、可观察的结果，并把普通工具失败限制在 Agent loop 内。
+核心 `ToolSpec` 是 provider 可见的名称、描述和输入 JSON Schema。可执行 `Tool` 增加 `execute`、可选的返回 schema 和执行 metadata。`ToolRuntime` 接收模型可见的工具，以及可选的脚本内部工具列表，把调用转换成规范化、可观察的结果，并把普通工具失败限制在 Agent loop 内。
 
 ## 工具与结果合同
 
@@ -9,6 +9,7 @@ type Tool = {
   name: string;
   description: string;
   parameters: TSchema;
+  outputSchema?: TSchema;
   execution?: {
     concurrency?: "parallel" | "exclusive";
     deadlineMs?: number;
@@ -18,12 +19,15 @@ type Tool = {
 
 type ToolContext = {
   toolCallId: string;
+  parentToolCallId?: string;
   signal?: AbortSignal;
   update(partialResult: unknown): void;
 };
 ```
 
 未声明 concurrency 时默认 `exclusive`。`ToolRuntime` 始终提供调用级 abort signal；直接调用 `execute` 的嵌入方可以省略。长时间运行的实现应观察 signal，并用 `update` 发布有价值且有界的进度。
+
+每个工具的实现提供自己的可选 `outputSchema`，描述成功调用的 `result` 经 JSON 传递后的格式；Date 会变成 ISO 字符串。普通 provider 工具声明不包含这项 metadata，也不在运行时按它校验返回值。Codemode 将它转成类型说明放入 `run_code` 的描述；未提供 schema 时显示为 `unknown`。
 
 规范化结果面向不同消费者：
 
@@ -35,7 +39,17 @@ type ToolContext = {
 
 工具直接返回字符串时，它成为 `content`；其它普通值会 JSON 序列化为 content，并保留为实时结构化结果。显式结果字段格式错误时，会在消息提交前变成安全工具失败。
 
+Kana 内置工具的 `args` 承载操作意图、输入正文和选择条件；公开 `result` 承载观察、已确认的效果和新生成的标识。模型可见 `content` 描述执行结果，不重复操作参数。结果可以保留文件路径等规范化资源定位符，以及列举已有资源时的资源身份；访问已经选定的资源不必重复输入 ID。工具在边界处投影公开结果，manager 和 controller 保留完整内部记录。展示层在 UI 边界组合原始调用的 `args` 与 `result`。
+
 ## 调用管线
+
+`ToolRuntime.invoke(toolCall, { signal?, onAbortRun?, onExecutionEnd? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, durationMs, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
+
+Runtime 从进入工具的 `execute()` 开始计算 `durationMs`，在执行结束或 Runtime 中断调用时停止。调度、校验、审批、结果处理，以及中断后的取消清理均不计入；未执行的调用记录为零。耗时作为执行元数据放在 `tool_execution_end` 和历史工具消息上，与工具的业务 `result` 分开。可选的 `onExecutionEnd` 回调在执行结束或中断时立即收到耗时，早于结果发布。
+
+只有名为 `run_code` 的工具收到 `CodemodeToolContext`，它在普通 context 的基础上增加 `invokeTool(name, args, { signal?, onExecutionEnd? })`。普通工具的 context 类型和运行时对象均没有这个字段。内部调用通过 `invoke()` 返回完整的规范化 `ToolResult`，不生成历史消息。每个 codemode 调用持有自己的队列，遵守 runtime 的并发开关和数量上限，exclusive 调用形成 barrier。内部调用的审批共用 runtime 的串行 hook 队列。内部调用要求 `abortRun` 时会中断 codemode；仅取消子调用的 signal 不会。内部调用发布通常的执行事件，并用 `parentToolCallId` 标明外层调用，但不会成为独立的历史工具消息。`invoke()` 接受这个可选事件字段；普通调用不带该字段。TUI 渲染工具 block 和状态时跳过这些内部事件，审批保持原有行为。
+
+内部调用还会收到 `ToolContext.parentToolCallId`，指向外层 `run_code`；普通调用不带这个字段。业务状态可以据此把内部更新关联到已写入 journal 的外层调用，无需向对话历史添加内部工具消息。
 
 每个调用都进入同一条受控管线：
 
@@ -63,6 +77,8 @@ hook 返回 `return` 时提供正常 `ToolResult`，跳过 `execute` 及其 dead
 
 有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 与 Kana 的 `agent.tool_deadline_ms` 均默认 300000 ms；`shell` 自行声明 301000 ms deadline，使其五分钟的 command ceiling 仍通过 shell 自身的超时处理结束。`shell.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
 
+普通工具在审批结束后才启动 deadline。对于 `run_code`，等待内部 `beforeToolExecution` hook（包括串行审批队列）时，暂停外层 deadline、显示计时和记录的执行耗时。多个审批等待重叠时共用一次暂停；最后一个等待结束后，外层 deadline 按剩余额度恢复。已经执行的内部工具仍使用各自的 deadline。Runtime 为外层调用发布 `tool_execution_pause` 和 `tool_execution_resume`，并标记 `reason: "approval"`；这些事件不创建历史消息。
+
 Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补充并中止活动 sibling signal。尚未启动的调用获得 canceled 结果；已启动调用获得有限取消宽限期。宽限期内结束会成为 `canceled` 或 `timed_out`，之后迟到的 return 不能覆盖该结果。
 
 调用在宽限期后仍忽略取消时，ToolRuntime 停止接收 update，把结果固定为 `status: "unknown"` 并结束 Agent run。结果禁止自动重试，因为脱离 runtime 的操作仍可能产生副作用；迟到结算只产生不含参数或输出的安全生命周期诊断。
@@ -86,6 +102,22 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 最终字节保护按每个估算 token 三个 UTF-8 字节计算。启用 `tool_result_artifacts` 后，过大的非 `read` 文本会先完整保存，再构建大约 70% head / 30% tail 的有界预览；取回 notice、精确省略字节数和 locator 也必须进入同一上限。顶层 `read` 只做有界输出，不递归创建 artifact，并说明分页无法拆分单个超长行。
 
 实时 result 仍可通过 `tool_execution_end` 获得。ToolRuntime 将能复制且能 JSON 序列化、序列化后 UTF-8 大小不超过 128 KiB（131072 字节）的 result 完整保存在持久消息中。超限或无法序列化的 result 会整份省略；自定义策略也可显式关闭保存。这个持久化上限独立于模型上下文预算、content 上限和 artifact 创建，不截断实时 result。模型只收到 content 与 images，不收到保存的 result。恢复后的 TUI 历史和子代理查看面板依次选择 `result`、`artifact`、`content`。保留 result 时，实时与恢复后的界面使用相同结果；result 被省略时，artifact 提供已存储输出摘要。Artifact 存储路径、权限、审计、fork 与清理归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
+
+## Codemode 沙箱
+
+`createCodemodeSandbox({ tools, timeoutMs? })` 封装独立的 `@earendil-works/pi-codemode` 包。每次执行都会在 Worker 中创建新的 QuickJS WASM 实例来运行 JavaScript。默认 deadline 为 300000 ms，包含等待所提供工具的时间；VM heap 上限为 256 MiB。调用方可以向 `execute()` 传入 abort signal，并须在所属对象释放时关闭沙箱。取消和 timeout 会中断 VM，并中止待完成 host 工具的 signal。
+
+脚本沿用包提供的接口：`tools`、`ALL_TOOLS`、`text`、`image`、`console`、`exit`、`store`、`load`、顶层 `await` 和 `return`。脚本无法使用 host 的文件系统、网络、进程或模块 API。注册的 host 函数通过 JSON 与脚本交换值；参数校验、审批和历史处理由调用方负责。
+
+Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回 `ok`、`value`、`output`、`calls` 和 `storeWrites`；失败时返回 `ok: false`、`error`、`output` 和 `calls`。Store 改动仅报告给调用方，不会自动持久化。这个 host API 不会注册模型可见工具。
+
+`createCodemodeTool({ tools, mode? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。外部 MCP 定义仍通过 `mcp_get_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 自行声明 900000 ms（15 分钟）的调用 deadline，排除内部审批等待；runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
+
+工具的 `content` 包含显式文本输出，以及随后以 JSON 编码的返回值或脚本错误。内部工具返回的图片自动加入外层 `images`；显式 `image()` 输出转为带解码尺寸的视觉观察。结构化 `result` 保留包提供的 `CodemodeResult`，包括调用名称、状态和成功时的 store 改动；调用耗时替换为 Runtime 记录的执行耗时。Store 改动不会自动用于后续执行。实时前端收到内部执行事件；历史和 resume 后的 transcript 只保留外层结果，并遵守普通 result 保存上限。
+
+`AgentConfig.codemode` 默认为 `off`。`mixed` 向模型提供普通工具和 `run_code`；`only` 只提供 `run_code`。Agent 同时保存模型可见的 `tools` 和脚本内部的 `callableTools`，每次组装 prompt 时一起刷新。普通 `execute()` 只查找已公开的工具；内部 `invoke()` 查找 `callableTools`。Kana 根据 `agent.codemode` 自动提供 `run_code`，而 `agent.tools` 和子 Agent 角色卡继续限制脚本能调用的工具。子 Agent 继承父模式；记忆整理保留现有工具方式。Provider 原生 web search 等能力仍按各自配置生效。
+
+源码执行会加载本地 Worker 和 WASM。Bun 可执行文件构建将 Worker 列为额外入口，通过静态 file import 嵌入 WASM；沙箱执行不依赖 binary 旁边的外部包文件。 构建显式使用项目根目录（`--root .`），使嵌入的 Worker 路径与运行时使用的源码路径一致。
 
 ## 内置工具
 
@@ -111,8 +143,41 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 | `remember` | `content`；可选 scope/title/reason | 记忆启用时追加长期记忆暂存记录。 |
 | `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
+| `mcp_list_tools` | Server `name`；可选 `offset`、`limit` | 从已启用 MCP server 的缓存目录列出工具名称和描述。 |
+| `mcp_get_tool` | `server`、`tool` | 读取远端工具缓存的 input schema 与可选 output schema。 |
+| `mcp_call` | `server`、`tool`、`arguments` | 校验远端 input schema 并调用所选工具。 |
 
-`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools`、`mcp_describe_tool` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
+`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools`、`mcp_get_tool` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
+
+下表列出全部内置业务工具成功调用的公开结果契约。实际注册取决于工具配置与可用能力。`run_code` 由 codemode 动态生成，其结果契约见上文 Codemode 章节。
+
+| 工具 | 结构化结果 |
+| --- | --- |
+| `list` | `{ path, entries, totalEntries, truncated }` |
+| `glob` | `{ matches, totalMatches, truncated }`；匹配路径相对于 workspace root。 |
+| `grep` | `{ path, matches, filesSearched, truncated }`；`path` 是解析后的搜索定位符。 |
+| `read` | `{ path, content, startLine, endLine, totalLines, truncated }` |
+| `view_image` | `{ path, mimeType, width, height, byteSize }`；规范化后的图片通过独立的 `images` 返回。 |
+| `write` | `{ path, bytesWritten }` |
+| `edit` | `{ path, replacements, bytesWritten }` |
+| `shell` | `{ exitCode, stdout, stderr, timedOut }`；实时更新只包含有界 `stdout` 和 `stderr`。 |
+| `job_start` | `{ jobId, status }` |
+| `job_list` | `BackgroundJobSummary[]`；每个 summary 包含 `{ id, kind, label, cwd?, status, startedAt, finishedAt?, exitCode }`。 |
+| `job_output` | `{ status, chunks, droppedBytes, waitTimedOut, exitCode }` |
+| `job_kill` | `{ status, exitCode }` |
+| `spawn_subagent` | `{ agentId, status }` |
+| `wait_subagent` | `{ status, output, error?, terminalReason?, waitTimedOut }` |
+| `cancel_subagent` | `{ status, terminalReason? }` |
+| `todo_write` | `{ status: "updated" \| "cleared" }` |
+| `delegate_user_task` | `{ status: "accepted", taskId }` |
+| `remember` | `{ id, scope }` |
+| `schedule_wake` | `{ id, dueAt }` |
+| `update_goal` | `{ status: "completed" \| "blocked" }` |
+| `mcp_list_tools` | `{ tools, nextOffset? }`；每个工具包含 `{ name, description }`。 |
+| `mcp_get_tool` | `{ inputSchema, outputSchema? }` |
+| `mcp_call` | 远端工具提供 `structuredContent` 时返回其完整值，否则返回完整的格式化文本。 |
+
+文件工具的 `path` 字段是解析后的资源定位符。`job_list` 列举已有资源，因此返回完整的公开 Job summary。MCP 入口的发现、schema 语义与远端结果适配详见 [MCP](mcp.zh-CN.md)。
 
 ## 文件与 Shell 边界
 
@@ -138,7 +203,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 Kana 把活动或尚未报告 Job 的身份、有界 label、cwd、状态和 exit code 投影到 runtime context，永不包含输出。完成 steering、排队 run 投递、确认与 session 切换顺序归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。其能力交集、异步生命周期、持久化与 TUI 行为归 [Subagent](subagents.zh-CN.md)所有。
+Subagent 启动时选择预定义角色卡并返回稳定 child ID；等待和取消返回所选 child 的操作结果。其能力交集、异步生命周期、持久化与 TUI 行为见 [Subagent](subagents.zh-CN.md)。
 
 ## Kana 自有状态工具
 
@@ -148,11 +213,11 @@ Subagent 控制工具只暴露预定义角色卡，并返回稳定 child ID。�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_describe_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Shell allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_get_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Shell allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 
-全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_describe_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 server、工具名称和 input schema；result 额外包含可选 output schema，content 不包含它。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
+全部工具使用普通 `Tool` 契约。当前 registry 可用且 `agent.tools` 选中入口时，Kana 将其创建为内置工具。MCP 暴露 `mcp_list_tools`（parallel，列出名称和描述）、`mcp_get_tool`（parallel，查询单个工具 schema）和 `mcp_call`（exclusive、普通审批）。Schema 查询的 content 与 result 都返回 input schema；result 额外包含可选 output schema，content 不包含它。远端 input schema 在调用入口内部执行校验。调用结果使用相同的规范化与 content 上限。MCP 目录、SDK transport 与结果适配见 [MCP](mcp.zh-CN.md)。
 
 自定义工具应：
 

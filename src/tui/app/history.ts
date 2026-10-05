@@ -139,7 +139,11 @@ function addToolResult(
     todoStates.delete(message.toolCallId);
   }
 
-  block.updateResult(message.result ?? message.artifact ?? message.content, message.isError);
+  block.updateResult(
+    message.result ?? message.artifact ?? message.content,
+    message.isError,
+    message.durationMs,
+  );
   transcript.addChild(block);
 }
 

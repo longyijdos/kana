@@ -10,6 +10,15 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
   return [
     {
       name: "mcp_list_tools",
+      outputSchema: Type.Object({
+        tools: Type.Array(
+          Type.Object({
+            name: Type.String(),
+            description: Type.String(),
+          }),
+        ),
+        nextOffset: Type.Optional(Type.Number()),
+      }),
       description: `List tool names and descriptions for an enabled MCP server.\n\nAvailable MCP servers:\n${catalog}`,
       parameters: strictObject({
         name: Type.String({ description: "MCP server name from the catalog." }),
@@ -24,7 +33,6 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
         const tools = registry.listTools(name);
         const nextOffset = offset + limit;
         return {
-          server: name,
           tools: tools.slice(offset, nextOffset).map((tool) => ({
             name: tool.name,
             description: tool.description,
@@ -34,7 +42,11 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
       },
     },
     {
-      name: "mcp_describe_tool",
+      name: "mcp_get_tool",
+      outputSchema: Type.Object({
+        inputSchema: Type.Record(Type.String(), Type.Unknown()),
+        outputSchema: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+      }),
       description: "Get a tool's input schema from an enabled MCP server.",
       parameters: strictObject({
         server: Type.String(),
@@ -47,8 +59,6 @@ export function createMcpTools(registry: McpToolRegistry): Tool[] {
           throw new Error(`MCP tool "${server}/${name}" is not available.`);
         }
         const definition = {
-          server,
-          name: tool.name,
           inputSchema: tool.parameters,
         };
         return {

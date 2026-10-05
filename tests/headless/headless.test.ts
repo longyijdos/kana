@@ -27,6 +27,65 @@ import type { Tool } from "../../src/tools";
 import { messageIdentityForTest } from "../helpers/messages";
 
 describe("headless output protocol", () => {
+  test.each([false, true])(
+    "keeps nested run_code events out of public output (json=%s)",
+    async (json) => {
+      const stdout = new StringOutput();
+      const stderr = new StringOutput();
+      const runtime = createRuntime({
+        codemode: "only",
+        model: new ToolThenAnswerModel(
+          "run_code",
+          { code: "const data = await tools.inspect({}); return { count: data.records.length };" },
+          "Summarized.",
+        ),
+        tools: [
+          {
+            name: "inspect",
+            description: "Inspect intermediate data.",
+            parameters: Type.Object({}),
+            execute: (_args, context) => {
+              context.update("private intermediate progress");
+              return {
+                content: "private intermediate contents",
+                result: { records: ["private intermediate contents"] },
+              };
+            },
+          },
+        ],
+      });
+      try {
+        const result = await runHeadlessConversation({
+          runtime,
+          prompt: "Summarize the data.",
+          approvalConfig: { mode: "never" },
+          toolApprovals: DEFAULT_KANA_TOOL_APPROVALS,
+          json,
+          stdout,
+          stderr,
+        });
+        expect(result.exitCode).toBe(0);
+        expect(stdout.value).not.toContain("private intermediate");
+        expect(stderr.value).not.toContain("inspect");
+        if (json) {
+          const tools = stdout
+            .lines()
+            .map((line) => JSON.parse(line))
+            .filter((event) => event.type.startsWith("tool."));
+          expect(tools.map((event) => [event.type, event.name])).toEqual([
+            ["tool.started", "run_code"],
+            ["tool.completed", "run_code"],
+          ]);
+          expect(tools[1].result.value).toEqual({ count: 1 });
+        } else {
+          expect(stdout.value).toBe("Summarized.\n");
+        }
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
+
   test("writes only the final answer to human stdout", async () => {
     const stdout = new StringOutput();
     const stderr = new StringOutput();
@@ -769,6 +828,7 @@ class ToolThenAnswerModel extends ScriptedModel {
 
 function createRuntime(options: {
   model: Model;
+  codemode?: AgentConfig["codemode"];
   tools?: Tool[];
   journal?: AgentConfig["journal"];
   goalTool?: boolean;
@@ -783,6 +843,7 @@ function createRuntime(options: {
     createAgent: (agentOptions) =>
       new Agent({
         model: options.model,
+        codemode: options.codemode,
         tools: [
           ...(options.tools ?? []),
           ...(options.goalTool ? [createUpdateGoalTool({ update: agentOptions.updateGoal })] : []),

@@ -30,6 +30,7 @@ import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-contr
 import type { WakeScheduler } from "./conversation/wake-scheduler";
 import type { KanaCustomProviderSnapshot } from "./custom-provider";
 import type { KanaLaunchMode } from "./launch-mode";
+import type { KanaMemoryEntry } from "./memory";
 import { createKanaAgentModelRuntime } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
 import { loadKanaSkillActivations } from "./skills/loader";
@@ -79,6 +80,7 @@ export type KanaAgentOptions = Pick<
   resolveTodoState?: () => readonly KanaTodoItem[];
   resolveGoal?: () => KanaGoalSnapshot | undefined;
   updateGoal?: (change: KanaGoalUpdate) => KanaGoalSnapshot;
+  onMemoryRecorded?: (entry: KanaMemoryEntry) => void;
   subagentProfile?: KanaSubagentProfile;
   subagents?: KanaSubagentClient;
   userTasks?: KanaUserTaskManager;
@@ -264,6 +266,7 @@ export function createKanaAgent(
         createRememberTool({
           cwd,
           env: options.env,
+          onRecorded: options.onMemoryRecorded,
         }),
       ]),
     });
@@ -316,6 +319,7 @@ export function createKanaAgent(
   return new Agent({
     model,
     promptAssembly,
+    codemode: config.codemode,
     maxTurns: config.maxTurns,
     toolDeadlineMs: config.toolDeadlineMs,
     webSearch: runtime.webSearch,

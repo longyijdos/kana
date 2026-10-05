@@ -356,6 +356,88 @@ describe("AgentEventRenderer", () => {
     });
   });
 
+  test("resumes run_code elapsed time and status after nested approval", () => {
+    let now = 0;
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    const transcript = new TranscriptComponent();
+    let activeTool: string | undefined;
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: { requestRender() {} } as unknown as Tui,
+      updateStatus: (_phase, extra = {}) => {
+        activeTool = extra.activeTool;
+      },
+    });
+    const pause = {
+      type: "tool_execution_pause" as const,
+      toolCallId: "outer",
+      toolName: "run_code",
+      reason: "approval" as const,
+    };
+    try {
+      renderer.handle(toolStart("outer", "run_code"));
+      now = 2_000;
+      renderer.handle(pause);
+      activeTool = "shell";
+      now = 15_000;
+      expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (2s) (Esc to abort)");
+      renderer.handle({ ...pause, type: "tool_execution_resume" });
+      expect(activeTool).toBe("run_code");
+      now = 16_000;
+      expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (3s) (Esc to abort)");
+      renderer.handle(pause);
+      now = 30_000;
+      expect(stripAnsi(transcript.render(80)[0]!)).toBe("◆ Running code (3s) (Esc to abort)");
+      renderer.handle({ ...toolEnd("outer", "run_code", false), durationMs: 3_200 });
+      const completed = transcript.render(80);
+      expect(stripAnsi(completed[0]!)).toContain("3200 ms");
+      renderer.handle({ ...pause, type: "tool_execution_resume" });
+      now = 60_000;
+      expect(transcript.render(80)).toEqual(completed);
+      expect(activeTool).toBeUndefined();
+      expect(transcript.children).toHaveLength(1);
+    } finally {
+      renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+      clock.mockRestore();
+    }
+  });
+
+  test("hides nested tool events without changing the outer block or error status", () => {
+    const transcript = new TranscriptComponent();
+    const statuses: Array<{ phase: RunPhase; activeTool?: string }> = [];
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: { requestRender() {} } as unknown as Tui,
+      updateStatus: (phase, extra = {}) => statuses.push({ phase, activeTool: extra.activeTool }),
+    });
+    renderer.handle(toolStart("outer", "run_code"));
+    renderer.handle({ ...toolStart("inner", "read"), parentToolCallId: "outer" });
+    renderer.handle({
+      type: "tool_execution_update",
+      toolCallId: "inner",
+      parentToolCallId: "outer",
+      toolName: "read",
+      args: {},
+      partialResult: "hidden partial output",
+    });
+    renderer.handle({ ...toolEnd("inner", "read", true), parentToolCallId: "outer" });
+    expect(transcript.children).toHaveLength(1);
+    expect(statuses).toEqual([{ phase: "tool", activeTool: "run_code" }]);
+    expect(stripAnsi(transcript.render(80).join("\n"))).not.toContain("hidden partial output");
+
+    renderer.handle(toolEnd("outer", "run_code", false));
+    const completed = transcript.render(80);
+    renderer.handle({ ...toolStart("late", "shell"), parentToolCallId: "outer" });
+    renderer.handle({ ...toolEnd("late", "shell", true), parentToolCallId: "outer" });
+    expect(transcript.render(80)).toEqual(completed);
+    expect(statuses.at(-1)).toEqual({ phase: "tool", activeTool: undefined });
+
+    renderer.handle(toolStart("direct", "read"));
+    renderer.handle(toolEnd("direct", "read", false));
+    expect(transcript.children).toHaveLength(2);
+    renderer.handle({ type: "agent_end", reason: "stop", messages: [] });
+  });
+
   test("renders hosted web search as provider activity without a local tool block", () => {
     const transcript = new TranscriptComponent();
     const statuses: RunPhase[] = [];

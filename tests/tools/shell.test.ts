@@ -40,14 +40,13 @@ describe("shell tool", () => {
     );
 
     expectToolResult(result);
-    expect(result.result).toMatchObject({
-      command: "cat notes.txt",
-      cwd: ".",
+    expect(result.result).toEqual({
       exitCode: 0,
       stdout: "hello\n",
       stderr: "",
       timedOut: false,
     });
+    expect(result.content).toBe("exitCode: 0\ntimedOut: false\n\nstdout:\nhello\n\n\nstderr:\n");
     expect(result.isError).toBe(false);
   });
 
@@ -89,13 +88,10 @@ describe("shell tool", () => {
     await waitForCondition(() => updates.length > 0);
 
     expect(completed).toBe(false);
-    expect(updates[0]).toMatchObject({
-      command: "printf start; sleep 1; printf end",
-      cwd: ".",
+    expect(updates[0]).toEqual({
       stdout: "start",
       stderr: "",
     });
-    expect(updates[0]).not.toHaveProperty("exitCode");
 
     const result = await execution;
 
@@ -286,7 +282,6 @@ describe("shell tool", () => {
 
     expectToolResult(result);
     expect(result.result).toMatchObject({
-      cwd: "src",
       stdout: "hello\n",
     });
   });
@@ -340,8 +335,10 @@ describe("shell tool", () => {
 
     expectToolResult(result);
     expect(result.result).toMatchObject({
-      command: "git reset --hard",
+      exitCode: 128,
+      timedOut: false,
     });
+    expect(result.isError).toBe(false);
   });
 
   test("accepts cwd outside the workspace", async () => {
@@ -359,7 +356,6 @@ describe("shell tool", () => {
 
     expectToolResult(result);
     expect(result.result).toMatchObject({
-      cwd: path.relative(root, outside),
       stdout: "outside\n",
     });
   });

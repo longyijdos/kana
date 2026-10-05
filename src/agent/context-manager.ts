@@ -561,7 +561,17 @@ export function estimateContextTokens(context: ModelContext): number {
   return (
     8 +
     estimateTextTokens(context.system ?? "") +
-    estimateTextTokens(context.tools ? stringifyForEstimate(context.tools) : "") +
+    estimateTextTokens(
+      context.tools
+        ? stringifyForEstimate(
+            context.tools.map(({ name, description, parameters }) => ({
+              name,
+              description,
+              parameters,
+            })),
+          )
+        : "",
+    ) +
     estimateMessagesTokens(context.messages)
   );
 }

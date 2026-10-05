@@ -66,12 +66,14 @@ export type AgentEvent =
   | {
       type: "tool_execution_start";
       toolCallId: string;
+      parentToolCallId?: string;
       toolName: string;
       args: unknown;
     }
   | {
       type: "tool_execution_update";
       toolCallId: string;
+      parentToolCallId?: string;
       toolName: string;
       args: unknown;
       partialResult: unknown;
@@ -79,7 +81,15 @@ export type AgentEvent =
   | {
       type: "tool_execution_end";
       toolCallId: string;
+      parentToolCallId?: string;
       toolName: string;
       result: unknown;
       isError: boolean;
+      durationMs?: number;
+    }
+  | {
+      type: "tool_execution_pause" | "tool_execution_resume";
+      toolCallId: string;
+      toolName: string;
+      reason: "approval";
     };

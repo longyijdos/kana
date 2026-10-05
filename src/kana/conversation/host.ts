@@ -40,6 +40,7 @@ import {
 import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
+  type KanaMemoryEntry,
   loadKanaMemory,
   type MemoryConsolidationActivity,
   type MemoryConsolidationEvent,
@@ -290,11 +291,17 @@ export class KanaConversationHost<TConfiguration = never> {
       options.sessionId,
       onTodoStateCommitted,
     );
-    const createAgent = (config: KanaConfig): Agent =>
-      this.createAgentProduct(
+    const createAgent = (config: KanaConfig): Agent => {
+      const rememberedEntries: KanaMemoryEntry[] = [];
+      const agent = this.createAgentProduct(
         config,
-        this.createKanaAgentOptions(agentOptions, sessionBinding, config),
+        this.createKanaAgentOptions(agentOptions, sessionBinding, config, rememberedEntries),
       );
+      agent.subscribe((event) => {
+        if (event.type === "agent_start") rememberedEntries.length = 0;
+      });
+      return agent;
+    };
 
     let agent: Agent;
     if (configuration === undefined) {
@@ -524,6 +531,7 @@ export class KanaConversationHost<TConfiguration = never> {
     >,
     sessionBinding: HostedSessionAgentBinding,
     config: KanaConfig,
+    rememberedEntries: KanaMemoryEntry[],
   ): KanaAgentOptions {
     const session = sessionBinding.session;
     const logger = sessionBinding.logger;
@@ -535,6 +543,7 @@ export class KanaConversationHost<TConfiguration = never> {
       resolveMcp: () => this.mcpRuntime.registry,
       resolveTodoState: sessionBinding.resolveTodoState,
       env: this.env,
+      onMemoryRecorded: (entry) => rememberedEntries.push(entry),
       launchMode: this.launchMode,
       logger,
       artifactStore: sessionBinding.artifactStore,
@@ -587,7 +596,7 @@ export class KanaConversationHost<TConfiguration = never> {
           cwd: session.cwd,
         };
         void this.memoryConsolidation
-          ?.schedule(messages, {
+          ?.schedule(rememberedEntries.splice(0), {
             logger,
             onCompleted: (scope, result) =>
               recordKanaAgentRunAccounting({

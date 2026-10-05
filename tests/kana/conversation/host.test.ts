@@ -14,7 +14,7 @@ import {
   type MemoryConsolidationEvent,
 } from "../../../src/kana";
 import type { KanaAgentOptions } from "../../../src/kana/agent";
-import { createRememberTool } from "../../../src/kana/tools";
+import { createRememberTool, createTodoWriteTool } from "../../../src/kana/tools";
 import { MockModel } from "../../../src/providers/mock";
 import { waitFor } from "../../helpers/async-control";
 import { ControlledModel } from "../../helpers/controlled-model";
@@ -145,69 +145,204 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
-  test("exposes automatic memory activity and failures after a committed remember", async () => {
-    const env = createTempEnv();
-    process.env.KANA_HOME = env.KANA_HOME;
-    const model = new ControlledModel();
-    const host = createKanaConversationHost({
-      env,
-      configOverrides: [
-        'memory.agent.model.provider="custom"',
-        'memory.agent.model.name="missing-model"',
-      ],
-      createAgent: (_config, options = {}) =>
-        new Agent({
-          model,
-          tools: [createRememberTool({ env })],
-          messages: options.messages,
-          beforeToolExecution: options.beforeToolExecution,
-          journal: options.journal,
-          logger: options.logger,
-          onRunCommitted: options.onRunCommitted,
-        }),
-    });
-    const snapshots: MemoryConsolidationActivity[][] = [];
-    const failures: MemoryConsolidationEvent[] = [];
-    host.subscribeMemoryActivity((event) => {
-      if (event.type === "activity_changed") snapshots.push(host.getMemoryActivity());
-      else failures.push(event);
-    });
-    const runtime = createRuntime(host);
-    runtime.setBeforeToolExecution(() => ({ type: "continue" }));
-    const run = runtime.submit({
-      ...messageIdentityForTest("user"),
-      role: "user",
-      content: "Remember this preference.",
-    });
-    await waitFor(() => model.requests.length === 1);
-    model.requests[0]!.complete(
-      [
-        {
-          type: "tool_call",
-          id: "remember-preference",
-          name: "remember",
-          args: { scope: "project", content: "Use Bun." },
-        },
-      ],
-      "toolUse",
-    );
-    await waitFor(() => model.requests.length === 2);
-    model.requests[1]!.complete("Saved.");
-    await run;
-    await waitFor(() => failures.length === 1 && host.getMemoryActivity().length === 0);
+  test.each([
+    ["off", false],
+    ["only", false],
+    ["only", true],
+  ] as const)(
+    "schedules remember after commit (mode=%s, scriptError=%s)",
+    async (codemode, scriptError) => {
+      const env = createTempEnv();
+      process.env.KANA_HOME = env.KANA_HOME;
+      const model = new ControlledModel();
+      const host = createKanaConversationHost({
+        env,
+        configOverrides: [
+          `agent.codemode="${codemode}"`,
+          'memory.agent.model.provider="custom"',
+          'memory.agent.model.name="missing-model"',
+        ],
+        createAgent: (config, options = {}) =>
+          new Agent({
+            model,
+            codemode: config.agent.codemode,
+            tools: [createRememberTool({ env, onRecorded: options.onMemoryRecorded })],
+            messages: options.messages,
+            beforeToolExecution: options.beforeToolExecution,
+            journal: options.journal,
+            logger: options.logger,
+            onRunCommitted: options.onRunCommitted,
+          }),
+      });
+      const snapshots: MemoryConsolidationActivity[][] = [];
+      const failures: MemoryConsolidationEvent[] = [];
+      host.subscribeMemoryActivity((event) => {
+        if (event.type === "activity_changed") snapshots.push(host.getMemoryActivity());
+        else failures.push(event);
+      });
+      const runtime = createRuntime(host);
+      runtime.setBeforeToolExecution(() => ({ type: "continue" }));
+      try {
+        const run = runtime.submit({
+          ...messageIdentityForTest("user"),
+          role: "user",
+          content: "Remember this preference.",
+        });
+        await waitFor(() => model.requests.length === 1);
+        model.requests[0]!.complete(
+          [
+            {
+              type: "tool_call",
+              id: "remember-preference",
+              name: codemode === "off" ? "remember" : "run_code",
+              args:
+                codemode === "off"
+                  ? { scope: "project", content: "Use Bun." }
+                  : {
+                      code:
+                        'await tools.remember({ scope: "project", content: "Use Bun." }); ' +
+                        (scriptError
+                          ? 'throw new Error("after remembering");'
+                          : 'return "recorded";'),
+                    },
+            },
+          ],
+          "toolUse",
+        );
+        await waitFor(() => model.requests.length === 2);
+        expect(snapshots).toEqual([]);
+        model.requests[1]!.complete("Saved.");
+        await run;
+        await waitFor(() => failures.length === 1 && host.getMemoryActivity().length === 0);
 
-    expect(snapshots).toEqual([
-      [{ scope: "project", status: "queued" }],
-      [{ scope: "project", status: "organizing" }],
-      [],
-    ]);
-    expect(failures[0]).toMatchObject({ type: "failed", scope: "project" });
-    expect((failures[0] as Extract<MemoryConsolidationEvent, { type: "failed" }>).error).toContain(
-      "Custom provider configuration was not found",
-    );
-    await runtime.close();
-    await host.close();
-  });
+        expect(snapshots).toEqual([
+          [{ scope: "project", status: "queued" }],
+          [{ scope: "project", status: "organizing" }],
+          [],
+        ]);
+        expect(failures[0]).toMatchObject({ type: "failed", scope: "project" });
+        expect(
+          (failures[0] as Extract<MemoryConsolidationEvent, { type: "failed" }>).error,
+        ).toContain("Custom provider configuration was not found");
+        const saved = loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() });
+        expect(
+          saved.messages
+            .filter((message) => message.role === "tool")
+            .map((message) => message.toolName),
+        ).toEqual([codemode === "off" ? "remember" : "run_code"]);
+
+        const nextRun = runtime.submit({
+          ...messageIdentityForTest("user"),
+          role: "user",
+          content: "Continue.",
+        });
+        await waitFor(() => model.requests.length === 3);
+        model.requests[2]!.complete("Continued.");
+        await nextRun;
+        expect(failures).toHaveLength(1);
+        expect(snapshots).toHaveLength(3);
+      } finally {
+        await runtime.close();
+        await host.close();
+      }
+    },
+  );
+
+  test.each([false, true])(
+    "persists nested todo updates without child messages (scriptError=%s)",
+    async (scriptError) => {
+      const env = createTempEnv();
+      const model = new ControlledModel();
+      const host = createKanaConversationHost({
+        env,
+        configOverrides: ['agent.codemode="only"'],
+        createAgent: (config, options = {}) =>
+          new Agent({
+            model,
+            codemode: config.agent.codemode,
+            tools: [createTodoWriteTool({ commit: options.commitTodoState })],
+            messages: options.messages,
+            beforeToolExecution: options.beforeToolExecution,
+            journal: options.journal,
+            onRunCommitted: options.onRunCommitted,
+          }),
+      });
+      const runtime = createRuntime(host);
+      runtime.setBeforeToolExecution(() => ({ type: "continue" }));
+      const items: KanaTodoItem[] = [{ content: "Resume work", status: "in_progress" }];
+      try {
+        const run = runtime.submit({
+          ...messageIdentityForTest("user"),
+          role: "user",
+          content: "Track the work.",
+        });
+        await waitFor(() => model.requests.length === 1);
+        model.requests[0]!.complete(
+          [
+            {
+              type: "tool_call",
+              id: "outer-todo",
+              name: "run_code",
+              args: {
+                code: [
+                  'await tools.todo_write({ items: [{ content: "Draft plan", status: "pending" }] });',
+                  'await tools.todo_write({ items: [{ content: "Resume work", status: "in_progress" }] });',
+                  scriptError ? 'throw new Error("after updating todo");' : 'return "tracked";',
+                ].join("\n"),
+              },
+            },
+          ],
+          "toolUse",
+        );
+        await waitFor(() => model.requests.length === 2);
+        model.requests[1]!.complete("Tracked.");
+        await run;
+        const saved = loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() });
+        expect(saved.todoState).toEqual(items);
+        const changes = saved.timeline.filter((entry) => entry.type === "todo_state");
+        expect(changes).toHaveLength(2);
+        expect(changes.map((entry) => entry.parentToolCallId)).toEqual([
+          "outer-todo",
+          "outer-todo",
+        ]);
+        expect(new Set(changes.map((entry) => entry.toolCallId)).size).toBe(2);
+        const results = saved.messages.filter((message) => message.role === "tool");
+        expect(results).toHaveLength(1);
+        expect(results[0]).toMatchObject({
+          toolCallId: "outer-todo",
+          toolName: "run_code",
+          isError: scriptError,
+        });
+
+        const clear = runtime.submit({
+          ...messageIdentityForTest("user"),
+          role: "user",
+          content: "Clear the list.",
+        });
+        await waitFor(() => model.requests.length === 3);
+        model.requests[2]!.complete(
+          [
+            {
+              type: "tool_call",
+              id: "outer-clear",
+              name: "run_code",
+              args: { code: "await tools.todo_write({ items: [] });" },
+            },
+          ],
+          "toolUse",
+        );
+        await waitFor(() => model.requests.length === 4);
+        model.requests[3]!.complete("Cleared.");
+        await clear;
+        expect(
+          loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() }).todoState,
+        ).toEqual([]);
+      } finally {
+        await runtime.close();
+        await host.close();
+      }
+    },
+  );
 
   test("keeps the startup subagent profile snapshot", async () => {
     const env = createTempEnv();

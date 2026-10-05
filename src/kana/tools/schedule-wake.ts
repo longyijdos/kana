@@ -32,7 +32,6 @@ export type ScheduleWakeToolOptions = {
 export type ScheduleWakeToolResult = {
   id: string;
   dueAt: string;
-  key?: string;
 };
 
 export function createScheduleWakeTool(
@@ -43,6 +42,10 @@ export function createScheduleWakeTool(
     description:
       "Schedule one in-process reminder that starts a new agent turn after a delay. Use it to revisit long-running work while Kana remains open. The reminder is lost if Kana exits.",
     parameters: scheduleWakeParameters,
+    outputSchema: Type.Object({
+      id: Type.String(),
+      dueAt: Type.String(),
+    }),
     execute: (args) => {
       const event = options.scheduler.schedule({
         sessionId: options.sessionId,
@@ -54,7 +57,6 @@ export function createScheduleWakeTool(
       const result = {
         id: event.id,
         dueAt: event.dueAt.toISOString(),
-        key: event.key,
       } satisfies ScheduleWakeToolResult;
 
       return {

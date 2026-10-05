@@ -16,6 +16,7 @@ describe("Kana config store", () => {
       "agent.max_turns=50",
       "agent.web_search=false",
       'agent.tools=["shell", "read"]',
+      'agent.codemode="only"',
       'agent.model.name="temporary-model"',
       "agent.model.max_output_tokens=4096",
     ]);
@@ -23,6 +24,7 @@ describe("Kana config store", () => {
       maxTurns: 50,
       webSearch: false,
       tools: ["shell", "read"],
+      codemode: "only",
       model: { name: "temporary-model", maxOutputTokens: 4096 },
     });
     expect(readFileSync(configPath, "utf8")).toBe(document);
@@ -95,6 +97,7 @@ describe("Kana config store", () => {
       draft.agent.webSearch = false;
       draft.agent.imageInput = false;
       draft.agent.tools = ["read", "shell"];
+      draft.agent.codemode = "mixed";
       draft.agent.goalMaxRounds = 12;
       draft.agent.toolResultArtifacts = false;
       draft.agent.backgroundJobs.maxConcurrent = 6;
@@ -106,6 +109,7 @@ describe("Kana config store", () => {
       [
         "[agent]",
         'tools = ["read","shell"]',
+        'codemode = "mixed"',
         "web_search = false",
         "image_input = false",
         "goal_max_rounds = 12",

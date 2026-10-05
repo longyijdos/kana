@@ -100,6 +100,7 @@ export type KanaSessionTodoStateEntry = {
   parentId: string | null;
   timestamp: string;
   toolCallId?: string;
+  parentToolCallId?: string;
   items: KanaTodoItem[];
 };
 
@@ -392,6 +393,10 @@ export function parseTimelineEntry(
       !hasTimelineIdentity(parsed) ||
       (parsed.toolCallId !== undefined &&
         (typeof parsed.toolCallId !== "string" || parsed.toolCallId.length === 0)) ||
+      (parsed.parentToolCallId !== undefined &&
+        (typeof parsed.parentToolCallId !== "string" ||
+          parsed.parentToolCallId.length === 0 ||
+          parsed.toolCallId === undefined)) ||
       !isKanaTodoItems(parsed.items)
     ) {
       throw new Error(`Invalid Kana session todo state: ${filePath}:${lineNumber}`);
@@ -538,6 +543,10 @@ function isMessage(value: unknown): value is Message {
     typeof message.toolCallId === "string" &&
     typeof message.toolName === "string" &&
     typeof message.content === "string" &&
+    (message.durationMs === undefined ||
+      (typeof message.durationMs === "number" &&
+        Number.isFinite(message.durationMs) &&
+        message.durationMs >= 0)) &&
     (message.images === undefined ||
       (Array.isArray(message.images) && message.images.every(isUserImage))) &&
     (message.artifact === undefined || isToolResultArtifact(message.artifact)) &&

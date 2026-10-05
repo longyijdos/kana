@@ -69,12 +69,8 @@ describe("full-fidelity tool detail", () => {
     const lines = formatToolInspector(
       call,
       {
-        command: "bun run dev",
-        cwd: "apps/web",
         jobId: "job_12345678",
         status: "running",
-        stdout: "",
-        stderr: "",
       },
       false,
       "done",
@@ -83,6 +79,8 @@ describe("full-fidelity tool detail", () => {
     const text = stripTerminalControlSequences(lines.join("\n"));
 
     expect(text).toContain("Timeout\n  None");
+    expect(text).toContain("Command\n  bun run dev");
+    expect(text).toContain("Working directory\n  apps/web");
     expect(text).toContain("Job ID\n  job_12345678");
     expect(text).toContain("Launch status\n  running");
   });

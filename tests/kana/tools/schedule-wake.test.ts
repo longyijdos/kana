@@ -12,15 +12,15 @@ describe("Kana schedule_wake tool", () => {
     const tool = createScheduleWakeTool({ scheduler, sessionId: "session-a" });
 
     const output = await tool.execute(
-      { afterMinutes: 30, message: "Check the long-running task." },
+      { afterMinutes: 30, message: "Check the long-running task.", key: "check-task" },
       { toolCallId: "call-1", update() {} },
     );
 
-    expect(output).toMatchObject({
+    expect(output).toEqual({
       content: expect.stringContaining("Scheduled wake event for"),
       result: { id: expect.any(String), dueAt: expect.any(String) },
     });
-    expect(scheduler.list("session-a")).toMatchObject([{ origin: "agent" }]);
+    expect(scheduler.list("session-a")).toMatchObject([{ origin: "agent", key: "check-task" }]);
     expect(scheduled).toEqual([]);
     scheduler.dispose();
   });

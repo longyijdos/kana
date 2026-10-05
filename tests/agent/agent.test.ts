@@ -238,6 +238,100 @@ describe("Agent lifecycle", () => {
     expect(model.contexts[0]?.imageInput).toBe(true);
   });
 
+  test.each(["off", "mixed", "only"] as const)(
+    "advertises the %s tool surface and retains hosted capabilities",
+    async (codemode) => {
+      const model = new TextModel();
+      model.metadata.supportsHostedWebSearch = true;
+      const tool = {
+        name: "read",
+        description: "Read a file.",
+        parameters: Type.Object({ path: Type.String() }),
+        outputSchema: Type.Object({ content: Type.String() }),
+        execute: () => ({ content: "formatted", result: { content: "raw" } }),
+      } satisfies Tool;
+      const agent = new Agent({ model, tools: [tool], codemode });
+      const names =
+        codemode === "off" ? ["read"] : codemode === "mixed" ? ["read", "run_code"] : ["run_code"];
+      expect(agent.state.tools.map((item) => item.name)).toEqual(names);
+      await agent.prompt("inspect");
+      expect(model.contexts[0]?.tools?.map((item) => item.name)).toEqual(names);
+      expect(model.contexts[0]?.webSearch).toBe(true);
+      expect(agent.state.tools.map((item) => item.name)).toEqual(names);
+    },
+  );
+
+  test("refreshes only-mode declarations and callable tools at model-step boundaries", async () => {
+    const parameters = Type.Object({});
+    const second = {
+      name: "second",
+      description: "Read the refreshed capability.",
+      parameters,
+      outputSchema: Type.String(),
+      execute: () => "second result",
+    } satisfies Tool<typeof parameters, string>;
+    let available: Tool[];
+    const first = {
+      ...second,
+      name: "first",
+      execute: () => {
+        available = [second];
+        return "first result";
+      },
+    };
+    available = [first];
+    const contexts: ModelContext[] = [];
+    const model: Model = {
+      metadata: new TextModel().metadata,
+      stream(context) {
+        contexts.push(context);
+        const step = contexts.length;
+        const stream = new AssistantEventStream();
+        queueMicrotask(() => {
+          const message: AssistantMessage = {
+            ...messageIdentityForTest("assistant"),
+            role: "assistant",
+            stopReason: step <= 2 ? "toolUse" : "stop",
+            content:
+              step <= 2
+                ? [
+                    {
+                      type: "tool_call",
+                      id: `code-${step}`,
+                      name: "run_code",
+                      args: { code: `return await tools.${step === 1 ? "first" : "second"}({});` },
+                    },
+                  ]
+                : [{ type: "text", text: "done" }],
+          };
+          stream.end({ type: "done", reason: message.stopReason as "toolUse" | "stop", message });
+        });
+        return stream;
+      },
+      generate(context) {
+        return this.stream(context).result();
+      },
+    };
+    const agent = new Agent({
+      model,
+      codemode: "only",
+      promptAssembly: createPromptAssembly({
+        tools: [{ name: "dynamic", tools: available, resolve: () => available }],
+      }),
+    });
+    await agent.prompt("use both capabilities");
+    expect(contexts).toHaveLength(3);
+    expect(contexts[0]?.tools?.[0]?.description).toContain("first(args:");
+    expect(contexts[1]?.tools?.[0]?.description).toContain("second(args:");
+    expect(contexts[1]?.tools?.[0]?.description).not.toContain("first(args:");
+    expect(
+      agent.state.messages
+        .filter((message) => message.role === "tool")
+        .map((message) => message.content),
+    ).toEqual(['"first result"', '"second result"']);
+    expect(agent.state.tools.map((tool) => tool.name)).toEqual(["run_code"]);
+  });
+
   test("writes lifecycle events without logging message content", async () => {
     const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
     const logger: Logger = {

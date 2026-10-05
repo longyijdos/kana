@@ -46,6 +46,11 @@ export function createEditTool(
     description:
       "Atomically edit one existing text file with exact, non-overlapping replacements. Every oldText must match exactly once in the original file.",
     parameters: editParameters,
+    outputSchema: Type.Object({
+      path: Type.String(),
+      replacements: Type.Number(),
+      bytesWritten: Type.Number(),
+    }),
     execute: async (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Edit aborted.");

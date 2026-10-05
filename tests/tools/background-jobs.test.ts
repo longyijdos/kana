@@ -37,7 +37,17 @@ describe("Background Job tools", () => {
     expect(first.content).toContain("status: running");
     expect(first.content).toContain("stdout:\nalpha\n");
     expect(first.content).toContain("stderr:\nbeta\n");
-    expect(first.result).toMatchObject({ waitTimedOut: false });
+    expect(first.result).toEqual({
+      status: "running",
+      chunks: [
+        { stream: "stdout", text: "alpha\n" },
+        { stream: "stderr", text: "beta\n" },
+      ],
+      droppedBytes: 0,
+      waitTimedOut: false,
+      exitCode: null,
+    });
+    expect(first.content).not.toContain("jobId:");
     const second = await outputTool.execute({ jobId: job.id }, createToolContext());
     expectToolResult(second);
     expect(second.content).toContain("(no new output)");
@@ -71,7 +81,8 @@ describe("Background Job tools", () => {
       createToolContext(),
     );
     expectToolResult(killed);
-    expect(killed.result).toMatchObject({ id: job.id, status: "canceled" });
+    expect(killed.result).toEqual({ status: "canceled", exitCode: null });
+    expect(JSON.parse(killed.content)).toEqual(killed.result);
     expect(killed.isError).toBe(false);
     expect(jobs.context()).toEqual([]);
 
@@ -80,7 +91,13 @@ describe("Background Job tools", () => {
       createToolContext(),
     );
     expectToolResult(unknown);
-    expect(unknown.result).toMatchObject({ jobId: "job_missing", status: "unknown" });
+    expect(unknown.result).toEqual({
+      status: "unknown",
+      chunks: [],
+      droppedBytes: 0,
+      waitTimedOut: false,
+      exitCode: null,
+    });
     expect(unknown.isError).toBe(true);
     await manager.close();
   });

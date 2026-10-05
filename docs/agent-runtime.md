@@ -50,7 +50,7 @@ Both stream types support `for await` and an independent `result()` promise. Age
 
 ## Prompt assembly and runtime context
 
-`PromptAssembly` separates the stable system prefix, dynamic context, and capability-owned tools. It is immutable after construction, but resolves every context and tool renderer before each model step. The resolved tool set is advertised to that request and passed to the matching tool execution boundary, so only a later model step can observe changed capabilities.
+`PromptAssembly` separates the stable system prefix, dynamic context, and capability-owned tools. It is immutable after construction, but resolves every context and tool renderer before each model step. Agent projects those tools according to `codemode`: `off` keeps ordinary tools, `mixed` adds `run_code`, and `only` exposes `run_code` alone. The resolved tools remain callable inside scripts; ordinary execution resolves only model-visible tools. Both sets refresh at the same step boundary, so only a later model step can observe changed capabilities. Context estimates count model-visible name, description, and input schema, including the rendered types in `run_code`'s description, without separately counting result-schema metadata.
 
 Each runtime-context renderer must return one explicit, non-empty `active` or `inactive` state with a stable source. An initially inactive source produces no message. After activation, each changed state becomes an internal user message and follows the same write-before-model rule as ordinary run input; unchanged state is not duplicated.
 

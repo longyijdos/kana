@@ -98,7 +98,11 @@ describe("tool history controller", () => {
       ),
     );
     transcript.addChild(
-      completedBlock("glob", { pattern: "src/**/*.ts" }, { pattern: "src/**/*.ts", paths: [] }),
+      completedBlock(
+        "glob",
+        { pattern: "src/**/*.ts" },
+        { matches: [], totalMatches: 0, truncated: false },
+      ),
     );
     transcript.addChild(
       completedBlock("custom_lookup", { path: "/etc/passwd", command: "rm -rf /" }, { ok: true }),
@@ -454,7 +458,7 @@ function createShellBlock(id: string, stdout: string, command = id): ToolCallBlo
     name: "shell",
     args: { command },
   });
-  block.updateResult({ command, exitCode: 0, stdout }, false);
+  block.updateResult({ exitCode: 0, stdout }, false);
   return block;
 }
 

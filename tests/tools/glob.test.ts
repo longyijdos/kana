@@ -31,12 +31,13 @@ describe("glob tool", () => {
 
     expectToolResult(result);
     expect(result.result).toMatchObject({
-      cwd: ".",
-      pattern: "**/*.ts",
-      type: "file",
       totalMatches: 1,
       truncated: false,
     });
+    expect(Object.keys(result.result).sort()).toEqual(["matches", "totalMatches", "truncated"]);
+    expect(result.content).not.toContain("cwd:");
+    expect(result.content).not.toContain("pattern:");
+    expect(result.content).not.toContain("type:");
     expect(result.result.matches).toEqual([
       expect.objectContaining({ path: path.join("src", "main.ts"), type: "file" }),
     ]);

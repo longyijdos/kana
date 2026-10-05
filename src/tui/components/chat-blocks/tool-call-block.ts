@@ -27,6 +27,7 @@ export class ToolCallBlock implements Component {
   private todoState?: KanaTodoItem[];
   private hasResult = false;
   private isError = false;
+  private durationMs?: number;
   private readonly phaseTimer: ElapsedTimer;
   private renderVersion = 0;
   private cachedWidth?: number;
@@ -58,10 +59,11 @@ export class ToolCallBlock implements Component {
     this.invalidate();
   }
 
-  updateResult(result: unknown, isError: boolean): void {
+  updateResult(result: unknown, isError: boolean, durationMs?: number): void {
     this.result = result;
     this.hasResult = true;
     this.isError = isError;
+    this.durationMs = durationMs;
     this.canceled = false;
     this.partialResult = undefined;
     this.phaseTimer.stop();
@@ -78,6 +80,10 @@ export class ToolCallBlock implements Component {
 
   stopTimer(): void {
     this.phaseTimer.stop();
+  }
+
+  resumeTimer(): void {
+    if (!this.options.summaryOnly) this.phaseTimer.resume();
   }
 
   markCanceled(): void {
@@ -240,6 +246,9 @@ export class ToolCallBlock implements Component {
       this.presentationResult(),
       elapsedSeconds,
     );
+    if (this.hasResult && this.durationMs !== undefined) {
+      title.activity += ` · ${Math.round(this.durationMs)} ms`;
+    }
     const lines = [
       truncateToWidth(
         colorTitleWithShortcutHint(`◆ ${title.activity}`, title.hint, titleColor),

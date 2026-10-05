@@ -28,7 +28,7 @@ describe("compact tool transcript bounds", () => {
 
     expect((toolCall.args as { command: string }).command).toBe(command);
 
-    block.updateResult({ command, exitCode: 0, stdout: "" }, false);
+    block.updateResult({ exitCode: 0, stdout: "" }, false);
     const completed = block.render(WIDTH).map(stripAnsi);
 
     expect(completed.length).toBe(2);
@@ -38,11 +38,7 @@ describe("compact tool transcript bounds", () => {
 
   test("bounds a one-line multi-megabyte Shell stdout while the full result view keeps it complete", () => {
     const stdout = "x".repeat(2 * 1_024 * 1_024);
-    const block = completedBlock(
-      "shell",
-      { command: "generate" },
-      { command: "generate", exitCode: 0, stdout },
-    );
+    const block = completedBlock("shell", { command: "generate" }, { exitCode: 0, stdout });
 
     const compact = block.render(WIDTH).map(stripAnsi);
 
@@ -56,11 +52,7 @@ describe("compact tool transcript bounds", () => {
 
   test("marks omitted multi-line Shell output with an explicit old-style indicator", () => {
     const stdout = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
-    const block = completedBlock(
-      "shell",
-      { command: "count" },
-      { command: "count", exitCode: 0, stdout },
-    );
+    const block = completedBlock("shell", { command: "count" }, { exitCode: 0, stdout });
 
     const compact = block.render(WIDTH).map(stripAnsi);
 
@@ -287,7 +279,7 @@ describe("compact tool transcript bounds", () => {
       {
         name: "shell",
         args: { command: "npm test" },
-        result: { command: "npm test", exitCode: 0, stdout: "" },
+        result: { exitCode: 0, stdout: "" },
         target: "npm test",
       },
       {

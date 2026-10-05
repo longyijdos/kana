@@ -1,3 +1,4 @@
+import type { AgentConfig } from "@/agent";
 import type { LogLevel } from "@/logging";
 import type { OpenAICodexReasoningSummary } from "@/providers";
 import type { KanaConfigurableBuiltInToolName } from "../tool-names";
@@ -54,6 +55,7 @@ export type KanaAgentRuntimeConfig = {
 };
 
 export type KanaAgentConfig = KanaAgentRuntimeConfig & {
+  codemode: NonNullable<AgentConfig["codemode"]>;
   model: KanaModelConfig;
   tools: KanaConfigurableBuiltInToolName[];
   goalMaxRounds: number;

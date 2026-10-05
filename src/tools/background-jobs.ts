@@ -4,7 +4,6 @@ import { Type } from "typebox";
 import type {
   BackgroundJobClient,
   BackgroundJobOutputChunk,
-  BackgroundJobOutputSnapshot,
   BackgroundJobStatus,
   BackgroundJobSummary,
 } from "@/jobs";
@@ -15,6 +14,25 @@ import { resolveWorkspaceDirectory } from "./workspace-path";
 
 const MAX_WAIT_MS = 30_000;
 const MAX_KILL_REASON_CHARS = 500;
+
+const jobStatusSchema = Type.Union([
+  Type.Literal("running"),
+  Type.Literal("stopping"),
+  Type.Literal("completed"),
+  Type.Literal("failed"),
+  Type.Literal("canceled"),
+  Type.Literal("unknown"),
+]);
+const jobSummarySchema = Type.Object({
+  id: Type.String(),
+  kind: Type.String(),
+  label: Type.String(),
+  cwd: Type.Optional(Type.String()),
+  status: jobStatusSchema,
+  startedAt: Type.String({ format: "date-time" }),
+  finishedAt: Type.Optional(Type.String({ format: "date-time" })),
+  exitCode: Type.Union([Type.Number(), Type.Null()]),
+});
 
 const jobStartParameters = strictObject({
   command: Type.String({ description: "Command to execute in the background." }),
@@ -57,10 +75,21 @@ const jobKillParameters = strictObject({
 });
 
 type JobStartResult = {
-  command: string;
-  cwd: string;
   jobId: string;
   status: BackgroundJobStatus;
+};
+
+type JobOutputResult = {
+  status: BackgroundJobStatus;
+  chunks: BackgroundJobOutputChunk[];
+  droppedBytes: number;
+  waitTimedOut: boolean;
+  exitCode: number | null;
+};
+
+type JobKillResult = {
+  status: BackgroundJobStatus;
+  exitCode: number | null;
 };
 
 export function createJobStartTool(
@@ -74,6 +103,10 @@ export function createJobStartTool(
     description:
       "Start a session-owned background shell command and return immediately with its Job ID and launch status. The command continues running after this call returns. Completion is delivered back to the parent Agent automatically. Do not poll job_output solely to detect completion.",
     parameters: jobStartParameters,
+    outputSchema: Type.Object({
+      jobId: Type.String(),
+      status: jobStatusSchema,
+    }),
     execute: async (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Command aborted.");
@@ -104,8 +137,6 @@ export function createJobStartTool(
         },
       });
       const result: JobStartResult = {
-        command,
-        cwd: cwd.relativePath,
         jobId: job.id,
         status: job.status,
       };
@@ -122,6 +153,7 @@ export function createJobListTool(
     description:
       "List Background Jobs owned by the current session, including active and recently completed Jobs.",
     parameters: jobListParameters,
+    outputSchema: Type.Array(jobSummarySchema),
     execution: { concurrency: "parallel" },
     execute: () => {
       const result = jobs.list();
@@ -137,18 +169,37 @@ export function createJobListTool(
 
 export function createJobOutputTool(
   jobs: BackgroundJobClient,
-): Tool<typeof jobOutputParameters, BackgroundJobOutputSnapshot> {
+): Tool<typeof jobOutputParameters, JobOutputResult> {
   return {
     name: "job_output",
     description:
       "Read all currently unseen retained output from a Background Job. Repeated calls continue from the session's Agent cursor. Completed Jobs notify the parent Agent automatically, so do not repeatedly poll a running Job solely to detect completion. Use waitMs only when explicitly blocking for new output or a result is useful.",
     parameters: jobOutputParameters,
+    outputSchema: Type.Object({
+      status: jobStatusSchema,
+      chunks: Type.Array(
+        Type.Object({
+          stream: Type.Union([Type.Literal("stdout"), Type.Literal("stderr")]),
+          text: Type.String(),
+        }),
+      ),
+      droppedBytes: Type.Number(),
+      waitTimedOut: Type.Boolean(),
+      exitCode: Type.Union([Type.Number(), Type.Null()]),
+    }),
     execution: { concurrency: "parallel", deadlineMs: MAX_WAIT_MS + 1_000 },
     execute: async (args, context) => {
-      const result = await jobs.read(args.jobId, {
+      const snapshot = await jobs.read(args.jobId, {
         waitMs: args.waitMs,
         signal: context.signal,
       });
+      const result: JobOutputResult = {
+        status: snapshot.status,
+        chunks: snapshot.chunks,
+        droppedBytes: snapshot.droppedBytes,
+        waitTimedOut: snapshot.waitTimedOut,
+        exitCode: snapshot.exitCode,
+      };
       return {
         content: formatJobOutput(result),
         result,
@@ -160,17 +211,22 @@ export function createJobOutputTool(
 
 export function createJobKillTool(
   jobs: BackgroundJobClient,
-): Tool<typeof jobKillParameters, BackgroundJobSummary> {
+): Tool<typeof jobKillParameters, JobKillResult> {
   return {
     name: "job_kill",
     description:
       "Stop a Background Job owned by the current session and wait for its process group to become quiescent.",
     parameters: jobKillParameters,
+    outputSchema: Type.Object({
+      status: jobStatusSchema,
+      exitCode: Type.Union([Type.Number(), Type.Null()]),
+    }),
     execute: async (args) => {
-      const result = await jobs.kill(args.jobId, {
+      const summary = await jobs.kill(args.jobId, {
         source: "tool",
         reason: args.reason,
       });
+      const result: JobKillResult = { status: summary.status, exitCode: summary.exitCode };
       return {
         content: JSON.stringify(result, null, 2),
         result,
@@ -180,10 +236,9 @@ export function createJobKillTool(
   };
 }
 
-function formatJobOutput(snapshot: BackgroundJobOutputSnapshot): string {
+function formatJobOutput(snapshot: JobOutputResult): string {
   const output = formatOutputChunks(snapshot.chunks);
   return [
-    `jobId: ${snapshot.jobId}`,
     `status: ${snapshot.status}`,
     `exitCode: ${snapshot.exitCode}`,
     `droppedBytes: ${snapshot.droppedBytes}`,

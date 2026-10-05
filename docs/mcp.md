@@ -1,11 +1,11 @@
 # Model Context Protocol
 
-Kana creates three capability-dependent built-in tools for enabled MCP servers: `mcp_list_tools` lists names and descriptions, `mcp_describe_tool` reads a single tool's input schema, and `mcp_call` invokes a remote tool. The official TypeScript client SDK owns the wire protocol and transports. Neither the Agent loop nor a provider adapter understands MCP.
+Kana creates three capability-dependent built-in tools for enabled MCP servers: `mcp_list_tools` lists names and descriptions, `mcp_get_tool` reads a single tool's input schema, and `mcp_call` invokes a remote tool. The official TypeScript client SDK owns the wire protocol and transports. Neither the Agent loop nor a provider adapter understands MCP.
 
 ## Layering
 
 ```text
-createKanaAgent → mcp_list_tools + mcp_describe_tool + mcp_call
+createKanaAgent → mcp_list_tools + mcp_get_tool + mcp_call
                       ↓
 KanaMcpRuntime (reloadable registry capability)
   → McpManager (startup, filtering, catalog, diagnostics)
@@ -25,11 +25,11 @@ Startup connects enabled servers and caches their filtered tool definitions inte
 
 ```text
 mcp_list_tools({ name: "github" })
-  → { server: "github", tools: [{ name, description }, ...] }
+  → { tools: [{ name, description }, ...] }
 
-mcp_describe_tool({ server: "github", tool: "get_issue" })
-  → content: { server, name, inputSchema }
-  → result:  { server, name, inputSchema, outputSchema? }
+mcp_get_tool({ server: "github", tool: "get_issue" })
+  → content: { inputSchema }
+  → result:  { inputSchema, outputSchema? }
 
 mcp_call({
   server: "github",
@@ -39,7 +39,7 @@ mcp_call({
   → { content: formatted text, result: structuredContent or formatted text, isError }
 ```
 
-`mcp_list_tools` and `mcp_describe_tool` read the cached catalog. They do not connect additional servers, change the user's activation state, grant permissions, or modify the provider-facing tool array. The list contains only names and descriptions. A schema lookup returns the server, tool name, and full input schema in content and result. Its result additionally includes the remote output schema when provided; content omits that field, keeping ordinary model input focused on invocation parameters. MCP output schema describes `structuredContent`; it does not describe the remote content array or the formatted-text fallback. This keeps the tool definitions stable while metadata is loaded; provider caching still depends on the rest of the request.
+`mcp_list_tools` and `mcp_get_tool` read the cached catalog. They do not connect additional servers, change the user's activation state, grant permissions, or modify the provider-facing tool array. The list contains only names and descriptions. A schema lookup returns the full input schema in content and result. Its result additionally includes the remote output schema when provided; content omits that field, keeping ordinary model input focused on invocation parameters. Neither query repeats the selected server or tool name in its result. MCP output schema describes `structuredContent`; it does not describe the remote content array or the formatted-text fallback. This keeps the tool definitions stable while metadata is loaded; provider caching still depends on the rest of the request.
 
 Lists are paginated with optional `offset` and `limit` (default 20, maximum 50). A result with `nextOffset` has another page. Normal Agent content limits and artifact policies apply to both queries; if description content is saved to an artifact, the model must read it for the complete input schema. Queries are repeatable, including after context compaction. There is no transient activation flag that prevents rediscovery or invocation when earlier history is compacted.
 
@@ -51,7 +51,7 @@ Remote names are not added to the Agent registry. Different servers may use the 
 
 ## Invocation and results
 
-`mcp_list_tools` and `mcp_describe_tool` are parallel catalog reads and never request approval. `mcp_call` defaults to exclusive execution and follows ordinary approval policy. TUI approval shows the server, original tool name, and complete nested arguments. It does not offer persistent MCP trust.
+`mcp_list_tools` and `mcp_get_tool` are parallel catalog reads and never request approval. `mcp_call` defaults to exclusive execution and follows ordinary approval policy. TUI approval shows the server, original tool name, and complete nested arguments. It does not offer persistent MCP trust.
 
 The gateway passes the invocation's abort signal and progress updates through the registered tool to the SDK. Configured request timeouts and the common Agent deadline still apply. JSON-RPC errors become formatted text error results containing their code, message, and any data; remote `isError` remains a separate result property. Caller aborts preserve their cancellation reason.
 
@@ -85,10 +85,10 @@ The catalog is fixed for each manager generation. `notifications/tools/list_chan
 
 ## Configuration and frontend integration
 
-`<KANA_HOME>/mcp.json` contains server definitions, and `<KANA_HOME>/mcp-enabled.json` contains enabled IDs. A configured server starts only when its ID appears in both sets. The user-facing `/mcp` operation changes enabled state; model-facing `mcp_list_tools` and `mcp_describe_tool` only read the cached catalog. Direct file edits require a restart. Exact configuration fields belong to [Configuration and installation](configuration.md).
+`<KANA_HOME>/mcp.json` contains server definitions, and `<KANA_HOME>/mcp-enabled.json` contains enabled IDs. A configured server starts only when its ID appears in both sets. The user-facing `/mcp` operation changes enabled state; model-facing `mcp_list_tools` and `mcp_get_tool` only read the cached catalog. Direct file edits require a restart. Exact configuration fields belong to [Configuration and installation](configuration.md).
 
-The main conversation initially has no MCP gateways. Interactive startup waits until the chosen session is visible before loading MCP and rebuilding the Agent with the gateways. Headless initializes MCP before submitting its run and requires interactive OAuth to have been completed earlier. Clean mode creates no MCP tools. Memory-consolidation Agents never receive MCP tools.
+The main conversation initially has no MCP gateways. Interactive startup waits until the chosen session is visible before loading MCP and rebuilding the Agent with the three gateways. Headless initializes MCP before submitting its run and requires interactive OAuth to have been completed earlier. Clean mode creates no MCP tools. Memory-consolidation Agents never receive MCP tools.
 
-Subagent role cards grant MCP access by listing `mcp_list_tools`, `mcp_describe_tool`, and `mcp_call`. The global `agent.tools` selection remains the ceiling for these permissions. They cover all currently enabled and filtered MCP capabilities; they do not express per-server or per-remote-tool access. Old remote aliases and `mcp:*` are not supported. See [Subagents](subagents.md).
+Subagent role cards grant MCP access by listing `mcp_list_tools`, `mcp_get_tool`, and `mcp_call`. The global `agent.tools` selection remains the ceiling for these permissions. They cover all currently enabled and filtered MCP capabilities; they do not express per-server or per-remote-tool access. Old remote aliases and `mcp:*` are not supported. See [Subagents](subagents.md).
 
 The TUI owns selection, authorization actions, lifecycle presentation, focus, and retry interaction. Shared conversation shutdown settles Agents before the Host closes MCP. See [TUI](tui.md) and [Conversation runtime](conversation-runtime.md).

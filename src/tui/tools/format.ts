@@ -21,6 +21,7 @@ import { formatGlobOutput } from "./renderers/glob";
 import { formatGrepOutput } from "./renderers/grep";
 import { formatListOutput } from "./renderers/list";
 import { formatReadOutput } from "./renderers/read";
+import { formatRunCodeOutput, isRunCodeResult } from "./renderers/run-code";
 import { formatShellOutput } from "./renderers/shell";
 import { formatTodoTarget, renderTodoState } from "./renderers/todo-write";
 import { formatViewImageOutput } from "./renderers/view-image";
@@ -70,6 +71,10 @@ export function formatToolTranscriptTitle(
     };
   }
 
+  if (toolCall.name === "run_code" && isRunCodeResult(result)) {
+    const count = result.calls.length;
+    return { activity: `Ran code · ${count} ${count === 1 ? "call" : "calls"}` };
+  }
   return { activity: target ? text.doneTitle.replace(` ${target}`, "") : text.doneTitle, target };
 }
 
@@ -142,6 +147,16 @@ export function formatToolOutput(
   const sanitizedToolCall = sanitizeToolCallOutput(toolCall);
 
   switch (toolCall.name) {
+    case "run_code":
+      if (isRunCodeResult(sanitizedResult)) {
+        return renderText(
+          formatRunCodeOutput(sanitizedResult),
+          width,
+          isError ? tuiTheme.error : tuiTheme.toolOutput,
+          detail,
+        );
+      }
+      break;
     case "list":
       return renderText(formatListOutput(sanitizedResult), width, tuiTheme.toolOutput, detail);
     case "glob":
@@ -222,6 +237,11 @@ export function hasExpandableToolOutput(
   }
 
   switch (toolCall.name) {
+    case "run_code":
+      if (isRunCodeResult(result)) {
+        return hasOmittedContent(formatRunCodeOutput(result), width);
+      }
+      break;
     case "list":
     case "glob":
     case "grep":
@@ -304,18 +324,8 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       return getStringProperty(toolCall.args, "status");
 
     case "glob":
-      return (
-        getStringProperty(result, "pattern") ??
-        getStringProperty(toolCall.args, "pattern") ??
-        "glob"
-      );
-
     case "grep":
-      return (
-        getStringProperty(result, "pattern") ??
-        getStringProperty(toolCall.args, "pattern") ??
-        "grep"
-      );
+      return getStringProperty(toolCall.args, "pattern") ?? toolCall.name;
 
     case "list":
     case "read":
@@ -327,19 +337,9 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       return path ?? toolCall.name;
     }
 
-    case "shell": {
-      const command =
-        getStringProperty(result, "command") ?? getStringProperty(toolCall.args, "command");
-
-      return command ?? toolCall.name;
-    }
-
-    case "job_start": {
-      const command =
-        getStringProperty(result, "command") ?? getStringProperty(toolCall.args, "command");
-
-      return command ?? toolCall.name;
-    }
+    case "shell":
+    case "job_start":
+      return getStringProperty(toolCall.args, "command") ?? toolCall.name;
 
     case "todo_write":
       return formatTodoTarget(getTodoItems(result) ?? []);
@@ -424,6 +424,13 @@ function toolText(
   runningActivity: string;
 } {
   switch (toolName) {
+    case "run_code":
+      return {
+        action: "run code",
+        approvalTitle: `Allow ${requesterName} to run code?`,
+        doneTitle: "Ran code",
+        runningActivity: "running code",
+      };
     case "mcp_call": {
       const name = `${getStringProperty(args, "server") ?? "?"}/${getStringProperty(args, "tool") ?? "?"}`;
       return {
@@ -433,7 +440,7 @@ function toolText(
         runningActivity: `calling MCP ${name}`,
       };
     }
-    case "mcp_describe_tool": {
+    case "mcp_get_tool": {
       const name = `${getStringProperty(args, "server") ?? "?"}/${getStringProperty(args, "tool") ?? "?"}`;
       return {
         action: `describe MCP ${name}`,

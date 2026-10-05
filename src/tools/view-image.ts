@@ -35,6 +35,18 @@ export function createViewImageTool(
     description:
       "Load a local image as a visual observation. Use this to inspect screenshots, charts, and image assets directly.",
     parameters: viewImageParameters,
+    outputSchema: Type.Object({
+      path: Type.String(),
+      mimeType: Type.Union([
+        Type.Literal("image/png"),
+        Type.Literal("image/jpeg"),
+        Type.Literal("image/webp"),
+        Type.Literal("image/gif"),
+      ]),
+      width: Type.Number(),
+      height: Type.Number(),
+      byteSize: Type.Number(),
+    }),
     execution: {
       concurrency: "parallel",
     },

@@ -32,6 +32,7 @@ export type AgentContext = {
   system?: string;
   messages: Message[];
   tools?: Tool[];
+  callableTools?: Tool[];
 };
 
 export type AgentLoopConfig = {
@@ -88,6 +89,7 @@ export async function runAgentLoop(
     system: context.system,
     messages: [...context.messages],
     tools: context.tools ? [...context.tools] : undefined,
+    callableTools: context.callableTools?.slice(),
   };
   const newMessages: Message[] = [];
   const maxTurns = config.maxTurns ?? 8;
@@ -112,6 +114,7 @@ export async function runAgentLoop(
             system: currentContext.system,
             context: [],
             tools: currentContext.tools ?? [],
+            callableTools: currentContext.callableTools,
           };
       await applyAssembledPrompt(
         currentContext,
@@ -213,6 +216,7 @@ export async function runAgentLoop(
     const toolRuntime = new ToolRuntime(
       {
         tools: currentContext.tools,
+        callableTools: currentContext.callableTools,
         parallelToolCalls,
         maxParallelToolCalls,
         signal: config.signal,
@@ -298,6 +302,7 @@ async function applyAssembledPrompt(
 ): Promise<void> {
   context.system = prompt.system;
   context.tools = prompt.tools.slice();
+  context.callableTools = prompt.callableTools?.slice();
 
   for (const snapshot of prompt.context) {
     throwIfAborted(signal);

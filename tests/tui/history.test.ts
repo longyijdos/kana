@@ -108,6 +108,7 @@ describe("tui history transcript", () => {
         toolCallId: "call_1",
         toolName: "read",
         content: "file contents",
+        durationMs: 12.5,
         result: {
           path: "package.json",
           content: '{\n  "private": true\n}',
@@ -129,7 +130,7 @@ describe("tui history transcript", () => {
     );
     expect(lines).toContain("I'll inspect it.");
     expect(lines.some((line) => line.includes("Working ("))).toBe(false);
-    expect(lines).toContain("◆ Read");
+    expect(lines).toContain("◆ Read · 13 ms");
     expect(lines).toContain("  └ package.json");
     expect(lines).toContain("package.json:1-3 of 3");
     expect(lines).not.toContain('  "private": true');

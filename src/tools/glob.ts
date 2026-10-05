@@ -59,9 +59,6 @@ type GlobToolMatch = {
 };
 
 export type GlobToolResult = {
-  cwd: string;
-  pattern: string;
-  type: (typeof GLOB_ENTRY_TYPES)[number];
   matches: GlobToolMatch[];
   totalMatches: number;
   truncated: boolean;
@@ -80,6 +77,22 @@ export function createGlobTool(
     name: "glob",
     description: "Find file and directory paths with a relative glob pattern.",
     parameters: globParameters,
+    outputSchema: Type.Object({
+      matches: Type.Array(
+        Type.Object({
+          path: Type.String(),
+          type: Type.Union([
+            Type.Literal("file"),
+            Type.Literal("directory"),
+            Type.Literal("symlink"),
+            Type.Literal("other"),
+          ]),
+          size: Type.Number(),
+        }),
+      ),
+      totalMatches: Type.Number(),
+      truncated: Type.Boolean(),
+    }),
     execution: {
       concurrency: "parallel",
     },
@@ -118,9 +131,6 @@ export function createGlobTool(
       const sortedMatches = matches.sort(compareMatches);
       const selectedMatches = sortedMatches.slice(0, limit);
       const result: GlobToolResult = {
-        cwd: searchRoot.relativePath,
-        pattern,
-        type,
         matches: selectedMatches,
         totalMatches: sortedMatches.length,
         truncated: selectedMatches.length < sortedMatches.length,
@@ -185,7 +195,10 @@ function readEntryType(stats: Awaited<ReturnType<typeof lstat>>): GlobEntryType 
   return "other";
 }
 
-function matchesType(entryType: GlobEntryType, requestedType: GlobToolResult["type"]): boolean {
+function matchesType(
+  entryType: GlobEntryType,
+  requestedType: (typeof GLOB_ENTRY_TYPES)[number],
+): boolean {
   if (requestedType === "any") {
     return true;
   }
@@ -217,9 +230,6 @@ function throwIfAborted(context: ToolContext): void {
 
 function formatGlobContent(result: GlobToolResult): string {
   return [
-    `cwd: ${result.cwd}`,
-    `pattern: ${result.pattern}`,
-    `type: ${result.type}`,
     `matches: ${result.matches.length} of ${result.totalMatches}`,
     `truncated: ${result.truncated}`,
     "",

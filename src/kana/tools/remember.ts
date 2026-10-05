@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import type { Tool } from "@/tools";
 import { strictObject } from "@/tools";
-import { appendKanaMemory, type KanaMemoryEntry } from "../memory/storage";
+import { appendKanaMemory, type KanaMemoryEntry, type KanaMemoryScope } from "../memory/storage";
 
 export const rememberParameters = strictObject({
   content: Type.String({
@@ -29,11 +29,15 @@ export const rememberParameters = strictObject({
   ),
 });
 
-export type RememberToolResult = KanaMemoryEntry;
+export type RememberToolResult = {
+  id: string;
+  scope: KanaMemoryScope;
+};
 
 export type RememberToolOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  onRecorded?: (entry: KanaMemoryEntry) => void;
 };
 
 export function createRememberTool(
@@ -44,6 +48,10 @@ export function createRememberTool(
     description:
       "Proactively save non-sensitive durable information that will help future conversations, including user preferences, recurring constraints, relevant background, confirmed decisions, meaningful milestones, and unfinished work. Record it even when the current response already handles the request. Default to project scope; use global only for information that applies across projects. Do not save secrets, sensitive personal information, transient progress, or facts available directly from the workspace.",
     parameters: rememberParameters,
+    outputSchema: Type.Object({
+      id: Type.String(),
+      scope: Type.Union([Type.Literal("global"), Type.Literal("project")]),
+    }),
     execute: (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Remember aborted.");
@@ -57,9 +65,10 @@ export function createRememberTool(
         cwd: options.cwd,
         env: options.env,
       });
+      options.onRecorded?.(entry);
       return {
         content: `Memory recorded in ${entry.scope} scope.`,
-        result: entry satisfies RememberToolResult,
+        result: { id: entry.id, scope: entry.scope } satisfies RememberToolResult,
       };
     },
   };

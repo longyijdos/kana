@@ -21,6 +21,27 @@ describe("tui elapsed timer", () => {
     expect(timer.elapsedSeconds()).toBe(1);
   });
 
+  test("excludes paused time and preserves fractional elapsed time across resumes", () => {
+    let now = 0;
+    const timer = new ElapsedTimer(() => now);
+    timer.start();
+    now = 1_900;
+    timer.stop();
+    now = 10_000;
+    expect(timer.active).toBe(false);
+    expect(timer.elapsedSeconds()).toBe(1);
+    timer.resume();
+    now = 10_150;
+    expect(timer.active).toBe(true);
+    expect(timer.elapsedSeconds()).toBe(2);
+    timer.stop();
+    now = 20_000;
+    timer.resume();
+    now = 21_000;
+    timer.stop();
+    expect(timer.elapsedSeconds()).toBe(3);
+  });
+
   test("updates the working placeholder as time advances", () => {
     let now = 0;
     const block = new AssistantMessageBlock(() => now);
@@ -72,7 +93,7 @@ describe("tui elapsed timer", () => {
     now = 7_000;
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Running (2s) (Esc to abort)");
 
-    block.updateResult({ command: "pwd", exitCode: 0, stdout: "/tmp" }, false);
+    block.updateResult({ exitCode: 0, stdout: "/tmp" }, false);
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Ran");
   });
 });

@@ -60,6 +60,24 @@ export function createListTool(
     name: "list",
     description: "List the direct children of a directory.",
     parameters: listParameters,
+    outputSchema: Type.Object({
+      path: Type.String(),
+      entries: Type.Array(
+        Type.Object({
+          name: Type.String(),
+          path: Type.String(),
+          type: Type.Union([
+            Type.Literal("file"),
+            Type.Literal("directory"),
+            Type.Literal("symlink"),
+            Type.Literal("other"),
+          ]),
+          size: Type.Number(),
+        }),
+      ),
+      totalEntries: Type.Number(),
+      truncated: Type.Boolean(),
+    }),
     execution: {
       concurrency: "parallel",
     },

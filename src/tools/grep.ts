@@ -73,10 +73,6 @@ type GrepToolMatch = {
 
 export type GrepToolResult = {
   path: string;
-  pattern: string;
-  literal: boolean;
-  caseSensitive: boolean;
-  include: string | undefined;
   matches: GrepToolMatch[];
   filesSearched: number;
   truncated: boolean;
@@ -100,6 +96,21 @@ export function createGrepTool(
     name: "grep",
     description: "Search text file contents with a regular expression.",
     parameters: grepParameters,
+    outputSchema: Type.Object({
+      path: Type.String(),
+      matches: Type.Array(
+        Type.Object({
+          path: Type.String(),
+          line: Type.Number(),
+          column: Type.Number(),
+          text: Type.String(),
+          before: Type.Optional(Type.Array(Type.String())),
+          after: Type.Optional(Type.Array(Type.String())),
+        }),
+      ),
+      filesSearched: Type.Number(),
+      truncated: Type.Boolean(),
+    }),
     execution: {
       concurrency: "parallel",
     },
@@ -150,10 +161,6 @@ export function createGrepTool(
 
       const result: GrepToolResult = {
         path: target.relativePath,
-        pattern,
-        literal,
-        caseSensitive,
-        include,
         matches,
         filesSearched,
         truncated,
@@ -313,8 +320,6 @@ function throwIfAborted(context: ToolContext): void {
 function formatGrepContent(result: GrepToolResult): string {
   return [
     `path: ${result.path}`,
-    `pattern: ${result.pattern}`,
-    result.include ? `include: ${result.include}` : undefined,
     `matches: ${result.matches.length}`,
     `filesSearched: ${result.filesSearched}`,
     `truncated: ${result.truncated}`,
@@ -329,7 +334,5 @@ function formatGrepContent(result: GrepToolResult): string {
         (text, index) => `${match.path}-${match.line + index + 1}-${text}`,
       ),
     ]),
-  ]
-    .filter((line): line is string => line !== undefined)
-    .join("\n");
+  ].join("\n");
 }

@@ -38,12 +38,17 @@ describe("grep tool", () => {
     expectToolResult(result);
     expect(result.result).toMatchObject({
       path: "query.ts",
-      pattern: "autocompact|\\.compact\\b",
-      literal: false,
-      caseSensitive: true,
       filesSearched: 1,
       truncated: false,
     });
+    expect(Object.keys(result.result).sort()).toEqual([
+      "filesSearched",
+      "matches",
+      "path",
+      "truncated",
+    ]);
+    expect(result.content).not.toContain("pattern:");
+    expect(result.content).not.toContain("include:");
     expect(result.result.matches).toEqual([
       {
         path: "query.ts",
@@ -136,7 +141,6 @@ describe("grep tool", () => {
     expectToolResult(result);
     expect(result.result).toMatchObject({
       path: ".",
-      include: "**/*.ts",
       filesSearched: 1,
       truncated: false,
     });

@@ -194,6 +194,7 @@ describe("Kana session format", () => {
       toolCallId: "call-large",
       toolName: "shell",
       content: `Bounded preview\nFull output locator: ${locator}`,
+      durationMs: 12.5,
       artifact: { kind: "text", locator, byteLength: 50_000 },
       result: { stdout: "x".repeat(50_000), exitCode: 0 },
       isError: false,
@@ -443,6 +444,33 @@ describe("Kana session format", () => {
       lines[2] = JSON.stringify(entry);
       writeFileSync(session.path, `${lines.join("\n")}\n`);
 
+      expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
+        "Invalid Kana session message entry",
+      );
+    }
+  });
+
+  test("rejects invalid tool execution durations while loading", () => {
+    const env = createTempEnv();
+    const cwd = path.join(env.HOME ?? "", "repo");
+    const session = createKanaSession({ cwd, env, id: "invalid-tool-duration" });
+    appendKanaSessionMessages(session, [
+      {
+        ...messageIdentityForTest("tool"),
+        role: "tool",
+        toolCallId: "call-read",
+        toolName: "read",
+        content: "File contents",
+        result: "File contents",
+        isError: false,
+      },
+    ]);
+    const lines = readFileSync(session.path, "utf8").trim().split("\n");
+    const entry = JSON.parse(lines[2]!) as { message: Record<string, unknown> };
+    for (const durationMs of [-1, "12", null]) {
+      entry.message.durationMs = durationMs;
+      lines[2] = JSON.stringify(entry);
+      writeFileSync(session.path, `${lines.join("\n")}\n`);
       expect(() => loadKanaSession(session.id, { env, cwd })).toThrow(
         "Invalid Kana session message entry",
       );

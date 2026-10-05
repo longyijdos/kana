@@ -44,6 +44,7 @@ export type AssembledPrompt = {
   system?: string;
   context: PromptContextSnapshot[];
   tools: Tool[];
+  callableTools?: Tool[];
 };
 
 const RUNTIME_CONTEXT_INSTRUCTIONS = [

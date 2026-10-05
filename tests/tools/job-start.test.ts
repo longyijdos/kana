@@ -28,9 +28,11 @@ describe("job_start tool", () => {
     expectToolResult(result);
     const jobId = result.result.jobId;
 
-    expect(result.result).toMatchObject({
+    expect(result.result).toEqual({
+      jobId,
       status: "running",
     });
+    expect(JSON.parse(result.content)).toEqual(result.result);
     expect(jobId).toStartWith("job_");
     const output = await readJobToCompletion(jobs, jobId);
     expect(output).toBe("startend");
