@@ -1,3 +1,12 @@
+## [0.12.1](https://github.com/longyijdos/kana/compare/v0.12.0...v0.12.1) (2026-10-06)
+
+Kana v0.12.1 is a hotfix for OpenAI Codex prompt-cache reuse. Codex users should upgrade; no configuration changes or sign-in are required.
+
+### Bug Fixes
+
+- Preserve OpenAI Codex session cache affinity by using the same Kana session ID for `prompt_cache_key`, `session_id`, and `x-client-request-id` across tool turns, retries, Agent rebuilds, and session resume. Previously, identical consecutive requests could receive no cache hits.
+- In maintainer testing, identical-request cache hit rates improved from 0% to 94–99%. A real 13-turn `run_code` session achieved an overall cache hit rate of 83.99%, with 91.28% on the final turn. These measurements are workload-specific, not guaranteed hit rates.
+
 ## [0.12.0](https://github.com/longyijdos/kana/compare/v0.11.0...v0.12.0) (2026-10-06)
 
 Kana v0.12.0 adds Codemode tool orchestration, on-demand progress inspection, and improved terminal rendering. It also moves OpenAI Codex to Sign in with ChatGPT and expands MCP discovery and configuration. This release renames the shell tool and changes approval and authentication contracts; read the upgrade notes before updating.
