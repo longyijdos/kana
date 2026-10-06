@@ -37,6 +37,10 @@ export function buildOpenAICodexRequest(
     parallel_tool_calls: context.parallelToolCalls === true,
   };
 
+  if (config.sessionId !== undefined) {
+    request.prompt_cache_key = config.sessionId;
+  }
+
   if (config.reasoningEffort !== undefined) {
     request.reasoning = {
       effort: config.reasoningEffort,

@@ -43,6 +43,7 @@ describe("buildOpenAICodexRequest", () => {
         arguments: '{"path":"README.md"}',
       },
     ]);
+    expect(request).not.toHaveProperty("prompt_cache_key");
   });
   test("groups local tools in a namespace and preserves provider replay state", () => {
     const request = buildOpenAICodexRequest(
@@ -117,6 +118,7 @@ describe("buildOpenAICodexRequest", () => {
       {
         provider: "openai-codex",
         model: "gpt-5.6-luna",
+        sessionId: "a45c7acb-90ce-4d49-9a9f-65b706e9f0f7",
         credentialProvider: credentials(),
         reasoningEffort: "medium",
         reasoningSummary: "auto",
@@ -128,6 +130,7 @@ describe("buildOpenAICodexRequest", () => {
       model: "gpt-5.6-luna",
       store: false,
       stream: true,
+      prompt_cache_key: "a45c7acb-90ce-4d49-9a9f-65b706e9f0f7",
       instructions: "system",
       include: ["reasoning.encrypted_content"],
       text: { verbosity: "low" },

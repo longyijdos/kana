@@ -114,6 +114,7 @@ export function createKanaAgent(
   const runtime = createKanaAgentModelRuntime(config, dependencies.providers, {
     env: options.env,
     logger: options.logger,
+    sessionId: options.sessionId,
     customProviderSnapshot: options.customProviderSnapshot,
   });
   const { model } = runtime;

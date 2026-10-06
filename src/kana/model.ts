@@ -33,6 +33,7 @@ export type KanaSelectedProviderConfig =
 export type CreateKanaModelOptions = {
   env?: NodeJS.ProcessEnv;
   logger?: Logger;
+  sessionId?: string;
   openAICodexCredentialProvider?: OpenAICodexCredentialProvider;
   customProviderSnapshot?: KanaCustomProviderSnapshot;
 };
@@ -147,6 +148,7 @@ export function createKanaModel(
       return getModel({
         provider: "openai-codex",
         model: modelConfig.name,
+        sessionId: options.sessionId,
         credentialProvider,
         reasoningEffort,
         reasoningSummary: providerConfig.config.reasoningSummary,

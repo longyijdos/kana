@@ -93,6 +93,45 @@ describe("OpenAI Codex model", () => {
     );
     await expect(model.generate(createInput())).rejects.toThrow("terminal response event");
   });
+
+  test("keeps session affinity across model turns and reconstructed models", async () => {
+    const requests: Record<string, unknown>[] = [];
+    const sessionId = "a45c7acb-90ce-4d49-9a9f-65b706e9f0f7";
+    const config = {
+      provider: "openai-codex" as const,
+      model: "gpt-5.6-luna",
+      sessionId,
+      credentialProvider: {
+        async getCredentials() {
+          return { accessToken: "token" };
+        },
+        async refreshCredentials() {
+          return undefined;
+        },
+      },
+      fetch: (async (_input, init) => {
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const headers = new Headers(init?.headers);
+        expect(request.prompt_cache_key).toBe(sessionId);
+        expect(headers.get("session_id")).toBe(sessionId);
+        expect(headers.get("x-client-request-id")).toBe(sessionId);
+        requests.push(request);
+        return sseResponse(completedTextEvents("hello"));
+      }) as typeof globalThis.fetch,
+    };
+    const model = new OpenAICodexModel(config);
+    const input = createInput();
+    const first = await model.generate(input);
+    const nextInput = { ...input, messages: [...input.messages, first] };
+
+    await model.generate(nextInput);
+    await new OpenAICodexModel(config).generate(nextInput);
+
+    expect(requests).toHaveLength(3);
+    expect((requests[1]?.input as unknown[]).slice(0, 1)).toEqual(requests[0]?.input as unknown[]);
+    expect(requests[2]).toEqual(requests[1]);
+  });
+
   test("refreshes once after a 401 and streams the retried response", async () => {
     const authorizationHeaders: string[] = [];
     const accountHeaders: string[] = [];
@@ -103,6 +142,7 @@ describe("OpenAI Codex model", () => {
     const model = new OpenAICodexModel({
       provider: "openai-codex",
       model: "gpt-5.6-luna",
+      sessionId: "a45c7acb-90ce-4d49-9a9f-65b706e9f0f7",
       credentialProvider: {
         async getCredentials() {
           return { accessToken: "expired-token", accountId: "account-id" };
@@ -119,6 +159,8 @@ describe("OpenAI Codex model", () => {
       fetch: (async (_input, init) => {
         expect(String(_input)).toBe("https://api.openai.com/v1/responses");
         const headers = new Headers(init?.headers);
+        expect(headers.get("session_id")).toBe("a45c7acb-90ce-4d49-9a9f-65b706e9f0f7");
+        expect(headers.get("x-client-request-id")).toBe("a45c7acb-90ce-4d49-9a9f-65b706e9f0f7");
         authorizationHeaders.push(headers.get("authorization") ?? "");
         accountHeaders.push(headers.get("chatgpt-account-id") ?? "");
         responsesLiteHeaders.push(headers.get("x-openai-internal-codex-responses-lite"));
@@ -175,6 +217,7 @@ describe("OpenAI Codex model", () => {
       model: "gpt-5.6-luna",
       stream: true,
       store: false,
+      prompt_cache_key: "a45c7acb-90ce-4d49-9a9f-65b706e9f0f7",
       parallel_tool_calls: true,
     });
     expect(message).toMatchObject({

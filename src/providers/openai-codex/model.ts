@@ -247,6 +247,12 @@ export class OpenAICodexModel extends BaseModel {
             authorization: `Bearer ${retryState.credentials.accessToken}`,
             originator: "kana",
             "user-agent": "kana",
+            ...(this.config.sessionId !== undefined
+              ? {
+                  session_id: this.config.sessionId,
+                  "x-client-request-id": this.config.sessionId,
+                }
+              : {}),
           },
           body,
           signal,

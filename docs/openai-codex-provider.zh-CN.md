@@ -68,6 +68,7 @@ Kana 静态维护模型目录。上下文上限和推理控制遵循 SIWC/Codex 
 - 系统提示词使用顶层 `instructions`；用户消息、工具结果和助手 output item 继续按原顺序保留在 `input`。
 - 用户图片附件会转换为带自包含 data URL 的 classic Responses `input_image` item。同一个实际能力开关会注册 `view_image`，其视觉结果成为与原调用关联的原生多模态 `function_call_output` 内容。上下文压缩会发送用户和工具图片，让摘要把视觉细节保存为文本。`image_input = false` 时会移除该工具、不发送图片字节，并改为追加明确的文本省略提示。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
+- 绑定 Kana 会话时，使用完整 session ID 设置请求体的 `prompt_cache_key` 和 `session_id` / `x-client-request-id` 请求头。工具循环、重试、Agent 重建与会话 resume 均保持这些值不变。
 - `parallel_tool_calls` 使用经过模型能力判断后的 Agent 有效设置。静态目录中的所有模型均支持并行调用；用户策略关闭并行，或工具执行 metadata 不允许并发时，ToolRuntime 仍会串行执行。
 - reasoning 设置包含 `effort` 与 summary 类型，但省略 `reasoning.context`，由 backend 决定实际的持久化推理模式。可用强度与默认值来自所选模型的 metadata。
 - Kana 会通过 Agent 模型配置的 `max_output_tokens` 与剩余 context 计算逐轮 `ModelContext.maxOutputTokens`。SIWC 预览协议不支持 `max_output_tokens`，因此 wire request 仍省略该字段。

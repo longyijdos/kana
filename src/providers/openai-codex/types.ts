@@ -19,6 +19,7 @@ export type OpenAICodexCredentialProvider = {
 
 export type OpenAICodexModelConfig = ModelConfig & {
   provider: "openai-codex";
+  sessionId?: string;
   credentialProvider: OpenAICodexCredentialProvider;
   reasoningEffort?: OpenAICodexReasoningEffort;
   reasoningSummary?: OpenAICodexReasoningSummary;
