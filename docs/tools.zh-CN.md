@@ -109,6 +109,8 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 脚本沿用包提供的接口：`tools`、`ALL_TOOLS`、`text`、`image`、`console`、`exit`、`store`、`load`、顶层 `await` 和 `return`。脚本无法使用 host 的文件系统、网络、进程或模块 API。注册的 host 函数通过 JSON 与脚本交换值；参数校验、审批和历史处理由调用方负责。
 
+内置对象被冻结，内置全局绑定只读；普通实例属性覆盖仍受支持。脚本通过 `text()`、`image()` 和 `console.*` 输出的内容共用 16 Mi 字符（文本与图片 base64 数据）和 100000 条的额度。超过任一额度都会以脚本 `RangeError` 结束执行，即使脚本捕获错误也无法继续；此前的输出仍会保留。此额度不覆盖脚本返回值或自动转发的 host 工具图片。畸形 worker 数据会以 `sandbox` 错误结束执行。
+
 Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回 `ok`、`value`、`output`、`calls` 和 `storeWrites`；失败时返回 `ok: false`、`error`、`output` 和 `calls`。Store 改动仅报告给调用方，不会自动持久化。这个 host API 不会注册模型可见工具。
 
 `createCodemodeTool({ tools, mode? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。外部 MCP 定义仍通过 `mcp_get_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 自行声明 900000 ms（15 分钟）的调用 deadline，排除内部审批等待；runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。

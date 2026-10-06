@@ -288,6 +288,54 @@ describe("codemode tool", () => {
     expect(result.result).toMatchObject({ ok: false, error: { kind: "script" } });
   });
 
+  test("reports output overflow even when caught and retains earlier output", async () => {
+    const codemode = createCodemodeTool({ tools: [] });
+    const result = await codemode.execute(
+      {
+        code: 'text("before"); try { text("x".repeat(16 * 1024 * 1024)); } catch {} return "unexpected";',
+      },
+      { toolCallId: "code", update() {}, invokeTool: async () => read.execute() },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toStartWith("before\n");
+    expect(result.result).toMatchObject({
+      ok: false,
+      output: [{ type: "text", text: "before" }],
+      error: { kind: "script", name: "RangeError" },
+    });
+  });
+
+  test("keeps tool calls and store writes intact when scripts patch built-ins", async () => {
+    const codemode = createCodemodeTool({ tools: [read] });
+    const result = await codemode.execute(
+      {
+        code: `
+          Array.prototype.toJSON = () => null;
+          Promise.prototype.then = () => {};
+          globalThis.JSON = { stringify: () => "broken" };
+          store("key", [1]);
+          const data = await tools.read({});
+          return [data.payload.length, JSON.stringify({ value: 1 })];
+        `,
+      },
+      {
+        toolCallId: "code",
+        update() {},
+        invokeTool: async (_name, _args, options) => {
+          options!.onExecutionEnd!(12.5);
+          return read.execute();
+        },
+      },
+    );
+    expect(result.isError).toBe(false);
+    expect(result.result).toMatchObject({
+      ok: true,
+      value: [200_000, '{"value":1}'],
+      calls: [{ name: "read", status: "ok", durationMs: 12.5 }],
+      storeWrites: { set: { key: [1] }, delete: [] },
+    });
+  });
+
   test("approval denial aborts the script even when its code catches tool errors", async () => {
     let afterCount = 0;
     const after = {

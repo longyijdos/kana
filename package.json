@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@earendil-works/pi-codemode": "1.0.0",
+    "@earendil-works/pi-codemode": "1.0.4",
     "@modelcontextprotocol/client": "2.0.0",
     "commander": "^15.0.0",
     "grok-mermaid": "0.2.3",
