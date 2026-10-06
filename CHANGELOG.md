@@ -1,3 +1,39 @@
+## [0.12.0](https://github.com/longyijdos/kana/compare/v0.11.0...v0.12.0) (2026-10-06)
+
+Kana v0.12.0 adds Codemode tool orchestration, on-demand progress inspection, and improved terminal rendering. It also moves OpenAI Codex to Sign in with ChatGPT and expands MCP discovery and configuration. This release renames the shell tool and changes approval and authentication contracts; read the upgrade notes before updating.
+
+### Features
+
+- Compose tool calls in JavaScript with the new `run_code` tool, backed by an isolated QuickJS WASM runtime embedded in the executable. Set `agent.codemode` to `mixed` to keep ordinary tools alongside scripts, or `only` to expose scripts alone; the default remains `off`. Scripts retain configured tool permissions, approvals, cancellation, and deadlines, and forward tool images automatically.
+- Inspect running Subagent progress on demand through `/agents`, including partially generated replies. Show automatic memory activity below the editor and confirm interactive exit while memory work is pending. Display tool execution durations in live and restored transcripts.
+- Improve LaTeX superscripts, subscripts, cases alignment, and symbol coverage. Wrap detail-view content and mark truncated text explicitly. Add surrounding context to `grep` results.
+- Press `Shift+Tab` in an ordinary tool approval to allow the current call and switch that session to `Never ask` without an extra confirmation. Queued ordinary approvals continue automatically; user-task invitations still require a choice. The shortcut does not change saved configuration.
+- Move OpenAI Codex to Sign in with ChatGPT (SIWC), with verified account registration, serialized token refresh, account and plan-permission status, and an expanded model catalog.
+- Discover MCP tool names separately from input and output schemas with `mcp_list_tools` and the new `mcp_get_tool`. Expand `${VAR_NAME}` and `${VAR_NAME:-default}` in HTTP headers from Kana's process environment, including `<KANA_HOME>/.env`.
+
+### Bug Fixes
+
+- Exclude system instructions, tool schemas, and runtime context from the conversation compaction target while retaining them in the complete prompt budget.
+- Show MCP loading in the editor and isolate server startup failures so successful servers remain available.
+- Run tool commands without sourcing login profiles, preserving Kana's inherited process environment.
+- Pause Codemode deadlines and elapsed time during nested approval waits, preserve nested todo state, and keep inner tool events from duplicating foreground transcript blocks.
+
+### Breaking Changes
+
+- The built-in `bash` tool is now `shell`; the old name is no longer accepted in tool selections or calls. Commands use supported `sh`, `bash`, or `zsh` shells without login mode, with `bash` as the fallback.
+- `approvals.json` now requires version `3` and a `shell` rule object instead of `bash`. Earlier versions fail at startup and are not migrated automatically.
+- Legacy OpenAI Codex credentials cannot be used with the new API. Existing users must sign in again; successful SIWC sign-in replaces the legacy credentials.
+- MCP server configuration no longer accepts `required`. Startup failures are isolated per server in both TUI and headless execution.
+- `mcp_list_tools` now takes `server` instead of `name` and returns names and descriptions without schemas; callers must use `mcp_get_tool` for schemas. `mcp_call` returns the remote tool's complete structured content when available, otherwise its complete formatted text, rather than the previous result envelope. Built-in structured results have also been simplified; integrations consuming them should follow the current contracts in [Tools and execution](docs/tools.md).
+
+### Upgrade
+
+- Replace `bash` with `shell` in explicit `agent.tools` selections, Subagent role cards, direct calls, and tool-specific instructions. Commands that depended on login-profile initialization must pass the needed environment to Kana explicitly or load it in the command itself.
+- Back up `<KANA_HOME>/approvals.json`, set `version` to `3`, and rename its `bash` object to `shell`, preserving `exactCommands` and `readOnlyCommands`.
+- Run `kana auth login openai-codex` again if you use Codex. Kana retains one account registration across logout; see [OpenAI Codex](docs/openai-codex-provider.md) before switching accounts or workspaces.
+- Remove `required` from MCP definitions. Add `mcp_get_tool` alongside `mcp_list_tools` and `mcp_call` in explicit main-Agent and Subagent tool selections, and update direct `mcp_list_tools` calls from `name` to `server` and scripts that consume MCP discovery or tool result objects.
+- Codemode is opt-in: keep the default `off` for ordinary tool calling, or set `agent.codemode` to `mixed` or `only`. Do not add `run_code` to `agent.tools`; Kana supplies it automatically, while that list remains the capability ceiling for script tools.
+
 ## [0.11.0](https://github.com/longyijdos/kana/compare/v0.10.0...v0.11.0) (2026-09-24)
 
 Kana v0.11.0 lets you share work with Kana through user tasks and ask side questions with `/btw` while the main task continues. It also improves background-work visibility, session navigation, configuration, and MCP access. This release changes the session format and several tool contracts; read the upgrade notes before updating.
