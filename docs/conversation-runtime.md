@@ -1,11 +1,11 @@
 # Conversation runtime
 
-Kana places one product-level runtime between its frontends and the reusable Agent. The TUI and headless runner submit work and consume the same frontend-neutral events; neither frontend owns session persistence, queued-run ordering, or Agent construction.
+Kana places one product-level runtime between its frontends and the reusable Agent. The TUI, headless runner, and HTTP server submit work and consume the same frontend-neutral events; neither frontend owns session persistence, queued-run ordering, or Agent construction.
 
 ## Composition boundaries
 
 ```text
-TUI / Headless
+TUI / Headless / Server
   → ConversationRuntime
       ├→ ConversationInputCoordinator
       │   ├→ Agent-owned inbox
@@ -120,4 +120,4 @@ The frontend closes the runtime before closing the host. Host shutdown stops new
 
 ## Frontend responsibilities
 
-The TUI owns focus, controllers, transcript blocks, status projection, and user interaction. Headless owns prompt resolution, signal/deadline policy, JSONL or human output projection, and exit status. Both consume runtime events and call the same runtime operations; neither should reproduce inbox ordering, Goal admission, session replacement, or cleanup orchestration.
+The TUI owns focus, controllers, transcript blocks, status projection, and user interaction. Headless owns prompt resolution, signal/deadline policy, JSONL or human output projection, and exit status. The [HTTP server](server.md) owns authenticated request admission, SSE projection, reconnect snapshots, and remote approval decisions. All consume runtime events and call the same runtime operations; neither should reproduce inbox ordering, Goal admission, session replacement, or cleanup orchestration.

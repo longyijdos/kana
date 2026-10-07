@@ -36,10 +36,11 @@ type Dependency = {
 };
 
 const ALLOWED_TOP_LEVEL_DEPENDENCIES: Readonly<Record<string, readonly string[]>> = {
-  main: ["cli", "headless", "kana", "tui"],
-  cli: ["headless", "kana", "oauth", "tui", "version"],
+  main: ["cli", "headless", "kana", "server", "tui"],
+  cli: ["headless", "kana", "oauth", "server", "tui", "version"],
   tui: ["agent", "core", "jobs", "kana", "logging", "mcp", "tools", "utils", "version"],
   headless: ["agent", "core", "kana", "logging", "mcp"],
+  server: ["agent", "core", "kana", "logging"],
   kana: ["agent", "core", "jobs", "logging", "mcp", "oauth", "providers", "tools", "version"],
   agent: ["core", "logging", "tools"],
   providers: ["core", "logging"],

@@ -9,6 +9,7 @@ import {
   syncKanaSkills,
   updateKana,
 } from "@/kana";
+import { startServer } from "@/server";
 import { startTui } from "@/tui";
 
 await runCli(process.argv, {
@@ -19,6 +20,7 @@ await runCli(process.argv, {
   resyncKanaSkills,
   syncKanaSkills,
   startHeadless,
+  startServer,
   startTui,
   updateKana,
 });

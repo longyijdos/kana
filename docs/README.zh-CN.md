@@ -28,6 +28,7 @@
 - [会话与记忆](sessions-and-memory.zh-CN.md)：session JSONL、恢复、artifact、accounting、日志、长期记忆与合并。
 - [TUI 交互](tui.zh-CN.md)：应用生命周期、命令、焦点、controller、输入与事件投影。
 - [终端渲染](terminal-rendering.zh-CN.md)：终端生命周期、布局、重绘、cursor 与宽度、Markdown、图表和工具展示。
+- [实验性 HTTP 服务](server.zh-CN.md)：`kana serve`、鉴权、session、SSE、远程审批与进程生命周期。
 - [无头执行](headless.zh-CN.md)：`kana exec`、审批行为、输出、JSONL 协议、deadline、signal 与退出状态。
 - [Kana Agent 可复用 workflow](kana-agent-workflow.zh-CN.md)：caller 配置、仓库本地模型配置、鉴权、发布与版本固定。
 - [Terminal-Bench 本地评测](terminal-bench.zh-CN.md)：Harbor adapter、运行参数、代理和结果解释。
@@ -51,6 +52,7 @@
 | `src/kana/subagents`、委派 Agent 构造与生命周期 | [Subagent](subagents.zh-CN.md) |
 | `src/tui/app`、TUI 进程生命周期 | [TUI 交互](tui.zh-CN.md) |
 | `src/tui/runtime`、`src/tui/render`、展示组件与工具 renderer | [终端渲染](terminal-rendering.zh-CN.md) |
+| `src/server` | [实验性 HTTP 服务](server.zh-CN.md) |
 | `src/headless` | [无头执行](headless.zh-CN.md) |
 | `.github/workflows/kana-agent*`、`.github/kana` | [Kana Agent 可复用 workflow](kana-agent-workflow.zh-CN.md) |
 | `src/kana/update`、release script 与 workflow | [发版流程](releasing.zh-CN.md) |

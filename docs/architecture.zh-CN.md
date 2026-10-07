@@ -1,13 +1,14 @@
 # Kana 架构总览
 
-Kana 是基于 Bun 的终端 Agent。模型调用、工具执行、产品装配和本地持久化运行在同一个进程中，通过交互式 TUI 或无头执行暴露。本文只映射稳定的模块边界与数据流；详细契约位于对应的子系统文档。
+Kana 是基于 Bun 的终端 Agent。模型调用、工具执行、产品装配和本地持久化运行在同一个进程中，通过交互式 TUI、无头执行或实验性 HTTP 服务暴露。本文只映射稳定的模块边界与数据流；详细契约位于对应的子系统文档。
 
 ## 系统分层
 
 ```text
 src/main.ts → cli
                 ├→ tui ───────┐
-                └→ headless ──┴→ kana（产品装配）
+                ├→ headless ──┤
+                └→ server ────┴→ kana（产品装配）
                                   ├→ agent → core
                                   │    └→ tools → core, jobs, utils
                                   ├→ providers → core
@@ -21,7 +22,7 @@ core、logging、oauth、jobs、utils
 
 `core` 包含与供应商无关的消息、模型 metadata、stream、用量和工具 specification。`agent` 负责对话 loop 与上下文投影；可执行工具在 Core specification 之外增加校验和执行。`providers` 把 Core 模型请求转换为外部 wire protocol。`oauth` 保持通用，`mcp` 则在其上增加远端工具协议行为。
 
-`kana` 是产品层，负责解析配置和本地路径、装配 Agent、管理 session 与 memory、启用 Skills 与 MCP，并向前端提供中立的对话操作。`tui` 和 `headless` 消费这一层，都不持有模型协议或持久化格式。
+`kana` 是产品层，负责解析配置和本地路径、装配 Agent、管理 session 与 memory、启用 Skills 与 MCP，并向前端提供中立的对话操作。`tui`、`headless` 和 `server` 消费这一层，都不持有模型协议或持久化格式。
 
 ## 强制依赖方向
 
@@ -29,10 +30,11 @@ core、logging、oauth、jobs、utils
 
 | 来源 | 可导入 |
 | --- | --- |
-| `main.ts` | `cli`、`headless`、`kana`、`tui` |
-| `cli` | `headless`、`kana`、`oauth`、`tui`、`version.ts` |
+| `main.ts` | `cli`、`headless`、`kana`、`server`、`tui` |
+| `cli` | `headless`、`kana`、`oauth`、`server`、`tui`、`version.ts` |
 | `tui` | `agent`、`core`、`jobs`、`kana`、`logging`、`mcp`、`tools`、`utils`、`version.ts` |
 | `headless` | `agent`、`core`、`kana`、`logging`、`mcp` |
+| `server` | `agent`、`core`、`kana`、`logging` |
 | `kana` | `agent`、`core`、`jobs`、`logging`、`mcp`、`oauth`、`providers`、`tools`、`version.ts` |
 | `agent` | `core`、`logging`、`tools` |
 | `providers` | `core`、`logging` |
@@ -48,11 +50,11 @@ core、logging、oauth、jobs、utils
 
 ## 装配入口
 
-`src/main.ts` 把控制权交给 `runCli`。命令要么执行安装、reset、认证、Skills 管理、update 等有界操作，要么启动两个对话前端之一。配置与命令语义见[配置与安装](configuration.zh-CN.md)、[无头执行](headless.zh-CN.md)和[发版流程](releasing.zh-CN.md)。
+`src/main.ts` 把控制权交给 `runCli`。命令要么执行安装、reset、认证、Skills 管理、update 等有界操作，要么启动三个对话前端之一。配置与命令语义见[配置与安装](configuration.zh-CN.md)、[无头执行](headless.zh-CN.md)、[实验性 HTTP 服务](server.zh-CN.md)和[发版流程](releasing.zh-CN.md)。
 
 `KanaConversationHost` 是前端共享的产品边界。它创建或恢复 hosted session、装配模型与工具能力、绑定持久化与日志，并暴露 `ConversationRuntime` 使用的切换操作。`createKanaAgent` 为一个 Agent 装配所选模型、稳定 prompt 来源、实际 runtime 策略、内置工具和当前 MCP registry 能力。
 
-TUI 在 `ConversationRuntime` 上装配 controller；headless 则把同一个 runtime 投影为文本或版本化 JSONL。前端行为可以不同，但 Agent 执行、输入顺序、Goal、session 切换与清理保持共享。详见[对话运行时](conversation-runtime.zh-CN.md)、[TUI 交互](tui.zh-CN.md)、[终端渲染](terminal-rendering.zh-CN.md)与[无头执行](headless.zh-CN.md)。
+TUI 在 `ConversationRuntime` 上装配 controller；headless 则把同一个 runtime 投影为文本或版本化 JSONL，server 提供鉴权 HTTP 操作与 SSE。前端行为可以不同，但 Agent 执行、输入顺序、Goal、session 切换与清理保持共享。详见[对话运行时](conversation-runtime.zh-CN.md)、[TUI 交互](tui.zh-CN.md)、[终端渲染](terminal-rendering.zh-CN.md)与[无头执行](headless.zh-CN.md)。
 
 ## 启动与关闭
 
@@ -75,7 +77,8 @@ Normal 和 clean 启动都会把显式模式传过前端、host 和每个重建�
   → 已提交消息与 runtime event
      ├→ normal 模式的 session 持久化
      ├→ TUI transcript 与状态
-     └→ headless 文本或 JSONL
+     ├→ headless 文本或 JSONL
+     └→ server HTTP 状态或 SSE
 ```
 
 Core 消息与模型 event 与前端、供应商无关。Agent 提交完整消息、协调 steering 与排队输入，并在不了解前端的情况下委托工具执行。Provider 把 wire-specific replay 状态封装在 Core content 后方。工具结果重新进入同一段历史，再开始下一次模型步骤。
@@ -106,6 +109,7 @@ Normal 本地状态以 `KANA_HOME` 为根，未设置时默认为 `~/.kana`。�
 | Skills 与系统 prompt 装配 | [Skills 与系统提示词](skills-and-prompt.zh-CN.md) |
 | TUI 命令、焦点、controller、事件投影 | [TUI 交互](tui.zh-CN.md) |
 | 布局、重绘、宽度、Markdown、工具展示 | [终端渲染](terminal-rendering.zh-CN.md) |
+| HTTP API、SSE、远程审批、常驻生命周期 | [实验性 HTTP 服务](server.zh-CN.md) |
 | Kana Agent GitHub 集成 | [Kana Agent 可复用 workflow](kana-agent-workflow.zh-CN.md) |
 | Release 自动化、分发与自更新 | [发版流程](releasing.zh-CN.md) |
 

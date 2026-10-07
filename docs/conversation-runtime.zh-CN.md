@@ -1,11 +1,11 @@
 # 对话运行时
 
-Kana 在前端与可复用 Agent 之间放置一层产品级 runtime。TUI 和 headless runner 提交工作并消费同一套与前端无关的事件；session 持久化、排队运行顺序和 Agent 构造都不归任一前端所有。
+Kana 在前端与可复用 Agent 之间放置一层产品级 runtime。TUI、headless runner 和 HTTP server 提交工作并消费同一套与前端无关的事件；session 持久化、排队运行顺序和 Agent 构造都不归任一前端所有。
 
 ## 装配边界
 
 ```text
-TUI / Headless
+TUI / Headless / Server
   → ConversationRuntime
       ├→ ConversationInputCoordinator
       │   ├→ Agent-owned inbox
@@ -120,4 +120,4 @@ Normal 与 clean 启动模式使用同一套 runtime 类型。Clean 模式下，
 
 ## 前端职责
 
-TUI 持有 focus、controller、transcript block、status projection 与用户交互。Headless 持有 prompt 解析、signal/deadline 策略、JSONL 或人类可读输出投影与退出状态。两者都消费 runtime event 并调用同一套 runtime 操作；它们不应重现 inbox 顺序、Goal admission、session 替换或清理编排。
+TUI 持有 focus、controller、transcript block、status projection 与用户交互。Headless 持有 prompt 解析、signal/deadline 策略、JSONL 或人类可读输出投影与退出状态。[HTTP server](server.zh-CN.md) 持有鉴权请求接入、SSE 投影、重连快照和远程审批决策。所有前端都消费 runtime event 并调用同一套 runtime 操作；它们不应重现 inbox 顺序、Goal admission、session 替换或清理编排。

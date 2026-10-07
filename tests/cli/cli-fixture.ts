@@ -36,6 +36,7 @@ export function defaultCliOptions(): CreateCliOptions {
     }),
     log: () => {},
     startHeadless: async () => 0,
+    startServer: async () => {},
     startTui: () => {},
     updateKana: async () => ({
       status: "up-to-date",
