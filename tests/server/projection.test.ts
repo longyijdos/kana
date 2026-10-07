@@ -36,6 +36,22 @@ describe("server event projection", () => {
     });
   });
 
+  test("passes detached messages and non-message timeline entries through projection", () => {
+    const message = createUserMessage({
+      content: "Owned input",
+      provenance: { kind: "user_input" },
+    });
+    const entry: KanaSessionTimelineEntry = {
+      type: "todo_state",
+      id: "todo",
+      parentId: null,
+      timestamp: "now",
+      items: [{ content: "Owned todo", status: "pending" }],
+    };
+    expect(projectMessage(message)).toBe(message);
+    expect(projectTimelineEntry(entry)).toBe(entry);
+  });
+
   test("serializes nested BigInt values without mutating the original result", () => {
     const result = {
       count: 9_007_199_254_740_993n,
@@ -82,7 +98,13 @@ describe("server event projection", () => {
         kind: "agent",
       },
       { type: "message", id: "user", parentId: "start", timestamp: "t1", message: user },
-      { type: "todo_state", id: "todo", parentId: "user", timestamp: "t2", items: [] },
+      {
+        type: "todo_state",
+        id: "todo",
+        parentId: "user",
+        timestamp: "t2",
+        items: [{ content: "Original todo", status: "pending" }],
+      },
       { type: "message", id: "assistant", parentId: "todo", timestamp: "t3", message: assistant },
       {
         type: "turn_end",
@@ -128,6 +150,15 @@ describe("server event projection", () => {
       expect(serialized).not.toContain("providerState");
       expect(timeline[1]).toMatchObject({ message: user });
       expect(assistant.content[0]!.providerState.value).toBe("opaque");
+      const projectedUser = session.messages.find((message) => message.role === "user")!;
+      if (projectedUser.role === "user") projectedUser.images![0]!.data = "changed";
+      const projectedTodo = session.timeline.find((entry) => entry.type === "todo_state")!;
+      if (projectedTodo.type === "todo_state") projectedTodo.items[0]!.content = "changed";
+      const next = projection.snapshot().session!;
+      expect(next.messages[0]).toEqual(user);
+      expect(next.timeline.find((entry) => entry.type === "todo_state")).toEqual(
+        timeline.find((entry) => entry.type === "todo_state"),
+      );
     } finally {
       await f.close();
     }

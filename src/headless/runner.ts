@@ -185,7 +185,7 @@ function waitForGoalCompletion(runtime: ConversationRuntime): {
       if (event.goal.id !== activeGoalId || event.goal.status === "active") {
         return;
       }
-      terminalGoal = structuredClone(event.goal);
+      terminalGoal = event.goal;
       if (!runtime.isRunning) {
         settle();
       }

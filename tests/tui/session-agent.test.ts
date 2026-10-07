@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AgentEventStream } from "../../src/agent";
+import type { UserImage, UserMessage } from "../../src/core";
 import { createWakeScheduler, type KanaSessionMetadata } from "../../src/kana";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { stripAnsi } from "../../src/tui/render";
@@ -13,6 +14,43 @@ import {
 } from "./app-fixture";
 
 describe("session-scoped agents", () => {
+  test.each(["submit", "queue"] as const)(
+    "keeps %s images detached at message construction",
+    async (delivery) => {
+      const agent = createAgentStub();
+      agent.state.model.metadata.supportsImageInput = true;
+      const app = new KanaTuiApp(() => agent, createTerminal(), createOptions());
+      let received: UserMessage | undefined;
+      const internal = app as unknown as {
+        submitPrompt(value: string, images: UserImage[]): Promise<void>;
+        queuePrompt(value: string, images: UserImage[]): void;
+        submitAgentInput(input: UserMessage): Promise<void>;
+        conversation: { canSteer: boolean; queueInput(input: UserMessage): string };
+      };
+      Object.defineProperty(internal.conversation, "canSteer", { get: () => delivery === "queue" });
+      internal.submitAgentInput = async (input) => {
+        received = input;
+      };
+      internal.conversation.queueInput = (input) => {
+        received = input;
+        return input.id;
+      };
+      const images: UserImage[] = [
+        { mimeType: "image/png", data: "original", width: 1, height: 1 },
+      ];
+      if (delivery === "submit") await internal.submitPrompt("Inspect image", images);
+      else internal.queuePrompt("Inspect image", images);
+      expect(received).toMatchObject({ content: "Inspect image", images });
+      expect(received!.images).not.toBe(images);
+      expect(received!.images![0]).not.toBe(images[0]);
+      images[0]!.data = "changed";
+      images.pop();
+      expect(received!.images).toEqual([
+        { mimeType: "image/png", data: "original", width: 1, height: 1 },
+      ]);
+    },
+  );
+
   test("resets a temporary tool approval mode when the session changes", async () => {
     const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), createOptions());
     const internal = app as unknown as {

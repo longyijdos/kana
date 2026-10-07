@@ -27,7 +27,7 @@ TUI / Headless / Server
 
 `HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client、用户任务管理器与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
 
-`ConversationRuntime` 持有当前 Agent 与 session 快照。每次读取快照时，通过 `getSessionTimeline` 按 session ID 查询 Host 最新已提交的 timeline；返回快照与 Host 镜像分离。TUI、headless 与 server 装配都绑定此回调。未提供回调的独立 runtime 保留初始或加载的 timeline；查询失败会向上传播，不会回退到陈旧历史。Runtime 不从 Agent event 重建 journal entry，流式 delta 也不会触发 timeline 拷贝。Clean-mode session 没有 journal，已提交 timeline 为空。
+`ConversationRuntime` 持有当前 Agent 与 session 快照。每次读取快照时，通过 `getSessionTimeline` 按 session ID 查询 Host 最新已提交的 timeline；回调必须返回与 Host 镜像分离、归调用方持有的快照。Runtime 直接使用这份 timeline，从 Agent 的独立 state 快照获取 messages 与 checkpoint，只克隆自己持有的 todo state，不会先复制初始 messages/checkpoint 再覆盖。TUI、headless 与 server 装配都绑定此回调。未提供回调的独立 runtime 在每次快照读取时克隆初始或加载的 timeline；查询失败会向上传播，不会回退到陈旧历史。Runtime 不从 Agent event 重建 journal entry，流式 delta 也不会触发 timeline 拷贝。Clean-mode session 没有 journal，已提交 timeline 为空。
 
 Runtime 下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal、后台 Job 完成事件、subagent 结算与用户任务更新，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
 
@@ -41,7 +41,7 @@ run_start
   → run_end | run_error
 ```
 
-`agent_event` 除防御性复制外原样承载可复用 Agent 协议。Runtime 另行发布 `session_changed`、`input_queue_changed`、`todo_state_changed` 与 `goal_state_changed`。Listener 异常会被隔离并记录为 `conversation.listener_failed`，不能改变执行或清理。
+`agent_event` 原样承载可复用 Agent 协议。Message、session、queue、todo 与 Goal payload 在分发边界为每个 listener 单独克隆，前端可以接管自己的副本，无需再深克隆。Runtime 对内部持有的 terminal event 与 todo item 另行克隆。Runtime 另行发布 `session_changed`、`input_queue_changed`、`todo_state_changed` 与 `goal_state_changed`。Listener 异常会被隔离并记录为 `conversation.listener_failed`，不能改变执行或清理。
 
 普通 run 开始时，runtime 标记活动来源，订阅 Agent 事件，调用 `Agent.stream()`，同时等待 stream 迭代与 `result()`，最后要求得到终态 `agent_end`。因此持久化或后处理失败会成为 `run_error`，不会伪装成成功 runtime 结果。完整 Agent 边界结算前，活动来源一直保留，使 submission exclusion 始终权威。
 

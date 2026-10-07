@@ -35,16 +35,18 @@ export type ServerEvent = {
   data: unknown;
 };
 
+// Projection consumes detached input from a runtime snapshot or listener.
 export function projectMessage(message: Message) {
-  if (message.role !== "assistant") return structuredClone(message);
+  if (message.role !== "assistant") return message;
   return {
     ...message,
     content: message.content.map(({ providerState: _providerState, ...content }) => content),
   };
 }
 
+// Non-message entries transfer directly from the detached runtime snapshot.
 export function projectTimelineEntry(entry: KanaSessionTimelineEntry) {
-  if (entry.type !== "message") return structuredClone(entry);
+  if (entry.type !== "message") return entry;
   const { message, ...metadata } = entry;
   return { ...metadata, message_id: message.id };
 }

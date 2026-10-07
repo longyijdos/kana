@@ -15,10 +15,12 @@ import {
   runHeadlessConversation,
   startHeadless,
 } from "../../src/headless";
+import { HeadlessRunOutputProjector } from "../../src/headless/run-output";
 import {
   ConversationRuntime,
   type ConversationRuntimeOptions,
   DEFAULT_KANA_TOOL_APPROVALS,
+  type KanaGoalSnapshot,
 } from "../../src/kana";
 import { createUpdateGoalTool } from "../../src/kana/tools";
 import type { Logger } from "../../src/logging";
@@ -27,6 +29,37 @@ import type { Tool } from "../../src/tools";
 import { messageIdentityForTest } from "../helpers/messages";
 
 describe("headless output protocol", () => {
+  test.each(["event", "completion"] as const)(
+    "returns detached Goal results after owning a %s snapshot",
+    (source) => {
+      const goal: KanaGoalSnapshot = {
+        id: "goal",
+        objective: "Finish task",
+        status: "completed",
+        admittedRounds: 1,
+        maxRounds: 8,
+        startedAt: new Date("2026-10-07T00:00:00Z"),
+        endedAt: new Date("2026-10-07T00:01:00Z"),
+      };
+      const output = new HeadlessRunOutputProjector({
+        goal: true,
+        json: true,
+        stdout: new StringOutput(),
+        stderr: new StringOutput(),
+        getTermination: () => undefined,
+      });
+      if (source === "event")
+        output.handle({ type: "goal_state_changed", change: "completed", goal });
+      else output.completeGoal(goal);
+      const first = output.result();
+      expect(first.goal).toEqual(goal);
+      expect(first.goal).not.toBe(goal);
+      first.goal!.objective = "changed";
+      first.goal!.startedAt.setTime(0);
+      expect(output.result().goal).toEqual(goal);
+    },
+  );
+
   test.each([false, true])(
     "keeps nested run_code events out of public output (json=%s)",
     async (json) => {
@@ -223,6 +256,12 @@ describe("headless Goal execution", () => {
       }),
       goalMaxRounds: 2,
     });
+    runtime.subscribe((event) => {
+      if (event.type === "goal_state_changed") {
+        event.goal.objective = "changed by another listener";
+        event.goal.startedAt.setTime(0);
+      }
+    });
 
     const result = await runHeadlessConversation({
       runtime,
@@ -241,6 +280,7 @@ describe("headless Goal execution", () => {
       outcome: "stop",
       finalMessage: "Still working.",
       goal: {
+        objective: "Finish the task.",
         status: "round_limit",
         admittedRounds: 2,
         maxRounds: 2,

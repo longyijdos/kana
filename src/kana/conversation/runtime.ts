@@ -114,6 +114,7 @@ type CreateConversationAgentOptions<TConfiguration> = {
 
 export type ConversationRuntimeOptions<TConfiguration> = {
   initialSession?: ConversationSessionSnapshot;
+  // Returns a detached timeline snapshot owned by the caller.
   getSessionTimeline?: (sessionId: string) => KanaSessionTimelineEntry[];
   createAgent: (options: CreateConversationAgentOptions<TConfiguration>) => Agent;
   createNewSession: () => { id: string };
@@ -179,7 +180,7 @@ export class ConversationRuntime<TConfiguration = never> {
         this.emit({
           type: "goal_state_changed",
           change,
-          goal: structuredClone(goal),
+          goal,
         });
       },
       getLogger: this.getLogger,
@@ -208,12 +209,13 @@ export class ConversationRuntime<TConfiguration = never> {
 
     const timeline = this.options.getSessionTimeline
       ? this.options.getSessionTimeline(session.id)
-      : session.timeline;
-    const snapshot = structuredClone({ ...session, timeline });
+      : structuredClone(session.timeline);
     const state = this.agent.state;
     return {
-      ...snapshot,
+      id: session.id,
       messages: state.messages,
+      timeline,
+      ...(session.todoState === undefined ? {} : { todoState: structuredClone(session.todoState) }),
       contextCheckpoint: state.contextCheckpoint,
     };
   }
@@ -453,7 +455,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.emit({
       type: "todo_state_changed",
       source,
-      change: structuredClone(change),
+      change,
     });
   }
 
@@ -563,7 +565,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.emit({
       type: "run_start",
       source,
-      input: structuredClone(input),
+      input,
     });
     this.log("info", "conversation.run_started", { source });
 
@@ -598,7 +600,7 @@ export class ConversationRuntime<TConfiguration = never> {
       this.emit({
         type: "run_end",
         source,
-        event: structuredClone(terminalEvent),
+        event: terminalEvent,
         ...(runGoal === undefined ? {} : { goal: runGoal }),
       });
       this.log("info", "conversation.run_completed", {
@@ -632,7 +634,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.emit({
       type: "agent_event",
       source,
-      event: structuredClone(event),
+      event,
     });
   }
 

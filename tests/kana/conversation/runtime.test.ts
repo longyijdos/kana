@@ -35,14 +35,17 @@ describe("ConversationRuntime", () => {
       ];
       const committed = structuredClone(baseline);
       let failQuery = false;
+      let providedTimeline: KanaSessionTimelineEntry[] | undefined;
+      const todoState = [{ content: "Initial todo", status: "pending" as const }];
       const runtime = new ConversationRuntime({
         ...createRuntimeOptions(),
-        initialSession: { id: "session-a", messages: [], timeline: baseline },
+        initialSession: { id: "session-a", messages: [], timeline: baseline, todoState },
         getSessionTimeline: live
           ? (id) => {
               expect(id).toBe("session-a");
               if (failQuery) throw new Error("Timeline unavailable");
-              return committed;
+              providedTimeline = structuredClone(committed);
+              return providedTimeline;
             }
           : undefined,
         createAgent: () => new Agent({ model: new MockModel({ provider: "mock", model: "mock" }) }),
@@ -52,10 +55,14 @@ describe("ConversationRuntime", () => {
         expect(runtime.session!.timeline.map((entry) => entry.id)).toEqual(
           live ? ["baseline", "latest"] : ["baseline"],
         );
-        const snapshot = runtime.session!.timeline;
-        const entry = snapshot[0]!;
+        const snapshot = runtime.session!;
+        if (live) expect(snapshot.timeline).toBe(providedTimeline!);
+        else expect(snapshot.timeline).not.toBe(baseline);
+        const entry = snapshot.timeline[0]!;
         if (entry.type === "todo_state") entry.items[0]!.content = "changed";
-        snapshot.pop();
+        snapshot.timeline.pop();
+        snapshot.todoState![0]!.content = "changed";
+        expect(runtime.session!.todoState).toEqual(todoState);
         expect(runtime.session!.timeline[0]).toEqual(baseline[0]);
         expect(committed[0]).toEqual(baseline[0]);
         expect(baseline).toHaveLength(1);
@@ -736,6 +743,75 @@ describe("ConversationRuntime", () => {
     expect(observed[0]).toBe("run_start");
     expect(observed.at(-1)).toBe("run_end");
     await runtime.close();
+  });
+
+  test("isolates listener mutations from other listeners and retained runtime state", async () => {
+    const model = new ControlledModel();
+    const observed: ConversationRuntimeEvent[] = [];
+    let commitTodoState: ((change: KanaTodoStateChange) => void) | undefined;
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "session-a", messages: [], timeline: [] },
+      createAgent: (options) => {
+        commitTodoState = options.onTodoStateCommitted;
+        return new Agent({ model, messages: options.messages });
+      },
+    });
+    runtime.subscribe((event) => {
+      if (event.type === "run_start" && event.input) event.input.content = "changed";
+      if (event.type === "todo_state_changed") event.change.items[0]!.content = "changed";
+      if (event.type === "agent_event") {
+        if (event.event.type === "agent_end") event.event.reason = "aborted";
+        if (event.event.type === "message_update" || event.event.type === "message_end") {
+          const text = event.event.message.content.find((content) => content.type === "text");
+          if (text) text.text = "changed";
+        }
+      }
+      if (event.type === "run_end" && event.event) event.event.reason = "aborted";
+    });
+    runtime.subscribe((event) => observed.push(event));
+    const input = {
+      ...messageIdentityForTest("user"),
+      role: "user" as const,
+      content: "Original input",
+    };
+    try {
+      const run = runtime.submit(input);
+      await waitFor(() => model.contexts.length === 1);
+      const change: KanaTodoStateChange = {
+        toolCallId: "todo-call",
+        items: [{ content: "Original todo", status: "pending" }],
+      };
+      commitTodoState!(change);
+      change.items[0]!.content = "changed by producer";
+      expect(runtime.todoState[0]!.content).toBe("Original todo");
+      model.finish(0, "Original reply");
+      await run;
+      expect(input.content).toBe("Original input");
+      expect(observed.find((event) => event.type === "run_start")).toMatchObject({
+        input: { content: "Original input" },
+      });
+      expect(observed.find((event) => event.type === "todo_state_changed")).toMatchObject({
+        change: { items: [{ content: "Original todo" }] },
+      });
+      const messages = observed.filter(
+        (event) => event.type === "agent_event" && event.event.type === "message_update",
+      );
+      expect(messages.length).toBeGreaterThan(0);
+      for (const event of messages) {
+        if (event.type === "agent_event" && event.event.type === "message_update") {
+          expect(event.event.message.content).toEqual([{ type: "text", text: "Original reply" }]);
+        }
+      }
+      expect(observed.find((event) => event.type === "run_end")).toMatchObject({
+        event: { reason: "stop" },
+      });
+      expect(runtime.state.messages.at(-1)).toMatchObject({
+        content: [{ type: "text", text: "Original reply" }],
+      });
+    } finally {
+      await runtime.close();
+    }
   });
 
   test("keeps pending input only across same-session reconfiguration", async () => {
