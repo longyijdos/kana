@@ -77,6 +77,79 @@ describe("server HTTP API", () => {
     }
   });
 
+  test("encodes BigInt tool results in live events, state and reconnect snapshots", async () => {
+    const model = new ControlledModel();
+    const result = { count: 9_007_199_254_740_993n, values: [0n, -2n], nested: { total: 3n } };
+    const encoded = { count: "9007199254740993", values: ["0", "-2"], nested: { total: "3" } };
+    const f = createFixture({
+      model,
+      approvalMode: "never",
+      tools: [
+        {
+          name: "bigint_result",
+          description: "Returns an execution-local BigInt result",
+          parameters: Type.Object({}),
+          execute: () => ({ content: "ok", result }),
+        },
+      ],
+    });
+    const readers: ReadableStreamDefaultReader<Uint8Array>[] = [];
+    try {
+      const subscribe = () =>
+        fetch(new URL("/v1/events", f.url), {
+          headers: { Authorization: "Bearer test-secret" },
+          signal: AbortSignal.timeout(2_000),
+        });
+      const response = await subscribe();
+      const reader = response.body!.getReader();
+      readers.push(reader);
+      await reader.read();
+      await f.request("/v1/messages", "POST", { session_id: "session-a", message: "Work" });
+      await waitFor(() => model.requests.length === 1);
+      model.requests[0]!.complete(
+        [{ type: "tool_call", id: "bigint-call", name: "bigint_result", args: {} }],
+        "toolUse",
+      );
+      await waitFor(() => model.requests.length === 2);
+      const decoder = new TextDecoder();
+      let output = "";
+      while (!output.includes("event: tool.completed")) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        output += decoder.decode(chunk.value, { stream: true });
+      }
+      const toolFrame = output
+        .split("\n\n")
+        .find((frame) => frame.startsWith("event: tool.completed\n"));
+      expect(toolFrame).toBeDefined();
+      const event = JSON.parse(toolFrame!.split("\n")[1]!.slice("data: ".length));
+      expect(event.data.result).toEqual(encoded);
+      const stateResponse = await f.request("/v1/state");
+      expect(stateResponse.status).toBe(200);
+      expect(stateResponse.headers.get("content-type")).toBe("application/json");
+      const state = await stateResponse.json();
+      expect(state.data.tools[0].result).toEqual(encoded);
+      const reconnected = await subscribe();
+      const reconnectReader = reconnected.body!.getReader();
+      readers.push(reconnectReader);
+      const first = decoder.decode((await reconnectReader.read()).value);
+      const snapshot = JSON.parse(
+        first
+          .split("\n")
+          .find((line) => line.startsWith("data: "))!
+          .slice("data: ".length),
+      );
+      expect(snapshot.type).toBe("snapshot");
+      expect(snapshot.data.tools[0].result).toEqual(encoded);
+      expect(result.count).toBe(9_007_199_254_740_993n);
+      model.requests[1]!.complete("Done.");
+      await waitFor(() => !f.runtime.isRunning);
+    } finally {
+      await Promise.all(readers.map((reader) => reader.cancel().catch(() => {})));
+      await f.close();
+    }
+  });
+
   test("reconnects with partial text, keeps running offline, queues input and refuses busy session changes", async () => {
     const model = new ControlledModel();
     const f = createFixture({ model });

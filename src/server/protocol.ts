@@ -44,13 +44,19 @@ export function projectMessage(message: Message) {
 }
 
 export function projectTimelineEntry(entry: KanaSessionTimelineEntry) {
-  return entry.type === "message"
-    ? { ...entry, message: projectMessage(entry.message) }
-    : structuredClone(entry);
+  if (entry.type !== "message") return structuredClone(entry);
+  const { message, ...metadata } = entry;
+  return { ...metadata, message_id: message.id };
 }
 
 export function projectAssistant(message: AssistantMessage) {
   return projectMessage(message);
+}
+
+export function stringifyJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) =>
+    typeof item === "bigint" ? item.toString() : item,
+  );
 }
 
 export function projectError(error: unknown): { name: string; message: string } {

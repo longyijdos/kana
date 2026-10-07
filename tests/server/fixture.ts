@@ -2,7 +2,9 @@ import { Agent } from "../../src/agent";
 import type { Model } from "../../src/core";
 import {
   ConversationRuntime,
+  type ConversationSessionSnapshot,
   type KanaSessionMetadata,
+  type KanaToolApprovalConfig,
   type KanaToolApprovals,
 } from "../../src/kana";
 import { createNoopLogger } from "../../src/logging";
@@ -10,7 +12,14 @@ import { MockModel } from "../../src/providers/mock";
 import { createServerApi } from "../../src/server/api";
 import type { Tool } from "../../src/tools";
 
-export function createFixture(options: { model?: Model; tools?: Tool[] } = {}) {
+export function createFixture(
+  options: {
+    model?: Model;
+    tools?: Tool[];
+    session?: ConversationSessionSnapshot;
+    approvalMode?: KanaToolApprovalConfig["mode"];
+  } = {},
+) {
   const sessions = new Map<string, KanaSessionMetadata>();
   let counter = 0;
   const trusted: KanaToolApprovals = {
@@ -30,7 +39,7 @@ export function createFixture(options: { model?: Model; tools?: Tool[] } = {}) {
     return { id, messages: [], timeline: [] };
   }
   const runtime = new ConversationRuntime({
-    initialSession: newSession("session-a"),
+    initialSession: options.session ?? newSession("session-a"),
     createNewSession: () => newSession(`session-${++counter}`),
     forkSession: () => newSession(`fork-${++counter}`),
     loadSession: (id) => newSession(id),
@@ -50,7 +59,7 @@ export function createFixture(options: { model?: Model; tools?: Tool[] } = {}) {
   const apiOptions = {
     token: "test-secret",
     runtime,
-    getApprovalConfig: () => ({ mode: "unless_trusted" as const }),
+    getApprovalConfig: () => ({ mode: options.approvalMode ?? "unless_trusted" }) as const,
     getApprovals: () => trusted,
     addTrustedShellCommand: (command: string) => {
       trusted.shell.exactCommands.push(command);

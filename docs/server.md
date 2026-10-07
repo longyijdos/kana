@@ -20,7 +20,7 @@ Clean mode retains temporary session creation and core execution but removes dur
 
 ## HTTP contract
 
-JSON success responses are `{schema_version: 1, data: ...}`. Errors are `{schema_version: 1, error: {code, message}}`. Request bodies must be JSON objects; the native server limits bodies to 1 MiB. Unknown routes return 404; authentication failures return 401; invalid input returns 400; session mismatch or a busy transition returns 409; shutdown returns 503. Unexpected failures return a generic 500 and a safe structured diagnostic.
+JSON success responses are `{schema_version: 1, data: ...}`. Errors are `{schema_version: 1, error: {code, message}}`. JSON responses and SSE encode BigInt values as decimal strings without changing execution-local results. Other values follow standard JSON serialization; cyclic values are unsupported. Request bodies must be JSON objects; the native server limits bodies to 1 MiB. Unknown routes return 404; authentication failures return 401; invalid input returns 400; session mismatch or a busy transition returns 409; shutdown returns 503. Unexpected failures return a generic 500 and a safe structured diagnostic.
 
 | Method and path | Request | Result |
 | --- | --- | --- |
@@ -49,6 +49,8 @@ Decisions are `allow` (once), `reject` (abort the run), `always` (persist exact 
 ## State and event protocol
 
 A snapshot contains `session` (ID, messages, timeline, or null), `running` (runtime exclusion state), `run` (latest process-local ID, source, status, optional outcome/error, or null), `assistant` (in-progress message or null), `tools` (current run’s outer execution states), `input_queue`, `todo`, `goal`, and `approvals`. Messages use Core’s provider-neutral shapes; opaque assistant-content `providerState` and context checkpoints are not exposed. Run status is `running`, `completed`, or `failed`. Completed does not necessarily mean successful: inspect outcomes such as `stop`, `aborted`, or `error`.
+
+`session.messages` is the authoritative message-body collection. In `session.timeline`, message entries contain `message_id` instead of an embedded `message`; resolve it against `session.messages[].id`. Entry `id`, `parentId`, `timestamp`, and timeline order are preserved. Non-message entries remain unchanged. This retains interleaved history without duplicating message text, images, or structured results.
 
 Each SSE frame has an `event` name matching its JSON `type` and a `data` object:
 

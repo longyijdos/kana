@@ -141,6 +141,16 @@ name = "local-test"
       expect(resumed.data.session.messages.at(-1).content).toEqual([
         { type: "text", text: "Local answer." },
       ]);
+      expect(
+        resumed.data.session.timeline.filter((entry: { type: string }) => entry.type === "message"),
+      ).toEqual(
+        resumed.data.session.messages.map((message: { id: string }) =>
+          expect.objectContaining({ type: "message", message_id: message.id }),
+        ),
+      );
+      expect(resumed.data.session.timeline).not.toContainEqual(
+        expect.objectContaining({ message: expect.anything() }),
+      );
       await stop();
     } finally {
       if (child) {

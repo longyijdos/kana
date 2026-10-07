@@ -9,7 +9,7 @@ import type {
 import type { Logger } from "@/logging";
 import { type ApprovalDecision, ServerApprovals } from "./approvals";
 import { ServerProjection } from "./projection";
-import { projectError, type ServerEvent, type ServerEventType } from "./protocol";
+import { projectError, type ServerEvent, type ServerEventType, stringifyJson } from "./protocol";
 
 export type ServerApiOptions = {
   token: string;
@@ -70,7 +70,7 @@ export function createServerApi(options: ServerApiOptions) {
   }
 
   function frame(event: ServerEvent): Uint8Array {
-    return encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    return encoder.encode(`event: ${event.type}\ndata: ${stringifyJson(event)}\n\n`);
   }
 
   function broadcast(bytes: Uint8Array): void {
@@ -82,10 +82,7 @@ export function createServerApi(options: ServerApiOptions) {
   }
 
   function json(data: unknown, status = 200): Response {
-    return Response.json(
-      { schema_version: 1, data },
-      { status, headers: { "Cache-Control": "no-store" } },
-    );
+    return jsonResponse({ schema_version: 1, data }, status);
   }
 
   function requireSavedSessions(): void {
@@ -178,15 +175,13 @@ export function createServerApi(options: ServerApiOptions) {
     try {
       const supplied = Buffer.from(request.headers.get("authorization") ?? "");
       if (supplied.length !== credential.length || !timingSafeEqual(supplied, credential)) {
-        return Response.json(
+        return jsonResponse(
           {
             schema_version: 1,
             error: { code: "unauthorized", message: "A valid Bearer token is required." },
           },
-          {
-            status: 401,
-            headers: { "WWW-Authenticate": "Bearer", "Cache-Control": "no-store" },
-          },
+          401,
+          { "WWW-Authenticate": "Bearer" },
         );
       }
       if (closed) throw new ApiError(503, "stopping", "Server is stopping.");
@@ -298,7 +293,7 @@ export function createServerApi(options: ServerApiOptions) {
       if (!(error instanceof ApiError)) {
         options.getLogger().error("server.request_failed", { errorType: projectError(error).name });
       }
-      return Response.json(
+      return jsonResponse(
         {
           schema_version: 1,
           error: {
@@ -306,10 +301,7 @@ export function createServerApi(options: ServerApiOptions) {
             message: error instanceof ApiError ? error.message : "Request failed.",
           },
         },
-        {
-          status: error instanceof ApiError ? error.status : 500,
-          headers: { "Cache-Control": "no-store" },
-        },
+        error instanceof ApiError ? error.status : 500,
       );
     }
   }
@@ -325,6 +317,17 @@ export function createServerApi(options: ServerApiOptions) {
       for (const client of clients) client.close();
     },
   };
+}
+
+function jsonResponse(
+  value: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
+  return new Response(stringifyJson(value), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers },
+  });
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {

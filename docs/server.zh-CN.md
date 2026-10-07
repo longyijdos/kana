@@ -20,7 +20,7 @@ Clean 模式保留临时 session 创建和核心执行，移除持久资源与�
 
 ## HTTP 契约
 
-JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_version: 1, error: {code, message}}`。请求体必须是 JSON 对象，原生 server 限制请求体为 1 MiB。未知路由返回 404，鉴权失败返回 401，输入无效返回 400，session 不匹配或切换忙碌返回 409，关闭阶段返回 503。意外失败返回通用 500，并写入安全的结构化诊断。
+JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_version: 1, error: {code, message}}`。JSON 响应和 SSE 都将 BigInt 编码为十进制字符串，不改变执行期的原始结果。其他值沿用标准 JSON 序列化规则，不支持循环引用。请求体必须是 JSON 对象，原生 server 限制请求体为 1 MiB。未知路由返回 404，鉴权失败返回 401，输入无效返回 400，session 不匹配或切换忙碌返回 409，关闭阶段返回 503。意外失败返回通用 500，并写入安全的结构化诊断。
 
 | 方法与路径 | 请求 | 结果 |
 | --- | --- | --- |
@@ -49,6 +49,8 @@ JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_versi
 ## 状态与事件协议
 
 快照包含 `session`（ID、消息、timeline 或 null）、`running`（runtime 执行互斥状态）、`run`（最近进程内 ID、source、status、可选 outcome/error 或 null）、`assistant`（生成中的消息或 null）、`tools`（当前 run 的外层执行状态）、`input_queue`、`todo`、`goal`、`approvals`。消息采用 Core 的供应商中立结构，但不暴露 assistant content 中的 opaque `providerState` 或 context checkpoint。Run status 为 `running`、`completed`、`failed`；completed 不一定成功，需检查 `stop`、`aborted`、`error` 等 outcome。
+
+`session.messages` 是消息正文的权威集合。`session.timeline` 的 message entry 使用 `message_id` 替代内嵌 `message`，通过 `session.messages[].id` 查找正文。Entry 的 `id`、`parentId`、`timestamp` 以及 timeline 顺序均保留；非 message entry 不变。这样保留交错历史，又不重复传输消息文本、图片或结构化结果。
 
 每个 SSE 帧的 `event` 名与 JSON `type` 相同，`data` 为对象：
 
