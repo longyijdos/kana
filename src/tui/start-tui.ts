@@ -158,6 +158,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
         getSubagents: (sessionId) => host.getSubagents(sessionId),
         getUserTasks: (sessionId) => host.getUserTasks(sessionId),
+        getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
         loadSubagentProfiles: () => host.loadSubagentProfiles(),
         disposeSession: (sessionId, source, foregroundSettled) =>
           host.disposeSession(sessionId, source, foregroundSettled),

@@ -52,6 +52,8 @@ JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_versi
 
 `session.messages` 是消息正文的权威集合。`session.timeline` 的 message entry 使用 `message_id` 替代内嵌 `message`，通过 `session.messages[].id` 查找正文。Entry 的 `id`、`parentId`、`timestamp` 以及 timeline 顺序均保留；非 message entry 不变。这样保留交错历史，又不重复传输消息文本、图片或结构化结果。
 
+每次 state 或 SSE 快照（包括重连）都会从 Host 查询最新已提交的 `session.timeline`。尚未提交的 assistant 流式内容仍放在 `assistant`，不进入 timeline。Clean mode 没有已提交 timeline；不发送独立 timeline SSE event。
+
 每个 SSE 帧的 `event` 名与 JSON `type` 相同，`data` 为对象：
 
 ```text

@@ -111,6 +111,7 @@ export function createHeadlessRuntime(
       : undefined,
     createAgent: (agentOptions) => host.createAgent(agentOptions),
     createNewSession: () => host.createNewSession(),
+    getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
     forkSession: (messages, contextCheckpoint, prompt) =>
       host.forkSession(messages, contextCheckpoint, prompt),
     loadSession: (sessionId) => {

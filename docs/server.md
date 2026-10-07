@@ -52,6 +52,8 @@ A snapshot contains `session` (ID, messages, timeline, or null), `running` (runt
 
 `session.messages` is the authoritative message-body collection. In `session.timeline`, message entries contain `message_id` instead of an embedded `message`; resolve it against `session.messages[].id`. Entry `id`, `parentId`, `timestamp`, and timeline order are preserved. Non-message entries remain unchanged. This retains interleaved history without duplicating message text, images, or structured results.
 
+`session.timeline` is queried from the host’s latest committed history for every state or SSE snapshot, including reconnects. Uncommitted assistant streaming content remains in `assistant`, not timeline. Clean mode has no committed timeline. No separate timeline SSE event is emitted.
+
 Each SSE frame has an `event` name matching its JSON `type` and a `data` object:
 
 ```text

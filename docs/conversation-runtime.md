@@ -27,7 +27,9 @@ TUI / Headless / Server
 
 `HostedSessionRegistry` owns the live resources associated with each session instance. A hosted record binds the session's in-memory mirror, optional journal, logger, artifact store, background-job client, subagent client, user-task manager, and pending fork snapshot. `ConversationRuntime` selects and executes against those resources through host callbacks rather than opening storage or background processes itself.
 
-`ConversationRuntime` owns the current Agent and session snapshot. `ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, background-job completions, subagent settlements, and user-task updates, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
+`ConversationRuntime` owns the current Agent and session snapshot. Each snapshot read queries the host’s latest committed timeline by session ID through `getSessionTimeline`; the returned snapshot is detached from the host mirror. TUI, headless, and server composition all bind this callback. Independent runtimes without it retain the initial or loaded timeline, while query failures propagate rather than returning stale history. The runtime does not reconstruct journal entries from Agent events, and streaming deltas do not trigger timeline copying. Clean-mode sessions have no journal and an empty committed timeline.
+
+`ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, background-job completions, subagent settlements, and user-task updates, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
 
 ## Run lifecycle and events
 

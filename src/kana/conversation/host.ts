@@ -247,6 +247,10 @@ export class KanaConversationHost<TConfiguration = never> {
     return this.sessionRegistry.getLogger();
   }
 
+  getSessionTimeline(sessionId: string): LoadKanaSessionResult["timeline"] {
+    return this.sessionRegistry.getSessionTimeline(sessionId);
+  }
+
   getBackgroundJobs(sessionId: string): BackgroundJobClient | undefined {
     return this.sessionRegistry.getBackgroundJobs(sessionId);
   }

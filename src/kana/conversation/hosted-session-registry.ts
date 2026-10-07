@@ -117,6 +117,14 @@ export class HostedSessionRegistry {
     return this.activeSession?.logger ?? createNoopLogger();
   }
 
+  getSessionTimeline(sessionId: string): LoadKanaSessionResult["timeline"] {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Kana conversation host has no session ${sessionId}.`);
+    }
+    return structuredClone(session.data.timeline);
+  }
+
   getBackgroundJobs(sessionId: string): BackgroundJobClient | undefined {
     return this.sessions.get(sessionId)?.backgroundJobs;
   }

@@ -27,7 +27,9 @@ TUI / Headless / Server
 
 `HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client、用户任务管理器与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
 
-`ConversationRuntime` 持有当前 Agent 与 session 快照。它下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal、后台 Job 完成事件、subagent 结算与用户任务更新，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
+`ConversationRuntime` 持有当前 Agent 与 session 快照。每次读取快照时，通过 `getSessionTimeline` 按 session ID 查询 Host 最新已提交的 timeline；返回快照与 Host 镜像分离。TUI、headless 与 server 装配都绑定此回调。未提供回调的独立 runtime 保留初始或加载的 timeline；查询失败会向上传播，不会回退到陈旧历史。Runtime 不从 Agent event 重建 journal entry，流式 delta 也不会触发 timeline 拷贝。Clean-mode session 没有 journal，已提交 timeline 为空。
+
+Runtime 下面更窄的 `ConversationInputCoordinator` 是调度边界：观察 Agent inbox、wake、Goal、后台 Job 完成事件、subagent 结算与用户任务更新，发布分离的队列快照，并请求 runtime 执行每个获准的新 run。它不维护第二条消息队列。
 
 ## Run 生命周期与事件
 

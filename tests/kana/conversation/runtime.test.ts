@@ -12,6 +12,7 @@ import {
   ConversationRuntime,
   type ConversationRuntimeEvent,
   createWakeScheduler,
+  type KanaSessionTimelineEntry,
   type KanaTodoStateChange,
 } from "../../../src/kana";
 import { KanaSubagentManager, type KanaSubagentRunResult } from "../../../src/kana/subagents";
@@ -20,6 +21,54 @@ import { deferred } from "../../helpers/async-control";
 import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("ConversationRuntime", () => {
+  test.each([false, true])(
+    "detaches timeline snapshots with an optional live source (live=%s)",
+    async (live) => {
+      const baseline: KanaSessionTimelineEntry[] = [
+        {
+          type: "todo_state",
+          id: "baseline",
+          parentId: null,
+          timestamp: "2026-10-07T00:00:00.000Z",
+          items: [{ content: "Baseline", status: "pending" }],
+        },
+      ];
+      const committed = structuredClone(baseline);
+      let failQuery = false;
+      const runtime = new ConversationRuntime({
+        ...createRuntimeOptions(),
+        initialSession: { id: "session-a", messages: [], timeline: baseline },
+        getSessionTimeline: live
+          ? (id) => {
+              expect(id).toBe("session-a");
+              if (failQuery) throw new Error("Timeline unavailable");
+              return committed;
+            }
+          : undefined,
+        createAgent: () => new Agent({ model: new MockModel({ provider: "mock", model: "mock" }) }),
+      });
+      try {
+        committed.push({ ...structuredClone(baseline[0]!), id: "latest", parentId: "baseline" });
+        expect(runtime.session!.timeline.map((entry) => entry.id)).toEqual(
+          live ? ["baseline", "latest"] : ["baseline"],
+        );
+        const snapshot = runtime.session!.timeline;
+        const entry = snapshot[0]!;
+        if (entry.type === "todo_state") entry.items[0]!.content = "changed";
+        snapshot.pop();
+        expect(runtime.session!.timeline[0]).toEqual(baseline[0]);
+        expect(committed[0]).toEqual(baseline[0]);
+        expect(baseline).toHaveLength(1);
+        if (live) {
+          failQuery = true;
+          expect(() => runtime.session).toThrow("Timeline unavailable");
+        }
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
+
   test("runs one complete Agent turn and publishes frontend-neutral lifecycle events", async () => {
     const events: ConversationRuntimeEvent[] = [];
     const runtime = new ConversationRuntime({

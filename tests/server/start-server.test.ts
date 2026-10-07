@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { waitFor } from "../helpers/async-control";
+import { deferred, waitFor } from "../helpers/async-control";
 import { cleanupTempKanaHomes, createTempKanaHomeEnv } from "../helpers/temp-kana-home";
 
 const main = fileURLToPath(new URL("../../src/main.ts", import.meta.url));
@@ -23,11 +23,15 @@ describe("server process", () => {
   test("runs through the real CLI/provider, shuts down cleanly, and starts a fresh session on restart", async () => {
     const env = createTempKanaHomeEnv();
     const token = crypto.randomUUID();
+    const reply = deferred<void>();
+    let requested = false;
     const provider = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
-      fetch: () =>
-        new Response(
+      fetch: async () => {
+        requested = true;
+        await reply.promise;
+        return new Response(
           [
             'data: {"id":"local-test","choices":[{"index":0,"delta":{"role":"assistant","content":"Local answer."},"finish_reason":null}]}',
             'data: {"id":"local-test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
@@ -35,7 +39,8 @@ describe("server process", () => {
             "",
           ].join("\n\n"),
           { headers: { "Content-Type": "text/event-stream" } },
-        ),
+        );
+      },
     });
     await Bun.write(
       path.join(env.KANA_HOME, "providers", "custom.toml"),
@@ -120,6 +125,31 @@ name = "local-test"
         (await request("/v1/messages", "POST", { session_id: originalId, message: "Say hello" }))
           .status,
       ).toBe(202);
+      await waitFor(() => requested);
+      const active = await (await request("/v1/state")).json();
+      expect(active.data.running).toBe(true);
+      expect(active.data.session.timeline[0].type).toBe("turn_start");
+      expect(
+        active.data.session.timeline.some((entry: { type: string }) => entry.type === "turn_end"),
+      ).toBe(false);
+      expect(active.data.session.timeline).toContainEqual(
+        expect.objectContaining({
+          type: "message",
+          message_id: active.data.session.messages[0].id,
+        }),
+      );
+      const activeEvents = await request("/v1/events");
+      const activeReader = activeEvents.body!.getReader();
+      try {
+        const first = new TextDecoder().decode((await activeReader.read()).value);
+        const data = first.split("\n").find((line) => line.startsWith("data: "))!;
+        expect(JSON.parse(data.slice(6)).data.session.timeline).toEqual(
+          active.data.session.timeline,
+        );
+      } finally {
+        await activeReader.cancel();
+      }
+      reply.resolve();
       let state = initial;
       for (let attempt = 0; attempt < 100; attempt++) {
         state = await (await request("/v1/state")).json();
@@ -130,14 +160,41 @@ name = "local-test"
       expect(state.data.session.messages.at(-1).content).toEqual([
         { type: "text", text: "Local answer." },
       ]);
+      expect(state.data.session.timeline.map((entry: { type: string }) => entry.type)).toEqual([
+        "turn_start",
+        "message",
+        "message",
+        "message",
+        "turn_end",
+      ]);
+      expect(
+        state.data.session.timeline.filter((entry: { type: string }) => entry.type === "message"),
+      ).toEqual(
+        state.data.session.messages.map((message: { id: string }) =>
+          expect.objectContaining({ message_id: message.id }),
+        ),
+      );
+      const events = await request("/v1/events");
+      const reader = events.body!.getReader();
+      try {
+        const first = new TextDecoder().decode((await reader.read()).value);
+        const data = first.split("\n").find((line) => line.startsWith("data: "))!;
+        const snapshot = JSON.parse(data.slice(6));
+        expect(snapshot.type).toBe("snapshot");
+        expect(snapshot.data.session.timeline).toEqual(state.data.session.timeline);
+      } finally {
+        await reader.cancel();
+      }
       await stop();
       await start();
       const restarted = await (await request("/v1/state")).json();
       expect(restarted.data.session.id).not.toBe(originalId);
       expect(restarted.data.session.messages).toEqual([]);
+      expect(restarted.data.session.timeline).toEqual([]);
       expect((await request(`/v1/sessions/${originalId}/resume`, "POST")).status).toBe(200);
       const resumed = await (await request("/v1/state")).json();
       expect(resumed.data.session.id).toBe(originalId);
+      expect(resumed.data.session.timeline).toEqual(state.data.session.timeline);
       expect(resumed.data.session.messages.at(-1).content).toEqual([
         { type: "text", text: "Local answer." },
       ]);
@@ -153,6 +210,7 @@ name = "local-test"
       );
       await stop();
     } finally {
+      reply.resolve();
       if (child) {
         child.kill("SIGKILL");
         await child.exited;

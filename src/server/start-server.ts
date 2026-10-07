@@ -48,6 +48,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
         : undefined,
       createAgent: (agentOptions) => host.createAgent(agentOptions),
       createNewSession: () => host.createNewSession(),
+      getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
       forkSession: (messages, checkpoint, prompt) => host.forkSession(messages, checkpoint, prompt),
       loadSession: (id) => {
         const session = host.loadSession(id);

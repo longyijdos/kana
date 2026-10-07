@@ -131,6 +131,7 @@ export class KanaTuiApp {
     this.renderMermaid = options.ui.config?.renderMermaid ?? true;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       initialSession,
+      getSessionTimeline: options.conversation.getSessionTimeline,
       createAgent: ({ configuration, ...agentOptions }) =>
         createAgent({
           ...agentOptions,

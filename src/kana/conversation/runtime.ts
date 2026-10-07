@@ -114,6 +114,7 @@ type CreateConversationAgentOptions<TConfiguration> = {
 
 export type ConversationRuntimeOptions<TConfiguration> = {
   initialSession?: ConversationSessionSnapshot;
+  getSessionTimeline?: (sessionId: string) => KanaSessionTimelineEntry[];
   createAgent: (options: CreateConversationAgentOptions<TConfiguration>) => Agent;
   createNewSession: () => { id: string };
   forkSession: (
@@ -200,14 +201,18 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   get session(): ConversationSessionSnapshot | undefined {
-    const session = cloneSession(this.sessionData);
+    const session = this.sessionData;
     if (!session) {
       return undefined;
     }
 
+    const timeline = this.options.getSessionTimeline
+      ? this.options.getSessionTimeline(session.id)
+      : session.timeline;
+    const snapshot = structuredClone({ ...session, timeline });
     const state = this.agent.state;
     return {
-      ...session,
+      ...snapshot,
       messages: state.messages,
       contextCheckpoint: state.contextCheckpoint,
     };
