@@ -1,11 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import { createCli } from "../../src/cli";
 import type { StartHeadlessOptions } from "../../src/headless";
+import type { StartServerOptions } from "../../src/server";
 import type { StartTuiOptions } from "../../src/tui";
 import { KANA_VERSION } from "../../src/version";
 import { defaultCliOptions, parseCli } from "./cli-fixture";
 
 describe("CLI launch", () => {
+  test("launches the experimental server with port, clean mode and overrides", async () => {
+    const calls: Array<StartServerOptions | undefined> = [];
+    await parseCli(["bun", "kana", "serve"], {
+      startServer: async (options) => {
+        calls.push(options);
+      },
+    });
+    await parseCli(
+      ["bun", "kana", "serve", "--port", "9000", "--clean", "--set", "agent.max_turns=50"],
+      {
+        startServer: async (options) => {
+          calls.push(options);
+        },
+      },
+    );
+    expect(calls).toEqual([
+      { port: 8318 },
+      { port: 9000, launchMode: "clean", configOverrides: ["agent.max_turns=50"] },
+    ]);
+    const cli = createCli(defaultCliOptions());
+    cli.commands
+      .find((command) => command.name() === "serve")!
+      .exitOverride()
+      .configureOutput({ writeErr: () => {} });
+    await expect(cli.parseAsync(["bun", "kana", "serve", "--port", "0"])).rejects.toThrow(
+      "Port must be",
+    );
+  });
+
   test("forwards repeated raw overrides through every launch entry", async () => {
     const calls: Array<StartTuiOptions | StartHeadlessOptions | undefined> = [];
     const overrides = ["agent.max_turns=50", 'agent.model.name="a=b"'];

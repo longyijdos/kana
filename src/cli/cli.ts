@@ -19,6 +19,7 @@ import {
   signOutKanaOpenAICodex,
   updateKana as updateKanaBinary,
 } from "@/kana";
+import type { StartServerOptions } from "@/server";
 import type { StartTuiOptions } from "@/tui";
 import { KANA_VERSION } from "@/version";
 
@@ -43,6 +44,7 @@ export type CreateCliOptions = {
   log?: (message: string) => void;
   startHeadless: (options?: StartHeadlessOptions) => Promise<number>;
   startTui: (options?: StartTuiOptions) => Promise<void> | void;
+  startServer: (options?: StartServerOptions) => Promise<void>;
   updateKana?: (options?: UpdateKanaOptions) => Promise<KanaUpdateResult>;
 };
 
@@ -111,6 +113,29 @@ export function createCli(options: CreateCliOptions): Command {
         });
       },
     );
+
+  program
+    .command("serve")
+    .description("Start the experimental authenticated HTTP API on 127.0.0.1")
+    .option(
+      "--port <port>",
+      "Local HTTP port",
+      (value: string) => {
+        if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535) {
+          throw new InvalidArgumentError("Port must be an integer between 1 and 65535.");
+        }
+        return Number(value);
+      },
+      8318,
+    )
+    .action(async (_actionOptions: unknown, command: Command) => {
+      const commandOptions = command.optsWithGlobals<LaunchCommandOptions & { port: number }>();
+      await options.startServer({
+        port: commandOptions.port,
+        ...(commandOptions.set ? { configOverrides: commandOptions.set } : {}),
+        ...(getLaunchMode(commandOptions) ? { launchMode: getLaunchMode(commandOptions) } : {}),
+      });
+    });
 
   const execCommand = addHeadlessOptions(
     program

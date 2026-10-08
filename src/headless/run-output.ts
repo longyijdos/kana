@@ -90,6 +90,7 @@ export class HeadlessRunOutputProjector {
     this.emit(createKanaExecEvent({ type: "run.started" }), "Running...");
   }
 
+  // The runtime listener transfers its detached event to this projector.
   handle(event: ConversationRuntimeEvent): void {
     switch (event.type) {
       case "run_start":
@@ -117,13 +118,14 @@ export class HeadlessRunOutputProjector {
       case "todo_state_changed":
         return;
       case "goal_state_changed":
-        this.goal = structuredClone(event.goal);
+        this.goal = event.goal;
         return;
     }
   }
 
+  // Takes ownership of the terminal snapshot from the goal-completion listener.
   completeGoal(goal: KanaGoalSnapshot): void {
-    this.goal = structuredClone(goal);
+    this.goal = goal;
     this.complete();
     if (!this.options.json && goal.status !== "completed" && this.termination === undefined) {
       const detail = goal.detail === undefined ? "" : `: ${goal.detail}`;

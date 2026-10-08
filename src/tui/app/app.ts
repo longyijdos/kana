@@ -131,6 +131,7 @@ export class KanaTuiApp {
     this.renderMermaid = options.ui.config?.renderMermaid ?? true;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       initialSession,
+      getSessionTimeline: options.conversation.getSessionTimeline,
       createAgent: ({ configuration, ...agentOptions }) =>
         createAgent({
           ...agentOptions,
@@ -1149,7 +1150,7 @@ export class KanaTuiApp {
     const input = createUserMessage({
       content: prompt,
       provenance: { kind: "user_input" },
-      ...(images.length > 0 ? { images: structuredClone(images) } : {}),
+      ...(images.length > 0 ? { images } : {}),
     });
 
     if (this.conversation.canSteer) {
@@ -1185,7 +1186,7 @@ export class KanaTuiApp {
     const input = createUserMessage({
       content: prompt,
       provenance: { kind: "user_input" },
-      ...(images.length > 0 ? { images: structuredClone(images) } : {}),
+      ...(images.length > 0 ? { images } : {}),
     });
 
     this.editor.addToHistory(historyPrompt);

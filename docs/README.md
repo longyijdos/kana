@@ -28,6 +28,7 @@ These documents describe the current implementation. They are organized by stabl
 - [Sessions and memory](sessions-and-memory.md): session JSONL, recovery, artifacts, accounting, logs, durable memory, and consolidation.
 - [TUI interaction](tui.md): application lifecycle, commands, focus, controllers, input, and event projection.
 - [Terminal rendering](terminal-rendering.md): terminal lifecycle, layout, repaint, cursor and width, Markdown, diagrams, and tool presentation.
+- [Experimental HTTP server](server.md): `kana serve`, authentication, sessions, SSE, remote approvals, and process lifetime.
 - [Headless execution](headless.md): `kana exec`, approval behavior, output, JSONL protocol, deadlines, signals, and exit status.
 - [Kana Agent reusable workflow](kana-agent-workflow.md): caller setup, repository-local model configuration, authorization, publication, and version pinning.
 - [Local Terminal-Bench evaluation](terminal-bench.md): Harbor adapter, run parameters, proxying, and result interpretation.
@@ -51,6 +52,7 @@ Use the narrowest owner that contains the changed contract. Cross-boundary behav
 | `src/kana/subagents`, delegated Agent construction and lifecycle | [Subagents](subagents.md) |
 | `src/tui/app`, TUI process lifecycle | [TUI interaction](tui.md) |
 | `src/tui/runtime`, `src/tui/render`, presentation components and tool renderers | [Terminal rendering](terminal-rendering.md) |
+| `src/server` | [Experimental HTTP server](server.md) |
 | `src/headless` | [Headless execution](headless.md) |
 | `.github/workflows/kana-agent*`, `.github/kana` | [Kana Agent reusable workflow](kana-agent-workflow.md) |
 | `src/kana/update`, release scripts and workflows | [Release process](releasing.md) |

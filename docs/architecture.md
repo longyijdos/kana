@@ -1,13 +1,14 @@
 # Kana Architecture Overview
 
-Kana is a Bun-based terminal agent. Model calls, tool execution, product composition, and local persistence run in one process, exposed through either an interactive TUI or headless execution. This overview maps stable module boundaries and data flow; detailed contracts live in the linked subsystem documents.
+Kana is a Bun-based terminal agent. Model calls, tool execution, product composition, and local persistence run in one process, exposed through an interactive TUI, headless execution, or an experimental HTTP server. This overview maps stable module boundaries and data flow; detailed contracts live in the linked subsystem documents.
 
 ## System layers
 
 ```text
 src/main.ts → cli
                 ├→ tui ───────┐
-                └→ headless ──┴→ kana (product composition)
+                ├→ headless ──┤
+                └→ server ────┴→ kana (product composition)
                                   ├→ agent → core
                                   │    └→ tools → core, jobs, utils
                                   ├→ providers → core
@@ -21,7 +22,7 @@ core, logging, oauth, jobs, utils
 
 `core` contains provider-neutral messages, model metadata, streams, usage, and tool specifications. `agent` owns the conversation loop and context projection; executable tools add validation and execution around Core specifications. `providers` translates Core model requests to external wire protocols. `oauth` is generic, while `mcp` adds remote-tool protocol behavior.
 
-`kana` is the product layer. It resolves configuration and local paths, composes Agents, owns sessions and memory, activates Skills and MCP, and exposes frontend-neutral conversation operations. `tui` and `headless` consume that layer; neither owns model protocols or persistence formats.
+`kana` is the product layer. It resolves configuration and local paths, composes Agents, owns sessions and memory, activates Skills and MCP, and exposes frontend-neutral conversation operations. `tui`, `headless`, and `server` consume that layer; none owns model protocols or persistence formats.
 
 ## Enforced dependencies
 
@@ -29,10 +30,11 @@ The allowed direct dependencies between top-level source modules are:
 
 | Source | May import |
 | --- | --- |
-| `main.ts` | `cli`, `headless`, `kana`, `tui` |
-| `cli` | `headless`, `kana`, `oauth`, `tui`, `version.ts` |
+| `main.ts` | `cli`, `headless`, `kana`, `server`, `tui` |
+| `cli` | `headless`, `kana`, `oauth`, `server`, `tui`, `version.ts` |
 | `tui` | `agent`, `core`, `jobs`, `kana`, `logging`, `mcp`, `tools`, `utils`, `version.ts` |
 | `headless` | `agent`, `core`, `kana`, `logging`, `mcp` |
+| `server` | `agent`, `core`, `kana`, `logging` |
 | `kana` | `agent`, `core`, `jobs`, `logging`, `mcp`, `oauth`, `providers`, `tools`, `version.ts` |
 | `agent` | `core`, `logging`, `tools` |
 | `providers` | `core`, `logging` |
@@ -48,11 +50,11 @@ Inside `src/kana`, domain directories remain distinct: `config`, `conversation`,
 
 ## Composition roots
 
-`src/main.ts` delegates to `runCli`. Commands either perform a bounded operation—installation, reset, authentication, Skills management, update—or launch one of the two conversation frontends. Configuration and command semantics are documented in [Configuration and installation](configuration.md), [Headless execution](headless.md), and [Release process](releasing.md).
+`src/main.ts` delegates to `runCli`. Commands either perform a bounded operation—installation, reset, authentication, Skills management, update—or launch one of the three conversation frontends. Configuration and command semantics are documented in [Configuration and installation](configuration.md), [Headless execution](headless.md), [Experimental HTTP server](server.md), and [Release process](releasing.md).
 
 `KanaConversationHost` is the frontend-shared product boundary. It creates or restores hosted sessions, composes model and tool capabilities, binds persistence and logging, and exposes transitions used by `ConversationRuntime`. `createKanaAgent` assembles one selected model, stable prompt sources, effective runtime policy, built-in tools, and the current MCP registry capability.
 
-The TUI composes controllers over `ConversationRuntime`; headless mode projects the same runtime into text or versioned JSONL. Frontend behavior may differ, but Agent execution, input ordering, Goals, session transitions, and cleanup remain shared. See [Conversation runtime](conversation-runtime.md), [TUI interaction](tui.md), [Terminal rendering](terminal-rendering.md), and [Headless execution](headless.md).
+The TUI composes controllers over `ConversationRuntime`; headless mode projects the same runtime into text or versioned JSONL, and server mode provides authenticated HTTP operations and SSE. Frontend behavior may differ, but Agent execution, input ordering, Goals, session transitions, and cleanup remain shared. See [Conversation runtime](conversation-runtime.md), [TUI interaction](tui.md), [Terminal rendering](terminal-rendering.md), and [Headless execution](headless.md).
 
 ## Startup and shutdown
 
@@ -75,7 +77,8 @@ user or scheduled input
   → committed messages and runtime events
      ├→ session persistence in normal mode
      ├→ TUI transcript and status
-     └→ headless text or JSONL
+     ├→ headless text or JSONL
+     └→ server HTTP state or SSE
 ```
 
 Core messages and model events are frontend- and provider-neutral. The Agent commits complete messages, coordinates steering and queued input, and delegates tool execution without knowing the frontend. Providers retain their wire-specific replay state behind Core content. Tool results re-enter the same history before the next model step.
@@ -106,6 +109,7 @@ See [Configuration and installation](configuration.md), [Sessions and memory](se
 | Skills and system-prompt composition | [Skills and the system prompt](skills-and-prompt.md) |
 | TUI commands, focus, controllers, event projection | [TUI interaction](tui.md) |
 | Layout, repaint, width, Markdown, tool presentation | [Terminal rendering](terminal-rendering.md) |
+| HTTP API, SSE, remote approval, long-lived process lifecycle | [Experimental HTTP server](server.md) |
 | Kana Agent GitHub integration | [Kana Agent reusable workflow](kana-agent-workflow.md) |
 | Release automation, distribution, self-update | [Release process](releasing.md) |
 

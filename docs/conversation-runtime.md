@@ -1,11 +1,11 @@
 # Conversation runtime
 
-Kana places one product-level runtime between its frontends and the reusable Agent. The TUI and headless runner submit work and consume the same frontend-neutral events; neither frontend owns session persistence, queued-run ordering, or Agent construction.
+Kana places one product-level runtime between its frontends and the reusable Agent. The TUI, headless runner, and HTTP server submit work and consume the same frontend-neutral events; neither frontend owns session persistence, queued-run ordering, or Agent construction.
 
 ## Composition boundaries
 
 ```text
-TUI / Headless
+TUI / Headless / Server
   → ConversationRuntime
       ├→ ConversationInputCoordinator
       │   ├→ Agent-owned inbox
@@ -27,7 +27,9 @@ TUI / Headless
 
 `HostedSessionRegistry` owns the live resources associated with each session instance. A hosted record binds the session's in-memory mirror, optional journal, logger, artifact store, background-job client, subagent client, user-task manager, and pending fork snapshot. `ConversationRuntime` selects and executes against those resources through host callbacks rather than opening storage or background processes itself.
 
-`ConversationRuntime` owns the current Agent and session snapshot. `ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, background-job completions, subagent settlements, and user-task updates, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
+`ConversationRuntime` owns the current Agent and session snapshot. Each snapshot read queries the host’s latest committed timeline by session ID through `getSessionTimeline`; the callback must return a detached snapshot owned by its caller. The runtime uses that timeline directly, takes messages and checkpoint from the Agent’s detached state, and clones only its own todo state. It does not copy initial messages or checkpoint merely to replace them. TUI, headless, and server composition all bind this callback. Independent runtimes without it clone the initial or loaded timeline for each snapshot, while query failures propagate rather than returning stale history. The runtime does not reconstruct journal entries from Agent events, and streaming deltas do not trigger timeline copying. Clean-mode sessions have no journal and an empty committed timeline.
+
+`ConversationInputCoordinator` is the narrower scheduling boundary beneath it: it observes the Agent inbox, wakes, Goals, background-job completions, subagent settlements, and user-task updates, publishes a detached queue snapshot, and asks the runtime to execute each admitted new run. It does not keep another message queue.
 
 ## Run lifecycle and events
 
@@ -39,7 +41,7 @@ run_start
   → run_end | run_error
 ```
 
-`agent_event` carries the reusable Agent protocol unchanged except for defensive cloning. The runtime separately publishes `session_changed`, `input_queue_changed`, `todo_state_changed`, and `goal_state_changed`. Listener failures are isolated and logged as `conversation.listener_failed`; they cannot change execution or cleanup.
+`agent_event` carries the reusable Agent protocol unchanged. Message, session, queue, todo, and Goal payloads are cloned separately for each listener at the dispatch boundary, so a frontend can take ownership of its copy without another deep clone. The runtime separately clones terminal events and todo items that it retains internally. The runtime separately publishes `session_changed`, `input_queue_changed`, `todo_state_changed`, and `goal_state_changed`. Listener failures are isolated and logged as `conversation.listener_failed`; they cannot change execution or cleanup.
 
 For an ordinary run, the runtime marks the source active, subscribes to Agent events, calls `Agent.stream()`, waits for both stream iteration and `result()`, then requires a terminal `agent_end`. A persistence or post-processing failure therefore becomes `run_error` rather than a successful runtime outcome. The active source remains set until the complete Agent boundary settles, keeping submission exclusion authoritative.
 
@@ -120,4 +122,4 @@ The frontend closes the runtime before closing the host. Host shutdown stops new
 
 ## Frontend responsibilities
 
-The TUI owns focus, controllers, transcript blocks, status projection, and user interaction. Headless owns prompt resolution, signal/deadline policy, JSONL or human output projection, and exit status. Both consume runtime events and call the same runtime operations; neither should reproduce inbox ordering, Goal admission, session replacement, or cleanup orchestration.
+The TUI owns focus, controllers, transcript blocks, status projection, and user interaction. Headless owns prompt resolution, signal/deadline policy, JSONL or human output projection, and exit status. The [HTTP server](server.md) owns authenticated request admission, SSE projection, reconnect snapshots, and remote approval decisions. All consume runtime events and call the same runtime operations; neither should reproduce inbox ordering, Goal admission, session replacement, or cleanup orchestration.

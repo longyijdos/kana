@@ -111,6 +111,7 @@ export function createHeadlessRuntime(
       : undefined,
     createAgent: (agentOptions) => host.createAgent(agentOptions),
     createNewSession: () => host.createNewSession(),
+    getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
     forkSession: (messages, contextCheckpoint, prompt) =>
       host.forkSession(messages, contextCheckpoint, prompt),
     loadSession: (sessionId) => {
@@ -184,7 +185,7 @@ function waitForGoalCompletion(runtime: ConversationRuntime): {
       if (event.goal.id !== activeGoalId || event.goal.status === "active") {
         return;
       }
-      terminalGoal = structuredClone(event.goal);
+      terminalGoal = event.goal;
       if (!runtime.isRunning) {
         settle();
       }

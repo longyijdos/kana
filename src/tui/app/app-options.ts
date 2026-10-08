@@ -31,6 +31,7 @@ import type { TuiModelSettings } from "./model-selection";
 
 type KanaTuiConversationCapabilities = {
   initialSession?: ConversationSessionSnapshot;
+  getSessionTimeline?: (sessionId: string) => ConversationSessionSnapshot["timeline"];
   getResumeSessionId: () => string | undefined;
   createNewSession: () => { id: string };
   forkSession: (

@@ -116,6 +116,99 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
+  test("queries committed timeline during runs and across session transitions without leaking state", async () => {
+    const env = createTempEnv();
+    const model = new ControlledModel();
+    const host = createKanaConversationHost({
+      env,
+      createAgent: (_config, options = {}) =>
+        new Agent({
+          model,
+          messages: options.messages,
+          journal: options.journal,
+          onRunCommitted: options.onRunCommitted,
+        }),
+    });
+    const runtime = createRuntime(host);
+    const originalId = runtime.sessionId!;
+    const submit = (content: string) =>
+      runtime.submit({ ...messageIdentityForTest("user"), role: "user", content });
+    const committedTimeline = (id: string) => host.getSessionTimeline(id);
+    try {
+      expect(runtime.session!.timeline).toEqual([]);
+      expect(() => host.getSessionTimeline("missing")).toThrow("has no session missing");
+      const run = submit("First run.");
+      await waitFor(() => model.requests.length === 1);
+      const committed = committedTimeline(originalId);
+      expect(committed.map((entry) => entry.type)).toEqual(["turn_start", "message"]);
+      expect(runtime.session!.timeline).toEqual(committed);
+      model.requests[0]!.update("Partial reply");
+      await waitFor(() => runtime.state.streamingMessage !== undefined);
+      expect(runtime.session!.timeline).toEqual(committed);
+
+      const hostSnapshot = host.getSessionTimeline(originalId);
+      hostSnapshot[0]!.timestamp = "changed";
+      hostSnapshot.splice(1);
+      const runtimeSnapshot = runtime.session!;
+      const message = runtimeSnapshot.timeline.find((entry) => entry.type === "message")!;
+      if (message.message.role === "user") message.message.content = "changed";
+      runtimeSnapshot.timeline.pop();
+      expect(host.getSessionTimeline(originalId)).toEqual(committed);
+      expect(runtime.session!.timeline).toEqual(committed);
+
+      model.requests[0]!.complete("First reply.");
+      await run;
+      const originalTimeline = committedTimeline(originalId);
+      expect(originalTimeline.map((entry) => entry.type)).toEqual([
+        "turn_start",
+        "message",
+        "message",
+        "turn_end",
+      ]);
+      expect(runtime.session!.timeline).toEqual(originalTimeline);
+      runtime.reconfigure();
+      expect(runtime.session!.timeline).toEqual(originalTimeline);
+
+      const fresh = await runtime.startNewSession();
+      expect(fresh.id).not.toBe(originalId);
+      expect(fresh.timeline).toEqual([]);
+      expect((await runtime.resumeSession(originalId)).timeline.map((entry) => entry.id)).toEqual(
+        originalTimeline.map((entry) => entry.id),
+      );
+      const resumedRun = submit("Second run.");
+      await waitFor(() => model.requests.length === 2);
+      expect(runtime.session!.timeline).toEqual(committedTimeline(originalId));
+      expect(runtime.session!.timeline.length).toBeGreaterThan(originalTimeline.length);
+      model.requests[1]!.complete("Second reply.");
+      await resumedRun;
+      const resumedTimeline = committedTimeline(originalId);
+      expect(runtime.session!.timeline).toEqual(resumedTimeline);
+
+      const fork = await runtime.forkSession("Fork history.");
+      expect(fork.id).not.toBe(originalId);
+      expect(fork.timeline).toEqual([]);
+      const forkRun = submit("Fork run.");
+      await waitFor(() => model.requests.length === 3);
+      expect(runtime.session!.timeline).toEqual(committedTimeline(fork.id));
+      model.requests[2]!.complete("Fork reply.");
+      await forkRun;
+      const forkTimeline = committedTimeline(fork.id);
+      expect(runtime.session!.timeline).toEqual(forkTimeline);
+      expect(
+        forkTimeline.some((entry) => resumedTimeline.some((original) => original.id === entry.id)),
+      ).toBe(false);
+      expect((await runtime.resumeSession(originalId)).timeline.map((entry) => entry.id)).toEqual(
+        resumedTimeline.map((entry) => entry.id),
+      );
+      expect((await runtime.resumeSession(fork.id)).timeline.map((entry) => entry.id)).toEqual(
+        forkTimeline.map((entry) => entry.id),
+      );
+    } finally {
+      await runtime.close();
+      await host.close();
+    }
+  });
+
   test("applies model changes atomically through the shared config store", async () => {
     const env = createTempEnv();
     const seenModels: string[] = [];
@@ -295,10 +388,17 @@ describe("Kana conversation host", () => {
           "toolUse",
         );
         await waitFor(() => model.requests.length === 2);
+        expect(runtime.session!.timeline).toEqual(host.getSessionTimeline(runtime.sessionId!));
+        expect(
+          runtime.session!.timeline.filter((entry) => entry.type === "todo_state"),
+        ).toHaveLength(2);
         model.requests[1]!.complete("Tracked.");
         await run;
         const saved = loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() });
         expect(saved.todoState).toEqual(items);
+        expect(runtime.session!.timeline.map((entry) => entry.id)).toEqual(
+          saved.timeline.map((entry) => entry.id),
+        );
         const changes = saved.timeline.filter((entry) => entry.type === "todo_state");
         expect(changes).toHaveLength(2);
         expect(changes.map((entry) => entry.parentToolCallId)).toEqual([
@@ -495,6 +595,8 @@ describe("Kana conversation host", () => {
     expect(seenModels).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
     expect(host.config.agent.model.name).toBe("deepseek-v4-pro");
     expect(host.resumeSessionId).toBeUndefined();
+    expect(runtime.session!.timeline).toEqual([]);
+    expect(host.getSessionTimeline(runtime.sessionId!)).toEqual([]);
     expect(host.listSessions()).toEqual([]);
     expect(() => host.loadSession("saved-session")).toThrow(
       "Saved sessions are unavailable in clean mode.",
@@ -742,6 +844,7 @@ function createRuntime<TConfiguration>(
       : undefined,
     createAgent: (options) => host.createAgent(options),
     createNewSession: () => host.createNewSession(),
+    getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
     forkSession: (messages, contextCheckpoint, prompt) =>
       host.forkSession(messages, contextCheckpoint, prompt),
     loadSession: (sessionId) => {
