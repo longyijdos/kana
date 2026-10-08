@@ -140,6 +140,17 @@ kana skills sync --target-dir ~/.other-agent/skills  # 同步至任意第三方 
 
 Kana 会自动从 `.kana/skills` 和 `.agents/skills` 发现项目私有 Skills，从 `AGENTS.md` 读取项目指令，并无缝挂载本地 stdio 或远端 MCP server。详见[配置与安装](docs/configuration.zh-CN.md)。
 
+### 5. 实验性 HTTP 服务端与远程前端
+
+`kana serve` 通过 Bun 原生 HTTP 服务端暴露对话运行时：
+
+```bash
+export KANA_SERVER_TOKEN="$(openssl rand -hex 32)"
+kana serve --port 8318
+```
+
+通过 SSE 与 Bearer 鉴权接口接入 [Kana Remote](https://github.com/longyijdos/kana-remote) 等 Web 或 Android 移动端前端，支持流式对话、工具审批与会话管理。详见[实验性 HTTP 服务端](docs/server.zh-CN.md)。
+
 ## 更新与源码构建
 
 ### 检查与自更新
@@ -179,7 +190,7 @@ Kana 崇尚对本地环境的绝对尊重，同时也向你明确其能力边界
 - **架构与配置**：[架构总览](docs/architecture.zh-CN.md) · [配置与安装](docs/configuration.zh-CN.md) · [发版流程](docs/releasing.zh-CN.md)
 - **核心运行时**：[对话运行时](docs/conversation-runtime.zh-CN.md) · [Agent 运行时](docs/agent-runtime.zh-CN.md) · [工具与执行](docs/tools.zh-CN.md) · [会话与记忆](docs/sessions-and-memory.zh-CN.md)
 - **模型与扩展**：[供应商总览](docs/providers.zh-CN.md) · [DeepSeek](docs/deepseek-provider.zh-CN.md) · [OpenAI Codex](docs/openai-codex-provider.zh-CN.md) · [自定义兼容网关](docs/custom-provider.zh-CN.md) · [OAuth](docs/oauth.zh-CN.md) · [MCP](docs/mcp.zh-CN.md) · [Skills 与提示词](docs/skills-and-prompt.zh-CN.md) · [Subagent](docs/subagents.zh-CN.md)
-- **前端与工程化**：[TUI 交互](docs/tui.zh-CN.md) · [终端渲染](docs/terminal-rendering.zh-CN.md) · [无头执行](docs/headless.zh-CN.md) · [Kana Agent 工作流](docs/kana-agent-workflow.zh-CN.md) · [Terminal-Bench 评测](docs/terminal-bench.zh-CN.md)
+- **前端与工程化**：[TUI 交互](docs/tui.zh-CN.md) · [终端渲染](docs/terminal-rendering.zh-CN.md) · [无头执行](docs/headless.zh-CN.md) · [实验性 HTTP 服务端](docs/server.zh-CN.md) · [Kana Agent 工作流](docs/kana-agent-workflow.zh-CN.md) · [Terminal-Bench 评测](docs/terminal-bench.zh-CN.md)
 
 ## 参与开发
 

@@ -1,3 +1,23 @@
+## [0.13.0](https://github.com/longyijdos/kana/compare/v0.12.1...v0.13.0) (2026-10-08)
+
+Kana v0.13.0 introduces an experimental HTTP and SSE server frontend, enabling remote Web and mobile clients to connect to a Kana agent instance. It also updates the QuickJS Codemode runtime.
+
+### Features
+
+- Launch a single-user, single-workspace HTTP and SSE server with `kana serve [--port <port>]`. The server exposes the core conversation runtime over local loopback (`127.0.0.1:8318` by default) with mandatory Bearer token authentication via `KANA_SERVER_TOKEN`.
+- Stream real-time agent execution events over Server-Sent Events (`/v1/events`), including assistant messages, reasoning streams, tool invocations, and interactive approval prompts.
+- Manage sessions and interact remotely through `/v1/messages` (with automatic task queuing), `/v1/approvals` (interactive tool confirmation and session-level decisions), and `/v1/sessions` (session resetting and creation).
+- Expose live model token usage and context window limits through `/v1/state` for frontend consumption.
+- Power remote companion frontends such as [Kana Remote](https://github.com/longyijdos/kana-remote) on Web and Android.
+
+### Bug Fixes
+
+- Upgrade `@mariozechner/pi-codemode` to 1.0.4 for JavaScript tool orchestration fixes.
+
+### Security Notes
+
+- `kana serve` is strictly an experimental API frontend for personal and trusted deployments, not a multi-tenant service. Tool execution and shell access inherit the host process environment without OS sandboxing. Always deploy behind an authenticated, encrypted reverse proxy (HTTPS/TLS) and never expose the plain HTTP port to public ingress.
+
 ## [0.12.1](https://github.com/longyijdos/kana/compare/v0.12.0...v0.12.1) (2026-10-06)
 
 Kana v0.12.1 is a hotfix for OpenAI Codex prompt-cache reuse. Codex users should upgrade; no configuration changes or sign-in are required.

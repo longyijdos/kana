@@ -140,6 +140,17 @@ kana skills sync --target-dir ~/.other-agent/skills  # Sync to any third-party a
 
 Kana auto-discovers project skills from `.kana/skills` and `.agents/skills`, reads project instructions from `AGENTS.md`, and connects to stdio or remote MCP servers. See [Configuration and installation](docs/configuration.md).
 
+### 5. Experimental HTTP server and remote frontends
+
+`kana serve` exposes the conversation runtime through Bun's native HTTP server:
+
+```bash
+export KANA_SERVER_TOKEN="$(openssl rand -hex 32)"
+kana serve --port 8318
+```
+
+Connect remote Web or mobile companions such as [Kana Remote](https://github.com/longyijdos/kana-remote) over SSE and Bearer-authenticated endpoints with live streaming, tool approvals, and session control. See [Experimental HTTP server](docs/server.md).
+
 ## Updates and source install
 
 ### Check and self-update
@@ -179,7 +190,7 @@ See the [Documentation index](docs/README.md) for architectural contracts, docum
 - **Architecture & Setup**: [Architecture](docs/architecture.md) · [Configuration and installation](docs/configuration.md) · [Release process](docs/releasing.md)
 - **Core Runtime**: [Conversation runtime](docs/conversation-runtime.md) · [Agent runtime](docs/agent-runtime.md) · [Tools and execution](docs/tools.md) · [Sessions and memory](docs/sessions-and-memory.md)
 - **Models & Extensions**: [Providers](docs/providers.md) · [DeepSeek](docs/deepseek-provider.md) · [OpenAI Codex](docs/openai-codex-provider.md) · [Custom provider](docs/custom-provider.md) · [OAuth](docs/oauth.md) · [MCP](docs/mcp.md) · [Skills & system prompt](docs/skills-and-prompt.md) · [Subagents](docs/subagents.md)
-- **Frontend & Workflows**: [TUI interaction](docs/tui.md) · [Terminal rendering](docs/terminal-rendering.md) · [Headless execution](docs/headless.md) · [Kana Agent workflow](docs/kana-agent-workflow.md) · [Terminal-Bench evaluation](docs/terminal-bench.md)
+- **Frontend & Workflows**: [TUI interaction](docs/tui.md) · [Terminal rendering](docs/terminal-rendering.md) · [Headless execution](docs/headless.md) · [Experimental HTTP server](docs/server.md) · [Kana Agent workflow](docs/kana-agent-workflow.md) · [Terminal-Bench evaluation](docs/terminal-bench.md)
 
 ## Development
 
