@@ -48,7 +48,9 @@ Decisions are `allow` (once), `reject` (abort the run), `always` (persist exact 
 
 ## State and event protocol
 
-A snapshot contains `session` (ID, messages, timeline, or null), `running` (runtime exclusion state), `run` (latest process-local ID, source, status, optional outcome/error, or null), `assistant` (in-progress message or null), `tools` (current run’s outer execution states), `input_queue`, `todo`, `goal`, and `approvals`. Messages use Core’s provider-neutral shapes; opaque assistant-content `providerState` and context checkpoints are not exposed. Run status is `running`, `completed`, or `failed`. Completed does not necessarily mean successful: inspect outcomes such as `stop`, `aborted`, or `error`.
+A snapshot contains `session` (ID, messages, timeline, or null), `running` (runtime exclusion state), `run` (latest process-local ID, source, status, optional outcome/error, or null), `assistant` (in-progress message or null), `tools` (current run’s outer execution states), `context`, `input_queue`, `todo`, `goal`, and `approvals`. Messages use Core’s provider-neutral shapes; opaque assistant-content `providerState` and context checkpoints are not exposed. Run status is `running`, `completed`, or `failed`. Completed does not necessarily mean successful: inspect outcomes such as `stop`, `aborted`, or `error`.
+
+`context` is `{estimated_tokens: number | null, context_limit: number}`. It uses the same context estimate as the TUI and the configured effective limit, falling back to the model's context window. An unavailable estimate is `null`. The estimate describes active prompt context, including compaction, rather than cumulative API token consumption or the entire retained transcript. `context.updated` carries the same shape after input consumption, completed model/tool turns, compaction, run completion or failure, and session changes. It is not emitted for each streaming text delta; reconnect snapshots restore the runtime's current estimate.
 
 `session.messages` is the authoritative message-body collection. In `session.timeline`, message entries contain `message_id` instead of an embedded `message`; resolve it against `session.messages[].id`. Entry `id`, `parentId`, `timestamp`, and timeline order are preserved. Non-message entries remain unchanged. This retains interleaved history without duplicating message text, images, or structured results.
 
@@ -81,6 +83,7 @@ The first frame always replaces client state with a fresh snapshot. Subsequent e
 | tool.updated | Tool identity, `partial_result` |
 | tool.completed | Tool identity, `status`, `result`, `is_error` |
 | tool.paused / tool.resumed | Tool identity, approval `reason` |
+| context.updated | `estimated_tokens` (number or null), `context_limit` |
 | context.compaction_started / context.compacted | Reason, token counts, context limit; completion also includes usage |
 | approval.required / approval.resolved | Pending approval / `{id, decision}` |
 

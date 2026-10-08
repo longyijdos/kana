@@ -7,6 +7,17 @@ import { cleanupTempKanaHomes, createTempKanaHomeEnv } from "../helpers/temp-kan
 const main = fileURLToPath(new URL("../../src/main.ts", import.meta.url));
 afterAll(cleanupTempKanaHomes);
 
+async function readFrame(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> {
+  const decoder = new TextDecoder();
+  let frame = "";
+  while (!frame.includes("\n\n")) {
+    const chunk = await reader.read();
+    if (chunk.done) throw new Error("Event stream ended before a complete frame.");
+    frame += decoder.decode(chunk.value, { stream: true });
+  }
+  return frame.slice(0, frame.indexOf("\n\n"));
+}
+
 describe("server process", () => {
   test("refuses startup without a token before creating product resources", async () => {
     const env = createTempKanaHomeEnv();
@@ -120,6 +131,7 @@ name = "local-test"
       await start();
       expect((await fetch(`http://127.0.0.1:${port}/v1/state`)).status).toBe(401);
       const initial = await (await request("/v1/state")).json();
+      expect(initial.data.context.context_limit).toBe(32_000);
       const originalId = initial.data.session.id;
       expect(
         (await request("/v1/messages", "POST", { session_id: originalId, message: "Say hello" }))
@@ -141,11 +153,11 @@ name = "local-test"
       const activeEvents = await request("/v1/events");
       const activeReader = activeEvents.body!.getReader();
       try {
-        const first = new TextDecoder().decode((await activeReader.read()).value);
+        const first = await readFrame(activeReader);
         const data = first.split("\n").find((line) => line.startsWith("data: "))!;
-        expect(JSON.parse(data.slice(6)).data.session.timeline).toEqual(
-          active.data.session.timeline,
-        );
+        const snapshot = JSON.parse(data.slice(6));
+        expect(snapshot.data.session.timeline).toEqual(active.data.session.timeline);
+        expect(snapshot.data.context).toEqual(active.data.context);
       } finally {
         await activeReader.cancel();
       }
@@ -177,11 +189,12 @@ name = "local-test"
       const events = await request("/v1/events");
       const reader = events.body!.getReader();
       try {
-        const first = new TextDecoder().decode((await reader.read()).value);
+        const first = await readFrame(reader);
         const data = first.split("\n").find((line) => line.startsWith("data: "))!;
         const snapshot = JSON.parse(data.slice(6));
         expect(snapshot.type).toBe("snapshot");
         expect(snapshot.data.session.timeline).toEqual(state.data.session.timeline);
+        expect(snapshot.data.context).toEqual(state.data.context);
       } finally {
         await reader.cancel();
       }

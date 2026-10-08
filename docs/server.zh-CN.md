@@ -48,7 +48,9 @@ JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_versi
 
 ## 状态与事件协议
 
-快照包含 `session`（ID、消息、timeline 或 null）、`running`（runtime 执行互斥状态）、`run`（最近进程内 ID、source、status、可选 outcome/error 或 null）、`assistant`（生成中的消息或 null）、`tools`（当前 run 的外层执行状态）、`input_queue`、`todo`、`goal`、`approvals`。消息采用 Core 的供应商中立结构，但不暴露 assistant content 中的 opaque `providerState` 或 context checkpoint。Run status 为 `running`、`completed`、`failed`；completed 不一定成功，需检查 `stop`、`aborted`、`error` 等 outcome。
+快照包含 `session`（ID、消息、timeline 或 null）、`running`（runtime 执行互斥状态）、`run`（最近进程内 ID、source、status、可选 outcome/error 或 null）、`assistant`（生成中的消息或 null）、`tools`（当前 run 的外层执行状态）、`context`、`input_queue`、`todo`、`goal`、`approvals`。消息采用 Core 的供应商中立结构，但不暴露 assistant content 中的 opaque `providerState` 或 context checkpoint。Run status 为 `running`、`completed`、`failed`；completed 不一定成功，需检查 `stop`、`aborted`、`error` 等 outcome。
+
+`context` 为 `{estimated_tokens: number | null, context_limit: number}`。估算沿用 TUI 的上下文计算，有效上限取配置值，缺省时取模型的上下文窗口。无法估算时为 `null`。估算反映压缩后的活跃提示词上下文，不是累计 API token 消耗，也不是整个保留的 transcript。`context.updated` 使用相同结构，在输入被消费、模型／工具轮次完成、上下文压缩、run 完成或失败、session 切换后推送。不会逐个流式文字 delta 推送；重连快照重新读取 Runtime 的当前估算。
 
 `session.messages` 是消息正文的权威集合。`session.timeline` 的 message entry 使用 `message_id` 替代内嵌 `message`，通过 `session.messages[].id` 查找正文。Entry 的 `id`、`parentId`、`timestamp` 以及 timeline 顺序均保留；非 message entry 不变。这样保留交错历史，又不重复传输消息文本、图片或结构化结果。
 
@@ -81,6 +83,7 @@ data: {"schema_version":1,"type":"run.started","session_id":"...","run_id":"..."
 | tool.updated | 工具身份、`partial_result` |
 | tool.completed | 工具身份、`status`、`result`、`is_error` |
 | tool.paused / tool.resumed | 工具身份、审批 `reason` |
+| context.updated | `estimated_tokens`（数字或 null）、`context_limit` |
 | context.compaction_started / context.compacted | Reason、token 数与 context limit；完成时另含 usage |
 | approval.required / approval.resolved | 待审批项 / `{id, decision}` |
 

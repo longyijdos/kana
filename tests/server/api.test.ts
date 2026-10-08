@@ -40,8 +40,9 @@ describe("server HTTP API", () => {
   });
 
   test("accepts a run, streams its events, and retains history after client disconnect", async () => {
-    const f = createFixture();
+    const f = createFixture({ context: { contextLimit: 32_000, maxOutputTokens: 512 } });
     try {
+      const initialTokens = f.runtime.state.estimatedContextTokens;
       const response = await f.request("/v1/events");
       expect(response.headers.get("content-type")).toBe("text/event-stream");
       const reader = response.body!.getReader();
@@ -49,6 +50,11 @@ describe("server HTTP API", () => {
       expect(first).toContain("event: snapshot");
       expect(first).toContain('"schema_version":1');
       expect(first).toContain('"session_id":"session-a"');
+      const snapshotData = first.split("\n").find((line) => line.startsWith("data: "))!;
+      expect(JSON.parse(snapshotData.slice("data: ".length)).data.context).toEqual({
+        estimated_tokens: initialTokens,
+        context_limit: 32_000,
+      });
       const accepted = await f.request("/v1/messages", "POST", {
         session_id: "session-a",
         message: "Hello",
@@ -72,6 +78,22 @@ describe("server HTTP API", () => {
         "assistant",
       ]);
       expect(state.data.run).toMatchObject({ status: "completed", outcome: "stop" });
+      expect(state.data.context.estimated_tokens).toBeGreaterThan(initialTokens!);
+      expect(state.data.context.context_limit).toBe(32_000);
+      const updates = output
+        .split("\n\n")
+        .filter((frame) => frame.startsWith("event: context.updated\n"))
+        .map((frame) => JSON.parse(frame.split("\n")[1]!.slice("data: ".length)));
+      expect(updates.at(-1).data).toEqual(state.data.context);
+      const reconnect = await f.request("/v1/events");
+      const reconnectReader = reconnect.body!.getReader();
+      try {
+        const first = new TextDecoder().decode((await reconnectReader.read()).value);
+        const data = first.split("\n").find((line) => line.startsWith("data: "))!;
+        expect(JSON.parse(data.slice("data: ".length)).data.context).toEqual(state.data.context);
+      } finally {
+        await reconnectReader.cancel();
+      }
     } finally {
       await f.close();
     }

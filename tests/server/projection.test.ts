@@ -70,6 +70,137 @@ describe("server event projection", () => {
     expect(() => stringifyJson(cyclic)).toThrow();
   });
 
+  test("projects calibrated context estimates and configured limits from the runtime", async () => {
+    const user = createUserMessage({
+      content: "Earlier question",
+      provenance: { kind: "user_input" },
+    });
+    const assistant = {
+      ...createMessageIdentity({ kind: "model_output" }),
+      role: "assistant" as const,
+      content: [{ type: "text" as const, text: "Earlier answer" }],
+      usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+    };
+    const f = createFixture({
+      session: { id: "history", messages: [user, assistant], timeline: [] },
+      context: { contextLimit: 32_000, maxOutputTokens: 512 },
+    });
+    try {
+      const projection = new ServerProjection(f.runtime, () => {});
+      const context = projection.snapshot().context;
+      expect(context).toEqual({
+        estimated_tokens: f.runtime.state.estimatedContextTokens ?? null,
+        context_limit: 32_000,
+      });
+      expect(context.estimated_tokens).toBeGreaterThan(100);
+      context.estimated_tokens = 0;
+      expect(projection.snapshot().context.estimated_tokens).toBeGreaterThan(100);
+    } finally {
+      await f.close();
+    }
+  });
+
+  test("uses null for unavailable context estimates and the model's default limit", async () => {
+    const f = createFixture();
+    const events: Array<{ type: string; data: unknown }> = [];
+    const projection = new ServerProjection(f.runtime, (type, data) => events.push({ type, data }));
+    try {
+      const context = { estimated_tokens: null, context_limit: 128_000 };
+      expect(projection.snapshot().context).toEqual(context);
+      projection.handle({ type: "agent_event", source: "user", event: { type: "agent_start" } });
+      expect(events).toEqual([{ type: "context.updated", data: context }]);
+    } finally {
+      await f.close();
+    }
+  });
+
+  test("publishes the latest model-turn estimate before run completion and refreshes session context", async () => {
+    const f = createFixture({ context: { contextLimit: 32_000, maxOutputTokens: 512 } });
+    const events: Array<{ type: string; data: unknown }> = [];
+    const projection = new ServerProjection(f.runtime, (type, data) => events.push({ type, data }));
+    const unsubscribe = f.runtime.subscribe((event) => projection.handle(event));
+    try {
+      const initialContext = projection.snapshot().context;
+      projection.handle({
+        type: "agent_event",
+        source: "user",
+        event: {
+          type: "turn_end",
+          turn: 1,
+          message: {
+            ...createMessageIdentity({ kind: "model_output" }),
+            role: "assistant",
+            content: [],
+          },
+          toolResults: [],
+          estimatedContextTokens: 321,
+        },
+      });
+      expect(events.at(-1)).toEqual({
+        type: "context.updated",
+        data: { estimated_tokens: 321, context_limit: 32_000 },
+      });
+      await f.runtime.submit(
+        createUserMessage({ content: "Hello", provenance: { kind: "user_input" } }),
+      );
+      const context = projection.snapshot().context;
+      expect(context.estimated_tokens).toBeGreaterThan(initialContext.estimated_tokens!);
+      const completed = events.map((event) => event.type).lastIndexOf("run.completed");
+      expect(events[completed - 1]).toEqual({ type: "context.updated", data: context });
+      await f.runtime.startNewSession();
+      const changed = events.map((event) => event.type).lastIndexOf("session.changed");
+      expect(events[changed + 1]).toEqual({
+        type: "context.updated",
+        data: initialContext,
+      });
+      expect(events[changed + 1]?.data).toEqual(projection.snapshot().context);
+    } finally {
+      unsubscribe();
+      await f.close();
+    }
+  });
+
+  test("publishes compacted context without counting the retained transcript as active context", async () => {
+    const messages = [
+      createUserMessage({ content: "old ".repeat(2_000), provenance: { kind: "user_input" } }),
+      {
+        ...createMessageIdentity({ kind: "model_output" }),
+        role: "assistant" as const,
+        content: [{ type: "text" as const, text: "Earlier answer" }],
+      },
+    ];
+    const f = createFixture({
+      session: { id: "history", messages, timeline: [] },
+      context: {
+        contextLimit: 2_048,
+        maxOutputTokens: 256,
+        compactPolicy: () => ({ summary: "Earlier conversation." }),
+      },
+    });
+    const events: Array<{ type: string; data: unknown }> = [];
+    const projection = new ServerProjection(f.runtime, (type, data) => events.push({ type, data }));
+    const unsubscribe = f.runtime.subscribe((event) => projection.handle(event));
+    try {
+      const before = projection.snapshot().context;
+      await f.runtime.compact();
+      const snapshot = projection.snapshot();
+      expect(snapshot.context.estimated_tokens).toBeLessThan(before.estimated_tokens!);
+      expect(snapshot.context.context_limit).toBe(2_048);
+      expect(snapshot.session!.messages).toEqual(messages);
+      const updates = events.filter((event) => event.type === "context.updated");
+      expect(updates.map((event) => event.data)).toEqual([
+        before,
+        snapshot.context,
+        snapshot.context,
+      ]);
+      expect(events.at(-2)).toEqual({ type: "context.updated", data: snapshot.context });
+      expect(events.at(-1)?.type).toBe("run.completed");
+    } finally {
+      unsubscribe();
+      await f.close();
+    }
+  });
+
   test("stores message bodies once while preserving timeline references and event order", async () => {
     const imageData = "aW1hZ2UtcGF5bG9hZA==";
     const user = createUserMessage({
@@ -237,6 +368,7 @@ describe("server event projection", () => {
         "tool.started",
         "tool.updated",
         "tool.completed",
+        "context.updated",
         "run.failed",
       ]);
       projection.handle({

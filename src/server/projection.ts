@@ -56,9 +56,18 @@ export class ServerProjection {
       run: this.run ? { ...this.run } : null,
       assistant: this.assistant ? projectAssistant(this.assistant) : null,
       tools: structuredClone([...this.tools.values()]),
+      context: this.context(),
       input_queue: this.runtime.inputQueue,
       todo: this.runtime.todoState,
       goal: this.runtime.goal ?? null,
+    };
+  }
+
+  private context(estimatedTokens?: number) {
+    const state = this.runtime.state;
+    return {
+      estimated_tokens: estimatedTokens ?? state.estimatedContextTokens ?? null,
+      context_limit: state.contextLimit ?? state.model.metadata.contextWindow,
     };
   }
 
@@ -78,6 +87,7 @@ export class ServerProjection {
           this.run.status = "completed";
           this.run.outcome = event.event?.reason;
         }
+        this.emit("context.updated", this.context());
         this.emit("run.completed", {
           outcome: event.event?.reason ?? null,
           goal: event.goal ?? null,
@@ -88,6 +98,7 @@ export class ServerProjection {
           this.run.status = "failed";
           this.run.error = projectError(event.error);
         }
+        this.emit("context.updated", this.context());
         this.emit("run.failed", { error: projectError(event.error) });
         return;
       case "session_changed":
@@ -95,6 +106,7 @@ export class ServerProjection {
         this.assistant = null;
         this.tools.clear();
         this.emit("session.changed", { action: event.action, session_id: event.session.id });
+        this.emit("context.updated", this.context());
         return;
       case "input_queue_changed":
         this.emit("input.queue_changed", event.queue);
@@ -144,6 +156,7 @@ export class ServerProjection {
         return;
       case "turn_end":
         this.emit("model_turn.completed", { turn: event.turn, usage: event.message.usage ?? null });
+        this.emit("context.updated", this.context(event.estimatedContextTokens));
         return;
       case "tool_execution_start": {
         if (event.parentToolCallId !== undefined) return;
@@ -195,6 +208,10 @@ export class ServerProjection {
           estimated_tokens: event.estimatedTokens,
           context_limit: event.contextLimit,
         });
+        this.emit("context.updated", {
+          estimated_tokens: event.estimatedTokens,
+          context_limit: event.contextLimit,
+        });
         return;
       case "context_compacted":
         this.emit("context.compacted", {
@@ -205,11 +222,18 @@ export class ServerProjection {
           context_limit: event.contextLimit,
           usage: event.usage ?? null,
         });
+        this.emit("context.updated", {
+          estimated_tokens: event.estimatedAfterTokens,
+          context_limit: event.contextLimit,
+        });
         return;
       case "turn_input":
         this.emit("input.committed", { message: projectMessage(event.message) });
+        this.emit("context.updated", this.context());
         return;
       case "agent_start":
+        this.emit("context.updated", this.context());
+        return;
       case "agent_end":
         return;
     }

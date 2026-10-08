@@ -22,6 +22,7 @@ export type ServerEventType =
   | "tool.completed"
   | "tool.paused"
   | "tool.resumed"
+  | "context.updated"
   | "context.compaction_started"
   | "context.compacted"
   | "approval.required"

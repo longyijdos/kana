@@ -1,4 +1,4 @@
-import { Agent } from "../../src/agent";
+import { Agent, type AgentConfig } from "../../src/agent";
 import type { Model } from "../../src/core";
 import {
   ConversationRuntime,
@@ -18,6 +18,7 @@ export function createFixture(
     tools?: Tool[];
     session?: ConversationSessionSnapshot;
     approvalMode?: KanaToolApprovalConfig["mode"];
+    context?: AgentConfig["context"];
   } = {},
 ) {
   const sessions = new Map<string, KanaSessionMetadata>();
@@ -54,6 +55,9 @@ export function createFixture(
         inbox: agentOptions.inbox,
         beforeToolExecution: agentOptions.beforeToolExecution,
         tools: options.tools,
+        context: options.context
+          ? { ...options.context, checkpoint: agentOptions.contextCheckpoint }
+          : undefined,
       }),
   });
   const apiOptions = {
