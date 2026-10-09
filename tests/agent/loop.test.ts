@@ -5,7 +5,7 @@ import type { AgentEvent } from "../../src/agent/events";
 import { runAgentLoop } from "../../src/agent/loop";
 import { createRepeatedToolCallPolicy } from "../../src/agent/repeated-tool-call-policy";
 import type { ModelContext } from "../../src/core/context";
-import type { AssistantMessage } from "../../src/core/messages";
+import type { AssistantMessage, Message } from "../../src/core/messages";
 import type { Model, ModelMetadata } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
 import type { Tool } from "../../src/tools/tool";
@@ -177,16 +177,22 @@ class AbortedModel implements Model {
   }
 }
 
-class AbortedToolCallModel implements Model {
+class InterruptedToolCallModel implements Model {
   readonly metadata: ModelMetadata = {
     provider: "test",
-    model: "aborted-tool-call",
+    model: "interrupted-tool-call",
     contextWindow: 128_000,
     maxOutputTokens: 16_000,
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
   };
+
+  constructor(
+    private readonly reason: "aborted" | "error",
+    private readonly rawArgs: string,
+    private readonly text: string,
+  ) {}
 
   stream(_context: ModelContext): AssistantEventStream {
     const stream = new AssistantEventStream();
@@ -203,6 +209,14 @@ class AbortedToolCallModel implements Model {
         snapshot: structuredClone(message),
       });
 
+      if (this.text) {
+        message.content.push({ type: "text", text: this.text });
+        stream.push({
+          type: "text_start",
+          contentIndex: 0,
+          snapshot: structuredClone(message),
+        });
+      }
       message.content.push({
         type: "tool_call",
         id: "call_1",
@@ -211,18 +225,18 @@ class AbortedToolCallModel implements Model {
           path: "foo.ts",
           edits: [{ oldText: "before", newText: "after" }],
         },
-        rawArgs: '{"path":"foo.ts"',
+        rawArgs: this.rawArgs,
       });
 
       stream.push({
         type: "toolcall_start",
-        contentIndex: 0,
+        contentIndex: message.content.length - 1,
         snapshot: structuredClone(message),
       });
       stream.error({
         type: "error",
-        reason: "aborted",
-        error: new Error("aborted"),
+        reason: this.reason,
+        error: new Error(this.reason),
         snapshot: structuredClone(message),
       });
     });
@@ -1255,35 +1269,55 @@ describe("runAgentLoop error recovery", () => {
     });
   });
 
-  test("does not persist aborted partial tool calls without tool results", async () => {
-    const events: AgentEvent[] = [];
-    const messages = await runAgentLoop(
-      {
-        messages: [
-          {
-            ...messageIdentityForTest("user"),
-            role: "user",
-            content: "edit the file",
-          },
-        ],
-        tools: [addTool],
-      },
-      {
-        model: new AbortedToolCallModel(),
-      },
-      (event) => {
-        events.push(structuredClone(event));
-      },
-    );
+  for (const reason of ["aborted", "error"] as const) {
+    for (const rawArgs of ["", '{"path":"foo.ts"', '{"path":"foo.ts"}']) {
+      for (const text of ["", "I will check the file."]) {
+        test(`does not commit or replay unexecuted calls after ${reason}: ${JSON.stringify({ rawArgs, text })}`, async () => {
+          const events: AgentEvent[] = [];
+          const committed: Message[] = [];
+          const messages = await runAgentLoop(
+            {
+              messages: [
+                {
+                  ...messageIdentityForTest("user"),
+                  role: "user",
+                  content: "edit the file",
+                },
+              ],
+              tools: [addTool],
+            },
+            {
+              model: new InterruptedToolCallModel(reason, rawArgs, text),
+              onMessageCommitted: (message) => {
+                expect(message.role).toBe("assistant");
+                committed.push(structuredClone(message));
+              },
+            },
+            (event) => {
+              events.push(structuredClone(event));
+            },
+          );
 
-    expect(messages).toEqual([]);
-    expect(events.some((event) => event.type === "message_update")).toBe(true);
-    expect(events.at(-1)).toMatchObject({
-      type: "agent_end",
-      reason: "aborted",
-      messages: [],
-    });
-  });
+          if (text) {
+            expect(messages).toMatchObject([
+              { role: "assistant", stopReason: reason, content: [{ type: "text", text }] },
+            ]);
+            expect((messages[0] as AssistantMessage).content).toHaveLength(1);
+          } else {
+            expect(messages).toEqual([]);
+          }
+          expect(committed).toEqual(messages);
+          expect(events.some((event) => event.type === "message_update")).toBe(true);
+          expect(events.some((event) => event.type === "tool_execution_start")).toBe(false);
+          expect(events.at(-1)).toMatchObject({ type: "agent_end", reason, messages });
+
+          const nextModel = new ScriptedToolModel(undefined, 0);
+          await runAgentLoop({ messages }, { model: nextModel }, () => {});
+          expect(nextModel.contexts[0]?.messages).toEqual(messages);
+        });
+      }
+    }
+  }
 
   test("publishes and persists aborted hosted tools with a canceled semantic status", async () => {
     const events: AgentEvent[] = [];

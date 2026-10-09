@@ -79,7 +79,7 @@ Repeat within maxTurns:
 Emit agent_end
 ```
 
-Standalone `Agent` and `runAgentLoop` default to eight turns. Kana configures `max_turns = -1`, meaning unlimited; only `-1` or a positive integer is valid. If the final allowed turn still executes tool calls, the run ends with `turn_limit`. A message ending with `length` never executes tool calls, and provider failure without assistant content does not add an empty assistant message. An aborted partial assistant message retains safe text or thinking content but drops unexecuted calls.
+Standalone `Agent` and `runAgentLoop` default to eight turns. Kana configures `max_turns = -1`, meaning unlimited; only `-1` or a positive integer is valid. If the final allowed turn still executes tool calls, the run ends with `turn_limit`. A message ending with `length` never executes tool calls, and provider failure without assistant content does not add an empty assistant message. An aborted or failed partial assistant message retains safe text or thinking content but drops unexecuted calls before history and journal commit, even when their arguments are complete.
 
 Tool validation, approval, concurrency, deadlines, event timing, result policies, and built-in behavior belong to [Tools and execution](tools.md). The loop waits for that boundary and starts the next model step only with model-ordered committed results.
 

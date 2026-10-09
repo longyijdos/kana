@@ -79,7 +79,7 @@ Runtime-context 消息是权威状态，不是对话。稳定 system 指令只�
 发出 agent_end
 ```
 
-独立 `Agent` 与 `runAgentLoop` 默认最多八个 turn。Kana 配置 `max_turns = -1` 表示不限；只接受 `-1` 或正整数。最后一个允许 turn 仍执行了工具时，run 以 `turn_limit` 结束。以 `length` 结束的消息不会执行工具；没有 assistant 内容的 provider 失败不会增加空消息；中止的部分 assistant 消息会保留安全的文本或 thinking，但移除未执行调用。
+独立 `Agent` 与 `runAgentLoop` 默认最多八个 turn。Kana 配置 `max_turns = -1` 表示不限；只接受 `-1` 或正整数。最后一个允许 turn 仍执行了工具时，run 以 `turn_limit` 结束。以 `length` 结束的消息不会执行工具；没有 assistant 内容的 provider 失败不会增加空消息；中止或失败的部分 assistant 消息会保留安全的文本或 thinking，但在进入历史与 journal 提交前移除未执行调用，即使其参数已完整。
 
 工具校验、审批、并发、deadline、事件时机、结果策略与内置行为归[工具与执行](tools.zh-CN.md)所有。Loop 会等待该边界，并且只用按模型顺序提交的结果开始下一 model step。
 

@@ -571,7 +571,7 @@ function assistantMessageForHistory(message: AssistantMessage): AssistantMessage
     return undefined;
   }
 
-  if (message.stopReason !== "aborted") {
+  if (message.stopReason !== "aborted" && message.stopReason !== "error") {
     return message;
   }
 
