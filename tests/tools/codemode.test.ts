@@ -51,6 +51,53 @@ describe("codemode tool", () => {
     );
   });
 
+  test("shows input constraints in only mode while nested calls keep original validation", async () => {
+    const parameters = Type.Object({
+      timeoutMs: Type.Optional(
+        Type.Integer({
+          minimum: 0,
+          maximum: 30_000,
+          default: 0,
+          description: "Wait up to this many milliseconds for a terminal state.",
+        }),
+      ),
+      rows: Type.Optional(
+        Type.Array(Type.Object({ name: Type.String({ minLength: 1, maxLength: 20 }) })),
+      ),
+    });
+    const original = structuredClone(parameters);
+    let executions = 0;
+    const wait = {
+      name: "wait",
+      description: "Wait for a terminal state.",
+      parameters,
+      execute: () => {
+        executions += 1;
+        return { content: "done", result: { done: true } };
+      },
+    } satisfies Tool<typeof parameters>;
+    const codemode = createCodemodeTool({ tools: [wait], mode: "only" });
+    expect(codemode.description).toContain(
+      "// Wait up to this many milliseconds for a terminal state.\n  // Constraints: integer; minimum: 0; maximum: 30000; default: 0.\n  timeoutMs?: number;",
+    );
+    expect(codemode.description).toContain("// Constraints: minLength: 1; maxLength: 20.");
+    expect(createCodemodeTool({ tools: [wait] }).description).not.toContain("Constraints:");
+    expect(parameters).toEqual(original);
+
+    const runtime = new ToolRuntime({ tools: [codemode], callableTools: [wait] }, () => {});
+    const execution = await runtime.execute([
+      {
+        type: "tool_call",
+        id: "invalid-wait",
+        name: "run_code",
+        args: { code: "return await tools.wait({ timeoutMs: 30001 });" },
+      },
+    ]);
+    expect(execution.toolResults[0]).toMatchObject({ isError: true });
+    expect(execution.toolResults[0]!.content).toContain('Validation failed for tool "wait"');
+    expect(executions).toBe(0);
+  });
+
   test("uses complete results through approval and commits only the script output", async () => {
     const approvals: string[] = [];
     const completions: string[] = [];

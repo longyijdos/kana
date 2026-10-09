@@ -10,6 +10,7 @@ import type { UserImage } from "@/core";
 import { strictObject } from "../strict-object";
 import type { Tool, ToolContext, ToolResult } from "../tool";
 import { createCodemodeSandbox } from "./index";
+import { annotateInputSchema } from "./schema-annotations";
 
 const codemodeParameters = strictObject({ code: Type.String() });
 
@@ -29,9 +30,14 @@ export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mi
     inputSchema: tool.parameters as unknown as CodemodeJsonSchema,
     outputSchema: tool.outputSchema as CodemodeJsonSchema | undefined,
   }));
+  // Remove local schema annotations once upstream preserves constraints: earendil-works/pi#10707.
   const declarations =
     options.mode === "only"
-      ? definitions.map((tool) => renderToolSample(tool)).join("\n\n")
+      ? definitions
+          .map((tool) =>
+            renderToolSample({ ...tool, inputSchema: annotateInputSchema(tool.inputSchema) }),
+          )
+          .join("\n\n")
       : [
           "```ts",
           "type ToolResults = {",

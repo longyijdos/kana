@@ -113,7 +113,7 @@ min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
 
 Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回 `ok`、`value`、`output`、`calls` 和 `storeWrites`；失败时返回 `ok: false`、`error`、`output` 和 `calls`。Store 改动仅报告给调用方，不会自动持久化。这个 host API 不会注册模型可见工具。
 
-`createCodemodeTool({ tools, mode? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。外部 MCP 定义仍通过 `mcp_get_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 自行声明 900000 ms（15 分钟）的调用 deadline，排除内部审批等待；runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
+`createCodemodeTool({ tools, mode? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。`only` 的输入属性注释还包含整数要求、数值上下界与倍数、字符串长度/正则/格式、数组长度/唯一性和声明的默认值，也包含数组元素上的约束。这些注释使用 Schema 副本，不改变运行时校验；它们并非 JSON Schema 的无损表示。外部 MCP 定义仍通过 `mcp_get_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 自行声明 900000 ms（15 分钟）的调用 deadline，排除内部审批等待；runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
 
 工具的 `content` 包含显式文本输出，以及随后以 JSON 编码的返回值或脚本错误。内部工具返回的图片自动加入外层 `images`；显式 `image()` 输出转为带解码尺寸的视觉观察。结构化 `result` 保留包提供的 `CodemodeResult`，包括调用名称、状态和成功时的 store 改动；调用耗时替换为 Runtime 记录的执行耗时。Store 改动不会自动用于后续执行。实时前端收到内部执行事件；历史和 resume 后的 transcript 只保留外层结果，并遵守普通 result 保存上限。
 
