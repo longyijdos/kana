@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import lockfile from "proper-lockfile";
+import { Type } from "typebox";
 import type { Logger } from "@/logging";
 import type { McpOAuthClientRegistration, McpOAuthClientStore } from "@/mcp";
 import type { OAuthStoredToken, OAuthTokenStatus, OAuthTokenStore } from "@/oauth";
+import { nonEmptyString, parseWithSchema, strictObject } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 
 const TOKEN_FILE_VERSION = 1;
@@ -84,14 +86,13 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
   load(key: string): Promise<OAuthStoredToken | undefined> {
     return this.enqueue(async () => {
       const file = await this.readFile();
-      const token = file.tokens[key];
-      return token === undefined ? undefined : copyStoredToken(token);
+      return file.tokens[key];
     });
   }
 
   save(key: string, token: OAuthStoredToken): Promise<void> {
     return this.mutate((file) => {
-      file.tokens[key] = copyStoredToken(token);
+      file.tokens[key] = token;
       return true;
     });
   }
@@ -108,15 +109,14 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
 
   loadOpenAICodexState(): Promise<KanaOpenAICodexAuthState | undefined> {
     return this.enqueue(async () => {
-      const state = (await this.readFile()).openaiCodex;
-      return state === undefined ? undefined : structuredClone(state);
+      return (await this.readFile()).openaiCodex;
     });
   }
 
   saveOpenAICodexState(state: KanaOpenAICodexAuthState, token?: OAuthStoredToken): Promise<void> {
     return this.mutate((file) => {
-      file.openaiCodex = structuredClone(state);
-      if (token !== undefined) file.tokens["provider:openai-codex"] = copyStoredToken(token);
+      file.openaiCodex = state;
+      if (token !== undefined) file.tokens["provider:openai-codex"] = token;
       return true;
     });
   }
@@ -127,15 +127,14 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
 
   loadClient(key: string): Promise<McpOAuthClientRegistration | undefined> {
     return this.enqueue(async () => {
-      const registration = (await this.readFile()).clients?.[key];
-      return registration === undefined ? undefined : structuredClone(registration);
+      return (await this.readFile()).clients?.[key];
     });
   }
 
   saveClient(key: string, registration: McpOAuthClientRegistration): Promise<void> {
     return this.mutate((file) => {
       file.clients ??= {};
-      file.clients[key] = structuredClone(registration);
+      file.clients[key] = registration;
       return true;
     });
   }
@@ -229,176 +228,54 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
   }
 }
 
+const STORED_TOKEN_SCHEMA = strictObject({
+  accessToken: nonEmptyString(),
+  tokenType: Type.Literal("Bearer"),
+  idToken: Type.Optional(nonEmptyString()),
+  refreshToken: Type.Optional(nonEmptyString()),
+  expiresAt: Type.Optional(
+    Type.Number({ exclusiveMinimum: 0, errorMessage: "must be a positive timestamp" }),
+  ),
+  scopes: Type.Optional(Type.Array(nonEmptyString())),
+  issuer: nonEmptyString(),
+  clientId: nonEmptyString(),
+  resource: Type.Optional(nonEmptyString()),
+});
+
+const CLIENT_REGISTRATION_SCHEMA = Type.Object({
+  issuer: nonEmptyString(),
+  resource: nonEmptyString(),
+  redirectUri: nonEmptyString(),
+  client: Type.Object({
+    clientId: nonEmptyString(),
+    clientSecret: Type.Optional(nonEmptyString()),
+    tokenEndpointAuthMethod: Type.Optional(
+      Type.Enum(["none", "client_secret_basic", "client_secret_post"]),
+    ),
+  }),
+});
+
+const OPENAI_CODEX_STATE_SCHEMA = Type.Object({
+  hostId: nonEmptyString(),
+  pendingClientId: Type.Optional(nonEmptyString()),
+  registration: Type.Optional(
+    Type.Object({
+      clientId: nonEmptyString(),
+      subject: nonEmptyString(),
+      email: Type.Optional(nonEmptyString()),
+    }),
+  ),
+});
+
+const TOKEN_FILE_SCHEMA = Type.Object({
+  version: Type.Literal(TOKEN_FILE_VERSION, { errorMessage: `must be ${TOKEN_FILE_VERSION}` }),
+  tokens: Type.Record(Type.String(), STORED_TOKEN_SCHEMA),
+  clients: Type.Optional(Type.Record(Type.String(), CLIENT_REGISTRATION_SCHEMA)),
+  openaiCodex: Type.Optional(OPENAI_CODEX_STATE_SCHEMA),
+});
+
 function parseTokenFile(value: unknown): KanaOAuthTokenFile {
-  const file = asRecord(value, "OAuth token store");
-  if (file.version !== TOKEN_FILE_VERSION) {
-    throw new Error(`OAuth token store version must be ${TOKEN_FILE_VERSION}.`);
-  }
-  const rawTokens = asRecord(file.tokens, "OAuth token store tokens");
-  const tokens: Record<string, OAuthStoredToken> = {};
-  for (const [key, rawToken] of Object.entries(rawTokens)) {
-    if (!key) {
-      throw new Error("OAuth token store keys cannot be empty.");
-    }
-    tokens[key] = parseStoredToken(rawToken, key);
-  }
-  const clients =
-    file.clients === undefined
-      ? undefined
-      : Object.fromEntries(
-          Object.entries(asRecord(file.clients, "OAuth client registrations")).map(
-            ([key, value]) => [key, parseClientRegistration(value, key)],
-          ),
-        );
-  return {
-    version: TOKEN_FILE_VERSION,
-    tokens,
-    ...(clients === undefined ? {} : { clients }),
-    ...(file.openaiCodex === undefined
-      ? {}
-      : { openaiCodex: parseOpenAICodexState(file.openaiCodex) }),
-  };
-}
-
-function parseOpenAICodexState(value: unknown): KanaOpenAICodexAuthState {
-  const state = asRecord(value, "OpenAI Codex registration");
-  const registration =
-    state.registration === undefined
-      ? undefined
-      : asRecord(state.registration, "OpenAI Codex account");
-  return {
-    hostId: readNonEmptyString(state.hostId, "OpenAI Codex host ID"),
-    ...(state.pendingClientId === undefined
-      ? {}
-      : {
-          pendingClientId: readNonEmptyString(state.pendingClientId, "OpenAI Codex pending client"),
-        }),
-    ...(registration === undefined
-      ? {}
-      : {
-          registration: {
-            clientId: readNonEmptyString(registration.clientId, "OpenAI Codex client ID"),
-            subject: readNonEmptyString(registration.subject, "OpenAI Codex subject"),
-            ...(registration.email === undefined
-              ? {}
-              : { email: readNonEmptyString(registration.email, "OpenAI Codex email") }),
-          },
-        }),
-  };
-}
-
-function parseClientRegistration(value: unknown, key: string): McpOAuthClientRegistration {
-  const name = `OAuth client registration ${key}`;
-  const registration = asRecord(value, name);
-  const client = asRecord(registration.client, `${name}.client`);
-  const method = client.tokenEndpointAuthMethod;
-  if (
-    method !== undefined &&
-    method !== "none" &&
-    method !== "client_secret_basic" &&
-    method !== "client_secret_post"
-  ) {
-    throw new Error(`${name}.client.tokenEndpointAuthMethod is invalid.`);
-  }
-  return {
-    issuer: readNonEmptyString(registration.issuer, `${name}.issuer`),
-    resource: readNonEmptyString(registration.resource, `${name}.resource`),
-    redirectUri: readNonEmptyString(registration.redirectUri, `${name}.redirectUri`),
-    client: {
-      clientId: readNonEmptyString(client.clientId, `${name}.client.clientId`),
-      ...(client.clientSecret === undefined
-        ? {}
-        : { clientSecret: readNonEmptyString(client.clientSecret, `${name}.client.clientSecret`) }),
-      ...(method === undefined ? {} : { tokenEndpointAuthMethod: method }),
-    },
-  };
-}
-
-function parseStoredToken(value: unknown, key: string): OAuthStoredToken {
-  const name = `OAuth token ${key}`;
-  const token = asRecord(value, name);
-  const allowedKeys = new Set([
-    "accessToken",
-    "tokenType",
-    "idToken",
-    "refreshToken",
-    "expiresAt",
-    "scopes",
-    "issuer",
-    "clientId",
-    "resource",
-  ]);
-  const unknownKey = Object.keys(token).find((field) => !allowedKeys.has(field));
-  if (unknownKey !== undefined) {
-    throw new Error(`${name} contains unknown field ${unknownKey}.`);
-  }
-  if (token.tokenType !== "Bearer") {
-    throw new Error(`${name}.tokenType must be Bearer.`);
-  }
-
-  return {
-    accessToken: readNonEmptyString(token.accessToken, `${name}.accessToken`),
-    tokenType: "Bearer",
-    ...readOptionalString(token.idToken, "idToken", name),
-    ...readOptionalString(token.refreshToken, "refreshToken", name),
-    ...readOptionalExpiresAt(token.expiresAt, name),
-    ...readOptionalScopes(token.scopes, name),
-    issuer: readNonEmptyString(token.issuer, `${name}.issuer`),
-    clientId: readNonEmptyString(token.clientId, `${name}.clientId`),
-    ...readOptionalString(token.resource, "resource", name),
-  };
-}
-
-function readOptionalString<TKey extends "idToken" | "refreshToken" | "resource">(
-  value: unknown,
-  key: TKey,
-  name: string,
-): { [K in TKey]?: string } {
-  if (value === undefined) {
-    return {};
-  }
-  return { [key]: readNonEmptyString(value, `${name}.${key}`) } as { [K in TKey]?: string };
-}
-
-function readOptionalExpiresAt(value: unknown, name: string): { expiresAt?: number } {
-  if (value === undefined) {
-    return {};
-  }
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    throw new Error(`${name}.expiresAt must be a positive timestamp.`);
-  }
-  return { expiresAt: value };
-}
-
-function readOptionalScopes(value: unknown, name: string): { scopes?: string[] } {
-  if (value === undefined) {
-    return {};
-  }
-  if (!Array.isArray(value) || value.some((scope) => typeof scope !== "string" || !scope)) {
-    throw new Error(`${name}.scopes must be an array of non-empty strings.`);
-  }
-  return { scopes: value.slice() as string[] };
-}
-
-function readNonEmptyString(value: unknown, name: string): string {
-  if (typeof value !== "string" || !value) {
-    throw new Error(`${name} must be a non-empty string.`);
-  }
-  return value;
-}
-
-function asRecord(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${name} must be a JSON object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function copyStoredToken(token: OAuthStoredToken): OAuthStoredToken {
-  return {
-    ...token,
-    ...(token.scopes === undefined ? {} : { scopes: token.scopes.slice() }),
-  };
+  return parseWithSchema(TOKEN_FILE_SCHEMA, value, "OAuth token store");
 }
 
 function getOAuthTokenFilePath(env: NodeJS.ProcessEnv | undefined): string {

@@ -119,7 +119,7 @@ describe("Kana Custom provider", () => {
       },
       {
         config: { base_url: "https://example.com/v1", models: [] },
-        message: "custom provider models must contain at least one [[models]] table.",
+        message: "custom provider.models must contain at least one [[models]] table.",
       },
       {
         config: {
@@ -153,7 +153,7 @@ describe("Kana Custom provider", () => {
           base_url: "https://example.com/v1",
           models: [{ ...validModel, assistant_replay_fields: ["reasoning", "reasoning"] }],
         },
-        message: "models[0].assistant_replay_fields must not contain duplicates.",
+        message: "models[0].assistant_replay_fields must be a non-empty array of distinct strings.",
       },
       {
         config: {
