@@ -1,27 +1,25 @@
 # OAuth lifecycle
 
-`src/oauth` implements reusable Authorization Code, PKCE, token exchange, refresh, and token-session state without depending on providers, MCP, Kana configuration, persistence paths, or a frontend. Products inject fetch, browser opening, token storage, cancellation, and diagnostic handling.
+`src/oauth` implements reusable Authorization Code, PKCE, token exchange, refresh, and a loopback callback server without depending on providers, MCP, Kana configuration, persistence paths, or a frontend. Products inject fetch, browser opening, token storage, cancellation, and diagnostic handling, and own the lifecycle of the credentials they obtain.
 
 ## Boundary and flow
 
 ```text
-Product integration
+Product integration (OpenAI Codex)
   → supply authorization-server metadata
-  → OAuthSession
-      ├→ loopback callback server
-      ├→ authorization request + PKCE/state
-      ├→ authorization-code exchange
-      ├→ coalesced refresh
-      └→ injected OAuthTokenStore
+  → authorization request + PKCE/state
+  → loopback callback server
+  → authorization-code exchange / refresh
+  → product credential store
 ```
 
-Stateless functions own protocol parsing and request construction. `OAuthSession` owns mutable credentials for one issuer/client/resource binding and serializes interactive authorization, refresh, persistence, invalidation, and shutdown.
+Stateless functions own protocol parsing and request construction. The integration owns mutable credentials: it decides when to authorize, coalesces refresh, persists tokens, and handles invalidation and shutdown.
 
-OpenAI Codex composes stateless protocol functions with its SIWC registration and identity lifecycle outside this generic boundary; see [OpenAI Codex provider](openai-codex-provider.md). [MCP](mcp.md) delegates its OAuth protocol to the official SDK and reuses the loopback callback and product credential store rather than `OAuthSession`.
+OpenAI Codex composes these functions with its SIWC registration and identity lifecycle; see [OpenAI Codex provider](openai-codex-provider.md). [MCP](mcp.md) delegates its OAuth protocol to the official SDK and reuses only the loopback callback and the product credential store.
 
 ## Authorization-server metadata
 
-Integrations supply authorization-server metadata to the protocol functions or `OAuthSession`. OpenAI Codex uses fixed SIWC authorization, token, and JWKS endpoints; logout discovers the revocation endpoint. The generic OAuth layer performs no metadata discovery. MCP discovery belongs to the official SDK.
+Integrations supply authorization-server metadata to the protocol functions. OpenAI Codex uses fixed SIWC authorization, token, and JWKS endpoints; logout discovers the revocation endpoint. The generic OAuth layer performs no metadata discovery. MCP discovery belongs to the official SDK.
 
 Token requests reject fetch redirects. The default maximum token response is 256 KiB, decoded as strict UTF-8 and then parsed as JSON. Empty, oversized, invalid UTF-8, and invalid JSON responses fail as protocol errors.
 
@@ -39,7 +37,7 @@ The built-in callback server binds one HTTP loopback address. With no explicit r
 
 Only one callback may be pending. The server accepts `GET` on the configured path, compares `state` before accepting a code or safe OAuth error, bounds the authorization code, and times out after five minutes by default. Other methods, paths, missing pending state, or mismatched state receive an error response without completing the flow.
 
-Callback responses are plain text with `no-store`, a restrictive Content Security Policy, `nosniff`, and connection close. Abort, timeout, server error, or session shutdown rejects the pending callback, removes listeners, and closes the server.
+Callback responses are plain text with `no-store`, a restrictive Content Security Policy, `nosniff`, and connection close. Abort, timeout, server error, or shutdown rejects the pending callback, removes listeners, and closes the server.
 
 ## Token requests
 
@@ -54,16 +52,6 @@ Token-endpoint authentication is selected from metadata and configured credentia
 Basic authentication form-encodes the client values before constructing the header. POST and public-client modes include `client_id` in the form; POST also includes the secret.
 
 A successful token response requires a non-empty access token and Bearer token type. Provider integrations may explicitly allow an omitted token type, but the generic default rejects it. Optional ID token, refresh token, positive `expires_in`, and scopes are normalized into `OAuthTokenSet`; expiry is stored as an absolute millisecond timestamp. Safe endpoint errors retain only a bounded OAuth error code and HTTP status.
-
-## OAuthSession
-
-An `OAuthSession` is bound to `storageKey`, metadata issuer, client ID, and optional resource. A stored token whose binding differs is deleted before use. Returned token and scope arrays are copied so callers cannot mutate session state.
-
-The first load is coalesced. Concurrent refresh calls share one promise; concurrent authorization with the same scope set also shares one flow, while another scope set is rejected until the current flow ends. By default, a token is considered unusable during its final 60 seconds and refreshes before being returned.
-
-Authorization preserves an existing ID token, refresh token, or scopes when a successful response omits their replacements. Refresh does the same for rotated responses. Store mutations are serialized, and a revision counter prevents a late load, refresh, or authorization from restoring credentials after sign-out or another lifecycle change.
-
-`invalid_grant`, expired/reused/invalidated refresh-token identities delete the stored binding and return to unauthorized state. Other refresh failures remain observable. `signOut()` cancels active authorization and refresh, advances the revision, clears memory, and awaits store deletion. `close()` is idempotent, aborts pending work, and makes later access invalid.
 
 ## Persistence and product integration
 

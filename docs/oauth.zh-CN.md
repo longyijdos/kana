@@ -1,27 +1,25 @@
 # OAuth 生命周期
 
-`src/oauth` 实现可复用的 Authorization Code、PKCE、token exchange、refresh 和 token-session 状态，不依赖 provider、MCP、Kana 配置、持久路径或前端。产品层注入 fetch、浏览器打开、token storage、取消与诊断处理。
+`src/oauth` 实现可复用的 Authorization Code、PKCE、token exchange、refresh 和 loopback callback server，不依赖 provider、MCP、Kana 配置、持久路径或前端。产品层注入 fetch、浏览器打开、token storage、取消与诊断处理，并负责所获凭据的生命周期。
 
 ## 边界与流程
 
 ```text
-产品集成
+产品集成（OpenAI Codex）
   → 提供 authorization-server metadata
-  → OAuthSession
-      ├→ loopback callback server
-      ├→ authorization request + PKCE/state
-      ├→ authorization-code exchange
-      ├→ 合并 refresh
-      └→ 注入的 OAuthTokenStore
+  → authorization request + PKCE/state
+  → loopback callback server
+  → authorization-code exchange / refresh
+  → 产品凭据 store
 ```
 
-无状态函数负责协议解析与 request 构造；`OAuthSession` 持有一个 issuer/client/resource 绑定的可变凭据，并串行处理交互授权、refresh、持久化、失效和 shutdown。
+无状态函数负责协议解析与 request 构造。可变凭据由集成层持有：由它决定何时授权、合并 refresh、持久化 token，并处理失效与 shutdown。
 
-OpenAI Codex 在通用边界之外组合无状态协议函数与 SIWC 注册、身份生命周期，见 [OpenAI Codex provider](openai-codex-provider.zh-CN.md)。[MCP](mcp.zh-CN.md) 将 OAuth 协议交给官方 SDK，复用 loopback callback 与产品凭据 store，而不使用 `OAuthSession`。
+OpenAI Codex 将这些函数与 SIWC 注册、身份生命周期组合使用，见 [OpenAI Codex provider](openai-codex-provider.zh-CN.md)。[MCP](mcp.zh-CN.md) 将 OAuth 协议交给官方 SDK，只复用 loopback callback 与产品凭据 store。
 
 ## Authorization-server metadata
 
-集成层向协议函数或 `OAuthSession` 提供 authorization-server metadata。OpenAI Codex 使用固定的 SIWC authorization、token 与 JWKS endpoint；退出时查询 revocation endpoint。通用 OAuth 层不执行 metadata discovery。MCP discovery 由官方 SDK 处理。
+集成层向协议函数提供 authorization-server metadata。OpenAI Codex 使用固定的 SIWC authorization、token 与 JWKS endpoint；退出时查询 revocation endpoint。通用 OAuth 层不执行 metadata discovery。MCP discovery 由官方 SDK 处理。
 
 Token 请求拒绝 fetch redirect。Token response 默认最大 256 KiB，先以严格 UTF-8 解码，再解析 JSON；空 body、超限、非法 UTF-8 和非法 JSON 都按协议错误处理。
 
@@ -39,7 +37,7 @@ Redirect URI 必须使用 HTTPS，或使用 `localhost`、`127.0.0.1`、`[::1]` 
 
 同一时间只能等待一个 callback。Server 只接受配置 path 上的 `GET`，先比较 `state`，再接受 code 或安全 OAuth error；authorization code 有长度上限，默认五分钟超时。其它 method、path、没有 pending state 或 state 不匹配都会返回错误，但不会完成该流程。
 
-Callback response 是 plain text，并带有 `no-store`、严格 Content Security Policy、`nosniff` 与 connection close。Abort、timeout、server error 或 session shutdown 会拒绝 pending callback、移除 listener 并关闭 server。
+Callback response 是 plain text，并带有 `no-store`、严格 Content Security Policy、`nosniff` 与 connection close。Abort、timeout、server error 或 shutdown 会拒绝 pending callback、移除 listener 并关闭 server。
 
 ## Token request
 
@@ -54,16 +52,6 @@ Token endpoint 认证从 metadata 与配置凭据选择：
 Basic authentication 会先对 client 值做 form encoding，再构造 header。POST 与 public-client 模式把 `client_id` 放入 form；POST 还加入 secret。
 
 成功 token response 必须有非空 access token 和 Bearer token type。Provider 集成可以显式允许缺失 token type，但通用默认会拒绝。可选 ID token、refresh token、正数 `expires_in` 和 scopes 会规范化成 `OAuthTokenSet`，过期时间保存为绝对毫秒时间戳。安全 endpoint error 只保留有界 OAuth error code 与 HTTP status。
-
-## OAuthSession
-
-`OAuthSession` 绑定 `storageKey`、metadata issuer、client ID 和可选 resource。持久 token 的绑定不同时会在使用前删除。返回 token 与 scope array 都会复制，调用方不能修改 session 内部状态。
-
-首次 load 会合并。并发 refresh 共用一个 promise；相同 scope set 的并发 authorization 也共用同一流程，不同 scope set 则在当前流程结束前被拒绝。默认情况下，token 在最后 60 秒内视为不可用，会先 refresh 再返回。
-
-Authorization 成功但 response 未替换 ID token、refresh token 或 scopes 时会保留旧值；refresh 对轮换 response 使用相同规则。Store mutation 串行执行，revision counter 防止迟到 load、refresh 或 authorization 在 sign-out 或其它生命周期变化后恢复旧凭据。
-
-`invalid_grant` 以及 expired/reused/invalidated refresh-token identity 会删除持久绑定并回到 unauthorized；其它 refresh failure 仍向调用方报告。`signOut()` 会取消活动 authorization 与 refresh、推进 revision、清空内存并等待 store 删除。`close()` 幂等地中止 pending work，并使后续访问失效。
 
 ## 持久化与产品集成
 
