@@ -100,15 +100,6 @@ describe("ConversationInputCoordinator", () => {
     ]);
     expect(harness.agent.inbox.nextTurn.map((item) => item.message.id)).toEqual([queuedInput.id]);
 
-    const pendingSnapshot = snapshot.pending[0];
-    const scheduledSnapshot = snapshot.scheduled[0];
-    if (pendingSnapshot) {
-      pendingSnapshot.content = "Mutated projection.";
-    }
-    if (scheduledSnapshot) {
-      scheduledSnapshot.message = "Mutated wake.";
-      scheduledSnapshot.dueAt.setTime(0);
-    }
     expect(harness.coordinator.queue.pending[0]?.content).toBe("Queued input.");
     expect(harness.coordinator.queue.scheduled[0]).toMatchObject({
       message: "Scheduled input.",

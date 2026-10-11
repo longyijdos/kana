@@ -24,7 +24,7 @@ export class ToolCallBlock implements Component {
   private canceled = false;
   private result?: unknown;
   private partialResult?: unknown;
-  private todoState?: KanaTodoItem[];
+  private todoState?: readonly KanaTodoItem[];
   private hasResult = false;
   private isError = false;
   private durationMs?: number;

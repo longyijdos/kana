@@ -22,7 +22,7 @@ import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("ConversationRuntime", () => {
   test.each([false, true])(
-    "detaches timeline snapshots with an optional live source (live=%s)",
+    "reads timeline snapshots from an optional live source (live=%s)",
     async (live) => {
       const baseline: KanaSessionTimelineEntry[] = [
         {
@@ -55,13 +55,7 @@ describe("ConversationRuntime", () => {
         expect(runtime.session!.timeline.map((entry) => entry.id)).toEqual(
           live ? ["baseline", "latest"] : ["baseline"],
         );
-        const snapshot = runtime.session!;
-        if (live) expect(snapshot.timeline).toBe(providedTimeline!);
-        else expect(snapshot.timeline).not.toBe(baseline);
-        const entry = snapshot.timeline[0]!;
-        if (entry.type === "todo_state") entry.items[0]!.content = "changed";
-        snapshot.timeline.pop();
-        snapshot.todoState![0]!.content = "changed";
+        if (live) expect(runtime.session!.timeline).toBe(providedTimeline!);
         expect(runtime.session!.todoState).toEqual(todoState);
         expect(runtime.session!.timeline[0]).toEqual(baseline[0]);
         expect(committed[0]).toEqual(baseline[0]);
@@ -229,8 +223,6 @@ describe("ConversationRuntime", () => {
     expect(fork.id).toBe("session-fork");
     expect(fork.messages).toEqual([existingMessage]);
     expect(fork.todoState).toEqual(existingTodoState);
-    fork.todoState?.splice(0);
-    expect(runtime.todoState).toEqual(existingTodoState);
 
     const resumed = await runtime.resumeSession("session-resumed");
     expect(resumed.messages).toEqual([resumedMessage]);

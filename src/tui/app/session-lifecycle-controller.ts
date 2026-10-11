@@ -56,7 +56,7 @@ export class SessionLifecycleController {
     });
   }
 
-  initializeTranscript(timeline: KanaSessionTimelineEntry[]): void {
+  initializeTranscript(timeline: readonly KanaSessionTimelineEntry[]): void {
     if (timeline.length > 0) {
       this.options.transcript.addChild(
         new TextBlock(`Resumed session ${this.options.conversation.sessionId ?? ""}.`, {

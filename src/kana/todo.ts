@@ -1,19 +1,19 @@
 type KanaTodoStatus = "pending" | "in_progress" | "completed";
 
 export type KanaTodoItem = {
-  content: string;
-  status: KanaTodoStatus;
+  readonly content: string;
+  readonly status: KanaTodoStatus;
 };
 
 export type KanaTodoStateChange = {
-  toolCallId: string;
-  parentToolCallId?: string;
-  items: KanaTodoItem[];
+  readonly toolCallId: string;
+  readonly parentToolCallId?: string;
+  readonly items: readonly KanaTodoItem[];
 };
 
 export type KanaTodoCounts = Record<KanaTodoStatus, number>;
 
-export function normalizeKanaTodoItems(items: readonly KanaTodoItem[]): KanaTodoItem[] {
+export function normalizeKanaTodoItems(items: readonly KanaTodoItem[]): readonly KanaTodoItem[] {
   const normalized: KanaTodoItem[] = [];
   const contents = new Set<string>();
   let activeCount = 0;

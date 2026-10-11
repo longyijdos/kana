@@ -3,16 +3,16 @@ import { randomUUID } from "node:crypto";
 type KanaUserTaskStatus = "pending" | "done" | "returned";
 
 export type KanaUserTask = {
-  id: string;
-  task: string;
-  status: KanaUserTaskStatus;
-  createdAt: Date;
-  finishedAt?: Date;
+  readonly id: string;
+  readonly task: string;
+  readonly status: KanaUserTaskStatus;
+  readonly createdAt: Date;
+  readonly finishedAt?: Date;
 };
 
 export type KanaUserTaskSettlement = {
-  task: KanaUserTask;
-  response: string;
+  readonly task: KanaUserTask;
+  readonly response: string;
 };
 
 export class KanaUserTaskManager {
@@ -33,11 +33,11 @@ export class KanaUserTaskManager {
     };
     this.tasks.set(created.id, created);
     this.emitChange();
-    return structuredClone(created);
+    return created;
   }
 
   list(): KanaUserTask[] {
-    return structuredClone([...this.tasks.values()]);
+    return [...this.tasks.values()];
   }
 
   context(): KanaUserTask[] {
@@ -93,9 +93,9 @@ export class KanaUserTaskManager {
     }
     const settled: KanaUserTask = { ...task, status, finishedAt: new Date() };
     this.tasks.set(taskId, settled);
-    const event: KanaUserTaskSettlement = { task: structuredClone(settled), response: normalized };
-    for (const listener of this.listeners) listener(structuredClone(event));
+    const event: KanaUserTaskSettlement = { task: settled, response: normalized };
+    for (const listener of this.listeners) listener(event);
     this.emitChange();
-    return structuredClone(settled);
+    return settled;
   }
 }

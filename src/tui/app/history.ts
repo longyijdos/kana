@@ -11,7 +11,7 @@ import { tuiTheme } from "../theme";
 
 export function addHistoryTimelineToTranscript(
   transcript: Transcript,
-  timeline: KanaSessionTimelineEntry[],
+  timeline: readonly KanaSessionTimelineEntry[],
   options: { hyperlinks?: boolean; renderLatex?: boolean; renderMermaid?: boolean } = {},
 ): void {
   const toolCalls = new Map<string, ToolCallContent>();

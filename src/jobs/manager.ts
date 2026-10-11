@@ -267,7 +267,7 @@ export class BackgroundJobManager {
     };
     this.jobs.set(id, record);
     logger.info("background_job.started", { jobId: id, producer: options.kind });
-    this.emit({ type: "started", owner, job: cloneSummary(summary) });
+    this.emit({ type: "started", owner, job: summary });
 
     let producer: Promise<BackgroundJobProducerResult>;
     try {
@@ -290,13 +290,13 @@ export class BackgroundJobManager {
       },
     );
 
-    return cloneSummary(summary);
+    return summary;
   }
 
   private list(owner: BackgroundJobOwner): BackgroundJobSummary[] {
     return [...this.jobs.values()]
       .filter((job) => job.owner.instanceId === owner.instanceId)
-      .map((job) => cloneSummary(job.summary))
+      .map((job) => job.summary)
       .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
   }
 
@@ -307,7 +307,7 @@ export class BackgroundJobManager {
           job.owner.instanceId === owner.instanceId &&
           (isActive(job.summary.status) || !job.completionObserved),
       )
-      .map((job) => cloneSummary(job.summary))
+      .map((job) => job.summary)
       .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
   }
 
@@ -382,10 +382,10 @@ export class BackgroundJobManager {
       if (shouldObserveCompletion(options.source)) {
         this.observe(owner, jobId);
       }
-      return cloneSummary(job.summary);
+      return job.summary;
     }
     if (job.summary.status === "running") {
-      job.summary.status = "stopping";
+      job.summary = { ...job.summary, status: "stopping" };
       job.logger.info("background_job.cancellation_requested", {
         jobId,
         producer: job.summary.kind,
@@ -393,13 +393,13 @@ export class BackgroundJobManager {
       });
       job.controller.abort(options.reason ?? "Background Job cancellation requested.");
       this.wakeWaiters(job);
-      this.emit({ type: "stopping", owner, job: cloneSummary(job.summary) });
+      this.emit({ type: "stopping", owner, job: job.summary });
     }
     await job.settlement;
     if (shouldObserveCompletion(options.source)) {
       this.observe(owner, jobId);
     }
-    return cloneSummary(job.summary);
+    return job.summary;
   }
 
   private observe(owner: BackgroundJobOwner, jobId: string): void {
@@ -408,7 +408,7 @@ export class BackgroundJobManager {
       return;
     }
     job.completionObserved = true;
-    this.emit({ type: "observed", owner, job: cloneSummary(job.summary) });
+    this.emit({ type: "observed", owner, job: job.summary });
     this.pruneTerminalJobs(owner);
   }
 
@@ -540,9 +540,12 @@ export class BackgroundJobManager {
     if (!isActive(job.summary.status)) {
       return;
     }
-    job.summary.status = result.status;
-    job.summary.exitCode = result.exitCode;
-    job.summary.finishedAt = new Date();
+    job.summary = {
+      ...job.summary,
+      status: result.status,
+      exitCode: result.exitCode,
+      finishedAt: new Date(),
+    };
     job.resolveSettlement();
     this.wakeWaiters(job);
     const level = result.status === "completed" || result.status === "canceled" ? "info" : "warn";
@@ -557,7 +560,7 @@ export class BackgroundJobManager {
         return;
       }
       job.completionPublished = true;
-      this.emit({ type: "settled", owner: job.owner, job: cloneSummary(job.summary) });
+      this.emit({ type: "settled", owner: job.owner, job: job.summary });
       this.pruneTerminalJobs(job.owner);
     });
   }
@@ -572,7 +575,7 @@ export class BackgroundJobManager {
     for (const job of terminal.slice(0, -this.maxRetainedTerminalJobs)) {
       if (!job.completionObserved) {
         job.completionObserved = true;
-        this.emit({ type: "observed", owner: job.owner, job: cloneSummary(job.summary) });
+        this.emit({ type: "observed", owner: job.owner, job: job.summary });
       }
       this.jobs.delete(job.summary.id);
     }
@@ -598,7 +601,7 @@ export class BackgroundJobManager {
         registration.listener({
           ...event,
           owner: event.owner,
-          job: cloneSummary(event.job),
+          job: event.job,
         });
       } catch (error) {
         const job = this.jobs.get(event.job.id);
@@ -644,10 +647,6 @@ function isActive(status: BackgroundJobStatus): status is "running" | "stopping"
 
 function shouldObserveCompletion(source: KillBackgroundJobOptions["source"]): boolean {
   return source === "tool";
-}
-
-function cloneSummary(summary: BackgroundJobSummary): BackgroundJobSummary {
-  return structuredClone(summary);
 }
 
 function unknownSummary(jobId: string): BackgroundJobSummary {

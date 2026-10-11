@@ -55,7 +55,7 @@ export class ServerProjection {
       running: this.runtime.isRunning,
       run: this.run ? { ...this.run } : null,
       assistant: this.assistant ? projectAssistant(this.assistant) : null,
-      tools: structuredClone([...this.tools.values()]),
+      tools: [...this.tools.values()],
       context: this.context(),
       input_queue: this.runtime.inputQueue,
       todo: this.runtime.todoState,

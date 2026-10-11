@@ -32,7 +32,7 @@ export function createKanaSubagentJournal(options: {
     subagent: {
       parentSessionId: options.owner.sessionId,
       spawnToolCallId: options.spawnToolCallId,
-      profile: structuredClone(options.profile),
+      profile: options.profile,
     },
   };
   const journal = createKanaSessionJournal(metadata);

@@ -3,19 +3,19 @@ import { randomUUID } from "node:crypto";
 type KanaGoalStatus = "active" | "completed" | "blocked" | "cancelled" | "round_limit";
 
 export type KanaGoalSnapshot = {
-  id: string;
-  objective: string;
-  status: KanaGoalStatus;
-  admittedRounds: number;
-  maxRounds: number;
-  startedAt: Date;
-  endedAt?: Date;
-  detail?: string;
+  readonly id: string;
+  readonly objective: string;
+  readonly status: KanaGoalStatus;
+  readonly admittedRounds: number;
+  readonly maxRounds: number;
+  readonly startedAt: Date;
+  readonly endedAt?: Date;
+  readonly detail?: string;
 };
 
 export type KanaGoalUpdate = {
-  status: "completed" | "blocked";
-  detail?: string;
+  readonly status: "completed" | "blocked";
+  readonly detail?: string;
 };
 
 export type KanaGoalContinuationAdmission =
@@ -26,11 +26,11 @@ export class KanaGoalController {
   private goalData?: KanaGoalSnapshot;
 
   get current(): KanaGoalSnapshot | undefined {
-    return cloneGoal(this.goalData);
+    return this.goalData;
   }
 
   get active(): KanaGoalSnapshot | undefined {
-    return this.goalData?.status === "active" ? cloneGoal(this.goalData) : undefined;
+    return this.goalData?.status === "active" ? this.goalData : undefined;
   }
 
   start(objective: string, maxRounds: number): KanaGoalSnapshot {
@@ -50,7 +50,7 @@ export class KanaGoalController {
       maxRounds,
       startedAt: new Date(),
     };
-    return cloneGoal(this.goalData);
+    return this.goalData;
   }
 
   admitContinuation(): KanaGoalContinuationAdmission | undefined {
@@ -62,8 +62,8 @@ export class KanaGoalController {
       return { type: "round_limit", goal };
     }
 
-    this.goalData.admittedRounds += 1;
-    return { type: "admitted", goal: cloneGoal(this.goalData) };
+    this.goalData = { ...this.goalData, admittedRounds: this.goalData.admittedRounds + 1 };
+    return { type: "admitted", goal: this.goalData };
   }
 
   update(update: KanaGoalUpdate): KanaGoalSnapshot {
@@ -103,7 +103,7 @@ export class KanaGoalController {
       endedAt: new Date(),
       ...(detail === undefined ? {} : { detail }),
     };
-    return cloneGoal(this.goalData);
+    return this.goalData;
   }
 }
 
@@ -116,11 +116,4 @@ function normalizeText(value: string, label: string, maxLength?: number): string
     throw new Error(`${label} must contain between 1 and ${maxLength} characters.`);
   }
   return normalized;
-}
-
-function cloneGoal(goal: KanaGoalSnapshot): KanaGoalSnapshot;
-function cloneGoal(goal: undefined): undefined;
-function cloneGoal(goal: KanaGoalSnapshot | undefined): KanaGoalSnapshot | undefined;
-function cloneGoal(goal: KanaGoalSnapshot | undefined): KanaGoalSnapshot | undefined {
-  return goal === undefined ? undefined : structuredClone(goal);
 }

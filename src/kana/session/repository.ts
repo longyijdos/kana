@@ -150,12 +150,12 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
 
   for (const entry of parsed.timeline) {
     if (entry.type === "message") {
-      messages.push(structuredClone(entry.message));
+      messages.push(entry.message);
       messageIds.set(entry.id, messages.length);
       continue;
     }
     if (entry.type === "todo_state") {
-      todoState = structuredClone(entry.items);
+      todoState = entry.items;
       continue;
     }
     if (entry.type !== "context_compaction") {
@@ -181,7 +181,7 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
   return {
     metadata,
     messages,
-    timeline: structuredClone(parsed.timeline),
+    timeline: parsed.timeline,
     todoState,
     contextCheckpoint,
     recoveredInterruptedTurn,
@@ -232,7 +232,7 @@ function readRecordTimestamp(line: string): string | undefined {
 
 function readKanaSessionFile(filePath: string): {
   header: KanaSessionHeader;
-  timeline: KanaSessionTimelineEntry[];
+  timeline: readonly KanaSessionTimelineEntry[];
   recoveredIncompleteTail: boolean;
 } {
   const { headerLine, recordLines, recoveredIncompleteTail } = readSessionLines(filePath, true);

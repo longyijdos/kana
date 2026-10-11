@@ -172,7 +172,7 @@ export class HeadlessRunOutputProjector {
       termination: this.termination,
       finalMessage: this.finalMessage,
       usage: this.usage,
-      ...(this.goal === undefined ? {} : { goal: structuredClone(this.goal) }),
+      ...(this.goal === undefined ? {} : { goal: this.goal }),
     };
   }
 

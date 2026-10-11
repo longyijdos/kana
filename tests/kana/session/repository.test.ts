@@ -57,6 +57,7 @@ describe("Kana session repository", () => {
     expect(header.model).toBeUndefined();
     expect(loaded.metadata).toEqual({
       ...session,
+      title: "hi",
       updatedAt: "2026-06-12T00:00:00.000Z",
     });
     expect(loaded.messages).toEqual(messages);
@@ -66,7 +67,6 @@ describe("Kana session repository", () => {
       "message",
       "turn_end",
     ]);
-    expect(session.title).toBe("hi");
     expect(loaded.contextCheckpoint).toBeUndefined();
   });
   test("identifies unknown message and checkpoint references in corrupted sessions", () => {

@@ -61,7 +61,7 @@ export function createMessageIdentity<TProvenance extends MessageProvenance>(
 ): MessageIdentity<TProvenance> {
   return {
     id: createMessageId(),
-    provenance: structuredClone(provenance),
+    provenance: provenance,
   };
 }
 
@@ -84,8 +84,8 @@ export function createUserMessage(options: CreateUserMessageOptions): UserMessag
     id: options.id ?? createMessageId(),
     role: "user",
     content: options.content,
-    provenance: structuredClone(options.provenance),
-    ...(options.images === undefined ? {} : { images: structuredClone(options.images) }),
+    provenance: options.provenance,
+    ...(options.images === undefined ? {} : { images: options.images }),
   };
 }
 

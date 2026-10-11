@@ -38,7 +38,7 @@ type KanaTuiConversationCapabilities = {
     messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
-  ) => { id: string; todoState?: KanaTodoItem[] };
+  ) => { id: string; todoState?: readonly KanaTodoItem[] };
   listSessions: () => KanaSessionMetadata[];
   loadSession: (sessionId: string) => ConversationSessionSnapshot;
   deleteSession: (sessionId: string) => Promise<boolean> | boolean;

@@ -211,7 +211,7 @@ export class KanaSubagentManager {
     const record: SubagentRecord = {
       owner,
       logger,
-      profile: structuredClone(options.profile),
+      profile: options.profile,
       task: options.task,
       summary,
       controller: new AbortController(),
@@ -232,7 +232,7 @@ export class KanaSubagentManager {
         options.run({
           agentId: id,
           signal: record.controller.signal,
-          profile: structuredClone(options.profile),
+          profile: options.profile,
           task: options.task,
           spawnToolCallId: options.spawnToolCallId,
           owner,
@@ -297,7 +297,7 @@ export class KanaSubagentManager {
         ...snapshotRecord(record, false),
         ...(live?.model ? { model: { ...live.model } } : {}),
         task: record.task,
-        messages: structuredClone(live?.messages ?? record.messages),
+        messages: live?.messages ?? record.messages,
       };
     }
     return undefined;
@@ -376,7 +376,7 @@ export class KanaSubagentManager {
     record.summary.model = result.model;
     record.summary.terminalReason = result.terminalReason;
     record.output = result.output;
-    record.messages = structuredClone(result.messages);
+    record.messages = result.messages;
     record.readLiveSnapshot = undefined;
     record.error = result.error;
     record.resolveSettlement();

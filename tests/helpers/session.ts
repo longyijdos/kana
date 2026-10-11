@@ -15,9 +15,9 @@ export type AppendSessionSnapshotOptions = {
 
 export function appendSessionSnapshot(
   session: KanaSessionMetadata,
-  messages: Message[],
+  messages: readonly Message[],
   options: AppendSessionSnapshotOptions = {},
-): KanaSessionTimelineEntry[] {
+): readonly KanaSessionTimelineEntry[] {
   if (messages.length === 0 && (options.compactions?.length ?? 0) === 0) {
     return [];
   }

@@ -75,7 +75,7 @@ type HostedSession = {
   persistent: boolean;
   pendingForkMessages?: readonly Message[];
   pendingForkCheckpoint?: ContextCheckpoint;
-  pendingForkTodoState?: KanaTodoItem[];
+  pendingForkTodoState?: readonly KanaTodoItem[];
   disposal?: Promise<void>;
   artifactCleanup?: Promise<void>;
 };
@@ -108,7 +108,7 @@ export class HostedSessionRegistry {
         cleanupOrphanedKanaSessionArtifacts({ cwd: process.cwd(), env: this.options.env }),
       );
     }
-    return initialSession === undefined ? undefined : structuredClone(initialSession.data);
+    return initialSession === undefined ? undefined : initialSession.data;
   }
 
   getLogger(): Logger {
@@ -120,7 +120,7 @@ export class HostedSessionRegistry {
     if (!session) {
       throw new Error(`Kana conversation host has no session ${sessionId}.`);
     }
-    return structuredClone(session.data.timeline);
+    return session.data.timeline;
   }
 
   getBackgroundJobs(sessionId: string): BackgroundJobClient | undefined {
@@ -170,7 +170,7 @@ export class HostedSessionRegistry {
         hostedSession.journal === undefined
           ? undefined
           : this.createAgentJournal(hostedSession, hostedSession.journal),
-      resolveTodoState: () => structuredClone(hostedSession.data.todoState),
+      resolveTodoState: () => hostedSession.data.todoState,
       commitTodoState: (change) =>
         this.commitTodoState(hostedSession, change, onTodoStateCommitted),
     };
@@ -201,7 +201,7 @@ export class HostedSessionRegistry {
     messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
-  ): { id: string; todoState: KanaTodoItem[] } {
+  ): { id: string; todoState: readonly KanaTodoItem[] } {
     this.assertForkingAvailable();
     let source = this.activeSession;
     if (!source) {
@@ -213,8 +213,8 @@ export class HostedSessionRegistry {
       });
     }
     const metadata = this.createSessionMetadata(source.data.metadata.path, prompt);
-    let forkedMessages = structuredClone(messages);
-    let forkedCheckpoint = structuredClone(contextCheckpoint);
+    let forkedMessages = messages;
+    let forkedCheckpoint = contextCheckpoint;
     if (source.persistent) {
       try {
         const forked = forkKanaSessionArtifacts({
@@ -244,26 +244,26 @@ export class HostedSessionRegistry {
       metadata,
       messages: forkedMessages,
       timeline: [],
-      todoState: structuredClone(source.data.todoState),
+      todoState: source.data.todoState,
       contextCheckpoint: forkedCheckpoint,
     });
     if (hosted.persistent) {
-      hosted.pendingForkMessages = structuredClone(forkedMessages);
+      hosted.pendingForkMessages = forkedMessages;
       hosted.pendingForkCheckpoint =
         forkedCheckpoint === undefined
           ? undefined
           : {
-              ...structuredClone(forkedCheckpoint),
+              ...forkedCheckpoint,
               baseCompactionId: undefined,
             };
-      hosted.pendingForkTodoState = structuredClone(source.data.todoState);
+      hosted.pendingForkTodoState = source.data.todoState;
     }
     hosted.logger.info("session.forked", {
       sourceSessionId: source.data.metadata.id,
     });
     return {
       id: hosted.data.metadata.id,
-      todoState: structuredClone(hosted.data.todoState),
+      todoState: hosted.data.todoState,
     };
   }
 
@@ -273,7 +273,7 @@ export class HostedSessionRegistry {
       loadKanaSession(sessionId, { cwd: process.cwd(), env: this.options.env }),
     );
     this.logLoadedSession(hosted, "session.resumed");
-    return structuredClone(hosted.data);
+    return hosted.data;
   }
 
   listSessions(): KanaSessionMetadata[] {
@@ -415,7 +415,7 @@ export class HostedSessionRegistry {
     // Temporary sessions retain normal identity but use process-scoped storage
     // so runtime correlation works without crossing the clean-mode boundary.
     const hosted: HostedSession = {
-      data: structuredClone(data),
+      data: data,
       artifactStore: persistent
         ? createPersistentKanaSessionArtifactStore({
             sessionId: data.metadata.id,
@@ -491,10 +491,10 @@ export class HostedSessionRegistry {
           journal.startTurn(runId, messages),
         );
         this.appendTimeline(hostedSession, entries);
-        hostedSession.data.messages = [
-          ...hostedSession.data.messages,
-          ...structuredClone(messages),
-        ];
+        hostedSession.data = {
+          ...hostedSession.data,
+          messages: [...hostedSession.data.messages, ...messages],
+        };
         this.resumableSessionId = hostedSession.data.metadata.id;
       },
       appendMessage: ({ runId, message }) => {
@@ -502,14 +502,17 @@ export class HostedSessionRegistry {
           journal.appendMessage(runId, message),
         );
         this.appendTimeline(hostedSession, [entry]);
-        hostedSession.data.messages = [...hostedSession.data.messages, structuredClone(message)];
+        hostedSession.data = {
+          ...hostedSession.data,
+          messages: [...hostedSession.data.messages, message],
+        };
       },
       appendCompaction: ({ runId, compaction }) => {
         const entry = this.writeJournal(hostedSession, "compaction", () =>
           journal.appendCompaction(compaction, { turnId: runId }),
         );
         this.appendTimeline(hostedSession, [entry]);
-        hostedSession.data.contextCheckpoint = structuredClone(compaction);
+        hostedSession.data = { ...hostedSession.data, contextCheckpoint: compaction };
       },
       endRun: ({ runId, reason }) => {
         const entry = this.writeJournal(hostedSession, "end", () => journal.endTurn(runId, reason));
@@ -523,7 +526,7 @@ export class HostedSessionRegistry {
     { toolCallId, parentToolCallId, items }: KanaTodoStateChange,
     onTodoStateCommitted?: (change: KanaTodoStateChange) => void,
   ): void {
-    const acceptedItems = structuredClone(items);
+    const acceptedItems = items;
     const journal = hostedSession.journal;
     if (journal) {
       const turnId = journal.activeTurnId;
@@ -535,12 +538,12 @@ export class HostedSessionRegistry {
       );
       this.appendTimeline(hostedSession, [entry]);
     }
-    hostedSession.data.todoState = structuredClone(acceptedItems);
+    hostedSession.data = { ...hostedSession.data, todoState: acceptedItems };
     try {
       onTodoStateCommitted?.({
         toolCallId,
         ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-        items: structuredClone(acceptedItems),
+        items: acceptedItems,
       });
     } catch (error) {
       hostedSession.logger.warn("session.todo_state_notification_failed", {
@@ -556,7 +559,10 @@ export class HostedSessionRegistry {
     hostedSession: HostedSession,
     entries: LoadKanaSessionResult["timeline"],
   ): void {
-    hostedSession.data.timeline = [...hostedSession.data.timeline, ...entries];
+    hostedSession.data = {
+      ...hostedSession.data,
+      timeline: [...hostedSession.data.timeline, ...entries],
+    };
   }
 
   private writeJournal<T>(

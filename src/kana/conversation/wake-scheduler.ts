@@ -5,20 +5,20 @@ export type WakeEventOrigin = "agent" | "user";
 export type WakeEvent = {
   // A one-shot wake is a future logical input, so its cancellation identity is
   // the same MessageId later carried into the Agent inbox and model history.
-  id: MessageId;
-  sessionId: string;
-  dueAt: Date;
-  message: string;
-  origin: WakeEventOrigin;
-  key?: string;
+  readonly id: MessageId;
+  readonly sessionId: string;
+  readonly dueAt: Date;
+  readonly message: string;
+  readonly origin: WakeEventOrigin;
+  readonly key?: string;
 };
 
 type ScheduleWakeOptions = {
-  sessionId: string;
-  afterMinutes: number;
-  message: string;
-  origin?: WakeEventOrigin;
-  key?: string;
+  readonly sessionId: string;
+  readonly afterMinutes: number;
+  readonly message: string;
+  readonly origin?: WakeEventOrigin;
+  readonly key?: string;
 };
 
 export type WakeScheduler = {
@@ -32,16 +32,16 @@ export type WakeScheduler = {
 };
 
 export type CreateWakeSchedulerOptions = {
-  now?: () => Date;
-  setTimeout?: (callback: () => void, delay: number) => WakeTimer;
-  clearTimeout?: (timer: WakeTimer) => void;
-  createId?: () => MessageId;
+  readonly now?: () => Date;
+  readonly setTimeout?: (callback: () => void, delay: number) => WakeTimer;
+  readonly clearTimeout?: (timer: WakeTimer) => void;
+  readonly createId?: () => MessageId;
 };
 
 type WakeTimer = ReturnType<typeof setTimeout> | number;
 
 type ScheduledWakeEvent = WakeEvent & {
-  timer: WakeTimer;
+  readonly timer: WakeTimer;
 };
 
 // Wake events are intentionally process-local. A stopped Kana instance has no
@@ -105,7 +105,7 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
           remove(id);
 
           for (const listener of listeners) {
-            listener(structuredClone(event));
+            listener(event);
           }
           publishState();
         },
@@ -118,7 +118,7 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
       }
       publishState();
 
-      return structuredClone(event);
+      return event;
     },
     list(sessionId) {
       return [...events.values()]
@@ -127,7 +127,7 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
           (left, right) =>
             left.dueAt.getTime() - right.dueAt.getTime() || left.id.localeCompare(right.id),
         )
-        .map(({ timer: _timer, ...event }) => structuredClone(event));
+        .map(({ timer: _timer, ...event }) => event);
     },
     cancel(id) {
       const removed = remove(id);

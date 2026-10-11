@@ -266,7 +266,7 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadSubagentProfiles(): LoadKanaSubagentProfilesResult {
-    return structuredClone(this.subagentProfileSnapshot);
+    return this.subagentProfileSnapshot;
   }
 
   loadSkills(): LoadKanaSkillActivationsResult {
@@ -353,7 +353,7 @@ export class KanaConversationHost<TConfiguration = never> {
     messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
-  ): { id: string; todoState: KanaTodoItem[] } {
+  ): { id: string; todoState: readonly KanaTodoItem[] } {
     return this.sessionRegistry.forkSession(messages, contextCheckpoint, prompt);
   }
 
@@ -556,7 +556,7 @@ export class KanaConversationHost<TConfiguration = never> {
       backgroundJobs: sessionBinding.backgroundJobs,
       subagents: sessionBinding.subagents,
       userTasks: this.enableUserTasks ? sessionBinding.userTasks : undefined,
-      subagentProfiles: structuredClone(this.subagentProfileSnapshot.profiles),
+      subagentProfiles: this.subagentProfileSnapshot.profiles,
       skills:
         this.launchMode === "clean"
           ? []
@@ -564,7 +564,7 @@ export class KanaConversationHost<TConfiguration = never> {
               .load()
               .skills.filter((skill) => skill.enabled),
       customProviderSnapshot: this.customProviderSnapshot,
-      instructionSections: structuredClone(this.instructionSections),
+      instructionSections: this.instructionSections,
       runSubagent: (context) => this.runSubagent(context, bindToolExecution, config, logger),
       wakeScheduler: this.enableScheduledWakeTool ? this.wakeScheduler : undefined,
       messages: options.messages ?? sessionBinding.messages,

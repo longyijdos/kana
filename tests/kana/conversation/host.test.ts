@@ -442,9 +442,7 @@ describe("Kana conversation host", () => {
     writeFileSync(profilePath, subagentProfile("Initial instructions."));
     const host = createKanaConversationHost({ env, session: { type: "none" } });
 
-    const first = host.loadSubagentProfiles();
-    const focused = first.profiles.find((profile) => profile.name === "focused");
-    if (focused) focused.instructions = "Changed returned snapshot.";
+    host.loadSubagentProfiles();
     writeFileSync(profilePath, subagentProfile("Updated on disk."));
     writeFileSync(path.join(agentsDirectory, "later.md"), subagentProfile("Added later."));
 
@@ -678,8 +676,6 @@ describe("Kana conversation host", () => {
 
     const fork = host.forkSession([], undefined, "Continue independently.");
     expect(fork.todoState).toEqual(todoState);
-    fork.todoState[0]!.content = "Mutated return value";
-    expect(resolveTodoState?.()).toEqual(todoState);
 
     const forkAgent = host.createAgent({ sessionId: fork.id });
     expect(resolveTodoState?.()).toEqual(todoState);

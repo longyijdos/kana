@@ -31,53 +31,53 @@ export type {
 } from "./input-coordinator";
 
 export type ConversationSessionSnapshot = {
-  id: string;
-  messages: readonly Message[];
-  timeline: KanaSessionTimelineEntry[];
-  todoState?: KanaTodoItem[];
-  contextCheckpoint?: ContextCheckpoint;
+  readonly id: string;
+  readonly messages: readonly Message[];
+  readonly timeline: readonly KanaSessionTimelineEntry[];
+  readonly todoState?: readonly KanaTodoItem[];
+  readonly contextCheckpoint?: ContextCheckpoint;
 };
 
 export type ConversationRunSource = ConversationInputRunSource | "compaction";
 
 export type ConversationRuntimeEvent =
   | {
-      type: "run_start";
-      source: ConversationRunSource;
-      input?: UserMessage;
+      readonly type: "run_start";
+      readonly source: ConversationRunSource;
+      readonly input?: UserMessage;
     }
   | {
-      type: "agent_event";
-      source: ConversationRunSource;
-      event: AgentEvent;
+      readonly type: "agent_event";
+      readonly source: ConversationRunSource;
+      readonly event: AgentEvent;
     }
   | {
-      type: "run_end";
-      source: ConversationRunSource;
-      event?: Extract<AgentEvent, { type: "agent_end" }>;
-      goal?: KanaGoalSnapshot;
+      readonly type: "run_end";
+      readonly source: ConversationRunSource;
+      readonly event?: Extract<AgentEvent, { type: "agent_end" }>;
+      readonly goal?: KanaGoalSnapshot;
     }
   | {
-      type: "run_error";
-      source: ConversationRunSource;
-      error: unknown;
+      readonly type: "run_error";
+      readonly source: ConversationRunSource;
+      readonly error: unknown;
     }
   | {
-      type: "session_changed";
-      action: "new" | "fork" | "resume";
-      session: ConversationSessionSnapshot;
+      readonly type: "session_changed";
+      readonly action: "new" | "fork" | "resume";
+      readonly session: ConversationSessionSnapshot;
     }
   | {
-      type: "input_queue_changed";
-      queue: ConversationInputQueueSnapshot;
+      readonly type: "input_queue_changed";
+      readonly queue: ConversationInputQueueSnapshot;
     }
   | {
-      type: "todo_state_changed";
-      source: ConversationRunSource;
-      change: KanaTodoStateChange;
+      readonly type: "todo_state_changed";
+      readonly source: ConversationRunSource;
+      readonly change: KanaTodoStateChange;
     }
   | {
-      type: "goal_state_changed";
+      readonly type: "goal_state_changed";
       change:
         | "started"
         | "round_admitted"
@@ -86,7 +86,7 @@ export type ConversationRuntimeEvent =
         | "cancelled"
         | "round_limit"
         | "discarded";
-      goal: KanaGoalSnapshot;
+      readonly goal: KanaGoalSnapshot;
     };
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
@@ -115,14 +115,14 @@ type CreateConversationAgentOptions<TConfiguration> = {
 export type ConversationRuntimeOptions<TConfiguration> = {
   initialSession?: ConversationSessionSnapshot;
   // Returns a detached timeline snapshot owned by the caller.
-  getSessionTimeline?: (sessionId: string) => KanaSessionTimelineEntry[];
+  getSessionTimeline?: (sessionId: string) => readonly KanaSessionTimelineEntry[];
   createAgent: (options: CreateConversationAgentOptions<TConfiguration>) => Agent;
   createNewSession: () => { id: string };
   forkSession: (
     messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
-  ) => { id: string; todoState?: KanaTodoItem[] };
+  ) => { id: string; todoState?: readonly KanaTodoItem[] };
   loadSession: (sessionId: string) => ConversationSessionSnapshot;
   listSessions?: () => KanaSessionMetadata[];
   deleteSession?: (sessionId: string) => Promise<boolean> | boolean;
@@ -158,7 +158,7 @@ export class ConversationRuntime<TConfiguration = never> {
   private closePromise?: Promise<void>;
 
   constructor(private readonly options: ConversationRuntimeOptions<TConfiguration>) {
-    this.sessionData = cloneSession(options.initialSession);
+    this.sessionData = options.initialSession;
     this.getLogger = options.getLogger ?? createNoopLogger;
     this.inputCoordinator = new ConversationInputCoordinator({
       wakeScheduler: options.wakeScheduler ?? createWakeScheduler(),
@@ -213,19 +213,19 @@ export class ConversationRuntime<TConfiguration = never> {
 
     const timeline = this.options.getSessionTimeline
       ? this.options.getSessionTimeline(session.id)
-      : structuredClone(session.timeline);
+      : session.timeline;
     const state = this.agent.state;
     return {
       id: session.id,
       messages: state.messages,
       timeline,
-      ...(session.todoState === undefined ? {} : { todoState: structuredClone(session.todoState) }),
+      ...(session.todoState === undefined ? {} : { todoState: session.todoState }),
       contextCheckpoint: state.contextCheckpoint,
     };
   }
 
-  get todoState(): KanaTodoItem[] {
-    return structuredClone(this.sessionData?.todoState ?? []);
+  get todoState(): readonly KanaTodoItem[] {
+    return this.sessionData?.todoState ?? [];
   }
 
   get goal(): KanaGoalSnapshot | undefined {
@@ -330,7 +330,7 @@ export class ConversationRuntime<TConfiguration = never> {
       id: created.id,
       messages: state.messages,
       timeline: [],
-      todoState: structuredClone(created.todoState ?? this.sessionData?.todoState ?? []),
+      todoState: created.todoState ?? this.sessionData?.todoState ?? [],
       contextCheckpoint: state.contextCheckpoint,
     };
     await this.replaceSession("fork", session);
@@ -455,7 +455,7 @@ export class ConversationRuntime<TConfiguration = never> {
       return;
     }
 
-    this.sessionData.todoState = structuredClone(change.items);
+    this.sessionData = { ...this.sessionData, todoState: change.items };
     this.emit({
       type: "todo_state_changed",
       source,
@@ -488,7 +488,7 @@ export class ConversationRuntime<TConfiguration = never> {
   ): Promise<void> {
     // Build against the candidate session before mutating runtime state. A
     // provider/configuration failure must leave the current Agent usable.
-    const nextSession = cloneSession(session) as ConversationSessionSnapshot;
+    const nextSession = session;
     const nextAgent = this.buildAgent(
       nextSession.messages,
       nextSession.contextCheckpoint,
@@ -611,7 +611,7 @@ export class ConversationRuntime<TConfiguration = never> {
         source,
         outcome: terminalEvent.reason,
       });
-      return { type: "completed", event: structuredClone(terminalEvent) };
+      return { type: "completed", event: terminalEvent };
     } catch (error) {
       if (source === "goal") {
         this.inputCoordinator.blockGoal("The goal run failed before it could continue.");
@@ -633,7 +633,7 @@ export class ConversationRuntime<TConfiguration = never> {
       return;
     }
     if (event.type === "agent_end") {
-      this.terminalEvent = structuredClone(event);
+      this.terminalEvent = event;
     }
     this.emit({
       type: "agent_event",
@@ -665,7 +665,7 @@ export class ConversationRuntime<TConfiguration = never> {
   private emit(event: ConversationRuntimeEvent): void {
     for (const listener of [...this.listeners]) {
       try {
-        listener(cloneRuntimeEvent(event));
+        listener(event);
       } catch (error) {
         this.getLogger().warn("conversation.listener_failed", {
           eventType: event.type,
@@ -674,17 +674,4 @@ export class ConversationRuntime<TConfiguration = never> {
       }
     }
   }
-}
-
-function cloneSession(
-  session: ConversationSessionSnapshot | undefined,
-): ConversationSessionSnapshot | undefined {
-  return session === undefined ? undefined : structuredClone(session);
-}
-
-function cloneRuntimeEvent(event: ConversationRuntimeEvent): ConversationRuntimeEvent {
-  if (event.type === "run_error") {
-    return { ...event };
-  }
-  return structuredClone(event);
 }

@@ -41,7 +41,7 @@ export class ServerApprovals {
   constructor(private readonly options: ApprovalOptions) {}
 
   get snapshot(): ServerApproval[] {
-    return [...this.pending.values()].map((entry) => structuredClone(entry.public));
+    return [...this.pending.values()].map((entry) => entry.public);
   }
 
   readonly request = (
@@ -61,17 +61,17 @@ export class ServerApprovals {
           tool_call: {
             id: toolCall.id,
             name: toolCall.name,
-            arguments: structuredClone(toolCall.args),
+            arguments: toolCall.args,
           },
           allow_always: getShellCommand(toolCall) !== undefined,
         },
-        toolCall: structuredClone(toolCall),
+        toolCall: toolCall,
         resolve,
         cleanup: () => signal?.removeEventListener("abort", onAbort),
       };
       this.pending.set(id, entry);
       signal?.addEventListener("abort", onAbort, { once: true });
-      this.options.emit("approval.required", structuredClone(entry.public));
+      this.options.emit("approval.required", entry.public);
     });
   };
 

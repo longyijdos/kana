@@ -19,90 +19,90 @@ const DEFAULT_SESSION_TITLE = "Untitled session";
 const MAX_SESSION_TITLE_LENGTH = 80;
 
 export type KanaSessionMetadata = {
-  id: string;
-  createdAt: string;
+  readonly id: string;
+  readonly createdAt: string;
   // Derived from the last persisted timeline entry on list/load and never
   // written back into the append-only header.
-  updatedAt: string;
-  title: string;
-  cwd: string;
-  path: string;
-  parentSessionPath?: string;
-  subagent?: KanaSubagentSessionIdentity;
+  readonly updatedAt: string;
+  readonly title: string;
+  readonly cwd: string;
+  readonly path: string;
+  readonly parentSessionPath?: string;
+  readonly subagent?: KanaSubagentSessionIdentity;
 };
 
 type KanaSubagentSessionIdentity = {
-  parentSessionId: string;
-  spawnToolCallId: string;
-  profile: KanaSubagentProfile;
+  readonly parentSessionId: string;
+  readonly spawnToolCallId: string;
+  readonly profile: KanaSubagentProfile;
 };
 
 export type KanaSessionHeader = {
-  type: "session";
-  version: typeof SESSION_VERSION;
-  id: string;
-  createdAt: string;
-  title: string;
-  cwd: string;
-  parentSessionPath?: string;
-  subagent?: KanaSubagentSessionIdentity;
+  readonly type: "session";
+  readonly version: typeof SESSION_VERSION;
+  readonly id: string;
+  readonly createdAt: string;
+  readonly title: string;
+  readonly cwd: string;
+  readonly parentSessionPath?: string;
+  readonly subagent?: KanaSubagentSessionIdentity;
 };
 
 type KanaSessionTurnKind = "agent" | "snapshot";
 export type KanaSessionTurnOutcome = AgentEndReason | "interrupted" | "snapshot";
 
 export type KanaSessionTurnStartEntry = {
-  type: "turn_start";
-  id: string;
-  parentId: string | null;
-  timestamp: string;
-  turnId: string;
-  kind: KanaSessionTurnKind;
+  readonly type: "turn_start";
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly timestamp: string;
+  readonly turnId: string;
+  readonly kind: KanaSessionTurnKind;
 };
 
 export type KanaSessionTurnEndEntry = {
-  type: "turn_end";
-  id: string;
-  parentId: string | null;
-  timestamp: string;
-  turnId: string;
-  outcome: KanaSessionTurnOutcome;
+  readonly type: "turn_end";
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly timestamp: string;
+  readonly turnId: string;
+  readonly outcome: KanaSessionTurnOutcome;
 };
 
 export type KanaSessionMessageEntry = {
-  type: "message";
-  id: string;
-  parentId: string | null;
-  timestamp: string;
-  message: Message;
+  readonly type: "message";
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly timestamp: string;
+  readonly message: Message;
 };
 
 export type KanaSessionContextCompactionEntry = {
-  type: "context_compaction";
-  id: string;
-  parentId: string | null;
-  timestamp: string;
-  reason: ContextCheckpoint["reason"];
-  baseCompactionId?: string;
-  coversThroughId: string;
-  compactedMessageCount: number;
-  beforeTokens: number;
-  estimatedAfterTokens: number;
-  summary: {
-    format: typeof CONTEXT_SUMMARY_FORMAT;
-    text: string;
+  readonly type: "context_compaction";
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly timestamp: string;
+  readonly reason: ContextCheckpoint["reason"];
+  readonly baseCompactionId?: string;
+  readonly coversThroughId: string;
+  readonly compactedMessageCount: number;
+  readonly beforeTokens: number;
+  readonly estimatedAfterTokens: number;
+  readonly summary: {
+    readonly format: typeof CONTEXT_SUMMARY_FORMAT;
+    readonly text: string;
   };
-  usage?: ModelUsage;
+  readonly usage?: ModelUsage;
 };
 
 export type KanaSessionTodoStateEntry = {
-  type: "todo_state";
-  id: string;
-  parentId: string | null;
-  timestamp: string;
-  toolCallId?: string;
-  parentToolCallId?: string;
-  items: KanaTodoItem[];
+  readonly type: "todo_state";
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly timestamp: string;
+  readonly toolCallId?: string;
+  readonly parentToolCallId?: string;
+  readonly items: readonly KanaTodoItem[];
 };
 
 export type KanaSessionTimelineEntry =
@@ -113,43 +113,43 @@ export type KanaSessionTimelineEntry =
   | KanaSessionTurnEndEntry;
 
 export type CreateKanaSessionOptions = {
-  cwd?: string;
-  env?: NodeJS.ProcessEnv;
-  id?: string;
-  title?: string;
-  parentSessionPath?: string;
-  subagent?: KanaSubagentSessionIdentity;
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly id?: string;
+  readonly title?: string;
+  readonly parentSessionPath?: string;
+  readonly subagent?: KanaSubagentSessionIdentity;
 };
 
 export type FindKanaSessionOptions = {
-  cwd?: string;
-  env?: NodeJS.ProcessEnv;
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
 };
 
 export type AppendKanaSessionMessagesOptions = {
-  timestamp?: string;
+  readonly timestamp?: string;
 };
 
 export type LoadKanaSessionResult = {
-  metadata: KanaSessionMetadata;
-  messages: readonly Message[];
-  timeline: KanaSessionTimelineEntry[];
-  todoState: KanaTodoItem[];
-  contextCheckpoint?: ContextCheckpoint;
-  recoveredInterruptedTurn?: {
-    turnId: string;
-    unknownToolCallCount: number;
+  readonly metadata: KanaSessionMetadata;
+  readonly messages: readonly Message[];
+  readonly timeline: readonly KanaSessionTimelineEntry[];
+  readonly todoState: readonly KanaTodoItem[];
+  readonly contextCheckpoint?: ContextCheckpoint;
+  readonly recoveredInterruptedTurn?: {
+    readonly turnId: string;
+    readonly unknownToolCallCount: number;
   };
-  recoveredIncompleteTail?: boolean;
+  readonly recoveredIncompleteTail?: boolean;
 };
 
 export type AppendCompactionOptions = {
-  turnId?: string;
+  readonly turnId?: string;
 };
 
 export type AppendSnapshotOptions = AppendKanaSessionMessagesOptions & {
-  compactions?: ContextCheckpoint[];
-  todoState?: KanaTodoItem[];
+  readonly compactions?: readonly ContextCheckpoint[];
+  readonly todoState?: readonly KanaTodoItem[];
 };
 
 export function createEntryId(): string {
@@ -196,7 +196,7 @@ export function createMessageEntry(
     id: createEntryId(),
     parentId,
     timestamp,
-    message: structuredClone(message),
+    message: message,
   };
 }
 
