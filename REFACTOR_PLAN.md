@@ -386,6 +386,27 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ## 阶段 5：解析与持久化
 
+### 细化设计（开工前写定）
+
+**`parseWithSchema(schema, value, label)`（`utils`）**
+- typebox 编译后按 schema 缓存；失败时只报第一条错误，格式为 `<字段路径> <原因>.`，与现有错误风格一致
+- schema 节点可以带 `errorMessage`，用来保留现有的文案（例如 "must be -1 or a positive integer"）；没有时按 keyword 生成默认文案：类型、枚举（"must be one of: …"）、未知字段（"Unknown <label> field: <路径>."）、缺少字段
+- 只做结构校验。跨字段规则和语义检查（URL、header、重复项）写在解析后的普通函数里
+- tools 的参数校验仍保留自己的格式化：它面向模型，需要列出所有错误
+
+**config.toml**
+- 文件格式只写一份 typebox schema（snake_case 键，全部可选，禁止未知字段）
+- 解析流程：schema 校验 → 通用的 snake→camel 转换并叠加到 `DEFAULT_KANA_CONFIG` 上
+- 反方向（启动覆盖项、store 写回）也用同一个通用转换；store 要修补的 TOML 叶子从 schema 遍历得到
+- 由此删除 `toRawKanaConfig`、`mergeKanaConfig`、`CONFIG_FIELDS` 和约 20 个 `readX`
+- `contracts.ts` 中手写的类型保留，作为可读的契约文档，并全部改为 readonly
+- `KanaConfigStore.update(change: (config) => KanaConfig)`：去掉 draft 和多余的拷贝。`applyAgentConfiguration` 改为返回新 config
+- store 写入后重新解析文件这一步保留：它校验的是"行级 TOML 修补"有没有生效，不属于重复校验
+
+**其他格式**：mcp.json、mcp-enabled、custom.toml、approvals、skills.toml、oauth-tokens、theme、GitHub release、session 条目都按上面的方式处理：用 schema 做结构校验，再接语义检查。每个格式迁移时单独核对错误文案，测试改为断言字段路径
+
+**持久化基础设施**：`utils` 中保留一份 `writeFileAtomic`；文件锁的重试和串行化队列各保留一份，放在 `kana` 内部共享
+
 - [ ] 在 `utils` 中提供 `parseWithSchema(schema, raw, label)`，带编译缓存，报错格式为"字段路径 + 原因"
 - [ ] **config**：
   - 字段只定义一次，从中派生 typebox schema、默认值、snake↔camel 映射和 TOML 叶子路径
