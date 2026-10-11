@@ -446,23 +446,7 @@ async function streamAssistantResponse(
     }
   }
 
-  try {
-    currentMessage = await response.result();
-  } catch {
-    return {
-      message: currentMessage,
-      isError: true,
-      error: undefined,
-    };
-  }
-
-  replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
-  await emitMessageEnd(currentMessage, emit);
-
-  return {
-    message: currentMessage,
-    isError: false,
-  };
+  throw new Error("Model stream ended without a done or error event.");
 }
 
 async function prepareModelContext(

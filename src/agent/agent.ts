@@ -133,7 +133,9 @@ type ActiveRun = {
   promise: Promise<void>;
   resolve(): void;
   abortController: AbortController;
-  steeringEnabled?: boolean;
+  // Steering input belongs to prompt runs only. Compaction never exposes a
+  // queue that it cannot consume.
+  steeringEnabled: boolean;
 };
 
 export type AgentInboxListener = (snapshot: AgentInboxSnapshot) => void;
@@ -405,7 +407,7 @@ export class Agent {
     }
     const runContextManager = this.contextManager?.fork();
 
-    void this.runWithSteeringLifecycle(async (signal) => {
+    void this.runWithLifecycle(async (signal) => {
       const writeJournal = async (operation: () => Promise<void> | void): Promise<void> => {
         try {
           await operation();
@@ -527,7 +529,7 @@ export class Agent {
         }
         throw error;
       }
-    }).catch((error) => {
+    }, true).catch((error) => {
       this.logger.error("agent.run_failed", { phase, error });
       stream.error(error);
     });
@@ -694,22 +696,9 @@ export class Agent {
     };
   }
 
-  private runWithSteeringLifecycle(
-    executor: (signal: AbortSignal) => Promise<unknown>,
-  ): Promise<void> {
-    return this.runWithLifecycle((signal) => {
-      if (!this.activeRun) {
-        throw new Error("Agent steering initialized outside an active run.");
-      }
-      // Steering input belongs to this run only. Compaction uses the base
-      // lifecycle and therefore never exposes a queue that it cannot consume.
-      this.activeRun.steeringEnabled = true;
-      return executor(signal);
-    });
-  }
-
   private async runWithLifecycle(
     executor: (signal: AbortSignal) => Promise<unknown>,
+    steeringEnabled = false,
   ): Promise<void> {
     if (this.activeRun) {
       throw new Error("Agent is already running.");
@@ -725,6 +714,7 @@ export class Agent {
       promise,
       resolve: resolveRun,
       abortController,
+      steeringEnabled,
     };
     this.stateData.isRunning = true;
     this.stateData.streamingMessage = undefined;

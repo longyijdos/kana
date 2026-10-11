@@ -25,7 +25,6 @@ type HeadlessRunLifecycleOptions = {
 
 export class HeadlessRunLifecycle {
   private abortRequested = false;
-  private listening = false;
   private timeout?: ReturnType<typeof setTimeout>;
   private runTermination?: HeadlessRunTermination;
 
@@ -36,10 +35,6 @@ export class HeadlessRunLifecycle {
   }
 
   connect(): void {
-    if (this.listening) {
-      return;
-    }
-    this.listening = true;
     this.options.signal?.addEventListener("abort", this.onAbort, { once: true });
   }
 
@@ -66,14 +61,8 @@ export class HeadlessRunLifecycle {
   }
 
   dispose(): void {
-    if (this.timeout !== undefined) {
-      clearTimeout(this.timeout);
-      this.timeout = undefined;
-    }
-    if (this.listening) {
-      this.options.signal?.removeEventListener("abort", this.onAbort);
-      this.listening = false;
-    }
+    clearTimeout(this.timeout);
+    this.options.signal?.removeEventListener("abort", this.onAbort);
   }
 
   private readonly onAbort = (): void => {

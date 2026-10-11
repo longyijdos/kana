@@ -169,13 +169,10 @@ function waitForGoalCompletion(runtime: ConversationRuntime): {
   const promise = new Promise<KanaGoalSnapshot>((resolve) => {
     resolveCompletion = resolve;
   });
-  let settled = false;
   const settle = (): void => {
-    if (settled || terminalGoal === undefined) {
-      return;
+    if (terminalGoal !== undefined) {
+      resolveCompletion(terminalGoal);
     }
-    settled = true;
-    resolveCompletion(terminalGoal);
   };
   const unsubscribe = runtime.subscribe((event) => {
     if (event.type === "goal_state_changed") {

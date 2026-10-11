@@ -511,7 +511,8 @@ export class McpOAuthHttpAuthorizer {
         });
       throw error;
     } finally {
-      await this.callbackServer?.close();
+      // A close failure must not replace the authorization result or its error.
+      await this.callbackServer?.close().catch(() => undefined);
       this.callbackServer = undefined;
       this.callbackPromise = undefined;
       this.verifier = undefined;
