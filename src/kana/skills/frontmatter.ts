@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-
-import { formatError } from "../format";
+import { formatError } from "@/utils";
 import type { KanaSkillDiagnostic, LoadKanaSkillsResult, SkillFrontmatter } from "./types";
 
 const MAX_NAME_LENGTH = 64;

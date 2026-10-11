@@ -1,3 +1,4 @@
+import { formatError } from "@/utils";
 import { TextBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -220,8 +221,4 @@ export class McpLifecycleController {
       this.options.transcript.addChild(new TextBlock(result.status, { color: tuiTheme.muted }));
     }
   }
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -243,7 +243,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
 
   removeProcessSignals = registerTuiProcessSignals((signal) => {
     host.getLogger().info("tui.signal_received", { signal });
-    void app?.stop();
+    void app.stop();
   });
 
   try {

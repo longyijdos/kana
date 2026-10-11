@@ -1,6 +1,7 @@
 import type { ModelMetadata, UserImage } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import { loadUserImageFile } from "@/tools";
+import { errorFields } from "@/utils";
 import { readClipboardImage } from "../clipboard-image";
 import type { Editor } from "../components";
 import type { Tui } from "../runtime";
@@ -56,7 +57,7 @@ export class ImageAttachmentController {
       try {
         (this.options.getLogger ?? createNoopLogger)().warn("tui.clipboard_paste_failed", {
           platform: process.platform,
-          errorType: error instanceof Error ? error.name : typeof error,
+          ...errorFields(error),
         });
       } catch {
         // Clipboard diagnostics must not replace the user-facing failure.
@@ -94,7 +95,7 @@ export class ImageAttachmentController {
     } catch (error) {
       try {
         (this.options.getLogger ?? createNoopLogger)().warn("tui.image_file_attach_failed", {
-          errorType: error instanceof Error ? error.name : typeof error,
+          ...errorFields(error),
         });
       } catch {
         // Image diagnostics must not replace the user-facing failure.

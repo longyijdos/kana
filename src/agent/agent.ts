@@ -10,6 +10,7 @@ import {
 } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
 import { createCodemodeTool, type Tool } from "@/tools";
+import { errorFields } from "@/utils";
 import {
   type ContextCheckpoint,
   ContextManager,
@@ -689,7 +690,7 @@ export class Agent {
             throw error;
           }
           this.log("error", "agent.prompt_assembly_failed", {
-            errorType: error instanceof Error ? error.name : typeof error,
+            ...errorFields(error),
           });
           throw error;
         }
@@ -811,7 +812,7 @@ export class Agent {
       } catch (error) {
         this.log("warn", "tool.result_policy_reset_failed", {
           policySource: policy.source,
-          errorType: error instanceof Error ? error.name : typeof error,
+          ...errorFields(error),
         });
       }
     }

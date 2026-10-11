@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createNoopLogger, type Logger } from "@/logging";
+import { errorFields } from "@/utils";
 
 const DEFAULT_MAX_RETAINED_OUTPUT_BYTES = 1024 * 1024;
 const MAX_OUTPUT_PEEK_BYTES = 20 * 1024;
@@ -283,7 +284,7 @@ export class BackgroundJobManager {
         logger.warn("background_job.producer_failed", {
           jobId: id,
           producer: options.kind,
-          errorType: getErrorType(error),
+          ...errorFields(error),
         });
         this.finalize(record, { status: "failed", exitCode: null });
       },
@@ -434,7 +435,7 @@ export class BackgroundJobManager {
             jobId: job.summary.id,
             producer: job.summary.kind,
             phase: source,
-            errorType: getErrorType(error),
+            ...errorFields(error),
           });
         }),
       ),
@@ -603,7 +604,7 @@ export class BackgroundJobManager {
         const job = this.jobs.get(event.job.id);
         job?.logger.warn("background_job.listener_failed", {
           eventType: event.type,
-          errorType: getErrorType(error),
+          ...errorFields(error),
         });
       }
     }
@@ -714,8 +715,4 @@ function readNonNegativeInteger(value: number | undefined, fallback: number, nam
     throw new Error(`${name} must be a non-negative integer.`);
   }
   return resolved;
-}
-
-function getErrorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
 }

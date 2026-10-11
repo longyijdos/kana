@@ -21,6 +21,7 @@ import {
 } from "@/kana";
 import type { StartServerOptions } from "@/server";
 import type { StartTuiOptions } from "@/tui";
+import { formatError } from "@/utils";
 import { KANA_VERSION } from "@/version";
 
 export type CreateCliOptions = {
@@ -416,7 +417,7 @@ function addHeadlessOptions(command: Command): Command {
         try {
           return parseHeadlessTimeout(value);
         } catch (error) {
-          throw new InvalidArgumentError(error instanceof Error ? error.message : String(error));
+          throw new InvalidArgumentError(formatError(error));
         }
       },
     )
@@ -639,7 +640,7 @@ export async function runCli(argv: string[], options: CreateCliOptions): Promise
     loadKanaEnvironment();
     await createCli(options).parseAsync(argv);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(formatError(error));
     process.exitCode = 1;
   }
 }

@@ -8,6 +8,7 @@ import type {
   ThinkingContent,
   ToolCallContent,
 } from "@/core";
+import { isRecord } from "@/utils";
 
 export type ResponsesStreamState = {
   terminalSeen: boolean;
@@ -702,10 +703,6 @@ function requireRecord(value: unknown, name: string): Record<string, unknown> {
     throw new Error(`${name} must be an object.`);
   }
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireString(value: unknown, name: string): string {

@@ -15,6 +15,7 @@ import path from "node:path";
 
 import type { ContextCheckpoint } from "@/agent";
 import type { Message, ToolResultArtifact } from "@/core";
+import { errorCode, errorFields } from "@/utils";
 import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 import { getKanaSessionArtifactDirectory, getKanaWorkspaceArtifactDirectory } from "./store";
 
@@ -66,7 +67,7 @@ export function auditKanaSessionArtifacts(options: {
     assertManagedDirectory(path.dirname(directory), "workspace artifact path");
     assertManagedDirectory(directory, "session artifact path");
   } catch (error) {
-    if (getErrorCode(error) === "ENOENT") {
+    if (errorCode(error) === "ENOENT") {
       result.missingCount = result.artifactCount;
     } else {
       result.invalidCount = result.artifactCount;
@@ -94,7 +95,7 @@ export function auditKanaSessionArtifacts(options: {
         result.invalidCount += 1;
       }
     } catch (error) {
-      if (getErrorCode(error) === "ENOENT") {
+      if (errorCode(error) === "ENOENT") {
         result.missingCount += 1;
       } else {
         result.invalidCount += 1;
@@ -180,7 +181,7 @@ export function deleteKanaSessionArtifacts(options: {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorDiagnostic(error)],
+      failures: [errorFields(error)],
     };
   }
   if (!existsSync(directory)) {
@@ -193,7 +194,7 @@ export function deleteKanaSessionArtifacts(options: {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorDiagnostic(error)],
+      failures: [errorFields(error)],
     };
   }
   return removeArtifactDirectory(directory);
@@ -239,7 +240,7 @@ export function cleanupOrphanedKanaSessionArtifacts(options: {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorDiagnostic(error)],
+      failures: [errorFields(error)],
     };
   }
 
@@ -267,7 +268,7 @@ export function cleanupOrphanedKanaSessionArtifacts(options: {
         continue;
       }
     } catch (error) {
-      result.failures.push(errorDiagnostic(error));
+      result.failures.push(errorFields(error));
       continue;
     }
 
@@ -377,7 +378,7 @@ function removeArtifactDirectory(directory: string): KanaArtifactCleanupResult {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorDiagnostic(error)],
+      failures: [errorFields(error)],
     };
   }
 }
@@ -414,26 +415,6 @@ function cleanupUnreferencedArtifactFiles(
       result.removedFileCount += 1;
     }
   } catch (error) {
-    result.failures.push(errorDiagnostic(error));
+    result.failures.push(errorFields(error));
   }
-}
-
-function errorDiagnostic(error: unknown): { errorType: string; errorCode?: string } {
-  const errorCode = getErrorCode(error);
-  return {
-    errorType: getErrorType(error),
-    ...(errorCode === undefined ? {} : { errorCode }),
-  };
-}
-
-function getErrorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
-function getErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
 }

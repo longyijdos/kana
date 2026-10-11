@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-
+import { formatError } from "@/utils";
 import { KANA_MODEL_PROVIDERS, type KanaModelProvider } from "../config";
-import { formatError } from "../format";
 import { getKanaConfigPaths } from "../path";
 
 const MAX_PROFILE_BYTES = 64 * 1024;

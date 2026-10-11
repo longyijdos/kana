@@ -9,6 +9,7 @@ import {
   type ModelUsage,
   type UserMessage,
 } from "@/core";
+import { formatError } from "@/utils";
 import type { KanaSubagentProfile } from "../subagents/profiles";
 import { isKanaTodoItems, type KanaTodoItem } from "../todo";
 
@@ -444,9 +445,7 @@ function parseJsonRecord(
     parsed = JSON.parse(line) as unknown;
   } catch (error) {
     throw new Error(
-      `Invalid JSON in Kana session ${filePath}:${lineNumber}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Invalid JSON in Kana session ${filePath}:${lineNumber}: ${formatError(error)}`,
     );
   }
 

@@ -2,8 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-
-import { formatError } from "../format";
+import { formatError } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 
 const execFileAsync = promisify(execFile);

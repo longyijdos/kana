@@ -6,7 +6,3 @@ export function escapeXml(value: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 }
-
-export function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}

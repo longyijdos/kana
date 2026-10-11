@@ -12,6 +12,7 @@ import {
   type UserMessage,
 } from "@/core";
 import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
+import { errorFields } from "@/utils";
 import { resolveRuntimeContextMessages } from "./prompt-assembly";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
@@ -411,7 +412,7 @@ export class ContextManager {
         reason,
         estimatedTokens: beforeTokens,
         compactedMessageCount,
-        errorType: error instanceof Error ? error.name : typeof error,
+        ...errorFields(error),
       });
       if (options.signal?.aborted) {
         throw error;

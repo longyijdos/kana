@@ -3,6 +3,7 @@ import path from "node:path";
 import type { ToolResultPolicy, ToolResultPolicyResult } from "@/agent";
 import type { ToolCallContent, ToolResultArtifact } from "@/core";
 import type { Logger } from "@/logging";
+import { errorFields } from "@/utils";
 import type { KanaSessionArtifactStore } from "./store";
 
 const TOOL_RESULT_ARTIFACT_POLICY_SOURCE = "session_artifact";
@@ -67,16 +68,14 @@ export function createKanaToolResultArtifactPolicy(
           await options.store.discard(artifact).catch((cleanupError) => {
             log(options.logger, "warn", "tool.result_artifact_cleanup_failed", {
               phase: "save_rollback",
-              errorType: getErrorType(cleanupError),
-              errorCode: getErrorCode(cleanupError),
+              ...errorFields(cleanupError),
             });
           });
         }
         log(options.logger, "warn", "tool.result_artifact_save_failed", {
           toolName: input.toolCall.name,
           phase: artifact ? "preview" : "write",
-          errorType: getErrorType(error),
-          errorCode: getErrorCode(error),
+          ...errorFields(error),
         });
         return undefined;
       }
@@ -172,18 +171,6 @@ function sliceUtf8Suffix(content: string, maxBytes: number): string {
 
 function isLowSurrogate(codeUnit: number): boolean {
   return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
-}
-
-function getErrorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
-function getErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
 }
 
 function log(

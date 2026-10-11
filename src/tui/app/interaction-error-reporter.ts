@@ -1,3 +1,4 @@
+import { formatError } from "@/utils";
 import { TextBlock, type Transcript } from "../components";
 import { tuiTheme } from "../theme";
 import type { StatusProjectionController } from "./status-projection-controller";
@@ -21,7 +22,7 @@ export class InteractionErrorReporter {
 
   private append(error: unknown): void {
     this.options.transcript.addChild(
-      new TextBlock(error instanceof Error ? error.message : String(error), {
+      new TextBlock(formatError(error), {
         color: tuiTheme.error,
       }),
     );

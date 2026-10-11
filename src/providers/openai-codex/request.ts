@@ -1,4 +1,5 @@
 import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
+import { isRecord } from "@/utils";
 import type { OpenAICodexModelConfig } from "./types";
 
 export function buildOpenAICodexRequest(
@@ -206,10 +207,6 @@ function toOpenAICodexTools(tools: ToolSpec[]): Record<string, unknown>[] {
     parameters: tool.parameters,
     strict: false,
   }));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function appendImageOmission(content: string, imageCount: number): string {

@@ -1,4 +1,5 @@
 import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
+import { isRecord } from "@/utils";
 import { getDeepSeekModelMetadata } from "./metadata";
 import type { DeepSeekModelConfig, DeepSeekToolChoice } from "./types";
 
@@ -220,10 +221,6 @@ function toDeepSeekResponsesToolChoice(
     type: "function",
     name: choice.function.name,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function appendImageOmission(content: string, imageCount: number): string {

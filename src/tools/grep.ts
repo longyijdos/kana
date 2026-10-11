@@ -1,6 +1,7 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { formatError } from "@/utils";
 import { strictObject } from "./strict-object";
 import type { Tool, ToolContext } from "./tool";
 import { resolveExistingWorkspacePath } from "./workspace-path";
@@ -246,7 +247,7 @@ function createMatcher(
       options.caseSensitive ? "" : "i",
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatError(error);
 
     throw new Error(`Invalid grep pattern: ${message}`);
   }

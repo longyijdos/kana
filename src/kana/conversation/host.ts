@@ -4,6 +4,7 @@ import type { BackgroundJobClient } from "@/jobs";
 import type { Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent, McpToolSource } from "@/mcp";
 import type { OAuthTokenStatus } from "@/oauth";
+import { formatError } from "@/utils";
 import {
   type KanaUsageScope,
   type KanaUsageSummary,
@@ -498,7 +499,7 @@ export class KanaConversationHost<TConfiguration = never> {
           return {
             target: scope,
             outcome: "error",
-            error: error instanceof Error ? error.message : String(error),
+            error: formatError(error),
           };
         }
       }),
@@ -749,7 +750,7 @@ export class KanaConversationHost<TConfiguration = never> {
           model: agent.state.model.metadata.model,
         },
         terminalReason,
-        error: error instanceof Error ? error.message : String(error),
+        error: formatError(error),
       };
     } finally {
       context.signal.removeEventListener("abort", abort);

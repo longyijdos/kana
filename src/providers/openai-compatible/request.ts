@@ -1,4 +1,5 @@
 import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
+import { isRecord } from "@/utils";
 import type { OpenAICompatibleModelConfig } from "./types";
 import { OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE } from "./types";
 
@@ -203,10 +204,6 @@ function readAssistantReplayFields(
 
 function isManagedAssistantField(field: string): boolean {
   return field === "role" || field === "content" || field === "tool_calls";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toToolCall(content: ToolCallContent): Record<string, unknown> {

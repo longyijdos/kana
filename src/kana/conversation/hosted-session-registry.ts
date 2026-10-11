@@ -2,6 +2,7 @@ import type { AgentJournal, ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
 import { type BackgroundJobClient, BackgroundJobManager } from "@/jobs";
 import { createNoopLogger, createSessionLogManager, type Logger, type LogLevel } from "@/logging";
+import { errorFields } from "@/utils";
 import {
   auditKanaSessionArtifacts,
   cleanupOrphanedKanaSessionArtifacts,
@@ -237,8 +238,7 @@ export class HostedSessionRegistry {
       } catch (error) {
         source.logger.error("session.artifact_fork_failed", {
           phase: "copy",
-          errorType: getErrorType(error),
-          errorCode: getErrorCode(error),
+          ...errorFields(error),
         });
         throw error;
       }
@@ -306,8 +306,7 @@ export class HostedSessionRegistry {
       if (disposal.status === "rejected") {
         (hosted?.logger ?? this.getLogger()).warn("session.cleanup_failed", {
           phase: "session_delete",
-          errorType: getErrorType(disposal.reason),
-          errorCode: getErrorCode(disposal.reason),
+          ...errorFields(disposal.reason),
         });
       }
     }
@@ -547,8 +546,7 @@ export class HostedSessionRegistry {
       });
     } catch (error) {
       hostedSession.logger.warn("session.todo_state_notification_failed", {
-        errorType: getErrorType(error),
-        errorCode: getErrorCode(error),
+        ...errorFields(error),
       });
     }
     hostedSession.logger.debug("session.todo_state_committed", {
@@ -573,8 +571,7 @@ export class HostedSessionRegistry {
     } catch (error) {
       hostedSession.logger.error("session.journal_write_failed", {
         phase,
-        errorType: getErrorType(error),
-        errorCode: getErrorCode(error),
+        ...errorFields(error),
       });
       throw error;
     }
@@ -605,8 +602,7 @@ export class HostedSessionRegistry {
       session.artifactCleanup = session.artifactStore.close().catch((error) => {
         session.logger.warn("session.artifact_cleanup_failed", {
           phase: source === "shutdown" ? "session_close" : "session_disposal",
-          errorType: getErrorType(error),
-          errorCode: getErrorCode(error),
+          ...errorFields(error),
         });
       });
     }
@@ -688,16 +684,4 @@ function createSessionIdentity(session: HostedSession): HostedSessionIdentity {
     cwd: session.data.metadata.cwd,
     persistent: session.persistent,
   };
-}
-
-function getErrorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
-function getErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
 }

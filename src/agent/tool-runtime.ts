@@ -17,6 +17,7 @@ import {
   type ToolResult,
   validateToolArguments,
 } from "@/tools";
+import { errorFields, formatError } from "@/utils";
 import type { AgentEvent } from "./events";
 import type { ToolResultPolicy, ToolResultPolicyResult } from "./tool-result-policy";
 
@@ -487,9 +488,7 @@ export class ToolRuntime {
       canceledBeforeStartCount: snapshot.canceledBeforeStartCount,
       unknownOutcomeCount: snapshot.unknownOutcomeCount,
       outcome,
-      ...(snapshot.failure === undefined
-        ? {}
-        : { errorType: getErrorType(snapshot.failure.error) }),
+      ...(snapshot.failure === undefined ? {} : { ...errorFields(snapshot.failure.error) }),
     };
 
     if (outcome !== "completed") {
@@ -672,9 +671,7 @@ export class ToolRuntime {
             toolName: tool.name,
             reason: firstOutcome.interruption.reason,
             outcome: lateSettlement.type,
-            ...(lateSettlement.type === "rejected"
-              ? { errorType: getErrorType(lateSettlement.error) }
-              : {}),
+            ...(lateSettlement.type === "rejected" ? { ...errorFields(lateSettlement.error) } : {}),
           });
         });
         return {
@@ -1047,7 +1044,7 @@ export class ToolRuntime {
         this.log("warn", "tool.result_policy_failed", {
           policySource: policy.source,
           toolName: executed.toolCall.name,
-          errorType: getErrorType(error),
+          ...errorFields(error),
         });
       }
     }
@@ -1410,15 +1407,4 @@ function combineAbortSignals(
 
 function isAbortSignal(value: AbortSignal | undefined): value is AbortSignal {
   return value !== undefined;
-}
-
-function getErrorType(error: unknown): string {
-  if (error instanceof Error) {
-    return error.name;
-  }
-  return typeof error;
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

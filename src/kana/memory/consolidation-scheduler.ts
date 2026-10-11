@@ -1,4 +1,5 @@
 import { createNoopLogger, type Logger } from "@/logging";
+import { formatError } from "@/utils";
 import type { KanaConfig } from "../config";
 import type { KanaCustomProviderSnapshot } from "../custom-provider";
 import {
@@ -161,7 +162,7 @@ export function createMemoryConsolidationScheduler(
                 publish({
                   type: "failed",
                   scope,
-                  error: error instanceof Error ? error.message : String(error),
+                  error: formatError(error),
                 });
               }
               throw error;

@@ -1,5 +1,6 @@
 import { createNoopLogger, type Logger } from "@/logging";
 import { createShellTool, normalizeToolResult } from "@/tools";
+import { formatError } from "@/utils";
 import { type Editor, type StatusLineState, ToolCallBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
 import type { RunPhase } from "./status-phase";
@@ -90,7 +91,7 @@ export class LocalShellController {
     } catch (error) {
       block.updateResult(
         {
-          error: error instanceof Error ? error.message : String(error),
+          error: formatError(error),
         },
         true,
       );

@@ -1,4 +1,5 @@
 import { createNoopLogger, type Logger } from "@/logging";
+import { formatError } from "@/utils";
 import { type Editor, type StatusLineState, TextBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -84,7 +85,7 @@ export class MemoryCompactController {
       });
     } catch (error) {
       this.options.transcript.addChild(
-        new TextBlock(error instanceof Error ? error.message : String(error), {
+        new TextBlock(formatError(error), {
           color: tuiTheme.error,
         }),
       );

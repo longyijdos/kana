@@ -1,4 +1,5 @@
 import type { AssistantEventStream, AssistantMessage, ToolCallContent } from "@/core";
+import { isRecord } from "@/utils";
 import type {
   OpenAICompatibleChunk,
   OpenAICompatibleDelta,
@@ -233,10 +234,6 @@ function readReplayIndex(value: unknown): number | undefined {
 
 function isStableReplayMetadataKey(key: string): boolean {
   return key === "type" || key === "format" || key === "role" || key === "id";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function applyThinkingDelta(

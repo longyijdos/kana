@@ -1,7 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-
-import { formatError } from "../format";
+import { formatError } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 
 const MAX_TEMPLATE_BYTES = 64 * 1024;

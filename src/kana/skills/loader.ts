@@ -1,7 +1,6 @@
 import { type Dirent, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-
-import { formatError } from "../format";
+import { formatError } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 import { loadEnabledGlobalSkillNames } from "./config";
 import { loadSkillFromFile } from "./frontmatter";

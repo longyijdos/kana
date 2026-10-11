@@ -152,9 +152,9 @@ export class KanaTuiApp {
         !this.status.running &&
         !this.mcpLifecycle.loading &&
         !this.mcpServerManager?.active &&
-        !this.scheduledMessageManager?.active &&
-        !this.backgroundJobManager?.active &&
-        !this.subagentManager?.active &&
+        !this.scheduledMessageManager.active &&
+        !this.backgroundJobManager.active &&
+        !this.subagentManager.active &&
         !this.quitConfirmation &&
         !this.stopping,
       getLogger: this.getLogger,

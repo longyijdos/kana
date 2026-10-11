@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentEndReason } from "@/agent";
 import type { Message } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
+import { errorFields, formatError } from "@/utils";
 import type { KanaSubagentProfile } from "./profiles";
 
 const DEFAULT_MAX_RETAINED_TERMINAL_SUBAGENTS = 32;
@@ -357,7 +358,7 @@ export class KanaSubagentManager {
           record.logger.warn("subagent.cleanup_failed", {
             agentId: record.summary.id,
             phase: source,
-            errorType: getErrorType(error),
+            ...errorFields(error),
           });
         }),
       ),
@@ -533,12 +534,4 @@ function shouldObserveCompletion(source: CancelKanaSubagentOptions["source"]): b
 
 function uniqueOwners(owners: KanaSubagentOwner[]): KanaSubagentOwner[] {
   return [...new Map(owners.map((owner) => [owner.instanceId, owner])).values()];
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function getErrorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
 }
