@@ -36,7 +36,7 @@ describe("BTW controller", () => {
     harness.controller.handle("Side question");
     await waitFor(() => model.requests.length === 1);
     const context = model.requests[0]!.context;
-    expect(main.state.estimatedContextTokens).toBeGreaterThan(16_000 * 0.8);
+    expect(main.estimateContextTokens()).toBeGreaterThan(16_000 * 0.8);
     expect(context.system).toContain("Main instructions");
     expect(context.system).toContain("do not continue its task");
     expect(context.system).toContain(

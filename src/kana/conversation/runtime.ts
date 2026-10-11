@@ -193,6 +193,10 @@ export class ConversationRuntime<TConfiguration = never> {
     return this.agent.state;
   }
 
+  estimateContextTokens(): number | undefined {
+    return this.agent.estimateContextTokens();
+  }
+
   getStableContext(): ReturnType<Agent["getStableContext"]> {
     return this.agent.getStableContext();
   }

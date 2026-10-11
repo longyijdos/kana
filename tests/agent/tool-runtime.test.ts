@@ -143,9 +143,8 @@ describe("ToolRuntime invocation lifecycle", () => {
     const runtime = new ToolRuntime(
       {
         tools: [tool],
-        beforeToolExecution: ({ toolCall: approvedCall }) => {
+        beforeToolExecution: () => {
           operations.push("approve");
-          (approvedCall.args as { label: string }).label = "changed by approval";
           return { type: "continue" };
         },
         limitToolContent: () => {
@@ -181,7 +180,6 @@ describe("ToolRuntime invocation lifecycle", () => {
       "tool_execution_end",
     ]);
     expect(invoked.toolCall).toEqual(call);
-    expect(invoked.toolCall).not.toBe(call);
     expect(invoked.result.content).toBe(content);
     expect(invoked.result.result).toBe(canonicalResult);
     expect(invoked.isError).toBe(false);
@@ -1998,7 +1996,7 @@ describe("ToolRuntime result finalization and policy", () => {
     expect(result.toolResults[0]).not.toHaveProperty("result");
   });
 
-  test("contains policy failures and protects the model-authored call and result", async () => {
+  test("contains policy failures and keeps the original result", async () => {
     const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
     const calls = [
       {
@@ -2019,14 +2017,7 @@ describe("ToolRuntime result finalization and policy", () => {
     } satisfies Tool;
     const policy: ToolResultPolicy = {
       source: "failing_policy",
-      finalize: (input) => {
-        const mutableInput = input as {
-          toolCall: { name: string; args: { value: string } };
-          content: string;
-        };
-        mutableInput.toolCall.name = "mutated";
-        mutableInput.toolCall.args.value = "mutated";
-        mutableInput.content = "mutated";
+      finalize: () => {
         throw new Error("secret policy failure");
       },
     };

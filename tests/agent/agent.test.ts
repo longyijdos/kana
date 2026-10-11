@@ -589,10 +589,10 @@ describe("Agent context restoration", () => {
     // The restored estimate must match the provider-anchor-plus-local-delta
     // value of the latest clean response instead of jumping to a full local
     // estimate of the replayable projection.
-    expect(agent.state.estimatedContextTokens).toBe(
+    expect(agent.estimateContextTokens()).toBe(
       12_000 + estimateContextTokens({ messages: messages.slice(3) }) - 8,
     );
-    expect(agent.state.estimatedContextTokens).toBeLessThan(30_000);
+    expect(agent.estimateContextTokens()).toBeLessThan(30_000);
   });
 });
 

@@ -109,6 +109,7 @@ function createHarness(cleanMode = false, memoryContent?: string) {
       ({
         model: { metadata: { contextWindow: 100_000 } },
       }) as never,
+    estimateContextTokens: () => undefined,
   });
   const controller = new InformationViewerController({
     editor,

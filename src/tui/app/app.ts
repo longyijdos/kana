@@ -189,6 +189,7 @@ export class KanaTuiApp {
     this.status = new StatusProjectionController({
       editor: this.editor,
       getAgentState: () => this.conversation.state,
+      estimateContextTokens: () => this.conversation.estimateContextTokens(),
     });
     this.errors = new InteractionErrorReporter({
       transcript: this.transcript,

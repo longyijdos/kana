@@ -89,7 +89,7 @@ describe("server event projection", () => {
       const projection = new ServerProjection(f.runtime, () => {});
       const context = projection.snapshot().context;
       expect(context).toEqual({
-        estimated_tokens: f.runtime.state.estimatedContextTokens ?? null,
+        estimated_tokens: f.runtime.estimateContextTokens() ?? null,
         context_limit: 32_000,
       });
       expect(context.estimated_tokens).toBeGreaterThan(100);

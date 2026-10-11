@@ -389,6 +389,7 @@ function createAgentStub(options: {
       },
     },
     abortCount: 0,
+    estimateContextTokens: () => undefined,
     abort() {
       this.abortCount += 1;
     },

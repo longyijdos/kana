@@ -184,7 +184,7 @@ export async function runAgentLoop(
     if (assistantHistoryMessage) {
       // Persist a complete assistant tool-call message before any referenced
       // tool can produce an external side effect.
-      await config.onMessageCommitted?.(structuredClone(assistantHistoryMessage));
+      await config.onMessageCommitted?.(assistantHistoryMessage);
       currentContext.messages.push(assistantHistoryMessage);
       newMessages.push(assistantHistoryMessage);
     }
@@ -283,7 +283,7 @@ export async function runAgentLoop(
 function publishStableContext(context: AgentContext, config: AgentLoopConfig): void {
   config.onStableContext?.({
     system: context.system,
-    messages: structuredClone(context.messages),
+    messages: [...context.messages],
   });
 }
 
@@ -312,7 +312,7 @@ async function applyAssembledPrompt(
 
     // Dynamic state becomes visible only after the same logical message is
     // durable, preserving recovery ordering before the model request begins.
-    await commit?.(structuredClone(message));
+    await commit?.(message);
     context.messages.push(message);
     newMessages.push(message);
   }
@@ -451,7 +451,7 @@ async function prepareModelContext(
     return {
       context: {
         system: context.system,
-        messages: structuredClone(context.messages),
+        messages: [...context.messages],
         tools: context.tools ? [...context.tools] : undefined,
         signal: config.signal,
       },
@@ -478,7 +478,7 @@ async function prepareModelContext(
   );
 
   if (prepared.compaction) {
-    await config.onCompactionCommitted?.(structuredClone(prepared.compaction));
+    await config.onCompactionCommitted?.(prepared.compaction);
     await emit({
       type: "context_compacted",
       reason: prepared.compaction.reason,
@@ -507,7 +507,7 @@ function estimateCurrentContextTokens(
 async function emitMessageStart(message: AssistantMessage, emit: AgentEventSink): Promise<void> {
   await emit({
     type: "message_start",
-    message: structuredClone(message),
+    message: message,
   });
 }
 
@@ -518,7 +518,7 @@ async function emitMessageUpdate(
 ): Promise<void> {
   await emit({
     type: "message_update",
-    message: structuredClone(message),
+    message: message,
     assistantMessageEvent,
   });
 }
@@ -526,7 +526,7 @@ async function emitMessageUpdate(
 async function emitMessageEnd(message: AssistantMessage, emit: AgentEventSink): Promise<void> {
   await emit({
     type: "message_end",
-    message: structuredClone(message),
+    message: message,
   });
 }
 

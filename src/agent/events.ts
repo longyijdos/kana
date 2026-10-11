@@ -13,83 +13,83 @@ export type AgentEndReason = Exclude<AssistantStopReason, "toolUse"> | "turn_lim
 
 export type AgentEvent =
   | {
-      type: "agent_start";
+      readonly type: "agent_start";
     }
   | {
-      type: "agent_end";
-      reason: AgentEndReason;
-      messages: readonly Message[];
+      readonly type: "agent_end";
+      readonly reason: AgentEndReason;
+      readonly messages: readonly Message[];
     }
   | {
-      type: "turn_start";
-      turn: number;
+      readonly type: "turn_start";
+      readonly turn: number;
     }
   | {
-      type: "turn_end";
-      turn: number;
-      message: AssistantMessage;
-      toolResults: readonly ToolResultMessage[];
-      estimatedContextTokens?: number;
+      readonly type: "turn_end";
+      readonly turn: number;
+      readonly message: AssistantMessage;
+      readonly toolResults: readonly ToolResultMessage[];
+      readonly estimatedContextTokens?: number;
     }
   | {
-      type: "turn_input";
-      message: UserMessage;
+      readonly type: "turn_input";
+      readonly message: UserMessage;
     }
   | {
-      type: "context_compaction_start";
-      reason: ContextCompactionReason;
-      estimatedTokens: number;
-      contextLimit: number;
+      readonly type: "context_compaction_start";
+      readonly reason: ContextCompactionReason;
+      readonly estimatedTokens: number;
+      readonly contextLimit: number;
     }
   | {
-      type: "context_compacted";
-      reason: ContextCompactionReason;
-      beforeTokens: number;
-      estimatedAfterTokens: number;
-      compactedMessageCount: number;
-      contextLimit: number;
-      usage?: ModelUsage;
+      readonly type: "context_compacted";
+      readonly reason: ContextCompactionReason;
+      readonly beforeTokens: number;
+      readonly estimatedAfterTokens: number;
+      readonly compactedMessageCount: number;
+      readonly contextLimit: number;
+      readonly usage?: ModelUsage;
     }
   | {
-      type: "message_start";
-      message: AssistantMessage;
+      readonly type: "message_start";
+      readonly message: AssistantMessage;
     }
   | {
-      type: "message_update";
-      message: AssistantMessage;
-      assistantMessageEvent: AssistantMessageEvent;
+      readonly type: "message_update";
+      readonly message: AssistantMessage;
+      readonly assistantMessageEvent: AssistantMessageEvent;
     }
   | {
-      type: "message_end";
-      message: AssistantMessage;
+      readonly type: "message_end";
+      readonly message: AssistantMessage;
     }
   | {
-      type: "tool_execution_start";
-      toolCallId: string;
-      parentToolCallId?: string;
-      toolName: string;
-      args: unknown;
+      readonly type: "tool_execution_start";
+      readonly toolCallId: string;
+      readonly parentToolCallId?: string;
+      readonly toolName: string;
+      readonly args: unknown;
     }
   | {
-      type: "tool_execution_update";
-      toolCallId: string;
-      parentToolCallId?: string;
-      toolName: string;
-      args: unknown;
-      partialResult: unknown;
+      readonly type: "tool_execution_update";
+      readonly toolCallId: string;
+      readonly parentToolCallId?: string;
+      readonly toolName: string;
+      readonly args: unknown;
+      readonly partialResult: unknown;
     }
   | {
-      type: "tool_execution_end";
-      toolCallId: string;
-      parentToolCallId?: string;
-      toolName: string;
-      result: unknown;
-      isError: boolean;
-      durationMs?: number;
+      readonly type: "tool_execution_end";
+      readonly toolCallId: string;
+      readonly parentToolCallId?: string;
+      readonly toolName: string;
+      readonly result: unknown;
+      readonly isError: boolean;
+      readonly durationMs?: number;
     }
   | {
-      type: "tool_execution_pause" | "tool_execution_resume";
-      toolCallId: string;
-      toolName: string;
-      reason: "approval";
+      readonly type: "tool_execution_pause" | "tool_execution_resume";
+      readonly toolCallId: string;
+      readonly toolName: string;
+      readonly reason: "approval";
     };

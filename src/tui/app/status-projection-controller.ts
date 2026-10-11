@@ -8,6 +8,7 @@ import type { RunPhase } from "./status-phase";
 export type StatusProjectionControllerOptions = {
   editor: Editor;
   getAgentState: () => Agent["state"];
+  estimateContextTokens: () => number | undefined;
 };
 
 export class StatusProjectionController {
@@ -57,7 +58,7 @@ export class StatusProjectionController {
     const state = this.options.getAgentState();
     this.options.editor.updateStatus({
       contextUsedPercent: calculateContextUsedPercent(
-        estimatedTokens ?? state.estimatedContextTokens,
+        estimatedTokens ?? this.options.estimateContextTokens(),
         state.contextLimit ?? state.model.metadata.contextWindow,
       ),
     });

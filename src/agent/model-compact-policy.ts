@@ -155,7 +155,7 @@ function formatImages(
   return images.map((image) => {
     imageState.nextIndex += 1;
     if (includeImages) {
-      imageState.images.push(structuredClone(image));
+      imageState.images.push(image);
     }
     return {
       imageIndex: imageState.nextIndex,

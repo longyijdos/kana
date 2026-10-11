@@ -183,7 +183,7 @@ export class ToolRuntime {
     } = {},
   ): Promise<ExecutedToolCall> {
     const executed = await this.executeToolCall(
-      structuredClone(toolCall),
+      toolCall,
       options.signal ?? new AbortController().signal,
       options.onAbortRun,
       this.config.callableTools ?? this.config.tools,
@@ -197,7 +197,7 @@ export class ToolRuntime {
   async execute(toolCalls: ToolCallContent[]): Promise<ToolRuntimeResult> {
     // Capture the model output once. Approval hooks and policies receive
     // separate clones so they cannot rewrite the durable call description.
-    const pendingToolCalls = structuredClone(toolCalls);
+    const pendingToolCalls = toolCalls;
     const toolResults: ToolResultMessage[] = [];
     const additionalMessages: UserMessage[] = [];
     let abortRun = false;
@@ -236,7 +236,7 @@ export class ToolRuntime {
     // Keep every result for one assistant tool-call message contiguous. Some
     // providers reject user context interleaved between sibling tool results.
     for (const message of additionalMessages) {
-      await this.config.onMessageCommitted?.(structuredClone(message));
+      await this.config.onMessageCommitted?.(message);
     }
     if (additionalMessages.length > 0) {
       this.logger.info("tool.result_policy_context_committed", {
@@ -959,9 +959,9 @@ export class ToolRuntime {
         }
 
         return hook({
-          toolCall: structuredClone(toolCall),
+          toolCall: toolCall,
           tool,
-          args: structuredClone(args),
+          args: args,
           signal,
         });
       });
@@ -981,17 +981,13 @@ export class ToolRuntime {
       toolName: executed.toolCall.name,
       content: this.config.limitToolContent?.(finalized.content) ?? finalized.content,
       durationMs: executed.durationMs,
-      ...(executed.result.images?.length
-        ? { images: structuredClone(executed.result.images) }
-        : {}),
-      ...(finalized.artifact === undefined
-        ? {}
-        : { artifact: structuredClone(finalized.artifact) }),
+      ...(executed.result.images?.length ? { images: executed.result.images } : {}),
+      ...(finalized.artifact === undefined ? {} : { artifact: finalized.artifact }),
       ...(finalized.persistResult ? { result: finalized.result } : {}),
       isError: executed.isError,
     };
 
-    await this.config.onMessageCommitted?.(structuredClone(message));
+    await this.config.onMessageCommitted?.(message);
     return {
       toolResult: message,
       additionalMessages: finalized.additionalMessages,
@@ -1013,7 +1009,7 @@ export class ToolRuntime {
       try {
         const result = parseToolResultPolicyResult(
           await policy.finalize({
-            toolCall: structuredClone(executed.toolCall),
+            toolCall: executed.toolCall,
             content,
             isError: executed.isError,
             resultByteLength: durableResult?.byteLength,

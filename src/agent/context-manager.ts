@@ -29,21 +29,21 @@ class ContextCompactionError extends Error {
 }
 
 export type ContextCheckpoint = {
-  id: string;
-  baseCompactionId?: string;
-  summary: string;
+  readonly id: string;
+  readonly baseCompactionId?: string;
+  readonly summary: string;
   // The summary replaces this many messages from the start of the full
   // history. The marker can occur later because recent raw messages are kept.
-  coveredMessageCount: number;
+  readonly coveredMessageCount: number;
   // Persist the marker after the message that was current when compaction ran,
   // independently from the older cutoff represented by coveredMessageCount.
-  createdAfterMessageCount: number;
-  compactedMessageCount: number;
-  reason: ContextCompactionReason;
-  beforeTokens: number;
-  estimatedAfterTokens: number;
-  usage?: ModelUsage;
-  createdAt: string;
+  readonly createdAfterMessageCount: number;
+  readonly compactedMessageCount: number;
+  readonly reason: ContextCompactionReason;
+  readonly beforeTokens: number;
+  readonly estimatedAfterTokens: number;
+  readonly usage?: ModelUsage;
+  readonly createdAt: string;
 };
 
 export type CompactPolicyInput = {
@@ -155,17 +155,16 @@ export class ContextManager {
     if (config.checkpoint) {
       assertValidCheckpoint(config.checkpoint);
     }
-    this.checkpointData =
-      config.checkpoint === undefined ? undefined : structuredClone(config.checkpoint);
+    this.checkpointData = config.checkpoint === undefined ? undefined : config.checkpoint;
     this.logger = config.logger ?? createNoopLogger();
   }
 
   get checkpoint(): ContextCheckpoint | undefined {
-    return this.checkpointData === undefined ? undefined : structuredClone(this.checkpointData);
+    return this.checkpointData === undefined ? undefined : this.checkpointData;
   }
 
   get compactions(): ContextCheckpoint[] {
-    return structuredClone(this.compactionData);
+    return this.compactionData;
   }
 
   fork(): ContextManager {
@@ -369,7 +368,7 @@ export class ContextManager {
         );
       }
 
-      const checkpoint: ContextCheckpoint = {
+      const draft: ContextCheckpoint = {
         id: randomUUID(),
         baseCompactionId: this.checkpointData?.id,
         summary,
@@ -382,9 +381,14 @@ export class ContextManager {
         usage: result.usage,
         createdAt: new Date().toISOString(),
       };
-      this.checkpointData = checkpoint;
+      // The estimate projects the context through the new checkpoint itself.
+      this.checkpointData = draft;
       this.usageMeasurement = undefined;
-      checkpoint.estimatedAfterTokens = estimateContextTokens(this.createModelContext(context));
+      const checkpoint: ContextCheckpoint = {
+        ...draft,
+        estimatedAfterTokens: estimateContextTokens(this.createModelContext(context)),
+      };
+      this.checkpointData = checkpoint;
 
       if (checkpoint.estimatedAfterTokens >= this.promptBudget) {
         throw new Error(
@@ -398,8 +402,8 @@ export class ContextManager {
         estimatedAfterTokens: checkpoint.estimatedAfterTokens,
         compactedMessageCount,
       });
-      this.compactionData.push(structuredClone(checkpoint));
-      return structuredClone(checkpoint);
+      this.compactionData.push(checkpoint);
+      return checkpoint;
     } catch (error) {
       // A failed summary must leave the last usable projection intact.
       this.checkpointData = previousCheckpoint;
@@ -431,7 +435,7 @@ export class ContextManager {
       const coveredRuntimeContext = resolveRuntimeContextMessages(
         context.messages,
         coveredMessageCount,
-      ).map(({ message }) => structuredClone(message));
+      ).map(({ message }) => message);
       messages.unshift(
         createUserMessage({
           content: formatSummaryForModel(this.checkpointData.summary),
@@ -443,7 +447,7 @@ export class ContextManager {
 
     return {
       system: context.system,
-      messages: structuredClone(messages),
+      messages: messages,
       tools: context.tools ? [...context.tools] : undefined,
       signal: context.signal,
     };
@@ -516,28 +520,26 @@ function isRuntimeContextMessage(message: Message): message is UserMessage {
 function messageForCompaction(message: Message): Message {
   switch (message.role) {
     case "user":
-      return structuredClone(message);
+      return message;
     case "tool":
       return {
         id: message.id,
-        provenance: structuredClone(message.provenance),
+        provenance: message.provenance,
         role: "tool",
         toolCallId: message.toolCallId,
         toolName: message.toolName,
         content: message.content,
-        ...(message.images?.length ? { images: structuredClone(message.images) } : {}),
+        ...(message.images?.length ? { images: message.images } : {}),
         isError: message.isError,
       };
     case "assistant":
       return {
         id: message.id,
-        provenance: structuredClone(message.provenance),
+        provenance: message.provenance,
         role: "assistant",
         stopReason: message.stopReason,
-        content: structuredClone(
-          message.content.filter(
-            (content) => content.type !== "thinking" && content.type !== "hosted_tool",
-          ),
+        content: message.content.filter(
+          (content) => content.type !== "thinking" && content.type !== "hosted_tool",
         ),
       };
   }

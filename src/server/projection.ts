@@ -66,7 +66,7 @@ export class ServerProjection {
   private context(estimatedTokens?: number) {
     const state = this.runtime.state;
     return {
-      estimated_tokens: estimatedTokens ?? state.estimatedContextTokens ?? null,
+      estimated_tokens: estimatedTokens ?? this.runtime.estimateContextTokens() ?? null,
       context_limit: state.contextLimit ?? state.model.metadata.contextWindow,
     };
   }

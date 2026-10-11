@@ -42,7 +42,7 @@ describe("server HTTP API", () => {
   test("accepts a run, streams its events, and retains history after client disconnect", async () => {
     const f = createFixture({ context: { contextLimit: 32_000, maxOutputTokens: 512 } });
     try {
-      const initialTokens = f.runtime.state.estimatedContextTokens;
+      const initialTokens = f.runtime.estimateContextTokens();
       const response = await f.request("/v1/events");
       expect(response.headers.get("content-type")).toBe("text/event-stream");
       const reader = response.body!.getReader();

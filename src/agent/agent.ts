@@ -83,7 +83,6 @@ export type AgentState = {
   readonly error?: unknown;
   readonly contextLimit?: number;
   readonly contextCheckpoint?: ContextCheckpoint;
-  readonly estimatedContextTokens?: number;
 };
 
 export type AgentStableContext = {
@@ -222,7 +221,7 @@ export class Agent {
     this.contextManager?.rehydrateUsageAnchor(this.stateData.messages);
     this.stableContextData = {
       system: this.stateData.system,
-      messages: structuredClone(this.stateData.messages),
+      messages: this.stateData.messages,
       contextCheckpoint: this.contextManager?.checkpoint,
     };
     this.logger.debug("agent.parallel_tool_calls_configured", {
@@ -253,23 +252,24 @@ export class Agent {
       maxTurns: this.stateData.maxTurns,
       toolDeadlineMs: this.stateData.toolDeadlineMs,
       tools: this.stateData.tools.slice(),
-      messages: structuredClone(this.stateData.messages),
+      messages: this.stateData.messages,
       inbox: this.inboxData.snapshot,
       isRunning: this.stateData.isRunning,
-      streamingMessage:
-        this.stateData.streamingMessage === undefined
-          ? undefined
-          : structuredClone(this.stateData.streamingMessage),
+      streamingMessage: this.stateData.streamingMessage,
       pendingToolCalls: new Set(this.stateData.pendingToolCalls),
       error: this.stateData.error,
       contextLimit: this.contextManager?.contextLimit,
       contextCheckpoint: this.contextManager?.checkpoint,
-      estimatedContextTokens: this.contextManager?.estimateContextTokens({
-        system: this.stateData.system,
-        messages: this.stateData.messages,
-        tools: this.stateData.tools,
-      }),
     };
+  }
+
+  // Walks the full history, so callers request it only when they need a fresh estimate.
+  estimateContextTokens(): number | undefined {
+    return this.contextManager?.estimateContextTokens({
+      system: this.stateData.system,
+      messages: this.stateData.messages,
+      tools: this.stateData.tools,
+    });
   }
 
   getStableContext(): AgentStableContext {
@@ -278,7 +278,7 @@ export class Agent {
       imageInput: this.imageInput,
       contextLimit: this.contextManager?.contextLimit,
       maxOutputTokens: this.contextManager?.maxOutputTokens,
-      ...structuredClone(this.stableContextData),
+      ...this.stableContextData,
     };
   }
 
@@ -341,21 +341,21 @@ export class Agent {
       committed = prepared.compaction;
       if (this.journal) {
         await this.journal.appendCompaction({
-          compaction: structuredClone(committed),
+          compaction: committed,
         });
         this.contextManager?.adopt(runContextManager);
         await this.onCompactionCommitted?.({
-          compaction: structuredClone(committed),
+          compaction: committed,
           state: this.state,
         });
       } else {
         // Preserve the original hook contract for embedders that use it as
         // their persistence boundary instead of the incremental journal.
         await this.onCompactionCommitted?.({
-          compaction: structuredClone(committed),
+          compaction: committed,
           state: {
             ...this.state,
-            contextCheckpoint: structuredClone(committed),
+            contextCheckpoint: committed,
           },
         });
         this.contextManager?.adopt(runContextManager);
@@ -375,7 +375,7 @@ export class Agent {
     if (!committed) {
       throw new Error("Context compaction did not produce a checkpoint.");
     }
-    return structuredClone(committed);
+    return committed;
   }
 
   stream(input: AgentPromptInput): AgentEventStream {
@@ -425,10 +425,10 @@ export class Agent {
         await writeJournal(() =>
           this.journal?.appendMessage({
             runId,
-            message: structuredClone(message),
+            message: message,
           }),
         );
-        this.stateData.messages = [...this.stateData.messages, structuredClone(message)];
+        this.stateData.messages = [...this.stateData.messages, message];
       };
 
       try {
@@ -437,11 +437,11 @@ export class Agent {
         await writeJournal(() =>
           this.journal?.startRun({
             runId,
-            messages: structuredClone(promptMessages),
+            messages: promptMessages,
           }),
         );
         journalStarted = true;
-        this.stateData.messages = [...this.stateData.messages, ...structuredClone(promptMessages)];
+        this.stateData.messages = [...this.stateData.messages, ...promptMessages];
         this.updateStableContext(this.createContextSnapshot(), this.contextManager);
         this.resetToolResultPolicyFor(promptMessages);
         this.logger.info("agent.run_started", {
@@ -459,7 +459,7 @@ export class Agent {
                 await writeJournal(() =>
                   this.journal?.appendCompaction({
                     runId,
-                    compaction: structuredClone(compaction),
+                    compaction: compaction,
                   }),
                 );
                 if (runContextManager && this.contextManager) {
@@ -472,13 +472,10 @@ export class Agent {
           }),
           async (event) => {
             if (event.type === "agent_end") {
-              doneEvent = structuredClone(event);
+              doneEvent = event;
               if (!this.journal) {
                 assertUniqueMessageIds([...this.stateData.messages, ...doneEvent.messages]);
-                this.stateData.messages = [
-                  ...this.stateData.messages,
-                  ...structuredClone(doneEvent.messages),
-                ];
+                this.stateData.messages = [...this.stateData.messages, ...doneEvent.messages];
               }
               if (runContextManager && this.contextManager) {
                 this.contextManager.adopt(runContextManager);
@@ -489,7 +486,7 @@ export class Agent {
             }
 
             await this.processEvent(event);
-            stream.push(structuredClone(event));
+            stream.push(event);
           },
         );
 
@@ -508,15 +505,15 @@ export class Agent {
 
         phase = "commit";
         await this.onRunCommitted?.({
-          messages: structuredClone([...promptMessages, ...completedEvent.messages]),
-          compactions: structuredClone(committedCompactions),
+          messages: [...promptMessages, ...completedEvent.messages],
+          compactions: committedCompactions,
           state: this.state,
-          event: structuredClone(completedEvent),
+          event: completedEvent,
         });
 
         phase = "publish";
         await this.publishEvent(completedEvent);
-        stream.end(structuredClone(completedEvent));
+        stream.end(completedEvent);
       } catch (error) {
         if (journalStarted && !journalFailed && !doneEvent) {
           phase = "journal_end";
@@ -562,7 +559,7 @@ export class Agent {
     if (this.stateData.messages.some((message) => message.id === input.id)) {
       throw new Error(`Message ${input.id} is already committed to Agent history.`);
     }
-    this.inboxData.enqueue({ message: structuredClone(input), delivery }, lane);
+    this.inboxData.enqueue({ message: input, delivery }, lane);
     this.emitInboxChanged();
   }
 
@@ -762,14 +759,14 @@ export class Agent {
       this.committingSteeringIds.add(pendingId);
       let claimed: AgentInboxItem;
       try {
-        await commit(structuredClone(pending.message));
+        await commit(pending.message);
         claimed = this.inboxData.claimNextStep(pendingId);
       } finally {
         this.committingSteeringIds.delete(pendingId);
       }
       this.steeringResolvers.get(claimed.message.id)?.("consumed");
       this.steeringResolvers.delete(claimed.message.id);
-      consumed.push(structuredClone(claimed.message));
+      consumed.push(claimed.message);
       pending = this.inboxData.peekNextStep();
     }
 
@@ -807,7 +804,7 @@ export class Agent {
     const snapshot = this.inboxData.snapshot;
     for (const listener of [...this.inboxListeners]) {
       try {
-        listener(structuredClone(snapshot));
+        listener(snapshot);
       } catch (error) {
         this.logger.warn("agent.inbox_listener_failed", { error });
       }
@@ -830,7 +827,7 @@ export class Agent {
 
     for (const listener of [...this.listeners]) {
       try {
-        await listener(structuredClone(event), signal);
+        await listener(event, signal);
       } catch (error) {
         this.logger.warn("agent.listener_failed", {
           eventType: event.type,
@@ -934,7 +931,7 @@ function createWritableAgentState(
   options: AgentConfig & { toolDeadlineMs: number },
 ): WritableAgentState {
   let tools = options.tools?.slice() ?? [];
-  let messages = structuredClone(options.messages ?? []);
+  let messages = [...(options.messages ?? [])];
   assertUniqueMessageIds(messages);
 
   return {
@@ -979,11 +976,11 @@ function assertMessageIdAvailable(messages: readonly Message[], candidate: Messa
 
 function toPromptMessages(input: AgentPromptInput): readonly UserMessage[] {
   if (Array.isArray(input)) {
-    return input.map((message) => structuredClone(message));
+    return [...input];
   }
 
   if (typeof input !== "string") {
-    return [structuredClone(input)];
+    return [input];
   }
 
   return [

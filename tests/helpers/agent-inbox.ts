@@ -33,6 +33,9 @@ export function withAgentInboxForTest<T extends object>(agent: T): T & AgentInbo
     enumerable: true,
     get: () => inbox.snapshot,
   });
+  if (!("estimateContextTokens" in agent)) {
+    Object.assign(agent, { estimateContextTokens: () => undefined });
+  }
   return Object.assign(agent, {
     subscribe(_listener: (event: AgentEvent, signal: AbortSignal) => Promise<void> | void) {
       return () => {};

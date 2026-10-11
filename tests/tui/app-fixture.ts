@@ -18,6 +18,7 @@ export function createTuiAgentStub(): Agent {
         },
       },
     },
+    estimateContextTokens: () => undefined,
     abort() {},
     async waitForIdle() {},
   }) as unknown as Agent;
