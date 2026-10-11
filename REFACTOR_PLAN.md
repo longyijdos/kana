@@ -253,7 +253,36 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ## 阶段 3：Agent 运行时重构
 
-**目标**：`agent.ts`（1037 行）和 `tool-runtime.ts`（1424 行）拆成职责单一的小模块。
+**目标**：`agent.ts`（1000 行）和 `tool-runtime.ts`（1390 行）拆成职责单一的小模块，同时消除重复的路径。
+
+### 细化设计（开工前写定）
+
+**发现的结构问题**
+- **两条持久化路径**：有 journal 时，消息逐条写入历史；没有 journal 时（clean 模式、记忆整理、btw），要等到 `agent_end` 才一次性追加。`compact()` 也因此分成了两个分支，两个分支对 hook 的调用顺序也不同
+- **能力开关重复解析**：webSearch、imageInput、parallelToolCalls、maxParallel、deadline 在 Agent 构造器、loop、ToolRuntime 三处各解析一次
+- **compaction 的事件和提交逻辑写了两份**：一份在 `compact()`，一份在 loop 的 `prepareModelContext`
+- **message ID 去重守卫有 4 层**：构造器、`stream()`、`commitMessage`、`enqueueInput`，另外 inbox 自己还有一层
+- **单个工具调用有一条独立的快速路径**，它的行为与"大小为 1 的并行池"完全相同
+
+**目标结构**（`src/agent/`）
+- `agent.ts`：门面，负责构造、状态访问、订阅、prompt/stream/compact/abort、steering API，以及 reset
+- `settings.ts`：`resolveAgentSettings()`，所有能力开关和默认值在这里**只解析一次**，loop 和 ToolRuntime 直接使用解析好的结果
+- `run.ts`：`AgentRun`，负责一次运行的编排，包括 journal 的开始和结束、调用 loop、提交 hook、阶段跟踪
+- `history.ts`：唯一的历史写入入口，有 journal 就写 journal，然后追加到历史并做 ID 去重。两种模式都逐条提交，不再区分
+- `steering.ts`：`SteeringQueue`，统一管理 inbox、steering resolver、正在提交中的 ID，以及 inbox 的 listener
+- `events.ts`：保留事件类型，新增 `logAgentEvent()`（事件到日志的映射）
+- `loop.ts`：只负责 turn 循环。compaction 统一为一个 `compactContext()`，`compact()` 也复用它
+- `tool-runtime/` 目录：
+  - `runtime.ts`：`ToolRuntime`，负责分组、并行池、按模型顺序提交
+  - `invocation.ts`：单次调用的完整生命周期，包括校验、审批、执行、deadline、中断和宽限期、`run_code` 审批时暂停计时
+  - `nested.ts`：codemode 的嵌套调用调度
+  - `results.ts`：结果构造函数、policy 流水线、持久化快照
+  - `queues.ts`：串行事件队列和串行任务队列
+
+**行为变化（有意为之）**
+- 没有 journal 时，消息也逐条进入 `state.messages`，不再等到 run 结束。两种模式从此一致
+- 删除单数形式的 `toolResultPolicy` 配置项（Agent 内部本来就会把它合并进复数形式的列表）
+- 删除对内部配置的运行时校验（maxTurns、deadline、concurrency、policy 返回值等），改由类型约束
 
 - [ ] `Agent` 改成门面，内部拆为：
   - `AgentRun`：负责 stream、journal 顺序、提交、compaction。目前 compaction 的提交写了三遍，合并成一处；`context_compaction_*` 事件也只在一处构建
