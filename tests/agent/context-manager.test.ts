@@ -7,7 +7,6 @@ import {
   createModelCompactPolicy,
   estimateContextTokens,
   estimateTextTokens,
-  runAgentLoop,
 } from "@/agent";
 import {
   AssistantEventStream,
@@ -20,6 +19,7 @@ import {
 } from "@/core";
 import { createRuntimeContextMessage } from "../../src/agent/prompt-assembly";
 import type { Tool } from "../../src/tools/tool";
+import { runTestLoop } from "../helpers/agent-loop";
 import { messageIdentityForTest } from "../helpers/messages";
 
 const MODEL_METADATA: ModelMetadata = {
@@ -1265,7 +1265,7 @@ describe("context-limit recovery", () => {
       role: "user" as const,
       content: "Current question",
     };
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           { ...messageIdentityForTest("user"), role: "user", content: "Old question" },

@@ -5,8 +5,8 @@ import type { AgentEvent, ToolResultPolicy, ToolResultPolicyInput } from "../../
 import {
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   DEFAULT_TOOL_DEADLINE_MS,
-  ToolRuntime,
-} from "../../src/agent/tool-runtime";
+} from "../../src/agent/settings";
+import { ToolRuntime } from "../../src/agent/tool-runtime";
 import type { Message } from "../../src/core";
 import type { Logger, LogMetadata } from "../../src/logging";
 import type { CodemodeToolContext } from "../../src/tools";

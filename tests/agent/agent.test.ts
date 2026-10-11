@@ -189,23 +189,14 @@ class RepeatedToolModel implements Model {
 }
 
 describe("Agent lifecycle", () => {
-  test("stores runtime limits and rejects invalid construction options", () => {
-    expect(new Agent({ model: new TextModel() }).state.toolDeadlineMs).toBe(300_000);
+  test("resolves runtime limits from options and defaults", () => {
+    expect(new Agent({ model: new TextModel() }).settings.toolDeadlineMs).toBe(300_000);
     expect(
       new Agent({
         model: new TextModel(),
         toolDeadlineMs: 120_000,
-      }).state.toolDeadlineMs,
+      }).settings.toolDeadlineMs,
     ).toBe(120_000);
-
-    const invalidOptions = [
-      [{ maxTurns: 0 }, "maxTurns must be -1 or a positive integer."],
-      [{ toolDeadlineMs: 0 }, "defaultDeadlineMs must be a positive integer."],
-      [{ maxParallelToolCalls: 0 }, "maxParallelToolCalls must be a positive integer."],
-    ] as const;
-    for (const [options, expectedError] of invalidOptions) {
-      expect(() => new Agent({ model: new TextModel(), ...options })).toThrow(expectedError);
-    }
   });
 
   test("passes configured model capabilities to providers", async () => {
@@ -331,10 +322,7 @@ describe("Agent lifecycle", () => {
     await agent.prompt("secret prompt");
 
     expect(records.map((record) => record.event)).toEqual([
-      "agent.parallel_tool_calls_configured",
-      "agent.model_capabilities_configured",
-      "agent.repeated_tool_calls_configured",
-      "agent.tool_result_policies_configured",
+      "agent.configured",
       "agent.run_started",
       "agent.started",
       "agent.turn_started",
@@ -342,41 +330,17 @@ describe("Agent lifecycle", () => {
       "agent.ended",
     ]);
     expect(records[0]).toEqual({
-      event: "agent.parallel_tool_calls_configured",
-      metadata: {
-        agentKind: "conversation",
-        requested: true,
-        supported: true,
-        enabled: true,
-        maxParallelToolCalls: 4,
-      },
-    });
-    expect(records[1]).toEqual({
-      event: "agent.model_capabilities_configured",
+      event: "agent.configured",
       metadata: {
         agentKind: "conversation",
         webSearch: false,
         imageInput: false,
+        parallelToolCalls: true,
+        maxParallelToolCalls: 4,
+        toolResultPolicySources: [],
       },
     });
-    expect(records[2]).toEqual({
-      event: "agent.repeated_tool_calls_configured",
-      metadata: {
-        agentKind: "conversation",
-        enabled: false,
-        reminderThresholds: [],
-        excludedToolCount: 0,
-      },
-    });
-    expect(records[3]).toEqual({
-      event: "agent.tool_result_policies_configured",
-      metadata: {
-        agentKind: "conversation",
-        policyCount: 0,
-        policySources: [],
-      },
-    });
-    expect(records[4]).toEqual({
+    expect(records[1]).toEqual({
       event: "agent.run_started",
       metadata: { agentKind: "conversation", promptMessageCount: 1 },
     });

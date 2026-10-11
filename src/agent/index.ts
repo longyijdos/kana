@@ -21,7 +21,6 @@ export {
   type AgentInputLane,
 } from "./inbox";
 export type { AgentJournal } from "./journal";
-export { runAgentLoop } from "./loop";
 export { createModelCompactPolicy } from "./model-compact-policy";
 export {
   createPromptAssembly,
@@ -35,6 +34,7 @@ export {
   createRepeatedToolCallPolicy,
   type RepeatedToolCallPolicyConfig,
 } from "./repeated-tool-call-policy";
+export { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "./settings";
 export { AgentEventStream } from "./stream";
 export type {
   ToolResultPolicy,
@@ -45,4 +45,3 @@ export type {
   BeforeToolExecutionHook,
   BeforeToolExecutionResult,
 } from "./tool-runtime";
-export { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "./tool-runtime";

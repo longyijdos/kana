@@ -120,7 +120,7 @@ describe("memory consolidation agent", () => {
       );
       const toolNames = agent.state.tools.map((tool) => tool.name);
 
-      expect(agent.state.toolDeadlineMs).toBe(120_000);
+      expect(agent.settings.toolDeadlineMs).toBe(120_000);
       expect(toolNames).toContain("list_daily_memory");
       expect(toolNames).not.toContain("shell");
       expect(toolNames).not.toContain("remember");

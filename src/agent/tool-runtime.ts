@@ -20,12 +20,11 @@ import {
 } from "@/tools";
 import { errorFields, formatError } from "@/utils";
 import type { AgentEvent } from "./events";
+import { DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_TOOL_DEADLINE_MS } from "./settings";
 import type { ToolResultPolicy, ToolResultPolicyResult } from "./tool-result-policy";
 
 const DEFAULT_CANCELLATION_GRACE_MS = 1_000;
 const MAX_PERSISTED_TOOL_RESULT_BYTES = 128 * 1_024;
-export const DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4;
-export const DEFAULT_TOOL_DEADLINE_MS = 300_000;
 
 export type BeforeToolExecutionResult =
   | {
@@ -1228,7 +1227,7 @@ function resolveInvocationDeadlineMs(tool: Tool, defaultDeadlineMs: number): num
   return deadlineMs;
 }
 
-export function resolveDefaultToolDeadlineMs(value: number | undefined): number {
+function resolveDefaultToolDeadlineMs(value: number | undefined): number {
   if (value === undefined) {
     return DEFAULT_TOOL_DEADLINE_MS;
   }
@@ -1238,7 +1237,7 @@ export function resolveDefaultToolDeadlineMs(value: number | undefined): number 
   return value;
 }
 
-export function resolveMaxParallelToolCalls(value: number | undefined): number {
+function resolveMaxParallelToolCalls(value: number | undefined): number {
   if (value === undefined) {
     return DEFAULT_MAX_PARALLEL_TOOL_CALLS;
   }

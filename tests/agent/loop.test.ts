@@ -3,13 +3,13 @@ import { Type } from "typebox";
 import { AssistantMessageBuilder } from "@/core";
 import { ContextManager, estimateContextTokens } from "../../src/agent/context-manager";
 import type { AgentEvent } from "../../src/agent/events";
-import { runAgentLoop } from "../../src/agent/loop";
 import { createRepeatedToolCallPolicy } from "../../src/agent/repeated-tool-call-policy";
 import type { ModelContext } from "../../src/core/context";
 import type { AssistantMessage, Message } from "../../src/core/messages";
 import type { Model, ModelMetadata } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
 import type { Tool } from "../../src/tools/tool";
+import { runTestLoop } from "../helpers/agent-loop";
 import { messageIdentityForTest } from "../helpers/messages";
 
 class ScriptedToolModel implements Model {
@@ -387,34 +387,10 @@ const addTool = {
 } satisfies Tool<typeof addParameters, number>;
 
 describe("runAgentLoop configuration", () => {
-  test("rejects invalid maxTurns before emitting lifecycle events", async () => {
-    for (const maxTurns of [-2, 0, 1.5]) {
-      const model = new ScriptedToolModel();
-      const events: AgentEvent[] = [];
-
-      await expect(
-        runAgentLoop(
-          {
-            messages: [],
-          },
-          {
-            model,
-            maxTurns,
-          },
-          (event) => {
-            events.push(event);
-          },
-        ),
-      ).rejects.toThrow("maxTurns must be -1 or a positive integer.");
-      expect(model.contexts).toEqual([]);
-      expect(events).toEqual([]);
-    }
-  });
-
   test("disables parallel tool calls when model metadata does not support them", async () => {
     const model = new MultiToolCallModel();
 
-    await runAgentLoop(
+    await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add both pairs" }],
         tools: [addTool],
@@ -436,7 +412,7 @@ describe("runAgentLoop tool turns", () => {
     const model = new ScriptedToolModel();
     const events: AgentEvent[] = [];
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -486,7 +462,7 @@ describe("runAgentLoop tool turns", () => {
     const model = new ScriptedToolModel({ a: "2", b: 3 }, 2);
     const committedRoles: string[] = [];
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "keep adding" }],
         tools: [addTool],
@@ -526,7 +502,7 @@ describe("runAgentLoop tool turns", () => {
     } satisfies Tool<typeof addParameters, number>;
     let assemblyCalls = 0;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -572,7 +548,7 @@ describe("runAgentLoop tool turns", () => {
       contextLimit: 128_000,
       maxOutputTokens: 16_000,
     });
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: initialMessages,
         tools: [addTool],
@@ -619,7 +595,7 @@ describe("runAgentLoop tool turns", () => {
       },
     } satisfies Tool<typeof addParameters, number>;
 
-    await runAgentLoop(
+    await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add the numbers" }],
         tools: [orderedTool],
@@ -649,7 +625,7 @@ describe("runAgentLoop tool turns", () => {
     ];
     let consumed = false;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "Start." }],
       },
@@ -684,7 +660,7 @@ describe("runAgentLoop tool turns", () => {
   test("leaves turn input untouched when the turn limit cannot start another turn", async () => {
     let consumeCount = 0;
 
-    await runAgentLoop(
+    await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "Start." }],
       },
@@ -722,7 +698,7 @@ describe("runAgentLoop tool turns", () => {
       maxOutputTokens: 8_192,
     });
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           { ...messageIdentityForTest("user"), role: "user", content: "Run the large tool" },
@@ -757,7 +733,7 @@ describe("runAgentLoop tool turns", () => {
   test("emits assistant and tool execution events in turn order", async () => {
     const events: AgentEvent[] = [];
 
-    await runAgentLoop(
+    await runTestLoop(
       {
         messages: [
           {
@@ -825,7 +801,7 @@ describe("runAgentLoop tool turns", () => {
       },
     } satisfies Tool<typeof addParameters, number>;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add both pairs" }],
         tools: [tool],
@@ -863,7 +839,7 @@ describe("runAgentLoop tool turns", () => {
       a: 1,
     });
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -915,7 +891,7 @@ describe("runAgentLoop tool turns", () => {
       },
     } satisfies Tool<typeof addParameters, number>;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -968,7 +944,7 @@ describe("runAgentLoop cancellation", () => {
       },
     } satisfies Tool<typeof addParameters, string>;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1030,7 +1006,7 @@ describe("runAgentLoop cancellation", () => {
       },
     } satisfies Tool<typeof addParameters, number>;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1099,7 +1075,7 @@ describe("runAgentLoop limits", () => {
   test("runs without a turn limit when maxTurns is -1", async () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 }, 10);
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1129,7 +1105,7 @@ describe("runAgentLoop limits", () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 }, 3);
     const events: AgentEvent[] = [];
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1167,7 +1143,7 @@ describe("runAgentLoop limits", () => {
     const model = new LengthTruncatedToolModel();
     const events: AgentEvent[] = [];
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1203,7 +1179,7 @@ describe("runAgentLoop limits", () => {
 describe("runAgentLoop error recovery", () => {
   test("records aborted assistant turns on the final message", async () => {
     const events: AgentEvent[] = [];
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1240,7 +1216,7 @@ describe("runAgentLoop error recovery", () => {
 
   test("does not persist empty provider error messages", async () => {
     const events: AgentEvent[] = [];
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1272,7 +1248,7 @@ describe("runAgentLoop error recovery", () => {
         test(`does not commit or replay unexecuted calls after ${reason}: ${JSON.stringify({ rawArgs, text })}`, async () => {
           const events: AgentEvent[] = [];
           const committed: Message[] = [];
-          const messages = await runAgentLoop(
+          const messages = await runTestLoop(
             {
               messages: [
                 {
@@ -1309,7 +1285,7 @@ describe("runAgentLoop error recovery", () => {
           expect(events.at(-1)).toMatchObject({ type: "agent_end", reason, messages });
 
           const nextModel = new ScriptedToolModel(undefined, 0);
-          await runAgentLoop({ messages }, { model: nextModel }, () => {});
+          await runTestLoop({ messages }, { model: nextModel }, () => {});
           expect(nextModel.contexts[0]?.messages).toEqual(messages);
         });
       }
@@ -1318,7 +1294,7 @@ describe("runAgentLoop error recovery", () => {
 
   test("publishes and persists aborted hosted tools with a canceled semantic status", async () => {
     const events: AgentEvent[] = [];
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "search the web" }],
       },

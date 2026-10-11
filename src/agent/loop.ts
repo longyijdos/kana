@@ -1,30 +1,30 @@
 import {
   type AssistantContent,
   type AssistantMessage,
-  type AssistantMessageEvent,
   ContextWindowExceededError,
   createMessageIdentity,
   type Message,
-  type Model,
   type ModelContext,
   type ToolCallContent,
   type UserMessage,
 } from "@/core";
 import type { Logger } from "@/logging";
 import type { Tool } from "@/tools";
-import type { ContextCheckpoint, ContextManager, PreparedContext } from "./context-manager";
+import type {
+  ContextCheckpoint,
+  ContextCompactionReason,
+  ContextManager,
+  PreparedContext,
+} from "./context-manager";
 import type { AgentEndReason, AgentEvent } from "./events";
 import {
   type AssembledPrompt,
   createRuntimeContextMessage,
   type PromptContextSnapshot,
 } from "./prompt-assembly";
+import type { AgentSettings } from "./settings";
 import type { ToolResultPolicy } from "./tool-result-policy";
-import {
-  type BeforeToolExecutionHook,
-  resolveMaxParallelToolCalls,
-  ToolRuntime,
-} from "./tool-runtime";
+import { type BeforeToolExecutionHook, ToolRuntime } from "./tool-runtime";
 
 export type { BeforeToolExecutionHook } from "./tool-runtime";
 
@@ -36,16 +36,9 @@ export type AgentContext = {
 };
 
 export type AgentLoopConfig = {
-  model: Model;
-  maxTurns?: number;
-  toolDeadlineMs?: number;
-  webSearch?: boolean;
-  imageInput?: boolean;
-  parallelToolCalls?: boolean;
-  maxParallelToolCalls?: number;
+  settings: AgentSettings;
   signal?: AbortSignal;
   beforeToolExecution?: BeforeToolExecutionHook;
-  toolResultPolicy?: ToolResultPolicy;
   toolResultPolicies?: readonly ToolResultPolicy[];
   contextManager?: ContextManager;
   logger?: Logger;
@@ -65,117 +58,63 @@ type AssistantTurnResult = {
   canRetryContextLimit?: boolean;
 };
 
+const ABORTED = Symbol("aborted");
+
 export async function runAgentLoop(
   context: AgentContext,
   config: AgentLoopConfig,
   emit: AgentEventSink,
 ): Promise<Message[]> {
-  assertValidMaxTurns(config.maxTurns);
-  const maxParallelToolCalls = resolveMaxParallelToolCalls(config.maxParallelToolCalls);
-  const webSearch = (config.webSearch ?? true) && config.model.metadata.supportsHostedWebSearch;
-  const imageInput =
-    (config.imageInput ?? true) && config.model.metadata.supportsImageInput === true;
-  // Resolve once per run so provider advertisement and runtime scheduling
-  // cannot diverge, and unsupported models always fail closed to serial use.
-  const parallelToolCalls =
-    (config.parallelToolCalls ?? true) && config.model.metadata.supportsParallelToolCalls;
-
-  const currentContext: AgentContext = {
+  const { settings, signal } = config;
+  const working: AgentContext = {
     system: context.system,
     messages: [...context.messages],
     tools: context.tools ? [...context.tools] : undefined,
     callableTools: context.callableTools?.slice(),
   };
   const newMessages: Message[] = [];
-  const maxTurns = config.maxTurns ?? 8;
-  const hasTurnLimit = maxTurns !== -1;
+  const append = (message: Message): void => {
+    working.messages.push(message);
+    newMessages.push(message);
+  };
+  const hasTurnLimit = settings.maxTurns !== -1;
   let endReason: AgentEndReason = hasTurnLimit ? "turn_limit" : "stop";
+  // A failure caused by cancellation ends the run as aborted instead of failing it.
+  const attempt = async <T>(work: () => Promise<T>): Promise<T | typeof ABORTED> => {
+    try {
+      return await work();
+    } catch (error) {
+      if (signal?.aborted) return ABORTED;
+      throw error;
+    }
+  };
 
   await emit({ type: "agent_start" });
 
-  for (let turn = 1; !hasTurnLimit || turn <= maxTurns; turn += 1) {
-    if (config.signal?.aborted) {
+  for (let turn = 1; !hasTurnLimit || turn <= settings.maxTurns; turn += 1) {
+    if (signal?.aborted) {
       endReason = "aborted";
       break;
     }
 
     await emit({ type: "turn_start", turn });
 
-    let assembledPrompt: AssembledPrompt;
-    try {
-      assembledPrompt = config.assemblePrompt
-        ? await config.assemblePrompt()
-        : {
-            system: currentContext.system,
-            context: [],
-            tools: currentContext.tools ?? [],
-            callableTools: currentContext.callableTools,
-          };
-      await applyAssembledPrompt(
-        currentContext,
-        assembledPrompt,
-        newMessages,
-        config.onMessageCommitted,
-        config.signal,
-      );
-    } catch (error) {
-      if (config.signal?.aborted) {
-        endReason = "aborted";
-        break;
-      }
-      throw error;
-    }
-    if (config.signal?.aborted) {
+    const assembled = await attempt(() => applyPrompt(working, config, append));
+    if (assembled === ABORTED || signal?.aborted) {
       endReason = "aborted";
       break;
     }
 
-    const sourceMessageCount = currentContext.messages.length;
-    let prepared: PreparedContext;
-    try {
-      prepared = await prepareModelContext(currentContext, config, emit);
-    } catch (error) {
-      if (config.signal?.aborted) {
-        endReason = "aborted";
-        break;
-      }
-      throw error;
+    const sourceMessageCount = working.messages.length;
+    let assistantTurn = await attempt(() => requestAssistantTurn(working, config, emit, false));
+    if (assistantTurn !== ABORTED && assistantTurn.canRetryContextLimit && config.contextManager) {
+      assistantTurn = await attempt(() => requestAssistantTurn(working, config, emit, true));
     }
-    let assistantTurn = await streamAssistantResponse(
-      prepared.context,
-      config,
-      webSearch,
-      imageInput,
-      parallelToolCalls,
-      emit,
-    );
-    if (
-      assistantTurn.error instanceof ContextWindowExceededError &&
-      assistantTurn.canRetryContextLimit &&
-      config.contextManager
-    ) {
-      try {
-        prepared = await prepareModelContext(currentContext, config, emit, true);
-      } catch (error) {
-        if (config.signal?.aborted) {
-          endReason = "aborted";
-          break;
-        }
-        throw error;
-      }
-      assistantTurn = await streamAssistantResponse(
-        prepared.context,
-        config,
-        webSearch,
-        imageInput,
-        parallelToolCalls,
-        emit,
-      );
+    if (assistantTurn === ABORTED) {
+      endReason = "aborted";
+      break;
     }
-    if (
-      assistantTurn.error instanceof ContextWindowExceededError &&
-      assistantTurn.canRetryContextLimit
-    ) {
+    if (assistantTurn.canRetryContextLimit) {
       throw assistantTurn.error;
     }
     config.contextManager?.recordAssistantUsage(assistantTurn.message, sourceMessageCount);
@@ -185,21 +124,20 @@ export async function runAgentLoop(
       // Persist a complete assistant tool-call message before any referenced
       // tool can produce an external side effect.
       await config.onMessageCommitted?.(assistantHistoryMessage);
-      currentContext.messages.push(assistantHistoryMessage);
-      newMessages.push(assistantHistoryMessage);
+      append(assistantHistoryMessage);
     }
 
-    if (assistantTurn.isError || config.signal?.aborted) {
-      endReason = config.signal?.aborted ? "aborted" : endReasonForAssistantTurn(assistantTurn);
+    if (assistantTurn.isError || signal?.aborted) {
+      endReason = signal?.aborted ? "aborted" : endReasonForAssistantTurn(assistantTurn);
       if (!assistantHistoryMessage || getToolCalls(assistantHistoryMessage).length === 0) {
-        publishStableContext(currentContext, config);
+        publishStableContext(working, config);
       }
       await emit({
         type: "turn_end",
         turn,
         message: assistantHistoryMessage ?? assistantTurn.message,
         toolResults: [],
-        estimatedContextTokens: estimateCurrentContextTokens(currentContext, config),
+        estimatedContextTokens: estimateWorkingTokens(working, config),
       });
       break;
     }
@@ -210,61 +148,53 @@ export async function runAgentLoop(
     // A later assembly may observe a different capability set.
     const toolRuntime = new ToolRuntime(
       {
-        tools: currentContext.tools,
-        callableTools: currentContext.callableTools,
-        parallelToolCalls,
-        maxParallelToolCalls,
-        signal: config.signal,
+        tools: working.tools,
+        callableTools: working.callableTools,
+        parallelToolCalls: settings.parallelToolCalls,
+        maxParallelToolCalls: settings.maxParallelToolCalls,
+        defaultDeadlineMs: settings.toolDeadlineMs,
+        signal,
         beforeToolExecution: config.beforeToolExecution,
-        defaultDeadlineMs: config.toolDeadlineMs,
         logger: config.logger,
         onMessageCommitted: config.onMessageCommitted,
         limitToolContent: (content) => config.contextManager?.limitToolContent(content) ?? content,
         toolContentByteLimit: config.contextManager?.maxToolContentBytes,
-        toolResultPolicy: config.toolResultPolicy,
         toolResultPolicies: config.toolResultPolicies,
       },
       emit,
     );
-    const executedToolCalls = await toolRuntime.execute(toolCalls);
-
-    for (const toolResult of executedToolCalls.toolResults) {
-      currentContext.messages.push(toolResult);
-      newMessages.push(toolResult);
-    }
-    for (const additionalMessage of executedToolCalls.additionalMessages) {
-      currentContext.messages.push(additionalMessage);
-      newMessages.push(additionalMessage);
+    const executed = await toolRuntime.execute(toolCalls);
+    for (const message of [...executed.toolResults, ...executed.additionalMessages]) {
+      append(message);
     }
 
     // A truncated response may retain calls that were never executed and
     // therefore cannot be inherited as a complete context boundary.
     const isStableTurn = toolCalls.length > 0 || getToolCalls(assistantTurn.message).length === 0;
     if (isStableTurn) {
-      publishStableContext(currentContext, config);
+      publishStableContext(working, config);
     }
     await emit({
       type: "turn_end",
       turn,
       message: assistantTurn.message,
-      toolResults: executedToolCalls.toolResults,
-      estimatedContextTokens: estimateCurrentContextTokens(currentContext, config),
+      toolResults: executed.toolResults,
+      estimatedContextTokens: estimateWorkingTokens(working, config),
     });
 
-    if (executedToolCalls.abortRun) {
+    if (executed.abortRun) {
       endReason = "aborted";
       break;
     }
 
     // Steering belongs after the complete model/tool turn. Leave it queued when
     // no further turn is available so the Agent owner can defer it to a new run.
-    const canStartAnotherTurn = !hasTurnLimit || turn < maxTurns;
+    const canStartAnotherTurn = !hasTurnLimit || turn < settings.maxTurns;
     const turnInputs = canStartAnotherTurn ? await config.consumeTurnInputs?.() : undefined;
     for (const input of turnInputs ?? []) {
-      currentContext.messages.push(input);
-      newMessages.push(input);
+      append(input);
       if (isStableTurn) {
-        publishStableContext(currentContext, config);
+        publishStableContext(working, config);
       }
       await emit({ type: "turn_input", message: input });
     }
@@ -276,8 +206,42 @@ export async function runAgentLoop(
   }
 
   await emit({ type: "agent_end", reason: endReason, messages: newMessages });
-
   return newMessages;
+}
+
+// Projects the context for the model and, when a compaction happens, lets the
+// owner commit the checkpoint before the compacted event becomes visible.
+export async function prepareWithCompaction(
+  contextManager: ContextManager,
+  context: ModelContext,
+  options: {
+    signal?: AbortSignal;
+    forceCompaction?: boolean;
+    compactionReason?: ContextCompactionReason;
+    onCommitted?: (compaction: ContextCheckpoint) => Promise<void> | void;
+  },
+  emit: AgentEventSink,
+): Promise<PreparedContext> {
+  const prepared = await contextManager.prepareForModel(context, {
+    signal: options.signal,
+    forceCompaction: options.forceCompaction,
+    compactionReason: options.compactionReason,
+    onCompactionStart: (event) => emit({ type: "context_compaction_start", ...event }),
+  });
+  const { compaction } = prepared;
+  if (compaction) {
+    await options.onCommitted?.(compaction);
+    await emit({
+      type: "context_compacted",
+      reason: compaction.reason,
+      beforeTokens: compaction.beforeTokens,
+      estimatedAfterTokens: compaction.estimatedAfterTokens,
+      compactedMessageCount: compaction.compactedMessageCount,
+      contextLimit: contextManager.contextLimit,
+      usage: compaction.usage,
+    });
+  }
+  return prepared;
 }
 
 function publishStableContext(context: AgentContext, config: AgentLoopConfig): void {
@@ -287,19 +251,25 @@ function publishStableContext(context: AgentContext, config: AgentLoopConfig): v
   });
 }
 
-async function applyAssembledPrompt(
+async function applyPrompt(
   context: AgentContext,
-  prompt: AssembledPrompt,
-  newMessages: Message[],
-  commit: ((message: Message) => Promise<void> | void) | undefined,
-  signal: AbortSignal | undefined,
+  config: AgentLoopConfig,
+  append: (message: Message) => void,
 ): Promise<void> {
+  const prompt: AssembledPrompt = config.assemblePrompt
+    ? await config.assemblePrompt()
+    : {
+        system: context.system,
+        context: [],
+        tools: context.tools ?? [],
+        callableTools: context.callableTools,
+      };
   context.system = prompt.system;
   context.tools = prompt.tools.slice();
   context.callableTools = prompt.callableTools?.slice();
 
   for (const snapshot of prompt.context) {
-    signal?.throwIfAborted();
+    config.signal?.throwIfAborted();
     const previous = findLatestRuntimeContext(context.messages, snapshot);
     if (!previous && snapshot.status === "inactive") {
       continue;
@@ -312,9 +282,8 @@ async function applyAssembledPrompt(
 
     // Dynamic state becomes visible only after the same logical message is
     // durable, preserving recovery ordering before the model request begins.
-    await commit?.(message);
-    context.messages.push(message);
-    newMessages.push(message);
+    await config.onMessageCommitted?.(message);
+    append(message);
   }
 }
 
@@ -335,29 +304,38 @@ function findLatestRuntimeContext(
   return undefined;
 }
 
-export function assertValidMaxTurns(maxTurns: number | undefined): void {
-  if (maxTurns !== undefined && maxTurns !== -1 && (!Number.isInteger(maxTurns) || maxTurns <= 0)) {
-    throw new Error("maxTurns must be -1 or a positive integer.");
-  }
-}
-
-async function streamAssistantResponse(
-  context: ModelContext,
+async function requestAssistantTurn(
+  context: AgentContext,
   config: AgentLoopConfig,
-  webSearch: boolean,
-  imageInput: boolean,
-  parallelToolCalls: boolean,
   emit: AgentEventSink,
+  forceCompaction: boolean,
 ): Promise<AssistantTurnResult> {
-  const response = config.model.stream({
+  const { settings, signal } = config;
+  const modelContext: ModelContext = {
     system: context.system,
-    messages: context.messages,
-    tools: context.tools,
-    webSearch,
-    imageInput,
-    parallelToolCalls,
-    maxOutputTokens: context.maxOutputTokens,
-    signal: config.signal,
+    messages: [...context.messages],
+    tools: context.tools ? [...context.tools] : undefined,
+    signal,
+  };
+  const prepared = config.contextManager
+    ? (
+        await prepareWithCompaction(
+          config.contextManager,
+          modelContext,
+          { signal, forceCompaction, onCommitted: config.onCompactionCommitted },
+          emit,
+        )
+      ).context
+    : modelContext;
+  const response = settings.model.stream({
+    system: prepared.system,
+    messages: prepared.messages,
+    tools: prepared.tools,
+    webSearch: settings.webSearch,
+    imageInput: settings.imageInput,
+    parallelToolCalls: settings.parallelToolCalls,
+    maxOutputTokens: prepared.maxOutputTokens,
+    signal,
   });
   let addedAssistantMessage = false;
   let currentMessage: AssistantMessage = {
@@ -371,7 +349,7 @@ async function streamAssistantResponse(
       case "start":
         currentMessage = event.snapshot;
         addedAssistantMessage = true;
-        await emitMessageStart(currentMessage, emit);
+        await emit({ type: "message_start", message: currentMessage });
         break;
 
       case "text_start":
@@ -386,7 +364,11 @@ async function streamAssistantResponse(
       case "hosted_tool_start":
       case "hosted_tool_end":
         currentMessage = event.snapshot;
-        await emitMessageUpdate(currentMessage, event, emit);
+        await emit({
+          type: "message_update",
+          message: currentMessage,
+          assistantMessageEvent: event,
+        });
         break;
 
       case "done":
@@ -394,7 +376,7 @@ async function streamAssistantResponse(
           ...event.message,
           stopReason: event.reason,
         };
-        await emitMessageEnd(currentMessage, emit);
+        await emit({ type: "message_end", message: currentMessage });
         return {
           message: currentMessage,
           isError: false,
@@ -426,9 +408,9 @@ async function streamAssistantResponse(
             ? cancelInProgressHostedTools(terminalMessage)
             : terminalMessage;
         if (!addedAssistantMessage) {
-          await emitMessageStart(currentMessage, emit);
+          await emit({ type: "message_start", message: currentMessage });
         }
-        await emitMessageEnd(currentMessage, emit);
+        await emit({ type: "message_end", message: currentMessage });
         return {
           message: currentMessage,
           isError: true,
@@ -441,92 +423,11 @@ async function streamAssistantResponse(
   throw new Error("Model stream ended without a done or error event.");
 }
 
-async function prepareModelContext(
-  context: AgentContext,
-  config: AgentLoopConfig,
-  emit: AgentEventSink,
-  forceCompaction = false,
-): Promise<PreparedContext> {
-  if (!config.contextManager) {
-    return {
-      context: {
-        system: context.system,
-        messages: [...context.messages],
-        tools: context.tools ? [...context.tools] : undefined,
-        signal: config.signal,
-      },
-      estimatedTokens: 0,
-    };
-  }
-
-  const prepared = await config.contextManager.prepareForModel(
-    {
-      system: context.system,
-      messages: context.messages,
-      tools: context.tools,
-      signal: config.signal,
-    },
-    {
-      signal: config.signal,
-      forceCompaction,
-      onCompactionStart: (event) =>
-        emit({
-          type: "context_compaction_start",
-          ...event,
-        }),
-    },
-  );
-
-  if (prepared.compaction) {
-    await config.onCompactionCommitted?.(prepared.compaction);
-    await emit({
-      type: "context_compacted",
-      reason: prepared.compaction.reason,
-      beforeTokens: prepared.compaction.beforeTokens,
-      estimatedAfterTokens: prepared.compaction.estimatedAfterTokens,
-      compactedMessageCount: prepared.compaction.compactedMessageCount,
-      contextLimit: config.contextManager.contextLimit,
-      usage: prepared.compaction.usage,
-    });
-  }
-
-  return prepared;
-}
-
-function estimateCurrentContextTokens(
-  context: AgentContext,
-  config: AgentLoopConfig,
-): number | undefined {
+function estimateWorkingTokens(context: AgentContext, config: AgentLoopConfig): number | undefined {
   return config.contextManager?.estimateContextTokens({
     system: context.system,
     messages: context.messages,
     tools: context.tools,
-  });
-}
-
-async function emitMessageStart(message: AssistantMessage, emit: AgentEventSink): Promise<void> {
-  await emit({
-    type: "message_start",
-    message: message,
-  });
-}
-
-async function emitMessageUpdate(
-  message: AssistantMessage,
-  assistantMessageEvent: AssistantMessageEvent,
-  emit: AgentEventSink,
-): Promise<void> {
-  await emit({
-    type: "message_update",
-    message: message,
-    assistantMessageEvent,
-  });
-}
-
-async function emitMessageEnd(message: AssistantMessage, emit: AgentEventSink): Promise<void> {
-  await emit({
-    type: "message_end",
-    message: message,
   });
 }
 

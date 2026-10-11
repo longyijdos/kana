@@ -851,7 +851,7 @@ export function createKanaConversationHost<TConfiguration = never>(
   return new KanaConversationHost(options);
 }
 
-function addCompactionUsage(compactions: ContextCheckpoint[]): ModelUsage | undefined {
+function addCompactionUsage(compactions: readonly ContextCheckpoint[]): ModelUsage | undefined {
   return compactions.reduce<ModelUsage | undefined>(
     (total, compaction) => (compaction.usage ? addModelUsage(total, compaction.usage) : total),
     undefined,

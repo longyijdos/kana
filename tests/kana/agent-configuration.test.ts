@@ -41,7 +41,7 @@ describe("Kana Agent configuration", () => {
       env,
     );
 
-    expect(agent.state.toolDeadlineMs).toBe(120_000);
+    expect(agent.settings.toolDeadlineMs).toBe(120_000);
     expect(agent.state.contextLimit).toBe(200_000);
   });
 
