@@ -1,348 +1,365 @@
-# Kana 精简重构计划
+# Kana 重构计划
 
-> 这是一份工作文档，所有阶段完成后删除。工作分支是 `refactor/simplify`，每完成一个阶段就把它合并进 `main` 一次。
-> 文中的行号来自制定计划时的代码，会随修改漂移，以函数名或符号名为准。
+> 这是一份工作文档，全部完成后删除。工作分支是 `refactor/simplify`，每完成一个阶段就合并进 `main` 一次。
+> 文中的行号来自制定计划时的代码，会随修改漂移，以符号名为准。
 
-## 背景
+## 目标
 
-项目大部分在 Codex 辅助下开发，留下了大量防御性编程和冗余：src 中约有 300 处 `structuredClone`，同一个 helper 往往有 5 到 8 份拷贝，约 50 个配置字段被手写了三遍，三个前端各自手写同一套接线代码。
+把这个项目重构成**结构清晰、每个概念只有一份实现、读起来不费劲**的代码，而不只是给现有代码瘦身。
 
-根因只有一个：**没有划清信任边界**。系统内部的数据也被当成不可信输入，所以每一层都在深拷贝、重新校验、包 try/catch、加幂等标志。
+项目后期主要由 Codex 编写，主要问题有三类：
 
-**原则**：只在边缘做运行时校验，内部依赖 TypeScript 类型。
+- **没有信任边界**：内部数据也被当成不可信输入，于是到处是深拷贝、重复校验、多层 try/catch 和幂等标志。src 中约有 300 处 `structuredClone`
+- **同一个概念写了好几份**：
+  - helper 动辄 5 到 8 份
+  - 约 50 个配置字段手写了三遍
+  - 三个前端各写一套接线
+  - job 和 subagent 是两套同构的注册表
+  - 三个 provider 各写一套 HTTP 和请求转换
+- **边界和职责不清**：
+  - 模块依赖规则只是当时 import 关系的快照，反过来逼出了重复代码
+  - 1000 行以上的文件同时承担好几种职责
+  - clean 模式的判断散落在 26 处
 
-- **边缘**：TOML/JSON 配置、session JSONL、HTTP 请求、模型 SSE 流、工具参数、OAuth/MCP 响应
-- **内部**：模块之间的调用、项目自己写的 policy/hook、已经解析过的配置
-- 已提交的 `Message` 视为不可变值，用 `readonly` 类型来表达。唯一允许原地修改的，是 provider 流里正在构建的 assistant message
+## 设计原则
 
-## 工作约定
+1. **只在边缘校验**：配置文件、session JSONL、HTTP 请求、模型 SSE、工具参数、OAuth/MCP 响应在入口处用 schema 校验一次，内部完全依赖类型
+2. **数据不可变**：已提交的消息、事件、配置、快照都用 `readonly` 类型表达，按引用传递，不做防御性拷贝。可变状态只存在于明确的所有者内部，比如 provider 正在构建的消息
+3. **一个概念一份实现**：发现第二份拷贝时就抽出来，放在使用者的最近公共层
+4. **能力显式化**：可选能力（skills、MCP、memory、持久化 session、subagents）启动时组装一次，每项要么是真实实现，要么是 Unavailable 实现，下游不再判断模式
+5. **小文件、单一职责**：核心文件尽量不超过 500 行，一个文件只描述一个概念
+6. **错误和日志各在一处处理**：Logger 本身保证不抛异常，调用方不再包 try/catch；listener 的异常隔离统一由一个 Emitter 负责；日志里的错误字段统一由 `errorFields()` 生成
+7. **测试只验证行为**：测试通过公开接口验证行为。只验证内部细节的测试（"deep-clones…"、"isolates listener mutations…"）随实现一起删除或改写
 
-- **冻结的外部契约**，以下内容不得改变：
-  - `config.toml` 的字段与默认值
-  - session JSONL 持久化格式
-  - headless JSONL 输出协议
-  - HTTP server API
-- 每个阶段结束前必须通过 `bun run check`。阶段内部的提交可以更小，但每个提交都要能通过 pre-commit
-- 提交信息使用 Conventional Commits（`refactor:`、`fix:`、`test:`、`perf:` 等），不加任何 attribution
-- 测试：
-  - 只锁定防御性行为的测试（例如 "deep-clones…"、"isolates listener mutations…"、"snapshots mutable values supplied by callers"）可以删除或改写
-  - 验证真实行为的测试必须保留
-- 分层限制（以 `scripts/source-boundaries.ts` 为准）：
-  - `oauth` 不能 import 任何其他模块
-  - `providers` 只能 import `core` 和 `logging`
-  - `mcp` 只能 import `oauth` 和 `tools`
-  - `kana` 不能 import `utils`
-  - 需要跨模块共享的 helper 优先放进 `core`
-- 文档：只有当改动会让 `docs/` 中的规范文档变得不准确时才更新，并且中英文两个版本同步修改
-- 每个阶段开始前，先把这份计划里该阶段的"待决定"事项定下来
+## 兼容性决策（已定，可推翻）
+
+| 对象 | 决策 | 理由 |
+| --- | --- | --- |
+| `config.toml` 字段与默认值 | **保持不变** | 这是用户手写的文件，改字段名会让用户的配置失效 |
+| session JSONL | **旧格式必须可读**；写入格式可以改，但要升版本号 | 用户已有的会话必须能 resume |
+| oauth-tokens.json、mcp.json、approvals 等本地文件 | 同上：旧文件可读，写入可以升级 | 同上 |
+| headless JSONL（`schema_version`） | 尽量保持 v1；确实需要改时升版本号并更新文档 | 可能有脚本依赖这个输出 |
+| HTTP server API | 允许修改，同步更新文档 | 标注为 experimental |
+| 内部 TS API、模块划分、文件位置 | 完全自由 | 不对外暴露 |
+| `scripts/source-boundaries.ts` 的白名单、AGENTS.md 中由 Codex 引入的约定 | 视为待重新设计，不视为约束 | 用户确认过：这些不是经过深思熟虑的设计 |
+
+## 目标架构
+
+### 模块分层（替代原来的两两白名单）
+
+上层可以 import 任何下层模块；同层之间、以及下层向上层的 import 都不允许。`check-source-boundaries.ts` 的循环检测保留，把规则表换成层号。
+
+```
+L6  cli, main
+L5  tui, headless, server            前端：只做输入输出的投影
+L4  kana                             产品装配：配置、会话、能力、对话运行时
+L3  agent, mcp                       Agent 循环 / MCP 协议
+L2  tools                            可执行工具
+L1  oauth, jobs, providers           通用基础设施
+L0  core, utils, logging, version    叶子：不依赖任何模块
+```
+
+- `core`：provider 中立的协议契约，包括消息、事件、模型、用量、ToolSpec、EventStream。全部是 readonly 类型，不放通用 helper
+- `utils`：无依赖的纯函数，比如 isRecord、formatError、`parseWithSchema` 和路径展开。准入规则是**至少有两个顶层模块在用**；只有一个模块用的 helper 留在该模块内部。`image-input` 移到 `tools`
+- `logging`：Logger、`errorFields()`、`Emitter`（带异常隔离的监听器集合）
+- 前端是否只能依赖 `kana` 加 L0：阶段 6 结束后再决定
+
+### 各模块的目标形态
+
+- **providers**：
+  - 共享层负责 HTTP（signal、retry、HttpError）、SSE 读取、错误规范化，以及模型 run 的生命周期
+  - Responses 协议的请求和流解析共用一份，deepseek 与 openai-codex 只是两套配置
+  - openai-compatible 只负责 Chat Completions 的差异部分
+- **agent**：
+  - `Agent` 只是一层门面
+  - `AgentRun` 负责一次运行：stream、journal、提交、compaction
+  - `SteeringQueue` 封装 inbox
+  - `EventHub` 负责发布和 reduce
+  - tool runtime 拆成 `ToolScheduler`（分组和并行池）、`ToolInvocation`（单次执行、超时、审批）、`ToolResultFinalizer`（policy 和结果持久化）
+  - 状态访问廉价、只读
+- **jobs**：一个泛型的 `OwnedTaskRegistry`，负责 owner 隔离、并发上限、waiters、prune、observe 和 close。background job 与 subagent 都基于它实现
+- **kana**：
+  - `config`：字段只定义一次，由这份定义同时派生 schema、默认值、snake↔camel 映射和 TOML 修补路径
+  - `KanaCapabilities`：替代 launchMode 判断
+  - `KanaConversationHost.createRuntime(frontendOptions)`：前端只声明自己的差异
+  - 会话完成后的输入通过统一的 `CompletionSource` 接入
+  - 持久化基础设施（原子写、串行队列、文件锁）各只有一份
+- **oauth / mcp**：
+  - OAuth 规则（过期提前量、binding、拒绝码、auth method）集中放在一个模块
+  - MCP 和 OAuth 的诊断直接写 Logger，不再层层回调
+  - 关闭操作只在资源所有者那一层保证幂等
+- **tui**：
+  - `OverlayHost` 保证同一时间只有一个 overlay
+  - `ListPicker` 统一列表的导航和视口
+  - overlay controller 基类
+  - editor 和 text-prompt 共享输入帧
+  - `app.ts` 只做装配，事件投影、提交和生命周期各自独立
+
+## 工作方式
+
+- **每个阶段开始时**，先通读该阶段涉及的代码，把目标设计细化写进本文件的对应阶段，再动手
+- 阶段内按小步提交（Conventional Commits，不加 attribution），每个提交都要通过 pre-commit（`bun run check:write`）
+- 每个阶段结束时：
+  1. `bun run check` 通过
+  2. 完成手动冒烟测试（见文末）
+  3. 更新本文件的进度
+  4. 停下来等用户合并，然后再开始下一阶段
+- 文档：每个阶段同步修改受影响的 `docs/` 规范文档（中英文一起改）；阶段 8 统一检查一遍
+- 遇到计划没有覆盖到的设计问题时自己判断，并在本文件的"决策记录"里记一笔
 
 ## 进度
 
-| 阶段 | 内容 | 风险 | 状态 |
-| --- | --- | --- | --- |
-| 1 | 删除死代码，合并重复 helper | 低 | 未开始 |
-| 2 | 前端接线统一，TUI overlay 管理 | 低-中 | 未开始 |
-| 3 | 不可变消息，清理防御性拷贝 | 中 | 未开始 |
-| 4 | Provider 共享层 | 中 | 未开始 |
-| 5 | 后台任务注册表 | 中 | 未开始 |
-| 6 | schema 化解析 | 中-高 | 未开始 |
-| 7 | 信任边界、Capabilities、拆分大文件 | 中 | 未开始 |
+| 阶段 | 内容 | 状态 |
+| --- | --- | --- |
+| 1 | 地基：分层规则、类型严格化、死代码删除、合并 helper | 未开始 |
+| 2 | 不可变数据模型，去掉防御性拷贝 | 未开始 |
+| 3 | Agent 运行时重构 | 未开始 |
+| 4 | Provider 重构 | 未开始 |
+| 5 | 解析与持久化 | 未开始 |
+| 6 | 产品层：能力、对话运行时、任务注册表、OAuth/MCP | 未开始 |
+| 7 | 前端：headless、server、TUI | 未开始 |
+| 8 | 收尾：文档、约定、删除本文件 | 未开始 |
+
+先做"地基"和"不可变数据"，原因是后面几乎所有阶段都要碰这些类型和拷贝；先把它们定下来，后面的结构重构就不用返工。
 
 ---
 
-## 阶段 1：删除死代码，合并重复 helper
+## 阶段 1：地基
 
-**目标**：纯删除和合并，不改变任何行为。
+### 模块边界
+- [ ] `scripts/source-boundaries.ts` 改成分层规则，保留循环检测，更新它的测试
+- [ ] `utils` 改为叶子模块：`image-input` 移到 `tools`，`utils` 不再依赖 `core`
+- [ ] 同步修改 `docs/architecture.md` 和 `.zh-CN.md` 的依赖说明
 
-### 死代码
-- [ ] 删除 `OAuthSession`（`src/oauth/session.ts`）及 `tests/oauth/session.test.ts` 中对应的测试，只保留 `OAuthSessionStatus` 类型（`kana/auth/openai-codex.ts` 在用）。同时删除 `getAccessToken`、`createLinkedAbortController` 等只为它服务的代码
-- [ ] 删除 `validateToolCall`（`src/tools/validation.ts`），它没有调用方
-- [ ] 删除 `McpServerCatalogEntry`（`src/mcp/manager.ts`）
-- [ ] 确认 `loadKanaMcpServerActivations`、`saveKanaMcpActivationState`、`DEFAULT_KANA_MCP_CONFIG`、`DEFAULT_KANA_MCP_ACTIVATION_STATE` 这几个"只被测试使用"的导出，判断是删掉还是改为内部可见
-- [ ] 清理 TUI 中只被测试使用的 barrel 导出，以及只在本文件内使用的 `export`
-- 背景说明：knip 把测试文件也算作入口，所以发现不了只被测试使用的导出。是否调整 `knip.json` 留到阶段末再决定
+### 类型严格化
+- [ ] 开启 `noUncheckedIndexedAccess`。试跑时有 124 处报错，src 约 75 处、tests 约 45 处。处理顺序：
+  1. 优先改成 `for...of` 或其他不需要下标的写法
+  2. 确实可能越界的，补上真正的守卫
+  3. 由前置检查保证不越界的，加 `!`
+- [ ] 删除编译器认为多余的 `?.` 和 `?? 默认值`。另外，TUI 中还有约 20 处对非可选字段用 `?.`、同一个条件检查两次之类的写法，也一起删掉
 
-### 合并重复的 helper
-- [ ] `isRecord`（8 份）：放进 `core`，providers、kana、tools 改为引用这一份。`oauth/client.ts` 和 `mcp/protocol.ts` 因为分层限制保留自己的副本
-- [ ] `asRecord` 和 `assertKnownKeys`：阶段 6 会整体替换掉，本阶段只合并完全相同的副本（mcp/config、mcp/activation、auth/token-store、tui/themes/parser）
-- [ ] `getErrorType`（6 份）和 `getErrorCode`（3 份）：在 `logging` 里导出一个 `errorFields(error)`，返回 `{ errorType, errorCode }`
-- [ ] `formatError`（4 份）和 37 处内联的 `instanceof Error ? .message : String()`：统一成一份
-- [ ] `readPositiveInteger` 和 `readNonNegativeInteger`：先合并 jobs/manager 与 subagents/manager 之间完全相同的两份（配置解析部分留到阶段 6）
-- [ ] `throwIfAborted`（4 份）：改成直接调用 `signal.throwIfAborted()`，或者共用一个基于 ToolContext 的版本
-- [ ] TUI 的格式化函数，各合并为一份：
-  - `formatByteSize` 和 `base64ByteLength`
-  - 单行清理函数，8 份完全相同：`sanitizeLabel`、`formatSingleLine`、`singleLine`、`formatLabel`
-  - shortId 系列（含前缀）
-  - `pad2`、`formatInteger`、`setsEqual`、`formatDescription`、`readObjectArrayLength`（复用 `tools/properties.ts` 里的 `getArrayProperty`）
-  - `capitalize`、`clamp`
-  - `splitLines`（把 6 处换行规则不一致的内联写法统一过去）
-- [ ] `copyStoredToken`（session.ts 与 token-store.ts 各一份）：删除 OAuthSession 之后自然只剩一份
-- [ ] `validateName` 和 `unquote`（prompts/templates 与 subagents/profiles 中完全相同的副本）
-- [ ] `MAX_WAIT_MS = 30_000`（tools/background-jobs.ts 与 kana/tools/subagents.ts 各一份）
+### 删除死代码
+- [ ] `OAuthSession`（`oauth/session.ts`，约 430 行）及其测试，只保留 `OAuthSessionStatus` 类型
+- [ ] `validateToolCall`、`McpServerCatalogEntry`
+- [ ] 其他只被测试使用的导出，以及只在本文件使用的 `export`
+- [ ] 调整 knip 的配置，让它能发现"只被测试使用"的导出。目前测试文件被当成了入口，所以这类导出不会被报出来
 
-### 多余的保护代码
-- [ ] 删除所有在 logger 外面再包一层 try/catch 的 `private log()`。`SessionLogger.write` 内部已经吞掉了异常。涉及的位置：
-  - `agent.ts`、`tool-runtime.ts`、`context-manager.ts`
-  - `conversation/runtime.ts`、`input-coordinator.ts`
-  - `providers/lifecycle.ts`、`headless/run-lifecycle.ts`
-  - `kana/mcp/manager.ts`、`kana/mcp/oauth.ts`、`kana/auth/browser.ts`、`token-store.ts`、`openai-codex.ts`
-  - 注意：包在**用户回调**外面的 try/catch 要保留
+### 合并 helper
+- [ ] `utils`：
+  - `isRecord`（8 份）
+  - `formatError`（4 个函数加 37 处内联）
+  - 路径展开
+- [ ] `logging`：
+  - `errorFields(error)`，替代 6 份 `getErrorType` 和 3 份 `getErrorCode`
+  - `Emitter`
+- [ ] `throwIfAborted`（4 份）改用 `signal.throwIfAborted()`
+- [ ] TUI 内部的重复合并到 `tui/render`：
+  - formatByteSize、base64ByteLength
+  - 单行清理（8 份）
+  - shortId 系列、pad2、formatInteger、setsEqual、formatDescription、capitalize、clamp、splitLines
+- [ ] 其余位置：
+  - `validateName` 和 `unquote`
+  - `MAX_WAIT_MS`
+  - jobs 与 subagents 中相同的 `read*Integer`、`uniqueOwners`
+
+### 删除多余的保护
+- [ ] 删除所有在 logger 外面再包一层 try/catch 的 `private log()` 和调用点。包在**用户回调**外面的 try/catch 保留
 - [ ] 删除不可能触发的分支：
-  - `agent.ts` 中 `runWithSteeringLifecycle` 的 `!this.activeRun` 检查，以及 `runWithLifecycle` 中重复的 activeRun 检查
-  - `loop.ts` 中循环结束后的 `response.result()` 兜底，以及 `event.snapshot ??` 兜底
-  - `subagents/manager.ts` 在 cancel 分支里那次结果必然为空的 `inspect` 调用
-  - jobs/subagents 中 waitForChange 和 waitForSettlement 里的 immediate-finish 分支
-  - provider 在 `terminalSeen` 之后才做的 stopReason/state 检查
-  - `responses/stream.ts` 在类型过滤之后的 `else return`
-  - `getOpenAICompatibleDoneReason` 里永远走不到的 default throw
-- [ ] 删除冗余的幂等标志：headless `run-lifecycle` 的 `listening`、`runner.ts` 的 `settled`
-- [ ] host.ts 的 `getMcpConfigurationStore` 和 `getSkillStore` 中的 `??=` 是死代码，删掉
-- [ ] TUI 中约 20 处不可能触发的检查，清单见阶段 1 附录
-- [ ] 待决定：要不要开启 `noUncheckedIndexedAccess`。开启后数组下标守卫才真正有意义；不开启的话，就把这些守卫删掉
+  - agent 中两处重复的 activeRun 检查
+  - loop 在循环结束后的 `result()` 兜底和 `snapshot ??` 兜底
+  - subagents 在 cancel 分支里注定返回空的 `inspect`
+  - jobs 和 subagents 的 immediate-finish 分支
+  - provider 在 `terminalSeen` 之后才做的检查
+  - `getOpenAICompatibleDoneReason` 中走不到的 default
+- [ ] 删除冗余的幂等标志：headless 的 `listening` 和 `settled`；host 中作为死代码的 `??=`
+- [ ] 修复 bug：`mcp/oauth-http-authorizer.ts` 在 finally 中 `await callbackServer.close()` 没有 catch，close 抛错会覆盖原本的结果或错误
 
-### 顺带修复
-- [ ] `mcp/oauth-http-authorizer.ts` 的授权流程里，`finally` 中的 `await this.callbackServer?.close()` 没有 catch，close 抛错会覆盖原本的结果或错误。改成和 `openai-codex.ts` 一样吞掉并记录日志
-
-**完成标准**：`bun run check` 通过，没有行为变化，生产代码净删除行数可观。
-
-### 阶段 1 附录：TUI 中不可能触发的检查
-- `app.ts` 的 `canStartQueuedRun` 里，对非可选字段（scheduledMessageManager、backgroundJobManager、subagentManager）用了 `?.`
-- `notification-controller.ts` 把 `onAgentCompleted` 检查了两次
-- `mcp-lifecycle-controller.ts`：
-  - `load === undefined` 与 `loaded` 的初始值重复
-  - `loadingOperation`、`loadingController`、`isLoading` 三个字段总是同时设置、同时清除，可以合并成一个可空的状态对象
-- `tool-approval-controller.ts`：
-  - 占位用的 `onAbort: () => {}` 在下一行就被覆盖了
-  - 多余的 `as PendingApproval`
-- `content-viewer-controller.ts`：`close()` 之后又把 `activeToolId` 设为 undefined
-- `slash-command-options-controller.ts`：
-  - 守卫之后又重复调用 `getModelSettings?.()`
-  - `replace` 和 `finish` 的守卫条件重复
-- `content-viewer.ts` 的 `content[index] ?? ""`
-- `render/text.ts` 的 `segments[keepCount]?.index ?? 0` 和 `value[0]?.`
-- `todo-write.ts` 的 `wrapped[0] ?? ""`
-- `status-line.ts` 中 `turn_limit` 的标签被特殊处理了一次，又单独写了一个结果相同的 case
-- `delete-session-confirmation.ts` 手动处理 Esc，而 ChoicePrompt 已经支持 `onCancel`
-- `list-viewport.ts`：
-  - 5 个方法各自做了一遍 `length === 0` 重置，而 clamp 已经做过
-  - `window()` 重复计算了一次 clamp
+**完成标准**：分层规则生效；开启 strict index 后编译通过；生产代码净减少；没有行为变化。
 
 ---
 
-## 阶段 2：前端接线统一，TUI overlay 管理
+## 阶段 2：不可变数据模型
 
-**目标**：消除三个前端各自手写的约 20 个回调；TUI overlay 的互斥改由一个地方负责。
+**目标**：消息和事件在整个系统里按引用传递；去掉流式输出路径上 O(n²) 的拷贝。
 
-### Runtime 接线
-- [ ] `ConversationRuntime` 改为直接接收 host（或一个窄接口 `ConversationHostPort`，由 `KanaConversationHost` 实现它），也可以提供 `host.createRuntime(frontendOptions)`
-- [ ] 前端只显式声明自己的差异：`backgroundJobCompletionRuns`、`subagentCompletionRuns`、`scheduledRuns`、`canStartQueuedRun`、是否启用 user tasks
-- [ ] 删除 user task 的双重开关：host 的 `enableUserTasks` 和 runtime 的 `getUserTasks` 是否传入，两者合并成一个开关
-- [ ] 删除三处一字不差的 `loadSession` 字段映射（server/start-server.ts、headless/runner.ts，以及 TUI）
-- [ ] 删除 host 中纯转发给 `HostedSessionRegistry` 的方法，以及只是 `new` 的工厂函数 `createKanaConversationHost` 和 `createKanaMcpRuntime`
-- [ ] `recordKanaAgentRunAccounting` 外面那层 try/catch + logger.error 出现了 3 次，收进一个 `recordAccountingSafely`
-- [ ] MCP 的 ready/toolCount 统计在 host 的 `runMcpOperation` 和 `start-headless.ts` 里各写了一次，只保留一份；headless 里的 SIGINT 退出码 130 算了 3 次，合并
-- [ ] 待决定：选 `ConversationHostPort` 接口，还是 `host.createRuntime()`。倾向于后者，因为前端不需要知道 runtime 的构造细节
-
-### TUI overlay
-- [ ] 新增 `OverlayHost`：同一时间只允许打开一个 overlay，`open(x)` 时自动关闭上一个；它的 `active` 状态用来 gate `canStartQueuedRun`
-- [ ] 删掉 `app.ts` 里 8 个 `openX()` 方法中手写的 close 列表，以及 `closeOtherOverlays`
-- [ ] **修复**：`closeOtherOverlays` 漏掉了 `mcpServerManager` 和 `contentViewer`；`openTodoViewer` 不会关闭 contentViewer
-- [ ] 统一"运行中不能打开"的规则。目前只有 skill 和 mcp 两个 manager 检查了这一点，需要确认是否所有 overlay 都适用
-- [ ] `session-lifecycle-controller.ts` 中 `startNew` 和 `resume` 里重复的 8 行重置代码，抽成一个函数
-- [ ] `app.ts` 里 6 处 `sessionId ? getX?.(sessionId) : undefined`，合并成一个 helper
-- [ ] `submitPrompt` 和 `queuePrompt` 里重复的消息构建逻辑，抽成共享函数
-
-**完成标准**：每个前端的接线代码减少到只剩它自己特有的部分；新增一个 overlay 互斥的回归测试。
-
----
-
-## 阶段 3：不可变消息，清理防御性拷贝
-
-**目标**：去掉流式热路径上 O(n²) 的拷贝，让 `Agent.state` 变得廉价。
-
-### 已知事实（制定计划时核对过）
-- 已提交的消息在 src 中从未被原地修改，唯一的修改点是 provider 流里正在构建的 assistant message
-- provider 事件里的 `snapshot` **只被 `agent/loop.ts` 读取**（start 事件和各种 delta 事件）。TUI、server、headless 都只读 `.type`、`.delta`、`.contentIndex` 或 `message`
-- 目前一个 token 的拷贝链路，整条消息被完整拷贝 5 次以上：
-  1. provider 每次 delta 执行 `snapshot: structuredClone(this.message)`
-  2. `loop.ts` 的 `emitMessageUpdate` 再执行一次 `structuredClone(message)`，同时把带 snapshot 的原始 provider 事件原样塞进 `assistantMessageEvent`
-  3. `agent.ts` 的 `publishEvent` 对每个 listener 深拷贝整个事件
-  4. `stream.push(structuredClone(event))` 给 stream 再拷一份
-  5. TUI 的 `streaming-text-presenter.ts` 的 `publish()` 每 16ms 一帧，再深拷贝一次整条消息
-- `Agent.state` getter 每次访问都会深拷贝全部历史，并重新估算 token。TUI 状态栏只需要 `estimatedContextTokens` 和 `contextLimit` 两个数字
+### 已知事实
+- 已提交的消息在 src 中从未被原地修改，唯一的修改点是 provider 正在构建的那条 assistant message
+- provider 事件里的 `snapshot` 只有 `agent/loop.ts` 在读
+- 每来一个 token，整条消息被深拷贝 5 次以上：
+  1. provider 每个 delta 拷贝一次
+  2. `loop.ts` 的 `emitMessageUpdate` 再拷一次，并且把带 snapshot 的 provider 事件原样转发
+  3. `agent.ts` 给每个 listener 各拷一次
+  4. `stream.push` 再拷一次
+  5. TUI 的 `streaming-text-presenter` 每 16ms 一帧，又拷一次
+- `Agent.state` 每次被访问都深拷贝全部历史并重新估算 token，而 TUI 状态栏只需要两个数字
 
 ### 任务
-- [ ] 补一个流式 benchmark（参考 `scripts/bench-tui-render.ts`），先记录基线：长回复和大块 tool 参数两种场景
-- [ ] `core` 中的消息和事件类型改为 `readonly`（`Message`、content 各项、`AgentEvent`、`ContextCheckpoint`），让 tsc 找出所有修改点
-- [ ] provider 保留 `snapshot`；`loop.ts` 往 agent 层转发 `assistantMessageEvent` 时去掉 snapshot
-- [ ] 把 `Agent.state` 拆成廉价的访问器：`messages` 返回 readonly 引用，`contextUsage` 返回两个数字，`isRunning` 等等。完整快照只在确实需要时组装
-- [ ] 删除已提交数据上的拷贝：
-  - agent.ts：commit、journal、onRunCommitted、listener、stream.push
-  - loop.ts：message_start/update/end
-  - inbox.ts 和 agent.ts 的 enqueue/peek/claim
-  - context-manager.ts 的 checkpoint 和 compactions getter，以及每一步的 messages
-  - tool-runtime.ts：toolCall、images、artifact
-  - `HostedSessionRegistry` 的每个 journal 回调
-  - `session/journal.ts`
-  - `ConversationRuntime` 的 `emit` 和 `cloneRuntimeEvent`
-  - `core/messages.ts` 在构造时对 provenance 和 images 的拷贝
-- [ ] provider 内部的重复拷贝：
-  - `responses/stream.ts` 对同一个 item 拷贝两次
-  - `openai-codex/request.ts` 对已经拷贝过的 item 再拷一次
-  - `deepseek/model.ts` 对 action 重复拷贝
-- [ ] `responses/stream.ts` 在每个 tool 参数 delta 上都对不断变长的 rawArgs 执行一次 `JSON.parse`，改成只在 item 结束时解析一次
+- [ ] 先写一个流式输出的 benchmark（长回复、大块 tool 参数两种场景），记录基线
+- [ ] `core` 的类型全部改为 readonly：Message 及各类 content、AgentEvent、ContextCheckpoint、usage。让 tsc 找出所有写入点并逐一处理
+- [ ] provider 只在内部维护可变消息；`snapshot` 只在 loop 内部使用，不再进入 agent 层的事件
+- [ ] responses stream 改为只在 item 结束时解析一次 tool 参数，不再对每个 delta 解析不断变长的 rawArgs
+- [ ] 删除下列位置上对已提交数据的拷贝：
+  - agent、loop、inbox、context-manager、tool-runtime
+  - HostedSessionRegistry、session journal、ConversationRuntime
+  - jobs、subagents、user-tasks、wake-scheduler 的 listener
+  - host 的 config getter，以及四个 store
+  - `core/messages.ts` 中构造消息时的拷贝
+  - TUI 的 presenter、editor setter、selected getter
+- [ ] `Agent.state` 改为廉价的只读访问器（messages、contextUsage、isRunning 等），完整快照只在确实需要时才组装
+- [ ] 删除或改写锁定拷贝行为的测试（在 tests 里 grep "clone"、"mutat"、"isolat"、"detached"、"snapshots mutable"）
+- [ ] 再跑一次 benchmark，把前后对比记进决策记录
+
+**完成标准**：`structuredClone` 只剩边缘场景（持久化、跨 worker）；benchmark 有明显改善。
+
+---
+
+## 阶段 3：Agent 运行时重构
+
+**目标**：`agent.ts`（1037 行）和 `tool-runtime.ts`（1424 行）拆成职责单一的小模块。
+
+- [ ] `Agent` 改成门面，内部拆为：
+  - `AgentRun`：负责 stream、journal 顺序、提交、compaction。目前 compaction 的提交写了三遍，合并成一处；`context_compaction_*` 事件也只在一处构建
+  - `SteeringQueue`：基于 inbox。message ID 去重目前有 4 层守卫，只保留一层
+  - `EventHub`：负责 publish、reduce 和日志
+  - 配置解析：maxParallel 和 deadline 目前在 agent、loop、tool-runtime 三处各解析一次，模型能力的 gating 目前有 4 处，都只保留一处
+- [ ] tool runtime 拆为三部分：
+  - `ToolScheduler`：分组和并行池。单个调用的快速路径并入池子，大小为 1 的池子就是同一套逻辑
+  - `ToolInvocation`：执行、超时、审批，以及 `run_code` 的特殊处理
+  - `ToolResultFinalizer`：policy、持久化快照、结果构造
+- [ ] 合并 tool runtime 里的重复："publish 再 commit"有 4 处；"unknown outcome"和 interrupted result 的构建各有两份
+- [ ] 删除内部校验：`resolve*` 系列、`assertValidToolResultPolicies`、`parseToolResultPolicyResult`（policy 是项目自己的代码，靠类型约束即可）
+- [ ] 删除单数形式的 `toolResultPolicy` 通道
+- [ ] loop 中三个几乎相同的"如果已中止就结束，否则抛出"包装函数，合并成一个
+- [ ] context-manager 中重复的预算检查合并
+- [ ] tools 层：
+  - `tools/validation.ts` 对参数重复做了 clone 和 coercion
+  - `json-schema-coercion` 每次调用都会重新编译 schema，没有走缓存
+  - `tools/result.ts` 对已经有类型的值又规范化了一遍
+
+**完成标准**：agent 目录内没有超过约 500 行的文件；agent 现有的行为测试全部通过。
+
+---
+
+## 阶段 4：Provider 重构
+
+- [ ] 建立共享层：
+  - HTTP 基础：signal、URL 拼接、HttpError、retry 循环（各 provider 只提供是否重试的判断；Codex 的 401 刷新作为钩子）、`isAbortError`
+  - SSE reader：补上 cancel 和 releaseLock，`JSON.parse` 出错时给出明确的错误
+  - 模型 run 的生命周期：requestStarted → 执行 → requestFailed → stream.error → dispose
+  - 错误规范化：context-window 判断、错误码提取
+- [ ] Responses 协议的请求转换只保留一份。目前 deepseek 和 openai-codex 有 9 对函数相同或几乎相同，差异只有 namespace、strict 和是否回放 reasoning，改为配置项
+- [ ] 删除 `openai-codex/stream.ts` 这种纯转发文件，以及三个 http.ts 里的别名导出
+- [ ] max output token 的校验统一
+- [ ] **行为统一**：模型给出非法的 JSON 参数时，`parseToolArguments` 统一返回原始字符串，这样校验报错能指出 JSON 本身无效。目前 openai-compatible 返回原始字符串，responses 返回 `{}`，两者不一致。补充对应的测试
+
+**完成标准**：每个 provider 目录只剩它和其他 provider 的差异部分；provider 测试全部通过。
+
+---
+
+## 阶段 5：解析与持久化
+
+- [ ] 在 `utils` 中提供 `parseWithSchema(schema, raw, label)`，带编译缓存，报错格式为"字段路径 + 原因"
+- [ ] **config**：
+  - 字段只定义一次，从中派生 typebox schema、默认值、snake↔camel 映射和 TOML 叶子路径
+  - 删除 `toRawKanaConfig`、`mergeKanaConfig`、`CONFIG_FIELDS` 三份手写映射
+  - reconfigure 只校验一次
+  - 跨字段规则作为解析后的检查保留
+- [ ] 各种格式都改成 schema：
+  - mcp.json、mcp-enabled.json、custom.toml、approvals、skills.toml
+  - oauth-tokens.json、theme、GitHub release
+  - session JSONL 条目：替换 `session/format.ts` 中约 250 行的手写守卫
+  - accounting JSONL：坏记录写日志后再跳过，不再静默丢弃
+- [ ] frontmatter 只用一个通用读取器，skills、subagent profiles、prompt templates 各自用 schema 定义宽松或严格
+- [ ] 持久化基础设施各只留一份：原子写文件（现在 4 份）、串行化队列（4 份）、文件锁的重试策略（2 份）。`persistence.ts` 中非原子的写入也改用这一份
+- [ ] 四个 store（config、tool-approval、skills、mcp-configuration）统一成一个 snapshot store 模式。修复 `tool-approval` 的 store 丢弃磁盘合并结果、导致与文件不一致的问题
+- [ ] activation state 只解析一次
+
+**完成标准**：旧的 config、session 和本地文件都能读取（现有的 fixture 测试全部通过）；`asRecord` 和 `readX` 系列全部删除。
+
+---
+
+## 阶段 6：产品层
+
+### 能力与会话
+- [ ] 引入 `KanaCapabilities`，消除 26 处 `launchMode === "clean"` 判断；去掉 registry 中每个 session 各存一份的 `persistent`
+- [ ] 提供 `KanaConversationHost.createRuntime(frontendOptions)`：
+  - 三个前端不再各写约 20 个回调
+  - user task 目前有两道开关，合并成一个
+  - 删掉 host 中纯转发的方法和只调用 `new` 的工厂函数
+- [ ] 理清 `HostedSessionRegistry` 和 host 的职责：host 负责能力装配，registry 负责会话的生命周期
+- [ ] accounting 的"记录并吞掉错误"目前有 3 份；MCP 统计有 2 份；SIGINT 退出码 130 算了 3 次。各合并成一处
+
+### 任务注册表
+- [ ] 在 `jobs` 中实现 `OwnedTaskRegistry`，background job 与 subagent 都基于它实现：
+  - 合并冗余的标志
+  - `closedOwners` 不再只增不减
+  - producer 的启动方式统一
+- [ ] 状态拼写统一为 `canceled`。先检查 subagent journal 和工具输出中是否出现过 `cancelled`；如果出现过，读取时要兼容旧值
+- [ ] input-coordinator 改用 `CompletionSource` 接口，统一 job、subagent、user task 三组 observe 和 handle 逻辑
+
+### OAuth / MCP
+- [ ] OAuth 规则集中到一处，包括过期提前量、binding 检查、拒绝码、auth method 列表。拒绝码目前一处列了 4 个、一处列了 6 个，以 Codex 实现中的 6 个为准，核对后统一
+- [ ] 诊断直接写 Logger，删除层层回调
+- [ ] MCP 关闭目前最多有 5 层幂等保护，只在所有者那一层保留；各处重复的 env 拷贝也删掉
+- [ ] `kana/mcp` 和 `mcp` 之间的职责重新划分：include/exclude 列表目前拷贝了 3 次，工具名校验有 2 份
+
+**完成标准**：三个前端的启动代码只剩自己的差异部分；`kana` 下不再有模式判断。
+
+---
+
+## 阶段 7：前端
+
+- [ ] headless 和 server：在 `createRuntime` 的基础上精简，各自只保留 I/O 投影
+- [ ] 删除 headless 和 server 中只是转发的函数，以及冗余的标志
 - [ ] TUI：
-  - `streaming-text-presenter` 只替换 text 内容，不再深拷贝整条消息
-  - editor 的 setter 不再拷贝调用方刚刚新建的数组
-  - `selectedJob` 和 `selectedSubagent` getter 不再每次读取都拷贝
-- [ ] 去掉 jobs、subagents、user-tasks、wake-scheduler 的 listener 循环里对每个 listener 的拷贝
-- [ ] 去掉 host 的 config getter，以及 config、tool-approval、skills、mcp-configuration 四个 store 在读取时做的拷贝
-- [ ] 改写锁定拷贝行为的测试，在 `tests/` 中 grep "clone"、"mutat"、"isolat"、"detached"、"snapshots mutable"
-- [ ] 再跑一次 benchmark，记录改善幅度
+  - `OverlayHost` 替代 `app.ts` 中 8 个手写的 `openX()` 和 `closeOtherOverlays`，顺带修复漏关 overlay 的 bug。"运行中不能打开"的规则统一处理
+  - 引入 overlay controller 基类，统一 open、close、focus 恢复和 refresh
+  - 引入 `ListPicker`，合并 7 个列表组件里重复的导航和视口代码
+  - editor 和 text-prompt 共用输入帧
+  - 拆分 `app.ts`：装配、事件投影、提交（submit 和 queue 目前有重复）、生命周期
+  - 拆分 `editor.ts` 和 `editor/state.ts`：预览、palette、history、boundaries、paste-display、reducer
+  - 拆分 `render/latex.ts`：symbols 数据、layout、parser、environments
+  - 拆分 `tools/format.ts`：措辞表、output、target、todo
+  - 合并相同的运行生命周期（memory-compact 和 local-shell）和重复的重置逻辑（session 的 startNew 和 resume）
+- [ ] 决定前端是否只能依赖 `kana` 加 L0，然后更新分层规则
 
-**完成标准**：src 里的 `structuredClone` 只剩边缘场景（持久化、跨 worker 通信、provider 构建中的消息），benchmark 显示长回复的 CPU 开销明显下降。
-
----
-
-## 阶段 4：Provider 共享层
-
-**目标**：deepseek 和 openai-codex 共用一套 Responses 请求代码；三个 provider 共用 HTTP 和错误处理。
-
-- [ ] 新增共享的 Responses request 模块。目前 `deepseek/request.ts` 和 `openai-codex/request.ts` 有 9 对函数相同或几乎相同（Input、Message、ToolOutput、UserContent、FunctionCall、Tools、appendImageOmission 等），真正的差异只有三项，通过参数注入：
-  - namespace
-  - tool schema 的 `strict`
-  - 是否回放 reasoning
-- [ ] 共享 HTTP 基础层，以下内容在三个 provider 里完全相同：
-  - `create*RequestSignal`
-  - URL 拼接
-  - HttpError（错误消息里截断 body 的逻辑）
-  - `getRetryDelayMs`
-  - `isAbortError` 的重新导出
-- [ ] retry 循环统一为一个函数，各 provider 只提供"是否重试"的判断；Codex 额外的 401 刷新作为一个钩子
-- [ ] 三个 `model.ts` 的 `run()` 骨架抽成一个共享的生命周期函数：requestStarted → 执行 → requestFailed → stream.error → dispose
-- [ ] `normalize*Error`、`is*ContextWindowFailure`、`get*ErrorCode` 合并成一份
-- [ ] 模型能力（webSearch、imageInput、parallelToolCalls）的 gating 只在一个地方做。目前 agent、loop、provider 的 model 层和 request 层各做了一次
-- [ ] max output token 校验统一。目前 openai-compatible 校验配置值和单次请求值，deepseek 是内联的一份拷贝，codex 只校验配置值
-- [ ] openai-compatible 的 SSE reader 补上 `reader.cancel` 和 `releaseLock`，`JSON.parse` 失败时给出 provider 风格的错误
-- [ ] `openai-codex/stream.ts` 只是在转发 `readResponsesStream`，删掉
-- [ ] **待决定（行为变化）**：模型给出非法 JSON 参数时，`parseToolArguments` 应该怎么处理。目前 openai-compatible 返回原始字符串，responses 返回 `{}`，两者需要统一，而且统一后模型看到的工具报错会变。倾向于保留原始字符串，这样校验报错能说明是 JSON 本身非法
-
-**完成标准**：provider 目录净删除；三个 provider 现有的测试全部通过；新增 parseToolArguments 一致性的测试。
+**完成标准**：TUI 中没有超过约 500 行的文件（latex 的符号表数据文件除外）；手动冒烟测试通过。
 
 ---
 
-## 阶段 5：后台任务注册表
+## 阶段 8：收尾
 
-**目标**：`BackgroundJobManager` 和 `KanaSubagentManager` 共用一个泛型的、按 owner 隔离的注册表。
-
-- [ ] 在 `jobs` 中抽出 `OwnedTaskRegistry<Record, Summary>`，统一下面这些逻辑：
-  - owner 绑定，closed-owner 准入
-  - live 上限
-  - settlement 和 waiters（合并 `waitForChange` 和 `waitForSettlement`）
-  - finalize 守卫、prune、closeOwner
-  - listener 注册与 emit、observe
-  - `unknownSummary`
-- [ ] job 和 subagent 只提供各自的 run 逻辑和 summary 投影。job 保留输出环形缓冲和 kill；subagent 保留 live snapshot 和 inspect
-- [ ] 合并冗余的标志：`closePromise` 与 `closedOwners`、`completionObserved` 与 `completionPublished`；`closedOwners` 改成会被清理的结构，不再只增不减
-- [ ] 两边启动 producer 的写法统一。目前一边是 try/catch 把同步异常转成 rejection，另一边是 `Promise.resolve().then`
-- [ ] `input-coordinator.ts` 中 job、subagent、user task 三组几乎相同的 observe 和 handle 方法，合并到一个 `CompletionSource` 接口
-- [ ] `KanaUserTaskManager` 评估是否复用注册表，或者只实现 `CompletionSource`
-- [ ] **待决定**：统一状态拼写（jobs 用 `canceled`，subagents 用 `cancelled`）之前，先确认这个状态值是否会出现在以下地方，如果会出现，就保留现有拼写：
-  - session JSONL（subagent journal）
-  - 返回给模型的工具输出
-  - headless 或 server 的输出（制定计划时，这两个目录的代码里没有直接出现这个字符串）
-
-**完成标准**：两个 manager 的代码大幅缩减；jobs 和 subagents 现有的测试全部通过。
+- [ ] 对照最终代码通读 `docs/`，中英文一起改。删掉已经过时的描述，更新 `docs/README` 的索引
+- [ ] 重新审视 AGENTS.md：保留合理的约定，删除或修改 Codex 时期引入、并且和新结构冲突的部分
+- [ ] 全仓库再扫一遍残留：重复的 helper、拷贝、多余的守卫
+- [ ] 删除本文件
 
 ---
 
-## 阶段 6：schema 化解析
+## 通用验证
 
-**目标**：每种文件格式定义一个 typebox schema，并用同一个解析入口处理。配置字段只定义一次。
-
-- [ ] 在 `core` 中实现 `parseWithSchema(schema, raw, label)`。编译缓存和错误格式化复用 `tools/validation.ts` 里现有的逻辑，报错风格保持现有的 "field must be …"
-- [ ] 重写 config.toml 的解析：
-  - 字段定义只写一份，从中派生默认值、snake↔camel 映射，以及 `store.ts` 做 TOML 行级修补时需要的叶子路径
-  - 删除三份手写的映射：`toRawKanaConfig`、`mergeKanaConfig`、`CONFIG_FIELDS`
-  - 删除 `validateKanaConfig = parse(toRaw(config))` 这种来回转换
-  - 一次 reconfigure 只校验一次（目前还有 store 写盘后的重新解析、clean 模式在 host 里的再次校验、overrides 的重新解析）
-  - 跨字段的检查（比如 max_turns）作为解析后的额外检查保留
-- [ ] mcp.json（`kana/mcp/config.ts`）：用 schema 描述 server union 和 OAuth 块；URL、header、env 名这类细粒度规则保留为自定义检查
-- [ ] session JSONL 条目（`session/format.ts` 里约 250 行的 isMessage、isProvenance 等守卫）
-- [ ] 其余格式：
-  - custom.toml、oauth-tokens.json（`oauth` 的分层限制要注意）
-  - mcp-enabled.json、approvals JSON、skills.toml
-  - theme JSON、GitHub release JSON
-- [ ] accounting JSONL 目前只检查了 type 和 version，坏记录会被静默丢弃。考虑加上 schema，并把丢弃的记录写进日志
-- [ ] frontmatter 只保留一个通用读取器（目前 skills、subagent profiles、prompt templates 各有一套），各自的 schema 决定宽松还是严格
-- [ ] 删除 `asRecord`、`assertKnownKeys`、`readX` 系列的剩余副本
-- [ ] activation state 目前会被解析三次（configuration-store 一次，`persistKanaMcpActivationState` 内外各一次），改成只解析一次
-- [ ] **待决定**：报错文案是否允许变化。倾向于保持字段路径一致，具体措辞可以变，相关测试相应更新
-
-**完成标准**：config.toml 和 session JSONL 的格式与默认值不变；现有的 config、session resume、MCP config 测试全部通过（只改报错文案的断言除外）。
-
----
-
-## 阶段 7：信任边界、Capabilities、拆分大文件
-
-### 内部重复校验
-- [ ] `tool-runtime.ts` 中的 `resolve*` 系列、`assertValidToolResultPolicies`、`parseToolResultPolicyResult`（注释里写着防 "Proxy traps" 和 "sparse arrays"）全部改为依赖类型
-- [ ] maxParallel 和 deadline 目前在 agent、loop、tool-runtime 三处分别解析，改成只解析一次
-- [ ] message ID 去重守卫有 4 层（agent 的 constructor、stream、commit、enqueue，加上 inbox），只保留一层
-- [ ] `todo.ts` 在重复校验 typebox 已经校验过的输入；`tools/result.ts` 在重复规范化 hook 的返回值；`session/format.ts` 重复检查 `hasMessageIdentity`；`mcp/oauth.ts` 重新校验 server id
-- [ ] 单数形式的 `toolResultPolicy` 通道在经由 Agent 调用时永远用不到，删掉
-- [ ] MCP 的关闭最多有 5 层幂等保护，只在资源所有者那一层保留
-
-### clean 模式改为 Capabilities
-- [ ] 启动时一次性组装 `KanaCapabilities`。skills、mcp、memory、sessions、subagents 这些能力，每一项要么是真实实现，要么是 Unavailable 实现，下游不再判断 `launchMode === "clean"`（目前有 26 处）
-- [ ] 删除 `HostedSessionRegistry` 中每个 session 各存一份的 `persistent`，这个值对整个 registry 来说是常量
-
-### OAuth 规则与基础设施
-- [ ] OAuth 规则收进 `oauth` 下的一个模块：
-  - 60s 过期提前量（3 份）
-  - issuer/clientId/resource 绑定检查（3 份）
-  - 刷新被拒的错误码（一处 4 个、一处 6 个，需要先确认以哪份为准）
-  - token endpoint auth method 列表（3 份）
-- [ ] 串行化队列（4 份）和原子写文件（4 份）各只保留一份
-
-### TUI 骨架
-- [ ] 抽一个 `ListPicker` 基类，或者 `handleListNavigation` 加 `renderWindow` 两个 helper。目前有 7 个列表组件，各自复制了一套导航和视口渲染
-- [ ] 抽一个 overlay controller 基类，统一 open、close、focus 恢复和 refresh 模板。目前有 9 个 controller。`bottomArea.restore()` 已经会计算焦点，各处单独捕获 `restoreFocus` 的写法可以删掉
-- [ ] `text-prompt.ts` 和 `editor.ts` 共用一个输入帧模块（applyText、applyPaste、applyAction、moveVertically、renderLine）
-- [ ] `memory-compact-controller` 和 `local-shell-controller` 中相同的 abort 和运行生命周期，抽成共享代码
-
-### 拆分大文件
-- [ ] `agent/agent.ts`：拆成 AgentRun（stream、lifecycle、journal）、SteeringQueue、EventHub、配置解析。compaction 的提交逻辑目前在三处各写一遍，合并成一处
-- [ ] `agent/tool-runtime.ts`：拆成 ToolScheduler、ToolInvocation、ToolResultFinalizer。同时合并以下重复：
-  - 4 处 "publish 再 commit"
-  - 两段几乎相同的 interrupted result 构建
-  - 单个调用的快速路径（并行池大小为 1 时走的就是同一套逻辑）
-- [ ] `tui/app/app.ts`：拆成 wiring、overlay 路由、事件投影、生命周期、提交路径
-- [ ] `tui/components/editor/editor.ts` 和 `editor/state.ts`：拆出预览、palette、history、boundaries、paste-display、reducer
-- [ ] `tui/render/latex.ts`：拆成 symbols（约 580 行数据）、layout、parser、environments
-- [ ] `tui/tools/format.ts`：措辞表、output 格式化、target、todo 状态分开
-
-**完成标准**：拆分后不再有超过约 600 行的核心文件；`bun run check` 通过；手动冒烟测试通过。
-
----
-
-## 每个阶段的通用验证
-
-- `bun run check`，包括 biome、注释长度、架构边界、tsc、knip、bun test
+- `bun run check`：biome、注释长度、分层边界、tsc、knip、bun test
 - 手动冒烟测试：
-  - `bun run start` 跑一遍 TUI：新会话、resume、fork、/mcp、后台 job、subagent、overlay 切换、长回复的流式输出
-  - `kana exec --json "…"` 检查 headless 的 JSONL 输出
-  - `KANA_SERVER_TOKEN=… kana serve` 检查 HTTP API 和 SSE
-- 涉及冻结契约的阶段（3、4、6），确认现有的 session、headless 和 server 测试原样通过
+  - `bun run start`：新会话、resume 旧会话、fork、/mcp、后台 job、subagent、overlay 切换、长回复的流式输出
+  - `kana exec --json "…"`：检查 headless 的 JSONL 输出
+  - `KANA_SERVER_TOKEN=… kana serve`：检查 HTTP API 和 SSE
+- 涉及持久化的阶段（2、5、6）：用改动前版本生成的 session 和配置文件，验证能正常 resume
 
-## 已发现的潜在问题
+## 已知 bug
 
-| 问题 | 位置 | 处理阶段 |
+| 问题 | 位置 | 阶段 |
 | --- | --- | --- |
-| 流式输出时每个 token 都要多次拷贝整条消息，总开销 O(n²) | provider stream、loop、agent、streaming-text-presenter | 3 |
-| `closeOtherOverlays` 漏关 overlay | `tui/app/app.ts` | 2 |
-| `parseToolArguments` 在不同 provider 之间行为不一致 | `openai-compatible/stream.ts`、`responses/stream.ts` | 4 |
-| `finally` 里关闭回调服务时抛出的错误会覆盖原本的结果 | `mcp/oauth-http-authorizer.ts` | 1 |
-| SSE reader 没有 cancel 和 releaseLock | `openai-compatible/stream.ts` | 4 |
-| `closedOwners` 只增不减 | `jobs/manager.ts`、`subagents/manager.ts` | 5 |
-| 刷新被拒的错误码列表两处不一致 | `oauth/session.ts`、`kana/auth/openai-codex.ts` | 1（删除 OAuthSession 后只剩一份）/ 7 |
+| finally 中 close 抛错会覆盖原本的结果 | `mcp/oauth-http-authorizer.ts` | 1 |
+| 流式输出的开销是 O(n²) | provider、loop、agent、presenter | 2 |
+| SSE reader 没有 cancel/releaseLock | `openai-compatible/stream.ts` | 4 |
+| `parseToolArguments` 在不同 provider 之间行为不一致 | 两个 stream | 4 |
+| store 的快照可能与磁盘文件不一致 | `kana/tool-approval.ts` | 5 |
+| `closedOwners` 只增不减 | jobs、subagents | 6 |
+| 刷新被拒的错误码列表两处不一致 | oauth、openai-codex | 1/6 |
+| `closeOtherOverlays` 漏关 overlay | `tui/app/app.ts` | 7 |
+
+## 决策记录
+
+- 2026-10-11：开启 `noUncheckedIndexedAccess`
+- 2026-10-11：模块边界从两两白名单改为分层规则；`utils` 改为无依赖的叶子模块
+- 2026-10-11：用户授权不受原有约束限制。兼容性决策见上文表格
