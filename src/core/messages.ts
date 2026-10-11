@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 import type { ModelUsage } from "./usage";
 
@@ -100,31 +102,15 @@ export type UserImage = {
   readonly height: number;
 };
 
+export const USER_IMAGE_SCHEMA = Type.Object({
+  mimeType: Type.Enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+  data: Type.String(),
+  width: Type.Integer({ minimum: 1 }),
+  height: Type.Integer({ minimum: 1 }),
+});
+
 export function isUserImage(value: unknown): value is UserImage {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const image = value as Record<string, unknown>;
-  return (
-    isUserImageMimeType(image.mimeType) &&
-    typeof image.data === "string" &&
-    isPositiveInteger(image.width) &&
-    isPositiveInteger(image.height)
-  );
-}
-
-function isUserImageMimeType(value: unknown): value is UserImageMimeType {
-  return (
-    value === "image/png" ||
-    value === "image/jpeg" ||
-    value === "image/webp" ||
-    value === "image/gif"
-  );
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
+  return Value.Check(USER_IMAGE_SCHEMA, value);
 }
 
 // Assistant content is ordered. Stream event contentIndex values refer to
@@ -164,24 +150,14 @@ export type ToolResultArtifact = {
   readonly byteLength: number;
 };
 
-const MAX_TOOL_RESULT_ARTIFACT_LOCATOR_LENGTH = 4_096;
+export const TOOL_RESULT_ARTIFACT_SCHEMA = Type.Object({
+  kind: Type.Literal("text"),
+  locator: Type.String({ pattern: "^[^\\u0000]{1,4096}$" }),
+  byteLength: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+});
 
 export function isToolResultArtifact(value: unknown): value is ToolResultArtifact {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const artifact = value as Record<string, unknown>;
-  return (
-    artifact.kind === "text" &&
-    typeof artifact.locator === "string" &&
-    artifact.locator.length > 0 &&
-    artifact.locator.length <= MAX_TOOL_RESULT_ARTIFACT_LOCATOR_LENGTH &&
-    !artifact.locator.includes("\0") &&
-    typeof artifact.byteLength === "number" &&
-    Number.isSafeInteger(artifact.byteLength) &&
-    artifact.byteLength >= 0
-  );
+  return Value.Check(TOOL_RESULT_ARTIFACT_SCHEMA, value);
 }
 
 export type AssistantContent = TextContent | ThinkingContent | ToolCallContent | HostedToolContent;

@@ -1,17 +1,16 @@
 import { randomUUID } from "node:crypto";
-
+import { type Static, type TSchema, Type } from "typebox";
 import type { AgentEndReason, ContextCheckpoint } from "@/agent";
 import {
-  isToolResultArtifact,
-  isUserImage,
   type Message,
-  type MessageProvenance,
   type ModelUsage,
+  TOOL_RESULT_ARTIFACT_SCHEMA,
+  USER_IMAGE_SCHEMA,
   type UserMessage,
 } from "@/core";
-import { formatError } from "@/utils";
+import { formatError, parseWithSchema } from "@/utils";
 import type { KanaSubagentProfile } from "../subagents/profiles";
-import { isKanaTodoItems, type KanaTodoItem } from "../todo";
+import { type KanaTodoItem, normalizeKanaTodoItems } from "../todo";
 
 export const SESSION_VERSION = 6;
 const CONTEXT_SUMMARY_FORMAT = "kana-context-summary-v1";
@@ -236,32 +235,6 @@ export function contextCheckpointToEntry(
   };
 }
 
-export function assertContextCheckpointForAppend(checkpoint: ContextCheckpoint): void {
-  if (
-    typeof checkpoint.id !== "string" ||
-    checkpoint.id.length === 0 ||
-    typeof checkpoint.createdAt !== "string" ||
-    checkpoint.createdAt.length === 0 ||
-    (checkpoint.baseCompactionId !== undefined &&
-      (typeof checkpoint.baseCompactionId !== "string" ||
-        checkpoint.baseCompactionId.length === 0)) ||
-    !isPositiveInteger(checkpoint.coveredMessageCount) ||
-    !isPositiveInteger(checkpoint.createdAfterMessageCount) ||
-    checkpoint.createdAfterMessageCount < checkpoint.coveredMessageCount ||
-    !isPositiveInteger(checkpoint.compactedMessageCount) ||
-    !isNonNegativeInteger(checkpoint.beforeTokens) ||
-    !isNonNegativeInteger(checkpoint.estimatedAfterTokens) ||
-    (checkpoint.reason !== "threshold" &&
-      checkpoint.reason !== "provider_limit" &&
-      checkpoint.reason !== "manual") ||
-    typeof checkpoint.summary !== "string" ||
-    checkpoint.summary.trim().length === 0 ||
-    (checkpoint.usage !== undefined && !isModelUsage(checkpoint.usage))
-  ) {
-    throw new Error("Invalid context compaction checkpoint.");
-  }
-}
-
 export function entryToContextCheckpoint(
   entry: KanaSessionContextCompactionEntry,
   coveredMessageCount: number,
@@ -295,63 +268,181 @@ export function normalizeSessionTitle(title: string | undefined, messages: Messa
     : normalized;
 }
 
+const nonEmptyString = Type.String({ minLength: 1 });
+const nonNegativeInteger = Type.Integer({ minimum: 0 });
+const positiveInteger = Type.Integer({ minimum: 1 });
+
+const USAGE_SCHEMA = Type.Object({
+  promptTokens: nonNegativeInteger,
+  completionTokens: nonNegativeInteger,
+  totalTokens: nonNegativeInteger,
+  promptCacheHitTokens: Type.Optional(nonNegativeInteger),
+  promptCacheMissTokens: Type.Optional(nonNegativeInteger),
+  reasoningTokens: Type.Optional(nonNegativeInteger),
+});
+
+const USER_PROVENANCE_SCHEMA = Type.Union([
+  Type.Object({
+    kind: Type.Enum(["user_input", "recovery", "context_summary", "compaction_request"]),
+  }),
+  Type.Object({ kind: Type.Literal("scheduled_input"), origin: Type.Enum(["user", "agent"]) }),
+  Type.Object({
+    kind: Type.Literal("goal_continuation"),
+    goalId: nonEmptyString,
+    round: positiveInteger,
+  }),
+  Type.Object({ kind: Type.Literal("job_completion"), jobId: nonEmptyString }),
+  Type.Object({ kind: Type.Literal("subagent_completion"), agentId: nonEmptyString }),
+  Type.Object({ kind: Type.Literal("user_task_completion"), taskId: nonEmptyString }),
+  Type.Object({
+    kind: Type.Enum(["runtime_context", "tool_result_policy"]),
+    source: nonEmptyString,
+  }),
+]);
+
+// Assistant content blocks carry provider-owned replay state, so only the
+// envelope is validated here.
+const MESSAGE_SCHEMA = Type.Union(
+  [
+    Type.Object({
+      id: nonEmptyString,
+      role: Type.Literal("user"),
+      provenance: USER_PROVENANCE_SCHEMA,
+      content: Type.String(),
+      images: Type.Optional(Type.Array(USER_IMAGE_SCHEMA)),
+    }),
+    Type.Object({
+      id: nonEmptyString,
+      role: Type.Literal("assistant"),
+      provenance: Type.Object({ kind: Type.Literal("model_output") }),
+      content: Type.Array(Type.Unknown()),
+    }),
+    Type.Object({
+      id: nonEmptyString,
+      role: Type.Literal("tool"),
+      provenance: Type.Object({ kind: Type.Literal("tool_result") }),
+      toolCallId: Type.String(),
+      toolName: Type.String(),
+      content: Type.String(),
+      durationMs: Type.Optional(Type.Number({ minimum: 0 })),
+      images: Type.Optional(Type.Array(USER_IMAGE_SCHEMA)),
+      artifact: Type.Optional(TOOL_RESULT_ARTIFACT_SCHEMA),
+      isError: Type.Boolean(),
+    }),
+  ],
+  { errorMessage: "must be a valid user, assistant, or tool message" },
+);
+
+const SUBAGENT_PROFILE_SCHEMA = Type.Object({
+  name: Type.String(),
+  description: Type.String(),
+  instructions: Type.String(),
+  tools: Type.Array(Type.String()),
+  sourcePath: Type.Optional(Type.String()),
+  digest: Type.String(),
+  model: Type.Optional(
+    Type.Object({
+      provider: Type.String(),
+      name: Type.String(),
+      reasoningEffort: Type.Optional(Type.String()),
+    }),
+  ),
+});
+
+const HEADER_SCHEMA = Type.Object({
+  type: Type.Literal("session"),
+  version: Type.Literal(SESSION_VERSION),
+  id: Type.String(),
+  createdAt: Type.String(),
+  title: Type.String(),
+  cwd: Type.String(),
+  parentSessionPath: Type.Optional(Type.String()),
+  subagent: Type.Optional(
+    Type.Object({
+      parentSessionId: nonEmptyString,
+      spawnToolCallId: nonEmptyString,
+      profile: SUBAGENT_PROFILE_SCHEMA,
+    }),
+  ),
+});
+
+const ENTRY_IDENTITY = {
+  id: Type.String(),
+  parentId: Type.Union([Type.Null(), Type.String()]),
+  timestamp: Type.String(),
+};
+
+const TIMELINE_ENTRY_SCHEMAS = {
+  turn_start: Type.Object({
+    type: Type.Literal("turn_start"),
+    ...ENTRY_IDENTITY,
+    turnId: Type.String(),
+    kind: Type.Enum(["agent", "snapshot"]),
+  }),
+  message: Type.Object({
+    type: Type.Literal("message"),
+    ...ENTRY_IDENTITY,
+    message: MESSAGE_SCHEMA,
+  }),
+  context_compaction: Type.Object({
+    type: Type.Literal("context_compaction"),
+    ...ENTRY_IDENTITY,
+    reason: Type.Enum(["threshold", "provider_limit", "manual"]),
+    baseCompactionId: Type.Optional(Type.String()),
+    coversThroughId: Type.String(),
+    compactedMessageCount: positiveInteger,
+    beforeTokens: nonNegativeInteger,
+    estimatedAfterTokens: nonNegativeInteger,
+    summary: Type.Object({
+      format: Type.Literal(CONTEXT_SUMMARY_FORMAT),
+      text: Type.String({ pattern: "\\S" }),
+    }),
+    usage: Type.Optional(USAGE_SCHEMA),
+  }),
+  todo_state: Type.Object({
+    type: Type.Literal("todo_state"),
+    ...ENTRY_IDENTITY,
+    toolCallId: Type.Optional(nonEmptyString),
+    parentToolCallId: Type.Optional(nonEmptyString),
+    items: Type.Array(
+      Type.Object(
+        { content: Type.String(), status: Type.Enum(["pending", "in_progress", "completed"]) },
+        { additionalProperties: false },
+      ),
+    ),
+  }),
+  turn_end: Type.Object({
+    type: Type.Literal("turn_end"),
+    ...ENTRY_IDENTITY,
+    turnId: Type.String(),
+    outcome: Type.Enum([
+      "stop",
+      "length",
+      "aborted",
+      "error",
+      "turn_limit",
+      "interrupted",
+      "snapshot",
+    ]),
+  }),
+};
+
+const TIMELINE_ENTRY_LABELS: Record<keyof typeof TIMELINE_ENTRY_SCHEMAS, string> = {
+  turn_start: "turn start",
+  message: "message entry",
+  context_compaction: "compaction entry",
+  todo_state: "todo state",
+  turn_end: "turn end",
+};
+
 export function parseHeader(line: string, filePath: string): KanaSessionHeader {
   const parsed = parseJsonRecord(line, filePath, 1);
-
-  if (
-    parsed.type !== "session" ||
-    parsed.version !== SESSION_VERSION ||
-    typeof parsed.id !== "string" ||
-    typeof parsed.createdAt !== "string" ||
-    typeof parsed.title !== "string" ||
-    typeof parsed.cwd !== "string"
-  ) {
-    throw new Error(`Invalid or unsupported Kana session header: ${filePath}`);
-  }
-
-  if (parsed.parentSessionPath !== undefined && typeof parsed.parentSessionPath !== "string") {
-    throw new Error(`Invalid Kana session parent path: ${filePath}`);
-  }
-  if (parsed.subagent !== undefined && !isSubagentSessionIdentity(parsed.subagent)) {
-    throw new Error(`Invalid Kana subagent session identity: ${filePath}`);
-  }
-
-  return parsed as KanaSessionHeader;
-}
-
-function isSubagentSessionIdentity(value: unknown): value is KanaSubagentSessionIdentity {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const identity = value as Record<string, unknown>;
-  return (
-    typeof identity.parentSessionId === "string" &&
-    identity.parentSessionId.length > 0 &&
-    typeof identity.spawnToolCallId === "string" &&
-    identity.spawnToolCallId.length > 0 &&
-    isSubagentProfile(identity.profile)
-  );
-}
-
-function isSubagentProfile(value: unknown): value is KanaSubagentProfile {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const profile = value as Record<string, unknown>;
-  const model = profile.model;
-  return (
-    typeof profile.name === "string" &&
-    typeof profile.description === "string" &&
-    typeof profile.instructions === "string" &&
-    Array.isArray(profile.tools) &&
-    profile.tools.every((tool) => typeof tool === "string") &&
-    (profile.sourcePath === undefined || typeof profile.sourcePath === "string") &&
-    typeof profile.digest === "string" &&
-    (model === undefined ||
-      (typeof model === "object" &&
-        model !== null &&
-        !Array.isArray(model) &&
-        typeof (model as Record<string, unknown>).provider === "string" &&
-        typeof (model as Record<string, unknown>).name === "string" &&
-        ((model as Record<string, unknown>).reasoningEffort === undefined ||
-          typeof (model as Record<string, unknown>).reasoningEffort === "string")))
-  );
+  // Profile snapshots keep the provider name they were saved with.
+  return parseRecord(
+    HEADER_SCHEMA,
+    parsed,
+    `Invalid or unsupported Kana session header: ${filePath}`,
+  ) as KanaSessionHeader;
 }
 
 export function parseTimelineEntry(
@@ -360,60 +451,43 @@ export function parseTimelineEntry(
   lineNumber: number,
 ): KanaSessionTimelineEntry {
   const parsed = parseJsonRecord(line, filePath, lineNumber);
-
-  if (parsed.type === "turn_start") {
-    if (
-      !hasTimelineIdentity(parsed) ||
-      typeof parsed.turnId !== "string" ||
-      (parsed.kind !== "agent" && parsed.kind !== "snapshot")
-    ) {
-      throw new Error(`Invalid Kana session turn start: ${filePath}:${lineNumber}`);
-    }
-    return parsed as KanaSessionTurnStartEntry;
+  const type = parsed.type as keyof typeof TIMELINE_ENTRY_SCHEMAS;
+  if (!Object.hasOwn(TIMELINE_ENTRY_SCHEMAS, type)) {
+    throw new Error(`Invalid Kana session timeline entry: ${filePath}:${lineNumber}`);
   }
 
-  if (parsed.type === "message") {
-    if (!hasTimelineIdentity(parsed) || !isMessage(parsed.message)) {
-      throw new Error(`Invalid Kana session message entry: ${filePath}:${lineNumber}`);
-    }
-    return parsed as KanaSessionMessageEntry;
+  const failure = `Invalid Kana session ${TIMELINE_ENTRY_LABELS[type]}: ${filePath}:${lineNumber}`;
+  const entry = parseRecord(TIMELINE_ENTRY_SCHEMAS[type], parsed, failure);
+  if (entry.type === "todo_state" && !isPersistedTodoState(entry)) {
+    throw new Error(failure);
   }
+  return entry as KanaSessionTimelineEntry;
+}
 
-  if (parsed.type === "context_compaction") {
-    if (!isContextCompactionEntry(parsed)) {
-      throw new Error(`Invalid Kana session compaction entry: ${filePath}:${lineNumber}`);
-    }
-    return parsed;
+function parseRecord<T extends TSchema>(schema: T, value: unknown, failure: string): Static<T> {
+  try {
+    return parseWithSchema(schema, value, "record");
+  } catch (error) {
+    throw new Error(`${failure} (${formatError(error)})`, { cause: error });
   }
+}
 
-  if (parsed.type === "todo_state") {
-    if (
-      !hasTimelineIdentity(parsed) ||
-      (parsed.toolCallId !== undefined &&
-        (typeof parsed.toolCallId !== "string" || parsed.toolCallId.length === 0)) ||
-      (parsed.parentToolCallId !== undefined &&
-        (typeof parsed.parentToolCallId !== "string" ||
-          parsed.parentToolCallId.length === 0 ||
-          parsed.toolCallId === undefined)) ||
-      !isKanaTodoItems(parsed.items)
-    ) {
-      throw new Error(`Invalid Kana session todo state: ${filePath}:${lineNumber}`);
-    }
-    return parsed as KanaSessionTodoStateEntry;
+// Persisted todo lists are already normalized; a nested todo state must name
+// the run_code call that owns it.
+function isPersistedTodoState(entry: {
+  readonly toolCallId?: string;
+  readonly parentToolCallId?: string;
+  readonly items: readonly KanaTodoItem[];
+}): boolean {
+  if (entry.parentToolCallId !== undefined && entry.toolCallId === undefined) {
+    return false;
   }
-
-  if (parsed.type === "turn_end") {
-    if (
-      !hasTimelineIdentity(parsed) ||
-      typeof parsed.turnId !== "string" ||
-      !isTurnOutcome(parsed.outcome)
-    ) {
-      throw new Error(`Invalid Kana session turn end: ${filePath}:${lineNumber}`);
-    }
-    return parsed as KanaSessionTurnEndEntry;
+  try {
+    const normalized = normalizeKanaTodoItems(entry.items);
+    return normalized.every((item, index) => item.content === entry.items[index]?.content);
+  } catch {
+    return false;
   }
-
-  throw new Error(`Invalid Kana session timeline entry: ${filePath}:${lineNumber}`);
 }
 
 function findFirstPrompt(messages: readonly Message[]): string | undefined {
@@ -454,194 +528,4 @@ function parseJsonRecord(
   }
 
   return parsed as Record<string, unknown>;
-}
-
-function hasTimelineIdentity(value: Record<string, unknown>): boolean {
-  return (
-    typeof value.id === "string" &&
-    (value.parentId === null || typeof value.parentId === "string") &&
-    typeof value.timestamp === "string"
-  );
-}
-
-function isContextCompactionEntry(
-  value: Record<string, unknown>,
-): value is KanaSessionContextCompactionEntry {
-  const summary = value.summary;
-
-  return (
-    hasTimelineIdentity(value) &&
-    (value.reason === "threshold" ||
-      value.reason === "provider_limit" ||
-      value.reason === "manual") &&
-    (value.baseCompactionId === undefined || typeof value.baseCompactionId === "string") &&
-    typeof value.coversThroughId === "string" &&
-    isPositiveInteger(value.compactedMessageCount) &&
-    isNonNegativeInteger(value.beforeTokens) &&
-    isNonNegativeInteger(value.estimatedAfterTokens) &&
-    typeof summary === "object" &&
-    summary !== null &&
-    !Array.isArray(summary) &&
-    (summary as Record<string, unknown>).format === CONTEXT_SUMMARY_FORMAT &&
-    typeof (summary as Record<string, unknown>).text === "string" &&
-    ((summary as Record<string, unknown>).text as string).trim().length > 0 &&
-    (value.usage === undefined || isModelUsage(value.usage))
-  );
-}
-
-function isTurnOutcome(value: unknown): value is KanaSessionTurnOutcome {
-  return (
-    value === "stop" ||
-    value === "length" ||
-    value === "aborted" ||
-    value === "error" ||
-    value === "turn_limit" ||
-    value === "interrupted" ||
-    value === "snapshot"
-  );
-}
-
-function isModelUsage(value: unknown): value is ModelUsage {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const usage = value as Record<string, unknown>;
-  return (
-    isNonNegativeInteger(usage.promptTokens) &&
-    isNonNegativeInteger(usage.completionTokens) &&
-    isNonNegativeInteger(usage.totalTokens) &&
-    isOptionalNonNegativeInteger(usage.promptCacheHitTokens) &&
-    isOptionalNonNegativeInteger(usage.promptCacheMissTokens) &&
-    isOptionalNonNegativeInteger(usage.reasoningTokens)
-  );
-}
-
-function isMessage(value: unknown): value is Message {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const message = value as Record<string, unknown>;
-  if (!hasMessageIdentity(message)) {
-    return false;
-  }
-
-  if (message.role === "user") {
-    return isUserMessage(value);
-  }
-  if (message.role === "assistant") {
-    return message.provenance.kind === "model_output" && Array.isArray(message.content);
-  }
-  return (
-    message.role === "tool" &&
-    message.provenance.kind === "tool_result" &&
-    typeof message.toolCallId === "string" &&
-    typeof message.toolName === "string" &&
-    typeof message.content === "string" &&
-    (message.durationMs === undefined ||
-      (typeof message.durationMs === "number" &&
-        Number.isFinite(message.durationMs) &&
-        message.durationMs >= 0)) &&
-    (message.images === undefined ||
-      (Array.isArray(message.images) && message.images.every(isUserImage))) &&
-    (message.artifact === undefined || isToolResultArtifact(message.artifact)) &&
-    typeof message.isError === "boolean"
-  );
-}
-
-function isUserMessage(value: unknown): value is UserMessage {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const message = value as Record<string, unknown>;
-  return (
-    hasMessageIdentity(message) &&
-    message.role === "user" &&
-    isUserMessageProvenance(message.provenance) &&
-    typeof message.content === "string" &&
-    (message.images === undefined ||
-      (Array.isArray(message.images) && message.images.every(isUserImage)))
-  );
-}
-
-function isUserMessageProvenance(value: unknown): boolean {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const kind = (value as Record<string, unknown>).kind;
-  return (
-    kind === "user_input" ||
-    kind === "scheduled_input" ||
-    kind === "goal_continuation" ||
-    kind === "job_completion" ||
-    kind === "subagent_completion" ||
-    kind === "user_task_completion" ||
-    kind === "recovery" ||
-    kind === "tool_result_policy" ||
-    kind === "runtime_context" ||
-    kind === "context_summary" ||
-    kind === "compaction_request"
-  );
-}
-
-function hasMessageIdentity(
-  value: Record<string, unknown>,
-): value is Record<string, unknown> & { id: string; provenance: MessageProvenance } {
-  return (
-    typeof value.id === "string" && value.id.length > 0 && isMessageProvenance(value.provenance)
-  );
-}
-
-function isMessageProvenance(value: unknown): value is MessageProvenance {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const provenance = value as Record<string, unknown>;
-  if (provenance.kind === "scheduled_input") {
-    return provenance.origin === "user" || provenance.origin === "agent";
-  }
-  if (provenance.kind === "goal_continuation") {
-    return (
-      typeof provenance.goalId === "string" &&
-      provenance.goalId.length > 0 &&
-      typeof provenance.round === "number" &&
-      Number.isInteger(provenance.round) &&
-      provenance.round > 0
-    );
-  }
-  if (provenance.kind === "job_completion") {
-    return typeof provenance.jobId === "string" && provenance.jobId.length > 0;
-  }
-  if (provenance.kind === "subagent_completion") {
-    return typeof provenance.agentId === "string" && provenance.agentId.length > 0;
-  }
-  if (provenance.kind === "user_task_completion") {
-    return typeof provenance.taskId === "string" && provenance.taskId.length > 0;
-  }
-  if (provenance.kind === "runtime_context" || provenance.kind === "tool_result_policy") {
-    return typeof provenance.source === "string" && provenance.source.length > 0;
-  }
-  return (
-    provenance.kind === "user_input" ||
-    provenance.kind === "recovery" ||
-    provenance.kind === "model_output" ||
-    provenance.kind === "tool_result" ||
-    provenance.kind === "context_summary" ||
-    provenance.kind === "compaction_request"
-  );
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return isNonNegativeInteger(value) && value > 0;
-}
-
-function isOptionalNonNegativeInteger(value: unknown): boolean {
-  return value === undefined || isNonNegativeInteger(value);
 }

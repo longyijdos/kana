@@ -20,7 +20,6 @@ import {
   type AppendCompactionOptions,
   type AppendKanaSessionMessagesOptions,
   type AppendSnapshotOptions,
-  assertContextCheckpointForAppend,
   contextCheckpointToEntry,
   createEntryId,
   createMessageEntry,
@@ -141,7 +140,6 @@ export class KanaSessionJournal {
     checkpoint: ContextCheckpoint,
     options: AppendCompactionOptions = {},
   ): KanaSessionContextCompactionEntry {
-    assertContextCheckpointForAppend(checkpoint);
     if (options.turnId !== undefined) {
       this.assertActiveTurn(options.turnId);
     } else if (this.state.activeTurn) {
@@ -229,9 +227,6 @@ export class KanaSessionJournal {
     }
 
     const compactions = [...(options.compactions ?? [])];
-    for (const checkpoint of compactions) {
-      assertContextCheckpointForAppend(checkpoint);
-    }
     compactions.sort(
       (left, right) => left.createdAfterMessageCount - right.createdAfterMessageCount,
     );

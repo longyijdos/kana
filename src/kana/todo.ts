@@ -38,24 +38,6 @@ export function normalizeKanaTodoItems(items: readonly KanaTodoItem[]): readonly
   return normalized;
 }
 
-export function isKanaTodoItems(value: unknown): value is KanaTodoItem[] {
-  if (!Array.isArray(value) || !value.every(isKanaTodoItem)) {
-    return false;
-  }
-
-  try {
-    const normalized = normalizeKanaTodoItems(value as KanaTodoItem[]);
-    return normalized.every(
-      (item, index) =>
-        item.content === value[index]?.content &&
-        item.status === value[index]?.status &&
-        hasOnlyTodoItemFields(value[index]),
-    );
-  } catch {
-    return false;
-  }
-}
-
 export function countKanaTodos(items: readonly KanaTodoItem[]): KanaTodoCounts {
   const counts: KanaTodoCounts = {
     pending: 0,
@@ -72,26 +54,4 @@ export function countKanaTodos(items: readonly KanaTodoItem[]): KanaTodoCounts {
 
 export function formatKanaTodoWriteAcknowledgement(items: readonly KanaTodoItem[]): string {
   return items.length === 0 ? "Todo list cleared." : "Todo list updated.";
-}
-
-function hasOnlyTodoItemFields(value: unknown): boolean {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const keys = Object.keys(value);
-  return keys.length === 2 && keys.includes("content") && keys.includes("status");
-}
-
-function isKanaTodoItem(value: unknown): value is KanaTodoItem {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const item = value as Record<string, unknown>;
-  return (
-    typeof item.content === "string" &&
-    (item.status === "pending" || item.status === "in_progress" || item.status === "completed") &&
-    hasOnlyTodoItemFields(item)
-  );
 }

@@ -22,16 +22,21 @@ export function parseWithSchema<T extends TSchema>(
   value: unknown,
   label: string,
 ): Static<T> {
-  let validator = validators.get(schema);
-  if (validator === undefined) {
-    validator = Compile(schema);
-    validators.set(schema, validator);
-  }
+  const validator = getValidator(schema);
   if (validator.Check(value)) {
     return value as Static<T>;
   }
   const [error] = validator.Errors(value);
   throw new Error(error ? formatSchemaError(schema, error, label) : `${label} is invalid.`);
+}
+
+function getValidator(schema: TSchema): ReturnType<typeof Compile> {
+  let validator = validators.get(schema);
+  if (validator === undefined) {
+    validator = Compile(schema);
+    validators.set(schema, validator);
+  }
+  return validator;
 }
 
 function formatSchemaError(root: TSchema, error: TLocalizedValidationError, label: string): string {
