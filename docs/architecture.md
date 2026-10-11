@@ -5,19 +5,14 @@ Kana is a Bun-based terminal agent. Model calls, tool execution, product composi
 ## System layers
 
 ```text
-src/main.ts → cli
-                ├→ tui ───────┐
-                ├→ headless ──┤
-                └→ server ────┴→ kana (product composition)
-                                  ├→ agent → core
-                                  │    └→ tools → core, jobs, utils
-                                  ├→ providers → core
-                                  ├→ mcp → oauth, tools
-                                  ├→ session / memory / skills / config
-                                  └→ logging
-
-core, logging, oauth, jobs, utils
-  reusable contracts or infrastructure with narrow dependencies
+L7  main.ts
+L6  cli
+L5  tui, headless, server            frontends
+L4  kana                             product composition
+L3  agent, mcp
+L2  tools
+L1  oauth, jobs, providers           reusable infrastructure
+L0  core, utils, logging, version.ts leaves with no top-level dependencies
 ```
 
 `core` contains provider-neutral messages, model metadata, streams, usage, and tool specifications. `agent` owns the conversation loop and context projection; executable tools add validation and execution around Core specifications. `providers` translates Core model requests to external wire protocols. `oauth` is generic, while `mcp` adds remote-tool protocol behavior.
@@ -26,25 +21,9 @@ core, logging, oauth, jobs, utils
 
 ## Enforced dependencies
 
-The allowed direct dependencies between top-level source modules are:
+Each top-level source module belongs to one layer in the diagram above and may import only modules on a strictly lower layer; modules on the same layer do not import each other. Adding a module means choosing its layer. `utils` holds dependency-free pure functions used by at least two top-level modules; a helper used by one module stays inside that module.
 
-| Source | May import |
-| --- | --- |
-| `main.ts` | `cli`, `headless`, `kana`, `server`, `tui` |
-| `cli` | `headless`, `kana`, `oauth`, `server`, `tui`, `version.ts` |
-| `tui` | `agent`, `core`, `jobs`, `kana`, `logging`, `mcp`, `tools`, `utils`, `version.ts` |
-| `headless` | `agent`, `core`, `kana`, `logging`, `mcp` |
-| `server` | `agent`, `core`, `kana`, `logging` |
-| `kana` | `agent`, `core`, `jobs`, `logging`, `mcp`, `oauth`, `providers`, `tools`, `version.ts` |
-| `agent` | `core`, `logging`, `tools` |
-| `providers` | `core`, `logging` |
-| `mcp` | `oauth`, `tools` |
-| `tools` | `core`, `jobs`, `utils` |
-| `utils` | `core` |
-| `jobs` | `logging` |
-| `oauth`, `logging`, `core`, `version.ts` | No other top-level source module |
-
-`bun run check:architecture` enforces this graph and detects runtime and type-only cycles. Imports within one top-level `src` directory are relative. Cross-directory imports use the target barrel, such as `@/core`, rather than deep aliases.
+`bun run check:architecture` enforces this layering and detects runtime and type-only cycles. Imports within one top-level `src` directory are relative. Cross-directory imports use the target barrel, such as `@/core`, rather than deep aliases.
 
 Inside `src/kana`, domain directories remain distinct: `config`, `conversation`, `session`, `memory`, `skills`, `mcp`, `tools`, `auth`, and `update`. Shared `KANA_HOME` path construction stays at this product layer because several domains consume it.
 

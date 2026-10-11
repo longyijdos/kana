@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { UserImage, UserImageMimeType } from "@/core";
-import { expandHomePath } from "./home-path";
+import { expandHomePath } from "@/utils";
 
 const MAX_IMAGE_INPUT_BYTES = 10 * 1024 * 1024;
 

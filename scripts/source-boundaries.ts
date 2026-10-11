@@ -35,23 +35,24 @@ type Dependency = {
   kind: DependencyKind;
 };
 
-const ALLOWED_TOP_LEVEL_DEPENDENCIES: Readonly<Record<string, readonly string[]>> = {
-  main: ["cli", "headless", "kana", "server", "tui"],
-  cli: ["headless", "kana", "oauth", "server", "tui", "version"],
-  tui: ["agent", "core", "jobs", "kana", "logging", "mcp", "tools", "utils", "version"],
-  headless: ["agent", "core", "kana", "logging", "mcp"],
-  server: ["agent", "core", "kana", "logging"],
-  kana: ["agent", "core", "jobs", "logging", "mcp", "oauth", "providers", "tools", "version"],
-  agent: ["core", "logging", "tools"],
-  providers: ["core", "logging"],
-  mcp: ["oauth", "tools"],
-  tools: ["core", "jobs", "utils"],
-  utils: ["core"],
-  jobs: ["logging"],
-  oauth: [],
-  logging: [],
-  core: [],
-  version: [],
+// A module may import only modules on a strictly lower layer.
+const MODULE_LAYERS: Readonly<Record<string, number>> = {
+  core: 0,
+  utils: 0,
+  logging: 0,
+  version: 0,
+  oauth: 1,
+  jobs: 1,
+  providers: 1,
+  tools: 2,
+  agent: 3,
+  mcp: 3,
+  kana: 4,
+  tui: 5,
+  headless: 5,
+  server: 5,
+  cli: 6,
+  main: 7,
 };
 
 export function inspectSourceBoundaries(
@@ -67,7 +68,7 @@ export function inspectSourceBoundaries(
 
   for (const file of files.values()) {
     const sourceModule = getTopLevelModule(absoluteRoot, file.path);
-    if (!sourceModule || !(sourceModule in ALLOWED_TOP_LEVEL_DEPENDENCIES)) {
+    if (!sourceModule || !(sourceModule in MODULE_LAYERS)) {
       violations.push({
         code: "unknown-module",
         path: file.path,
@@ -93,7 +94,7 @@ export function inspectSourceBoundaries(
       }
 
       const targetModule = getTopLevelModule(absoluteRoot, resolved);
-      if (!targetModule || !(targetModule in ALLOWED_TOP_LEVEL_DEPENDENCIES)) {
+      if (!targetModule || !(targetModule in MODULE_LAYERS)) {
         violations.push({
           code: "unknown-module",
           path: file.path,
@@ -113,15 +114,14 @@ export function inspectSourceBoundaries(
         });
       }
 
-      if (
-        sourceModule !== targetModule &&
-        !ALLOWED_TOP_LEVEL_DEPENDENCIES[sourceModule]!.includes(targetModule)
-      ) {
+      const sourceLayer = MODULE_LAYERS[sourceModule]!;
+      const targetLayer = MODULE_LAYERS[targetModule]!;
+      if (sourceModule !== targetModule && targetLayer >= sourceLayer) {
         violations.push({
           code: "dependency-direction",
           path: file.path,
           line: reference.line,
-          message: `${sourceModule} must not depend on ${targetModule}.`,
+          message: `${sourceModule} (layer ${sourceLayer}) must not depend on ${targetModule} (layer ${targetLayer}).`,
         });
       }
 

@@ -5,19 +5,14 @@ Kana 是基于 Bun 的终端 Agent。模型调用、工具执行、产品装配�
 ## 系统分层
 
 ```text
-src/main.ts → cli
-                ├→ tui ───────┐
-                ├→ headless ──┤
-                └→ server ────┴→ kana（产品装配）
-                                  ├→ agent → core
-                                  │    └→ tools → core, jobs, utils
-                                  ├→ providers → core
-                                  ├→ mcp → oauth, tools
-                                  ├→ session / memory / skills / config
-                                  └→ logging
-
-core、logging、oauth、jobs、utils
-  依赖范围较窄的可复用契约或基础设施
+L7  main.ts
+L6  cli
+L5  tui、headless、server            前端
+L4  kana                             产品装配
+L3  agent、mcp
+L2  tools
+L1  oauth、jobs、providers           通用基础设施
+L0  core、utils、logging、version.ts 叶子模块，不依赖其它顶层模块
 ```
 
 `core` 包含与供应商无关的消息、模型 metadata、stream、用量和工具 specification。`agent` 负责对话 loop 与上下文投影；可执行工具在 Core specification 之外增加校验和执行。`providers` 把 Core 模型请求转换为外部 wire protocol。`oauth` 保持通用，`mcp` 则在其上增加远端工具协议行为。
@@ -26,25 +21,9 @@ core、logging、oauth、jobs、utils
 
 ## 强制依赖方向
 
-顶层源码模块允许的直接依赖如下：
+每个顶层源码模块属于上图中的一层，只能导入层号严格更低的模块；同层模块之间不能互相导入。新增模块时只需决定它属于哪一层。`utils` 只放无依赖的纯函数，并且这些函数至少被两个顶层模块使用；只被一个模块使用的 helper 留在该模块内部。
 
-| 来源 | 可导入 |
-| --- | --- |
-| `main.ts` | `cli`、`headless`、`kana`、`server`、`tui` |
-| `cli` | `headless`、`kana`、`oauth`、`server`、`tui`、`version.ts` |
-| `tui` | `agent`、`core`、`jobs`、`kana`、`logging`、`mcp`、`tools`、`utils`、`version.ts` |
-| `headless` | `agent`、`core`、`kana`、`logging`、`mcp` |
-| `server` | `agent`、`core`、`kana`、`logging` |
-| `kana` | `agent`、`core`、`jobs`、`logging`、`mcp`、`oauth`、`providers`、`tools`、`version.ts` |
-| `agent` | `core`、`logging`、`tools` |
-| `providers` | `core`、`logging` |
-| `mcp` | `oauth`、`tools` |
-| `tools` | `core`、`jobs`、`utils` |
-| `utils` | `core` |
-| `jobs` | `logging` |
-| `oauth`、`logging`、`core`、`version.ts` | 不导入其它顶层源码模块 |
-
-`bun run check:architecture` 会强制执行这张依赖图，并检查 runtime 与 type-only cycle。同一个顶层 `src` 目录内使用相对导入；跨目录导入使用目标 barrel（如 `@/core`），不使用深层 alias。
+`bun run check:architecture` 会强制执行这一分层规则，并检查 runtime 与 type-only cycle。同一个顶层 `src` 目录内使用相对导入；跨目录导入使用目标 barrel（如 `@/core`），不使用深层 alias。
 
 `src/kana` 内部继续按 `config`、`conversation`、`session`、`memory`、`skills`、`mcp`、`tools`、`auth` 和 `update` 划分 domain。共享 `KANA_HOME` 路径构造保留在产品层，因为多个 domain 都会消费它。
 

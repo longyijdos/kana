@@ -1,6 +1,6 @@
 import type { ModelMetadata, UserImage } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
-import { loadUserImageFile } from "@/utils";
+import { loadUserImageFile } from "@/tools";
 import { readClipboardImage } from "../clipboard-image";
 import type { Editor } from "../components";
 import type { Tui } from "../runtime";

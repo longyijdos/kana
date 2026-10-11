@@ -2,7 +2,7 @@ import path from "node:path";
 import { Type } from "typebox";
 
 import type { UserImageMimeType } from "@/core";
-import { loadUserImageFile } from "@/utils";
+import { loadUserImageFile } from "./image-input";
 import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveExistingWorkspaceFile } from "./workspace-path";
