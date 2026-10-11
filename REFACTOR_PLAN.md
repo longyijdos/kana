@@ -112,7 +112,7 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
-| 1 | 地基：分层规则、类型严格化、死代码删除、合并 helper | 未开始 |
+| 1 | 地基：分层规则、类型严格化、死代码删除、合并 helper | 已完成 |
 | 2 | 不可变数据模型，去掉防御性拷贝 | 未开始 |
 | 3 | Agent 运行时重构 | 未开始 |
 | 4 | Provider 重构 | 未开始 |
@@ -125,57 +125,33 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ---
 
-## 阶段 1：地基
+## 阶段 1：地基（已完成）
 
-### 模块边界
-- [ ] `scripts/source-boundaries.ts` 改成分层规则，保留循环检测，更新它的测试
-- [ ] `utils` 改为叶子模块：`image-input` 移到 `tools`，`utils` 不再依赖 `core`
-- [ ] 同步修改 `docs/architecture.md` 和 `.zh-CN.md` 的依赖说明
+### 完成内容
+- 模块边界改为分层规则（`scripts/source-boundaries.ts`），`image-input` 移到 `tools`，`utils` 成为叶子模块；架构文档中英文同步更新
+- 开启 `noUncheckedIndexedAccess`。数组遍历改用 `entries()`；6 个列表组件改为通过新增的 `ListViewport.visible()` 渲染，`ListViewport` 内部也顺带精简了
+- 删除死代码：`OAuthSession`（约 430 行）、`validateToolCall`，以及 9 个只被测试调用的包装 API。测试改用真实 API，或使用 `tests/helpers/session.ts`。OAuth 文档同步更新
+- 合并 helper：
+  - `utils`：`isRecord`、`formatError`、`errorFields`/`errorCode`、`shortId`
+  - `tui/render`：`singleLine`、`collapseWhitespace`、`formatByteSize`、`base64ByteLength`、`pad2`、`formatInteger`、`setsEqual`、`capitalize`
+  - `throwIfAborted` 改用 `AbortSignal.throwIfAborted()`
+- 日志：
+  - `Logger` 新增 `child(metadata)`，替代在 agent、context-manager、loop、tool-runtime 之间层层传递的 `loggerMetadata`
+  - 删除 `SessionLogManager`，以及所有包住 logger 调用的 try/catch
+  - 测试 logger 统一用 `createLogger` 构造
+- 不可能触发的分支与冗余标志：
+  - steering 生命周期并入 `runWithLifecycle`
+  - 模型流结束却没有终止事件时，改为明确报错，不再静默兜底
+  - 删除 headless 的 `listening`、`settled` 标志
+- 修复：MCP OAuth 授权的 finally 中，关闭 callback server 失败会覆盖原本的结果。没有补回归测试，因为 callback server 没有注入点
 
-### 类型严格化
-- [ ] 开启 `noUncheckedIndexedAccess`。试跑时有 124 处报错，src 约 75 处、tests 约 45 处。处理顺序：
-  1. 优先改成 `for...of` 或其他不需要下标的写法
-  2. 确实可能越界的，补上真正的守卫
-  3. 由前置检查保证不越界的，加 `!`
-- [ ] 删除编译器认为多余的 `?.` 和 `?? 默认值`。另外，TUI 中还有约 20 处对非可选字段用 `?.`、同一个条件检查两次之类的写法，也一起删掉
-
-### 删除死代码
-- [ ] `OAuthSession`（`oauth/session.ts`，约 430 行）及其测试，只保留 `OAuthSessionStatus` 类型
-- [ ] `validateToolCall`、`McpServerCatalogEntry`
-- [ ] 其他只被测试使用的导出，以及只在本文件使用的 `export`
-- [ ] 调整 knip 的配置，让它能发现"只被测试使用"的导出。目前测试文件被当成了入口，所以这类导出不会被报出来
-
-### 合并 helper
-- [ ] `utils`：
-  - `isRecord`（8 份）
-  - `formatError`（4 个函数加 37 处内联）
-  - 路径展开
-- [ ] `logging`：
-  - `errorFields(error)`，替代 6 份 `getErrorType` 和 3 份 `getErrorCode`
-  - `Emitter`
-- [ ] `throwIfAborted`（4 份）改用 `signal.throwIfAborted()`
-- [ ] TUI 内部的重复合并到 `tui/render`：
-  - formatByteSize、base64ByteLength
-  - 单行清理（8 份）
-  - shortId 系列、pad2、formatInteger、setsEqual、formatDescription、capitalize、clamp、splitLines
-- [ ] 其余位置：
-  - `validateName` 和 `unquote`
-  - `MAX_WAIT_MS`
-  - jobs 与 subagents 中相同的 `read*Integer`、`uniqueOwners`
-
-### 删除多余的保护
-- [ ] 删除所有在 logger 外面再包一层 try/catch 的 `private log()` 和调用点。包在**用户回调**外面的 try/catch 保留
-- [ ] 删除不可能触发的分支：
-  - agent 中两处重复的 activeRun 检查
-  - loop 在循环结束后的 `result()` 兜底和 `snapshot ??` 兜底
-  - subagents 在 cancel 分支里注定返回空的 `inspect`
-  - jobs 和 subagents 的 immediate-finish 分支
-  - provider 在 `terminalSeen` 之后才做的检查
-  - `getOpenAICompatibleDoneReason` 中走不到的 default
-- [ ] 删除冗余的幂等标志：headless 的 `listening` 和 `settled`；host 中作为死代码的 `??=`
-- [ ] 修复 bug：`mcp/oauth-http-authorizer.ts` 在 finally 中 `await callbackServer.close()` 没有 catch，close 抛错会覆盖原本的结果或错误
-
-**完成标准**：分层规则生效；开启 strict index 后编译通过；生产代码净减少；没有行为变化。
+### 延后到后续阶段
+- frontmatter 中的 `validateName` 和 `unquote` → 阶段 5（frontmatter 统一读取器）
+- jobs 与 subagents 中重复的 `read*Integer`、`uniqueOwners`、`MAX_WAIT_MS`，以及走不到的 immediate-finish 和 `inspect` 分支 → 阶段 6（任务注册表）
+- provider 中在 `terminalSeen` 之后才做的检查、`getOpenAICompatibleDoneReason` 走不到的 default → 阶段 4
+- TUI controller 中零散的冗余检查（notification、mcp-lifecycle、tool-approval、content-viewer、slash-command-options、status-line、delete-session-confirmation）→ 阶段 7
+- host 中作为死代码的 `??=` → 阶段 6（Capabilities）
+- 约 150 个只被测试使用的 barrel 导出，以及 knip production 模式的配置 → 阶段 8
 
 ---
 
@@ -365,3 +341,6 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 - 2026-10-11：模块边界从两两白名单改为分层规则；`utils` 改为无依赖的叶子模块
 - 2026-10-11：用户授权不受原有约束限制。兼容性决策见上文表格
 - 2026-10-11：全部阶段完成后统一提一个 PR，中途不合并
+- 2026-10-11：logger 不会抛异常，因此删除"logger 抛错时流程不受影响"这类测试
+- 2026-10-11：跨模块的错误与 ID 工具放 `utils`，TUI 内部的格式化工具放 `tui/render`
+- 2026-10-11：调用真实模型的冒烟测试需要先征得用户同意。shell 环境变量里带有 provider 凭据，隔离的 KANA_HOME 也会真的请求模型
