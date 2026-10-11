@@ -38,24 +38,13 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 
 系统提示词映射为 `instructions`。用户与助手消息、推理、函数调用及函数结果映射为 Responses input item。已完成的 DeepSeek output item 会作为不透明 `providerState` 保存并原样 replay；Responses API 是无状态的，这样服务端才能还原此前的托管搜索结果。没有 provider state 的旧 Chat Completions 历史则根据可见 reasoning、文本、函数调用和工具结果重建。来自其他供应商的托管调用不会 replay。
 
-已提供的可选配置按下表映射：
+逐轮输出上限映射为 `max_output_tokens`，`reasoningEffort` 映射为 `reasoning.effort`。客户端函数使用扁平的 Responses 工具定义，`tool_choice` 为 `"auto"`。当 Agent 解析后的设置启用网页搜索时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`。
 
-| Kana / `DeepSeekModelConfig` | 请求字段 |
-| --- | --- |
-| `temperature` | `temperature` |
-| `ModelContext.maxOutputTokens ?? maxOutputTokens` | `max_output_tokens` |
-| `topP` | `top_p` |
-| `reasoningEffort` | `reasoning.effort` |
-| `responseFormat` | `text.format` |
-| `userId` | `user` |
-
-逐轮输出上限优先于配置的 `maxOutputTokens`。客户端函数使用扁平的 Responses 工具定义。当模型 metadata 支持且 Agent 的 `web_search = true` 时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`；设为 `false` 只会移除该托管工具。默认 `tool_choice` 为 `auto`，Chat Completions 风格的具名选择会转换为扁平 Responses 结构，`strictTools` 会给函数工具加上 `strict: true`。
-
-图片输入同时受模型 metadata 和配置约束：只有 `deepseek-flash` 声明支持图片，且配置不能为 `false`。纯文本模型因此绝不会发送会话中保存的 base64 图片字节，也不会声明 `view_image`，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
+图片输入在 Agent 设置中根据模型 metadata 与配置一次性解析：只有 `deepseek-flash` 声明支持图片，且配置不能为 `false`。纯文本模型因此绝不会发送会话中保存的 base64 图片字节，也不会声明 `view_image`，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
 
 ## 认证与共享请求行为
 
-模型优先使用直接配置中的 `apiKey`，否则读取 `DEEPSEEK_API_KEY`；Kana 产品层通常会根据 `config.toml` 中的环境变量名解析密钥。请求使用 Bearer 认证，也可以带已配置的自定义 header。
+模型要求在配置中提供 `apiKey`；Kana 产品层会根据 `config.toml` 中指定的环境变量名解析密钥。请求使用 Bearer 认证。
 
 取消、无活动超时、有界错误体、HTTP 重试计时、生命周期诊断和上下文窗口规范化遵循[供应商](providers.zh-CN.md)中的共享契约。DeepSeek 还会识别自身的上下文超限错误码和消息，之后才允许 Agent 执行一次安全的压缩恢复。
 

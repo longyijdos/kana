@@ -38,24 +38,13 @@ All V4 models send `POST /responses` with semantic input items:
 
 The system prompt maps to `instructions`. User and assistant messages, reasoning, function calls, and function outputs map to Responses input items. Completed DeepSeek output items are stored as opaque `providerState` and replayed unchanged; this is required because the API is stateless and lets the server reconstruct prior hosted search results. Older Chat Completions history without provider state is reconstructed from visible reasoning, text, function calls, and tool results. Hosted calls from another provider are not replayed.
 
-Provided optional configuration maps as follows:
+The per-turn output ceiling maps to `max_output_tokens` and `reasoningEffort` to `reasoning.effort`. Client functions use flattened Responses tool definitions with `tool_choice: "auto"`. When the Agent's resolved settings enable web search, `{ "type": "web_search" }` is appended to the same `tools` array.
 
-| Kana / `DeepSeekModelConfig` | Request field |
-| --- | --- |
-| `temperature` | `temperature` |
-| `ModelContext.maxOutputTokens ?? maxOutputTokens` | `max_output_tokens` |
-| `topP` | `top_p` |
-| `reasoningEffort` | `reasoning.effort` |
-| `responseFormat` | `text.format` |
-| `userId` | `user` |
-
-A per-turn output ceiling takes precedence over configured `maxOutputTokens`. Client functions use flattened Responses tool definitions. When the Agent's `web_search = true` and metadata supports it, `{ "type": "web_search" }` is appended to the same `tools` array; `false` removes only the hosted tool. Default `tool_choice` is `auto`, named Chat Completions choices are converted to the flattened Responses shape, and `strictTools` adds `strict: true` to function tools.
-
-Image input is gated by both model metadata and configuration: only `deepseek-flash` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes or advertise `view_image`. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
+Image input is resolved once in the Agent settings from model metadata and configuration: only `deepseek-flash` declares image capability, and the setting must not be `false`. Text-only models therefore never send stored base64 image bytes or advertise `view_image`. They retain an explicit omission marker or metadata instead, and compaction continues so image-bearing history does not prevent later checkpoints after a provider switch.
 
 ## Authentication and shared request behavior
 
-The model prefers `apiKey` from its direct configuration; otherwise it reads `DEEPSEEK_API_KEY`. Kana's product layer normally resolves the environment-variable name from `config.toml`. Requests use Bearer authentication and may include configured custom headers.
+The model requires `apiKey` in its configuration; Kana's product layer resolves it from the environment variable named in `config.toml`. Requests use Bearer authentication.
 
 Cancellation, inactivity timeout, bounded error bodies, HTTP retry timing, lifecycle diagnostics, and context-window normalization follow the shared provider contract in [Providers](providers.md). DeepSeek additionally recognizes its context-limit error codes and messages before allowing the Agent's one safe compaction recovery.
 

@@ -28,15 +28,15 @@ Metadata is capability, not policy. The Agent intersects it with configuration b
 ```text
 Agent ModelContext
   → provider adapter
-      ├→ provider-owned request, auth, retry loop, and replay
-      ├→ shared HTTP and lifecycle primitives
+      ├→ provider-owned request fields, auth, retry predicate, and replay
+      ├→ shared request lifecycle, HTTP retry loop, and SSE reader
       └→ shared wire processor when applicable
           ├→ OpenAI-compatible Chat Completions
           └→ semantic Responses SSE
   → AssistantMessageEvent stream
 ```
 
-The adapter is always responsible for endpoint selection, request fields, authentication, and deciding which failures are safe to retry. Shared code never silently chooses another provider, endpoint, or protocol.
+The adapter is always responsible for endpoint selection, request fields, authentication, and deciding which failures are safe to retry. `streamProviderRequest` owns the rest of a request: the assistant message builder, failure phase, diagnostics, error normalization, and the terminal `done` or `error` event. Capability flags in `ModelContext` arrive already resolved by the Agent, so adapters do not re-check model metadata. Shared code never silently chooses another provider, endpoint, or protocol.
 
 Provider-specific behavior remains in [DeepSeek](deepseek-provider.md), [OpenAI Codex](openai-codex-provider.md), and [Custom OpenAI-compatible](custom-provider.md).
 
@@ -54,7 +54,7 @@ The shared request signal links an optional Agent abort signal with an inactivit
 
 Upstream cancellation and inactivity timeout remain distinct outcomes. Both stop retry admission, abort pending retry delay, and prevent further requests. Adapters dispose the timer and linked listener when their complete request lifecycle settles.
 
-Shared retry helpers classify HTTP `408`, `429`, and `5xx` as retryable, parse `Retry-After` as seconds or an HTTP date with a 30-second cap, and otherwise use exponential delays of 1, 2, 4, then 8 seconds. The adapter still owns the loop and its `maxRetries` budget. Retained HTTP error bodies are bounded to 16 KiB.
+Shared retry helpers classify HTTP `408`, `429`, and `5xx` as retryable, parse `Retry-After` as seconds or an HTTP date with a 30-second cap, and otherwise use exponential delays of 1, 2, 4, then 8 seconds. `fetchWithRetries` runs the loop for every adapter within its `maxRetries` budget; an adapter can narrow which HTTP errors are retryable and can refresh credentials once on the first `401`. Retained HTTP error bodies are bounded to 16 KiB.
 
 Redirects are rejected by current authenticated adapters so credentials cannot be forwarded to a different origin. Provider-specific configuration decides whether an endpoint may use HTTP; callers should use HTTPS whenever credentials cross an untrusted network.
 
@@ -72,7 +72,7 @@ User images become data-URL `image_url` parts only when model metadata enables i
 
 Configured assistant replay fields are accumulated from `choice.delta`, retained as opaque provider state, and restored only for the same provider, endpoint, and model. Cross-provider replay still sends only visible assistant text and local function calls; provider-owned fields and hosted-tool state are not reinterpreted.
 
-The SSE reader preserves partial frames across network chunks, ignores heartbeat-only frames, incrementally assembles ordered reasoning text, visible text, and tool calls, and maps `stop`, `length`, and `tool_calls` to core stop reasons. Extra completion choices are ignored because Kana requests one assistant message. Incomplete or contradictory tool-call termination is a protocol failure rather than guessed output.
+The SSE reader preserves partial frames across network chunks, ignores heartbeat-only frames, incrementally assembles ordered reasoning text, visible text, and tool calls, and maps `stop`, `length`, and `tool_calls` to core stop reasons. Extra completion choices are ignored because Kana requests one assistant message. Incomplete or contradictory tool-call termination is a protocol failure rather than guessed output. In every adapter, tool arguments that are not valid JSON keep their raw text so validation reports malformed arguments to the model.
 
 ## Semantic Responses processing
 
@@ -88,7 +88,7 @@ All adapters map provider counters into `ModelUsage`: prompt, completion, and to
 
 ## Adding or changing an adapter
 
-- Keep provider output in ordered core content and emit complete cloned snapshots.
+- Build provider output with `AssistantMessageBuilder` so every snapshot is complete and shares unchanged blocks.
 - Keep endpoint, authentication, request conversion, replay, and retry admission inside the adapter.
 - Reuse shared codecs only for the wire semantics they actually implement.
 - Validate request budgets against model metadata before network I/O.
