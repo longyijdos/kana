@@ -11,7 +11,7 @@ import {
   type UserImage,
   type UserMessage,
 } from "@/core";
-import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
+import { createNoopLogger, type Logger } from "@/logging";
 import { errorFields } from "@/utils";
 import { resolveRuntimeContextMessages } from "./prompt-assembly";
 
@@ -71,7 +71,6 @@ export type ContextManagerConfig = {
   compactAtRatio?: number;
   targetRatio?: number;
   logger?: Logger;
-  loggerMetadata?: LogMetadata;
 };
 
 type ContextCompactionStart = {
@@ -112,7 +111,6 @@ export class ContextManager {
 
   private readonly compactPolicy?: CompactPolicy;
   private readonly logger: Logger;
-  private readonly loggerMetadata?: LogMetadata;
   private checkpointData?: ContextCheckpoint;
   private usageMeasurement?: UsageMeasurement;
   private readonly compactionData: ContextCheckpoint[] = [];
@@ -160,7 +158,6 @@ export class ContextManager {
     this.checkpointData =
       config.checkpoint === undefined ? undefined : structuredClone(config.checkpoint);
     this.logger = config.logger ?? createNoopLogger();
-    this.loggerMetadata = config.loggerMetadata;
   }
 
   get checkpoint(): ContextCheckpoint | undefined {
@@ -180,7 +177,6 @@ export class ContextManager {
       compactAtRatio: this.triggerTokens / this.promptBudget,
       targetRatio: this.targetTokens / this.promptBudget,
       logger: this.logger,
-      loggerMetadata: this.loggerMetadata,
     });
     manager.usageMeasurement =
       this.usageMeasurement === undefined ? undefined : { ...this.usageMeasurement };
@@ -239,7 +235,7 @@ export class ContextManager {
     const maxOutputTokens = Math.min(this.maxOutputTokens, this.promptBudget - estimatedTokens);
     prepared.maxOutputTokens = maxOutputTokens;
     if (maxOutputTokens < this.maxOutputTokens) {
-      this.log("debug", "context.output_limit_adjusted", {
+      this.logger.debug("context.output_limit_adjusted", {
         configuredMaxOutputTokens: this.maxOutputTokens,
         effectiveMaxOutputTokens: maxOutputTokens,
         estimatedPromptTokens: estimatedTokens,
@@ -268,7 +264,7 @@ export class ContextManager {
     // the request begins. That material is billable input but is not present in
     // Kana's replayable history, so it must not replace a clean prompt anchor.
     if (message.content.some((content) => content.type === "hosted_tool")) {
-      this.log("debug", "context.usage_anchor_skipped", {
+      this.logger.debug("context.usage_anchor_skipped", {
         reason: "hosted_tool",
         messageCount,
       });
@@ -305,7 +301,7 @@ export class ContextManager {
         messageCount: index,
         promptTokens: message.usage.promptTokens,
       };
-      this.log("debug", "context.usage_anchor_hydrated", { messageCount: index });
+      this.logger.debug("context.usage_anchor_hydrated", { messageCount: index });
       return;
     }
   }
@@ -341,7 +337,7 @@ export class ContextManager {
       contextLimit: this.contextLimit,
     };
 
-    this.log("info", "context.compaction_started", {
+    this.logger.info("context.compaction_started", {
       reason,
       estimatedTokens: beforeTokens,
       compactedMessageCount,
@@ -396,7 +392,7 @@ export class ContextManager {
         );
       }
 
-      this.log("info", "context.compaction_ended", {
+      this.logger.info("context.compaction_ended", {
         reason,
         beforeTokens,
         estimatedAfterTokens: checkpoint.estimatedAfterTokens,
@@ -408,7 +404,7 @@ export class ContextManager {
       // A failed summary must leave the last usable projection intact.
       this.checkpointData = previousCheckpoint;
       this.usageMeasurement = previousMeasurement;
-      this.log("error", "context.compaction_failed", {
+      this.logger.error("context.compaction_failed", {
         reason,
         estimatedTokens: beforeTokens,
         compactedMessageCount,
@@ -509,17 +505,6 @@ export class ContextManager {
         this.checkpointData.coveredMessageCount > messages.length)
     ) {
       throw new Error("Context checkpoint does not match the available message history.");
-    }
-  }
-
-  private log(level: "debug" | "info" | "error", event: string, metadata?: LogMetadata): void {
-    try {
-      this.logger[level](event, {
-        ...this.loggerMetadata,
-        ...metadata,
-      });
-    } catch {
-      // Diagnostics must not change context preparation or recovery behavior.
     }
   }
 }

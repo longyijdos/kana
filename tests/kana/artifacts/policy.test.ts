@@ -6,6 +6,7 @@ import { Type } from "typebox";
 
 import type { Message } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
+import { createLogger } from "@/logging";
 import { createGrepTool, createReadTool, createShellTool, type Tool } from "@/tools";
 import { ToolRuntime } from "../../../src/agent/tool-runtime";
 import {
@@ -305,10 +306,9 @@ function createRecordingStore(
 }
 
 function createRecordingLogger(records: Array<{ event: string; metadata?: LogMetadata }>): Logger {
-  const record = (event: string, metadata?: LogMetadata): void => {
+  return createLogger((_level, event, metadata) => {
     records.push({ event, metadata });
-  };
-  return { debug: record, info: record, warn: record, error: record };
+  });
 }
 
 function createToolContext() {

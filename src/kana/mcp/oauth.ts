@@ -111,11 +111,7 @@ export async function signOutKanaMcpServer(
   requireOAuthServer(serverId, context.env, options.config);
   await context.tokenStore.delete(createKanaMcpOAuthStorageKey(serverId));
   await context.clientStore.deleteClient(createKanaMcpOAuthStorageKey(serverId));
-  try {
-    context.getLogger().info("mcp.oauth_signed_out", { serverId });
-  } catch {
-    // Sign-out persistence succeeds independently of diagnostic logging.
-  }
+  context.getLogger().info("mcp.oauth_signed_out", { serverId });
   return { state: "unauthorized", refreshable: false };
 }
 
@@ -161,11 +157,7 @@ function createDiagnosticHandler(
 ): (event: McpOAuthHttpDiagnosticEvent) => void {
   return (diagnostic) => {
     const { event, level, ...metadata } = diagnostic;
-    try {
-      options.getLogger()[level](event, { serverId, ...metadata });
-    } catch {
-      // Logging is diagnostic and cannot block authorization.
-    }
+    options.getLogger()[level](event, { serverId, ...metadata });
     try {
       options.onDiagnostic?.(diagnostic);
     } catch {

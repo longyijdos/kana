@@ -10,7 +10,7 @@ import {
   type ToolCallContent,
   type UserMessage,
 } from "@/core";
-import type { Logger, LogMetadata } from "@/logging";
+import type { Logger } from "@/logging";
 import type { Tool } from "@/tools";
 import type { ContextCheckpoint, ContextManager, PreparedContext } from "./context-manager";
 import type { AgentEndReason, AgentEvent } from "./events";
@@ -49,7 +49,6 @@ export type AgentLoopConfig = {
   toolResultPolicies?: readonly ToolResultPolicy[];
   contextManager?: ContextManager;
   logger?: Logger;
-  loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   onCompactionCommitted?: (compaction: ContextCheckpoint) => Promise<void> | void;
   onStableContext?: (context: Pick<AgentContext, "system" | "messages">) => void;
@@ -223,7 +222,6 @@ export async function runAgentLoop(
         beforeToolExecution: config.beforeToolExecution,
         defaultDeadlineMs: config.toolDeadlineMs,
         logger: config.logger,
-        loggerMetadata: config.loggerMetadata,
         onMessageCommitted: config.onMessageCommitted,
         limitToolContent: (content) => config.contextManager?.limitToolContent(content) ?? content,
         toolContentByteLimit: config.contextManager?.maxToolContentBytes,

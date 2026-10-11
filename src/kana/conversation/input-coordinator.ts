@@ -216,7 +216,7 @@ export class ConversationInputCoordinator {
   startGoal(objective: string): { goal: KanaGoalSnapshot; input: UserMessage } {
     const goal = this.goalController.start(objective, this.options.goalMaxRounds);
     this.options.onGoalChanged("started", goal);
-    this.log("info", "conversation.goal_started", {
+    this.options.getLogger().info("conversation.goal_started", {
       goalId: goal.id,
       maxRounds: goal.maxRounds,
     });
@@ -232,7 +232,7 @@ export class ConversationInputCoordinator {
   updateGoal(change: KanaGoalUpdate): KanaGoalSnapshot {
     const goal = this.goalController.update(change);
     this.options.onGoalChanged(change.status, goal);
-    this.log("info", `conversation.goal_${goal.status}`, {
+    this.options.getLogger().info(`conversation.goal_${goal.status}`, {
       goalId: goal.id,
       admittedRounds: goal.admittedRounds,
     });
@@ -245,7 +245,7 @@ export class ConversationInputCoordinator {
       return;
     }
     this.options.onGoalChanged("cancelled", cancelled);
-    this.log("info", "conversation.goal_cancelled", {
+    this.options.getLogger().info("conversation.goal_cancelled", {
       goalId: cancelled.id,
       admittedRounds: cancelled.admittedRounds,
     });
@@ -257,7 +257,7 @@ export class ConversationInputCoordinator {
       return;
     }
     this.options.onGoalChanged("blocked", blocked);
-    this.log("warn", "conversation.goal_blocked", {
+    this.options.getLogger().warn("conversation.goal_blocked", {
       goalId: blocked.id,
       admittedRounds: blocked.admittedRounds,
       reason: "run_failure",
@@ -270,7 +270,7 @@ export class ConversationInputCoordinator {
       return;
     }
     this.options.onGoalChanged("discarded", discarded);
-    this.log("info", "conversation.goal_discarded", {
+    this.options.getLogger().info("conversation.goal_discarded", {
       goalId: discarded.id,
       admittedRounds: discarded.admittedRounds,
       reason,
@@ -289,13 +289,13 @@ export class ConversationInputCoordinator {
 
   queueInput(input: UserMessage): MessageId {
     if (this.stopping || this.changingSession) {
-      this.log("warn", "conversation.input_discarded", {
+      this.options.getLogger().warn("conversation.input_discarded", {
         reason: this.stopping ? "stopping" : "session_changing",
       });
       return input.id;
     }
     this.agent.enqueueInput(input, "next-turn", { kind: "queued" });
-    this.log("info", "conversation.input_queued", {
+    this.options.getLogger().info("conversation.input_queued", {
       source: "user",
       pendingInputCount: this.agent.inbox.nextTurn.length,
     });
@@ -341,7 +341,7 @@ export class ConversationInputCoordinator {
     // Expiry and cancellation share the JavaScript event loop, so the stable
     // ID is synchronously present in either the timer map or the pending FIFO.
     if (isCurrentSessionWake && this.wakeScheduler.cancel(readMessageId(id))) {
-      this.log("info", "conversation.scheduled_input_cancelled", { state: "future" });
+      this.options.getLogger().info("conversation.scheduled_input_cancelled", { state: "future" });
       return "future";
     }
 
@@ -349,14 +349,14 @@ export class ConversationInputCoordinator {
       (item) => item.message.id === id && item.delivery.kind === "scheduled",
     );
     if (!pending) {
-      this.log("info", "conversation.scheduled_input_cancel_skipped", {
+      this.options.getLogger().info("conversation.scheduled_input_cancel_skipped", {
         reason: "not_found",
       });
       return "not_found";
     }
 
     this.agent.cancelInput(pending.message.id);
-    this.log("info", "conversation.scheduled_input_cancelled", { state: "pending" });
+    this.options.getLogger().info("conversation.scheduled_input_cancelled", { state: "pending" });
     return "pending";
   }
 
@@ -371,7 +371,7 @@ export class ConversationInputCoordinator {
       return "steered";
     }
     if (this.stopping || sessionId !== this.sessionId) {
-      this.log("warn", "conversation.input_discarded", {
+      this.options.getLogger().warn("conversation.input_discarded", {
         reason: this.stopping ? "stopping" : "session_changed",
       });
       return "discarded";
@@ -501,7 +501,7 @@ export class ConversationInputCoordinator {
     source: "scheduled" | "goal",
   ): void {
     this.agent.enqueueInput(input, "next-turn", delivery);
-    this.log("info", "conversation.automatic_input_queued", {
+    this.options.getLogger().info("conversation.automatic_input_queued", {
       source,
       pendingInputCount: this.agent.inbox.nextTurn.length,
     });
@@ -541,7 +541,7 @@ export class ConversationInputCoordinator {
       "goal",
     );
     this.options.onGoalChanged("round_admitted", goal);
-    this.log("info", "conversation.goal_round_admitted", {
+    this.options.getLogger().info("conversation.goal_round_admitted", {
       goalId: goal.id,
       admittedRounds: goal.admittedRounds,
       maxRounds: goal.maxRounds,
@@ -553,7 +553,7 @@ export class ConversationInputCoordinator {
     admission: Extract<KanaGoalContinuationAdmission, { type: "round_limit" }>,
   ): void {
     this.options.onGoalChanged("round_limit", admission.goal);
-    this.log("info", "conversation.goal_round_limit_reached", {
+    this.options.getLogger().info("conversation.goal_round_limit_reached", {
       goalId: admission.goal.id,
       admittedRounds: admission.goal.admittedRounds,
     });
@@ -612,7 +612,7 @@ export class ConversationInputCoordinator {
         }
 
         const source = this.resolveRunSource(submission.delivery);
-        this.log("info", "conversation.queued_input_started", {
+        this.options.getLogger().info("conversation.queued_input_started", {
           source,
           pendingInputCount: this.agent.inbox.nextTurn.length,
         });
@@ -673,7 +673,7 @@ export class ConversationInputCoordinator {
       displayContent: `Background Job ${shortJobId(event.job.id)} ${event.job.status}`,
       jobId: event.job.id,
     });
-    this.log("info", "conversation.background_job_completion_queued", {
+    this.options.getLogger().info("conversation.background_job_completion_queued", {
       jobId: event.job.id,
       outcome: event.job.status,
       delivery: lane,
@@ -716,7 +716,7 @@ export class ConversationInputCoordinator {
       displayContent: `Subagent ${shortSubagentId(event.subagent.id)} ${event.subagent.status}`,
       agentId: event.subagent.id,
     });
-    this.log("info", "conversation.subagent_completion_queued", {
+    this.options.getLogger().info("conversation.subagent_completion_queued", {
       agentId: event.subagent.id,
       outcome: event.subagent.status,
       delivery: lane,
@@ -748,7 +748,7 @@ export class ConversationInputCoordinator {
       displayContent: `User task ${event.task.id.slice(5, 13)} ${event.task.status}`,
       taskId: event.task.id,
     });
-    this.log("info", "conversation.user_task_completion_queued", {
+    this.options.getLogger().info("conversation.user_task_completion_queued", {
       taskId: event.task.id,
       outcome: event.task.status,
       delivery: lane,
@@ -863,18 +863,6 @@ export class ConversationInputCoordinator {
       content: item.message.content,
       ...(item.message.images?.length ? { imageCount: item.message.images.length } : {}),
     };
-  }
-
-  private log(
-    level: "info" | "warn" | "error",
-    event: string,
-    metadata?: Record<string, unknown>,
-  ): void {
-    try {
-      this.options.getLogger()[level](event, metadata);
-    } catch {
-      // Diagnostics must not change input scheduling or cancellation behavior.
-    }
   }
 }
 

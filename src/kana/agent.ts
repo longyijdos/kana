@@ -340,8 +340,7 @@ export function createKanaAgent(
     onRunCommitted: options.onRunCommitted,
     onCompactionCommitted: options.onCompactionCommitted,
     journal: options.journal,
-    logger: options.logger,
-    loggerMetadata: { agentKind: subagentProfile ? "subagent" : "conversation" },
+    logger: options.logger?.child({ agentKind: subagentProfile ? "subagent" : "conversation" }),
     context: {
       contextLimit: runtime.contextLimit,
       maxOutputTokens: runtime.maxOutputTokens,

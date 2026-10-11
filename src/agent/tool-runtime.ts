@@ -8,7 +8,8 @@ import {
   type ToolResultMessage,
   type UserMessage,
 } from "@/core";
-import type { Logger, LogMetadata } from "@/logging";
+import type { Logger } from "@/logging";
+import { createNoopLogger } from "@/logging";
 import {
   type CodemodeToolContext,
   normalizeToolResult,
@@ -57,7 +58,6 @@ export type ToolRuntimeConfig = {
   cancellationGraceMs?: number;
   defaultDeadlineMs?: number;
   logger?: Logger;
-  loggerMetadata?: LogMetadata;
   onMessageCommitted?: (message: Message) => Promise<void> | void;
   limitToolContent?: (content: string) => string;
   toolContentByteLimit?: number;
@@ -155,12 +155,14 @@ export class ToolRuntime {
   private readonly defaultDeadlineMs: number;
   private readonly maxParallelToolCalls: number;
   private readonly toolResultPolicies: readonly ToolResultPolicy[];
+  private readonly logger: Logger;
 
   constructor(
     private readonly config: ToolRuntimeConfig,
     emit: AgentEventSink,
   ) {
     this.events = new SerialEventQueue(emit);
+    this.logger = config.logger ?? createNoopLogger();
     this.cancellationGraceMs = resolveCancellationGraceMs(config.cancellationGraceMs);
     this.defaultDeadlineMs = resolveDefaultToolDeadlineMs(config.defaultDeadlineMs);
     this.maxParallelToolCalls = resolveMaxParallelToolCalls(config.maxParallelToolCalls);
@@ -237,7 +239,7 @@ export class ToolRuntime {
       await this.config.onMessageCommitted?.(structuredClone(message));
     }
     if (additionalMessages.length > 0) {
-      this.log("info", "tool.result_policy_context_committed", {
+      this.logger.info("tool.result_policy_context_committed", {
         policySource: formatPolicySources(this.toolResultPolicies),
         messageCount: additionalMessages.length,
       });
@@ -304,7 +306,7 @@ export class ToolRuntime {
     const toolResults: ToolResultMessage[] = [];
     const additionalMessages: UserMessage[] = [];
 
-    this.log("debug", "tool.parallel_pool_started", {
+    this.logger.debug("tool.parallel_pool_started", {
       toolCount: toolCalls.length,
       maxParallelToolCalls: this.maxParallelToolCalls,
       workerCount: Math.min(toolCalls.length, this.maxParallelToolCalls),
@@ -493,9 +495,9 @@ export class ToolRuntime {
 
     if (outcome !== "completed") {
       const level = snapshot.failure || snapshot.unknownOutcomeCount > 0 ? "warn" : "info";
-      this.log(level, "tool.parallel_pool_abnormal_drain", metadata);
+      this.logger[level]("tool.parallel_pool_abnormal_drain", metadata);
     }
-    this.log("debug", "tool.parallel_pool_ended", metadata);
+    this.logger.debug("tool.parallel_pool_ended", metadata);
   }
 
   private async appendCanceledResults(
@@ -647,7 +649,7 @@ export class ToolRuntime {
         await this.events.drain();
 
         if (settlement) {
-          this.log("info", "tool.execution_cancellation_completed", {
+          this.logger.info("tool.execution_cancellation_completed", {
             toolName: tool.name,
             reason: firstOutcome.interruption.reason,
             outcome: settlement.type,
@@ -661,13 +663,13 @@ export class ToolRuntime {
           };
         }
 
-        this.log("warn", "tool.execution_orphaned", {
+        this.logger.warn("tool.execution_orphaned", {
           toolName: tool.name,
           reason: firstOutcome.interruption.reason,
           cancellationGraceMs: this.cancellationGraceMs,
         });
         void invocation.settlement.then((lateSettlement) => {
-          this.log("info", "tool.execution_orphan_settled", {
+          this.logger.info("tool.execution_orphan_settled", {
             toolName: tool.name,
             reason: firstOutcome.interruption.reason,
             outcome: lateSettlement.type,
@@ -765,7 +767,7 @@ export class ToolRuntime {
 
       interruptionValue = value;
       finishExecution();
-      this.log("warn", "tool.execution_cancellation_requested", {
+      this.logger.warn("tool.execution_cancellation_requested", {
         toolName: tool.name,
         reason: value.reason,
         ...(value.reason === "deadline" ? { deadlineMs: value.deadlineMs } : {}),
@@ -1041,7 +1043,7 @@ export class ToolRuntime {
           );
         }
       } catch (error) {
-        this.log("warn", "tool.result_policy_failed", {
+        this.logger.warn("tool.result_policy_failed", {
           policySource: policy.source,
           toolName: executed.toolCall.name,
           ...errorFields(error),
@@ -1071,26 +1073,6 @@ export class ToolRuntime {
       ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
       durationMs: executed.durationMs,
     });
-  }
-
-  private log(
-    level: "debug" | "info" | "warn" | "error",
-    event: string,
-    metadata?: LogMetadata,
-  ): void {
-    const mergedMetadata = {
-      ...this.config.loggerMetadata,
-      ...metadata,
-    };
-
-    try {
-      this.config.logger?.[level](
-        event,
-        Object.keys(mergedMetadata).length === 0 ? undefined : mergedMetadata,
-      );
-    } catch {
-      // Diagnostics must not alter tool execution or cleanup behavior.
-    }
   }
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
+import { createLogger } from "@/logging";
 import {
   Agent,
   type ContextCheckpoint,
@@ -11,7 +12,6 @@ import type { ModelContext } from "../../src/core/context";
 import { type AssistantMessage, createUserMessage, type Message } from "../../src/core/messages";
 import type { Model, ModelMetadata, ModelUsage } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
-import type { Logger } from "../../src/logging";
 import type { Tool } from "../../src/tools/tool";
 import { deferred } from "../helpers/async-control";
 import { createRecordingLogger, type RecordedLog } from "../helpers/logging";
@@ -334,16 +334,10 @@ describe("Agent lifecycle", () => {
 
   test("writes lifecycle events without logging message content", async () => {
     const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
-    const logger: Logger = {
-      debug: (event, metadata) => records.push({ event, metadata }),
-      info: (event, metadata) => records.push({ event, metadata }),
-      warn: (event, metadata) => records.push({ event, metadata }),
-      error: (event, metadata) => records.push({ event, metadata }),
-    };
+    const logger = createLogger((_level, event, metadata) => records.push({ event, metadata }));
     const agent = new Agent({
       model: new TextModel("secret answer"),
-      logger,
-      loggerMetadata: { agentKind: "conversation" },
+      logger: logger.child({ agentKind: "conversation" }),
     });
 
     await agent.prompt("secret prompt");
@@ -430,28 +424,6 @@ describe("Agent lifecycle", () => {
       },
     ]);
     expect(JSON.stringify(records)).not.toContain("secret");
-  });
-
-  test("keeps logging failures outside the runtime control flow", async () => {
-    const fail = () => {
-      throw new Error("logger unavailable");
-    };
-    const agent = new Agent({
-      model: new TextModel("hello"),
-      logger: {
-        debug: fail,
-        info: fail,
-        warn: fail,
-        error: fail,
-      },
-    });
-
-    await agent.prompt("hi");
-
-    expect(agent.state.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      stopReason: "stop",
-    });
   });
 
   test("runs prompts and appends loop messages once", async () => {
@@ -1300,12 +1272,9 @@ describe("Agent state isolation and completion", () => {
 
   test("isolates listener mutations and failures from state and other listeners", async () => {
     const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
-    const logger: Logger = {
-      debug: () => {},
-      info: () => {},
-      warn: (event, metadata) => records.push({ event, metadata }),
-      error: () => {},
-    };
+    const logger = createLogger((level, event, metadata) => {
+      if (level === "warn") records.push({ event, metadata });
+    });
     const agent = new Agent({
       model: new TextModel("committed"),
       logger,

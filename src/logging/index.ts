@@ -1,7 +1,7 @@
 export {
+  createLogger,
   createNoopLogger,
   createSessionLogger,
-  createSessionLogManager,
   LOG_LEVELS,
   type Logger,
   type LogLevel,

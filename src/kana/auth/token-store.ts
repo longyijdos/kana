@@ -225,11 +225,7 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
   }
 
   private logFailure(event: string, error: unknown): void {
-    try {
-      this.getLogger?.().warn(event, { component: "oauth_token_store", error });
-    } catch {
-      // Token persistence must not fail because diagnostic logging is unavailable.
-    }
+    this.getLogger?.().warn(event, { component: "oauth_token_store", error });
   }
 }
 

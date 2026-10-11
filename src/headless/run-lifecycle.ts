@@ -52,14 +52,10 @@ export class HeadlessRunLifecycle {
       if (!this.requestAbort({ reason: "timeout", timeoutMs })) {
         return;
       }
-      try {
-        this.options.logger?.warn("headless.timeout_elapsed", {
-          phase: "run",
-          timeoutMs,
-        });
-      } catch {
-        // Diagnostics must not change cancellation or cleanup behavior.
-      }
+      this.options.logger?.warn("headless.timeout_elapsed", {
+        phase: "run",
+        timeoutMs,
+      });
     }, timeoutMs);
   }
 

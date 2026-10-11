@@ -68,8 +68,7 @@ export class BtwController {
       maxTurns: 1,
       webSearch: false,
       imageInput: snapshot.imageInput,
-      logger: this.options.getLogger(),
-      loggerMetadata: { agentKind: "btw" },
+      logger: this.options.getLogger().child({ agentKind: "btw" }),
       context:
         snapshot.contextLimit !== undefined && snapshot.maxOutputTokens !== undefined
           ? {

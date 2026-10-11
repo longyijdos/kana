@@ -408,11 +408,7 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
     level: "debug" | "info" | "warn",
     metadata: Record<string, unknown>,
   ): void {
-    try {
-      this.getLogger()[level](event, { component: "openai_codex_auth", ...metadata });
-    } catch {
-      // Diagnostics cannot change authentication or credential persistence.
-    }
+    this.getLogger()[level](event, { component: "openai_codex_auth", ...metadata });
   }
 }
 

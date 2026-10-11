@@ -8,7 +8,7 @@ import {
   type Model,
   type UserMessage,
 } from "@/core";
-import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
+import { createNoopLogger, type Logger } from "@/logging";
 import { createCodemodeTool, type Tool } from "@/tools";
 import { errorFields } from "@/utils";
 import {
@@ -66,8 +66,7 @@ export type AgentConfig = {
   onCompactionCommitted?: AgentCompactionCommittedHook;
   journal?: AgentJournal;
   logger?: Logger;
-  loggerMetadata?: LogMetadata;
-  context?: Omit<ContextManagerConfig, "logger" | "loggerMetadata">;
+  context?: Omit<ContextManagerConfig, "logger">;
 };
 
 export type AgentState = {
@@ -152,7 +151,6 @@ export class Agent {
   private readonly onCompactionCommitted?: AgentCompactionCommittedHook;
   private readonly journal?: AgentJournal;
   private readonly logger: Logger;
-  private readonly loggerMetadata?: LogMetadata;
   private readonly contextManager?: ContextManager;
   private readonly webSearch: boolean;
   private readonly imageInput: boolean;
@@ -169,7 +167,6 @@ export class Agent {
     const toolDeadlineMs = resolveDefaultToolDeadlineMs(options.toolDeadlineMs);
     this.maxParallelToolCalls = resolveMaxParallelToolCalls(options.maxParallelToolCalls);
     this.logger = options.logger ?? createNoopLogger();
-    this.loggerMetadata = options.loggerMetadata;
     this.webSearch = (options.webSearch ?? true) && options.model.metadata.supportsHostedWebSearch;
     this.imageInput =
       (options.imageInput ?? true) && options.model.metadata.supportsImageInput === true;
@@ -215,7 +212,6 @@ export class Agent {
       ? new ContextManager({
           ...options.context,
           logger: this.logger,
-          loggerMetadata: this.loggerMetadata,
         })
       : undefined;
     // Assistant usage survives session replay inside committed messages, so
@@ -227,22 +223,22 @@ export class Agent {
       messages: structuredClone(this.stateData.messages),
       contextCheckpoint: this.contextManager?.checkpoint,
     };
-    this.log("debug", "agent.parallel_tool_calls_configured", {
+    this.logger.debug("agent.parallel_tool_calls_configured", {
       requested: parallelToolCallsRequested,
       supported: options.model.metadata.supportsParallelToolCalls,
       enabled: this.parallelToolCalls,
       maxParallelToolCalls: this.maxParallelToolCalls,
     });
-    this.log("debug", "agent.model_capabilities_configured", {
+    this.logger.debug("agent.model_capabilities_configured", {
       webSearch: this.webSearch,
       imageInput: this.imageInput,
     });
-    this.log("debug", "agent.repeated_tool_calls_configured", {
+    this.logger.debug("agent.repeated_tool_calls_configured", {
       enabled: Boolean(options.repeatedToolCalls?.reminderThresholds.length),
       reminderThresholds: options.repeatedToolCalls?.reminderThresholds ?? [],
       excludedToolCount: options.repeatedToolCalls?.excludedTools?.length ?? 0,
     });
-    this.log("debug", "agent.tool_result_policies_configured", {
+    this.logger.debug("agent.tool_result_policies_configured", {
       policyCount: this.toolResultPolicies.length,
       policySources: this.toolResultPolicies.map((policy) => policy.source),
     });
@@ -446,7 +442,7 @@ export class Agent {
         this.stateData.messages = [...this.stateData.messages, ...structuredClone(promptMessages)];
         this.updateStableContext(this.createContextSnapshot(), this.contextManager);
         this.resetToolResultPolicyFor(promptMessages);
-        this.log("info", "agent.run_started", {
+        this.logger.info("agent.run_started", {
           promptMessageCount: promptMessages.length,
         });
 
@@ -532,7 +528,7 @@ export class Agent {
         throw error;
       }
     }).catch((error) => {
-      this.log("error", "agent.run_failed", { phase, error });
+      this.logger.error("agent.run_failed", { phase, error });
       stream.error(error);
     });
 
@@ -554,7 +550,7 @@ export class Agent {
       // Inbox insertion must succeed before the resolver becomes visible;
       // otherwise a duplicate ID could replace the original caller's waiter.
       this.steeringResolvers.set(input.id, resolve);
-      this.log("info", "agent.steering_input_queued", {
+      this.logger.info("agent.steering_input_queued", {
         pendingInputCount: this.inboxData.snapshot.nextStep.length,
       });
     });
@@ -580,7 +576,7 @@ export class Agent {
     if (this.committingSteeringIds.has(id)) {
       // Once journal commit starts, cancellation cannot make the durable
       // message disagree with the inbox item claimed for model history.
-      this.log("info", "agent.input_cancel_skipped", { reason: "commit_in_progress" });
+      this.logger.info("agent.input_cancel_skipped", { reason: "commit_in_progress" });
       return undefined;
     }
     const item = this.inboxData.remove(id);
@@ -673,7 +669,6 @@ export class Agent {
       toolResultPolicies: this.toolResultPolicies,
       contextManager,
       logger: this.logger,
-      loggerMetadata: this.loggerMetadata,
       assemblePrompt: async () => {
         try {
           const prompt = await this.promptAssembly.assemble({ signal });
@@ -689,7 +684,7 @@ export class Agent {
           if (signal.aborted) {
             throw error;
           }
-          this.log("error", "agent.prompt_assembly_failed", {
+          this.logger.error("agent.prompt_assembly_failed", {
             ...errorFields(error),
           });
           throw error;
@@ -744,7 +739,7 @@ export class Agent {
     } finally {
       const deferredInputs = this.activeRun.steeringEnabled ? this.inboxData.deferNextStep() : [];
       if (deferredInputs.length > 0) {
-        this.log("info", "agent.steering_inputs_deferred", {
+        this.logger.info("agent.steering_inputs_deferred", {
           inputCount: deferredInputs.length,
         });
       }
@@ -791,7 +786,7 @@ export class Agent {
     if (consumed.length > 0) {
       this.resetToolResultPolicyFor(consumed);
       this.emitInboxChanged();
-      this.log("info", "agent.steering_inputs_consumed", {
+      this.logger.info("agent.steering_inputs_consumed", {
         inputCount: consumed.length,
       });
     }
@@ -810,7 +805,7 @@ export class Agent {
       try {
         policy.reset?.();
       } catch (error) {
-        this.log("warn", "tool.result_policy_reset_failed", {
+        this.logger.warn("tool.result_policy_reset_failed", {
           policySource: policy.source,
           ...errorFields(error),
         });
@@ -824,7 +819,7 @@ export class Agent {
       try {
         listener(structuredClone(snapshot));
       } catch (error) {
-        this.log("warn", "agent.inbox_listener_failed", { error });
+        this.logger.warn("agent.inbox_listener_failed", { error });
       }
     }
   }
@@ -847,7 +842,7 @@ export class Agent {
       try {
         await listener(structuredClone(event), signal);
       } catch (error) {
-        this.log("warn", "agent.listener_failed", {
+        this.logger.warn("agent.listener_failed", {
           eventType: event.type,
           error,
         });
@@ -858,13 +853,13 @@ export class Agent {
   private logEvent(event: AgentEvent): void {
     switch (event.type) {
       case "agent_start":
-        this.log("debug", "agent.started");
+        this.logger.debug("agent.started");
         break;
       case "turn_start":
-        this.log("debug", "agent.turn_started", { turn: event.turn });
+        this.logger.debug("agent.turn_started", { turn: event.turn });
         break;
       case "turn_end":
-        this.log("debug", "agent.turn_ended", {
+        this.logger.debug("agent.turn_ended", {
           turn: event.turn,
           stopReason: event.message.stopReason,
           toolResultCount: event.toolResults.length,
@@ -873,12 +868,11 @@ export class Agent {
       case "turn_input":
         break;
       case "tool_execution_start":
-        this.log("debug", "tool.execution_started", { toolName: event.toolName });
+        this.logger.debug("tool.execution_started", { toolName: event.toolName });
         break;
       case "tool_execution_pause":
       case "tool_execution_resume":
-        this.log(
-          "debug",
+        this.logger.debug(
           event.type === "tool_execution_pause"
             ? "tool.execution_paused"
             : "tool.execution_resumed",
@@ -887,15 +881,15 @@ export class Agent {
         break;
       case "tool_execution_end":
         if (event.isError) {
-          this.log("warn", "tool.execution_failed", { toolName: event.toolName });
+          this.logger.warn("tool.execution_failed", { toolName: event.toolName });
           break;
         }
-        this.log("debug", "tool.execution_ended", {
+        this.logger.debug("tool.execution_ended", {
           toolName: event.toolName,
         });
         break;
       case "agent_end":
-        this.log("info", "agent.ended", {
+        this.logger.info("agent.ended", {
           reason: event.reason,
           committedMessageCount: event.messages.length,
         });
@@ -908,26 +902,6 @@ export class Agent {
       case "context_compaction_start":
       case "context_compacted":
         break;
-    }
-  }
-
-  private log(
-    level: "debug" | "info" | "warn" | "error",
-    event: string,
-    metadata?: LogMetadata,
-  ): void {
-    const mergedMetadata = {
-      ...this.loggerMetadata,
-      ...metadata,
-    };
-
-    try {
-      this.logger[level](
-        event,
-        Object.keys(mergedMetadata).length === 0 ? undefined : mergedMetadata,
-      );
-    } catch {
-      // Diagnostics must not change Agent lifecycle or cleanup behavior.
     }
   }
 

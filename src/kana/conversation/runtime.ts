@@ -277,7 +277,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.assertCanStartRun();
     this.activeSource = "compaction";
     this.emit({ type: "run_start", source: "compaction" });
-    this.log("info", "conversation.compaction_started");
+    this.getLogger().info("conversation.compaction_started");
     const unsubscribe = this.agent.subscribe((event) => {
       this.handleAgentEvent(event);
     });
@@ -285,11 +285,11 @@ export class ConversationRuntime<TConfiguration = never> {
     try {
       const checkpoint = await this.agent.compact();
       this.emit({ type: "run_end", source: "compaction" });
-      this.log("info", "conversation.compaction_completed");
+      this.getLogger().info("conversation.compaction_completed");
       return checkpoint;
     } catch (error) {
       this.emit({ type: "run_error", source: "compaction", error });
-      this.log("error", "conversation.compaction_failed", { error });
+      this.getLogger().error("conversation.compaction_failed", { error });
       throw error;
     } finally {
       unsubscribe();
@@ -302,7 +302,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.assertIdle("reconfigure the conversation");
     this.replaceAgent(this.agent.state.messages, this.agent.state.contextCheckpoint, configuration);
     this.inputCoordinator.discardGoal("agent_reconfigured");
-    this.log("info", "conversation.agent_reconfigured");
+    this.getLogger().info("conversation.agent_reconfigured");
   }
 
   async startNewSession(): Promise<ConversationSessionSnapshot> {
@@ -405,7 +405,7 @@ export class ConversationRuntime<TConfiguration = never> {
     );
     this.inputCoordinator.finishShutdown();
     this.listeners.clear();
-    this.log("info", "conversation.closed");
+    this.getLogger().info("conversation.closed");
   }
 
   private buildAgent(
@@ -533,7 +533,7 @@ export class ConversationRuntime<TConfiguration = never> {
       session: this.session as ConversationSessionSnapshot,
     });
     this.inputCoordinator.emitCurrentQueue();
-    this.log("info", "conversation.session_changed", { action });
+    this.getLogger().info("conversation.session_changed", { action });
   }
 
   private async disposeHostedSession(
@@ -567,7 +567,7 @@ export class ConversationRuntime<TConfiguration = never> {
       source,
       input,
     });
-    this.log("info", "conversation.run_started", { source });
+    this.getLogger().info("conversation.run_started", { source });
 
     // Agent awaits listeners before assembling the next prompt; consuming its
     // event stream here could acknowledge completion after model I/O starts.
@@ -603,7 +603,7 @@ export class ConversationRuntime<TConfiguration = never> {
         event: terminalEvent,
         ...(runGoal === undefined ? {} : { goal: runGoal }),
       });
-      this.log("info", "conversation.run_completed", {
+      this.getLogger().info("conversation.run_completed", {
         source,
         outcome: terminalEvent.reason,
       });
@@ -613,7 +613,7 @@ export class ConversationRuntime<TConfiguration = never> {
         this.inputCoordinator.blockGoal("The goal run failed before it could continue.");
       }
       this.emit({ type: "run_error", source, error });
-      this.log("error", "conversation.run_failed", { source, error });
+      this.getLogger().error("conversation.run_failed", { source, error });
       return { type: "failed", error };
     } finally {
       unsubscribeCommittedInputs();
@@ -663,23 +663,11 @@ export class ConversationRuntime<TConfiguration = never> {
       try {
         listener(cloneRuntimeEvent(event));
       } catch (error) {
-        this.log("warn", "conversation.listener_failed", {
+        this.getLogger().warn("conversation.listener_failed", {
           eventType: event.type,
           error,
         });
       }
-    }
-  }
-
-  private log(
-    level: "info" | "warn" | "error",
-    event: string,
-    metadata?: Record<string, unknown>,
-  ): void {
-    try {
-      this.getLogger()[level](event, metadata);
-    } catch {
-      // Diagnostics must not change runtime lifecycle or cleanup behavior.
     }
   }
 }

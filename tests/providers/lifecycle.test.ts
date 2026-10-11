@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { Logger } from "@/logging";
 import { createProviderDiagnostics, formatProviderFailure } from "../../src/providers/lifecycle";
 import { createRecordingLogger, type RecordedLog } from "../helpers/logging";
 
@@ -137,24 +136,5 @@ describe("provider lifecycle diagnostics", () => {
       errorCode: "PROVIDER_INACTIVITY_TIMEOUT",
       errorType: "Error",
     });
-  });
-
-  test("does not let logger failures change provider control flow", () => {
-    const fail = (): never => {
-      throw new Error("logger unavailable");
-    };
-    const logger: Logger = { debug: fail, info: fail, warn: fail, error: fail };
-    const diagnostics = createProviderDiagnostics(logger, {
-      provider: "test-provider",
-      model: "test-model",
-      protocol: "chat-completions",
-    });
-
-    expect(() => diagnostics.requestStarted()).not.toThrow();
-    expect(() =>
-      diagnostics.requestFailed(
-        formatProviderFailure(new Error("request failed"), { phase: "validation" }),
-      ),
-    ).not.toThrow();
   });
 });

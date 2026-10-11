@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Type } from "typebox";
+import { createLogger } from "@/logging";
 import type { AgentEvent, ToolResultPolicy, ToolResultPolicyInput } from "../../src/agent";
 import {
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
@@ -611,10 +612,7 @@ describe("ToolRuntime deadlines and configuration", () => {
       {
         tools: [tool],
         cancellationGraceMs: 5,
-        logger,
-        loggerMetadata: {
-          component: "test",
-        },
+        logger: logger.child({ component: "test" }),
       },
       (event) => {
         events.push(event.type);
@@ -2195,16 +2193,9 @@ describe("ToolRuntime parallel failure containment", () => {
 });
 
 function createRecordingLogger(records: Array<{ event: string; metadata?: LogMetadata }>): Logger {
-  const record = (event: string, metadata?: LogMetadata): void => {
+  return createLogger((_level, event, metadata) => {
     records.push({ event, metadata });
-  };
-
-  return {
-    debug: record,
-    info: record,
-    warn: record,
-    error: record,
-  };
+  });
 }
 
 function toolCall(id: string, name: string) {

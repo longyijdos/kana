@@ -10,6 +10,7 @@ import {
   type KanaMcpStdioServerConfig,
 } from "@/kana";
 import type { Logger, LogMetadata } from "@/logging";
+import { createLogger } from "@/logging";
 import { type JsonRpcMessage, type McpManager, McpRequestTimeoutError } from "@/mcp";
 import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
 import { normalizeToolResult } from "@/tools";
@@ -602,12 +603,7 @@ function createServerConfig(
 function createCapturingLogger(
   records: Array<{ level: string; event: string; metadata?: LogMetadata }>,
 ): Logger {
-  return {
-    debug: (event, metadata) => records.push({ level: "debug", event, metadata }),
-    info: (event, metadata) => records.push({ level: "info", event, metadata }),
-    warn: (event, metadata) => records.push({ level: "warn", event, metadata }),
-    error: (event, metadata) => records.push({ level: "error", event, metadata }),
-  };
+  return createLogger((level, event, metadata) => records.push({ level, event, metadata }));
 }
 
 function jsonResponse(value: unknown, headers?: HeadersInit): Response {

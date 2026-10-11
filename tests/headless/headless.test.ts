@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Type } from "typebox";
+import { createLogger } from "@/logging";
 import { Agent, type AgentConfig } from "../../src/agent";
 import {
   AssistantEventStream,
@@ -23,7 +24,6 @@ import {
   type KanaGoalSnapshot,
 } from "../../src/kana";
 import { createUpdateGoalTool } from "../../src/kana/tools";
-import type { Logger } from "../../src/logging";
 import { MockModel } from "../../src/providers/mock";
 import type { Tool } from "../../src/tools";
 import { messageIdentityForTest } from "../helpers/messages";
@@ -488,14 +488,9 @@ describe("headless timeout", () => {
     });
     const stdout = new StringOutput();
     const logs: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
-    const logger: Logger = {
-      debug: () => {},
-      info: () => {},
-      warn: (event, metadata) => {
-        logs.push({ event, metadata });
-      },
-      error: () => {},
-    };
+    const logger = createLogger((level, event, metadata) => {
+      if (level === "warn") logs.push({ event, metadata });
+    });
 
     const result = await runHeadlessConversation({
       runtime,

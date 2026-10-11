@@ -1,7 +1,7 @@
 import type { AgentJournal, ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
 import { type BackgroundJobClient, BackgroundJobManager } from "@/jobs";
-import { createNoopLogger, createSessionLogManager, type Logger, type LogLevel } from "@/logging";
+import { createNoopLogger, createSessionLogger, type Logger, type LogLevel } from "@/logging";
 import { errorFields } from "@/utils";
 import {
   auditKanaSessionArtifacts,
@@ -81,7 +81,6 @@ type HostedSession = {
 };
 
 export class HostedSessionRegistry {
-  private readonly logManager;
   private readonly backgroundJobManager = new BackgroundJobManager();
   private readonly subagentManager = new KanaSubagentManager();
   private readonly sessions = new Map<string, HostedSession>();
@@ -90,9 +89,7 @@ export class HostedSessionRegistry {
   private activeSession?: HostedSession;
   private resumableSessionId?: string;
 
-  constructor(private readonly options: HostedSessionRegistryOptions) {
-    this.logManager = createSessionLogManager({ level: options.logLevel });
-  }
+  constructor(private readonly options: HostedSessionRegistryOptions) {}
 
   get resumeSessionId(): string | undefined {
     return this.resumableSessionId;
@@ -406,12 +403,13 @@ export class HostedSessionRegistry {
   private registerSession(data: LoadKanaSessionResult): HostedSession {
     const persistent = this.options.launchMode !== "clean";
     const logger = persistent
-      ? this.logManager.forSession({
+      ? createSessionLogger({
           path: getKanaSessionLogPath(data.metadata.id, {
             cwd: data.metadata.cwd,
             env: this.options.env,
           }),
           sessionId: data.metadata.id,
+          level: this.options.logLevel,
         })
       : createNoopLogger();
     // Temporary sessions retain normal identity but use process-scoped storage

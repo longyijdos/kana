@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_KANA_CONFIG, getKanaModelManagement } from "@/kana";
+import { createLogger, type Logger } from "@/logging";
 import type { Message } from "../../src/core";
 import { KanaTuiApp } from "../../src/tui/app/app";
 import { applyTuiModelSelection, type TuiModelSelection } from "../../src/tui/app/model-selection";
@@ -120,7 +121,7 @@ describe("TUI model selection", () => {
             timeline: [],
           },
         },
-        diagnostics: { getLogger: () => createLogger(logEvents) },
+        diagnostics: { getLogger: () => createEventLogger(logEvents) },
       },
     );
     const internal = app as unknown as AppInternals;
@@ -301,7 +302,7 @@ describe("TUI model selection", () => {
       createTerminal(),
       {
         ...createOptions(),
-        diagnostics: { getLogger: () => createLogger(logEvents) },
+        diagnostics: { getLogger: () => createEventLogger(logEvents) },
       },
     );
     const internal = app as unknown as AppInternals;
@@ -410,13 +411,10 @@ function createOptions() {
   };
 }
 
-function createLogger(events: string[]) {
-  return {
-    debug: () => {},
-    info: (event: string) => events.push(event),
-    warn: () => {},
-    error: (event: string) => events.push(event),
-  };
+function createEventLogger(events: string[]): Logger {
+  return createLogger((level, event) => {
+    if (level === "info" || level === "error") events.push(event);
+  });
 }
 
 function openModel(internal: AppInternals): void {

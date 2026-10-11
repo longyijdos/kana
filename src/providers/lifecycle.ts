@@ -89,11 +89,7 @@ export function createProviderDiagnostics(
     event: (typeof PROVIDER_LIFECYCLE_EVENTS)[keyof typeof PROVIDER_LIFECYCLE_EVENTS],
     metadata: Record<string, unknown>,
   ): void => {
-    try {
-      logger?.[level](event, { ...identity, ...metadata });
-    } catch {
-      // Provider diagnostics must never change request control flow.
-    }
+    logger?.[level](event, { ...identity, ...metadata });
   };
 
   return {

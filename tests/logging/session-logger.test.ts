@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createSessionLogger, createSessionLogManager } from "@/logging";
+import { createSessionLogger } from "@/logging";
 
 const tempDirs: string[] = [];
 
@@ -95,12 +95,15 @@ describe("session logger", () => {
 
   test("binds independent loggers to each requested session", () => {
     const logDirectory = createTempDir();
-    const manager = createSessionLogManager({ level: "info" });
     const firstPath = path.join(logDirectory, "first.jsonl");
     const secondPath = path.join(logDirectory, "second.jsonl");
 
-    const firstLogger = manager.forSession({ path: firstPath, sessionId: "first" });
-    const secondLogger = manager.forSession({ path: secondPath, sessionId: "second" });
+    const firstLogger = createSessionLogger({ path: firstPath, sessionId: "first", level: "info" });
+    const secondLogger = createSessionLogger({
+      path: secondPath,
+      sessionId: "second",
+      level: "info",
+    });
     firstLogger.info("memory_consolidation.ended");
     secondLogger.info("session.resumed");
 
