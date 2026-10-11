@@ -329,6 +329,35 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ## 阶段 4：Provider 重构
 
+### 细化设计（开工前写定）
+
+**共享层**（`src/providers/` 根目录）
+- `http.ts`：
+  - `ProviderHttpError`：一个类替代三个，统一截断 body，解析 OpenAI 格式的错误码、param 和 request id
+  - `fetchWithRetries(url, init, options)`：一个重试循环替代三个，统一支持 `Retry-After`；provider 可以自定义"是否重试"，Codex 的 401 刷新凭据通过 `refreshOn401` 钩子实现
+  - 原有的 request signal 和 backoff 工具保留
+- `sse.ts`：`readSseJson()`，统一的 SSE 读取，包含 cancel/releaseLock、无效 JSON 的包装错误、`[DONE]` 处理
+- `run.ts`：`streamProviderRequest()`，统一 run 骨架：builder、阶段跟踪、诊断、错误规范化、done/error 事件。每个 provider 只需写"发请求、读流"这一段
+- `lifecycle.ts`：新增 `describeProviderFailure()`，统一错误码分类；新增 `toContextWindowError()`、`assertOutputLimit()`
+- `tool-arguments.ts`：`parseToolArguments()` 只保留一份
+
+**Responses 协议**（`responses/`）
+- `request.ts`：消息和工具转换只保留一份，差异通过选项注入：
+  - `replayReasoningText`：DeepSeek 为 true，Codex 为 false
+  - `namespace`：Codex 为 `kana`
+  - `stateless`：Codex 回放时去掉 item id
+  - `strictTools`
+- stream processor 新增 `ignoredEventTypes` 选项，替代 Codex 那个只为忽略 `response.done` 而写的子类
+- deepseek 和 openai-codex 只保留顶层请求参数、认证和各自的特殊行为（Codex 的流恢复、DeepSeek 的 action 标记清理）
+
+**provider 内不再重复 gating**：webSearch、imageInput、parallelToolCalls 已由 `AgentSettings` 按模型能力解析过
+
+**行为变化（有意为之）**
+- 非法 JSON 的 tool 参数统一保留原始字符串（原来 responses 返回 `{}`），校验报错能指出 JSON 本身无效
+- DeepSeek 的重试也遵循 `Retry-After`
+- 跨 provider 回放 assistant 文本时统一使用标准的 `output_text` 结构（带 status 和 annotations）
+- Codex 也校验单次请求的输出上限
+
 - [ ] 建立共享层：
   - HTTP 基础：signal、URL 拼接、HttpError、retry 循环（各 provider 只提供是否重试的判断；Codex 的 401 刷新作为钩子）、`isAbortError`
   - SSE reader：补上 cancel 和 releaseLock，`JSON.parse` 出错时给出明确的错误
