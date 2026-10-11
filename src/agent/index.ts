@@ -9,8 +9,6 @@ export {
   type ContextCheckpoint,
   type ContextCompactionReason,
   ContextManager,
-  estimateContextTokens,
-  estimateTextTokens,
 } from "./context-manager";
 export type { AgentEndReason, AgentEvent } from "./events";
 export {

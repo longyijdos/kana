@@ -5,8 +5,6 @@ import {
   type ContextCheckpoint,
   ContextManager,
   createModelCompactPolicy,
-  estimateContextTokens,
-  estimateTextTokens,
 } from "@/agent";
 import {
   AssistantEventStream,
@@ -18,6 +16,7 @@ import {
   type ModelMetadata,
 } from "@/core";
 import { createRuntimeContextMessage } from "../../src/agent/prompt-assembly";
+import { estimateContextTokens, estimateTextTokens } from "../../src/agent/token-estimate";
 import type { Tool } from "../../src/tools/tool";
 import { runTestLoop } from "../helpers/agent-loop";
 import { messageIdentityForTest } from "../helpers/messages";

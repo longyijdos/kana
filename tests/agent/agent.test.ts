@@ -2,13 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import { AssistantMessageBuilder } from "@/core";
 import { createLogger } from "@/logging";
-import {
-  Agent,
-  type ContextCheckpoint,
-  createPromptAssembly,
-  estimateContextTokens,
-} from "../../src/agent";
+import { Agent, type ContextCheckpoint, createPromptAssembly } from "../../src/agent";
 import type { AgentEvent } from "../../src/agent/events";
+import { estimateContextTokens } from "../../src/agent/token-estimate";
 import type { ModelContext } from "../../src/core/context";
 import { type AssistantMessage, createUserMessage, type Message } from "../../src/core/messages";
 import type { Model, ModelMetadata, ModelUsage } from "../../src/core/model";

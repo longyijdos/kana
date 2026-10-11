@@ -3,7 +3,7 @@ import path from "node:path";
 import type { ToolResultPolicy, ToolResultPolicyResult } from "@/agent";
 import type { ToolCallContent, ToolResultArtifact } from "@/core";
 import type { Logger } from "@/logging";
-import { errorFields } from "@/utils";
+import { errorFields, sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
 import type { KanaSessionArtifactStore } from "./store";
 
 const TOOL_RESULT_ARTIFACT_POLICY_SOURCE = "session_artifact";
@@ -131,46 +131,6 @@ function createBoundedPreview(
     throw new Error("The bounded artifact preview exceeded its inline byte limit.");
   }
   return { content: preview, omittedBytes };
-}
-
-function sliceUtf8Prefix(content: string, maxBytes: number): string {
-  let bytes = 0;
-  let index = 0;
-  while (index < content.length) {
-    const codePoint = content.codePointAt(index);
-    if (codePoint === undefined) {
-      break;
-    }
-    const character = String.fromCodePoint(codePoint);
-    const nextBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + nextBytes > maxBytes) {
-      break;
-    }
-    bytes += nextBytes;
-    index += character.length;
-  }
-  return content.slice(0, index);
-}
-
-function sliceUtf8Suffix(content: string, maxBytes: number): string {
-  let bytes = 0;
-  let index = content.length;
-  while (index > 0) {
-    const previousIndex =
-      index >= 2 && isLowSurrogate(content.charCodeAt(index - 1)) ? index - 2 : index - 1;
-    const character = content.slice(previousIndex, index);
-    const nextBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + nextBytes > maxBytes) {
-      break;
-    }
-    bytes += nextBytes;
-    index = previousIndex;
-  }
-  return content.slice(index);
-}
-
-function isLowSurrogate(codeUnit: number): boolean {
-  return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
 }
 
 function log(

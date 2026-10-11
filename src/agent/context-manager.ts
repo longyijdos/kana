@@ -3,17 +3,20 @@ import { randomUUID } from "node:crypto";
 import {
   type AssistantMessage,
   createUserMessage,
-  type HostedToolContent,
   type Message,
   type ModelContext,
   type ModelUsage,
   type ToolCallContent,
-  type UserImage,
   type UserMessage,
 } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
-import { errorFields } from "@/utils";
+import { errorFields, sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
 import { resolveRuntimeContextMessages } from "./prompt-assembly";
+import {
+  estimateContextTokens,
+  estimateMessagesTokens,
+  estimateTextTokens,
+} from "./token-estimate";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
 const DEFAULT_TARGET_RATIO = 0.1;
@@ -116,16 +119,8 @@ export class ContextManager {
   private readonly compactionData: ContextCheckpoint[] = [];
 
   constructor(config: ContextManagerConfig) {
-    assertPositiveInteger(config.contextLimit, "contextLimit");
-    assertPositiveInteger(config.maxOutputTokens, "maxOutputTokens");
-
     const compactAtRatio = config.compactAtRatio ?? DEFAULT_COMPACT_AT_RATIO;
     const targetRatio = config.targetRatio ?? DEFAULT_TARGET_RATIO;
-    assertRatio(compactAtRatio, "compactAtRatio");
-    assertRatio(targetRatio, "targetRatio");
-    if (targetRatio >= compactAtRatio) {
-      throw new Error("targetRatio must be smaller than compactAtRatio.");
-    }
 
     const safetyReserve = Math.min(8_192, Math.max(256, Math.floor(config.contextLimit * 0.05)));
     const promptBudget = config.contextLimit - safetyReserve;
@@ -152,10 +147,7 @@ export class ContextManager {
     );
     this.maxToolContentBytes = this.maxToolContentTokens * 3;
     this.compactPolicy = config.compactPolicy;
-    if (config.checkpoint) {
-      assertValidCheckpoint(config.checkpoint);
-    }
-    this.checkpointData = config.checkpoint === undefined ? undefined : config.checkpoint;
+    this.checkpointData = config.checkpoint;
     this.logger = config.logger ?? createNoopLogger();
   }
 
@@ -545,95 +537,6 @@ function messageForCompaction(message: Message): Message {
   }
 }
 
-export function estimateContextTokens(context: ModelContext): number {
-  return (
-    8 +
-    estimateTextTokens(context.system ?? "") +
-    estimateTextTokens(
-      context.tools
-        ? stringifyForEstimate(
-            context.tools.map(({ name, description, parameters }) => ({
-              name,
-              description,
-              parameters,
-            })),
-          )
-        : "",
-    ) +
-    estimateMessagesTokens(context.messages)
-  );
-}
-
-export function estimateTextTokens(text: string): number {
-  return Math.ceil(Buffer.byteLength(text, "utf8") / 3);
-}
-
-function estimateMessagesTokens(messages: readonly Message[]): number {
-  return messages.reduce((total, message) => total + estimateMessageTokens(message), 0);
-}
-
-function estimateMessageTokens(message: Message): number {
-  switch (message.role) {
-    case "user":
-      return 6 + estimateTextTokens(message.content) + estimateImageTokens(message.images);
-    case "tool":
-      return (
-        10 +
-        estimateTextTokens(message.toolName) +
-        estimateTextTokens(message.toolCallId) +
-        estimateTextTokens(message.content) +
-        estimateImageTokens(message.images)
-      );
-    case "assistant":
-      return (
-        8 +
-        message.content.reduce((total, content) => {
-          switch (content.type) {
-            case "text":
-            case "thinking":
-              return total + 4 + estimateTextTokens(content.text);
-            case "tool_call":
-              return total + estimateToolCallTokens(content);
-            case "hosted_tool":
-              return total + estimateHostedToolTokens(content);
-          }
-          return total;
-        }, 0)
-      );
-  }
-}
-
-function estimateImageTokens(images: readonly UserImage[] | undefined): number {
-  // Current Codex models use 32px image patches at original/auto detail. Keep
-  // base64 bytes out of token estimation because they are not textual input.
-  return (images ?? []).reduce(
-    (total, image) => total + Math.ceil(image.width / 32) * Math.ceil(image.height / 32),
-    0,
-  );
-}
-
-function estimateHostedToolTokens(content: HostedToolContent): number {
-  return (
-    8 + estimateTextTokens(content.name) + estimateTextTokens(stringifyForEstimate(content.action))
-  );
-}
-
-function estimateToolCallTokens(content: ToolCallContent): number {
-  return (
-    10 +
-    estimateTextTokens(content.name) +
-    estimateTextTokens(content.rawArgs ?? stringifyForEstimate(content.args))
-  );
-}
-
-function stringifyForEstimate(value: unknown): string {
-  try {
-    return JSON.stringify(value) ?? "";
-  } catch {
-    return "[unserializable]";
-  }
-}
-
 function isCompleteTurnBoundary(messages: readonly Message[], boundary: number): boolean {
   const previous = messages[boundary - 1];
   if (!previous) {
@@ -689,80 +592,4 @@ function truncateTextToEstimatedTokens(text: string, maxTokens: number): string 
   const prefix = sliceUtf8Prefix(text, Math.floor(availableBytes * 0.7));
   const suffix = sliceUtf8Suffix(text, Math.ceil(availableBytes * 0.3));
   return `${prefix}${marker}${suffix}`;
-}
-
-function sliceUtf8Prefix(text: string, maxBytes: number): string {
-  let bytes = 0;
-  let index = 0;
-  while (index < text.length) {
-    const codePoint = text.codePointAt(index);
-    if (codePoint === undefined) {
-      break;
-    }
-    const character = String.fromCodePoint(codePoint);
-    const nextBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + nextBytes > maxBytes) {
-      break;
-    }
-    bytes += nextBytes;
-    index += character.length;
-  }
-  return text.slice(0, index);
-}
-
-function sliceUtf8Suffix(text: string, maxBytes: number): string {
-  let bytes = 0;
-  let index = text.length;
-  while (index > 0) {
-    const previousIndex =
-      index >= 2 && isLowSurrogate(text.charCodeAt(index - 1)) ? index - 2 : index - 1;
-    const character = text.slice(previousIndex, index);
-    const nextBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + nextBytes > maxBytes) {
-      break;
-    }
-    bytes += nextBytes;
-    index = previousIndex;
-  }
-  return text.slice(index);
-}
-
-function isLowSurrogate(value: number): boolean {
-  return value >= 0xdc00 && value <= 0xdfff;
-}
-
-function assertPositiveInteger(value: number, name: string): void {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-}
-
-function assertRatio(value: number, name: string): void {
-  if (!Number.isFinite(value) || value <= 0 || value >= 1) {
-    throw new Error(`${name} must be greater than 0 and smaller than 1.`);
-  }
-}
-
-function assertValidCheckpoint(checkpoint: ContextCheckpoint): void {
-  if (
-    !checkpoint.id ||
-    !checkpoint.createdAt ||
-    !checkpoint.summary.trim() ||
-    (checkpoint.baseCompactionId !== undefined && !checkpoint.baseCompactionId) ||
-    (checkpoint.reason !== "threshold" &&
-      checkpoint.reason !== "provider_limit" &&
-      checkpoint.reason !== "manual") ||
-    !Number.isInteger(checkpoint.coveredMessageCount) ||
-    checkpoint.coveredMessageCount <= 0 ||
-    !Number.isInteger(checkpoint.createdAfterMessageCount) ||
-    checkpoint.createdAfterMessageCount < checkpoint.coveredMessageCount ||
-    !Number.isInteger(checkpoint.compactedMessageCount) ||
-    checkpoint.compactedMessageCount <= 0 ||
-    !Number.isInteger(checkpoint.beforeTokens) ||
-    checkpoint.beforeTokens < 0 ||
-    !Number.isInteger(checkpoint.estimatedAfterTokens) ||
-    checkpoint.estimatedAfterTokens < 0
-  ) {
-    throw new Error("Invalid context checkpoint.");
-  }
 }

@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import { AssistantMessageBuilder } from "@/core";
-import { ContextManager, estimateContextTokens } from "../../src/agent/context-manager";
+import { ContextManager } from "../../src/agent/context-manager";
 import type { AgentEvent } from "../../src/agent/events";
 import { createRepeatedToolCallPolicy } from "../../src/agent/repeated-tool-call-policy";
+import { estimateContextTokens } from "../../src/agent/token-estimate";
 import type { ModelContext } from "../../src/core/context";
 import type { AssistantMessage, Message } from "../../src/core/messages";
 import type { Model, ModelMetadata } from "../../src/core/model";
