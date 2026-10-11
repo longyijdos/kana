@@ -7,9 +7,9 @@ import {
   finishOpenAICompatibleContent,
   finishOpenAICompatibleToolCalls,
   getOpenAICompatibleDoneReason,
-  readOpenAICompatibleStream,
 } from "../../../src/providers/openai-compatible/stream";
 import type { OpenAICompatibleStreamState } from "../../../src/providers/openai-compatible/types";
+import { readSseJson } from "../../../src/providers/sse";
 
 describe("OpenAI-compatible stream parsing", () => {
   test("reports raw stream activity for heartbeats and data frames", async () => {
@@ -26,8 +26,9 @@ describe("OpenAI-compatible stream parsing", () => {
       }),
     );
 
-    await readOpenAICompatibleStream(
+    await readSseJson(
       response,
+      "OpenAI-compatible provider",
       (chunk) => chunks.push(chunk),
       () => {
         activityCount += 1;

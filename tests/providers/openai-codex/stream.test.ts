@@ -3,10 +3,16 @@ import { AssistantMessageBuilder } from "@/core";
 import type { HostedToolAction } from "../../../src/core";
 import { AssistantEventStream } from "../../../src/core";
 import {
-  OpenAICodexStreamProcessor,
-  readOpenAICodexStream,
-} from "../../../src/providers/openai-codex/stream";
-import type { OpenAICodexStreamState } from "../../../src/providers/openai-codex/types";
+  ResponsesStreamProcessor,
+  type ResponsesStreamState,
+} from "../../../src/providers/responses";
+import { readSseJson } from "../../../src/providers/sse";
+
+const CODEX_STREAM_OPTIONS = {
+  provider: "openai-codex",
+  providerLabel: "OpenAI Codex",
+  ignoredEventTypes: ["response.done"],
+};
 
 describe("OpenAI Codex stream parsing", () => {
   test("retains partial frames and dispatches multiple SSE events from one body read", async () => {
@@ -27,8 +33,9 @@ describe("OpenAI Codex stream parsing", () => {
       }),
     );
 
-    await readOpenAICodexStream(
+    await readSseJson(
       response,
+      "OpenAI Codex",
       (event) => events.push(event),
       () => {
         activityCount += 1;
@@ -46,8 +53,8 @@ describe("OpenAI Codex stream parsing", () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEvents(stream);
     const message = new AssistantMessageBuilder();
-    const state: OpenAICodexStreamState = { terminalSeen: false };
-    const processor = new OpenAICodexStreamProcessor(stream, message, state);
+    const state: ResponsesStreamState = {};
+    const processor = new ResponsesStreamProcessor(stream, message, state, CODEX_STREAM_OPTIONS);
 
     processor.apply({
       type: "response.output_item.added",
@@ -190,7 +197,6 @@ describe("OpenAI Codex stream parsing", () => {
       },
     ]);
     expect(state).toEqual({
-      terminalSeen: true,
       stopReason: "stop",
       usage: {
         promptTokens: 10,
@@ -207,8 +213,8 @@ describe("OpenAI Codex stream parsing", () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEvents(stream);
     const message = new AssistantMessageBuilder();
-    const state: OpenAICodexStreamState = { terminalSeen: false };
-    const processor = new OpenAICodexStreamProcessor(stream, message, state);
+    const state: ResponsesStreamState = {};
+    const processor = new ResponsesStreamProcessor(stream, message, state, CODEX_STREAM_OPTIONS);
 
     processor.apply({
       type: "response.output_item.added",
@@ -304,8 +310,8 @@ describe("OpenAI Codex stream parsing", () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEvents(stream);
     const message = new AssistantMessageBuilder();
-    const state: OpenAICodexStreamState = { terminalSeen: false };
-    const processor = new OpenAICodexStreamProcessor(stream, message, state);
+    const state: ResponsesStreamState = {};
+    const processor = new ResponsesStreamProcessor(stream, message, state, CODEX_STREAM_OPTIONS);
     const actions: HostedToolAction[] = [
       {
         type: "search",
@@ -390,10 +396,11 @@ describe("OpenAI Codex stream parsing", () => {
   });
 
   test("surfaces nested Responses stream error details", () => {
-    const processor = new OpenAICodexStreamProcessor(
+    const processor = new ResponsesStreamProcessor(
       new AssistantEventStream(),
       new AssistantMessageBuilder(),
-      { terminalSeen: false },
+      {},
+      CODEX_STREAM_OPTIONS,
     );
 
     expect(() =>

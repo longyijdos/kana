@@ -9,9 +9,9 @@ import type {
   ToolCallContent,
 } from "@/core";
 import { isRecord } from "@/utils";
+import { parseToolArguments } from "../tool-arguments";
 
 export type ResponsesStreamState = {
-  terminalSeen: boolean;
   stopReason?: "stop" | "length" | "toolUse";
   usage?: ModelUsage;
 };
@@ -44,6 +44,8 @@ export type ResponsesStreamProcessorOptions = {
     action: HostedToolAction,
     item: Readonly<Record<string, unknown>>,
   ) => HostedToolAction;
+  // Event types the provider sends but that carry no semantic content.
+  ignoredEventTypes?: readonly string[];
 };
 
 type PendingItem = {
@@ -81,6 +83,9 @@ export class ResponsesStreamProcessor {
 
   apply(event: Record<string, unknown>): void {
     const type = readString(event.type);
+    if (type !== undefined && this.options.ignoredEventTypes?.includes(type)) {
+      return;
+    }
     switch (type) {
       case "response.output_item.added":
         this.addItem(event);
@@ -418,7 +423,6 @@ export class ResponsesStreamProcessor {
         : this.message.content.some((content) => content.type === "tool_call")
           ? "toolUse"
           : "stop";
-    this.state.terminalSeen = true;
   }
 
   private textAt(pending: PendingItem): string {
@@ -437,73 +441,6 @@ export class ResponsesStreamProcessor {
     const itemId = readString(event.item_id);
     return itemId === undefined ? undefined : this.pendingById.get(itemId);
   }
-}
-
-export async function readResponsesStream(
-  response: Response,
-  onEvent: (event: Record<string, unknown>) => void,
-  providerLabel: string,
-  onActivity?: () => void,
-): Promise<void> {
-  if (!response.body) {
-    throw new Error(`${providerLabel} response does not contain a body.`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let completed = false;
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      onActivity?.();
-      buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split(/\r?\n\r?\n/);
-      buffer = frames.pop() ?? "";
-      for (const frame of frames) {
-        applySseFrame(frame, onEvent, providerLabel);
-      }
-    }
-
-    buffer += decoder.decode();
-    if (buffer) {
-      applySseFrame(buffer, onEvent, providerLabel);
-    }
-    completed = true;
-  } finally {
-    if (!completed) {
-      await reader.cancel().catch(() => undefined);
-    }
-    reader.releaseLock();
-  }
-}
-
-function applySseFrame(
-  frame: string,
-  onEvent: (event: Record<string, unknown>) => void,
-  providerLabel: string,
-): void {
-  const data = frame
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart())
-    .join("\n")
-    .trim();
-  if (!data || data === "[DONE]") {
-    return;
-  }
-
-  let event: unknown;
-  try {
-    event = JSON.parse(data);
-  } catch (error) {
-    throw new Error(`${providerLabel} stream returned invalid JSON.`, { cause: error });
-  }
-  onEvent(requireRecord(event, `${providerLabel} stream event`));
 }
 
 function readUsage(value: unknown): ModelUsage | undefined {
@@ -648,17 +585,6 @@ function readEventError(event: Record<string, unknown>): string | undefined {
     readString(event.code) ??
     (error ? readString(error.code) : undefined)
   );
-}
-
-function parseToolArguments(value: string): unknown {
-  if (!value) {
-    return {};
-  }
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
 }
 
 function readHostedToolAction(value: unknown): HostedToolAction | undefined {

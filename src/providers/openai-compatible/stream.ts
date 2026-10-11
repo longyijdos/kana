@@ -1,57 +1,15 @@
 import type { AssistantEventStream, AssistantMessageBuilder, ToolCallContent } from "@/core";
 import { isRecord } from "@/utils";
+import { parseToolArguments } from "../tool-arguments";
 import type {
   OpenAICompatibleChunk,
   OpenAICompatibleDelta,
+  OpenAICompatibleFinishReason,
   OpenAICompatibleStreamState,
   OpenAICompatibleToolCallDelta,
   PendingOpenAICompatibleToolCall,
 } from "./types";
 import { OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE } from "./types";
-
-export async function readOpenAICompatibleStream(
-  response: Response,
-  onChunk: (chunk: OpenAICompatibleChunk) => void,
-  onActivity?: () => void,
-): Promise<void> {
-  if (!response.body) {
-    throw new Error("OpenAI-compatible provider response does not contain a body.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    // Raw bytes, including heartbeats and partial SSE frames, prove that the
-    // connection is active and refresh the inactivity deadline.
-    onActivity?.();
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split(/\r?\n\r?\n/);
-    buffer = parts.pop() ?? "";
-    for (const part of parts) {
-      const data = parseSseData(part);
-      if (!data) {
-        continue;
-      }
-      if (data === "[DONE]") {
-        return;
-      }
-      onChunk(JSON.parse(data) as OpenAICompatibleChunk);
-    }
-  }
-
-  buffer += decoder.decode();
-  const data = parseSseData(buffer);
-  if (data && data !== "[DONE]") {
-    onChunk(JSON.parse(data) as OpenAICompatibleChunk);
-  }
-}
 
 export function applyOpenAICompatibleChunk(
   stream: AssistantEventStream,
@@ -84,12 +42,12 @@ export function applyOpenAICompatibleChunk(
       applyToolCallDelta(stream, message, state, toolCallDelta);
     }
     if (choice.finish_reason) {
-      state.finishReason = choice.finish_reason;
       if (!isSupportedFinishReason(choice.finish_reason)) {
         throw new Error(
           `OpenAI-compatible provider stream finished with unsupported reason ${choice.finish_reason}.`,
         );
       }
+      state.finishReason = choice.finish_reason;
     }
   }
 }
@@ -145,7 +103,7 @@ export function finishOpenAICompatibleToolCalls(
 }
 
 export function getOpenAICompatibleDoneReason(
-  finishReason: string | undefined,
+  finishReason: OpenAICompatibleFinishReason | undefined,
 ): "stop" | "length" | "toolUse" {
   switch (finishReason) {
     case "length":
@@ -155,22 +113,7 @@ export function getOpenAICompatibleDoneReason(
     case "stop":
     case undefined:
       return "stop";
-    default:
-      throw new Error(
-        `OpenAI-compatible provider stream finished with unsupported reason ${finishReason}.`,
-      );
   }
-}
-
-function parseSseData(part: string): string | undefined {
-  if (!part) {
-    return undefined;
-  }
-  const dataLines = part
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart());
-  return dataLines.length ? dataLines.join("\n") : undefined;
 }
 
 function captureAssistantReplayDelta(
@@ -193,22 +136,22 @@ function captureAssistantReplayDelta(
 
 function mergeAssistantReplayDelta(current: unknown, delta: unknown, key: string): unknown {
   if (current === undefined) {
-    return structuredClone(delta);
+    return delta;
   }
   if (typeof current === "string" && typeof delta === "string") {
     return isStableReplayMetadataKey(key) ? delta : current + delta;
   }
   if (Array.isArray(current) && Array.isArray(delta)) {
-    const merged = structuredClone(current);
+    const merged = [...current];
     for (const item of delta) {
       const index = readReplayIndex(item);
       if (index === undefined) {
-        merged.push(structuredClone(item));
+        merged.push(item);
         continue;
       }
       const position = merged.findIndex((candidate) => readReplayIndex(candidate) === index);
       if (position === -1) {
-        merged.push(structuredClone(item));
+        merged.push(item);
       } else {
         merged[position] = mergeAssistantReplayDelta(merged[position], item, key);
       }
@@ -216,13 +159,13 @@ function mergeAssistantReplayDelta(current: unknown, delta: unknown, key: string
     return merged;
   }
   if (isRecord(current) && isRecord(delta)) {
-    const merged = structuredClone(current);
+    const merged = { ...current };
     for (const [field, value] of Object.entries(delta)) {
       merged[field] = mergeAssistantReplayDelta(merged[field], value, field);
     }
     return merged;
   }
-  return structuredClone(delta);
+  return delta;
 }
 
 function readReplayIndex(value: unknown): number | undefined {
@@ -433,17 +376,6 @@ function getPendingToolCall(
   return { contentIndex, isNew: true };
 }
 
-function parseToolArguments(rawArgs: string): unknown {
-  if (!rawArgs) {
-    return {};
-  }
-  try {
-    return JSON.parse(rawArgs);
-  } catch {
-    return rawArgs;
-  }
-}
-
 function toModelUsage(
   usage: NonNullable<OpenAICompatibleChunk["usage"]>,
 ): OpenAICompatibleStreamState["usage"] {
@@ -483,6 +415,6 @@ function readOptionalTokenCount(value: unknown, name: string): number | undefine
   return value === undefined ? undefined : readTokenCount(value, name);
 }
 
-function isSupportedFinishReason(value: string): boolean {
+function isSupportedFinishReason(value: string): value is OpenAICompatibleFinishReason {
   return value === "stop" || value === "length" || value === "tool_calls";
 }

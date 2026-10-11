@@ -1,6 +1,4 @@
-import type { ModelConfig } from "@/core";
 import type { Logger } from "@/logging";
-import type { ResponsesStreamState } from "../responses";
 
 // OpenAI Codex Responses accepts reasoning effort through max. Ultra is a Codex client
 // orchestration mode and must not be sent as a provider reasoning effort.
@@ -17,8 +15,14 @@ export type OpenAICodexCredentialProvider = {
   refreshCredentials(): Promise<OpenAICodexCredentials | undefined>;
 };
 
-export type OpenAICodexModelConfig = ModelConfig & {
+export type OpenAICodexModelConfig = {
   provider: "openai-codex";
+  model: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+  maxRetries?: number;
   sessionId?: string;
   credentialProvider: OpenAICodexCredentialProvider;
   reasoningEffort?: OpenAICodexReasoningEffort;
@@ -26,5 +30,3 @@ export type OpenAICodexModelConfig = ModelConfig & {
   logger?: Logger;
   fetch?: typeof globalThis.fetch;
 };
-
-export type OpenAICodexStreamState = ResponsesStreamState;

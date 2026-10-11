@@ -1,94 +1,15 @@
-import {
-  boundProviderHttpErrorBody,
-  createProviderRequestSignal,
-  getExponentialBackoffDelayMs,
-  getRetryAfterDelayMs,
-  isAbortError,
-  isRetryableProviderHttpStatus,
-  waitForProviderRetry,
-} from "../http";
-import type { OpenAICodexModelConfig } from "./types";
-
-export class OpenAICodexHttpError extends Error {
-  readonly body: string;
-  readonly providerCode?: string;
-  readonly param?: string;
-  readonly requestId?: string;
-
-  constructor(
-    readonly status: number,
-    readonly statusText: string,
-    body: string,
-    requestId?: string,
-  ) {
-    const truncatedBody = boundProviderHttpErrorBody(body);
-    const details = readErrorDetails(body);
-    super(
-      `OpenAI Codex request failed with ${status} ${statusText}: ${truncatedBody}` +
-        recoveryHint(details.code) +
-        (requestId ? ` Request ID: ${requestId}.` : ""),
-    );
-    this.body = truncatedBody;
-    this.providerCode = details.code;
-    this.param = details.param;
-    this.requestId = requestId;
-  }
-}
-
-export function createOpenAICodexRequestSignal(
-  config: OpenAICodexModelConfig,
-  signal?: AbortSignal,
-): {
-  signal?: AbortSignal;
-  refresh(): void;
-  dispose(): void;
-} {
-  return createProviderRequestSignal({
-    timeoutMs: config.timeoutMs,
-    signal,
-    timeoutMessage: `OpenAI Codex request timed out after ${config.timeoutMs}ms of inactivity.`,
-  });
-}
+import { isRetryableProviderHttpStatus, type ProviderHttpError } from "../http";
 
 export function resolveOpenAICodexUrl(baseUrl?: string): string {
   const normalized = (baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
-  if (normalized.endsWith("/responses")) {
-    return normalized;
-  }
-  return `${normalized}/responses`;
+  return normalized.endsWith("/responses") ? normalized : `${normalized}/responses`;
 }
 
-export function isOpenAICodexRetryable(error: unknown): boolean {
-  if (error instanceof OpenAICodexHttpError) {
-    if (error.providerCode === "subscription_sharing_usage_limit_exceeded") return false;
-    return isRetryableProviderHttpStatus(error.status);
-  }
-  return !isAbortError(error);
-}
-
-export function getOpenAICodexRetryDelayMs(attempt: number, response?: Response): number {
-  return getRetryAfterDelayMs(response) ?? getExponentialBackoffDelayMs(attempt);
-}
-
-export function sleepForOpenAICodexRetry(
-  delayMs: number,
-  signal?: AbortSignal | null,
-): Promise<void> {
-  return waitForProviderRetry(delayMs, signal);
-}
-
-export { isAbortError };
-
-function readErrorDetails(body: string): { code?: string; param?: string } {
-  try {
-    const value = JSON.parse(body);
-    return {
-      ...(typeof value?.error?.code === "string" ? { code: value.error.code } : {}),
-      ...(typeof value?.error?.param === "string" ? { param: value.error.param } : {}),
-    };
-  } catch {
-    return {};
-  }
+export function isOpenAICodexRetryable(error: ProviderHttpError): boolean {
+  return (
+    error.providerCode !== "subscription_sharing_usage_limit_exceeded" &&
+    isRetryableProviderHttpStatus(error.status)
+  );
 }
 
 export function recoveryHint(code?: string): string {

@@ -40,8 +40,7 @@ function toMessages(
 ): Array<Record<string, unknown>> {
   const messages: Array<Record<string, unknown>> = [];
   const pendingToolImageMessages: Array<Extract<Message, { role: "tool" }>> = [];
-  const supportsImageInput =
-    context.imageInput === true && config.metadata.supportsImageInput === true;
+  const supportsImageInput = context.imageInput === true;
   if (context.system) {
     // The system role remains the most widely implemented instruction shape
     // across OpenAI-compatible Chat Completions endpoints.
@@ -195,7 +194,7 @@ function readAssistantReplayFields(
       configuredFields.flatMap((field) =>
         isManagedAssistantField(field) || !Object.hasOwn(storedFields, field)
           ? []
-          : [[field, structuredClone(storedFields[field])]],
+          : [[field, storedFields[field]]],
       ),
     );
   }

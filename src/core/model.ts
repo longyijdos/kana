@@ -4,18 +4,6 @@ import type { ReadableAssistantEventStream } from "./stream";
 
 export type { ModelUsage } from "./usage";
 
-export type ModelConfig = {
-  provider: string;
-  model: string;
-  apiKey?: string;
-  baseUrl?: string;
-  temperature?: number;
-  maxOutputTokens?: number;
-  headers?: Record<string, string>;
-  timeoutMs?: number;
-  maxRetries?: number;
-};
-
 type ModelProtocol = "chat-completions" | "responses";
 
 export type ModelReasoningMetadata = {

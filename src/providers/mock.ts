@@ -2,13 +2,13 @@ import {
   AssistantEventStream,
   AssistantMessageBuilder,
   BaseModel,
-  type ModelConfig,
   type ModelContext,
   type ModelMetadata,
 } from "@/core";
 
-export type MockModelConfig = ModelConfig & {
+export type MockModelConfig = {
   provider: "mock";
+  model: string;
   response?: string;
 };
 

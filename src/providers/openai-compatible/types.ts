@@ -1,8 +1,17 @@
-import type { ModelConfig, ModelMetadata, ModelUsage } from "@/core";
+import type { ModelMetadata, ModelUsage } from "@/core";
 import type { Logger } from "@/logging";
 
-export type OpenAICompatibleModelConfig = Omit<ModelConfig, "baseUrl"> & {
+export type OpenAICompatibleFinishReason = "stop" | "length" | "tool_calls";
+
+export type OpenAICompatibleModelConfig = {
+  provider: string;
+  model: string;
   baseUrl: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+  maxRetries?: number;
   metadata: Omit<ModelMetadata, "provider" | "model" | "protocol">;
   reasoningEffort?: string;
   logger?: Logger;
@@ -56,7 +65,7 @@ export type OpenAICompatibleToolCallDelta = {
 };
 
 export type OpenAICompatibleStreamState = {
-  finishReason?: string;
+  finishReason?: OpenAICompatibleFinishReason;
   endedContentIndexes: Set<number>;
   assistantReplay?: OpenAICompatibleAssistantReplayState;
   usage?: ModelUsage;
