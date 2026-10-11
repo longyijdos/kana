@@ -3,7 +3,7 @@ import path from "node:path";
 import { Type } from "typebox";
 import { formatError } from "@/utils";
 import { strictObject } from "./strict-object";
-import type { Tool, ToolContext } from "./tool";
+import type { Tool } from "./tool";
 import { resolveExistingWorkspacePath } from "./workspace-path";
 
 export const DEFAULT_GREP_LIMIT = 100;
@@ -135,7 +135,7 @@ export function createGrepTool(
       let truncated = false;
 
       for (const file of files) {
-        throwIfAborted(context);
+        context.signal?.throwIfAborted();
 
         const content = await readFile(file.absolutePath, "utf8");
 
@@ -310,12 +310,6 @@ function joinWorkspacePath(basePath: string, childPath: string): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function throwIfAborted(context: ToolContext): void {
-  if (context.signal?.aborted) {
-    throw new Error("Grep aborted.");
-  }
 }
 
 function formatGrepContent(result: GrepToolResult): string {

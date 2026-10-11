@@ -1,5 +1,5 @@
 import type { WakeEventOrigin } from "@/kana";
-import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
+import { color, dim, pad2, singleLine, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import {
   isDown,
@@ -146,7 +146,7 @@ export class ScheduledMessageManager implements Component {
       const marker = selected ? "> " : "  ";
       const state = item.state === "pending" ? "due" : formatDueAt(item.dueAt, this.snapshotAt);
       const origin = item.origin === "agent" ? "Kana" : "you";
-      const label = `${marker}${state} · ${origin} · ${formatSingleLine(item.message)}`;
+      const label = `${marker}${state} · ${origin} · ${singleLine(item.message)}`;
 
       lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
     }
@@ -163,7 +163,7 @@ export class ScheduledMessageManager implements Component {
 }
 
 function formatDueAt(dueAt: Date, snapshotAt: Date): string {
-  const time = [dueAt.getHours(), dueAt.getMinutes(), dueAt.getSeconds()].map(pad).join(":");
+  const time = [dueAt.getHours(), dueAt.getMinutes(), dueAt.getSeconds()].map(pad2).join(":");
   if (sameLocalDate(dueAt, snapshotAt)) {
     return `today ${time}`;
   }
@@ -174,7 +174,7 @@ function formatDueAt(dueAt: Date, snapshotAt: Date): string {
     return `tomorrow ${time}`;
   }
 
-  return `${dueAt.getFullYear()}-${pad(dueAt.getMonth() + 1)}-${pad(dueAt.getDate())} ${time}`;
+  return `${dueAt.getFullYear()}-${pad2(dueAt.getMonth() + 1)}-${pad2(dueAt.getDate())} ${time}`;
 }
 
 function sameLocalDate(left: Date, right: Date): boolean {
@@ -183,12 +183,4 @@ function sameLocalDate(left: Date, right: Date): boolean {
     left.getMonth() === right.getMonth() &&
     left.getDate() === right.getDate()
   );
-}
-
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
-}
-
-function formatSingleLine(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }

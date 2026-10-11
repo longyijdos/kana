@@ -10,7 +10,7 @@ import {
   type McpServerManagerItem,
   TextBlock,
 } from "../components";
-import { stripTerminalControlSequences } from "../render";
+import { singleLine } from "../render";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { BottomAreaController } from "./bottom-area-controller";
@@ -165,18 +165,18 @@ export class McpServerManagerController {
         server.enabled = false;
         this.reloadRequired ||= wasEnabled;
         block.setText(
-          `Signed out of MCP OAuth server ${sanitizeLabel(serverId)}. The server has been disabled.`,
+          `Signed out of MCP OAuth server ${singleLine(serverId)}. The server has been disabled.`,
         );
       } else {
         this.reloadRequired ||= server.enabled;
-        block.setText(`MCP OAuth authorized: ${sanitizeLabel(serverId)}.`);
+        block.setText(`MCP OAuth authorized: ${singleLine(serverId)}.`);
       }
     } catch (error) {
       if (this.authOperation !== operation) {
         return;
       }
       if (controller.signal.aborted) {
-        block.setText(`MCP OAuth authorization cancelled: ${sanitizeLabel(serverId)}.`);
+        block.setText(`MCP OAuth authorization cancelled: ${singleLine(serverId)}.`);
       } else {
         this.options.transcript.removeChild(block);
         this.options.showError(error);
@@ -225,7 +225,7 @@ export class McpServerManagerController {
       return;
     }
     operation.block.setText(
-      `MCP OAuth authorization cancelled: ${sanitizeLabel(operation.serverId)}.`,
+      `MCP OAuth authorization cancelled: ${singleLine(operation.serverId)}.`,
     );
     operation.controller.abort(new Error("MCP OAuth authorization was cancelled."));
     this.options.tui.requestRender();
@@ -262,7 +262,7 @@ export class McpServerManagerController {
 }
 
 function formatAuthOperationStart(serverId: string, action: McpAuthAction): string {
-  const label = sanitizeLabel(serverId);
+  const label = singleLine(serverId);
   return action === "sign_out"
     ? `Signing out of MCP OAuth server ${label}...`
     : `Preparing OAuth authorization for MCP server ${label}...`;
@@ -274,12 +274,8 @@ function formatAuthMenuOperation(action: McpAuthAction): string {
 
 function formatAuthorizationUrl(serverId: string, url: string): string {
   return [
-    `Authorizing MCP server ${sanitizeLabel(serverId)} in your browser.`,
+    `Authorizing MCP server ${singleLine(serverId)} in your browser.`,
     "If the browser did not open, use this temporary URL:",
     url,
   ].join("\n");
-}
-
-function sanitizeLabel(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }

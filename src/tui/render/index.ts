@@ -26,7 +26,17 @@ export {
   splitLines,
   tailLines,
 } from "./lines";
-export { capitalize, summarizeText } from "./text";
+export {
+  base64ByteLength,
+  capitalize,
+  collapseWhitespace,
+  formatByteSize,
+  formatInteger,
+  pad2,
+  setsEqual,
+  singleLine,
+  summarizeText,
+} from "./text";
 export {
   padRightAnsi,
   stripAnsi,

@@ -1,7 +1,9 @@
 import type { KanaSubagentInspection, KanaSubagentProfile, KanaSubagentSummary } from "@/kana";
+import { shortId } from "@/utils";
 import {
   color,
   dim,
+  singleLine,
   stripTerminalControlSequences,
   truncateToWidth,
   visibleWidth,
@@ -236,12 +238,4 @@ function cloneSummary(summary: KanaSubagentSummary): KanaSubagentSummary {
     ...(summary.finishedAt === undefined ? {} : { finishedAt: new Date(summary.finishedAt) }),
     ...(summary.model === undefined ? {} : { model: { ...summary.model } }),
   };
-}
-
-function shortId(id: string): string {
-  return id.startsWith("agent_") ? id.slice(6, 14) : id.slice(0, 8);
-}
-
-function singleLine(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }

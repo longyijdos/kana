@@ -2,8 +2,10 @@ import type { UserImage } from "@/core";
 import type { KanaPromptTemplate, KanaSkillActivation, MemoryConsolidationActivity } from "@/kana";
 
 import {
+  base64ByteLength,
   color,
   dim,
+  formatByteSize,
   graphemeSegments,
   type HighlightedLineToken,
   normalizeLineEndings,
@@ -1039,17 +1041,6 @@ function formatImageSummary(images: UserImage[]): string {
   const remaining = images.length > 3 ? `, +${images.length - 3}` : "";
   const totalBytes = images.reduce((total, image) => total + base64ByteLength(image.data), 0);
   return `Images · ${images.length} · ${dimensions}${remaining} · ${formatByteSize(totalBytes)}`;
-}
-
-function base64ByteLength(data: string): number {
-  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
-  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
-}
-
-function formatByteSize(bytes: number): string {
-  return bytes >= 1024 * 1024
-    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function specialInputTokenEnd(value: string): number | undefined {

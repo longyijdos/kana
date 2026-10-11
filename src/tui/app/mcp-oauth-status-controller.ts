@@ -1,6 +1,6 @@
 import type { McpOAuthHttpDiagnosticEvent } from "@/mcp";
 import { TextBlock, type Transcript } from "../components";
-import { stripTerminalControlSequences } from "../render";
+import { singleLine } from "../render";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 
@@ -22,7 +22,7 @@ export class McpOAuthStatusController {
     const block = this.getBlock(serverId);
     block.setText(
       [
-        `Authorizing MCP server ${sanitizeLabel(serverId)} in your browser.`,
+        `Authorizing MCP server ${singleLine(serverId)} in your browser.`,
         "If the browser did not open, use this temporary URL:",
         authorizationUrl,
       ].join("\n"),
@@ -37,11 +37,11 @@ export class McpOAuthStatusController {
     }
 
     if (diagnostic.event === "oauth.authorization_succeeded") {
-      block.setText(`MCP OAuth authorized: ${sanitizeLabel(serverId)}.`);
+      block.setText(`MCP OAuth authorized: ${singleLine(serverId)}.`);
       this.options.tui.requestRender();
     } else if (diagnostic.event === "oauth.authorization_failed") {
       block.setText(
-        `MCP OAuth authorization failed: ${sanitizeLabel(serverId)}. See logs for details.`,
+        `MCP OAuth authorization failed: ${singleLine(serverId)}. See logs for details.`,
       );
       this.options.tui.requestRender();
     }
@@ -58,8 +58,4 @@ export class McpOAuthStatusController {
     this.options.transcript.addChild(block);
     return block;
   }
-}
-
-function sanitizeLabel(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }

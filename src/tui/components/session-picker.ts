@@ -1,5 +1,6 @@
 import type { KanaSessionMetadata } from "@/kana";
-import { color, dim, truncateToWidth } from "../render";
+import { shortId } from "@/utils";
+import { color, dim, pad2, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import {
   isDown,
@@ -210,16 +211,8 @@ function formatActivityTime(timestamp: string, now: number): string {
   const date = new Date(activity);
 
   if (date.getFullYear() === new Date(now).getFullYear()) {
-    return `${MONTH_NAMES[date.getMonth()]} ${pad(date.getDate())}`;
+    return `${MONTH_NAMES[date.getMonth()]} ${pad2(date.getDate())}`;
   }
 
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
-}
-
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }

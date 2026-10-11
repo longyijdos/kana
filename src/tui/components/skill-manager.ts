@@ -1,4 +1,4 @@
-import { color, dim, truncateToWidth } from "../render";
+import { collapseWhitespace, color, dim, setsEqual, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import {
   isDown,
@@ -140,7 +140,7 @@ export class SkillManager implements Component {
       lines.push(truncateToWidth(rendered, width));
 
       if (selected && skill.description.trim()) {
-        lines.push(truncateToWidth(dim(`  ${formatDescription(skill.description)}`), width));
+        lines.push(truncateToWidth(dim(`  ${collapseWhitespace(skill.description)}`), width));
       }
     }
 
@@ -169,12 +169,4 @@ export class SkillManager implements Component {
   private movePage(delta: number): void {
     this.viewport.movePage(delta, this.skills.length);
   }
-}
-
-function formatDescription(description: string): string {
-  return description.trim().replace(/\s+/g, " ");
-}
-
-function setsEqual(first: ReadonlySet<string>, second: ReadonlySet<string>): boolean {
-  return first.size === second.size && [...first].every((value) => second.has(value));
 }

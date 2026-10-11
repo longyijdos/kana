@@ -1,5 +1,6 @@
 import os from "node:os";
 import type { KanaSessionMetadata } from "@/kana";
+import { shortId } from "@/utils";
 import { KANA_VERSION } from "@/version";
 import { color, padRightAnsi, truncateToWidth, visibleWidth } from "../../render";
 import type { Component } from "../../runtime";
@@ -135,8 +136,4 @@ function text(value: string): string {
 
 function formatSessionTitle(session: KanaSessionMetadata): string {
   return session.title || shortId(session.id);
-}
-
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
 }

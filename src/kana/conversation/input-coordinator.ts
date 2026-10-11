@@ -8,6 +8,7 @@ import type {
 import { createUserMessage, type MessageId, readMessageId, type UserMessage } from "@/core";
 import type { BackgroundJobClient, BackgroundJobEvent, BackgroundJobSummary } from "@/jobs";
 import type { Logger } from "@/logging";
+import { shortId } from "@/utils";
 import type { KanaSubagentClient, KanaSubagentEvent, KanaSubagentSummary } from "../subagents";
 import type { KanaUserTaskManager, KanaUserTaskSettlement } from "../user-tasks";
 import {
@@ -670,7 +671,7 @@ export class ConversationInputCoordinator {
     const lane = this.options.canSteer() ? "next-step" : "next-turn";
     this.agent.enqueueInput(input, lane, {
       kind: "job",
-      displayContent: `Background Job ${shortJobId(event.job.id)} ${event.job.status}`,
+      displayContent: `Background Job ${shortId(event.job.id)} ${event.job.status}`,
       jobId: event.job.id,
     });
     this.options.getLogger().info("conversation.background_job_completion_queued", {
@@ -713,7 +714,7 @@ export class ConversationInputCoordinator {
     const lane = this.options.canSteer() ? "next-step" : "next-turn";
     this.agent.enqueueInput(input, lane, {
       kind: "subagent",
-      displayContent: `Subagent ${shortSubagentId(event.subagent.id)} ${event.subagent.status}`,
+      displayContent: `Subagent ${shortId(event.subagent.id)} ${event.subagent.status}`,
       agentId: event.subagent.id,
     });
     this.options.getLogger().info("conversation.subagent_completion_queued", {
@@ -745,7 +746,7 @@ export class ConversationInputCoordinator {
     const lane = this.options.canSteer() ? "next-step" : "next-turn";
     this.agent.enqueueInput(input, lane, {
       kind: "user_task",
-      displayContent: `User task ${event.task.id.slice(5, 13)} ${event.task.status}`,
+      displayContent: `User task ${shortId(event.task.id)} ${event.task.status}`,
       taskId: event.task.id,
     });
     this.options.getLogger().info("conversation.user_task_completion_queued", {
@@ -881,12 +882,4 @@ function formatSubagentCompletion(subagent: KanaSubagentSummary): string {
     `Subagent ${subagent.id} (${subagent.profile}) reached ${subagent.status}.`,
     "Use wait_subagent to consume its final result before deciding the next action.",
   ].join("\n");
-}
-
-function shortJobId(jobId: string): string {
-  return jobId.startsWith("job_") ? jobId.slice(4, 10) : jobId.slice(0, 6);
-}
-
-function shortSubagentId(agentId: string): string {
-  return agentId.startsWith("agent_") ? agentId.slice(6, 14) : agentId.slice(0, 8);
 }

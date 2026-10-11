@@ -87,12 +87,12 @@ export class PromptAssembly {
   }
 
   async assemble(context: PromptAssemblyContext): Promise<AssembledPrompt> {
-    throwIfAborted(context.signal);
+    context.signal.throwIfAborted();
 
     const snapshots: PromptContextSnapshot[] = [];
     for (const section of this.contextSections) {
       const state = await section.render(context);
-      throwIfAborted(context.signal);
+      context.signal.throwIfAborted();
       assertPromptContextState(section.name, state);
       snapshots.push({
         source: section.name,
@@ -104,7 +104,7 @@ export class PromptAssembly {
     const tools: Tool[] = [];
     for (const section of this.toolSections) {
       const resolved = section.resolve ? await section.resolve(context) : section.tools;
-      throwIfAborted(context.signal);
+      context.signal.throwIfAborted();
       tools.push(...resolved);
     }
     assertUniqueToolNames(tools);
@@ -217,12 +217,6 @@ function assertPromptContextState(
     !candidate.content.trim()
   ) {
     throw new Error(`Prompt context section ${source} must return an explicit non-empty state.`);
-  }
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) {
-    throw signal.reason ?? new Error("Prompt assembly aborted.");
   }
 }
 

@@ -5,6 +5,7 @@ import type {
   KanaSubagentSummary,
   LoadKanaSubagentProfilesResult,
 } from "@/kana";
+import { shortId } from "@/utils";
 import {
   type Editor,
   type SubagentInspectionOptions,
@@ -130,10 +131,6 @@ export class SubagentManagerController {
       this.cancelling = false;
     }
   }
-}
-
-function shortId(id: string): string {
-  return id.startsWith("agent_") ? id.slice(6, 14) : id.slice(0, 8);
 }
 
 function formatProfileDiagnostics(loaded: LoadKanaSubagentProfilesResult): string | undefined {

@@ -1,4 +1,5 @@
 import type { BackgroundJobClient, BackgroundJobSummary } from "@/jobs";
+import { shortId } from "@/utils";
 import { BackgroundJobManager, type BackgroundJobManagerAction, type Editor } from "../components";
 import type { Tui } from "../runtime";
 import type { BottomAreaController } from "./bottom-area-controller";
@@ -107,9 +108,9 @@ export class BackgroundJobManagerController {
         source: "tui",
         reason: "Stopped from the /jobs manager.",
       });
-      this.refresh(`Stopping ${shortJobId(job.id)}...`);
+      this.refresh(`Stopping ${shortId(job.id)}...`);
       const result = await settlement;
-      this.refresh(`${shortJobId(result.id)} ${result.status}.`);
+      this.refresh(`${shortId(result.id)} ${result.status}.`);
     } catch (error) {
       this.options.showError(error);
       this.refresh("Unable to stop Background Job.");
@@ -117,8 +118,4 @@ export class BackgroundJobManagerController {
       this.killing = false;
     }
   }
-}
-
-function shortJobId(jobId: string): string {
-  return jobId.startsWith("job_") ? jobId.slice(4, 12) : jobId.slice(0, 8);
 }

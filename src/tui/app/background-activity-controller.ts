@@ -1,5 +1,6 @@
 import type { BackgroundJobClient, BackgroundJobSummary } from "@/jobs";
 import type { KanaSubagentClient, KanaSubagentSummary, KanaUserTaskManager } from "@/kana";
+import { shortId } from "@/utils";
 import type { Editor, EditorBackgroundActivityItem, EditorUserTaskItem } from "../components";
 import type { Tui } from "../runtime";
 
@@ -62,7 +63,7 @@ export class BackgroundActivityController {
     return (this.userTasks?.list() ?? [])
       .filter((task) => task.status === "pending")
       .map((task) => ({
-        id: task.id.startsWith("task_") ? task.id.slice(5, 13) : task.id.slice(0, 8),
+        id: shortId(task.id),
         label: task.task,
       }));
   }
@@ -79,7 +80,7 @@ export class BackgroundActivityController {
 function toSubagentItem(subagent: KanaSubagentSummary): EditorBackgroundActivityItem {
   return {
     kind: "subagent",
-    id: shortSubagentId(subagent.id),
+    id: shortId(subagent.id),
     status: subagent.status,
     label: subagent.label,
   };
@@ -88,7 +89,7 @@ function toSubagentItem(subagent: KanaSubagentSummary): EditorBackgroundActivity
 function toJobItem(job: BackgroundJobSummary): EditorBackgroundActivityItem {
   return {
     kind: "job",
-    id: shortJobId(job.id),
+    id: shortId(job.id),
     status: job.status,
     label: job.label,
   };
@@ -96,12 +97,4 @@ function toJobItem(job: BackgroundJobSummary): EditorBackgroundActivityItem {
 
 function isActiveJob(job: BackgroundJobSummary): boolean {
   return job.status === "running" || job.status === "stopping";
-}
-
-function shortSubagentId(id: string): string {
-  return id.startsWith("agent_") ? id.slice(6, 14) : id.slice(0, 8);
-}
-
-function shortJobId(id: string): string {
-  return id.startsWith("job_") ? id.slice(4, 12) : id.slice(0, 8);
 }

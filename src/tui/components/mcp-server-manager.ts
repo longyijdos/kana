@@ -1,4 +1,4 @@
-import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
+import { color, dim, setsEqual, singleLine, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import {
   isDown,
@@ -156,7 +156,7 @@ export class McpServerManager implements Component {
     for (const { item: server, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
       const checkbox = server.enabled ? "[x]" : "[ ]";
-      const label = `${marker}${checkbox} ${formatSingleLine(server.id)}  ${server.type}`;
+      const label = `${marker}${checkbox} ${singleLine(server.id)}  ${server.type}`;
 
       lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
 
@@ -181,20 +181,12 @@ export class McpServerManager implements Component {
   }
 }
 
-function setsEqual(first: ReadonlySet<string>, second: ReadonlySet<string>): boolean {
-  return first.size === second.size && [...first].every((value) => second.has(value));
-}
-
-function formatSingleLine(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
-}
-
 function formatServerDetail(server: McpServerManagerItem): string {
   return server.type === "http"
-    ? `  url: ${formatSingleLine(server.url)}${
+    ? `  url: ${singleLine(server.url)}${
         server.oauth === undefined ? "" : ` · OAuth: ${formatOAuthStatus(server.oauth)}`
       }`
-    : `  command: ${[server.command, ...server.args].map(formatSingleLine).join(" ")}`;
+    : `  command: ${[server.command, ...server.args].map(singleLine).join(" ")}`;
 }
 
 function formatOAuthStatus(status: McpServerOAuthStatus): string {

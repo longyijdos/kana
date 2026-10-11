@@ -1,6 +1,7 @@
 import type { Agent } from "@/agent";
 import { addModelUsage, type ModelUsage } from "@/core";
 import type { Editor, StatusLineState } from "../components";
+import { formatInteger } from "../render";
 import { calculateContextUsedPercent } from "../utils/context-usage";
 import type { RunPhase } from "./status-phase";
 
@@ -78,10 +79,4 @@ function formatModelUsage(usage: ModelUsage): string {
   ]
     .filter((part): part is string => Boolean(part))
     .join(" ");
-}
-
-function formatInteger(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(value);
 }

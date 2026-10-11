@@ -1,4 +1,4 @@
-import { color, dim, truncateToWidth } from "../../render";
+import { capitalize, color, dim, truncateToWidth } from "../../render";
 import { tuiTheme } from "../../theme";
 
 export type StatusLineState = {
@@ -29,7 +29,7 @@ export function renderStatusLine(
 }
 
 function phaseText(phase: string): string {
-  const text = phase === "turn_limit" ? "Turn limit" : capitalizeFirst(phase);
+  const text = phase === "turn_limit" ? "Turn limit" : capitalize(phase);
 
   switch (phase) {
     case "error":
@@ -48,10 +48,6 @@ function phaseText(phase: string): string {
     default:
       return color(text, tuiTheme.statusIdle);
   }
-}
-
-function capitalizeFirst(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function formatCwd(cwd: string): string {

@@ -303,7 +303,7 @@ async function applyAssembledPrompt(
   context.callableTools = prompt.callableTools?.slice();
 
   for (const snapshot of prompt.context) {
-    throwIfAborted(signal);
+    signal?.throwIfAborted();
     const previous = findLatestRuntimeContext(context.messages, snapshot);
     if (!previous && snapshot.status === "inactive") {
       continue;
@@ -319,12 +319,6 @@ async function applyAssembledPrompt(
     await commit?.(structuredClone(message));
     context.messages.push(message);
     newMessages.push(message);
-  }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
-    throw signal.reason ?? new Error("Prompt assembly aborted.");
   }
 }
 

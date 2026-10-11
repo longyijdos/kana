@@ -11,7 +11,7 @@ import {
   type ScheduledMessageManagerItem,
   TextPrompt,
 } from "../components";
-import { stripTerminalControlSequences } from "../render";
+import { pad2, singleLine } from "../render";
 import type { Component, Tui } from "../runtime";
 import type { BottomAreaController } from "./bottom-area-controller";
 
@@ -174,7 +174,7 @@ export class ScheduledMessageManagerController {
       title: "Delete scheduled message?",
       detail: [
         `${formatLocalTimestamp(item.dueAt)} · ${item.origin === "agent" ? "Kana" : "you"}`,
-        formatSingleLine(item.message),
+        singleLine(item.message),
       ].join("\n"),
       options: [
         { value: "no", label: "No, keep it" },
@@ -286,19 +286,11 @@ function parseCustomDelay(value: string): number | string {
 }
 
 function formatLocalTimestamp(date: Date): string {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${[
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${[
     date.getHours(),
     date.getMinutes(),
     date.getSeconds(),
   ]
-    .map(pad)
+    .map(pad2)
     .join(":")}`;
-}
-
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
-}
-
-function formatSingleLine(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }

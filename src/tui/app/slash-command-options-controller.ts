@@ -4,6 +4,7 @@ import type {
   KanaUsageScope,
   KanaUserTaskManager,
 } from "@/kana";
+import { shortId } from "@/utils";
 import { ChoicePrompt, ContentViewer, type Editor, TextPrompt } from "../components";
 import { summarizeText } from "../render";
 import type { Component } from "../runtime";
@@ -82,7 +83,7 @@ export class SlashCommandOptionsController {
       detail: tasks.length === 0 ? "No pending tasks. Press Esc to close." : undefined,
       options: tasks.map((task) => ({
         value: task.id,
-        label: `${task.id.slice(5, 13)} · ${summarizeText(task.task, 64)}`,
+        label: `${shortId(task.id)} · ${summarizeText(task.task, 64)}`,
       })),
       defaultValue: defaultTaskId ?? tasks[0]?.id ?? "",
       onSelect: (taskId) => {
@@ -97,7 +98,7 @@ export class SlashCommandOptionsController {
   private showTaskDetail(taskId: string, description: string): void {
     const viewer = new ContentViewer(
       {
-        title: `Task ${taskId.slice(5, 13)}`,
+        title: `Task ${shortId(taskId)}`,
         render: () => [description],
       },
       { onClose: () => this.replace(viewer, () => this.showTaskAction(taskId, description)) },
@@ -107,7 +108,7 @@ export class SlashCommandOptionsController {
 
   private showTaskAction(taskId: string, description: string): void {
     const prompt = new ChoicePrompt<"view" | "done" | "return">({
-      title: `Task ${taskId.slice(5, 13)}`,
+      title: `Task ${shortId(taskId)}`,
       options: [
         { value: "view", label: "View full task" },
         { value: "done", label: "Submit completed result" },

@@ -1,5 +1,6 @@
 import type { BackgroundJobPeekSnapshot, BackgroundJobSummary } from "@/jobs";
-import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
+import { shortId } from "@/utils";
+import { color, dim, singleLine, stripTerminalControlSequences, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import {
   isDown,
@@ -123,7 +124,7 @@ export class BackgroundJobManager implements Component {
     }
     for (const { item: job, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
-      const label = `${marker}${shortJobId(job.id)} · ${job.status} · ${singleLine(job.label)}`;
+      const label = `${marker}${shortId(job.id)} · ${job.status} · ${singleLine(job.label)}`;
       lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
     }
     if (viewport.hiddenAfter > 0) {
@@ -132,7 +133,7 @@ export class BackgroundJobManager implements Component {
 
     const selected = this.selectedJob;
     if (selected) {
-      lines.push(dim(`${shortJobId(selected.id)} output tail (non-consuming)`));
+      lines.push(dim(`${shortId(selected.id)} output tail (non-consuming)`));
       lines.push(...this.renderPreview(width, availableHeight, lines.length));
     }
     if (this.notice) {
@@ -193,12 +194,4 @@ function cloneJob(job: BackgroundJobSummary): BackgroundJobSummary {
 
 function isActive(job: BackgroundJobSummary): boolean {
   return job.status === "running" || job.status === "stopping";
-}
-
-function shortJobId(jobId: string): string {
-  return jobId.startsWith("job_") ? jobId.slice(4, 12) : jobId.slice(0, 8);
-}
-
-function singleLine(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }
