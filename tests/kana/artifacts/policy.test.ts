@@ -106,7 +106,7 @@ describe("Kana tool-result artifacts", () => {
       {
         tools: [shell],
         toolContentByteLimit: 1_024,
-        toolResultPolicy: createKanaToolResultArtifactPolicy({ store }),
+        toolResultPolicies: [createKanaToolResultArtifactPolicy({ store })],
       },
       (event) => {
         if (event.type === "tool_execution_end") {
@@ -225,11 +225,13 @@ describe("Kana tool-result artifacts", () => {
         tools: [tool],
         toolContentByteLimit: 768,
         limitToolContent: () => "ordinary bounded fallback",
-        toolResultPolicy: createKanaToolResultArtifactPolicy({
-          store: createRecordingStore(async () => {
-            throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+        toolResultPolicies: [
+          createKanaToolResultArtifactPolicy({
+            store: createRecordingStore(async () => {
+              throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+            }),
           }),
-        }),
+        ],
         onMessageCommitted: (message) => {
           committed.push(message);
         },

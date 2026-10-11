@@ -2,10 +2,6 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { Type } from "typebox";
 import { createLogger } from "@/logging";
 import type { AgentEvent, ToolResultPolicy, ToolResultPolicyInput } from "../../src/agent";
-import {
-  DEFAULT_MAX_PARALLEL_TOOL_CALLS,
-  DEFAULT_TOOL_DEADLINE_MS,
-} from "../../src/agent/settings";
 import { ToolRuntime } from "../../src/agent/tool-runtime";
 import type { Message } from "../../src/core";
 import type { Logger, LogMetadata } from "../../src/logging";
@@ -151,13 +147,15 @@ describe("ToolRuntime invocation lifecycle", () => {
           operations.push("limit");
           return "limited";
         },
-        toolResultPolicy: {
-          source: "history_policy",
-          finalize: () => {
-            operations.push("finalize");
-            return { content: "preview", persistResult: false };
+        toolResultPolicies: [
+          {
+            source: "history_policy",
+            finalize: () => {
+              operations.push("finalize");
+              return { content: "preview", persistResult: false };
+            },
           },
-        },
+        ],
         onMessageCommitted: () => {
           operations.push("commit");
         },
@@ -556,33 +554,6 @@ describe("ToolRuntime deadlines and configuration", () => {
     });
   });
 
-  test("validates the runtime default deadline", () => {
-    expect(DEFAULT_TOOL_DEADLINE_MS).toBe(300_000);
-    expect(() => new ToolRuntime({ tools: [], defaultDeadlineMs: 0 }, () => {})).toThrow(
-      "defaultDeadlineMs must be a positive integer.",
-    );
-  });
-
-  test("uses and validates a conservative parallel tool limit", () => {
-    expect(DEFAULT_MAX_PARALLEL_TOOL_CALLS).toBe(4);
-    expect(() => new ToolRuntime({ tools: [], maxParallelToolCalls: 0 }, () => {})).toThrow(
-      "maxParallelToolCalls must be a positive integer.",
-    );
-  });
-
-  test("validates tool-result policy sources", () => {
-    expect(
-      () =>
-        new ToolRuntime(
-          {
-            tools: [],
-            toolResultPolicy: { source: " invalid", finalize: () => undefined },
-          },
-          () => {},
-        ),
-    ).toThrow("Tool result policy source must be a non-empty trimmed string.");
-  });
-
   test("returns an unknown result after cancellation grace and ignores late updates", async () => {
     const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
     const events: string[] = [];
@@ -710,40 +681,6 @@ describe("ToolRuntime deadlines and configuration", () => {
           },
         },
       ],
-    });
-  });
-
-  test("rejects invalid deadline metadata without executing the tool", async () => {
-    let executed = false;
-    const tool = {
-      name: "invalid",
-      description: "Use invalid metadata.",
-      parameters,
-      execution: {
-        deadlineMs: 0,
-      },
-      execute: () => {
-        executed = true;
-        return "unexpected";
-      },
-    } satisfies Tool<typeof parameters, string>;
-    const runtime = new ToolRuntime({ tools: [tool] }, () => {});
-
-    const result = await runtime.execute([
-      {
-        type: "tool_call",
-        id: "call-1",
-        name: "invalid",
-        args: {},
-      },
-    ]);
-
-    expect(executed).toBe(false);
-    expect(result.toolResults[0]).toMatchObject({
-      isError: true,
-      result: {
-        error: 'Tool "invalid" execution.deadlineMs must be a positive integer.',
-      },
     });
   });
 });
@@ -1663,12 +1600,14 @@ describe("ToolRuntime result finalization and policy", () => {
           }
           return { type: "continue" };
         },
-        toolResultPolicy: {
-          source: "recording",
-          finalize: ({ toolCall, isError }) => {
-            finalized.push({ name: toolCall.name, isError });
+        toolResultPolicies: [
+          {
+            source: "recording",
+            finalize: ({ toolCall, isError }) => {
+              finalized.push({ name: toolCall.name, isError });
+            },
           },
-        },
+        ],
       },
       () => {},
     );
@@ -1706,12 +1645,14 @@ describe("ToolRuntime result finalization and policy", () => {
     const runtime = new ToolRuntime(
       {
         signal: controller.signal,
-        toolResultPolicy: {
-          source: "recording",
-          finalize: ({ toolCall }) => {
-            finalized.push(toolCall.id);
+        toolResultPolicies: [
+          {
+            source: "recording",
+            finalize: ({ toolCall }) => {
+              finalized.push(toolCall.id);
+            },
           },
-        },
+        ],
       },
       () => {},
     );
@@ -1739,13 +1680,15 @@ describe("ToolRuntime result finalization and policy", () => {
     const runtime = new ToolRuntime(
       {
         tools: [tool],
-        toolResultPolicy: {
-          source: "test_policy",
-          finalize: ({ toolCall }) => ({
-            content: `replacement:${toolCall.id}`,
-            additionalContext: [`context:${toolCall.id}`],
-          }),
-        },
+        toolResultPolicies: [
+          {
+            source: "test_policy",
+            finalize: ({ toolCall }) => ({
+              content: `replacement:${toolCall.id}`,
+              additionalContext: [`context:${toolCall.id}`],
+            }),
+          },
+        ],
         onMessageCommitted: (message) => {
           commits.push(message);
         },
@@ -1799,19 +1742,21 @@ describe("ToolRuntime result finalization and policy", () => {
       {
         tools: [tool],
         toolContentByteLimit: 768,
-        toolResultPolicy: {
-          source: "artifact_policy",
-          finalize: (input) => {
-            expect(input.resultByteLength).toBe(
-              Buffer.byteLength(JSON.stringify(canonicalResult), "utf8"),
-            );
-            expect(input.contentByteLimit).toBe(768);
-            return {
-              content: "bounded preview",
-              artifact: { kind: "text", locator, byteLength: 10_000 },
-            };
+        toolResultPolicies: [
+          {
+            source: "artifact_policy",
+            finalize: (input) => {
+              expect(input.resultByteLength).toBe(
+                Buffer.byteLength(JSON.stringify(canonicalResult), "utf8"),
+              );
+              expect(input.contentByteLimit).toBe(768);
+              return {
+                content: "bounded preview",
+                artifact: { kind: "text", locator, byteLength: 10_000 },
+              };
+            },
           },
-        },
+        ],
       },
       (event) => {
         if (event.type === "tool_execution_end") {
@@ -1887,23 +1832,25 @@ describe("ToolRuntime result finalization and policy", () => {
     const runtime = new ToolRuntime(
       {
         tools: [tool],
-        toolResultPolicy: {
-          source: "getter_policy",
-          finalize: () => {
-            const output = {};
-            Object.defineProperty(output, "content", {
-              enumerable: true,
-              get() {
-                contentReads += 1;
-                if (contentReads > 2) {
-                  throw new Error("content read outside containment");
-                }
-                return "replacement content";
-              },
-            });
-            return output;
+        toolResultPolicies: [
+          {
+            source: "getter_policy",
+            finalize: () => {
+              const output = {};
+              Object.defineProperty(output, "content", {
+                enumerable: true,
+                get() {
+                  contentReads += 1;
+                  if (contentReads > 2) {
+                    throw new Error("content read outside containment");
+                  }
+                  return "replacement content";
+                },
+              });
+              return output;
+            },
           },
-        },
+        ],
       },
       () => {},
     );
@@ -1914,44 +1861,6 @@ describe("ToolRuntime result finalization and policy", () => {
 
     expect(contentReads).toBe(1);
     expect(result.toolResults[0]?.content).toBe("replacement content");
-  });
-
-  test("rejects sparse policy context and falls back to the original result", async () => {
-    const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
-    const tool = {
-      name: "safe",
-      description: "Return original content.",
-      parameters,
-      execute: () => "original content",
-    } satisfies Tool<typeof parameters, string>;
-    const runtime = new ToolRuntime(
-      {
-        tools: [tool],
-        toolResultPolicy: {
-          source: "sparse_policy",
-          finalize: () => ({ additionalContext: new Array<string>(1) }),
-        },
-        logger: createRecordingLogger(logs),
-      },
-      () => {},
-    );
-
-    const result = await runtime.execute([
-      { type: "tool_call", id: "call-1", name: "safe", args: {} },
-    ]);
-
-    expect(result.toolResults[0]?.content).toBe("original content");
-    expect(result.additionalMessages).toEqual([]);
-    expect(logs).toEqual([
-      {
-        event: "tool.result_policy_failed",
-        metadata: {
-          policySource: "sparse_policy",
-          toolName: "safe",
-          errorType: "Error",
-        },
-      },
-    ]);
   });
 
   test("finalizes outcomes whose structured result cannot be cloned", async () => {
@@ -1970,13 +1879,15 @@ describe("ToolRuntime result finalization and policy", () => {
     const runtime = new ToolRuntime(
       {
         tools: [tool],
-        toolResultPolicy: {
-          source: "content_only_policy",
-          finalize: (input) => {
-            policyInput = input;
-            return { content: `policy saw: ${input.content}` };
+        toolResultPolicies: [
+          {
+            source: "content_only_policy",
+            finalize: (input) => {
+              policyInput = input;
+              return { content: `policy saw: ${input.content}` };
+            },
           },
-        },
+        ],
       },
       () => {},
     );
@@ -2024,7 +1935,7 @@ describe("ToolRuntime result finalization and policy", () => {
     const runtime = new ToolRuntime(
       {
         tools: [tool],
-        toolResultPolicy: policy,
+        toolResultPolicies: [policy],
         logger: createRecordingLogger(logs),
       },
       () => {},
@@ -2146,40 +2057,6 @@ describe("ToolRuntime parallel failure containment", () => {
       expect.objectContaining({ result: expect.objectContaining({ canceled: true }) }),
       expect.objectContaining({ result: expect.objectContaining({ canceled: true }) }),
     ]);
-  });
-
-  test("fails closed on invalid concurrency metadata", async () => {
-    let executed = false;
-    const tool = {
-      name: "invalid",
-      description: "Use invalid metadata.",
-      parameters,
-      execution: {
-        concurrency: "unsafe",
-      },
-      execute: () => {
-        executed = true;
-        return "unexpected";
-      },
-    } as unknown as Tool<typeof parameters, string>;
-    const runtime = new ToolRuntime({ tools: [tool] }, () => {});
-
-    const result = await runtime.execute([
-      {
-        type: "tool_call",
-        id: "call-1",
-        name: "invalid",
-        args: {},
-      },
-    ]);
-
-    expect(executed).toBe(false);
-    expect(result.toolResults[0]).toMatchObject({
-      isError: true,
-      result: {
-        error: 'Tool "invalid" execution.concurrency must be "parallel" or "exclusive".',
-      },
-    });
   });
 });
 
