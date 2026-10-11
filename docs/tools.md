@@ -85,9 +85,9 @@ If a call ignores cancellation past the grace period, ToolRuntime stops acceptin
 
 ## Tool-result policies and artifacts
 
-After normalization, ToolRuntime applies each `ToolResultPolicy` in order to success, failure, denial, cancellation, timeout, and unknown outcomes. A policy receives a cloned read-only call, current model-visible content and error state, structured-result byte size when measurable, and the active content limit. Arbitrary structured host data itself does not cross this advisory boundary.
+After normalization, ToolRuntime applies each `ToolResultPolicy` in order to success, failure, denial, cancellation, timeout, and unknown outcomes. A policy receives the readonly call, current model-visible content and error state, structured-result byte size when measurable, and the active content limit. Arbitrary structured host data itself does not cross this advisory boundary.
 
-A policy may replace model-visible content, append source-attributed internal context, disable durable structured-result retention, or attach one validated artifact reference. It cannot change tool identity, arguments, canonical live result, or error state. Invalid policy output or an exception produces safe diagnostics and preserves the preceding pipeline state. Accepted output is copied into a plain detached snapshot so getters, proxies, sparse arrays, or later mutation cannot escape containment.
+A policy may replace model-visible content, append source-attributed internal context, disable durable structured-result retention, or attach one validated artifact reference. It cannot change tool identity, arguments, canonical live result, or error state. Policies are trusted product code typed against `ToolResultPolicyResult`; an exception produces safe diagnostics and preserves the preceding pipeline state.
 
 All sibling results from one assistant message commit in model order before any `tool_result_policy` context. Each Agent owns its policy instances and mutable policy state. Accepted human input and Agent reset clear that state.
 

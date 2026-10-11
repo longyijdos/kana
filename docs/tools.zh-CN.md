@@ -85,9 +85,9 @@ Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补�
 
 ## 工具结果策略与 artifact
 
-结果规范化后，ToolRuntime 会依次对成功、失败、拒绝、取消、timeout 与 unknown 结果应用每个 `ToolResultPolicy`。策略收到已克隆的只读调用、当前模型可见 content 与错误状态、可测量时的结构化结果字节数，以及当前 content limit；任意结构化 host 数据本身不穿过该建议边界。
+结果规范化后，ToolRuntime 会依次对成功、失败、拒绝、取消、timeout 与 unknown 结果应用每个 `ToolResultPolicy`。策略收到只读的调用、当前模型可见 content 与错误状态、可测量时的结构化结果字节数，以及当前 content limit；任意结构化 host 数据本身不穿过该建议边界。
 
-策略可以替换模型可见 content、追加带 source 的内部上下文、关闭持久结构化结果，或附加一个经过校验的 artifact 引用。它不能改变工具身份、参数、canonical 实时 result 或错误状态。策略返回非法值或抛错时会产生安全诊断，并保留此前 pipeline 状态。接受的输出会复制为普通分离快照，使 getter、Proxy、稀疏数组或后续修改无法逃逸 containment。
+策略可以替换模型可见 content、追加带 source 的内部上下文、关闭持久结构化结果，或附加一个经过校验的 artifact 引用。它不能改变工具身份、参数、canonical 实时 result 或错误状态。策略是按 `ToolResultPolicyResult` 类型编写的受信产品代码；抛错时会产生安全诊断，并保留此前 pipeline 状态。
 
 同一 assistant 消息的全部 sibling result 会先按模型顺序提交，之后才提交 `tool_result_policy` context。每个 Agent 持有自己的策略实例和可变策略状态；接受人类输入或 Agent reset 会清空该状态。
 

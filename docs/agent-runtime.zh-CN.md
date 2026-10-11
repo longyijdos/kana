@@ -46,7 +46,7 @@ agent_start
   → agent_end
 ```
 
-两种 stream 都支持 `for await` 与独立的 `result()` promise。Agent listener 和 stream consumer 获得彼此独立的事件副本；构造消息与 `Agent.state` 同样不共享内部可变历史。Listener 异常记录为 `agent.listener_failed`，不会终止 run。
+两种 stream 都支持 `for await` 与独立的 `result()` promise。事件、消息与状态都是按引用共享的只读值：Agent 发布后不再修改它们，使用方也不得修改收到的值。Listener 异常记录为 `agent.listener_failed`，不会终止 run。
 
 ## Prompt assembly 与 runtime context
 
@@ -79,7 +79,7 @@ Runtime-context 消息是权威状态，不是对话。稳定 system 指令只�
 发出 agent_end
 ```
 
-独立 `Agent` 与 `runAgentLoop` 默认最多八个 turn。Kana 配置 `max_turns = -1` 表示不限；只接受 `-1` 或正整数。最后一个允许 turn 仍执行了工具时，run 以 `turn_limit` 结束。以 `length` 结束的消息不会执行工具；没有 assistant 内容的 provider 失败不会增加空消息；中止或失败的部分 assistant 消息会保留安全的文本或 thinking，但在进入历史与 journal 提交前移除未执行调用，即使其参数已完整。
+独立 `Agent` 与 `runAgentLoop` 默认最多八个 turn。`-1` 表示不限，Kana 即如此配置；其他非正数会在构建 Agent 之前被 Kana 的配置解析拒绝。最后一个允许 turn 仍执行了工具时，run 以 `turn_limit` 结束。以 `length` 结束的消息不会执行工具；没有 assistant 内容的 provider 失败不会增加空消息；中止或失败的部分 assistant 消息会保留安全的文本或 thinking，但在进入历史与 journal 提交前移除未执行调用，即使其参数已完整。
 
 工具校验、审批、并发、deadline、事件时机、结果策略与内置行为归[工具与执行](tools.zh-CN.md)所有。Loop 会等待该边界，并且只用按模型顺序提交的结果开始下一 model step。
 
@@ -96,9 +96,9 @@ Agent 持有一个内存 inbox，其中有两条 lane：
 
 Agent 不会自行从 `next-turn` 启动新 run。Kana 的[对话运行时](conversation-runtime.zh-CN.md)观察并 drain 该 lane，添加 scheduled/Goal/Job delivery metadata，并发布前端队列快照，不会创建第二条队列。
 
-`Agent.state` 暴露模型、已装配 system prompt 与工具、历史、inbox、当前运行状态、流式 assistant message、pending tool-call ID、context checkpoint 和最终错误的分离快照。`waitForIdle()` 覆盖 journal closure 与注入的后处理，不只等待 provider 和工具执行。
+`Agent.state` 以只读视图暴露模型、已装配 system prompt 与工具、历史、inbox、当前运行状态、流式 assistant message、pending tool-call ID、context checkpoint 和最终错误。`agent.settings` 暴露解析后的运行设置，即模型能力与配置上限、默认值的组合，loop 和工具运行时直接使用这份设置。`estimateContextTokens()` 按需遍历历史进行估算，因此状态显示优先使用 `turn_end` 携带的估算值。`waitForIdle()` 覆盖 journal closure 与注入的后处理，不只等待 provider 和工具执行。
 
-`Agent.getStableContext()` 返回分离的消息、与消息配套的 context checkpoint、已装配 system prompt，以及当前模型、图片输入策略和上下文／输出上限。快照在初始 run 输入接受后、每次完整 `turn_end` 发布前，以及已消费的 `turn_input` 发布前推进。流式输出与单项工具提交不会推进快照；失败或截断响应中未执行的工具调用不能构成完整边界。Loop 独立于 journal-backed history 更新提供完整上下文。构造、reset 和成功的空闲手动压缩会初始化或刷新快照。
+`Agent.getStableContext()` 返回只读的消息、与消息配套的 context checkpoint、已装配 system prompt，以及当前模型、图片输入策略和上下文／输出上限。快照在初始 run 输入接受后、每次完整 `turn_end` 发布前，以及已消费的 `turn_input` 发布前推进。流式输出与单项工具提交不会推进快照；失败或截断响应中未执行的工具调用不能构成完整边界。Loop 独立于 journal-backed history 更新提供完整上下文。构造、reset 和成功的空闲手动压缩会初始化或刷新快照。
 
 ## 上下文预算与压缩
 
