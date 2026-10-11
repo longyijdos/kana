@@ -248,7 +248,7 @@ describe("Kana tool-result artifacts", () => {
     expect(liveResult).toBe(canonicalResult);
     expect(result.toolResults[0]).toMatchObject({ content: "ordinary bounded fallback" });
     expect(result.toolResults[0]).not.toHaveProperty("result");
-    expect(committed).toEqual(result.toolResults);
+    expect(committed).toEqual([...result.toolResults]);
   });
 
   test("preserves oversized structured results without spilling inline text", async () => {

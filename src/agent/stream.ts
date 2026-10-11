@@ -4,10 +4,10 @@ import type { AgentEvent } from "./events";
 export type AgentDoneEvent = Extract<AgentEvent, { type: "agent_end" }>;
 export type AgentStreamEvent = Exclude<AgentEvent, AgentDoneEvent>;
 
-type ReadableAgentEventStream = ReadableEventStream<AgentEvent, Message[]>;
+type ReadableAgentEventStream = ReadableEventStream<AgentEvent, readonly Message[]>;
 
 export class AgentEventStream implements ReadableAgentEventStream {
-  private readonly stream = new EventStream<AgentEvent, Message[]>(
+  private readonly stream = new EventStream<AgentEvent, readonly Message[]>(
     "Cannot push to a closed agent event stream.",
   );
 
@@ -23,7 +23,7 @@ export class AgentEventStream implements ReadableAgentEventStream {
     this.stream.error(error);
   }
 
-  result(): Promise<Message[]> {
+  result(): Promise<readonly Message[]> {
     return this.stream.result();
   }
 

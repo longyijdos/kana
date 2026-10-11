@@ -43,7 +43,7 @@ type HostedSessionIdentity = {
 export type HostedSessionAgentBinding = {
   session?: HostedSessionIdentity;
   logger: Logger;
-  messages?: Message[];
+  messages?: readonly Message[];
   contextCheckpoint?: ContextCheckpoint;
   artifactStore?: KanaSessionArtifactStore;
   backgroundJobs?: BackgroundJobClient;
@@ -73,7 +73,7 @@ type HostedSession = {
   journal?: KanaSessionJournal;
   logger: Logger;
   persistent: boolean;
-  pendingForkMessages?: Message[];
+  pendingForkMessages?: readonly Message[];
   pendingForkCheckpoint?: ContextCheckpoint;
   pendingForkTodoState?: KanaTodoItem[];
   disposal?: Promise<void>;
@@ -198,7 +198,7 @@ export class HostedSessionRegistry {
   }
 
   forkSession(
-    messages: Message[],
+    messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
   ): { id: string; todoState: KanaTodoItem[] } {

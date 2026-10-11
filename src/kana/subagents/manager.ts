@@ -37,13 +37,13 @@ export type KanaSubagentSnapshot = KanaSubagentSummary & {
 
 export type KanaSubagentInspection = KanaSubagentSnapshot & {
   task: string;
-  messages: Message[];
+  messages: readonly Message[];
 };
 
 export type KanaSubagentRunResult = {
   status: Exclude<KanaSubagentStatus, "running" | "unknown">;
   output: string;
-  messages: Message[];
+  messages: readonly Message[];
   model?: { provider: string; model: string };
   terminalReason?: AgentEndReason;
   error?: string;
@@ -105,7 +105,7 @@ type SubagentRecord = {
   settlement: Promise<void>;
   resolveSettlement(): void;
   output: string;
-  messages: Message[];
+  messages: readonly Message[];
   readLiveSnapshot?: () => Pick<KanaSubagentRunResult, "messages" | "model">;
   error?: string;
   waiters: Set<() => void>;

@@ -348,7 +348,7 @@ describe("TUI model selection", () => {
 
 type AgentStub = {
   state: {
-    messages: Message[];
+    messages: readonly Message[];
     model: {
       metadata: {
         provider: string;
@@ -372,7 +372,7 @@ type AppInternals = {
 };
 
 function createAgentStub(options: {
-  messages: Message[];
+  messages: readonly Message[];
   provider: string;
   model: string;
 }): AgentStub {

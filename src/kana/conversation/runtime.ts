@@ -32,7 +32,7 @@ export type {
 
 export type ConversationSessionSnapshot = {
   id: string;
-  messages: Message[];
+  messages: readonly Message[];
   timeline: KanaSessionTimelineEntry[];
   todoState?: KanaTodoItem[];
   contextCheckpoint?: ContextCheckpoint;
@@ -102,7 +102,7 @@ type ConversationBeforeToolExecutionHook = (
 type CreateConversationAgentOptions<TConfiguration> = {
   beforeToolExecution: BeforeToolExecutionHook;
   bindBeforeToolExecution: (agent: ConversationAgentIdentity) => BeforeToolExecutionHook;
-  messages?: Message[];
+  messages?: readonly Message[];
   inbox?: AgentInboxSnapshot;
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
@@ -119,7 +119,7 @@ export type ConversationRuntimeOptions<TConfiguration> = {
   createAgent: (options: CreateConversationAgentOptions<TConfiguration>) => Agent;
   createNewSession: () => { id: string };
   forkSession: (
-    messages: Message[],
+    messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
   ) => { id: string; todoState?: KanaTodoItem[] };
@@ -409,7 +409,7 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   private buildAgent(
-    messages?: Message[],
+    messages?: readonly Message[],
     contextCheckpoint?: ContextCheckpoint,
     configuration?: TConfiguration,
     sessionId = this.sessionData?.id,
@@ -460,7 +460,7 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   private replaceAgent(
-    messages?: Message[],
+    messages?: readonly Message[],
     contextCheckpoint?: ContextCheckpoint,
     configuration?: TConfiguration,
   ): void {

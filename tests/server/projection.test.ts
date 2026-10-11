@@ -281,15 +281,6 @@ describe("server event projection", () => {
       expect(serialized).not.toContain("providerState");
       expect(timeline[1]).toMatchObject({ message: user });
       expect(assistant.content[0]!.providerState.value).toBe("opaque");
-      const projectedUser = session.messages.find((message) => message.role === "user")!;
-      if (projectedUser.role === "user") projectedUser.images![0]!.data = "changed";
-      const projectedTodo = session.timeline.find((entry) => entry.type === "todo_state")!;
-      if (projectedTodo.type === "todo_state") projectedTodo.items[0]!.content = "changed";
-      const next = projection.snapshot().session!;
-      expect(next.messages[0]).toEqual(user);
-      expect(next.timeline.find((entry) => entry.type === "todo_state")).toEqual(
-        timeline.find((entry) => entry.type === "todo_state"),
-      );
     } finally {
       await f.close();
     }

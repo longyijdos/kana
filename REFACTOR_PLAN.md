@@ -159,6 +159,40 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 **目标**：消息和事件在整个系统里按引用传递；去掉流式输出路径上 O(n²) 的拷贝。
 
+### 细化设计（开工前写定）
+
+**基线**（`bun run bench:agent-stream`，OpenAI-compatible adapter + Agent + 一个订阅者）：
+
+| 场景 | 增量数 | 字符数 | 耗时 |
+| --- | --- | --- | --- |
+| 短回复 | 200 | 3,200 | 5 ms |
+| 长回复 | 4,000 | 64,000 | 118 ms |
+| 超长回复 | 12,000 | 192,000 | 1,042 ms |
+
+增量数变为 3 倍时耗时约变为 9 倍，呈二次方增长。
+
+**类型**
+- `core` 的消息、content、事件、用量类型全部改为 readonly 字段，数组改为 `readonly T[]`
+- `ModelContext.messages` 改为 `readonly Message[]`
+- 试改时 tsc 报出 82 个写入点，全部是"正在构建的消息"或测试代码
+
+**`AssistantMessageBuilder`（`core`）**
+- provider 构建 assistant message 的唯一入口
+- 内部持有 content 数组；每次增量**替换**发生变化的那个 content 块，不原地修改
+- `snapshot()` 只浅拷贝 content 数组，开销为 O(块数)，与文本长度无关，未变化的块在新旧快照间共享
+- 所有 provider 和 MockModel 都改用它，阶段 4 的 provider 共享层在此基础上继续建设
+
+**事件**
+- 快照变得廉价且不可变之后，事件里的 `snapshot` 不再有拷贝成本，所以保留现有结构，不做剥离（与原计划不同，原因同上）
+- agent 把事件按引用发布给 listener 和 stream
+
+**Agent 状态**
+- `state.messages` 直接返回内部数组（追加时总是生成新数组，所以可以安全共享）
+- `estimatedContextTokens` 每次读取都要遍历全部历史，改为单独的 `contextUsage()` 方法，调用方按需计算
+
+**不在本阶段处理**
+- `KanaConfig` 的拷贝：`applyAgentConfiguration` 依赖修改 draft，需要和阶段 5 的配置重写一起处理
+
 ### 已知事实
 - 已提交的消息在 src 中从未被原地修改，唯一的修改点是 provider 正在构建的那条 assistant message
 - provider 事件里的 `snapshot` 只有 `agent/loop.ts` 在读

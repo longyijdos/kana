@@ -66,19 +66,19 @@ export type ToolRuntimeConfig = {
 };
 
 export type ToolRuntimeResult = {
-  toolResults: ToolResultMessage[];
-  additionalMessages: UserMessage[];
+  toolResults: readonly ToolResultMessage[];
+  additionalMessages: readonly UserMessage[];
   abortRun: boolean;
 };
 
 type FinalizedToolResult = {
   toolResult: ToolResultMessage;
-  additionalMessages: UserMessage[];
+  additionalMessages: readonly UserMessage[];
 };
 
 type AppliedToolResultPolicies = {
   content: string;
-  additionalMessages: UserMessage[];
+  additionalMessages: readonly UserMessage[];
   persistResult: boolean;
   result: unknown;
   artifact?: ToolResultArtifact;

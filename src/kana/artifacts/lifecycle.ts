@@ -25,7 +25,7 @@ import { getKanaSessionArtifactDirectory, getKanaWorkspaceArtifactDirectory } fr
 const ORPHAN_CLEANUP_GRACE_MS = 24 * 60 * 60 * 1_000;
 
 export type ForkKanaSessionArtifactsResult = {
-  messages: Message[];
+  messages: readonly Message[];
   contextCheckpoint?: ContextCheckpoint;
   copiedArtifactCount: number;
 };
@@ -113,11 +113,7 @@ export function forkKanaSessionArtifacts(options: {
   cwd: string;
   env?: NodeJS.ProcessEnv;
 }): ForkKanaSessionArtifactsResult {
-  const messages: Message[] = [...structuredClone(options.messages)];
-  const contextCheckpoint =
-    options.contextCheckpoint === undefined
-      ? undefined
-      : structuredClone(options.contextCheckpoint);
+  const { messages, contextCheckpoint } = options;
   const artifacts = collectArtifactReferences(messages);
   if (artifacts.size === 0) {
     return { messages, contextCheckpoint, copiedArtifactCount: 0 };
@@ -150,10 +146,8 @@ export function forkKanaSessionArtifacts(options: {
       locatorMap.set(artifact.locator, targetPath);
     }
 
-    rewriteArtifactLocators(messages, contextCheckpoint, locatorMap);
     return {
-      messages,
-      contextCheckpoint,
+      ...rewriteArtifactLocators(messages, contextCheckpoint, locatorMap),
       copiedArtifactCount: artifacts.size,
     };
   } catch (error) {
@@ -321,30 +315,33 @@ function validateSourceArtifacts(
 }
 
 function rewriteArtifactLocators(
-  messages: Message[],
+  messages: readonly Message[],
   contextCheckpoint: ContextCheckpoint | undefined,
   locatorMap: ReadonlyMap<string, string>,
-): void {
-  for (const message of messages) {
+): Pick<ForkKanaSessionArtifactsResult, "messages" | "contextCheckpoint"> {
+  const rewritten = messages.map((message) => {
     if (message.role !== "tool" || !message.artifact) {
-      continue;
+      return message;
     }
-    const targetLocator = locatorMap.get(message.artifact.locator);
+    const sourceLocator = message.artifact.locator;
+    const targetLocator = locatorMap.get(sourceLocator);
     if (!targetLocator) {
       throw new Error("Forked artifact locator has no copied target.");
     }
-    message.content = message.content.replaceAll(message.artifact.locator, targetLocator);
-    message.artifact.locator = targetLocator;
+    return {
+      ...message,
+      content: message.content.replaceAll(sourceLocator, targetLocator),
+      artifact: { ...message.artifact, locator: targetLocator },
+    };
+  });
+  if (!contextCheckpoint) {
+    return { messages: rewritten, contextCheckpoint };
   }
-
-  if (contextCheckpoint) {
-    for (const [sourceLocator, targetLocator] of locatorMap) {
-      contextCheckpoint.summary = contextCheckpoint.summary.replaceAll(
-        sourceLocator,
-        targetLocator,
-      );
-    }
+  let summary = contextCheckpoint.summary;
+  for (const [sourceLocator, targetLocator] of locatorMap) {
+    summary = summary.replaceAll(sourceLocator, targetLocator);
   }
+  return { messages: rewritten, contextCheckpoint: { ...contextCheckpoint, summary } };
 }
 
 function ensurePrivateDirectorySync(directory: string): void {

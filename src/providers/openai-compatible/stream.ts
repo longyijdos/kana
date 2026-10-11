@@ -1,4 +1,4 @@
-import type { AssistantEventStream, AssistantMessage, ToolCallContent } from "@/core";
+import type { AssistantEventStream, AssistantMessageBuilder, ToolCallContent } from "@/core";
 import { isRecord } from "@/utils";
 import type {
   OpenAICompatibleChunk,
@@ -55,7 +55,7 @@ export async function readOpenAICompatibleStream(
 
 export function applyOpenAICompatibleChunk(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   chunk: OpenAICompatibleChunk,
 ): void {
@@ -95,31 +95,31 @@ export function applyOpenAICompatibleChunk(
 }
 
 export function finishOpenAICompatibleAssistantReplay(
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
 ): void {
   const replay = state.assistantReplay;
-  const carrier = message.content[0];
-  if (!replay || replay.values.size === 0 || !carrier) {
+  if (!replay || replay.values.size === 0 || message.content.length === 0) {
     return;
   }
 
-  carrier.providerState = {
-    provider: replay.provider,
-    value: {
-      type: OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE,
-      model: replay.model,
-      baseUrl: replay.baseUrl,
-      fields: Object.fromEntries(
-        [...replay.values].map(([field, value]) => [field, structuredClone(value)]),
-      ),
+  message.update(0, (carrier) => ({
+    ...carrier,
+    providerState: {
+      provider: replay.provider,
+      value: {
+        type: OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE,
+        model: replay.model,
+        baseUrl: replay.baseUrl,
+        fields: Object.fromEntries(replay.values),
+      },
     },
-  };
+  }));
 }
 
 export function finishOpenAICompatibleContent(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
 ): void {
   for (const [contentIndex, content] of message.content.entries()) {
@@ -134,7 +134,7 @@ export function finishOpenAICompatibleContent(
 
 export function finishOpenAICompatibleToolCalls(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
 ): void {
   for (const [contentIndex, content] of message.content.entries()) {
@@ -238,33 +238,27 @@ function isStableReplayMetadataKey(key: string): boolean {
 
 function applyThinkingDelta(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   delta: string,
 ): void {
   let contentIndex = findOpenContentIndex(message, state, "thinking");
   if (contentIndex === -1) {
-    contentIndex = message.content.length;
-    message.content.push({ type: "thinking", text: "" });
-    stream.push({ type: "thinking_start", contentIndex, snapshot: structuredClone(message) });
+    contentIndex = message.add({ type: "thinking", text: "" });
+    stream.push({ type: "thinking_start", contentIndex, snapshot: message.snapshot() });
   }
-
-  const content = message.content[contentIndex];
-  if (content?.type !== "thinking") {
-    throw new Error("Internal error: expected thinking content.");
-  }
-  content.text += delta;
+  message.appendText(contentIndex, delta);
   stream.push({
     type: "thinking_delta",
     contentIndex,
     delta,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 }
 
 function applyTextDelta(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   delta: string,
 ): void {
@@ -274,61 +268,57 @@ function applyTextDelta(
 
   let contentIndex = findOpenContentIndex(message, state, "text");
   if (contentIndex === -1) {
-    contentIndex = message.content.length;
-    message.content.push({ type: "text", text: "" });
-    stream.push({ type: "text_start", contentIndex, snapshot: structuredClone(message) });
+    contentIndex = message.add({ type: "text", text: "" });
+    stream.push({ type: "text_start", contentIndex, snapshot: message.snapshot() });
   }
-
-  const content = message.content[contentIndex];
-  if (content?.type !== "text") {
-    throw new Error("Internal error: expected text content.");
-  }
-  content.text += delta;
+  message.appendText(contentIndex, delta);
   stream.push({
     type: "text_delta",
     contentIndex,
     delta,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 }
 
 function applyToolCallDelta(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   delta: OpenAICompatibleToolCallDelta,
 ): void {
   finishOpenAICompatibleContent(stream, message, state);
   const toolCallIndex = delta.index ?? 0;
   const pending = getPendingToolCall(message, toolCallIndex);
-
-  if (delta.id) {
-    pending.toolCall.id = delta.id;
-  }
-  if (delta.function?.name) {
-    pending.toolCall.name += delta.function.name;
-  }
+  message.update<ToolCallContent>(pending.contentIndex, (call) => ({
+    ...call,
+    id: delta.id || call.id,
+    name: call.name + (delta.function?.name ?? ""),
+  }));
   if (pending.isNew) {
     finishToolCallsBeforeIndex(stream, message, state, toolCallIndex);
     stream.push({
       type: "toolcall_start",
       contentIndex: pending.contentIndex,
-      snapshot: structuredClone(message),
+      snapshot: message.snapshot(),
     });
   }
-  if (delta.function?.arguments) {
-    pending.toolCall.rawArgs = (pending.toolCall.rawArgs ?? "") + delta.function.arguments;
+  const argumentsDelta = delta.function?.arguments;
+  if (argumentsDelta) {
+    message.update<ToolCallContent>(pending.contentIndex, (call) => ({
+      ...call,
+      rawArgs: (call.rawArgs ?? "") + argumentsDelta,
+    }));
     stream.push({
       type: "toolcall_delta",
       contentIndex: pending.contentIndex,
-      delta: delta.function.arguments,
-      snapshot: structuredClone(message),
+      delta: argumentsDelta,
+      snapshot: message.snapshot(),
     });
   }
 }
 
 function findOpenContentIndex(
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   type: "thinking" | "text",
 ): number {
@@ -340,7 +330,7 @@ function findOpenContentIndex(
 
 function finishContentOfType(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   type: "thinking" | "text",
 ): void {
@@ -356,7 +346,7 @@ function finishContentOfType(
 
 function finishContentAtIndex(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   contentIndex: number,
 ): void {
@@ -366,14 +356,14 @@ function finishContentAtIndex(
       type: "thinking_end",
       contentIndex,
       content: content.text,
-      snapshot: structuredClone(message),
+      snapshot: message.snapshot(),
     });
   } else if (content?.type === "text") {
     stream.push({
       type: "text_end",
       contentIndex,
       content: content.text,
-      snapshot: structuredClone(message),
+      snapshot: message.snapshot(),
     });
   } else {
     return;
@@ -383,7 +373,7 @@ function finishContentAtIndex(
 
 function finishToolCallsBeforeIndex(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   toolCallIndex: number,
 ): void {
@@ -404,7 +394,7 @@ function finishToolCallsBeforeIndex(
 
 function finishToolCall(
   stream: AssistantEventStream,
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   state: OpenAICompatibleStreamState,
   contentIndex: number,
   toolCall: ToolCallContent,
@@ -412,39 +402,35 @@ function finishToolCall(
   if (!toolCall.id || !toolCall.name) {
     throw new Error("OpenAI-compatible provider returned an incomplete tool call.");
   }
-  toolCall.args = parseToolArguments(toolCall.rawArgs ?? "");
+  const completed = message.update<ToolCallContent>(contentIndex, (call) => ({
+    ...call,
+    args: parseToolArguments(call.rawArgs ?? ""),
+  }));
   stream.push({
     type: "toolcall_end",
     contentIndex,
-    toolCall: structuredClone(toolCall),
-    snapshot: structuredClone(message),
+    toolCall: completed,
+    snapshot: message.snapshot(),
   });
   state.endedContentIndexes.add(contentIndex);
 }
 
 function getPendingToolCall(
-  message: AssistantMessage,
+  message: AssistantMessageBuilder,
   toolCallIndex: number,
 ): PendingOpenAICompatibleToolCall {
   const existing = message.content.filter((content) => content.type === "tool_call")[toolCallIndex];
-  if (existing?.type === "tool_call") {
-    return {
-      contentIndex: message.content.indexOf(existing),
-      isNew: false,
-      toolCall: existing,
-    };
+  if (existing !== undefined) {
+    return { contentIndex: message.content.indexOf(existing), isNew: false };
   }
-
-  const contentIndex = message.content.length;
-  const toolCall: ToolCallContent = {
+  const contentIndex = message.add({
     type: "tool_call",
     id: "",
     name: "",
     args: undefined,
     rawArgs: "",
-  };
-  message.content.push(toolCall);
-  return { contentIndex, isNew: true, toolCall };
+  });
+  return { contentIndex, isNew: true };
 }
 
 function parseToolArguments(rawArgs: string): unknown {

@@ -35,7 +35,7 @@ type KanaTuiConversationCapabilities = {
   getResumeSessionId: () => string | undefined;
   createNewSession: () => { id: string };
   forkSession: (
-    messages: Message[],
+    messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
   ) => { id: string; todoState?: KanaTodoItem[] };

@@ -85,7 +85,7 @@ export class KanaSessionJournal {
 
   startTurn(
     turnId: string,
-    messages: Extract<Message, { role: "user" }>[],
+    messages: readonly Extract<Message, { role: "user" }>[],
     options: AppendKanaSessionMessagesOptions = {},
   ): KanaSessionTimelineEntry[] {
     if (this.state.activeTurn) {
@@ -219,7 +219,7 @@ export class KanaSessionJournal {
   }
 
   appendSnapshot(
-    messages: Message[],
+    messages: readonly Message[],
     options: AppendSnapshotOptions = {},
   ): KanaSessionTimelineEntry[] {
     if (this.state.activeTurn) {

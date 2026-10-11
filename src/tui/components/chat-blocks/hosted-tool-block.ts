@@ -143,7 +143,7 @@ function formatHostedToolTitle(content: HostedToolContent): {
 }
 
 function formatSearchQueries(
-  queries: string[] | undefined,
+  queries: readonly string[] | undefined,
   query: string | undefined,
 ): string | undefined {
   const values = queries?.length ? queries : query ? [query] : [];

@@ -148,7 +148,7 @@ function toUserContent(
 }
 
 function toAssistantMessage(
-  content: AssistantContent[],
+  content: readonly AssistantContent[],
   config: OpenAICompatibleModelConfig,
 ): Record<string, unknown> {
   const text = content
@@ -167,7 +167,7 @@ function toAssistantMessage(
 }
 
 function readAssistantReplayFields(
-  content: AssistantContent[],
+  content: readonly AssistantContent[],
   config: OpenAICompatibleModelConfig,
 ): Record<string, unknown> {
   const configuredFields = config.metadata.assistantReplayFields;

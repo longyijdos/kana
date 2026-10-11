@@ -59,7 +59,7 @@ export function buildDeepSeekRequest(
 }
 
 function toDeepSeekResponsesInput(
-  messages: Message[],
+  messages: readonly Message[],
   imageInputEnabled: boolean,
 ): Record<string, unknown>[] {
   return messages.flatMap((message) => toDeepSeekResponsesMessage(message, imageInputEnabled));
@@ -201,7 +201,10 @@ function toDeepSeekResponsesFunctionCall(content: ToolCallContent): Record<strin
   };
 }
 
-function toDeepSeekResponsesTools(tools: ToolSpec[], strict: boolean): Record<string, unknown>[] {
+function toDeepSeekResponsesTools(
+  tools: readonly ToolSpec[],
+  strict: boolean,
+): Record<string, unknown>[] {
   return tools.map((tool) => ({
     type: "function",
     name: tool.name,

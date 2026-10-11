@@ -48,7 +48,7 @@ export type ContextCheckpoint = {
 
 export type CompactPolicyInput = {
   previousSummary?: string;
-  messages: Message[];
+  messages: readonly Message[];
   maxSummaryTokens: number;
   maxOutputTokens: number;
   signal?: AbortSignal;
@@ -281,7 +281,7 @@ export class ContextManager {
   // A resumed session restores messages and the checkpoint but not the in-memory
   // usage measurement. Rebuild the anchor from the latest persisted assistant
   // response, which carries the provider's prompt tokens for that request.
-  rehydrateUsageAnchor(messages: Message[]): void {
+  rehydrateUsageAnchor(messages: readonly Message[]): void {
     const checkpoint = this.checkpointData;
     // An anchor recorded before the current checkpoint was measured against a
     // different (pre-summary) projection, so it cannot calibrate the next
@@ -498,7 +498,7 @@ export class ContextManager {
     return lastValidBoundary;
   }
 
-  private assertCheckpointFits(messages: Message[]): void {
+  private assertCheckpointFits(messages: readonly Message[]): void {
     if (
       this.checkpointData &&
       (this.checkpointData.coveredMessageCount <= 0 ||
@@ -566,7 +566,7 @@ export function estimateTextTokens(text: string): number {
   return Math.ceil(Buffer.byteLength(text, "utf8") / 3);
 }
 
-function estimateMessagesTokens(messages: Message[]): number {
+function estimateMessagesTokens(messages: readonly Message[]): number {
   return messages.reduce((total, message) => total + estimateMessageTokens(message), 0);
 }
 
@@ -632,7 +632,7 @@ function stringifyForEstimate(value: unknown): string {
   }
 }
 
-function isCompleteTurnBoundary(messages: Message[], boundary: number): boolean {
+function isCompleteTurnBoundary(messages: readonly Message[], boundary: number): boolean {
   const previous = messages[boundary - 1];
   if (!previous) {
     return false;

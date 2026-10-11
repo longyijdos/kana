@@ -18,7 +18,7 @@ export type AgentEvent =
   | {
       type: "agent_end";
       reason: AgentEndReason;
-      messages: Message[];
+      messages: readonly Message[];
     }
   | {
       type: "turn_start";
@@ -28,7 +28,7 @@ export type AgentEvent =
       type: "turn_end";
       turn: number;
       message: AssistantMessage;
-      toolResults: ToolResultMessage[];
+      toolResults: readonly ToolResultMessage[];
       estimatedContextTokens?: number;
     }
   | {

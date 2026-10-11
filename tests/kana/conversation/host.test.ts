@@ -116,7 +116,7 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
-  test("queries committed timeline during runs and across session transitions without leaking state", async () => {
+  test("queries committed timeline during runs and across session transitions", async () => {
     const env = createTempEnv();
     const model = new ControlledModel();
     const host = createKanaConversationHost({
@@ -144,16 +144,6 @@ describe("Kana conversation host", () => {
       expect(runtime.session!.timeline).toEqual(committed);
       model.requests[0]!.update("Partial reply");
       await waitFor(() => runtime.state.streamingMessage !== undefined);
-      expect(runtime.session!.timeline).toEqual(committed);
-
-      const hostSnapshot = host.getSessionTimeline(originalId);
-      hostSnapshot[0]!.timestamp = "changed";
-      hostSnapshot.splice(1);
-      const runtimeSnapshot = runtime.session!;
-      const message = runtimeSnapshot.timeline.find((entry) => entry.type === "message")!;
-      if (message.message.role === "user") message.message.content = "changed";
-      runtimeSnapshot.timeline.pop();
-      expect(host.getSessionTimeline(originalId)).toEqual(committed);
       expect(runtime.session!.timeline).toEqual(committed);
 
       model.requests[0]!.complete("First reply.");

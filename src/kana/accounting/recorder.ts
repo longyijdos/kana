@@ -7,7 +7,7 @@ export function recordKanaAgentRunAccounting(options: {
   cwd: string;
   agentKind: "main" | "memory_consolidation" | "subagent";
   outcome: KanaAccountingOutcome;
-  messages: Message[];
+  messages: readonly Message[];
   model: ModelMetadata;
   additionalUsage?: ModelUsage;
   memory?: {

@@ -29,7 +29,7 @@ export class ControlledModel extends BaseModel {
 
   stream(context: ModelContext): AssistantEventStream {
     const stream = new AssistantEventStream();
-    const message: AssistantMessage = {
+    let message: AssistantMessage = {
       ...createMessageIdentity({ kind: "model_output" }),
       role: "assistant",
       content: [],
@@ -40,31 +40,34 @@ export class ControlledModel extends BaseModel {
         type: "error",
         reason,
         error: new Error(reason),
-        snapshot: structuredClone(message),
+        snapshot: message,
       });
     };
     const abort = (): void => fail("aborted");
     context.signal?.addEventListener("abort", abort, { once: true });
-    stream.push({ type: "start", snapshot: structuredClone(message) });
+    stream.push({ type: "start", snapshot: message });
     this.requests.push({
-      context: { ...context, messages: structuredClone(context.messages) },
+      context: { ...context, messages: [...context.messages] },
       update: (text) => {
         const first = message.content.length === 0;
-        message.content = [{ type: "text", text }];
+        message = { ...message, content: [{ type: "text", text }] };
         if (first) {
-          stream.push({ type: "text_start", contentIndex: 0, snapshot: structuredClone(message) });
+          stream.push({ type: "text_start", contentIndex: 0, snapshot: message });
         }
         stream.push({
           type: "text_delta",
           contentIndex: 0,
           delta: text,
-          snapshot: structuredClone(message),
+          snapshot: message,
         });
       },
       complete: (content, reason = "stop") => {
         context.signal?.removeEventListener("abort", abort);
-        message.content = typeof content === "string" ? [{ type: "text", text: content }] : content;
-        stream.end({ type: "done", reason, message: structuredClone(message) });
+        message = {
+          ...message,
+          content: typeof content === "string" ? [{ type: "text", text: content }] : content,
+        };
+        stream.end({ type: "done", reason, message: message });
       },
       fail: () => fail("error"),
     });

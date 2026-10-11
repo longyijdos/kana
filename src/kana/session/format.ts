@@ -132,7 +132,7 @@ export type AppendKanaSessionMessagesOptions = {
 
 export type LoadKanaSessionResult = {
   metadata: KanaSessionMetadata;
-  messages: Message[];
+  messages: readonly Message[];
   timeline: KanaSessionTimelineEntry[];
   todoState: KanaTodoItem[];
   contextCheckpoint?: ContextCheckpoint;
@@ -416,7 +416,7 @@ export function parseTimelineEntry(
   throw new Error(`Invalid Kana session timeline entry: ${filePath}:${lineNumber}`);
 }
 
-function findFirstPrompt(messages: Message[]): string | undefined {
+function findFirstPrompt(messages: readonly Message[]): string | undefined {
   return messages.find(
     (message): message is UserMessage =>
       message.role === "user" &&

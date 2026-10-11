@@ -81,7 +81,7 @@ export function createModelCompactPolicy(
 
 function formatCompactionRequest(
   previousSummary: string | undefined,
-  messages: Message[],
+  messages: readonly Message[],
   maxSummaryTokens: number,
   includeImages: boolean,
 ): { content: string; images: UserImage[] } {

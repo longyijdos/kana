@@ -15,7 +15,7 @@ import {
 
 describe("session-scoped agents", () => {
   test.each(["submit", "queue"] as const)(
-    "keeps %s images detached at message construction",
+    "passes %s images with the constructed message",
     async (delivery) => {
       const agent = createAgentStub();
       agent.state.model.metadata.supportsImageInput = true;
@@ -41,13 +41,6 @@ describe("session-scoped agents", () => {
       if (delivery === "submit") await internal.submitPrompt("Inspect image", images);
       else internal.queuePrompt("Inspect image", images);
       expect(received).toMatchObject({ content: "Inspect image", images });
-      expect(received!.images).not.toBe(images);
-      expect(received!.images![0]).not.toBe(images[0]);
-      images[0]!.data = "changed";
-      images.pop();
-      expect(received!.images).toEqual([
-        { mimeType: "image/png", data: "original", width: 1, height: 1 },
-      ]);
     },
   );
 

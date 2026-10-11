@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
+import { AssistantMessageBuilder } from "@/core";
 import { ContextManager, estimateContextTokens } from "../../src/agent/context-manager";
 import type { AgentEvent } from "../../src/agent/events";
 import { runAgentLoop } from "../../src/agent/loop";
@@ -198,26 +199,22 @@ class InterruptedToolCallModel implements Model {
     const stream = new AssistantEventStream();
 
     queueMicrotask(() => {
-      const message: AssistantMessage = {
-        ...messageIdentityForTest("assistant"),
-        role: "assistant",
-        content: [],
-      };
+      const message = new AssistantMessageBuilder();
 
       stream.push({
         type: "start",
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
 
       if (this.text) {
-        message.content.push({ type: "text", text: this.text });
+        message.add({ type: "text", text: this.text });
         stream.push({
           type: "text_start",
           contentIndex: 0,
-          snapshot: structuredClone(message),
+          snapshot: message.snapshot(),
         });
       }
-      message.content.push({
+      message.add({
         type: "tool_call",
         id: "call_1",
         name: "edit",
@@ -231,13 +228,13 @@ class InterruptedToolCallModel implements Model {
       stream.push({
         type: "toolcall_start",
         contentIndex: message.content.length - 1,
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
       stream.error({
         type: "error",
         reason: this.reason,
         error: new Error(this.reason),
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
     });
 
@@ -283,13 +280,13 @@ class AbortedHostedToolModel implements Model {
       stream.push({
         type: "hosted_tool_start",
         contentIndex: 0,
-        snapshot: structuredClone(message),
+        snapshot: message,
       });
       stream.error({
         type: "error",
         reason: "aborted",
         error: new Error("aborted"),
-        snapshot: structuredClone(message),
+        snapshot: message,
       });
     });
 
@@ -1290,7 +1287,7 @@ describe("runAgentLoop error recovery", () => {
               model: new InterruptedToolCallModel(reason, rawArgs, text),
               onMessageCommitted: (message) => {
                 expect(message.role).toBe("assistant");
-                committed.push(structuredClone(message));
+                committed.push(message);
               },
             },
             (event) => {
@@ -1365,15 +1362,11 @@ function formatEventSequence(events: AgentEvent[]): string[] {
 }
 
 function streamToolCallMessage(stream: AssistantEventStream, args: unknown): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
   stream.push({
     type: "start",
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 
   const toolCall = {
@@ -1384,36 +1377,32 @@ function streamToolCallMessage(stream: AssistantEventStream, args: unknown): voi
     rawArgs: JSON.stringify(args),
   } as const;
 
-  message.content.push(toolCall);
+  message.add(toolCall);
 
   stream.push({
     type: "toolcall_start",
     contentIndex: 0,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "toolcall_end",
     contentIndex: 0,
     toolCall,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.end({
     type: "done",
     reason: "toolUse",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }
 
 function streamMultipleToolCallMessage(stream: AssistantEventStream): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
   stream.push({
     type: "start",
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 
   const toolCalls = [
@@ -1434,41 +1423,37 @@ function streamMultipleToolCallMessage(stream: AssistantEventStream): void {
   ] as const;
 
   for (const [index, toolCall] of toolCalls.entries()) {
-    message.content.push(toolCall);
+    message.add(toolCall);
 
     stream.push({
       type: "toolcall_start",
       contentIndex: index,
-      snapshot: structuredClone(message),
+      snapshot: message.snapshot(),
     });
     stream.push({
       type: "toolcall_end",
       contentIndex: index,
       toolCall,
-      snapshot: structuredClone(message),
+      snapshot: message.snapshot(),
     });
   }
 
   stream.end({
     type: "done",
     reason: "toolUse",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }
 
 function streamLengthTruncatedToolCallMessage(stream: AssistantEventStream): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
   stream.push({
     type: "start",
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 
-  message.content.push({
+  message.add({
     type: "tool_call",
     id: "call_1",
     name: "add",
@@ -1479,34 +1464,30 @@ function streamLengthTruncatedToolCallMessage(stream: AssistantEventStream): voi
   stream.push({
     type: "toolcall_start",
     contentIndex: 0,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "toolcall_delta",
     contentIndex: 0,
     delta: '{"a":',
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.end({
     type: "done",
     reason: "length",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }
 
 function streamTextMessage(stream: AssistantEventStream, text: string): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
   stream.push({
     type: "start",
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 
-  message.content.push({
+  message.add({
     type: "text",
     text,
   });
@@ -1514,23 +1495,23 @@ function streamTextMessage(stream: AssistantEventStream, text: string): void {
   stream.push({
     type: "text_start",
     contentIndex: 0,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "text_delta",
     contentIndex: 0,
     delta: text,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "text_end",
     contentIndex: 0,
     content: text,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.end({
     type: "done",
     reason: "stop",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }

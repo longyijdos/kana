@@ -1,10 +1,10 @@
 export type ModelUsage = {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  promptCacheHitTokens?: number;
-  promptCacheMissTokens?: number;
-  reasoningTokens?: number;
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
+  readonly promptCacheHitTokens?: number;
+  readonly promptCacheMissTokens?: number;
+  readonly reasoningTokens?: number;
 };
 
 export function addModelUsage(current: ModelUsage | undefined, next: ModelUsage): ModelUsage {

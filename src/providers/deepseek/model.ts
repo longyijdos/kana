@@ -1,9 +1,8 @@
 import {
   AssistantEventStream,
-  type AssistantMessage,
+  AssistantMessageBuilder,
   BaseModel,
   ContextWindowExceededError,
-  createMessageIdentity,
   type HostedToolAction,
   type ModelContext,
   type ModelUsage,
@@ -61,11 +60,7 @@ export class DeepSeekModel extends BaseModel {
   }
 
   private async run(stream: AssistantEventStream, context: ModelContext): Promise<void> {
-    const message: AssistantMessage = {
-      ...createMessageIdentity({ kind: "model_output" }),
-      role: "assistant",
-      content: [],
-    };
+    const message = new AssistantMessageBuilder();
     let phase: ProviderRequestPhase = "validation";
     try {
       this.diagnostics.requestStarted();
@@ -126,7 +121,7 @@ export class DeepSeekModel extends BaseModel {
 
         stream.push({
           type: "start",
-          snapshot: structuredClone(message),
+          snapshot: message.snapshot(),
         });
 
         phase = "response_stream";
@@ -140,7 +135,7 @@ export class DeepSeekModel extends BaseModel {
         stream.end({
           type: "done",
           reason: outcome.stopReason,
-          message: structuredClone(message),
+          message: message.snapshot(),
           usage: outcome.usage,
         });
         this.diagnostics.requestCompleted(outcome.stopReason);
@@ -168,7 +163,7 @@ export class DeepSeekModel extends BaseModel {
         type: "error",
         reason: isAbortError(normalized) || context.signal?.aborted ? "aborted" : "error",
         error: normalized,
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
     }
   }
@@ -176,7 +171,7 @@ export class DeepSeekModel extends BaseModel {
   private async consumeResponses(
     response: Response,
     stream: AssistantEventStream,
-    message: AssistantMessage,
+    message: AssistantMessageBuilder,
     onActivity: () => void,
   ): Promise<DeepSeekStreamOutcome> {
     const state: ResponsesStreamState = {
@@ -215,22 +210,16 @@ function normalizeDeepSeekHostedToolAction(
   // DeepSeek appends its replay correlation marker to user-facing queries and
   // URL fragments. Keep it in providerState, but not in the semantic action.
   const marker = `ws_call_id=${itemId}`;
-  const normalized = structuredClone(action);
-  if (normalized.query === marker) {
-    delete normalized.query;
-  }
-  if (normalized.queries !== undefined) {
-    const queries = normalized.queries.filter((query) => query !== marker);
-    if (queries.length > 0) {
-      normalized.queries = queries;
-    } else {
-      delete normalized.queries;
-    }
-  }
-  if (normalized.url?.endsWith(`#${marker}`)) {
-    normalized.url = normalized.url.slice(0, -(marker.length + 1));
-  }
-  return normalized;
+  const { query, queries, url, ...rest } = action;
+  const visibleQueries = queries?.filter((candidate) => candidate !== marker);
+  return {
+    ...rest,
+    ...(query === undefined || query === marker ? {} : { query }),
+    ...(visibleQueries?.length ? { queries: visibleQueries } : {}),
+    ...(url === undefined
+      ? {}
+      : { url: url.endsWith(`#${marker}`) ? url.slice(0, -(marker.length + 1)) : url }),
+  };
 }
 
 function normalizeDeepSeekError(error: unknown): unknown {

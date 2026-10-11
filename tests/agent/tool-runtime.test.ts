@@ -363,7 +363,7 @@ describe("ToolRuntime invocation lifecycle", () => {
       result: { path: "image.png" },
       isError: false,
     });
-    expect(committed).toEqual(result.toolResults);
+    expect(committed).toEqual([...result.toolResults]);
   });
 
   test("turns malformed visual result fields into safe failures before commit", async () => {
@@ -421,7 +421,7 @@ describe("ToolRuntime invocation lifecycle", () => {
     for (const message of result.toolResults) {
       expect(message).not.toHaveProperty("images");
     }
-    expect(committed).toEqual(result.toolResults);
+    expect(committed).toEqual([...result.toolResults]);
     expect(JSON.stringify(committed)).not.toContain('"foo":"bar"');
   });
 
@@ -1869,7 +1869,7 @@ describe("ToolRuntime result finalization and policy", () => {
       expect(Buffer.byteLength(JSON.stringify(canonicalResult), "utf8")).toBe(byteLength);
       expect(executionEndResult).toBe(canonicalResult);
       expect(result.toolResults[0]).toMatchObject({ content: "short output", isError: false });
-      expect(committed).toEqual(result.toolResults);
+      expect(committed).toEqual([...result.toolResults]);
       if (byteLength <= 128 * 1_024) {
         expect(result.toolResults[0]?.result).toEqual(canonicalResult);
       } else {

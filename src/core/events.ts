@@ -12,81 +12,81 @@ type StopReason = AssistantStopReason;
 // snapshot is the assistant message after applying that increment.
 export type AssistantMessageEvent =
   | {
-      type: "start";
-      snapshot: AssistantMessage;
+      readonly type: "start";
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "text_start";
-      contentIndex: number;
-      snapshot: AssistantMessage;
+      readonly type: "text_start";
+      readonly contentIndex: number;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "text_delta";
-      contentIndex: number;
-      delta: string;
-      snapshot: AssistantMessage;
+      readonly type: "text_delta";
+      readonly contentIndex: number;
+      readonly delta: string;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "text_end";
-      contentIndex: number;
-      content: string;
-      snapshot: AssistantMessage;
+      readonly type: "text_end";
+      readonly contentIndex: number;
+      readonly content: string;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "thinking_start";
-      contentIndex: number;
-      snapshot: AssistantMessage;
+      readonly type: "thinking_start";
+      readonly contentIndex: number;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "thinking_delta";
-      contentIndex: number;
-      delta: string;
-      snapshot: AssistantMessage;
+      readonly type: "thinking_delta";
+      readonly contentIndex: number;
+      readonly delta: string;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "thinking_end";
-      contentIndex: number;
-      content: string;
-      snapshot: AssistantMessage;
+      readonly type: "thinking_end";
+      readonly contentIndex: number;
+      readonly content: string;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "toolcall_start";
-      contentIndex: number;
-      snapshot: AssistantMessage;
+      readonly type: "toolcall_start";
+      readonly contentIndex: number;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "toolcall_delta";
-      contentIndex: number;
+      readonly type: "toolcall_delta";
+      readonly contentIndex: number;
       // For tool calls this is the raw function arguments delta.
-      delta: string;
-      snapshot: AssistantMessage;
+      readonly delta: string;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "toolcall_end";
-      contentIndex: number;
-      toolCall: ToolCallContent;
-      snapshot: AssistantMessage;
+      readonly type: "toolcall_end";
+      readonly contentIndex: number;
+      readonly toolCall: ToolCallContent;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "hosted_tool_start";
-      contentIndex: number;
-      snapshot: AssistantMessage;
+      readonly type: "hosted_tool_start";
+      readonly contentIndex: number;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "hosted_tool_end";
-      contentIndex: number;
-      hostedTool: HostedToolContent;
-      snapshot: AssistantMessage;
+      readonly type: "hosted_tool_end";
+      readonly contentIndex: number;
+      readonly hostedTool: HostedToolContent;
+      readonly snapshot: AssistantMessage;
     }
   | {
-      type: "done";
-      reason: Extract<StopReason, "stop" | "length" | "toolUse">;
-      message: AssistantMessage;
-      usage?: ModelUsage;
+      readonly type: "done";
+      readonly reason: Extract<StopReason, "stop" | "length" | "toolUse">;
+      readonly message: AssistantMessage;
+      readonly usage?: ModelUsage;
     }
   | {
-      type: "error";
-      reason: Extract<StopReason, "aborted" | "error">;
-      error: unknown;
-      snapshot?: AssistantMessage;
+      readonly type: "error";
+      readonly reason: Extract<StopReason, "aborted" | "error">;
+      readonly error: unknown;
+      readonly snapshot?: AssistantMessage;
     };

@@ -234,12 +234,14 @@ export class StreamingTextPresenter {
     if (!this.target) {
       return;
     }
-    const visible = structuredClone(this.target);
-    for (const [index, content] of visible.content.entries()) {
-      if (content.type === "text") {
-        content.text = this.visibleTextByIndex.get(index) ?? "";
-      }
-    }
+    const visible: AssistantMessage = {
+      ...this.target,
+      content: this.target.content.map((content, index) =>
+        content.type === "text"
+          ? { ...content, text: this.visibleTextByIndex.get(index) ?? "" }
+          : content,
+      ),
+    };
     this.options.onUpdate(visible, complete);
     this.options.requestRender();
   }

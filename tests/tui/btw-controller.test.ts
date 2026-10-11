@@ -44,7 +44,7 @@ describe("BTW controller", () => {
     );
     expect(context.system).toContain("Do not emit or simulate tool calls, including DSML");
     expect(context.messages.at(-1)).toMatchObject({ content: "Side question" });
-    expect(context.messages.slice(0, -1)).toEqual(before.messages);
+    expect(context.messages.slice(0, -1)).toEqual([...before.messages]);
     expect(context.tools).toEqual([]);
     expect(context.webSearch).toBe(false);
     expect(context.imageInput).toBe(true);

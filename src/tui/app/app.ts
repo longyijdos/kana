@@ -112,7 +112,7 @@ export class KanaTuiApp {
     createAgent: (options: {
       beforeToolExecution: BeforeToolExecutionHook;
       bindBeforeToolExecution: (agent: ConversationAgentIdentity) => BeforeToolExecutionHook;
-      messages?: Message[];
+      messages?: readonly Message[];
       sessionId?: string;
       contextCheckpoint?: ContextCheckpoint;
       modelSelection?: TuiModelSelection;

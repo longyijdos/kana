@@ -5,8 +5,8 @@ import type { ToolSpec } from "./tool";
 // ModelConfig; per-Agent policy and signal belong to each invocation.
 export type ModelContext = {
   system?: string;
-  messages: Message[];
-  tools?: ToolSpec[];
+  messages: readonly Message[];
+  tools?: readonly ToolSpec[];
   webSearch?: boolean;
   imageInput?: boolean;
   parallelToolCalls?: boolean;

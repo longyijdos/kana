@@ -1,11 +1,11 @@
-import type { AssistantEventStream, AssistantMessage } from "@/core";
+import type { AssistantEventStream, AssistantMessageBuilder } from "@/core";
 import { ResponsesStreamProcessor, readResponsesStream } from "../responses";
 import type { OpenAICodexStreamState } from "./types";
 
 export class OpenAICodexStreamProcessor extends ResponsesStreamProcessor {
   constructor(
     stream: AssistantEventStream,
-    message: AssistantMessage,
+    message: AssistantMessageBuilder,
     state: OpenAICodexStreamState,
   ) {
     super(stream, message, state, {

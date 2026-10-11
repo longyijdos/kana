@@ -756,7 +756,9 @@ export class ConversationInputCoordinator {
     });
   }
 
-  private takePendingCompletionInputs(kind: "job" | "subagent" | "user_task"): UserMessage[] {
+  private takePendingCompletionInputs(
+    kind: "job" | "subagent" | "user_task",
+  ): readonly UserMessage[] {
     const inputs: UserMessage[] = [];
     while (this.agent.inbox.nextTurn[0]?.delivery.kind === kind) {
       const item = this.agent.shiftNextTurnInput();

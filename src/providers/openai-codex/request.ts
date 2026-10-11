@@ -53,7 +53,7 @@ export function buildOpenAICodexRequest(
 }
 
 function toOpenAICodexInput(
-  messages: Message[],
+  messages: readonly Message[],
   imageInputEnabled: boolean,
 ): Record<string, unknown>[] {
   return messages.flatMap((message) => toOpenAICodexMessage(message, imageInputEnabled));
@@ -199,7 +199,7 @@ function readOpenAICodexResponseItem(
   return item;
 }
 
-function toOpenAICodexTools(tools: ToolSpec[]): Record<string, unknown>[] {
+function toOpenAICodexTools(tools: readonly ToolSpec[]): Record<string, unknown>[] {
   return tools.map((tool) => ({
     type: "function",
     name: tool.name,

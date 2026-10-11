@@ -36,7 +36,7 @@ export class ToolCallBlock implements Component {
   private cachedLines?: string[];
 
   constructor(
-    private readonly toolCall: ToolCallContent,
+    private toolCall: ToolCallContent,
     now: Clock = Date.now,
     private readonly options: { summaryOnly?: boolean } = {},
   ) {
@@ -44,7 +44,7 @@ export class ToolCallBlock implements Component {
   }
 
   updateArgs(args: unknown): void {
-    this.toolCall.args = args;
+    this.toolCall = { ...this.toolCall, args };
     this.invalidate();
   }
 
@@ -157,13 +157,11 @@ export class ToolCallBlock implements Component {
   // view reads live block state on every render, so running tools keep
   // updating arguments and partial output while the inspector is open.
   getToolDetailView(): ContentView {
-    const toolCall = this.toolCall;
-
     return {
-      title: buildFullToolDetail(toolCall).title,
+      title: buildFullToolDetail(this.toolCall).title,
       render: (width) =>
         formatToolInspector(
-          toolCall,
+          this.toolCall,
           this.presentationResult(),
           this.isError,
           this.currentState(),

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { AssistantMessage, HostedToolAction } from "../../../src/core";
+import { AssistantMessageBuilder } from "@/core";
+import type { HostedToolAction } from "../../../src/core";
 import { AssistantEventStream } from "../../../src/core";
 import {
   OpenAICodexStreamProcessor,
   readOpenAICodexStream,
 } from "../../../src/providers/openai-codex/stream";
 import type { OpenAICodexStreamState } from "../../../src/providers/openai-codex/types";
-import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("OpenAI Codex stream parsing", () => {
   test("retains partial frames and dispatches multiple SSE events from one body read", async () => {
@@ -45,11 +45,7 @@ describe("OpenAI Codex stream parsing", () => {
   test("emits reasoning and text events in response output order", async () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEvents(stream);
-    const message: AssistantMessage = {
-      ...messageIdentityForTest("assistant"),
-      role: "assistant",
-      content: [],
-    };
+    const message = new AssistantMessageBuilder();
     const state: OpenAICodexStreamState = { terminalSeen: false };
     const processor = new OpenAICodexStreamProcessor(stream, message, state);
 
@@ -134,7 +130,7 @@ describe("OpenAI Codex stream parsing", () => {
     stream.end({
       type: "done",
       reason: state.stopReason ?? "stop",
-      message: structuredClone(message),
+      message: message.snapshot(),
       usage: state.usage,
     });
 
@@ -210,11 +206,7 @@ describe("OpenAI Codex stream parsing", () => {
   test("correlates interleaved parallel function-call arguments by output index", async () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEvents(stream);
-    const message: AssistantMessage = {
-      ...messageIdentityForTest("assistant"),
-      role: "assistant",
-      content: [],
-    };
+    const message = new AssistantMessageBuilder();
     const state: OpenAICodexStreamState = { terminalSeen: false };
     const processor = new OpenAICodexStreamProcessor(stream, message, state);
 
@@ -287,7 +279,7 @@ describe("OpenAI Codex stream parsing", () => {
     stream.end({
       type: "done",
       reason: state.stopReason ?? "stop",
-      message: structuredClone(message),
+      message: message.snapshot(),
     });
 
     const events = await eventsPromise;
@@ -311,11 +303,7 @@ describe("OpenAI Codex stream parsing", () => {
   test("emits provider-hosted web search actions without entering local tool use", async () => {
     const stream = new AssistantEventStream();
     const eventsPromise = collectEvents(stream);
-    const message: AssistantMessage = {
-      ...messageIdentityForTest("assistant"),
-      role: "assistant",
-      content: [],
-    };
+    const message = new AssistantMessageBuilder();
     const state: OpenAICodexStreamState = { terminalSeen: false };
     const processor = new OpenAICodexStreamProcessor(stream, message, state);
     const actions: HostedToolAction[] = [
@@ -366,7 +354,7 @@ describe("OpenAI Codex stream parsing", () => {
     stream.end({
       type: "done",
       reason: state.stopReason ?? "stop",
-      message: structuredClone(message),
+      message: message.snapshot(),
     });
 
     const events = await eventsPromise;
@@ -404,7 +392,7 @@ describe("OpenAI Codex stream parsing", () => {
   test("surfaces nested Responses stream error details", () => {
     const processor = new OpenAICodexStreamProcessor(
       new AssistantEventStream(),
-      { ...messageIdentityForTest("assistant"), role: "assistant", content: [] },
+      new AssistantMessageBuilder(),
       { terminalSeen: false },
     );
 

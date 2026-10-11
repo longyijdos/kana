@@ -1,9 +1,8 @@
 import {
   AssistantEventStream,
-  type AssistantMessage,
+  AssistantMessageBuilder,
   BaseModel,
   ContextWindowExceededError,
-  createMessageIdentity,
   type ModelContext,
 } from "@/core";
 import { isContextWindowFailure, readOpenAIErrorSignals } from "../context-window";
@@ -59,11 +58,7 @@ export class OpenAICompatibleModel extends BaseModel {
   }
 
   private async run(stream: AssistantEventStream, context: ModelContext): Promise<void> {
-    const message: AssistantMessage = {
-      ...createMessageIdentity({ kind: "model_output" }),
-      role: "assistant",
-      content: [],
-    };
+    const message = new AssistantMessageBuilder();
     let phase: ProviderRequestPhase = "validation";
 
     try {
@@ -94,7 +89,7 @@ export class OpenAICompatibleModel extends BaseModel {
           (details) => this.diagnostics.retrying(details),
         );
         requestSignal.refresh();
-        stream.push({ type: "start", snapshot: structuredClone(message) });
+        stream.push({ type: "start", snapshot: message.snapshot() });
 
         phase = "response_stream";
         const state: OpenAICompatibleStreamState = {
@@ -136,7 +131,7 @@ export class OpenAICompatibleModel extends BaseModel {
         stream.end({
           type: "done",
           reason: stopReason,
-          message: structuredClone(message),
+          message: message.snapshot(),
           usage: state.usage,
         });
         this.diagnostics.requestCompleted(stopReason);
@@ -158,7 +153,7 @@ export class OpenAICompatibleModel extends BaseModel {
         type: "error",
         reason: isAbortError(normalized) || context.signal?.aborted ? "aborted" : "error",
         error: normalized,
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
     }
   }

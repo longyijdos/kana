@@ -1,3 +1,4 @@
+export * from "./assistant-builder";
 export * from "./context";
 export * from "./errors";
 export * from "./event-stream";

@@ -47,7 +47,7 @@ export type AgentConfig = {
   model: Model;
   system?: string;
   promptAssembly?: PromptAssembly;
-  messages?: Message[];
+  messages?: readonly Message[];
   inbox?: AgentInboxSnapshot;
   tools?: Tool[];
   codemode?: "off" | "mixed" | "only";
@@ -75,7 +75,7 @@ export type AgentState = {
   maxTurns?: number;
   readonly toolDeadlineMs: number;
   tools: Tool[];
-  messages: Message[];
+  messages: readonly Message[];
   readonly inbox: AgentInboxSnapshot;
   readonly isRunning: boolean;
   readonly streamingMessage?: AssistantMessage;
@@ -89,7 +89,7 @@ export type AgentState = {
 export type AgentStableContext = {
   model: Model;
   system?: string;
-  messages: Message[];
+  messages: readonly Message[];
   imageInput: boolean;
   contextLimit?: number;
   maxOutputTokens?: number;
@@ -116,7 +116,7 @@ type WritableAgentState = Omit<
 export type AgentEventListener = (event: AgentEvent, signal: AbortSignal) => Promise<void> | void;
 
 export type AgentRunCommittedHook = (commit: {
-  messages: Message[];
+  messages: readonly Message[];
   compactions: ContextCheckpoint[];
   state: AgentState;
   event: Extract<AgentEvent, { type: "agent_end" }>;
@@ -638,7 +638,7 @@ export class Agent {
   private createContextSnapshot(): AgentContext {
     return {
       system: this.stateData.system,
-      messages: structuredClone(this.stateData.messages),
+      messages: [...this.stateData.messages],
       tools: this.stateData.tools.slice(),
       callableTools: this.callableTools.slice(),
     };
@@ -951,7 +951,7 @@ function createWritableAgentState(
     get messages() {
       return messages;
     },
-    set messages(nextMessages: Message[]) {
+    set messages(nextMessages: readonly Message[]) {
       messages = nextMessages.slice();
     },
     isRunning: false,
@@ -977,7 +977,7 @@ function assertMessageIdAvailable(messages: readonly Message[], candidate: Messa
   }
 }
 
-function toPromptMessages(input: AgentPromptInput): UserMessage[] {
+function toPromptMessages(input: AgentPromptInput): readonly UserMessage[] {
   if (Array.isArray(input)) {
     return input.map((message) => structuredClone(message));
   }

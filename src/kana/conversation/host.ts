@@ -350,7 +350,7 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   forkSession(
-    messages: Message[],
+    messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
   ): { id: string; todoState: KanaTodoItem[] } {

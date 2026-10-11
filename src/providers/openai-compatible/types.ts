@@ -1,4 +1,4 @@
-import type { ModelConfig, ModelMetadata, ModelUsage, ToolCallContent } from "@/core";
+import type { ModelConfig, ModelMetadata, ModelUsage } from "@/core";
 import type { Logger } from "@/logging";
 
 export type OpenAICompatibleModelConfig = Omit<ModelConfig, "baseUrl"> & {
@@ -65,5 +65,4 @@ export type OpenAICompatibleStreamState = {
 export type PendingOpenAICompatibleToolCall = {
   contentIndex: number;
   isNew: boolean;
-  toolCall: ToolCallContent;
 };

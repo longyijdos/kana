@@ -1,9 +1,8 @@
 import {
   AssistantEventStream,
-  type AssistantMessage,
+  AssistantMessageBuilder,
   BaseModel,
   ContextWindowExceededError,
-  createMessageIdentity,
   type ModelContext,
 } from "@/core";
 import { isContextWindowFailure } from "../context-window";
@@ -63,11 +62,7 @@ export class OpenAICodexModel extends BaseModel {
   }
 
   private async run(stream: AssistantEventStream, context: ModelContext): Promise<void> {
-    const message: AssistantMessage = {
-      ...createMessageIdentity({ kind: "model_output" }),
-      role: "assistant",
-      content: [],
-    };
+    const message = new AssistantMessageBuilder();
     let phase: ProviderRequestPhase = "validation";
 
     try {
@@ -132,7 +127,7 @@ export class OpenAICodexModel extends BaseModel {
           if (!started) {
             stream.push({
               type: "start",
-              snapshot: structuredClone(message),
+              snapshot: message.snapshot(),
             });
             started = true;
           }
@@ -190,7 +185,7 @@ export class OpenAICodexModel extends BaseModel {
         stream.end({
           type: "done",
           reason: state.stopReason,
-          message: structuredClone(message),
+          message: message.snapshot(),
           usage: state.usage,
         });
         this.diagnostics.requestCompleted(state.stopReason);
@@ -218,7 +213,7 @@ export class OpenAICodexModel extends BaseModel {
         type: "error",
         reason: isAbortError(normalized) || context.signal?.aborted ? "aborted" : "error",
         error: normalized,
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AssistantMessage } from "../../../src/core";
+import { AssistantMessageBuilder } from "@/core";
 import { AssistantEventStream } from "../../../src/core";
 import {
   applyOpenAICompatibleChunk,
@@ -10,7 +10,6 @@ import {
   readOpenAICompatibleStream,
 } from "../../../src/providers/openai-compatible/stream";
 import type { OpenAICompatibleStreamState } from "../../../src/providers/openai-compatible/types";
-import { messageIdentityForTest } from "../../helpers/messages";
 
 describe("OpenAI-compatible stream parsing", () => {
   test("reports raw stream activity for heartbeats and data frames", async () => {
@@ -45,7 +44,7 @@ describe("OpenAI-compatible stream parsing", () => {
     const message = createMessage();
     const state = createState();
 
-    stream.push({ type: "start", snapshot: structuredClone(message) });
+    stream.push({ type: "start", snapshot: message.snapshot() });
     applyOpenAICompatibleChunk(stream, message, state, {
       choices: [{ delta: { content: "answer" } }],
     });
@@ -77,7 +76,7 @@ describe("OpenAI-compatible stream parsing", () => {
     stream.end({
       type: "done",
       reason: getOpenAICompatibleDoneReason(state.finishReason),
-      message: structuredClone(message),
+      message: message.snapshot(),
     });
 
     expect(await eventsPromise).toEqual([
@@ -109,7 +108,7 @@ describe("OpenAI-compatible stream parsing", () => {
     const message = createMessage();
     const state = createState();
 
-    stream.push({ type: "start", snapshot: structuredClone(message) });
+    stream.push({ type: "start", snapshot: message.snapshot() });
     applyOpenAICompatibleChunk(stream, message, state, {
       choices: [{ delta: { reasoning_content: "plan " } }],
     });
@@ -120,7 +119,7 @@ describe("OpenAI-compatible stream parsing", () => {
       choices: [{ delta: { content: "answer" }, finish_reason: "stop" }],
     });
     finishOpenAICompatibleContent(stream, message, state);
-    stream.end({ type: "done", reason: "stop", message: structuredClone(message) });
+    stream.end({ type: "done", reason: "stop", message: message.snapshot() });
 
     expect(await eventsPromise).toEqual([
       "start",
@@ -274,7 +273,7 @@ describe("OpenAI-compatible stream parsing", () => {
     stream.end({
       type: "done",
       reason: getOpenAICompatibleDoneReason(state.finishReason),
-      message: structuredClone(message),
+      message: message.snapshot(),
     });
 
     const events = await eventsPromise;
@@ -313,12 +312,8 @@ describe("OpenAI-compatible stream parsing", () => {
   });
 });
 
-function createMessage(): AssistantMessage {
-  return {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+function createMessage(): AssistantMessageBuilder {
+  return new AssistantMessageBuilder();
 }
 
 function createState(): OpenAICompatibleStreamState {

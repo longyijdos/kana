@@ -13,7 +13,7 @@ import { createTerminalStub, createTuiAppOptions } from "./app-fixture";
 test("main transcript and BTW stream independently without persisting BTW", async () => {
   const model = new ControlledModel();
   const journalMessages: Message[] = [];
-  const committedRuns: Message[][] = [];
+  const committedRuns: (readonly Message[])[] = [];
   const agent = new Agent({
     model,
     journal: {
@@ -66,7 +66,7 @@ test("main transcript and BTW stream independently without persisting BTW", asyn
   model.requests[0]!.complete("Main answer");
   await mainRun;
   expect(committedRuns).toHaveLength(1);
-  expect(journalMessages).toEqual(agent.state.messages);
+  expect(journalMessages).toEqual([...agent.state.messages]);
   expect(JSON.stringify(journalMessages)).not.toContain("Side question");
   expect(JSON.stringify(journalMessages)).not.toContain("Side answer");
   viewer.handleInput("\x1b");

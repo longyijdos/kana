@@ -68,15 +68,15 @@ export function createMessageIdentity<TProvenance extends MessageProvenance>(
 export type AssistantStopReason = "stop" | "length" | "toolUse" | "aborted" | "error";
 
 export type UserMessage = MessageIdentity<UserMessageProvenance> & {
-  role: "user";
-  content: string;
+  readonly role: "user";
+  readonly content: string;
   // Images stay provider-neutral and JSON-serializable so sessions can replay
   // the same visual input through any adapter that supports it.
-  images?: UserImage[];
+  readonly images?: readonly UserImage[];
 };
 
 export type CreateUserMessageOptions = Omit<UserMessage, "id" | "role"> & {
-  id?: MessageId;
+  readonly id?: MessageId;
 };
 
 export function createUserMessage(options: CreateUserMessageOptions): UserMessage {
@@ -92,12 +92,12 @@ export function createUserMessage(options: CreateUserMessageOptions): UserMessag
 export type UserImageMimeType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 
 export type UserImage = {
-  mimeType: UserImageMimeType;
+  readonly mimeType: UserImageMimeType;
   // Raw base64 without a data-URL prefix. Provider adapters own their wire
   // representation, while Kana sessions keep the original bytes inline.
-  data: string;
-  width: number;
-  height: number;
+  readonly data: string;
+  readonly width: number;
+  readonly height: number;
 };
 
 export function isUserImage(value: unknown): value is UserImage {
@@ -132,10 +132,10 @@ function isPositiveInteger(value: unknown): value is number {
 export type AssistantMessage = MessageIdentity<
   Extract<MessageProvenance, { kind: "model_output" }>
 > & {
-  role: "assistant";
-  stopReason?: AssistantStopReason;
-  usage?: ModelUsage;
-  content: AssistantContent[];
+  readonly role: "assistant";
+  readonly stopReason?: AssistantStopReason;
+  readonly usage?: ModelUsage;
+  readonly content: readonly AssistantContent[];
 };
 
 // content is the provider-facing text sent back to the model. result keeps the
@@ -144,24 +144,24 @@ export type AssistantMessage = MessageIdentity<
 export type ToolResultMessage = MessageIdentity<
   Extract<MessageProvenance, { kind: "tool_result" }>
 > & {
-  role: "tool";
-  toolCallId: string;
-  toolName: string;
-  content: string;
-  durationMs?: number;
-  images?: UserImage[];
+  readonly role: "tool";
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly content: string;
+  readonly durationMs?: number;
+  readonly images?: readonly UserImage[];
   // Artifact references are durable presentation metadata. The original host
   // result can remain execution-local while resume and session lifecycle code
   // still have a structured locator to follow.
-  artifact?: ToolResultArtifact;
-  result?: unknown;
-  isError: boolean;
+  readonly artifact?: ToolResultArtifact;
+  readonly result?: unknown;
+  readonly isError: boolean;
 };
 
 export type ToolResultArtifact = {
-  kind: "text";
-  locator: string;
-  byteLength: number;
+  readonly kind: "text";
+  readonly locator: string;
+  readonly byteLength: number;
 };
 
 const MAX_TOOL_RESULT_ARTIFACT_LOCATOR_LENGTH = 4_096;
@@ -187,50 +187,50 @@ export function isToolResultArtifact(value: unknown): value is ToolResultArtifac
 export type AssistantContent = TextContent | ThinkingContent | ToolCallContent | HostedToolContent;
 
 type ProviderState = {
-  provider: string;
+  readonly provider: string;
   // Provider adapters own replay semantics for this JSON-serializable value.
   // Kana persists opaque protocol state such as encrypted reasoning without
   // interpreting its contents.
-  value: unknown;
+  readonly value: unknown;
 };
 
 export type TextContent = {
-  type: "text";
-  text: string;
-  providerState?: ProviderState;
+  readonly type: "text";
+  readonly text: string;
+  readonly providerState?: ProviderState;
 };
 
 export type ThinkingContent = {
-  type: "thinking";
-  text: string;
-  providerState?: ProviderState;
+  readonly type: "thinking";
+  readonly text: string;
+  readonly providerState?: ProviderState;
 };
 
 export type ToolCallContent = {
-  type: "tool_call";
-  id: string;
-  name: string;
+  readonly type: "tool_call";
+  readonly id: string;
+  readonly name: string;
   // Parsed arguments when possible. rawArgs keeps the original streamed JSON.
-  args: unknown;
-  rawArgs?: string;
-  providerState?: ProviderState;
+  readonly args: unknown;
+  readonly rawArgs?: string;
+  readonly providerState?: ProviderState;
 };
 
 export type HostedToolAction = {
-  type: string;
-  query?: string;
-  queries?: string[];
-  url?: string;
-  pattern?: string;
+  readonly type: string;
+  readonly query?: string;
+  readonly queries?: readonly string[];
+  readonly url?: string;
+  readonly pattern?: string;
 };
 
 // Hosted tools run inside a model provider. They remain ordered assistant
 // content but never enter Kana's local tool runtime or approval flow.
 export type HostedToolContent = {
-  type: "hosted_tool";
-  id: string;
-  name: string;
-  status: "in_progress" | "completed" | "canceled";
-  action?: HostedToolAction;
-  providerState?: ProviderState;
+  readonly type: "hosted_tool";
+  readonly id: string;
+  readonly name: string;
+  readonly status: "in_progress" | "completed" | "canceled";
+  readonly action?: HostedToolAction;
+  readonly providerState?: ProviderState;
 };

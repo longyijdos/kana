@@ -65,10 +65,6 @@ type AssistantTurnResult = {
   canRetryContextLimit?: boolean;
 };
 
-type MessageContext = {
-  messages: Message[];
-};
-
 export async function runAgentLoop(
   context: AgentContext,
   config: AgentLoopConfig,
@@ -374,7 +370,6 @@ async function streamAssistantResponse(
     switch (event.type) {
       case "start":
         currentMessage = event.snapshot;
-        context.messages.push(currentMessage);
         addedAssistantMessage = true;
         await emitMessageStart(currentMessage, emit);
         break;
@@ -391,7 +386,6 @@ async function streamAssistantResponse(
       case "hosted_tool_start":
       case "hosted_tool_end":
         currentMessage = event.snapshot;
-        replaceLastAssistantMessage(context, currentMessage);
         await emitMessageUpdate(currentMessage, event, emit);
         break;
 
@@ -400,7 +394,6 @@ async function streamAssistantResponse(
           ...event.message,
           stopReason: event.reason,
         };
-        replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
         await emitMessageEnd(currentMessage, emit);
         return {
           message: currentMessage,
@@ -432,7 +425,6 @@ async function streamAssistantResponse(
           event.reason === "aborted"
             ? cancelInProgressHostedTools(terminalMessage)
             : terminalMessage;
-        replaceOrAppendAssistantMessage(context, currentMessage, addedAssistantMessage);
         if (!addedAssistantMessage) {
           await emitMessageStart(currentMessage, emit);
         }
@@ -597,26 +589,4 @@ function endReasonForAssistantTurn(turn: AssistantTurnResult): AgentEndReason {
     case undefined:
       return turn.isError ? "error" : "stop";
   }
-}
-
-function replaceLastAssistantMessage(context: MessageContext, message: AssistantMessage): void {
-  if (context.messages[context.messages.length - 1]?.role === "assistant") {
-    context.messages[context.messages.length - 1] = message;
-    return;
-  }
-
-  context.messages.push(message);
-}
-
-function replaceOrAppendAssistantMessage(
-  context: MessageContext,
-  message: AssistantMessage,
-  replaceExisting: boolean,
-): void {
-  if (replaceExisting) {
-    replaceLastAssistantMessage(context, message);
-    return;
-  }
-
-  context.messages.push(message);
 }
