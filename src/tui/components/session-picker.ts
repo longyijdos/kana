@@ -146,21 +146,17 @@ export class SessionPicker implements Component {
       ),
       this.sessions.length,
     );
-    const viewport = this.viewport.window(this.sessions.length);
+    const viewport = this.viewport.visible(this.sessions);
     const now = this.now();
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier sessions`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const session = this.sessions[index];
-      const marker = index === this.viewport.selectedIndex ? "> " : "  ";
+    for (const { item: session, selected } of viewport.rows) {
+      const marker = selected ? "> " : "  ";
       const label = `${marker}${formatSession(session, now)}`;
-      const rendered =
-        index === this.viewport.selectedIndex
-          ? color(label, tuiTheme.user)
-          : color(label, tuiTheme.muted);
+      const rendered = selected ? color(label, tuiTheme.user) : color(label, tuiTheme.muted);
 
       lines.push(truncateToWidth(rendered, width));
     }

@@ -187,7 +187,7 @@ describe("Kana MCP config", () => {
         deepwiki: { type: "http", url: "https://mcp.deepwiki.com/mcp" },
       },
     });
-    const server = config.mcpServers.cloudflare;
+    const server = config.mcpServers.cloudflare!;
     if (server.type !== "http" || server.auth === undefined)
       throw new Error("Expected OAuth config.");
     expect(server.auth).toEqual({

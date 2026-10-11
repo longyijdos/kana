@@ -123,7 +123,7 @@ function parseMetadataBlock(
   const lines = content.split("\n");
 
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
+    const line = lines[index]!;
 
     if (!line.trim() || line.trimStart().startsWith("#")) {
       continue;
@@ -138,15 +138,14 @@ function parseMetadataBlock(
       };
     }
 
-    const key = match[1];
-    const rawValue = match[2] ?? "";
+    const [, key = "", rawValue = ""] = match;
 
     if (rawValue === "|" || rawValue === ">") {
       const blockLines: string[] = [];
 
-      while (index + 1 < lines.length && /^\s+/.test(lines[index + 1] ?? "")) {
+      while (index + 1 < lines.length && /^\s+/.test(lines[index + 1]!)) {
         index += 1;
-        blockLines.push((lines[index] ?? "").replace(/^ {2}/, ""));
+        blockLines.push(lines[index]!.replace(/^ {2}/, ""));
       }
 
       setFrontmatterValue(frontmatter, key, blockLines.join("\n"));

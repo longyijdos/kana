@@ -121,15 +121,13 @@ export class SkillManager implements Component {
       ),
       this.skills.length,
     );
-    const viewport = this.viewport.window(this.skills.length);
+    const viewport = this.viewport.visible(this.skills);
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier skills`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const skill = this.skills[index];
-      const selected = index === this.viewport.selectedIndex;
+    for (const { item: skill, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
       const checkbox = skill.enabled ? "[x]" : "[ ]";
       const scope = skill.mutable ? "global" : "project";

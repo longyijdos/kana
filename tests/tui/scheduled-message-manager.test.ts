@@ -71,7 +71,7 @@ describe("scheduled message manager", () => {
     manager.handleInput("\x1b[5~");
     manager.handleInput("D");
 
-    expect(actions).toEqual([{ type: "delete", item: messages[0] }]);
+    expect(actions).toEqual([{ type: "delete", item: messages[0]! }]);
   });
 });
 

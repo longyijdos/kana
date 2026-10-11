@@ -147,15 +147,13 @@ export class McpServerManager implements Component {
       ),
       this.servers.length,
     );
-    const viewport = this.viewport.window(this.servers.length);
+    const viewport = this.viewport.visible(this.servers);
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier servers`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const server = this.servers[index];
-      const selected = index === this.viewport.selectedIndex;
+    for (const { item: server, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
       const checkbox = server.enabled ? "[x]" : "[ ]";
       const label = `${marker}${checkbox} ${formatSingleLine(server.id)}  ${server.type}`;

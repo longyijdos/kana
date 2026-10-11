@@ -629,8 +629,9 @@ function previousWordBoundary(
     current = units[index]?.startOffset ?? current;
     index -= 1;
   }
-  if (units[index]?.kind === "paste") {
-    return units[index].startOffset;
+  const paste = units[index];
+  if (paste?.kind === "paste") {
+    return paste.startOffset;
   }
   while (index >= 0 && units[index]?.kind === "word") {
     current = units[index]?.startOffset ?? current;
@@ -653,8 +654,9 @@ function nextWordBoundary(
     current = units[index]?.endOffset ?? current;
     index += 1;
   }
-  if (units[index]?.kind === "paste") {
-    return units[index].endOffset;
+  const paste = units[index];
+  if (paste?.kind === "paste") {
+    return paste.endOffset;
   }
   while (index < units.length && units[index]?.kind === "word") {
     current = units[index]?.endOffset ?? current;

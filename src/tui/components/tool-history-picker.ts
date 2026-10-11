@@ -116,20 +116,16 @@ export class ToolHistoryPicker implements Component {
       ),
       this.entries.length,
     );
-    const viewport = this.viewport.window(this.entries.length);
+    const viewport = this.viewport.visible(this.entries);
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier tools`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const entry = this.entries[index];
-      const marker = index === this.viewport.selectedIndex ? "> " : "  ";
+    for (const { item: entry, selected } of viewport.rows) {
+      const marker = selected ? "> " : "  ";
       const label = `${marker}${formatEntry(entry)}`;
-      const rendered =
-        index === this.viewport.selectedIndex
-          ? color(label, tuiTheme.user)
-          : color(label, tuiTheme.muted);
+      const rendered = selected ? color(label, tuiTheme.user) : color(label, tuiTheme.muted);
 
       lines.push(truncateToWidth(rendered, width));
     }

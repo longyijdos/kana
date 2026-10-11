@@ -136,15 +136,13 @@ export class ScheduledMessageManager implements Component {
       ),
       this.items.length,
     );
-    const viewport = this.viewport.window(this.items.length);
+    const viewport = this.viewport.visible(this.items);
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier messages`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const item = this.items[index];
-      const selected = index === this.viewport.selectedIndex;
+    for (const { item, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
       const state = item.state === "pending" ? "due" : formatDueAt(item.dueAt, this.snapshotAt);
       const origin = item.origin === "agent" ? "Kana" : "you";

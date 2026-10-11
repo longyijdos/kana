@@ -823,7 +823,7 @@ describe("Agent journal integration", () => {
           (message) => message.role === "user" && message.provenance.kind === "runtime_context",
         ),
       ),
-    ).toEqual([[durableSnapshots[0]], durableSnapshots, durableSnapshots]);
+    ).toEqual([[durableSnapshots[0]!], durableSnapshots, durableSnapshots]);
     expect(JSON.stringify(model.contexts[1])).toContain("capability enabled");
     expect(JSON.stringify(model.contexts[1])).toContain("No optional capability is active.");
     expect(model.contexts[1]?.messages.slice(0, model.contexts[0]?.messages.length)).toEqual(

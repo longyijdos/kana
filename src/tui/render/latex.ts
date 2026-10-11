@@ -891,7 +891,7 @@ class LatexParser {
   private parseSequence(endCharacter?: string): string {
     let result = "";
     while (this.position < this.source.length) {
-      const character = this.source[this.position];
+      const character = this.source[this.position]!;
       if (endCharacter && character === endCharacter) {
         this.position++;
         return result;

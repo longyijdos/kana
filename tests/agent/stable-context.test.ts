@@ -89,7 +89,7 @@ describe("stable Agent context", () => {
       expect(boundaries[1]?.snapshot.system).toBe("Main instructions");
       model.requests[1]!.update("Partial answer");
       await waitFor(() => agent.state.streamingMessage?.content.length === 1);
-      expect(agent.getStableContext().messages).toEqual(boundaries[1]?.snapshot.messages);
+      expect(agent.getStableContext().messages).toEqual(boundaries[1]!.snapshot.messages);
       model.requests[1]!.complete("Final answer");
       await run.result();
       await agent.waitForIdle();

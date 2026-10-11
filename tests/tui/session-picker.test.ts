@@ -53,7 +53,7 @@ describe("session picker", () => {
     expect(decisions).toEqual([
       {
         type: "select",
-        session: sessions[1],
+        session: sessions[1]!,
       },
     ]);
   });
@@ -91,14 +91,14 @@ describe("session picker", () => {
     picker.handleInput("\x1b[B");
     picker.handleInput("K");
 
-    expect(decisions).toEqual([{ type: "delete", session: sessions[1] }]);
+    expect(decisions).toEqual([{ type: "delete", session: sessions[1]! }]);
 
     picker.handleInput("\x1b[A");
     picker.handleInput("k");
 
     expect(decisions).toEqual([
-      { type: "delete", session: sessions[1] },
-      { type: "delete", session: sessions[0] },
+      { type: "delete", session: sessions[1]! },
+      { type: "delete", session: sessions[0]! },
     ]);
   });
 
@@ -112,7 +112,7 @@ describe("session picker", () => {
   });
 
   test("uses danger only for the delete confirmation title", () => {
-    const confirmation = new DeleteSessionConfirmation(sessions[0], () => {});
+    const confirmation = new DeleteSessionConfirmation(sessions[0]!, () => {});
     const rendered = confirmation.render(100);
 
     expect(rendered[0]).toBe(color("Delete session?", tuiTheme.error));
@@ -144,12 +144,12 @@ describe("session picker", () => {
 
     expect(selectedSession(picker)).toContain("Session 2");
 
-    picker.replaceSessions([manySessions[0], manySessions[2]]);
+    picker.replaceSessions([manySessions[0]!, manySessions[2]!]);
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
-      `  ${expectedRow(manySessions[0])}`,
-      `> ${expectedRow(manySessions[2])}`,
+      `  ${expectedRow(manySessions[0]!)}`,
+      `> ${expectedRow(manySessions[2]!)}`,
       HELP_LINE,
     ]);
 
@@ -168,9 +168,9 @@ describe("session picker", () => {
 
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
-      `> ${expectedRow(manySessions[0])}`,
-      `  ${expectedRow(manySessions[1])}`,
-      `  ${expectedRow(manySessions[2])}`,
+      `> ${expectedRow(manySessions[0]!)}`,
+      `  ${expectedRow(manySessions[1]!)}`,
+      `  ${expectedRow(manySessions[2]!)}`,
       "... 2 more sessions",
       HELP_LINE,
     ]);
@@ -182,9 +182,9 @@ describe("session picker", () => {
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
       "... 1 earlier sessions",
-      `  ${expectedRow(manySessions[1])}`,
-      `  ${expectedRow(manySessions[2])}`,
-      `> ${expectedRow(manySessions[3])}`,
+      `  ${expectedRow(manySessions[1]!)}`,
+      `  ${expectedRow(manySessions[2]!)}`,
+      `> ${expectedRow(manySessions[3]!)}`,
       "... 1 more sessions",
       HELP_LINE,
     ]);
@@ -200,9 +200,9 @@ describe("session picker", () => {
     expect(picker.render(100).map(stripAnsi)).toEqual([
       "Sessions",
       "... 3 earlier sessions",
-      `> ${expectedRow(manySessions[3])}`,
-      `  ${expectedRow(manySessions[4])}`,
-      `  ${expectedRow(manySessions[5])}`,
+      `> ${expectedRow(manySessions[3]!)}`,
+      `  ${expectedRow(manySessions[4]!)}`,
+      `  ${expectedRow(manySessions[5]!)}`,
       "... 6 more sessions",
       HELP_LINE,
     ]);
@@ -223,7 +223,7 @@ describe("session picker", () => {
     expect(selectedSession(picker)).toContain("Session 1");
 
     picker.handleInput("\r");
-    expect(decisions).toEqual([{ type: "select", session: manySessions[0] }]);
+    expect(decisions).toEqual([{ type: "select", session: manySessions[0]! }]);
   });
 });
 

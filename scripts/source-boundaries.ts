@@ -385,7 +385,7 @@ function getTopLevelModule(sourceRoot: string, filePath: string): string | undef
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
     return undefined;
   }
-  const [first, second] = relative.split(path.sep);
+  const [first = "", second] = relative.split(path.sep);
   return second === undefined ? path.basename(first, path.extname(first)) : first;
 }
 

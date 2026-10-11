@@ -33,12 +33,8 @@ function renderSvg(): string {
 
   const rects: string[] = [];
 
-  for (let y = 0; y < rows; y++) {
-    const row = LOGO_PIXELS[y];
-
-    for (let x = 0; x < row.length; x++) {
-      const pixel = row[x];
-
+  for (const [y, row] of LOGO_PIXELS.entries()) {
+    for (const [x, pixel] of [...row].entries()) {
       if (pixel === ".") continue;
 
       const color = pixel as PixelColor;

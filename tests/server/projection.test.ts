@@ -256,9 +256,9 @@ describe("server event projection", () => {
       ]);
       const events = timeline.filter((entry) => entry.type !== "message");
       expect(session.timeline).toEqual([
-        events[0],
+        events[0]!,
         { type: "message", id: "user", parentId: "start", timestamp: "t1", message_id: user.id },
-        events[1],
+        events[1]!,
         {
           type: "message",
           id: "assistant",
@@ -266,7 +266,7 @@ describe("server event projection", () => {
           timestamp: "t3",
           message_id: assistant.id,
         },
-        events[2],
+        events[2]!,
       ]);
       const byId = new Map(session.messages.map((message) => [message.id, message]));
       for (const entry of session.timeline) {

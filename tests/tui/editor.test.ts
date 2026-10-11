@@ -216,9 +216,9 @@ describe("Editor", () => {
 
       expect(editor.render(80).map(stripAnsi)).toEqual(
         expect.arrayContaining([
-          `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[0])}`,
-          `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[1])}`,
-          `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[2])}`,
+          `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[0]!)}`,
+          `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[1]!)}`,
+          `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[2]!)}`,
           `... ${PROMPT_COMMANDS.length - 3} more commands`,
         ]),
       );
@@ -231,9 +231,9 @@ describe("Editor", () => {
       expect(editor.render(80).map(stripAnsi)).toEqual(
         expect.arrayContaining([
           `... ${PROMPT_COMMANDS.length - 3} earlier commands`,
-          `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex - 2])}`,
-          `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex - 1])}`,
-          `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex])}`,
+          `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex - 2]!)}`,
+          `  ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex - 1]!)}`,
+          `> ${formatPromptCommandHelpLine(PROMPT_COMMANDS[lastIndex]!)}`,
         ]),
       );
 

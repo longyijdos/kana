@@ -40,7 +40,7 @@ export class VirtualTerminal implements Terminal {
     this.writes.push(data);
 
     for (let index = 0; index < data.length; index += 1) {
-      const character = data[index];
+      const character = data[index]!;
 
       if (character === "\x1b") {
         index = this.consumeEscapeSequence(data, index);
@@ -70,7 +70,7 @@ export class VirtualTerminal implements Terminal {
 
       if (code >= 0x40 && code <= 0x7e) {
         const parameters = data.slice(escapeIndex + 2, finalIndex);
-        this.applyCsi(parameters, data[finalIndex]);
+        this.applyCsi(parameters, data[finalIndex]!);
         return finalIndex;
       }
 
@@ -142,7 +142,7 @@ export class VirtualTerminal implements Terminal {
       this.wrapPending = false;
     }
 
-    this.screenRows[this.cursorRow][this.cursorColumn] = character;
+    this.screenRows[this.cursorRow]![this.cursorColumn] = character;
 
     if (this.cursorColumn === this.columns - 1) {
       this.wrapPending = true;

@@ -81,9 +81,9 @@ describe("background Job manager", () => {
     expect(manager.selectedJob?.id).toBe("job_page0");
 
     expect(actions).toEqual([
-      { type: "select", job: jobs[3] },
-      { type: "select", job: jobs[7] },
-      { type: "select", job: jobs[0] },
+      { type: "select", job: jobs[3]! },
+      { type: "select", job: jobs[7]! },
+      { type: "select", job: jobs[0]! },
     ]);
   });
 });

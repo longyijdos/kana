@@ -190,9 +190,13 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
 }
 
 function loadKanaSessionMetadata(filePath: string): KanaSessionMetadata {
-  const { lines } = readSessionLines(filePath);
-  const header = parseHeader(lines[0], filePath);
-  return headerToMetadata(header, filePath, readLastEntryTimestamp(lines) ?? header.createdAt);
+  const { headerLine, recordLines } = readSessionLines(filePath);
+  const header = parseHeader(headerLine, filePath);
+  return headerToMetadata(
+    header,
+    filePath,
+    readLastEntryTimestamp(recordLines) ?? header.createdAt,
+  );
 }
 
 function deriveUpdatedAt(timeline: readonly KanaSessionTimelineEntry[], createdAt: string): string {
@@ -201,15 +205,13 @@ function deriveUpdatedAt(timeline: readonly KanaSessionTimelineEntry[], createdA
 
 // Only complete records count as activity: an unterminated or malformed tail
 // must not reorder sessions in the picker.
-function readLastEntryTimestamp(lines: readonly string[]): string | undefined {
-  for (let index = lines.length - 1; index >= 1; index -= 1) {
-    const timestamp = readRecordTimestamp(lines[index]);
-
+function readLastEntryTimestamp(recordLines: readonly string[]): string | undefined {
+  for (const line of [...recordLines].reverse()) {
+    const timestamp = readRecordTimestamp(line);
     if (timestamp !== undefined) {
       return timestamp;
     }
   }
-
   return undefined;
 }
 
@@ -233,15 +235,12 @@ function readKanaSessionFile(filePath: string): {
   timeline: KanaSessionTimelineEntry[];
   recoveredIncompleteTail: boolean;
 } {
-  const { lines, recoveredIncompleteTail } = readSessionLines(filePath, true);
-  const header = parseHeader(lines[0], filePath);
-  const timeline: KanaSessionTimelineEntry[] = [];
-
-  for (let index = 1; index < lines.length; index += 1) {
-    timeline.push(parseTimelineEntry(lines[index], filePath, index + 1));
-  }
-
-  return { header, timeline, recoveredIncompleteTail };
+  const { headerLine, recordLines, recoveredIncompleteTail } = readSessionLines(filePath, true);
+  return {
+    header: parseHeader(headerLine, filePath),
+    timeline: recordLines.map((line, index) => parseTimelineEntry(line, filePath, index + 2)),
+    recoveredIncompleteTail,
+  };
 }
 
 function getKanaSessionDir(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
@@ -256,7 +255,8 @@ function readSessionLines(
   filePath: string,
   repairIncompleteTail = false,
 ): {
-  lines: string[];
+  headerLine: string;
+  recordLines: string[];
   recoveredIncompleteTail: boolean;
 } {
   if (!existsSync(filePath)) {
@@ -288,16 +288,11 @@ function readSessionLines(
     }
   }
 
-  const lines = content.split("\n").filter((line) => line.trim().length > 0);
-
-  if (lines.length === 0) {
+  const [headerLine, ...recordLines] = content.split("\n").filter((line) => line.trim());
+  if (headerLine === undefined) {
     throw new Error(`Kana session file is empty: ${filePath}`);
   }
-
-  return {
-    lines,
-    recoveredIncompleteTail,
-  };
+  return { headerLine, recordLines, recoveredIncompleteTail };
 }
 
 function listDirectories(directory: string): string[] {

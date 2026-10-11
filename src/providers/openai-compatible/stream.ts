@@ -121,11 +121,10 @@ export function finishOpenAICompatibleContent(
   message: AssistantMessage,
   state: OpenAICompatibleStreamState,
 ): void {
-  for (let contentIndex = 0; contentIndex < message.content.length; contentIndex += 1) {
+  for (const [contentIndex, content] of message.content.entries()) {
     if (state.endedContentIndexes.has(contentIndex)) {
       continue;
     }
-    const content = message.content[contentIndex];
     if (content.type === "thinking" || content.type === "text") {
       finishContentAtIndex(stream, message, state, contentIndex);
     }
@@ -137,8 +136,7 @@ export function finishOpenAICompatibleToolCalls(
   message: AssistantMessage,
   state: OpenAICompatibleStreamState,
 ): void {
-  for (let contentIndex = 0; contentIndex < message.content.length; contentIndex += 1) {
-    const content = message.content[contentIndex];
+  for (const [contentIndex, content] of message.content.entries()) {
     if (content.type === "tool_call" && !state.endedContentIndexes.has(contentIndex)) {
       finishToolCall(stream, message, state, contentIndex, content);
     }
@@ -255,7 +253,7 @@ function applyThinkingDelta(
   }
 
   const content = message.content[contentIndex];
-  if (content.type !== "thinking") {
+  if (content?.type !== "thinking") {
     throw new Error("Internal error: expected thinking content.");
   }
   content.text += delta;
@@ -285,7 +283,7 @@ function applyTextDelta(
   }
 
   const content = message.content[contentIndex];
-  if (content.type !== "text") {
+  if (content?.type !== "text") {
     throw new Error("Internal error: expected text content.");
   }
   content.text += delta;
@@ -366,14 +364,14 @@ function finishContentAtIndex(
   contentIndex: number,
 ): void {
   const content = message.content[contentIndex];
-  if (content.type === "thinking") {
+  if (content?.type === "thinking") {
     stream.push({
       type: "thinking_end",
       contentIndex,
       content: content.text,
       snapshot: structuredClone(message),
     });
-  } else if (content.type === "text") {
+  } else if (content?.type === "text") {
     stream.push({
       type: "text_end",
       contentIndex,
@@ -393,8 +391,7 @@ function finishToolCallsBeforeIndex(
   toolCallIndex: number,
 ): void {
   let currentIndex = 0;
-  for (let contentIndex = 0; contentIndex < message.content.length; contentIndex += 1) {
-    const content = message.content[contentIndex];
+  for (const [contentIndex, content] of message.content.entries()) {
     if (content.type !== "tool_call") {
       continue;
     }

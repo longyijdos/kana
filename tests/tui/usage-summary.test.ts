@@ -12,7 +12,7 @@ describe("tui usage summary", () => {
     );
     const barStarts = tokenRows.map((line) => line.search(/[█░]/));
 
-    expect(barStarts).toEqual([barStarts[0], barStarts[0], barStarts[0], barStarts[0]]);
+    expect(barStarts).toEqual([barStarts[0]!, barStarts[0]!, barStarts[0]!, barStarts[0]!]);
 
     const runsStart = rendered.indexOf("Runs");
     const runRows = rendered.slice(runsStart + 1, runsStart + 5);

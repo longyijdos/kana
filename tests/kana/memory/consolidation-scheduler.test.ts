@@ -57,8 +57,8 @@ describe("memory consolidation scheduler", () => {
     });
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
       runIncremental: async (_scope, entries) => {
-        started.push(entries[0].id);
-        if (entries[0].id === "mem_first") {
+        started.push(entries[0]!.id);
+        if (entries[0]!.id === "mem_first") {
           await firstRun;
         } else {
           await secondRun.promise;

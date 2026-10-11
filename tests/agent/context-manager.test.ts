@@ -190,14 +190,14 @@ describe("ContextManager budgets and checkpoints", () => {
 
     expect(policyInput?.messages).toHaveLength(5);
     expect(policyInput?.messages[1]).toEqual({
-      id: messages[1]?.id,
+      id: messages[1]!.id,
       provenance: { kind: "model_output" },
       role: "assistant",
       stopReason: "stop",
       content: [{ type: "text", text: "Old answer" }],
     });
     expect(policyInput?.messages[4]).toEqual({
-      id: messages[4]?.id,
+      id: messages[4]!.id,
       provenance: { kind: "tool_result" },
       role: "tool",
       toolCallId: "call-1",
@@ -269,7 +269,7 @@ describe("ContextManager budgets and checkpoints", () => {
       compactedMessageCount: 3,
       estimatedAfterTokens: prepared.estimatedTokens,
     });
-    expect(policyInput?.messages).toEqual([messages[0], messages[2]]);
+    expect(policyInput?.messages).toEqual([messages[0]!, messages[2]!]);
     expect(prepared.context.messages).toEqual([
       expect.objectContaining({ provenance: { kind: "context_summary" } }),
       coveredRuntimeContext,
@@ -362,7 +362,7 @@ describe("ContextManager budgets and checkpoints", () => {
       coveredMessageCount: 4,
       compactedMessageCount: 4,
     });
-    expect(policyInput?.messages).toEqual([messages[0], messages[3]]);
+    expect(policyInput?.messages).toEqual([messages[0]!, messages[3]!]);
     expect(JSON.stringify(policyInput)).not.toContain("runtime_context");
     expect(prepared.context.messages).toEqual([
       expect.objectContaining({

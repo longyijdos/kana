@@ -277,7 +277,7 @@ function parseCustomDelay(value: string): number | string {
     return "use a value such as 3m, 90m, or 2h";
   }
 
-  const amount = Number.parseInt(match[1], 10);
+  const amount = Number(match[1]);
   const minutes = match[2]?.toLowerCase() === "h" ? amount * 60 : amount;
   if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > 1_440) {
     return "must be between 1 minute and 24 hours";

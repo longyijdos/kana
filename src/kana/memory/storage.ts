@@ -293,9 +293,9 @@ function parseKanaDailyMemory(
 ): KanaMemoryEntry[] {
   const entries: KanaMemoryEntry[] = [];
   const expression = /^---\n([\s\S]*?)\n---\n\n([\s\S]*?)(?=\n\n---\nid:|$)/gm;
-  for (let match = expression.exec(content); match !== null; match = expression.exec(content)) {
+  for (const [, header = "", body = ""] of content.matchAll(expression)) {
     const fields = Object.fromEntries(
-      match[1].split("\n").map((line) => {
+      header.split("\n").map((line) => {
         const separator = line.indexOf(": ");
         return [line.slice(0, separator), JSON.parse(line.slice(separator + 2)) as unknown];
       }),
@@ -315,7 +315,7 @@ function parseKanaDailyMemory(
       scope,
       title: typeof fields.title === "string" ? fields.title : undefined,
       reason: typeof fields.reason === "string" ? fields.reason : undefined,
-      content: normalizeRequiredText(match[2], `Daily memory ${date} entry content`),
+      content: normalizeRequiredText(body, `Daily memory ${date} entry content`),
     });
   }
 
@@ -345,7 +345,9 @@ function assertMemoryDate(value: string, name: string): void {
     throw new Error(`${name} must be a valid YYYY-MM-DD date.`);
   }
 
-  const [year, month, day] = match.slice(1).map(Number);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
   const parsed = new Date(Date.UTC(year, month - 1, day));
 
   if (

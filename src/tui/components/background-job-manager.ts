@@ -117,13 +117,11 @@ export class BackgroundJobManager implements Component {
       visibleLimitForHeight(JOB_VISIBLE_LIMIT, availableHeight, JOB_RESERVED_ROWS),
       this.jobs.length,
     );
-    const viewport = this.viewport.window(this.jobs.length);
+    const viewport = this.viewport.visible(this.jobs);
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier Jobs`));
     }
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const job = this.jobs[index];
-      const selected = index === this.viewport.selectedIndex;
+    for (const { item: job, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
       const label = `${marker}${shortJobId(job.id)} · ${job.status} · ${singleLine(job.label)}`;
       lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));

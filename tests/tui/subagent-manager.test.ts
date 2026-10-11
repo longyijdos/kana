@@ -70,9 +70,9 @@ describe("subagent manager", () => {
     expect(manager.selectedSubagent?.id).toBe("agent_page0");
 
     expect(actions).toEqual([
-      { type: "select", subagent: runs[3] },
-      { type: "select", subagent: runs[7] },
-      { type: "select", subagent: runs[0] },
+      { type: "select", subagent: runs[3]! },
+      { type: "select", subagent: runs[7]! },
+      { type: "select", subagent: runs[0]! },
     ]);
   });
 
