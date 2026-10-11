@@ -115,7 +115,7 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 | 1 | 地基：分层规则、类型严格化、死代码删除、合并 helper | 已完成 |
 | 2 | 不可变数据模型，去掉防御性拷贝 | 已完成 |
 | 3 | Agent 运行时重构 | 已完成 |
-| 4 | Provider 重构 | 未开始 |
+| 4 | Provider 重构 | 已完成 |
 | 5 | 解析与持久化 | 未开始 |
 | 6 | 产品层：能力、对话运行时、任务注册表、OAuth/MCP | 未开始 |
 | 7 | 前端：headless、server、TUI | 未开始 |
@@ -327,7 +327,19 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ---
 
-## 阶段 4：Provider 重构
+## 阶段 4：Provider 重构（已完成）
+
+### 结果
+- providers 目录：3,860 行 → 约 3,190 行；三个 provider 的 model 文件分别为 125、139、221 行
+- 删除了 `deepseek/http.ts`、`openai-compatible/http.ts`、`openai-codex/stream.ts`；`openai-codex/http.ts` 只保留 URL、可重试判定和恢复提示
+- 新增共享模块：`run.ts`（请求生命周期）、`sse.ts`、`tool-arguments.ts`、`responses/request.ts`
+- 三份 HTTP 错误类、三个重试循环、两套 SSE 读取、两套 Responses 消息转换，各合并为一份
+- Codex 的 HTTP 重试和流恢复共享同一个重试预算，保持原有行为（测试覆盖了这一点）
+- 删除 DeepSeek 未使用的配置项，以及 core 里的通用 `ModelConfig`；provider 内不再重复检查模型能力
+- 顺带清理了阶段 1 延后的几处：`terminalSeen` 并入 `stopReason`；finish reason 在入口处收窄为联合类型，映射函数不再需要 default 分支
+- 回放合并时的深拷贝改为浅拷贝
+- HTTP 相关测试合并到 `tests/providers/http.test.ts`，在共享层测试一次
+- 文档（providers、deepseek-provider，中英文）已同步
 
 ### 细化设计（开工前写定）
 
