@@ -13,8 +13,6 @@ import type { ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
 import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 import {
-  type AppendKanaSessionMessagesOptions,
-  type AppendKanaSessionRunOptions,
   type CreateKanaSessionOptions,
   entryToContextCheckpoint,
   type FindKanaSessionOptions,
@@ -108,28 +106,6 @@ export function deleteKanaSession(
     force: true,
   });
   return true;
-}
-
-export function appendKanaSessionMessages(
-  session: KanaSessionMetadata,
-  messages: Message[],
-  options: AppendKanaSessionMessagesOptions = {},
-): void {
-  appendKanaSessionRun(session, messages, options);
-}
-
-export function appendKanaSessionRun(
-  session: KanaSessionMetadata,
-  messages: Message[],
-  options: AppendKanaSessionRunOptions = {},
-): KanaSessionTimelineEntry[] {
-  if (messages.length === 0 && (options.compactions?.length ?? 0) === 0) {
-    return [];
-  }
-
-  const timeline = existsSync(session.path) ? readKanaSessionFile(session.path).timeline : [];
-  const journal = createKanaSessionJournal(session, timeline);
-  return journal.appendSnapshot(messages, options);
 }
 
 function findKanaSession(

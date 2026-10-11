@@ -48,6 +48,13 @@ export type OAuthStoredToken = OAuthTokenSet & {
   resource?: string;
 };
 
+export type OAuthTokenStatus = {
+  state: "unauthorized" | "authorized" | "expired";
+  refreshable: boolean;
+  expiresAt?: number;
+  scopes?: string[];
+};
+
 export type OAuthTokenStore = {
   load(key: string): Promise<OAuthStoredToken | undefined>;
   save(key: string, token: OAuthStoredToken): Promise<void>;

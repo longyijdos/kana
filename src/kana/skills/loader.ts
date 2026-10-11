@@ -61,10 +61,6 @@ export function loadKanaSkills(options: LoadKanaSkillsOptions = {}): LoadKanaSki
   };
 }
 
-export function loadKanaSkillsFromDir(dir: string): LoadKanaSkillsResult {
-  return loadSkillsFromDir(dir, new Set<string>());
-}
-
 export function loadKanaSkillActivations(
   options: LoadKanaSkillsOptions = {},
 ): LoadKanaSkillActivationsResult {

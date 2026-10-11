@@ -3,6 +3,7 @@ import { addModelUsage, type Message, type ModelUsage, type ToolCallContent } fr
 import type { BackgroundJobClient } from "@/jobs";
 import type { Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent, McpToolSource } from "@/mcp";
+import type { OAuthTokenStatus } from "@/oauth";
 import {
   type KanaUsageScope,
   type KanaUsageSummary,
@@ -10,7 +11,7 @@ import {
   recordKanaAgentRunAccounting,
 } from "../accounting";
 import { createKanaAgent, type KanaAgentOptions } from "../agent";
-import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth";
+import { createKanaOAuthTokenStore } from "../auth";
 import {
   createKanaConfigStore,
   type KanaConfig,
@@ -434,7 +435,7 @@ export class KanaConversationHost<TConfiguration = never> {
     serverId: string,
     openAuthorizationUrl: (url: string) => Promise<void>,
     signal?: AbortSignal,
-  ): Promise<KanaOAuthTokenStatus> {
+  ): Promise<OAuthTokenStatus> {
     this.assertCustomizationsAvailable("MCP authorization");
     return authorizeKanaMcpServer(serverId, {
       env: this.env,
@@ -446,7 +447,7 @@ export class KanaConversationHost<TConfiguration = never> {
     });
   }
 
-  signOutMcpServer(serverId: string): Promise<KanaOAuthTokenStatus> {
+  signOutMcpServer(serverId: string): Promise<OAuthTokenStatus> {
     this.assertCustomizationsAvailable("MCP authorization");
     return signOutKanaMcpServer(serverId, {
       env: this.env,

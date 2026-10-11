@@ -8,7 +8,6 @@ export {
 export {
   loadKanaSkillActivations,
   loadKanaSkills,
-  loadKanaSkillsFromDir,
 } from "./loader";
 export { formatKanaSkillInvocation, formatKanaSkillsForPrompt } from "./prompt";
 export { createKanaSkillStore, type KanaSkillStore } from "./store";

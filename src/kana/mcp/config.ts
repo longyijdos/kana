@@ -47,10 +47,6 @@ export type KanaMcpConfig = {
   mcpServers: Record<string, KanaMcpServerConfig>;
 };
 
-export const DEFAULT_KANA_MCP_CONFIG: KanaMcpConfig = {
-  mcpServers: {},
-};
-
 const ROOT_KEYS = new Set(["mcpServers"]);
 const STDIO_SERVER_KEYS = new Set([
   "description",

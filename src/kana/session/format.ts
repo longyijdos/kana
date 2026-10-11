@@ -129,10 +129,6 @@ export type AppendKanaSessionMessagesOptions = {
   timestamp?: string;
 };
 
-export type AppendKanaSessionRunOptions = AppendKanaSessionMessagesOptions & {
-  compactions?: ContextCheckpoint[];
-};
-
 export type LoadKanaSessionResult = {
   metadata: KanaSessionMetadata;
   messages: Message[];
@@ -150,7 +146,8 @@ export type AppendCompactionOptions = {
   turnId?: string;
 };
 
-export type AppendSnapshotOptions = AppendKanaSessionRunOptions & {
+export type AppendSnapshotOptions = AppendKanaSessionMessagesOptions & {
+  compactions?: ContextCheckpoint[];
   todoState?: KanaTodoItem[];
 };
 

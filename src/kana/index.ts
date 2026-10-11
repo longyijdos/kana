@@ -13,7 +13,6 @@ export {
   authorizeKanaOpenAICodex,
   createKanaOAuthTokenStore,
   getKanaOpenAICodexAuthStatus,
-  type KanaOAuthTokenStatus,
   KanaOpenAICodexAuth,
   type KanaOpenAICodexAuthStatus,
   loadKanaOAuthTokenStatuses,
@@ -61,8 +60,6 @@ export type { KanaLaunchMode } from "./launch-mode";
 export {
   createKanaMcpManager,
   createKanaMcpRuntime,
-  DEFAULT_KANA_MCP_ACTIVATION_STATE,
-  DEFAULT_KANA_MCP_CONFIG,
   type KanaMcpConfig,
   type KanaMcpHttpServerConfig,
   KanaMcpRuntime,
@@ -72,11 +69,9 @@ export {
   type KanaMcpStdioServerConfig,
   loadKanaMcpActivationState,
   loadKanaMcpConfig,
-  loadKanaMcpServerActivations,
   parseKanaMcpActivationState,
   parseKanaMcpConfig,
   resolveKanaMcpOAuth2Client,
-  saveKanaMcpActivationState,
 } from "./mcp";
 export {
   appendKanaMemory,
@@ -96,15 +91,12 @@ export {
   type KanaModelManagement,
 } from "./model-management";
 export { getKanaConfigPaths, getKanaSessionLogPath } from "./path";
-export { buildKanaSystemPrompt } from "./prompt";
 export {
   expandKanaPromptTemplate,
   type KanaPromptTemplate,
   loadKanaPromptTemplates,
 } from "./prompts";
 export {
-  appendKanaSessionMessages,
-  appendKanaSessionRun,
   createKanaSession,
   createKanaSessionJournal,
   deleteKanaSession,
@@ -122,7 +114,6 @@ export {
   type LoadKanaSkillActivationsResult,
   loadKanaSkillActivations,
   loadKanaSkills,
-  loadKanaSkillsFromDir,
   type ReinstallKanaSkillsResult,
   reinstallKanaSkills,
   resyncKanaSkills,

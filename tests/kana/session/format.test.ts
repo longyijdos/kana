@@ -3,14 +3,9 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { ContextCheckpoint } from "@/agent";
 import { createMessageIdentity, type Message } from "@/core";
-import {
-  appendKanaSessionMessages,
-  appendKanaSessionRun,
-  createKanaSession,
-  listKanaSessions,
-  loadKanaSession,
-} from "@/kana";
+import { createKanaSession, listKanaSessions, loadKanaSession } from "@/kana";
 import { messageIdentityForTest } from "../../helpers/messages";
+import { appendSessionSnapshot } from "../../helpers/session";
 import { createSessionFixture } from "./session-fixture";
 
 const { cleanupTempDirs, createTempEnv } = createSessionFixture();
@@ -29,7 +24,7 @@ describe("Kana session format", () => {
       content: "Byte layout",
     };
 
-    appendKanaSessionMessages(session, [userMessage], { timestamp });
+    appendSessionSnapshot(session, [userMessage], { timestamp });
 
     const content = readFileSync(session.path, "utf8");
     const [header, turnStart, message, turnEnd] = content
@@ -97,7 +92,7 @@ describe("Kana session format", () => {
       content: "Continue the implementation.",
     };
 
-    appendKanaSessionMessages(session, [completion, userTask, user]);
+    appendSessionSnapshot(session, [completion, userTask, user]);
 
     expect(loadKanaSession(session.id, { env, cwd }).messages).toEqual([
       completion,
@@ -166,7 +161,7 @@ describe("Kana session format", () => {
       },
     ];
 
-    appendKanaSessionMessages(session, messages);
+    appendSessionSnapshot(session, messages);
 
     const loaded = loadKanaSession(session.id, { env, cwd });
     const toolLine = readFileSync(session.path, "utf8")
@@ -200,7 +195,7 @@ describe("Kana session format", () => {
       isError: false,
     };
 
-    appendKanaSessionMessages(session, [message]);
+    appendSessionSnapshot(session, [message]);
 
     const loaded = loadKanaSession(session.id, { env, cwd });
     expect(loaded.messages).toEqual([message]);
@@ -240,7 +235,7 @@ describe("Kana session format", () => {
       },
     ];
 
-    appendKanaSessionMessages(session, messages);
+    appendSessionSnapshot(session, messages);
 
     const loaded = loadKanaSession("runtime-context", { env, cwd });
     expect(loaded.messages).toEqual(messages);
@@ -284,7 +279,7 @@ describe("Kana session format", () => {
       createdAt: "2026-07-24T00:00:01.000Z",
     };
 
-    appendKanaSessionRun(session, messages, {
+    appendSessionSnapshot(session, messages, {
       timestamp: "2026-07-24T00:00:00.000Z",
       compactions: [checkpoint],
     });
@@ -336,7 +331,7 @@ describe("Kana session format", () => {
       estimatedAfterTokens: 60_000,
       createdAt: "2026-07-24T00:00:01.000Z",
     };
-    appendKanaSessionRun(session, firstMessages, {
+    appendSessionSnapshot(session, firstMessages, {
       compactions: [firstCheckpoint],
     });
 
@@ -361,7 +356,7 @@ describe("Kana session format", () => {
       estimatedAfterTokens: 58_000,
       createdAt: "2026-07-24T00:00:02.000Z",
     };
-    appendKanaSessionRun(session, secondMessages, {
+    appendSessionSnapshot(session, secondMessages, {
       compactions: [secondCheckpoint],
     });
 
@@ -408,7 +403,7 @@ describe("Kana session format", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "invalid-images" });
-    appendKanaSessionMessages(session, [
+    appendSessionSnapshot(session, [
       {
         ...messageIdentityForTest("user"),
         role: "user",
@@ -454,7 +449,7 @@ describe("Kana session format", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "invalid-tool-duration" });
-    appendKanaSessionMessages(session, [
+    appendSessionSnapshot(session, [
       {
         ...messageIdentityForTest("tool"),
         role: "tool",
@@ -481,7 +476,7 @@ describe("Kana session format", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "invalid-tool-images" });
-    appendKanaSessionMessages(session, [
+    appendSessionSnapshot(session, [
       {
         ...messageIdentityForTest("tool"),
         role: "tool",

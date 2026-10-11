@@ -8,9 +8,9 @@ import {
   type OAuthCallbackServer,
   type OAuthDiagnosticEvent,
   type OAuthFetch,
-  type OAuthSessionStatus,
   type OAuthStoredToken,
   OAuthTokenEndpointError,
+  type OAuthTokenStatus,
   refreshOAuthAccessToken,
   startOAuthCallbackServer,
 } from "@/oauth";
@@ -54,7 +54,7 @@ export type CreateKanaOpenAICodexAuthOptions = {
   startCallbackServer?(options: { redirectUri: string }): Promise<OAuthCallbackServer>;
 };
 
-export type KanaOpenAICodexAuthStatus = OAuthSessionStatus & {
+export type KanaOpenAICodexAuthStatus = OAuthTokenStatus & {
   planUsage?: boolean;
   email?: string;
 };

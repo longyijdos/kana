@@ -2,7 +2,6 @@ import type { Static, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
 import { Value } from "typebox/value";
-import type { ToolCallContent } from "@/core";
 import { coerceJsonSchemaValue, hasTypeBoxMetadata } from "./json-schema-coercion";
 import type { Tool } from "./tool";
 
@@ -67,19 +66,6 @@ function formatValidationErrors(errors: TLocalizedValidationError[]): string {
     .join("\n");
 
   return formatted || "Unknown validation error";
-}
-
-export function validateToolCall<T extends TSchema>(
-  tools: Tool<T>[],
-  toolCall: ToolCallContent,
-): Static<T> {
-  const tool = tools.find((candidate) => candidate.name === toolCall.name);
-
-  if (!tool) {
-    throw new Error(`Tool "${toolCall.name}" not found`);
-  }
-
-  return validateToolArguments(tool, toolCall.args);
 }
 
 export function validateToolArguments<T extends TSchema>(tool: Tool<T>, args: unknown): Static<T> {

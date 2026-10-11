@@ -5,10 +5,6 @@ export {
   refreshOAuthAccessToken,
 } from "./client";
 export { OAuthTokenEndpointError } from "./errors";
-export {
-  OAuthSession,
-  type OAuthSessionStatus,
-} from "./session";
 export type {
   OAuthAuthorizationServerMetadata,
   OAuthClientCredentials,
@@ -16,5 +12,6 @@ export type {
   OAuthFetch,
   OAuthStoredToken,
   OAuthTokenEndpointAuthMethod,
+  OAuthTokenStatus,
   OAuthTokenStore,
 } from "./types";

@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  DEFAULT_KANA_MCP_CONFIG,
   getKanaConfigPaths,
   loadKanaMcpConfig,
   parseKanaMcpConfig,
@@ -20,7 +19,7 @@ afterEach(() => {
 
 describe("Kana MCP config", () => {
   test("loads an empty default when mcp.json is missing", () => {
-    expect(loadKanaMcpConfig(createTempEnv())).toEqual(DEFAULT_KANA_MCP_CONFIG);
+    expect(loadKanaMcpConfig(createTempEnv())).toEqual({ mcpServers: {} });
   });
 
   test("loads Claude-style stdio server entries", () => {

@@ -35,15 +35,12 @@ type LoadKanaSystemPromptOptions = {
   launchMode?: KanaLaunchMode;
 };
 
-export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions & {
+export type BuildKanaPromptAssemblyOptions = CollectKanaEnvironmentContextOptions & {
   env?: NodeJS.ProcessEnv;
   launchMode?: KanaLaunchMode;
   memoryEnabled?: boolean;
   skills?: readonly KanaSkill[];
   instructionSections?: readonly PromptSystemSection[];
-};
-
-export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
   resolveBackgroundJobState?: () => readonly BackgroundJobSummary[];
   toolSections?: readonly PromptToolSection[];
   resolveTodoState?: () => readonly KanaTodoItem[];
@@ -83,10 +80,6 @@ export function loadKanaInstructionSections(
   }
 
   return sections;
-}
-
-export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}): string {
-  return buildKanaPromptAssembly(options).initialSystem ?? "";
 }
 
 export function buildKanaPromptAssembly(

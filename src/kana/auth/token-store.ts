@@ -4,7 +4,7 @@ import path from "node:path";
 import lockfile from "proper-lockfile";
 import type { Logger } from "@/logging";
 import type { McpOAuthClientRegistration, McpOAuthClientStore } from "@/mcp";
-import type { OAuthStoredToken, OAuthTokenStore } from "@/oauth";
+import type { OAuthStoredToken, OAuthTokenStatus, OAuthTokenStore } from "@/oauth";
 import { getKanaConfigPaths } from "../path";
 
 const TOKEN_FILE_VERSION = 1;
@@ -33,12 +33,6 @@ export type CreateKanaOAuthTokenStoreOptions = {
   getLogger?: () => Logger;
 };
 
-export type KanaOAuthTokenStatus = {
-  state: "unauthorized" | "authorized" | "expired";
-  refreshable: boolean;
-  expiresAt?: number;
-};
-
 export type LoadKanaOAuthTokenStatusesOptions = {
   env?: NodeJS.ProcessEnv;
   now?: () => number;
@@ -54,7 +48,7 @@ export function createKanaOAuthTokenStore(
 export function loadKanaOAuthTokenStatuses(
   storageKeys: readonly string[],
   options: LoadKanaOAuthTokenStatusesOptions = {},
-): Record<string, KanaOAuthTokenStatus> {
+): Record<string, OAuthTokenStatus> {
   if (storageKeys.length === 0) {
     return {};
   }
@@ -415,11 +409,11 @@ function getOAuthTokenFilePath(env: NodeJS.ProcessEnv | undefined): string {
   return path.join(getKanaConfigPaths(env).home, "oauth-tokens.json");
 }
 
-function unauthorizedStatus(): KanaOAuthTokenStatus {
+function unauthorizedStatus(): OAuthTokenStatus {
   return { state: "unauthorized", refreshable: false };
 }
 
-function tokenStatus(token: OAuthStoredToken, now: number): KanaOAuthTokenStatus {
+function tokenStatus(token: OAuthStoredToken, now: number): OAuthTokenStatus {
   return {
     state: token.expiresAt !== undefined && token.expiresAt <= now ? "expired" : "authorized",
     refreshable: token.refreshToken !== undefined,

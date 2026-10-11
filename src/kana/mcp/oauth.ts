@@ -4,9 +4,9 @@ import {
   McpOAuthHttpAuthorizer,
   type McpOAuthHttpDiagnosticEvent,
 } from "@/mcp";
-import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
+import type { OAuthFetch, OAuthStoredToken, OAuthTokenStatus, OAuthTokenStore } from "@/oauth";
 import { openKanaOAuthAuthorizationUrl } from "../auth/browser";
-import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth/token-store";
+import { createKanaOAuthTokenStore } from "../auth/token-store";
 import {
   type KanaMcpConfig,
   type KanaMcpHttpServerConfig,
@@ -80,7 +80,7 @@ export function createKanaMcpOAuthAuthorizer(
 export async function authorizeKanaMcpServer(
   serverId: string,
   options: RunKanaMcpOAuthOptions = {},
-): Promise<KanaOAuthTokenStatus> {
+): Promise<OAuthTokenStatus> {
   const context = createOperationContext(options);
   const server = requireOAuthServer(serverId, context.env, options.config);
   const authorizer = createKanaMcpOAuthAuthorizer(serverId, server, {
@@ -106,7 +106,7 @@ export async function authorizeKanaMcpServer(
 export async function signOutKanaMcpServer(
   serverId: string,
   options: RunKanaMcpOAuthOptions = {},
-): Promise<KanaOAuthTokenStatus> {
+): Promise<OAuthTokenStatus> {
   const context = createOperationContext(options);
   requireOAuthServer(serverId, context.env, options.config);
   await context.tokenStore.delete(createKanaMcpOAuthStorageKey(serverId));
@@ -174,7 +174,7 @@ function createDiagnosticHandler(
   };
 }
 
-function storedTokenStatus(token: OAuthStoredToken): KanaOAuthTokenStatus {
+function storedTokenStatus(token: OAuthStoredToken): OAuthTokenStatus {
   return {
     state:
       token.expiresAt !== undefined && token.expiresAt <= Date.now() ? "expired" : "authorized",

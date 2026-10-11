@@ -3,12 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { AgentJournal } from "@/agent";
 import type { Message } from "@/core";
-import {
-  appendKanaSessionMessages,
-  createKanaConversationHost,
-  createKanaSession,
-  deleteKanaSession,
-} from "@/kana";
+import { createKanaConversationHost, createKanaSession, deleteKanaSession } from "@/kana";
 import {
   createKanaSubagentJournal,
   getKanaSubagentDirectory,
@@ -16,6 +11,7 @@ import {
   type KanaSubagentProfile,
 } from "../../../src/kana/subagents";
 import { messageIdentityForTest } from "../../helpers/messages";
+import { appendSessionSnapshot } from "../../helpers/session";
 import { createSessionFixture } from "../session/session-fixture";
 
 const { cleanupTempDirs, createTempEnv } = createSessionFixture();
@@ -56,7 +52,7 @@ describe("Kana subagent journal repository", () => {
     const env = createTempEnv();
     const cwd = process.cwd();
     const parent = createKanaSession({ cwd, env, id: "session-1" });
-    appendKanaSessionMessages(parent, [userMessage("Persist the parent")]);
+    appendSessionSnapshot(parent, [userMessage("Persist the parent")]);
     const owner = createOwner(cwd);
     const journal = createJournal(owner, env, "agent_previous");
     journal.startRun({ runId: "run-1", messages: [userMessage("Previous run")] });
@@ -75,7 +71,7 @@ describe("Kana subagent journal repository", () => {
     const env = createTempEnv();
     const cwd = path.join(env.HOME ?? "", "repo");
     const parent = createKanaSession({ cwd, env, id: "session-1" });
-    appendKanaSessionMessages(parent, [userMessage("Persist the parent")]);
+    appendSessionSnapshot(parent, [userMessage("Persist the parent")]);
     const owner = createOwner(cwd);
     const journal = createJournal(owner, env, "agent_child");
     journal.startRun({ runId: "run-1", messages: [userMessage("Child")] });

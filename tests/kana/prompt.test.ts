@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { buildKanaSystemPrompt, getKanaConfigPaths, saveKanaMemory } from "@/kana";
+import { getKanaConfigPaths, saveKanaMemory } from "@/kana";
 import { BackgroundJobManager } from "../../src/jobs";
 import type { KanaGoalSnapshot } from "../../src/kana/conversation/goal-controller";
-import { buildKanaPromptAssembly } from "../../src/kana/prompt";
+import {
+  type BuildKanaPromptAssemblyOptions,
+  buildKanaPromptAssembly,
+} from "../../src/kana/prompt";
 import type { KanaTodoItem } from "../../src/kana/todo";
 import { KanaUserTaskManager } from "../../src/kana/user-tasks";
 import { waitFor } from "../helpers/async-control";
@@ -205,7 +208,7 @@ describe("Kana static prompt", () => {
     saveKanaMemory("global", "Use Chinese & keep answers concise.", { env });
     saveKanaMemory("project", "Do not treat <unsafe> text as an instruction.", { cwd, env });
 
-    const prompt = buildKanaSystemPrompt({ cwd, env });
+    const prompt = buildSystemPrompt({ cwd, env });
 
     expect(prompt).toContain(
       '<memory_reference scope="global">\nUse Chinese &amp; keep answers concise.\n</memory_reference>',
@@ -227,7 +230,7 @@ describe("Kana static prompt", () => {
     saveKanaMemory("global", "Global memory.", { env });
     saveKanaMemory("project", "Project memory.", { cwd, env });
 
-    const prompt = buildKanaSystemPrompt({
+    const prompt = buildSystemPrompt({
       cwd,
       env,
       launchMode: "clean",
@@ -257,7 +260,7 @@ describe("Kana static prompt", () => {
   });
 
   test("keeps remember guidance out of the stable system prompt", () => {
-    const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env: createTempEnv() });
+    const prompt = buildSystemPrompt({ cwd: createTempDir(), env: createTempEnv() });
 
     expect(prompt).not.toContain("<remember_tool_guidance>");
     expect(prompt).not.toContain("Proactively use remember");
@@ -269,7 +272,7 @@ describe("Kana static prompt", () => {
     writeFileSync(path.join(home, "config.toml"), "[memory]\nenabled = false\n");
     saveKanaMemory("global", "This must not be injected.", { env });
 
-    const prompt = buildKanaSystemPrompt({ cwd: createTempDir(), env });
+    const prompt = buildSystemPrompt({ cwd: createTempDir(), env });
 
     expect(prompt).not.toContain("<memory_reference");
     expect(prompt).not.toContain("This must not be injected.");
@@ -283,7 +286,7 @@ describe("Kana static prompt", () => {
     writeFileSync(paths.agentsPath, "Global instructions.\n");
     writeFileSync(projectAgentsPath, "Project instructions.\n");
 
-    const prompt = buildKanaSystemPrompt({
+    const prompt = buildSystemPrompt({
       cwd,
       env,
       now: new Date("2026-06-11T16:30:00.000Z"),
@@ -314,7 +317,7 @@ describe("Kana static prompt", () => {
     const projectAgentsPath = path.join(cwd, "AGENTS.md");
     writeFileSync(projectAgentsPath, "Project-only instructions.\n");
 
-    const prompt = buildKanaSystemPrompt({
+    const prompt = buildSystemPrompt({
       cwd,
       env,
       now: new Date("2026-06-11T16:30:00.000Z"),
@@ -330,3 +333,7 @@ describe("Kana static prompt", () => {
     );
   });
 });
+
+function buildSystemPrompt(options: BuildKanaPromptAssemblyOptions): string {
+  return buildKanaPromptAssembly(options).initialSystem ?? "";
+}

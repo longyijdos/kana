@@ -4,13 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  DEFAULT_KANA_MCP_ACTIVATION_STATE,
   getKanaConfigPaths,
   loadKanaMcpActivationState,
-  loadKanaMcpServerActivations,
+  loadKanaMcpConfig,
   parseKanaMcpActivationState,
-  saveKanaMcpActivationState,
 } from "@/kana";
+import { resolveKanaMcpServerActivations } from "../../../src/kana/mcp/activation";
 import { createKanaMcpConfigurationStore } from "../../../src/kana/mcp/configuration-store";
 
 const tempDirs: string[] = [];
@@ -23,7 +22,7 @@ afterEach(() => {
 
 describe("Kana MCP activation state", () => {
   test("defaults to no enabled servers when mcp-enabled.json is missing", () => {
-    expect(loadKanaMcpActivationState(createTempEnv())).toEqual(DEFAULT_KANA_MCP_ACTIVATION_STATE);
+    expect(loadKanaMcpActivationState(createTempEnv())).toEqual({ enabledServers: [] });
   });
 
   test("loads and snapshots enabled server IDs", () => {
@@ -59,9 +58,13 @@ describe("Kana MCP activation state", () => {
         },
       })}\n`,
     );
-    saveKanaMcpActivationState({ enabledServers: ["github", "remote", "removed"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({
+      enabledServers: ["github", "remote", "removed"],
+    });
 
-    expect(loadKanaMcpServerActivations(env)).toEqual([
+    expect(
+      resolveKanaMcpServerActivations(loadKanaMcpConfig(env), loadKanaMcpActivationState(env), env),
+    ).toEqual([
       {
         id: "filesystem",
         type: "stdio",
@@ -89,7 +92,9 @@ describe("Kana MCP activation state", () => {
     const env = createTempEnv();
     const { mcpEnabledPath } = getKanaConfigPaths(env);
 
-    saveKanaMcpActivationState({ enabledServers: ["github", "filesystem"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({
+      enabledServers: ["github", "filesystem"],
+    });
 
     expect(readFileSync(mcpEnabledPath, "utf8")).toBe(
       ["{", '  "enabledServers": [', '    "github",', '    "filesystem"', "  ]", "}", ""].join(
@@ -112,7 +117,7 @@ describe("Kana MCP activation state", () => {
         },
       })}\n`,
     );
-    saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({ enabledServers: ["alpha"] });
     const store = createKanaMcpConfigurationStore(env);
 
     writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: {} })}\n`);

@@ -1,4 +1,5 @@
-import { type KanaOAuthTokenStatus, loadKanaOAuthTokenStatuses } from "../auth/token-store";
+import type { OAuthTokenStatus } from "@/oauth";
+import { loadKanaOAuthTokenStatuses } from "../auth/token-store";
 import {
   mergeConfigStringSet,
   readOptionalConfigFile,
@@ -6,7 +7,7 @@ import {
   writeConfigFileAtomically,
 } from "../config/file-storage";
 import { getKanaConfigPaths } from "../path";
-import { type KanaMcpConfig, loadKanaMcpConfig } from "./config";
+import type { KanaMcpConfig } from "./config";
 import { createKanaMcpOAuthStorageKey } from "./oauth";
 
 export type KanaMcpActivationState = {
@@ -28,13 +29,9 @@ export type KanaMcpServerActivation = KanaMcpServerActivationBase &
     | {
         type: "http";
         url: string;
-        oauth?: KanaOAuthTokenStatus & { type: "oauth2" };
+        oauth?: OAuthTokenStatus & { type: "oauth2" };
       }
   );
-
-export const DEFAULT_KANA_MCP_ACTIVATION_STATE: KanaMcpActivationState = {
-  enabledServers: [],
-};
 
 const ROOT_KEYS = new Set(["enabledServers"]);
 
@@ -55,14 +52,6 @@ export function loadKanaMcpActivationState(
   }
 
   return parseKanaMcpActivationState(parsed);
-}
-
-export function loadKanaMcpServerActivations(
-  env: NodeJS.ProcessEnv = process.env,
-): KanaMcpServerActivation[] {
-  const config = loadKanaMcpConfig(env);
-  const activationState = loadKanaMcpActivationState(env);
-  return resolveKanaMcpServerActivations(config, activationState, env);
 }
 
 export function resolveKanaMcpServerActivations(
@@ -126,14 +115,6 @@ export function parseKanaMcpActivationState(value: unknown): KanaMcpActivationSt
   }
 
   return { enabledServers: parsedServerIds };
-}
-
-export function saveKanaMcpActivationState(
-  state: KanaMcpActivationState,
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  const previous = loadKanaMcpActivationState(env);
-  persistKanaMcpActivationState(previous, state, env);
 }
 
 export function persistKanaMcpActivationState(

@@ -1,4 +1,5 @@
-import type { KanaMcpServerActivation, KanaOAuthTokenStatus } from "@/kana";
+import type { KanaMcpServerActivation } from "@/kana";
+import type { OAuthTokenStatus } from "@/oauth";
 import type { Editor, StatusLineState, Transcript } from "../components";
 import {
   type McpAuthAction,
@@ -26,8 +27,8 @@ export type McpServerManagerControllerOptions = {
     serverId: string,
     onAuthorizationUrl: (url: string) => void,
     signal: AbortSignal,
-  ): Promise<KanaOAuthTokenStatus>;
-  signOutServer?(serverId: string): Promise<KanaOAuthTokenStatus>;
+  ): Promise<OAuthTokenStatus>;
+  signOutServer?(serverId: string): Promise<OAuthTokenStatus>;
   onClose: (changed: boolean) => void;
   showError: (error: unknown) => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
@@ -195,7 +196,7 @@ export class McpServerManagerController {
     action: McpAuthAction,
     operation: { controller: AbortController; block: TextBlock; serverId: string },
     signal: AbortSignal,
-  ): Promise<KanaOAuthTokenStatus> {
+  ): Promise<OAuthTokenStatus> {
     if (action === "sign_out") {
       if (this.options.signOutServer === undefined) {
         return Promise.reject(new Error("MCP OAuth sign-out is unavailable."));

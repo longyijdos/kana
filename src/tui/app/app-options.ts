@@ -7,7 +7,6 @@ import type {
   KanaLaunchMode,
   KanaMcpServerActivation,
   KanaNotificationConfig,
-  KanaOAuthTokenStatus,
   KanaPromptTemplate,
   KanaSessionMetadata,
   KanaSubagentClient,
@@ -24,6 +23,7 @@ import type {
   WakeScheduler,
 } from "@/kana";
 import type { Logger } from "@/logging";
+import type { OAuthTokenStatus } from "@/oauth";
 import type { ToolApprovalSource } from "../tools";
 import type { McpLoadResult } from "./mcp-lifecycle-controller";
 import type { MemoryCompactSummary, MemoryScope } from "./memory-compact-controller";
@@ -85,8 +85,8 @@ type KanaTuiMcpManagementCapabilities = {
     serverId: string,
     onAuthorizationUrl: (url: string) => void,
     signal: AbortSignal,
-  ): Promise<KanaOAuthTokenStatus>;
-  signOutServer?(serverId: string): Promise<KanaOAuthTokenStatus>;
+  ): Promise<OAuthTokenStatus>;
+  signOutServer?(serverId: string): Promise<OAuthTokenStatus>;
   reload: (onProgress: (status: string) => void, signal: AbortSignal) => Promise<McpLoadResult>;
 };
 
