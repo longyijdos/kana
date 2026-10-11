@@ -16,6 +16,7 @@ import { createKanaOAuthTokenStore } from "../auth";
 import {
   createKanaConfigStore,
   type KanaConfig,
+  type KanaConfigDraft,
   type KanaConfigStore,
   type KanaNotificationConfig,
   type KanaToolApprovalConfig,
@@ -114,7 +115,7 @@ export type CreateKanaConversationHostOptions<TConfiguration = never> = {
   configOverrides?: readonly string[];
   enableScheduledWakeTool?: boolean;
   enableUserTasks?: boolean;
-  applyAgentConfiguration?: (config: KanaConfig, configuration: TConfiguration) => void;
+  applyAgentConfiguration?: (draft: KanaConfigDraft, configuration: TConfiguration) => void;
   onMcpProgress?: (event: KanaMcpRuntimeProgressEvent) => void;
   openMcpOAuthAuthorizationUrl?: (serverId: string, url: string) => Promise<void>;
   onMcpOAuthDiagnostic?: (serverId: string, event: McpOAuthHttpDiagnosticEvent) => void;
@@ -135,7 +136,7 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly enableScheduledWakeTool: boolean;
   private readonly enableUserTasks: boolean;
   private readonly applyAgentConfiguration?: (
-    config: KanaConfig,
+    draft: KanaConfigDraft,
     configuration: TConfiguration,
   ) => void;
   private readonly sessionRegistry: HostedSessionRegistry;
@@ -218,19 +219,19 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   get config(): KanaConfig {
-    return structuredClone(this.configData);
+    return this.configData;
   }
 
   get approvalConfig(): KanaToolApprovalConfig {
-    return structuredClone(this.configData.approval);
+    return this.configData.approval;
   }
 
   get notificationConfig(): KanaNotificationConfig {
-    return structuredClone(this.configData.notification);
+    return this.configData.notification;
   }
 
   get tuiConfig(): KanaTuiConfig {
-    return structuredClone(this.configData.tui);
+    return this.configData.tui;
   }
 
   get toolApprovals(): KanaToolApprovals {
@@ -316,9 +317,9 @@ export class KanaConversationHost<TConfiguration = never> {
       if (!this.applyAgentConfiguration) {
         throw new Error("This Kana conversation host does not support Agent reconfiguration.");
       }
-      const nextConfig = structuredClone(this.configData);
-      this.applyAgentConfiguration(nextConfig, configuration);
-      const validatedConfig = validateKanaConfig(nextConfig);
+      const draft = structuredClone(this.configData) as KanaConfigDraft;
+      this.applyAgentConfiguration(draft, configuration);
+      const validatedConfig = validateKanaConfig(draft);
       // Model changes remain useful within a temporary conversation, but the
       // clean-mode state boundary must not update the shared config store.
       agent = createAgent(validatedConfig);
@@ -655,17 +656,23 @@ export class KanaConversationHost<TConfiguration = never> {
     parentConfig: KanaConfig,
     logger: Logger,
   ): Promise<KanaSubagentRunResult> {
-    const config = structuredClone(parentConfig);
-    if (context.profile.model) {
-      config.agent.model = {
-        provider: context.profile.model.provider,
-        name: context.profile.model.name,
-        reasoningEffort: context.profile.model.reasoningEffort,
-        maxOutputTokens: undefined,
-        contextLimit: undefined,
-      };
-    }
-    config.agent.toolResultArtifacts = false;
+    const { model } = context.profile;
+    const config: KanaConfig = {
+      ...parentConfig,
+      agent: {
+        ...parentConfig.agent,
+        toolResultArtifacts: false,
+        ...(model === undefined
+          ? {}
+          : {
+              model: {
+                provider: model.provider,
+                name: model.name,
+                reasoningEffort: model.reasoningEffort,
+              },
+            }),
+      },
+    };
     let terminalReason: KanaSubagentRunResult["terminalReason"];
     const journal = createKanaSubagentJournal({
       agentId: context.agentId,

@@ -5,6 +5,7 @@ export {
   type KanaAgentConfig,
   type KanaAgentRuntimeConfig,
   type KanaConfig,
+  type KanaConfigDraft,
   type KanaDeepSeekProviderConfig,
   type KanaModelConfig,
   type KanaModelProvider,

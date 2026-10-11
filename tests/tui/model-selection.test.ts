@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_KANA_CONFIG, getKanaModelManagement } from "@/kana";
+import { DEFAULT_KANA_CONFIG, getKanaModelManagement, type KanaConfigDraft } from "@/kana";
 import { createLogger, type Logger } from "@/logging";
 import type { Message } from "../../src/core";
 import { KanaTuiApp } from "../../src/tui/app/app";
@@ -15,7 +15,7 @@ type AgentFactoryOptions = Parameters<AgentFactory>[0];
 
 describe("TUI model selection", () => {
   test("applies a selection only to the active provider fields", () => {
-    const config = structuredClone(DEFAULT_KANA_CONFIG);
+    const config = structuredClone(DEFAULT_KANA_CONFIG) as KanaConfigDraft;
     config.agent.model.maxOutputTokens = 64_000;
     config.agent.model.contextLimit = 200_000;
     const memoryAgentBefore = structuredClone(config.memory.agent);

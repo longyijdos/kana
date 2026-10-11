@@ -27,6 +27,7 @@ export {
   isKanaTuiThemeName,
   KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES,
   type KanaConfig,
+  type KanaConfigDraft,
   type KanaModelProvider,
   type KanaNotificationBackend,
   type KanaNotificationConfig,

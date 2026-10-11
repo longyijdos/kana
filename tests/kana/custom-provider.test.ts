@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_KANA_CONFIG, getKanaConfigPaths, getKanaModelManagement } from "@/kana";
+import {
+  DEFAULT_KANA_CONFIG,
+  getKanaConfigPaths,
+  getKanaModelManagement,
+  type KanaConfig,
+} from "@/kana";
 import {
   getKanaCustomProviderModel,
   loadKanaCustomProviderSnapshot,
@@ -207,11 +212,12 @@ describe("Kana Custom provider", () => {
           "",
         ].join("\n"),
       );
-      const config = structuredClone(DEFAULT_KANA_CONFIG);
-      config.agent.model = {
-        provider: "custom",
-        name: "local-model",
-        reasoningEffort: "high",
+      const config: KanaConfig = {
+        ...DEFAULT_KANA_CONFIG,
+        agent: {
+          ...DEFAULT_KANA_CONFIG.agent,
+          model: { provider: "custom", name: "local-model", reasoningEffort: "high" },
+        },
       };
       const management = getKanaModelManagement(config);
       const model = createKanaModel(
@@ -264,10 +270,9 @@ describe("Kana Custom provider", () => {
     writeFileSync(paths.customProviderPath, customProviderToml("startup-model"));
     const snapshot = loadKanaCustomProviderSnapshot(paths.customProviderPath);
     writeFileSync(paths.customProviderPath, customProviderToml("later-model"));
-    const config = structuredClone(DEFAULT_KANA_CONFIG);
-    config.agent.model = {
-      provider: "custom",
-      name: "startup-model",
+    const config: KanaConfig = {
+      ...DEFAULT_KANA_CONFIG,
+      agent: { ...DEFAULT_KANA_CONFIG.agent, model: { provider: "custom", name: "startup-model" } },
     };
 
     const management = getKanaModelManagement(config, env, snapshot);

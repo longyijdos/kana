@@ -47,7 +47,7 @@ export function loadKanaConfig(env: NodeJS.ProcessEnv = process.env): KanaConfig
   const { configPath } = getKanaConfigPaths(env);
 
   if (!existsSync(configPath)) {
-    return structuredClone(DEFAULT_KANA_CONFIG);
+    return DEFAULT_KANA_CONFIG;
   }
 
   const parsed = Bun.TOML.parse(readFileSync(configPath, "utf8")) as unknown;
