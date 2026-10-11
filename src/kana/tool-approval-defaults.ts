@@ -1,8 +1,8 @@
 export type KanaToolApprovals = {
-  version: 3;
-  shell: {
-    exactCommands: string[];
-    readOnlyCommands: string[];
+  readonly version: 3;
+  readonly shell: {
+    readonly exactCommands: readonly string[];
+    readonly readOnlyCommands: readonly string[];
   };
 };
 

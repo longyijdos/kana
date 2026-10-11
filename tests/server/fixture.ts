@@ -23,7 +23,7 @@ export function createFixture(
 ) {
   const sessions = new Map<string, KanaSessionMetadata>();
   let counter = 0;
-  const trusted: KanaToolApprovals = {
+  let trusted: KanaToolApprovals = {
     version: 3,
     shell: { exactCommands: [], readOnlyCommands: [] },
   };
@@ -66,7 +66,10 @@ export function createFixture(
     getApprovalConfig: () => ({ mode: options.approvalMode ?? "unless_trusted" }) as const,
     getApprovals: () => trusted,
     addTrustedShellCommand: (command: string) => {
-      trusted.shell.exactCommands.push(command);
+      trusted = {
+        ...trusted,
+        shell: { ...trusted.shell, exactCommands: [...trusted.shell.exactCommands, command] },
+      };
     },
     getLogger: createNoopLogger,
   };

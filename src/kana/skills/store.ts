@@ -17,7 +17,7 @@ export function createKanaSkillStore(options: LoadKanaSkillsOptions = {}): KanaS
   const configPath = path.join(home, "skills", "skills.toml");
 
   return {
-    load: () => structuredClone(snapshot),
+    load: () => snapshot,
     saveEnabledGlobalNames(names) {
       const nextEnabledGlobalNames = [...new Set(names)];
       persistEnabledGlobalSkillNames(configPath, enabledGlobalNames, nextEnabledGlobalNames);
@@ -30,7 +30,7 @@ export function createKanaSkillStore(options: LoadKanaSkillsOptions = {}): KanaS
         diagnostics: snapshot.diagnostics,
       };
       enabledGlobalNames = nextEnabledGlobalNames;
-      return structuredClone(snapshot);
+      return snapshot;
     },
   };
 }

@@ -1,4 +1,6 @@
+import { Type } from "typebox";
 import type { ToolCallContent } from "@/core";
+import { nonEmptyString, parseWithSchema } from "@/utils";
 import type { KanaToolApprovalConfig } from "./config";
 import {
   readOptionalConfigFile,
@@ -102,11 +104,11 @@ export function createKanaToolApprovalStore(
   let snapshot = loadKanaToolApprovals(env);
 
   return {
-    load: () => structuredClone(snapshot),
+    load: () => snapshot,
     addTrustedShellCommand(command) {
       const normalized = normalizeShellCommand(command);
       if (!normalized || snapshot.shell.exactCommands.includes(normalized)) {
-        return structuredClone(snapshot);
+        return snapshot;
       }
 
       addTrustedShellCommand(normalized, env);
@@ -117,7 +119,7 @@ export function createKanaToolApprovalStore(
           exactCommands: [...snapshot.shell.exactCommands, normalized],
         },
       };
-      return structuredClone(snapshot);
+      return snapshot;
     },
   };
 }
@@ -189,64 +191,38 @@ function readSimpleShellExecutable(command: string): string | undefined {
   return executable;
 }
 
-function readKanaToolApprovals(rawApprovals: unknown): KanaToolApprovals {
-  const raw = asRecord(rawApprovals, "approvals");
+const APPROVALS_SCHEMA = Type.Object({
+  version: Type.Literal(3, { errorMessage: "must be 3" }),
+  shell: Type.Optional(
+    Type.Object({
+      exactCommands: Type.Optional(Type.Array(nonEmptyString())),
+      readOnlyCommands: Type.Optional(Type.Array(nonEmptyString())),
+    }),
+  ),
+});
 
-  if (raw.version !== 3) {
-    throw new Error("approvals.version must be 3.");
+function readApprovalsFile(content: string | undefined): KanaToolApprovals {
+  if (content === undefined) {
+    return DEFAULT_KANA_TOOL_APPROVALS;
   }
-  const shell = raw.shell === undefined ? {} : asRecord(raw.shell, "approvals.shell");
-
+  const { shell } = parseWithSchema(APPROVALS_SCHEMA, JSON.parse(content), "approvals");
+  const readOnlyCommands = normalizeCommands(
+    shell?.readOnlyCommands ?? DEFAULT_KANA_TOOL_APPROVALS.shell.readOnlyCommands,
+  );
+  if (readOnlyCommands.some((command) => /\s/.test(command) || command.includes("/"))) {
+    throw new Error("approvals.shell.readOnlyCommands entries must be executable names.");
+  }
   return {
     version: 3,
     shell: {
-      exactCommands: readStringArray(
-        shell.exactCommands,
-        DEFAULT_KANA_TOOL_APPROVALS.shell.exactCommands,
-        "approvals.shell.exactCommands",
+      exactCommands: normalizeCommands(
+        shell?.exactCommands ?? DEFAULT_KANA_TOOL_APPROVALS.shell.exactCommands,
       ),
-      readOnlyCommands: readStringArray(
-        shell.readOnlyCommands,
-        DEFAULT_KANA_TOOL_APPROVALS.shell.readOnlyCommands,
-        "approvals.shell.readOnlyCommands",
-      ).map((command) => readShellExecutableName(command, "approvals.shell.readOnlyCommands")),
+      readOnlyCommands,
     },
   };
 }
 
-function readApprovalsFile(content: string | undefined): KanaToolApprovals {
-  return content === undefined
-    ? structuredClone(DEFAULT_KANA_TOOL_APPROVALS)
-    : readKanaToolApprovals(JSON.parse(content) as unknown);
-}
-
-function readShellExecutableName(value: string, name: string): string {
-  if (/\s/.test(value) || value.includes("/")) {
-    throw new Error(`${name} entries must be executable names.`);
-  }
-
-  return value;
-}
-
-function asRecord(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${name} must be an object.`);
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function readStringArray(value: unknown, fallback: string[], name: string): string[] {
-  if (value === undefined) {
-    return fallback.slice();
-  }
-
-  if (
-    !Array.isArray(value) ||
-    value.some((item) => typeof item !== "string" || item.length === 0)
-  ) {
-    throw new Error(`${name} must be an array of non-empty strings.`);
-  }
-
-  return [...new Set(value.map(normalizeShellCommand).filter(Boolean))];
+function normalizeCommands(commands: readonly string[]): string[] {
+  return [...new Set(commands.map(normalizeShellCommand).filter(Boolean))];
 }
