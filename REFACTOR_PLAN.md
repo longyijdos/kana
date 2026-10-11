@@ -113,7 +113,7 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
 | 1 | 地基：分层规则、类型严格化、死代码删除、合并 helper | 已完成 |
-| 2 | 不可变数据模型，去掉防御性拷贝 | 未开始 |
+| 2 | 不可变数据模型，去掉防御性拷贝 | 已完成 |
 | 3 | Agent 运行时重构 | 未开始 |
 | 4 | Provider 重构 | 未开始 |
 | 5 | 解析与持久化 | 未开始 |
@@ -155,9 +155,36 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ---
 
-## 阶段 2：不可变数据模型
+## 阶段 2：不可变数据模型（已完成）
 
-**目标**：消息和事件在整个系统里按引用传递；去掉流式输出路径上 O(n²) 的拷贝。
+### 结果
+
+| 场景 | 改造前 | 改造后 |
+| --- | --- | --- |
+| 短回复（200 增量） | 5 ms | 4 ms |
+| 长回复（4,000 增量） | 118 ms | 4 ms |
+| 超长回复（12,000 增量） | 1,042 ms | 11 ms |
+
+耗时从二次方增长变为线性增长。`structuredClone` 从约 300 处减少到 43 处，剩余的分布如下：
+- 阶段 3：tools 的参数校验与结果规范化
+- 阶段 4：provider 的请求回放与 replay 合并
+- 阶段 5：配置类 store，以及 host 的配置 getter 和 draft
+- 真正的边界：工具返回值的持久化快照（tool-runtime）
+
+### 完成内容
+- core 的消息、content、事件、用量类型全部改为 readonly；agent 的事件、inbox、`ContextCheckpoint` 也改为 readonly；会话数据、时间线、todo、goal、运行时事件、job summary 同样改为 readonly，并且一律通过整体替换来更新
+- 新增 `AssistantMessageBuilder`，用结构共享构建流式消息，所有 provider 和 MockModel 都改用它
+- loop 不再把流式消息写入 prepared context（原来的写入没有任何读取方）
+- `Agent.state` 不再估算 token，改为调用方按需使用 `estimateContextTokens()`
+- 用 readonly 消除共享可变对象之后，暴露出两处隐式依赖别名的代码，都已修正：
+  - TUI 的 tool 详情检查器原来依赖 block 原地修改 args，现在改为渲染时读取实时数据
+  - session journal 原来会修改调用方传入的 metadata
+- 删除了约 15 个"修改返回值以验证隔离"的测试或断言，这一保证现在由 readonly 类型提供
+
+### 与原设计的偏差
+- 事件里的 `snapshot` 保留在 agent 层事件中：快照现在是结构共享的，没有拷贝成本
+- subagent 的 `cloneSummary`（重建 Date 对象）留到阶段 6 合并任务注册表时处理
+- `KanaSubagentProfile` 的 readonly 留到阶段 5：frontmatter 解析依赖原地赋值
 
 ### 细化设计（开工前写定）
 
@@ -377,4 +404,5 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 - 2026-10-11：全部阶段完成后统一提一个 PR，中途不合并
 - 2026-10-11：logger 不会抛异常，因此删除"logger 抛错时流程不受影响"这类测试
 - 2026-10-11：跨模块的错误与 ID 工具放 `utils`，TUI 内部的格式化工具放 `tui/render`
+- 2026-10-11：阶段 2 起，内部数据一律使用 readonly 类型并通过整体替换来更新；拥有可变状态的类，用不可变更新替换自己持有的引用，不再引入 Writable 类型
 - 2026-10-11：调用真实模型的冒烟测试需要先征得用户同意。shell 环境变量里带有 provider 凭据，隔离的 KANA_HOME 也会真的请求模型
