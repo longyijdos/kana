@@ -70,11 +70,11 @@ describe("Kana config store", () => {
       "Config override agent.max_turns.child traverses a non-table value",
     ],
     ["unknown.field=unquoted", "single valid TOML value"],
-    ["unknown.field=true", "Unknown config field: unknown."],
-    ["agent.unknown=42", "Unknown config field: agent.unknown"],
-    ["agent.model.nam=42", "Unknown config field: agent.model.nam"],
-    ['agent.model={nam="wrong"}', "Unknown config field: agent.model.nam"],
-    ["__proto__.polluted=true", "Unknown config field: __proto__."],
+    ["unknown.field=true", "config contains unknown field unknown."],
+    ["agent.unknown=42", "config.agent contains unknown field unknown."],
+    ["agent.model.nam=42", "config.agent.model contains unknown field nam."],
+    ['agent.model={nam="wrong"}', "config.agent.model contains unknown field nam."],
+    ["__proto__.polluted=true", "config contains unknown field __proto__."],
   ])("rejects invalid startup override %s", (override, error) => {
     expect(() => createKanaConfigStore(createTempEnv(), [override])).toThrow(error);
   });

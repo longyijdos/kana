@@ -25,16 +25,12 @@ describe("Kana MCP activation state", () => {
     expect(loadKanaMcpActivationState(createTempEnv())).toEqual({ enabledServers: [] });
   });
 
-  test("loads and snapshots enabled server IDs", () => {
+  test("loads enabled server IDs", () => {
     const env = createTempEnv();
     const state = { enabledServers: ["filesystem", "github"] };
     writeFileSync(getKanaConfigPaths(env).mcpEnabledPath, `${JSON.stringify(state)}\n`);
 
     expect(loadKanaMcpActivationState(env)).toEqual(state);
-
-    const parsed = parseKanaMcpActivationState(state);
-    state.enabledServers[0] = "changed";
-    expect(parsed).toEqual({ enabledServers: ["filesystem", "github"] });
   });
 
   test("combines configured servers with activation state for management", () => {
@@ -136,17 +132,17 @@ describe("Kana MCP activation state", () => {
 
   test("rejects invalid activation state", () => {
     expect(() => parseKanaMcpActivationState([])).toThrow(
-      "MCP activation state must be a JSON object.",
+      "MCP activation state must be an object.",
     );
     expect(() => parseKanaMcpActivationState({ enabledServers: "filesystem" })).toThrow(
-      "MCP activation state.enabledServers must be an array of server IDs.",
+      "MCP activation state.enabledServers must be an array.",
     );
     expect(() => parseKanaMcpActivationState({ enabledServers: [""] })).toThrow(
       "MCP activation state.enabledServers[0] must be a non-empty string.",
     );
     expect(() =>
       parseKanaMcpActivationState({ enabledServers: ["filesystem", "filesystem"] }),
-    ).toThrow("MCP activation state.enabledServers cannot contain duplicate server IDs.");
+    ).toThrow("MCP activation state.enabledServers must not contain duplicate values.");
     expect(() => parseKanaMcpActivationState({ enabledServers: [], typo: true })).toThrow(
       "MCP activation state contains unknown field typo.",
     );

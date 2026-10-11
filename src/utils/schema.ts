@@ -1,13 +1,22 @@
-import type { Static, TSchema } from "typebox";
+import { type Static, type TProperties, type TSchema, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
 import { isRecord } from "./record";
 
+export const strictObject = <T extends TProperties>(properties: T) =>
+  Type.Object(properties, { additionalProperties: false });
+
+export const nonEmptyString = () =>
+  Type.String({ pattern: "\\S", errorMessage: "must be a non-empty string" });
+
+export const positiveInteger = () =>
+  Type.Integer({ minimum: 1, errorMessage: "must be a positive integer" });
+
 const validators = new WeakMap<TSchema, ReturnType<typeof Compile>>();
 
 // Validates a decoded file or wire value against `schema` and reports the first
-// error as `<path> <reason>.`. A schema node may set `errorMessage` to replace
-// the generated reason for values at that node.
+// error as `<label>.<path> <reason>.`. A schema node may set `errorMessage` to
+// replace the generated reason for values at that node.
 export function parseWithSchema<T extends TSchema>(
   schema: T,
   value: unknown,
@@ -27,22 +36,24 @@ export function parseWithSchema<T extends TSchema>(
 
 function formatSchemaError(root: TSchema, error: TLocalizedValidationError, label: string): string {
   const segments = error.instancePath.split("/").slice(1).map(decodePointerSegment);
-  const path = (keys: readonly string[]) => (keys.length === 0 ? label : keys.join("."));
+  const path = formatPath(label, segments);
 
   if (error.keyword === "additionalProperties") {
-    const [key] = error.params.additionalProperties;
-    return `Unknown ${label} field: ${path([...segments, String(key)])}.`;
+    return `${path} contains unknown field ${error.params.additionalProperties[0]}.`;
   }
   if (error.keyword === "required") {
-    const [key] = error.params.requiredProperties;
-    return `${path([...segments, String(key)])} is required.`;
+    return `${formatPath(label, [...segments, String(error.params.requiredProperties[0])])} is required.`;
   }
 
   const custom = findSchemaAt(root, segments)?.errorMessage;
-  if (typeof custom === "string") {
-    return `${path(segments)} ${custom}.`;
-  }
-  return `${path(segments)} ${describeKeyword(error)}.`;
+  return `${path} ${typeof custom === "string" ? custom : describeKeyword(error)}.`;
+}
+
+function formatPath(label: string, segments: readonly string[]): string {
+  return segments.reduce(
+    (path, segment) => (/^\d+$/.test(segment) ? `${path}[${segment}]` : `${path}.${segment}`),
+    label,
+  );
 }
 
 function describeKeyword(error: TLocalizedValidationError): string {

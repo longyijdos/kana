@@ -19,12 +19,13 @@ describe("parseWithSchema", () => {
   });
 
   test.each([
-    [{}, "name is required."],
-    [{ name: "" }, "name must be a non-empty string."],
-    [{ name: "x", mode: "c" }, "mode must be one of: a, b."],
-    [{ name: "x", limit: 0 }, "limit must be a positive integer."],
-    [{ name: "x", nested: { flag: "yes" } }, "nested.flag must be a boolean."],
-    [{ name: "x", nested: { flag: true, extra: 1 } }, "Unknown file field: nested.extra."],
+    [{}, "file.name is required."],
+    [{ name: "" }, "file.name must be a non-empty string."],
+    [{ name: "x", mode: "c" }, "file.mode must be one of: a, b."],
+    [{ name: "x", limit: 0 }, "file.limit must be a positive integer."],
+    [{ name: "x", nested: { flag: "yes" } }, "file.nested.flag must be a boolean."],
+    [{ name: "x", nested: { flag: true, extra: 1 } }, "file.nested contains unknown field extra."],
+    [{ name: "x", list: [1] }, "file contains unknown field list."],
     [[], "file must be an object."],
   ])("reports %j", (value, message) => {
     expect(() => parseWithSchema(schema, value, "file")).toThrow(message);

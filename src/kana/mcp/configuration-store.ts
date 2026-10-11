@@ -1,7 +1,6 @@
 import {
   type KanaMcpActivationState,
   loadKanaMcpActivationState,
-  parseKanaMcpActivationState,
   persistKanaMcpActivationState,
 } from "./activation";
 import { type KanaMcpConfig, loadKanaMcpConfig } from "./config";
@@ -22,13 +21,12 @@ export function createKanaMcpConfigurationStore(
   let activationState = loadKanaMcpActivationState(env);
 
   return {
-    getConfig: () => structuredClone(config),
-    getActivationState: () => structuredClone(activationState),
+    getConfig: () => config,
+    getActivationState: () => activationState,
     saveActivationState(state) {
-      const next = parseKanaMcpActivationState(state);
-      persistKanaMcpActivationState(activationState, next, env);
-      activationState = next;
-      return structuredClone(activationState);
+      persistKanaMcpActivationState(activationState, state, env);
+      activationState = state;
+      return activationState;
     },
   };
 }

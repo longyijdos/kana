@@ -240,7 +240,7 @@ function createTransport(
 
   const transport = new StdioClientTransport({
     command: config.command,
-    args: config.args,
+    args: [...config.args],
     ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
     env: createChildEnvironment(serverId, context.env, config.env),
     stderr: "pipe",
