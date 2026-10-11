@@ -177,8 +177,8 @@ export class Editor implements Component {
     this.maximumVisibleSuggestions =
       options.commandPaletteVisibleLimit ?? COMMAND_PALETTE_VISIBLE_LIMIT;
     this.collapseLongPastes = options.collapseLongPastes ?? true;
-    this.promptTemplates = structuredClone(options.promptTemplates ?? []);
-    this.skills = structuredClone(options.skills ?? []);
+    this.promptTemplates = options.promptTemplates ?? [];
+    this.skills = options.skills ?? [];
     this.paletteViewport = new ListViewport(this.maximumVisibleSuggestions);
   }
 
@@ -218,7 +218,7 @@ export class Editor implements Component {
     if (this.images.length >= MAX_INPUT_IMAGES) {
       throw new Error(`Kana supports at most ${MAX_INPUT_IMAGES} images in one input.`);
     }
-    this.images.push(structuredClone(image));
+    this.images.push(image);
   }
 
   setModel(model: string | undefined): void {
@@ -247,23 +247,23 @@ export class Editor implements Component {
   }
 
   setQueuedInputs(inputs: EditorQueuedInput[]): void {
-    this.queuedInputs = structuredClone(inputs);
+    this.queuedInputs = inputs;
   }
 
   setScheduledInputSummary(summary: EditorScheduledInputSummary | undefined): void {
-    this.scheduledInputSummary = summary === undefined ? undefined : structuredClone(summary);
+    this.scheduledInputSummary = summary === undefined ? undefined : summary;
   }
 
   setBackgroundActivity(items: EditorBackgroundActivityItem[]): void {
-    this.backgroundActivity = structuredClone(items);
+    this.backgroundActivity = items;
   }
 
   setPendingUserTasks(items: EditorUserTaskItem[]): void {
-    this.pendingUserTasks = structuredClone(items);
+    this.pendingUserTasks = items;
   }
 
   setMemoryActivity(items: MemoryConsolidationActivity[]): void {
-    this.memoryActivity = structuredClone(items);
+    this.memoryActivity = items;
   }
 
   render(width: number, availableHeight?: number): string[] {
@@ -840,7 +840,7 @@ export class Editor implements Component {
 
   private withImages(submit: PromptSubmit): PromptSubmit {
     return submit.type === "message" && this.images.length > 0
-      ? { ...submit, images: structuredClone(this.images) }
+      ? { ...submit, images: [...this.images] }
       : submit;
   }
 
@@ -921,7 +921,7 @@ export class Editor implements Component {
     if (entry) {
       this.state = {
         ...this.state,
-        collapsedPastes: structuredClone(entry.collapsedPastes),
+        collapsedPastes: [...entry.collapsedPastes],
       };
     }
     this.historyIndex = nextIndex;

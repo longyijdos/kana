@@ -27,7 +27,7 @@ export type BackgroundJobManagerAction =
 
 export class BackgroundJobManager implements Component {
   private readonly viewport = new ListViewport(JOB_VISIBLE_LIMIT);
-  private jobs: BackgroundJobSummary[] = [];
+  private jobs: readonly BackgroundJobSummary[] = [];
   private preview?: BackgroundJobPeekSnapshot;
   private notice?: string;
 
@@ -35,13 +35,13 @@ export class BackgroundJobManager implements Component {
 
   get selectedJob(): BackgroundJobSummary | undefined {
     const job = this.jobs[this.viewport.selectedIndex];
-    return job ? cloneJob(job) : undefined;
+    return job ? job : undefined;
   }
 
   replaceJobs(jobs: BackgroundJobSummary[], notice?: string): void {
     const selectedId = this.selectedJob?.id;
     const previousIndex = this.viewport.selectedIndex;
-    this.jobs = jobs.map(cloneJob);
+    this.jobs = jobs;
     this.notice = notice;
 
     const selectedIndex = selectedId
@@ -182,14 +182,6 @@ export class BackgroundJobManager implements Component {
     }
     return maximum === 1 ? [dim("…")] : [dim("…"), ...visible.slice(-(maximum - 1))];
   }
-}
-
-function cloneJob(job: BackgroundJobSummary): BackgroundJobSummary {
-  return {
-    ...job,
-    startedAt: new Date(job.startedAt.getTime()),
-    ...(job.finishedAt === undefined ? {} : { finishedAt: new Date(job.finishedAt.getTime()) }),
-  };
 }
 
 function isActive(job: BackgroundJobSummary): boolean {

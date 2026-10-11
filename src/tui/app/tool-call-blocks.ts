@@ -49,7 +49,7 @@ export class ToolCallBlocks {
       }
 
       hasToolCall = true;
-      this.knownToolCalls.set(content.id, structuredClone(content));
+      this.knownToolCalls.set(content.id, content);
       this.pendingTools.get(content.id)?.updateArgs(content.args);
     }
 
@@ -111,7 +111,7 @@ export class ToolCallBlocks {
     if (!block) {
       const knownToolCall = this.knownToolCalls.get(toolCallId);
       const toolCall: ToolCallContent = knownToolCall
-        ? { ...structuredClone(knownToolCall), args }
+        ? { ...knownToolCall, args }
         : {
             type: "tool_call",
             id: toolCallId,

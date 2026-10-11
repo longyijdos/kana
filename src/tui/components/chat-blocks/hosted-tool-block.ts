@@ -32,7 +32,7 @@ export class HostedToolBlock implements Component {
   }
 
   update(content: HostedToolContent): void {
-    this.content = structuredClone(content);
+    this.content = content;
     if (content.status !== "in_progress") {
       this.timer.stop();
     } else if (!this.timer.active && !this.options.summaryOnly) {

@@ -33,7 +33,7 @@ export class StreamingTextPresenter {
 
   start(message: AssistantMessage): void {
     this.clearTimer();
-    this.target = structuredClone(message);
+    this.target = message;
     this.visibleTextByIndex.clear();
     for (const [index, content] of message.content.entries()) {
       if (content.type === "text") {
@@ -121,7 +121,7 @@ export class StreamingTextPresenter {
   }
 
   private setTarget(message: AssistantMessage): void {
-    this.target = structuredClone(message);
+    this.target = message;
     const textIndexes = new Set<number>();
 
     for (const [index, content] of this.target.content.entries()) {

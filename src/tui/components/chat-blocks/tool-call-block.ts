@@ -74,7 +74,7 @@ export class ToolCallBlock implements Component {
     if (this.toolCall.name !== "todo_write") {
       return;
     }
-    this.todoState = structuredClone([...items]);
+    this.todoState = items;
     this.invalidate();
   }
 

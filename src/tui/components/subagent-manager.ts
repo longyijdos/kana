@@ -41,8 +41,8 @@ export type SubagentManagerAction =
 
 export class SubagentManager implements Component {
   private readonly viewport = new ListViewport(VISIBLE_LIMIT);
-  private profiles: KanaSubagentProfile[] = [];
-  private subagents: KanaSubagentSummary[] = [];
+  private profiles: readonly KanaSubagentProfile[] = [];
+  private subagents: readonly KanaSubagentSummary[] = [];
   private preview?: { id: string; view: ContentView };
   private notice?: string;
 
@@ -53,7 +53,7 @@ export class SubagentManager implements Component {
 
   get selectedSubagent(): KanaSubagentSummary | undefined {
     const value = this.subagents[this.viewport.selectedIndex];
-    return value ? cloneSummary(value) : undefined;
+    return value ? value : undefined;
   }
 
   replace(
@@ -63,8 +63,8 @@ export class SubagentManager implements Component {
   ): void {
     const selectedId = this.selectedSubagent?.id;
     const previousIndex = this.viewport.selectedIndex;
-    this.profiles = profiles.map((profile) => structuredClone(profile));
-    this.subagents = subagents.map(cloneSummary);
+    this.profiles = profiles;
+    this.subagents = subagents;
     this.notice = notice;
     const selectedIndex = selectedId
       ? this.subagents.findIndex((candidate) => candidate.id === selectedId)
@@ -229,13 +229,4 @@ function renderProfileSummary(profiles: readonly KanaSubagentProfile[], width: n
   const prefixWidth = width - visibleWidth(separator) - visibleWidth(hidden);
   if (prefixWidth <= 0) return truncateToWidth(hidden, width);
   return `${truncateToWidth("Profiles", prefixWidth)}${separator}${hidden}`;
-}
-
-function cloneSummary(summary: KanaSubagentSummary): KanaSubagentSummary {
-  return {
-    ...summary,
-    startedAt: new Date(summary.startedAt),
-    ...(summary.finishedAt === undefined ? {} : { finishedAt: new Date(summary.finishedAt) }),
-    ...(summary.model === undefined ? {} : { model: { ...summary.model } }),
-  };
 }

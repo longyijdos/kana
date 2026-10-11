@@ -76,7 +76,7 @@ export class ToolApprovalController {
 
     return new Promise((resolve) => {
       const pending = {
-        toolCall: structuredClone(toolCall),
+        toolCall: toolCall,
         signal,
         agent: { ...agent },
         resolve,
