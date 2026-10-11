@@ -114,7 +114,7 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 | --- | --- | --- |
 | 1 | 地基：分层规则、类型严格化、死代码删除、合并 helper | 已完成 |
 | 2 | 不可变数据模型，去掉防御性拷贝 | 已完成 |
-| 3 | Agent 运行时重构 | 未开始 |
+| 3 | Agent 运行时重构 | 已完成 |
 | 4 | Provider 重构 | 未开始 |
 | 5 | 解析与持久化 | 未开始 |
 | 6 | 产品层：能力、对话运行时、任务注册表、OAuth/MCP | 未开始 |
@@ -251,9 +251,29 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ---
 
-## 阶段 3：Agent 运行时重构
+## 阶段 3：Agent 运行时重构（已完成）
 
-**目标**：`agent.ts`（1000 行）和 `tool-runtime.ts`（1390 行）拆成职责单一的小模块，同时消除重复的路径。
+### 结果
+
+| 文件 | 改造前 | 改造后 |
+| --- | --- | --- |
+| `agent.ts` | 1,000 行 | 638 行，另拆出 `settings.ts` 42 行、`steering.ts` 140 行 |
+| `tool-runtime.ts` | 1,390 行 | 拆成 `tool-runtime/` 目录：runtime 334 行、invocation 393 行、results 162 行、nested 72 行、queues 49 行、types 约 60 行 |
+| `context-manager.ts` | 768 行 | 597 行，另拆出 `token-estimate.ts` |
+| `loop.ts` | 592 行 | 493 行 |
+
+### 完成内容
+- `resolveAgentSettings()` 在 Agent 构造时只运行一次，loop 和 ToolRuntime 直接使用解析结果；`agent.settings` 对外暴露
+- 历史写入只有一条路径，有没有 journal 都逐条提交。`compact()` 复用 loop 的 `prepareWithCompaction`，统一顺序为"journal 写入 → hook → adopt"
+- message ID 去重只保留两处：入口检查（prompt 与 inbox）和历史写入
+- tool runtime：单个调用不再走快速路径，统一使用并行池；两段中断结果构建合并成一段；内部配置的运行时校验全部删除
+- `sliceUtf8Prefix/Suffix` 移入 `utils`（agent 和 kana 共用）；schema coercion 缓存了 union 分支的编译结果
+- 构造器的 4 条配置日志合并为 `agent.configured`
+- 文档（agent-runtime、tools，中英文）已同步
+
+### 与原设计的偏差
+- 没有拆出 `AgentRun` 和 `history.ts`：拆出 steering 和 settings 之后，`runPrompt` 和历史写入与 Agent 的状态联系紧密，单独成类反而要传入大量内部状态。`agent.ts` 638 行，超出目标，但职责已经集中
+- tools 层参数校验前的那次拷贝保留：typebox 的 `Value.Convert` 和 coerce 会原地修改，而输入来自模型输出，属于边界
 
 ### 细化设计（开工前写定）
 
