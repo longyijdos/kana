@@ -11,7 +11,6 @@ import {
   normalizeLineEndings,
   padRightAnsi,
   renderHighlightedLine,
-  stripTerminalControlSequences,
   truncateToWidth,
   visibleWidth,
 } from "../../render";
@@ -49,6 +48,16 @@ import {
   moveInputCursorVertically,
 } from "./input-layout";
 import {
+  type EditorBackgroundActivityItem,
+  type EditorInputPreviews,
+  type EditorQueuedInput,
+  type EditorScheduledInputSummary,
+  type EditorUserTaskItem,
+  hasInputPreviews,
+  renderInputPreviews,
+  renderMemoryActivity,
+} from "./previews";
+import {
   completeSkillReference,
   createSkillReferenceSubmit,
   formatSkillReferenceHelpLine,
@@ -77,9 +86,6 @@ import {
 
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
-const QUEUED_INPUT_VISIBLE_LIMIT = 5;
-const BACKGROUND_ACTIVITY_VISIBLE_LIMIT = 4;
-const USER_TASK_VISIBLE_LIMIT = 4;
 const MAX_INPUT_IMAGES = 10;
 const PROMPT = "> ";
 
@@ -90,29 +96,6 @@ export type EditorOptions = {
   collapseLongPastes?: boolean;
   promptTemplates?: readonly KanaPromptTemplate[];
   skills?: readonly KanaSkillActivation[];
-};
-
-export type EditorQueuedInput = {
-  content: string;
-  imageCount?: number;
-  delivery: "turn" | "run" | "scheduled";
-};
-
-export type EditorScheduledInputSummary = {
-  count: number;
-  nextAt: Date;
-};
-
-export type EditorBackgroundActivityItem = {
-  kind: "subagent" | "job";
-  id: string;
-  status: string;
-  label: string;
-};
-
-export type EditorUserTaskItem = {
-  id: string;
-  label: string;
 };
 
 type EditorHistoryEntry = {
@@ -156,10 +139,11 @@ export class Editor implements Component {
     phase: "idle",
     running: false,
   };
-  private queuedInputs: EditorQueuedInput[] = [];
-  private scheduledInputSummary?: EditorScheduledInputSummary;
-  private backgroundActivity: EditorBackgroundActivityItem[] = [];
-  private pendingUserTasks: EditorUserTaskItem[] = [];
+  private previews: EditorInputPreviews = {
+    queuedInputs: [],
+    backgroundActivity: [],
+    pendingUserTasks: [],
+  };
   private memoryActivity: MemoryConsolidationActivity[] = [];
   private images: UserImage[] = [];
   // Keep the selected tip stable between submissions so terminal redraws do not make it flicker.
@@ -247,19 +231,19 @@ export class Editor implements Component {
   }
 
   setQueuedInputs(inputs: EditorQueuedInput[]): void {
-    this.queuedInputs = inputs;
+    this.previews = { ...this.previews, queuedInputs: inputs };
   }
 
   setScheduledInputSummary(summary: EditorScheduledInputSummary | undefined): void {
-    this.scheduledInputSummary = summary === undefined ? undefined : summary;
+    this.previews = { ...this.previews, scheduledInputSummary: summary };
   }
 
   setBackgroundActivity(items: EditorBackgroundActivityItem[]): void {
-    this.backgroundActivity = items;
+    this.previews = { ...this.previews, backgroundActivity: items };
   }
 
   setPendingUserTasks(items: EditorUserTaskItem[]): void {
-    this.pendingUserTasks = items;
+    this.previews = { ...this.previews, pendingUserTasks: items };
   }
 
   setMemoryActivity(items: MemoryConsolidationActivity[]): void {
@@ -337,21 +321,15 @@ export class Editor implements Component {
     }
 
     if (showMemory) {
-      lines.push(this.renderMemoryActivity());
+      lines.push(renderMemoryActivity(this.memoryActivity));
     }
 
-    if (
-      !showPalette &&
-      (this.queuedInputs.length > 0 ||
-        this.scheduledInputSummary !== undefined ||
-        this.pendingUserTasks.length > 0 ||
-        this.backgroundActivity.length > 0)
-    ) {
+    if (!showPalette && hasInputPreviews(this.previews)) {
       const previewHeight =
         availableHeight === undefined
           ? undefined
           : Math.max(0, Math.floor(availableHeight) - lines.length);
-      lines.push(...this.renderInputPreviews(width, previewHeight));
+      lines.push(...renderInputPreviews(this.previews, width, previewHeight));
     }
 
     return lines.map((line) => truncateToWidth(line, width));
@@ -636,172 +614,6 @@ export class Editor implements Component {
     return lines;
   }
 
-  private renderQueuedInputs(width: number, availableHeight?: number): string[] {
-    const maximumRows =
-      availableHeight === undefined
-        ? QUEUED_INPUT_VISIBLE_LIMIT + 1
-        : Math.max(0, Math.floor(availableHeight));
-    const window = resolvePreviewWindow(
-      this.queuedInputs.length,
-      maximumRows,
-      QUEUED_INPUT_VISIBLE_LIMIT,
-    );
-    if (!window) {
-      return [];
-    }
-
-    const lines = [color(`Queued inputs · ${this.queuedInputs.length}`, tuiTheme.command)];
-
-    for (const input of this.queuedInputs.slice(0, window.visibleCount)) {
-      const delivery =
-        input.delivery === "turn"
-          ? "next turn"
-          : input.delivery === "run"
-            ? "next run"
-            : "scheduled";
-      const content = stripTerminalControlSequences(input.content).replace(/\s+/g, " ").trim();
-      const preview = [content, input.imageCount ? `[${input.imageCount} image(s)]` : ""]
-        .filter(Boolean)
-        .join(" ");
-      const prefix = `  ${delivery.padEnd(9)} · `;
-      lines.push(
-        truncateToWidth(
-          `${color(prefix, tuiTheme.muted)}${color(preview, tuiTheme.userMessageText)}`,
-          width,
-        ),
-      );
-    }
-
-    if (window.overflow) {
-      lines.push(dim(`  … ${this.queuedInputs.length - window.visibleCount} more`));
-    }
-    return lines;
-  }
-
-  private renderBackgroundActivity(width: number, availableHeight?: number): string[] {
-    const maximumRows =
-      availableHeight === undefined
-        ? BACKGROUND_ACTIVITY_VISIBLE_LIMIT + 1
-        : Math.max(0, Math.floor(availableHeight));
-    const window = resolvePreviewWindow(
-      this.backgroundActivity.length,
-      maximumRows,
-      BACKGROUND_ACTIVITY_VISIBLE_LIMIT,
-    );
-    if (!window) {
-      return [];
-    }
-
-    const lines = [color(`Background · ${this.backgroundActivity.length}`, tuiTheme.command)];
-
-    for (const item of this.backgroundActivity.slice(0, window.visibleCount)) {
-      const label = stripTerminalControlSequences(item.label).replace(/\s+/g, " ").trim();
-      const meta = `  ${item.kind.padEnd(8)} · ${item.id} · ${item.status} · `;
-      lines.push(
-        truncateToWidth(
-          `${color(meta, tuiTheme.muted)}${color(label, tuiTheme.userMessageText)}`,
-          width,
-        ),
-      );
-    }
-
-    if (window.overflow) {
-      lines.push(dim(`  … ${this.backgroundActivity.length - window.visibleCount} more`));
-    }
-    return lines;
-  }
-
-  private renderPendingUserTasks(width: number, availableHeight?: number): string[] {
-    const maximumRows =
-      availableHeight === undefined
-        ? USER_TASK_VISIBLE_LIMIT + 1
-        : Math.max(0, Math.floor(availableHeight));
-    const window = resolvePreviewWindow(
-      this.pendingUserTasks.length,
-      maximumRows,
-      USER_TASK_VISIBLE_LIMIT,
-    );
-    if (!window) return [];
-
-    const lines = [color(`Your tasks · ${this.pendingUserTasks.length} · /task`, tuiTheme.command)];
-    for (const task of this.pendingUserTasks.slice(0, window.visibleCount)) {
-      const label = stripTerminalControlSequences(task.label).replace(/\s+/g, " ").trim();
-      lines.push(
-        truncateToWidth(
-          `${color(`  ${task.id} · `, tuiTheme.muted)}${color(label, tuiTheme.userMessageText)}`,
-          width,
-        ),
-      );
-    }
-    if (window.overflow) {
-      lines.push(dim(`  … ${this.pendingUserTasks.length - window.visibleCount} more`));
-    }
-    return lines;
-  }
-
-  private renderMemoryActivity(): string {
-    const organizing = ["project", "global"].filter((scope) =>
-      this.memoryActivity.some((item) => item.scope === scope && item.status === "organizing"),
-    );
-    const queued = ["project", "global"].filter(
-      (scope) =>
-        !organizing.includes(scope) && this.memoryActivity.some((item) => item.scope === scope),
-    );
-    return color(
-      [
-        "Memory",
-        ...(organizing.length > 0 ? [`organizing ${organizing.join(" + ")}`] : []),
-        ...(queued.length > 0 ? [`queued ${queued.join(" + ")}`] : []),
-      ].join(" · "),
-      tuiTheme.command,
-    );
-  }
-
-  private renderInputPreviews(width: number, availableHeight?: number): string[] {
-    if (availableHeight !== undefined && availableHeight <= 0) {
-      return [];
-    }
-
-    const reserveScheduledRow =
-      this.scheduledInputSummary !== undefined &&
-      this.queuedInputs.length > 0 &&
-      (availableHeight === undefined || availableHeight > 1);
-    const queuedHeight =
-      availableHeight === undefined
-        ? undefined
-        : Math.max(0, availableHeight - (reserveScheduledRow ? 1 : 0));
-    const lines = this.queuedInputs.length > 0 ? this.renderQueuedInputs(width, queuedHeight) : [];
-
-    if (
-      this.scheduledInputSummary &&
-      (availableHeight === undefined || lines.length < availableHeight)
-    ) {
-      const nextAt = formatClockTime(this.scheduledInputSummary.nextAt);
-      lines.push(
-        truncateToWidth(
-          color(
-            `Scheduled · ${this.scheduledInputSummary.count} · next ${nextAt}`,
-            tuiTheme.command,
-          ),
-          width,
-        ),
-      );
-    }
-
-    if (this.pendingUserTasks.length > 0) {
-      const taskHeight =
-        availableHeight === undefined ? undefined : Math.max(0, availableHeight - lines.length);
-      lines.push(...this.renderPendingUserTasks(width, taskHeight));
-    }
-
-    if (this.backgroundActivity.length > 0) {
-      const backgroundHeight =
-        availableHeight === undefined ? undefined : Math.max(0, availableHeight - lines.length);
-      lines.push(...this.renderBackgroundActivity(width, backgroundHeight));
-    }
-    return lines;
-  }
-
   private applyText(text: string): void {
     const normalized = normalizeLineEndings(text);
 
@@ -1002,37 +814,7 @@ export class Editor implements Component {
   }
 }
 
-function formatClockTime(value: Date): string {
-  return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
-}
-
-type PreviewSectionWindow = {
-  visibleCount: number;
-  overflow: boolean;
-};
-
-// Both preview sections share the same row budget rules: keep one header row,
 // reserve one detail row for the overflow marker, and never assume extra space.
-function resolvePreviewWindow(
-  total: number,
-  maximumRows: number,
-  visibleLimit: number,
-): PreviewSectionWindow | undefined {
-  if (maximumRows <= 0) {
-    return undefined;
-  }
-  if (maximumRows === 1) {
-    return { visibleCount: 0, overflow: false };
-  }
-
-  const detailRows = Math.min(maximumRows - 1, visibleLimit);
-  const overflow = total > detailRows && detailRows > 1;
-  return {
-    visibleCount: overflow ? detailRows - 1 : detailRows,
-    overflow,
-  };
-}
-
 function formatImageSummary(images: UserImage[]): string {
   const dimensions = images
     .slice(0, 3)

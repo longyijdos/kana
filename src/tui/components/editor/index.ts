@@ -1,8 +1,8 @@
-export {
-  Editor,
-  type EditorBackgroundActivityItem,
-  type EditorQueuedInput,
-  type EditorScheduledInputSummary,
-  type EditorUserTaskItem,
-} from "./editor";
+export { Editor } from "./editor";
+export type {
+  EditorBackgroundActivityItem,
+  EditorQueuedInput,
+  EditorScheduledInputSummary,
+  EditorUserTaskItem,
+} from "./previews";
 export type { StatusLineState } from "./status-line";
