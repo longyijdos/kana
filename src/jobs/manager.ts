@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createNoopLogger, type Logger } from "@/logging";
 import { errorFields } from "@/utils";
+import { type OwnedTask, type OwnedTaskEvent, OwnedTaskRegistry } from "./owned-tasks";
 
 const DEFAULT_MAX_RETAINED_OUTPUT_BYTES = 1024 * 1024;
 const MAX_OUTPUT_PEEK_BYTES = 20 * 1024;
@@ -22,77 +23,73 @@ export type BackgroundJobTerminalStatus = Exclude<BackgroundJobStatus, "running"
 export type BackgroundJobOutputStream = "stdout" | "stderr";
 
 type BackgroundJobOwner = Readonly<{
-  sessionId: string;
-  instanceId: string;
+  readonly sessionId: string;
+  readonly instanceId: string;
 }>;
 
 export type BackgroundJobSummary = {
-  id: string;
-  kind: string;
-  label: string;
-  cwd?: string;
-  status: BackgroundJobStatus;
-  startedAt: Date;
-  finishedAt?: Date;
-  exitCode: number | null;
+  readonly id: string;
+  readonly kind: string;
+  readonly label: string;
+  readonly cwd?: string;
+  readonly status: BackgroundJobStatus;
+  readonly startedAt: Date;
+  readonly finishedAt?: Date;
+  readonly exitCode: number | null;
 };
 
 export type BackgroundJobOutputChunk = {
-  stream: BackgroundJobOutputStream;
-  text: string;
+  readonly stream: BackgroundJobOutputStream;
+  readonly text: string;
 };
 
 export type BackgroundJobOutputSnapshot = {
-  jobId: string;
-  status: BackgroundJobStatus;
-  chunks: BackgroundJobOutputChunk[];
-  droppedBytes: number;
-  waitTimedOut: boolean;
-  exitCode: number | null;
+  readonly jobId: string;
+  readonly status: BackgroundJobStatus;
+  readonly chunks: readonly BackgroundJobOutputChunk[];
+  readonly droppedBytes: number;
+  readonly waitTimedOut: boolean;
+  readonly exitCode: number | null;
 };
 
 export type BackgroundJobPeekSnapshot = {
-  jobId: string;
-  status: BackgroundJobStatus;
-  chunks: BackgroundJobOutputChunk[];
-  truncated: boolean;
-  droppedBytes: number;
-  exitCode: number | null;
+  readonly jobId: string;
+  readonly status: BackgroundJobStatus;
+  readonly chunks: readonly BackgroundJobOutputChunk[];
+  readonly truncated: boolean;
+  readonly droppedBytes: number;
+  readonly exitCode: number | null;
 };
 
 type BackgroundJobProducerResult = {
-  status: BackgroundJobTerminalStatus;
-  exitCode: number | null;
+  readonly status: BackgroundJobTerminalStatus;
+  readonly exitCode: number | null;
 };
 
-export type BackgroundJobEvent = {
-  type: "started" | "stopping" | "settled" | "observed";
-  owner: BackgroundJobOwner;
-  job: BackgroundJobSummary;
-};
+export type BackgroundJobEvent = OwnedTaskEvent<BackgroundJobOwner, BackgroundJobSummary>;
 
 type BackgroundJobEventListener = (event: BackgroundJobEvent) => void;
 
 type BackgroundJobProducerContext = {
-  signal: AbortSignal;
+  readonly signal: AbortSignal;
   write(stream: BackgroundJobOutputStream, text: string): void;
 };
 
 type StartBackgroundJobOptions = {
-  kind: string;
-  label: string;
-  cwd?: string;
+  readonly kind: string;
+  readonly label: string;
+  readonly cwd?: string;
   run(context: BackgroundJobProducerContext): Promise<BackgroundJobProducerResult>;
 };
 
 type ReadBackgroundJobOutputOptions = {
-  waitMs?: number;
-  signal?: AbortSignal;
+  readonly waitMs?: number;
+  readonly signal?: AbortSignal;
 };
 
 type KillBackgroundJobOptions = {
-  reason?: string;
-  source: "tool" | "tui" | "session_disposal" | "shutdown";
+  readonly reason?: string;
+  readonly source: "tool" | "tui" | "session_disposal" | "shutdown";
 };
 
 export type BackgroundJobClient = {
@@ -112,8 +109,8 @@ export type BackgroundJobClient = {
 };
 
 type BindBackgroundJobOwnerOptions = {
-  maxConcurrent: number;
-  logger?: Logger;
+  readonly maxConcurrent: number;
+  readonly logger?: Logger;
 };
 
 type OutputChunk = BackgroundJobOutputChunk & {
@@ -121,91 +118,60 @@ type OutputChunk = BackgroundJobOutputChunk & {
   byteLength: number;
 };
 
-type JobRecord = {
-  owner: BackgroundJobOwner;
-  logger: Logger;
-  summary: BackgroundJobSummary;
-  controller: AbortController;
-  settlement: Promise<void>;
-  resolveSettlement(): void;
+type JobOutput = {
   chunks: OutputChunk[];
   retainedBytes: number;
   totalDroppedBytes: number;
   unreadDroppedBytes: number;
   nextSequence: number;
   readSequence: number;
-  waiters: Set<() => void>;
-  completionObserved: boolean;
-  completionPublished: boolean;
 };
 
-type BackgroundJobListenerRegistration = {
-  ownerInstanceId: string;
-  listener: BackgroundJobEventListener;
-};
+type Job = OwnedTask<BackgroundJobOwner, BackgroundJobSummary, JobOutput>;
 
 type BackgroundJobManagerOptions = {
-  maxRetainedOutputBytes?: number;
-  maxRetainedTerminalJobs?: number;
+  readonly maxRetainedOutputBytes?: number;
+  readonly maxRetainedTerminalJobs?: number;
 };
 
 export class BackgroundJobManager {
-  private readonly jobs = new Map<string, JobRecord>();
-  private readonly listeners = new Set<BackgroundJobListenerRegistration>();
-  private readonly closedOwners = new Set<string>();
+  private readonly registry: OwnedTaskRegistry<BackgroundJobOwner, BackgroundJobSummary, JobOutput>;
   private readonly maxRetainedOutputBytes: number;
-  private readonly maxRetainedTerminalJobs: number;
-  private closePromise?: Promise<void>;
 
   constructor(options: BackgroundJobManagerOptions = {}) {
-    this.maxRetainedOutputBytes = readPositiveInteger(
-      options.maxRetainedOutputBytes,
-      DEFAULT_MAX_RETAINED_OUTPUT_BYTES,
-      "maxRetainedOutputBytes",
-    );
-    this.maxRetainedTerminalJobs = readPositiveInteger(
-      options.maxRetainedTerminalJobs,
-      DEFAULT_MAX_RETAINED_TERMINAL_JOBS,
-      "maxRetainedTerminalJobs",
-    );
-  }
-
-  createOwner(sessionId: string): BackgroundJobOwner {
-    const normalized = sessionId.trim();
-    if (!normalized) {
-      throw new Error("Background Job owner session ID cannot be empty.");
-    }
-    return Object.freeze({ sessionId: normalized, instanceId: randomUUID() });
-  }
-
-  bind(owner: BackgroundJobOwner, options: BindBackgroundJobOwnerOptions): BackgroundJobClient {
-    const maxConcurrent = readPositiveInteger(options.maxConcurrent, undefined, "maxConcurrent");
-    const logger = options.logger ?? createNoopLogger();
-    return Object.freeze({
-      owner,
-      start: (startOptions) => this.start(owner, maxConcurrent, logger, startOptions),
-      list: () => this.list(owner),
-      context: () => this.context(owner),
-      read: (jobId, readOptions) => this.read(owner, jobId, readOptions),
-      peek: (jobId) => this.peek(owner, jobId),
-      kill: (jobId, killOptions) => this.kill(owner, jobId, killOptions),
-      observe: (jobId) => this.observe(owner, jobId),
-      subscribe: (listener) => this.subscribe(owner, listener),
-      close: (source = "session_disposal") => this.closeOwner(owner, source),
+    this.maxRetainedOutputBytes =
+      options.maxRetainedOutputBytes ?? DEFAULT_MAX_RETAINED_OUTPUT_BYTES;
+    this.registry = new OwnedTaskRegistry({
+      logPrefix: "background_job",
+      displayName: "Background Job",
+      maxRetainedTerminal: options.maxRetainedTerminalJobs ?? DEFAULT_MAX_RETAINED_TERMINAL_JOBS,
+      isActive: (summary) => isActive(summary.status),
     });
   }
 
-  async close(): Promise<void> {
-    if (this.closePromise) {
-      return this.closePromise;
-    }
-    const owners = uniqueOwners([...this.jobs.values()].map((job) => job.owner));
-    this.closePromise = Promise.all(owners.map((owner) => this.closeOwner(owner, "shutdown"))).then(
-      () => {
-        this.listeners.clear();
-      },
-    );
-    return this.closePromise;
+  createOwner(sessionId: string): BackgroundJobOwner {
+    return Object.freeze({ sessionId, instanceId: randomUUID() });
+  }
+
+  bind(owner: BackgroundJobOwner, options: BindBackgroundJobOwnerOptions): BackgroundJobClient {
+    const logger = options.logger ?? createNoopLogger();
+    return Object.freeze({
+      owner,
+      start: (startOptions) => this.start(owner, options.maxConcurrent, logger, startOptions),
+      list: () => this.registry.list(owner),
+      context: () => this.registry.context(owner),
+      read: (jobId, readOptions) => this.read(owner, jobId, readOptions),
+      peek: (jobId) => this.peek(owner, jobId),
+      kill: (jobId, killOptions) => this.kill(owner, jobId, killOptions),
+      observe: (jobId) => this.registry.observe(owner, jobId),
+      subscribe: (listener) => this.registry.subscribe(owner, listener),
+      close: (source = "session_disposal") =>
+        this.registry.closeOwner(owner, source, (job) => this.stop(job, { source })),
+    });
+  }
+
+  close(): Promise<void> {
+    return this.registry.close((job) => this.stop(job, { source: "shutdown" }));
   }
 
   private start(
@@ -214,29 +180,10 @@ export class BackgroundJobManager {
     logger: Logger,
     options: StartBackgroundJobOptions,
   ): BackgroundJobSummary {
-    if (this.closePromise || this.closedOwners.has(owner.instanceId)) {
-      logger.warn("background_job.admission_rejected", {
-        reason: "owner_closing",
-        producer: options.kind,
-      });
-      throw new Error("Background Jobs are unavailable while the session is closing.");
-    }
-    const activeCount = [...this.jobs.values()].filter(
-      (job) => job.owner.instanceId === owner.instanceId && isActive(job.summary.status),
-    ).length;
-    if (activeCount >= maxConcurrent) {
-      logger.warn("background_job.admission_rejected", {
-        reason: "concurrency_limit",
-        producer: options.kind,
-        activeCount,
-        maxConcurrent,
-      });
-      throw new Error(`Background Job limit reached (${activeCount}/${maxConcurrent}).`);
-    }
+    this.registry.admit(owner, maxConcurrent, logger, { producer: options.kind });
 
-    const id = `job_${randomUUID()}`;
     const summary: BackgroundJobSummary = {
-      id,
+      id: `job_${randomUUID()}`,
       kind: options.kind,
       label: normalizeBackgroundJobLabel(options.label),
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
@@ -244,71 +191,43 @@ export class BackgroundJobManager {
       startedAt: new Date(),
       exitCode: null,
     };
-    let resolveSettlement!: () => void;
-    const settlement = new Promise<void>((resolve) => {
-      resolveSettlement = resolve;
-    });
-    const record: JobRecord = {
+    const job = this.registry.add(
       owner,
-      logger,
       summary,
-      controller: new AbortController(),
-      settlement,
-      resolveSettlement,
-      chunks: [],
-      retainedBytes: 0,
-      totalDroppedBytes: 0,
-      unreadDroppedBytes: 0,
-      nextSequence: 0,
-      readSequence: 0,
-      waiters: new Set(),
-      completionObserved: false,
-      completionPublished: false,
-    };
-    this.jobs.set(id, record);
-    logger.info("background_job.started", { jobId: id, producer: options.kind });
-    this.emit({ type: "started", owner, job: summary });
+      {
+        chunks: [],
+        retainedBytes: 0,
+        totalDroppedBytes: 0,
+        unreadDroppedBytes: 0,
+        nextSequence: 0,
+        readSequence: 0,
+      },
+      logger,
+    );
+    logger.info("background_job.started", { jobId: summary.id, producer: options.kind });
 
     let producer: Promise<BackgroundJobProducerResult>;
     try {
       producer = options.run({
-        signal: record.controller.signal,
-        write: (stream, text) => this.appendOutput(record, stream, text),
+        signal: job.controller.signal,
+        write: (stream, text) => this.appendOutput(job, stream, text),
       });
     } catch (error) {
       producer = Promise.reject(error);
     }
-    void producer.then(
-      (result) => this.finalize(record, result),
+    producer.then(
+      (result) => this.finalize(job, result),
       (error) => {
         logger.warn("background_job.producer_failed", {
-          jobId: id,
+          jobId: summary.id,
           producer: options.kind,
           ...errorFields(error),
         });
-        this.finalize(record, { status: "failed", exitCode: null });
+        this.finalize(job, { status: "failed", exitCode: null });
       },
     );
 
     return summary;
-  }
-
-  private list(owner: BackgroundJobOwner): BackgroundJobSummary[] {
-    return [...this.jobs.values()]
-      .filter((job) => job.owner.instanceId === owner.instanceId)
-      .map((job) => job.summary)
-      .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
-  }
-
-  private context(owner: BackgroundJobOwner): BackgroundJobSummary[] {
-    return [...this.jobs.values()]
-      .filter(
-        (job) =>
-          job.owner.instanceId === owner.instanceId &&
-          (isActive(job.summary.status) || !job.completionObserved),
-      )
-      .map((job) => job.summary)
-      .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
   }
 
   private async read(
@@ -316,24 +235,23 @@ export class BackgroundJobManager {
     jobId: string,
     options: ReadBackgroundJobOutputOptions = {},
   ): Promise<BackgroundJobOutputSnapshot> {
-    const job = this.findOwnedJob(owner, jobId);
+    const job = this.registry.find(owner, jobId);
     if (!job) {
       return unknownOutputSnapshot(jobId);
     }
-    const waitMs = readNonNegativeInteger(options.waitMs, 0, "waitMs");
-    let waitTimedOut = false;
-    if (!hasUnreadOutput(job) && isActive(job.summary.status) && waitMs > 0) {
-      waitTimedOut = !(await this.waitForChange(job, waitMs, options.signal));
-    }
-    const snapshot = this.consumeOutput(job, waitTimedOut);
+    const waitMs = options.waitMs ?? 0;
+    const ready = () => hasUnreadOutput(job.state) || !isActive(job.summary.status);
+    const waitTimedOut =
+      waitMs > 0 && !(await this.registry.waitUntil(job, ready, waitMs, options.signal));
+    const snapshot = consumeOutput(job, waitTimedOut);
     if (!isActive(snapshot.status)) {
-      this.observe(owner, jobId);
+      this.registry.observe(owner, jobId);
     }
     return snapshot;
   }
 
   private peek(owner: BackgroundJobOwner, jobId: string): BackgroundJobPeekSnapshot {
-    const job = this.findOwnedJob(owner, jobId);
+    const job = this.registry.find(owner, jobId);
     if (!job) {
       return {
         jobId,
@@ -344,14 +262,11 @@ export class BackgroundJobManager {
         exitCode: null,
       };
     }
+    const { chunks: retained, totalDroppedBytes } = job.state;
     const chunks: BackgroundJobOutputChunk[] = [];
     let includedBytes = 0;
-    for (let index = job.chunks.length - 1; index >= 0; index -= 1) {
-      const chunk = job.chunks[index];
-      if (
-        !chunk ||
-        (chunks.length > 0 && includedBytes + chunk.byteLength > MAX_OUTPUT_PEEK_BYTES)
-      ) {
+    for (const chunk of [...retained].reverse()) {
+      if (chunks.length > 0 && includedBytes + chunk.byteLength > MAX_OUTPUT_PEEK_BYTES) {
         break;
       }
       chunks.unshift({ stream: chunk.stream, text: chunk.text });
@@ -361,10 +276,8 @@ export class BackgroundJobManager {
       jobId,
       status: job.summary.status,
       chunks,
-      truncated:
-        job.totalDroppedBytes > 0 ||
-        includedBytes < job.chunks.reduce((sum, item) => sum + item.byteLength, 0),
-      droppedBytes: job.totalDroppedBytes,
+      truncated: totalDroppedBytes > 0 || chunks.length < retained.length,
+      droppedBytes: totalDroppedBytes,
       exitCode: job.summary.exitCode,
     };
   }
@@ -374,180 +287,67 @@ export class BackgroundJobManager {
     jobId: string,
     options: KillBackgroundJobOptions,
   ): Promise<BackgroundJobSummary> {
-    const job = this.findOwnedJob(owner, jobId);
+    const job = this.registry.find(owner, jobId);
     if (!job) {
       return unknownSummary(jobId);
     }
-    if (!isActive(job.summary.status)) {
-      if (shouldObserveCompletion(options.source)) {
-        this.observe(owner, jobId);
-      }
-      return job.summary;
-    }
-    if (job.summary.status === "running") {
-      job.summary = { ...job.summary, status: "stopping" };
-      job.logger.info("background_job.cancellation_requested", {
-        jobId,
-        producer: job.summary.kind,
-        source: options.source,
-      });
-      job.controller.abort(options.reason ?? "Background Job cancellation requested.");
-      this.wakeWaiters(job);
-      this.emit({ type: "stopping", owner, job: job.summary });
-    }
-    await job.settlement;
-    if (shouldObserveCompletion(options.source)) {
-      this.observe(owner, jobId);
+    await this.stop(job, options);
+    // Only the model's own kill counts as having seen the completion; a TUI
+    // kill still reports the outcome to the model.
+    if (options.source === "tool") {
+      this.registry.observe(owner, jobId);
     }
     return job.summary;
   }
 
-  private observe(owner: BackgroundJobOwner, jobId: string): void {
-    const job = this.findOwnedJob(owner, jobId);
-    if (!job || isActive(job.summary.status) || job.completionObserved) {
-      return;
+  private async stop(job: Job, options: KillBackgroundJobOptions): Promise<void> {
+    if (job.summary.status === "running") {
+      job.summary = { ...job.summary, status: "stopping" };
+      job.logger.info("background_job.cancellation_requested", {
+        jobId: job.summary.id,
+        producer: job.summary.kind,
+        source: options.source,
+      });
+      job.controller.abort(options.reason ?? "Background Job cancellation requested.");
+      this.registry.publishStopping(job);
     }
-    job.completionObserved = true;
-    this.emit({ type: "observed", owner, job: job.summary });
-    this.pruneTerminalJobs(owner);
+    await job.settled;
   }
 
-  private subscribe(owner: BackgroundJobOwner, listener: BackgroundJobEventListener): () => void {
-    const registration = { ownerInstanceId: owner.instanceId, listener };
-    this.listeners.add(registration);
-    return () => {
-      this.listeners.delete(registration);
-    };
-  }
-
-  private async closeOwner(
-    owner: BackgroundJobOwner,
-    source: "session_disposal" | "shutdown",
-  ): Promise<void> {
-    this.closedOwners.add(owner.instanceId);
-    const owned = [...this.jobs.values()].filter(
-      (job) => job.owner.instanceId === owner.instanceId,
-    );
-    await Promise.all(
-      owned.map((job) =>
-        this.kill(owner, job.summary.id, { source }).catch((error) => {
-          job.logger.warn("background_job.cleanup_failed", {
-            jobId: job.summary.id,
-            producer: job.summary.kind,
-            phase: source,
-            ...errorFields(error),
-          });
-        }),
-      ),
-    );
-    for (const job of owned) {
-      this.jobs.delete(job.summary.id);
-    }
-    for (const registration of this.listeners) {
-      if (registration.ownerInstanceId === owner.instanceId) {
-        this.listeners.delete(registration);
-      }
-    }
-  }
-
-  private appendOutput(job: JobRecord, stream: BackgroundJobOutputStream, text: string): void {
+  private appendOutput(job: Job, stream: BackgroundJobOutputStream, text: string): void {
     if (!text || !isActive(job.summary.status)) {
       return;
     }
+    const output = job.state;
     for (const piece of splitByUtf8Bytes(text, MAX_OUTPUT_CHUNK_BYTES)) {
-      const chunk: OutputChunk = {
-        sequence: job.nextSequence,
-        stream,
-        text: piece,
-        byteLength: Buffer.byteLength(piece),
-      };
-      job.nextSequence += 1;
-      job.chunks.push(chunk);
-      job.retainedBytes += chunk.byteLength;
+      const byteLength = Buffer.byteLength(piece);
+      output.chunks.push({ sequence: output.nextSequence, stream, text: piece, byteLength });
+      output.nextSequence += 1;
+      output.retainedBytes += byteLength;
     }
-    while (job.retainedBytes > this.maxRetainedOutputBytes && job.chunks.length > 0) {
-      const removed = job.chunks.shift();
-      if (!removed) {
-        break;
-      }
-      job.retainedBytes -= removed.byteLength;
-      job.totalDroppedBytes += removed.byteLength;
-      if (removed.sequence >= job.readSequence) {
-        job.unreadDroppedBytes += removed.byteLength;
-        job.readSequence = removed.sequence + 1;
+    while (output.retainedBytes > this.maxRetainedOutputBytes) {
+      const removed = output.chunks.shift();
+      if (!removed) break;
+      output.retainedBytes -= removed.byteLength;
+      output.totalDroppedBytes += removed.byteLength;
+      if (removed.sequence >= output.readSequence) {
+        output.unreadDroppedBytes += removed.byteLength;
+        output.readSequence = removed.sequence + 1;
       }
     }
-    this.wakeWaiters(job);
+    this.registry.notify(job);
   }
 
-  private consumeOutput(job: JobRecord, waitTimedOut: boolean): BackgroundJobOutputSnapshot {
-    const chunks: BackgroundJobOutputChunk[] = [];
-    for (const chunk of job.chunks) {
-      if (chunk.sequence < job.readSequence) {
-        continue;
-      }
-      chunks.push({ stream: chunk.stream, text: chunk.text });
-      job.readSequence = chunk.sequence + 1;
-    }
-    const droppedBytes = job.unreadDroppedBytes;
-    job.unreadDroppedBytes = 0;
-    return {
-      jobId: job.summary.id,
-      status: job.summary.status,
-      chunks,
-      droppedBytes,
-      waitTimedOut,
-      exitCode: job.summary.exitCode,
-    };
-  }
-
-  private waitForChange(job: JobRecord, waitMs: number, signal?: AbortSignal): Promise<boolean> {
-    if (signal?.aborted) {
-      return Promise.reject(signal.reason ?? new Error("Background Job output wait aborted."));
-    }
-    return new Promise<boolean>((resolve, reject) => {
-      let settled = false;
-      const finish = (changed: boolean): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        job.waiters.delete(onChanged);
-        resolve(changed);
-      };
-      const onChanged = (): void => finish(true);
-      const onAbort = (): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timer);
-        job.waiters.delete(onChanged);
-        reject(signal?.reason ?? new Error("Background Job output wait aborted."));
-      };
-      const timer = setTimeout(() => finish(false), waitMs);
-      job.waiters.add(onChanged);
-      signal?.addEventListener("abort", onAbort, { once: true });
-      if (hasUnreadOutput(job) || !isActive(job.summary.status)) {
-        finish(true);
-      }
-    });
-  }
-
-  private finalize(job: JobRecord, result: BackgroundJobProducerResult): void {
+  private finalize(job: Job, result: BackgroundJobProducerResult): void {
     if (!isActive(job.summary.status)) {
       return;
     }
-    job.summary = {
+    this.registry.settle(job, {
       ...job.summary,
       status: result.status,
       exitCode: result.exitCode,
       finishedAt: new Date(),
-    };
-    job.resolveSettlement();
-    this.wakeWaiters(job);
+    });
     const level = result.status === "completed" || result.status === "canceled" ? "info" : "warn";
     job.logger[level]("background_job.process_exited", {
       jobId: job.summary.id,
@@ -555,63 +355,25 @@ export class BackgroundJobManager {
       outcome: result.status,
       exitCode: result.exitCode,
     });
-    queueMicrotask(() => {
-      if (job.completionObserved || job.completionPublished) {
-        return;
-      }
-      job.completionPublished = true;
-      this.emit({ type: "settled", owner: job.owner, job: job.summary });
-      this.pruneTerminalJobs(job.owner);
-    });
   }
+}
 
-  private pruneTerminalJobs(owner: BackgroundJobOwner): void {
-    const terminal = [...this.jobs.values()]
-      .filter((job) => job.owner.instanceId === owner.instanceId && !isActive(job.summary.status))
-      .sort(
-        (left, right) =>
-          (left.summary.finishedAt?.getTime() ?? 0) - (right.summary.finishedAt?.getTime() ?? 0),
-      );
-    for (const job of terminal.slice(0, -this.maxRetainedTerminalJobs)) {
-      if (!job.completionObserved) {
-        job.completionObserved = true;
-        this.emit({ type: "observed", owner: job.owner, job: job.summary });
-      }
-      this.jobs.delete(job.summary.id);
-    }
-  }
-
-  private findOwnedJob(owner: BackgroundJobOwner, jobId: string): JobRecord | undefined {
-    const job = this.jobs.get(jobId);
-    return job?.owner.instanceId === owner.instanceId ? job : undefined;
-  }
-
-  private wakeWaiters(job: JobRecord): void {
-    for (const waiter of [...job.waiters]) {
-      waiter();
-    }
-  }
-
-  private emit(event: BackgroundJobEvent): void {
-    for (const registration of [...this.listeners]) {
-      if (registration.ownerInstanceId !== event.owner.instanceId) {
-        continue;
-      }
-      try {
-        registration.listener({
-          ...event,
-          owner: event.owner,
-          job: event.job,
-        });
-      } catch (error) {
-        const job = this.jobs.get(event.job.id);
-        job?.logger.warn("background_job.listener_failed", {
-          eventType: event.type,
-          ...errorFields(error),
-        });
-      }
-    }
-  }
+function consumeOutput(job: Job, waitTimedOut: boolean): BackgroundJobOutputSnapshot {
+  const output = job.state;
+  const chunks = output.chunks
+    .filter((chunk) => chunk.sequence >= output.readSequence)
+    .map(({ stream, text }) => ({ stream, text }));
+  output.readSequence = output.nextSequence;
+  const droppedBytes = output.unreadDroppedBytes;
+  output.unreadDroppedBytes = 0;
+  return {
+    jobId: job.summary.id,
+    status: job.summary.status,
+    chunks,
+    droppedBytes,
+    waitTimedOut,
+    exitCode: job.summary.exitCode,
+  };
 }
 
 function normalizeBackgroundJobLabel(value: string): string {
@@ -635,18 +397,8 @@ function normalizeBackgroundJobLabel(value: string): string {
   return `${content.trimEnd()}${marker}`;
 }
 
-function hasUnreadOutput(job: JobRecord): boolean {
-  return (
-    job.unreadDroppedBytes > 0 || job.chunks.some((chunk) => chunk.sequence >= job.readSequence)
-  );
-}
-
 function isActive(status: BackgroundJobStatus): status is "running" | "stopping" {
   return status === "running" || status === "stopping";
-}
-
-function shouldObserveCompletion(source: KillBackgroundJobOptions["source"]): boolean {
-  return source === "tool";
 }
 
 function unknownSummary(jobId: string): BackgroundJobSummary {
@@ -672,10 +424,6 @@ function unknownOutputSnapshot(jobId: string): BackgroundJobOutputSnapshot {
   };
 }
 
-function uniqueOwners(owners: BackgroundJobOwner[]): BackgroundJobOwner[] {
-  return [...new Map(owners.map((owner) => [owner.instanceId, owner])).values()];
-}
-
 function splitByUtf8Bytes(value: string, maxBytes: number): string[] {
   const chunks: string[] = [];
   let current = "";
@@ -696,22 +444,9 @@ function splitByUtf8Bytes(value: string, maxBytes: number): string[] {
   return chunks;
 }
 
-function readPositiveInteger(
-  value: number | undefined,
-  fallback: number | undefined,
-  name: string,
-): number {
-  const resolved = value ?? fallback;
-  if (resolved === undefined || !Number.isInteger(resolved) || resolved <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-  return resolved;
-}
-
-function readNonNegativeInteger(value: number | undefined, fallback: number, name: string): number {
-  const resolved = value ?? fallback;
-  if (!Number.isInteger(resolved) || resolved < 0) {
-    throw new Error(`${name} must be a non-negative integer.`);
-  }
-  return resolved;
+function hasUnreadOutput(output: JobOutput): boolean {
+  return (
+    output.unreadDroppedBytes > 0 ||
+    output.chunks.some((chunk) => chunk.sequence >= output.readSequence)
+  );
 }

@@ -259,7 +259,7 @@ describe("BackgroundJobManager", () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const events: string[] = [];
-    jobs.subscribe((event) => events.push(`${event.type}:${event.job.status}`));
+    jobs.subscribe((event) => events.push(`${event.type}:${event.task.status}`));
     const completion = deferred<ProducerResult>();
 
     const job = jobs.start({ kind: "test", label: "lifecycle", run: () => completion.promise });
@@ -288,7 +288,7 @@ describe("BackgroundJobManager", () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 2 });
     const events: string[] = [];
-    jobs.subscribe((event) => events.push(`${event.type}:${event.job.status}`));
+    jobs.subscribe((event) => events.push(`${event.type}:${event.task.status}`));
     const completion = deferred<ProducerResult>();
     const completed = jobs.start({
       kind: "test",

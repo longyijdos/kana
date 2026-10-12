@@ -81,7 +81,7 @@ type JobStartResult = {
 
 type JobOutputResult = {
   status: BackgroundJobStatus;
-  chunks: BackgroundJobOutputChunk[];
+  chunks: readonly BackgroundJobOutputChunk[];
   droppedBytes: number;
   waitTimedOut: boolean;
   exitCode: number | null;

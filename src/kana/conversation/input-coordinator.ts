@@ -657,7 +657,7 @@ export class ConversationInputCoordinator {
     }
     if (event.type === "observed") {
       for (const item of [...this.agent.inbox.nextStep, ...this.agent.inbox.nextTurn]) {
-        if (item.delivery.kind === "job" && item.delivery.jobId === event.job.id) {
+        if (item.delivery.kind === "job" && item.delivery.jobId === event.task.id) {
           this.agent.cancelInput(item.message.id);
         }
       }
@@ -665,18 +665,18 @@ export class ConversationInputCoordinator {
     }
 
     const input = createUserMessage({
-      content: formatBackgroundJobCompletion(event.job),
-      provenance: { kind: "job_completion", jobId: event.job.id },
+      content: formatBackgroundJobCompletion(event.task),
+      provenance: { kind: "job_completion", jobId: event.task.id },
     });
     const lane = this.options.canSteer() ? "next-step" : "next-turn";
     this.agent.enqueueInput(input, lane, {
       kind: "job",
-      displayContent: `Background Job ${shortId(event.job.id)} ${event.job.status}`,
-      jobId: event.job.id,
+      displayContent: `Background Job ${shortId(event.task.id)} ${event.task.status}`,
+      jobId: event.task.id,
     });
     this.options.getLogger().info("conversation.background_job_completion_queued", {
-      jobId: event.job.id,
-      outcome: event.job.status,
+      jobId: event.task.id,
+      outcome: event.task.status,
       delivery: lane,
     });
   }
@@ -700,7 +700,7 @@ export class ConversationInputCoordinator {
     }
     if (event.type === "observed") {
       for (const item of [...this.agent.inbox.nextStep, ...this.agent.inbox.nextTurn]) {
-        if (item.delivery.kind === "subagent" && item.delivery.agentId === event.subagent.id) {
+        if (item.delivery.kind === "subagent" && item.delivery.agentId === event.task.id) {
           this.agent.cancelInput(item.message.id);
         }
       }
@@ -708,18 +708,18 @@ export class ConversationInputCoordinator {
     }
 
     const input = createUserMessage({
-      content: formatSubagentCompletion(event.subagent),
-      provenance: { kind: "subagent_completion", agentId: event.subagent.id },
+      content: formatSubagentCompletion(event.task),
+      provenance: { kind: "subagent_completion", agentId: event.task.id },
     });
     const lane = this.options.canSteer() ? "next-step" : "next-turn";
     this.agent.enqueueInput(input, lane, {
       kind: "subagent",
-      displayContent: `Subagent ${shortId(event.subagent.id)} ${event.subagent.status}`,
-      agentId: event.subagent.id,
+      displayContent: `Subagent ${shortId(event.task.id)} ${event.task.status}`,
+      agentId: event.task.id,
     });
     this.options.getLogger().info("conversation.subagent_completion_queued", {
-      agentId: event.subagent.id,
-      outcome: event.subagent.status,
+      agentId: event.task.id,
+      outcome: event.task.status,
       delivery: lane,
     });
   }
