@@ -226,36 +226,9 @@ export class KanaSessionJournal {
       );
     }
 
-    const compactions = [...(options.compactions ?? [])];
-    compactions.sort(
+    const compactions = [...(options.compactions ?? [])].sort(
       (left, right) => left.createdAfterMessageCount - right.createdAfterMessageCount,
     );
-
-    if (messages.length === 0 && options.todoState === undefined) {
-      const entries: KanaSessionContextCompactionEntry[] = [];
-      let parentId = this.state.tailId;
-      const knownCompactionIds = new Set(this.state.compactionIds);
-
-      for (const checkpoint of compactions) {
-        if (checkpoint.createdAfterMessageCount !== this.state.messageIds.length) {
-          throw new Error(
-            "Context compaction references messages that have not been persisted at this timeline position.",
-          );
-        }
-        const entry = contextCheckpointToEntry(
-          checkpoint,
-          parentId,
-          this.state.messageIds,
-          knownCompactionIds,
-        );
-        entries.push(entry);
-        parentId = entry.id;
-        knownCompactionIds.add(entry.id);
-      }
-
-      this.appendEntries(entries);
-      return entries;
-    }
 
     const timestamp = options.timestamp ?? new Date().toISOString();
     const turnId = randomUUID();
@@ -277,16 +250,13 @@ export class KanaSessionJournal {
     entries.push(startEntry);
     parentId = startEntry.id;
 
+    // Each checkpoint follows the message it was created after.
     const appendEligibleCompactions = (): void => {
-      while (
-        compactionIndex < compactions.length &&
-        (compactions[compactionIndex]?.createdAfterMessageCount ?? Number.POSITIVE_INFINITY) <=
-          messageCount
+      for (
+        let checkpoint = compactions[compactionIndex];
+        checkpoint && checkpoint.createdAfterMessageCount <= messageCount;
+        checkpoint = compactions[compactionIndex]
       ) {
-        const checkpoint = compactions[compactionIndex];
-        if (!checkpoint) {
-          break;
-        }
         if (checkpoint.createdAfterMessageCount < this.state.messageIds.length) {
           throw new Error("Context compaction predates the snapshot being appended.");
         }
