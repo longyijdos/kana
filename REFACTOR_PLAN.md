@@ -463,7 +463,31 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ---
 
-## 阶段 6：产品层
+## 阶段 6：产品层（已完成）
+
+### 结果
+
+本阶段 src 加 tests 净减少约 370 行（+1092 / −1460）。分支累计相对 main 净减少约 4700 行。`launchMode === "clean"` 的判断从 26 处降到 14 处，剩下的集中在 TUI（阶段 7 处理）、启动入口和 prompt 装配。
+
+### 完成内容
+- **任务注册表**：`jobs/owned-tasks.ts` 中新增 `OwnedTaskRegistry`，负责准入、settlement、waiter、observe、prune、close。background job 和 subagent 只保留各自的负载：job 的输出缓冲区，subagent 的结果。closed owner 改用 `WeakSet` 记录，不再无限增长；事件统一为 `{ type, owner, task }`
+- **CompletionSource**：input-coordinator 中 job、subagent、user task 三组 observe/handle/pause 合并为一个接口，加三个适配器；toPendingInput 中重复的 provenance 守卫删除
+- **能力**：
+  - host 用 `customizations`（skills、MCP 配置 store）和 `persistent` 表达 clean 模式；`??=` 死代码和 `assertCustomizationsAvailable` 删除
+  - registry 不再在每个 session 上存一份 `persistent`，改为 registry 级别的一个开关
+- **runtime 装配**：
+  - host 提供 `runtimeOptions` 和 `createRuntime(frontend)`；server 和 headless 各自约 30 行的装配代码改为一次调用，TUI 直接展开 `runtimeOptions`
+  - user task 只剩 host 的 `enableUserTasks` 一道开关
+  - host 上 9 个纯转发方法删除
+- host 中 accounting 的"记录并吞掉错误"合并为 `recordAccounting`；headless 中重复的 MCP 就绪日志删除（host 已经记录过 `mcp.started`）；130 改为具名常量 `SIGINT_EXIT_CODE`
+- **OAuth**：刷新提前量、token 状态计算、auth method 列表集中到 `oauth/token.ts` 和 `oauth/types.ts`
+- **MCP**：删除 adapter 和 runtime 中多余的幂等标志，以及 registration 和 server config 的防御性拷贝和重复校验
+
+### 与原设计的偏差
+- 状态拼写没有统一：`canceled`（job、hosted tool、工具状态）和 `cancelled`（subagent、goal、codemode）都已经出现在面向模型的工具输出或持久化的 session 中，改动会改变协议值
+- 拒绝码"一处 4 个、一处 6 个"的问题，在阶段 1 删除 `OAuthSession` 后已不存在
+- TUI 的 `KanaTuiApp` 构造器仍然注入 createAgent 和会话回调（大量 TUI 测试依赖这种注入方式），拆分 `app.ts` 时在阶段 7 一起调整
+- OAuth 诊断回调保留：它把授权进度显示到 TUI，是展示用途而不是日志
 
 ### 能力与会话
 - [ ] 引入 `KanaCapabilities`，消除 26 处 `launchMode === "clean"` 判断；去掉 registry 中每个 session 各存一份的 `persistent`
