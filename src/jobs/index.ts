@@ -1,6 +1,5 @@
 export type {
   BackgroundJobClient,
-  BackgroundJobEvent,
   BackgroundJobOutputChunk,
   BackgroundJobOutputStream,
   BackgroundJobPeekSnapshot,

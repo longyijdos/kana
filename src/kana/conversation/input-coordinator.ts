@@ -6,11 +6,11 @@ import type {
   AgentInputDelivery,
 } from "@/agent";
 import { createUserMessage, type MessageId, readMessageId, type UserMessage } from "@/core";
-import type { BackgroundJobClient, BackgroundJobEvent, BackgroundJobSummary } from "@/jobs";
+import type { BackgroundJobClient, BackgroundJobSummary, OwnedTaskEvent } from "@/jobs";
 import type { Logger } from "@/logging";
 import { shortId } from "@/utils";
-import type { KanaSubagentClient, KanaSubagentEvent, KanaSubagentSummary } from "../subagents";
-import type { KanaUserTaskManager, KanaUserTaskSettlement } from "../user-tasks";
+import type { KanaSubagentClient, KanaSubagentSummary } from "../subagents";
+import type { KanaUserTaskManager } from "../user-tasks";
 import {
   type KanaGoalContinuationAdmission,
   KanaGoalController,
@@ -133,13 +133,11 @@ export class ConversationInputCoordinator {
   private sessionId?: string;
   private backgroundJobs?: BackgroundJobClient;
   private subagents?: KanaSubagentClient;
-  private userTasks?: KanaUserTaskManager;
+  private completionSources: readonly CompletionSource[] = [];
   private unsubscribeWakeEvents?: () => void;
   private unsubscribeWakeState?: () => void;
   private unsubscribeAgentInbox?: () => void;
-  private unsubscribeBackgroundJobs?: () => void;
-  private unsubscribeSubagents?: () => void;
-  private unsubscribeUserTasks?: () => void;
+  private unsubscribeCompletions: readonly (() => void)[] = [];
   private draining = false;
   private settlingRun = false;
   private changingSession = false;
@@ -153,9 +151,7 @@ export class ConversationInputCoordinator {
     this.agent = agent;
     this.sessionId = sessionId;
     this.observeAgentInbox();
-    this.observeBackgroundJobs();
-    this.observeSubagents();
-    this.observeUserTasks();
+    this.observeCompletions();
     this.unsubscribeWakeEvents = this.wakeScheduler.subscribe((event) => {
       this.queueWakeEvent(event);
     });
@@ -409,28 +405,11 @@ export class ConversationInputCoordinator {
 
   beginSessionChange(): void {
     this.changingSession = true;
-    this.pauseBackgroundJobObservation();
-    this.pauseSubagentObservation();
-    this.pauseUserTaskObservation();
+    this.pauseCompletionObservation();
   }
 
   cancelSessionChange(): void {
     this.changingSession = false;
-  }
-
-  pauseBackgroundJobObservation(): void {
-    this.unsubscribeBackgroundJobs?.();
-    this.unsubscribeBackgroundJobs = undefined;
-  }
-
-  pauseSubagentObservation(): void {
-    this.unsubscribeSubagents?.();
-    this.unsubscribeSubagents = undefined;
-  }
-
-  pauseUserTaskObservation(): void {
-    this.unsubscribeUserTasks?.();
-    this.unsubscribeUserTasks = undefined;
   }
 
   cancelCurrentSessionInputs(): void {
@@ -444,9 +423,7 @@ export class ConversationInputCoordinator {
   adoptSession(agent: Agent, sessionId: string): void {
     this.sessionId = sessionId;
     this.replaceAgent(agent);
-    this.observeBackgroundJobs();
-    this.observeSubagents();
-    this.observeUserTasks();
+    this.observeCompletions();
     this.changingSession = false;
   }
 
@@ -460,9 +437,7 @@ export class ConversationInputCoordinator {
     this.unsubscribeWakeEvents?.();
     this.unsubscribeWakeState?.();
     this.unsubscribeAgentInbox?.();
-    this.pauseBackgroundJobObservation();
-    this.pauseSubagentObservation();
-    this.pauseUserTaskObservation();
+    this.pauseCompletionObservation();
     this.agent.clearInbox();
   }
 
@@ -635,125 +610,56 @@ export class ConversationInputCoordinator {
     });
   }
 
-  private observeBackgroundJobs(): void {
-    this.pauseBackgroundJobObservation();
-    this.backgroundJobs = this.sessionId
-      ? this.options.getBackgroundJobs?.(this.sessionId)
-      : undefined;
-    this.unsubscribeBackgroundJobs = this.backgroundJobs?.subscribe((event) => {
-      this.handleBackgroundJobEvent(event);
-    });
+  private observeCompletions(): void {
+    this.pauseCompletionObservation();
+    const { sessionId } = this;
+    this.backgroundJobs = sessionId ? this.options.getBackgroundJobs?.(sessionId) : undefined;
+    this.subagents = sessionId ? this.options.getSubagents?.(sessionId) : undefined;
+    const userTasks = sessionId ? this.options.getUserTasks?.(sessionId) : undefined;
+    this.completionSources = [
+      ...(this.backgroundJobs
+        ? [ownedTaskCompletions("job", this.backgroundJobs, formatBackgroundJobCompletion)]
+        : []),
+      ...(this.subagents
+        ? [ownedTaskCompletions("subagent", this.subagents, formatSubagentCompletion)]
+        : []),
+      ...(userTasks ? [userTaskCompletions(userTasks)] : []),
+    ];
+    this.unsubscribeCompletions = this.completionSources.map((source) =>
+      source.subscribe({
+        settled: (completion) => this.queueCompletion(source.kind, completion),
+        observed: (id) => this.discardCompletion(source.kind, id),
+      }),
+    );
   }
 
-  private handleBackgroundJobEvent(event: BackgroundJobEvent): void {
-    if (
-      this.stopping ||
-      this.changingSession ||
-      event.owner.sessionId !== this.sessionId ||
-      event.type === "started" ||
-      event.type === "stopping"
-    ) {
-      return;
-    }
-    if (event.type === "observed") {
-      for (const item of [...this.agent.inbox.nextStep, ...this.agent.inbox.nextTurn]) {
-        if (item.delivery.kind === "job" && item.delivery.jobId === event.task.id) {
-          this.agent.cancelInput(item.message.id);
-        }
-      }
-      return;
-    }
-
-    const input = createUserMessage({
-      content: formatBackgroundJobCompletion(event.task),
-      provenance: { kind: "job_completion", jobId: event.task.id },
-    });
-    const lane = this.options.canSteer() ? "next-step" : "next-turn";
-    this.agent.enqueueInput(input, lane, {
-      kind: "job",
-      displayContent: `Background Job ${shortId(event.task.id)} ${event.task.status}`,
-      jobId: event.task.id,
-    });
-    this.options.getLogger().info("conversation.background_job_completion_queued", {
-      jobId: event.task.id,
-      outcome: event.task.status,
-      delivery: lane,
-    });
+  private pauseCompletionObservation(): void {
+    for (const unsubscribe of this.unsubscribeCompletions) unsubscribe();
+    this.unsubscribeCompletions = [];
   }
 
-  private observeSubagents(): void {
-    this.pauseSubagentObservation();
-    this.subagents = this.sessionId ? this.options.getSubagents?.(this.sessionId) : undefined;
-    this.unsubscribeSubagents = this.subagents?.subscribe((event) => {
-      this.handleSubagentEvent(event);
-    });
-  }
-
-  private handleSubagentEvent(event: KanaSubagentEvent): void {
-    if (
-      this.stopping ||
-      this.changingSession ||
-      event.owner.sessionId !== this.sessionId ||
-      event.type === "started"
-    ) {
-      return;
-    }
-    if (event.type === "observed") {
-      for (const item of [...this.agent.inbox.nextStep, ...this.agent.inbox.nextTurn]) {
-        if (item.delivery.kind === "subagent" && item.delivery.agentId === event.task.id) {
-          this.agent.cancelInput(item.message.id);
-        }
-      }
-      return;
-    }
-
-    const input = createUserMessage({
-      content: formatSubagentCompletion(event.task),
-      provenance: { kind: "subagent_completion", agentId: event.task.id },
-    });
-    const lane = this.options.canSteer() ? "next-step" : "next-turn";
-    this.agent.enqueueInput(input, lane, {
-      kind: "subagent",
-      displayContent: `Subagent ${shortId(event.task.id)} ${event.task.status}`,
-      agentId: event.task.id,
-    });
-    this.options.getLogger().info("conversation.subagent_completion_queued", {
-      agentId: event.task.id,
-      outcome: event.task.status,
-      delivery: lane,
-    });
-  }
-
-  private observeUserTasks(): void {
-    this.pauseUserTaskObservation();
-    this.userTasks = this.sessionId ? this.options.getUserTasks?.(this.sessionId) : undefined;
-    this.unsubscribeUserTasks = this.userTasks?.subscribe((event) => {
-      this.handleUserTaskSettlement(event);
-    });
-  }
-
-  private handleUserTaskSettlement(event: KanaUserTaskSettlement): void {
+  private queueCompletion(kind: CompletionKind, completion: Completion): void {
     if (this.stopping || this.changingSession) return;
-    const input = createUserMessage({
-      content: [
-        "[User task update]",
-        `Task ${event.task.id} was ${event.task.status} by the user.`,
-        `Task:\n${event.task.task}`,
-        event.response ? `User response:\n${event.response}` : "The user returned the task to you.",
-      ].join("\n"),
-      provenance: { kind: "user_task_completion", taskId: event.task.id },
-    });
     const lane = this.options.canSteer() ? "next-step" : "next-turn";
-    this.agent.enqueueInput(input, lane, {
-      kind: "user_task",
-      displayContent: `User task ${shortId(event.task.id)} ${event.task.status}`,
-      taskId: event.task.id,
-    });
-    this.options.getLogger().info("conversation.user_task_completion_queued", {
-      taskId: event.task.id,
-      outcome: event.task.status,
+    const display = `${COMPLETION_LABELS[kind]} ${shortId(completion.id)} ${completion.outcome}`;
+    const { message, delivery } = createCompletionInput(kind, completion, display);
+    this.agent.enqueueInput(message, lane, delivery);
+    this.options.getLogger().info(`conversation.${COMPLETION_LOG_NAMES[kind]}_completion_queued`, {
+      [COMPLETION_ID_FIELDS[kind]]: completion.id,
+      outcome: completion.outcome,
       delivery: lane,
     });
+  }
+
+  // The owner already consumed this completion through a tool, so a queued
+  // notification for it would be redundant.
+  private discardCompletion(kind: CompletionKind, id: string): void {
+    if (this.stopping || this.changingSession) return;
+    for (const item of [...this.agent.inbox.nextStep, ...this.agent.inbox.nextTurn]) {
+      if (item.delivery.kind === kind && readCompletionId(item.delivery) === id) {
+        this.agent.cancelInput(item.message.id);
+      }
+    }
   }
 
   private takePendingCompletionInputs(
@@ -771,13 +677,18 @@ export class ConversationInputCoordinator {
   }
 
   private observeCompletion(message: UserMessage): void {
-    if (message.provenance.kind === "job_completion") {
-      this.backgroundJobs?.observe(message.provenance.jobId);
-    } else if (message.provenance.kind === "subagent_completion") {
-      this.subagents?.observe(message.provenance.agentId);
-    } else if (message.provenance.kind === "user_task_completion") {
-      this.userTasks?.observe(message.provenance.taskId);
-    }
+    const { provenance } = message;
+    const completed =
+      provenance.kind === "job_completion"
+        ? (["job", provenance.jobId] as const)
+        : provenance.kind === "subagent_completion"
+          ? (["subagent", provenance.agentId] as const)
+          : provenance.kind === "user_task_completion"
+            ? (["user_task", provenance.taskId] as const)
+            : undefined;
+    if (completed === undefined) return;
+    const [kind, id] = completed;
+    this.completionSources.find((source) => source.kind === kind)?.observe(id);
   }
 
   private emitQueueChanged(): void {
@@ -791,10 +702,6 @@ export class ConversationInputCoordinator {
     lane: "next-step" | "next-turn",
   ): ConversationPendingInput {
     if (item.delivery.kind === "job") {
-      const provenance = item.message.provenance;
-      if (provenance.kind !== "job_completion") {
-        throw new Error("Background Job input is missing completion provenance.");
-      }
       return {
         id: item.message.id,
         kind: "job",
@@ -803,10 +710,6 @@ export class ConversationInputCoordinator {
       };
     }
     if (item.delivery.kind === "subagent") {
-      const provenance = item.message.provenance;
-      if (provenance.kind !== "subagent_completion") {
-        throw new Error("Subagent input is missing completion provenance.");
-      }
       return {
         id: item.message.id,
         kind: "subagent",
@@ -815,10 +718,6 @@ export class ConversationInputCoordinator {
       };
     }
     if (item.delivery.kind === "user_task") {
-      const provenance = item.message.provenance;
-      if (provenance.kind !== "user_task_completion") {
-        throw new Error("User task input is missing completion provenance.");
-      }
       return {
         id: item.message.id,
         kind: "user_task",
@@ -884,4 +783,126 @@ function formatSubagentCompletion(subagent: KanaSubagentSummary): string {
     `Subagent ${subagent.id} (${subagent.profile}) reached ${subagent.status}.`,
     "Use wait_subagent to consume its final result before deciding the next action.",
   ].join("\n");
+}
+
+type CompletionKind = "job" | "subagent" | "user_task";
+
+type Completion = { readonly id: string; readonly outcome: string; readonly content: string };
+
+// A producer of asynchronous results that are reported back to the Agent as
+// queued input. `observed` fires when the owner consumed a result directly.
+type CompletionSource = {
+  readonly kind: CompletionKind;
+  subscribe(handlers: {
+    settled(completion: Completion): void;
+    observed(id: string): void;
+  }): () => void;
+  observe(id: string): void;
+};
+
+const COMPLETION_LABELS: Record<CompletionKind, string> = {
+  job: "Background Job",
+  subagent: "Subagent",
+  user_task: "User task",
+};
+
+const COMPLETION_LOG_NAMES: Record<CompletionKind, string> = {
+  job: "background_job",
+  subagent: "subagent",
+  user_task: "user_task",
+};
+
+const COMPLETION_ID_FIELDS: Record<CompletionKind, string> = {
+  job: "jobId",
+  subagent: "agentId",
+  user_task: "taskId",
+};
+
+function ownedTaskCompletions<TSummary extends { readonly id: string; readonly status: string }>(
+  kind: CompletionKind,
+  client: {
+    subscribe(listener: (event: OwnedTaskEvent<unknown, TSummary>) => void): () => void;
+    observe(id: string): void;
+  },
+  format: (summary: TSummary) => string,
+): CompletionSource {
+  return {
+    kind,
+    observe: (id) => client.observe(id),
+    subscribe: (handlers) =>
+      client.subscribe((event) => {
+        if (event.type === "settled") {
+          handlers.settled({
+            id: event.task.id,
+            outcome: event.task.status,
+            content: format(event.task),
+          });
+        } else if (event.type === "observed") {
+          handlers.observed(event.task.id);
+        }
+      }),
+  };
+}
+
+function userTaskCompletions(tasks: KanaUserTaskManager): CompletionSource {
+  return {
+    kind: "user_task",
+    observe: (id) => tasks.observe(id),
+    subscribe: (handlers) =>
+      tasks.subscribe(({ task, response }) =>
+        handlers.settled({
+          id: task.id,
+          outcome: task.status,
+          content: [
+            "[User task update]",
+            `Task ${task.id} was ${task.status} by the user.`,
+            `Task:\n${task.task}`,
+            response ? `User response:\n${response}` : "The user returned the task to you.",
+          ].join("\n"),
+        }),
+      ),
+  };
+}
+
+function createCompletionInput(
+  kind: CompletionKind,
+  { id, content }: Completion,
+  displayContent: string,
+): { message: UserMessage; delivery: AgentInputDelivery } {
+  switch (kind) {
+    case "job":
+      return {
+        message: createUserMessage({ content, provenance: { kind: "job_completion", jobId: id } }),
+        delivery: { kind, displayContent, jobId: id },
+      };
+    case "subagent":
+      return {
+        message: createUserMessage({
+          content,
+          provenance: { kind: "subagent_completion", agentId: id },
+        }),
+        delivery: { kind, displayContent, agentId: id },
+      };
+    case "user_task":
+      return {
+        message: createUserMessage({
+          content,
+          provenance: { kind: "user_task_completion", taskId: id },
+        }),
+        delivery: { kind, displayContent, taskId: id },
+      };
+  }
+}
+
+function readCompletionId(delivery: AgentInputDelivery): string | undefined {
+  switch (delivery.kind) {
+    case "job":
+      return delivery.jobId;
+    case "subagent":
+      return delivery.agentId;
+    case "user_task":
+      return delivery.taskId;
+    default:
+      return undefined;
+  }
 }

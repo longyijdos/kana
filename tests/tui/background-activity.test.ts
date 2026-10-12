@@ -67,7 +67,7 @@ function jobEvent(sessionId: string): unknown {
   return {
     type: "observed",
     owner: { sessionId, instanceId: `instance-${sessionId}` },
-    job: { id: `job_${sessionId}` },
+    task: { id: `job_${sessionId}` },
   };
 }
 

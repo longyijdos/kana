@@ -66,7 +66,7 @@ type BackgroundJobProducerResult = {
   readonly exitCode: number | null;
 };
 
-export type BackgroundJobEvent = OwnedTaskEvent<BackgroundJobOwner, BackgroundJobSummary>;
+type BackgroundJobEvent = OwnedTaskEvent<BackgroundJobOwner, BackgroundJobSummary>;
 
 type BackgroundJobEventListener = (event: BackgroundJobEvent) => void;
 
