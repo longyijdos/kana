@@ -15,7 +15,12 @@ export function loadKanaUsageSummary(options: LoadKanaUsageSummaryOptions): Kana
   if (options.scope === "session" && !options.sessionId) {
     throw new Error("sessionId is required when loading session usage.");
   }
-  return summarize(listAccountingPaths(options).flatMap(readKanaRunAccounting), options.scope);
+  return summarize(
+    listAccountingPaths(options).flatMap((accountingPath) =>
+      readKanaRunAccounting(accountingPath, options.logger),
+    ),
+    options.scope,
+  );
 }
 
 function summarize(

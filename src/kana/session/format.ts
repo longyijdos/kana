@@ -3,6 +3,7 @@ import { type Static, type TSchema, Type } from "typebox";
 import type { AgentEndReason, ContextCheckpoint } from "@/agent";
 import {
   type Message,
+  MODEL_USAGE_SCHEMA,
   type ModelUsage,
   TOOL_RESULT_ARTIFACT_SCHEMA,
   USER_IMAGE_SCHEMA,
@@ -272,15 +273,6 @@ const nonEmptyString = Type.String({ minLength: 1 });
 const nonNegativeInteger = Type.Integer({ minimum: 0 });
 const positiveInteger = Type.Integer({ minimum: 1 });
 
-const USAGE_SCHEMA = Type.Object({
-  promptTokens: nonNegativeInteger,
-  completionTokens: nonNegativeInteger,
-  totalTokens: nonNegativeInteger,
-  promptCacheHitTokens: Type.Optional(nonNegativeInteger),
-  promptCacheMissTokens: Type.Optional(nonNegativeInteger),
-  reasoningTokens: Type.Optional(nonNegativeInteger),
-});
-
 const USER_PROVENANCE_SCHEMA = Type.Union([
   Type.Object({
     kind: Type.Enum(["user_input", "recovery", "context_summary", "compaction_request"]),
@@ -397,7 +389,7 @@ const TIMELINE_ENTRY_SCHEMAS = {
       format: Type.Literal(CONTEXT_SUMMARY_FORMAT),
       text: Type.String({ pattern: "\\S" }),
     }),
-    usage: Type.Optional(USAGE_SCHEMA),
+    usage: Type.Optional(MODEL_USAGE_SCHEMA),
   }),
   todo_state: Type.Object({
     type: Type.Literal("todo_state"),

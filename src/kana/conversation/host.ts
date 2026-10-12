@@ -521,6 +521,7 @@ export class KanaConversationHost<TConfiguration = never> {
       sessionId: scope === "session" ? this.sessionRegistry.activeId : undefined,
       cwd: process.cwd(),
       env: this.env,
+      logger: this.getLogger(),
     });
   }
 

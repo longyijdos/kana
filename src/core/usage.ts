@@ -1,3 +1,5 @@
+import { Type } from "typebox";
+
 export type ModelUsage = {
   readonly promptTokens: number;
   readonly completionTokens: number;
@@ -6,6 +8,17 @@ export type ModelUsage = {
   readonly promptCacheMissTokens?: number;
   readonly reasoningTokens?: number;
 };
+
+const tokenCount = Type.Integer({ minimum: 0 });
+
+export const MODEL_USAGE_SCHEMA = Type.Object({
+  promptTokens: tokenCount,
+  completionTokens: tokenCount,
+  totalTokens: tokenCount,
+  promptCacheHitTokens: Type.Optional(tokenCount),
+  promptCacheMissTokens: Type.Optional(tokenCount),
+  reasoningTokens: Type.Optional(tokenCount),
+});
 
 export function addModelUsage(current: ModelUsage | undefined, next: ModelUsage): ModelUsage {
   return {
