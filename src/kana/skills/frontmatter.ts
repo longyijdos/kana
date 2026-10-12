@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { formatError } from "@/utils";
-import type { KanaSkillDiagnostic, LoadKanaSkillsResult, SkillFrontmatter } from "./types";
+import { type FrontmatterFields, readFrontmatter } from "../frontmatter";
+import type { KanaSkillDiagnostic, LoadKanaSkillsResult } from "./types";
 
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
@@ -25,16 +26,17 @@ export function loadSkillFromFile(filePath: string): LoadKanaSkillsResult {
     };
   }
 
-  const parsed = parseFrontmatter(content);
-
-  if (!parsed.ok) {
+  let frontmatter: FrontmatterFields;
+  try {
+    frontmatter = readFrontmatter(content)?.fields ?? {};
+  } catch (error) {
     return {
       skills: [],
       diagnostics: [
         {
           type: "warning",
           code: "parse_failed",
-          message: parsed.error,
+          message: formatError(error),
           path: filePath,
         },
       ],
@@ -42,7 +44,6 @@ export function loadSkillFromFile(filePath: string): LoadKanaSkillsResult {
   }
 
   const diagnostics: KanaSkillDiagnostic[] = [];
-  const frontmatter = parsed.frontmatter;
   const description =
     typeof frontmatter.description === "string" ? frontmatter.description : undefined;
 
@@ -89,104 +90,6 @@ export function loadSkillFromFile(filePath: string): LoadKanaSkillsResult {
     ],
     diagnostics,
   };
-}
-
-function parseFrontmatter(
-  content: string,
-): { ok: true; frontmatter: SkillFrontmatter } | { ok: false; error: string } {
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
-  if (!normalized.startsWith("---\n")) {
-    return {
-      ok: true,
-      frontmatter: {},
-    };
-  }
-
-  const endIndex = normalized.indexOf("\n---", 4);
-
-  if (endIndex === -1) {
-    return {
-      ok: false,
-      error: "frontmatter is missing a closing --- marker",
-    };
-  }
-
-  return parseMetadataBlock(normalized.slice(4, endIndex));
-}
-
-function parseMetadataBlock(
-  content: string,
-): { ok: true; frontmatter: SkillFrontmatter } | { ok: false; error: string } {
-  const frontmatter: SkillFrontmatter = {};
-  const lines = content.split("\n");
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]!;
-
-    if (!line.trim() || line.trimStart().startsWith("#")) {
-      continue;
-    }
-
-    const match = /^([A-Za-z0-9_-]+):(?:\s*(.*))?$/.exec(line);
-
-    if (!match) {
-      return {
-        ok: false,
-        error: `invalid frontmatter line: ${line}`,
-      };
-    }
-
-    const [, key = "", rawValue = ""] = match;
-
-    if (rawValue === "|" || rawValue === ">") {
-      const blockLines: string[] = [];
-
-      while (index + 1 < lines.length && /^\s+/.test(lines[index + 1]!)) {
-        index += 1;
-        blockLines.push(lines[index]!.replace(/^ {2}/, ""));
-      }
-
-      setFrontmatterValue(frontmatter, key, blockLines.join("\n"));
-      continue;
-    }
-
-    setFrontmatterValue(frontmatter, key, parseScalar(rawValue.trim()));
-  }
-
-  return {
-    ok: true,
-    frontmatter,
-  };
-}
-
-function setFrontmatterValue(
-  frontmatter: SkillFrontmatter,
-  key: string,
-  value: string | boolean,
-): void {
-  switch (key) {
-    case "name":
-    case "description":
-      if (typeof value === "string") {
-        frontmatter[key] = value;
-      }
-      break;
-  }
-}
-
-function parseScalar(value: string): string | boolean {
-  if (value === "true") {
-    return true;
-  }
-
-  if (value === "false") {
-    return false;
-  }
-
-  const quoted = /^"(.*)"$/.exec(value) ?? /^'(.*)'$/.exec(value);
-
-  return quoted ? (quoted[1] ?? "") : value;
 }
 
 function validateName(name: string): string[] {

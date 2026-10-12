@@ -42,8 +42,3 @@ export type LoadKanaSkillActivationsResult = {
   skills: KanaSkillActivation[];
   diagnostics: KanaSkillDiagnostic[];
 };
-
-export type SkillFrontmatter = {
-  name?: string;
-  description?: string;
-};

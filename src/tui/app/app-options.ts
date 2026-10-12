@@ -112,7 +112,7 @@ export type KanaTuiAppOptions = {
   ui: {
     notification: KanaNotificationConfig;
     config?: KanaTuiConfig;
-    promptTemplates?: KanaPromptTemplate[];
+    promptTemplates?: readonly KanaPromptTemplate[];
     syntaxTheme?: BundledTheme;
   };
   memory: KanaTuiMemoryCapabilities;
