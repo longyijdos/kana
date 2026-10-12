@@ -518,6 +518,26 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ## 阶段 7：前端
 
+### 细化设计（开工前写定）
+
+**列表导航**：9 个列表组件已经共用 `ListViewport`，真正重复的是每个组件里约 30 行的按键分支（上下、翻页、Home/End）。给 `ListViewport` 加一个 `handleNavigationKey(data, length)`，返回是否处理了按键，组件只保留各自特有的按键。这比引入一个 `ListPicker` 基类更轻，渲染部分仍由各组件自己负责
+
+**底部面板**：overlay controller 共有的"显示面板、关闭时恢复焦点、释放订阅"改为组合式的 `BottomPanelSlot<T>`，替代每个 controller 手写的 `manager?` 字段、`active` getter 和 close 逻辑。不用继承基类，因为各 controller 的 open 流程差异较大
+
+**overlay 互斥**：app 中维护一份 overlay 列表，`openOverlay(target)` 先关闭其他所有 overlay 再打开目标，替代 8 个手写的 `openX()` 和 sessions 的 `closeOtherOverlays`（后者漏关 MCP 管理面板）。会修改 Agent 配置的 overlay（Skills、MCP）标记为"运行中不可打开"，统一在 `openOverlay` 中检查
+
+**app.ts 拆分**：
+- 会话事件投影（`handleConversationEvent` 及格式化函数）移到 `conversation-event-view.ts`
+- `submitPrompt` 与 `queuePrompt` 共用输入校验和消息构造
+- 斜杠命令接线移到单独文件
+- 目标：app.ts 降到约 600 行。控制器装配本身是线性代码，继续拆分只会增加间接层
+
+**大文件拆分**：editor（预览、palette、history）、editor/state（reducer 与边界计算）、render/latex（符号表数据单独成文件）、tools/format（措辞表）
+
+**其他**：memory-compact 与 local-shell 的运行生命周期合并；session 的 startNew 和 resume 中相同的重置逻辑合并；headless 和 server 删除转发函数和冗余标志
+
+**分层**：前端（tui、headless、server）是否只能依赖 `kana` 加 L0，在完成后根据实际 import 决定
+
 - [ ] headless 和 server：在 `createRuntime` 的基础上精简，各自只保留 I/O 投影
 - [ ] 删除 headless 和 server 中只是转发的函数，以及冗余的标志
 - [ ] TUI：
