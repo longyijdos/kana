@@ -45,6 +45,8 @@ name = "local-model"
 api_key_env = "LOCAL_MODEL_API_KEY"
 ```
 
+使用 [Kana Agent 可复用 workflow](kana-agent-workflow.zh-CN.md) 时，如果不希望 endpoint 出现在公开仓库中，可以在 provider 文件中省略 `base_url`，改用可选的 `KANA_MODEL_BASE_URL` secret 传入。workflow 会把该值写入 provider 的 `base_url`。
+
 ## 模型字段
 
 | 键 | 必需 | 默认值 | 含义 |
