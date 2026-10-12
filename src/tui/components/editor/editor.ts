@@ -16,7 +16,6 @@ import {
 } from "../../render";
 import type { Component } from "../../runtime";
 import {
-  CURSOR_MARKER,
   isCtrlKey,
   isCtrlV,
   isDown,
@@ -42,11 +41,12 @@ import {
 } from "./commands";
 import { resolveEditorInputAction } from "./input-actions";
 import {
-  createInputLayout,
-  findInputCursorLine,
-  type InputLayoutLine,
-  moveInputCursorVertically,
-} from "./input-layout";
+  createPasteInsertAction,
+  createTextInsertAction,
+  moveCursorVertically,
+  renderInputLine,
+} from "./input-frame";
+import { createInputLayout, findInputCursorLine } from "./input-layout";
 import {
   type EditorBackgroundActivityItem,
   type EditorInputPreviews,
@@ -68,8 +68,7 @@ import {
   applyEditorAction,
   type CollapsedPaste,
   createEditorDisplayState,
-  createPasteAction,
-  displayOffsetToSourceOffset,
+  type EditorAction,
   type EditorDisplayState,
   type EditorTextState,
   LONG_PASTE_CHARACTER_THRESHOLD,
@@ -300,7 +299,10 @@ export class Editor implements Component {
           ]
         : [
             ...(linePrompt ? [{ text: linePrompt, color: tuiTheme.user }] : []),
-            ...this.renderLine(line, index === layout.cursor.line, display),
+            ...renderInputLine(line, index === layout.cursor.line, display, {
+              placeholder: truncateToWidth(this.placeholder, this.inputColumns),
+              renderText: (text, start) => this.renderInputTokens(text, start, display),
+            }),
           ];
       const content = renderHighlightedLine(tokens);
 
@@ -481,37 +483,6 @@ export class Editor implements Component {
     }
   }
 
-  private renderLine(
-    line: InputLayoutLine,
-    showCursor: boolean,
-    display: EditorDisplayState,
-  ): HighlightedLineToken[] {
-    if (!showCursor) {
-      return this.renderInputTokens(line.text, line.startOffset, display);
-    }
-
-    if (!this.state.value) {
-      return [
-        { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
-        { text: truncateToWidth(this.placeholder, this.inputColumns), color: tuiTheme.muted },
-      ];
-    }
-
-    if (display.cursorOffset < line.startOffset || display.cursorOffset > line.endOffset) {
-      return this.renderInputTokens(line.text, line.startOffset, display);
-    }
-
-    const relativeOffset = display.cursorOffset - line.startOffset;
-    const beforeCursor = line.text.slice(0, relativeOffset);
-    const afterCursor = line.text.slice(relativeOffset);
-
-    return [
-      ...this.renderInputTokens(beforeCursor, line.startOffset, display),
-      { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
-      ...this.renderInputTokens(afterCursor, display.cursorOffset, display),
-    ];
-  }
-
   private renderInputTokens(
     text: string,
     absoluteStart: number,
@@ -615,33 +586,16 @@ export class Editor implements Component {
   }
 
   private applyText(text: string): void {
-    const normalized = normalizeLineEndings(text);
-
-    if (!normalized) {
-      return;
-    }
-
-    this.applyAction({
-      type: "insert",
-      text: normalized,
-    });
+    const action = createTextInsertAction(text);
+    if (action) this.applyAction(action);
   }
 
   private applyPaste(text: string): void {
-    const normalized = normalizeLineEndings(text);
-
-    if (!normalized) {
-      return;
-    }
-
-    this.applyAction(
-      this.collapseLongPastes
-        ? createPasteAction(normalized)
-        : { type: "insert", text: normalized },
-    );
+    const action = createPasteInsertAction(text, this.collapseLongPastes);
+    if (action) this.applyAction(action);
   }
 
-  private applyAction(action: Parameters<typeof applyEditorAction>[1]): void {
+  private applyAction(action: EditorAction): void {
     const previousValue = this.state.value;
     this.state = applyEditorAction(this.state, action);
     if (this.state.value !== previousValue) {
@@ -657,32 +611,21 @@ export class Editor implements Component {
   }
 
   private moveVertically(direction: -1 | 1): boolean {
-    const display = createEditorDisplayState(this.state);
-    const currentLayout = createInputLayout({
-      value: display.value,
-      cursorOffset: display.cursorOffset,
-      columns: this.inputColumns,
-      maxLines: this.inputVisibleLines,
-      preferredStartLine: this.inputViewportStartLine,
-    });
-    const displayCursorOffset = moveInputCursorVertically({
-      value: display.value,
-      cursorOffset: display.cursorOffset,
-      columns: this.inputColumns,
+    const moved = moveCursorVertically(
+      this.state,
+      {
+        columns: this.inputColumns,
+        visibleLines: this.inputVisibleLines,
+        startLine: this.inputViewportStartLine,
+      },
       direction,
-    });
-
-    if (displayCursorOffset === undefined) {
+    );
+    if (!moved) {
       return false;
     }
-
-    this.inputViewportStartLine = currentLayout.startLine;
-    this.state = {
-      ...this.state,
-      cursorOffset: displayOffsetToSourceOffset(display, displayCursorOffset),
-    };
+    this.state = moved.state;
+    this.inputViewportStartLine = moved.startLine;
     this.syncPaletteSelection();
-
     return true;
   }
 
