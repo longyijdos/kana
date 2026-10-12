@@ -114,7 +114,7 @@ type CreateConversationAgentOptions<TConfiguration> = {
 
 export type ConversationRuntimeOptions<TConfiguration> = {
   initialSession?: ConversationSessionSnapshot;
-  // Returns a detached timeline snapshot owned by the caller.
+  // Returns the latest committed timeline for the session.
   getSessionTimeline?: (sessionId: string) => readonly KanaSessionTimelineEntry[];
   createAgent: (options: CreateConversationAgentOptions<TConfiguration>) => Agent;
   createNewSession: () => { id: string };

@@ -90,7 +90,6 @@ export class HeadlessRunOutputProjector {
     this.emit(createKanaExecEvent({ type: "run.started" }), "Running...");
   }
 
-  // The runtime listener transfers its detached event to this projector.
   handle(event: ConversationRuntimeEvent): void {
     switch (event.type) {
       case "run_start":

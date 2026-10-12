@@ -125,7 +125,7 @@ export class KanaSubagentManager {
   }
 
   createOwner(options: { sessionId: string; cwd: string; persistent: boolean }): KanaSubagentOwner {
-    return Object.freeze({ ...options, instanceId: randomUUID() });
+    return { ...options, instanceId: randomUUID() };
   }
 
   bind(
@@ -133,7 +133,7 @@ export class KanaSubagentManager {
     options: { maxLive: number; logger?: Logger },
   ): KanaSubagentClient {
     const logger = options.logger ?? createNoopLogger();
-    return Object.freeze({
+    return {
       owner,
       start: (startOptions) => this.start(owner, options.maxLive, logger, startOptions),
       list: () => this.registry.list(owner),
@@ -145,7 +145,7 @@ export class KanaSubagentManager {
       subscribe: (listener) => this.registry.subscribe(owner, listener),
       close: (source = "session_disposal") =>
         this.registry.closeOwner(owner, source, (subagent) => this.stop(subagent, { source })),
-    });
+    };
   }
 
   close(): Promise<void> {

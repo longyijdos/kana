@@ -150,12 +150,12 @@ export class BackgroundJobManager {
   }
 
   createOwner(sessionId: string): BackgroundJobOwner {
-    return Object.freeze({ sessionId, instanceId: randomUUID() });
+    return { sessionId, instanceId: randomUUID() };
   }
 
   bind(owner: BackgroundJobOwner, options: BindBackgroundJobOwnerOptions): BackgroundJobClient {
     const logger = options.logger ?? createNoopLogger();
-    return Object.freeze({
+    return {
       owner,
       start: (startOptions) => this.start(owner, options.maxConcurrent, logger, startOptions),
       list: () => this.registry.list(owner),
@@ -167,7 +167,7 @@ export class BackgroundJobManager {
       subscribe: (listener) => this.registry.subscribe(owner, listener),
       close: (source = "session_disposal") =>
         this.registry.closeOwner(owner, source, (job) => this.stop(job, { source })),
-    });
+    };
   }
 
   close(): Promise<void> {

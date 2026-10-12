@@ -50,10 +50,6 @@ describe("PromptAssembly", () => {
       "For each source, only its latest runtime_context message is authoritative.",
     );
     expect(assembly.initialTools).toEqual([initialTool]);
-    expect(Object.isFrozen(assembly)).toBe(true);
-    expect(Object.isFrozen(assembly.systemSections)).toBe(true);
-    expect(Object.isFrozen(assembly.contextSections)).toBe(true);
-    expect(Object.isFrozen(assembly.toolSections)).toBe(true);
 
     expect(await assembly.assemble({ signal })).toEqual({
       system: assembly.initialSystem,
@@ -139,20 +135,14 @@ describe("PromptAssembly", () => {
     expect(renders).toBe(0);
   });
 
-  test("requires every context source to return an explicit non-empty state", async () => {
+  test("requires every context source to return non-empty content", async () => {
     const signal = new AbortController().signal;
-    const missing = createPromptAssembly({
-      context: [{ name: "missing", render: () => undefined as never }],
-    });
     const empty = createPromptAssembly({
       context: [{ name: "empty", render: () => ({ status: "inactive", content: " " }) }],
     });
 
-    await expect(missing.assemble({ signal })).rejects.toThrow(
-      "Prompt context section missing must return an explicit non-empty state.",
-    );
     await expect(empty.assemble({ signal })).rejects.toThrow(
-      "Prompt context section empty must return an explicit non-empty state.",
+      "Prompt context section empty must return non-empty content.",
     );
   });
 });

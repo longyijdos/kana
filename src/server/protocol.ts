@@ -36,7 +36,7 @@ export type ServerEvent = {
   data: unknown;
 };
 
-// Projection consumes detached input from a runtime snapshot or listener.
+// Strips provider replay state, which is opaque and not part of the API.
 export function projectMessage(message: Message) {
   if (message.role !== "assistant") return message;
   return {
@@ -45,7 +45,6 @@ export function projectMessage(message: Message) {
   };
 }
 
-// Non-message entries transfer directly from the detached runtime snapshot.
 export function projectTimelineEntry(entry: KanaSessionTimelineEntry) {
   if (entry.type !== "message") return entry;
   const { message, ...metadata } = entry;

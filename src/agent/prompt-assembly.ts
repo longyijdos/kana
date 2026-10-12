@@ -62,28 +62,16 @@ export class PromptAssembly {
   readonly initialTools: readonly Tool[];
 
   constructor(options: PromptAssemblyOptions = {}) {
-    this.systemSections = Object.freeze(
-      (options.system ?? []).map((section) => Object.freeze({ ...section })),
-    );
-    this.contextSections = Object.freeze(
-      (options.context ?? []).map((section) => Object.freeze({ ...section })),
-    );
-    this.toolSections = Object.freeze(
-      (options.tools ?? []).map((section) =>
-        Object.freeze({
-          ...section,
-          tools: Object.freeze(section.tools.slice()),
-        }),
-      ),
-    );
+    this.systemSections = options.system ?? [];
+    this.contextSections = options.context ?? [];
+    this.toolSections = options.tools ?? [];
 
     assertUniqueSectionNames(this.systemSections, "system");
     assertUniqueSectionNames(this.contextSections, "context");
     assertUniqueSectionNames(this.toolSections, "tool");
     this.initialSystem = formatSystemSections(this.systemSections, this.contextSections.length > 0);
-    this.initialTools = Object.freeze(this.toolSections.flatMap((section) => section.tools));
+    this.initialTools = this.toolSections.flatMap((section) => section.tools);
     assertUniqueToolNames(this.initialTools);
-    Object.freeze(this);
   }
 
   async assemble(context: PromptAssemblyContext): Promise<AssembledPrompt> {
@@ -93,7 +81,9 @@ export class PromptAssembly {
     for (const section of this.contextSections) {
       const state = await section.render(context);
       context.signal.throwIfAborted();
-      assertPromptContextState(section.name, state);
+      if (!state.content.trim()) {
+        throw new Error(`Prompt context section ${section.name} must return non-empty content.`);
+      }
       snapshots.push({
         source: section.name,
         status: state.status,
@@ -201,22 +191,6 @@ function assertUniqueToolNames(tools: readonly Tool[]): void {
       throw new Error(`Duplicate prompt tool name: ${tool.name}.`);
     }
     names.add(tool.name);
-  }
-}
-
-function assertPromptContextState(
-  source: string,
-  state: unknown,
-): asserts state is PromptContextState {
-  const candidate =
-    typeof state === "object" && state !== null ? (state as Record<string, unknown>) : undefined;
-  if (
-    !candidate ||
-    (candidate.status !== "active" && candidate.status !== "inactive") ||
-    typeof candidate.content !== "string" ||
-    !candidate.content.trim()
-  ) {
-    throw new Error(`Prompt context section ${source} must return an explicit non-empty state.`);
   }
 }
 
