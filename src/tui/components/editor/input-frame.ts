@@ -1,15 +1,10 @@
 import { type HighlightedLineToken, normalizeLineEndings } from "../../render";
 import { CURSOR_MARKER } from "../../runtime";
 import { tuiTheme } from "../../theme";
+import { createEditorDisplayState, displayOffsetToSourceOffset } from "./display";
 import { createInputLayout, type InputLayoutLine, moveInputCursorVertically } from "./input-layout";
-import {
-  createEditorDisplayState,
-  createPasteAction,
-  displayOffsetToSourceOffset,
-  type EditorAction,
-  type EditorDisplayState,
-  type EditorTextState,
-} from "./state";
+import { createPasteAction, type EditorAction } from "./state";
+import type { EditorDisplayState, EditorTextState } from "./text-state";
 
 // Input editing shared by the prompt editor and single-purpose text prompts.
 

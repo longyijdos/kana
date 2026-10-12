@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyEditorAction, createEditorDisplayState } from "../../src/tui/components/editor/state";
+import { createEditorDisplayState } from "../../src/tui/components/editor/display";
+import { applyEditorAction } from "../../src/tui/components/editor/state";
 
 describe("editor state", () => {
   test("inserts text at the cursor", () => {

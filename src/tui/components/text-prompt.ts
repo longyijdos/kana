@@ -13,6 +13,7 @@ import { isDown, isEnter, isEscape, isPrintable, isShiftEnter, isUp } from "../r
 import { tuiTheme } from "../theme";
 import { BracketedPasteBuffer } from "../utils/bracketed-paste";
 import { visibleLimitForHeight } from "../utils/list-viewport";
+import { createEditorDisplayState, splitEditorDisplayRange } from "./editor/display";
 import { resolveEditorInputAction } from "./editor/input-actions";
 import {
   createPasteInsertAction,
@@ -21,13 +22,8 @@ import {
   renderInputLine,
 } from "./editor/input-frame";
 import { createInputLayout } from "./editor/input-layout";
-import {
-  applyEditorAction,
-  createEditorDisplayState,
-  type EditorDisplayState,
-  type EditorTextState,
-  splitEditorDisplayRange,
-} from "./editor/state";
+import { applyEditorAction } from "./editor/state";
+import type { EditorDisplayState, EditorTextState } from "./editor/text-state";
 
 const MAX_INPUT_LINES = 5;
 const PROMPT = "> ";

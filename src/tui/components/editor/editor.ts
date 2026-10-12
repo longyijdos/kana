@@ -39,6 +39,7 @@ import {
   type PromptCommand,
   type PromptSubmit,
 } from "./commands";
+import { createEditorDisplayState, splitEditorDisplayRange } from "./display";
 import { resolveEditorInputAction } from "./input-actions";
 import {
   createPasteInsertAction,
@@ -64,16 +65,7 @@ import {
   getSkillReferenceState,
   type SkillReferenceState,
 } from "./skills";
-import {
-  applyEditorAction,
-  type CollapsedPaste,
-  createEditorDisplayState,
-  type EditorAction,
-  type EditorDisplayState,
-  type EditorTextState,
-  LONG_PASTE_CHARACTER_THRESHOLD,
-  splitEditorDisplayRange,
-} from "./state";
+import { applyEditorAction, type EditorAction, LONG_PASTE_CHARACTER_THRESHOLD } from "./state";
 import { renderStatusLine, type StatusLineState } from "./status-line";
 import {
   completePromptTemplate,
@@ -82,6 +74,7 @@ import {
   getPromptTemplateState,
   type PromptTemplateState,
 } from "./templates";
+import type { CollapsedPaste, EditorDisplayState, EditorTextState } from "./text-state";
 
 const MAX_INPUT_LINES = 5;
 const COMMAND_PALETTE_VISIBLE_LIMIT = 10;
