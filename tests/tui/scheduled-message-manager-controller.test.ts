@@ -95,7 +95,7 @@ describe("scheduled message manager controller", () => {
     harness.press("\x1b[B");
     harness.press("\r");
 
-    expect(harness.canceled).toEqual(["old"]);
+    expect(harness.cancelled).toEqual(["old"]);
     expect(harness.renderFocus()).toContain("Replacement reminder");
     expect(harness.renderFocus()).toContain("Task already changed or removed.");
 
@@ -122,7 +122,7 @@ function createHarness(initial: WakeEvent[] = [], options: HarnessOptions = {}) 
     scheduled: initial.map(cloneWake),
   };
   const scheduled: Array<{ afterMinutes: number; message: string }> = [];
-  const canceled: string[] = [];
+  const cancelled: string[] = [];
   const errors: unknown[] = [];
   let loads = 0;
   let closes = 0;
@@ -144,7 +144,7 @@ function createHarness(initial: WakeEvent[] = [], options: HarnessOptions = {}) 
       return cloneWake(event);
     },
     cancel: (id) => {
-      canceled.push(id);
+      cancelled.push(id);
       if (options.cancel) {
         return options.cancel(id, queue);
       }
@@ -169,7 +169,7 @@ function createHarness(initial: WakeEvent[] = [], options: HarnessOptions = {}) 
     tui,
     queue,
     scheduled,
-    canceled,
+    cancelled,
     errors,
     loadCount: () => loads,
     closeCount: () => closes,

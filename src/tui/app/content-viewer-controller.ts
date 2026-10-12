@@ -19,7 +19,7 @@ export class ContentViewerController {
   }
 
   // Opens the newest ToolCallBlock in the transcript. Any tool is eligible:
-  // short output, missing results, running/canceled tools, read, and
+  // short output, missing results, running/cancelled tools, read, and
   // custom/unknown tools all open, without consulting expandability or width.
   openLatest(): boolean {
     const block = this.findLatestToolBlock();

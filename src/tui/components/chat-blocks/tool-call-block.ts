@@ -21,7 +21,7 @@ import type { ContentView } from "../content-viewer";
 import type { ToolHistoryEntry } from "../tool-history-picker";
 
 export class ToolCallBlock implements Component {
-  private canceled = false;
+  private cancelled = false;
   private result?: unknown;
   private partialResult?: unknown;
   private todoState?: readonly KanaTodoItem[];
@@ -49,7 +49,7 @@ export class ToolCallBlock implements Component {
   }
 
   markExecutionStarted(): void {
-    this.canceled = false;
+    this.cancelled = false;
     if (!this.options.summaryOnly) this.phaseTimer.start();
     this.invalidate();
   }
@@ -64,7 +64,7 @@ export class ToolCallBlock implements Component {
     this.hasResult = true;
     this.isError = isError;
     this.durationMs = durationMs;
-    this.canceled = false;
+    this.cancelled = false;
     this.partialResult = undefined;
     this.phaseTimer.stop();
     this.invalidate();
@@ -86,12 +86,12 @@ export class ToolCallBlock implements Component {
     if (!this.options.summaryOnly) this.phaseTimer.resume();
   }
 
-  markCanceled(): void {
+  markCancelled(): void {
     if (this.hasResult) {
       return;
     }
 
-    this.canceled = true;
+    this.cancelled = true;
     this.partialResult = undefined;
     this.phaseTimer.stop();
     this.invalidate();
@@ -126,7 +126,7 @@ export class ToolCallBlock implements Component {
     }
 
     const titleColor =
-      state === "canceled"
+      state === "cancelled"
         ? tuiTheme.muted
         : this.isError
           ? tuiTheme.error
@@ -134,7 +134,7 @@ export class ToolCallBlock implements Component {
             ? tuiTheme.toolSuccess
             : tuiTheme.toolActive;
     const lines = this.renderTitle(width, titleColor, elapsedSeconds);
-    if (state !== "canceled" && !this.options.summaryOnly) {
+    if (state !== "cancelled" && !this.options.summaryOnly) {
       lines.push(...this.renderOutput(width, "compact"));
     }
 
@@ -153,7 +153,7 @@ export class ToolCallBlock implements Component {
   }
 
   // Every ToolCallBlock is inspectable: short output, missing results,
-  // running/canceled tools, read, and custom/unknown tools all open. The
+  // running/cancelled tools, read, and custom/unknown tools all open. The
   // view reads live block state on every render, so running tools keep
   // updating arguments and partial output while the inspector is open.
   getToolDetailView(): ContentView {
@@ -199,14 +199,14 @@ export class ToolCallBlock implements Component {
 
   private currentState(): ToolState {
     if (this.hasResult) {
-      if (isCanceledResult(this.result)) {
-        return "canceled";
+      if (isCancelledResult(this.result)) {
+        return "cancelled";
       }
       return this.isError ? "failed" : "done";
     }
 
-    if (this.canceled) {
-      return "canceled";
+    if (this.cancelled) {
+      return "cancelled";
     }
 
     return "running";
@@ -265,14 +265,14 @@ export class ToolCallBlock implements Component {
   }
 }
 
-function isCanceledResult(result: unknown): boolean {
+function isCancelledResult(result: unknown): boolean {
   if (!result || typeof result !== "object") {
     return false;
   }
 
   const record = result as Record<string, unknown>;
   return (
-    record.canceled === true || (record.status === "canceled" && record.reason === "run_aborted")
+    record.cancelled === true || (record.status === "cancelled" && record.reason === "run_aborted")
   );
 }
 

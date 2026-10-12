@@ -63,9 +63,9 @@ Every proposed call follows one contained pipeline:
 
 Kana-owned object schemas use `additionalProperties: false`, so an undeclared argument fails with its property name instead of being ignored. Serialized TypeBox schemas that have lost library metadata still receive compatible primitive conversion before the same compiler validates them. Third-party and MCP schemas keep their own declared additional-property behavior. `mcp_call` validates its gateway envelope in this pipeline and validates nested remote arguments inside the gateway before remote invocation.
 
-Validation errors, approval denial, cancellation, deadline expiry, and tool exceptions become `isError: true` results. They do not throw the turn loop. Approval cancellation aborts the run by default and gives later calls from the same assistant message canceled results without invoking them.
+Validation errors, approval denial, cancellation, deadline expiry, and tool exceptions become `isError: true` results. They do not throw the turn loop. Approval cancellation aborts the run by default and gives later calls from the same assistant message cancelled results without invoking them.
 
-A hook's `return` supplies a normal `ToolResult` and skips `execute` and its deadline; `cancel` supplies a canceled error result, even with `abortRun: false`. Both paths still publish `tool_execution_end`, apply result policies, and commit a tool result.
+A hook's `return` supplies a normal `ToolResult` and skips `execute` and its deadline; `cancel` supplies a cancelled error result, even with `abortRun: false`. Both paths still publish `tool_execution_end`, apply result policies, and commit a tool result.
 
 `tool_execution_end` describes completion, cancellation, a hook-supplied result, or an explicit unknown outcome. It does not promise that the result reached the journal. A successful Agent run is the durability boundary; see [Sessions and memory](sessions-and-memory.md) for commit and recovery order.
 
@@ -79,7 +79,7 @@ The effective deadline comes from `tool.execution.deadlineMs`, then the Agent de
 
 Approval precedes an ordinary tool's deadline. For `run_code`, waiting for an inner `beforeToolExecution` hook, including its serial approval queue, pauses the outer deadline, elapsed display, and recorded execution duration. Overlapping approval waits share one pause; the outer deadline resumes its remaining budget after the last wait finishes. Already executing inner tools retain their own deadlines. The runtime publishes `tool_execution_pause` and `tool_execution_resume` for the outer call with `reason: "approval"`; these events do not create history messages.
 
-Run abort, a tool deadline, or an internal scheduler failure immediately stops pool replenishment and aborts active sibling signals. Calls not yet started receive canceled results. Started calls receive a finite cancellation grace period. Settlement within it becomes `canceled` or `timed_out`; a later return cannot replace that outcome.
+Run abort, a tool deadline, or an internal scheduler failure immediately stops pool replenishment and aborts active sibling signals. Calls not yet started receive cancelled results. Started calls receive a finite cancellation grace period. Settlement within it becomes `cancelled` or `timed_out`; a later return cannot replace that outcome.
 
 If a call ignores cancellation past the grace period, ToolRuntime stops accepting updates, fixes its result as `status: "unknown"`, and ends the Agent run. The result forbids automatic retry because the detached operation may still have side effects. Late settlement produces only safe lifecycle diagnostics without arguments or output.
 

@@ -703,7 +703,7 @@ describe("ConversationRuntime", () => {
     const run = runtime.startGoal("Keep working");
     await waitFor(() => model.contexts.length === 1);
     runtime.abort();
-    expect(runtime.goal?.status).toBe("canceled");
+    expect(runtime.goal?.status).toBe("cancelled");
 
     model.finish(0, "Stopped.");
     await run;

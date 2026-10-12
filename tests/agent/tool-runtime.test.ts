@@ -93,7 +93,7 @@ describe("ToolRuntime execution duration", () => {
     let finish: (() => void) | undefined;
     const durations: number[] = [];
     const tool = {
-      name: "canceled",
+      name: "cancelled",
       description: "Wait for cleanup.",
       parameters,
       execute: () =>
@@ -104,7 +104,7 @@ describe("ToolRuntime execution duration", () => {
     const runtime = new ToolRuntime({ tools: [tool] }, () => {});
     try {
       const execution = runtime.invoke(
-        { type: "tool_call", id: "cancel", name: "canceled", args: {} },
+        { type: "tool_call", id: "cancel", name: "cancelled", args: {} },
         { signal: controller.signal, onExecutionEnd: (durationMs) => durations.push(durationMs) },
       );
       await waitFor(() => finish !== undefined);
@@ -231,7 +231,7 @@ describe("ToolRuntime invocation lifecycle", () => {
     expect(denied).toMatchObject({
       result: {
         content: "Approval denied.",
-        result: { error: "Approval denied.", canceled: true },
+        result: { error: "Approval denied.", cancelled: true },
         isError: true,
       },
       isError: true,
@@ -462,7 +462,7 @@ describe("ToolRuntime deadlines and configuration", () => {
     let receivedSignal: AbortSignal | undefined;
     const tool = {
       name: "cooperative",
-      description: "Stop when canceled.",
+      description: "Stop when cancelled.",
       parameters,
       execution: {
         deadlineMs: 5,
@@ -953,7 +953,7 @@ describe("ToolRuntime nested invocations", () => {
     let parentSignal: AbortSignal | undefined;
     const child = {
       name: "child",
-      description: "Wait until canceled.",
+      description: "Wait until cancelled.",
       parameters,
       execution: { deadlineMs: 1_000 },
       execute: (_args, { signal }) =>
@@ -1064,7 +1064,7 @@ describe("ToolRuntime nested invocations", () => {
       { type: "tool_call", id: "outer", name: "run_code", args: {} },
     ]);
     expect(result.abortRun).toBe(true);
-    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "canceled" } });
+    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "cancelled" } });
     expect(
       events.find((event) => event.type === "tool_execution_end" && event.toolName === "running"),
     ).toMatchObject({
@@ -1074,7 +1074,7 @@ describe("ToolRuntime nested invocations", () => {
     expect(events.filter((event) => event.type === "tool_execution_resume")).toHaveLength(0);
   });
 
-  test("canceling a child signal does not abort its parent", async () => {
+  test("cancelling a child signal does not abort its parent", async () => {
     const childController = new AbortController();
     let started = false;
     const child = {
@@ -1142,7 +1142,7 @@ describe("ToolRuntime nested invocations", () => {
       { type: "tool_call", id: "outer", name: "run_code", args: {} },
     ]);
     expect(result.abortRun).toBe(true);
-    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "canceled" } });
+    expect(result.toolResults[0]).toMatchObject({ isError: true, result: { status: "cancelled" } });
     expect(laterCount).toBe(0);
   });
 });
@@ -1328,7 +1328,7 @@ describe("ToolRuntime parallel scheduling", () => {
           toolCount: 4,
           maxParallelToolCalls: 2,
           startedCount: 4,
-          canceledBeforeStartCount: 0,
+          cancelledBeforeStartCount: 0,
           unknownOutcomeCount: 0,
           outcome: "completed",
         },
@@ -1425,15 +1425,15 @@ describe("ToolRuntime parallel scheduling", () => {
       "p3",
       "p4",
     ]);
-    expect(completed.get("p3")).toMatchObject({ canceled: true });
-    expect(completed.get("p4")).toMatchObject({ canceled: true });
+    expect(completed.get("p3")).toMatchObject({ cancelled: true });
+    expect(completed.get("p4")).toMatchObject({ cancelled: true });
     expect(logs.find((record) => record.event === "tool.parallel_pool_abnormal_drain")).toEqual({
       event: "tool.parallel_pool_abnormal_drain",
       metadata: {
         toolCount: 4,
         maxParallelToolCalls: 2,
         startedCount: 2,
-        canceledBeforeStartCount: 2,
+        cancelledBeforeStartCount: 2,
         unknownOutcomeCount: 0,
         outcome: "aborted",
       },
@@ -1493,14 +1493,14 @@ describe("ToolRuntime parallel scheduling", () => {
 
     expect(starts.slice(0, 2)).toEqual(["p1", "p2"]);
     expect(starts).not.toContain("p4");
-    expect(completed.get("p4")).toMatchObject({ canceled: true });
+    expect(completed.get("p4")).toMatchObject({ cancelled: true });
     expect(logs.find((record) => record.event === "tool.parallel_pool_abnormal_drain")).toEqual({
       event: "tool.parallel_pool_abnormal_drain",
       metadata: {
         toolCount: 4,
         maxParallelToolCalls: 2,
         startedCount: 3,
-        canceledBeforeStartCount: 1,
+        cancelledBeforeStartCount: 1,
         unknownOutcomeCount: 1,
         outcome: "failed",
         errorType: "Error",
@@ -1638,7 +1638,7 @@ describe("ToolRuntime result finalization and policy", () => {
     expect(result.abortRun).toBe(false);
   });
 
-  test("finalizes calls canceled before execution", async () => {
+  test("finalizes calls cancelled before execution", async () => {
     const controller = new AbortController();
     const finalized: string[] = [];
     controller.abort();
@@ -1658,10 +1658,10 @@ describe("ToolRuntime result finalization and policy", () => {
     );
 
     const result = await runtime.execute([
-      { type: "tool_call", id: "canceled", name: "unused", args: {} },
+      { type: "tool_call", id: "cancelled", name: "unused", args: {} },
     ]);
 
-    expect(finalized).toEqual(["canceled"]);
+    expect(finalized).toEqual(["cancelled"]);
     expect(result.toolResults[0]).toMatchObject({ isError: true });
   });
 
@@ -2049,13 +2049,13 @@ describe("ToolRuntime parallel failure containment", () => {
     });
     expect(result.toolResults[1]).toMatchObject({
       result: {
-        status: "canceled",
+        status: "cancelled",
         reason: "run_aborted",
       },
     });
     expect(result.toolResults.slice(2)).toEqual([
-      expect.objectContaining({ result: expect.objectContaining({ canceled: true }) }),
-      expect.objectContaining({ result: expect.objectContaining({ canceled: true }) }),
+      expect.objectContaining({ result: expect.objectContaining({ cancelled: true }) }),
+      expect.objectContaining({ result: expect.objectContaining({ cancelled: true }) }),
     ]);
   });
 });

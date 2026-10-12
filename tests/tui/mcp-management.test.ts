@@ -157,7 +157,7 @@ describe("TUI MCP management", () => {
     internal.tui.getFocus()?.handleInput?.("\x1b");
     await waitFor(() => renderTranscript(internal.transcript).includes("Reloading MCP servers..."));
     internal.handleGlobalInput("\x03");
-    await waitFor(() => renderTranscript(internal.transcript).includes("MCP reload canceled."));
+    await waitFor(() => renderTranscript(internal.transcript).includes("MCP reload cancelled."));
 
     expect(agentStates).toEqual(["created", "created"]);
     expect(renderTranscript(internal.transcript)).not.toContain("Failed to reload MCP servers");

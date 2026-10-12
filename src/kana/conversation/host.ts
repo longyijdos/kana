@@ -697,7 +697,7 @@ export class KanaConversationHost<TConfiguration = never> {
       return {
         status:
           context.signal.aborted || terminalReason === "aborted"
-            ? "canceled"
+            ? "cancelled"
             : terminalReason === "error"
               ? "errored"
               : "completed",
@@ -712,7 +712,7 @@ export class KanaConversationHost<TConfiguration = never> {
     } catch (error) {
       const messages = agent.state.messages;
       return {
-        status: context.signal.aborted ? "canceled" : "errored",
+        status: context.signal.aborted ? "cancelled" : "errored",
         output: finalOutput(messages),
         messages,
         model: {
@@ -779,7 +779,7 @@ export class KanaConversationHost<TConfiguration = never> {
       return snapshot;
     } catch (error) {
       if (signal?.aborted) {
-        this.getLogger().info("mcp.operation_canceled", { operation });
+        this.getLogger().info("mcp.operation_cancelled", { operation });
       }
       throw error;
     }

@@ -6,7 +6,7 @@ import {
   McpManager,
   type McpManagerErrorEvent,
   type McpProgress,
-  McpRequestCanceledError,
+  McpRequestCancelledError,
   type McpTool,
 } from "../../src/mcp";
 import { deferred } from "../helpers/async-control";
@@ -279,7 +279,7 @@ describe("MCP manager", () => {
     await Promise.resolve();
     const close = manager.close();
 
-    await expect(start).rejects.toBeInstanceOf(McpRequestCanceledError);
+    await expect(start).rejects.toBeInstanceOf(McpRequestCancelledError);
     await close;
 
     expect(client.closeCount).toBe(1);
@@ -303,7 +303,7 @@ describe("MCP manager", () => {
       },
     });
 
-    await expect(manager.start()).rejects.toBeInstanceOf(McpRequestCanceledError);
+    await expect(manager.start()).rejects.toBeInstanceOf(McpRequestCancelledError);
     await requestedClose;
 
     expect(manager.state).toBe("closed");

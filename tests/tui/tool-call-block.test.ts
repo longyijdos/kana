@@ -35,10 +35,10 @@ describe("tool call block", () => {
     expect(block.render(80).map(stripAnsi)).toEqual(["◆ Failed to run", "  └ bun test"]);
   });
 
-  test("renders user-canceled local tools separately from failures", () => {
+  test("renders user-cancelled local tools separately from failures", () => {
     const block = new ToolCallBlock({
       type: "tool_call",
-      id: "call_canceled",
+      id: "call_cancelled",
       name: "read",
       args: {
         path: "src/app.ts",
@@ -47,16 +47,16 @@ describe("tool call block", () => {
     block.markExecutionStarted();
     block.updateResult(
       {
-        status: "canceled",
+        status: "cancelled",
         reason: "run_aborted",
-        message: "Tool execution was canceled because the agent run was aborted.",
+        message: "Tool execution was cancelled because the agent run was aborted.",
       },
       true,
     );
 
     const rendered = block.render(80).map(stripAnsi);
 
-    expect(rendered).toEqual(["◆ Canceled reading", "  └ src/app.ts"]);
+    expect(rendered).toEqual(["◆ Cancelled reading", "  └ src/app.ts"]);
     expect(rendered.join("\n")).not.toContain("Failed");
   });
 
@@ -192,21 +192,21 @@ describe("tool call block", () => {
       "Duplicate todo item content.",
     ]);
 
-    const canceled = new ToolCallBlock({
+    const cancelled = new ToolCallBlock({
       type: "tool_call",
-      id: "call_todo_canceled",
+      id: "call_todo_cancelled",
       name: "todo_write",
-      args: { items: [{ content: "Canceled list", status: "pending" }] },
+      args: { items: [{ content: "Cancelled list", status: "pending" }] },
     });
-    canceled.updateResult(
+    cancelled.updateResult(
       {
-        status: "canceled",
+        status: "cancelled",
         reason: "run_aborted",
-        message: "Tool execution was canceled because the agent run was aborted.",
+        message: "Tool execution was cancelled because the agent run was aborted.",
       },
       true,
     );
-    expect(canceled.render(80).map(stripAnsi)).toEqual(["◆ Canceled updating todos"]);
+    expect(cancelled.render(80).map(stripAnsi)).toEqual(["◆ Cancelled updating todos"]);
   });
 
   test("inspects read tool detail without dumping the file content", () => {

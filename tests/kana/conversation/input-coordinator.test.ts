@@ -378,7 +378,7 @@ describe("ConversationInputCoordinator", () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const harness = createHarness({ getBackgroundJobs: () => jobs });
-    const completion = deferred<{ status: "canceled"; exitCode: null }>();
+    const completion = deferred<{ status: "cancelled"; exitCode: null }>();
     const job = jobs.start({ kind: "test", label: "lifecycle", run: () => completion.promise });
 
     expect(harness.coordinator.queue.pending).toEqual([]);
@@ -387,14 +387,14 @@ describe("ConversationInputCoordinator", () => {
     const cancellation = jobs.kill(job.id, { source: "tui" });
     expect(harness.coordinator.queue.pending).toEqual([]);
 
-    completion.resolve({ status: "canceled", exitCode: null });
+    completion.resolve({ status: "cancelled", exitCode: null });
     await cancellation;
     await waitFor(() => harness.coordinator.queue.pending.length === 1);
 
     expect(harness.coordinator.queue.pending).toMatchObject([
-      { kind: "job", jobId: job.id, content: expect.stringContaining("canceled") },
+      { kind: "job", jobId: job.id, content: expect.stringContaining("cancelled") },
     ]);
-    expect(harness.agent.inbox.nextTurn[0]?.message.content).toContain("reached canceled");
+    expect(harness.agent.inbox.nextTurn[0]?.message.content).toContain("reached cancelled");
     expect(harness.agent.inbox.nextTurn).toHaveLength(1);
 
     jobs.observe(job.id);

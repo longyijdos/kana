@@ -738,7 +738,7 @@ describe("Kana conversation host", () => {
     const host = createKanaConversationHost({ env });
     host.loadSession(deletedSession.id);
     const jobs = host.runtimeOptions.getBackgroundJobs(deletedSession.id);
-    let canceled = false;
+    let cancelled = false;
     jobs?.start({
       kind: "test",
       label: "pending cleanup",
@@ -747,8 +747,8 @@ describe("Kana conversation host", () => {
           signal.addEventListener(
             "abort",
             () => {
-              canceled = true;
-              resolve({ status: "canceled", exitCode: null });
+              cancelled = true;
+              resolve({ status: "cancelled", exitCode: null });
             },
             { once: true },
           );
@@ -756,7 +756,7 @@ describe("Kana conversation host", () => {
     });
 
     expect(await host.runtimeOptions.deleteSession(deletedSession.id)).toBe(true);
-    expect(canceled).toBe(true);
+    expect(cancelled).toBe(true);
     expect(jobs?.list()).toEqual([]);
     expect(
       host.runtimeOptions.listSessions().some((session) => session.id === deletedSession.id),
@@ -787,7 +787,7 @@ describe("Kana conversation host", () => {
     });
     const runtime = createRuntime(host);
     const previousJobs = host.runtimeOptions.getBackgroundJobs(session.id);
-    let previousCanceled = false;
+    let previousCancelled = false;
     previousJobs?.start({
       kind: "test",
       label: "previous generation",
@@ -796,8 +796,8 @@ describe("Kana conversation host", () => {
           signal.addEventListener(
             "abort",
             () => {
-              previousCanceled = true;
-              resolve({ status: "canceled", exitCode: null });
+              previousCancelled = true;
+              resolve({ status: "cancelled", exitCode: null });
             },
             { once: true },
           );
@@ -807,7 +807,7 @@ describe("Kana conversation host", () => {
     await runtime.resumeSession(session.id);
     const currentJobs = host.runtimeOptions.getBackgroundJobs(session.id);
 
-    expect(previousCanceled).toBe(true);
+    expect(previousCancelled).toBe(true);
     expect(currentJobs).not.toBe(previousJobs);
     expect(() =>
       currentJobs?.start({

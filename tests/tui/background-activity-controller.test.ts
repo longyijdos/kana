@@ -110,7 +110,7 @@ describe("background activity controller", () => {
     const cancellation = jobs.kill(job.id, { source: "tui" });
     expect(rendered()).toContain(row("stopping"));
 
-    completion.resolve({ status: "canceled", exitCode: null });
+    completion.resolve({ status: "cancelled", exitCode: null });
     await cancellation;
     await waitFor(() => !rendered().includes("Background · "));
 

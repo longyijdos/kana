@@ -9,7 +9,7 @@ import {
   type KanaMcpRuntime,
   type KanaMcpRuntimeProgressEvent,
 } from "@/kana";
-import { McpRequestCanceledError } from "@/mcp";
+import { McpRequestCancelledError } from "@/mcp";
 import {
   createKanaMcpConfigurationStore,
   type KanaMcpConfigurationSource,
@@ -111,7 +111,7 @@ describe("Kana MCP runtime", () => {
     );
     controller.abort(new Error("skip MCP startup"));
 
-    await expect(starting).rejects.toBeInstanceOf(McpRequestCanceledError);
+    await expect(starting).rejects.toBeInstanceOf(McpRequestCancelledError);
     expect(runtime.registry).toBeUndefined();
     expect(runtime.diagnostics.every((diagnostic) => diagnostic.status === "closed")).toBe(true);
 

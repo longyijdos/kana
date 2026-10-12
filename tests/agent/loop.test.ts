@@ -980,7 +980,7 @@ describe("runAgentLoop cancellation", () => {
       content: "Tool call rejected by user.",
       isError: true,
       result: {
-        canceled: true,
+        cancelled: true,
       },
     });
     expect(events.some((event) => event.type === "tool_execution_start")).toBe(false);
@@ -990,7 +990,7 @@ describe("runAgentLoop cancellation", () => {
     });
   });
 
-  test("adds canceled results for remaining tool calls when aborting a run", async () => {
+  test("adds cancelled results for remaining tool calls when aborting a run", async () => {
     const beforeToolCallIds: string[] = [];
     const events: AgentEvent[] = [];
     let executeCount = 0;
@@ -1046,17 +1046,17 @@ describe("runAgentLoop cancellation", () => {
       content: "Tool call rejected by user.",
       isError: true,
       result: {
-        canceled: true,
+        cancelled: true,
       },
     });
     expect(messages[2]).toMatchObject({
       role: "tool",
       toolCallId: "call_2",
       toolName: "add",
-      content: "Tool call canceled because the run was aborted.",
+      content: "Tool call cancelled because the run was aborted.",
       isError: true,
       result: {
-        canceled: true,
+        cancelled: true,
       },
     });
     expect(
@@ -1066,7 +1066,7 @@ describe("runAgentLoop cancellation", () => {
       toolCallId: "call_2",
       isError: true,
       result: {
-        canceled: true,
+        cancelled: true,
       },
     });
   });
@@ -1293,7 +1293,7 @@ describe("runAgentLoop error recovery", () => {
     }
   }
 
-  test("publishes and persists aborted hosted tools with a canceled semantic status", async () => {
+  test("publishes and persists aborted hosted tools with a cancelled semantic status", async () => {
     const events: AgentEvent[] = [];
     const messages = await runTestLoop(
       {
@@ -1321,7 +1321,7 @@ describe("runAgentLoop error recovery", () => {
             type: "hosted_tool",
             id: "search-1",
             name: "web_search",
-            status: "canceled",
+            status: "cancelled",
           },
         ],
       },

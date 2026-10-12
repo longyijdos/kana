@@ -20,7 +20,7 @@ const jobStatusSchema = Type.Union([
   Type.Literal("stopping"),
   Type.Literal("completed"),
   Type.Literal("failed"),
-  Type.Literal("canceled"),
+  Type.Literal("cancelled"),
   Type.Literal("unknown"),
 ]);
 const jobSummarySchema = Type.Object({

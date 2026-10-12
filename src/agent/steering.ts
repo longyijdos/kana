@@ -18,7 +18,7 @@ export class SteeringQueue {
   private readonly inbox: AgentInbox;
   private readonly listeners = new Set<AgentInboxListener>();
   private readonly resolvers = new Map<MessageId, (outcome: AgentSteerOutcome) => void>();
-  // Items crossing the journal boundary can no longer be canceled or cleared.
+  // Items crossing the journal boundary can no longer be cancelled or cleared.
   private readonly committing = new Set<MessageId>();
 
   constructor(

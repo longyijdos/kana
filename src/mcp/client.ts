@@ -6,7 +6,7 @@ import {
   StreamableHTTPClientTransport,
   type Transport,
 } from "@modelcontextprotocol/client";
-import { McpRequestCanceledError, McpRequestTimeoutError, McpResponseError } from "./errors";
+import { McpRequestCancelledError, McpRequestTimeoutError, McpResponseError } from "./errors";
 import type { McpManagedClient } from "./manager";
 import type { JsonObject, McpImplementation, McpProgress } from "./protocol";
 
@@ -81,7 +81,7 @@ export class McpClient implements McpManagedClient {
     } catch (error) {
       // The SDK uses RequestTimeout for caller aborts too; preserve their reason.
       if (options.signal?.aborted) {
-        throw options.signal.reason ?? new McpRequestCanceledError();
+        throw options.signal.reason ?? new McpRequestCancelledError();
       }
       if (error instanceof ProtocolError) {
         throw new McpResponseError(error.code, error.message, error.data);

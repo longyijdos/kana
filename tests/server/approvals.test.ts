@@ -98,9 +98,9 @@ describe("server approvals", () => {
     expect(f.request("write")).toEqual({ type: "continue" });
     f.approvals.resetSession();
     const controller = new AbortController();
-    const canceled = f.request("write", controller.signal);
+    const cancelled = f.request("write", controller.signal);
     controller.abort();
-    expect(await canceled).toMatchObject({ type: "cancel", abortRun: true });
+    expect(await cancelled).toMatchObject({ type: "cancel", abortRun: true });
     expect(f.approvals.snapshot).toEqual([]);
     expect(f.request("write", controller.signal)).toMatchObject({ type: "cancel" });
     const last = f.request("write");

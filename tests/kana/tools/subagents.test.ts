@@ -62,19 +62,22 @@ describe("subagent tools", () => {
       waitTimedOut: false,
     });
     const cancel = createCancelSubagentTool(client);
-    const canceled = await cancel.execute({ agentId: started.result.agentId }, createToolContext());
-    expectToolResult(canceled);
-    expect(canceled.result).toEqual({ status: "completed", terminalReason: "stop" });
-    expect(JSON.parse(canceled.content)).toEqual(canceled.result);
+    const cancelled = await cancel.execute(
+      { agentId: started.result.agentId },
+      createToolContext(),
+    );
+    expectToolResult(cancelled);
+    expect(cancelled.result).toEqual({ status: "completed", terminalReason: "stop" });
+    expect(JSON.parse(cancelled.content)).toEqual(cancelled.result);
 
-    const canceledInvocation = new AbortController();
-    canceledInvocation.abort();
+    const cancelledInvocation = new AbortController();
+    cancelledInvocation.abort();
     expect(() =>
       spawn.execute(
         { profile: "explorer", task: "Do not start" },
-        { ...createToolContext(), signal: canceledInvocation.signal },
+        { ...createToolContext(), signal: cancelledInvocation.signal },
       ),
-    ).toThrow("Subagent spawn was canceled.");
+    ).toThrow("Subagent spawn was cancelled.");
     expect(client.list()).toHaveLength(1);
     await manager.close();
   });

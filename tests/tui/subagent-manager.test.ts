@@ -251,9 +251,9 @@ describe("subagent manager", () => {
     });
   }
 
-  test("keeps hosted tool snapshots static and marks unfinished terminal calls canceled", () => {
+  test("keeps hosted tool snapshots static and marks unfinished terminal calls cancelled", () => {
     const inspection: KanaSubagentInspection = {
-      ...subagent("agent_canceled", "canceled"),
+      ...subagent("agent_cancelled", "cancelled"),
       task: "Inspect",
       output: "",
       waitTimedOut: false,
@@ -274,7 +274,7 @@ describe("subagent manager", () => {
       "",
       "◆ Searching the web",
       "",
-      "◆ Canceled reading",
+      "◆ Cancelled reading",
       "  └ src/parser.ts",
     ]);
   });

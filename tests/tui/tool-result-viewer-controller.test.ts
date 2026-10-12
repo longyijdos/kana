@@ -97,16 +97,16 @@ describe("tool detail inspector controller", () => {
     expect(rendered).toContain("Running");
   });
 
-  test("opens a canceled tool without a final result and reports its status", () => {
+  test("opens a cancelled tool without a final result and reports its status", () => {
     const transcript = new Transcript();
     const block = new ToolCallBlock({
       type: "tool_call",
-      id: "call_canceled",
+      id: "call_cancelled",
       name: "shell",
       args: { command: "bun test" },
     });
     block.markExecutionStarted();
-    block.markCanceled();
+    block.markCancelled();
     transcript.addChild(block);
     const { controller, tui } = createController(transcript);
 
@@ -114,7 +114,7 @@ describe("tool detail inspector controller", () => {
 
     const rendered = viewerLines(tui).join("\n");
     expect(rendered).toContain("Status");
-    expect(rendered).toContain("Canceled");
+    expect(rendered).toContain("Cancelled");
   });
 
   test("reflects updated arguments and partial output while the inspector stays open", () => {

@@ -17,7 +17,7 @@ const TOOL_STATUS_LABELS: Record<ToolState, string> = {
   running: "Running",
   done: "Done",
   failed: "Failed",
-  canceled: "Canceled",
+  cancelled: "Cancelled",
 };
 
 // Context precedes non-terminal status and full output. Write/edit payloads stay in

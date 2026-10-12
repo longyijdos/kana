@@ -44,13 +44,13 @@ describe("KanaGoalController", () => {
     const controller = new KanaGoalController();
     controller.start("First goal", 8);
 
-    expect(controller.cancel()).toMatchObject({ status: "canceled" });
+    expect(controller.cancel()).toMatchObject({ status: "cancelled" });
     expect(controller.cancel()).toBeUndefined();
 
     controller.start("Second goal", 8);
     expect(controller.discard()).toMatchObject({
       objective: "Second goal",
-      status: "canceled",
+      status: "cancelled",
     });
     expect(controller.current).toBeUndefined();
   });

@@ -87,7 +87,7 @@ describe("MCP lifecycle controller", () => {
 
     await expect(loading).resolves.toBe(true);
     expect(harness.controller.loading).toBe(false);
-    expect(harness.render()).toEqual(["Starting MCP servers...", "MCP startup canceled."]);
+    expect(harness.render()).toEqual(["Starting MCP servers...", "MCP startup cancelled."]);
     expect(harness.events).toEqual([
       "status:starting",
       "focus:clear",
@@ -108,7 +108,7 @@ describe("MCP lifecycle controller", () => {
     await reloading;
 
     expect(harness.controller.loading).toBe(false);
-    expect(harness.render()).toEqual(["Reloading MCP servers...", "MCP reload canceled."]);
+    expect(harness.render()).toEqual(["Reloading MCP servers...", "MCP reload cancelled."]);
     expect(harness.events).toEqual([
       "status:starting",
       "focus:clear",

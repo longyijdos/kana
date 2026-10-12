@@ -25,12 +25,12 @@ describe("hosted tool block", () => {
     expect(stripAnsi(block.render(80)[0] ?? "")).toBe("◆ Searching the web (2s)");
   });
 
-  test("renders canceled hosted tool activity as stopped", () => {
+  test("renders cancelled hosted tool activity as stopped", () => {
     const block = new HostedToolBlock({
       type: "hosted_tool",
-      id: "web-search-canceled",
+      id: "web-search-cancelled",
       name: "web_search",
-      status: "canceled",
+      status: "cancelled",
     });
 
     const rendered = block.render(80)[0] ?? "";

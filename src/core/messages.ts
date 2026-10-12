@@ -206,7 +206,7 @@ export type HostedToolContent = {
   readonly type: "hosted_tool";
   readonly id: string;
   readonly name: string;
-  readonly status: "in_progress" | "completed" | "canceled";
+  readonly status: "in_progress" | "completed" | "cancelled";
   readonly action?: HostedToolAction;
   readonly providerState?: ProviderState;
 };

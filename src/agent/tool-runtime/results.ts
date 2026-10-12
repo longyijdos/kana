@@ -27,12 +27,12 @@ export function createErrorToolResult(message: string): ToolResult {
   };
 }
 
-export function createCanceledToolResult(
-  message = "Tool call canceled before execution.",
+export function createCancelledToolResult(
+  message = "Tool call cancelled before execution.",
 ): ToolResult {
   return {
     content: message,
-    result: { error: message, canceled: true },
+    result: { error: message, cancelled: true },
     isError: true,
   };
 }
@@ -74,12 +74,12 @@ export function createInterruptedToolResult(
 
   const message =
     interruption.reason === "deadline"
-      ? `Tool execution exceeded its ${interruption.deadlineMs}ms deadline and was canceled. Do not retry automatically.`
-      : "Tool execution was canceled because the agent run was aborted.";
+      ? `Tool execution exceeded its ${interruption.deadlineMs}ms deadline and was cancelled. Do not retry automatically.`
+      : "Tool execution was cancelled because the agent run was aborted.";
   return {
     content: message,
     result: {
-      status: interruption.reason === "deadline" ? "timed_out" : "canceled",
+      status: interruption.reason === "deadline" ? "timed_out" : "cancelled",
       reason: interruption.reason,
       message,
       ...deadline,

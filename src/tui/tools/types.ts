@@ -1,4 +1,4 @@
-export type ToolState = "running" | "done" | "failed" | "canceled";
+export type ToolState = "running" | "done" | "failed" | "cancelled";
 
 export type ToolOutputDetail = "compact" | "full";
 

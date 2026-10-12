@@ -38,9 +38,9 @@ describe("MCP SDK integration", () => {
     await client.connect();
     const controller = new AbortController();
     const pending = client.callTool("slow", {}, { signal: controller.signal });
-    controller.abort(new Error("Canceled by test"));
+    controller.abort(new Error("Cancelled by test"));
 
-    await expect(pending).rejects.toThrow("Canceled by test");
+    await expect(pending).rejects.toThrow("Cancelled by test");
     expect((await client.listTools()).map((tool) => tool.name)).toEqual(["echo", "slow"]);
   });
 });

@@ -83,7 +83,7 @@ export type ConversationRuntimeEvent =
         | "round_admitted"
         | "completed"
         | "blocked"
-        | "canceled"
+        | "cancelled"
         | "round_limit"
         | "discarded";
       readonly goal: KanaGoalSnapshot;

@@ -32,10 +32,10 @@ export class ToolCallBlocks {
     }
   }
 
-  markPendingCanceled(): void {
+  markPendingCancelled(): void {
     this.finishPreparation();
     for (const block of this.pendingTools.values()) {
-      block.markCanceled();
+      block.markCancelled();
     }
     this.knownToolCalls.clear();
   }

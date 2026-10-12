@@ -64,9 +64,9 @@ export function formatToolTranscriptTitle(
     };
   }
   if (state === "failed") return { activity: `Failed to ${action}`, target };
-  if (state === "canceled") {
+  if (state === "cancelled") {
     return {
-      activity: `Canceled ${target ? text.runningActivity.replace(` ${target}`, "") : text.runningActivity}`,
+      activity: `Cancelled ${target ? text.runningActivity.replace(` ${target}`, "") : text.runningActivity}`,
       target,
     };
   }
@@ -367,8 +367,8 @@ function formatTodoTranscriptTitle(
   if (state === "failed") {
     return { activity: "Failed to update todos" };
   }
-  if (state === "canceled") {
-    return { activity: "Canceled updating todos" };
+  if (state === "cancelled") {
+    return { activity: "Cancelled updating todos" };
   }
   if (items?.length === 0) {
     return { activity: "Cleared todos" };

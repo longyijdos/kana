@@ -402,7 +402,7 @@ async function requestAssistantTurn(
         };
         // Provider snapshots describe the last streamed state. The Agent owns
         // the terminal transition, so publish and persist one canonical
-        // canceled status for hosted work interrupted by an abort.
+        // cancelled status for hosted work interrupted by an abort.
         currentMessage =
           event.reason === "aborted"
             ? cancelInProgressHostedTools(terminalMessage)
@@ -470,7 +470,7 @@ function cancelInProgressHostedTools(message: AssistantMessage): AssistantMessag
     changed = true;
     return {
       ...item,
-      status: "canceled",
+      status: "cancelled",
     };
   });
 

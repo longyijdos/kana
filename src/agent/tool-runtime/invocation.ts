@@ -5,7 +5,7 @@ import { errorFields, formatError, SerialTaskQueue } from "@/utils";
 import { createNestedToolInvoker } from "./nested";
 import type { SerialEventQueue } from "./queues";
 import {
-  createCanceledToolResult,
+  createCancelledToolResult,
   createErrorToolResult,
   createInterruptedToolResult,
   type ToolInterruption,
@@ -92,11 +92,11 @@ export class ToolInvoker {
         if (shouldAbortRun) {
           onAbortRun?.();
         }
-        return finish(createCanceledToolResult(approval.message), shouldAbortRun);
+        return finish(createCancelledToolResult(approval.message), shouldAbortRun);
       }
       if (executionSignal?.aborted) {
         onAbortRun?.();
-        return finish(createCanceledToolResult(), true);
+        return finish(createCancelledToolResult(), true);
       }
       if (approval.type === "return") {
         return finish(normalizeToolResult(approval.result));
@@ -370,7 +370,7 @@ export class ToolInvoker {
     try {
       return await this.approvals.run(() =>
         signal?.aborted
-          ? { type: "cancel", abortRun: true, message: "Tool call canceled before approval." }
+          ? { type: "cancel", abortRun: true, message: "Tool call cancelled before approval." }
           : hook({ toolCall, tool, args, signal }),
       );
     } finally {

@@ -10,7 +10,7 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 // keeps one model-issued command from occupying the foreground indefinitely.
 const MAX_TIMEOUT_MS = 5 * 60 * 1000;
 // Shell owns a deadline just above its ceiling so it can terminate the process group
-// and report its own timeout result instead of being canceled by ToolRuntime.
+// and report its own timeout result instead of being cancelled by ToolRuntime.
 const TOOL_DEADLINE_MS = MAX_TIMEOUT_MS + 1_000;
 const MAX_PARTIAL_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;

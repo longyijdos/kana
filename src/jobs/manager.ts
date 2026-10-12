@@ -15,7 +15,7 @@ export type BackgroundJobStatus =
   | "stopping"
   | "completed"
   | "failed"
-  | "canceled"
+  | "cancelled"
   | "unknown";
 
 export type BackgroundJobTerminalStatus = Exclude<BackgroundJobStatus, "running" | "stopping">;
@@ -348,7 +348,7 @@ export class BackgroundJobManager {
       exitCode: result.exitCode,
       finishedAt: new Date(),
     });
-    const level = result.status === "completed" || result.status === "canceled" ? "info" : "warn";
+    const level = result.status === "completed" || result.status === "cancelled" ? "info" : "warn";
     job.logger[level]("background_job.process_exited", {
       jobId: job.summary.id,
       producer: job.summary.kind,

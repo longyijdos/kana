@@ -1,4 +1,4 @@
-import { McpRequestCanceledError } from "./errors";
+import { McpRequestCancelledError } from "./errors";
 import type { McpImplementation, McpServerCapabilities, McpTool } from "./protocol";
 import {
   createRegisteredMcpTool,
@@ -172,7 +172,7 @@ export class McpManager implements McpToolRegistry {
 
   close(): Promise<void> {
     if (!this.closePromise) {
-      this.startController.abort(new McpRequestCanceledError("MCP manager is closing."));
+      this.startController.abort(new McpRequestCancelledError("MCP manager is closing."));
       this.closePromise = this.closeInternal();
     }
     return this.closePromise;
@@ -395,13 +395,13 @@ function throwIfStartAborted(signal: AbortSignal): void {
   }
 }
 
-function createStartCancellationError(signal: AbortSignal): McpRequestCanceledError {
-  if (signal.reason instanceof McpRequestCanceledError) {
+function createStartCancellationError(signal: AbortSignal): McpRequestCancelledError {
+  if (signal.reason instanceof McpRequestCancelledError) {
     return signal.reason;
   }
   const message =
     signal.reason instanceof Error && signal.reason.message
       ? signal.reason.message
-      : "MCP manager startup was canceled.";
-  return new McpRequestCanceledError(message, { cause: signal.reason });
+      : "MCP manager startup was cancelled.";
+  return new McpRequestCancelledError(message, { cause: signal.reason });
 }

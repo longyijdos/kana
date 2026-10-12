@@ -409,7 +409,6 @@ export class ResponsesStreamProcessor {
       this.finishPending(pending, pending.item);
     }
 
-    // Wire value: the Responses API spells this status "cancelled".
     const status = readString(response.status);
     if (status === "failed" || status === "cancelled") {
       throw new Error(

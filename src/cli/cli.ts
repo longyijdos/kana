@@ -255,7 +255,7 @@ export function createCli(options: CreateCliOptions): Command {
         prompt: RESET_CONFIRMATION_PROMPT,
       });
       if (!shouldReset) {
-        log("Reset canceled.");
+        log("Reset cancelled.");
         return;
       }
 
@@ -339,7 +339,7 @@ export function createCli(options: CreateCliOptions): Command {
         prompt: SKILLS_REINSTALL_CONFIRMATION_PROMPT,
       });
       if (!shouldReinstall) {
-        log("Skills reinstall canceled.");
+        log("Skills reinstall cancelled.");
         return;
       }
 
@@ -379,7 +379,7 @@ export function createCli(options: CreateCliOptions): Command {
           prompt: SKILLS_RESYNC_CONFIRMATION_PROMPT,
         });
         if (!shouldResync) {
-          log("Skills resync canceled.");
+          log("Skills resync cancelled.");
           return;
         }
 

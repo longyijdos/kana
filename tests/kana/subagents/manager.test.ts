@@ -175,12 +175,12 @@ describe("Kana subagent manager", () => {
     expect(waitSettled).toBe(false);
     expect(first.inspect(started.id)?.status).toBe("running");
 
-    drained.resolve(result("canceled after drain"));
+    drained.resolve(result("cancelled after drain"));
     await expect(waiting).resolves.toMatchObject({
-      status: "canceled",
+      status: "cancelled",
       waitTimedOut: false,
     });
-    await expect(cancelling).resolves.toMatchObject({ status: "canceled" });
+    await expect(cancelling).resolves.toMatchObject({ status: "cancelled" });
   });
 
   test("publishes TUI cancellation until the completion is observed", async () => {
@@ -197,18 +197,18 @@ describe("Kana subagent manager", () => {
       spawnToolCallId: "call-spawn",
       run: ({ signal }) =>
         new Promise((resolve) => {
-          signal.addEventListener("abort", () => resolve(result("canceled")), { once: true });
+          signal.addEventListener("abort", () => resolve(result("cancelled")), { once: true });
         }),
     });
     await Promise.resolve();
 
     await expect(
       client.cancel(started.id, { source: "tui", reason: "Stopped from /agents." }),
-    ).resolves.toMatchObject({ status: "canceled" });
+    ).resolves.toMatchObject({ status: "cancelled" });
     await Promise.resolve();
 
     expect(events.map((event) => event.type)).toEqual(["started", "settled"]);
-    expect(client.context()).toMatchObject([{ id: started.id, status: "canceled" }]);
+    expect(client.context()).toMatchObject([{ id: started.id, status: "cancelled" }]);
 
     client.observe(started.id);
     expect(events.map((event) => event.type)).toEqual(["started", "settled", "observed"]);

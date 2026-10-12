@@ -176,7 +176,7 @@ export class McpServerManagerController {
         return;
       }
       if (controller.signal.aborted) {
-        block.setText(`MCP OAuth authorization canceled: ${singleLine(serverId)}.`);
+        block.setText(`MCP OAuth authorization cancelled: ${singleLine(serverId)}.`);
       } else {
         this.options.transcript.removeChild(block);
         this.options.showError(error);
@@ -224,8 +224,10 @@ export class McpServerManagerController {
     if (!operation) {
       return;
     }
-    operation.block.setText(`MCP OAuth authorization canceled: ${singleLine(operation.serverId)}.`);
-    operation.controller.abort(new Error("MCP OAuth authorization was canceled."));
+    operation.block.setText(
+      `MCP OAuth authorization cancelled: ${singleLine(operation.serverId)}.`,
+    );
+    operation.controller.abort(new Error("MCP OAuth authorization was cancelled."));
     this.options.tui.requestRender();
   }
 

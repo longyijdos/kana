@@ -12,7 +12,7 @@ import type { ToolResultPolicy } from "../tool-result-policy";
 import { ToolInvoker } from "./invocation";
 import { SerialEventQueue } from "./queues";
 import {
-  createCanceledToolResult,
+  createCancelledToolResult,
   createUnknownToolResult,
   finalizeToolResult,
   isUnknownOutcome,
@@ -25,7 +25,7 @@ import {
 } from "./types";
 
 const DEFAULT_CANCELLATION_GRACE_MS = 1_000;
-const RUN_ABORTED_MESSAGE = "Tool call canceled because the run was aborted.";
+const RUN_ABORTED_MESSAGE = "Tool call cancelled because the run was aborted.";
 const SCHEDULER_FAILURE_MESSAGE =
   "Tool execution encountered an internal scheduler failure. Its outcome is unknown; do not retry automatically.";
 
@@ -95,7 +95,7 @@ export class ToolRuntime {
       if (abortRun || this.config.signal?.aborted) {
         abortRun = true;
         for (const toolCall of toolCalls.slice(index)) {
-          const executed = canceled(toolCall, RUN_ABORTED_MESSAGE);
+          const executed = cancelled(toolCall, RUN_ABORTED_MESSAGE);
           await this.invoker.publishEnd(executed);
           await this.commit(executed, toolResults, additionalMessages);
         }
@@ -240,7 +240,7 @@ export class ToolRuntime {
     }
     const workers = Array.from({ length: workerCount }, () => runWorker().catch(fail));
     const done = Promise.all(workers).then(async () => {
-      // Calls never claimed were canceled; claimed calls without a result
+      // Calls never claimed were cancelled; claimed calls without a result
       // escaped the guarded path and have an unknown outcome.
       for (const [index, toolCall] of toolCalls.entries()) {
         if (executed[index]) continue;
@@ -248,11 +248,11 @@ export class ToolRuntime {
           index,
           index < nextIndex
             ? unknownOutcome(toolCall)
-            : canceled(
+            : cancelled(
                 toolCall,
                 failure === undefined
                   ? RUN_ABORTED_MESSAGE
-                  : "Tool call canceled before execution because parallel scheduling failed.",
+                  : "Tool call cancelled before execution because parallel scheduling failed.",
               ),
         );
       }
@@ -281,7 +281,7 @@ export class ToolRuntime {
       toolCount,
       maxParallelToolCalls: this.maxParallelToolCalls,
       startedCount: outcome.startedCount,
-      canceledBeforeStartCount: toolCount - outcome.startedCount,
+      cancelledBeforeStartCount: toolCount - outcome.startedCount,
       unknownOutcomeCount,
       outcome: result,
       ...(outcome.failure ? errorFields(outcome.failure.error) : {}),
@@ -320,8 +320,8 @@ export class ToolRuntime {
   }
 }
 
-function canceled(toolCall: ToolCallContent, message: string): ExecutedToolCall {
-  return { toolCall, result: createCanceledToolResult(message), isError: true, durationMs: 0 };
+function cancelled(toolCall: ToolCallContent, message: string): ExecutedToolCall {
+  return { toolCall, result: createCancelledToolResult(message), isError: true, durationMs: 0 };
 }
 
 function unknownOutcome(toolCall: ToolCallContent): ExecutedToolCall {

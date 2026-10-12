@@ -396,7 +396,7 @@ describe("headless Goal execution", () => {
       exitCode: 124,
       outcome: "aborted",
       termination: { reason: "timeout", timeoutMs: 20 },
-      goal: { status: "canceled", admittedRounds: 2 },
+      goal: { status: "cancelled", admittedRounds: 2 },
     });
     expect(toolAborted).toBe(true);
     expect(events.filter((event) => event.type === "run.started")).toHaveLength(1);
@@ -406,7 +406,7 @@ describe("headless Goal execution", () => {
       type: "run.completed",
       outcome: "aborted",
       termination: { reason: "timeout", timeout_ms: 20 },
-      goal: { status: "canceled", admitted_rounds: 2, max_rounds: 3 },
+      goal: { status: "cancelled", admitted_rounds: 2, max_rounds: 3 },
     });
     await runtime.close();
   });
@@ -456,7 +456,7 @@ describe("headless timeout", () => {
     let toolAborted = false;
     const tool: Tool = {
       name: "change_state",
-      description: "Wait until the run is canceled.",
+      description: "Wait until the run is cancelled.",
       parameters: Type.Object({}),
       execute: (_args, context) =>
         new Promise((resolve) => {

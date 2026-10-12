@@ -133,9 +133,9 @@ describe("PromptAssembly", () => {
       ],
     });
     const controller = new AbortController();
-    controller.abort(new Error("canceled"));
+    controller.abort(new Error("cancelled"));
 
-    await expect(assembly.assemble({ signal: controller.signal })).rejects.toThrow("canceled");
+    await expect(assembly.assemble({ signal: controller.signal })).rejects.toThrow("cancelled");
     expect(renders).toBe(0);
   });
 

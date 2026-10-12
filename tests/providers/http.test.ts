@@ -34,7 +34,7 @@ describe("shared provider HTTP primitives", () => {
       signal: upstream.signal,
       timeoutMessage: "must not replace cancellation",
     });
-    const reason = new Error("canceled by caller");
+    const reason = new Error("cancelled by caller");
     upstream.abort(reason);
     jest.advanceTimersByTime(100);
 
@@ -108,7 +108,7 @@ describe("shared provider HTTP primitives", () => {
 
   test("does not retry after the caller aborts with a non-DOM reason", async () => {
     const controller = new AbortController();
-    const reason = new Error("canceled by caller");
+    const reason = new Error("cancelled by caller");
     controller.abort(reason);
     const retries: unknown[] = [];
 

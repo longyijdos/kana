@@ -132,8 +132,8 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
   async signOut(): Promise<void> {
     this.assertOpen();
     this.revision += 1;
-    this.authorizationController?.abort(new Error("OpenAI Codex sign-in was canceled."));
-    this.refreshController?.abort(new Error("OpenAI Codex token refresh was canceled."));
+    this.authorizationController?.abort(new Error("OpenAI Codex sign-in was cancelled."));
+    this.refreshController?.abort(new Error("OpenAI Codex token refresh was cancelled."));
     await this.store.withOpenAICodexLock(async () => {
       const token = await this.loadToken();
       let revoked = true;

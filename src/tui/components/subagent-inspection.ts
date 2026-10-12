@@ -44,7 +44,7 @@ export function createSubagentInspectionView(
             result.durationMs,
           );
         } else if (inspection.status !== "running") {
-          block.markCanceled();
+          block.markCancelled();
         }
         transcript.addChild(block);
       }

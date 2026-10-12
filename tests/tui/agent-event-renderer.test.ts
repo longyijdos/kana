@@ -505,11 +505,11 @@ describe("AgentEventRenderer", () => {
         },
       ],
     };
-    const canceledMessage: AssistantMessage = {
+    const cancelledMessage: AssistantMessage = {
       ...searchingMessage,
       stopReason: "aborted",
       content: searchingMessage.content.map((content) =>
-        content.type === "hosted_tool" ? { ...content, status: "canceled" } : content,
+        content.type === "hosted_tool" ? { ...content, status: "cancelled" } : content,
       ),
     };
 
@@ -535,7 +535,7 @@ describe("AgentEventRenderer", () => {
 
       renderer.handle({
         type: "message_end",
-        message: canceledMessage,
+        message: cancelledMessage,
       });
       renderer.handle({ type: "agent_end", reason: "aborted", messages: [] });
       now = 7_000;

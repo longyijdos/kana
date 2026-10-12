@@ -143,7 +143,7 @@ export class BtwController {
           if (event.reason === "error") {
             throw new Error("BTW request failed.");
           }
-          outcome = event.reason === "aborted" ? "Canceled" : "Done";
+          outcome = event.reason === "aborted" ? "Cancelled" : "Done";
         }
         if (this.slot === slot) {
           this.options.requestRender();

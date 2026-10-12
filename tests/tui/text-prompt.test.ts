@@ -85,12 +85,12 @@ describe("text prompt", () => {
 
   test("allows an empty submission and cancels with escape", () => {
     const submitted: string[] = [];
-    let canceled = false;
+    let cancelled = false;
     const prompt = new TextPrompt({
       title: "Request",
       onSubmit: (value) => submitted.push(value),
       onCancel: () => {
-        canceled = true;
+        cancelled = true;
       },
     });
 
@@ -98,7 +98,7 @@ describe("text prompt", () => {
     prompt.handleInput("\x1b");
 
     expect(submitted).toEqual([""]);
-    expect(canceled).toBe(true);
+    expect(cancelled).toBe(true);
   });
 
   test("keeps the cursor visible within a short available height", () => {

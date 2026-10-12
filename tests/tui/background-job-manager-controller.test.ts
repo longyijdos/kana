@@ -85,7 +85,7 @@ describe("background Job manager controller", () => {
       run: ({ signal, write }) => {
         write("stdout", "server ready\n");
         return new Promise((resolve) => {
-          signal.addEventListener("abort", () => resolve({ status: "canceled", exitCode: null }), {
+          signal.addEventListener("abort", () => resolve({ status: "cancelled", exitCode: null }), {
             once: true,
           });
         });
@@ -114,9 +114,9 @@ describe("background Job manager controller", () => {
     ]);
 
     tui.getFocus()?.handleInput?.("K");
-    await waitFor(() => jobs.list()[0]?.status === "canceled");
-    expect(stripAnsi(tui.getFocus()?.render(100).join("\n") ?? "")).toContain("canceled");
-    expect(jobs.context()).toMatchObject([{ id: job.id, status: "canceled" }]);
+    await waitFor(() => jobs.list()[0]?.status === "cancelled");
+    expect(stripAnsi(tui.getFocus()?.render(100).join("\n") ?? "")).toContain("cancelled");
+    expect(jobs.context()).toMatchObject([{ id: job.id, status: "cancelled" }]);
     expect(errors).toEqual([]);
 
     tui.getFocus()?.handleInput?.("\x1b");
