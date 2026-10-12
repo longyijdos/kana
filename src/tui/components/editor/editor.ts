@@ -367,35 +367,9 @@ export class Editor implements Component {
 
     if (isEnter(data)) {
       this.placeholder = createRandomPromptPlaceholder(Math.random, this.placeholder);
-      const paletteState = this.getPaletteState();
-      let submit: PromptSubmit | undefined;
-      try {
-        submit =
-          paletteState.kind === "skill"
-            ? createSkillReferenceSubmit(
-                this.state.value,
-                paletteState.suggestions[this.paletteViewport.selectedIndex],
-                this.skills,
-              )
-            : paletteState.kind === "template"
-              ? createPromptTemplateSubmit(
-                  this.state.value,
-                  paletteState.suggestions[this.paletteViewport.selectedIndex],
-                  this.promptTemplates,
-                )
-              : createCommandSubmit(
-                  this.state.value,
-                  paletteState.kind === "command"
-                    ? paletteState.suggestions[this.paletteViewport.selectedIndex]
-                    : undefined,
-                );
-      } catch (error) {
-        this.onError?.(error);
-        return;
-      }
-
+      const submit = this.createSubmit(this.getPaletteState());
       if (submit) {
-        this.onSubmit?.(this.withImages(submit));
+        this.onSubmit?.(submit);
       }
       return;
     }
@@ -447,33 +421,9 @@ export class Editor implements Component {
         return;
       }
 
-      let submit: PromptSubmit | undefined;
-      try {
-        submit =
-          paletteState.kind === "skill"
-            ? createSkillReferenceSubmit(
-                this.state.value,
-                suggestion as KanaSkillActivation | undefined,
-                this.skills,
-              )
-            : paletteState.kind === "template"
-              ? createPromptTemplateSubmit(
-                  this.state.value,
-                  suggestion as KanaPromptTemplate | undefined,
-                  this.promptTemplates,
-                )
-              : createCommandSubmit(
-                  this.state.value,
-                  paletteState.kind === "command"
-                    ? (suggestion as PromptCommand | undefined)
-                    : undefined,
-                );
-      } catch (error) {
-        this.onError?.(error);
-        return;
-      }
+      const submit = this.createSubmit(paletteState);
       if (submit) {
-        this.onQueue?.(this.withImages(submit));
+        this.onQueue?.(submit);
       }
       return;
     }
@@ -602,6 +552,37 @@ export class Editor implements Component {
       this.historyIndex = -1;
     }
     this.syncPaletteSelection();
+  }
+
+  // Builds the submission for the current input, resolving the selected palette
+  // suggestion. Invalid input is reported through onError.
+  private createSubmit(paletteState: EditorPaletteState): PromptSubmit | undefined {
+    const selected = paletteState.suggestions[this.paletteViewport.selectedIndex];
+    try {
+      const submit =
+        paletteState.kind === "skill"
+          ? createSkillReferenceSubmit(
+              this.state.value,
+              selected as KanaSkillActivation | undefined,
+              this.skills,
+            )
+          : paletteState.kind === "template"
+            ? createPromptTemplateSubmit(
+                this.state.value,
+                selected as KanaPromptTemplate | undefined,
+                this.promptTemplates,
+              )
+            : createCommandSubmit(
+                this.state.value,
+                paletteState.kind === "command"
+                  ? (selected as PromptCommand | undefined)
+                  : undefined,
+              );
+      return submit && this.withImages(submit);
+    } catch (error) {
+      this.onError?.(error);
+      return undefined;
+    }
   }
 
   private withImages(submit: PromptSubmit): PromptSubmit {
