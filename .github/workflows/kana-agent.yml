@@ -20,3 +20,4 @@ jobs:
     secrets:
       KANA_GITHUB_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
       KANA_MODEL_API_KEY: ${{ secrets.KANA_MODEL_API_KEY }}
+      KANA_MODEL_BASE_URL: ${{ secrets.KANA_MODEL_BASE_URL }}

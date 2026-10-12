@@ -39,6 +39,9 @@ on:
       KANA_MODEL_API_KEY:
         description: Optional model credential named by the repository-local provider config.
         required: false
+      KANA_MODEL_BASE_URL:
+        description: Optional Custom provider endpoint kept out of the repository-local provider config.
+        required: false
 
 concurrency:
   group: kana-agent-${{ github.event.issue.number }}
@@ -198,6 +201,7 @@ jobs:
           CONFIG_PATH: ${{ inputs.config-path }}
           CUSTOM_PROVIDER_PATH: ${{ inputs.custom-provider-path }}
           CALLER_SHA: ${{ github.sha }}
+          KANA_MODEL_BASE_URL: ${{ secrets.KANA_MODEL_BASE_URL }}
         run: |
           set -euo pipefail
           umask 077
@@ -231,6 +235,29 @@ jobs:
               exit 1
             fi
             git show "$CALLER_SHA:$CUSTOM_PROVIDER_PATH" > "$kana_home/providers/custom.toml"
+          fi
+
+          if [[ -n "$KANA_MODEL_BASE_URL" ]]; then
+            custom_provider_file="$kana_home/providers/custom.toml"
+            # Top-level keys must precede the [[models]] tables, so the endpoint is prepended.
+            base_url_pattern='^https?://[^[:space:]"\\]+$'
+            if [[ -z "$CUSTOM_PROVIDER_PATH" ]]; then
+              echo 'KANA_MODEL_BASE_URL requires custom-provider-path.' >&2
+              exit 1
+            fi
+            if [[ ! "$KANA_MODEL_BASE_URL" =~ $base_url_pattern ]]; then
+              echo 'KANA_MODEL_BASE_URL must be an http(s) URL without whitespace, quotes, or backslashes.' >&2
+              exit 1
+            fi
+            if grep -Eq '^[[:space:]]*base_url[[:space:]]*=' "$custom_provider_file"; then
+              printf '%s must omit base_url when KANA_MODEL_BASE_URL is set.\n' "$CUSTOM_PROVIDER_PATH" >&2
+              exit 1
+            fi
+            {
+              printf 'base_url = "%s"\n' "$KANA_MODEL_BASE_URL"
+              cat "$custom_provider_file"
+            } > "$custom_provider_file.tmp"
+            mv "$custom_provider_file.tmp" "$custom_provider_file"
           fi
 
           echo "KANA_HOME=$kana_home" >> "$GITHUB_ENV"
@@ -334,8 +361,27 @@ jobs:
         if: steps.context.outputs.active == 'true'
         env:
           KANA_MODEL_API_KEY: ${{ secrets.KANA_MODEL_API_KEY }}
+          KANA_MODEL_BASE_URL: ${{ secrets.KANA_MODEL_BASE_URL }}
         run: |
           set -euo pipefail
+
+          # Text below may be published on a public PR. The endpoint host is redacted
+          # separately because errors often name it without the full base URL.
+          redacted_values=()
+          if [[ -n "$KANA_MODEL_API_KEY" ]]; then
+            redacted_values+=("$KANA_MODEL_API_KEY")
+          fi
+          if [[ -n "$KANA_MODEL_BASE_URL" ]]; then
+            base_url_host="${KANA_MODEL_BASE_URL#*://}"
+            redacted_values+=("$KANA_MODEL_BASE_URL" "${base_url_host%%[/:?#]*}")
+          fi
+          redact() {
+            local text="$1" value
+            for value in "${redacted_values[@]}"; do
+              text="${text//"$value"/[REDACTED]}"
+            done
+            printf '%s' "$text"
+          }
 
           set +e
           "$KANA_BIN" exec --goal --timeout 30m --json --allow-all-tools \
@@ -371,11 +417,11 @@ jobs:
             : > "$RUNNER_TEMP/kana-final-response.txt"
           fi
 
-          # The final response may be published on a public PR, including when its
-          # structure is invalid, so redact the provider credential before parsing it.
-          if [[ -n "${KANA_MODEL_API_KEY:-}" && -s "$RUNNER_TEMP/kana-final-response.txt" ]]; then
-            perl -0pi -e 's/\Q$ENV{KANA_MODEL_API_KEY}\E/[REDACTED]/g' "$RUNNER_TEMP/kana-final-response.txt"
-          fi
+          # Redact before parsing because an invalid structure is still published as raw text.
+          for value in "${redacted_values[@]}"; do
+            REDACTED_VALUE="$value" perl -0pi -e 's/\Q$ENV{REDACTED_VALUE}\E/[REDACTED]/g' \
+              "$RUNNER_TEMP/kana-final-response.txt"
+          done
 
           turn_count="$(jq -r -s '[.[] | select(.type == "model_turn.started")] | length' \
             "$RUNNER_TEMP/kana.jsonl" 2>/dev/null || printf '0')"
@@ -478,16 +524,10 @@ jobs:
             failure_detail="No structured diagnostic was emitted; inspect the workflow run logs."
           fi
 
-          if [[ -n "${KANA_MODEL_API_KEY:-}" && -n "$failure_detail" ]]; then
-            failure_detail="${failure_detail//$KANA_MODEL_API_KEY/[REDACTED]}"
-          fi
-          failure_detail="$(printf '%s' "$failure_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
+          failure_detail="$(redact "$failure_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
           printf '%s\n' "$failure_detail" > "$RUNNER_TEMP/kana-failure.txt"
 
-          if [[ -n "${KANA_MODEL_API_KEY:-}" && -n "$goal_detail" ]]; then
-            goal_detail="${goal_detail//$KANA_MODEL_API_KEY/[REDACTED]}"
-          fi
-          goal_detail="$(printf '%s' "$goal_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
+          goal_detail="$(redact "$goal_detail" | tr '\r\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1000)"
           printf '%s\n' "$goal_detail" > "$RUNNER_TEMP/kana-goal-detail.txt"
 
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"

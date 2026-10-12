@@ -120,6 +120,22 @@ with:
 The complete provider schema and endpoint trust boundary are documented in
 [Custom OpenAI-compatible provider](custom-provider.md).
 
+To keep the endpoint out of a public repository, omit `base_url` from the provider file and
+pass it as the optional `KANA_MODEL_BASE_URL` secret:
+
+```yaml
+secrets:
+  KANA_GITHUB_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+  KANA_MODEL_API_KEY: ${{ secrets.KANA_MODEL_API_KEY }}
+  KANA_MODEL_BASE_URL: ${{ secrets.KANA_MODEL_BASE_URL }}
+```
+
+The workflow then writes that value as the provider's `base_url`. Setting the secret
+requires `custom-provider-path`, and the provider file must not define `base_url` itself.
+The URL and its host are redacted from handoff and failure text like the API key. Kana can
+still read the endpoint at runtime, so this hides it from repository content and published
+summaries rather than from the agent.
+
 At runtime, the workflow copies the selected files from the caller commit that triggered
 the workflow into `$RUNNER_TEMP/kana-home` and exports that directory as `KANA_HOME`.
 Sessions, logs, usage, and other mutable state therefore do not pollute the checkout. PR

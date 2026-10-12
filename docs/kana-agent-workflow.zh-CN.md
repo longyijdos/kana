@@ -116,6 +116,21 @@ with:
 完整 provider schema 和 endpoint 信任边界见
 [Custom OpenAI-compatible provider](custom-provider.zh-CN.md)。
 
+如果不希望 endpoint 出现在公开仓库中，可以在 provider 文件中省略 `base_url`，改用可选的
+`KANA_MODEL_BASE_URL` secret 传入：
+
+```yaml
+secrets:
+  KANA_GITHUB_TOKEN: ${{ secrets.KANA_GITHUB_TOKEN }}
+  KANA_MODEL_API_KEY: ${{ secrets.KANA_MODEL_API_KEY }}
+  KANA_MODEL_BASE_URL: ${{ secrets.KANA_MODEL_BASE_URL }}
+```
+
+workflow 会把该值写入 provider 的 `base_url`。设置该 secret 时必须同时提供
+`custom-provider-path`，且 provider 文件本身不能定义 `base_url`。与 API key 一样，URL 及其
+host 会先从 handoff 和失败文本中抹除再发布。Kana 运行时仍能读取 endpoint，因此它隐藏的是
+仓库内容和发布的摘要，而不是对 agent 隐藏。
+
 运行时，workflow 会从触发运行的 caller commit 中把所选文件复制到
 `$RUNNER_TEMP/kana-home`，并把该目录导出为 `KANA_HOME`。Session、日志、用量及其它可变状态
 不会污染 checkout。PR follow-up 不能从 Kana 创建的工作分支替换可信配置；配置始终来自触发

@@ -1,14 +1,13 @@
-base_url = "https://api.commandcode.ai/provider/v1"
+# base_url comes from the KANA_MODEL_BASE_URL repository secret.
 api_key_env = "KANA_MODEL_API_KEY"
 timeout_ms = 120000
-max_retries = 1
+max_retries = 3
 
 [[models]]
-name = "deepseek/deepseek-v4.1-flash"
-context_window = 1000000
-max_output_tokens = 384000
+name = "gemini-3.8-flash-high"
+context_window = 1048576
+max_output_tokens = 65536
 supports_parallel_tool_calls = true
 supports_image_input = true
-assistant_replay_fields = ["reasoning", "reasoning_details"]
-reasoning_efforts = ["low", "high", "max"]
-default_reasoning_effort = "high"
+reasoning_efforts = ["low", "medium", "high"]
+default_reasoning_effort = "medium"
