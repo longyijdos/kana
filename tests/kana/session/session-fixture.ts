@@ -8,9 +8,10 @@ export function createSessionFixture() {
   function createTempEnv(): NodeJS.ProcessEnv {
     const home = mkdtempSync(path.join(tmpdir(), "kana-session-"));
     tempDirs.push(home);
-    mkdirSync(path.join(home, ".kana"), { recursive: true });
+    const kanaHome = path.join(home, ".kana");
+    mkdirSync(kanaHome, { recursive: true });
 
-    return { HOME: home };
+    return { HOME: home, KANA_HOME: kanaHome };
   }
 
   function cleanupTempDirs(): void {
