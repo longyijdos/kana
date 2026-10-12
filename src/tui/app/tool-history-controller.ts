@@ -49,10 +49,9 @@ export class ToolHistoryController {
       return;
     }
 
-    const restoreFocus = this.options.bottomArea.hasFocus(this.activePicker);
     const picker = this.activePicker;
     this.activePicker = undefined;
-    this.options.bottomArea.restore(picker, restoreFocus);
+    this.options.bottomArea.restore(picker);
   }
 
   private finish(decision: ToolHistoryPickerDecision): void {

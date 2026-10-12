@@ -72,11 +72,10 @@ export class ContentViewerController {
     }
 
     const viewer = this.activeViewer;
-    const restoreFocus = this.options.bottomArea.hasFocus(viewer);
 
     this.activeViewer = undefined;
     this.activeToolId = undefined;
-    this.options.bottomArea.restore(viewer, restoreFocus);
+    this.options.bottomArea.restore(viewer);
   }
 
   // Tool-to-tool navigation replaces the bottom viewer directly: the editor

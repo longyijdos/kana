@@ -248,14 +248,13 @@ export class McpServerManagerController {
     }
 
     const visible = authMenu && this.options.bottomArea.isShowing(authMenu) ? authMenu : manager;
-    const restoreFocus = visible !== undefined && this.options.bottomArea.hasFocus(visible);
     this.activeManager = undefined;
     this.activeAuthMenu = undefined;
     this.authOperation = undefined;
     this.servers = [];
 
     if (visible) {
-      this.options.bottomArea.restore(visible, restoreFocus);
+      this.options.bottomArea.restore(visible);
     }
     this.options.onClose(changed);
   }

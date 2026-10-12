@@ -56,12 +56,11 @@ export class SubagentManagerController {
   close(): void {
     const manager = this.manager;
     if (!manager) return;
-    const restoreFocus = this.options.bottomArea.hasFocus(manager);
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.manager = undefined;
     this.subagents = undefined;
-    this.options.bottomArea.restore(manager, restoreFocus);
+    this.options.bottomArea.restore(manager);
     this.options.onClose();
   }
 

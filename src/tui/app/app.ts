@@ -452,13 +452,7 @@ export class KanaTuiApp {
       renderLatex: this.renderLatex,
       renderMermaid: this.renderMermaid,
       isRunning: () => this.status.running,
-      closeOtherOverlays: () => {
-        this.skillManager.close();
-        this.scheduledMessageManager.close();
-        this.backgroundJobManager.close();
-        this.subagentManager.close();
-        this.toolHistory.close();
-      },
+      closeOtherOverlays: () => this.closeOverlays(this.sessions),
       closeContentViewer: () => this.contentViewer.close(),
       resetAgentEvents: () => this.agentEvents.resetRun(),
       clearMcpOAuthBlocks: () => this.mcpOAuthStatus.clear(),
@@ -533,11 +527,11 @@ export class KanaTuiApp {
       },
       openScheduledMessageManager: () => {
         this.editor.clear();
-        this.openScheduledMessageManager();
+        this.openOverlay(this.scheduledMessageManager, () => this.scheduledMessageManager.open());
       },
       openBackgroundJobManager: () => {
         this.editor.clear();
-        this.openBackgroundJobManager();
+        this.openOverlay(this.backgroundJobManager, () => this.backgroundJobManager.open());
       },
       openSubagentManager: () => {
         this.editor.clear();
@@ -549,12 +543,12 @@ export class KanaTuiApp {
       },
       openTodo: () => {
         this.editor.clear();
-        this.openTodoViewer();
+        this.openOverlay(this.contentViewer, () => this.informationViewer.openTodos());
       },
       openTask: () => this.slashCommandOptions.openTask(),
       openToolHistory: () => {
         this.editor.clear();
-        this.openToolHistoryPicker();
+        this.openOverlay(this.toolHistory, () => this.toolHistory.open());
       },
       attachImageFile: (path) => {
         void this.imageAttachments.attachFile(path);
@@ -862,17 +856,7 @@ export class KanaTuiApp {
       this.showInteractionError(new Error("Skills are unavailable in clean mode."));
       return;
     }
-    if (this.status.running) {
-      return;
-    }
-
-    this.sessions.close();
-    this.contentViewer.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.skillManager.open();
+    this.openOverlay(this.skillManager, () => this.skillManager.open(), { idleOnly: true });
   }
 
   private openMcpServerManager(): void {
@@ -880,45 +864,12 @@ export class KanaTuiApp {
       this.showInteractionError(new Error("MCP management is unavailable in clean mode."));
       return;
     }
-    if (this.status.running) {
-      return;
-    }
-    if (!this.mcpServerManager) {
+    const manager = this.mcpServerManager;
+    if (!manager) {
       this.showInteractionError(new Error("MCP management is unavailable."));
       return;
     }
-
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.mcpServerManager.open();
-  }
-
-  private openScheduledMessageManager(): void {
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.scheduledMessageManager.open();
-  }
-
-  private openBackgroundJobManager(): void {
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.backgroundJobManager.open();
+    this.openOverlay(manager, () => manager.open(), { idleOnly: true });
   }
 
   private openSubagentManager(): void {
@@ -926,36 +877,37 @@ export class KanaTuiApp {
       this.showInteractionError(new Error("Subagents are unavailable in clean mode."));
       return;
     }
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.toolHistory.close();
-    this.subagentManager.open();
+    this.openOverlay(this.subagentManager, () => this.subagentManager.open());
   }
 
-  private openToolHistoryPicker(): void {
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.open();
+  // Bottom-area overlays are mutually exclusive. Overlays that reconfigure the
+  // Agent (Skills, MCP) cannot open while a run is active.
+  private openOverlay(
+    target: BottomOverlay,
+    open: () => void,
+    options: { idleOnly?: boolean } = {},
+  ): void {
+    if (options.idleOnly && this.status.running) {
+      return;
+    }
+    this.closeOverlays(target);
+    open();
   }
 
-  private openTodoViewer(): void {
-    this.sessions.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.informationViewer.openTodos();
+  private closeOverlays(except?: BottomOverlay): void {
+    const overlays: (BottomOverlay | undefined)[] = [
+      this.sessions,
+      this.contentViewer,
+      this.skillManager,
+      this.mcpServerManager,
+      this.scheduledMessageManager,
+      this.backgroundJobManager,
+      this.subagentManager,
+      this.toolHistory,
+    ];
+    for (const overlay of overlays) {
+      if (overlay !== except) overlay?.close();
+    }
   }
 
   private openMemory(): void {
@@ -1257,3 +1209,5 @@ function formatSubagentWakeContent(content: string): string {
 function formatExitLine(label: string, value: string): string {
   return `${`${label}:`.padEnd(13)}${value}`;
 }
+
+type BottomOverlay = { close(): void };

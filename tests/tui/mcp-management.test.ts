@@ -80,6 +80,26 @@ describe("TUI MCP management", () => {
     expect(internal.editor.render(80).join("\n")).not.toContain("(Loading...)");
   });
 
+  test("closes the MCP manager when the resume picker opens", () => {
+    const app = new KanaTuiApp(() => createAgentStub() as never, createTerminal(), {
+      ...createOptions(),
+      mcp: {
+        management: {
+          loadServers: () => [],
+          saveEnabledServerIds: () => {},
+          reload: async () => ({ status: "", warnings: [] }),
+        },
+      },
+    });
+    const internal = app as unknown as AppInternals;
+
+    internal.handleCommand({ name: "mcp", arguments: "", raw: "/mcp" });
+    expect(internal.mcpServerManager.active).toBe(true);
+
+    internal.handleCommand({ name: "resume", arguments: "", raw: "/resume" });
+    expect(internal.mcpServerManager.active).toBe(false);
+  });
+
   test("recovers the editor with a rebuilt Agent after reload fails", async () => {
     const agentToolStates: boolean[] = [];
     const app = new KanaTuiApp(
@@ -229,7 +249,8 @@ describe("TUI MCP management", () => {
 });
 
 type AppInternals = {
-  handleCommand(command: { name: "mcp"; arguments: string; raw: string }): void;
+  handleCommand(command: { name: "mcp" | "resume"; arguments: string; raw: string }): void;
+  mcpServerManager: { active: boolean };
   handleGlobalInput(data: string): void;
   transcript: { render(width: number): string[] };
   editor: Component;

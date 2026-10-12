@@ -42,12 +42,11 @@ export class BackgroundJobManagerController {
     if (!manager) {
       return;
     }
-    const restoreFocus = this.options.bottomArea.hasFocus(manager);
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.manager = undefined;
     this.jobs = undefined;
-    this.options.bottomArea.restore(manager, restoreFocus);
+    this.options.bottomArea.restore(manager);
     this.options.onClose();
   }
 

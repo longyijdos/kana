@@ -42,13 +42,12 @@ export class SessionOverlayController {
 
   close(): void {
     const activeBottom = this.activeDeleteConfirmation ?? this.activePicker;
-    const restoreFocus = activeBottom ? this.options.bottomArea.hasFocus(activeBottom) : false;
 
     this.activePicker = undefined;
     this.activeDeleteConfirmation = undefined;
 
     if (activeBottom) {
-      this.options.bottomArea.restore(activeBottom, restoreFocus);
+      this.options.bottomArea.restore(activeBottom);
     }
   }
 

@@ -163,10 +163,9 @@ export class SlashCommandOptionsController {
     }
 
     const prompt = this.activePrompt;
-    const restoreFocus = this.options.bottomArea.hasFocus(prompt);
 
     this.activePrompt = undefined;
-    this.options.bottomArea.restore(prompt, restoreFocus);
+    this.options.bottomArea.restore(prompt);
   }
 
   private showMemoryAction(defaultValue: MemoryAction = "show"): void {

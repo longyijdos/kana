@@ -52,9 +52,8 @@ export class SkillManagerController {
     }
 
     const manager = this.activeManager;
-    const restoreFocus = this.options.bottomArea.hasFocus(manager);
     this.activeManager = undefined;
-    this.options.bottomArea.restore(manager, restoreFocus);
+    this.options.bottomArea.restore(manager);
   }
 
   private finish(decision: SkillManagerDecision): void {

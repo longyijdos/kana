@@ -60,12 +60,11 @@ export class ScheduledMessageManagerController {
     }
 
     const activeBottom = this.activeBottom;
-    const restoreFocus = activeBottom ? this.options.bottomArea.hasFocus(activeBottom) : false;
 
     this.manager = undefined;
     this.activeBottom = undefined;
     if (activeBottom) {
-      this.options.bottomArea.restore(activeBottom, restoreFocus);
+      this.options.bottomArea.restore(activeBottom);
     }
     this.options.onClose();
   }
