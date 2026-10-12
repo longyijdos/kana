@@ -100,9 +100,12 @@ export class KanaTuiApp {
   private readonly modelSelection: ModelSelectionController;
   private readonly mcpOAuthStatus: McpOAuthStatusController;
   private readonly mcpLifecycle: McpLifecycleController;
-  private readonly hyperlinks: boolean;
-  private readonly renderLatex: boolean;
-  private readonly renderMermaid: boolean;
+  // Markdown rendering features shared by every transcript and viewer block.
+  private readonly richText: {
+    readonly hyperlinks: boolean;
+    readonly renderLatex: boolean;
+    readonly renderMermaid: boolean;
+  };
   private readonly getLogger: () => Logger;
   private readonly unsubscribeConversationEvents: () => void;
   private stopping = false;
@@ -129,9 +132,11 @@ export class KanaTuiApp {
     this.getLogger = options.diagnostics?.getLogger ?? createNoopLogger;
     // The config enables the feature but never forces OSC 8 through a terminal
     // that the runtime could not positively identify as hyperlink-capable.
-    this.hyperlinks = options.ui.config.hyperlinks && terminal.supportsHyperlinks === true;
-    this.renderLatex = options.ui.config.renderLatex;
-    this.renderMermaid = options.ui.config.renderMermaid;
+    this.richText = {
+      hyperlinks: options.ui.config.hyperlinks && terminal.supportsHyperlinks === true,
+      renderLatex: options.ui.config.renderLatex,
+      renderMermaid: options.ui.config.renderMermaid,
+    };
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       ...options.conversation,
       createAgent: ({ configuration, ...agentOptions }) =>
@@ -189,9 +194,7 @@ export class KanaTuiApp {
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
       tui: this.tui,
-      hyperlinks: this.hyperlinks,
-      renderLatex: this.renderLatex,
-      renderMermaid: this.renderMermaid,
+      ...this.richText,
       smoothTextStreaming: options.ui.config.smoothTextStreaming,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
@@ -254,18 +257,14 @@ export class KanaTuiApp {
       requestRender: () => this.tui.requestRender(),
       showError: (error) => this.showInteractionError(error),
       getLogger: this.getLogger,
-      hyperlinks: this.hyperlinks,
-      renderLatex: this.renderLatex,
-      renderMermaid: this.renderMermaid,
+      ...this.richText,
     });
     this.informationViewer = new InformationViewerController({
       editor: this.editor,
       contentViewer: this.contentViewer,
       status: this.status,
       cleanMode,
-      hyperlinks: this.hyperlinks,
-      renderLatex: this.renderLatex,
-      renderMermaid: this.renderMermaid,
+      ...this.richText,
       loadMemory: this.options.memory.load,
       loadUsage: this.options.usage.load,
       renderTodos: (width) => renderTodoState(this.conversation.todoState, width),
@@ -307,20 +306,9 @@ export class KanaTuiApp {
           diagnostics: [],
         },
       inspect: (inspection, onBack) => {
-        this.contentViewer.open(
-          createSubagentInspectionView(inspection, {
-            hyperlinks: this.hyperlinks,
-            renderLatex: this.renderLatex,
-            renderMermaid: this.renderMermaid,
-          }),
-          onBack,
-        );
+        this.contentViewer.open(createSubagentInspectionView(inspection, this.richText), onBack);
       },
-      renderOptions: {
-        hyperlinks: this.hyperlinks,
-        renderLatex: this.renderLatex,
-        renderMermaid: this.renderMermaid,
-      },
+      renderOptions: this.richText,
       showError: (error) => this.showInteractionError(error),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
@@ -434,9 +422,7 @@ export class KanaTuiApp {
       bottomArea: this.bottomArea,
       transcript: this.transcript,
       tui: this.tui,
-      hyperlinks: this.hyperlinks,
-      renderLatex: this.renderLatex,
-      renderMermaid: this.renderMermaid,
+      ...this.richText,
       isRunning: () => this.status.running,
       closeOtherOverlays: () => this.closeOverlays(this.sessions),
       closeContentViewer: () => this.contentViewer.close(),
