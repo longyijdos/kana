@@ -15,14 +15,16 @@ import {
 } from "../artifacts";
 import { getKanaSessionLogPath } from "../path";
 import {
+  acquireKanaSessionOwnership,
   createKanaSession,
   createKanaSessionJournal,
   deleteKanaSession,
   type KanaSessionJournal,
   type KanaSessionMetadata,
+  type KanaSessionOwnership,
   type LoadKanaSessionResult,
   listKanaSessions,
-  loadKanaSession,
+  openKanaSession,
 } from "../session";
 import { type KanaSubagentClient, KanaSubagentManager } from "../subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
@@ -65,6 +67,14 @@ type HostedSessionRegistryOptions = {
   getSubagentMaxLive: () => number;
 };
 
+// Records of one session ID (a generation being disposed and its replacement)
+// share a single cross-process lock, released with the last record's share.
+type SharedSessionOwnership = {
+  readonly sessionId: string;
+  readonly ownership: KanaSessionOwnership;
+  holders: number;
+};
+
 type HostedSession = {
   data: LoadKanaSessionResult;
   artifactStore: KanaSessionArtifactStore;
@@ -72,6 +82,9 @@ type HostedSession = {
   subagents: KanaSubagentClient;
   userTasks: KanaUserTaskManager;
   journal?: KanaSessionJournal;
+  // Held from load or creation until the record's foreground work, Jobs, and
+  // subagents settle, so no other process can resume or delete the session.
+  ownership?: SharedSessionOwnership;
   logger: Logger;
   pendingForkMessages?: readonly Message[];
   pendingForkCheckpoint?: ContextCheckpoint;
@@ -86,6 +99,7 @@ export class HostedSessionRegistry {
   private readonly sessions = new Map<string, HostedSession>();
   private readonly hostedSessions = new Set<HostedSession>();
   private readonly pendingDisposals = new Map<string, HostedSession[]>();
+  private readonly ownerships = new Map<string, SharedSessionOwnership>();
   private activeSession?: HostedSession;
   private resumableSessionId?: string;
 
@@ -269,9 +283,7 @@ export class HostedSessionRegistry {
 
   loadSession(sessionId: string): LoadKanaSessionResult {
     this.assertSavedSessionsAvailable();
-    const hosted = this.registerSession(
-      loadKanaSession(sessionId, { cwd: process.cwd(), env: this.options.env }),
-    );
+    const hosted = this.registerOpenedSession(sessionId);
     this.logLoadedSession(hosted, "session.resumed");
     return hosted.data;
   }
@@ -286,14 +298,8 @@ export class HostedSessionRegistry {
   async deleteSession(sessionId: string): Promise<boolean> {
     this.assertSavedSessionsAvailable();
     const hosted = this.sessions.get(sessionId);
-    const deleted = deleteKanaSession(sessionId, {
-      cwd: process.cwd(),
-      env: this.options.env,
-    });
-    if (!deleted) {
-      return false;
-    }
-
+    // Local records own the session until disposed, so they settle first and
+    // release ownership; deletion then rejects only another process's owner.
     const disposals = await Promise.allSettled(
       [...this.hostedSessions]
         .filter((session) => session.data.metadata.id === sessionId)
@@ -307,6 +313,14 @@ export class HostedSessionRegistry {
         });
       }
     }
+    const deleted = deleteKanaSession(sessionId, {
+      cwd: process.cwd(),
+      env: this.options.env,
+    });
+    if (!deleted) {
+      return false;
+    }
+
     this.logArtifactCleanup(
       hosted?.logger ?? this.getLogger(),
       "session_delete",
@@ -350,6 +364,7 @@ export class HostedSessionRegistry {
     try {
       await session.disposal;
     } finally {
+      this.releaseOwnership(session);
       if (source === "session_disposal") {
         await this.cleanupArtifactStore(session, source);
       }
@@ -365,7 +380,10 @@ export class HostedSessionRegistry {
         foregroundSettled,
       ]);
     } finally {
-      for (const session of sessions) session.userTasks.close();
+      for (const session of sessions) {
+        session.userTasks.close();
+        this.releaseOwnership(session);
+      }
       await Promise.all(sessions.map((session) => this.cleanupArtifactStore(session, "shutdown")));
     }
   }
@@ -376,12 +394,7 @@ export class HostedSessionRegistry {
     }
     if (selection.type === "resume") {
       this.assertSavedSessionsAvailable();
-      const hosted = this.registerSession(
-        loadKanaSession(selection.sessionId, {
-          cwd: process.cwd(),
-          env: this.options.env,
-        }),
-      );
+      const hosted = this.registerOpenedSession(selection.sessionId);
       this.resumableSessionId = hosted.data.metadata.id;
       this.logLoadedSession(hosted, "session.started", { resumed: true });
       return hosted;
@@ -400,7 +413,50 @@ export class HostedSessionRegistry {
     return hosted;
   }
 
-  private registerSession(data: LoadKanaSessionResult): HostedSession {
+  private registerOpenedSession(sessionId: string): HostedSession {
+    const { session, ownership } = openKanaSession(sessionId, {
+      cwd: process.cwd(),
+      env: this.options.env,
+      ownership: this.ownerships.get(sessionId)?.ownership,
+    });
+    return this.registerSession(session, ownership);
+  }
+
+  private registerSession(
+    data: LoadKanaSessionResult,
+    openedOwnership?: KanaSessionOwnership,
+  ): HostedSession {
+    const ownership = this.options.persistent
+      ? this.retainOwnership(data.metadata, openedOwnership)
+      : undefined;
+    try {
+      return this.createHostedSession(data, ownership);
+    } catch (error) {
+      if (ownership !== undefined) {
+        this.releaseSharedOwnership(ownership, createNoopLogger());
+      }
+      throw error;
+    }
+  }
+
+  private retainOwnership(
+    metadata: KanaSessionMetadata,
+    openedOwnership: KanaSessionOwnership | undefined,
+  ): SharedSessionOwnership {
+    const shared = this.ownerships.get(metadata.id) ?? {
+      sessionId: metadata.id,
+      ownership: openedOwnership ?? acquireKanaSessionOwnership(metadata),
+      holders: 0,
+    };
+    shared.holders += 1;
+    this.ownerships.set(metadata.id, shared);
+    return shared;
+  }
+
+  private createHostedSession(
+    data: LoadKanaSessionResult,
+    ownership: SharedSessionOwnership | undefined,
+  ): HostedSession {
     const { persistent } = this.options;
     const logger = persistent
       ? createSessionLogger({
@@ -443,6 +499,7 @@ export class HostedSessionRegistry {
       ),
       userTasks: new KanaUserTaskManager(),
       ...(persistent ? { journal: createKanaSessionJournal(data.metadata, data.timeline) } : {}),
+      ownership,
       logger,
     };
     this.sessions.set(hosted.data.metadata.id, hosted);
@@ -570,6 +627,12 @@ export class HostedSessionRegistry {
     operation: () => T,
   ): T {
     try {
+      if (hostedSession.ownership === undefined) {
+        throw new Error(
+          `Hosted session ${hostedSession.data.metadata.id} no longer owns its journal.`,
+        );
+      }
+      hostedSession.ownership.ownership.assertOwned();
       return operation();
     } catch (error) {
       hostedSession.logger.error("session.journal_write_failed", {
@@ -594,6 +657,27 @@ export class HostedSessionRegistry {
     const failure = settlements.find((settlement) => settlement.status === "rejected");
     if (failure?.status === "rejected") {
       throw failure.reason;
+    }
+  }
+
+  private releaseOwnership(session: HostedSession): void {
+    const shared = session.ownership;
+    session.ownership = undefined;
+    if (shared !== undefined) {
+      this.releaseSharedOwnership(shared, session.logger);
+    }
+  }
+
+  private releaseSharedOwnership(shared: SharedSessionOwnership, logger: Logger): void {
+    shared.holders -= 1;
+    if (shared.holders > 0) {
+      return;
+    }
+    this.ownerships.delete(shared.sessionId);
+    try {
+      shared.ownership.release();
+    } catch (error) {
+      logger.warn("session.ownership_release_failed", errorFields(error));
     }
   }
 

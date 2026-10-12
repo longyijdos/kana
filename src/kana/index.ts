@@ -110,6 +110,7 @@ export {
   createKanaSession,
   createKanaSessionJournal,
   deleteKanaSession,
+  KanaSessionInUseError,
   type KanaSessionMetadata,
   type KanaSessionTimelineEntry,
   listKanaSessions,

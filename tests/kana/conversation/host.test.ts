@@ -8,8 +8,8 @@ import {
   createKanaConversationHost,
   createKanaSession,
   createKanaSessionJournal,
+  KanaSessionInUseError,
   type KanaTodoItem,
-  loadKanaSession,
   type MemoryConsolidationActivity,
   type MemoryConsolidationEvent,
 } from "../../../src/kana";
@@ -19,6 +19,7 @@ import { MockModel } from "../../../src/providers/mock";
 import { waitFor } from "../../helpers/async-control";
 import { ControlledModel } from "../../helpers/controlled-model";
 import { messageIdentityForTest } from "../../helpers/messages";
+import { readOwnedSession } from "../../helpers/session";
 
 const temporaryHomes: string[] = [];
 const originalKanaHome = process.env.KANA_HOME;
@@ -106,11 +107,10 @@ describe("Kana conversation host", () => {
 
     const sessionId = host.resumeSessionId;
     expect(sessionId).toBeString();
-    expect(
-      loadKanaSession(sessionId ?? "", { cwd: process.cwd(), env }).messages.map(
-        (message) => message.role,
-      ),
-    ).toEqual(["user", "assistant"]);
+    expect(readOwnedSession(sessionId ?? "", env).messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
 
     await runtime.close();
     await host.close();
@@ -309,7 +309,7 @@ describe("Kana conversation host", () => {
         expect(
           (failures[0] as Extract<MemoryConsolidationEvent, { type: "failed" }>).error,
         ).toContain("Custom provider configuration was not found");
-        const saved = loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() });
+        const saved = readOwnedSession(host.resumeSessionId!, env);
         expect(
           saved.messages
             .filter((message) => message.role === "tool")
@@ -388,7 +388,7 @@ describe("Kana conversation host", () => {
         ).toHaveLength(2);
         model.requests[1]!.complete("Tracked.");
         await run;
-        const saved = loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() });
+        const saved = readOwnedSession(host.resumeSessionId!, env);
         expect(saved.todoState).toEqual(items);
         expect(runtime.session!.timeline.map((entry) => entry.id)).toEqual(
           saved.timeline.map((entry) => entry.id),
@@ -428,9 +428,7 @@ describe("Kana conversation host", () => {
         await waitFor(() => model.requests.length === 4);
         model.requests[3]!.complete("Cleared.");
         await clear;
-        expect(
-          loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() }).todoState,
-        ).toEqual([]);
+        expect(readOwnedSession(host.resumeSessionId!, env).todoState).toEqual([]);
       } finally {
         await runtime.close();
         await host.close();
@@ -819,6 +817,26 @@ describe("Kana conversation host", () => {
 
     await runtime.close();
     await host.close();
+  });
+
+  test("keeps a resumed session owned until the hosting conversation closes", async () => {
+    const env = createTempEnv();
+    const session = createKanaSession({ cwd: process.cwd(), env, id: "owned" });
+    createKanaSessionJournal(session).appendSnapshot([
+      { ...messageIdentityForTest("user"), role: "user", content: "Own this session." },
+    ]);
+    const resume = { type: "resume", sessionId: session.id } as const;
+    const owner = createKanaConversationHost({ env, session: resume });
+    const competitor = createKanaConversationHost({ env, session: { type: "none" } });
+
+    expect(() => competitor.loadSession(session.id)).toThrow(KanaSessionInUseError);
+    await expect(competitor.runtimeOptions.deleteSession(session.id)).rejects.toThrow(
+      KanaSessionInUseError,
+    );
+    await owner.close();
+    expect(competitor.loadSession(session.id).messages).toHaveLength(1);
+
+    await competitor.close();
   });
 });
 

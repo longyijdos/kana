@@ -793,6 +793,30 @@ describe("ConversationRuntime", () => {
       "Conversation runtime is stopping.",
     );
   });
+
+  test("disposes a resumed candidate whose Agent cannot be built", async () => {
+    const disposals: Array<{ sessionId: string; source: string }> = [];
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "current", messages: [], timeline: [] },
+      createAgent: (options) => {
+        if (options.sessionId === "broken") {
+          throw new Error("Model unavailable.");
+        }
+        return new Agent({ model: new MockModel({ provider: "mock", model: "mock" }) });
+      },
+      disposeSession: async (sessionId, source, foregroundSettled) => {
+        await foregroundSettled;
+        disposals.push({ sessionId, source });
+      },
+    });
+
+    await expect(runtime.resumeSession("broken")).rejects.toThrow("Model unavailable.");
+    expect(disposals).toEqual([{ sessionId: "broken", source: "session_disposal" }]);
+    expect(runtime.session?.id).toBe("current");
+
+    await runtime.close();
+  });
 });
 
 function createRuntimeOptions() {

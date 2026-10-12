@@ -489,12 +489,26 @@ export class ConversationRuntime<TConfiguration = never> {
     // Build against the candidate session before mutating runtime state. A
     // provider/configuration failure must leave the current Agent usable.
     const nextSession = session;
-    const nextAgent = this.buildAgent(
-      nextSession.messages,
-      nextSession.contextCheckpoint,
-      undefined,
-      nextSession.id,
-    );
+    let nextAgent: Agent;
+    try {
+      nextAgent = this.buildAgent(
+        nextSession.messages,
+        nextSession.contextCheckpoint,
+        undefined,
+        nextSession.id,
+      );
+    } catch (error) {
+      // The host registered the candidate before construction; disposing it
+      // releases session ownership that would otherwise last until shutdown.
+      await this.options
+        .disposeSession?.(nextSession.id, "session_disposal", Promise.resolve())
+        .catch((disposalError: unknown) => {
+          this.getLogger().warn("conversation.session_candidate_disposal_failed", {
+            error: disposalError,
+          });
+        });
+      throw error;
+    }
     const previousAgent = this.agent;
     const previousJobs = this.inputCoordinator.backgroundJobClient;
     const previousSubagents = this.inputCoordinator.subagentClient;
