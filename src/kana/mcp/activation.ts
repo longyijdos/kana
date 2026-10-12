@@ -1,12 +1,11 @@
 import { Type } from "typebox";
 import type { OAuthTokenStatus } from "@/oauth";
-import { nonEmptyString, parseWithSchema, strictObject } from "@/utils";
+import { nonEmptyString, parseWithSchema, strictObject, writeFileAtomic } from "@/utils";
 import { loadKanaOAuthTokenStatuses } from "../auth/token-store";
 import {
   mergeConfigStringSet,
   readOptionalConfigFile,
   withLockedConfigFile,
-  writeConfigFileAtomically,
 } from "../config/file-storage";
 import { getKanaConfigPaths } from "../path";
 import type { KanaMcpConfig } from "./config";
@@ -121,6 +120,6 @@ export function persistKanaMcpActivationState(
       previousSnapshot.enabledServers,
       nextSnapshot.enabledServers,
     );
-    writeConfigFileAtomically(mcpEnabledPath, `${JSON.stringify({ enabledServers }, null, 2)}\n`);
+    writeFileAtomic(mcpEnabledPath, `${JSON.stringify({ enabledServers }, null, 2)}\n`);
   });
 }

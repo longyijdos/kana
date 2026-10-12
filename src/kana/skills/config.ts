@@ -1,12 +1,11 @@
 import path from "node:path";
 import { Type } from "typebox";
-import { parseWithSchema } from "@/utils";
+import { parseWithSchema, writeFileAtomic } from "@/utils";
 
 import {
   mergeConfigStringSet,
   readOptionalConfigFile,
   withLockedConfigFile,
-  writeConfigFileAtomically,
 } from "../config/file-storage";
 import { getKanaConfigPaths } from "../path";
 import type { LoadKanaSkillsOptions } from "./types";
@@ -51,7 +50,7 @@ export function persistEnabledGlobalSkillNames(
   withLockedConfigFile(configPath, () => {
     const persisted = [...parseEnabledGlobalSkillNames(readOptionalConfigFile(configPath))];
     const merged = mergeConfigStringSet(persisted, previousSnapshot, nextSnapshot);
-    writeConfigFileAtomically(configPath, serializeSkillsConfig(merged));
+    writeFileAtomic(configPath, serializeSkillsConfig(merged));
   });
 }
 

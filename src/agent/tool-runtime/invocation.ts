@@ -1,9 +1,9 @@
 import type { ToolCallContent } from "@/core";
 import type { Logger } from "@/logging";
 import { normalizeToolResult, type Tool, validateToolArguments } from "@/tools";
-import { errorFields, formatError } from "@/utils";
+import { errorFields, formatError, SerialTaskQueue } from "@/utils";
 import { createNestedToolInvoker } from "./nested";
-import { type SerialEventQueue, SerialTaskQueue } from "./queues";
+import type { SerialEventQueue } from "./queues";
 import {
   createCanceledToolResult,
   createErrorToolResult,

@@ -5,12 +5,11 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import path from "node:path";
 
+import { writeFileAtomic } from "@/utils";
 import { loadKanaConfig } from "../config";
 import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 
@@ -137,13 +136,7 @@ export function saveKanaMemory(
   const { memoryPath } = getKanaMemoryPaths(scope, options);
   const normalized = assertKanaMemoryContentSize(content, options);
 
-  mkdirSync(path.dirname(memoryPath), { recursive: true });
-  const temporaryPath = `${memoryPath}.${randomUUID()}.tmp`;
-  writeFileSync(temporaryPath, normalized ? `${normalized}\n` : "", {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  renameSync(temporaryPath, memoryPath);
+  writeFileAtomic(memoryPath, normalized ? `${normalized}\n` : "");
 }
 
 export function assertKanaMemoryContentSize(

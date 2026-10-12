@@ -4,6 +4,7 @@ import {
   type McpServerDiagnostic,
   type McpToolRegistry,
 } from "@/mcp";
+import { SerialTaskQueue } from "@/utils";
 
 import {
   createKanaMcpConfigurationStore,
@@ -40,7 +41,7 @@ export class KanaMcpRuntime {
   private configurationSource?: KanaMcpConfigurationSource;
   private manager?: ReturnType<typeof createKanaMcpManager>;
   private selectedServerIdsData: string[] = [];
-  private operationTail: Promise<void> = Promise.resolve();
+  private readonly operations = new SerialTaskQueue();
   private activeOperation?: KanaMcpRuntimeOperation;
   private startRequested = false;
   private closeRequested = false;
@@ -122,7 +123,7 @@ export class KanaMcpRuntime {
   private enqueue<T>(operation: KanaMcpRuntimeOperation, task: () => Promise<T>): Promise<T> {
     // Keep lifecycle mutations serialized even when a UI action, process
     // signal, and startup completion arrive in adjacent microtasks.
-    const result = this.operationTail.then(async () => {
+    return this.operations.run(async () => {
       this.activeOperation = operation;
       try {
         return await task();
@@ -130,11 +131,6 @@ export class KanaMcpRuntime {
         this.activeOperation = undefined;
       }
     });
-    this.operationTail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
   }
 
   private async replaceManager(signal?: AbortSignal): Promise<KanaMcpRuntimeSnapshot> {

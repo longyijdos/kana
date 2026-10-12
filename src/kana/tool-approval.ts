@@ -1,12 +1,8 @@
 import { Type } from "typebox";
 import type { ToolCallContent } from "@/core";
-import { nonEmptyString, parseWithSchema } from "@/utils";
+import { nonEmptyString, parseWithSchema, writeFileAtomic } from "@/utils";
 import type { KanaToolApprovalConfig } from "./config";
-import {
-  readOptionalConfigFile,
-  withLockedConfigFile,
-  writeConfigFileAtomically,
-} from "./config/file-storage";
+import { readOptionalConfigFile, withLockedConfigFile } from "./config/file-storage";
 import { getKanaConfigPaths } from "./path";
 
 export {
@@ -93,7 +89,7 @@ export function addTrustedShellCommand(
         exactCommands: [...approvals.shell.exactCommands, normalized],
       },
     };
-    writeConfigFileAtomically(approvalsPath, `${JSON.stringify(nextApprovals, null, 2)}\n`);
+    writeFileAtomic(approvalsPath, `${JSON.stringify(nextApprovals, null, 2)}\n`);
     return nextApprovals;
   });
 }

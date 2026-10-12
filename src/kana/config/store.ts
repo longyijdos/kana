@@ -1,10 +1,7 @@
+import { writeFileAtomic } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 import type { KanaConfig, KanaConfigDraft } from "./contracts";
-import {
-  readOptionalConfigFile,
-  withLockedConfigFile,
-  writeConfigFileAtomically,
-} from "./file-storage";
+import { readOptionalConfigFile, withLockedConfigFile } from "./file-storage";
 import { applyKanaConfigOverrides } from "./overrides";
 import { listKanaConfigLeaves, parseKanaConfig, validateKanaConfig } from "./parser";
 import { loadKanaConfig } from "./persistence";
@@ -66,7 +63,7 @@ export function createKanaConfigStore(
           );
         }
 
-        writeConfigFileAtomically(configPath, document);
+        writeFileAtomic(configPath, document);
       });
       snapshot = next;
       return snapshot;

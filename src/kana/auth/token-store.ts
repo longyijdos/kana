@@ -1,12 +1,18 @@
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import lockfile from "proper-lockfile";
 import { Type } from "typebox";
 import type { Logger } from "@/logging";
 import type { McpOAuthClientRegistration, McpOAuthClientStore } from "@/mcp";
 import type { OAuthStoredToken, OAuthTokenStatus, OAuthTokenStore } from "@/oauth";
-import { nonEmptyString, parseWithSchema, strictObject } from "@/utils";
+import {
+  nonEmptyString,
+  parseWithSchema,
+  SerialTaskQueue,
+  strictObject,
+  writeFileAtomic,
+} from "@/utils";
 import { getKanaConfigPaths } from "../path";
 
 const TOKEN_FILE_VERSION = 1;
@@ -76,7 +82,7 @@ export function loadKanaOAuthTokenStatuses(
 }
 
 class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientStore {
-  private operationTail: Promise<void> = Promise.resolve();
+  private readonly operations = new SerialTaskQueue();
 
   constructor(
     private readonly filePath: string,
@@ -178,12 +184,7 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.operationTail.then(operation);
-    this.operationTail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
+    return this.operations.run(operation);
   }
 
   private async readFile(): Promise<KanaOAuthTokenFile> {
@@ -207,17 +208,9 @@ class KanaOAuthTokenStore implements KanaOpenAICodexAuthStore, McpOAuthClientSto
   }
 
   private async writeFile(file: KanaOAuthTokenFile): Promise<void> {
-    const directory = path.dirname(this.filePath);
-    const temporaryPath = `${this.filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
     try {
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      await writeFile(temporaryPath, `${JSON.stringify(file, null, 2)}\n`, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
-      await rename(temporaryPath, this.filePath);
+      writeFileAtomic(this.filePath, `${JSON.stringify(file, null, 2)}\n`);
     } catch (error) {
-      await unlink(temporaryPath).catch(() => undefined);
       this.logFailure("oauth.token_store_write_failed", error);
       throw new Error("Failed to write the OAuth token store.", { cause: error });
     }
