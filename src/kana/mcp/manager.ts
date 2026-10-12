@@ -17,7 +17,7 @@ import type { OAuthFetch, OAuthTokenStore } from "@/oauth";
 import { KANA_VERSION } from "@/version";
 import { openKanaOAuthAuthorizationUrl } from "../auth/browser";
 import { createKanaOAuthTokenStore } from "../auth/token-store";
-import type { KanaMcpConfig, KanaMcpServerConfig, KanaMcpStdioServerConfig } from "./config";
+import type { KanaMcpConfig, KanaMcpServerConfig } from "./config";
 import { createHttpProxyFetch } from "./http-proxy";
 import { createKanaMcpOAuthAuthorizer } from "./oauth";
 
@@ -68,7 +68,7 @@ export function createKanaMcpManager(
   const servers = Object.entries(config.mcpServers)
     .filter(([serverId]) => enabledServerIds.has(serverId))
     .map(([serverId, server]) =>
-      createRegistration(serverId, copyServerConfig(server), {
+      createRegistration(serverId, server, {
         env,
         clientInfo,
         getLogger,
@@ -134,7 +134,6 @@ function createRegistration(
         return client;
       }
 
-      let closePromise: Promise<void> | undefined;
       const managedClient: McpManagedClient = {
         get serverInfo() {
           return client.serverInfo;
@@ -150,8 +149,7 @@ function createRegistration(
         callTool: client.callTool.bind(client),
         close() {
           authorizer.beginClose();
-          closePromise ??= client.close().finally(() => authorizer.close());
-          return closePromise;
+          return client.close().finally(() => authorizer.close());
         },
       };
       return managedClient;
@@ -319,37 +317,5 @@ function createStderrLogger(serverId: string, getLogger: () => Logger): (content
         maxChars: MAX_LOGGED_STDERR_CHARS,
       });
     }
-  };
-}
-
-function copyServerConfig(config: KanaMcpServerConfig): KanaMcpServerConfig {
-  if (config.type === "http") {
-    return {
-      ...config,
-      headers: { ...config.headers },
-      ...(config.auth === undefined
-        ? {}
-        : {
-            auth: {
-              ...config.auth,
-              ...(config.auth.scopes === undefined ? {} : { scopes: config.auth.scopes.slice() }),
-              authorizationParameters: { ...config.auth.authorizationParameters },
-            },
-          }),
-      ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools.slice() }),
-      ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools.slice() }),
-    };
-  }
-
-  return copyStdioConfig(config);
-}
-
-function copyStdioConfig(config: KanaMcpStdioServerConfig): KanaMcpStdioServerConfig {
-  return {
-    ...config,
-    args: config.args.slice(),
-    env: { ...config.env },
-    ...(config.includeTools === undefined ? {} : { includeTools: config.includeTools.slice() }),
-    ...(config.excludeTools === undefined ? {} : { excludeTools: config.excludeTools.slice() }),
   };
 }

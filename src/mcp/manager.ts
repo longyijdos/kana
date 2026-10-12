@@ -100,13 +100,10 @@ export class McpManager implements McpToolRegistry {
   private closePromise?: Promise<void>;
 
   constructor(options: McpManagerOptions) {
-    validateRegistrations(options.servers);
     this.onError = options.onError;
     this.onProgress = options.onProgress;
-    // Registrations are caller-owned configuration. Snapshot their mutable
-    // collections so startup behavior cannot change after construction.
     this.records = options.servers.map((registration) => ({
-      registration: copyRegistration(registration),
+      registration,
       status: "idle",
       clientClosed: false,
       tools: [],
@@ -360,45 +357,6 @@ export class McpManager implements McpToolRegistry {
       this.onProgress?.(event);
     } catch {
       // Presentation callbacks cannot change protocol lifecycle or cleanup.
-    }
-  }
-}
-
-function copyRegistration(registration: McpServerRegistration): McpServerRegistration {
-  return {
-    id: registration.id,
-    ...(registration.description === undefined ? {} : { description: registration.description }),
-    ...(registration.includeTools === undefined
-      ? {}
-      : { includeTools: registration.includeTools.slice() }),
-    ...(registration.excludeTools === undefined
-      ? {}
-      : { excludeTools: registration.excludeTools.slice() }),
-    createClient: registration.createClient,
-  };
-}
-
-function validateRegistrations(registrations: readonly McpServerRegistration[]): void {
-  const serverIds = new Set<string>();
-
-  for (const registration of registrations) {
-    if (!registration.id.trim()) {
-      throw new Error("MCP server ID cannot be empty.");
-    }
-    if (serverIds.has(registration.id)) {
-      throw new Error(`Duplicate MCP server ID: ${registration.id}.`);
-    }
-
-    serverIds.add(registration.id);
-    validateToolNames(registration.includeTools ?? [], `include_tools for ${registration.id}`);
-    validateToolNames(registration.excludeTools ?? [], `exclude_tools for ${registration.id}`);
-  }
-}
-
-function validateToolNames(names: Iterable<string>, source: string): void {
-  for (const name of names) {
-    if (typeof name !== "string" || !name.trim()) {
-      throw new Error(`MCP ${source} names must be non-empty strings.`);
     }
   }
 }

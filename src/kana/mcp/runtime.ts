@@ -44,34 +44,18 @@ export class KanaMcpRuntime {
   private readonly operations = new SerialTaskQueue();
   private activeOperation?: KanaMcpRuntimeOperation;
   private startRequested = false;
-  private closeRequested = false;
   private closePromise?: Promise<void>;
 
   constructor(options: CreateKanaMcpRuntimeOptions = {}) {
-    this.env = { ...(options.env ?? process.env) };
-    this.configurationSource = options.configurationSource;
-    // Runtime reloads reuse these values. Snapshot iterable and object options
-    // so a one-shot generator or later caller mutation cannot change behavior.
+    const { configurationSource, onProgress, ...managerOptions } = options;
+    this.env = options.env ?? process.env;
+    this.configurationSource = configurationSource;
     this.managerOptions = {
+      ...managerOptions,
       env: this.env,
-      ...(options.getLogger === undefined ? {} : { getLogger: options.getLogger }),
-      ...(options.clientInfo === undefined ? {} : { clientInfo: { ...options.clientInfo } }),
-      ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
-      ...(options.oauthTokenStore === undefined
-        ? {}
-        : { oauthTokenStore: options.oauthTokenStore }),
-      ...(options.oauthClientStore === undefined
-        ? {}
-        : { oauthClientStore: options.oauthClientStore }),
-      ...(options.openOAuthAuthorizationUrl === undefined
-        ? {}
-        : { openOAuthAuthorizationUrl: options.openOAuthAuthorizationUrl }),
-      ...(options.onOAuthDiagnostic === undefined
-        ? {}
-        : { onOAuthDiagnostic: options.onOAuthDiagnostic }),
       onProgress: (event) => {
         if (this.activeOperation !== undefined) {
-          options.onProgress?.({ ...event, runtimeOperation: this.activeOperation });
+          onProgress?.({ ...event, runtimeOperation: this.activeOperation });
         }
       },
     };
@@ -93,7 +77,7 @@ export class KanaMcpRuntime {
     if (this.startRequested) {
       return Promise.reject(new Error("MCP runtime can only be started once."));
     }
-    if (this.closeRequested) {
+    if (this.closePromise) {
       return Promise.reject(new Error("MCP runtime is closing or closed."));
     }
 
@@ -105,7 +89,7 @@ export class KanaMcpRuntime {
     if (!this.startRequested) {
       return Promise.reject(new Error("MCP runtime must be started before it can reload."));
     }
-    if (this.closeRequested) {
+    if (this.closePromise) {
       return Promise.reject(new Error("MCP runtime is closing or closed."));
     }
 
@@ -113,10 +97,7 @@ export class KanaMcpRuntime {
   }
 
   close(): Promise<void> {
-    if (!this.closePromise) {
-      this.closeRequested = true;
-      this.closePromise = this.enqueue("close", () => this.closeCurrentManager());
-    }
+    this.closePromise ??= this.enqueue("close", () => this.closeCurrentManager());
     return this.closePromise;
   }
 
@@ -134,13 +115,13 @@ export class KanaMcpRuntime {
   }
 
   private async replaceManager(signal?: AbortSignal): Promise<KanaMcpRuntimeSnapshot> {
-    if (this.closeRequested) {
+    if (this.closePromise) {
       throw new Error("MCP runtime is closing or closed.");
     }
 
     await this.closeCurrentManager();
     throwIfOperationAborted(signal);
-    if (this.closeRequested) {
+    if (this.closePromise) {
       throw new Error("MCP runtime is closing or closed.");
     }
 
