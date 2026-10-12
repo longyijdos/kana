@@ -1,5 +1,5 @@
 import type { ModelMetadata, UserImage } from "@/core";
-import { createNoopLogger, type Logger } from "@/logging";
+import type { Logger } from "@/logging";
 import { loadUserImageFile } from "@/tools";
 import { errorFields } from "@/utils";
 import { readClipboardImage } from "../clipboard-image";
@@ -13,7 +13,7 @@ export type ImageAttachmentControllerOptions = {
   getModelMetadata: () => ModelMetadata;
   getModelSettings?: () => TuiModelSettings;
   showError: (error: unknown) => void;
-  getLogger?: () => Logger;
+  getLogger: () => Logger;
 };
 
 export class ImageAttachmentController {
@@ -44,7 +44,7 @@ export class ImageAttachmentController {
       }
       this.options.editor.attachImage(image);
       try {
-        (this.options.getLogger ?? createNoopLogger)().debug("tui.clipboard_paste_completed", {
+        this.options.getLogger().debug("tui.clipboard_paste_completed", {
           contentType: "image",
           mimeType: image.mimeType,
           width: image.width,
@@ -55,7 +55,7 @@ export class ImageAttachmentController {
       }
     } catch (error) {
       try {
-        (this.options.getLogger ?? createNoopLogger)().warn("tui.clipboard_paste_failed", {
+        this.options.getLogger().warn("tui.clipboard_paste_failed", {
           platform: process.platform,
           ...errorFields(error),
         });
@@ -84,7 +84,7 @@ export class ImageAttachmentController {
       this.options.editor.attachImage(image);
       this.options.editor.setText("");
       try {
-        (this.options.getLogger ?? createNoopLogger)().debug("tui.image_file_attach_completed", {
+        this.options.getLogger().debug("tui.image_file_attach_completed", {
           mimeType: image.mimeType,
           width: image.width,
           height: image.height,
@@ -94,7 +94,7 @@ export class ImageAttachmentController {
       }
     } catch (error) {
       try {
-        (this.options.getLogger ?? createNoopLogger)().warn("tui.image_file_attach_failed", {
+        this.options.getLogger().warn("tui.image_file_attach_failed", {
           ...errorFields(error),
         });
       } catch {

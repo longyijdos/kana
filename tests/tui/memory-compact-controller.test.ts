@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createNoopLogger } from "@/logging";
 import { MemoryCompactController } from "../../src/tui/app/memory-compact-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { type Terminal, Tui } from "../../src/tui/runtime";
@@ -21,6 +22,7 @@ describe("memory compact controller", () => {
     const editor = new Editor();
     const compactCalls: Array<{ scope: string; request: string | undefined }> = [];
     const controller = new MemoryCompactController({
+      getLogger: createNoopLogger,
       editor,
       transcript: new Transcript(),
       tui: new Tui(new FakeTerminal()),

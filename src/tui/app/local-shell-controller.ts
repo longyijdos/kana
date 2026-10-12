@@ -1,4 +1,4 @@
-import { createNoopLogger, type Logger } from "@/logging";
+import type { Logger } from "@/logging";
 import { createShellTool, normalizeToolResult } from "@/tools";
 import { formatError } from "@/utils";
 import { type Editor, type StatusLineState, ToolCallBlock, type Transcript } from "../components";
@@ -13,7 +13,7 @@ export type LocalShellControllerOptions = {
   onRunStart: () => void;
   onRunEnd: () => void;
   updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
-  getLogger?: () => Logger;
+  getLogger: () => Logger;
 };
 
 export class LocalShellController {
@@ -28,13 +28,13 @@ export class LocalShellController {
     if (!this.run.abort()) {
       return false;
     }
-    (this.options.getLogger ?? createNoopLogger)().info("local_shell.abort_requested");
+    this.options.getLogger().info("local_shell.abort_requested");
     return true;
   }
 
   async submit(command: string): Promise<void> {
     const shellCommand = command.trim();
-    const logger = (this.options.getLogger ?? createNoopLogger)();
+    const logger = this.options.getLogger();
 
     if (!shellCommand) {
       return;

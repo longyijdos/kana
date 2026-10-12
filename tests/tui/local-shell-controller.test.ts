@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createNoopLogger } from "@/logging";
 import { LocalShellController } from "../../src/tui/app/local-shell-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
@@ -30,6 +31,7 @@ describe("local shell controller", () => {
     const transcript = new Transcript();
     const editor = new Editor();
     const controller = new LocalShellController({
+      getLogger: createNoopLogger,
       editor,
       transcript,
       tui: new Tui(new FakeTerminal()),

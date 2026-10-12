@@ -1,4 +1,4 @@
-import { createNoopLogger, type Logger } from "@/logging";
+import type { Logger } from "@/logging";
 import { formatError } from "@/utils";
 import { type Editor, type StatusLineState, TextBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
@@ -26,7 +26,7 @@ export type MemoryCompactControllerOptions = {
     userRequest: string | undefined,
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
-  getLogger?: () => Logger;
+  getLogger: () => Logger;
 };
 
 export class MemoryCompactController {
@@ -40,7 +40,7 @@ export class MemoryCompactController {
     if (!this.run.abort()) {
       return false;
     }
-    (this.options.getLogger ?? createNoopLogger)().info("memory_compact.abort_requested");
+    this.options.getLogger().info("memory_compact.abort_requested");
     return true;
   }
 
@@ -49,7 +49,7 @@ export class MemoryCompactController {
       return;
     }
 
-    const logger = (this.options.getLogger ?? createNoopLogger)();
+    const logger = this.options.getLogger();
     this.options.editor.clear();
     this.options.transcript.addChild(
       new TextBlock(`Compacting ${formatTarget(target)} memory…`, { color: tuiTheme.muted }),
