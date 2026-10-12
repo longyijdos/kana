@@ -1,6 +1,10 @@
 import { type ConversationRuntime, createKanaConversationHost, type KanaLaunchMode } from "@/kana";
 import type { McpServerDiagnostic } from "@/mcp";
-import { createHeadlessSignalReason, readHeadlessSignalReason } from "./run-lifecycle";
+import {
+  createHeadlessSignalReason,
+  readHeadlessSignalReason,
+  SIGINT_EXIT_CODE,
+} from "./run-lifecycle";
 import { type HeadlessWarning, writeHeadlessStartupError } from "./run-output";
 import { createHeadlessRuntime, runHeadlessConversation } from "./runner";
 import { assertValidHeadlessTimeoutMs } from "./timeout";
@@ -71,18 +75,9 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
 
     const mcpSnapshot = await host.startMcp();
     runtime.reconfigure();
-    host.getLogger().info("headless.mcp_ready", {
-      selectedServerCount: mcpSnapshot.selectedServerIds.length,
-      readyServerCount: mcpSnapshot.diagnostics.filter(
-        (diagnostic) => diagnostic.status === "ready",
-      ).length,
-      toolCount: mcpSnapshot.diagnostics
-        .filter((diagnostic) => diagnostic.status === "ready")
-        .reduce((count, diagnostic) => count + diagnostic.toolCount, 0),
-    });
     if (controller.signal.aborted) {
       host.getLogger().info("headless.interrupted", { phase: "mcp_startup" });
-      return 130;
+      return SIGINT_EXIT_CODE;
     }
 
     const result = await runHeadlessConversation({
@@ -111,7 +106,7 @@ export async function startHeadless(options: StartHeadlessOptions = {}): Promise
       error,
     });
     writeHeadlessStartupError(error, options.json ?? false);
-    return readHeadlessSignalReason(controller.signal)?.reason === "sigint" ? 130 : 1;
+    return readHeadlessSignalReason(controller.signal)?.reason === "sigint" ? SIGINT_EXIT_CODE : 1;
   } finally {
     process.off("SIGINT", onInterrupt);
     await closeHeadlessResources(runtime, host);

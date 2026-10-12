@@ -8,7 +8,7 @@ import {
   toKanaExecRunTermination,
   toKanaExecUsage,
 } from "./protocol";
-import type { HeadlessRunTermination } from "./run-lifecycle";
+import { type HeadlessRunTermination, SIGINT_EXIT_CODE } from "./run-lifecycle";
 
 export type HeadlessOutputStream = {
   write(chunk: string): unknown;
@@ -342,7 +342,7 @@ export class HeadlessRunOutputProjector {
       case "timeout":
         return 124;
       case "sigint":
-        return 130;
+        return SIGINT_EXIT_CODE;
       default:
         return this.options.goal
           ? this.goal?.status === "completed"

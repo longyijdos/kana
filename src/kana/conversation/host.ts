@@ -473,8 +473,8 @@ export class KanaConversationHost<TConfiguration = never> {
             }),
           );
           const activeSession = this.sessionRegistry.getActiveSession();
-          if (activeSession) {
-            recordKanaAgentRunAccounting({
+          if (activeSession?.persistent) {
+            recordAccounting(logger, "manual_memory_consolidation", {
               sessionId: activeSession.id,
               cwd: activeSession.cwd,
               agentKind: "memory_consolidation",
@@ -566,22 +566,15 @@ export class KanaConversationHost<TConfiguration = never> {
           return;
         }
 
-        try {
-          recordKanaAgentRunAccounting({
-            sessionId: session.id,
-            cwd: session.cwd,
-            agentKind: "main",
-            outcome: event.reason,
-            messages,
-            model: state.model.metadata,
-            additionalUsage: addCompactionUsage(compactions),
-          });
-        } catch (error) {
-          logger.error("accounting.record_failed", {
-            phase: "conversation_run",
-            error,
-          });
-        }
+        recordAccounting(logger, "conversation_run", {
+          sessionId: session.id,
+          cwd: session.cwd,
+          agentKind: "main",
+          outcome: event.reason,
+          messages,
+          model: state.model.metadata,
+          additionalUsage: addCompactionUsage(compactions),
+        });
 
         const accountingSession = {
           id: session.id,
@@ -591,7 +584,7 @@ export class KanaConversationHost<TConfiguration = never> {
           ?.schedule(rememberedEntries.splice(0), {
             logger,
             onCompleted: (scope, result) =>
-              recordKanaAgentRunAccounting({
+              recordAccounting(logger, "automatic_memory_consolidation", {
                 sessionId: accountingSession.id,
                 cwd: accountingSession.cwd,
                 agentKind: "memory_consolidation",
@@ -613,22 +606,15 @@ export class KanaConversationHost<TConfiguration = never> {
           return;
         }
 
-        try {
-          recordKanaAgentRunAccounting({
-            sessionId: session.id,
-            cwd: session.cwd,
-            agentKind: "main",
-            outcome: "stop",
-            messages: [],
-            model: state.model.metadata,
-            additionalUsage: compaction.usage,
-          });
-        } catch (error) {
-          logger.error("accounting.record_failed", {
-            phase: "manual_compaction",
-            error,
-          });
-        }
+        recordAccounting(logger, "manual_compaction", {
+          sessionId: session.id,
+          cwd: session.cwd,
+          agentKind: "main",
+          outcome: "stop",
+          messages: [],
+          model: state.model.metadata,
+          additionalUsage: compaction.usage,
+        });
       },
     };
   }
@@ -684,23 +670,15 @@ export class KanaConversationHost<TConfiguration = never> {
       onRunCommitted: ({ messages, compactions, state, event }) => {
         terminalReason = event.reason;
         if (!context.owner.persistent) return;
-        try {
-          recordKanaAgentRunAccounting({
-            sessionId: context.owner.sessionId,
-            cwd: context.owner.cwd,
-            agentKind: "subagent",
-            outcome: event.reason,
-            messages,
-            model: state.model.metadata,
-            additionalUsage: addCompactionUsage(compactions),
-          });
-        } catch (error) {
-          logger.error("accounting.record_failed", {
-            phase: "subagent_run",
-            agentId: context.agentId,
-            error,
-          });
-        }
+        recordAccounting(logger, "subagent_run", {
+          sessionId: context.owner.sessionId,
+          cwd: context.owner.cwd,
+          agentKind: "subagent",
+          outcome: event.reason,
+          messages,
+          model: state.model.metadata,
+          additionalUsage: addCompactionUsage(compactions),
+        });
       },
     });
     context.setLiveSnapshot(() => {
@@ -874,4 +852,18 @@ function toSessionSnapshot(session: LoadKanaSessionResult): ConversationSessionS
     todoState: session.todoState,
     contextCheckpoint: session.contextCheckpoint,
   };
+}
+
+// Accounting is a best-effort ledger: a failed write is logged and never fails
+// the run that produced it.
+function recordAccounting(
+  logger: Logger,
+  phase: string,
+  record: Parameters<typeof recordKanaAgentRunAccounting>[0],
+): void {
+  try {
+    recordKanaAgentRunAccounting(record);
+  } catch (error) {
+    logger.error("accounting.record_failed", { phase, error });
+  }
 }

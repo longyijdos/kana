@@ -88,6 +88,9 @@ export function createHeadlessSignalReason(
   return { [HEADLESS_SIGNAL_REASON]: termination };
 }
 
+// Shell convention for a process interrupted by SIGINT (128 + 2).
+export const SIGINT_EXIT_CODE = 130;
+
 export function readHeadlessSignalReason(
   signal: AbortSignal | undefined,
 ): HeadlessRunTermination | undefined {
