@@ -1,7 +1,7 @@
 import type { Agent, ContextCheckpoint, PromptSystemSection } from "@/agent";
 import { addModelUsage, type ModelUsage, type ToolCallContent } from "@/core";
 import type { Logger } from "@/logging";
-import type { McpOAuthHttpDiagnosticEvent, McpToolSource } from "@/mcp";
+import type { McpOAuthHttpDiagnosticEvent, McpToolRegistry, McpToolSource } from "@/mcp";
 import type { OAuthTokenStatus } from "@/oauth";
 import { formatError, shortId } from "@/utils";
 import {
@@ -179,11 +179,9 @@ export class KanaConversationHost<TConfiguration = never> {
     this.subagentProfileSnapshot = this.persistent
       ? loadKanaSubagentProfiles({ env: this.env })
       : { profiles: [], diagnostics: [] };
-    this.instructionSections = loadKanaInstructionSections({
-      cwd: process.cwd(),
-      env: this.env,
-      launchMode: this.launchMode,
-    });
+    this.instructionSections = this.persistent
+      ? loadKanaInstructionSections({ cwd: process.cwd(), env: this.env })
+      : [];
     this.createAgentProduct = options.createAgent ?? createKanaConversationAgent;
     this.enableScheduledWakeTool = options.enableScheduledWakeTool ?? true;
     this.enableUserTasks = options.enableUserTasks ?? false;
@@ -537,11 +535,11 @@ export class KanaConversationHost<TConfiguration = never> {
 
     return {
       ...agentOptions,
-      resolveMcp: () => this.mcpRuntime.registry,
+      resolveMcp: this.resolveMcp,
+      memoryEnabled: this.customizations !== undefined && config.memory.enabled,
       resolveTodoState: sessionBinding.resolveTodoState,
       env: this.env,
       onMemoryRecorded: (entry) => rememberedEntries.push(entry),
-      launchMode: this.launchMode,
       logger,
       artifactStore: sessionBinding.artifactStore,
       backgroundJobs: sessionBinding.backgroundJobs,
@@ -655,9 +653,8 @@ export class KanaConversationHost<TConfiguration = never> {
     });
     const agent = this.createAgentProduct(config, {
       env: this.env,
-      launchMode: this.launchMode,
       logger,
-      resolveMcp: () => this.mcpRuntime.registry,
+      resolveMcp: this.resolveMcp,
       subagentProfile: context.profile,
       customProviderSnapshot: this.customProviderSnapshot,
       journal,
@@ -785,6 +782,12 @@ export class KanaConversationHost<TConfiguration = never> {
     }
   }
 
+  // MCP tools exist only when customizations are loaded; clean mode never
+  // starts the MCP runtime.
+  private get resolveMcp(): (() => McpToolRegistry | undefined) | undefined {
+    return this.customizations ? () => this.mcpRuntime.registry : undefined;
+  }
+
   private requireCustomizations(feature: string): KanaHostCustomizations {
     if (!this.customizations) {
       throw new Error(`${feature} is unavailable in clean mode.`);
@@ -799,14 +802,7 @@ type KanaHostCustomizations = {
 };
 
 function createKanaConversationAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
-  return createKanaAgent(
-    config.agent,
-    {
-      providers: config.provider,
-      memoryEnabled: config.memory.enabled,
-    },
-    options,
-  );
+  return createKanaAgent(config.agent, { providers: config.provider }, options);
 }
 
 export function createKanaConversationHost<TConfiguration = never>(

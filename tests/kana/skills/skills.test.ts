@@ -412,7 +412,7 @@ describe("Kana skills", () => {
     expect(prompt).toContain("<name>test-skill</name>");
   });
 
-  test("createKanaAgent loads skills from the default directories", () => {
+  test("createKanaAgent lists skills loaded from the default directories", () => {
     const cwd = createTempDir();
     const home = createTempDir();
     const previousCwd = process.cwd();
@@ -445,10 +445,11 @@ describe("Kana skills", () => {
           },
         },
       };
-      const agent = createKanaAgent(config.agent, {
-        providers: config.provider,
-        memoryEnabled: config.memory.enabled,
-      });
+      const agent = createKanaAgent(
+        config.agent,
+        { providers: config.provider },
+        { skills: loadKanaSkillActivations().skills.filter((skill) => skill.enabled) },
+      );
 
       expect(agent.state.system).toContain("<name>project-skill</name>");
       expect(agent.state.system).toContain(

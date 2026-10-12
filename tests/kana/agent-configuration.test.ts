@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { createKanaAgent, DEFAULT_KANA_CONFIG, getKanaConfigPaths, type KanaConfig } from "@/kana";
+import { loadKanaInstructionSections } from "../../src/kana/prompt";
 import { cleanupConfigTempDirs, createTempEnv } from "./config/config-fixture";
 
 afterEach(cleanupConfigTempDirs);
@@ -76,10 +77,11 @@ const CONFIG_WITH_TEST_KEY: KanaConfig = {
 function createAgentFromConfig(config: KanaConfig, env: NodeJS.ProcessEnv) {
   return createKanaAgent(
     config.agent,
+    { providers: config.provider },
     {
-      providers: config.provider,
+      env,
       memoryEnabled: config.memory.enabled,
+      instructionSections: loadKanaInstructionSections({ env }),
     },
-    { env },
   );
 }

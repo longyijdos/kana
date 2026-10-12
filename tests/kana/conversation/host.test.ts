@@ -610,12 +610,12 @@ describe("Kana conversation host", () => {
     const env = createTempEnv();
     writeFileSync(path.join(env.KANA_HOME ?? "", "mcp.json"), "invalid MCP config");
     let mcpStartCount = 0;
-    const seenLaunchModes: Array<string | undefined> = [];
+    const seenOptions: Array<{ mcp: boolean; memory: boolean | undefined }> = [];
     const host = createKanaConversationHost({
       env,
       launchMode: "clean",
       createAgent: (_config, options = {}) => {
-        seenLaunchModes.push(options.launchMode);
+        seenOptions.push({ mcp: options.resolveMcp !== undefined, memory: options.memoryEnabled });
         return new Agent({
           model: new MockModel({ provider: "mock", model: "mock" }),
           messages: options.messages,
@@ -639,7 +639,7 @@ describe("Kana conversation host", () => {
     host.createAgent({ sessionId });
     const mcpSnapshot = await host.startMcp();
 
-    expect(seenLaunchModes).toEqual(["clean"]);
+    expect(seenOptions).toEqual([{ mcp: false, memory: false }]);
     expect(mcpStartCount).toBe(0);
     expect(mcpSnapshot).toEqual({ diagnostics: [], selectedServerIds: [] });
     expect(host.loadMcpServers()).toEqual([]);

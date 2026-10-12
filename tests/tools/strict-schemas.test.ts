@@ -88,11 +88,9 @@ function createAgentBuiltInTools(): readonly Tool[] {
     };
     const agent = createKanaAgent(
       config.agent,
+      { providers: config.provider },
       {
-        providers: config.provider,
-        memoryEnabled: config.memory.enabled,
-      },
-      {
+        memoryEnabled: true,
         backgroundJobs,
         resolveMcp: () => ({
           catalog: [{ name: "fixture", description: "Schema fixture." }],
