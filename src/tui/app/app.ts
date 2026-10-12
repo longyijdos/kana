@@ -483,26 +483,15 @@ export class KanaTuiApp {
       },
       forkSession: (prompt) => {
         this.editor.clear();
-        if (cleanMode) {
-          this.showForkingUnavailable();
-          return;
-        }
-        void this.forkSession(prompt);
+        if (!this.unavailableInCleanMode("Forking sessions is")) void this.forkSession(prompt);
       },
       resumeSession: (sessionId) => {
-        if (cleanMode) {
-          this.showSavedSessionsUnavailable();
-          return;
-        }
-        void this.sessions.resume(sessionId);
+        if (!this.unavailableInCleanMode("Saved sessions are"))
+          void this.sessions.resume(sessionId);
       },
       openResumePicker: () => {
         this.editor.clear();
-        if (cleanMode) {
-          this.showSavedSessionsUnavailable();
-          return;
-        }
-        this.sessions.openResume();
+        if (!this.unavailableInCleanMode("Saved sessions are")) this.sessions.openResume();
       },
       openSkillManager: () => {
         this.editor.clear();
@@ -839,18 +828,12 @@ export class KanaTuiApp {
   }
 
   private openSkillManager(): void {
-    if (this.options.launch.mode === "clean") {
-      this.showInteractionError(new Error("Skills are unavailable in clean mode."));
-      return;
-    }
+    if (this.unavailableInCleanMode("Skills are")) return;
     this.openOverlay(this.skillManager, () => this.skillManager.open(), { idleOnly: true });
   }
 
   private openMcpServerManager(): void {
-    if (this.options.launch.mode === "clean") {
-      this.showInteractionError(new Error("MCP management is unavailable in clean mode."));
-      return;
-    }
+    if (this.unavailableInCleanMode("MCP management is")) return;
     const manager = this.mcpServerManager;
     if (!manager) {
       this.showInteractionError(new Error("MCP management is unavailable."));
@@ -860,10 +843,7 @@ export class KanaTuiApp {
   }
 
   private openSubagentManager(): void {
-    if (this.options.launch.mode === "clean") {
-      this.showInteractionError(new Error("Subagents are unavailable in clean mode."));
-      return;
-    }
+    if (this.unavailableInCleanMode("Subagents are")) return;
     this.openOverlay(this.subagentManager, () => this.subagentManager.open());
   }
 
@@ -898,21 +878,16 @@ export class KanaTuiApp {
   }
 
   private openMemory(): void {
-    if (this.options.launch.mode === "clean") {
-      this.editor.clear();
-      this.showInteractionError(new Error("Memory is unavailable in clean mode."));
-      return;
-    }
-
-    this.slashCommandOptions.openMemory();
+    this.editor.clear();
+    if (!this.unavailableInCleanMode("Memory is")) this.slashCommandOptions.openMemory();
   }
 
-  private showSavedSessionsUnavailable(): void {
-    this.showInteractionError(new Error("Saved sessions are unavailable in clean mode."));
-  }
-
-  private showForkingUnavailable(): void {
-    this.showInteractionError(new Error("Forking sessions is unavailable in clean mode."));
+  // Reports features that need persistence or customizations, which a clean
+  // launch does not load. Returns true when the feature is unavailable.
+  private unavailableInCleanMode(subject: `${string} ${"is" | "are"}`): boolean {
+    if (this.options.launch.mode !== "clean") return false;
+    this.showInteractionError(new Error(`${subject} unavailable in clean mode.`));
+    return true;
   }
 
   private handleConversationEvent(event: ConversationRuntimeEvent): void {
