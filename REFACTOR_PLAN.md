@@ -516,7 +516,34 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ---
 
-## 阶段 7：前端
+## 阶段 7：前端（已完成）
+
+### 结果
+
+本阶段 src 加 tests 净减少约 260 行（+2465 / −2725，其中大部分是文件拆分带来的移动）。分支累计相对 main 净减少约 4900 行。
+
+| 文件 | 改造前 | 改造后 |
+| --- | --- | --- |
+| `app.ts` | 1,259 行 | 1,134 行 |
+| `editor.ts` | 1,053 行 | 752 行，另拆出 `previews.ts`、`input-frame.ts` |
+| `editor/state.ts` | 844 行 | 311 行，另拆出 `text-state.ts`、`boundaries.ts`、`display.ts` |
+| `render/latex.ts` | 1,575 行 | 拆成 `latex/` 目录：symbols 629、parser 738、layout 268、index 57 |
+| `tools/format.ts` | 572 行 | 410 行，另拆出 `wording.ts` |
+
+### 完成内容
+- `ListViewport.handleNavigationKey` 替代 7 个列表组件中重复的导航按键分支
+- overlay 互斥改为 `openOverlay` 和 `closeOverlays` 一条路径；"运行中不能打开"由 `idleOnly` 统一处理。修复 resume picker 打开时不关闭 MCP 管理面板的 bug，并补了回归测试
+- 9 处多余的 `restoreFocus` 计算删除（`restore()` 的默认参数已经计算了焦点）
+- app：运行输入的 transcript 视图移到 `run-input-view.ts`；`submitPrompt` 和 `queuePrompt` 共用 `createPromptInput`；按 session 取资源统一为 `forActiveSession`；clean 模式提示统一为 `unavailableInCleanMode`
+- editor 与 text-prompt 共用 `input-frame.ts`（插入、粘贴、纵向移动、光标行渲染）；editor 的 Enter 和 Tab 共用 `createSubmit`；三个预览区由同一个 `renderSection` 渲染
+- local shell 和 memory compact 共用 `AuxiliaryRun`；session 的 new 和 resume 共用 `showSession`
+
+### 与原设计的偏差
+- 没有引入 `BottomPanelSlot`：各 overlay controller 的 open 流程差异较大（交出焦点、替换面板、确认弹窗等），真正重复的只有焦点恢复计算，删掉即可
+- `app.ts` 没有降到 600 行：剩余部分主要是构造器中对约 30 个 controller 的线性装配，以及按键和事件分发。进一步拆分需要引入共享上下文对象，并改动所有 controller 的选项类型和大量直接访问 app 内部字段的 TUI 测试，收益不足
+- `latex/parser.ts` 保持 738 行：它是一个内聚的解析器类，拆分环境渲染只会把私有方法散到多个文件
+- headless 和 server 已经在阶段 1 和阶段 6 精简过；server api 的 `closed` 用于在关闭期间拒绝请求，不是冗余标志
+- 分层规则保持不变：前端对 `agent`、`mcp`、`jobs` 等模块的依赖主要是事件协议类型；运行时依赖只有 btw 旁路对话、本地 shell 和图片工具，都是 TUI 自身的功能。现有的分层方向已经能防止反向依赖
 
 ### 细化设计（开工前写定）
 
