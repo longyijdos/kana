@@ -1,26 +1,12 @@
 import type { Static, TSchema } from "typebox";
-import { Compile } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
 import { Value } from "typebox/value";
+import { compileSchema } from "@/utils";
 import { coerceJsonSchemaValue, hasTypeBoxMetadata } from "./json-schema-coercion";
 import type { Tool } from "./tool";
 
-const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
-
-function getValidator(schema: TSchema): ReturnType<typeof Compile> {
-  const cached = validatorCache.get(schema);
-  if (cached) {
-    return cached;
-  }
-
-  const validator = Compile(schema);
-  validatorCache.set(schema, validator);
-
-  return validator;
-}
-
 export function precompileToolParameters<T extends TSchema>(schema: T): T {
-  getValidator(schema);
+  compileSchema(schema);
   return schema;
 }
 
@@ -75,7 +61,7 @@ export function validateToolArguments<T extends TSchema>(tool: Tool<T>, args: un
     converted = coerceJsonSchemaValue(converted, tool.parameters);
   }
 
-  const validator = getValidator(tool.parameters);
+  const validator = compileSchema(tool.parameters);
 
   if (validator.Check(converted)) {
     return converted as Static<T>;

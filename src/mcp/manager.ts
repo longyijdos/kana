@@ -121,10 +121,10 @@ export class McpManager implements McpToolRegistry {
       status: record.status,
       discoveredToolCount: record.discoveredToolCount,
       toolCount: record.tools.length,
-      ...(record.serverInfo === undefined ? {} : { serverInfo: { ...record.serverInfo } }),
+      ...(record.serverInfo === undefined ? {} : { serverInfo: record.serverInfo }),
       ...(record.serverCapabilities === undefined
         ? {}
-        : { serverCapabilities: structuredClone(record.serverCapabilities) }),
+        : { serverCapabilities: record.serverCapabilities }),
       ...(record.error === undefined
         ? {}
         : { error: { name: record.error.name, message: record.error.message } }),

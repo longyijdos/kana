@@ -2,7 +2,7 @@ import path from "node:path";
 
 import type { AgentJournal } from "@/agent";
 import type { Message } from "@/core";
-import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
+import { encodeKanaWorkspacePath, fileNameTimestamp, getKanaConfigPaths } from "../path";
 import { createKanaSessionJournal, type KanaSessionMetadata } from "../session";
 import type { KanaSubagentOwner } from "./manager";
 import type { KanaSubagentProfile } from "./profiles";
@@ -28,7 +28,7 @@ export function createKanaSubagentJournal(options: {
     updatedAt: createdAt,
     title: `${options.profile.name}: ${singleLine(options.task)}`,
     cwd: options.owner.cwd,
-    path: path.join(directory, `${safeTimestamp(createdAt)}_${options.agentId}.jsonl`),
+    path: path.join(directory, `${fileNameTimestamp(createdAt)}_${options.agentId}.jsonl`),
     subagent: {
       parentSessionId: options.owner.sessionId,
       spawnToolCallId: options.spawnToolCallId,
@@ -73,10 +73,6 @@ export function finalOutput(messages: readonly Message[]): string {
     .map((content) => content.text)
     .join("")
     .trim();
-}
-
-function safeTimestamp(timestamp: string): string {
-  return timestamp.replace(/[:.]/g, "-");
 }
 
 function singleLine(value: string): string {

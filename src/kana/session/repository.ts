@@ -11,7 +11,7 @@ import path from "node:path";
 
 import type { ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
-import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
+import { encodeKanaWorkspacePath, fileNameTimestamp, getKanaConfigPaths } from "../path";
 import {
   type CreateKanaSessionOptions,
   entryToContextCheckpoint,
@@ -33,7 +33,7 @@ export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaS
   const createdAt = new Date().toISOString();
   const cwd = options.cwd ?? process.cwd();
   const sessionDir = getKanaSessionDir(cwd, options.env);
-  const filePath = path.join(sessionDir, `${safeTimestamp(createdAt)}_${id}.jsonl`);
+  const filePath = path.join(sessionDir, `${fileNameTimestamp(createdAt)}_${id}.jsonl`);
   const header: KanaSessionHeader = {
     type: "session",
     version: SESSION_VERSION,
@@ -245,10 +245,6 @@ function readKanaSessionFile(filePath: string): {
 
 function getKanaSessionDir(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
   return path.join(getKanaConfigPaths(env).sessionsPath, encodeKanaWorkspacePath(cwd));
-}
-
-function safeTimestamp(timestamp: string): string {
-  return timestamp.replace(/[:.]/g, "-");
 }
 
 function readSessionLines(

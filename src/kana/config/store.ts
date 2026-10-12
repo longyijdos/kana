@@ -1,9 +1,9 @@
-import { writeFileAtomic } from "@/utils";
+import { escapeRegExp, writeFileAtomic } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 import type { KanaConfig, KanaConfigDraft } from "./contracts";
 import { readOptionalConfigFile, withLockedConfigFile } from "./file-storage";
 import { applyKanaConfigOverrides } from "./overrides";
-import { listKanaConfigLeaves, parseKanaConfig, validateKanaConfig } from "./parser";
+import { listKanaConfigLeaves, parseKanaConfig, reviseKanaConfig } from "./parser";
 import { loadKanaConfig } from "./persistence";
 
 type KanaConfigValue =
@@ -33,9 +33,7 @@ export function createKanaConfigStore(
     load: () => snapshot,
     update(mutate) {
       const current = snapshot;
-      const draft = structuredClone(current) as KanaConfigDraft;
-      mutate(draft);
-      const next = validateKanaConfig(draft);
+      const next = reviseKanaConfig(current, mutate);
       const changedLeaves = CONFIG_LEAVES.filter(
         (leaf) => !sameConfigValue(readLeaf(current, leaf), readLeaf(next, leaf)),
       );
@@ -165,8 +163,4 @@ function formatTomlValue(value: Exclude<KanaConfigValue, undefined>): string {
     return JSON.stringify(value);
   }
   return String(value);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

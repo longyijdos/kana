@@ -224,3 +224,7 @@ function workspacePath(rootPath: string, absolutePath: string): WorkspacePath {
 function relativeWorkspacePath(rootPath: string, absolutePath: string): string {
   return path.relative(rootPath, absolutePath) || ".";
 }
+
+export function joinWorkspacePath(basePath: string, childPath: string): string {
+  return basePath === "." ? childPath : path.join(basePath, childPath);
+}

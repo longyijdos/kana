@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { splitContentLines } from "@/utils";
 import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
 import { resolveExistingWorkspaceFile } from "./workspace-path";
@@ -65,7 +66,7 @@ export function createReadTool(
     execute: async (args) => {
       const filePath = await resolveExistingWorkspaceFile(root, args.path);
       const content = await readFile(filePath.absolutePath, "utf8");
-      const lines = splitLines(content);
+      const lines = splitContentLines(content);
       const offset = args.offset ?? 1;
       const limit = args.limit ?? DEFAULT_READ_LIMIT;
       const startIndex = Math.max(offset - 1, 0);
@@ -88,20 +89,6 @@ export function createReadTool(
       };
     },
   };
-}
-
-function splitLines(content: string): string[] {
-  if (!content) {
-    return [];
-  }
-
-  const lines = content.split(/\r?\n/);
-
-  if (lines.at(-1) === "" && /\r?\n$/.test(content)) {
-    lines.pop();
-  }
-
-  return lines;
 }
 
 function formatReadContent(result: ReadToolResult): string {

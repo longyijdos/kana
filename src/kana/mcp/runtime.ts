@@ -20,7 +20,7 @@ export type KanaMcpRuntimeProgressEvent = McpManagerProgressEvent & {
 
 export type KanaMcpRuntimeSnapshot = {
   diagnostics: McpServerDiagnostic[];
-  selectedServerIds: string[];
+  readonly selectedServerIds: readonly string[];
 };
 
 export type KanaMcpRuntimeStartOptions = {
@@ -40,7 +40,7 @@ export class KanaMcpRuntime {
   private readonly managerOptions: Omit<CreateKanaMcpManagerOptions, "enabledServerIds">;
   private configurationSource?: KanaMcpConfigurationSource;
   private manager?: ReturnType<typeof createKanaMcpManager>;
-  private selectedServerIdsData: string[] = [];
+  private selectedServerIdsData: readonly string[] = [];
   private readonly operations = new SerialTaskQueue();
   private activeOperation?: KanaMcpRuntimeOperation;
   private startRequested = false;
@@ -69,8 +69,8 @@ export class KanaMcpRuntime {
     return this.manager?.diagnostics ?? [];
   }
 
-  get selectedServerIds(): string[] {
-    return this.selectedServerIdsData.slice();
+  get selectedServerIds(): readonly string[] {
+    return this.selectedServerIdsData;
   }
 
   start(options: KanaMcpRuntimeStartOptions = {}): Promise<KanaMcpRuntimeSnapshot> {

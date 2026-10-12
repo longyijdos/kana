@@ -22,7 +22,7 @@ export function parseWithSchema<T extends TSchema>(
   value: unknown,
   label: string,
 ): Static<T> {
-  const validator = getValidator(schema);
+  const validator = compileSchema(schema);
   if (validator.Check(value)) {
     return value as Static<T>;
   }
@@ -30,7 +30,8 @@ export function parseWithSchema<T extends TSchema>(
   throw new Error(error ? formatSchemaError(schema, error, label) : `${label} is invalid.`);
 }
 
-function getValidator(schema: TSchema): ReturnType<typeof Compile> {
+// Compiles a schema once and caches the validator by schema identity.
+export function compileSchema(schema: TSchema): ReturnType<typeof Compile> {
   let validator = validators.get(schema);
   if (validator === undefined) {
     validator = Compile(schema);

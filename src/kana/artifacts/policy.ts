@@ -53,7 +53,7 @@ export function createKanaToolResultArtifactPolicy(
           byteLimit,
           (omittedByteLength) => formatArtifactNotice(savedArtifact, omittedByteLength),
         );
-        log(options.logger, "info", "tool.result_artifact_saved", {
+        options.logger?.info("tool.result_artifact_saved", {
           toolName: input.toolCall.name,
           contentByteLength,
           inlineByteLimit: byteLimit,
@@ -66,13 +66,13 @@ export function createKanaToolResultArtifactPolicy(
       } catch (error) {
         if (artifact) {
           await options.store.discard(artifact).catch((cleanupError) => {
-            log(options.logger, "warn", "tool.result_artifact_cleanup_failed", {
+            options.logger?.warn("tool.result_artifact_cleanup_failed", {
               phase: "save_rollback",
               ...errorFields(cleanupError),
             });
           });
         }
-        log(options.logger, "warn", "tool.result_artifact_save_failed", {
+        options.logger?.warn("tool.result_artifact_save_failed", {
           toolName: input.toolCall.name,
           phase: artifact ? "preview" : "write",
           ...errorFields(error),
@@ -131,17 +131,4 @@ function createBoundedPreview(
     throw new Error("The bounded artifact preview exceeded its inline byte limit.");
   }
   return { content: preview, omittedBytes };
-}
-
-function log(
-  logger: Logger | undefined,
-  level: "info" | "warn",
-  event: string,
-  metadata: Record<string, unknown>,
-): void {
-  try {
-    logger?.[level](event, metadata);
-  } catch {
-    // Diagnostics must not change result finalization or cleanup behavior.
-  }
 }

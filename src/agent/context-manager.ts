@@ -7,11 +7,10 @@ import {
   type ModelContext,
   type ModelUsage,
   type ToolCallContent,
-  type UserMessage,
 } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import { errorFields, sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
-import { resolveRuntimeContextMessages } from "./prompt-assembly";
+import { isRuntimeContextMessage, resolveRuntimeContextMessages } from "./prompt-assembly";
 import {
   estimateContextTokens,
   estimateMessagesTokens,
@@ -439,8 +438,8 @@ export class ContextManager {
 
     return {
       system: context.system,
-      messages: messages,
-      tools: context.tools ? [...context.tools] : undefined,
+      messages,
+      tools: context.tools,
       signal: context.signal,
     };
   }
@@ -503,10 +502,6 @@ export class ContextManager {
       throw new Error("Context checkpoint does not match the available message history.");
     }
   }
-}
-
-function isRuntimeContextMessage(message: Message): message is UserMessage {
-  return message.role === "user" && message.provenance.kind === "runtime_context";
 }
 
 function messageForCompaction(message: Message): Message {

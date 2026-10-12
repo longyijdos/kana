@@ -30,10 +30,12 @@ export type { BeforeToolExecutionHook } from "./tool-runtime";
 
 export type AgentContext = {
   system?: string;
-  messages: Message[];
-  tools?: Tool[];
-  callableTools?: Tool[];
+  messages: readonly Message[];
+  tools?: readonly Tool[];
+  callableTools?: readonly Tool[];
 };
+
+type WorkingContext = Omit<AgentContext, "messages"> & { messages: Message[] };
 
 export type AgentLoopConfig = {
   settings: AgentSettings;
@@ -66,12 +68,7 @@ export async function runAgentLoop(
   emit: AgentEventSink,
 ): Promise<Message[]> {
   const { settings, signal } = config;
-  const working: AgentContext = {
-    system: context.system,
-    messages: [...context.messages],
-    tools: context.tools ? [...context.tools] : undefined,
-    callableTools: context.callableTools?.slice(),
-  };
+  const working: WorkingContext = { ...context, messages: [...context.messages] };
   const newMessages: Message[] = [];
   const append = (message: Message): void => {
     working.messages.push(message);
@@ -265,8 +262,8 @@ async function applyPrompt(
         callableTools: context.callableTools,
       };
   context.system = prompt.system;
-  context.tools = prompt.tools.slice();
-  context.callableTools = prompt.callableTools?.slice();
+  context.tools = prompt.tools;
+  context.callableTools = prompt.callableTools;
 
   for (const snapshot of prompt.context) {
     config.signal?.throwIfAborted();
@@ -314,7 +311,7 @@ async function requestAssistantTurn(
   const modelContext: ModelContext = {
     system: context.system,
     messages: [...context.messages],
-    tools: context.tools ? [...context.tools] : undefined,
+    tools: context.tools,
     signal,
   };
   const prepared = config.contextManager

@@ -19,7 +19,7 @@ export {
   type KanaTuiConfig,
 } from "./contracts";
 export { DEFAULT_KANA_CONFIG } from "./defaults";
-export { validateKanaConfig } from "./parser";
+export { reviseKanaConfig } from "./parser";
 export {
   installKanaConfig,
   type KanaInstalledFile,

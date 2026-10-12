@@ -20,7 +20,7 @@ import {
   type KanaNotificationConfig,
   type KanaToolApprovalConfig,
   type KanaTuiConfig,
-  validateKanaConfig,
+  reviseKanaConfig,
 } from "../config";
 import {
   createKanaToolApprovalStore,
@@ -328,9 +328,10 @@ export class KanaConversationHost<TConfiguration = never> {
       if (!this.applyAgentConfiguration) {
         throw new Error("This Kana conversation host does not support Agent reconfiguration.");
       }
-      const draft = structuredClone(this.configData) as KanaConfigDraft;
-      this.applyAgentConfiguration(draft, configuration);
-      const validatedConfig = validateKanaConfig(draft);
+      const apply = this.applyAgentConfiguration;
+      const validatedConfig = reviseKanaConfig(this.configData, (draft) =>
+        apply(draft, configuration),
+      );
       // Model changes remain useful within a temporary conversation, but the
       // clean-mode state boundary must not update the shared config store.
       agent = createAgent(validatedConfig);

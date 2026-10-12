@@ -78,3 +78,7 @@ export function getKanaSessionLogPath(sessionId: string, options: KanaLogPathOpt
     `${sessionId}.jsonl`,
   );
 }
+
+export function fileNameTimestamp(timestamp: string): string {
+  return timestamp.replace(/[:.]/g, "-");
+}

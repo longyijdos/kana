@@ -93,7 +93,7 @@ async function runGitCommand(args: string[], options: { cwd?: string } = {}): Pr
   }
 }
 
-function isDirectory(filePath: string): boolean {
+export function isDirectory(filePath: string): boolean {
   try {
     return statSync(filePath).isDirectory();
   } catch {

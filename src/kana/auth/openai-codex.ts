@@ -124,7 +124,7 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
       refreshable: token?.refreshToken !== undefined,
       ...(token === undefined ? {} : { planUsage: token.scopes?.includes(DIRECT_SCOPE) === true }),
       ...(token?.expiresAt === undefined ? {} : { expiresAt: token.expiresAt }),
-      ...(token?.scopes === undefined ? {} : { scopes: token.scopes.slice() }),
+      ...(token?.scopes === undefined ? {} : { scopes: token.scopes }),
       ...(state?.registration?.email === undefined ? {} : { email: state.registration.email }),
     };
   }

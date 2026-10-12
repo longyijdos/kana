@@ -1,10 +1,11 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
-import { formatError } from "@/utils";
+import { escapeRegExp, formatError, splitContentLines } from "@/utils";
+import { clampLimit } from "./limit";
 import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
-import { resolveExistingWorkspacePath } from "./workspace-path";
+import { joinWorkspacePath, resolveExistingWorkspacePath } from "./workspace-path";
 
 export const DEFAULT_GREP_LIMIT = 100;
 const MAX_GREP_LIMIT = 2000;
@@ -259,7 +260,7 @@ function* searchFile(
   matcher: RegExp,
   context: number,
 ): Generator<GrepToolMatch> {
-  const lines = splitLines(content);
+  const lines = splitContentLines(content);
   for (const [index, line] of lines.entries()) {
     const match = matcher.exec(line);
 
@@ -282,34 +283,8 @@ function* searchFile(
   }
 }
 
-function splitLines(content: string): string[] {
-  if (!content) {
-    return [];
-  }
-
-  const lines = content.split(/\r?\n/);
-
-  if (lines.at(-1) === "" && /\r?\n$/.test(content)) {
-    lines.pop();
-  }
-
-  return lines;
-}
-
 function compareSearchFiles(left: SearchFile, right: SearchFile): number {
   return left.relativePath.localeCompare(right.relativePath, "en");
-}
-
-function clampLimit(limit: number, max: number): number {
-  return Math.min(Math.max(Math.trunc(limit), 1), max);
-}
-
-function joinWorkspacePath(basePath: string, childPath: string): string {
-  return basePath === "." ? childPath : path.join(basePath, childPath);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function formatGrepContent(result: GrepToolResult): string {

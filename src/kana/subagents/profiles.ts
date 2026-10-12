@@ -186,7 +186,7 @@ function withDigest(profile: Omit<KanaSubagentProfile, "digest">): KanaSubagentP
       }),
     )
     .digest("hex");
-  return { ...profile, tools: [...profile.tools], digest };
+  return { ...profile, digest };
 }
 
 function sortedProfiles(profiles: ReadonlyMap<string, KanaSubagentProfile>): KanaSubagentProfile[] {

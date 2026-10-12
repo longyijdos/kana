@@ -8,6 +8,7 @@ import {
   KANA_TOOL_APPROVAL_MODES,
   KANA_TUI_THEME_NAME_PATTERN,
   type KanaConfig,
+  type KanaConfigDraft,
 } from "./contracts";
 import { DEFAULT_KANA_CONFIG } from "./defaults";
 
@@ -121,8 +122,18 @@ export function parseKanaConfig(raw: unknown): KanaConfig {
   return mergeTable(DEFAULT_KANA_CONFIG, file) as KanaConfig;
 }
 
-export function validateKanaConfig(config: KanaConfig): KanaConfig {
+function validateKanaConfig(config: KanaConfig): KanaConfig {
   return parseKanaConfig(toKanaConfigFile(config));
+}
+
+// Applies `mutate` to a private copy of `config` and validates the result.
+export function reviseKanaConfig(
+  config: KanaConfig,
+  mutate: (draft: KanaConfigDraft) => void,
+): KanaConfig {
+  const draft = structuredClone(config) as KanaConfigDraft;
+  mutate(draft);
+  return validateKanaConfig(draft);
 }
 
 export function toKanaConfigFile(config: KanaConfig): Record<string, unknown> {

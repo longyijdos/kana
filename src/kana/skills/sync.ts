@@ -1,9 +1,9 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
 import { getKanaConfigPaths } from "../path";
-import { DEFAULT_KANA_SKILLS_REPOSITORY_NAME } from "./install";
+import { DEFAULT_KANA_SKILLS_REPOSITORY_NAME, isDirectory } from "./install";
 
 const KANA_SKILL_SYNC_TARGETS = ["codex"] as const;
 
@@ -177,14 +177,6 @@ function listSourceSkillDirectories(
     .filter((entry) => isDirectory(entry.sourcePath))
     .filter((entry) => existsSync(path.join(entry.sourcePath, "SKILL.md")))
     .sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function isDirectory(filePath: string): boolean {
-  try {
-    return statSync(filePath).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 function isSameOrChildPath(childPath: string, parentPath: string): boolean {

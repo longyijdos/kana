@@ -135,8 +135,8 @@ export class Agent {
   private readonly contextManager?: ContextManager;
   private messages: readonly Message[] = [];
   private system?: string;
-  private callableTools: Tool[];
-  private tools: Tool[];
+  private callableTools: readonly Tool[];
+  private tools: readonly Tool[];
   private streamingMessage?: AssistantMessage;
   private pendingToolCalls: ReadonlySet<string> = new Set();
   private error?: unknown;
@@ -157,7 +157,7 @@ export class Agent {
       });
     this.codemode = options.codemode ?? "off";
     this.system = this.promptAssembly.initialSystem;
-    this.callableTools = this.promptAssembly.initialTools.slice();
+    this.callableTools = this.promptAssembly.initialTools;
     this.tools = this.modelTools(this.callableTools);
     this.steering = new SteeringQueue(options.inbox, this.logger);
     this.appendHistory(options.messages ?? []);
@@ -528,13 +528,13 @@ export class Agent {
   private createContextSnapshot(): AgentContext {
     return {
       system: this.system,
-      messages: [...this.messages],
-      tools: this.tools.slice(),
-      callableTools: this.callableTools.slice(),
+      messages: this.messages,
+      tools: this.tools,
+      callableTools: this.callableTools,
     };
   }
 
-  private modelTools(tools: Tool[]): Tool[] {
+  private modelTools(tools: readonly Tool[]): readonly Tool[] {
     if (this.codemode === "off") return tools;
     const runCode = createCodemodeTool({ tools, mode: this.codemode });
     return this.codemode === "mixed" ? [...tools, runCode] : [runCode];

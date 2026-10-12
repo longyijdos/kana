@@ -44,8 +44,8 @@ export type PromptContextSnapshot = PromptContextState & { source: string };
 export type AssembledPrompt = {
   system?: string;
   context: PromptContextSnapshot[];
-  tools: Tool[];
-  callableTools?: Tool[];
+  tools: readonly Tool[];
+  callableTools?: readonly Tool[];
 };
 
 const RUNTIME_CONTEXT_INSTRUCTIONS = [
@@ -165,7 +165,7 @@ function isInactiveRuntimeContextMessage(message: RuntimeContextMessage): boolea
   return message.content.startsWith(`${prefix}>\n`);
 }
 
-function isRuntimeContextMessage(message: Message): message is RuntimeContextMessage {
+export function isRuntimeContextMessage(message: Message): message is RuntimeContextMessage {
   return message.role === "user" && message.provenance.kind === "runtime_context";
 }
 
