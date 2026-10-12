@@ -11,7 +11,7 @@ import {
   createTuiAgentStub as createAgentStub,
   createTuiAppOptions as createOptions,
   createTerminalStub as createTerminal,
-} from "./app-fixture";
+} from "./app/app-fixture";
 
 describe("TUI process lifecycle", () => {
   test("maps the first process signal to one graceful shutdown", () => {
