@@ -67,14 +67,6 @@ type HostedSessionRegistryOptions = {
   getSubagentMaxLive: () => number;
 };
 
-// Records of one session ID (a generation being disposed and its replacement)
-// share a single cross-process lock, released with the last record's share.
-type SharedSessionOwnership = {
-  readonly sessionId: string;
-  readonly ownership: KanaSessionOwnership;
-  holders: number;
-};
-
 type HostedSession = {
   data: LoadKanaSessionResult;
   artifactStore: KanaSessionArtifactStore;
@@ -83,8 +75,8 @@ type HostedSession = {
   userTasks: KanaUserTaskManager;
   journal?: KanaSessionJournal;
   // Held from load or creation until the record's foreground work, Jobs, and
-  // subagents settle, so no other process can resume or delete the session.
-  ownership?: SharedSessionOwnership;
+  // subagents settle, so no other record or process can open the session.
+  ownership?: KanaSessionOwnership;
   logger: Logger;
   pendingForkMessages?: readonly Message[];
   pendingForkCheckpoint?: ContextCheckpoint;
@@ -99,7 +91,6 @@ export class HostedSessionRegistry {
   private readonly sessions = new Map<string, HostedSession>();
   private readonly hostedSessions = new Set<HostedSession>();
   private readonly pendingDisposals = new Map<string, HostedSession[]>();
-  private readonly ownerships = new Map<string, SharedSessionOwnership>();
   private activeSession?: HostedSession;
   private resumableSessionId?: string;
 
@@ -417,7 +408,6 @@ export class HostedSessionRegistry {
     const { session, ownership } = openKanaSession(sessionId, {
       cwd: process.cwd(),
       env: this.options.env,
-      ownership: this.ownerships.get(sessionId)?.ownership,
     });
     return this.registerSession(session, ownership);
   }
@@ -426,36 +416,20 @@ export class HostedSessionRegistry {
     data: LoadKanaSessionResult,
     openedOwnership?: KanaSessionOwnership,
   ): HostedSession {
-    const ownership = this.options.persistent
-      ? this.retainOwnership(data.metadata, openedOwnership)
-      : undefined;
+    const ownership =
+      openedOwnership ??
+      (this.options.persistent ? acquireKanaSessionOwnership(data.metadata) : undefined);
     try {
       return this.createHostedSession(data, ownership);
     } catch (error) {
-      if (ownership !== undefined) {
-        this.releaseSharedOwnership(ownership, createNoopLogger());
-      }
+      ownership?.release();
       throw error;
     }
   }
 
-  private retainOwnership(
-    metadata: KanaSessionMetadata,
-    openedOwnership: KanaSessionOwnership | undefined,
-  ): SharedSessionOwnership {
-    const shared = this.ownerships.get(metadata.id) ?? {
-      sessionId: metadata.id,
-      ownership: openedOwnership ?? acquireKanaSessionOwnership(metadata),
-      holders: 0,
-    };
-    shared.holders += 1;
-    this.ownerships.set(metadata.id, shared);
-    return shared;
-  }
-
   private createHostedSession(
     data: LoadKanaSessionResult,
-    ownership: SharedSessionOwnership | undefined,
+    ownership: KanaSessionOwnership | undefined,
   ): HostedSession {
     const { persistent } = this.options;
     const logger = persistent
@@ -632,7 +606,7 @@ export class HostedSessionRegistry {
           `Hosted session ${hostedSession.data.metadata.id} no longer owns its journal.`,
         );
       }
-      hostedSession.ownership.ownership.assertOwned();
+      hostedSession.ownership.assertOwned();
       return operation();
     } catch (error) {
       hostedSession.logger.error("session.journal_write_failed", {
@@ -661,23 +635,12 @@ export class HostedSessionRegistry {
   }
 
   private releaseOwnership(session: HostedSession): void {
-    const shared = session.ownership;
+    const { ownership } = session;
     session.ownership = undefined;
-    if (shared !== undefined) {
-      this.releaseSharedOwnership(shared, session.logger);
-    }
-  }
-
-  private releaseSharedOwnership(shared: SharedSessionOwnership, logger: Logger): void {
-    shared.holders -= 1;
-    if (shared.holders > 0) {
-      return;
-    }
-    this.ownerships.delete(shared.sessionId);
     try {
-      shared.ownership.release();
+      ownership?.release();
     } catch (error) {
-      logger.warn("session.ownership_release_failed", errorFields(error));
+      session.logger.warn("session.ownership_release_failed", errorFields(error));
     }
   }
 

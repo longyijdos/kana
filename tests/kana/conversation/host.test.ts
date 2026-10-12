@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Agent } from "../../../src/agent";
@@ -683,7 +691,7 @@ describe("Kana conversation host", () => {
     expect(resolveTodoState?.()).toEqual(todoState);
     await forkAgent.prompt("Continue the fork.");
 
-    const loadedFork = host.loadSession(fork.id);
+    const loadedFork = readOwnedSession(fork.id, env);
     expect(loadedFork.todoState).toEqual(todoState);
     expect(loadedFork.timeline.some((entry) => entry.type === "todo_state")).toBe(true);
 
@@ -763,7 +771,7 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
-  test("disposes the previous hosted generation when resuming the same session ID", async () => {
+  test("rejects reopening a session while this host still owns it", async () => {
     const env = createTempEnv();
     const session = createKanaSession({ cwd: process.cwd(), env, id: "same-id" });
     createKanaSessionJournal(session).appendSnapshot([
@@ -773,47 +781,34 @@ describe("Kana conversation host", () => {
         content: "Resume this exact session.",
       },
     ]);
+    const model = new ControlledModel();
     const host = createKanaConversationHost({
       env,
       session: { type: "resume", sessionId: session.id },
       createAgent: (_config, options = {}) =>
         new Agent({
-          model: new MockModel({ provider: "mock", model: "mock" }),
+          model,
           messages: options.messages,
           beforeToolExecution: options.beforeToolExecution,
+          journal: options.journal,
         }),
     });
     const runtime = createRuntime(host);
-    const previousJobs = host.runtimeOptions.getBackgroundJobs(session.id);
-    let previousCancelled = false;
-    previousJobs?.start({
-      kind: "test",
-      label: "previous generation",
-      run: ({ signal }) =>
-        new Promise((resolve) => {
-          signal.addEventListener(
-            "abort",
-            () => {
-              previousCancelled = true;
-              resolve({ status: "cancelled", exitCode: null });
-            },
-            { once: true },
-          );
-        }),
+    const run = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Keep this turn open.",
     });
+    await waitFor(() => model.requests.length === 1);
+    const contentDuringTurn = readFileSync(session.path, "utf8");
 
-    await runtime.resumeSession(session.id);
-    const currentJobs = host.runtimeOptions.getBackgroundJobs(session.id);
+    expect(() => host.loadSession(session.id)).toThrow(KanaSessionInUseError);
+    expect(readFileSync(session.path, "utf8")).toBe(contentDuringTurn);
+    await expect(runtime.resumeSession(session.id)).rejects.toThrow("run is active");
 
-    expect(previousCancelled).toBe(true);
-    expect(currentJobs).not.toBe(previousJobs);
-    expect(() =>
-      currentJobs?.start({
-        kind: "test",
-        label: "current generation",
-        run: async () => ({ status: "completed", exitCode: 0 }),
-      }),
-    ).not.toThrow();
+    model.requests[0]!.complete("Done.");
+    await run;
+    await expect(runtime.resumeSession(session.id)).rejects.toThrow("already the current session");
 
     await runtime.close();
     await host.close();

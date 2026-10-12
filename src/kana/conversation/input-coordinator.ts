@@ -402,10 +402,6 @@ export class ConversationInputCoordinator {
     this.pauseCompletionObservation();
   }
 
-  cancelSessionChange(): void {
-    this.changingSession = false;
-  }
-
   cancelCurrentSessionInputs(): void {
     if (this.sessionId) {
       this.wakeScheduler.cancelSession(this.sessionId);

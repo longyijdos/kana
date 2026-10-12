@@ -339,6 +339,9 @@ export class ConversationRuntime<TConfiguration = never> {
 
   async resumeSession(sessionId: string): Promise<ConversationSessionSnapshot> {
     this.assertIdle("resume a session");
+    if (sessionId === this.sessionId) {
+      throw new Error(`Session ${sessionId} is already the current session.`);
+    }
     const session = this.options.loadSession(sessionId);
     await this.replaceSession("resume", session);
     return this.session as ConversationSessionSnapshot;
@@ -524,8 +527,9 @@ export class ConversationRuntime<TConfiguration = never> {
         previousSubagents,
       );
     } catch (error) {
-      this.inputCoordinator.cancelSessionChange();
-      throw error;
+      // Disposal closes the previous session's Jobs, subagents, and ownership
+      // before it can fail, so there is nothing to roll back to.
+      this.getLogger().warn("conversation.session_disposal_failed", { error });
     } finally {
       this.changingSession = false;
     }

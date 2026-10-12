@@ -55,11 +55,10 @@ export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaS
 }
 
 // Loading may repair the tail or recover an interrupted turn, so it writes only
-// under ownership: acquired here, or one the caller already holds for this same
-// session. The caller keeps the returned ownership for every later append.
+// after acquiring ownership. The caller keeps it for every later append.
 export function openKanaSession(
   sessionId: string,
-  options: FindKanaSessionOptions & { ownership?: KanaSessionOwnership } = {},
+  options: FindKanaSessionOptions = {},
 ): OpenedKanaSession {
   const metadata = findKanaSession(sessionId, options);
 
@@ -67,14 +66,11 @@ export function openKanaSession(
     throw new Error(`Kana session not found: ${sessionId}`);
   }
 
-  const ownership = options.ownership ?? acquireKanaSessionOwnership(metadata);
+  const ownership = acquireKanaSessionOwnership(metadata);
   try {
-    ownership.assertOwned();
     return { session: loadKanaSessionFile(metadata.path), ownership };
   } catch (error) {
-    if (options.ownership === undefined) {
-      ownership.release();
-    }
+    ownership.release();
     throw error;
   }
 }
