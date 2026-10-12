@@ -150,12 +150,15 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly mcpRuntime: KanaMcpRuntime;
   private configData: KanaConfig;
   private memoryConsolidation?: MemoryConsolidationScheduler;
-  private mcpConfigurationStore?: KanaMcpConfigurationStore;
-  private skillStore?: KanaSkillStore;
+  // Persistence and user customizations exist only in normal launches; clean
+  // mode leaves them out instead of checking the mode at each use.
+  private readonly persistent: boolean;
+  private readonly customizations?: KanaHostCustomizations;
 
   constructor(options: CreateKanaConversationHostOptions<TConfiguration> = {}) {
     this.env = { ...(options.env ?? process.env) };
     this.launchMode = options.launchMode ?? "normal";
+    this.persistent = this.launchMode !== "clean";
     this.configStore = (options.createConfigStore ?? createKanaConfigStore)(
       this.env,
       options.configOverrides,
@@ -165,14 +168,15 @@ export class KanaConversationHost<TConfiguration = never> {
     this.customProviderSnapshot = loadKanaCustomProviderSnapshot(
       getKanaConfigPaths(this.env).customProviderPath,
     );
-    if (this.launchMode !== "clean") {
-      this.mcpConfigurationStore = createKanaMcpConfigurationStore(this.env);
-      this.skillStore = createKanaSkillStore({ cwd: process.cwd(), env: this.env });
-    }
-    this.subagentProfileSnapshot =
-      this.launchMode === "clean"
-        ? { profiles: [], diagnostics: [] }
-        : loadKanaSubagentProfiles({ env: this.env });
+    this.customizations = this.persistent
+      ? {
+          mcpConfiguration: createKanaMcpConfigurationStore(this.env),
+          skills: createKanaSkillStore({ cwd: process.cwd(), env: this.env }),
+        }
+      : undefined;
+    this.subagentProfileSnapshot = this.persistent
+      ? loadKanaSubagentProfiles({ env: this.env })
+      : { profiles: [], diagnostics: [] };
     this.instructionSections = loadKanaInstructionSections({
       cwd: process.cwd(),
       env: this.env,
@@ -184,7 +188,7 @@ export class KanaConversationHost<TConfiguration = never> {
     this.applyAgentConfiguration = options.applyAgentConfiguration;
     this.sessionRegistry = new HostedSessionRegistry({
       env: this.env,
-      launchMode: this.launchMode,
+      persistent: this.persistent,
       logLevel: this.configData.logging.level,
       getBackgroundJobMaxConcurrent: () => this.configData.agent.backgroundJobs.maxConcurrent,
       getSubagentMaxLive: () => this.configData.agent.subagents.maxLive,
@@ -202,8 +206,9 @@ export class KanaConversationHost<TConfiguration = never> {
     this.mcpRuntime = (options.createMcpRuntime ?? createKanaMcpRuntime)({
       env: this.env,
       configurationSource: {
-        getConfig: () => this.getMcpConfigurationStore().getConfig(),
-        getActivationState: () => this.getMcpConfigurationStore().getActivationState(),
+        getConfig: () => this.requireCustomizations("MCP").mcpConfiguration.getConfig(),
+        getActivationState: () =>
+          this.requireCustomizations("MCP").mcpConfiguration.getActivationState(),
       },
       getLogger: () => this.getLogger(),
       oauthTokenStore: this.oauthTokenStore,
@@ -271,13 +276,11 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadSkills(): LoadKanaSkillActivationsResult {
-    this.assertCustomizationsAvailable("Skills");
-    return this.getSkillStore().load();
+    return this.requireCustomizations("Skills").skills.load();
   }
 
   saveEnabledGlobalSkillNames(names: readonly string[]): void {
-    this.assertCustomizationsAvailable("Skills");
-    this.getSkillStore().saveEnabledGlobalNames(names);
+    this.requireCustomizations("Skills").skills.saveEnabledGlobalNames(names);
   }
 
   addTrustedShellCommand(command: string): KanaToolApprovals {
@@ -313,7 +316,7 @@ export class KanaConversationHost<TConfiguration = never> {
     let agent: Agent;
     if (configuration === undefined) {
       agent = createAgent(this.configData);
-    } else if (this.launchMode === "clean") {
+    } else if (!this.persistent) {
       if (!this.applyAgentConfiguration) {
         throw new Error("This Kana conversation host does not support Agent reconfiguration.");
       }
@@ -416,21 +419,20 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadMcpServers(): KanaMcpServerActivation[] {
-    if (this.launchMode === "clean") {
-      return [];
-    }
-
-    const configuration = this.getMcpConfigurationStore();
-    return resolveKanaMcpServerActivations(
-      configuration.getConfig(),
-      configuration.getActivationState(),
-      this.env,
-    );
+    const configuration = this.customizations?.mcpConfiguration;
+    return configuration === undefined
+      ? []
+      : resolveKanaMcpServerActivations(
+          configuration.getConfig(),
+          configuration.getActivationState(),
+          this.env,
+        );
   }
 
   saveEnabledMcpServerIds(serverIds: string[]): void {
-    this.assertCustomizationsAvailable("MCP management");
-    this.getMcpConfigurationStore().saveActivationState({ enabledServers: serverIds });
+    this.requireCustomizations("MCP management").mcpConfiguration.saveActivationState({
+      enabledServers: serverIds,
+    });
   }
 
   authorizeMcpServer(
@@ -438,24 +440,22 @@ export class KanaConversationHost<TConfiguration = never> {
     openAuthorizationUrl: (url: string) => Promise<void>,
     signal?: AbortSignal,
   ): Promise<OAuthTokenStatus> {
-    this.assertCustomizationsAvailable("MCP authorization");
     return authorizeKanaMcpServer(serverId, {
       env: this.env,
       getLogger: () => this.getLogger(),
       tokenStore: this.oauthTokenStore,
-      config: this.getMcpConfigurationStore().getConfig(),
+      config: this.requireCustomizations("MCP authorization").mcpConfiguration.getConfig(),
       signal,
       openAuthorizationUrl,
     });
   }
 
   signOutMcpServer(serverId: string): Promise<OAuthTokenStatus> {
-    this.assertCustomizationsAvailable("MCP authorization");
     return signOutKanaMcpServer(serverId, {
       env: this.env,
       getLogger: () => this.getLogger(),
       tokenStore: this.oauthTokenStore,
-      config: this.getMcpConfigurationStore().getConfig(),
+      config: this.requireCustomizations("MCP authorization").mcpConfiguration.getConfig(),
     });
   }
 
@@ -464,7 +464,7 @@ export class KanaConversationHost<TConfiguration = never> {
     userRequest: string | undefined,
     signal: AbortSignal,
   ): Promise<KanaMemoryCompactSummary[]> {
-    this.assertCustomizationsAvailable("Memory");
+    this.requireCustomizations("Memory");
     const logger = this.getLogger();
     const scopes: Array<"global" | "project"> =
       target === "both" ? ["global", "project"] : [target];
@@ -508,12 +508,12 @@ export class KanaConversationHost<TConfiguration = never> {
   }
 
   loadMemory(target: "global" | "project"): string {
-    this.assertCustomizationsAvailable("Memory");
+    this.requireCustomizations("Memory");
     return loadKanaMemory(target, { cwd: process.cwd(), env: this.env });
   }
 
   loadUsage(scope: KanaUsageScope): KanaUsageSummary {
-    if (this.launchMode === "clean" && scope === "session") {
+    if (!this.persistent && scope === "session") {
       throw new Error("Session usage is unavailable in clean mode.");
     }
     return loadKanaUsageSummary({
@@ -559,12 +559,7 @@ export class KanaConversationHost<TConfiguration = never> {
       subagents: sessionBinding.subagents,
       userTasks: this.enableUserTasks ? sessionBinding.userTasks : undefined,
       subagentProfiles: this.subagentProfileSnapshot.profiles,
-      skills:
-        this.launchMode === "clean"
-          ? []
-          : this.getSkillStore()
-              .load()
-              .skills.filter((skill) => skill.enabled),
+      skills: this.customizations?.skills.load().skills.filter((skill) => skill.enabled) ?? [],
       customProviderSnapshot: this.customProviderSnapshot,
       instructionSections: this.instructionSections,
       runSubagent: (context) => this.runSubagent(context, bindToolExecution, config, logger),
@@ -769,7 +764,7 @@ export class KanaConversationHost<TConfiguration = never> {
 
   private createMemoryConsolidation(config: KanaConfig): MemoryConsolidationScheduler | undefined {
     const scheduler =
-      this.launchMode !== "clean" && config.memory.enabled
+      this.customizations && config.memory.enabled
         ? createMemoryConsolidationScheduler(config, {
             env: this.env,
             customProviderSnapshot: this.customProviderSnapshot,
@@ -791,7 +786,7 @@ export class KanaConversationHost<TConfiguration = never> {
     operation: "start" | "reload",
     signal?: AbortSignal,
   ): Promise<KanaMcpRuntimeSnapshot> {
-    if (this.launchMode === "clean") {
+    if (!this.customizations) {
       this.getLogger().info("mcp.skipped", {
         operation,
         reason: "clean_mode",
@@ -823,24 +818,18 @@ export class KanaConversationHost<TConfiguration = never> {
     }
   }
 
-  private assertCustomizationsAvailable(feature: string): void {
-    if (this.launchMode === "clean") {
+  private requireCustomizations(feature: string): KanaHostCustomizations {
+    if (!this.customizations) {
       throw new Error(`${feature} is unavailable in clean mode.`);
     }
-  }
-
-  private getMcpConfigurationStore(): KanaMcpConfigurationStore {
-    this.assertCustomizationsAvailable("MCP configuration");
-    this.mcpConfigurationStore ??= createKanaMcpConfigurationStore(this.env);
-    return this.mcpConfigurationStore;
-  }
-
-  private getSkillStore(): KanaSkillStore {
-    this.assertCustomizationsAvailable("Skills");
-    this.skillStore ??= createKanaSkillStore({ cwd: process.cwd(), env: this.env });
-    return this.skillStore;
+    return this.customizations;
   }
 }
+
+type KanaHostCustomizations = {
+  readonly mcpConfiguration: KanaMcpConfigurationStore;
+  readonly skills: KanaSkillStore;
+};
 
 function createKanaConversationAgent(config: KanaConfig, options: KanaAgentOptions = {}): Agent {
   return createKanaAgent(

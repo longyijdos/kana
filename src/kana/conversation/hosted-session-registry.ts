@@ -13,7 +13,6 @@ import {
   type KanaArtifactCleanupResult,
   type KanaSessionArtifactStore,
 } from "../artifacts";
-import type { KanaLaunchMode } from "../launch-mode";
 import { getKanaSessionLogPath } from "../path";
 import {
   createKanaSession,
@@ -58,7 +57,9 @@ type HostedSessionDisposalSource = "session_disposal" | "shutdown";
 
 type HostedSessionRegistryOptions = {
   env: NodeJS.ProcessEnv;
-  launchMode: KanaLaunchMode;
+  // False in clean mode: sessions stay in memory and write no journal, log,
+  // artifacts, or accounting.
+  persistent: boolean;
   logLevel: LogLevel;
   getBackgroundJobMaxConcurrent: () => number;
   getSubagentMaxLive: () => number;
@@ -72,7 +73,6 @@ type HostedSession = {
   userTasks: KanaUserTaskManager;
   journal?: KanaSessionJournal;
   logger: Logger;
-  persistent: boolean;
   pendingForkMessages?: readonly Message[];
   pendingForkCheckpoint?: ContextCheckpoint;
   pendingForkTodoState?: readonly KanaTodoItem[];
@@ -101,7 +101,7 @@ export class HostedSessionRegistry {
 
   initialize(selection: HostedSessionSelection): LoadKanaSessionResult | undefined {
     const initialSession = this.loadInitialSession(selection);
-    if (this.options.launchMode !== "clean") {
+    if (this.options.persistent) {
       this.logArtifactCleanup(
         initialSession?.logger,
         "orphan_cleanup",
@@ -136,7 +136,7 @@ export class HostedSessionRegistry {
   }
 
   getActiveSession(): HostedSessionIdentity | undefined {
-    return this.activeSession === undefined ? undefined : createSessionIdentity(this.activeSession);
+    return this.activeSession === undefined ? undefined : this.identityOf(this.activeSession);
   }
 
   createAgentBinding(
@@ -158,7 +158,7 @@ export class HostedSessionRegistry {
     }
 
     return {
-      session: createSessionIdentity(hostedSession),
+      session: this.identityOf(hostedSession),
       logger: hostedSession.logger,
       messages: hostedSession.data.messages,
       contextCheckpoint: hostedSession.data.contextCheckpoint,
@@ -215,7 +215,7 @@ export class HostedSessionRegistry {
     const metadata = this.createSessionMetadata(source.data.metadata.path, prompt);
     let forkedMessages = messages;
     let forkedCheckpoint = contextCheckpoint;
-    if (source.persistent) {
+    if (this.options.persistent) {
       try {
         const forked = forkKanaSessionArtifacts({
           messages,
@@ -247,7 +247,7 @@ export class HostedSessionRegistry {
       todoState: source.data.todoState,
       contextCheckpoint: forkedCheckpoint,
     });
-    if (hosted.persistent) {
+    if (this.options.persistent) {
       hosted.pendingForkMessages = forkedMessages;
       hosted.pendingForkCheckpoint =
         forkedCheckpoint === undefined
@@ -277,7 +277,7 @@ export class HostedSessionRegistry {
   }
 
   listSessions(): KanaSessionMetadata[] {
-    if (this.options.launchMode === "clean") {
+    if (!this.options.persistent) {
       return [];
     }
     return listKanaSessions({ cwd: process.cwd(), env: this.options.env });
@@ -395,13 +395,13 @@ export class HostedSessionRegistry {
     });
     hosted.logger.info("session.started", {
       resumed: false,
-      launchMode: this.options.launchMode,
+      persistent: this.options.persistent,
     });
     return hosted;
   }
 
   private registerSession(data: LoadKanaSessionResult): HostedSession {
-    const persistent = this.options.launchMode !== "clean";
+    const { persistent } = this.options;
     const logger = persistent
       ? createSessionLogger({
           path: getKanaSessionLogPath(data.metadata.id, {
@@ -444,7 +444,6 @@ export class HostedSessionRegistry {
       userTasks: new KanaUserTaskManager(),
       ...(persistent ? { journal: createKanaSessionJournal(data.metadata, data.timeline) } : {}),
       logger,
-      persistent,
     };
     this.sessions.set(hosted.data.metadata.id, hosted);
     this.hostedSessions.add(hosted);
@@ -629,7 +628,7 @@ export class HostedSessionRegistry {
   ): void {
     hosted.logger.info(event, {
       ...metadata,
-      launchMode: this.options.launchMode,
+      persistent: this.options.persistent,
     });
     if (hosted.data.recoveredInterruptedTurn) {
       hosted.logger.warn("session.interrupted_turn_recovered", {
@@ -661,6 +660,11 @@ export class HostedSessionRegistry {
     }
   }
 
+  private identityOf(session: HostedSession): HostedSessionIdentity {
+    const { id, cwd } = session.data.metadata;
+    return { id, cwd, persistent: this.options.persistent };
+  }
+
   private createSessionMetadata(parentSessionPath?: string, title?: string): KanaSessionMetadata {
     return createKanaSession({
       env: this.options.env,
@@ -670,22 +674,14 @@ export class HostedSessionRegistry {
   }
 
   private assertSavedSessionsAvailable(): void {
-    if (this.options.launchMode === "clean") {
+    if (!this.options.persistent) {
       throw new Error("Saved sessions are unavailable in clean mode.");
     }
   }
 
   private assertForkingAvailable(): void {
-    if (this.options.launchMode === "clean") {
+    if (!this.options.persistent) {
       throw new Error("Forking sessions is unavailable in clean mode.");
     }
   }
-}
-
-function createSessionIdentity(session: HostedSession): HostedSessionIdentity {
-  return {
-    id: session.data.metadata.id,
-    cwd: session.data.metadata.cwd,
-    persistent: session.persistent,
-  };
 }
