@@ -91,15 +91,7 @@ export class SessionLifecycleController {
       this.options.showError(error);
       return;
     }
-    this.overlay.close();
-    this.options.closeContentViewer();
-    this.options.resetAgentEvents();
-    this.options.transcript.clear();
-    this.options.clearMcpOAuthBlocks();
-    this.options.editor.clear();
-    this.initializeTranscript([]);
-    this.options.updateContextUsage();
-    this.options.updateStatus("idle");
+    this.showSession([]);
     this.options.tui.requestRender();
   }
 
@@ -158,16 +150,21 @@ export class SessionLifecycleController {
       return;
     }
 
+    this.showSession(session.timeline);
+    this.options.bottomArea.showFallback();
+    this.options.activateSession();
+  }
+
+  // Replaces the transcript with the adopted session's history.
+  private showSession(timeline: readonly KanaSessionTimelineEntry[]): void {
     this.overlay.close();
     this.options.closeContentViewer();
     this.options.resetAgentEvents();
     this.options.transcript.clear();
     this.options.clearMcpOAuthBlocks();
     this.options.editor.clear();
-    this.initializeTranscript(session.timeline);
+    this.initializeTranscript(timeline);
     this.options.updateContextUsage();
     this.options.updateStatus("idle");
-    this.options.bottomArea.showFallback();
-    this.options.activateSession();
   }
 }
