@@ -186,10 +186,10 @@ async function handleMessage(message: RpcMessage): Promise<void> {
     return;
   }
 
-  if (message.method === "notifications/cancelled") {
+  if (message.method === "notifications/canceled") {
     await writeMessage({
       jsonrpc: "2.0",
-      method: "notifications/test/cancelled",
+      method: "notifications/test/canceled",
       params: { requestId: message.params?.requestId ?? "unknown" },
     });
     return;

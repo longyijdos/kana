@@ -22,10 +22,10 @@ export class McpRequestTimeoutError extends McpClientError {
   }
 }
 
-export class McpRequestCancelledError extends McpClientError {
-  constructor(message = "MCP request was cancelled.", options?: ErrorOptions) {
+export class McpRequestCanceledError extends McpClientError {
+  constructor(message = "MCP request was canceled.", options?: ErrorOptions) {
     super(message, options);
-    this.name = "McpRequestCancelledError";
+    this.name = "McpRequestCanceledError";
   }
 }
 

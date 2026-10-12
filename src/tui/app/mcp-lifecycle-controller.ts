@@ -42,7 +42,7 @@ export class McpLifecycleController {
       return false;
     }
 
-    this.loadingController.abort(new Error("MCP loading was cancelled."));
+    this.loadingController.abort(new Error("MCP loading was canceled."));
     return true;
   }
 
@@ -65,7 +65,7 @@ export class McpLifecycleController {
           return false;
         }
         if (signal.aborted) {
-          return this.finishCancellation(loadingOperation, "MCP startup cancelled.", true);
+          return this.finishCancellation(loadingOperation, "MCP startup canceled.", true);
         }
 
         this.loaded = true;
@@ -80,7 +80,7 @@ export class McpLifecycleController {
       })
       .catch((error) => {
         if (signal.aborted) {
-          return this.finishCancellation(loadingOperation, "MCP startup cancelled.", true);
+          return this.finishCancellation(loadingOperation, "MCP startup canceled.", true);
         }
         this.endLoading(loadingOperation);
         if (!this.options.isStopping()) {
@@ -117,7 +117,7 @@ export class McpLifecycleController {
         return;
       }
       if (signal.aborted) {
-        this.finishCancellation(loadingOperation, "MCP reload cancelled.", false);
+        this.finishCancellation(loadingOperation, "MCP reload canceled.", false);
         return;
       }
 
@@ -131,7 +131,7 @@ export class McpLifecycleController {
         return;
       }
       if (signal.aborted) {
-        this.finishCancellation(loadingOperation, "MCP reload cancelled.", false);
+        this.finishCancellation(loadingOperation, "MCP reload canceled.", false);
         return;
       }
 

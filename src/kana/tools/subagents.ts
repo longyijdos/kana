@@ -16,7 +16,7 @@ const subagentStatusSchema = Type.Union([
   Type.Literal("running"),
   Type.Literal("completed"),
   Type.Literal("errored"),
-  Type.Literal("cancelled"),
+  Type.Literal("canceled"),
   Type.Literal("unknown"),
 ]);
 const terminalReasonSchema = Type.Optional(
@@ -110,7 +110,7 @@ export function createSpawnSubagentTool(
     }),
     execution: { concurrency: "parallel" },
     execute: (args, context) => {
-      if (context.signal?.aborted) throw new Error("Subagent spawn was cancelled.");
+      if (context.signal?.aborted) throw new Error("Subagent spawn was canceled.");
       const profile = profiles.get(args.profile);
       if (!profile) throw new Error(`Unknown subagent profile: ${args.profile}`);
       const task = args.task.trim();

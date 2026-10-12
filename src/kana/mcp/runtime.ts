@@ -1,6 +1,6 @@
 import {
   type McpManagerProgressEvent,
-  McpRequestCancelledError,
+  McpRequestCanceledError,
   type McpServerDiagnostic,
   type McpToolRegistry,
 } from "@/mcp";
@@ -179,12 +179,12 @@ function throwIfOperationAborted(signal: AbortSignal | undefined): void {
   if (!signal?.aborted) {
     return;
   }
-  if (signal.reason instanceof McpRequestCancelledError) {
+  if (signal.reason instanceof McpRequestCanceledError) {
     throw signal.reason;
   }
   const message =
     signal.reason instanceof Error && signal.reason.message
       ? signal.reason.message
-      : "MCP runtime operation was cancelled.";
-  throw new McpRequestCancelledError(message, { cause: signal.reason });
+      : "MCP runtime operation was canceled.";
+  throw new McpRequestCanceledError(message, { cause: signal.reason });
 }

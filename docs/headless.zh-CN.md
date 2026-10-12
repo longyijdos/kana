@@ -65,7 +65,7 @@ Conversation runtime 关闭后，共享 Host 清理会先等待自动记忆任�
 | 退出码 | 含义 |
 | --- | --- |
 | `0` | 普通 Agent run 以 `stop` 结束，或 Goal 以 `completed` 结束 |
-| `1` | 启动/运行失败；普通结果不是 `stop`；或 Goal 以 `blocked`、`cancelled`、`round_limit` 结束 |
+| `1` | 启动/运行失败；普通结果不是 `stop`；或 Goal 以 `blocked`、`canceled`、`round_limit` 结束 |
 | `124` | `--timeout` 到时；活动 Goal 和 Agent 会先收到取消信号 |
 | `130` | 收到 `SIGINT`；活动 Goal 和 Agent 会先收到取消信号 |
 

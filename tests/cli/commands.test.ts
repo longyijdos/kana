@@ -238,7 +238,7 @@ describe("CLI reset", () => {
       },
     });
 
-    expect(logs).toEqual(["Reset cancelled."]);
+    expect(logs).toEqual(["Reset canceled."]);
   });
 
   test("requires --yes for reset in non-interactive environments", async () => {

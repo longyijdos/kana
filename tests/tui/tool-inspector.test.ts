@@ -46,7 +46,7 @@ describe("tool inspector", () => {
         ok: false,
         error: { kind: "script", message: "failed", stack: "Error: failed\n  at script:2" },
         output: [],
-        calls: [{ name: "shell", status: "cancelled", durationMs: 3 }],
+        calls: [{ name: "shell", status: "canceled", durationMs: 3 }],
       },
       true,
       "failed",
@@ -54,7 +54,7 @@ describe("tool inspector", () => {
     expect(failed).toContain("  Failed");
     expect(failed).toContain("Error");
     expect(failed).toContain("    at script:2");
-    expect(failed).toContain("  shell · cancelled · 3 ms");
+    expect(failed).toContain("  shell · canceled · 3 ms");
     const running = renderInspector(call, undefined, false, "running");
     expect(running).toContain("  return false;");
     expect(running).toContain("  Running");

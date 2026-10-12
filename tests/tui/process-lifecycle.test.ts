@@ -230,7 +230,7 @@ describe("Kana TUI shutdown", () => {
       expect(stripAnsi(internal.editor.render(80).join("\n"))).toContain("> (Loading...)");
       handleInput(input);
       await waitFor(() =>
-        stripAnsi(internal.transcript.render(80).join("\n")).includes("MCP startup cancelled."),
+        stripAnsi(internal.transcript.render(80).join("\n")).includes("MCP startup canceled."),
       );
 
       expect(terminalStopCount).toBe(0);
@@ -322,7 +322,7 @@ describe("Kana TUI shutdown", () => {
     });
   }
 
-  test("submits the displayed initial prompt after MCP startup is cancelled", async () => {
+  test("submits the displayed initial prompt after MCP startup is canceled", async () => {
     let handleInput!: (data: string) => void;
     const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
     const app = new KanaTuiApp(

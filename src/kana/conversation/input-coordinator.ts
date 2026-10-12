@@ -104,7 +104,7 @@ type ConversationGoalStateChange =
   | "round_admitted"
   | "completed"
   | "blocked"
-  | "cancelled"
+  | "canceled"
   | "round_limit"
   | "discarded";
 
@@ -237,14 +237,14 @@ export class ConversationInputCoordinator {
   }
 
   cancelGoal(): void {
-    const cancelled = this.goalController.cancel();
-    if (!cancelled) {
+    const canceled = this.goalController.cancel();
+    if (!canceled) {
       return;
     }
-    this.options.onGoalChanged("cancelled", cancelled);
-    this.options.getLogger().info("conversation.goal_cancelled", {
-      goalId: cancelled.id,
-      admittedRounds: cancelled.admittedRounds,
+    this.options.onGoalChanged("canceled", canceled);
+    this.options.getLogger().info("conversation.goal_canceled", {
+      goalId: canceled.id,
+      admittedRounds: canceled.admittedRounds,
     });
   }
 
@@ -338,7 +338,7 @@ export class ConversationInputCoordinator {
     // Expiry and cancellation share the JavaScript event loop, so the stable
     // ID is synchronously present in either the timer map or the pending FIFO.
     if (isCurrentSessionWake && this.wakeScheduler.cancel(readMessageId(id))) {
-      this.options.getLogger().info("conversation.scheduled_input_cancelled", { state: "future" });
+      this.options.getLogger().info("conversation.scheduled_input_canceled", { state: "future" });
       return "future";
     }
 
@@ -353,7 +353,7 @@ export class ConversationInputCoordinator {
     }
 
     this.agent.cancelInput(pending.message.id);
-    this.options.getLogger().info("conversation.scheduled_input_cancelled", { state: "pending" });
+    this.options.getLogger().info("conversation.scheduled_input_canceled", { state: "pending" });
     return "pending";
   }
 

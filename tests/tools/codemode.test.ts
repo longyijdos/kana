@@ -281,7 +281,7 @@ describe("codemode tool", () => {
         result: {
           ok: true,
           calls: [
-            { name: "slow", status: "cancelled", durationMs: 25 },
+            { name: "slow", status: "canceled", durationMs: 25 },
             { name: "finish", status: "ok", durationMs: 25 },
           ],
         },
@@ -535,6 +535,7 @@ describe("codemode sandbox", () => {
     expect(await pending).toMatchObject({
       ok: false,
       error: { kind: "aborted" },
+      // The sandbox library's own spelling; the codemode tool normalizes it.
       calls: [{ name: "wait", status: "cancelled" }],
     });
     expect(receivedSignal?.aborted).toBe(true);

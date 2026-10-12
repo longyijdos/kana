@@ -253,7 +253,7 @@ describe("subagent manager", () => {
 
   test("keeps hosted tool snapshots static and marks unfinished terminal calls canceled", () => {
     const inspection: KanaSubagentInspection = {
-      ...subagent("agent_cancelled", "cancelled"),
+      ...subagent("agent_canceled", "canceled"),
       task: "Inspect",
       output: "",
       waitTimedOut: false,

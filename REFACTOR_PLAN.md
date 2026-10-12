@@ -484,7 +484,7 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 - **MCP**：删除 adapter 和 runtime 中多余的幂等标志，以及 registration 和 server config 的防御性拷贝和重复校验
 
 ### 与原设计的偏差
-- 状态拼写没有统一：`canceled`（job、hosted tool、工具状态）和 `cancelled`（subagent、goal、codemode）都已经出现在面向模型的工具输出或持久化的 session 中，改动会改变协议值
+- 状态拼写统一为 `canceled`（用户确认不需要兼容）：subagent、goal、codemode 调用状态、日志事件名、错误类名（`McpRequestCanceledError`）和文案全部改用这一种拼写。外部协议值保留原样：OpenAI Responses 的 `cancelled` 状态，以及 codemode 沙箱库返回的 `cancelled`（在工具边界上转换为 `canceled`）
 - 拒绝码"一处 4 个、一处 6 个"的问题，在阶段 1 删除 `OAuthSession` 后已不存在
 - TUI 的 `KanaTuiApp` 构造器仍然注入 createAgent 和会话回调（大量 TUI 测试依赖这种注入方式），拆分 `app.ts` 时在阶段 7 一起调整
 - OAuth 诊断回调保留：它把授权进度显示到 TUI，是展示用途而不是日志

@@ -46,7 +46,7 @@ describe("Kana update_goal tool", () => {
       },
     });
 
-    expect(() => validateToolArguments(tool, { status: "cancelled" })).toThrow(
+    expect(() => validateToolArguments(tool, { status: "canceled" })).toThrow(
       "status: must match a schema in anyOf",
     );
     expect(() => validateToolArguments(tool, { status: "completed", rounds: 3 })).toThrow(

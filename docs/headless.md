@@ -1,6 +1,6 @@
 # Headless execution and the JSONL protocol
 
-`kana exec` runs an Agent task without starting the TUI, for scripts, CI, and evaluations. By default it runs one complete Agent run, which may contain several model calls, tool executions, and context compactions. With `--goal`, the prompt becomes a bounded process-local Goal and Kana continues through sequential Agent runs until the model marks it completed or blocked, it is cancelled, or it reaches `agent.goal_max_rounds`.
+`kana exec` runs an Agent task without starting the TUI, for scripts, CI, and evaluations. By default it runs one complete Agent run, which may contain several model calls, tool executions, and context compactions. With `--goal`, the prompt becomes a bounded process-local Goal and Kana continues through sequential Agent runs until the model marks it completed or blocked, it is canceled, or it reaches `agent.goal_max_rounds`.
 
 ## Commands
 
@@ -65,9 +65,9 @@ Exit codes:
 | Exit code | Meaning |
 | --- | --- |
 | `0` | A normal Agent run ended with `stop`, or a Goal ended as `completed` |
-| `1` | Startup/run failed; a normal outcome was not `stop`; or a Goal ended as `blocked`, `cancelled`, or `round_limit` |
-| `124` | `--timeout` elapsed; the active Goal and Agent were cancelled first |
-| `130` | `SIGINT` was received; the active Goal and Agent are cancelled first |
+| `1` | Startup/run failed; a normal outcome was not `stop`; or a Goal ended as `blocked`, `canceled`, or `round_limit` |
+| `124` | `--timeout` elapsed; the active Goal and Agent were canceled first |
+| `130` | `SIGINT` was received; the active Goal and Agent are canceled first |
 
 Headless mode has no approval UI. By default it executes tools trusted by `approval.mode` and `approvals.json`. If a tool still needs interactive approval, the run ends as `aborted` without executing that tool. `--allow-all-tools` unconditionally authorizes the agent to execute every available tool: file tools retain the current user's real filesystem permissions, and `shell` still runs real system commands. The option does not isolate files or processes and should be used only in a controlled environment.
 
@@ -99,6 +99,6 @@ Code Mode publishes only the outer `run_code` tool lifecycle and result. Nested 
 
 Goal mode still emits exactly one public `run.started` and one terminal `run.completed` or `run.failed`. Model, assistant, tool, and compaction events from every internal Agent run appear between those boundaries; `model_turn.*.turn` is local to its Agent run and may restart at `1`. A Goal terminal event includes `goal` with `status`, `admitted_rounds`, `max_rounds`, and optional `detail` when that state is available. `run.completed.outcome` remains the final internal Agent outcome, while Goal-mode process success is determined by `goal.status`: only `completed` exits with status `0`.
 
-When the headless frontend initiated cancellation, a terminal run event includes `termination`. A timeout is `{ "reason": "timeout", "timeout_ms": 1800000 }`; `SIGINT` is `{ "reason": "sigint" }`. A successfully cancelled timeout normally ends with `run.completed`, `outcome: "aborted"`, and exit status `124`. If the run fails while cancellation is in progress, `run.failed` remains a failure and the process exits with status `1`, even though `termination` records the concurrent cancellation source.
+When the headless frontend initiated cancellation, a terminal run event includes `termination`. A timeout is `{ "reason": "timeout", "timeout_ms": 1800000 }`; `SIGINT` is `{ "reason": "sigint" }`. A successfully canceled timeout normally ends with `run.completed`, `outcome: "aborted"`, and exit status `124`. If the run fails while cancellation is in progress, `run.failed` remains a failure and the process exits with status `1`, even though `termination` records the concurrent cancellation source.
 
 `usage` contains `input_tokens`, `output_tokens`, and `total_tokens`, with optional `cache_read_input_tokens`, `cache_miss_input_tokens`, and `reasoning_tokens`. `run.completed.usage` is the sum of model turns and context compactions in the complete headless run, including every Goal round. Tool `arguments`, `partial_result`, and `result` are explicitly requested machine output and may contain data processed by tools; do not upload or place JSONL in public logs without review.

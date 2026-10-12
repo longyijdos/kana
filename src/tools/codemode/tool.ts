@@ -12,6 +12,17 @@ import type { Tool, ToolContext, ToolResult } from "../tool";
 import { createCodemodeSandbox } from "./index";
 import { annotateInputSchema } from "./schema-annotations";
 
+type CodemodeToolCall = Omit<CodemodeResult["calls"][number], "status"> & {
+  status: "ok" | "error" | "canceled";
+};
+
+// Kana's own spelling of the call status; the sandbox reports "cancelled".
+type CodemodeToolResult = CodemodeResult extends infer R
+  ? R extends CodemodeResult
+    ? Omit<R, "calls"> & { calls: CodemodeToolCall[] }
+    : never
+  : never;
+
 const codemodeParameters = strictObject({ code: Type.String() });
 
 export type CodemodeToolContext = ToolContext & {
@@ -89,9 +100,11 @@ export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mi
         const result = await sandbox.execute(code, { signal: context.signal });
         // Pi records calls in the order these wrappers are entered, even when
         // concurrent calls to the same tool finish in a different order.
-        result.calls.forEach((call, index) => {
-          call.durationMs = durations[index]!;
-        });
+        const calls = result.calls.map((call, index) => ({
+          ...call,
+          status: call.status === "cancelled" ? ("canceled" as const) : call.status,
+          durationMs: durations[index]!,
+        }));
         const text: string[] = [];
         for (const item of result.output) {
           if (item.type === "text") {
@@ -116,12 +129,12 @@ export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mi
         return {
           content: text.join("\n"),
           ...(images.length ? { images } : {}),
-          result,
+          result: { ...result, calls },
           isError: !result.ok,
         };
       } finally {
         await sandbox.close();
       }
     },
-  } satisfies Tool<typeof codemodeParameters, CodemodeResult>;
+  } satisfies Tool<typeof codemodeParameters, CodemodeToolResult>;
 }

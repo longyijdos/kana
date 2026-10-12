@@ -5,7 +5,7 @@ export {
 export { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 export { McpAuthorizationChallengeError } from "./authorization";
 export { McpClient } from "./client";
-export { McpRequestCancelledError, McpRequestTimeoutError, McpResponseError } from "./errors";
+export { McpRequestCanceledError, McpRequestTimeoutError, McpResponseError } from "./errors";
 export {
   type McpManagedClient,
   McpManager,

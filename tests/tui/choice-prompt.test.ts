@@ -131,7 +131,7 @@ describe("choice prompt", () => {
   });
 
   test("cancels with escape when a cancel handler is provided", () => {
-    let cancelled = false;
+    let canceled = false;
     const prompt = new ChoicePrompt({
       title: "Usage scope",
       options: [
@@ -141,12 +141,12 @@ describe("choice prompt", () => {
       defaultValue: "session",
       onSelect: () => {},
       onCancel: () => {
-        cancelled = true;
+        canceled = true;
       },
     });
 
     prompt.handleInput("\x1b");
 
-    expect(cancelled).toBe(true);
+    expect(canceled).toBe(true);
   });
 });

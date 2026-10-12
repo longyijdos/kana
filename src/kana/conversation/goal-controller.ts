@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-type KanaGoalStatus = "active" | "completed" | "blocked" | "cancelled" | "round_limit";
+type KanaGoalStatus = "active" | "completed" | "blocked" | "canceled" | "round_limit";
 
 export type KanaGoalSnapshot = {
   readonly id: string;
@@ -76,8 +76,8 @@ export class KanaGoalController {
     return this.finish(update.status, detail);
   }
 
-  cancel(detail = "Cancelled by the user."): KanaGoalSnapshot | undefined {
-    return this.goalData?.status === "active" ? this.finish("cancelled", detail) : undefined;
+  cancel(detail = "Canceled by the user."): KanaGoalSnapshot | undefined {
+    return this.goalData?.status === "active" ? this.finish("canceled", detail) : undefined;
   }
 
   block(detail: string): KanaGoalSnapshot | undefined {
@@ -88,7 +88,7 @@ export class KanaGoalController {
     if (this.goalData?.status !== "active") {
       return undefined;
     }
-    const discarded = this.finish("cancelled", "Discarded after the execution context changed.");
+    const discarded = this.finish("canceled", "Discarded after the execution context changed.");
     this.goalData = undefined;
     return discarded;
   }

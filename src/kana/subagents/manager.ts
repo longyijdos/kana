@@ -10,7 +10,7 @@ import type { KanaSubagentProfile } from "./profiles";
 const DEFAULT_MAX_RETAINED_TERMINAL_SUBAGENTS = 32;
 const MAX_LABEL_LENGTH = 160;
 
-type KanaSubagentStatus = "running" | "completed" | "errored" | "cancelled" | "unknown";
+type KanaSubagentStatus = "running" | "completed" | "errored" | "canceled" | "unknown";
 
 export type KanaSubagentOwner = Readonly<{
   readonly sessionId: string;
@@ -258,7 +258,7 @@ export class KanaSubagentManager {
 
   private finalize(subagent: Subagent, result: KanaSubagentRunResult): void {
     if (subagent.summary.status !== "running") return;
-    const status = subagent.controller.signal.aborted ? "cancelled" : result.status;
+    const status = subagent.controller.signal.aborted ? "canceled" : result.status;
     subagent.state = {
       ...subagent.state,
       output: result.output,
