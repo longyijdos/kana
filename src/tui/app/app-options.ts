@@ -1,60 +1,39 @@
 import type { BundledTheme } from "shiki";
-import type { ContextCheckpoint } from "@/agent";
-import type { Message, ToolCallContent } from "@/core";
-import type { BackgroundJobClient } from "@/jobs";
+import type { ToolCallContent } from "@/core";
 import type {
-  ConversationSessionSnapshot,
+  ConversationRuntimeOptions,
   KanaLaunchMode,
   KanaMcpServerActivation,
   KanaNotificationConfig,
   KanaPromptTemplate,
-  KanaSessionMetadata,
-  KanaSubagentClient,
-  KanaTodoItem,
   KanaToolApprovalConfig,
   KanaToolApprovals,
   KanaTuiConfig,
   KanaUsageScope,
   KanaUsageSummary,
-  KanaUserTaskManager,
   LoadKanaSkillActivationsResult,
   LoadKanaSubagentProfilesResult,
   MemoryConsolidationActivitySource,
-  WakeScheduler,
 } from "@/kana";
 import type { Logger } from "@/logging";
 import type { OAuthTokenStatus } from "@/oauth";
 import type { ToolApprovalSource } from "../tools";
 import type { McpLoadResult } from "./mcp-lifecycle-controller";
 import type { MemoryCompactSummary, MemoryScope } from "./memory-compact-controller";
-import type { TuiModelSettings } from "./model-selection";
+import type { TuiModelSelection, TuiModelSettings } from "./model-selection";
 
-type KanaTuiConversationCapabilities = {
-  initialSession?: ConversationSessionSnapshot;
-  getSessionTimeline?: (sessionId: string) => ConversationSessionSnapshot["timeline"];
-  getResumeSessionId: () => string | undefined;
-  createNewSession: () => { id: string };
-  forkSession: (
-    messages: readonly Message[],
-    contextCheckpoint: ContextCheckpoint | undefined,
-    prompt: string,
-  ) => { id: string; todoState?: readonly KanaTodoItem[] };
-  listSessions: () => KanaSessionMetadata[];
-  loadSession: (sessionId: string) => ConversationSessionSnapshot;
-  deleteSession: (sessionId: string) => Promise<boolean> | boolean;
-  goalMaxRounds: number;
-  wakeScheduler?: WakeScheduler;
-  getBackgroundJobs?: (sessionId: string) => BackgroundJobClient | undefined;
-  getSubagents?: (sessionId: string) => KanaSubagentClient | undefined;
-  getUserTasks?: (sessionId: string) => KanaUserTaskManager | undefined;
-  loadSubagentProfiles?: () => LoadKanaSubagentProfilesResult;
-  disposeSession?: (
-    sessionId: string,
-    source: "session_disposal" | "shutdown",
-    foregroundSettled: Promise<void>,
-  ) => Promise<void>;
-};
-
+// Host-backed runtime callbacks plus the TUI's own session-picker needs. The
+// TUI supplies createAgent itself so it can map model selections.
+type KanaTuiConversationCapabilities = Omit<
+  ConversationRuntimeOptions<TuiModelSelection>,
+  "createAgent" | "listSessions" | "deleteSession" | "canStartQueuedRun"
+> &
+  Required<
+    Pick<ConversationRuntimeOptions<TuiModelSelection>, "listSessions" | "deleteSession">
+  > & {
+    getResumeSessionId: () => string | undefined;
+    loadSubagentProfiles?: () => LoadKanaSubagentProfilesResult;
+  };
 type KanaTuiSkillCapabilities = {
   load: () => LoadKanaSkillActivationsResult;
   saveEnabledGlobalNames: (names: string[]) => void;

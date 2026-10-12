@@ -1,7 +1,7 @@
 import type { BeforeToolExecutionHook } from "@/agent";
 import { createUserMessage } from "@/core";
 import {
-  ConversationRuntime,
+  type ConversationRuntime,
   type createKanaConversationHost,
   type KanaGoalSnapshot,
   type KanaToolApprovalConfig,
@@ -99,41 +99,10 @@ export function createHeadlessRuntime(
   host: ReturnType<typeof createKanaConversationHost>,
   backgroundCompletionRuns: boolean,
 ): ConversationRuntime {
-  return new ConversationRuntime({
-    initialSession: host.initialSession
-      ? {
-          id: host.initialSession.metadata.id,
-          messages: host.initialSession.messages,
-          timeline: host.initialSession.timeline,
-          todoState: host.initialSession.todoState,
-          contextCheckpoint: host.initialSession.contextCheckpoint,
-        }
-      : undefined,
-    createAgent: (agentOptions) => host.createAgent(agentOptions),
-    createNewSession: () => host.createNewSession(),
-    getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
-    forkSession: (messages, contextCheckpoint, prompt) =>
-      host.forkSession(messages, contextCheckpoint, prompt),
-    loadSession: (sessionId) => {
-      const session = host.loadSession(sessionId);
-      return {
-        id: session.metadata.id,
-        messages: session.messages,
-        timeline: session.timeline,
-        todoState: session.todoState,
-        contextCheckpoint: session.contextCheckpoint,
-      };
-    },
-    wakeScheduler: host.wakeScheduler,
-    goalMaxRounds: host.config.agent.goalMaxRounds,
-    getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
-    getSubagents: (sessionId) => host.getSubagents(sessionId),
-    disposeSession: (sessionId, source, foregroundSettled) =>
-      host.disposeSession(sessionId, source, foregroundSettled),
+  return host.createRuntime({
     backgroundJobCompletionRuns: backgroundCompletionRuns,
     subagentCompletionRuns: backgroundCompletionRuns,
     scheduledRuns: false,
-    getLogger: () => host.getLogger(),
   });
 }
 

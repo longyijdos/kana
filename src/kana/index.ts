@@ -54,7 +54,6 @@ export {
   type KanaGoalSnapshot,
   type WakeEvent,
   type WakeEventOrigin,
-  type WakeScheduler,
 } from "./conversation";
 export { loadKanaEnvironment } from "./env";
 export type { KanaLaunchMode } from "./launch-mode";

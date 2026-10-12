@@ -62,8 +62,8 @@ describe("Kana subagent journal repository", () => {
       session: { type: "resume", sessionId: parent.id },
     });
 
-    expect(host.getSubagents(parent.id)?.list()).toEqual([]);
-    expect(host.getSubagents(parent.id)?.inspect("agent_previous")).toBeUndefined();
+    expect(host.runtimeOptions.getSubagents(parent.id)?.list()).toEqual([]);
+    expect(host.runtimeOptions.getSubagents(parent.id)?.inspect("agent_previous")).toBeUndefined();
     await host.close();
   });
 

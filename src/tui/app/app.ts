@@ -120,7 +120,6 @@ export class KanaTuiApp {
     terminal: Terminal,
     private readonly options: KanaTuiAppOptions,
   ) {
-    const initialSession = options.conversation.initialSession;
     const cleanMode = options.launch.mode === "clean";
     this.getLogger = options.diagnostics?.getLogger ?? createNoopLogger;
     // The config enables the feature but never forces OSC 8 through a terminal
@@ -130,24 +129,12 @@ export class KanaTuiApp {
     this.renderLatex = options.ui.config?.renderLatex ?? true;
     this.renderMermaid = options.ui.config?.renderMermaid ?? true;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
-      initialSession,
-      getSessionTimeline: options.conversation.getSessionTimeline,
+      ...options.conversation,
       createAgent: ({ configuration, ...agentOptions }) =>
         createAgent({
           ...agentOptions,
           modelSelection: configuration,
         }),
-      createNewSession: options.conversation.createNewSession,
-      forkSession: options.conversation.forkSession,
-      loadSession: options.conversation.loadSession,
-      listSessions: options.conversation.listSessions,
-      deleteSession: options.conversation.deleteSession,
-      wakeScheduler: options.conversation.wakeScheduler,
-      goalMaxRounds: options.conversation.goalMaxRounds,
-      getBackgroundJobs: options.conversation.getBackgroundJobs,
-      getSubagents: options.conversation.getSubagents,
-      getUserTasks: options.conversation.getUserTasks,
-      disposeSession: options.conversation.disposeSession,
       canStartQueuedRun: () =>
         !this.status.running &&
         !this.mcpLifecycle.loading &&

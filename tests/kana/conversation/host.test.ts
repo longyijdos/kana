@@ -133,10 +133,12 @@ describe("Kana conversation host", () => {
     const originalId = runtime.sessionId!;
     const submit = (content: string) =>
       runtime.submit({ ...messageIdentityForTest("user"), role: "user", content });
-    const committedTimeline = (id: string) => host.getSessionTimeline(id);
+    const committedTimeline = (id: string) => host.runtimeOptions.getSessionTimeline(id);
     try {
       expect(runtime.session!.timeline).toEqual([]);
-      expect(() => host.getSessionTimeline("missing")).toThrow("has no session missing");
+      expect(() => host.runtimeOptions.getSessionTimeline("missing")).toThrow(
+        "has no session missing",
+      );
       const run = submit("First run.");
       await waitFor(() => model.requests.length === 1);
       const committed = committedTimeline(originalId);
@@ -378,7 +380,9 @@ describe("Kana conversation host", () => {
           "toolUse",
         );
         await waitFor(() => model.requests.length === 2);
-        expect(runtime.session!.timeline).toEqual(host.getSessionTimeline(runtime.sessionId!));
+        expect(runtime.session!.timeline).toEqual(
+          host.runtimeOptions.getSessionTimeline(runtime.sessionId!),
+        );
         expect(
           runtime.session!.timeline.filter((entry) => entry.type === "todo_state"),
         ).toHaveLength(2);
@@ -490,7 +494,7 @@ describe("Kana conversation host", () => {
     try {
       const sessionId = host.initialSession?.metadata.id ?? "";
       host.createAgent({ sessionId });
-      const client = host.getSubagents(sessionId);
+      const client = host.runtimeOptions.getSubagents(sessionId);
       const profile = host
         .loadSubagentProfiles()
         .profiles.find((entry) => entry.name === "focused");
@@ -584,15 +588,15 @@ describe("Kana conversation host", () => {
     expect(host.config.agent.model.name).toBe("deepseek-v4-pro");
     expect(host.resumeSessionId).toBeUndefined();
     expect(runtime.session!.timeline).toEqual([]);
-    expect(host.getSessionTimeline(runtime.sessionId!)).toEqual([]);
-    expect(host.listSessions()).toEqual([]);
+    expect(host.runtimeOptions.getSessionTimeline(runtime.sessionId!)).toEqual([]);
+    expect(host.runtimeOptions.listSessions()).toEqual([]);
     expect(() => host.loadSession("saved-session")).toThrow(
       "Saved sessions are unavailable in clean mode.",
     );
-    await expect(host.deleteSession("saved-session")).rejects.toThrow(
+    await expect(host.runtimeOptions.deleteSession("saved-session")).rejects.toThrow(
       "Saved sessions are unavailable in clean mode.",
     );
-    expect(() => host.forkSession([], undefined, "Fork the task.")).toThrow(
+    expect(() => host.runtimeOptions.forkSession([], undefined, "Fork the task.")).toThrow(
       "Forking sessions is unavailable in clean mode.",
     );
     expect(() => host.loadUsage("session")).toThrow("Session usage is unavailable in clean mode.");
@@ -674,7 +678,7 @@ describe("Kana conversation host", () => {
     host.createAgent({ sessionId: source.id });
     expect(resolveTodoState?.()).toEqual(todoState);
 
-    const fork = host.forkSession([], undefined, "Continue independently.");
+    const fork = host.runtimeOptions.forkSession([], undefined, "Continue independently.");
     expect(fork.todoState).toEqual(todoState);
 
     const forkAgent = host.createAgent({ sessionId: fork.id });
@@ -733,7 +737,7 @@ describe("Kana conversation host", () => {
     ]);
     const host = createKanaConversationHost({ env });
     host.loadSession(deletedSession.id);
-    const jobs = host.getBackgroundJobs(deletedSession.id);
+    const jobs = host.runtimeOptions.getBackgroundJobs(deletedSession.id);
     let canceled = false;
     jobs?.start({
       kind: "test",
@@ -751,10 +755,12 @@ describe("Kana conversation host", () => {
         }),
     });
 
-    expect(await host.deleteSession(deletedSession.id)).toBe(true);
+    expect(await host.runtimeOptions.deleteSession(deletedSession.id)).toBe(true);
     expect(canceled).toBe(true);
     expect(jobs?.list()).toEqual([]);
-    expect(host.listSessions().some((session) => session.id === deletedSession.id)).toBe(false);
+    expect(
+      host.runtimeOptions.listSessions().some((session) => session.id === deletedSession.id),
+    ).toBe(false);
 
     await host.close();
   });
@@ -780,7 +786,7 @@ describe("Kana conversation host", () => {
         }),
     });
     const runtime = createRuntime(host);
-    const previousJobs = host.getBackgroundJobs(session.id);
+    const previousJobs = host.runtimeOptions.getBackgroundJobs(session.id);
     let previousCanceled = false;
     previousJobs?.start({
       kind: "test",
@@ -799,7 +805,7 @@ describe("Kana conversation host", () => {
     });
 
     await runtime.resumeSession(session.id);
-    const currentJobs = host.getBackgroundJobs(session.id);
+    const currentJobs = host.runtimeOptions.getBackgroundJobs(session.id);
 
     expect(previousCanceled).toBe(true);
     expect(currentJobs).not.toBe(previousJobs);
@@ -829,10 +835,10 @@ function createRuntime<TConfiguration>(
         }
       : undefined,
     createAgent: (options) => host.createAgent(options),
-    createNewSession: () => host.createNewSession(),
-    getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
+    createNewSession: () => host.runtimeOptions.createNewSession(),
+    getSessionTimeline: (sessionId) => host.runtimeOptions.getSessionTimeline(sessionId),
     forkSession: (messages, contextCheckpoint, prompt) =>
-      host.forkSession(messages, contextCheckpoint, prompt),
+      host.runtimeOptions.forkSession(messages, contextCheckpoint, prompt),
     loadSession: (sessionId) => {
       const session = host.loadSession(sessionId);
       return {
@@ -842,10 +848,10 @@ function createRuntime<TConfiguration>(
         contextCheckpoint: session.contextCheckpoint,
       };
     },
-    listSessions: () => host.listSessions(),
-    deleteSession: (sessionId) => host.deleteSession(sessionId),
+    listSessions: () => host.runtimeOptions.listSessions(),
+    deleteSession: (sessionId) => host.runtimeOptions.deleteSession(sessionId),
     disposeSession: (sessionId, source, foregroundSettled) =>
-      host.disposeSession(sessionId, source, foregroundSettled),
+      host.runtimeOptions.disposeSession(sessionId, source, foregroundSettled),
     wakeScheduler: host.wakeScheduler,
     goalMaxRounds: host.config.agent.goalMaxRounds,
     getLogger: () => host.getLogger(),

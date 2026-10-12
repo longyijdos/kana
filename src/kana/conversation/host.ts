@@ -1,6 +1,5 @@
 import type { Agent, ContextCheckpoint, PromptSystemSection } from "@/agent";
-import { addModelUsage, type Message, type ModelUsage, type ToolCallContent } from "@/core";
-import type { BackgroundJobClient } from "@/jobs";
+import { addModelUsage, type ModelUsage, type ToolCallContent } from "@/core";
 import type { Logger } from "@/logging";
 import type { McpOAuthHttpDiagnosticEvent, McpToolSource } from "@/mcp";
 import type { OAuthTokenStatus } from "@/oauth";
@@ -54,7 +53,7 @@ import {
 import { getKanaModelManagement, type KanaModelManagement } from "../model-management";
 import { getKanaConfigPaths } from "../path";
 import { loadKanaInstructionSections } from "../prompt";
-import type { KanaSessionMetadata, LoadKanaSessionResult } from "../session";
+import type { LoadKanaSessionResult } from "../session";
 import {
   createKanaSkillStore,
   type KanaSkillStore,
@@ -63,22 +62,25 @@ import {
 import {
   createKanaSubagentJournal,
   finalOutput,
-  type KanaSubagentClient,
   type KanaSubagentRunContext,
   type KanaSubagentRunResult,
   type LoadKanaSubagentProfilesResult,
   loadKanaSubagentProfiles,
 } from "../subagents";
-import type { KanaTodoItem, KanaTodoStateChange } from "../todo";
+import type { KanaTodoStateChange } from "../todo";
 import {
   createKanaToolApprovalStore,
   type KanaToolApprovalStore,
   type KanaToolApprovals,
 } from "../tool-approval";
-import type { KanaUserTaskManager } from "../user-tasks";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import { type HostedSessionAgentBinding, HostedSessionRegistry } from "./hosted-session-registry";
-import type { ConversationAgentIdentity } from "./runtime";
+import {
+  type ConversationAgentIdentity,
+  ConversationRuntime,
+  type ConversationRuntimeOptions,
+  type ConversationSessionSnapshot,
+} from "./runtime";
 import { createWakeScheduler, type WakeScheduler } from "./wake-scheduler";
 
 export type KanaConversationHostSession =
@@ -255,20 +257,35 @@ export class KanaConversationHost<TConfiguration = never> {
     return this.sessionRegistry.getLogger();
   }
 
-  getSessionTimeline(sessionId: string): LoadKanaSessionResult["timeline"] {
-    return this.sessionRegistry.getSessionTimeline(sessionId);
+  // Session, Agent, and background-work callbacks every frontend passes to its
+  // ConversationRuntime. User tasks are offered only when the host enables them.
+  get runtimeOptions(): KanaHostRuntimeOptions<TConfiguration> {
+    const registry = this.sessionRegistry;
+    return {
+      initialSession: this.initialSession && toSessionSnapshot(this.initialSession),
+      getSessionTimeline: (sessionId) => registry.getSessionTimeline(sessionId),
+      createAgent: (options) => this.createAgent(options),
+      createNewSession: () => registry.createNewSession(),
+      forkSession: (messages, checkpoint, prompt) =>
+        registry.forkSession(messages, checkpoint, prompt),
+      loadSession: (sessionId) => toSessionSnapshot(this.loadSession(sessionId)),
+      listSessions: () => registry.listSessions(),
+      deleteSession: (sessionId) => registry.deleteSession(sessionId),
+      getBackgroundJobs: (sessionId) => registry.getBackgroundJobs(sessionId),
+      getSubagents: (sessionId) => registry.getSubagents(sessionId),
+      ...(this.enableUserTasks
+        ? { getUserTasks: (sessionId: string) => registry.getUserTasks(sessionId) }
+        : {}),
+      disposeSession: (sessionId, source, foregroundSettled) =>
+        registry.disposeSession(sessionId, source, foregroundSettled),
+      wakeScheduler: this.wakeScheduler,
+      goalMaxRounds: this.configData.agent.goalMaxRounds,
+      getLogger: () => this.getLogger(),
+    };
   }
 
-  getBackgroundJobs(sessionId: string): BackgroundJobClient | undefined {
-    return this.sessionRegistry.getBackgroundJobs(sessionId);
-  }
-
-  getSubagents(sessionId: string): KanaSubagentClient | undefined {
-    return this.sessionRegistry.getSubagents(sessionId);
-  }
-
-  getUserTasks(sessionId: string): KanaUserTaskManager | undefined {
-    return this.sessionRegistry.getUserTasks(sessionId);
+  createRuntime(frontend: KanaRuntimeFrontendOptions = {}): ConversationRuntime<TConfiguration> {
+    return new ConversationRuntime({ ...this.runtimeOptions, ...frontend });
   }
 
   loadSubagentProfiles(): LoadKanaSubagentProfilesResult {
@@ -285,14 +302,6 @@ export class KanaConversationHost<TConfiguration = never> {
 
   addTrustedShellCommand(command: string): KanaToolApprovals {
     return this.toolApprovalStore.addTrustedShellCommand(command);
-  }
-
-  disposeSession(
-    sessionId: string,
-    source: "session_disposal" | "shutdown",
-    foregroundSettled?: Promise<void>,
-  ): Promise<void> {
-    return this.sessionRegistry.disposeSession(sessionId, source, foregroundSettled);
   }
 
   createAgent(options: KanaConversationHostAgentOptions<TConfiguration>) {
@@ -349,28 +358,8 @@ export class KanaConversationHost<TConfiguration = never> {
     return agent;
   }
 
-  createNewSession(): { id: string } {
-    return this.sessionRegistry.createNewSession();
-  }
-
-  forkSession(
-    messages: readonly Message[],
-    contextCheckpoint: ContextCheckpoint | undefined,
-    prompt: string,
-  ): { id: string; todoState: readonly KanaTodoItem[] } {
-    return this.sessionRegistry.forkSession(messages, contextCheckpoint, prompt);
-  }
-
   loadSession(sessionId: string): LoadKanaSessionResult {
     return this.sessionRegistry.loadSession(sessionId);
-  }
-
-  listSessions(): KanaSessionMetadata[] {
-    return this.sessionRegistry.listSessions();
-  }
-
-  deleteSession(sessionId: string): Promise<boolean> {
-    return this.sessionRegistry.deleteSession(sessionId);
   }
 
   async startMcp(signal?: AbortSignal): Promise<KanaMcpRuntimeSnapshot> {
@@ -853,4 +842,36 @@ function addCompactionUsage(compactions: readonly ContextCheckpoint[]): ModelUsa
     (total, compaction) => (compaction.usage ? addModelUsage(total, compaction.usage) : total),
     undefined,
   );
+}
+
+// Frontend-specific runtime behavior; everything else comes from the host.
+type KanaRuntimeFrontendOptions = Pick<
+  ConversationRuntimeOptions<never>,
+  "backgroundJobCompletionRuns" | "subagentCompletionRuns" | "scheduledRuns" | "canStartQueuedRun"
+>;
+
+export type KanaHostRuntimeOptions<TConfiguration> = Omit<
+  ConversationRuntimeOptions<TConfiguration>,
+  keyof KanaRuntimeFrontendOptions
+> &
+  Required<
+    Pick<
+      ConversationRuntimeOptions<TConfiguration>,
+      | "getSessionTimeline"
+      | "listSessions"
+      | "deleteSession"
+      | "getBackgroundJobs"
+      | "getSubagents"
+      | "disposeSession"
+    >
+  >;
+
+function toSessionSnapshot(session: LoadKanaSessionResult): ConversationSessionSnapshot {
+  return {
+    id: session.metadata.id,
+    messages: session.messages,
+    timeline: session.timeline,
+    todoState: session.todoState,
+    contextCheckpoint: session.contextCheckpoint,
+  };
 }
