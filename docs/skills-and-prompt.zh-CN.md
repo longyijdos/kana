@@ -29,7 +29,7 @@ description: 检查并发布 TypeScript 包。
 按项目约定运行测试，然后检查变更。
 ```
 
-frontmatter 仅识别 `name` 和 `description`；未知字段被忽略。支持未加引号或单/双引号标量，也支持 `|` 或 `>` 后接缩进内容的多行值。frontmatter 必须从文件第一行的 `---` 开始，并以单独的结束标记关闭。
+frontmatter 仅识别 `name` 和 `description`；未知字段被忽略。支持未加引号或单/双引号标量，也支持 `|` 或 `>` 后接缩进内容的多行值。frontmatter 必须从文件第一行的 `---` 开始，并以单独的结束标记关闭。重复声明同一个键会导致解析失败。
 
 未声明 `name` 时，`SKILL.md` 使用其父目录名作为名称。无 frontmatter 的文件仍会解析，但因为缺少 `description` 不会被注册。`description` 超过 1024 字符、`name` 超过 64 字符、非法名称字符、首尾连字符或连续 `--` 都会产生警告；当前实现仍会注册带无效名称但有描述的 Skill。
 

@@ -97,6 +97,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。
 - `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按活动时间降序排序。每个列出的会话以最后一条完整 timeline entry 的 timestamp 作为派生的 `updatedAt`，没有条目时回退到 `createdAt`。该值不会写回 header，因此打开或恢复会话但未追加新 journal 条目时，其位置保持不变；未终止的崩溃尾部记录不算活动。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。
+- 用量统计忽略其他账本版本的 accounting 记录。格式损坏的 accounting 行会被跳过，并在会话日志中写一条 `accounting.record_skipped` 警告，不会让 `/usage` 失败。
 - 删除按 session ID 找到文件，并一并移除 `.subagents/<session-id>`。成功删除 journal 后，会等待已托管的后台 Job、subagent 与 artifact store 释放，再以 best-effort 删除对应持久 artifact 目录，之后才报告成功；找不到返回 `false`。Child journal 契约见 [Subagent](subagents.zh-CN.md)。
 - 普通模式启动时执行保守的孤儿清理，并保留 24 小时宽限期：删除没有对应 session journal 的陈旧 artifact 目录，以及其 JSON 编码 locator 不在已有 journal 中的陈旧文件。近期文件、被引用文件、符号链接、异常路径和清理失败不会被冒险删除，只会保留或报告。
 
