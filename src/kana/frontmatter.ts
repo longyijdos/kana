@@ -50,20 +50,29 @@ function parseFields(block: string): FrontmatterFields {
       throw new Error(`${key} is declared more than once`);
     }
 
+    // Indented lines continue the value; blank lines do too when more
+    // indented lines follow them.
     const continuation: string[] = [];
-    while (index + 1 < lines.length && /^\s+\S/.test(lines[index + 1] ?? "")) {
-      index += 1;
-      continuation.push(lines[index] ?? "");
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const candidate = lines[next] ?? "";
+      if (/^\s+\S/.test(candidate)) {
+        continuation.push(...lines.slice(index + 1, next + 1));
+        index = next;
+      } else if (candidate.trim()) {
+        break;
+      }
     }
 
     if (value === "|" || value === ">") {
       fields[key] = continuation.map((item) => item.replace(/^ {2}/, "")).join("\n");
     } else if (value === "" && continuation.length > 0) {
-      fields[key] = continuation.map((item) => {
-        const listItem = /^\s+-\s+(.*)$/.exec(item);
-        if (!listItem) throw new Error(`invalid frontmatter line: ${item}`);
-        return unquote((listItem[1] ?? "").trim());
-      });
+      fields[key] = continuation
+        .filter((item) => item.trim())
+        .map((item) => {
+          const listItem = /^\s+-\s+(.*)$/.exec(item);
+          if (!listItem) throw new Error(`invalid frontmatter line: ${item}`);
+          return unquote((listItem[1] ?? "").trim());
+        });
     } else if (continuation.length > 0) {
       throw new Error(`invalid frontmatter line: ${continuation[0]}`);
     } else {

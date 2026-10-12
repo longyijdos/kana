@@ -7,7 +7,7 @@ import { type OwnedTask, type OwnedTaskEvent, OwnedTaskRegistry } from "./owned-
 const DEFAULT_MAX_RETAINED_OUTPUT_BYTES = 1024 * 1024;
 const MAX_OUTPUT_PEEK_BYTES = 20 * 1024;
 const MAX_OUTPUT_CHUNK_BYTES = 4096;
-const DEFAULT_MAX_RETAINED_TERMINAL_JOBS = 32;
+const MAX_RETAINED_TERMINAL_JOBS = 32;
 const MAX_BACKGROUND_JOB_LABEL_BYTES = 512;
 
 export type BackgroundJobStatus =
@@ -24,7 +24,6 @@ export type BackgroundJobOutputStream = "stdout" | "stderr";
 
 type BackgroundJobOwner = Readonly<{
   readonly sessionId: string;
-  readonly instanceId: string;
 }>;
 
 export type BackgroundJobSummary = {
@@ -131,7 +130,6 @@ type Job = OwnedTask<BackgroundJobOwner, BackgroundJobSummary, JobOutput>;
 
 type BackgroundJobManagerOptions = {
   readonly maxRetainedOutputBytes?: number;
-  readonly maxRetainedTerminalJobs?: number;
 };
 
 export class BackgroundJobManager {
@@ -144,13 +142,13 @@ export class BackgroundJobManager {
     this.registry = new OwnedTaskRegistry({
       logPrefix: "background_job",
       displayName: "Background Job",
-      maxRetainedTerminal: options.maxRetainedTerminalJobs ?? DEFAULT_MAX_RETAINED_TERMINAL_JOBS,
+      maxRetainedTerminal: MAX_RETAINED_TERMINAL_JOBS,
       isActive: (summary) => isActive(summary.status),
     });
   }
 
   createOwner(sessionId: string): BackgroundJobOwner {
-    return { sessionId, instanceId: randomUUID() };
+    return { sessionId };
   }
 
   bind(owner: BackgroundJobOwner, options: BindBackgroundJobOwnerOptions): BackgroundJobClient {

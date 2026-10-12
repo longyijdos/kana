@@ -66,7 +66,7 @@ describe("background activity strip", () => {
 function jobEvent(sessionId: string): unknown {
   return {
     type: "observed",
-    owner: { sessionId, instanceId: `instance-${sessionId}` },
+    owner: { sessionId },
     task: { id: `job_${sessionId}` },
   };
 }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createSessionLogger } from "@/logging";
+import { createLogger, createSessionLogger } from "@/logging";
 
 const tempDirs: string[] = [];
 
@@ -126,6 +126,17 @@ describe("session logger", () => {
     });
 
     expect(() => logger.info("agent.started")).not.toThrow();
+  });
+});
+
+describe("createLogger", () => {
+  test("never lets a failing writer reach the caller, including child loggers", () => {
+    const logger = createLogger(() => {
+      throw new Error("writer failed");
+    });
+
+    expect(() => logger.error("provider.request_failed")).not.toThrow();
+    expect(() => logger.child({ component: "mcp" }).warn("mcp.failed")).not.toThrow();
   });
 });
 

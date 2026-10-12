@@ -43,12 +43,20 @@ const SENSITIVE_KEY = /(?:api[_-]?key|authorization|cookie|password|secret|token
 const MAX_STRING_LENGTH = 2_000;
 const MAX_DEPTH = 5;
 
+// Every logger is built here, so a failing writer can never reach a caller.
 export function createLogger(write: LogWriter): Logger {
+  const safeWrite: LogWriter = (level, event, metadata) => {
+    try {
+      write(level, event, metadata);
+    } catch {
+      // Diagnostics never change control flow.
+    }
+  };
   return {
-    debug: (event, metadata) => write("debug", event, metadata),
-    info: (event, metadata) => write("info", event, metadata),
-    warn: (event, metadata) => write("warn", event, metadata),
-    error: (event, metadata) => write("error", event, metadata),
+    debug: (event, metadata) => safeWrite("debug", event, metadata),
+    info: (event, metadata) => safeWrite("info", event, metadata),
+    warn: (event, metadata) => safeWrite("warn", event, metadata),
+    error: (event, metadata) => safeWrite("error", event, metadata),
     child: (bound) =>
       createLogger((level, event, metadata) => write(level, event, { ...bound, ...metadata })),
   };
@@ -80,15 +88,11 @@ export function createSessionLogger(options: CreateSessionLoggerOptions): Logger
         ? {}
         : { metadata: sanitizeLogMetadata(metadata) }),
     };
-    try {
-      mkdirSync(path.dirname(options.path), { recursive: true });
-      appendFileSync(options.path, `${JSON.stringify(record)}\n`, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
-    } catch {
-      // Logging is strictly diagnostic. I/O failures must never alter the runtime path.
-    }
+    mkdirSync(path.dirname(options.path), { recursive: true });
+    appendFileSync(options.path, `${JSON.stringify(record)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
   });
 }
 

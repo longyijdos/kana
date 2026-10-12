@@ -87,7 +87,6 @@ describe("Kana subagent journal repository", () => {
 function createOwner(cwd: string): KanaSubagentOwner {
   return {
     sessionId: "session-1",
-    instanceId: "owner-1",
     cwd,
     persistent: true,
   };

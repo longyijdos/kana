@@ -1,7 +1,8 @@
 import { createNoopLogger, type Logger } from "@/logging";
 import { errorFields } from "@/utils";
 
-export type TaskOwner = { readonly sessionId: string; readonly instanceId: string };
+// Owners are compared by identity: each binding creates a fresh owner object.
+export type TaskOwner = { readonly sessionId: string };
 
 export type TaskSummary = {
   readonly id: string;
@@ -104,7 +105,7 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
 
   find(owner: TOwner, id: string): OwnedTask<TOwner, TSummary, TState> | undefined {
     const task = this.tasks.get(id);
-    return task?.owner.instanceId === owner.instanceId ? task : undefined;
+    return task?.owner === owner ? task : undefined;
   }
 
   list(owner: TOwner): TSummary[] {
@@ -182,11 +183,7 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
 
   observe(owner: TOwner, id: string): void {
     const task = this.tasks.get(id);
-    if (
-      task?.owner.instanceId !== owner.instanceId ||
-      this.options.isActive(task.summary) ||
-      task.observed
-    ) {
+    if (task?.owner !== owner || this.options.isActive(task.summary) || task.observed) {
       return;
     }
     task.observed = true;
@@ -227,7 +224,7 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
     );
     for (const task of owned) this.tasks.delete(task.summary.id);
     for (const registration of this.listeners) {
-      if (registration.owner.instanceId === owner.instanceId) this.listeners.delete(registration);
+      if (registration.owner === owner) this.listeners.delete(registration);
     }
   }
 
@@ -243,7 +240,7 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
   }
 
   private owned(owner: TOwner): TaskRecord<TOwner, TSummary, TState>[] {
-    return [...this.tasks.values()].filter((task) => task.owner.instanceId === owner.instanceId);
+    return [...this.tasks.values()].filter((task) => task.owner === owner);
   }
 
   private prune(owner: TOwner): void {
@@ -264,7 +261,7 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
 
   private emit(event: OwnedTaskEvent<TOwner, TSummary>): void {
     for (const registration of [...this.listeners]) {
-      if (registration.owner.instanceId !== event.owner.instanceId) continue;
+      if (registration.owner !== event.owner) continue;
       try {
         registration.listener(event);
       } catch (error) {

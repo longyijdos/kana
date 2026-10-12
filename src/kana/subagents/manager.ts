@@ -7,14 +7,13 @@ import { createNoopLogger, type Logger } from "@/logging";
 import { formatError } from "@/utils";
 import type { KanaSubagentProfile } from "./profiles";
 
-const DEFAULT_MAX_RETAINED_TERMINAL_SUBAGENTS = 32;
+const MAX_RETAINED_TERMINAL_SUBAGENTS = 32;
 const MAX_LABEL_LENGTH = 160;
 
 type KanaSubagentStatus = "running" | "completed" | "errored" | "cancelled" | "unknown";
 
 export type KanaSubagentOwner = Readonly<{
   readonly sessionId: string;
-  readonly instanceId: string;
   readonly cwd: string;
   readonly persistent: boolean;
 }>;
@@ -103,10 +102,6 @@ type SubagentState = {
 
 type Subagent = OwnedTask<KanaSubagentOwner, KanaSubagentSummary, SubagentState>;
 
-export type KanaSubagentManagerOptions = {
-  readonly maxRetainedTerminalSubagents?: number;
-};
-
 export class KanaSubagentManager {
   private readonly registry: OwnedTaskRegistry<
     KanaSubagentOwner,
@@ -114,18 +109,17 @@ export class KanaSubagentManager {
     SubagentState
   >;
 
-  constructor(options: KanaSubagentManagerOptions = {}) {
+  constructor() {
     this.registry = new OwnedTaskRegistry({
       logPrefix: "subagent",
       displayName: "Subagent",
-      maxRetainedTerminal:
-        options.maxRetainedTerminalSubagents ?? DEFAULT_MAX_RETAINED_TERMINAL_SUBAGENTS,
+      maxRetainedTerminal: MAX_RETAINED_TERMINAL_SUBAGENTS,
       isActive: (summary) => summary.status === "running",
     });
   }
 
   createOwner(options: { sessionId: string; cwd: string; persistent: boolean }): KanaSubagentOwner {
-    return { ...options, instanceId: randomUUID() };
+    return { ...options };
   }
 
   bind(
