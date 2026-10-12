@@ -3,6 +3,7 @@ import { createShellTool, normalizeToolResult } from "@/tools";
 import { formatError } from "@/utils";
 import { type Editor, type StatusLineState, ToolCallBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
+import { AuxiliaryRun } from "./auxiliary-run";
 import type { RunPhase } from "./status-phase";
 
 export type LocalShellControllerOptions = {
@@ -16,18 +17,17 @@ export type LocalShellControllerOptions = {
 };
 
 export class LocalShellController {
-  private abortController?: AbortController;
+  private readonly run: AuxiliaryRun;
   private runId = 0;
 
-  constructor(private readonly options: LocalShellControllerOptions) {}
+  constructor(private readonly options: LocalShellControllerOptions) {
+    this.run = new AuxiliaryRun(options);
+  }
 
   abort(): boolean {
-    if (!this.abortController) {
+    if (!this.run.abort()) {
       return false;
     }
-
-    this.abortController.abort();
-    this.options.updateStatus("aborted");
     (this.options.getLogger ?? createNoopLogger)().info("local_shell.abort_requested");
     return true;
   }
@@ -40,7 +40,6 @@ export class LocalShellController {
       return;
     }
 
-    const abortController = new AbortController();
     const tool = createShellTool({ root: process.cwd() });
     const toolCall = {
       type: "tool_call",
@@ -54,58 +53,36 @@ export class LocalShellController {
 
     this.options.editor.clear();
     this.options.transcript.addChild(block);
-    this.abortController = abortController;
-    this.options.onRunStart();
-    this.options.updateStatus("tool", {
-      activeTool: "shell",
-    });
-    this.options.tui.requestRender();
     logger.debug("local_shell.started");
 
-    try {
-      block.markExecutionStarted();
-      this.options.tui.requestRender();
-
-      const executed = await tool.execute(
-        {
-          command: shellCommand,
-        },
-        {
-          toolCallId: toolCall.id,
-          signal: abortController.signal,
-          update: (partialResult) => {
-            block.updatePartialResult(partialResult);
-            this.options.tui.requestRender();
+    await this.run.run("shell", async (signal) => {
+      try {
+        block.markExecutionStarted();
+        this.options.tui.requestRender();
+        const executed = await tool.execute(
+          { command: shellCommand },
+          {
+            toolCallId: toolCall.id,
+            signal,
+            update: (partialResult) => {
+              block.updatePartialResult(partialResult);
+              this.options.tui.requestRender();
+            },
           },
-        },
-      );
-      const result = normalizeToolResult(executed);
-
-      block.updateResult(result.result, result.isError ?? false);
-      this.options.updateStatus(result.isError ? "error" : "done");
-      if (result.isError) {
-        logger.warn("local_shell.failed");
-      } else {
+        );
+        const result = normalizeToolResult(executed);
+        block.updateResult(result.result, result.isError ?? false);
+        if (result.isError) {
+          logger.warn("local_shell.failed");
+          return "error";
+        }
         logger.debug("local_shell.ended");
+        return "done";
+      } catch (error) {
+        block.updateResult({ error: formatError(error) }, true);
+        logger.error("local_shell.failed", { aborted: signal.aborted, error });
+        return signal.aborted ? "aborted" : "error";
       }
-    } catch (error) {
-      block.updateResult(
-        {
-          error: formatError(error),
-        },
-        true,
-      );
-      this.options.updateStatus(abortController.signal.aborted ? "aborted" : "error");
-      logger.error("local_shell.failed", {
-        aborted: abortController.signal.aborted,
-        error,
-      });
-    } finally {
-      if (this.abortController === abortController) {
-        this.abortController = undefined;
-      }
-      this.options.onRunEnd();
-      this.options.tui.requestRender();
-    }
+    });
   }
 }
