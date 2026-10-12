@@ -557,10 +557,7 @@ export class KanaConversationHost<TConfiguration = never> {
       journal: sessionBinding.journal,
       commitTodoState: sessionBinding.commitTodoState,
       onRunCommitted: ({ messages, compactions, state, event }) => {
-        if (!session) {
-          throw new Error("Cannot complete an Agent run without an active session.");
-        }
-        if (!session.persistent) {
+        if (!session?.persistent) {
           return;
         }
 
@@ -597,10 +594,7 @@ export class KanaConversationHost<TConfiguration = never> {
           });
       },
       onCompactionCommitted: ({ compaction, state }) => {
-        if (!session) {
-          throw new Error("Cannot persist context compaction without an active session.");
-        }
-        if (!session.persistent) {
+        if (!session?.persistent) {
           return;
         }
 
