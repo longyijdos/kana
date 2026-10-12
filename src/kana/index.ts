@@ -43,6 +43,7 @@ export { formatKanaEnvironmentContext } from "./context";
 export {
   type ConversationAgentIdentity,
   type ConversationInputQueueSnapshot,
+  type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,
   type ConversationRuntimeOptions,

@@ -6,6 +6,7 @@ export {
 export {
   type ConversationAgentIdentity,
   type ConversationInputQueueSnapshot,
+  type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,
   type ConversationRuntimeOptions,

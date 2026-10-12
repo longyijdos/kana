@@ -4,7 +4,13 @@ import type {
   BeforeToolExecutionResult,
   ContextCheckpoint,
 } from "@/agent";
-import { createUserMessage, type Message, type ToolCallContent, type UserImage } from "@/core";
+import {
+  createUserMessage,
+  type Message,
+  type ToolCallContent,
+  type UserImage,
+  type UserMessage,
+} from "@/core";
 import type { ConversationAgentIdentity, KanaToolApprovalMode } from "@/kana";
 import { ConversationRuntime, type ConversationRuntimeEvent } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
@@ -15,7 +21,6 @@ import {
   Editor,
   TextBlock,
   Transcript,
-  UserMessageBlock,
 } from "../components";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
@@ -31,7 +36,6 @@ import { BottomAreaController } from "./bottom-area-controller";
 import { BtwController } from "./btw-controller";
 import { ContentViewerController } from "./content-viewer-controller";
 import { ContextCompactController } from "./context-compact-controller";
-import { formatUserMessage } from "./history";
 import { ImageAttachmentController } from "./image-attachment-controller";
 import { InformationViewerController } from "./information-viewer-controller";
 import { InteractionErrorReporter } from "./interaction-error-reporter";
@@ -45,6 +49,7 @@ import type { TuiModelSelection } from "./model-selection";
 import { formatStatusModel, ModelSelectionController } from "./model-selection-controller";
 import { NotificationController } from "./notification-controller";
 import { QueuedInputController } from "./queued-input-controller";
+import { createRunInputView } from "./run-input-view";
 import { ScheduledMessageManagerController } from "./scheduled-message-manager-controller";
 import { SessionLifecycleController } from "./session-lifecycle-controller";
 import { SkillManagerController } from "./skill-manager-controller";
@@ -288,10 +293,7 @@ export class KanaTuiApp {
       editor: this.editor,
       bottomArea: this.bottomArea,
       tui: this.tui,
-      getJobs: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getBackgroundJobs?.(sessionId) : undefined;
-      },
+      getJobs: this.forActiveSession(this.options.conversation.getBackgroundJobs),
       showError: (error) => this.showInteractionError(error),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
@@ -299,10 +301,7 @@ export class KanaTuiApp {
       editor: this.editor,
       bottomArea: this.bottomArea,
       tui: this.tui,
-      getSubagents: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getSubagents?.(sessionId) : undefined;
-      },
+      getSubagents: this.forActiveSession(this.options.conversation.getSubagents),
       loadProfiles: () =>
         this.options.conversation.loadSubagentProfiles?.() ?? {
           profiles: [],
@@ -329,18 +328,9 @@ export class KanaTuiApp {
     this.backgroundActivity = new BackgroundActivityController({
       editor: this.editor,
       tui: this.tui,
-      getJobs: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getBackgroundJobs?.(sessionId) : undefined;
-      },
-      getSubagents: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getSubagents?.(sessionId) : undefined;
-      },
-      getUserTasks: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getUserTasks?.(sessionId) : undefined;
-      },
+      getJobs: this.forActiveSession(this.options.conversation.getBackgroundJobs),
+      getSubagents: this.forActiveSession(this.options.conversation.getSubagents),
+      getUserTasks: this.forActiveSession(this.options.conversation.getUserTasks),
     });
     this.backgroundActivity.bind();
     this.memoryActivity = new MemoryActivityController({
@@ -370,10 +360,7 @@ export class KanaTuiApp {
         void this.memoryCompact.compact(scope, request);
       },
       getApprovalMode: () => this.toolApproval.mode,
-      getUserTasks: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getUserTasks?.(sessionId) : undefined;
-      },
+      getUserTasks: this.forActiveSession(this.options.conversation.getUserTasks),
       onApprovalModeSelect: (mode) => {
         this.bottomArea.showFallback();
         this.setToolApprovalMode(mode);
@@ -930,45 +917,15 @@ export class KanaTuiApp {
 
   private handleConversationEvent(event: ConversationRuntimeEvent): void {
     switch (event.type) {
-      case "run_start":
+      case "run_start": {
         this.status.startRun();
         this.agentEvents.resetRun();
-        if (event.source === "user" && event.input) {
-          this.transcript.addChild(new UserMessageBlock(event.input));
-        } else if (event.source === "goal" && event.input) {
-          this.transcript.addChild(
-            event.input.provenance.kind === "goal_continuation"
-              ? new TextBlock(`Goal continuation · round ${event.input.provenance.round}`, {
-                  color: tuiTheme.muted,
-                })
-              : new UserMessageBlock(event.input),
-          );
-        } else if (event.source === "scheduled" && event.input) {
-          this.transcript.addChild(
-            new TextBlock(`Scheduled wake: ${formatScheduledWakeContent(event.input.content)}`, {
-              color: tuiTheme.muted,
-            }),
-          );
-        } else if (event.source === "job" && event.input) {
-          this.transcript.addChild(
-            new TextBlock(formatBackgroundJobWakeContent(event.input.content), {
-              color: tuiTheme.muted,
-            }),
-          );
-        } else if (event.source === "subagent" && event.input) {
-          this.transcript.addChild(
-            new TextBlock(formatSubagentWakeContent(event.input.content), {
-              color: tuiTheme.muted,
-            }),
-          );
-        } else if (event.source === "user_task" && event.input) {
-          this.transcript.addChild(
-            new TextBlock(formatUserMessage(event.input), { color: tuiTheme.muted }),
-          );
-        }
+        const inputView = createRunInputView(event.source, event.input);
+        if (inputView) this.transcript.addChild(inputView);
         this.updateStatus(event.source === "compaction" ? "compacting" : "starting");
         this.tui.requestRender();
         break;
+      }
 
       case "agent_event":
         if (event.event.type === "context_compacted") {
@@ -1076,26 +1033,14 @@ export class KanaTuiApp {
     images: UserImage[] = [],
     historyValue = value,
   ): Promise<void> {
-    const prompt = value.trim();
-    const historyPrompt = historyValue.trim();
-
-    if (!prompt && images.length === 0) {
+    const input = this.createPromptInput(value, images);
+    if (!input || (!this.conversation.canSteer && this.status.running)) {
       return;
     }
-    const imageInputError = this.imageAttachments.getInputError(images);
-    if (imageInputError) {
-      this.showInteractionError(imageInputError);
-      return;
-    }
-    const input = createUserMessage({
-      content: prompt,
-      provenance: { kind: "user_input" },
-      ...(images.length > 0 ? { images } : {}),
-    });
+    this.editor.addToHistory(historyValue.trim());
+    this.editor.clear();
 
     if (this.conversation.canSteer) {
-      this.editor.addToHistory(historyPrompt);
-      this.editor.clear();
       const queuedInputId = this.queuedInputs.addTurn(input);
       const disposition = await this.conversation.steer(input);
       if (disposition !== "queued") {
@@ -1103,38 +1048,42 @@ export class KanaTuiApp {
       }
       return;
     }
-    if (this.status.running) {
-      return;
-    }
-
-    this.editor.addToHistory(historyPrompt);
-    this.editor.clear();
     await this.submitAgentInput(input);
   }
 
   private queuePrompt(value: string, images: UserImage[] = [], historyValue = value): void {
-    const prompt = value.trim();
-    const historyPrompt = historyValue.trim();
-    if ((!prompt && images.length === 0) || !this.conversation.canSteer) {
+    if (!this.conversation.canSteer) {
       return;
     }
-    const imageInputError = this.imageAttachments.getInputError(images);
-    if (imageInputError) {
-      this.showInteractionError(imageInputError);
+    const input = this.createPromptInput(value, images);
+    if (!input) {
       return;
     }
-    const input = createUserMessage({
-      content: prompt,
-      provenance: { kind: "user_input" },
-      ...(images.length > 0 ? { images } : {}),
-    });
-
-    this.editor.addToHistory(historyPrompt);
+    this.editor.addToHistory(historyValue.trim());
     this.editor.clear();
     this.conversation.queueInput(input);
   }
 
-  private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {
+  // Returns undefined for an empty prompt, or after reporting images the
+  // current model cannot accept.
+  private createPromptInput(value: string, images: UserImage[]): UserMessage | undefined {
+    const content = value.trim();
+    if (!content && images.length === 0) {
+      return undefined;
+    }
+    const imageInputError = this.imageAttachments.getInputError(images);
+    if (imageInputError) {
+      this.showInteractionError(imageInputError);
+      return undefined;
+    }
+    return createUserMessage({
+      content,
+      provenance: { kind: "user_input" },
+      ...(images.length > 0 ? { images } : {}),
+    });
+  }
+
+  private async submitAgentInput(input: UserMessage): Promise<void> {
     if (this.stopping || this.mcpLifecycle.loading) {
       return;
     }
@@ -1185,6 +1134,15 @@ export class KanaTuiApp {
     return this.toolApproval.request(toolCall, signal, agent);
   }
 
+  private forActiveSession<T>(
+    get: ((sessionId: string) => T | undefined) | undefined,
+  ): () => T | undefined {
+    return () => {
+      const sessionId = this.conversation.sessionId;
+      return sessionId ? get?.(sessionId) : undefined;
+    };
+  }
+
   private updateStatus(...args: Parameters<StatusProjectionController["update"]>): void {
     this.status.update(...args);
   }
@@ -1192,18 +1150,6 @@ export class KanaTuiApp {
   private updateContextUsage(estimatedTokens?: number): void {
     this.status.updateContextUsage(estimatedTokens);
   }
-}
-
-function formatScheduledWakeContent(content: string): string {
-  return content.replace(/^\[Scheduled wake event\]\n/, "");
-}
-
-function formatBackgroundJobWakeContent(content: string): string {
-  return content.replace(/^\[Background Job completion\]\n?/, "");
-}
-
-function formatSubagentWakeContent(content: string): string {
-  return content.replace(/^\[Subagent completion\]\n?/, "");
 }
 
 function formatExitLine(label: string, value: string): string {
