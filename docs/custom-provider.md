@@ -45,6 +45,8 @@ For authenticated endpoints, store the secret in the process environment or `<KA
 api_key_env = "LOCAL_MODEL_API_KEY"
 ```
 
+To keep the endpoint out of a public repository when using the [Kana Agent reusable workflow](kana-agent-workflow.md), omit `base_url` from the provider file and pass it as the optional `KANA_MODEL_BASE_URL` secret. The workflow then writes that value as the provider's `base_url`.
+
 ## Model fields
 
 | Key | Required | Default | Meaning |
