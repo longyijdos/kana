@@ -1,10 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
 import { createUserMessage } from "@/core";
-import type {
-  ConversationRuntime,
-  KanaLaunchMode,
-  KanaToolApprovalConfig,
-  KanaToolApprovals,
+import {
+  type ConversationRuntime,
+  type KanaLaunchMode,
+  KanaSessionInUseError,
+  type KanaToolApprovalConfig,
+  type KanaToolApprovals,
 } from "@/kana";
 import type { Logger } from "@/logging";
 import { type ApprovalDecision, ServerApprovals } from "./approvals";
@@ -110,6 +111,11 @@ export function createServerApi(options: ServerApiOptions) {
     transitioning = true;
     try {
       return await operation();
+    } catch (error) {
+      if (error instanceof KanaSessionInUseError) {
+        throw new ApiError(409, "session_in_use", error.message);
+      }
+      throw error;
     } finally {
       transitioning = false;
     }

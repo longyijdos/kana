@@ -20,7 +20,7 @@ Clean mode retains temporary session creation and core execution but removes dur
 
 ## HTTP contract
 
-JSON success responses are `{schema_version: 1, data: ...}`. Errors are `{schema_version: 1, error: {code, message}}`. JSON responses and SSE encode BigInt values as decimal strings without changing execution-local results. Other values follow standard JSON serialization; cyclic values are unsupported. Request bodies must be JSON objects; the native server limits bodies to 1 MiB. Unknown routes return 404; authentication failures return 401; invalid input returns 400; session mismatch or a busy transition returns 409; shutdown returns 503. Unexpected failures return a generic 500 and a safe structured diagnostic.
+JSON success responses are `{schema_version: 1, data: ...}`. Errors are `{schema_version: 1, error: {code, message}}`. JSON responses and SSE encode BigInt values as decimal strings without changing execution-local results. Other values follow standard JSON serialization; cyclic values are unsupported. Request bodies must be JSON objects; the native server limits bodies to 1 MiB. Unknown routes return 404; authentication failures return 401; invalid input returns 400; session mismatch, a busy transition, or a session owned by another Kana process (`session_in_use`) returns 409; shutdown returns 503. Unexpected failures return a generic 500 and a safe structured diagnostic.
 
 | Method and path | Request | Result |
 | --- | --- | --- |

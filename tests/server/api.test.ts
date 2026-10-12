@@ -233,6 +233,25 @@ describe("server HTTP API", () => {
     }
   });
 
+  test("reports sessions owned by another process as in use", async () => {
+    const f = createFixture({ inUseSessionIds: ["session-b"] });
+    try {
+      const inUse = {
+        code: "session_in_use",
+        message: "Kana session session-b is in use by another Kana conversation.",
+      };
+      const resumed = await f.request("/v1/sessions/session-b/resume", "POST");
+      expect(resumed.status).toBe(409);
+      expect((await resumed.json()).error).toEqual(inUse);
+      expect(f.runtime.sessionId).toBe("session-a");
+      const deleted = await f.request("/v1/sessions/session-b", "DELETE");
+      expect(deleted.status).toBe(409);
+      expect((await deleted.json()).error).toEqual(inUse);
+    } finally {
+      await f.close();
+    }
+  });
+
   test("stops an active run through the authenticated API", async () => {
     const model = new ControlledModel();
     const f = createFixture({ model });

@@ -3,6 +3,7 @@ import type { Model } from "../../src/core";
 import {
   ConversationRuntime,
   type ConversationSessionSnapshot,
+  KanaSessionInUseError,
   type KanaSessionMetadata,
   type KanaToolApprovalConfig,
   type KanaToolApprovals,
@@ -19,6 +20,7 @@ export function createFixture(
     session?: ConversationSessionSnapshot;
     approvalMode?: KanaToolApprovalConfig["mode"];
     context?: AgentConfig["context"];
+    inUseSessionIds?: readonly string[];
   } = {},
 ) {
   const sessions = new Map<string, KanaSessionMetadata>();
@@ -27,6 +29,9 @@ export function createFixture(
     version: 3,
     shell: { exactCommands: [], readOnlyCommands: [] },
   };
+  function assertNotInUse(id: string): void {
+    if (options.inUseSessionIds?.includes(id)) throw new KanaSessionInUseError(id);
+  }
   function newSession(id: string) {
     const date = new Date().toISOString();
     sessions.set(id, {
@@ -39,13 +44,20 @@ export function createFixture(
     });
     return { id, messages: [], timeline: [] };
   }
+  for (const id of options.inUseSessionIds ?? []) newSession(id);
   const runtime = new ConversationRuntime({
     initialSession: options.session ?? newSession("session-a"),
     createNewSession: () => newSession(`session-${++counter}`),
     forkSession: () => newSession(`fork-${++counter}`),
-    loadSession: (id) => newSession(id),
+    loadSession: (id) => {
+      assertNotInUse(id);
+      return newSession(id);
+    },
     listSessions: () => [...sessions.values()],
-    deleteSession: (id) => sessions.delete(id),
+    deleteSession: (id) => {
+      assertNotInUse(id);
+      return sessions.delete(id);
+    },
     goalMaxRounds: 8,
     createAgent: (agentOptions) =>
       new Agent({
