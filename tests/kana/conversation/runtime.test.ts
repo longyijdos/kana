@@ -16,6 +16,7 @@ import {
   type KanaTodoStateChange,
 } from "../../../src/kana";
 import { KanaSubagentManager, type KanaSubagentRunResult } from "../../../src/kana/subagents";
+import { createNoopLogger } from "../../../src/logging";
 import { MockModel } from "../../../src/providers/mock";
 import { deferred } from "../../helpers/async-control";
 import { messageIdentityForTest } from "../../helpers/messages";
@@ -792,6 +793,56 @@ describe("ConversationRuntime", () => {
     expect(() => runtime.scheduleInput(5, "Too late.")).toThrow(
       "Conversation runtime is stopping.",
     );
+  });
+
+  test("adopts the next session when disposing the previous one fails", async () => {
+    const warnings: string[] = [];
+    const logger = { ...createNoopLogger(), warn: (event: string) => warnings.push(event) };
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "current", messages: [], timeline: [] },
+      createAgent: () => new Agent({ model: new MockModel({ provider: "mock", model: "mock" }) }),
+      disposeSession: async (sessionId) => {
+        if (sessionId === "current") throw new Error("Job cleanup failed.");
+      },
+      getLogger: () => logger,
+    });
+    const changes: string[] = [];
+    runtime.subscribe((event) => {
+      if (event.type === "session_changed") changes.push(event.session.id);
+    });
+
+    await runtime.resumeSession("next");
+
+    expect(runtime.session?.id).toBe("next");
+    expect(changes).toEqual(["next"]);
+    expect(warnings).toContain("conversation.session_disposal_failed");
+
+    await runtime.close();
+  });
+
+  test("disposes a resumed candidate whose Agent cannot be built", async () => {
+    const disposals: Array<{ sessionId: string; source: string }> = [];
+    const runtime = new ConversationRuntime({
+      ...createRuntimeOptions(),
+      initialSession: { id: "current", messages: [], timeline: [] },
+      createAgent: (options) => {
+        if (options.sessionId === "broken") {
+          throw new Error("Model unavailable.");
+        }
+        return new Agent({ model: new MockModel({ provider: "mock", model: "mock" }) });
+      },
+      disposeSession: async (sessionId, source, foregroundSettled) => {
+        await foregroundSettled;
+        disposals.push({ sessionId, source });
+      },
+    });
+
+    await expect(runtime.resumeSession("broken")).rejects.toThrow("Model unavailable.");
+    expect(disposals).toEqual([{ sessionId: "broken", source: "session_disposal" }]);
+    expect(runtime.session?.id).toBe("current");
+
+    await runtime.close();
   });
 });
 

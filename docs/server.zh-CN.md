@@ -20,7 +20,7 @@ Clean 模式保留临时 session 创建和核心执行，移除持久资源与�
 
 ## HTTP 契约
 
-JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_version: 1, error: {code, message}}`。JSON 响应和 SSE 都将 BigInt 编码为十进制字符串，不改变执行期的原始结果。其他值沿用标准 JSON 序列化规则，不支持循环引用。请求体必须是 JSON 对象，原生 server 限制请求体为 1 MiB。未知路由返回 404，鉴权失败返回 401，输入无效返回 400，session 不匹配或切换忙碌返回 409，关闭阶段返回 503。意外失败返回通用 500，并写入安全的结构化诊断。
+JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_version: 1, error: {code, message}}`。JSON 响应和 SSE 都将 BigInt 编码为十进制字符串，不改变执行期的原始结果。其他值沿用标准 JSON 序列化规则，不支持循环引用。请求体必须是 JSON 对象，原生 server 限制请求体为 1 MiB。未知路由返回 404，鉴权失败返回 401，输入无效返回 400，session 不匹配、切换忙碌或 session 被其他 Kana 进程占用（`session_in_use`）返回 409，关闭阶段返回 503。意外失败返回通用 500，并写入安全的结构化诊断。
 
 | 方法与路径 | 请求 | 结果 |
 | --- | --- | --- |

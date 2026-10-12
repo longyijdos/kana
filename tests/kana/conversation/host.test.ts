@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Agent } from "../../../src/agent";
@@ -8,8 +16,8 @@ import {
   createKanaConversationHost,
   createKanaSession,
   createKanaSessionJournal,
+  KanaSessionInUseError,
   type KanaTodoItem,
-  loadKanaSession,
   type MemoryConsolidationActivity,
   type MemoryConsolidationEvent,
 } from "../../../src/kana";
@@ -19,6 +27,7 @@ import { MockModel } from "../../../src/providers/mock";
 import { waitFor } from "../../helpers/async-control";
 import { ControlledModel } from "../../helpers/controlled-model";
 import { messageIdentityForTest } from "../../helpers/messages";
+import { readOwnedSession } from "../../helpers/session";
 
 const temporaryHomes: string[] = [];
 const originalKanaHome = process.env.KANA_HOME;
@@ -106,11 +115,10 @@ describe("Kana conversation host", () => {
 
     const sessionId = host.resumeSessionId;
     expect(sessionId).toBeString();
-    expect(
-      loadKanaSession(sessionId ?? "", { cwd: process.cwd(), env }).messages.map(
-        (message) => message.role,
-      ),
-    ).toEqual(["user", "assistant"]);
+    expect(readOwnedSession(sessionId ?? "", env).messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
 
     await runtime.close();
     await host.close();
@@ -309,7 +317,7 @@ describe("Kana conversation host", () => {
         expect(
           (failures[0] as Extract<MemoryConsolidationEvent, { type: "failed" }>).error,
         ).toContain("Custom provider configuration was not found");
-        const saved = loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() });
+        const saved = readOwnedSession(host.resumeSessionId!, env);
         expect(
           saved.messages
             .filter((message) => message.role === "tool")
@@ -388,7 +396,7 @@ describe("Kana conversation host", () => {
         ).toHaveLength(2);
         model.requests[1]!.complete("Tracked.");
         await run;
-        const saved = loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() });
+        const saved = readOwnedSession(host.resumeSessionId!, env);
         expect(saved.todoState).toEqual(items);
         expect(runtime.session!.timeline.map((entry) => entry.id)).toEqual(
           saved.timeline.map((entry) => entry.id),
@@ -428,9 +436,7 @@ describe("Kana conversation host", () => {
         await waitFor(() => model.requests.length === 4);
         model.requests[3]!.complete("Cleared.");
         await clear;
-        expect(
-          loadKanaSession(host.resumeSessionId!, { env, cwd: process.cwd() }).todoState,
-        ).toEqual([]);
+        expect(readOwnedSession(host.resumeSessionId!, env).todoState).toEqual([]);
       } finally {
         await runtime.close();
         await host.close();
@@ -685,7 +691,7 @@ describe("Kana conversation host", () => {
     expect(resolveTodoState?.()).toEqual(todoState);
     await forkAgent.prompt("Continue the fork.");
 
-    const loadedFork = host.loadSession(fork.id);
+    const loadedFork = readOwnedSession(fork.id, env);
     expect(loadedFork.todoState).toEqual(todoState);
     expect(loadedFork.timeline.some((entry) => entry.type === "todo_state")).toBe(true);
 
@@ -765,7 +771,7 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
-  test("disposes the previous hosted generation when resuming the same session ID", async () => {
+  test("rejects reopening a session while this host still owns it", async () => {
     const env = createTempEnv();
     const session = createKanaSession({ cwd: process.cwd(), env, id: "same-id" });
     createKanaSessionJournal(session).appendSnapshot([
@@ -775,50 +781,57 @@ describe("Kana conversation host", () => {
         content: "Resume this exact session.",
       },
     ]);
+    const model = new ControlledModel();
     const host = createKanaConversationHost({
       env,
       session: { type: "resume", sessionId: session.id },
       createAgent: (_config, options = {}) =>
         new Agent({
-          model: new MockModel({ provider: "mock", model: "mock" }),
+          model,
           messages: options.messages,
           beforeToolExecution: options.beforeToolExecution,
+          journal: options.journal,
         }),
     });
     const runtime = createRuntime(host);
-    const previousJobs = host.runtimeOptions.getBackgroundJobs(session.id);
-    let previousCancelled = false;
-    previousJobs?.start({
-      kind: "test",
-      label: "previous generation",
-      run: ({ signal }) =>
-        new Promise((resolve) => {
-          signal.addEventListener(
-            "abort",
-            () => {
-              previousCancelled = true;
-              resolve({ status: "cancelled", exitCode: null });
-            },
-            { once: true },
-          );
-        }),
+    const run = runtime.submit({
+      ...messageIdentityForTest("user"),
+      role: "user",
+      content: "Keep this turn open.",
     });
+    await waitFor(() => model.requests.length === 1);
+    const contentDuringTurn = readFileSync(session.path, "utf8");
 
-    await runtime.resumeSession(session.id);
-    const currentJobs = host.runtimeOptions.getBackgroundJobs(session.id);
+    expect(() => host.loadSession(session.id)).toThrow(KanaSessionInUseError);
+    expect(readFileSync(session.path, "utf8")).toBe(contentDuringTurn);
+    await expect(runtime.resumeSession(session.id)).rejects.toThrow("run is active");
 
-    expect(previousCancelled).toBe(true);
-    expect(currentJobs).not.toBe(previousJobs);
-    expect(() =>
-      currentJobs?.start({
-        kind: "test",
-        label: "current generation",
-        run: async () => ({ status: "completed", exitCode: 0 }),
-      }),
-    ).not.toThrow();
+    model.requests[0]!.complete("Done.");
+    await run;
+    await expect(runtime.resumeSession(session.id)).rejects.toThrow("already the current session");
 
     await runtime.close();
     await host.close();
+  });
+
+  test("keeps a resumed session owned until the hosting conversation closes", async () => {
+    const env = createTempEnv();
+    const session = createKanaSession({ cwd: process.cwd(), env, id: "owned" });
+    createKanaSessionJournal(session).appendSnapshot([
+      { ...messageIdentityForTest("user"), role: "user", content: "Own this session." },
+    ]);
+    const resume = { type: "resume", sessionId: session.id } as const;
+    const owner = createKanaConversationHost({ env, session: resume });
+    const competitor = createKanaConversationHost({ env, session: { type: "none" } });
+
+    expect(() => competitor.loadSession(session.id)).toThrow(KanaSessionInUseError);
+    await expect(competitor.runtimeOptions.deleteSession(session.id)).rejects.toThrow(
+      KanaSessionInUseError,
+    );
+    await owner.close();
+    expect(competitor.loadSession(session.id).messages).toHaveLength(1);
+
+    await competitor.close();
   });
 });
 

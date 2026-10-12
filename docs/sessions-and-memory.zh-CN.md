@@ -29,7 +29,7 @@ Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使�
 
 ## 会话
 
-会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V6 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。存储外围的活动产品资源由[对话运行时](conversation-runtime.zh-CN.md)所述的 hosted-session registry 持有。
+会话持久化实现位于 `src/kana/session/`：`format.ts` 定义并校验 V6 记录与 checkpoint 转换，`journal.ts` 维护追加顺序和中断恢复状态机，`ownership.ts` 提供跨进程单写者锁，`repository.ts` 负责创建、查找、读取、尾部修复和删除。内部与跨层调用方都通过 `session/index.ts` 的稳定领域导出使用这些能力。存储外围的活动产品资源由[对话运行时](conversation-runtime.zh-CN.md)所述的 hosted-session registry 持有。
 
 会话文件位于：
 
@@ -91,6 +91,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 - 活动资源释放与 host shutdown 顺序见[对话运行时](conversation-runtime.zh-CN.md)；本节只描述会留下持久结果的 journal 与 artifact 行为。
 - Agent journal 在任何模型 I/O 前写入 `turn_start`、本轮用户消息和所有有变化的 runtime-context 状态转换；完整 assistant 消息在其工具执行前写入，接受的 `todo_write` 会先写 `todo_state` 再写紧凑工具结果。其他工具结果同样在执行结束后独立写入，全部 sibling 结果写完后、下一次模型请求前再写入带来源的工具结果策略上下文。压缩 checkpoint 也在 adopt 前写入。终态 `turn_end` 写入后才运行 `onRunCommitted` 的 accounting/记忆等聚合后处理，随后发布 `agent_end`。手动 `/compact` 同样先写 checkpoint 再 adopt。`waitForIdle()` 不会早于这些写入和后处理完成。
 - 加载发现未闭合 turn 时会直接修复原 JSONL：为每个没有结果的工具调用追加 `status: "unknown"` 的错误结果，明确禁止自动重试，再追加内部 recovery 用户消息和 `outcome: "interrupted"` 的 `turn_end`。若最后一行是未完成的 JSON，则只截断这条未终止尾记录；已完成行中的损坏仍报错。恢复具有幂等性，因此第二次加载不会再次追加。
+- 持久 session 只有一个写入者。Kana 从创建或恢复开始持有一把跨进程排他锁，即 journal 旁的 `<session-file>.lock` 目录，直到该托管 session 的前台 run、后台 Job 与 subagent 全部结束。恢复会先获取这把锁，再做尾部修复或中断 turn 恢复，因此与之竞争的 CLI、headless 或 server 进程会以 session 正在使用的错误失败，且不改动 journal；Kana 不会接管仍然存活的持有者。持有者运行期间会持续刷新锁的 mtime，因此崩溃进程留下的锁约 10 秒后过期，之后的恢复可以接管。若锁被破坏，后续追加会失败，直到重新加载该 session。列出 session 不加锁，clean 模式的 session 也不加锁。
 - 恢复会重建 journal 中已提交的消息、最后一个 context checkpoint 和最新 todo 状态。进程内的 inbox、wake、Goal 与用户任务状态不属于 session 格式，详见[对话运行时](conversation-runtime.zh-CN.md)。
 - 恢复会检查每个保留 artifact 是否位于该 session 的受管目录、是否为普通文件，以及大小是否与记录字节数一致。引用缺失或无效时记录安全诊断，但不会让 journal 无法读取，也不会修改其中的有界预览。
 - fork 会在注册 snapshot 前把所有保留 artifact 复制到目标 session 的私有目录，再重写继承工具消息与累计 checkpoint 摘要中的 locator。因此源 session 与 fork 可以独立删除。Subagent journal 属于内部 child 而非对话历史，不会被复制。复制或重写失败会中止 fork，并以 best-effort 回滚目标目录。
@@ -98,7 +99,7 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 - `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按活动时间降序排序。每个列出的会话以最后一条完整 timeline entry 的 timestamp 作为派生的 `updatedAt`，没有条目时回退到 `createdAt`。该值不会写回 header，因此打开或恢复会话但未追加新 journal 条目时，其位置保持不变；未终止的崩溃尾部记录不算活动。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。
 - 用量统计忽略其他账本版本的 accounting 记录。格式损坏的 accounting 行会被跳过，并在会话日志中写一条 `accounting.record_skipped` 警告，不会让 `/usage` 失败。
-- 删除按 session ID 找到文件，并一并移除 `.subagents/<session-id>`。成功删除 journal 后，会等待已托管的后台 Job、subagent 与 artifact store 释放，再以 best-effort 删除对应持久 artifact 目录，之后才报告成功；找不到返回 `false`。Child journal 契约见 [Subagent](subagents.zh-CN.md)。
+- 删除按 session ID 找到文件，并一并移除 `.subagents/<session-id>`。Kana 先等待当前进程中为该 session 托管的后台 Job、subagent 与 artifact store 释放，再在 session 锁的保护下删除，因此其他进程持有的 session 会以正在使用为由被拒绝。成功删除 journal 后，再以 best-effort 删除对应持久 artifact 目录，之后才报告成功；找不到返回 `false`。Child journal 契约见 [Subagent](subagents.zh-CN.md)。
 - 普通模式启动时执行保守的孤儿清理，并保留 24 小时宽限期：删除没有对应 session journal 的陈旧 artifact 目录，以及其 JSON 编码 locator 不在已有 journal 中的陈旧文件。近期文件、被引用文件、符号链接、异常路径和清理失败不会被冒险删除，只会保留或报告。
 
 会话文件用 `0600` 追加。文件格式中保存完整用户、助手和工具消息，包括内联结果或有界 artifact 元数据；不要把会话目录或 artifact 目录当作无敏感信息的日志位置。

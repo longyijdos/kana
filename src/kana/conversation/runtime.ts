@@ -339,6 +339,9 @@ export class ConversationRuntime<TConfiguration = never> {
 
   async resumeSession(sessionId: string): Promise<ConversationSessionSnapshot> {
     this.assertIdle("resume a session");
+    if (sessionId === this.sessionId) {
+      throw new Error(`Session ${sessionId} is already the current session.`);
+    }
     const session = this.options.loadSession(sessionId);
     await this.replaceSession("resume", session);
     return this.session as ConversationSessionSnapshot;
@@ -489,12 +492,26 @@ export class ConversationRuntime<TConfiguration = never> {
     // Build against the candidate session before mutating runtime state. A
     // provider/configuration failure must leave the current Agent usable.
     const nextSession = session;
-    const nextAgent = this.buildAgent(
-      nextSession.messages,
-      nextSession.contextCheckpoint,
-      undefined,
-      nextSession.id,
-    );
+    let nextAgent: Agent;
+    try {
+      nextAgent = this.buildAgent(
+        nextSession.messages,
+        nextSession.contextCheckpoint,
+        undefined,
+        nextSession.id,
+      );
+    } catch (error) {
+      // The host registered the candidate before construction; disposing it
+      // releases session ownership that would otherwise last until shutdown.
+      await this.options
+        .disposeSession?.(nextSession.id, "session_disposal", Promise.resolve())
+        .catch((disposalError: unknown) => {
+          this.getLogger().warn("conversation.session_candidate_disposal_failed", {
+            error: disposalError,
+          });
+        });
+      throw error;
+    }
     const previousAgent = this.agent;
     const previousJobs = this.inputCoordinator.backgroundJobClient;
     const previousSubagents = this.inputCoordinator.subagentClient;
@@ -510,8 +527,9 @@ export class ConversationRuntime<TConfiguration = never> {
         previousSubagents,
       );
     } catch (error) {
-      this.inputCoordinator.cancelSessionChange();
-      throw error;
+      // Disposal closes the previous session's Jobs, subagents, and ownership
+      // before it can fail, so there is nothing to roll back to.
+      this.getLogger().warn("conversation.session_disposal_failed", { error });
     } finally {
       this.changingSession = false;
     }

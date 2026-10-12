@@ -25,7 +25,7 @@ TUI / Headless / Server
 
 `KanaConversationHost` 是产品装配边界。它加载运行配置与审批状态，初始化选中的 session，持有共享 wake scheduler 和 MCP runtime，并使用当前模型、prompt、内置工具、MCP registry 访问能力、logger、journal、artifact store、background-job client、subagent client、todo 状态与记忆回调构造每个主 Agent；同时根据已校验角色卡构造一次性 child Agent。它只返回与前端无关的操作和数据，不渲染 TUI 组件，也不投影 headless 输出。前端通过 Host 的 `runtimeOptions` 构造自己的 `ConversationRuntime`（headless 与 server 使用 `createRuntime()`），只提供前端自身的行为，例如完成通知触发的运行、定时运行和排队运行的放行条件。Clean mode 下 Host 不持有持久化与自定义相关的 store，依赖它们的功能会报告不可用。委派契约归 [Subagent](subagents.zh-CN.md)所有。
 
-`HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client、用户任务管理器与待写入的 fork snapshot。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
+`HostedSessionRegistry` 持有每个 session 实例关联的活动资源。每条托管记录绑定 session 内存镜像、可选 journal、logger、artifact store、background-job client、subagent client、用户任务管理器与待写入的 fork snapshot。持久记录还持有该 session 的所有权锁，直到记录释放或 Host 关闭；在此期间，同一 registry 中的其他记录和其他进程都无法打开该 session。`ConversationRuntime` 通过 Host 回调选择并使用这些资源，不直接打开存储或后台进程。
 
 `ConversationRuntime` 持有当前 Agent 与 session 快照。每次读取快照时，通过 `getSessionTimeline` 按 session ID 查询 Host 最新已提交的 timeline。Runtime 直接使用这份 timeline，并从 Agent state 获取 messages 与 checkpoint；这些值都是按引用共享的只读值。所有前端都通过 Host 的 runtime options 绑定此回调。未提供回调的独立 runtime 直接复用初始或加载的 timeline；查询失败会向上传播，不会回退到陈旧历史。Runtime 不从 Agent event 重建 journal entry，流式 delta 也不会触发 timeline 拷贝。Clean-mode session 没有 journal，已提交 timeline 为空。
 
@@ -106,9 +106,9 @@ Goal 是进程内控制状态，不是 session 历史。启动时会校验目标
 Agent 替换与 session 替换是两个不同操作：
 
 - 重配置保留当前 session、messages、context checkpoint 与 Agent inbox；候选 Agent 构造成功后才替换旧 Agent，并丢弃活动 Goal 控制状态。
-- New、fork 与 resume 会创建或加载候选 session，并在修改当前 runtime 状态前构造其 Agent；构造失败时当前 Agent 与 session 仍可使用。
+- New、fork 与 resume 会创建或加载候选 session，并在修改当前 runtime 状态前构造其 Agent；构造失败时会释放候选 session，当前 Agent 与 session 仍可使用。恢复当前 session 会被拒绝。
 
-Session 切换期间 coordinator 会关闭 drain gate 并暂停 background-job 观察。Runtime 把前台 Agent 的 `waitForIdle()` promise 作为 settlement barrier，请求 Host 释放旧 session；hosted registry 同时取消并结算该 session 实例的 Job 与 subagent。只有释放成功后，它才取消旧 session 的 wake 与 inbox，采用新 session 和 Agent，连接新 Job client，发布 `session_changed` 并恢复队列观察。
+Session 切换期间 coordinator 会关闭 drain gate 并暂停 background-job 观察。Runtime 把前台 Agent 的 `waitForIdle()` promise 作为 settlement barrier，请求 Host 释放旧 session；hosted registry 同时取消并结算该 session 实例的 Job 与 subagent。释放结束后，它取消旧 session 的 wake 与 inbox，采用新 session 和 Agent，连接新 Job client，发布 `session_changed` 并恢复队列观察。释放会不可逆地关闭旧 session 的 Job、subagent 与所有权，因此释放失败只记录日志，切换照常完成。
 
 Fork 把当前 messages 与 context checkpoint 交给 Host；resume 获得已提交 messages、timeline、checkpoint 与 todo state。它们的持久格式与恢复规则归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
 

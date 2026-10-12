@@ -27,6 +27,12 @@ import {
   SESSION_VERSION,
 } from "./format";
 import { createKanaSessionJournal } from "./journal";
+import { acquireKanaSessionOwnership, type KanaSessionOwnership } from "./ownership";
+
+type OpenedKanaSession = {
+  session: LoadKanaSessionResult;
+  ownership: KanaSessionOwnership;
+};
 
 export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaSessionMetadata {
   const id = options.id ?? randomUUID();
@@ -48,17 +54,34 @@ export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaS
   return headerToMetadata(header, filePath, createdAt);
 }
 
-export function loadKanaSession(
+// Loading may repair the tail or recover an interrupted turn, so it writes only
+// after acquiring ownership. The caller keeps it for every later append.
+export function openKanaSession(
   sessionId: string,
   options: FindKanaSessionOptions = {},
-): LoadKanaSessionResult {
+): OpenedKanaSession {
   const metadata = findKanaSession(sessionId, options);
 
   if (!metadata) {
     throw new Error(`Kana session not found: ${sessionId}`);
   }
 
-  return loadKanaSessionFile(metadata.path);
+  const ownership = acquireKanaSessionOwnership(metadata);
+  try {
+    return { session: loadKanaSessionFile(metadata.path), ownership };
+  } catch (error) {
+    ownership.release();
+    throw error;
+  }
+}
+
+export function loadKanaSession(
+  sessionId: string,
+  options: FindKanaSessionOptions = {},
+): LoadKanaSessionResult {
+  const { session, ownership } = openKanaSession(sessionId, options);
+  ownership.release();
+  return session;
 }
 
 export function listKanaSessions(options: FindKanaSessionOptions = {}): KanaSessionMetadata[] {
@@ -100,11 +123,16 @@ export function deleteKanaSession(
     return false;
   }
 
-  rmSync(metadata.path, { force: true });
-  rmSync(path.join(getKanaSessionDir(metadata.cwd, options.env), ".subagents", metadata.id), {
-    recursive: true,
-    force: true,
-  });
+  const ownership = acquireKanaSessionOwnership(metadata);
+  try {
+    rmSync(metadata.path, { force: true });
+    rmSync(path.join(getKanaSessionDir(metadata.cwd, options.env), ".subagents", metadata.id), {
+      recursive: true,
+      force: true,
+    });
+  } finally {
+    ownership.release();
+  }
   return true;
 }
 
