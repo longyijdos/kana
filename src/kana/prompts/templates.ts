@@ -1,11 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { formatError } from "@/utils";
-import { readFrontmatter } from "../frontmatter";
+import { isKanaResourceName, readFrontmatter } from "../frontmatter";
 import { getKanaConfigPaths } from "../path";
 
 const MAX_TEMPLATE_BYTES = 64 * 1024;
-const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const PLACEHOLDER_PATTERN = /\{\{\s*([a-z][a-z0-9_-]{0,63})\s*(?:=([^}\r\n]*))?\}\}/g;
 
@@ -109,7 +108,9 @@ export function expandKanaPromptTemplate(template: KanaPromptTemplate, input: st
 }
 
 function parsePromptTemplate(name: string, content: string, filePath: string): KanaPromptTemplate {
-  validateName(name);
+  if (!isKanaResourceName(name)) {
+    throw new Error("template filename must be a lowercase hyphenated name up to 64 characters");
+  }
   const frontmatter = readFrontmatter(content);
   if (frontmatter === undefined) {
     throw new Error("template requires frontmatter");
@@ -223,14 +224,4 @@ function invalidArgumentsError(templateName: string, input: string, offset: numb
   return new Error(
     `Prompt template :${templateName} expects name=value arguments${near ? ` near "${near}"` : ""}.`,
   );
-}
-
-function validateName(name: string): void {
-  if (
-    name.length === 0 ||
-    name.length > MAX_NAME_LENGTH ||
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)
-  ) {
-    throw new Error("template filename must be a lowercase hyphenated name up to 64 characters");
-  }
 }

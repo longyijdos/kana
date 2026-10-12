@@ -3,11 +3,15 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { formatError } from "@/utils";
 import { KANA_MODEL_PROVIDERS, type KanaModelProvider } from "../config";
-import { type FrontmatterFields, readFrontmatter, unquote } from "../frontmatter";
+import {
+  type FrontmatterFields,
+  isKanaResourceName,
+  readFrontmatter,
+  unquote,
+} from "../frontmatter";
 import { getKanaConfigPaths } from "../path";
 
 const MAX_PROFILE_BYTES = 64 * 1024;
-const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 
 export type KanaSubagentProfile = {
@@ -85,7 +89,9 @@ export function loadKanaSubagentProfiles(
 const PROFILE_FIELDS = new Set(["description", "tools", "model", "reasoning_effort"]);
 
 function parseProfile(name: string, content: string, filePath: string): KanaSubagentProfile {
-  validateName(name);
+  if (!isKanaResourceName(name)) {
+    throw new Error("profile filename must be a lowercase hyphenated name up to 64 characters");
+  }
   const frontmatter = readFrontmatter(content);
   if (frontmatter === undefined) {
     throw new Error("profile requires frontmatter");
@@ -166,16 +172,6 @@ function parseModel(
     name,
     ...(reasoningEffort === undefined || reasoningEffort === "inherit" ? {} : { reasoningEffort }),
   };
-}
-
-function validateName(name: string): void {
-  if (
-    name.length === 0 ||
-    name.length > MAX_NAME_LENGTH ||
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)
-  ) {
-    throw new Error("profile filename must be a lowercase hyphenated name up to 64 characters");
-  }
 }
 
 function withDigest(profile: Omit<KanaSubagentProfile, "digest">): KanaSubagentProfile {

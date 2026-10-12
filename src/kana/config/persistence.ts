@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { writeFileAtomic } from "@/utils";
 import { serializeKanaCustomProviderExample } from "../custom-provider";
 import { getKanaConfigPaths } from "../path";
 import { DEFAULT_KANA_TOOL_APPROVALS } from "../tool-approval-defaults";
@@ -124,10 +124,10 @@ export function resetKanaConfig(env: NodeJS.ProcessEnv = process.env): ResetKana
   const configRemoved = existsSync(paths.configPath);
   rmSync(paths.configPath, { force: true });
   writeGeneratedConfigExample(paths.configExamplePath);
-  writeKanaFile(paths.mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
-  writeKanaFile(paths.mcpEnabledPath, `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`);
-  writeKanaFile(paths.approvalsPath, `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`);
-  writeKanaFile(paths.skillsConfigPath, serializeEmptySkillsConfig());
+  writeFileAtomic(paths.mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
+  writeFileAtomic(paths.mcpEnabledPath, `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`);
+  writeFileAtomic(paths.approvalsPath, `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`);
+  writeFileAtomic(paths.skillsConfigPath, serializeEmptySkillsConfig());
 
   return {
     configPath: paths.configPath,
@@ -145,7 +145,7 @@ function installKanaFile(filePath: string, content: string): "created" | "exists
     return "exists";
   }
 
-  writeKanaFile(filePath, content);
+  writeFileAtomic(filePath, content);
   return "created";
 }
 
@@ -161,7 +161,7 @@ function writeGeneratedExample(
   content: string,
 ): "created" | "exists" | "updated" {
   if (!existsSync(filePath)) {
-    writeKanaFile(filePath, content);
+    writeFileAtomic(filePath, content);
     return "created";
   }
   if (readFileSync(filePath, "utf8") === content) {
@@ -170,13 +170,8 @@ function writeGeneratedExample(
 
   // The example is generated reference material rather than user configuration,
   // so refreshing it is safe and keeps upgrades aligned with the current schema.
-  writeKanaFile(filePath, content);
+  writeFileAtomic(filePath, content);
   return "updated";
-}
-
-function writeKanaFile(filePath: string, content: string): void {
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, content, { encoding: "utf8", mode: 0o600 });
 }
 
 function serializeEmptySkillsConfig(): string {

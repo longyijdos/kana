@@ -283,7 +283,7 @@ function collectArtifactReferences(messages: readonly Message[]): Map<string, To
     if (!message.content.includes(message.artifact.locator)) {
       throw new Error("Tool result artifact notice does not contain its retained locator.");
     }
-    artifacts.set(message.artifact.locator, structuredClone(message.artifact));
+    artifacts.set(message.artifact.locator, message.artifact);
   }
   return artifacts;
 }

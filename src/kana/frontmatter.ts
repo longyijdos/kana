@@ -22,6 +22,12 @@ export function readFrontmatter(content: string): Frontmatter | undefined {
   return { fields: parseFields(normalized.slice(4, end)), body: normalized.slice(end + 4) };
 }
 
+// Names of Markdown-defined resources such as subagent profiles and prompt
+// templates, taken from their file names.
+export function isKanaResourceName(name: string): boolean {
+  return name.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name);
+}
+
 export function unquote(value: string): string {
   const match = /^(?:"(.*)"|'(.*)')$/.exec(value);
   return match ? (match[1] ?? match[2] ?? "") : value;
