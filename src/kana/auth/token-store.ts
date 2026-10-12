@@ -5,7 +5,13 @@ import lockfile from "proper-lockfile";
 import { Type } from "typebox";
 import type { Logger } from "@/logging";
 import type { McpOAuthClientRegistration, McpOAuthClientStore } from "@/mcp";
-import type { OAuthStoredToken, OAuthTokenStatus, OAuthTokenStore } from "@/oauth";
+import {
+  getOAuthTokenStatus,
+  OAUTH_TOKEN_ENDPOINT_AUTH_METHODS,
+  type OAuthStoredToken,
+  type OAuthTokenStatus,
+  type OAuthTokenStore,
+} from "@/oauth";
 import {
   nonEmptyString,
   parseWithSchema,
@@ -76,7 +82,7 @@ export function loadKanaOAuthTokenStatuses(
   return Object.fromEntries(
     storageKeys.map((storageKey) => {
       const token = file.tokens[storageKey];
-      return [storageKey, token === undefined ? unauthorizedStatus() : tokenStatus(token, now)];
+      return [storageKey, getOAuthTokenStatus(token, now)];
     }),
   );
 }
@@ -242,9 +248,7 @@ const CLIENT_REGISTRATION_SCHEMA = Type.Object({
   client: Type.Object({
     clientId: nonEmptyString(),
     clientSecret: Type.Optional(nonEmptyString()),
-    tokenEndpointAuthMethod: Type.Optional(
-      Type.Enum(["none", "client_secret_basic", "client_secret_post"]),
-    ),
+    tokenEndpointAuthMethod: Type.Optional(Type.Enum([...OAUTH_TOKEN_ENDPOINT_AUTH_METHODS])),
   }),
 });
 
@@ -273,18 +277,6 @@ function parseTokenFile(value: unknown): KanaOAuthTokenFile {
 
 function getOAuthTokenFilePath(env: NodeJS.ProcessEnv | undefined): string {
   return path.join(getKanaConfigPaths(env).home, "oauth-tokens.json");
-}
-
-function unauthorizedStatus(): OAuthTokenStatus {
-  return { state: "unauthorized", refreshable: false };
-}
-
-function tokenStatus(token: OAuthStoredToken, now: number): OAuthTokenStatus {
-  return {
-    state: token.expiresAt !== undefined && token.expiresAt <= now ? "expired" : "authorized",
-    refreshable: token.refreshToken !== undefined,
-    ...(token.expiresAt === undefined ? {} : { expiresAt: token.expiresAt }),
-  };
 }
 
 function isFileNotFound(error: unknown): boolean {

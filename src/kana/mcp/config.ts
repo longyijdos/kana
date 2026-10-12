@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type Static, Type } from "typebox";
-import type { OAuthClientCredentials, OAuthTokenEndpointAuthMethod } from "@/oauth";
+import {
+  OAUTH_TOKEN_ENDPOINT_AUTH_METHODS,
+  type OAuthClientCredentials,
+  type OAuthTokenEndpointAuthMethod,
+} from "@/oauth";
 import { nonEmptyString, parseWithSchema, positiveInteger, strictObject } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 
@@ -86,9 +90,7 @@ const OAUTH2_SCHEMA = strictObject({
   ),
   redirectUri: Type.Optional(nonEmptyString()),
   scopes: Type.Optional(uniqueNames()),
-  tokenEndpointAuthMethod: Type.Optional(
-    Type.Enum(["none", "client_secret_basic", "client_secret_post"]),
-  ),
+  tokenEndpointAuthMethod: Type.Optional(Type.Enum([...OAUTH_TOKEN_ENDPOINT_AUTH_METHODS])),
   authorizationParameters: Type.Optional(Type.Record(Type.String(), nonEmptyString())),
   callbackTimeoutMs: Type.Optional(positiveInteger()),
 });

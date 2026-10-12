@@ -8,6 +8,8 @@ import {
   type StoredOAuthTokens,
 } from "@modelcontextprotocol/client";
 import {
+  isOAuthTokenEndpointAuthMethod,
+  needsOAuthTokenRefresh,
   type OAuthCallbackServer,
   type OAuthClientCredentials,
   type OAuthDiagnosticEvent,
@@ -149,12 +151,7 @@ export class McpOAuthHttpAuthorizer {
           "token_endpoint_auth_method" in information
             ? information.token_endpoint_auth_method
             : undefined;
-        if (
-          method !== undefined &&
-          method !== "none" &&
-          method !== "client_secret_basic" &&
-          method !== "client_secret_post"
-        ) {
+        if (method !== undefined && !isOAuthTokenEndpointAuthMethod(method)) {
           throw new McpAuthorizationError(
             "MCP OAuth registration returned an unsupported client authentication method.",
           );
@@ -357,7 +354,7 @@ export class McpOAuthHttpAuthorizer {
   private async getAccessToken(): Promise<string | undefined> {
     await this.ensureDiscovery();
     if (this.token === undefined) return undefined;
-    if (this.token.expiresAt !== undefined && this.token.expiresAt <= Date.now() + 60_000) {
+    if (needsOAuthTokenRefresh(this.token)) {
       if (this.token.refreshToken === undefined) return undefined;
       await this.authenticate(false);
     }

@@ -5,6 +5,11 @@ export {
   refreshOAuthAccessToken,
 } from "./client";
 export { OAuthTokenEndpointError } from "./errors";
+export {
+  getOAuthTokenStatus,
+  isOAuthTokenEndpointAuthMethod,
+  needsOAuthTokenRefresh,
+} from "./token";
 export type {
   OAuthAuthorizationServerMetadata,
   OAuthClientCredentials,
@@ -15,3 +20,4 @@ export type {
   OAuthTokenStatus,
   OAuthTokenStore,
 } from "./types";
+export { OAUTH_TOKEN_ENDPOINT_AUTH_METHODS } from "./types";

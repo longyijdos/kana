@@ -4,7 +4,12 @@ import {
   McpOAuthHttpAuthorizer,
   type McpOAuthHttpDiagnosticEvent,
 } from "@/mcp";
-import type { OAuthFetch, OAuthStoredToken, OAuthTokenStatus, OAuthTokenStore } from "@/oauth";
+import {
+  getOAuthTokenStatus,
+  type OAuthFetch,
+  type OAuthTokenStatus,
+  type OAuthTokenStore,
+} from "@/oauth";
 import { openKanaOAuthAuthorizationUrl } from "../auth/browser";
 import { createKanaOAuthTokenStore } from "../auth/token-store";
 import {
@@ -100,7 +105,7 @@ export async function authorizeKanaMcpServer(
   if (token === undefined) {
     throw new Error(`MCP server ${serverId} completed OAuth without storing credentials.`);
   }
-  return storedTokenStatus(token);
+  return getOAuthTokenStatus(token);
 }
 
 export async function signOutKanaMcpServer(
@@ -112,7 +117,7 @@ export async function signOutKanaMcpServer(
   await context.tokenStore.delete(createKanaMcpOAuthStorageKey(serverId));
   await context.clientStore.deleteClient(createKanaMcpOAuthStorageKey(serverId));
   context.getLogger().info("mcp.oauth_signed_out", { serverId });
-  return { state: "unauthorized", refreshable: false };
+  return getOAuthTokenStatus(undefined);
 }
 
 function createOperationContext(options: RunKanaMcpOAuthOptions): {
@@ -163,14 +168,5 @@ function createDiagnosticHandler(
     } catch {
       // Presentation callbacks cannot change authorization control flow.
     }
-  };
-}
-
-function storedTokenStatus(token: OAuthStoredToken): OAuthTokenStatus {
-  return {
-    state:
-      token.expiresAt !== undefined && token.expiresAt <= Date.now() ? "expired" : "authorized",
-    refreshable: token.refreshToken !== undefined,
-    ...(token.expiresAt === undefined ? {} : { expiresAt: token.expiresAt }),
   };
 }

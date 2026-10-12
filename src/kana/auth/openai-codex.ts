@@ -4,6 +4,7 @@ import { createNoopLogger, type Logger } from "@/logging";
 import {
   createOAuthAuthorizationRequest,
   exchangeOAuthAuthorizationCode,
+  needsOAuthTokenRefresh,
   type OAuthAuthorizationServerMetadata,
   type OAuthCallbackServer,
   type OAuthDiagnosticEvent,
@@ -440,7 +441,7 @@ export async function signOutKanaOpenAICodex(options: CreateKanaOpenAICodexAuthO
 }
 
 function isUsable(token: OAuthStoredToken): boolean {
-  return token.expiresAt === undefined || token.expiresAt > Date.now() + 60_000;
+  return !needsOAuthTokenRefresh(token);
 }
 
 function credentialsFromToken(token: OAuthStoredToken): OpenAICodexCredentials {
